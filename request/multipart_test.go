@@ -9,39 +9,6 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// MultipartBuffer (legacy)
-// ---------------------------------------------------------------------------
-
-func TestMultipartBuffer_ContentType(t *testing.T) {
-	mb := &MultipartBuffer{Boundary: "abc123"}
-	expected := "multipart/form-data; boundary=abc123"
-	if mb.ContentType() != expected {
-		t.Fatalf("expected %q, got %q", expected, mb.ContentType())
-	}
-}
-
-func TestMultipartBuffer_ReadWrite(t *testing.T) {
-	mb := &MultipartBuffer{Boundary: "b"}
-	mb.WriteString("hello")
-	data, _ := io.ReadAll(mb)
-	if string(data) != "hello" {
-		t.Fatalf("expected hello, got %q", string(data))
-	}
-}
-
-func TestMultipartBuffer_ImplementsCustomPayload(t *testing.T) {
-	mb := &MultipartBuffer{Boundary: "x"}
-	mb.WriteString("data")
-	var _ CustomPayload = mb
-
-	buf := new(bytes.Buffer)
-	io.Copy(buf, mb)
-	if buf.String() != "data" {
-		t.Fatalf("expected data, got %q", buf.String())
-	}
-}
-
-// ---------------------------------------------------------------------------
 // FormWriter
 // ---------------------------------------------------------------------------
 

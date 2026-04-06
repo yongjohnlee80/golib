@@ -5,17 +5,6 @@ import (
 	"mime/multipart"
 )
 
-// MultipartBuffer wraps bytes.Buffer to implement CustomPayload for multipart
-// form data.
-type MultipartBuffer struct {
-	bytes.Buffer
-	Boundary string
-}
-
-func (w *MultipartBuffer) ContentType() string {
-	return "multipart/form-data; boundary=" + w.Boundary
-}
-
 // FormWriter is a convenience builder for constructing multipart/form-data
 // payloads. It composes multipart.Writer and bytes.Buffer, and implements
 // CustomPayload so it can be passed directly to Request as a payload.

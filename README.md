@@ -45,6 +45,30 @@ Generic collection types and functional slice operations.
 
 See [collections/README.md](collections/README.md) for full documentation.
 
+### request
+
+HTTP client with generic error handling, functional options, and multipart form support.
+
+- **`Request()`** — core HTTP function; separates transport errors from status codes
+- **`DecodeResponse[T]()`** — generic response decoder parameterized by error type
+- **`FormWriter`** — multipart/form-data builder implementing `CustomPayload`
+- **`RequestOption`** — functional options pattern for modifying requests
+- **`Histories`** — bounded ring buffer of recent request/response pairs for debugging
+
+```go
+import "github.com/yongjohnlee80/golib/request"
+
+p := &request.Params{
+    Method: "POST",
+    Url:    "https://api.example.com/tracks",
+    Headers: map[string]string{"Authorization": "Bearer tok"},
+}
+request.Request(p, payload, request.ContentType(request.JSON))
+err := request.DecodeResponse[request.Error](p, &response)
+```
+
+See [request/README.md](request/README.md) for full documentation.
+
 ### ingestor
 
 Generic, thread-safe data ingestion pipelines. Buffer items in memory and flush to CSV or JSON files.

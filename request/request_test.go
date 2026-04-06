@@ -108,29 +108,6 @@ func TestRequest_POST_IOReader(t *testing.T) {
 	}
 }
 
-func TestRequest_POST_CustomPayload(t *testing.T) {
-	mb := &MultipartBuffer{Boundary: "testboundary"}
-	mb.WriteString("custom body")
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ct := r.Header.Get("Content-Type")
-		if !strings.Contains(ct, "multipart/form-data; boundary=testboundary") {
-			t.Fatalf("expected multipart content-type with boundary, got %s", ct)
-		}
-		data, _ := io.ReadAll(r.Body)
-		if string(data) != "custom body" {
-			t.Fatalf("expected 'custom body', got %q", string(data))
-		}
-		w.WriteHeader(200)
-	}))
-	defer srv.Close()
-
-	p := &Params{Method: "POST", Url: srv.URL}
-	if err := Request(p, mb); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestRequest_Headers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Custom") != "abc" {
