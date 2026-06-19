@@ -261,9 +261,10 @@ type SearchOp interface {
 	Predicate(value string) Predicate
 }
 
-// StringOp matches token:value with a case-insensitive substring match
-// (col ILIKE '%value%'). field is the field-enum key; until a schema binds it to
-// a column (ADR-0006), the field key is used as the column.
+// StringOp matches token:value with a case-insensitive substring match, rendered
+// portably as LOWER(col) LIKE LOWER('%value%') so it works on Postgres, SQLite,
+// and MySQL alike (ILIKE is Postgres-only). field is the field-enum key; until a
+// schema binds it to a column (ADR-0006), the field key is used as the column.
 func StringOp(token string, field any) SearchOp {
 	return &stringOp{token: token, field: fmt.Sprint(field)}
 }
@@ -314,9 +315,11 @@ func (o *stringOp) withColumn(col string) SearchOp {
 	return &c
 }
 func (o *stringOp) Predicate(value string) Predicate {
-	// The user-supplied value is a literal, not a pattern: escape LIKE
-	// metacharacters so searching "50%" matches "50%" rather than "50…".
-	return Raw(o.column()+` ILIKE ? ESCAPE '\'`, "%"+EscapeLike(value)+"%")
+	// Portable case-insensitive substring match: ILIKE is Postgres-only, so
+	// LOWER+LIKE (Postgres, SQLite, MySQL). The user-supplied value is a
+	// literal, not a pattern: escape LIKE metacharacters so searching "50%"
+	// matches "50%" rather than "50…".
+	return Raw("LOWER("+o.column()+`) LIKE LOWER(?) ESCAPE '\'`, "%"+EscapeLike(value)+"%")
 }
 
 type exactOp struct {

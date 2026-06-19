@@ -88,7 +88,7 @@ func BuildArtistSchema(conn dao.DataConn, log logger.Logger) *ArtistSchema {
         })),
         O(dao.Conflict[*Artist, ArtistField, ArtistSort, string](ArtistURI)),
         O(dao.Search[*Artist, ArtistField, ArtistSort, string](
-            dao.StringOp("name", ArtistName),     // name:liquid  -> ILIKE %liquid%
+            dao.StringOp("name", ArtistName),     // name:liquid  -> case-insensitive LIKE
             dao.BoolOp("public", "artist.public"), // public:true
         )),
         O(dao.WithLogger[*Artist, ArtistField, ArtistSort, string](log)),

@@ -114,7 +114,7 @@ func TestSearchOps(t *testing.T) {
 		{"bool true", BoolOp("public", "artist.public"), "true", "artist.public = $1", []any{true}},
 		{"bool false", BoolOp("public", "artist.public"), "no", "artist.public = $1", []any{false}},
 		{"array", ArrayOp("tag", "tags"), "rock", "$1 = ANY(tags)", []any{"rock"}},
-		{"string ILIKE", StringOp("name", "artist.name"), "liq", `artist.name ILIKE $1 ESCAPE '\'`, []any{"%liq%"}},
+		{"string case-insensitive", StringOp("name", "artist.name"), "liq", `LOWER(artist.name) LIKE LOWER($1) ESCAPE '\'`, []any{"%liq%"}},
 		{"exact", ExactOp("uri", "artist.uri"), "x", "artist.uri = $1", []any{"x"}},
 		{"raw op", RawOp("custom", func(v string) Predicate { return Eq("c", v) }), "y", "c = $1", []any{"y"}},
 	}
@@ -144,12 +144,12 @@ func TestSearchOp_FieldBinding(t *testing.T) {
 		t.Errorf("fieldKey() = %q, want namefield", fb.fieldKey())
 	}
 	// Before binding, the field key doubles as the column.
-	if sql, _ := render(op.Predicate("q")); sql != `namefield ILIKE $1 ESCAPE '\'` {
+	if sql, _ := render(op.Predicate("q")); sql != `LOWER(namefield) LIKE LOWER($1) ESCAPE '\'` {
 		t.Errorf("unbound column = %q", sql)
 	}
 	// The schema binds the resolved column.
 	bound := fb.withColumn("artist.name")
-	if sql, _ := render(bound.Predicate("q")); sql != `artist.name ILIKE $1 ESCAPE '\'` {
+	if sql, _ := render(bound.Predicate("q")); sql != `LOWER(artist.name) LIKE LOWER($1) ESCAPE '\'` {
 		t.Errorf("bound column = %q", sql)
 	}
 }
