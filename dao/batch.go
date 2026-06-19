@@ -1,0 +1,300 @@
+package dao
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+)
+
+// defaultCopyThreshold is the staged-row count at or above which a COPY-capable
+// dialect uses its bulk-load fast-path instead of chunked INSERT.
+const defaultCopyThreshold = 1000
+
+// BatchWriter accumulates rows and flushes them as the minimum number of
+// statements that respect the dialect's bind-parameter limit, with an optional
+// COPY fast-path. Obtain one from a DAO via Batch. Chunking is automatic and
+// driver-aware: the caller never reasons about bind-parameter limits.
+type BatchWriter[R any, C ~string] interface {
+	// Add stages one row's column values. Columns may vary across rows; the union
+	// of all staged keys determines the INSERT column list, and a row missing a
+	// key contributes NULL for it.
+	Add(values map[C]any) BatchWriter[R, C]
+
+	// AddRow stages a row from a model value using the schema's write fields.
+	AddRow(r R) BatchWriter[R, C]
+
+	// SkipConflicts appends the dialect's "do nothing on conflict" clause.
+	SkipConflicts() BatchWriter[R, C]
+
+	// OnConflictUpdate upserts the staged columns on conflict with conflictCols.
+	OnConflictUpdate(conflictCols ...C) BatchWriter[R, C]
+
+	// ForceCopy forces the COPY fast-path (where supported); it cannot be
+	// combined with conflict handling.
+	ForceCopy() BatchWriter[R, C]
+
+	// ForceInsert forces the chunked-INSERT path even for large batches.
+	ForceInsert() BatchWriter[R, C]
+
+	// Flush writes all staged rows. It returns a *BatchError (whose Unwrap
+	// returns the per-chunk errors) if any chunk fails; other chunks are still
+	// attempted.
+	Flush() error
+
+	// Len reports the number of staged rows.
+	Len() int
+
+	// Reset clears the staged rows and conflict/copy options.
+	Reset()
+}
+
+// batchWriter is the concrete BatchWriter. The schema/factory (ADR-0006) supplies
+// the table, the field-to-column resolver (colName), the row extractor for
+// AddRow (extract), the error translator, and the debug log hook; until then the
+// constructor defaults make it fully usable via Add.
+type batchWriter[R any, C ~string] struct {
+	ctx           context.Context
+	exec          Execer
+	dialect       Dialect
+	table         string
+	translate     func(error) error
+	logf          func(sql string, args []any)
+	colName       func(C) string
+	extract       func(R) map[C]any
+	copyThreshold int
+
+	rows         []map[C]any
+	skipConflict bool
+	conflictCols []C
+	forceCopy    bool
+	forceInsert  bool
+
+	// initErr, when set, is returned by Flush before any work — used when a
+	// tx-bound Batch could not resolve its transaction executor.
+	initErr error
+}
+
+// newBatchWriter builds a batchWriter with safe defaults: identity column
+// resolution (the field key is its own column), no-op translate/log, and the
+// default COPY threshold. The schema wires the real resolvers.
+func newBatchWriter[R any, C ~string](exec Execer, dialect Dialect, table string) *batchWriter[R, C] {
+	return &batchWriter[R, C]{
+		ctx:           context.Background(),
+		exec:          exec,
+		dialect:       dialect,
+		table:         table,
+		translate:     func(e error) error { return e },
+		logf:          func(string, []any) {},
+		colName:       func(c C) string { return string(c) },
+		copyThreshold: defaultCopyThreshold,
+	}
+}
+
+func (b *batchWriter[R, C]) Add(values map[C]any) BatchWriter[R, C] {
+	b.rows = append(b.rows, values)
+	return b
+}
+
+func (b *batchWriter[R, C]) AddRow(r R) BatchWriter[R, C] {
+	if b.extract == nil {
+		panic("dao: AddRow requires a schema-built BatchWriter (ADR-0006 wires the row extractor); use Add(map[C]any) until then")
+	}
+	return b.Add(b.extract(r))
+}
+
+func (b *batchWriter[R, C]) SkipConflicts() BatchWriter[R, C] {
+	b.skipConflict = true
+	return b
+}
+
+func (b *batchWriter[R, C]) OnConflictUpdate(conflictCols ...C) BatchWriter[R, C] {
+	b.conflictCols = append(b.conflictCols, conflictCols...)
+	return b
+}
+
+func (b *batchWriter[R, C]) ForceCopy() BatchWriter[R, C] {
+	b.forceCopy = true
+	return b
+}
+
+func (b *batchWriter[R, C]) ForceInsert() BatchWriter[R, C] {
+	b.forceInsert = true
+	return b
+}
+
+func (b *batchWriter[R, C]) Len() int { return len(b.rows) }
+
+func (b *batchWriter[R, C]) Reset() {
+	b.rows = nil
+	b.skipConflict = false
+	b.conflictCols = nil
+	b.forceCopy = false
+	b.forceInsert = false
+}
+
+// Flush writes all staged rows. With no rows it is a no-op. It chooses the COPY
+// fast-path when shouldCopy allows, otherwise it emits chunked multi-row INSERTs
+// sized to the dialect's limits.
+func (b *batchWriter[R, C]) Flush() error {
+	if b.initErr != nil {
+		return b.initErr
+	}
+	if len(b.rows) == 0 {
+		return nil
+	}
+	if b.forceCopy && b.hasConflictHandling() {
+		return errors.New("dao: ForceCopy cannot be combined with conflict handling (COPY cannot express upsert/skip)")
+	}
+
+	keys, cols := b.keysAndCols()
+	matrix := b.matrix(keys)
+
+	if b.shouldCopy(len(matrix), len(cols)) {
+		_, err := b.dialect.Copy(b.ctx, b.exec, b.table, cols, matrix)
+		return b.translate(err)
+	}
+
+	perChunk := perChunkRows(b.dialect.MaxBindParams(), len(cols), b.dialect.MaxBatchRows())
+	suffix := b.suffix(cols)
+
+	var errs []error
+	for i := 0; i < len(matrix); i += perChunk {
+		chunk := matrix[i:min(i+perChunk, len(matrix))]
+		bld := &builder{dialect: b.dialect}
+		sqlText := bld.buildBatchInsert(b.table, cols, chunk, suffix)
+		b.logf(sqlText, bld.args)
+		if _, err := b.exec.ExecContext(b.ctx, sqlText, bld.args...); err != nil {
+			errs = append(errs, &chunkError{index: i / perChunk, err: b.translate(err)})
+		}
+	}
+	if len(errs) > 0 {
+		return &BatchError{Errors: errs}
+	}
+	return nil
+}
+
+func (b *batchWriter[R, C]) hasConflictHandling() bool {
+	return b.skipConflict || len(b.conflictCols) > 0
+}
+
+// keysAndCols returns the sorted union of staged field keys and the column names
+// they resolve to, aligned positionally. Sorting keeps emitted SQL stable.
+func (b *batchWriter[R, C]) keysAndCols() (keys []C, cols []string) {
+	seen := make(map[C]struct{})
+	for _, row := range b.rows {
+		for k := range row {
+			if _, ok := seen[k]; !ok {
+				seen[k] = struct{}{}
+				keys = append(keys, k)
+			}
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	cols = make([]string, len(keys))
+	for i, k := range keys {
+		cols[i] = b.colName(k)
+	}
+	return keys, cols
+}
+
+// matrix projects the staged rows onto keys, in order, filling absent keys with nil.
+func (b *batchWriter[R, C]) matrix(keys []C) [][]any {
+	m := make([][]any, len(b.rows))
+	for i, row := range b.rows {
+		vals := make([]any, len(keys))
+		for j, k := range keys {
+			vals[j] = row[k]
+		}
+		m[i] = vals
+	}
+	return m
+}
+
+// shouldCopy reports whether the COPY fast-path applies. COPY cannot express
+// conflict handling, so any skip/upsert disqualifies it.
+func (b *batchWriter[R, C]) shouldCopy(nrows, _ int) bool {
+	if !b.dialect.CopySupported() || b.forceInsert {
+		return false
+	}
+	if b.hasConflictHandling() {
+		return false
+	}
+	if b.forceCopy {
+		return true
+	}
+	return nrows >= b.copyThreshold
+}
+
+// suffix renders the ON CONFLICT clause for the staged conflict options, or "".
+func (b *batchWriter[R, C]) suffix(cols []string) string {
+	switch {
+	case len(b.conflictCols) > 0:
+		conflict := make([]string, len(b.conflictCols))
+		for i, c := range b.conflictCols {
+			conflict[i] = b.colName(c)
+		}
+		return b.dialect.BuildUpsertSuffix(conflict, subtract(cols, conflict))
+	case b.skipConflict:
+		return b.dialect.BuildUpsertSuffix(nil, nil)
+	}
+	return ""
+}
+
+// perChunkRows is the number of rows per batch statement: floor(maxParams/cols),
+// at least one (a single pathologically wide row still emits), clamped to
+// maxBatchRows when that is set.
+func perChunkRows(maxParams, cols, maxBatchRows int) int {
+	pc := maxParams / max(cols, 1)
+	if pc < 1 {
+		pc = 1
+	}
+	if maxBatchRows > 0 && pc > maxBatchRows {
+		pc = maxBatchRows
+	}
+	return pc
+}
+
+// subtract returns the elements of all that are not in remove, preserving order.
+func subtract(all, remove []string) []string {
+	rm := make(map[string]struct{}, len(remove))
+	for _, r := range remove {
+		rm[r] = struct{}{}
+	}
+	out := make([]string, 0, len(all))
+	for _, a := range all {
+		if _, ok := rm[a]; !ok {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// BatchError reports that one or more chunks of a [BatchWriter.Flush] failed. Its
+// Unwrap returns the per-chunk errors (each a *chunkError identifying the chunk).
+type BatchError struct {
+	Errors []error
+}
+
+// Error implements error.
+func (e *BatchError) Error() string {
+	return fmt.Sprintf("dao: batch flush failed in %d chunk(s): %v", len(e.Errors), errors.Join(e.Errors...))
+}
+
+// Unwrap returns the per-chunk errors for errors.Is/As traversal.
+func (e *BatchError) Unwrap() []error { return e.Errors }
+
+// chunkError identifies a single failed chunk within a batch flush.
+type chunkError struct {
+	index int
+	err   error
+}
+
+// Error implements error.
+func (e *chunkError) Error() string { return fmt.Sprintf("chunk %d: %v", e.index, e.err) }
+
+// Unwrap returns the underlying (already-translated) chunk error.
+func (e *chunkError) Unwrap() error { return e.err }
+
+// Index reports which chunk (0-based) failed.
+func (e *chunkError) Index() int { return e.index }

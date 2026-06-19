@@ -1,6 +1,9 @@
 # golib
 
-A collection of reusable Go packages with zero external dependencies.
+A collection of reusable Go packages. The core packages have **zero external
+dependencies**; the optional `dao` database drivers are the only packages that pull
+one in (`dao/postgres` requires pgx, `dao/sqlite` requires the pure-Go modernc
+SQLite driver).
 
 ```bash
 go get github.com/yongjohnlee80/golib
@@ -81,6 +84,35 @@ Generic, thread-safe data ingestion pipelines. Buffer items in memory and flush 
 Background write errors are collected and returned by `Flush()` as `*BatchErrors`.
 
 See [ingestor/README.md](ingestor/README.md) for full documentation.
+
+### logger
+
+A small, toggleable, level-based logging hook. Zero external dependencies (stdlib
+`log`/`fmt` only). The `Logger` interface is shape-identical to
+`monstercat/golib/logger`, and `Adapt` bridges any external logger without a
+dependency.
+
+- **`Logger`** — `Log(severity Severity, payload any)`; six `Severity` levels
+- **`Nop`** / **`SimpleLogger`** / **`Multi`** / **`Contextual`** — implementations
+- **`Adapt(fn)`** — wrap a function (or bridge an external logger) as a `Logger`
+
+See [logger/README.md](logger/README.md) for full documentation.
+
+### dao
+
+A generic, driver-agnostic data-access layer (DAL). Declare each entity **once**
+(fields, columns, scan targets, joins, sort, search) and that drives column-aware
+reads, query building, scanning, auto-chunked batch writes, and multi-database
+transactions. Not an ORM — explicit columns, explicit joins, no struct-tag magic.
+Optional, toggleable SQL+args logging.
+
+- **`dao`** — the core: zero external dependencies; `DAO[R,C,ID]` surface,
+  `Schema`/builder, predicates, on-demand joins, batch, transactions, error translation
+- **`dao/postgres`** — reference driver over pgx (native COPY, SQLSTATE translation)
+- **`dao/sqlite`** — pure-Go SQLite driver (in-process; great for tests)
+
+See [dao/README.md](dao/README.md) for the reference overview and
+[dao/USAGE.md](dao/USAGE.md) for a worked cookbook.
 
 ## License
 
