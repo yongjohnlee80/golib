@@ -143,6 +143,16 @@ func (b *batchWriter[R, C]) Flush() error {
 	if len(b.rows) == 0 {
 		return nil
 	}
+	// Capability gates (ADR-0008 §2.4/§2.5). An explicit ForceCopy on a dialect
+	// that cannot COPY is ErrUnsupported, and this capability gate wins over the
+	// combination check below (nit #4). Conflict handling on a no-upsert dialect is
+	// likewise ErrUnsupported, never a silent plain-INSERT that drops the clause.
+	if b.forceCopy && !b.dialect.CopySupported() {
+		return fmt.Errorf("%w: COPY", ErrUnsupported)
+	}
+	if b.hasConflictHandling() && !b.dialect.SupportsUpsert() {
+		return fmt.Errorf("%w: upsert (batch conflict handling)", ErrUnsupported)
+	}
 	if b.forceCopy && b.hasConflictHandling() {
 		return errors.New("dao: ForceCopy cannot be combined with conflict handling (COPY cannot express upsert/skip)")
 	}

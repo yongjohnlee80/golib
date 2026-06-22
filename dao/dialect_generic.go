@@ -107,3 +107,18 @@ func (GenericDialect) CommitPrepared(context.Context, DataConn, string) error {
 func (GenericDialect) RollbackPrepared(context.Context, DataConn, string) error {
 	return ErrTwoPhaseUnsupported
 }
+
+// SupportsTransactions reports true: the generic dialect is OLTP-shaped and
+// supports interactive transactions (ADR-0008). A no-transaction driver (e.g.
+// BigQuery) overrides this to false.
+func (GenericDialect) SupportsTransactions() bool { return true }
+
+// SupportsUpsert reports true: the generic dialect renders Postgres-style
+// ON CONFLICT upserts (ADR-0008). A store with no INSERT-suffix upsert overrides
+// this to false.
+func (GenericDialect) SupportsUpsert() bool { return true }
+
+// SupportsLastInsertID reports false: the generic dialect is RETURNING-based, so
+// Insert never needs Result.LastInsertId. A LastInsertId-style driver (e.g. MySQL,
+// SupportsReturning=false) overrides this to true (ADR-0008 §2.6).
+func (GenericDialect) SupportsLastInsertID() bool { return false }

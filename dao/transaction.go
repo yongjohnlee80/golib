@@ -178,6 +178,13 @@ func (t *Transaction) executorFor(name string) (TxConn, error) {
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownConnection, name)
 	}
+	// First-touch capability gate (ADR-0008 §2.3): a no-transaction connection
+	// (e.g. BigQuery) is an error only when actually touched — an untouched no-tx
+	// connection in a multi-conn transaction stays unaffected, preserving the lazy
+	// model. RunTx does NOT pre-reject connections before fn runs.
+	if !conn.Dialect().SupportsTransactions() {
+		return nil, fmt.Errorf("%s: %w: transactions", name, ErrUnsupported)
+	}
 	tx, err := conn.Begin(t.ctx)
 	if err != nil {
 		return nil, err

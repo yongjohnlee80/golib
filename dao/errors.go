@@ -50,6 +50,14 @@ var (
 	// ErrTwoPhaseUnsupported is returned by Commit when TwoPhase is requested but a
 	// participating dialect does not support prepared transactions.
 	ErrTwoPhaseUnsupported = errors.New("dao: dialect does not support two-phase commit")
+
+	// ErrUnsupported is returned by a capability-gated operation that the
+	// connection's dialect does not implement — e.g. transactions (Begin/RunTx),
+	// Upsert, or the COPY bulk-load fast-path on an OLAP / append-only store
+	// (ADR-0008). It never panics; test with errors.Is(err, ErrUnsupported).
+	// Drivers wrap it with context, e.g.
+	// fmt.Errorf("bigquery: %w: interactive transactions", dao.ErrUnsupported).
+	ErrUnsupported = errors.New("dao: operation not supported by this dialect")
 )
 
 // ConstraintKind classifies a constraint violation.

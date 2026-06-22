@@ -366,7 +366,16 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 		return id, nil
 	}
 	res, err := h.ExecContext(d.ctx(), q, b.args...)
-	return lastInsertID[ID](res, d.schema.translate(err))
+	if err != nil {
+		return zero, d.schema.translate(err)
+	}
+	if d.schema.dialect.SupportsLastInsertID() {
+		return lastInsertID[ID](res, nil)
+	}
+	// No RETURNING and no LastInsertID: a documented no-generated-id insert
+	// (ADR-0008 §2.6). The DML ran; the caller supplies ids client-side (e.g. a
+	// UUID) for append-only stores and must not treat the zero id as meaningful.
+	return zero, nil
 }
 
 func (d *queryDAO[R, C, K, ID]) Update() error {
@@ -394,6 +403,9 @@ func (d *queryDAO[R, C, K, ID]) Update() error {
 func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	if d.err != nil {
 		return d.err
+	}
+	if !d.schema.dialect.SupportsUpsert() {
+		return fmt.Errorf("%w: upsert", ErrUnsupported)
 	}
 	set := d.stagedSet()
 	if set.empty() {

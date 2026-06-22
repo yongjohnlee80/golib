@@ -71,4 +71,23 @@ type Dialect interface {
 	// RollbackPrepared aborts the transaction previously prepared under gid,
 	// releasing its locks. Used when another participant fails phase one.
 	RollbackPrepared(ctx context.Context, conn DataConn, gid string) error
+
+	// SupportsTransactions reports whether the dialect supports interactive
+	// transactions (DataConn.Begin). OLAP / append-only stores (e.g. BigQuery)
+	// report false; the transaction layer then returns ErrUnsupported on first
+	// touch of such a connection (ADR-0008 §2.3). Default true.
+	SupportsTransactions() bool
+
+	// SupportsUpsert reports whether the dialect can express an INSERT-with-conflict
+	// upsert via BuildUpsertSuffix. Stores with no ON CONFLICT / ON DUPLICATE KEY
+	// (e.g. BigQuery — MERGE-only) report false; DAO.Upsert and batch conflict
+	// handling then return ErrUnsupported (ADR-0008 §2.4). Default true.
+	SupportsUpsert() bool
+
+	// SupportsLastInsertID reports whether a non-RETURNING INSERT can return a
+	// server-generated id via Result.LastInsertId (the MySQL model). GenericDialect
+	// is RETURNING-based and reports false; when a dialect supports neither
+	// RETURNING nor LastInsertID, DAO.Insert performs the DML and returns the zero
+	// ID with a nil error — a documented no-generated-id insert (ADR-0008 §2.6).
+	SupportsLastInsertID() bool
 }
