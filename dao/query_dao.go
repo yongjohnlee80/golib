@@ -3,8 +3,6 @@ package dao
 import (
 	"context"
 	"fmt"
-
-	"github.com/yongjohnlee80/golib/logger"
 )
 
 // queryDAO is the concrete, query-scoped implementation behind the [DAO]
@@ -20,6 +18,9 @@ type queryDAO[R any, C ~string, K ~string, ID any] struct {
 	conn   DataConn
 	tx     *Transaction
 	ctxv   context.Context
+
+	hooks       []Hook // effective hook slice (nil = zero-cost fast path)
+	explicitCtx bool   // ctxv came from WithQueryContext — sticky across Use(tx)
 
 	q   queryState
 	w   writeState
@@ -61,12 +62,67 @@ func (d *queryDAO[R, C, K, ID]) handle() (execQuerier, error) {
 	return d.conn, nil
 }
 
-func (d *queryDAO[R, C, K, ID]) log(sql string, args []any) {
-	if !d.schema.debug {
+// begin opens the hook pipeline for one statement, firing BeforeBuild (with a
+// Stager over this DAO's staged state) unless fireBuild is false (batch).
+// Returns (nil, nil) when no hooks are registered — the zero-cost fast path.
+func (d *queryDAO[R, C, K, ID]) begin(op Op, fireBuild bool) (*pipeline, error) {
+	if len(d.hooks) == 0 {
+		return nil, nil
+	}
+	p := &pipeline{hooks: d.hooks, ctx: d.ctx(),
+		info: QueryInfo{Op: op, Table: d.schema.table, Conn: d.schema.conn.Name()}}
+	if fireBuild {
+		st := &stagerFor[R, C, K, ID]{d: d, op: op}
+		if err := p.beforeBuild(st); err != nil {
+			return nil, err
+		}
+		if st.err != nil {
+			return nil, st.err
+		}
+		if d.err != nil { // e.g. a hook OrderBy with an unknown sort key
+			return nil, d.err
+		}
+	}
+	return p, nil
+}
+
+// stagerFor adapts one queryDAO's staged state to the type-erased [Stager]
+// surface, enforcing the per-op semantics of ADR-0009 §2.1.
+type stagerFor[R any, C ~string, K ~string, ID any] struct {
+	d   *queryDAO[R, C, K, ID]
+	op  Op
+	err error
+}
+
+func (s *stagerFor[R, C, K, ID]) Where(p Predicate) {
+	if !s.op.whereCapable() {
+		if s.err == nil {
+			s.err = fmt.Errorf("%w (op %s)", ErrHookWhereUnsupported, s.op)
+		}
 		return
 	}
-	d.schema.logger.Log(logger.SeverityDebug,
-		map[string]any{"dao": d.schema.table, "sql": sql, "args": args})
+	s.d.q.where = append(s.d.q.where, p)
+}
+
+func (s *stagerFor[R, C, K, ID]) OrderBy(sorts ...Sort) {
+	if s.op.IsWrite() {
+		return
+	}
+	s.d.OrderBy(sorts...)
+}
+
+func (s *stagerFor[R, C, K, ID]) Limit(n uint64) {
+	if s.op.IsWrite() || s.d.q.limit != nil {
+		return
+	}
+	s.d.q.limit = &n
+}
+
+func (s *stagerFor[R, C, K, ID]) SetColumn(column string, value any) {
+	switch s.op {
+	case OpInsert, OpUpdate, OpUpsert:
+		s.d.w.set.put(column, value)
+	}
 }
 
 // collectJoins appends any forced joins (DAO.Join / sort-triggered) to base,
@@ -199,7 +255,9 @@ func (d *queryDAO[R, C, K, ID]) Join(keys ...JoinKey) DAO[R, C, ID] {
 
 func (d *queryDAO[R, C, K, ID]) Use(tx *Transaction) DAO[R, C, ID] {
 	d.tx = tx
-	if tx != nil {
+	// An explicit WithQueryContext is sticky: late tx binding must not demote
+	// it behind the transaction's context (ADR-0009 §2.3).
+	if tx != nil && !d.explicitCtx {
 		d.ctxv = tx.ctx
 	}
 	return d
@@ -210,6 +268,10 @@ func (d *queryDAO[R, C, K, ID]) Get(cols ...C) (R, error) {
 	if d.err != nil {
 		return zero, d.err
 	}
+	pl, perr := d.begin(OpGet, true)
+	if perr != nil {
+		return zero, perr
+	}
 	sqlCols, joins, plan, err := d.schema.resolve(cols)
 	if err != nil {
 		return zero, err
@@ -217,63 +279,80 @@ func (d *queryDAO[R, C, K, ID]) Get(cols ...C) (R, error) {
 	one := uint64(1)
 	b := d.newBuilder()
 	q := b.buildSelect(d.schema.table, sqlCols, d.collectJoins(joins), d.q.where, d.q.order, &one, d.q.offset)
-	d.log(q, b.args)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return zero, err
+	}
 	h, herr := d.handle()
 	if herr != nil {
 		return zero, herr
 	}
-	rows, qerr := h.QueryContext(d.ctx(), q, b.args...)
+	rows, qerr := h.QueryContext(d.ctx(), q, args...)
 	if qerr != nil {
-		return zero, d.schema.translate(qerr)
+		return zero, pl.finish(0, -1, d.schema.translate(qerr))
 	}
 	defer rows.Close()
 	if !rows.Next() {
 		if rerr := rows.Err(); rerr != nil {
-			return zero, d.schema.translate(rerr)
+			return zero, pl.finish(0, -1, d.schema.translate(rerr))
 		}
-		return zero, ErrNoRows
+		return zero, pl.finish(0, -1, ErrNoRows)
 	}
 	r, serr := scanRow(d.schema.newRow, plan, rows)
 	if serr != nil {
-		return zero, d.schema.translate(serr)
+		return zero, pl.finish(0, -1, d.schema.translate(serr))
 	}
-	return r, nil
+	return r, pl.finish(1, -1, nil)
 }
 
 func (d *queryDAO[R, C, K, ID]) Select(cols ...C) ([]R, error) {
 	if d.err != nil {
 		return nil, d.err
 	}
+	pl, perr := d.begin(OpSelect, true)
+	if perr != nil {
+		return nil, perr
+	}
 	sqlCols, joins, plan, err := d.schema.resolve(cols)
 	if err != nil {
 		return nil, err
 	}
 	b := d.newBuilder()
 	q := b.buildSelect(d.schema.table, sqlCols, d.collectJoins(joins), d.q.where, d.q.order, d.q.limit, d.q.offset)
-	d.log(q, b.args)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return nil, err
+	}
 	h, herr := d.handle()
 	if herr != nil {
 		return nil, herr
 	}
-	rows, qerr := h.QueryContext(d.ctx(), q, b.args...)
+	rows, qerr := h.QueryContext(d.ctx(), q, args...)
 	if qerr != nil {
-		return nil, d.schema.translate(qerr)
+		return nil, pl.finish(0, -1, d.schema.translate(qerr))
 	}
 	defer rows.Close()
 	var out []R
 	for rows.Next() {
 		r, serr := scanRow(d.schema.newRow, plan, rows)
 		if serr != nil {
-			return nil, d.schema.translate(serr)
+			return nil, pl.finish(len(out), -1, d.schema.translate(serr))
 		}
 		out = append(out, r)
 	}
-	return out, d.schema.translate(rows.Err())
+	if ferr := pl.finish(len(out), -1, d.schema.translate(rows.Err())); ferr != nil {
+		return nil, ferr
+	}
+	return out, nil
 }
 
 func (d *queryDAO[R, C, K, ID]) Iterate(cols ...C) (Iterator[R], error) {
 	if d.err != nil {
 		return nil, d.err
+	}
+	pl, perr := d.begin(OpIterate, true)
+	if perr != nil {
+		return nil, perr
 	}
 	sqlCols, joins, plan, err := d.schema.resolve(cols)
 	if err != nil {
@@ -281,14 +360,23 @@ func (d *queryDAO[R, C, K, ID]) Iterate(cols ...C) (Iterator[R], error) {
 	}
 	b := d.newBuilder()
 	q := b.buildSelect(d.schema.table, sqlCols, d.collectJoins(joins), d.q.where, d.q.order, d.q.limit, d.q.offset)
-	d.log(q, b.args)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return nil, err
+	}
 	h, herr := d.handle()
 	if herr != nil {
 		return nil, herr
 	}
-	rows, qerr := h.QueryContext(d.ctx(), q, b.args...)
+	rows, qerr := h.QueryContext(d.ctx(), q, args...)
 	if qerr != nil {
-		return nil, d.schema.translate(qerr)
+		return nil, pl.finish(-1, -1, d.schema.translate(qerr))
+	}
+	// Execution-only AfterExec (ADR-0009 §2.6): consumption/scan errors surface
+	// through the iterator untransformed by hooks.
+	if ferr := pl.finish(-1, -1, nil); ferr != nil {
+		rows.Close()
+		return nil, ferr
 	}
 	return &rowsIterator[R]{rows: rows, plan: plan, newR: d.schema.newRow, translate: d.schema.translate}, nil
 }
@@ -297,50 +385,68 @@ func (d *queryDAO[R, C, K, ID]) Exists() (bool, error) {
 	if d.err != nil {
 		return false, d.err
 	}
+	pl, perr := d.begin(OpExists, true)
+	if perr != nil {
+		return false, perr
+	}
 	b := d.newBuilder()
 	q := b.buildExists(d.schema.table, d.collectJoins(nil), d.q.where)
-	d.log(q, b.args)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return false, err
+	}
 	h, herr := d.handle()
 	if herr != nil {
 		return false, herr
 	}
-	rows, err := h.QueryContext(d.ctx(), q, b.args...)
+	rows, err := h.QueryContext(d.ctx(), q, args...)
 	if err != nil {
-		return false, d.schema.translate(err)
+		return false, pl.finish(0, -1, d.schema.translate(err))
 	}
 	var exists bool
 	if serr := scanScalar(rows, &exists); serr != nil {
-		return false, d.schema.translate(serr)
+		return false, pl.finish(0, -1, d.schema.translate(serr))
 	}
-	return exists, nil
+	return exists, pl.finish(1, -1, nil)
 }
 
 func (d *queryDAO[R, C, K, ID]) Count() (uint64, error) {
 	if d.err != nil {
 		return 0, d.err
 	}
+	pl, perr := d.begin(OpCount, true)
+	if perr != nil {
+		return 0, perr
+	}
 	b := d.newBuilder()
 	q := b.buildCount(d.schema.table, d.collectJoins(nil), d.q.where)
-	d.log(q, b.args)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return 0, err
+	}
 	h, herr := d.handle()
 	if herr != nil {
 		return 0, herr
 	}
-	rows, err := h.QueryContext(d.ctx(), q, b.args...)
+	rows, err := h.QueryContext(d.ctx(), q, args...)
 	if err != nil {
-		return 0, d.schema.translate(err)
+		return 0, pl.finish(0, -1, d.schema.translate(err))
 	}
 	var n uint64
 	if serr := scanScalar(rows, &n); serr != nil {
-		return 0, d.schema.translate(serr)
+		return 0, pl.finish(0, -1, d.schema.translate(serr))
 	}
-	return n, nil
+	return n, pl.finish(1, -1, nil)
 }
 
 func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	var zero ID
 	if d.err != nil {
 		return zero, d.err
+	}
+	pl, perr := d.begin(OpInsert, true)
+	if perr != nil {
+		return zero, perr
 	}
 	set := d.stagedSet()
 	if set.empty() {
@@ -349,25 +455,31 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	returning := d.schema.dialect.SupportsReturning() && d.schema.idColumn != ""
 	b := d.newBuilder()
 	q := b.buildInsert(d.schema.table, set, d.schema.idColumn, returning)
-	d.log(q, b.args)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return zero, err
+	}
 	h, herr := d.handle()
 	if herr != nil {
 		return zero, herr
 	}
 	if returning {
-		rows, err := h.QueryContext(d.ctx(), q, b.args...)
+		rows, err := h.QueryContext(d.ctx(), q, args...)
 		if err != nil {
-			return zero, d.schema.translate(err)
+			return zero, pl.finish(0, -1, d.schema.translate(err))
 		}
 		var id ID
 		if serr := scanScalar(rows, &id); serr != nil {
-			return zero, d.schema.translate(serr)
+			return zero, pl.finish(0, -1, d.schema.translate(serr))
 		}
-		return id, nil
+		return id, pl.finish(1, -1, nil)
 	}
-	res, err := h.ExecContext(d.ctx(), q, b.args...)
+	res, err := h.ExecContext(d.ctx(), q, args...)
 	if err != nil {
-		return zero, d.schema.translate(err)
+		return zero, pl.finish(0, -1, d.schema.translate(err))
+	}
+	if ferr := pl.finish(0, affectedOf(res), nil); ferr != nil {
+		return zero, ferr
 	}
 	if d.schema.dialect.SupportsLastInsertID() {
 		return lastInsertID[ID](res, nil)
@@ -378,9 +490,24 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	return zero, nil
 }
 
+// affectedOf extracts RowsAffected best-effort (-1 when unavailable).
+func affectedOf(res Result) int64 {
+	if res == nil {
+		return -1
+	}
+	if n, err := res.RowsAffected(); err == nil {
+		return n
+	}
+	return -1
+}
+
 func (d *queryDAO[R, C, K, ID]) Update() error {
 	if d.err != nil {
 		return d.err
+	}
+	pl, perr := d.begin(OpUpdate, true)
+	if perr != nil {
+		return perr
 	}
 	if len(d.q.where) == 0 {
 		return ErrNoConditions
@@ -391,13 +518,16 @@ func (d *queryDAO[R, C, K, ID]) Update() error {
 	}
 	b := d.newBuilder()
 	q := b.buildUpdate(d.schema.table, d.schema.idColumn, set, d.collectJoins(nil), d.q.where)
-	d.log(q, b.args)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return err
+	}
 	h, herr := d.handle()
 	if herr != nil {
 		return herr
 	}
-	_, err := h.ExecContext(d.ctx(), q, b.args...)
-	return d.schema.translate(err)
+	res, err := h.ExecContext(d.ctx(), q, args...)
+	return pl.finish(0, affectedOf(res), d.schema.translate(err))
 }
 
 func (d *queryDAO[R, C, K, ID]) Upsert() error {
@@ -406,6 +536,10 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	}
 	if !d.schema.dialect.SupportsUpsert() {
 		return fmt.Errorf("%w: upsert", ErrUnsupported)
+	}
+	pl, perr := d.begin(OpUpsert, true)
+	if perr != nil {
+		return perr
 	}
 	set := d.stagedSet()
 	if set.empty() {
@@ -417,31 +551,41 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	update := subtract(set.sortedKeys(), d.schema.conflict)
 	b := d.newBuilder()
 	q := b.buildUpsert(d.schema.table, set, d.schema.idColumn, false, d.schema.conflict, update)
-	d.log(q, b.args)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return err
+	}
 	h, herr := d.handle()
 	if herr != nil {
 		return herr
 	}
-	_, err := h.ExecContext(d.ctx(), q, b.args...)
-	return d.schema.translate(err)
+	res, err := h.ExecContext(d.ctx(), q, args...)
+	return pl.finish(0, affectedOf(res), d.schema.translate(err))
 }
 
 func (d *queryDAO[R, C, K, ID]) Delete() error {
 	if d.err != nil {
 		return d.err
 	}
+	pl, perr := d.begin(OpDelete, true)
+	if perr != nil {
+		return perr
+	}
 	if len(d.q.where) == 0 {
 		return ErrNoConditions
 	}
 	b := d.newBuilder()
 	q := b.buildDelete(d.schema.table, d.schema.idColumn, d.collectJoins(nil), d.q.where)
-	d.log(q, b.args)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return err
+	}
 	h, herr := d.handle()
 	if herr != nil {
 		return herr
 	}
-	_, err := h.ExecContext(d.ctx(), q, b.args...)
-	return d.schema.translate(err)
+	res, err := h.ExecContext(d.ctx(), q, args...)
+	return pl.finish(0, affectedOf(res), d.schema.translate(err))
 }
 
 func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
@@ -458,7 +602,10 @@ func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
 	b := newBatchWriter[R, C](exec, d.schema.dialect, d.schema.table)
 	b.initErr = initErr
 	b.translate = d.schema.translate
-	b.logf = func(sql string, args []any) { d.log(sql, args) }
+	b.pipe = func(op Op) *pipeline {
+		p, _ := d.begin(op, false) // batch fires no BeforeBuild (ADR-0009 §2.6)
+		return p
+	}
 	b.colName = func(c C) string {
 		if f, ok := d.schema.fields[c]; ok {
 			return f.writeCol()

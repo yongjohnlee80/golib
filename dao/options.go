@@ -91,6 +91,17 @@ func Errors[R any, C ~string, K ~string, ID any](m ErrorMap) Option[R, C, K, ID]
 	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] { c.errorMap = m; return c }
 }
 
+// Hooks registers hooks on every DAO the schema produces, in registration
+// order (ADR-0009 §2.2). Per-call hooks (WithHooks) run after these; the
+// debug logger, when enabled, always runs last. Duplicate NamedHook names
+// panic at New.
+func Hooks[R any, C ~string, K ~string, ID any](hs ...Hook) Option[R, C, K, ID] {
+	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] {
+		c.hooks = append(c.hooks, hs...)
+		return c
+	}
+}
+
 // WithLogger sets the logger the DAO emits to (default no-op).
 func WithLogger[R any, C ~string, K ~string, ID any](l logger.Logger) Option[R, C, K, ID] {
 	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] { c.logger = l; return c }

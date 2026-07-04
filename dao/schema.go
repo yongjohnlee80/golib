@@ -26,6 +26,7 @@ type config[R any, C ~string, K ~string, ID any] struct {
 	logger         logger.Logger
 	debug          bool
 	newRow         func() R
+	hooks          []Hook
 }
 
 // Option configures a [Schema] during construction. It mutates and returns the
@@ -53,6 +54,7 @@ type Schema[R any, C ~string, K ~string, ID any] struct {
 	logger        logger.Logger
 	debug         bool
 	newRow        func() R
+	hooks         []Hook
 }
 
 // New builds an immutable [Schema] for one entity from a [DataConn] and options.
@@ -164,6 +166,22 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 		}
 	}
 
+	// hooks: registration order preserved; duplicate names are construction
+	// errors (ADR-0009 §2.2)
+	names := map[string]bool{}
+	for _, h := range cfg.hooks {
+		if h == nil {
+			panic("dao.New: nil hook")
+		}
+		if n := hookName(h); n != "" {
+			if names[n] {
+				panic(fmt.Sprintf("dao.New: duplicate hook name %q", n))
+			}
+			names[n] = true
+		}
+	}
+	s.hooks = cfg.hooks
+
 	// logger + row allocator defaults
 	s.logger = cfg.logger
 	if s.logger == nil {
@@ -177,17 +195,64 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 	return s
 }
 
+// acquire assembles the effective per-call state from QueryOptions: schema
+// hooks first, then per-call hooks, minus skipped names, with the debug
+// logger (when enabled) appended last so it logs the final SQL as executed
+// (ADR-0009 §2.2, §2.5). With nothing registered it returns a nil slice —
+// the zero-cost fast path.
+func (s *Schema[R, C, K, ID]) acquire(opts []QueryOption) queryConfig {
+	var qc queryConfig
+	for _, o := range opts {
+		if o != nil {
+			o(&qc)
+		}
+	}
+	perCall := qc.hooks
+	qc.hooks = nil
+	total := len(s.hooks) + len(perCall)
+	if s.debug {
+		total++
+	}
+	if total == 0 {
+		return qc
+	}
+	effective := make([]Hook, 0, total)
+	for _, h := range s.hooks {
+		if !qc.skip[hookName(h)] {
+			effective = append(effective, h)
+		}
+	}
+	for _, h := range perCall {
+		if h != nil && !qc.skip[hookName(h)] {
+			effective = append(effective, h)
+		}
+	}
+	if s.debug && !qc.skip["dao.log"] {
+		table := s.table
+		lg := s.logger
+		effective = append(effective, logHook{log: func(sql string, args []any) {
+			lg.Log(logger.SeverityDebug, map[string]any{"dao": table, "sql": sql, "args": args})
+		}})
+	}
+	qc.hooks = effective
+	return qc
+}
+
 // DAO returns a fresh, query-scoped DAO on the connection pool (autocommit).
-func (s *Schema[R, C, K, ID]) DAO() DAO[R, C, ID] {
-	return &queryDAO[R, C, K, ID]{schema: s, conn: s.conn}
+func (s *Schema[R, C, K, ID]) DAO(opts ...QueryOption) DAO[R, C, ID] {
+	qc := s.acquire(opts)
+	return &queryDAO[R, C, K, ID]{schema: s, conn: s.conn,
+		hooks: qc.hooks, ctxv: qc.ctx, explicitCtx: qc.explicitCtx}
 }
 
 // On returns a fresh, query-scoped DAO bound to a transaction. Every statement on
 // the returned DAO runs on the transaction (resolved via the connection name),
 // with no per-statement rebind — the .Use(tx) footgun is gone (ADR-0005 §4).
-func (s *Schema[R, C, K, ID]) On(tx *Transaction) DAO[R, C, ID] {
-	d := &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: tx}
-	if tx != nil {
+func (s *Schema[R, C, K, ID]) On(tx *Transaction, opts ...QueryOption) DAO[R, C, ID] {
+	qc := s.acquire(opts)
+	d := &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: tx,
+		hooks: qc.hooks, ctxv: qc.ctx, explicitCtx: qc.explicitCtx}
+	if tx != nil && !d.explicitCtx {
 		d.ctxv = tx.ctx
 	}
 	return d
@@ -195,9 +260,16 @@ func (s *Schema[R, C, K, ID]) On(tx *Transaction) DAO[R, C, ID] {
 
 // OnCtx returns a query-scoped DAO bound to the transaction carried by ctx (via
 // [WithTx]), or an unbound pool DAO when ctx carries none. It is convenience sugar
-// over On; the explicit *Transaction remains the source of truth.
-func (s *Schema[R, C, K, ID]) OnCtx(ctx context.Context) DAO[R, C, ID] {
-	return &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: txFromContext(ctx), ctxv: ctx}
+// over On; the explicit *Transaction remains the source of truth. A
+// WithQueryContext option outranks ctx (ADR-0009 §2.3).
+func (s *Schema[R, C, K, ID]) OnCtx(ctx context.Context, opts ...QueryOption) DAO[R, C, ID] {
+	qc := s.acquire(opts)
+	d := &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: txFromContext(ctx),
+		hooks: qc.hooks, ctxv: qc.ctx, explicitCtx: qc.explicitCtx}
+	if d.ctxv == nil {
+		d.ctxv = ctx
+	}
+	return d
 }
 
 // resolve walks the requested field keys (or the default set if none) and derives
