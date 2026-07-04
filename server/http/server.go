@@ -2,7 +2,9 @@ package httpserver
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -37,6 +39,17 @@ type Server struct {
 	ln      net.Listener
 	addr    string
 
+	// reg tracks long-lived sessions (WebSocket upgrades, SSE) that
+	// http.Server.Shutdown cannot see; Shutdown drains it in addition
+	// (ADR-0006 §2.2).
+	reg server.Registry
+
+	// draining flips when Shutdown begins; Readyz reports 503 from then on.
+	draining atomic.Bool
+
+	// activeConns backs the WithConnMetrics gauge.
+	activeConns atomic.Int64
+
 	// started flips when Listen binds. The router is not synchronized for
 	// concurrent mutation, so registration after the server starts serving is
 	// a programmer error and panics (matching the bad-route policy).
@@ -48,19 +61,22 @@ type Server struct {
 // directly. Duration fields follow net/http semantics: a zero value means "no
 // timeout".
 type config struct {
-	addr              string           // TCP listen address, e.g. ":8080" or "127.0.0.1:0"
-	readTimeout       time.Duration    // max time to read the entire request (incl. body)
-	readHeaderTimeout time.Duration    // max time to read request headers (Slowloris guard)
-	writeTimeout      time.Duration    // max time from end-of-headers to end-of-response
-	idleTimeout       time.Duration    // max keep-alive idle time between requests
-	shutdownTimeout   time.Duration    // grace period Run allows for in-flight requests
-	maxHeaderBytes    int              // cap on request header size
-	baseCtx           context.Context  // optional base context for all inbound requests
-	tlsCert, tlsKey   string           // PEM file paths; non-empty cert enables TLS
-	logger            logger.Logger    // lifecycle logger (defaults to logger.Nop)
-	middleware        []Middleware     // global middleware, applied outermost in order
-	notFound          http.HandlerFunc // override for the 404 handler
-	methodNotAllowed  http.HandlerFunc // override for the 405 handler
+	addr              string                                 // TCP listen address, e.g. ":8080" or "127.0.0.1:0"
+	readTimeout       time.Duration                          // max time to read the entire request (incl. body)
+	readHeaderTimeout time.Duration                          // max time to read request headers (Slowloris guard)
+	writeTimeout      time.Duration                          // max time from end-of-headers to end-of-response
+	idleTimeout       time.Duration                          // max keep-alive idle time between requests
+	shutdownTimeout   time.Duration                          // grace period Run allows for in-flight requests
+	maxHeaderBytes    int                                    // cap on request header size
+	baseCtx           context.Context                        // optional base context for all inbound requests
+	tlsCert, tlsKey   string                                 // PEM file paths; non-empty cert enables TLS
+	tlsConfig         *tls.Config                            // full TLS control; enables TLS like tlsCert
+	listener          net.Listener                           // injected pre-bound listener (overrides addr)
+	connMetrics       func(state http.ConnState, active int) // ConnState observer
+	logger            logger.Logger                          // lifecycle logger (defaults to logger.Nop)
+	middleware        []Middleware                           // global middleware, applied outermost in order
+	notFound          http.HandlerFunc                       // override for the 404 handler
+	methodNotAllowed  http.HandlerFunc                       // override for the 405 handler
 }
 
 // defaultConfig returns the baseline configuration applied before any Option. The
@@ -145,6 +161,26 @@ func TLS(certFile, keyFile string) Option {
 	return func(c *config) *config { c.tlsCert, c.tlsKey = certFile, keyFile; return c }
 }
 
+// WithTLSConfig enables HTTPS with full TLS control (mTLS, minimum version,
+// autocert integrations). It takes precedence over TLS file paths.
+func WithTLSConfig(cfg *tls.Config) Option {
+	return func(c *config) *config { c.tlsConfig = cfg; return c }
+}
+
+// WithListener injects a pre-bound listener (tests without real ports,
+// systemd socket activation, zero-downtime restarts). Listen adopts it
+// instead of binding Addr (ADR-0006 §2.3).
+func WithListener(ln net.Listener) Option {
+	return func(c *config) *config { c.listener = ln; return c }
+}
+
+// WithConnMetrics observes connection state transitions with an
+// active-connection gauge — the minimal metrics seam (ADR-0006 §2.3).
+// Request-level metrics belong to middleware.
+func WithConnMetrics(fn func(state http.ConnState, active int)) Option {
+	return func(c *config) *config { c.connMetrics = fn; return c }
+}
+
 // NotFound overrides the handler invoked when no route matches the path (HTTP 404).
 // Global middleware still wraps it. The default writes a JSON error envelope.
 func NotFound(h http.HandlerFunc) Option { return func(c *config) *config { c.notFound = h; return c } }
@@ -225,10 +261,14 @@ func (s *Server) Listen(ctx context.Context) error {
 	if s.ln != nil {
 		return nil
 	}
-	var lc net.ListenConfig
-	ln, err := lc.Listen(ctx, "tcp", s.cfg.addr)
-	if err != nil {
-		return err
+	ln := s.cfg.listener
+	if ln == nil {
+		var lc net.ListenConfig
+		var err error
+		ln, err = lc.Listen(ctx, "tcp", s.cfg.addr)
+		if err != nil {
+			return err
+		}
 	}
 	s.started.Store(true)
 	s.ln = ln
@@ -240,12 +280,42 @@ func (s *Server) Listen(ctx context.Context) error {
 		WriteTimeout:      s.cfg.writeTimeout,
 		IdleTimeout:       s.cfg.idleTimeout,
 		MaxHeaderBytes:    s.cfg.maxHeaderBytes,
+		TLSConfig:         s.cfg.tlsConfig,
 	}
 	if s.cfg.baseCtx != nil {
 		base := s.cfg.baseCtx
 		s.httpSrv.BaseContext = func(net.Listener) context.Context { return base }
 	}
+	// Server-level errors (TLS handshakes, malformed requests) flow through
+	// the structured logger instead of bypassing it to stderr (ADR-0006 §2.3).
+	if _, isNop := s.log.(logger.Nop); !isNop {
+		s.httpSrv.ErrorLog = log.New(errorLogWriter{s.log}, "", 0)
+	}
+	if fn := s.cfg.connMetrics; fn != nil {
+		s.httpSrv.ConnState = func(_ net.Conn, state http.ConnState) {
+			var active int64
+			switch state {
+			case http.StateNew:
+				active = s.activeConns.Add(1)
+			case http.StateClosed, http.StateHijacked:
+				active = s.activeConns.Add(-1)
+			default:
+				active = s.activeConns.Load()
+			}
+			fn(state, int(active))
+		}
+	}
 	return nil
+}
+
+// errorLogWriter adapts golib/logger to the *log.Logger http.Server expects.
+type errorLogWriter struct{ l logger.Logger }
+
+func (w errorLogWriter) Write(p []byte) (int, error) {
+	w.l.Log(logger.SeverityError, map[string]any{
+		"server": "http", "event": "server error", "msg": strings.TrimSpace(string(p)),
+	})
+	return len(p), nil
 }
 
 // Serve serves the already-bound listener (blocks). Call after Listen.
@@ -256,6 +326,9 @@ func (s *Server) Serve() error {
 	s.mu.Unlock()
 	if srv == nil || ln == nil {
 		return errors.New("httpserver: Serve called before Listen")
+	}
+	if s.cfg.tlsConfig != nil {
+		return srv.ServeTLS(ln, "", "") // certs come from TLSConfig
 	}
 	if cert != "" {
 		return srv.ServeTLS(ln, cert, key)
@@ -308,7 +381,16 @@ func (s *Server) RunUntilSignal(ctx context.Context) error {
 	return s.Run(sctx)
 }
 
-// Shutdown gracefully drains, bounded by ctx.
+// Sessions returns the server's session registry. Handlers that hijack the
+// connection (WebSocket upgrades — see golib/server/ws) register there so
+// Shutdown can drain them; http.Server.Shutdown alone cannot see hijacked
+// connections (ADR-0006 §2.2).
+func (s *Server) Sessions() *server.Registry { return &s.reg }
+
+// Shutdown gracefully drains, bounded by ctx: readiness flips to draining
+// first (Readyz reports 503), then http.Server.Shutdown (in-flight requests)
+// and the session registry drain (hijacked/long-lived connections) run
+// concurrently sharing the deadline.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	srv := s.httpSrv
@@ -316,7 +398,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if srv == nil {
 		return nil
 	}
-	return srv.Shutdown(ctx)
+	s.draining.Store(true)
+	errc := make(chan error, 1)
+	go func() { errc <- s.reg.Drain(ctx) }()
+	return errors.Join(srv.Shutdown(ctx), <-errc)
 }
 
 // Addr returns the resolved listen address (valid after Listen/Run binds).
