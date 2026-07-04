@@ -90,3 +90,20 @@ func (GenericDialect) TranslateError(err error) error { return err }
 // TwoPhaseSupported reports false: the generic dialect has no prepared-transaction
 // support.
 func (GenericDialect) TwoPhaseSupported() bool { return false }
+
+// Prepare reports ErrTwoPhaseUnsupported: the generic dialect has no
+// prepared-transaction support. Capable drivers (dao/postgres) override the
+// two-phase trio together with TwoPhaseSupported.
+func (GenericDialect) Prepare(context.Context, TxConn, string) error {
+	return ErrTwoPhaseUnsupported
+}
+
+// CommitPrepared reports ErrTwoPhaseUnsupported (see Prepare).
+func (GenericDialect) CommitPrepared(context.Context, DataConn, string) error {
+	return ErrTwoPhaseUnsupported
+}
+
+// RollbackPrepared reports ErrTwoPhaseUnsupported (see Prepare).
+func (GenericDialect) RollbackPrepared(context.Context, DataConn, string) error {
+	return ErrTwoPhaseUnsupported
+}

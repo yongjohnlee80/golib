@@ -55,4 +55,20 @@ type Dialect interface {
 	// (PREPARE TRANSACTION / COMMIT PREPARED) for opt-in true two-phase commit
 	// (ADR-0005 §2.3). Default false.
 	TwoPhaseSupported() bool
+
+	// Prepare is phase one of a two-phase commit: it prepares the open driver
+	// transaction under the global id gid, dissociating it from the session and
+	// making it durable pending a CommitPrepared/RollbackPrepared decision. After
+	// a successful Prepare the TxConn must no longer be used. Implemented only
+	// when TwoPhaseSupported reports true (ADR-0005 §2.3).
+	Prepare(ctx context.Context, tx TxConn, gid string) error
+
+	// CommitPrepared is phase two of a two-phase commit: it durably commits the
+	// transaction previously prepared under gid. It executes on the pool
+	// connection — the preparing session is gone by design.
+	CommitPrepared(ctx context.Context, conn DataConn, gid string) error
+
+	// RollbackPrepared aborts the transaction previously prepared under gid,
+	// releasing its locks. Used when another participant fails phase one.
+	RollbackPrepared(ctx context.Context, conn DataConn, gid string) error
 }

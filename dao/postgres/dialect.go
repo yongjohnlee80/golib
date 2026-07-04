@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/dao"
 )
@@ -41,4 +42,53 @@ func (PostgresDialect) TranslateError(err error) error { return translateError(e
 // expose pgx's native CopyFrom to the dialect.
 type pgxCopier interface {
 	copyRows(ctx context.Context, table string, cols []string, rows [][]any) (int64, error)
+}
+
+// --- two-phase commit (ADR-0005 §2.3) ----------------------------------------
+
+// TwoPhaseSupported reports true: Postgres implements prepared transactions.
+// The SERVER must also allow them — max_prepared_transactions defaults to 0
+// (disabled); dao.Transaction surfaces the resulting error at Commit.
+func (PostgresDialect) TwoPhaseSupported() bool { return true }
+
+// Prepare issues PREPARE TRANSACTION for the open driver transaction, making it
+// durable and dissociating it from the session, then releases the session's
+// connection back to the pool. After a successful Prepare the transaction can
+// only be finished with CommitPrepared / RollbackPrepared.
+// The tx must be a transaction produced by this package: it carries the
+// command-tag verification that detects Postgres silently rolling back a
+// PREPARE TRANSACTION issued in an aborted transaction.
+func (PostgresDialect) Prepare(ctx context.Context, tx dao.TxConn, gid string) error {
+	p, ok := tx.(interface {
+		prepareTx(ctx context.Context, gid string) error
+	})
+	if !ok {
+		return fmt.Errorf("postgres: executor %T does not support PREPARE TRANSACTION (not a postgres transaction)", tx)
+	}
+	return p.prepareTx(ctx, gid)
+}
+
+// CommitPrepared durably commits the transaction prepared under gid. It runs on
+// the pool: any connection may finish a prepared transaction.
+func (PostgresDialect) CommitPrepared(ctx context.Context, conn dao.DataConn, gid string) error {
+	if _, err := conn.ExecContext(ctx, "COMMIT PREPARED "+quoteLiteral(gid)); err != nil {
+		return translateError(err)
+	}
+	return nil
+}
+
+// RollbackPrepared aborts the transaction prepared under gid, releasing its locks.
+func (PostgresDialect) RollbackPrepared(ctx context.Context, conn dao.DataConn, gid string) error {
+	if _, err := conn.ExecContext(ctx, "ROLLBACK PREPARED "+quoteLiteral(gid)); err != nil {
+		return translateError(err)
+	}
+	return nil
+}
+
+// quoteLiteral renders s as a single-quoted SQL string literal. PREPARE
+// TRANSACTION and friends are utility statements that cannot take bind
+// parameters, so the gid must be inlined; doubling embedded quotes keeps the
+// literal safe.
+func quoteLiteral(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
