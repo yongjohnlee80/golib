@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/partial`: Generic Partial-Payload Package (`Patch[T]`)
 
-- **Status:** Proposed
+- **Status:** Proposed (revision 2 — lector r1 amendments applied, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (new package; first ADR of the `partial` dossier)
@@ -219,34 +219,70 @@ type BindOption func(*bindConfig)
 func WithClearMode(m ClearMode) BindOption
 ```
 
-Representative bind body (the only place the wire is parsed):
+**Source-order parse (deterministic; `encoding/json` last-key parity).** The
+body is decoded as a token stream in JSON object order — *not* into a
+`map[string]json.RawMessage`, whose Go-map iteration would lose that order.
+This matters because a canonical name can be reached by more than one wire
+spelling: for `json:"title"`, both `title` and `TITLE` fold to `title` under
+the case-insensitive fallback. `encoding/json` resolves such a collision by
+input order (**last matching key wins**): `{"title":"a","TITLE":"b"}` decodes
+`b`; `{"TITLE":"b","title":"a"}` decodes `a`. Ranging a map cannot reproduce
+that, so `Data()`/`Rules()`/`Get` would become process-order dependent. The
+binder walks the object in source order and lets a later canonical slot
+overwrite an earlier one, matching `encoding/json` exactly.
 
 ```go
-raw := map[string]json.RawMessage{}
-if err := json.Unmarshal(body, &raw); err != nil {
-	return nil, &ValidationError{Fields: []FieldError{{Field: ".", Reason: err.Error()}}}
-}
-pl := planFor[T]()                       // §2.4, cached
+// Representative bind body (the only place the wire is parsed).
+pl := planFor[T]()                       // §2.4, cached; panics if T declares a ClearKey field
 p := &Patch[T]{mode: cfg.mode, fields: map[string]json.RawMessage{}, clear: map[string]struct{}{}}
-for k, v := range raw {
-	name, ok := pl.canonical(k)          // exact, then case-insensitive (json semantics)
+var clearRaw json.RawMessage             // the raw $clear array (ExplicitClear), if seen
+
+dec := json.NewDecoder(bytes.NewReader(body))
+if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+	return nil, &ValidationError{Fields: []FieldError{{Field: ".", Reason: "expected a JSON object"}}}
+}
+for dec.More() {                         // keys in SOURCE ORDER
+	keyTok, err := dec.Token()
+	if err != nil {
+		return nil, &ValidationError{Fields: []FieldError{{Field: ".", Reason: err.Error()}}}
+	}
+	key := keyTok.(string)
+	var v json.RawMessage
+	if err := dec.Decode(&v); err != nil { // one raw value; no typed decode yet
+		return nil, &ValidationError{Fields: []FieldError{{Field: ".", Reason: err.Error()}}}
+	}
+	// ExplicitClear reserves ClearKey by PACKAGE POLICY (§2.3), checked before
+	// canonicalization; a T field could never claim it (planFor rejects that).
+	if cfg.mode == ExplicitClear && key == ClearKey {
+		clearRaw = v
+		continue
+	}
+	name, ok := pl.canonical(key)        // exact, then case-insensitive (json semantics)
 	if !ok {
-		if k == ClearKey && cfg.mode == ExplicitClear { /* pop + validate, below */ }
-		continue                          // unknown key: ignored
+		continue                          // unknown wire key: ignored (§2.3)
 	}
 	if isNull(v) {
 		switch cfg.mode {
 		case ClearOnNull:
+			delete(p.fields, name)        // last-key-wins across a value→null collision
 			p.clear[name] = struct{}{}    // null ⇒ clear
 		case ExplicitClear:
-			// LM semantics: null ⇒ absent (encoding/json would no-op anyway)
+			delete(p.fields, name)        // LM semantics: null ⇒ absent
+			delete(p.clear, name)
 		}
 		continue
 	}
-	p.fields[name] = v
+	delete(p.clear, name)                 // last-key-wins across a clear→value collision
+	p.fields[name] = v                    // later canonical slot overwrites earlier
 }
-// ExplicitClear: entries from $clear land in p.clear after shape validation
-// and the value-AND-clear ambiguity check (both *ValidationError).
+// ExplicitClear: canonicalize $clear entries through the plan, drop unknowns
+// (ordinary unknown-key rule, §2.3), reject the value-AND-clear ambiguity —
+// all as *ValidationError with field detail.
+if clearRaw != nil {
+	if err := p.applyClearArray(pl, clearRaw); err != nil {
+		return nil, err
+	}
+}
 // Finally: one typed decode primes the cache and pins type errors to bind.
 if _, err := p.Data(); err != nil {
 	return nil, err
@@ -277,19 +313,33 @@ const (
 )
 
 // ClearKey is the reserved key naming the clear array in ExplicitClear
-// mode. The `$` prefix is collision-free by construction: no exported Go
-// field marshals to a `$`-prefixed name.
+// mode. It is reserved by PACKAGE POLICY, not by JSON construction: a `$`
+// prefix is not collision-free once JSON tags join the namespace (a field
+// may be tagged `json:"$clear"`). planFor[T] therefore rejects any model
+// whose canonical name is ClearKey (§2.4), and Bind consumes ClearKey at
+// the document level before per-field canonicalization — so a model field
+// can never intercept the clear channel, nor the clear channel a field.
 const ClearKey = "$clear"
 ```
 
 Either mode ends in the same internal state (`fields` + `clear`), so
 everything downstream — mutators, `Rules()`, `Data()` — is mode-agnostic.
+
+**One namespace, canonical throughout.** `$clear` entries are canonicalized
+through the plan exactly like any wire key: `applyClearArray` folds each
+entry to its canonical name and **drops unknowns at bind** — the same
+ignore-unknown rule as ordinary wire keys (§2.2), so `Fields`/`State`/
+`Rules`/`Empty` only ever hold canonical names of `T` and the name-split
+this package exists to remove cannot creep back in via the clear channel. A
+`$clear` entry that *is* a field of `T` but is non-writable or non-clearable
+still becomes a canonical `RuleClear` and rides to the DAO, where ADR-0010's
+lenient `SetRules` and per-column clearability authority resolve it (§2.9) —
+that is the deliberately forgiving wire posture, expressed in one namespace.
+
 Bind-time validation in both modes rejects the one ambiguous shape: a field
 carrying a non-null value *and* marked cleared (`ValidationError`, field
-named). Everything else — clearing a field the entity can't clear, unknown
-names in `$clear` — deliberately flows through to no-op downstream at the
-DAO's clearability authority (dao ADR-0010 §2.2), exactly LM's forgiving
-wire posture.
+named) — checked after canonicalization so a case-variant spelling
+(`{"title":"x","$clear":["TITLE"]}`) is caught, not evaded.
 
 ### 2.4 The name plan: one cached reflect walk per T (`partial/plan.go`, new)
 
@@ -324,10 +374,18 @@ Resolution rules (mirroring `encoding/json`):
   the type and field — the loud fix for LM's silent cliff. A model bound as
   a partial payload must use value embeds; the panic fires on first use in
   dev, not as silently missing presence in prod.
+- **A field whose canonical name is `ClearKey` (`"$clear"`) panics at plan
+  build**, naming the type and field — same loud-first-use posture as the
+  pointer-embed check. It is a model-declaration bug: the field would
+  collide with the reserved clear channel in `ExplicitClear` mode. Caught
+  once per `T` regardless of the `ClearMode` a given `Bind` uses, so the
+  model is never mode-fragile.
 - Wire-key lookup: exact match on canonical name first, then
   case-insensitive via `lower` — the same fallback `encoding/json` applies,
   so presence tracking and the typed decode can never disagree about which
-  field a key fed.
+  field a key fed. `canonical` resolves at most one field per wire key; the
+  binder's source-order overwrite (§2.2) — not the lookup — is what makes a
+  case-fold collision resolve to the last matching key, deterministically.
 
 ### 2.5 Typed access (`partial/patch.go`)
 
@@ -551,9 +609,12 @@ exists precisely so the default can be the honest one. Composition can't
 carry a non-default mode through `UnmarshalJSON` (documented; Go gives no
 options channel there). The plan cache panics on pointer embeds — loud by
 design, but it is a runtime (first-use) failure, not compile-time; the
-acceptance tests pin it. `Patch` methods can't be generic, so single-field
-typed access is the package-level `Get[V]` — mildly unidiomatic, honestly
-documented.
+acceptance tests pin it (and likewise for a model field canonically named
+`"$clear"`). `Patch` methods can't be generic, so single-field typed access
+is the package-level `Get[V]` — mildly unidiomatic, honestly documented. The
+binder is a hand-rolled token loop rather than a one-line `json.Unmarshal`
+into a map — the cost of `encoding/json` order-parity, which a map cannot
+give.
 
 **Migration.** New package; nothing existing changes. LM-shaped consumers
 adopt with `WithClearMode(partial.ExplicitClear)` and keep their wire
@@ -608,21 +669,32 @@ contract byte-compatible ($clear array, null-means-absent).
    `{"title":"x","upc":null}` against a 4-field model: `State("title") ==
    Present`, `State("upc") == Cleared`, the other fields `Absent`;
    `Data().Title == "x"`; `Empty() == false`; `{}` binds `Empty() == true`.
-2. **ExplicitClear compat.** The same body in `ExplicitClear` mode reports
-   `upc` **Absent** (null means absent); `{"title":"x","$clear":["upc"]}`
-   reports `upc` Cleared; a non-array `$clear` and a value-AND-clear
-   conflict each return a `*ValidationError` naming the field.
+2. **ExplicitClear compat + one clear namespace.** The same body in
+   `ExplicitClear` mode reports `upc` **Absent** (null means absent);
+   `{"title":"x","$clear":["upc"]}` reports `upc` Cleared; a `$clear` entry
+   canonicalizes through the plan (a case variant `["UPC"]` still clears
+   `upc`); an **unknown** `$clear` entry is ignored (never appears in
+   `Fields`/`Rules`); a non-array `$clear` and a value-AND-clear conflict
+   (including via a case variant, `{"title":"x","$clear":["TITLE"]}`) each
+   return a `*ValidationError` naming the field.
 3. **Bind-time typed validation.** `{"title":123}` returns
    `*ValidationError` with `Field == "title"` from `Bind` — no error
    deferred to `Data()`.
-4. **One name space.** A model with `json:"artist_title"` tracks presence
-   under `artist_title` (not the Go field name); a wire key differing only
-   in case still binds to the same canonical name (matching
-   `encoding/json`'s case-insensitive fallback).
+4. **One name space, deterministic across case-fold collisions.** A model
+   with `json:"artist_title"` tracks presence under `artist_title` (not the
+   Go field name); a wire key differing only in case still binds to the same
+   canonical name. Source order decides a collision, matching
+   `encoding/json`'s last-matching-key rule: `{"title":"a","TITLE":"b"}`
+   yields `Data().Title == "b"` and `{"TITLE":"b","title":"a"}` yields
+   `"a"` — asserted for both orders and stable across repeated runs (no
+   map-iteration nondeterminism). A value-then-null collision
+   (`{"title":"x","title":null}`) ends `Cleared`; null-then-value ends
+   `Present`.
 5. **Plan hardening.** A value embed's fields participate (flattened, JSON
    conflict rules); an anonymous *pointer* embed panics at first use with
-   the type and field named; `planFor[T]` reflects once per T (the walk is
-   observably cached).
+   the type and field named; a field whose canonical name is `"$clear"`
+   panics at plan build naming the type and field; `planFor[T]` reflects
+   once per T (the walk is observably cached).
 6. **Mutator semantics.** `Set` after bind replaces the value AND drops a
    pending clear (last-mutation-wins-over-clear); `Remove` strips both
    channels; `Only` intersects both; each invalidates `Data()`'s cache; a
@@ -643,8 +715,8 @@ contract byte-compatible ($clear array, null-means-absent).
 | File | Change |
 |---|---|
 | `partial/patch.go` | new — `Patch[T]`, `State`, read surface, mutators, `Data`, `Get`, marshal |
-| `partial/bind.go` | new — `Bind`, `BindReader`, `BindOption`, `UnmarshalJSON`, bind validation |
-| `partial/clear.go` | new — `ClearMode`, `ClearKey`, clear-channel resolution |
+| `partial/bind.go` | new — `Bind`, `BindReader`, `BindOption`, `UnmarshalJSON`, the source-order token-stream parse (last-key-wins), bind validation |
+| `partial/clear.go` | new — `ClearMode`, `ClearKey`, `applyClearArray` (canonicalize `$clear`, drop unknowns, ambiguity check) |
 | `partial/plan.go` | new — per-`T` cached name plan, embed rules, pointer-embed panic |
 | `partial/errors.go` | new — `ValidationError`, `FieldError`, `ErrUnknownField` |
 | `partial/rules.go` | new — `RuleKind`, `Rule`, `Patch.Rules()` |
@@ -652,3 +724,32 @@ contract byte-compatible ($clear array, null-means-absent).
 | `partial/doc.go` | new — package doc: three-state model, modes, the dao seam |
 | `partial/*_test.go` | new — acceptance criteria 1–8 (dao fake for #7) |
 | `partial/README.md` | new — usage, the north-star handler, LM-compat migration note |
+
+---
+
+## 7. Review history
+
+- **r1 (2026-07-04, lector): `change_requested`** — review doc:
+  `agents/lector/reviews/2026-07-04-golib-partial-adr-0001-review.md`.
+  Amendments applied in revision 2:
+  - **must-fix #1**: the representative binder unmarshaled into
+    `map[string]json.RawMessage` and ranged it, losing JSON object order —
+    a case-fold canonical collision (`title`/`TITLE`) then resolved by Go
+    map iteration, making `Data`/`Rules`/`Get` process-order dependent.
+    Replaced with a source-order `json.Decoder` token loop where a later
+    canonical slot overwrites an earlier one (`encoding/json` last-key
+    parity); pinned in acceptance criterion 4 with both key orders and the
+    value/null and clear/value collision cases (§2.2, criterion 4).
+  - **must-fix #2**: the `$clear` namespace was incoherent — "unknown
+    `$clear` entries flow to the DAO" contradicted "internal maps / `Rules()`
+    keys are canonical", and the `$`-prefix "collision-free by construction"
+    claim was false once JSON tags join the namespace (a field may be tagged
+    `json:"$clear"`), with the bind check ordered so such a field would
+    intercept the channel. Resolved to one namespace: `ClearKey` reserved by
+    package policy and consumed at document level before canonicalization;
+    `planFor[T]` panics on a model whose canonical name is `ClearKey`;
+    `$clear` entries canonicalize through the plan with unknowns dropped at
+    bind (ordinary unknown-key rule), so `Fields`/`State`/`Rules`/`Empty`
+    hold only canonical names — a known-but-non-clearable field still rides
+    to the DAO as a canonical `RuleClear` where ADR-0010 resolves it (§2.3,
+    §2.4, criteria 2 and 5).
