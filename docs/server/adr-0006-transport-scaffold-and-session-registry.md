@@ -1,6 +1,6 @@
 # ADR-0006 — `golib/server`: Transport Scaffold, Session Registry & Honest Multi-Protocol Scope
 
-- **Status:** Proposed
+- **Status:** Proposed (revision 2 — lector r1 amendment applied, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Amends:** golib-server-0001 (scope claims, see §1.2)
@@ -160,11 +160,33 @@ type Registry struct{ /* unexported */ }
 
 func (r *Registry) Register(s Session) (unregister func())
 func (r *Registry) Len() int
+
+// Reserve atomically claims a slot for a session that is ABOUT to be
+// established (e.g. a WebSocket upgrade before its handshake). It returns
+// ok=false once Drain has begun, letting the caller refuse the work while a
+// normal protocol-level refusal is still possible (for HTTP upgrades: a 503
+// BEFORE 101 Switching Protocols). Drain waits for open reservations exactly
+// like live sessions, so establishment that won the race completes and is
+// then drained politely — the accept-then-immediately-close window cannot
+// occur.
+func (r *Registry) Reserve() (res *Reservation, ok bool)
+
+// Reservation is a claimed-but-not-yet-established session slot.
+type Reservation struct{ /* unexported */ }
+
+// Complete binds the established session to the reservation (it is now a
+// live registry entry) and returns its unregister func.
+func (res *Reservation) Complete(s Session) (unregister func())
+
+// Cancel releases the reservation (establishment failed).
+func (res *Reservation) Cancel()
 // Drain asks every live session to end: Drainer.Drain where implemented,
-// Close otherwise; then waits for unregisters, bounded by ctx. Sessions
-// still live at the deadline are force-Closed; their count is reported in
-// the returned error. Register during/after Drain closes the session
-// immediately (no new work during shutdown).
+// Close otherwise; then waits for unregisters AND open reservations, bounded
+// by ctx. Sessions still live at the deadline are force-Closed; their count
+// is reported in the returned error. After Drain begins, Reserve returns
+// ok=false and Register (the established-session path) closes the session
+// immediately — no new work during shutdown, and work that needs a
+// pre-establishment gate uses Reserve (ADR-0007).
 func (r *Registry) Drain(ctx context.Context) error
 ```
 
@@ -261,6 +283,9 @@ them).
    returned from `Run` (test with a closed-then-failing fake listener).
 5. `Registry.Drain` prefers `Drainer.Drain` over `Close`, waits bounded, and
    closes late registrations immediately during drain (race-tested).
+   `Reserve` returns ok=false once drain has begun; a reservation taken
+   before drain is awaited by `Drain` and its completed session drained
+   politely (race-tested: no accept-then-instant-close window).
 6. `httpserver.Shutdown` drains registry sessions in addition to
    `http.Server.Shutdown`; a registered hijacked connection blocks shutdown
    until drained or deadline (this is ADR-0007's enabling test).
@@ -284,3 +309,12 @@ them).
 | `server/http/health.go` | new — `Healthz`, `Readyz` + drain gate |
 | `server/http/server_test.go` | criteria 6–10 |
 | `docs/server/adr-0001…` | unchanged (this ADR records the scope amendment) |
+---
+
+## 7. Review history
+
+- **r1 (2026-07-04, lector, combined 0006/0007 review):** `change_requested` —
+  review doc `agents/lector/reviews/2026-07-04-golib-server-adr-0006-0007-review.md`.
+  The must-fix targeted ADR-0007's drain-gate promise; the amendment lands
+  here as the atomic `Reserve`/`Reservation` registry API (revision 2), which
+  0007 consumes pre-handshake. Split/scope/zero-dep judged sound.
