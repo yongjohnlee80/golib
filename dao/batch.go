@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // defaultCopyThreshold is the staged-row count at or above which a COPY-capable
@@ -59,7 +60,7 @@ type batchWriter[R any, C ~string] struct {
 	dialect       Dialect
 	table         string
 	translate     func(error) error
-	logf          func(sql string, args []any)
+	pipe          func(op Op) *pipeline
 	colName       func(C) string
 	extract       func(R) map[C]any
 	copyThreshold int
@@ -85,7 +86,7 @@ func newBatchWriter[R any, C ~string](exec Execer, dialect Dialect, table string
 		dialect:       dialect,
 		table:         table,
 		translate:     func(e error) error { return e },
-		logf:          func(string, []any) {},
+		pipe:          func(Op) *pipeline { return nil },
 		colName:       func(c C) string { return string(c) },
 		copyThreshold: defaultCopyThreshold,
 	}
@@ -161,8 +162,16 @@ func (b *batchWriter[R, C]) Flush() error {
 	matrix := b.matrix(keys)
 
 	if b.shouldCopy(len(matrix), len(cols)) {
-		_, err := b.dialect.Copy(b.ctx, b.exec, b.table, cols, matrix)
-		return b.translate(err)
+		// Observe-only hook event (ADR-0009 §2.6): COPY has no SQL statement;
+		// a hook that mutates the synthetic descriptor fails the flush, and a
+		// hook error vetoes the COPY per the ordinary abort rule.
+		pl := b.pipe(OpBatchCopy)
+		desc := fmt.Sprintf("COPY %s (%s) — %d rows", b.table, strings.Join(cols, ", "), len(matrix))
+		if err := pl.beforeExecFrozen(desc); err != nil {
+			return err
+		}
+		n, err := b.dialect.Copy(b.ctx, b.exec, b.table, cols, matrix)
+		return pl.finish(0, n, b.translate(err))
 	}
 
 	perChunk := perChunkRows(b.dialect.MaxBindParams(), len(cols), b.dialect.MaxBatchRows())
@@ -173,9 +182,17 @@ func (b *batchWriter[R, C]) Flush() error {
 		chunk := matrix[i:min(i+perChunk, len(matrix))]
 		bld := &builder{dialect: b.dialect}
 		sqlText := bld.buildBatchInsert(b.table, cols, chunk, suffix)
-		b.logf(sqlText, bld.args)
-		if _, err := b.exec.ExecContext(b.ctx, sqlText, bld.args...); err != nil {
-			errs = append(errs, &chunkError{index: i / perChunk, err: b.translate(err)})
+		args := bld.args
+		// Each chunk is a real statement: the full rewrite contract applies
+		// (Op: OpBatch, ADR-0009 §2.6).
+		pl := b.pipe(OpBatch)
+		if err := pl.beforeExec(&sqlText, &args); err != nil {
+			errs = append(errs, &chunkError{index: i / perChunk, err: err})
+			continue
+		}
+		res, err := b.exec.ExecContext(b.ctx, sqlText, args...)
+		if ferr := pl.finish(0, affectedOf(res), b.translate(err)); ferr != nil {
+			errs = append(errs, &chunkError{index: i / perChunk, err: ferr})
 		}
 	}
 	if len(errs) > 0 {
