@@ -1,306 +1,180 @@
 package collections
 
 import (
-	"fmt"
+	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 )
 
-// ---------------------------------------------------------------------------
-// Map
-// ---------------------------------------------------------------------------
+// --- Map ---------------------------------------------------------------------
 
 func TestMap_IntToString(t *testing.T) {
 	t.Parallel()
-
-	src := []int{1, 2, 3}
-	got := Map(src, func(_ []string, v int, _ int) (string, bool) {
-		return strconv.Itoa(v), true
-	})
-
+	got := Map([]int{1, 2, 3}, strconv.Itoa)
 	want := []string{"1", "2", "3"}
-	if len(got) != len(want) {
-		t.Fatalf("len = %d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-}
-
-func TestMap_SkipFalse(t *testing.T) {
-	t.Parallel()
-
-	src := []int{1, 2, 3, 4, 5}
-	got := Map(src, func(_ []int, v int, _ int) (int, bool) {
-		return v * 2, v%2 == 0
-	})
-
-	want := []int{4, 8}
-	if len(got) != len(want) {
-		t.Fatalf("len = %d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("[%d] = %d, want %d", i, got[i], want[i])
-		}
-	}
-}
-
-func TestMap_AggAccess(t *testing.T) {
-	t.Parallel()
-
-	src := []int{10, 20, 30}
-	got := Map(src, func(agg []string, v int, _ int) (string, bool) {
-		return fmt.Sprintf("len=%d,val=%d", len(agg), v), true
-	})
-
-	want := []string{"len=0,val=10", "len=1,val=20", "len=2,val=30"}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-}
-
-func TestMap_IndexAccess(t *testing.T) {
-	t.Parallel()
-
-	src := []string{"a", "b", "c"}
-	got := Map(src, func(_ []string, v string, idx int) (string, bool) {
-		return fmt.Sprintf("%d:%s", idx, v), true
-	})
-
-	want := []string{"0:a", "1:b", "2:c"}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("[%d] = %q, want %q", i, got[i], want[i])
-		}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Map = %v, want %v", got, want)
 	}
 }
 
 func TestMap_Empty(t *testing.T) {
 	t.Parallel()
-
-	got := Map([]int{}, func(_ []int, v int, _ int) (int, bool) {
-		return v, true
-	})
+	got := Map([]int{}, func(v int) int { return v })
 	if len(got) != 0 {
-		t.Errorf("len = %d, want 0", len(got))
+		t.Errorf("Map(empty) = %v, want empty", got)
 	}
 }
 
 func TestMap_Nil(t *testing.T) {
 	t.Parallel()
-
-	got := Map(nil, func(_ []int, v int, _ int) (int, bool) {
-		return v, true
-	})
+	var src []int
+	got := Map(src, func(v int) int { return v })
 	if len(got) != 0 {
-		t.Errorf("len = %d, want 0", len(got))
+		t.Errorf("Map(nil) = %v, want empty", got)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Filter
-// ---------------------------------------------------------------------------
+func TestMapIndexed_SkipFalse(t *testing.T) {
+	t.Parallel()
+	// Map and filter in one pass: keep doubled evens.
+	got := MapIndexed([]int{1, 2, 3, 4}, func(v, _ int) (int, bool) {
+		return v * 2, v%2 == 0
+	})
+	want := []int{4, 8}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("MapIndexed = %v, want %v", got, want)
+	}
+}
+
+func TestMapIndexed_IndexAccess(t *testing.T) {
+	t.Parallel()
+	got := MapIndexed([]string{"a", "b"}, func(s string, idx int) (string, bool) {
+		return s + strconv.Itoa(idx), true
+	})
+	want := []string{"a0", "b1"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("MapIndexed = %v, want %v", got, want)
+	}
+}
+
+// --- Filter ------------------------------------------------------------------
 
 func TestFilter_Even(t *testing.T) {
 	t.Parallel()
-
-	src := []int{1, 2, 3, 4, 5, 6}
-	got := Filter(src, func(_ []int, v int, _ int) bool {
-		return v%2 == 0
-	})
-
+	got := Filter([]int{1, 2, 3, 4, 5, 6}, func(v int) bool { return v%2 == 0 })
 	want := []int{2, 4, 6}
-	if len(got) != len(want) {
-		t.Fatalf("len = %d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("[%d] = %d, want %d", i, got[i], want[i])
-		}
-	}
-}
-
-func TestFilter_AggDedup(t *testing.T) {
-	t.Parallel()
-
-	src := []string{"a", "b", "a", "c", "b"}
-	got := Filter(src, func(agg []string, s string, _ int) bool {
-		for _, a := range agg {
-			if a == s {
-				return false
-			}
-		}
-		return true
-	})
-
-	want := []string{"a", "b", "c"}
-	if len(got) != len(want) {
-		t.Fatalf("len = %d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-}
-
-func TestFilter_IndexAccess(t *testing.T) {
-	t.Parallel()
-
-	// Keep only elements at even indices.
-	src := []string{"a", "b", "c", "d", "e"}
-	got := Filter(src, func(_ []string, _ string, idx int) bool {
-		return idx%2 == 0
-	})
-
-	want := []string{"a", "c", "e"}
-	if len(got) != len(want) {
-		t.Fatalf("len = %d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("[%d] = %q, want %q", i, got[i], want[i])
-		}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Filter = %v, want %v", got, want)
 	}
 }
 
 func TestFilter_None(t *testing.T) {
 	t.Parallel()
-
-	got := Filter([]int{1, 2, 3}, func(_ []int, _ int, _ int) bool {
-		return false
-	})
+	got := Filter([]int{1, 3}, func(v int) bool { return v > 10 })
 	if len(got) != 0 {
-		t.Errorf("len = %d, want 0", len(got))
+		t.Errorf("Filter = %v, want empty", got)
 	}
 }
 
 func TestFilter_All(t *testing.T) {
 	t.Parallel()
-
 	src := []int{1, 2, 3}
-	got := Filter(src, func(_ []int, _ int, _ int) bool {
-		return true
-	})
-	if len(got) != 3 {
-		t.Errorf("len = %d, want 3", len(got))
+	got := Filter(src, func(int) bool { return true })
+	if !reflect.DeepEqual(got, src) {
+		t.Errorf("Filter = %v, want %v", got, src)
 	}
 }
 
-func TestFilter_Empty(t *testing.T) {
+func TestFilter_NilAndEmpty(t *testing.T) {
 	t.Parallel()
-
-	got := Filter([]int{}, func(_ []int, v int, _ int) bool {
-		return true
-	})
-	if len(got) != 0 {
-		t.Errorf("len = %d, want 0", len(got))
+	var src []int
+	if got := Filter(src, func(int) bool { return true }); len(got) != 0 {
+		t.Errorf("Filter(nil) = %v, want empty", got)
+	}
+	if got := Filter([]int{}, func(int) bool { return true }); len(got) != 0 {
+		t.Errorf("Filter(empty) = %v, want empty", got)
 	}
 }
 
-func TestFilter_Nil(t *testing.T) {
+func TestFilterIndexed_EveryOther(t *testing.T) {
 	t.Parallel()
-
-	got := Filter(nil, func(_ []int, v int, _ int) bool {
-		return true
+	got := FilterIndexed([]string{"a", "b", "c", "d"}, func(_ string, idx int) bool {
+		return idx%2 == 0
 	})
-	if len(got) != 0 {
-		t.Errorf("len = %d, want 0", len(got))
+	want := []string{"a", "c"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("FilterIndexed = %v, want %v", got, want)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Reduce
-// ---------------------------------------------------------------------------
+// --- Reduce ------------------------------------------------------------------
 
 func TestReduce_Sum(t *testing.T) {
 	t.Parallel()
+	got := Reduce([]int{1, 2, 3, 4}, 0, func(acc, v int) int { return acc + v })
+	if got != 10 {
+		t.Errorf("Reduce = %d, want 10", got)
+	}
+}
 
-	src := []int{1, 2, 3, 4, 5}
-	got := Reduce(src, func(_ []int, acc int, v int, _ int) int {
-		return acc + v
-	})
-	if got != 15 {
-		t.Errorf("sum = %d, want 15", got)
+func TestReduce_InitValue(t *testing.T) {
+	t.Parallel()
+	got := Reduce([]int{1, 2}, 100, func(acc, v int) int { return acc + v })
+	if got != 103 {
+		t.Errorf("Reduce = %d, want 103", got)
 	}
 }
 
 func TestReduce_TypeConversion(t *testing.T) {
 	t.Parallel()
-
-	src := []int{1, 2, 3}
-	got := Reduce(src, func(_ []string, acc string, v int, _ int) string {
-		if acc != "" {
-			acc += ","
+	got := Reduce([]int{1, 2, 3}, "", func(acc string, v int) string {
+		if acc == "" {
+			return strconv.Itoa(v)
 		}
-		return acc + strconv.Itoa(v)
+		return acc + "-" + strconv.Itoa(v)
 	})
-	if got != "1,2,3" {
-		t.Errorf("got %q, want %q", got, "1,2,3")
+	if got != "1-2-3" {
+		t.Errorf("Reduce = %q, want 1-2-3", got)
 	}
 }
 
-func TestReduce_IndexAccess(t *testing.T) {
+func TestReduce_EmptyAndNil(t *testing.T) {
 	t.Parallel()
-
-	src := []string{"a", "b", "c"}
-	got := Reduce(src, func(_ []string, acc string, v string, idx int) string {
-		return acc + fmt.Sprintf("%d:%s ", idx, v)
-	})
-	if got != "0:a 1:b 2:c " {
-		t.Errorf("got %q, want %q", got, "0:a 1:b 2:c ")
+	if got := Reduce([]int{}, 7, func(acc, v int) int { return acc + v }); got != 7 {
+		t.Errorf("Reduce(empty) = %d, want init 7", got)
 	}
-}
-
-func TestReduce_AggAccess(t *testing.T) {
-	t.Parallel()
-
-	src := []int{2, 3, 4}
-	got := Reduce(src, func(agg []int, acc int, v int, idx int) int {
-		if idx == 0 {
-			return v
-		}
-		return acc * v
-	})
-	if got != 24 {
-		t.Errorf("product = %d, want 24", got)
-	}
-}
-
-func TestReduce_Empty(t *testing.T) {
-	t.Parallel()
-
-	got := Reduce([]int{}, func(_ []int, acc int, v int, _ int) int {
-		return acc + v
-	})
-	if got != 0 {
-		t.Errorf("got %d, want 0", got)
-	}
-}
-
-func TestReduce_Nil(t *testing.T) {
-	t.Parallel()
-
-	got := Reduce(nil, func(_ []int, acc int, v int, _ int) int {
-		return acc + v
-	})
-	if got != 0 {
-		t.Errorf("got %d, want 0", got)
+	var src []int
+	if got := Reduce(src, 7, func(acc, v int) int { return acc + v }); got != 7 {
+		t.Errorf("Reduce(nil) = %d, want init 7", got)
 	}
 }
 
 func TestReduce_Single(t *testing.T) {
 	t.Parallel()
+	got := Reduce([]string{"x"}, "", func(acc, s string) string { return acc + s })
+	if got != "x" {
+		t.Errorf("Reduce = %q, want x", got)
+	}
+}
 
-	got := Reduce([]int{42}, func(_ []int, acc int, v int, _ int) int {
-		return acc + v
+func TestReduce_Join(t *testing.T) {
+	t.Parallel()
+	got := Reduce([]string{"a", "b", "c"}, nil, func(acc []string, s string) []string {
+		return append(acc, strings.ToUpper(s))
 	})
-	if got != 42 {
-		t.Errorf("got %d, want 42", got)
+	if !reflect.DeepEqual(got, []string{"A", "B", "C"}) {
+		t.Errorf("Reduce = %v", got)
+	}
+}
+
+func BenchmarkReduce_Sum(b *testing.B) {
+	src := make([]int, 1024)
+	for i := range src {
+		src[i] = i
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = Reduce(src, 0, func(acc, v int) int { return acc + v })
 	}
 }

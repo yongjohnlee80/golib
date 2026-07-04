@@ -1,6 +1,7 @@
 package ingestor
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -24,6 +25,7 @@ type writer[T any] struct {
 	write     func(w *writer[T], name string, rows []T) error
 
 	fileCount atomic.Uint64
+	sem       chan struct{} // bounds concurrent background writes
 
 	mu sync.Mutex // serializes commit/flush transitions
 
@@ -46,17 +48,33 @@ func (w *writer[T]) recordErr(err error) {
 }
 
 // commit buffers items and spawns a background write for every full batch.
-func (w *writer[T]) commit(items ...T) error {
+// Background writes are bounded by the maxWriters semaphore: once the cap is
+// reached, commit blocks until a writer frees up (backpressure, not unbounded
+// goroutine growth).
+func (w *writer[T]) commit(ctx context.Context, items ...T) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	_ = w.loader.Commit(items...)
+	if err := w.loader.Commit(ctx, items...); err != nil {
+		return err
+	}
 
 	for w.loader.Len() >= w.batchSize {
 		rows := w.loader.Shift(w.batchSize)
 		name := w.filename()
 
+		select {
+		case w.sem <- struct{}{}:
+		case <-ctx.Done():
+			// The rows are already drained from the buffer; write them
+			// synchronously rather than lose them.
+			if err := w.write(w, name, rows); err != nil {
+				w.recordErr(err)
+			}
+			return ctx.Err()
+		}
 		w.loader.wg.Go(func() {
+			defer func() { <-w.sem }()
 			if err := w.write(w, name, rows); err != nil {
 				w.recordErr(err)
 			}
@@ -68,11 +86,11 @@ func (w *writer[T]) commit(items ...T) error {
 // flush drains the remaining buffer, waits for background writes, writes the
 // remainder synchronously, and returns the drained rows plus any accumulated
 // write errors as a *BatchErrors.
-func (w *writer[T]) flush() ([]T, error) {
+func (w *writer[T]) flush(ctx context.Context) ([]T, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	rows, err := w.loader.Flush()
+	rows, err := w.loader.Flush(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -94,4 +112,11 @@ func (w *writer[T]) flush() ([]T, error) {
 		return rows, &BatchErrors{Errors: errs}
 	}
 	return rows, nil
+}
+
+// close drains and writes any remaining buffered data, waits for background
+// writes, and discards the flushed rows.
+func (w *writer[T]) close() error {
+	_, err := w.flush(context.Background())
+	return err
 }

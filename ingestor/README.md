@@ -23,8 +23,8 @@ import "github.com/yongjohnlee80/golib/ingestor"
 
 // In-memory buffer
 ml := ingestor.NewMemoryLoader[string]("my-data")
-ml.Commit("item1", "item2", "item3")
-items, _ := ml.Flush() // returns ["item1", "item2", "item3"]
+ml.Commit(ctx, "item1", "item2", "item3")
+items, _ := ml.Flush(ctx) // returns ["item1", "item2", "item3"]
 ```
 
 ## CSV Export
@@ -35,19 +35,23 @@ type Record struct {
     Value int
 }
 
-csv := ingestor.NewCSV[Record]("export", 0) // 0 = default batch size
-// Optional: ingestor.WithDir("/data/exports") or ingestor.WithOpener(fn)
-// to control where batch files are written (default: current directory).
-csv.Commit(Record{"foo", 1}, Record{"bar", 2})
-csv.Flush() // writes to ./export-<timestamp>-001.csv
+csv := ingestor.NewCSV[Record]("export") // functional options configure everything:
+//   ingestor.WithBatchSize(500_000)  rows per file (default DefaultCSVBatchSize)
+//   ingestor.WithDir("/data/exports") destination directory (default ".")
+//   ingestor.WithOpener(fn)           fully custom write target (tests, streams)
+//   ingestor.WithMaxWriters(2)        cap on concurrent background writes (default 4)
+// Field names become CSV headers; `csv:"name"` overrides, `csv:"-"` omits.
+csv.Commit(ctx, Record{"foo", 1}, Record{"bar", 2})
+csv.Flush(ctx) // writes to ./export-<timestamp>-001.csv
+defer csv.Close() // terminal: drains + writes any remainder, discarding rows
 ```
 
 ## JSON Export
 
 ```go
-j := ingestor.NewJSON[Record]("export", 10_000)
-j.Commit(records...)
-j.Flush() // writes to ./export-<timestamp>-001.json
+j := ingestor.NewJSON[Record]("export", ingestor.WithBatchSize(10_000))
+j.Commit(ctx, records...)
+j.Flush(ctx) // writes to ./export-<timestamp>-001.json
 ```
 
 ## Custom Ingestor

@@ -251,3 +251,24 @@ func BenchmarkSet_Intersect(b *testing.B) {
 		a.Intersect(c)
 	}
 }
+
+func TestSet_All(t *testing.T) {
+	t.Parallel()
+	s := NewSet(1, 2, 3)
+	seen := NewSet[int]()
+	for v := range s.All() {
+		seen.Add(v)
+	}
+	if !seen.Equal(s) {
+		t.Errorf("All() yielded %v, want %v", seen.Values(), s.Values())
+	}
+	// Early break stops iteration without panic.
+	count := 0
+	for range s.All() {
+		count++
+		break
+	}
+	if count != 1 {
+		t.Errorf("early break iterated %d times, want 1", count)
+	}
+}

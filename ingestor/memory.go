@@ -1,6 +1,7 @@
 package ingestor
 
 import (
+	"context"
 	"sync"
 
 	"github.com/yongjohnlee80/golib/threadsafe"
@@ -30,8 +31,12 @@ func NewMemoryLoader[T any](description string) *MemoryLoader[T] {
 	}
 }
 
-// Commit appends the provided items to the internal buffer.
-func (ml *MemoryLoader[T]) Commit(items ...T) error {
+// Commit appends the provided items to the internal buffer. A cancelled ctx
+// aborts before the buffer changes.
+func (ml *MemoryLoader[T]) Commit(ctx context.Context, items ...T) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	ml.state.Update(func(s memState[T]) memState[T] {
 		s.buf = append(s.buf, items...)
 		s.total += uint64(len(items))
@@ -72,8 +77,12 @@ func (ml *MemoryLoader[T]) Shift(n uint64) []T {
 	return temp
 }
 
-// Flush drains all buffered data and returns it to the caller.
-func (ml *MemoryLoader[T]) Flush() ([]T, error) {
+// Flush drains all buffered data and returns it to the caller. A cancelled
+// ctx aborts before the buffer is drained.
+func (ml *MemoryLoader[T]) Flush(ctx context.Context) ([]T, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var temp []T
 	ml.state.Update(func(s memState[T]) memState[T] {
 		temp = s.buf
@@ -81,6 +90,14 @@ func (ml *MemoryLoader[T]) Flush() ([]T, error) {
 		return s
 	})
 	return temp, nil
+}
+
+// Close drains any remaining buffered data, discarding it. It exists to
+// satisfy [Ingestor]; for a MemoryLoader the data has nowhere to go, so
+// prefer Flush when the buffered items matter.
+func (ml *MemoryLoader[T]) Close() error {
+	_, err := ml.Flush(context.Background())
+	return err
 }
 
 // Description retrieves the current description.

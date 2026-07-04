@@ -2,6 +2,7 @@ package ingestor
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // memSink collects batch files written through WithOpener in memory.
@@ -67,12 +69,12 @@ type csvRow struct {
 func TestCSV_FlushWritesRemainderAndReturnsRows(t *testing.T) {
 	t.Parallel()
 	sink := newMemSink()
-	c := NewCSV[csvRow]("orders", 100, WithOpener(sink.open))
+	c := NewCSV[csvRow]("orders", WithBatchSize(100), WithOpener(sink.open))
 
-	if err := c.Commit(csvRow{"a", 1, "x"}, csvRow{"b", 2, "y"}); err != nil {
+	if err := c.Commit(t.Context(), csvRow{"a", 1, "x"}, csvRow{"b", 2, "y"}); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := c.Flush()
+	rows, err := c.Flush(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,14 +96,14 @@ func TestCSV_FlushWritesRemainderAndReturnsRows(t *testing.T) {
 func TestCSV_CommitSpawnsBackgroundBatches(t *testing.T) {
 	t.Parallel()
 	sink := newMemSink()
-	c := NewCSV[csvRow]("batch", 2, WithOpener(sink.open))
+	c := NewCSV[csvRow]("batch", WithBatchSize(2), WithOpener(sink.open))
 
 	for i := range 5 {
-		if err := c.Commit(csvRow{Name: fmt.Sprintf("r%d", i), Count: i}); err != nil {
+		if err := c.Commit(t.Context(), csvRow{Name: fmt.Sprintf("r%d", i), Count: i}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	rows, err := c.Flush()
+	rows, err := c.Flush(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,12 +122,12 @@ func TestCSV_CommitSpawnsBackgroundBatches(t *testing.T) {
 func TestCSV_FilenameFormat(t *testing.T) {
 	t.Parallel()
 	sink := newMemSink()
-	c := NewCSV[csvRow]("my orders/2026", 1, WithOpener(sink.open))
+	c := NewCSV[csvRow]("my orders/2026", WithBatchSize(1), WithOpener(sink.open))
 
-	if err := c.Commit(csvRow{Name: "a"}); err != nil {
+	if err := c.Commit(t.Context(), csvRow{Name: "a"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Flush(); err != nil {
+	if _, err := c.Flush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -147,12 +149,12 @@ func TestCSV_WriteErrorsAggregatedByFlush(t *testing.T) {
 	t.Parallel()
 	sink := newMemSink()
 	sink.fail = errors.New("disk full")
-	c := NewCSV[csvRow]("err", 1, WithOpener(sink.open))
+	c := NewCSV[csvRow]("err", WithBatchSize(1), WithOpener(sink.open))
 
-	if err := c.Commit(csvRow{Name: "a"}, csvRow{Name: "b"}); err != nil {
+	if err := c.Commit(t.Context(), csvRow{Name: "a"}, csvRow{Name: "b"}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := c.Flush()
+	_, err := c.Flush(t.Context())
 	var batchErr *BatchErrors
 	if !errors.As(err, &batchErr) {
 		t.Fatalf("expected *BatchErrors, got %v", err)
@@ -161,7 +163,7 @@ func TestCSV_WriteErrorsAggregatedByFlush(t *testing.T) {
 		t.Fatal("expected wrapped disk-full error in chain")
 	}
 	// Errors were drained: a second flush with no data reports none.
-	if _, err := c.Flush(); err != nil {
+	if _, err := c.Flush(t.Context()); err != nil {
 		t.Fatalf("expected drained errors on second flush, got %v", err)
 	}
 }
@@ -169,12 +171,12 @@ func TestCSV_WriteErrorsAggregatedByFlush(t *testing.T) {
 func TestCSV_WithDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	c := NewCSV[csvRow]("dirtest", 10, WithDir(dir))
+	c := NewCSV[csvRow]("dirtest", WithBatchSize(10), WithDir(dir))
 
-	if err := c.Commit(csvRow{Name: "a", Count: 1}); err != nil {
+	if err := c.Commit(t.Context(), csvRow{Name: "a", Count: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Flush(); err != nil {
+	if _, err := c.Flush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -194,21 +196,21 @@ func TestCSV_WithDir(t *testing.T) {
 func TestCSV_ConcurrentCommitAndFlush(t *testing.T) {
 	t.Parallel()
 	sink := newMemSink()
-	c := NewCSV[csvRow]("race", 4, WithOpener(sink.open))
+	c := NewCSV[csvRow]("race", WithBatchSize(4), WithOpener(sink.open))
 
 	var wg sync.WaitGroup
 	for i := range 20 {
 		wg.Go(func() {
-			_ = c.Commit(csvRow{Name: fmt.Sprintf("r%d", i), Count: i})
+			_ = c.Commit(t.Context(), csvRow{Name: fmt.Sprintf("r%d", i), Count: i})
 		})
 		if i%5 == 0 {
 			wg.Go(func() {
-				_, _ = c.Flush()
+				_, _ = c.Flush(t.Context())
 			})
 		}
 	}
 	wg.Wait()
-	if _, err := c.Flush(); err != nil {
+	if _, err := c.Flush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -236,5 +238,112 @@ func TestCSVHeaderRow_SkipsUnexported(t *testing.T) {
 	want := []string{"Name", "Count"}
 	if len(header) != len(want) || header[0] != want[0] || header[1] != want[1] {
 		t.Fatalf("expected %v, got %v", want, header)
+	}
+}
+
+func TestCSV_ContextCancelled(t *testing.T) {
+	t.Parallel()
+	sink := newMemSink()
+	c := NewCSV[csvRow]("ctx", WithOpener(sink.open))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := c.Commit(ctx, csvRow{Name: "a"}); err == nil {
+		t.Fatal("expected error from cancelled Commit")
+	}
+	if _, err := c.Flush(ctx); err == nil {
+		t.Fatal("expected error from cancelled Flush")
+	}
+	if c.Total() != 0 {
+		t.Errorf("cancelled Commit must not buffer, total = %d", c.Total())
+	}
+}
+
+func TestCSV_CloseWritesRemainder(t *testing.T) {
+	t.Parallel()
+	sink := newMemSink()
+	c := NewCSV[csvRow]("close", WithOpener(sink.open))
+
+	if err := c.Commit(t.Context(), csvRow{Name: "a", Count: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if names := sink.names(); len(names) != 1 {
+		t.Fatalf("Close must write the remainder, files = %v", names)
+	}
+}
+
+type taggedRow struct {
+	Name   string `csv:"full_name"`
+	Secret string `csv:"-"`
+	Plain  int
+}
+
+func TestCSV_TagOverridesAndOmits(t *testing.T) {
+	t.Parallel()
+	sink := newMemSink()
+	c := NewCSV[taggedRow]("tags", WithOpener(sink.open))
+
+	if err := c.Commit(t.Context(), taggedRow{Name: "jo", Secret: "hide", Plain: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Flush(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	got := sink.content(sink.names()[0])
+	want := "full_name,Plain\njo,2\n"
+	if got != want {
+		t.Fatalf("content = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "hide") {
+		t.Error("csv:\"-\" field leaked into output")
+	}
+}
+
+func TestCSV_MaxWritersBoundsConcurrency(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	inflight, peak := 0, 0
+	gate := make(chan struct{})
+	opener := func(name string) (io.WriteCloser, error) {
+		mu.Lock()
+		inflight++
+		if inflight > peak {
+			peak = inflight
+		}
+		mu.Unlock()
+		<-gate // hold every writer open until released
+		mu.Lock()
+		inflight--
+		mu.Unlock()
+		return nopWriteCloser{&bytes.Buffer{}}, nil
+	}
+
+	c := NewCSV[csvRow]("bounded", WithBatchSize(1), WithMaxWriters(2), WithOpener(opener))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 6 {
+			_ = c.Commit(context.Background(), csvRow{Name: fmt.Sprintf("r%d", i)})
+		}
+	}()
+
+	// Let writers saturate, then release them all.
+	time.Sleep(100 * time.Millisecond)
+	close(gate)
+	<-done
+	if _, err := c.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if peak > 2 {
+		t.Errorf("peak concurrent writers = %d, want <= 2", peak)
+	}
+	if peak == 0 {
+		t.Error("no background writers observed")
 	}
 }

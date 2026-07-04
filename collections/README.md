@@ -46,68 +46,47 @@ a.Clone()          // independent copy
 
 ## Slice Operations
 
-Functional `Map`, `Filter`, and `Reduce` inspired by [cyc-ttn/go-collections](https://github.com/cyc-ttn/go-collections).
-
-All callbacks receive:
-- **`agg`** — accumulated results so far (enables patterns like deduplication)
-- **`idx`** — index of the current element in the source slice
+Functional `Map`, `Filter`, and `Reduce` whose shapes mirror the stdlib
+`slices` package conventions (element-only callbacks; `-Indexed` variants when
+the position matters). Inspired by [cyc-ttn/go-collections](https://github.com/cyc-ttn/go-collections).
 
 ### Map
 
-Transform `[]S` into `[]T`. Return `(value, true)` to include, `(_, false)` to skip.
-
 ```go
-strs := collections.Map([]int{1, 2, 3}, func(_ []string, v int, _ int) (string, bool) {
-    return strconv.Itoa(v), true
-})
-// ["1", "2", "3"]
+strs := collections.Map([]int{1, 2, 3}, strconv.Itoa) // ["1" "2" "3"]
 
-// Skip odd values
-doubled := collections.Map([]int{1, 2, 3, 4}, func(_ []int, v int, _ int) (int, bool) {
+// Map + filter in one pass with the indexed variant:
+doubledEvens := collections.MapIndexed([]int{1, 2, 3, 4}, func(v, _ int) (int, bool) {
     return v * 2, v%2 == 0
-})
-// [4, 8]
+}) // [4 8]
 ```
 
 ### Filter
 
-Keep elements where the callback returns `true`.
-
 ```go
-evens := collections.Filter([]int{1, 2, 3, 4, 5, 6}, func(_ []int, v int, _ int) bool {
+evens := collections.Filter([]int{1, 2, 3, 4, 5, 6}, func(v int) bool {
     return v%2 == 0
-})
-// [2, 4, 6]
+}) // [2 4 6]
 
-// Deduplicate using agg
-unique := collections.Filter([]string{"a", "b", "a", "c"}, func(agg []string, s string, _ int) bool {
-    for _, a := range agg {
-        if a == s {
-            return false
-        }
-    }
-    return true
-})
-// ["a", "b", "c"]
+everyOther := collections.FilterIndexed([]string{"a", "b", "c", "d"}, func(_ string, idx int) bool {
+    return idx%2 == 0
+}) // ["a" "c"]
 ```
 
 ### Reduce
 
-Fold `[]S` into a single value of type `T`. The initial accumulator is the zero value of `T`.
+```go
+sum := collections.Reduce([]int{1, 2, 3, 4, 5}, 0, func(acc, v int) int {
+    return acc + v
+}) // 15
+```
+
+### Set iteration
 
 ```go
-sum := collections.Reduce([]int{1, 2, 3, 4, 5}, func(_ []int, acc int, v int, _ int) int {
-    return acc + v
-})
-// 15
-
-csv := collections.Reduce([]int{1, 2, 3}, func(_ []string, acc string, v int, _ int) string {
-    if acc != "" {
-        acc += ","
-    }
-    return acc + strconv.Itoa(v)
-})
-// "1,2,3"
+for v := range set.All() { // iter.Seq[T]; range-over-func
+    ...
+}
 ```
 
 ## Acknowledgements

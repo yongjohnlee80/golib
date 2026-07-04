@@ -1,14 +1,6 @@
 package ingestor
 
-import (
-	"errors"
-	"strings"
-)
-
-var (
-	// ErrMissingIngestor indicates that no ingestor has been configured.
-	ErrMissingIngestor = errors.New("missing ingestor, cannot process data")
-)
+import "strings"
 
 // BatchErrors collects multiple errors from batch write operations.
 // It implements the error interface so it can be returned directly.
