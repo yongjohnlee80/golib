@@ -201,7 +201,8 @@ err := dao.RunTx(ctx, []dao.DataConn{conn}, func(tx *dao.Transaction) error {
     if err != nil {
         return err // -> rollback
     }
-    return albums.On(tx).Set(AlbumArtistID, id).Set(AlbumTitle, "Y").Insert2()
+    _, err = albums.On(tx).Set(AlbumArtistID, id).Set(AlbumTitle, "Y").Insert()
+    return err
 })
 
 // Two DBs — ordered commit, partial-failure reported.
@@ -225,7 +226,8 @@ err = dao.RunTx(ctx, []dao.DataConn{conn}, func(tx *dao.Transaction) error {
         func() error { return nil },
         func() error { return blobs.Delete(ctx, key) },
     ))
-    return artists.On(tx).Set(ArtistName, "X").Set(ArtistURI, "x").Insert2()
+    _, err := artists.On(tx).Set(ArtistName, "X").Set(ArtistURI, "x").Insert()
+    return err
 })
 ```
 
@@ -269,3 +271,135 @@ func bridge(l mclog.Logger) glog.Logger {
     return glog.Adapt(func(s glog.Severity, p any) { l.Log(mclog.Severity(s), p) })
 }
 ```
+
+## 9. Query-time hooks (tenant scoping, soft delete, metrics)
+
+Hooks run cross-cutting logic on *every* statement — declared once via
+`dao.Hooks(...)` at schema build, or attached per call via
+`schema.DAO(dao.WithHooks(...))`. Embed `dao.NopHook` and override only the
+phase you need.
+
+**Tenant scoping** — a `WHERE org_id = ?` on reads and `UPDATE`/`DELETE`, and a
+forced `org_id` column on `INSERT`/`UPSERT` (a hook `Where` on insert/upsert
+fails loudly, so branch on the op):
+
+```go
+type tenantHook struct{ dao.NopHook }
+
+func (tenantHook) HookName() string { return "tenant" }
+func (tenantHook) BeforeBuild(ctx context.Context, q *dao.QueryInfo, s dao.Stager) error {
+    org, ok := auth.OrgID(ctx) // your ctx extraction
+    if !ok {
+        return fmt.Errorf("tenant: no org in context for %s on %s", q.Op, q.Table)
+    }
+    switch q.Op {
+    case dao.OpInsert, dao.OpUpsert:
+        s.SetColumn("org_id", org)
+    default:
+        s.Where(dao.Eq("org_id", org)) // SELECT + UPDATE + DELETE all scoped
+    }
+    return nil
+}
+```
+
+**Soft delete** — filter reads by default, opt out per call:
+
+```go
+type softDeleteHook struct{ dao.NopHook }
+
+func (softDeleteHook) HookName() string { return "softdelete" }
+func (softDeleteHook) BeforeBuild(_ context.Context, q *dao.QueryInfo, s dao.Stager) error {
+    if !q.Op.IsWrite() {
+        s.Where(dao.IsNull("deleted_at"))
+    }
+    return nil
+}
+```
+
+**Metrics** — observe duration and outcome (`AfterExec`'s return replaces the
+statement error, so return `out.Err` to pass it through):
+
+```go
+type metricsHook struct{ dao.NopHook }
+
+func (metricsHook) AfterExec(_ context.Context, q *dao.QueryInfo, out dao.Outcome) error {
+    queryDuration.Observe(q.Table, string(q.Op), out.Duration)
+    return out.Err
+}
+```
+
+Wire them up, then every call is scoped, filtered, and measured:
+
+```go
+artists := dao.New[*Artist, ArtistField, ArtistSort, string](conn,
+    /* ...fields... */
+    dao.Hooks[*Artist, ArtistField, ArtistSort, string](tenantHook{}, softDeleteHook{}, metricsHook{}),
+)
+
+list, err := artists.OnCtx(reqCtx).Select()                      // scoped + filtered + measured
+all, err := artists.OnCtx(reqCtx, dao.SkipHooks("softdelete")).Select() // admin: include deleted
+n, err := artists.DAO(dao.WithQueryContext(reqCtx)).Count()      // explicit ctx on a pool DAO
+```
+
+## 10. Partial (PATCH) updates
+
+`SetRules` applies a per-field disposition — write / skip / clear — with rules
+taking precedence over `Set`/`SetMap` and `DefaultValues`. It is wire-facing:
+unknown or read-only keys are silently skipped.
+
+```go
+err := artists.DAO().With(ArtistID, id).SetRules(map[ArtistField]dao.Rule{
+    ArtistName: dao.Write("New Name"),
+    ArtistURI:  dao.Clear(),   // → ClearValue (SQL NULL, or the field's sentinel)
+    ArtistID:   dao.Skip(),    // authoritative: don't touch even if staged elsewhere
+}).Update()
+```
+
+Declare per-column clearability on the `Field` and, optionally, `StrictClears()`
+on the schema to make a `Clear` on a non-clearable field an error rather than a
+skip:
+
+```go
+artistFields := map[ArtistField]dao.Field[*Artist]{
+    ArtistURI: {Column: "artist.uri", Scan: sURI, Value: vURI, Clearable: true},
+    ArtistDate: {Column: "artist.release_date", Scan: sDate, Value: vDate,
+        Clearable: true, ClearValue: lib.DateSentinel}, // NOT NULL → sentinel, not NULL
+}
+```
+
+To drive this straight from an HTTP PATCH body with zero per-entity code, bind a
+[`partial.Patch[T]`](../partial/README.md) and project it onto the DAO:
+
+```go
+p, err := partial.BindReader[Artist](r.Body) // three-state: value / absent / null
+if err != nil { /* 400 on *partial.ValidationError */ }
+p.Remove("id") // strip server-owned fields
+d, err := partial.ApplyRules(artists.OnCtx(r.Context()).With(ArtistID, id), p)
+if err != nil { /* ... */ }
+err = d.Update() // writes only what the client sent; nulls clear per the Field's ClearValue
+```
+
+## 11. Two-phase commit across databases
+
+For strict cross-DB atomicity on a capable dialect (Postgres, with
+`max_prepared_transactions > 0`), opt in with `TwoPhase()`:
+
+```go
+err := dao.RunTx(ctx, []dao.DataConn{lmConn, goldConn}, func(tx *dao.Transaction) error {
+    tx.TwoPhase() // prepare all, then commit all
+    if _, err := lm.On(tx).Set(LMName, n).Insert(); err != nil {
+        return err
+    }
+    return gold.On(tx).With(GoldID, id).Set(GoldName, n).Update()
+})
+
+var ce *dao.CommitError
+if errors.As(err, &ce) && len(ce.PreparedPending) > 0 {
+    // a COMMIT PREPARED failed after a successful prepare; ce.PreparedPending
+    // maps context → gid for operator resolution (pg_prepared_xacts)
+}
+```
+
+On a dialect that doesn't support 2PC (`GenericDialect`, sqlite, bigquery),
+`TwoPhase().Commit()` fails fast with `ErrTwoPhaseUnsupported` rather than
+silently degrading to an ordered commit.

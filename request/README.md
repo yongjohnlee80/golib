@@ -1,90 +1,116 @@
 # request
 
-A lightweight HTTP client package with generic error handling, functional options, multipart form support, and request history tracking.
+A lightweight HTTP client: run a request/response cycle into a `Params`
+carrier (transport errors only — status codes are data), map the result into
+typed success or error values, build multipart payloads, and keep a bounded
+debug trail of recent exchanges. Zero external dependencies.
 
 ```bash
 go get github.com/yongjohnlee80/golib/request
 ```
 
-## Core API
+```go
+import "github.com/yongjohnlee80/golib/request"
+```
 
-### Request
+## Contents
 
-`Request` executes an HTTP request and populates the `Params` struct with the response. Only transport-level errors are returned — HTTP status codes (4xx, 5xx) are **not** treated as errors. Use `DecodeResponse` to handle those.
+- [Basic requests](#basic-requests) · [Context & timeouts](#context--timeouts)
+- [Payload types](#payload-types) · [Decoding responses](#decoding-responses)
+- [Options](#request-options) · [Multipart forms](#multipart-forms)
+- [Response size limit](#response-size-limit) · [History](#request-history)
+- [Extending](#extending) · [Gotchas](#gotchas) · [File layout](#file-layout)
+
+---
+
+## Basic requests
+
+`Request` executes an HTTP request and populates the `Params` struct with the
+outcome. **Only transport-level errors are returned** — a 4xx/5xx is not an
+error, it is data on `p.Response`/`p.ResponseBody`. Use
+[`DecodeResponse`](#decoding-responses) to turn a status into a typed error.
 
 ```go
 p := &request.Params{
-    Method:  "POST",
-    Url:     "https://api.example.com/tracks",
-    Timeout: 30 * time.Second, // zero = 10s default, negative = no timeout
-    Headers: map[string]string{
-        "Authorization": "Bearer token",
-    },
+    Method: "POST",
+    Url:    "https://api.example.com/tracks",
+    Headers: map[string]string{"Authorization": "Bearer " + token},
 }
-
-err := request.Request(p, payload)
-// p.Response.StatusCode, p.ResponseBody are now populated
+if err := request.Request(p, payload); err != nil {
+    return err // network/DNS/timeout — not an HTTP status
+}
+// p.Response.StatusCode and p.ResponseBody are now populated.
 ```
 
-`Do` is the context-aware form — cancelling the context aborts the request
-and the body read:
+The one-line convenience helpers `Get` and `Post` build the `Params`, run the
+request, and decode in one call using the default [`Error`](#the-default-error-type)
+type. They use `DefaultTimeout`; build `Params` yourself when you need a
+different timeout.
+
+```go
+resp, err := request.Get("https://api.example.com/items",
+    map[string][]string{"page": {"1"}}, &result) // query-encoded
+resp, err := request.Post("https://api.example.com/items", payload, &result)
+```
+
+`StatusCodeInBounds(code)` reports whether a status is in the 2xx–3xx range.
+
+## Context & timeouts
+
+`Do` is the context-aware form — cancelling `ctx` aborts both the request and
+the response-body read:
 
 ```go
 err := request.Do(ctx, p, payload)
 ```
 
-#### Payload types
+`Params.Timeout` is a real `time.Duration` bounding the whole cycle:
 
-The `payload` argument is dispatched by type:
+| `Timeout` value | Effect |
+|---|---|
+| `0` (zero value) | `DefaultTimeout` (10s) |
+| `30 * time.Second` | 30-second deadline |
+| negative | no timeout |
+
+```go
+p := &request.Params{Method: "GET", Url: u, Timeout: 30 * time.Second}
+```
+
+Requests share a package-global `http.Transport`, so connection pooling and
+keep-alive work across calls automatically.
+
+## Payload types
+
+The `payload` argument is dispatched by its Go type:
 
 | Type | Behavior |
 |---|---|
-| `CustomPayload` | Uses the reader directly with `ContentType()` header |
+| `CustomPayload` | Used as an `io.Reader`; its `ContentType()` sets the header |
 | `io.Reader` | Sent as-is, no content-type set |
-| `url.Values` | Form-encoded with `application/x-www-form-urlencoded` |
-| Any other value | JSON-marshalled with `application/json; charset=UTF-8` |
+| `url.Values` | Form-encoded, `application/x-www-form-urlencoded` |
+| anything else | JSON-marshalled, `application/json; charset=UTF-8` |
+| `nil` | no body |
 
-#### Response body size limit
+An explicit `Headers["Content-Type"]` (or the [`ContentType`](#request-options)
+option) always wins over the payload-derived type. Headers are applied with
+`Header.Set`, so there is exactly one value per header.
 
-By default, response bodies are capped at 10 MB (`MaxResponseBodySize`). Override per-request:
+## Decoding responses
 
-```go
-p := &request.Params{
-    MaxResponseSize: 50 << 20, // 50 MB
-    // ...
-}
-
-// Or disable the limit entirely
-p.MaxResponseSize = -1
-```
-
-### Convenience functions
+`DecodeResponse` is generic over the error type. On status `>= 400` it
+unmarshals the body into your error type and returns it as an `error`;
+otherwise it unmarshals into `response` (an empty 2xx body or a nil target is
+a no-op, not an error).
 
 ```go
-// GET with query params, decodes response or returns *Error
-resp, err := request.Get("https://api.example.com/items", map[string][]string{
-    "page": {"1"},
-}, &result)
-
-// POST with JSON payload
-resp, err := request.Post("https://api.example.com/items", payload, &result)
-```
-
-## Generic Error Handling
-
-### DecodeResponse
-
-`DecodeResponse` is generic over the error type. For status >= 400, it unmarshals the body into your error type; otherwise it unmarshals into the response.
-
-```go
-// Using the default Error type
+// Default Error type:
 err := request.DecodeResponse[request.Error](p, &response)
 
-// Using a custom error type
+// Custom error type — *MyAPIError must implement ResponseError:
 err := request.DecodeResponse[MyAPIError](p, &response)
 ```
 
-Custom error types must implement `ResponseError`:
+Custom error types implement `ResponseError`:
 
 ```go
 type ResponseError interface {
@@ -93,9 +119,7 @@ type ResponseError interface {
 }
 ```
 
-### Default Error
-
-The built-in `Error` type works out of the box:
+### The default Error type
 
 ```go
 type Error struct {
@@ -104,31 +128,27 @@ type Error struct {
 }
 ```
 
-## Request Options
+## Request options
 
-Functional options modify `Params` before execution:
+`RequestOption` values mutate `Params` before the request is sent:
 
 ```go
 err := request.Request(p, payload,
-    request.ContentType(request.JSON),
-    myCustomOption,
+    request.ContentType(request.JSON), // or request.MULTIPART
+    WithAuth(token),
 )
 ```
 
-Built-in options:
+Content-type constants: `request.JSON`, `request.MULTIPART`; and the raw
+strings `request.TypeJSON` / `request.TypeJSONUTF8` for header values.
 
-```go
-request.ContentType(request.JSON)      // application/json
-request.ContentType(request.MULTIPART) // multipart/form-data
-```
-
-Define your own:
+Define your own option — it is just `func(*Params) *Params`:
 
 ```go
 func WithAuth(token string) request.RequestOption {
     return func(p *request.Params) *request.Params {
         if p.Headers == nil {
-            p.Headers = make(map[string]string)
+            p.Headers = map[string]string{}
         }
         p.Headers["Authorization"] = "Bearer " + token
         return p
@@ -136,85 +156,111 @@ func WithAuth(token string) request.RequestOption {
 }
 ```
 
-## Multipart Forms
+## Multipart forms
 
-### FormWriter
-
-`FormWriter` is a builder for multipart payloads. It implements `CustomPayload`, so it can be passed directly to `Request`.
+`FormWriter` builds a `multipart/form-data` payload and implements
+`CustomPayload`, so it is passed directly to `Request`. **Call `Close` before
+sending** — it finalizes the multipart boundary.
 
 ```go
 fw := request.NewFormWriter()
-fw.WriteFile("track", &request.FileUpload{
-    FileName: "song.mp3",
-    Content:  file,
-})
-fw.WriteFields(metadata)          // struct → form fields via json tags
-fw.WriteField("extra", "value")   // single field
+fw.WriteFile("track", &request.FileUpload{FileName: "song.mp3", Content: file})
+fw.WriteFields(metadata)        // struct → fields via json tags
+fw.WriteField("note", "hello")  // single string field
 fw.Close()
 
-p := &request.Params{Method: "POST", Url: url}
-err := request.Request(p, fw)
+err := request.Request(&request.Params{Method: "POST", Url: u}, fw)
 ```
 
-### WriteFields
-
-Encodes struct fields into multipart form fields using JSON tags. Supports `string`, `int*`, `uint*`, `float*`, `bool` (1/0), slices (appended with `[]` suffix), and pointers. Zero values are omitted. Fields without a `json` tag or tagged `json:"-"` are skipped.
+`WriteFields` encodes struct fields keyed by their `json` tag. It supports
+`string`, `int*`/`uint*`/`float*`, `bool` (as `"1"`/`"0"`), slices (appended
+with a `[]` suffix), and pointers (nil skipped). Zero values are omitted, and
+fields without a `json` tag or tagged `json:"-"` are skipped.
 
 ```go
 type TrackMeta struct {
-    Title  string   `json:"title"`
-    BPM    int      `json:"bpm"`
-    Tags   []string `json:"tags"`
-    Active bool     `json:"active"`
+    Title string   `json:"title"`
+    BPM   int      `json:"bpm"`
+    Tags  []string `json:"tags"`
 }
 ```
 
-### FileUpload
+`FileUpload.FileName` may be a full path; its basename becomes the form
+filename. For hand-rolled multipart bodies, the package-level `WriteFile` /
+`WriteFields` accept a raw `*multipart.Writer`; `FormWriter.Writer()` exposes
+the underlying writer (e.g. for `CreatePart`), and `FormWriter.Boundary()`
+returns the boundary.
+
+> `FormWriter.WriteField(key, value string)` is a string convenience; the
+> package-level `WriteField(w, key, reflect.Value)` is the reflection-based
+> primitive `WriteFields` builds on.
+
+## Response size limit
+
+Bodies are capped at `MaxResponseBodySize` (10 MB) by default. Override
+per-request via `Params.MaxResponseSize` (`0` = default, `-1` = unlimited).
+Exceeding the cap returns `ErrResponseTooLarge`:
 
 ```go
-type FileUpload struct {
-    FileName string    // full path or name; basename is used in the form
-    Content  io.Reader
+p.MaxResponseSize = 50 << 20 // 50 MB
+if err := request.Request(p, nil); errors.Is(err, request.ErrResponseTooLarge) {
+    // body was larger than the cap
 }
 ```
 
-### Standalone functions
+## Request history
 
-`WriteFile` and `WriteFields` also accept a raw `*multipart.Writer` for advanced use cases:
-
-```go
-body := &bytes.Buffer{}
-w := multipart.NewWriter(body)
-request.WriteFile(w, "track", file)
-request.WriteFields(w, meta)
-w.Close()
-```
-
-## Request History
-
-Track recent HTTP request/response pairs for debugging:
+`Histories` is a bounded, concurrency-safe ring buffer of recent
+request/response pairs for debugging:
 
 ```go
-h := request.NewHistories(5) // keep last 5
+h := request.NewHistories(5) // keep the last 5 (0 → default 3)
 
-// After each request:
 request.Request(p, payload)
-h.Add(p) // captures method, url, headers, request body, response
+h.Add(p) // captures method, url, copied headers, request body, response
 
-// Retrieve (1 = most recent):
-entry := h.GetHistory(1)
+entry := h.GetHistory(1) // 1 = most recent; nil when empty; index is clamped
 ```
 
-Request bodies larger than 64 KB are truncated. Headers are copied on capture, so later mutations don't affect history entries.
+Request bodies over 64 KB are truncated (and flagged) in the stored entry, and
+the original body is restored so downstream reads still see it. Headers are
+deep-copied at capture time.
 
-## File Layout
+> `HistoryEntry` and its fields are **opaque** (no exported accessors): the
+> buffer is a capture/inspect-in-a-debugger aid, not a queryable log. Add
+> accessors in the package if you need programmatic reads.
+
+## Extending
+
+- **Custom payload encodings** — implement `CustomPayload` (`io.Reader` +
+  `ContentType() string`) and pass the value straight to `Request`;
+  `FormWriter` is the reference implementation.
+- **Custom error envelopes** — implement `ResponseError` and use
+  `DecodeResponse[YourError]`.
+- **Cross-cutting request mutation** (auth, tracing headers, user-agent) —
+  write a `RequestOption`.
+
+## Gotchas
+
+- A 4xx/5xx is **not** a returned error — check `p.Response.StatusCode` or use
+  `DecodeResponse`.
+- `Get`/`Post` always use `DefaultTimeout`; construct `Params` for a custom
+  one.
+- `Request` has no cancellation; use `Do(ctx, …)` for deadlines/cancellation.
+- `FormWriter` must be `Close`d before it is sent.
+
+## File layout
 
 | File | Contents |
 |---|---|
-| `request.go` | `Params`, `Request()`, `Get()`, `Post()`, `CustomPayload` |
-| `decode.go` | `ResponseError`, `DecodeResponse[T]()` |
-| `error.go` | Default `Error` type |
-| `options.go` | `RequestOption`, `ContentType()`, content-type constants |
+| `request.go` | `Params`, `Request`, `Do`, `Get`, `Post`, `CustomPayload`, `StatusCodeInBounds`, `ErrResponseTooLarge`, size/timeout constants |
+| `decode.go` | `ResponseError`, `DecodeResponse[T]` |
+| `error.go` | default `Error` type |
+| `options.go` | `RequestOption`, `ContentType`, content-type constants |
 | `multipart.go` | `FormWriter` |
-| `form.go` | `FileUpload`, `WriteFile()`, `WriteFields()`, `WriteField()` |
+| `form.go` | `FileUpload`, `WriteFile`, `WriteFields`, `WriteField` |
 | `history.go` | `Histories`, `HistoryEntry` |
+
+## License
+
+See [LICENSE](../LICENSE).

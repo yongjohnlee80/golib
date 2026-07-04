@@ -1,8 +1,13 @@
 # dao/sqlite
 
 A SQLite driver for [`dao`](../README.md), implemented over the standard library
-`database/sql` and backed by the **pure-Go** [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite)
-driver (no cgo). Importing this package registers that driver.
+`database/sql` and backed by the **pure-Go**
+[`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) driver (no cgo).
+Importing this package registers that driver.
+
+It is also the reference for **writing a new driver** — the smallest possible
+`Dialect` (four overrides) plus a `DataConn` over `database/sql` (see [Writing a
+driver](#writing-a-driver-the-sqlite-pattern)).
 
 ```go
 import (
@@ -41,22 +46,37 @@ conn, _ := sqlite.Open(ctx, ":memory:", sqlite.MaxOpenConns(1))
 It embeds `dao.GenericDialect` and overrides only the SQLite-specific parts:
 
 - `?` positional placeholders (overrides `$n`).
-- 999 bind-parameter limit (drives batch chunking).
+- 999 bind-parameter limit (drives batch chunking; conservative — SQLite raised
+  it to 32766 in 3.32, but 999 is the historically safe cap).
 - SQLite result-code → dao sentinel translation: `SQLITE_CONSTRAINT_UNIQUE` /
   `…_PRIMARYKEY` → `ErrDuplicate`, `…_NOTNULL` → `ErrNotNull`, `…_FOREIGNKEY` →
-  `ErrForeignKey`.
+  `ErrForeignKey`. SQLite does not report a constraint *name*, so
+  `ConstraintError.Constraint` is empty — `errors.Is(err, dao.ErrDuplicate)`
+  still works, but a per-constraint `dao.Errors(...)` map keyed by name cannot
+  match on SQLite.
 
 Inherited from `GenericDialect`: double-quoted identifiers, `RETURNING` (modern
-SQLite 3.35+, which modernc bundles), and `ON CONFLICT` upserts. There is **no COPY
-fast-path**, so batches always use the chunked multi-row INSERT path.
+SQLite 3.35+, which modernc bundles), and `ON CONFLICT` upserts. There is **no
+COPY fast-path**, so batches always use the chunked multi-row INSERT path.
+
+## Writing a driver (the sqlite pattern)
+
+sqlite is the minimal template for a new driver: embed `dao.GenericDialect`,
+override only the deltas, and implement `dao.DataConn`/`dao.TxConn`.
+`SqliteDialect` overrides exactly four methods (`Name`, `Placeholder`,
+`MaxBindParams`, `TranslateError`) and inherits everything else. Because
+`database/sql`'s `*sql.Rows`/`sql.Result` already satisfy `dao.Rows`/`dao.Result`,
+the `DataConn` implementation just adapts return types — no wrapper structs. No
+change to the engine, the `DAO` interface, or any entity declaration is needed.
+See the [dao README](../README.md#writing-a-new-driver) for the full recipe.
 
 ## In-process testing
 
 Because modernc.org/sqlite runs in-process, this driver is ideal for tests — no
-external server, runs in the normal `go test` suite against a temp-file database.
-The package's own `sqlite_test.go` does exactly this and exercises the whole `dao`
-engine end-to-end (CRUD + RETURNING, duplicate→`ErrDuplicate`, upsert, chunked batch
-via `AddRow`, transactions, and SQL+args debug logging).
+external server, runs in the normal `go test` suite against a temp-file or
+`:memory:` database. The package's own `sqlite_test.go` exercises the whole
+`dao` engine end-to-end (CRUD + RETURNING, duplicate→`ErrDuplicate`, upsert,
+chunked batch via `AddRow`, transactions, and SQL+args debug logging).
 
 ```bash
 go test ./dao/sqlite/   # no build tag, no external dependencies

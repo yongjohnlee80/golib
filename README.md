@@ -1,123 +1,128 @@
 # golib
 
-A collection of reusable Go packages. The core packages have **zero external
-dependencies**; the optional `dao` database drivers are the only packages that pull
-one in (`dao/postgres` requires pgx, `dao/sqlite` requires the pure-Go modernc
-SQLite driver).
+A collection of reusable, modular Go packages — general-purpose building blocks
+for personal and work projects. The design goal is packages with **light,
+adaptable interfaces** that drop into existing applications for easy migration
+and give new applications good patterns to start from.
 
 ```bash
 go get github.com/yongjohnlee80/golib
 ```
 
+## Design principles
+
+- **Zero-dependency core.** Every package imports only the standard library and
+  other golib packages. Third-party dependencies are pushed to leaf subpackages
+  — the `dao` database drivers and `server/ws` — and, when heavy (the GCP SDK),
+  into their own nested module (`dao/bigquery`).
+- **Small, adaptable seams.** Interfaces are minimal (`logger.Logger` is one
+  method); consumers bridge their own backends rather than adopting a framework.
+- **Data over code.** Per-entity/per-use differences are declarations, not
+  boilerplate — the `dao` single-declaration `Schema` is the archetype.
+- **Explicit over magic.** No struct-tag-driven behavior in core paths, no
+  hidden global state.
+- **Fail loud, fail typed.** Sentinel/typed errors compared with `errors.Is`/
+  `As`; misconfiguration fails at construction; documented behavior claims
+  (thread-safety, capabilities) are true or removed.
+- **Ecosystem-normal shapes.** `context.Context` first on I/O calls,
+  `io.Writer` destinations, `iter.Seq` iteration, `time.Duration` means a
+  duration.
+
 ## Packages
+
+| Package | Purpose | Docs |
+|---|---|---|
+| [`threadsafe`](threadsafe/README.md) | Generic thread-safe value containers (mutex, RWMutex, lock-free) behind one `Value[T]` interface | [README](threadsafe/README.md) |
+| [`collections`](collections/README.md) | Generic `Set[T]` and stdlib-shaped `Map`/`Filter`/`Reduce` slice ops | [README](collections/README.md) |
+| [`logger`](logger/README.md) | Small level-based logging seam; `Fields`/`Entry`, `Adapt`, and both `slog` bridges | [README](logger/README.md) |
+| [`request`](request/README.md) | HTTP client: typed error decoding, functional options, multipart, history | [README](request/README.md) |
+| [`ingestor`](ingestor/README.md) | Thread-safe buffer-and-flush pipelines to CSV/JSON with bounded background writes | [README](ingestor/README.md) |
+| [`dao`](dao/README.md) | Generic, driver-agnostic data-access layer — declare an entity once | [README](dao/README.md) · [USAGE](dao/USAGE.md) |
+| [`partial`](partial/README.md) | Three-state (value/absent/null) PATCH payloads, projecting onto `dao` updates | [README](partial/README.md) |
+| [`server`](server/README.md) | Transport-agnostic server core: router, middleware chain, lifecycle, scaffold, session registry | [README](server/README.md) |
+| [`server/http`](server/http/README.md) | HTTP transport: chi-style routing, middleware, JSON helpers, mock server | [README](server/http/README.md) |
+| [`server/ws`](server/ws/README.md) | WebSocket transport — endpoints as ordinary routes on the HTTP core | [README](server/ws/README.md) |
 
 ### threadsafe
 
-Generic, thread-safe value containers.
-
-- **`SynchronizedValue[T]`** — exclusive-access mutex wrapper (simple default)
-- **`MultiReadSyncValue[T]`** — read-write mutex wrapper (optimized for read-heavy workloads)
-- **`AtomicValue[T]`** — lock-free reads over atomic snapshots (hot paths)
-- All implement the `Value[T]` interface for interchangeable use
-
-```go
-import "github.com/yongjohnlee80/golib/threadsafe"
-
-counter := threadsafe.NewSynchronizedValue(0)
-counter.Set(10)
-counter.Update(func(v int) int { return v + 1 })
-
-// Read-heavy workload; compound access happens under the lock via closures
-cache := threadsafe.NewMultiReadSyncValue(map[string]string{})
-var val string
-cache.RDo(func(m map[string]string) { val = m["key"] })
-cache.Do(func(m *map[string]string) { (*m)["key"] = "new" })
-```
-
-| | `SynchronizedValue` | `MultiReadSyncValue` | `AtomicValue` |
-|---|---|---|---|
-| Read concurrency | Exclusive | Concurrent | Lock-free |
-| Write concurrency | Exclusive | Exclusive | CAS retry |
-| Best for | General use, write-heavy | Read-heavy | Read-dominated hot paths |
-
-See [threadsafe/README.md](threadsafe/README.md) for full documentation.
+`SynchronizedValue[T]` (mutex), `MultiReadSyncValue[T]` (RWMutex),
+`AtomicValue[T]` (lock-free) — all satisfy `Value[T]`, so you can swap the
+locking strategy without changing call sites. The `Do`/`RDo` closure discipline
+makes compound access race-free by construction.
+→ [threadsafe/README.md](threadsafe/README.md)
 
 ### collections
 
-Generic collection types and functional slice operations.
-
-- **`Set[T]`** — unordered unique collection with union, intersect, diff, subset operations and `All()` (`iter.Seq` iteration)
-- **`Map`**, **`Filter`**, **`Reduce`** (+ `-Indexed` variants) — functional slice operations shaped like the stdlib `slices` conventions
-
-See [collections/README.md](collections/README.md) for full documentation.
-
-### request
-
-HTTP client with generic error handling, functional options, and multipart form support.
-
-- **`Request()`** / **`Do(ctx, …)`** — core HTTP functions (`Do` is context-aware); transport errors are separated from status codes
-- **`DecodeResponse[T]()`** — generic response decoder parameterized by error type
-- **`FormWriter`** — multipart/form-data builder implementing `CustomPayload`
-- **`RequestOption`** — functional options pattern for modifying requests
-- **`Histories`** — bounded ring buffer of recent request/response pairs for debugging
-
-```go
-import "github.com/yongjohnlee80/golib/request"
-
-p := &request.Params{
-    Method: "POST",
-    Url:    "https://api.example.com/tracks",
-    Headers: map[string]string{"Authorization": "Bearer tok"},
-}
-request.Request(p, payload, request.ContentType(request.JSON))
-err := request.DecodeResponse[request.Error](p, &response)
-```
-
-See [request/README.md](request/README.md) for full documentation.
-
-### ingestor
-
-Generic, thread-safe data ingestion pipelines. Buffer items in memory and flush to CSV or JSON files.
-
-- **`MemoryLoader[T]`** — in-memory buffer (base for other ingestors)
-- **`CSV[T]`** / **`JSON[T]`** — batched file export with bounded background writes; functional options (`WithBatchSize`, `WithDir`, `WithOpener`, `WithMaxWriters`)
-- **`Ingestor[T]`** — context-aware interface (`Commit(ctx, …)`, `Flush(ctx)`, `Close`) for custom backends
-
-Background write errors are collected and returned by `Flush(ctx)` as `*BatchErrors`.
-
-See [ingestor/README.md](ingestor/README.md) for full documentation.
+`Set[T]` with the full algebra (union, intersect, diff, subset) plus `iter.Seq`
+iteration, and `Map`/`Filter`/`Reduce` (+ `-Indexed` variants) shaped like the
+stdlib `slices` conventions.
+→ [collections/README.md](collections/README.md)
 
 ### logger
 
-A small, toggleable, level-based logging hook. Zero external dependencies (stdlib
-`log`/`fmt` only). The `Logger` interface is shape-identical to
-`monstercat/golib/logger`, and `Adapt` bridges any external logger without a
-dependency.
+A one-method `Logger` seam (`Log(Severity, any)`) that golib packages accept for
+optional logging. `Fields` for structured payloads, `Entry` that keeps error
+chains `errors.Is`-able, `Adapt` to bridge any external logger without importing
+it, and `FromSlog`/`NewSlogHandler` for both `log/slog` directions.
+→ [logger/README.md](logger/README.md)
 
-- **`Logger`** — `Log(severity Severity, payload any)`; six `Severity` levels
-- **`Nop`** / **`SimpleLogger`** / **`Multi`** / **`Contextual`** — implementations; `New(opts…)` with an injectable writer
-- **`Fields`** / **`Entry`** — structured payloads; error chains stay `errors.Is`-able
-- **`Adapt(fn)`** — wrap a function (or bridge an external logger) as a `Logger`
-- **`FromSlog`** / **`NewSlogHandler`** — both `log/slog` directions, stdlib-only
+### request
 
-See [logger/README.md](logger/README.md) for full documentation.
+`Request`/`Do(ctx, …)` run an HTTP cycle into a `Params` carrier — transport
+errors only, status codes are data. `DecodeResponse[T]` maps a response into
+typed success/error, `FormWriter` builds multipart, `Histories` keeps a debug
+trail.
+→ [request/README.md](request/README.md)
+
+### ingestor
+
+Buffer items in memory and flush them in batches to CSV/JSON files (or any
+`io.Writer` you supply) with bounded, drain-aware background writes.
+`Ingestor[T]` is context-first; embed `MemoryLoader[T]` to build a custom
+backend.
+→ [ingestor/README.md](ingestor/README.md)
 
 ### dao
 
-A generic, driver-agnostic data-access layer (DAL). Declare each entity **once**
-(fields, columns, scan targets, joins, sort, search) and that drives column-aware
-reads, query building, scanning, auto-chunked batch writes, and multi-database
-transactions. Not an ORM — explicit columns, explicit joins, no struct-tag magic.
-Optional, toggleable SQL+args logging.
+A generic, driver-agnostic data-access layer. Declare each entity **once**
+(fields, columns, scan targets, joins, sort, search) and that drives
+column-aware reads, scanning, query building, auto-chunked batch writes,
+multi-database transactions (incl. two-phase commit), query-time hooks
+(tenant scoping, soft delete, metrics), and partial (PATCH) updates. Not an ORM
+— explicit columns, explicit joins, no struct-tag magic.
 
-- **`dao`** — the core: zero external dependencies; `DAO[R,C,ID]` surface,
-  `Schema`/builder, predicates, on-demand joins, batch, transactions, error translation
-- **`dao/postgres`** — reference driver over pgx (native COPY, SQLSTATE translation)
-- **`dao/sqlite`** — pure-Go SQLite driver (in-process; great for tests)
+- Core: zero external dependencies.
+- Drivers: [`dao/postgres`](dao/postgres/README.md) (pgx, native COPY, 2PC),
+  [`dao/sqlite`](dao/sqlite/README.md) (pure-Go modernc; the new-driver
+  template), [`dao/bigquery`](dao/bigquery/README.md) (read-mostly OLAP,
+  separate module).
 
-See [dao/README.md](dao/README.md) for the reference overview and
-[dao/USAGE.md](dao/USAGE.md) for a worked cookbook.
+→ [dao/README.md](dao/README.md) for the reference, [dao/USAGE.md](dao/USAGE.md)
+for a worked cookbook (hooks, partial updates, transactions).
+
+### partial
+
+Turns a three-state JSON PATCH body (a field carries a value / is absent / is
+`null`) into a Write/Skip/Clear disposition that `dao` applies directly — with
+zero per-entity code. Bind a `Patch[T]`, shape it server-side, and
+`partial.ApplyRules(dao, patch)`.
+→ [partial/README.md](partial/README.md)
+
+### server
+
+A transport-agnostic core (`net/http`-free) shared by every transport: a
+generic tree router, an immutable middleware chain, a lifecycle contract, an
+accept-loop `Scaffold`, and a drain-aware session `Registry`.
+[`server/http`](server/http/README.md) and [`server/ws`](server/ws/README.md)
+build on it; gRPC/SFTP/raw-TCP adapters slot in the same way.
+→ [server/README.md](server/README.md)
+
+## Conventions
+
+Development conventions and the project philosophy are maintained alongside the
+codebase; new code follows the zero-dep, small-seam, fail-loud-and-typed rules
+above. Structural changes are ADR-first — design records live under `docs/`.
 
 ## License
 
-See [LICENSE](LICENSE) file.
+See [LICENSE](LICENSE).
