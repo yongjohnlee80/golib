@@ -9,8 +9,10 @@ import (
 
 // config holds the file-writer settings shared by the CSV and JSON ingestors.
 type config struct {
-	dir    string
-	opener func(name string) (io.WriteCloser, error)
+	dir        string
+	opener     func(name string) (io.WriteCloser, error)
+	batchSize  uint64
+	maxWriters int
 }
 
 // Option configures a file-writing ingestor (CSV, JSON).
@@ -30,10 +32,29 @@ func WithOpener(fn func(name string) (io.WriteCloser, error)) Option {
 	return func(c *config) { c.opener = fn }
 }
 
+// WithBatchSize sets how many buffered items trigger a background batch file.
+// 0 keeps the ingestor's default (DefaultCSVBatchSize / DefaultJSONBatchSize).
+func WithBatchSize(n uint64) Option {
+	return func(c *config) { c.batchSize = n }
+}
+
+// WithMaxWriters caps how many background batch writes may run concurrently
+// (default 4). Commit blocks once the cap is reached, providing backpressure
+// instead of unbounded goroutine growth.
+func WithMaxWriters(n int) Option {
+	return func(c *config) {
+		if n > 0 {
+			c.maxWriters = n
+		}
+	}
+}
+
 func newConfig(opts []Option) config {
-	c := config{dir: "."}
+	c := config{dir: ".", maxWriters: 4}
 	for _, opt := range opts {
-		opt(&c)
+		if opt != nil {
+			opt(&c)
+		}
 	}
 	return c
 }

@@ -19,16 +19,20 @@ type MultiReadSyncValue[T any] struct {
 	mu    sync.RWMutex
 }
 
-// Unlock releases the read lock previously acquired by Lock.
-func (rw *MultiReadSyncValue[T]) Unlock() {
-	rw.mu.RUnlock()
+// Do runs fn with mutable access to the stored value under the exclusive
+// write lock.
+func (rw *MultiReadSyncValue[T]) Do(fn func(*T)) {
+	rw.mu.Lock()
+	defer rw.mu.Unlock()
+	fn(&rw.value)
 }
 
-// Lock acquires a read lock and returns the current value. Multiple goroutines
-// can hold a read lock simultaneously. Must be paired with Unlock.
-func (rw *MultiReadSyncValue[T]) Lock() T {
+// RDo runs fn with read access to the stored value under a shared read lock;
+// multiple readers proceed concurrently.
+func (rw *MultiReadSyncValue[T]) RDo(fn func(T)) {
 	rw.mu.RLock()
-	return rw.value
+	defer rw.mu.RUnlock()
+	fn(rw.value)
 }
 
 // Get returns the stored value in a thread-safe manner by acquiring and

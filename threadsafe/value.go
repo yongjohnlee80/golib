@@ -14,17 +14,17 @@ package threadsafe
 //	x := NewSynchronizedValue(map[string]bool{})
 //	foo := x.Get()["foo"] // WRONG! Indexing may lead to race condition, if another goroutine modifies the map concurrently.
 //
-//	m := x.Lock()
-//	foo := m["foo"] // OK
-//	x.Unlock()
+//	var foo bool
+//	x.RDo(func(m map[string]bool) { foo = m["foo"] })     // OK (read under the lock)
+//	x.Do(func(m *map[string]bool) { (*m)["bar"] = true }) // OK (mutation under the lock)
 //
-// See also: NewSynchronizedValue, NewMultiReadSyncValue
+// See also: NewSynchronizedValue, NewMultiReadSyncValue, NewAtomicValue
 type Value[T any] interface {
 	// Get retrieves the current value for read-only purposes.
 	// Do not attempt to modify the returned value with Set or Update methods.
 	// If side effects are expected, use Update instead.
 	// If indexing is required on the returned value such as map or slice, use
-	// manual Lock/Unlock to avoid race conditions.
+	// RDo (reads) or Do (mutation) so the access happens under the lock.
 	Get() T
 
 	// Set updates the value safely in a concurrent environment.
@@ -36,14 +36,18 @@ type Value[T any] interface {
 	// ensuring thread-safe read-modify-write access.
 	Update(func(T) T)
 
-	// Lock acquires a lock and returns the current value. The lock semantics
-	// depend on the implementation:
-	//   - SynchronizedValue: exclusive lock (blocks all other operations)
-	//   - MultiReadSyncValue: read lock (blocks writes, allows concurrent reads)
+	// Do runs fn with mutable access to the stored value under the
+	// implementation's exclusive lock. Mutations through the pointer are
+	// visible to subsequent readers. fn must not call back into this Value
+	// (self-deadlock) and must not retain the pointer after returning.
 	//
-	// Must be paired with Unlock when finished.
-	Lock() T
+	// AtomicValue implements Do with a compare-and-swap retry loop, so there
+	// fn may run more than once and must be free of side effects.
+	Do(fn func(*T))
 
-	// Unlock releases the lock previously acquired by Lock.
-	Unlock()
+	// RDo runs fn with read access to the stored value under the
+	// implementation's read (or exclusive) lock. fn must not mutate state
+	// reachable from the value, must not call back into this Value, and must
+	// not retain references after returning.
+	RDo(fn func(T))
 }

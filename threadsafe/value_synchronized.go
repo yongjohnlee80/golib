@@ -19,17 +19,19 @@ type SynchronizedValue[T any] struct {
 	mu    sync.Mutex
 }
 
-// Unlock releases the mutex lock held by the SynchronizedValue, allowing other
-// goroutines to acquire it.
-func (m *SynchronizedValue[T]) Unlock() {
-	m.mu.Unlock()
+// Do runs fn with mutable access to the stored value under the exclusive lock.
+func (m *SynchronizedValue[T]) Do(fn func(*T)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	fn(&m.value)
 }
 
-// Lock acquires an exclusive lock and returns the current value.
-// Must be paired with Unlock when finished.
-func (m *SynchronizedValue[T]) Lock() T {
+// RDo runs fn with read access to the stored value under the exclusive lock
+// (SynchronizedValue has no shared read mode).
+func (m *SynchronizedValue[T]) RDo(fn func(T)) {
 	m.mu.Lock()
-	return m.value
+	defer m.mu.Unlock()
+	fn(m.value)
 }
 
 // Get retrieves the value in a thread-safe manner by acquiring and releasing

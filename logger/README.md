@@ -30,6 +30,11 @@ type Logger interface {
 ```go
 logger.Nop{}                 // discards everything — the dao default; alloc-free
 logger.NewLogger("ctx")      // SimpleLogger over the standard logger
+logger.New(                  // canonical constructor: functional options
+    logger.WithContext("api"),
+    logger.WithWriter(os.Stderr),        // injectable sink (testable, no globals)
+    logger.WithMinLevel(logger.SeverityInfo),
+)
 logger.NewMulti(a, b)        // fan-out to several loggers
 logger.NewContextual(l, ctx) // attach a fixed context to every record
 ```
@@ -59,6 +64,27 @@ logger.Critical(l, err, payload)
 ```
 
 ## Bridging an external logger
+
+## Structured fields & slog interop
+
+`Fields` carries structure that survives to structure-aware sinks; the
+error-level helpers wrap `err` + payload in an `Entry` that keeps the chain
+inspectable (`errors.Is`/`As`) instead of flattening to a string:
+
+```go
+logger.Info(l, logger.Fields{"msg": "request served", "status": 200, "dur_ms": 12})
+logger.Error(l, err, logger.Fields{"op": "save"}) // payload is Entry{Err: err, ...}
+```
+
+Both slog directions are built in (stdlib-only, still zero external deps):
+
+```go
+// An app already on slog backs golib logging with one call:
+l := logger.FromSlog(slog.Default()) // Fields -> attrs, Entry -> err attr
+
+// Or run an existing *slog.Logger over a golib Logger:
+sl := slog.New(logger.NewSlogHandler(l))
+```
 
 golib never imports monstercat. `Adapt` turns a function into a `Logger`, so a consumer that imports both packages bridges its logger in three lines — the cast is lossless because the severity string values are identical:
 

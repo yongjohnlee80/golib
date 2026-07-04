@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,6 +47,10 @@ type Params struct {
 	// Set to 0 to use MaxResponseBodySize. Set to -1 for unlimited.
 	MaxResponseSize int64
 }
+
+// ErrResponseTooLarge reports a response body exceeding the configured
+// MaxResponseSize / MaxResponseBodySize limit. Compare with errors.Is.
+var ErrResponseTooLarge = errors.New("request: response body exceeds maximum size")
 
 // defaultTransport is a shared transport that enables connection pooling
 // across requests.
@@ -154,7 +159,7 @@ func Do(ctx context.Context, params *Params, payload any, opts ...RequestOption)
 		return err
 	}
 	if limit > 0 && int64(len(data)) > limit {
-		return fmt.Errorf("response body exceeds maximum size of %d bytes", limit)
+		return fmt.Errorf("%w (limit %d bytes)", ErrResponseTooLarge, limit)
 	}
 	params.ResponseBody = string(data)
 	return nil

@@ -10,7 +10,7 @@ func TestMemoryLoader_Commit(t *testing.T) {
 
 	ml := NewMemoryLoader[int]("test")
 
-	if err := ml.Commit(1, 2, 3); err != nil {
+	if err := ml.Commit(t.Context(), 1, 2, 3); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
 
@@ -26,9 +26,9 @@ func TestMemoryLoader_Flush(t *testing.T) {
 	t.Parallel()
 
 	ml := NewMemoryLoader[string]("test")
-	_ = ml.Commit("a", "b", "c")
+	_ = ml.Commit(t.Context(), "a", "b", "c")
 
-	items, err := ml.Flush()
+	items, err := ml.Flush(t.Context())
 	if err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestMemoryLoader_Shift(t *testing.T) {
 	t.Parallel()
 
 	ml := NewMemoryLoader[int]("test")
-	_ = ml.Commit(1, 2, 3, 4, 5)
+	_ = ml.Commit(t.Context(), 1, 2, 3, 4, 5)
 
 	shifted := ml.Shift(3)
 	if len(shifted) != 3 {
@@ -66,7 +66,7 @@ func TestMemoryLoader_ShiftMoreThanLen(t *testing.T) {
 	t.Parallel()
 
 	ml := NewMemoryLoader[int]("test")
-	_ = ml.Commit(1, 2)
+	_ = ml.Commit(t.Context(), 1, 2)
 
 	shifted := ml.Shift(10)
 	if len(shifted) != 2 {
@@ -81,7 +81,7 @@ func TestMemoryLoader_ShiftZero(t *testing.T) {
 	t.Parallel()
 
 	ml := NewMemoryLoader[int]("test")
-	_ = ml.Commit(1, 2)
+	_ = ml.Commit(t.Context(), 1, 2)
 
 	shifted := ml.Shift(0)
 	if shifted != nil {
@@ -116,7 +116,7 @@ func TestMemoryLoader_ConcurrentCommit(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < itemsPerGoroutine; j++ {
-				_ = ml.Commit(j)
+				_ = ml.Commit(t.Context(), j)
 			}
 		}()
 	}

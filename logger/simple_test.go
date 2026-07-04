@@ -69,3 +69,20 @@ func TestSimpleLogger_BlockList(t *testing.T) {
 		t.Errorf("allowed severity was dropped: %q", out)
 	}
 }
+
+func TestNew_WithWriterIsInjectable(t *testing.T) {
+	t.Parallel() // no global state: the writer is injected
+	var buf bytes.Buffer
+	l := New(WithWriter(&buf), WithContext("api"), WithMinLevel(SeverityInfo))
+
+	Debug(l, "dropped")
+	Info(l, "kept")
+
+	out := buf.String()
+	if strings.Contains(out, "dropped") {
+		t.Error("MinLevel filter did not drop debug")
+	}
+	if !strings.Contains(out, "kept") || !strings.Contains(out, "{api}") {
+		t.Errorf("output = %q", out)
+	}
+}

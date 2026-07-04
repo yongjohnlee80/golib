@@ -1,5 +1,7 @@
 package collections
 
+import "iter"
+
 // Set is a generic unordered collection of unique elements backed by a map.
 type Set[T comparable] map[T]struct{}
 
@@ -133,4 +135,20 @@ func (s Set[T]) SupersetOf(other Set[T]) bool {
 // Equal reports whether s and other contain exactly the same elements.
 func (s Set[T]) Equal(other Set[T]) bool {
 	return len(s) == len(other) && s.SubsetOf(other)
+}
+
+// All returns an iterator over the set's elements in unspecified order, for
+// use with range-over-func:
+//
+//	for v := range s.All() { ... }
+//
+// Mutating the set during iteration follows Go map iteration semantics.
+func (s Set[T]) All() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for v := range s {
+			if !yield(v) {
+				return
+			}
+		}
+	}
 }

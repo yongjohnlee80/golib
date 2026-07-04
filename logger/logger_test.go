@@ -2,6 +2,7 @@ package logger
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -59,10 +60,11 @@ func TestErrorHelpers_WrapErr(t *testing.T) {
 	r := &recorder{}
 	Error(r, err, "ctx")
 
-	got, ok := r.records[0].payload.(string)
+	e, ok := r.records[0].payload.(Entry)
 	if !ok {
-		t.Fatalf("payload type = %T, want string", r.records[0].payload)
+		t.Fatalf("payload type = %T, want Entry", r.records[0].payload)
 	}
+	got := e.Error()
 	if !strings.Contains(got, "boom") || !strings.Contains(got, "ctx") {
 		t.Errorf("payload = %q, want it to contain both the error and the payload", got)
 	}
@@ -77,3 +79,39 @@ func TestErrorHelpers_NilErrPassesPayload(t *testing.T) {
 		t.Errorf("payload = %v, want %q", r.records[0].payload, "just-payload")
 	}
 }
+
+func TestMergeErr_PreservesChain(t *testing.T) {
+	t.Parallel()
+	sentinel := errors.New("sentinel")
+	rec := &capL{}
+	Error(rec, sentinel, "ctx")
+
+	e, ok := rec.last.(Entry)
+	if !ok {
+		t.Fatalf("payload %T, want Entry", rec.last)
+	}
+	if !errors.Is(e, sentinel) {
+		t.Error("errors.Is must reach the original error through the Entry")
+	}
+	if got := e.Error(); got != "sentinel: ctx" {
+		t.Errorf("Entry.Error() = %q", got)
+	}
+	// fmt renders via the error interface, matching the old flattened output.
+	if got := fmt.Sprintf("%+v", rec.last); got != "sentinel: ctx" {
+		t.Errorf("%%+v = %q", got)
+	}
+}
+
+func TestMergeErr_NilPayload(t *testing.T) {
+	t.Parallel()
+	sentinel := errors.New("alone")
+	rec := &capL{}
+	Warning(rec, sentinel, nil)
+	if got := fmt.Sprintf("%v", rec.last); got != "alone" {
+		t.Errorf("rendered = %q", got)
+	}
+}
+
+type capL struct{ last any }
+
+func (c *capL) Log(_ Severity, p any) { c.last = p }

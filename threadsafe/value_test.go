@@ -68,32 +68,65 @@ func TestValue_SetAndGet(t *testing.T) {
 	}
 }
 
-func TestValue_LockUnlock(t *testing.T) {
+func TestValue_DoAndRDo(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		v    Value[int]
+		v    Value[map[string]int]
 	}{
-		{"Synchronized", NewSynchronizedValue(42)},
-		{"MultiRead", NewMultiReadSyncValue(42)},
+		{"Synchronized", NewSynchronizedValue(map[string]int{"a": 1})},
+		{"MultiRead", NewMultiReadSyncValue(map[string]int{"a": 1})},
+		{"Atomic", NewAtomicValue(map[string]int{"a": 1})},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.v.Lock()
-			if got != 42 {
-				t.Errorf("Lock() = %d, want 42", got)
+			var got int
+			tt.v.RDo(func(m map[string]int) { got = m["a"] })
+			if got != 1 {
+				t.Errorf("RDo read = %d, want 1", got)
 			}
-			tt.v.Unlock()
+			tt.v.Do(func(m *map[string]int) { (*m)["b"] = 2 })
+			tt.v.RDo(func(m map[string]int) { got = m["b"] })
+			if got != 2 {
+				t.Errorf("mutation through Do not visible, got %d", got)
+			}
 		})
 	}
 }
 
+func TestAtomicValue_UpdateCAS(t *testing.T) {
+	t.Parallel()
+	a := NewAtomicValue(0)
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Go(func() { a.Update(func(v int) int { return v + 1 }) })
+	}
+	wg.Wait()
+	if got := a.Get(); got != 100 {
+		t.Errorf("Get() = %d, want 100 (lost CAS updates)", got)
+	}
+}
+
+func TestAtomicValue_DoCopies(t *testing.T) {
+	t.Parallel()
+	a := NewAtomicValue([]int{1})
+	before := a.Get()
+	a.Do(func(s *[]int) { *s = append(*s, 2) })
+	if len(before) != 1 {
+		t.Error("Do must mutate a copy, not the shared snapshot")
+	}
+	if got := a.Get(); len(got) != 2 || got[1] != 2 {
+		t.Errorf("Do result not installed: %v", got)
+	}
+}
+
 func TestValue_InterfaceSatisfaction(t *testing.T) {
-	// Compile-time checks that both types satisfy the Value interface.
+	// Compile-time checks that all implementations satisfy the Value interface.
 	var _ Value[int] = NewSynchronizedValue(0)
 	var _ Value[int] = NewMultiReadSyncValue(0)
+	var _ Value[int] = NewAtomicValue(0)
 }
 
 func TestConcurrentReadWrite(t *testing.T) {
