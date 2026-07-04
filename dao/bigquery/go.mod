@@ -5,7 +5,7 @@ go 1.25.3
 require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/bigquery v1.77.0
-	github.com/yongjohnlee80/golib v0.0.0
+	github.com/yongjohnlee80/golib v0.1.0
 	google.golang.org/api v0.280.0
 )
 
@@ -53,5 +53,3 @@ require (
 	google.golang.org/grpc v1.81.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace github.com/yongjohnlee80/golib => ../..
