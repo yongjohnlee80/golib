@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -35,6 +36,11 @@ type Server struct {
 	httpSrv *http.Server
 	ln      net.Listener
 	addr    string
+
+	// started flips when Listen binds. The router is not synchronized for
+	// concurrent mutation, so registration after the server starts serving is
+	// a programmer error and panics (matching the bad-route policy).
+	started atomic.Bool
 }
 
 // config is the resolved, internal configuration of a Server. It is populated by
@@ -224,6 +230,7 @@ func (s *Server) Listen(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	s.started.Store(true)
 	s.ln = ln
 	s.addr = ln.Addr().String()
 	s.httpSrv = &http.Server{
@@ -286,7 +293,11 @@ func (s *Server) Run(ctx context.Context) error {
 		sctx, cancel := context.WithTimeout(context.Background(), s.cfg.shutdownTimeout)
 		defer cancel()
 		s.log.Log(logger.SeverityInfo, map[string]any{"server": "http", "event": "shutting down"})
-		return s.Shutdown(sctx)
+		shutdownErr := s.Shutdown(sctx)
+		// Serve returns as soon as Shutdown is initiated, so this cannot
+		// block; joining keeps a serve-time error that raced the
+		// cancellation from being silently dropped.
+		return errors.Join(shutdownErr, <-errc)
 	}
 }
 
