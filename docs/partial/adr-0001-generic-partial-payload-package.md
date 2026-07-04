@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/partial`: Generic Partial-Payload Package (`Patch[T]`)
 
-- **Status:** Proposed (revision 2 — lector r1 amendments applied, see §7)
+- **Status:** **Accepted** (2026-07-04; revision 3 — lector r2 approved, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (new package; first ADR of the `partial` dossier)
@@ -753,3 +753,7 @@ contract byte-compatible ($clear array, null-means-absent).
     hold only canonical names — a known-but-non-clearable field still rides
     to the DAO as a canonical `RuleClear` where ADR-0010 resolves it (§2.3,
     §2.4, criteria 2 and 5).
+- **r2 (2026-07-04, lector): `approved`** — review doc:
+  `agents/lector/reviews/2026-07-04-golib-partial-adr-0001-rereview.md`. Both
+  r1 blockers confirmed closed; no must-fix or should-fix findings remain.
+  **Accepted 2026-07-04** (implement-immediately authorized by Johno).
