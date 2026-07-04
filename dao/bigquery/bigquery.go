@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"reflect"
 	"time"
@@ -155,10 +156,13 @@ func (r *bqRows) Next() bool {
 }
 
 func (r *bqRows) Scan(dest ...any) error {
+	// A count mismatch is a schema/projection bug: silently zeroing missing
+	// targets or dropping extra columns would corrupt reads (must-fix from the
+	// 2026-06-23 review).
+	if len(dest) != len(r.current) {
+		return fmt.Errorf("bigquery: scan: %d destinations for %d columns", len(dest), len(r.current))
+	}
 	for i, d := range dest {
-		if i >= len(r.current) {
-			continue // fewer values than targets: leave the remainder zero
-		}
 		if err := assign(d, r.current[i]); err != nil {
 			return fmt.Errorf("bigquery: scan column %d: %w", i, err)
 		}
@@ -227,21 +231,115 @@ func assign(dest any, val bigquery.Value) error {
 		return nil
 	}
 
-	// Numeric conversion (e.g. INT64 → int/uint, FLOAT64 → float32).
-	if isNumeric(sv.Kind()) && isNumeric(tt.Kind()) && sv.Type().ConvertibleTo(tt) {
-		target.Set(sv.Convert(tt))
-		return nil
+	// Numeric conversion (e.g. INT64 → int/uint, FLOAT64 → float32). Checked:
+	// a value the target cannot represent exactly is an error, never a silent
+	// wraparound or truncation (must-fix from the 2026-06-23 review).
+	if isNumeric(sv.Kind()) && isNumeric(tt.Kind()) {
+		return assignNumeric(target, sv, val)
 	}
 
 	return fmt.Errorf("cannot assign bigquery value of type %T to %s", val, tt)
 }
 
-func isNumeric(k reflect.Kind) bool {
+// assignNumeric converts a numeric source value into a numeric target with
+// range and exactness checks. BigQuery yields int64 (INT64) and float64
+// (FLOAT64); the checks are written over the kind classes so any numeric pair
+// is safe:
+//
+//   - integer → integer: range-checked (negative → unsigned and overflow fail)
+//   - float → float: overflow-checked (e.g. 1e300 → float32 fails)
+//   - float → integer: must be an exact integral value in range (7.0 ok, 7.5 not)
+//   - integer → float: allowed (IEEE-754 may round above 2^53, as everywhere in Go)
+func assignNumeric(target reflect.Value, sv reflect.Value, val bigquery.Value) error {
+	tt := target.Type()
+	fail := func() error {
+		return fmt.Errorf("bigquery value %v (%T) does not fit destination %s", val, val, tt)
+	}
+	switch {
+	case isInt(sv.Kind()):
+		v := sv.Int()
+		switch {
+		case isInt(tt.Kind()):
+			if target.OverflowInt(v) {
+				return fail()
+			}
+			target.SetInt(v)
+		case isUint(tt.Kind()):
+			if v < 0 || target.OverflowUint(uint64(v)) {
+				return fail()
+			}
+			target.SetUint(uint64(v))
+		default: // float target
+			target.SetFloat(float64(v))
+		}
+	case isFloat(sv.Kind()):
+		v := sv.Float()
+		switch {
+		case isFloat(tt.Kind()):
+			if target.OverflowFloat(v) {
+				return fail()
+			}
+			target.SetFloat(v)
+		case isInt(tt.Kind()):
+			if math.IsNaN(v) || math.IsInf(v, 0) || v != math.Trunc(v) {
+				return fail()
+			}
+			i := int64(v)
+			if float64(i) != v || target.OverflowInt(i) {
+				return fail()
+			}
+			target.SetInt(i)
+		default: // uint target
+			if math.IsNaN(v) || math.IsInf(v, 0) || v != math.Trunc(v) || v < 0 {
+				return fail()
+			}
+			u := uint64(v)
+			if float64(u) != v || target.OverflowUint(u) {
+				return fail()
+			}
+			target.SetUint(u)
+		}
+	case isUint(sv.Kind()):
+		// Defensive: BigQuery never yields unsigned values, but stay total.
+		v := sv.Uint()
+		switch {
+		case isUint(tt.Kind()):
+			if target.OverflowUint(v) {
+				return fail()
+			}
+			target.SetUint(v)
+		case isInt(tt.Kind()):
+			if v > math.MaxInt64 || target.OverflowInt(int64(v)) {
+				return fail()
+			}
+			target.SetInt(int64(v))
+		default:
+			target.SetFloat(float64(v))
+		}
+	}
+	return nil
+}
+
+func isInt(k reflect.Kind) bool {
 	switch k {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return true
 	}
 	return false
+}
+
+func isUint(k reflect.Kind) bool {
+	switch k {
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return true
+	}
+	return false
+}
+
+func isFloat(k reflect.Kind) bool {
+	return k == reflect.Float32 || k == reflect.Float64
+}
+
+func isNumeric(k reflect.Kind) bool {
+	return isInt(k) || isUint(k) || isFloat(k)
 }

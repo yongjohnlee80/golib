@@ -3,7 +3,10 @@ package bigquery
 import (
 	"context"
 	"errors"
+	"math"
 	"math/big"
+
+	gcpbq "cloud.google.com/go/bigquery"
 	"testing"
 	"time"
 
@@ -141,6 +144,123 @@ func TestAssign_TypeConversions(t *testing.T) {
 		var n int
 		if err := assign(n, int64(1)); err == nil {
 			t.Fatal("want error for non-pointer destination")
+		}
+	})
+}
+
+// TestAssign_CheckedNumericConversions covers the 2026-06-23 review must-fix:
+// a numeric value the destination cannot represent exactly must error, never
+// silently wrap, truncate, or change sign.
+func TestAssign_CheckedNumericConversions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("negative int64 -> uint64 errors", func(t *testing.T) {
+		var n uint64
+		if err := assign(&n, int64(-1)); err == nil {
+			t.Fatalf("want error, got n=%d", n)
+		}
+	})
+	t.Run("int64 overflow -> int8 errors", func(t *testing.T) {
+		var n int8
+		if err := assign(&n, int64(300)); err == nil {
+			t.Fatalf("want error, got n=%d", n)
+		}
+	})
+	t.Run("int64 max -> int32 errors", func(t *testing.T) {
+		var n int32
+		if err := assign(&n, int64(math.MaxInt64)); err == nil {
+			t.Fatalf("want error, got n=%d", n)
+		}
+	})
+	t.Run("float64 fraction -> int errors", func(t *testing.T) {
+		var n int
+		if err := assign(&n, 7.5); err == nil {
+			t.Fatalf("want error, got n=%d", n)
+		}
+	})
+	t.Run("float64 integral -> int ok", func(t *testing.T) {
+		var n int
+		if err := assign(&n, 7.0); err != nil || n != 7 {
+			t.Fatalf("n=%d err=%v", n, err)
+		}
+	})
+	t.Run("float64 NaN -> int errors", func(t *testing.T) {
+		var n int
+		if err := assign(&n, math.NaN()); err == nil {
+			t.Fatal("want error for NaN")
+		}
+	})
+	t.Run("float64 +Inf -> int errors", func(t *testing.T) {
+		var n int
+		if err := assign(&n, math.Inf(1)); err == nil {
+			t.Fatal("want error for +Inf")
+		}
+	})
+	t.Run("float64 overflow -> float32 errors", func(t *testing.T) {
+		var f float32
+		if err := assign(&f, math.MaxFloat64); err == nil {
+			t.Fatalf("want error, got f=%v", f)
+		}
+	})
+	t.Run("float64 negative -> uint errors", func(t *testing.T) {
+		var n uint
+		if err := assign(&n, -2.0); err == nil {
+			t.Fatalf("want error, got n=%d", n)
+		}
+	})
+	t.Run("float64 huge -> int64 errors", func(t *testing.T) {
+		var n int64
+		// 2^63 is representable as float64 but overflows int64.
+		if err := assign(&n, math.Ldexp(1, 63)); err == nil {
+			t.Fatalf("want error, got n=%d", n)
+		}
+	})
+	t.Run("int64 -> float64 ok", func(t *testing.T) {
+		var f float64
+		if err := assign(&f, int64(42)); err != nil || f != 42 {
+			t.Fatalf("f=%v err=%v", f, err)
+		}
+	})
+	t.Run("float64 integral -> uint ok", func(t *testing.T) {
+		var n uint
+		if err := assign(&n, 9.0); err != nil || n != 9 {
+			t.Fatalf("n=%d err=%v", n, err)
+		}
+	})
+}
+
+// TestScan_CountMismatch covers the 2026-06-23 review must-fix: destination /
+// column count mismatches must error instead of silently zero-filling or
+// dropping columns.
+func TestScan_CountMismatch(t *testing.T) {
+	t.Parallel()
+
+	rows := &bqRows{current: []gcpbq.Value{int64(1), "a", true}}
+
+	t.Run("too few destinations", func(t *testing.T) {
+		var n int64
+		var s string
+		if err := rows.Scan(&n, &s); err == nil {
+			t.Fatal("want error for 2 destinations over 3 columns")
+		}
+	})
+	t.Run("too many destinations", func(t *testing.T) {
+		var n int64
+		var s string
+		var b, extra bool
+		if err := rows.Scan(&n, &s, &b, &extra); err == nil {
+			t.Fatal("want error for 4 destinations over 3 columns")
+		}
+	})
+	t.Run("exact count scans", func(t *testing.T) {
+		var n int64
+		var s string
+		var b bool
+		if err := rows.Scan(&n, &s, &b); err != nil {
+			t.Fatal(err)
+		}
+		if n != 1 || s != "a" || !b {
+			t.Fatalf("scanned %d %q %v", n, s, b)
 		}
 	})
 }
