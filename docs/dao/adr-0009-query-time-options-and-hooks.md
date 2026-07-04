@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/dao`: Query-Time Options & the Hook/Middleware Seam
 
-- **Status:** Proposed (revision 2 — lector review r1 amendments applied, see §7)
+- **Status:** **Accepted** (2026-07-04; revision 3 — lector r2 approved_with_amendments, nits applied, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (additive to ADR-0002/0003/0006)
@@ -308,10 +308,12 @@ can silence one call.
     statement (the dialect drives the driver's bulk API), `QueryInfo.SQL` is a
     synthetic descriptor, and a hook that mutates `SQL`/`Args` on an
     `OpBatchCopy` event FAILS the flush with a descriptive error — never a
-    silent ignore. A hook that needs the rewrite contract on bulk loads can
-    return an error from `BeforeExec(OpBatchCopy)` to veto COPY, or the caller
-    can avoid the fast path (batch falls back to chunked INSERTs when COPY is
-    unavailable or vetoed).
+    silent ignore. There is no non-error "veto" signal: a hook error during
+    `BeforeExec(OpBatchCopy)` fails the flush per the §2.4 abort rule, exactly
+    like any other phase error. A caller that needs the rewrite contract on
+    bulk loads must avoid the COPY fast path (e.g. the batch API's existing
+    controls / not qualifying for COPY), getting rewriteable chunked-INSERT
+    `OpBatch` statements instead.
 - **Exists/Count** are reads; `Stager.Where` applies; `Stager.SetColumn` is a
   documented no-op for reads. On INSERT/UPSERT the inverse holds: `SetColumn`
   applies and `Where` fails loudly (§2.1) — scoped writes stay the point
@@ -463,7 +465,7 @@ compiles and behaves identically.
 | `dao/schema.go` | `DAO`/`On`/`OnCtx` variadic `QueryOption` tail; effective-hook assembly |
 | `dao/query_dao.go` | `runQuery`/`runExec` funnels; verbs refactored onto them; `logHook` replaces the inline debug branch; `stager` impl over `queryState`/`writeState` |
 | `dao/batch.go` | per-chunk `OpBatch` events |
-| `dao/hooks_test.go` | new — acceptance criteria 1–8 against the fake `DataConn` |
+| `dao/hooks_test.go` | new — acceptance criteria 1–9 against the fake `DataConn` |
 ---
 
 ## 7. Review history
@@ -488,3 +490,10 @@ compiles and behaves identically.
   - **notes**: duplicate hook names panic at `dao.New`; `SkipHooks` skips all
     bearers of a name; identifier trust wording strengthened on
     `Stager.SetColumn`/`Where` (§2.1, §2.2).
+- **r2 (2026-07-04, lector): `approved_with_amendments`** — review doc:
+  `agents/lector/reviews/2026-07-04-golib-dao-adr-0009-rereview.md`. R1
+  blockers confirmed closed. Non-blocking nits applied in revision 3: §2.6
+  COPY wording tightened (no non-error veto signal exists — a hook error
+  fails the flush per §2.4; callers wanting rewriteable bulk statements use
+  chunked INSERT), file-plan criteria count corrected to 1–9. **Accepted
+  2026-07-04** (review + implement-immediately authorized by Johno).
