@@ -1,6 +1,6 @@
 # ADR-0007 — `golib/server/ws`: WebSocket Transport on the HTTP Core
 
-- **Status:** Proposed
+- **Status:** Proposed (revision 2 — lector r1 amendment applied, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Depends on:** golib-server-0006 (session registry — REQUIRED for honest
@@ -91,11 +91,17 @@ func (s *Session) Request() *http.Request // the upgrade request (auth material,
 
 type MessageType int // Text, Binary (control frames are handled internally)
 
-// Handler upgrades the request and runs fn with the established session on
-// the handler goroutine; when fn returns the session closes with a normal
-// close frame (if fn didn't already close it). The session is registered in
-// the server's Registry for drain-aware shutdown: on Shutdown it receives a
-// StatusGoingAway close via Drain, and fn's ctx is cancelled.
+// Handler gates, upgrades, and runs fn with the established session on the
+// handler goroutine; when fn returns the session closes with a normal close
+// frame (if fn didn't already close it).
+//
+// Drain gate (ADR-0006 §2.2): Handler calls reg.Reserve() BEFORE the
+// handshake. During shutdown Reserve reports ok=false and Handler responds
+// HTTP 503 — a plain HTTP response, still possible because no 101 has been
+// sent. On ok the handshake proceeds and the reservation is Completed with
+// the established session (or Cancelled on handshake failure), so shutdown
+// that races an in-flight upgrade waits for it and then drains it politely
+// with StatusGoingAway — never accept-then-instant-close.
 func Handler(reg *server.Registry, fn func(ctx context.Context, s *Session), opts ...Option) http.Handler
 
 type Option func(*config)
@@ -135,11 +141,12 @@ srv.Handle("GET /ws/updates", ws.Handler(srv.Sessions(), func(ctx context.Contex
   coder/websocket's `Accept` against the (hook-forwarding) response writer.
   Upgrade failure (bad Origin, missing headers) writes the appropriate 4xx —
   it is an ordinary HTTP response, visible to `RequestLogger` like any other.
-- **Registry integration.** The established session registers before fn runs
-  and unregisters when fn returns. Its `Drain(ctx)` sends
-  `StatusGoingAway`, then waits for fn to return (fn observes ctx
-  cancellation and the read error), bounded by the drain ctx; expiry
-  force-closes (ADR-0006 registry contract).
+- **Registry integration.** `Reserve` before the handshake (503 on refusal,
+  §2.1); `Complete` binds the established session before fn runs; unregister
+  when fn returns. The session's `Drain(ctx)` sends `StatusGoingAway`, then
+  waits for fn to return (fn observes ctx cancellation and the read error),
+  bounded by the drain ctx; expiry force-closes (ADR-0006 registry
+  contract).
 - **Keepalive.** A ticker pings; a missed pong past `timeout` fails the next
   Read with a timeout error — dead peers cannot hold shutdown hostage or leak
   goroutines.
@@ -212,8 +219,11 @@ the stdlib).
 5. Keepalive detects a non-responsive peer within `interval+timeout`; the
    session unregisters; no goroutine leak (before/after goroutine-count
    check across the suite).
-6. `Readyz` (ADR-0006) flips to 503 before sessions drain, and new upgrade
-   attempts during drain are refused with 503.
+6. The user-observable drain boundary: once shutdown/drain has started, a
+   fresh WebSocket client attempting to connect receives an HTTP 503 — never
+   a successful upgrade followed by an immediate close (verified with a
+   client dialing concurrently with `srv.Shutdown`; the race is closed by
+   `Reserve`, ADR-0006 §2.2). `Readyz` flips to 503 before sessions drain.
 7. The `ws` package is the only golib package importing the websocket
    dependency (`go list -deps` check in CI-style test); `server` and
    `server/http` remain dependency-free.
@@ -227,3 +237,14 @@ the stdlib).
 | `server/ws/ws_test.go` | new — criteria 1–7 |
 | `server/ws/README.md` | new — usage, options, shutdown semantics |
 | `go.mod` | + `github.com/coder/websocket` (leaf-only) |
+---
+
+## 7. Review history
+
+- **r1 (2026-07-04, lector, combined 0006/0007 review):** `change_requested` —
+  must-fix: criterion 6's 503-during-drain promise had no pre-handshake API
+  (post-`Accept` there is no HTTP response left to send). Revision 2 adopts
+  ADR-0006 r2's atomic `Reserve`/`Complete`/`Cancel` registry API: Handler
+  reserves before the handshake, 503s on refusal, and completed reservations
+  are awaited + drained politely. Dependency isolation, secure defaults, and
+  `InsecureAllowOrigins` naming judged sound.
