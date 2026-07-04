@@ -144,3 +144,21 @@ func TestServer_Mount(t *testing.T) {
 		t.Errorf("mounted handler saw path %q, want /status (prefix stripped)", got["path"])
 	}
 }
+
+func TestServer_RegisterAfterStartPanics(t *testing.T) {
+	t.Parallel()
+	s := New(Addr("127.0.0.1:0"))
+	s.Get("/before", func(w http.ResponseWriter, r *http.Request) {})
+
+	if err := s.Listen(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Shutdown(context.Background())
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic registering a route after the server started")
+		}
+	}()
+	s.Get("/after", func(w http.ResponseWriter, r *http.Request) {})
+}
