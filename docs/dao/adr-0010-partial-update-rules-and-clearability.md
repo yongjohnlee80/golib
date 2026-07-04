@@ -1,6 +1,6 @@
 # ADR-0010 — `golib/dao`: Partial-Update Rules & Per-Column Clearability
 
-- **Status:** Proposed
+- **Status:** Proposed (revision 2 — lector r1 amendments applied, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (additive to ADR-0002/0003/0006)
@@ -226,25 +226,31 @@ never boot.
 | `Clearable: true` (ClearValue nil) | stage SQL `NULL` |
 | `Clearable: true, ClearValue: S` | stage `S` (NOT-NULL sentinel) |
 | not clearable (default) | **downgrade to Skip** — the column is left alone |
-| not clearable + `StrictClears()` | `ErrNotClearable` staged; the verb returns it, nothing executes |
+| not clearable + `StrictClears()` | an **error rule** for the field; the verb returns `ErrNotClearable` and executes nothing — **iff it is still the field's final rule** (§2.3) |
 
 The downgrade default is LM's proven wire semantics (`ResolveClears`,
 §1.1): a PATCH listing a field the entity doesn't clear produces no write and
 no error. Request-shape validation ("is clearing this field even a thing?")
 belongs at bind time in `golib/partial`, not in the engine. The strict mode
-is a **schema build option** for teams that prefer loud failure:
+is a **schema build option** for teams that prefer loud failure — its error
+travels *with the field's rule*, not through the DAO's sticky first-error
+path, so a later rule for the same field replaces it (§2.3):
 
 ```go
 // StrictClears makes a rules-driven Clear on a non-Clearable field an error
-// (ErrNotClearable) instead of a silent skip. Schema-wide, build-time.
+// (ErrNotClearable) instead of a silent skip. Schema-wide, build-time. The
+// error is carried on the field's resolved rule and surfaces at the write
+// verb only when it is the field's final rule — a later Write/Skip/valid
+// Clear for the same field replaces it (last-rule-wins, §2.3).
 func StrictClears[R any, C ~string, K ~string, ID any]() Option[R, C, K, ID]
 ```
 
 with the matching sentinel in `dao/errors.go`:
 
 ```go
-// ErrNotClearable is returned (staged) when a rules-driven Clear targets a
-// field not declared Clearable and the schema was built with StrictClears.
+// ErrNotClearable is returned by a write verb when, under StrictClears, a
+// field's FINAL rule is a Clear targeting a non-Clearable field. Wrapped
+// with the field name; test with errors.Is.
 ErrNotClearable = errors.New("dao: field is not clearable")
 ```
 
@@ -252,7 +258,7 @@ ErrNotClearable = errors.New("dao: field is not clearable")
 
 `SetRules` resolves each entry **immediately** (the schema is at hand):
 field → `writeCol`, `Clear()` → the declared clear value / downgrade /
-strict error. What it stores in `writeState` is a small resolved map,
+strict-error rule. What it stores in `writeState` is a small resolved map,
 separate from the `Set` staging:
 
 ```go
@@ -264,14 +270,25 @@ type writeState struct {
 type resolvedRule struct {
 	kind  ruleKind // ruleWrite | ruleSkip | ruleClear (clear: value resolved)
 	value any
+	err   error // StrictClears violation; non-nil only with kind ruleSkip
 }
 ```
 
+A strict-clear violation is **not** routed through the DAO's sticky
+first-error path (`queryDAO.fail`, first-error-wins): that would make the
+outcome depend on *when* the offending rule was staged, contradicting this
+section's guarantees. Instead it is stored as that field's resolved rule
+(`resolvedRule{kind: ruleSkip, err: fmt.Errorf("%w: %v", ErrNotClearable,
+field)}`); like any other rule it is **replaced** by a later `SetRules`
+entry for the same field, and only a violation that survives as the field's
+final rule errors the write.
+
 `stagedSet()` applies the layers in fixed precedence — schema defaults, then
-per-call `Set`/`SetMap`/`Clear`, then rules:
+per-call `Set`/`SetMap`/`Clear`, then rules — and reports the first
+surviving strict violation (by column order, deterministically):
 
 ```go
-func (d *queryDAO[R, C, K, ID]) stagedSet() orderedSet {
+func (d *queryDAO[R, C, K, ID]) stagedSet() (orderedSet, error) {
 	var set orderedSet
 	for c, v := range d.schema.defaultVals {
 		set.put(c, v)
@@ -279,7 +296,11 @@ func (d *queryDAO[R, C, K, ID]) stagedSet() orderedSet {
 	for c, v := range d.w.set.m {
 		set.put(c, v)
 	}
-	for col, r := range d.w.rules {
+	for _, col := range sortedRuleCols(d.w.rules) {
+		r := d.w.rules[col]
+		if r.err != nil {
+			return orderedSet{}, r.err // final rule is a strict-clear violation
+		}
 		switch r.kind {
 		case ruleWrite, ruleClear: // clear carries its resolved value
 			set.put(col, r.value)
@@ -287,16 +308,22 @@ func (d *queryDAO[R, C, K, ID]) stagedSet() orderedSet {
 			set.del(col) // authoritative: removes staged/default values
 		}
 	}
-	return set
+	return set, nil
 }
 ```
+
+The write verbs (`Insert`/`Update`/`Upsert`) consume the error before their
+existing empty-set guards; nothing executes when it is non-nil.
 
 Because rules live apart from staged values and are applied last, resolution
 is order-independent by construction: `Set(f, v).SetRules(m)` and
 `SetRules(m).Set(f, v)` produce identical SQL when `m` carries a rule for
-`f` (the rule wins). This keeps LM's override-wins guarantee
-(`SetOverrides`/`Set` reconciliation, `pkg/postgres/updater.go:96-136`)
-without its re-run machinery. `orderedSet` gains the trivial `del`.
+`f` (the rule wins) — and under `StrictClears`,
+`SetRules({f: Clear()}).SetRules({f: Skip()})` is exactly `Skip` (no error),
+while `SetRules({f: Clear()})` alone errors. This keeps LM's override-wins
+guarantee (`SetOverrides`/`Set` reconciliation,
+`pkg/postgres/updater.go:96-136`) without its re-run machinery. `orderedSet`
+gains the trivial `del`.
 
 Two existing behaviors compose, unchanged:
 
@@ -490,8 +517,13 @@ criterion 8).
 3. **Downgrade semantics.** `Clear()` on a non-clearable field drops the
    column; an update whose staged set becomes empty returns `nil` and
    executes nothing (fake records no call).
-4. **Strict mode.** The same scenario on a `StrictClears()` schema returns
-   `ErrNotClearable` (`errors.Is`) and executes nothing.
+4. **Strict mode, last-rule-wins.** On a `StrictClears()` schema: a final
+   `Clear()` on a non-clearable field returns `ErrNotClearable`
+   (`errors.Is`, message names the field) and executes nothing; the
+   replacement cases hold — `SetRules({f: Clear()}).SetRules({f: Skip()}).
+   Update()` executes nothing and returns `nil`, and
+   `SetRules({f: Clear()}).SetRules({f: Write(v)}).Update()` writes `v` —
+   proving the violation is not sticky.
 5. **Trust split on keys.** `SetRules` with unknown and `ReadOnly` keys
    skips them without error while honoring valid entries in the same map;
    `Set`/`SetMap` still stage `ErrUnknownField`/`ErrReadOnlyField`.
@@ -510,12 +542,29 @@ criterion 8).
 
 | File | Change |
 |---|---|
-| `dao/rules.go` | new — `Rule`, `ruleKind`, `Write`, `Skip`, `Clear`, `resolvedRule` |
+| `dao/rules.go` | new — `Rule`, `ruleKind`, `Write`, `Skip`, `Clear`, `resolvedRule` (with strict-violation `err` carrier) |
 | `dao/dao.go` | `SetRules(map[C]Rule)` on the `DAO` interface |
 | `dao/field.go` | `Field.Clearable`, `Field.ClearValue` |
 | `dao/options.go` | `StrictClears()` build-time option |
 | `dao/errors.go` | `ErrNotClearable` |
 | `dao/schema.go` | build-time validation: `ClearValue` requires `Clearable` |
-| `dao/query_dao.go` | `SetRules` impl (immediate resolution); `writeState.rules`; `stagedSet()` rules step; `Clear()` honors `ClearValue` |
+| `dao/query_dao.go` | `SetRules` impl (immediate resolution); `writeState.rules`; `stagedSet() (orderedSet, error)` rules step + strict-violation surfacing, write verbs consume the error; `Clear()` honors `ClearValue` |
 | `dao/scanner.go` | `orderedSet.del` |
 | `dao/rules_test.go` | new — acceptance criteria 1–8 against the fake `DataConn` |
+
+---
+
+## 7. Review history
+
+- **r1 (2026-07-04, lector): `change_requested`** — review doc:
+  `agents/lector/reviews/2026-07-04-golib-dao-adr-0010-review.md`.
+  Amendments applied in revision 2:
+  - **must-fix #1**: strict-clear errors no longer stage through the DAO's
+    sticky first-error path (which would have made
+    `SetRules({f: Clear()}).SetRules({f: Skip()})` order-dependent,
+    contradicting the last-rule-wins guarantee). The violation now travels
+    on the field's `resolvedRule` (`err` carrier), is replaced by any later
+    rule for the same field, and surfaces via
+    `stagedSet() (orderedSet, error)` only when it survives as the field's
+    final rule; write verbs consume the error before their empty-set guards
+    (§2.2 table, §2.3, criterion 4 replacement cases, file plan).
