@@ -12,7 +12,7 @@ type CustomError struct {
 	Status  int    `json:"status,omitempty"`
 }
 
-func (e *CustomError) Error() string { return e.Message }
+func (e *CustomError) Error() string   { return e.Message }
 func (e *CustomError) SetStatus(s int) { e.Status = s }
 
 func makeParams(statusCode int, body string) *Params {
@@ -192,5 +192,29 @@ func TestDecodeResponse_Boundary400(t *testing.T) {
 	err := DecodeResponse[Error](p, &resp)
 	if err == nil {
 		t.Fatal("400 should be treated as error")
+	}
+}
+func TestDecodeResponse_EmptySuccessBody(t *testing.T) {
+	// 204 / empty 2xx bodies must not be treated as JSON decode errors.
+	p := &Params{
+		Response:     &http.Response{StatusCode: 204},
+		ResponseBody: "",
+	}
+	var out map[string]string
+	if err := DecodeResponse[Error](p, &out); err != nil {
+		t.Fatalf("expected nil error for empty success body, got %v", err)
+	}
+	if out != nil {
+		t.Fatalf("response target must be left untouched, got %v", out)
+	}
+}
+
+func TestDecodeResponse_NilTarget(t *testing.T) {
+	p := &Params{
+		Response:     &http.Response{StatusCode: 200},
+		ResponseBody: `{"a":"b"}`,
+	}
+	if err := DecodeResponse[Error](p, nil); err != nil {
+		t.Fatalf("expected nil error for nil response target, got %v", err)
 	}
 }

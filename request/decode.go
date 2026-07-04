@@ -29,5 +29,10 @@ func DecodeResponse[T any, PT interface {
 		errResp.SetStatus(p.Response.StatusCode)
 		return errResp
 	}
+	// A success response with no body (204 No Content, empty 200) is not a
+	// decode error; the response target is simply left untouched.
+	if len(p.ResponseBody) == 0 || response == nil {
+		return nil
+	}
 	return json.Unmarshal([]byte(p.ResponseBody), response)
 }

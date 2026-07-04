@@ -3,6 +3,8 @@ package request
 import (
 	"bytes"
 	"io"
+	"maps"
+	"sync"
 	"time"
 )
 
@@ -37,9 +39,11 @@ type HistoryResponse struct {
 
 // Histories stores a limited history of HTTP requests as HistoryEntry objects.
 // It maintains a maximum number of entries specified by limit, automatically
-// removing the oldest entries when full.
+// removing the oldest entries when full. Histories is safe for concurrent use.
 type Histories struct {
-	limit   uint64
+	limit uint64
+
+	mu      sync.Mutex
 	entries []*HistoryEntry
 }
 
@@ -96,9 +100,7 @@ func copyHeaders(src map[string]string) map[string]string {
 		return nil
 	}
 	dst := make(map[string]string, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
+	maps.Copy(dst, src)
 	return dst
 }
 
@@ -121,6 +123,8 @@ func (h *Histories) Add(p *Params) {
 			body:   []byte(p.ResponseBody),
 		},
 	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.entries = append(h.entries, entry)
 	if len(h.entries) > int(h.limit) {
 		h.entries = h.entries[1:]
@@ -128,12 +132,15 @@ func (h *Histories) Add(p *Params) {
 }
 
 // GetHistory retrieves the HistoryEntry at the specified reverse position
-// prevPos from the history entries. Returns nil if prevPos is out of range.
+// prevPos from the history entries (clamped to the valid range). Returns nil
+// when the history is empty.
 func (h *Histories) GetHistory(prevPos int) *HistoryEntry {
-	pos := len(h.entries) - prevPos
-	if pos < 0 {
-		pos = 0
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.entries) == 0 {
+		return nil
 	}
+	pos := max(len(h.entries)-prevPos, 0)
 	if pos >= len(h.entries) {
 		pos = len(h.entries) - 1
 	}

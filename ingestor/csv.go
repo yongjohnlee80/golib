@@ -3,11 +3,7 @@ package ingestor
 import (
 	"encoding/csv"
 	"fmt"
-	"os"
 	"reflect"
-	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -18,87 +14,52 @@ const (
 
 // CSV provides functionalities for loading, buffering, and exporting
 // data to CSV files. It embeds MemoryLoader to manage in-memory buffering.
+// Commit and Flush are safe for concurrent use.
 type CSV[T any] struct {
 	*MemoryLoader[T]
-
-	timestamp int64
-	fileCount atomic.Uint64
-	batchSize uint64
-
-	mu   sync.Mutex
-	errs []error
+	writer[T]
 }
 
 // NewCSV creates and returns a new CSV ingestor with the given description
 // and batch size. If batchSize is 0, it defaults to DefaultCSVBatchSize.
-func NewCSV[T any](description string, batchSize uint64) *CSV[T] {
+// Options control where batch files are written (WithDir, WithOpener).
+func NewCSV[T any](description string, batchSize uint64, opts ...Option) *CSV[T] {
 	if batchSize == 0 {
 		batchSize = DefaultCSVBatchSize
 	}
 
-	return &CSV[T]{
-		MemoryLoader: NewMemoryLoader[T](description),
-		timestamp:    time.Now().Unix(),
-		batchSize:    batchSize,
+	c := &CSV[T]{MemoryLoader: NewMemoryLoader[T](description)}
+	c.writer = writer[T]{
+		loader:    c.MemoryLoader,
+		cfg:       newConfig(opts),
+		timestamp: time.Now().Unix(),
+		batchSize: batchSize,
+		ext:       "csv",
+		write:     writeCSV[T],
 	}
+	return c
 }
 
-// Commit writes buffered data to a CSV file when the batch size threshold is
-// reached. Write errors from background batches are collected and returned
-// by Flush.
+// Commit buffers items and writes full batches to CSV files in the
+// background. Write errors from background batches are collected and
+// returned by Flush.
 func (ml *CSV[T]) Commit(items ...T) error {
-	_ = ml.MemoryLoader.Commit(items...)
-
-	limit := ml.batchSize
-	for ml.Len() >= limit {
-		rows := ml.Shift(limit)
-
-		ml.wg.Add(1)
-		go func() {
-			defer ml.wg.Done()
-			if err := ml.writeCSVFile(rows); err != nil {
-				ml.mu.Lock()
-				ml.errs = append(ml.errs, err)
-				ml.mu.Unlock()
-			}
-		}()
-	}
-	return nil
+	return ml.writer.commit(items...)
 }
 
 // Flush transfers all buffered data from memory to a CSV file, waits for
 // any background writes to complete, and returns the flushed data.
 // If any background writes failed, errors are returned as a *BatchErrors.
 func (ml *CSV[T]) Flush() ([]T, error) {
-	rows, err := ml.MemoryLoader.Flush()
-	if err != nil {
-		return nil, err
-	}
-
-	ml.wg.Wait()
-
-	if writeErr := ml.writeCSVFile(rows); writeErr != nil {
-		ml.mu.Lock()
-		ml.errs = append(ml.errs, writeErr)
-		ml.mu.Unlock()
-	}
-
-	ml.mu.Lock()
-	errs := ml.errs
-	ml.errs = nil
-	ml.mu.Unlock()
-
-	if len(errs) > 0 {
-		return rows, &BatchErrors{Errors: errs}
-	}
-	return rows, nil
+	return ml.writer.flush()
 }
 
-// CSVHeaderRow generates a CSV header row by extracting field names from the
-// provided struct or struct pointer sample.
+// CSVHeaderRow generates a CSV header row by extracting the exported field
+// names from the provided struct or struct pointer sample. Unexported fields
+// are skipped (their values cannot be read), matching the row encoding.
 func CSVHeaderRow[T any](sample T) ([]string, error) {
 	val := reflect.ValueOf(sample)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil, fmt.Errorf("CSV expects non-nil struct pointer, got nil")
 		}
@@ -110,26 +71,18 @@ func CSVHeaderRow[T any](sample T) ([]string, error) {
 	}
 
 	typ := val.Type()
-	header := make([]string, typ.NumField())
-	for i := 0; i < typ.NumField(); i++ {
-		header[i] = typ.Field(i).Name
+	header := make([]string, 0, typ.NumField())
+	for i := range typ.NumField() {
+		if f := typ.Field(i); f.IsExported() {
+			header = append(header, f.Name)
+		}
 	}
 	return header, nil
 }
 
-func (ml *CSV[T]) writeCSVFile(rows []T) error {
-	if len(rows) == 0 {
-		return nil
-	}
-
-	n := ml.fileCount.Add(1)
-	filename := fmt.Sprintf("./%s-%d (%d).csv",
-		strings.ReplaceAll(ml.Description(), "/", "-"),
-		ml.timestamp,
-		n,
-	)
-
-	file, err := os.Create(filename)
+// writeCSV encodes rows as CSV (header + one record per row) into w's target.
+func writeCSV[T any](wr *writer[T], name string, rows []T) error {
+	file, err := wr.cfg.open(name)
 	if err != nil {
 		return err
 	}
@@ -149,21 +102,19 @@ func (ml *CSV[T]) writeCSVFile(rows []T) error {
 
 	for _, row := range rows {
 		val := reflect.ValueOf(row)
-		if val.Kind() == reflect.Ptr {
+		if val.Kind() == reflect.Pointer {
 			if val.IsNil() {
 				continue
 			}
 			val = val.Elem()
 		}
 
-		var record []string
-		for i := 0; i < val.NumField(); i++ {
-			fieldVal := val.Field(i)
-			if !fieldVal.CanInterface() {
-				record = append(record, "")
+		record := make([]string, 0, val.NumField())
+		for i := range val.NumField() {
+			if !val.Type().Field(i).IsExported() {
 				continue
 			}
-			record = append(record, fmt.Sprintf("%v", fieldVal.Interface()))
+			record = append(record, fmt.Sprintf("%v", val.Field(i).Interface()))
 		}
 
 		if err = w.Write(record); err != nil {

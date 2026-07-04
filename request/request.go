@@ -2,12 +2,12 @@ package request
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -19,6 +19,9 @@ const (
 	// MaxResponseBodySize is the default maximum number of bytes read from a
 	// response body (10 MB). Override per-Params with Params.MaxResponseSize.
 	MaxResponseBodySize int64 = 10 << 20
+
+	// DefaultTimeout is the request timeout applied when Params.Timeout is zero.
+	DefaultTimeout = 10 * time.Second
 )
 
 // Params holds the configuration and state for an HTTP request/response cycle.
@@ -30,9 +33,14 @@ type Params struct {
 	Password     string
 	Request      *http.Request
 	Response     *http.Response
-	Timeout      time.Duration
-	Url          string
-	Username     string
+
+	// Timeout bounds the whole request/response cycle. It is a standard
+	// time.Duration: write Timeout: 30 * time.Second. Zero means
+	// DefaultTimeout; negative means no timeout.
+	Timeout time.Duration
+
+	Url      string
+	Username string
 
 	// MaxResponseSize overrides the default response body size limit.
 	// Set to 0 to use MaxResponseBodySize. Set to -1 for unlimited.
@@ -52,7 +60,15 @@ type CustomPayload interface {
 // Request executes an HTTP request. It populates params.Request, params.Response,
 // and params.ResponseBody. Only transport-level errors are returned; HTTP status
 // codes are not treated as errors — use DecodeResponse to handle those.
+//
+// Request has no cancellation support; use Do to pass a context.Context.
 func Request(params *Params, payload any, opts ...RequestOption) error {
+	return Do(context.Background(), params, payload, opts...)
+}
+
+// Do executes an HTTP request bound to ctx. Cancelling ctx aborts the request
+// and the response-body read. It is otherwise identical to Request.
+func Do(ctx context.Context, params *Params, payload any, opts ...RequestOption) error {
 	for _, opt := range opts {
 		params = opt(params)
 	}
@@ -82,27 +98,35 @@ func Request(params *Params, payload any, opts ...RequestOption) error {
 		}
 	}
 
-	if params.Timeout == 0 {
-		params.Timeout = 10
+	timeout := params.Timeout
+	if timeout == 0 {
+		timeout = DefaultTimeout
+	}
+	if timeout < 0 {
+		timeout = 0 // http.Client treats zero as no timeout
 	}
 
 	client := &http.Client{
-		Timeout:   params.Timeout * time.Second,
+		Timeout:   timeout,
 		Transport: defaultTransport,
 	}
-	req, err := http.NewRequest(params.Method, params.Url, _payload)
+	req, err := http.NewRequestWithContext(ctx, params.Method, params.Url, _payload)
 	if err != nil {
 		return err
 	}
 	for header, value := range params.Headers {
-		req.Header.Add(header, value)
+		req.Header.Set(header, value)
 	}
 	for _, c := range params.Cookies {
 		req.AddCookie(c)
 	}
-	if contentType != "" {
-		req.Header.Add("Content-Type", contentType)
-		req.Header.Add("Content-Length", strconv.Itoa(contentLength))
+	// A Content-Type set explicitly via params.Headers wins over the one
+	// derived from the payload type.
+	if contentType != "" && req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	if contentLength > 0 {
+		req.ContentLength = int64(contentLength)
 	}
 	if params.Username != "" || params.Password != "" {
 		req.SetBasicAuth(params.Username, params.Password)
@@ -141,18 +165,17 @@ func StatusCodeInBounds(code int) bool {
 	return code >= 200 && code < 400
 }
 
-// Get performs a GET request and decodes the response using the default Error type.
+// Get performs a GET request and decodes the response using the default Error
+// type. The request uses DefaultTimeout; build Params directly when a
+// different timeout is needed.
 func Get(uri string, params map[string][]string, response any) (*http.Response, error) {
-	if uri[len(uri)-1] == '?' {
-		uri = uri[0 : len(uri)-1]
-	}
+	uri = strings.TrimSuffix(uri, "?")
 	if params != nil {
 		uri += "?" + url.Values(params).Encode()
 	}
 	p := &Params{
-		Timeout: 100000,
-		Method:  "GET",
-		Url:     uri,
+		Method: "GET",
+		Url:    uri,
 	}
 	if err := Request(p, nil); err != nil {
 		return nil, err
@@ -160,12 +183,13 @@ func Get(uri string, params map[string][]string, response any) (*http.Response, 
 	return p.Response, DecodeResponse[Error](p, response)
 }
 
-// Post performs a POST request and decodes the response using the default Error type.
+// Post performs a POST request and decodes the response using the default
+// Error type. The request uses DefaultTimeout; build Params directly when a
+// different timeout is needed.
 func Post(uri string, payload, response any) (*http.Response, error) {
 	p := &Params{
-		Timeout: 100000,
-		Method:  "POST",
-		Url:     uri,
+		Method: "POST",
+		Url:    uri,
 	}
 	if err := Request(p, payload); err != nil {
 		return nil, err

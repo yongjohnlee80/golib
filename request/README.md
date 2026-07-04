@@ -16,7 +16,7 @@ go get github.com/yongjohnlee80/golib/request
 p := &request.Params{
     Method:  "POST",
     Url:     "https://api.example.com/tracks",
-    Timeout: 30,
+    Timeout: 30 * time.Second, // zero = 10s default, negative = no timeout
     Headers: map[string]string{
         "Authorization": "Bearer token",
     },
@@ -24,6 +24,13 @@ p := &request.Params{
 
 err := request.Request(p, payload)
 // p.Response.StatusCode, p.ResponseBody are now populated
+```
+
+`Do` is the context-aware form — cancelling the context aborts the request
+and the body read:
+
+```go
+err := request.Do(ctx, p, payload)
 ```
 
 #### Payload types

@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -249,5 +250,36 @@ func TestGetRequestBody_FallbackReadBody(t *testing.T) {
 	restored, _ := io.ReadAll(p.Request.Body)
 	if string(restored) != body {
 		t.Fatalf("body not restored: %q", string(restored))
+	}
+}
+
+func TestGetHistory_Empty(t *testing.T) {
+	h := NewHistories(3)
+	if e := h.GetHistory(1); e != nil {
+		t.Fatalf("expected nil for empty history, got %+v", e)
+	}
+}
+
+func TestHistories_ConcurrentAddAndGet(t *testing.T) {
+	t.Parallel()
+	h := NewHistories(8)
+	req, _ := http.NewRequest("GET", "http://x.com", nil)
+	res := &http.Response{StatusCode: 200}
+
+	var wg sync.WaitGroup
+	for range 50 {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			h.Add(&Params{Method: "GET", Url: "http://x.com", Request: req, Response: res})
+		}()
+		go func() {
+			defer wg.Done()
+			_ = h.GetHistory(1)
+		}()
+	}
+	wg.Wait()
+	if e := h.GetHistory(1); e == nil {
+		t.Fatal("expected a latest entry after concurrent adds")
 	}
 }

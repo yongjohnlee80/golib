@@ -212,9 +212,9 @@ func TestWriteFields_NilPointer_Omitted(t *testing.T) {
 
 func TestWriteFields_ZeroValues_Omitted(t *testing.T) {
 	type meta struct {
-		Title string `json:"title"`
-		Year  int    `json:"year"`
-		BPM   uint64 `json:"bpm"`
+		Title string  `json:"title"`
+		Year  int     `json:"year"`
+		BPM   uint64  `json:"bpm"`
 		Rate  float64 `json:"rate"`
 	}
 
