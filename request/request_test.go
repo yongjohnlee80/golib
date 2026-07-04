@@ -1,13 +1,16 @@
 package request
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -193,7 +196,7 @@ func TestRequest_NonSuccessStatus_NoTransportError(t *testing.T) {
 }
 
 func TestRequest_TransportError(t *testing.T) {
-	p := &Params{Method: "GET", Url: "http://127.0.0.1:1", Timeout: 1}
+	p := &Params{Method: "GET", Url: "http://127.0.0.1:1", Timeout: time.Second}
 	err := Request(p, nil)
 	if err == nil {
 		t.Fatal("expected transport error for unreachable host")
@@ -218,8 +221,100 @@ func TestRequest_DefaultTimeout(t *testing.T) {
 	if err := Request(p, nil); err != nil {
 		t.Fatal(err)
 	}
-	if p.Timeout != 10 {
-		t.Fatalf("expected default timeout 10, got %d", p.Timeout)
+	if p.Timeout != 0 {
+		t.Fatalf("Request must not mutate params.Timeout, got %v", p.Timeout)
+	}
+}
+
+func TestRequest_TimeoutIsDuration(t *testing.T) {
+	// A server that stalls longer than the configured timeout: an idiomatic
+	// duration value must abort the request (under the old seconds-multiplier
+	// semantics 50*time.Millisecond overflowed into an effectively infinite
+	// timeout and this test would hang past the stall).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+	}))
+	defer srv.Close()
+
+	p := &Params{Method: "GET", Url: srv.URL, Timeout: 50 * time.Millisecond}
+	start := time.Now()
+	err := Request(p, nil)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("timeout not honored as a duration: took %v", elapsed)
+	}
+}
+
+func TestDo_ContextCancel(t *testing.T) {
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block
+	}))
+	defer srv.Close()
+	defer close(block)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	p := &Params{Method: "GET", Url: srv.URL}
+	err := Do(ctx, p, nil)
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded in chain, got %v", err)
+	}
+}
+
+func TestRequest_ContentTypeNotDuplicated(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Values("Content-Type")
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	// Explicit header + typed payload: exactly one Content-Type, caller's wins.
+	p := &Params{
+		Method:  "POST",
+		Url:     srv.URL,
+		Headers: map[string]string{"Content-Type": "application/vnd.custom+json"},
+	}
+	if err := Request(p, map[string]string{"a": "b"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "application/vnd.custom+json" {
+		t.Fatalf("expected caller's single Content-Type, got %v", got)
+	}
+}
+
+func TestRequest_ContentLengthOnRequest(t *testing.T) {
+	var gotLen int64
+	var gotHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotLen = r.ContentLength
+		gotHeader = r.Header.Get("Content-Length")
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	p := &Params{Method: "POST", Url: srv.URL}
+	payload := map[string]string{"a": "b"}
+	if err := Request(p, payload); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(payload)
+	if gotLen != int64(len(data)) {
+		t.Fatalf("expected ContentLength %d, got %d (header %q)", len(data), gotLen, gotHeader)
+	}
+}
+
+func TestGet_EmptyURI(t *testing.T) {
+	// Must not panic on an empty URI; the invalid URL surfaces as an error.
+	if _, err := Get("", nil, nil); err == nil {
+		t.Fatal("expected error for empty URI")
 	}
 }
 

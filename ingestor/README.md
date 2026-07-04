@@ -36,8 +36,10 @@ type Record struct {
 }
 
 csv := ingestor.NewCSV[Record]("export", 0) // 0 = default batch size
+// Optional: ingestor.WithDir("/data/exports") or ingestor.WithOpener(fn)
+// to control where batch files are written (default: current directory).
 csv.Commit(Record{"foo", 1}, Record{"bar", 2})
-csv.Flush() // writes to ./export-<timestamp> (1).csv
+csv.Flush() // writes to ./export-<timestamp>-001.csv
 ```
 
 ## JSON Export
@@ -45,7 +47,7 @@ csv.Flush() // writes to ./export-<timestamp> (1).csv
 ```go
 j := ingestor.NewJSON[Record]("export", 10_000)
 j.Commit(records...)
-j.Flush() // writes to ./export-<timestamp> (1).json
+j.Flush() // writes to ./export-<timestamp>-001.json
 ```
 
 ## Custom Ingestor
