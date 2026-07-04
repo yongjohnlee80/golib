@@ -1,6 +1,6 @@
 # ADR-0007 — `golib/server/ws`: WebSocket Transport on the HTTP Core
 
-- **Status:** Proposed (revision 2 — lector r1 amendment applied, see §7)
+- **Status:** **Accepted** (2026-07-04; lector r2 approved, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Depends on:** golib-server-0006 (session registry — REQUIRED for honest
@@ -248,3 +248,7 @@ the stdlib).
   reserves before the handshake, 503s on refusal, and completed reservations
   are awaited + drained politely. Dependency isolation, secure defaults, and
   `InsecureAllowOrigins` naming judged sound.
+- **r2 (2026-07-04, lector): `approved`** — review doc:
+  `agents/lector/reviews/2026-07-04-golib-server-adr-0006-0007-rereview.md`.
+  The r1 blocker is closed by the Reserve/Reservation pre-establishment gate.
+  **Accepted 2026-07-04.**
