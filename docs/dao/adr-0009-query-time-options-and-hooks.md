@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/dao`: Query-Time Options & the Hook/Middleware Seam
 
-- **Status:** Proposed
+- **Status:** Proposed (revision 2 — lector review r1 amendments applied, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (additive to ADR-0002/0003/0006)
@@ -103,10 +103,19 @@ const (
 	OpUpdate  Op = "update"
 	OpUpsert  Op = "upsert"
 	OpDelete  Op = "delete"
-	OpBatch   Op = "batch" // one event per emitted chunk / COPY
+
+	// OpBatch is one chunked multi-row INSERT statement emitted by a batch
+	// flush: a real SQL statement, full BeforeExec rewrite contract applies.
+	OpBatch Op = "batch"
+
+	// OpBatchCopy is a bulk-load fast path (dialect COPY): there is no SQL
+	// statement to rewrite — the event is OBSERVE-ONLY (§2.6). QueryInfo.SQL
+	// carries a synthetic descriptor ("COPY <table> (<cols>) — <n> rows").
+	OpBatchCopy Op = "batch-copy"
 )
 
-// IsWrite reports whether the op mutates data (insert/update/upsert/delete/batch).
+// IsWrite reports whether the op mutates data
+// (insert/update/upsert/delete/batch/batch-copy).
 func (o Op) IsWrite() bool
 
 // QueryInfo describes one statement to the hook pipeline. BeforeBuild sees it
@@ -136,18 +145,29 @@ type Outcome struct {
 // API — Stager exists so schema-agnostic hooks can be written once and shared
 // across entities.
 type Stager interface {
-	// Where ANDs a predicate into the statement (reads AND writes — a scoped
-	// UPDATE/DELETE gets the same guard as a scoped SELECT).
+	// Where ANDs a predicate into the statement on the where-capable ops:
+	// Get/Select/Iterate/Exists/Count/Update/Delete. INSERT and UPSERT have no
+	// WHERE clause — calling Where there FAILS THE STATEMENT with
+	// ErrHookWhereUnsupported rather than silently not scoping a write (a
+	// scoping hook must branch on q.Op and use SetColumn for insert-like ops;
+	// see §2.7). Where never silently no-ops anywhere.
 	Where(p Predicate)
-	// OrderBy appends ordering (reads; no-op for writes).
+	// OrderBy appends ordering (reads only; no-op for writes).
 	OrderBy(sorts ...Sort)
-	// Limit caps row count when none is set yet (reads; no-op for writes).
+	// Limit caps row count when none is set yet (reads only; no-op for writes).
 	Limit(n uint64)
 	// SetColumn stages a write value by SQL column name, quoted via the
-	// dialect (writes; no-op for reads). The column is developer-declared —
-	// never pass request input.
+	// dialect (write ops incl. INSERT/UPSERT; no-op for reads). The column is
+	// a developer-declared identifier — request input may enter ONLY as the
+	// bound value, never as the column or any SQL text.
 	SetColumn(column string, value any)
 }
+
+// ErrHookWhereUnsupported reports a BeforeBuild hook calling Stager.Where on
+// an op with no WHERE clause (insert/upsert). Loud by design: the alternative
+// is an unscoped write that looks scoped.
+var ErrHookWhereUnsupported = errors.New(
+	"dao: hook Where is not supported on insert/upsert — branch on Op and use SetColumn")
 
 // Hook observes and augments statement execution. Implementations embed
 // NopHook and override only the phases they need (the GenericDialect pattern).
@@ -204,8 +224,11 @@ func (s *Schema[R, C, K, ID]) OnCtx(ctx context.Context, opts ...QueryOption) DA
 // WithHooks appends per-call hooks after the schema's hooks.
 func WithHooks(hs ...Hook) QueryOption
 
-// SkipHooks disables the named schema-wide hooks for this DAO only (the
-// soft-delete "include deleted" escape hatch). Unknown names are ignored.
+// SkipHooks disables the named hooks for this DAO only (the soft-delete
+// "include deleted" escape hatch). It skips EVERY hook bearing the name;
+// unknown names are ignored. Duplicate names among a schema's registered
+// hooks are rejected at dao.New (construction panic, like every other
+// misconfiguration — ADR-0006).
 func SkipHooks(names ...string) QueryOption
 
 // WithQueryContext binds ctx to this DAO's statements (and hooks).
@@ -229,6 +252,14 @@ The resolved context is passed to every driver call (as today) **and to every
 hook phase**. Per-verb context variants (`GetCtx`, `SelectCtx`, …) were
 rejected: 20+ new methods for what one acquisition-time option expresses
 without disturbing the fluent chain (see §4).
+
+**Late `Use(tx)` does not demote an explicit context.** The fluent
+`DAO.Use(tx)` today overwrites the DAO's context with `tx.ctx`
+(`dao/query_dao.go:200-205`). With this ADR the explicit query context is
+sticky: `schema.DAO(WithQueryContext(reqCtx)).Use(tx).Update()` binds the
+transaction but keeps `reqCtx` (the engine tracks an explicit-ctx bit; only a
+DAO without one adopts `tx.ctx` on `Use`). Acceptance criterion 5 tests this
+edge.
 
 ### 2.4 Pipeline semantics
 
@@ -255,21 +286,36 @@ without disturbing the fluent chain (see §4).
 
 `dao.WithLogger` + `dao.Debug(true)` keep their exact surface and output, but
 the engine implements them as an internal `logHook` (a `NamedHook`, name
-`"dao.log"`) appended last at schema build. One pipeline, no bespoke logging
-branch in the verbs; `SkipHooks("dao.log")` can silence one call.
+`"dao.log"`). It is appended as the **final hook of the effective per-call
+slice** — after schema hooks *and* after per-call hooks — so it always logs
+the FINAL SQL/args as executed, including any per-call `BeforeExec` rewrite
+(matching what the old inline logger showed: the statement actually sent).
+One pipeline, no bespoke logging branch in the verbs; `SkipHooks("dao.log")`
+can silence one call.
 
 ### 2.6 Verb-specific notes
 
-- **Iterate** fires `AfterExec` when the statement executes, with `Rows: -1`
-  (the stream length is unknowable until the caller finishes). Duration covers
-  execution, not consumption.
-- **Batch** fires `BeforeExec`/`AfterExec` once per emitted statement (each
-  chunked INSERT, or the COPY) with `Op: OpBatch`. `BeforeBuild` does not fire
-  for batch (there is no staged WHERE/SET to mutate); a batch-shaping need is
-  ADR-0010 territory.
-- **Exists/Count** are reads; `Stager.Where` applies. `Stager.SetColumn` is a
-  no-op for reads, as `Where` is never a no-op anywhere — scoped writes are
-  the point (§1.1 item 1).
+- **Iterate**'s `AfterExec` is **execution-only**: it fires when the statement
+  executes, with `Rows: -1`, duration covering execution not consumption — and
+  it can neither observe nor replace errors that occur during later stream
+  consumption (scan failures, `rows.Err()`), which surface through the
+  iterator untransformed. Hooks needing consumption-side visibility would
+  require an iterator wrap; that is explicitly out of scope for this ADR.
+- **Batch** fires `BeforeBuild` never (there is no staged WHERE/SET to
+  mutate; batch shaping is ADR-0010 territory), and per emitted statement:
+  - chunked INSERTs → `Op: OpBatch`, full `BeforeExec` rewrite contract;
+  - the COPY fast path → `Op: OpBatchCopy`, **observe-only**: there is no SQL
+    statement (the dialect drives the driver's bulk API), `QueryInfo.SQL` is a
+    synthetic descriptor, and a hook that mutates `SQL`/`Args` on an
+    `OpBatchCopy` event FAILS the flush with a descriptive error — never a
+    silent ignore. A hook that needs the rewrite contract on bulk loads can
+    return an error from `BeforeExec(OpBatchCopy)` to veto COPY, or the caller
+    can avoid the fast path (batch falls back to chunked INSERTs when COPY is
+    unavailable or vetoed).
+- **Exists/Count** are reads; `Stager.Where` applies; `Stager.SetColumn` is a
+  documented no-op for reads. On INSERT/UPSERT the inverse holds: `SetColumn`
+  applies and `Where` fails loudly (§2.1) — scoped writes stay the point
+  (§1.1 item 1), they just scope by the correct mechanism per verb.
 
 ### 2.7 North-star usage
 
@@ -283,7 +329,14 @@ func (tenantHook) BeforeBuild(ctx context.Context, q *dao.QueryInfo, s dao.Stage
 	if !ok {
 		return fmt.Errorf("tenant: no org in context for %s on %s", q.Op, q.Table)
 	}
-	s.Where(dao.Eq("org_id", org)) // SELECT *and* UPDATE/DELETE are scoped
+	switch q.Op {
+	case dao.OpInsert, dao.OpUpsert:
+		// No WHERE clause exists here; scoping means forcing the tenant column.
+		s.SetColumn("org_id", org)
+	default:
+		// Reads AND filterable writes (UPDATE/DELETE) get the same guard.
+		s.Where(dao.Eq("org_id", org))
+	}
 	return nil
 }
 
@@ -369,25 +422,37 @@ compiles and behaves identically.
 
 ## 5. Acceptance criteria
 
-1. A schema-wide `BeforeBuild` hook adding `Where(Eq("org_id", …))` scopes
-   **all ten ops** — a test proves the predicate lands in SELECT, UPDATE and
-   DELETE SQL emitted through a fake `DataConn`.
-2. A named soft-delete hook filters reads by default; the same query with
-   `SkipHooks("softdelete")` emits SQL without the filter.
-3. A `BeforeExec` hook replacing `SQL`/`Args` is honored verbatim by the
-   executor; an erroring `BeforeExec` prevents execution (fake records no
-   call) and no `AfterExec` fires.
-4. `AfterExec` receives measured `Duration`, correct `Rows`/`Affected`, and
+1. The §2.7 tenant hook (Op-branching) scopes **every op**: a test proves the
+   predicate lands in SELECT/UPDATE/DELETE SQL and the forced `org_id` column
+   lands in INSERT/UPSERT SQL, emitted through a fake `DataConn`.
+2. A hook calling `Stager.Where` during `OpInsert`/`OpUpsert` fails the
+   statement with `ErrHookWhereUnsupported`; nothing executes.
+3. A named soft-delete hook filters reads by default; the same query with
+   `SkipHooks("softdelete")` emits SQL without the filter. Duplicate hook
+   names across a schema's registered hooks panic at `dao.New`.
+4. A `BeforeExec` hook replacing `SQL`/`Args` is honored verbatim by the
+   executor on statement ops (incl. `OpBatch` chunks); the same mutation
+   during an `OpBatchCopy` event fails the flush with a descriptive error
+   (never silently ignored); an erroring `BeforeExec` prevents execution
+   (fake records no call) and no `AfterExec` fires.
+5. `AfterExec` receives measured `Duration`, correct `Rows`/`Affected`, and
    the translated error; its return value replaces the verb's error; with two
    hooks registered, `AfterExec` order is the reverse of `BeforeBuild` order.
-5. `WithQueryContext(ctx)` reaches the driver's `QueryContext`/`ExecContext`
-   and every hook phase; precedence over `OnCtx` and tx context matches §2.3.
-6. `dao.WithLogger` + `Debug(true)` output is byte-identical to today and can
-   be silenced per call with `SkipHooks("dao.log")`.
-7. With no hooks registered, the engine allocates nothing for the pipeline
+6. `WithQueryContext(ctx)` reaches the driver's `QueryContext`/`ExecContext`
+   and every hook phase; precedence over `OnCtx` and tx context matches §2.3,
+   including the sticky case `DAO(WithQueryContext(ctx)).Use(tx)` — the
+   explicit context survives the late bind.
+7. `dao.WithLogger` + `Debug(true)`: with no rewriting hooks the output is
+   byte-identical to today; with a per-call `BeforeExec` rewrite the log shows
+   the FINAL SQL as executed (`dao.log` is the last effective hook);
+   `SkipHooks("dao.log")` silences one call.
+8. With no hooks registered, the engine allocates nothing for the pipeline
    (benchmark against the pre-ADR baseline) and the full pre-ADR test suite
    passes unmodified.
-8. Batch fires `OpBatch` events per chunk/COPY; Iterate reports `Rows: -1`.
+9. Batch fires `OpBatch` per chunked INSERT and `OpBatchCopy` (observe-only)
+   for the COPY path; Iterate reports `Rows: -1` and its `AfterExec` is
+   execution-only — consumption/scan errors surface through the iterator
+   untransformed (§2.6).
 
 ## 6. File plan
 
@@ -399,3 +464,27 @@ compiles and behaves identically.
 | `dao/query_dao.go` | `runQuery`/`runExec` funnels; verbs refactored onto them; `logHook` replaces the inline debug branch; `stager` impl over `queryState`/`writeState` |
 | `dao/batch.go` | per-chunk `OpBatch` events |
 | `dao/hooks_test.go` | new — acceptance criteria 1–8 against the fake `DataConn` |
+---
+
+## 7. Review history
+
+- **r1 (2026-07-04, lector): `change_requested`** — review doc:
+  `agents/lector/reviews/2026-07-04-golib-dao-adr-0009-review.md`.
+  Amendments applied in revision 2:
+  - **must-fix #1**: `Stager.Where` no longer claims INSERT/UPSERT coverage —
+    per-op semantics defined; `Where` on insert-like ops fails loudly with
+    `ErrHookWhereUnsupported`; tenant example branches on `Op` and uses
+    `SetColumn` for insert-like writes (§2.1, §2.7, criteria 1–2).
+  - **must-fix #2**: batch split into `OpBatch` (chunked INSERT, full rewrite
+    contract) and `OpBatchCopy` (observe-only; SQL/Args mutation fails the
+    flush loudly; hooks may veto COPY) (§2.1, §2.6, criterion 4).
+  - **should-fix #1**: `dao.log` defined as the FINAL hook of the effective
+    per-call slice, logging final SQL after per-call rewrites (§2.5,
+    criterion 7).
+  - **should-fix #2**: explicit-context stickiness across late `Use(tx)`
+    (§2.3, criterion 6).
+  - **should-fix #3**: Iterate `AfterExec` declared execution-only; cannot
+    observe/replace consumption errors (§2.6, criterion 9).
+  - **notes**: duplicate hook names panic at `dao.New`; `SkipHooks` skips all
+    bearers of a name; identifier trust wording strengthened on
+    `Stager.SetColumn`/`Where` (§2.1, §2.2).
