@@ -86,6 +86,15 @@ func DefaultValues[R any, C ~string, K ~string, ID any](m map[C]any) Option[R, C
 	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] { c.defaultValues = m; return c }
 }
 
+// StrictClears makes a rules-driven Clear on a non-Clearable field an error
+// (ErrNotClearable) instead of a silent skip (ADR-0010 §2.2). Schema-wide,
+// build-time. The error is carried on the field's resolved rule and surfaces
+// at the write verb only when it is the field's final rule — a later
+// Write/Skip/valid Clear for the same field replaces it (last-rule-wins).
+func StrictClears[R any, C ~string, K ~string, ID any]() Option[R, C, K, ID] {
+	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] { c.strictClears = true; return c }
+}
+
 // Errors maps constraint names to domain errors (applied by Schema.translate).
 func Errors[R any, C ~string, K ~string, ID any](m ErrorMap) Option[R, C, K, ID] {
 	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] { c.errorMap = m; return c }

@@ -40,7 +40,23 @@ type DAO[R any, C ~string, ID any] interface {
 	SetMap(values map[C]any) DAO[R, C, ID]
 
 	// Clear stages a column to be written as NULL, distinct from "not set".
+	// A field declaring a ClearValue (ADR-0010 §2.2) stages that sentinel
+	// instead. Developer intent in trusted code: it does not consult
+	// Clearable — request-derived clears go through SetRules.
 	Clear(field C) DAO[R, C, ID]
+
+	// SetRules stages a partial-write disposition per field (ADR-0010): Write
+	// stages a value, Skip removes any staged value for the field, Clear
+	// stages the field's declared cleared state. Rules are authoritative for
+	// their field over Set/SetMap/DefaultValues regardless of call order;
+	// across multiple SetRules calls the last rule per field wins.
+	//
+	// SetRules is the WIRE-FACING write surface: keys that don't resolve to a
+	// writable field (unknown, or ReadOnly) are skipped silently, because a
+	// rules map is typically derived from request data whose extra keys are
+	// normal. Set/SetMap keep their loud ErrUnknownField/ErrReadOnlyField
+	// behavior for developer-authored writes.
+	SetRules(rules map[C]Rule) DAO[R, C, ID]
 
 	// OrderBy appends ORDER BY terms.
 	OrderBy(sorts ...Sort) DAO[R, C, ID]

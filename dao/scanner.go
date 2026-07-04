@@ -24,7 +24,8 @@ type orderClause struct {
 
 // writeState is the mutable staged-value intent for INSERT/UPDATE/UPSERT.
 type writeState struct {
-	set orderedSet
+	set   orderedSet
+	rules map[string]resolvedRule // writeCol → resolved SetRules disposition (ADR-0010)
 }
 
 // orderedSet is a column->value map with deterministic (sorted-key) iteration, so
@@ -40,6 +41,8 @@ func (s *orderedSet) put(col string, v any) {
 	}
 	s.m[col] = v
 }
+
+func (s *orderedSet) del(col string) { delete(s.m, col) }
 
 func (s orderedSet) empty() bool { return len(s.m) == 0 }
 

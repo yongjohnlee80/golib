@@ -40,6 +40,18 @@ type Field[R any] struct {
 	// qualified or expression form (e.g. Column "artist.name" → WriteColumn
 	// "name"). Optional; defaults to the unqualified tail of Column.
 	WriteColumn string
+
+	// Clearable declares that a rules-driven Clear (SetRules, ADR-0010) may
+	// target this column. It is a deliberate per-column decision — never
+	// inferred from the Go field's nilability (a nilable column without this
+	// flag is not clearable; a NOT NULL column can be Clearable via ClearValue).
+	Clearable bool
+
+	// ClearValue is what a clear writes when Clearable is true: nil (the
+	// default) writes SQL NULL; a non-nil value is the cleared-state sentinel
+	// for a NOT NULL column (e.g. a date sentinel). Setting ClearValue with
+	// Clearable false is a declaration error rejected by dao.New.
+	ClearValue any
 }
 
 // writeCol returns the bare column name to use in INSERT/UPDATE: WriteColumn when

@@ -148,9 +148,10 @@ func (d *queryDAO[R, C, K, ID]) collectJoins(base []joinClause) []joinClause {
 	return out
 }
 
-// stagedSet merges the schema's default write values with the per-call staged
-// values (per-call wins).
-func (d *queryDAO[R, C, K, ID]) stagedSet() orderedSet {
+// stagedSet merges the write layers in fixed precedence — schema defaults,
+// per-call staged values, then rules (ADR-0010 §2.3) — and reports the first
+// surviving StrictClears violation (by column order, deterministically).
+func (d *queryDAO[R, C, K, ID]) stagedSet() (orderedSet, error) {
 	var set orderedSet
 	for c, v := range d.schema.defaultVals {
 		set.put(c, v)
@@ -158,7 +159,19 @@ func (d *queryDAO[R, C, K, ID]) stagedSet() orderedSet {
 	for c, v := range d.w.set.m {
 		set.put(c, v)
 	}
-	return set
+	for _, col := range sortedRuleCols(d.w.rules) {
+		r := d.w.rules[col]
+		if r.err != nil {
+			return orderedSet{}, r.err // final rule is a strict-clear violation
+		}
+		switch r.kind {
+		case ruleWrite, ruleClear: // clear carries its resolved value
+			set.put(col, r.value)
+		case ruleSkip:
+			set.del(col) // authoritative: removes staged/default values
+		}
+	}
+	return set, nil
 }
 
 func (d *queryDAO[R, C, K, ID]) Name() string { return d.schema.table }
@@ -228,7 +241,38 @@ func (d *queryDAO[R, C, K, ID]) SetMap(values map[C]any) DAO[R, C, ID] {
 	return d
 }
 
-func (d *queryDAO[R, C, K, ID]) Clear(field C) DAO[R, C, ID] { return d.Set(field, nil) }
+func (d *queryDAO[R, C, K, ID]) Clear(field C) DAO[R, C, ID] {
+	if f, ok := d.schema.fields[field]; ok && f.ClearValue != nil {
+		return d.Set(field, f.ClearValue)
+	}
+	return d.Set(field, nil)
+}
+
+func (d *queryDAO[R, C, K, ID]) SetRules(rules map[C]Rule) DAO[R, C, ID] {
+	for field, r := range rules {
+		f, ok := d.schema.fields[field]
+		if !ok || f.ReadOnly {
+			continue // wire-facing leniency: request-derived keys (ADR-0010 §2.4)
+		}
+		rr := resolvedRule{kind: r.kind, value: r.value}
+		if r.kind == ruleClear {
+			switch {
+			case f.Clearable:
+				rr.value = f.ClearValue // nil → SQL NULL, else NOT-NULL sentinel
+			case d.schema.strictClears:
+				rr = resolvedRule{kind: ruleSkip,
+					err: fmt.Errorf("%w: %v", ErrNotClearable, any(field))}
+			default:
+				rr = resolvedRule{kind: ruleSkip} // downgrade (ADR-0010 §2.2)
+			}
+		}
+		if d.w.rules == nil {
+			d.w.rules = map[string]resolvedRule{}
+		}
+		d.w.rules[f.writeCol()] = rr
+	}
+	return d
+}
 
 func (d *queryDAO[R, C, K, ID]) OrderBy(sorts ...Sort) DAO[R, C, ID] {
 	for _, srt := range sorts {
@@ -448,7 +492,10 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	if perr != nil {
 		return zero, perr
 	}
-	set := d.stagedSet()
+	set, serr := d.stagedSet()
+	if serr != nil {
+		return zero, serr
+	}
 	if set.empty() {
 		return zero, ErrNothingToInsert
 	}
@@ -512,7 +559,10 @@ func (d *queryDAO[R, C, K, ID]) Update() error {
 	if len(d.q.where) == 0 {
 		return ErrNoConditions
 	}
-	set := d.stagedSet()
+	set, serr := d.stagedSet()
+	if serr != nil {
+		return serr
+	}
 	if set.empty() {
 		return nil
 	}
@@ -541,7 +591,10 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	if perr != nil {
 		return perr
 	}
-	set := d.stagedSet()
+	set, serr := d.stagedSet()
+	if serr != nil {
+		return serr
+	}
 	if set.empty() {
 		return ErrNothingToInsert
 	}

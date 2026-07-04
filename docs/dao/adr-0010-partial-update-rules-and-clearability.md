@@ -1,6 +1,6 @@
 # ADR-0010 — `golib/dao`: Partial-Update Rules & Per-Column Clearability
 
-- **Status:** Proposed (revision 2 — lector r1 amendments applied, see §7)
+- **Status:** **Accepted** (2026-07-04; revision 3 — lector r2 approved, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (additive to ADR-0002/0003/0006)
@@ -568,3 +568,7 @@ criterion 8).
     `stagedSet() (orderedSet, error)` only when it survives as the field's
     final rule; write verbs consume the error before their empty-set guards
     (§2.2 table, §2.3, criterion 4 replacement cases, file plan).
+- **r2 (2026-07-04, lector): `approved`** — review doc:
+  `agents/lector/reviews/2026-07-04-golib-dao-adr-0010-rereview.md`. R1
+  blocker confirmed closed; no must-fix or should-fix findings remain.
+  **Accepted 2026-07-04** (implement-immediately authorized by Johno).
