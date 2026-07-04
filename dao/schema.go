@@ -25,6 +25,7 @@ type config[R any, C ~string, K ~string, ID any] struct {
 	errorMap       ErrorMap
 	logger         logger.Logger
 	debug          bool
+	strictClears   bool
 	newRow         func() R
 	hooks          []Hook
 }
@@ -53,6 +54,7 @@ type Schema[R any, C ~string, K ~string, ID any] struct {
 	errorMap      ErrorMap
 	logger        logger.Logger
 	debug         bool
+	strictClears  bool
 	newRow        func() R
 	hooks         []Hook
 }
@@ -96,6 +98,7 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 		search:        map[string]SearchOp{},
 		errorMap:      cfg.errorMap,
 		debug:         cfg.debug,
+		strictClears:  cfg.strictClears,
 	}
 
 	// id column
@@ -123,6 +126,9 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 			if _, ok := s.optionalJoins[f.Join]; !ok {
 				panic(fmt.Sprintf("dao.New: field %q references unregistered join %q", any(key), f.Join))
 			}
+		}
+		if f.ClearValue != nil && !f.Clearable {
+			panic(fmt.Sprintf("dao.New: field %q declares ClearValue without Clearable", any(key)))
 		}
 	}
 
