@@ -2,6 +2,8 @@ package dao
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"sync"
 )
@@ -120,13 +122,20 @@ func RunTx(ctx context.Context, conns []DataConn, fn func(tx *Transaction) error
 	return tx.Commit()
 }
 
-// TwoPhase opts this transaction into true two-phase commit (PREPARE TRANSACTION /
-// COMMIT PREPARED) for genuine all-or-nothing across multiple databases. Every
-// participating dialect must report TwoPhaseSupported; otherwise Commit fails fast.
+// TwoPhase opts this transaction into true two-phase commit for genuine
+// all-or-nothing across multiple databases: Commit prepares every database
+// context (phase one), and only when all prepares succeed commits them all
+// (phase two). Every participating dialect must report TwoPhaseSupported;
+// otherwise Commit fails fast with ErrTwoPhaseUnsupported before anything
+// commits. dao/postgres implements the trio via PREPARE TRANSACTION /
+// COMMIT PREPARED / ROLLBACK PREPARED (requires the server to have
+// max_prepared_transactions > 0).
 //
-// Note: the prepared-transaction execution itself is provided by the driver
-// (ADR-0005 §2.3) and lands with the dao/postgres reference driver. With the
-// zero-dependency dialects here, TwoPhase().Commit() fails fast as unsupported.
+// Operational note: a crash between the phases can leave prepared
+// transactions holding locks on the server. If Commit reports pending
+// prepared transactions (CommitError.PreparedPending), resolve them with
+// COMMIT PREPARED / ROLLBACK PREPARED (inspect pg_prepared_xacts on
+// Postgres). This cost is why 2PC is opt-in (ADR-0005 §2.3).
 func (t *Transaction) TwoPhase() *Transaction {
 	t.mu.Lock()
 	t.twoPhase = true
@@ -195,8 +204,7 @@ func (t *Transaction) Commit() error {
 			t.rollbackUncommitted(nil)
 			return err
 		}
-		// True PREPARE TRANSACTION / COMMIT PREPARED is provided by the driver
-		// (ADR-0005 §2.3). The ordered commit below is the fallback.
+		return t.commitTwoPhase()
 	}
 
 	var committed []string
@@ -219,6 +227,104 @@ func (t *Transaction) rollbackUncommitted(committed []string) {
 			_ = t.contexts[name].rollback()
 		}
 	}
+}
+
+// commitTwoPhase runs the two-phase protocol over the touched contexts.
+// Database contexts are prepared in touch order (phase one); only when every
+// prepare succeeds are they all committed (phase two). Non-DB resources cannot
+// prepare, so they commit last, after the databases are durable, and roll back
+// whenever the database decision is abort. Called with t.mu held.
+func (t *Transaction) commitTwoPhase() error {
+	// Phase one: prepare every database context under a generated global id.
+	prepared := make(map[string]string) // context name -> gid
+	for _, name := range t.order {
+		sc, isDB := t.contexts[name].(*sqlTxContext)
+		if !isDB {
+			continue
+		}
+		conn := t.conns[name]
+		gid := newGID(name)
+		if err := conn.Dialect().Prepare(t.ctx, sc.tx, gid); err != nil {
+			// Abort: roll back the already-prepared, then everything else in
+			// reverse touch order — including this context, whose driver tx is
+			// still open (a failed prepare leaves the session transaction
+			// aborted, not released), and the resources.
+			for pname, pgid := range prepared {
+				_ = t.conns[pname].Dialect().RollbackPrepared(t.ctx, t.conns[pname], pgid)
+			}
+			for i := len(t.order) - 1; i >= 0; i-- {
+				n := t.order[i]
+				if _, wasPrepared := prepared[n]; wasPrepared {
+					continue
+				}
+				_ = t.contexts[n].rollback()
+			}
+			return &CommitError{Failed: name, Err: err}
+		}
+		prepared[name] = gid
+	}
+
+	// Phase two: the decision is commit. Attempt every prepared context even if
+	// one fails — a failed COMMIT PREPARED leaves that transaction prepared and
+	// recoverable, and is reported in PreparedPending for operator resolution.
+	var committed []string
+	var failed string
+	var firstErr error
+	pending := make(map[string]string)
+	for _, name := range t.order {
+		gid, ok := prepared[name]
+		if !ok {
+			continue
+		}
+		if err := t.conns[name].Dialect().CommitPrepared(t.ctx, t.conns[name], gid); err != nil {
+			if firstErr == nil {
+				failed, firstErr = name, err
+			}
+			pending[name] = gid
+			continue
+		}
+		committed = append(committed, name)
+	}
+	if firstErr != nil {
+		// Databases are (partially) durable; compensating resources roll back.
+		for i := len(t.order) - 1; i >= 0; i-- {
+			if _, isDB := t.contexts[t.order[i]].(*sqlTxContext); !isDB {
+				_ = t.contexts[t.order[i]].rollback()
+			}
+		}
+		return &CommitError{Failed: failed, Err: firstErr, AlreadyDurable: committed, PreparedPending: pending}
+	}
+
+	// Databases are durable; commit resources in touch order.
+	for _, name := range t.order {
+		if _, isDB := t.contexts[name].(*sqlTxContext); isDB {
+			continue
+		}
+		if err := t.contexts[name].commit(); err != nil {
+			for i := len(t.order) - 1; i >= 0; i-- {
+				n := t.order[i]
+				if _, isDB := t.contexts[n].(*sqlTxContext); isDB || contains(committed, n) {
+					continue
+				}
+				_ = t.contexts[n].rollback()
+			}
+			return &CommitError{Failed: name, Err: err, AlreadyDurable: committed}
+		}
+		committed = append(committed, name)
+	}
+	return nil
+}
+
+// newGID builds a globally-unique prepared-transaction id: a fixed prefix, the
+// context name (for operator recognizability in pg_prepared_xacts), and random
+// entropy. Postgres caps gids at 200 bytes; names are truncated to fit.
+func newGID(name string) string {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	if len(name) > 100 {
+		name = name[:100]
+	}
+	return "golib-dao-" + name + "-" + hex.EncodeToString(b[:])
 }
 
 // checkTwoPhase verifies every database context's dialect supports 2PC.
@@ -257,10 +363,17 @@ func (t *Transaction) Rollback() error {
 // non-empty, those databases committed before the failure and cannot be rolled
 // back — the caller must reconcile. With a single connection AlreadyDurable is
 // always empty, so a CommitError means nothing was durably written.
+//
+// PreparedPending is set only on the two-phase path: it maps context names to
+// the global ids of transactions that were successfully prepared but whose
+// COMMIT PREPARED failed. They remain durable-prepared (holding locks) on the
+// server and must be resolved by an operator with COMMIT PREPARED /
+// ROLLBACK PREPARED (on Postgres, inspect pg_prepared_xacts).
 type CommitError struct {
-	Failed         string
-	Err            error
-	AlreadyDurable []string
+	Failed          string
+	Err             error
+	AlreadyDurable  []string
+	PreparedPending map[string]string
 }
 
 func (e *CommitError) Error() string {

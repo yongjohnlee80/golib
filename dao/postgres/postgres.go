@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -147,4 +148,25 @@ type pgxResult struct {
 func (r pgxResult) RowsAffected() (int64, error) { return r.tag.RowsAffected(), nil }
 func (r pgxResult) LastInsertId() (int64, error) {
 	return 0, errors.New("postgres: no LastInsertId; use a RETURNING id")
+}
+
+// prepareTx runs PREPARE TRANSACTION for gid on this transaction's session and
+// verifies it actually prepared: Postgres treats PREPARE TRANSACTION in an
+// ABORTED transaction like COMMIT — it silently rolls back and reports success
+// with a ROLLBACK command tag. Trusting the error alone would let a poisoned
+// participant "pass" phase one and break the all-or-nothing guarantee, so the
+// command tag is checked. On success the session's connection is released back
+// to the pool (the prepared transaction lives on server-side).
+func (t *pgxTx) prepareTx(ctx context.Context, gid string) error {
+	tag, err := t.tx.Exec(ctx, "PREPARE TRANSACTION "+quoteLiteral(gid))
+	if err != nil {
+		return translateError(err)
+	}
+	if tag.String() != "PREPARE TRANSACTION" {
+		return fmt.Errorf("postgres: prepare of %q did not take effect (server returned %q; the transaction was aborted and has been rolled back)", gid, tag.String())
+	}
+	// The transaction is now dissociated from the session; Rollback only
+	// returns the connection to the pool (harmless no-tx warning server-side).
+	_ = t.tx.Rollback(t.ctx)
+	return nil
 }

@@ -137,8 +137,20 @@ func (p *between) ToSQL(d Dialect, next *int) (string, []any) {
 	return p.col + " BETWEEN " + lo + " AND " + hi, []any{p.lo, p.hi}
 }
 
-// Like renders "col LIKE ?".
+// Like renders "col LIKE ?". The pattern is bound, never interpolated, so it
+// cannot inject SQL — but it IS a raw LIKE pattern: % and _ keep their wildcard
+// meaning. When embedding user input in a pattern, escape it with EscapeLike
+// first (StringOp search does this automatically).
 func Like(col string, pattern string) Predicate { return &like{col, pattern} }
+
+// EscapeLike escapes the LIKE/ILIKE metacharacters (%, _ and the escape
+// character itself) in s so it matches literally inside a pattern. Predicates
+// built by this package pair the result with an explicit "ESCAPE '\'" clause,
+// which works across the shipped dialects regardless of their default.
+func EscapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
 
 type like struct {
 	col, pattern string
@@ -302,7 +314,9 @@ func (o *stringOp) withColumn(col string) SearchOp {
 	return &c
 }
 func (o *stringOp) Predicate(value string) Predicate {
-	return Raw(o.column()+" ILIKE ?", "%"+value+"%")
+	// The user-supplied value is a literal, not a pattern: escape LIKE
+	// metacharacters so searching "50%" matches "50%" rather than "50…".
+	return Raw(o.column()+` ILIKE ? ESCAPE '\'`, "%"+EscapeLike(value)+"%")
 }
 
 type exactOp struct {

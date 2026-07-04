@@ -2,6 +2,7 @@ package dao
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -113,7 +114,7 @@ func TestSearchOps(t *testing.T) {
 		{"bool true", BoolOp("public", "artist.public"), "true", "artist.public = $1", []any{true}},
 		{"bool false", BoolOp("public", "artist.public"), "no", "artist.public = $1", []any{false}},
 		{"array", ArrayOp("tag", "tags"), "rock", "$1 = ANY(tags)", []any{"rock"}},
-		{"string ILIKE", StringOp("name", "artist.name"), "liq", "artist.name ILIKE $1", []any{"%liq%"}},
+		{"string ILIKE", StringOp("name", "artist.name"), "liq", `artist.name ILIKE $1 ESCAPE '\'`, []any{"%liq%"}},
 		{"exact", ExactOp("uri", "artist.uri"), "x", "artist.uri = $1", []any{"x"}},
 		{"raw op", RawOp("custom", func(v string) Predicate { return Eq("c", v) }), "y", "c = $1", []any{"y"}},
 	}
@@ -143,12 +144,12 @@ func TestSearchOp_FieldBinding(t *testing.T) {
 		t.Errorf("fieldKey() = %q, want namefield", fb.fieldKey())
 	}
 	// Before binding, the field key doubles as the column.
-	if sql, _ := render(op.Predicate("q")); sql != "namefield ILIKE $1" {
+	if sql, _ := render(op.Predicate("q")); sql != `namefield ILIKE $1 ESCAPE '\'` {
 		t.Errorf("unbound column = %q", sql)
 	}
 	// The schema binds the resolved column.
 	bound := fb.withColumn("artist.name")
-	if sql, _ := render(bound.Predicate("q")); sql != "artist.name ILIKE $1" {
+	if sql, _ := render(bound.Predicate("q")); sql != `artist.name ILIKE $1 ESCAPE '\'` {
 		t.Errorf("bound column = %q", sql)
 	}
 }
@@ -160,5 +161,35 @@ func TestParseSearchQuery(t *testing.T) {
 	want := []searchTerm{{"title", "liquid"}, {"public", "true"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("parseSearchQuery = %+v, want %+v", got, want)
+	}
+}
+
+func TestEscapeLike(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ in, want string }{
+		{"plain", "plain"},
+		{"50%", `50\%`},
+		{"a_b", `a\_b`},
+		{`back\slash`, `back\\slash`},
+		{`%_\`, `\%\_\\`},
+	}
+	for _, tc := range cases {
+		if got := EscapeLike(tc.in); got != tc.want {
+			t.Errorf("EscapeLike(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestStringOp_EscapesLikeMetacharacters(t *testing.T) {
+	t.Parallel()
+	op := StringOp("name", "name")
+	p := op.Predicate("50%_off")
+	n := 0
+	sql, args := p.ToSQL(GenericDialect{}, &n)
+	if !strings.Contains(sql, "ESCAPE") {
+		t.Errorf("expected an explicit ESCAPE clause, got %q", sql)
+	}
+	if len(args) != 1 || args[0] != `%50\%\_off%` {
+		t.Errorf("args = %v, want the metacharacters escaped inside the %%...%% wrap", args)
 	}
 }
