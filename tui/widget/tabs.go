@@ -175,7 +175,7 @@ func (t *Tabs) HandleEvent(ev tui.Event) bool {
 		}
 		x := 0
 		for i, tab := range t.tabs {
-			w := tui.StringWidth(cellLabel(tab.label))
+			w := t.measure(cellLabel(tab.label))
 			if e.X >= x && e.X < x+w {
 				t.Select(i)
 				return true

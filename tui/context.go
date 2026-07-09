@@ -118,6 +118,18 @@ func (c *Context) PlaceChild(child Component, r Rect) {
 // App returns the owning runtime (ADR-0005 owns its semantics).
 func (c *Context) App() *App { return c.app }
 
+// StringWidth measures s under the App's active width policy — the SAME
+// policy Surface.StringWidth applies (WithWidthPolicy, ADR-0003 §2.4). It
+// is the policy-aware measurement surface available OUTSIDE Render (Layout,
+// event handlers, cursor/scroll/wrap/hit-test math), where there is no
+// Surface. NORMATIVE: component layout and state math MUST measure through
+// this (or Surface.StringWidth in Render), never the package-level
+// tui.StringWidth default, so a per-App WidthPolicyAmbiguousWide stays
+// consistent between paint and geometry (ADR-0003 §2.4/§2.7).
+func (c *Context) StringWidth(s string) int {
+	return StringWidthPolicy(s, c.app.widthPolicy())
+}
+
 // Post enqueues ev on the program lane. Safe from any goroutine
 // (ADR-0005 §2.4).
 func (c *Context) Post(ev Event) { c.app.Post(ev) }

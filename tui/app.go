@@ -202,6 +202,19 @@ func (a *App) Run(ctx context.Context) (err error) {
 	return a.loop(ctx)
 }
 
+// widthPolicy reports the App's active grapheme width policy — the single
+// source of the policy every Surface's resolution context carries
+// (Surface.StringWidth reads rctx.policy, which is a copy of this). Fixed
+// once per App (WithWidthPolicy, ADR-0003 §2.4). Reads rctx once Run has
+// installed it; before that (Context methods can exist pre-Run) it falls
+// back to the config value that will seed rctx — the same value.
+func (a *App) widthPolicy() WidthPolicy {
+	if a.rctx != nil {
+		return a.rctx.policy
+	}
+	return a.cfg.widthPolicy
+}
+
 // loop is the scaffold's errc-vs-ctx.Done select
 // (server/scaffold.go:152-167) widened to four arms (ADR-0005 §2.2).
 func (a *App) loop(ctx context.Context) error {

@@ -162,7 +162,7 @@ func (t *TextInput) renderCluster(i int) string {
 func (t *TextInput) cellAt(i int) int {
 	w := 0
 	for j := 0; j < i && j < len(t.cs); j++ {
-		w += tui.StringWidth(t.renderCluster(j))
+		w += t.measure(t.renderCluster(j))
 	}
 	return w
 }

@@ -156,6 +156,29 @@ func TestTextInputIMECursor(t *testing.T) {
 	}
 }
 
+// TestTextInputCursorAmbiguousWidePolicy asserts finding 1: under
+// WithWidthPolicy(WidthPolicyAmbiguousWide) the widget's OWN cursor/layout
+// math (cellAt via Context.StringWidth) agrees with the width-2 paint for an
+// East-Asian-ambiguous cluster — "§" is width 1 under the default policy and
+// width 2 under AmbiguousWide. Before the fix, cellAt used tui.StringWidth
+// (default policy) and the cursor parked at column 1 while Render painted the
+// glyph two cells wide.
+func TestTextInputCursorAmbiguousWidePolicy(t *testing.T) {
+	in := widget.NewTextInput()
+	sh := newShell(in)
+	h := startAppOpts(t, sh, 20, 1, tui.WithWidthPolicy(tui.WidthPolicyAmbiguousWide))
+	h.inject(tab())
+	h.barrier(sh)
+
+	// One ambiguous-width cluster: paint width 2, so the insertion point must
+	// sit at column 2 (not 1, the default-policy answer).
+	h.inject(tui.PasteEvent{Text: "§"})
+	h.barrier(sh)
+	if x, y, visible := h.tb.CursorPos(); !visible || x != 2 || y != 0 {
+		t.Fatalf("cursor after ambiguous-wide cluster = (%d,%d,%v), want (2,0,true)", x, y, visible)
+	}
+}
+
 // TestTextInputValidation: failing validation consumes Enter, sets the
 // error state, and suppresses SubmitEvent; the next edit clears it.
 func TestTextInputValidation(t *testing.T) {

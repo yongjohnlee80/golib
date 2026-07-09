@@ -207,7 +207,7 @@ func (s *Select[T]) Layout(c tui.Constraints) tui.Size {
 func (s *Select[T]) longestLabel() int {
 	w := 0
 	for _, it := range s.items {
-		w = max(w, tui.StringWidth(it.Label))
+		w = max(w, s.measure(it.Label))
 	}
 	return w
 }
@@ -318,7 +318,7 @@ func (p *selectPopup[T]) Layout(c tui.Constraints) tui.Size {
 	h := boundedMax(c.MaxH, c.MinH)
 	labelW := max(p.owner.longestLabel(), 8)
 	if p.owner.filterOn {
-		labelW = max(labelW, tui.StringWidth(p.filter)+2)
+		labelW = max(labelW, p.owner.measure(p.filter)+2)
 	}
 	pw := min(labelW+2, max(w-2, 3))
 	rows := max(len(p.matches), 1)

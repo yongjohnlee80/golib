@@ -7,12 +7,13 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Text measurement note. Render paths measure through the Surface
-// (Surface.StringWidth — the App-configured width policy, ADR-0003 §2.4
-// normative). Layout and event handlers have no Surface; they measure with
-// tui.StringWidth (WidthPolicyDefault). The two diverge only for apps opting
-// into WidthPolicyAmbiguousWide, where cursor/scroll math may be off by the
-// ambiguous-width delta — an accepted v1 limit, noted here once.
+// Text measurement note. All width math is policy-aware (ADR-0003 §2.4
+// normative). Render paths measure through Surface.StringWidth; layout,
+// event, cursor, scroll, wrap, and hit-test paths measure through
+// Base.measure (Context.StringWidth). Both resolve the App's single active
+// width policy, so paint and geometry agree under WidthPolicyAmbiguousWide.
+// The free helpers below take the caller's measure func so no path silently
+// falls back to the package-level default.
 
 const ellipsis = "…"
 
@@ -28,18 +29,19 @@ func clusters(s string) []string {
 	return out
 }
 
-// cellsBefore is the display width of cs[:i].
-func cellsBefore(cs []string, i int) int {
+// cellsBefore is the display width of cs[:i] under the caller's measure
+// (Surface.StringWidth in Render, Base.measure elsewhere).
+func cellsBefore(cs []string, i int, measure func(string) int) int {
 	w := 0
 	for j := 0; j < i && j < len(cs); j++ {
-		w += tui.StringWidth(cs[j])
+		w += measure(cs[j])
 	}
 	return w
 }
 
 // truncate fits s into w cells, replacing the overflow with an ellipsis.
 // measure is the caller's width function (Surface.StringWidth in Render,
-// tui.StringWidth elsewhere).
+// Base.measure — the App width policy — elsewhere).
 func truncate(s string, w int, measure func(string) int) string {
 	if w <= 0 {
 		return ""

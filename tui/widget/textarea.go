@@ -110,7 +110,9 @@ func (t *TextArea) AcceptsFocus() bool { return true }
 func (t *TextArea) lineClusters(i int) []string { return clusters(t.lines[i]) }
 
 // cellsAt is the display offset (cells) of (ln, col).
-func (t *TextArea) cellsAt(ln, col int) int { return cellsBefore(t.lineClusters(ln), col) }
+func (t *TextArea) cellsAt(ln, col int) int {
+	return cellsBefore(t.lineClusters(ln), col, t.measure)
+}
 
 // clampCol clamps a cluster column into line ln.
 func (t *TextArea) clampCol(ln, col int) int {
@@ -123,7 +125,7 @@ func (t *TextArea) colForCells(ln, cells int) int {
 	cs := t.lineClusters(ln)
 	w := 0
 	for i, c := range cs {
-		cw := tui.StringWidth(c)
+		cw := t.measure(c)
 		if w+cw > cells {
 			return i
 		}
@@ -415,7 +417,7 @@ func (t *TextArea) scrollable() bool {
 	}
 	rows := 0
 	for i := range t.lines {
-		rows += len(wrapRanges(t.lineClusters(i), max(t.w-1, 1), tui.StringWidth))
+		rows += len(wrapRanges(t.lineClusters(i), max(t.w-1, 1), t.measure))
 		if rows > t.h {
 			return true
 		}
@@ -428,7 +430,7 @@ func (t *TextArea) rowsOfLine(i int) int {
 	if t.wrap == WrapNone {
 		return 1
 	}
-	return len(wrapRanges(t.lineClusters(i), t.wrapWidth(), tui.StringWidth))
+	return len(wrapRanges(t.lineClusters(i), t.wrapWidth(), t.measure))
 }
 
 // ensureVisible adjusts top/left so the cursor stays inside the viewport
@@ -504,13 +506,13 @@ func (t *TextArea) Cursor() (int, int, bool) {
 // index and the cell offset within that row.
 func (t *TextArea) wrapPos(ln, col int) (row, x int) {
 	cs := t.lineClusters(ln)
-	rows := wrapRanges(cs, t.wrapWidth(), tui.StringWidth)
+	rows := wrapRanges(cs, t.wrapWidth(), t.measure)
 	for i, r := range rows {
 		if col < r[0] {
 			return i, 0 // col is a wrap-consumed break space
 		}
 		if col <= r[1] || i == len(rows)-1 {
-			return i, cellsBefore(cs[r[0]:], min(col, r[1])-r[0])
+			return i, cellsBefore(cs[r[0]:], min(col, r[1])-r[0], t.measure)
 		}
 	}
 	return 0, 0
@@ -556,7 +558,7 @@ func (t *TextArea) Render(s tui.Surface) {
 			continue
 		}
 		// WrapSoft: paint each wrapped row by cluster range.
-		for _, r := range wrapRanges(cs, w, tui.StringWidth) {
+		for _, r := range wrapRanges(cs, w, s.StringWidth) {
 			if y >= sz.H {
 				break
 			}

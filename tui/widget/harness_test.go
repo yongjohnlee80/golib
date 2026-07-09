@@ -31,8 +31,16 @@ type harness struct {
 // one-flush-per-change assertions.
 func startApp(t *testing.T, root tui.Component, w, h int) *harness {
 	t.Helper()
+	return startAppOpts(t, root, w, h)
+}
+
+// startAppOpts is startApp with extra App options (e.g. WithWidthPolicy).
+// The backend and frame-cap options are always applied first.
+func startAppOpts(t *testing.T, root tui.Component, w, h int, opts ...tui.AppOption) *harness {
+	t.Helper()
 	tb := tui.NewTestBackend(w, h)
-	app := tui.NewApp(root, tui.WithBackend(tb), tui.WithMinFrameInterval(0))
+	appOpts := append([]tui.AppOption{tui.WithBackend(tb), tui.WithMinFrameInterval(0)}, opts...)
+	app := tui.NewApp(root, appOpts...)
 	ctx, cancel := context.WithCancel(context.Background())
 	h2 := &harness{t: t, app: app, tb: tb, cancel: cancel, resc: make(chan error, 1)}
 	go func() { h2.resc <- app.Run(ctx) }()

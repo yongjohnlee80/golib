@@ -338,6 +338,15 @@ package grapheme // tui/internal/grapheme — internal; public access via tui.Gr
 
 //go:generate go run gen/gen.go -unicode 16.0.0
 //
+// ERRATUM (implementation note, 2026-07-09): the accepted ADR named Unicode
+// 16.0.0, but the implementation pins **Unicode 15.0.0** to match the Go
+// 1.25 standard library's `unicode.Version` (so `tui/internal/grapheme`
+// tables and `unicode`-backed lookups agree). Consequently GB9c (the 15.1
+// Indic-conjunct-break / InCB rule) is deferred. The generated tables and
+// `tui/internal/grapheme/doc.go` are authoritative for the pinned version and
+// carry the refresh procedure; treat the `16.0.0` above as the original
+// design intent, not the shipped pin, and follow `doc.go` when bumping.
+//
 // gen.go downloads (or reads from a pinned local mirror) and compiles:
 //   UCD/EastAsianWidth.txt          → eastAsian ranges (W, F, A classes)
 //   UCD/GraphemeBreakProperty.txt   → break-property ranges (GB rules)

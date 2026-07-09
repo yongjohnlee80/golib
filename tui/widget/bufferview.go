@@ -185,7 +185,7 @@ func (v *BufferView) contentWidth() int {
 
 // rowsOf is the wrapped height of live line i at the current width.
 func (v *BufferView) rowsOf(i int) int {
-	return len(wrapRanges(clusters(v.line(i).text()), v.contentWidth(), tui.StringWidth))
+	return len(wrapRanges(clusters(v.line(i).text()), v.contentWidth(), v.measure))
 }
 
 // text joins a line's spans.
@@ -214,7 +214,7 @@ func (v *BufferView) recount() {
 	count := func(w int) int {
 		total := 0
 		for i := 0; i < v.LineCount(); i++ {
-			total += len(wrapRanges(clusters(v.line(i).text()), w, tui.StringWidth))
+			total += len(wrapRanges(clusters(v.line(i).text()), w, v.measure))
 		}
 		return total
 	}
@@ -417,7 +417,7 @@ func (v *BufferView) paintLine(s tui.Surface, ln *bline, yOff, w int) int {
 			sts = append(sts, st)
 		}
 	}
-	ranges := wrapRanges(cls, w, tui.StringWidth)
+	ranges := wrapRanges(cls, w, s.StringWidth)
 	h := s.Size().H
 	for r, rr := range ranges {
 		y := yOff + r

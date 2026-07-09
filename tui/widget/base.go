@@ -70,6 +70,20 @@ func (b *Base) RequestLayout() {
 // continues. Widgets override what they need.
 func (b *Base) HandleEvent(ev tui.Event) bool { return false }
 
+// measure is the policy-aware text width every widget MUST use for layout,
+// cursor, scroll, wrap-recount, and hit-test math OUTSIDE Render — it routes
+// through Context.StringWidth, so the App's width policy (WithWidthPolicy,
+// ADR-0003 §2.4) governs geometry exactly as Surface.StringWidth governs
+// paint. Before the first mount (ctx nil, e.g. a setter measuring at
+// construction) it falls back to the default policy, matching a Surface
+// under WidthPolicyDefault.
+func (b *Base) measure(s string) int {
+	if b.ctx != nil {
+		return b.ctx.StringWidth(s)
+	}
+	return tui.StringWidth(s)
+}
+
 // --- unexported plumbing shared by the package's widgets ---
 
 // publish enqueues v on the App bus (enqueue-only; ADR-0005 §2.7). No-op
