@@ -46,14 +46,15 @@ type Backend struct {
 
 	// Acquired-state flags for teardown, set on the Start goroutine and
 	// consumed by teardown (ADR-0002 §2.10).
-	restoreIn  func() error
-	restoreOut func() error
-	altEntered bool
-	pasteOn    bool
-	mouseOn    bool
-	focusOn    bool
-	resize2048 bool
-	kittyPush  bool
+	restoreIn   func() error
+	restoreOut  func() error
+	pollCleanup func() error // undo makePollable, after the reader joins
+	altEntered  bool
+	pasteOn     bool
+	mouseOn     bool
+	focusOn     bool
+	resize2048  bool
+	kittyPush   bool
 
 	// Emitter state (flush.go), guarded by wmu together with output writes.
 	wmu        sync.Mutex
@@ -162,6 +163,13 @@ func (b *Backend) start(ctx context.Context) error {
 			return err
 		}
 		b.restoreOut = restore
+		// §2.9: the read-deadline unblock needs a poller-managed fd,
+		// and an inherited tty arrives blocking. After makeRaw (whose
+		// Fd() call forces blocking mode), swap in a pollable handle;
+		// nothing may call Fd() on it from here on.
+		in, cleanup := makePollable(b.inFile)
+		b.inFile = in
+		b.pollCleanup = cleanup
 	}
 
 	// 2. Alternate screen (unless inline mode).
@@ -284,6 +292,14 @@ func (b *Backend) teardown() error {
 	b.wg.Wait()
 	if !b.readerOn {
 		close(b.events) // reader never started; contract still holds
+	}
+	// Undo makePollable only after the reader has joined: close the
+	// private /dev/tty description, or restore O_NONBLOCK on a shared
+	// one (§2.9).
+	if b.pollCleanup != nil {
+		if err := b.pollCleanup(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return errors.Join(errs...)
 }
