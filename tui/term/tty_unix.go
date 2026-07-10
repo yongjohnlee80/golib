@@ -3,10 +3,12 @@
 package term
 
 import (
+	"errors"
 	"os"
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
 	xterm "golang.org/x/term"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -56,11 +58,16 @@ func unblockFile(f *os.File) { _ = f.SetReadDeadline(time.Now()) }
 //  2. f is this process's controlling terminal: read through a
 //     private non-blocking /dev/tty description instead. No
 //     shared-description side effects; cleanup closes it.
-//  3. Fallback: flip O_NONBLOCK on f's own description and re-wrap it
-//     so os.NewFile registers with the poller; cleanup restores the
-//     flag — the description may be shared with the parent shell.
-//     (While the flag is on, writes through a shared stdout could
-//     observe EAGAIN; the /dev/tty path keeps that case exotic.)
+//  3. Fallback: duplicate f's fd (the dup is ours to close — wrapping
+//     the caller's own fd in a second *os.File would let the backend
+//     side close/finalize a descriptor it never owned), flip
+//     O_NONBLOCK, and re-wrap the dup so os.NewFile registers it with
+//     the poller. O_NONBLOCK lives on the file description, which the
+//     dup shares — cleanup restores the exact F_GETFL word found here
+//     (the caller's fd may have been nonblocking on purpose) and then
+//     closes the dup. While the flag is flipped, writes through a
+//     shared stdout could observe EAGAIN; the /dev/tty path keeps
+//     that case exotic.
 //
 // Ordering contract: call after makeRaw (raw mode is per-device, so it
 // covers every description of the terminal), and never call Fd() on
@@ -77,15 +84,33 @@ func makePollable(f *os.File) (*os.File, func() error) {
 		_ = tty.Close()
 	}
 	fd := int(f.Fd())
-	if err := syscall.SetNonblock(fd, true); err != nil {
+	flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFL, 0)
+	if err != nil {
 		return f, nil
 	}
-	nf := os.NewFile(uintptr(fd), f.Name())
+	dup, err := syscall.Dup(fd)
+	if err != nil {
+		return f, nil
+	}
+	syscall.CloseOnExec(dup)
+	if err := syscall.SetNonblock(dup, true); err != nil {
+		_ = syscall.Close(dup)
+		return f, nil
+	}
+	nf := os.NewFile(uintptr(dup), f.Name())
 	if nf == nil || nf.SetReadDeadline(time.Time{}) != nil {
-		_ = syscall.SetNonblock(fd, false)
+		_, _ = unix.FcntlInt(uintptr(fd), unix.F_SETFL, flags)
+		if nf != nil {
+			_ = nf.Close()
+		} else {
+			_ = syscall.Close(dup)
+		}
 		return f, nil
 	}
-	return nf, func() error { return syscall.SetNonblock(fd, false) }
+	return nf, func() error {
+		_, ferr := unix.FcntlInt(uintptr(fd), unix.F_SETFL, flags)
+		return errors.Join(ferr, nf.Close())
+	}
 }
 
 // sameDevice reports whether a and b refer to the same device
