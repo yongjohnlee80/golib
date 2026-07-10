@@ -3,9 +3,12 @@
 package term
 
 import (
+	"errors"
 	"os"
+	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
 	xterm "golang.org/x/term"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -39,8 +42,93 @@ func fdSize(f *os.File) (tui.Size, error) {
 }
 
 // unblockFile unblocks a pending read during Stop: a read deadline in the
-// past is valid for pollable ttys (ADR-0002 §2.9).
+// past is valid for pollable ttys (ADR-0002 §2.9). makePollable guarantees
+// pollability at Start, so the deadline lands.
 func unblockFile(f *os.File) { _ = f.SetReadDeadline(time.Now()) }
+
+// makePollable hands the input fd to the runtime poller so the §2.9
+// read-deadline unblock works. A tty inherited on stdin arrives in
+// BLOCKING mode: SetReadDeadline is a silent no-op there
+// (os.ErrNoDeadline), Stop's unblock never lands, the pump stays
+// parked in read(2), and teardown hangs on wg.Wait.
+//
+// Three cases, in order:
+//  1. f already takes deadlines (fresh os.OpenFile ttys, pipes) —
+//     returned as is.
+//  2. f is this process's controlling terminal: read through a
+//     private non-blocking /dev/tty description instead. No
+//     shared-description side effects; cleanup closes it.
+//  3. Fallback: duplicate f's fd (the dup is ours to close — wrapping
+//     the caller's own fd in a second *os.File would let the backend
+//     side close/finalize a descriptor it never owned), flip
+//     O_NONBLOCK, and re-wrap the dup so os.NewFile registers it with
+//     the poller. O_NONBLOCK lives on the file description, which the
+//     dup shares — cleanup restores the exact F_GETFL word found here
+//     (the caller's fd may have been nonblocking on purpose) and then
+//     closes the dup. While the flag is flipped, writes through a
+//     shared stdout could observe EAGAIN; the /dev/tty path keeps
+//     that case exotic.
+//
+// Ordering contract: call after makeRaw (raw mode is per-device, so it
+// covers every description of the terminal), and never call Fd() on
+// the returned file — os.File.Fd() reverts the fd to blocking mode,
+// which resurrects the hang.
+func makePollable(f *os.File) (*os.File, func() error) {
+	if f.SetReadDeadline(time.Time{}) == nil {
+		return f, nil
+	}
+	if tty, err := os.OpenFile("/dev/tty", os.O_RDONLY|syscall.O_NONBLOCK, 0); err == nil {
+		if sameDevice(f, tty) && tty.SetReadDeadline(time.Time{}) == nil {
+			return tty, tty.Close
+		}
+		_ = tty.Close()
+	}
+	fd := int(f.Fd())
+	flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFL, 0)
+	if err != nil {
+		return f, nil
+	}
+	// F_DUPFD_CLOEXEC: atomic close-on-exec duplication — a separate
+	// Dup + CloseOnExec would leave a fork/exec race window.
+	dup, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		return f, nil
+	}
+	if err := syscall.SetNonblock(dup, true); err != nil {
+		_ = syscall.Close(dup)
+		return f, nil
+	}
+	nf := os.NewFile(uintptr(dup), f.Name())
+	if nf == nil || nf.SetReadDeadline(time.Time{}) != nil {
+		_, _ = unix.FcntlInt(uintptr(fd), unix.F_SETFL, flags)
+		if nf != nil {
+			_ = nf.Close()
+		} else {
+			_ = syscall.Close(dup)
+		}
+		return f, nil
+	}
+	return nf, func() error {
+		_, ferr := unix.FcntlInt(uintptr(fd), unix.F_SETFL, flags)
+		return errors.Join(ferr, nf.Close())
+	}
+}
+
+// sameDevice reports whether a and b refer to the same device
+// (st_rdev equality).
+func sameDevice(a, b *os.File) bool {
+	sa, err := a.Stat()
+	if err != nil {
+		return false
+	}
+	sb, err := b.Stat()
+	if err != nil {
+		return false
+	}
+	ra, aok := sa.Sys().(*syscall.Stat_t)
+	rb, bok := sb.Sys().(*syscall.Stat_t)
+	return aok && bok && ra.Rdev == rb.Rdev
+}
 
 // readFile reads from the real terminal fd; Stop unblocks it via the read
 // deadline, which the pump classifies as a clean exit once done is closed.

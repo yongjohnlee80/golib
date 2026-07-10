@@ -71,6 +71,10 @@ func fdSize(f *os.File) (tui.Size, error) {
 // with a short bounded wait and re-checks done itself (ADR-0002 §2.9).
 func unblockFile(*os.File) {}
 
+// makePollable is a no-op on Windows for the same reason — the bounded
+// console wait never parks the pump in an unbreakable read.
+func makePollable(f *os.File) (*os.File, func() error) { return f, nil }
+
 // readFile waits for console input with a bounded wait, re-checking done
 // between waits, then reads the VT byte stream. ReadConsoleInput is never
 // mixed with stream reads on the same handle (ADR-0002 §2.8, §4.2).

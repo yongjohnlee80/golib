@@ -548,6 +548,20 @@ Contract (the `server/ws/ws.go` one-reader/`sync.Once`/`done chan struct{}` disc
 > cell" language is gone: the channel is ordered and un-coalesced end to end, and
 > `Err()` (§2.1) carries the reader/probe terminal error the App loop reads after close.
 
+> **Rev 2 (pollability guarantee — db-tui finding #1, fix/term-reader-unblock).**
+> `SetReadDeadline` is only honored on poller-registered fds, and a tty inherited on
+> stdin arrives in *blocking* mode — the deadline was a silent no-op
+> (`os.ErrNoDeadline`) and Stop hung on the reader join for every real interactive
+> session. `start` therefore guarantees pollability via `makePollable` (unix), run
+> after `makeRaw`: a deadline-capable file passes through; the controlling terminal
+> is read through a private non-blocking `/dev/tty` description; otherwise the fd is
+> duplicated atomically (`F_DUPFD_CLOEXEC`), flipped `O_NONBLOCK`, and re-wrapped —
+> teardown restores the exact `F_GETFL` word and closes only the duplicate, after the
+> reader joins. Nothing may call `Fd()` on the swapped file (it reverts the fd to
+> blocking mode). Regression: `pty_linux_test.go` drives a real pty with the slave as
+> a raw blocking fd — the shell-inherited stdin shape the pipe-based lifecycle tests
+> cannot reproduce.
+
 ### 2.10 Teardown and restore guarantees
 
 `Stop` restores in reverse order of acquisition, best-effort on every step,
