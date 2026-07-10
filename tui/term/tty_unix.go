@@ -88,11 +88,12 @@ func makePollable(f *os.File) (*os.File, func() error) {
 	if err != nil {
 		return f, nil
 	}
-	dup, err := syscall.Dup(fd)
+	// F_DUPFD_CLOEXEC: atomic close-on-exec duplication — a separate
+	// Dup + CloseOnExec would leave a fork/exec race window.
+	dup, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
 		return f, nil
 	}
-	syscall.CloseOnExec(dup)
 	if err := syscall.SetNonblock(dup, true); err != nil {
 		_ = syscall.Close(dup)
 		return f, nil
