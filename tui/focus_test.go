@@ -38,6 +38,22 @@ func TestTabTraversalWrapsAndSkips(t *testing.T) {
 	waitFor(t, "shift-tab to c", func() bool { return focusedID(h) == c.nodeID() })
 }
 
+// TestFocusComponent: cross-node programmatic focus — a controller hands focus
+// to another mounted component, not the calling node (RequestFocus is self).
+func TestFocusComponent(t *testing.T) {
+	t.Parallel()
+	a := newFocusProbe("a", Size{W: 2, H: 1})
+	b := newFocusProbe("b", Size{W: 2, H: 1})
+	root := NewFlex(Vertical)
+	root.Add(a, b)
+	h := startApp(t, root, 8, 8)
+
+	h.onLoop(func() { a.ctx.RequestFocus() })
+	waitFor(t, "a focused", func() bool { return focusedID(h) == a.nodeID() })
+	h.onLoop(func() { a.ctx.FocusComponent(b) }) // focus a different node
+	waitFor(t, "b focused via FocusComponent", func() bool { return focusedID(h) == b.nodeID() })
+}
+
 // TestFocusEventsAndBubble: every move delivers Gained=false to the loser
 // then Gained=true to the gainer, and FocusEvents bubble so ancestors can
 // restyle (ADR-0004 §2.6.1, §2.5.3).

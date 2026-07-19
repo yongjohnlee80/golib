@@ -12,13 +12,15 @@ import (
 // subscriptions — across switches; ADR-0004 mount semantics).
 //
 // Keys: Ctrl+PgUp/PgDn cycle from anywhere inside the Tabs subtree; [ and ]
-// cycle when the bar itself is focused. Click selects. Emits
-// TabChangedEvent.
+// and the ←/→ arrows cycle when the bar itself is focused. Click selects.
+// Emits TabChangedEvent.
 type Tabs struct {
 	Base
-	tabs   []tabEntry
-	active int
-	keep   bool
+	tabs      []tabEntry
+	active    int
+	keep      bool
+	autoFocus bool
+	noBar     bool
 
 	barSt    style.Style
 	tabSt    style.Style
@@ -47,6 +49,17 @@ func WithTab(label string, content tui.Component) TabsOption {
 // WithKeepMounted keeps deactivated tab content mounted (state and
 // subscriptions live) instead of unmounting it on switch.
 func WithKeepMounted(v bool) TabsOption { return func(t *Tabs) { t.keep = v } }
+
+// WithAutoFocus makes the bar request focus for itself on Init, so a Tabs
+// used as a top-level menu is keyboard-navigable (←/→, [ / ]) immediately —
+// without the user first pressing Tab to move focus onto it. Off by default:
+// a Tabs nested among other focusables should not steal the initial focus.
+func WithAutoFocus(v bool) TabsOption { return func(t *Tabs) { t.autoFocus = v } }
+
+// WithoutBar hides the tab bar: Layout gives the active content the full height
+// and Render paints no bar. Use when a separate widget (e.g. a dedicated menu
+// panel) drives Select and the Tabs acts purely as a content switcher.
+func WithoutBar() TabsOption { return func(t *Tabs) { t.noBar = true } }
 
 // WithTabsStyles overrides the bar, tab, and active-tab styles.
 func WithTabsStyles(bar, tab, active style.Style) TabsOption {
@@ -104,6 +117,9 @@ func (t *Tabs) Init(ctx *tui.Context) {
 	t.active = max(0, min(t.active, len(t.tabs)-1))
 	ctx.Mount(t.tabs[t.active].comp)
 	t.tabs[t.active].mounted = true
+	if t.autoFocus {
+		ctx.RequestFocus()
+	}
 }
 
 // Select activates tab i (out-of-range is ignored), mounting its content
@@ -159,10 +175,10 @@ func (t *Tabs) HandleEvent(ev tui.Event) bool {
 		}
 		if t.focused() && e.Mods == 0 {
 			switch e.Code {
-			case '[':
+			case '[', tui.KeyLeft:
 				t.cycle(-1)
 				return true
-			case ']':
+			case ']', tui.KeyRight:
 				t.cycle(1)
 				return true
 			}
@@ -191,17 +207,24 @@ func (t *Tabs) HandleEvent(ev tui.Event) bool {
 func (t *Tabs) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, max(c.MinW, 1))
 	h := boundedMax(c.MaxH, max(c.MinH, 1))
-	ch := max(h-1, 0)
+	barH := 1
+	if t.noBar {
+		barH = 0
+	}
+	ch := max(h-barH, 0)
 	active := t.tabs[t.active]
 	if active.mounted && ch > 0 {
 		t.ctx.LayoutChild(active.comp, tui.Tight(tui.Size{W: w, H: ch}))
-		t.ctx.PlaceChild(active.comp, tui.Rect{X: 0, Y: 1, W: w, H: ch})
+		t.ctx.PlaceChild(active.comp, tui.Rect{X: 0, Y: barH, W: w, H: ch})
 	}
 	return c.Constrain(tui.Size{W: w, H: h})
 }
 
 // Render paints the tab bar; only the active child renders below.
 func (t *Tabs) Render(s tui.Surface) {
+	if t.noBar {
+		return // content-switcher mode: an external widget draws the menu
+	}
 	w := s.Size().W
 	if w <= 0 {
 		return

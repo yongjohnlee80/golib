@@ -55,6 +55,8 @@ type List[T any] struct {
 	lastClickIdx int
 	lastClickAt  time.Time
 
+	emptyText string // shown (muted) in place of rows when the source is empty
+
 	styles ListStyles
 }
 
@@ -94,6 +96,13 @@ func WithItems[T any](items []T, render func(T) string) ListOption[T] {
 // SelectedAll reports).
 func WithMultiSelect[T any](enabled bool) ListOption[T] {
 	return func(l *List[T]) { l.multi = enabled }
+}
+
+// WithEmptyText sets a muted placeholder rendered in the list's first row when
+// the source has no items (e.g. "No results yet"). Empty by default: an empty
+// list paints nothing.
+func WithEmptyText[T any](s string) ListOption[T] {
+	return func(l *List[T]) { l.emptyText = s }
 }
 
 // WithListStyles overrides the style hooks; zero fields keep defaults.
@@ -343,6 +352,13 @@ func (l *List[T]) Render(s tui.Surface) {
 	}
 	l.count = l.src.Len() // the one Len() read of this pass
 	l.clamp()
+	if l.count == 0 {
+		if l.emptyText != "" {
+			muted := style.New().Foreground(style.TokenTextMuted).Italic(true)
+			drawText(s, 0, 0, truncate(l.emptyText, sz.W, s.StringWidth), muted)
+		}
+		return
+	}
 	rows := min(sz.H, l.count-l.top)
 	scrollable := l.count > sz.H
 	contentW := sz.W

@@ -17,6 +17,15 @@ type scopeEntry struct {
 // unless the component is Focusable and currently accepts focus (the
 // visibility filter applies to traversal only — a component may legally
 // request focus from Init, before any layout pass).
+// requestFocusByID focuses the node with the given id if it exists and is
+// focusable. Reports whether focus ended up there.
+func (a *App) requestFocusByID(id NodeID) bool {
+	if n := a.nodes[id]; n != nil {
+		a.requestFocus(n)
+	}
+	return a.focused == id
+}
+
 func (a *App) requestFocus(n *node) {
 	f, ok := n.comp.(Focusable)
 	if !ok || !f.AcceptsFocus() {

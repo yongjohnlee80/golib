@@ -48,6 +48,30 @@ func (c *Context) RequestLayout() {
 // Ignored unless the component implements Focusable and accepts focus.
 func (c *Context) RequestFocus() { c.app.requestFocus(c.node) }
 
+// FocusComponent moves focus to another already-mounted component — the
+// cross-node analogue of RequestFocus, which can only focus the calling node.
+// A controller uses it to hand focus to a specific child (a form field, a
+// content panel). Returns false if comp exposes no node identity, is not
+// mounted, or is not focusable. Loop goroutine only.
+func (c *Context) FocusComponent(comp Component) bool {
+	if comp == nil {
+		return false
+	}
+	// Fast path: widgets embed Base, which exposes the mount's node id.
+	if ider, ok := comp.(interface{ NodeID() NodeID }); ok {
+		if id := ider.NodeID(); id != 0 {
+			return c.app.requestFocusByID(id)
+		}
+	}
+	// Fallback: reverse-lookup the node by identity so any Component works.
+	for id, n := range c.app.nodes {
+		if n.comp == comp {
+			return c.app.requestFocusByID(id)
+		}
+	}
+	return false
+}
+
 // Focused reports whether this node currently holds focus.
 func (c *Context) Focused() bool { return c.app.focused == c.node.id }
 

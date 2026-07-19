@@ -3,6 +3,7 @@ package widget
 import (
 	"errors"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -147,6 +148,21 @@ func (v *BufferView) Clear() {
 // line).
 func (v *BufferView) LineCount() int { return len(v.lines) - v.head }
 
+// PlainText returns the buffered content as unstyled text, one line per
+// buffered line — the copy-to-clipboard payload. Loop goroutine only.
+func (v *BufferView) PlainText() string {
+	var sb strings.Builder
+	for i := 0; i < v.LineCount(); i++ {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		for _, sp := range v.line(i).spans {
+			sb.WriteString(sp.text)
+		}
+	}
+	return sb.String()
+}
+
 // line returns live line i.
 func (v *BufferView) line(i int) *bline { return &v.lines[v.head+i] }
 
@@ -272,6 +288,14 @@ func (v *BufferView) HandleEvent(ev tui.Event) bool {
 			v.setFollow(true) // End resumes follow (less +F)
 			v.MarkDirty()
 			return true
+		case 'y':
+			// Copy the whole buffer to the system clipboard (OSC 52); a
+			// raw-mode TUI blocks terminal-native selection, so the viewer
+			// owns copy. No-op when the backend lacks clipboard support.
+			if e.Mods == 0 && v.Context() != nil {
+				v.Context().CopyToClipboard(v.PlainText())
+				return true
+			}
 		}
 		return false
 	case tui.MouseEvent:

@@ -110,6 +110,61 @@ func TestTabsKeepMounted(t *testing.T) {
 	h.wantNotContains("BBBBB") // mounted but not laid out → invisible
 }
 
+// TestTabsArrowSwitching: the ←/→ arrows cycle the focused bar, alongside [ ].
+func TestTabsArrowSwitching(t *testing.T) {
+	a := &lifeProbe{label: "AAAAA"}
+	b := &lifeProbe{label: "BBBBB"}
+	tabs := widget.NewTabs(widget.WithTab("one", a), widget.WithTab("two", b), widget.WithKeepMounted(true))
+	sh := newShell(tabs)
+	h := startApp(t, sh, 20, 4)
+	h.inject(tab()) // focus the bar
+	h.barrier(sh)
+	h.wantContains("AAAAA")
+
+	h.inject(key(tui.KeyRight))
+	h.barrier(sh)
+	h.wantContains("BBBBB")
+	h.wantNotContains("AAAAA")
+
+	h.inject(key(tui.KeyLeft))
+	h.barrier(sh)
+	h.wantContains("AAAAA")
+	h.wantNotContains("BBBBB")
+}
+
+// TestTabsAutoFocus: WithAutoFocus makes the bar take focus on Init, so the
+// arrows drive it without a preceding Tab.
+func TestTabsAutoFocus(t *testing.T) {
+	a := &lifeProbe{label: "AAAAA"}
+	b := &lifeProbe{label: "BBBBB"}
+	tabs := widget.NewTabs(widget.WithTab("one", a), widget.WithTab("two", b),
+		widget.WithKeepMounted(true), widget.WithAutoFocus(true))
+	sh := newShell(tabs)
+	h := startApp(t, sh, 20, 4)
+	h.barrier(sh)
+	h.wantContains("AAAAA")
+
+	h.inject(key(tui.KeyRight)) // no tab() first — the bar auto-focused
+	h.barrier(sh)
+	h.wantContains("BBBBB")
+}
+
+// TestTabsWithoutBar: bar-less mode gives the active content the full height
+// (row 0) and paints no bar (no tab labels).
+func TestTabsWithoutBar(t *testing.T) {
+	a := &lifeProbe{label: "AAAAA"}
+	b := &lifeProbe{label: "BBBBB"}
+	tabs := widget.NewTabs(
+		widget.WithTab("one", a), widget.WithTab("two", b),
+		widget.WithKeepMounted(true), widget.WithoutBar())
+	sh := newShell(tabs)
+	h := startApp(t, sh, 20, 4)
+	h.barrier(sh)
+	h.wantContains("AAAAA")
+	h.wantNotContains("one") // no bar drawn
+	h.wantNotContains("two")
+}
+
 func TestSplitLayoutAndKeyboardResize(t *testing.T) {
 	left := &pane{fill: "a"}
 	right := &pane{fill: "b"}
