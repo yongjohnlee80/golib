@@ -41,6 +41,26 @@ func fdSize(f *os.File) (tui.Size, error) {
 	return tui.Size{W: w, H: h}, nil
 }
 
+// waitWritable blocks until fd is writable, so writeAll can resume after an
+// EAGAIN on a non-blocking output description instead of dropping the frame's
+// tail (ADR-0002 §2.1). EINTR retries; the 1s poll timeout just re-arms (a
+// paused terminal is not an error).
+func waitWritable(fd int) error {
+	pfd := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}}
+	for {
+		n, err := unix.Poll(pfd, 1000)
+		if err != nil {
+			if errors.Is(err, syscall.EINTR) {
+				continue
+			}
+			return err
+		}
+		if n > 0 {
+			return nil
+		}
+	}
+}
+
 // unblockFile unblocks a pending read during Stop: a read deadline in the
 // past is valid for pollable ttys (ADR-0002 §2.9). makePollable guarantees
 // pollability at Start, so the deadline lands.

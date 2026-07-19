@@ -153,8 +153,7 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	if buf.Len() == 0 {
 		return nil
 	}
-	_, err := b.output.Write(buf.Bytes()) // R3: one frame, one Write
-	return err
+	return b.writeAll(buf.Bytes()) // R3: one frame, one Write (short-write safe)
 }
 
 func (b *Backend) writeInt(n int) {

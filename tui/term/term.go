@@ -3,11 +3,13 @@ package term
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"os"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -345,15 +347,64 @@ func (b *Backend) setReadErr(err error) {
 	b.errMu.Unlock()
 }
 
-// write performs one guarded write to the output.
+// write performs one guarded, complete write to the output.
 func (b *Backend) write(p []byte) error {
 	if len(p) == 0 {
 		return nil
 	}
 	b.wmu.Lock()
 	defer b.wmu.Unlock()
-	_, err := b.output.Write(p)
-	return err
+	return b.writeAll(p)
+}
+
+// WriteClipboard sets the system clipboard via OSC 52 (tui.ClipboardWriter).
+// The terminal itself performs the copy, so this works over SSH and inside
+// multiplexers/editor terminals that pass OSC 52 through. Terminals commonly
+// cap the sequence length (tmux defaults near 100KB), so oversized payloads
+// keep their TAIL — for the log-pane use case the most recent lines are the
+// ones worth keeping.
+func (b *Backend) WriteClipboard(p []byte) error {
+	if b.stopped.Load() {
+		return ErrClosed
+	}
+	const maxRaw = 72_000 // base64 expands 4/3 → ~96KB sequence, under common caps
+	if len(p) > maxRaw {
+		p = p[len(p)-maxRaw:]
+	}
+	seq := make([]byte, 0, base64.StdEncoding.EncodedLen(len(p))+16)
+	seq = append(seq, "\x1b]52;c;"...)
+	seq = base64.StdEncoding.AppendEncode(seq, p)
+	seq = append(seq, "\x1b\\"...)
+	return b.write(seq)
+}
+
+// writeAll writes all of p, tolerating short writes and — on a non-blocking
+// tty — EAGAIN. A frame is emitted as one Write (ADR-0002 §2.1); when the
+// output description is non-blocking (makePollable flips O_NONBLOCK on a
+// stdin/stdout pair that share one open-file description) the kernel accepts
+// only what fits its buffer and returns a short count with EAGAIN. Dropping
+// the remainder left the frame half-painted with no repaint — the "only the
+// top of the screen renders" bug. Callers hold wmu.
+func (b *Backend) writeAll(p []byte) error {
+	for len(p) > 0 {
+		n, err := b.output.Write(p)
+		if n > 0 {
+			p = p[n:]
+		}
+		if err == nil {
+			continue
+		}
+		// A non-blocking fd with bytes still pending: wait for writability
+		// (not a busy spin) and resume. Any other error is real.
+		if len(p) > 0 && (errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EWOULDBLOCK)) && b.outFile != nil {
+			if werr := waitWritable(int(b.outFile.Fd())); werr != nil {
+				return werr
+			}
+			continue
+		}
+		return err
+	}
+	return nil
 }
 
 // --- reader goroutines (§2.9: the ws.go one-reader discipline) ---

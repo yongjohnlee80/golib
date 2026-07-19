@@ -43,8 +43,29 @@ type TestBackend struct {
 
 	flushes int
 
+	clipboard []byte // last WriteClipboard payload (tui.ClipboardWriter)
+
 	violations        []ConstraintViolation
 	violationsDropped int
+}
+
+// WriteClipboard implements ClipboardWriter: records the payload for
+// assertion via Clipboard().
+func (b *TestBackend) WriteClipboard(p []byte) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.stopped {
+		return errors.New("tui: TestBackend.WriteClipboard after Stop")
+	}
+	b.clipboard = append(b.clipboard[:0], p...)
+	return nil
+}
+
+// Clipboard returns the last WriteClipboard payload (nil if none).
+func (b *TestBackend) Clipboard() []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]byte(nil), b.clipboard...)
 }
 
 var _ Backend = (*TestBackend)(nil)

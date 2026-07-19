@@ -55,6 +55,48 @@ func cellAt(x, y int, s string, attrs tui.CellAttrs) tui.CellUpdate {
 	return tui.CellUpdate{X: x, Y: y, Cell: tui.Cell{Content: s, Width: 1, Attrs: attrs}}
 }
 
+// shortWriter accepts at most chunk bytes per call — a non-blocking tty that
+// takes only what fits its buffer and short-writes the rest (io.Writer-legal:
+// n < len(p), nil error).
+type shortWriter struct {
+	chunk int
+	buf   strings.Builder
+	calls int
+}
+
+func (w *shortWriter) Write(p []byte) (int, error) {
+	w.calls++
+	n := len(p)
+	if n > w.chunk {
+		n = w.chunk
+	}
+	w.buf.Write(p[:n])
+	return n, nil
+}
+
+// TestFlushShortWritesReassembleFullFrame guards the regression where a single
+// Flush emitted one output.Write and dropped a short count, truncating the
+// frame on a non-blocking tty (the "only the top of the screen paints" bug).
+// writeAll must loop until the whole frame lands.
+func TestFlushShortWritesReassembleFullFrame(t *testing.T) {
+	w := &shortWriter{chunk: 8}
+	b := newHarness(strings.NewReader(""), w)
+	b.caps = tui.Capabilities{}
+	diff := make([]tui.CellUpdate, 0, 40)
+	for y := 0; y < 40; y++ {
+		diff = append(diff, cellAt(0, y, "X", tui.CellAttrs{}))
+	}
+	if err := b.Flush(diff); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(w.buf.String(), "X"); got != 40 {
+		t.Fatalf("short-write flush truncated: got %d of 40 cells\n%q", got, w.buf.String())
+	}
+	if w.calls < 2 {
+		t.Fatalf("shortWriter not exercised (calls=%d) — test is not meaningful", w.calls)
+	}
+}
+
 func TestFlushEmptyDiffWritesZeroBytes(t *testing.T) {
 	// ADR-0002 §5.5: empty diff + unchanged cursor = zero bytes, zero Writes.
 	b, w := flushBackend(tui.Capabilities{SyncOutput: true})

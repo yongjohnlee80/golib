@@ -13,6 +13,11 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
+// waitWritable is a no-op on Windows: console handles write synchronously
+// (blocking) so os.File.Write never returns EAGAIN and writeAll's loop only
+// ever handles ordinary short writes.
+func waitWritable(int) error { return nil }
+
 // Windows terminal plumbing (ADR-0002 §2.4). x/term's MakeRaw sets
 // ENABLE_VIRTUAL_TERMINAL_INPUT on stdin — the console then encodes keys (and
 // Windows Terminal encodes mouse/paste) as VT sequences into the stdin byte
