@@ -4,6 +4,10 @@
 // [CellAttrs], [Surface]), the concrete [Event] set, and the layout value types
 // ([Rect], [Size], [Constraints]).
 //
+// New to the package? Start with the tutorials in tui/tutorial/ — they walk
+// from a first program through widgets, focus, async tasks, and modals, and
+// catalog the real-world pitfalls (tutorial/07-pitfalls.md).
+//
 // The runtime — App, Bus, Context, the component tree, focus, and layout
 // mechanics — is specified by ADR-0004/ADR-0005 and is forthcoming; the
 // concrete terminal driver lives in tui/term (ADR-0002) and is likewise
