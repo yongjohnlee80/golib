@@ -11,9 +11,12 @@ import (
 // DATABASE(). String flags (IS_NULLABLE, COLUMN_KEY) are compared in Go, not
 // SQL, to avoid driver bool-conversion trouble.
 
-// SupportsIntrospection reports true: the dialect implements the catalog
-// listing trio over information_schema.
-func (MysqlDialect) SupportsIntrospection() bool { return true }
+// MysqlDialect opts into the qualified-table and introspection capabilities
+// (ADR-0013).
+var (
+	_ dao.TableQuoter  = MysqlDialect{}
+	_ dao.Introspector = MysqlDialect{}
+)
 
 // ListSchemas lists user databases, excluding the four system schemas.
 func (MysqlDialect) ListSchemas(ctx context.Context, q dao.Querier) ([]dao.SchemaInfo, error) {

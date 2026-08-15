@@ -28,14 +28,6 @@ type Dialect interface {
 	// QuoteIdent quotes a table or column identifier for the dialect.
 	QuoteIdent(ident string) string
 
-	// QuoteTable quotes an identifier appearing in table position. Unlike
-	// QuoteIdent it understands qualification: "app.users" renders as
-	// "app"."users" (each dot-separated part quoted separately). Table
-	// identifiers containing a literal dot in the name itself are not
-	// supported in qualified form — the dot is the qualification separator
-	// (ADR-0013 §2).
-	QuoteTable(ident string) string
-
 	// SupportsReturning reports whether INSERT ... RETURNING <id> is available
 	// (Postgres/SQLite yes; MySQL no — fall back to LastInsertId).
 	SupportsReturning() bool
@@ -101,24 +93,22 @@ type Dialect interface {
 	// RETURNING nor LastInsertID, DAO.Insert performs the DML and returns the zero
 	// ID with a nil error — a documented no-generated-id insert (ADR-0008 §2.6).
 	SupportsLastInsertID() bool
+}
 
-	// SupportsIntrospection reports whether the dialect implements the catalog
-	// listing trio below. Default false (ADR-0013 §3).
-	SupportsIntrospection() bool
-
-	// ListSchemas executes the dialect's catalog query for schemas (namespaces)
-	// on q. Implemented only when SupportsIntrospection reports true; otherwise
-	// it returns ErrUnsupported (wrapped). Like Copy, introspection runs on the
-	// raw Querier and is not hook-observed (ADR-0013 §3.2).
-	ListSchemas(ctx context.Context, q Querier) ([]SchemaInfo, error)
-
-	// ListTables lists the tables and views of schema. An empty schema means
-	// the dialect's default (postgres: "public", mysql: the connection's
-	// current database, sqlite: "main").
-	ListTables(ctx context.Context, q Querier, schema string) ([]TableInfo, error)
-
-	// ListColumns lists the columns of schema.table in ordinal order, with
-	// type text, nullability, default expression, and primary-key membership.
-	// Empty schema semantics as in ListTables.
-	ListColumns(ctx context.Context, q Querier, schema, table string) ([]ColumnInfo, error)
+// TableQuoter is an optional [Dialect] capability (ADR-0013 §2): a dialect
+// that understands schema-qualified table names implements it, and the engine
+// then quotes table-position identifiers through QuoteTable instead of
+// QuoteIdent. Deliberately NOT part of Dialect and NOT implemented by
+// [GenericDialect]: an embedded promoted default would silently override the
+// table quoting of existing dialects with their own QuoteIdent conventions
+// (the BigQuery backtick dot-path) in mixed-version builds. A dialect that
+// does not implement it keeps today's behavior — the whole table string is
+// quoted as one identifier via QuoteIdent.
+type TableQuoter interface {
+	// QuoteTable quotes an identifier appearing in table position:
+	// "app.users" renders as "app"."users" (each dot-separated part quoted
+	// separately). Table identifiers containing a literal dot in the name
+	// itself are not supported in qualified form — the dot is the
+	// qualification separator.
+	QuoteTable(ident string) string
 }

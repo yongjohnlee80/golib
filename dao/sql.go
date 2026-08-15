@@ -13,6 +13,17 @@ type builder struct {
 	n       int // next placeholder index (1-based for $n dialects)
 }
 
+// quoteTable quotes a table-position identifier: dialects implementing the
+// optional [TableQuoter] capability get qualified (dot-split) quoting; all
+// others keep the historical behavior — the whole string quoted as one
+// identifier via QuoteIdent (ADR-0013 §2).
+func quoteTable(d Dialect, table string) string {
+	if tq, ok := d.(TableQuoter); ok {
+		return tq.QuoteTable(table)
+	}
+	return d.QuoteIdent(table)
+}
+
 // ph appends a bind arg and returns its placeholder text (e.g. "$1" or "?").
 func (b *builder) ph(v any) string {
 	b.args = append(b.args, v)
@@ -40,7 +51,7 @@ func (b *builder) where(preds []Predicate) {
 // fromAndJoins writes "FROM <table> <join> <join> ...".
 func (b *builder) fromAndJoins(table string, joins []joinClause) {
 	b.sb.WriteString(" FROM ")
-	b.sb.WriteString(b.dialect.QuoteTable(table))
+	b.sb.WriteString(quoteTable(b.dialect, table))
 	for _, j := range joins {
 		b.sb.WriteByte(' ')
 		b.sb.WriteString(j.sql)
@@ -107,7 +118,7 @@ func (b *builder) buildExists(table string, joins []joinClause, where []Predicat
 func (b *builder) insertCore(table string, set orderedSet) []string {
 	keys := set.sortedKeys()
 	b.sb.WriteString("INSERT INTO ")
-	b.sb.WriteString(b.dialect.QuoteTable(table))
+	b.sb.WriteString(quoteTable(b.dialect, table))
 	b.sb.WriteString(" (")
 	for i, c := range keys {
 		if i > 0 {
@@ -158,7 +169,7 @@ func (b *builder) buildUpsert(table string, set orderedSet, idCol string, return
 // joins (a filter on a joined table), the WHERE becomes an id-subselect because
 // portable UPDATE cannot JOIN.
 func (b *builder) buildUpdate(table, idCol string, set orderedSet, joins []joinClause, where []Predicate) string {
-	qt := b.dialect.QuoteTable(table)
+	qt := quoteTable(b.dialect, table)
 	b.sb.WriteString("UPDATE ")
 	b.sb.WriteString(qt)
 	b.sb.WriteString(" SET ")
@@ -178,7 +189,7 @@ func (b *builder) buildUpdate(table, idCol string, set orderedSet, joins []joinC
 // handling as buildUpdate.
 func (b *builder) buildDelete(table, idCol string, joins []joinClause, where []Predicate) string {
 	b.sb.WriteString("DELETE FROM ")
-	b.sb.WriteString(b.dialect.QuoteTable(table))
+	b.sb.WriteString(quoteTable(b.dialect, table))
 	b.whereOrSubselect(table, idCol, joins, where)
 	return b.sb.String()
 }
@@ -191,7 +202,7 @@ func (b *builder) whereOrSubselect(table, idCol string, joins []joinClause, wher
 		b.where(where)
 		return
 	}
-	qt := b.dialect.QuoteTable(table)
+	qt := quoteTable(b.dialect, table)
 	qid := b.dialect.QuoteIdent(idCol)
 	b.sb.WriteString(" WHERE ")
 	b.sb.WriteString(qid)
@@ -214,7 +225,7 @@ func (b *builder) buildBatchInsert(table string, cols []string, matrix [][]any, 
 	b.args = b.args[:0]
 
 	b.sb.WriteString("INSERT INTO ")
-	b.sb.WriteString(b.dialect.QuoteTable(table))
+	b.sb.WriteString(quoteTable(b.dialect, table))
 	b.sb.WriteString(" (")
 	for i, c := range cols {
 		if i > 0 {

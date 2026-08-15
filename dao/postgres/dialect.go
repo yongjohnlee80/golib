@@ -17,8 +17,26 @@ type PostgresDialect struct {
 	dao.GenericDialect
 }
 
+// PostgresDialect opts into the qualified-table and introspection
+// capabilities (ADR-0013).
+var (
+	_ dao.TableQuoter  = PostgresDialect{}
+	_ dao.Introspector = PostgresDialect{}
+)
+
 // Name returns "postgres".
 func (PostgresDialect) Name() string { return "postgres" }
+
+// QuoteTable implements dao.TableQuoter: each dot-separated qualification
+// part is double-quoted separately, so "app.users" renders "app"."users"
+// (ADR-0013 §2). Unqualified names render identically to QuoteIdent.
+func (d PostgresDialect) QuoteTable(ident string) string {
+	parts := strings.Split(ident, ".")
+	for i, p := range parts {
+		parts[i] = d.QuoteIdent(p)
+	}
+	return strings.Join(parts, ".")
+}
 
 // CopySupported reports true: the driver uses pgx CopyFrom for the bulk-load
 // fast-path.

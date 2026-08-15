@@ -77,6 +77,12 @@ func TestIntrospection_Sqlite(t *testing.T) {
 	if id.Name != "id" || !id.PrimaryKey || id.Position != 1 {
 		t.Errorf("id = %+v, want pk at position 1", id)
 	}
+	// lector dao-m1 r1 must-fix #2: pragma_table_info reports notnull=0 for
+	// the rowid-alias PK; the dao contract normalizes PK columns to
+	// non-nullable (dao.ColumnInfo.Nullable doc).
+	if id.Nullable {
+		t.Errorf("id.Nullable = true, want false (PK columns report non-nullable)")
+	}
 	if name.Name != "name" || name.Nullable || name.PrimaryKey {
 		t.Errorf("name = %+v, want NOT NULL non-pk", name)
 	}

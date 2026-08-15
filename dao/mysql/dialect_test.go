@@ -54,8 +54,8 @@ func TestMysqlDialect_CapabilityProfile(t *testing.T) {
 	if d.CopySupported() || d.TwoPhaseSupported() {
 		t.Error("COPY/two-phase must stay unsupported")
 	}
-	if !d.SupportsIntrospection() {
-		t.Error("SupportsIntrospection = false, want true (ADR-0013)")
+	if !dao.SupportsIntrospection(MysqlDialect{}) {
+		t.Error("SupportsIntrospection(MysqlDialect) = false, want true (ADR-0013)")
 	}
 }
 

@@ -77,7 +77,7 @@ Files (mirroring `dao/sqlite`):
 | `Placeholder(n)` | `"?"` | positional |
 | `MaxBindParams()` | `65535` | the binary-protocol hard cap (2-byte param count); chunking stays packet-sane because `perChunkRows` divides by column count |
 | `QuoteIdent(s)` | backticks, `` ` `` → ```` `` ```` | MySQL identifier quoting |
-| `QuoteTable(s)` | dot-split, each part backtick-quoted | ADR-0013 contract |
+| `QuoteTable(s)` | dot-split, each part backtick-quoted | implements the optional `dao.TableQuoter` capability (ADR-0013 rev 1) |
 | `SupportsReturning()` | `false` | no `INSERT ... RETURNING` |
 | `SupportsLastInsertID()` | `true` | OK-packet id (ADR-0008 §2.6) |
 | `BuildUpsertSuffix` | see §2.3 | |

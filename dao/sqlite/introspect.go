@@ -12,10 +12,6 @@ import (
 // schema (database) name cannot be a bind anywhere in SQLite — it is quoted
 // as an identifier via the dialect.
 
-// SupportsIntrospection reports true: the dialect implements the catalog
-// listing trio over sqlite_master and pragma_table_info.
-func (SqliteDialect) SupportsIntrospection() bool { return true }
-
 // ListSchemas lists the attached databases ("main", "temp", and any ATTACHed
 // name), in attachment order.
 func (SqliteDialect) ListSchemas(ctx context.Context, q dao.Querier) ([]dao.SchemaInfo, error) {
@@ -87,7 +83,12 @@ func (SqliteDialect) ListColumns(ctx context.Context, q dao.Querier, schema, tab
 		if err := rows.Scan(&c.Name, &c.DataType, &notnull, &def, &cid, &pk); err != nil {
 			return nil, err
 		}
-		c.Nullable = notnull == 0
+		// PK columns are normalized to non-nullable per the dao.ColumnInfo
+		// contract: pragma_table_info reports notnull=0 for the rowid-alias
+		// INTEGER PRIMARY KEY, and SQLite's legacy nullable-PK quirk for
+		// some non-INTEGER PKs is deliberately not surfaced (ADR-0013 §3.1;
+		// lector dao-m1 r1 must-fix #2).
+		c.Nullable = notnull == 0 && pk == 0
 		if def != nil {
 			c.Default, c.HasDefault = *def, true
 		}

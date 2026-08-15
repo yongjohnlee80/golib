@@ -11,10 +11,6 @@ import (
 // materialized views), and keys the column lookup on a bind-safe
 // format('%I.%I', $1, $2)::regclass instead of interpolated identifiers.
 
-// SupportsIntrospection reports true: the dialect implements the catalog
-// listing trio over pg_catalog.
-func (PostgresDialect) SupportsIntrospection() bool { return true }
-
 // ListSchemas lists user-visible schemas, excluding pg_catalog's own
 // namespaces and information_schema.
 func (PostgresDialect) ListSchemas(ctx context.Context, q dao.Querier) ([]dao.SchemaInfo, error) {

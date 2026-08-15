@@ -11,8 +11,8 @@ func TestIntrospection_GenericDefaultsUnsupported(t *testing.T) {
 	conn := newConn()
 	ctx := context.Background()
 
-	if (GenericDialect{}).SupportsIntrospection() {
-		t.Error("GenericDialect.SupportsIntrospection() = true, want false")
+	if SupportsIntrospection(GenericDialect{}) {
+		t.Error("SupportsIntrospection(GenericDialect) = true, want false (no promoted capability)")
 	}
 	if _, err := ListSchemas(ctx, conn); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("ListSchemas err = %v, want ErrUnsupported", err)
