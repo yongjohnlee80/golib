@@ -263,7 +263,10 @@ func (b *batchWriter[R, C]) suffix(cols []string) string {
 		}
 		return b.dialect.BuildUpsertSuffix(conflict, subtract(cols, conflict))
 	case b.skipConflict:
-		return b.dialect.BuildUpsertSuffix(nil, nil)
+		// The insert columns ride along as a hint for dialects (MySQL) that
+		// cannot express "do nothing" without naming a column; suffix-complete
+		// dialects ignore them (ADR-0011 §2.3).
+		return b.dialect.BuildUpsertSuffix(nil, cols)
 	}
 	return ""
 }

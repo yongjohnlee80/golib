@@ -3,6 +3,7 @@ package dao
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -36,6 +37,17 @@ func (GenericDialect) MaxBatchRows() int { return 0 }
 // QuoteIdent double-quotes ident, escaping embedded quotes.
 func (GenericDialect) QuoteIdent(ident string) string {
 	return `"` + strings.ReplaceAll(ident, `"`, `""`) + `"`
+}
+
+// QuoteTable double-quotes a table-position identifier, quoting each
+// dot-separated qualification part separately: "app.users" → "app"."users".
+// Unqualified names render byte-identically to QuoteIdent (ADR-0013 §2).
+func (d GenericDialect) QuoteTable(ident string) string {
+	parts := strings.Split(ident, ".")
+	for i, p := range parts {
+		parts[i] = d.QuoteIdent(p)
+	}
+	return strings.Join(parts, ".")
 }
 
 // SupportsReturning reports true.
@@ -122,3 +134,24 @@ func (GenericDialect) SupportsUpsert() bool { return true }
 // Insert never needs Result.LastInsertId. A LastInsertId-style driver (e.g. MySQL,
 // SupportsReturning=false) overrides this to true (ADR-0008 §2.6).
 func (GenericDialect) SupportsLastInsertID() bool { return false }
+
+// SupportsIntrospection reports false: the generic dialect has no catalog
+// queries. Capable drivers (postgres/sqlite/mysql) override the introspection
+// quartet together (ADR-0013 §3).
+func (GenericDialect) SupportsIntrospection() bool { return false }
+
+// ListSchemas reports ErrUnsupported: the generic dialect has no catalog
+// queries (see SupportsIntrospection).
+func (GenericDialect) ListSchemas(context.Context, Querier) ([]SchemaInfo, error) {
+	return nil, fmt.Errorf("%w: schema introspection", ErrUnsupported)
+}
+
+// ListTables reports ErrUnsupported (see SupportsIntrospection).
+func (GenericDialect) ListTables(context.Context, Querier, string) ([]TableInfo, error) {
+	return nil, fmt.Errorf("%w: schema introspection", ErrUnsupported)
+}
+
+// ListColumns reports ErrUnsupported (see SupportsIntrospection).
+func (GenericDialect) ListColumns(context.Context, Querier, string, string) ([]ColumnInfo, error) {
+	return nil, fmt.Errorf("%w: schema introspection", ErrUnsupported)
+}

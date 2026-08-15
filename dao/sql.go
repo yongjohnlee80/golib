@@ -40,7 +40,7 @@ func (b *builder) where(preds []Predicate) {
 // fromAndJoins writes "FROM <table> <join> <join> ...".
 func (b *builder) fromAndJoins(table string, joins []joinClause) {
 	b.sb.WriteString(" FROM ")
-	b.sb.WriteString(b.dialect.QuoteIdent(table))
+	b.sb.WriteString(b.dialect.QuoteTable(table))
 	for _, j := range joins {
 		b.sb.WriteByte(' ')
 		b.sb.WriteString(j.sql)
@@ -107,7 +107,7 @@ func (b *builder) buildExists(table string, joins []joinClause, where []Predicat
 func (b *builder) insertCore(table string, set orderedSet) []string {
 	keys := set.sortedKeys()
 	b.sb.WriteString("INSERT INTO ")
-	b.sb.WriteString(b.dialect.QuoteIdent(table))
+	b.sb.WriteString(b.dialect.QuoteTable(table))
 	b.sb.WriteString(" (")
 	for i, c := range keys {
 		if i > 0 {
@@ -158,7 +158,7 @@ func (b *builder) buildUpsert(table string, set orderedSet, idCol string, return
 // joins (a filter on a joined table), the WHERE becomes an id-subselect because
 // portable UPDATE cannot JOIN.
 func (b *builder) buildUpdate(table, idCol string, set orderedSet, joins []joinClause, where []Predicate) string {
-	qt := b.dialect.QuoteIdent(table)
+	qt := b.dialect.QuoteTable(table)
 	b.sb.WriteString("UPDATE ")
 	b.sb.WriteString(qt)
 	b.sb.WriteString(" SET ")
@@ -178,7 +178,7 @@ func (b *builder) buildUpdate(table, idCol string, set orderedSet, joins []joinC
 // handling as buildUpdate.
 func (b *builder) buildDelete(table, idCol string, joins []joinClause, where []Predicate) string {
 	b.sb.WriteString("DELETE FROM ")
-	b.sb.WriteString(b.dialect.QuoteIdent(table))
+	b.sb.WriteString(b.dialect.QuoteTable(table))
 	b.whereOrSubselect(table, idCol, joins, where)
 	return b.sb.String()
 }
@@ -191,7 +191,7 @@ func (b *builder) whereOrSubselect(table, idCol string, joins []joinClause, wher
 		b.where(where)
 		return
 	}
-	qt := b.dialect.QuoteIdent(table)
+	qt := b.dialect.QuoteTable(table)
 	qid := b.dialect.QuoteIdent(idCol)
 	b.sb.WriteString(" WHERE ")
 	b.sb.WriteString(qid)
@@ -214,7 +214,7 @@ func (b *builder) buildBatchInsert(table string, cols []string, matrix [][]any, 
 	b.args = b.args[:0]
 
 	b.sb.WriteString("INSERT INTO ")
-	b.sb.WriteString(b.dialect.QuoteIdent(table))
+	b.sb.WriteString(b.dialect.QuoteTable(table))
 	b.sb.WriteString(" (")
 	for i, c := range cols {
 		if i > 0 {
