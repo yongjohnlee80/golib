@@ -1,8 +1,8 @@
 # ADR-0011 — `golib/dao`: MySQL driver (`dao/mysql`)
 
-- **Status:** **Proposed — under lector review** (2026-08-16; authored by
+- **Status:** **Accepted** (2026-08-16 — lector r2 `approved_with_amendments`, amendment folded; authored by
   ultron-prime for autodb M1, implemented on `dao-m1`. Release target
-  **v0.3.0** approved by Johno; merge + tag on lector acceptance)
+  **v0.3.0** approved by Johno; released as v0.3.0)
 - **Date:** 2026-08-16
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (additive — a new driver per ADR-0004's contract)

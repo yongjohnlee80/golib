@@ -3,10 +3,16 @@ package dao
 import "context"
 
 // Dialect captures the SQL differences between databases. There is one Dialect
-// per driver, and it is the entire per-driver contract: the DAL engine calls
-// only these methods, so adding a database means implementing [DataConn] and
-// Dialect once, with no change to the engine, the interfaces, or any entity
-// declaration.
+// per driver, and it is the stable base contract: adding a database means
+// implementing [DataConn] and Dialect once, with no change to the engine, the
+// interfaces, or any entity declaration.
+//
+// Beyond the base contract, a dialect may opt into optional capabilities the
+// engine and package-level helpers probe by type assertion — [TableQuoter]
+// (schema-qualified table quoting) and [Introspector] (catalog listing), plus
+// the row-stream extension [RowsColumns] on a driver's Rows. Capabilities are
+// deliberately not Dialect methods and have no GenericDialect defaults
+// (ADR-0013 rev 1; KB convention interface-evolution-capability-interfaces).
 type Dialect interface {
 	// Name is a short dialect id ("postgres", "mysql", "sqlite").
 	Name() string
