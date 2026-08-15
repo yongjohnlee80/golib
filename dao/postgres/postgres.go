@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -97,7 +98,7 @@ func (c *pgxConn) Name() string { return c.name }
 func (c *pgxConn) Close() error { c.pool.Close(); return nil }
 
 func (c *pgxConn) copyRows(ctx context.Context, table string, cols []string, rows [][]any) (int64, error) {
-	return c.pool.CopyFrom(ctx, pgx.Identifier{table}, cols, pgx.CopyFromRows(rows))
+	return c.pool.CopyFrom(ctx, tableIdentifier(table), cols, pgx.CopyFromRows(rows))
 }
 
 // pgxTx is a dao.TxConn backed by a pgx transaction.
@@ -126,7 +127,14 @@ func (t *pgxTx) Commit() error   { return t.tx.Commit(t.ctx) }
 func (t *pgxTx) Rollback() error { return t.tx.Rollback(t.ctx) }
 
 func (t *pgxTx) copyRows(ctx context.Context, table string, cols []string, rows [][]any) (int64, error) {
-	return t.tx.CopyFrom(ctx, pgx.Identifier{table}, cols, pgx.CopyFromRows(rows))
+	return t.tx.CopyFrom(ctx, tableIdentifier(table), cols, pgx.CopyFromRows(rows))
+}
+
+// tableIdentifier parses a possibly schema-qualified table name into a pgx
+// Identifier, one part per qualification level, matching the engine's
+// QuoteTable dot-separator contract (ADR-0013 §2).
+func tableIdentifier(table string) pgx.Identifier {
+	return pgx.Identifier(strings.Split(table, "."))
 }
 
 // pgxRows adapts pgx.Rows to dao.Rows.
@@ -138,6 +146,17 @@ func (r *pgxRows) Next() bool             { return r.rows.Next() }
 func (r *pgxRows) Scan(dest ...any) error { return r.rows.Scan(dest...) }
 func (r *pgxRows) Err() error             { return r.rows.Err() }
 func (r *pgxRows) Close() error           { r.rows.Close(); return r.rows.Err() }
+
+// Columns reports the result set's column names from pgx's field
+// descriptions, satisfying dao.RowsColumns (ADR-0012).
+func (r *pgxRows) Columns() ([]string, error) {
+	fds := r.rows.FieldDescriptions()
+	out := make([]string, len(fds))
+	for i, fd := range fds {
+		out[i] = string(fd.Name)
+	}
+	return out, nil
+}
 
 // pgxResult adapts a pgconn.CommandTag to dao.Result. Postgres has no
 // LastInsertId; use a RETURNING id instead (which the dao Insert path prefers).

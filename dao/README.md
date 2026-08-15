@@ -13,8 +13,14 @@ relationship graphs. Explicit columns, explicit joins, column-aware reads.
   `database/sql`-shaped interfaces.
 - **Drivers live in sub-packages** and are the only code with a DB dependency:
   [`dao/postgres`](postgres/README.md) (pgx), [`dao/sqlite`](sqlite/README.md)
-  (pure-Go modernc), [`dao/bigquery`](bigquery/README.md) (GCP SDK, separate
-  module — a read-mostly/no-transaction store).
+  (pure-Go modernc), [`dao/mysql`](mysql/README.md) (pure-Go go-sql-driver;
+  the LastInsertId profile), [`dao/bigquery`](bigquery/README.md) (GCP SDK,
+  separate module — a read-mostly/no-transaction store).
+- **Catalog + result metadata** (ADR-0012/0013): `dao.ListSchemas` /
+  `ListTables` / `ListColumns` introspect a connection's catalog uniformly
+  across postgres/sqlite/mysql; `dao.Columns(rows)` reports a raw query's
+  column names via the optional `RowsColumns` extension. Schema-qualified
+  table names (`"app.users"`) quote correctly in table position.
 
 ```bash
 go get github.com/yongjohnlee80/golib
