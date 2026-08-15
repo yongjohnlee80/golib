@@ -1,7 +1,8 @@
 # ADR-0013 — `golib/dao`: Schema introspection & qualified table quoting
 
-- **Status:** **Proposed** (2026-08-16; authored by ultron-prime for autodb M1 —
-  implementation lands on the `dao-m1` branch; acceptance at branch review)
+- **Status:** **Proposed — under lector review** (2026-08-16; authored by
+  ultron-prime for autodb M1, implemented on `dao-m1`. Release target
+  **v0.3.0** approved by Johno; merge + tag on lector acceptance)
 - **Date:** 2026-08-16
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (additive; grows `Dialect` — the ADR-0008 precedent)
