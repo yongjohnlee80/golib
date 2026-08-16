@@ -265,3 +265,54 @@ func TestTableFlexColumnsShareWidth(t *testing.T) {
 		t.Fatalf("flex share below the minimum: %d", gap1)
 	}
 }
+
+// Tree.Reload refreshes a subtree in place: an expanded node re-requests
+// its children under a new generation, the cursor stays put, and a
+// collapsed node simply drops what it cached.
+func TestTreeReloadSubtree(t *testing.T) {
+	root := widget.NewTreeNode("ws", "workspace")
+	notes := widget.NewTreeNode("notes", "notes")
+	root.SetChildren(0, []*widget.TreeNode{notes})
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
+	reqs := record[widget.ExpandRequestEvent](h)
+
+	h.inject(key('l'), key('j'), key('l')) // expand ws, onto notes, expand it
+	h.barrier(sh)
+	if reqs.count() != 1 {
+		t.Fatalf("expected one expand request, got %d", reqs.count())
+	}
+	ev, _ := reqs.last()
+	h.onLoop(func() {
+		ev.Node.SetChildren(ev.Gen, []*widget.TreeNode{
+			widget.NewTreeNode("a", "a.sql", widget.WithLeaf()),
+		})
+	})
+	h.barrier(sh)
+	h.wantContains("a.sql")
+
+	before := selectedID(h, tr)
+	var ok bool
+	h.onLoop(func() { ok = tr.Reload("notes") })
+	h.barrier(sh)
+	if !ok {
+		t.Fatal("Reload reported no such node")
+	}
+	if reqs.count() != 2 {
+		t.Fatalf("an expanded node should re-request: %d requests", reqs.count())
+	}
+	if after := selectedID(h, tr); after != before {
+		t.Fatalf("Reload moved the cursor: %q → %q", before, after)
+	}
+	// The new generation differs, so the stale load cannot install.
+	ev2, _ := reqs.last()
+	if ev2.Gen == ev.Gen {
+		t.Fatalf("Reload reused generation %d", ev.Gen)
+	}
+	h.onLoop(func() {
+		ev.Node.SetChildren(ev.Gen, []*widget.TreeNode{
+			widget.NewTreeNode("stale", "stale.sql", widget.WithLeaf()),
+		})
+	})
+	h.barrier(sh)
+	h.wantNotContains("stale.sql")
+}

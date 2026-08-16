@@ -377,6 +377,42 @@ func (t *Tree) SetStyles(st ListStyles) {
 	t.MarkDirty()
 }
 
+// Reload discards a node's loaded children and — when that node is
+// currently expanded — immediately requests a fresh load under a NEW
+// generation, so any in-flight result for the previous load is inert.
+// The cursor does not move. Hosts call it when the data behind a
+// subtree changed (a file added, a row deleted); it reports false when
+// no such node exists or it is a leaf.
+func (t *Tree) Reload(id string) bool {
+	var found *TreeNode
+	var walk func(n *TreeNode)
+	walk = func(n *TreeNode) {
+		if found != nil {
+			return
+		}
+		if n.id == id {
+			found = n
+			return
+		}
+		for _, c := range n.children {
+			walk(c)
+		}
+	}
+	for _, r := range t.roots {
+		walk(r)
+	}
+	if found == nil || found.leaf {
+		return false
+	}
+	wasExpanded := found.expanded
+	found.Reset()
+	if wasExpanded {
+		t.expandNode(found)
+	}
+	t.MarkDirty()
+	return true
+}
+
 // VisibleRows returns the currently visible nodes in flattened display
 // order — what j/k walks. Hosts use it to search, reveal, and report
 // position; the slice is a snapshot, safe to keep.
