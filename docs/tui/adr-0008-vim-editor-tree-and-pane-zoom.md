@@ -264,9 +264,11 @@ merely parent-linked):** attaching a node — via `SetRoots` OR
 this one included — which rejects duplicate pointers, reuse across
 trees, and re-attachment of a live root), a duplicate ID among the new
 siblings, or adoption of the target's own ancestor (walk-up check —
-root→child→root is impossible). Ownership is released when a subtree is
-detached (replaced out by a later `SetChildren`) or by `Reset()`;
-released nodes may be re-attached. Node mutations (`SetLabel`,
+root→child→root is impossible). Ownership release is precise (r3 amendment): `SetRoots`
+releases the root subtrees it removes; `SetChildren` releases the child
+subtrees it replaces out; `Reset()` releases the receiver's DISCARDED
+descendants — the still-attached receiver itself remains owned. Released
+nodes may be re-attached. Node mutations (`SetLabel`,
 lifecycle calls) mark the OWNING tree dirty; on an unowned node they
 only update state. `ExpandPath` resolves IDs level by level, so
 sibling uniqueness is exactly sufficient.

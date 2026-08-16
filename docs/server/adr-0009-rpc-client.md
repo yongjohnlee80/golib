@@ -79,8 +79,12 @@ Semantics:
   `Codec.Write` has no context by design — and is bounded structurally
   instead: ctx is checked before staging begins and after it completes,
   and the staged frame is byte-capped (`ClientMaxMessageBytes`) with the
-  codec's encoder depth bound underneath, so staging cannot run
-  unboundedly regardless of ctx. If ctx expires or the write deadline
+  codec's encoder depth bound underneath. Stated plainly (r3 amendment):
+  ctx MAY expire while staging runs; the byte/depth caps bound the
+  OUTPUT SHAPE of built-in and contract-compliant codecs, not the
+  execution time of arbitrary user codec code — a custom `Codec.Write`
+  must itself terminate and respect the capped writer. If ctx expires or
+  the write deadline
   fires after a frame MAY have partially reached the wire, the
   connection is poisoned (a half-written frame is unrecoverable stream
   state); expiry before any byte was written returns promptly with the
