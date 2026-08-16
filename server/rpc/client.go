@@ -354,14 +354,23 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 		if terr := c.Err(); terr != nil {
 			return terr // a concurrent poison owns the cause
 		}
-		if ctx.Err() != nil {
-			// Zero bytes written and the caller's context is done: the
-			// cancellation woke the write; report it as cancellation (r2).
-			return ctx.Err()
+		// Deadline-control failures poison BEFORE the clean-cancellation
+		// return (r3): a broken wake or reset means the bounded-write
+		// guarantee is gone regardless of why this write failed. Only a
+		// cancellation whose deadline wake AND reset succeeded reports
+		// ctx.Err() with the connection intact.
+		if wakeErr != nil {
+			c.poison(fmt.Errorf("rpc: cancellation wake failed: %w", wakeErr))
+			return c.Err()
 		}
 		if resetErr != nil {
 			c.poison(fmt.Errorf("rpc: reset write deadline: %w", resetErr))
 			return c.Err()
+		}
+		if ctx.Err() != nil {
+			// Zero bytes written and the caller's context is done: the
+			// cancellation woke the write; report it as cancellation (r2).
+			return ctx.Err()
 		}
 		return fmt.Errorf("rpc: write: %w", err)
 	case n != frameLen:
