@@ -129,12 +129,14 @@ type SplitZoomEvent struct {
 func (s *Split) Zoomed() SplitPane { return s.zoomed }
 
 // Zoom gives one pane the full rect (ADR-0008 §2.3): the other pane is not
-// laid out, rendered, hit-tested, or focusable, and the divider disappears.
+// laid out, rendered, hit-tested, or focusable, and the divider disappears
+// (divider interaction is inert while zoomed and any drag is cancelled).
 // If focus currently lives inside the pane being hidden, it transfers to
-// the first focusable in the retained pane; when the retained pane has no
-// focusable, focus is CLEARED and the runtime's post-layout repair is the
-// single authority (r3). PaneNone restores the prior ratio without moving
-// focus.
+// the first focusable in the retained pane (the walk honors nested zoom);
+// when the retained pane has no focusable, focus is deliberately LEFT IN
+// PLACE — the hidden pane is on screen until the zoom's layout renders,
+// and the post-layout repair then re-homes trap-aware against fresh
+// visibility. PaneNone restores the prior ratio without moving focus.
 func (s *Split) Zoom(p SplitPane) {
 	if p > PaneB {
 		panic("widget: Zoom: invalid pane")

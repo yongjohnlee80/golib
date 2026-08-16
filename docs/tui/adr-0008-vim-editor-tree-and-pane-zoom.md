@@ -328,8 +328,10 @@ complementary rules:
    cancelled (r-impl).
 2. **Runtime safety net (additive, benefits every future hider):** after
    any layout pass, if the focused node is no longer `visible()`, the
-   runtime clears focus to the root scope's first focusable — no
-   component can keep invisible focus regardless of who hid it.
+   runtime re-homes focus exactly like a dead focus — the first focusable
+   of the INNERMOST SURVIVING SCOPE, or none (r-impl wording; it delegates
+   to the existing unmount-time repair) — no component can keep invisible
+   focus regardless of who hid it.
 
 ### 2.4 What this deliberately is not
 

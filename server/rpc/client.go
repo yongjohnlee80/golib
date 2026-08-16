@@ -320,21 +320,27 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 		c.poison(fmt.Errorf("rpc: set write deadline: %w", err))
 		return c.Err()
 	}
+	// The watcher is JOINED before the deadline reset and before this send
+	// returns (r2): a late-scheduled watcher must never force a past
+	// deadline onto the reset state or a later frame's deadline. Its own
+	// deadline-control failure is recorded and treated as a transport
+	// failure after the join.
 	writeDone := make(chan struct{})
+	watcherDone := make(chan struct{})
+	var wakeErr error
 	go func() {
+		defer close(watcherDone)
 		select {
 		case <-ctx.Done():
-			_ = c.conn.SetWriteDeadline(time.Unix(1, 0)) // wake the write
+			wakeErr = c.conn.SetWriteDeadline(time.Unix(1, 0)) // wake the write
 		case <-writeDone:
 		}
 	}()
 	n, err := c.conn.Write(c.scratch.Bytes())
 	frameLen := c.scratch.Len()
 	close(writeDone)
-	if resetErr := c.conn.SetWriteDeadline(time.Time{}); resetErr != nil && err == nil {
-		c.poison(fmt.Errorf("rpc: reset write deadline: %w", resetErr))
-		return c.Err()
-	}
+	<-watcherDone
+	resetErr := c.conn.SetWriteDeadline(time.Time{})
 	if c.scratch.Cap() > scratchRetainMax {
 		c.scratch = bytes.Buffer{}
 		c.capw.buf = &c.scratch
@@ -348,11 +354,28 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 		if terr := c.Err(); terr != nil {
 			return terr // a concurrent poison owns the cause
 		}
+		if ctx.Err() != nil {
+			// Zero bytes written and the caller's context is done: the
+			// cancellation woke the write; report it as cancellation (r2).
+			return ctx.Err()
+		}
+		if resetErr != nil {
+			c.poison(fmt.Errorf("rpc: reset write deadline: %w", resetErr))
+			return c.Err()
+		}
 		return fmt.Errorf("rpc: write: %w", err)
 	case n != frameLen:
 		// Defensive: a short nil-error write violates net.Conn's contract;
 		// treat the stream as unrecoverable.
 		c.poison(fmt.Errorf("rpc: short write: %d of %d bytes", n, frameLen))
+		return c.Err()
+	case wakeErr != nil:
+		// The cancellation wake could not be applied: deadline control is
+		// broken, so the bounded-write guarantee is gone (r2).
+		c.poison(fmt.Errorf("rpc: cancellation wake failed: %w", wakeErr))
+		return c.Err()
+	case resetErr != nil:
+		c.poison(fmt.Errorf("rpc: reset write deadline: %w", resetErr))
 		return c.Err()
 	}
 	return nil

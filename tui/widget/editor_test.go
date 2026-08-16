@@ -536,3 +536,25 @@ func TestEditorVisualPasteReplacesSelection(t *testing.T) {
 		t.Fatalf("state = (%q, %v), want (\"XYdef\", Normal)", val, mode)
 	}
 }
+
+// r2 residual: focus loss clears the pending double-key prefix and count.
+func TestEditorFocusLossClearsPendingCommand(t *testing.T) {
+	ed := widget.NewEditor(widget.WithInitialText("one\ntwo"))
+	other := widget.NewTextInput()
+	sp := widget.NewSplit(widget.Horizontal, ed, other)
+	sh := newShell(sp)
+	h := startApp(t, sh, 41, 6)
+	h.inject(tab()) // focus the editor
+	h.barrier(sh)
+
+	h.inject(key('d'))  // arm the prefix
+	h.inject(tab())     // focus away (loss clears pending state)
+	h.inject(shiftTab())
+	h.inject(key('d'))  // must ARM again, not complete a stale dd
+	h.barrier(sh)
+	var val string
+	h.onLoop(func() { val = ed.Value() })
+	if val != "one\ntwo" {
+		t.Fatalf("stale dd completed across focus loss: %q", val)
+	}
+}

@@ -121,9 +121,15 @@ func (n *TreeNode) SetChildren(gen uint64, kids []*TreeNode) {
 	} else if gen == 0 || gen != n.gen {
 		return // stale or unsolicited: inert
 	}
-	// Validate the ENTIRE incoming forest before touching anything, and
-	// copy the slice so the caller cannot mutate the committed graph.
-	preflightForest(kids)
+	// Validate the ENTIRE incoming forest before touching anything —
+	// including that neither the receiver nor any of its ancestors appears
+	// in it (receiver cycles, r2) — and copy the slice so the caller
+	// cannot mutate the committed graph.
+	forbidden := make(map[*TreeNode]struct{})
+	for a := n; a != nil; a = a.parent {
+		forbidden[a] = struct{}{}
+	}
+	preflightForest(kids, forbidden)
 	committed := append([]*TreeNode(nil), kids...)
 	for _, old := range n.children {
 		old.release()
@@ -194,8 +200,10 @@ func (n *TreeNode) releaseOwned() {
 // mutation (MF: attachment must never be destructive-then-panic): nil
 // nodes, duplicate pointers anywhere in the forest (which also covers
 // shared descendants and cycles), owned nodes anywhere, duplicate sibling
-// IDs at every level, and inconsistent internal parent links all reject.
-func preflightForest(kids []*TreeNode) {
+// IDs at every level, inconsistent internal parent links, and any node in
+// forbidden (the receiver and its ancestors — n.SetChildren(0, n) and
+// longer receiver cycles reject BEFORE commit, r2) all reject.
+func preflightForest(kids []*TreeNode, forbidden map[*TreeNode]struct{}) {
 	visited := make(map[*TreeNode]struct{})
 	var walk func(n *TreeNode, parent *TreeNode)
 	walk = func(n *TreeNode, parent *TreeNode) {
@@ -204,6 +212,9 @@ func preflightForest(kids []*TreeNode) {
 		}
 		if _, dup := visited[n]; dup {
 			panic(fmt.Sprintf("widget: tree node %q appears more than once in the incoming forest", n.id))
+		}
+		if _, bad := forbidden[n]; bad {
+			panic(fmt.Sprintf("widget: tree node %q would become its own descendant", n.id))
 		}
 		visited[n] = struct{}{}
 		if n.owner != nil {
@@ -336,7 +347,7 @@ func (t *Tree) adopt(n *TreeNode) {
 // roots adopted (owned roots and duplicate IDs panic), every outstanding
 // generation on the old roots is invalidated by the release.
 func (t *Tree) SetRoots(roots ...*TreeNode) {
-	preflightForest(roots)
+	preflightForest(roots, nil)
 	committed := append([]*TreeNode(nil), roots...)
 	for _, old := range t.roots {
 		old.release()

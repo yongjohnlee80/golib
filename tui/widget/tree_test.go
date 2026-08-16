@@ -339,3 +339,33 @@ func TestTreeCursorReconcileOnShrink(t *testing.T) {
 		t.Fatalf("requests = %d, want 2 (key acted on the real row)", reqs.count())
 	}
 }
+
+// r2 residual: the receiver (and its ancestors) are rejected anywhere in
+// the incoming forest — n.SetChildren(0, n) and longer receiver cycles
+// fail BEFORE commit.
+func TestTreeReceiverCycleRejected(t *testing.T) {
+	n := widget.NewTreeNode("n", "n")
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("self-adoption did not panic")
+			}
+		}()
+		n.SetChildren(0, []*widget.TreeNode{n})
+	}()
+
+	root := widget.NewTreeNode("root", "root")
+	child := widget.NewTreeNode("child", "child")
+	root.SetChildren(0, []*widget.TreeNode{child})
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("receiver-ancestor cycle did not panic")
+			}
+		}()
+		child.SetChildren(0, []*widget.TreeNode{root})
+	}()
+	// The graph is untouched: root still parents child, no cycle.
+	tr := widget.NewTree(widget.WithRoots(root))
+	_ = tr
+}

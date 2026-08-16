@@ -795,8 +795,15 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 		return true
 	case tui.FocusEvent:
 		if !t.Gained {
+			// Focus loss settles the chord rune, ends the Insert undo
+			// group (mode unchanged), and clears EVERY partial command:
+			// pending count and the double-key prefix must not survive a
+			// focus round-trip (ADR-0008 §2.1, r2).
 			e.settlePendingRune()
-			e.groupOpen = false // ends the Insert group; mode unchanged
+			e.groupOpen = false
+			e.count = 0
+			e.pendingAct = ActUnbound
+			e.pendingCount = 0
 		}
 		return false // focus events are informational; let them bubble
 	case tui.TickEvent:
@@ -827,7 +834,8 @@ func (e *Editor) handleKey(k tui.KeyEvent) bool {
 }
 
 // handleInsertKey: structural Insert handling (text, chord, Esc, editing
-// keys). Tab is never consumed (focus traversal).
+// keys). Tab INSERTS a tab in Insert mode (ADR-0008 §2.1); traversal
+// belongs to Normal mode, where Tab bubbles.
 func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 	isText := k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
 
