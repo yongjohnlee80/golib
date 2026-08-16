@@ -33,17 +33,25 @@ type Message struct {
 // Codec owns the wire format: one Message in, one Message out. Read must
 // consume exactly one message and treat the byte stream as attacker-adjacent
 // (bounded, panic-free — KB security-core-hardening R4/R7). Write buffers
-// into w; the transport owns flushing. A Codec instance is used by at most
-// one reader and one writer goroutine per connection, serialized by the
-// transport, so implementations need no internal locking for that pattern.
+// into w; the transport owns flushing.
+//
+// Concurrency contract: the Server shares ONE Codec instance across every
+// live connection. The transport serializes reads and writes per connection
+// (one reader goroutine; writes under a per-connection lock), but different
+// connections call Read and Write concurrently — implementations must
+// therefore be stateless or internally synchronized across calls. The
+// shipped msgpackrpc codec is stateless.
 type Codec interface {
 	Read(r *bufio.Reader) (*Message, error)
 	Write(w *bufio.Writer, m *Message) error
 }
 
-// Error carries a structured RPC error to the wire as {code, message}.
-// Handlers return *Error for taxonomy; any other error is wrapped as
-// CodeInternal with its Error() text.
+// Error carries a structured RPC error to the wire as {code, message} —
+// the ONLY error form whose text reaches the peer. Handlers return *Error
+// for messages meant to be public; any other error is logged server-side
+// and crosses the wire as a generic CodeInternal "internal error"
+// (deny-before-disclose: raw error text can carry paths, hostnames, query
+// fragments, or credentials).
 type Error struct {
 	Code    int64
 	Message string
@@ -69,11 +77,13 @@ const (
 // single message exceeds the transport's MaxMessageBytes window.
 var ErrMessageTooLarge = errors.New("rpc: message exceeds size limit")
 
-// wireError converts a handler/gate error to its wire form.
+// wireError converts an error to its wire form. Only *Error text is
+// public; everything else becomes a generic internal error (the caller is
+// responsible for logging the withheld detail).
 func wireError(err error) map[string]any {
 	var e *Error
 	if errors.As(err, &e) {
 		return map[string]any{"code": e.Code, "message": e.Message}
 	}
-	return map[string]any{"code": CodeInternal, "message": err.Error()}
+	return map[string]any{"code": CodeInternal, "message": "internal error"}
 }

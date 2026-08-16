@@ -3,6 +3,8 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"os"
 	"sync"
@@ -35,13 +37,18 @@ type Request struct {
 }
 
 // Handler serves one request (or notification — Result is discarded there).
-// ctx is cancelled on Shutdown; honor it. Return *Error for a structured
-// wire error; any other error reaches the peer as CodeInternal + Error()
-// text.
+//
+// ctx is cancelled when the connection ends for ANY reason — peer
+// disconnect, drain, or Shutdown — so honor it. Return *Error for a
+// structured error the peer is meant to see; ANY other error is logged
+// server-side and reaches the peer only as a generic CodeInternal
+// "internal error" (deny-before-disclose: raw error text can carry paths,
+// hostnames, or credentials).
 type Handler func(ctx context.Context, req *Request) (any, error)
 
-// New builds a Server speaking codec. Panics on a nil codec (construction
-// bug, not a runtime condition).
+// New builds a Server speaking codec. Construction bugs — nil codec,
+// non-positive MaxConcurrent or MaxMessageBytes, non-positive DrainTimeout —
+// panic here rather than misbehaving per connection at runtime.
 func New(codec Codec, opts ...Option) *Server {
 	if codec == nil {
 		panic("rpc.New: nil Codec")
@@ -57,6 +64,18 @@ func New(codec Codec, opts ...Option) *Server {
 		if o != nil {
 			o(&cfg)
 		}
+	}
+	if cfg.maxConcurrent <= 0 {
+		panic(fmt.Sprintf("rpc.New: MaxConcurrent must be positive, got %d", cfg.maxConcurrent))
+	}
+	if cfg.maxMessageBytes <= 0 {
+		panic(fmt.Sprintf("rpc.New: MaxMessageBytes must be positive, got %d", cfg.maxMessageBytes))
+	}
+	if cfg.drainTimeout <= 0 {
+		panic(fmt.Sprintf("rpc.New: DrainTimeout must be positive, got %v", cfg.drainTimeout))
+	}
+	if cfg.logger == nil {
+		cfg.logger = logger.Nop{}
 	}
 	if cfg.baseCtx == nil {
 		cfg.baseCtx = context.Background()
@@ -101,7 +120,11 @@ func (s *Server) Shutdown(ctx context.Context) error { return s.scaffold.Shutdow
 // Addr returns the resolved listen address.
 func (s *Server) Addr() string { return s.scaffold.Addr() }
 
-// serveConn is the scaffold ConnHandler: one read loop per connection.
+// serveConn is the scaffold ConnHandler: one read loop per connection. It
+// owns the connection lifecycle signals: when the read loop exits for any
+// reason it cancels every in-flight handler context, waits for admitted
+// work to finish flushing replies, then reports completion (workDone) and
+// lets the deferred Close run.
 func (s *Server) serveConn(ctx context.Context, nc net.Conn) {
 	c, ok := server.SessionFromContext(ctx).(*conn)
 	if !ok {
@@ -109,24 +132,35 @@ func (s *Server) serveConn(ctx context.Context, nc net.Conn) {
 		return
 	}
 	defer nc.Close()
-	s.readLoop(ctx, c)
-	// Replies must stay flushable until every in-flight handler finishes:
-	// returning runs the deferred Close, so wait here. Shutdown bounds this
-	// via handler-context cancellation; a peer disconnect leaves it bounded
-	// by handler discipline (as with net/http).
-	c.inflight.Wait()
+	connCtx, cancel := context.WithCancel(ctx)
+	defer func() {
+		cancel()            // peer gone or draining: unblock ctx-honoring handlers
+		c.inflight.Wait()   // let them flush their final replies
+		close(c.workDone)   // Drain's completion signal
+	}()
+	s.readLoop(connCtx, c)
 }
 
 func (s *Server) readLoop(ctx context.Context, c *conn) {
 	sem := make(chan struct{}, s.cfg.maxConcurrent)
+	release := func() { <-sem }
 	for {
+		// Acquire the execution slot BEFORE decoding: no message is decoded
+		// without a bounded home, so per-connection decoded-value retention
+		// is capped at MaxConcurrent messages. The trade-off is documented:
+		// while saturated, the loop does not read, so a peer disconnect is
+		// observed only when a slot frees (bounded by handler completion,
+		// which Shutdown bounds via context cancellation).
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
 		c.lim.reset(s.cfg.maxMessageBytes)
 		m, err := s.codec.Read(c.br)
 		if err != nil {
+			release()
 			s.logReadEnd(c, err)
-			return
-		}
-		if c.draining.Load() {
 			return
 		}
 		switch m.Kind {
@@ -134,14 +168,19 @@ func (s *Server) readLoop(ctx context.Context, c *conn) {
 			if s.cfg.gate != nil {
 				if gerr := s.cfg.gate(c.sess, m.Method); gerr != nil {
 					s.rejectGated(c, m, gerr)
+					release()
 					continue
 				}
 			}
-			sem <- struct{}{} // backpressure: block reads at MaxConcurrent
-			c.inflight.Add(1)
+			if !c.admit() {
+				// Drain won the race after this message decoded: stop
+				// reading; the message is dropped, not half-served.
+				release()
+				return
+			}
 			go func(m *Message) {
-				defer func() { <-sem; c.inflight.Done() }()
-				s.dispatch(ctx, c, m)
+				defer func() { c.inflight.Done(); release() }()
+				s.dispatchTask(ctx, c, m)
 			}(m)
 		case KindResponse:
 			// v1 never issues requests, so a peer response has no home.
@@ -150,12 +189,15 @@ func (s *Server) readLoop(ctx context.Context, c *conn) {
 				"server": "rpc", "event": "unexpected response dropped",
 				"remote": c.sess.Peer().String(), "msgid": m.ID,
 			})
+			release()
 		}
 	}
 }
 
-// rejectGated answers a gate rejection without dispatching. Notifications
-// have no reply channel; they drop with a log line.
+// rejectGated answers a gate rejection without dispatching. A *Error from
+// the gate is the public message; any other error is logged and answered
+// with a stable generic denial (deny-before-disclose). Notifications have
+// no reply channel; they drop with a log line.
 func (s *Server) rejectGated(c *conn, m *Message, gerr error) {
 	if m.Kind == KindNotification {
 		s.cfg.logger.Log(logger.SeverityWarning, map[string]any{
@@ -164,12 +206,33 @@ func (s *Server) rejectGated(c *conn, m *Message, gerr error) {
 		})
 		return
 	}
-	werr := gerr
 	var e *Error
 	if !errors.As(gerr, &e) {
-		werr = &Error{Code: CodeAccessDenied, Message: gerr.Error()}
+		s.cfg.logger.Log(logger.SeverityWarning, map[string]any{
+			"server": "rpc", "event": "gate rejection (detail withheld from wire)",
+			"remote": c.sess.Peer().String(), "method": m.Method, "err": gerr.Error(),
+		})
+		gerr = &Error{Code: CodeAccessDenied, Message: "access denied"}
 	}
-	s.reply(c, &Message{Kind: KindResponse, ID: m.ID, Err: wireError(werr)})
+	s.reply(c, &Message{Kind: KindResponse, ID: m.ID, Err: wireError(gerr)})
+}
+
+// dispatchTask is the panic boundary for one request's ENTIRE lifecycle —
+// handler, response construction, encoding, and write. dispatch already
+// isolates handler panics into an internal-error reply; a panic past that
+// point (reply path) leaves the write stream in an unknown state, so the
+// connection is closed.
+func (s *Server) dispatchTask(ctx context.Context, c *conn, m *Message) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			s.cfg.logger.Log(logger.SeverityError, map[string]any{
+				"server": "rpc", "event": "request task panic",
+				"remote": c.sess.Peer().String(), "method": m.Method, "recover": rec,
+			})
+			_ = c.raw.Close()
+		}
+	}()
+	s.dispatch(ctx, c, m)
 }
 
 // dispatch runs the handler for one request/notification, panic-isolated,
@@ -202,6 +265,18 @@ func (s *Server) dispatch(ctx context.Context, c *conn, m *Message) {
 		})
 	}()
 
+	// Untyped errors are logged with full detail but cross the wire only as
+	// a generic internal error (deny-before-disclose).
+	if err != nil {
+		var e *Error
+		if !errors.As(err, &e) {
+			s.cfg.logger.Log(logger.SeverityWarning, map[string]any{
+				"server": "rpc", "event": "handler error (detail withheld from wire)",
+				"remote": c.sess.Peer().String(), "method": m.Method, "err": err.Error(),
+			})
+		}
+	}
+
 	if m.Kind == KindNotification {
 		if err != nil {
 			s.cfg.logger.Log(logger.SeverityWarning, map[string]any{
@@ -220,24 +295,44 @@ func (s *Server) dispatch(ctx context.Context, c *conn, m *Message) {
 	s.reply(c, resp)
 }
 
+// reply writes one response frame. Encoding failures happen entirely in the
+// staging buffer (stream untouched), so the peer still gets an answer: the
+// unencodable result is logged and replaced with a generic internal error.
+// A socket failure — or a failure to even send the substitute — is terminal
+// for the connection.
 func (s *Server) reply(c *conn, m *Message) {
-	if err := c.write(s.codec, m); err != nil {
-		s.cfg.logger.Log(logger.SeverityWarning, map[string]any{
-			"server": "rpc", "event": "reply write failed",
+	err := c.write(s.codec, m, s.cfg.maxMessageBytes)
+	if err == nil {
+		return
+	}
+	if errors.Is(err, errEncode) {
+		s.cfg.logger.Log(logger.SeverityError, map[string]any{
+			"server": "rpc", "event": "unencodable response replaced",
 			"remote": c.sess.Peer().String(), "msgid": m.ID, "err": err.Error(),
 		})
+		fallback := &Message{Kind: KindResponse, ID: m.ID,
+			Err: map[string]any{"code": CodeInternal, "message": "internal error"}}
+		if err = c.write(s.codec, fallback, s.cfg.maxMessageBytes); err == nil {
+			return
+		}
 	}
+	s.cfg.logger.Log(logger.SeverityWarning, map[string]any{
+		"server": "rpc", "event": "reply write failed; closing connection",
+		"remote": c.sess.Peer().String(), "msgid": m.ID, "err": err.Error(),
+	})
+	_ = c.raw.Close()
 }
 
-// logReadEnd classifies why the read loop stopped: clean close and drain are
-// info-level; anything else (malformed frame, size overrun) warns before the
-// connection closes (R7: a peer that cannot frame correctly is done).
+// logReadEnd classifies why the read loop stopped: clean close (io.EOF
+// between messages), drain, and shutdown are info-level; anything else
+// (malformed frame, size overrun, truncation) warns before the connection
+// closes (R7: a peer that cannot frame correctly is done).
 func (s *Server) logReadEnd(c *conn, err error) {
 	payload := map[string]any{
 		"server": "rpc", "event": "connection closed",
 		"remote": c.sess.Peer().String(),
 	}
-	if c.draining.Load() || errors.Is(err, net.ErrClosed) || isEOF(err) {
+	if errors.Is(err, io.EOF) || c.isDraining() || errors.Is(err, net.ErrClosed) || isDeadline(err) {
 		s.cfg.logger.Log(logger.SeverityInfo, payload)
 		return
 	}
@@ -246,9 +341,9 @@ func (s *Server) logReadEnd(c *conn, err error) {
 	s.cfg.logger.Log(logger.SeverityWarning, payload)
 }
 
-func isEOF(err error) bool {
-	// Peer hang-up between messages (io.EOF) surfaces wrapped by the codec's
-	// malformed-truncation error; a deadline from Drain surfaces as timeout.
+// isDeadline reports the read-deadline expiry Drain uses to unblock the
+// read loop.
+func isDeadline(err error) bool {
 	var to interface{ Timeout() bool }
 	if errors.As(err, &to) && to.Timeout() {
 		return true

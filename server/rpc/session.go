@@ -2,10 +2,11 @@ package rpc
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/yongjohnlee80/golib/server"
@@ -42,19 +43,40 @@ func (s *Session) SetValue(key string, v any) {
 	s.vals[key] = v
 }
 
+// errEncode wraps a codec encoding failure that occurred entirely in the
+// staging buffer — no bytes reached the socket, so the stream is intact and
+// the caller may substitute a different (encodable) reply.
+var errEncode = fmt.Errorf("rpc: response encoding failed")
+
 // conn is one live connection's machinery: buffered codec endpoints, the
-// serialized write path, in-flight accounting, and the polite-drain contract.
-// It is the Session the transport's ScaffoldSessionFactory registers.
+// staged-and-serialized write path, drain-safe request admission, and the
+// polite-drain contract. It is the Session the transport's
+// ScaffoldSessionFactory registers.
 type conn struct {
 	raw  net.Conn
 	lim  *windowReader
 	br   *bufio.Reader
-	bw   *bufio.Writer
 	sess *Session
 
+	// Write path: each reply is encoded COMPLETELY into scratch first, then
+	// written to the socket as one finished frame. A mid-encode failure
+	// therefore never leaves partial bytes on the wire (the stream would be
+	// unrecoverable). All three fields are guarded by writeMu.
 	writeMu  sync.Mutex
+	scratch  bytes.Buffer
+	scratchW *bufio.Writer
+
+	// Admission gate: draining and inflight.Add are only touched under
+	// admitMu, making "no new work after drain begins" atomic with the
+	// WaitGroup lifecycle (a positive Add can never race Drain's wait).
+	admitMu  sync.Mutex
+	draining bool
 	inflight sync.WaitGroup
-	draining atomic.Bool
+
+	// workDone is closed by serveConn — the signal's single owner — once the
+	// read loop has exited AND every admitted handler has finished. Drain
+	// waits on it instead of spawning a watcher goroutine.
+	workDone chan struct{}
 }
 
 var (
@@ -64,42 +86,79 @@ var (
 
 func newConn(nc net.Conn) *conn {
 	lim := &windowReader{src: nc}
-	return &conn{
-		raw:  nc,
-		lim:  lim,
-		br:   bufio.NewReader(lim),
-		bw:   bufio.NewWriter(nc),
-		sess: &Session{peer: nc.RemoteAddr()},
+	c := &conn{
+		raw:      nc,
+		lim:      lim,
+		br:       bufio.NewReader(lim),
+		sess:     &Session{peer: nc.RemoteAddr()},
+		workDone: make(chan struct{}),
 	}
+	c.scratchW = bufio.NewWriter(&c.scratch)
+	return c
 }
 
-// write sends one message: serialized against concurrent replies, flushed so
-// the peer never waits on a buffered response.
-func (c *conn) write(codec Codec, m *Message) error {
+// admit reserves an execution slot for one request, atomically with the
+// drain state. It returns false once draining has begun.
+func (c *conn) admit() bool {
+	c.admitMu.Lock()
+	defer c.admitMu.Unlock()
+	if c.draining {
+		return false
+	}
+	c.inflight.Add(1)
+	return true
+}
+
+// isDraining reports whether Drain has begun.
+func (c *conn) isDraining() bool {
+	c.admitMu.Lock()
+	defer c.admitMu.Unlock()
+	return c.draining
+}
+
+// write sends one message: staged into scratch under writeMu, bounded by
+// maxBytes, then written to the socket as a complete frame. An error
+// wrapping errEncode means nothing reached the socket; any other error is a
+// socket failure and the connection is no longer usable.
+func (c *conn) write(codec Codec, m *Message, maxBytes int64) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
-	if err := codec.Write(c.bw, m); err != nil {
-		return err
+	c.scratch.Reset()
+	c.scratchW.Reset(&c.scratch)
+	if err := codec.Write(c.scratchW, m); err != nil {
+		return fmt.Errorf("%w: %v", errEncode, err)
 	}
-	return c.bw.Flush()
+	if err := c.scratchW.Flush(); err != nil {
+		return fmt.Errorf("%w: %v", errEncode, err)
+	}
+	if int64(c.scratch.Len()) > maxBytes {
+		return fmt.Errorf("%w: %v (frame of %d bytes)", errEncode, ErrMessageTooLarge, c.scratch.Len())
+	}
+	_, err := c.raw.Write(c.scratch.Bytes())
+	if c.scratch.Cap() > scratchRetainMax {
+		// Don't let one large reply pin its buffer for the connection's life.
+		c.scratch = bytes.Buffer{}
+	}
+	return err
 }
+
+// scratchRetainMax caps the reply staging buffer retained between writes.
+const scratchRetainMax = 1 << 20
 
 // Close force-terminates the connection (registry deadline path).
 func (c *conn) Close() error { return c.raw.Close() }
 
-// Drain ends the connection politely: stop reading new requests (an
-// immediate read deadline unblocks the read loop), let in-flight handlers
-// finish and flush their replies — bounded by ctx — then close.
+// Drain ends the connection politely: close admission (no new requests can
+// Add), unblock the read loop with an immediate read deadline, wait —
+// bounded by ctx — for serveConn to report all admitted work finished and
+// its replies flushed, then close.
 func (c *conn) Drain(ctx context.Context) error {
-	c.draining.Store(true)
+	c.admitMu.Lock()
+	c.draining = true
+	c.admitMu.Unlock()
 	_ = c.raw.SetReadDeadline(time.Now())
-	done := make(chan struct{})
-	go func() {
-		c.inflight.Wait()
-		close(done)
-	}()
 	select {
-	case <-done:
+	case <-c.workDone:
 	case <-ctx.Done():
 	}
 	return c.raw.Close()

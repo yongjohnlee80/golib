@@ -95,13 +95,30 @@ Value model (the `any` vocabulary):
   int64; uint64 values above MaxInt64 decode as `uint64` (callers that care
   type-switch). Timestamps (ext -1) are NOT special-cased in v1: they pass
   through as `Ext` (documented; Neovim does not use them).
-- **`Limits` (R4):** `MaxDepth` (default 64), `MaxStrBytes`/`MaxBinBytes`
-  (default 8 MiB), `MaxElements` per collection (default 1 M). Collection
+- **`Limits` (R4):** per-item bounds — `MaxDepth` (default 64),
+  `MaxStrBytes`/`MaxBinBytes` (default 8 MiB), `MaxElements` per collection
+  (default 1 M) — PLUS whole-decode aggregate budgets (r2, review finding):
+  `MaxTotalElements` (default 1 M decoded values) and `MaxTotalBytes`
+  (default 16 MiB payload bytes). Per-item limits alone don't bound a
+  message packed with many maximal siblings: sixteen 1M-element nil arrays
+  fit one 16 MiB frame but decode to ~256 MiB. The aggregate budgets cap
+  the worst-case decoded footprint at roughly
+  `MaxTotalElements×16 + MaxTotalBytes` (~32 MiB at defaults). Zero/negative
+  Limits fields fall back to defaults — a partial `Limits` can tighten or
+  explicitly loosen bounds but never silently disable one. Collection
   preallocation is capped at min(declared, 4096) and grown by append, so a
   forged `array32(0xffffffff)` header cannot allocate memory it never
   supplies. Depth/limit violations return typed sentinels
   (`ErrDepthExceeded`, `ErrLimitExceeded`, `ErrMalformed`); the decoder
   NEVER panics on any input (fuzz-enforced).
+- **Clean EOF (r2):** end-of-stream before ANY byte of a value is `io.EOF`
+  (polite hang-up); truncation inside a value is `ErrMalformed`. Transports
+  log the two differently. `Unmarshal` keeps its one-shot contract (empty
+  input is malformed).
+- **Encoder depth bound (r2):** `Encode` refuses nesting beyond a fixed
+  depth (256) with `ErrDepthExceeded`, so a cyclic container value —
+  server-side bug, not attacker input — fails loudly instead of exhausting
+  the stack.
 
 ### 2.3 `server/rpc` — the transport core
 
@@ -116,8 +133,11 @@ type Message struct {
 	Result any
 }
 
-// Codec owns the wire: one Message in, one Message out. Implementations are
-// safe for a single reader + single writer goroutine per connection.
+// Codec owns the wire: one Message in, one Message out. ONE instance is
+// shared across every live connection: the transport serializes reads and
+// writes per connection, but different connections call concurrently, so
+// implementations must be stateless or internally synchronized (r2 —
+// msgpackrpc is stateless and copies its Limits at construction).
 type Codec interface {
 	Read(r *bufio.Reader) (*Message, error)
 	Write(w *bufio.Writer, m *Message) error
@@ -138,8 +158,12 @@ type Error struct { Code int64; Message string }
 
 func New(codec Codec, opts ...Option) *Server
 // Options (void idiom): Addr, WithListener, WithTLSConfig, WithLogger,
-// BaseContext, DrainTimeout, MaxMessageBytes (default 16 MiB), MaxConcurrent
-// per conn (default 8), WithGate(func(s *Session, method string) error).
+// BaseContext, DrainTimeout, MaxMessageBytes (default 16 MiB, BOTH
+// directions), MaxConcurrent per conn (default 8),
+// WithGate(func(s *Session, method string) error).
+// Construction validates options (r2): nil codec, non-positive
+// MaxConcurrent/MaxMessageBytes/DrainTimeout panic in New instead of
+// misbehaving per connection at runtime; a nil logger falls back to Nop.
 // Value-decode limits are NOT a transport option: they belong to the codec
 // (msgpackrpc.New(lim)); the transport bounds raw bytes via MaxMessageBytes.
 func (s *Server) Handle(method string, h Handler)
@@ -150,27 +174,53 @@ func (s *Server) Handle(method string, h Handler)
 // CodeInternal -32603, CodeAccessDenied -32001 (gate rejection).
 ```
 
-Semantics:
+Semantics (r2 revisions marked):
 
 - **Read loop per connection** (bufio over the raw conn; each message read
-  through an `io.LimitedReader` window of `MaxMessageBytes`). Requests
-  dispatch on a per-connection bounded worker pool (`MaxConcurrent`);
-  responses serialize through a write mutex; the reply always echoes the
-  request's msgid. Notifications dispatch the same way, minus the reply.
-- **Per-request context** derives from the scaffold's per-conn ctx —
-  Shutdown cancels every in-flight handler. Handler panics are recovered,
-  logged, and answered with an internal error (the connection survives).
+  through a resettable window of `MaxMessageBytes`). **Slot-before-read
+  (r2):** the loop acquires its `MaxConcurrent` execution slot BEFORE
+  decoding the next message, so per-connection retention of decoded
+  messages is itself capped at `MaxConcurrent` — no message is decoded
+  without a bounded home. Responses serialize through a write mutex and
+  always echo the request's msgid. Notifications dispatch the same way,
+  minus the reply. **Saturation liveness policy (r2, documented
+  trade-off):** while all slots are busy the connection is not read, so a
+  peer disconnect is observed only when a slot frees — bounded by handler
+  completion, which Shutdown bounds via context cancellation.
+- **Connection-scoped cancellation (r2):** each connection owns a child
+  context cancelled when its read loop exits for ANY reason — peer
+  disconnect, malformed frame, drain, Shutdown. Per-request contexts derive
+  from it, so a handler waiting on ctx.Done() always winds down when its
+  client disappears; the connection then waits for in-flight handlers to
+  flush final replies before closing (the polite-drain window).
+- **Drain-safe admission (r2):** request admission (`WaitGroup.Add`) and the
+  draining flag share one mutex, so drain's wait can never race a
+  just-admitted request; a message decoded after drain begins is refused,
+  not half-served. Drain waits on the connection's owned completion signal
+  (no per-drain watcher goroutine), bounded by the drain context.
+- **Staged replies (r2):** every response is encoded COMPLETELY into a
+  per-connection staging buffer before any byte reaches the socket. An
+  unencodable or over-`MaxMessageBytes` handler result therefore never
+  poisons the stream: it is logged and replaced by a generic internal-error
+  reply (the msgid still gets answered); a socket-level write failure closes
+  the connection. The panic boundary covers the whole request task —
+  handler, response construction, encode, write; a reply-path panic closes
+  the connection (write-stream state unknown).
 - **Gate (`WithGate`)**: consulted before dispatch of every request on a
   connection; the consumer implements handshake-before-methods (autodb's
   `sys.hello`, ADR-0056 §2) without the core hardcoding policy. Gate
-  rejection answers a structured error without invoking the handler.
+  rejection answers without invoking the handler.
 - **Unknown method** → `Error{CodeMethodNotFound}` response, connection
   survives. **Malformed frame / codec error** → log + connection close (a
-  peer that cannot frame correctly is not negotiable — R7).
-- **Errors on the wire:** `*rpc.Error` encodes as `{code:int64,
-  message:string}`; any other handler error encodes as
-  `{code: CodeInternal, message: err.Error()}` — consumers that need
-  taxonomy return `*rpc.Error`.
+  peer that cannot frame correctly is not negotiable — R7). A clean
+  `io.EOF` at a frame boundary logs as a normal close, not a drop (r2).
+- **Errors on the wire (r2 — deny-before-disclose):** ONLY `*rpc.Error`
+  text is public, encoding as `{code:int64, message:string}`. Any other
+  handler or gate error is logged server-side with full detail and crosses
+  the wire as a generic `{CodeInternal, "internal error"}` (handlers) or
+  `{CodeAccessDenied, "access denied"}` (gates) — raw error text can carry
+  paths, hostnames, query fragments, or credentials. Handler panic detail
+  likewise never reaches the wire.
 
 ### 2.4 Scaffold amendment (additive; amends ADR-0006)
 
@@ -258,3 +308,22 @@ additive).
 4. Interop smoke (manual, documented in README): an nvim `sockconnect`
    client calls a demo method — deferred to autodb M5's integration if a
    live nvim is unavailable in CI.
+
+## 6. Review history
+
+- **r1 (2026-08-16, lector): `change_requested`** — review doc
+  `agents/lector/reviews/2026-08-16-golib-rpc-m5-review.md` (KB). Six
+  must-fixes, all verified CONFIRMED by the author: (1) per-container
+  limits permitted ~16× decoded amplification → aggregate
+  `MaxTotalElements`/`MaxTotalBytes` budgets + slot-before-read; (2) drain
+  raced admission through an invalid WaitGroup lifecycle → mutex-guarded
+  admission gate + owned completion signal; (3) peer disconnect didn't
+  cancel handler contexts → connection-scoped cancellation on read-loop
+  exit; (4) reply encoding could poison the persistent stream → staged
+  frames, substitute error replies, outbound bounds, task-wide panic
+  boundary; (5) untyped errors disclosed internals → *Error-only public
+  text; (6) session factory ran outside the scaffold's panic boundary →
+  defers installed first. Should-fixes folded: cross-connection Codec
+  contract documented + Limits copied; construction-time option
+  validation; clean-EOF classification (io.EOF vs ErrMalformed). The r2
+  markers in §2.2/§2.3 are this fold.

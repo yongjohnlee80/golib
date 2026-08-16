@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"reflect"
 	"testing"
 
@@ -107,8 +108,26 @@ func TestCodec_ReadPassesDecodeErrorsThrough(t *testing.T) {
 	if _, err := readOne(t, c, []byte{0xc1}); !errors.Is(err, msgpack.ErrMalformed) {
 		t.Fatalf("err = %v, want ErrMalformed", err)
 	}
-	if _, err := readOne(t, c, []byte{}); !errors.Is(err, msgpack.ErrMalformed) {
+	// A clean end-of-stream at a frame boundary is io.EOF (polite peer
+	// hang-up), NOT malformed — the transport logs it as a normal close.
+	if _, err := readOne(t, c, []byte{}); !errors.Is(err, io.EOF) {
+		t.Fatalf("err = %v, want io.EOF", err)
+	}
+	// Truncation mid-frame stays malformed.
+	if _, err := readOne(t, c, []byte{0x94, 0x00}); !errors.Is(err, msgpack.ErrMalformed) {
 		t.Fatalf("err = %v, want ErrMalformed", err)
+	}
+}
+
+// TestCodec_LimitsCopiedAtNew: later mutation of the caller's Limits must
+// not affect (or race) the codec.
+func TestCodec_LimitsCopiedAtNew(t *testing.T) {
+	lim := &msgpack.Limits{MaxStrBytes: 64}
+	c := New(lim)
+	lim.MaxStrBytes = 1 // mutated after construction; codec keeps 64
+	raw := encodeRaw(t, []any{int64(0), int64(1), "a-method-name-under-64", []any{}})
+	if _, err := readOne(t, c, raw); err != nil {
+		t.Fatalf("copied limits not honored: %v", err)
 	}
 }
 

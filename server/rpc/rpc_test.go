@@ -234,8 +234,10 @@ func TestRPC_HandlerErrorTaxonomy(t *testing.T) {
 	if errCode(t, errVal) != rpc.CodeInternal {
 		t.Fatalf("untyped err = %#v", errVal)
 	}
-	if m := errVal.(map[string]any); m["message"] != "plain failure" {
-		t.Fatalf("untyped message = %#v", m["message"])
+	// Untyped error text must NOT reach the wire (deny-before-disclose):
+	// only *rpc.Error messages are public.
+	if m := errVal.(map[string]any); m["message"] != "internal error" {
+		t.Fatalf("untyped error leaked to wire: %#v", m["message"])
 	}
 }
 
@@ -501,4 +503,165 @@ func TestRPC_ManySequentialMessagesOneConnection(t *testing.T) {
 			t.Fatalf("iter %d: result = %#v", i, result)
 		}
 	}
+}
+
+// --- review-fold regression tests (2026-08-16 lector round 1) ---
+
+// Finding 3: peer disconnect must cancel in-flight handler contexts.
+func TestRPC_DisconnectCancelsHandlers(t *testing.T) {
+	t.Parallel()
+	entered := make(chan struct{})
+	finished := make(chan error, 1)
+	s := newEchoServer(t)
+	s.Handle("wait", func(ctx context.Context, _ *rpc.Request) (any, error) {
+		close(entered)
+		<-ctx.Done()
+		finished <- ctx.Err()
+		return nil, ctx.Err()
+	})
+	startServer(t, s)
+
+	conn, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &testClient{t: t, conn: conn, br: bufio.NewReader(conn)}
+	c.request(1, "wait")
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler never entered")
+	}
+	conn.Close() // peer disappears without shutdown
+
+	select {
+	case cerr := <-finished:
+		if !errors.Is(cerr, context.Canceled) {
+			t.Fatalf("handler ctx err = %v, want Canceled", cerr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler context never cancelled after peer disconnect")
+	}
+}
+
+// Finding 4: an unencodable handler result must never poison the stream —
+// the peer gets a generic internal error and the connection survives.
+func TestRPC_UnencodableResultReplacedNotStreamPoison(t *testing.T) {
+	t.Parallel()
+	s := newEchoServer(t)
+	s.Handle("bad", func(context.Context, *rpc.Request) (any, error) {
+		// Nested unsupported type: encoding fails only after the response
+		// prefix would have been produced.
+		return []any{"prefix", struct{}{}}, nil
+	})
+	startServer(t, s)
+	c := dial(t, s.Addr())
+
+	c.request(1, "bad")
+	id, errVal, _ := c.recvResponse()
+	if id != 1 || errCode(t, errVal) != rpc.CodeInternal {
+		t.Fatalf("id = %d, err = %#v", id, errVal)
+	}
+	if m := errVal.(map[string]any); m["message"] != "internal error" {
+		t.Fatalf("message = %#v", m["message"])
+	}
+	// The stream must be intact: the next request round-trips cleanly.
+	c.request(2, "echo", "still-clean")
+	id, errVal, result := c.recvResponse()
+	if id != 2 || errVal != nil {
+		t.Fatalf("follow-up: id = %d, err = %#v", id, errVal)
+	}
+	if arr := result.([]any); arr[0] != "still-clean" {
+		t.Fatalf("follow-up result = %#v", result)
+	}
+}
+
+// Finding 4 (outbound bound): a reply exceeding MaxMessageBytes is replaced
+// by a generic error instead of shipping an unbounded frame.
+func TestRPC_OversizedReplyReplaced(t *testing.T) {
+	t.Parallel()
+	s := newEchoServer(t, rpc.MaxMessageBytes(1024))
+	s.Handle("big", func(context.Context, *rpc.Request) (any, error) {
+		return string(make([]byte, 8192)), nil
+	})
+	startServer(t, s)
+	c := dial(t, s.Addr())
+
+	c.request(1, "big")
+	id, errVal, _ := c.recvResponse()
+	if id != 1 || errCode(t, errVal) != rpc.CodeInternal {
+		t.Fatalf("id = %d, err = %#v", id, errVal)
+	}
+	c.request(2, "echo", "ok")
+	if id, errVal, _ := c.recvResponse(); id != 2 || errVal != nil {
+		t.Fatalf("follow-up: id = %d, err = %#v", id, errVal)
+	}
+}
+
+// Finding 5: untyped gate errors must cross the wire as a stable generic
+// denial, never as their raw text.
+func TestRPC_GateUntypedErrorWithheld(t *testing.T) {
+	t.Parallel()
+	gate := func(_ *rpc.Session, method string) error {
+		if method == "echo" {
+			return errors.New("secret detail: /etc/autodb/master.key unreadable")
+		}
+		return nil
+	}
+	s := newEchoServer(t, rpc.WithGate(gate))
+	startServer(t, s)
+	c := dial(t, s.Addr())
+
+	c.request(1, "echo")
+	_, errVal, _ := c.recvResponse()
+	if errCode(t, errVal) != rpc.CodeAccessDenied {
+		t.Fatalf("err = %#v", errVal)
+	}
+	if m := errVal.(map[string]any); m["message"] != "access denied" {
+		t.Fatalf("gate detail leaked to wire: %#v", m["message"])
+	}
+}
+
+// Should-fix 2: construction-time option validation.
+func TestRPC_InvalidOptionsPanicAtNew(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		opt  rpc.Option
+	}{
+		{"MaxConcurrent zero", rpc.MaxConcurrent(0)},
+		{"MaxConcurrent negative", rpc.MaxConcurrent(-1)},
+		{"MaxMessageBytes zero", rpc.MaxMessageBytes(0)},
+		{"DrainTimeout negative", rpc.DrainTimeout(-time.Second)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("New did not panic")
+				}
+			}()
+			_ = rpc.New(msgpackrpc.New(nil), tc.opt)
+		})
+	}
+}
+
+// Finding 1 (transport side): a decoded-value bomb under the raw byte
+// window must be refused by the codec's aggregate budgets, not executed.
+func TestRPC_DecodedValueBombRefused(t *testing.T) {
+	t.Parallel()
+	lim := &msgpack.Limits{MaxTotalElements: 4096}
+	s := rpc.New(msgpackrpc.New(lim), rpc.Addr("127.0.0.1:0"))
+	s.Handle("echo", func(_ context.Context, req *rpc.Request) (any, error) {
+		return req.Params, nil
+	})
+	startServer(t, s)
+	c := dial(t, s.Addr())
+
+	// A single request whose params hold 8192 nils: raw bytes are tiny but
+	// the decoded value count exceeds the aggregate budget → connection
+	// closes (malformed-class refusal), nothing dispatches.
+	params := make([]any, 8192)
+	c.send([]any{int64(0), int64(1), "echo", params})
+	c.expectClosed()
 }

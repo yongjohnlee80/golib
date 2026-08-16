@@ -318,3 +318,50 @@ func TestScaffold_SessionFactoryNilResultFallsBack(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 }
+
+// Review finding 6 (2026-08-16): a session-factory panic must be isolated
+// like a handler panic — recovered, logged, connection closed — never
+// allowed to escape the per-connection goroutine and kill the process.
+func TestScaffold_SessionFactoryPanicIsIsolated(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	s := NewScaffold(echoHandler,
+		ScaffoldAddr("127.0.0.1:0"),
+		ScaffoldSessionFactory(func(context.Context, net.Conn) Session {
+			if calls.Add(1) == 1 {
+				panic("factory blew up")
+			}
+			return nil // second conn: default session
+		}),
+	)
+	stop := runScaffold(t, s)
+
+	// First connection triggers the factory panic; the process must survive
+	// and the conn must be closed by the scaffold.
+	c1, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c1.Close()
+	_ = c1.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := bufio.NewReader(c1).ReadByte(); err == nil {
+		t.Fatal("expected first connection to be closed after factory panic")
+	}
+
+	// The accept loop must still serve subsequent connections.
+	c2, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c2.Close()
+	if _, err := c2.Write([]byte("hi\n")); err != nil {
+		t.Fatal(err)
+	}
+	reply, err := bufio.NewReader(c2).ReadString('\n')
+	if err != nil || reply != "echo:hi\n" {
+		t.Fatalf("post-panic conn: reply = %q, err = %v", reply, err)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"math"
 	"reflect"
 	"strings"
@@ -387,5 +388,116 @@ func TestEncodeCompactWireForms(t *testing.T) {
 		if !bytes.Equal(got, tc.want) {
 			t.Errorf("Marshal(%v): got % x, want % x", tc.in, got, tc.want)
 		}
+	}
+}
+
+// --- aggregate budgets (review finding 1) ---
+
+// TestDecodeAggregateAmplificationAttack reproduces the review's
+// amplification vector: sixteen sibling 1M-element nil arrays, each under
+// the per-container MaxElements, ~16 MB on the wire but ~256 MB decoded.
+// The aggregate node budget must refuse it under DefaultLimits.
+func TestDecodeAggregateAmplificationAttack(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteByte(0x90 | 16&0x0f) // deliberately wrong if 16 > 15
+	buf.Reset()
+	// array16 header for 16 elements
+	buf.Write([]byte{0xdc, 0x00, 0x10})
+	inner := make([]byte, 0, 5+1<<20)
+	inner = append(inner, 0xdd, 0x00, 0x0f, 0x42, 0x40) // array32(1_000_000)
+	inner = append(inner, bytes.Repeat([]byte{0xc0}, 1<<20)[:1000000]...)
+	for i := 0; i < 16; i++ {
+		buf.Write(inner)
+	}
+	_, err := Unmarshal(buf.Bytes(), nil)
+	if !errors.Is(err, ErrLimitExceeded) {
+		t.Fatalf("amplification message: err = %v, want ErrLimitExceeded", err)
+	}
+}
+
+func TestDecodeAggregateElementBudget(t *testing.T) {
+	lim := &Limits{MaxTotalElements: 10}
+	// Three sibling 5-element arrays: every container is small, but the
+	// whole decode is 3 containers + 15 nils + 1 root = 19 nodes.
+	in := []byte{0x93, 0x95, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0,
+		0x95, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0,
+		0x95, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0}
+	if _, err := Unmarshal(in, lim); !errors.Is(err, ErrLimitExceeded) {
+		t.Fatalf("sibling arrays: err = %v, want ErrLimitExceeded", err)
+	}
+	// The same shape passes with room to spare.
+	if _, err := Unmarshal(in, &Limits{MaxTotalElements: 100}); err != nil {
+		t.Fatalf("under budget: %v", err)
+	}
+}
+
+func TestDecodeAggregateByteBudget(t *testing.T) {
+	lim := &Limits{MaxTotalBytes: 10}
+	// Two 8-byte strings: each fine per-item, 16 aggregate payload bytes.
+	in := []byte{0x92, 0xa8, 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a',
+		0xa8, 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b'}
+	if _, err := Unmarshal(in, lim); !errors.Is(err, ErrLimitExceeded) {
+		t.Fatalf("aggregate bytes: err = %v, want ErrLimitExceeded", err)
+	}
+	if _, err := Unmarshal(in, &Limits{MaxTotalBytes: 100}); err != nil {
+		t.Fatalf("under budget: %v", err)
+	}
+}
+
+func TestLimitsZeroFieldsFallBackToDefaults(t *testing.T) {
+	// A zero-value Limits (or one with unset new fields) must decode with
+	// full default protection, not zero budgets.
+	v, err := Unmarshal([]byte{0x92, 0x01, 0xa1, 'x'}, &Limits{})
+	if err != nil {
+		t.Fatalf("zero Limits: %v", err)
+	}
+	if !reflect.DeepEqual(v, []any{int64(1), "x"}) {
+		t.Fatalf("zero Limits decoded %#v", v)
+	}
+	// And a tightened single field still applies while the rest default.
+	if _, err := Unmarshal([]byte{0x91, 0x91, 0xc0}, &Limits{MaxDepth: 1}); !errors.Is(err, ErrDepthExceeded) {
+		t.Fatalf("partial Limits: err = %v, want ErrDepthExceeded", err)
+	}
+}
+
+// --- clean EOF vs truncation (review should-fix 3) ---
+
+func TestDecodeCleanEOF(t *testing.T) {
+	r := bufio.NewReader(bytes.NewReader(nil))
+	if _, err := Decode(r, nil); err != io.EOF {
+		t.Fatalf("empty stream: err = %v, want io.EOF", err)
+	}
+	// Between two values on one stream: first decodes, second sees io.EOF.
+	b, _ := Marshal("only")
+	r = bufio.NewReader(bytes.NewReader(b))
+	if _, err := Decode(r, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Decode(r, nil); err != io.EOF {
+		t.Fatalf("post-value: err = %v, want io.EOF", err)
+	}
+	// Mid-value truncation stays ErrMalformed, never io.EOF.
+	r = bufio.NewReader(bytes.NewReader([]byte{0xa5, 'a'}))
+	if _, err := Decode(r, nil); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("truncated: err = %v, want ErrMalformed", err)
+	}
+	// Unmarshal keeps its one-shot contract: empty input is malformed.
+	if _, err := Unmarshal(nil, nil); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("Unmarshal(empty): err = %v, want ErrMalformed", err)
+	}
+}
+
+// --- encoder cycle guard (review finding 4, outbound depth) ---
+
+func TestEncodeCyclicValueFailsInsteadOfStackDeath(t *testing.T) {
+	cycle := []any{nil}
+	cycle[0] = cycle
+	if _, err := Marshal(cycle); !errors.Is(err, ErrDepthExceeded) {
+		t.Fatalf("cyclic slice: err = %v, want ErrDepthExceeded", err)
+	}
+	m := map[string]any{}
+	m["self"] = m
+	if _, err := Marshal(m); !errors.Is(err, ErrDepthExceeded) {
+		t.Fatalf("cyclic map: err = %v, want ErrDepthExceeded", err)
 	}
 }

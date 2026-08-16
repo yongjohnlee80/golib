@@ -16,8 +16,17 @@ type Ext struct {
 }
 
 // Encode writes one value in MessagePack encoding. The Go vocabulary is
-// fixed (package doc); anything else returns ErrUnsupportedType.
+// fixed (package doc); anything else returns ErrUnsupportedType. Nesting is
+// bounded at maxEncodeDepth so a cyclic container value fails with
+// ErrDepthExceeded instead of exhausting the stack.
 func Encode(w *bufio.Writer, v any) error {
+	return encodeValue(w, v, 0)
+}
+
+func encodeValue(w *bufio.Writer, v any, depth int) error {
+	if depth > maxEncodeDepth {
+		return fmt.Errorf("%w: encode depth %d (cyclic value?)", ErrDepthExceeded, depth)
+	}
 	switch x := v.(type) {
 	case nil:
 		return w.WriteByte(0xc0)
@@ -65,7 +74,7 @@ func Encode(w *bufio.Writer, v any) error {
 			return err
 		}
 		for _, el := range x {
-			if err := Encode(w, el); err != nil {
+			if err := encodeValue(w, el, depth+1); err != nil {
 				return err
 			}
 		}
@@ -78,7 +87,7 @@ func Encode(w *bufio.Writer, v any) error {
 			if err := encodeStr(w, k); err != nil {
 				return err
 			}
-			if err := Encode(w, el); err != nil {
+			if err := encodeValue(w, el, depth+1); err != nil {
 				return err
 			}
 		}

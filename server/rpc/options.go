@@ -60,20 +60,24 @@ func BaseContext(ctx context.Context) Option {
 }
 
 // DrainTimeout bounds the graceful drain when Run's context is cancelled
-// (default 10s).
+// (default 10s). Must be positive; New panics otherwise.
 func DrainTimeout(d time.Duration) Option {
 	return func(c *config) { c.drainTimeout = d }
 }
 
-// MaxMessageBytes bounds a single inbound message (default 16 MiB). A
-// message overrunning the bound closes the connection.
+// MaxMessageBytes bounds a single message in BOTH directions (default
+// 16 MiB): an inbound overrun closes the connection; an outbound overrun is
+// replaced by a generic internal-error reply. Must be positive; New panics
+// otherwise.
 func MaxMessageBytes(n int64) Option {
 	return func(c *config) { c.maxMessageBytes = n }
 }
 
 // MaxConcurrent bounds concurrently executing handlers per connection
-// (default 8). The read loop blocks when the bound is reached — natural
-// backpressure instead of unbounded goroutine growth (R4).
+// (default 8). The read loop acquires a slot BEFORE decoding the next
+// message, so decoded-message retention is bounded too — while saturated
+// the connection is not read at all (backpressure, not goroutine growth —
+// R4). Must be positive; New panics otherwise.
 func MaxConcurrent(n int) Option {
 	return func(c *config) { c.maxConcurrent = n }
 }

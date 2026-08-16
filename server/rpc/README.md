@@ -51,29 +51,43 @@ err := srv.Run(ctx) // serves until ctx cancels, then drains politely
 ## Semantics
 
 - **Dispatch.** Requests and notifications run handlers on a per-connection
-  worker pool (`MaxConcurrent`, default 8); the read loop blocks at the
-  bound — backpressure, not goroutine growth. Responses serialize through a
-  per-connection write lock and always echo the request's msgid; ordering
-  across concurrent requests is not guaranteed (msgid matching is the
-  contract).
-- **Contexts.** Each handler's ctx derives from the connection's, which
-  derives from `BaseContext`; `Shutdown` cancels them all, and the polite
-  drain window then lets winding-down handlers flush their final replies.
-- **Errors.** Return `*rpc.Error` for a structured wire error
-  (`{code, message}`); any other error reaches the peer as `CodeInternal`
-  with its `Error()` text. Handler panics are recovered, logged, and
-  answered with a generic internal error — the panic value never reaches
-  the wire, and the connection survives.
+  worker pool (`MaxConcurrent`, default 8). The read loop acquires its slot
+  BEFORE decoding the next message, so decoded-message retention is bounded
+  too — while saturated, the connection simply isn't read (backpressure,
+  not goroutine growth; the documented trade-off is that a disconnect is
+  observed when a slot frees). Responses serialize through a per-connection
+  write lock and always echo the request's msgid; ordering across
+  concurrent requests is not guaranteed (msgid matching is the contract).
+- **Contexts.** Each handler's ctx derives from a connection-scoped context
+  cancelled when the connection ends for ANY reason — peer disconnect,
+  drain, or `Shutdown`. Honor it: a handler waiting on `ctx.Done()` always
+  winds down when its client disappears, and the polite drain window lets
+  winding-down handlers flush their final replies before the socket closes.
+- **Errors (deny-before-disclose).** Only `*rpc.Error` text is public: it
+  crosses the wire as `{code, message}`. Any other handler error is logged
+  server-side with full detail and reaches the peer as a generic
+  `CodeInternal` "internal error" — raw error text can carry paths,
+  hostnames, query fragments, or credentials. Handler panics likewise
+  answer generically; the connection survives.
+- **Reply integrity.** Every response is fully encoded into a staging
+  buffer before any byte touches the socket. An unencodable or oversized
+  handler result never corrupts the stream — it's logged and replaced by a
+  generic internal-error reply; only socket-level failures close the
+  connection.
 - **Gate.** Consulted before every dispatch with the connection's
-  `*Session` — per-connection handshake state, not global. Gated requests
-  answer the error without invoking the handler; gated notifications drop
+  `*Session` — per-connection handshake state, not global. A `*rpc.Error`
+  from the gate is the public rejection; any other gate error is logged and
+  answered with a stable generic "access denied". Gated notifications drop
   with a log line (no reply channel exists).
 - **Protocol hygiene (R7).** Unknown methods answer `CodeMethodNotFound`
   and the connection survives. A frame that fails to decode, violates the
   codec's shape rules, or overruns `MaxMessageBytes` (default 16 MiB)
-  closes the connection: a peer that cannot frame correctly is done.
-  Unexpected responses (this server issues no requests in v1) drop with a
-  log line.
+  closes the connection: a peer that cannot frame correctly is done. A
+  clean `io.EOF` between frames logs as a normal close. Unexpected
+  responses (this server issues no requests in v1) drop with a log line.
+- **Construction.** `New` validates options up front: nil codec,
+  non-positive `MaxConcurrent`/`MaxMessageBytes`/`DrainTimeout` panic at
+  construction rather than misbehaving per connection.
 
 ## Not in v1
 

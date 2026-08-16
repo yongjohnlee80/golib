@@ -46,13 +46,30 @@ message transport wants.
 ## Decoding untrusted input
 
 Every decode is bounded by `Limits` (KB convention security-core-hardening
-R4): `MaxDepth` (64), `MaxStrBytes`/`MaxBinBytes` (8 MiB), `MaxElements`
-per collection (1 M). Declared sizes are validated before allocation and
+R4), on two axes:
+
+- **Per item:** `MaxDepth` (64), `MaxStrBytes`/`MaxBinBytes` (8 MiB),
+  `MaxElements` per collection (1 M).
+- **Per decode (aggregate):** `MaxTotalElements` (1 M decoded values) and
+  `MaxTotalBytes` (16 MiB payload bytes) across the WHOLE value. Per-item
+  limits alone don't stop a message packed with many maximal siblings —
+  sixteen 1M-element nil arrays fit ~16 MiB of wire but decode to ~256 MiB;
+  the aggregate budgets cap the decoded footprint at roughly
+  `MaxTotalElements×16 + MaxTotalBytes` (~32 MiB at defaults).
+
+Zero (or negative) `Limits` fields fall back to the default values, so a
+partially-filled struct tightens or loosens individual bounds without ever
+silently disabling one. Declared sizes are validated before allocation and
 preallocation is capped, so a forged `array32(0xffffffff)` header cannot
 allocate memory the input never supplies. Truncation, the reserved `0xc1`
 byte, depth bombs, and oversize declarations return typed sentinels
 (`ErrMalformed`, `ErrDepthExceeded`, `ErrLimitExceeded`); no input panics
 the decoder — enforced by `FuzzDecode`.
+
+A clean end-of-stream before any byte of a value is `io.EOF` (a polite peer
+hang-up); truncation inside a value is `ErrMalformed` — transports log the
+two differently. `Encode` bounds its own recursion, so a cyclic container
+value fails with `ErrDepthExceeded` instead of exhausting the stack.
 
 ## Neovim interop
 

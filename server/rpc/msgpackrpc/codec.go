@@ -21,26 +21,29 @@ import (
 var ErrProtocol = errors.New("msgpackrpc: protocol violation")
 
 // Codec is the msgpack-RPC wire codec. The zero value is not usable; build
-// with New.
+// with New. A Codec is stateless after construction and safe for concurrent
+// use across connections (the rpc.Codec contract).
 type Codec struct {
-	lim *msgpack.Limits
+	lim msgpack.Limits
 }
 
 var _ rpc.Codec = (*Codec)(nil)
 
-// New builds a Codec decoding values under lim (nil → msgpack.DefaultLimits).
+// New builds a Codec decoding values under lim (nil → msgpack.DefaultLimits;
+// zero fields fall back to defaults). The Limits value is COPIED — later
+// mutation by the caller cannot race active decodes.
 func New(lim *msgpack.Limits) *Codec {
 	if lim == nil {
 		lim = msgpack.DefaultLimits()
 	}
-	return &Codec{lim: lim}
+	return &Codec{lim: *lim}
 }
 
 // Read decodes exactly one message, validating shape strictly: top-level is
 // a 3/4-element array, type tag 0/1/2 matching the arity, msgid within
 // uint32, method a string, params an array. Anything else is ErrProtocol.
 func (c *Codec) Read(r *bufio.Reader) (*rpc.Message, error) {
-	v, err := msgpack.Decode(r, c.lim)
+	v, err := msgpack.Decode(r, &c.lim)
 	if err != nil {
 		return nil, err
 	}

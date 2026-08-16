@@ -109,6 +109,9 @@ func NewScaffold(handle ConnHandler, opts ...ScaffoldOption) *Scaffold {
 	if cfg.baseCtx == nil {
 		cfg.baseCtx = context.Background()
 	}
+	if cfg.logger == nil {
+		cfg.logger = logger.Nop{}
+	}
 	return &Scaffold{handle: handle, cfg: cfg}
 }
 
@@ -220,8 +223,22 @@ func SessionFromContext(ctx context.Context) Session {
 }
 
 // serveConn runs the handler for one connection: registered for drain,
-// panic-isolated, always closed.
+// panic-isolated, always closed. The close and recovery defers are
+// installed BEFORE any user-provided hook runs — a session-factory panic
+// must be isolated exactly like a handler panic, never allowed to escape
+// the accepted-connection goroutine and kill the process.
 func (s *Scaffold) serveConn(conn net.Conn) {
+	phase := "session setup"
+	defer func() {
+		if rec := recover(); rec != nil {
+			s.cfg.logger.Log(logger.SeverityError, map[string]any{
+				"server": "scaffold", "event": phase + " panic",
+				"remote": remoteStr(conn), "recover": rec,
+			})
+		}
+	}()
+	defer conn.Close()
+
 	sess := Session(connSession{conn})
 	if s.cfg.sessionFactory != nil {
 		if custom := s.cfg.sessionFactory(s.connCtx, conn); custom != nil {
@@ -230,16 +247,20 @@ func (s *Scaffold) serveConn(conn net.Conn) {
 	}
 	unregister := s.reg.Register(sess)
 	defer unregister()
-	defer conn.Close()
-	defer func() {
-		if rec := recover(); rec != nil {
-			s.cfg.logger.Log(logger.SeverityError, map[string]any{
-				"server": "scaffold", "event": "handler panic",
-				"remote": conn.RemoteAddr().String(), "recover": rec,
-			})
-		}
-	}()
+	phase = "handler"
 	s.handle(context.WithValue(s.connCtx, sessionCtxKey{}, sess), conn)
+}
+
+// remoteStr renders a peer address defensively: RemoteAddr may be nil on
+// exotic net.Conn implementations, and this runs inside panic recovery.
+func remoteStr(conn net.Conn) string {
+	if conn == nil {
+		return "unknown"
+	}
+	if a := conn.RemoteAddr(); a != nil {
+		return a.String()
+	}
+	return "unknown"
 }
 
 // Shutdown stops accepting, cancels every per-connection context, and drains
