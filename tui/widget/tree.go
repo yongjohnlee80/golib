@@ -92,6 +92,16 @@ func (n *TreeNode) dirty() {
 	}
 }
 
+// structureChanged marks the owner dirty AND reconciles its cursor
+// synchronously — input handling must never depend on a later render to
+// make model state valid (MF3).
+func (n *TreeNode) structureChanged() {
+	if n.owner != nil {
+		n.owner.reconcile()
+		n.owner.MarkDirty()
+	}
+}
+
 // SetChildren supplies the node's children.
 //
 //   - On an UNOWNED node, gen must be 0: static pre-assembly before the
@@ -111,18 +121,15 @@ func (n *TreeNode) SetChildren(gen uint64, kids []*TreeNode) {
 	} else if gen == 0 || gen != n.gen {
 		return // stale or unsolicited: inert
 	}
-	validateSiblings(kids)
-	for _, k := range kids {
-		if k.owner != nil {
-			panic(fmt.Sprintf("widget: TreeNode.SetChildren: node %q is already attached to a tree", k.id))
-		}
-	}
-	// Release the replaced subtrees.
+	// Validate the ENTIRE incoming forest before touching anything, and
+	// copy the slice so the caller cannot mutate the committed graph.
+	preflightForest(kids)
+	committed := append([]*TreeNode(nil), kids...)
 	for _, old := range n.children {
 		old.release()
 	}
-	n.children = kids
-	for _, k := range kids {
+	n.children = committed
+	for _, k := range committed {
 		k.parent = n
 		if n.owner != nil {
 			n.owner.adopt(k)
@@ -132,7 +139,7 @@ func (n *TreeNode) SetChildren(gen uint64, kids []*TreeNode) {
 	n.loading = false
 	n.loadErr = ""
 	n.gen = 0
-	n.dirty()
+	n.structureChanged()
 }
 
 // SetLoadError settles a pending load into an error badge: the node
@@ -147,7 +154,7 @@ func (n *TreeNode) SetLoadError(gen uint64, msg string) {
 	n.expanded = false
 	n.loadErr = msg
 	n.gen = 0
-	n.dirty()
+	n.structureChanged()
 }
 
 // Reset discards loaded children and any in-flight generation (refresh).
@@ -163,24 +170,69 @@ func (n *TreeNode) Reset() {
 	n.expanded = false
 	n.loadErr = ""
 	n.gen = 0
-	n.dirty()
+	n.structureChanged()
 }
 
-// release detaches a subtree from its tree and parent.
+// release detaches a subtree: ownership clears recursively but ONLY the
+// detached root's external parent edge is cut — the subtree's internal
+// ancestry survives for re-attachment (r3 release precision + MF2).
 func (n *TreeNode) release() {
-	n.owner = nil
 	n.parent = nil
+	n.releaseOwned()
+}
+
+func (n *TreeNode) releaseOwned() {
+	n.owner = nil
 	n.gen = 0
 	n.loading = false
 	for _, c := range n.children {
-		c.release()
+		c.releaseOwned()
 	}
 }
 
-// validateSiblings panics on duplicate IDs within one sibling set.
-func validateSiblings(kids []*TreeNode) {
+// preflightForest validates an incoming forest COMPLETELY before any
+// mutation (MF: attachment must never be destructive-then-panic): nil
+// nodes, duplicate pointers anywhere in the forest (which also covers
+// shared descendants and cycles), owned nodes anywhere, duplicate sibling
+// IDs at every level, and inconsistent internal parent links all reject.
+func preflightForest(kids []*TreeNode) {
+	visited := make(map[*TreeNode]struct{})
+	var walk func(n *TreeNode, parent *TreeNode)
+	walk = func(n *TreeNode, parent *TreeNode) {
+		if n == nil {
+			panic("widget: nil tree node")
+		}
+		if _, dup := visited[n]; dup {
+			panic(fmt.Sprintf("widget: tree node %q appears more than once in the incoming forest", n.id))
+		}
+		visited[n] = struct{}{}
+		if n.owner != nil {
+			panic(fmt.Sprintf("widget: tree node %q is already attached to a tree", n.id))
+		}
+		if parent != nil && n.parent != nil && n.parent != parent {
+			panic(fmt.Sprintf("widget: tree node %q carries an inconsistent parent link", n.id))
+		}
+		validateSiblingIDs(n.children)
+		for _, c := range n.children {
+			walk(c, n)
+		}
+	}
+	validateSiblingIDs(kids)
+	for _, k := range kids {
+		if k != nil && k.parent != nil {
+			panic(fmt.Sprintf("widget: tree node %q is still linked inside another assembly", k.id))
+		}
+		walk(k, nil)
+	}
+}
+
+// validateSiblingIDs panics on duplicate IDs within one sibling set.
+func validateSiblingIDs(kids []*TreeNode) {
 	seen := make(map[string]struct{}, len(kids))
 	for _, k := range kids {
+		if k == nil {
+			panic("widget: nil tree node")
+		}
 		if _, dup := seen[k.id]; dup {
 			panic(fmt.Sprintf("widget: duplicate sibling tree-node id %q", k.id))
 		}
@@ -266,13 +318,16 @@ func NewTree(opts ...TreeOption) *Tree {
 // AcceptsFocus implements tui.Focusable.
 func (t *Tree) AcceptsFocus() bool { return true }
 
-// adopt stamps a subtree with this tree as owner; already-owned nodes panic.
+// adopt stamps a subtree with this tree as owner (preflighted callers only)
+// and re-stamps internal parent links so a released-then-reattached
+// subtree navigates correctly.
 func (t *Tree) adopt(n *TreeNode) {
 	if n.owner != nil {
 		panic(fmt.Sprintf("widget: tree node %q is already attached to a tree", n.id))
 	}
 	n.owner = t
 	for _, c := range n.children {
+		c.parent = n
 		t.adopt(c)
 	}
 }
@@ -281,12 +336,13 @@ func (t *Tree) adopt(n *TreeNode) {
 // roots adopted (owned roots and duplicate IDs panic), every outstanding
 // generation on the old roots is invalidated by the release.
 func (t *Tree) SetRoots(roots ...*TreeNode) {
-	validateSiblings(roots)
+	preflightForest(roots)
+	committed := append([]*TreeNode(nil), roots...)
 	for _, old := range t.roots {
 		old.release()
 	}
-	t.roots = roots
-	for _, r := range roots {
+	t.roots = committed
+	for _, r := range committed {
 		r.parent = nil
 		t.adopt(r)
 	}
@@ -429,7 +485,8 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 	if e.Text != "" && e.Mods&nonTextMods == 0 {
 		code = []rune(e.Text)[0]
 	}
-	cur := rows[t.cursor%max(len(rows), 1)]
+	t.cursor = max(0, min(t.cursor, len(rows)-1)) // never index a stale cursor
+	cur := rows[t.cursor]
 	switch code {
 	case 'j', tui.KeyDown:
 		t.moveCursor(1, len(rows))
@@ -517,6 +574,13 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	t.ensureVisible()
 	t.MarkDirty()
 	return true
+}
+
+// reconcile clamps cursor/top into the current flattened rows.
+func (t *Tree) reconcile() {
+	rows := t.flatten()
+	t.cursor = max(0, min(t.cursor, len(rows)-1))
+	t.ensureVisible()
 }
 
 func (t *Tree) moveCursor(delta, total int) {

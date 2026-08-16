@@ -37,7 +37,7 @@ func (stringCodec) Write(w *bufio.Writer, m *Message) error {
 // stays near the cap even when the handler's value is vastly larger.
 func TestConnWriteRefusesOversizeDuringEncoding(t *testing.T) {
 	c := newConn(nopConn{})
-	huge := strings.Repeat("x", 8<<20) // 8 MiB value...
+	huge := strings.Repeat("x", 8<<20)                                              // 8 MiB value...
 	err := c.write(stringCodec{}, &Message{Kind: KindResponse, Result: huge}, 1024) // ...1 KiB bound
 	if !errors.Is(err, errEncode) {
 		t.Fatalf("err = %v, want errEncode wrap", err)

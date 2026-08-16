@@ -134,9 +134,9 @@ func (s *Server) serveConn(ctx context.Context, nc net.Conn) {
 	defer nc.Close()
 	connCtx, cancel := context.WithCancel(ctx)
 	defer func() {
-		cancel()            // peer gone or draining: unblock ctx-honoring handlers
-		c.inflight.Wait()   // let them flush their final replies
-		close(c.workDone)   // Drain's completion signal
+		cancel()          // peer gone or draining: unblock ctx-honoring handlers
+		c.inflight.Wait() // let them flush their final replies
+		close(c.workDone) // Drain's completion signal
 	}()
 	s.readLoop(connCtx, c)
 }

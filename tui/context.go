@@ -48,11 +48,6 @@ func (c *Context) RequestLayout() {
 // Ignored unless the component implements Focusable and accepts focus.
 func (c *Context) RequestFocus() { c.app.requestFocus(c.node) }
 
-// ClearFocus removes focus entirely (ADR-0008 — Split.Zoom's fallback when
-// the retained pane has no focusable; the post-layout repair then owns
-// re-homing).
-func (c *Context) ClearFocus() { c.app.setFocus(0) }
-
 // FocusWithin reports whether the currently focused node is comp or one of
 // comp's descendants (ADR-0008 — Split.Zoom's transfer check). False when
 // nothing is focused or comp is not mounted.

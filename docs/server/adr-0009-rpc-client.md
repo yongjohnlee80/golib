@@ -73,9 +73,15 @@ Semantics:
   the same staged-frame path as the server (encode fully, bounded, then
   write).
 - **Cancellation bounds admission, network write, and the response wait
-  (r3 — the honest scope):** write-lock acquisition selects on ctx; the
-  network write of a staged frame is bounded by `ClientWriteTimeout`
-  (via write deadline). STAGING itself is synchronous trusted work —
+  (r3 — the honest scope):** write-lock acquisition selects on ctx, and
+  the terminal state is RECHECKED after admission and before the write —
+  a call racing Close/poison always surfaces the stable terminal cause,
+  never a raw closed-connection error (r-impl). The network write of a
+  staged frame is bounded by the EARLIER of `ClientWriteTimeout` and the
+  context deadline; a deadline-less cancellation wakes the write through
+  a watcher forcing the deadline into the past; deadline set/reset
+  failures are transport failures (poison); a short nil-error write is
+  treated as a partial frame (r-impl). STAGING itself is synchronous trusted work —
   `Codec.Write` has no context by design — and is bounded structurally
   instead: ctx is checked before staging begins and after it completes,
   and the staged frame is byte-capped (`ClientMaxMessageBytes`) with the
@@ -101,7 +107,10 @@ Semantics:
   option and blocking the sole reader deadlocks reentrant handlers).
   Each callback invocation runs inside a recover boundary (R16): a panic
   is logged with the method name and poisons the client (a half-executed
-  notification handler is undefined consumer state).
+  notification handler is undefined consumer state). **Dispatch stops at
+  the terminal state (r-impl):** buffered callbacks are never drained
+  after Close, poison, overflow, or a recovered panic — a terminal
+  client delivers no further callbacks beyond any already executing.
 - **Hostile-message taxonomy (r2 — one consistent rule):** the inbound
   read path is attacker-adjacent (M9 gate-guard future; hardened now).
   Malformed frames, oversized messages, invalid kinds, and

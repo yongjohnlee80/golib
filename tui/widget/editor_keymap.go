@@ -41,7 +41,6 @@ type ModeChangedEvent struct {
 	Mode  EditorMode
 }
 
-
 // KeyChord addresses one binding: a mode class and a normalized key.
 // ModeVisualLine shares ModeVisual's bindings; ModeInsert has no bindings
 // (its handling — text, chord, Esc, editing keys — is structural).
@@ -153,7 +152,7 @@ func DefaultKeymap() Keymap {
 		'w': ActWordForward, 'b': ActWordBack, 'e': ActWordEnd,
 		'{': ActParaBack, '}': ActParaForward,
 		'[': ActParaBack, ']': ActParaForward, // v1 aliases (ADR-0008 §2.1)
-		'G': ActGoBottom,
+		'G':           ActGoBottom,
 		tui.KeyPageUp: ActPageUp, tui.KeyPageDown: ActPageDown,
 		'g': ActGoPrefix,
 		'v': ActVisual, 'V': ActVisualLine,

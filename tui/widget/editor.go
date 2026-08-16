@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -30,9 +31,11 @@ type Editor struct {
 	mode EditorMode
 
 	// Normal/Visual command state.
-	count      int  // pending count; 0 = none
-	pendingKey rune // 'd'/'y'/'g' double-key prefix; 0 = none
-	vAnchor    taPos // visual anchor (chord start of the selection)
+	count        int      // pending count; 0 = none
+	pendingAct   Action   // pending double-key prefix action; ActUnbound = none
+	pendingChord KeyChord // the chord that armed it (completion = same chord)
+	pendingCount int      // count captured when the prefix was armed
+	vAnchor      taPos    // visual anchor (chord start of the selection)
 
 	// Escape chord (Insert mode).
 	chord       []rune // exactly two runes, or nil = disabled
@@ -102,7 +105,7 @@ func WithEscapeChord(chord string) EditorOption {
 		panic(fmt.Sprintf("widget: WithEscapeChord: %q is not exactly two runes (or empty to disable)", chord))
 	}
 	for _, r := range rs {
-		if r < 0x20 || r == 0x7f {
+		if !unicode.IsPrint(r) {
 			panic(fmt.Sprintf("widget: WithEscapeChord: %q contains a non-printable rune", chord))
 		}
 	}
@@ -161,7 +164,7 @@ func (e *Editor) Value() string { return e.value() }
 // register is preserved.
 func (e *Editor) SetValue(s string) {
 	e.settlePendingRune()
-	e.count, e.pendingKey = 0, 0
+	e.count, e.pendingAct = 0, ActUnbound
 	e.groupOpen = false
 	e.undo, e.redo = nil, nil
 	e.setValue(s)
@@ -239,7 +242,7 @@ func (e *Editor) clampNormal() {
 }
 
 func (e *Editor) enterInsert() {
-	e.count, e.pendingKey = 0, 0
+	e.count, e.pendingAct = 0, ActUnbound
 	e.groupOpen = false // group opens lazily on the first mutation
 	e.setMode(ModeInsert)
 }
@@ -347,17 +350,24 @@ func (e *Editor) settlePendingRune() {
 
 // --- motions ---------------------------------------------------------------
 
+// isWS classifies a grapheme cluster as whitespace for the Editor's word
+// motions (MF8: tabs and Unicode whitespace count, not just the literal
+// space; the substrate's readline hops keep their own space-only rule).
+func isWS(cluster string) bool {
+	return strings.TrimSpace(cluster) == ""
+}
+
 // vimWordForward implements vim `w`: past the current word run, over
 // whitespace, onto the start of the next word (crossing line ends).
 func (e *Editor) vimWordForward() (int, int) {
 	ln, col := e.ln, e.col
 	cs := e.lineClusters(ln)
 	i := col
-	for i < len(cs) && cs[i] != " " {
+	for i < len(cs) && !isWS(cs[i]) {
 		i++ // leave the current run
 	}
 	for {
-		for i < len(cs) && cs[i] == " " {
+		for i < len(cs) && isWS(cs[i]) {
 			i++
 		}
 		if i < len(cs) {
@@ -370,13 +380,38 @@ func (e *Editor) vimWordForward() (int, int) {
 	}
 }
 
+// vimWordBack implements vim `b`: back over whitespace onto the start of
+// the previous word run (crossing line ends).
+func (e *Editor) vimWordBack() (int, int) {
+	ln, col := e.ln, e.col
+	cs := e.lineClusters(ln)
+	i := col
+	for {
+		for i > 0 && isWS(cs[i-1]) {
+			i--
+		}
+		if i > 0 {
+			for i > 0 && !isWS(cs[i-1]) {
+				i--
+			}
+			return ln, i
+		}
+		if ln == 0 {
+			return 0, 0
+		}
+		ln--
+		cs = e.lineClusters(ln)
+		i = len(cs)
+	}
+}
+
 // wordEnd moves to the end of the current/next word (vim `e`, cluster form).
 func (e *Editor) wordEnd() (int, int) {
 	ln, col := e.ln, e.col
 	for {
 		cs := e.lineClusters(ln)
 		i := col + 1
-		for i < len(cs) && cs[i] == " " {
+		for i < len(cs) && isWS(cs[i]) {
 			i++
 		}
 		if i >= len(cs) {
@@ -386,7 +421,7 @@ func (e *Editor) wordEnd() (int, int) {
 			}
 			return ln, max(0, len(cs)-1)
 		}
-		for i+1 < len(cs) && cs[i+1] != " " {
+		for i+1 < len(cs) && !isWS(cs[i+1]) {
 			i++
 		}
 		return ln, i
@@ -475,7 +510,7 @@ func (e *Editor) move(act Action, count int) {
 	case ActWordBack:
 		e.desired = -1
 		for i := 0; i < count; i++ {
-			ln, col := e.wordLeft()
+			ln, col := e.vimWordBack()
 			e.moveCursor(ln, col, false)
 		}
 		e.clampNormal()
@@ -496,10 +531,25 @@ func (e *Editor) move(act Action, count int) {
 	case ActParaBack:
 		e.desired = -1
 		apply(e.paraBack(count), 0)
-	case ActGoBottom:
-		e.desired = -1
-		apply(len(e.lines)-1, 0)
 	}
+}
+
+// goToLine is the shared gg/G target motion: an EXPLICIT count means
+// "line count" (1-based, clamped); without one, gg goes to the top and G
+// to the bottom (MF10).
+func (e *Editor) goToLine(hadCount bool, count int, bottom bool) {
+	e.desired = -1
+	ln := 0
+	switch {
+	case hadCount:
+		ln = min(count-1, len(e.lines)-1)
+	case bottom:
+		ln = len(e.lines) - 1
+	}
+	e.moveCursor(ln, 0, false)
+	e.clampNormal()
+	e.ensureVisible()
+	e.MarkDirty()
 }
 
 // --- visual ranges ----------------------------------------------------------
@@ -579,7 +629,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 	// Motions.
 	case ActLeft, ActDown, ActUp, ActRight, ActLineStart, ActLineEnd,
 		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
-		ActGoBottom, ActPageUp, ActPageDown:
+		ActPageUp, ActPageDown:
 		e.move(act, count)
 		return true
 
@@ -717,13 +767,29 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 	switch t := ev.(type) {
 	case tui.PasteEvent:
 		e.settlePendingRune()
-		if e.mode == ModeVisual || e.mode == ModeVisualLine {
-			e.exitVisual()
-		}
 		e.beginGroup()
-		e.insertText(t.Text) // one atomic literal insertion
-		if e.mode != ModeInsert {
+		switch e.mode {
+		case ModeVisual:
+			// Visual paste replaces the selection (S3 — never silently
+			// discard the selection boundary).
+			lo, hiEx := e.visualRange()
+			e.deleteRegion(lo, hiEx)
+			e.setMode(ModeNormal)
+			e.insertText(t.Text)
 			e.clampNormal()
+		case ModeVisualLine:
+			lo, hi := e.visualLines()
+			e.setMode(ModeNormal)
+			e.anchor = nil
+			e.lines = append(e.lines[:lo], append([]string{""}, e.lines[hi+1:]...)...)
+			e.ln, e.col = lo, 0
+			e.insertText(t.Text)
+			e.clampNormal()
+		default:
+			e.insertText(t.Text) // one atomic literal insertion
+			if e.mode != ModeInsert {
+				e.clampNormal()
+			}
 		}
 		e.edited()
 		return true
@@ -777,8 +843,12 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 			e.exitInsert()
 			return true
 		}
-		e.settlePendingRune() // commit, then process this key normally
-	} else if isText && e.chord != nil && []rune(k.Text)[0] == e.chord[0] {
+		// Commit the held rune, then process THIS key from the top of the
+		// Insert state machine — it may itself be a fresh chord start
+		// (MF9: "jjk" commits the first j and escapes on the second+k).
+		e.settlePendingRune()
+	}
+	if isText && e.chord != nil && e.pendingRune == 0 && []rune(k.Text)[0] == e.chord[0] {
 		e.pendingRune = e.chord[0]
 		if ctx := e.Context(); ctx != nil {
 			e.chordCancel = ctx.After(e.chordTimeout)
@@ -787,6 +857,13 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 	}
 
 	switch k.Code {
+	case tui.KeyTab:
+		// Insert mode consumes Tab as text (ADR-0008 §2.1); traversal
+		// belongs to Normal mode, where Tab bubbles.
+		e.beginGroup()
+		e.insertText("\t")
+		e.edited()
+		return true
 	case tui.KeyEscape:
 		e.exitInsert()
 		return true
@@ -868,7 +945,7 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	ctrl := k.Mods&tui.ModCtrl != 0
 
 	if k.Code == tui.KeyEscape {
-		e.count, e.pendingKey = 0, 0
+		e.count, e.pendingAct = 0, ActUnbound
 		if e.mode == ModeVisual || e.mode == ModeVisualLine {
 			e.exitVisual()
 		}
@@ -876,13 +953,12 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	}
 
 	// Count accumulation: 1-9 always; 0 only extends an existing count.
+	// Clamp BEFORE assignment so the cap is a hard ceiling (MF10).
 	if !ctrl && k.Text != "" {
 		r := []rune(k.Text)[0]
 		if r >= '1' && r <= '9' || (r == '0' && e.count > 0) {
-			e.pendingKey = 0
-			if e.count < 1_000_000 {
-				e.count = e.count*10 + int(r-'0')
-			}
+			e.pendingAct = ActUnbound
+			e.count = min(e.count*10+int(r-'0'), 1_000_000)
 			return true
 		}
 	}
@@ -891,62 +967,53 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	if k.Text != "" && k.Mods&nonTextMods == 0 {
 		code = []rune(k.Text)[0] // shifted letters arrive via Text ("G")
 	}
+	kc := KeyChord{Mode: modeClass(e.mode), Code: code, Ctrl: ctrl}
 
-	// Double-key pending buffer: only the matching completion executes;
-	// any other key clears the pending state and is processed normally.
-	if e.pendingKey != 0 {
-		pk := e.pendingKey
-		e.pendingKey = 0
-		count := max(e.count, 1)
-		e.count = 0
-		if !ctrl && code == pk {
-			switch pk {
-			case 'd':
-				lo := e.ln
-				hi := min(e.ln+count-1, len(e.lines)-1)
-				e.deleteLines(lo, hi)
-				return true
-			case 'y':
-				lo := e.ln
-				hi := min(e.ln+count-1, len(e.lines)-1)
-				e.yankSet(strings.Join(e.lines[lo:hi+1], "\n"), true)
-				return true
-			case 'g':
-				e.desired = -1
-				e.moveCursor(0, 0, false)
-				e.clampNormal()
-				e.ensureVisible()
-				e.MarkDirty()
-				return true
+	// Double-key pending buffer, keyed by the ARMING CHORD (MF10 — a
+	// rebound prefix completes on its own chord, not a hard-coded rune):
+	// only the same chord again completes; any other key clears the
+	// pending state and is processed normally.
+	if e.pendingAct != ActUnbound {
+		act, chord := e.pendingAct, e.pendingChord
+		hadCount := e.pendingCount > 0
+		count := max(e.pendingCount, 1)
+		e.pendingAct = ActUnbound
+		e.pendingCount = 0
+		if kc == chord {
+			switch act {
+			case ActDeletePrefix:
+				e.deleteLines(e.ln, min(e.ln+count-1, len(e.lines)-1))
+			case ActYankPrefix:
+				e.yankSet(strings.Join(e.lines[e.ln:min(e.ln+count-1, len(e.lines)-1)+1], "\n"), true)
+			case ActGoPrefix:
+				e.goToLine(hadCount, count, false) // [count]gg
 			}
+			return true
 		}
 		// Fall through: reprocess this key from scratch (count consumed).
 	}
 
-	act, bound := e.keymap[KeyChord{Mode: modeClass(e.mode), Code: code, Ctrl: ctrl}]
+	act, bound := e.keymap[kc]
 	if !bound {
 		e.count = 0 // an unbound key cancels the pending count and bubbles
 		return false
 	}
 
+	hadCount := e.count > 0
 	count := max(e.count, 1)
 	e.count = 0
 
 	switch act {
-	case ActDeletePrefix:
-		e.pendingKey = 'd'
-		if count > 1 {
-			e.count = count // preserved for the completion (2dd)
+	case ActDeletePrefix, ActYankPrefix, ActGoPrefix:
+		e.pendingAct = act
+		e.pendingChord = kc
+		e.pendingCount = 0
+		if hadCount {
+			e.pendingCount = count // preserved for the completion (2dd, 5gg)
 		}
 		return true
-	case ActYankPrefix:
-		e.pendingKey = 'y'
-		if count > 1 {
-			e.count = count
-		}
-		return true
-	case ActGoPrefix:
-		e.pendingKey = 'g'
+	case ActGoBottom:
+		e.goToLine(hadCount, count, true) // [count]G
 		return true
 	}
 	return e.execAction(act, count)
@@ -1094,10 +1161,18 @@ func (e *Editor) Render(s tui.Surface) {
 		}
 		s.SetCell(x, y, cl, st)
 	}
+	lineFill := func(y, ln int) {
+		// A line-wise highlight covers the WHOLE screen row (S2), text or
+		// not; clusters then paint over the fill.
+		if e.mode == ModeVisualLine && e.focused() && e.inVisual(ln, 0) {
+			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", e.styles.Selection.Inherit(e.styles.Text))
+		}
+	}
 	y := 0
 	for ln := e.top; ln < len(e.lines) && y < sz.H; ln++ {
 		cs := e.lineClusters(ln)
 		if e.wrap == WrapNone {
+			lineFill(y, ln)
 			x := -e.left
 			for col, cl := range cs {
 				cw := s.StringWidth(cl)
@@ -1109,10 +1184,6 @@ func (e *Editor) Render(s tui.Surface) {
 				}
 				x += cw
 			}
-			// A line-wise highlight covers the whole row, text or not.
-			if e.mode == ModeVisualLine && e.focused() && e.inVisual(ln, 0) && len(cs) == 0 {
-				s.SetCell(0, y, " ", e.styles.Selection.Inherit(e.styles.Text))
-			}
 			y++
 			continue
 		}
@@ -1120,6 +1191,7 @@ func (e *Editor) Render(s tui.Surface) {
 			if y >= sz.H {
 				break
 			}
+			lineFill(y, ln)
 			x := 0
 			for col := r[0]; col < r[1]; col++ {
 				paintCluster(x, y, cs[col], ln, col)

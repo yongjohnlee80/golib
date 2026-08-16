@@ -86,10 +86,10 @@ func TestRoundTripScalars(t *testing.T) {
 		// strings across width classes
 		{"", ""},
 		{"a", "a"},
-		{strings.Repeat("x", 31), strings.Repeat("x", 31)},   // fixstr max
-		{strings.Repeat("x", 32), strings.Repeat("x", 32)},   // str8 min
-		{strings.Repeat("x", 255), strings.Repeat("x", 255)}, // str8 max
-		{strings.Repeat("x", 256), strings.Repeat("x", 256)}, // str16 min
+		{strings.Repeat("x", 31), strings.Repeat("x", 31)},       // fixstr max
+		{strings.Repeat("x", 32), strings.Repeat("x", 32)},       // str8 min
+		{strings.Repeat("x", 255), strings.Repeat("x", 255)},     // str8 max
+		{strings.Repeat("x", 256), strings.Repeat("x", 256)},     // str16 min
 		{strings.Repeat("x", 65536), strings.Repeat("x", 65536)}, // str32 min
 		{"héllo wörld — ünïcode", "héllo wörld — ünïcode"},
 

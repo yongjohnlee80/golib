@@ -340,3 +340,34 @@ func TestClientNotifyReachesServer(t *testing.T) {
 		t.Fatal("notification never dispatched")
 	}
 }
+
+// MF6: after a callback panic (or any terminal state), buffered
+// notifications are NOT drained — dispatch stops immediately.
+func TestClientDispatchStopsAfterPanic(t *testing.T) {
+	t.Parallel()
+	addr := fakeServer(t, func(conn net.Conn, _ *bufio.Reader) {
+		for i := 1; i <= 3; i++ {
+			conn.Write(rawFrame(t, []any{int64(2), "evt", []any{int64(i)}}))
+		}
+		time.Sleep(2 * time.Second)
+	})
+	var mu sync.Mutex
+	var calls []int64
+	c := dialClient(t, addr, rpc.OnNotification(func(_ string, params []any) {
+		mu.Lock()
+		calls = append(calls, params[0].(int64))
+		mu.Unlock()
+		panic("first callback dies")
+	}))
+	select {
+	case <-c.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("Done never closed")
+	}
+	time.Sleep(100 * time.Millisecond) // any illegal extra dispatch would land here
+	mu.Lock()
+	defer mu.Unlock()
+	if len(calls) != 1 {
+		t.Fatalf("callbacks after panic = %v, want exactly the first", calls)
+	}
+}

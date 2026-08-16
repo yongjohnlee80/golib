@@ -100,9 +100,8 @@ type Client struct {
 	pending map[uint32]chan clientResp
 	termErr error
 
-	done     chan struct{}
-	doneOnce sync.Once
-	notifCh  chan clientNotif
+	done    chan struct{}
+	notifCh chan clientNotif
 }
 
 type clientResp struct {
@@ -186,18 +185,20 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// poison publishes the terminal cause exactly once: the connection closes
-// (unblocking the reader), Done closes, and every waiter observes Err.
+// poison publishes the terminal cause exactly once. The cause and the Done
+// signal commit in ONE critical section, so Err() is never non-nil before
+// Done closes and never nil after (the documented contract); the
+// connection close (which unblocks the reader) follows outside the lock.
 func (c *Client) poison(cause error) {
 	c.mu.Lock()
-	if c.termErr == nil {
-		c.termErr = cause
+	if c.termErr != nil {
+		c.mu.Unlock()
+		return
 	}
+	c.termErr = cause
+	close(c.done)
 	c.mu.Unlock()
-	c.doneOnce.Do(func() {
-		_ = c.conn.Close()
-		close(c.done)
-	})
+	_ = c.conn.Close()
 }
 
 // Call sends one request and blocks for its response, ctx, or the client's
@@ -281,6 +282,12 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 	}
 	defer func() { <-c.writeSem }()
 
+	// Terminal-state recheck AFTER admission: a concurrent Close/poison
+	// that raced the select must surface the stable terminal cause, never
+	// a raw closed-connection error (MF5).
+	if err := c.Err(); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -293,23 +300,60 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 	if err := c.scratchW.Flush(); err != nil {
 		return fmt.Errorf("rpc: encode: %w", err)
 	}
+	if err := c.Err(); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err // staged but unsent: stream intact
 	}
-	_ = c.conn.SetWriteDeadline(time.Now().Add(c.cfg.writeTimeout))
+
+	// The write deadline is the EARLIER of the configured timeout and the
+	// context deadline, and a deadline-less cancellation wakes the write
+	// through a watcher that forces the deadline into the past (MF4).
+	// A conn that cannot apply deadlines is a transport failure: the
+	// bounded-write guarantee would silently vanish.
+	deadline := time.Now().Add(c.cfg.writeTimeout)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		c.poison(fmt.Errorf("rpc: set write deadline: %w", err))
+		return c.Err()
+	}
+	writeDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = c.conn.SetWriteDeadline(time.Unix(1, 0)) // wake the write
+		case <-writeDone:
+		}
+	}()
 	n, err := c.conn.Write(c.scratch.Bytes())
-	_ = c.conn.SetWriteDeadline(time.Time{})
+	frameLen := c.scratch.Len()
+	close(writeDone)
+	if resetErr := c.conn.SetWriteDeadline(time.Time{}); resetErr != nil && err == nil {
+		c.poison(fmt.Errorf("rpc: reset write deadline: %w", resetErr))
+		return c.Err()
+	}
 	if c.scratch.Cap() > scratchRetainMax {
 		c.scratch = bytes.Buffer{}
 		c.capw.buf = &c.scratch
 	}
-	if err != nil {
-		if n > 0 {
-			// A half-written frame is unrecoverable stream state.
-			c.poison(fmt.Errorf("rpc: partial frame written: %w", err))
-			return c.Err()
+	switch {
+	case err != nil && n > 0:
+		// A half-written frame is unrecoverable stream state.
+		c.poison(fmt.Errorf("rpc: partial frame written: %w", err))
+		return c.Err()
+	case err != nil:
+		if terr := c.Err(); terr != nil {
+			return terr // a concurrent poison owns the cause
 		}
 		return fmt.Errorf("rpc: write: %w", err)
+	case n != frameLen:
+		// Defensive: a short nil-error write violates net.Conn's contract;
+		// treat the stream as unrecoverable.
+		c.poison(fmt.Errorf("rpc: short write: %d of %d bytes", n, frameLen))
+		return c.Err()
 	}
 	return nil
 }
@@ -365,22 +409,43 @@ func (c *Client) readLoop() {
 }
 
 // dispatchNotifications serves the queue on one goroutine in arrival
-// order, each callback inside an R16 recover boundary.
+// order, each callback inside an R16 recover boundary. Dispatch STOPS the
+// moment the client turns terminal (MF6): buffered callbacks are never
+// drained after Close, transport poison, overflow, or a recovered callback
+// panic — the panic contract declares consumer state undefined, and a
+// closed client must not surprise the consumer with late callbacks.
 func (c *Client) dispatchNotifications() {
-	for n := range c.notifCh {
-		if c.cfg.onNotif == nil {
-			c.cfg.logger.Log(logger.SeverityDebug, map[string]any{
-				"rpc": "client", "event": "notification dropped (no handler)", "method": n.method,
-			})
-			continue
+	for {
+		select {
+		case <-c.done:
+			return
+		case n, ok := <-c.notifCh:
+			if !ok {
+				return
+			}
+			select {
+			case <-c.done:
+				return // terminal state won the race; drop the callback
+			default:
+			}
+			if c.cfg.onNotif == nil {
+				c.cfg.logger.Log(logger.SeverityDebug, map[string]any{
+					"rpc": "client", "event": "notification dropped (no handler)", "method": n.method,
+				})
+				continue
+			}
+			if !c.runNotifCallback(n) {
+				return // recovered panic: poisoned; stop dispatching
+			}
 		}
-		c.runNotifCallback(n)
 	}
 }
 
-func (c *Client) runNotifCallback(n clientNotif) {
+func (c *Client) runNotifCallback(n clientNotif) (ok bool) {
+	ok = true
 	defer func() {
 		if rec := recover(); rec != nil {
+			ok = false
 			c.cfg.logger.Log(logger.SeverityError, map[string]any{
 				"rpc": "client", "event": "notification handler panic",
 				"method": n.method, "recover": rec,
@@ -389,6 +454,7 @@ func (c *Client) runNotifCallback(n clientNotif) {
 		}
 	}()
 	c.cfg.onNotif(n.method, n.params)
+	return true
 }
 
 // wireErrToError converts a wire error value: the {code, message} shape

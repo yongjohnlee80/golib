@@ -15,9 +15,9 @@ import (
 // MysqlDialect opts into the qualified-table and introspection capabilities
 // (ADR-0013).
 var (
-	_ dao.TableQuoter          = MysqlDialect{}
-	_ dao.Introspector         = MysqlDialect{}
-	_ dao.RoutineIntrospector  = MysqlDialect{}
+	_ dao.TableQuoter         = MysqlDialect{}
+	_ dao.Introspector        = MysqlDialect{}
+	_ dao.RoutineIntrospector = MysqlDialect{}
 )
 
 // ListSchemas lists user databases, excluding the four system schemas.
@@ -108,6 +108,9 @@ func (MysqlDialect) ListColumns(ctx context.Context, q dao.Querier, schema, tabl
 // "(args) -> result" for functions, "(args)" for procedures. MySQL has no
 // overloads; ordering is schema, name.
 func (MysqlDialect) ListRoutines(ctx context.Context, q dao.Querier, schema string) ([]dao.RoutineInfo, error) {
+	// The PARAMETERS join matches ROUTINE_TYPE too, and accumulation keys
+	// on schema+name+TYPE: MySQL permits a FUNCTION and a PROCEDURE with
+	// the same name, and they must stay distinct rows (MF11).
 	const stmt = `SELECT r.ROUTINE_SCHEMA, r.ROUTINE_NAME, r.ROUTINE_TYPE,
 			COALESCE(p.ORDINAL_POSITION, -1),
 			COALESCE(p.PARAMETER_MODE, ''), COALESCE(p.PARAMETER_NAME, ''),
@@ -116,8 +119,9 @@ func (MysqlDialect) ListRoutines(ctx context.Context, q dao.Querier, schema stri
 		LEFT JOIN information_schema.PARAMETERS p
 			ON p.SPECIFIC_SCHEMA = r.ROUTINE_SCHEMA
 			AND p.SPECIFIC_NAME = r.SPECIFIC_NAME
+			AND p.ROUTINE_TYPE = r.ROUTINE_TYPE
 		WHERE r.ROUTINE_SCHEMA = COALESCE(NULLIF(?, ''), DATABASE())
-		ORDER BY r.ROUTINE_SCHEMA, r.ROUTINE_NAME, p.ORDINAL_POSITION`
+		ORDER BY r.ROUTINE_SCHEMA, r.ROUTINE_NAME, r.ROUTINE_TYPE, p.ORDINAL_POSITION`
 	rows, err := q.QueryContext(ctx, stmt, schema)
 	if err != nil {
 		return nil, translateError(err)
@@ -137,7 +141,7 @@ func (MysqlDialect) ListRoutines(ctx context.Context, q dao.Querier, schema stri
 		if err := rows.Scan(&rschema, &rname, &rtype, &pos, &mode, &pname, &dtd); err != nil {
 			return nil, err
 		}
-		key := rschema + "." + rname
+		key := rschema + "." + rname + "." + rtype
 		a, ok := byName[key]
 		if !ok {
 			kind := dao.RoutineKindFunction
@@ -152,11 +156,13 @@ func (MysqlDialect) ListRoutines(ctx context.Context, q dao.Querier, schema stri
 		case pos == 0: // the return row (functions only)
 			a.ret = dtd
 		case pos > 0:
+			// Render "MODE name type" with EVERY non-empty mode — IN
+			// included, per the ADR's rendering rule (MF11).
 			part := dtd
 			if pname != "" {
 				part = pname + " " + dtd
 			}
-			if mode != "" && mode != "IN" {
+			if mode != "" {
 				part = mode + " " + part
 			}
 			a.params = append(a.params, part)

@@ -143,15 +143,21 @@ func (s *Split) Zoom(p SplitPane) {
 		return
 	}
 	s.zoomed = p
+	s.dragging = false // a divider drag cannot survive the divider vanishing
 	if ctx := s.Context(); ctx != nil && p != PaneNone {
 		hidden, kept := s.b, s.a
 		if p == PaneB {
 			hidden, kept = s.a, s.b
 		}
 		if ctx.FocusWithin(hidden) {
-			if !focusFirst(kept) {
-				ctx.ClearFocus()
-			}
+			// listChildren honors nested zoom, so this walk cannot land in
+			// a logically hidden pane (MF7). When the retained pane has no
+			// focusable, focus is deliberately LEFT IN PLACE: the pane is
+			// still on screen until the zoom's layout runs, and that layout
+			// pass re-homes trap-aware via repairInvisibleFocus against
+			// FRESH visibility — repairing here against the stale ring
+			// could land focus straight back on the hidden pane.
+			_ = focusFirst(kept)
 		}
 	}
 	s.RequestLayout()
@@ -159,8 +165,18 @@ func (s *Split) Zoom(p SplitPane) {
 	s.publish(SplitZoomEvent{Owner: s.NodeID(), Pane: p})
 }
 
-// listChildren feeds the package's focus walk.
-func (s *Split) listChildren() []tui.Component { return []tui.Component{s.a, s.b} }
+// listChildren feeds the package's focus walk, honoring zoom: a hidden
+// pane is not a focus target (MF7 — a nested zoomed Split must not let
+// focusFirst wander into its logically hidden side).
+func (s *Split) listChildren() []tui.Component {
+	switch s.zoomed {
+	case PaneA:
+		return []tui.Component{s.a}
+	case PaneB:
+		return []tui.Component{s.b}
+	}
+	return []tui.Component{s.a, s.b}
+}
 
 // Init mounts both panes. Re-entrant across remounts.
 func (s *Split) Init(ctx *tui.Context) {
@@ -245,6 +261,9 @@ func (s *Split) setCells(a int) {
 // HandleEvent implements keyboard resize (Alt+arrows bubbling up from a
 // focused pane) and divider drag (SGR mouse).
 func (s *Split) HandleEvent(ev tui.Event) bool {
+	if s.zoomed != PaneNone {
+		return false // no divider: resize keys and drag are inert (S4)
+	}
 	switch e := ev.(type) {
 	case tui.KeyEvent:
 		if e.Kind == tui.KeyRelease || e.Mods&tui.ModAlt == 0 || e.Mods&^(tui.ModAlt) != 0 {

@@ -109,12 +109,21 @@ type ModeChangedEvent struct { Owner tui.NodeID; Mode EditorMode }
 - **No general operator grammar in v1** (r2 — the operator-pending claim
   is withdrawn). The command set is exactly: atomic commands, motions,
   and three DOUBLE-KEY commands (`dd`, `yy`, `gg`) implemented with a
-  one-key pending buffer: after `d`/`y`/`g`, only the matching second key
-  completes the command; ANY other key clears the pending state and is
-  then processed normally (so `d` `w` moves the cursor by a word —
-  `dw`/`d$`/`c`/`.` etc. are deliberately absent; ranged edits go through
-  Visual mode: `vwd`). The pending buffer is cleared by mode changes,
-  focus loss, and SetValue.
+  one-key pending buffer **keyed by the ARMING CHORD** (r-impl — a
+  rebound prefix completes on its own chord, keeping the keymap fully
+  data-driven): only the same chord again completes; ANY other key clears
+  the pending state and is then processed normally (so `d` `w` moves the
+  cursor by a word — `dw`/`d$`/`c`/`.` etc. are deliberately absent;
+  ranged edits go through Visual mode: `vwd`). An explicit count drives
+  `gg`/`G` as go-to-line ([count]gg / [count]G, 1-based, clamped). The
+  pending buffer is cleared by mode changes, focus loss, and SetValue.
+  Word motions (`w`/`b`/`e`) classify tabs and Unicode whitespace as
+  whitespace (r-impl), and Insert-mode Tab INSERTS a tab (traversal
+  belongs to Normal mode, where Tab bubbles).
+- **Paste outside Insert (r-impl):** a bracketed paste in Normal mode is
+  one atomic own-group insertion at the cursor; in Visual/V-Line it
+  REPLACES the selection (one group) and returns to Normal — the
+  selection boundary is never silently discarded.
 
 **Default keymap (v1 command set — the consumer's explicit list plus the
 minimum companions that make it a usable vim; anything absent is absent
@@ -306,11 +315,17 @@ complementary rules:
    lives inside the pane being hidden — via a new runtime query
    `Context.FocusWithin(c Component) bool` (additive; walks the focused
    node's parent links) — and if so moves it to the retained pane with
-   the existing `focusFirst` walk. If nothing in the retained pane is
-   focusable, focus is CLEARED (r3 — never parked on a non-Focusable
-   subtree root), leaving rule 2's post-layout repair as the single
-   authority. `Restore` does NOT move focus back (the user's focus stays
-   where they are).
+   the existing `focusFirst` walk, which honors nested zoom
+   (`listChildren` exposes only the retained pane of a zoomed Split,
+   r-impl). If nothing in the retained pane is focusable, focus is
+   deliberately LEFT IN PLACE (r-impl, supersedes r3's clear-to-none):
+   the hidden pane is still on screen until the zoom's layout runs, and
+   repairing against the pre-layout focus ring could land focus straight
+   back on it — rule 2's post-layout repair, running against FRESH
+   visibility inside the innermost surviving trap, is the single
+   authority. `Restore` does NOT move focus back. While zoomed, divider
+   interaction (Alt-arrows, drag) is inert and any active drag is
+   cancelled (r-impl).
 2. **Runtime safety net (additive, benefits every future hider):** after
    any layout pass, if the focused node is no longer `visible()`, the
    runtime clears focus to the root scope's first focusable — no

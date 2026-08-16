@@ -73,8 +73,8 @@ func TestEditorChordTimeoutCommitsRune(t *testing.T) {
 func TestEditorChordSettledByOtherKeyAndPaste(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 6)
 	h.inject(key('i'))
-	h.inject(key('j'), key('x')) // j held, x settles: commit j then insert x
-	h.inject(key('j'))           // held again
+	h.inject(key('j'), key('x'))         // j held, x settles: commit j then insert x
+	h.inject(key('j'))                   // held again
 	h.inject(tui.PasteEvent{Text: "PP"}) // paste settles the pending rune first
 	h.barrier(sh)
 	val, mode, _, _ := edState(h, ed)
@@ -121,21 +121,21 @@ func TestEditorNormalMotionsAndCounts(t *testing.T) {
 		}
 	}
 
-	step("l", 0, 1)     // right
-	step("3l", 0, 4)    // count applies
-	step("h", 0, 3)     // left
-	step("w", 0, 6)     // word forward → "beta"
-	step("e", 0, 9)     // word end → "beta"'s a
-	step("b", 0, 6)     // word back
-	step("$", 0, 15)    // line end (last grapheme)
-	step("0", 0, 0)     // line start
-	step("10l", 0, 10)  // multi-digit count (0 extends the count)
-	step("j", 1, 10)    // down, sticky column clamps to line length later
-	step("G", 3, 0)     // bottom
-	step("{", 2, 0)     // paragraph back → blank line
-	step("}", 3, 0)     // paragraph forward
-	step("[", 2, 0)     // v1 alias of {
-	step("]", 3, 0)     // v1 alias of }
+	step("l", 0, 1)    // right
+	step("3l", 0, 4)   // count applies
+	step("h", 0, 3)    // left
+	step("w", 0, 6)    // word forward → "beta"
+	step("e", 0, 9)    // word end → "beta"'s a
+	step("b", 0, 6)    // word back
+	step("$", 0, 15)   // line end (last grapheme)
+	step("0", 0, 0)    // line start
+	step("10l", 0, 10) // multi-digit count (0 extends the count)
+	step("j", 1, 10)   // down, sticky column clamps to line length later
+	step("G", 3, 0)    // bottom
+	step("{", 2, 0)    // paragraph back → blank line
+	step("}", 3, 0)    // paragraph forward
+	step("[", 2, 0)    // v1 alias of {
+	step("]", 3, 0)    // v1 alias of }
 	h.inject(typeString("gg")...)
 	h.barrier(sh)
 	_, _, ln, col := edState(h, ed)
@@ -382,9 +382,9 @@ func TestEditorKeymapOverlayAndUnbind(t *testing.T) {
 
 func TestEditorKeymapValidationPanics(t *testing.T) {
 	cases := []widget.Keymap{
-		{{Mode: widget.ModeInsert, Code: 'x'}: widget.ActLeft},         // no Insert bindings
-		{{Mode: widget.ModeNormal, Code: 'z'}: widget.Action(200)},     // unknown action
-		{{Mode: widget.ModeVisual, Code: 'z'}: widget.ActInsert},       // Normal-only action in Visual
+		{{Mode: widget.ModeInsert, Code: 'x'}: widget.ActLeft},     // no Insert bindings
+		{{Mode: widget.ModeNormal, Code: 'z'}: widget.Action(200)}, // unknown action
+		{{Mode: widget.ModeVisual, Code: 'z'}: widget.ActInsert},   // Normal-only action in Visual
 	}
 	for i, km := range cases {
 		func() {
@@ -424,5 +424,115 @@ func TestEditorDefaultKeymapIsACopy(t *testing.T) {
 	a[kc] = widget.ActRight
 	if b[kc] != widget.ActLeft {
 		t.Fatal("DefaultKeymap shares state between calls")
+	}
+}
+
+// --- implementation-review r1 regressions (2026-08-16) ---
+
+// MF9: "jjk" commits the first j and treats the second as a fresh chord
+// start — commit-then-process re-enters the chord state machine.
+func TestEditorChordDoubledFirstRune(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 30, 6)
+	h.inject(key('i'))
+	h.inject(typeString("jjk")...)
+	h.barrier(sh)
+	val, mode, _, _ := edState(h, ed)
+	if val != "j" || mode != widget.ModeNormal {
+		t.Fatalf("state = (%q, %v), want (\"j\", Normal)", val, mode)
+	}
+}
+
+// MF8: Insert-mode Tab inserts; word motions treat tabs as whitespace.
+func TestEditorTabInsertAndWhitespaceMotions(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 40, 6)
+	h.inject(key('i'))
+	h.inject(typeString("ab")...)
+	h.inject(key(tui.KeyTab))
+	h.inject(typeString("cd")...)
+	h.inject(key(tui.KeyEscape))
+	h.barrier(sh)
+	val, _, _, _ := edState(h, ed)
+	if val != "ab\tcd" {
+		t.Fatalf("value = %q, want tab inserted", val)
+	}
+	if got := len(sh.bubbledKeys()); got != 1 { // only the focus Tab bubbled
+		t.Fatalf("Insert Tab bubbled (%d)", got)
+	}
+	// w from the start crosses the tab onto "cd".
+	h.inject(typeString("0w")...)
+	h.barrier(sh)
+	_, _, _, col := edState(h, ed)
+	if col != 3 {
+		t.Fatalf("w over tab: col = %d, want 3", col)
+	}
+	// b goes back to the start of "ab".
+	h.inject(key('b'))
+	h.barrier(sh)
+	if _, _, _, col = edState(h, ed); col != 0 {
+		t.Fatalf("b over tab: col = %d, want 0", col)
+	}
+}
+
+// MF10: the count cap is a hard ceiling; explicit counts drive gg and G.
+func TestEditorCountCapAndGoToLine(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 30, 8,
+		widget.WithInitialText("l1\nl2\nl3\nl4\nl5"))
+
+	h.inject(typeString("3G")...)
+	h.barrier(sh)
+	_, _, ln, _ := edState(h, ed)
+	if ln != 2 {
+		t.Fatalf("3G: line = %d, want 2", ln)
+	}
+	h.inject(typeString("2gg")...)
+	h.barrier(sh)
+	if _, _, ln, _ = edState(h, ed); ln != 1 {
+		t.Fatalf("2gg: line = %d, want 1", ln)
+	}
+	h.inject(typeString("G")...)
+	h.barrier(sh)
+	if _, _, ln, _ = edState(h, ed); ln != 4 {
+		t.Fatalf("G: line = %d, want 4 (bottom)", ln)
+	}
+	// The cap clamps: an absurd count followed by j must not overflow past
+	// the last line (and must not exceed 1e6 internally).
+	h.inject(typeString("99999999j")...)
+	h.barrier(sh)
+	if _, _, ln, _ = edState(h, ed); ln != 4 {
+		t.Fatalf("capped count j: line = %d, want 4", ln)
+	}
+}
+
+// MF10: a REBOUND prefix completes on its own chord, not a hard-coded rune.
+func TestEditorReboundPrefixCompletesOnItsChord(t *testing.T) {
+	overlay := widget.Keymap{
+		{Mode: widget.ModeNormal, Code: 's'}: widget.ActDeletePrefix, // ss = dd
+		{Mode: widget.ModeNormal, Code: 'd'}: widget.ActUnbound,
+	}
+	h, ed, sh := focusedEditor(t, 30, 8,
+		widget.WithInitialText("one\ntwo"), widget.WithKeymap(overlay))
+	h.inject(typeString("ss")...)
+	h.barrier(sh)
+	val, _, _, _ := edState(h, ed)
+	if val != "two" {
+		t.Fatalf("ss (rebound dd) → %q, want \"two\"", val)
+	}
+	// 'sd' must NOT complete (d is unbound and bubbles after cancel).
+	h.inject(typeString("sd")...)
+	h.barrier(sh)
+	if val, _, _, _ = edState(h, ed); val != "two" {
+		t.Fatalf("sd deleted: %q", val)
+	}
+}
+
+// S3: paste in Visual replaces the selection.
+func TestEditorVisualPasteReplacesSelection(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("abcdef"))
+	h.inject(typeString("v2l")...) // select abc
+	h.inject(tui.PasteEvent{Text: "XY"})
+	h.barrier(sh)
+	val, mode, _, _ := edState(h, ed)
+	if val != "XYdef" || mode != widget.ModeNormal {
+		t.Fatalf("state = (%q, %v), want (\"XYdef\", Normal)", val, mode)
 	}
 }

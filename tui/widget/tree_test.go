@@ -232,3 +232,110 @@ func TestTreeExpandPathAndActivate(t *testing.T) {
 		t.Fatalf("activations = %d, want 1", acts.count())
 	}
 }
+
+// --- implementation-review r1 regressions (2026-08-16) ---
+
+// MF1: attachment validates the WHOLE incoming forest before any mutation —
+// a bad forest leaves the existing tree fully intact.
+func TestTreePreflightBeforeMutation(t *testing.T) {
+	good := widget.NewTreeNode("good", "good", widget.WithLeaf())
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(good))
+
+	shared := widget.NewTreeNode("shared", "shared", widget.WithLeaf())
+	a := widget.NewTreeNode("a", "a")
+	b := widget.NewTreeNode("b", "b")
+	a.SetChildren(0, []*widget.TreeNode{shared})
+
+	h.onLoop(func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("shared descendant did not panic")
+			}
+		}()
+		// b would share a's descendant: rejected BEFORE the old roots are
+		// released.
+		b2 := widget.NewTreeNode("b2", "b2")
+		_ = b2
+		tr.SetRoots(a, func() *widget.TreeNode {
+			b.SetChildren(0, []*widget.TreeNode{shared}) // duplicate pointer
+			return b
+		}())
+	})
+	h.barrier(sh)
+	// The original tree survived untouched.
+	h.wantContains("good")
+	if id := selectedID(h, tr); id != "good" {
+		t.Fatalf("selected = %q, want good (tree intact)", id)
+	}
+}
+
+// MF2: a released multi-level subtree keeps its internal ancestry and
+// navigates correctly after re-attachment.
+func TestTreeReattachedSubtreeKeepsAncestry(t *testing.T) {
+	parent := widget.NewTreeNode("p", "parent")
+	child := widget.NewTreeNode("c", "child")
+	leaf := widget.NewTreeNode("l", "leaf", widget.WithLeaf())
+	child.SetChildren(0, []*widget.TreeNode{leaf})
+	parent.SetChildren(0, []*widget.TreeNode{child})
+
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(parent))
+
+	// Detach the whole assembly, then re-attach it.
+	other := widget.NewTreeNode("o", "other", widget.WithLeaf())
+	h.onLoop(func() { tr.SetRoots(other) })
+	h.barrier(sh)
+	h.onLoop(func() { tr.SetRoots(parent) })
+	h.barrier(sh)
+
+	// Expand down to the leaf and walk back up with h (parent links).
+	h.onLoop(func() { tr.ExpandPath("p", "c", "l") })
+	h.barrier(sh)
+	if id := selectedID(h, tr); id != "l" {
+		t.Fatalf("selected = %q, want l", id)
+	}
+	h.inject(key('h'))
+	h.barrier(sh)
+	if id := selectedID(h, tr); id != "c" {
+		t.Fatalf("h from leaf = %q, want c (internal ancestry intact)", id)
+	}
+	h.inject(typeString("hh")...) // collapse c? no: first h collapses... c expanded → collapse; second h → parent
+	h.barrier(sh)
+	if id := selectedID(h, tr); id != "p" {
+		t.Fatalf("walk up = %q, want p", id)
+	}
+}
+
+// MF3: shrinking mutations reconcile the cursor synchronously — the next
+// key operates on a real row, never a stale modulo-wrapped index.
+func TestTreeCursorReconcileOnShrink(t *testing.T) {
+	root := widget.NewTreeNode("r", "root")
+	kids := []*widget.TreeNode{
+		widget.NewTreeNode("k1", "kid-one", widget.WithLeaf()),
+		widget.NewTreeNode("k2", "kid-two", widget.WithLeaf()),
+		widget.NewTreeNode("k3", "kid-three", widget.WithLeaf()),
+	}
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
+	reqs := record[widget.ExpandRequestEvent](h)
+	h.inject(key('l'))
+	h.barrier(sh)
+	h.onLoop(func() { root.SetChildren(reqs.events()[0].Gen, kids) })
+	h.barrier(sh)
+
+	// Cursor to the last row, then Reset shrinks the tree to one row.
+	h.inject(key(tui.KeyEnd))
+	h.barrier(sh)
+	if id := selectedID(h, tr); id != "k3" {
+		t.Fatalf("selected = %q, want k3", id)
+	}
+	h.onLoop(func() { root.Reset() })
+	h.barrier(sh)
+	if id := selectedID(h, tr); id != "r" {
+		t.Fatalf("after shrink: selected = %q, want r (cursor reconciled)", id)
+	}
+	// The very next key must operate on the reconciled row.
+	h.inject(key('l')) // expand root again → a NEW request
+	h.barrier(sh)
+	if reqs.count() != 2 {
+		t.Fatalf("requests = %d, want 2 (key acted on the real row)", reqs.count())
+	}
+}
