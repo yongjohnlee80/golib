@@ -248,12 +248,30 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 		if e.Kind == tui.KeyRelease {
 			return false
 		}
-		switch e.Code {
-		case tui.KeyUp:
+		// Ctrl/Alt/Super chords belong to the application (pane motion,
+		// quit, …) — a list must never eat them as plain letters.
+		if e.Mods&nonTextMods != 0 {
+			return false
+		}
+		// Vim motions alongside the arrows: the widget set is used in
+		// vim-keyed applications, and j/k/g/G are the house vocabulary
+		// (widget.Tree has honored them since ADR-0008 §2.2).
+		code := e.Code
+		if e.Text != "" {
+			code = []rune(e.Text)[0]
+		}
+		switch code {
+		case 'k', tui.KeyUp:
 			l.moveCursor(l.cursor - 1)
 			return true
-		case tui.KeyDown:
+		case 'j', tui.KeyDown:
 			l.moveCursor(l.cursor + 1)
+			return true
+		case 'g':
+			l.moveCursor(0)
+			return true
+		case 'G':
+			l.moveCursor(l.count - 1)
 			return true
 		case tui.KeyPageUp:
 			l.moveCursor(l.cursor - max(l.viewRows(), 1))

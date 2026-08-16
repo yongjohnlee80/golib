@@ -492,8 +492,14 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 	if len(rows) == 0 {
 		return false
 	}
+	// Ctrl/Alt/Super chords belong to the application (pane motion, quit,
+	// …): without this guard Ctrl-h/Ctrl-l arrive as bare 'h'/'l' and the
+	// tree collapses/expands instead of letting the app move focus.
+	if e.Mods&nonTextMods != 0 {
+		return false
+	}
 	code := e.Code
-	if e.Text != "" && e.Mods&nonTextMods == 0 {
+	if e.Text != "" {
 		code = []rune(e.Text)[0]
 	}
 	t.cursor = max(0, min(t.cursor, len(rows)-1)) // never index a stale cursor
@@ -511,12 +517,12 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 	case tui.KeyPageUp:
 		t.moveCursor(-max(t.h, 1), len(rows))
 		return true
-	case tui.KeyHome:
+	case 'g', tui.KeyHome:
 		t.cursor = 0
 		t.ensureVisible()
 		t.MarkDirty()
 		return true
-	case tui.KeyEnd:
+	case 'G', tui.KeyEnd:
 		t.cursor = len(rows) - 1
 		t.ensureVisible()
 		t.MarkDirty()
