@@ -136,3 +136,39 @@ func TestListAndTreeHostControls(t *testing.T) {
 		t.Fatalf("cursor should sit on beta, got %q", id)
 	}
 }
+
+// Hosts drive the editor cursor for search / jump-to-line.
+func TestEditorSetLineAndLines(t *testing.T) {
+	e := widget.NewEditor()
+	sh := newShell(e)
+	h := startApp(t, sh, 40, 8)
+	h.inject(tab())
+	h.barrier(sh)
+
+	h.onLoop(func() { e.SetValue("alpha\nbeta\ngamma") })
+	h.barrier(sh)
+
+	var lines []string
+	var row, col int
+	h.onLoop(func() {
+		lines = e.Lines()
+		e.SetLine(2, 3)
+		row, col = e.Line()
+	})
+	h.barrier(sh)
+	if len(lines) != 3 || lines[1] != "beta" {
+		t.Fatalf("Lines: %v", lines)
+	}
+	if row != 2 || col != 3 {
+		t.Fatalf("SetLine: got %d,%d want 2,3", row, col)
+	}
+	// Out-of-range targets clamp instead of panicking.
+	h.onLoop(func() {
+		e.SetLine(99, 99)
+		row, col = e.Line()
+	})
+	h.barrier(sh)
+	if row != 2 || col > 4 {
+		t.Fatalf("SetLine clamp: got %d,%d", row, col)
+	}
+}

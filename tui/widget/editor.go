@@ -181,6 +181,23 @@ func (e *Editor) Mode() EditorMode { return e.mode }
 // Line reports the cursor position (0-based) for status bars.
 func (e *Editor) Line() (row, col int) { return e.ln, e.col }
 
+// SetLine moves the cursor to row/col (both clamped to the document) and
+// scrolls it into view — the programmatic sibling of the motions, for
+// hosts driving search, jump-to-error, and reveal. Pending input settles
+// first; the mode is left alone.
+func (e *Editor) SetLine(row, col int) {
+	e.settlePendingRune()
+	e.ln = max(0, min(row, len(e.lines)-1))
+	e.col = max(0, col)
+	e.clampNormal()
+	e.ensureVisible()
+	e.MarkDirty()
+}
+
+// Lines returns a snapshot of the document's lines — what a host needs to
+// search without re-splitting Value().
+func (e *Editor) Lines() []string { return append([]string(nil), e.lines...) }
+
 // SelectedText returns the visual selection ("" outside visual modes).
 func (e *Editor) SelectedText() string {
 	switch e.mode {
