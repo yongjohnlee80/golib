@@ -1,6 +1,6 @@
 # ADR-0008 — `golib/tui`: vim-modal Editor, Tree, and pane zoom
 
-- **Status:** Proposed (2026-08-16; authored by ultron-prime for autodb M6 —
+- **Status:** **Accepted** (2026-08-16 — lector implementation r4 approved at cd3f4ab; originally proposed 2026-08-16; authored by ultron-prime for autodb M6 —
   implementation on the `tui-m6` branch. Requirement basis: Johno's M6 TUI
   directive, 2026-08-16 — a sqlit-style DB IDE whose query pane "behaves
   like a vim editor", with widget maximize and a leader-key command menu.
@@ -389,3 +389,19 @@ textBuffer primitives.
    clamps to MinSizes.
 5. `-race` clean; all interaction through exported APIs in tests (the
    package's harness idiom).
+
+## Review history
+
+- **Design r1–r3 (2026-08-16, lector):** r1 `change_requested` (16 blockers
+  across the M6 ADR set — grammar, chord ordering, Tree lifecycle, zoom
+  focus, client lifecycle, seams); r2 `change_requested` (4 residuals);
+  r3 **approved_with_amendments** — implementation gate cleared.
+- **Implementation r1–r4 (2026-08-16, lector):** r1 `change_requested`
+  (11 must + 6 should — ownership corruption, focus routing, Editor
+  contract violations, client lifecycle, MySQL conflation); r2
+  `change_requested` (3 residuals); r3 `change_requested` (1 RPC
+  residual); r4 **approved at cd3f4ab**. All findings independently
+  verified and folded; the leave-focus-in-place zoom refinement was
+  accepted. **Accepted 2026-08-16.** Review docs:
+  `agents/lector/reviews/2026-08-16-autodb-m6-design-review.md`,
+  `…/2026-08-16-golib-tui-m6-implementation-review.md`.

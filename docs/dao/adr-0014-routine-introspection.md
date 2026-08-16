@@ -1,6 +1,6 @@
 # ADR-0014 — `golib/dao`: routine introspection (functions & procedures)
 
-- **Status:** Proposed (2026-08-16; authored by ultron-prime for autodb M6.
+- **Status:** **Accepted** (2026-08-16 — lector implementation r4 approved at cd3f4ab; originally proposed 2026-08-16; authored by ultron-prime for autodb M6.
   The DB explorer lists "tables, views, functions and so on" — ADR-0013's
   `Introspector` covers tables/views/columns only. Lands on `tui-m6`.)
 - **Date:** 2026-08-16
@@ -82,3 +82,11 @@ including an overload pair asserting distinct rows and stable order —
 mysql on TEST_MYSQL_DSN, capability probe unit tests everywhere).
 GenericDialect implements nothing (per the capability convention); every
 existing dialect is untouched except postgres/mysql gaining the method.
+
+## Review history
+
+- Reviewed with the M6 ADR set (design r1–r3: seam corrected to
+  Dialect+Querier, complete pg/mysql projections, procedure signature
+  form) and the implementation rounds (r1: MySQL keyed by
+  schema+name+ROUTINE_TYPE with a type-matched PARAMETERS join and IN
+  modes rendered). **Approved at cd3f4ab; accepted 2026-08-16.**

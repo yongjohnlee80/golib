@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/server/rpc`: the Go client
 
-- **Status:** Proposed (2026-08-16; authored by ultron-prime for autodb M6.
+- **Status:** **Accepted** (2026-08-16 — lector implementation r4 approved at cd3f4ab; originally proposed 2026-08-16; authored by ultron-prime for autodb M6.
   ADR-0008 §2.6 deferred the client "until the TUI needs it — likely
   alongside M6"; M6 is here. Lands on the `tui-m6` branch with the widget
   work; same release.)
@@ -154,3 +154,13 @@ Close alike; malformed frame / invalid kind / server-initiated request
 from a hostile fake server each fail all pending calls with one terminal
 error, while an unknown-id well-formed response is dropped without harm;
 Close is idempotent and unblocks waiters. `-race` clean.
+
+## Review history
+
+- Reviewed with the M6 ADR set (design r1–r3) and the M6 implementation
+  rounds r1–r4 (see tui ADR-0008 §Review history for the trail).
+  Client-specific folds: Done/Err terminal signal, never-wrap msgids,
+  bounded reentrancy-safe notification dispatch stopping at terminal
+  state, min(timeout, ctx-deadline) writes with a joined cancellation
+  watcher, and full deadline-control-failure poisoning precedence.
+  **Approved at cd3f4ab; accepted 2026-08-16.**
