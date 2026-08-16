@@ -16,6 +16,7 @@ import (
 // escape chord. Unbound keys in Normal/Visual mode — Space included —
 // bubble, so an application leader menu needs no editor cooperation.
 type Editor struct {
+	readOnly bool // viewer mode: motions and yank only
 	Base
 	textBuffer
 
@@ -177,6 +178,27 @@ func (e *Editor) SetValue(s string) {
 
 // Mode reports the current mode.
 func (e *Editor) Mode() EditorMode { return e.mode }
+
+// ReadOnly reports whether edits are refused.
+func (e *Editor) ReadOnly() bool { return e.readOnly }
+
+// SetReadOnly makes the editor a VIEWER: motions, counts, visual
+// selection, yank, and search all work; every mutating action (insert
+// entry, delete, paste, undo/redo, typed text) is refused, and an active
+// Insert session returns to Normal. Hosts use it for panels the user
+// navigates but must not change (ADR-0008 §2.1).
+func (e *Editor) SetReadOnly(v bool) {
+	if e.readOnly == v {
+		return
+	}
+	e.readOnly = v
+	if v && (e.mode == ModeInsert) {
+		e.settlePendingRune()
+		e.setMode(ModeNormal)
+		e.clampNormal()
+	}
+	e.MarkDirty()
+}
 
 // Line reports the cursor position (0-based) for status bars.
 func (e *Editor) Line() (row, col int) { return e.ln, e.col }
@@ -640,8 +662,24 @@ func (e *Editor) pasteRegister(after bool) {
 	e.edited()
 }
 
+// mutatingActions are refused in read-only mode (motions, visual entry,
+// and yank stay available — a viewer still navigates and copies).
+func mutatingAction(act Action) bool {
+	switch act {
+	case ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
+		ActOpenBelow, ActOpenAbove, ActDeleteChar, ActDeleteToEnd,
+		ActPasteAfter, ActPasteBefore, ActUndo, ActRedo,
+		ActDeletePrefix, ActVisualDelete:
+		return true
+	}
+	return false
+}
+
 // execAction runs one bound action with the (already consumed) count.
 func (e *Editor) execAction(act Action, count int) bool {
+	if e.readOnly && mutatingAction(act) {
+		return true // consumed and refused: a viewer never mutates
+	}
 	switch act {
 	// Motions.
 	case ActLeft, ActDown, ActUp, ActRight, ActLineStart, ActLineEnd,
@@ -783,6 +821,9 @@ func (e *Editor) execAction(act Action, count int) bool {
 func (e *Editor) HandleEvent(ev tui.Event) bool {
 	switch t := ev.(type) {
 	case tui.PasteEvent:
+		if e.readOnly {
+			return true // a viewer never mutates (bracketed paste included)
+		}
 		e.settlePendingRune()
 		e.beginGroup()
 		switch e.mode {
@@ -1007,6 +1048,9 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 		if kc == chord {
 			switch act {
 			case ActDeletePrefix:
+				if e.readOnly {
+					return true // dd on a viewer: consumed, refused
+				}
 				e.deleteLines(e.ln, min(e.ln+count-1, len(e.lines)-1))
 			case ActYankPrefix:
 				e.yankSet(strings.Join(e.lines[e.ln:min(e.ln+count-1, len(e.lines)-1)+1], "\n"), true)

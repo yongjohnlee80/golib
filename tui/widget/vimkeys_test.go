@@ -5,6 +5,7 @@ package widget_test
 // so the host can bind pane motion, quit, and friends.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -170,5 +171,58 @@ func TestEditorSetLineAndLines(t *testing.T) {
 	h.barrier(sh)
 	if row != 2 || col > 4 {
 		t.Fatalf("SetLine clamp: got %d,%d", row, col)
+	}
+}
+
+// A read-only Editor is a VIEWER: motions, visual selection, and yank
+// work; nothing mutates the document.
+func TestEditorReadOnlyViewer(t *testing.T) {
+	e := widget.NewEditor()
+	sh := newShell(e)
+	h := startApp(t, sh, 40, 8)
+	h.inject(tab())
+	h.barrier(sh)
+
+	const doc = "alpha\nbeta\ngamma"
+	h.onLoop(func() {
+		e.SetValue(doc)
+		e.SetReadOnly(true)
+	})
+	h.barrier(sh)
+
+	// Insert entry, typed text, delete, paste, undo — all refused.
+	h.inject(key('i'), key('X'), key('x'), key('d'), key('d'), key('p'), key('u'))
+	h.barrier(sh)
+	var got string
+	var mode widget.EditorMode
+	h.onLoop(func() { got, mode = e.Value(), e.Mode() })
+	if got != doc {
+		t.Fatalf("read-only document changed: %q", got)
+	}
+	if mode != widget.ModeNormal {
+		t.Fatalf("read-only editor entered mode %v", mode)
+	}
+
+	// Motions and visual yank still work.
+	h.inject(key('j'), key('V'), key('y'))
+	h.barrier(sh)
+	var reg string
+	var row int
+	h.onLoop(func() {
+		reg, _ = e.Register()
+		row, _ = e.Line()
+	})
+	if row != 1 {
+		t.Fatalf("j should move in read-only mode: row = %d", row)
+	}
+	if !strings.Contains(reg, "beta") {
+		t.Fatalf("visual yank should work in read-only mode: register = %q", reg)
+	}
+	// Paste events cannot sneak text in either.
+	h.inject(tui.PasteEvent{Text: "nope"})
+	h.barrier(sh)
+	h.onLoop(func() { got = e.Value() })
+	if got != doc {
+		t.Fatalf("paste mutated a read-only document: %q", got)
 	}
 }
