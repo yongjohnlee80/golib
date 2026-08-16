@@ -71,20 +71,20 @@ func decodeValue(r *bufio.Reader, lim *Limits, depth int) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if n > lim.MaxBinBytes {
+		if n > int64(lim.MaxBinBytes) {
 			return nil, fmt.Errorf("%w: bin of %d bytes", ErrLimitExceeded, n)
 		}
-		return readBytes(r, n)
+		return readBytes(r, int(n))
 
 	case 0xc7, 0xc8, 0xc9: // ext8/16/32
 		n, err := readLen(r, b-0xc7)
 		if err != nil {
 			return nil, err
 		}
-		if n > lim.MaxBinBytes {
+		if n > int64(lim.MaxBinBytes) {
 			return nil, fmt.Errorf("%w: ext of %d bytes", ErrLimitExceeded, n)
 		}
-		return decodeExtBody(r, n)
+		return decodeExtBody(r, int(n))
 
 	case 0xca: // float32
 		u, err := readUint32(r)
@@ -160,24 +160,30 @@ func decodeValue(r *bufio.Reader, lim *Limits, depth int) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if n > lim.MaxStrBytes {
+		if n > int64(lim.MaxStrBytes) {
 			return nil, fmt.Errorf("%w: str of %d bytes", ErrLimitExceeded, n)
 		}
-		return decodeStrBody(r, lim, n)
+		return decodeStrBody(r, lim, int(n))
 
 	case 0xdc, 0xdd: // array16/32
 		n, err := readLen16or32(r, b == 0xdd)
 		if err != nil {
 			return nil, err
 		}
-		return decodeArray(r, lim, depth, n)
+		if n > int64(lim.MaxElements) {
+			return nil, fmt.Errorf("%w: array of %d elements", ErrLimitExceeded, n)
+		}
+		return decodeArray(r, lim, depth, int(n))
 
 	case 0xde, 0xdf: // map16/32
 		n, err := readLen16or32(r, b == 0xdf)
 		if err != nil {
 			return nil, err
 		}
-		return decodeMap(r, lim, depth, n)
+		if n > int64(lim.MaxElements) {
+			return nil, fmt.Errorf("%w: map of %d pairs", ErrLimitExceeded, n)
+		}
+		return decodeMap(r, lim, depth, int(n))
 	}
 
 	return nil, fmt.Errorf("%w: unknown type byte 0x%02x", ErrMalformed, b)
@@ -245,42 +251,47 @@ func decodeExtBody(r *bufio.Reader, n int) (Ext, error) {
 }
 
 // readLen reads a 1/2/4-byte big-endian length selected by width 0/1/2.
-func readLen(r *bufio.Reader, width byte) (int, error) {
+// It returns int64, NOT int: on 32-bit platforms int(uint32) wraps
+// 0xffffffff to -1, which would slip under every limit check and panic
+// make with a negative cap. Callers validate against Limits (whose fields
+// are far below MaxInt32) before narrowing to int.
+func readLen(r *bufio.Reader, width byte) (int64, error) {
 	switch width {
 	case 0:
 		v, err := r.ReadByte()
 		if err != nil {
 			return 0, wrapEOF(err)
 		}
-		return int(v), nil
+		return int64(v), nil
 	case 1:
 		v, err := readUint16(r)
 		if err != nil {
 			return 0, err
 		}
-		return int(v), nil
+		return int64(v), nil
 	default:
 		v, err := readUint32(r)
 		if err != nil {
 			return 0, err
 		}
-		return int(v), nil
+		return int64(v), nil
 	}
 }
 
-func readLen16or32(r *bufio.Reader, wide bool) (int, error) {
+// readLen16or32 mirrors readLen's int64 contract for array/map headers.
+func readLen16or32(r *bufio.Reader, wide bool) (int64, error) {
 	if wide {
 		v, err := readUint32(r)
 		if err != nil {
 			return 0, err
 		}
-		return int(v), nil
+		return int64(v), nil
 	}
 	v, err := readUint16(r)
 	if err != nil {
 		return 0, err
 	}
-	return int(v), nil
+	return int64(v), nil
 }
 
 // readBytes reads exactly n bytes without trusting n for preallocation:
