@@ -226,3 +226,42 @@ func TestEditorReadOnlyViewer(t *testing.T) {
 		t.Fatalf("paste mutated a read-only document: %q", got)
 	}
 }
+
+// Flex columns share the remaining width EVENLY: a table of all-flex
+// columns renders equal columns instead of the first one swallowing the
+// row (autodb M6: a uuid id column took the whole results pane).
+func TestTableFlexColumnsShareWidth(t *testing.T) {
+	type row struct{ a, b, c string }
+	cols := []widget.TableColumn[row]{
+		{Title: "A", Cell: func(r row) string { return r.a }},
+		{Title: "B", Cell: func(r row) string { return r.b }},
+		{Title: "C", Cell: func(r row) string { return r.c }},
+	}
+	tbl := widget.NewTable(cols, widget.WithItems([]row{{
+		a: strings.Repeat("x", 40), b: "short", c: "tiny",
+	}}, func(r row) string { return r.a }))
+	sh := newShell(tbl)
+	h := startApp(t, sh, 62, 6)
+	h.inject(tab())
+	h.barrier(sh)
+
+	// The header row shows each title at its column origin; with even
+	// sharing the three origins are evenly spaced.
+	line := h.row(0)
+	ia := strings.Index(line, "A")
+	ib := strings.Index(line, "B")
+	ic := strings.Index(line, "C")
+	if ia < 0 || ib < 0 || ic < 0 {
+		t.Fatalf("headers missing: %q", line)
+	}
+	// Even sharing, up to the one-column division remainder that the
+	// leftmost flex columns absorb.
+	gap1, gap2 := ib-ia, ic-ib
+	if d := gap1 - gap2; d < 0 || d > 1 {
+		t.Fatalf("columns not evenly shared: origins %d/%d/%d (%q)", ia, ib, ic, line)
+	}
+	// A fixed column keeps its width; the rest still share.
+	if gap1 < 8 {
+		t.Fatalf("flex share below the minimum: %d", gap1)
+	}
+}

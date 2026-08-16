@@ -12,10 +12,12 @@ import (
 type TableColumn[T any] struct {
 	// Title is rendered in the header row.
 	Title string
-	// Width is the fixed cell width in columns. 0 marks the FLEX column: it
-	// receives whatever width remains after the fixed columns and gaps
-	// (minimum flexMinWidth). At most one flex column is honored; extra
-	// zero-width columns fall back to flexMinWidth fixed.
+	// Width is the fixed cell width in columns. 0 marks a FLEX column:
+	// the width remaining after the fixed columns and gaps is shared
+	// EVENLY among all flex columns (each at least flexMinWidth; the
+	// division remainder goes to the leftmost ones). A table of all-flex
+	// columns therefore renders equal-width columns rather than letting
+	// the first one swallow the row.
 	Width int
 	// Cell extracts the cell text for an item.
 	Cell func(T) string
@@ -75,25 +77,33 @@ func (t *Table[T]) Init(ctx *tui.Context) {
 	ctx.Mount(t.list)
 }
 
-// resolveWidths distributes w over the columns: fixed widths as declared, the
-// first zero-width column takes the remainder.
+// resolveWidths distributes w over the columns: fixed widths as declared,
+// the remainder shared evenly among every flex (zero-width) column.
 func (t *Table[T]) resolveWidths(w int) {
-	fixed, flexIdx := 0, -1
+	fixed := 0
+	var flex []int
 	for i, c := range t.cols {
-		if c.Width == 0 && flexIdx < 0 {
-			flexIdx = i
+		if c.Width == 0 {
+			flex = append(flex, i)
 			continue
 		}
-		width := c.Width
-		if width == 0 {
-			width = flexMinWidth
-		}
-		t.widths[i] = width
-		fixed += width
+		t.widths[i] = c.Width
+		fixed += c.Width
 	}
-	if flexIdx >= 0 {
-		rem := w - fixed - tableGap*(len(t.cols)-1)
-		t.widths[flexIdx] = max(rem, flexMinWidth)
+	if len(flex) == 0 {
+		return
+	}
+	rem := w - fixed - tableGap*(len(t.cols)-1)
+	share := max(rem/len(flex), flexMinWidth)
+	extra := 0
+	if rem > 0 && share*len(flex) <= rem {
+		extra = rem - share*len(flex) // spread the division remainder
+	}
+	for n, i := range flex {
+		t.widths[i] = share
+		if n < extra {
+			t.widths[i]++
+		}
 	}
 }
 
