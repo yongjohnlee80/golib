@@ -547,10 +547,10 @@ func TestEditorFocusLossClearsPendingCommand(t *testing.T) {
 	h.inject(tab()) // focus the editor
 	h.barrier(sh)
 
-	h.inject(key('d'))  // arm the prefix
-	h.inject(tab())     // focus away (loss clears pending state)
+	h.inject(key('d')) // arm the prefix
+	h.inject(tab())    // focus away (loss clears pending state)
 	h.inject(shiftTab())
-	h.inject(key('d'))  // must ARM again, not complete a stale dd
+	h.inject(key('d')) // must ARM again, not complete a stale dd
 	h.barrier(sh)
 	var val string
 	h.onLoop(func() { val = ed.Value() })
