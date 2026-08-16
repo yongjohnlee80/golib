@@ -648,7 +648,11 @@ func (t *Tree) Render(s tui.Surface) {
 		if r.node.hasSt {
 			st = r.node.st.Inherit(st)
 		}
-		if idx == t.cursor && t.focused() {
+		// The cursor row paints regardless of focus — same contract as
+		// List (ADR-0008 §2.2 reuses the List viewport arithmetic).
+		// Composites routinely hold focus in a wrapper and forward keys,
+		// and a cursor that vanishes with focus reads as "no cursor".
+		if idx == t.cursor {
 			st = t.styles.CursorRow.Inherit(st)
 			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", st)
 		}
