@@ -49,6 +49,8 @@ type Float struct {
 	anchor Anchor
 	modal  bool
 	dim    bool
+	wPct   int // 0 = natural width; else a percentage of the available area
+	hPct   int
 
 	shown bool
 	layer *floatLayer
@@ -66,6 +68,32 @@ func WithAnchor(a Anchor) FloatOption { return func(f *Float) { f.anchor = a } }
 
 // WithModal makes the float a focus trap with Esc-dismiss.
 func WithModal(v bool) FloatOption { return func(f *Float) { f.modal = v } }
+
+// WithSizeFraction sizes the float as a PERCENTAGE of the area it may
+// use, per axis (1..100; 0 leaves that axis to the content's natural
+// size). A working surface — a history browser, a log viewer, a picker
+// over many rows — wants "most of the screen", and a fixed column count
+// cannot express that: it overflows a narrow terminal and wastes a wide
+// one, and it does not follow a resize.
+//
+//	widget.NewFloat(body, widget.WithModal(true),
+//	    widget.WithSizeFraction(90, 90))   // 90% of the screen, both axes
+//
+// The fraction covers the float's whole box, border included, so two
+// stacked floats at 90% and 80% read as a detail ON a list.
+func WithSizeFraction(wPct, hPct int) FloatOption {
+	return func(f *Float) { f.wPct, f.hPct = clampPct(wPct), clampPct(hPct) }
+}
+
+func clampPct(p int) int {
+	switch {
+	case p <= 0:
+		return 0
+	case p > 100:
+		return 100
+	}
+	return p
+}
 
 // WithDimBackground dims (scrims) the cells beneath while shown.
 func WithDimBackground(v bool) FloatOption { return func(f *Float) { f.dim = v } }
@@ -194,6 +222,28 @@ func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
 	if a.atRect {
 		sz = l.ctx.LayoutChild(l.owner.child, tui.Tight(tui.Size{W: a.rect.W, H: a.rect.H}))
 		x, y = a.rect.X, a.rect.Y
+	} else if l.owner.wPct > 0 || l.owner.hPct > 0 {
+		// A fraction of the area, per axis; the unset axis stays natural.
+		want := tui.Size{W: w, H: h}
+		if l.owner.wPct > 0 {
+			want.W = max(w*l.owner.wPct/100, 1)
+		}
+		if l.owner.hPct > 0 {
+			want.H = max(h*l.owner.hPct/100, 1)
+		}
+		if l.owner.wPct > 0 && l.owner.hPct > 0 {
+			sz = l.ctx.LayoutChild(l.owner.child, tui.Tight(want))
+		} else {
+			sz = l.ctx.LayoutChild(l.owner.child, tui.Constraints{
+				MinW: want.W, MaxW: want.W, MinH: 0, MaxH: want.H,
+			})
+			if l.owner.hPct > 0 {
+				sz = l.ctx.LayoutChild(l.owner.child, tui.Constraints{
+					MinW: 0, MaxW: want.W, MinH: want.H, MaxH: want.H,
+				})
+			}
+		}
+		x, y = alignOffset(a.align, tui.Size{W: w, H: h}, sz)
 	} else {
 		sz = l.ctx.LayoutChild(l.owner.child, tui.Loose(tui.Size{W: w, H: h}))
 		x, y = alignOffset(a.align, tui.Size{W: w, H: h}, sz)

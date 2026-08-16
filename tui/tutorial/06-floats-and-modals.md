@@ -78,6 +78,24 @@ Bubbling does the work: Esc from the viewer hits your container first
 (step back); Esc from the list bubbles past you to the modal layer (float
 closes). One key, two meanings, zero special cases.
 
+## Sizing: fixed, or a fraction of the screen
+
+A detail popover has a natural size — let the content decide. A WORKING
+surface does not: a history browser, a log viewer, a picker over many
+rows wants "most of the screen", and a fixed column count overflows a
+narrow terminal, wastes a wide one, and ignores a resize.
+
+```go
+widget.NewFloat(body,
+    widget.WithModal(true),
+    widget.WithSizeFraction(90, 90),   // 90% of the available area
+)
+```
+
+Per axis, 1..100; 0 leaves that axis natural (`WithSizeFraction(0, 60)`
+is a full-width strip 60% tall). The fraction covers the whole box,
+border included, so stacking 90% under 80% reads as a detail ON a list.
+
 ## Esc must reach the float
 
 A modal `Float` dismisses on Esc — *if the key reaches it*. Focus is on

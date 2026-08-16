@@ -443,3 +443,44 @@ func TestTableIgnoresCallerRowRenderer(t *testing.T) {
 		t.Fatalf("column cells missing:\n%s", grid)
 	}
 }
+
+// A float can size itself as a fraction of the screen — what a working
+// surface (history browser, log viewer) actually wants, and what a fixed
+// column count cannot express across terminal sizes.
+func TestFloatSizeFraction(t *testing.T) {
+	body := widget.NewBox(widget.NewText("content"))
+	f := widget.NewFloat(body, widget.WithModal(true), widget.WithSizeFraction(90, 50))
+	host := widget.NewOverlayHost(widget.NewText("背景"))
+	sh := newShell(host)
+	h := startApp(t, sh, 40, 20)
+	h.onLoop(func() {
+		host.Attach(f)
+		f.Show()
+	})
+	h.barrier(sh)
+	h.settle()
+
+	w, hgt := boxExtent(h.grid())
+	if want := 40 * 90 / 100; w != want {
+		t.Errorf("float width = %d, want %d (90%% of 40)", w, want)
+	}
+	if want := 20 * 50 / 100; hgt != want {
+		t.Errorf("float height = %d, want %d (50%% of 20)", hgt, want)
+	}
+}
+
+// boxExtent measures the drawn border box on the grid.
+func boxExtent(grid string) (w, h int) {
+	for _, line := range strings.Split(grid, "\n") {
+		start := strings.IndexAny(line, "╭┌│╰└")
+		end := strings.LastIndexAny(line, "╮┐│╯┘")
+		if start < 0 || end <= start {
+			continue
+		}
+		h++
+		if got := len([]rune(line[start:end])) + 1; got > w {
+			w = got
+		}
+	}
+	return w, h
+}
