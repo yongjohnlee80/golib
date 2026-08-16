@@ -39,9 +39,12 @@ go get github.com/yongjohnlee80/golib
 | [`ingestor`](ingestor/README.md) | Thread-safe buffer-and-flush pipelines to CSV/JSON with bounded background writes | [README](ingestor/README.md) |
 | [`dao`](dao/README.md) | Generic, driver-agnostic data-access layer — declare an entity once | [README](dao/README.md) · [USAGE](dao/USAGE.md) |
 | [`partial`](partial/README.md) | Three-state (value/absent/null) PATCH payloads, projecting onto `dao` updates | [README](partial/README.md) |
+| [`msgpack`](msgpack/README.md) | Zero-dependency MessagePack value codec with hardened decode limits | [README](msgpack/README.md) |
 | [`server`](server/README.md) | Transport-agnostic server core: router, middleware chain, lifecycle, scaffold, session registry | [README](server/README.md) |
 | [`server/http`](server/http/README.md) | HTTP transport: chi-style routing, middleware, JSON helpers, mock server | [README](server/http/README.md) |
 | [`server/ws`](server/ws/README.md) | WebSocket transport — endpoints as ordinary routes on the HTTP core | [README](server/ws/README.md) |
+| [`server/rpc`](server/rpc/README.md) | RPC transport core over a pluggable wire codec: bounded dispatch, gate hook, polite drain | [README](server/rpc/README.md) |
+| [`server/rpc/msgpackrpc`](server/rpc/msgpackrpc/README.md) | msgpack-RPC wire codec — the framing Neovim's `sockconnect` speaks natively | [README](server/rpc/msgpackrpc/README.md) |
 
 ### threadsafe
 
@@ -108,14 +111,35 @@ zero per-entity code. Bind a `Patch[T]`, shape it server-side, and
 `partial.ApplyRules(dao, patch)`.
 → [partial/README.md](partial/README.md)
 
+### msgpack
+
+A zero-dependency MessagePack value codec over a fixed Go vocabulary
+(string-keyed maps, `Ext` passthrough for Neovim handle types). Decoding is
+built for attacker-adjacent input: per-item limits plus whole-decode
+aggregate budgets, capped preallocation, typed errors, panic-free by fuzz
+contract.
+→ [msgpack/README.md](msgpack/README.md)
+
 ### server
 
 A transport-agnostic core (`net/http`-free) shared by every transport: a
 generic tree router, an immutable middleware chain, a lifecycle contract, an
 accept-loop `Scaffold`, and a drain-aware session `Registry`.
-[`server/http`](server/http/README.md) and [`server/ws`](server/ws/README.md)
-build on it; gRPC/SFTP/raw-TCP adapters slot in the same way.
+[`server/http`](server/http/README.md), [`server/ws`](server/ws/README.md),
+and [`server/rpc`](server/rpc/README.md) build on it; gRPC/SFTP adapters
+slot in the same way.
 → [server/README.md](server/README.md)
+
+### server/rpc
+
+A connection-oriented RPC transport over a pluggable wire `Codec`:
+per-connection read loop with size windows, bounded concurrent dispatch with
+backpressure, per-request contexts cancelled on disconnect/shutdown, a
+pre-dispatch gate for handshake-before-methods, staged size-capped replies,
+and polite drain. [`server/rpc/msgpackrpc`](server/rpc/msgpackrpc/README.md)
+is the first codec — msgpack-RPC, which Neovim speaks natively over
+`sockconnect(..., {rpc = true})`.
+→ [server/rpc/README.md](server/rpc/README.md)
 
 ## Conventions
 
