@@ -1,11 +1,11 @@
 # ADR-0008 — `golib/server/rpc`: msgpack-RPC transport & zero-dep msgpack codec
 
-- **Status:** **Proposed** (2026-08-16; authored by ultron-prime for autodb M5 —
-  implementation lands on the `rpc-m5` branch; acceptance at branch review.
-  Directive basis: Johno 2026-08-16 — golib is the server/comms base library;
-  the RPC foundation lands here first and autodb consumes the release. The
-  codec is hand-rolled zero-dep by explicit decision, option B over a
-  third-party msgpack library.)
+- **Status:** **Accepted** (2026-08-16 — lector r3 `approved` at da8a367
+  after two change_requested rounds; see §6. Authored by ultron-prime for
+  autodb M5. Directive basis: Johno 2026-08-16 — golib is the server/comms
+  base library; the RPC foundation lands here first and autodb consumes the
+  release. The codec is hand-rolled zero-dep by explicit decision, option B
+  over a third-party msgpack library.)
 - **Date:** 2026-08-16
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (additive; includes one additive amendment to
@@ -347,3 +347,11 @@ additive).
   worst-case footprint" arithmetic overstated precision (empty-map
   counterexample) → reworded as a linear, shape-dependent estimate here,
   in the package docs, and in the README. The r3 markers are this fold.
+
+- **r3 (2026-08-16, lector): `approved` at da8a367.** The r2 residual is
+  confirmed resolved (cappedWriter bounds staging while the reply streams;
+  Reset clears the sticky encode error for the fallback; dual %w preserves
+  error classification) and the substitute-reply refinement stands. The
+  aggregate-decode documentation is corrected everywhere it appeared. All
+  six r1 must-fixes, all three r1 should-fixes, and the r2 residual are
+  closed; no findings remain. **Accepted 2026-08-16.**
