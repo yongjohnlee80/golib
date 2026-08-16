@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/dao"
 )
@@ -14,8 +15,9 @@ import (
 // MysqlDialect opts into the qualified-table and introspection capabilities
 // (ADR-0013).
 var (
-	_ dao.TableQuoter  = MysqlDialect{}
-	_ dao.Introspector = MysqlDialect{}
+	_ dao.TableQuoter          = MysqlDialect{}
+	_ dao.Introspector         = MysqlDialect{}
+	_ dao.RoutineIntrospector  = MysqlDialect{}
 )
 
 // ListSchemas lists user databases, excluding the four system schemas.
@@ -97,4 +99,81 @@ func (MysqlDialect) ListColumns(ctx context.Context, q dao.Querier, schema, tabl
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// ListRoutines lists the functions and procedures of schema (ADR-0014):
+// information_schema.ROUTINES joined to PARAMETERS ordered by
+// ORDINAL_POSITION. Parameters render "MODE name type" comma-joined;
+// position 0 (the return row, functions only) renders after "->" —
+// "(args) -> result" for functions, "(args)" for procedures. MySQL has no
+// overloads; ordering is schema, name.
+func (MysqlDialect) ListRoutines(ctx context.Context, q dao.Querier, schema string) ([]dao.RoutineInfo, error) {
+	const stmt = `SELECT r.ROUTINE_SCHEMA, r.ROUTINE_NAME, r.ROUTINE_TYPE,
+			COALESCE(p.ORDINAL_POSITION, -1),
+			COALESCE(p.PARAMETER_MODE, ''), COALESCE(p.PARAMETER_NAME, ''),
+			COALESCE(p.DTD_IDENTIFIER, '')
+		FROM information_schema.ROUTINES r
+		LEFT JOIN information_schema.PARAMETERS p
+			ON p.SPECIFIC_SCHEMA = r.ROUTINE_SCHEMA
+			AND p.SPECIFIC_NAME = r.SPECIFIC_NAME
+		WHERE r.ROUTINE_SCHEMA = COALESCE(NULLIF(?, ''), DATABASE())
+		ORDER BY r.ROUTINE_SCHEMA, r.ROUTINE_NAME, p.ORDINAL_POSITION`
+	rows, err := q.QueryContext(ctx, stmt, schema)
+	if err != nil {
+		return nil, translateError(err)
+	}
+	defer rows.Close()
+
+	type acc struct {
+		info   dao.RoutineInfo
+		params []string
+		ret    string
+	}
+	var order []string
+	byName := map[string]*acc{}
+	for rows.Next() {
+		var rschema, rname, rtype, mode, pname, dtd string
+		var pos int
+		if err := rows.Scan(&rschema, &rname, &rtype, &pos, &mode, &pname, &dtd); err != nil {
+			return nil, err
+		}
+		key := rschema + "." + rname
+		a, ok := byName[key]
+		if !ok {
+			kind := dao.RoutineKindFunction
+			if rtype == "PROCEDURE" {
+				kind = dao.RoutineKindProcedure
+			}
+			a = &acc{info: dao.RoutineInfo{Schema: rschema, Name: rname, Kind: kind}}
+			byName[key] = a
+			order = append(order, key)
+		}
+		switch {
+		case pos == 0: // the return row (functions only)
+			a.ret = dtd
+		case pos > 0:
+			part := dtd
+			if pname != "" {
+				part = pname + " " + dtd
+			}
+			if mode != "" && mode != "IN" {
+				part = mode + " " + part
+			}
+			a.params = append(a.params, part)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]dao.RoutineInfo, 0, len(order))
+	for _, key := range order {
+		a := byName[key]
+		sig := "(" + strings.Join(a.params, ", ") + ")"
+		if a.info.Kind == dao.RoutineKindFunction && a.ret != "" {
+			sig += " -> " + a.ret
+		}
+		a.info.Signature = sig
+		out = append(out, a.info)
+	}
+	return out, nil
 }

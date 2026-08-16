@@ -117,3 +117,56 @@ func TestColumns_RawQuery_Postgres(t *testing.T) {
 		t.Errorf("Columns = %v, want [id name]", cols)
 	}
 }
+
+// TestRoutineIntrospection_Postgres (ADR-0014): functions and procedures
+// list with rendered signatures; an overload pair appears as distinct rows
+// in deterministic argument order.
+func TestRoutineIntrospection_Postgres(t *testing.T) {
+	conn := testConn(t)
+	ctx := context.Background()
+
+	if !dao.SupportsRoutineIntrospection(conn.Dialect()) {
+		t.Fatal("PostgresDialect must support routine introspection")
+	}
+
+	schema := fmt.Sprintf("routines_%d", time.Now().UnixNano())
+	exec := func(sql string) {
+		t.Helper()
+		if _, err := conn.ExecContext(ctx, sql); err != nil {
+			t.Fatalf("exec %q: %v", sql, err)
+		}
+	}
+	exec("CREATE SCHEMA " + schema)
+	t.Cleanup(func() {
+		_, _ = conn.ExecContext(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+	})
+
+	exec(`CREATE FUNCTION ` + schema + `.add_one(n integer) RETURNS integer
+		LANGUAGE sql AS 'SELECT n + 1'`)
+	exec(`CREATE FUNCTION ` + schema + `.add_one(n bigint) RETURNS bigint
+		LANGUAGE sql AS 'SELECT n + 1'`) // the overload
+	exec(`CREATE PROCEDURE ` + schema + `.noop(x text)
+		LANGUAGE sql AS 'SELECT 1'`)
+
+	routines, err := dao.ListRoutines(ctx, conn, schema)
+	if err != nil {
+		t.Fatalf("ListRoutines: %v", err)
+	}
+	if len(routines) != 3 {
+		t.Fatalf("routines = %d, want 3 (%+v)", len(routines), routines)
+	}
+	// Deterministic order: name, then argument rendering (bigint < integer).
+	if routines[0].Name != "add_one" || routines[1].Name != "add_one" || routines[2].Name != "noop" {
+		t.Fatalf("order = %+v", routines)
+	}
+	if routines[0].Signature != "(n bigint) -> bigint" ||
+		routines[1].Signature != "(n integer) -> integer" {
+		t.Fatalf("overload signatures = %q, %q", routines[0].Signature, routines[1].Signature)
+	}
+	if routines[0].Kind != dao.RoutineKindFunction {
+		t.Fatalf("kind = %v", routines[0].Kind)
+	}
+	if routines[2].Kind != dao.RoutineKindProcedure || routines[2].Signature != "(IN x text)" {
+		t.Fatalf("procedure = %+v", routines[2])
+	}
+}

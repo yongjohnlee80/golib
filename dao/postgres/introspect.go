@@ -6,6 +6,10 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
+// PostgresDialect opts into routine introspection (ADR-0014) alongside the
+// ADR-0013 capabilities.
+var _ dao.RoutineIntrospector = PostgresDialect{}
+
 // Schema introspection (golib-dao ADR-0013 §3.3). Queries read pg_catalog
 // rather than information_schema: it is faster, complete (partitioned tables,
 // materialized views), and keys the column lookup on a bind-safe
@@ -104,6 +108,47 @@ func (PostgresDialect) ListColumns(ctx context.Context, q dao.Querier, schema, t
 			c.Default, c.HasDefault = *def, true
 		}
 		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ListRoutines lists the functions and procedures of schema (ADR-0014):
+// pg_proc joined to pg_namespace, prokind f/p only (aggregates and window
+// functions excluded), Signature rendered server-side from
+// pg_get_function_arguments + pg_get_function_result — functions render
+// "(args) -> result", procedures "(args)". Overloads are distinct rows,
+// deterministically ordered by their argument rendering.
+func (PostgresDialect) ListRoutines(ctx context.Context, q dao.Querier, schema string) ([]dao.RoutineInfo, error) {
+	if schema == "" {
+		schema = "public"
+	}
+	const stmt = `SELECT n.nspname, p.proname, p.prokind::text,
+			'(' || pg_catalog.pg_get_function_arguments(p.oid) || ')' ||
+			CASE WHEN p.prokind = 'f'
+				THEN ' -> ' || pg_catalog.pg_get_function_result(p.oid)
+				ELSE '' END
+		FROM pg_catalog.pg_proc p
+		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = $1 AND p.prokind IN ('f', 'p')
+		ORDER BY p.proname, pg_catalog.pg_get_function_arguments(p.oid)`
+	rows, err := q.QueryContext(ctx, stmt, schema)
+	if err != nil {
+		return nil, translateError(err)
+	}
+	defer rows.Close()
+	var out []dao.RoutineInfo
+	for rows.Next() {
+		var r dao.RoutineInfo
+		var kind string
+		if err := rows.Scan(&r.Schema, &r.Name, &kind, &r.Signature); err != nil {
+			return nil, err
+		}
+		if kind == "p" {
+			r.Kind = dao.RoutineKindProcedure
+		} else {
+			r.Kind = dao.RoutineKindFunction
+		}
+		out = append(out, r)
 	}
 	return out, rows.Err()
 }

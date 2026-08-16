@@ -122,3 +122,58 @@ func ListColumns(ctx context.Context, conn DataConn, schema, table string) ([]Co
 	}
 	return in.ListColumns(ctx, conn, schema, table)
 }
+
+// RoutineKind classifies a stored routine.
+type RoutineKind string
+
+const (
+	// RoutineKindFunction is a stored function.
+	RoutineKindFunction RoutineKind = "function"
+	// RoutineKindProcedure is a stored procedure.
+	RoutineKindProcedure RoutineKind = "procedure"
+)
+
+// RoutineInfo describes one stored routine (ADR-0014).
+type RoutineInfo struct {
+	// Schema is the containing schema's name.
+	Schema string
+	// Name is the routine name (overloads appear as distinct rows,
+	// deterministically ordered by their argument rendering).
+	Name string
+	// Kind classifies the routine.
+	Kind RoutineKind
+	// Signature is a display-oriented rendering: "(args) -> result" for
+	// functions, "(args)" for procedures (no result part). The routine
+	// name is not repeated in it, and it is never parsed.
+	Signature string
+}
+
+// RoutineIntrospector is an optional [Dialect] capability (ADR-0014),
+// mirroring [Introspector]'s seam exactly: implemented by dialects with
+// routine catalogs, probed through the connection's Dialect, executing on
+// the [Querier] it is handed. Deliberately NOT part of Dialect and NOT
+// implemented by [GenericDialect] (the promoted-default hazard).
+type RoutineIntrospector interface {
+	// ListRoutines lists the functions and procedures of schema. Empty
+	// schema semantics as in Introspector.ListTables.
+	ListRoutines(ctx context.Context, q Querier, schema string) ([]RoutineInfo, error)
+}
+
+// SupportsRoutineIntrospection reports whether d implements
+// [RoutineIntrospector].
+func SupportsRoutineIntrospection(d Dialect) bool {
+	_, ok := d.(RoutineIntrospector)
+	return ok
+}
+
+// ListRoutines lists schema's stored routines through conn's dialect. It
+// returns ErrUnsupported (wrapped) when the dialect lacks the capability —
+// SQLite has no stored routines, so its dialect never implements this and
+// consumers render the absence, not an error.
+func ListRoutines(ctx context.Context, conn DataConn, schema string) ([]RoutineInfo, error) {
+	in, ok := conn.Dialect().(RoutineIntrospector)
+	if !ok {
+		return nil, fmt.Errorf("%w: routine introspection", ErrUnsupported)
+	}
+	return in.ListRoutines(ctx, conn, schema)
+}

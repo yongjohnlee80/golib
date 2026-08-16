@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/dao"
@@ -111,5 +112,17 @@ func TestColumns_RawQuery_Sqlite(t *testing.T) {
 	}
 	if len(cols) != 2 || cols[0] != "id" || cols[1] != "name" {
 		t.Errorf("Columns = %v, want [id name]", cols)
+	}
+}
+
+// ADR-0014: SQLite has no stored routines — the capability is absent and
+// the prober reports ErrUnsupported (consumers render absence, no error).
+func TestRoutineIntrospection_SqliteUnsupported(t *testing.T) {
+	conn := openMem(t)
+	if dao.SupportsRoutineIntrospection(conn.Dialect()) {
+		t.Fatal("SqliteDialect must not claim routine introspection")
+	}
+	if _, err := dao.ListRoutines(context.Background(), conn, ""); !errors.Is(err, dao.ErrUnsupported) {
+		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}
 }

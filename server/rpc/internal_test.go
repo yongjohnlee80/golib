@@ -3,6 +3,7 @@ package rpc
 import (
 	"bufio"
 	"errors"
+	"math"
 	"net"
 	"strings"
 	"testing"
@@ -65,5 +66,26 @@ func TestConnWriteBoundBoundary(t *testing.T) {
 	over := strings.Repeat("a", 513)
 	if err := c.write(stringCodec{}, &Message{Kind: KindResponse, Result: over}, 512); !errors.Is(err, errEncode) {
 		t.Fatalf("over-bound: err = %v, want errEncode", err)
+	}
+}
+
+// ADR-0009: msgids never wrap — exhaustion poisons with ErrMsgIDExhausted.
+func TestClientMsgIDExhaustionPoisons(t *testing.T) {
+	c := &Client{
+		conn:    nopConn{},
+		nextID:  uint64(math.MaxUint32) + 1, // space already spent
+		pending: map[uint32]chan clientResp{},
+		done:    make(chan struct{}),
+	}
+	if _, _, err := c.register(); !errors.Is(err, ErrMsgIDExhausted) {
+		t.Fatalf("err = %v, want ErrMsgIDExhausted", err)
+	}
+	select {
+	case <-c.Done():
+	default:
+		t.Fatal("exhaustion did not poison")
+	}
+	if !errors.Is(c.Err(), ErrMsgIDExhausted) {
+		t.Fatalf("Err = %v", c.Err())
 	}
 }
