@@ -61,9 +61,13 @@ type conn struct {
 	// Write path: each reply is encoded COMPLETELY into scratch first, then
 	// written to the socket as one finished frame. A mid-encode failure
 	// therefore never leaves partial bytes on the wire (the stream would be
-	// unrecoverable). All three fields are guarded by writeMu.
+	// unrecoverable). capw enforces the outbound size bound DURING encoding,
+	// so an oversized handler result is refused as it streams — scratch
+	// never accumulates more than the cap plus one bufio flush chunk. All
+	// fields are guarded by writeMu.
 	writeMu  sync.Mutex
 	scratch  bytes.Buffer
+	capw     cappedWriter
 	scratchW *bufio.Writer
 
 	// Admission gate: draining and inflight.Add are only touched under
@@ -93,7 +97,8 @@ func newConn(nc net.Conn) *conn {
 		sess:     &Session{peer: nc.RemoteAddr()},
 		workDone: make(chan struct{}),
 	}
-	c.scratchW = bufio.NewWriter(&c.scratch)
+	c.capw.buf = &c.scratch
+	c.scratchW = bufio.NewWriter(&c.capw)
 	return c
 }
 
@@ -116,34 +121,51 @@ func (c *conn) isDraining() bool {
 	return c.draining
 }
 
-// write sends one message: staged into scratch under writeMu, bounded by
-// maxBytes, then written to the socket as a complete frame. An error
-// wrapping errEncode means nothing reached the socket; any other error is a
-// socket failure and the connection is no longer usable.
+// write sends one message: staged into scratch under writeMu — with the
+// maxBytes bound enforced DURING encoding by the capping writer, so an
+// oversized result is refused as it streams instead of after it has been
+// fully accumulated — then written to the socket as a complete frame. An
+// error wrapping errEncode means nothing reached the socket; any other
+// error is a socket failure and the connection is no longer usable.
 func (c *conn) write(codec Codec, m *Message, maxBytes int64) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	c.scratch.Reset()
-	c.scratchW.Reset(&c.scratch)
+	c.capw.remaining = maxBytes
+	c.scratchW.Reset(&c.capw)
 	if err := codec.Write(c.scratchW, m); err != nil {
-		return fmt.Errorf("%w: %v", errEncode, err)
+		return fmt.Errorf("%w: %w", errEncode, err)
 	}
 	if err := c.scratchW.Flush(); err != nil {
-		return fmt.Errorf("%w: %v", errEncode, err)
-	}
-	if int64(c.scratch.Len()) > maxBytes {
-		return fmt.Errorf("%w: %v (frame of %d bytes)", errEncode, ErrMessageTooLarge, c.scratch.Len())
+		return fmt.Errorf("%w: %w", errEncode, err)
 	}
 	_, err := c.raw.Write(c.scratch.Bytes())
 	if c.scratch.Cap() > scratchRetainMax {
 		// Don't let one large reply pin its buffer for the connection's life.
 		c.scratch = bytes.Buffer{}
+		c.capw.buf = &c.scratch
 	}
 	return err
 }
 
 // scratchRetainMax caps the reply staging buffer retained between writes.
 const scratchRetainMax = 1 << 20
+
+// cappedWriter refuses bytes beyond remaining, failing an over-bound encode
+// while it streams — the staging buffer never grows past the cap plus one
+// bufio flush chunk, no matter how large the handler's result value is.
+type cappedWriter struct {
+	buf       *bytes.Buffer
+	remaining int64
+}
+
+func (w *cappedWriter) Write(p []byte) (int, error) {
+	if int64(len(p)) > w.remaining {
+		return 0, fmt.Errorf("%w: outbound frame over bound", ErrMessageTooLarge)
+	}
+	w.remaining -= int64(len(p))
+	return w.buf.Write(p)
+}
 
 // Close force-terminates the connection (registry deadline path).
 func (c *conn) Close() error { return c.raw.Close() }

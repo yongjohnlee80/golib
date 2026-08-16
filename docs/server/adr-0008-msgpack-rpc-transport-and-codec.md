@@ -101,9 +101,14 @@ Value model (the `any` vocabulary):
   `MaxTotalElements` (default 1 M decoded values) and `MaxTotalBytes`
   (default 16 MiB payload bytes). Per-item limits alone don't bound a
   message packed with many maximal siblings: sixteen 1M-element nil arrays
-  fit one 16 MiB frame but decode to ~256 MiB. The aggregate budgets cap
-  the worst-case decoded footprint at roughly
-  `MaxTotalElements×16 + MaxTotalBytes` (~32 MiB at defaults). Zero/negative
+  fit one 16 MiB frame but decode to ~256 MiB. The aggregate budgets make
+  decoded footprint LINEAR in the budgets and tunable — as an ESTIMATE (r3),
+  not a byte ceiling: `MaxTotalElements×(per-value overhead) +
+  MaxTotalBytes`, where the per-value overhead is one interface word
+  (16 bytes) for scalars but several times that for container-heavy shapes
+  (an empty map costs an interface word + hmap header + allocator
+  overhead). Consumers size the budgets for the shapes they expect;
+  defaults land in the tens of MiB per decode. Zero/negative
   Limits fields fall back to defaults — a partial `Limits` can tighten or
   explicitly loosen bounds but never silently disable one. Collection
   preallocation is capped at min(declared, 4096) and grown by append, so a
@@ -198,14 +203,18 @@ Semantics (r2 revisions marked):
   just-admitted request; a message decoded after drain begins is refused,
   not half-served. Drain waits on the connection's owned completion signal
   (no per-drain watcher goroutine), bounded by the drain context.
-- **Staged replies (r2):** every response is encoded COMPLETELY into a
-  per-connection staging buffer before any byte reaches the socket. An
-  unencodable or over-`MaxMessageBytes` handler result therefore never
-  poisons the stream: it is logged and replaced by a generic internal-error
-  reply (the msgid still gets answered); a socket-level write failure closes
-  the connection. The panic boundary covers the whole request task —
-  handler, response construction, encode, write; a reply-path panic closes
-  the connection (write-stream state unknown).
+- **Staged replies (r2, streaming bound r3):** every response is encoded
+  COMPLETELY into a per-connection staging buffer before any byte reaches
+  the socket, and the `MaxMessageBytes` bound is enforced WHILE the reply
+  encodes (a capping writer under the staging bufio) — an over-bound
+  handler result is refused as it streams, so staging memory never exceeds
+  the bound plus one bufio flush chunk regardless of the value's size. An
+  unencodable or over-bound result therefore never poisons the stream: it
+  is logged and replaced by a generic internal-error reply (the msgid still
+  gets answered); a socket-level write failure closes the connection. The
+  panic boundary covers the whole request task — handler, response
+  construction, encode, write; a reply-path panic closes the connection
+  (write-stream state unknown).
 - **Gate (`WithGate`)**: consulted before dispatch of every request on a
   connection; the consumer implements handshake-before-methods (autodb's
   `sys.hello`, ADR-0056 §2) without the core hardcoding policy. Gate
@@ -327,3 +336,14 @@ additive).
   contract documented + Limits copied; construction-time option
   validation; clean-EOF classification (io.EOF vs ErrMalformed). The r2
   markers in §2.2/§2.3 are this fold.
+
+- **r2 (2026-08-16, lector): `change_requested`** — five of six r1
+  must-fixes confirmed closed, all r1 should-fixes folded; the substitute-
+  reply refinement to finding 4 accepted. One residual blocker: the
+  outbound bound was checked only AFTER the full reply had accumulated in
+  staging, so a huge handler value could exhaust memory before refusal →
+  fixed with a capping writer that refuses bytes DURING encoding (staging
+  never exceeds the bound + one bufio chunk). Should-fix: the "~32 MiB
+  worst-case footprint" arithmetic overstated precision (empty-map
+  counterexample) → reworded as a linear, shape-dependent estimate here,
+  in the package docs, and in the README. The r3 markers are this fold.

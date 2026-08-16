@@ -54,9 +54,12 @@ type Limits struct {
 	// MaxTotalElements bounds the aggregate number of decoded values (every
 	// scalar, container, and container element) across one whole Decode.
 	// Per-container limits alone don't bound a message packed with many
-	// maximal siblings; this does. Each decoded value retains at least one
-	// interface word (16 bytes on 64-bit), so the worst-case decoded
-	// footprint is roughly MaxTotalElements×16 + MaxTotalBytes.
+	// maximal siblings; this does. The budgets make decoded footprint
+	// LINEAR in the input and tunable — not a precise byte ceiling: a
+	// value costs at least one interface word (16 bytes on 64-bit), but
+	// container-heavy shapes cost several times that per element (an empty
+	// map is an interface word + hmap header + allocator overhead). Size
+	// this for the per-value overhead of the shapes you expect.
 	MaxTotalElements int
 	// MaxTotalBytes bounds the aggregate string/binary/ext payload bytes
 	// across one whole Decode.
@@ -66,7 +69,8 @@ type Limits struct {
 // DefaultLimits returns the standard decode bounds (ADR-0008 §2.2):
 // depth 64, 8 MiB per string/binary, 1 M elements per collection,
 // 1 M total decoded values and 16 MiB total payload bytes per decode
-// (≈32 MiB worst-case decoded footprint on 64-bit).
+// (order-of-tens-of-MiB decoded footprint for scalar-heavy input;
+// container-heavy input costs a small multiple — see Limits).
 func DefaultLimits() *Limits {
 	return &Limits{
 		MaxDepth:         64,

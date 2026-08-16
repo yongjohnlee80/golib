@@ -53,9 +53,12 @@ R4), on two axes:
 - **Per decode (aggregate):** `MaxTotalElements` (1 M decoded values) and
   `MaxTotalBytes` (16 MiB payload bytes) across the WHOLE value. Per-item
   limits alone don't stop a message packed with many maximal siblings —
-  sixteen 1M-element nil arrays fit ~16 MiB of wire but decode to ~256 MiB;
-  the aggregate budgets cap the decoded footprint at roughly
-  `MaxTotalElements×16 + MaxTotalBytes` (~32 MiB at defaults).
+  sixteen 1M-element nil arrays fit ~16 MiB of wire but decode to ~256 MiB.
+  The budgets make decoded footprint linear and tunable; as an estimate
+  (not a byte ceiling), it's `MaxTotalElements×(per-value overhead) +
+  MaxTotalBytes` — scalars cost one 16-byte interface word each, while
+  container-heavy shapes (e.g. arrays of empty maps) cost several times
+  that per element. Size the budgets for the shapes you expect.
 
 Zero (or negative) `Limits` fields fall back to the default values, so a
 partially-filled struct tightens or loosens individual bounds without ever
