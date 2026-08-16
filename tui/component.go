@@ -88,6 +88,15 @@ type CursorReporter interface {
 	Cursor() (x, y int, ok bool)
 }
 
+// CursorShaper is implemented by components whose hardware cursor shape
+// depends on internal state — a modal editor reports block in Normal mode
+// and bar in Insert (ADR-0008). Consulted only for the focused
+// CursorReporter whose Cursor() is currently shown; every other frame path
+// resets the shape to the terminal default.
+type CursorShaper interface {
+	CursorShape() CursorShape
+}
+
 // FocusScope marks a subtree as a traversal boundary (ADR-0004 §2.6.3). A
 // trapping scope (modal, floating window) confines Tab/Shift-Tab to its
 // subtree; when it unmounts, focus restores to the previously focused node.

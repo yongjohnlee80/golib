@@ -48,6 +48,24 @@ func (c *Context) RequestLayout() {
 // Ignored unless the component implements Focusable and accepts focus.
 func (c *Context) RequestFocus() { c.app.requestFocus(c.node) }
 
+// ClearFocus removes focus entirely (ADR-0008 — Split.Zoom's fallback when
+// the retained pane has no focusable; the post-layout repair then owns
+// re-homing).
+func (c *Context) ClearFocus() { c.app.setFocus(0) }
+
+// FocusWithin reports whether the currently focused node is comp or one of
+// comp's descendants (ADR-0008 — Split.Zoom's transfer check). False when
+// nothing is focused or comp is not mounted.
+func (c *Context) FocusWithin(comp Component) bool {
+	n := c.app.nodes[c.app.focused]
+	for ; n != nil; n = n.parent {
+		if n.comp == comp {
+			return true
+		}
+	}
+	return false
+}
+
 // FocusComponent moves focus to another already-mounted component — the
 // cross-node analogue of RequestFocus, which can only focus the calling node.
 // A controller uses it to hand focus to a specific child (a form field, a

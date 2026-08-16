@@ -2,7 +2,6 @@ package widget
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -24,10 +23,7 @@ import (
 // rune). Implements the real-cursor IME rule via tui.CursorReporter.
 type TextArea struct {
 	Base
-	lines   []string
-	ln, col int // cursor line + cluster column
-	desired int // sticky column (cells) for vertical moves; -1 unset
-	anchor  *taPos
+	textBuffer
 
 	wrap WrapMode
 	top  int // first visible logical line
@@ -72,9 +68,8 @@ func WithTextAreaStyles(st TextInputStyles) TextAreaOption {
 // NewTextArea builds an empty editor.
 func NewTextArea(opts ...TextAreaOption) *TextArea {
 	t := &TextArea{
-		lines:   []string{""},
-		desired: -1,
-		wrap:    WrapNone,
+		textBuffer: newTextBuffer(),
+		wrap:       WrapNone,
 		styles: TextInputStyles{
 			Selection: style.New().Background(style.TokenSecondary).Foreground(style.TokenTextOnSecondary),
 		},
@@ -88,17 +83,12 @@ func NewTextArea(opts ...TextAreaOption) *TextArea {
 }
 
 // Value returns the buffer joined with newlines.
-func (t *TextArea) Value() string { return strings.Join(t.lines, "\n") }
+func (t *TextArea) Value() string { return t.value() }
 
 // SetValue replaces the buffer (cursor to the end, selection cleared).
 // No ChangeEvent — the event reports user edits.
 func (t *TextArea) SetValue(s string) {
-	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
-	t.lines = strings.Split(s, "\n")
-	t.ln = len(t.lines) - 1
-	t.col = len(clusters(t.lines[t.ln]))
-	t.anchor = nil
-	t.desired = -1
+	t.setValue(s)
 	t.ensureVisible()
 	t.MarkDirty()
 }
@@ -106,80 +96,21 @@ func (t *TextArea) SetValue(s string) {
 // AcceptsFocus implements tui.Focusable.
 func (t *TextArea) AcceptsFocus() bool { return true }
 
-// lineClusters returns the clusters of line i.
-func (t *TextArea) lineClusters(i int) []string { return clusters(t.lines[i]) }
-
 // cellsAt is the display offset (cells) of (ln, col).
 func (t *TextArea) cellsAt(ln, col int) int {
-	return cellsBefore(t.lineClusters(ln), col, t.measure)
-}
-
-// clampCol clamps a cluster column into line ln.
-func (t *TextArea) clampCol(ln, col int) int {
-	return max(0, min(col, len(t.lineClusters(ln))))
+	return t.textBuffer.cellsAt(ln, col, t.measure)
 }
 
 // colForCells returns the cluster column in line ln closest to the cell
 // offset cells (for sticky vertical movement).
 func (t *TextArea) colForCells(ln, cells int) int {
-	cs := t.lineClusters(ln)
-	w := 0
-	for i, c := range cs {
-		cw := t.measure(c)
-		if w+cw > cells {
-			return i
-		}
-		w += cw
-	}
-	return len(cs)
-}
-
-// selection returns the ordered selection region, ok=false when none.
-func (t *TextArea) selection() (lo, hi taPos, ok bool) {
-	if t.anchor == nil || (t.anchor.ln == t.ln && t.anchor.col == t.col) {
-		return taPos{}, taPos{}, false
-	}
-	a, b := *t.anchor, taPos{ln: t.ln, col: t.col}
-	if a.ln > b.ln || (a.ln == b.ln && a.col > b.col) {
-		a, b = b, a
-	}
-	return a, b, true
-}
-
-// deleteRegion removes [lo, hi) and moves the cursor to lo.
-func (t *TextArea) deleteRegion(lo, hi taPos) {
-	first := t.lineClusters(lo.ln)[:lo.col]
-	last := t.lineClusters(hi.ln)[hi.col:]
-	joined := strings.Join(first, "") + strings.Join(last, "")
-	t.lines = append(t.lines[:lo.ln], append([]string{joined}, t.lines[hi.ln+1:]...)...)
-	t.ln, t.col = lo.ln, lo.col
-	t.anchor = nil
+	return t.textBuffer.colForCells(ln, cells, t.measure)
 }
 
 // insert places text at the cursor (replacing any selection) as one atomic
 // edit; newlines split lines. Emits one ChangeEvent.
 func (t *TextArea) insert(text string) {
-	if lo, hi, ok := t.selection(); ok {
-		t.deleteRegion(lo, hi)
-	}
-	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
-	parts := strings.Split(text, "\n")
-	cs := t.lineClusters(t.ln)
-	head := strings.Join(cs[:t.col], "")
-	tail := strings.Join(cs[t.col:], "")
-	if len(parts) == 1 {
-		t.lines[t.ln] = head + parts[0] + tail
-		t.col += len(clusters(parts[0]))
-	} else {
-		newLines := make([]string, 0, len(parts))
-		newLines = append(newLines, head+parts[0])
-		newLines = append(newLines, parts[1:len(parts)-1]...)
-		lastPart := parts[len(parts)-1]
-		newLines = append(newLines, lastPart+tail)
-		t.lines = append(t.lines[:t.ln], append(newLines, t.lines[t.ln+1:]...)...)
-		t.ln += len(parts) - 1
-		t.col = len(clusters(lastPart))
-	}
+	t.insertText(text)
 	t.edited()
 }
 
@@ -193,67 +124,17 @@ func (t *TextArea) edited() {
 
 // moveTo moves the cursor, managing the selection anchor.
 func (t *TextArea) moveTo(ln, col int, extend bool) {
-	ln = max(0, min(ln, len(t.lines)-1))
-	col = t.clampCol(ln, col)
-	if extend {
-		if t.anchor == nil {
-			t.anchor = &taPos{ln: t.ln, col: t.col}
-		}
-	} else {
-		t.anchor = nil
-	}
-	t.ln, t.col = ln, col
+	t.moveCursor(ln, col, extend)
 	t.ensureVisible()
 	t.MarkDirty()
 }
 
 // vertical moves the cursor by delta lines keeping the sticky column.
 func (t *TextArea) vertical(delta int, extend bool) {
-	if t.desired < 0 {
-		t.desired = t.cellsAt(t.ln, t.col)
-	}
-	ln := max(0, min(t.ln+delta, len(t.lines)-1))
-	col := t.colForCells(ln, t.desired)
+	ln, col := t.verticalTarget(delta, t.measure)
 	d := t.desired
 	t.moveTo(ln, col, extend)
 	t.desired = d // moveTo clears nothing here, but keep it explicit
-}
-
-// wordLeft/wordRight within the current line (line hop at the edges).
-func (t *TextArea) wordLeft() (int, int) {
-	cs := t.lineClusters(t.ln)
-	i := t.col
-	if i == 0 {
-		if t.ln > 0 {
-			return t.ln - 1, len(t.lineClusters(t.ln - 1))
-		}
-		return t.ln, 0
-	}
-	for i > 0 && cs[i-1] == " " {
-		i--
-	}
-	for i > 0 && cs[i-1] != " " {
-		i--
-	}
-	return t.ln, i
-}
-
-func (t *TextArea) wordRight() (int, int) {
-	cs := t.lineClusters(t.ln)
-	i := t.col
-	if i == len(cs) {
-		if t.ln < len(t.lines)-1 {
-			return t.ln + 1, 0
-		}
-		return t.ln, i
-	}
-	for i < len(cs) && cs[i] == " " {
-		i++
-	}
-	for i < len(cs) && cs[i] != " " {
-		i++
-	}
-	return t.ln, i
 }
 
 // HandleEvent implements the §2.4 key contract.

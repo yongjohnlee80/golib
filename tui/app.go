@@ -321,6 +321,7 @@ func (a *App) renderFrame() {
 		a.layoutTree()
 		a.layoutDirty = false
 		a.renderDirty = true // geometry changed; repaint
+		a.repairInvisibleFocus()
 	}
 	if !a.renderDirty {
 		return
@@ -342,6 +343,19 @@ func (a *App) renderFrame() {
 	a.frames++
 }
 
+// repairInvisibleFocus enforces the no-invisible-focus rule (ADR-0008
+// §2.3): when a layout pass leaves the focused node without a current
+// measure/place (a Split zoomed it away, a Tabs switch unhosted it, any
+// future hider), focus is re-homed exactly like a dead focus — the
+// existing unmount-time repair already picks the first focusable in the
+// innermost surviving scope, or none. No component can keep receiving
+// keys invisibly.
+func (a *App) repairInvisibleFocus() {
+	if n := a.nodes[a.focused]; n != nil && !n.visible() {
+		a.repairFocus()
+	}
+}
+
 // applyCursor implements the IME real-cursor rule (ADR-0004 §2.3, G6): a
 // focused CursorReporter parks the hardware cursor at the absolute
 // translation of its reported position; anything else hides it. Cursor state
@@ -351,6 +365,11 @@ func (a *App) applyCursor() {
 		if cr, ok := n.comp.(CursorReporter); ok {
 			if x, y, ok := cr.Cursor(); ok {
 				a.backend.SetCursor(n.absRect.X+x, n.absRect.Y+y)
+				if cs, ok := n.comp.(CursorShaper); ok {
+					a.backend.SetCursorShape(cs.CursorShape())
+				} else {
+					a.backend.SetCursorShape(CursorShapeDefault)
+				}
 				a.backend.ShowCursor()
 				return
 			}

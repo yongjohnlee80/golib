@@ -36,6 +36,7 @@ type Split struct {
 	avail    int // last main-axis cells available to panes (minus divider)
 	aCells   int // last main-axis cells given to pane a
 	dragging bool
+	zoomed   SplitPane
 
 	divider style.Style
 }
@@ -91,6 +92,73 @@ func NewSplit(o Orientation, a, b tui.Component, opts ...SplitOption) *Split {
 // Ratio returns the current division.
 func (s *Split) Ratio() float64 { return s.ratio }
 
+// SetRatio moves the divider programmatically (0 < r < 1; clamped by the
+// min sizes at layout). The exported sibling of the drag/Alt-arrow path.
+func (s *Split) SetRatio(r float64) {
+	if r <= 0 || r >= 1 || math.IsNaN(r) {
+		panic(fmt.Sprintf("widget: SetRatio: ratio %v outside (0, 1)", r))
+	}
+	if r == s.ratio {
+		return
+	}
+	s.ratio = r
+	s.RequestLayout()
+	s.MarkDirty()
+	s.publish(SplitResizedEvent{Owner: s.NodeID(), Ratio: s.ratio})
+}
+
+// SplitPane identifies a Split pane for Zoom.
+type SplitPane uint8
+
+const (
+	// PaneNone restores the two-pane layout.
+	PaneNone SplitPane = iota
+	// PaneA zooms the first pane.
+	PaneA
+	// PaneB zooms the second pane.
+	PaneB
+)
+
+// SplitZoomEvent is published on every Zoom transition.
+type SplitZoomEvent struct {
+	Owner tui.NodeID
+	Pane  SplitPane
+}
+
+// Zoomed reports the current zoom state.
+func (s *Split) Zoomed() SplitPane { return s.zoomed }
+
+// Zoom gives one pane the full rect (ADR-0008 §2.3): the other pane is not
+// laid out, rendered, hit-tested, or focusable, and the divider disappears.
+// If focus currently lives inside the pane being hidden, it transfers to
+// the first focusable in the retained pane; when the retained pane has no
+// focusable, focus is CLEARED and the runtime's post-layout repair is the
+// single authority (r3). PaneNone restores the prior ratio without moving
+// focus.
+func (s *Split) Zoom(p SplitPane) {
+	if p > PaneB {
+		panic("widget: Zoom: invalid pane")
+	}
+	if s.zoomed == p {
+		return
+	}
+	s.zoomed = p
+	if ctx := s.Context(); ctx != nil && p != PaneNone {
+		hidden, kept := s.b, s.a
+		if p == PaneB {
+			hidden, kept = s.a, s.b
+		}
+		if ctx.FocusWithin(hidden) {
+			if !focusFirst(kept) {
+				ctx.ClearFocus()
+			}
+		}
+	}
+	s.RequestLayout()
+	s.MarkDirty()
+	s.publish(SplitZoomEvent{Owner: s.NodeID(), Pane: p})
+}
+
 // listChildren feeds the package's focus walk.
 func (s *Split) listChildren() []tui.Component { return []tui.Component{s.a, s.b} }
 
@@ -108,6 +176,16 @@ func (s *Split) Init(ctx *tui.Context) {
 func (s *Split) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, c.MinW)
 	h := boundedMax(c.MaxH, c.MinH)
+	if s.zoomed != PaneNone {
+		full := s.a
+		if s.zoomed == PaneB {
+			full = s.b
+		}
+		s.ctx.LayoutChild(full, tui.Tight(tui.Size{W: w, H: h}))
+		s.ctx.PlaceChild(full, tui.Rect{X: 0, Y: 0, W: w, H: h})
+		s.avail = 0 // suppresses the divider (Render) and resize (setCells)
+		return c.Constrain(tui.Size{W: w, H: h})
+	}
 	horiz := s.o == Horizontal
 	main, cross := w, h
 	if !horiz {
