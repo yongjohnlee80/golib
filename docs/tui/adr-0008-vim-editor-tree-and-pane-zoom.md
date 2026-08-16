@@ -80,52 +80,111 @@ func (e *Editor) Cursor() (x, y int, ok bool)
 type ModeChangedEvent struct { Owner tui.NodeID; Mode EditorMode }
 ```
 
+**Cursor & range model (r2 — the authoritative invariants):**
+
+- The substrate is an insertion-point buffer (`taPos{ln,col}`, col in
+  `[0, len(line)]`). **Normal/Visual-mode cursor invariant:** the cursor
+  denotes the grapheme AT insertion point `col`, so col is clamped to
+  `[0, max(0, len(line)-1)]`; on an empty line the cursor sits at col 0
+  denoting no grapheme. Insert mode uses the raw insertion point
+  `[0, len(line)]`.
+- **Insert→Normal** (Esc/chord): cursor moves one cluster left (vim
+  behavior), clamped to 0.
+- **Visual char-wise ranges are INCLUSIVE at both endpoints**; operations
+  resolve anchor/cursor into `[lo, hi]` positions and act on
+  `[lo, hi+1)` in insertion-point terms. Visual-line ranges cover whole
+  lines including the trailing newline (line-wise register content).
+- `$` moves to the LAST grapheme of the line (Normal) / end insertion
+  point (Insert has no `$`); `0` moves to col 0. `x` deletes the grapheme
+  under the cursor (no-op on an empty line); after deletion the cursor
+  clamps to the new last grapheme. `p` pastes char-wise text AFTER the
+  cursor grapheme, `P` before; a line-wise register pastes as new
+  line(s) below/above, cursor to first pasted line.
+- **Counts:** digits `1-9` (then `0-9`) accumulate a count in Normal and
+  Visual modes; `0` with no pending count is the motion. Count applies to
+  motions (`3w`, `2}`), `x`, `dd`, `yy`, `o`/`O` are NOT count-able in
+  v1. Count caps at 10⁶ (further digits ignored); Esc clears pending
+  count.
+- **No general operator grammar in v1** (r2 — the operator-pending claim
+  is withdrawn). The command set is exactly: atomic commands, motions,
+  and three DOUBLE-KEY commands (`dd`, `yy`, `gg`) implemented with a
+  one-key pending buffer: after `d`/`y`/`g`, only the matching second key
+  completes the command; ANY other key clears the pending state and is
+  then processed normally (so `d` `w` moves the cursor by a word —
+  `dw`/`d$`/`c`/`.` etc. are deliberately absent; ranged edits go through
+  Visual mode: `vwd`). The pending buffer is cleared by mode changes,
+  focus loss, and SetValue.
+
 **Default keymap (v1 command set — the consumer's explicit list plus the
 minimum companions that make it a usable vim; anything absent is absent
 deliberately):**
 
-- Motions (Normal + Visual, count-prefixable — `3w`, `2}`):
-  `h j k l`, `0 $`, `w b e`, `{ }` paragraph back/forward, `[ ]` aliases
-  of `{ }` in v1 (vim's `[`/`]` are prefix families; the useful single-key
-  reading is paragraph motion — revisit if the consumer wants otherwise),
+- Motions (Normal + Visual, count-prefixable): `h j k l`, `0 $`,
+  `w b e`, `{ }` paragraph back/forward, `[ ]` aliases of `{ }` in v1,
   `gg G`, arrows/Home/End/PgUp/PgDn as their obvious equivalents.
-- Entering Insert: `i a o O A I` (`o/O` open lines below/above).
-- Insert mode: text/Paste inserts via the TextArea substrate; `Esc` OR the
-  **escape chord** returns to Normal. Chord rule (`WithEscapeChord("jk")`):
-  on the first chord rune, hold it pending for 300 ms — a following second
-  rune within the window cancels the pending insert and leaves Insert
-  mode; timeout or any other key commits the held rune first. Implemented
-  with the runtime tick (no goroutines in widgets).
-- Operators/edits (Normal): `x` (count-able, into the register),
-  `dd` (line delete, into the register), `D` (to end of line),
-  `yy` (line yank), `p P` (paste after/before; line-wise register pastes
-  on a new line), `u` (undo), `Ctrl-R` (redo).
-- Visual: `v` (char-wise), `V` (line-wise), motions extend; `y` yanks,
-  `d`/`x` delete, `Esc`/chord exits.
-- **Not consumed in Normal/Visual mode:** Space, Tab, and every key with
-  no binding — they bubble (ADR-0005), so the application's leader menu
-  and focus traversal work without editor cooperation. Insert mode
-  consumes text keys (Tab inserts, matching TextArea's veto mask rules for
-  modified keys).
+- Entering Insert: `i a o O A I` (`o/O` open lines below/above; `a`
+  inserts after the cursor grapheme; `A`/`I` end/start of line).
+- Insert mode: text/Paste inserts via the substrate; `Esc` OR the escape
+  chord returns to Normal.
+- Edits (Normal): `x`, `dd`, `D` (to end of line), `yy`, `p P`, `u`
+  undo, `Ctrl-R` redo.
+- Visual: `v` char-wise, `V` line-wise; motions extend; `y` yank,
+  `d`/`x` delete, `Esc`/chord exits to Normal.
+- **Not consumed in Normal/Visual mode:** Space, Tab, and every unbound
+  key — they bubble (ADR-0005), so the application's leader menu and
+  focus traversal work without editor cooperation. Insert mode consumes
+  text keys (Tab inserts, matching TextArea's veto-mask rules).
+
+**Escape chord (r2 — dispatch-order contract, not wall-clock):** the App
+selects over input and timer channels, so "within 300 ms" is not an
+observable arrival guarantee. The contract is DISPATCH-ordered: on the
+first chord rune in Insert mode, the Editor holds it pending and requests
+a one-shot tick addressed to itself; the chord completes iff the second
+chord rune is DISPATCHED to the Editor before that tick; the tick commits
+the held rune as an insertion. **Every non-chord input settles the
+pending rune first**: any other key commits-then-processes; a
+`PasteEvent` commits the pending rune, then inserts the pasted text as
+ONE atomic literal (pasted bytes are never interpreted as chord keys);
+focus loss, `SetValue`, and mode transitions commit the pending rune.
+`WithEscapeChord` validates at construction: exactly two unmodified
+printable runes (distinct or repeated), or `""` to disable the chord
+(Esc alone); anything else panics.
 
 **Keymap is data, not a switch:**
 
 ```go
-type Keymap map[KeyChord]Action   // KeyChord: mode + normalized key; Action: opaque named op
-func DefaultKeymap() Keymap       // the table above; WithKeymap overlays entries
+type Keymap map[KeyChord]Action   // KeyChord: mode + normalized key; Action: enumerated op
+func DefaultKeymap() Keymap       // returns a COPY — callers cannot mutate shared defaults
 ```
 
-Actions are an enumerated set (`ActMoveLeft`, `ActDeleteLine`, …); the map
-makes rebinding data-driven for consumers (autovim parity can grow without
-forking the widget). Unknown chords in a `WithKeymap` overlay panic at
-construction.
+Actions are an exported enumerated set (`ActMoveLeft`, `ActDeleteLine`,
+…) plus the reserved **`ActUnbound`**, which removes a default binding
+(r2 — overlays can unbind, not just rebind). `WithKeymap` validates every
+entry at construction: the action must exist, and the (mode, action)
+combination must be supported (e.g. no Insert-mode motions); violations
+panic with the offending chord.
 
 **Registers & undo:** one internal register holding `{text string,
 linewise bool}` (no system clipboard in v1 — OSC 52 is a later, separate
-concern). Undo is a bounded snapshot stack (64 entries) of whole-buffer
-states pushed per atomic edit group (an Insert-mode session from entry to
-Esc is ONE group; each Normal-mode edit is one group), with a redo stack
-cleared on new edits.
+concern). The register is importable by the application (r2 — the
+value-inspect float's copy path needs it):
+
+```go
+func (e *Editor) SetRegister(text string, linewise bool)
+func (e *Editor) Register() (text string, linewise bool)
+```
+
+Undo is a bounded snapshot stack (64 entries) of whole-buffer states
+pushed per atomic edit group (an Insert-mode session from entry to Esc is
+ONE group; each Normal-mode edit and each paste is one group), with a
+redo stack cleared on new edits.
+
+**SetValue is a document-boundary operation (r2):** it settles/commits
+any pending chord rune and pending count/double-key state, exits to
+Normal mode, clears the selection, resets the cursor to the document
+start, replaces the content, and CLEARS both undo and redo stacks. The
+register is preserved. (An in-document replacement API can come later if
+a consumer needs undo-preserving loads.)
 
 **Cursor shape:** the backend already supports `CursorShape`; the runtime
 gains one OPTIONAL capability interface (additive, follows the
@@ -153,7 +212,6 @@ func NewTreeNode(id string, label string, opts ...NodeOption) *TreeNode
 // WithBadge(string) (trailing annotation, e.g. row counts, "view", "fn")
 
 func (n *TreeNode) ID() string
-func (n *TreeNode) SetChildren(kids []*TreeNode) // also marks loaded; empty = leaf-like
 func (n *TreeNode) SetLabel(string)
 
 func NewTree(opts ...TreeOption) *Tree
@@ -164,21 +222,49 @@ func (t *Tree) SetRoots(roots ...*TreeNode)
 func (t *Tree) Selected() (*TreeNode, bool)
 func (t *Tree) ExpandPath(ids ...string)   // programmatic reveal
 func (t *Tree) AcceptsFocus() bool
-
-type ExpandRequestEvent struct { Owner tui.NodeID; Node *TreeNode } // fired once per unloaded expand
-type CollapseEvent      struct { Owner tui.NodeID; Node *TreeNode }
-// Activation reuses widget.ActivateEvent (Enter / double-click) with the
-// selected node retrievable via Selected().
 ```
+
+**Load lifecycle (r2 — generation-tokened; every outcome settles the
+spinner, stale results are inert):**
+
+```go
+// Expanding a node whose children were never supplied fires this with a
+// fresh generation token. The application answers with EXACTLY ONE of
+// SetChildren / SetLoadError carrying that token.
+type ExpandRequestEvent struct {
+	Owner tui.NodeID
+	Node  *TreeNode
+	Gen   uint64 // request generation
+}
+type CollapseEvent struct { Owner tui.NodeID; Node *TreeNode }
+
+func (n *TreeNode) SetChildren(gen uint64, kids []*TreeNode)
+// Marks loaded on the CURRENT generation only: a stale gen (superseded by
+// collapse, re-expand, SetRoots, or Reset) is ignored entirely — late
+// TaskResults can never overwrite newer state. Empty kids = loaded leaf.
+func (n *TreeNode) SetLoadError(gen uint64, msg string)
+// Settles the spinner into an error badge, collapses the node, and
+// returns it to the unloaded state — the next expand re-fires
+// ExpandRequestEvent with a NEW generation (retry is user-driven).
+func (n *TreeNode) Reset()
+// Discards loaded children and any in-flight generation (refresh).
+```
+
+Rules: collapsing a loading node invalidates its generation (the spinner
+stops; the eventual result is ignored); `SetRoots` invalidates every
+outstanding generation. **Node identity/ownership:** IDs must be unique
+among siblings (`SetChildren` panics on duplicates — construction bug);
+a node has at most one parent — adopting an already-parented node panics
+(cycles impossible by construction); `ExpandPath` resolves IDs level by
+level, so sibling uniqueness is exactly sufficient.
 
 Behavior: `j/k`/arrows move the cursor over the FLATTENED visible rows
 (virtualized rendering reusing the List viewport arithmetic); `l`/`Enter`/
-`→` expands (or activates a leaf), `h`/`←` collapses (or jumps to parent);
-expanding a node whose children were never supplied fires
-`ExpandRequestEvent` exactly once and shows a spinner badge until
-`SetChildren` lands. Rows render as `indent + expander(▸/▾/·) + label +
-badge`, truncated with `…` via the shared textutil. Mouse: click selects,
-click on the expander toggles.
+`→` expands (or activates a leaf — activation reuses
+`widget.ActivateEvent`), `h`/`←` collapses (or jumps to parent). Rows
+render as `indent + expander(▸/▾/·) + label + badge` (spinner/error
+badges included), truncated with `…` via the shared textutil. Mouse:
+click selects, click on the expander toggles.
 
 ### 2.3 `widget.Split` zoom (additive)
 
@@ -194,10 +280,24 @@ While zoomed, `Layout` gives the zoomed pane the full rect and skips the
 other (not laid out, not rendered, not hit-testable, excluded from the
 focus ring via visibility — the existing `node.visible()` rule); the
 divider disappears. `SplitResizedEvent` is NOT fired by zoom;
-`SplitZoomEvent{Owner, Pane}` is. Nested-split maximize (a 3-pane IDE is
-`Split(H, explorer, Split(V, query, results))`) is achieved by the
-application zooming each Split along the ancestor chain — the widget
-stays a two-pane primitive.
+`SplitZoomEvent{Owner, Pane}` is.
+
+**Focus repair (r2):** visibility exclusion alone is insufficient —
+`App.focused` is not visibility-checked by key/paste routing, so a
+focused pane hidden by Zoom would keep receiving input invisibly. Two
+complementary rules:
+
+1. **Split-side transfer:** `Zoom(p)` checks whether focus currently
+   lives inside the pane being hidden — via a new runtime query
+   `Context.FocusWithin(c Component) bool` (additive; walks the focused
+   node's parent links) — and if so moves it to the retained pane with
+   the existing `focusFirst` walk (falling back to the Split's own
+   subtree root when nothing is focusable). `Restore` does NOT move
+   focus back (the user's focus stays where they are).
+2. **Runtime safety net (additive, benefits every future hider):** after
+   any layout pass, if the focused node is no longer `visible()`, the
+   runtime clears focus to the root scope's first focusable — no
+   component can keep invisible focus regardless of who hid it.
 
 ### 2.4 What this deliberately is not
 
@@ -233,15 +333,25 @@ textBuffer primitives.
 ## 5. Acceptance criteria
 
 1. Editor: table-driven sequence tests covering every default binding,
-   counts, the escape chord (both the cancel and the timeout-commit
-   paths), visual char/line operations, register linewise-ness, undo/redo
-   group boundaries; mode events observed; unbound keys (incl. Space)
-   verified to bubble in Normal mode.
+   counts (incl. `0`-as-motion vs count digit), the double-key pending
+   buffer (`dd`/`yy`/`gg` complete; `d`+other cancels-then-processes),
+   the escape chord (second-rune-dispatched-first, tick-commit,
+   paste-settles-pending, focus-loss/SetValue settle), cursor invariants
+   at line ends/empty lines, inclusive visual ranges, register
+   linewise-ness incl. SetRegister/Register, undo/redo group boundaries,
+   SetValue document-boundary semantics; mode events observed; unbound
+   keys (incl. Space) verified to bubble in Normal mode; keymap overlay
+   validation incl. ActUnbound and DefaultKeymap copy semantics.
 2. TextArea's existing test suite passes unchanged after the extraction.
-3. Tree: expand-request fires exactly once per unloaded node; SetChildren
-   from a TaskResult renders; collapse/re-expand does not re-fire;
-   virtualization over 10k visible rows stays allocation-sane.
+3. Tree: expand-request generation lifecycle — stale SetChildren/
+   SetLoadError ignored after collapse/re-expand/SetRoots; error badge +
+   user-driven retry re-fires with a new generation; duplicate-sibling-ID
+   and double-parent panics; virtualization over 10k visible rows stays
+   allocation-sane.
 4. Split: Zoom excludes the hidden pane from layout/render/hit-test/focus
-   ring; Restore returns to the prior ratio; SetRatio clamps to MinSizes.
+   ring AND transfers focus out of the hidden subtree; the runtime
+   safety net clears focus when any layout pass hides the focused node;
+   Restore returns to the prior ratio without moving focus; SetRatio
+   clamps to MinSizes.
 5. `-race` clean; all interaction through exported APIs in tests (the
    package's harness idiom).

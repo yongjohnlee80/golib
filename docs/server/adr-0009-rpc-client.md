@@ -26,9 +26,12 @@ Error and the two sides evolve together):
 ```go
 func Dial(ctx context.Context, addr string, codec Codec, opts ...ClientOption) (*Client, error)
 // Options: ClientLogger(logger.Logger), WithDialer(*net.Dialer),
-// ClientMaxMessageBytes(int64) (default 16 MiB, inbound window),
-// OnNotification(func(method string, params []any)) — served on ONE
-// dispatch goroutine in arrival order; a slow handler backpressures reads.
+// ClientMaxMessageBytes(int64) (default 16 MiB, INBOUND window;
+// independent of the staged outbound cap, which is enforced during
+// serialization exactly like the server's),
+// ClientWriteTimeout(time.Duration) (default 30s, per frame),
+// NotificationBuffer(int) (default 128),
+// OnNotification(func(method string, params []any)).
 
 // Call sends one request and blocks for its response or ctx.
 // A *Error from the server is returned as that *Error (errors.As-able);
@@ -36,36 +39,69 @@ func Dial(ctx context.Context, addr string, codec Codec, opts ...ClientOption) (
 // with the terminal error).
 func (c *Client) Call(ctx context.Context, method string, params ...any) (any, error)
 
-// Notify sends a fire-and-forget notification.
-func (c *Client) Notify(method string, params ...any) error
+// Notify sends a fire-and-forget notification, bounded by ctx and the
+// write timeout like any other frame.
+func (c *Client) Notify(ctx context.Context, method string, params ...any) error
+
+// Done closes exactly once when the client reaches its terminal state —
+// transport poison, msgid exhaustion, or Close. Err returns the terminal
+// cause after Done is closed (ErrClientClosed for a local Close), nil
+// before. The consumer's reconnect loop is DRIVEN by this signal, never
+// by polling calls (r2).
+func (c *Client) Done() <-chan struct{}
+func (c *Client) Err() error
 
 func (c *Client) Close() error   // idempotent; fails pending calls with ErrClientClosed
-var ErrClientClosed = errors.New("rpc: client closed")
+
+var (
+	ErrClientClosed    = errors.New("rpc: client closed")
+	ErrMsgIDExhausted  = errors.New("rpc: msgid space exhausted; reconnect")
+)
 ```
 
 Semantics:
 
-- **msgid correlation.** A monotonically increasing uint32 (wrap allowed —
-  the pending map is the collision guard: an in-flight id is never
-  reused). One reader goroutine demultiplexes responses to per-call
-  channels; writes serialize under a mutex through the same
-  staged-frame path as the server (encode fully, bounded, then write).
-- **Concurrent Calls are the point** — the TUI issues overlapping
-  requests (async-only, autodb Objective 24). Per-call ctx cancellation
-  abandons the WAIT, not the request; a late response to an abandoned id
-  is dropped (logged at debug).
-- **Read side is attacker-adjacent in the gate-guard future** (M9 —
-  today's peer is localhost autodb, but the client hardens now, not
-  later): the same windowReader bound + codec Limits as the server;
-  malformed frame or oversized message → terminal error, connection
-  closed, pending calls failed. Server-initiated REQUESTS (kind 0) are
-  protocol errors for this client (v1 servers never send them): drop +
-  log, per R7's classify-or-reject with the tolerant reading msgpack-RPC
-  peers expect.
+- **msgid correlation — never wrap (r2).** IDs are strictly monotonic
+  uint32 for the connection's lifetime. A pending-only collision check is
+  insufficient: a cancelled call's abandoned id could be reused after
+  wrap and receive the OLD response. On exhaustion (2³² ids — ~4 billion
+  calls) the client poisons with `ErrMsgIDExhausted`; the consumer
+  reconnects for a fresh id domain. One reader goroutine demultiplexes
+  responses to per-call channels; writes serialize under a mutex through
+  the same staged-frame path as the server (encode fully, bounded, then
+  write).
+- **Cancellation bounds the WHOLE call path (r2):** write-lock
+  acquisition selects on ctx; the network write of a staged frame is
+  bounded by `ClientWriteTimeout` (via write deadline). If ctx expires or
+  the deadline fires after a frame MAY have partially reached the wire,
+  the connection is poisoned (a half-written frame is unrecoverable
+  stream state); expiry before any byte was written returns promptly with
+  the connection intact. Response-wait cancellation abandons the WAIT,
+  not the request; a late response to an abandoned (never-reused) id is
+  dropped and logged at debug.
+- **Notifications — bounded queue, never reader-blocking (r2):** the
+  reader appends inbound notifications to a bounded queue
+  (`NotificationBuffer`) served by ONE dispatch goroutine in arrival
+  order. Because the reader never blocks on the callback, **callback
+  reentrancy is a supported contract** — a handler may Call, and the
+  response is delivered by the unblocked reader. Queue overflow poisons
+  the client (documented terminal cause; unbounded memory is not an
+  option and blocking the sole reader deadlocks reentrant handlers).
+  Each callback invocation runs inside a recover boundary (R16): a panic
+  is logged with the method name and poisons the client (a half-executed
+  notification handler is undefined consumer state).
+- **Hostile-message taxonomy (r2 — one consistent rule):** the inbound
+  read path is attacker-adjacent (M9 gate-guard future; hardened now).
+  Malformed frames, oversized messages, invalid kinds, and
+  server-initiated REQUESTS (kind 0 — a peer contract violation for this
+  client) all POISON: terminal error, connection closed, pending calls
+  failed. The single tolerated anomaly is a well-formed response whose
+  id matches no pending call (the abandoned-wait case above): dropped +
+  logged. Continuing past any other violation hides peer drift.
 - **No auto-reconnect.** Session state (autodb's hello admission, tokens)
   makes silent reconnection a correctness trap; the consumer owns the
-  reconnect-and-rehandshake loop (autodb ADR-0057 specifies it). The
-  terminal error is exposed via `Call`'s failures — no extra state API.
+  reconnect-and-rehandshake loop (autodb ADR-0057 specifies it), driven
+  by `Done()`/`Err()`.
 - `Shutdown`-side politeness needs nothing new: the server's drain
   already flushes in-flight replies; the client just observes EOF after.
 
@@ -87,8 +123,13 @@ README + ADR-0008 §2.6 amendment note.
 
 e2e over real TCP against `rpc.New(...)`: N concurrent Calls with
 staggered handlers resolve to their own responses (msgid fidelity);
-cancelled Call returns ctx.Err() while the connection stays usable; a
-server *Error round-trips `errors.As`; notification callback receives
-server pushes in order; malformed frame from a hostile fake server fails
-all pending calls with one terminal error; Close is idempotent and
-unblocks waiters. `-race` clean.
+cancelled Call returns ctx.Err() while the connection stays usable (and
+poisons instead when cancellation lands mid-write); a server *Error
+round-trips `errors.As`; notification callbacks receive server pushes in
+order, a REENTRANT callback's nested Call completes, queue overflow and
+callback panic each poison with their documented causes; `Done()` closes
+exactly once with `Err()` reporting the terminal cause for poison and
+Close alike; malformed frame / invalid kind / server-initiated request
+from a hostile fake server each fail all pending calls with one terminal
+error, while an unknown-id well-formed response is dropped without harm;
+Close is idempotent and unblocks waiters. `-race` clean.
