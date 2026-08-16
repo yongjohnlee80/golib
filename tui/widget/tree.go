@@ -75,6 +75,10 @@ func NewTreeNode(id, label string, opts ...NodeOption) *TreeNode {
 func (n *TreeNode) ID() string { return n.id }
 
 // SetLabel updates the display label (dirties the owning tree).
+// Label returns the node's display label.
+func (n *TreeNode) Label() string { return n.label }
+
+// SetLabel replaces the display label.
 func (n *TreeNode) SetLabel(label string) {
 	n.label = label
 	n.dirty()
@@ -358,6 +362,45 @@ func (t *Tree) SetRoots(roots ...*TreeNode) {
 		t.adopt(r)
 	}
 	t.cursor, t.top = 0, 0
+	t.MarkDirty()
+}
+
+// SetStyles replaces the row styles at runtime; zero fields keep their
+// current values (see List.SetStyles — focus-dependent host styling).
+func (t *Tree) SetStyles(st ListStyles) {
+	t.styles = ListStyles{
+		Row:            st.Row.Inherit(t.styles.Row),
+		CursorRow:      st.CursorRow.Inherit(t.styles.CursorRow),
+		SelectedRow:    st.SelectedRow.Inherit(t.styles.SelectedRow),
+		CursorSelected: st.CursorSelected.Inherit(t.styles.CursorSelected),
+	}
+	t.MarkDirty()
+}
+
+// VisibleRows returns the currently visible nodes in flattened display
+// order — what j/k walks. Hosts use it to search, reveal, and report
+// position; the slice is a snapshot, safe to keep.
+func (t *Tree) VisibleRows() []*TreeNode {
+	rows := t.flatten()
+	out := make([]*TreeNode, len(rows))
+	for i, r := range rows {
+		out[i] = r.node
+	}
+	return out
+}
+
+// Cursor reports the cursor's index within VisibleRows.
+func (t *Tree) Cursor() int { return t.cursor }
+
+// SetCursor moves the cursor to the i-th visible row (clamped),
+// scrolling it into view.
+func (t *Tree) SetCursor(i int) {
+	rows := t.flatten()
+	if len(rows) == 0 {
+		return
+	}
+	t.cursor = max(0, min(i, len(rows)-1))
+	t.ensureVisible()
 	t.MarkDirty()
 }
 

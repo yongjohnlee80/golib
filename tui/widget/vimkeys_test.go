@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -78,5 +79,60 @@ func TestTreeIgnoresApplicationChords(t *testing.T) {
 	h.barrier(sh)
 	if got := reqs.count(); got != 1 {
 		t.Fatalf("bare l should expand: %d expand request(s)", got)
+	}
+}
+
+// Hosts drive cursor and styling programmatically: focus that rests on a
+// delegating wrapper is invisible to the widget, so the host supplies the
+// focused/blurred styles itself.
+func TestListAndTreeHostControls(t *testing.T) {
+	l := widget.NewList(widget.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))
+	sh := newShell(l)
+	h := startApp(t, sh, 30, 6)
+	h.inject(tab())
+	h.barrier(sh)
+
+	h.onLoop(func() {
+		l.SetCursor(2)
+		l.SetStyles(widget.ListStyles{CursorRow: style.New().Background(style.ANSI(8))})
+	})
+	h.barrier(sh)
+	var idx, n int
+	h.onLoop(func() {
+		idx, _ = l.Selected()
+		n = l.Len()
+	})
+	if idx != 2 || n != 3 {
+		t.Fatalf("SetCursor/Len: cursor=%d len=%d, want 2/3", idx, n)
+	}
+
+	root := widget.NewTreeNode("ws", "workspace")
+	root.SetChildren(0, []*widget.TreeNode{
+		widget.NewTreeNode("a", "alpha", widget.WithLeaf()),
+		widget.NewTreeNode("b", "beta", widget.WithLeaf()),
+	})
+	th, tr, tsh := focusedTree(t, 40, 10, widget.WithRoots(root))
+	th.inject(key('l')) // expand the pre-assembled root
+	th.barrier(tsh)
+
+	var labels []string
+	var cur int
+	th.onLoop(func() {
+		tr.SetStyles(widget.ListStyles{CursorRow: style.New().Background(style.ANSI(8))})
+		for _, n := range tr.VisibleRows() {
+			labels = append(labels, n.Label())
+		}
+		tr.SetCursor(2)
+		cur = tr.Cursor()
+	})
+	th.barrier(tsh)
+	if len(labels) != 3 || labels[0] != "workspace" || labels[2] != "beta" {
+		t.Fatalf("VisibleRows/Label: %v", labels)
+	}
+	if cur != 2 {
+		t.Fatalf("Tree.SetCursor: cursor = %d, want 2", cur)
+	}
+	if id := selectedID(th, tr); id != "b" {
+		t.Fatalf("cursor should sit on beta, got %q", id)
 	}
 }

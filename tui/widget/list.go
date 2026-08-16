@@ -117,6 +117,27 @@ func WithListStyles[T any](st ListStyles) ListOption[T] {
 	}
 }
 
+// SetStyles replaces the row styles at runtime; zero fields keep their
+// current values. Hosts use this for focus-dependent styling — the
+// widget cannot see focus that rests on a delegating wrapper.
+func (l *List[T]) SetStyles(st ListStyles) {
+	l.styles = ListStyles{
+		Row:            st.Row.Inherit(l.styles.Row),
+		CursorRow:      st.CursorRow.Inherit(l.styles.CursorRow),
+		SelectedRow:    st.SelectedRow.Inherit(l.styles.SelectedRow),
+		CursorSelected: st.CursorSelected.Inherit(l.styles.CursorSelected),
+	}
+	l.MarkDirty()
+}
+
+// SetCursor moves the cursor to i (clamped), scrolling it into view.
+// The programmatic sibling of the j/k/arrow motions — hosts drive it for
+// search, restore-selection, and reveal.
+func (l *List[T]) SetCursor(i int) { l.moveCursor(i) }
+
+// Len reports the current row count (cached per render pass).
+func (l *List[T]) Len() int { return l.count }
+
 // NewList builds a List. A source (WithSource or WithItems) is required —
 // misconfiguration panics at construction (golib convention).
 func NewList[T any](opts ...ListOption[T]) *List[T] {
