@@ -1011,11 +1011,17 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	ctrl := k.Mods&tui.ModCtrl != 0
 
 	if k.Code == tui.KeyEscape {
+		hadPending := e.count != 0 || e.pendingAct != ActUnbound
 		e.count, e.pendingAct = 0, ActUnbound
 		if e.mode == ModeVisual || e.mode == ModeVisualLine {
 			e.exitVisual()
+			return true
 		}
-		return true
+		// Normal mode with nothing pending: Esc is a vim no-op, so it
+		// BUBBLES. Consuming it here made an Editor inside a modal float
+		// undismissable — the host never saw the key (autodb M6: a
+		// read-only script viewer that Esc could not close).
+		return hadPending
 	}
 
 	// Count accumulation: 1-9 always; 0 only extends an existing count.

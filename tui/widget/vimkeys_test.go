@@ -376,3 +376,46 @@ func TestModalFloatSeedsFocusIntoLateMountedContent(t *testing.T) {
 		t.Fatalf("modal focus never reached the late-mounted list: cursor=%d ok=%v", idx, ok)
 	}
 }
+
+// Esc is a vim no-op in Normal mode: the Editor must let it BUBBLE so a
+// host can dismiss the float (or panel) the editor lives in. It still
+// consumes Esc when there is something to cancel.
+func TestEditorEscBubblesWhenIdle(t *testing.T) {
+	e := widget.NewEditor()
+	sh := newShell(e)
+	h := startApp(t, sh, 40, 8)
+	h.inject(tab())
+	h.barrier(sh)
+	h.onLoop(func() { e.SetValue("alpha\nbeta") })
+	h.barrier(sh)
+
+	esc := func() bool {
+		var consumed bool
+		h.onLoop(func() {
+			consumed = e.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+		})
+		h.barrier(sh)
+		return consumed
+	}
+
+	if esc() {
+		t.Fatal("idle Normal-mode Esc must bubble, not be consumed")
+	}
+	// Visual mode: Esc leaves the selection and IS consumed.
+	h.inject(key('v'))
+	h.barrier(sh)
+	if !esc() {
+		t.Fatal("Esc in Visual mode must be consumed (it exits Visual)")
+	}
+	var mode widget.EditorMode
+	h.onLoop(func() { mode = e.Mode() })
+	if mode != widget.ModeNormal {
+		t.Fatalf("Esc should leave Visual: mode = %v", mode)
+	}
+	// (Pending counts and double-key prefixes are also cancelled by Esc,
+	// which then consumes it — not asserted here because both settle on
+	// the chord tick that this harness's barrier waits through.)
+	if esc() {
+		t.Fatal("Esc must keep bubbling once Visual is left")
+	}
+}
