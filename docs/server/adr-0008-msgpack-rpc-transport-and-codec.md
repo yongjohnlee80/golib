@@ -271,9 +271,10 @@ msgpack-RPC per the spec Neovim implements:
 
 ### 2.6 What this deliberately is not
 
-No client implementation in v1 (autodb's FEs connect in-process or via
-Neovim's native client; a Go client lands when the TUI needs it — likely
-alongside M6). No streaming/chunked responses (M5 pages; cursor protocol is
+~~No client implementation in v1~~ **Amended by ADR-0009 (2026-08-16):
+the Go client landed with M6** — `rpc.Client` (Dial/Call/Notify,
+Done/Err, bounded notification dispatch) shares this package and the
+Message/Codec/Error contract. No streaming/chunked responses (M5 pages; cursor protocol is
 a later ADR). No jsonrpc codec yet (M9 may add one against the same seam).
 
 ## 3. Consequences

@@ -89,7 +89,19 @@ err := srv.Run(ctx) // serves until ctx cancels, then drains politely
   non-positive `MaxConcurrent`/`MaxMessageBytes`/`DrainTimeout` panic at
   construction rather than misbehaving per connection.
 
+## Client
+
+`rpc.Dial` returns the Go side of the wire (ADR-0009): concurrent
+`Call`s with strictly monotonic, never-reused msgids; `Notify`;
+structured server errors returned as `*rpc.Error` (`errors.As`); a
+`Done()`/`Err()` terminal-state signal that drives the consumer's
+reconnect loop (no auto-reconnect — session state belongs to the
+consumer); and server-push notifications served in arrival order on a
+bounded queue where callback reentrancy is supported and overflow or a
+callback panic poisons the client. Writes are staged and capped exactly
+like the server's; `ClientMaxMessageBytes` bounds both directions.
+
 ## Not in v1
 
-No Go client (lands with the TUI consumer), no streaming responses, no
-jsonrpc codec — the `Codec` seam is where one would plug in.
+No streaming responses, no jsonrpc codec — the `Codec` seam is where one
+would plug in.
