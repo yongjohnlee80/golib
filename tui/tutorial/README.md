@@ -6,9 +6,11 @@ post back onto the loop, and a widget set (Box, Tabs, Table, List, BufferView,
 StatusBar, Split, Dock, Float, text inputs).
 
 These tutorials are written from building real applications with the package
-(`db-tui`, `ddex-server`). Every chapter leads with the mistake that cost an
-afternoon, then the pattern that fixes it. If you read nothing else, read
-[chapter 2](02-the-root-controller.md) and the [pitfalls](07-pitfalls.md).
+(`db-tui`, `ddex-server`, `autodb`). Every chapter leads with the mistake that
+cost an afternoon, then the pattern that fixes it. If you read nothing else,
+read [chapter 2](02-the-root-controller.md) and the
+[pitfalls](07-pitfalls.md); when something is on screen but your key does
+nothing, go straight to [chapter 8](08-debugging.md).
 
 | # | Chapter | You will learn |
 |---|---------|----------------|
@@ -19,6 +21,7 @@ afternoon, then the pattern that fixes it. If you read nothing else, read
 | 5 | [Async: tasks, ticks and writers](05-async-tasks.md) | ctx.Go + TaskResult, ctx.Every auto-refresh, the BufferView writer contract |
 | 6 | [Floats and modals](06-floats-and-modals.md) | OverlayHost, modal Float, Esc dismissal, the focus-seed gotcha |
 | 7 | [Pitfalls](07-pitfalls.md) | The complete list of ways this package has actually bitten people |
+| 8 | [Debugging](08-debugging.md) | `WithTrace`: reading focus, mount and key-routing decisions when "the key does nothing" |
 
 ## The 60-second version
 

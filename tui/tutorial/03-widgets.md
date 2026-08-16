@@ -72,6 +72,22 @@ view (chapter 6). Size the fixed columns generously: cells truncate with an
 ellipsis, and a too-narrow status column will truncate exactly the value
 you assert on in tests.
 
+### Column widths: fixed, or share the rest
+
+`Width: 0` marks a **flex** column. Every flex column shares the width
+left after the fixed ones, evenly (the odd cell or two goes to the
+leftmost). A table of all-flex columns therefore renders an even grid —
+useful when the content width is unknowable, e.g. a result set where one
+column holds uuids and another holds `true`.
+
+```go
+cols := []widget.TableColumn[Row]{
+    {Title: "ID",   Width: 5,  Cell: ...},   // fixed
+    {Title: "NAME",            Cell: ...},   // flex ┐ share the remainder
+    {Title: "NOTE",            Cell: ...},   // flex ┘ evenly
+}
+```
+
 ## List — when you don't need headers
 
 Same interaction model as Table's row area. `WithItems(items, render)`,
@@ -79,6 +95,35 @@ Same interaction model as Table's row area. `WithItems(items, render)`,
 `ActivateEvent`. The cursor row is painted even while the list is NOT
 focused — a controller can forward `↑/↓` to an unfocused list and the user
 still sees the cursor move.
+
+### Driving a list or tree from the host
+
+Widgets own their cursor, but the *host* often knows something they
+cannot: which pane is focused, what the user searched for, which row to
+restore. These are the seams for that:
+
+```go
+list.SetCursor(i)          // programmatic sibling of j/k — search, reveal
+list.Len()                 // row count
+list.SetStyles(widget.ListStyles{CursorRow: focusedStyle})  // restyle live
+
+tree.SetCursor(i)
+tree.Cursor()
+tree.VisibleRows()         // flattened display order; node.Label() reads one
+tree.SetStyles(...)
+tree.Reload("notes:7")     // refresh ONE subtree after its data changed
+```
+
+`Tree.Reload` is the one to remember: when the data behind a loaded
+subtree changes (a file written, a row deleted), it drops the cached
+children and re-requests them under a NEW generation — stale in-flight
+loads stay inert and **the cursor does not move**. `SetChildren` needs a
+generation you do not have, and `ExpandPath` moves the cursor, so
+neither is a substitute.
+
+`SetStyles` exists because a widget cannot see focus that rests on a
+delegating wrapper (chapter 4): the host holds the focus knowledge, so
+the host supplies the focused and blurred styles.
 
 ## BufferView — logs and pagers
 
@@ -110,6 +155,24 @@ status.SetRight("↵ open · ←/→ menu · q quit")
 
 Update `SetRight` per mode (which tab is active, whether a modal is open) —
 it is the difference between a discoverable UI and a guessing game.
+
+## Editor — a modal vim buffer (and a read-only viewer)
+
+`widget.Editor` is the vim-modal editor (ADR-0008). Beyond editing, two
+host seams matter:
+
+```go
+ed.SetValue(doc); ed.Lines()      // document in / snapshot out
+ed.SetLine(row, col)              // jump — search hits, error locations
+ed.SetReadOnly(true)              // VIEWER: motions, visual select, yank; no edits
+```
+
+`SetReadOnly` turns the editor into a navigable document: `hjkl`, word
+and paragraph motions, `v`/`V` selection and `y` all work, while insert
+entry, `dd`, paste and bracketed-paste input are refused. That is the
+right widget for any panel a user reads and copies from but must not
+change — a JSON result view, a recorded script, a log with structure.
+A `BufferView` cannot do it: it has no cursor and no selection.
 
 ## Text inputs — forms
 

@@ -60,6 +60,51 @@ Remember: raw mode means `Ctrl-C` is `KeyEvent{Code: 'c', Mods: ModCtrl}`,
 disabled while mouse reporting is on (offer OSC 52 copy instead — see
 `Context.CopyToClipboard`).
 
+## Modifier chords belong to the application
+
+Ctrl-modified keys arrive with the **bare letter** in `Code`:
+`Ctrl-l` is `Code: 'l', Mods: ModCtrl`. A widget that switches on `Code`
+without checking `Mods` will read it as plain `l`, act on it, and consume
+it — and your `Ctrl-hjkl` pane motion will never fire.
+
+The shipped widgets bubble anything carrying Ctrl/Alt/Super/Hyper/Meta.
+Do the same in your own:
+
+```go
+if k.Mods&(tui.ModCtrl|tui.ModAlt|tui.ModSuper) != 0 {
+    return false // an application chord, not widget input
+}
+```
+
+## Cursors, focus, and delegating wrappers
+
+Two rules that look unrelated until they bite together:
+
+1. **Only the FOCUSED component is asked for a cursor.** The runtime
+   parks the terminal cursor by consulting the focused node's
+   `CursorReporter`. A wrapper that holds focus and forwards keys to a
+   child therefore *hides that child's cursor entirely*.
+2. **Focus changes repaint; they do NOT re-layout.** Anything derived
+   from focus must react to `FocusEvent` (which bubbles to the root), not
+   be computed in `Layout` — or it will lag until something else happens
+   to trigger a layout, which reads as "it only updates when I open a
+   menu".
+
+So: if your panel wraps a child that draws a cursor (an editor, a list),
+**delegate focus to the child**:
+
+```go
+func (p *panel) AcceptsFocus() bool { return false }   // container, not a stop
+func (p *panel) FocusTarget() tui.Component { return p.current }
+// host: ctx.FocusComponent(panel.FocusTarget())
+```
+
+Unconsumed keys still bubble from the child up through the panel, so
+panel-level bindings keep working. Only intercept *before* the child when
+you must override its own binding (Enter on a tree node, say) — that is
+the one reason to hold focus in the wrapper, and then the child's cursor
+must be one that paints unfocused (`List` and `Tree` both do).
+
 ## The pub/sub bus
 
 Widgets announce semantic events on a bus rather than requiring wrapping:

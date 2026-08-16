@@ -81,3 +81,54 @@ Table columns are fixed-width and truncate with an ellipsis. Size the
 column for the longest real value ("invalid (1 errors)" is 18 cells), and
 prefer the flex column (`Width: 0`) for free-length text.
 → [chapter 3](03-widgets.md)
+
+## "My tree/list cursor is invisible"
+
+Only the focused component is asked for a cursor, and a wrapper that
+holds focus hides its child's. `List` and `Tree` paint their cursor ROW
+unconditionally (that is styling, not the terminal cursor); an `Editor`
+or `TextInput` needs actual focus to show one. Delegate focus to the
+child that draws.
+→ [chapter 4](04-events-focus-keys.md)
+
+## "The highlight only updates when I open a menu"
+
+You computed focus-dependent styling in `Layout`. Focus changes repaint
+but do not re-layout, so the styling lagged until something unrelated
+triggered a layout pass. React to `FocusEvent` instead.
+→ [chapter 4](04-events-focus-keys.md)
+
+## "Ctrl-<letter> does the widget's plain-letter action"
+
+Ctrl keys carry the bare letter in `Code`. Check `Mods` before switching
+on `Code`, and bubble application chords.
+→ [chapter 4](04-events-focus-keys.md)
+
+## "One table column ate the whole row"
+
+Every zero-width column is a flex column and they share the remainder
+evenly — but a column sized by content (a uuid) next to `Width: 0`
+neighbours will look like it stole the row if you expected fixed sizing.
+Give the columns that must stay narrow an explicit `Width`.
+→ [chapter 3](03-widgets.md)
+
+## "My modal ignores Esc"
+
+Something inside it consumed the key. Trace it: the `key` record names
+the consumer.
+→ [chapter 6](06-floats-and-modals.md), [chapter 8](08-debugging.md)
+
+## "The widget is on screen but my key does nothing"
+
+Stop guessing and turn on `WithTrace`. An empty `Node` on the `key`
+record means nobody consumed it — usually the key arrived before the
+thing you meant to press it on existed.
+→ [chapter 8](08-debugging.md)
+
+## "My test passes locally and fails under load"
+
+Screen-scraping matches the WHOLE grid. Status bars, menu labels and
+float titles collide, so a wait can pass against the wrong surface and
+run ahead of the one you meant. Anchor on text only the target can
+render, or gate on the previous surface closing.
+→ [chapter 8](08-debugging.md)

@@ -78,6 +78,25 @@ Bubbling does the work: Esc from the viewer hits your container first
 (step back); Esc from the list bubbles past you to the modal layer (float
 closes). One key, two meanings, zero special cases.
 
+## Esc must reach the float
+
+A modal `Float` dismisses on Esc — *if the key reaches it*. Focus is on
+your content, so a child that consumes Esc leaves the float
+undismissable. Consume Esc only when it CANCELS something (an insert
+session, a selection, a pending prefix); otherwise return false and let
+it bubble. The shipped `Editor` follows that rule; a hand-rolled widget
+that returns `true` for every key it recognises will not.
+
+## Title your choosers
+
+`Float` titles are the only label a modal carries. A which-key style
+chooser reused for confirmations ("delete this note?"), conflicts ("x
+changed on disk") and menus must say which one it is — titling them all
+"SPC — commands" makes two very different prompts indistinguishable to
+the user, and indistinguishable to your tests, which then match the wrong
+one and race ahead. (See chapter 8: this exact collision produced four
+bad patches before a trace showed the cause.)
+
 ## Global keys while a modal is open
 
 Unconsumed keys still bubble past the float to your root. If the root's
