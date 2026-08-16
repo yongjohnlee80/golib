@@ -45,6 +45,33 @@ go get github.com/yongjohnlee80/golib
 | [`server/ws`](server/ws/README.md) | WebSocket transport — endpoints as ordinary routes on the HTTP core | [README](server/ws/README.md) |
 | [`server/rpc`](server/rpc/README.md) | RPC transport core over a pluggable wire codec: bounded dispatch, gate hook, polite drain | [README](server/rpc/README.md) |
 | [`server/rpc/msgpackrpc`](server/rpc/msgpackrpc/README.md) | msgpack-RPC wire codec — the framing Neovim's `sockconnect` speaks natively | [README](server/rpc/msgpackrpc/README.md) |
+| [`tui`](tui/README.md) | Cell-buffer terminal UI: component tree, constraint layout, focus routing, async tasks, and a widget set (vim Editor, lazy Tree, Table, Split, Float…) | [README](tui/README.md) · [TUTORIAL](tui/tutorial/README.md) |
+
+### tui
+
+A terminal UI framework, not a widget grab-bag: a mounted component tree
+with constraint-based layout, target-then-bubble event routing, focus
+scopes and traps, async tasks that post results back onto the loop, and
+a cell buffer that diffs frames.
+
+The widget set covers what an IDE-shaped app needs — `Box`, `Split`,
+`Dock`, `Tabs`, `Table[T]`, `List[T]`, `BufferView`, `StatusBar`,
+`Float` (modal, anchored, fraction-sized), text inputs, a lazy
+generation-tokened `Tree`, and a vim-modal `Editor` that doubles as a
+read-only viewer (motions, visual selection and yank; edits refused).
+
+**Debugging is first-class.** Interactive bugs are timing bugs, and the
+state that explains them is runtime-owned: `tui.WithTrace` emits focus
+moves and repairs, mounts, modal scopes, and key routing including which
+node CONSUMED each key. Reach for it before theorising —
+[tutorial chapter 8](tui/tutorial/08-debugging.md) shows how to read one.
+
+Start with the [tutorial](tui/tutorial/README.md); each chapter leads
+with the mistake that cost an afternoon. Design records live in
+[docs/tui/](docs/tui/), including a
+[scored incident register](docs/tui/incident-register-2026-08-autodb-m6.md)
+of every defect a real consumer hit and how each was fixed.
+→ [tui/README.md](tui/README.md)
 
 ### threadsafe
 

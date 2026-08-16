@@ -122,9 +122,41 @@ assert the cell grid (`String()`, `Snapshot()`), the hardware cursor
 zero writes; one change makes one). Every widget contract test and the demo
 gate in this repository runs on it.
 
+## Debugging: turn the trace on
+
+Interactive bugs are timing bugs — "the modal is on screen, I press Enter,
+nothing happens" — and everything that decides the outcome belongs to the
+runtime, not to your component: who holds focus, what was mounted when the
+key arrived, which node consumed it, whether a modal trap is open.
+
+```go
+app := tui.NewApp(root,
+    tui.WithBackend(backend),
+    tui.WithTrace(func(ev tui.TraceEvent) { log.Println(ev.Kind, ev.Comp, ev.Detail) }),
+)
+```
+
+An empty `Node` on a `key` record means **nobody consumed it** — usually
+the key arrived before the thing you meant to press it on existed. Off
+unless you pass `WithTrace`, one nil check per emit site when off, so it
+is safe behind a `--trace` flag in a shipped binary.
+→ [tutorial chapter 8](tutorial/08-debugging.md)
+
+## Learning the package
+
+The [tutorial](tutorial/README.md) is the front door — eight chapters,
+each leading with the mistake that cost an afternoon (a bare widget as
+app root renders one line; a modal seeds focus before your data arrives;
+a wrapper that holds focus hides its child's cursor).
+
 ## Design documents
 
-The package is specified by ADRs 0001–0007 under `docs/tui/`: overview and
+The package is specified by ADRs 0001–0008 under `docs/tui/`: overview and
 architecture, terminal backend and capability model, cell buffer and render
 pipeline, component tree and layout, runtime and async, styling and theming,
-and the standard widget set.
+the standard widget set, and the vim Editor / Tree / pane zoom.
+
+`docs/tui/incident-register-2026-08-autodb-m6.md` catalogues every defect
+a real consumer (autodb) hit while building on this package, with each
+remedy scored: fixed at the source, or patched at the consumer on a
+guess. It is the evidence behind several of the rules above.
