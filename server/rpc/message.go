@@ -1,0 +1,79 @@
+package rpc
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+)
+
+// Kind classifies a wire message.
+type Kind uint8
+
+const (
+	// KindRequest expects a KindResponse echoing its ID.
+	KindRequest Kind = iota
+	// KindResponse answers exactly one KindRequest.
+	KindResponse
+	// KindNotification is fire-and-forget: no ID, no reply.
+	KindNotification
+)
+
+// Message is one wire unit, codec-independent. Field relevance by Kind:
+// Request uses ID/Method/Params; Response uses ID and exactly one of
+// Err/Result; Notification uses Method/Params.
+type Message struct {
+	Kind   Kind
+	ID     uint32
+	Method string
+	Params []any
+	Err    any
+	Result any
+}
+
+// Codec owns the wire format: one Message in, one Message out. Read must
+// consume exactly one message and treat the byte stream as attacker-adjacent
+// (bounded, panic-free — KB security-core-hardening R4/R7). Write buffers
+// into w; the transport owns flushing. A Codec instance is used by at most
+// one reader and one writer goroutine per connection, serialized by the
+// transport, so implementations need no internal locking for that pattern.
+type Codec interface {
+	Read(r *bufio.Reader) (*Message, error)
+	Write(w *bufio.Writer, m *Message) error
+}
+
+// Error carries a structured RPC error to the wire as {code, message}.
+// Handlers return *Error for taxonomy; any other error is wrapped as
+// CodeInternal with its Error() text.
+type Error struct {
+	Code    int64
+	Message string
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("rpc error %d: %s", e.Code, e.Message)
+}
+
+// Wire error codes (JSON-RPC-aligned where a standard code exists).
+const (
+	// CodeMethodNotFound answers a request for an unregistered method.
+	CodeMethodNotFound int64 = -32601
+	// CodeInvalidParams is for handlers to return on malformed params.
+	CodeInvalidParams int64 = -32602
+	// CodeInternal answers handler panics and untyped handler errors.
+	CodeInternal int64 = -32603
+	// CodeAccessDenied answers a gate rejection (handshake/authz policy).
+	CodeAccessDenied int64 = -32001
+)
+
+// ErrMessageTooLarge surfaces (wrapped in the codec's read error) when a
+// single message exceeds the transport's MaxMessageBytes window.
+var ErrMessageTooLarge = errors.New("rpc: message exceeds size limit")
+
+// wireError converts a handler/gate error to its wire form.
+func wireError(err error) map[string]any {
+	var e *Error
+	if errors.As(err, &e) {
+		return map[string]any{"code": e.Code, "message": e.Message}
+	}
+	return map[string]any{"code": CodeInternal, "message": err.Error()}
+}

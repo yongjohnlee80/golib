@@ -322,3 +322,16 @@ them).
   `agents/lector/reviews/2026-07-04-golib-server-adr-0006-0007-rereview.md`.
   The r1 blocker is closed by the Reserve/Reservation pre-establishment gate.
   **Accepted 2026-07-04.**
+
+## 8. Amendments
+
+- **A1 (2026-08-16, via ADR-0008): `ScaffoldSessionFactory` +
+  `SessionFromContext`.** The scaffold auto-registered a bare conn-closing
+  `connSession` for every accepted connection, with no way for a transport to
+  substitute a `Drainer`-capable session — registering a second session for
+  the same conn would make `Registry.Drain` race a bare `Close()` against the
+  polite path. The additive option `ScaffoldSessionFactory(func(ctx, conn)
+  Session)` replaces the registered session (nil result falls back to the
+  default), and `SessionFromContext(ctx)` hands the ConnHandler the session
+  registered for its connection. Default behavior is unchanged; first
+  consumer is `server/rpc` (ADR-0008 §2.4).

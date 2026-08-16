@@ -217,3 +217,104 @@ func (c *countLogger) Log(s logger.Severity, _ any) {
 		c.errors.Add(1)
 	}
 }
+
+// drainRecordingSession records whether the registry ended it politely
+// (Drain) or forcefully (bare Close), for the ScaffoldSessionFactory tests.
+type drainRecordingSession struct {
+	conn    net.Conn
+	drained atomic.Bool
+	closed  atomic.Bool
+}
+
+func (d *drainRecordingSession) Close() error {
+	d.closed.Store(true)
+	return d.conn.Close()
+}
+
+func (d *drainRecordingSession) Drain(context.Context) error {
+	d.drained.Store(true)
+	return d.conn.Close()
+}
+
+func TestScaffold_SessionFactoryReplacesDefaultSession(t *testing.T) {
+	t.Parallel()
+	var made atomic.Pointer[drainRecordingSession]
+	var handlerSaw atomic.Pointer[drainRecordingSession]
+	connected := make(chan struct{})
+
+	s := NewScaffold(
+		func(ctx context.Context, conn net.Conn) {
+			if sess, ok := SessionFromContext(ctx).(*drainRecordingSession); ok {
+				handlerSaw.Store(sess)
+			}
+			close(connected)
+			// Hold the connection open until drain closes it.
+			_, _ = bufio.NewReader(conn).ReadString('\n')
+		},
+		ScaffoldAddr("127.0.0.1:0"),
+		ScaffoldSessionFactory(func(_ context.Context, conn net.Conn) Session {
+			d := &drainRecordingSession{conn: conn}
+			made.Store(d)
+			return d
+		}),
+	)
+	stop := runScaffold(t, s)
+
+	conn, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	<-connected
+
+	if s.Sessions().Len() != 1 {
+		t.Fatalf("registry Len = %d, want 1", s.Sessions().Len())
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	d := made.Load()
+	if d == nil {
+		t.Fatal("session factory never invoked")
+	}
+	if handlerSaw.Load() != d {
+		t.Fatal("SessionFromContext did not return the factory's session")
+	}
+	if !d.drained.Load() {
+		t.Fatal("drain used bare Close, not the session's Drain")
+	}
+}
+
+func TestScaffold_SessionFactoryNilResultFallsBack(t *testing.T) {
+	t.Parallel()
+	sawDefault := make(chan bool, 1)
+	s := NewScaffold(
+		func(ctx context.Context, conn net.Conn) {
+			_, ok := SessionFromContext(ctx).(connSession)
+			sawDefault <- ok
+			echoHandler(ctx, conn)
+		},
+		ScaffoldAddr("127.0.0.1:0"),
+		ScaffoldSessionFactory(func(context.Context, net.Conn) Session { return nil }),
+	)
+	stop := runScaffold(t, s)
+
+	conn, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.Write([]byte("hi\n")); err != nil {
+		t.Fatal(err)
+	}
+	reply, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil || reply != "echo:hi\n" {
+		t.Fatalf("reply = %q, err = %v", reply, err)
+	}
+	if !<-sawDefault {
+		t.Fatal("nil factory result did not fall back to the default session")
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}

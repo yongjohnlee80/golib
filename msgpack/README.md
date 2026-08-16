@@ -1,0 +1,61 @@
+# msgpack
+
+Zero-dependency MessagePack value codec (golib-server ADR-0008 §2.2): the
+full wire family over a fixed Go vocabulary, with decode limits designed for
+attacker-adjacent input. Stdlib only.
+
+```go
+import "github.com/yongjohnlee80/golib/msgpack"
+```
+
+## Value vocabulary
+
+| Go type | encodes to | decodes to |
+|---|---|---|
+| `nil` | nil | `nil` |
+| `bool` | bool | `bool` |
+| `int`, `int8..64`, `uint`, `uint8..32` | most compact int form | `int64` |
+| `uint64` | most compact uint form | `int64`, or `uint64` when > MaxInt64 |
+| `float32` / `float64` | float32 / float64 | `float64` |
+| `string` | fixstr/str8/16/32 | `string` |
+| `[]byte` | bin8/16/32 | `[]byte` |
+| `[]any` | fixarray/array16/32 | `[]any` |
+| `map[string]any` | fixmap/map16/32 | `map[string]any` |
+| `Ext{Type, Data}` | fixext1..16/ext8/16/32 | `Ext` |
+
+Anything else fails `Encode` with `ErrUnsupportedType`. Deliberate v1
+restrictions, loud rather than silent: map keys must be strings both
+directions (`ErrNonStringKey` on decode), and the timestamp extension
+(type −1) is not interpreted — it passes through as `Ext`.
+
+## Usage
+
+```go
+b, err := msgpack.Marshal(map[string]any{"rows": []any{int64(1)}})
+v, err := msgpack.Unmarshal(b, nil) // nil → DefaultLimits
+
+// Streaming (back-to-back messages on one reader):
+v, err := msgpack.Decode(bufioReader, msgpack.DefaultLimits())
+err = msgpack.Encode(bufioWriter, v) // caller flushes
+```
+
+`Unmarshal` requires full consumption — trailing bytes are `ErrMalformed`.
+`Decode` consumes exactly one value and leaves the rest, which is what a
+message transport wants.
+
+## Decoding untrusted input
+
+Every decode is bounded by `Limits` (KB convention security-core-hardening
+R4): `MaxDepth` (64), `MaxStrBytes`/`MaxBinBytes` (8 MiB), `MaxElements`
+per collection (1 M). Declared sizes are validated before allocation and
+preallocation is capped, so a forged `array32(0xffffffff)` header cannot
+allocate memory the input never supplies. Truncation, the reserved `0xc1`
+byte, depth bombs, and oversize declarations return typed sentinels
+(`ErrMalformed`, `ErrDepthExceeded`, `ErrLimitExceeded`); no input panics
+the decoder — enforced by `FuzzDecode`.
+
+## Neovim interop
+
+Neovim's API handle types (Buffer=0, Window=1, Tabpage=2) are EXT values;
+they round-trip as `msgpack.Ext` untouched. The msgpack-RPC framing that
+carries them lives in [`server/rpc/msgpackrpc`](../server/rpc/msgpackrpc/).

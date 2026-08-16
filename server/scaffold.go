@@ -19,12 +19,13 @@ type ConnHandler func(ctx context.Context, conn net.Conn)
 
 // scaffoldConfig is the option-mutated construction state of a Scaffold.
 type scaffoldConfig struct {
-	addr         string
-	listener     net.Listener
-	tlsConfig    *tls.Config
-	logger       logger.Logger
-	baseCtx      context.Context
-	drainTimeout time.Duration
+	addr           string
+	listener       net.Listener
+	tlsConfig      *tls.Config
+	logger         logger.Logger
+	baseCtx        context.Context
+	drainTimeout   time.Duration
+	sessionFactory func(ctx context.Context, conn net.Conn) Session
 }
 
 // ScaffoldOption configures a Scaffold.
@@ -61,6 +62,17 @@ func ScaffoldBaseContext(ctx context.Context) ScaffoldOption {
 // An explicit Shutdown call is bounded by its own ctx in addition.
 func DrainTimeout(d time.Duration) ScaffoldOption {
 	return func(c *scaffoldConfig) { c.drainTimeout = d }
+}
+
+// ScaffoldSessionFactory replaces the session registered for each accepted
+// connection (ADR-0006 amendment, via ADR-0008). By default the scaffold
+// registers a bare conn-closing session; a transport whose drain must be
+// polite (finish in-flight replies before close) supplies a factory whose
+// Session also implements Drainer. The ConnHandler retrieves the factory's
+// session via SessionFromContext. A factory returning nil falls back to the
+// default session for that connection.
+func ScaffoldSessionFactory(fn func(ctx context.Context, conn net.Conn) Session) ScaffoldOption {
+	return func(c *scaffoldConfig) { c.sessionFactory = fn }
 }
 
 // Scaffold owns the accept-loop lifecycle every connection-oriented transport
@@ -196,10 +208,27 @@ func (s *Scaffold) acceptLoop() error {
 // connSession adapts a net.Conn to the registry's Session contract.
 type connSession struct{ net.Conn }
 
+// sessionCtxKey carries the per-connection Session in the handler context.
+type sessionCtxKey struct{}
+
+// SessionFromContext returns the Session registered for this connection —
+// the ScaffoldSessionFactory product when one is configured, the default
+// conn-closing session otherwise. Valid inside a ConnHandler; nil elsewhere.
+func SessionFromContext(ctx context.Context) Session {
+	s, _ := ctx.Value(sessionCtxKey{}).(Session)
+	return s
+}
+
 // serveConn runs the handler for one connection: registered for drain,
 // panic-isolated, always closed.
 func (s *Scaffold) serveConn(conn net.Conn) {
-	unregister := s.reg.Register(connSession{conn})
+	sess := Session(connSession{conn})
+	if s.cfg.sessionFactory != nil {
+		if custom := s.cfg.sessionFactory(s.connCtx, conn); custom != nil {
+			sess = custom
+		}
+	}
+	unregister := s.reg.Register(sess)
 	defer unregister()
 	defer conn.Close()
 	defer func() {
@@ -210,7 +239,7 @@ func (s *Scaffold) serveConn(conn net.Conn) {
 			})
 		}
 	}()
-	s.handle(s.connCtx, conn)
+	s.handle(context.WithValue(s.connCtx, sessionCtxKey{}, sess), conn)
 }
 
 // Shutdown stops accepting, cancels every per-connection context, and drains
