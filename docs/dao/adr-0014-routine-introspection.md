@@ -30,8 +30,10 @@ type RoutineInfo struct {
 	Schema string
 	Name   string
 	Kind   RoutineKind
-	// Signature is a display-oriented "(args) -> result" rendering —
-	// the routine NAME is not repeated in it, and it is never parsed.
+	// Signature is a display-oriented rendering: "(args) -> result" for
+	// functions, "(args)" for procedures (no result part — r3, both
+	// drivers). The routine NAME is not repeated in it, and it is never
+	// parsed.
 	Signature string
 }
 

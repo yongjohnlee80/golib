@@ -26,9 +26,11 @@ Error and the two sides evolve together):
 ```go
 func Dial(ctx context.Context, addr string, codec Codec, opts ...ClientOption) (*Client, error)
 // Options: ClientLogger(logger.Logger), WithDialer(*net.Dialer),
-// ClientMaxMessageBytes(int64) (default 16 MiB, INBOUND window;
-// independent of the staged outbound cap, which is enforced during
-// serialization exactly like the server's),
+// ClientMaxMessageBytes(int64) — ONE option bounding BOTH directions
+// (default 16 MiB): the inbound read window AND the staged outbound
+// frame, the latter enforced during serialization by the same capping
+// writer the server uses (r3 — a concrete cap with an API, not an
+// unstated "independent" bound),
 // ClientWriteTimeout(time.Duration) (default 30s, per frame),
 // NotificationBuffer(int) (default 128),
 // OnNotification(func(method string, params []any)).
@@ -70,14 +72,20 @@ Semantics:
   responses to per-call channels; writes serialize under a mutex through
   the same staged-frame path as the server (encode fully, bounded, then
   write).
-- **Cancellation bounds the WHOLE call path (r2):** write-lock
-  acquisition selects on ctx; the network write of a staged frame is
-  bounded by `ClientWriteTimeout` (via write deadline). If ctx expires or
-  the deadline fires after a frame MAY have partially reached the wire,
-  the connection is poisoned (a half-written frame is unrecoverable
-  stream state); expiry before any byte was written returns promptly with
-  the connection intact. Response-wait cancellation abandons the WAIT,
-  not the request; a late response to an abandoned (never-reused) id is
+- **Cancellation bounds admission, network write, and the response wait
+  (r3 — the honest scope):** write-lock acquisition selects on ctx; the
+  network write of a staged frame is bounded by `ClientWriteTimeout`
+  (via write deadline). STAGING itself is synchronous trusted work —
+  `Codec.Write` has no context by design — and is bounded structurally
+  instead: ctx is checked before staging begins and after it completes,
+  and the staged frame is byte-capped (`ClientMaxMessageBytes`) with the
+  codec's encoder depth bound underneath, so staging cannot run
+  unboundedly regardless of ctx. If ctx expires or the write deadline
+  fires after a frame MAY have partially reached the wire, the
+  connection is poisoned (a half-written frame is unrecoverable stream
+  state); expiry before any byte was written returns promptly with the
+  connection intact. Response-wait cancellation abandons the WAIT, not
+  the request; a late response to an abandoned (never-reused) id is
   dropped and logged at debug.
 - **Notifications — bounded queue, never reader-blocking (r2):** the
   reader appends inbound notifications to a bounded queue

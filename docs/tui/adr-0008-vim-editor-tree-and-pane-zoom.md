@@ -101,10 +101,11 @@ type ModeChangedEvent struct { Owner tui.NodeID; Mode EditorMode }
   cursor grapheme, `P` before; a line-wise register pastes as new
   line(s) below/above, cursor to first pasted line.
 - **Counts:** digits `1-9` (then `0-9`) accumulate a count in Normal and
-  Visual modes; `0` with no pending count is the motion. Count applies to
-  motions (`3w`, `2}`), `x`, `dd`, `yy`, `o`/`O` are NOT count-able in
-  v1. Count caps at 10⁶ (further digits ignored); Esc clears pending
-  count.
+  Visual modes; `0` with no pending count is the motion. Count applies
+  to motions (`3w`, `2}`) in both modes, and to `x`, `dd`, `yy` in
+  NORMAL mode only (r3): Visual `d`/`y`/`x` consume the selection and
+  ignore any pending count. `o`/`O` are not count-able in v1. Count caps
+  at 10⁶ (further digits ignored); Esc clears pending count.
 - **No general operator grammar in v1** (r2 — the operator-pending claim
   is withdrawn). The command set is exactly: atomic commands, motions,
   and three DOUBLE-KEY commands (`dd`, `yy`, `gg`) implemented with a
@@ -175,9 +176,13 @@ func (e *Editor) Register() (text string, linewise bool)
 ```
 
 Undo is a bounded snapshot stack (64 entries) of whole-buffer states
-pushed per atomic edit group (an Insert-mode session from entry to Esc is
-ONE group; each Normal-mode edit and each paste is one group), with a
-redo stack cleared on new edits.
+pushed per atomic edit group, with a redo stack cleared on new edits.
+**Group boundaries (r3 — one rule, no overlap):** an Insert-mode session
+from entry to exit is ONE group, and a bracketed paste DURING Insert
+stays inside that group (paste is Insert input); each Normal-mode edit —
+including Normal-mode `p`/`P` — is its own group. Focus loss ENDS the
+current Insert group (edits after refocus start a new group) without
+leaving Insert mode; Esc/chord and SetValue end it as already specified.
 
 **SetValue is a document-boundary operation (r2):** it settles/commits
 any pending chord rune and pending count/double-key state, exits to
@@ -252,11 +257,19 @@ func (n *TreeNode) Reset()
 
 Rules: collapsing a loading node invalidates its generation (the spinner
 stops; the eventual result is ignored); `SetRoots` invalidates every
-outstanding generation. **Node identity/ownership:** IDs must be unique
-among siblings (`SetChildren` panics on duplicates — construction bug);
-a node has at most one parent — adopting an already-parented node panics
-(cycles impossible by construction); `ExpandPath` resolves IDs level by
-level, so sibling uniqueness is exactly sufficient.
+outstanding generation. **Node identity/ownership (r3 — Tree-owned, not
+merely parent-linked):** attaching a node — via `SetRoots` OR
+`SetChildren` — stamps it and its subtree with the owning `*Tree`.
+`SetRoots`/`SetChildren` panic on: a node already owned (by ANY tree,
+this one included — which rejects duplicate pointers, reuse across
+trees, and re-attachment of a live root), a duplicate ID among the new
+siblings, or adoption of the target's own ancestor (walk-up check —
+root→child→root is impossible). Ownership is released when a subtree is
+detached (replaced out by a later `SetChildren`) or by `Reset()`;
+released nodes may be re-attached. Node mutations (`SetLabel`,
+lifecycle calls) mark the OWNING tree dirty; on an unowned node they
+only update state. `ExpandPath` resolves IDs level by level, so
+sibling uniqueness is exactly sufficient.
 
 Behavior: `j/k`/arrows move the cursor over the FLATTENED visible rows
 (virtualized rendering reusing the List viewport arithmetic); `l`/`Enter`/
@@ -291,9 +304,11 @@ complementary rules:
    lives inside the pane being hidden — via a new runtime query
    `Context.FocusWithin(c Component) bool` (additive; walks the focused
    node's parent links) — and if so moves it to the retained pane with
-   the existing `focusFirst` walk (falling back to the Split's own
-   subtree root when nothing is focusable). `Restore` does NOT move
-   focus back (the user's focus stays where they are).
+   the existing `focusFirst` walk. If nothing in the retained pane is
+   focusable, focus is CLEARED (r3 — never parked on a non-Focusable
+   subtree root), leaving rule 2's post-layout repair as the single
+   authority. `Restore` does NOT move focus back (the user's focus stays
+   where they are).
 2. **Runtime safety net (additive, benefits every future hider):** after
    any layout pass, if the focused node is no longer `visible()`, the
    runtime clears focus to the root scope's first focusable — no
