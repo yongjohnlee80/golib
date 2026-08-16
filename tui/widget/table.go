@@ -58,6 +58,12 @@ func NewTable[T any](cols []TableColumn[T], opts ...ListOption[T]) *Table[T] {
 	}
 	all := append([]ListOption[T]{WithItems[T](nil, t.renderRow)}, opts...)
 	t.list = NewList(all...)
+	// The COLUMNS render a table's rows, always. A caller passing
+	// WithItems/WithSource is supplying DATA, and its render func would
+	// otherwise silently replace the column renderer — producing column
+	// headers above rows drawn some other way (autodb M6: a history
+	// table that showed the raw script under every header).
+	t.list.render = t.renderRow
 	t.widths = make([]int, len(cols))
 	return t
 }

@@ -419,3 +419,27 @@ func TestEditorEscBubblesWhenIdle(t *testing.T) {
 		t.Fatal("Esc must keep bubbling once Visual is left")
 	}
 }
+
+// A Table renders through its COLUMNS even when the caller supplies rows
+// with WithItems (whose render func is for plain lists).
+func TestTableIgnoresCallerRowRenderer(t *testing.T) {
+	type row struct{ a, b string }
+	cols := []widget.TableColumn[row]{
+		{Title: "A", Width: 10, Cell: func(r row) string { return r.a }},
+		{Title: "B", Cell: func(r row) string { return r.b }},
+	}
+	tbl := widget.NewTable(cols,
+		widget.WithItems([]row{{a: "alpha", b: "beta"}},
+			func(r row) string { return "RAW-" + r.a })) // must NOT win
+	sh := newShell(tbl)
+	h := startApp(t, sh, 40, 6)
+	h.settle()
+
+	grid := h.grid()
+	if strings.Contains(grid, "RAW-") {
+		t.Fatalf("caller render func overrode the column renderer:\n%s", grid)
+	}
+	if !strings.Contains(grid, "alpha") || !strings.Contains(grid, "beta") {
+		t.Fatalf("column cells missing:\n%s", grid)
+	}
+}
