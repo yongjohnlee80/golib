@@ -166,6 +166,7 @@ func (a *App) unmountTree(n *node) {
 // the node tables — from that instant addressed deliveries dead-letter
 // (ADR-0005 §2.8).
 func (a *App) unmountNode(n *node) {
+	a.trace(TraceEvent{Kind: TraceUnmount, Node: n.id})
 	for i := len(n.children) - 1; i >= 0; i-- {
 		a.unmountNode(n.children[i])
 	}

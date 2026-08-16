@@ -43,6 +43,7 @@ type appConfig struct {
 	widthPolicy      WidthPolicy
 	taskDrainTimeout time.Duration
 	logger           logger.Logger
+	trace            TraceFunc
 }
 
 // defaultAppConfig returns the documented defaults (ADR-0005 §2.1).

@@ -43,6 +43,7 @@ func (a *App) requestFocus(n *node) {
 		// Entering a trap: remember where focus came from
 		// (ADR-0004 §2.6.3).
 		a.scopeStack = append(a.scopeStack, scopeEntry{scope: newScope.id, restore: a.focused})
+		a.trace(TraceEvent{Kind: TraceScope, Node: newScope.id, Prev: a.focused, Detail: "open"})
 	}
 	a.setFocus(n.id)
 }
@@ -56,6 +57,7 @@ func (a *App) setFocus(id NodeID) {
 	}
 	old := a.focused
 	a.focused = id
+	a.trace(TraceEvent{Kind: TraceFocus, Node: id, Prev: old})
 	if on := a.nodes[old]; on != nil {
 		a.bubble(on, FocusEvent{Gained: false})
 	}
@@ -156,8 +158,12 @@ func (a *App) focusStep(delta int) {
 func (a *App) repairFocus() {
 	ring := a.focusRing(a.currentScope())
 	if len(ring) == 0 {
+		a.trace(TraceEvent{Kind: TraceFocusRepair, Prev: a.focused,
+			Detail: "no focusable in scope"})
 		a.focused = 0
 		return
 	}
+	a.trace(TraceEvent{Kind: TraceFocusRepair, Node: ring[0].id, Prev: a.focused,
+		Detail: "re-homed to the first focusable in scope"})
 	a.setFocus(ring[0].id)
 }

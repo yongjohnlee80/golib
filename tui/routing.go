@@ -98,12 +98,33 @@ func (a *App) globalKey(e KeyEvent) {
 // bubble walks n's ancestor chain delivering ev until a handler consumes it
 // (ADR-0004 §2.5). Returns whether anything consumed.
 func (a *App) bubble(n *node, ev Event) bool {
+	start := n
 	for ; n != nil; n = n.parent {
 		if n.comp.HandleEvent(ev) {
+			a.traceRouted(ev, start, n.id)
 			return true
 		}
 	}
+	a.traceRouted(ev, start, 0)
 	return false
+}
+
+// traceRouted records which node consumed a key (0 = nobody). Only keys:
+// mouse and paste traffic would drown the trace without adding much.
+func (a *App) traceRouted(ev Event, from *node, consumer NodeID) {
+	if !a.tracing() {
+		return
+	}
+	k, ok := ev.(KeyEvent)
+	if !ok || k.Kind == KeyRelease {
+		return
+	}
+	fromID := NodeID(0)
+	if from != nil {
+		fromID = from.id
+	}
+	a.trace(TraceEvent{Kind: TraceKey, Node: consumer, Prev: fromID,
+		Detail: k.describe()})
 }
 
 // deliverAddressed hands an addressed event (TickEvent / TaskResult /

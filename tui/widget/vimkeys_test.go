@@ -5,6 +5,7 @@ package widget_test
 // so the host can bind pane motion, quit, and friends.
 
 import (
+	"iter"
 	"strings"
 	"testing"
 
@@ -315,4 +316,63 @@ func TestTreeReloadSubtree(t *testing.T) {
 	})
 	h.barrier(sh)
 	h.wantNotContains("stale.sql")
+}
+
+// lateContent builds its focusable child during Init — the common shape
+// for content whose data arrives with the float. Focus seeding must
+// still reach it: focusFirst at Show() time cannot focus a component
+// that is not mounted yet, and treating that as "no focus stop" left
+// the modal trapping every key but Esc.
+type lateContent struct {
+	widget.Base
+	ctx  *tui.Context
+	list *widget.List[string]
+}
+
+func (c *lateContent) Init(ctx *tui.Context) {
+	c.Base.Init(ctx)
+	c.ctx = ctx
+	c.list = widget.NewList(widget.WithItems([]string{"one", "two"},
+		func(s string) string { return s }))
+	ctx.Mount(c.list)
+}
+func (c *lateContent) Layout(cs tui.Constraints) tui.Size {
+	sz := c.ctx.LayoutChild(c.list, cs)
+	c.ctx.PlaceChild(c.list, tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H})
+	return cs.Constrain(sz)
+}
+func (c *lateContent) Render(tui.Surface)            {}
+func (c *lateContent) HandleEvent(ev tui.Event) bool { return false }
+func (c *lateContent) Add(...tui.Component)          {}
+func (c *lateContent) Remove(tui.Component)          {}
+func (c *lateContent) Children() iter.Seq[tui.Component] {
+	return func(yield func(tui.Component) bool) {
+		if c.list != nil {
+			yield(c.list)
+		}
+	}
+}
+
+func TestModalFloatSeedsFocusIntoLateMountedContent(t *testing.T) {
+	body := &lateContent{}
+	f := widget.NewFloat(body, widget.WithModal(true))
+	host := widget.NewOverlayHost(widget.NewText("背景"))
+	sh := newShell(host)
+	h := startApp(t, sh, 40, 10)
+	h.onLoop(func() {
+		host.Attach(f)
+		f.Show()
+	})
+	h.barrier(sh)
+	h.settle()
+
+	// The list must own focus, so its keys work: j moves the cursor.
+	h.inject(key('j'))
+	h.barrier(sh)
+	var idx int
+	var ok bool
+	h.onLoop(func() { idx, ok = body.list.Selected() })
+	if !ok || idx != 1 {
+		t.Fatalf("modal focus never reached the late-mounted list: cursor=%d ok=%v", idx, ok)
+	}
 }
