@@ -32,6 +32,9 @@ var (
 type ClientOption func(*clientConfig)
 
 type clientConfig struct {
+	// network is the dial network ("tcp" or "unix"). Defaults to "tcp"
+	// so every existing caller is unaffected.
+	network string
 	logger       logger.Logger
 	dialer       *net.Dialer
 	maxMsgBytes  int64
@@ -43,6 +46,18 @@ type clientConfig struct {
 // ClientLogger sets the client's logger (default Nop).
 func ClientLogger(l logger.Logger) ClientOption {
 	return func(c *clientConfig) { c.logger = l }
+}
+
+// ClientNetwork sets the dial network — "tcp" (default) or "unix".
+//
+// A unix socket is the same protocol over different plumbing: addressed
+// by a filesystem path, unreachable from another machine, and guarded by
+// file permissions rather than by whatever the address happens to allow.
+// Services that hold credentials and only ever serve this machine should
+// prefer it; the network belongs in an option rather than hard-coded
+// because only the caller knows which it configured.
+func ClientNetwork(network string) ClientOption {
+	return func(c *clientConfig) { c.network = network }
 }
 
 // WithDialer replaces the net.Dialer used by Dial.
@@ -122,6 +137,7 @@ func Dial(ctx context.Context, addr string, codec Codec, opts ...ClientOption) (
 	}
 	cfg := clientConfig{
 		logger:       logger.Nop{},
+		network:      "tcp",
 		dialer:       &net.Dialer{},
 		maxMsgBytes:  16 << 20,
 		writeTimeout: 30 * time.Second,
@@ -144,7 +160,10 @@ func Dial(ctx context.Context, addr string, codec Codec, opts ...ClientOption) (
 	if cfg.logger == nil {
 		cfg.logger = logger.Nop{}
 	}
-	conn, err := cfg.dialer.DialContext(ctx, "tcp", addr)
+	if cfg.network == "" {
+		cfg.network = "tcp"
+	}
+	conn, err := cfg.dialer.DialContext(ctx, cfg.network, addr)
 	if err != nil {
 		return nil, err
 	}

@@ -8,7 +8,9 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -369,5 +371,77 @@ func TestClientDispatchStopsAfterPanic(t *testing.T) {
 	defer mu.Unlock()
 	if len(calls) != 1 {
 		t.Fatalf("callbacks after panic = %v, want exactly the first", calls)
+	}
+}
+
+// A unix socket is the same protocol over different plumbing, so the
+// client must round-trip over one exactly as it does over TCP. Asserted
+// end to end rather than by inspecting the option, because the point of
+// the option is the dial it produces.
+func TestClientNetworkUnixRoundTrip(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "rpc.sock")
+
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatalf("listen unix: %v", err)
+	}
+	srv := rpc.New(msgpackrpc.New(nil), rpc.WithListener(ln))
+	srv.Handle("echo", func(_ context.Context, req *rpc.Request) (any, error) {
+		if len(req.Params) != 1 {
+			return nil, fmt.Errorf("want 1 param, got %d", len(req.Params))
+		}
+		return req.Params[0], nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	errc := make(chan error, 1)
+	go func() { errc <- srv.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		<-errc
+	})
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dialCancel()
+	c, err := rpc.Dial(dialCtx, sock, msgpackrpc.New(nil), rpc.ClientNetwork("unix"))
+	if err != nil {
+		t.Fatalf("Dial unix: %v", err)
+	}
+	defer c.Close()
+
+	got, err := c.Call(dialCtx, "echo", "over a socket file")
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if s, _ := got.(string); s != "over a socket file" {
+		t.Fatalf("echo = %#v, want %q", got, "over a socket file")
+	}
+}
+
+// The default must stay TCP so every existing caller is unaffected by
+// the new option existing.
+func TestClientNetworkDefaultsToTCP(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := rpc.New(msgpackrpc.New(nil), rpc.WithListener(ln))
+	srv.Handle("ping", func(_ context.Context, _ *rpc.Request) (any, error) { return "pong", nil })
+	ctx, cancel := context.WithCancel(context.Background())
+	errc := make(chan error, 1)
+	go func() { errc <- srv.Run(ctx) }()
+	t.Cleanup(func() { cancel(); <-errc })
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dialCancel()
+	c, err := rpc.Dial(dialCtx, ln.Addr().String(), msgpackrpc.New(nil)) // no ClientNetwork
+	if err != nil {
+		t.Fatalf("Dial default: %v", err)
+	}
+	defer c.Close()
+	if got, cerr := c.Call(dialCtx, "ping"); cerr != nil || got != "pong" {
+		t.Fatalf("ping = %#v, err = %v", got, cerr)
 	}
 }
