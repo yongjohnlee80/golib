@@ -1,12 +1,14 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 8)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 9)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
   0's frame coalescing, a wrong security claim about mTLS, and r2's internal
-  contradictions. See Review history.
-  Lands on `tui-web`.)
+  contradictions. **Rev 9 (2026-08-22) reverses one decision on Johno's
+  instruction:** §2.8's refusal of password auth becomes "permitted, documented
+  as the weakest option, with the throttle and allowlist stated as
+  requirements". See Review history. Lands on `tui-web`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -236,8 +238,42 @@ p, err = auth.NewPolicy(auth.All(
 - The **ticket minted over the user's existing SSH session is the default**
   mechanism; a signed `ssh-keygen -Y sign` challenge is optional for users who
   cannot run the CLI themselves. mTLS is the browser-native alternative.
-- **Password auth is not accepted for WebTUI**, though `golib/auth` supports it
-  for other callers.
+- **Password auth is PERMITTED but NOT RECOMMENDED (rev 9, Johno 2026-08-22 —
+  reverses rev 1's refusal).** `golib/auth`'s `password` factor may appear in a
+  WebTUI policy. It is documented as the weakest supported option, and the
+  reasons are specific to *this* consumer rather than general grumbling about
+  passwords:
+
+  - **What is behind the credential is a shell.** A network-reachable port whose
+    only guard is a reusable secret is the classic mass-exploitation target;
+    every other accepted mechanism here fails closed against an attacker who has
+    only a password list.
+  - **No phishing resistance.** A lookalike page harvests a password and it keeps
+    working. A ticket is single-use and origin-bound, and mTLS and the SSHSIG
+    challenge are bound to a key the page cannot exfiltrate.
+  - **No replay resistance.** A password is long-lived and reusable by
+    construction; the other three mechanisms are each spent, bound, or
+    key-backed.
+
+  **Therefore, when password is enabled, these are REQUIREMENTS and not advice:**
+
+  1. Wrap it in `auth.Throttle` with a `Tracker` (ADR-0001 §2.6b). Per-subject
+     and per-source-address backoff is the only thing standing between a
+     reusable secret and an offline-speed online guessing attack.
+  2. Constrain it: `All(Leaf(ipallow), Leaf(throttledPassword))`. An IP allowlist
+     cannot authenticate — ADR-0001 §2.2.2 enforces that structurally — but it
+     can narrow who is allowed to try.
+  3. Keep the default Argon2id hashing (ADR-0001 §2.4). PBKDF2 is for an explicit
+     FIPS requirement, not for saving CPU on a login path.
+  4. Prefer `Any(ticket, mtls, sshChallenge, throttledPassword)` so password is
+     the fallback rather than the front door.
+
+  `tui/web` does not *refuse* a password-only policy, because the policy is the
+  caller's to compose and a package that second-guesses it would be lying about
+  where the decision lives. It documents the above at `Config.Policy`, in the
+  README, and in the package doc, and ships
+  `web.PasswordPolicyExample` so the recommended shape is copy-pasteable rather
+  than reconstructed from prose.
 - An IP allowlist is **optional and never identity-bearing** — it may only
   constrain an identity-bearing proof, never satisfy the policy alone. ADR-0001
   §2.2 enforces that structurally rather than by documentation.
@@ -656,6 +692,20 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **rev 9 (2026-08-22, Johno — decision reversal, not a review finding).**
+  §2.8 rev 1 said "password auth is not accepted for WebTUI". Johno's
+  instruction: allow it, and document it as not recommended. Folded as a
+  *permission with named requirements* rather than a bare allowance, because the
+  reasons password is weaker HERE are specific and worth writing down — what sits
+  behind the credential is a shell, a password has no phishing resistance where a
+  single-use origin-bound ticket does, and it is replayable where the other three
+  mechanisms are spent, bound or key-backed. So the ADR now requires
+  `auth.Throttle` and an `ipallow` constraint alongside it, keeps Argon2id, and
+  recommends password as the fallback arm of an `Any` rather than the front door.
+  `tui/web` deliberately does **not** refuse a password-only policy: the policy is
+  the caller's to compose, and a package that silently second-guesses it would be
+  lying about where the decision lives.
 
 - **r8 (2026-08-21, lector — `approved_with_amendments`; all three applied in
   rev 8).** The host-state boundary was accepted as closing the

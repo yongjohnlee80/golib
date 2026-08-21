@@ -49,7 +49,29 @@ type Config struct {
 	// authentication, which is mandatory regardless.
 	TLS *tls.Config
 
-	// Policy authenticates every attach. Required.
+	// Policy authenticates every attach. Required — there is no
+	// unauthenticated mode, not even on loopback.
+	//
+	// # On password authentication
+	//
+	// A password factor is PERMITTED and is the weakest supported mechanism
+	// (ADR-0009 §2.8 rev 9). What sits behind this credential is a shell, and:
+	//
+	//   - it has no phishing resistance, where a single-use origin-bound ticket
+	//     does and where mTLS and an SSHSIG challenge are bound to a key a
+	//     lookalike page cannot exfiltrate;
+	//   - it is replayable by construction, where the other three mechanisms are
+	//     each spent, bound, or key-backed.
+	//
+	// So when a password factor is used it MUST be wrapped in [auth.Throttle]
+	// with a Tracker, SHOULD be constrained by a contextual factor such as an IP
+	// allowlist, and SHOULD be the fallback arm of an Any rather than the front
+	// door. [PasswordPolicyExample] is that shape as executable code.
+	//
+	// This package does not REFUSE a weaker policy: the policy is the caller's
+	// to compose, and a package that silently second-guessed it would be lying
+	// about where the decision lives. It refuses only to pretend the weaker
+	// shape is equivalent.
 	Policy auth.Policy
 
 	// AllowedOrigins are the exact Origin header values permitted at the
