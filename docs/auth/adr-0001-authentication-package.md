@@ -473,10 +473,12 @@ Acceptance criteria:
 10. Redaction across `String`, every relevant `fmt` verb, JSON **and** text
     marshaling, pointers, nested requests, wrapped errors and audit records: a
     captured sink contains no secret material in any of them.
-11. The **corrected** ADR-0009 WebTUI policy compiles and is exercised:
-    `NewPolicy(Any(Leaf(ticket), Leaf(mtls), Leaf(sshChallenge)))` — optionally
-    `NewPolicy(All(Leaf(ipallow), Any(...)))` — with IP never satisfying it alone
-    and password rejected as a mechanism for that consumer.
+11. The **corrected** ADR-0009 WebTUI policy compiles and is exercised, both
+    forms written out in full:
+    `NewPolicy(Any(Leaf(ticket), Leaf(mtls), Leaf(sshChallenge)))` and
+    `NewPolicy(All(Leaf(ipallow), Any(Leaf(ticket), Leaf(mtls), Leaf(sshChallenge))))`
+    — with IP never satisfying either alone, and password rejected as a mechanism
+    for that consumer.
 12. `go vet` clean, race-clean, `doc.go` + `README.md` present, every exported
     symbol documented, tests stdlib-only.
 
