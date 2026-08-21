@@ -171,7 +171,7 @@ func TestManager_IdleEvictionAfterDetach(t *testing.T) {
 		t.Fatal("an attached session was evicted for idleness")
 	}
 
-	m.Detach(s.ID())
+	m.Detach(s.ID(), s.Lease())
 	// Inside the window, it survives.
 	m.Evict()
 	if m.Len() != 1 {
@@ -231,7 +231,7 @@ func TestManager_NoGoroutineLeak(t *testing.T) {
 	// Half disconnect and are evicted; half are shut down.
 	for i, s := range sessions {
 		if i%2 == 0 {
-			m.Detach(s.ID())
+			m.Detach(s.ID(), s.Lease())
 		}
 	}
 	now = now.Add(time.Hour)
@@ -309,7 +309,7 @@ func TestManager_StaleSessionDoesNotDenyANewOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.Detach(s.ID())
+	m.Detach(s.ID(), s.Lease())
 	now = now.Add(time.Hour)
 
 	// The cap is 1 and a session exists, but it is dead. A refusal here would
@@ -327,7 +327,7 @@ func TestManager_UnknownSessionAndShutdownBehavior(t *testing.T) {
 	}
 	// Detach and Close on an unknown id are no-ops, not panics: a client can
 	// disconnect after its session was already evicted.
-	m.Detach("nope")
+	m.Detach("nope", 1)
 	m.Close("nope")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -419,7 +419,7 @@ func TestManager_ConcurrentLifecycle(t *testing.T) {
 				return // the cap is legitimately reachable here
 			}
 			_, _ = m.Attach(s.ID(), identity(subject), hello())
-			m.Detach(s.ID())
+			m.Detach(s.ID(), s.Lease())
 			m.Evict()
 			m.Close(s.ID())
 		}(i)

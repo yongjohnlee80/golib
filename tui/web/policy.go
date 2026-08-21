@@ -1,6 +1,8 @@
 package web
 
 import (
+	"errors"
+
 	"github.com/yongjohnlee80/golib/auth"
 )
 
@@ -57,6 +59,15 @@ func RecommendedPolicy(mechanisms []auth.Factor, constrain ...auth.Factor) (auth
 // package that silently second-guessed it would be lying about where the
 // decision lives. It does refuse to pretend the weaker shape is equivalent.
 //
+// # The shipped client does not collect a password
+//
+// Password auth is wired server-side — the credential mapping reads `subject`
+// and `password` from the hello — but the client in this package has no login
+// form and never sends them. So a password policy is only reachable with a
+// custom client today. That is a gap, not a design position, and it is stated
+// here rather than left for someone to discover after configuring one
+// (lector r1).
+//
 //	// password is *password.Factor; tracker is an auth.Tracker.
 //	throttled, err := auth.NewThrottle(password, tracker)
 //	if err != nil {
@@ -72,6 +83,24 @@ func PasswordPolicyExample(
 	stronger []auth.Factor,
 	constrain ...auth.Factor,
 ) (auth.Policy, error) {
+	// The constraint is REQUIRED here, not merely recommended.
+	//
+	// The helper's whole purpose is to be the recommended shape, and it
+	// previously accepted zero constraints while its documentation described one
+	// — so it produced a policy weaker than it claimed (lector r1). A caller who
+	// genuinely has no contextual factor should compose [RecommendedPolicy]
+	// directly and own that decision explicitly, rather than get it from a
+	// function whose name says the constraint is present.
+	if len(constrain) == 0 {
+		return nil, errors.New("web.PasswordPolicyExample: a contextual constraint is " +
+			"required — use RecommendedPolicy directly to build an unconstrained " +
+			"password policy deliberately")
+	}
+	for _, f := range constrain {
+		if f == nil {
+			return nil, errors.New("web.PasswordPolicyExample: nil constraint")
+		}
+	}
 	throttled, err := auth.NewThrottle(password, tracker)
 	if err != nil {
 		return nil, err

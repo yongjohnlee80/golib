@@ -157,15 +157,19 @@
     return { c: e.ctrlKey, a: e.altKey, s: e.shiftKey, m: e.metaKey };
   }
 
-  // reserved mirrors ReservedShortcut in Go. Injected, not reimplemented.
+  // reserved walks the INJECTED rule table. There is no second implementation:
+  // the rules come from the same Go values reservedShortcut evaluates, because
+  // two hand-written copies of a security-relevant table drift and nothing
+  // notices.
   function reserved(e) {
-    const cmdOrCtrl = e.ctrlKey || e.metaKey;
-    if (e.key === 'F5' || e.key === 'F11' || e.key === 'F12') return true;
-    if (e.key === 'Tab' && e.ctrlKey) return true;
-    if (!cmdOrCtrl) return false;
-    const k = e.key.toLowerCase();
-    if (k === 't' || k === 'n' || k === 'w' || k === 'l' || k === 'r') return true;
-    if (k === 'q') return e.metaKey;
+    for (const r of CFG.reserved) {
+      const key = r.lower ? e.key.toLowerCase() : e.key;
+      if (key !== r.key) continue;
+      if (!r.need) return true;
+      if (r.need === 'ctrl' && e.ctrlKey) return true;
+      if (r.need === 'meta' && e.metaKey) return true;
+      if (r.need === 'cmdOrCtrl' && (e.ctrlKey || e.metaKey)) return true;
+    }
     return false;
   }
 
@@ -269,7 +273,12 @@
 
   // --- connect -----------------------------------------------------------
   function connect() {
-    const cred = takeTicket();
+    // A mutable holder, so the reference can be dropped after the attempt. The
+    // permanent open listener previously closed over the ticket and kept it
+    // reachable for the page's whole lifetime (lector r1). No claim is made that
+    // the string is erased from memory — a JS engine offers no such guarantee —
+    // only that our code stops holding it.
+    let cred = takeTicket();
     if (cred.session) sessionID = cred.session;
     const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(scheme + '//' + window.location.host + CFG.path);
@@ -287,6 +296,8 @@
         dark: window.matchMedia('(prefers-color-scheme: dark)').matches,
         fontok: fontAgrees(),
       });
+      // The credential has been presented; drop our reference to it.
+      cred = { ticket: '', session: '' };
       capture.focus({ preventScroll: true });
     });
 

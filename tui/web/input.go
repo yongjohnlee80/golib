@@ -1,6 +1,7 @@
 package web
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -100,37 +101,85 @@ func NamedKeys() []string {
 	for k := range namedKeys {
 		out = append(out, k)
 	}
-	sortStrings(out)
+	slices.Sort(out)
 	return out
 }
 
-// reservedShortcut reports whether a chord belongs to the BROWSER and must not
-// be forwarded or preventDefault'ed (§2.9 rule 1).
+// reservedRule is one browser-owned chord, in a form the client can evaluate.
+//
+// A DATA table rather than Go control flow, because the client has to make the
+// same decision synchronously and the only way two implementations stay in
+// agreement is for there to be one implementation. The rules are injected into
+// the served page and the client walks them; nothing about them is written twice.
+type reservedRule struct {
+	// Key matches KeyboardEvent.key. Compared case-insensitively when Lower is
+	// set, exactly otherwise.
+	Key string `json:"key"`
+
+	// Lower means compare against the lower-cased key.
+	Lower bool `json:"lower,omitempty"`
+
+	// Need names the modifier the chord requires: "" (none), "ctrl", "meta",
+	// "cmdOrCtrl".
+	Need string `json:"need,omitempty"`
+}
+
+// reservedRules are the chords the BROWSER keeps (§2.9 rule 1).
 //
 // Stealing these is how a web terminal becomes hostile: a user who cannot open a
-// new tab, reload, or reach devtools has lost control of their own browser. The
-// README states which chords the app therefore cannot see.
-func reservedShortcut(r KeyReport) bool {
-	cmdOrCtrl := r.Ctrl || r.Meta
-	switch r.Key {
-	case "F5", "F11", "F12":
-		return true
-	case "Tab":
-		return r.Ctrl // Ctrl+Tab switches tabs
+// tab, reload, or reach devtools has lost control of their own browser. The
+// README lists what an App therefore cannot see.
+var reservedRules = []reservedRule{
+	{Key: "F5"},
+	{Key: "F11"},
+	{Key: "F12"},
+	{Key: "Tab", Need: "ctrl"}, // Ctrl+Tab switches tabs
+	{Key: "t", Lower: true, Need: "cmdOrCtrl"}, // new tab
+	{Key: "n", Lower: true, Need: "cmdOrCtrl"}, // new window
+	{Key: "w", Lower: true, Need: "cmdOrCtrl"}, // close tab
+	{Key: "l", Lower: true, Need: "cmdOrCtrl"}, // address bar
+	{Key: "r", Lower: true, Need: "cmdOrCtrl"}, // reload
+	{Key: "q", Lower: true, Need: "meta"},      // Cmd+Q quits the browser
+}
+
+// ReservedRules returns the browser-owned chord table, for injection into the
+// client. Copied, so a caller cannot alter what the server enforces.
+func ReservedRules() []reservedRule { return slices.Clone(reservedRules) }
+
+// matches evaluates one rule against a report.
+func (r reservedRule) matches(k KeyReport) bool {
+	key := k.Key
+	if r.Lower {
+		key = strings.ToLower(key)
 	}
-	if !cmdOrCtrl {
+	if key != r.Key {
 		return false
 	}
-	switch strings.ToLower(r.Key) {
-	case "t", "n", "w", "l", "r":
+	switch r.Need {
+	case "":
 		return true
-	case "q":
-		return r.Meta // Cmd+Q quits the browser on macOS
+	case "ctrl":
+		return k.Ctrl
+	case "meta":
+		return k.Meta
+	case "cmdOrCtrl":
+		return k.Ctrl || k.Meta
 	}
 	return false
 }
 
-// ReservedShortcut is the exported form, for the generated client tables.
+// reservedShortcut reports whether a chord belongs to the BROWSER and must not
+// be forwarded or preventDefault'ed (§2.9 rule 1).
+func reservedShortcut(r KeyReport) bool {
+	for _, rule := range reservedRules {
+		if rule.matches(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// ReservedShortcut is the exported form, for tests and callers.
 func ReservedShortcut(r KeyReport) bool { return reservedShortcut(r) }
 
 // decoder applies §2.9's resolution order.
@@ -337,14 +386,4 @@ func wheelButton(dir string) (tui.MouseButton, bool) {
 // focus, not component focus, which the App's focus manager owns.
 func decodeFocus(gained bool) tui.Event {
 	return tui.FocusEvent{Gained: gained, Terminal: true}
-}
-
-// sortStrings is a tiny insertion sort, so NamedKeys returns a stable order
-// without pulling in a dependency for a 24-element slice.
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
 }

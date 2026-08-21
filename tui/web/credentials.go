@@ -5,6 +5,7 @@ import (
 	"net/netip"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/auth/mtls"
 	"github.com/yongjohnlee80/golib/auth/token"
 )
 
@@ -53,6 +54,19 @@ func authRequest(r *http.Request, m clientMessage) *auth.Request {
 		if v := r.Header.Values(name); len(v) > 0 {
 			req.Metadata[http.CanonicalHeaderKey(name)] = v
 		}
+	}
+
+	// TLS state, WITHOUT which auth/mtls can never succeed.
+	//
+	// This was omitted, so a request arriving with a verified client-certificate
+	// chain reached the factor as TLS=nil and mtls returned ErrNoVerifiedChain
+	// every time — the mTLS branch of §2.8's policy was unreachable in practice
+	// (lector r1). The projection goes through mtls.FromConnectionState, which
+	// refuses to carry PeerCertificates: any self-signed certificate lands there,
+	// so a later reader must not be able to authenticate from one (ADR-0001
+	// §2.6a).
+	if r.TLS != nil {
+		req.TLS = mtls.FromConnectionState(r.TLS)
 	}
 	return req
 }

@@ -17,6 +17,7 @@ func handlerFor(t *testing.T, opts ...HandlerOption) *Handler {
 		Addr:           "127.0.0.1:8080",
 		Policy:         testPolicy(t),
 		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
 	}, m, opts...)
 	if err != nil {
 		t.Fatal(err)
@@ -34,9 +35,11 @@ func TestNewHandler_ValidatesConfig(t *testing.T) {
 	}
 	bad := map[string]Config{
 		"exposed plaintext": {Addr: "0.0.0.0:8080", Policy: testPolicy(t),
+			AllowedOrigins: []string{"https://x.test"}, ExpectedHost: "x.test"},
+		"no policy":  {Addr: "127.0.0.1:8080", AllowedOrigins: []string{"https://x.test"}, ExpectedHost: "x.test"},
+		"no origins": {Addr: "127.0.0.1:8080", Policy: testPolicy(t), ExpectedHost: "x.test"},
+		"no expected host": {Addr: "127.0.0.1:8080", Policy: testPolicy(t),
 			AllowedOrigins: []string{"https://x.test"}},
-		"no policy":  {Addr: "127.0.0.1:8080", AllowedOrigins: []string{"https://x.test"}},
-		"no origins": {Addr: "127.0.0.1:8080", Policy: testPolicy(t)},
 	}
 	for name, cfg := range bad {
 		if _, err := NewHandler(cfg, m); err == nil {
@@ -45,7 +48,7 @@ func TestNewHandler_ValidatesConfig(t *testing.T) {
 	}
 	// A nil manager would accept authenticated attaches and serve nothing.
 	if _, err := NewHandler(Config{Addr: "127.0.0.1:1", Policy: testPolicy(t),
-		AllowedOrigins: []string{"https://x.test"}}, nil); err == nil {
+		AllowedOrigins: []string{"https://x.test"}, ExpectedHost: "x.test"}, nil); err == nil {
 		t.Error("a nil Manager was accepted")
 	}
 }
@@ -91,14 +94,16 @@ func TestServePage_Hardening(t *testing.T) {
 	}
 }
 
-// The nonce in the CSP header must appear VERBATIM in the document, on every
-// response.
+// The nonce in the CSP header must appear VERBATIM in the document source, on
+// every response.
 //
-// html/template escapes "+" to "&#43;" in an attribute value, so a
-// standard-alphabet base64 nonce renders as a different string than the header
-// declares and the browser blocks the script — on roughly half of all responses.
-// This ran red intermittently and was very easy to mistake for flakiness; the
-// loop count is high enough that a per-character hazard cannot hide in it.
+// This asserts SOURCE-LEVEL identity, which is all a Go test can observe. It is
+// deliberately not a claim about whether a browser would accept a nonce the
+// template altered: browsers decode HTML entities before comparing, so
+// script-src 'nonce-a+b' matches a source nonce written a&#43;b (verified in
+// headless Chromium by lector r1, correcting an earlier claim of mine that said
+// otherwise). What this test buys is a template that cannot silently rewrite the
+// value, which keeps header and source comparable by inspection.
 func TestServePage_NonceSurvivesTemplateEscaping(t *testing.T) {
 	t.Parallel()
 	h := handlerFor(t)
@@ -109,7 +114,8 @@ func TestServePage_NonceSurvivesTemplateEscaping(t *testing.T) {
 		body := rec.Body.String()
 		if got := strings.Count(body, `nonce="`+n+`"`); got != 2 {
 			t.Fatalf("response %d: nonce %q appears on %d script tags, want 2 — the "+
-				"template altered it, so the browser will block the script", i, n, got)
+				"template rewrote the value, so header and source are no longer "+
+				"comparable by inspection", i, n, got)
 		}
 		for _, c := range n {
 			ok := c == '-' || c == '_' ||
