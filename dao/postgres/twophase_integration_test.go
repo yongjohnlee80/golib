@@ -116,8 +116,7 @@ func TestTwoPhase_CommitAcrossTwoConnections(t *testing.T) {
 	sa := tpSchema(t, connA, "tp_widgets_a")
 	sb := tpSchema(t, connB, "tp_widgets_b")
 
-	err := dao.RunTx(context.Background(), []dao.DataConn{connA, connB}, func(tx *dao.Transaction) error {
-		tx.TwoPhase()
+	err := dao.RunTx(context.Background(), func(tx *dao.Transaction) error {
 		if _, err := sa.On(tx).Set(wName, "alpha").Set(wQty, 1).Insert(); err != nil {
 			return err
 		}
@@ -125,7 +124,7 @@ func TestTwoPhase_CommitAcrossTwoConnections(t *testing.T) {
 			return err
 		}
 		return nil
-	})
+	}, dao.Spanning(connA, connB), dao.TwoPhase())
 	if err != nil {
 		t.Fatalf("two-phase RunTx: %v", err)
 	}
@@ -150,8 +149,7 @@ func TestTwoPhase_BodyErrorLeavesNothingAnywhere(t *testing.T) {
 	sb := tpSchema(t, connB, "tp_widgets_b")
 
 	boom := errors.New("business rule failed")
-	err := dao.RunTx(context.Background(), []dao.DataConn{connA, connB}, func(tx *dao.Transaction) error {
-		tx.TwoPhase()
+	err := dao.RunTx(context.Background(), func(tx *dao.Transaction) error {
 		if _, err := sa.On(tx).Set(wName, "alpha").Set(wQty, 1).Insert(); err != nil {
 			return err
 		}
@@ -159,7 +157,7 @@ func TestTwoPhase_BodyErrorLeavesNothingAnywhere(t *testing.T) {
 			return err
 		}
 		return boom
-	})
+	}, dao.Spanning(connA, connB), dao.TwoPhase())
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want the body error", err)
 	}
@@ -186,8 +184,7 @@ func TestTwoPhase_PrepareFailureRollsBackPrepared(t *testing.T) {
 	// Force phase one to fail on connB: an errored statement leaves the whole
 	// Postgres transaction in an aborted state, so its PREPARE TRANSACTION
 	// fails while connA's succeeds — exercising the rollback-of-prepared path.
-	err := dao.RunTx(context.Background(), []dao.DataConn{connA, connB}, func(tx *dao.Transaction) error {
-		tx.TwoPhase()
+	err := dao.RunTx(context.Background(), func(tx *dao.Transaction) error {
 		if _, err := sa.On(tx).Set(wName, "alpha").Set(wQty, 1).Insert(); err != nil {
 			return err
 		}
@@ -199,7 +196,7 @@ func TestTwoPhase_PrepareFailureRollsBackPrepared(t *testing.T) {
 			return fmt.Errorf("expected the poison statement to fail")
 		}
 		return nil // body succeeds; Commit's phase one must now fail on pg-b
-	})
+	}, dao.Spanning(connA, connB), dao.TwoPhase())
 
 	var ce *dao.CommitError
 	if !errors.As(err, &ce) {

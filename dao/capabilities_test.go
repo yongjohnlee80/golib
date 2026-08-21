@@ -115,7 +115,7 @@ func TestNoTx_TxBoundInsertUnsupportedOnTouch(t *testing.T) {
 
 	conn := newNoTxConn()
 	s := buildSchema(conn)
-	err := RunTx(context.Background(), []DataConn{conn}, func(tx *Transaction) error {
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		_, e := s.On(tx).Set(aName, "x").Set(aURI, "u").Insert()
 		return e
 	})
@@ -132,7 +132,7 @@ func TestNoTx_TxBoundBatchUnsupportedOnTouch(t *testing.T) {
 
 	conn := newNoTxConn()
 	s := buildSchema(conn)
-	err := RunTx(context.Background(), []DataConn{conn}, func(tx *Transaction) error {
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		return s.On(tx).Batch().Add(map[artistField]any{aName: "x"}).Flush()
 	})
 	if !errors.Is(err, ErrUnsupported) {
@@ -181,9 +181,9 @@ func TestUntouchedNoTxConn_Unaffected(t *testing.T) {
 
 	// A RunTx spanning {okConn, noTxConn} whose body touches only okConn must
 	// commit normally — the untouched no-tx connection is never begun (§2.3).
-	err := RunTx(context.Background(), []DataConn{okConn, noTxConn}, func(tx *Transaction) error {
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		return sOk.On(tx).With(aID, "1").Set(aName, "x").Update()
-	})
+	}, Spanning(okConn, noTxConn))
 	if err != nil {
 		t.Fatalf("RunTx err = %v, want nil (untouched no-tx conn must not break the tx)", err)
 	}

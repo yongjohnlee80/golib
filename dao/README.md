@@ -293,12 +293,24 @@ rollback-then-**re-panic** on panic. A DAO from `schema.On(tx)` runs every
 statement on the transaction — no per-statement `.Use(tx)` to forget.
 `schema.DAO()` runs on the pool (autocommit) — an explicit choice.
 
+**You do not pass connections.** Each schema already holds its `DataConn`, so a
+tx-bound DAO enlists it on its first statement (ADR-0015):
+
 ```go
-err := dao.RunTx(ctx, []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+err := dao.RunTx(ctx, func(tx *dao.Transaction) error {
     id, err := artists.On(tx).Set(ArtistName, "X").Set(ArtistURI, "x").Insert()
     if err != nil { return err }
     return albums.On(tx).Set(AlbumArtistID, id).Set(AlbumTitle, "Y").Insert()
 })
+```
+
+Writing to a **second** database is the one case you declare, with
+`dao.Spanning` — undeclared, the first database to join locks the transaction
+and a second one fails with `ErrUnknownConnection` rather than silently
+becoming a non-atomic cross-database commit:
+
+```go
+err = dao.RunTx(ctx, fn, dao.Spanning(lmConn, goldConn))
 ```
 
 Across multiple `DataConn`s, commit happens in deterministic touch order; a
@@ -313,9 +325,10 @@ if errors.As(err, &ce) && len(ce.AlreadyDurable) > 0 {
 }
 ```
 
-`tx.TwoPhase()` opts into **true two-phase commit** where the dialect supports
+`dao.TwoPhase()` opts into **true two-phase commit** where the dialect supports
 it (see below): prepare all, then commit all, with `CommitError.PreparedPending`
-reporting any prepared-but-uncommitted transactions for operator recovery.
+reporting any prepared-but-uncommitted transactions for operator recovery. It is
+a construction option, so the commit protocol cannot be switched mid-flight.
 Non-DB resources can participate via `tx.Register(name, dao.ResourceFunc(commit,
 rollback))` (e.g. delete an uploaded file on rollback). One transaction is
 single-goroutine; background work uses an unbound DAO.
@@ -382,7 +395,9 @@ Set the capability predicates honestly: `SupportsReturning`, `CopySupported`,
   [`dao/postgres`](postgres/README.md) supports it (`PREPARE TRANSACTION` /
   `COMMIT PREPARED`, server needs `max_prepared_transactions > 0`);
   `GenericDialect` (and thus sqlite/bigquery) reports `TwoPhaseSupported() ==
-  false`, so `tx.TwoPhase()` fails fast there rather than silently degrading.
+  false`, so `dao.TwoPhase()` fails fast there rather than silently degrading —
+  from `RunTx` before the body runs when the span is declared, at `Commit`
+  otherwise.
   Single-DB and multi-DB *ordered* commit with `CommitError` detection work on
   every transactional driver.
 - **No `Registry` helper** — use a plain struct of `*Schema`.

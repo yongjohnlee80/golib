@@ -1,5 +1,11 @@
 //go:build integration
 
+// NOTE (ADR-0015): this nested module pins a RELEASED golib (see go.mod), so the
+// dao.RunTx call below still uses the pre-ADR-0015 `[]dao.DataConn` signature.
+// Migrate it to `dao.RunTx(ctx, fn)` in the same commit that bumps the golib
+// require to the release carrying ADR-0015 — not before, or this module stops
+// building.
+//
 // Integration tests for the BigQuery driver. They run against a REAL dataset and
 // are gated on credentials, so they are excluded from normal builds (the
 // `integration` build tag) and skip when the env is unset.

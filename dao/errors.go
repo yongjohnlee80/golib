@@ -48,8 +48,11 @@ var (
 	// has already committed or rolled back.
 	ErrTransactionClosed = errors.New("dao: transaction already closed")
 
-	// ErrUnknownConnection is returned when a tx-bound DAO's connection name is not
-	// among the transaction's connections.
+	// ErrUnknownConnection is returned when a tx-bound DAO's connection may not
+	// participate in its transaction: it is outside a declared [Spanning] set,
+	// or — with no span declared — it is a second, different database in a
+	// transaction already bound to one (ADR-0015 §2.4). The remedy for the
+	// latter is to declare the span.
 	ErrUnknownConnection = errors.New("dao: connection not in transaction")
 
 	// ErrTwoPhaseUnsupported is returned by Commit when TwoPhase is requested but a

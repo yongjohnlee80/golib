@@ -57,7 +57,7 @@ func (d *queryDAO[R, C, K, ID]) newBuilder() *builder { return &builder{dialect:
 // prior art's .Use(tx) footgun, ADR-0005 §4).
 func (d *queryDAO[R, C, K, ID]) handle() (execQuerier, error) {
 	if d.tx != nil {
-		return d.tx.executorFor(d.schema.conn.Name())
+		return d.tx.join(d.schema.conn)
 	}
 	return d.conn, nil
 }
@@ -645,7 +645,7 @@ func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
 	var exec Execer = d.conn
 	var initErr error
 	if d.tx != nil {
-		tc, err := d.tx.executorFor(d.schema.conn.Name())
+		tc, err := d.tx.join(d.schema.conn)
 		if err != nil {
 			initErr = err
 		} else {

@@ -207,7 +207,7 @@ func TestPG_Transaction(t *testing.T) {
 	truncate(t, conn)
 
 	// Commit path.
-	err := dao.RunTx(context.Background(), []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+	err := dao.RunTx(context.Background(), func(tx *dao.Transaction) error {
 		if _, e := s.On(tx).Set(wName, "tx-a").Insert(); e != nil {
 			return e
 		}
@@ -222,7 +222,7 @@ func TestPG_Transaction(t *testing.T) {
 	}
 
 	// Rollback path: a duplicate inside the tx aborts both inserts.
-	err = dao.RunTx(context.Background(), []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+	err = dao.RunTx(context.Background(), func(tx *dao.Transaction) error {
 		if _, e := s.On(tx).Set(wName, "tx-c").Insert(); e != nil {
 			return e
 		}

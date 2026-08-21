@@ -175,7 +175,7 @@ func TestMysql_Transactions(t *testing.T) {
 	ctx := context.Background()
 
 	// Commit path.
-	err := dao.RunTx(ctx, []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+	err := dao.RunTx(ctx, func(tx *dao.Transaction) error {
 		_, err := s.On(tx).Set(tName, "T1").Set(tURI, "t1").Insert()
 		return err
 	})
@@ -185,7 +185,7 @@ func TestMysql_Transactions(t *testing.T) {
 
 	// Rollback path.
 	boom := errors.New("boom")
-	err = dao.RunTx(ctx, []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+	err = dao.RunTx(ctx, func(tx *dao.Transaction) error {
 		if _, err := s.On(tx).Set(tName, "T2").Set(tURI, "t2").Insert(); err != nil {
 			return err
 		}
