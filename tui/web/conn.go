@@ -52,6 +52,10 @@ type sessionLoop struct {
 	now     func() time.Time
 	sleep   func(context.Context, time.Duration)
 	decoder *decoder
+
+	// limiter is created by readPump and shared with deliver, so one connection
+	// has one token bucket rather than one per event batch.
+	limiter *bucket
 }
 
 // serve handles one connection from handshake to teardown.
@@ -97,12 +101,19 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 	// resurrected: a reconnect authenticates again, and on the ticket branch
 	// auth/token performs the atomic consume, so a replayed ticket is refused by
 	// the credential layer rather than by anything here.
-	identity, err := l.cfg.Policy.Authenticate(ctx, authRequest(req.http, first))
+	// A per-request sink, so a refused attach can hand the user a correlation ID.
+	// The client-visible error says nothing by design, which leaves a user with
+	// nothing to quote; the ID is random and outcome-independent, so it is safe to
+	// return and it is the only thing that makes a refusal diagnosable.
+	var attemptID string
+	authCtx := auth.WithAttemptSink(ctx, func(a auth.Attempt) { attemptID = a.ID })
+	identity, err := l.cfg.Policy.Authenticate(authCtx, authRequest(req.http, first))
 	if err != nil {
-		logger.Notice(l.log, sessionAudit{Kind: "denied", Reason: "authentication failed"})
+		logger.Notice(l.log, sessionAudit{Kind: "denied", Reason: "authentication failed",
+			ID: attemptID})
 		// One uniform refusal. Which factor failed is the audit record's
-		// business, never the client's.
-		_ = c.Close(closePolicy, "unauthorized")
+		// business, never the client's — but the attempt ID is safe to return.
+		_ = c.Close(closePolicy, "unauthorized ref="+sanitizeHeader(attemptID))
 		return err
 	}
 
@@ -112,7 +123,10 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 		_ = c.Close(closePolicy, "unavailable")
 		return err
 	}
-	defer l.mgr.Detach(sess.ID())
+	// Lease-scoped, so a slow teardown cannot detach a connection that has
+	// already replaced this one.
+	lease := sess.Lease()
+	defer l.mgr.Detach(sess.ID(), lease)
 
 	if err := c.WriteJSON(ctx, serverMessage{T: msgReady, Session: sess.ID()}); err != nil {
 		return err
@@ -173,9 +187,8 @@ func (l *sessionLoop) pump(ctx context.Context, c conn, sess *Session) error {
 
 // readPump decodes client messages into events.
 func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error {
-	limiter := newBucket(l.limits.EventsPerSecond, l.limits.Burst, l.now)
-	over := newOverload(l.limits.OverloadGrace, l.now)
 	backend := sess.Backend()
+	l.limiter = newBucket(l.limits.EventsPerSecond, l.limits.Burst, l.now)
 
 	for {
 		var m clientMessage
@@ -183,7 +196,12 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 			if ctx.Err() != nil {
 				return nil // our own shutdown, not a failure
 			}
-			backend.Fail(err)
+			// A read error is a CONNECTION failure, not a session failure. Calling
+			// Fail here stopped the Backend and so killed the App, which made the
+			// detach window unreachable — a dropped socket destroyed the user's
+			// work (lector r1). The session survives; the manager evicts it if
+			// nobody comes back.
+			logger.Info(l.log, protocolNote{What: "read", Reason: err.Error()})
 			return err
 		}
 
@@ -196,7 +214,23 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 		// A resize is state, not input, and is likewise not metered — a client
 		// dragging a window edge must not be treated as a flood.
 		if m.T == msgResize {
-			backend.Resize(m.Cols, m.Rows)
+			if err := backend.Resize(m.Cols, m.Rows); err != nil {
+				if errors.Is(err, ErrGridTooLarge) {
+					// A client asking for a grid we will not allocate is a
+					// protocol violation, not a transient condition: it will
+					// keep asking.
+					logger.Notice(l.log, protocolNote{What: msgResize, Reason: err.Error()})
+					_ = c.Close(closePolicy, "grid too large")
+					return err
+				}
+				if errors.Is(err, ErrEventOverflow) {
+					// The App has not drained; the resize is retried by the
+					// client's next report rather than applied half-way.
+					logger.Info(l.log, protocolNote{What: msgResize, Reason: "app busy"})
+					continue
+				}
+				return err
+			}
 			continue
 		}
 
@@ -209,39 +243,51 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 		}
 
 		for _, ev := range events {
-			if wait := limiter.take(); wait > 0 {
-				// Backpressure, not a drop. The stream is ordered and
-				// un-coalesced by contract.
-				l.pause(ctx, wait)
-				if ctx.Err() != nil {
-					return nil
-				}
+			if err := l.deliver(ctx, c, sess, ev); err != nil {
+				return err
 			}
-			switch err := backend.Submit(ev); {
-			case err == nil:
-				over.clear()
-			case errors.Is(err, ErrEventOverflow):
-				if over.full() {
-					// Sustained, not bursty. Closing is the honest response:
-					// the alternative is growing a queue on behalf of whoever
-					// is flooding it.
-					logger.Notice(l.log, sessionAudit{Kind: "closed", ID: sess.ID(),
-						Subject: sess.Subject(), Reason: "input overload"})
-					_ = c.Close(closePolicy, "input overload")
-					return ErrEventOverflow
-				}
-				// Wait for the App to catch up, then retry the SAME event, so
-				// nothing is lost and order is preserved.
-				l.pause(ctx, overloadRetry)
-				if ctx.Err() != nil {
-					return nil
-				}
-				if err := backend.Submit(ev); err != nil && !errors.Is(err, ErrEventOverflow) {
-					return err
-				}
-			default:
-				return err // stopped
+			if ctx.Err() != nil {
+				return nil
 			}
+		}
+	}
+}
+
+// deliver submits one event, waiting for the App rather than discarding it.
+//
+// "Un-coalesced" in the Backend contract means nothing is silently dropped, so
+// this RETRIES until the event is accepted, the context ends, or the overload
+// grace elapses — at which point the connection closes and the client is told.
+// An earlier version retried once and then advanced past the event, which lost
+// input while still claiming an ordered un-coalesced stream (lector r1).
+func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, ev tui.Event) error {
+	backend := sess.Backend()
+	over := newOverload(l.limits.OverloadGrace, l.now)
+	for {
+		if wait := l.limiter.take(); wait > 0 {
+			// Backpressure, not a drop.
+			l.pause(ctx, wait)
+			if ctx.Err() != nil {
+				return nil
+			}
+		}
+		err := backend.Submit(ev)
+		switch {
+		case err == nil:
+			return nil
+		case errors.Is(err, ErrEventOverflow):
+			if over.full() {
+				logger.Notice(l.log, sessionAudit{Kind: "closed", ID: sess.ID(),
+					Subject: sess.Subject(), Reason: "input overload"})
+				_ = c.Close(closePolicy, "input overload")
+				return ErrEventOverflow
+			}
+			l.pause(ctx, overloadRetry)
+			if ctx.Err() != nil {
+				return nil
+			}
+		default:
+			return err // stopped
 		}
 	}
 }
@@ -319,7 +365,10 @@ func (l *sessionLoop) writePump(ctx context.Context, c conn, sess *Session) erro
 				if ctx.Err() != nil {
 					return nil
 				}
-				backend.Fail(err)
+				// Also a connection failure. The frame stays in the aggregate
+				// because the baseline never advanced, so a reconnecting client
+				// receives it.
+				logger.Info(l.log, protocolNote{What: "write", Reason: err.Error()})
 				return err
 			}
 			// Only ONE frame is in flight, so this loop sends at most one per

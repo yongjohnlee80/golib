@@ -125,6 +125,7 @@ func loopFor(t *testing.T, policy auth.Policy, factory AppFactory, opts ...Manag
 		Addr:           "127.0.0.1:0",
 		Policy:         policy,
 		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
 	}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
@@ -142,6 +143,7 @@ func (nopLogger) Log(logger.Severity, any) {}
 func handshakeReq(origin string) requestInfo {
 	r := httptest.NewRequest(http.MethodGet, "/attach", nil)
 	r.RemoteAddr = "203.0.113.7:44321"
+	r.Host = "tui.example.test"
 	if origin != "" {
 		r.Header.Set("Origin", origin)
 	}

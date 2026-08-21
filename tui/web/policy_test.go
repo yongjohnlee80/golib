@@ -136,6 +136,7 @@ func TestPasswordPolicyExample(t *testing.T) {
 	// Now with only the password arm available.
 	pwOnly, err := PasswordPolicyExample(
 		claimingFactor{subject: "alice", password: "correct"}, tracker, nil,
+		contextualFactor{allow: true},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -176,8 +177,17 @@ func TestPasswordPolicyExample(t *testing.T) {
 
 	// A nil tracker is a construction error — auth.NewThrottle refuses it, so
 	// password without backoff cannot be built through this helper.
-	if _, err := PasswordPolicyExample(claimingFactor{}, nil, nil); err == nil {
+	if _, err := PasswordPolicyExample(claimingFactor{}, nil, nil, contextualFactor{allow: true}); err == nil {
 		t.Error("a password policy with no Tracker must not be constructible here")
+	}
+	// And the constraint is REQUIRED: the helper's name promises the recommended
+	// shape, so it must not hand back a weaker one.
+	if _, err := PasswordPolicyExample(claimingFactor{}, tracker, nil); err == nil {
+		t.Error("PasswordPolicyExample with no constraint must be refused — use " +
+			"RecommendedPolicy to build that deliberately")
+	}
+	if _, err := PasswordPolicyExample(claimingFactor{}, tracker, nil, nil); err == nil {
+		t.Error("a nil constraint must be refused rather than silently dropped")
 	}
 }
 

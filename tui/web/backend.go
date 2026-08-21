@@ -25,6 +25,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/yongjohnlee80/golib/logger"
@@ -76,9 +77,45 @@ type Hello struct {
 	FontAgreement bool
 }
 
+// Grid bounds. A client chooses these numbers, so they cannot be trusted to be
+// sane: the grid allocates Cols*Rows cells, and the product is what has to be
+// bounded rather than either factor alone.
+//
+// 1000x500 is far past any real terminal (a 4K display at a 6px cell is roughly
+// 640x180) and 200k cells is about 6 MB of Cell values per grid, of which a
+// session holds up to three. Beyond these a client is not describing a window.
+const (
+	MaxCols  = 1000
+	MaxRows  = 500
+	MaxCells = 200_000
+)
+
+// ErrGridTooLarge means a client asked for a grid this server will not allocate.
+var ErrGridTooLarge = errors.New("web: requested grid exceeds the configured bounds")
+
+// validGrid checks a client-supplied size BEFORE anything is allocated.
+//
+// The multiplication is done on int64 and compared, rather than performed in int
+// and checked afterwards: Cols*Rows in int overflows for large inputs and the
+// product can come out small and positive, which is exactly how a bounds check
+// gets passed by the value it was meant to stop.
+func validGrid(cols, rows int) error {
+	if cols <= 0 || rows <= 0 {
+		return fmt.Errorf("%w: %dx%d is not a grid", ErrGridTooLarge, cols, rows)
+	}
+	if cols > MaxCols || rows > MaxRows {
+		return fmt.Errorf("%w: %dx%d exceeds %dx%d", ErrGridTooLarge, cols, rows, MaxCols, MaxRows)
+	}
+	if int64(cols)*int64(rows) > MaxCells {
+		return fmt.Errorf("%w: %dx%d is %d cells, limit %d",
+			ErrGridTooLarge, cols, rows, int64(cols)*int64(rows), MaxCells)
+	}
+	return nil
+}
+
 // valid reports whether a hello is usable.
 func (h Hello) valid() bool {
-	return h.Cols > 0 && h.Rows > 0 && h.Metrics.valid()
+	return validGrid(h.Cols, h.Rows) == nil && h.Metrics.valid()
 }
 
 // Backend implements [tui.Backend] for one browser session.
@@ -95,6 +132,16 @@ type Backend struct {
 	attachOne sync.Once
 	stopOnce  sync.Once
 	done      chan struct{}
+
+	// sendMu serializes event producers against the sole closer.
+	//
+	// A done-channel check is NOT sufficient: a producer can pass it and then be
+	// descheduled, and Stop closes the channel underneath it — which is a data
+	// race and then a send on a closed channel. Producers hold the read lock for
+	// the duration of the send; Stop takes the write lock, so no send can be in
+	// flight while the close happens.
+	sendMu sync.RWMutex
+	closed bool
 
 	mu      sync.Mutex
 	started bool
@@ -219,10 +266,13 @@ func capabilitiesFrom(h Hello) tui.Capabilities {
 func (b *Backend) Stop() error {
 	b.stopOnce.Do(func() {
 		close(b.done)
-		// Closing events is part of the contract: the App loop distinguishes a
-		// clean shutdown from a reader failure by checking Err after the channel
-		// closes.
+		// Under the write lock, so no producer can be mid-send. Closing events
+		// is part of the contract: the App loop distinguishes a clean shutdown
+		// from a reader failure by checking Err after the channel closes.
+		b.sendMu.Lock()
+		b.closed = true
 		close(b.events)
+		b.sendMu.Unlock()
 		logger.Info(b.log, sessionEvent{Kind: "stop"})
 	})
 	return nil
@@ -336,9 +386,10 @@ func (b *Backend) Attach(h Hello) error {
 	b.mu.Lock()
 	b.metrics = h.Metrics
 	b.mu.Unlock()
-	b.framer.resize(h.Cols, h.Rows)
+	if err := b.Resize(h.Cols, h.Rows); err != nil {
+		return err
+	}
 	b.framer.reset()
-	b.Submit(tui.ResizeEvent{W: h.Cols, H: h.Rows})
 	logger.Info(b.log, sessionEvent{Kind: "reattach", Cols: h.Cols, Rows: h.Rows})
 	return nil
 }
@@ -351,12 +402,20 @@ func (b *Backend) Detach() {
 }
 
 // Resize records a client-reported size change and emits the event.
-func (b *Backend) Resize(cols, rows int) {
-	if cols <= 0 || rows <= 0 {
-		return
+//
+// The grid is NOT mutated unless the event can also be delivered. Changing the
+// server's idea of the size while the App still believes the old one leaves the
+// two disagreeing with no mechanism to notice — the App lays out for a size that
+// no longer exists and every subsequent frame is wrong.
+func (b *Backend) Resize(cols, rows int) error {
+	if err := validGrid(cols, rows); err != nil {
+		return err
+	}
+	if err := b.Submit(tui.ResizeEvent{W: cols, H: rows}); err != nil {
+		return err
 	}
 	b.framer.resize(cols, rows)
-	b.Submit(tui.ResizeEvent{W: cols, H: rows})
+	return nil
 }
 
 // Submit queues one decoded event.
@@ -367,10 +426,12 @@ func (b *Backend) Resize(cols, rows int) {
 // would make this backend behave differently from every other, and coalescing
 // here would take a decision that belongs to the App's intake stage.
 func (b *Backend) Submit(ev tui.Event) error {
-	select {
-	case <-b.done:
+	// The read lock spans the closed check AND the send, which is what makes the
+	// pair atomic with respect to Stop.
+	b.sendMu.RLock()
+	defer b.sendMu.RUnlock()
+	if b.closed {
 		return ErrStopped
-	default:
 	}
 	select {
 	case b.events <- ev:

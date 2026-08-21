@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 9)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 10)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -692,6 +692,73 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **implementation r1 (2026-08-22, lector — `change_requested`, 9 blockers; all
+  folded).** The cumulative framer was **approved**: current/acked/in-flight
+  grids preserve the exact acknowledged baseline, stale acks cannot move it, and
+  reset/resize force the right full snapshots. Every blocker was outside it, and
+  most were the same mistake in different places — a control that was *described*
+  rather than *bound to anything*.
+
+  1. **Transport security was not bound to the transport.** `Config.Addr`/`TLS`
+     were validated and then never used to make a listener, so a config claiming
+     loopback-plus-TLS could be mounted on plaintext `0.0.0.0` and pass every
+     check; Origin/Host ran *after* `websocket.Accept`. Now `Handler.Serve` builds
+     the listener from the validated config, `Handler.Guard` refuses before the
+     upgrade with a plain 403, `ExpectedHost` is REQUIRED (an optional check is an
+     inferred one with extra steps), and `AllowedOrigins` is cloned.
+  2. **mTLS could never succeed.** `authRequest` omitted `r.TLS`, so a verified
+     chain reached the factor as nil. Projected via `mtls.FromConnectionState`.
+     A rejected attach now also returns a safe correlation ID from
+     `auth.WithAttemptSink`.
+  3. **My "signature-level" auth claim was false.** `auth.Identity` is an
+     exported struct, so any in-process caller can forge one — the tests do. The
+     claim is narrowed to what is true: the transport path cannot reach a session
+     without authenticating, and the exported lifecycle API is an in-process trust
+     boundary at package-import granularity.
+  4. **Reconnect was unreachable and takeover was allowed.** The App's context
+     came from the WebSocket, so a disconnect killed the session and §2.8's detach
+     window did not exist; nothing ever called `Evict`; and a second attach to a
+     live session was accepted, so two browsers shared a grid. Sessions now derive
+     lifetime from the manager, `Manager.Start` schedules the sweep, a connection
+     **lease** makes takeover `ErrSessionBusy`, `Detach` is lease-scoped, and a
+     read/write error is a CONNECTION failure rather than a session failure.
+  5. **The un-coalesced stream dropped.** Overflow retried once and then advanced
+     past the event. `deliver` now retries until accepted, cancelled, or the grace
+     elapses. A resize mutated the grid while ignoring a failed event submission,
+     leaving App and backend disagreeing about the size. `Limits.QueueDepth` was
+     dead config — documented 1024, actual 256 — and is now the single source.
+  6. **Client grid size was unbounded**, so `Resize(math.MaxInt, 2)` panicked in
+     makeslice and large finite values could OOM. Bounded by `MaxCols`/`MaxRows`/
+     `MaxCells`, with the product compared in `int64` because the `int`
+     multiplication overflows to a small positive number — which is how a bounds
+     check gets passed by the value meant to trip it.
+  7. **`Stop` raced `Submit`**, producing a data race and a send on a closed
+     channel. Producers and the sole closer now share an `RWMutex`.
+  8. **The preventDefault tables were duplicated** — reserved chords hard-coded in
+     both Go and the client, while the client's comment claimed they were
+     injected. One structured rule table is now injected and walked.
+  9. **Audit hygiene.** An authenticated Subject was concatenated raw and a
+     newline in it forged a log line; "authenticated" only means a factor vouched
+     for it, and an `allowed_signers` principal is not constrained to be
+     newline-free. Every rendered field is sanitized. The client also dropped its
+     ticket reference after presenting it.
+
+  **A correction to me, and it matters:** my claim that the CSP nonce bug would
+  have blocked script "on roughly half of all responses" was **wrong**. Browsers
+  decode HTML entities before comparing the nonce, so `script-src 'nonce-a+b'`
+  matches a source nonce written `a&#43;b` — lector verified that in headless
+  Chromium. The `html/template` escaping is real; the browser consequence was
+  invented from reading Go output rather than testing a browser. `RawURLEncoding`
+  stays because source-level identity is genuinely simpler to reason about, but it
+  is a simplification and not a bug fix, and the comment and test now say so.
+
+  Also narrowed: `PasswordPolicyExample` accepted zero contextual constraints
+  while its documentation described one, so it produced a policy weaker than its
+  name promised — the constraint is now required. And the shipped client has no
+  login form and never sends `subject`/`password`, so **password auth is not
+  reachable end to end today**; that is recorded as a gap rather than left for
+  someone to find after configuring one.
 
 - **rev 9 (2026-08-22, Johno — decision reversal, not a review finding).**
   §2.8 rev 1 said "password auth is not accepted for WebTUI". Johno's

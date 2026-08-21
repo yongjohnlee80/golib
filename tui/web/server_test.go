@@ -35,6 +35,7 @@ func baseConfig(t *testing.T) Config {
 		Addr:           "127.0.0.1:8080",
 		Policy:         testPolicy(t),
 		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
 	}
 }
 
@@ -174,8 +175,12 @@ func TestConfig_OriginMatchingIsExact(t *testing.T) {
 func TestConfig_HostExpectation(t *testing.T) {
 	t.Parallel()
 	c := baseConfig(t)
-	if !c.hostAllowed("anything.test") {
-		t.Error("an unset expectation must accept any host")
+	// An empty expectation DENIES. validate() refuses to construct that state,
+	// and this is the belt to its braces: "accept anything" would mean a terminal
+	// reachable under any Host a proxy or an attacker chooses.
+	c.ExpectedHost = ""
+	if c.hostAllowed("anything.test") {
+		t.Error("an unset expectation must deny, not accept every host")
 	}
 	c.ExpectedHost = "tui.example.test:8443"
 	if !c.hostAllowed("tui.example.test:8443") {

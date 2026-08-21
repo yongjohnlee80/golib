@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -55,7 +56,18 @@ type AppFactory func(*Backend) Runner
 // Sessions are the real work of this package. Rendering a grid is
 // straightforward; making sure that a browser closing its laptop lid does not
 // leak an App, a grid, a goroutine and an authenticated identity is not.
+//
+// # Trust boundary
+//
+// The exported lifecycle methods are TRUSTED: they take an authenticated
+// identity but cannot verify that it was actually authenticated, because
+// auth.Identity is a plain exported struct. They are the seam a transport uses,
+// and the boundary they enforce is "outside the process", not "elsewhere in the
+// process". See [Manager.Create].
 type Manager struct {
+	// base is the root of every session's lifetime. Sessions outlive the
+	// connection that created them; see Create.
+	base     context.Context
 	factory  AppFactory
 	log      logger.Logger
 	maxSess  int
@@ -111,7 +123,20 @@ func ManagerLogger(l logger.Logger) ManagerOption {
 
 // BackendOptions are applied to each session's [Backend].
 func BackendOptions(opts ...Option) ManagerOption {
-	return func(m *Manager) { m.backends = opts }
+	return func(m *Manager) { m.backends = slices.Clone(opts) }
+}
+
+// setQueueDepth forces the event queue capacity, so [Limits.QueueDepth] is the
+// one number that decides it. Called by [NewHandler]; a BackendOptions-supplied
+// EventQueue is applied first and this overrides it, because the documented limit
+// must win over an incidental one.
+func (m *Manager) setQueueDepth(n int) {
+	if n <= 0 {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.backends = append(slices.Clone(m.backends), EventQueue(n))
 }
 
 // Defaults for a [Manager].
@@ -119,6 +144,38 @@ const (
 	DefaultMaxSessions = 8
 	DefaultIdleTimeout = 5 * time.Minute
 )
+
+// ErrSessionBusy means the session already has a live connection.
+var ErrSessionBusy = errors.New("web: session already has a live connection")
+
+// Start begins the periodic idle sweep and returns a stop function.
+//
+// Without a scheduler, eviction only ran when a Create happened to trigger it,
+// so a detached session on an idle server lived forever and held its App, its
+// grid and its goroutines (lector r1). The sweep interval is a quarter of the
+// idle timeout, so a session is evicted within 25% of the configured window
+// rather than at some arbitrary later moment.
+func (m *Manager) Start() (stop func()) {
+	interval := m.idle / 4
+	if interval < time.Second {
+		interval = time.Second
+	}
+	done := make(chan struct{})
+	var once sync.Once
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				m.Evict()
+			}
+		}
+	}()
+	return func() { once.Do(func() { close(done) }) }
+}
 
 // NewManager builds a session manager.
 //
@@ -130,6 +187,7 @@ func NewManager(factory AppFactory, opts ...ManagerOption) (*Manager, error) {
 		return nil, errors.New("web.NewManager: an AppFactory is required")
 	}
 	m := &Manager{
+		base:     context.Background(),
 		factory:  factory,
 		log:      logger.Nop{},
 		maxSess:  DefaultMaxSessions,
@@ -154,6 +212,7 @@ type Session struct {
 
 	mu       sync.Mutex
 	attached bool
+	lease    uint64 // increments per attach; identifies the live connection
 	lastSeen time.Time
 	created  time.Time
 
@@ -220,7 +279,20 @@ func (m *Manager) Create(ctx context.Context, id *auth.Identity, h Hello) (*Sess
 	}
 
 	backend := New(m.backends...)
-	runCtx, cancel := context.WithCancel(ctx)
+	// The App's context comes from the MANAGER's lifetime, not from the
+	// WebSocket that happened to create the session.
+	//
+	// Deriving it from the connection meant a disconnect cancelled the App
+	// immediately, so the detach window of §2.8 — the whole reason a flaky
+	// network does not destroy work — was unreachable: Session.Done fired the
+	// moment the socket closed (lector r1). ctx is honored for the CREATE call
+	// only; the session outlives it by design.
+	runCtx, cancel := context.WithCancel(m.base)
+	if err := ctx.Err(); err != nil {
+		cancel()
+		m.drop(sid)
+		return nil, err
+	}
 	s := &Session{
 		id:       sid,
 		subject:  id.Subject,
@@ -288,20 +360,52 @@ func (m *Manager) Attach(sessionID string, id *auth.Identity, h Hello) (*Session
 		// cannot distinguish "exists but not yours" from "does not exist".
 		return nil, ErrSubjectMismatch
 	}
-	if err := s.backend.Attach(h); err != nil {
-		return nil, err
-	}
+
+	// ONE connection at a time. A second attach while one is live was silently
+	// accepted, so two browsers shared a grid, a cursor and an event stream and
+	// the last writer won (lector r1). Concurrent takeover is an authorization
+	// decision, and the answer here is no: reconnect after the first connection
+	// is gone.
 	s.mu.Lock()
+	if s.attached {
+		s.mu.Unlock()
+		logger.Notice(m.log, sessionAudit{Kind: "denied", Subject: id.Subject, ID: sessionID,
+			Reason: "session already has a live connection"})
+		return nil, ErrSessionBusy
+	}
 	s.attached = true
+	s.lease++
+	lease := s.lease
 	s.lastSeen = m.now()
 	s.mu.Unlock()
+
+	if err := s.backend.Attach(h); err != nil {
+		s.mu.Lock()
+		if s.lease == lease {
+			s.attached = false
+		}
+		s.mu.Unlock()
+		return nil, err
+	}
 	logger.Info(m.log, sessionAudit{Kind: "attached", Subject: id.Subject, ID: sessionID})
 	return s, nil
 }
 
-// Detach records that a client disconnected. The session survives for
-// [IdleTimeout] so a reconnect can resync.
-func (m *Manager) Detach(sessionID string) {
+// Lease reports the current connection generation. A caller holding a stale
+// lease must not mutate the session: its connection has been replaced.
+func (s *Session) Lease() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lease
+}
+
+// Detach records that the connection holding lease went away.
+//
+// Lease-scoped so a slow teardown cannot detach a connection that has already
+// replaced it: without that, a reconnect racing the previous connection's
+// deferred cleanup would be marked unattached while it was in fact live, and the
+// idle sweep would then evict a session somebody is looking at.
+func (m *Manager) Detach(sessionID string, lease uint64) {
 	m.mu.Lock()
 	s, ok := m.sessions[sessionID]
 	m.mu.Unlock()
@@ -309,6 +413,10 @@ func (m *Manager) Detach(sessionID string) {
 		return
 	}
 	s.mu.Lock()
+	if s.lease != lease {
+		s.mu.Unlock()
+		return // a newer connection owns this session
+	}
 	s.attached = false
 	s.lastSeen = m.now()
 	s.mu.Unlock()
@@ -414,9 +522,15 @@ type sessionAudit struct {
 }
 
 func (s sessionAudit) String() string {
+	// Every rendered field is sanitized and bounded. Subject is the AUTHENTICATED
+	// principal, which makes it tempting to treat as trusted — but "authenticated"
+	// only means a factor vouched for it, and a subject can legitimately come
+	// from an allowed_signers principal or a certificate CN, neither of which is
+	// constrained to be free of newlines. One forged the second line of a log in
+	// lector's probe.
 	out := "web session " + s.Kind
 	if s.Subject != "" {
-		out += " subject=" + s.Subject
+		out += " subject=" + sanitizeHeader(s.Subject)
 	}
 	if s.ID != "" {
 		// The session id is high-entropy but it is still a handle, so only a
@@ -424,13 +538,16 @@ func (s sessionAudit) String() string {
 		out += " session=" + idPrefix(s.ID)
 	}
 	if s.Reason != "" {
-		out += " reason=" + s.Reason
+		out += " reason=" + sanitizeHeader(s.Reason)
 	}
 	return out
 }
 
 func idPrefix(id string) string {
 	const n = 8
+	// Sanitized as well: an id normally comes from randomID and is safe, but this
+	// also renders ids that arrived from a client message.
+	id = sanitizeHeader(id)
 	if len(id) <= n {
 		return id
 	}

@@ -80,9 +80,14 @@ type Config struct {
 	// "evil.example.com.attacker.test" is a classic bypass.
 	AllowedOrigins []string
 
-	// ExpectedHost, when set, is the exact Host header required. Configuration,
-	// never inference from the request: inferring it means an attacker who
-	// controls the Host header controls the check.
+	// ExpectedHost is the exact Host header required. REQUIRED: §2.7 says Host
+	// and Origin expectations come from configuration and are never inferred,
+	// and an optional check is an inferred one with extra steps — the request
+	// decides whether it is checked at all.
+	//
+	// Compared case-insensitively per RFC 9110, and it must include the port when
+	// the deployment serves on a non-default one, because that is what a browser
+	// sends.
 	ExpectedHost string
 }
 
@@ -131,6 +136,10 @@ func (c Config) validate() error {
 			return fmt.Errorf("%w: %q is not an Origin, it is the absence of one", ErrNoOrigin, o)
 		}
 	}
+	if c.ExpectedHost == "" {
+		return errors.New("web: ExpectedHost is required — §2.7 forbids inferring it " +
+			"from the request, and an optional check is one the request decides")
+	}
 	if c.Addr == "" {
 		return errors.New("web: no bind address")
 	}
@@ -166,10 +175,15 @@ func (c Config) originAllowed(origin string) bool {
 }
 
 // hostAllowed reports whether the Host header matches the configured
-// expectation. An unset expectation accepts any host.
+// expectation.
+//
+// An empty expectation denies. validate() refuses to construct that state, so
+// this is the belt to its braces: the failure mode of "accept anything" is a
+// terminal reachable under any Host a proxy or attacker chooses, which is worth
+// two independent refusals.
 func (c Config) hostAllowed(host string) bool {
 	if c.ExpectedHost == "" {
-		return true
+		return false
 	}
 	return strings.EqualFold(host, c.ExpectedHost)
 }

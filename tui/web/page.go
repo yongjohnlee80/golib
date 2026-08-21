@@ -65,8 +65,9 @@ type pageData struct {
 // apart — which is the only reason the client is allowed to make that decision
 // at all.
 type clientConfig struct {
-	Path      string   `json:"path"`
-	NamedKeys []string `json:"namedKeys"`
+	Path      string         `json:"path"`
+	NamedKeys []string       `json:"namedKeys"`
+	Reserved  []reservedRule `json:"reserved"`
 }
 
 // nonce returns a fresh CSP nonce.
@@ -74,15 +75,21 @@ type clientConfig struct {
 // Per RESPONSE, never per process: a reused nonce is a reusable permission slip
 // for injected script, which is the whole thing a nonce exists to prevent.
 //
-// # Why RawURLEncoding and not RawStdEncoding
+// # Why RawURLEncoding
 //
-// Not a style choice. html/template escapes "+" to "&#43;" inside an attribute
-// value, so a standard-alphabet nonce containing a plus renders in the document
-// as a DIFFERENT string than the CSP header declares — the browser then finds no
-// matching nonce and blocks the script, on roughly half of all responses. The
-// URL-safe alphabet (A-Za-z0-9-_) passes through every template context
-// untouched. Found by a test that was intermittently red and would have been
-// very easy to dismiss as flaky.
+// The URL-safe alphabet (A-Za-z0-9-_) passes through every template context
+// unchanged, so the byte sequence in the header is the byte sequence in the
+// document. That makes the header and the source directly comparable and removes
+// a whole class of question.
+//
+// CORRECTION (lector r1, 2026-08-22): an earlier version of this comment claimed
+// that a "+" in a standard-alphabet nonce BREAKS the page, because html/template
+// renders it as "&#43;". The escaping is real; the conclusion was invented. A
+// browser decodes HTML entities before comparing the nonce, so
+// script-src 'nonce-a+b' matches a source nonce written a&#43;b — lector verified
+// that in headless Chromium. This encoding is a legitimate simplification, not a
+// bug fix, and the test below asserts source-level identity rather than browser
+// behavior it cannot observe.
 func nonce() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -105,7 +112,14 @@ func (h *Handler) ServePage(w http.ResponseWriter, r *http.Request) {
 	hardeningHeaders(w.Header(), n)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	cfg, err := json.Marshal(clientConfig{Path: h.wsPath, NamedKeys: NamedKeys()})
+	cfg, err := json.Marshal(clientConfig{
+		Path:      h.wsPath,
+		NamedKeys: NamedKeys(),
+		// Injected, not reimplemented. The reserved table was previously
+		// hard-coded in BOTH places while the client's comment claimed it was
+		// injected (lector r1), so the two could drift with nothing to notice.
+		Reserved: ReservedRules(),
+	})
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusInternalServerError)
 		return
@@ -193,6 +207,10 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 	if mgr == nil {
 		return nil, errors.New("web.NewHandler: a session Manager is required")
 	}
+	// The allowlist is CLONED. A caller mutating their slice after NewHandler
+	// changed the live allowlist in lector's probe, which makes it configuration
+	// only until someone writes to it.
+	cfg.AllowedOrigins = slices.Clone(cfg.AllowedOrigins)
 	h := &Handler{
 		cfg:    cfg,
 		mgr:    mgr,
@@ -207,6 +225,12 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 		}
 	}
 	h.limits = h.limits.normalize()
+	// Limits.QueueDepth is the single source of the event queue's capacity.
+	// It previously said 1024 while Backend defaulted to 256 and nothing read
+	// the field, so the documented limit and the real one were different numbers
+	// (lector r1). The Manager builds each session's Backend, so the option is
+	// pushed there.
+	mgr.setQueueDepth(h.limits.QueueDepth)
 	h.loop = &sessionLoop{
 		cfg:     cfg,
 		mgr:     mgr,
