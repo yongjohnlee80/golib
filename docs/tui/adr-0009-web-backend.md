@@ -1,8 +1,9 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Proposed (rev 1)** (2026-08-21 — authored by jarvis; lector
-  design r1 `change_requested` folded, including a correctness defect in rev 0's
-  frame coalescing and a wrong security claim about mTLS. See Review history.
+- **Status:** **Proposed (rev 2)** (2026-08-21 — authored by jarvis; lector
+  design r1 and r2 `change_requested` both folded — a correctness defect in rev
+  0's frame coalescing, a wrong security claim about mTLS, and r2's internal
+  contradictions. See Review history.
   Lands on `tui-web`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
@@ -55,7 +56,7 @@ such as IoT or in the mobile environments or other handheld platforms."*
 double** — hence the first honest test of whether `tui.Backend` generalizes to
 arbitrary render targets. Whatever friction it hits is the friction an embedded
 display or a handheld target will hit. **That evidence is a deliverable of this
-ADR** (§2.9), not a side effect.
+ADR** (§2.10), not a side effect.
 
 ## 2. Decision
 
@@ -99,14 +100,15 @@ The App loop calls `Flush` once per frame and ADR-0003's one-write rule assumes
 it is fast. A slow or vanished browser must not stall the UI. Therefore:
 
 - the backend holds **at most one pending frame**, and that frame is
-  **CUMULATIVE** — not the newest frame, but the **union of every unsent dirty
-  row with its newest value**, relative to the last baseline the client is known
-  to hold;
+  **CUMULATIVE**: it is the **diff of the current server grid against the last
+  baseline the client has ACKNOWLEDGED** — not merely the unsent rows. A row
+  that was transmitted but not yet acknowledged must stay in the aggregate,
+  because an unacknowledged send may never have landed;
 - a frame reaches the client **atomically** — never a half-painted screen;
 - every frame carries a **monotonically increasing revision**, and the client
   acknowledges; a new connection (or any gap) gets a **full resync snapshot**
   rather than a diff;
-- a coalesced-away *publication* is logged (§2.9): silently swallowing one is a
+- a coalesced-away *publication* is logged (§2.11): silently swallowing one is a
   debugging trap.
 
 **Why cumulative, and why rev 0 was wrong.** Rev 0 said a newer frame *replaces*
@@ -189,12 +191,26 @@ create/attach/detach, idle eviction with a configurable timeout, a hard cap on
 concurrent sessions, and guaranteed teardown (`Stop`, task drain, no goroutine
 or memory leak) on disconnect, eviction and process shutdown.
 
-**Reconnect (DECIDED, r1):** the `App` MAY survive a short detach window so a
-flaky network does not destroy work, but **every attach requires a freshly
-minted, short-lived, single-use ticket bound to that session and origin.** The
-original ticket is never reusable and no credential is ever resurrected. The
-**SSH-side minter** must be specified end to end: which SSH/OS subject it maps
-to, the expiry, the session/origin binding, and the audit event it emits.
+**Reconnect (r2 correction): the invariant is FRESH AUTHENTICATION, not a fresh
+ticket.** Rev 1 said every attach needs a new ticket, which contradicts the
+policy above — mTLS and the signed challenge are identity-bearing mechanisms in
+their own right, and demanding a ticket would force a needless round-trip
+through the CLI for a client that can simply re-authenticate.
+
+The `App` MAY survive a short detach window so a flaky network does not destroy
+work, and **every attach re-runs the completed policy from scratch**:
+
+- the **ticket branch** consumes a *new* single-use ticket (the original is never
+  reusable);
+- the **mTLS / challenge branches** authenticate directly — no ticket needed —
+  or, where a single code path is preferred, the server mints an **internal
+  one-use attach grant** after a successful authentication and consumes it
+  immediately;
+- no credential of any kind is resurrected, and every attach emits an audit
+  event.
+
+The **SSH-side minter** is specified end to end: which SSH/OS subject it maps to,
+the expiry, the session and origin binding, and its audit event.
 
 **Authentication is mandatory. There is no unauthenticated mode, not even on
 loopback** (Johno, 2026-08-21: *"ideally we only want users to connect to WebTUI
@@ -223,7 +239,8 @@ All(ipallow, Any(singleUseSSHChannelTicket, mtls /*, ... */))     // + optional
 - This backend consumes `golib/auth`'s `Authenticator` interface. If that
   package is not ready, `tui/web` still takes the *interface* from day one so
   the implementation drops in without touching transport or session code.
-- A browser cannot read `~/.ssh`, so "SSH key" needs a mechanism: §7 Q3.
+- A browser cannot read `~/.ssh`, so "SSH key" needs a mechanism; §7.3 records
+  the decision (SSH-channel-minted single-use ticket by default).
 
 **WebSocket hijacking defenses (mandatory).** The WS handshake is an HTTP request
 that carries cookies but is **not** subject to the Same-Origin Policy, and
@@ -240,6 +257,10 @@ the browser attaches the credential, yielding a keyboard on the CLI. Therefore:
   leaks into access logs, `Referer`, history and proxies) and **not
   `Sec-WebSocket-Protocol`**, which is a handshake header and not a place for
   secret material.
+- **Scrub the fragment immediately.** A fragment avoids HTTP, `Referer` and
+  server-log exposure, but it still sits in the address bar, the current history
+  entry, and any URL the user copies. The client reads it and calls
+  `history.replaceState` to remove it **before opening the socket**.
 - **Atomic admission:** the server creates no `App`, attaches nothing and
   accepts no input until `auth/token`'s atomic **consume** succeeds. Failure
   closes the connection. The ticket is never echoed and never logged.
@@ -258,31 +279,47 @@ the browser attaches the credential, yielding a keyboard on the CLI. Therefore:
 > (RFC 6455 §10.2; W3C client-certificate-selection notes; OWASP WebSocket
 > Security Cheat Sheet.)
 
-### 2.9 The input contract (r1 — acceptance criterion 7 assumed a table that did not exist)
+### 2.9 The input contract — the table itself
 
-The package MUST document, and test, a complete browser→`tui.Event` mapping:
+Rev 1 described what the package *would* document; r2 correctly refused that,
+since acceptance 7 asserts a table exists. Here it is. **Normalization** means
+what the client sends after its own preprocessing; the backend never sees raw
+DOM events.
 
-- **`KeyboardEvent.key` vs `code`** — which is authoritative for which class of
-  key, and why (layout-dependent characters vs physical keys).
-- **Modifiers and autorepeat**: Ctrl/Alt/Shift/Meta composition, and whether a
-  repeat is emitted as distinct events.
-- **IME / composition**: composition start/update/end must not emit garbage
-  intermediate keys; the committed text arrives as text input.
-- **Paste**: browser paste → a paste event (consistent with
-  `BracketedPaste: true`).
-- **Reserved browser shortcuts** and an explicit `preventDefault` policy: which
-  combinations the page takes (so the TUI can use them) and which it must leave
-  to the browser.
-- **Mouse**: buttons, coordinates in cells, wheel, drag.
-- **Focus and resize.**
-- **Unknown events are dropped explicitly** — never forwarded as a phantom key.
+| Browser event | Client normalization | Emitted | preventDefault |
+| --- | --- | --- | --- |
+| `keydown`, printable, no Ctrl/Meta | ignore — wait for `input`/composition so IME and dead keys are correct | *(nothing)* | no |
+| `input` / composition commit | the committed text | `KeyEvent{Text}` per grapheme cluster | no |
+| `keydown`, `key` in the named set (`Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, arrows, `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `F1`–`F12`) | `key`, not `code` — layout-independent naming | `KeyEvent{Key, Mods}` | **yes** |
+| `keydown` with Ctrl/Alt/Meta and a printable `key` | `key` lowercased + modifier set | `KeyEvent{Key, Mods}` | **yes**, except the reserved set below |
+| reserved browser shortcuts: Ctrl/Cmd + `T`,`N`,`W`,`Tab`,`L`,`R`, `F5`, `F11`, `F12`, Cmd+`Q` | not forwarded | *(nothing)* | **no** — the browser keeps them, and the README says so |
+| `keydown` with `repeat: true` | forwarded as an ordinary key event | `KeyEvent` | as above |
+| `compositionstart`/`update` | swallowed; no intermediate keys | *(nothing)* | no |
+| `paste` | clipboard text, newlines normalized to `\n` | `PasteEvent{Text}` (consistent with `BracketedPaste: true`) | **yes** |
+| `mousedown`/`up`/`move` | button + **cell** coordinates from the measured grid (§2.6), not pixels | `MouseEvent{Button, X, Y, Mods, Kind}` | **yes** inside the grid |
+| `wheel` | quantized to discrete steps | `MouseEvent{Kind: Wheel, Delta}` | **yes** inside the grid |
+| `focus` / `blur` | — | `FocusEvent{Focused}` | no |
+| resize / measured-metrics change | recomputed cols×rows | `ResizeEvent{Cols, Rows}` | no |
+| anything else | **dropped explicitly** | *(nothing)* — never a phantom key | no |
 
-**Resource limits belong to the same contract.** Because `Events()` is ordered
-and un-coalesced (ADR-0002), an abusive client must not be able to make the
-backend allocate without bound: define a maximum message size, a maximum event
-rate, a **bounded** ordered event queue, and **close the connection on sustained
-overload** rather than growing. RFC 6455 recommends implementation-specific
-frame and total-message limits.
+**Modifier normalization:** `Meta` reports as `Meta` and is never silently
+folded into `Ctrl`; the README documents that a TUI wanting portability should
+bind `Ctrl`.
+
+**Resource limits — concrete defaults, all configurable:**
+
+| Limit | Default | On breach |
+| --- | --- | --- |
+| max WebSocket message | 64 KiB | close (1009 Message Too Big) |
+| max input events/sec (sustained) | 500 | see overload below |
+| burst allowance | 2 000 events | absorbed, then rate applies |
+| `Events()` queue capacity | 1 024 | see overload below |
+| overload duration before close | 2 s continuously at capacity | close (1008 Policy Violation) |
+
+Because `Events()` is ordered and un-coalesced (ADR-0002), the backend must never
+grow to absorb abuse: a queue at capacity applies backpressure, and **sustained**
+capacity for the overload duration closes the connection rather than allocating.
+RFC 6455 recommends implementation-specific frame and total-message limits.
 
 ### 2.10 The seam report is a deliverable
 
@@ -364,7 +401,9 @@ Acceptance criteria:
 4. **Divergence test (the rev-0 defect, pinned).** With the client's reader
    blocked, change row A, let that publication be coalesced away, then change
    only row B, then unblock: the client's final grid must equal the server's
-   grid — proving the pending frame accumulated rather than replaced. `Flush`
+   grid — proving the pending frame accumulated rather than replaced. A second
+   case drops the **acknowledgement** rather than the send, proving a
+   transmitted-but-unacknowledged row stays in the aggregate. `Flush`
    never blocks, the app loop keeps running, and the coalesced publication is
    logged.
 4b. Revisions increase monotonically; a fresh connection and a reconnect after a
@@ -385,18 +424,22 @@ Acceptance criteria:
    credential no longer attaches.
 9. A non-loopback bind without TLS **fails to start**, with a test asserting the
    error; a plaintext loopback bind is permitted only per §7 Q2's resolution.
-10. `Origin` validation denies by default and is enforced **even when mTLS is
+10. Every attach re-runs the completed policy: a replayed ticket is refused, a
+    fresh ticket succeeds, and an mTLS client re-attaches **without** a ticket —
+    the r2 reconnect invariant.
+10a. `Origin` validation denies by default and is enforced **even when mTLS is
     in use**; a cross-origin handshake is refused; a ticket cannot be redeemed
     twice (atomic consume), and no `App` is created or input accepted before the
     consume succeeds.
 10b. The ticket never appears in a request URL, an access log, or any server log;
-    a test asserts the fragment-plus-first-message flow.
+    a test asserts the fragment-plus-first-message flow **and** that the client
+    scrubs the fragment via `history.replaceState` before opening the socket.
 10c. Responses carry the §2.7 hardening headers (CSP with `frame-ancestors
     'none'`, `Cache-Control: no-store`, restrictive content type), and `Host`/
     `Origin` expectations come from configuration, never inference.
 11. `Capabilities()` reports `KittyKeyboard: false`, and no capability is
     `TriYes` without a verifiable basis.
-12. The §2.9 seam report exists and is specific: each finding names the method or
+12. The §2.10 seam report exists and is specific: each finding names the method or
     type, what the terminal-shaped assumption cost, and what a future
     non-terminal backend should do — or states explicitly that the seam needed
     nothing, which is itself the result.
@@ -450,6 +493,24 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **r2 (2026-08-21, lector — `change_requested`, folded in rev 2).** The r1
+  substance was accepted; these were internal contradictions. **Must-fix 1:**
+  §2.9 still *described* an input-mapping table instead of *being* one while
+  acceptance 7 asserted it existed — §2.9 is now the table itself, with concrete
+  default limits (64 KiB message, 500 events/s sustained, 2 000 burst, 1 024
+  queue, 2 s to close on sustained overload). **Must-fix 2:** rev 1's "every
+  attach requires a fresh ticket" contradicted the policy, which admits mTLS and
+  the signed challenge as identity-bearing mechanisms in their own right; the
+  invariant is now **fresh authentication** — each attach re-runs the completed
+  policy, the ticket branch consumes a new ticket, and mTLS/challenge
+  authenticate directly or via an internal one-use attach grant.
+  **Should-fixes:** the client now scrubs the fragment with
+  `history.replaceState` before opening the socket (a fragment escapes HTTP and
+  `Referer` but persists in history and copied URLs); the pending aggregate is
+  defined against the last **acknowledged** baseline, so a transmitted-but-
+  unacknowledged row stays in it; and the stale §2.9/§2.10 and Q3 references I
+  introduced while renumbering are repaired.
 
 - **r1 (2026-08-21, lector — `change_requested`, folded in this revision).**
   **Must-fix 1 was a correctness defect, not a nit:** rev 0's latest-wins frame
