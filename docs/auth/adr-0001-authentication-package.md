@@ -1,9 +1,9 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Proposed (rev 1)** (2026-08-21 — authored by jarvis; lector
-  design r1 `change_requested` folded, including undefined identity composition,
-  an unenforceable factor rule, and a reversed password-KDF decision. See Review
-  history. Lands on `auth-pkg`.)
+- **Status:** **Proposed (rev 2)** (2026-08-21 — authored by jarvis; lector
+  design r1 and r2 `change_requested` both folded — undefined identity
+  composition, an unenforceable factor rule, a reversed password-KDF decision,
+  and r2's leaf/interface type contradiction. See Review history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — a new subsystem.
@@ -34,10 +34,33 @@ drives the design more than any individual method does.
 ### 2.1 Shape: one interface, transport-agnostic
 
 ```go
-// Authenticator proves who is making a request, or refuses.
-type Authenticator interface {
+// Factor is ONE leaf check. It returns a Contribution, not an Identity —
+// r2 must-fix 1: a contextual factor such as ipallow carries no Subject, so it
+// cannot legally satisfy an interface whose success must produce a non-empty
+// Subject. Leaves contribute; only a validated Policy concludes.
+type Factor interface {
+	Verify(ctx context.Context, r *Request) (Contribution, error)
+	Kind() FactorKind
+}
+
+// Contribution is what one leaf proved. Subject is REQUIRED for
+// FactorIdentity and MUST be empty for FactorContextual.
+type Contribution struct {
+	Method  string
+	Kind    FactorKind
+	Subject string    // identity-bearing leaves only
+	IssuedAt  time.Time
+	ExpiresAt time.Time // zero = this proof imposes no post-auth bound (§2.2.1)
+}
+
+// Policy is a validated tree of factors and the only thing callers invoke.
+// NewPolicy validates the FINISHED tree (§2.2.2) and is where a
+// contextual-only root is rejected.
+type Policy interface {
 	Authenticate(ctx context.Context, r *Request) (*Identity, error)
 }
+
+func NewPolicy(root Node) (Policy, error)
 
 // Request is the transport-agnostic material an authenticator may inspect:
 // the peer address, metadata (headers or RPC metadata), presented credentials,
@@ -45,8 +68,9 @@ type Authenticator interface {
 // a WebSocket handshake and a CLI prompt can all present one.
 type Request struct { /* RemoteAddr netip.AddrPort; Metadata; Credentials; TLS */ }
 
-// Identity is the outcome: who, proved how (possibly by several factors), and
-// until when. Proofs ACCUMULATE — a scalar Method cannot describe All(...).
+// Identity is what a validated Policy concludes: who, proved how (possibly by
+// several factors), and the validity interval. Proofs ACCUMULATE — a scalar
+// Method cannot describe All(...).
 type Identity struct {
 	Subject   string    // the authenticated principal
 	Proofs    []Proof   // every factor that contributed, in evaluation order
@@ -54,8 +78,7 @@ type Identity struct {
 	ExpiresAt time.Time // MINIMUM across contributing proofs (§2.2)
 }
 
-// Proof is one factor's contribution: which method, and whether it carried an
-// identity or merely constrained one (§2.2).
+// Proof records one contributing factor.
 type Proof struct {
 	Method string
 	Kind   FactorKind // Identity or Contextual
@@ -74,9 +97,12 @@ func Any(a ...Authenticator) Authenticator // the first pass wins (OR)
 
 Rules, all normative:
 
-- **Deny by default.** `All()` and `Any()` with no members **deny**; an empty
-  allowlist denies; a policy with no authenticator is a **construction error**
-  (panic at construction, house rule), never allow-everything.
+- **Deny by default, with the two cases kept distinct** (r2 should-fix 3):
+  an **empty factor node** — `All()` / `Any()` with no children — is a node that
+  **denies**; an **empty or contextual-only final policy** — `NewPolicy(nil)`, or
+  a root that is not identity-bearing — is a **construction error**. A node can
+  legitimately be empty mid-construction; a finished policy cannot.
+  An empty allowlist inside `ipallow` denies.
 - **Documented evaluation order and short-circuit**: `All` evaluates in
   declaration order and stops at the first failure; `Any` stops at the first
   success. Order is caller-visible because it determines cost (put the cheap
@@ -100,10 +126,18 @@ combine two different people. Normative rules:
 - **A top-level success must contain at least one identity-bearing proof**
   (§2.2.2). A policy satisfied entirely by contextual factors denies.
 - **Proofs accumulate** in evaluation order; there is no scalar "the method".
-- **`ExpiresAt` is the MINIMUM** across contributing proofs; `IssuedAt` is the
-  earliest. A short-lived factor bounds the whole identity.
-- **Claim conflicts are deterministic**: first-writer-wins in declaration order,
-  and any conflict is recorded in the audit record.
+- **The validity interval is the INTERSECTION of the contributing proofs**
+  (r2 must-fix 3): `IssuedAt` is the **latest** non-zero contributing value and
+  `ExpiresAt` the **minimum finite non-zero** one. A **zero `ExpiresAt` means
+  that proof imposes no post-authentication bound** and does not shorten the
+  interval.
+- **Which factors bound the interval:** a *continuing finite* assertion does
+  (if it stops being true, the policy should not outlive it), while a *static
+  observation* such as an `ipallow` match contributes **no** expiry.
+- **A ticket's redemption deadline is NOT the session lifetime.** It bounds how
+  long the ticket may be redeemed; once atomically consumed it is a
+  point-in-time proof. `tui/web` owns session expiry (ADR-0009 §2.8), and
+  conflating the two would expire a live session at the ticket's deadline.
 - **Invariant:** a non-nil error means a nil `*Identity`, and a nil error means a
   non-nil `*Identity` with a non-empty `Subject`. Never both, never neither.
 
@@ -120,21 +154,35 @@ const (
 	FactorContextual FactorKind = iota // constrains an identity; proves none
 	FactorIdentity                     // carries a Subject
 )
-
-// Every authenticator declares what it is; the policy tree is VALIDATED at
-// construction so a top-level success can never rest on contextual factors
-// alone.
-type Factor interface {
-	Authenticator
-	Kind() FactorKind
-}
 ```
 
-`ipallow` is `FactorContextual`; `sshkey`, `mtls`, `password`+`totp`, and a
-consumed `token` are `FactorIdentity`. Constructing
-`Any(ipallow, sshkey)` at top level is a **construction error** (panic, house
-rule) because one branch could satisfy it contextually. This is what makes the
-WebTUI policy in ADR-0009 §2.8 expressible and safe.
+`ipallow` is `FactorContextual`. `sshkey`, `mtls`, a consumed `token` and
+`password` are `FactorIdentity`.
+
+**The kind of a composite is computed, not declared** (r2 must-fix 2 — rev 1
+left `All`/`Any` typed as plain authenticators, so nothing could enforce or
+even observe it):
+
+| Node | Identity-bearing when |
+| --- | --- |
+| leaf | its `Kind() == FactorIdentity` |
+| `All(children…)` | **any** child is identity-bearing (the others constrain it) |
+| `Any(children…)` | **every** branch is identity-bearing (a single contextual branch would be a way in) |
+
+`NewPolicy` validates the **finished tree** — not a node in isolation, which is
+why rev 1's construction check could not work: an `Any` has no idea whether it is
+the root. A policy whose root is not identity-bearing is a construction error.
+
+Consequences, all three of which are acceptance cases:
+
+```go
+NewPolicy(Any(mtls, All(ipallow, sshChallenge)))  // VALID: both branches bear identity
+NewPolicy(Any(ipallow, sshkey))                   // INVALID root: the ipallow branch alone admits
+NewPolicy(All(ipallow, Any(ticket, mtls)))         // VALID: the All is identity-bearing via its Any
+```
+
+Note a contextual leaf remains legal **below** an `All` that always requires
+another identity proof — that is the whole point of `All(ipallow, …)`.
 
 ### 2.3 Methods, and where each dependency lives
 
@@ -150,8 +198,9 @@ import is isolated in a leaf subpackage with its justification recorded here.
 | `auth/mtls` | client-certificate **chain verification** (§2.6a) | **stdlib** (`crypto/tls`, `crypto/x509`) | — |
 | `auth/sshkey` | `authorized_keys` parsing + SSH signature verification | `golang.org/x/crypto/ssh` | §2.5 |
 
-Four of five are dependency-free at the import level, and **exactly one module**
-(`golang.org/x/crypto`) is added in total — shared by `sshkey` and `password`.
+**Three of five** leaves are third-party-import-free (`ipallow`, `token`,
+`mtls`); `sshkey` and `password` share **exactly one module**
+(`golang.org/x/crypto`), and the core itself imports none.
 
 ### 2.4 Password hashing: Argon2id (REVERSED in r1)
 
@@ -187,7 +236,9 @@ for, and `x/crypto` is Go-team maintained — the same provenance as the `x/term
 already in `go.mod` for `tui/term`.
 
 **A browser cannot read `~/.ssh`, so "authenticate with an SSH key" needs a
-mechanism.** Two honest candidates; §7 Q2 decides:
+mechanism.** **DECIDED (r1): the SSH-channel-minted single-use ticket is the
+default, with the signed challenge available as an option.** Both are specified
+because ADR-0009 admits either:
 
 1. **Signed challenge.** The server issues a nonce; the user signs it locally
    (`ssh-keygen -Y sign`, or an agent) and submits the signature; the server
@@ -312,7 +363,11 @@ credential* — and returns an `Identity` or an error.
 2. **`net/http`-shaped middleware only.** Rejected: it would exclude
    `server/rpc`, the WS handshake and CLI prompts, and would drag `net/http`
    into the core.
-3. **`x/crypto` argon2id for passwords.** Rejected for now — §2.4.
+3. **~~`x/crypto` argon2id for passwords~~ — this was rejected in rev 0 and is
+   now the CHOSEN default (§2.4).** Kept here only to record the reversal: the
+   rejection rested on avoiding a module that `auth/sshkey` was adding anyway.
+   The live alternative is the reverse — stdlib PBKDF2 — retained as an
+   explicitly selected FIPS-oriented leaf, never the default.
 4. **Rolling our own SSH signature parsing to stay dependency-free.** Rejected —
    §2.5. This is the case the dependency rule's exception exists for.
 5. **Delegating everything to a reverse proxy** (oauth2-proxy, Tailscale or
@@ -337,13 +392,19 @@ Acceptance criteria:
    across all failure causes.
 2b. **Identity merging (§2.2.1):** `All` over two identity-bearing factors with
    *disagreeing* subjects **fails**; agreeing subjects yield one `Identity` whose
-   `Proofs` contain both in order, whose `ExpiresAt` is the **minimum** and whose
-   `IssuedAt` is the earliest; a claim conflict resolves first-writer-wins and is
-   recorded in the audit record. The nil/error invariant holds in every branch.
-2c. **Factor classification (§2.2.2):** constructing a top-level
-   `Any(ipallow, sshkey)` is a **construction error**; `All(ipallow, sshkey)`
-   constructs and requires both; a policy satisfiable by contextual factors alone
-   can never be built.
+   `Proofs` contain both in order. A `Contribution` from a contextual leaf never
+   supplies a `Subject`, and the nil/error invariant holds in every branch:
+   non-nil error ⇒ nil `*Identity`, nil error ⇒ non-empty `Subject`.
+2c. **Tree validation (§2.2.2)** — all three trees are acceptance cases:
+   `NewPolicy(Any(mtls, All(ipallow, sshChallenge)))` **is valid**;
+   `NewPolicy(Any(ipallow, sshkey))` is a **construction error**;
+   `NewPolicy(All(ipallow, Any(ticket, mtls)))` **is valid**. A contextual leaf
+   below an identity-requiring `All` stays legal, and no policy satisfiable by
+   contextual factors alone can be constructed.
+2d. **Validity interval (§2.2.1):** `IssuedAt` is the latest contributing value,
+   `ExpiresAt` the minimum finite non-zero one, a zero expiry imposes no bound, a
+   static `ipallow` match contributes no expiry, and a consumed ticket's
+   redemption deadline does **not** become `Identity.ExpiresAt`.
 3. A construction with no authenticator panics at construction, not at first
    request.
 4. Timing symmetry across **all five** paths — known, unknown, wrong, locked and
@@ -387,9 +448,9 @@ Acceptance criteria:
 The `Authenticator`/`Request`/`Identity` interfaces and the composition
 semantics (§2.1, §2.2) should be settled **first**, because ADR-0009's backend
 depends on the interface and can proceed against it while the individual methods
-land incrementally. Suggested order: core + `ipallow` + `token` (all stdlib, and
-enough for ADR-0009's ticket flow) → `sshkey` + `mtls` (the strong mechanisms
-WebTUI accepts) → `password` + `totp` (other callers).
+land incrementally. Suggested order: core + `ipallow` + `token` (stdlib only, and enough for
+ADR-0009's ticket flow) → `sshkey` + `mtls` (the strong mechanisms WebTUI
+accepts) → `password` (other callers). `totp` is deferred entirely (§3).
 
 ## 7. Resolved review questions (r1)
 
@@ -427,6 +488,31 @@ WebTUI accepts) → `password` + `totp` (other callers).
    costs nothing and avoids that break.
 
 ## Review history
+
+- **r2 (2026-08-21, lector — `change_requested`, folded in rev 2).** The r1
+  substance was accepted; these were contradictions I introduced. **Must-fix 1
+  was a type contradiction:** rev 1 gave leaves `Kind()` *and* embedded an
+  `Authenticator` returning `*Identity`, while the invariant demanded every
+  success carry a non-empty `Subject` — so `ipallow` could never legally succeed
+  at all. Leaves are now `Factor`s returning a `Contribution` (contextual
+  contributions carry no subject), and only a validated `Policy` concludes an
+  `Identity`. **Must-fix 2:** `All`/`Any` still returned plain authenticators, so
+  the composite kind was invisible and an `Any` could not know it was the root —
+  rev 1's construction check was therefore unimplementable. The kind is now
+  *computed* (`All` bears identity if **any** child does; `Any` only if **every**
+  branch does) and `NewPolicy` validates the **finished tree**, which also makes
+  `Any(mtls, All(ipallow, sshChallenge))` legal — I had feared rev 1 banned it,
+  and lector confirmed the nested form must be valid. **Must-fix 3:** the
+  validity interval is an intersection — **latest** `IssuedAt`, **minimum finite
+  non-zero** `ExpiresAt`, zero meaning no bound — a static `ipallow` match
+  contributes no expiry while a continuing finite assertion does, and a ticket's
+  redemption deadline must never become the session lifetime (`tui/web` owns
+  that). **Should-fixes:** claim-conflict semantics removed while `Attributes` is
+  deferred; the stale counts and statements cleaned (3/5 leaves import-free, not
+  4/5; argon2id recorded as the reversal rather than still "rejected"; the SSH
+  flow marked decided; `totp` dropped from sequencing); and an empty factor node
+  (denies) separated from an empty or contextual-only policy (construction
+  error).
 
 - **r1 (2026-08-21, lector — `change_requested`, folded in this revision).**
   **Must-fix 1:** rev 0 specified `All`/`Any` control flow but never how
