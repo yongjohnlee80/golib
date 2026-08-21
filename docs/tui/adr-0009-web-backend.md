@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Proposed (rev 8) — design-approved** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Proposed (rev 8) — DESIGN-APPROVED, awaiting acceptance** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; r8 `approved_with_amendments` and all three applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
   0's frame coalescing, a wrong security claim about mTLS, and r2's internal
@@ -563,13 +563,6 @@ Acceptance criteria:
    (viii) **a composition-associated `input` delivered in a LATER task**, after
    `compositionend` already committed → **no duplicate**, and it is not mistaken
    for a new identical user action (the drained buffer is empty).
-7d. **The capture buffer never becomes a log:** its value and baseline are
-   **empty after every path** — ordinary input, composition commit, cancellation
-   and paste; a long typing stream leaves the DOM value size constant rather than
-   growing; password-like text is **absent from the element after emission**; and
-   replacement/autocorrect is either disabled by the element's attributes or
-   explicitly normalized, so no implementer can substitute an ambiguous general
-   string diff.
 7b. Pinned cases: a non-US layout, a dead-key sequence, a multi-codepoint emoji,
    a `key` of `Dead`/`Unidentified` (dropped, no phantom), and a browser
    reporting no AltGraph state. The Chromium/Firefox/WebKit matrix is a required
@@ -577,6 +570,13 @@ Acceptance criteria:
 7c. Resource limits: an oversized message is rejected, a sustained event flood
    closes the connection instead of growing the queue, and the queue bound holds
    under load.
+7d. **The capture buffer never becomes a log:** its value and baseline are
+   **empty after every path** — ordinary input, composition commit, cancellation
+   and paste; a long typing stream leaves the DOM value size constant rather than
+   growing; password-like text is **absent from the element after emission**; and
+   replacement/autocorrect is either disabled by the element's attributes or
+   explicitly normalized, so no implementer can substitute an ambiguous general
+   string diff.
 8. Session cap and idle eviction are enforced; after disconnect and after
    eviction, `Stop` has run, goroutines have exited (leak check), and the
    credential no longer attaches.
