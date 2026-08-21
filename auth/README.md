@@ -57,7 +57,24 @@ system rather than by a comment telling you not to.
 | `auth/mtls` | verified client-cert chain | identity | stdlib |
 | `auth/password` | Argon2id (PBKDF2 for FIPS) | identity | `x/crypto/argon2`, stdlib `crypto/pbkdf2` |
 
+Plus `auth.Throttle` + `auth.MemTracker` in the core: per-subject and
+per-source-address failure counting with exponential backoff.
+
 The core imports **no third-party module**.
+
+## Adapters
+
+The core stays free of `net/http`, so one policy value serves a web handler, an
+RPC server and a CLI prompt.
+
+| Adapter | Use |
+|---------|-----|
+| `auth/authhttp` | `Middleware(policy)`, `FromRequest`, `IdentityFrom(ctx)` |
+| `auth.FromConn` | `server/rpc`, `server/ws`, a plain listener |
+
+`auth/authhttp` copies an **allowlist** of headers into `Metadata` — never
+`Cookie` or `Authorization`, which would land in a plain map that `Secret` does
+not protect. Credentials go to `Credentials`, where they redact.
 
 ## Things that are easy to get wrong, and what this does
 
@@ -123,6 +140,23 @@ The core imports **no third-party module**.
   against a dummy credential built with the *same* parameters, so "no such user"
   cannot be told from "wrong password" by timing. A corrupt stored credential or
   a broken store reports to the operator and rejects uniformly outward.
+- **A locked-out attempt still does the work.** `auth.Throttle` runs the wrapped
+  factor even when the key is in backoff, and discards the verdict.
+  Short-circuiting would make the locked path return in microseconds against
+  tens of milliseconds for a wrong password — and since only an *existing*
+  account can be locked out, timing lockout enumerates users. It defends
+  credentials, not CPU; bound request volume at the transport.
+- **A locked attempt counts as a failure.** Otherwise a correct guess arriving
+  during backoff resets the counter and the backoff is bypassable by retrying.
+- **The failure counters are bounded.** They are keyed by attacker-supplied
+  values, so an unbounded map is memory exhaustion reachable without
+  authenticating — a defense that introduces a vulnerability is not a defense.
+- **Every attempt gets a correlation ID.** The caller-visible error says
+  nothing, so the audit record carries a random per-attempt ID to
+  `logger.Logger` (default `Nop`) — success at Info, failure at Notice, because
+  a failed login is the system working. Control characters are stripped from
+  logged request fields: a newline in a log field is how a log gets forged
+  entries.
 - **A stored hash is untrusted data.** Cost parameters are range-checked on
   *read* as well as write: without that, anyone who can write to the credential
   store turns each login into a 4 GiB allocation.

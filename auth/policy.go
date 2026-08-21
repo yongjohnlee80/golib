@@ -2,7 +2,10 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	"github.com/yongjohnlee80/golib/logger"
 )
 
 // evalCtx carries what a node needs while walking the tree.
@@ -18,17 +21,27 @@ type evalCtx struct {
 //
 // It returns an error rather than panicking, because policies are frequently
 // assembled from configuration.
-func NewPolicy(root Node) (Policy, error) {
+func NewPolicy(root Node, opts ...PolicyOption) (Policy, error) {
 	if root == nil {
 		return nil, ErrEmptyPolicy
 	}
 	if !root.identityBearing() {
 		return nil, ErrNoIdentityProof
 	}
-	return &policy{root: root}, nil
+	p := &policy{root: root, log: logger.Nop{}}
+	for _, o := range opts {
+		if o != nil {
+			o(p)
+		}
+	}
+	return p, nil
 }
 
-type policy struct{ root Node }
+type policy struct {
+	root    Node
+	log     logger.Logger
+	observe func(Attempt)
+}
 
 // Authenticate evaluates the tree and merges the contributions.
 //
@@ -37,20 +50,45 @@ type policy struct{ root Node }
 // caller (ADR-0001 §2.2).
 func (p *policy) Authenticate(ctx context.Context, r *Request) (*Identity, error) {
 	if r == nil {
+		// No request means no peer and no audit trail worth an ID; there is
+		// nothing an operator could correlate.
 		return nil, ErrUnauthenticated
 	}
 	a := newAudit()
+	peer := ""
+	if r.Peer.IsValid() {
+		peer = r.Peer.String()
+	}
+
 	scopes, err := p.root.eval(evalCtx{ctx: ctx, req: r, audit: a})
 	if err != nil {
 		a.note("tree", err.Error())
+		p.emit(Attempt{ID: a.AttemptID, Outcome: outcomeFor(err), Peer: peer, Reasons: a.Reasons})
 		return nil, ErrUnauthenticated
 	}
 	id, err := merge(scopes)
 	if err != nil {
 		a.note("merge", err.Error())
+		p.emit(Attempt{ID: a.AttemptID, Outcome: "failure", Peer: peer, Reasons: a.Reasons})
 		return nil, ErrUnauthenticated
 	}
+	methods := make([]string, 0, len(id.Proofs))
+	for _, pr := range id.Proofs {
+		methods = append(methods, pr.Method)
+	}
+	p.emit(Attempt{ID: a.AttemptID, Outcome: "success", Subject: id.Subject, Methods: methods, Peer: peer})
 	return id, nil
+}
+
+// outcomeFor separates a backoff refusal from a credential failure IN THE LOG
+// ONLY. The caller still receives the same ErrUnauthenticated; an operator
+// looking at a flood of "throttled" needs to see something different from a
+// flood of "failure".
+func outcomeFor(err error) string {
+	if errors.Is(err, ErrThrottled) {
+		return "throttled"
+	}
+	return "failure"
 }
 
 // eval for a leaf: run the factor, then enforce the Subject rule against the

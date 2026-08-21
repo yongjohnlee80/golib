@@ -525,11 +525,56 @@ errors, panics, or logs (RULES.md #1). Logging is `logger.Logger` (default
 `Nop`): attempt, success, failure, lockout — with subject and method, never the
 secret.
 
+**Implementation notes (2026-08-22).** Rev 4's implementation built the `Audit`
+record and **threw it away** — nothing emitted the correlation ID, so this
+ADR's "an operator diagnoses from the attempt ID" promise was not true of the
+code. `NewPolicy` now takes `Log(logger.Logger)` and `Observe(func(Attempt))`,
+and emits exactly one `Attempt` per authentication.
+
+- **Severity by outcome: success Info, failure Notice.** A failed login is the
+  system working; logging it at Error trains operators to ignore the level that
+  matters.
+- **A backoff refusal logs as `throttled`, not `failure`** — the caller still
+  receives the same `ErrUnauthenticated`, but a flood of one is a different
+  operational fact from a flood of the other.
+- **`Subject` appears only on success**, where it has been proven. An unverified
+  claim does not belong in a field that reads like an established fact; it stays
+  in the factor's reasons.
+- **Control characters are stripped and fields truncated** in the rendering.
+  `Subject` and `Peer` derive from request data, and a newline in a logged field
+  is how a log file gets forged entries.
+
 ### 2.8 Adapters, not framework coupling
 
 The core stays free of `net/http`. Thin adapters live in subpackages: a
 `net/http` middleware, and a helper usable from `server/rpc` / `server/ws`, so
 one policy value serves a web handler, an RPC server and a CLI prompt.
+
+**Implementation notes (2026-08-22).** `auth/authhttp` provides
+`Middleware(policy)`, `FromRequest` and `IdentityFrom(ctx)`; `auth.FromConn`
+covers the non-HTTP transports and imports only `net`.
+
+Three decisions in the adapter are security-relevant rather than mechanical:
+
+- **Headers are copied by ALLOWLIST, not in bulk.** A bulk copy puts `Cookie`
+  and `Authorization` into `Metadata`, a plain `map[string][]string` that
+  `Secret` does not protect — the first `%+v` that touches the request prints
+  them. The default list is only what a factor consults (`Origin`,
+  `User-Agent`, the forwarded-address headers, the WS subprotocol).
+- **`Peer` is `RemoteAddr`, never a forwarded header**, and an unparsable value
+  yields the **zero** `AddrPort` rather than a guess. Every address-keyed control
+  must read that as "no address"; a plausible-looking fallback would be an
+  allowlist bypass. The same rule governs `FromConn`, including for a unix
+  socket, which has no network address at all — authenticate a unix peer by
+  credential.
+- **TLS is projected through `mtls.FromConnectionState`**, which refuses to carry
+  `PeerCertificates` (§2.6a). `FromConn` does not touch TLS at all rather than
+  reimplement that refusal.
+
+`Middleware(nil)` **panics at construction**: a middleware that silently stops
+authenticating is the worst failure mode available to this package. The
+context key is unexported, so nothing outside the adapter can plant an identity
+a downstream handler would trust.
 
 ## 3. What this package is not
 
