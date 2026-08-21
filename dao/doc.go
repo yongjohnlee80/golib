@@ -20,6 +20,23 @@
 // reasonable default for database/sql drivers that follow Postgres/SQLite
 // conventions.
 //
+// # Declaring columns
+//
+// A field's projected SQL is either Field.Column (raw SQL, emitted verbatim)
+// or Field.Expr, the same expression built from the caller's own table and
+// field constants and resolved exactly once — at [New], against the
+// connection's [Dialect] — into Column. A declaration is written before any
+// connection exists, so an Expr is what lets identifier quoting be correct per
+// dialect instead of hand-written for one: [T] qualifies a column with its
+// table, [C] leaves it unqualified, and [Coalesce], [Str], [Int], [SQL],
+// [LeftJoin] and [InnerJoin] compose from there ([OptionalJoinExpr] registers a
+// resolved join clause).
+//
+// T and C also carry the raw column name the write path needs, so
+// INSERT/UPDATE quote one identifier exactly once. An expression has no column
+// to write to: a writable field declared with [Coalesce] or [SQL] must set
+// ReadOnly or WriteColumn, which New enforces rather than emitting invalid DML.
+//
 // # Batch writes
 //
 // [BatchWriter] (obtained from a DAO via Batch) accumulates rows and flushes
@@ -35,6 +52,6 @@
 // [ErrForeignKey]) and, for constraint violations, a [ConstraintError] carrying
 // the constraint name and [ConstraintKind].
 //
-// This package is built incrementally per the ADR-0001…0007 design set; see the
+// This package is built incrementally per the ADR-0001…0016 design set; see the
 // dao design dossier for the full contract.
 package dao

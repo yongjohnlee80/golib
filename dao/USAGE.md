@@ -114,6 +114,11 @@ func Open(ctx context.Context, dsn string, log logger.Logger) (*ArtistSchema, da
 
 ### 1.1 `Expr` — declarations built from your constants (ADR-0016)
 
+> Reference table and the two rules (write identity, quoting is not
+> semantically neutral) live in
+> [README → Declaring columns](README.md#declaring-columns-expr-or-column).
+> This section is the why, worked.
+
 `Field.Expr` is the dialect-resolved alternative to `Field.Column`: `dao.New`
 renders it **once** against the connection's dialect, so nothing downstream
 changes and there is no query-time cost.
@@ -416,8 +421,8 @@ skip:
 
 ```go
 artistFields := map[ArtistField]dao.Field[*Artist]{
-    ArtistURI: {Column: "artist.uri", Scan: sURI, Value: vURI, Clearable: true},
-    ArtistDate: {Column: "artist.release_date", Scan: sDate, Value: vDate,
+    ArtistURI: {Expr: dao.T(TableArtist, ArtistURI), Scan: sURI, Value: vURI, Clearable: true},
+    ArtistDate: {Expr: dao.T(TableArtist, ArtistDate), Scan: sDate, Value: vDate,
         Clearable: true, ClearValue: lib.DateSentinel}, // NOT NULL → sentinel, not NULL
 }
 ```

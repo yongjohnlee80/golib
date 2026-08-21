@@ -121,6 +121,10 @@ multi-database transactions (incl. two-phase commit), query-time hooks
 (tenant scoping, soft delete, metrics), and partial (PATCH) updates. Not an ORM
 — explicit columns, explicit joins, no struct-tag magic.
 
+- Declarations are built from your own constants: `Field.Expr` with
+  `dao.T`/`dao.C`/`dao.Coalesce` resolves identifier quoting through the
+  connection's dialect at construction, so a reserved word or a
+  schema-qualified name is correct on every driver.
 - Core: zero external dependencies.
 - Drivers: [`dao/postgres`](dao/postgres/README.md) (pgx, native COPY, 2PC),
   [`dao/sqlite`](dao/sqlite/README.md) (pure-Go modernc; the new-driver
