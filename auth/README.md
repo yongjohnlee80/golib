@@ -55,7 +55,7 @@ system rather than by a comment telling you not to.
 | `auth/token` | opaque tokens + single-use tickets | identity | stdlib |
 | `auth/sshkey` | `allowed_signers` + signed challenge, verified by `ssh-keygen -Y verify` | identity | `x/crypto/ssh`, `os/exec` |
 | `auth/mtls` | verified client-cert chain | identity | stdlib |
-| `auth/password` | Argon2id | identity | `x/crypto` *(planned)* |
+| `auth/password` | Argon2id (PBKDF2 for FIPS) | identity | `x/crypto/argon2`, stdlib `crypto/pbkdf2` |
 
 The core imports **no third-party module**.
 
@@ -102,6 +102,19 @@ The core imports **no third-party module**.
   unreadable `allowed_signers`, or a hung subprocess yields
   `ErrVerifierUnavailable`, never `ErrBadSignature`, so an operator can tell a
   misconfiguration from a denial.
+
+- **A password credential says how to check itself.** Parameters are stored
+  *with* the hash (`$argon2id$v=19$m=65536,t=3,p=4$salt$digest`), so tuning the
+  cost never invalidates existing credentials, and a successful login rewrites a
+  credential written under different parameters — the only moment the plaintext
+  exists to rehash with. A failed rehash never fails the login.
+- **An unknown user costs what a known one costs.** `auth/password` hashes
+  against a dummy credential built with the *same* parameters, so "no such user"
+  cannot be told from "wrong password" by timing. A corrupt stored credential or
+  a broken store reports to the operator and rejects uniformly outward.
+- **A stored hash is untrusted data.** Cost parameters are range-checked on
+  *read* as well as write: without that, anyone who can write to the credential
+  store turns each login into a 4 GiB allocation.
 
 ## Never
 
