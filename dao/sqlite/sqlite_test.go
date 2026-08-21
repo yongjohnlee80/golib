@@ -154,10 +154,10 @@ func TestSQLite_BatchChunked(t *testing.T) {
 
 func TestSQLite_Transaction(t *testing.T) {
 	t.Parallel()
-	conn, s := setup(t)
+	_, s := setup(t) // no connection needed: the schema carries it (ADR-0015)
 
 	// Commit.
-	err := dao.RunTx(context.Background(), []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+	err := dao.RunTx(context.Background(), func(tx *dao.Transaction) error {
 		if _, e := s.On(tx).Set(wName, "a").Insert(); e != nil {
 			return e
 		}
@@ -172,7 +172,7 @@ func TestSQLite_Transaction(t *testing.T) {
 	}
 
 	// Rollback on a duplicate inside the tx.
-	err = dao.RunTx(context.Background(), []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+	err = dao.RunTx(context.Background(), func(tx *dao.Transaction) error {
 		if _, e := s.On(tx).Set(wName, "c").Insert(); e != nil {
 			return e
 		}

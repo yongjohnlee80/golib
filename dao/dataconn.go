@@ -44,7 +44,18 @@ type DataConn interface {
 	Begin(ctx context.Context) (TxConn, error)
 
 	// Name identifies the connection for transaction-context keying and logs,
-	// e.g. "postgres" or "postgres-gold".
+	// e.g. "postgres" or "postgres-gold". It is the transaction layer's identity
+	// for a logical database and MUST be:
+	//
+	//   - stable for the connection's lifetime;
+	//   - unique across DIFFERENT logical databases in one process;
+	//   - shared ONLY by handles to the SAME logical database (two pools against
+	//     one database may share a name; two databases must never).
+	//
+	// A [Transaction] admits participants and orders its commit by this name
+	// (ADR-0015 §2.4). Capability decisions are NOT made from it: two-phase
+	// commit is validated against the participant that actually joined, not
+	// against a same-named declaration (ADR-0015 §2.5).
 	Name() string
 
 	// Close releases the underlying pool.

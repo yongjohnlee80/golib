@@ -16,15 +16,64 @@ type txContext interface {
 	rollback() error
 }
 
-// sqlTxContext wraps a database driver transaction.
-type sqlTxContext struct {
-	n  string
-	tx TxConn
+// dbTxContext is a database participant: a [txContext] with a live
+// transaction-scoped executor. The transaction probes for it by assertion so a
+// non-DB [Resource] is never mistaken for a database (ADR-0015 §2.1).
+type dbTxContext interface {
+	txContext
+	executor() TxConn
 }
 
-func (c *sqlTxContext) name() string    { return c.n }
-func (c *sqlTxContext) commit() error   { return c.tx.Commit() }
-func (c *sqlTxContext) rollback() error { return c.tx.Rollback() }
+// twoPhaseContext is the optional two-phase-commit capability of a database
+// participant. It is a capability interface probed by assertion rather than
+// methods on [txContext] (KB convention interface-evolution-capability-interfaces),
+// and it is what keeps [Transaction] free of any [DataConn]: the participant
+// delegates to the connection it carries (ADR-0015 §2.1).
+type twoPhaseContext interface {
+	twoPhaseSupported() bool
+	prepare(ctx context.Context, gid string) error
+	commitPrepared(ctx context.Context, gid string) error
+	rollbackPrepared(ctx context.Context, gid string) error
+}
+
+// sqlTxContext wraps one database's driver transaction together with the
+// connection it was opened on. The connection lives here — not on the
+// [Transaction] — because the participant is what needs it: to prepare, and to
+// commit or roll back a prepared transaction on the pool once the preparing
+// session is gone (ADR-0015 §2.1).
+type sqlTxContext struct {
+	n    string
+	conn DataConn
+	tx   TxConn
+}
+
+// compile-time: *sqlTxContext is a database participant and can two-phase.
+var (
+	_ dbTxContext     = (*sqlTxContext)(nil)
+	_ twoPhaseContext = (*sqlTxContext)(nil)
+)
+
+func (c *sqlTxContext) name() string     { return c.n }
+func (c *sqlTxContext) commit() error    { return c.tx.Commit() }
+func (c *sqlTxContext) rollback() error  { return c.tx.Rollback() }
+func (c *sqlTxContext) executor() TxConn { return c.tx }
+func (c *sqlTxContext) twoPhaseSupported() bool {
+	return c.conn.Dialect().TwoPhaseSupported()
+}
+
+func (c *sqlTxContext) prepare(ctx context.Context, gid string) error {
+	return c.conn.Dialect().Prepare(ctx, c.tx, gid)
+}
+
+// commitPrepared and rollbackPrepared execute on the pool connection — the
+// preparing session is gone by design (ADR-0005 §2.3).
+func (c *sqlTxContext) commitPrepared(ctx context.Context, gid string) error {
+	return c.conn.Dialect().CommitPrepared(ctx, c.conn, gid)
+}
+
+func (c *sqlTxContext) rollbackPrepared(ctx context.Context, gid string) error {
+	return c.conn.Dialect().RollbackPrepared(ctx, c.conn, gid)
+}
 
 // resourceContext wraps a non-DB [Resource].
 type resourceContext struct {
@@ -68,9 +117,97 @@ func ResourceFunc(commit, rollback func() error) Resource {
 	return resourceFuncs{commitFn: commit, rollbackFn: rollback}
 }
 
+// txConfig is the construction-time state a [TxOption] mutates. Begin turns a
+// finished config into a [Transaction].
+type txConfig struct {
+	span     []DataConn          // declared connections, in declaration order
+	declared map[string]struct{} // names in span, for dedupe
+	twoPhase bool
+	err      error // first construction error; becomes Transaction.initErr
+}
+
+// TxOption configures a [Transaction] at construction time (see [Begin] and
+// [RunTx]). Functional options — not a positional connection list — because a
+// transaction's connections are supplied by the participants that join it
+// (ADR-0015 §2.3).
+type TxOption func(*txConfig)
+
+// Spanning declares the connections this transaction MAY span. It is needed
+// only to write to MORE THAN ONE database in one transaction: a
+// single-database transaction takes no option at all, because each
+// tx-bound DAO supplies its schema's own connection when it first runs a
+// statement (ADR-0015 §2.2). With a span declared, membership is the admission
+// gate; without one, the first database to join locks the transaction to itself
+// (ADR-0015 §2.4).
+//
+// Normalization (ADR-0015 §2.3): declaration order is preserved — it is the
+// order [TwoPhase] pre-flight failures are reported in. Repeated Spanning
+// options merge, and a name declared twice keeps its first connection and
+// position, so passing the same connection twice is not an error. A nil
+// connection, or a call declaring no connection at all, is a construction
+// error: it fails the transaction before any work rather than being silently
+// dropped or silently downgraded to an undeclared span.
+func Spanning(conns ...DataConn) TxOption {
+	return func(c *txConfig) {
+		if len(conns) == 0 {
+			c.fail(fmt.Errorf("dao: Spanning: no connections declared; omit the option for a single-database transaction"))
+			return
+		}
+		for i, conn := range conns {
+			if conn == nil {
+				c.fail(fmt.Errorf("dao: Spanning: nil connection at index %d", i))
+				return
+			}
+			name := conn.Name()
+			if c.declared == nil {
+				c.declared = make(map[string]struct{}, len(conns))
+			}
+			if _, dup := c.declared[name]; dup {
+				continue
+			}
+			c.declared[name] = struct{}{}
+			c.span = append(c.span, conn)
+		}
+	}
+}
+
+// TwoPhase opts this transaction into true two-phase commit for genuine
+// all-or-nothing across multiple databases: Commit prepares every database
+// participant (phase one), and only when all prepares succeed commits them all
+// (phase two). Every participating dialect must report TwoPhaseSupported;
+// otherwise Commit fails fast with ErrTwoPhaseUnsupported before anything
+// commits, and — when [Spanning] declares the span — [RunTx] fails before it
+// even calls fn (ADR-0015 §2.5). dao/postgres implements the trio via
+// PREPARE TRANSACTION / COMMIT PREPARED / ROLLBACK PREPARED (requires the
+// server to have max_prepared_transactions > 0).
+//
+// It is a construction option rather than a method on [Transaction] so the
+// commit protocol cannot be flipped mid-flight, after statements have already
+// run on a dialect that cannot prepare (ADR-0015 §2.5).
+//
+// Operational note: a crash between the phases can leave prepared
+// transactions holding locks on the server. If Commit reports pending
+// prepared transactions (CommitError.PreparedPending), resolve them with
+// COMMIT PREPARED / ROLLBACK PREPARED (inspect pg_prepared_xacts on
+// Postgres). This cost is why 2PC is opt-in (ADR-0005 §2.3).
+func TwoPhase() TxOption {
+	return func(c *txConfig) { c.twoPhase = true }
+}
+
+// fail records the first construction error.
+func (c *txConfig) fail(err error) {
+	if c.err == nil {
+		c.err = err
+	}
+}
+
 // Transaction is a multi-context unit of work. It binds operations across one or
 // more [DataConn]s (and optional non-DB [Resource]s) so they commit or roll back
 // together.
+//
+// It holds no [DataConn] itself: every database participant carries the
+// connection it was opened on (ADR-0015 §2.1), supplied by the [Schema] whose
+// DAO first ran a statement on this transaction.
 //
 // A Transaction is single-goroutine: do not share one across goroutines
 // concurrently (driver transactions are not concurrency-safe). Background work
@@ -78,37 +215,82 @@ func ResourceFunc(commit, rollback func() error) Resource {
 type Transaction struct {
 	mu       sync.Mutex
 	ctx      context.Context
-	conns    map[string]DataConn
+	span     map[string]struct{} // declared allowlist by name; nil = undeclared
 	contexts map[string]txContext
 	order    []string // commit order = first-touch order (deterministic; fixes F2)
 	closed   bool
 	twoPhase bool
+	initErr  error // construction failure; surfaced before any work
 }
 
-// Begin creates a transaction that MAY span the given connections. No driver
-// BEGIN is issued yet; each fires lazily on first use of that connection.
-func Begin(ctx context.Context, conns ...DataConn) *Transaction {
+// Begin creates a transaction. No driver BEGIN is issued yet: each participating
+// connection fires one lazily, on the first statement that touches it, and is
+// supplied by that statement's schema (ADR-0015 §2.2).
+//
+// Pass [Spanning] only to span more than one database, and [TwoPhase] for
+// all-or-nothing across them. Begin returns no error — a bad option
+// combination is stored and returned by the first join, by Commit, and by
+// [RunTx] before it calls fn.
+func Begin(ctx context.Context, opts ...TxOption) *Transaction {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	var cfg txConfig
+	for _, o := range opts {
+		if o != nil {
+			o(&cfg)
+		}
+	}
 	t := &Transaction{
 		ctx:      ctx,
-		conns:    make(map[string]DataConn, len(conns)),
 		contexts: make(map[string]txContext),
+		twoPhase: cfg.twoPhase,
+		initErr:  cfg.err,
 	}
-	for _, c := range conns {
-		if c != nil {
-			t.conns[c.Name()] = c
+	if len(cfg.span) > 0 {
+		t.span = make(map[string]struct{}, len(cfg.span))
+		for _, c := range cfg.span {
+			t.span[c.Name()] = struct{}{}
+		}
+	}
+	// Two-phase pre-flight (ADR-0015 §2.5(a)): an early diagnostic over the
+	// DECLARED connections, so an impossible transaction performs no side
+	// effects. It is not authority — Commit always validates the participants
+	// that actually joined (§2.5(b)).
+	if t.initErr == nil && cfg.twoPhase {
+		for _, c := range cfg.span {
+			if !c.Dialect().TwoPhaseSupported() {
+				t.initErr = fmt.Errorf("%w: connection %q", ErrTwoPhaseUnsupported, c.Name())
+				break
+			}
 		}
 	}
 	return t
 }
 
-// RunTx runs fn inside a transaction over conns, committing on success and rolling
-// back on error or panic. It is the primary entry point — prefer it to manual
+// RunTx runs fn inside a transaction, committing on success and rolling back on
+// error or panic. It is the primary entry point — prefer it to manual
 // Begin/Commit/Rollback. On panic it rolls back and re-panics (never swallows).
-func RunTx(ctx context.Context, conns []DataConn, fn func(tx *Transaction) error) (err error) {
-	tx := Begin(ctx, conns...)
+//
+// The transaction's connections come from the schemas used inside fn, so the
+// common single-database call needs no option at all:
+//
+//	err := dao.RunTx(ctx, func(tx *dao.Transaction) error {
+//		_, err := artists.On(tx).Set(ArtistName, "X").Insert()
+//		return err
+//	})
+//
+// Writing to a second database requires declaring the span (ADR-0015 §2.4):
+//
+//	err := dao.RunTx(ctx, fn, dao.Spanning(lmConn, goldConn), dao.TwoPhase())
+//
+// A mis-constructed transaction (see [Spanning], [TwoPhase]) returns its error
+// without calling fn at all.
+func RunTx(ctx context.Context, fn func(tx *Transaction) error, opts ...TxOption) (err error) {
+	tx := Begin(ctx, opts...)
+	if tx.initErr != nil {
+		return tx.initErr // fail before fn runs any side effect
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			_ = tx.Rollback()
@@ -120,27 +302,6 @@ func RunTx(ctx context.Context, conns []DataConn, fn func(tx *Transaction) error
 		return e
 	}
 	return tx.Commit()
-}
-
-// TwoPhase opts this transaction into true two-phase commit for genuine
-// all-or-nothing across multiple databases: Commit prepares every database
-// context (phase one), and only when all prepares succeed commits them all
-// (phase two). Every participating dialect must report TwoPhaseSupported;
-// otherwise Commit fails fast with ErrTwoPhaseUnsupported before anything
-// commits. dao/postgres implements the trio via PREPARE TRANSACTION /
-// COMMIT PREPARED / ROLLBACK PREPARED (requires the server to have
-// max_prepared_transactions > 0).
-//
-// Operational note: a crash between the phases can leave prepared
-// transactions holding locks on the server. If Commit reports pending
-// prepared transactions (CommitError.PreparedPending), resolve them with
-// COMMIT PREPARED / ROLLBACK PREPARED (inspect pg_prepared_xacts on
-// Postgres). This cost is why 2PC is opt-in (ADR-0005 §2.3).
-func (t *Transaction) TwoPhase() *Transaction {
-	t.mu.Lock()
-	t.twoPhase = true
-	t.mu.Unlock()
-	return t
 }
 
 // Register adds a non-DB [Resource] to the transaction under name. It participates
@@ -158,30 +319,35 @@ func (t *Transaction) Register(name string, r Resource) {
 	t.order = append(t.order, name)
 }
 
-// executorFor returns the TxConn for the named connection, issuing BEGIN on first
-// use and caching it. Called by a tx-bound queryDAO at statement time, so every
-// statement automatically runs on the transaction (fixes F3).
-func (t *Transaction) executorFor(name string) (TxConn, error) {
+// join enlists conn in the transaction and returns its transaction-scoped
+// executor, issuing BEGIN on first use and caching it. The caller — a tx-bound
+// queryDAO — supplies the connection from its schema at statement time, so
+// every statement automatically runs on the transaction (fixes F3) and the
+// transaction needs no connection registry of its own (ADR-0015 §2.2).
+func (t *Transaction) join(conn DataConn) (TxConn, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.closed {
 		return nil, ErrTransactionClosed
 	}
+	if t.initErr != nil {
+		return nil, t.initErr // no work on a mis-constructed transaction
+	}
+	name := conn.Name()
 	if c, ok := t.contexts[name]; ok {
-		sc, ok := c.(*sqlTxContext)
+		db, ok := c.(dbTxContext)
 		if !ok {
 			return nil, fmt.Errorf("dao: transaction context %q is not a database connection", name)
 		}
-		return sc.tx, nil
+		return db.executor(), nil
 	}
-	conn, ok := t.conns[name]
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrUnknownConnection, name)
+	if err := t.admits(name); err != nil {
+		return nil, err
 	}
 	// First-touch capability gate (ADR-0008 §2.3): a no-transaction connection
 	// (e.g. BigQuery) is an error only when actually touched — an untouched no-tx
 	// connection in a multi-conn transaction stays unaffected, preserving the lazy
-	// model. RunTx does NOT pre-reject connections before fn runs.
+	// model. Neither RunTx nor Spanning pre-rejects connections before fn runs.
 	if !conn.Dialect().SupportsTransactions() {
 		return nil, fmt.Errorf("%s: %w: transactions", name, ErrUnsupported)
 	}
@@ -189,9 +355,31 @@ func (t *Transaction) executorFor(name string) (TxConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.contexts[name] = &sqlTxContext{n: name, tx: tx}
+	t.contexts[name] = &sqlTxContext{n: name, conn: conn, tx: tx}
 	t.order = append(t.order, name)
 	return tx, nil
+}
+
+// admits reports whether a new participant named name may join (ADR-0015 §2.4).
+// With a declared span ([Spanning]) membership is the gate. Undeclared, the
+// first database to join locks the transaction to itself: a second, different
+// database would be a cross-database span the caller never asked for — and a
+// non-atomic commit — so it fails typed instead. Registered non-DB [Resource]s
+// never gate anything. Called with t.mu held.
+func (t *Transaction) admits(name string) error {
+	if t.span != nil {
+		if _, ok := t.span[name]; !ok {
+			return fmt.Errorf("%w: %s (not in the declared span)", ErrUnknownConnection, name)
+		}
+		return nil
+	}
+	for _, n := range t.order {
+		if _, isDB := t.contexts[n].(dbTxContext); isDB && n != name {
+			return fmt.Errorf("%w: %s (transaction is on %s; declare dao.Spanning to span more than one database)",
+				ErrUnknownConnection, name, n)
+		}
+	}
+	return nil
 }
 
 // Commit commits every participating context in deterministic touch order. On the
@@ -205,6 +393,13 @@ func (t *Transaction) Commit() error {
 		return nil
 	}
 	t.closed = true
+
+	// A mis-constructed transaction cannot report success — even one that never
+	// touched a database. Registered resources still get their rollback.
+	if t.initErr != nil {
+		t.rollbackUncommitted(nil)
+		return t.initErr
+	}
 
 	if t.twoPhase {
 		if err := t.checkTwoPhase(); err != nil {
@@ -240,24 +435,26 @@ func (t *Transaction) rollbackUncommitted(committed []string) {
 // Database contexts are prepared in touch order (phase one); only when every
 // prepare succeeds are they all committed (phase two). Non-DB resources cannot
 // prepare, so they commit last, after the databases are durable, and roll back
-// whenever the database decision is abort. Called with t.mu held.
+// whenever the database decision is abort. Called with t.mu held, after
+// checkTwoPhase has proved every database participant can prepare.
 func (t *Transaction) commitTwoPhase() error {
 	// Phase one: prepare every database context under a generated global id.
 	prepared := make(map[string]string) // context name -> gid
 	for _, name := range t.order {
-		sc, isDB := t.contexts[name].(*sqlTxContext)
+		tp, isDB := t.contexts[name].(twoPhaseContext)
 		if !isDB {
 			continue
 		}
-		conn := t.conns[name]
 		gid := newGID(name)
-		if err := conn.Dialect().Prepare(t.ctx, sc.tx, gid); err != nil {
+		if err := tp.prepare(t.ctx, gid); err != nil {
 			// Abort: roll back the already-prepared, then everything else in
 			// reverse touch order — including this context, whose driver tx is
 			// still open (a failed prepare leaves the session transaction
 			// aborted, not released), and the resources.
 			for pname, pgid := range prepared {
-				_ = t.conns[pname].Dialect().RollbackPrepared(t.ctx, t.conns[pname], pgid)
+				if ptp, ok := t.contexts[pname].(twoPhaseContext); ok {
+					_ = ptp.rollbackPrepared(t.ctx, pgid)
+				}
 			}
 			for i := len(t.order) - 1; i >= 0; i-- {
 				n := t.order[i]
@@ -283,7 +480,8 @@ func (t *Transaction) commitTwoPhase() error {
 		if !ok {
 			continue
 		}
-		if err := t.conns[name].Dialect().CommitPrepared(t.ctx, t.conns[name], gid); err != nil {
+		tp := t.contexts[name].(twoPhaseContext)
+		if err := tp.commitPrepared(t.ctx, gid); err != nil {
 			if firstErr == nil {
 				failed, firstErr = name, err
 			}
@@ -295,7 +493,7 @@ func (t *Transaction) commitTwoPhase() error {
 	if firstErr != nil {
 		// Databases are (partially) durable; compensating resources roll back.
 		for i := len(t.order) - 1; i >= 0; i-- {
-			if _, isDB := t.contexts[t.order[i]].(*sqlTxContext); !isDB {
+			if _, isDB := t.contexts[t.order[i]].(dbTxContext); !isDB {
 				_ = t.contexts[t.order[i]].rollback()
 			}
 		}
@@ -304,13 +502,13 @@ func (t *Transaction) commitTwoPhase() error {
 
 	// Databases are durable; commit resources in touch order.
 	for _, name := range t.order {
-		if _, isDB := t.contexts[name].(*sqlTxContext); isDB {
+		if _, isDB := t.contexts[name].(dbTxContext); isDB {
 			continue
 		}
 		if err := t.contexts[name].commit(); err != nil {
 			for i := len(t.order) - 1; i >= 0; i-- {
 				n := t.order[i]
-				if _, isDB := t.contexts[n].(*sqlTxContext); isDB || contains(committed, n) {
+				if _, isDB := t.contexts[n].(dbTxContext); isDB || contains(committed, n) {
 					continue
 				}
 				_ = t.contexts[n].rollback()
@@ -334,14 +532,25 @@ func newGID(name string) string {
 	return "golib-dao-" + name + "-" + hex.EncodeToString(b[:])
 }
 
-// checkTwoPhase verifies every database context's dialect supports 2PC.
+// checkTwoPhase verifies every joined database participant can prepare.
+//
+// It runs on EVERY two-phase Commit, declared span or not: [Begin]'s pre-flight
+// inspects the connections the caller DECLARED, while join enlists the
+// connection each [Schema] SUPPLIED, and admission is by name (ADR-0015 §2.4) —
+// so a capable declaration and an incapable participant can share a name. The
+// pre-flight is a diagnostic; this is the authority (ADR-0015 §2.5(b)).
+//
+// A participant that does not implement [twoPhaseContext] fails exactly like
+// one reporting no support: ErrTwoPhaseUnsupported, before anything is
+// prepared. Called with t.mu held.
 func (t *Transaction) checkTwoPhase() error {
 	for _, name := range t.order {
-		if _, ok := t.contexts[name].(*sqlTxContext); ok {
-			conn := t.conns[name]
-			if conn == nil || !conn.Dialect().TwoPhaseSupported() {
-				return fmt.Errorf("%w: connection %q", ErrTwoPhaseUnsupported, name)
-			}
+		if _, isDB := t.contexts[name].(dbTxContext); !isDB {
+			continue // resources cannot prepare; they commit last
+		}
+		tp, ok := t.contexts[name].(twoPhaseContext)
+		if !ok || !tp.twoPhaseSupported() {
+			return fmt.Errorf("%w: connection %q", ErrTwoPhaseUnsupported, name)
 		}
 	}
 	return nil

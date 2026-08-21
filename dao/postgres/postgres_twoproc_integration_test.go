@@ -197,7 +197,7 @@ func registerRoutes(srv *httpserver.Server, conn dao.DataConn, ws *widgetSchema,
 			return httpserver.Status(http.StatusBadRequest, err.Error())
 		}
 		var widgetID int
-		txErr := dao.RunTx(r.Context(), []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+		txErr := dao.RunTx(r.Context(), func(tx *dao.Transaction) error {
 			id, e := ws.On(tx).Set(wName, in.Name).Insert()
 			if e != nil {
 				return e
@@ -412,13 +412,13 @@ func TestPG2P_CrossInstanceTx(t *testing.T) {
 	ctx := context.Background()
 
 	// Commit: each session inserts an independent widget under one coordinated tx.
-	if err := dao.RunTx(ctx, []dao.DataConn{a.conn, b.conn}, func(tx *dao.Transaction) error {
+	if err := dao.RunTx(ctx, func(tx *dao.Transaction) error {
 		if _, e := a.ws.On(tx).Set(wName, "ci-a").Insert(); e != nil {
 			return e
 		}
 		_, e := b.ws.On(tx).Set(wName, "ci-b").Insert()
 		return e
-	}); err != nil {
+	}, dao.Spanning(a.conn, b.conn)); err != nil {
 		t.Fatalf("cross-instance commit: %v", err)
 	}
 	if got, _ := a.ws.DAO().With(wName, "ci-a").Count(); got != 1 {
@@ -429,7 +429,7 @@ func TestPG2P_CrossInstanceTx(t *testing.T) {
 	}
 
 	// Rollback: fn returns an error after staging inserts on both sessions.
-	rbErr := dao.RunTx(ctx, []dao.DataConn{a.conn, b.conn}, func(tx *dao.Transaction) error {
+	rbErr := dao.RunTx(ctx, func(tx *dao.Transaction) error {
 		if _, e := a.ws.On(tx).Set(wName, "ci-rb-a").Insert(); e != nil {
 			return e
 		}
@@ -437,7 +437,7 @@ func TestPG2P_CrossInstanceTx(t *testing.T) {
 			return e
 		}
 		return errors.New("forced rollback")
-	})
+	}, dao.Spanning(a.conn, b.conn))
 	if rbErr == nil {
 		t.Fatal("expected the forced rollback error")
 	}

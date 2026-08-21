@@ -196,7 +196,8 @@ func Import(artists *ArtistSchema, rows []*Artist) error {
 
 ```go
 // Single DB — fully atomic. A CommitError means nothing was written.
-err := dao.RunTx(ctx, []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+// No connection argument: each schema supplies its own (ADR-0015).
+err := dao.RunTx(ctx, func(tx *dao.Transaction) error {
     id, err := artists.On(tx).Set(ArtistName, "X").Set(ArtistURI, "x").Insert()
     if err != nil {
         return err // -> rollback
@@ -205,20 +206,22 @@ err := dao.RunTx(ctx, []dao.DataConn{conn}, func(tx *dao.Transaction) error {
     return err
 })
 
-// Two DBs — ordered commit, partial-failure reported.
-err = dao.RunTx(ctx, []dao.DataConn{lmConn, goldConn}, func(tx *dao.Transaction) error {
+// Two DBs — ordered commit, partial-failure reported. Spanning is REQUIRED to
+// touch a second database: undeclared, the second one fails with
+// ErrUnknownConnection instead of quietly becoming a non-atomic commit.
+err = dao.RunTx(ctx, func(tx *dao.Transaction) error {
     if err := labels.On(tx).With(LabelID, id).Set(LabelName, n).Update(); err != nil {
         return err
     }
     return goldLabels.On(tx).With(GoldLabelID, id).Set(GoldLabelName, n).Update()
-})
+}, dao.Spanning(lmConn, goldConn))
 var ce *dao.CommitError
 if errors.As(err, &ce) && len(ce.AlreadyDurable) > 0 {
     log.Critical(logger, ce, "cross-DB inconsistency — reconcile") // impossible to miss now
 }
 
 // Compensating non-DB resource (delete an upload if the DB work rolls back):
-err = dao.RunTx(ctx, []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+err = dao.RunTx(ctx, func(tx *dao.Transaction) error {
     if err := blobs.Put(ctx, key, data); err != nil {
         return err
     }
@@ -385,13 +388,15 @@ For strict cross-DB atomicity on a capable dialect (Postgres, with
 `max_prepared_transactions > 0`), opt in with `TwoPhase()`:
 
 ```go
-err := dao.RunTx(ctx, []dao.DataConn{lmConn, goldConn}, func(tx *dao.Transaction) error {
-    tx.TwoPhase() // prepare all, then commit all
+// TwoPhase is a construction option, not a mid-flight switch: the commit
+// protocol is fixed before any statement runs. Declared together with the span,
+// an incapable dialect fails from RunTx BEFORE fn (ADR-0015 §2.5).
+err := dao.RunTx(ctx, func(tx *dao.Transaction) error {
     if _, err := lm.On(tx).Set(LMName, n).Insert(); err != nil {
         return err
     }
     return gold.On(tx).With(GoldID, id).Set(GoldName, n).Update()
-})
+}, dao.Spanning(lmConn, goldConn), dao.TwoPhase())
 
 var ce *dao.CommitError
 if errors.As(err, &ce) && len(ce.PreparedPending) > 0 {

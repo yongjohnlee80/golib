@@ -70,7 +70,7 @@ func TestRunTx_CommitsOnSuccess(t *testing.T) {
 
 	conn := newTxConn("db1")
 	s := buildSchema(conn)
-	err := RunTx(context.Background(), []DataConn{conn}, func(tx *Transaction) error {
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		return stageUpdate(s.On(tx))
 	})
 	if err != nil {
@@ -93,7 +93,7 @@ func TestRunTx_RollsBackOnError(t *testing.T) {
 	boom := errors.New("boom")
 	conn := newTxConn("db1")
 	s := buildSchema(conn)
-	err := RunTx(context.Background(), []DataConn{conn}, func(tx *Transaction) error {
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		_ = stageUpdate(s.On(tx))
 		return boom
 	})
@@ -116,7 +116,7 @@ func TestRunTx_RollsBackAndRepanics(t *testing.T) {
 				t.Error("expected panic to propagate")
 			}
 		}()
-		_ = RunTx(context.Background(), []DataConn{conn}, func(tx *Transaction) error {
+		_ = RunTx(context.Background(), func(tx *Transaction) error {
 			_ = stageUpdate(s.On(tx))
 			panic("kaboom")
 		})
@@ -146,7 +146,7 @@ func TestTransaction_LazyBegin(t *testing.T) {
 
 	c1, c2 := newTxConn("db1"), newTxConn("db2")
 	s1 := buildSchema(c1)
-	tx := Begin(context.Background(), c1, c2)
+	tx := Begin(context.Background(), Spanning(c1, c2))
 
 	if c1.beginCount != 0 || c2.beginCount != 0 {
 		t.Fatal("Begin must issue no driver BEGIN")
@@ -178,12 +178,12 @@ func TestTransaction_CrossDBCommitFailure(t *testing.T) {
 	c2.tc = &recTx{commitErr: errors.New("c2 commit failed")} // pre-seed a failing commit
 	s1, s2 := buildSchema(c1), buildSchema(c2)
 
-	err := RunTx(context.Background(), []DataConn{c1, c2}, func(tx *Transaction) error {
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		if e := stageUpdate(s1.On(tx)); e != nil {
 			return e
 		}
 		return stageUpdate(s2.On(tx))
-	})
+	}, Spanning(c1, c2))
 
 	var ce *CommitError
 	if !errors.As(err, &ce) {
@@ -210,7 +210,7 @@ func TestTransaction_Resource(t *testing.T) {
 	conn := newTxConn("db1")
 	s := buildSchema(conn)
 	var committed, rolledback bool
-	err := RunTx(context.Background(), []DataConn{conn}, func(tx *Transaction) error {
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		tx.Register("file:1", ResourceFunc(
 			func() error { committed = true; return nil },
 			func() error { rolledback = true; return nil },
@@ -225,7 +225,7 @@ func TestTransaction_Resource(t *testing.T) {
 	conn2 := newTxConn("db1")
 	s2 := buildSchema(conn2)
 	var committed2, rolledback2 bool
-	_ = RunTx(context.Background(), []DataConn{conn2}, func(tx *Transaction) error {
+	_ = RunTx(context.Background(), func(tx *Transaction) error {
 		tx.Register("file:2", ResourceFunc(
 			func() error { committed2 = true; return nil },
 			func() error { rolledback2 = true; return nil },
@@ -243,10 +243,9 @@ func TestTransaction_TwoPhaseUnsupported(t *testing.T) {
 
 	conn := newTxConn("db1") // GenericDialect → TwoPhaseSupported() == false
 	s := buildSchema(conn)
-	err := RunTx(context.Background(), []DataConn{conn}, func(tx *Transaction) error {
-		tx.TwoPhase()
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		return stageUpdate(s.On(tx))
-	})
+	}, TwoPhase())
 	if !errors.Is(err, ErrTwoPhaseUnsupported) {
 		t.Errorf("err = %v, want ErrTwoPhaseUnsupported", err)
 	}
@@ -260,7 +259,7 @@ func TestTransaction_OnCtxRouting(t *testing.T) {
 
 	conn := newTxConn("db1")
 	s := buildSchema(conn)
-	err := RunTx(context.Background(), []DataConn{conn}, func(tx *Transaction) error {
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		ctx := WithTx(context.Background(), tx)
 		return stageUpdate(s.OnCtx(ctx))
 	})
@@ -272,22 +271,26 @@ func TestTransaction_OnCtxRouting(t *testing.T) {
 	}
 }
 
-func TestTransaction_ClosedAndUnknownConn(t *testing.T) {
+func TestTransaction_ClosedAndNotPermittedConn(t *testing.T) {
 	t.Parallel()
 
-	conn := newTxConn("db1")
+	conn, other := newTxConn("db1"), newTxConn("nope")
 
-	// Unknown connection name.
-	tx := Begin(context.Background(), conn)
-	if _, err := tx.executorFor("nope"); !errors.Is(err, ErrUnknownConnection) {
-		t.Errorf("executorFor(unknown) = %v, want ErrUnknownConnection", err)
+	// A connection outside a declared span may not join.
+	tx := Begin(context.Background(), Spanning(conn))
+	if _, err := tx.join(other); !errors.Is(err, ErrUnknownConnection) {
+		t.Errorf("join(undeclared) = %v, want ErrUnknownConnection", err)
 	}
+	if other.beginCount != 0 {
+		t.Errorf("a rejected connection must not be begun; begin = %d", other.beginCount)
+	}
+	_ = tx.Rollback()
 
 	// After Commit, the transaction is closed.
-	tx2 := Begin(context.Background(), conn)
+	tx2 := Begin(context.Background())
 	_ = tx2.Commit()
-	if _, err := tx2.executorFor("db1"); !errors.Is(err, ErrTransactionClosed) {
-		t.Errorf("executorFor after commit = %v, want ErrTransactionClosed", err)
+	if _, err := tx2.join(conn); !errors.Is(err, ErrTransactionClosed) {
+		t.Errorf("join after commit = %v, want ErrTransactionClosed", err)
 	}
 }
 
@@ -343,13 +346,12 @@ func TestTransaction_TwoPhaseSuccess(t *testing.T) {
 	c1, c2 := newTPConn("db1", rec), newTPConn("db2", rec)
 	s1, s2 := buildSchema(c1), buildSchema(c2)
 
-	err := RunTx(context.Background(), []DataConn{c1, c2}, func(tx *Transaction) error {
-		tx.TwoPhase()
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		if err := stageUpdate(s1.On(tx)); err != nil {
 			return err
 		}
 		return stageUpdate(s2.On(tx))
-	})
+	}, Spanning(c1, c2), TwoPhase())
 	if err != nil {
 		t.Fatalf("RunTx: %v", err)
 	}
@@ -381,14 +383,13 @@ func TestTransaction_TwoPhasePrepareFailure(t *testing.T) {
 	s1, s2 := buildSchema(c1), buildSchema(c2)
 
 	var resourceRolledBack bool
-	err := RunTx(context.Background(), []DataConn{c1, c2}, func(tx *Transaction) error {
-		tx.TwoPhase()
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		tx.Register("file", ResourceFunc(nil, func() error { resourceRolledBack = true; return nil }))
 		if err := stageUpdate(s1.On(tx)); err != nil {
 			return err
 		}
 		return stageUpdate(s2.On(tx))
-	})
+	}, Spanning(c1, c2), TwoPhase())
 
 	var ce *CommitError
 	if !errors.As(err, &ce) || ce.Failed != "db2" || !errors.Is(err, boom) {
@@ -420,13 +421,12 @@ func TestTransaction_TwoPhaseCommitPreparedFailure(t *testing.T) {
 	c2 := newTPConn("db2", rec)
 	s1, s2 := buildSchema(c1), buildSchema(c2)
 
-	err := RunTx(context.Background(), []DataConn{c1, c2}, func(tx *Transaction) error {
-		tx.TwoPhase()
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		if err := stageUpdate(s1.On(tx)); err != nil {
 			return err
 		}
 		return stageUpdate(s2.On(tx))
-	})
+	}, Spanning(c1, c2), TwoPhase())
 
 	var ce *CommitError
 	if !errors.As(err, &ce) || ce.Failed != "db1" || !errors.Is(err, boom) {
@@ -452,13 +452,12 @@ func TestTransaction_TwoPhaseResourceCommitsAfterDBs(t *testing.T) {
 	s1 := buildSchema(c1)
 
 	var order []string
-	err := RunTx(context.Background(), []DataConn{c1}, func(tx *Transaction) error {
-		tx.TwoPhase()
+	err := RunTx(context.Background(), func(tx *Transaction) error {
 		// Register the resource FIRST so touch order alone would commit it first;
 		// the two-phase path must still commit it after the databases are durable.
 		tx.Register("file", ResourceFunc(func() error { order = append(order, "resource"); return nil }, nil))
 		return stageUpdate(s1.On(tx))
-	})
+	}, TwoPhase())
 	if err != nil {
 		t.Fatalf("RunTx: %v", err)
 	}
@@ -466,5 +465,259 @@ func TestTransaction_TwoPhaseResourceCommitsAfterDBs(t *testing.T) {
 	want := []string{"prepare:db1", "commitPrepared:db1", "resource"}
 	if !reflect.DeepEqual(order, want) {
 		t.Errorf("order = %v, want %v", order, want)
+	}
+}
+
+// --- ADR-0015: connection ownership, admission, option semantics -------------
+
+// TestTransaction_UndeclaredSecondConnRejected covers ADR-0015 criterion 2: with
+// no declared span the first database locks the transaction, so a second one
+// fails typed before any BEGIN on it, and the first rolls back.
+func TestTransaction_UndeclaredSecondConnRejected(t *testing.T) {
+	t.Parallel()
+
+	c1, c2 := newTxConn("db1"), newTxConn("db2")
+	s1, s2 := buildSchema(c1), buildSchema(c2)
+
+	err := RunTx(context.Background(), func(tx *Transaction) error {
+		if e := stageUpdate(s1.On(tx)); e != nil {
+			return e
+		}
+		return stageUpdate(s2.On(tx))
+	})
+	if !errors.Is(err, ErrUnknownConnection) {
+		t.Fatalf("err = %v, want ErrUnknownConnection", err)
+	}
+	// The message must name both connections and the remedy.
+	for _, want := range []string{"db1", "db2", "dao.Spanning"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+	if c2.beginCount != 0 {
+		t.Errorf("rejected connection was begun (%d BEGINs)", c2.beginCount)
+	}
+	if c1.tc == nil || !c1.tc.rolledback {
+		t.Error("the first connection's work must roll back with the transaction")
+	}
+}
+
+// TestTransaction_SpanningAdmitsOnlyDeclared covers ADR-0015 criterion 3.
+func TestTransaction_SpanningAdmitsOnlyDeclared(t *testing.T) {
+	t.Parallel()
+
+	c1, c2, c3 := newTxConn("db1"), newTxConn("db2"), newTxConn("db3")
+	s1, s2, s3 := buildSchema(c1), buildSchema(c2), buildSchema(c3)
+
+	// Declared in the order (c1, c2) but touched in the order (c2, c1): commit
+	// order must follow touch, not declaration.
+	err := RunTx(context.Background(), func(tx *Transaction) error {
+		if e := stageUpdate(s2.On(tx)); e != nil {
+			return e
+		}
+		if e := stageUpdate(s1.On(tx)); e != nil {
+			return e
+		}
+		if e := stageUpdate(s3.On(tx)); !errors.Is(e, ErrUnknownConnection) {
+			t.Errorf("undeclared third connection = %v, want ErrUnknownConnection", e)
+		}
+		return nil
+	}, Spanning(c1, c2))
+	if err != nil {
+		t.Fatalf("RunTx: %v", err)
+	}
+	if c3.beginCount != 0 {
+		t.Errorf("undeclared connection was begun (%d BEGINs)", c3.beginCount)
+	}
+	if !c1.tc.committed || !c2.tc.committed {
+		t.Error("both declared connections should have committed")
+	}
+}
+
+// TestTransaction_TwoPhasePreflightFailsBeforeFn covers ADR-0015 criterion 4:
+// a declared span whose dialect cannot prepare fails from RunTx without
+// invoking fn and without any driver BEGIN.
+func TestTransaction_TwoPhasePreflightFailsBeforeFn(t *testing.T) {
+	t.Parallel()
+
+	rec := &tpRecorder{}
+	capable := newTPConn("db1", rec)
+	incapable := newTxConn("db2") // GenericDialect → TwoPhaseSupported() == false
+
+	var ran bool
+	err := RunTx(context.Background(), func(*Transaction) error {
+		ran = true
+		return nil
+	}, Spanning(capable, incapable), TwoPhase())
+
+	if !errors.Is(err, ErrTwoPhaseUnsupported) {
+		t.Fatalf("err = %v, want ErrTwoPhaseUnsupported", err)
+	}
+	if !strings.Contains(err.Error(), "db2") {
+		t.Errorf("error %q should name the incapable connection", err)
+	}
+	if ran {
+		t.Error("fn must not run when the pre-flight fails")
+	}
+	if capable.beginCount != 0 || incapable.beginCount != 0 {
+		t.Error("a pre-flight failure must issue no driver BEGIN")
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("no 2PC hook may run, calls = %v", rec.calls)
+	}
+}
+
+// TestTransaction_TwoPhaseValidatesActualParticipant covers ADR-0015
+// criterion 5: capability is decided by the participant that joined, never by a
+// same-named declaration. The pre-flight passes (the declared connection is
+// capable) and Commit still refuses, because the schema supplied an incapable
+// connection under the same name.
+func TestTransaction_TwoPhaseValidatesActualParticipant(t *testing.T) {
+	t.Parallel()
+
+	rec := &tpRecorder{}
+	declared := newTPConn("db1", rec) // capable
+	actual := newTxConn("db1")        // same name, GenericDialect → incapable
+	s := buildSchema(actual)
+
+	err := RunTx(context.Background(), func(tx *Transaction) error {
+		return stageUpdate(s.On(tx))
+	}, Spanning(declared), TwoPhase())
+
+	if !errors.Is(err, ErrTwoPhaseUnsupported) {
+		t.Fatalf("err = %v, want ErrTwoPhaseUnsupported from Commit", err)
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("nothing may be prepared or committed, calls = %v", rec.calls)
+	}
+	if actual.tc == nil || !actual.tc.rolledback {
+		t.Error("the touched context must roll back")
+	}
+	if actual.tc.committed {
+		t.Error("the incapable participant must not commit")
+	}
+}
+
+// bareDBContext is a database participant with no two-phase capability at all —
+// the defensive half of ADR-0015 criterion 5 (a dbTxContext that fails the
+// twoPhaseContext assertion must fail exactly like an unsupported one).
+type bareDBContext struct {
+	n          string
+	rolledback bool
+}
+
+func (c *bareDBContext) name() string     { return c.n }
+func (c *bareDBContext) commit() error    { return nil }
+func (c *bareDBContext) rollback() error  { c.rolledback = true; return nil }
+func (c *bareDBContext) executor() TxConn { return &recTx{} }
+
+func TestTransaction_TwoPhaseMissingCapabilityFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := any(&bareDBContext{}).(twoPhaseContext); ok {
+		t.Fatal("bareDBContext must not satisfy twoPhaseContext")
+	}
+
+	tx := Begin(context.Background(), TwoPhase())
+	bare := &bareDBContext{n: "db1"}
+	tx.contexts["db1"] = bare
+	tx.order = append(tx.order, "db1")
+
+	if err := tx.Commit(); !errors.Is(err, ErrTwoPhaseUnsupported) {
+		t.Errorf("Commit = %v, want ErrTwoPhaseUnsupported", err)
+	}
+	if !bare.rolledback {
+		t.Error("the participant must roll back when 2PC validation fails")
+	}
+}
+
+// TestSpanning_ConstructionErrors covers ADR-0015 criterion 9: a nil or empty
+// span fails the transaction before any work, on both paths, without panicking.
+func TestSpanning_ConstructionErrors(t *testing.T) {
+	t.Parallel()
+
+	conn := newTxConn("db1")
+	s := buildSchema(conn)
+
+	cases := []struct {
+		name string
+		opt  TxOption
+		want string
+	}{
+		{"nil connection", Spanning(nil), "nil connection at index 0"},
+		{"nil after valid", Spanning(conn, nil), "nil connection at index 1"},
+		{"no connections", Spanning(), "no connections declared"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// RunTx: fn never runs.
+			var ran bool
+			err := RunTx(context.Background(), func(*Transaction) error {
+				ran = true
+				return nil
+			}, tc.opt)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("RunTx err = %v, want one mentioning %q", err, tc.want)
+			}
+			if ran {
+				t.Error("fn must not run on a mis-constructed transaction")
+			}
+
+			// Manual path: join refuses, Commit reports and still compensates.
+			tx := Begin(context.Background(), tc.opt)
+			if _, jerr := tx.join(conn); jerr == nil || !strings.Contains(jerr.Error(), tc.want) {
+				t.Errorf("join err = %v, want one mentioning %q", jerr, tc.want)
+			}
+			if _, serr := s.On(tx).With(aID, "1").Select(); serr == nil {
+				t.Error("a statement on a mis-constructed transaction must fail")
+			}
+			var resourceRolledBack bool
+			tx.Register("file", ResourceFunc(nil, func() error { resourceRolledBack = true; return nil }))
+			if cerr := tx.Commit(); cerr == nil || !strings.Contains(cerr.Error(), tc.want) {
+				t.Errorf("Commit err = %v, want one mentioning %q", cerr, tc.want)
+			}
+			if !resourceRolledBack {
+				t.Error("Commit on a mis-constructed transaction must roll back registered resources")
+			}
+			if conn.beginCount != 0 {
+				t.Errorf("no BEGIN may be issued; got %d", conn.beginCount)
+			}
+		})
+	}
+}
+
+// TestSpanning_MergesAndDedupes covers the ADR-0015 §2.3 normalization rules:
+// repeated options merge, duplicate names keep their first connection and
+// position, and declaration order drives pre-flight reporting.
+func TestSpanning_MergesAndDedupes(t *testing.T) {
+	t.Parallel()
+
+	rec := &tpRecorder{}
+	capable := newTPConn("db1", rec)
+	dupName := newTxConn("db1") // same logical database, incapable handle
+	other := newTxConn("db2")
+
+	var cfg txConfig
+	Spanning(capable, dupName)(&cfg)
+	Spanning(other, capable)(&cfg)
+	if cfg.err != nil {
+		t.Fatalf("merge produced an error: %v", cfg.err)
+	}
+	if len(cfg.span) != 2 {
+		t.Fatalf("span = %d entries, want 2 (deduped by name)", len(cfg.span))
+	}
+	if cfg.span[0] != DataConn(capable) {
+		t.Error("a duplicate name must keep its FIRST connection and position")
+	}
+	if cfg.span[1].Name() != "db2" {
+		t.Errorf("second entry = %q, want db2 (declaration order preserved)", cfg.span[1].Name())
+	}
+
+	// Declaration order is the pre-flight reporting order: db2 is the first
+	// incapable entry, so it is the one named.
+	err := RunTx(context.Background(), func(*Transaction) error { return nil },
+		Spanning(capable, other), TwoPhase())
+	if !errors.Is(err, ErrTwoPhaseUnsupported) || !strings.Contains(err.Error(), "db2") {
+		t.Errorf("err = %v, want ErrTwoPhaseUnsupported naming db2", err)
 	}
 }

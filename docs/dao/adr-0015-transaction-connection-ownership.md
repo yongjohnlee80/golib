@@ -502,6 +502,15 @@ through `twoPhaseContext`), `dao/dataconn.go` (`DataConn.Name` invariant),
 `dao/README.md`, `dao/USAGE.md`; separately, `example/main` (`go.mod` replace,
 `internal/dao/store.go`).
 
+**`dao/bigquery` migrates on a release bump, not with this change.** The nested
+module pins a *released* golib (`require github.com/yongjohnlee80/golib v0.1.0`,
+no `replace`), so its one `RunTx` site compiles against the pre-ADR-0015
+signature and must keep it until the same commit bumps that require to a release
+carrying this ADR — migrating it earlier stops that module building. This is the
+cross-module lag the `interface-evolution-capability-interfaces` convention
+warns about (rule 6), showing up on a signature change instead of an interface
+one. The call site carries a NOTE naming the sequencing.
+
 **ADR-0005 §7 criteria 1–5 must still hold verbatim. Criterion 6 is replaced by
 criteria 4–6 below.** New criteria:
 
