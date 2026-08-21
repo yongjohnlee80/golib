@@ -1,7 +1,7 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Proposed (rev 3)** (2026-08-21 — authored by jarvis; lector
-  design r1, r2 and r3 `change_requested` all folded — a correctness defect in rev
+- **Status:** **Proposed (rev 4)** (2026-08-21 — authored by jarvis; lector
+  design r1-r4 folded (r4: a text-emitter duplication and two false API claims) — a correctness defect in rev
   0's frame coalescing, a wrong security claim about mTLS, and r2's internal
   contradictions. See Review history.
   Lands on `tui-web`.)
@@ -13,7 +13,7 @@
   model this implements a second time), ADR-0003 (cell buffer, diff, the
   one-write rule), ADR-0006 (style tokens → CSS), the `golib` convention's
   tightened dependency rule (2026-08-21), and the sibling `golib/auth` ADR-0001
-  (this backend consumes its `Authenticator`, it does not roll its own).
+  (this backend consumes its `Policy`, it does not roll its own).
 
 ## 1. Context
 
@@ -220,9 +220,15 @@ via ssh keys or other secured manners only"*):
 cross-ADR fix):**
 
 ```go
-// identity-bearing alternatives, optionally constrained by context
-Any(singleUseSSHChannelTicket, mtls /*, sshChallenge */)          // primary
-All(ipallow, Any(singleUseSSHChannelTicket, mtls /*, ... */))     // + optional
+// auth ADR-0001's real graph: factors enter through Leaf, NewPolicy validates
+// the finished tree.
+p, err := auth.NewPolicy(auth.Any(
+	auth.Leaf(ticket), auth.Leaf(mtls), auth.Leaf(sshChallenge)))
+
+// optionally constrained by context:
+p, err = auth.NewPolicy(auth.All(
+	auth.Leaf(ipallow),
+	auth.Any(auth.Leaf(ticket), auth.Leaf(mtls), auth.Leaf(sshChallenge))))
 ```
 
 - The **ticket minted over the user's existing SSH session is the default**
@@ -299,8 +305,13 @@ rows overlap and, worse, layouts where **AltGraph reports as Ctrl+Alt** would
 emit a command instead of the character the user typed:
 
 1. **Reserved browser shortcuts** → not forwarded, no `preventDefault`.
-2. **`isComposing`, or AltGraph-shaped modifiers** → never treated as a chord;
-   the character arrives through committed input text (rule 4).
+2. **`isComposing`, or AltGraph** → never a chord; the character arrives through
+   the `input` text path. **The only automatic AltGraph signal is
+   `KeyboardEvent.getModifierState("AltGraph")`.** Ctrl+Alt is **not** inferred
+   as AltGraph by default — that would silently swallow every legitimate Ctrl+Alt
+   chord. Where a browser fails to report AltGraph, an explicit opt-in
+   (`TreatCtrlAltAsAltGraph`) enables the heuristic and the README states the
+   trade-off.
 3. **Named keys** (`KeyboardEvent.key` in the named set).
 4. **Committed text** (`input` / `compositionend`).
 5. **Modified keys** (Ctrl/Alt/Meta + printable).
@@ -309,11 +320,12 @@ emit a command instead of the character the user typed:
 | Browser event | Emitted | preventDefault |
 | --- | --- | --- |
 | reserved shortcuts: Ctrl/Cmd+`T`/`N`/`W`/`L`/`R`, Ctrl+Tab, `F5`, `F11`, `F12`, Cmd+`Q` | *(nothing — the browser keeps them; README says so)* | **no** |
-| `keydown` with `isComposing`, or AltGraph (`getModifierState("AltGraph")`, or Ctrl+Alt on a layout that reports it) | *(nothing — defer to rule 4)* | no |
+| `keydown` with `isComposing`, or `getModifierState("AltGraph")` (or Ctrl+Alt **only** when `TreatCtrlAltAsAltGraph` is enabled) | *(nothing — the character arrives via `input`)* | no |
 | `keydown`, `key` ∈ {Enter, Tab, Escape, Backspace, Delete, Insert, Arrow*, Home, End, PageUp, PageDown, F1–F12} | `KeyEvent{Kind: KeyPress, Code: tui.KeyEnter \| KeyTab \| KeyEscape \| … \| KeyF12, Mods}` | **yes** |
 | same, with `repeat: true` | `KeyEvent{Kind: KeyRepeat, …}` | **yes** |
 | `keyup` for a forwarded key | *(nothing — `KeyRelease` is kitty-only and is never synthesized here)* | no |
-| `input` / `compositionend` (committed text) | one `KeyEvent{Kind: KeyPress, Code: <the cluster's first codepoint>, Text: <cluster>, Mods: 0}` per grapheme cluster — `Code` and `Text` set consistently, as the terminal decoder does for text keys | no |
+| **`input`** (the sole text emitter — see the state machine below) | one `KeyEvent{Kind: KeyPress, Code: r, Text: string(r), Mods: 0}` **per rune**, matching `tui/term`'s `actPrint` path exactly | no |
+| `compositionstart` / `compositionupdate` / `compositionend` | **state only — never emits.** `compositionend` marks composition finished; the resulting `input` carries the text | no |
 | `keydown` with Ctrl/Alt/Meta + printable (and **not** rule 2) | `KeyEvent{Kind: KeyPress, Code: <lowercased base codepoint>, Base: <base-layout codepoint>, Shifted: <shifted codepoint when known>, Mods: ModCtrl \| ModAlt \| ModMeta \| ModShift}` | **yes** |
 | `paste` | `PasteEvent{Text}` with CR/CRLF normalized to `\n` | **yes** |
 | `mousedown` / `mouseup` / `mousemove` | `MouseEvent{Kind: MousePress \| MouseRelease \| MouseMotion, Button, X, Y (CELL coords per §2.6), Mods}` | **yes** in-grid |
@@ -322,10 +334,48 @@ emit a command instead of the character the user typed:
 | resize or a measured-metrics change | `ResizeEvent{W: cols, H: rows}` | no |
 | anything else | **dropped explicitly** — never a phantom key | no |
 
-`Base`/`Shifted` are populated when the browser can supply them, giving
-layout-independent shortcut matching exactly as the kitty protocol does; `0` when
-unknown, which is the documented legacy shape. `Meta` maps to `ModMeta` and is
-never folded into `ModCtrl`.
+**`Base`/`Shifted` are always ZERO (r4 correction).** Rev 3 claimed the browser
+could supply them for kitty-style layout-independent matching. It cannot:
+`KeyboardEvent.code` is a **physical-key** identifier (`KeyA` is a position, not
+a base rune), and the DOM exposes no base-layout or shifted codepoint. In
+`tui/term` these fields are populated **only** on the kitty CSI
+`unicode-key-code:shifted:base` path (`decoder.go`'s `kittyKey`); there is no
+browser equivalent. They stay `0` — exactly the shape `tui/term` produces for a
+non-kitty terminal — unless a future revision specifies a *separately validated*
+layout mapping, which this ADR does not.
+
+**Emission parity is per RUNE, not per grapheme cluster (r4 correction).** Rev 3
+said one event per cluster "as the terminal decoder does"; `decoder.go`'s
+`actPrint` emits `KeyEvent{Code: a.r, Text: string(a.r)}` — **one event per
+rune**. The web backend matches that scalar sequence, so a component cannot tell
+the two backends apart. A multi-codepoint emoji therefore arrives as several
+events, exactly as over a terminal.
+
+**Modifier mapping.** `ctrlKey`→`ModCtrl`, `shiftKey`→`ModShift`,
+`altKey`→`ModAlt`, and **`metaKey`→`ModSuper`** — *not* `ModMeta`. `tui.Mods` is
+in kitty order, where *super* is the Cmd/Windows key and *meta* is the historical
+Meta (usually Alt); the obvious-looking `metaKey`→`ModMeta` mapping would
+silently break Cmd chords on macOS.
+
+**The text state machine — exactly one insertion per user action (r4 must-fix 1).**
+Rev 3 emitted from both `input` and `compositionend`, but an ordinary IME
+completion fires *both*, so committed text was inserted twice. Paste has the same
+shape: `paste` is followed by a paired `input`. The rules:
+
+| State | Event | Action |
+| --- | --- | --- |
+| idle | `compositionstart` | → composing; emit nothing |
+| composing | `compositionupdate` | emit nothing |
+| composing | `compositionend` | → idle; emit nothing |
+| any | `paste` | emit `PasteEvent`; set **suppress-next-input** |
+| idle | `input` without suppress, `isComposing: false` | emit per-rune `KeyEvent`s |
+| any | `input` with suppress set | clear the flag; emit nothing |
+| composing | `input` with `isComposing: true` | emit nothing — the commit arrives as a later non-composing `input` |
+
+`input` is therefore the **only** text emitter; composition and paste are state
+transitions. Acceptance replays complete sequences — a full IME composition
+(`compositionstart`→`update`×n→`end`→`input`) and a paste (`paste`→`input`) —
+asserting **exactly one** insertion each.
 
 **Resource limits — concrete defaults, all configurable:**
 
@@ -434,9 +484,15 @@ Acceptance criteria:
 6. A wide grapheme (one CJK, one emoji) occupies exactly two columns in the DOM,
    a `Width: 0` continuation emits no glyph, and a deliberately mismatched font
    does not shift the remainder of the row.
-7. Every row of §2.9's input-mapping table has a test asserting the emitted
-   `tui.Event`; an unmapped browser key is dropped explicitly, with a test
-   proving no phantom event; IME composition emits no intermediate garbage.
+7. Every row of §2.9's table has a test asserting the emitted `tui.Event`
+   against the real struct fields; an unmapped browser key is dropped with no
+   phantom event. **Whole sequences** are replayed and assert exactly one
+   insertion: an IME composition (`compositionstart`→`update`×n→`end`→`input`)
+   and a paste (`paste`→`input`). Emission is **per rune**, matching
+   `tui/term`'s `actPrint` — proven by comparing the event stream for the same
+   text against the terminal decoder — and `Base`/`Shifted` are `0` throughout.
+   Pinned cases: a non-US layout, a dead-key sequence, a multi-codepoint emoji,
+   and a browser reporting no AltGraph state.
 7b. Resource limits: an oversized message is rejected, a sustained event flood
    closes the connection instead of growing the queue, and the queue bound holds
    under load.
@@ -446,8 +502,10 @@ Acceptance criteria:
 9. A non-loopback bind without TLS **fails to start**, with a test asserting the
    error; a plaintext loopback bind is permitted per §7.2.
 10. Every attach re-runs the completed policy: a replayed ticket is refused, a
-    fresh ticket succeeds, and an mTLS client re-attaches **without** a ticket —
-    the r2 reconnect invariant.
+    fresh ticket succeeds, and an mTLS client re-attaches **without** a ticket.
+    Every branch waits for `Policy.Authenticate`; only the **ticket branch**
+    performs an atomic consume, since mTLS and the challenge have nothing to
+    consume.
 10a. `Origin` validation denies by default and is enforced **even when mTLS is
     in use**; a cross-origin handshake is refused; a ticket cannot be redeemed
     twice (atomic consume), and no `App` is created or input accepted before the
@@ -515,6 +573,29 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **r4 (2026-08-21, lector — `change_requested`, folded in rev 4).**
+  **Must-fix 1:** committed text had **two** emitters — an ordinary IME
+  completion fires `input` *and* `compositionend`, so rev 3 would have inserted
+  the text twice, and paste has the same shape (`paste` then a paired `input`).
+  §2.9 now carries an explicit state machine where `input` is the sole emitter and
+  composition/paste are state transitions, with a suppress-next-input flag for
+  paste; acceptance replays whole sequences asserting exactly one insertion.
+  **Must-fix 2 killed two claims I had made without checking the source:**
+  (a) `Base`/`Shifted` cannot come from a browser — `KeyboardEvent.code` is a
+  *physical-key* identifier and the DOM exposes no base/shifted codepoints, while
+  `tui/term` populates those fields only on the kitty CSI path — so they are
+  always `0`, and my "layout-independent matching like kitty" claim is withdrawn;
+  (b) emission is per **rune**, not per grapheme cluster —
+  `decoder.go`'s `actPrint` emits one `KeyEvent` per rune, and the web backend
+  now matches that scalar sequence so components cannot distinguish backends.
+  **Amendments:** the Related line now says `Policy`; the shared policy is spelled
+  in the real `Leaf`/`NewPolicy` graph; acceptance 10 scopes the atomic consume to
+  the ticket branch; AltGraph relies solely on `getModifierState`, with Ctrl+Alt
+  inference behind an explicit opt-in so legitimate chords are never silently
+  swallowed; and DOM `metaKey` maps to **`ModSuper`**, not `ModMeta` — `tui.Mods`
+  is in kitty order, where super is Cmd/Win and meta is the historical Meta, so
+  the obvious mapping would have broken macOS Cmd chords.
 
 - **r3 (2026-08-21, lector — `change_requested`, folded in rev 3).**
   **Must-fix 1 was self-inflicted:** rev 2's input table invented event shapes
