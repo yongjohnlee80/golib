@@ -1,7 +1,7 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Proposed (rev 2)** (2026-08-21 — authored by jarvis; lector
-  design r1 and r2 `change_requested` both folded — a correctness defect in rev
+- **Status:** **Proposed (rev 3)** (2026-08-21 — authored by jarvis; lector
+  design r1, r2 and r3 `change_requested` all folded — a correctness defect in rev
   0's frame coalescing, a wrong security claim about mTLS, and r2's internal
   contradictions. See Review history.
   Lands on `tui-web`.)
@@ -444,7 +444,7 @@ Acceptance criteria:
    eviction, `Stop` has run, goroutines have exited (leak check), and the
    credential no longer attaches.
 9. A non-loopback bind without TLS **fails to start**, with a test asserting the
-   error; a plaintext loopback bind is permitted only per §7 Q2's resolution.
+   error; a plaintext loopback bind is permitted per §7.2.
 10. Every attach re-runs the completed policy: a replayed ticket is refused, a
     fresh ticket succeeds, and an mTLS client re-attaches **without** a ticket —
     the r2 reconnect invariant.
@@ -515,6 +515,28 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **r3 (2026-08-21, lector — `change_requested`, folded in rev 3).**
+  **Must-fix 1 was self-inflicted:** rev 2's input table invented event shapes
+  (`KeyEvent{Key,Mods}`, `MouseEvent.Delta`, `FocusEvent{Focused}`,
+  `ResizeEvent{Cols,Rows}`) instead of using `tui/events.go`'s real ones —
+  `KeyEvent{Kind,Code,Base,Shifted,Mods,Text}`, wheel as
+  `MouseEvent{Kind: MouseWheel, Button: WheelUp…}`, `FocusEvent{Gained,
+  Terminal}`, `ResizeEvent{W,H}`. I described an API instead of reading one; the
+  table is now written against the actual structs, with named keys as `tui.Key*`,
+  repeat as `Kind: KeyRepeat`, `keyup` dropped (`KeyRelease` is kitty-only and
+  never synthesized), and committed text setting `Code`+`Text` the way the
+  terminal decoder does. **Must-fix 2:** the rows overlapped and AltGraph was
+  unhandled — on layouts reporting AltGraph as Ctrl+Alt, rev 2 would have emitted
+  a *command* instead of the character typed. A normative resolution ladder now
+  orders reserved shortcuts → `isComposing`/AltGraph → named keys → committed
+  text → modified keys → drop. **Must-fix 3:** the backend consumes
+  `auth.Policy` (ADR-0001's `Authenticator` no longer exists), `App` creation and
+  input are gated on `Policy.Authenticate`, and the atomic consume is scoped to
+  the **ticket branch only** — rev 2's blanket wording contradicted direct mTLS
+  and challenge authentication. **Should-fixes:** "if WebSocket wins" and the
+  stale Q2 references removed; the 2 000-event burst clarified as a token-bucket
+  allowance rather than absorption the 1 024-slot queue cannot provide.
 
 - **r2 (2026-08-21, lector — `change_requested`, folded in rev 2).** The r1
   substance was accepted; these were internal contradictions. **Must-fix 1:**
