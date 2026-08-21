@@ -1,14 +1,14 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Proposed (rev 2)** (2026-08-21 — authored by jarvis; lector
-  design r1 and r2 `change_requested` both folded — undefined identity
+- **Status:** **Proposed (rev 3)** (2026-08-21 — authored by jarvis; lector
+  design r1, r2 and r3 `change_requested` all folded — undefined identity
   composition, an unenforceable factor rule, a reversed password-KDF decision,
   and r2's leaf/interface type contradiction. See Review history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — a new subsystem.
 - **Related:** `golib/tui` ADR-0009 §2.8 (the first consumer, which takes this
-  package's `Authenticator` interface), the `golib` convention's philosophy #6
+  package's `Policy`), the `golib` convention's philosophy #6
   "fail loud, fail typed" and its **tightened dependency rule** (2026-08-21),
   and RULES.md #1 (never store or log secret values).
 
@@ -43,19 +43,34 @@ type Factor interface {
 	Kind() FactorKind
 }
 
-// Contribution is what one leaf proved. Subject is REQUIRED for
-// FactorIdentity and MUST be empty for FactorContextual.
+// Contribution is what one leaf proved. Subject is REQUIRED when the Factor
+// declares FactorIdentity and MUST be empty when it declares FactorContextual —
+// validated against Factor.Kind() at evaluation time so the classification the
+// tree was validated with cannot drift from the one it runs with.
+//
+// Contribution carries no Kind of its own: duplicating it would be exactly that
+// drift (r3 must-fix 2).
 type Contribution struct {
-	Method  string
-	Kind    FactorKind
-	Subject string    // identity-bearing leaves only
+	Method    string
+	Subject   string    // identity-bearing leaves only; empty for contextual
 	IssuedAt  time.Time
 	ExpiresAt time.Time // zero = this proof imposes no post-auth bound (§2.2.1)
 }
 
-// Policy is a validated tree of factors and the only thing callers invoke.
-// NewPolicy validates the FINISHED tree (§2.2.2) and is where a
-// contextual-only root is rejected.
+// Node is one position in a policy tree. The interface is CLOSED (an
+// unexported method), so the only nodes are the three constructors below and
+// external factors enter through Leaf — that closure is what lets NewPolicy
+// reason about the whole tree.
+type Node interface{ isNode() }
+
+func Leaf(f Factor) Node    // an external factor becomes a node here
+func All(ns ...Node) Node   // every child must pass
+func Any(ns ...Node) Node   // the first passing branch wins
+
+// Policy is a VALIDATED tree and the only thing callers invoke. NewPolicy
+// computes each node's kind (§2.2.2) and rejects a root that is not
+// identity-bearing; it returns an error rather than panicking, because a policy
+// is often assembled from configuration.
 type Policy interface {
 	Authenticate(ctx context.Context, r *Request) (*Identity, error)
 }
@@ -74,8 +89,8 @@ type Request struct { /* RemoteAddr netip.AddrPort; Metadata; Credentials; TLS *
 type Identity struct {
 	Subject   string    // the authenticated principal
 	Proofs    []Proof   // every factor that contributed, in evaluation order
-	IssuedAt  time.Time // earliest contributing proof
-	ExpiresAt time.Time // MINIMUM across contributing proofs (§2.2)
+	IssuedAt  time.Time // LATEST non-zero contributing value (§2.2.1)
+	ExpiresAt time.Time // MINIMUM FINITE NON-ZERO contributing value; zero = unbounded
 }
 
 // Proof records one contributing factor.
@@ -91,9 +106,12 @@ adapters).
 ### 2.2 Composition is a first-class feature
 
 ```go
-func All(a ...Authenticator) Authenticator // every one must pass (AND)
-func Any(a ...Authenticator) Authenticator // the first pass wins (OR)
+func All(ns ...Node) Node // every child must pass (AND)
+func Any(ns ...Node) Node // the first passing branch wins (OR)
 ```
+
+(Declared with the rest of the graph in §2.1; repeated here for the rules that
+follow.)
 
 Rules, all normative:
 
@@ -138,8 +156,12 @@ combine two different people. Normative rules:
   long the ticket may be redeemed; once atomically consumed it is a
   point-in-time proof. `tui/web` owns session expiry (ADR-0009 §2.8), and
   conflating the two would expire a live session at the ticket's deadline.
-- **Invariant:** a non-nil error means a nil `*Identity`, and a nil error means a
-  non-nil `*Identity` with a non-empty `Subject`. Never both, never neither.
+- **Invariants, split by level (r3 must-fix 2):**
+  - `Factor.Verify` — a non-nil error means the **zero `Contribution`**; a nil
+    error means a `Contribution` whose `Subject` is non-empty iff the factor
+    declares `FactorIdentity`.
+  - `Policy.Authenticate` — a non-nil error means a **nil `*Identity`**; a nil
+    error means a non-nil `*Identity` with a non-empty `Subject`.
 
 ### 2.2.2 Contextual factors cannot authenticate alone — enforced, not documented (r1 must-fix 2)
 
@@ -176,9 +198,15 @@ the root. A policy whose root is not identity-bearing is a construction error.
 Consequences, all three of which are acceptance cases:
 
 ```go
-NewPolicy(Any(mtls, All(ipallow, sshChallenge)))  // VALID: both branches bear identity
-NewPolicy(Any(ipallow, sshkey))                   // INVALID root: the ipallow branch alone admits
-NewPolicy(All(ipallow, Any(ticket, mtls)))         // VALID: the All is identity-bearing via its Any
+// Each argument is a Node; external factors enter through Leaf.
+p, err := NewPolicy(Any(Leaf(mtls), All(Leaf(ipallow), Leaf(sshChallenge))))
+// VALID: both branches are identity-bearing.
+
+_, err = NewPolicy(Any(Leaf(ipallow), Leaf(sshkey)))
+// INVALID root: the ipallow branch alone would admit. err != nil.
+
+p, err = NewPolicy(All(Leaf(ipallow), Any(Leaf(ticket), Leaf(mtls))))
+// VALID: the All is identity-bearing via its Any child.
 ```
 
 Note a contextual leaf remains legal **below** an `All` that always requires
@@ -186,8 +214,9 @@ another identity proof — that is the whole point of `All(ipallow, …)`.
 
 ### 2.3 Methods, and where each dependency lives
 
-Per the tightened dependency rule: stdlib is checked first, and any third-party
-import is isolated in a leaf subpackage with its justification recorded here.
+**Five method subpackages** (TOTP deferred, §3). Per the tightened dependency
+rule, stdlib is checked first and any third-party import is isolated in a leaf
+subpackage with its justification recorded here.
 
 | Package | Method | Dependency | Justification |
 | --- | --- | --- | --- |
@@ -344,11 +373,13 @@ SAML, JWT issuance or validation, LDAP/AD, WebAuthn/passkeys**, and user
   same-subject binding. There is no concrete caller (WebTUI does not accept
   passwords, so it needs no second factor), and a half-specified TOTP is worse
   than none. It returns when a caller exists.
-- **`Identity.Attributes` (an open mutable map)** — rev 0 added it "so a later
-  authorization layer does not force a breaking change". That is backwards: an
-  exported mutable map **is** a public compatibility contract, created now for a
-  consumer that does not exist, with no defined merge semantics under §2.2.1.
-  Typed claims arrive with an authorization ADR. Each is a protocol
+- **`Identity.Attributes` (an open mutable map)** — proposed in rev 0 on the
+  grounds that adding it later would be a breaking change. That reasoning is
+  backwards: an exported mutable map **is itself** a public compatibility
+  contract, created now for a consumer that does not exist, and with `Attributes`
+  deferred there are no claims to merge, so §2.2.1 defines no conflict rule
+  either. Typed claims arrive with an authorization ADR, together with their
+  merge semantics. Each is a protocol
 surface plus dependencies; each can arrive later as its own ADR and leaf
 subpackage. This package answers one question — *does this request carry a valid
 credential* — and returns an `Identity` or an error.
@@ -378,7 +409,7 @@ credential* — and returns an `Identity` or an error.
 
 ## 5. Files / acceptance
 
-New: `auth/**` (core + the six method subpackages + adapters), `auth/doc.go`,
+New: `auth/**` (core + the five method subpackages + adapters), `auth/doc.go`,
 `auth/README.md`, tests.
 
 Acceptance criteria:
@@ -405,8 +436,10 @@ Acceptance criteria:
    `ExpiresAt` the minimum finite non-zero one, a zero expiry imposes no bound, a
    static `ipallow` match contributes no expiry, and a consumed ticket's
    redemption deadline does **not** become `Identity.ExpiresAt`.
-3. A construction with no authenticator panics at construction, not at first
-   request.
+3. `NewPolicy(nil)` and a contextual-only root return an **error** (not a
+   panic — a policy is often assembled from configuration); an empty `All()` /
+   `Any()` node is a node that denies at evaluation. The two cases are
+   distinguished by test.
 4. Timing symmetry across **all five** paths — known, unknown, wrong, locked and
    tracker-full — asserted structurally (equivalent counter reads/writes and
    backoff decisions, plus dummy hashing) with a tolerant wall-clock check that
@@ -445,10 +478,10 @@ Acceptance criteria:
 
 ## 6. Sequencing
 
-The `Authenticator`/`Request`/`Identity` interfaces and the composition
+The `Factor`/`Contribution`/`Node`/`Policy`/`Identity` graph and the composition
 semantics (§2.1, §2.2) should be settled **first**, because ADR-0009's backend
-depends on the interface and can proceed against it while the individual methods
-land incrementally. Suggested order: core + `ipallow` + `token` (stdlib only, and enough for
+depends on `Policy` and can proceed against it while the individual methods land
+incrementally. Suggested order: core + `ipallow` + `token` (stdlib only, and enough for
 ADR-0009's ticket flow) → `sshkey` + `mtls` (the strong mechanisms WebTUI
 accepts) → `password` (other callers). `totp` is deferred entirely (§3).
 
@@ -488,6 +521,27 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
    costs nothing and avoids that break.
 
 ## Review history
+
+- **r3 (2026-08-21, lector — `change_requested`, folded in rev 3).**
+  **Must-fix 1: the type graph was incomplete** — rev 2 wrote
+  `NewPolicy(root Node)` without ever defining `Node`, while `All`/`Any` still
+  had the signature of the `Authenticator` interface rev 2 had just removed, so
+  the north-star policy could not type-check. One graph now: a **closed** `Node`
+  (unexported method), `Leaf(Factor) Node` as the only way an external factor
+  enters, `All`/`Any` over `Node`, and `NewPolicy(Node) (Policy, error)` — and
+  all three example trees are written in compiling form. **Must-fix 2:** the
+  invariants were stated at one level for two different types; they are now
+  split — `Factor.Verify` error ⇒ **zero `Contribution`**,
+  `Policy.Authenticate` error ⇒ **nil `*Identity`** — acceptance criterion 3 no
+  longer demands a panic (`NewPolicy` returns an error, because policies come
+  from configuration), and `Contribution.Kind` is **removed** rather than
+  duplicated, with `Subject` presence validated against `Factor.Kind()` at
+  evaluation time so the classification used for validation cannot drift from the
+  one used at runtime. **Should-fixes:** the `Identity` field comments now say
+  *latest* non-zero `IssuedAt` and *minimum finite non-zero* `ExpiresAt`;
+  remaining `Authenticator` references in Related and Sequencing replaced with
+  `Policy`; "six method subpackages" corrected to five after the TOTP deferral;
+  and the malformed deferred-`Attributes` paragraph repaired.
 
 - **r2 (2026-08-21, lector — `change_requested`, folded in rev 2).** The r1
   substance was accepted; these were contradictions I introduced. **Must-fix 1
