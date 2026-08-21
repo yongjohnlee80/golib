@@ -1,0 +1,104 @@
+/* WebTUI stylesheet (ADR-0009 §2.6, §2.7). */
+
+:root {
+  /* The font stack is PINNED and documented. A different font per client would
+     mean a different cell advance per client, and the wide-grapheme containment
+     depends on knowing what was measured. */
+  --font: ui-monospace, "Cascadia Mono", "Menlo", "DejaVu Sans Mono",
+          "Liberation Mono", "Consolas", monospace;
+  --bg: #101014;
+  --fg: #d8d8dc;
+}
+
+@media (prefers-color-scheme: light) {
+  :root { --bg: #fbfbfd; --fg: #1c1c20; }
+}
+
+/* ANSI palette, exposed as custom properties so the server can emit
+   var(--aN) and never needs to know the theme. */
+:root {
+  --a0:#101014; --a1:#c0362c; --a2:#4e9a06; --a3:#c4a000;
+  --a4:#3465a4; --a5:#75507b; --a6:#06989a; --a7:#d3d7cf;
+  --a8:#555753; --a9:#ef2929; --a10:#8ae234; --a11:#fce94f;
+  --a12:#729fcf; --a13:#ad7fa8; --a14:#34e2e2; --a15:#eeeeec;
+}
+
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font);
+  overflow: hidden;
+}
+
+#g {
+  display: grid;
+  position: relative;
+  width: 100vw; height: 100vh;
+  /* line-height 1 so a cell's box is exactly the measured advance: any leading
+     would make the row height disagree with what the client reported. */
+  line-height: 1;
+  font-variant-ligatures: none;
+  /* Ligatures would merge two cells into one glyph and desynchronize the row. */
+  font-kerning: none;
+}
+
+#g > i.c {
+  /* THE containment. A glyph the font renders wider than its box is visually
+     clipped and cannot push its neighbours along, which is what makes a
+     font/width mismatch safe rather than merely unlikely (§2.6). The probe
+     informs the capability report; these two lines are the guarantee. */
+  overflow: hidden;
+  contain: strict;
+  display: block;
+  white-space: pre;
+  font-style: normal;
+  text-align: left;
+}
+
+#g > i.c.blink { /* deliberately no animation; opt in here if you must */ }
+
+#cur {
+  position: absolute;
+  left: 0; top: 0;
+  background: var(--fg);
+  opacity: .55;
+  pointer-events: none;
+  will-change: transform;
+}
+
+#cur[data-shape="3"] { height: 2px !important; align-self: end; }
+#cur[data-shape="4"] { width: 2px !important; }
+
+/* The capture element. Off-screen but focusable and NOT hidden: a
+   display:none or visibility:hidden element cannot receive input, and an
+   aria-hidden one confuses assistive technology about where the caret is. */
+#cap {
+  position: fixed;
+  left: 0; top: 0;
+  width: 1px; height: 1px;
+  padding: 0; border: 0; margin: 0;
+  opacity: 0;
+  resize: none;
+  overflow: hidden;
+  z-index: -1;
+  font-family: var(--font);
+}
+
+.probe {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+  font-family: var(--font);
+  line-height: 1;
+}
+
+#st {
+  display: none;
+  position: fixed;
+  left: 50%; top: 1rem;
+  transform: translateX(-50%);
+  padding: .4rem .8rem;
+  background: var(--a1); color: var(--a15);
+  font: 12px var(--font);
+  border-radius: 3px;
+}
