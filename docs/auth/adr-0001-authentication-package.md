@@ -1,7 +1,7 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Proposed (rev 3)** (2026-08-21 — authored by jarvis; lector
-  design r1, r2 and r3 `change_requested` all folded — undefined identity
+- **Status:** **Proposed (rev 4)** (2026-08-21 — authored by jarvis; lector
+  design r1-r3 `change_requested` folded and r4's `approved_with_amendments` applied — undefined identity
   composition, an unenforceable factor rule, a reversed password-KDF decision,
   and r2's leaf/interface type contradiction. See Review history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
@@ -379,10 +379,12 @@ SAML, JWT issuance or validation, LDAP/AD, WebAuthn/passkeys**, and user
   contract, created now for a consumer that does not exist, and with `Attributes`
   deferred there are no claims to merge, so §2.2.1 defines no conflict rule
   either. Typed claims arrive with an authorization ADR, together with their
-  merge semantics. Each is a protocol
-surface plus dependencies; each can arrive later as its own ADR and leaf
-subpackage. This package answers one question — *does this request carry a valid
-credential* — and returns an `Identity` or an error.
+  merge semantics.
+
+Each deferred item above is a protocol surface plus its dependencies, and each
+can arrive later as its own ADR and leaf subpackage. **This package answers one
+question — *does this request carry a valid credential?* — and returns an
+`Identity` or an error.**
 
 ## 4. Alternatives considered
 
@@ -426,12 +428,14 @@ Acceptance criteria:
    `Proofs` contain both in order. A `Contribution` from a contextual leaf never
    supplies a `Subject`, and the nil/error invariant holds in every branch:
    non-nil error ⇒ nil `*Identity`, nil error ⇒ non-empty `Subject`.
-2c. **Tree validation (§2.2.2)** — all three trees are acceptance cases:
-   `NewPolicy(Any(mtls, All(ipallow, sshChallenge)))` **is valid**;
-   `NewPolicy(Any(ipallow, sshkey))` is a **construction error**;
-   `NewPolicy(All(ipallow, Any(ticket, mtls)))` **is valid**. A contextual leaf
-   below an identity-requiring `All` stays legal, and no policy satisfiable by
-   contextual factors alone can be constructed.
+2c. **Tree validation (§2.2.2)** — all three trees are acceptance cases, written
+   in the real graph so they compile:
+   `NewPolicy(Any(Leaf(mtls), All(Leaf(ipallow), Leaf(sshChallenge))))` **is
+   valid**; `NewPolicy(Any(Leaf(ipallow), Leaf(sshkey)))` returns a
+   **construction error**;
+   `NewPolicy(All(Leaf(ipallow), Any(Leaf(ticket), Leaf(mtls))))` **is valid**.
+   A contextual leaf below an identity-requiring `All` stays legal, and no policy
+   satisfiable by contextual factors alone can be constructed.
 2d. **Validity interval (§2.2.1):** `IssuedAt` is the latest contributing value,
    `ExpiresAt` the minimum finite non-zero one, a zero expiry imposes no bound, a
    static `ipallow` match contributes no expiry, and a consumed ticket's
@@ -470,9 +474,9 @@ Acceptance criteria:
     marshaling, pointers, nested requests, wrapped errors and audit records: a
     captured sink contains no secret material in any of them.
 11. The **corrected** ADR-0009 WebTUI policy compiles and is exercised:
-    `Any(singleUseSSHChannelTicket, mtls)` — optionally wrapped in
-    `All(ipallow, ...)` — with IP never satisfying it alone and password rejected
-    as a mechanism for that consumer.
+    `NewPolicy(Any(Leaf(ticket), Leaf(mtls), Leaf(sshChallenge)))` — optionally
+    `NewPolicy(All(Leaf(ipallow), Any(...)))` — with IP never satisfying it alone
+    and password rejected as a mechanism for that consumer.
 12. `go vet` clean, race-clean, `doc.go` + `README.md` present, every exported
     symbol documented, tests stdlib-only.
 
@@ -521,6 +525,16 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
    costs nothing and avoids that break.
 
 ## Review history
+
+- **r4 (2026-08-21, lector — `approved_with_amendments`; both applied in rev 4).**
+  The r3 structural work was accepted: one coherent closed
+  `Factor` → `Leaf`/`Node` → `Policy` graph with the invariants split by level.
+  Two amendments: acceptance criteria 2c and 11 (and the cross-ADR summary) still
+  passed `Factor` values straight to `All`/`Any` while claiming the trees
+  compiled — they now go through `Leaf(...)` and `NewPolicy(...)`, matching the
+  §2.2.2 examples; and the deferred-`Attributes` bullet had swallowed the
+  "each is a protocol surface plus dependencies" sentence, which belonged to the
+  deferred-protocol list and had no plural antecedent where it sat.
 
 - **r3 (2026-08-21, lector — `change_requested`, folded in rev 3).**
   **Must-fix 1: the type graph was incomplete** — rev 2 wrote
@@ -600,6 +614,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   construction-panic disambiguated; lockout store seam exposed with a bounded
   default; SSH challenges domain-separated, bound and atomically consumed;
   redaction coverage widened. **Cross-ADR:** the WebTUI policy is
-  `Any(singleUseSSHChannelTicket, mtls[, sshChallenge])`, optionally wrapped in
-  `All(ipallow, ...)` — IP optional and never identity-bearing.
+  `NewPolicy(Any(Leaf(ticket), Leaf(mtls), Leaf(sshChallenge)))`, optionally
+  wrapped in `NewPolicy(All(Leaf(ipallow), Any(...)))` — IP optional and never
+  identity-bearing.
   Review doc: `$KB_ROOT/agents/lector/reviews/2026-08-21-golib-tui-web-auth-coupled-design-review.md`
