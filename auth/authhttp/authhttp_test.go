@@ -399,3 +399,30 @@ func TestMetadataHeaders_ClonesItsInput(t *testing.T) {
 		t.Error("a header added to the caller's slice after construction was copied")
 	}
 }
+
+// An invalid header name reaching http.Header.Set produces a silently malformed
+// response header — discovered by a user who cannot report their attempt ID,
+// which is the one thing this header exists to prevent.
+func TestCorrelationHeader_ValidatedAtConstruction(t *testing.T) {
+	t.Parallel()
+	for _, bad := range []string{"X Auth", "X:Auth", "X\nAuth", "X\x00Auth", "Ünicode", "X(Auth)"} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("CorrelationHeader(%q) must panic", bad)
+				}
+			}()
+			_ = CorrelationHeader(bad)
+		}()
+	}
+	// Valid names, including the RFC 9110 token punctuation, are accepted.
+	for _, ok := range []string{"X-Auth-Attempt", "X_Auth", "Attempt-ID", "x-auth", "A1!#$%&'*+-.^_`|~"} {
+		if opt := CorrelationHeader(ok); opt == nil {
+			t.Errorf("CorrelationHeader(%q) must be accepted", ok)
+		}
+	}
+	// Empty disables and must not panic.
+	if opt := CorrelationHeader(""); opt == nil {
+		t.Error(`CorrelationHeader("") must be accepted as "disabled"`)
+	}
+}

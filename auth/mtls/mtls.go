@@ -10,7 +10,6 @@ package mtls
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
@@ -20,11 +19,11 @@ import (
 var (
 	// ErrNoVerifiedChain covers both "no TLS" and the dangerous case: a peer
 	// certificate that did not verify.
-	ErrNoVerifiedChain = errors.New("mtls: no verified client-certificate chain")
-	ErrNotClientAuth   = errors.New("mtls: leaf certificate lacks client-auth extended key usage")
-	ErrNotYetValid     = errors.New("mtls: certificate not yet valid")
-	ErrExpired         = errors.New("mtls: certificate expired")
-	ErrNoSubject       = errors.New("mtls: subject mapping produced no subject")
+	ErrNoVerifiedChain = auth.Reason("mtls: no verified client-certificate chain")
+	ErrNotClientAuth   = auth.Reason("mtls: leaf certificate lacks client-auth extended key usage")
+	ErrNotYetValid     = auth.Reason("mtls: certificate not yet valid")
+	ErrExpired         = auth.Reason("mtls: certificate expired")
+	ErrNoSubject       = auth.Reason("mtls: subject mapping produced no subject")
 )
 
 // SubjectFunc maps a verified leaf certificate to a principal.

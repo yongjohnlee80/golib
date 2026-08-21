@@ -143,16 +143,23 @@ func (n anyNode) eval(ec evalCtx) ([]scoped, error) {
 	if len(n.children) == 0 {
 		return nil, errEmptyNode
 	}
-	var last error
+	// Every branch error is JOINED, not just the last one kept.
+	//
+	// Keeping only the last made the outcome depend on declaration order: an
+	// Any whose throttled branch was not last reported plain "failure", so a
+	// backoff refusal became invisible in the log for exactly the topology where
+	// it matters — the fallback policy. errors.Join lets errors.Is see every
+	// branch's reason regardless of position.
+	var joined error
 	for _, c := range n.children {
 		got, err := c.eval(ec)
 		if err == nil {
 			return got, nil
 		}
-		last = err
+		joined = errors.Join(joined, err)
 		ec.audit.note("branch", auditDetail(err))
 	}
-	return nil, last
+	return nil, joined
 }
 
 // merge turns contributions into one Identity (ADR-0001 §2.2.1):

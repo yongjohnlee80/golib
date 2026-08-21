@@ -18,6 +18,12 @@ import (
 // Declare sentinels with it instead of [errors.New], and wrap freely — a
 // `fmt.Errorf("%w: %s", ErrSomething, detail)` chain still yields the FIXED text
 // of the Reason it wraps, and the dynamic half is dropped rather than logged.
+//
+// One caveat follows from it being a string type: two Reason values with
+// IDENTICAL text are `==`, so [errors.Is] cannot tell them apart, where
+// [errors.New] would have produced distinct pointers. Prefix every sentinel with
+// its package name — as every sentinel in this module does — and the collision
+// cannot arise.
 type Reason string
 
 // Error implements error.

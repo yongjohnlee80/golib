@@ -11,7 +11,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"errors"
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
@@ -19,10 +18,10 @@ import (
 
 // Internal errors; auth.Policy maps every failure to auth.ErrUnauthenticated.
 var (
-	ErrMalformed = errors.New("token: malformed token")
-	ErrNotFound  = errors.New("token: unknown token")
-	ErrExpired   = errors.New("token: token expired")
-	ErrConsumed  = errors.New("token: single-use token already consumed")
+	ErrMalformed = auth.Reason("token: malformed token")
+	ErrNotFound  = auth.Reason("token: unknown token")
+	ErrExpired   = auth.Reason("token: token expired")
+	ErrConsumed  = auth.Reason("token: single-use token already consumed")
 )
 
 // rawLen is the token's entropy in bytes. 32 bytes = 256 bits, encoded as 43

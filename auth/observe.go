@@ -122,10 +122,23 @@ type attemptSinkKey struct{}
 // installs a sink on the request's context, and the ID it captures belongs to
 // that request and no other.
 //
-// The sink runs on the authenticating goroutine, so it must not block.
+// Sinks COMPOSE rather than shadow. A single context key would mean the
+// middleware's sink silently replaced an outer one the caller had installed, so
+// a request-scoped observer would just stop firing when an adapter was added in
+// front of it — a disappearance with no error and nothing to notice. Both run,
+// outer first, and both see the same Attempt.
+//
+// Each sink runs on the authenticating goroutine, so none of them may block.
 func WithAttemptSink(ctx context.Context, fn func(Attempt)) context.Context {
 	if fn == nil {
 		return ctx
+	}
+	if outer := attemptSinkFrom(ctx); outer != nil {
+		inner := fn
+		fn = func(a Attempt) {
+			outer(a)
+			inner(a)
+		}
 	}
 	return context.WithValue(ctx, attemptSinkKey{}, fn)
 }

@@ -55,11 +55,11 @@ var (
 	// for backoff rather than for a bad credential. Like every other reason it
 	// collapses to [ErrUnauthenticated] at the Policy boundary — telling a
 	// caller "you are locked out" confirms the account exists.
-	ErrThrottled = errors.New("auth: too many failed attempts")
+	ErrThrottled = Reason("auth: too many failed attempts")
 
 	// ErrTrackerUnavailable is recorded when the Tracker itself failed. By
 	// default it denies: see [FailOpen].
-	ErrTrackerUnavailable = errors.New("auth: failure tracker unavailable")
+	ErrTrackerUnavailable = Reason("auth: failure tracker unavailable")
 )
 
 // Throttle wraps a Factor with failure counting and backoff (ADR-0001 §2.6).
@@ -178,10 +178,10 @@ func OnTrackerError(fn func(error)) ThrottleOption {
 // else is a construction error naming the three options.
 func NewThrottle(inner Factor, tracker Tracker, opts ...ThrottleOption) (*Throttle, error) {
 	if inner == nil {
-		return nil, errors.New("auth.NewThrottle: no factor to wrap")
+		return nil, Reason("auth.NewThrottle: no factor to wrap")
 	}
 	if tracker == nil {
-		return nil, errors.New("auth.NewThrottle: a Tracker is required — pass auth.NewMemTracker(...)")
+		return nil, Reason("auth.NewThrottle: a Tracker is required — pass auth.NewMemTracker(...)")
 	}
 	var c throttleConfig
 	for _, o := range opts {
@@ -199,7 +199,7 @@ func NewThrottle(inner Factor, tracker Tracker, opts ...ThrottleOption) (*Thrott
 	switch {
 	case c.addressOnly:
 		if c.claim != nil {
-			return nil, errors.New("auth.NewThrottle: AddressOnly and SubjectClaim are contradictory")
+			return nil, Reason("auth.NewThrottle: AddressOnly and SubjectClaim are contradictory")
 		}
 		t.claim = nil
 	case c.claim != nil:

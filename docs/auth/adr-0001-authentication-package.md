@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Accepted (rev 9)** (2026-08-22 — authored by jarvis; lector
+- **Status:** **Accepted (rev 10)** (2026-08-22 — authored by jarvis; lector
   design r1-r3 `change_requested` folded, r4 **approved**, and **accepted by
   Johno 2026-08-21** — implementation in progress. **Rev 5 changed a mechanism
   mid-implementation**: §2.5 SSHSIG verification is delegated to
@@ -15,7 +15,9 @@
   throttle work and raised five against §2.7/§2.8, folded in **rev 9**, the
   current text — including a factor's error text carrying a credential into the
   log, and an adapter whose bearer key did not compose with its own token
-  factor. See Review history. Lands on `auth-pkg`.)
+  factor. Lector r9 raised two more — an incomplete safe-reason migration and an
+  outcome erased by `Any` — folded in **rev 10**, the current text. See Review
+  history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — a new subsystem.
@@ -652,6 +654,32 @@ third-party factor is the right trade against writing secrets to disk. The
 acceptance test's fixture error now actually **contains** a secret; the previous
 one used a generic string and so could not have failed.
 
+**The migration has to be COMPLETE to be worth anything (r9 must-fix 1).** Rev 9
+converted `auth`, `auth/password` and `auth/sshkey` and missed `auth/token`,
+`auth/mtls`, `auth/ipallow` and the throttle's own sentinels — so a malformed
+token, an expired one, a consumed one and an unknown one all recorded
+`opaque error of type *errors.errorString`, identically. That is worse than the
+leak in one respect: it silently removes §2.2's specific-private-reason promise
+for four packages while every test still passes. Every audit-relevant built-in
+sentinel in the module is now an `auth.Reason`, and an **external** test package
+(`auth_test`, since the method packages import `auth`) asserts fourteen
+representative built-ins each produce a distinct, non-opaque line while a
+backend error carrying a DSN password stays opaque. A same-package test could not
+have caught this, which is why it did not.
+
+One consequence of `Reason` being a string type is recorded at the type: two
+Reasons with identical text are `==`, so [errors.Is] cannot separate them where
+`errors.New` would have given distinct pointers. Every sentinel in this module is
+package-prefixed, which makes the collision unreachable.
+
+**A backoff refusal survives `Any` in either branch order (r9 must-fix 2).**
+`anyNode.eval` kept only the LAST branch error, and the outcome was derived from
+it — so `Any(throttled, ordinaryFailure)` logged plain `failure`, making the
+distinction above depend on declaration order in precisely the topology `Any`
+exists for (a fallback policy). Branch errors are now `errors.Join`ed, so
+`errors.Is` sees every reason regardless of position; both orders are pinned by
+test.
+
 **Correlation is per-REQUEST, not per-policy (r8 must-fix 2).**
 `Observe(func(Attempt))` is policy-global and receives no request, so under
 concurrency it cannot say which of the attempts in flight belongs to a given
@@ -659,10 +687,21 @@ caller — two from the same peer are indistinguishable to it, which made the
 documented HTTP correlation flow unimplementable. `auth.WithAttemptSink(ctx, fn)`
 installs a sink on the request's own context; `authhttp.Middleware` uses it to
 capture the ID and returns it in `X-Auth-Attempt`
-(`CorrelationHeader("")` disables). The ID is random per attempt and reveals
-neither outcome nor account, which is what makes handing it to the client safe —
-and it is the only thing a user can quote, given that every rejection is
-byte-identical.
+(`CorrelationHeader("")` disables; an invalid header name panics at
+construction, since `http.Header.Set` would otherwise emit a silently malformed
+header).
+
+Sinks **compose rather than shadow** (r9 should-fix 1). A single context key meant
+the middleware's sink replaced an outer one the caller had installed, so a
+request-scoped observer simply stopped firing when an adapter was put in front of
+it — measured outer=0, inner=1. Both now run, outer first, on the same `Attempt`.
+
+The ID is random per attempt and reveals neither outcome nor account, which is
+what makes handing it to the client safe — and it is the only thing a user can
+quote. **Precisely: every rejection RESPONSE BODY and status is identical, and
+the only varying element is this deliberately random, outcome-independent
+header** (r9 should-fix 2). Rev 9 said "byte-identical", which the header
+contradicts.
 
 **Exactly one record per authentication, including `Authenticate(ctx, nil)`
 (r8 must-fix 5).** That path emitted nothing, so the promise was false for it.
@@ -865,7 +904,25 @@ Acceptance criteria:
 5e. **Adapter configuration immutability (§2.8):** mutating the slice returned by
    `DefaultMetadataHeaders()` does not change the default; mutating a slice
    passed to `MetadataHeaders` after `Middleware` is built does not change which
-   headers are copied; every credential-bearing header name panics.
+   headers are copied; every credential-bearing header name panics; and an
+   invalid `CorrelationHeader` name panics at construction.
+5f. **Built-in reason completeness (§2.2, §2.7 — an EXTERNAL test package):**
+   fourteen representative built-in sentinels drawn from `auth`, `auth/token`,
+   `auth/password`, `auth/sshkey`, `auth/mtls` and `auth/ipallow` each produce a
+   **distinct, non-opaque** audit line; a wrapped built-in contributes its fixed
+   text and drops the dynamic half; a real `token.Factor` rejecting a
+   twice-presented single-use token records why rather than `opaque`; and a
+   backend error carrying a DSN password stays opaque. Verified in both
+   directions — reverting one package's migration fails the test with
+   `opaque error of type *errors.errorString`.
+5g. **Outcome survives composition (§2.7):** `Any` containing a throttled branch
+   logs `outcome=throttled` with the throttled branch **first or last**, and both
+   branch reasons are recorded. Verified in both directions: keeping only the
+   last branch error fails the `throttled first` case.
+5h. **Sink composition (§2.7):** nested `WithAttemptSink` calls all fire on one
+   authentication and all observe the same ID; a nil sink in the middle of the
+   chain does not break it. Verified in both directions: a shadowing
+   implementation fails with outer=0.
 6. `auth/token`: verify, expire, revoke; the stored form is a hash, proven by
    inspecting the store.
 6b. **Atomic consume under concurrency:** many goroutines redeem the same
@@ -991,6 +1048,27 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
    costs nothing and avoids that break.
 
 ## Review history
+
+- **r9 (2026-08-22, lector — `change_requested`; both must-fixes and both notes
+  folded in rev 10).** All five r8 findings and the three notes were confirmed
+  closed. Two audit-contract bugs remained, both reproducible through public
+  APIs:
+  1. **The safe-reason migration was incomplete** — `auth/token`, `auth/mtls`,
+     `auth/ipallow` and the throttle's own sentinels were still `errors.New`, so
+     four packages' failures all recorded
+     `opaque error of type *errors.errorString`. I had run a regex over three
+     files and treated a green suite as proof it was finished; no test spanned
+     packages, so none could see it. Fixed, with an external `auth_test` package
+     asserting fourteen built-ins stay distinguishable while backend error text
+     stays opaque.
+  2. **`Any` erased the throttled outcome** by keeping only the last branch
+     error, making the log's `throttled` distinction depend on declaration order
+     in the one topology `Any` is for. `errors.Join` now preserves every branch.
+  Notes: `WithAttemptSink` composes instead of shadowing (an outer sink was
+  silently disabled by the middleware's — measured outer=0); `CorrelationHeader`
+  is validated at construction; and the "byte-identical rejection" claim is
+  narrowed to the body and status, since the correlation header deliberately
+  varies.
 
 - **r8 (2026-08-22, lector — `change_requested`; all five must-fixes and all
   three notes folded in rev 9).** All five r7 throttle/tracker blockers were

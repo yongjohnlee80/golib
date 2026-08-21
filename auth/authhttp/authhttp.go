@@ -225,8 +225,30 @@ const DefaultCorrelationHeader = "X-Auth-Attempt"
 
 // CorrelationHeader sets the response header carrying the attempt ID. An empty
 // name disables it.
+//
+// An invalid header name PANICS at middleware construction. Passing one to
+// http.Header.Set otherwise produces a silently malformed response header, which
+// would be discovered by a user who could not report their attempt ID — the one
+// situation this header exists to prevent.
 func CorrelationHeader(name string) Option {
+	if name != "" && !validHeaderName(name) {
+		panic("authhttp.CorrelationHeader: " + name + " is not a valid HTTP header name")
+	}
 	return func(c *config) { c.correlation = name }
+}
+
+// validHeaderName reports whether name is an RFC 9110 field name (a token).
+func validHeaderName(name string) bool {
+	for i := range len(name) {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case strings.ContainsRune("!#$%&'*+-.^_`|~", rune(c)):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // Middleware authenticates every request and rejects the ones that fail.

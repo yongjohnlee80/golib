@@ -398,3 +398,100 @@ func TestWithAttemptSink_IsPerCall(t *testing.T) {
 		t.Error("WithAttemptSink(ctx, nil) must return a usable context")
 	}
 }
+
+// The other half of the contract: a DYNAMIC error from a backend must stay
+// opaque, or the migration would have traded a leak for a different leak.
+func TestBackendErrorTextStaysOpaque(t *testing.T) {
+	t.Parallel()
+	sink := &capture{}
+	// The shape of a store failure: a driver error carrying a DSN with a
+	// password in it.
+	backend := fmt.Errorf("dial tcp: postgres://admin:%s@db:5432 refused", leaked)
+	p, err := NewPolicy(Leaf(failFactor{err: backend}), Log(sink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Authenticate(context.Background(), &Request{}); err == nil {
+		t.Fatal("expected failure")
+	}
+	got := sink.text()
+	if strings.Contains(got, leaked) {
+		t.Fatalf("a backend error's text reached the log: %q", got)
+	}
+	if !strings.Contains(got, "opaque error of type") {
+		t.Errorf("an unattributed error must be recorded by type: %q", got)
+	}
+}
+
+// A backoff refusal is operationally distinct from a wrong credential, and must
+// stay so wherever it sits in the tree. Keeping only the last branch error made
+// the outcome depend on DECLARATION ORDER — so a fallback policy, the exact
+// topology where Any is used, could hide it.
+func TestPolicy_ThrottledSurvivesAnyInEitherOrder(t *testing.T) {
+	t.Parallel()
+
+	orders := map[string][]Node{
+		"throttled first": {Leaf(failFactor{err: ErrThrottled}), Leaf(failFactor{err: Reason("plain failure")})},
+		"throttled last":  {Leaf(failFactor{err: Reason("plain failure")}), Leaf(failFactor{err: ErrThrottled})},
+	}
+	for name, children := range orders {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			sink := &capture{}
+			p, err := NewPolicy(Any(children...), Log(sink))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.Authenticate(context.Background(), &Request{}); !errors.Is(err, ErrUnauthenticated) {
+				t.Fatalf("err = %v", err)
+			}
+			if !strings.Contains(sink.text(), "outcome=throttled") {
+				t.Errorf("a backoff refusal inside Any logged as %q — the outcome depends "+
+					"on which branch happened to be last", sink.text())
+			}
+			// Both branch reasons must still be recorded.
+			for _, want := range []string{"too many failed attempts", "plain failure"} {
+				if !strings.Contains(sink.text(), want) {
+					t.Errorf("branch reason %q missing from %q", want, sink.text())
+				}
+			}
+		})
+	}
+}
+
+// A single context key meant the middleware's sink silently REPLACED an outer
+// one, so a caller's request-scoped observer just stopped firing.
+func TestWithAttemptSink_Composes(t *testing.T) {
+	t.Parallel()
+	p, err := NewPolicy(Leaf(okFactor{subject: "alice", method: "m"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outer, inner []Attempt
+	ctx := WithAttemptSink(context.Background(), func(a Attempt) { outer = append(outer, a) })
+	ctx = WithAttemptSink(ctx, func(a Attempt) { inner = append(inner, a) })
+
+	if _, err := p.Authenticate(ctx, &Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(outer) != 1 {
+		t.Fatalf("the outer sink fired %d times, want 1 — an inner sink shadowed it", len(outer))
+	}
+	if len(inner) != 1 {
+		t.Fatalf("the inner sink fired %d times, want 1", len(inner))
+	}
+	if outer[0].ID != inner[0].ID {
+		t.Errorf("sinks saw different attempts: %q vs %q", outer[0].ID, inner[0].ID)
+	}
+
+	// Three deep, and a nil in the middle must not break the chain.
+	var third []Attempt
+	ctx = WithAttemptSink(ctx, nil)
+	ctx = WithAttemptSink(ctx, func(a Attempt) { third = append(third, a) })
+	if _, err := p.Authenticate(ctx, &Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(outer) != 2 || len(inner) != 2 || len(third) != 1 {
+		t.Errorf("chain fired outer=%d inner=%d third=%d, want 2/2/1", len(outer), len(inner), len(third))
+	}
+}

@@ -175,13 +175,21 @@ is not configuration, it is a race.
   Notice, because a failed login is the system working — and `authhttp` returns
   it as `X-Auth-Attempt` so a user can quote something an operator can find. The
   ID is captured on the *request's* context, because a policy-global observer
-  cannot tell two concurrent requests from one peer apart.
+  cannot tell two concurrent requests from one peer apart — and nested sinks
+  compose rather than shadow, so adding an adapter never silently disables an
+  observer the caller installed. Every rejection's body and status are identical;
+  this header is the only thing that varies, and it is random and
+  outcome-independent by construction.
 - **An arbitrary error's text never reaches the log.** A factor is third-party
   code, and `fmt.Errorf("bad token %q", presented)` is an ordinary thing to
   write. Only `auth.Reason` (compile-time text) or an error implementing
   `auth.SafeAuditDetail` contributes its words; anything else is recorded as
   `opaque error of type T`. Wrapping a `Reason` keeps the fixed half and drops
-  the dynamic one.
+  the dynamic one. Every built-in sentinel across all six packages is a `Reason`,
+  so a malformed token still reads differently from an expired one.
+- **`Any` does not lose the reason.** Branch errors are joined, so a backoff
+  refusal inside a fallback policy still logs `throttled` no matter which branch
+  it was declared in.
 - **Every rendered field is sanitized and bounded** — subject, peer, reason and
   *method* alike. All of them are factor- or request-supplied, and a newline in a
   log field is how a log gets forged entries.

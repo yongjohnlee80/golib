@@ -10,7 +10,6 @@ package ipallow
 
 import (
 	"context"
-	"errors"
 	"net/netip"
 	"strings"
 
@@ -20,9 +19,9 @@ import (
 // Errors are internal: auth.Policy maps every failure to
 // auth.ErrUnauthenticated. They exist so the audit record can be specific.
 var (
-	ErrNotAllowed  = errors.New("ipallow: client address not in the allowlist")
-	ErrNoAddress   = errors.New("ipallow: no usable client address")
-	ErrEmptyPolicy = errors.New("ipallow: empty allowlist denies")
+	ErrNotAllowed  = auth.Reason("ipallow: client address not in the allowlist")
+	ErrNoAddress   = auth.Reason("ipallow: no usable client address")
+	ErrEmptyPolicy = auth.Reason("ipallow: empty allowlist denies")
 )
 
 // Factor checks the client address against allowed prefixes.

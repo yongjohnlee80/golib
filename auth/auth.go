@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"net/netip"
 	"time"
 )
@@ -13,15 +12,15 @@ import (
 // goes to the audit record instead.
 var (
 	// ErrUnauthenticated is the ONLY outward failure of Policy.Authenticate.
-	ErrUnauthenticated = errors.New("auth: unauthenticated")
+	ErrUnauthenticated = Reason("auth: unauthenticated")
 
 	// ErrNoIdentityProof is returned by NewPolicy when a tree could be
 	// satisfied without proving an identity — a policy that admits on
 	// contextual factors alone (ADR-0001 §2.2.2).
-	ErrNoIdentityProof = errors.New("auth: policy has no identity-bearing proof")
+	ErrNoIdentityProof = Reason("auth: policy has no identity-bearing proof")
 
 	// ErrEmptyPolicy is returned by NewPolicy for a nil root.
-	ErrEmptyPolicy = errors.New("auth: policy has no root")
+	ErrEmptyPolicy = Reason("auth: policy has no root")
 )
 
 // FactorKind says what a factor proves. A contextual factor constrains an
