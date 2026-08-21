@@ -1,8 +1,8 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Proposed (rev 7)** (2026-08-21 — authored by jarvis; lector
-  design r1-r7 folded (r7: the commit boundary is HOST STATE, not a task or a
-  timer) — a correctness defect in rev
+- **Status:** **Proposed (rev 8) — design-approved** (2026-08-21 — authored by jarvis; lector
+  design r1-r8 folded; r8 `approved_with_amendments` and all three applied
+  (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
   0's frame coalescing, a wrong security claim about mTLS, and r2's internal
   contradictions. See Review history.
   Lands on `tui-web`.)
@@ -326,9 +326,10 @@ emit a command instead of the character the user typed:
 | `keydown`, `key` ∈ {Enter, Tab, Escape, Backspace, Delete, Insert, Arrow*, Home, End, PageUp, PageDown, F1–F12} | `KeyEvent{Kind: KeyPress, Code: tui.KeyEnter \| KeyTab \| KeyEscape \| … \| KeyF12, Mods}` | **yes** |
 | same, with `repeat: true` | `KeyEvent{Kind: KeyRepeat, …}` | **yes** |
 | `keyup` for a forwarded key | *(nothing — `KeyRelease` is kitty-only and is never synthesized here)* | no |
-| `input` (any) | compute the capture element's **baseline → current delta**; if it is non-empty, emit one `KeyEvent{Kind: KeyPress, Code: r, Text: string(r), Base: 0, Shifted: 0, Mods: 0}` **per rune** (matching `tui/term`'s `actPrint`) and **advance the baseline**; if the delta is empty, emit nothing | no |
-| `compositionstart` / `compositionupdate` | **state only** — emit nothing, baseline untouched | no |
-| `compositionend` | compute the **baseline → current delta** (the control is already updated by spec), emit it once per rune, then **synchronously advance the baseline** | no |
+| `input` with `isComposing: true` (**composing**) | **host update only** — emit nothing, do not drain | no |
+| `compositionstart` / `compositionupdate` | **state only** — emit nothing, do not drain | no |
+| `compositionend` | the control is already updated by spec: **drain** the capture element — emit its value once per rune as `KeyEvent{Kind: KeyPress, Code: r, Text: string(r), Base: 0, Shifted: 0, Mods: 0}`, then synchronously clear it | no |
+| `input` while **idle** (ordinary typing, or a late composition notification) | **drain**: if the capture element is non-empty, emit its value per rune and clear it; if empty — which is what a late notification for already-committed work sees — emit nothing | no |
 | `keydown` with Ctrl/Alt/Meta + printable, where `key` is **exactly one Unicode scalar** (and **not** rule 2) | `KeyEvent{Kind: KeyPress, Code: <that scalar, lower-cased only when the lower-case form is also a single scalar>, Base: 0, Shifted: 0, Mods: ModCtrl \| ModAlt \| ModSuper \| ModShift}` — `Code` comes from `key`, never from a base-layout codepoint the DOM does not expose | **yes** |
 | `keydown` + modifiers where `key` is `Dead`, `Unidentified`, or **not a single scalar** (multi-scalar, or a lower-casing that expands) | **dropped** — `KeyEvent.Code` holds one rune, so there is nothing faithful to put in it; any resulting character still reaches the app through the text path | no |
 | `paste` | `PasteEvent{Text}` with CR/CRLF normalized to `\n` | **yes** |
@@ -370,33 +371,56 @@ dispatch and relative ordering, and HTML assigns user input to the
 user-interaction task source without making task coalescing an identity
 contract. A settle timeout merely swaps one ambiguous boundary for another.
 
-**The boundary is the host's own state.** All text is captured in a dedicated
-**capture element** (a focusable off-screen `textarea`), and the backend emits
-**deltas of that element's value against a baseline it advances itself**:
+**The boundary is the host's own state, and the buffer is TRANSIENT (r8
+amendment 1).** All text is captured in a dedicated **capture element** — a
+focusable off-screen `textarea` — which is **drained on every committed
+emission**: emit its value, then synchronously set it to empty and restore the
+caret. It is a transient buffer, never a log.
+
+Draining is not tidiness; retaining the typed history would mean **every
+keystroke the user ever sent — including passwords typed into the TUI — sitting
+in the DOM** of a page reachable over the network, and it would also leave
+"baseline → current" ambiguous for any replacement occurring *before* the
+baseline. With a drain, the baseline is always empty and the delta is simply the
+element's current value, so no general string diff is ever needed.
+
+The element is declared `autocomplete="off" autocapitalize="none"
+spellcheck="false"`, carries **no `name` and no enclosing form**, and JS
+references to captured strings are dropped promptly after emission. **No claim is
+made that the text is erased from memory** — a JS engine offers no such
+guarantee; the claim is only that it is no longer in the DOM or retained by our
+code.
+
+The machine, then:
 
 | State | Event | Action |
 | --- | --- | --- |
-| any | `compositionstart` | mark composing; **do not** touch the baseline |
-| composing | `compositionupdate` | emit nothing; baseline untouched |
-| composing | `input` (`isComposing: true`) | emit nothing; baseline untouched |
-| composing | `compositionend` | UI Events dispatches this **after the control is updated**, so: compute `baseline → current` delta, **emit it once** (per rune), then **synchronously advance the baseline** to the current value; → idle |
-| any | `input` | compute the delta; **emit only if non-empty**, then advance the baseline |
-| any | cancellation (host value returned to baseline, or explicit cancel) | delta is empty ⇒ nothing is emitted, with no special case needed |
+| any | `compositionstart` | mark composing; do not drain |
+| composing | `compositionupdate` | emit nothing; do not drain |
+| composing | `input` (`isComposing: true`) | emit nothing; do not drain |
+| composing | `compositionend` | UI Events dispatches this **after the control is updated**, so: **emit the element's value once** (per rune), then **synchronously clear it and restore the caret**; → idle |
+| idle | `input` | **emit the element's value if non-empty**, then clear it; empty ⇒ emit nothing |
+| any | cancellation (the host reverted, so the element is empty) | nothing to emit, with no special case needed |
 
 Why this is sound where the previous three attempts were not:
 
-- **A late notification for work already committed carries no delta.** Because
-  the baseline advanced synchronously at `compositionend`, an `input` arriving
-  afterwards — in the same task, a later task, or never — sees
-  `current == baseline` and emits nothing. **Ordering stops mattering**, which is
-  exactly what the specs decline to promise.
-- **A separately typed identical value changes host state again**, producing a
-  fresh non-empty delta, so it survives. The r6 failure (composed `x` then typed
-  `x`) cannot recur, because identity comes from *state transitions*, not from
-  content comparison.
-- **Cancellation needs no rule of its own.** Reverting the host leaves an empty
-  delta, so "emit only non-empty deltas" already covers it — and empty
-  `CompositionEvent.data` is irrelevant, since `data` is no longer consulted.
+- **A late notification for work already committed finds the buffer empty.**
+  Because `compositionend` drained synchronously, an `input` arriving afterwards —
+  same task, later task, or never — sees an empty element and emits nothing.
+  **Ordering stops mattering**, which is exactly what the specs decline to
+  promise.
+- **A separately typed identical value repopulates the buffer**, so it survives.
+  The r6 failure (composed `x` then typed `x`) cannot recur: identity comes from
+  *state transitions*, never from comparing content.
+- **Cancellation needs no rule of its own.** A reverted host leaves the element
+  empty, so "emit only what is there" already covers it — and empty
+  `CompositionEvent.data` is irrelevant, since `data` is never consulted.
+- **No ambiguous diffing exists to get wrong later.** Because the buffer is
+  always drained, "the delta" is just "the current value" — so nobody
+  implementing this can reach for a general string diff. Replacement and
+  autocorrect behaviors are disabled by the element's attributes; if a platform
+  applies them anyway, the ADR requires the behavior be **explicitly normalized
+  and tested**, never diffed heuristically.
 
 **The one assumption, stated as an assumption:** that a supported engine updates
 the control *before* dispatching `compositionend`, per UI Events. The required
@@ -538,7 +562,14 @@ Acceptance criteria:
    (vii) paste with no trailing `input` → exactly one `PasteEvent`;
    (viii) **a composition-associated `input` delivered in a LATER task**, after
    `compositionend` already committed → **no duplicate**, and it is not mistaken
-   for a new identical user action (the advanced baseline yields an empty delta).
+   for a new identical user action (the drained buffer is empty).
+7d. **The capture buffer never becomes a log:** its value and baseline are
+   **empty after every path** — ordinary input, composition commit, cancellation
+   and paste; a long typing stream leaves the DOM value size constant rather than
+   growing; password-like text is **absent from the element after emission**; and
+   replacement/autocorrect is either disabled by the element's attributes or
+   explicitly normalized, so no implementer can substitute an ambiguous general
+   string diff.
 7b. Pinned cases: a non-US layout, a dead-key sequence, a multi-codepoint emoji,
    a `key` of `Dead`/`Unidentified` (dropped, no phantom), and a browser
    reporting no AltGraph state. The Chromium/Firefox/WebKit matrix is a required
@@ -624,6 +655,27 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **r8 (2026-08-21, lector — `approved_with_amendments`; all three applied in
+  rev 8).** The host-state boundary was accepted as closing the
+  ordering/content/task problem. **Amendment 1 was a security finding I had
+  missed:** as written, the capture `textarea` grew without bound, so **the entire
+  typed history — including passwords typed into the TUI — would sit in the DOM**
+  of a network-reachable page, and a replacement occurring before the baseline
+  left "baseline → current" ambiguous. The element is now **drained on every
+  committed emission** (emit, clear, restore caret), which also collapses "the
+  delta" into "the current value" so no general string diff can ever be
+  introduced; it carries `autocomplete="off" autocapitalize="none"
+  spellcheck="false"`, no `name` and no form, and references are dropped promptly
+  — with **no claim** of memory erasure, which a JS engine cannot provide.
+  **Amendment 2:** the normative table's `input (any)` row contradicted the state
+  table (which correctly held composing input until `compositionend`) — the third
+  such prose/table divergence, and it happened in the very revision where I said
+  I would treat the table as normative. It is now state-aware: composing input,
+  idle/late input, and `compositionend` are separate rows. **Amendment 3:**
+  acceptance gains `7d`, covering empty-after-every-path, non-growing DOM value
+  under a long stream, absence of password-like text after emission, and
+  disabled-or-normalized replacement behavior.
 
 - **r7 (2026-08-21, lector — `change_requested`, folded in rev 7).** Lector
   answered the question rev 6 had flagged, and the answer removed rev 6's
