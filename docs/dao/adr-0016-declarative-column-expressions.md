@@ -1,12 +1,12 @@
 # ADR-0016 — `golib/dao`: declarative column expressions
 
-- **Status:** **Proposed (rev 2)** (2026-08-21 — authored by jarvis from Johno's
+- **Status:** **Proposed (rev 3)** (2026-08-21 — authored by jarvis from Johno's
   request for a SQL helper surface so declarations can be built from the table
   and field constants that already exist, instead of restating them as string
   literals. Lector design r1 `change_requested` folded — including a fatal
   write-path defect in rev 0 — then rev 2 restored the literal sugar at Johno's
-  direction while keeping r1's portability rule. See Review history. Lands on
-  `dao-expr`.)
+  direction, and rev 3 moved its "string or int only" rule from a declaration
+  panic to a compile-time constraint. See Review history. Lands on `dao-expr`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. Extends the ADR-0002/0003 column-targeting
@@ -189,17 +189,34 @@ func Str(s string) Expr
 // spelling. NULL is absent because COALESCE(x, NULL) is a no-op.
 func Int(i int64) Expr
 
+// Alt is what Coalesce accepts as its fallback: an Expr, or a string or
+// integer literal. The rejection is a COMPILE error, not a runtime panic —
+// Coalesce(e, 0.5) and Coalesce(e, true) do not build.
+//
+// The terms are deliberately NOT ~string / ~int. A tilde term admits a NAMED
+// type (a field enum like ArtistField is ~string), which satisfies the
+// constraint but does not match `case string` in the routing switch — the
+// literal is then never built and the nil renderer segfaults at query time. A
+// prototype reproduced exactly that. Excluding tildes closes the hole and buys
+// a second guarantee: passing a column enum where a VALUE belongs
+// (Coalesce(T(t, c), ArtistName)) stops compiling.
+type Alt interface {
+	Expr | string | int | int64
+}
+
 // Coalesce renders COALESCE(e, alt). alt is used directly when it is an Expr;
 // otherwise it is a literal, routed through the SAME closed set and the SAME
-// refusal rules — a string goes through Str, an integer through Int, and any
-// other type (a float, a bool, a struct) panics at declaration. So
-// Coalesce(T(t, c), "") reads as intended and still cannot produce a literal
-// this package would not render identically on every dialect.
+// refusal rules — a string through Str (so a quote, a backslash or a control
+// character still panics at declaration), an integer through Int. So
+// Coalesce(T(t, c), "") reads as intended and cannot produce a literal this
+// package would not render identically on every dialect.
 //
 // The routing is one unexported helper, not a public Lit(any): the exported
 // literal surface stays the closed Str/Int pair, and the convenience is
-// confined to this single parameter.
-func Coalesce(e Expr, alt any) Expr
+// confined to this single parameter. INVARIANT: the terms of Alt and the cases
+// of the routing switch are kept in lockstep — a term with no case yields a
+// zero Expr, i.e. a nil renderer.
+func Coalesce[A Alt](e Expr, alt A) Expr
 
 // SQL is the escape hatch: text is emitted verbatim, unquoted, unresolved.
 // For expressions the helpers do not cover (NOW(), a window function, a
@@ -428,11 +445,16 @@ Acceptance criteria:
    `Column` and must not trip criterion 3's panic.
 4. `Coalesce(T(t, c), "")`, `Coalesce(T(t, c), Str(""))` and
    `Coalesce(T(t, c), SQL("''"))` all render `COALESCE("t"."c", '')`;
-   `Coalesce(e, 0)` and `Coalesce(e, Int(0))` both render `COALESCE(…, 0)`.
-   `Coalesce(e, 0.5)`, `Coalesce(e, true)` and `Coalesce(e, struct{}{})` each
-   panic at declaration, and `Coalesce(e, "it's")` panics under Str's refusal
-   rule — the `any` parameter widens ergonomics, never the set of renderable
-   literals.
+   `Coalesce(e, 0)`, `Coalesce(e, int64(0))` and `Coalesce(e, Int(0))` all render
+   `COALESCE(…, 0)`. `Coalesce(e, "it's")` panics under `Str`'s refusal rule.
+   Every term of `Alt` produces a non-nil renderer — the lockstep invariant,
+   asserted term by term so a future term added without a switch case fails a
+   test rather than segfaulting a caller.
+4b. `Coalesce(e, 0.5)`, `Coalesce(e, true)` and `Coalesce(e, ArtistName)` (a
+   field enum) must all be **compile** errors. Mechanism is §7's open question:
+   the natural form is a `testdata` fixture built by `go build` from a test,
+   which costs a toolchain call — the alternative is to assert the constraint's
+   shape in a comment and accept that negative typing is unverified.
 5. `Str` panics immediately — at declaration, not at `New` — for a string
    containing a single quote, a backslash, or a control character; a zero `Expr`
    passed to any helper panics the same way.
@@ -452,7 +474,17 @@ Acceptance criteria:
 10. Zero query-time cost: an allocation benchmark over a tx-free `Select` shows
     no change against the string-declared schema.
 
-## 7. Resolved review questions
+## 7. Open question (rev 3)
+
+**How should the negative typing be tested?** §2.3's rejections are compile
+errors, and golib tests are stdlib-only. The options are (a) a `testdata`
+fixture with `//go:build ignore` that a test compiles via `go build`, catching
+regressions at the cost of invoking the toolchain inside `go test`; (b) leave
+`Alt`'s shape asserted only by a comment plus the positive per-term test, so a
+widened constraint would not be caught; or (c) a tiny `go/types`-based check.
+Recommendation: (a), scoped to one fixture file. Lector's call.
+
+## 8. Resolved review questions
 
 Lector's design r1 answered every open question; they are recorded here as
 decisions:
@@ -467,13 +499,14 @@ decisions:
 3. **§2.6's write-safety check ships with this ADR**, but only because write
    identity is now represented (§2.2) — the check is coherent *after* resolution
    and incoherent before it.
-4. **`Coalesce` takes `alt any`, routed through the closed set** (rev 2,
-   Johno's call: *"let's keep it simple, but do keep dao.Str, might have use for
-   that"*). r1's substance is intact — the renderable literals are still exactly
-   `Str` and `Int` with their refusal rules, and there is still no public
-   `Lit(any)`. What changed is one parameter's type, so the sketched
-   `Coalesce(x, "")` reads as written; `Str`/`Int` stay exported for explicit
-   use and for future composition points.
+4. **`Coalesce` is generic over a closed union** (rev 2–3, Johno's calls:
+   *"let's keep it simple, but do keep dao.Str, might have use for that"* and
+   *"Coalesce should only accept string/int anyways"*). r1's substance is intact
+   — the renderable literals are still exactly `Str` and `Int` with their
+   refusal rules, and there is still no public `Lit(any)`. The sketched
+   `Coalesce(x, "")` reads as written, and "string or int only" is now enforced
+   by the **type system** rather than a declaration panic. `Str`/`Int` stay
+   exported for explicit use and future composition points.
 5. **The §2.7 exclusions stand** — `Lower`/`Upper`/`Concat`/`Cast`, aggregates,
    and the `SortMap`/search-op variants remain deferred.
 
