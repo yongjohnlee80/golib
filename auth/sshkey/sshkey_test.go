@@ -20,7 +20,10 @@ import (
 	"github.com/yongjohnlee80/golib/auth"
 )
 
-const testNS = "webtui.golib.test"
+const (
+	testNS       = "webtui.golib.test"
+	testIdentity = "alice"
+)
 
 // --- helpers ----------------------------------------------------------------
 
@@ -74,13 +77,14 @@ func harness(t *testing.T, pub ssh.PublicKey, subject string) (*Factor, *Challen
 	t.Helper()
 	store := NewMemStore(0)
 	allowed := []Allowed{{Key: pub, Subject: subject}}
-	return New(allowed, store, Namespace(testNS)), NewChallenger(store, time.Minute), store
+	return New(PureGo{Allowed: allowed}, store, Namespace(testNS)), NewChallenger(store, time.Minute), store
 }
 
 func present(chalID string, armor []byte, extra map[string]string) *auth.Request {
 	creds := map[string]auth.Secret{
 		"ssh-challenge": auth.NewSecret(chalID),
 		"ssh-signature": auth.NewSecret(string(armor)),
+		"ssh-identity":  auth.NewSecret(testIdentity),
 	}
 	for k, v := range extra {
 		creds[k] = auth.NewSecret(v)
@@ -117,7 +121,7 @@ func TestInterop_RealSSHKeygenSignature(t *testing.T) {
 	}
 
 	store := NewMemStore(0)
-	f := New(allowed, store, Namespace(testNS))
+	f := New(PureGo{Allowed: allowed}, store, Namespace(testNS))
 	ch, err := NewChallenger(store, time.Minute).Issue(Binding{})
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +139,8 @@ func TestInterop_RealSSHKeygenSignature(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := f.Verify(context.Background(), present(ch.ID, armor, nil))
+	r := present(ch.ID, armor, map[string]string{"ssh-identity": "alice@host"})
+	got, err := f.Verify(context.Background(), r)
 	if err != nil {
 		t.Fatalf("a genuine OpenSSH signature failed to verify: %v", err)
 	}
@@ -165,7 +170,7 @@ func TestInterop_WrongNamespaceRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewMemStore(0)
-	f := New(allowed, store, Namespace(testNS))
+	f := New(PureGo{Allowed: allowed}, store, Namespace(testNS))
 	ch, err := NewChallenger(store, time.Minute).Issue(Binding{})
 	if err != nil {
 		t.Fatal(err)
@@ -179,7 +184,8 @@ func TestInterop_WrongNamespaceRejected(t *testing.T) {
 		t.Fatalf("sign: %v\n%s", err, out)
 	}
 	armor, _ := os.ReadFile(msgPath + ".sig")
-	if _, err := f.Verify(context.Background(), present(ch.ID, armor, nil)); !errors.Is(err, ErrNamespace) {
+	r := present(ch.ID, armor, map[string]string{"ssh-identity": "alice@host"})
+	if _, err := f.Verify(context.Background(), r); !errors.Is(err, ErrNamespace) {
 		t.Errorf("err = %v, want ErrNamespace", err)
 	}
 }
@@ -345,19 +351,32 @@ func TestVerify_EnvelopeTampering(t *testing.T) {
 		}
 	})
 
-	t.Run("key not in the allowed set", func(t *testing.T) {
+	t.Run("signing key not held by the claimed identity", func(t *testing.T) {
 		other, _ := newSigner(t)
 		f, c, _ := harness(t, pub, "alice")
 		ch, _ := c.Issue(Binding{})
 		armor := signEnvelope(t, other, testNS, "sha512", ch.Message)
-		if _, err := f.Verify(context.Background(), present(ch.ID, armor, nil)); !errors.Is(err, ErrUnknownKey) {
-			t.Errorf("err = %v, want ErrUnknownKey", err)
+		if _, err := f.Verify(context.Background(), present(ch.ID, armor, nil)); !errors.Is(err, ErrIdentity) {
+			t.Errorf("err = %v, want ErrIdentity", err)
+		}
+	})
+
+	t.Run("valid signature under a foreign identity claim", func(t *testing.T) {
+		// alice's own key, alice's own signature — but the request claims to be
+		// bob. Deriving the subject from the key would have let this through as
+		// alice; the claim is what is being checked.
+		f, c, _ := harness(t, pub, "alice")
+		ch, _ := c.Issue(Binding{})
+		armor := signEnvelope(t, signer, testNS, "sha512", ch.Message)
+		r := present(ch.ID, armor, map[string]string{"ssh-identity": "bob"})
+		if _, err := f.Verify(context.Background(), r); !errors.Is(err, ErrIdentity) {
+			t.Errorf("err = %v, want ErrIdentity", err)
 		}
 	})
 
 	t.Run("empty allowed set denies", func(t *testing.T) {
 		store := NewMemStore(0)
-		f := New(nil, store, Namespace(testNS))
+		f := New(PureGo{}, store, Namespace(testNS))
 		ch, _ := NewChallenger(store, time.Minute).Issue(Binding{})
 		armor := signEnvelope(t, signer, testNS, "sha512", ch.Message)
 		if _, err := f.Verify(context.Background(), present(ch.ID, armor, nil)); !errors.Is(err, ErrNoAllowedKeys) {
@@ -401,7 +420,7 @@ func TestChallenge_SingleUseAndExpiry(t *testing.T) {
 	t.Run("expired", func(t *testing.T) {
 		now := time.Now()
 		store := NewMemStore(0)
-		f := New([]Allowed{{Key: pub, Subject: "alice"}}, store,
+		f := New(PureGo{Allowed: []Allowed{{Key: pub, Subject: "alice"}}}, store,
 			Namespace(testNS), Clock(func() time.Time { return now.Add(time.Hour) }))
 		ch, _ := NewChallenger(store, time.Minute, Clock(func() time.Time { return now })).Issue(Binding{})
 		armor := signEnvelope(t, signer, testNS, "sha512", ch.Message)
@@ -549,7 +568,7 @@ func TestNew_RequiresNamespace(t *testing.T) {
 		}
 	}()
 	_, pub := newSigner(t)
-	_ = New([]Allowed{{Key: pub, Subject: "a"}}, NewMemStore(0))
+	_ = New(PureGo{Allowed: []Allowed{{Key: pub, Subject: "a"}}}, NewMemStore(0))
 }
 
 func TestFactor_IsIdentityBearing(t *testing.T) {

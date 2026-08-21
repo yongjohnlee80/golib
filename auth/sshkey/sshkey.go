@@ -12,16 +12,25 @@
 // A signature over a nonce proves possession without transmitting the secret,
 // which is the entire point.
 //
-// # What is delegated and what is not
+// # Who checks the signature
 //
-// The security-critical parts are golang.org/x/crypto/ssh's:
-// authorized_keys parsing (ParseAuthorizedKey) and signature verification
-// (PublicKey.Verify). The SSHSIG *envelope* — the framing `ssh-keygen -Y sign`
-// emits — is parsed here, because x/crypto ships no sshsig package. ADR-0001
-// §2.5 justified the dependency partly on not hand-rolling that parser; the
-// justification holds for the key and signature handling, but the envelope
-// framing is ours, so it is kept to a fixed shape, checked field by field, and
-// tested against tampered, truncated, and wrong-namespace inputs.
+// Verification sits behind [Verifier], with two implementations:
+//
+//   - [OpenSSH] shells out to `ssh-keygen -Y verify`. This is the DEFAULT
+//     recommendation. SSHSIG is an OpenSSH format with no Go implementation in
+//     x/crypto, so the alternative is our own parser competing with the
+//     reference one; delegating also inherits allowed_signers semantics —
+//     principals, validity windows, cert-authority lines — that we would
+//     otherwise have to reimplement to match.
+//   - [PureGo] parses the envelope in-process, for images with no ssh-keygen.
+//
+// The two are interchangeable in meaning: the client claims an identity, and
+// the signature must verify under a key that identity holds. They differ only
+// in reach — PureGo understands a plain allowed-key set and nothing more.
+//
+// The envelope parser backing PureGo is held to a fixed shape, checked field by
+// field, and tested against tampered, truncated, and wrong-namespace inputs.
+// Cross-implementation tests assert both verifiers agree on the same inputs.
 package sshkey
 
 import (
@@ -44,7 +53,6 @@ import (
 // Internal errors; auth.Policy maps every failure to auth.ErrUnauthenticated.
 var (
 	ErrMalformed        = errors.New("sshkey: malformed signature envelope")
-	ErrUnknownKey       = errors.New("sshkey: signing key is not in the allowed set")
 	ErrBadSignature     = errors.New("sshkey: signature does not verify")
 	ErrNamespace        = errors.New("sshkey: signature namespace does not match")
 	ErrHashAlgorithm    = errors.New("sshkey: unsupported signature hash algorithm")
@@ -53,6 +61,7 @@ var (
 	ErrChallengeExpired = errors.New("sshkey: challenge expired")
 	ErrBinding          = errors.New("sshkey: challenge binding does not match the request")
 	ErrNoAllowedKeys    = errors.New("sshkey: empty allowed-key set denies")
+	ErrNoIdentity       = errors.New("sshkey: no identity claimed")
 )
 
 // Allowed is one entry of the allowed-key set: a public key and the principal it
@@ -116,13 +125,20 @@ func onlyBlank(b []byte) bool {
 
 // Factor verifies an SSH signature over a challenge it previously issued. It is
 // identity-bearing.
+//
+// The verification itself is delegated to a [Verifier] — [OpenSSH] by default
+// in practice, [PureGo] where no ssh-keygen exists. Factor owns the parts that
+// are ours regardless of who checks the signature: issuing and atomically
+// consuming the challenge, enforcing the bindings, and building the exact bytes
+// that were to be signed.
 type Factor struct {
-	allowed   []Allowed
+	verifier  Verifier
 	namespace string
 	store     ChallengeStore
 	now       func() time.Time
 	sigKey    string
 	chalKey   string
+	idKey     string
 }
 
 // Option configures a Factor or Challenger.
@@ -133,6 +149,7 @@ type settings struct {
 	now       func() time.Time
 	sigKey    string
 	chalKey   string
+	idKey     string
 }
 
 // Namespace sets the SSHSIG namespace — the domain separation that stops a
@@ -143,14 +160,15 @@ func Namespace(ns string) Option { return func(s *settings) { s.namespace = ns }
 // Clock overrides the time source, for tests.
 func Clock(fn func() time.Time) Option { return func(s *settings) { s.now = fn } }
 
-// CredentialKeys sets the auth.Request credential keys the signature and
-// challenge id are read from. Defaults "ssh-signature" and "ssh-challenge".
-func CredentialKeys(signature, challenge string) Option {
-	return func(s *settings) { s.sigKey, s.chalKey = signature, challenge }
+// CredentialKeys sets the auth.Request credential keys the signature, challenge
+// id, and claimed identity are read from. Defaults "ssh-signature",
+// "ssh-challenge", "ssh-identity".
+func CredentialKeys(signature, challenge, identity string) Option {
+	return func(s *settings) { s.sigKey, s.chalKey, s.idKey = signature, challenge, identity }
 }
 
 func resolve(opts []Option) settings {
-	s := settings{now: time.Now, sigKey: "ssh-signature", chalKey: "ssh-challenge"}
+	s := settings{now: time.Now, sigKey: "ssh-signature", chalKey: "ssh-challenge", idKey: "ssh-identity"}
 	for _, o := range opts {
 		if o != nil {
 			o(&s)
@@ -159,31 +177,42 @@ func resolve(opts []Option) settings {
 	return s
 }
 
-// New builds the verifying factor.
+// New builds the verifying factor over v.
 //
 // A Namespace is REQUIRED. Without domain separation a signature produced for
 // one purpose — a git commit, another service's login — could be replayed here,
 // so an empty namespace is a programming error rather than a default.
-func New(allowed []Allowed, store ChallengeStore, opts ...Option) *Factor {
+//
+// A nil Verifier panics rather than defaulting: "which implementation checks my
+// signatures" is not a question to answer silently.
+func New(v Verifier, store ChallengeStore, opts ...Option) *Factor {
 	s := resolve(opts)
 	if s.namespace == "" {
 		panic("sshkey.New: a Namespace is required — without it a signature from another purpose can be replayed")
 	}
-	return &Factor{allowed: allowed, namespace: s.namespace, store: store, now: s.now, sigKey: s.sigKey, chalKey: s.chalKey}
+	if v == nil {
+		panic("sshkey.New: a Verifier is required — pass sshkey.OpenSSH{...} or sshkey.PureGo{...}")
+	}
+	if store == nil {
+		panic("sshkey.New: a ChallengeStore is required")
+	}
+	return &Factor{verifier: v, namespace: s.namespace, store: store, now: s.now, sigKey: s.sigKey, chalKey: s.chalKey, idKey: s.idKey}
 }
 
 // Kind reports auth.FactorIdentity.
 func (f *Factor) Kind() auth.FactorKind { return auth.FactorIdentity }
 
 // Verify consumes the presented challenge, rebuilds the exact bytes that were
-// to be signed, and verifies the signature against the allowed set.
+// to be signed, and hands them to the Verifier along with the CLAIMED identity.
 //
 // Order matters: the challenge is consumed ATOMICALLY first, so a replayed
 // signature cannot be retried against the same nonce even in parallel.
-func (f *Factor) Verify(_ context.Context, r *auth.Request) (auth.Contribution, error) {
-	if len(f.allowed) == 0 {
-		return auth.Contribution{}, ErrNoAllowedKeys
-	}
+//
+// The identity arrives from the client and is therefore untrusted — right up
+// until the verifier returns nil, which is exactly the proof that the claim was
+// true. Nothing before that line may treat it as a fact, and nothing after it
+// needs to doubt it.
+func (f *Factor) Verify(ctx context.Context, r *auth.Request) (auth.Contribution, error) {
 	if r == nil {
 		return auth.Contribution{}, ErrMalformed
 	}
@@ -195,7 +224,18 @@ func (f *Factor) Verify(_ context.Context, r *auth.Request) (auth.Contribution, 
 	if !ok || sigArmor.IsZero() {
 		return auth.Contribution{}, ErrMalformed
 	}
+	claimed, ok := r.Credentials[f.idKey]
+	if !ok || claimed.IsZero() {
+		return auth.Contribution{}, ErrNoIdentity
+	}
+	identity := claimed.Reveal()
+	if err := validIdentity(identity); err != nil {
+		return auth.Contribution{}, err
+	}
 
+	// Consumed before the signature is looked at: a nonce spends on
+	// presentation, not on success. Otherwise a wrong guess would leave the
+	// challenge live for another try.
 	rec, err := f.store.Consume(chalID.Reveal(), f.now())
 	if err != nil {
 		return auth.Contribution{}, err
@@ -204,38 +244,15 @@ func (f *Factor) Verify(_ context.Context, r *auth.Request) (auth.Contribution, 
 		return auth.Contribution{}, err
 	}
 
-	env, err := parseEnvelope([]byte(sigArmor.Reveal()))
-	if err != nil {
-		return auth.Contribution{}, err
-	}
-	if env.Namespace != f.namespace {
-		return auth.Contribution{}, ErrNamespace
-	}
-
-	allowed, ok := f.lookup(env.PublicKey)
-	if !ok {
-		return auth.Contribution{}, ErrUnknownKey
-	}
-	if err := env.verify(rec.Message()); err != nil {
+	if err := f.verifier.VerifySignature(ctx, rec.Message(), []byte(sigArmor.Reveal()), f.namespace, identity); err != nil {
 		return auth.Contribution{}, err
 	}
 	return auth.Contribution{
 		Method:    "sshkey",
-		Subject:   allowed.Subject,
+		Subject:   identity, // proven by the line above, not before it
 		IssuedAt:  rec.IssuedAt,
 		ExpiresAt: time.Time{}, // a signature is a point-in-time proof: it bounds nothing
 	}, nil
-}
-
-// lookup finds the presented key in the allowed set by exact wire equality.
-func (f *Factor) lookup(pub ssh.PublicKey) (Allowed, bool) {
-	presented := pub.Marshal()
-	for _, a := range f.allowed {
-		if keysEqual(a.Key.Marshal(), presented) {
-			return a, true
-		}
-	}
-	return Allowed{}, false
 }
 
 func keysEqual(a, b []byte) bool {

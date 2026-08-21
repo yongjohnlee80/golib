@@ -1,10 +1,12 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Accepted (rev 4)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 5)** (2026-08-22 — authored by jarvis; lector
   design r1-r3 `change_requested` folded, r4 **approved** by lector, and
-  **accepted by Johno 2026-08-21** — implementation started — undefined identity
-  composition, an unenforceable factor rule, a reversed password-KDF decision,
-  and r2's leaf/interface type contradiction. See Review history. Lands on `auth-pkg`.)
+  **accepted by Johno 2026-08-21** — implementation started. **Rev 5 changes a
+  mechanism mid-implementation**: §2.5 SSHSIG verification is delegated to
+  `ssh-keygen -Y verify` instead of the hand-rolled parser rev 4's
+  implementation produced, which makes the client claim an identity. Awaiting
+  lector re-review of rev 5. See Review history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — a new subsystem.
@@ -226,7 +228,7 @@ subpackage with its justification recorded here.
 | `auth/password` | hashed password verification | `golang.org/x/crypto/argon2` | §2.4 — the module is already present for `sshkey`, so this is free at module granularity |
 | ~~`auth/totp`~~ | **DEFERRED (r1)** — no concrete caller; see §3 | — | — |
 | `auth/mtls` | client-certificate **chain verification** (§2.6a) | **stdlib** (`crypto/tls`, `crypto/x509`) | — |
-| `auth/sshkey` | `authorized_keys` parsing + SSH signature verification | `golang.org/x/crypto/ssh` | §2.5 |
+| `auth/sshkey` | `authorized_keys` parsing; SSHSIG verification **delegated to `ssh-keygen -Y verify`**, in-process parser as fallback | `golang.org/x/crypto/ssh` + `os/exec` | §2.5 |
 
 **Three of five** leaves are third-party-import-free (`ipallow`, `token`,
 `mtls`); `sshkey` and `password` share **exactly one module**
@@ -256,32 +258,97 @@ parameters stored **with** the hash, constant-time comparison, and
 without a password reset. If a future caller genuinely needs memory-hardness,
 that is a new ADR and a leaf subpackage — the interface does not change.
 
-### 2.5 SSH keys: `x/crypto/ssh` is justified, and the browser flow must be chosen
+### 2.5 SSH keys: verification is DELEGATED to `ssh-keygen -Y verify` (r5)
 
-**The dependency is justified**, though implementation narrowed the argument —
-see the correction below. Verifying an SSH key means parsing
-`authorized_keys`/`allowed_signers` and the SSH signature wire format
-(`ssh-keygen -Y sign` emits an armored SSH signature blob). Hand-rolling that
-parser is a security hazard of exactly the kind the rule carves out an exception
-for, and `x/crypto` is Go-team maintained — the same provenance as the `x/term`
-already in `go.mod` for `tui/term`.
+**Rev 4 said `x/crypto/ssh` covered the SSHSIG parsing. It does not — it ships
+no `sshsig` package at all (checked at v0.53.0), so rev 4's implementation
+hand-rolled the envelope parser.** That parser worked and passed real-OpenSSH
+interop, but "we wrote our own parser for a security-critical wire format" is
+precisely what the dependency rule's hazard carve-out exists to avoid, so it is
+no longer the default.
 
-> **CORRECTION (implementation, 2026-08-22).** `x/crypto` ships **no `sshsig`
-> package** — checked at v0.53.0. So the dependency covers what actually matters
-> (`ssh.ParseAuthorizedKey` for the allowed set, `ssh.PublicKey.Verify` for the
-> signature, `ssh.Marshal`/`Unmarshal` for the wire primitives), but the SSHSIG
-> **envelope framing is ours after all**. The justification above holds for the
-> key and signature handling; it does not hold for the envelope, and this ADR
-> should not have implied otherwise.
->
-> Mitigation, since the parser is hand-written: it is a fixed shape checked field
-> by field (magic, version, non-empty `reserved` **refused** rather than ignored,
-> allowlisted hash algorithm), and — the part that actually settles it — the
-> acceptance suite verifies a signature produced by the **real
-> `ssh-keygen -Y sign`** (OpenSSH 10.3) and rejects one made under a different
-> namespace. A test against our own construction alone could have been wrong in
-> both directions at once.
->
+**DECIDED (r5): verification sits behind a `Verifier` seam with two
+implementations, and the default is the reference implementation itself.**
+
+```go
+type Verifier interface {
+    VerifySignature(ctx context.Context, message, armoredSig []byte,
+        namespace, identity string) error   // nil == valid AND allowed
+}
+
+type OpenSSH struct {                  // DEFAULT
+    AllowedSigners string              // an OpenSSH allowed_signers file
+    Binary         string              // "" -> look up ssh-keygen on PATH
+    Timeout        time.Duration       // 0 -> 5s
+}
+
+type PureGo struct { Allowed []Allowed }   // rev 4's parser, kept as fallback
+```
+
+**Why delegate rather than depend, or keep the parser:**
+
+| Option | Verdict |
+| --- | --- |
+| `ssh-keygen -Y verify` (chosen) | The format's reference implementation, audited by the people who define it, already present anywhere `ssh-keygen -Y sign` produced the signature. Also inherits the `allowed_signers` semantics we do **not** model: principal patterns, `valid-after`/`valid-before` windows, `cert-authority` lines. |
+| Hand-rolled parser as default (rev 4) | Correct today, but it is our code competing with the reference on a hostile-input format, and it silently under-implements `allowed_signers`. Demoted to fallback. |
+| `github.com/hiddeco/sshsig` | **Rejected.** v0.2.0, two releases ever, one maintainer, last published 2025-04-12, and it pulls `testify` + `yaml` into the graph. Worse provenance than the OpenSSH binary AND worse than our own parser, while costing a module. |
+
+`PureGo` remains for images with no OpenSSH — a scratch or distroless
+container. It is not a lesser-security option in what it *checks*; it is a
+lesser option in what it *knows*, since it understands a plain allowed-key set
+and nothing more. That difference is documented at the type.
+
+**The two implementations MUST agree on who gets in.** They are permitted to
+differ in error detail — `ssh-keygen` returns one exit status for every failure
+— but never in the accept/reject decision for the same inputs. Acceptance
+enforces this with a shared-fixture agreement table (§5 criterion 8).
+
+**Consequence: the client must CLAIM an identity, and the claim is what gets
+checked.** `ssh-keygen -Y verify` takes `-I <identity>` and answers "did *this
+principal* sign this?", not "who signed this?". So the subject is no longer
+derived from whichever allowed key happens to match; the request carries an
+`ssh-identity` credential, and verification either proves the claim or fails.
+`PureGo` adopts the same semantics for substitutability. This is a **security
+improvement independent of the delegation**: it closes a case rev 4's design
+admitted, where a signature valid under one principal's key was accepted as that
+principal even though the request never asserted who it was — the claim and the
+proof were never compared because there was no claim.
+
+The claimed identity is **hostile input until the verifier returns nil**, and it
+reaches an `argv` slot, so it is screened first: non-empty, ≤256 bytes, no
+control characters, and **no leading `-`** so a value can never read as a flag.
+There is no shell anywhere in the path — `argv` only — so quoting is not a
+concern; the screen exists for the flag case and for defence in depth. Both
+verifiers apply the identical screen, or `PureGo` would accept claims `OpenSSH`
+refuses to even ask about.
+
+**Subprocess hygiene, since a signature verification now forks:**
+
+- The **message goes on stdin**, never on `argv` and never through a file.
+- The signature must be a file (`-s` takes a path), so it is written `0600`
+  inside a `0700` `MkdirTemp` directory, removed on return.
+- A **context timeout** bounds the call (default 5s) **plus a `WaitDelay`**.
+  The `WaitDelay` is not belt-and-braces: because stderr is captured through a
+  pipe, `Wait` blocks on the copying goroutine, and a descendant holding the
+  write end keeps `Run` blocked long past a cancelled context — measured at the
+  full 30s of a hung stub with the deadline ignored. `WaitDelay` is what makes
+  the timeout bind.
+- **Misconfiguration is a distinct error class.** A missing `ssh-keygen`, an
+  unreadable `allowed_signers`, or a timeout returns `ErrVerifierUnavailable`,
+  never `ErrBadSignature`. An operator must be able to tell "I broke the
+  deployment" from "that credential was refused", and a caller must never see an
+  infrastructure fault as a rejected user. `auth.Policy` still collapses both to
+  `auth.ErrUnauthenticated` at the boundary (§2.6).
+- Measured exit codes (OpenSSH 10.3): **0** valid; **255** for every failure —
+  wrong namespace, tampered message, unknown identity, empty `allowed_signers`.
+  The decision is exit-status driven; no output is parsed.
+
+**`x/crypto` stays in the graph regardless, so this changes no dependency
+accounting.** `ParseAuthorizedKeys` still uses `ssh.ParseAuthorizedKey`,
+`PureGo` still uses `ssh.PublicKey.Verify`, and §2.4's Argon2id needs
+`x/crypto/argon2`. **Argon2id therefore stands** — confirmed by Johno
+2026-08-22 — and §2.4's "free at module granularity" argument is unaffected.
+
 > **Version pinned to x/crypto v0.53.0 deliberately:** it requires exactly the
 > `x/sys` and `x/term` versions golib already has, so adding it disturbs neither
 > — v0.55.0 would have bumped both, and `tui/term` imports `x/term` directly.
@@ -485,7 +552,28 @@ Acceptance criteria:
    denies.
 8. `auth/sshkey`: a valid `ssh-keygen -Y sign` signature over the server nonce
    verifies; a tampered payload, a wrong key, a replayed nonce and an expired
-   challenge all fail.
+   challenge all fail. Signatures are produced by the **real `ssh-keygen -Y
+   sign`**, and every OpenSSH-dependent case **skips** (never fails) where the
+   binary is absent.
+8b. **Verifier agreement (§2.5):** one fixture set — two real keys, one
+   `allowed_signers` file and the in-process allowed set built from the *same*
+   source so a divergence can only come from the verifiers — is run through
+   **both** `OpenSSH` and `PureGo`, which must reach the same accept/reject
+   decision on: valid; tampered message; signed under a different namespace;
+   signer absent from the allowlist; an allowlisted principal claimed with a
+   stranger's key; an allowlisted key claimed under an unknown principal; and
+   garbage armor. Error *sentinels* are explicitly **not** required to match.
+8c. **Identity claim (§2.5):** a request with no `ssh-identity` fails; a valid
+   signature presented under a **foreign identity claim** fails (the case rev 4
+   admitted); every rejected identity shape — empty, leading `-`, embedded
+   newline, NUL, DEL, >256 bytes — is refused by **both** verifiers before any
+   work; ordinary principals (`alice@host`, `alice+ci@example.com`) are accepted.
+8d. **Delegation failure modes (§2.5):** a missing binary, a missing/unset
+   `allowed_signers`, and a hung `ssh-keygen` each return
+   `ErrVerifierUnavailable` and **never** `ErrBadSignature`; the hang test
+   asserts the call actually returns inside the bound. An empty
+   `allowed_signers` **denies**. `New` **panics** on a nil `Verifier` or nil
+   store rather than choosing one silently.
 9. `auth/password`: Argon2id with versioned parameters, constant-time
    verification, parameters round-tripping with the hash, and a successful verify
    against outdated parameters **rewriting** the stored hash. A PBKDF2 credential
@@ -550,6 +638,26 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
    costs nothing and avoids that break.
 
 ## Review history
+
+- **rev 5 (2026-08-22, jarvis — mechanism change, awaiting lector).**
+  Rev 4 justified `x/crypto/ssh` partly on not hand-rolling a signature parser;
+  implementation then found `x/crypto` ships **no `sshsig` package**, so the
+  envelope parser was ours after all — recorded at the time as a correction, but
+  a correction that left our code as the default on a hostile-input security
+  format. Rev 5 puts verification behind a `Verifier` seam and makes
+  **`ssh-keygen -Y verify` the default**, keeping the rev 4 parser as `PureGo`
+  for images without OpenSSH. `github.com/hiddeco/sshsig` was evaluated and
+  rejected (two releases, one maintainer, pulls `testify` + `yaml`).
+  Two consequences worth flagging to review: `-I` forces the client to **claim
+  an identity**, which closes a real hole rev 4 admitted (a valid signature was
+  accepted as its key's owner without the request ever asserting who it was);
+  and forking a subprocess per verification brought its own hazards, one of
+  which was a live bug — a cancelled context did **not** bound `cmd.Run`,
+  because a descendant holding the stderr pipe kept `Wait` blocked for the
+  full 30s of a hung stub. `WaitDelay` fixes it; the timeout test asserts it.
+  `x/crypto` remains in the graph (allowed-key parsing, `PureGo`, Argon2id), so
+  **§2.4's Argon2id decision stands** — Johno confirmed 2026-08-22 — and the
+  dependency accounting in §2.3 is unchanged.
 
 - **r4 (2026-08-21, lector — `approved_with_amendments`; both applied in rev 4).**
   The r3 structural work was accepted: one coherent closed

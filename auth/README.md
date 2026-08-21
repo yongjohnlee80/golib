@@ -53,7 +53,7 @@ system rather than by a comment telling you not to.
 |---------|--------|------|------------|
 | `auth/ipallow` | CIDR allowlist | contextual | stdlib |
 | `auth/token` | opaque tokens + single-use tickets | identity | stdlib |
-| `auth/sshkey` | `authorized_keys` + signed challenge | identity | `x/crypto/ssh` |
+| `auth/sshkey` | `allowed_signers` + signed challenge, verified by `ssh-keygen -Y verify` | identity | `x/crypto/ssh`, `os/exec` |
 | `auth/mtls` | verified client-cert chain | identity | stdlib |
 | `auth/password` | Argon2id | identity | `x/crypto` *(planned)* |
 
@@ -86,6 +86,22 @@ The core imports **no third-party module**.
   binding cannot be swapped after signing. A signature made for another
   namespace (a git signing flow, say) will not verify here, which is tested
   against real `ssh-keygen` output.
+- **The signature check is delegated to OpenSSH, not reimplemented.**
+  `sshkey.OpenSSH` runs `ssh-keygen -Y verify`, so the format's reference
+  implementation decides — and `allowed_signers` validity windows and
+  `cert-authority` lines work because OpenSSH, not us, is reading the file.
+  `sshkey.PureGo` parses in-process for images with no `ssh-keygen`; tests assert
+  the two reach the **same** accept/reject decision on a shared fixture set.
+- **The client claims an identity and the claim is checked.** `ssh-keygen -Y
+  verify` answers "did *this principal* sign this?" — so a valid signature
+  presented under someone else's name fails, rather than being accepted as
+  whoever owns the key. The claim is screened before it reaches `argv`
+  (no leading `-`, no control bytes, bounded length) and there is no shell in
+  the path.
+- **A broken verifier is not a rejected user.** A missing `ssh-keygen`, an
+  unreadable `allowed_signers`, or a hung subprocess yields
+  `ErrVerifierUnavailable`, never `ErrBadSignature`, so an operator can tell a
+  misconfiguration from a denial.
 
 ## Never
 
