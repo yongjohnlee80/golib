@@ -123,7 +123,7 @@ bounded.
 
 ### 2.5 Transport, and encryption by default
 
-Built on golib's own `server/http` (and `server/ws` if WebSocket wins).
+Built on golib's own `server/http` and `server/ws`.
 
 **Transport: WebSocket (DECIDED, r1).** `server/ws` already carries
 `github.com/coder/websocket` in `go.mod`, so this adds **no new module** to the
@@ -139,7 +139,7 @@ handshake over TLS, the same TLS 1.3 as HTTPS. Required:
   silent plaintext, ever.
 - Plaintext is permitted **only** for a loopback bind — including inside the
   documented authenticated SSH forward, where the tunnel is the boundary.
-  **No auto-generated self-signed certificate (DECIDED, r1):** browser UX for an
+  **No auto-generated self-signed certificate (decided, r1; §7.2):** browser UX for an
   ephemeral localhost certificate is poor, and a certificate is not a substitute
   for authentication, which is mandatory anyway (§2.8).
 - No default certificate is ever shipped. Operator-supplied cert/key.
@@ -236,9 +236,12 @@ All(ipallow, Any(singleUseSSHChannelTicket, mtls /*, ... */))     // + optional
 - **`auth/token` owns credential validity and atomic consumption; this package
   owns App/session attach, detach and eviction.** The two must not both think
   they own expiry.
-- This backend consumes `golib/auth`'s `Authenticator` interface. If that
-  package is not ready, `tui/web` still takes the *interface* from day one so
-  the implementation drops in without touching transport or session code.
+- This backend consumes `golib/auth`'s **`Policy`** (ADR-0001 §2.1 — the
+  validated tree; the `Authenticator` interface of earlier revisions no longer
+  exists). **No `tui.App` is created and no input is accepted until
+  `Policy.Authenticate` succeeds.** If that package is not ready, `tui/web` takes
+  the `Policy` interface from day one so the implementation drops in without
+  touching transport or session code.
 - A browser cannot read `~/.ssh`, so "SSH key" needs a mechanism; §7.3 records
   the decision (SSH-channel-minted single-use ticket by default).
 
@@ -261,9 +264,13 @@ the browser attaches the credential, yielding a keyboard on the CLI. Therefore:
   server-log exposure, but it still sits in the address bar, the current history
   entry, and any URL the user copies. The client reads it and calls
   `history.replaceState` to remove it **before opening the socket**.
-- **Atomic admission:** the server creates no `App`, attaches nothing and
-  accepts no input until `auth/token`'s atomic **consume** succeeds. Failure
-  closes the connection. The ticket is never echoed and never logged.
+- **Admission is gated on `Policy.Authenticate`, and the atomic consume applies
+  to the TICKET BRANCH ONLY.** Rev 2's blanket "consume must succeed" sentence
+  contradicted direct mTLS and challenge authentication, which present no ticket.
+  So: the ticket branch requires `auth/token`'s atomic `Consume`; the mTLS and
+  challenge branches authenticate directly. In every case nothing is created or
+  accepted before the policy succeeds, failure closes the connection, and the
+  ticket is never echoed or logged.
 - **`Origin` validation stays mandatory for EVERY browser mechanism, mTLS
   included** — see the correction below.
 - connection caps, idle timeouts, per-connection memory limits.
@@ -279,47 +286,61 @@ the browser attaches the credential, yielding a keyboard on the CLI. Therefore:
 > (RFC 6455 §10.2; W3C client-certificate-selection notes; OWASP WebSocket
 > Security Cheat Sheet.)
 
-### 2.9 The input contract — the table itself
+### 2.9 The input contract — the table, against the real event types
 
-Rev 1 described what the package *would* document; r2 correctly refused that,
-since acceptance 7 asserts a table exists. Here it is. **Normalization** means
-what the client sends after its own preprocessing; the backend never sees raw
-DOM events.
+r3 caught rev 2 inventing event shapes. These are `tui/events.go`'s actual
+types: `KeyEvent{Kind KeyKind, Code rune, Base, Shifted rune, Mods Mods, Text
+string}` (`Code` is a codepoint or a `tui.Key*` constant), `MouseEvent{Kind
+MouseKind, Button MouseButton, X, Y int, Mods Mods}`, `PasteEvent{Text}`,
+`FocusEvent{Gained, Terminal bool}`, `ResizeEvent{W, H int}`.
 
-| Browser event | Client normalization | Emitted | preventDefault |
-| --- | --- | --- | --- |
-| `keydown`, printable, no Ctrl/Meta | ignore — wait for `input`/composition so IME and dead keys are correct | *(nothing)* | no |
-| `input` / composition commit | the committed text | `KeyEvent{Text}` per grapheme cluster | no |
-| `keydown`, `key` in the named set (`Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, arrows, `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `F1`–`F12`) | `key`, not `code` — layout-independent naming | `KeyEvent{Key, Mods}` | **yes** |
-| `keydown` with Ctrl/Alt/Meta and a printable `key` | `key` lowercased + modifier set | `KeyEvent{Key, Mods}` | **yes**, except the reserved set below |
-| reserved browser shortcuts: Ctrl/Cmd + `T`,`N`,`W`,`Tab`,`L`,`R`, `F5`, `F11`, `F12`, Cmd+`Q` | not forwarded | *(nothing)* | **no** — the browser keeps them, and the README says so |
-| `keydown` with `repeat: true` | forwarded as an ordinary key event | `KeyEvent` | as above |
-| `compositionstart`/`update` | swallowed; no intermediate keys | *(nothing)* | no |
-| `paste` | clipboard text, newlines normalized to `\n` | `PasteEvent{Text}` (consistent with `BracketedPaste: true`) | **yes** |
-| `mousedown`/`up`/`move` | button + **cell** coordinates from the measured grid (§2.6), not pixels | `MouseEvent{Button, X, Y, Mods, Kind}` | **yes** inside the grid |
-| `wheel` | quantized to discrete steps | `MouseEvent{Kind: Wheel, Delta}` | **yes** inside the grid |
-| `focus` / `blur` | — | `FocusEvent{Focused}` | no |
-| resize / measured-metrics change | recomputed cols×rows | `ResizeEvent{Cols, Rows}` | no |
-| anything else | **dropped explicitly** | *(nothing)* — never a phantom key | no |
+**Resolution order is normative — the first matching rule wins.** Without it the
+rows overlap and, worse, layouts where **AltGraph reports as Ctrl+Alt** would
+emit a command instead of the character the user typed:
 
-**Modifier normalization:** `Meta` reports as `Meta` and is never silently
-folded into `Ctrl`; the README documents that a TUI wanting portability should
-bind `Ctrl`.
+1. **Reserved browser shortcuts** → not forwarded, no `preventDefault`.
+2. **`isComposing`, or AltGraph-shaped modifiers** → never treated as a chord;
+   the character arrives through committed input text (rule 4).
+3. **Named keys** (`KeyboardEvent.key` in the named set).
+4. **Committed text** (`input` / `compositionend`).
+5. **Modified keys** (Ctrl/Alt/Meta + printable).
+6. Anything else → dropped.
+
+| Browser event | Emitted | preventDefault |
+| --- | --- | --- |
+| reserved shortcuts: Ctrl/Cmd+`T`/`N`/`W`/`L`/`R`, Ctrl+Tab, `F5`, `F11`, `F12`, Cmd+`Q` | *(nothing — the browser keeps them; README says so)* | **no** |
+| `keydown` with `isComposing`, or AltGraph (`getModifierState("AltGraph")`, or Ctrl+Alt on a layout that reports it) | *(nothing — defer to rule 4)* | no |
+| `keydown`, `key` ∈ {Enter, Tab, Escape, Backspace, Delete, Insert, Arrow*, Home, End, PageUp, PageDown, F1–F12} | `KeyEvent{Kind: KeyPress, Code: tui.KeyEnter \| KeyTab \| KeyEscape \| … \| KeyF12, Mods}` | **yes** |
+| same, with `repeat: true` | `KeyEvent{Kind: KeyRepeat, …}` | **yes** |
+| `keyup` for a forwarded key | *(nothing — `KeyRelease` is kitty-only and is never synthesized here)* | no |
+| `input` / `compositionend` (committed text) | one `KeyEvent{Kind: KeyPress, Code: <the cluster's first codepoint>, Text: <cluster>, Mods: 0}` per grapheme cluster — `Code` and `Text` set consistently, as the terminal decoder does for text keys | no |
+| `keydown` with Ctrl/Alt/Meta + printable (and **not** rule 2) | `KeyEvent{Kind: KeyPress, Code: <lowercased base codepoint>, Base: <base-layout codepoint>, Shifted: <shifted codepoint when known>, Mods: ModCtrl \| ModAlt \| ModMeta \| ModShift}` | **yes** |
+| `paste` | `PasteEvent{Text}` with CR/CRLF normalized to `\n` | **yes** |
+| `mousedown` / `mouseup` / `mousemove` | `MouseEvent{Kind: MousePress \| MouseRelease \| MouseMotion, Button, X, Y (CELL coords per §2.6), Mods}` | **yes** in-grid |
+| `wheel` | `MouseEvent{Kind: MouseWheel, Button: WheelUp \| WheelDown \| WheelLeft \| WheelRight, X, Y, Mods}` — quantized to discrete steps; there is no delta field | **yes** in-grid |
+| window focus / blur | `FocusEvent{Gained: true\|false, Terminal: true}` — this is terminal-level focus, not component focus | no |
+| resize or a measured-metrics change | `ResizeEvent{W: cols, H: rows}` | no |
+| anything else | **dropped explicitly** — never a phantom key | no |
+
+`Base`/`Shifted` are populated when the browser can supply them, giving
+layout-independent shortcut matching exactly as the kitty protocol does; `0` when
+unknown, which is the documented legacy shape. `Meta` maps to `ModMeta` and is
+never folded into `ModCtrl`.
 
 **Resource limits — concrete defaults, all configurable:**
 
 | Limit | Default | On breach |
 | --- | --- | --- |
 | max WebSocket message | 64 KiB | close (1009 Message Too Big) |
-| max input events/sec (sustained) | 500 | see overload below |
-| burst allowance | 2 000 events | absorbed, then rate applies |
-| `Events()` queue capacity | 1 024 | see overload below |
-| overload duration before close | 2 s continuously at capacity | close (1008 Policy Violation) |
+| sustained input rate | 500 events/s | token bucket; excess backpressures |
+| burst allowance | 2 000 events | token-bucket **allowance only** |
+| `Events()` queue capacity | 1 024 | backpressure at capacity |
+| overload before close | 2 s continuously at capacity | close (1008 Policy Violation) |
 
-Because `Events()` is ordered and un-coalesced (ADR-0002), the backend must never
-grow to absorb abuse: a queue at capacity applies backpressure, and **sustained**
-capacity for the overload duration closes the connection rather than allocating.
-RFC 6455 recommends implementation-specific frame and total-message limits.
+The burst allowance is a token-bucket credit, **not** a promise that 2 000 events
+are absorbed: the queue holds 1 024, and anything beyond it applies backpressure
+and may reach the two-second close rule. Because `Events()` is ordered and
+un-coalesced (ADR-0002), the backend never grows to absorb abuse.
 
 ### 2.10 The seam report is a deliverable
 
@@ -461,8 +482,9 @@ decisions:
    default**, with the signed challenge optional. The ticket belongs to
    `auth/token` plus a trusted SSH/CLI minter — *not* to `auth/sshkey` (§2.8).
 4. **Reconnect:** the `App` may survive a short detach window, but every attach
-   requires a fresh single-use credential bound to session and origin; no
-   credential resurrection (§2.8).
+   requires **fresh authentication** — the completed policy is re-run, with the
+   ticket branch consuming a new ticket and mTLS/challenge authenticating
+   directly. No credential is ever resurrected (§2.8).
 5. **Package scope:** keep `tui/web`; factor a render-target-agnostic layer only
    when a second backend supplies the evidence (§1.3).
 
