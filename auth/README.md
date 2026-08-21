@@ -53,8 +53,8 @@ system rather than by a comment telling you not to.
 |---------|--------|------|------------|
 | `auth/ipallow` | CIDR allowlist | contextual | stdlib |
 | `auth/token` | opaque tokens + single-use tickets | identity | stdlib |
-| `auth/sshkey` | `authorized_keys` + signature | identity | `x/crypto/ssh` *(planned)* |
-| `auth/mtls` | verified client-cert chain | identity | stdlib *(planned)* |
+| `auth/sshkey` | `authorized_keys` + signed challenge | identity | `x/crypto/ssh` |
+| `auth/mtls` | verified client-cert chain | identity | stdlib |
 | `auth/password` | Argon2id | identity | `x/crypto` *(planned)* |
 
 The core imports **no third-party module**.
@@ -77,6 +77,15 @@ The core imports **no third-party module**.
   JSON and text marshaling. It does **not** claim memory erasure.
 - **Deny by default.** An empty allowlist denies; an empty `All()`/`Any()` node
   denies; a nil or contextual-only root is a construction error.
+- **A certificate that verified, not one that was presented.** `auth/mtls`
+  accepts only a chain in `VerifiedChains`; the adapter refuses to carry
+  `PeerCertificates` across at all, so no later reader can authenticate from an
+  unverified certificate.
+- **SSH challenges are single-use even when the attempt fails**, domain-separated
+  by namespace, and bound to session/origin *inside the signed message* — so a
+  binding cannot be swapped after signing. A signature made for another
+  namespace (a git signing flow, say) will not verify here, which is tested
+  against real `ssh-keygen` output.
 
 ## Never
 

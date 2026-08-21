@@ -258,12 +258,34 @@ that is a new ADR and a leaf subpackage — the interface does not change.
 
 ### 2.5 SSH keys: `x/crypto/ssh` is justified, and the browser flow must be chosen
 
-**The dependency is justified.** Verifying an SSH key means parsing
+**The dependency is justified**, though implementation narrowed the argument —
+see the correction below. Verifying an SSH key means parsing
 `authorized_keys`/`allowed_signers` and the SSH signature wire format
 (`ssh-keygen -Y sign` emits an armored SSH signature blob). Hand-rolling that
 parser is a security hazard of exactly the kind the rule carves out an exception
 for, and `x/crypto` is Go-team maintained — the same provenance as the `x/term`
 already in `go.mod` for `tui/term`.
+
+> **CORRECTION (implementation, 2026-08-22).** `x/crypto` ships **no `sshsig`
+> package** — checked at v0.53.0. So the dependency covers what actually matters
+> (`ssh.ParseAuthorizedKey` for the allowed set, `ssh.PublicKey.Verify` for the
+> signature, `ssh.Marshal`/`Unmarshal` for the wire primitives), but the SSHSIG
+> **envelope framing is ours after all**. The justification above holds for the
+> key and signature handling; it does not hold for the envelope, and this ADR
+> should not have implied otherwise.
+>
+> Mitigation, since the parser is hand-written: it is a fixed shape checked field
+> by field (magic, version, non-empty `reserved` **refused** rather than ignored,
+> allowlisted hash algorithm), and — the part that actually settles it — the
+> acceptance suite verifies a signature produced by the **real
+> `ssh-keygen -Y sign`** (OpenSSH 10.3) and rejects one made under a different
+> namespace. A test against our own construction alone could have been wrong in
+> both directions at once.
+>
+> **Version pinned to x/crypto v0.53.0 deliberately:** it requires exactly the
+> `x/sys` and `x/term` versions golib already has, so adding it disturbs neither
+> — v0.55.0 would have bumped both, and `tui/term` imports `x/term` directly.
+> Only two indirect deps (`x/sync`, `x/text`) moved.
 
 **A browser cannot read `~/.ssh`, so "authenticate with an SSH key" needs a
 mechanism.** **DECIDED (r1): the SSH-channel-minted single-use ticket is the
