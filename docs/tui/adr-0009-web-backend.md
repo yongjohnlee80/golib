@@ -1,8 +1,8 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Proposed (rev 6)** (2026-08-21 — authored by jarvis; lector
-  design r1-r6 folded (r6: post-hoc dedup replaced by a staged commit, and
-  empty `compositionend.data` handled as unavailable rather than cancelled) — a correctness defect in rev
+- **Status:** **Proposed (rev 7)** (2026-08-21 — authored by jarvis; lector
+  design r1-r7 folded (r7: the commit boundary is HOST STATE, not a task or a
+  timer) — a correctness defect in rev
   0's frame coalescing, a wrong security claim about mTLS, and r2's internal
   contradictions. See Review history.
   Lands on `tui-web`.)
@@ -314,8 +314,8 @@ emit a command instead of the character the user typed:
    (`TreatCtrlAltAsAltGraph`) enables the heuristic and the README states the
    trade-off.
 3. **Named keys** (`KeyboardEvent.key` in the named set).
-4. **Text** — a non-composing `input`, or the reconciled composition emitted at
-   `compositionend` (§ state machine).
+4. **Text** — emitted as a **host-value delta**, either at `compositionend` for
+   a composition or on an ordinary `input` (§ state machine).
 5. **Modified keys** (Ctrl/Alt/Meta + printable).
 6. Anything else → dropped.
 
@@ -326,9 +326,9 @@ emit a command instead of the character the user typed:
 | `keydown`, `key` ∈ {Enter, Tab, Escape, Backspace, Delete, Insert, Arrow*, Home, End, PageUp, PageDown, F1–F12} | `KeyEvent{Kind: KeyPress, Code: tui.KeyEnter \| KeyTab \| KeyEscape \| … \| KeyF12, Mods}` | **yes** |
 | same, with `repeat: true` | `KeyEvent{Kind: KeyRepeat, …}` | **yes** |
 | `keyup` for a forwarded key | *(nothing — `KeyRelease` is kitty-only and is never synthesized here)* | no |
-| `input` with `isComposing: false` and no matching dedup guard | one `KeyEvent{Kind: KeyPress, Code: r, Text: string(r), Base: 0, Shifted: 0, Mods: 0}` **per rune**, matching `tui/term`'s `actPrint` exactly | no |
-| `compositionstart` / `compositionupdate` | **state only** — buffer, emit nothing | no |
-| `compositionend` | **emits the composed text** from `event.data`, per rune, then arms a content-qualified dedup guard (§ state machine) | no |
+| `input` (any) | compute the capture element's **baseline → current delta**; if it is non-empty, emit one `KeyEvent{Kind: KeyPress, Code: r, Text: string(r), Base: 0, Shifted: 0, Mods: 0}` **per rune** (matching `tui/term`'s `actPrint`) and **advance the baseline**; if the delta is empty, emit nothing | no |
+| `compositionstart` / `compositionupdate` | **state only** — emit nothing, baseline untouched | no |
+| `compositionend` | compute the **baseline → current delta** (the control is already updated by spec), emit it once per rune, then **synchronously advance the baseline** | no |
 | `keydown` with Ctrl/Alt/Meta + printable, where `key` is **exactly one Unicode scalar** (and **not** rule 2) | `KeyEvent{Kind: KeyPress, Code: <that scalar, lower-cased only when the lower-case form is also a single scalar>, Base: 0, Shifted: 0, Mods: ModCtrl \| ModAlt \| ModSuper \| ModShift}` — `Code` comes from `key`, never from a base-layout codepoint the DOM does not expose | **yes** |
 | `keydown` + modifiers where `key` is `Dead`, `Unidentified`, or **not a single scalar** (multi-scalar, or a lower-casing that expands) | **dropped** — `KeyEvent.Code` holds one rune, so there is nothing faithful to put in it; any resulting character still reaches the app through the text path | no |
 | `paste` | `PasteEvent{Text}` with CR/CRLF normalized to `\n` | **yes** |
@@ -361,60 +361,59 @@ in kitty order, where *super* is the Cmd/Windows key and *meta* is the historica
 Meta (usually Alt); the obvious-looking `metaKey`→`ModMeta` mapping would
 silently break Cmd chords on macOS.
 
-**The text machine — a staged composition transaction, with no post-hoc guard
-(r6).** Revisions 4 and 5 both tried to emit early and then suppress a duplicate.
-r6 establishes why that whole shape is unsound: **content + `inputType` is not a
-unique event identity.** If the browser emits no duplicate and the user's very
-next action inserts the *same* text — routine on mobile/IME input, where there is
-no intervening key event — a content-matching guard swallows a real insertion.
-That is still positional dedup wearing a content predicate.
+**The text machine — a host-state delta, with no time-based boundary (r7).**
+Three revisions converged on this. r4 emitted twice; r5 guarded by position; r6
+guarded by content, which r6 review showed is not an event identity; and rev 6's
+replacement leaned on *"composition-associated events are dispatched within one
+task"*, which **is not a standards guarantee** — UI Events specifies synchronous
+dispatch and relative ordering, and HTML assigns user input to the
+user-interaction task source without making task coalescing an identity
+contract. A settle timeout merely swaps one ambiguous boundary for another.
 
-So the composition is a **transaction that commits once**, and nothing is emitted
-early:
+**The boundary is the host's own state.** All text is captured in a dedicated
+**capture element** (a focusable off-screen `textarea`), and the backend emits
+**deltas of that element's value against a baseline it advances itself**:
 
 | State | Event | Action |
 | --- | --- | --- |
-| idle | `compositionstart` | → composing; snapshot the editing host's value as the pre-composition **baseline**; stage nothing |
-| composing | `compositionupdate` | update the staged value (`data` is a **hint**, see below) |
-| composing | `input` with `isComposing: true` | update the staged value from the **editing host** |
-| composing | `compositionend` | → settling; fold `event.data` in as a hint; **schedule the commit at the end of the current task** |
-| settling | `input` in the **same task** | folds into the staged value — it belongs to this composition by dispatch boundary, not by content |
-| settling | task boundary reached | **commit exactly once**: emit the staged text per rune, then → idle |
-| composing / settling | cancellation (below) | discard; emit nothing; → idle |
-| idle | any `input` with `isComposing: false` | emit per-rune `KeyEvent`s — **no guard exists that could swallow it** |
+| any | `compositionstart` | mark composing; **do not** touch the baseline |
+| composing | `compositionupdate` | emit nothing; baseline untouched |
+| composing | `input` (`isComposing: true`) | emit nothing; baseline untouched |
+| composing | `compositionend` | UI Events dispatches this **after the control is updated**, so: compute `baseline → current` delta, **emit it once** (per rune), then **synchronously advance the baseline** to the current value; → idle |
+| any | `input` | compute the delta; **emit only if non-empty**, then advance the baseline |
+| any | cancellation (host value returned to baseline, or explicit cancel) | delta is empty ⇒ nothing is emitted, with no special case needed |
 
-The **dispatch/generation boundary** is what scopes reconciliation: a browser's
-composition-associated events are dispatched within one task, so folding
-same-task `input` and committing at the task boundary captures exactly the
-composition — while an insertion in a *later* task is by definition a new user
-action. A composed `x` followed immediately by a separately typed `x` therefore
-yields **two** insertions, under either browser ordering.
+Why this is sound where the previous three attempts were not:
 
-**The authoritative staged value is the editing host's value/delta, not
-`CompositionEvent.data` (r6 must-fix 2).** UI Events permits `data` to be **empty
-when the IME or device does not expose the string**, so treating an empty
-`compositionend` as cancellation would discard a valid commit. Rules:
+- **A late notification for work already committed carries no delta.** Because
+  the baseline advanced synchronously at `compositionend`, an `input` arriving
+  afterwards — in the same task, a later task, or never — sees
+  `current == baseline` and emits nothing. **Ordering stops mattering**, which is
+  exactly what the specs decline to promise.
+- **A separately typed identical value changes host state again**, producing a
+  fresh non-empty delta, so it survives. The r6 failure (composed `x` then typed
+  `x`) cannot recur, because identity comes from *state transitions*, not from
+  content comparison.
+- **Cancellation needs no rule of its own.** Reverting the host leaves an empty
+  delta, so "emit only non-empty deltas" already covers it — and empty
+  `CompositionEvent.data` is irrelevant, since `data` is no longer consulted.
 
-- the staged value comes from the **editing host** (its value, or the `input`
-  event's delta); `CompositionEvent.data` is a corroborating **hint** only;
-- **empty `compositionend.data` with a non-empty staged value ⇒ COMMIT** the
-  staged value;
-- **cancellation** is a distinct transition — the editing host's value having
-  returned to the pre-composition **baseline**, or an explicit cancel/Escape —
-  and is never inferred from absent `data`.
+**The one assumption, stated as an assumption:** that a supported engine updates
+the control *before* dispatching `compositionend`, per UI Events. The required
+browser matrix exists to **verify** that, not to define it; if an engine violates
+it, the ADR must name the measured fallback rather than guessing at one now.
 
-*Paste (unchanged from r5, and deliberately guard-free).* Because the table
-`preventDefault`s `paste`, the Clipboard API queues no insertion, so there is
-**no paired `input`**: `paste` emits `PasteEvent` and expects nothing to follow.
-With no suppress-next flag in existence, a cancelled paste cannot eat a later
+*Paste* stays guard-free: `paste` is `preventDefault`ed, so the clipboard text
+never enters the capture element, no delta appears, and `PasteEvent` is emitted
+directly. A cancelled paste therefore cannot disturb the baseline or eat a later
 keystroke.
 
-**These orderings are browser-specific, so the suite runs against real Chromium,
-Firefox and WebKit** — not synthetic dispatch alone, which is exactly what would
-hide the differences. Skipping locally when no browser is present is fine, but
-**a suite that skips everywhere cannot satisfy an acceptance criterion**: the
-matrix is a required gate in CI (or another named release gate), and a release
-with the matrix unrun is not a release.
+**These behaviors are browser-specific, so the suite runs against real Chromium,
+Firefox and WebKit** — synthetic dispatch is exactly what would hide them.
+Skipping locally with no browser present is fine, but **a suite that skips
+everywhere cannot satisfy an acceptance criterion**: the matrix is a required
+gate in CI (or another named release gate), and a release with the matrix unrun
+is not a release.
 
 **Resource limits — concrete defaults, all configurable:**
 
@@ -536,12 +535,15 @@ Acceptance criteria:
    (v) a composed `x` followed immediately by a **separately typed `x`** →
    **two** insertions, under both orderings; (vi) cancelled paste followed
    immediately by ordinary typing → the typed character **survives**;
-   (vii) paste with no trailing `input` → exactly one `PasteEvent`.
+   (vii) paste with no trailing `input` → exactly one `PasteEvent`;
+   (viii) **a composition-associated `input` delivered in a LATER task**, after
+   `compositionend` already committed → **no duplicate**, and it is not mistaken
+   for a new identical user action (the advanced baseline yields an empty delta).
 7b. Pinned cases: a non-US layout, a dead-key sequence, a multi-codepoint emoji,
    a `key` of `Dead`/`Unidentified` (dropped, no phantom), and a browser
    reporting no AltGraph state. The Chromium/Firefox/WebKit matrix is a required
    CI gate, not a locally-skippable extra.
-7b. Resource limits: an oversized message is rejected, a sustained event flood
+7c. Resource limits: an oversized message is rejected, a sustained event flood
    closes the connection instead of growing the queue, and the queue bound holds
    under load.
 8. Session cap and idle eviction are enforced; after disconnect and after
@@ -622,6 +624,31 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **r7 (2026-08-21, lector — `change_requested`, folded in rev 7).** Lector
+  answered the question rev 6 had flagged, and the answer removed rev 6's
+  foundation: **"composition-associated events are dispatched within one task" is
+  not a standards guarantee.** UI Events specifies synchronous dispatch and
+  relative ordering; HTML assigns user input to the user-interaction task source
+  without making task coalescing an identity contract; and the UI Events
+  algorithms still carry compatibility notes for input-before-end versus
+  input-after-end. A settle timeout would only substitute another ambiguous time
+  boundary. **The boundary is now HOST STATE:** all text is captured in a
+  dedicated off-screen capture element, and the backend emits **baseline →
+  current deltas**, advancing the baseline synchronously at `compositionend`
+  (which UI Events dispatches *after* the control is updated). A late
+  notification for already-committed work therefore carries an **empty delta** and
+  emits nothing regardless of which task it lands in, so **ordering stops
+  mattering**; a separately typed identical value changes host state again and
+  survives; and cancellation needs no rule of its own, because reverting the host
+  leaves an empty delta. `CompositionEvent.data` is no longer consulted at all.
+  The one remaining assumption — control-updated-before-`compositionend` — is
+  labelled as an assumption the browser matrix **verifies** rather than defines.
+  **Amendments:** the normative table rows still described the deleted guard
+  design (the third time I updated prose and left the table behind), and are
+  rewritten against the delta model; the duplicate acceptance `7b` is renumbered
+  to `7c`; and a new case (viii) covers a composition-associated `input`
+  delivered in a *later* task.
 
 - **r6 (2026-08-21, lector — `change_requested`, folded in rev 6).**
   **Must-fix 1 invalidated the whole emit-then-dedup shape**, not just my
