@@ -68,19 +68,33 @@ type Request struct {
 	TLS *TLSState
 }
 
-// TLSState is the subset of tls.ConnectionState authentication needs, kept
-// separate so the core imports no TLS machinery it does not use.
+// TLSState is the projection of tls.ConnectionState that authentication needs.
+// The core keeps its own view so a caller who never uses mTLS does not pull
+// crypto/tls into their build; auth/mtls supplies the adapter.
 type TLSState struct {
-	// VerifiedChains is non-empty only when the peer certificate chained to a
-	// configured client-auth root. auth/mtls accepts nothing else.
+	// VerifiedChains is non-empty ONLY when the peer certificate chained to a
+	// configured client-auth root. auth/mtls accepts nothing else — a peer
+	// certificate on its own proves nothing, since any self-signed certificate
+	// is presented exactly the same way (ADR-0001 §2.6a).
 	VerifiedChains [][]Certificate
 }
 
-// Certificate is the minimal certificate view auth/mtls needs.
+// Certificate is the certificate view auth/mtls needs. It carries every field a
+// subject mapping might reasonably use, so choosing that mapping stays the
+// factor's decision and never the adapter's.
 type Certificate struct {
-	Subject               string
-	NotAfter              time.Time
-	ExtKeyUsageClientAuth bool
+	CommonName     string
+	DNSNames       []string
+	EmailAddresses []string
+	URIs           []string
+	SerialNumber   string
+	NotBefore      time.Time
+	NotAfter       time.Time
+
+	// IsClientAuth reports whether the certificate carries the client-auth
+	// extended key usage. A certificate issued for something else must not
+	// authenticate a client.
+	IsClientAuth bool
 }
 
 // Contribution is what one factor proved. Subject is required when the factor
