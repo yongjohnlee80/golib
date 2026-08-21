@@ -1,9 +1,10 @@
 # ADR-0016 — `golib/dao`: declarative column expressions
 
-- **Status:** **Proposed** (2026-08-21 — authored by jarvis from Johno's request for
-  a SQL helper surface so declarations can be built from the table and field
-  constants that already exist, instead of restating them as string literals.
-  Awaiting lector design review; lands on `dao-expr`.)
+- **Status:** **Proposed (rev 1)** (2026-08-21 — authored by jarvis from Johno's
+  request for a SQL helper surface so declarations can be built from the table
+  and field constants that already exist, instead of restating them as string
+  literals. Lector design r1 `change_requested` folded — including a fatal
+  write-path defect in rev 0, see Review history. Lands on `dao-expr`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. Extends the ADR-0002/0003 column-targeting
@@ -54,14 +55,47 @@ corner case.
 
 ## 2. Decision
 
-### 2.1 `Expr` — an expression that resolves against a dialect
+### 2.1 `Expr` — a resolvable expression that also carries its write identity
+
+An `Expr` cannot be a bare `func(Dialect) string`. The write path does not use
+the projected expression: `writeCol()` takes the tail after the last dot and
+`INSERT`/`UPDATE` pass it through `QuoteIdent` again. A rendered, already-quoted
+projection therefore double-quotes — measured against the real code:
+
+```text
+Column  artist.name                  -> writeCol  name          -> INSERT emits "name"          OK (today)
+Column  "artist"."name"              -> writeCol  "name"        -> INSERT emits """name"""      INVALID
+Column  `artist`.`name`              -> writeCol  `name`        -> INSERT emits "`name`"        INVALID
+Column  COALESCE("lg"."name", '')    -> writeCol  "name", '')   -> INSERT emits """name"", '')" INVALID
+```
+
+So every writable `T`/`C` field in rev 0 would have produced invalid DML, and
+rev 0's §2.6 plain-identifier check would have rejected each one at `New` —
+including this ADR's own `ArtistID`/`ArtistName`, which declare `Value`. An
+`Expr` must therefore carry the **raw, unquoted** write identity alongside the
+renderer:
 
 ```go
-// Expr is a SQL expression that can only be rendered once a dialect is known.
-// Declarations hold Exprs; dao.New resolves them exactly once (ADR-0016 §2.2).
-// Zero dependencies, no reflection, no state: an Expr is a pure function.
-type Expr func(Dialect) string
+// Expr is a SQL expression that can only be rendered once a dialect is known,
+// plus the raw column identity the write path needs. Declarations hold Exprs;
+// dao.New resolves them exactly once (§2.2). Construct one only through the
+// helpers in §2.3 — the fields are unexported precisely so an Expr cannot be
+// assembled with a write identity that disagrees with what it renders.
+type Expr struct {
+	render func(Dialect) string
+	// write is the RAW, unquoted column name for INSERT/UPDATE, set only by T
+	// and C. Every composition (Coalesce, SQL, the join helpers) leaves it
+	// empty: an expression has no write identity, and inventing one would be
+	// worse than having none.
+	write string
+}
+
+func (e Expr) isSet() bool { return e.render != nil }
 ```
+
+A zero `Expr` passed to any helper is a declaration error and panics
+immediately — the fail-early rule applied at package-init time, where the
+mistake is.
 
 ### 2.2 `Field.Expr`, resolved once at `New`
 
@@ -71,34 +105,57 @@ type Field[R any] struct {
 	Column string
 
 	// Expr is the dialect-resolved alternative to Column: dao.New renders it
-	// once via the connection's Dialect and stores the result as Column, so
-	// everything downstream is byte-identical to a hand-written Column.
-	// Setting both Column and Expr is a declaration error (panics at New).
+	// once via the connection's Dialect and stores the result as Column, and
+	// (unless WriteColumn is set explicitly) takes the raw write identity from
+	// it, so everything downstream is byte-identical to a hand-written
+	// declaration. Setting both Column and Expr is a declaration error
+	// (panics at New).
 	Expr Expr
 
 	// ... all other fields unchanged
 }
 ```
 
-At `New`, after options are applied and before validation:
+**Resolution writes into a schema-owned clone, never the caller's map.**
+`Fields(m)` aliases the map it is handed (`options.go`: `c.fields = m`) and `New`
+stores that same reference (`schema.go`: `fields: cfg.fields`), so resolving in
+place would mutate a package-level `var`. A *second* `New` over the same
+declaration would then see both `Column` and `Expr` set — tripping the panic
+below — or silently inherit the first connection's dialect. The pass clones:
 
 ```go
-for key, f := range cfg.fields {
-	if f.Expr == nil {
-		continue
+// resolveFields returns a schema-owned copy of the declared fields with every
+// Expr rendered against this connection's dialect. The caller's map is never
+// written to: it is typically a package-level var shared by every schema built
+// from it, possibly against different dialects.
+func resolveFields[R any, C ~string](d Dialect, in map[C]Field[R]) map[C]Field[R] {
+	out := make(map[C]Field[R], len(in))
+	for key, f := range in {
+		if f.Expr.isSet() {
+			if f.Column != "" {
+				panic(fmt.Sprintf("dao.New: field %q sets both Column and Expr", any(key)))
+			}
+			f.Column = f.Expr.render(d)
+			// Write identity: an explicit WriteColumn always wins; otherwise T/C
+			// supply the raw name, so INSERT/UPDATE quote it exactly as they
+			// quote a hand-written declaration's derived tail.
+			if f.WriteColumn == "" {
+				f.WriteColumn = f.Expr.write
+			}
+		}
+		out[key] = f
 	}
-	if f.Column != "" {
-		panic(fmt.Sprintf("dao.New: field %q sets both Column and Expr", any(key)))
-	}
-	f.Column = f.Expr(conn.Dialect())
-	cfg.fields[key] = f
+	return out
 }
 ```
 
+Cloning also closes a pre-existing aliasing hazard: today a caller who mutates
+their field map after `New` silently mutates the live schema.
+
 This is deliberately the **smallest possible seam**: one resolution pass, after
-which `Field.Column` is exactly what a hand-written declaration would have
-produced. No query-time cost, no second code path in the builder, no change to
-`resolve`/`writeCol`/search binding/`sortExpr`.
+which `Field.Column` and `Field.WriteColumn` are exactly what a hand-written
+declaration would have produced. No query-time cost, no second code path in the
+builder, no change to `resolve`/`writeCol`/search binding/`sortExpr`.
 
 ### 2.3 The helper set (v1)
 
@@ -116,16 +173,23 @@ func T[Tbl ~string, Col ~string](table Tbl, col Col) Expr
 // still benefit from quoting.
 func C[Col ~string](col Col) Expr
 
-// Lit is a SQL literal: strings render single-quoted with embedded quotes
-// doubled, numbers verbatim, bool as TRUE/FALSE, nil as NULL. It rejects any
-// other type IMMEDIATELY (panic at declaration, i.e. package init) rather than
-// at New — the earliest possible failure for a value that is always a compile-
-// time constant in practice.
-func Lit(v any) Expr
+// Str is a string literal, and it refuses anything it cannot render
+// identically on every supported dialect: a string containing a single quote,
+// a backslash, or a control character panics at declaration. MySQL escaping
+// depends on NO_BACKSLASH_ESCAPES and the connection charset, so the portable
+// contract is not "escape correctly" but "accept only what needs no escaping"
+// — which covers every literal in the evidence base ('' and simple defaults).
+// Anything richer belongs in SQL().
+func Str(s string) Expr
 
-// Coalesce renders COALESCE(e, alt). alt is an Expr when you pass one, and a
-// Lit otherwise, so the common Coalesce(T(t, c), "") reads as intended.
-func Coalesce(e Expr, alt any) Expr
+// Int is an integer literal in decimal. Floats are deliberately absent: their
+// text form is precision-sensitive and non-finite values have no portable
+// spelling. NULL is absent because COALESCE(x, NULL) is a no-op.
+func Int(i int64) Expr
+
+// Coalesce renders COALESCE(e, alt) over two Exprs — not an `any`, so no
+// untyped value can reach a literal renderer: Coalesce(T(t, c), Str("")).
+func Coalesce(e, alt Expr) Expr
 
 // SQL is the escape hatch: text is emitted verbatim, unquoted, unresolved.
 // For expressions the helpers do not cover (NOW(), a window function, a
@@ -154,7 +218,7 @@ var artistFields = map[ArtistField]dao.Field[*Artist]{
 	ArtistID:     {Expr: dao.T(TableArtist, ArtistID), Scan: sID, Value: vID},
 	ArtistName:   {Expr: dao.T(TableArtist, ArtistName), Scan: sName, Value: vName},
 	ArtistLabelGroup: {
-		Expr:     dao.Coalesce(dao.T(TableLabelGroup, LabelGroupName), ""),
+		Expr:     dao.Coalesce(dao.T(TableLabelGroup, LabelGroupName), dao.Str("")),
 		Scan:     sLabel,
 		Join:     TableLabelGroup,
 		ReadOnly: true,
@@ -168,11 +232,18 @@ key needs no extra machinery, and the ADR recommends it as the convention.
 
 ### 2.4 Quoting rules
 
-`T`/`C` quote through `Dialect.QuoteIdent`, **per part** — the same treatment
-ADR-0013 gave qualified table names, so behavior is consistent with the rest of
-the engine. `LeftJoin`/`InnerJoin` render their table through the same
-`quoteTable` helper the builder uses, so a `TableQuoter` dialect splits
-`schema.table` correctly and a non-implementer keeps historical behavior.
+`C` quotes through `Dialect.QuoteIdent`. `T` renders
+`quoteTable(d, table) + "." + d.QuoteIdent(col)` — the **table part goes through
+`quoteTable`**, so a schema-qualified table constant (`app.users`) splits into
+two quoted parts on a `TableQuoter` dialect and falls back to whole-string
+quoting on a non-implementer, exactly as ADR-0013 specified for table position.
+`T` therefore **accepts** schema-qualified constants rather than rejecting them,
+and inherits ADR-0013's documented fallback instead of inventing a second rule.
+`LeftJoin`/`InnerJoin` render their table the same way.
+
+The **write identity is unaffected by quoting**: `T`/`C` carry the raw column
+string (§2.1), so `INSERT`/`UPDATE` see `name` and quote it exactly once —
+byte-identical to what a hand-written `artist.name` produces today.
 
 **Quoting is not semantically neutral, and this is the one hazard worth
 stating.** In Postgres an unquoted identifier folds to lower case while a quoted
@@ -197,6 +268,14 @@ overloading, and taking `any` to accept "string or Expr" would be exactly the
 untyped magic [[golib]] Part 1 §4 rules out. `OptionalJoin` keeps working
 verbatim.
 
+**Same-key precedence is later-option-wins, and setting one form deletes the
+other.** The config holds the two representations in separate maps, so
+`OptionalJoin(k, s)` followed by `OptionalJoinExpr(k, e)` must leave only the
+Expr, and the reverse order only the string. Without the delete a stale opposite
+representation would decide the clause by map-iteration accident. This is the
+house option rule ("a later option overrides an earlier one for the same
+setting") read across two spellings of one setting.
+
 ### 2.6 Write-column safety — a fail-early check the helpers make necessary
 
 `writeCol()` derives the write column as the tail after the last dot. For
@@ -206,12 +285,19 @@ enforces it. `Coalesce` makes expression-valued columns easy to write, so the
 convention becomes a check:
 
 ```
-dao.New panics when a field's derived write column is not a plain identifier
-(it contains whitespace, parentheses, commas or quotes) AND the field is
-writable (not ReadOnly) AND WriteColumn is not set.
+dao.New panics when a field's write column is not a plain identifier (it
+contains whitespace, parentheses, commas or quotes) AND the field is writable
+(not ReadOnly) AND WriteColumn is still empty after §2.2's resolution.
 ```
 
-The message names the field, the derived garbage, and the two ways out
+**The ordering is load-bearing, and rev 0 had it wrong.** The check must run
+*after* write identity is populated, or it rejects every writable `T`/`C` field —
+including this ADR's own `ArtistID`/`ArtistName`, which declare `Value`. With
+resolution first, `T`/`C` fields pass (they carry a raw `WriteColumn`) and only a
+genuinely unwritable declaration fails: a `Coalesce` or `SQL` expression on a
+field that is neither `ReadOnly` nor given an explicit `WriteColumn`.
+
+The message names the field, the offending write column, and the two ways out
 (`ReadOnly: true` or an explicit `WriteColumn`). It converts a broken INSERT at
 run time into a panic at construction — the [[golib]] "misconfiguration fails at
 construction" rule. It fires only on declarations that are already broken.
@@ -235,8 +321,9 @@ construction" rule. It fires only on declarations that are already broken.
 
 - `Field.Column` — meaning, type, and verbatim emission. A declaration that
   never sets `Expr` behaves identically, byte for byte.
-- `writeCol()` derivation, `WriteColumn`, `Clearable`/`ClearValue`,
-  `ReadOnly`, `Join`.
+- `writeCol()` derivation, `WriteColumn` (an explicit value always wins over
+  §2.2's inferred one), `Clearable`/`ClearValue`, `ReadOnly`, `Join`.
+- The INSERT/UPDATE path: it still quotes one raw identifier exactly once.
 - `Dialect` (no new methods — `Expr` consumes the existing `QuoteIdent` and the
   optional `TableQuoter`), `DataConn`, the builder, the DAO surface.
 - `OptionalJoin`, `SortMap`, `Search`, and every other option.
@@ -261,7 +348,19 @@ construction" rule. It fires only on declarations that are already broken.
    as sketched. Johno's call: *"we can have these methods in either sql_ext.go or
    helper.go or whatever make most sense"* — same package, new file.
    `dao.T(...)` it is; anyone wanting brevity can alias locally.
-5. **Resolving at query time instead of at `New`.** Would allow one declaration
+5. **`Expr` as a bare `func(Dialect) string`** (rev 0). Simpler by a struct,
+   and fatally wrong: a function cannot carry the raw write identity, so the
+   already-quoted render reaches `writeCol` and `INSERT`/`UPDATE` quote it a
+   second time (§2.1). Any repair — parsing the quotes back off, or requiring
+   every writable field to hand-write `WriteColumn` — is worse than the struct.
+6. **A general `Lit(any)` literal renderer** (rev 0). Rejected on review:
+   doubling single quotes is not a complete portable contract, because MySQL
+   escaping also depends on `NO_BACKSLASH_ESCAPES` and the connection charset,
+   and `any` leaves float/non-finite behavior undefined. The closed
+   `Str`/`Int` set with a refusal rule (§2.3) covers every literal in the
+   evidence base and cannot be wrong; a general literal API can land later
+   against a real need.
+7. **Resolving at query time instead of at `New`.** Would allow one declaration
    to serve two dialects, which no consumer needs (a `Schema` is built from one
    `DataConn` and holds it for the process lifetime, ADR-0006), and it would put
    a closure call in every statement's hot path against [[golib]] principle 5.
@@ -276,7 +375,7 @@ someone rewrites it, one field at a time.
 | `{Column: "artist.name", …}` | `{Expr: dao.T(TableArtist, ArtistName), …}` |
 | `{Column: "action", …}` | `{Expr: dao.C(MetaKVAction), …}` |
 | `` {Column: `"user".first_name`} `` | `{Expr: dao.T(TableUser, UserFirstName)}` — and now correct on MySQL too |
-| `{Column: "COALESCE(label_group.name,'')", ReadOnly: true}` | `{Expr: dao.Coalesce(dao.T(TableLabelGroup, LabelGroupName), ""), ReadOnly: true}` |
+| `{Column: "COALESCE(label_group.name,'')", ReadOnly: true}` | `{Expr: dao.Coalesce(dao.T(TableLabelGroup, LabelGroupName), dao.Str("")), ReadOnly: true}` |
 | `dao.OptionalJoin(k, "LEFT JOIN label_group ON …")` | `dao.OptionalJoinExpr(k, dao.LeftJoin(TableLabelGroup, dao.T(…), dao.T(…)))` |
 | mixed-case identifier | keep `Column`, or `dao.SQL("MyCol")` — see §2.4 |
 
@@ -290,30 +389,44 @@ migrate when they choose, and this ADR does not touch them.
 ## 6. Files / acceptance
 
 New: `dao/expr.go` (the `Expr` type and the helper set), `dao/expr_test.go`.
-Changed: `dao/field.go` (`Field.Expr`), `dao/schema.go` (resolution pass +
-both-set panic + §2.6 write-column check), `dao/options.go`
-(`OptionalJoinExpr`), `dao/README.md`, `dao/USAGE.md`, `dao/doc.go` if it
+Changed: `dao/field.go` (`Field.Expr`), `dao/schema.go` (`resolveFields` clone +
+both-set panic + write-identity inference + §2.6 check, sequenced in that
+order), `dao/options.go` (`OptionalJoinExpr` + same-key precedence across both
+join representations), `dao/README.md`, `dao/USAGE.md`, `dao/doc.go` if it
 enumerates the declaration surface.
 
 Acceptance criteria:
 
-1. `T`/`C` render per-part `QuoteIdent` on `GenericDialect`, postgres (`"a"."b"`),
+1. `T`/`C` render per-part quoting on `GenericDialect`, postgres (`"a"."b"`),
    mysql (`` `a`.`b` ``) and sqlite; a typed field enum and an untyped string
-   constant both compile as arguments without conversion.
-2. A `Field` with `Expr` set and `Column` empty produces, after `New`, a
-   `Column` byte-identical to the equivalent hand-written literal — asserted by
-   building two schemas (one of each form) and diffing the emitted SELECT.
+   constant both compile as arguments without conversion. A schema-qualified
+   table constant splits on a `TableQuoter` dialect and whole-string quotes on a
+   non-implementer (the ADR-0013 fallback).
+2. **Read AND write equivalence.** A `Field` with `Expr` set and `Column` empty
+   produces, after `New`, a `Column` and `WriteColumn` byte-identical to the
+   equivalent hand-written declaration — asserted by building two schemas (one
+   of each form) and diffing the emitted **SELECT, INSERT, UPDATE and upsert**
+   SQL. A `T`-declared writable field must emit `INSERT INTO … ("name") …`, never
+   a doubly-quoted identifier (the rev-0 defect, pinned by a regression test).
 3. Setting both `Column` and `Expr` panics at `New`, naming the field.
-4. `Coalesce(T(t, c), "")` renders `COALESCE("t"."c", '')`; `Coalesce(e, Lit(0))`
-   and `Coalesce(e, 0)` render identically; a string literal containing a single
-   quote is doubled, not escaped with a backslash.
-5. `Lit` panics immediately for an unsupported type (a struct), not at `New`.
+3b. **The declaration map is never mutated.** Building two schemas from the same
+   package-level field map against two different dialects yields correctly
+   different SQL, and the source map's `Field` values still have empty `Column`
+   and non-nil `Expr` afterwards — the second `New` must not see a resolved
+   `Column` and must not trip criterion 3's panic.
+4. `Coalesce(T(t, c), Str(""))` renders `COALESCE("t"."c", '')` and
+   `Coalesce(e, Int(0))` renders `COALESCE(…, 0)`.
+5. `Str` panics immediately — at declaration, not at `New` — for a string
+   containing a single quote, a backslash, or a control character; a zero `Expr`
+   passed to any helper panics the same way.
 6. `LeftJoin`/`InnerJoin` render the table through `quoteTable`: a
    `TableQuoter` dialect splits `schema.table`, a non-implementer quotes the
    whole string — the ADR-0013 fallback, unchanged.
 7. `OptionalJoinExpr` produces a join applied on exactly the same demand-driven
    triggers as `OptionalJoin` (selected column, sort, `DAO.Join`) — the existing
-   join tests pass against both forms.
+   join tests pass against both forms. Same-key precedence is tested in **both
+   orders**: string-then-Expr yields the Expr clause, Expr-then-string yields the
+   string clause, and neither leaves a stale opposite representation.
 8. §2.6: a writable field whose derived write column is not a plain identifier
    panics at `New`; the same field with `ReadOnly: true`, or with an explicit
    `WriteColumn`, constructs fine. Every existing declaration in golib's tests
@@ -322,27 +435,52 @@ Acceptance criteria:
 10. Zero query-time cost: an allocation benchmark over a tx-free `Select` shows
     no change against the string-declared schema.
 
-## 7. Open questions for review
+## 7. Resolved review questions
 
-1. **`T` and `C` as exported names.** They are two of the shortest possible
-   exports in a package that also uses `C` as a type-parameter name for the
-   field enum (`Schema[R, C, K, ID]`). Different scopes, so it compiles — but is
-   `dao.T` / `dao.C` the right readability trade against `dao.Col` /
-   `dao.Column`? Johno sketched `T()`; confidence it should stay: 70%.
-2. **`Lit`'s panic-at-declaration.** Package-level `var` init means the panic
-   surfaces at program start with a stack in `init`. Right call versus deferring
-   to `New` (where the field name is known and the message can be better)?
-3. **§2.6's new panic.** It fires on declarations that are already broken, but
-   it *is* a new construction-time failure in a released package. Ship it with
-   this ADR, or split it into its own change so this one stays purely additive?
-4. **`Coalesce(e, alt any)`** takes `any` to make `Coalesce(x, "")` read well,
-   at the cost of accepting `Coalesce(x, someStruct{})` that only fails inside
-   `Lit`. Worth it, or should it be `Coalesce(e, alt Expr)` and force
-   `Lit("")`?
-5. **Scope check (§2.7):** are `Lower`/`Upper`/`Concat`/`Cast` genuinely better
-   deferred to `SQL()`, given LM's counts are in predicate rather than
-   projection position?
+Lector's design r1 answered every open question; they are recorded here as
+decisions:
+
+1. **`dao.T` / `dao.C` stay** — the brevity is the point at a declaration site,
+   and the type-parameter `C` lives in a different scope. No unquoted variant is
+   needed either: §2.4's quoting is a provable no-op for the whole evidence base
+   and `SQL()` covers the mixed-case escape.
+2. **`Lit(any)` is gone**, replaced by the closed `Str`/`Int` set that refuses
+   what it cannot render portably (§2.3, alternative 6). Panic-at-declaration
+   stays: it is the earliest possible failure for a compile-time constant.
+3. **§2.6's write-safety check ships with this ADR**, but only because write
+   identity is now represented (§2.2) — the check is coherent *after* resolution
+   and incoherent before it.
+4. **`Coalesce` takes two `Expr`s**, not an `any`. The lost sugar
+   (`Coalesce(x, "")`) is one `dao.Str("")` — worth it to keep untyped values
+   away from a literal renderer.
+5. **The §2.7 exclusions stand** — `Lower`/`Upper`/`Concat`/`Cast`, aggregates,
+   and the `SortMap`/search-op variants remain deferred.
 
 ## Review history
 
-- **r1 (pending)** — lector design review requested 2026-08-21.
+- **r1 (2026-08-21, lector — `change_requested`, folded in this revision).**
+  **Must-fix 1 was a fatal defect, not a nit:** rev 0's `Expr` was
+  `func(Dialect) string`, so the rendered *quoted* projection reached
+  `writeCol()` and `INSERT`/`UPDATE` quoted it a second time — every writable
+  `T`/`C` field would have emitted invalid DML, and rev 0's own §2.6 check would
+  have rejected the ADR's north-star examples at `New`. Verified against the
+  real code before rewriting: `Column "artist"."name"` yields `writeCol "name"`
+  and `QuoteIdent` then emits a triple-quoted identifier. `Expr` is now a struct
+  carrying the raw write identity, an explicit `WriteColumn` still wins, and
+  compositions carry none (§2.1, §2.2), with read *and* write equivalence in
+  acceptance criterion 2. **Must-fix 2:** `Fields(m)` aliases the caller's map
+  and `New` stores that reference, so rev 0's in-place resolution would have
+  mutated a package-level `var` — a second `New` would then see both `Column`
+  and `Expr` (tripping the panic) or inherit the first dialect. Resolution now
+  clones (§2.2), with criterion 3b proving the source map is untouched across
+  two dialects. **Must-fix 3:** `Lit(any)` removed — quote-doubling is not a
+  portable literal contract (MySQL's `NO_BACKSLASH_ESCAPES` and charset), and
+  `any` left float/non-finite behavior undefined; replaced by the closed
+  `Str`/`Int` set that refuses what it cannot render identically everywhere
+  (§2.3, alternative 6). **Should-fix 1:** same-key `OptionalJoin` /
+  `OptionalJoinExpr` precedence is now specified as later-wins with the opposite
+  representation deleted, tested in both orders (§2.5, criterion 7).
+  **Should-fix 2:** `T` accepts schema-qualified table constants and renders the
+  table part through `quoteTable`, inheriting ADR-0013's fallback (§2.4,
+  criterion 1).
+  Review doc: `$KB_ROOT/agents/lector/reviews/2026-08-21-golib-dao-0016-declarative-column-expressions-review.md`
