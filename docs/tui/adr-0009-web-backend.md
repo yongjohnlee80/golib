@@ -1,7 +1,8 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Proposed (rev 4)** (2026-08-21 — authored by jarvis; lector
-  design r1-r4 folded (r4: a text-emitter duplication and two false API claims) — a correctness defect in rev
+- **Status:** **Proposed (rev 5)** (2026-08-21 — authored by jarvis; lector
+  design r1-r5 folded (r5: a canceled-paste flag that could eat a keystroke, and
+  a non-portable composition ordering) — a correctness defect in rev
   0's frame coalescing, a wrong security claim about mTLS, and r2's internal
   contradictions. See Review history.
   Lands on `tui-web`.)
@@ -313,7 +314,8 @@ emit a command instead of the character the user typed:
    (`TreatCtrlAltAsAltGraph`) enables the heuristic and the README states the
    trade-off.
 3. **Named keys** (`KeyboardEvent.key` in the named set).
-4. **Committed text** (`input` / `compositionend`).
+4. **Text** — a non-composing `input`, or the reconciled composition emitted at
+   `compositionend` (§ state machine).
 5. **Modified keys** (Ctrl/Alt/Meta + printable).
 6. Anything else → dropped.
 
@@ -324,9 +326,10 @@ emit a command instead of the character the user typed:
 | `keydown`, `key` ∈ {Enter, Tab, Escape, Backspace, Delete, Insert, Arrow*, Home, End, PageUp, PageDown, F1–F12} | `KeyEvent{Kind: KeyPress, Code: tui.KeyEnter \| KeyTab \| KeyEscape \| … \| KeyF12, Mods}` | **yes** |
 | same, with `repeat: true` | `KeyEvent{Kind: KeyRepeat, …}` | **yes** |
 | `keyup` for a forwarded key | *(nothing — `KeyRelease` is kitty-only and is never synthesized here)* | no |
-| **`input`** (the sole text emitter — see the state machine below) | one `KeyEvent{Kind: KeyPress, Code: r, Text: string(r), Mods: 0}` **per rune**, matching `tui/term`'s `actPrint` path exactly | no |
-| `compositionstart` / `compositionupdate` / `compositionend` | **state only — never emits.** `compositionend` marks composition finished; the resulting `input` carries the text | no |
-| `keydown` with Ctrl/Alt/Meta + printable (and **not** rule 2) | `KeyEvent{Kind: KeyPress, Code: <lowercased base codepoint>, Base: <base-layout codepoint>, Shifted: <shifted codepoint when known>, Mods: ModCtrl \| ModAlt \| ModMeta \| ModShift}` | **yes** |
+| `input` with `isComposing: false` and no matching dedup guard | one `KeyEvent{Kind: KeyPress, Code: r, Text: string(r), Base: 0, Shifted: 0, Mods: 0}` **per rune**, matching `tui/term`'s `actPrint` exactly | no |
+| `compositionstart` / `compositionupdate` | **state only** — buffer, emit nothing | no |
+| `compositionend` | **emits the composed text** from `event.data`, per rune, then arms a content-qualified dedup guard (§ state machine) | no |
+| `keydown` with Ctrl/Alt/Meta + printable (and **not** rule 2) | `KeyEvent{Kind: KeyPress, Code: <codepoint of `KeyboardEvent.key`, lowercased>, Base: 0, Shifted: 0, Mods: ModCtrl \| ModAlt \| ModSuper \| ModShift}` — `Code` comes from `key` (the produced character), never from a base-layout codepoint the DOM does not expose | **yes** |
 | `paste` | `PasteEvent{Text}` with CR/CRLF normalized to `\n` | **yes** |
 | `mousedown` / `mouseup` / `mousemove` | `MouseEvent{Kind: MousePress \| MouseRelease \| MouseMotion, Button, X, Y (CELL coords per §2.6), Mods}` | **yes** in-grid |
 | `wheel` | `MouseEvent{Kind: MouseWheel, Button: WheelUp \| WheelDown \| WheelLeft \| WheelRight, X, Y, Mods}` — quantized to discrete steps; there is no delta field | **yes** in-grid |
@@ -357,25 +360,49 @@ in kitty order, where *super* is the Cmd/Windows key and *meta* is the historica
 Meta (usually Alt); the obvious-looking `metaKey`→`ModMeta` mapping would
 silently break Cmd chords on macOS.
 
-**The text state machine — exactly one insertion per user action (r4 must-fix 1).**
-Rev 3 emitted from both `input` and `compositionend`, but an ordinary IME
-completion fires *both*, so committed text was inserted twice. Paste has the same
-shape: `paste` is followed by a paired `input`. The rules:
+**The text state machine — no duplication, and no lost input (r5).** Rev 4 fixed
+double insertion but introduced two new ways to *lose* input. Both are corrected
+below; the guiding rule is that a guard may only ever suppress an event
+**positively identified as the duplicate**, never "the next one".
+
+*Composition (r5 must-fix 2).* Rev 4 dropped every `input` with
+`isComposing: true` and waited for a later non-composing `input`. That ordering
+is not portable: UI Events and Input Events permit the composition `input`
+**before** `compositionend` and do **not** guarantee another `input` afterwards,
+and browsers have genuinely differed. So:
 
 | State | Event | Action |
 | --- | --- | --- |
-| idle | `compositionstart` | → composing; emit nothing |
-| composing | `compositionupdate` | emit nothing |
-| composing | `compositionend` | → idle; emit nothing |
-| any | `paste` | emit `PasteEvent`; set **suppress-next-input** |
-| idle | `input` without suppress, `isComposing: false` | emit per-rune `KeyEvent`s |
-| any | `input` with suppress set | clear the flag; emit nothing |
-| composing | `input` with `isComposing: true` | emit nothing — the commit arrives as a later non-composing `input` |
+| idle | `compositionstart` | → composing; clear the buffer |
+| composing | `compositionupdate` | buffer `data`; emit nothing |
+| composing | `input` with `isComposing: true` | buffer the value; **emit nothing yet** |
+| composing | `compositionend` | **emit** `event.data` (per rune); arm a dedup guard holding that exact text; → idle |
+| composing | cancellation (empty `compositionend`, or Escape) | discard the buffer; emit nothing |
+| idle | `input` matching the armed guard's text with `inputType` ∈ {`insertCompositionText`, `insertText`} | consume the guard; emit nothing (it is the duplicate) |
+| idle | any other `input` with `isComposing: false` | emit per-rune `KeyEvent`s |
 
-`input` is therefore the **only** text emitter; composition and paste are state
-transitions. Acceptance replays complete sequences — a full IME composition
-(`compositionstart`→`update`×n→`end`→`input`) and a paste (`paste`→`input`) —
-asserting **exactly one** insertion each.
+Emitting **at `compositionend`** using its `data` is what makes both orderings
+safe: an `input` that arrived *before* the end is buffered rather than lost, and
+one arriving *after* is recognised by **content plus `inputType`** rather than by
+position, so it can never swallow an unrelated keystroke. The guard is cleared on
+the next event either way.
+
+*Paste (r5 must-fix 1).* Rev 4 armed an unqualified suppress-next-input flag —
+which was wrong twice over. Because the table calls `preventDefault` on `paste`,
+the Clipboard API does **not** queue the resulting insertion, so **there is no
+paired `input` to suppress**; the flag would therefore have discarded the next
+genuinely typed character. Corrected: `paste` emits `PasteEvent` and expects **no
+following `input`**. Any defensive dedup must be qualified by
+`inputType === "insertFromPaste"` **and** matching content, scoped to that paste
+action — never a positional "next input".
+
+Acceptance replays, and asserts exactly one insertion or none as appropriate:
+composition-then-`input`; `input`-then-`compositionend`; a cancelled
+composition; **a cancelled paste followed immediately by ordinary typing, proving
+the typed character survives**; and a paste with no trailing `input`. Because
+these orderings are browser-specific, the suite is pinned in **real Chromium,
+Firefox and WebKit** rather than synthetic dispatch alone (build-tagged,
+skipping cleanly where no browser is available).
 
 **Resource limits — concrete defaults, all configurable:**
 
@@ -508,8 +535,9 @@ Acceptance criteria:
     consume.
 10a. `Origin` validation denies by default and is enforced **even when mTLS is
     in use**; a cross-origin handshake is refused; a ticket cannot be redeemed
-    twice (atomic consume), and no `App` is created or input accepted before the
-    consume succeeds.
+    twice (atomic consume). **No `App` is created and no input accepted before
+    `Policy.Authenticate` succeeds — on every branch — and, on the ticket branch
+    only, before the atomic consume succeeds.**
 10b. The ticket never appears in a request URL, an access log, or any server log;
     a test asserts the fragment-plus-first-message flow **and** that the client
     scrubs the fragment via `history.replaceState` before opening the socket.
@@ -573,6 +601,33 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **r5 (2026-08-21, lector — `change_requested`, folded in rev 5).** The r4
+  corrections (per-rune parity, zero `Base`/`Shifted`, `ModSuper`, `Policy`,
+  AltGraph) were accepted, but the state machine I had *just added* could lose
+  input in two ways. **Must-fix 1:** the table `preventDefault`s `paste`, and a
+  cancelled paste means the Clipboard API never queues the resulting insertion —
+  so there is no paired `input`, and my unqualified suppress-next-input flag
+  would have discarded the **next genuinely typed character**. `paste` now
+  expects no following `input`, and any defensive dedup must be qualified by
+  `inputType === "insertFromPaste"` plus matching content, scoped to that action.
+  **Must-fix 2:** `compositionend` → `input` is not a portable ordering — UI
+  Events/Input Events permit the composition `input` *before* the end and do not
+  guarantee one after, and browsers differ — so rev 4's "drop composing input and
+  wait" could lose the composed text entirely. The machine now buffers during
+  composition, **emits at `compositionend` from `event.data`**, and dedups a
+  trailing `input` by **content plus `inputType`** rather than by position, which
+  makes both orderings safe and cannot swallow an unrelated key. Both orderings,
+  cancellation, and cancelled-paste-then-typing are pinned in real Chromium,
+  Firefox and WebKit rather than synthetic dispatch alone. **Amendments:** the
+  table rewrite is finished — resolution step 4 no longer says
+  `input`/`compositionend`, and the modified-key row now shows `Base: 0`,
+  `Shifted: 0`, `ModSuper`, and `Code` derived from `KeyboardEvent.key` instead
+  of a base-layout codepoint the DOM does not expose; acceptance 10a states
+  policy success for every branch and consume for the ticket branch only.
+  **AltGraph:** lector agreed the conservative default is right — swallowing
+  legitimate Ctrl+Alt chords is the worse failure, so `getModifierState` stays
+  the only automatic signal with the opt-in for layouts that misreport.
 
 - **r4 (2026-08-21, lector — `change_requested`, folded in rev 4).**
   **Must-fix 1:** committed text had **two** emitters — an ordinary IME
