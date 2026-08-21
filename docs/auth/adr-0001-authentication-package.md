@@ -1,7 +1,8 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Proposed (rev 4)** (2026-08-21 — authored by jarvis; lector
-  design r1-r3 `change_requested` folded and r4's `approved_with_amendments` applied — undefined identity
+- **Status:** **Accepted (rev 4)** (2026-08-21 — authored by jarvis; lector
+  design r1-r3 `change_requested` folded, r4 **approved** by lector, and
+  **accepted by Johno 2026-08-21** — implementation started — undefined identity
   composition, an unenforceable factor rule, a reversed password-KDF decision,
   and r2's leaf/interface type contradiction. See Review history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
