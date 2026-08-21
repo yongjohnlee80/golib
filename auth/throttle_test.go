@@ -16,8 +16,8 @@ import (
 var errWrong = errors.New("wrong credential")
 
 // countingFactor records how many times it was actually invoked, which is how
-// the "work happens on every path" property is asserted structurally rather than
-// by a stopwatch.
+// "work happens on every path" is asserted structurally rather than by a
+// stopwatch. It implements Claimant, reading the "subject" credential.
 type countingFactor struct {
 	calls   atomic.Int64
 	succeed func(*Request) bool
@@ -25,11 +25,33 @@ type countingFactor struct {
 
 func (c *countingFactor) Kind() FactorKind { return FactorIdentity }
 
+func (c *countingFactor) Claim(r *Request) string {
+	if r == nil {
+		return ""
+	}
+	return r.Credentials["subject"].Reveal()
+}
+
 func (c *countingFactor) Verify(_ context.Context, r *Request) (Contribution, error) {
 	c.calls.Add(1)
 	if c.succeed != nil && c.succeed(r) {
-		return Contribution{Method: "fake", Subject: claimedSubject(r), IssuedAt: time.Now()}, nil
+		return Contribution{Method: "fake", Subject: c.Claim(r), IssuedAt: time.Now()}, nil
 	}
+	return Contribution{}, errWrong
+}
+
+// opaqueFactor cannot name a principal before verifying — the shape of a bearer
+// token or an mTLS chain. It deliberately does NOT implement Claimant.
+type opaqueFactor struct {
+	calls    atomic.Int64
+	consumed atomic.Int64
+}
+
+func (o *opaqueFactor) Kind() FactorKind { return FactorIdentity }
+func (o *opaqueFactor) Verify(context.Context, *Request) (Contribution, error) {
+	o.calls.Add(1)
+	// Models a single-use credential: consumed atomically on presentation.
+	o.consumed.Add(1)
 	return Contribution{}, errWrong
 }
 
@@ -39,6 +61,7 @@ type recordingTracker struct {
 	mu    sync.Mutex
 	ops   []string
 	inner Tracker
+	fail  error
 }
 
 func (t *recordingTracker) log(op string) {
@@ -50,9 +73,7 @@ func (t *recordingTracker) log(op string) {
 func (t *recordingTracker) sequence() []string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	out := make([]string, len(t.ops))
-	copy(out, t.ops)
-	return out
+	return append([]string(nil), t.ops...)
 }
 
 func (t *recordingTracker) reset() {
@@ -61,19 +82,28 @@ func (t *recordingTracker) reset() {
 	t.mu.Unlock()
 }
 
-func (t *recordingTracker) Locked(k string, now time.Time) (bool, time.Duration) {
-	t.log("locked " + k)
-	return t.inner.Locked(k, now)
+func (t *recordingTracker) Locked(ctx context.Context, k string, now time.Time) (bool, time.Duration, error) {
+	t.log("locked " + k[:2])
+	if t.fail != nil {
+		return false, 0, t.fail
+	}
+	return t.inner.Locked(ctx, k, now)
 }
 
-func (t *recordingTracker) Fail(k string, now time.Time) time.Duration {
-	t.log("fail " + k)
-	return t.inner.Fail(k, now)
+func (t *recordingTracker) Fail(ctx context.Context, k string, now time.Time) (time.Duration, error) {
+	t.log("fail " + k[:2])
+	if t.fail != nil {
+		return 0, t.fail
+	}
+	return t.inner.Fail(ctx, k, now)
 }
 
-func (t *recordingTracker) Reset(k string) {
-	t.log("reset " + k)
-	t.inner.Reset(k)
+func (t *recordingTracker) Reset(ctx context.Context, k string) error {
+	t.log("reset " + k[:2])
+	if t.fail != nil {
+		return t.fail
+	}
+	return t.inner.Reset(ctx, k)
 }
 
 func attempt(subject string, addr string) *Request {
@@ -84,31 +114,126 @@ func attempt(subject string, addr string) *Request {
 	return r
 }
 
-// --- the property that matters ---------------------------------------------
+func tracker(t *testing.T, max int, b Backoff) *MemTracker {
+	t.Helper()
+	m, err := NewMemTracker(max, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
 
-// Every path must perform the SAME tracker operations in the SAME order, and
-// must run the inner factor exactly once. Otherwise the fast path identifies
-// itself: only an existing account can be locked out, so detecting lockout by
-// timing enumerates users.
+func fastBackoff() Backoff {
+	return Backoff{Threshold: 1, Base: time.Minute, Max: time.Minute, Forget: time.Hour}
+}
+
+// --- construction contract --------------------------------------------------
+
+// Per-subject lockout is impossible for a factor that cannot name a principal
+// before verifying. Defaulting would put every such client on ONE shared
+// counter, so any one attacker could lock out everybody while their own address
+// counter stayed clean. That must be a construction error, not a surprise.
+func TestNewThrottle_RequiresADeterminedSubjectSource(t *testing.T) {
+	t.Parallel()
+
+	if _, err := NewThrottle(&opaqueFactor{}, tracker(t, 0, Backoff{})); err == nil {
+		t.Fatal("a factor without Claimant must not silently get a shared global counter")
+	} else if !containsAll(err.Error(), "auth.Claimant", "auth.SubjectClaim", "auth.AddressOnly") {
+		t.Errorf("the error must name all three ways out: %v", err)
+	}
+
+	// All three ways out work.
+	if _, err := NewThrottle(&opaqueFactor{}, tracker(t, 0, Backoff{}), AddressOnly()); err != nil {
+		t.Errorf("AddressOnly: %v", err)
+	}
+	if _, err := NewThrottle(&opaqueFactor{}, tracker(t, 0, Backoff{}),
+		SubjectClaim(func(*Request) string { return "x" })); err != nil {
+		t.Errorf("SubjectClaim: %v", err)
+	}
+	if _, err := NewThrottle(&countingFactor{}, tracker(t, 0, Backoff{})); err != nil {
+		t.Errorf("a Claimant factor needs no option: %v", err)
+	}
+
+	// Contradictory options are a mistake, not a precedence puzzle.
+	if _, err := NewThrottle(&countingFactor{}, tracker(t, 0, Backoff{}),
+		AddressOnly(), SubjectClaim(func(*Request) string { return "x" })); err == nil {
+		t.Error("AddressOnly + SubjectClaim must be refused")
+	}
+	if _, err := NewThrottle(nil, tracker(t, 0, Backoff{})); err == nil {
+		t.Error("a nil factor must fail at construction")
+	}
+	if _, err := NewThrottle(&countingFactor{}, nil); err == nil {
+		t.Error("a nil Tracker must fail at construction, not silently disable counting")
+	}
+}
+
+func containsAll(s string, subs ...string) bool {
+	for _, sub := range subs {
+		found := false
+		for i := 0; i+len(sub) <= len(s); i++ {
+			if s[i:i+len(sub)] == sub {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// An attempt that names no principal must NOT share a counter with every other
+// such attempt: that is the global-lockout failure in a different disguise.
+func TestThrottle_UnnamedAttemptsAreScopedToTheirAddress(t *testing.T) {
+	t.Parallel()
+	inner := &countingFactor{}
+	mem := tracker(t, 1024, fastBackoff())
+	th, err := NewThrottle(inner, mem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two failures from address .1 with no subject claim: enough to lock.
+	for range 2 {
+		_, _ = th.Verify(context.Background(), attempt("", "10.0.0.1:1"))
+	}
+	if _, err := th.Verify(context.Background(), attempt("", "10.0.0.1:1")); !errors.Is(err, ErrThrottled) {
+		t.Fatalf("err = %v: the unattributed counter is not accumulating", err)
+	}
+	// A DIFFERENT address, also unnamed, must be unaffected.
+	if _, err := th.Verify(context.Background(), attempt("", "10.0.0.2:1")); !errors.Is(err, errWrong) {
+		t.Errorf("err = %v: unnamed attempts share one global counter across addresses", err)
+	}
+	// And a named subject from a clean address is unaffected too.
+	if _, err := th.Verify(context.Background(), attempt("alice", "10.0.0.3:1")); !errors.Is(err, errWrong) {
+		t.Errorf("err = %v: the unattributed counter leaked into named subjects", err)
+	}
+}
+
+// --- the timing property ----------------------------------------------------
+
+// Within subject mode every path must perform the SAME tracker operations in the
+// SAME order and run the inner factor exactly once. Otherwise the fast path
+// identifies itself: only an existing account can be locked out, so detecting
+// lockout by timing enumerates users.
 func TestThrottle_AllPathsDoEqualWork(t *testing.T) {
 	t.Parallel()
 
 	known := "alice"
 	inner := &countingFactor{succeed: func(r *Request) bool {
-		return claimedSubject(r) == known && r.Credentials["password"].Reveal() == "right"
+		return r.Credentials["subject"].Reveal() == known && r.Credentials["password"].Reveal() == "right"
 	}}
-	rec := &recordingTracker{inner: NewMemTracker(8, Backoff{Threshold: 1, Base: time.Minute, Max: time.Minute, Forget: time.Hour})}
+	rec := &recordingTracker{inner: tracker(t, 8, fastBackoff())}
 	th, err := NewThrottle(inner, rec)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Lock alice out first, so the "locked" path is reachable below.
 	for range 3 {
 		_, _ = th.Verify(context.Background(), attempt(known, "10.0.0.9:1"))
 	}
-	if locked, _ := rec.inner.Locked("s:"+known, time.Now()); !locked {
-		t.Fatal("fixture failed: alice is not locked out")
+	if _, err := th.Verify(context.Background(), attempt(known, "10.0.0.9:1")); !errors.Is(err, ErrThrottled) {
+		t.Fatalf("fixture failed: alice is not locked out (%v)", err)
 	}
 
 	paths := []struct {
@@ -118,81 +243,30 @@ func TestThrottle_AllPathsDoEqualWork(t *testing.T) {
 		{"unknown subject", attempt("nobody", "10.0.0.1:1")},
 		{"known subject, wrong credential", attempt("bob", "10.0.0.2:1")},
 		{"locked", attempt(known, "10.0.0.3:1")},
-		{"no claim at all", &Request{}},
 	}
 	var want []string
 	for _, p := range paths {
 		t.Run(p.name, func(t *testing.T) {
 			rec.reset()
 			before := inner.calls.Load()
-			_, err := th.Verify(context.Background(), p.r)
-			if err == nil {
+			if _, err := th.Verify(context.Background(), p.r); err == nil {
 				t.Fatal("this path must fail")
 			}
 			if got := inner.calls.Load() - before; got != 1 {
 				t.Errorf("inner factor ran %d times, want exactly 1: a path that "+
 					"skips the work identifies itself by timing", got)
 			}
-			got := shape(rec.sequence())
+			got := rec.sequence()
 			if want == nil {
 				want = got
-			} else if !equal(want, got) {
-				t.Errorf("operation shape = %v, want %v (identical to the other paths)", got, want)
+			} else if !equalSeq(want, got) {
+				t.Errorf("operation sequence = %v, want %v (identical to the other paths)", got, want)
 			}
 		})
 	}
 }
 
-// A full tracker must not change the shape of the work either.
-func TestThrottle_TrackerFullPathIsIdentical(t *testing.T) {
-	t.Parallel()
-	inner := &countingFactor{}
-	// max 2 records, and the throttle writes two per attempt, so the table is
-	// full from the very first attempt onward.
-	mem := NewMemTracker(2, Backoff{Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour})
-	rec := &recordingTracker{inner: mem}
-	th, err := NewThrottle(inner, rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var shapes [][]string
-	for i := range 20 {
-		rec.reset()
-		before := inner.calls.Load()
-		_, _ = th.Verify(context.Background(), attempt(fmt.Sprintf("user%d", i), fmt.Sprintf("10.0.%d.%d:1", i/256, i%256)))
-		if got := inner.calls.Load() - before; got != 1 {
-			t.Fatalf("attempt %d: inner ran %d times, want 1", i, got)
-		}
-		shapes = append(shapes, shape(rec.sequence()))
-	}
-	for i, s := range shapes {
-		if !equal(shapes[0], s) {
-			t.Errorf("attempt %d shape = %v, want %v: a full tracker takes a different path", i, s, shapes[0])
-		}
-	}
-	if n := mem.Len(); n > 2 {
-		t.Errorf("tracker holds %d records, cap is 2 — the bound is not enforced", n)
-	}
-}
-
-// shape strips the key from each op, leaving the operation sequence. The KEYS
-// legitimately differ between paths; the sequence must not.
-func shape(ops []string) []string {
-	out := make([]string, 0, len(ops))
-	for _, op := range ops {
-		for i := range len(op) {
-			if op[i] == ' ' {
-				// keep the namespace prefix (s:/a:) so ordering is checked too
-				out = append(out, op[:i+1]+op[i+1:i+3])
-				break
-			}
-		}
-	}
-	return out
-}
-
-func equal(a, b []string) bool {
+func equalSeq(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -204,52 +278,329 @@ func equal(a, b []string) bool {
 	return true
 }
 
+// A full tracker must not change the shape OR the cost of the work. Criterion 4
+// requires both a structural and a wall-clock check, so this does both, with a
+// negative control proving the measurement can actually see an O(cap) regression.
+func TestThrottle_TrackerFullPathIsEquivalent(t *testing.T) {
+	const cap = 4096
+
+	inner := &countingFactor{}
+	full := tracker(t, cap, Backoff{Threshold: 1_000_000, Base: time.Second, Max: time.Second, Forget: time.Hour})
+	rec := &recordingTracker{inner: full}
+	th, err := NewThrottle(inner, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fill the table, then keep going: every further attempt is a miss at
+	// capacity, which is the path an attacker triggers at will.
+	now := time.Now()
+	for i := 0; full.Len() < cap; i++ {
+		if _, err := full.Fail(context.Background(), fmt.Sprintf("s:pad-%d", i), now); err != nil {
+			t.Fatal(err)
+		}
+		if i > cap*4 {
+			t.Fatalf("could not fill the tracker: Len = %d", full.Len())
+		}
+	}
+
+	var shapes [][]string
+	for i := range 20 {
+		rec.reset()
+		before := inner.calls.Load()
+		_, _ = th.Verify(context.Background(), attempt(fmt.Sprintf("user%d", i), fmt.Sprintf("10.%d.%d.1:1", i/256, i%256)))
+		if got := inner.calls.Load() - before; got != 1 {
+			t.Fatalf("attempt %d: inner ran %d times, want 1", i, got)
+		}
+		shapes = append(shapes, rec.sequence())
+	}
+	for i, s := range shapes {
+		if !equalSeq(shapes[0], s) {
+			t.Errorf("attempt %d sequence = %v, want %v: a full tracker takes a different path", i, s, shapes[0])
+		}
+	}
+	if n := full.Len(); n > cap {
+		t.Fatalf("tracker holds %d records, cap is %d — the bound is not enforced", n, cap)
+	}
+
+	// --- wall clock -----------------------------------------------------
+	const iterations = 300
+	atCapacity := timeInserts(t, full, iterations, "hot")
+
+	empty := tracker(t, cap, Backoff{Threshold: 1_000_000, Base: time.Second, Max: time.Second, Forget: time.Hour})
+	notFull := timeInserts(t, empty, iterations, "cold")
+
+	// Negative control: a deliberate O(cap) scan over a table of the same size.
+	// If the harness cannot distinguish THIS from a normal insert, it could not
+	// have detected an O(cap) eviction either, and the assertion below would be
+	// vacuous.
+	fullScan := timeFullScan(full, iterations)
+
+	ratio := float64(atCapacity) / float64(notFull)
+	controlRatio := float64(fullScan) / float64(notFull)
+	t.Logf("at-capacity %v, not-full %v (ratio %.1fx); O(cap) control %v (ratio %.1fx)",
+		atCapacity, notFull, ratio, fullScan, controlRatio)
+
+	if controlRatio < 10 {
+		t.Fatalf("the negative control is only %.1fx slower than a normal insert, so this "+
+			"measurement could not detect an O(cap) regression — the assertion below is vacuous", controlRatio)
+	}
+	// Tolerant: the sampled eviction does strictly more work than a plain insert
+	// (a few map lookups and deletes), just not work proportional to the cap.
+	const allowed = 10
+	if ratio > allowed {
+		t.Errorf("inserting at capacity is %.1fx a normal insert (limit %dx): eviction work "+
+			"looks proportional to the table size, which is both a DoS amplifier and a "+
+			"timing signal for \"new key at capacity\"", ratio, allowed)
+	}
+}
+
+// timeInserts measures per-insert cost for keys that are misses.
+func timeInserts(t *testing.T, m *MemTracker, n int, tag string) time.Duration {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now()
+	// Warm up, so the first-touch cost of the map does not land in the sample.
+	for i := range 32 {
+		if _, err := m.Fail(ctx, fmt.Sprintf("warm-%s-%d", tag, i), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := time.Now()
+	for i := range n {
+		if _, err := m.Fail(ctx, fmt.Sprintf("bench-%s-%d", tag, i), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return time.Since(start) / time.Duration(n)
+}
+
+// timeFullScan is the negative control: what an O(cap) implementation costs.
+func timeFullScan(m *MemTracker, n int) time.Duration {
+	start := time.Now()
+	for range n {
+		m.mu.Lock()
+		var oldest time.Time
+		var have bool
+		for _, rec := range m.records {
+			if !have || rec.lastSeen.Before(oldest) {
+				oldest, have = rec.lastSeen, true
+			}
+		}
+		m.mu.Unlock()
+	}
+	return time.Since(start) / time.Duration(n)
+}
+
+// --- address-only mode ------------------------------------------------------
+
+// Address-only mode short-circuits when locked, and MUST, because a single-use
+// credential factor consumes its credential on presentation: running it on a
+// denied attempt destroys a valid ticket and throws the proof away.
+func TestThrottle_AddressOnlyDoesNotBurnTheCredentialWhenLocked(t *testing.T) {
+	t.Parallel()
+	inner := &opaqueFactor{}
+	mem := tracker(t, 64, fastBackoff())
+	th, err := NewThrottle(inner, mem, AddressOnly())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	r := &Request{Peer: netip.MustParseAddrPort("10.0.0.4:1")}
+
+	// Two real attempts lock the address.
+	for range 2 {
+		if _, err := th.Verify(ctx, r); !errors.Is(err, errWrong) {
+			t.Fatalf("err = %v", err)
+		}
+	}
+	consumedBefore := inner.consumed.Load()
+	if _, err := th.Verify(ctx, r); !errors.Is(err, ErrThrottled) {
+		t.Fatalf("err = %v, want ErrThrottled", err)
+	}
+	if got := inner.consumed.Load(); got != consumedBefore {
+		t.Errorf("the factor consumed %d more credentials on a DENIED attempt — a valid "+
+			"single-use ticket would have been destroyed and its proof discarded", got-consumedBefore)
+	}
+	// Still counted, so hammering a locked address does not reset it.
+	if locked, _, _ := mem.Locked(ctx, trackerKey("a", "10.0.0.4"), time.Now()); !locked {
+		t.Error("a locked attempt must still count as a failure")
+	}
+}
+
+// Address-only mode keys nothing on a subject, so one address cannot lock out
+// another.
+func TestThrottle_AddressOnlyIsPerAddress(t *testing.T) {
+	t.Parallel()
+	inner := &opaqueFactor{}
+	mem := tracker(t, 64, fastBackoff())
+	th, err := NewThrottle(inner, mem, AddressOnly())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for range 3 {
+		_, _ = th.Verify(ctx, &Request{Peer: netip.MustParseAddrPort("10.0.0.5:1")})
+	}
+	if _, err := th.Verify(ctx, &Request{Peer: netip.MustParseAddrPort("10.0.0.6:1")}); !errors.Is(err, errWrong) {
+		t.Errorf("err = %v: one address locked out another", err)
+	}
+}
+
+// --- outage policy ----------------------------------------------------------
+
+// A tracker that cannot answer cannot protect anything, so the default denies.
+// Continuing would mean running with brute-force protection silently off.
+func TestThrottle_TrackerOutageFailsClosedByDefault(t *testing.T) {
+	t.Parallel()
+	inner := &countingFactor{succeed: func(*Request) bool { return true }}
+	var reported []error
+	rec := &recordingTracker{inner: tracker(t, 8, fastBackoff()), fail: errors.New("redis down")}
+	th, err := NewThrottle(inner, rec, OnTrackerError(func(e error) { reported = append(reported, e) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = th.Verify(context.Background(), attempt("alice", "10.0.0.7:1"))
+	if !errors.Is(err, ErrTrackerUnavailable) {
+		t.Fatalf("err = %v, want ErrTrackerUnavailable", err)
+	}
+	if inner.calls.Load() != 0 {
+		t.Error("fail-closed must not run the factor at all")
+	}
+	if len(reported) == 0 {
+		t.Error("a tracker outage that nobody is told about is invisible")
+	}
+}
+
+// FailOpen is a deliberate availability-over-security choice and must actually
+// admit.
+func TestThrottle_FailOpenAdmits(t *testing.T) {
+	t.Parallel()
+	inner := &countingFactor{succeed: func(*Request) bool { return true }}
+	rec := &recordingTracker{inner: tracker(t, 8, fastBackoff()), fail: errors.New("redis down")}
+	th, err := NewThrottle(inner, rec, FailOpen())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := th.Verify(context.Background(), attempt("alice", "10.0.0.8:1"))
+	if err != nil {
+		t.Fatalf("FailOpen must admit a correct credential during an outage: %v", err)
+	}
+	if got.Subject != "alice" {
+		t.Errorf("contribution = %+v", got)
+	}
+	if inner.calls.Load() != 1 {
+		t.Errorf("inner ran %d times, want 1", inner.calls.Load())
+	}
+}
+
+// A tracker write failure on the SUCCESS path must not turn a correct credential
+// into a rejection.
+func TestThrottle_ResetFailureDoesNotFailAuth(t *testing.T) {
+	t.Parallel()
+	inner := &countingFactor{succeed: func(*Request) bool { return true }}
+	var reported []error
+	th, err := NewThrottle(inner, &writeFailTracker{inner: tracker(t, 8, fastBackoff())},
+		OnTrackerError(func(e error) { reported = append(reported, e) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := th.Verify(context.Background(), attempt("alice", "10.0.0.9:1")); err != nil {
+		t.Fatalf("a failed Reset must not fail the authentication: %v", err)
+	}
+	if len(reported) == 0 {
+		t.Error("the failed write was never reported")
+	}
+}
+
+type writeFailTracker struct{ inner Tracker }
+
+func (w *writeFailTracker) Locked(ctx context.Context, k string, now time.Time) (bool, time.Duration, error) {
+	return w.inner.Locked(ctx, k, now)
+}
+func (w *writeFailTracker) Fail(ctx context.Context, k string, now time.Time) (time.Duration, error) {
+	return w.inner.Fail(ctx, k, now)
+}
+func (w *writeFailTracker) Reset(context.Context, string) error { return errors.New("write failed") }
+
+// The seam must be able to honor the caller's deadline, which is why it takes a
+// context at all.
+func TestTracker_SeamCarriesContext(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ct := &ctxTracker{}
+	th, err := NewThrottle(&countingFactor{}, ct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := th.Verify(ctx, attempt("alice", "10.0.0.1:1")); !errors.Is(err, ErrTrackerUnavailable) {
+		t.Errorf("err = %v: a network-backed tracker could not honor the deadline", err)
+	}
+	if !ct.sawContext {
+		t.Error("the tracker never received the context")
+	}
+}
+
+type ctxTracker struct{ sawContext bool }
+
+func (c *ctxTracker) Locked(ctx context.Context, _ string, _ time.Time) (bool, time.Duration, error) {
+	c.sawContext = true
+	return false, 0, ctx.Err()
+}
+func (c *ctxTracker) Fail(ctx context.Context, _ string, _ time.Time) (time.Duration, error) {
+	return 0, ctx.Err()
+}
+func (c *ctxTracker) Reset(ctx context.Context, _ string) error { return ctx.Err() }
+
+// --- behavior ---------------------------------------------------------------
+
 // A correct credential arriving DURING backoff must still be refused and must
 // still count. If it reset the counter, the lockout would be bypassable by
 // retrying — which is the whole thing it exists to prevent.
 func TestThrottle_LockedRefusesEvenACorrectCredential(t *testing.T) {
 	t.Parallel()
 	inner := &countingFactor{succeed: func(*Request) bool { return true }}
-	mem := NewMemTracker(16, Backoff{Threshold: 1, Base: time.Hour, Max: time.Hour, Forget: 2 * time.Hour})
+	mem := tracker(t, 16, Backoff{Threshold: 1, Base: time.Hour, Max: time.Hour, Forget: 2 * time.Hour})
 	th, err := NewThrottle(inner, mem)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Two failures against the same subject via a factor that always succeeds is
-	// impossible, so lock the keys directly.
+	ctx := context.Background()
+	key := trackerKey("s", "alice")
 	now := time.Now()
-	mem.Fail("s:alice", now)
-	mem.Fail("s:alice", now)
+	if _, err := mem.Fail(ctx, key, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mem.Fail(ctx, key, now); err != nil {
+		t.Fatal(err)
+	}
 
-	_, err = th.Verify(context.Background(), attempt("alice", "10.0.0.1:1"))
-	if !errors.Is(err, ErrThrottled) {
+	if _, err := th.Verify(ctx, attempt("alice", "10.0.0.1:1")); !errors.Is(err, ErrThrottled) {
 		t.Fatalf("err = %v, want ErrThrottled", err)
 	}
-	if locked, _ := mem.Locked("s:alice", time.Now()); !locked {
+	if locked, _, _ := mem.Locked(ctx, key, time.Now()); !locked {
 		t.Error("a locked attempt must count as a failure, or backoff is bypassable by retrying")
 	}
 }
 
-// Success clears the counters, so a legitimate user who mistypes twice is not
-// penalised later.
 func TestThrottle_SuccessResets(t *testing.T) {
 	t.Parallel()
-	right := func(r *Request) bool { return r.Credentials["password"].Reveal() == "right" }
-	inner := &countingFactor{succeed: right}
-	mem := NewMemTracker(16, Backoff{Threshold: 3, Base: time.Minute, Max: time.Minute, Forget: time.Hour})
+	inner := &countingFactor{succeed: func(r *Request) bool { return r.Credentials["password"].Reveal() == "right" }}
+	mem := tracker(t, 16, Backoff{Threshold: 3, Base: time.Minute, Max: time.Minute, Forget: time.Hour})
 	th, err := NewThrottle(inner, mem)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bad := attempt("alice", "10.0.0.1:1")
+	ctx := context.Background()
 	for range 2 {
-		if _, err := th.Verify(context.Background(), bad); !errors.Is(err, errWrong) {
+		if _, err := th.Verify(ctx, attempt("alice", "10.0.0.1:1")); !errors.Is(err, errWrong) {
 			t.Fatalf("err = %v, want the inner error passed through", err)
 		}
 	}
 	good := attempt("alice", "10.0.0.1:1")
 	good.Credentials["password"] = NewSecret("right")
-	got, err := th.Verify(context.Background(), good)
+	got, err := th.Verify(ctx, good)
 	if err != nil {
 		t.Fatalf("a correct credential below the threshold must succeed: %v", err)
 	}
@@ -266,19 +617,19 @@ func TestThrottle_SuccessResets(t *testing.T) {
 func TestThrottle_AddressCounterIsIndependent(t *testing.T) {
 	t.Parallel()
 	inner := &countingFactor{}
-	mem := NewMemTracker(1024, Backoff{Threshold: 3, Base: time.Minute, Max: time.Minute, Forget: time.Hour})
+	mem := tracker(t, 1024, Backoff{Threshold: 3, Base: time.Minute, Max: time.Minute, Forget: time.Hour})
 	th, err := NewThrottle(inner, mem)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Four distinct subjects, one source. No subject reaches the threshold.
+	ctx := context.Background()
 	for i := range 4 {
-		_, _ = th.Verify(context.Background(), attempt(fmt.Sprintf("user%d", i), "10.0.0.7:1"))
+		_, _ = th.Verify(ctx, attempt(fmt.Sprintf("user%d", i), "10.0.0.7:1"))
 	}
-	if locked, _ := mem.Locked("s:user0", time.Now()); locked {
+	if locked, _, _ := mem.Locked(ctx, trackerKey("s", "user0"), time.Now()); locked {
 		t.Error("no single subject should be locked after one failure each")
 	}
-	if locked, _ := mem.Locked("a:10.0.0.7", time.Now()); !locked {
+	if locked, _, _ := mem.Locked(ctx, trackerKey("a", "10.0.0.7"), time.Now()); !locked {
 		t.Error("the source address must be locked: a user-list walk accumulates nowhere else")
 	}
 }
@@ -288,15 +639,16 @@ func TestThrottle_AddressCounterIsIndependent(t *testing.T) {
 func TestThrottle_PortIsNotPartOfTheAddressKey(t *testing.T) {
 	t.Parallel()
 	inner := &countingFactor{}
-	mem := NewMemTracker(1024, Backoff{Threshold: 2, Base: time.Minute, Max: time.Minute, Forget: time.Hour})
+	mem := tracker(t, 1024, Backoff{Threshold: 2, Base: time.Minute, Max: time.Minute, Forget: time.Hour})
 	th, err := NewThrottle(inner, mem)
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx := context.Background()
 	for i := range 3 {
-		_, _ = th.Verify(context.Background(), attempt("alice", fmt.Sprintf("10.0.0.8:%d", 1000+i)))
+		_, _ = th.Verify(ctx, attempt("alice", fmt.Sprintf("10.0.0.8:%d", 1000+i)))
 	}
-	if locked, _ := mem.Locked("a:10.0.0.8", time.Now()); !locked {
+	if locked, _, _ := mem.Locked(ctx, trackerKey("a", "10.0.0.8"), time.Now()); !locked {
 		t.Fatal("three attempts from three ports did not accumulate: the port is in the key")
 	}
 	if mem.Len() != 2 {
@@ -304,27 +656,9 @@ func TestThrottle_PortIsNotPartOfTheAddressKey(t *testing.T) {
 	}
 }
 
-func TestNewThrottle_Validation(t *testing.T) {
-	t.Parallel()
-	if _, err := NewThrottle(nil, NewMemTracker(0, Backoff{})); err == nil {
-		t.Error("a nil factor must fail at construction")
-	}
-	if _, err := NewThrottle(&countingFactor{}, nil); err == nil {
-		t.Error("a nil Tracker must fail at construction, not silently disable counting")
-	}
-	if _, err := NewThrottle(&countingFactor{}, NewMemTracker(0, Backoff{}), SubjectKey(nil)); err == nil {
-		t.Error("SubjectKey(nil) must fail: it would disable per-subject counting")
-	}
-	if _, err := NewThrottle(&countingFactor{}, NewMemTracker(0, Backoff{}), AddressKey(nil)); err == nil {
-		t.Error("AddressKey(nil) must fail")
-	}
-}
-
-// Throttling changes when a factor admits, never what it proves, so the wrapper
-// must be transparent to policy construction.
 func TestThrottle_PreservesKindAndPolicyValidity(t *testing.T) {
 	t.Parallel()
-	th, err := NewThrottle(&countingFactor{}, NewMemTracker(0, Backoff{}))
+	th, err := NewThrottle(&countingFactor{}, tracker(t, 0, Backoff{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,55 +670,85 @@ func TestThrottle_PreservesKindAndPolicyValidity(t *testing.T) {
 	}
 }
 
+// --- keys -------------------------------------------------------------------
+
+// An entry cap bounds the NUMBER of records; it bounds MEMORY only if the keys
+// are fixed width. Otherwise 16,384 arbitrarily long attacker-chosen strings sit
+// inside the cap.
+func TestTrackerKey_IsFixedWidth(t *testing.T) {
+	t.Parallel()
+	base := len(trackerKey("s", "a"))
+	for _, v := range []string{"", "alice", "alice@example.com",
+		fmt.Sprintf("%0*d", 1<<20, 7), string(make([]byte, 5<<20))} {
+		if got := len(trackerKey("s", v)); got != base {
+			t.Errorf("key for a %d-byte value is %d bytes, want the fixed %d", len(v), got, base)
+		}
+	}
+	// Namespaces must not collide, or an address could lock out a subject of the
+	// same name.
+	if trackerKey("s", "x") == trackerKey("a", "x") {
+		t.Error("namespaces collide")
+	}
+	if trackerKey("u", "x") == trackerKey("a", "x") {
+		t.Error("the unattributed namespace collides with the address namespace")
+	}
+	if trackerKey("s", "x") == trackerKey("s", "y") {
+		t.Error("distinct values collide")
+	}
+}
+
 // --- MemTracker -------------------------------------------------------------
 
 func TestMemTracker_BackoffGrowsAndForgets(t *testing.T) {
 	t.Parallel()
 	b := Backoff{Threshold: 2, Base: time.Second, Max: 8 * time.Second, Forget: time.Minute}
-	m := NewMemTracker(16, b)
+	m := tracker(t, 16, b)
+	ctx := context.Background()
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 
-	// The first Threshold failures are free.
 	for i := 1; i <= 2; i++ {
-		if d := m.Fail("k", now); d != 0 {
+		if d, _ := m.Fail(ctx, "k", now); d != 0 {
 			t.Fatalf("failure %d: backoff = %v, want 0 (below the threshold)", i, d)
 		}
-		if locked, _ := m.Locked("k", now); locked {
+		if locked, _, _ := m.Locked(ctx, "k", now); locked {
 			t.Fatalf("failure %d locked the key below the threshold", i)
 		}
 	}
 	for i, want := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 8 * time.Second} {
-		if d := m.Fail("k", now); d != want {
+		if d, _ := m.Fail(ctx, "k", now); d != want {
 			t.Errorf("failure %d past threshold: backoff = %v, want %v", i+1, d, want)
 		}
 	}
-	locked, retry := m.Locked("k", now)
+	locked, retry, _ := m.Locked(ctx, "k", now)
 	if !locked || retry <= 0 {
 		t.Fatalf("locked = %v retry = %v", locked, retry)
 	}
-	// Past the backoff but inside Forget: unlocked, and the count is retained.
-	if locked, _ := m.Locked("k", now.Add(9*time.Second)); locked {
+	if locked, _, _ := m.Locked(ctx, "k", now.Add(9*time.Second)); locked {
 		t.Error("still locked after the backoff elapsed")
 	}
-	// Past Forget: the run is forgotten, so the next failure starts over.
-	if locked, _ := m.Locked("k", now.Add(2*time.Minute)); locked {
+	if locked, _, _ := m.Locked(ctx, "k", now.Add(2*time.Minute)); locked {
 		t.Error("a forgotten record must not report locked")
 	}
-	if d := m.Fail("k", now.Add(2*time.Minute)); d != 0 {
+	if d, _ := m.Fail(ctx, "k", now.Add(2*time.Minute)); d != 0 {
 		t.Errorf("after Forget the count must restart: backoff = %v, want 0", d)
 	}
 }
 
 func TestMemTracker_Reset(t *testing.T) {
 	t.Parallel()
-	m := NewMemTracker(16, Backoff{Threshold: 0, Base: time.Minute, Max: time.Minute, Forget: time.Hour})
+	m := tracker(t, 16, Backoff{Threshold: 0, Base: time.Minute, Max: time.Minute, Forget: time.Hour})
+	ctx := context.Background()
 	now := time.Now()
-	m.Fail("k", now)
-	if locked, _ := m.Locked("k", now); !locked {
+	if _, err := m.Fail(ctx, "k", now); err != nil {
+		t.Fatal(err)
+	}
+	if locked, _, _ := m.Locked(ctx, "k", now); !locked {
 		t.Fatal("threshold 0 must lock on the first failure")
 	}
-	m.Reset("k")
-	if locked, _ := m.Locked("k", now); locked {
+	if err := m.Reset(ctx, "k"); err != nil {
+		t.Fatal(err)
+	}
+	if locked, _, _ := m.Locked(ctx, "k", now); locked {
 		t.Error("Reset did not clear the record")
 	}
 	if m.Len() != 0 {
@@ -392,18 +756,18 @@ func TestMemTracker_Reset(t *testing.T) {
 	}
 }
 
-// The counters are keyed by attacker-supplied values, so an unbounded map would
-// be a memory-exhaustion vector reachable WITHOUT authenticating — a defense
-// that introduces a vulnerability.
 func TestMemTracker_BoundedUnderFlood(t *testing.T) {
 	t.Parallel()
-	const cap = 64
-	m := NewMemTracker(cap, Backoff{Threshold: 1, Base: time.Second, Max: time.Second, Forget: time.Hour})
+	const size = 64
+	m := tracker(t, size, Backoff{Threshold: 1, Base: time.Second, Max: time.Second, Forget: time.Hour})
+	ctx := context.Background()
 	now := time.Now()
 	for i := range 100_000 {
-		m.Fail(fmt.Sprintf("s:flood-%d", i), now)
-		if n := m.Len(); n > cap {
-			t.Fatalf("after %d distinct keys the tracker holds %d records, cap is %d", i+1, n, cap)
+		if _, err := m.Fail(ctx, fmt.Sprintf("s:flood-%d", i), now); err != nil {
+			t.Fatal(err)
+		}
+		if n := m.Len(); n > size {
+			t.Fatalf("after %d distinct keys the tracker holds %d records, cap is %d", i+1, n, size)
 		}
 	}
 	if m.Len() == 0 {
@@ -411,31 +775,57 @@ func TestMemTracker_BoundedUnderFlood(t *testing.T) {
 	}
 }
 
-// Expired records are swept before anything live is evicted, so a flood of stale
-// keys does not cost an active victim their counter.
+// An absolute-time sentinel (time.Unix(math.MaxInt32, 0)) selects no candidate
+// once real records are dated past 2038, so nothing is evicted, the insert
+// happens anyway, and the cap silently stops being enforced.
+func TestMemTracker_BoundHoldsAfter2038(t *testing.T) {
+	t.Parallel()
+	const size = 2
+	m := tracker(t, size, Backoff{Threshold: 1, Base: time.Second, Max: time.Second, Forget: 100 * 365 * 24 * time.Hour})
+	ctx := context.Background()
+	future := time.Date(2040, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := range 50 {
+		if _, err := m.Fail(ctx, fmt.Sprintf("future-%d", i), future.Add(time.Duration(i)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if n := m.Len(); n > size {
+			t.Fatalf("with records dated 2040 the tracker grew to %d records, cap is %d "+
+				"— eviction is using an absolute-time sentinel", n, size)
+		}
+	}
+}
+
 func TestMemTracker_SweepsExpiredBeforeEvicting(t *testing.T) {
 	t.Parallel()
-	const cap = 4
-	m := NewMemTracker(cap, Backoff{Threshold: 1, Base: time.Second, Max: time.Second, Forget: time.Minute})
+	const size = 4
+	m := tracker(t, size, Backoff{Threshold: 1, Base: time.Second, Max: time.Second, Forget: time.Minute})
+	ctx := context.Background()
 	old := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
-	for i := range cap {
-		m.Fail(fmt.Sprintf("stale-%d", i), old)
+	for i := range size {
+		if _, err := m.Fail(ctx, fmt.Sprintf("stale-%d", i), old); err != nil {
+			t.Fatal(err)
+		}
 	}
-	// An hour later every record is past Forget, so a new key sweeps rather than
-	// evicting.
 	later := old.Add(time.Hour)
-	m.Fail("victim", later)
-	if _, ok := m.records["victim"]; !ok {
+	if _, err := m.Fail(ctx, "victim", later); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	_, ok := m.records["victim"]
+	n := len(m.records)
+	m.mu.Unlock()
+	if !ok {
 		t.Fatal("the new record was not stored")
 	}
-	if m.Len() != 1 {
-		t.Errorf("Len = %d, want 1: the stale records were not swept", m.Len())
+	if n > size {
+		t.Errorf("Len = %d, want at most %d", n, size)
 	}
 }
 
 func TestMemTracker_ConcurrentUse(t *testing.T) {
 	t.Parallel()
-	m := NewMemTracker(128, DefaultBackoff())
+	m := tracker(t, 128, DefaultBackoff())
+	ctx := context.Background()
 	var wg sync.WaitGroup
 	for g := range 16 {
 		wg.Add(1)
@@ -444,10 +834,10 @@ func TestMemTracker_ConcurrentUse(t *testing.T) {
 			now := time.Now()
 			for i := range 200 {
 				key := fmt.Sprintf("k%d", (g*i)%50)
-				m.Fail(key, now)
-				m.Locked(key, now)
+				_, _ = m.Fail(ctx, key, now)
+				_, _, _ = m.Locked(ctx, key, now)
 				if i%7 == 0 {
-					m.Reset(key)
+					_ = m.Reset(ctx, key)
 				}
 			}
 		}(g)
@@ -460,10 +850,7 @@ func TestMemTracker_ConcurrentUse(t *testing.T) {
 
 func TestBackoff_NoOverflow(t *testing.T) {
 	t.Parallel()
-	b := Backoff{Threshold: 0, Base: time.Second, Max: time.Hour, Forget: time.Hour}.normalize()
-	// A very long run of failures must saturate at Max, never wrap negative —
-	// a negative duration would read as "not locked" and silently disable the
-	// lockout for the most persistent attacker.
+	b := Backoff{Threshold: 0, Base: time.Second, Max: time.Hour, Forget: time.Hour}
 	for _, n := range []int{1, 10, 62, 63, 64, 1000, 1 << 20} {
 		if d := b.delay(n); d < 0 || d > b.Max {
 			t.Errorf("delay(%d) = %v, want within (0, %v]", n, d, b.Max)
@@ -474,11 +861,28 @@ func TestBackoff_NoOverflow(t *testing.T) {
 	}
 }
 
-func TestBackoff_Normalize(t *testing.T) {
+// Security configuration is not silently repaired: an operator who typo'd a
+// lockout parameter must be told, not given different behavior than they wrote.
+func TestNewMemTracker_RejectsInvalidConfiguration(t *testing.T) {
 	t.Parallel()
-	got := Backoff{Threshold: -5, Base: 0, Max: -1, Forget: 0}.normalize()
-	if got.Threshold != 0 || got.Base <= 0 || got.Max < got.Base || got.Forget <= 0 {
-		t.Errorf("normalize produced an unusable Backoff: %+v", got)
+	if _, err := NewMemTracker(-1, DefaultBackoff()); err == nil {
+		t.Error("a negative size must be refused")
+	}
+	bad := map[string]Backoff{
+		"negative threshold": {Threshold: -1, Base: time.Second, Max: time.Minute, Forget: time.Hour},
+		"zero base":          {Threshold: 1, Base: 0, Max: time.Minute, Forget: time.Hour},
+		"negative base":      {Threshold: 1, Base: -time.Second, Max: time.Minute, Forget: time.Hour},
+		"max below base":     {Threshold: 1, Base: time.Minute, Max: time.Second, Forget: time.Hour},
+		"zero forget":        {Threshold: 1, Base: time.Second, Max: time.Minute, Forget: 0},
+	}
+	for name, b := range bad {
+		if _, err := NewMemTracker(16, b); err == nil {
+			t.Errorf("%s must be refused, not normalized", name)
+		}
+	}
+	// The two documented shorthands still work.
+	if _, err := NewMemTracker(0, Backoff{}); err != nil {
+		t.Errorf("zero size and zero Backoff are the documented defaults: %v", err)
 	}
 	if d := DefaultBackoff(); d.Threshold != 5 || d.Base != time.Second || d.Max != 5*time.Minute || d.Forget != 15*time.Minute {
 		t.Errorf("DefaultBackoff() = %+v", d)

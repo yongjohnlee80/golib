@@ -26,6 +26,7 @@ import (
 // killed as a group; the assertion below is that the grandchild is gone, not
 // merely that the call returned.
 func TestOpenSSH_TimeoutKillsTheWholeTree(t *testing.T) {
+	requireDelegation(t)
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no POSIX shell to build a stub with")

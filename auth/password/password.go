@@ -120,7 +120,7 @@ func (f *Factor) Verify(ctx context.Context, r *auth.Request) (auth.Contribution
 		return auth.Contribution{}, ErrNoCredential
 	}
 	subject, presented := subjectCred.Reveal(), pwCred.Reveal()
-	if len(presented) > MaxPasswordLen {
+	if len(presented) > MaxPasswordLen || len(subject) > MaxSubjectLen {
 		return auth.Contribution{}, ErrTooLong
 	}
 
@@ -185,3 +185,35 @@ func (f *Factor) report(err error) {
 }
 
 var _ auth.Factor = (*Factor)(nil)
+
+// MaxSubjectLen bounds a claimed subject.
+//
+// Unlike the password, the subject is retained downstream — a throttle keys a
+// counter by it, a log records it — so an unbounded value is not merely wasted
+// hashing but retained memory chosen by an unauthenticated caller.
+const MaxSubjectLen = 256
+
+// Claim implements [auth.Claimant]: it names the principal this request targets,
+// without verifying anything.
+//
+// This is what makes per-subject lockout possible for passwords. A factor that
+// cannot answer it — an opaque bearer token — has to be throttled by address.
+func (f *Factor) Claim(r *auth.Request) string {
+	if r == nil {
+		return ""
+	}
+	s, ok := r.Credentials[f.subKey]
+	if !ok || s.IsZero() {
+		return ""
+	}
+	v := s.Reveal()
+	if len(v) > MaxSubjectLen {
+		// An oversized claim is not a principal. Returning "" routes it to the
+		// unattributed-per-address counter rather than creating a record keyed
+		// by junk.
+		return ""
+	}
+	return v
+}
+
+var _ auth.Claimant = (*Factor)(nil)

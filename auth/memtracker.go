@@ -1,7 +1,8 @@
 package auth
 
 import (
-	"math"
+	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -31,20 +32,23 @@ func DefaultBackoff() Backoff {
 	return Backoff{Threshold: 5, Base: time.Second, Max: 5 * time.Minute, Forget: 15 * time.Minute}
 }
 
-func (b Backoff) normalize() Backoff {
-	if b.Threshold < 0 {
-		b.Threshold = 0
+// validate rejects an unusable configuration.
+//
+// It does NOT normalize. Silently repairing a security parameter means an
+// operator who typo'd their lockout threshold gets a working system with
+// different behavior than they configured, and never finds out.
+func (b Backoff) validate() error {
+	switch {
+	case b.Threshold < 0:
+		return fmt.Errorf("negative Threshold %d", b.Threshold)
+	case b.Base <= 0:
+		return fmt.Errorf("Base must be positive, got %s", b.Base)
+	case b.Max < b.Base:
+		return fmt.Errorf("Max %s is below Base %s", b.Max, b.Base)
+	case b.Forget <= 0:
+		return fmt.Errorf("Forget must be positive, got %s", b.Forget)
 	}
-	if b.Base <= 0 {
-		b.Base = time.Second
-	}
-	if b.Max < b.Base {
-		b.Max = b.Base
-	}
-	if b.Forget <= 0 {
-		b.Forget = 15 * time.Minute
-	}
-	return b
+	return nil
 }
 
 // delay is the backoff after n total failures.
@@ -71,29 +75,40 @@ func (b Backoff) delay(n int) time.Duration {
 // Counters are keyed by attacker-supplied values — a claimed subject, a source
 // address — so an unbounded map is a memory-exhaustion vector reachable WITHOUT
 // authenticating. A defense that introduces a vulnerability is not a defense.
+// [Throttle] hashes its keys to a fixed width, so an entry cap here bounds
+// memory rather than merely bounding a count of unbounded strings.
+//
+// # Eviction is bounded work, not a full scan
+//
+// Making room samples a small fixed number of records, drops any expired ones it
+// sees, and otherwise evicts the least-recently-touched of the sample. It is
+// O(sample), not O(cap). A full scan per insert would be O(cap) work an attacker
+// triggers with every miss — at a 16k cap that measured three orders of
+// magnitude slower than a normal insert, which is both a DoS amplifier and a
+// timing signal separating "new key at capacity" from every other path.
+// Sampling costs approximation: the record evicted is the oldest of a sample,
+// not the oldest overall.
 //
 // # What the bound costs, stated plainly
 //
-// When the table is full, expired records are swept first; if that frees
-// nothing, the least-recently-touched record is evicted. That means a flood of
-// distinct keys can evict a real victim's counter and weaken per-subject
-// lockout. The alternatives are worse: failing open on a full table removes
-// lockout entirely, and failing closed lets an attacker lock out every user by
-// filling the table. Eviction degrades one victim's protection; the per-ADDRESS
-// counter still bites for a single-source flood, and a flood distributed widely
-// enough to evict by address is a volume problem for the transport's rate limit,
-// not something a counter can solve. Size the table for the deployment.
+// A flood of distinct keys can still evict a real victim's counter and weaken
+// per-subject lockout. The alternatives are worse: failing open on a full table
+// removes lockout entirely, and failing closed lets an attacker lock out every
+// user by filling the table. Eviction degrades one victim's protection; the
+// per-ADDRESS counter still bites for a single-source flood, and a flood
+// distributed widely enough to evict by address is a volume problem for the
+// transport's rate limit, not something a counter can solve. Size the table for
+// the deployment.
 type MemTracker struct {
 	mu      sync.Mutex
 	records map[string]*failRecord
 	backoff Backoff
 	max     int
-	now     func() time.Time
 }
 
 type failRecord struct {
 	count    int
-	last     time.Time
+	last     time.Time // last failure, for Forget
 	until    time.Time // when backoff expires
 	lastSeen time.Time // for eviction
 }
@@ -101,39 +116,55 @@ type failRecord struct {
 // DefaultTrackerSize is the record cap when none is given.
 const DefaultTrackerSize = 16384
 
-// NewMemTracker builds a bounded tracker. A max of zero uses
-// [DefaultTrackerSize]; a zero-value Backoff uses [DefaultBackoff].
-func NewMemTracker(max int, b Backoff) *MemTracker {
-	if max <= 0 {
+// evictionSample is how many records making-room may examine.
+//
+// Go randomizes map iteration order, so the first N entries of a range are an
+// effectively random sample — which is what makes "oldest of a sample" a usable
+// approximation of "oldest overall" without an O(cap) scan or a second index.
+const evictionSample = 8
+
+// NewMemTracker builds a bounded tracker.
+//
+// A max of zero means [DefaultTrackerSize] and a zero-value Backoff means
+// [DefaultBackoff]; anything else invalid is an ERROR rather than a silent
+// repair, because these are security parameters.
+func NewMemTracker(max int, b Backoff) (*MemTracker, error) {
+	if max < 0 {
+		return nil, fmt.Errorf("auth.NewMemTracker: negative size %d", max)
+	}
+	if max == 0 {
 		max = DefaultTrackerSize
 	}
 	if b == (Backoff{}) {
 		b = DefaultBackoff()
 	}
-	return &MemTracker{records: make(map[string]*failRecord), backoff: b.normalize(), max: max, now: time.Now}
+	if err := b.validate(); err != nil {
+		return nil, fmt.Errorf("auth.NewMemTracker: %w", err)
+	}
+	return &MemTracker{records: make(map[string]*failRecord), backoff: b, max: max}, nil
 }
 
-// Locked implements [Tracker].
-func (m *MemTracker) Locked(key string, now time.Time) (bool, time.Duration) {
+// Locked implements [Tracker]. It never fails and never mutates state.
+func (m *MemTracker) Locked(_ context.Context, key string, now time.Time) (bool, time.Duration, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	rec, ok := m.records[key]
 	if !ok {
-		return false, 0
+		return false, 0, nil
 	}
 	if now.Sub(rec.last) >= m.backoff.Forget {
-		// Expired: report unlocked, but leave the record for the sweep. Deleting
-		// here would make a read mutate state, and Locked is documented not to.
-		return false, 0
+		// Expired: report unlocked, but leave the record for eviction to sweep.
+		// Deleting here would make a read mutate state.
+		return false, 0, nil
 	}
 	if now.Before(rec.until) {
-		return true, rec.until.Sub(now)
+		return true, rec.until.Sub(now), nil
 	}
-	return false, 0
+	return false, 0, nil
 }
 
-// Fail implements [Tracker].
-func (m *MemTracker) Fail(key string, now time.Time) time.Duration {
+// Fail implements [Tracker]. It never fails.
+func (m *MemTracker) Fail(_ context.Context, key string, now time.Time) (time.Duration, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	rec, ok := m.records[key]
@@ -145,7 +176,7 @@ func (m *MemTracker) Fail(key string, now time.Time) time.Duration {
 	}
 	if !ok {
 		if len(m.records) >= m.max {
-			m.evictLocked(now)
+			m.makeRoomLocked(now)
 		}
 		rec = &failRecord{}
 		m.records[key] = rec
@@ -157,14 +188,15 @@ func (m *MemTracker) Fail(key string, now time.Time) time.Duration {
 	if d > 0 {
 		rec.until = now.Add(d)
 	}
-	return d
+	return d, nil
 }
 
-// Reset implements [Tracker].
-func (m *MemTracker) Reset(key string) {
+// Reset implements [Tracker]. It never fails.
+func (m *MemTracker) Reset(_ context.Context, key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.records, key)
+	return nil
 }
 
 // Len reports the number of tracked records, for tests and for a metric.
@@ -174,29 +206,38 @@ func (m *MemTracker) Len() int {
 	return len(m.records)
 }
 
-// evictLocked frees at least one slot. Caller holds the lock.
-func (m *MemTracker) evictLocked(now time.Time) {
-	// Sweep expired records first: they are dead weight, and clearing them
-	// evicts nobody who is still being protected.
+// makeRoomLocked frees at least one slot using bounded work. Caller holds the
+// lock.
+func (m *MemTracker) makeRoomLocked(now time.Time) {
+	var (
+		oldestKey  string
+		oldestSeen time.Time
+		haveOldest bool
+		freed      int
+		examined   int
+	)
 	for k, rec := range m.records {
 		if now.Sub(rec.last) >= m.backoff.Forget {
+			// Expired records are dead weight; dropping them evicts nobody who
+			// is still being protected.
 			delete(m.records, k)
+			freed++
+		} else if !haveOldest || rec.lastSeen.Before(oldestSeen) {
+			// An explicit "have we seen one yet" flag, NOT an absolute-time
+			// sentinel. A sentinel like time.Unix(math.MaxInt32, 0) selects
+			// nothing once real records are dated past 2038, so the cap silently
+			// stops being enforced.
+			oldestKey, oldestSeen, haveOldest = k, rec.lastSeen, true
+		}
+		examined++
+		if examined >= evictionSample {
+			break
 		}
 	}
-	if len(m.records) < m.max {
+	if freed > 0 {
 		return
 	}
-	// Still full: drop the least-recently-touched record. Dropping the OLDEST
-	// rather than a random one keeps an active attack's counters alive, which is
-	// the opposite of what a random eviction would do.
-	var oldestKey string
-	oldest := time.Unix(math.MaxInt32, 0)
-	for k, rec := range m.records {
-		if rec.lastSeen.Before(oldest) {
-			oldest, oldestKey = rec.lastSeen, k
-		}
-	}
-	if oldestKey != "" {
+	if haveOldest {
 		delete(m.records, oldestKey)
 	}
 }

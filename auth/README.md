@@ -140,17 +140,31 @@ not protect. Credentials go to `Credentials`, where they redact.
   against a dummy credential built with the *same* parameters, so "no such user"
   cannot be told from "wrong password" by timing. A corrupt stored credential or
   a broken store reports to the operator and rejects uniformly outward.
-- **A locked-out attempt still does the work.** `auth.Throttle` runs the wrapped
-  factor even when the key is in backoff, and discards the verdict.
-  Short-circuiting would make the locked path return in microseconds against
-  tens of milliseconds for a wrong password — and since only an *existing*
-  account can be locked out, timing lockout enumerates users. It defends
-  credentials, not CPU; bound request volume at the transport.
+- **Per-subject lockout needs a declared capability.** `auth.Throttle` requires
+  the wrapped factor to implement `auth.Claimant` — naming the principal an
+  attempt targets *before* verifying — or an explicit `SubjectClaim`, or
+  `AddressOnly()`. It will not guess: a factor whose identity only exists after
+  verification (an opaque token, an mTLS chain) would otherwise land on one
+  shared counter, and any single attacker could lock out every client of it.
+- **In subject mode a locked attempt still does the work.** The wrapped factor
+  runs and the verdict is discarded. Short-circuiting would make the locked path
+  return in microseconds against tens of milliseconds for a wrong password — and
+  since only an *existing* account can be locked out, timing lockout enumerates
+  users. It defends credentials, not CPU; bound request volume at the transport.
+- **In address-only mode a locked attempt does NOT.** There is no principal to
+  enumerate, and running the factor would let a single-use token be consumed and
+  its proof thrown away on an attempt that was already denied.
+- **A tracker outage denies by default.** A failure counter that cannot answer
+  cannot protect anything, so continuing would mean brute-force protection
+  silently off. `FailOpen()` trades that for availability, deliberately.
 - **A locked attempt counts as a failure.** Otherwise a correct guess arriving
   during backoff resets the counter and the backoff is bypassable by retrying.
-- **The failure counters are bounded.** They are keyed by attacker-supplied
-  values, so an unbounded map is memory exhaustion reachable without
-  authenticating — a defense that introduces a vulnerability is not a defense.
+- **The failure counters are bounded, and so are their keys.** An entry cap
+  bounds the *number* of records; keys are hashed to fixed width so it bounds
+  *memory* too — otherwise 16k attacker-chosen strings of any length sit inside
+  the cap. Making room examines a bounded sample rather than scanning the table,
+  because an O(cap) scan on every miss at capacity is both a DoS amplifier and a
+  timing signal for "new key at capacity".
 - **Every attempt gets a correlation ID.** The caller-visible error says
   nothing, so the audit record carries a random per-attempt ID to
   `logger.Logger` (default `Nop`) — success at Info, failure at Notice, because

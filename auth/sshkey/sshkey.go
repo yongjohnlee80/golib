@@ -501,3 +501,26 @@ func (c *Challenger) Issue(b Binding) (Challenge, error) {
 	}
 	return Challenge{ID: id, Message: rec.Message(), Expires: rec.Expires}, nil
 }
+
+// Claim implements auth.Claimant: it names the principal this request claims,
+// without verifying anything.
+//
+// The value is the same unverified claim Verify screens and then proves. An
+// invalid one yields "" so a throttle counts it against the address rather than
+// creating a counter keyed by junk.
+func (f *Factor) Claim(r *auth.Request) string {
+	if r == nil {
+		return ""
+	}
+	c, ok := r.Credentials[f.idKey]
+	if !ok || c.IsZero() {
+		return ""
+	}
+	v := c.Reveal()
+	if validIdentity(v) != nil {
+		return ""
+	}
+	return v
+}
+
+var _ auth.Claimant = (*Factor)(nil)

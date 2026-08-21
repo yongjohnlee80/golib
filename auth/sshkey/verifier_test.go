@@ -23,11 +23,25 @@ type keypair struct {
 
 func sshKeygen(t *testing.T) string {
 	t.Helper()
+	requireDelegation(t)
 	bin, err := exec.LookPath("ssh-keygen")
 	if err != nil {
 		t.Skip("ssh-keygen not on PATH; skipping OpenSSH-dependent test")
 	}
 	return bin
+}
+
+// requireDelegation skips a test that needs NewOpenSSH to SUCCEED.
+//
+// On a platform without POSIX process groups the constructor refuses by design,
+// so a test asserting successful construction is asserting the wrong thing
+// there. Tests that assert construction FAILURE need no guard: a platform
+// refusal is also an ErrVerifierUnavailable.
+func requireDelegation(t *testing.T) {
+	t.Helper()
+	if err := supportsProcessGroups(); err != nil {
+		t.Skipf("the delegating verifier is unsupported here: %v", err)
+	}
 }
 
 func genKey(t *testing.T, bin, dir, comment string) keypair {
@@ -262,6 +276,7 @@ func TestNewOpenSSH_MisconfigurationFailsAtConstruction(t *testing.T) {
 // chmod'ed while the process runs — is still not a rejected credential.
 func TestOpenSSH_PolicyBreaksAfterConstruction(t *testing.T) {
 	t.Parallel()
+	requireDelegation(t)
 	dir := t.TempDir()
 	signers := filepath.Join(dir, "signers")
 	if err := os.WriteFile(signers, []byte("x ssh-ed25519 AAAA\n"), 0o600); err != nil {
@@ -460,6 +475,7 @@ func TestNewOpenSSH_BinaryMustBeExecutable(t *testing.T) {
 	}
 
 	// The same file, now executable, constructs.
+	requireDelegation(t)
 	if err := os.Chmod(notExec, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -472,6 +488,7 @@ func TestNewOpenSSH_BinaryMustBeExecutable(t *testing.T) {
 // treating it as the default would hide it.
 func TestNewOpenSSH_TimeoutValidation(t *testing.T) {
 	t.Parallel()
+	requireDelegation(t)
 	dir := t.TempDir()
 	signers := filepath.Join(dir, "signers")
 	if err := os.WriteFile(signers, []byte("x ssh-ed25519 AAAA\n"), 0o600); err != nil {

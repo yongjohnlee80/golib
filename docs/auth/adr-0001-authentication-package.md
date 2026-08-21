@@ -1,15 +1,18 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Accepted (rev 7)** (2026-08-22 — authored by jarvis; lector
+- **Status:** **Accepted (rev 8)** (2026-08-22 — authored by jarvis; lector
   design r1-r3 `change_requested` folded, r4 **approved**, and **accepted by
   Johno 2026-08-21** — implementation in progress. **Rev 5 changed a mechanism
   mid-implementation**: §2.5 SSHSIG verification is delegated to
   `ssh-keygen -Y verify` instead of the hand-rolled parser, which makes the
   client claim an identity. Lector r5 and r6 both `change_requested`, six
-  must-fixes total, all folded — **rev 7** is the current text. Two were shipped
-  bugs: cancellation did not reap descendants (r5), and the post-`Run` group kill
-  could signal an unrelated process group after pid reuse (r6). See Review
-  history. Lands on `auth-pkg`.)
+  must-fixes total, all folded. Lector r7 **approved the SSH work in substance**
+  and raised five more against the newly added `Throttle`/`MemTracker`, folded in
+  **rev 8**, the current text. Four were shipped bugs: cancellation did not reap
+  descendants (r5); the post-`Run` group kill could signal an unrelated process
+  group after pid reuse (r6); a locked attempt destroyed single-use credentials,
+  and eviction stopped enforcing its cap after 2038 (r7). See Review history.
+  Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — a new subsystem.
@@ -516,6 +519,86 @@ The counter store is a **minimal injected interface** whose operations
 seam now means the multi-replica case does not require an interface change
 later; shipping only the in-memory map would.
 
+**Implementation notes (2026-08-22, rev 8 — folding lector r7).** Rev 7 shipped
+`Throttle` + `MemTracker` and lector found five blockers in them. Each one
+changed the design, so they are recorded here rather than as a diff summary.
+
+**Every `Tracker` method takes a `context.Context` and returns an `error`
+(r7 must-fix 5).** Without them the seam could not support the implementation it
+exists to preserve: a Redis or SQL tracker cannot honor the caller's deadline
+and cannot say "I could not answer", so `Throttle` could neither make nor audit
+an outage decision. The outage policy is therefore explicit:
+**fail-CLOSED by default** — a tracker that cannot answer cannot protect
+anything, and continuing means running with brute-force protection silently
+switched off — with `FailOpen()` as a deliberate availability-over-security
+choice and `OnTrackerError` so an outage is never invisible. A tracker write
+failure on the SUCCESS path never fails the authentication; the credential was
+correct and the stale counter expires. Client-visible failure stays uniform.
+
+**Per-subject throttling requires an explicit, determined subject source
+(r7 must-fix 1).** Rev 7 guessed: it looked for `subject` then `ssh-identity`
+and fell back to `""`. Every factor without one of those keys — a `token`
+request carries `ticket`, and `mtls` has no subject until the chain verifies —
+therefore shared **one global counter**, so any single attacker could lock out
+every client of that factor while their own address counter stayed clean.
+Now a new `Claimant` interface (`Claim(*Request) string`, side-effect-free,
+verifies nothing) declares the capability; `NewThrottle` requires that the
+wrapped factor implement it, OR `SubjectClaim(fn)`, OR `AddressOnly()`, and
+returns a **construction error naming all three** otherwise. `auth/password` and
+`auth/sshkey` implement `Claimant`. An attempt that names nobody is counted
+against **its address** in the subject slot, never a shared key.
+
+**Permitted side effects on a locked attempt are now specified (r7 must-fix 1,
+second half).** Rev 7 ran the wrapped factor even when locked — correct for the
+enumeration reason below — but that meant a single-use token factor **atomically
+consumed a valid ticket and discarded the proof** on a denied attempt. So the
+two modes differ deliberately:
+
+- **Subject mode runs the factor even when locked** and discards the verdict.
+  Short-circuiting would return in microseconds against tens of milliseconds for
+  a wrong password, and since only an EXISTING account can be locked out,
+  timing lockout enumerates users — handing back the oracle §2.6's dummy hash
+  closes. A wrapped factor here MAY consume state the client presented in *this*
+  attempt (an SSH challenge nonce is spent on presentation by design) but MUST
+  NOT consume a credential the client holds across attempts.
+- **Address-only mode short-circuits.** There is no principal to enumerate — the
+  credential *is* the identity — an address learning about its own backoff
+  reveals nothing, and short-circuiting is what keeps a single-use credential
+  from being destroyed on a denied attempt.
+
+The CPU cost of subject mode is stated at the type: it defends **credentials,
+not CPU**, and bounding unauthenticated request volume is the transport's job.
+
+**Tracker keys are hashed to fixed width (r7 must-fix 2).** An entry cap bounds
+the *number* of records; it bounds *memory* only if the keys are bounded too, and
+a claimed subject is attacker-controlled and unbounded — 16,384 arbitrarily long
+strings sit inside any count-based cap. Keys are now
+`namespace + ":" + sha256(namespace || 0x00 || value)`, with the value truncated
+at 4 KiB before hashing so the per-attempt hashing cost is not chosen by the
+attacker either. Truncation can make two long subjects share a counter, which
+only makes lockout *stronger*. `auth/password` additionally caps a claimed
+subject at 256 bytes.
+
+**Eviction is bounded work, and its sentinel was a 2038 bug (r7 must-fixes 3
+and 4).** Rev 7 scanned every record to sweep and to pick a victim — O(cap) work
+an attacker triggers on **every miss at capacity**, measured at ~79 ms per 100
+inserts against ~43 µs when not full at the 16k default. That is both a DoS
+amplifier and a timing signal isolating "new key at capacity" from every other
+path. Making room now examines at most **8** records (Go randomizes map
+iteration, so the first N entries are an effectively random sample), drops any
+expired ones it sees, and otherwise evicts the least-recently-touched of the
+sample. Separately, rev 7 seeded its "oldest so far" with
+`time.Unix(math.MaxInt32, 0)`; with records dated past 2038 nothing was ever
+selected, the insert happened anyway, and **the cap silently stopped being
+enforced** — reproduced through the public API. It is an explicit
+`haveOldest bool` now, with a post-2038 regression test.
+
+**`NewMemTracker` returns an error and does not normalize (r7 should-fix).**
+Silently repairing a lockout threshold gives an operator who typo'd it a working
+system with behavior they did not write, and no way to find out. Zero size and a
+zero `Backoff` remain the documented shorthands for the defaults; everything
+else invalid is refused.
+
 ### 2.7 Secrets never leak, structurally
 
 Redaction is a **type**, not a convention: a wrapper whose `String`, `Format`
@@ -661,13 +744,39 @@ Acceptance criteria:
    `Any()` node is a node that denies at evaluation. The two cases are
    distinguished by test.
 4. Timing symmetry across **all five** paths — known, unknown, wrong, locked and
-   tracker-full — asserted structurally (equivalent counter reads/writes and
-   backoff decisions, plus dummy hashing) with a tolerant wall-clock check that
-   survives CI noise. A separate test proves proofs are decoded to a fixed length
-   *before* `subtle.ConstantTimeCompare`.
+   tracker-full — asserted structurally (identical tracker operation *sequences*,
+   recorded per attempt, plus the wrapped factor invoked exactly once) AND with a
+   tolerant wall-clock check that survives CI noise. The wall-clock check is
+   **negative-controlled**: it also times a deliberate O(cap) scan over the same
+   table and **fails if that control is not at least 10x a normal insert**, since
+   otherwise the measurement lacks the resolution to detect the regression it
+   exists to catch and the assertion would be vacuous. Measured: at-capacity
+   insert 1.5x a normal insert, O(cap) control 168x. A separate test proves
+   proofs are decoded to a fixed length *before*
+   `subtle.ConstantTimeCompare`.
+4b. **Subject-source contract (§2.6b):** a factor that implements neither
+   `Claimant` nor supplies `SubjectClaim` nor chooses `AddressOnly` fails
+   **construction**, with an error naming all three; `AddressOnly` +
+   `SubjectClaim` together is refused. An attempt naming no principal is
+   isolated to its own address, proven by showing a second address and a named
+   subject both remain admissible after the first address locks.
+4c. **Locked-path side effects (§2.6b):** in address-only mode a locked attempt
+   does **not** invoke the wrapped factor — asserted by a factor that counts
+   credential consumption — so a valid single-use ticket is never destroyed on a
+   denied attempt. It is still counted, so hammering a locked address cannot
+   reset it.
+4d. **Tracker outage (§2.6b):** the default denies with
+   `ErrTrackerUnavailable` and does **not** invoke the wrapped factor;
+   `FailOpen()` admits a correct credential; a failed `Reset` on the success path
+   does not fail the authentication; and every case reaches `OnTrackerError`. A
+   cancelled context reaches the tracker and produces the outage path, proving
+   the seam can honor a deadline.
 5. Lockout: N failures trigger backoff, success resets, and under a flood of
    distinct subjects and addresses the tracker stays **bounded** (no unbounded
-   growth).
+   growth). Tracker keys are **fixed width** for values from 0 to 5 MiB, so the
+   entry cap bounds memory and not merely a count; namespaces provably do not
+   collide. The bound still holds for records dated **2040**. Invalid
+   `Backoff` values and a negative size are **refused**, not normalized.
 6. `auth/token`: verify, expire, revoke; the stored form is a hash, proven by
    inspecting the store.
 6b. **Atomic consume under concurrency:** many goroutines redeem the same
@@ -793,6 +902,37 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
    costs nothing and avoids that break.
 
 ## Review history
+
+- **r7 (2026-08-22, lector — `change_requested`; all five must-fixes and both
+  notes folded in rev 8).** The r6 SSH work was **approved in substance**, as was
+  running the full password verifier while locked. All five blockers were in the
+  `Throttle`/`MemTracker` surface rev 7 added, and every one of them changed the
+  design rather than a line:
+  1. **The generic wrapper created a global lockout.** Guessing the subject key
+     from two credential names meant every factor without one — `token` carries
+     `ticket`, `mtls` has no subject until the chain verifies — shared a single
+     `s:` counter, so one attacker could lock out everybody. Worse, on that
+     locked path the token factor **atomically consumed a valid single-use
+     ticket and discarded the proof**. Now an explicit `Claimant` capability with
+     `AddressOnly` for opaque factors, a construction error when neither is
+     available, and specified locked-path side effects (see §2.6b).
+  2. **The entry cap did not bound memory** — the keys were attacker-controlled
+     and unbounded. Hashed to fixed width, value truncated before hashing, and a
+     256-byte subject cap in `auth/password`.
+  3. **Eviction broke after 2038.** An absolute-time sentinel meant no candidate
+     was ever selected once records were dated 2040, the insert happened anyway,
+     and a cap-2 tracker grew 1, 2, 3 — reproduced through the public API.
+  4. **Tracker-full work was O(cap) on every attacker-triggered miss** (~79 ms
+     per 100 inserts versus ~43 µs) and criterion 4's wall-clock test was
+     missing; my "identical shape" test compared only outer method names. Now
+     bounded sampling, and a negative-controlled timing assertion.
+  5. **The published seam could not support a multi-replica tracker** without an
+     interface change — no context, no error. Added, with an explicit
+     fail-closed-by-default outage policy.
+  Notes: invalid `Backoff`/size values are refused rather than normalized; and
+  the OpenSSH construction-success tests now skip on platforms where
+  `NewOpenSSH` correctly refuses, which is what was failing the Windows test
+  binary.
 
 - **r6 (2026-08-22, lector — `change_requested`; all three must-fixes and all
   three notes folded in rev 7).** Rev 6 closed every r5 blocker, and

@@ -127,7 +127,7 @@ func TestPolicy_FailureLogsAtNotice(t *testing.T) {
 func TestPolicy_ThrottledOutcomeIsDistinctInTheLog(t *testing.T) {
 	t.Parallel()
 	inner := &countingFactor{}
-	mem := NewMemTracker(16, Backoff{Threshold: 0, Base: time.Hour, Max: time.Hour, Forget: 2 * time.Hour})
+	mem := tracker(t, 16, Backoff{Threshold: 0, Base: time.Hour, Max: time.Hour, Forget: 2 * time.Hour})
 	th, err := NewThrottle(inner, mem)
 	if err != nil {
 		t.Fatal(err)
