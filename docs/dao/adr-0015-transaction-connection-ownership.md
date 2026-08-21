@@ -1,8 +1,10 @@
 # ADR-0015 — `golib/dao`: transaction connection ownership
 
-- **Status:** **Proposed (rev 1)** (2026-08-21 — authored by jarvis from Johno's
-  report that `RunTx`'s `[]DataConn` parameter is an anti-pattern; lector design
-  r1 `change_requested` folded, see Review history. Lands on `dao-tx`.)
+- **Status:** **Proposed (rev 1) — lector-approved, awaiting acceptance**
+  (2026-08-21 — authored by jarvis from Johno's report that `RunTx`'s
+  `[]DataConn` parameter is an anti-pattern; lector design r1
+  `change_requested` folded, r2 **approved** at `6282278` with no findings
+  outstanding. See Review history. Lands on `dao-tx`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** ADR-0005 §2 (the `RunTx`/`Begin` signatures and the
@@ -573,3 +575,20 @@ decisions, not questions:
   normalization (nil / empty / duplicate / repeated) and `initErr` closure on
   the manual `Begin` path specified in §2.3.
   Review doc: `$KB_ROOT/agents/lector/reviews/2026-08-21-golib-dao-0015-transaction-connection-ownership-review.md`
+- **r2 (2026-08-21, lector — `approved`).** Reviewed the complete
+  `1be8ac6..6282278` amendment diff: all two must-fix and three should-fix
+  findings resolved without changing the approved architecture — the
+  criterion-6 refinement is internally consistent, `checkTwoPhase` is
+  unconditionally authoritative over actual joined participants before any
+  prepare and fails closed on missing capability, the `DataConn.Name` contract
+  and file scope are explicit, migration accounting is complete with
+  `example/main` correctly treated as a separate companion commit, and
+  `Spanning` normalization plus `initErr` manual-path cleanup are specified and
+  testable. Both retained choices accepted: nil/empty `Spanning` failures need
+  no sentinel (programming errors with no recovery branch), and duplicate names
+  may merge first-wins under the strengthened one-logical-database name
+  contract, because the actual-participant `Commit` check preserves 2PC safety
+  even when wrapper capabilities differ. Lector independently reproduced the
+  `example/` build failure recorded in §5. No implementation exists at this
+  revision, so the r1 `go test ./dao/...` baseline remains the applicable
+  result. **Ready for Johno's acceptance, then implementation on `dao-tx`.**
