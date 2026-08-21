@@ -490,3 +490,70 @@ func TestExpr_ResolutionConsumesTheExpr(t *testing.T) {
 		}
 	}
 }
+
+// TestJoins_FilterIsNotATrigger pins the join-trigger matrix that Field.Join,
+// README "On-demand joins" and USAGE §3 all now state explicitly: a predicate is
+// NOT a trigger. It exists because the opposite claim sat in Field.Join's doc
+// comment until a live Postgres run rejected the SQL it implied.
+func TestJoins_FilterIsNotATrigger(t *testing.T) {
+	t.Parallel()
+
+	filterOnJoined := func(run func(DAO[*artist, artistField, string])) (string, string) {
+		c := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+		s := schemaWith(c, exprFields())
+		run(s.DAO())
+		return c.lastQuery, c.lastExec
+	}
+
+	cases := []struct {
+		name     string
+		run      func(DAO[*artist, artistField, string])
+		wantJoin bool
+	}{
+		{"Select without the joined column", func(d DAO[*artist, artistField, string]) {
+			_, _ = d.With(aLabelGroup, "x").Select(aID, aName)
+		}, false},
+		{"Select WITH the joined column", func(d DAO[*artist, artistField, string]) {
+			_, _ = d.With(aLabelGroup, "x").Select(aID, aLabelGroup)
+		}, true},
+		{"Count", func(d DAO[*artist, artistField, string]) {
+			_, _ = d.With(aLabelGroup, "x").Count()
+		}, false},
+		{"Exists", func(d DAO[*artist, artistField, string]) {
+			_, _ = d.With(aLabelGroup, "x").Exists()
+		}, false},
+		{"Update", func(d DAO[*artist, artistField, string]) {
+			_ = d.With(aLabelGroup, "x").Set(aName, "n").Update()
+		}, false},
+		{"Delete", func(d DAO[*artist, artistField, string]) {
+			_ = d.With(aLabelGroup, "x").Delete()
+		}, false},
+		// DAO.Join is the documented remedy for every row above.
+		{"Count + forced Join", func(d DAO[*artist, artistField, string]) {
+			_, _ = d.Join("label_group").With(aLabelGroup, "x").Count()
+		}, true},
+		{"Update + forced Join", func(d DAO[*artist, artistField, string]) {
+			_ = d.Join("label_group").With(aLabelGroup, "x").Set(aName, "n").Update()
+		}, true},
+		{"Delete + forced Join", func(d DAO[*artist, artistField, string]) {
+			_ = d.Join("label_group").With(aLabelGroup, "x").Delete()
+		}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			q, e := filterOnJoined(tc.run)
+			sql := q
+			if e != "" {
+				sql = e
+			}
+			if got := strings.Contains(sql, "JOIN"); got != tc.wantJoin {
+				t.Errorf("JOIN emitted = %v, want %v\n  %s", got, tc.wantJoin, sql)
+			}
+			// The forced-join write path must use the portable id-subselect,
+			// since UPDATE/DELETE cannot JOIN directly.
+			if tc.wantJoin && e != "" && !strings.Contains(e, "IN (SELECT") {
+				t.Errorf("forced join on a write should use the id-subselect: %s", e)
+			}
+		})
+	}
+}

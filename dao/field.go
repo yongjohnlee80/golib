@@ -2,9 +2,13 @@ package dao
 
 import "strings"
 
-// JoinKey names an optional join registered on a [Schema] (via dao.OptionalJoin,
-// ADR-0006). A [Field] carrying a non-empty Join triggers that join whenever the
-// field is selected, ordered-by, or filtered on (ADR-0003 resolves them).
+// JoinKey names an optional join registered on a [Schema] (via dao.OptionalJoin
+// or dao.OptionalJoinExpr, ADR-0006). A [Field] carrying a non-empty Join
+// triggers that join when the field is SELECTED (ADR-0003 resolves those) or
+// when a sort key declares it via JoinForSort.
+//
+// Filtering alone does NOT trigger it: force the join with DAO.Join when a
+// query only filters on the joined table. See Field.Join.
 type JoinKey string
 
 // Field is the complete declaration of one selectable/writable column. Declaring
@@ -38,8 +42,20 @@ type Field[R any] struct {
 	// the inverse, a model->value extractor.)
 	Value func(R) any
 
-	// Join, if non-empty, names an optional join that must be applied whenever
-	// this field is selected, ordered-by, or filtered on. Empty means no join.
+	// Join, if non-empty, names the optional join this field needs. It is
+	// applied when the field is SELECTED — or when a sort key triggers it
+	// through JoinForSort. Empty means no join.
+	//
+	// Filtering on the field does NOT apply the join, in any verb: Count,
+	// Exists, Update and Delete build their joins from DAO.Join alone, and a
+	// Select joins only what it projects. A query whose ONLY reference to the
+	// joined table is a predicate therefore emits SQL naming a table it never
+	// joined, which the database rejects (Postgres: "missing FROM-clause
+	// entry"). Force it in that case:
+	//
+	//	artists.DAO().Join(JoinLabelGroup).      // <- required
+	//	    With(ArtistLabelGroup, "alpha").
+	//	    Set(ArtistPublic, false).Update()
 	Join JoinKey
 
 	// ReadOnly marks computed/joined fields that must never appear in a write.

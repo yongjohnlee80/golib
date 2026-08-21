@@ -211,6 +211,59 @@ artists.DAO().
     Select()
 ```
 
+### Predicate constructors take a raw column string
+
+`With`/`Excluding` are keyed by the **field enum**, so they resolve through the
+schema and quote the column for you. The `dao.Eq`/`In`/`Like`/`Between`/… family
+takes a **column string, emitted verbatim** — convenient for an expression, but
+it means anything needing quotes must be written quoted:
+
+```go
+// Fine: unquoted snake_case resolves on every dialect.
+dao.Between("artist.release_year", 2000, 2010)
+
+// A reserved word (or a mixed-case identifier) does NOT:
+dao.Between("user.order", lo, hi)      // -> ERROR: syntax error at or near "order"
+dao.Between(`"user"."order"`, lo, hi)  // correct — quote it yourself
+```
+
+Prefer `With`/`Excluding` when the predicate is a plain equality/IN on a
+declared field: they cannot get this wrong. The expression helpers
+(`dao.T`/`dao.C`) are deliberately **not** wired into predicate position
+(ADR-0016 §2.7), so a hand-written quoted string is the tool here. This is a
+narrow edge — every identifier in the surveyed consumers is lower-case
+`snake_case`, where nothing needs quoting.
+
+### Filtering on a joined column
+
+A join fires when its column is **selected**, or when a sort key declares it —
+**not** when you merely filter on it. If a filter is your only reference to the
+joined table, force the join with `DAO.Join`, or the emitted SQL will name a
+table it never joined:
+
+```go
+// WRONG: no join is emitted, so the server rejects the statement
+// (Postgres: missing FROM-clause entry for table "label_group").
+artists.DAO().With(ArtistLabelGroup, "alpha").Count()
+
+// RIGHT: force it.
+artists.DAO().
+    Join(JoinLabelGroup).                   // <- the trigger
+    With(ArtistLabelGroup, "alpha").
+    Count()
+
+// Selecting the joined column is also a trigger, so this needs no Join():
+artists.DAO().With(ArtistLabelGroup, "alpha").Select(ArtistID, ArtistLabelGroup)
+
+// Writes work the same way. The forced join switches UPDATE/DELETE to the
+// portable "WHERE id IN (SELECT … JOIN …)" form, because neither can JOIN.
+artists.DAO().
+    Join(JoinLabelGroup).
+    With(ArtistLabelGroup, "alpha").
+    Set(ArtistPublic, false).
+    Update()
+```
+
 ## 4. Writes & upserts
 
 ```go

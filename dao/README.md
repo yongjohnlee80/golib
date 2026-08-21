@@ -293,8 +293,21 @@ desc); pass to `OrderBy`.
 
 Every join is optional and demand-driven — emitted at most once per query, and
 only when triggered by (1) a **selected** column with a `Join`, (2) a **sort**
-key with a `JoinForSort`, or (3) a **forced** `DAO.Join(keys…)` (for filtering
-on a joined table without selecting its columns).
+key with a `JoinForSort`, or (3) a **forced** `DAO.Join(keys…)`.
+
+> **A predicate is not a trigger.** `Count`, `Exists`, `Update` and `Delete`
+> take their joins from `DAO.Join` alone, and a `Select` joins only what it
+> projects — so a query whose *only* reference to the joined table is a filter
+> emits SQL naming a table it never joined, and the database rejects it
+> (Postgres: `missing FROM-clause entry for table …`). Force the join whenever
+> you filter on a joined column without selecting it:
+>
+> ```go
+> artists.DAO().Join(JoinLabelGroup).With(ArtistLabelGroup, "alpha").Count()
+> ```
+>
+> For `Update`/`Delete` the forced join also switches the statement to the
+> portable `WHERE id IN (SELECT …)` form, since neither can `JOIN` directly.
 
 ## Query-time options & hooks
 
