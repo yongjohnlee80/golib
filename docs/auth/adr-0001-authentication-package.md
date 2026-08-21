@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Accepted (rev 10)** (2026-08-22 — authored by jarvis; lector
+- **Status:** **Accepted (rev 11)** (2026-08-22 — authored by jarvis; lector
   design r1-r3 `change_requested` folded, r4 **approved**, and **accepted by
   Johno 2026-08-21** — implementation in progress. **Rev 5 changed a mechanism
   mid-implementation**: §2.5 SSHSIG verification is delegated to
@@ -16,8 +16,9 @@
   current text — including a factor's error text carrying a credential into the
   log, and an adapter whose bearer key did not compose with its own token
   factor. Lector r9 raised two more — an incomplete safe-reason migration and an
-  outcome erased by `Any` — folded in **rev 10**, the current text. See Review
-  history. Lands on `auth-pkg`.)
+  outcome erased by `Any` — folded in rev 10. Lector r10 **approved the
+  production code** and gated release on one vacuous acceptance test, fixed in
+  **rev 11**, the current text. See Review history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — a new subsystem.
@@ -662,15 +663,27 @@ token, an expired one, a consumed one and an unknown one all recorded
 leak in one respect: it silently removes §2.2's specific-private-reason promise
 for four packages while every test still passes. Every audit-relevant built-in
 sentinel in the module is now an `auth.Reason`, and an **external** test package
-(`auth_test`, since the method packages import `auth`) asserts fourteen
-representative built-ins each produce a distinct, non-opaque line while a
-backend error carrying a DSN password stays opaque. A same-package test could not
-have caught this, which is why it did not.
+(`auth_test`, since the method packages import `auth`) asserts that every
+built-in sentinel in its table produces a distinct, non-opaque **reason detail**
+while a backend error carrying a DSN password stays opaque. A same-package test
+could not have caught this, which is why it did not.
+
+**That uniqueness check must compare the DETAIL, not the rendered line
+(r10 must-fix).** Rev 10 keyed it on the log line, which embeds a fresh random
+`auth attempt=<ID>` — so every entry was unique by construction and the
+duplicate assertion could never fire. Lector's control (two table entries on one
+sentinel) passed 20/20. It now reads `Attempt.Reasons` through `Observe`, and a
+nil table entry **fails** rather than being skipped. Both controls now fail as
+they must.
 
 One consequence of `Reason` being a string type is recorded at the type: two
 Reasons with identical text are `==`, so [errors.Is] cannot separate them where
-`errors.New` would have given distinct pointers. Every sentinel in this module is
-package-prefixed, which makes the collision unreachable.
+`errors.New` would have given distinct pointers. Package-prefixing makes an
+accidental cross-package collision unlikely but **not impossible** — the same
+text can be declared twice in one package, and an exported Reason can be
+reconstructed from its string anywhere. The detail-uniqueness test is the actual
+guard; a struct with a unique identity field is warranted only if collision-proof
+`errors.Is` identity becomes an API invariant rather than a testable convention.
 
 **A backoff refusal survives `Any` in either branch order (r9 must-fix 2).**
 `anyNode.eval` kept only the LAST branch error, and the outcome was derived from
@@ -907,14 +920,18 @@ Acceptance criteria:
    headers are copied; every credential-bearing header name panics; and an
    invalid `CorrelationHeader` name panics at construction.
 5f. **Built-in reason completeness (§2.2, §2.7 — an EXTERNAL test package):**
-   fourteen representative built-in sentinels drawn from `auth`, `auth/token`,
+   representative built-in sentinels drawn from `auth`, `auth/token`,
    `auth/password`, `auth/sshkey`, `auth/mtls` and `auth/ipallow` each produce a
-   **distinct, non-opaque** audit line; a wrapped built-in contributes its fixed
-   text and drops the dynamic half; a real `token.Factor` rejecting a
-   twice-presented single-use token records why rather than `opaque`; and a
-   backend error carrying a DSN password stays opaque. Verified in both
-   directions — reverting one package's migration fails the test with
-   `opaque error of type *errors.errorString`.
+   **distinct, non-opaque** recorded reason — compared on `Attempt.Reasons`, NOT
+   on the rendered line, which carries a random per-attempt ID that would make
+   every entry trivially unique. A nil table entry fails the test. A wrapped
+   built-in contributes its fixed text and drops the dynamic half; a real
+   `token.Factor` rejecting a twice-presented single-use token records why rather
+   than `opaque`; a backend error carrying a DSN password stays opaque. Verified
+   in **three** directions: reverting one package's migration fails with
+   `opaque error of type *errors.errorString`; pointing two table entries at one
+   sentinel fails with "record the SAME reason"; and a nil entry fails on the nil
+   check.
 5g. **Outcome survives composition (§2.7):** `Any` containing a throttled branch
    logs `outcome=throttled` with the throttled branch **first or last**, and both
    branch reasons are recorded. Verified in both directions: keeping only the
@@ -1048,6 +1065,23 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
    costs nothing and avoids that break.
 
 ## Review history
+
+- **r10 (2026-08-22, lector — `change_requested` on ONE test defect; production
+  code approved).** Both r9 blockers and both notes confirmed closed. The gate
+  was that `TestBuiltInReasonsAreDistinguishable` did not test what its name
+  claimed: it keyed uniqueness on the rendered log line, which embeds a fresh
+  random attempt ID, so duplicate reasons always produced distinct keys. Lector's
+  control — two table entries pointing at the same sentinel — passed 20/20. The
+  adjacent `if sentinel == nil { continue }` also silently accepted a lost
+  sentinel. **This was the fourth vacuous assertion I shipped in this review
+  cycle**, and the pattern was identical every time: the property was stated in
+  prose and the test exercised something adjacent to it. Fixed by comparing
+  `Attempt.Reasons` through `Observe` and failing on nil, with both of Lector's
+  controls now failing as they must. Amendments: the "fourteen sentinels" count
+  was wrong (the table has eighteen) and is now omitted rather than maintained;
+  and the claim that package prefixes make Reason collisions "unreachable" is
+  corrected — they make an accidental cross-package collision unlikely, while the
+  detail-uniqueness test is the real guard.
 
 - **r9 (2026-08-22, lector — `change_requested`; both must-fixes and both notes
   folded in rev 10).** All five r8 findings and the three notes were confirmed

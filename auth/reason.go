@@ -21,9 +21,15 @@ import (
 //
 // One caveat follows from it being a string type: two Reason values with
 // IDENTICAL text are `==`, so [errors.Is] cannot tell them apart, where
-// [errors.New] would have produced distinct pointers. Prefix every sentinel with
-// its package name — as every sentinel in this module does — and the collision
-// cannot arise.
+// [errors.New] would have produced distinct pointers. Package-prefixing every
+// sentinel — as this module does — makes an ACCIDENTAL cross-package collision
+// very unlikely, but it does not make collision impossible: the same text can be
+// declared twice inside one package, and an exported Reason can be reconstructed
+// anywhere from its string. What actually guards the property is a test that
+// compares recorded reason DETAILS for uniqueness; see
+// TestBuiltInReasonsAreDistinguishable. Reach for a struct with a unique
+// identity field only if collision-proof [errors.Is] identity becomes an API
+// invariant rather than a testable convention.
 type Reason string
 
 // Error implements error.

@@ -74,33 +74,73 @@ func TestBuiltInReasonsAreDistinguishable(t *testing.T) {
 		"ipallow empty":       ipallow.ErrEmptyPolicy,
 	}
 
+	// Keyed on the REASON DETAIL, not the rendered line.
+	//
+	// The rendered line embeds a fresh random `auth attempt=<ID>`, so keying on
+	// it made every entry unique by construction: two cases carrying the same
+	// sentinel still produced different keys, and the duplicate assertion could
+	// never fire. The structured Attempt carries the detail without the ID,
+	// which is the thing actually being tested for distinctness.
 	seen := make(map[string]string, len(cases))
 	for name, sentinel := range cases {
 		if sentinel == nil {
+			// Fail rather than skip: a nil entry means the table lost a
+			// sentinel, and silently continuing would shrink the coverage this
+			// test reports without saying so.
+			t.Errorf("%s: nil sentinel in the table", name)
 			continue
 		}
 		sink := &lineSink{}
-		p, err := auth.NewPolicy(auth.Leaf(rejecting{err: sentinel}), auth.Log(sink))
+		var captured []auth.Attempt
+		p, err := auth.NewPolicy(auth.Leaf(rejecting{err: sentinel}),
+			auth.Log(sink),
+			auth.Observe(func(a auth.Attempt) { captured = append(captured, a) }))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.Authenticate(context.Background(), &auth.Request{}); err == nil {
 			t.Fatalf("%s: expected failure", name)
 		}
-		got := sink.text()
-		if strings.Contains(got, "opaque error of type") {
-			t.Errorf("%s: recorded as opaque — this sentinel is still errors.New, so every "+
-				"failure in its package logs identically: %q", name, got)
+		if len(captured) != 1 {
+			t.Fatalf("%s: %d attempt records, want 1", name, len(captured))
+		}
+		detail := reasonDetail(captured[0])
+		if detail == "" {
+			t.Errorf("%s: the record carries no reason at all", name)
 			continue
 		}
-		if !strings.Contains(got, sentinel.Error()) {
-			t.Errorf("%s: the sentinel's own text is missing: %q", name, got)
+		if strings.Contains(detail, "opaque error of type") {
+			t.Errorf("%s: recorded as opaque — this sentinel is still errors.New, so every "+
+				"failure in its package logs identically: %q", name, detail)
+			continue
 		}
-		if prev, dup := seen[got]; dup {
-			t.Errorf("%s and %s produce the same log line %q", name, prev, got)
+		if !strings.Contains(detail, sentinel.Error()) {
+			t.Errorf("%s: the sentinel's own text is missing: %q", name, detail)
 		}
-		seen[got] = name
+		// The rendered line must carry it too, since that is what an operator
+		// actually reads.
+		if !strings.Contains(sink.text(), sentinel.Error()) {
+			t.Errorf("%s: the rendered log line lost the reason: %q", name, sink.text())
+		}
+		if prev, dup := seen[detail]; dup {
+			t.Errorf("%s and %s record the SAME reason %q — they are indistinguishable "+
+				"to an operator", name, prev, detail)
+		}
+		seen[detail] = name
 	}
+	if len(seen) != len(cases) {
+		t.Errorf("%d distinct reasons from %d sentinels", len(seen), len(cases))
+	}
+}
+
+// reasonDetail joins an Attempt's recorded reasons, excluding the per-attempt
+// random ID so two records for the same cause compare equal.
+func reasonDetail(a auth.Attempt) string {
+	parts := make([]string, 0, len(a.Reasons))
+	for _, r := range a.Reasons {
+		parts = append(parts, r.Stage+": "+r.Detail)
+	}
+	return strings.Join(parts, " | ")
 }
 
 // The wrapping case, cross-package: a sentinel wrapped with dynamic detail

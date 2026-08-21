@@ -186,7 +186,9 @@ is not configuration, it is a race.
   `auth.SafeAuditDetail` contributes its words; anything else is recorded as
   `opaque error of type T`. Wrapping a `Reason` keeps the fixed half and drops
   the dynamic one. Every built-in sentinel across all six packages is a `Reason`,
-  so a malformed token still reads differently from an expired one.
+  so a malformed token still reads differently from an expired one — asserted by
+  comparing recorded reason details, not rendered log lines, which carry a random
+  per-attempt ID that would make any two of them look distinct.
 - **`Any` does not lose the reason.** Branch errors are joined, so a backoff
   refusal inside a fallback policy still logs `throttled` no matter which branch
   it was declared in.
