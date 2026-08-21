@@ -43,7 +43,7 @@ style.New().Bold(false).GetBold() // (false, true) — explicitly bold-off
 - `Inherit(other)` copies from `other` **only the properties not already set
   on the receiver** — and never margins or padding (placement, not
   appearance; the lipgloss rule, kept verbatim).
-- `Unset*` clears the set bit *and* zeroes the value, so
+- `Unset*` clears the set bit _and_ zeroes the value, so
   `st.Bold(true).UnsetBold() == style.New()`.
 - **`Style` is comparable** — `==` and map keys work, which is what makes the
   tui resolver's attribute cache a plain map. Binding constraint: future
@@ -100,17 +100,17 @@ th = style.NewTheme(style.RGB(0x7a, 0x5c, 0xff),       // truecolor is an explic
 )
 ```
 
-| Slot | Default |
-|------|---------|
-| Secondary, Accent | Primary |
-| Foreground, Background | `Default()` (terminal's own fg/bg) |
-| Surface | Background |
-| Panel, Boost | Surface |
-| Warning / Error / Success | `ANSI(3)` / `ANSI(1)` / `ANSI(2)` |
-| TextMuted | Foreground (color only) |
-| TextOn* | Background |
-| Border | Foreground |
-| BorderFocused | Accent |
+| Slot                      | Default                            |
+| ------------------------- | ---------------------------------- |
+| Secondary, Accent         | Primary                            |
+| Foreground, Background    | `Default()` (terminal's own fg/bg) |
+| Surface                   | Background                         |
+| Panel, Boost              | Surface                            |
+| Warning / Error / Success | `ANSI(3)` / `ANSI(1)` / `ANSI(2)`  |
+| TextMuted                 | Foreground (color only)            |
+| TextOn\*                  | Background                         |
+| Border                    | Foreground                         |
+| BorderFocused             | Accent                             |
 
 Derivations cascade: overriding Surface also moves the Panel and Boost
 defaults. The default theme is ANSI-16-first (G7): every slot resolves to an
@@ -118,7 +118,7 @@ ANSI-16 index or the terminal default, respecting the user's palette,
 contrast, and colorblind-safe scheme.
 
 **Tokens are colors, never attributes.** `TokenTextMuted` is the muted text
-*color*; widgets that want faint muted text say so themselves:
+_color_; widgets that want faint muted text say so themselves:
 
 ```go
 style.New().Foreground(style.TokenTextMuted).Faint(true)
@@ -160,15 +160,15 @@ reports ok per Color); `Theme.Color` and `Theme.Dark`. No mutation surface.
 
 ## File layout
 
-| File | Contents |
-|---|---|
-| `style.go` | `Style`, `propKey` bitfield, `New`, fluent setters, `Align`, `Inherit` |
-| `unset.go` | `Unset*` — one per settable property |
-| `get.go` | `Get*` getters, frame-math getters |
-| `color.go` | `Color`, `colorKind`, constructors, `ColorSpec`, resolver read accessors |
-| `theme.go` | `Token` vocabulary, `Theme`, `NewTheme`, `WithToken`/`WithDark`, `DefaultTheme` |
-| `border.go` | `BorderStyle` + prefabs |
-| `ext.go` | `StyleOption`, `Apply`, `ExtKey`, `Ext`/`GetExt` |
+| File        | Contents                                                                        |
+| ----------- | ------------------------------------------------------------------------------- |
+| `style.go`  | `Style`, `propKey` bitfield, `New`, fluent setters, `Align`, `Inherit`          |
+| `unset.go`  | `Unset*` — one per settable property                                            |
+| `get.go`    | `Get*` getters, frame-math getters                                              |
+| `color.go`  | `Color`, `colorKind`, constructors, `ColorSpec`, resolver read accessors        |
+| `theme.go`  | `Token` vocabulary, `Theme`, `NewTheme`, `WithToken`/`WithDark`, `DefaultTheme` |
+| `border.go` | `BorderStyle` + prefabs                                                         |
+| `ext.go`    | `StyleOption`, `Apply`, `ExtKey`, `Ext`/`GetExt`                                |
 
 ## License
 

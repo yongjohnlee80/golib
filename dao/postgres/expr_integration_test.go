@@ -300,9 +300,7 @@ func TestExprPG_BatchAndCopy(t *testing.T) {
 		t.Errorf("count after batch = %d, want 5", n)
 	}
 
-	// Conflict handling on a dao.T-declared conflict column. The columns must be
-	// named: OnConflictUpdate() with no argument stages no conflict target and
-	// degrades to a plain INSERT (see the note in the ADR-0016 review notes).
+	// Conflict handling on a dao.T-declared conflict column, named explicitly.
 	b2 := s.DAO().Batch().OnConflictUpdate(xName)
 	b2.AddRow(&xuser{Name: "b1", Order: 99})
 	if err := b2.Flush(); err != nil {
@@ -314,6 +312,21 @@ func TestExprPG_BatchAndCopy(t *testing.T) {
 	}
 	if n, _ := s.DAO().Count(); n != 5 {
 		t.Errorf("batch upsert inserted a duplicate: count = %d", n)
+	}
+
+	// The no-argument form must resolve to the schema's declared Conflict(xName)
+	// and upsert just the same — against a real unique index, which is the only
+	// place a missing conflict target actually shows up.
+	b3 := s.DAO().Batch().OnConflictUpdate()
+	b3.AddRow(&xuser{Name: "b2", Order: 123})
+	if err := b3.Flush(); err != nil {
+		t.Fatalf("no-arg OnConflictUpdate against the declared target: %v", err)
+	}
+	if got, err = s.DAO().With(xName, "b2").Get(); err != nil || got.Order != 123 {
+		t.Errorf("no-arg upsert did not update: %+v err=%v", got, err)
+	}
+	if n, _ := s.DAO().Count(); n != 5 {
+		t.Errorf("no-arg upsert inserted a duplicate: count = %d", n)
 	}
 }
 

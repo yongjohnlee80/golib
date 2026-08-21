@@ -40,6 +40,12 @@ var (
 	// ErrNothingToInsert is returned by Insert/Upsert when no values are staged.
 	ErrNothingToInsert = errors.New("dao: no values to insert")
 
+	// ErrNoConflictTarget is returned by BatchWriter.Flush when
+	// OnConflictUpdate was called with no columns and the schema declares no
+	// Conflict(...) target to fall back to. Emitting a plain INSERT instead
+	// would fail on the very duplicates the caller asked to update.
+	ErrNoConflictTarget = errors.New("dao: no conflict target for OnConflictUpdate")
+
 	// ErrUnknownField is returned (staged) when an intent method references a
 	// field key that the schema does not declare.
 	ErrUnknownField = errors.New("dao: unknown field")

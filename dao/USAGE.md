@@ -302,6 +302,29 @@ func Import(artists *ArtistSchema, rows []*Artist) error {
 }
 ```
 
+### Conflict handling in a batch
+
+```go
+// Name the target explicitly:
+b := artists.DAO().Batch().OnConflictUpdate(ArtistURI)
+
+// …or inherit the schema's declared Conflict(...) target — identical to what
+// DAO.Upsert() does, so one entity has one conflict target:
+b = artists.DAO().Batch().OnConflictUpdate()
+
+// If the schema declares no Conflict(...), Flush refuses rather than quietly
+// inserting (which would fail on the duplicates you meant to update):
+if err := b.Flush(); errors.Is(err, dao.ErrNoConflictTarget) {
+    // add Conflict(ArtistURI) to the schema, or name the columns here
+}
+
+// DO NOTHING — inserts what fits, changes nothing that exists:
+b = artists.DAO().Batch().SkipConflicts()
+```
+
+`ForceCopy()` cannot be combined with any of these: COPY has no conflict
+clause, so `Flush` returns `ErrUnsupported`.
+
 ## 6. Transactions
 
 ```go

@@ -653,7 +653,8 @@ func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
 		}
 	}
 	b := newBatchWriter[R, C](exec, d.schema.dialect, d.schema.table)
-	b.ctx = d.ctx() // Flush honors WithQueryContext / the tx context (ADR-0009 §2.3)
+	b.schemaConflict = d.schema.conflict // OnConflictUpdate() with no columns
+	b.ctx = d.ctx()                      // Flush honors WithQueryContext / the tx context (ADR-0009 §2.3)
 	b.initErr = initErr
 	b.translate = d.schema.translate
 	b.pipe = func(op Op) *pipeline {

@@ -341,3 +341,92 @@ func TestBatch_AddRow(t *testing.T) {
 		t.Errorf("statements/args = %d/%d, want 1/4", len(ex.calls), len(ex.calls[0].args))
 	}
 }
+
+// --- OnConflictUpdate() with no columns (the schema's declared target) ------
+
+// TestBatch_OnConflictUpdateNoArgsUsesSchemaTarget: the no-argument form means
+// "this entity's conflict target", exactly as DAO.Upsert does. Before this it
+// staged nothing and silently degraded to a plain INSERT, so a re-run failed on
+// the very duplicates the caller asked to update.
+func TestBatch_OnConflictUpdateNoArgsUsesSchemaTarget(t *testing.T) {
+	t.Parallel()
+
+	conn := newConn() // buildSchema declares Conflict(aURI)
+	s := buildSchema(conn)
+	b := s.DAO().Batch().OnConflictUpdate()
+	b.Add(map[artistField]any{aName: "n", aURI: "u"})
+	if err := b.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if !strings.Contains(conn.lastExec, `ON CONFLICT ("uri") DO UPDATE SET`) {
+		t.Errorf("no-arg OnConflictUpdate should use the schema target: %s", conn.lastExec)
+	}
+	// The conflict column itself must not appear in the DO UPDATE SET list.
+	if strings.Contains(conn.lastExec, `SET "uri"`) {
+		t.Errorf("conflict column must be excluded from the update set: %s", conn.lastExec)
+	}
+}
+
+// TestBatch_OnConflictUpdateNoArgsWithoutSchemaTargetFails: with nothing to fall
+// back to, Flush refuses instead of emitting a plain INSERT.
+func TestBatch_OnConflictUpdateNoArgsWithoutSchemaTargetFails(t *testing.T) {
+	t.Parallel()
+
+	conn := newConn()
+	// A schema with no Conflict(...) option: same fields, no conflict target.
+	s := New(conn,
+		Table[*artist, artistField, artistSort, string]("artist"),
+		ID[*artist, artistField, artistSort, string](aID),
+		Fields[*artist, artistField, artistSort, string](artistFields),
+		Default[*artist, artistField, artistSort, string](aID, aName),
+		// artistFields declares a join, so it must still be registered; only
+		// the Conflict(...) option is missing here.
+		OptionalJoin[*artist, artistField, artistSort, string]("label_group",
+			"LEFT JOIN label_group ON label_group.id = artist.label_group_id"),
+	)
+	b := s.DAO().Batch().OnConflictUpdate()
+	b.Add(map[artistField]any{aName: "n"})
+	err := b.Flush()
+	if !errors.Is(err, ErrNoConflictTarget) {
+		t.Fatalf("Flush err = %v, want ErrNoConflictTarget", err)
+	}
+	for _, want := range []string{"artist", "Conflict"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q: %v", want, err)
+		}
+	}
+	if conn.lastExec != "" {
+		t.Errorf("nothing may execute: %s", conn.lastExec)
+	}
+}
+
+// Explicit columns keep winning, and still work when the schema declares a
+// different target.
+func TestBatch_OnConflictUpdateExplicitOverridesSchemaTarget(t *testing.T) {
+	t.Parallel()
+
+	conn := newConn() // schema target is aURI
+	s := buildSchema(conn)
+	b := s.DAO().Batch().OnConflictUpdate(aName)
+	b.Add(map[artistField]any{aName: "n", aURI: "u"})
+	if err := b.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if !strings.Contains(conn.lastExec, `ON CONFLICT ("name") DO UPDATE SET`) {
+		t.Errorf("explicit columns must win: %s", conn.lastExec)
+	}
+}
+
+// The COPY fast path cannot express conflict handling, and the no-argument form
+// is conflict handling — so it must be rejected exactly like the explicit one.
+func TestBatch_ForceCopyWithSchemaConflictRejected(t *testing.T) {
+	t.Parallel()
+
+	conn := newConn() // declares Conflict(aURI)
+	s := buildSchema(conn)
+	b := s.DAO().Batch().ForceCopy().OnConflictUpdate()
+	b.Add(map[artistField]any{aName: "n", aURI: "u"})
+	if err := b.Flush(); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("Flush err = %v, want ErrUnsupported (COPY cannot upsert)", err)
+	}
+}

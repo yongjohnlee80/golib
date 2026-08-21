@@ -356,6 +356,13 @@ PATCH body into exactly this rules map with zero per-entity code — bind a
 
 ## Batch writes (auto-chunked, optional COPY)
 
+> **Conflict handling never degrades silently.** `OnConflictUpdate(cols…)` names
+> its target; `OnConflictUpdate()` with no columns means *this entity's declared
+> `Conflict(…)` target* — the same thing `DAO.Upsert` uses — and when the schema
+> declares none, `Flush` returns `ErrNoConflictTarget` rather than emitting a
+> plain `INSERT` that would fail on the very duplicates you asked to update.
+> `SkipConflicts()` is `DO NOTHING`: it does not update.
+
 `Batch()` flushes rows as the **minimum number of statements that respect the
 dialect's bind-parameter limit** — the Postgres 65535 limit cannot be exceeded
 by construction. COPY-capable dialects (Postgres) use a bulk-load fast-path.

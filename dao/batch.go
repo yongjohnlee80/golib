@@ -29,6 +29,9 @@ type BatchWriter[R any, C ~string] interface {
 	SkipConflicts() BatchWriter[R, C]
 
 	// OnConflictUpdate upserts the staged columns on conflict with conflictCols.
+	// Called with NO columns it uses the schema's declared Conflict(...) target,
+	// exactly as DAO.Upsert does — and when the schema declares none, Flush
+	// returns an error rather than degrading to a plain INSERT.
 	OnConflictUpdate(conflictCols ...C) BatchWriter[R, C]
 
 	// ForceCopy forces the COPY fast-path (where supported); it cannot be
@@ -68,8 +71,14 @@ type batchWriter[R any, C ~string] struct {
 	rows         []map[C]any
 	skipConflict bool
 	conflictCols []C
-	forceCopy    bool
-	forceInsert  bool
+	// useSchemaConflict records an OnConflictUpdate() called with no columns:
+	// the intent is "this entity's declared conflict target".
+	useSchemaConflict bool
+	// schemaConflict is the schema's resolved Conflict(...) columns, wired by
+	// the DAO so the no-argument form means the same thing as DAO.Upsert.
+	schemaConflict []string
+	forceCopy      bool
+	forceInsert    bool
 
 	// initErr, when set, is returned by Flush before any work — used when a
 	// tx-bound Batch could not resolve its transaction executor.
@@ -110,6 +119,13 @@ func (b *batchWriter[R, C]) SkipConflicts() BatchWriter[R, C] {
 }
 
 func (b *batchWriter[R, C]) OnConflictUpdate(conflictCols ...C) BatchWriter[R, C] {
+	if len(conflictCols) == 0 {
+		// "Upsert on this entity's conflict target" — resolved at flush time,
+		// where a missing declaration can be reported instead of silently
+		// becoming a plain INSERT.
+		b.useSchemaConflict = true
+		return b
+	}
 	b.conflictCols = append(b.conflictCols, conflictCols...)
 	return b
 }
@@ -140,6 +156,15 @@ func (b *batchWriter[R, C]) Reset() {
 func (b *batchWriter[R, C]) Flush() error {
 	if b.initErr != nil {
 		return b.initErr
+	}
+	// A no-argument OnConflictUpdate needs a declared target. Refusing here is
+	// the point: silently emitting a plain INSERT would make a re-run fail on
+	// the very duplicates the caller asked to update (the trap the package's
+	// "never silently degrade conflict handling" rule names).
+	if b.useSchemaConflict && len(b.conflictCols) == 0 && len(b.schemaConflict) == 0 {
+		return fmt.Errorf("%w: OnConflictUpdate() with no columns needs the schema's "+
+			"Conflict(...) option, which %q does not declare (name the columns, or declare Conflict)",
+			ErrNoConflictTarget, b.table)
 	}
 	if len(b.rows) == 0 {
 		return nil
@@ -202,7 +227,7 @@ func (b *batchWriter[R, C]) Flush() error {
 }
 
 func (b *batchWriter[R, C]) hasConflictHandling() bool {
-	return b.skipConflict || len(b.conflictCols) > 0
+	return b.skipConflict || len(b.conflictCols) > 0 || b.useSchemaConflict
 }
 
 // keysAndCols returns the sorted union of staged field keys and the column names
@@ -256,6 +281,11 @@ func (b *batchWriter[R, C]) shouldCopy(nrows, _ int) bool {
 // suffix renders the ON CONFLICT clause for the staged conflict options, or "".
 func (b *batchWriter[R, C]) suffix(cols []string) string {
 	switch {
+	case len(b.conflictCols) == 0 && b.useSchemaConflict:
+		// OnConflictUpdate() with no columns: the schema's declared target.
+		// Flush has already rejected the case where there is none.
+		conflict := b.schemaConflict
+		return b.dialect.BuildUpsertSuffix(conflict, subtract(cols, conflict))
 	case len(b.conflictCols) > 0:
 		conflict := make([]string, len(b.conflictCols))
 		for i, c := range b.conflictCols {
