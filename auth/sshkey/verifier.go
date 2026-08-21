@@ -30,16 +30,26 @@ type Verifier interface {
 	VerifySignature(ctx context.Context, message, armoredSig []byte, namespace, identity string) error
 }
 
+// errUnavailable backs both ErrVerifierUnavailable and ErrUnsupportedPlatform,
+// so errors.Is(err, ErrVerifierUnavailable) holds for a platform refusal too: a
+// caller checking "could this verifier reach a verdict" gets one answer.
+var errUnavailable = errors.New("sshkey: verifier unavailable")
+
 var (
 	// ErrIdentity covers a claimed identity that is unusable or not allowed.
 	ErrIdentity = errors.New("sshkey: identity not allowed")
+
+	// ErrUnsupportedPlatform means the delegating verifier cannot be built here
+	// at all — it needs POSIX process groups to bound a timed-out subprocess.
+	// It is a construction error, never a verification result.
+	ErrUnsupportedPlatform = fmt.Errorf("%w: unsupported platform", errUnavailable)
 
 	// ErrVerifierUnavailable means the verifier could not reach a verdict — a
 	// missing ssh-keygen, an unreadable allowed_signers, a cancelled context, a
 	// subprocess that had to be killed. It is deliberately distinct from a
 	// failed verification so an operator can tell "misconfigured" from
 	// "rejected", and so a caller never reads an outage as a bad credential.
-	ErrVerifierUnavailable = errors.New("sshkey: verifier unavailable")
+	ErrVerifierUnavailable = errUnavailable
 )
 
 // --- OpenSSH: delegate to the reference implementation ----------------------
@@ -99,26 +109,41 @@ func NewOpenSSH(allowedSigners string, opts ...OpenSSHOption) (*OpenSSH, error) 
 	if o.allowedSigners == "" {
 		return nil, fmt.Errorf("%w: no allowed_signers path", ErrVerifierUnavailable)
 	}
-	if o.timeout <= 0 {
+	if o.timeout < 0 {
+		// Only zero means "use the default"; a negative duration is a mistake,
+		// and silently treating it as the default hides it.
+		return nil, fmt.Errorf("%w: negative VerifyTimeout %s", ErrVerifierUnavailable, o.timeout)
+	}
+	if o.timeout == 0 {
 		o.timeout = DefaultVerifyTimeout
 	}
-	if o.binary == "" {
-		found, err := exec.LookPath("ssh-keygen")
-		if err != nil {
-			return nil, fmt.Errorf("%w: ssh-keygen not found on PATH: %v", ErrVerifierUnavailable, err)
-		}
-		o.binary = found // resolved once; PATH is not re-consulted per attempt
+	if err := supportsProcessGroups(); err != nil {
+		return nil, err
 	}
-	if err := readablePolicy(o.binary); err != nil {
-		return nil, fmt.Errorf("%w: ssh-keygen %q: %v", ErrVerifierUnavailable, o.binary, err)
+	name := o.binary
+	if name == "" {
+		name = "ssh-keygen"
 	}
+	// LookPath, for an explicit path too. It checks EXECUTABILITY, which is the
+	// question actually being asked — opening the file instead accepts a
+	// mode-0600 text file (verified: it constructed fine) and rejects a valid
+	// execute-only binary. Either way the truth would only emerge at somebody's
+	// first login, as EACCES or ENOEXEC. LookPath handles a slash-containing
+	// path directly and refuses a current-directory-relative result.
+	found, err := exec.LookPath(name)
+	if err != nil {
+		return nil, fmt.Errorf("%w: ssh-keygen %q is not an executable: %v", ErrVerifierUnavailable, name, err)
+	}
+	o.binary = found // resolved once; PATH is not re-consulted per attempt
 	if err := readablePolicy(o.allowedSigners); err != nil {
 		return nil, fmt.Errorf("%w: allowed_signers %q: %v", ErrVerifierUnavailable, o.allowedSigners, err)
 	}
 	return o, nil
 }
 
-// readablePolicy proves a path is a regular file this process can actually READ.
+// readablePolicy proves a POLICY FILE is a regular file this process can
+// actually READ. It is deliberately not used on the binary, where the question
+// is executability, not readability.
 //
 // os.Stat is not enough: it succeeds on a mode-000 file and on a directory, and
 // the failure then arrives as a nonzero ssh-keygen exit — indistinguishable from
@@ -151,7 +176,7 @@ func (o *OpenSSH) VerifySignature(ctx context.Context, message, armoredSig []byt
 		return fmt.Errorf("%w: OpenSSH verifier was not built with NewOpenSSH", ErrVerifierUnavailable)
 	}
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("%w: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: verification cancelled by the caller: %v", ErrVerifierUnavailable, err)
 	}
 	if err := validIdentity(identity); err != nil {
 		return err
@@ -178,7 +203,8 @@ func (o *OpenSSH) VerifySignature(ctx context.Context, message, armoredSig []byt
 		return fmt.Errorf("%w: %v", ErrVerifierUnavailable, err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, o.timeout)
+	parent := ctx
+	ctx, cancel := context.WithTimeout(parent, o.timeout)
 	defer cancel()
 
 	// argv only — never a shell — so nothing in identity or namespace can be
@@ -202,20 +228,28 @@ func (o *OpenSSH) VerifySignature(ctx context.Context, message, armoredSig []byt
 	// only closes our end of the pipes. Neither reaps a descendant: measured on
 	// the timeout fixture, the call returned in ~1.1s and the grandchild was
 	// still running afterwards, so repeated timeouts would accumulate processes.
-	// isolateProcessGroup puts the child in its own group and kills the group.
+	// isolateProcessGroup puts the child in its own group and kills the group
+	// from Cancel — which is the ONLY safe moment to do it.
+	//
+	// There is deliberately no group kill after Run. Run includes Wait, so by
+	// then the child has been reaped and its pid released; the kernel is free to
+	// reuse that integer as some unrelated process-group leader, and
+	// kill(-oldpid) would then kill a stranger's process group. Cancel is safe
+	// precisely because the unreaped child still holds the pgid. A clean exit
+	// needs no cleanup anyway: ssh-keygen -Y verify spawns nothing.
 	isolateProcessGroup(cmd)
 	cmd.WaitDelay = waitDelay
 
 	runErr := cmd.Run()
-	// Belt and braces: even on a clean exit, anything the child left behind in
-	// its group dies here. On success the group is already empty and this is a
-	// no-op. Our own process is never in that group — the group id IS the
-	// child's pid — so this can never signal us.
-	reapProcessGroup(cmd)
 
 	if runErr != nil {
+		// Distinguish "the caller gave up" from "our own bound expired": an
+		// operator reading the log needs to know whose deadline fired.
+		if parent.Err() != nil {
+			return fmt.Errorf("%w: verification cancelled by the caller: %v", ErrVerifierUnavailable, parent.Err())
+		}
 		if ctx.Err() != nil {
-			return fmt.Errorf("%w: ssh-keygen timed out after %s", ErrVerifierUnavailable, o.timeout)
+			return fmt.Errorf("%w: ssh-keygen exceeded its %s verify timeout", ErrVerifierUnavailable, o.timeout)
 		}
 		var ee *exec.ExitError
 		if errors.As(runErr, &ee) {
@@ -322,7 +356,7 @@ func (p *PureGo) VerifySignature(ctx context.Context, message, armoredSig []byte
 	// admitted by one and refused by the other — a disagreement about admission,
 	// which is the one thing they may never disagree about.
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("%w: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: verification cancelled by the caller: %v", ErrVerifierUnavailable, err)
 	}
 	if err := validIdentity(identity); err != nil {
 		return err
@@ -351,7 +385,7 @@ func (p *PureGo) VerifySignature(ctx context.Context, message, armoredSig []byte
 	// yield an admission, matching what OpenSSH does when its subprocess is
 	// killed part-way.
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("%w: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: verification cancelled by the caller: %v", ErrVerifierUnavailable, err)
 	}
 	return nil
 }

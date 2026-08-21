@@ -108,8 +108,11 @@ The core imports **no third-party module**.
 - **A timed-out verification kills the whole process tree.** Cancelling an
   `exec.CommandContext` kills only the direct child and `WaitDelay` only closes
   the pipes, so a descendant survives both; the child runs in its own process
-  group and the group is killed. Without that, repeated timeouts accumulate
-  processes.
+  group and the group is killed *from the cancellation path* — never after
+  `Wait`, by which point the pid is released and could name a stranger's group.
+  Platforms without POSIX process groups cannot make this guarantee, so
+  `NewOpenSSH` **refuses to construct** there rather than quietly not doing it;
+  use `NewPureGo`, which forks nothing.
 
 - **A password credential says how to check itself.** Parameters are stored
   *with* the hash (`$argon2id$v=19$m=65536,t=3,p=4$salt$digest`), so tuning the

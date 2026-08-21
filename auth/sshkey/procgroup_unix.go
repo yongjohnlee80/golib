@@ -33,11 +33,5 @@ func isolateProcessGroup(cmd *exec.Cmd) {
 	}
 }
 
-// reapProcessGroup kills anything left in the child's group after Wait returns.
-// A no-op when the group is already empty, which is the normal case.
-func reapProcessGroup(cmd *exec.Cmd) {
-	if cmd.Process == nil {
-		return
-	}
-	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-}
+// supportsProcessGroups reports that this platform can bound a subprocess tree.
+func supportsProcessGroups() error { return nil }

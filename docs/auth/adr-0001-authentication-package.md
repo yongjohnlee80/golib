@@ -1,13 +1,15 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Accepted (rev 6)** (2026-08-22 — authored by jarvis; lector
+- **Status:** **Accepted (rev 7)** (2026-08-22 — authored by jarvis; lector
   design r1-r3 `change_requested` folded, r4 **approved**, and **accepted by
   Johno 2026-08-21** — implementation in progress. **Rev 5 changed a mechanism
   mid-implementation**: §2.5 SSHSIG verification is delegated to
   `ssh-keygen -Y verify` instead of the hand-rolled parser, which makes the
-  client claim an identity. Lector r5 `change_requested` — three must-fixes,
-  all folded in **rev 6**, one of them a shipped bug (cancellation did not reap
-  descendants). See Review history. Lands on `auth-pkg`.)
+  client claim an identity. Lector r5 and r6 both `change_requested`, six
+  must-fixes total, all folded — **rev 7** is the current text. Two were shipped
+  bugs: cancellation did not reap descendants (r5), and the post-`Run` group kill
+  could signal an unrelated process group after pid reuse (r6). See Review
+  history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — a new subsystem.
@@ -354,9 +356,21 @@ lookup result, and an absolute path removes the remaining question.
   indefinitely. Regression test asserts the **grandchild is gone**, not merely
   that the call returned; with the fix reverted it fails on a surviving pid.
   `WaitDelay` (1s) stays as the final I/O bound **after** whole-tree
-  cancellation, never as a substitute for it. On non-unix platforms the group
-  isolation is absent — Windows would need a Job Object — and that gap is
-  recorded at the build-tagged no-op rather than left to be discovered.
+  cancellation, never as a substitute for it.
+  **The group kill happens ONLY from `Cancel`, never after `Run` (r6 must-fix
+  1).** `Run` includes `Wait`, so by then the child is reaped and its pid is
+  released — the kernel may reuse that integer as an unrelated process-group
+  leader, and `kill(-oldpid)` would kill a stranger's group. `Cancel` is safe
+  precisely because the unreaped child still holds the pgid. Rev 6's
+  "belt-and-braces" post-`Run` kill was removed; it also protected nothing, since
+  a clean `ssh-keygen -Y verify` spawns no descendants.
+  **On non-unix platforms `NewOpenSSH` REFUSES TO CONSTRUCT (r6 must-fix 3)**,
+  returning `ErrUnsupportedPlatform`. A no-op with a private comment was
+  capability dishonesty: the README promised whole-tree cleanup while the exact
+  leak stayed reachable, and the constructor gave no signal. The alternative
+  considered was an untested Windows Job Object implementation guarding a
+  security property, which is worse than an honest refusal. Those callers use
+  `NewPureGo`, which forks nothing and so has nothing to leak.
 - **`allowed_signers` readability is proved by OPENING it, not by `Stat`
   (r5 must-fix 2).** `os.Stat` succeeds on a mode-000 file and on a directory,
   so a `Stat`-only preflight let an unreadable-but-present file through; the
@@ -369,6 +383,14 @@ lookup result, and an absolute path removes the remaining question.
   file that breaks inside the gap between that check and `exec` surfaces as a
   rejection; the window cannot be closed from user space, and the next attempt
   classifies it correctly.
+- **The BINARY is validated as executable, not readable (r6 must-fix 2).** Rev 6
+  ran it through the same open-based check as the policy file, which accepts a
+  mode-0600 text file — reproduced: it constructed successfully, and the truth
+  (`EACCES`/`ENOEXEC`) waited for someone's first login — and conversely rejects
+  a valid execute-only binary. Resolution goes through `exec.LookPath`, including
+  for an explicit slash-containing path, because executability is the question
+  actually being asked. A **negative** `VerifyTimeout` is a construction error;
+  only zero means "use the default".
 - **Misconfiguration is a distinct error class.** A missing `ssh-keygen`, an
   unreadable `allowed_signers`, a cancelled context, or a subprocess that had to
   be killed returns `ErrVerifierUnavailable`, never `ErrBadSignature`. An
@@ -382,8 +404,12 @@ lookup result, and an absolute path removes the remaining question.
 - Measured exit codes (OpenSSH 10.3): **0** valid; **255** for every failure —
   wrong namespace, tampered message, unknown identity, empty `allowed_signers`.
   The decision is exit-status driven; no output is parsed.
-- `ssh-keygen -Y verify` reads **no implicit configuration file**, so nothing
-  outside the arguments and the named policy file influences the verdict.
+- `ssh-keygen -Y verify` reads **no implicit configuration file**. That is the
+  whole of the claim (r6 should-fix): the verdict is NOT purely a function of
+  argv plus the policy file, because `allowed_signers` validity windows are
+  evaluated against the **system clock**, and a non-`Z` timestamp in that file is
+  interpreted in the **system timezone**. Clock skew and `TZ` are therefore part
+  of this verifier's trust base, and rev 6 overclaimed by omitting them.
 
 **Both verifiers honor `ctx` (r5 should-fix 1).** An already-cancelled context is
 refused before any work, and `PureGo` re-checks after its derivation. Otherwise
@@ -642,7 +668,19 @@ Acceptance criteria:
    lands in **its own** process group and specifically not this process's, since
    a group kill against the wrong group would signal the test binary. The
    regression is verified in both directions: with `isolateProcessGroup`
-   disabled the test fails on a surviving pid.
+   disabled the test fails on a surviving pid. The liveness probe requires
+   **`ESRCH` specifically** — treating any `kill(pid,0)` error as "gone" would
+   let `EPERM` on a recycled pid read as success — and a missing grandchild pid
+   **fails** the test rather than skipping it, since a green run that never
+   performed the assertion is a false pass.
+8g. **Executability and platform capability (§2.5, r6):** a readable-but-not-
+   executable binary fails construction and the same file constructs once
+   `chmod +x`; a negative `VerifyTimeout` fails construction while zero yields
+   the documented default; caller cancellation and the configured timeout produce
+   *distinguishable* messages while both remaining `ErrVerifierUnavailable`.
+   `auth/sshkey` cross-compiles for `windows/amd64` and `darwin/arm64`, and on a
+   platform without POSIX process groups `NewOpenSSH` returns
+   `ErrUnsupportedPlatform`.
 8f. **Cancellation agreement (§2.5, r5 should-fix 1):** the same inputs that
    verify under a live context are refused by **both** verifiers under an
    already-cancelled one, with `ErrVerifierUnavailable`.
@@ -710,6 +748,33 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
    costs nothing and avoids that break.
 
 ## Review history
+
+- **r6 (2026-08-22, lector — `change_requested`; all three must-fixes and all
+  three notes folded in rev 7).** Rev 6 closed every r5 blocker, and
+  `NewPureGo` rejecting an empty configured set was confirmed as the right
+  fail-at-construction call. Three new blockers, all in the subprocess and
+  construction paths I had just rewritten:
+  1. **The post-`Run` group kill was itself unsafe.** `Run` includes `Wait`, so
+     the child is already reaped and its pid released; that integer can be
+     reused as an unrelated process-group leader, and `kill(-oldpid, SIGKILL)`
+     would then kill a stranger's group. My comment proved only that it could
+     not hit *our* group — not that it could not hit anyone's. Removed. The
+     `Cancel`-path kill is the safe one because the unreaped child still holds
+     the pgid, and a clean verify spawns nothing to clean up anyway.
+  2. **The binary was validated as readable, not executable.** Lector
+     reproduced a mode-0600 text file constructing successfully. Fixed via
+     `exec.LookPath` for explicit paths too; a negative `VerifyTimeout` is now
+     also a construction error.
+  3. **Whole-tree cleanup silently vanished on non-unix**, while the README
+     promised it — the r5 leak stayed reachable on Windows with no capability
+     error. `NewOpenSSH` now refuses to construct there. I chose the typed
+     refusal over an untested Job Object implementation guarding a security
+     property.
+  Notes: `ESRCH` specifically rather than any error; a missing grandchild pid
+  fails rather than skips; the "nothing outside argv and the policy file affects
+  the verdict" claim narrowed — validity windows depend on the system clock and
+  non-`Z` timestamps on `TZ`, so both are in the trust base; and caller
+  cancellation now reads differently from the configured timeout.
 
 - **r5 (2026-08-22, lector — `change_requested`; all three must-fixes and all
   four should-fixes folded in rev 6).** The identity claim, the sentinel

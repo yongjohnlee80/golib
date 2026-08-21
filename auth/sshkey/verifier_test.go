@@ -435,3 +435,87 @@ func idScreenKey(t *testing.T) ssh.PublicKey {
 	_, pub := newSigner(t)
 	return pub
 }
+
+// A binary that is READABLE but not EXECUTABLE must fail at construction.
+//
+// This is the case an open-based check accepts: a mode-0600 text file opens
+// fine, so the verifier constructed successfully and the truth — EACCES or
+// ENOEXEC — waited for somebody's first login. Executability is the question
+// actually being asked.
+func TestNewOpenSSH_BinaryMustBeExecutable(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	signers := filepath.Join(dir, "signers")
+	if err := os.WriteFile(signers, []byte("x ssh-ed25519 AAAA\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	notExec := filepath.Join(dir, "ssh-keygen")
+	if err := os.WriteFile(notExec, []byte("#!/bin/sh\ntrue\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewOpenSSH(signers, Binary(notExec)); err == nil {
+		t.Error("a readable-but-not-executable binary must not construct")
+	} else if !errors.Is(err, ErrVerifierUnavailable) {
+		t.Errorf("err = %v, want ErrVerifierUnavailable", err)
+	}
+
+	// The same file, now executable, constructs.
+	if err := os.Chmod(notExec, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewOpenSSH(signers, Binary(notExec)); err != nil {
+		t.Errorf("an executable binary must construct: %v", err)
+	}
+}
+
+// Only zero means "use the default". A negative duration is a mistake, and
+// treating it as the default would hide it.
+func TestNewOpenSSH_TimeoutValidation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	signers := filepath.Join(dir, "signers")
+	if err := os.WriteFile(signers, []byte("x ssh-ed25519 AAAA\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewOpenSSH(signers, Binary("/bin/true"), VerifyTimeout(-time.Second)); err == nil {
+		t.Error("a negative VerifyTimeout must fail at construction")
+	}
+	v, err := NewOpenSSH(signers, Binary("/bin/true"), VerifyTimeout(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.timeout != DefaultVerifyTimeout {
+		t.Errorf("timeout = %v, want the documented default %v", v.timeout, DefaultVerifyTimeout)
+	}
+	v, err = NewOpenSSH(signers, Binary("/bin/true"), VerifyTimeout(3*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.timeout != 3*time.Second {
+		t.Errorf("timeout = %v, want 3s", v.timeout)
+	}
+}
+
+// Caller cancellation and our own timeout are different operator facts and must
+// read differently, while both remaining ErrVerifierUnavailable.
+func TestOpenSSH_CancellationIsDistinctFromTimeout(t *testing.T) {
+	bin := sshKeygen(t)
+	dir := t.TempDir()
+	signers := filepath.Join(dir, "signers")
+	if err := os.WriteFile(signers, []byte("x ssh-ed25519 AAAA\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v, err := NewOpenSSH(signers, Binary(bin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err = v.VerifySignature(ctx, []byte("m"), []byte("sig"), testNS, "alice")
+	if !errors.Is(err, ErrVerifierUnavailable) {
+		t.Fatalf("err = %v, want ErrVerifierUnavailable", err)
+	}
+	if !strings.Contains(err.Error(), "cancelled by the caller") {
+		t.Errorf("err = %q, want it to name caller cancellation rather than a timeout", err)
+	}
+}

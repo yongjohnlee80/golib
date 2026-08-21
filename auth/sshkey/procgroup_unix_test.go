@@ -69,14 +69,24 @@ func TestOpenSSH_TimeoutKillsTheWholeTree(t *testing.T) {
 
 	pid := grandchildPID(t, pidFile)
 	if pid == 0 {
-		t.Skip("stub never recorded a grandchild pid; nothing to assert about cleanup")
+		// Not a skip: without the pid there is nothing proving the fix works, so
+		// a green run here would be a false pass on the property under test.
+		t.Fatal("the stub never recorded a grandchild pid — the cleanup assertion " +
+			"could not run, so this test proves nothing")
 	}
 	// Poll: the group kill is delivered before Run returns, but reaping is
 	// asynchronous.
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		if err := syscall.Kill(pid, 0); err != nil {
-			return // ESRCH — gone, which is the point of the test
+		// ESRCH specifically. Treating ANY error as "gone" would let EPERM — a
+		// pid recycled into a process we may not signal — read as success.
+		err := syscall.Kill(pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return // gone, which is the point of the test
+		}
+		if err != nil {
+			t.Fatalf("kill(%d, 0) = %v, want ESRCH: cannot tell whether the "+
+				"grandchild died", pid, err)
 		}
 		if time.Now().After(deadline) {
 			// Do not leak it into the rest of the suite regardless.
@@ -121,7 +131,7 @@ func TestIsolateProcessGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		reapProcessGroup(cmd)
+		cancel()
 		_ = cmd.Wait()
 	}()
 
