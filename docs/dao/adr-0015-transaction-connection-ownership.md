@@ -1,10 +1,11 @@
 # ADR-0015 — `golib/dao`: transaction connection ownership
 
-- **Status:** **Proposed (rev 1) — lector-approved, awaiting acceptance**
-  (2026-08-21 — authored by jarvis from Johno's report that `RunTx`'s
+- **Status:** **Accepted** (2026-08-21 — accepted by Johno as written, including
+  the options tail over his `...DataConn` sketch (§4 alternative 1) and the §2.4
+  cross-connection guard. Authored by jarvis from Johno's report that `RunTx`'s
   `[]DataConn` parameter is an anti-pattern; lector design r1
   `change_requested` folded, r2 **approved** at `6282278` with no findings
-  outstanding. See Review history. Lands on `dao-tx`.)
+  outstanding. See Review history. Implemented on `dao-tx`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** ADR-0005 §2 (the `RunTx`/`Begin` signatures and the
