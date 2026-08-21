@@ -151,6 +151,16 @@ func resolveFields[R any, C ~string](d Dialect, in map[C]Field[R]) map[C]Field[R
 }
 ```
 
+**Resolution consumes the `Expr`:** the clone clears it, because `Column` and
+`WriteColumn` now carry everything. This is not tidiness — retaining the
+renderer closures left the Expr-declared schema measurably slower per query
+(~4%, with byte-identical allocations) purely through GC pressure from the extra
+live objects. With the closure dropped, the schema holds none at all and its
+resolved fields are content-identical to a hand-written declaration, which is
+what makes the two forms indistinguishable rather than merely equal in
+allocations. The caller's map keeps its `Expr`s; only the schema's copy is
+cleared.
+
 Cloning also closes a pre-existing aliasing hazard: today a caller who mutates
 their field map after `New` silently mutates the live schema.
 
@@ -471,8 +481,11 @@ Acceptance criteria:
    `WriteColumn`, constructs fine. Every existing declaration in golib's tests
    and in `example/` still constructs.
 9. `SQL("NOW()")` is emitted verbatim, unquoted.
-10. Zero query-time cost: an allocation benchmark over a tx-free `Select` shows
-    no change against the string-declared schema.
+10. Zero query-time cost: paired benchmarks over a tx-free `Select` show the
+    Expr-declared and string-declared schemas identical in allocations
+    (904 B/op, 21 allocs/op) and indistinguishable in wall clock (1160 vs
+    1164 ns/op, mean of 5). A test pins the mechanism that makes this true —
+    resolution clears the `Expr`, so the schema retains no closures (§2.2).
 
 ## 7. Open question (rev 3)
 
