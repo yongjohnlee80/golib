@@ -1,8 +1,9 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Proposed** (2026-08-21 — authored by jarvis from Johno's request
-  to reach a CLI's existing TUI from a browser. Awaiting design review; lands on
-  `tui-web`.)
+- **Status:** **Proposed (rev 1)** (2026-08-21 — authored by jarvis; lector
+  design r1 `change_requested` folded, including a correctness defect in rev 0's
+  frame coalescing and a wrong security claim about mTLS. See Review history.
+  Lands on `tui-web`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -97,22 +98,36 @@ optimistic request is never reported as support, ADR-0002 §2.2);
 The App loop calls `Flush` once per frame and ADR-0003's one-write rule assumes
 it is fast. A slow or vanished browser must not stall the UI. Therefore:
 
-- the backend holds **at most one pending frame**; a newer frame **replaces**
-  the older (latest-wins coalescing), so a stalled viewer costs one frame of
-  memory, not the application;
+- the backend holds **at most one pending frame**, and that frame is
+  **CUMULATIVE** — not the newest frame, but the **union of every unsent dirty
+  row with its newest value**, relative to the last baseline the client is known
+  to hold;
 - a frame reaches the client **atomically** — never a half-painted screen;
-- a dropped frame is **logged** (§2.8): a silently dropped frame is a debugging
-  trap.
+- every frame carries a **monotonically increasing revision**, and the client
+  acknowledges; a new connection (or any gap) gets a **full resync snapshot**
+  rather than a diff;
+- a coalesced-away *publication* is logged (§2.9): silently swallowing one is a
+  debugging trap.
+
+**Why cumulative, and why rev 0 was wrong.** Rev 0 said a newer frame *replaces*
+the older (latest-wins). That is a correctness bug, not an optimisation, because
+frames carry only **dirty rows**: if the frame containing row A is dropped and
+the next frame changes only row B, a replacement carries B alone and **row A
+never reaches the client — permanently.** The client diverges from the server
+grid with no mechanism to notice. Latest-wins is only safe when each frame is
+self-contained; with row-level diffs the pending frame must accumulate. With a
+cumulative aggregate, a queue is unnecessary: one slot is sufficient and
+bounded.
 
 ### 2.5 Transport, and encryption by default
 
 Built on golib's own `server/http` (and `server/ws` if WebSocket wins).
 
-**Transport decision (open — see §7 Q1):** WebSocket versus SSE + POST. Note the
-dependency asymmetry the tightened `golib` rule cares about: `server/ws` already
-carries `github.com/coder/websocket` in `go.mod`, so choosing WebSocket adds
-**no new module** to the repo — only to this package's import graph. SSE + POST
-is stdlib-only but pays input latency on every keystroke.
+**Transport: WebSocket (DECIDED, r1).** `server/ws` already carries
+`github.com/coder/websocket` in `go.mod`, so this adds **no new module** to the
+repo — only to this package's import graph — and ordered full-duplex framing
+avoids an HTTP request per keystroke. SSE + POST stays recorded as the
+stdlib-only alternative in §5.
 
 **Encryption is on by default** (Johno, 2026-08-21: *"we should also have
 encryption by default"*). `wss://` is not a separate crypto layer — it is the WS
@@ -120,9 +135,11 @@ handshake over TLS, the same TLS 1.3 as HTTPS. Required:
 
 - A **non-loopback bind without TLS is a startup error**, never a warning. No
   silent plaintext, ever.
-- Plaintext is permitted only for a loopback bind, where the kernel or the
-  tunnel is the boundary. Whether even loopback should get an auto-generated
-  ephemeral self-signed certificate (fingerprint printed) is §7 Q2.
+- Plaintext is permitted **only** for a loopback bind — including inside the
+  documented authenticated SSH forward, where the tunnel is the boundary.
+  **No auto-generated self-signed certificate (DECIDED, r1):** browser UX for an
+  ephemeral localhost certificate is poor, and a certificate is not a substitute
+  for authentication, which is mandatory anyway (§2.8).
 - No default certificate is ever shipped. Operator-supplied cert/key.
 - The **documented primary deployment is an SSH local-forward**
   (`ssh -L 8080:127.0.0.1:8080 host`) against a loopback bind: no open port, and
@@ -138,16 +155,25 @@ The hazard is real and is the classic xterm.js bug class: a grapheme golib
 counts as `Width: 2` (CJK, emoji) must occupy exactly two columns in the chosen
 font, or the row drifts. Mitigations, all required:
 
-- **Bound a mismatch to its own cell.** Per-cell layout with explicit advance
-  (a CSS grid or per-cell `ch` sizing), so a font disagreement cannot cascade
-  along the row. A wrong glyph width must be ugly, never desynchronizing.
-- **Honor `Cell.Width` exactly**, including `0` as a continuation cell: a
-  continuation emits no glyph and no box.
+- **Bound a mismatch to its own box, in measured pixels.** Grid tracks are sized
+  from the **client's measured cell advance in px** — not `ch`, which is itself
+  font-relative and therefore begs the question. A `Width: 2` head span occupies
+  exactly **two tracks**; a `Width: 0` continuation emits **no box at all**.
+  Each cell box gets explicit overflow clipping and paint containment, so a glyph
+  wider than its box is **visually clipped, never desynchronizing**. Box
+  containment — not the probe — is the actual safety guarantee.
+- **Honor `Cell.Width` exactly.**
 - **Pin the font stack** in the served CSS and document it.
-- Report `UnicodeCore` only when the client confirms agreement on a probe
-  string.
+- Describe `UnicodeCore` **conservatively**: a finite probe string cannot prove
+  every Unicode glyph agrees with the server's width calculation, so the probe
+  informs the capability report but is never presented as a proof.
 
 ### 2.7 Rendering
+
+**Browser hardening is part of the contract:** a Content-Security-Policy
+suitable for the served client, `frame-ancestors 'none'`, `Cache-Control:
+no-store`, restrictive content types, and **explicitly configured `Host` and
+`Origin` expectations** (never inferred from the request).
 
 `html/template` over the server-side grid, emitting only **dirty rows**.
 `CellAttrs` → inline CSS; `AttrMask` → weight, italic, underline (undercurl only
@@ -161,19 +187,39 @@ element driven by the latched state (§2.2).
 `tui.App` + one `web.Backend` + its goroutines. Required: explicit
 create/attach/detach, idle eviction with a configurable timeout, a hard cap on
 concurrent sessions, and guaranteed teardown (`Stop`, task drain, no goroutine
-or memory leak) on disconnect, eviction and process shutdown. Reconnect policy
-must be stated, not implied.
+or memory leak) on disconnect, eviction and process shutdown.
+
+**Reconnect (DECIDED, r1):** the `App` MAY survive a short detach window so a
+flaky network does not destroy work, but **every attach requires a freshly
+minted, short-lived, single-use ticket bound to that session and origin.** The
+original ticket is never reusable and no credential is ever resurrected. The
+**SSH-side minter** must be specified end to end: which SSH/OS subject it maps
+to, the expiry, the session/origin binding, and the audit event it emits.
 
 **Authentication is mandatory. There is no unauthenticated mode, not even on
 loopback** (Johno, 2026-08-21: *"ideally we only want users to connect to WebTUI
 via ssh keys or other secured manners only"*):
 
-- Accepted mechanisms are **SSH-key proof, mTLS client certificate, or a
-  short-lived token minted over an already-authenticated channel**.
-  **Password auth is not accepted for WebTUI**, even though `golib/auth`
-  supports it for other callers.
-- An IP allowlist may be an **additional** factor (AND), never the only one — an
-  address is not an identity.
+**The policy, stated once and shared with `golib/auth` ADR-0001 (r1
+cross-ADR fix):**
+
+```go
+// identity-bearing alternatives, optionally constrained by context
+Any(singleUseSSHChannelTicket, mtls /*, sshChallenge */)          // primary
+All(ipallow, Any(singleUseSSHChannelTicket, mtls /*, ... */))     // + optional
+```
+
+- The **ticket minted over the user's existing SSH session is the default**
+  mechanism; a signed `ssh-keygen -Y sign` challenge is optional for users who
+  cannot run the CLI themselves. mTLS is the browser-native alternative.
+- **Password auth is not accepted for WebTUI**, though `golib/auth` supports it
+  for other callers.
+- An IP allowlist is **optional and never identity-bearing** — it may only
+  constrain an identity-bearing proof, never satisfy the policy alone. ADR-0001
+  §2.2 enforces that structurally rather than by documentation.
+- **`auth/token` owns credential validity and atomic consumption; this package
+  owns App/session attach, detach and eviction.** The two must not both think
+  they own expiry.
 - This backend consumes `golib/auth`'s `Authenticator` interface. If that
   package is not ready, `tui/web` still takes the *interface* from day one so
   the implementation drops in without touching transport or session code.
@@ -188,16 +234,57 @@ the browser attaches the credential, yielding a keyboard on the CLI. Therefore:
 - **validate `Origin` against an allowlist, deny by default** (necessary but not
   sufficient — `Origin` is forgeable by a non-browser client);
 - **never authenticate the socket with an ambient cookie**;
-- **no long-lived token in the URL query string** (it leaks into access logs,
-  `Referer`, history, proxies) — use a **one-time ticket** exchanged and
-  invalidated at handshake, or `Sec-WebSocket-Protocol`;
-- bind the session to the client and revoke on disconnect: no resurrection by
-  replaying a URL;
-- **mTLS is the strongest available answer** and kills the CSWSH class outright,
-  because an attacker's page cannot present a client certificate;
+- **Ticket transport (r1, precise):** the ticket goes in the **URL fragment**,
+  which browsers never send in the HTTP request, and client JavaScript submits
+  it as the **first WebSocket application message**. Not the query string (it
+  leaks into access logs, `Referer`, history and proxies) and **not
+  `Sec-WebSocket-Protocol`**, which is a handshake header and not a place for
+  secret material.
+- **Atomic admission:** the server creates no `App`, attaches nothing and
+  accepts no input until `auth/token`'s atomic **consume** succeeds. Failure
+  closes the connection. The ticket is never echoed and never logged.
+- **`Origin` validation stays mandatory for EVERY browser mechanism, mTLS
+  included** — see the correction below.
 - connection caps, idle timeouts, per-connection memory limits.
 
-### 2.9 The seam report is a deliverable
+> **CORRECTION (r1): mTLS does NOT eliminate CSWSH.** Rev 0 claimed it "kills
+> the CSWSH class outright". That is wrong. A browser may **automatically
+> re-present a previously selected client certificate** for the target origin,
+> which makes mTLS an *ambient* credential in exactly the way a cookie is: it
+> authenticates the TLS peer, but it does not prove the initiating page is
+> trusted. mTLS remains valuable — it is a strong, phishing-resistant
+> *authentication* mechanism — but deny-by-default `Origin` validation is
+> mandatory alongside it, not instead of it.
+> (RFC 6455 §10.2; W3C client-certificate-selection notes; OWASP WebSocket
+> Security Cheat Sheet.)
+
+### 2.9 The input contract (r1 — acceptance criterion 7 assumed a table that did not exist)
+
+The package MUST document, and test, a complete browser→`tui.Event` mapping:
+
+- **`KeyboardEvent.key` vs `code`** — which is authoritative for which class of
+  key, and why (layout-dependent characters vs physical keys).
+- **Modifiers and autorepeat**: Ctrl/Alt/Shift/Meta composition, and whether a
+  repeat is emitted as distinct events.
+- **IME / composition**: composition start/update/end must not emit garbage
+  intermediate keys; the committed text arrives as text input.
+- **Paste**: browser paste → a paste event (consistent with
+  `BracketedPaste: true`).
+- **Reserved browser shortcuts** and an explicit `preventDefault` policy: which
+  combinations the page takes (so the TUI can use them) and which it must leave
+  to the browser.
+- **Mouse**: buttons, coordinates in cells, wheel, drag.
+- **Focus and resize.**
+- **Unknown events are dropped explicitly** — never forwarded as a phantom key.
+
+**Resource limits belong to the same contract.** Because `Events()` is ordered
+and un-coalesced (ADR-0002), an abusive client must not be able to make the
+backend allocate without bound: define a maximum message size, a maximum event
+rate, a **bounded** ordered event queue, and **close the connection on sustained
+overload** rather than growing. RFC 6455 recommends implementation-specific
+frame and total-message limits.
+
+### 2.10 The seam report is a deliverable
 
 The package README and this ADR's review history must record **every place the
 `Backend` contract or the `Cell`/`Surface` model assumed a terminal** and made a
@@ -274,24 +361,39 @@ Acceptance criteria:
    `tui/web/` package (plus docs/examples). Mechanically checked.
 3. A scripted sequence of `Flush` calls renders to byte-identical HTML across
    runs (golden test), and only dirty rows are transmitted.
-4. With the client's reader blocked: `Flush` returns without blocking, older
-   pending frames coalesce to one, the app loop keeps running, and the drop is
+4. **Divergence test (the rev-0 defect, pinned).** With the client's reader
+   blocked, change row A, let that publication be coalesced away, then change
+   only row B, then unblock: the client's final grid must equal the server's
+   grid — proving the pending frame accumulated rather than replaced. `Flush`
+   never blocks, the app loop keeps running, and the coalesced publication is
    logged.
+4b. Revisions increase monotonically; a fresh connection and a reconnect after a
+   gap both receive a **full resync snapshot**, not a diff.
 5. A client resize changes `Size()` and the next frame matches the new grid; a
    mid-frame resize does not tear.
 6. A wide grapheme (one CJK, one emoji) occupies exactly two columns in the DOM,
    a `Width: 0` continuation emits no glyph, and a deliberately mismatched font
    does not shift the remainder of the row.
-7. Every row of the documented input-mapping table has a test asserting the
-   emitted `tui.Event`; an unmapped browser key is dropped explicitly, with a
-   test proving no phantom event.
+7. Every row of §2.9's input-mapping table has a test asserting the emitted
+   `tui.Event`; an unmapped browser key is dropped explicitly, with a test
+   proving no phantom event; IME composition emits no intermediate garbage.
+7b. Resource limits: an oversized message is rejected, a sustained event flood
+   closes the connection instead of growing the queue, and the queue bound holds
+   under load.
 8. Session cap and idle eviction are enforced; after disconnect and after
    eviction, `Stop` has run, goroutines have exited (leak check), and the
    credential no longer attaches.
 9. A non-loopback bind without TLS **fails to start**, with a test asserting the
    error; a plaintext loopback bind is permitted only per §7 Q2's resolution.
-10. `Origin` validation denies by default; a cross-origin handshake is refused;
-    a one-time ticket cannot be redeemed twice.
+10. `Origin` validation denies by default and is enforced **even when mTLS is
+    in use**; a cross-origin handshake is refused; a ticket cannot be redeemed
+    twice (atomic consume), and no `App` is created or input accepted before the
+    consume succeeds.
+10b. The ticket never appears in a request URL, an access log, or any server log;
+    a test asserts the fragment-plus-first-message flow.
+10c. Responses carry the §2.7 hardening headers (CSP with `frame-ancestors
+    'none'`, `Cache-Control: no-store`, restrictive content type), and `Host`/
+    `Origin` expectations come from configuration, never inference.
 11. `Capabilities()` reports `KittyKeyboard: false`, and no capability is
     `TriYes` without a verifiable basis.
 12. The §2.9 seam report exists and is specific: each finding names the method or
@@ -301,7 +403,27 @@ Acceptance criteria:
 13. `go vet` clean, race-clean, `doc.go` + `README.md` present, every exported
     symbol documented, tests stdlib-only.
 
-## 7. Open questions for review
+## 7. Resolved review questions (r1)
+
+All five open questions were answered in lector's design r1; recorded as
+decisions:
+
+1. **Transport: WebSocket** via the existing `server/ws` — no new module, and
+   ordered full-duplex input avoids an HTTP request per keystroke (§2.5).
+2. **Loopback encryption:** plaintext is acceptable **only** on loopback,
+   including inside an authenticated SSH forward; TLS stays mandatory for any
+   non-loopback bind. No ephemeral self-signed certificate — poor browser UX and
+   no substitute for authentication (§2.5).
+3. **SSH-key mechanism:** the **SSH-channel-minted single-use ticket is the
+   default**, with the signed challenge optional. The ticket belongs to
+   `auth/token` plus a trusted SSH/CLI minter — *not* to `auth/sshkey` (§2.8).
+4. **Reconnect:** the `App` may survive a short detach window, but every attach
+   requires a fresh single-use credential bound to session and origin; no
+   credential resurrection (§2.8).
+5. **Package scope:** keep `tui/web`; factor a render-target-agnostic layer only
+   when a second backend supplies the evidence (§1.3).
+
+## 8. Superseded open questions
 
 1. **Transport:** WebSocket via the existing `server/ws` (no new module in
    `go.mod`, lower keystroke latency) versus SSE + POST (stdlib-only import
@@ -329,4 +451,38 @@ Acceptance criteria:
 
 ## Review history
 
-- **r1 (pending)** — design review requested 2026-08-21.
+- **r1 (2026-08-21, lector — `change_requested`, folded in this revision).**
+  **Must-fix 1 was a correctness defect, not a nit:** rev 0's latest-wins frame
+  coalescing is wrong precisely because frames carry only dirty rows — drop the
+  frame containing row A, then change only row B, and row A never reaches the
+  client, permanently. The pending frame is now a **cumulative union of unsent
+  dirty rows** relative to the client's baseline, with monotonic revisions,
+  acknowledgement, and full initial/reconnect resync; a queue turns out to be
+  unnecessary once the single slot accumulates (§2.4, acceptance 4/4b).
+  **Must-fix 2 corrected a wrong security claim:** rev 0 said mTLS "kills the
+  CSWSH class outright". It does not — a browser may automatically re-present a
+  previously selected client certificate, making mTLS an *ambient* credential
+  like a cookie; it authenticates the TLS peer without proving the initiating
+  page is trusted. `Origin` validation is now mandatory for every browser
+  mechanism, mTLS included (§2.8). **Must-fix 3:** ticket transport specified end
+  to end — URL **fragment** (never sent in the HTTP request) plus the first
+  WebSocket application message, not the query string and not
+  `Sec-WebSocket-Protocol`; atomic consume before any `App` attach or input;
+  never echoed or logged (§2.8). **Must-fix 4:** acceptance criterion 7 assumed a
+  documented input-mapping table that rev 0 never contained — §2.9 now defines
+  `key` vs `code`, modifiers/repeat, IME/composition, paste, reserved shortcuts
+  and `preventDefault`, mouse, focus/resize, unknown-event behavior, **and** the
+  message-size / event-rate / bounded-queue / close-on-overload limits.
+  **Should-fixes:** the font-box invariant is now measured **pixel** tracks (not
+  `ch`, which is itself font-relative), a width-2 head spans two tracks, a
+  width-0 continuation emits no box, and overflow clipping plus paint containment
+  make box containment — not the probe — the safety guarantee, with
+  `UnicodeCore` described conservatively (§2.6); all five open questions resolved
+  (§7); browser hardening (CSP, `frame-ancestors 'none'`, no-store, explicit
+  `Host`/`Origin`) added (§2.7). **Cross-ADR:** one shared policy —
+  `Any(singleUseSSHChannelTicket, mtls[, sshChallenge])` optionally wrapped in
+  `All(ipallow, ...)`, with IP optional and never identity-bearing;
+  `auth/token` owns credential validity and consumption while this package owns
+  session lifecycle (§2.8). Approach (A) approved in principle, on the explicit
+  basis that the seam experiment is the deliverable.
+  Review doc: `$KB_ROOT/agents/lector/reviews/2026-08-21-golib-tui-web-auth-coupled-design-review.md`
