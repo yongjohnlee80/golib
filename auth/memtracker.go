@@ -52,20 +52,28 @@ func (b Backoff) validate() error {
 }
 
 // delay is the backoff after n total failures.
+//
+// It saturates MONOTONICALLY at Max. Testing the product for overflow after the
+// fact is not enough: a large Base shifted far enough wraps to a small POSITIVE
+// duration that is legitimately below Max, so the backoff would reach Max and
+// then start coming back down — the most persistent attacker getting the
+// shortest wait. The comparison is therefore done on the exponent, before any
+// shift happens.
 func (b Backoff) delay(n int) time.Duration {
 	over := n - b.Threshold
 	if over <= 0 {
 		return 0
 	}
-	// Shift rather than repeated multiplication, and cap the exponent before it
-	// can overflow: 1<<63 nanoseconds is meaningless anyway, and an overflowed
-	// duration going negative would read as "not locked".
-	shift := min(over-1, 62)
-	d := b.Base << shift
-	if d <= 0 || d > b.Max {
+	shift := over - 1
+	if shift >= 63 {
 		return b.Max
 	}
-	return d
+	// b.Max>>shift cannot overflow, and b.Base <= that implies
+	// b.Base<<shift <= b.Max, so the shift below is safe by construction.
+	if b.Base > b.Max>>shift {
+		return b.Max
+	}
+	return b.Base << shift
 }
 
 // MemTracker is the bounded in-process [Tracker] (ADR-0001 §2.6b).

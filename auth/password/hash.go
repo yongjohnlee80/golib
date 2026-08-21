@@ -30,9 +30,10 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/auth"
 )
 
 // Internal errors. auth.Policy maps every failure to auth.ErrUnauthenticated;
@@ -41,13 +42,13 @@ var (
 	// ErrMismatch means the password does not match the stored hash. It is the
 	// ONLY failure a caller may interpret as "wrong password" — every other
 	// error below means the stored credential or the request was unusable.
-	ErrMismatch = errors.New("password: does not match")
+	ErrMismatch = auth.Reason("password: does not match")
 
-	ErrEncoding      = errors.New("password: malformed stored credential")
-	ErrUnknownScheme = errors.New("password: unknown hash scheme")
-	ErrParams        = errors.New("password: hash parameters out of range")
-	ErrNoCredential  = errors.New("password: no credential for subject")
-	ErrTooLong       = errors.New("password: presented password exceeds the length limit")
+	ErrEncoding      = auth.Reason("password: malformed stored credential")
+	ErrUnknownScheme = auth.Reason("password: unknown hash scheme")
+	ErrParams        = auth.Reason("password: hash parameters out of range")
+	ErrNoCredential  = auth.Reason("password: no credential for subject")
+	ErrTooLong       = auth.Reason("password: presented password exceeds the length limit")
 )
 
 // MaxPasswordLen bounds what will be hashed.

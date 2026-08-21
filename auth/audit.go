@@ -3,18 +3,20 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 )
 
 // Internal reasons. These never reach a caller — Authenticate returns
 // ErrUnauthenticated — and exist so the audit record can say what happened
 // (ADR-0001 §2.2).
-var (
-	errKindViolation   = errors.New("factor contribution disagrees with its declared kind")
-	errEmptyNode       = errors.New("empty policy node denies")
-	errNoContributions = errors.New("no contributions")
-	errSubjectConflict = errors.New("subject-bearing factors disagree")
-	errExpired         = errors.New("merged validity interval already expired")
+// They are [Reason] values, not errors.New, so their text is compile-time and
+// the audit trail may record it verbatim.
+const (
+	errKindViolation   = Reason("factor contribution disagrees with its declared kind")
+	errEmptyNode       = Reason("empty policy node denies")
+	errNoContributions = Reason("no contributions")
+	errSubjectConflict = Reason("subject-bearing factors disagree")
+	errExpired         = Reason("merged validity interval already expired")
+	errNilRequest      = Reason("nil request")
 )
 
 // Audit is the private, structured record of one authentication attempt. It

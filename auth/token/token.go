@@ -72,14 +72,23 @@ type config struct {
 	now    func() time.Time
 }
 
-// Scheme sets which auth.Request credential key is read. Default "ticket".
+// DefaultScheme is the auth.Request credential key a Factor reads by default.
+//
+// Exported so an adapter can PROJECT into the same key rather than guessing it:
+// authhttp referenced a hand-written "token" while this package read "ticket",
+// and the two silently did not compose — an end-to-end probe returned 401 with
+// the credential unconsumed. A shared constant makes that drift impossible.
+const DefaultScheme = "ticket"
+
+// Scheme sets which auth.Request credential key is read. Default
+// [DefaultScheme].
 func Scheme(name string) Option { return func(c *config) { c.scheme = name } }
 
 // Clock overrides the time source, for tests.
 func Clock(fn func() time.Time) Option { return func(c *config) { c.now = fn } }
 
 func resolve(opts []Option) config {
-	c := config{scheme: "ticket", now: time.Now}
+	c := config{scheme: DefaultScheme, now: time.Now}
 	for _, o := range opts {
 		if o != nil {
 			o(&c)

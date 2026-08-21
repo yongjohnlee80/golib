@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/logger"
@@ -54,7 +55,21 @@ func (a Attempt) String() string {
 	}
 	if len(a.Methods) > 0 {
 		b.WriteString(" methods=")
-		b.WriteString(strings.Join(a.Methods, ","))
+		// Method names come from the factor, which is third-party code: a
+		// Method of "password\nforged=true" would otherwise write a second,
+		// fabricated log line. Every rendered field is sanitized, and the count
+		// is bounded so one policy with a thousand leaves cannot flood a line.
+		const maxMethods = 16
+		for i, m := range a.Methods {
+			if i == maxMethods {
+				b.WriteString(",…")
+				break
+			}
+			if i > 0 {
+				b.WriteString(",")
+			}
+			b.WriteString(sanitize(m))
+		}
 	}
 	if a.Peer != "" {
 		b.WriteString(" peer=")
@@ -68,21 +83,6 @@ func (a Attempt) String() string {
 		b.WriteString("]")
 	}
 	return b.String()
-}
-
-// sanitize replaces control characters, so a value taken from a request cannot
-// inject a line into a log.
-func sanitize(s string) string {
-	const maxField = 256
-	if len(s) > maxField {
-		s = s[:maxField] + "…"
-	}
-	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return '?'
-		}
-		return r
-	}, s)
 }
 
 // PolicyOption configures [NewPolicy].
@@ -110,8 +110,37 @@ func Observe(fn func(Attempt)) PolicyOption {
 	return func(p *policy) { p.observe = fn }
 }
 
+// attemptSinkKey carries a PER-REQUEST observer.
+type attemptSinkKey struct{}
+
+// WithAttemptSink attaches a sink that receives the [Attempt] for
+// authentications performed under ctx.
+//
+// [Observe] is policy-global and therefore cannot answer "which of the twelve
+// requests in flight was that?" — under concurrency, two attempts from the same
+// peer are indistinguishable to it. This is the per-call channel: an adapter
+// installs a sink on the request's context, and the ID it captures belongs to
+// that request and no other.
+//
+// The sink runs on the authenticating goroutine, so it must not block.
+func WithAttemptSink(ctx context.Context, fn func(Attempt)) context.Context {
+	if fn == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, attemptSinkKey{}, fn)
+}
+
+// attemptSinkFrom returns the per-request sink, if any.
+func attemptSinkFrom(ctx context.Context) func(Attempt) {
+	if ctx == nil {
+		return nil
+	}
+	fn, _ := ctx.Value(attemptSinkKey{}).(func(Attempt))
+	return fn
+}
+
 // emit records one attempt.
-func (p *policy) emit(a Attempt) {
+func (p *policy) emit(ctx context.Context, a Attempt) {
 	switch a.Outcome {
 	case "success":
 		logger.Info(p.log, a)
@@ -120,5 +149,8 @@ func (p *policy) emit(a Attempt) {
 	}
 	if p.observe != nil {
 		p.observe(a)
+	}
+	if sink := attemptSinkFrom(ctx); sink != nil {
+		sink(a)
 	}
 }

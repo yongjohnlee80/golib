@@ -49,12 +49,14 @@ type policy struct {
 // reason goes to the returned Audit via the request's audit sink, never to the
 // caller (ADR-0001 §2.2).
 func (p *policy) Authenticate(ctx context.Context, r *Request) (*Identity, error) {
+	a := newAudit()
 	if r == nil {
-		// No request means no peer and no audit trail worth an ID; there is
-		// nothing an operator could correlate.
+		// §2.7 promises exactly ONE record per authentication, so this path emits
+		// one too rather than being a silent hole in the trail.
+		a.note("request", errNilRequest.AuditDetail())
+		p.emit(ctx, Attempt{ID: a.AttemptID, Outcome: "failure", Reasons: a.Reasons})
 		return nil, ErrUnauthenticated
 	}
-	a := newAudit()
 	peer := ""
 	if r.Peer.IsValid() {
 		peer = r.Peer.String()
@@ -62,21 +64,24 @@ func (p *policy) Authenticate(ctx context.Context, r *Request) (*Identity, error
 
 	scopes, err := p.root.eval(evalCtx{ctx: ctx, req: r, audit: a})
 	if err != nil {
-		a.note("tree", err.Error())
-		p.emit(Attempt{ID: a.AttemptID, Outcome: outcomeFor(err), Peer: peer, Reasons: a.Reasons})
+		// auditDetail, NEVER err.Error(): a factor is third-party code, and
+		// fmt.Errorf("bad token %q", presented) puts the credential into the
+		// error text. Only an error that asserts safety contributes its text.
+		a.note("tree", auditDetail(err))
+		p.emit(ctx, Attempt{ID: a.AttemptID, Outcome: outcomeFor(err), Peer: peer, Reasons: a.Reasons})
 		return nil, ErrUnauthenticated
 	}
 	id, err := merge(scopes)
 	if err != nil {
-		a.note("merge", err.Error())
-		p.emit(Attempt{ID: a.AttemptID, Outcome: "failure", Peer: peer, Reasons: a.Reasons})
+		a.note("merge", auditDetail(err))
+		p.emit(ctx, Attempt{ID: a.AttemptID, Outcome: "failure", Peer: peer, Reasons: a.Reasons})
 		return nil, ErrUnauthenticated
 	}
 	methods := make([]string, 0, len(id.Proofs))
 	for _, pr := range id.Proofs {
 		methods = append(methods, pr.Method)
 	}
-	p.emit(Attempt{ID: a.AttemptID, Outcome: "success", Subject: id.Subject, Methods: methods, Peer: peer})
+	p.emit(ctx, Attempt{ID: a.AttemptID, Outcome: "success", Subject: id.Subject, Methods: methods, Peer: peer})
 	return id, nil
 }
 
@@ -145,7 +150,7 @@ func (n anyNode) eval(ec evalCtx) ([]scoped, error) {
 			return got, nil
 		}
 		last = err
-		ec.audit.note("branch", err.Error())
+		ec.audit.note("branch", auditDetail(err))
 	}
 	return nil, last
 }

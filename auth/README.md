@@ -74,7 +74,11 @@ RPC server and a CLI prompt.
 
 `auth/authhttp` copies an **allowlist** of headers into `Metadata` — never
 `Cookie` or `Authorization`, which would land in a plain map that `Secret` does
-not protect. Credentials go to `Credentials`, where they redact.
+not protect; naming one panics. Credentials go to `Credentials`, where they
+redact, and the bearer projection uses `token.DefaultScheme` so the adapter and
+the factor cannot drift apart. Configuration is resolved once at construction and
+its inputs are cloned: an allowlist that can change after the middleware exists
+is not configuration, it is a race.
 
 ## Things that are easy to get wrong, and what this does
 
@@ -165,12 +169,22 @@ not protect. Credentials go to `Credentials`, where they redact.
   the cap. Making room examines a bounded sample rather than scanning the table,
   because an O(cap) scan on every miss at capacity is both a DoS amplifier and a
   timing signal for "new key at capacity".
-- **Every attempt gets a correlation ID.** The caller-visible error says
-  nothing, so the audit record carries a random per-attempt ID to
-  `logger.Logger` (default `Nop`) — success at Info, failure at Notice, because
-  a failed login is the system working. Control characters are stripped from
-  logged request fields: a newline in a log field is how a log gets forged
-  entries.
+- **Every attempt gets a correlation ID, and it reaches the response.** The
+  caller-visible error says nothing, so the audit record carries a random
+  per-attempt ID to `logger.Logger` (default `Nop`) — success at Info, failure at
+  Notice, because a failed login is the system working — and `authhttp` returns
+  it as `X-Auth-Attempt` so a user can quote something an operator can find. The
+  ID is captured on the *request's* context, because a policy-global observer
+  cannot tell two concurrent requests from one peer apart.
+- **An arbitrary error's text never reaches the log.** A factor is third-party
+  code, and `fmt.Errorf("bad token %q", presented)` is an ordinary thing to
+  write. Only `auth.Reason` (compile-time text) or an error implementing
+  `auth.SafeAuditDetail` contributes its words; anything else is recorded as
+  `opaque error of type T`. Wrapping a `Reason` keeps the fixed half and drops
+  the dynamic one.
+- **Every rendered field is sanitized and bounded** — subject, peer, reason and
+  *method* alike. All of them are factor- or request-supplied, and a newline in a
+  log field is how a log gets forged entries.
 - **A stored hash is untrusted data.** Cost parameters are range-checked on
   *read* as well as write: without that, anyone who can write to the credential
   store turns each login into a 4 GiB allocation.

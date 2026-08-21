@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Accepted (rev 8)** (2026-08-22 — authored by jarvis; lector
+- **Status:** **Accepted (rev 9)** (2026-08-22 — authored by jarvis; lector
   design r1-r3 `change_requested` folded, r4 **approved**, and **accepted by
   Johno 2026-08-21** — implementation in progress. **Rev 5 changed a mechanism
   mid-implementation**: §2.5 SSHSIG verification is delegated to
@@ -11,8 +11,11 @@
   **rev 8**, the current text. Four were shipped bugs: cancellation did not reap
   descendants (r5); the post-`Run` group kill could signal an unrelated process
   group after pid reuse (r6); a locked attempt destroyed single-use credentials,
-  and eviction stopped enforcing its cap after 2038 (r7). See Review history.
-  Lands on `auth-pkg`.)
+  and eviction stopped enforcing its cap after 2038 (r7). Lector r8 closed the
+  throttle work and raised five against §2.7/§2.8, folded in **rev 9**, the
+  current text — including a factor's error text carrying a credential into the
+  log, and an adapter whose bearer key did not compose with its own token
+  factor. See Review history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — a new subsystem.
@@ -623,9 +626,46 @@ and emits exactly one `Attempt` per authentication.
 - **`Subject` appears only on success**, where it has been proven. An unverified
   claim does not belong in a field that reads like an established fact; it stays
   in the factor's reasons.
-- **Control characters are stripped and fields truncated** in the rendering.
-  `Subject` and `Peer` derive from request data, and a newline in a logged field
-  is how a log file gets forged entries.
+- **Control characters are stripped and fields truncated** in EVERY rendered
+  field, and the method list is count-bounded. `Subject`, `Peer` and `Method` all
+  derive from factor or request data, and a newline in a logged field is how a
+  log file gets forged entries. (r8: `Methods` was joined verbatim, so a factor
+  returning `Method: "password\nforged=true"` wrote a second, fabricated log
+  line — reproduced through the real logger path.)
+
+**The audit trail never records an arbitrary error's TEXT (r8 must-fix 1).**
+Rev 7 fed `err.Error()` from the factor tree straight into the record. A factor
+is third-party code by design, and `fmt.Errorf("bad token %q", presented)` is an
+entirely ordinary thing for one to write — so the credential went into the
+operator's log. Two mechanisms replace it:
+
+- `auth.Reason` is a string-backed error type whose text is fixed at COMPILE
+  time. Every internal sentinel in `auth`, `auth/password` and `auth/sshkey` is
+  one. Wrapping still works: `fmt.Errorf("%w: %s", ErrParams, detail)` yields the
+  Reason's fixed text and the dynamic half is **dropped**, not logged.
+- `auth.SafeAuditDetail` lets a factor outside this module assert its own text is
+  credential-free.
+
+An error doing neither contributes only `opaque error of type %T` — a Go type
+name is compile-time and cannot carry a credential. Losing detail on a
+third-party factor is the right trade against writing secrets to disk. The
+acceptance test's fixture error now actually **contains** a secret; the previous
+one used a generic string and so could not have failed.
+
+**Correlation is per-REQUEST, not per-policy (r8 must-fix 2).**
+`Observe(func(Attempt))` is policy-global and receives no request, so under
+concurrency it cannot say which of the attempts in flight belongs to a given
+caller — two from the same peer are indistinguishable to it, which made the
+documented HTTP correlation flow unimplementable. `auth.WithAttemptSink(ctx, fn)`
+installs a sink on the request's own context; `authhttp.Middleware` uses it to
+capture the ID and returns it in `X-Auth-Attempt`
+(`CorrelationHeader("")` disables). The ID is random per attempt and reveals
+neither outcome nor account, which is what makes handing it to the client safe —
+and it is the only thing a user can quote, given that every rejection is
+byte-identical.
+
+**Exactly one record per authentication, including `Authenticate(ctx, nil)`
+(r8 must-fix 5).** That path emitted nothing, so the promise was false for it.
 
 ### 2.8 Adapters, not framework coupling
 
@@ -644,6 +684,23 @@ Three decisions in the adapter are security-relevant rather than mechanical:
   `Secret` does not protect — the first `%+v` that touches the request prints
   them. The default list is only what a factor consults (`Origin`,
   `User-Agent`, the forwarded-address headers, the WS subprotocol).
+- **The allowlist is immutable configuration (r8 must-fix 4).** Rev 7 exported it
+  as a `var` and aliased it into every resolved config, and `MetadataHeaders`
+  retained the caller's variadic backing array — so any package in the build
+  could have appended `Authorization` at any time, including after a middleware
+  was constructed, and `Middleware` re-ran the options on **every request** so a
+  mid-flight change would take effect and race. Now: the default is unexported
+  with `DefaultMetadataHeaders()` returning a copy, option inputs are cloned,
+  config is resolved **once** at construction, and a credential-bearing name
+  (`Authorization`, `Cookie`, `Proxy-Authorization`, `Set-Cookie`) **panics**
+  rather than being merely documented as unwise.
+- **The bearer projection uses `token.DefaultScheme` (r8 must-fix 3).** Rev 7
+  wrote `Credentials["token"]` while `token.Factor` read `"ticket"`, so the
+  adapter and the factor silently did not compose: a real issuer → factor →
+  middleware probe returned 401 with the credential unconsumed. The two now
+  share one exported constant, and acceptance runs the **actual** issuer, factor
+  and middleware end to end — the previous test inspected only the projected map,
+  which is exactly why it missed this.
 - **`Peer` is `RemoteAddr`, never a forwarded header**, and an unparsable value
   yields the **zero** `AddrPort` rather than a guess. Every address-keyed control
   must read that as "no address"; a plausible-looking fallback would be an
@@ -655,9 +712,17 @@ Three decisions in the adapter are security-relevant rather than mechanical:
   reimplement that refusal.
 
 `Middleware(nil)` **panics at construction**: a middleware that silently stops
-authenticating is the worst failure mode available to this package. The
-context key is unexported, so nothing outside the adapter can plant an identity
-a downstream handler would trust.
+authenticating is the worst failure mode available to this package.
+
+**The context key is unexported, but `WithIdentity` is a deliberate trusted
+escape hatch (r8 note).** Rev 7 claimed identities in the context were
+"unforgeable", which the exported setter contradicts. The accurate statement:
+nothing can *fabricate* the key, so a foreign `context.WithValue` cannot be
+mistaken for an authenticated identity — but any code that can already import
+this package can set one on purpose. That is required (an adapter authenticating
+outside the middleware, and tests) and it is a trust boundary at the
+**package-import** level, not a guarantee against code already inside the
+binary.
 
 ## 3. What this package is not
 
@@ -775,8 +840,32 @@ Acceptance criteria:
    distinct subjects and addresses the tracker stays **bounded** (no unbounded
    growth). Tracker keys are **fixed width** for values from 0 to 5 MiB, so the
    entry cap bounds memory and not merely a count; namespaces provably do not
-   collide. The bound still holds for records dated **2040**. Invalid
-   `Backoff` values and a negative size are **refused**, not normalized.
+   collide; and they are **printable UTF-8** (base64, not raw digest bytes) so the
+   SQL/Redis seam does not have to escape NUL. The bound still holds for records
+   dated **2040**. Invalid `Backoff` values and a negative size are **refused**,
+   not normalized.
+5b. **Backoff saturates MONOTONICALLY (§2.6b):** across five valid
+   configurations including `Max = 1<<62`, `delay(n)` never decreases, never
+   exceeds `Max`, and never drops below `Max` once it reaches it. Range-checking
+   alone was insufficient — a large `Base` shifted far enough wrapped to a small
+   positive duration legitimately under `Max`, so the wait got SHORTER for a more
+   persistent attacker. Verified in both directions: the pre-fix expression fails
+   this test at the 27th failure (1,281,023h → 495,621h).
+5c. **Audit-detail safety (§2.7):** a factor whose error text actually contains
+   the presented credential is authenticated against, and neither the log nor
+   the `Attempt.Reasons` may contain it; the record still names the error's type
+   so an operator can tell a rejection from a malformed tree. A wrapped
+   `auth.Reason` contributes its fixed text and drops the dynamic half. A
+   factor-supplied `Method` and `Subject` containing a newline each produce
+   **one** log line, not two.
+5d. **Per-request correlation (§2.7, §2.8):** 32 concurrent requests from the
+   SAME peer each receive a distinct `X-Auth-Attempt`, and 24 concurrent
+   `WithAttemptSink` callers each receive their own ID. `Authenticate(ctx, nil)`
+   emits exactly one record.
+5e. **Adapter configuration immutability (§2.8):** mutating the slice returned by
+   `DefaultMetadataHeaders()` does not change the default; mutating a slice
+   passed to `MetadataHeaders` after `Middleware` is built does not change which
+   headers are copied; every credential-bearing header name panics.
 6. `auth/token`: verify, expire, revoke; the stored form is a hash, proven by
    inspecting the store.
 6b. **Atomic consume under concurrency:** many goroutines redeem the same
@@ -902,6 +991,35 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
    costs nothing and avoids that break.
 
 ## Review history
+
+- **r8 (2026-08-22, lector — `change_requested`; all five must-fixes and all
+  three notes folded in rev 9).** All five r7 throttle/tracker blockers were
+  confirmed closed, along with the capability split, the 2038 fix, the bounded
+  work and the negative-controlled timing test. The five new blockers were in
+  §2.7/§2.8, which r7's diff range had not covered:
+  1. **A factor's error text was recorded verbatim** — a probe factor returning
+     an error containing the presented credential put it in the logger. My
+     committed test used a generic `bad credential` string and so could not fail
+     on the leak. Now `auth.Reason` / `SafeAuditDetail`, with an
+     `opaque error of type %T` default and a fixture that really does contain a
+     secret.
+  2. **`Observe` could not implement the correlation flow it documented** —
+     policy-global, no request, no per-call result, so two concurrent requests
+     from one peer were indistinguishable. Now `WithAttemptSink` plus an
+     `X-Auth-Attempt` response header.
+  3. **The adapter's bearer key and the token factor's scheme did not compose** —
+     `"token"` versus `"ticket"`; a real end-to-end probe 401'd with the
+     credential unconsumed. One shared constant, and an end-to-end test through
+     the real issuer and factor.
+  4. **The header allowlist was mutable, aliased, and re-resolved per request.**
+     Now unexported with a copying accessor, cloned inputs, resolved once, and
+     sensitive names panic.
+  5. **`Methods` was rendered unsanitized** (a forged line, reproduced), and
+     `Authenticate(ctx, nil)` emitted no record despite the one-per-auth promise.
+  Notes: tracker keys are base64 rather than raw digest bytes, for the SQL seam;
+  `Backoff.delay` saturates monotonically instead of merely staying in range; and
+  the "unforgeable context" claim is restated as a package-import trust boundary,
+  since `WithIdentity` is exported on purpose.
 
 - **r7 (2026-08-22, lector — `change_requested`; all five must-fixes and both
   notes folded in rev 8).** The r6 SSH work was **approved in substance**, as was

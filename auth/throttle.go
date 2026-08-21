@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -349,7 +350,10 @@ func trackerKey(namespace, value string) string {
 		value = value[:maxKeyMaterial]
 	}
 	sum := sha256.Sum256([]byte(namespace + "\x00" + value))
-	return namespace + ":" + string(sum[:])
+	// Base64, not raw digest bytes. A raw digest is not valid UTF-8 and contains
+	// NUL, which the SQL and Redis trackers this seam exists for would have to
+	// escape or would silently truncate. Still fixed width.
+	return namespace + ":" + base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // peerAddress uses the transport's own view of the client, never a header.

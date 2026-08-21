@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"github.com/yongjohnlee80/golib/auth"
 )
 
 // Verifier checks an SSHSIG signature. It returns nil only when the signature
@@ -33,11 +35,11 @@ type Verifier interface {
 // errUnavailable backs both ErrVerifierUnavailable and ErrUnsupportedPlatform,
 // so errors.Is(err, ErrVerifierUnavailable) holds for a platform refusal too: a
 // caller checking "could this verifier reach a verdict" gets one answer.
-var errUnavailable = errors.New("sshkey: verifier unavailable")
+var errUnavailable = auth.Reason("sshkey: verifier unavailable")
 
 var (
 	// ErrIdentity covers a claimed identity that is unusable or not allowed.
-	ErrIdentity = errors.New("sshkey: identity not allowed")
+	ErrIdentity = auth.Reason("sshkey: identity not allowed")
 
 	// ErrUnsupportedPlatform means the delegating verifier cannot be built here
 	// at all — it needs POSIX process groups to bound a timed-out subprocess.
@@ -160,7 +162,7 @@ func readablePolicy(path string) error {
 		return err
 	}
 	if st.IsDir() {
-		return errors.New("is a directory")
+		return auth.Reason("is a directory")
 	}
 	if !st.Mode().IsRegular() {
 		return fmt.Errorf("not a regular file (mode %s)", st.Mode())

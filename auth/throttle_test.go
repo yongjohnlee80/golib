@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // --- fakes ------------------------------------------------------------------
@@ -886,5 +887,70 @@ func TestNewMemTracker_RejectsInvalidConfiguration(t *testing.T) {
 	}
 	if d := DefaultBackoff(); d.Threshold != 5 || d.Base != time.Second || d.Max != 5*time.Minute || d.Forget != 15*time.Minute {
 		t.Errorf("DefaultBackoff() = %+v", d)
+	}
+}
+
+// A valid extreme configuration must saturate at Max and STAY there. Checking
+// only the range misses the real failure: a large Base shifted far enough wraps
+// to a small positive duration legitimately below Max, so the backoff reaches
+// Max and then comes back DOWN — the most persistent attacker getting the
+// shortest wait.
+func TestBackoff_SaturatesMonotonically(t *testing.T) {
+	t.Parallel()
+	configs := map[string]Backoff{
+		"ordinary":        {Threshold: 0, Base: time.Second, Max: time.Hour, Forget: time.Hour},
+		"huge base":       {Threshold: 0, Base: time.Hour, Max: 24 * time.Hour, Forget: time.Hour},
+		"base equals max": {Threshold: 0, Base: time.Minute, Max: time.Minute, Forget: time.Hour},
+		"extreme max":     {Threshold: 0, Base: time.Hour, Max: 1 << 62, Forget: time.Hour},
+		"with threshold":  {Threshold: 7, Base: 250 * time.Millisecond, Max: time.Minute, Forget: time.Hour},
+	}
+	for name, b := range configs {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if err := b.validate(); err != nil {
+				t.Fatalf("fixture is not a valid configuration: %v", err)
+			}
+			prev := time.Duration(-1)
+			reachedMax := false
+			for n := range 200 {
+				d := b.delay(n)
+				if d < 0 {
+					t.Fatalf("delay(%d) = %v: negative durations read as \"not locked\"", n, d)
+				}
+				if d > b.Max {
+					t.Fatalf("delay(%d) = %v exceeds Max %v", n, d, b.Max)
+				}
+				if d < prev {
+					t.Fatalf("delay(%d) = %v is LESS than delay(%d) = %v: the backoff "+
+						"decreases for a more persistent attacker", n, d, n-1, prev)
+				}
+				if d == b.Max {
+					reachedMax = true
+				} else if reachedMax {
+					t.Fatalf("delay(%d) = %v dropped below Max after reaching it", n, d)
+				}
+				prev = d
+			}
+			if !reachedMax {
+				t.Errorf("never reached Max %v within 200 failures", b.Max)
+			}
+		})
+	}
+}
+
+// A raw digest is not valid UTF-8 and contains NUL, which the SQL and Redis
+// trackers this seam exists for would have to escape or would truncate.
+func TestTrackerKey_IsPrintable(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"", "alice", "alice@example.com", string([]byte{0, 1, 2, 255})} {
+		k := trackerKey("s", v)
+		if !utf8.ValidString(k) {
+			t.Errorf("key for %q is not valid UTF-8", v)
+		}
+		for i, r := range k {
+			if r < 0x20 || r == 0x7f {
+				t.Errorf("key for %q has a control character at %d", v, i)
+			}
+		}
 	}
 }

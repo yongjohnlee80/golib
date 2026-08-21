@@ -40,7 +40,6 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -52,16 +51,16 @@ import (
 
 // Internal errors; auth.Policy maps every failure to auth.ErrUnauthenticated.
 var (
-	ErrMalformed        = errors.New("sshkey: malformed signature envelope")
-	ErrBadSignature     = errors.New("sshkey: signature does not verify")
-	ErrNamespace        = errors.New("sshkey: signature namespace does not match")
-	ErrHashAlgorithm    = errors.New("sshkey: unsupported signature hash algorithm")
-	ErrNoChallenge      = errors.New("sshkey: no challenge presented")
-	ErrChallengeUnknown = errors.New("sshkey: unknown or already-consumed challenge")
-	ErrChallengeExpired = errors.New("sshkey: challenge expired")
-	ErrBinding          = errors.New("sshkey: challenge binding does not match the request")
-	ErrNoAllowedKeys    = errors.New("sshkey: empty allowed-key set denies")
-	ErrNoIdentity       = errors.New("sshkey: no identity claimed")
+	ErrMalformed        = auth.Reason("sshkey: malformed signature envelope")
+	ErrBadSignature     = auth.Reason("sshkey: signature does not verify")
+	ErrNamespace        = auth.Reason("sshkey: signature namespace does not match")
+	ErrHashAlgorithm    = auth.Reason("sshkey: unsupported signature hash algorithm")
+	ErrNoChallenge      = auth.Reason("sshkey: no challenge presented")
+	ErrChallengeUnknown = auth.Reason("sshkey: unknown or already-consumed challenge")
+	ErrChallengeExpired = auth.Reason("sshkey: challenge expired")
+	ErrBinding          = auth.Reason("sshkey: challenge binding does not match the request")
+	ErrNoAllowedKeys    = auth.Reason("sshkey: empty allowed-key set denies")
+	ErrNoIdentity       = auth.Reason("sshkey: no identity claimed")
 )
 
 // Allowed is one entry of the allowed-key set: a public key and the principal it
@@ -80,7 +79,7 @@ type Allowed struct {
 // have access, and the operator would never know.
 func ParseAuthorizedKeys(b []byte, subjectOf func(comment string, key ssh.PublicKey) (string, error)) ([]Allowed, error) {
 	if subjectOf == nil {
-		return nil, errors.New("sshkey: a subject mapping is required")
+		return nil, auth.Reason("sshkey: a subject mapping is required")
 	}
 	var out []Allowed
 	rest := b
@@ -108,7 +107,7 @@ func ParseAuthorizedKeys(b []byte, subjectOf func(comment string, key ssh.Public
 func SubjectFromComment(comment string, _ ssh.PublicKey) (string, error) {
 	c := strings.TrimSpace(comment)
 	if c == "" {
-		return "", errors.New("key has no comment to use as a subject")
+		return "", auth.Reason("key has no comment to use as a subject")
 	}
 	return c, nil
 }
