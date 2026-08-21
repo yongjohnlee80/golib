@@ -1,10 +1,12 @@
 # ADR-0016 — `golib/dao`: declarative column expressions
 
-- **Status:** **Proposed (rev 1)** (2026-08-21 — authored by jarvis from Johno's
+- **Status:** **Proposed (rev 2)** (2026-08-21 — authored by jarvis from Johno's
   request for a SQL helper surface so declarations can be built from the table
   and field constants that already exist, instead of restating them as string
   literals. Lector design r1 `change_requested` folded — including a fatal
-  write-path defect in rev 0, see Review history. Lands on `dao-expr`.)
+  write-path defect in rev 0 — then rev 2 restored the literal sugar at Johno's
+  direction while keeping r1's portability rule. See Review history. Lands on
+  `dao-expr`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. Extends the ADR-0002/0003 column-targeting
@@ -187,9 +189,17 @@ func Str(s string) Expr
 // spelling. NULL is absent because COALESCE(x, NULL) is a no-op.
 func Int(i int64) Expr
 
-// Coalesce renders COALESCE(e, alt) over two Exprs — not an `any`, so no
-// untyped value can reach a literal renderer: Coalesce(T(t, c), Str("")).
-func Coalesce(e, alt Expr) Expr
+// Coalesce renders COALESCE(e, alt). alt is used directly when it is an Expr;
+// otherwise it is a literal, routed through the SAME closed set and the SAME
+// refusal rules — a string goes through Str, an integer through Int, and any
+// other type (a float, a bool, a struct) panics at declaration. So
+// Coalesce(T(t, c), "") reads as intended and still cannot produce a literal
+// this package would not render identically on every dialect.
+//
+// The routing is one unexported helper, not a public Lit(any): the exported
+// literal surface stays the closed Str/Int pair, and the convenience is
+// confined to this single parameter.
+func Coalesce(e Expr, alt any) Expr
 
 // SQL is the escape hatch: text is emitted verbatim, unquoted, unresolved.
 // For expressions the helpers do not cover (NOW(), a window function, a
@@ -218,7 +228,7 @@ var artistFields = map[ArtistField]dao.Field[*Artist]{
 	ArtistID:     {Expr: dao.T(TableArtist, ArtistID), Scan: sID, Value: vID},
 	ArtistName:   {Expr: dao.T(TableArtist, ArtistName), Scan: sName, Value: vName},
 	ArtistLabelGroup: {
-		Expr:     dao.Coalesce(dao.T(TableLabelGroup, LabelGroupName), dao.Str("")),
+		Expr:     dao.Coalesce(dao.T(TableLabelGroup, LabelGroupName), ""),
 		Scan:     sLabel,
 		Join:     TableLabelGroup,
 		ReadOnly: true,
@@ -353,7 +363,9 @@ construction" rule. It fires only on declarations that are already broken.
    already-quoted render reaches `writeCol` and `INSERT`/`UPDATE` quote it a
    second time (§2.1). Any repair — parsing the quotes back off, or requiring
    every writable field to hand-write `WriteColumn` — is worse than the struct.
-6. **A general `Lit(any)` literal renderer** (rev 0). Rejected on review:
+6. **A general `Lit(any)` literal renderer** (rev 0). Still rejected — the
+   `any` in `Coalesce` (rev 2) routes through the closed `Str`/`Int` pair rather
+   than reintroducing a public general literal API. Rejected on review:
    doubling single quotes is not a complete portable contract, because MySQL
    escaping also depends on `NO_BACKSLASH_ESCAPES` and the connection charset,
    and `any` leaves float/non-finite behavior undefined. The closed
@@ -375,7 +387,7 @@ someone rewrites it, one field at a time.
 | `{Column: "artist.name", …}` | `{Expr: dao.T(TableArtist, ArtistName), …}` |
 | `{Column: "action", …}` | `{Expr: dao.C(MetaKVAction), …}` |
 | `` {Column: `"user".first_name`} `` | `{Expr: dao.T(TableUser, UserFirstName)}` — and now correct on MySQL too |
-| `{Column: "COALESCE(label_group.name,'')", ReadOnly: true}` | `{Expr: dao.Coalesce(dao.T(TableLabelGroup, LabelGroupName), dao.Str("")), ReadOnly: true}` |
+| `{Column: "COALESCE(label_group.name,'')", ReadOnly: true}` | `{Expr: dao.Coalesce(dao.T(TableLabelGroup, LabelGroupName), ""), ReadOnly: true}` |
 | `dao.OptionalJoin(k, "LEFT JOIN label_group ON …")` | `dao.OptionalJoinExpr(k, dao.LeftJoin(TableLabelGroup, dao.T(…), dao.T(…)))` |
 | mixed-case identifier | keep `Column`, or `dao.SQL("MyCol")` — see §2.4 |
 
@@ -414,8 +426,13 @@ Acceptance criteria:
    different SQL, and the source map's `Field` values still have empty `Column`
    and non-nil `Expr` afterwards — the second `New` must not see a resolved
    `Column` and must not trip criterion 3's panic.
-4. `Coalesce(T(t, c), Str(""))` renders `COALESCE("t"."c", '')` and
-   `Coalesce(e, Int(0))` renders `COALESCE(…, 0)`.
+4. `Coalesce(T(t, c), "")`, `Coalesce(T(t, c), Str(""))` and
+   `Coalesce(T(t, c), SQL("''"))` all render `COALESCE("t"."c", '')`;
+   `Coalesce(e, 0)` and `Coalesce(e, Int(0))` both render `COALESCE(…, 0)`.
+   `Coalesce(e, 0.5)`, `Coalesce(e, true)` and `Coalesce(e, struct{}{})` each
+   panic at declaration, and `Coalesce(e, "it's")` panics under Str's refusal
+   rule — the `any` parameter widens ergonomics, never the set of renderable
+   literals.
 5. `Str` panics immediately — at declaration, not at `New` — for a string
    containing a single quote, a backslash, or a control character; a zero `Expr`
    passed to any helper panics the same way.
@@ -450,9 +467,13 @@ decisions:
 3. **§2.6's write-safety check ships with this ADR**, but only because write
    identity is now represented (§2.2) — the check is coherent *after* resolution
    and incoherent before it.
-4. **`Coalesce` takes two `Expr`s**, not an `any`. The lost sugar
-   (`Coalesce(x, "")`) is one `dao.Str("")` — worth it to keep untyped values
-   away from a literal renderer.
+4. **`Coalesce` takes `alt any`, routed through the closed set** (rev 2,
+   Johno's call: *"let's keep it simple, but do keep dao.Str, might have use for
+   that"*). r1's substance is intact — the renderable literals are still exactly
+   `Str` and `Int` with their refusal rules, and there is still no public
+   `Lit(any)`. What changed is one parameter's type, so the sketched
+   `Coalesce(x, "")` reads as written; `Str`/`Int` stay exported for explicit
+   use and for future composition points.
 5. **The §2.7 exclusions stand** — `Lower`/`Upper`/`Concat`/`Cast`, aggregates,
    and the `SortMap`/search-op variants remain deferred.
 
@@ -484,3 +505,11 @@ decisions:
   table part through `quoteTable`, inheriting ADR-0013's fallback (§2.4,
   criterion 1).
   Review doc: `$KB_ROOT/agents/lector/reviews/2026-08-21-golib-dao-0016-declarative-column-expressions-review.md`
+- **rev 2 (2026-08-21, Johno).** Literal sugar restored: `Coalesce(e, alt any)`
+  instead of `Coalesce(e, alt Expr)`, on his direction — *"yeah, let's keep it
+  simple, but do keep dao.Str, might have use for that"*. This is a deliberate
+  narrowing of r1's must-fix 3 to its actual concern: the portability rule is
+  unchanged (a literal is still renderable only through `Str`/`Int`, refusal
+  rules included, and a float/bool/struct still panics at declaration), and no
+  public `Lit(any)` returns — the routing is one unexported helper behind a
+  single parameter. `Str` and `Int` remain exported for explicit use.
