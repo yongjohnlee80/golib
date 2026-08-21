@@ -1,7 +1,8 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Proposed (rev 8) — DESIGN-APPROVED, awaiting acceptance** (2026-08-21 — authored by jarvis; lector
-  design r1-r8 folded; r8 `approved_with_amendments` and all three applied
+- **Status:** **Accepted (rev 8)** (2026-08-21 — authored by jarvis; lector
+  design r1-r8 folded; lector's final verdict **approved**, and **accepted by
+  Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
   0's frame coalescing, a wrong security claim about mTLS, and r2's internal
   contradictions. See Review history.
