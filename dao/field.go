@@ -17,6 +17,15 @@ type Field[R any] struct {
 	// column name is derived from it (see WriteColumn / writeCol).
 	Column string
 
+	// Expr is the dialect-resolved alternative to Column (ADR-0016): [New]
+	// renders it once against the connection's dialect and stores the result as
+	// Column, and — unless WriteColumn is set explicitly — takes the raw write
+	// identity from it, so everything downstream is byte-identical to a
+	// hand-written declaration. Build one with [T], [C], [Coalesce] and friends.
+	//
+	// Setting both Column and Expr is a declaration error: [New] panics.
+	Expr Expr
+
 	// Scan returns a pointer into the row struct for this field, called with a
 	// freshly-allocated R during scanning. Nil for write-only fields.
 	Scan func(R) any

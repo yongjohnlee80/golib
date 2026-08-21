@@ -17,6 +17,7 @@ type config[R any, C ~string, K ~string, ID any] struct {
 	fields         map[C]Field[R]
 	defaults       []C
 	optionalJoins  map[JoinKey]string
+	optionalJoinEx map[JoinKey]Expr
 	sortMap        map[K]string
 	sortJoins      map[K]JoinKey
 	search         []SearchOp
@@ -65,11 +66,12 @@ type Schema[R any, C ~string, K ~string, ID any] struct {
 // not per query — on misconfiguration.
 func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C, K, ID]) *Schema[R, C, K, ID] {
 	cfg := &config[R, C, K, ID]{
-		fields:        map[C]Field[R]{},
-		optionalJoins: map[JoinKey]string{},
-		sortMap:       map[K]string{},
-		sortJoins:     map[K]JoinKey{},
-		defaultValues: map[C]any{},
+		fields:         map[C]Field[R]{},
+		optionalJoins:  map[JoinKey]string{},
+		optionalJoinEx: map[JoinKey]Expr{},
+		sortMap:        map[K]string{},
+		sortJoins:      map[K]JoinKey{},
+		defaultValues:  map[C]any{},
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -86,6 +88,11 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 	if len(cfg.fields) == 0 {
 		panic("dao.New: Fields is required")
 	}
+
+	// Resolve declared Exprs into a schema-owned clone BEFORE anything reads a
+	// field: the id column, the search-op binding, the conflict columns and the
+	// default values all consume Column/writeCol below (ADR-0016 §2.2).
+	cfg.fields = resolveFields[R, C](conn.Dialect(), cfg.fields)
 
 	s := &Schema[R, C, K, ID]{
 		conn:          conn,
@@ -121,6 +128,9 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 	for k, sql := range cfg.optionalJoins {
 		s.optionalJoins[k] = joinClause{key: k, sql: sql}
 	}
+	for k, e := range cfg.optionalJoinEx {
+		s.optionalJoins[k] = joinClause{key: k, sql: e.render(conn.Dialect())}
+	}
 	for key, f := range cfg.fields {
 		if f.Join != "" {
 			if _, ok := s.optionalJoins[f.Join]; !ok {
@@ -129,6 +139,18 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 		}
 		if f.ClearValue != nil && !f.Clearable {
 			panic(fmt.Sprintf("dao.New: field %q declares ClearValue without Clearable", any(key)))
+		}
+		// Write-column safety (ADR-0016 §2.6). writeCol derives the bare name as
+		// the tail after the last dot, which is meaningless for an expression —
+		// COALESCE(...) yields `"name", '')`. A writable field must therefore
+		// resolve to a plain identifier. Runs after resolution, so T/C fields
+		// (which carry a raw WriteColumn) pass; an explicit WriteColumn is the
+		// author's call and is trusted.
+		if !f.ReadOnly && f.WriteColumn == "" {
+			if wc := f.writeCol(); !plainIdent(wc) {
+				panic(fmt.Sprintf("dao.New: field %q is writable but its write column %q is not a plain identifier "+
+					"(declare ReadOnly: true, or set WriteColumn)", any(key), wc))
+			}
 		}
 	}
 
@@ -199,6 +221,43 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 	}
 
 	return s
+}
+
+// resolveFields returns a schema-owned copy of the declared fields with every
+// [Expr] rendered against this connection's dialect (ADR-0016 §2.2).
+//
+// It clones deliberately. Fields aliases the map it is handed and New stores
+// that same reference, so resolving in place would mutate a package-level var:
+// a second New over the same declaration would then see both Column and Expr
+// set — tripping the panic below — or silently inherit the first dialect.
+// Cloning also stops a caller who mutates their map after New from mutating the
+// live schema.
+func resolveFields[R any, C ~string](d Dialect, in map[C]Field[R]) map[C]Field[R] {
+	out := make(map[C]Field[R], len(in))
+	for key, f := range in {
+		if f.Expr.isSet() {
+			if f.Column != "" {
+				panic(fmt.Sprintf("dao.New: field %q sets both Column and Expr", any(key)))
+			}
+			f.Column = f.Expr.render(d)
+			// An explicit WriteColumn always wins; otherwise T/C supply the raw
+			// name so INSERT/UPDATE quote it exactly as they quote a
+			// hand-written declaration's derived tail.
+			if f.WriteColumn == "" {
+				f.WriteColumn = f.Expr.write
+			}
+			// Resolution CONSUMES the Expr: Column and WriteColumn now carry
+			// everything, so the clone drops the renderer closure. The schema
+			// then retains no closures at all and its resolved fields are
+			// content-identical to a hand-written declaration — which is what
+			// makes the two forms indistinguishable at query time, not merely
+			// equal in allocations. The caller's map keeps its Exprs; only this
+			// copy is cleared.
+			f.Expr = Expr{}
+		}
+		out[key] = f
+	}
+	return out
 }
 
 // acquire assembles the effective per-call state from QueryOptions: schema

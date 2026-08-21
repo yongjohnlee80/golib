@@ -46,15 +46,20 @@ const (
 
 // --- declaration (the single source of truth) ------------------------------
 
+const (
+    TableArtist     = "artist"
+    TableLabelGroup = "label_group"
+)
+
 var artistFields = map[ArtistField]dao.Field[*Artist]{
-    ArtistID:     {Column: "artist.id", Scan: sID, Value: vID},
-    ArtistName:   {Column: "artist.name", Scan: sName, Value: vName},
-    ArtistURI:    {Column: "artist.uri", Scan: sURI, Value: vURI},
-    ArtistPublic: {Column: "artist.public", Scan: sPublic, Value: vPublic},
+    ArtistID:     {Expr: dao.T(TableArtist, ArtistID), Scan: sID, Value: vID},
+    ArtistName:   {Expr: dao.T(TableArtist, ArtistName), Scan: sName, Value: vName},
+    ArtistURI:    {Expr: dao.T(TableArtist, ArtistURI), Scan: sURI, Value: vURI},
+    ArtistPublic: {Expr: dao.T(TableArtist, ArtistPublic), Scan: sPublic, Value: vPublic},
     ArtistLabelGroup: {
-        Column:   "COALESCE(label_group.name,'')",
+        Expr:     dao.Coalesce(dao.T(TableLabelGroup, "name"), ""),
         Scan:     sLabel,
-        Join:     "label_group",
+        Join:     TableLabelGroup,
         ReadOnly: true,
     },
 }
@@ -106,6 +111,53 @@ func Open(ctx context.Context, dsn string, log logger.Logger) (*ArtistSchema, da
 
 > The four type parameters only appear inside `BuildArtistSchema`. Everywhere else
 > you use the `*ArtistSchema` alias and the clean `DAO` surface.
+
+### 1.1 `Expr` — declarations built from your constants (ADR-0016)
+
+`Field.Expr` is the dialect-resolved alternative to `Field.Column`: `dao.New`
+renders it **once** against the connection's dialect, so nothing downstream
+changes and there is no query-time cost.
+
+| helper | renders (Postgres / MySQL) |
+| --- | --- |
+| `dao.T(TableArtist, ArtistName)` | `"artist"."name"` / `` `artist`.`name` `` |
+| `dao.C(MetaKVAction)` | `"action"` / `` `action` `` |
+| `dao.Coalesce(dao.T(t, c), "")` | `COALESCE("t"."c", '')` |
+| `dao.Str("n/a")` · `dao.Int(0)` | `'n/a'` · `0` |
+| `dao.SQL("NOW()")` | `NOW()` (verbatim, unquoted) |
+| `dao.LeftJoin(TableLG, dao.T(…), dao.T(…))` | `LEFT JOIN "label_group" ON … = …` |
+
+Why bother, when a string literal is shorter to type:
+
+- **The constants already exist.** Your field enum names every column and
+  `dao.Table` names the table; a literal restates both where the compiler cannot
+  check them. Rename a table and `dao.T` call sites follow; string literals do not.
+- **Quoting is dialect-specific and a declaration cannot know its dialect.** A
+  package-level field map is built long before any `DataConn` exists, so a
+  reserved word like `user` has to be hand-quoted as `` `"user".first_name` `` —
+  ANSI quotes that are correct on Postgres/SQLite and wrong on MySQL. `dao.T`
+  resolves per dialect instead.
+- **`Coalesce` and friends only accept what they can render identically
+  everywhere.** `dao.Str` refuses a string containing a quote, a backslash or a
+  control character (MySQL's escaping depends on `NO_BACKSLASH_ESCAPES` and the
+  charset), and `dao.Coalesce`'s fallback accepts only an `Expr`, a string or an
+  integer — a float or a bool is a **compile** error.
+
+Both forms coexist; migrate a field when you touch it. Setting `Column` **and**
+`Expr` on one field panics at `dao.New`.
+
+An expression has no column to write to, so `Coalesce`/`SQL` carry no write
+identity: a **writable** field declared with one must say `ReadOnly: true` or set
+`WriteColumn`, or `dao.New` panics rather than emitting broken DML. `dao.T`/`dao.C`
+carry the raw column name, so writable fields declared with them just work.
+
+```go
+// The join clause, from the same constants:
+O(dao.OptionalJoinExpr[*Artist, ArtistField, ArtistSort, string](TableLabelGroup,
+    dao.LeftJoin(TableLabelGroup,
+        dao.T(TableLabelGroup, "id"),
+        dao.T(TableArtist, "label_group_id")))),
+```
 
 ## 2. Reads
 

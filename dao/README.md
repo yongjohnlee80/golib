@@ -286,6 +286,22 @@ A failed chunk yields a `*BatchError` whose `Unwrap() []error` identifies the
 chunk. Conflict handling on a non-upsert dialect, or `ForceCopy` on a non-COPY
 dialect, returns `ErrUnsupported`.
 
+## Declaring columns with `Expr` (ADR-0016)
+
+`Field.Column` is raw SQL. `Field.Expr` is the same thing built from your
+constants and resolved once, at `dao.New`, against the connection's dialect:
+
+```go
+ArtistName:       {Expr: dao.T(TableArtist, ArtistName), Scan: sName, Value: vName},
+ArtistLabelGroup: {Expr: dao.Coalesce(dao.T(TableLabelGroup, "name"), ""), ReadOnly: true, Scan: sLabel},
+```
+
+`dao.T` (qualified) and `dao.C` (unqualified) quote per dialect and carry the raw
+column name for writes; `dao.Coalesce`, `dao.Str`, `dao.Int`, `dao.SQL` and
+`dao.LeftJoin`/`dao.InnerJoin` compose from there, and `dao.OptionalJoinExpr`
+registers a resolved join clause. Both forms coexist — see
+[USAGE §1.1](USAGE.md) for the full rationale and the write-identity rule.
+
 ## Transactions
 
 `RunTx` is the primary entry point: commit on success, rollback on error, and

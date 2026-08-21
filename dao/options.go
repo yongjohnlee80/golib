@@ -36,12 +36,31 @@ func NewRow[R any, C ~string, K ~string, ID any](fn func() R) Option[R, C, K, ID
 
 // OptionalJoin registers a demand-driven join by key. A field referencing the key
 // (Field.Join) or a forced DAO.Join triggers it.
+// OptionalJoinExpr registers an optional join whose clause is resolved against
+// the connection's dialect at [New] — the [Expr] sibling of [OptionalJoin],
+// built with [LeftJoin] / [InnerJoin] (ADR-0016 §2.5).
+//
+// For one key the later option wins across BOTH spellings: registering either
+// form deletes the other, so a stale representation can never decide the clause.
+func OptionalJoinExpr[R any, C ~string, K ~string, ID any](key JoinKey, e Expr) Option[R, C, K, ID] {
+	e.mustSet("OptionalJoinExpr")
+	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] {
+		if c.optionalJoinEx == nil {
+			c.optionalJoinEx = map[JoinKey]Expr{}
+		}
+		c.optionalJoinEx[key] = e
+		delete(c.optionalJoins, key)
+		return c
+	}
+}
+
 func OptionalJoin[R any, C ~string, K ~string, ID any](key JoinKey, sql string) Option[R, C, K, ID] {
 	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] {
 		if c.optionalJoins == nil {
 			c.optionalJoins = map[JoinKey]string{}
 		}
 		c.optionalJoins[key] = sql
+		delete(c.optionalJoinEx, key) // later option wins across both spellings
 		return c
 	}
 }
