@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // keypair is a real ssh-keygen-generated key on disk.
@@ -123,10 +125,15 @@ func TestVerifiers_Agree(t *testing.T) {
 		{"garbage signature", []byte("-----BEGIN SSH SIGNATURE-----\nZm9v\n-----END SSH SIGNATURE-----\n"), msg, alice.comment, false},
 	}
 
-	verifiers := map[string]Verifier{
-		"OpenSSH": OpenSSH{AllowedSigners: signersPath, Binary: bin},
-		"PureGo":  PureGo{Allowed: allowedSet},
+	openssh, err := NewOpenSSH(signersPath, Binary(bin))
+	if err != nil {
+		t.Fatal(err)
 	}
+	pureGo, err := NewPureGo(allowedSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifiers := map[string]Verifier{"OpenSSH": openssh, "PureGo": pureGo}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -151,8 +158,12 @@ func TestFactor_OverOpenSSHVerifier(t *testing.T) {
 	alice := genKey(t, bin, dir, "alice@host")
 	signersPath, _ := allowedSigners(t, dir, [][2]string{{alice.comment, alice.pubLine}})
 
+	v, err := NewOpenSSH(signersPath, Binary(bin))
+	if err != nil {
+		t.Fatal(err)
+	}
 	store := NewMemStore(0)
-	f := New(OpenSSH{AllowedSigners: signersPath, Binary: bin}, store, Namespace(testNS))
+	f := New(v, store, Namespace(testNS))
 	ch, err := NewChallenger(store, time.Minute).Issue(Binding{})
 	if err != nil {
 		t.Fatal(err)
@@ -187,32 +198,56 @@ func TestOpenSSH_EmptyAllowedSignersDenies(t *testing.T) {
 		t.Fatal(err)
 	}
 	sig := signWith(t, bin, dir, alice, testNS, []byte("m"))
-	err := OpenSSH{AllowedSigners: empty, Binary: bin}.
-		VerifySignature(context.Background(), []byte("m"), sig, testNS, alice.comment)
+	v, err := NewOpenSSH(empty, Binary(bin))
+	if err != nil {
+		t.Fatalf("an empty allowed_signers is readable and must construct: %v", err)
+	}
+	err = v.VerifySignature(context.Background(), []byte("m"), sig, testNS, alice.comment)
 	if !errors.Is(err, ErrBadSignature) {
 		t.Errorf("err = %v, want ErrBadSignature (an empty allowlist denies)", err)
 	}
 }
 
-// A misconfigured verifier must be distinguishable from a rejected credential:
-// the operator needs to know it is their fault, and the caller must never see a
-// missing binary as "bad password".
-func TestOpenSSH_MisconfigurationIsNotRejection(t *testing.T) {
+// Misconfiguration must fail at CONSTRUCTION, so a broken deployment surfaces at
+// startup rather than during an incident — and must never be reachable as
+// ErrBadSignature, which would report an outage as a bad credential.
+func TestNewOpenSSH_MisconfigurationFailsAtConstruction(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	present := filepath.Join(dir, "signers")
-	if err := os.WriteFile(present, []byte("x ssh-ed25519 AAAA\n"), 0o600); err != nil {
+	good := filepath.Join(dir, "signers")
+	if err := os.WriteFile(good, []byte("x ssh-ed25519 AAAA\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A file that EXISTS but cannot be read. os.Stat succeeds on this; only
+	// opening it reveals the problem, and without that check the failure arrives
+	// later as a nonzero ssh-keygen exit — i.e. as a rejected signature.
+	unreadable := filepath.Join(dir, "unreadable")
+	if err := os.WriteFile(unreadable, []byte("x ssh-ed25519 AAAA\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	subdir := filepath.Join(dir, "adir")
+	if err := os.Mkdir(subdir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 
-	cases := map[string]OpenSSH{
-		"no allowed_signers path": {Binary: "/bin/true"},
-		"allowed_signers missing": {AllowedSigners: filepath.Join(dir, "nope"), Binary: "/bin/true"},
-		"binary missing":          {AllowedSigners: present, Binary: filepath.Join(dir, "no-such-ssh-keygen")},
+	cases := map[string][]any{
+		"no allowed_signers path":        {"", Binary("/bin/true")},
+		"allowed_signers missing":        {filepath.Join(dir, "nope"), Binary("/bin/true")},
+		"allowed_signers is a directory": {subdir, Binary("/bin/true")},
+		"binary missing":                 {good, Binary(filepath.Join(dir, "no-such-ssh-keygen"))},
+		"binary is a directory":          {good, Binary(subdir)},
 	}
-	for name, o := range cases {
+	if os.Geteuid() != 0 {
+		// root reads mode-000 files, so the case is meaningless there.
+		cases["allowed_signers unreadable"] = []any{unreadable, Binary("/bin/true")}
+	}
+	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			err := o.VerifySignature(context.Background(), []byte("m"), []byte("sig"), testNS, "alice")
+			t.Parallel()
+			v, err := NewOpenSSH(c[0].(string), c[1].(OpenSSHOption))
+			if err == nil {
+				t.Fatalf("NewOpenSSH accepted a broken configuration (%v)", v)
+			}
 			if !errors.Is(err, ErrVerifierUnavailable) {
 				t.Errorf("err = %v, want ErrVerifierUnavailable", err)
 			}
@@ -223,32 +258,94 @@ func TestOpenSSH_MisconfigurationIsNotRejection(t *testing.T) {
 	}
 }
 
-// A wedged ssh-keygen must not hold an attach open forever.
-func TestOpenSSH_Timeout(t *testing.T) {
+// A configuration that breaks AFTER construction — the file is deleted or
+// chmod'ed while the process runs — is still not a rejected credential.
+func TestOpenSSH_PolicyBreaksAfterConstruction(t *testing.T) {
 	t.Parallel()
-	sh, err := exec.LookPath("sh")
-	if err != nil {
-		t.Skip("no POSIX shell to build a stub with")
-	}
 	dir := t.TempDir()
 	signers := filepath.Join(dir, "signers")
 	if err := os.WriteFile(signers, []byte("x ssh-ed25519 AAAA\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// A stub that ignores its arguments and hangs — real ssh-keygen would not,
-	// but a wedged NFS mount or a stopped process makes it behave this way.
-	stub := filepath.Join(dir, "hang")
-	if err := os.WriteFile(stub, []byte("#!"+sh+"\nsleep 30\n"), 0o700); err != nil {
+	v, err := NewOpenSSH(signers, Binary("/bin/true"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
-	err = OpenSSH{AllowedSigners: signers, Binary: stub, Timeout: 100 * time.Millisecond}.
-		VerifySignature(context.Background(), []byte("m"), []byte("sig"), testNS, "alice")
-	if !errors.Is(err, ErrVerifierUnavailable) {
-		t.Errorf("err = %v, want ErrVerifierUnavailable on timeout", err)
+	if err := os.Remove(signers); err != nil {
+		t.Fatal(err)
 	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
-		t.Errorf("took %v — the timeout did not bound the subprocess", elapsed)
+	err = v.VerifySignature(context.Background(), []byte("m"), []byte("sig"), testNS, "alice")
+	if !errors.Is(err, ErrVerifierUnavailable) {
+		t.Errorf("err = %v, want ErrVerifierUnavailable", err)
+	}
+}
+
+// A zero-value verifier must deny rather than half-work.
+func TestZeroVerifiersDeny(t *testing.T) {
+	t.Parallel()
+	if err := (&OpenSSH{}).VerifySignature(context.Background(), nil, nil, testNS, "alice"); !errors.Is(err, ErrVerifierUnavailable) {
+		t.Errorf("zero OpenSSH err = %v, want ErrVerifierUnavailable", err)
+	}
+	if err := (&PureGo{}).VerifySignature(context.Background(), nil, nil, testNS, "alice"); !errors.Is(err, ErrNoAllowedKeys) {
+		t.Errorf("zero PureGo err = %v, want ErrNoAllowedKeys", err)
+	}
+}
+
+// An already-cancelled context must be refused by BOTH, or the two disagree
+// about admission — the one thing they may never disagree about.
+func TestVerifiers_RespectCancellation(t *testing.T) {
+	bin := sshKeygen(t)
+	dir := t.TempDir()
+	alice := genKey(t, bin, dir, "alice@host")
+	signersPath, allowedSet := allowedSigners(t, dir, [][2]string{{alice.comment, alice.pubLine}})
+	sig := signWith(t, bin, dir, alice, testNS, []byte("m"))
+
+	openssh, err := NewOpenSSH(signersPath, Binary(bin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pureGo, err := NewPureGo(allowedSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for name, v := range map[string]Verifier{"OpenSSH": openssh, "PureGo": pureGo} {
+		// The same inputs verify fine under a live context, so only the
+		// cancellation can be responsible for the refusal.
+		if err := v.VerifySignature(context.Background(), []byte("m"), sig, testNS, alice.comment); err != nil {
+			t.Fatalf("%s: fixture does not verify under a live context: %v", name, err)
+		}
+		if err := v.VerifySignature(ctx, []byte("m"), sig, testNS, alice.comment); !errors.Is(err, ErrVerifierUnavailable) {
+			t.Errorf("%s: cancelled err = %v, want ErrVerifierUnavailable", name, err)
+		}
+	}
+}
+
+func TestNewPureGo_Validation(t *testing.T) {
+	t.Parallel()
+	_, pub := newSigner(t)
+	for name, in := range map[string][]Allowed{
+		"nil":           nil,
+		"empty":         {},
+		"entry no key":  {{Subject: "alice"}},
+		"entry no subj": {{Key: pub}},
+	} {
+		if _, err := NewPureGo(in); !errors.Is(err, ErrNoAllowedKeys) {
+			t.Errorf("%s: err = %v, want ErrNoAllowedKeys", name, err)
+		}
+	}
+
+	// The set is cloned: a caller mutating their slice afterwards must not be
+	// able to change who may log in.
+	set := []Allowed{{Key: pub, Subject: "alice"}}
+	v, err := NewPureGo(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set[0].Subject = "attacker"
+	if v.allowed[0].Subject != "alice" {
+		t.Error("NewPureGo aliased the caller's slice — the allowlist is mutable from outside")
 	}
 }
 
@@ -271,11 +368,18 @@ func TestValidIdentity(t *testing.T) {
 			if err := validIdentity(id); !errors.Is(err, ErrIdentity) {
 				t.Errorf("validIdentity(%q) = %v, want ErrIdentity", id, err)
 			}
-			// Both implementations must refuse before doing any work.
-			if err := (PureGo{Allowed: []Allowed{{}}}).VerifySignature(context.Background(), nil, nil, testNS, id); !errors.Is(err, ErrIdentity) {
+			// Both implementations must refuse before doing any work — and
+			// before consulting their configuration, so the screen cannot be
+			// bypassed by a verifier that happens to be misconfigured.
+			pg, pgErr := NewPureGo([]Allowed{{Key: idScreenKey(t), Subject: "alice"}})
+			if pgErr != nil {
+				t.Fatal(pgErr)
+			}
+			if err := pg.VerifySignature(context.Background(), nil, nil, testNS, id); !errors.Is(err, ErrIdentity) {
 				t.Errorf("PureGo accepted identity %q: %v", id, err)
 			}
-			if err := (OpenSSH{AllowedSigners: "/etc/hostname"}).VerifySignature(context.Background(), nil, nil, testNS, id); !errors.Is(err, ErrIdentity) {
+			if err := (&OpenSSH{allowedSigners: "/etc/hostname", binary: "/bin/true"}).
+				VerifySignature(context.Background(), nil, nil, testNS, id); !errors.Is(err, ErrIdentity) {
 				t.Errorf("OpenSSH accepted identity %q: %v", id, err)
 			}
 		})
@@ -320,6 +424,14 @@ func TestNew_RequiresVerifierAndStore(t *testing.T) {
 				t.Error("New with a nil ChallengeStore must panic")
 			}
 		}()
-		_ = New(PureGo{}, nil, Namespace(testNS))
+		_ = New(&PureGo{}, nil, Namespace(testNS))
 	})
+}
+
+// idScreenKey is a throwaway key for building a legal PureGo whose allowlist is
+// never actually consulted.
+func idScreenKey(t *testing.T) ssh.PublicKey {
+	t.Helper()
+	_, pub := newSigner(t)
+	return pub
 }

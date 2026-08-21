@@ -101,7 +101,15 @@ The core imports **no third-party module**.
 - **A broken verifier is not a rejected user.** A missing `ssh-keygen`, an
   unreadable `allowed_signers`, or a hung subprocess yields
   `ErrVerifierUnavailable`, never `ErrBadSignature`, so an operator can tell a
-  misconfiguration from a denial.
+  misconfiguration from a denial. Most of those fail at **construction** —
+  `NewOpenSSH` resolves the binary once and proves the policy file readable by
+  *opening* it, because `Stat` succeeds on a mode-000 file and the failure would
+  otherwise arrive later disguised as a bad signature.
+- **A timed-out verification kills the whole process tree.** Cancelling an
+  `exec.CommandContext` kills only the direct child and `WaitDelay` only closes
+  the pipes, so a descendant survives both; the child runs in its own process
+  group and the group is killed. Without that, repeated timeouts accumulate
+  processes.
 
 - **A password credential says how to check itself.** Parameters are stored
   *with* the hash (`$argon2id$v=19$m=65536,t=3,p=4$salt$digest`), so tuning the

@@ -76,8 +76,11 @@ func signEnvelope(t *testing.T, s ssh.Signer, namespace, hashAlgo string, messag
 func harness(t *testing.T, pub ssh.PublicKey, subject string) (*Factor, *Challenger, *MemStore) {
 	t.Helper()
 	store := NewMemStore(0)
-	allowed := []Allowed{{Key: pub, Subject: subject}}
-	return New(PureGo{Allowed: allowed}, store, Namespace(testNS)), NewChallenger(store, time.Minute), store
+	v, err := NewPureGo([]Allowed{{Key: pub, Subject: subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(v, store, Namespace(testNS)), NewChallenger(store, time.Minute), store
 }
 
 func present(chalID string, armor []byte, extra map[string]string) *auth.Request {
@@ -121,7 +124,11 @@ func TestInterop_RealSSHKeygenSignature(t *testing.T) {
 	}
 
 	store := NewMemStore(0)
-	f := New(PureGo{Allowed: allowed}, store, Namespace(testNS))
+	v, err := NewPureGo(allowed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := New(v, store, Namespace(testNS))
 	ch, err := NewChallenger(store, time.Minute).Issue(Binding{})
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +177,11 @@ func TestInterop_WrongNamespaceRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewMemStore(0)
-	f := New(PureGo{Allowed: allowed}, store, Namespace(testNS))
+	v, err := NewPureGo(allowed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := New(v, store, Namespace(testNS))
 	ch, err := NewChallenger(store, time.Minute).Issue(Binding{})
 	if err != nil {
 		t.Fatal(err)
@@ -374,12 +385,11 @@ func TestVerify_EnvelopeTampering(t *testing.T) {
 		}
 	})
 
-	t.Run("empty allowed set denies", func(t *testing.T) {
-		store := NewMemStore(0)
-		f := New(PureGo{}, store, Namespace(testNS))
-		ch, _ := NewChallenger(store, time.Minute).Issue(Binding{})
-		armor := signEnvelope(t, signer, testNS, "sha512", ch.Message)
-		if _, err := f.Verify(context.Background(), present(ch.ID, armor, nil)); !errors.Is(err, ErrNoAllowedKeys) {
+	t.Run("empty allowed set is refused at construction", func(t *testing.T) {
+		// A verifier that can never admit anyone is a misconfiguration, so it
+		// fails at construction rather than denying quietly at every login.
+		// TestZeroVerifiersDeny covers the zero value that bypasses New.
+		if _, err := NewPureGo(nil); !errors.Is(err, ErrNoAllowedKeys) {
 			t.Errorf("err = %v, want ErrNoAllowedKeys", err)
 		}
 	})
@@ -420,7 +430,11 @@ func TestChallenge_SingleUseAndExpiry(t *testing.T) {
 	t.Run("expired", func(t *testing.T) {
 		now := time.Now()
 		store := NewMemStore(0)
-		f := New(PureGo{Allowed: []Allowed{{Key: pub, Subject: "alice"}}}, store,
+		v, err := NewPureGo([]Allowed{{Key: pub, Subject: "alice"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		f := New(v, store,
 			Namespace(testNS), Clock(func() time.Time { return now.Add(time.Hour) }))
 		ch, _ := NewChallenger(store, time.Minute, Clock(func() time.Time { return now })).Issue(Binding{})
 		armor := signEnvelope(t, signer, testNS, "sha512", ch.Message)
@@ -568,7 +582,11 @@ func TestNew_RequiresNamespace(t *testing.T) {
 		}
 	}()
 	_, pub := newSigner(t)
-	_ = New(PureGo{Allowed: []Allowed{{Key: pub, Subject: "a"}}}, NewMemStore(0))
+	v, err := NewPureGo([]Allowed{{Key: pub, Subject: "a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = New(v, NewMemStore(0))
 }
 
 func TestFactor_IsIdentityBearing(t *testing.T) {

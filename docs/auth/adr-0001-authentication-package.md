@@ -1,12 +1,13 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Accepted (rev 5)** (2026-08-22 — authored by jarvis; lector
-  design r1-r3 `change_requested` folded, r4 **approved** by lector, and
-  **accepted by Johno 2026-08-21** — implementation started. **Rev 5 changes a
-  mechanism mid-implementation**: §2.5 SSHSIG verification is delegated to
-  `ssh-keygen -Y verify` instead of the hand-rolled parser rev 4's
-  implementation produced, which makes the client claim an identity. Awaiting
-  lector re-review of rev 5. See Review history. Lands on `auth-pkg`.)
+- **Status:** **Accepted (rev 6)** (2026-08-22 — authored by jarvis; lector
+  design r1-r3 `change_requested` folded, r4 **approved**, and **accepted by
+  Johno 2026-08-21** — implementation in progress. **Rev 5 changed a mechanism
+  mid-implementation**: §2.5 SSHSIG verification is delegated to
+  `ssh-keygen -Y verify` instead of the hand-rolled parser, which makes the
+  client claim an identity. Lector r5 `change_requested` — three must-fixes,
+  all folded in **rev 6**, one of them a shipped bug (cancellation did not reap
+  descendants). See Review history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — a new subsystem.
@@ -322,26 +323,80 @@ concern; the screen exists for the flag case and for defence in depth. Both
 verifiers apply the identical screen, or `PureGo` would accept claims `OpenSSH`
 refuses to even ask about.
 
+**Construction, per golib's binding contract (r5 must-fix 3).** Both verifiers
+are built by constructor — `NewOpenSSH(allowedSigners string, ...OpenSSHOption)`
+and `NewPureGo([]Allowed)` — with **unexported fields** and functional options,
+because a verifier whose configuration is only discovered to be wrong at the
+first login is a misconfiguration that surfaces during an incident instead of at
+startup. `NewOpenSSH` resolves `ssh-keygen` **once** (PATH is not re-consulted
+per attempt) and proves both the binary and the policy file readable;
+`NewPureGo` **clones** the allowed set, so a caller mutating their slice later
+cannot silently change who may log in, and **rejects an empty set** — a verifier
+that can never admit anyone is a misconfiguration, not a runtime denial. A
+zero-value `OpenSSH{}`/`PureGo{}` obtained by bypassing the constructors denies.
+
+`Binary(path)` is **recommended for hardened deployments**: PATH is
+deployment-supplied trust. Go already refuses a current-directory-relative
+lookup result, and an absolute path removes the remaining question.
+
 **Subprocess hygiene, since a signature verification now forks:**
 
 - The **message goes on stdin**, never on `argv` and never through a file.
 - The signature must be a file (`-s` takes a path), so it is written `0600`
   inside a `0700` `MkdirTemp` directory, removed on return.
-- A **context timeout** bounds the call (default 5s) **plus a `WaitDelay`**.
-  The `WaitDelay` is not belt-and-braces: because stderr is captured through a
-  pipe, `Wait` blocks on the copying goroutine, and a descendant holding the
-  write end keeps `Run` blocked long past a cancelled context — measured at the
-  full 30s of a hung stub with the deadline ignored. `WaitDelay` is what makes
-  the timeout bind.
+- **Cancellation kills the process GROUP, not just `ssh-keygen` (r5 must-fix
+  1).** The child is started with `Setpgid`, and `Cancel` sends `SIGKILL` to
+  `-pgid`; a second group kill runs after `Wait` returns. This is a shipped-bug
+  fix, not a precaution: `CommandContext`'s default cancellation kills only
+  `cmd.Process` and `WaitDelay` only closes our end of the pipes, so **neither
+  reaps a descendant** — the first cut returned in ~1.1s while its grandchild
+  kept running, and repeated timeouts would have accumulated processes
+  indefinitely. Regression test asserts the **grandchild is gone**, not merely
+  that the call returned; with the fix reverted it fails on a surviving pid.
+  `WaitDelay` (1s) stays as the final I/O bound **after** whole-tree
+  cancellation, never as a substitute for it. On non-unix platforms the group
+  isolation is absent — Windows would need a Job Object — and that gap is
+  recorded at the build-tagged no-op rather than left to be discovered.
+- **`allowed_signers` readability is proved by OPENING it, not by `Stat`
+  (r5 must-fix 2).** `os.Stat` succeeds on a mode-000 file and on a directory,
+  so a `Stat`-only preflight let an unreadable-but-present file through; the
+  failure then arrived as a nonzero `ssh-keygen` exit, i.e. as
+  `ErrBadSignature` — an outage reported as a bad credential. The check opens
+  the file, and requires a regular file, at construction **and again per call**
+  (the file can be replaced under a long-running process).
+  **The promise is narrowed accordingly:** `ErrVerifierUnavailable` is
+  guaranteed for a policy file that is unreadable *when the check runs*. A
+  file that breaks inside the gap between that check and `exec` surfaces as a
+  rejection; the window cannot be closed from user space, and the next attempt
+  classifies it correctly.
 - **Misconfiguration is a distinct error class.** A missing `ssh-keygen`, an
-  unreadable `allowed_signers`, or a timeout returns `ErrVerifierUnavailable`,
-  never `ErrBadSignature`. An operator must be able to tell "I broke the
-  deployment" from "that credential was refused", and a caller must never see an
-  infrastructure fault as a rejected user. `auth.Policy` still collapses both to
-  `auth.ErrUnauthenticated` at the boundary (§2.6).
+  unreadable `allowed_signers`, a cancelled context, or a subprocess that had to
+  be killed returns `ErrVerifierUnavailable`, never `ErrBadSignature`. An
+  operator must be able to tell "I broke the deployment" from "that credential
+  was refused", and a caller must never see an infrastructure fault as a rejected
+  user. `auth.Policy` still collapses both to `auth.ErrUnauthenticated` at the
+  boundary (§2.6).
+- **Captured stderr is bounded** (4 KiB, first-bytes-kept). `ssh-keygen` emits
+  one line; an unbounded buffer would let a wedged or wrong binary spool into
+  memory.
 - Measured exit codes (OpenSSH 10.3): **0** valid; **255** for every failure —
   wrong namespace, tampered message, unknown identity, empty `allowed_signers`.
   The decision is exit-status driven; no output is parsed.
+- `ssh-keygen -Y verify` reads **no implicit configuration file**, so nothing
+  outside the arguments and the named policy file influences the verdict.
+
+**Both verifiers honor `ctx` (r5 should-fix 1).** An already-cancelled context is
+refused before any work, and `PureGo` re-checks after its derivation. Otherwise
+one implementation would admit a cancelled call that the other refuses — a
+disagreement about *admission*, the one thing they may never disagree about.
+
+**Timing, stated precisely (r5 should-fix 4).** The unavailable paths return
+**before** forking, so overall verifier health is observable by timing. That is
+accepted: it is **claim-independent** — it says the deployment is broken, not
+which principals exist — and it enumerates nobody. **No dummy fork is added to
+disguise an outage.** This is the opposite of `auth/password`'s dummy hash,
+which is mandatory precisely because that timing difference *is*
+claim-dependent (§2.6).
 
 **`x/crypto` stays in the graph regardless, so this changes no dependency
 accounting.** `ParseAuthorizedKeys` still uses `ssh.ParseAuthorizedKey`,
@@ -568,12 +623,29 @@ Acceptance criteria:
    admitted); every rejected identity shape — empty, leading `-`, embedded
    newline, NUL, DEL, >256 bytes — is refused by **both** verifiers before any
    work; ordinary principals (`alice@host`, `alice+ci@example.com`) are accepted.
-8d. **Delegation failure modes (§2.5):** a missing binary, a missing/unset
-   `allowed_signers`, and a hung `ssh-keygen` each return
-   `ErrVerifierUnavailable` and **never** `ErrBadSignature`; the hang test
-   asserts the call actually returns inside the bound. An empty
-   `allowed_signers` **denies**. `New` **panics** on a nil `Verifier` or nil
-   store rather than choosing one silently.
+8d. **Delegation failure modes (§2.5):** an unset path, a missing file, a
+   **directory**, and an **unreadable (mode-000) but present** `allowed_signers`,
+   plus a missing binary and a binary that is a directory, each fail at
+   **construction** with `ErrVerifierUnavailable` and **never**
+   `ErrBadSignature`. A policy file deleted *after* construction fails the same
+   way at call time. An empty-but-readable `allowed_signers` constructs and then
+   **denies**. Zero-value `OpenSSH{}`/`PureGo{}` deny. `NewPureGo` rejects an
+   empty set, an entry with no key, and an entry with no subject, and **clones**
+   its input — a test mutates the caller's slice afterwards and asserts the
+   allowlist did not change. `New` **panics** on a nil `Verifier` or nil store
+   rather than choosing one silently.
+8e. **Whole-tree cancellation (§2.5, r5 must-fix 1):** a stub that spawns a
+   grandchild and waits on it is killed by timeout, and the test asserts **the
+   grandchild's pid is gone** — polling `kill(pid, 0)` for ESRCH — not merely
+   that the call returned. The wall-clock bound is `timeout + WaitDelay` plus CI
+   slack, not a loose multi-second ceiling. A separate test asserts the child
+   lands in **its own** process group and specifically not this process's, since
+   a group kill against the wrong group would signal the test binary. The
+   regression is verified in both directions: with `isolateProcessGroup`
+   disabled the test fails on a surviving pid.
+8f. **Cancellation agreement (§2.5, r5 should-fix 1):** the same inputs that
+   verify under a live context are refused by **both** verifiers under an
+   already-cancelled one, with `ErrVerifierUnavailable`.
 9. `auth/password`: Argon2id with versioned parameters, constant-time
    verification, parameters round-tripping with the hash, and a successful verify
    against outdated parameters **rewriting** the stored hash. A PBKDF2 credential
@@ -639,7 +711,39 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
 
 ## Review history
 
-- **rev 5 (2026-08-22, jarvis — mechanism change, awaiting lector).**
+- **r5 (2026-08-22, lector — `change_requested`; all three must-fixes and all
+  four should-fixes folded in rev 6).** The identity claim, the sentinel
+  divergence, the dependency accounting and the `hiddeco/sshsig` rejection were
+  all **approved** — and Argon2id is explicitly not reopened. The must-fixes were
+  about the subprocess, not the design:
+  1. **Cancellation leaked descendants — a live bug, reproduced.** `WaitDelay`
+     closes pipes but kills nothing; `CommandContext` kills only the direct
+     child. Lector's repro: the timeout fixture returned in ~1.1s and `pgrep`
+     still showed its `sleep 30`. Fixed with an owned process group killed as a
+     group, `WaitDelay` retained as the final I/O bound. The regression test now
+     asserts the grandchild is **gone**, and fails on a surviving pid when the
+     fix is reverted — I verified both directions rather than trusting the
+     green run.
+  2. **An unreadable-but-present `allowed_signers` was misclassified.** The
+     preflight only `Stat`ed the path, which succeeds on mode-000 and on a
+     directory, so the failure arrived as a nonzero exit and was mapped to
+     `ErrBadSignature` — precisely the "outage reported as a bad credential"
+     the error classing exists to prevent. Now the file is **opened**, at
+     construction and per call, and the ADR's promise is narrowed for the
+     unavoidable check-to-`exec` window.
+  3. **The API violated golib's binding construction contract.** Public mutable
+     fields deferred missing-path and missing-binary failures to the first
+     authentication. Now `NewOpenSSH`/`NewPureGo` with unexported fields and
+     functional options, PATH resolved once, policy readability validated at
+     construction, and `PureGo`'s allowed set cloned.
+  Should-fixes: `ctx` honored by both verifiers (an already-cancelled call was
+  admitted by `PureGo` and refused by `OpenSSH` — an admission disagreement);
+  stderr capped at 4 KiB; the timeout assertion tightened to
+  `timeout + WaitDelay`; and the timing note stated precisely — pre-fork returns
+  make verifier *health* observable, which is claim-independent and enumerates
+  nobody, so no dummy fork is added to disguise an outage.
+
+- **rev 5 (2026-08-22, jarvis — mechanism change).**
   Rev 4 justified `x/crypto/ssh` partly on not hand-rolling a signature parser;
   implementation then found `x/crypto` ships **no `sshsig` package**, so the
   envelope parser was ours after all — recorded at the time as a correction, but
