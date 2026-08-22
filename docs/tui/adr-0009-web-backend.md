@@ -1,7 +1,7 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 27)** — design accepted by Johno 2026-08-21;
-  **the rev 21-27 implementation is awaiting lector r7 and is NOT released.**
+- **Status:** **Accepted (rev 28)** — design accepted by Johno 2026-08-21;
+  **the rev 21-28 implementation is awaiting lector r8 and is NOT released.**
   Lands on `tui-web`.
   - **Design rounds (r1-r8, 2026-08-21):** approved by lector, accepted by Johno.
     r8's three amendments applied — a correctness defect in rev 0's frame
@@ -12,13 +12,14 @@
     throttle and allowlist stated as requirements".
   - **Rev 21 (2026-08-22):** `web.SSO` extended to every `golib/auth` mechanism
     (§2.12.7), on Johno's instruction.
-  - **Revs 22-27 (2026-08-22):** six rounds of lector review on PR #14, each
+  - **Revs 22-28 (2026-08-22):** seven rounds of lector review on PR #14, each
     finding a defect in the *interval* around a step the previous round had made
     correct. §2.12.8 the lifecycle leaks (r1); §2.12.9 the two false concurrency
     boundaries (r2); §2.12.10 the ghost slot, established too late (r3); §2.12.11
     establishment atomicity (r4); §2.12.12 check-then-publish (r5); §2.12.13 the
-    reusable public capability (r6). Read as a set they are one mistake made six
-    ways, and §2.12.13 names it.
+    reusable public capability (r6); §2.12.14 the capability's lifetime and the
+    limits of rollback (r7). Read as a set they are one mistake made seven ways,
+    and §2.12.13 names it.
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -1074,6 +1075,50 @@ the start: for a handoff between two independently locked structures, correctnes
 never a property of a step — it is a property of a step and the interval that
 follows, and the only evidence is a probe that pauses inside that interval.
 
+#### 2.12.14 A lifetime that was one keyword wide, and a rollback that could not exist (rev 28)
+
+r7 found two, and confirmed that the design's SHAPE is right — only the raw
+callback's panic contract needed narrowing. Both defects are worth keeping for
+different reasons: one is the smallest bug in this whole sequence, and the other is
+a case where the obviously-correct repair was impossible.
+
+**`defer` is function-scoped.** `defer stash.disarm()` sat inside the
+`if h.onLogin != nil` block, so it retired the publishing capability when
+`ServeLogin` returned — not when the hook did. Everything below stayed inside the
+window, including the slow paths: lector blocked the error path inside
+`Issuer.Revoke` and a retained Stash published successfully in that interval, after
+which the cleanup released the slot and left an entry with nothing accounting for
+it. The fix is to call `disarm` on the line after the hook. Six rounds of reasoning
+about locks and intervals, and the seventh defect was a Go scoping rule.
+
+**Rollback across an ownership boundary is not available.** Rev 27 rolled the
+commitment back when a publish panicked, on the reasoning that nothing had been
+written. That holds only for a callback that panics *before* it mutates. A
+consumer's callback can insert into its own park and then panic, and this package
+cannot undo a write to a data structure it does not own — lector reproduced
+`parked=1, committed=0` exactly that way.
+
+There is no version of the rollback that works, so the decision is which error to
+take, and the two are **not symmetric**:
+
+| On a panicking publish | Cost |
+| --- | --- |
+| keep the commitment | one slot held for an entry that may not exist, until the backstop expiry reclaims it — bounded and self-healing |
+| drop the commitment | the pending-login cap under-counts if the entry WAS written — unbounded, and permanent |
+
+So the commitment is kept, conservatively, and the documentation says why rather
+than implying the library can clean up after a panicking callback. The capability is
+spent afterwards, so a panicking publish costs that login its chance to park; the
+earlier text advertising a retry was describing a path only reachable by calling the
+unexported gate directly.
+
+One thing I could NOT produce a control for, stated rather than glossed: `disarm`
+now waits for an attempt already in flight, and the unsafe interleaving it looks
+like it prevents is already impossible, because `gate.commit` marks the slot and
+publishes under one lock — so a publish that ran at all ran while the key was
+present. The fence buys a settled answer rather than a racing one for the login
+route's next question. It is belt and braces, and the comment says so.
+
 ### 2.13 Peer binding (rev 19)
 
 **Optional, off by default.** A session may be bound to the peer address that
@@ -1376,6 +1421,27 @@ decisions:
   sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
+
+- **rev 28 (2026-08-22, jarvis — the capability's lifetime and the limits of
+  rollback, from lector r7 on PR #14).** Two must-fixes. `defer stash.disarm()` was
+  function-scoped, so the publishing capability outlived the hook and stayed live
+  through the request's slow paths — lector published from a retained Stash while
+  the error path was blocked inside `Issuer.Revoke`. And rev 27's panic rollback
+  assumed nothing had been published, which is false for a callback that mutates its
+  own park and then panics; that rollback cannot exist, because the mutation is in
+  data this package does not own. §2.12.14 has both.
+
+  The second is the one I want to remember. My instinct was that rolling back was
+  obviously right, and the review before had told me the opposite thing was
+  obviously right, and neither instinct was doing the actual work: the question is
+  which of two errors is BOUNDED. Keeping a commitment for an entry that may not
+  exist costs one slot until the backstop reclaims it. Dropping one for an entry
+  that does exist breaks the cap permanently. Conservative wins, and the docs now
+  say so instead of implying the library can clean up after a panicking callback.
+
+  Also, r7 confirmed for the third time that the design's shape is right and only
+  this contract needed narrowing — which I had asked about directly, because "the
+  shape is right" is a judgement that quietly expires after four more repairs.
 
 - **rev 27 (2026-08-22, jarvis — the reusable capability from lector r6 on PR #14).**
   The internal transaction was approved; the public capability I had added to

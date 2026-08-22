@@ -246,9 +246,18 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 			stash.mu.Unlock()
 		}
 
-		// The publishing capability lives only for the hook's call.
-		defer stash.disarm()
-		if err := h.onLogin(handoff, identity, stash); err != nil {
+		// The publishing capability lives only for the hook's CALL — not for the rest
+		// of this request.
+		//
+		// `defer` is function-scoped, not block-scoped, so deferring the retirement
+		// here left the capability live through every path below, including the slow
+		// one: while an error path was blocked in Issuer.Revoke, a retained Stash
+		// published successfully and the cleanup then released the slot, leaving an
+		// entry with no accounting (lector r7 on PR #14). Retired on the next line
+		// instead, and disarm waits for any attempt already in flight.
+		hookErr := h.onLogin(handoff, identity, stash)
+		stash.disarm()
+		if err := hookErr; err != nil {
 			// The caller could not record the login, so the login did NOT succeed.
 			// Returning the ticket anyway would hand out a credential for state
 			// that does not exist — so the ticket is REVOKED before the refusal.

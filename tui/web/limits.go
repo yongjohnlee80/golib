@@ -299,11 +299,11 @@ func (g *gate) commit(key string, until time.Time, publish func()) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.sweepLocked()
-	prev, ok := g.held[key]
+	held, ok := g.held[key]
 	if !ok {
 		return false
 	}
-	if prev.committed {
+	if held.committed {
 		// Defensive: one reservation accounts for one entry, so a second commit
 		// would either publish a second entry against one slot or re-stamp a slot
 		// whose entry is already live. Callers are single-use; this is the backstop
@@ -313,17 +313,21 @@ func (g *gate) commit(key string, until time.Time, publish func()) bool {
 	// Re-stamped from NOW, at the same moment the park's own deadline is set, so
 	// the two cannot be skewed by however long the hook took.
 	g.held[key] = slot{expires: until, committed: true}
-	// Rolled back if publish panics: nothing was written, so the slot must not be
-	// left claiming to account for it. Registered after the unlock defer, so LIFO
-	// runs this one FIRST — while the lock is still held.
-	published := false
-	defer func() {
-		if !published {
-			g.held[key] = prev
-		}
-	}()
+	// A PANICKING publish keeps the commitment.
+	//
+	// The earlier version rolled it back on the reasoning that nothing had been
+	// written — which is only true for a callback that panics before it mutates.
+	// A consumer's callback can insert into its own park and then panic, and
+	// undoing that is not something this package can do: the mutation is in the
+	// consumer's data structure (lector r7 on PR #14 reproduced parked=1,
+	// committed=0 that way).
+	//
+	// So the accounting is preserved CONSERVATIVELY. The two possible errors are
+	// not symmetric: keeping a commitment for an entry that was never written
+	// leaves a slot held until the backstop expiry reclaims it, while dropping one
+	// for an entry that WAS written breaks the cap invariant outright and stays
+	// broken. The bounded error is the one to take.
 	publish()
-	published = true
 	return true
 }
 

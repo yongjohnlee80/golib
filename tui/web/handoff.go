@@ -124,6 +124,10 @@ type Stash struct {
 	// may publish one entry, so a second call — including a recursive one from
 	// inside publish — must fail rather than publish twice or deadlock.
 	state stashCommitState
+	// cond lets disarm WAIT for an attempt already in flight, so retiring the
+	// capability is a fence rather than a request. Created on demand, because a
+	// zero-value Stash is a valid one.
+	cond *sync.Cond
 }
 
 // stashCommitState tracks the one permitted use of [Stash.CommitPark].
@@ -247,8 +251,17 @@ func (s *Stash) discard() {
 // the accounting a slot with no entry, which is the mirror of the defect this
 // prevents.
 //
-// A panic inside publish is survivable: the lock is released as the stack unwinds,
-// and the commitment is rolled back because nothing was published.
+// # Do not panic in publish
+//
+// A panic is survivable — the reservation's lock is released as the stack unwinds,
+// so it reaches you rather than wedging every other login — but the commitment is
+// KEPT, because this package cannot know whether your callback mutated your park
+// before it panicked and cannot undo it if it did. The slot is then held until the
+// backstop expiry reclaims it. That is the bounded error; dropping the commitment
+// for an entry that was in fact written would break the pending-login cap outright.
+//
+// The capability is also spent afterwards, so there is no retry: a panicking publish
+// costs this login its chance to park.
 //
 // A nil-safe no-op outside a login request, and a plain publish when the handler
 // keeps no pending-login budget.
@@ -276,6 +289,7 @@ func (s *Stash) CommitPark(publish func()) bool {
 	defer func() {
 		s.mu.Lock()
 		s.state = stashSpent
+		s.waiterLocked().Broadcast()
 		s.mu.Unlock()
 	}()
 
@@ -301,20 +315,30 @@ func (s *Stash) disarm() {
 		return
 	}
 	s.mu.Lock()
+	// WAIT for an attempt already in flight, so disarm means what its name says: on
+	// return, nothing is publishing and nothing can start.
+	//
+	// Belt and braces rather than a fix, and worth being precise about: the unsafe
+	// interleaving it looks like it prevents — the login route deciding nothing was
+	// committed, and a publish landing afterwards — is already impossible, because
+	// gate.commit marks the slot committed and publishes under one lock, so a
+	// publish that runs at all ran while the key was present. What this buys is that
+	// the route's question has a settled answer rather than a racing one.
+	for s.state == stashBusy {
+		s.waiterLocked().Wait()
+	}
 	s.commit = nil
 	s.state = stashSpent
 	s.mu.Unlock()
 }
 
-// claimed reports whether the stashed value was taken, which is what tells the
-// login route that a handoff now owns an admission slot.
-func (s *Stash) claimed() bool {
-	if s == nil {
-		return false
+// waiterLocked returns the condition variable, creating it on first use. Caller
+// holds s.mu.
+func (s *Stash) waiterLocked() *sync.Cond {
+	if s.cond == nil {
+		s.cond = sync.NewCond(&s.mu)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.taken
+	return s.cond
 }
 
 // StashFromContext returns the login request's slot, or nil outside one.
