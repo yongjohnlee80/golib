@@ -1113,3 +1113,55 @@ func TestSSO_CloseWaitsForInFlightProvisioning(t *testing.T) {
 			"exactly the one nobody else can clean up", made, released)
 	}
 }
+
+// A panicking Provision must not turn a leak into a HANG.
+//
+// Close waits for in-flight provisioning; if the bracket's retirement were not
+// deferred, a Provision that panicked would leave it permanently non-empty and
+// Close would wait forever. This asserts Close still returns.
+func TestSSO_CloseSurvivesAPanickingProvision(t *testing.T) {
+	t.Parallel()
+	s, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: time.Minute,
+		Provision: func(context.Context, *auth.Identity) (*upstream, error) {
+			panic("the consumer's dial exploded")
+		},
+		Release: func(*upstream, HandoffReason) {},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	panicked := make(chan struct{})
+	go func() {
+		defer func() { _ = recover(); close(panicked) }()
+		_, _, _ = s.Session(context.Background(),
+			&SessionInfo{Identity: &auth.Identity{Subject: "alice"}})
+	}()
+	<-panicked
+
+	closed := make(chan struct{})
+	go func() { s.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close hung: a panicking Provision left the in-flight bracket " +
+			"permanently non-empty, which trades a leak for a deadlock")
+	}
+}
+
+// Close twice must not deadlock either.
+func TestSSO_CloseIsIdempotent(t *testing.T) {
+	t.Parallel()
+	s, err := NewSSO(SSOConfig[*upstream]{Release: func(*upstream, HandoffReason) {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { s.Close(); s.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("a second Close deadlocked")
+	}
+}
