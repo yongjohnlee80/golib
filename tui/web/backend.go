@@ -1,25 +1,3 @@
-// Package web renders an existing golib TUI in a browser (ADR-0009).
-//
-// It implements [tui.Backend] over a server-side cell grid: each Flush diff is
-// applied to the grid, and the grid is emitted as HTML. The browser is a dumb
-// surface — it displays cells and reports input. No Component, layout or widget
-// code changes, which is the point: the Backend seam already existed, and this
-// package is the test of whether it was drawn in the right place.
-//
-// # What this is for, and what it is not
-//
-// It exists so a user who can already reach a CLI server can drive its TUI from
-// a browser without a second UI being written. It is deliberately not a web
-// application: an app that wants a web front end should use a real front-end
-// framework, and this package would be the wrong foundation for one.
-//
-// # The interesting part is not rendering
-//
-// Painting a character grid as HTML is straightforward. The parts that took the
-// design work are the frame aggregate that survives a slow client without
-// diverging ([framer]), the input contract that turns browser events into
-// [tui.Event] values without inventing or duplicating them, and the session and
-// authentication rules, since this exposes a terminal to a network.
 package web
 
 import (

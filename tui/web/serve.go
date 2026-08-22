@@ -61,9 +61,11 @@ func (h *Handler) Guard(next http.Handler) http.Handler {
 func (h *Handler) Mount(srv *golibhttp.Server) {
 	srv.Get("/", h.ServePage)
 	if h.cfg.LoginPolicy != nil {
-		// Guarded like everything else. It is the only unauthenticated endpoint
-		// in the package, which makes the Origin check load-bearing rather than
-		// defensive: without it, any page the user visits could POST a guess.
+		// Guarded, and the handler guards itself as well. It is the only
+		// unauthenticated CREDENTIAL-PROCESSING endpoint here — the page is also
+		// unauthenticated but takes nothing — which makes the Origin check
+		// load-bearing rather than defensive: without it, any page the user
+		// visits could POST a guess.
 		srv.Handle("POST "+h.loginPath, h.Guard(http.HandlerFunc(h.ServeLogin)))
 	}
 	srv.Handle("GET "+h.wsPath, h.Guard(ws.Handler(

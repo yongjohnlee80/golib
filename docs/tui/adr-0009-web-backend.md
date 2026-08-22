@@ -918,10 +918,12 @@ decisions:
   **single-use, 30-second ticket** that the WebSocket then presents like any
   other client. Four reasons, all pointing the same way:
 
-  - **The attach path keeps one credential shape.** Every attach presents a
-    ticket, whatever the user actually proved. Mixing a reusable secret into the
-    same message as a spent one would make the replay properties of an attach
-    depend on which field happened to be populated.
+  - **A reusable secret is never an attach credential.** A password converts
+    into a ticket; mTLS and the SSH challenge attach on their own. (An earlier
+    version of this bullet said every attach presents a ticket, which is not true
+    — see the r4 and r5 corrections below.) Mixing a reusable secret into the same
+    message as a spent one would make the replay properties of an attach depend on
+    which field happened to be populated.
   - **The password crosses once, to a route that does nothing else.** It never
     touches session creation, frame delivery or the event stream, so no bug in
     those paths is reachable while a password is in flight.
@@ -937,11 +939,13 @@ decisions:
 
   Consequences recorded deliberately:
 
-  - The login route is the **only unauthenticated endpoint** in the package, so
-    it is written as one — `Origin`/`Host` guarded like everything else (without
-    which any page the user visits could POST a guess), body bounded before
-    buffering, one uniform 401 for every cause including a malformed body, and no
-    statement anywhere about whether a subject exists.
+  - The login route is the only unauthenticated endpoint in the package that
+    **processes a credential** (the page is unauthenticated too, but takes
+    nothing), so it is written accordingly — `Origin`/`Host` checked in the
+    handler itself as well as by `Guard`, per the r4 correction, without which
+    any page the user visits could POST a guess; body bounded before buffering;
+    one uniform 401 for every cause including a malformed body; and no statement
+    anywhere about whether a subject exists.
   - It **404s** when unconfigured, so a deployment that did not ask for password
     auth looks like one that never had the route.
   - `LoginPolicy` and `Issuer` must be set together: a policy with no issuer
