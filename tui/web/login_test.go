@@ -238,6 +238,12 @@ func TestLogin_MethodAndHardening(t *testing.T) {
 	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
 		r := httptest.NewRequest(method, "/login", nil)
 		r.Host = "tui.example.test"
+		// The handshake check runs BEFORE the method check, deliberately: the
+		// cheap credential-free controls come first, so a cross-origin probe is
+		// refused without the handler reasoning about what it was asking for.
+		// Without an acceptable Origin this is a 403, which is correct and is
+		// asserted separately.
+		r.Header.Set("Origin", "https://tui.example.test")
 		rec := httptest.NewRecorder()
 		h.ServeLogin(rec, r)
 		if rec.Code != http.StatusMethodNotAllowed {

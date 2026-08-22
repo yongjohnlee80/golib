@@ -19,10 +19,13 @@ import (
 // The obvious implementation is a form whose values go into the hello alongside
 // the ticket, and it is worse in four ways that all point the same direction:
 //
-//   - **The attach path stays one credential shape.** With a minter, every
-//     attach presents a single-use ticket, whatever the user actually proved.
-//     Mixing a reusable secret into the same message as a spent one means the
-//     replay properties of an attach depend on which field was populated.
+//   - **A password never becomes an attach credential.** The attach path accepts
+//     tickets, verified certificate chains and SSH signatures; a password
+//     converts into the first of those and is never presented to it directly.
+//     (An earlier version of this comment said every attach presents a ticket,
+//     which is simply untrue — mTLS and the SSH challenge attach on their own.
+//     The real invariant is narrower and is the one that matters: a reusable
+//     secret is not among the things the attach path will accept — lector r4.)
 //   - **The password crosses once, to a route that does nothing else.** It never
 //     touches session creation, frame delivery or the event stream, so no bug in
 //     those paths can be reached while a password is in flight.
@@ -38,8 +41,17 @@ import (
 // # What this route must therefore be
 //
 // It is the ONLY unauthenticated endpoint in the package, so it is written as
-// one: Origin and Host guarded like every other route, a bounded body, one
-// uniform refusal, and no statement anywhere about whether the subject exists.
+// one: Origin and Host checked IN THIS HANDLER as well as by [Handler.Guard], a
+// bounded body, one uniform refusal, and no statement anywhere about whether the
+// subject exists.
+//
+// The internal check is not redundancy. An earlier version relied entirely on
+// Guard, which [Handler.Mount] applies — so a caller who mounted the exported
+// handler directly got an unguarded login endpoint, and a direct call with an
+// attacker Host and Origin minted a ticket for a correct password (lector r4).
+// The doc comment claimed the route itself carried those controls; it did not.
+// For an endpoint that turns a password into a credential, the check belongs
+// where the handler is, not only where someone remembered to wrap it.
 type loginRequest struct {
 	Subject  string `json:"subject"`
 	Password string `json:"password"`
@@ -79,6 +91,15 @@ const loginTicketTTL = 30 * time.Second
 func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	hardeningHeaders(w.Header(), "-")
 	w.Header().Set("Cache-Control", "no-store")
+
+	// The handshake controls, applied HERE and not only by Guard. See the type
+	// comment: without this, mounting the exported handler directly yields an
+	// unguarded login endpoint.
+	if err := h.cfg.checkHandshake(r); err != nil {
+		logHandshakeDenial(h.log, r, err)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	if h.cfg.LoginPolicy == nil || h.cfg.Issuer == nil {
 		// Not "403 disabled": a deployment without password auth should look
