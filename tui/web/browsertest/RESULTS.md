@@ -6,9 +6,12 @@ mistaken for "the matrix passed".
 
 | Engine | Status | Evidence |
 |---|---|---|
-| **Chromium** | **16/16 PASSED** | CI, 2026-08-22, PR #14 run 32574695356; and locally |
-| **Firefox** | **16/16 PASSED** | local, 2026-08-22, Firefox 153.0 (playwright firefox v1538), after the paste-dispatch repair below. CI's first Firefox run failed 1/16 on paste. |
-| **WebKit** | **PASSED in CI** | CI, 2026-08-22, PR #14 run 32574695356. Cannot run locally: playwright's WebKit needs Ubuntu libraries this Arch host has no package for. |
+| **Chromium** | **PASSED** | CI, 2026-08-22, PR #14 run 32575804138; and 16/16 locally |
+| **Firefox** | **PASSED** | CI, 2026-08-22, PR #14 run 32575804138; and 16/16 locally, Firefox 153.0 (playwright firefox v1538). Its first CI run, 32574695356, failed 1/16 on paste — see below. |
+| **WebKit** | **PASSED** | CI, 2026-08-22, PR #14 run 32575804138. Cannot run locally: playwright's WebKit needs Ubuntu libraries this Arch host has no package for. |
+
+The required aggregate check, `browser matrix (required)`, is **green** — the first
+time it has been, and the first time every engine has run.
 
 CI is wired — `.github/workflows/browser-matrix.yml`, with a single required
 `browser matrix (required)` check that fails unless **every** engine passes.
@@ -17,7 +20,8 @@ CI is wired — `.github/workflows/browser-matrix.yml`, with a single required
 
 The waiver below was cashed in on PR #14, the first CI run of the matrix. The
 result: **Chromium and WebKit green, Firefox 15/16**, failing only
-`paste emits exactly one PasteEvent with normalized newlines`.
+`paste emits exactly one PasteEvent with normalized newlines`. After the repair
+described here, run 32575804138 is green on all three.
 
 That failure was the **third harness defect** the matrix has produced, and still
 **no product defect**. `new ClipboardEvent('paste', { clipboardData: dt })` looks
