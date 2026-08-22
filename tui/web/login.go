@@ -236,6 +236,14 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// finds the key and returns the slot, and the rollback below is idempotent.
 		if h.pending != nil {
 			leased = h.pending.hold(handoff, h.now().Add(h.pendingHold))
+			// The hook's capability to publish its own park entry atomically with
+			// that reservation. Without it a consumer not using web.SSO had no way
+			// to be safe here at all, because the gate is unexported (lector r5).
+			stash.mu.Lock()
+			stash.commit = func(publish func()) bool {
+				return h.pending.commit(handoff, h.now().Add(h.pendingHold), publish)
+			}
+			stash.mu.Unlock()
 		}
 
 		if err := h.onLogin(handoff, identity, stash); err != nil {
@@ -260,24 +268,21 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		// A hook that took nothing parked nothing — the stock auth/password factor
-		// cannot stash — so no settle will ever come for this handoff and the lease
-		// goes back now rather than waiting out the backstop.
-		if leased && !stash.claimed() {
+		// Did the hook actually park anything? THE GATE KNOWS, because parking goes
+		// through a commit — web.SSO's, or a hand-rolled hook's Stash.CommitPark —
+		// and a commit is what turns this request's reservation into a slot that
+		// accounts for an entry.
+		//
+		// Asking the stash whether its value was taken was the wrong question: a
+		// hand-rolled park need not take anything from the stash in order to park,
+		// and such a hook lost its slot the moment it succeeded.
+		//
+		// An absent key needs no action either. It means the slot has already been
+		// returned — swept, or settled because the entry was claimed or released
+		// during the hook — and `leased` stays true so the deferred leave() cannot
+		// decrement a second time.
+		if leased && !h.pending.committed(handoff) {
 			h.pending.release(handoff)
-		} else if leased {
-			// The hook parked something, so re-stamp the slot's deadline from now.
-			//
-			// Advisory, not a gate: an absent key here is AMBIGUOUS. It means either
-			// the reservation lapsed while the hook ran — bad, an entry with no slot
-			// — or the entry was parked and then legitimately settled during the
-			// hook, which is fine and leaves nothing to account for. The handler
-			// cannot tell those apart, and only the park can, which is why the
-			// enforcement lives there: web.SSO commits the reservation BEFORE
-			// inserting, so its entry exists only when a slot accounts for it. A
-			// consumer parking by hand should do the same with the reservation
-			// covering only its hook's duration.
-			h.pending.commit(handoff, h.now().Add(h.pendingHold))
 		}
 	}
 	logger.Info(h.log, sessionAudit{Kind: "login", Subject: identity.Subject, ID: attemptID})

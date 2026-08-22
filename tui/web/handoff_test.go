@@ -257,7 +257,14 @@ func handoffHandler(t *testing.T, p *park, opts ...ManagerOption) (*Handler, *Ma
 			if v == nil {
 				return errors.New("nothing was stashed during verification")
 			}
-			p.hold(handoff, v.(string))
+			// Published through CommitPark, which is the contract for a consumer
+			// parking by hand: the write happens while the admission reservation's
+			// own lock is held, so the entry cannot land on a slot that has already
+			// been reclaimed. A hook that writes to its park directly gets its slot
+			// back immediately and its entry goes unaccounted.
+			if !st.CommitPark(func() { p.hold(handoff, v.(string)) }) {
+				return errors.New("the admission reservation lapsed; not parking")
+			}
 			return nil
 		}),
 	)
