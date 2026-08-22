@@ -229,6 +229,21 @@ func WithLimits(l Limits) HandlerOption {
 // Returning an error FAILS THE LOGIN, before the ticket reaches the client. That
 // is the rollback for "the state could not be recorded": a login whose state does
 // not exist must not look like it succeeded.
+//
+// # The admission reservation, if you park by hand
+//
+// A slot in the [MaxPendingLogins] budget is reserved BEFORE this hook runs, keyed
+// by the handoff, and returned when the handoff is claimed, released or expires.
+// The reservation covers this hook's duration and no more.
+//
+// A hook slow enough to outlive it — a dial to an upstream that hangs — can come
+// back to find its slot reclaimed by another login, and parking anyway produces an
+// entry that nothing accounts for: the budget then allows more parked logins than
+// its cap. Making the two atomic requires knowing, at the moment of the insert,
+// that the reservation is still alive — which only the code doing the insert can
+// do. [SSO] does exactly that: it commits the reservation before inserting and
+// refuses to park otherwise, returning [ErrAdmissionLapsed]. A consumer parking by
+// hand should keep the hook short, and is better off using [SSO].
 func OnLogin(fn func(handoff string, id *auth.Identity, stash *Stash) error) HandlerOption {
 	return func(h *Handler) { h.onLogin = fn }
 }

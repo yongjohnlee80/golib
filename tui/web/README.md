@@ -420,6 +420,7 @@ So the obligations are structural:
 | release before the park | `SSO.Stash` registers the cleanup **with** the value, so a later refusal, a failed ticket or a full park releases it |
 | one login, one value | a second `Stash` in one request is **refused** |
 | admission slots come back | the slot follows the handoff, and **the park returns it** — when the entry is claimed, released or expires, never before |
+| a park entry always has a slot | `hold` **commits** the reservation before inserting, and refuses with `ErrAdmissionLapsed` if a slow login already lost it |
 | nothing outstanding after `Close` | `Close` **waits** for in-flight `Provision` calls; one that finishes late releases its own value |
 | one session per login | `Claim` removes as it hands over |
 | release when the session ends | `Factory` **defers** it — panics included, because `Manager` contains an App panic |

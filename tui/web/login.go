@@ -237,6 +237,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		if h.pending != nil {
 			leased = h.pending.hold(handoff, h.now().Add(h.pendingHold))
 		}
+
 		if err := h.onLogin(handoff, identity, stash); err != nil {
 			// The caller could not record the login, so the login did NOT succeed.
 			// Returning the ticket anyway would hand out a credential for state
@@ -264,6 +265,19 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// goes back now rather than waiting out the backstop.
 		if leased && !stash.claimed() {
 			h.pending.release(handoff)
+		} else if leased {
+			// The hook parked something, so re-stamp the slot's deadline from now.
+			//
+			// Advisory, not a gate: an absent key here is AMBIGUOUS. It means either
+			// the reservation lapsed while the hook ran — bad, an entry with no slot
+			// — or the entry was parked and then legitimately settled during the
+			// hook, which is fine and leaves nothing to account for. The handler
+			// cannot tell those apart, and only the park can, which is why the
+			// enforcement lives there: web.SSO commits the reservation BEFORE
+			// inserting, so its entry exists only when a slot accounts for it. A
+			// consumer parking by hand should do the same with the reservation
+			// covering only its hook's duration.
+			h.pending.commit(handoff, h.now().Add(h.pendingHold))
 		}
 	}
 	logger.Info(h.log, sessionAudit{Kind: "login", Subject: identity.Subject, ID: attemptID})
