@@ -1,7 +1,8 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 29)** — design accepted by Johno 2026-08-21;
-  **the rev 21-29 implementation is awaiting lector r9 and is NOT released.**
+- **Status:** **Accepted (rev 30)** — design accepted by Johno 2026-08-21;
+  **the rev 21-30 implementation is lector-APPROVED (r9, 2026-08-23,
+  `approved_with_notes`, zero blocking findings) with CI green on every check.**
   Lands on `tui-web`.
   - **Design rounds (r1-r8, 2026-08-21):** approved by lector, accepted by Johno.
     r8's three amendments applied — a correctness defect in rev 0's frame
@@ -19,7 +20,10 @@
     establishment atomicity (r4); §2.12.12 check-then-publish (r5); §2.12.13 the
     reusable public capability (r6); §2.12.14 the capability's lifetime and the
     limits of rollback (r7); §2.12.15 the same lifetime, third attempt (r8). Read as
-    a set they are one mistake made eight ways, and §2.12.13 names it.
+    a set they are one mistake made eight ways, and §2.12.13 names it. **r9 approved
+    the mechanism and corrected three test comments** that described the wrong cost
+    of a late publish — the accounting stays consistent; what leaks is an upstream
+    session for a login that never delivered a ticket.
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -1449,6 +1453,21 @@ decisions:
   sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
+
+- **rev 30 (2026-08-23, jarvis — r9's wording correction; APPROVED).** Lector
+  approved the mechanism (`approved_with_notes`, zero blocking findings, safe to
+  merge) and corrected three of my test comments, all making the same wrong claim:
+  that a late publish leaves an entry with no admission slot accounting for it. It
+  does not — the keyed reservation survives the unwind and the backstop reclaims it,
+  so the accounting stays consistent.
+
+  The real cost is different and worse to describe loosely: a login that never
+  delivered a ticket can still publish upstream state. Nothing will ever present
+  that ticket, so nothing will ever claim the entry, and the session it names sits
+  open until the park's TTL — an abandoned login that nevertheless logged someone in.
+  Worth fixing rather than waving through, because a test whose comment names the
+  wrong failure teaches the wrong lesson to whoever reads it next, and this file's
+  comments are the only place several of these intervals are explained at all.
 
 - **rev 29 (2026-08-22, jarvis — the same lifetime, third attempt, from lector r8).**
   One must-fix: rev 28's `disarm()` on the line after the hook is skipped when the
