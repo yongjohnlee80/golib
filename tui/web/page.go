@@ -14,6 +14,7 @@ import (
 
 	"errors"
 
+	"github.com/yongjohnlee80/golib/auth"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/server/ws"
 )
@@ -163,13 +164,16 @@ func (h *Handler) ServePage(w http.ResponseWriter, r *http.Request) {
 
 // Handler serves the WebTUI: the client shell and the WebSocket endpoint.
 type Handler struct {
-	cfg       Config
-	mgr       *Manager
-	log       logger.Logger
-	limits    Limits
-	title     string
-	wsPath    string
-	loginPath string
+	cfg              Config
+	mgr              *Manager
+	log              logger.Logger
+	limits           Limits
+	title            string
+	wsPath           string
+	loginPath        string
+	onLogin          func(handoff string, id *auth.Identity, stash *Stash) error
+	pending          *gate
+	maxPendingLogins int
 	// grace bounds session teardown on Serve's exit. Injectable so the boundary
 	// is testable without a 30-second wait.
 	grace time.Duration
@@ -204,6 +208,36 @@ func WSPath(p string) HandlerOption {
 func WithLimits(l Limits) HandlerOption {
 	return func(h *Handler) { h.limits = l.normalize() }
 }
+
+// OnLogin registers the hook that runs after [Config.LoginPolicy] succeeds and
+// the attach ticket is minted (ADR-0009 §2.12.2).
+//
+// It receives the ticket's [HandoffID], the authenticated identity, and the
+// request's [Stash] — so a consumer moves whatever its factor allocated during
+// verification into its own park, keyed by the handoff.
+//
+// Returning an error FAILS THE LOGIN, before the ticket reaches the client. That
+// is the rollback for "the state could not be recorded": a login whose state does
+// not exist must not look like it succeeded.
+func OnLogin(fn func(handoff string, id *auth.Identity, stash *Stash) error) HandlerOption {
+	return func(h *Handler) { h.onLogin = fn }
+}
+
+// MaxPendingLogins caps logins parked awaiting an attach (default 8).
+//
+// A separate budget from [MaxSessions] on purpose: they bound different
+// resources, and a reconnect at a full session cap must still be able to log in
+// (§2.12.4).
+func MaxPendingLogins(n int) HandlerOption {
+	return func(h *Handler) {
+		if n > 0 {
+			h.maxPendingLogins = n
+		}
+	}
+}
+
+// DefaultMaxPendingLogins is the parked-login budget when none is given.
+const DefaultMaxPendingLogins = 8
 
 // ShutdownGrace bounds how long sessions get to exit when [Handler.Serve]
 // returns. Defaults to [DefaultShutdownGrace].
@@ -248,14 +282,15 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 	// only until someone writes to it.
 	cfg.AllowedOrigins = slices.Clone(cfg.AllowedOrigins)
 	h := &Handler{
-		cfg:       cfg,
-		mgr:       mgr,
-		log:       logger.Nop{},
-		limits:    DefaultLimits(),
-		title:     DefaultTitle,
-		wsPath:    DefaultWSPath,
-		loginPath: DefaultLoginPath,
-		grace:     DefaultShutdownGrace,
+		cfg:              cfg,
+		mgr:              mgr,
+		log:              logger.Nop{},
+		limits:           DefaultLimits(),
+		title:            DefaultTitle,
+		wsPath:           DefaultWSPath,
+		loginPath:        DefaultLoginPath,
+		grace:            DefaultShutdownGrace,
+		maxPendingLogins: DefaultMaxPendingLogins,
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -263,6 +298,7 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 		}
 	}
 	h.limits = h.limits.normalize()
+	h.pending = newGate(h.maxPendingLogins)
 	// Limits.QueueDepth is the single source of the event queue's capacity.
 	// It previously said 1024 while Backend defaulted to 256 and nothing read
 	// the field, so the documented limit and the real one were different numbers

@@ -145,8 +145,36 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The pending-login budget, checked BEFORE the credential is verified.
+	//
+	// Parked logins bound a different resource than live sessions (§2.12.4), so
+	// they get their own budget: counting them against MaxSessions is what made a
+	// reconnect at full capacity impossible, since a reconnect must log in before
+	// it can reattach.
+	if h.pending != nil && !h.pending.enter() {
+		logger.Notice(h.log, sessionAudit{Kind: "login-denied", Reason: "pending-login limit"})
+		http.Error(w, "busy", http.StatusServiceUnavailable)
+		return
+	}
+	parked := false
+	if h.pending != nil {
+		defer func() {
+			// Released unless a handoff was actually parked. A login that failed,
+			// or whose response never got built, must not hold a slot.
+			if !parked {
+				h.pending.leave()
+			}
+		}()
+	}
+
 	var attemptID string
 	ctx := auth.WithAttemptSink(r.Context(), func(a auth.Attempt) { attemptID = a.ID })
+	// A per-REQUEST slot for state the credential check produces. Verify holds the
+	// credential and is the only place that can allocate upstream state, but the
+	// handoff is not known until the ticket is minted below — so the move happens
+	// in two steps within one request rather than through a shared key (§2.12.3).
+	stash := &Stash{}
+	ctx = withStash(ctx, stash)
 	authReq := &auth.Request{
 		Peer: peerFromRequest(r),
 		Credentials: map[string]auth.Secret{
@@ -173,6 +201,21 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// must not read as a rejected password.
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
+	}
+	// The handoff is derived from the ticket, so this package stores nothing and
+	// only the ticket holder can compute it (§2.12.1).
+	handoff := HandoffID(secret.Reveal())
+	if h.onLogin != nil {
+		if err := h.onLogin(handoff, identity, stash); err != nil {
+			// The caller could not record the login, so the login did NOT succeed.
+			// Returning the ticket anyway would hand out a credential for state
+			// that does not exist.
+			logger.Warning(h.log, err, sessionAudit{Kind: "login-denied",
+				Subject: identity.Subject, Reason: "handoff not recorded"})
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		parked = true
 	}
 	logger.Info(h.log, sessionAudit{Kind: "login", Subject: identity.Subject, ID: attemptID})
 

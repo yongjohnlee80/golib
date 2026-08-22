@@ -64,7 +64,7 @@ func run(addr string) error {
 
 	// One session, one App. THIS is the criterion: the same demoapp tree the
 	// terminal demo runs, with a different backend.
-	mgr, err := web.NewManager(func(b *web.Backend) web.Runner {
+	mgr, err := web.NewManager(func(b *web.Backend, _ *web.SessionInfo) web.Runner {
 		return tui.NewApp(demoapp.New(stop, true), tui.WithBackend(b))
 	}, web.MaxSessions(4), web.ManagerLogger(log))
 	if err != nil {

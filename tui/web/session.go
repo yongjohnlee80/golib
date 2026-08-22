@@ -31,6 +31,13 @@ var (
 	// ErrSubjectMismatch means an attach presented a different principal than
 	// the session was created for.
 	ErrSubjectMismatch = errors.New("web: session belongs to a different principal")
+
+	// ErrPeerChanged means an attach came from a different address than the one
+	// that created the session, with [BindPeer] on. The session is terminated.
+	ErrPeerChanged = errors.New("web: peer address changed; session terminated")
+
+	// ErrPendingLogins means the parked-login budget is full (ADR-0009 §2.12.4).
+	ErrPendingLogins = errors.New("web: too many logins awaiting an attach")
 )
 
 // Runner is the application a session drives. [tui.App] satisfies it.
@@ -49,7 +56,11 @@ type Runner interface {
 // [auth.Policy] has succeeded; [Manager.Create] requires an identity VALUE,
 // which constrains that path but not another in-process caller. See
 // [Manager.Create] for where the boundary is.
-type AppFactory func(*Backend) Runner
+// It receives a [SessionInfo] carrying the authenticated identity, the login
+// handoff (if any) and the creating peer. The identity is what makes a per-user
+// App possible at all; an earlier signature took only the Backend and so could
+// not know who the session was for (ADR-0009 §2.12).
+type AppFactory func(*Backend, *SessionInfo) Runner
 
 // Manager owns session lifecycle: create, attach, detach, evict, shut down
 // (ADR-0009 §2.8).
@@ -76,6 +87,9 @@ type Manager struct {
 	now      func() time.Time
 	newID    func() (string, error)
 	backends []Option
+
+	bindPeer bool
+	unused   func(string, HandoffReason)
 
 	mu       sync.Mutex
 	sessions map[string]*Session
@@ -120,6 +134,28 @@ func ManagerLogger(l logger.Logger) ManagerOption {
 			m.log = l
 		}
 	}
+}
+
+// BindPeer binds a session to the peer address that created it: an attach from a
+// different address is refused and the session terminated (ADR-0009 §2.13).
+//
+// OFF by default, for two reasons stated in the ADR and worth repeating where a
+// caller will read them. Under the documented SSH local-forward every connection
+// arrives from 127.0.0.1, so this binds to a constant and protects nothing. And
+// it trades away the detach window: a laptop moving from wifi to cellular changes
+// address and gets logged out. Turn it on for a TLS-on-a-real-address deployment,
+// knowing which of its own features it weakens.
+func BindPeer(on bool) ManagerOption {
+	return func(m *Manager) { m.bindPeer = on }
+}
+
+// OnHandoffUnused registers the release hook for handoffs no [AppFactory] will
+// claim (ADR-0009 §2.12.2).
+//
+// Called at most once per handoff, for a reattach or a failed attach. Without it
+// a consumer that parks per-login state leaks an entry on every reconnect.
+func OnHandoffUnused(fn func(handoff string, reason HandoffReason)) ManagerOption {
+	return func(m *Manager) { m.unused = fn }
 }
 
 // BackendOptions are applied to each session's [Backend].
@@ -211,6 +247,8 @@ type Session struct {
 	subject string
 	backend *Backend
 
+	peer string // the address that created it; checked when BindPeer is on
+
 	mu       sync.Mutex
 	attached bool
 	lease    uint64 // increments per attach; identifies the live connection
@@ -258,6 +296,14 @@ func (s *Session) Err() error {
 // "impossible to write"; that was an overstatement (lector r1, and r2 because I
 // left it standing in several other doc comments after narrowing one).
 func (m *Manager) Create(ctx context.Context, id *auth.Identity, h Hello) (*Session, error) {
+	return m.CreateFor(ctx, id, h, SessionInfo{Identity: id})
+}
+
+// CreateFor starts a session and passes info to the [AppFactory].
+//
+// Create delegates here with a bare identity, so a caller with no login handoff
+// keeps the simpler call.
+func (m *Manager) CreateFor(ctx context.Context, id *auth.Identity, h Hello, info SessionInfo) (*Session, error) {
 	if id == nil || id.Subject == "" {
 		return nil, ErrNoIdentity
 	}
@@ -304,6 +350,7 @@ func (m *Manager) Create(ctx context.Context, id *auth.Identity, h Hello) (*Sess
 	s := &Session{
 		id:       sid,
 		subject:  id.Subject,
+		peer:     info.Peer,
 		backend:  backend,
 		created:  m.now(),
 		lastSeen: m.now(),
@@ -313,7 +360,8 @@ func (m *Manager) Create(ctx context.Context, id *auth.Identity, h Hello) (*Sess
 	m.sessions[sid] = s
 	m.mu.Unlock()
 
-	app := m.factory(backend)
+	info.Identity = id
+	app := m.factory(backend, &info)
 	if app == nil {
 		m.drop(sid)
 		cancel()
@@ -352,6 +400,12 @@ func (m *Manager) Create(ctx context.Context, id *auth.Identity, h Hello) (*Sess
 // look at somebody else's screen; authentication would establish that you are
 // somebody, not that you are the right somebody.
 func (m *Manager) Attach(sessionID string, id *auth.Identity, h Hello) (*Session, error) {
+	return m.AttachFrom(sessionID, id, h, "")
+}
+
+// AttachFrom binds a client to an existing session, checking the peer address
+// when [BindPeer] is on.
+func (m *Manager) AttachFrom(sessionID string, id *auth.Identity, h Hello, peer string) (*Session, error) {
 	if id == nil || id.Subject == "" {
 		return nil, ErrNoIdentity
 	}
@@ -367,6 +421,18 @@ func (m *Manager) Attach(sessionID string, id *auth.Identity, h Hello) (*Session
 		// Deliberately the same error a stranger's id produces, so probing
 		// cannot distinguish "exists but not yours" from "does not exist".
 		return nil, ErrSubjectMismatch
+	}
+
+	// PEER BINDING. Checked before the lease, so a mismatched address cannot even
+	// take the connection slot. Terminating rather than merely refusing is
+	// deliberate: if the address changed because a credential was stolen, the
+	// session is what the thief is reaching for (§2.13).
+	if m.bindPeer && s.peer != "" && peer != "" && s.peer != peer {
+		logger.Notice(m.log, sessionAudit{Kind: "denied", Subject: id.Subject, ID: sessionID,
+			Reason: "peer address changed"})
+		s.cancel()
+		_ = s.backend.Stop()
+		return nil, ErrPeerChanged
 	}
 
 	// ONE connection at a time. A second attach while one is live was silently
@@ -511,6 +577,17 @@ func (m *Manager) Get(id string) (*Session, bool) {
 	defer m.mu.Unlock()
 	s, ok := m.sessions[id]
 	return s, ok
+}
+
+// releaseHandoff tells the consumer a parked handoff will never be claimed.
+//
+// At most once per handoff: the caller's park is single-claim, but calling twice
+// would still be a bug worth not writing, so every call site is a terminal path.
+func (m *Manager) releaseHandoff(handoff string, reason HandoffReason) {
+	if handoff == "" || m.unused == nil {
+		return
+	}
+	m.unused(handoff, reason)
 }
 
 func (m *Manager) drop(id string) {

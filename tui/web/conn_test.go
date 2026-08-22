@@ -110,7 +110,7 @@ func (denyFactor) Verify(context.Context, *auth.Request) (auth.Contribution, err
 func loopFor(t *testing.T, policy auth.Policy, factory AppFactory, opts ...ManagerOption) (*sessionLoop, *Manager) {
 	t.Helper()
 	if factory == nil {
-		factory = func(*Backend) Runner { return newFakeApp() }
+		factory = func(*Backend, *SessionInfo) Runner { return newFakeApp() }
 	}
 	m, err := NewManager(factory, opts...)
 	if err != nil {
@@ -162,7 +162,7 @@ func TestSessionLoop_NoAppBeforeAuthentication(t *testing.T) {
 
 	built := 0
 	var mu sync.Mutex
-	factory := func(*Backend) Runner {
+	factory := func(*Backend, *SessionInfo) Runner {
 		mu.Lock()
 		built++
 		mu.Unlock()

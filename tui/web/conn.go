@@ -156,8 +156,22 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 	release()
 
 	// Step 4. An App may now exist.
-	sess, err := l.bind(ctx, first, identity, h)
+	//
+	// The handoff is derived from the ticket this attach presented, so it matches
+	// what OnLogin gave the consumer for the login that minted it. An attach
+	// carrying no ticket (mTLS, SSH challenge) parked nothing and derives "".
+	handoff := HandoffID(first.Ticket)
+	peer := peerFromRequest(req.http).Addr().String()
+	if !peerFromRequest(req.http).IsValid() {
+		peer = ""
+	}
+
+	sess, err := l.bind(ctx, first, identity, h, handoff, peer)
 	if err != nil {
+		// Authentication succeeded but the attach did not, so the parked handoff
+		// will never be claimed. Releasing it here is what stops a session-limit
+		// refusal leaking upstream state (§2.12.2).
+		l.mgr.releaseHandoff(handoff, AttachFailed)
 		_ = c.Close(closePolicy, "unavailable")
 		return err
 	}
@@ -178,10 +192,15 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 // A client that presents a session id is reconnecting; one that does not wants a
 // new session. Both paths have already authenticated, and the attach path
 // additionally verifies the principal OWNS that session.
-func (l *sessionLoop) bind(ctx context.Context, m clientMessage, id *auth.Identity, h Hello) (*Session, error) {
+func (l *sessionLoop) bind(ctx context.Context, m clientMessage, id *auth.Identity, h Hello,
+	handoff, peer string) (*Session, error) {
 	if m.Session != "" {
-		s, err := l.mgr.Attach(m.Session, id, h)
+		s, err := l.mgr.AttachFrom(m.Session, id, h, peer)
 		if err == nil {
+			// A REATTACH ran no factory, so nothing will ever claim this login's
+			// handoff. This is the path that leaked before §2.12: a reconnecting
+			// client logs in afresh, parks state, and resumes an existing App.
+			l.mgr.releaseHandoff(handoff, ReattachedExisting)
 			return s, nil
 		}
 		if !errors.Is(err, ErrUnknownSession) {
@@ -193,11 +212,13 @@ func (l *sessionLoop) bind(ctx context.Context, m clientMessage, id *auth.Identi
 		// The session expired while the client was away. A new one is the right
 		// answer, and the client learns its new id from the ready message.
 	}
-	s, err := l.mgr.Create(ctx, id, h)
+	s, err := l.mgr.CreateFor(ctx, id, h, SessionInfo{
+		Identity: id, Handoff: handoff, Peer: peer,
+	})
 	if err != nil {
 		return nil, err
 	}
-	if _, err := l.mgr.Attach(s.ID(), id, h); err != nil {
+	if _, err := l.mgr.AttachFrom(s.ID(), id, h, peer); err != nil {
 		l.mgr.Close(s.ID())
 		return nil, err
 	}

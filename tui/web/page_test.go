@@ -9,7 +9,7 @@ import (
 
 func handlerFor(t *testing.T, opts ...HandlerOption) *Handler {
 	t.Helper()
-	m, err := NewManager(func(*Backend) Runner { return newFakeApp() })
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func handlerFor(t *testing.T, opts ...HandlerOption) *Handler {
 // connection at all.
 func TestNewHandler_ValidatesConfig(t *testing.T) {
 	t.Parallel()
-	m, err := NewManager(func(*Backend) Runner { return newFakeApp() })
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}

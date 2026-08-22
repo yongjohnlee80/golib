@@ -32,7 +32,7 @@ func loginHandler(t *testing.T, password, want string) (*Handler, *token.MemStor
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend) Runner { return newFakeApp() })
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestLogin_AbsentWhenNotConfigured(t *testing.T) {
 // One without the other is a half-configured front door.
 func TestLogin_PolicyAndIssuerMustBeSetTogether(t *testing.T) {
 	t.Parallel()
-	m, err := NewManager(func(*Backend) Runner { return newFakeApp() })
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestLogin_IssuerFailureIsNotARejection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend) Runner { return newFakeApp() })
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}

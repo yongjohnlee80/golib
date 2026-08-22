@@ -35,7 +35,7 @@ func manager(t *testing.T, opts ...ManagerOption) (*Manager, *[]*fakeApp) {
 	t.Helper()
 	var mu sync.Mutex
 	var apps []*fakeApp
-	m, err := NewManager(func(*Backend) Runner {
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner {
 		app := newFakeApp()
 		mu.Lock()
 		apps = append(apps, app)
@@ -63,7 +63,7 @@ func manager(t *testing.T, opts ...ManagerOption) (*Manager, *[]*fakeApp) {
 func TestManager_RefusesToCreateWithoutAnIdentity(t *testing.T) {
 	t.Parallel()
 	built := 0
-	m, err := NewManager(func(*Backend) Runner { built++; return newFakeApp() })
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { built++; return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestManager_NoGoroutineLeak(t *testing.T) {
 	before := runtime.NumGoroutine()
 
 	now := time.Now()
-	m, err := NewManager(func(*Backend) Runner { return newFakeApp() },
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() },
 		IdleTimeout(time.Minute), MaxSessions(32))
 	if err != nil {
 		t.Fatal(err)
@@ -269,7 +269,7 @@ func TestManager_NoGoroutineLeak(t *testing.T) {
 func TestManager_TeardownRunsWhenTheAppFails(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("app exploded")
-	m, err := NewManager(func(*Backend) Runner { return &failingApp{err: boom} })
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return &failingApp{err: boom} })
 	if err != nil {
 		t.Fatal(err)
 	}

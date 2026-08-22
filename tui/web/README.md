@@ -153,6 +153,31 @@ excluded both. But four things cost something, and two were actively good.
 
 ### Findings with real cost
 
+**0. `AppFactory` could not see who the session was for — and the fix was not the
+one-liner it looked like.**
+
+`AppFactory func(*Backend) Runner` never received the authenticated identity,
+though `Manager.Create` held it and called the factory on the next line. A factory
+blind to identity cannot build a per-user `App`, so single sign-on was not
+implementable by any consumer.
+
+*What it cost:* it blocked autodb's web gateway outright. Worse, the obvious fix —
+add the identity to the signature — was **necessary but not sufficient**: the
+login route allocates upstream state before the hello reveals whether the attach
+will Create or Reattach, and the factory runs only on Create. So a login used to
+reattach allocated state nothing could claim, at a full cap the accounting
+deadlocked, and a subject-keyed workaround could not separate concurrent logins by
+one user. ADR-0009 §2.12 is the actual fix.
+
+*What a future non-terminal backend should do:* assume any consumer with more than
+one user needs identity **and** a per-login correlation with a named release path
+on every outcome. **This is the finding this report could not have produced from
+inside the package** — nothing in a single-user demo exercises it, which is worth
+noting about seam reports generally: the first two entries came from writing the
+backend, and the one that mattered most came from the first consumer that did not
+look like the demo.
+
+
 **1. `Err() error` has one slot, and a reconnectable backend needs two.**
 
 The contract says "the terminal error that stopped the reader". For a terminal
@@ -285,6 +310,61 @@ the first time.
 
 The first real-engine run found two harness defects and no product defect, which
 is evidence rather than proof: two engines remain.
+
+## Single sign-on: the login handoff
+
+A consumer whose users authenticate against an **upstream** service (rather than
+against a local password store) needs to carry per-login state — an authenticated
+upstream session — from the login route to the `App` built for that login.
+
+```go
+h, _ := web.NewHandler(cfg, mgr,
+    web.OnLogin(func(handoff string, id *auth.Identity, st *web.Stash) error {
+        return myPark.hold(handoff, st.Take())   // moved out of the request slot
+    }),
+)
+mgr, _ := web.NewManager(func(b *web.Backend, info *web.SessionInfo) web.Runner {
+    upstream, _ := myPark.claim(info.Handoff)    // exactly this login's state
+    return myApp(b, info.Identity, upstream)
+}, web.OnHandoffUnused(func(handoff string, r web.HandoffReason) {
+    myPark.release(handoff, r)                   // reattach, or a failed attach
+}))
+```
+
+Four things about this are load-bearing, and each was forced by a specific defect:
+
+- **The handoff is derived from the ticket** (`HandoffID`), so this package stores
+  nothing and only the ticket holder can compute the key. It is domain-separated
+  from the token store's own `sha256(ticket)` index — two hashes of one secret for
+  two purposes must not be the same hash.
+- **`Stash` is per-REQUEST, not keyed by subject.** A consumer's `Verify` holds the
+  credential and is the only place that can allocate, but the handoff is not known
+  until the ticket is minted. A subject-keyed park cannot separate two concurrent
+  logins by one user; one slot per request removes the shared key entirely.
+- **`OnHandoffUnused` covers the paths no factory runs on.** A reattach resumes an
+  existing App, so a reconnecting client's fresh login parks state that nothing
+  claims. Without this hook that leaks on every reconnect — the defect the whole
+  seam exists for.
+- **Parked logins have their own budget** (`MaxPendingLogins`), separate from
+  `MaxSessions`. Counting them together deadlocks a reconnect at a full session
+  cap, because a reconnect must log in *before* it can reattach.
+
+An `OnLogin` returning an error **fails the login**: a client must not receive a
+ticket for state that was never recorded.
+
+## Peer binding
+
+`web.BindPeer(true)` refuses an attach from a different address than the one that
+created the session, and terminates the session. **Off by default**, for two
+reasons worth knowing before turning it on:
+
+- **Under the SSH local-forward above it is a no-op.** Every connection arrives
+  from `127.0.0.1`, so it binds to a constant.
+- **It trades away the detach window.** A laptop moving from wifi to cellular
+  changes address and gets logged out.
+
+It raises the cost of using a stolen ticket *from a different host*. It does
+nothing against an attacker on the same host or behind the same NAT.
 
 ## Not done
 

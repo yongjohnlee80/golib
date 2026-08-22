@@ -112,7 +112,7 @@ func TestRegress_ResizeDoesNotDesyncWhenTheAppIsBusy(t *testing.T) {
 // different numbers.
 func TestRegress_QueueDepthIsTheRealCapacity(t *testing.T) {
 	t.Parallel()
-	m, err := NewManager(func(*Backend) Runner { return newFakeApp() })
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +411,7 @@ func TestRegress_HandshakeGuardRunsBeforeTheUpgrade(t *testing.T) {
 func TestRegress_AllowedOriginsIsCloned(t *testing.T) {
 	t.Parallel()
 	origins := []string{"https://tui.example.test"}
-	m, err := NewManager(func(*Backend) Runner { return newFakeApp() })
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -111,7 +111,7 @@ func run() error {
 	issuer := token.NewIssuer(store)
 
 	rec := &recorder{}
-	mgr, err := web.NewManager(func(b *web.Backend) web.Runner {
+	mgr, err := web.NewManager(func(b *web.Backend, _ *web.SessionInfo) web.Runner {
 		return tui.NewApp(rec, tui.WithBackend(b))
 	}, web.MaxSessions(16))
 	if err != nil {

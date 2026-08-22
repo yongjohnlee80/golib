@@ -148,7 +148,7 @@ func TestRegress3_ServeReturnsShutdownFailure(t *testing.T) {
 
 	stop := make(chan struct{})
 	t.Cleanup(func() { close(stop) })
-	m, err := NewManager(func(*Backend) Runner { return &stubbornApp{stop: stop} },
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return &stubbornApp{stop: stop} },
 		ManagerLogger(nopLogger{}))
 	if err != nil {
 		t.Fatal(err)

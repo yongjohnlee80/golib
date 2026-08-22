@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 18)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 19)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -531,6 +531,184 @@ are absorbed: the queue holds 1 024, and anything beyond it applies backpressure
 and may reach the two-second close rule. Because `Events()` is ordered and
 un-coalesced (ADR-0002), the backend never grows to absorb abuse.
 
+### 2.12 The login handoff seam (rev 19)
+
+**Problem.** A consumer doing single sign-on must carry per-login state — an
+authenticated upstream session — from the login route to the `App` created for
+that login. `auth.Factor.Verify` is the only place holding the credential, so the
+allocation happens there; but `ServeLogin` runs the policy **before** the
+WebSocket hello says whether the attach will `Create` or `Attach`, and
+`AppFactory` runs only on `Create`. So a login used to REATTACH allocates
+upstream state that no factory ever claims, and there is no path on which to
+release it.
+
+Found by autodb ADR-0061, the first consumer with more than one user
+(lector, 2026-08-22). It is the **third** entry in §2.10's seam report and the
+first that could not have been found from inside this package: a factory blind to
+identity is fine for a single-user demo and impossible for a multi-user gateway.
+
+**The fix is not "keep side effects out of Verify."** That was my first diagnosis
+and it is unachievable — the credential exists only there. The fix is to make the
+allocation **recoverable**: give every outcome a named release path, and give the
+caller a key that binds one login to one session.
+
+#### 2.12.1 The handoff key is DERIVED, so this package stores nothing
+
+```go
+// HandoffID is an opaque, single-claim correlation between one successful login
+// and the session that login authorizes.
+func HandoffID(ticket string) string    // base64(sha256("webtui-handoff\x00" + ticket))
+```
+
+Derived from the minted ticket rather than generated and stored:
+
+- **no state here.** A map from ticket to handoff would mean this package holding
+  credential-derived keys at rest, and a second thing to expire correctly.
+- **only the ticket holder can compute it.** Knowing an ID reveals nothing about
+  the ticket, and anyone able to produce one already had the credential.
+- **domain-separated**, so the value can never collide with the token store's own
+  `sha256(ticket)` index. Two hashes of one secret for two purposes must not be
+  the same hash.
+
+#### 2.12.2 Four paths, every one named
+
+```go
+// SessionInfo is what a factory needs to build an App for a specific user.
+type SessionInfo struct {
+    Identity *auth.Identity // authenticated; never nil
+    Handoff  string         // HandoffID of the login that created this session;
+                            // "" when the attach carried no login (mTLS, SSH)
+}
+
+type AppFactory func(*Backend, *SessionInfo) Runner   // was func(*Backend) Runner
+
+// OnLogin runs after LoginPolicy succeeds and the ticket is minted, with that
+// ticket's HandoffID. This is where a caller MOVES per-login state into its own
+// park, keyed by the handoff.
+func OnLogin(fn func(handoff string, id *auth.Identity) error) HandlerOption
+
+// OnHandoffUnused runs whenever a handoff will NEVER be claimed by a factory.
+// A caller releases the parked state here. Called at most once per handoff.
+func OnHandoffUnused(fn func(handoff string, reason HandoffReason)) HandlerOption
+```
+
+| Path | What happens | Hook |
+| --- | --- | --- |
+| login succeeds | ticket minted, handoff derived | `OnLogin` |
+| attach → **Create** | factory receives the handoff and claims it | `AppFactory` |
+| attach → **Reattach** | no factory runs; the handoff is dead | `OnHandoffUnused(ReattachedExisting)` |
+| attach fails after auth | session limit, invalid hello, transport error | `OnHandoffUnused(AttachFailed)` |
+| ticket never presented | client abandoned the login, or the response never arrived | **the caller's TTL sweep** |
+
+The last row is deliberately the caller's. This package cannot know that a client
+walked away — it never saw a connection — and inventing a timer here would put a
+second expiry policy beside the token store's, which §2.8 already forbids for
+credential validity. `OnLogin` MUST therefore park with its own TTL, and the ADR
+says so rather than leaving it to be discovered.
+
+**`OnLogin` returning an error fails the login**, before the ticket reaches the
+client. That is the rollback for "the caller could not park it", and it is why the
+hook returns an error at all: a login whose state could not be recorded must not
+appear to have succeeded.
+
+#### 2.12.3 The credential-to-park move is REQUEST-SCOPED, not subject-keyed
+
+A caller's `Verify` allocates upstream state but does not yet know the handoff —
+the ticket is minted afterwards. Parking by **subject** in the meantime is wrong:
+two concurrent logins by one user cannot be told apart, and lector's r2 review
+names that exact failure.
+
+So the login request carries a scoped slot:
+
+```go
+// StashFromContext returns the per-request slot for state produced during
+// verification. Valid only for the duration of one login request.
+func StashFromContext(ctx context.Context) *Stash
+```
+
+`Verify` puts the allocated session in the stash; `OnLogin` moves it into the
+caller's park under the handoff. One request, one slot, no cross-request key —
+so concurrent same-user logins are deterministic. This mirrors
+`auth.WithAttemptSink`, which already establishes that per-request plumbing
+through the auth path works.
+
+#### 2.12.4 Two budgets, because they bound different resources
+
+A parked handoff and a live session are not the same cost, and counting them
+against one number produces the deadlock lector identified: at a full session cap,
+a reconnect must log in first, so its park needs a slot that by definition is not
+available — yet reattaching consumes no new session.
+
+| Budget | Bounds | Breach |
+| --- | --- | --- |
+| `MaxSessions` | live sessions, each with an `App` | `ErrSessionLimit` at Create |
+| `MaxPendingLogins` (new, default 8) | parked handoffs awaiting an attach | login refused, 503 |
+
+A reconnect at a full session cap therefore works: the login parks against the
+pending budget, the attach reattaches, and `OnHandoffUnused` releases it
+immediately. A *new* user's login at a full cap also parks, then fails at Create
+with `ErrSessionLimit` — and the same hook releases it. Neither path leaks and
+neither is deadlocked.
+
+#### 2.12.5 What this does not solve
+
+Stated so a consumer does not assume otherwise:
+
+- **Owner proof across reconnect** is still `Manager.Attach`'s subject check. The
+  handoff says nothing about it, and a reattach with a fresh login is authorized
+  by the identity, not by the handoff.
+- **The upstream's view of the peer.** A gateway's connections come from the
+  gateway, so an upstream audit log and any address allowlist see the gateway's
+  address, not the browser's. This package cannot fix that; a consumer must
+  forward the browser's address explicitly if the upstream needs it, and should
+  document that its own audit trail is the one with the browser in it.
+
+### 2.13 Peer binding (rev 19)
+
+**Optional, off by default.** A session may be bound to the peer address that
+created it; an attach from a different address is refused and the session
+terminated, forcing a fresh login (Johno, 2026-08-22).
+
+```go
+func BindPeer(on bool) ManagerOption      // default: off
+```
+
+- The address is recorded at `Create` from `Request.Peer` — the transport's own
+  view, never a forwarded header. A consumer wanting the browser's address from
+  behind a proxy must configure a trusted-proxy set on an `ipallow`-style factor
+  and pass the result explicitly; this package will not read `X-Forwarded-For`,
+  for the reason ADR-0001 §2.6 gives: an attacker who picks their own address has
+  defeated every address-keyed control at once.
+- The check runs at **attach**, which is the only moment it can. Within one
+  WebSocket the peer cannot change — it is one TCP connection — so there is
+  nothing to re-check per message, and a design that claimed to would be theatre.
+- On mismatch: refuse, then **terminate the session** rather than leaving it for
+  the legitimate owner. If an address changed because a credential was stolen, the
+  session is what the thief is reaching for.
+
+#### 2.13.1 What it buys, stated narrowly
+
+It raises the cost of using a stolen ticket or resuming a hijacked session **from
+a different host**. It does nothing against an attacker on the same host or behind
+the same NAT, and nothing against a compromised browser.
+
+#### 2.13.2 Two caveats a deployer must be told
+
+Both are the kind of thing that turns a control into a false sense of security, so
+they belong in the normative text and not a footnote.
+
+1. **Under the documented SSH local-forward, this is a NO-OP.** Every connection
+   arrives from `127.0.0.1`, because the forward is the peer. §2.5 makes that
+   deployment the primary one, so for most users peer binding will bind to a
+   constant and protect nothing. It is worth having for the TLS-on-a-real-address
+   deployment and it should not be described as though it helps everywhere.
+2. **It will log people out.** A laptop moving from wifi to cellular, a VPN
+   reconnect, or CGNAT re-mapping changes the address, and the response is a forced
+   re-login — which is exactly the detach/resume window §2.8 exists to protect,
+   deliberately given up. That is a legitimate trade and it is the reason this is
+   **off by default**: a consumer must choose it knowing which of its own features
+   it weakens.
+
 ### 2.10 The seam report is a deliverable
 
 The package README and this ADR's review history must record **every place the
@@ -706,6 +884,21 @@ Acceptance criteria:
     type, what the terminal-shaped assumption cost, and what a future
     non-terminal backend should do — or states explicitly that the seam needed
     nothing, which is itself the result.
+12a. **The login handoff (§2.12).** `HandoffID` is deterministic, domain-separated
+    from the token store's index, and reveals nothing about the ticket. All four
+    paths are exercised: a login parks; a Create claims; a **reattach** fires
+    `OnHandoffUnused(ReattachedExisting)`; a Create failing on `ErrSessionLimit`
+    fires `OnHandoffUnused(AttachFailed)`. An `OnLogin` returning an error **fails
+    the login** and the client receives no ticket. Concurrent logins by ONE subject
+    produce distinct handoffs and each factory receives its own — the case a
+    subject-keyed park cannot serve. A reconnect at a full `MaxSessions` succeeds,
+    proving §2.12.4's two budgets do not deadlock. Verified in both directions:
+    with the release hook removed, the reattach path leaks a parked entry.
+12b. **Peer binding (§2.13).** With binding on, an attach from a different peer
+    address is refused and the session terminated; the same peer reattaches
+    normally; and with binding off (the default) an address change is ignored. The
+    loopback no-op of §2.13.2 is asserted, so nobody deploys behind an SSH forward
+    believing this protects them.
 13. `go vet` clean, race-clean, `doc.go` + `README.md` present, every exported
     symbol documented, tests stdlib-only.
 
@@ -757,6 +950,40 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **rev 19 (2026-08-22, jarvis — the login handoff seam and peer binding, from
+  autodb ADR-0061).** autodb's web gateway needed single sign-on and could not have
+  it. §2.12 records the finding; the README's seam report carries it as finding 0.
+  Two things about how it was found are worth keeping.
+
+  **It came from the first consumer that did not look like the demo.** The seam
+  report had two entries, both found by writing this package. This one was
+  invisible from inside it: a factory that cannot see the identity is perfectly
+  adequate for `webdemo` and impossible for a multi-user gateway.
+
+  **My first fix was wrong in a specific way.** I proposed adding `*auth.Identity`
+  to `AppFactory` and called autodb unblocked. Lector showed that is necessary and
+  not sufficient — the login route allocates upstream state before the hello
+  reveals Create-versus-Reattach, the factory runs only on Create, so a login used
+  to reattach allocates state nothing claims, and at a full cap the reservation
+  arithmetic deadlocks. It also told me not to tag v0.4.0 with only that change,
+  which I would otherwise have done.
+
+  Each part of the resulting design was forced by a specific objection: the handoff
+  is **derived from the ticket**, so this package stores nothing and only the
+  ticket holder can compute it; the credential-to-park move is **request-scoped**
+  rather than subject-keyed, so concurrent logins by one user are deterministic;
+  and there are **two budgets**, because counting parked handoffs against
+  `MaxSessions` is what made a reconnect at full capacity impossible.
+
+  §2.13 adds optional peer binding, with both caveats in the normative text: it is
+  a **no-op under the SSH forward** this ADR recommends as the primary deployment,
+  and it **trades away the detach window** by logging out anyone whose address
+  changes. Off by default for those reasons.
+
+  Breaking change to `AppFactory`, taken deliberately: golib is pre-promotion with
+  a single user (Johno, 2026-08-22), `tui/web` is one release old, and its only
+  in-tree consumer is `webdemo`. Lands as **v0.4.0**.
 
 - **v0.3.8 release decisions (2026-08-22, Johno).** Two open questions from the
   r7 fold, both answered:
