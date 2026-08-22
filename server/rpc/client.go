@@ -34,7 +34,7 @@ type ClientOption func(*clientConfig)
 type clientConfig struct {
 	// network is the dial network ("tcp" or "unix"). Defaults to "tcp"
 	// so every existing caller is unaffected.
-	network string
+	network      string
 	logger       logger.Logger
 	dialer       *net.Dialer
 	maxMsgBytes  int64

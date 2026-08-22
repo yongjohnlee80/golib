@@ -227,14 +227,25 @@ func SessionFromContext(ctx context.Context) Session {
 // installed BEFORE any user-provided hook runs — a session-factory panic
 // must be isolated exactly like a handler panic, never allowed to escape
 // the accepted-connection goroutine and kill the process.
+//
+// The recovery defer also owns the UNREGISTER, and logs before it. Shutdown
+// drains by waiting for the registry to empty, so unregistering first would let
+// Run return — and the process exit that usually follows — while the panic
+// record was still unwritten. The failure was a graceful shutdown that silently
+// dropped the reason a connection died.
 func (s *Scaffold) serveConn(conn net.Conn) {
 	phase := "session setup"
+	var unregister func()
 	defer func() {
 		if rec := recover(); rec != nil {
 			s.cfg.logger.Log(logger.SeverityError, map[string]any{
 				"server": "scaffold", "event": phase + " panic",
 				"remote": remoteStr(conn), "recover": rec,
 			})
+		}
+		// After the log, so a drain cannot complete ahead of it.
+		if unregister != nil {
+			unregister()
 		}
 	}()
 	defer conn.Close()
@@ -245,8 +256,7 @@ func (s *Scaffold) serveConn(conn net.Conn) {
 			sess = custom
 		}
 	}
-	unregister := s.reg.Register(sess)
-	defer unregister()
+	unregister = s.reg.Register(sess)
 	phase = "handler"
 	s.handle(context.WithValue(s.connCtx, sessionCtxKey{}, sess), conn)
 }
