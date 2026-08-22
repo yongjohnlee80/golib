@@ -246,6 +246,8 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 			stash.mu.Unlock()
 		}
 
+		// The publishing capability lives only for the hook's call.
+		defer stash.disarm()
 		if err := h.onLogin(handoff, identity, stash); err != nil {
 			// The caller could not record the login, so the login did NOT succeed.
 			// Returning the ticket anyway would hand out a credential for state

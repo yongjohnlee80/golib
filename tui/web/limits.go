@@ -291,21 +291,39 @@ func (g *gate) hold(key string, until time.Time) bool {
 // caller holds s.mu, this holds g.mu — so the callback must only touch state the
 // caller already protects, and must not block.
 func (g *gate) commit(key string, until time.Time, publish func()) bool {
-	if key == "" {
+	if key == "" || publish == nil {
+		// A nil publisher would mark the slot as accounting for an entry nobody
+		// wrote: a slot with no entry, the mirror of the defect this prevents.
 		return false
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.sweepLocked()
-	if _, ok := g.held[key]; !ok {
+	prev, ok := g.held[key]
+	if !ok {
+		return false
+	}
+	if prev.committed {
+		// Defensive: one reservation accounts for one entry, so a second commit
+		// would either publish a second entry against one slot or re-stamp a slot
+		// whose entry is already live. Callers are single-use; this is the backstop
+		// for a caller that is not.
 		return false
 	}
 	// Re-stamped from NOW, at the same moment the park's own deadline is set, so
 	// the two cannot be skewed by however long the hook took.
 	g.held[key] = slot{expires: until, committed: true}
-	if publish != nil {
-		publish()
-	}
+	// Rolled back if publish panics: nothing was written, so the slot must not be
+	// left claiming to account for it. Registered after the unlock defer, so LIFO
+	// runs this one FIRST — while the lock is still held.
+	published := false
+	defer func() {
+		if !published {
+			g.held[key] = prev
+		}
+	}()
+	publish()
+	published = true
 	return true
 }
 

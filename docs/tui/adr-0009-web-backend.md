@@ -1,22 +1,24 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 26)** (2026-08-21 — authored by jarvis; lector
-  design r1-r8 folded; lector's final verdict **approved**, and **accepted by
-  Johno 2026-08-21**; r8's three amendments applied
-  (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
-  0's frame coalescing, a wrong security claim about mTLS, and r2's internal
-  contradictions. **Rev 9 (2026-08-22) reverses one decision on Johno's
-  instruction:** §2.8's refusal of password auth becomes "permitted, documented
-  as the weakest option, with the throttle and allowlist stated as
-  requirements". **Rev 21 (2026-08-22)** extends `web.SSO` to every `golib/auth`
-  mechanism (§2.12.7), on Johno's instruction. **Rev 22 (2026-08-22)** repairs the
-  lifecycle defects lector's r1 review of PR #14 found (§2.12.8), and **rev 23
-  (2026-08-22)** the two concurrency boundaries r2 found still false (§2.12.9), and **rev 24
-  (2026-08-22)** the ordering hole r3 found between parking and leasing
-  (§2.12.10), and **rev 25 (2026-08-22)** the establishment atomicity r4 found
-  between the reservation and the park (§2.12.11), and **rev 26 (2026-08-22)** the
-  check-then-publish gap r5 found inside that repair (§2.12.12); **awaiting lector
-  r6 and not yet released**. See Review history. Lands on `tui-web`.)
+- **Status:** **Accepted (rev 27)** — design accepted by Johno 2026-08-21;
+  **the rev 21-27 implementation is awaiting lector r7 and is NOT released.**
+  Lands on `tui-web`.
+  - **Design rounds (r1-r8, 2026-08-21):** approved by lector, accepted by Johno.
+    r8's three amendments applied — a correctness defect in rev 0's frame
+    coalescing, a wrong security claim about mTLS, and r2's internal
+    contradictions — plus the capture buffer DRAINS, so no typed history lingers in
+    the DOM. **Rev 9 reverses one decision on Johno's instruction:** §2.8's refusal
+    of password auth becomes "permitted, documented as the weakest option, with the
+    throttle and allowlist stated as requirements".
+  - **Rev 21 (2026-08-22):** `web.SSO` extended to every `golib/auth` mechanism
+    (§2.12.7), on Johno's instruction.
+  - **Revs 22-27 (2026-08-22):** six rounds of lector review on PR #14, each
+    finding a defect in the *interval* around a step the previous round had made
+    correct. §2.12.8 the lifecycle leaks (r1); §2.12.9 the two false concurrency
+    boundaries (r2); §2.12.10 the ghost slot, established too late (r3); §2.12.11
+    establishment atomicity (r4); §2.12.12 check-then-publish (r5); §2.12.13 the
+    reusable public capability (r6). Read as a set they are one mistake made six
+    ways, and §2.12.13 names it.
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -1017,6 +1019,61 @@ independently locked structures, the unit of correctness is never a step — it 
 step and the interval that follows, and only a probe that pauses inside that
 interval is evidence.
 
+#### 2.12.13 The capability had to be single-use (rev 27)
+
+r6 approved the internal transaction and rejected the public surface I had added to
+support it — and corrected the reasoning I had used to defend it, which is the part
+worth recording.
+
+I had argued that `Stash.CommitPark` could not defend against a recursive call
+without goroutine identity, because a simple non-reentrant flag "would falsely
+reject a legitimate CONCURRENT commit from another goroutine". **That premise is
+wrong.** A [Stash] belongs to ONE request, which holds one reservation and may
+publish one entry; a second commit on it is not legitimate whether it is recursive
+or concurrent. Exactly one caller may win. I had generalised a property of the gate
+— where concurrent commits across different requests are perfectly normal — onto
+the Stash, where it does not hold.
+
+Making it single-use fixes three things at once: two entries can no longer be
+published against one slot, a recursive call becomes a `false` rather than a
+self-deadlock, and no goroutine identity is needed because the guard sits on the
+Stash *before* the gate's lock is taken.
+
+Two more holes in the same surface, both mine: a **nil** publisher committed the
+slot without writing anything — a slot with no entry, the mirror image of the entry
+with no slot this whole mechanism exists to prevent — and the capability outlived
+its hook, so a Stash kept beyond its request could still publish into the park. The
+first is refused at both layers now; the second is retired when the hook returns.
+
+Two corrections to the tests, also r6's:
+
+**A panicking publish rolled back nothing.** Rev 26's panic test proved the lock was
+released and stopped there — leaving the slot committed to accounting for an entry
+that had never been written, which is the nil-publisher defect by another route. The
+commitment is rolled back under the lock now, and a retry is possible because the
+reservation itself survives.
+
+**A sleep is not a control.** The check for "can anything else enter the gate during
+publication?" slept and then looked, which proves nothing on a fast pass because a
+merely-slow sweeper looks identical to a blocked one. It uses `TryLock` now: the
+question is asked directly and the answer does not depend on scheduling.
+
+One honest note on coverage. Both single-use properties are enforced **twice** — on
+the Stash, and again in the gate — so a control has to remove both layers to turn
+the tests red. The gate's own check is unreachable from anywhere in this package,
+since `CommitPark` is single-use and `SSO.hold` refuses a duplicate handoff before
+committing. It has a direct unit test for exactly that reason: a defence nothing
+exercises is a defence nobody notices has gone.
+
+**Six rounds, one mistake, six shapes.** A slot never returned; returned too early;
+established too late; established without checking; checked and then published;
+published more than once. Every round I fixed the step the previous round named and
+left the interval after it unexamined, and every round's test passed because it
+paused where the previous bug had been. The rule this ADR should have carried from
+the start: for a handoff between two independently locked structures, correctness is
+never a property of a step — it is a property of a step and the interval that
+follows, and the only evidence is a probe that pauses inside that interval.
+
 ### 2.13 Peer binding (rev 19)
 
 **Optional, off by default.** A session may be bound to the peer address that
@@ -1319,6 +1376,25 @@ decisions:
   sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
+
+- **rev 27 (2026-08-22, jarvis — the reusable capability from lector r6 on PR #14).**
+  The internal transaction was approved; the public capability I had added to
+  support it was not. `Stash.CommitPark` was reusable, accepted a nil publisher, and
+  outlived its hook, so one reservation could publish two entries or commit a slot
+  with none. §2.12.13 has it.
+
+  The correction I most want to keep is to my own ARGUMENT rather than my code. I
+  had declined to make the capability single-use on the grounds that a
+  non-reentrant flag would falsely reject a legitimate concurrent commit — and that
+  premise is simply false. A Stash belongs to one request; a second commit on it is
+  never legitimate. I had taken a true property of the gate, where concurrent
+  commits across requests are normal, and carried it onto a per-request value where
+  it does not hold. Single-use then fixes reuse, recursion and the deadlock question
+  together, with no goroutine identity needed.
+
+  Also: rev 26's panic test proved the lock was released and stopped there, leaving
+  the slot committed for an entry never written; and the post-check control slept
+  rather than asking `TryLock`, so it proved nothing on a fast pass. Both fixed.
 
 - **rev 26 (2026-08-22, jarvis — the check-then-publish gap from lector r5 on PR #14).**
   Rev 25 checked the reservation and then inserted; `gate.commit` released the
