@@ -120,7 +120,20 @@ type Stash struct {
 	// commit publishes a park entry indivisibly with this login's admission
 	// reservation. Installed by the login route; nil outside one.
 	commit func(publish func()) bool
+	// state makes the capability SINGLE-USE. One request holds one reservation and
+	// may publish one entry, so a second call — including a recursive one from
+	// inside publish — must fail rather than publish twice or deadlock.
+	state stashCommitState
 }
+
+// stashCommitState tracks the one permitted use of [Stash.CommitPark].
+type stashCommitState uint8
+
+const (
+	stashIdle  stashCommitState = iota
+	stashBusy                   // a CommitPark is running; a nested call must not
+	stashSpent                  // the one permitted attempt has been made
+)
 
 // Set records state produced during verification. The last write wins; a factor
 // that verifies more than once per request is doing something the login route
@@ -219,29 +232,72 @@ func (s *Stash) discard() {
 // membership and publication are one step.
 //
 // publish must therefore be SHORT and must not block: no network calls, no waiting
-// on another goroutine that might need the same locks, and in particular NO SECOND
-// CommitPark — the lock is not reentrant, so a nested call deadlocks. Write your map
-// entry and return.
+// on another goroutine that might need the same locks. Write your map entry and
+// return.
+//
+// # Single-use
+//
+// One request holds one reservation and may publish one entry, so this returns
+// false on a second call. That includes a recursive call from inside publish, which
+// is refused before the reservation's lock is taken and therefore cannot deadlock.
+// The capability is retired when the hook returns, so a Stash kept beyond its
+// request cannot publish later.
+//
+// A nil publish is refused: committing the slot without writing an entry would give
+// the accounting a slot with no entry, which is the mirror of the defect this
+// prevents.
 //
 // A panic inside publish is survivable: the lock is released as the stack unwinds,
-// so the panic reaches you rather than wedging every other login.
+// and the commitment is rolled back because nothing was published.
 //
 // A nil-safe no-op outside a login request, and a plain publish when the handler
 // keeps no pending-login budget.
 func (s *Stash) CommitPark(publish func()) bool {
-	if s == nil {
+	if s == nil || publish == nil {
+		// A nil publisher would commit the slot to accounting for an entry that was
+		// never written — a slot with no park entry, which is the mirror image of the
+		// entry with no slot this whole mechanism exists to prevent.
 		return false
 	}
 	s.mu.Lock()
+	if s.state != stashIdle {
+		// Either a second call, or a recursive one from inside publish. Both are
+		// wrong: one request holds one reservation and may publish one entry.
+		// Refusing HERE — before the gate's lock is taken — is also what turns a
+		// recursive call into a false rather than a self-deadlock, with no need for
+		// goroutine identity.
+		s.mu.Unlock()
+		return false
+	}
+	s.state = stashBusy
 	commit := s.commit
 	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		s.state = stashSpent
+		s.mu.Unlock()
+	}()
+
 	if commit == nil {
-		if publish != nil {
-			publish()
-		}
+		// No pending-login budget on this handler: there is no reservation to be
+		// atomic with, so the write simply happens.
+		publish()
 		return true
 	}
 	return commit(publish)
+}
+
+// disarm retires the capability when the login route is done with the hook, so a
+// Stash squirrelled away by a consumer cannot publish into the park later.
+func (s *Stash) disarm() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.commit = nil
+	s.state = stashSpent
+	s.mu.Unlock()
 }
 
 // claimed reports whether the stashed value was taken, which is what tells the

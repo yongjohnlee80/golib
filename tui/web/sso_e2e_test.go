@@ -2023,34 +2023,28 @@ func TestSSO_ReservationSweptBetweenCheckAndPublish(t *testing.T) {
 	// no longer exists. The clock is rolled back before the callback returns, so the
 	// sweeper — once it is finally let in — measures the live state rather than the
 	// artificial one, and the end-state assertions mean what they say.
-	var sweeperFinished atomic.Bool
-	sweeperDone := make(chan struct{})
 	inner := sso.commit
 	sso.commit = func(handoff string, publish func()) bool {
 		return inner(handoff, func() {
 			before := shared()
 			advance(2 * h.pendingHold)
 
-			go func() {
-				_ = h.pending.pending() // takes the gate's lock, and sweeps
-				sweeperFinished.Store(true)
-				close(sweeperDone)
-			}()
-			// Give it every chance to run: with the lock held it cannot, and that
-			// is the property under test.
-			time.Sleep(50 * time.Millisecond)
-			if sweeperFinished.Load() {
-				t.Error("a sweep completed between the reservation check and the " +
-					"publication, so the entry is about to be published against a " +
-					"key that no longer exists")
+			// DETERMINISTIC, not timed. A sleep-and-check can miss a sweeper that is
+			// merely slow to start, so it proves nothing on a fast pass (lector r6).
+			// TryLock asks the question directly: can anything else enter the gate
+			// right now? While publication is atomic the answer must be no, and the
+			// answer does not depend on scheduling.
+			if h.pending.mu.TryLock() {
+				h.pending.mu.Unlock()
+				t.Error("the gate's lock is free during publication, so a sweep can " +
+					"take the key and the entry will be published against a slot " +
+					"that no longer exists")
 			}
 
 			publish()
 
-			// Rolled back BEFORE returning, so the sweeper — which cannot run until
-			// this returns and the gate's lock is free — measures the real deadline
-			// rather than the artificial one. Waiting for it here would deadlock:
-			// it needs the lock this callback is holding.
+			// Rolled back before returning, so anything that enters the gate after
+			// this measures the real deadline rather than the artificial one.
 			clockMu.Lock()
 			now = before
 			clockMu.Unlock()
@@ -2062,12 +2056,6 @@ func TestSSO_ReservationSweptBetweenCheckAndPublish(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login: %d %s", rec.Code, rec.Body.String())
 	}
-	select {
-	case <-sweeperDone:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the sweeper never got the gate's lock back")
-	}
-
 	// THE INVARIANT: an entry exists only if a slot accounts for it.
 	parked, held := sso.Len(), h.pending.pending()
 	if parked != 1 || held != 1 {
@@ -2305,5 +2293,202 @@ func TestGate_PanickingPublishDoesNotWedgeTheGate(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the gate is wedged after a panicking publish: no further login can " +
 			"pass the door")
+	}
+}
+
+// One reservation publishes at most ONE entry, and never zero-with-a-commitment.
+//
+// Lector r6's two probes: "one admission slot published 2 park entries" and "nil
+// publisher committed the slot even though no park entry exists". Both came from
+// the same mistake — I had reasoned that a concurrent second commit on one Stash
+// might be legitimate and so declined to make the capability single-use. It is not
+// legitimate: a Stash belongs to ONE request, which holds one reservation and may
+// publish one entry. Exactly one caller may win.
+//
+// Both properties are enforced TWICE — once on the Stash before the reservation's
+// lock is taken, once in the gate — so a control has to remove both layers to turn
+// these red. That is deliberate: the Stash guard is what makes a recursive call a
+// false instead of a deadlock, and the gate guard is what protects a caller that is
+// not single-use.
+func TestStash_CommitParkIsSingleUseAndRejectsNil(t *testing.T) {
+	t.Parallel()
+
+	newRig := func() (*Stash, *gate, *int, string) {
+		now := time.Now()
+		g := newGate(2)
+		g.now = func() time.Time { return now }
+		if !g.enter() || !g.hold("h", now.Add(time.Minute)) {
+			t.Fatal("setup")
+		}
+		entries := 0
+		st := &Stash{}
+		st.commit = func(publish func()) bool {
+			return g.commit("h", now.Add(time.Minute), publish)
+		}
+		return st, g, &entries, "h"
+	}
+
+	t.Run("a second call publishes nothing", func(t *testing.T) {
+		t.Parallel()
+		st, g, entries, key := newRig()
+		if !st.CommitPark(func() { *entries++ }) {
+			t.Fatal("the first commit was refused")
+		}
+		if st.CommitPark(func() { *entries++ }) {
+			t.Error("a second CommitPark succeeded: one admission slot would account " +
+				"for two park entries")
+		}
+		if *entries != 1 {
+			t.Errorf("%d entries published against one reservation, want 1", *entries)
+		}
+		if !g.committed(key) {
+			t.Error("the slot is not committed after a successful publish")
+		}
+	})
+
+	t.Run("a nil publisher is refused", func(t *testing.T) {
+		t.Parallel()
+		st, g, _, key := newRig()
+		if st.CommitPark(nil) {
+			t.Error("a nil publisher committed the slot, so the accounting has a slot " +
+				"with no park entry — the mirror of the defect this prevents")
+		}
+		if g.committed(key) {
+			t.Error("the slot was committed for a publisher that wrote nothing")
+		}
+	})
+
+	t.Run("a recursive call is refused, not deadlocked", func(t *testing.T) {
+		t.Parallel()
+		st, _, entries, _ := newRig()
+		var inner bool
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			_ = st.CommitPark(func() {
+				*entries++
+				inner = st.CommitPark(func() { *entries++ })
+			})
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("a recursive CommitPark deadlocked: it must be refused before the " +
+				"reservation's lock is taken")
+		}
+		if inner {
+			t.Error("the recursive call succeeded")
+		}
+		if *entries != 1 {
+			t.Errorf("%d entries published, want 1", *entries)
+		}
+	})
+
+	t.Run("concurrent callers: exactly one wins", func(t *testing.T) {
+		t.Parallel()
+		st, _, entries, _ := newRig()
+		var mu sync.Mutex
+		wins := 0
+		var wg sync.WaitGroup
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if st.CommitPark(func() {
+					mu.Lock()
+					*entries++
+					mu.Unlock()
+				}) {
+					mu.Lock()
+					wins++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+		mu.Lock()
+		defer mu.Unlock()
+		if wins != 1 || *entries != 1 {
+			t.Errorf("%d winners and %d entries from one reservation, want 1 and 1", wins, *entries)
+		}
+	})
+
+	t.Run("the capability dies with the hook", func(t *testing.T) {
+		t.Parallel()
+		st, _, entries, _ := newRig()
+		st.disarm()
+		if st.CommitPark(func() { *entries++ }) {
+			t.Error("a Stash kept beyond its request could still publish")
+		}
+		if *entries != 0 {
+			t.Errorf("%d entries published after the hook returned", *entries)
+		}
+	})
+}
+
+// The gate refuses a second commit on its own, independently of the Stash.
+//
+// This is a BACKSTOP and it is deliberately untested from above: no path in this
+// package can reach it, because Stash.CommitPark is single-use and SSO.hold refuses
+// a duplicate handoff before it commits. Removing this check leaves every
+// higher-level test green, which is exactly why it gets a direct one — a defence
+// nothing exercises is a defence nobody notices has gone.
+func TestGate_RefusesASecondCommitOnItsOwn(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	g := newGate(2)
+	g.now = func() time.Time { return now }
+	if !g.enter() || !g.hold("k", now.Add(time.Minute)) {
+		t.Fatal("setup")
+	}
+	first, second := 0, 0
+	if !g.commit("k", now.Add(time.Minute), func() { first++ }) {
+		t.Fatal("the first commit was refused")
+	}
+	if g.commit("k", now.Add(time.Minute), func() { second++ }) {
+		t.Error("a second commit on one reservation succeeded, so one slot would " +
+			"account for two entries")
+	}
+	if first != 1 || second != 0 {
+		t.Errorf("published %d then %d, want 1 then 0", first, second)
+	}
+}
+
+// A panicking publish must leave the slot UNCOMMITTED, because nothing was
+// published.
+//
+// The earlier panic test proved the lock was released and stopped there — which
+// left the slot committed to accounting for an entry that does not exist, the same
+// defect as a nil publisher (lector r6).
+func TestGate_PanickingPublishRollsBackTheCommitment(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	g := newGate(2)
+	g.now = func() time.Time { return now }
+	if !g.enter() || !g.hold("k", now.Add(time.Minute)) {
+		t.Fatal("setup")
+	}
+
+	func() {
+		defer func() { _ = recover() }()
+		g.commit("k", now.Add(2*time.Minute), func() { panic("consumer publish exploded") })
+	}()
+
+	if g.committed("k") {
+		t.Error("the slot is committed after a publish that panicked: it accounts for " +
+			"an entry nobody wrote")
+	}
+	// The reservation itself survives, so the login route can still return it.
+	if n := g.pending(); n != 1 {
+		t.Errorf("occupancy %d, want the reservation still held", n)
+	}
+	// And a retry is possible, because the commitment was rolled back rather than
+	// burned.
+	published := false
+	if !g.commit("k", now.Add(time.Minute), func() { published = true }) {
+		t.Error("the reservation could not be committed after a failed attempt")
+	}
+	if !published {
+		t.Error("the retry did not publish")
 	}
 }

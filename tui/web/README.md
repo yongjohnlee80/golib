@@ -422,6 +422,8 @@ So the obligations are structural:
 | admission slots come back | the slot follows the handoff, and **the park returns it** — when the entry is claimed, released or expires, never before |
 | a park entry always has a slot | the insert runs as a **callback under the reservation's own lock**, so membership and publication are one step; a lapsed reservation refuses with `ErrAdmissionLapsed` |
 | a hand-rolled park can be safe too | `Stash.CommitPark(publish)` gives a raw `OnLogin` the same atomic publish, and returns false when the reservation has lapsed |
+| one reservation, one entry | `CommitPark` is **single-use** — a second or recursive call returns false rather than publishing twice or deadlocking — refuses a nil publisher, and is retired when the hook returns |
+| one reservation, one entry | `CommitPark` is **single-use** — a second or recursive call returns false rather than publishing twice or deadlocking — refuses a nil publisher, and is retired when the hook returns |
 | nothing outstanding after `Close` | `Close` **waits** for in-flight `Provision` calls; one that finishes late releases its own value |
 | one session per login | `Claim` removes as it hands over |
 | release when the session ends | `Factory` **defers** it — panics included, because `Manager` contains an App panic |
