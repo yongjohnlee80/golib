@@ -232,10 +232,34 @@ nothing. That is a better result than I expected before starting, and the two
 findings are specific enough to act on when the IoT or mobile backend arrives —
 which was the point of doing this at all.
 
+## The demo, and criterion 1
+
+`tui/examples/webdemo` runs **the same component tree** as the terminal demo, with
+`web.New()` in place of `term.Open()`. That is the only difference between the two
+`main` functions.
+
+To make the claim literal rather than approximate, the tree moved out of
+`package main` into `tui/examples/demoapp` — a pure move, with the component logic
+untouched; only the package clause and the constructor's visibility changed,
+because `package main` cannot be imported. Its own interaction script (which runs
+against `tui.TestBackend`, no PTY) moved with it and still passes.
+
+`TestCriterion1_SameTreeOnTheWebBackend` asserts the property mechanically rather
+than by inspection: the demo tree renders a non-blank full frame at the client's
+measured size, repaints on a keystroke, follows a resize, and exits cleanly —
+through `web.Backend`.
+
+```
+go run ./tui/examples/webdemo
+# open the printed http://127.0.0.1:8080/#t=... in a browser
+```
+
+The ticket is in the URL **fragment**, which browsers never send to a server, and
+the client scrubs it from the address bar before connecting. It is single-use.
+
 ## Not done
 
 - **The browser matrix** (Chromium, Firefox, WebKit) is a required release gate
   and has **not been run.** §2.9's text-machine behaviours are browser-specific,
   and synthetic dispatch is exactly what would hide a divergence. A release with
   the matrix unrun is not a release.
-- Demo wiring (`tui/examples/webdemo`).
