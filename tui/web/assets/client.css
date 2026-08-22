@@ -102,3 +102,50 @@ html, body {
   font: 12px var(--font);
   border-radius: 3px;
 }
+
+/* The login form. Shown only when the server advertises a login route and the
+   policy refused the connection. */
+#login[hidden] { display: none; }
+
+#login {
+  position: fixed;
+  left: 50%; top: 40%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .5rem .75rem;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--a8);
+  border-radius: 4px;
+  font: 13px var(--font);
+}
+
+#login input {
+  font: 13px var(--font);
+  padding: .3rem .4rem;
+  background: var(--a0);
+  color: var(--fg);
+  border: 1px solid var(--a8);
+  border-radius: 2px;
+}
+
+#login button {
+  grid-column: 1 / span 2;
+  font: 13px var(--font);
+  padding: .35rem;
+  cursor: pointer;
+  background: var(--a4);
+  color: var(--a15);
+  border: 0;
+  border-radius: 2px;
+}
+
+#login #le {
+  grid-column: 1 / span 2;
+  margin: 0;
+  min-height: 1.2em;
+  color: var(--a9);
+}

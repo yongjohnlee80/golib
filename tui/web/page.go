@@ -44,6 +44,20 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <textarea id="cap"
   autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
   aria-label="terminal input"></textarea>
+<div id="login" hidden>
+  <label for="lu">User</label>
+  <input id="lu" type="text" autocomplete="username" autocapitalize="none"
+    spellcheck="false" autofocus>
+  <label for="lp">Password</label>
+  <!-- type=password and autocomplete=current-password on purpose. Unlike the
+       capture textarea, this IS a credential field: the browser should treat it
+       as one, so it masks the value and a password manager can fill it. A
+       manager is a net security gain and suppressing it would push users toward
+       weaker, memorable passwords. -->
+  <input id="lp" type="password" autocomplete="current-password">
+  <button id="lb" type="button">Sign in</button>
+  <p id="le" role="alert"></p>
+</div>
 <script nonce="{{.Nonce}}">window.__WEBTUI__={{.Config}};</script>
 <script nonce="{{.Nonce}}">{{.JS}}</script>
 </body></html>
@@ -66,6 +80,7 @@ type pageData struct {
 // at all.
 type clientConfig struct {
 	Path      string         `json:"path"`
+	LoginPath string         `json:"loginPath,omitempty"`
 	NamedKeys []string       `json:"namedKeys"`
 	Reserved  []reservedRule `json:"reserved"`
 }
@@ -112,8 +127,13 @@ func (h *Handler) ServePage(w http.ResponseWriter, r *http.Request) {
 	hardeningHeaders(w.Header(), n)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
+	login := ""
+	if h.cfg.LoginPolicy != nil {
+		login = h.loginPath
+	}
 	cfg, err := json.Marshal(clientConfig{
 		Path:      h.wsPath,
+		LoginPath: login,
 		NamedKeys: NamedKeys(),
 		// Injected, not reimplemented. The reserved table was previously
 		// hard-coded in BOTH places while the client's comment claimed it was
@@ -142,13 +162,14 @@ func (h *Handler) ServePage(w http.ResponseWriter, r *http.Request) {
 
 // Handler serves the WebTUI: the client shell and the WebSocket endpoint.
 type Handler struct {
-	cfg    Config
-	mgr    *Manager
-	log    logger.Logger
-	limits Limits
-	title  string
-	wsPath string
-	loop   *sessionLoop
+	cfg       Config
+	mgr       *Manager
+	log       logger.Logger
+	limits    Limits
+	title     string
+	wsPath    string
+	loginPath string
+	loop      *sessionLoop
 }
 
 // HandlerOption configures a [Handler].
@@ -191,8 +212,9 @@ func HandlerLogger(l logger.Logger) HandlerOption {
 
 // Defaults for a [Handler].
 const (
-	DefaultTitle  = "WebTUI"
-	DefaultWSPath = "/ws"
+	DefaultTitle     = "WebTUI"
+	DefaultWSPath    = "/ws"
+	DefaultLoginPath = "/login"
 )
 
 // NewHandler validates the configuration and builds the served handler.
@@ -212,12 +234,13 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 	// only until someone writes to it.
 	cfg.AllowedOrigins = slices.Clone(cfg.AllowedOrigins)
 	h := &Handler{
-		cfg:    cfg,
-		mgr:    mgr,
-		log:    logger.Nop{},
-		limits: DefaultLimits(),
-		title:  DefaultTitle,
-		wsPath: DefaultWSPath,
+		cfg:       cfg,
+		mgr:       mgr,
+		log:       logger.Nop{},
+		limits:    DefaultLimits(),
+		title:     DefaultTitle,
+		wsPath:    DefaultWSPath,
+		loginPath: DefaultLoginPath,
 	}
 	for _, o := range opts {
 		if o != nil {

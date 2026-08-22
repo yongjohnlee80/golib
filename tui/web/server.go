@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/auth/token"
 	"github.com/yongjohnlee80/golib/logger"
 )
 
@@ -80,6 +81,21 @@ type Config struct {
 	// "evil.example.com.attacker.test" is a classic bypass.
 	AllowedOrigins []string
 
+	// LoginPolicy enables the password login route when set, together with
+	// [Config.Issuer].
+	//
+	// It is a SEPARATE policy from [Config.Policy] on purpose. Password
+	// authenticates to mint a ticket; the attach policy then only ever sees
+	// tickets, mTLS chains and SSH signatures. Keeping them separate is what
+	// stops a reusable secret from being an attach credential — see [Handler.ServeLogin].
+	//
+	// It MUST include a throttled password factor: see [PasswordPolicyExample].
+	LoginPolicy auth.Policy
+
+	// Issuer mints the single-use attach ticket a successful login returns.
+	// Required when LoginPolicy is set.
+	Issuer *token.Issuer
+
 	// ExpectedHost is the exact Host header required. REQUIRED: §2.7 says Host
 	// and Origin expectations come from configuration and are never inferred,
 	// and an optional check is an inferred one with extra steps — the request
@@ -139,6 +155,12 @@ func (c Config) validate() error {
 	if c.ExpectedHost == "" {
 		return errors.New("web: ExpectedHost is required — §2.7 forbids inferring it " +
 			"from the request, and an optional check is one the request decides")
+	}
+	if (c.LoginPolicy == nil) != (c.Issuer == nil) {
+		// One without the other is a half-configured front door: a policy with no
+		// issuer authenticates and then cannot admit anyone, and an issuer with no
+		// policy would mint on request.
+		return errors.New("web: LoginPolicy and Issuer must be set together")
 	}
 	if c.Addr == "" {
 		return errors.New("web: no bind address")

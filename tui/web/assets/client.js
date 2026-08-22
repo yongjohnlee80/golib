@@ -272,13 +272,13 @@
   });
 
   // --- connect -----------------------------------------------------------
-  function connect() {
+  function connect(supplied) {
     // A mutable holder, so the reference can be dropped after the attempt. The
     // permanent open listener previously closed over the ticket and kept it
     // reachable for the page's whole lifetime (lector r1). No claim is made that
     // the string is erased from memory — a JS engine offers no such guarantee —
     // only that our code stops holding it.
-    let cred = takeTicket();
+    let cred = supplied || takeTicket();
     if (cred.session) sessionID = cred.session;
     const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(scheme + '//' + window.location.host + CFG.path);
@@ -310,8 +310,70 @@
     });
 
     ws.addEventListener('close', (ev) => {
+      // 1008 with an "unauthorized" reason means the policy refused us. If a
+      // login route exists, offer it rather than leaving the user at a dead page.
+      if (ev.code === 1008 && ev.reason && ev.reason.indexOf('unauthorized') === 0) {
+        showLogin(ev.reason);
+        return;
+      }
       status(ev.reason ? 'disconnected: ' + ev.reason : 'disconnected');
     });
+  }
+
+  document.getElementById('lb').addEventListener('click', submitLogin);
+  document.getElementById('lp').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitLogin();
+  });
+
+  // --- password login ----------------------------------------------------
+  //
+  // The form does NOT put a password in the WebSocket hello. It POSTs to the
+  // login route, which authenticates and returns a single-use ticket, and the
+  // socket then attaches with that ticket like any other client. So the attach
+  // path only ever carries one credential shape, and a captured hello is worth a
+  // spent ticket rather than a reusable secret.
+  function showLogin(message) {
+    const box = document.getElementById('login');
+    if (!CFG.loginPath) { status(message || 'unauthorized'); return; }
+    box.hidden = false;
+    document.getElementById('le').textContent = message || '';
+    document.getElementById('lu').focus();
+  }
+
+  async function submitLogin() {
+    const user = document.getElementById('lu');
+    const pass = document.getElementById('lp');
+    const err = document.getElementById('le');
+    err.textContent = '';
+    let body = JSON.stringify({ subject: user.value, password: pass.value });
+    // Cleared before the request completes, not after: the field is a credential
+    // and there is no reason for it to outlive the submission. No claim is made
+    // that the string is erased from memory — a JS engine offers no such
+    // guarantee — only that the DOM and our variables stop holding it.
+    pass.value = '';
+    try {
+      const res = await fetch(CFG.loginPath, {
+        method: 'POST',
+        // same-origin, so the request cannot be aimed elsewhere by a redirect.
+        credentials: 'omit',
+        redirect: 'error',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      body = '';
+      if (!res.ok) {
+        const ref = res.headers.get('X-Auth-Attempt');
+        err.textContent = 'Sign-in failed' + (ref ? ' (ref ' + ref + ')' : '');
+        return;
+      }
+      const data = await res.json();
+      document.getElementById('login').hidden = true;
+      // Reconnect with the minted ticket.
+      connect({ ticket: data.ticket, session: sessionID });
+    } catch (e) {
+      body = '';
+      err.textContent = 'Sign-in unavailable';
+    }
   }
 
   function status(text) {
