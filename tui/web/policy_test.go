@@ -114,33 +114,23 @@ func TestPasswordPolicyExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, err := PasswordPolicyExample(
-		claimingFactor{subject: "alice", password: "correct"},
-		tracker,
-		[]auth.Factor{alwaysFactor{subject: "strong"}},
+		claimingFactor{subject: "alice", password: "correct"}, tracker,
 		contextualFactor{allow: true},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// A stronger mechanism wins, so the weak path is only reached when nothing
-	// else was offered.
-	id, err := p.Authenticate(context.Background(), &auth.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if id.Subject != "strong" {
-		t.Errorf("subject = %q, want the stronger mechanism to win", id.Subject)
+	// The helper builds a LOGIN policy and nothing else: a request carrying no
+	// password is refused rather than falling through to some other arm. It takes
+	// no "stronger mechanisms" parameter, because ServeLogin projects only a
+	// subject and a password — a ticket or certificate placed here could never be
+	// presented to it (lector r3).
+	if _, err := p.Authenticate(context.Background(), &auth.Request{}); err == nil {
+		t.Error("an empty request authenticated against the login policy")
 	}
 
-	// Now with only the password arm available.
-	pwOnly, err := PasswordPolicyExample(
-		claimingFactor{subject: "alice", password: "correct"}, tracker, nil,
-		contextualFactor{allow: true},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pwOnly := p
 	attempt := func(pw string) error {
 		_, err := pwOnly.Authenticate(context.Background(), &auth.Request{
 			Credentials: map[string]auth.Secret{
@@ -177,7 +167,7 @@ func TestPasswordPolicyExample(t *testing.T) {
 
 	// A nil tracker is a construction error — auth.NewThrottle refuses it, so
 	// password without backoff cannot be built through this helper.
-	if _, err := PasswordPolicyExample(claimingFactor{}, nil, nil, contextualFactor{allow: true}); err == nil {
+	if _, err := PasswordPolicyExample(claimingFactor{}, nil, contextualFactor{allow: true}); err == nil {
 		t.Error("a password policy with no Tracker must not be constructible here")
 	}
 	// And the constraint is REQUIRED: the helper's name promises the recommended
@@ -186,7 +176,7 @@ func TestPasswordPolicyExample(t *testing.T) {
 		t.Error("PasswordPolicyExample with no constraint must be refused — use " +
 			"RecommendedPolicy to build that deliberately")
 	}
-	if _, err := PasswordPolicyExample(claimingFactor{}, tracker, nil, nil); err == nil {
+	if _, err := PasswordPolicyExample(claimingFactor{}, tracker, nil); err == nil {
 		t.Error("a nil constraint must be refused rather than silently dropped")
 	}
 }
@@ -203,7 +193,7 @@ func TestAuthRequest_CredentialsComeFromTheMessage(t *testing.T) {
 
 	m := clientMessage{
 		T: msgHello, Ticket: "tkt", Identity: "alice@host", Sig: "-----BEGIN...",
-		Chal: "c1", Subject: "alice", Password: "pw", Session: "s1",
+		Chal: "c1", Session: "s1",
 	}
 	req := authRequest(r, m)
 
@@ -212,8 +202,6 @@ func TestAuthRequest_CredentialsComeFromTheMessage(t *testing.T) {
 		"ssh-identity":      "alice@host",
 		"ssh-signature":     "-----BEGIN...",
 		"ssh-challenge":     "c1",
-		"subject":           "alice",
-		"password":          "pw",
 		"session":           "s1",
 	} {
 		got, ok := req.Credentials[key]

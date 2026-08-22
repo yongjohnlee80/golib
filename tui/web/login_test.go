@@ -24,10 +24,7 @@ func loginHandler(t *testing.T, password, want string) (*Handler, *token.MemStor
 	if err != nil {
 		t.Fatal(err)
 	}
-	loginPolicy, err := PasswordPolicyExample(
-		claimingFactor{subject: want, password: password}, tracker, nil,
-		contextualFactor{allow: true},
-	)
+	loginPolicy, err := PasswordPolicyExample(claimingFactor{subject: want, password: password}, tracker, contextualFactor{allow: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,10 +333,7 @@ func TestLogin_IssuerFailureIsNotARejection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loginPolicy, err := PasswordPolicyExample(
-		claimingFactor{subject: "alice", password: "pw"}, tracker, nil,
-		contextualFactor{allow: true},
-	)
+	loginPolicy, err := PasswordPolicyExample(claimingFactor{subject: "alice", password: "pw"}, tracker, contextualFactor{allow: true})
 	if err != nil {
 		t.Fatal(err)
 	}

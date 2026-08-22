@@ -242,6 +242,8 @@
       if (e.target !== grid && !grid.contains(e.target)) return;
       e.preventDefault();
       send(Object.assign({ t: 'mouse', mk: kind, btn: e.button }, cellAt(e), modsOf(e)));
+      const box = document.getElementById('login');
+      if (box && !box.hidden) return; // the form owns focus while it is up
       capture.focus({ preventScroll: true });
     };
   }
@@ -393,7 +395,17 @@
 
   // Keep the capture element focused: it is where all text arrives, and a click
   // anywhere in the terminal should put the caret back.
-  document.addEventListener('click', () => capture.focus({ preventScroll: true }));
+  //
+  // But NOT while the login form is visible, and never for a click inside it.
+  // The unconditional version stole focus from the username and password inputs
+  // the instant they were clicked, so the form could not be used with a mouse or
+  // a touch screen at all (lector r3).
+  document.addEventListener('click', (e) => {
+    const box = document.getElementById('login');
+    if (box && !box.hidden) return;
+    if (box && box.contains(e.target)) return;
+    capture.focus({ preventScroll: true });
+  });
 
   connect();
 })();

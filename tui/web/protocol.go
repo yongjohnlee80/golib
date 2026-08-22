@@ -45,10 +45,13 @@ type clientMessage struct {
 	Sig      string `json:"sig,omitempty"`      // SSHSIG armor, for sshkey
 	Chal     string `json:"chal,omitempty"`     // challenge id, for sshkey
 
-	// Password credentials. PERMITTED but the weakest supported mechanism —
-	// see [Config] and ADR-0009 §2.8 for what must accompany it.
-	Subject  string `json:"subject,omitempty"`
-	Password string `json:"pw,omitempty"`
+	// There are deliberately NO password fields here.
+	//
+	// Rev 11 made password a ticket minter rather than an attach mechanism, and
+	// leaving the fields in place meant a custom client could still authenticate
+	// a password directly over the WebSocket — the split existed in the prose and
+	// not in the protocol (lector r3). A password goes to the login route, which
+	// returns a ticket; the ticket arrives above.
 
 	// Measurements, on hello and resize.
 	Cols    int     `json:"cols,omitempty"`

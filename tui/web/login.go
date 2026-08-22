@@ -92,11 +92,23 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// http.MaxBytesReader, and then EXACTLY ONE value followed by EOF.
+	//
+	// io.LimitReader plus a single Decode was not a bound at all: Decode stops at
+	// the end of the first JSON value, so a correct-password object followed by
+	// 8 KiB of junk decoded fine, never hit the limit, and minted a ticket
+	// (lector r3). MaxBytesReader makes the read itself fail past the cap, and
+	// requiring EOF makes trailing bytes a rejection rather than something nobody
+	// looked at.
+	r.Body = http.MaxBytesReader(w, r.Body, maxLoginBody)
+	dec := json.NewDecoder(r.Body)
 	var req loginRequest
-	// io.LimitReader before the decoder, so an oversized body is never buffered
-	// in full.
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxLoginBody)).Decode(&req); err != nil {
+	if err := dec.Decode(&req); err != nil {
 		h.denyLogin(w, r, "", errors.New("malformed login body"))
+		return
+	}
+	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+		h.denyLogin(w, r, "", errors.New("trailing content after the login body"))
 		return
 	}
 	if req.Subject == "" || req.Password == "" {

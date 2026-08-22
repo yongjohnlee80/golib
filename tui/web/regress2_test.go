@@ -204,10 +204,7 @@ func TestRegress2_PasswordConstraintMustBeContextual(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An identity factor as the "constraint" would satisfy the Any by itself.
-	_, err = PasswordPolicyExample(
-		claimingFactor{subject: "alice", password: "pw"}, tracker, nil,
-		alwaysFactor{subject: "sneaky"},
-	)
+	_, err = PasswordPolicyExample(claimingFactor{subject: "alice", password: "pw"}, tracker, alwaysFactor{subject: "sneaky"})
 	if err == nil {
 		t.Fatal("an identity factor was accepted as a contextual constraint — it would " +
 			"satisfy the policy on its own")
@@ -216,10 +213,7 @@ func TestRegress2_PasswordConstraintMustBeContextual(t *testing.T) {
 		t.Errorf("err = %v, should name the requirement", err)
 	}
 	// A genuine contextual factor is accepted.
-	if _, err := PasswordPolicyExample(
-		claimingFactor{subject: "alice", password: "pw"}, tracker, nil,
-		contextualFactor{allow: true},
-	); err != nil {
+	if _, err := PasswordPolicyExample(claimingFactor{subject: "alice", password: "pw"}, tracker, contextualFactor{allow: true}); err != nil {
 		t.Errorf("a contextual constraint was refused: %v", err)
 	}
 }
