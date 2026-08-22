@@ -251,6 +251,37 @@ func (g *gate) hold(key string, until time.Time) bool {
 	return true
 }
 
+// commit re-stamps a keyed slot's deadline and reports whether the slot is STILL
+// THERE.
+//
+// It exists because a reservation and the park entry it accounts for are created
+// at two different moments, by two different components, on two different clocks.
+// The reservation goes in before the consumer's hook runs; the park entry appears
+// inside it. A hook slow enough to outlive its reservation — a real dial to an
+// upstream is exactly that — came back to find its slot swept, and parked anyway:
+// an entry with no accounting, so the budget under-counted and more logins could
+// park than the cap allows (lector r4 on PR #14, probe: parked=1, held=0).
+//
+// So parking is now conditional on this returning true, which makes the pair
+// atomic in the only sense that matters: the entry exists only if a slot accounts
+// for it. false means the caller must not park — or must undo the park it cannot
+// account for.
+func (g *gate) commit(key string, until time.Time) bool {
+	if key == "" {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.sweepLocked()
+	if _, ok := g.held[key]; !ok {
+		return false
+	}
+	// Re-stamped from NOW, at the same moment the park's own deadline is set, so
+	// the two cannot be skewed by however long the hook took.
+	g.held[key] = until
+	return true
+}
+
 // release returns the slot keyed by handoff. Idempotent, because a handoff can be
 // settled by a claim, a release or an expiry and those paths do not coordinate.
 func (g *gate) release(key string) {

@@ -1440,3 +1440,131 @@ func (f ghostFactor) Verify(ctx context.Context, r *auth.Request) (auth.Contribu
 	}
 	return auth.Contribution{Method: "test", Subject: subject, IssuedAt: time.Now()}, nil
 }
+
+// A login that outlives its admission reservation must NOT park.
+//
+// The fourth schedule of the family, and the one that answered the shape
+// question. The reservation goes in before the login factor runs; the park
+// entry's own deadline is set inside it. With equal durations the slot's deadline
+// is necessarily EARLIER in absolute time than the entry's, so a hook slow enough
+// — a dial to an upstream that hangs is exactly that — came back to find its slot
+// lazily swept by another login's arrival, and parked anyway. The result was an
+// entry nothing accounted for: the budget under-counts, so more logins can park
+// than the cap allows. Lector r4 reproduced parked=1, held=0.
+//
+// Deterministic on a SHARED fake clock: the hook advances it past the reservation,
+// triggers the lazy sweep the way a real second login would (at the door), and
+// only then parks.
+func TestSSO_LoginOutlivingItsReservationCannotPark(t *testing.T) {
+	t.Parallel()
+
+	var clockMu sync.Mutex
+	now := time.Now()
+	shared := func() time.Time {
+		clockMu.Lock()
+		defer clockMu.Unlock()
+		return now
+	}
+	advance := func(d time.Duration) {
+		clockMu.Lock()
+		now = now.Add(d)
+		clockMu.Unlock()
+	}
+
+	var relMu sync.Mutex
+	var released []HandoffReason
+	sso, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: time.Minute, Clock: shared,
+		Release: func(_ *upstream, r HandoffReason) {
+			relMu.Lock()
+			released = append(released, r)
+			relMu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hOpt, mOpt := sso.Options()
+
+	store := token.NewMemStore(16)
+	tracker, err := auth.NewMemTracker(16, auth.Backoff{
+		Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginPolicy, err := PasswordPolicyExample(
+		ghostFactor{sso: sso}, tracker, contextualFactor{allow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = m.Shutdown(ctx)
+	})
+
+	// SSO's OWN OnLogin is used — not a stand-in — so the release path under test
+	// is the shipped one.
+	h, err := NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer:         token.NewIssuer(store),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m, HandlerLogger(nopLogger{}), hOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.now = shared
+	h.pending.now = shared
+
+	// The delay goes exactly where a slow hook puts it: after the reservation,
+	// before the park's insert. Only the TIMING is injected — the decision is still
+	// the real gate's, since inner is the commit hOpt installed.
+	inner := sso.commit
+	sso.commit = func(handoff string) bool {
+		advance(2 * h.pendingHold)
+		// Another login arriving is what reclaims the slot; the sweep is lazy, at
+		// the door, and pending() sweeps the same way enter() does.
+		if held := h.pending.pending(); held != 0 {
+			t.Errorf("%d slots held after the reservation lapsed", held)
+		}
+		return inner(handoff)
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+
+	if rec.Code == http.StatusOK {
+		t.Error("a login that outlived its admission reservation was allowed to " +
+			"park and got a ticket")
+	}
+	if n := sso.Len(); n != 0 {
+		t.Errorf("%d entries parked with 0 admission slots held: the budget now "+
+			"under-counts, so more logins can park than the cap allows", n)
+	}
+	if n := h.pending.pending(); n != 0 {
+		t.Errorf("%d admission slots held after the failed login", n)
+	}
+	// The value the factor allocated is still cleaned up.
+	relMu.Lock()
+	defer relMu.Unlock()
+	if len(released) != 1 || released[0] != LoginFailed {
+		t.Errorf("released %v, want one LoginFailed — a refused park must not leak "+
+			"the upstream session the factor already opened", released)
+	}
+	// And the ticket never became usable.
+	if _, err := token.NewFactor(store).Verify(context.Background(), &auth.Request{
+		Credentials: map[string]auth.Secret{token.DefaultScheme: auth.NewSecret("x")},
+	}); err == nil {
+		t.Error("an arbitrary ticket verified")
+	}
+}

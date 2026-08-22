@@ -97,6 +97,12 @@ type SSO[T any] struct {
 	// and then be told 503 (lector r2 on PR #14).
 	settle func(string)
 
+	// commit converts this login's admission reservation into an accounted slot,
+	// reporting whether the reservation was still alive. hold refuses to park when
+	// it is not: an entry with no slot accounting for it is a budget that
+	// under-counts, which is how more logins park than the cap allows.
+	commit func(string) bool
+
 	mu     sync.Mutex
 	cond   *sync.Cond
 	parked map[string]parkedEntry[T]
@@ -186,6 +192,16 @@ const SessionEnded HandoffReason = 3
 // LoginFailed says the login never completed at all, and the state exists only
 // because verification is the one place that holds the credential.
 const LoginFailed HandoffReason = 4
+
+// ErrAdmissionLapsed means a login took longer than its admission reservation.
+//
+// The reservation is taken before the login factor runs and covers the time that
+// factor spends verifying; a factor that outlives it — a dial to an upstream that
+// hangs, say — finds its place in the pending-login budget already reclaimed by
+// another login. The park then refuses the entry rather than holding state nothing
+// accounts for, so the login fails and the client may retry.
+var ErrAdmissionLapsed = errors.New("web: the login outlived its admission " +
+	"reservation, so its upstream state cannot be parked")
 
 // ErrNoUpstream means a session needs upstream state and there is no way to get
 // it: the attach parked none and no Provision is configured.
@@ -395,6 +411,16 @@ func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 				h.pending.release(handoff)
 			}
 		}
+		s.commit = func(handoff string) bool {
+			if h.pending == nil {
+				return true
+			}
+			// Stamped from the handler's clock at the moment of the park, so the
+			// slot's deadline cannot end up EARLIER in absolute time than the
+			// park's — which it necessarily was when the two were set at
+			// different moments with equal durations.
+			return h.pending.commit(handoff, h.now().Add(h.pendingHold))
+		}
 	}
 	mOpt := OnHandoffUnused(func(handoff string, r HandoffReason) {
 		s.Release(handoff, r)
@@ -573,6 +599,16 @@ func (s *SSO[T]) hold(handoff string, v T) error {
 		s.mu.Unlock()
 		s.releaseAll(stale, Expired)
 		return errors.New("web: this handoff is already parked")
+	}
+	// COMMIT BEFORE INSERT. The reservation was taken before the login factor ran;
+	// if it has since lapsed there is no slot accounting for this entry, and an
+	// unaccounted entry is how the budget comes to allow more parked logins than
+	// its cap. Refusing here is what makes establishment atomic: the entry exists
+	// only if a slot accounts for it.
+	if s.commit != nil && !s.commit(handoff) {
+		s.mu.Unlock()
+		s.releaseAll(stale, Expired)
+		return ErrAdmissionLapsed
 	}
 	// The timer is what makes the expiry real without a consumer's ticker. It is
 	// armed while the entry is in the map and stopped by whatever removes it, so a

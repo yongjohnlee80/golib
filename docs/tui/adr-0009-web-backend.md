@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 24)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 25)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -13,7 +13,9 @@
   lifecycle defects lector's r1 review of PR #14 found (§2.12.8), and **rev 23
   (2026-08-22)** the two concurrency boundaries r2 found still false (§2.12.9), and **rev 24
   (2026-08-22)** the ordering hole r3 found between parking and leasing
-  (§2.12.10); **awaiting lector r4 and not yet released**. See Review history. Lands on `tui-web`.)
+  (§2.12.10), and **rev 25 (2026-08-22)** the establishment atomicity r4 found
+  between the reservation and the park (§2.12.11); **awaiting lector r5 and not yet
+  released**. See Review history. Lands on `tui-web`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -880,8 +882,9 @@ that — which is now how they are tested.
 
 #### 2.12.10 The ghost slot: order of establishment (rev 24)
 
-Lector's r3 found the third and last window of this family, and it is the smallest
-and most instructive of them.
+Lector's r3 found the third window of this family — not the last, as this section
+originally claimed; r4 found a fourth (§2.12.11), and the claim was exactly the
+kind of prediction this ADR has no business making.
 
 `ServeLogin` installed the keyed admission lease AFTER calling the hook that parks.
 But a parked entry can be settled the instant it exists — by its own expiry timer,
@@ -905,7 +908,7 @@ question, and in every one the code contained a correct-looking operation whose
 correctness depended on when it ran relative to something else. The generalisation
 worth keeping is that "where" is not a design decision for a concurrent handoff —
 "when, relative to what" is — and a claim of that shape is only worth as much as a
-test that pauses the other side. All three now have one.
+test that pauses the other side. Each now has one.
 
 Two narrower corrections from the same round. `Close`'s doc claimed nothing this
 type allocated is outstanding once it returns; that is false for state a session
@@ -913,6 +916,52 @@ already claimed, which the session releases when it ends — possibly later. It 
 says what it actually collects (parked entries, in-flight provisioning) and why the
 [Manager] must be drained first. And the README still described the browser matrix
 as two-engines-unrun in a section next to the one recording all three green.
+
+#### 2.12.11 Establishment must be atomic, not merely ordered (rev 25)
+
+r4 asked the question the previous three rounds had been circling, and answered
+it: the park is the right settlement owner and one-way `leased` is correct after a
+successful promotion, but **two independently timed maps joined by callbacks do not
+provide atomic establishment or cancellation.**
+
+The defect. The admission reservation is taken before the login hook runs; the park
+entry's own deadline is set inside it. With equal default durations the slot's
+deadline is therefore *necessarily earlier in absolute time* than the entry's. A
+hook slow enough to outlive its reservation — a dial to an upstream that hangs is
+exactly that shape — came back to find its slot lazily reclaimed at the door by
+another login, and parked anyway. The entry then existed with nothing accounting
+for it, so the budget under-counted and more logins could park than the cap allows.
+Lector's probe: `parked=1, held=0`. And `OnLogin` had no lease token or context by
+which a late callback could discover that it had been cancelled.
+
+The repair is a **commit boundary at the point of insert**. `gate.commit` re-stamps
+a keyed slot's deadline and reports whether the slot is still there; `SSO.hold`
+calls it under the park's own mutex *before* inserting, and refuses with
+[ErrAdmissionLapsed] when it returns false. The entry therefore exists only if a
+slot accounts for it — atomic in the only sense that matters here — and the
+re-stamp happens at the same moment the park's deadline is set, from the same
+clock, which removes the absolute-time skew that made the window reachable at all.
+The value the factor already allocated is released on that path, so a refused park
+does not leak the upstream session.
+
+**Where the enforcement had to live, and why not in the handler.** My first attempt
+put the commit in `ServeLogin` after the hook returned, and it broke a legitimate
+case immediately: an absent key there is AMBIGUOUS — either the reservation lapsed
+(bad) or the entry was parked and then legitimately settled during the hook (fine,
+nothing to account for). The handler cannot distinguish those; only the code doing
+the insert can, because only it knows the entry exists at that instant. So the
+handler's post-hook step is an advisory re-stamp, and `OnLogin`'s contract now
+states plainly that the reservation covers the hook's duration, that a consumer
+parking by hand should keep it short, and that [SSO] is the version that makes the
+pair atomic.
+
+**Four rounds, four schedules.** A slot never returned; returned too early;
+established too late; established without checking it still existed. The through
+line is not carelessness about locking — every one of these had correct locking.
+It is that I kept describing a *step* and calling it a guarantee, when the property
+being claimed was always about a *pair* of steps and the interval between them. The
+fourth is the clearest case: `hold` was correct, `reserve` was correct, and the
+composition was not, because nothing tied the two together.
 
 ### 2.13 Peer binding (rev 19)
 
@@ -1216,6 +1265,27 @@ decisions:
   sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
+
+- **rev 25 (2026-08-22, jarvis — establishment atomicity from lector r4 on PR #14).**
+  One must-fix, and the answer to the shape question I had asked in r3: the design
+  is right — the park owns settlement, one-way `leased` is correct — but two
+  independently timed maps joined by callbacks give no atomic establishment. A
+  login slow enough to outlive its admission reservation parked anyway, leaving an
+  entry nothing accounted for (`parked=1, held=0`). `SSO.hold` now commits the
+  reservation before inserting and refuses with `ErrAdmissionLapsed` otherwise.
+  §2.12.11 has the detail.
+
+  Two things I want kept. First, my initial fix put the commit in the handler after
+  the hook, and it broke a legitimate case on the first run: an absent key there
+  cannot distinguish "the reservation lapsed" from "the entry was parked and then
+  legitimately settled during the hook". The enforcement belongs where the
+  knowledge is. Second, the test I first wrote for it replaced SSO's own `OnLogin`
+  with a stand-in and therefore did not exercise the shipped release path — it
+  failed for that reason, which is the good outcome. It now uses the real hook and
+  injects only the timing.
+
+  Also revised §2.12.10's claim that r3's window was "the third and last" of the
+  family, at lector's request. It was the third.
 
 - **rev 24 (2026-08-22, jarvis — the ordering hole from lector r3 on PR #14).**
   One must-fix: the admission lease was established after the park entry it
