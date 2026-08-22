@@ -1,0 +1,81 @@
+# ADR-0009 §2.9 requires a real Chromium/Firefox/WebKit run as a RELEASE GATE.
+#
+# It is a required check rather than an optional job because the capture-element
+# text machine depends on behaviours the specs decline to promise, and synthetic
+# dispatch is exactly what would hide a divergence. A suite that skips everywhere
+# cannot satisfy an acceptance criterion.
+name: browser matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'tui/web/**'
+      - '.github/workflows/browser-matrix.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Every engine runs even when one fails: a divergence in WebKit is
+      # information, and cancelling the others hides it.
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tui/web/browsertest/package.json
+
+      - name: install harness
+        working-directory: tui/web/browsertest
+        run: npm install --no-audit --no-fund
+
+      - name: install ${{ matrix.browser }}
+        working-directory: tui/web/browsertest
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: build the fixture server
+        run: go build -o /tmp/webtui-fixture ./tui/web/browsertest/fixture
+
+      - name: run ${{ matrix.browser }}
+        working-directory: tui/web/browsertest
+        run: npx playwright test --project=${{ matrix.browser }}
+
+      - name: upload traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trace-${{ matrix.browser }}
+          path: tui/web/browsertest/test-results/
+          retention-days: 7
+
+  # A single job the branch protection rule can require, so adding an engine to
+  # the matrix does not mean editing the protection settings.
+  gate:
+    name: browser matrix (required)
+    runs-on: ubuntu-latest
+    needs: matrix
+    if: always()
+    steps:
+      - name: verify every engine passed
+        run: |
+          if [ "${{ needs.matrix.result }}" != "success" ]; then
+            echo "::error::the browser matrix did not pass on every engine;" \
+                 "ADR-0009 §2.9 makes this a release gate"
+            exit 1
+          fi

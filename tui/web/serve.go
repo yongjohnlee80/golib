@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/logger"
+	"github.com/yongjohnlee80/golib/server"
 	golibhttp "github.com/yongjohnlee80/golib/server/http"
 	"github.com/yongjohnlee80/golib/server/ws"
 )
@@ -68,16 +69,30 @@ func (h *Handler) Mount(srv *golibhttp.Server) {
 		// visits could POST a guess.
 		srv.Handle("POST "+h.loginPath, h.Guard(http.HandlerFunc(h.ServeLogin)))
 	}
-	srv.Handle("GET "+h.wsPath, h.Guard(ws.Handler(
-		srv.Sessions(),
+	srv.Handle("GET "+h.wsPath, h.Guard(h.WebSocketHandler(srv.Sessions())))
+}
+
+// WebSocketHandler builds the upgrade handler for the attach endpoint.
+//
+// Exported so a caller composing into their own server gets the SAME wiring
+// [Handler.Mount] uses — the read limit and the origin allowlist come from the
+// validated [Config] rather than being restated by hand, which is the mistake
+// this method exists to prevent.
+//
+// It is NOT guarded. Wrap it in [Handler.Guard], as Mount does: the handshake
+// controls must run before the upgrade, and a caller who forgets gets a 101 for a
+// request that should have had a 403.
+func (h *Handler) WebSocketHandler(reg *server.Registry) http.Handler {
+	return ws.Handler(
+		reg,
 		h.ServeWS,
 		ws.ReadLimit(h.limits.MaxMessage),
-		// The allowlist is enforced by Guard above, before the upgrade. It is
-		// ALSO passed here so server/ws's own same-origin default cannot admit
+		// The allowlist is enforced by Guard before the upgrade. It is ALSO
+		// passed here so server/ws's own same-origin default cannot admit
 		// something the config does not name: two independent checks agreeing is
 		// the point, not redundancy.
 		ws.InsecureAllowOrigins(originHosts(h.cfg.AllowedOrigins)...),
-	)))
+	)
 }
 
 // Serve builds the listener FROM the validated config and serves until ctx ends.

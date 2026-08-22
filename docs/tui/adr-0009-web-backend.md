@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 16)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 17)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -601,11 +601,36 @@ optionally `tui/examples/webdemo`.
 
 Acceptance criteria:
 
-1. `tui/examples/demo` — **unchanged source** — runs in a browser via
-   `tui.NewApp(root, tui.WithBackend(web.New(...)))`: renders, accepts
+1. The demo's component tree — **unchanged component logic** — runs in a browser
+   via `tui.NewApp(root, tui.WithBackend(web.New(...)))`: renders, accepts
    keystrokes, repaints, exits cleanly.
-2. `git diff --stat` shows **no modifications** under `tui/` outside the new
-   `tui/web/` package (plus docs/examples). Mechanically checked.
+
+   > **AMENDED (r7, awaiting Johno's acceptance).** This criterion said
+   > "unchanged **source**". That could not be satisfied as written: the tree
+   > lived in `package main`, which Go cannot import, so no second binary could
+   > ever have driven it. Implementation therefore extracted it verbatim to
+   > `tui/examples/demoapp` — component logic untouched, only the package clause
+   > and the constructor's visibility changed — and its own interaction script
+   > moved with it and still passes against `tui.TestBackend`.
+   >
+   > The criterion is amended to match what was done rather than left describing
+   > something impossible. Flagging it explicitly because this is an ACCEPTED ADR
+   > and narrowing an accepted criterion is Johno's call, not mine: if he would
+   > rather the demo were untouched, the honest alternative is to drop this
+   > criterion and rely on `webdemo`'s own tree plus the `TestBackend`/`web`
+   > parity test.
+2. `git diff --name-only main -- tui/` shows changes ONLY under `tui/web/` and
+   `tui/examples/`. Mechanically checked:
+   `git diff --name-only main -- tui/ | grep -vc '^tui/web/\|^tui/examples/'`
+   must print `0`.
+
+   > **CORRECTED (r7).** Earlier text said the diff excluding `tui/web/` alone was
+   > empty. It is not — the extraction touches five paths under `tui/examples/`,
+   > which this criterion always permitted in its parenthetical but which the
+   > stated command did not exclude. The command printed those five paths while
+   > the prose claimed it printed nothing, and I had run a DIFFERENT command
+   > (excluding both) to verify it. Stating a check whose output contradicts the
+   > claim beside it is worse than stating no check.
 3. A scripted sequence of `Flush` calls renders to byte-identical HTML across
    runs (golden test), and only dirty rows are transmitted.
 4. **Divergence test (the rev-0 defect, pinned).** With the client's reader
@@ -733,6 +758,44 @@ decisions:
 
 ## Review history
 
+- **implementation r7 full-PR (2026-08-22, lector — `change_requested`; three
+  must-fixes).** The production implementation was approved in substance. The
+  blockers were about the release gate and about claims that had drifted.
+
+  1. **The browser matrix did not merely remain unrun — it did not exist.** No
+     harness, no CI config, zero check runs. I had been describing an unrun gate
+     as though the gate were built, which is a materially different thing from
+     what §2.9 requires. Built: `tui/web/browsertest` drives real engines through
+     Playwright against a REAL `tui/web` server (a fixture whose component records
+     every `tui.Event` and exposes the log, so a browser test can assert the exact
+     stream an interaction produced), plus
+     `.github/workflows/browser-matrix.yml` with a single required check that
+     fails unless every engine passes.
+
+     **Chromium: 16/16 passing.** Firefox and WebKit remain unrun, so **the gate
+     is still not satisfied** and `browsertest/RESULTS.md` says so in those words.
+
+     The first real-engine run immediately justified itself by finding two things
+     no Go test could: an empty event log encoded as JSON `null` rather than `[]`,
+     which turned every "emits nothing" assertion — the majority of the §2.9
+     cases — into a TypeError instead of a pass; and `KeyEvent.Kind` being omitted
+     when zero, so "absent" means `KeyPress`. Both were harness defects. It found
+     no product defect in the text machine, which is evidence and not proof.
+
+  2. **Two accepted claims had drifted from the code.** Criterion 1 said
+     "unchanged **source**", which could never have been satisfied as written —
+     the tree was in `package main`, which Go cannot import — so it is amended to
+     "unchanged component logic", flagged as needing Johno's acceptance because
+     narrowing an accepted criterion is his call. And criterion 2's stated command
+     excluded only `tui/web/` while claiming an empty result; it prints five
+     `tui/examples/` paths, and the command I had actually run to verify excluded
+     both. Stating a check whose output contradicts the claim beside it is worse
+     than stating no check.
+
+  3. The live PR description still carried the retracted "origin-bound" wording,
+     the false criterion-2 command, and work listed as outstanding that was
+     already done.
+
 - **implementation r6 amendments + criterion 1 and 12 completed (2026-08-22).**
   Lector approved the r6 delta with amendments: four stale duplicate claims, all
   cases of a retraction I had made in one file and left standing in another. A
@@ -740,7 +803,8 @@ decisions:
   `login_test.go`, and two places in this history.
 
   **Criterion 12 — the seam report — is written**, in `tui/web/README.md`. The
-  seam held: nothing under `tui/` outside the new package changed, mechanically
+  seam held: nothing under `tui/` changed outside the new package and the
+  permitted `tui/examples/` paths, mechanically
   verified. Two costs, both in the contract's SILENCE rather than its shape —
   `Err()` conflates a transport failure with a backend failure (which is exactly
   how the r2 detach-window defect happened), and `Flush` says nothing about
