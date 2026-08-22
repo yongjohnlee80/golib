@@ -365,3 +365,57 @@ func TestScaffold_SessionFactoryPanicIsIsolated(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 }
+
+// slowLogger models any real sink: a file, a socket, a syslog daemon. Writing a
+// record takes time, and that time is what exposes an ordering bug the fast
+// in-memory sink of the test above can only expose intermittently.
+type slowLogger struct {
+	delay time.Duration
+	n     atomic.Int32
+}
+
+func (l *slowLogger) Log(s logger.Severity, _ any) {
+	if s != logger.SeverityError {
+		return
+	}
+	time.Sleep(l.delay)
+	l.n.Add(1)
+}
+
+// A graceful shutdown must not be able to COMPLETE before a panicking
+// connection's record is written.
+//
+// Run returning is normally followed by the process exiting, so a drain that
+// finishes first loses the only account of why the connection died — and loses it
+// precisely when an operator is looking for it. serveConn's recovery defer
+// therefore logs before it unregisters, since the drain is what waits on the
+// registry.
+//
+// The slow sink is what makes this deterministic rather than a race: with the
+// unregister first, stop() returns while the record is still being written.
+func TestScaffold_PanicIsLoggedBeforeShutdownCompletes(t *testing.T) {
+	t.Parallel()
+	entered := make(chan struct{})
+	lg := &slowLogger{delay: 150 * time.Millisecond}
+	s := NewScaffold(func(_ context.Context, conn net.Conn) {
+		defer conn.Close()
+		close(entered)
+		panic("kaboom")
+	}, ScaffoldAddr("127.0.0.1:0"), ScaffoldLogger(lg))
+	stop := runScaffold(t, s)
+
+	c, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	<-entered // the handler is inside, so the session is registered
+
+	if err := stop(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if lg.n.Load() == 0 {
+		t.Error("the drain completed before the panic record was written — after Run " +
+			"returns the process usually exits, so the record is simply lost")
+	}
+}

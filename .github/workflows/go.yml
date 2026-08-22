@@ -1,0 +1,49 @@
+# The Go gate: build, vet, gofmt and the race-enabled test suite.
+#
+# It exists because until now the only CI this repository had was the browser
+# matrix, so "check CI before tagging" could say nothing about the Go code — and
+# two flaky tests (a scaffold shutdown ordering bug and an rpc test that asserted
+# off the wrong signal) sat in main precisely because nothing ran the suite more
+# than once.
+name: go
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: build, vet, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite these files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
+
+      # -count=2 on purpose: a suite run once is a suite whose flakes are
+      # someone else's problem later. Two runs in one job is the cheapest
+      # pressure that catches the common ordering races.
+      - name: test
+        run: go test -race -count=2 -timeout 20m ./...

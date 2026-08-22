@@ -211,13 +211,25 @@ func TestClientNotificationsOrderAndReentrancy(t *testing.T) {
 	var mu sync.Mutex
 	var order []int64
 	nested := make(chan error, 1)
+	// Signalled when the SECOND notification lands. The reentrant call completing
+	// says nothing about that: it completes inside the FIRST handler, which has not
+	// even returned yet, so asserting the order off `nested` alone was a race that
+	// failed about one run in twenty.
+	both := make(chan struct{}, 1)
 	cliCh := make(chan *rpc.Client, 1) // hands the client to the callback race-free
 	var once sync.Once
 
 	c := dialClient(t, addr, rpc.OnNotification(func(method string, params []any) {
 		mu.Lock()
 		order = append(order, params[0].(int64))
+		n := len(order)
 		mu.Unlock()
+		if n == 2 {
+			select {
+			case both <- struct{}{}:
+			default:
+			}
+		}
 		once.Do(func() {
 			// Reentrancy: a notification handler may Call.
 			cli := <-cliCh
@@ -236,6 +248,12 @@ func TestClientNotificationsOrderAndReentrancy(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("reentrant call never completed")
+	}
+	select {
+	case <-both:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the second notification was never delivered — a handler that " +
+			"reenters the client must not stall the dispatch behind it")
 	}
 	mu.Lock()
 	defer mu.Unlock()
