@@ -161,10 +161,15 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	// gate.hold. The previous version simply stopped returning the slot on a
 	// successful login and nothing ever gave it back, so the ninth login 503'd
 	// forever (lector r1 on PR #14).
-	handedOff := false
+	//
+	// leased is one-way: once a handoff owns this slot the KEY is the sole unit of
+	// accounting, and gate.release is idempotent per key. Flipping it back would
+	// let the deferred leave() decrement a slot another request had meanwhile
+	// taken.
+	leased := false
 	if h.pending != nil {
 		defer func() {
-			if !handedOff {
+			if !leased {
 				h.pending.leave()
 			}
 		}()
@@ -218,6 +223,20 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	// only the ticket holder can compute it (§2.12.1).
 	handoff := HandoffID(secret.Reveal())
 	if h.onLogin != nil {
+		// THE LEASE GOES IN FIRST, before the hook that parks.
+		//
+		// A parked entry can be settled the instant it exists — by its own expiry
+		// timer, by a Sweep, by a concurrent Close. If that settle lands before the
+		// lease is installed it finds no key and does nothing, and the lease
+		// installed a moment later is a ghost: no park entry will ever settle it, so
+		// it sits on the budget until the backstop expiry. Lector r3 on PR #14
+		// reproduced exactly that — parked=0, held=1.
+		//
+		// Installing first inverts the race harmlessly: a settle that arrives early
+		// finds the key and returns the slot, and the rollback below is idempotent.
+		if h.pending != nil {
+			leased = h.pending.hold(handoff, h.now().Add(h.pendingHold))
+		}
 		if err := h.onLogin(handoff, identity, stash); err != nil {
 			// The caller could not record the login, so the login did NOT succeed.
 			// Returning the ticket anyway would hand out a credential for state
@@ -228,16 +247,23 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 				logger.Warning(h.log, rerr, sessionAudit{Kind: "login-denied",
 					Subject: identity.Subject, Reason: "ticket revoke failed"})
 			}
+			// The hook failed, so nothing is parked and nothing will ever settle
+			// this handoff: return the lease here. Idempotent — a settle may already
+			// have returned it — and `leased` deliberately stays true so the
+			// deferred leave() cannot decrement a second time.
+			if leased {
+				h.pending.release(handoff)
+			}
 			logger.Warning(h.log, err, sessionAudit{Kind: "login-denied",
 				Subject: identity.Subject, Reason: "handoff not recorded"})
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		// The hook took the stashed value, so a handoff now owns state and the
-		// admission slot follows it. A hook that took nothing parked nothing:
-		// there is no handoff to settle, so the slot goes back with the request.
-		if stash.claimed() && h.pending != nil {
-			handedOff = h.pending.hold(handoff, h.now().Add(h.pendingHold))
+		// A hook that took nothing parked nothing — the stock auth/password factor
+		// cannot stash — so no settle will ever come for this handoff and the lease
+		// goes back now rather than waiting out the backstop.
+		if leased && !stash.claimed() {
+			h.pending.release(handoff)
 		}
 	}
 	logger.Info(h.log, sessionAudit{Kind: "login", Subject: identity.Subject, ID: attemptID})

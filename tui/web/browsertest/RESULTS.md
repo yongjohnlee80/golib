@@ -82,8 +82,10 @@ Both were real, and neither was findable from Go:
    knowing before someone reads the log and concludes a key had no kind.
 
 Neither is a product defect, which is itself informative: the first real-engine
-run of the text machine found nothing wrong with the text machine. That is
-evidence, not proof — two engines remain.
+run of the text machine found nothing wrong with the text machine. The other two
+engines have since run, and the third harness defect they turned up (the paste
+dispatch, above) was not a product defect either — so the count across all three
+engines is **three harness defects, zero product defects**.
 
 ## Local run log
 
