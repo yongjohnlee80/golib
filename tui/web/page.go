@@ -178,6 +178,9 @@ type Handler struct {
 	// is testable without a 30-second wait.
 	grace time.Duration
 	loop  *sessionLoop
+	// now is the clock the admission gate ages its keyed slots by. Injectable so
+	// a test can prove the expiry without waiting out a ticket's lifetime.
+	now func() time.Time
 }
 
 // HandlerOption configures a [Handler].
@@ -298,7 +301,14 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 		}
 	}
 	h.limits = h.limits.normalize()
+	if h.now == nil {
+		h.now = time.Now
+	}
 	h.pending = newGate(h.maxPendingLogins)
+	h.pending.now = h.now
+	// The Manager is what learns a handoff has been claimed or abandoned, and the
+	// gate is what holds the slot: this is the wire between them.
+	mgr.settle = h.pending.release
 	// Limits.QueueDepth is the single source of the event queue's capacity.
 	// It previously said 1024 while Backend defaulted to 256 and nothing read
 	// the field, so the documented limit and the real one were different numbers

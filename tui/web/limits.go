@@ -194,18 +194,29 @@ func (o *overload) clear() { o.since = time.Time{} }
 // REFUSED rather than queued. Queueing would move the unbounded waiting room one
 // level down instead of removing it, and a client that has to wait to be let in
 // has no way to tell that from a hung server.
+// A slot is either ANONYMOUS — held for the duration of one request — or KEYED,
+// held by a parked login handoff that outlives its request. A keyed slot is
+// returned when its handoff settles, and expires on its own if it never does: a
+// login whose ticket is never presented cannot be settled by anyone, so without an
+// expiry the slot would be lost for the process's lifetime (lector r1 on PR #14
+// reproduced exactly that — the ninth login 503'd forever).
 type gate struct {
-	mu  sync.Mutex
-	n   int
-	max int
+	mu   sync.Mutex
+	n    int
+	max  int
+	held map[string]time.Time // handoff -> when its keyed slot expires
+	now  func() time.Time
 }
 
-func newGate(max int) *gate { return &gate{max: max} }
+func newGate(max int) *gate {
+	return &gate{max: max, held: make(map[string]time.Time), now: time.Now}
+}
 
-// enter takes a slot, reporting whether one was available.
+// enter takes an anonymous slot, reporting whether one was available.
 func (g *gate) enter() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.sweepLocked()
 	if g.n >= g.max {
 		return false
 	}
@@ -213,7 +224,7 @@ func (g *gate) enter() bool {
 	return true
 }
 
-// leave returns a slot. Safe to call once per successful enter.
+// leave returns an anonymous slot. Safe to call once per successful enter.
 func (g *gate) leave() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -222,9 +233,63 @@ func (g *gate) leave() {
 	}
 }
 
+// hold converts this request's anonymous slot into one keyed by handoff, so the
+// caller must NOT also call leave.
+//
+// It reports whether the transfer happened: an empty key, or a key already
+// holding a slot, leaves the caller owning an anonymous slot to return.
+func (g *gate) hold(key string, until time.Time) bool {
+	if key == "" {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, dup := g.held[key]; dup {
+		return false
+	}
+	g.held[key] = until
+	return true
+}
+
+// release returns the slot keyed by handoff. Idempotent, because a handoff can be
+// settled by a claim, a release or an expiry and those paths do not coordinate.
+func (g *gate) release(key string) {
+	if key == "" {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, ok := g.held[key]; !ok {
+		return
+	}
+	delete(g.held, key)
+	if g.n > 0 {
+		g.n--
+	}
+}
+
+// sweepLocked drops keyed slots whose handoff can no longer be claimed. Lazy on
+// purpose: the only moment the occupancy matters is when someone wants in, so a
+// timer would buy nothing a check at the door does not.
+func (g *gate) sweepLocked() {
+	if len(g.held) == 0 {
+		return
+	}
+	now := g.now()
+	for k, exp := range g.held {
+		if now.After(exp) {
+			delete(g.held, k)
+			if g.n > 0 {
+				g.n--
+			}
+		}
+	}
+}
+
 // pending reports the current occupancy, for tests and a metric.
 func (g *gate) pending() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.sweepLocked()
 	return g.n
 }

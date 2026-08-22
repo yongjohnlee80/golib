@@ -156,12 +156,15 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "busy", http.StatusServiceUnavailable)
 		return
 	}
-	parked := false
+	// The slot this request holds. It stays anonymous unless a handoff ends up
+	// owning it, in which case whoever settles that handoff returns it — see
+	// gate.hold. The previous version simply stopped returning the slot on a
+	// successful login and nothing ever gave it back, so the ninth login 503'd
+	// forever (lector r1 on PR #14).
+	handedOff := false
 	if h.pending != nil {
 		defer func() {
-			// Released unless a handoff was actually parked. A login that failed,
-			// or whose response never got built, must not hold a slot.
-			if !parked {
+			if !handedOff {
 				h.pending.leave()
 			}
 		}()
@@ -187,6 +190,15 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		authReq.Metadata["Origin"] = v
 	}
 
+	// Anything the credential check allocated is released unless it is parked.
+	//
+	// A factor allocates during Verify because that is the only place holding the
+	// credential, but the login can still fail afterwards — a later factor in the
+	// policy refuses, the ticket fails to mint, the park is full. Each of those
+	// used to return having allocated an upstream session nothing would ever close.
+	// A no-op once the value has been taken into a park.
+	defer stash.discard()
+
 	identity, err := h.cfg.LoginPolicy.Authenticate(ctx, authReq)
 	if err != nil {
 		h.denyLogin(w, r, attemptID, err)
@@ -209,13 +221,24 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		if err := h.onLogin(handoff, identity, stash); err != nil {
 			// The caller could not record the login, so the login did NOT succeed.
 			// Returning the ticket anyway would hand out a credential for state
-			// that does not exist.
+			// that does not exist — so the ticket is REVOKED before the refusal.
+			// Leaving it in the store left a usable credential behind a 503
+			// (lector r1 on PR #14).
+			if rerr := h.cfg.Issuer.Revoke(secret.Reveal()); rerr != nil {
+				logger.Warning(h.log, rerr, sessionAudit{Kind: "login-denied",
+					Subject: identity.Subject, Reason: "ticket revoke failed"})
+			}
 			logger.Warning(h.log, err, sessionAudit{Kind: "login-denied",
 				Subject: identity.Subject, Reason: "handoff not recorded"})
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		parked = true
+		// The hook took the stashed value, so a handoff now owns state and the
+		// admission slot follows it. A hook that took nothing parked nothing:
+		// there is no handoff to settle, so the slot goes back with the request.
+		if stash.claimed() && h.pending != nil {
+			handedOff = h.pending.hold(handoff, h.now().Add(loginTicketTTL))
+		}
 	}
 	logger.Info(h.log, sessionAudit{Kind: "login", Subject: identity.Subject, ID: attemptID})
 
