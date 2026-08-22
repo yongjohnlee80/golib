@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/yongjohnlee80/golib/logger"
 	golibhttp "github.com/yongjohnlee80/golib/server/http"
 	"github.com/yongjohnlee80/golib/server/ws"
 )
@@ -37,12 +38,21 @@ func (h *Handler) Guard(next http.Handler) http.Handler {
 	})
 }
 
-// Mount registers the page and the WebSocket endpoint on srv.
+// Mount registers the page and the WebSocket endpoint on srv, with [Handler.Guard]
+// composed onto every route.
 //
-// This is the only supported way to serve a WebTUI, because it is the only way
-// the validated [Config] and the listener are the same decision. A caller that
-// builds its own listener can still mount [Handler.Guard] and [Handler.ServeWS],
-// and the documented guarantee narrows accordingly: see [Handler.Serve].
+// # What this does NOT check
+//
+// It accepts a server somebody else built, and it does NOT inspect that server's
+// address or TLS settings. So mounting on a server bound to plaintext
+// 0.0.0.0 succeeds even when the Config says loopback-plus-TLS: the routes are
+// safe, the BIND is the caller's. An earlier version of this comment said Mount
+// binds the validated config to the listener, which was simply untrue
+// (lector r2).
+//
+// [Handler.Serve] is the path where the validated Config and the listener are
+// the same decision. Use Mount when you are composing this into a larger server
+// and are taking responsibility for where it listens.
 func (h *Handler) Mount(srv *golibhttp.Server) {
 	srv.Get("/", h.ServePage)
 	if h.cfg.LoginPolicy != nil {
@@ -65,11 +75,14 @@ func (h *Handler) Mount(srv *golibhttp.Server) {
 
 // Serve builds the listener FROM the validated config and serves until ctx ends.
 //
-// The bind address and TLS settings that [Config.validate] checked are the ones
-// used here. Previously validate() inspected fields that nothing consumed, so a
-// config claiming loopback-plus-TLS could be mounted on a plaintext 0.0.0.0
-// listener and pass every check (lector r1) — the validation was describing an
-// intention rather than constraining anything.
+// This is the path where the §2.5 guarantees actually hold: the bind address and
+// TLS settings [Config.validate] checked are the ones used here, so a
+// non-loopback plaintext bind cannot happen. Previously validate() inspected
+// fields nothing consumed, so it described an intention rather than constraining
+// anything (lector r1).
+//
+// Prefer this over [Handler.Mount] unless you are deliberately composing into a
+// server whose bind you own.
 func (h *Handler) Serve(ctx context.Context) error {
 	opts := []golibhttp.Option{golibhttp.Addr(h.cfg.Addr)}
 	if h.cfg.TLS != nil {
@@ -80,12 +93,23 @@ func (h *Handler) Serve(ctx context.Context) error {
 
 	stopSweep := h.mgr.Start()
 	defer stopSweep()
+	var shutdownErr error
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownGrace)
 		defer cancel()
-		_ = h.mgr.Shutdown(shutdownCtx)
+		// NOT discarded. A Shutdown error means a session did not exit, which is
+		// exactly the guaranteed-teardown promise of §2.8 failing — swallowing it
+		// would hide a leaked App behind a clean-looking return (lector r2).
+		shutdownErr = h.mgr.Shutdown(shutdownCtx)
+		if shutdownErr != nil {
+			logger.Warning(h.log, shutdownErr, sessionAudit{Kind: "shutdown",
+				Reason: "sessions did not exit"})
+		}
 	}()
-	return srv.Run(ctx)
+	if err := srv.Run(ctx); err != nil {
+		return err
+	}
+	return shutdownErr
 }
 
 // shutdownGrace bounds how long sessions get to exit on shutdown.

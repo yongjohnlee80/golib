@@ -260,11 +260,20 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 		log:     h.log,
 		limits:  h.limits,
 		decoder: &decoder{},
+		pending: newGate(h.limits.MaxPending),
 	}
 	return h, nil
 }
 
-// ServeWS runs one WebSocket session. Wire it into ws.Handler.
+// ServeWS runs one WebSocket session.
+//
+// LOW-LEVEL. It performs the handshake checks itself as a second line of
+// defence, but it is meant to sit behind [Handler.Guard], which refuses before
+// the upgrade — reaching this function already means a 101 was sent. An earlier
+// comment said to wire it directly into ws.Handler, which invited exactly the
+// post-upgrade-check arrangement lector r1 flagged. [Handler.Mount] composes the
+// two correctly; use this directly only if you are replicating that composition
+// deliberately.
 func (h *Handler) ServeWS(ctx context.Context, s *ws.Session) {
 	if err := h.loop.serve(ctx, s, requestInfo{http: s.Request()}); err != nil {
 		logger.Info(h.log, protocolNote{What: "session", Reason: err.Error()})

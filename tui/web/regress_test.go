@@ -146,7 +146,7 @@ func TestRegress_DeliverRetriesUntilAccepted(t *testing.T) {
 	t.Parallel()
 	l, m := loopFor(t, testPolicy(t), nil, BackendOptions(EventQueue(1)))
 	l.limits = DefaultLimits().normalize()
-	l.limiter = newBucket(1e9, 1e9, nil)
+	limiter := newBucket(1e9, 1e9, nil)
 
 	s, err := m.Create(context.Background(), &auth.Identity{Subject: "alice"}, hello())
 	if err != nil {
@@ -170,7 +170,7 @@ func TestRegress_DeliverRetriesUntilAccepted(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := l.deliver(ctx, &fakeConn{}, s, tui.KeyEvent{Code: 'y'}); err != nil {
+	if err := l.deliver(ctx, &fakeConn{}, s, limiter, tui.KeyEvent{Code: 'y'}); err != nil {
 		t.Fatalf("deliver = %v, want the event to be waited for rather than dropped", err)
 	}
 	<-drained
