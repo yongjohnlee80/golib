@@ -2454,13 +2454,20 @@ func TestGate_RefusesASecondCommitOnItsOwn(t *testing.T) {
 	}
 }
 
-// A panicking publish must leave the slot UNCOMMITTED, because nothing was
-// published.
+// A panicking publish KEEPS the commitment, and the backstop reclaims the slot.
 //
-// The earlier panic test proved the lock was released and stopped there — which
-// left the slot committed to accounting for an entry that does not exist, the same
-// defect as a nil publisher (lector r6).
-func TestGate_PanickingPublishRollsBackTheCommitment(t *testing.T) {
+// This asserts the opposite of what it asserted one revision ago, and the reversal
+// is the point. Rolling the commitment back looked obviously right — nothing was
+// published, so nothing should be accounted for — but that reasoning holds only for
+// a callback that panics BEFORE it mutates. A consumer's callback can insert into
+// its own park and then panic, and this package cannot undo a write to a data
+// structure it does not own (lector r7 reproduced parked=1, committed=0 that way).
+//
+// The two errors are not symmetric, which is what settles it. Keeping a commitment
+// for an entry never written holds one slot until the backstop expiry — bounded,
+// self-healing. Dropping one for an entry that WAS written breaks the pending-login
+// cap and stays broken. So the accounting is preserved conservatively.
+func TestGate_PanickingPublishKeepsTheCommitmentConservatively(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
 	g := newGate(2)
@@ -2469,27 +2476,44 @@ func TestGate_PanickingPublishRollsBackTheCommitment(t *testing.T) {
 		t.Fatal("setup")
 	}
 
+	// The dangerous shape: the callback mutates and THEN panics.
+	externalPark := map[string]bool{}
 	func() {
-		defer func() { _ = recover() }()
-		g.commit("k", now.Add(2*time.Minute), func() { panic("consumer publish exploded") })
+		defer func() {
+			if rec := recover(); rec == nil {
+				t.Error("the panic did not propagate to the caller")
+			}
+		}()
+		g.commit("k", now.Add(2*time.Minute), func() {
+			externalPark["k"] = true
+			panic("consumer publish exploded after mutating its park")
+		})
 	}()
 
-	if g.committed("k") {
-		t.Error("the slot is committed after a publish that panicked: it accounts for " +
-			"an entry nobody wrote")
+	if !externalPark["k"] {
+		t.Fatal("the callback did not mutate: this test needs the mutating shape")
 	}
-	// The reservation itself survives, so the login route can still return it.
+	if !g.committed("k") {
+		t.Error("the commitment was dropped for an entry that WAS written, so the " +
+			"pending-login cap now under-counts permanently")
+	}
+
+	// The gate is not wedged — every other login goes through this lock.
+	done := make(chan bool, 1)
+	go func() { done <- g.enter() }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the gate is wedged after a panicking publish")
+	}
+
+	// And the slot is not held forever: the backstop reclaims it.
+	now = now.Add(3 * time.Minute)
 	if n := g.pending(); n != 1 {
-		t.Errorf("occupancy %d, want the reservation still held", n)
+		t.Errorf("occupancy %d after the backstop, want only the second enter's slot", n)
 	}
-	// And a retry is possible, because the commitment was rolled back rather than
-	// burned.
-	published := false
-	if !g.commit("k", now.Add(time.Minute), func() { published = true }) {
-		t.Error("the reservation could not be committed after a failed attempt")
-	}
-	if !published {
-		t.Error("the retry did not publish")
+	if g.committed("k") {
+		t.Error("the slot survived its backstop expiry")
 	}
 }
 
@@ -2575,4 +2599,119 @@ func TestStash_LateCommitAfterTheHookReturnsIsRefused(t *testing.T) {
 	if n := h.pending.pending(); n != 0 {
 		t.Errorf("%d admission slots held after a hook that parked nothing", n)
 	}
+}
+
+// The publishing capability must die with the HOOK, not with the request.
+//
+// `defer` in Go is function-scoped, so `defer stash.disarm()` inside the
+// `if h.onLogin != nil` block retired the capability when ServeLogin returned —
+// leaving it live through every path below, including the slow ones. Lector r7
+// reproduced it by blocking the error path inside Issuer.Revoke: a retained Stash
+// published successfully in that window, and the cleanup then released the slot,
+// leaving an entry with nothing accounting for it.
+//
+// This reproduces the same interval. A revoking store blocks until the test lets
+// it go, and the goroutine tries to publish while it is blocked — which is AFTER
+// the hook returned but BEFORE ServeLogin did.
+func TestStash_CapabilityDiesWithTheHookNotTheRequest(t *testing.T) {
+	t.Parallel()
+
+	revokeEntered := make(chan struct{})
+	releaseRevoke := make(chan struct{})
+	published := make(chan bool, 1)
+
+	store := &blockingRevokeStore{
+		MemStore: token.NewMemStore(16),
+		entered:  revokeEntered,
+		release:  releaseRevoke,
+	}
+	tracker, err := auth.NewMemTracker(16, auth.Backoff{
+		Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginPolicy, err := PasswordPolicyExample(
+		claimingFactor{subject: "alice", password: "pw"}, tracker,
+		contextualFactor{allow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = m.Shutdown(ctx)
+	})
+
+	h, err := NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer:         token.NewIssuer(store),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m, HandlerLogger(nopLogger{}), MaxPendingLogins(4),
+		OnLogin(func(_ string, _ *auth.Identity, st *Stash) error {
+			// A hook that keeps the Stash and fails, which sends the request down
+			// the revoke path.
+			go func() {
+				<-revokeEntered // the request is now inside Revoke
+				published <- st.CommitPark(func() {})
+			}()
+			return errors.New("the hook refuses, so the ticket must be revoked")
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	serveDone := make(chan struct{})
+	go func() {
+		h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+		close(serveDone)
+	}()
+
+	// The publish attempt happens while ServeLogin is still inside Revoke.
+	select {
+	case ok := <-published:
+		if ok {
+			t.Error("a retained Stash published after its hook returned but before " +
+				"the request did, so the entry has no admission slot accounting for it")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the late CommitPark never returned")
+	}
+	close(releaseRevoke)
+	<-serveDone
+
+	if rec.Code == http.StatusOK {
+		t.Error("a login whose hook refused returned a ticket")
+	}
+	if n := h.pending.pending(); n != 0 {
+		t.Errorf("%d admission slots held after a refused login", n)
+	}
+}
+
+// blockingRevokeStore holds the request inside Revoke, which is the window the
+// function-scoped disarm left open.
+type blockingRevokeStore struct {
+	*token.MemStore
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (s *blockingRevokeStore) Revoke(h token.Hash) error {
+	s.once.Do(func() {
+		close(s.entered)
+		<-s.release
+	})
+	return s.MemStore.Revoke(h)
 }
