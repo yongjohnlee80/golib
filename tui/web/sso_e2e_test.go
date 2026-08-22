@@ -2590,8 +2590,9 @@ func TestStash_LateCommitAfterTheHookReturnsIsRefused(t *testing.T) {
 	select {
 	case ok := <-published:
 		if ok {
-			t.Error("a goroutine published into the park after its hook had returned, " +
-				"so the entry has no admission slot accounting for it")
+			t.Error("a goroutine published into the park after its hook had returned: " +
+				"the login route has already decided what this handoff accounts for, " +
+				"so the entry it wrote can never be claimed")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the late CommitPark never returned")
@@ -2613,6 +2614,12 @@ func TestStash_LateCommitAfterTheHookReturnsIsRefused(t *testing.T) {
 // This reproduces the same interval. A revoking store blocks until the test lets
 // it go, and the goroutine tries to publish while it is blocked — which is AFTER
 // the hook returned but BEFORE ServeLogin did.
+//
+// The cost here is the same as in the panic case, and worth stating precisely: the
+// admission accounting stays consistent either way, because the login route returns
+// the slot on its way out. What a late publish buys is an upstream session for a
+// login that is about to be refused with its ticket revoked — so no client can ever
+// present it, and no factory can ever claim it.
 func TestStash_CapabilityDiesWithTheHookNotTheRequest(t *testing.T) {
 	t.Parallel()
 
@@ -2683,7 +2690,8 @@ func TestStash_CapabilityDiesWithTheHookNotTheRequest(t *testing.T) {
 	case ok := <-published:
 		if ok {
 			t.Error("a retained Stash published after its hook returned but before " +
-				"the request did, so the entry has no admission slot accounting for it")
+				"the request did: this login is on its way to a 503 with its ticket " +
+				"revoked, so nothing can ever claim that entry")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the late CommitPark never returned")
@@ -2721,8 +2729,15 @@ func (s *blockingRevokeStore) Revoke(h token.Hash) error {
 // The third attempt at one lifetime. `defer stash.disarm()` inside the block was
 // function-scoped and retired the capability when the request ended (r7); calling
 // disarm on the line after the hook skipped it whenever the hook panicked (r8),
-// which leaves the capability alive after the request unwinds — so a Stash retained
-// by the panicking hook can publish into the park with nothing accounting for it.
+// which leaves the capability alive after the request unwinds.
+//
+// What that costs is NOT an unaccounted entry — the keyed reservation survives the
+// unwind and is reclaimed by the backstop, so the accounting stays consistent
+// (lector r9 corrected an earlier version of this comment that said otherwise). It
+// is that a login which never delivered a ticket can still publish upstream state:
+// nothing will ever present that ticket, so nothing will ever claim the entry, and
+// the session it names sits open until the park's TTL. An abandoned login that
+// nevertheless logged someone in.
 //
 // The scope that matches the hook's call is an immediately-invoked function: the
 // defer fires on a normal return, an error return, and a panic, and on nothing else.
@@ -2794,7 +2809,9 @@ func TestStash_CapabilityDiesEvenIfTheHookPanics(t *testing.T) {
 	case ok := <-published:
 		if ok {
 			t.Error("a Stash retained by a panicking hook published after the request " +
-				"unwound, so the entry has no admission slot accounting for it")
+				"unwound: the login never delivered a ticket, so nothing will ever " +
+				"claim that entry and the upstream session it names stays open until " +
+				"the park's TTL")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the late CommitPark never returned")
