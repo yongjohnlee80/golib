@@ -1,7 +1,7 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 28)** — design accepted by Johno 2026-08-21;
-  **the rev 21-28 implementation is awaiting lector r8 and is NOT released.**
+- **Status:** **Accepted (rev 29)** — design accepted by Johno 2026-08-21;
+  **the rev 21-29 implementation is awaiting lector r9 and is NOT released.**
   Lands on `tui-web`.
   - **Design rounds (r1-r8, 2026-08-21):** approved by lector, accepted by Johno.
     r8's three amendments applied — a correctness defect in rev 0's frame
@@ -12,14 +12,14 @@
     throttle and allowlist stated as requirements".
   - **Rev 21 (2026-08-22):** `web.SSO` extended to every `golib/auth` mechanism
     (§2.12.7), on Johno's instruction.
-  - **Revs 22-28 (2026-08-22):** seven rounds of lector review on PR #14, each
+  - **Revs 22-29 (2026-08-22):** eight rounds of lector review on PR #14, each
     finding a defect in the *interval* around a step the previous round had made
     correct. §2.12.8 the lifecycle leaks (r1); §2.12.9 the two false concurrency
     boundaries (r2); §2.12.10 the ghost slot, established too late (r3); §2.12.11
     establishment atomicity (r4); §2.12.12 check-then-publish (r5); §2.12.13 the
     reusable public capability (r6); §2.12.14 the capability's lifetime and the
-    limits of rollback (r7). Read as a set they are one mistake made seven ways,
-    and §2.12.13 names it.
+    limits of rollback (r7); §2.12.15 the same lifetime, third attempt (r8). Read as
+    a set they are one mistake made eight ways, and §2.12.13 names it.
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -1119,6 +1119,34 @@ publishes under one lock — so a publish that ran at all ran while the key was
 present. The fence buys a settled answer rather than a racing one for the login
 route's next question. It is belt and braces, and the comment says so.
 
+#### 2.12.15 One lifetime, three attempts (rev 29)
+
+The capability's lifetime took three tries, and the two wrong answers are more
+instructive than the right one.
+
+| Attempt | Shape | Missed |
+| --- | --- | --- |
+| rev 27 | `defer stash.disarm()` inside the `if` block | `defer` is function-scoped, so it fired when the REQUEST ended — the capability stayed live through the slow error paths (r7) |
+| rev 28 | `disarm()` on the line after the hook | skipped entirely when the hook PANICS, so the capability outlives the unwind (r8) |
+| rev 29 | `func() { defer stash.disarm(); hookErr = h.onLogin(...) }()` | — the defer fires on a normal return, an error return, and a panic, and on nothing else |
+
+An immediately-invoked function is the scope that actually matches the hook's call.
+Both wrong answers now have a test, which is the part worth keeping: a fix whose
+predecessors are untested is a fix that can be quietly un-made.
+
+**And a reversal: the fence is gone.** Rev 28 had `disarm` wait for an attempt
+already in flight. r8's recommendation was to remove it, and the reasoning is one I
+should have reached myself, because I had the evidence: I could not write a control
+for it. The interleaving it appears to prevent is already impossible — `gate.commit`
+marks the slot and publishes under one lock, so a publish that ran at all ran while
+the key was present. What the fence actually bought was a consumer's slow publish
+blocking the login request from another goroutine, plus a `sync.Cond` allocation on
+every completed commit, in exchange for no new invariant.
+
+**A control you cannot write is evidence, not an inconvenience.** I noticed the
+missing control, reported it honestly, and still kept the code — treating "I can't
+test this" as a documentation problem rather than as the answer. It was the answer.
+
 ### 2.13 Peer binding (rev 19)
 
 **Optional, off by default.** A session may be bound to the peer address that
@@ -1421,6 +1449,18 @@ decisions:
   sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
+
+- **rev 29 (2026-08-22, jarvis — the same lifetime, third attempt, from lector r8).**
+  One must-fix: rev 28's `disarm()` on the line after the hook is skipped when the
+  hook panics, so the capability outlives the request's unwind. The scope that
+  matches the hook's call is an immediately-invoked function with a defer inside it.
+  Both wrong answers now have a control.
+
+  Also removed the `sync.Cond` fence added in rev 28, on r8's recommendation. The
+  lesson there is about me rather than the code: I had already noticed I could not
+  write a control for the fence and reported it as a caveat, when the missing control
+  WAS the answer. A defence that prevents an interleaving something else already
+  prevents, at the cost of consumer-controlled request blocking, is not diligence.
 
 - **rev 28 (2026-08-22, jarvis — the capability's lifetime and the limits of
   rollback, from lector r7 on PR #14).** Two must-fixes. `defer stash.disarm()` was

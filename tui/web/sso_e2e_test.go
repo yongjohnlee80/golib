@@ -2715,3 +2715,88 @@ func (s *blockingRevokeStore) Revoke(h token.Hash) error {
 	})
 	return s.MemStore.Revoke(h)
 }
+
+// A PANICKING hook must not leave the publishing capability alive.
+//
+// The third attempt at one lifetime. `defer stash.disarm()` inside the block was
+// function-scoped and retired the capability when the request ended (r7); calling
+// disarm on the line after the hook skipped it whenever the hook panicked (r8),
+// which leaves the capability alive after the request unwinds — so a Stash retained
+// by the panicking hook can publish into the park with nothing accounting for it.
+//
+// The scope that matches the hook's call is an immediately-invoked function: the
+// defer fires on a normal return, an error return, and a panic, and on nothing else.
+func TestStash_CapabilityDiesEvenIfTheHookPanics(t *testing.T) {
+	t.Parallel()
+
+	published := make(chan bool, 1)
+	var retained *Stash
+
+	store := token.NewMemStore(16)
+	tracker, err := auth.NewMemTracker(16, auth.Backoff{
+		Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginPolicy, err := PasswordPolicyExample(
+		claimingFactor{subject: "alice", password: "pw"}, tracker,
+		contextualFactor{allow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = m.Shutdown(ctx)
+	})
+
+	h, err := NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer:         token.NewIssuer(store),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m, HandlerLogger(nopLogger{}), MaxPendingLogins(4),
+		OnLogin(func(_ string, _ *auth.Identity, st *Stash) error {
+			retained = st
+			panic("the consumer's hook exploded")
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// net/http recovers a handler panic per request; here the test plays that part.
+	rec := httptest.NewRecorder()
+	func() {
+		defer func() {
+			if rec := recover(); rec == nil {
+				t.Error("the hook's panic did not propagate")
+			}
+		}()
+		h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+	}()
+
+	// The request has unwound. The retained Stash must be inert.
+	if retained == nil {
+		t.Fatal("the hook never ran")
+	}
+	go func() { published <- retained.CommitPark(func() {}) }()
+	select {
+	case ok := <-published:
+		if ok {
+			t.Error("a Stash retained by a panicking hook published after the request " +
+				"unwound, so the entry has no admission slot accounting for it")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the late CommitPark never returned")
+	}
+}

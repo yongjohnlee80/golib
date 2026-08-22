@@ -124,10 +124,6 @@ type Stash struct {
 	// may publish one entry, so a second call — including a recursive one from
 	// inside publish — must fail rather than publish twice or deadlock.
 	state stashCommitState
-	// cond lets disarm WAIT for an attempt already in flight, so retiring the
-	// capability is a fence rather than a request. Created on demand, because a
-	// zero-value Stash is a valid one.
-	cond *sync.Cond
 }
 
 // stashCommitState tracks the one permitted use of [Stash.CommitPark].
@@ -289,7 +285,6 @@ func (s *Stash) CommitPark(publish func()) bool {
 	defer func() {
 		s.mu.Lock()
 		s.state = stashSpent
-		s.waiterLocked().Broadcast()
 		s.mu.Unlock()
 	}()
 
@@ -315,31 +310,19 @@ func (s *Stash) disarm() {
 		return
 	}
 	s.mu.Lock()
-	// WAIT for an attempt already in flight, so disarm means what its name says: on
-	// return, nothing is publishing and nothing can start.
-	//
-	// Belt and braces rather than a fix, and worth being precise about: the unsafe
-	// interleaving it looks like it prevents — the login route deciding nothing was
-	// committed, and a publish landing afterwards — is already impossible, because
-	// gate.commit marks the slot committed and publishes under one lock, so a
-	// publish that runs at all ran while the key was present. What this buys is that
-	// the route's question has a settled answer rather than a racing one.
-	for s.state == stashBusy {
-		s.waiterLocked().Wait()
-	}
 	s.commit = nil
 	s.state = stashSpent
 	s.mu.Unlock()
 }
 
-// waiterLocked returns the condition variable, creating it on first use. Caller
-// holds s.mu.
-func (s *Stash) waiterLocked() *sync.Cond {
-	if s.cond == nil {
-		s.cond = sync.NewCond(&s.mu)
-	}
-	return s.cond
-}
+// It does NOT wait for an attempt already in flight, and that was a deliberate
+// reversal (lector r8). A fence looked like diligence and bought no invariant: the
+// interleaving it appears to prevent — the login route deciding nothing was
+// committed, and a publish landing afterwards — is already impossible, because
+// gate.commit marks the slot and publishes under one lock, so a publish that runs at
+// all ran while the key was present. What the fence DID buy was a consumer's slow
+// publish blocking the login request from another goroutine, plus an allocation on
+// every completed commit. I could not write a control for it, which was the tell.
 
 // StashFromContext returns the login request's slot, or nil outside one.
 //
