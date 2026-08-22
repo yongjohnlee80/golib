@@ -99,7 +99,7 @@ func (h *Handler) Serve(ctx context.Context) (err error) {
 	// the error I had just been told not to discard was discarded anyway
 	// (lector r3). errors.Join keeps both causes when the server also failed.
 	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownGrace)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), h.grace)
 		defer cancel()
 		// A Shutdown error means a session did not exit, which is exactly §2.8's
 		// guaranteed-teardown promise failing. Hiding it behind a clean return is
@@ -113,8 +113,8 @@ func (h *Handler) Serve(ctx context.Context) (err error) {
 	return srv.Run(ctx)
 }
 
-// shutdownGrace bounds how long sessions get to exit on shutdown.
-const shutdownGrace = 10 * time.Second
+// DefaultShutdownGrace bounds how long sessions get to exit when Serve returns.
+const DefaultShutdownGrace = 10 * time.Second
 
 // originHosts extracts the host portion of each allowed origin, which is the form
 // server/ws matches against.

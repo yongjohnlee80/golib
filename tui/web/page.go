@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"errors"
 
@@ -169,7 +170,10 @@ type Handler struct {
 	title     string
 	wsPath    string
 	loginPath string
-	loop      *sessionLoop
+	// grace bounds session teardown on Serve's exit. Injectable so the boundary
+	// is testable without a 30-second wait.
+	grace time.Duration
+	loop  *sessionLoop
 }
 
 // HandlerOption configures a [Handler].
@@ -199,6 +203,16 @@ func WSPath(p string) HandlerOption {
 // WithLimits overrides §2.9's resource limits. Zero fields keep their defaults.
 func WithLimits(l Limits) HandlerOption {
 	return func(h *Handler) { h.limits = l.normalize() }
+}
+
+// ShutdownGrace bounds how long sessions get to exit when [Handler.Serve]
+// returns. Defaults to [DefaultShutdownGrace].
+func ShutdownGrace(d time.Duration) HandlerOption {
+	return func(h *Handler) {
+		if d > 0 {
+			h.grace = d
+		}
+	}
 }
 
 // HandlerLogger sets the log sink. Defaults to logger.Nop{}.
@@ -241,6 +255,7 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 		title:     DefaultTitle,
 		wsPath:    DefaultWSPath,
 		loginPath: DefaultLoginPath,
+		grace:     DefaultShutdownGrace,
 	}
 	for _, o := range opts {
 		if o != nil {

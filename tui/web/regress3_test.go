@@ -135,32 +135,57 @@ func TestRegress3_PendingSlotIsReleasedAfterAuth(t *testing.T) {
 }
 
 // #3: `return shutdownErr` evaluated the variable before the deferred function
-// assigned it, so a failed shutdown returned nil — the error I had just been told
-// not to discard was discarded anyway.
+// assigned it, so a failed shutdown returned nil.
+//
+// This tests Handler.Serve, which is where the bug was. My r3 version called
+// Manager.Shutdown directly and so passed against BOTH the broken and the fixed
+// code — a test of the wrong boundary is a test that cannot fail (lector r4). The
+// grace is injected so the boundary is observable without a 30-second wait, and
+// the stubborn App is bounded rather than leaking a goroutine for the rest of the
+// run.
 func TestRegress3_ServeReturnsShutdownFailure(t *testing.T) {
 	t.Parallel()
-	// An App that ignores its context, so Shutdown cannot drain it.
-	m, err := NewManager(func(*Backend) Runner { return stubbornApp{} },
+
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) })
+	m, err := NewManager(func(*Backend) Runner { return &stubbornApp{stop: stop} },
 		ManagerLogger(nopLogger{}))
 	if err != nil {
 		t.Fatal(err)
 	}
+	h, err := NewHandler(Config{
+		// Port 0, so the listener binds an ephemeral port and the test does not
+		// depend on one being free.
+		Addr: "127.0.0.1:0", Policy: testPolicy(t),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m, HandlerLogger(nopLogger{}), ShutdownGrace(150*time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A session whose App ignores cancellation, so teardown cannot complete.
 	if _, err := m.Create(context.Background(), &auth.Identity{Subject: "alice"}, hello()); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
-	// Shutdown must report the session that would not exit.
-	if err := m.Shutdown(ctx); err == nil {
-		t.Fatal("Shutdown reported success for an App that never exits")
+	err = h.Serve(ctx)
+	if err == nil {
+		t.Fatal("Serve returned nil while a session refused to exit — a failed " +
+			"guaranteed-teardown was hidden behind a clean return")
+	}
+	if !strings.Contains(err.Error(), "did not exit") {
+		t.Errorf("err = %v, should name the sessions that did not exit", err)
 	}
 }
 
-type stubbornApp struct{}
+// stubbornApp ignores cancellation, which is what a buggy App does. It is
+// bounded by stop so it cannot outlive the test.
+type stubbornApp struct{ stop <-chan struct{} }
 
-func (stubbornApp) Run(context.Context) error {
-	// Deliberately ignores cancellation, which is what a buggy App does.
-	time.Sleep(30 * time.Second)
+func (s *stubbornApp) Run(context.Context) error {
+	<-s.stop
 	return nil
 }
 
@@ -298,5 +323,57 @@ func TestRegress3_PasswordHelperTakesNoUnreachableArms(t *testing.T) {
 		},
 	}); err != nil {
 		t.Errorf("the password path is broken: %v", err)
+	}
+}
+
+// r4 #1: the exported login handler performed no handshake check of its own, so
+// mounting it directly gave an unguarded login endpoint — a direct call with an
+// attacker Host and Origin minted a ticket for a correct password. The doc
+// comment claimed the route carried those controls; it did not.
+func TestRegress4_ServeLoginChecksTheHandshakeItself(t *testing.T) {
+	t.Parallel()
+	h, _ := loginHandler(t, "correct-horse", "alice")
+
+	hostile := []struct {
+		name         string
+		host, origin string
+	}{
+		{"attacker host and origin", "attacker.test", "https://attacker.test"},
+		{"attacker origin only", "tui.example.test", "https://attacker.test"},
+		{"attacker host only", "attacker.test", "https://tui.example.test"},
+		{"no origin", "tui.example.test", ""},
+	}
+	for _, c := range hostile {
+		t.Run(c.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/login",
+				strings.NewReader(`{"subject":"alice","password":"correct-horse"}`))
+			r.Host = c.host
+			if c.origin != "" {
+				r.Header.Set("Origin", c.origin)
+			}
+			r.RemoteAddr = "203.0.113.9:1"
+			rec := httptest.NewRecorder()
+			// Called DIRECTLY, with no Guard wrapper — the arrangement a caller
+			// gets by mounting the exported handler themselves.
+			h.ServeLogin(rec, r)
+
+			if rec.Code == http.StatusOK {
+				t.Fatalf("an unguarded direct call minted a ticket (body %q)", rec.Body.String())
+			}
+			if rec.Code != http.StatusForbidden {
+				t.Errorf("code = %d, want 403", rec.Code)
+			}
+			if strings.Contains(rec.Body.String(), "ticket") {
+				t.Error("the response carries a ticket")
+			}
+		})
+	}
+
+	// The control: a conforming direct call still works, so the check is on the
+	// handshake and not on being wrapped.
+	rec := httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"correct-horse"}`))
+	if rec.Code != http.StatusOK {
+		t.Errorf("a conforming direct call was refused: %d %s", rec.Code, rec.Body.String())
 	}
 }

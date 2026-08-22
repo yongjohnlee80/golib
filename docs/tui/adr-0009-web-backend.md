@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 13)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 14)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -238,18 +238,21 @@ p, err = auth.NewPolicy(auth.All(
 - The **ticket minted over the user's existing SSH session is the default**
   mechanism; a signed `ssh-keygen -Y sign` challenge is optional for users who
   cannot run the CLI themselves. mTLS is the browser-native alternative.
-- **Password auth is PERMITTED but NOT RECOMMENDED (rev 9, Johno 2026-08-22 —
-  reverses rev 1's refusal).** `golib/auth`'s `password` factor may appear in a
-  WebTUI policy. It is documented as the weakest supported option, and the
-  reasons are specific to *this* consumer rather than general grumbling about
-  passwords:
+- **Password auth is PERMITTED, NOT RECOMMENDED, and is a TICKET MINTER rather
+  than an attach mechanism (rev 9 permitted it; rev 11 reshaped it; this is the
+  normative statement).** A password factor belongs on `Config.LoginPolicy`. It
+  MUST NOT appear on `Config.Policy`, where it cannot be satisfied: the attach
+  protocol carries no password fields at all, so nothing can present one.
+
+  Why it is the weakest option, specific to *this* consumer rather than general
+  grumbling about passwords:
 
   - **What is behind the credential is a shell.** A network-reachable port whose
     only guard is a reusable secret is the classic mass-exploitation target;
-    every other accepted mechanism here fails closed against an attacker who has
-    only a password list.
+    every other accepted mechanism fails closed against an attacker holding only
+    a password list.
   - **No phishing resistance.** A lookalike page harvests a password and it keeps
-    working. A ticket is single-use and origin-bound, and mTLS and the SSHSIG
+    working. A ticket is single-use and origin-bound; mTLS and the SSHSIG
     challenge are bound to a key the page cannot exfiltrate.
   - **No replay resistance.** A password is long-lived and reusable by
     construction; the other three mechanisms are each spent, bound, or
@@ -257,23 +260,41 @@ p, err = auth.NewPolicy(auth.All(
 
   **Therefore, when password is enabled, these are REQUIREMENTS and not advice:**
 
-  1. Wrap it in `auth.Throttle` with a `Tracker` (ADR-0001 §2.6b). Per-subject
-     and per-source-address backoff is the only thing standing between a
-     reusable secret and an offline-speed online guessing attack.
-  2. Constrain it: `All(Leaf(ipallow), Leaf(throttledPassword))`. An IP allowlist
+  1. It goes on `Config.LoginPolicy`. `POST /login` authenticates it and mints a
+     **single-use, 30-second** ticket; the WebSocket then attaches with that
+     ticket. The invariant this buys is narrow and worth stating precisely: **a
+     reusable secret is not among the credentials the attach path will accept.**
+     (It is NOT that every attach presents a ticket — mTLS and the SSH challenge
+     attach on their own.)
+  2. Wrap it in `auth.Throttle` with a `Tracker` (ADR-0001 §2.6b). Per-subject
+     and per-source-address backoff is the only thing standing between a reusable
+     secret and an online guessing attack, and it belongs on the login policy
+     where the guessing happens rather than entangled with the attach policy.
+  3. Constrain it: `All(Leaf(ipallow), Leaf(throttledPassword))`. An IP allowlist
      cannot authenticate — ADR-0001 §2.2.2 enforces that structurally — but it
-     can narrow who is allowed to try.
-  3. Keep the default Argon2id hashing (ADR-0001 §2.4). PBKDF2 is for an explicit
+     can narrow who is allowed to try. `web.PasswordPolicyExample` REQUIRES a
+     contextual constraint and refuses an identity factor in that position.
+  4. Keep the default Argon2id hashing (ADR-0001 §2.4). PBKDF2 is for an explicit
      FIPS requirement, not for saving CPU on a login path.
-  4. Prefer `Any(ticket, mtls, sshChallenge, throttledPassword)` so password is
-     the fallback rather than the front door.
 
-  `tui/web` does not *refuse* a password-only policy, because the policy is the
-  caller's to compose and a package that second-guesses it would be lying about
-  where the decision lives. It documents the above at `Config.Policy`, in the
-  README, and in the package doc, and ships
-  `web.PasswordPolicyExample` so the recommended shape is copy-pasteable rather
-  than reconstructed from prose.
+  The **attach** policy is composed with `web.RecommendedPolicy` from the
+  mechanisms it can actually receive: tickets, mTLS chains, SSH signatures.
+
+  `tui/web` does not *refuse* a weak policy, because the policy is the caller's to
+  compose and a package that second-guessed it would be lying about where the
+  decision lives. What it does refuse is to make the weak shape *reachable* where
+  it does not belong: password on the attach path is unrepresentable, not merely
+  discouraged.
+
+  > **Normative correction (lector r4).** Rev 11's change was recorded only in the
+  > review history, leaving this section still saying password may appear in the
+  > attach policy and recommending
+  > `Any(ticket, mtls, sshChallenge, throttledPassword)` on `Config.Policy`. A
+  > review-history note does not supersede a standing instruction, and an ADR
+  > whose normative section contradicts its own code is worse than one that is
+  > merely out of date — an implementer following it would have written the thing
+  > the code now forbids.
+
 - An IP allowlist is **optional and never identity-bearing** — it may only
   constrain an identity-bearing proof, never satisfy the policy alone. ADR-0001
   §2.2 enforces that structurally rather than by documentation.
@@ -692,6 +713,42 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **implementation r4 (2026-08-22, lector — `change_requested`, 2 blockers; both
+  folded).** All seven r3 production repairs accepted. The two that remained were
+  both about a claim outliving the thing it described.
+
+  1. **`ServeLogin` performed no handshake check of its own.** `Mount` wraps it
+     with `Guard`, but the exported handler mounted directly was an UNGUARDED
+     login endpoint — a direct call with an attacker Host and Origin minted a
+     ticket for a correct password. Its own doc comment said the route "is written
+     as one: Origin and Host guarded like every other route", which was true of
+     `Mount` and false of the function. For an endpoint that converts a password
+     into a credential, the check belongs where the handler is and not only where
+     someone remembered to wrap it, so it now runs in both places. The handshake
+     check deliberately precedes the method check: cheap credential-free controls
+     first.
+  2. **This normative section was still stale.** Rev 11's reshaping was recorded
+     only in review history, so §2.8 still said password may appear in the attach
+     policy and still recommended
+     `Any(ticket, mtls, sshChallenge, throttledPassword)` on `Config.Policy` —
+     which r4's code makes impossible. A review-history note does not supersede a
+     standing instruction, and an ADR whose normative section contradicts its own
+     code is worse than one merely out of date: an implementer following it would
+     have written the thing the code now forbids. Rewritten above.
+
+  Also corrected: rev 11's claim that "every attach presents a single-use ticket"
+  was false — mTLS and the SSH challenge attach on their own. The true invariant
+  is narrower and is the one that matters: **a reusable secret is not among the
+  credentials the attach path will accept.**
+
+  Should-fix folded, and it was another test of mine that could not fail:
+  `TestRegress3_ServeReturnsShutdownFailure` called `Manager.Shutdown` directly
+  rather than `Handler.Serve`, so it passed against both the broken and the fixed
+  code. It now exercises `Serve`, with an injectable `ShutdownGrace` so the
+  boundary is observable without a 30-second wait and without leaking a stubborn
+  App goroutine for the rest of the run. Both new controls fail without their
+  fixes.
 
 - **implementation r3 (2026-08-22, lector — `change_requested`, 7 blockers; all
   folded).** The r2 repairs were accepted. The seven that remained split into two
