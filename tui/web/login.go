@@ -280,7 +280,10 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// An absent key needs no action either. It means the slot has already been
 		// returned — swept, or settled because the entry was claimed or released
 		// during the hook — and `leased` stays true so the deferred leave() cannot
-		// decrement a second time.
+		// decrement a second time. Re-querying rather than holding a token from the
+		// commit is deliberate: the answer CAN change in between, and every way it
+		// can change leads to the same correct action, because release is keyed and
+		// idempotent.
 		if leased && !h.pending.committed(handoff) {
 			h.pending.release(handoff)
 		}
