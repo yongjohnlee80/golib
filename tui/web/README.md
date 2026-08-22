@@ -139,9 +139,17 @@ ADR-0009's second reason for existing was to test whether `tui.Backend` was draw
 in the right place, by implementing something that is not a terminal. This is the
 result. It is specific because a vague version would be worthless.
 
-**The seam held. Nothing under `tui/` outside this package changed** —
-mechanically verified: `git diff --name-only main -- tui/ | grep -v '^tui/web/'`
-is empty. But four things cost something, and two were actively good.
+**The seam held. Nothing under `tui/` changed outside this package and the
+examples** — mechanically verified:
+
+```
+git diff --name-only main -- tui/ | grep -vc '^tui/web/\|^tui/examples/'   # 0
+```
+
+The example paths are the demo extraction (criterion 1), which criterion 2
+explicitly permits. An earlier version of this line excluded only `tui/web/` and
+claimed the result was empty; it was not, and the command I actually ran to check
+excluded both. But four things cost something, and two were actively good.
 
 ### Findings with real cost
 
@@ -257,9 +265,26 @@ go run ./tui/examples/webdemo
 The ticket is in the URL **fragment**, which browsers never send to a server, and
 the client scrubs it from the address bar before connecting. It is single-use.
 
+## The browser matrix
+
+`tui/web/browsertest` drives real engines through Playwright against a real
+`tui/web` server. §2.9's text-machine behaviours depend on things the specs
+decline to promise — whether an engine updates a control *before* dispatching
+`compositionend`, whether `getModifierState("AltGraph")` is reported at all — and
+**synthetic dispatch is exactly what would hide a divergence.** A suite that
+fabricates events tests the fabrication.
+
+CI is wired with a single required check that fails unless every engine passes.
+
+**Current status: Chromium 16/16 passed; Firefox and WebKit NOT RUN.** The gate is
+therefore **not satisfied** — per §2.9 a release with any engine unrun is not a
+release. `browsertest/RESULTS.md` records exactly what has run, because the
+harness existing and the harness passing are different facts and only the second
+is the gate.
+
+The first real-engine run found two harness defects and no product defect, which
+is evidence rather than proof: two engines remain.
+
 ## Not done
 
-- **The browser matrix** (Chromium, Firefox, WebKit) is a required release gate
-  and has **not been run.** §2.9's text-machine behaviours are browser-specific,
-  and synthetic dispatch is exactly what would hide a divergence. A release with
-  the matrix unrun is not a release.
+- Firefox and WebKit runs of the matrix above.
