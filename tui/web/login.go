@@ -22,6 +22,10 @@ import (
 //   - **A password never becomes an attach credential.** The attach path accepts
 //     tickets, verified certificate chains and SSH signatures; a password
 //     converts into the first of those and is never presented to it directly.
+//     The ticket it converts into is single-use and expires in 30 seconds, and
+//     it is accepted only behind the separately-enforced Origin allowlist — the
+//     ticket itself carries no origin binding, and earlier revisions of this
+//     comment wrongly said it did (lector r5).
 //     (An earlier version of this comment said every attach presents a ticket,
 //     which is simply untrue — mTLS and the SSH challenge attach on their own.
 //     The real invariant is narrower and is the one that matters: a reusable
@@ -40,10 +44,11 @@ import (
 //
 // # What this route must therefore be
 //
-// It is the ONLY unauthenticated endpoint in the package, so it is written as
-// one: Origin and Host checked IN THIS HANDLER as well as by [Handler.Guard], a
-// bounded body, one uniform refusal, and no statement anywhere about whether the
-// subject exists.
+// It is the only unauthenticated endpoint in the package that PROCESSES A
+// CREDENTIAL — the page is unauthenticated too, but it takes nothing and returns
+// nothing sensitive — so it is written accordingly: Origin and Host checked IN
+// THIS HANDLER as well as by [Handler.Guard], a bounded body, one uniform
+// refusal, and no statement anywhere about whether the subject exists.
 //
 // The internal check is not redundancy. An earlier version relied entirely on
 // Guard, which [Handler.Mount] applies — so a caller who mounted the exported

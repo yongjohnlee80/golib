@@ -377,3 +377,60 @@ func TestRegress4_ServeLoginChecksTheHandshakeItself(t *testing.T) {
 		t.Errorf("a conforming direct call was refused: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// r5: the ADR claimed the login ticket was "origin-bound". It is not — and this
+// pins the accurate composed property so the claim cannot drift back.
+//
+// auth/token's Record carries only Subject/IssuedAt/ExpiresAt/SingleUse and
+// Verify consumes by token hash without consulting Request.Metadata, so a ticket
+// minted under one allowed origin IS redeemable under another. What actually
+// protects an attach is the separately-enforced Origin allowlist plus the
+// ticket's single-use 30-second lifetime. Both halves are real; neither is a
+// binding inside the credential.
+func TestRegress5_TicketIsNotOriginBound(t *testing.T) {
+	t.Parallel()
+	h, _ := loginHandler(t, "correct-horse", "alice")
+
+	// Mint under the configured origin.
+	rec := httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"correct-horse"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var got loginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+
+	// The attach policy accepts it with NO origin information present at all,
+	// which is the demonstration: the credential carries no origin.
+	req := &auth.Request{Credentials: map[string]auth.Secret{
+		"ticket": auth.NewSecret(got.Ticket),
+	}}
+	if _, err := h.cfg.Policy.Authenticate(context.Background(), req); err != nil {
+		t.Fatalf("the ticket did not verify without origin metadata: %v — if this now "+
+			"fails because token gained origin binding, the ADR's composed-property "+
+			"wording should be revisited rather than this test loosened", err)
+	}
+
+	// And it is spent, which is the half of the guarantee that IS in the
+	// credential.
+	if _, err := h.cfg.Policy.Authenticate(context.Background(), req); err == nil {
+		t.Error("the ticket was reusable — single-use is the property the credential " +
+			"does carry")
+	}
+
+	// The other half is enforced at the handshake, not by the ticket: a
+	// cross-origin attach is refused before the credential is even read.
+	if err := h.cfg.checkHandshake(hostileReq()); err == nil {
+		t.Error("the Origin allowlist did not refuse a cross-origin handshake, which is " +
+			"the control that actually stands in for origin binding")
+	}
+}
+
+func hostileReq() *http.Request {
+	r := httptest.NewRequest(http.MethodGet, "/ws", nil)
+	r.Host = "tui.example.test"
+	r.Header.Set("Origin", "https://attacker.test")
+	return r
+}

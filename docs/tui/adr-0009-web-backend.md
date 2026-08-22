@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 14)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 15)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -252,8 +252,27 @@ p, err = auth.NewPolicy(auth.All(
     every other accepted mechanism fails closed against an attacker holding only
     a password list.
   - **No phishing resistance.** A lookalike page harvests a password and it keeps
-    working. A ticket is single-use and origin-bound; mTLS and the SSHSIG
-    challenge are bound to a key the page cannot exfiltrate.
+    working. A ticket is **single-use and 30-second**, so a harvested one is worth
+    at most one attach inside half a minute; mTLS and the SSHSIG challenge are
+    bound to a key the page cannot exfiltrate at all.
+
+    > **Correction (lector r5).** Earlier revisions called the ticket
+    > "origin-bound". It is not. `auth/token`'s `Record` holds only
+    > Subject/IssuedAt/ExpiresAt/SingleUse, `Issue` takes subject/TTL/singleUse,
+    > and `Verify` consumes by token hash without consulting
+    > `Request.Metadata` — so a ticket minted under one allowed origin is
+    > redeemable under another, and a non-browser can present any `Origin` it
+    > likes, as this ADR says elsewhere. The accurate property is **composed**: a
+    > single-use 30-second bearer ticket, accepted only behind a
+    > separately-enforced `Origin` allowlist. That is a real guarantee and it is
+    > the one to state; "origin-bound" claimed the binding was in the credential,
+    > which would survive a broken allowlist, and it would not.
+    >
+    > Issuance-origin binding inside `auth/token` would be a genuine improvement
+    > and is recorded as a follow-up rather than done here: this package must not
+    > keep its own side-table of credential validity, because §2.8 already says
+    > `auth/token` owns validity and consumption and the two must not both think
+    > they do.
   - **No replay resistance.** A password is long-lived and reusable by
     construction; the other three mechanisms are each spent, bound, or
     key-backed.
@@ -714,6 +733,39 @@ decisions:
 
 ## Review history
 
+- **implementation r5 (2026-08-22, lector — `change_requested`, 1 blocker; folded).**
+  Both r4 blockers and the should-fix were accepted. The remaining finding was a
+  security overclaim I had repeated since rev 9: calling the login ticket
+  **origin-bound**.
+
+  It is not, and lector cited the code: `auth/token`'s `Record` carries only
+  Subject/IssuedAt/ExpiresAt/SingleUse; `Issue` takes subject, TTL and a
+  single-use flag; `Verify` consumes by token hash and never reads
+  `Request.Metadata`. So a ticket minted under one allowed origin is redeemable
+  under another, and a non-browser can send whatever `Origin` it likes — a point
+  this ADR makes itself, two sections earlier.
+
+  The distinction matters because I used the phrase to claim an advantage over
+  passwords. "Origin-bound" locates the binding **in the credential**, which
+  would survive a misconfigured or bypassed allowlist. The real property is
+  **composed**: a single-use 30-second bearer ticket, accepted only behind a
+  separately-enforced `Origin` allowlist. Both halves are real; neither is what I
+  said. Corrected in §2.8 and in the rev-9 history entry.
+
+  Worth separating from the SSH challenge, which genuinely *is* bound: ADR-0001
+  §2.5 puts session and origin inside the signed message, so the binding is
+  carried by the credential there. Reusing that language for a bearer ticket was
+  the error.
+
+  Issuance-origin binding in `auth/token` is recorded as a follow-up rather than
+  built here, because §2.8 already assigns credential validity and consumption to
+  `auth/token` and forbids this package keeping a second view of it.
+
+  Should-fix wording folded: `Mount` said Guard wraps every route when `/` is
+  direct (now "every sensitive route"), and `login.go` called itself the only
+  unauthenticated endpoint when the page is also unauthenticated (now the only
+  unauthenticated **credential-processing** endpoint).
+
 - **implementation r4 (2026-08-22, lector — `change_requested`, 2 blockers; both
   folded).** All seven r3 production repairs accepted. The two that remained were
   both about a claim outliving the thing it described.
@@ -981,7 +1033,8 @@ decisions:
   *permission with named requirements* rather than a bare allowance, because the
   reasons password is weaker HERE are specific and worth writing down — what sits
   behind the credential is a shell, a password has no phishing resistance where a
-  single-use origin-bound ticket does, and it is replayable where the other three
+  single-use 30-second ticket behind an enforced Origin allowlist does, and it is
+  replayable where the other three
   mechanisms are spent, bound or key-backed. So the ADR now requires
   `auth.Throttle` and an `ipallow` constraint alongside it, keeps Argon2id, and
   recommends password as the fallback arm of an `Any` rather than the front door.
