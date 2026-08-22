@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"net/http"
@@ -80,13 +81,23 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 	// exists after a successful hello, so without this a responsive non-browser
 	// that forges Host and Origin holds sockets and goroutines while consuming no
 	// session slot (lector r2).
+	// The slot covers the PRE-AUTH window only, and is released the moment
+	// authentication succeeds.
+	//
+	// Holding it for the whole authenticated pump made MaxPending a cap on live
+	// sessions as well: with MaxPending=1, one healthy session refused every
+	// newcomer even with spare MaxSessions and nothing actually pending
+	// (lector r3). releaseOnce keeps the deferred release from double-counting.
+	var releaseOnce sync.Once
+	release := func() {}
 	if l.pending != nil {
 		if !l.pending.enter() {
 			logger.Notice(l.log, sessionAudit{Kind: "refused", Reason: "pre-auth connection limit"})
 			_ = c.Close(closeTryAgain, "busy")
 			return ErrPendingLimit
 		}
-		defer l.pending.leave()
+		release = func() { releaseOnce.Do(l.pending.leave) }
+		defer release()
 	}
 
 	if err := l.cfg.checkHandshake(req.http); err != nil {
@@ -139,6 +150,10 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 		_ = c.Close(closePolicy, "unauthorized ref="+sanitizeHeader(attemptID))
 		return err
 	}
+
+	// Authenticated: this connection is no longer pending, so the slot goes back
+	// before any long-lived work begins.
+	release()
 
 	// Step 4. An App may now exist.
 	sess, err := l.bind(ctx, first, identity, h)

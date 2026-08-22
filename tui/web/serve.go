@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -83,7 +84,7 @@ func (h *Handler) Mount(srv *golibhttp.Server) {
 //
 // Prefer this over [Handler.Mount] unless you are deliberately composing into a
 // server whose bind you own.
-func (h *Handler) Serve(ctx context.Context) error {
+func (h *Handler) Serve(ctx context.Context) (err error) {
 	opts := []golibhttp.Option{golibhttp.Addr(h.cfg.Addr)}
 	if h.cfg.TLS != nil {
 		opts = append(opts, golibhttp.WithTLSConfig(h.cfg.TLS))
@@ -93,23 +94,23 @@ func (h *Handler) Serve(ctx context.Context) error {
 
 	stopSweep := h.mgr.Start()
 	defer stopSweep()
-	var shutdownErr error
+	// A NAMED result, because `return shutdownErr` evaluated the variable before
+	// the deferred function assigned it — so a failed shutdown returned nil and
+	// the error I had just been told not to discard was discarded anyway
+	// (lector r3). errors.Join keeps both causes when the server also failed.
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownGrace)
 		defer cancel()
-		// NOT discarded. A Shutdown error means a session did not exit, which is
-		// exactly the guaranteed-teardown promise of §2.8 failing — swallowing it
-		// would hide a leaked App behind a clean-looking return (lector r2).
-		shutdownErr = h.mgr.Shutdown(shutdownCtx)
-		if shutdownErr != nil {
-			logger.Warning(h.log, shutdownErr, sessionAudit{Kind: "shutdown",
+		// A Shutdown error means a session did not exit, which is exactly §2.8's
+		// guaranteed-teardown promise failing. Hiding it behind a clean return is
+		// worse than the leak it conceals.
+		if serr := h.mgr.Shutdown(shutdownCtx); serr != nil {
+			logger.Warning(h.log, serr, sessionAudit{Kind: "shutdown",
 				Reason: "sessions did not exit"})
+			err = errors.Join(err, serr)
 		}
 	}()
-	if err := srv.Run(ctx); err != nil {
-		return err
-	}
-	return shutdownErr
+	return srv.Run(ctx)
 }
 
 // shutdownGrace bounds how long sessions get to exit on shutdown.

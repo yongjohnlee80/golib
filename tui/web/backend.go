@@ -153,8 +153,14 @@ type Backend struct {
 	// Submitting the event and mutating the grid are separate operations, so an
 	// App could dequeue the ResizeEvent and call Size() in the window between
 	// them — and get the OLD size, which is the exact disagreement the submit-
-	// first ordering was supposed to prevent (lector r2). Size takes this lock
-	// too, so an observer sees either both or neither.
+	// first ordering was supposed to prevent (lector r2).
+	//
+	// Size AND Flush both take it. Flush matters at least as much: an App that
+	// dequeues an expansion and paints at a coordinate valid in the NEW size
+	// would otherwise have its cells applied to the old, smaller grid, which
+	// drops them silently — the App's render is simply lost and the screen stays
+	// blank there (lector r3). Serializing Flush makes "the event is visible" and
+	// "the grid can accept the new coordinates" the same moment.
 	resizeMu sync.Mutex
 
 	// resizeGap runs between submitting the resize event and mutating the grid.
@@ -331,6 +337,11 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	b.mu.Lock()
 	cursor := b.cursor
 	b.mu.Unlock()
+	// Serialized against Resize: see resizeMu. Without this a render that
+	// followed a dequeued expansion landed on the pre-resize grid and its cells
+	// were dropped.
+	b.resizeMu.Lock()
+	defer b.resizeMu.Unlock()
 	b.framer.publish(diff, cursor)
 	return nil
 }

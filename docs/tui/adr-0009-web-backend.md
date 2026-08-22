@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 12)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 13)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -692,6 +692,59 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **implementation r3 (2026-08-22, lector — `change_requested`, 7 blockers; all
+  folded).** The r2 repairs were accepted. The seven that remained split into two
+  kinds, and both are worth naming.
+
+  **Repairs that were still one step short:**
+
+  1. **`Resize` serialized `Size` but not `Flush`.** An App that dequeued an
+     expansion and painted at a coordinate valid in the NEW size had its cells
+     applied to the old, smaller grid and silently dropped — the render was lost
+     and the screen stayed blank there. `Flush` now takes the same lock, so "the
+     event is visible" and "the grid can accept these coordinates" are the same
+     moment. My r2 test checked only `Size`, so it could not see this.
+  2. **`MaxPending` was held for the whole authenticated pump**, because the
+     release was deferred to the end of `serve`. That made it a cap on LIVE
+     sessions: with `MaxPending=1`, one healthy session refused every newcomer
+     despite spare `MaxSessions` and nothing actually pending. Released the moment
+     authentication succeeds.
+  3. **`Serve` still returned nil on a failed shutdown.** `return shutdownErr`
+     evaluates the variable before the deferred function assigns it, so the error
+     I had just been told not to discard was discarded anyway. Named result plus
+     `errors.Join`.
+
+  **Rev 11 was true of the prose and false of the code:**
+
+  4. **The attach protocol still carried `subject`/`pw`, and the credential
+     mapping still projected them.** So a custom client could authenticate a
+     password directly over the WebSocket, exactly the thing the minter split
+     exists to prevent, and `Config.Policy`'s docs still invited it. The fields
+     and the mapping are GONE — a client cannot express a password on the attach
+     path — and `Config.Policy` now says a password factor there can never be
+     satisfied. My "password is not an attach credential" test only proved its own
+     fixture had chosen a token-only policy.
+  5. **The login body bound was bypassable.** `LimitReader` plus one `Decode` is
+     not a bound: `Decode` stops at the end of the first JSON value, so a
+     correct-password object followed by 8 KiB of junk decoded fine, never hit the
+     limit, and minted a ticket. Now `http.MaxBytesReader`, exactly one value, and
+     EOF required.
+  6. **The login form could not be used with a mouse.** An unconditional
+     document-click handler refocused the capture element, so clicking the
+     username or password input immediately lost focus.
+  7. **`PasswordPolicyExample` promised arms it could not reach.** It accepted
+     ticket/mTLS/SSH factors, but `ServeLogin` projects only a subject and a
+     password, so those arms were dead by construction. The parameter is removed:
+     the helper builds the LOGIN policy, and the stronger mechanisms belong on
+     `Config.Policy` via `RecommendedPolicy`.
+
+  **A note on the r3 regression for #1.** My first version waited inside the
+  resize gap for the concurrent `Flush` to finish — which deadlocks, because
+  `Flush` wants the lock the gap is holding. The hang was itself evidence the
+  serialization works, but the test had to be restructured to observe it rather
+  than participate in it. All three of lector's controls now fail without their
+  fixes.
 
 - **implementation r2 (2026-08-22, lector — `change_requested`, 8 must-fixes; all
   folded).** Most r1 repairs were confirmed sound. The remaining eight were

@@ -40,11 +40,14 @@ func authRequest(r *http.Request, m clientMessage) *auth.Request {
 	set("ssh-identity", m.Identity)
 	set("ssh-signature", m.Sig)
 	set("ssh-challenge", m.Chal)
-	// Password: permitted, weakest. See Config.Policy.
-	set("subject", m.Subject)
-	set("password", m.Password)
 	// The session binding an sshkey challenge was issued for.
 	set("session", m.Session)
+
+	// NO password credentials are projected here, and the protocol carries none.
+	// A password authenticates at the login route and yields a ticket; the attach
+	// path sees only tickets, certificates and signatures. Mapping subject and
+	// password here would have made rev 11's split true of the documentation and
+	// false of the code (lector r3).
 
 	// Origin reaches the factors because an sshkey challenge is bound to it
 	// (ADR-0001 §2.5). It is copied by allowlist, exactly as auth/authhttp does:
