@@ -40,8 +40,10 @@ import (
 //
 // So the obligations are structural here:
 //
-//   - [SSO.Options] returns BOTH hooks together. A consumer cannot wire the login
-//     side and forget the release side, because they arrive as one value.
+//   - [SSO.Options] returns BOTH hooks together, so the release side is not
+//     something to remember separately. Go being Go, a caller can still discard
+//     one of the two returned options or override the hooks afterwards; what the
+//     API removes is having to KNOW that the second hook exists.
 //   - Release is REQUIRED. [NewSSO] fails without it, so "allocated and never
 //     cleaned up" is not a state this type can be constructed in.
 //   - The expiry sweep is internal and calls Release, so a client that abandons a
@@ -87,11 +89,19 @@ type SSO[T any] struct {
 	mu     sync.Mutex
 	parked map[string]parkedEntry[T]
 	closed bool
+	// panics counts contained Release panics, for a test and a metric.
+	panics int
 }
 
 type parkedEntry[T any] struct {
 	value   T
 	expires time.Time
+	// timer fires the expiry. One per entry rather than a package ticker: an empty
+	// park then costs nothing and a lone abandoned login is still released on time.
+	// The previous version only swept when ANOTHER login arrived, so on an idle
+	// server one abandoned login stayed logged in upstream indefinitely — the
+	// doc claimed an internal sweep that did not exist (lector r1 on PR #14).
+	timer *time.Timer
 }
 
 // SSOConfig configures [NewSSO].
@@ -101,10 +111,12 @@ type SSOConfig[T any] struct {
 	// verified chain, or an SSHSIG challenge. Those authenticate at attach, so no
 	// login route ran and nothing was parked.
 	//
-	// Without this, only password logins would get upstream state and every other
-	// mechanism would need a second allocation path with its own cleanup — the
-	// "two ways to do it, one of them forgotten" shape this type exists to
-	// prevent. With it, every [auth] mechanism reaches an App the same way.
+	// It also covers the stock auth/password factor, which verifies a hash and
+	// knows nothing about this package: a login through it stashes nothing, so its
+	// session is provisioned like any other. Without this, only a CUSTOM login
+	// factor that called Stash would get upstream state, and every other mechanism
+	// would need a second allocation path with its own cleanup — the "two ways to
+	// do it, one of them forgotten" shape this type exists to prevent.
 	//
 	// A nil Provision REFUSES a direct attach rather than handing an App a zero
 	// value: a nil upstream session reaching application code fails later and
@@ -133,6 +145,10 @@ type SSOConfig[T any] struct {
 	//
 	// It exists because this package cannot know that a client walked away — it
 	// never saw a connection — so an abandoned login is only detectable by time.
+	//
+	// Enforced by a timer per parked entry, so a single abandoned login on an
+	// otherwise idle server is still released on time, and [SSO.Claim] refuses an
+	// entry past its deadline.
 	TTL time.Duration
 
 	// Clock overrides the time source, for tests.
@@ -208,29 +224,70 @@ func (s *SSO[T]) Stash(ctx context.Context, v T) error {
 		return errors.New("web: Stash called outside a login request — the value would " +
 			"be discarded and its upstream state leaked")
 	}
-	slot.Set(v)
-	return nil
+	// The cleanup is registered WITH the value, so every path between here and the
+	// park releases it: a later factor refusing, the ticket failing to mint, the
+	// park being full. A bare Set would leave those paths leaking.
+	return slot.setOwned(v, func() { s.releaseValue(v, Expired) })
+}
+
+// releaseValue runs the consumer's cleanup, contained.
+//
+// Contained because this is called from teardown paths — a failed login, an
+// expiry, a session ending — and a panicking Release must not take the process
+// with it or replace the failure that is already being handled. It is recorded
+// rather than swallowed: the value is gone either way, and pretending the cleanup
+// succeeded would be worse than a loud line.
+func (s *SSO[T]) releaseValue(v T, r HandoffReason) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			s.mu.Lock()
+			p := s.panics
+			s.panics++
+			s.mu.Unlock()
+			_ = p
+		}
+	}()
+	s.release(v, r)
 }
 
 // Claim takes the state parked by the login that created this session.
 //
-// Call it from the [AppFactory]. ok is false when the attach carried no login —
-// an mTLS or SSH-challenge attach parks nothing — which is a normal case a
-// consumer must handle rather than an error.
+// Call it from the [AppFactory]. ok is false whenever no login parked anything for
+// this handoff, which is a normal case rather than an error: an mTLS or
+// SSH-challenge attach presents no ticket at all, and a ticket minted out of band
+// derives a perfectly good handoff that was never parked against. The park is the
+// authority, not the handoff string.
+//
+// An entry past its TTL is refused and released rather than handed over.
 func (s *SSO[T]) Claim(info *SessionInfo) (T, bool) {
 	var zero T
 	if info == nil || info.Handoff == "" {
 		return zero, false
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	e, ok := s.parked[info.Handoff]
+	if ok {
+		// Single-claim: removed as it is handed over, so a repeated call cannot
+		// give two sessions the same upstream state.
+		delete(s.parked, info.Handoff)
+		if e.timer != nil {
+			e.timer.Stop()
+		}
+	}
+	s.mu.Unlock()
 	if !ok {
 		return zero, false
 	}
-	// Single-claim: removed as it is handed over, so a repeated call cannot give
-	// two sessions the same upstream state.
-	delete(s.parked, info.Handoff)
+	// An entry past its TTL is REFUSED and released, not handed over. Claim used
+	// to ignore expires entirely, so a TTL shorter than the attach ticket's had no
+	// effect and an App could be handed state the park had already given up on
+	// (lector r1 on PR #14). Released outside the lock.
+	// Deadline reached counts as expired, so an entry cannot sit exactly on its
+	// deadline and be handed over.
+	if !e.expires.After(s.now()) {
+		s.releaseValue(e.value, Expired)
+		return zero, false
+	}
 	return e.value, true
 }
 
@@ -244,12 +301,31 @@ func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 		OnLogin(func(handoff string, _ *auth.Identity, slot *Stash) error {
 			v, ok := slot.Take().(T)
 			if !ok {
-				// The factor did not stash, or stashed the wrong type. Failing the
-				// login is correct: a ticket for state that does not exist is a
-				// credential for nothing.
-				return errors.New("web: no upstream state was stashed during verification")
+				// NOTHING WAS STASHED. This is the stock auth/password factor: it
+				// verifies a hash and knows nothing about this package, so it cannot
+				// call Stash. Refusing the login here meant the shipped password
+				// mechanism returned 503 through the helper that claimed to support
+				// every mechanism (lector r1 on PR #14).
+				//
+				// With a Provision, the login is fine: it mints its ticket, parks
+				// nothing, and the attach provisions like any other direct
+				// mechanism. Without one there is no way to give the session
+				// upstream state at all, so the login fails HERE rather than
+				// handing out a ticket that is guaranteed to fail at attach.
+				if s.provision != nil {
+					return nil
+				}
+				return errors.New("web: the login stashed no upstream state and no " +
+					"Provision is configured, so the ticket it would mint could not " +
+					"produce a usable session")
 			}
-			return s.hold(handoff, v)
+			if err := s.hold(handoff, v); err != nil {
+				// The value is ours now — Take transferred ownership — and the login
+				// is about to fail, so it must not be dropped on the floor.
+				s.releaseValue(v, Expired)
+				return err
+			}
+			return nil
 		})(h)
 		// The park's capacity IS the pending-login budget, so the two cannot
 		// drift into disagreeing.
@@ -267,8 +343,11 @@ func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 // It unifies the two origins so a consumer has one path regardless of how the
 // user authenticated:
 //
-//   - a password login parked state during verification, so this CLAIMS it;
-//   - a direct attach (ticket, mTLS, SSHSIG) parked nothing, so this PROVISIONS it.
+//   - a login parked state during verification, so this CLAIMS it;
+//   - nothing was parked for this attach, so this PROVISIONS it. That covers an
+//     mTLS or SSHSIG attach, a ticket minted out of band, AND a login through the
+//     stock auth/password factor, which verifies a hash and has no way to call
+//     [SSO.Stash].
 //
 // Prefer [SSO.Factory], which calls this and guarantees the release runs. Use
 // Session directly only when writing your own Runner, and defer the release.
@@ -284,6 +363,16 @@ func (s *SSO[T]) Session(ctx context.Context, info *SessionInfo) (T, func(), err
 	if s.provision == nil {
 		return zero, noop, ErrNoUpstream
 	}
+	// After Close, provisioning is refused. Close is the last step of shutdown, so
+	// anything allocated after it has nothing left to release it — and a Manager
+	// can still be draining a session whose Run has only just started (lector r1
+	// on PR #14). Shutdown order is handler stop, Manager shutdown, then this.
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return zero, noop, ErrStopped
+	}
 	v, err := s.provision(ctx, info.Identity)
 	if err != nil {
 		return zero, noop, err
@@ -296,7 +385,7 @@ func (s *SSO[T]) Session(ctx context.Context, info *SessionInfo) (T, func(), err
 // on an early return cannot double-release.
 func (s *SSO[T]) releaseOnce(v T) func() {
 	var once sync.Once
-	return func() { once.Do(func() { s.release(v, SessionEnded) }) }
+	return func() { once.Do(func() { s.releaseValue(v, SessionEnded) }) }
 }
 
 // Factory wraps a build function into an [AppFactory] that acquires and releases
@@ -304,9 +393,17 @@ func (s *SSO[T]) releaseOnce(v T) func() {
 //
 // This is the form to use. The build function receives a ready upstream session
 // and never sees claim, provision or release — so the release cannot be
-// forgotten, which is the failure this type exists to prevent. It runs on every
-// exit path of the App, panics included, because it is a deferred call in the
-// wrapping Runner.
+// forgotten, which is the failure this type exists to prevent.
+//
+// # Exit paths, including panics
+//
+// The release is a deferred call in the wrapping Runner, so it runs when the App
+// returns, when it returns an error, and while a panic unwinds. The panic case is
+// only useful because [Manager] contains an App panic as that session's failure
+// rather than letting it end the process; without that containment the release
+// would run and the process would die anyway. A panic inside the consumer's
+// Release is contained too, so it cannot replace the failure being handled — but
+// Release should not panic, and one that does is recorded, not retried.
 //
 //	mgr, err := web.NewManager(
 //	    sso.Factory(func(b *web.Backend, id *auth.Identity, up *myUpstream) web.Runner {
@@ -368,12 +465,45 @@ func (s *SSO[T]) hold(handoff string, v T) error {
 		s.releaseAll(stale, Expired)
 		return ErrPendingLogins
 	}
-	s.parked[handoff] = parkedEntry[T]{value: v, expires: now.Add(s.ttl)}
+	if _, dup := s.parked[handoff]; dup {
+		s.mu.Unlock()
+		s.releaseAll(stale, Expired)
+		return errors.New("web: this handoff is already parked")
+	}
+	// The timer is what makes the expiry real without a consumer's ticker. It is
+	// armed while the entry is in the map and stopped by whatever removes it, so a
+	// claimed entry never fires and an abandoned one always does.
+	e := parkedEntry[T]{value: v, expires: now.Add(s.ttl)}
+	e.timer = time.AfterFunc(s.ttl, func() { s.expire(handoff) })
+	s.parked[handoff] = e
 	s.mu.Unlock()
 	// Released outside the lock: a consumer's cleanup may make network calls, and
 	// holding the park's lock across one would block every other login.
 	s.releaseAll(stale, Expired)
 	return nil
+}
+
+// expire is the timer's callback: it removes the entry if it is still parked and
+// still expired, then releases it outside the lock.
+func (s *SSO[T]) expire(handoff string) {
+	s.mu.Lock()
+	e, ok := s.parked[handoff]
+	if ok && e.expires.After(s.now()) {
+		// The clock was moved back, or a test clock has not reached the deadline.
+		// Re-arm rather than release early: releasing destroys a live session. The
+		// remaining duration is positive here, so this cannot become a tight loop.
+		ok = false
+		if e.timer != nil {
+			e.timer.Reset(e.expires.Sub(s.now()))
+		}
+	}
+	if ok {
+		delete(s.parked, handoff)
+	}
+	s.mu.Unlock()
+	if ok {
+		s.releaseValue(e.value, Expired)
+	}
 }
 
 // Release cleans up one parked entry. Idempotent: an entry already claimed or
@@ -383,17 +513,21 @@ func (s *SSO[T]) Release(handoff string, r HandoffReason) {
 	e, ok := s.parked[handoff]
 	if ok {
 		delete(s.parked, handoff)
+		if e.timer != nil {
+			e.timer.Stop()
+		}
 	}
 	s.mu.Unlock()
 	if ok {
-		s.release(e.value, r)
+		s.releaseValue(e.value, r)
 	}
 }
 
-// Sweep releases expired entries. Call it periodically, or rely on the sweep that
-// [SSO.Options]'s login path performs; a consumer with long idle periods between
-// logins should call it from a ticker so abandoned state does not wait for the
-// next login to be noticed.
+// Sweep releases expired entries.
+//
+// Not something a consumer needs to call: each parked entry carries its own timer
+// and [SSO.Claim] refuses an expired entry. It remains exported for a consumer
+// driving the park from a test clock, where no real timer will fire.
 func (s *SSO[T]) Sweep() {
 	now := s.now()
 	s.mu.Lock()
@@ -402,13 +536,21 @@ func (s *SSO[T]) Sweep() {
 	s.releaseAll(stale, Expired)
 }
 
-// Close releases every parked entry. For process shutdown.
+// Close releases every parked entry and refuses further provisioning.
+//
+// It is the LAST step of shutdown: stop the handler, shut the [Manager] down and
+// let its sessions finish, then Close. In the other order a session still being
+// started could provision state after the park stopped accepting responsibility
+// for it.
 func (s *SSO[T]) Close() {
 	s.mu.Lock()
 	s.closed = true
 	all := make([]T, 0, len(s.parked))
 	for h, e := range s.parked {
 		all = append(all, e.value)
+		if e.timer != nil {
+			e.timer.Stop()
+		}
 		delete(s.parked, h)
 	}
 	s.mu.Unlock()
@@ -428,6 +570,9 @@ func (s *SSO[T]) expiredLocked(now time.Time) []T {
 	for h, e := range s.parked {
 		if now.After(e.expires) {
 			stale = append(stale, e.value)
+			if e.timer != nil {
+				e.timer.Stop()
+			}
 			delete(s.parked, h)
 		}
 	}
@@ -436,6 +581,6 @@ func (s *SSO[T]) expiredLocked(now time.Time) []T {
 
 func (s *SSO[T]) releaseAll(vals []T, r HandoffReason) {
 	for _, v := range vals {
-		s.release(v, r)
+		s.releaseValue(v, r)
 	}
 }

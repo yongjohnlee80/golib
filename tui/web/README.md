@@ -355,15 +355,36 @@ and **how to release** (`Release`). The helper owns everything between.
 
 | Mechanism | Authenticates at | Upstream state comes from |
 |---|---|---|
-| `auth/password` (via `ServeLogin`) | the **login** | `Stash` → parked → **claimed** |
+| a **custom** login factor that calls `Stash` | the **login** | `Stash` → parked → **claimed** |
+| `auth/password` (the stock factor) | the **login** | **`Provision`** — it verifies a hash and cannot call `Stash` |
 | `auth/token` (SSH-minted or out-of-band ticket) | the **attach** | **`Provision`** |
 | `auth/mtls` (verified chain) | the **attach** | **`Provision`** |
 | `auth/sshkey` (SSHSIG challenge) | the **attach** | **`Provision`** |
 | `auth/ipallow` (contextual) | narrows all of the above | allocates nothing |
 
+`Claim` misses for every `Provision` row, and *that* is the signal — not an empty
+handoff. Every presented ticket derives a `HandoffID`, including one minted out of
+band, so the park is the authority on whether a login parked anything.
+
 `sso.Factory` hides the difference: the build function receives a ready upstream
-session whichever way the user got in. `sso_e2e_test.go` drives all five through
-the real serve path.
+session whichever way the user got in. `sso_e2e_test.go` drives all of them
+through the real serve path, including the stock `auth/password` factor and a real
+SSHSIG signature.
+
+### Shutdown order
+
+**Stop the handler, shut the `Manager` down and let its sessions finish, then
+`sso.Close()`.** In the other order a session that is only just starting can
+provision state after the park has stopped taking responsibility for it; `Session`
+refuses after `Close` precisely so that mistake fails loudly instead of leaking.
+
+### Panics
+
+An App panic ends **that session**, not the process: `Manager` contains it and
+records it as the session's run error, the same way `server.Scaffold` contains a
+connection handler's panic. That is what makes `Factory`'s deferred release
+meaningful on the panic path. A panic inside your `Release` is contained too, so
+it cannot replace the failure being handled — but `Release` should not panic.
 
 A **nil** `Provision` **refuses** an attach that parked nothing, rather than
 handing the app a nil upstream — which would fail later and further from the
@@ -385,13 +406,17 @@ So the obligations are structural:
 | Obligation | How it is enforced |
 |---|---|
 | release on every path | `Release` is **required**; `NewSSO` fails without it |
-| wire both hooks | `Options()` returns them **together**, not separately |
-| clean up abandoned logins | the sweep is internal, and a login sweeps first |
-| bounds agree | the park's `Max` **sets** `MaxPendingLogins` |
+| both hooks are one value | `Options()` returns them **together**, so you never have to know the second exists (Go being Go, you can still discard one) |
+| clean up abandoned logins | each parked entry carries **its own timer** |
+| an expired entry is never served | `Claim` refuses and releases it |
+| release before the park | `SSO.Stash` registers the cleanup **with** the value, so a later refusal, a failed ticket or a full park releases it |
+| one login, one value | a second `Stash` in one request is **refused** |
+| admission slots come back | the slot follows the handoff and is returned when it is claimed, released, or expires |
 | one session per login | `Claim` removes as it hands over |
-| release when the session ends | `Factory` **defers** it — panics included |
+| release when the session ends | `Factory` **defers** it — panics included, because `Manager` contains an App panic |
 | no path allocates twice | `Session` claims *or* provisions, never both |
 | no app sees a nil upstream | a nil `Provision` refuses the session |
+| nothing is allocated after shutdown | `Session` refuses once `Close` has run |
 
 ### The raw hooks
 

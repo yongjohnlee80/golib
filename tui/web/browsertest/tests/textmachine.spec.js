@@ -244,16 +244,45 @@ test.describe('keys and reserved shortcuts', () => {
     });
 });
 
+// dispatchPaste delivers a synthetic paste that carries its payload IN EVERY
+// ENGINE.
+//
+// `new ClipboardEvent('paste', { clipboardData: dt })` looks like it works and
+// does not: Firefox ignores the constructor member and substitutes its own EMPTY
+// DataTransfer, so getData('text') returns ''. The client then correctly declines
+// to send an empty paste — and the spec read that correct behaviour as a product
+// failure. Harness defect number three, and still no product defect: a client
+// facing an empty clipboard is exactly what the cancelled-paste test asserts.
+//
+// The repair keeps the constructor form where it works and only shadows the
+// readonly accessor where the payload did not survive. Verifying rather than
+// always overriding matters: Chromium and WebKit were already green with the
+// constructor, and a blanket rewrite would be changing the dispatch under the two
+// engines that had nothing wrong with it.
+async function dispatchPaste(page, text) {
+  const carried = await page.evaluate((t) => {
+    const el = document.querySelector('#cap');
+    const dt = new DataTransfer();
+    dt.setData('text', t);
+    const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+    if (!ev.clipboardData || ev.clipboardData.getData('text') !== t) {
+      Object.defineProperty(ev, 'clipboardData', { value: dt, configurable: true });
+    }
+    const ok = !!ev.clipboardData && ev.clipboardData.getData('text') === t;
+    el.dispatchEvent(ev);
+    return ok;
+  }, text);
+  // Fail on the DISPATCH rather than on the assertion three lines later: "the
+  // payload never reached the page" and "the client dropped the payload" are
+  // different bugs and must not produce the same red.
+  expect(carried, 'the synthetic paste did not carry its payload into the page').toBe(true);
+}
+
 test.describe('paste', () => {
   test('paste emits exactly one PasteEvent with normalized newlines (§2.9 7a vii)',
     async ({ page, baseURL }) => {
       await attach(page, baseURL);
-      await page.evaluate(() => {
-        const el = document.querySelector('#cap');
-        const dt = new DataTransfer();
-        dt.setData('text', 'one\r\ntwo\rthree');
-        el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-      });
+      await dispatchPaste(page, 'one\r\ntwo\rthree');
       await expect.poll(async () => (await events(page, baseURL))
         .filter((e) => e.kind === 'paste').length, { timeout: 5_000 }).toBe(1);
       const paste = (await events(page, baseURL)).find((e) => e.kind === 'paste');
@@ -263,12 +292,7 @@ test.describe('paste', () => {
   test('a cancelled paste does not eat a later keystroke (§2.9 7a vi)',
     async ({ page, baseURL }) => {
       await attach(page, baseURL);
-      await page.evaluate(() => {
-        const el = document.querySelector('#cap');
-        const dt = new DataTransfer();
-        dt.setData('text', '');
-        el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-      });
+      await dispatchPaste(page, '');
       await page.type(CAP, 'k', { delay: 20 });
       await settleText(page, baseURL, 1);
       expect(textEvents(await events(page, baseURL)).map((e) => e.text).join('')).toBe('k');

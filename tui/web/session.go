@@ -90,6 +90,10 @@ type Manager struct {
 
 	bindPeer bool
 	unused   func(string, HandoffReason)
+	// settle returns the admission slot a parked handoff owns, once that handoff
+	// can no longer be waiting for an attach. Installed by NewHandler, which owns
+	// the gate; nil for a Manager used on its own.
+	settle func(string)
 
 	mu       sync.Mutex
 	sessions map[string]*Session
@@ -307,6 +311,10 @@ func (m *Manager) CreateFor(ctx context.Context, id *auth.Identity, h Hello, inf
 	if id == nil || id.Subject == "" {
 		return nil, ErrNoIdentity
 	}
+	// The handoff is settled however this returns: on success the factory has had
+	// its chance to claim, and on failure the attach path releases it. Either way
+	// nothing is still waiting for it, so its admission slot goes back.
+	defer m.settleHandoff(info.Handoff)
 	if !h.valid() {
 		return nil, errors.New("web: client hello has no usable size or font metrics")
 	}
@@ -379,6 +387,27 @@ func (m *Manager) CreateFor(ctx context.Context, id *auth.Identity, h Hello, inf
 			cancel()
 			m.drop(sid)
 			logger.Info(m.log, sessionAudit{Kind: "closed", Subject: s.subject, ID: sid})
+		}()
+		// An App panic ends THIS SESSION, not the process.
+		//
+		// One process serves N users, so an unrecovered panic here took every other
+		// user's session down with it — and it was reached by application code, the
+		// least trustworthy code in the building. It is contained the same way
+		// server.Scaffold contains a connection handler's panic, and for the same
+		// reason. The panic is recorded as the session's run error, so a consumer
+		// sees a failed session rather than a silently closed one.
+		//
+		// It is contained, not swallowed: the record names it a panic and carries
+		// the value.
+		defer func() {
+			if rec := recover(); rec != nil {
+				err := fmt.Errorf("web: the application panicked: %v", rec)
+				s.mu.Lock()
+				s.runErr = err
+				s.mu.Unlock()
+				logger.Error(m.log, err, sessionAudit{Kind: "panic",
+					Subject: s.subject, ID: sid})
+			}
 		}()
 		err := app.Run(runCtx)
 		s.mu.Lock()
@@ -584,10 +613,24 @@ func (m *Manager) Get(id string) (*Session, bool) {
 // At most once per handoff: the caller's park is single-claim, but calling twice
 // would still be a bug worth not writing, so every call site is a terminal path.
 func (m *Manager) releaseHandoff(handoff string, reason HandoffReason) {
-	if handoff == "" || m.unused == nil {
+	if handoff == "" {
+		return
+	}
+	m.settleHandoff(handoff)
+	if m.unused == nil {
 		return
 	}
 	m.unused(handoff, reason)
+}
+
+// settleHandoff returns the admission slot the handoff owned. Idempotent, since a
+// handoff can be settled by a claim, a release, or the gate's own expiry and those
+// paths do not coordinate.
+func (m *Manager) settleHandoff(handoff string) {
+	if handoff == "" || m.settle == nil {
+		return
+	}
+	m.settle(handoff)
 }
 
 func (m *Manager) drop(id string) {

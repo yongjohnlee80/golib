@@ -89,6 +89,9 @@ func Example_singleSignOn() {
 		// Leaving it nil REFUSES such a session rather than handing the app a
 		// nil upstream. A consumer who wants guest sessions returns a guest
 		// value here, so there is one mechanism rather than a flag.
+		// It also covers a login through the STOCK auth/password factor: that
+		// factor verifies a hash and knows nothing about this package, so it
+		// cannot call Stash. Such a login parks nothing and is provisioned here.
 		Provision: func(ctx context.Context, id *auth.Identity) (*upstreamSession, error) {
 			return &upstreamSession{user: id.Subject}, nil
 		},

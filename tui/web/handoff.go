@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
+	"sync"
 
 	"github.com/yongjohnlee80/golib/auth"
 )
@@ -72,9 +74,16 @@ type SessionInfo struct {
 	// called: [Manager.Create] refuses without one.
 	Identity *auth.Identity
 
-	// Handoff is the [HandoffID] of the login that created this session, or ""
-	// when the attach carried no login — an mTLS or SSH-challenge attach
-	// authenticates directly and parks nothing.
+	// Handoff is the [HandoffID] derived from the ticket this attach presented, or
+	// "" when it presented none — an mTLS or SSH-challenge attach carries no
+	// ticket at all.
+	//
+	// A NON-EMPTY handoff does not mean a login parked anything. Every presented
+	// ticket derives one, including a ticket minted out of band by an SSH tool, so
+	// the question "did a login park state for this session?" is answered by
+	// LOOKING IN THE PARK, not by the handoff being set (lector r1 on PR #14).
+	// [SSO.Session] is built that way: it claims, and provisions when the claim
+	// misses.
 	Handoff string
 
 	// Peer is the transport's view of the client that created the session, or the
@@ -101,28 +110,100 @@ type stashKey struct{}
 // in during Verify and moves it into its own park during OnLogin, where the
 // handoff is known.
 type Stash struct {
-	value any
+	mu      sync.Mutex
+	value   any
+	release func()
+	taken   bool
 }
 
 // Set records state produced during verification. The last write wins; a factor
 // that verifies more than once per request is doing something the login route
 // does not ask for.
+//
+// Nothing cleans up a value set this way if the login later fails — use
+// [SSO.Stash], which registers the cleanup at the same moment it records the
+// value.
 func (s *Stash) Set(v any) {
-	if s != nil {
-		s.value = v
+	if s == nil {
+		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.value = v
+}
+
+// setOwned records a value TOGETHER with the cleanup that must run if it never
+// reaches its destination.
+//
+// The two arrive together because every step between them is a place the login
+// can fail: another factor in the policy can refuse after this one succeeded, the
+// ticket can fail to mint, the park can be full. Each of those returns from the
+// request having allocated an upstream session that nothing will ever close
+// (lector r1 on PR #14 reproduced two of them).
+//
+// A second call is REFUSED rather than overwriting: the first value would become
+// unreachable with its cleanup already registered, and last-write-wins is not a
+// sensible answer when the thing being overwritten is a live connection. The
+// caller owns the value it could not park.
+func (s *Stash) setOwned(v any, release func()) error {
+	if s == nil {
+		return errors.New("web: no login request to stash into")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.value != nil || s.taken {
+		return errors.New("web: this login already stashed upstream state — the " +
+			"second value cannot be parked and remains the caller's to release")
+	}
+	s.value, s.release = v, release
+	return nil
 }
 
 // Take removes and returns the stashed value, leaving the slot empty. Taking
 // twice yields nil the second time, which is what makes the move to a park
 // single-claim even if a hook runs more than once.
+//
+// Taking also transfers OWNERSHIP: after a Take, [Stash.discard] does nothing, so
+// whoever took the value is responsible for it.
 func (s *Stash) Take() any {
 	if s == nil {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	v := s.value
-	s.value = nil
+	s.value, s.release = nil, nil
+	if v != nil {
+		s.taken = true
+	}
 	return v
+}
+
+// discard releases a value that was never taken. Called on every login path that
+// returns without parking, and a no-op after a Take or a bare Set.
+func (s *Stash) discard() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	v, rel := s.value, s.release
+	s.value, s.release = nil, nil
+	s.mu.Unlock()
+	// Outside the lock: a consumer's cleanup may make network calls.
+	if v != nil && rel != nil {
+		rel()
+	}
+}
+
+// claimed reports whether the stashed value was taken, which is what tells the
+// login route that a handoff now owns an admission slot.
+func (s *Stash) claimed() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.taken
 }
 
 // StashFromContext returns the login request's slot, or nil outside one.

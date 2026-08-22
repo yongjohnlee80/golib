@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 21)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 22)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -9,8 +9,9 @@
   instruction:** §2.8's refusal of password auth becomes "permitted, documented
   as the weakest option, with the throttle and allowlist stated as
   requirements". **Rev 21 (2026-08-22)** extends `web.SSO` to every `golib/auth`
-  mechanism (§2.12.7), on Johno's instruction; **not yet reviewed by lector and
-  not yet released**. See Review history. Lands on `tui-web`.)
+  mechanism (§2.12.7), on Johno's instruction. **Rev 22 (2026-08-22)** repairs the
+  lifecycle defects lector's r1 review of PR #14 found (§2.12.8); **awaiting
+  lector r2 and not yet released**. See Review history. Lands on `tui-web`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -644,7 +645,11 @@ available — yet reattaching consumes no new session.
 | Budget | Bounds | Breach |
 | --- | --- | --- |
 | `MaxSessions` | live sessions, each with an `App` | `ErrSessionLimit` at Create |
-| `MaxPendingLogins` (new, default 8) | parked handoffs awaiting an attach | login refused, 503 |
+| `MaxPendingLogins` (new, default 8) | in-flight logins **plus** parked handoffs awaiting an attach | login refused, 503 |
+
+A slot is anonymous while a request holds it and KEYED by the handoff once a
+handoff owns it; it is returned when that handoff is claimed, released or expires,
+and it expires on its own after the ticket's lifetime (§2.12.8, rev 22).
 
 A reconnect at a full session cap therefore works: the login parks against the
 pending budget, the attach reattaches, and `OnHandoffUnused` releases it
@@ -746,6 +751,75 @@ missed". Given how much of this session was spent finding controls that were
 documented and not enforced, the helper is the honest reading of that: the
 difference between the two options is whether a consumer's mistake is possible,
 not whether it is described.
+
+#### 2.12.8 The lifecycle repairs (rev 22)
+
+Rev 21 got the SHAPE right and the LIFECYCLE wrong. Lector's r1 review of PR #14
+reproduced six defects, five of them leaks of one kind or another. They are
+recorded here because each one is a rule about who owns what, and the rules are
+the part worth keeping.
+
+**1. An admission slot must come back.** `ServeLogin` took a pending-login slot
+before verifying and stopped returning it once a handoff was parked — and nothing
+else knew the gate existed. Every successful login consumed a slot for the life of
+the process, so with the default of 8 the ninth login was 503 with every earlier
+session already ended: an authenticated denial of service. `Options` had given the
+handler and the park the same integer, and rev 20 called that "the bounds cannot
+disagree". **Equality of two numbers is not lifecycle accounting.** The slot is now
+an admission lease: anonymous while a request holds it, KEYED by the handoff once a
+handoff owns it, and returned when that handoff is claimed, released, or expires.
+A slot also expires on its own after the ticket's lifetime, because a login whose
+ticket is never presented can be settled by nobody.
+
+**2. Allocation and cleanup must be registered together.** A consumer allocates
+during `Verify`, since that is the only place holding the credential — but the
+login can still fail afterwards: a later factor refuses, the ticket fails to mint,
+the park is full. Each of those returned having allocated an upstream session
+nothing would ever close. `SSO.Stash` now registers the cleanup at the same moment
+it records the value, the login route discards on every path that does not park,
+and a second `Stash` in one request is refused rather than overwriting a value
+whose cleanup is already registered. A failed `OnLogin` also REVOKES the ticket it
+had minted, which previously stayed usable behind a 503.
+
+**3. A promised sweep must exist.** §2.12.6 said the expiry sweep was internal so a
+consumer could not forget a timer. It only swept when another login arrived, so a
+lone abandoned login on an idle server stayed logged in upstream indefinitely, and
+`Claim` ignored `expires` entirely — a TTL shorter than the attach ticket's had no
+effect at all. Each parked entry now carries its own timer, and `Claim` refuses and
+releases an entry past its deadline.
+
+**4. "Every mechanism" has to include the shipped one.** The stock
+`auth/password.Factor` verifies a hash and knows nothing about this package, so it
+cannot call `Stash` — and `Options` treated an empty stash as a fatal login error.
+The helper that claimed to cover every mechanism returned 503 for the mechanism
+§2.8 spends the most words on. A login that stashes nothing now succeeds when a
+`Provision` is configured and is provisioned at attach like any other direct
+mechanism; without a `Provision` it fails at the LOGIN rather than minting a ticket
+guaranteed to fail later. The e2e matrix now drives the real factor.
+
+**5. One user's panic must not end everyone's session.** `Factory`'s deferred
+release did run while a panic unwound, but the `Manager` had no recovery boundary,
+so the process died immediately afterwards — "runs on every exit path, panics
+included" was true and useless. An App panic is now contained as that session's
+failure, exactly as `server.Scaffold` contains a connection handler's panic and for
+the same reason: one process serves N users. A panicking `Release` is contained
+too. Shutdown order is now stated and enforced: handler stop, `Manager` shutdown,
+then `SSO.Close` — and `Session` refuses to provision after `Close`, so getting the
+order wrong fails loudly instead of leaking.
+
+**6. A ready frame does not order a runner.** The new e2e tests read the build
+result immediately after the ready frame, but the session is registered, attached
+and answered before the runner goroutine is necessarily scheduled. They now wait on
+a build signal, and the factory's complaints are reported on the test goroutine
+rather than from inside a goroutine the test never joins.
+
+Two wording corrections came out of the same review and matter beyond the prose. A
+non-empty `Handoff` does **not** mean a login parked something — every presented
+ticket derives one, including a ticket minted out of band — so the question is
+answered by looking in the park, which is why `Session` claims first and provisions
+on a miss. And `Options()` returning both hooks together is an API that removes the
+need to KNOW about the second hook; it is not a structural guarantee, because a Go
+caller can discard a return value.
 
 ### 2.13 Peer binding (rev 19)
 
@@ -1050,6 +1124,38 @@ decisions:
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
 
+- **rev 22 (2026-08-22, jarvis — the lifecycle repairs from lector r1 on PR #14).**
+  Six must-fix findings, five of them leaks: a pending-login slot never returned
+  (the ninth login 503'd forever), state allocated in `Verify` dropped when the
+  login failed later, a promised expiry sweep that did not exist plus a `Claim`
+  that ignored the deadline, the stock `auth/password` factor rejected by the
+  helper that claimed to support every mechanism, an App panic that still killed
+  the process, and a race in the new e2e tests. §2.12.8 records each one.
+
+  The lesson worth keeping is narrower than "test more". Rev 21 shipped a type
+  whose entire pitch is that the obligations are structural, and got the SHAPE of
+  every obligation right while getting the OWNERSHIP wrong in five places. Two
+  claims in particular were self-flattering: "the bounds cannot disagree" described
+  two integers being equal, which says nothing about when either is decremented;
+  and "runs on every exit path, panics included" was true of the release and
+  irrelevant, because the process died a moment later. Both read as guarantees and
+  neither was one.
+
+  Ten negative controls back the repairs — the slot kept forever, no discard on a
+  policy refusal, no discard on an issuer failure, a second stash overwriting, no
+  expiry timer, `Claim` ignoring expiry, the stock password factor refused, the App
+  panic uncontained, provisioning after `Close`, and (from rev 21's own set) the
+  undeferred release. Each was confirmed to turn its test red.
+
+  Also in this round: the Firefox paste failure the browser matrix reported on its
+  first-ever Firefox run was a HARNESS defect, the third of three, and still no
+  product defect. `new ClipboardEvent('paste', {clipboardData: dt})` ignores the
+  constructor member in Firefox and substitutes an empty `DataTransfer`, so the
+  client correctly declined to send an empty paste and the spec read that as a
+  product failure. The dispatch now verifies the payload survived and shadows the
+  accessor only where it did not, leaving Chromium and WebKit on the path they were
+  already green on.
+
 - **rev 21 (2026-08-22, jarvis — `web.SSO` covers every `auth` mechanism).**
   Johno: "the `golib/tui/web/sso` should accommodate all common auth types
   implemented in `golib/auth`." Rev 20's helper covered one — a password login —
@@ -1063,8 +1169,8 @@ decisions:
   the release to a consumer's discipline; putting it in a `defer` inside a wrapping
   `Runner` is what makes it unforgettable, and it is why acquisition moved into
   `Run` (a context to cancel, and the release on the same stack as the work).
-  **Twelve negative controls.** Every new assertion was verified by mutating the
-  code under it — provision-never-called, provision-preferred-over-claim, nil
+  **Ten negative controls** (rev 21 first said twelve and listed ten; lector
+  counted). Every new assertion was verified by mutating the code under it — provision-never-called, provision-preferred-over-claim, nil
   provision returning a zero value, a swallowed provision error, a
   non-idempotent release, an undeferred release, an SSHSIG signed under the wrong
   namespace, an SSHSIG over the wrong message, an mTLS chain removed from the

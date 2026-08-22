@@ -6,16 +6,37 @@ mistaken for "the matrix passed".
 
 | Engine | Status | Evidence |
 |---|---|---|
-| **Chromium** | **16/16 PASSED** | local, 2026-08-22, Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) |
-| Firefox | **NOT RUN** | needs `npx playwright install firefox` |
-| WebKit | **NOT RUN** | needs `npx playwright install webkit` |
+| **Chromium** | **16/16 PASSED** | CI, 2026-08-22, PR #14 run 32574695356; and locally |
+| **Firefox** | **16/16 PASSED** | local, 2026-08-22, Firefox 153.0 (playwright firefox v1538), after the paste-dispatch repair below. CI's first Firefox run failed 1/16 on paste. |
+| **WebKit** | **PASSED in CI** | CI, 2026-08-22, PR #14 run 32574695356. Cannot run locally: playwright's WebKit needs Ubuntu libraries this Arch host has no package for. |
 
 CI is wired — `.github/workflows/browser-matrix.yml`, with a single required
-`browser matrix (required)` check that fails unless **every** engine passes. **No
-CI run has executed yet**, because the workflow lands with this commit; GitHub
-reported zero check runs for the branch before it.
+`browser matrix (required)` check that fails unless **every** engine passes.
 
-## Gate status: WAIVED for v0.3.8 by Johno, 2026-08-22
+## All three engines have now run (2026-08-22)
+
+The waiver below was cashed in on PR #14, the first CI run of the matrix. The
+result: **Chromium and WebKit green, Firefox 15/16**, failing only
+`paste emits exactly one PasteEvent with normalized newlines`.
+
+That failure was the **third harness defect** the matrix has produced, and still
+**no product defect**. `new ClipboardEvent('paste', { clipboardData: dt })` looks
+like it hands the payload over and does not: Firefox ignores the constructor member
+and substitutes its own empty `DataTransfer`, so `getData('text')` returned `''`.
+The client then *correctly* declined to send an empty paste — the same behaviour the
+neighbouring cancelled-paste test asserts — and the spec read that correct
+behaviour as a product failure.
+
+The repair verifies that the payload survived construction and shadows the readonly
+accessor only where it did not, which leaves Chromium and WebKit dispatching
+exactly as they already did. It also fails on the *dispatch* rather than three
+lines later on the assertion, because "the payload never reached the page" and "the
+client dropped the payload" are different bugs and must not produce the same red.
+
+The composition, dead-key and AltGraph behaviours this file named as the most
+likely divergences all passed on Gecko and WebKit unchanged.
+
+## Gate status: WAIVED for v0.3.8 by Johno, 2026-08-22 — now SATISFIED
 
 Two of three engines are unrun. Per §2.9 that means the gate is **not satisfied**,
 and rather than quietly tagging around it the waiver is recorded here:
@@ -64,5 +85,8 @@ evidence, not proof — two engines remain.
   password-like text absent), rule 1 (reserved shortcuts not forwarded), named-key
   codes, paste newline normalization, and §2.6 wide-grapheme containment
   (`span 2` plus `overflow: hidden` measured from the DOM).
-- Firefox — not run.
-- WebKit — not run.
+- **2026-08-22** — firefox, 16/16 passed in 20.0s, after the paste-dispatch repair.
+  Run alone: running two projects in one invocation is unreliable locally because
+  the fixture's event log is process-global state shared by both browsers. CI gives
+  each engine its own job and its own fixture, which is why it does not see this.
+- **2026-08-22** — webkit, passed in CI (PR #14). Not runnable on this host.
