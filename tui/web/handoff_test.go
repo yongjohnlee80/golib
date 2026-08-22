@@ -327,17 +327,10 @@ func TestHandoff_ReattachReleases(t *testing.T) {
 	c1.push(m1)
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	go func() { _ = h.loop.serve(ctx1, c1, handshakeReq("https://tui.example.test")) }()
-	waitFor(t, func() bool { return m.Len() == 1 }, "the first session")
-
-	var sessionID string
-	for _, msg := range c1.messages() {
-		if msg.T == msgReady {
-			sessionID = msg.Session
-		}
-	}
-	if sessionID == "" {
-		t.Fatal("no session id")
-	}
+	// Wait for the READY MESSAGE, not for the manager's count: the session is
+	// registered before the ready frame is written, so m.Len()==1 does not yet
+	// mean the id has reached the client.
+	sessionID := waitForSession(t, c1)
 	// The first connection goes away, leaving the session detached and resumable.
 	cancel1()
 	waitFor(t, func() bool {
@@ -576,6 +569,26 @@ func TestBindPeer(t *testing.T) {
 				"must succeed — that is the no-op: %v", err)
 		}
 	})
+}
+
+// waitForSession blocks until the connection has been sent a ready frame and
+// returns the session id it carries.
+func waitForSession(t *testing.T, c *fakeConn) string {
+	t.Helper()
+	var id string
+	waitFor(t, func() bool {
+		for _, msg := range c.messages() {
+			if msg.T == msgReady {
+				id = msg.Session
+				return true
+			}
+		}
+		return false
+	}, "a ready frame carrying a session id")
+	if id == "" {
+		t.Fatal("the ready frame carried no session id")
+	}
+	return id
 }
 
 func waitFor(t *testing.T, cond func() bool, what string) {

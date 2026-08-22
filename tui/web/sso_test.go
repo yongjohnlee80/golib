@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yongjohnlee80/golib/auth"
 )
 
 // upstream models a consumer's per-login state: a thing that must be logged out
@@ -327,3 +329,223 @@ func TestHandoffReason_String(t *testing.T) {
 		}
 	}
 }
+
+// --- every auth mechanism reaches an App the same way ------------------------
+
+// A DIRECT attach — an SSH-minted ticket, an mTLS chain, an SSHSIG challenge —
+// parks nothing, because no login route ran. Provision is what stops those
+// mechanisms needing a second allocation path with separate cleanup.
+func TestSSO_ProvisionCoversDirectAttach(t *testing.T) {
+	t.Parallel()
+	var provisioned []string
+	var mu sync.Mutex
+	s, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: time.Minute,
+		Provision: func(_ context.Context, id *auth.Identity) (*upstream, error) {
+			mu.Lock()
+			provisioned = append(provisioned, id.Subject)
+			mu.Unlock()
+			return &upstream{id: id.Subject}, nil
+		},
+		Release: func(u *upstream, r HandoffReason) { u.releaseCount++; u.reason = r },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Each of the direct mechanisms produces a SessionInfo with no handoff —
+	// ticket, mTLS and SSHSIG are indistinguishable here, which is the point:
+	// they all get upstream state by the same route.
+	for _, subject := range []string{"ticket-user", "mtls-user", "sshsig-user"} {
+		info := &SessionInfo{Identity: &auth.Identity{Subject: subject}}
+		up, release, err := s.Session(context.Background(), info)
+		if err != nil {
+			t.Fatalf("%s: %v", subject, err)
+		}
+		if up.id != subject {
+			t.Errorf("provisioned %q for %q", up.id, subject)
+		}
+		release()
+		if up.releaseCount != 1 || up.reason != SessionEnded {
+			t.Errorf("%s: release count=%d reason=%v", subject, up.releaseCount, up.reason)
+		}
+	}
+	mu.Lock()
+	n := len(provisioned)
+	mu.Unlock()
+	if n != 3 {
+		t.Errorf("provisioned %d times, want 3", n)
+	}
+}
+
+// A password login CLAIMS instead of provisioning, so the same helper serves both
+// origins and Provision is not called when a login already parked state.
+func TestSSO_ClaimTakesPrecedenceOverProvision(t *testing.T) {
+	t.Parallel()
+	provisionCalled := false
+	s, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: time.Minute,
+		Provision: func(context.Context, *auth.Identity) (*upstream, error) {
+			provisionCalled = true
+			return &upstream{id: "provisioned"}, nil
+		},
+		Release: func(u *upstream, r HandoffReason) { u.releaseCount++ },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parked := &upstream{id: "from-login"}
+	if err := s.hold("h1", parked); err != nil {
+		t.Fatal(err)
+	}
+
+	up, release, err := s.Session(context.Background(),
+		&SessionInfo{Identity: &auth.Identity{Subject: "alice"}, Handoff: "h1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if up != parked {
+		t.Errorf("got %v, want the parked login's state", up.id)
+	}
+	if provisionCalled {
+		t.Error("Provision ran even though a login had parked state — the two origins " +
+			"must not both allocate for one session")
+	}
+}
+
+// A nil Provision REFUSES a direct attach rather than handing an App a zero
+// value, which would fail later and further from the cause.
+func TestSSO_NilProvisionRefusesDirectAttach(t *testing.T) {
+	t.Parallel()
+	s, _, _, _ := ssoFor(t, 4, time.Minute)
+	_, _, err := s.Session(context.Background(),
+		&SessionInfo{Identity: &auth.Identity{Subject: "mtls-user"}})
+	if !errors.Is(err, ErrNoUpstream) {
+		t.Errorf("err = %v, want ErrNoUpstream", err)
+	}
+	if _, _, err := s.Session(context.Background(), nil); err == nil {
+		t.Error("a nil SessionInfo was accepted")
+	}
+	if _, _, err := s.Session(context.Background(), &SessionInfo{}); err == nil {
+		t.Error("a SessionInfo with no identity was accepted")
+	}
+}
+
+func TestSSO_ProvisionFailureFailsTheSession(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("upstream refused")
+	s, err := NewSSO(SSOConfig[*upstream]{
+		Provision: func(context.Context, *auth.Identity) (*upstream, error) { return nil, boom },
+		Release:   func(*upstream, HandoffReason) { t.Error("Release ran for a failed Provision") },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Session(context.Background(),
+		&SessionInfo{Identity: &auth.Identity{Subject: "x"}}); !errors.Is(err, boom) {
+		t.Errorf("err = %v, want the Provision error", err)
+	}
+}
+
+// The release must be idempotent, because a Runner may both defer it and call it
+// on an early return.
+func TestSSO_ReleaseOnceIsIdempotent(t *testing.T) {
+	t.Parallel()
+	s, err := NewSSO(SSOConfig[*upstream]{
+		Provision: func(_ context.Context, id *auth.Identity) (*upstream, error) {
+			return &upstream{id: id.Subject}, nil
+		},
+		Release: func(u *upstream, r HandoffReason) { u.releaseCount++ },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	up, release, err := s.Session(context.Background(),
+		&SessionInfo{Identity: &auth.Identity{Subject: "a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 5 {
+		release()
+	}
+	if up.releaseCount != 1 {
+		t.Errorf("released %d times, want 1", up.releaseCount)
+	}
+}
+
+// Factory is the form that makes the release unforgettable: the build function
+// never sees claim, provision or release.
+func TestSSO_FactoryReleasesOnEveryExit(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		app  func() Runner
+		want error
+	}{
+		"clean exit": {func() Runner { return runnerFunc(func(context.Context) error { return nil }) }, nil},
+		"app error":  {func() Runner { return runnerFunc(func(context.Context) error { return errors.New("boom") }) }, nil},
+		"nil app":    {func() Runner { return nil }, nil},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var released int
+			var mu sync.Mutex
+			s, err := NewSSO(SSOConfig[*upstream]{
+				Provision: func(_ context.Context, id *auth.Identity) (*upstream, error) {
+					return &upstream{id: id.Subject}, nil
+				},
+				Release: func(*upstream, HandoffReason) {
+					mu.Lock()
+					released++
+					mu.Unlock()
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			factory := s.Factory(func(*Backend, *auth.Identity, *upstream) Runner { return c.app() })
+			runner := factory(New(), &SessionInfo{Identity: &auth.Identity{Subject: "a"}})
+			_ = runner.Run(context.Background())
+
+			mu.Lock()
+			got := released
+			mu.Unlock()
+			if got != 1 {
+				t.Errorf("released %d times on %s, want exactly 1", got, name)
+			}
+		})
+	}
+}
+
+// A panicking App must not leak upstream state either: the release is a defer.
+func TestSSO_FactoryReleasesOnPanic(t *testing.T) {
+	t.Parallel()
+	var released int
+	s, err := NewSSO(SSOConfig[*upstream]{
+		Provision: func(_ context.Context, id *auth.Identity) (*upstream, error) {
+			return &upstream{id: id.Subject}, nil
+		},
+		Release: func(*upstream, HandoffReason) { released++ },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	factory := s.Factory(func(*Backend, *auth.Identity, *upstream) Runner {
+		return runnerFunc(func(context.Context) error { panic("app exploded") })
+	})
+	runner := factory(New(), &SessionInfo{Identity: &auth.Identity{Subject: "a"}})
+
+	func() {
+		defer func() { _ = recover() }()
+		_ = runner.Run(context.Background())
+	}()
+	if released != 1 {
+		t.Errorf("released %d times after a panic, want 1 — the release must be a defer", released)
+	}
+}
+
+type runnerFunc func(context.Context) error
+
+func (f runnerFunc) Run(ctx context.Context) error { return f(ctx) }

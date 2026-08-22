@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 20)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 21)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -8,7 +8,9 @@
   contradictions. **Rev 9 (2026-08-22) reverses one decision on Johno's
   instruction:** §2.8's refusal of password auth becomes "permitted, documented
   as the weakest option, with the throttle and allowlist stated as
-  requirements". See Review history. Lands on `tui-web`.)
+  requirements". **Rev 21 (2026-08-22)** extends `web.SSO` to every `golib/auth`
+  mechanism (§2.12.7), on Johno's instruction; **not yet reviewed by lector and
+  not yet released**. See Review history. Lands on `tui-web`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -531,7 +533,7 @@ are absorbed: the queue holds 1 024, and anything beyond it applies backpressure
 and may reach the two-second close rule. Because `Events()` is ordered and
 un-coalesced (ADR-0002), the backend never grows to absorb abuse.
 
-### 2.12 The login handoff seam (rev 19)
+### 2.12 The login handoff seam (rev 19, extended rev 21)
 
 **Problem.** A consumer doing single sign-on must carry per-login state — an
 authenticated upstream session — from the login route to the `App` created for
@@ -682,10 +684,60 @@ to release — and each obligation is structural rather than documented:
 | clean up abandoned logins | the sweep is internal, and a login sweeps before parking |
 | the two bounds agree | the park's `Max` **sets** `MaxPendingLogins` |
 | one session per login | `Claim` deletes as it hands over |
+| release when the session ends | `Factory` **defers** it around the `App`, panics included |
+| no path allocates twice | `Session` claims **or** provisions, never both |
+| no `App` sees a nil upstream | a nil `Provision` **refuses** the session |
 
 The raw hooks stay exported for a park that must live elsewhere — a store shared
 across replicas — and the README says plainly that reaching for them means taking
-on all five obligations.
+on every obligation in that table.
+
+#### 2.12.7 The helper must cover EVERY `auth` mechanism (rev 21)
+
+Johno's follow-up instruction (2026-08-22): "the `golib/tui/web/sso` should
+accommodate all common auth types implemented in `golib/auth`."
+
+Rev 20's helper did not. It served exactly one mechanism — a password login,
+because only a login has a place to park state. Every other mechanism in ADR-0001
+authenticates **at the attach**: an SSH-minted ticket (`auth/token`), an mTLS
+verified chain (`auth/mtls`), an SSHSIG challenge (`auth/sshkey`). Those attaches
+carry `Handoff == ""`, so `Claim` returns `ok == false` and a consumer had to write
+a second allocation path with its own cleanup — the "two ways to do it, one of them
+forgotten" shape §2.12.6 exists to prevent, reintroduced one level up.
+
+So `SSOConfig` gains **`Provision`**, and the mechanisms divide by *when* they
+authenticate rather than by what they are:
+
+| Mechanism | Authenticates at | Upstream state |
+| --- | --- | --- |
+| `auth/password` via `ServeLogin` | the **login** | `Stash` → parked → **claimed** |
+| `auth/token` (SSH-minted / out-of-band ticket) | the **attach** | **`Provision`** |
+| `auth/mtls` (verified chain) | the **attach** | **`Provision`** |
+| `auth/sshkey` (SSHSIG challenge) | the **attach** | **`Provision`** |
+| `auth/ipallow` (contextual) | narrows all of the above | allocates nothing |
+
+Three consequences are decisions, not incidentals:
+
+1. **`SSO.Session` claims *or* provisions, never both.** A parked login always
+   wins, so a password login's own allocation is never orphaned by a second one.
+2. **`SSO.Factory` is the form to reach for.** It wraps a build function in a
+   `Runner` that acquires inside `Run` — where there is a cancellable context, and
+   where the release sits on the same stack as the work it protects, as a `defer`.
+   The build function never sees claim, provision or release, so the release cannot
+   be forgotten; it runs on every exit path including a panic. Acquisition happens
+   in `Run` rather than in the factory because the factory has no context and a
+   dial must not hang session creation.
+3. **A nil `Provision` refuses the session.** Handing an `App` a nil upstream fails
+   later and further from the cause than a refused connection. A consumer who wants
+   guest sessions returns a guest value from `Provision` — one mechanism, not a
+   flag.
+
+`tui/web/sso_e2e_test.go` drives all five rows above through the real serve path:
+a real `auth/token` issuer, a real `auth/mtls` chain, a real SSHSIG signature
+verified by `auth/sshkey`'s pure-Go verifier, a real `auth/ipallow` prefix, and the
+password login route — asserting that the login's state is claimed, that the other
+three are provisioned, that a refused attach allocates nothing, and that ending a
+session releases exactly once.
 
 **Why this is worth an ADR entry rather than being an implementation detail.**
 Johno's instruction (2026-08-22) was that a pattern with this much impact on the
@@ -997,6 +1049,33 @@ decisions:
   sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
+
+- **rev 21 (2026-08-22, jarvis — `web.SSO` covers every `auth` mechanism).**
+  Johno: "the `golib/tui/web/sso` should accommodate all common auth types
+  implemented in `golib/auth`." Rev 20's helper covered one — a password login —
+  because parking presupposes a login route. Ticket, mTLS and SSHSIG attaches
+  authenticate at the attach and park nothing, so a consumer needed a second
+  allocation path with separate cleanup: §2.12.6's own failure mode, reintroduced
+  one level up. `SSOConfig.Provision` and `SSO.Factory` close it (§2.12.7).
+
+  Two things about the work are worth keeping. **The `Factory` form was the point,
+  not the `Provision` field.** Unifying the two origins behind `Session` still left
+  the release to a consumer's discipline; putting it in a `defer` inside a wrapping
+  `Runner` is what makes it unforgettable, and it is why acquisition moved into
+  `Run` (a context to cancel, and the release on the same stack as the work).
+  **Twelve negative controls.** Every new assertion was verified by mutating the
+  code under it — provision-never-called, provision-preferred-over-claim, nil
+  provision returning a zero value, a swallowed provision error, a
+  non-idempotent release, an undeferred release, an SSHSIG signed under the wrong
+  namespace, an SSHSIG over the wrong message, an mTLS chain removed from the
+  request, the `ipallow` leaf dropped from the policy — and each was confirmed to
+  turn the relevant test red. The session that produced rev 19 shipped six tests
+  that could not fail; the controls are the standing answer to that.
+
+  Fixed alongside: `TestHandoff_ReattachReleases` waited on `Manager.Len() == 1`
+  and then scraped the ready frame, but a session is registered *before* its ready
+  frame is written — so the test failed roughly one run in three once new parallel
+  tests changed the timing. It now waits for the frame that carries the id.
 
 - **rev 19 (2026-08-22, jarvis — the login handoff seam and peer binding, from
   autodb ADR-0061).** autodb's web gateway needed single sign-on and could not have

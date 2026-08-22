@@ -11,8 +11,23 @@ import (
 )
 
 // SSO wires the whole login-handoff workflow of ADR-0009 §2.12, so a consumer
-// supplies only the two things that are genuinely theirs: how to allocate
-// upstream state, and how to release it.
+// supplies only the things that are genuinely theirs: how to allocate upstream
+// state, and how to release it.
+//
+// # Every auth mechanism, one route
+//
+// golib/auth has two kinds of mechanism, and they allocate at different moments:
+//
+//   - [auth/password] authenticates at a LOGIN, so it can allocate while it still
+//     holds the credential. That state is parked and later CLAIMED.
+//   - [auth/token] (an SSH-minted or otherwise out-of-band ticket), [auth/mtls]
+//     and [auth/sshkey] authenticate at the ATTACH itself. No login ran and
+//     nothing was parked, so their state is PROVISIONED.
+//   - [auth/ipallow] is contextual: it narrows any of the above and admits none of
+//     them alone, so it never allocates anything.
+//
+// [SSO.Session] resolves that difference, and [SSO.Factory] hides it: one build
+// function serves every mechanism.
 //
 // # Why this exists rather than only documentation
 //
@@ -33,27 +48,41 @@ import (
 //     login cannot leave state behind by the consumer forgetting a timer.
 //   - The park's capacity also sets [MaxPendingLogins], so the two bounds cannot
 //     drift into disagreeing about how many logins may be in flight.
+//   - [SSO.Factory] puts the release on the App's own stack as a deferred call, so
+//     it runs on every exit path including a panic.
 //
 // # The shape of a consumer
 //
 //	sso, err := web.NewSSO(web.SSOConfig[*myUpstream]{
 //	    Max: 8, TTL: 30 * time.Second,
+//	    Provision: func(ctx context.Context, id *auth.Identity) (*myUpstream, error) {
+//	        return dial(ctx, id.Subject) // for ticket / mTLS / SSHSIG attaches
+//	    },
 //	    Release: func(u *myUpstream, r web.HandoffReason) { u.Logout(); u.Close() },
 //	})
 //
 //	// In the login factor's Verify — the only place holding the credential:
 //	sso.Stash(ctx, upstream)
 //
-//	// In the AppFactory:
-//	upstream, ok := sso.Claim(info)
+//	// The app: one build function for every mechanism, release handled.
+//	mgr, err := web.NewManager(
+//	    sso.Factory(func(b *web.Backend, id *auth.Identity, up *myUpstream) web.Runner {
+//	        return myApp(b, id, up)
+//	    }),
+//	    mOpt,
+//	)
 //
 //	// Wiring, both hooks at once:
 //	hOpt, mOpt := sso.Options()
+//
+// [SSO.Claim] remains for a consumer writing their own Runner; [SSO.Factory] is
+// the form to reach for.
 type SSO[T any] struct {
-	ttl     time.Duration
-	max     int
-	release func(T, HandoffReason)
-	now     func() time.Time
+	ttl       time.Duration
+	max       int
+	release   func(T, HandoffReason)
+	provision func(context.Context, *auth.Identity) (T, error)
+	now       func() time.Time
 
 	mu     sync.Mutex
 	parked map[string]parkedEntry[T]
@@ -67,6 +96,23 @@ type parkedEntry[T any] struct {
 
 // SSOConfig configures [NewSSO].
 type SSOConfig[T any] struct {
+	// Provision allocates upstream state for a session whose attach carried NO
+	// login — the direct mechanisms of ADR-0001: an SSH-minted ticket, an mTLS
+	// verified chain, or an SSHSIG challenge. Those authenticate at attach, so no
+	// login route ran and nothing was parked.
+	//
+	// Without this, only password logins would get upstream state and every other
+	// mechanism would need a second allocation path with its own cleanup — the
+	// "two ways to do it, one of them forgotten" shape this type exists to
+	// prevent. With it, every [auth] mechanism reaches an App the same way.
+	//
+	// A nil Provision REFUSES a direct attach rather than handing an App a zero
+	// value: a nil upstream session reaching application code fails later and
+	// further from the cause than a refused connection does. A consumer who wants
+	// guest sessions supplies a Provision returning a guest value, so there is one
+	// mechanism rather than a flag.
+	Provision func(ctx context.Context, id *auth.Identity) (T, error)
+
 	// Release cleans up parked state. REQUIRED.
 	//
 	// Called exactly once per parked value, on whichever path applies: a reattach,
@@ -92,6 +138,15 @@ type SSOConfig[T any] struct {
 	// Clock overrides the time source, for tests.
 	Clock func() time.Time
 }
+
+// SessionEnded is the [HandoffReason] for state released because the session it
+// belonged to ended — the ordinary teardown, not a failure.
+const SessionEnded HandoffReason = 3
+
+// ErrNoUpstream means a session needs upstream state and there is no way to get
+// it: the attach parked none and no Provision is configured.
+var ErrNoUpstream = errors.New("web: no parked login and no Provision, so this " +
+	"session cannot be given upstream state")
 
 // DefaultHandoffTTL is how long a parked login waits for its attach.
 //
@@ -120,11 +175,12 @@ func NewSSO[T any](cfg SSOConfig[T]) (*SSO[T], error) {
 		return nil, fmt.Errorf("web.NewSSO: negative TTL %s", cfg.TTL)
 	}
 	s := &SSO[T]{
-		ttl:     cfg.TTL,
-		max:     cfg.Max,
-		release: cfg.Release,
-		now:     cfg.Clock,
-		parked:  make(map[string]parkedEntry[T]),
+		ttl:       cfg.TTL,
+		max:       cfg.Max,
+		release:   cfg.Release,
+		provision: cfg.Provision,
+		now:       cfg.Clock,
+		parked:    make(map[string]parkedEntry[T]),
 	}
 	if s.ttl == 0 {
 		s.ttl = DefaultHandoffTTL
@@ -203,6 +259,95 @@ func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 		s.Release(handoff, r)
 	})
 	return hOpt, mOpt
+}
+
+// Session returns this session's upstream state and the release that MUST run
+// when the session ends.
+//
+// It unifies the two origins so a consumer has one path regardless of how the
+// user authenticated:
+//
+//   - a password login parked state during verification, so this CLAIMS it;
+//   - a direct attach (ticket, mTLS, SSHSIG) parked nothing, so this PROVISIONS it.
+//
+// Prefer [SSO.Factory], which calls this and guarantees the release runs. Use
+// Session directly only when writing your own Runner, and defer the release.
+func (s *SSO[T]) Session(ctx context.Context, info *SessionInfo) (T, func(), error) {
+	var zero T
+	noop := func() {}
+	if info == nil || info.Identity == nil {
+		return zero, noop, errors.New("web: no identity")
+	}
+	if v, ok := s.Claim(info); ok {
+		return v, s.releaseOnce(v), nil
+	}
+	if s.provision == nil {
+		return zero, noop, ErrNoUpstream
+	}
+	v, err := s.provision(ctx, info.Identity)
+	if err != nil {
+		return zero, noop, err
+	}
+	return v, s.releaseOnce(v), nil
+}
+
+// releaseOnce returns a release that runs the consumer's cleanup exactly once
+// however many times it is called, so a Runner that both defers it and calls it
+// on an early return cannot double-release.
+func (s *SSO[T]) releaseOnce(v T) func() {
+	var once sync.Once
+	return func() { once.Do(func() { s.release(v, SessionEnded) }) }
+}
+
+// Factory wraps a build function into an [AppFactory] that acquires and releases
+// upstream state around it.
+//
+// This is the form to use. The build function receives a ready upstream session
+// and never sees claim, provision or release — so the release cannot be
+// forgotten, which is the failure this type exists to prevent. It runs on every
+// exit path of the App, panics included, because it is a deferred call in the
+// wrapping Runner.
+//
+//	mgr, err := web.NewManager(
+//	    sso.Factory(func(b *web.Backend, id *auth.Identity, up *myUpstream) web.Runner {
+//	        return myApp(b, id, up)
+//	    }),
+//	    managerOpt,
+//	)
+//
+// A session that cannot be given upstream state gets no App: Run returns an
+// error, which the [Manager] treats as the session failing. That is deliberate —
+// an App holding a nil upstream session fails later and further from the cause.
+func (s *SSO[T]) Factory(build func(*Backend, *auth.Identity, T) Runner) AppFactory {
+	return func(b *Backend, info *SessionInfo) Runner {
+		return &ssoRunner[T]{sso: s, backend: b, info: info, build: build}
+	}
+}
+
+// ssoRunner acquires inside Run rather than in the factory.
+//
+// The factory has no context, and acquisition may make a network call that must
+// be cancellable by the session's own lifetime instead of hanging a session
+// creation. It also puts the release on the same stack as the work it protects.
+type ssoRunner[T any] struct {
+	sso     *SSO[T]
+	backend *Backend
+	info    *SessionInfo
+	build   func(*Backend, *auth.Identity, T) Runner
+}
+
+func (r *ssoRunner[T]) Run(ctx context.Context) error {
+	up, release, err := r.sso.Session(ctx, r.info)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	app := r.build(r.backend, r.info.Identity, up)
+	if app == nil {
+		return errors.New("web: the build function returned no application")
+	}
+	return app.Run(ctx)
 }
 
 // hold parks a value, sweeping expired entries first so an abandoned login cannot
