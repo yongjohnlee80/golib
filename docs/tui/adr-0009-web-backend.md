@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 23)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 24)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -11,8 +11,9 @@
   requirements". **Rev 21 (2026-08-22)** extends `web.SSO` to every `golib/auth`
   mechanism (§2.12.7), on Johno's instruction. **Rev 22 (2026-08-22)** repairs the
   lifecycle defects lector's r1 review of PR #14 found (§2.12.8), and **rev 23
-  (2026-08-22)** the two concurrency boundaries r2 found still false (§2.12.9);
-  **awaiting lector r3 and not yet released**. See Review history. Lands on `tui-web`.)
+  (2026-08-22)** the two concurrency boundaries r2 found still false (§2.12.9), and **rev 24
+  (2026-08-22)** the ordering hole r3 found between parking and leasing
+  (§2.12.10); **awaiting lector r4 and not yet released**. See Review history. Lands on `tui-web`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -877,6 +878,42 @@ invalidates it. A concurrency claim is only worth as much as the test that pause
 the other side of it, and both of r2's findings came from probes that did exactly
 that — which is now how they are tested.
 
+#### 2.12.10 The ghost slot: order of establishment (rev 24)
+
+Lector's r3 found the third and last window of this family, and it is the smallest
+and most instructive of them.
+
+`ServeLogin` installed the keyed admission lease AFTER calling the hook that parks.
+But a parked entry can be settled the instant it exists — by its own expiry timer,
+by a `Sweep`, by a concurrent `Close`. A settle landing in that gap found no key
+and did nothing, and the lease installed a moment later belonged to a handoff that
+no longer existed. Nothing would ever return it, so it sat on the pending-login
+budget until the backstop expiry tens of seconds later. Lector's probe reported
+`parked=0, held=1`.
+
+The fix is one line moved: **the lease goes in first.** That inverts the race
+harmlessly — a settle arriving early now finds the key and returns the slot — and
+the rollbacks (the hook failed; the hook parked nothing) are idempotent because
+`gate.release` is keyed. One supporting rule makes it safe: `leased` is one-way.
+Once a handoff owns the slot the key is the sole unit of accounting, and flipping
+the flag back would let the request's deferred `leave()` decrement a slot some
+other request had meanwhile taken.
+
+**Three rounds, three windows, one mistake.** r1: a slot never returned. r2: a slot
+returned too early. r3: a slot established too late. Every one was an ordering
+question, and in every one the code contained a correct-looking operation whose
+correctness depended on when it ran relative to something else. The generalisation
+worth keeping is that "where" is not a design decision for a concurrent handoff —
+"when, relative to what" is — and a claim of that shape is only worth as much as a
+test that pauses the other side. All three now have one.
+
+Two narrower corrections from the same round. `Close`'s doc claimed nothing this
+type allocated is outstanding once it returns; that is false for state a session
+already claimed, which the session releases when it ends — possibly later. It now
+says what it actually collects (parked entries, in-flight provisioning) and why the
+[Manager] must be drained first. And the README still described the browser matrix
+as two-engines-unrun in a section next to the one recording all three green.
+
 ### 2.13 Peer binding (rev 19)
 
 **Optional, off by default.** A session may be bound to the peer address that
@@ -1179,6 +1216,22 @@ decisions:
   sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
+
+- **rev 24 (2026-08-22, jarvis — the ordering hole from lector r3 on PR #14).**
+  One must-fix: the admission lease was established after the park entry it
+  accounts for, so anything settling that entry in between produced a ghost slot
+  that survived to the backstop. Probe: `parked=0, held=1`. §2.12.10 records it and
+  the rule that came out of it — `leased` is one-way, because the key becomes the
+  sole unit of accounting the moment it exists.
+
+  This was the third ordering defect in three rounds, and the three together say
+  something I want written down rather than re-learned: a slot never returned, a
+  slot returned too early, a slot established too late. Each time the operation was
+  right and its position in the schedule was wrong, and each time I had written a
+  guarantee describing the operation. The control for this one puts the settle
+  inside the window deterministically — the hook parks and then sweeps its own park
+  — rather than trying to hit it with timing, and it reproduces lector's numbers
+  exactly when the fix is reverted.
 
 - **rev 23 (2026-08-22, jarvis — the concurrency boundaries from lector r2 on PR #14).**
   Two must-fixes, both reproduced deterministically by lector with probes that

@@ -1315,3 +1315,128 @@ func TestGate_BackstopExpiryThenLateClaimDoesNotDoubleFree(t *testing.T) {
 			"— the live login's slot was freed by someone else's claim", n)
 	}
 }
+
+// A park entry settled BEFORE the lease exists must not leave a ghost slot.
+//
+// The window: SSO's OnLogin inserts the entry and arms its timer, and only after
+// the hook returns did ServeLogin install the keyed lease. Anything that settles
+// the entry in between — its own expiry, a Sweep, a concurrent Close — found no
+// key and did nothing, and the lease installed a moment later was owned by a
+// handoff that no longer existed. It then sat on the budget until the backstop
+// expiry, tens of seconds later. Lector r3 reproduced parked=0, held=1.
+//
+// Deterministic rather than timed: the OnLogin hook parks and then sweeps the park
+// itself, which puts the settle exactly inside the window.
+func TestSSO_SettleBeforeTheLeaseLeavesNoGhostSlot(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var released []*upstream
+	sso, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: time.Minute,
+		Release: func(u *upstream, _ HandoffReason) {
+			mu.Lock()
+			released = append(released, u)
+			mu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hOpt, mOpt := sso.Options()
+
+	store := token.NewMemStore(16)
+	tracker, err := auth.NewMemTracker(16, auth.Backoff{
+		Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginPolicy, err := PasswordPolicyExample(
+		ghostFactor{sso: sso}, tracker, contextualFactor{allow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = m.Shutdown(ctx)
+	})
+
+	h, err := NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer:         token.NewIssuer(store),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m, HandlerLogger(nopLogger{}), hOpt,
+		// Replaces SSO's own OnLogin, keeping everything else hOpt wired (the
+		// settle callback, MaxPendingLogins, parkSettles). It parks exactly as SSO
+		// does and then settles the entry, landing the settle inside the window.
+		OnLogin(func(handoff string, _ *auth.Identity, st *Stash) error {
+			v, ok := st.Take().(*upstream)
+			if !ok {
+				return errors.New("nothing stashed")
+			}
+			if err := sso.hold(handoff, v); err != nil {
+				return err
+			}
+			// The expiry / Sweep / Close that can land here.
+			sso.now = func() time.Time { return time.Now().Add(time.Hour) }
+			sso.Sweep()
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", rec.Code, rec.Body.String())
+	}
+
+	if n := sso.Len(); n != 0 {
+		t.Fatalf("%d entries parked, want 0 — the sweep inside the hook should have "+
+			"emptied the park", n)
+	}
+	if n := h.pending.pending(); n != 0 {
+		t.Errorf("%d admission slots held with an EMPTY park: the settle landed before "+
+			"the lease existed, so the lease is a ghost nothing will ever return and "+
+			"it sits on the budget until the backstop", n)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(released) != 1 {
+		t.Errorf("%d releases: the swept value must still be cleaned up", len(released))
+	}
+}
+
+// ghostFactor is the stashing login factor for the test above.
+type ghostFactor struct{ sso *SSO[*upstream] }
+
+func (ghostFactor) Kind() auth.FactorKind { return auth.FactorIdentity }
+func (ghostFactor) Claim(r *auth.Request) string {
+	if r == nil {
+		return ""
+	}
+	return r.Credentials["subject"].Reveal()
+}
+
+func (f ghostFactor) Verify(ctx context.Context, r *auth.Request) (auth.Contribution, error) {
+	subject := r.Credentials["subject"].Reveal()
+	if subject != "alice" || r.Credentials["password"].Reveal() != "pw" {
+		return auth.Contribution{}, auth.Reason("test: refused")
+	}
+	if err := f.sso.Stash(ctx, &upstream{id: subject}); err != nil {
+		return auth.Contribution{}, auth.Reason("test: stash refused")
+	}
+	return auth.Contribution{Method: "test", Subject: subject, IssuedAt: time.Now()}, nil
+}

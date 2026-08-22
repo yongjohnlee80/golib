@@ -650,9 +650,14 @@ func (s *SSO[T]) Sweep() {
 // for it.
 //
 // It BLOCKS until every [SSO.Session] call already inside Provision has returned.
-// Those calls release what they produced rather than handing it over, so once
-// Close returns nothing this type allocated is still outstanding — which is the
-// only version of that sentence worth writing down.
+// Those calls release what they produced rather than handing it over.
+//
+// What Close guarantees, precisely: no parked entry survives it, and no Provision
+// is in flight after it. What it does NOT do is reach into sessions that already
+// hold their state — a live App keeps its upstream session and releases it when it
+// ends, which may be after Close returns. That is why the shutdown order above
+// puts the [Manager] first: draining the sessions is what collects those, and this
+// only collects what no session ever took.
 func (s *SSO[T]) Close() {
 	s.mu.Lock()
 	s.closed = true

@@ -301,15 +301,16 @@ fabricates events tests the fabrication.
 
 CI is wired with a single required check that fails unless every engine passes.
 
-**Current status: Chromium 16/16 passed; Firefox and WebKit NOT RUN.** The gate is
-therefore **not satisfied**, and it was **explicitly waived for v0.3.8** by the
-owner on 2026-08-22 rather than tagged around silently —
-`browsertest/RESULTS.md` records the waiver and what it costs. The CI workflow
-still requires all three engines, so the next run reports Firefox and WebKit for
-the first time.
+**Current status: all three engines run and pass in CI** (2026-08-22, PR #14 run
+32575804138 onward). The gate is **satisfied by evidence**. It had been waived for
+v0.3.8, when Firefox and WebKit were unrun; that waiver is spent, and
+`browsertest/RESULTS.md` keeps it as history along with what closing it bought.
 
-The first real-engine run found two harness defects and no product defect, which
-is evidence rather than proof: two engines remain.
+Three harness defects and **no product defect** across the three engines. The
+divergences this suite was built to catch — a control updated before
+`compositionend` dispatches, a composition-associated `input` in a later task,
+`getModifierState("AltGraph")` — do not exist: every one of those cases passed on
+Gecko and WebKit unchanged.
 
 ## Single sign-on: use `web.SSO`
 
@@ -375,7 +376,10 @@ SSHSIG signature.
 
 **Stop the handler, shut the `Manager` down and let its sessions finish, then
 `sso.Close()`.** `Close` blocks until every `Provision` already in flight has
-returned and released, so once it returns nothing is outstanding. In the other order a session that is only just starting can
+returned and released. It collects what no session ever took — parked entries and
+in-flight provisioning — and nothing else: a live App holds its own upstream
+session and releases it when it ends, which is why draining the `Manager` comes
+first and not after. In the other order a session that is only just starting can
 provision state after the park has stopped taking responsibility for it; `Session`
 refuses after `Close` precisely so that mistake fails loudly instead of leaking.
 
@@ -469,4 +473,5 @@ nothing against an attacker on the same host or behind the same NAT.
 
 ## Not done
 
-- Firefox and WebKit runs of the matrix above.
+- Persisting the client session id in `sessionStorage`, so a reload reattaches
+  instead of creating a second session.
