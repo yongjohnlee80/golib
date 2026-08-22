@@ -130,9 +130,10 @@ func loopFor(t *testing.T, policy auth.Policy, factory AppFactory, opts ...Manag
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
 	}
+	limits := DefaultLimits().normalize()
 	return &sessionLoop{
-		cfg: cfg, mgr: m, log: nopLogger{}, limits: DefaultLimits().normalize(),
-		decoder: &decoder{},
+		cfg: cfg, mgr: m, log: nopLogger{}, limits: limits,
+		decoder: &decoder{}, pending: newGate(limits.MaxPending),
 	}, m
 }
 

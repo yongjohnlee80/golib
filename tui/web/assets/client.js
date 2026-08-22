@@ -284,7 +284,16 @@
     ws = new WebSocket(scheme + '//' + window.location.host + CFG.path);
 
     ws.addEventListener('open', () => {
-      if (!measure()) return;
+      if (!measure()) {
+        // Clear the credential and CLOSE on this branch too. It previously
+        // returned early, leaving the permanent listener holding the ticket and
+        // the socket open awaiting a hello that would never come — the r1
+        // hygiene defect surviving on the failure path (lector r2).
+        cred = { ticket: '', session: '' };
+        status('could not measure the font');
+        ws.close(1000, 'unmeasured');
+        return;
+      }
       const s = gridSize();
       rebuild(s.cols, s.rows);
       // Credentials go in the FIRST MESSAGE, never the URL.

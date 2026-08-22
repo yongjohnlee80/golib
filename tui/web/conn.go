@@ -16,6 +16,7 @@ import (
 
 // Close codes this package uses. RFC 6455 §7.4.
 const (
+	closeTryAgain    = ws.StatusCode(1013) // Try Again Later
 	closeNormal      = ws.StatusNormalClosure
 	closeGoingAway   = ws.StatusGoingAway
 	closeTooBig      = ws.StatusMessageTooBig
@@ -53,9 +54,10 @@ type sessionLoop struct {
 	sleep   func(context.Context, time.Duration)
 	decoder *decoder
 
-	// limiter is created by readPump and shared with deliver, so one connection
-	// has one token bucket rather than one per event batch.
-	limiter *bucket
+	// pending bounds connections accepted but not yet authenticated. Shared
+	// across the Handler's connections on purpose — it is a global budget, not a
+	// per-connection one.
+	pending *gate
 }
 
 // serve handles one connection from handshake to teardown.
@@ -68,10 +70,25 @@ type sessionLoop struct {
 //  3. Policy.Authenticate;
 //  4. only then create or attach a session, which is where an App first exists.
 //
-// No App is created and no input is accepted before step 3 completes. The
-// Manager enforces that structurally by requiring an *auth.Identity, so this
-// ordering cannot be inverted by a refactor without the compiler objecting.
+// No App is created and no input is accepted before step 3 completes ON THIS
+// PATH. Requiring an *auth.Identity means the ordering here cannot be inverted
+// without the compiler objecting; it is NOT a guarantee against other in-process
+// callers, since auth.Identity is an exported struct anyone can construct. See
+// [Manager.Create] for where that boundary actually sits.
 func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error {
+	// The unauthenticated waiting room is BOUNDED. MaxSessions bounds only what
+	// exists after a successful hello, so without this a responsive non-browser
+	// that forges Host and Origin holds sockets and goroutines while consuming no
+	// session slot (lector r2).
+	if l.pending != nil {
+		if !l.pending.enter() {
+			logger.Notice(l.log, sessionAudit{Kind: "refused", Reason: "pre-auth connection limit"})
+			_ = c.Close(closeTryAgain, "busy")
+			return ErrPendingLimit
+		}
+		defer l.pending.leave()
+	}
+
 	if err := l.cfg.checkHandshake(req.http); err != nil {
 		logHandshakeDenial(l.log, req.http, err)
 		// Deliberately uninformative to the client: a handshake refusal that
@@ -82,8 +99,14 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 
 	// Step 2. The first message must be a hello; anything else is a protocol
 	// error, not an opportunity to guess what the client meant.
+	// A first-message DEADLINE. Without one, a client that connects and says
+	// nothing is held forever, because the read simply blocks — and it occupies a
+	// pre-auth slot while doing so.
+	helloCtx, cancelHello := context.WithTimeout(ctx, l.limits.HelloTimeout)
+	defer cancelHello()
+
 	var first clientMessage
-	if err := c.ReadJSON(ctx, &first); err != nil {
+	if err := c.ReadJSON(helloCtx, &first); err != nil {
 		_ = c.Close(closeUnsupported, "malformed hello")
 		return fmt.Errorf("web: reading hello: %w", err)
 	}
@@ -188,7 +211,13 @@ func (l *sessionLoop) pump(ctx context.Context, c conn, sess *Session) error {
 // readPump decodes client messages into events.
 func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error {
 	backend := sess.Backend()
-	l.limiter = newBucket(l.limits.EventsPerSecond, l.limits.Burst, l.now)
+	// CONNECTION-local, and passed down rather than stored on the loop.
+	//
+	// The sessionLoop is shared by every connection a Handler serves, so a field
+	// here was written by each concurrent readPump and read by each deliver —
+	// a data race, and clients throttling each other even without one
+	// (lector r2).
+	limiter := newBucket(l.limits.EventsPerSecond, l.limits.Burst, l.now)
 
 	for {
 		var m clientMessage
@@ -214,21 +243,7 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 		// A resize is state, not input, and is likewise not metered — a client
 		// dragging a window edge must not be treated as a flood.
 		if m.T == msgResize {
-			if err := backend.Resize(m.Cols, m.Rows); err != nil {
-				if errors.Is(err, ErrGridTooLarge) {
-					// A client asking for a grid we will not allocate is a
-					// protocol violation, not a transient condition: it will
-					// keep asking.
-					logger.Notice(l.log, protocolNote{What: msgResize, Reason: err.Error()})
-					_ = c.Close(closePolicy, "grid too large")
-					return err
-				}
-				if errors.Is(err, ErrEventOverflow) {
-					// The App has not drained; the resize is retried by the
-					// client's next report rather than applied half-way.
-					logger.Info(l.log, protocolNote{What: msgResize, Reason: "app busy"})
-					continue
-				}
+			if err := l.deliverResize(ctx, c, sess, limiter, m.Cols, m.Rows); err != nil {
 				return err
 			}
 			continue
@@ -243,7 +258,7 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 		}
 
 		for _, ev := range events {
-			if err := l.deliver(ctx, c, sess, ev); err != nil {
+			if err := l.deliver(ctx, c, sess, limiter, ev); err != nil {
 				return err
 			}
 			if ctx.Err() != nil {
@@ -260,11 +275,11 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 // grace elapses — at which point the connection closes and the client is told.
 // An earlier version retried once and then advanced past the event, which lost
 // input while still claiming an ordered un-coalesced stream (lector r1).
-func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, ev tui.Event) error {
+func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limiter *bucket, ev tui.Event) error {
 	backend := sess.Backend()
 	over := newOverload(l.limits.OverloadGrace, l.now)
 	for {
-		if wait := l.limiter.take(); wait > 0 {
+		if wait := limiter.take(); wait > 0 {
 			// Backpressure, not a drop.
 			l.pause(ctx, wait)
 			if ctx.Err() != nil {
@@ -281,6 +296,47 @@ func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, ev tui
 					Subject: sess.Subject(), Reason: "input overload"})
 				_ = c.Close(closePolicy, "input overload")
 				return ErrEventOverflow
+			}
+			l.pause(ctx, overloadRetry)
+			if ctx.Err() != nil {
+				return nil
+			}
+		default:
+			return err // stopped
+		}
+	}
+}
+
+// deliverResize applies a size change, RETRYING rather than dropping it.
+//
+// A resize is not one of a stream of equivalent events: it is the only report of
+// that size, and the next one arrives only when the user drags the window again.
+// An earlier version logged an overflow and advanced, so a resize that arrived
+// while the App was busy was lost and the client stayed the wrong size
+// indefinitely (lector r2).
+func (l *sessionLoop) deliverResize(ctx context.Context, c conn, sess *Session, limiter *bucket, cols, rows int) error {
+	backend := sess.Backend()
+	over := newOverload(l.limits.OverloadGrace, l.now)
+	for {
+		err := backend.Resize(cols, rows)
+		switch {
+		case err == nil:
+			return nil
+		case errors.Is(err, ErrGridTooLarge):
+			// A protocol violation rather than a transient condition: the client
+			// will keep asking, so retrying is pointless and closing is honest.
+			logger.Notice(l.log, protocolNote{What: msgResize, Reason: err.Error()})
+			_ = c.Close(closePolicy, "grid too large")
+			return err
+		case errors.Is(err, ErrEventOverflow):
+			if over.full() {
+				logger.Notice(l.log, sessionAudit{Kind: "closed", ID: sess.ID(),
+					Subject: sess.Subject(), Reason: "resize overload"})
+				_ = c.Close(closePolicy, "input overload")
+				return err
+			}
+			if wait := limiter.take(); wait > 0 {
+				l.pause(ctx, wait)
 			}
 			l.pause(ctx, overloadRetry)
 			if ctx.Err() != nil {

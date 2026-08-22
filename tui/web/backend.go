@@ -44,6 +44,11 @@ var (
 	// ErrNoClient means Start's context ended before any browser attached.
 	ErrNoClient = errors.New("web: no client attached")
 
+	// ErrPendingLimit means the unauthenticated waiting room is full. It is a
+	// refusal with 1013 Try Again Later, not a queue: queueing would move the
+	// unbounded waiting room one level down rather than remove it.
+	ErrPendingLimit = errors.New("web: too many unauthenticated connections")
+
 	// ErrEventOverflow means a client produced events faster than the App could
 	// consume them. The transport closes the connection rather than growing the
 	// queue: an un-coalesced channel is part of the Backend contract, so the
@@ -142,6 +147,24 @@ type Backend struct {
 	// flight while the close happens.
 	sendMu sync.RWMutex
 	closed bool
+
+	// resizeMu makes a resize an ORDERED TRANSITION rather than two steps.
+	//
+	// Submitting the event and mutating the grid are separate operations, so an
+	// App could dequeue the ResizeEvent and call Size() in the window between
+	// them — and get the OLD size, which is the exact disagreement the submit-
+	// first ordering was supposed to prevent (lector r2). Size takes this lock
+	// too, so an observer sees either both or neither.
+	resizeMu sync.Mutex
+
+	// resizeGap runs between submitting the resize event and mutating the grid.
+	//
+	// A TEST SEAM, nil in production, and it exists because the property it
+	// checks is otherwise only observable by luck: the window between the two
+	// operations is a few instructions wide, so a test that races an observer
+	// against it passes whether or not the lock is held. With the hook the
+	// interleaving is forced and the assertion means something.
+	resizeGap func()
 
 	mu      sync.Mutex
 	started bool
@@ -286,6 +309,10 @@ func (b *Backend) Size() (tui.Size, error) {
 	if !started {
 		return tui.Size{}, ErrNotStarted
 	}
+	// Serialized against Resize, so an App that dequeues a ResizeEvent and asks
+	// for the size cannot observe the half-applied transition.
+	b.resizeMu.Lock()
+	defer b.resizeMu.Unlock()
 	w, h := b.framer.size()
 	return tui.Size{W: w, H: h}, nil
 }
@@ -411,8 +438,13 @@ func (b *Backend) Resize(cols, rows int) error {
 	if err := validGrid(cols, rows); err != nil {
 		return err
 	}
+	b.resizeMu.Lock()
+	defer b.resizeMu.Unlock()
 	if err := b.Submit(tui.ResizeEvent{W: cols, H: rows}); err != nil {
 		return err
+	}
+	if b.resizeGap != nil {
+		b.resizeGap()
 	}
 	b.framer.resize(cols, rows)
 	return nil

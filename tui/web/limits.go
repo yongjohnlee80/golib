@@ -31,6 +31,23 @@ type Limits struct {
 	// connection is closed with 1008 Policy Violation. A brief burst is
 	// tolerated; a sustained flood is not.
 	OverloadGrace time.Duration
+
+	// MaxPending caps connections that have been accepted but not yet
+	// authenticated.
+	//
+	// MaxSessions bounds only what exists AFTER a successful hello, so without
+	// this a responsive non-browser that forges Host and Origin can hold
+	// arbitrarily many sockets and goroutines while consuming no session slot at
+	// all (lector r2). This is the bound on the unauthenticated waiting room.
+	MaxPending int
+
+	// HelloTimeout bounds how long a connection may sit before its first
+	// message.
+	//
+	// Without it a client that connects and says nothing is held forever: the
+	// read simply blocks. A pre-auth connection has to prove it is going
+	// somewhere, quickly.
+	HelloTimeout time.Duration
 }
 
 // Defaults from §2.9's table.
@@ -40,6 +57,15 @@ const (
 	DefaultBurst           = 2000
 	DefaultQueueDepth      = 1024
 	DefaultOverloadGrace   = 2 * time.Second
+
+	// DefaultMaxPending is generous relative to DefaultMaxSessions: a burst of
+	// legitimate reconnects after a network blip should not be refused, while an
+	// unbounded waiting room should not exist.
+	DefaultMaxPending = 64
+
+	// DefaultHelloTimeout is short because a real client sends its hello in the
+	// same tick it opens the socket.
+	DefaultHelloTimeout = 10 * time.Second
 )
 
 // DefaultLimits returns §2.9's defaults.
@@ -50,6 +76,8 @@ func DefaultLimits() Limits {
 		Burst:           DefaultBurst,
 		QueueDepth:      DefaultQueueDepth,
 		OverloadGrace:   DefaultOverloadGrace,
+		MaxPending:      DefaultMaxPending,
+		HelloTimeout:    DefaultHelloTimeout,
 	}
 }
 
@@ -72,6 +100,12 @@ func (l Limits) normalize() Limits {
 	}
 	if l.OverloadGrace <= 0 {
 		l.OverloadGrace = d.OverloadGrace
+	}
+	if l.MaxPending <= 0 {
+		l.MaxPending = d.MaxPending
+	}
+	if l.HelloTimeout <= 0 {
+		l.HelloTimeout = d.HelloTimeout
 	}
 	return l
 }
@@ -153,3 +187,44 @@ func (o *overload) full() bool {
 
 // clear records that the queue drained, resetting the timer.
 func (o *overload) clear() { o.since = time.Time{} }
+
+// gate is a counting semaphore bounding unauthenticated connections.
+//
+// It is deliberately non-blocking: a connection that cannot get a slot is
+// REFUSED rather than queued. Queueing would move the unbounded waiting room one
+// level down instead of removing it, and a client that has to wait to be let in
+// has no way to tell that from a hung server.
+type gate struct {
+	mu  sync.Mutex
+	n   int
+	max int
+}
+
+func newGate(max int) *gate { return &gate{max: max} }
+
+// enter takes a slot, reporting whether one was available.
+func (g *gate) enter() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.n >= g.max {
+		return false
+	}
+	g.n++
+	return true
+}
+
+// leave returns a slot. Safe to call once per successful enter.
+func (g *gate) leave() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.n > 0 {
+		g.n--
+	}
+}
+
+// pending reports the current occupancy, for tests and a metric.
+func (g *gate) pending() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.n
+}

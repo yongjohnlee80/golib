@@ -45,9 +45,10 @@ type Runner interface {
 
 // AppFactory builds the application for a new session.
 //
-// It receives the session's [Backend] and is called ONLY after authentication
-// has succeeded — see [Manager.Create], which cannot be reached without an
-// identity.
+// It receives the session's [Backend]. On the network path it runs only after
+// [auth.Policy] has succeeded; [Manager.Create] requires an identity VALUE,
+// which constrains that path but not another in-process caller. See
+// [Manager.Create] for where the boundary is.
 type AppFactory func(*Backend) Runner
 
 // Manager owns session lifecycle: create, attach, detach, evict, shut down
@@ -244,19 +245,31 @@ func (s *Session) Err() error {
 
 // Create starts a session for an authenticated identity.
 //
-// # The invariant, made structural
+// # What requiring an identity does and does not guarantee
 //
-// The signature REQUIRES an *auth.Identity. No App is created and no input is
-// accepted until Policy.Authenticate has succeeded, on every branch — and the
-// way to guarantee that is to make an unauthenticated call impossible to write,
-// rather than to document an ordering that a later refactor can quietly invert.
-// A nil identity is refused.
+// On the AUTHENTICATED NETWORK PATH, `serve` obtains its identity only from
+// Policy.Authenticate, so the ordering there cannot be inverted without the
+// compiler objecting, and a nil or subject-less identity is refused here.
+//
+// That is the whole of the guarantee. It is NOT structural against an in-process
+// caller: auth.Identity is an exported struct, so any code in the binary can
+// write `&auth.Identity{Subject: "root"}` and call this — the tests in this
+// package do exactly that. Earlier comments called an unauthenticated call
+// "impossible to write"; that was an overstatement (lector r1, and r2 because I
+// left it standing in several other doc comments after narrowing one).
 func (m *Manager) Create(ctx context.Context, id *auth.Identity, h Hello) (*Session, error) {
 	if id == nil || id.Subject == "" {
 		return nil, ErrNoIdentity
 	}
 	if !h.valid() {
 		return nil, errors.New("web: client hello has no usable size or font metrics")
+	}
+	// Checked BEFORE the lock. An earlier version checked it while holding m.mu
+	// and then called m.drop, which takes m.mu again — a self-deadlock on a path
+	// a cancelled connection reaches routinely (lector r2). No session exists
+	// yet here, so there is nothing to drop either.
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	m.mu.Lock()
@@ -288,11 +301,6 @@ func (m *Manager) Create(ctx context.Context, id *auth.Identity, h Hello) (*Sess
 	// moment the socket closed (lector r1). ctx is honored for the CREATE call
 	// only; the session outlives it by design.
 	runCtx, cancel := context.WithCancel(m.base)
-	if err := ctx.Err(); err != nil {
-		cancel()
-		m.drop(sid)
-		return nil, err
-	}
 	s := &Session{
 		id:       sid,
 		subject:  id.Subject,

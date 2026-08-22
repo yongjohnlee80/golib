@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 11)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 12)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -692,6 +692,60 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **implementation r2 (2026-08-22, lector — `change_requested`, 8 must-fixes; all
+  folded).** Most r1 repairs were confirmed sound. The remaining eight were
+  mostly repairs that had not gone far enough, which is its own lesson.
+
+  1. **The rate limiter was handler-shared, not connection-local.** Moving it onto
+     `sessionLoop` made it a field every concurrent `readPump` wrote and every
+     `deliver` read — a data race, and clients throttling each other even without
+     one. Now created per connection and passed down.
+  2. **`Manager.Create` self-deadlocked on a cancelled context**: it held `m.mu`
+     and then called `m.drop`, which takes `m.mu` again. A cancelled connection
+     reaches that routinely. The check moved before the lock, where there is no
+     session to drop anyway.
+  3. **A resize could still be lost.** The read pump logged an overflow and moved
+     on, but a resize is not one of a stream of equivalent events — it is the
+     *only* report of that size, and the next arrives when the user next drags
+     the window. It is now retried like any other event. Separately, submit-then-
+     mutate left a window where an App could dequeue the event and read the OLD
+     size; `Resize` and `Size` now share a mutex so the transition is atomic to an
+     observer.
+  4. **`PasswordPolicyExample` checked its constraint for non-nil, not for
+     `FactorContextual`.** An identity factor passed, which would satisfy the
+     `Any` on its own — adding a second way in rather than narrowing the first.
+  5. **The narrowed auth claim was still overstated in three other doc
+     comments.** I fixed one place in r1 and left `AppFactory`, `Create` and
+     `serve` still saying unauthenticated calls were impossible. All now scoped to
+     the authenticated network path.
+  6. **Pre-auth connections had no cap and no deadline.** `MaxSessions` bounds
+     only what exists after a hello, so a responsive non-browser that forges Host
+     and Origin could hold arbitrary sockets and goroutines while consuming no
+     session slot. Added `Limits.MaxPending` (refused with 1013, not queued —
+     queueing moves an unbounded waiting room down a level rather than removing
+     it) and `Limits.HelloTimeout`.
+  7. **The transport docs still overclaimed.** `Mount` said it bound the
+     validated config to the listener while accepting a server whose bind it never
+     inspects, and `ServeWS` still told callers to wire it straight into
+     `ws.Handler` — inviting the very post-upgrade arrangement r1 flagged. Both
+     are now marked caller-owned, with `Serve` named as the path where the §2.5
+     guarantees actually hold.
+  8. **The client cleared its credential only on the success branch.** A failed
+     measurement returned early, leaving the listener holding the ticket and the
+     socket open awaiting a hello that would never come.
+
+  Should-fixes also folded: a real `auth/mtls` policy is now driven through create
+  AND reattach rather than the projection being tested alone; the attempt
+  correlation has a negative control asserting a reference is present and differs
+  per attempt; and `Handler.Serve` no longer discards `Manager.Shutdown`'s error,
+  which was hiding a failed guaranteed-teardown behind a clean return.
+
+  **One test-quality note worth recording.** My first version of the resize
+  ordering test raced an observer against the real window and passed with the
+  lock removed — the window is a few instructions wide, so it was testing luck.
+  It now forces the interleaving through an explicit, documented test seam
+  (`Backend.resizeGap`, nil in production), and the control fails as it should.
 
 - **rev 11 (2026-08-22, Johno — password becomes a ticket minter).** Johno asked
   whether the login form could live "outside the auth". It can, and the shape is

@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/yongjohnlee80/golib/auth"
 )
@@ -104,6 +105,15 @@ func PasswordPolicyExample(
 	for _, f := range constrain {
 		if f == nil {
 			return nil, errors.New("web.PasswordPolicyExample: nil constraint")
+		}
+		// The constraint must actually be CONTEXTUAL. Checking only for non-nil
+		// accepted an identity factor, which would satisfy the Any on its own and
+		// so add a second way in rather than narrowing the first — the opposite
+		// of what this parameter promises (lector r2).
+		if f.Kind() != auth.FactorContextual {
+			return nil, fmt.Errorf("web.PasswordPolicyExample: %T is %v, not a contextual "+
+				"factor — a constraint must narrow who may attempt, not add another "+
+				"way in", f, f.Kind())
 		}
 	}
 	throttled, err := auth.NewThrottle(password, tracker)
