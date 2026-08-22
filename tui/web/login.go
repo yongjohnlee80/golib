@@ -237,7 +237,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// admission slot follows it. A hook that took nothing parked nothing:
 		// there is no handoff to settle, so the slot goes back with the request.
 		if stash.claimed() && h.pending != nil {
-			handedOff = h.pending.hold(handoff, h.now().Add(loginTicketTTL))
+			handedOff = h.pending.hold(handoff, h.now().Add(h.pendingHold))
 		}
 	}
 	logger.Info(h.log, sessionAudit{Kind: "login", Subject: identity.Subject, ID: attemptID})

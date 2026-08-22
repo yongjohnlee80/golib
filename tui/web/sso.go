@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/logger"
 )
 
 // SSO wires the whole login-handoff workflow of ADR-0009 §2.12, so a consumer
@@ -85,10 +86,24 @@ type SSO[T any] struct {
 	release   func(T, HandoffReason)
 	provision func(context.Context, *auth.Identity) (T, error)
 	now       func() time.Time
+	log       logger.Logger
+
+	// settle returns the admission slot a parked handoff owns. Installed by
+	// [SSO.Options], because only the park knows when its entry is actually gone:
+	// the Manager returns from CreateFor as soon as the factory hands back a
+	// Runner, and the claim happens later on the session's own goroutine. Settling
+	// on the Manager's schedule left a window in which the gate had a free slot
+	// while the park was still full, so a new login could authenticate, allocate,
+	// and then be told 503 (lector r2 on PR #14).
+	settle func(string)
 
 	mu     sync.Mutex
+	cond   *sync.Cond
 	parked map[string]parkedEntry[T]
 	closed bool
+	// provisioning counts Provision calls in flight. Close waits for them, so
+	// "nothing is outstanding after Close returns" is true rather than likely.
+	provisioning int
 	// panics counts contained Release panics, for a test and a metric.
 	panics int
 }
@@ -153,6 +168,10 @@ type SSOConfig[T any] struct {
 
 	// Clock overrides the time source, for tests.
 	Clock func() time.Time
+
+	// Logger receives the events this type cannot return to anyone: a Release that
+	// panicked, whose value is already gone. Defaults to a no-op sink.
+	Logger logger.Logger
 }
 
 // SessionEnded is the [HandoffReason] for state released because the session it
@@ -205,8 +224,13 @@ func NewSSO[T any](cfg SSOConfig[T]) (*SSO[T], error) {
 		release:   cfg.Release,
 		provision: cfg.Provision,
 		now:       cfg.Clock,
+		log:       cfg.Logger,
 		parked:    make(map[string]parkedEntry[T]),
 	}
+	if s.log == nil {
+		s.log = logger.Nop{}
+	}
+	s.cond = sync.NewCond(&s.mu)
 	if s.ttl == 0 {
 		s.ttl = DefaultHandoffTTL
 	}
@@ -239,6 +263,16 @@ func (s *SSO[T]) Stash(ctx context.Context, v T) error {
 	return slot.setOwned(v, func() { s.releaseValue(v, LoginFailed) })
 }
 
+// settleHandoff returns the admission slot this handoff owned, if any. Called
+// from every path that removes a parked entry — and only from those paths, so the
+// slot cannot come back before the entry is gone.
+func (s *SSO[T]) settleHandoff(handoff string) {
+	if handoff == "" || s.settle == nil {
+		return
+	}
+	s.settle(handoff)
+}
+
 // releaseValue runs the consumer's cleanup, contained.
 //
 // Contained because this is called from teardown paths — a failed login, an
@@ -250,10 +284,15 @@ func (s *SSO[T]) releaseValue(v T, r HandoffReason) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			s.mu.Lock()
-			p := s.panics
 			s.panics++
 			s.mu.Unlock()
-			_ = p
+			// EMITTED, not merely counted. The doc says a panicking Release is
+			// recorded rather than swallowed, and a private counter nobody can read
+			// is swallowing it with extra steps (lector r2 on PR #14). The upstream
+			// state is gone either way, so the line is the only trace there is.
+			logger.Error(s.log, fmt.Errorf("web: SSO Release panicked: %v", rec),
+				map[string]any{"component": "web.SSO", "event": "release panic",
+					"reason": r.String()})
 		}
 	}()
 	s.release(v, r)
@@ -287,6 +326,9 @@ func (s *SSO[T]) Claim(info *SessionInfo) (T, bool) {
 	if !ok {
 		return zero, false
 	}
+	// The entry is gone, so the admission slot it held can go back — and not one
+	// instruction earlier.
+	s.settleHandoff(info.Handoff)
 	// An entry past its TTL is REFUSED and released, not handed over. Claim used
 	// to ignore expires entirely, so a TTL shorter than the attach ticket's had no
 	// effect and an App could be handed state the park had already given up on
@@ -339,6 +381,20 @@ func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 		// The park's capacity IS the pending-login budget, so the two cannot
 		// drift into disagreeing.
 		MaxPendingLogins(s.max)(h)
+		// And the park, not the Manager, returns the slots: see SSO.settle. The
+		// backstop deadline covers the case where nothing settles at all — a
+		// session that failed before its Runner started — so it must outlast BOTH
+		// the ticket and the park's own TTL, or the gate would free a slot while
+		// the park still held its entry.
+		h.parkSettles = true
+		if s.ttl > h.pendingHold {
+			h.pendingHold = s.ttl
+		}
+		s.settle = func(handoff string) {
+			if h.pending != nil {
+				h.pending.release(handoff)
+			}
+		}
 	}
 	mOpt := OnHandoffUnused(func(handoff string, r HandoffReason) {
 		s.Release(handoff, r)
@@ -376,15 +432,38 @@ func (s *SSO[T]) Session(ctx context.Context, info *SessionInfo) (T, func(), err
 	// anything allocated after it has nothing left to release it — and a Manager
 	// can still be draining a session whose Run has only just started (lector r1
 	// on PR #14). Shutdown order is handler stop, Manager shutdown, then this.
+	//
+	// Checking the flag and then calling Provision was not enough: a Provision
+	// blocked on I/O could start, Close could return, and the Provision could then
+	// resume and hand back a live session nothing was left to close (lector r2
+	// reproduced it). So the call is BRACKETED — registered before, retired after —
+	// and Close waits for the bracket to empty. The consumer's I/O still happens
+	// with no lock held.
 	s.mu.Lock()
-	closed := s.closed
-	s.mu.Unlock()
-	if closed {
+	if s.closed {
+		s.mu.Unlock()
 		return zero, noop, ErrStopped
 	}
+	s.provisioning++
+	s.mu.Unlock()
+
 	v, err := s.provision(ctx, info.Identity)
+
+	s.mu.Lock()
+	s.provisioning--
+	raced := s.closed
+	// Broadcast unconditionally: Close may be waiting on this one.
+	s.cond.Broadcast()
+	s.mu.Unlock()
+
 	if err != nil {
 		return zero, noop, err
+	}
+	if raced {
+		// Close won. What was just allocated is released here rather than handed
+		// over, because after Close nothing else will ever release it.
+		s.releaseValue(v, SessionEnded)
+		return zero, noop, ErrStopped
 	}
 	return v, s.releaseOnce(v), nil
 }
@@ -511,6 +590,7 @@ func (s *SSO[T]) expire(handoff string) {
 	}
 	s.mu.Unlock()
 	if ok {
+		s.settleHandoff(handoff)
 		s.releaseValue(e.value, Expired)
 	}
 }
@@ -528,6 +608,7 @@ func (s *SSO[T]) Release(handoff string, r HandoffReason) {
 	}
 	s.mu.Unlock()
 	if ok {
+		s.settleHandoff(handoff)
 		s.releaseValue(e.value, r)
 	}
 }
@@ -551,12 +632,23 @@ func (s *SSO[T]) Sweep() {
 // let its sessions finish, then Close. In the other order a session still being
 // started could provision state after the park stopped accepting responsibility
 // for it.
+//
+// It BLOCKS until every [SSO.Session] call already inside Provision has returned.
+// Those calls release what they produced rather than handing it over, so once
+// Close returns nothing this type allocated is still outstanding — which is the
+// only version of that sentence worth writing down.
 func (s *SSO[T]) Close() {
 	s.mu.Lock()
 	s.closed = true
-	all := make([]T, 0, len(s.parked))
+	// Everything already in flight observes closed and releases its own value; this
+	// waits for that to have happened, so "nothing is outstanding once Close
+	// returns" is a fact rather than a hope.
+	for s.provisioning > 0 {
+		s.cond.Wait()
+	}
+	all := make([]evicted[T], 0, len(s.parked))
 	for h, e := range s.parked {
-		all = append(all, e.value)
+		all = append(all, evicted[T]{handoff: h, value: e.value})
 		if e.timer != nil {
 			e.timer.Stop()
 		}
@@ -564,6 +656,15 @@ func (s *SSO[T]) Close() {
 	}
 	s.mu.Unlock()
 	s.releaseAll(all, Expired)
+}
+
+// ReleasePanics reports how many consumer Release calls have panicked and been
+// contained. A non-zero value means upstream state was abandoned mid-cleanup, so
+// it belongs on a dashboard rather than only in a log.
+func (s *SSO[T]) ReleasePanics() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.panics
 }
 
 // Len reports how many entries are parked, for tests and a metric.
@@ -574,11 +675,18 @@ func (s *SSO[T]) Len() int {
 }
 
 // expiredLocked removes and returns expired values. Caller holds the lock.
-func (s *SSO[T]) expiredLocked(now time.Time) []T {
-	var stale []T
+// evicted is a removed entry plus the handoff whose slot it held, so the release
+// can happen outside the lock and still settle the right slot.
+type evicted[T any] struct {
+	handoff string
+	value   T
+}
+
+func (s *SSO[T]) expiredLocked(now time.Time) []evicted[T] {
+	var stale []evicted[T]
 	for h, e := range s.parked {
 		if now.After(e.expires) {
-			stale = append(stale, e.value)
+			stale = append(stale, evicted[T]{handoff: h, value: e.value})
 			if e.timer != nil {
 				e.timer.Stop()
 			}
@@ -588,8 +696,9 @@ func (s *SSO[T]) expiredLocked(now time.Time) []T {
 	return stale
 }
 
-func (s *SSO[T]) releaseAll(vals []T, r HandoffReason) {
+func (s *SSO[T]) releaseAll(vals []evicted[T], r HandoffReason) {
 	for _, v := range vals {
-		s.releaseValue(v, r)
+		s.settleHandoff(v.handoff)
+		s.releaseValue(v.value, r)
 	}
 }

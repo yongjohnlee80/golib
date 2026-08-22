@@ -181,6 +181,13 @@ type Handler struct {
 	// now is the clock the admission gate ages its keyed slots by. Injectable so
 	// a test can prove the expiry without waiting out a ticket's lifetime.
 	now func() time.Time
+	// parkSettles says a consumer's park returns the admission slots itself, so
+	// the Manager must not return them earlier. Set by SSO.Options.
+	parkSettles bool
+	// pendingHold is the backstop lifetime of a keyed admission slot: how long it
+	// can be held by a handoff nothing ever settles. Never shorter than the attach
+	// ticket's own life.
+	pendingHold time.Duration
 }
 
 // HandlerOption configures a [Handler].
@@ -306,9 +313,16 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 	}
 	h.pending = newGate(h.maxPendingLogins)
 	h.pending.now = h.now
-	// The Manager is what learns a handoff has been claimed or abandoned, and the
-	// gate is what holds the slot: this is the wire between them.
-	mgr.settle = h.pending.release
+	if h.pendingHold < loginTicketTTL {
+		h.pendingHold = loginTicketTTL
+	}
+	// For a consumer with no park of its own, the Manager's view is the best signal
+	// there is: it knows when the factory has had its chance to claim. A consumer
+	// whose park settles its own slots (SSO) must not be pre-empted by it, because
+	// the Manager returns before the claim happens.
+	if !h.parkSettles {
+		mgr.settle = h.pending.release
+	}
 	// Limits.QueueDepth is the single source of the event queue's capacity.
 	// It previously said 1024 while Backend defaulted to 256 and nothing read
 	// the field, so the documented limit and the real one were different numbers

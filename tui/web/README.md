@@ -374,7 +374,8 @@ SSHSIG signature.
 ### Shutdown order
 
 **Stop the handler, shut the `Manager` down and let its sessions finish, then
-`sso.Close()`.** In the other order a session that is only just starting can
+`sso.Close()`.** `Close` blocks until every `Provision` already in flight has
+returned and released, so once it returns nothing is outstanding. In the other order a session that is only just starting can
 provision state after the park has stopped taking responsibility for it; `Session`
 refuses after `Close` precisely so that mistake fails loudly instead of leaking.
 
@@ -384,7 +385,10 @@ An App panic ends **that session**, not the process: `Manager` contains it and
 records it as the session's run error, the same way `server.Scaffold` contains a
 connection handler's panic. That is what makes `Factory`'s deferred release
 meaningful on the panic path. A panic inside your `Release` is contained too, so
-it cannot replace the failure being handled — but `Release` should not panic.
+it cannot replace the failure being handled — but `Release` should not panic, and
+one that does is **logged as an error** (pass `SSOConfig.Logger`) and counted by
+`SSO.ReleasePanics()`. A non-zero count means upstream state was abandoned
+mid-cleanup, which belongs on a dashboard.
 
 A **nil** `Provision` **refuses** an attach that parked nothing, rather than
 handing the app a nil upstream — which would fail later and further from the
@@ -411,7 +415,8 @@ So the obligations are structural:
 | an expired entry is never served | `Claim` refuses and releases it |
 | release before the park | `SSO.Stash` registers the cleanup **with** the value, so a later refusal, a failed ticket or a full park releases it |
 | one login, one value | a second `Stash` in one request is **refused** |
-| admission slots come back | the slot follows the handoff and is returned when it is claimed, released, or expires |
+| admission slots come back | the slot follows the handoff, and **the park returns it** — when the entry is claimed, released or expires, never before |
+| nothing outstanding after `Close` | `Close` **waits** for in-flight `Provision` calls; one that finishes late releases its own value |
 | one session per login | `Claim` removes as it hands over |
 | release when the session ends | `Factory` **defers** it — panics included, because `Manager` contains an App panic |
 | no path allocates twice | `Session` claims *or* provisions, never both |
