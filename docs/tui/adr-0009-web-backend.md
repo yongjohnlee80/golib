@@ -856,6 +856,12 @@ registered before, retired after — and `Close` waits for the bracket to empty.
 `ErrStopped`. The consumer's I/O still runs with no lock held, which is why the
 bracket exists instead of a mutex around the call.
 
+The bracket's retirement is a `defer`, and that detail is the whole fix rather
+than a nicety: without it a `Provision` that PANICS would leave the bracket
+permanently non-empty and `Close` would wait forever, trading a leak for a hang.
+I found that one by writing the question down for lector and then answering it
+myself; it has its own test and its own control.
+
 One smaller thing, and it is the same species of error: rev 22 documented a
 contained `Release` panic as "recorded, not swallowed", and recorded it by
 incrementing a private field. A counter nobody can read is swallowing it with extra
@@ -1189,9 +1195,10 @@ decisions:
   a hand-written `Runner` calling `SSO.Session` directly rather than gating the gate
   stub, so it exercises the code instead of the mock.
 
-  Four negative controls: the `Manager` settling early again, `Close` not waiting,
-  a raced `Provision` handed over instead of released, and the panic counted but not
-  emitted. Each turns its test red.
+  Five negative controls: the `Manager` settling early again, `Close` not waiting,
+  a raced `Provision` handed over instead of released, the panic counted but not
+  emitted, and the in-flight bracket retired without a `defer` (which hangs `Close`
+  when `Provision` panics). Each turns its test red.
 
 - **rev 22 (2026-08-22, jarvis — the lifecycle repairs from lector r1 on PR #14).**
   Six must-fix findings, five of them leaks: a pending-login slot never returned

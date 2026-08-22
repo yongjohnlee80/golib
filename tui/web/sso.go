@@ -439,23 +439,7 @@ func (s *SSO[T]) Session(ctx context.Context, info *SessionInfo) (T, func(), err
 	// reproduced it). So the call is BRACKETED — registered before, retired after —
 	// and Close waits for the bracket to empty. The consumer's I/O still happens
 	// with no lock held.
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		return zero, noop, ErrStopped
-	}
-	s.provisioning++
-	s.mu.Unlock()
-
-	v, err := s.provision(ctx, info.Identity)
-
-	s.mu.Lock()
-	s.provisioning--
-	raced := s.closed
-	// Broadcast unconditionally: Close may be waiting on this one.
-	s.cond.Broadcast()
-	s.mu.Unlock()
-
+	v, err, raced := s.provisionBracketed(ctx, info.Identity)
 	if err != nil {
 		return zero, noop, err
 	}
@@ -466,6 +450,38 @@ func (s *SSO[T]) Session(ctx context.Context, info *SessionInfo) (T, func(), err
 		return zero, noop, ErrStopped
 	}
 	return v, s.releaseOnce(v), nil
+}
+
+// provisionBracketed calls the consumer's Provision between a registration and a
+// retirement, so [SSO.Close] can wait for it. raced reports that Close ran while
+// the call was in flight.
+//
+// The retirement is DEFERRED. Without that, a Provision that panics would leave
+// the bracket permanently non-empty and Close would wait forever — trading a leak
+// for a hang, which is not an improvement.
+func (s *SSO[T]) provisionBracketed(ctx context.Context, id *auth.Identity) (v T, err error, raced bool) {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		var zero T
+		return zero, ErrStopped, false
+	}
+	s.provisioning++
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		s.provisioning--
+		raced = s.closed
+		// Broadcast unconditionally: Close may be waiting on exactly this one.
+		s.cond.Broadcast()
+		s.mu.Unlock()
+	}()
+
+	// No lock held here: a consumer's Provision dials, and holding the park's
+	// mutex across that would block every other login for the duration.
+	v, err = s.provision(ctx, id)
+	return v, err, false
 }
 
 // releaseOnce returns a release that runs the consumer's cleanup exactly once
