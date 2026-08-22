@@ -15,8 +15,26 @@ CI is wired — `.github/workflows/browser-matrix.yml`, with a single required
 CI run has executed yet**, because the workflow lands with this commit; GitHub
 reported zero check runs for the branch before it.
 
-**The gate is therefore NOT satisfied.** Two of three engines are unrun, and per
-§2.9 a release with any engine unrun is not a release.
+## Gate status: WAIVED for v0.3.8 by Johno, 2026-08-22
+
+Two of three engines are unrun. Per §2.9 that means the gate is **not satisfied**,
+and rather than quietly tagging around it the waiver is recorded here:
+
+> Johno accepted merging and tagging v0.3.8 with Chromium green and Firefox and
+> WebKit unrun (2026-08-22), after being shown this status explicitly.
+
+What that costs, stated so nobody has to reconstruct it later: the text machine is
+verified on **one** engine. The behaviours it depends on are precisely the ones
+engines differ over — whether a control is updated before `compositionend`
+dispatches, whether a composition-associated `input` arrives in the same task,
+whether `getModifierState("AltGraph")` is reported. Gecko and WebKit are the two
+most likely to diverge, and they are the two unrun. A Firefox or Safari user may
+hit a composition or dead-key defect this suite would have caught.
+
+The gate is **not** removed: `.github/workflows/browser-matrix.yml` still requires
+all three, so the next CI run on this branch or on main will report Firefox and
+WebKit for the first time. Running them is the first item of follow-up work, not a
+someday.
 
 ## Why this file exists rather than a line in the README
 

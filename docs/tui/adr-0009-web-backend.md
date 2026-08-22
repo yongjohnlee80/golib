@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 17)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 18)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -757,6 +757,24 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **v0.3.8 release decisions (2026-08-22, Johno).** Two open questions from the
+  r7 fold, both answered:
+
+  1. **Criterion 1's amendment is ACCEPTED.** The criterion now reads "unchanged
+     component logic" rather than "unchanged source", because the original could
+     not be satisfied as written — the tree lived in `package main`, which Go
+     cannot import, so no second binary could ever have driven it. The extraction
+     to `tui/examples/demoapp` is a pure move.
+  2. **The browser gate is WAIVED for v0.3.8**, with Chromium green and Firefox
+     and WebKit unrun. Recorded in `tui/web/browsertest/RESULTS.md` with what it
+     costs: the text machine is verified on one engine, and Gecko and WebKit are
+     the two most likely to diverge on exactly the behaviours it depends on. The
+     waiver does not remove the gate — CI still requires all three, so the next
+     run reports the missing two for the first time.
+
+  Merged to `main` by rebase and tagged **v0.3.8**, covering `golib/auth`
+  (ADR-0001) and `golib/tui/web` (ADR-0009) together.
 
 - **implementation r7 full-PR (2026-08-22, lector — `change_requested`; three
   must-fixes).** The production implementation was approved in substance. The
