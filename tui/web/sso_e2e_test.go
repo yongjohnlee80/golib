@@ -2268,3 +2268,42 @@ func TestGate_ReservationIsNotACommitment(t *testing.T) {
 		t.Error("a released key reports as committed")
 	}
 }
+
+// A panicking publish callback must not wedge the gate.
+//
+// Publication runs while the gate holds its own lock, which is what makes it
+// atomic — and also what would make a panic there catastrophic if the lock were not
+// released on the way out. Every other login goes through this lock, so a wedged
+// gate is a server that accepts no further logins at all.
+func TestGate_PanickingPublishDoesNotWedgeTheGate(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	g := newGate(2)
+	g.now = func() time.Time { return now }
+
+	if !g.enter() || !g.hold("k", now.Add(time.Minute)) {
+		t.Fatal("setup")
+	}
+	func() {
+		defer func() {
+			if rec := recover(); rec == nil {
+				t.Error("the panic did not propagate to the caller")
+			}
+		}()
+		g.commit("k", now.Add(time.Minute), func() { panic("consumer publish exploded") })
+	}()
+
+	// The gate is still usable. Without the deferred unlock this call never returns
+	// and the test times out — which is what a wedged login route looks like.
+	done := make(chan bool, 1)
+	go func() { done <- g.enter() }()
+	select {
+	case ok := <-done:
+		if !ok {
+			t.Error("the gate refused a slot it should have had")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the gate is wedged after a panicking publish: no further login can " +
+			"pass the door")
+	}
+}

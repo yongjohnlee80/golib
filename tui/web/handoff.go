@@ -219,8 +219,12 @@ func (s *Stash) discard() {
 // membership and publication are one step.
 //
 // publish must therefore be SHORT and must not block: no network calls, no waiting
-// on another goroutine that might need the same locks. Write your map entry and
-// return.
+// on another goroutine that might need the same locks, and in particular NO SECOND
+// CommitPark — the lock is not reentrant, so a nested call deadlocks. Write your map
+// entry and return.
+//
+// A panic inside publish is survivable: the lock is released as the stack unwinds,
+// so the panic reaches you rather than wedging every other login.
 //
 // A nil-safe no-op outside a login request, and a plain publish when the handler
 // keeps no pending-login budget.
