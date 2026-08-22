@@ -277,10 +277,11 @@ fabricates events tests the fabrication.
 CI is wired with a single required check that fails unless every engine passes.
 
 **Current status: Chromium 16/16 passed; Firefox and WebKit NOT RUN.** The gate is
-therefore **not satisfied** — per §2.9 a release with any engine unrun is not a
-release. `browsertest/RESULTS.md` records exactly what has run, because the
-harness existing and the harness passing are different facts and only the second
-is the gate.
+therefore **not satisfied**, and it was **explicitly waived for v0.3.8** by the
+owner on 2026-08-22 rather than tagged around silently —
+`browsertest/RESULTS.md` records the waiver and what it costs. The CI workflow
+still requires all three engines, so the next run reports Firefox and WebKit for
+the first time.
 
 The first real-engine run found two harness defects and no product defect, which
 is evidence rather than proof: two engines remain.
