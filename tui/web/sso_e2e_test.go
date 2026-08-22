@@ -2492,3 +2492,87 @@ func TestGate_PanickingPublishRollsBackTheCommitment(t *testing.T) {
 		t.Error("the retry did not publish")
 	}
 }
+
+// A hook that spawns a goroutine and returns must not be able to publish behind
+// the login route's back.
+//
+// This is the race I flagged to lector rather than found: Stash.disarm runs when
+// the hook returns, and it sets the commit closure to nil. But CommitPark treats a
+// nil closure as "this handler keeps no pending-login budget, so just write" —
+// which after a disarm would publish into the consumer's park with nothing
+// accounting for it.
+//
+// The state guard is what actually prevents it: disarm marks the Stash spent, and
+// CommitPark checks the state BEFORE it looks at the closure. Worth a test because
+// the safety comes from the ordering of two checks inside one function, which is
+// exactly the kind of thing this review history has been finding.
+func TestStash_LateCommitAfterTheHookReturnsIsRefused(t *testing.T) {
+	t.Parallel()
+
+	published := make(chan bool, 1)
+	release := make(chan struct{})
+
+	store := token.NewMemStore(16)
+	tracker, err := auth.NewMemTracker(16, auth.Backoff{
+		Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginPolicy, err := PasswordPolicyExample(
+		claimingFactor{subject: "alice", password: "pw"}, tracker,
+		contextualFactor{allow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = m.Shutdown(ctx)
+	})
+
+	h, err := NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer:         token.NewIssuer(store),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m, HandlerLogger(nopLogger{}), MaxPendingLogins(4),
+		OnLogin(func(_ string, _ *auth.Identity, st *Stash) error {
+			// A hook that defers its own work to a goroutine and returns. Wrong, and
+			// the point is that being wrong cannot corrupt the accounting.
+			go func() {
+				<-release // ensure the hook has returned and disarm has run
+				published <- st.CommitPark(func() {})
+			}()
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+	close(release)
+
+	select {
+	case ok := <-published:
+		if ok {
+			t.Error("a goroutine published into the park after its hook had returned, " +
+				"so the entry has no admission slot accounting for it")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the late CommitPark never returned")
+	}
+	if n := h.pending.pending(); n != 0 {
+		t.Errorf("%d admission slots held after a hook that parked nothing", n)
+	}
+}

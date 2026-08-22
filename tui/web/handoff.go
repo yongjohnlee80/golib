@@ -290,6 +290,12 @@ func (s *Stash) CommitPark(publish func()) bool {
 
 // disarm retires the capability when the login route is done with the hook, so a
 // Stash squirrelled away by a consumer cannot publish into the park later.
+//
+// It sets the STATE, not just the closure, and that is load-bearing: [Stash.CommitPark]
+// treats a nil closure as "this handler keeps no pending-login budget, so just
+// write". A disarm that only nil'd the closure would therefore turn a late call
+// into an unaccounted publish — which is why CommitPark checks the state before it
+// reads the closure, and why both orderings have a test.
 func (s *Stash) disarm() {
 	if s == nil {
 		return
