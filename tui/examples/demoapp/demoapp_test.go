@@ -1,4 +1,4 @@
-package main
+package demoapp
 
 // The ADR-0001 §5.3 CI gate: the demo's full interaction script driven
 // deterministically on tui.TestBackend — no PTY: mount, resize, Tab cycling
@@ -36,7 +36,7 @@ func startDemo(t *testing.T, w, h int) *gate {
 	t.Helper()
 	tb := tui.NewTestBackend(w, h)
 	ctx, cancel := context.WithCancel(context.Background())
-	d := newDemo(cancel, false) // deterministic: no ticker stream
+	d := New(cancel, false) // deterministic: no ticker stream
 	app := tui.NewApp(d, tui.WithBackend(tb), tui.WithMinFrameInterval(0))
 	g := &gate{t: t, app: app, tb: tb, d: d, cancel: cancel, resc: make(chan error, 1)}
 	go func() { g.resc <- app.Run(ctx) }()

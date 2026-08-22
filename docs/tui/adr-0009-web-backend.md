@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 15)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 16)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -732,6 +732,44 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **implementation r6 amendments + criterion 1 and 12 completed (2026-08-22).**
+  Lector approved the r6 delta with amendments: four stale duplicate claims, all
+  cases of a retraction I had made in one file and left standing in another. A
+  claim retracted in one place is not retracted. Fixed in `serve.go`,
+  `login_test.go`, and two places in this history.
+
+  **Criterion 12 — the seam report — is written**, in `tui/web/README.md`. The
+  seam held: nothing under `tui/` outside the new package changed, mechanically
+  verified. Two costs, both in the contract's SILENCE rather than its shape —
+  `Err()` conflates a transport failure with a backend failure (which is exactly
+  how the r2 detach-window defect happened), and `Flush` says nothing about
+  delivery, so `framer.go` exists entirely to fill a gap the contract does not
+  mention. Two vocabulary problems: `Capabilities` cannot say "not applicable",
+  only "no"; and `CellColor` presumes a palette owner, which forced a
+  rendering-only marker outside `CellColorKind`'s range. Two things were actively
+  well-shaped: the latched cursor needed no adaptation at all, and `Cell`'s
+  EXPLICIT `Width: 0` continuation removed the whole class of row-drift bug.
+  Neither cost required a change to `tui`.
+
+  **Criterion 1 is now literal rather than approximate.** The demo's component
+  tree was in `package main` and therefore not importable, so "the unchanged demo
+  runs in a browser" could only ever have been argued. It moved to
+  `tui/examples/demoapp` — a pure move, component logic untouched, only the
+  package clause and the constructor's visibility changed — and its interaction
+  script moved with it and still passes against `tui.TestBackend`.
+  `tui/examples/webdemo` then differs from `tui/examples/demo` by exactly one
+  expression: which backend goes to `tui.NewApp`.
+  `TestCriterion1_SameTreeOnTheWebBackend` asserts it mechanically: the tree
+  renders a non-blank full frame at the client's measured size, repaints on a
+  keystroke, follows a resize to 100x30, and exits cleanly through
+  `web.Backend`. Criterion 2 still holds — zero files changed under `tui/`
+  outside `tui/web/` and `tui/examples/`, which criterion 2 explicitly permits.
+
+  **Still outstanding, and it is a release gate:** the Chromium/Firefox/WebKit
+  matrix has not been run. §2.9's text-machine behaviours are browser-specific and
+  synthetic dispatch is precisely what would hide a divergence, so no claim about
+  the capture-element machine is currently backed by a browser.
 
 - **implementation r5 (2026-08-22, lector — `change_requested`, 1 blocker; folded).**
   Both r4 blockers and the should-fix were accepted. The remaining finding was a
