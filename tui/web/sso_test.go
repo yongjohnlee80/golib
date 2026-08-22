@@ -549,3 +549,38 @@ func TestSSO_FactoryReleasesOnPanic(t *testing.T) {
 type runnerFunc func(context.Context) error
 
 func (f runnerFunc) Run(ctx context.Context) error { return f(ctx) }
+
+// The reason a consumer's Release receives has to distinguish the cases, because
+// it is what their log line says happened.
+func TestSSO_ReleaseReasonsAreDistinct(t *testing.T) {
+	t.Parallel()
+	seen := map[HandoffReason]string{}
+	for _, r := range []HandoffReason{ReattachedExisting, AttachFailed, Expired, SessionEnded, LoginFailed} {
+		if prev, dup := seen[r]; dup {
+			t.Errorf("%s and %s are the same value", r, prev)
+		}
+		if r.String() == "unknown" {
+			t.Errorf("%d renders as \"unknown\"", uint8(r))
+		}
+		seen[r] = r.String()
+	}
+
+	// A login that allocated and then failed to park reports LoginFailed, not
+	// Expired: the user did not walk away, the login never completed.
+	var got HandoffReason
+	s, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: time.Minute,
+		Release: func(_ *upstream, r HandoffReason) { got = r },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slot := &Stash{}
+	if err := s.Stash(withStash(context.Background(), slot), &upstream{id: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	slot.discard()
+	if got != LoginFailed {
+		t.Errorf("reason = %v, want LoginFailed", got)
+	}
+}

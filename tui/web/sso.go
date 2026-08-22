@@ -159,6 +159,15 @@ type SSOConfig[T any] struct {
 // belonged to ended — the ordinary teardown, not a failure.
 const SessionEnded HandoffReason = 3
 
+// LoginFailed is the [HandoffReason] for state a login allocated and then could
+// not park: a later factor refused, the ticket failed to mint, the park was full.
+//
+// Distinct from [Expired] because the two mean different things to whoever reads
+// the log. Expired says a user walked away after authenticating successfully;
+// LoginFailed says the login never completed at all, and the state exists only
+// because verification is the one place that holds the credential.
+const LoginFailed HandoffReason = 4
+
 // ErrNoUpstream means a session needs upstream state and there is no way to get
 // it: the attach parked none and no Provision is configured.
 var ErrNoUpstream = errors.New("web: no parked login and no Provision, so this " +
@@ -227,7 +236,7 @@ func (s *SSO[T]) Stash(ctx context.Context, v T) error {
 	// The cleanup is registered WITH the value, so every path between here and the
 	// park releases it: a later factor refusing, the ticket failing to mint, the
 	// park being full. A bare Set would leave those paths leaking.
-	return slot.setOwned(v, func() { s.releaseValue(v, Expired) })
+	return slot.setOwned(v, func() { s.releaseValue(v, LoginFailed) })
 }
 
 // releaseValue runs the consumer's cleanup, contained.
@@ -322,7 +331,7 @@ func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 			if err := s.hold(handoff, v); err != nil {
 				// The value is ours now — Take transferred ownership — and the login
 				// is about to fail, so it must not be dropped on the floor.
-				s.releaseValue(v, Expired)
+				s.releaseValue(v, LoginFailed)
 				return err
 			}
 			return nil

@@ -46,7 +46,8 @@ const (
 	// limit, an unusable hello, a transport error.
 	AttachFailed
 
-	// Expired is declared in sso.go, where the park that produces it lives.
+	// Expired, SessionEnded and LoginFailed are declared in sso.go, where the park
+	// that produces them lives.
 )
 
 // String names the reason for a log line.
@@ -60,6 +61,8 @@ func (r HandoffReason) String() string {
 		return "expired"
 	case SessionEnded:
 		return "session-ended"
+	case LoginFailed:
+		return "login-failed"
 	}
 	return "unknown"
 }
