@@ -1165,3 +1165,153 @@ func TestSSO_CloseIsIdempotent(t *testing.T) {
 		t.Fatal("a second Close deadlocked")
 	}
 }
+
+// --- the settle path, exhaustively -----------------------------------------
+
+// EVERY route that removes a parked entry must return its admission slot.
+//
+// Asserted as a table rather than as a claim in a review message, because "I
+// audited it and there is no such route" is the shape of statement this whole
+// review history has been correcting.
+func TestSSO_EverySettlePath(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]func(t *testing.T, s *SSO[*upstream], handoff string){
+		"claim": func(t *testing.T, s *SSO[*upstream], h string) {
+			if _, ok := s.Claim(&SessionInfo{Handoff: h}); !ok {
+				t.Fatal("the entry was not claimable")
+			}
+		},
+		"claim refuses an expired entry": func(t *testing.T, s *SSO[*upstream], h string) {
+			// Age it on the test clock, then claim: the refusal path must settle too,
+			// or an expired login holds a slot until the gate's own backstop.
+			s.now = func() time.Time { return time.Now().Add(time.Hour) }
+			if _, ok := s.Claim(&SessionInfo{Handoff: h}); ok {
+				t.Fatal("an expired entry was handed over")
+			}
+		},
+		"release": func(t *testing.T, s *SSO[*upstream], h string) {
+			s.Release(h, ReattachedExisting)
+		},
+		"expire": func(t *testing.T, s *SSO[*upstream], h string) {
+			s.now = func() time.Time { return time.Now().Add(time.Hour) }
+			s.expire(h)
+		},
+		"sweep": func(t *testing.T, s *SSO[*upstream], h string) {
+			s.now = func() time.Time { return time.Now().Add(time.Hour) }
+			s.Sweep()
+		},
+		"close": func(t *testing.T, s *SSO[*upstream], h string) {
+			s.Close()
+		},
+	}
+
+	for name, remove := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var mu sync.Mutex
+			var settled []string
+			s, err := NewSSO(SSOConfig[*upstream]{
+				Max: 4, TTL: time.Minute,
+				Release: func(*upstream, HandoffReason) {},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.settle = func(h string) {
+				mu.Lock()
+				settled = append(settled, h)
+				mu.Unlock()
+			}
+			if err := s.hold("the-handoff", &upstream{id: "a"}); err != nil {
+				t.Fatal(err)
+			}
+
+			remove(t, s, "the-handoff")
+
+			mu.Lock()
+			defer mu.Unlock()
+			if len(settled) != 1 || settled[0] != "the-handoff" {
+				t.Errorf("settled %v via %s, want exactly [the-handoff] — an entry "+
+					"removed without settling holds an admission slot until the "+
+					"gate's backstop expiry", settled, name)
+			}
+			if n := s.Len(); n != 0 {
+				t.Errorf("%d entries still parked after %s", n, name)
+			}
+		})
+	}
+}
+
+// A raw-hook consumer must be no worse off than before the park took over
+// settlement: it has no park, so the Manager's view IS the right signal, and its
+// factory claims synchronously inside CreateFor.
+func TestHandoff_RawHooksStillReturnAdmissionSlots(t *testing.T) {
+	t.Parallel()
+	p := newPark()
+	h, m, _ := handoffHandler(t, p) // raw OnLogin / OnHandoffUnused, no SSO
+
+	if h.parkSettles {
+		t.Fatal("a raw-hook handler must keep the Manager's settlement")
+	}
+	for i := range DefaultMaxPendingLogins + 1 {
+		ticket := login(t, h)
+		c := &fakeConn{block: make(chan struct{})}
+		msg := helloMsg()
+		msg.Ticket = ticket
+		c.push(msg)
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() { _ = h.loop.serve(ctx, c, handshakeReq("https://tui.example.test")) }()
+		sid := waitForSession(t, c)
+		cancel()
+		m.Close(sid)
+		if n := h.pending.pending(); n > 1 {
+			t.Fatalf("cycle %d: %d admission slots held", i+1, n)
+		}
+	}
+	if n := h.pending.pending(); n != 0 {
+		t.Errorf("%d admission slots held after %d cycles", n, DefaultMaxPendingLogins+1)
+	}
+}
+
+// The gate's backstop expiry and a late claim must not both decrement.
+//
+// If the backstop frees a slot and the claim then settles the same handoff, a
+// naive counter would go down twice and the gate would admit one login more than
+// its cap for the rest of the process's life.
+func TestGate_BackstopExpiryThenLateClaimDoesNotDoubleFree(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	g := newGate(2)
+	g.now = func() time.Time { return now }
+
+	if !g.enter() {
+		t.Fatal("first enter refused")
+	}
+	if !g.hold("old", now.Add(time.Minute)) {
+		t.Fatal("hold refused")
+	}
+	if g.pending() != 1 {
+		t.Fatalf("occupancy %d, want 1", g.pending())
+	}
+
+	// The backstop fires: the slot is swept at the door.
+	now = now.Add(2 * time.Minute)
+	if g.pending() != 0 {
+		t.Fatalf("occupancy %d after the backstop, want 0", g.pending())
+	}
+
+	// A second login takes a slot, and only THEN does the old claim settle.
+	if !g.enter() {
+		t.Fatal("a slot freed by the backstop was not reusable")
+	}
+	if !g.hold("new", now.Add(time.Minute)) {
+		t.Fatal("hold refused for the new login")
+	}
+	g.release("old") // the late claim
+
+	if n := g.pending(); n != 1 {
+		t.Errorf("occupancy %d after a late settle of an already-expired slot, want 1 "+
+			"— the live login's slot was freed by someone else's claim", n)
+	}
+}
