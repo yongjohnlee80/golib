@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 25)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 26)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -14,8 +14,9 @@
   (2026-08-22)** the two concurrency boundaries r2 found still false (§2.12.9), and **rev 24
   (2026-08-22)** the ordering hole r3 found between parking and leasing
   (§2.12.10), and **rev 25 (2026-08-22)** the establishment atomicity r4 found
-  between the reservation and the park (§2.12.11); **awaiting lector r5 and not yet
-  released**. See Review history. Lands on `tui-web`.)
+  between the reservation and the park (§2.12.11), and **rev 26 (2026-08-22)** the
+  check-then-publish gap r5 found inside that repair (§2.12.12); **awaiting lector
+  r6 and not yet released**. See Review history. Lands on `tui-web`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -963,6 +964,59 @@ being claimed was always about a *pair* of steps and the interval between them. 
 fourth is the clearest case: `hold` was correct, `reserve` was correct, and the
 composition was not, because nothing tied the two together.
 
+#### 2.12.12 A bool returned before a mutation is still TOCTOU (rev 26)
+
+r5's sentence is the one to keep: **"a bool returned before mutation is still
+TOCTOU."**
+
+Rev 25 made parking conditional on the reservation still existing — `gate.commit`
+checked membership, re-stamped the deadline, and returned true, and `SSO.hold` then
+inserted. But `commit` released the gate's lock *as it returned its answer*, so the
+key could be swept between the answer and the insert. The entry landed unaccounted
+again, with the same `parked=1, held=0`. I had moved the window one instruction to
+the left and called it atomic.
+
+`gate.commit` now takes the insert as a **callback and runs it while still holding
+its own lock**, so membership and publication are one step. It is called with both
+locks held in the established `s.mu → g.mu` order, which constrains what the
+callback may do — touch only state the caller already protects, never block — and
+that constraint is documented where the callback is passed.
+
+Three further corrections came out of the same round, and two of them were mine to
+have caught.
+
+**A reservation is not a commitment.** Deciding whether to return the slot after
+the hook, I had asked the *stash* whether its value was taken. That is the wrong
+question: a consumer parking by hand need not take anything from the stash in order
+to park, so such a hook lost its slot the moment it succeeded. The gate now records
+`committed` per slot and the login route asks it, which is the only participant that
+actually knows. The repo's own raw-hook fixture was the thing that failed, which is
+appropriate.
+
+**A raw-hook consumer could not be safe at all.** The gate is unexported, so
+"publish atomically with your reservation" was advice a consumer had no way to
+follow — and presenting hand-rolled parking as guaranteed while withholding the
+capability is worse than saying it is unsupported. [Stash.CommitPark] is that
+capability, on the value `OnLogin` already receives, so no signature changed. It
+publishes under the reservation's lock and returns false when the reservation has
+lapsed.
+
+**Two doc claims were wrong.** `ErrAdmissionLapsed` said the reservation is taken
+before the login factor runs and covers its verification; it is taken after
+`Authenticate` and `Issue`, so only the hook can lapse it. And a test asserted the
+ticket had been revoked by verifying that the literal string `"x"` failed, which
+proves only that nonsense is rejected — the store's own count is what shows a
+revoke happened.
+
+**Five rounds, five schedules, one habit.** Never returned; returned too early;
+established too late; established without checking; checked and then published.
+Every repair was correct about the step it named and silent about the interval
+after it, and each round's test passed because it paused where the *previous* bug
+had been. That is the actual lesson of §2.12: for a handoff between two
+independently locked structures, the unit of correctness is never a step — it is a
+step and the interval that follows, and only a probe that pauses inside that
+interval is evidence.
+
 ### 2.13 Peer binding (rev 19)
 
 **Optional, off by default.** A session may be bound to the peer address that
@@ -1265,6 +1319,27 @@ decisions:
   sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
+
+- **rev 26 (2026-08-22, jarvis — the check-then-publish gap from lector r5 on PR #14).**
+  Rev 25 checked the reservation and then inserted; `gate.commit` released the
+  gate's lock as it answered, so the key could be swept in between and the entry
+  landed unaccounted — the same `parked=1, held=0` one instruction to the left.
+  Publication is now a callback run under the gate's own lock. §2.12.12 has it.
+
+  Three things I want kept. The gate now distinguishes a RESERVATION from a
+  COMMITMENT, because deciding whether to keep the slot by asking the stash whether
+  its value was taken was simply the wrong question — a hand-rolled park need not
+  touch the stash — and the repo's own raw-hook fixture is what failed when I fixed
+  it. `Stash.CommitPark` gives raw-hook consumers the capability they were being
+  told to use while it was unexported; presenting hand-rolled parking as guaranteed
+  without it was the worse of the three options lector offered. And two doc claims
+  were false: `ErrAdmissionLapsed`'s description of when the reservation is taken,
+  and a revocation assertion that verified the literal string "x" and therefore
+  proved nothing about the minted ticket.
+
+  Five rounds now, and the habit is clear enough to name: every repair was correct
+  about the step it named and silent about the interval after it, and each round's
+  test passed because it paused where the PREVIOUS bug had been.
 
 - **rev 25 (2026-08-22, jarvis — establishment atomicity from lector r4 on PR #14).**
   One must-fix, and the answer to the shape question I had asked in r3: the design

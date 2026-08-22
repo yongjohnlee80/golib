@@ -204,12 +204,26 @@ type gate struct {
 	mu   sync.Mutex
 	n    int
 	max  int
-	held map[string]time.Time // handoff -> when its keyed slot expires
+	held map[string]slot // handoff -> the slot it owns
 	now  func() time.Time
 }
 
+// slot is one keyed admission lease.
+//
+// committed distinguishes a RESERVATION — taken before the login hook runs, when
+// nothing is parked yet — from a slot that actually accounts for a parked entry.
+// The distinction is what tells the login route whether to return the slot when the
+// hook is done: a hook that parked committed, and one that did not did not. Asking
+// the stash whether its value was taken was the wrong question, because a
+// hand-rolled park need not take anything from the stash to park (lector r5 found
+// the docs gap; the test for it found this).
+type slot struct {
+	expires   time.Time
+	committed bool
+}
+
 func newGate(max int) *gate {
-	return &gate{max: max, held: make(map[string]time.Time), now: time.Now}
+	return &gate{max: max, held: make(map[string]slot), now: time.Now}
 }
 
 // enter takes an anonymous slot, reporting whether one was available.
@@ -247,7 +261,7 @@ func (g *gate) hold(key string, until time.Time) bool {
 	if _, dup := g.held[key]; dup {
 		return false
 	}
-	g.held[key] = until
+	g.held[key] = slot{expires: until}
 	return true
 }
 
@@ -266,7 +280,17 @@ func (g *gate) hold(key string, until time.Time) bool {
 // atomic in the only sense that matters: the entry exists only if a slot accounts
 // for it. false means the caller must not park — or must undo the park it cannot
 // account for.
-func (g *gate) commit(key string, until time.Time) bool {
+// The publish callback is why this takes one: returning a bool and letting the
+// caller mutate afterwards is still a time-of-check-to-time-of-use gap, because
+// this lock is released as the function returns and the key can be swept in
+// between (lector r5 on PR #14 reproduced exactly that after the first repair).
+// The callback runs while g.mu is STILL HELD, so membership and publication are
+// indivisible.
+//
+// It is called with both locks held, in the established s.mu -> g.mu order — the
+// caller holds s.mu, this holds g.mu — so the callback must only touch state the
+// caller already protects, and must not block.
+func (g *gate) commit(key string, until time.Time, publish func()) bool {
 	if key == "" {
 		return false
 	}
@@ -278,8 +302,22 @@ func (g *gate) commit(key string, until time.Time) bool {
 	}
 	// Re-stamped from NOW, at the same moment the park's own deadline is set, so
 	// the two cannot be skewed by however long the hook took.
-	g.held[key] = until
+	g.held[key] = slot{expires: until, committed: true}
+	if publish != nil {
+		publish()
+	}
 	return true
+}
+
+// committed reports whether this key's slot now accounts for a parked entry.
+func (g *gate) committed(key string) bool {
+	if key == "" {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	s, ok := g.held[key]
+	return ok && s.committed
 }
 
 // release returns the slot keyed by handoff. Idempotent, because a handoff can be
@@ -307,8 +345,8 @@ func (g *gate) sweepLocked() {
 		return
 	}
 	now := g.now()
-	for k, exp := range g.held {
-		if now.After(exp) {
+	for k, s := range g.held {
+		if now.After(s.expires) {
 			delete(g.held, k)
 			if g.n > 0 {
 				g.n--

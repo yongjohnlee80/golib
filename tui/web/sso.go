@@ -97,11 +97,14 @@ type SSO[T any] struct {
 	// and then be told 503 (lector r2 on PR #14).
 	settle func(string)
 
-	// commit converts this login's admission reservation into an accounted slot,
-	// reporting whether the reservation was still alive. hold refuses to park when
-	// it is not: an entry with no slot accounting for it is a budget that
-	// under-counts, which is how more logins park than the cap allows.
-	commit func(string) bool
+	// commit converts this login's admission reservation into an accounted slot AND
+	// publishes the park entry while the gate's own lock is held, so membership and
+	// publication are indivisible. Reporting the answer and letting hold insert
+	// afterwards was still a time-of-check-to-time-of-use gap: the key could be
+	// swept in between (lector r5 on PR #14).
+	//
+	// false means the reservation lapsed and the entry was NOT published.
+	commit func(handoff string, publish func()) bool
 
 	mu     sync.Mutex
 	cond   *sync.Cond
@@ -193,13 +196,16 @@ const SessionEnded HandoffReason = 3
 // because verification is the one place that holds the credential.
 const LoginFailed HandoffReason = 4
 
-// ErrAdmissionLapsed means a login took longer than its admission reservation.
+// ErrAdmissionLapsed means a login lost its place in the pending-login budget
+// before it could park.
 //
-// The reservation is taken before the login factor runs and covers the time that
-// factor spends verifying; a factor that outlives it — a dial to an upstream that
-// hangs, say — finds its place in the pending-login budget already reclaimed by
-// another login. The park then refuses the entry rather than holding state nothing
-// accounts for, so the login fails and the client may retry.
+// The reservation is taken AFTER the login policy succeeds and the ticket is
+// minted, and covers the [OnLogin] hook — not the factor's verification, which has
+// already finished by then (lector r5 corrected an earlier version of this text
+// that said otherwise). A hook slow enough to outlive it — one that dials an
+// upstream and hangs — finds its slot reclaimed by another login. The park then
+// refuses the entry rather than holding state nothing accounts for, so the login
+// fails and the client may retry.
 var ErrAdmissionLapsed = errors.New("web: the login outlived its admission " +
 	"reservation, so its upstream state cannot be parked")
 
@@ -411,15 +417,16 @@ func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 				h.pending.release(handoff)
 			}
 		}
-		s.commit = func(handoff string) bool {
+		s.commit = func(handoff string, publish func()) bool {
 			if h.pending == nil {
+				publish()
 				return true
 			}
 			// Stamped from the handler's clock at the moment of the park, so the
 			// slot's deadline cannot end up EARLIER in absolute time than the
 			// park's — which it necessarily was when the two were set at
 			// different moments with equal durations.
-			return h.pending.commit(handoff, h.now().Add(h.pendingHold))
+			return h.pending.commit(handoff, h.now().Add(h.pendingHold), publish)
 		}
 	}
 	mOpt := OnHandoffUnused(func(handoff string, r HandoffReason) {
@@ -600,22 +607,32 @@ func (s *SSO[T]) hold(handoff string, v T) error {
 		s.releaseAll(stale, Expired)
 		return errors.New("web: this handoff is already parked")
 	}
-	// COMMIT BEFORE INSERT. The reservation was taken before the login factor ran;
-	// if it has since lapsed there is no slot accounting for this entry, and an
-	// unaccounted entry is how the budget comes to allow more parked logins than
-	// its cap. Refusing here is what makes establishment atomic: the entry exists
-	// only if a slot accounts for it.
-	if s.commit != nil && !s.commit(handoff) {
+	// PUBLISH UNDER THE RESERVATION'S OWN LOCK.
+	//
+	// The entry must exist only if an admission slot accounts for it. Checking the
+	// reservation and then inserting was not enough — the check released the gate's
+	// lock as it answered, and the key could be swept before the insert landed
+	// (lector r4 found the unchecked version, r5 found the checked-then-inserted
+	// one). So the insert is handed to the gate as a callback and runs while the
+	// gate still holds its lock: membership and publication are one step.
+	//
+	// The timer is what makes the expiry real without a consumer's ticker. It is
+	// armed while the entry is in the map and stopped by whatever removes it, so a
+	// claimed entry never fires and an abandoned one always does.
+	publish := func() {
+		e := parkedEntry[T]{value: v, expires: now.Add(s.ttl)}
+		e.timer = time.AfterFunc(s.ttl, func() { s.expire(handoff) })
+		s.parked[handoff] = e
+	}
+	if s.commit == nil {
+		// No gate wired: nothing to account against, so publish directly. This is
+		// the shape a unit test or a consumer with no Handler sees.
+		publish()
+	} else if !s.commit(handoff, publish) {
 		s.mu.Unlock()
 		s.releaseAll(stale, Expired)
 		return ErrAdmissionLapsed
 	}
-	// The timer is what makes the expiry real without a consumer's ticker. It is
-	// armed while the entry is in the map and stopped by whatever removes it, so a
-	// claimed entry never fires and an abandoned one always does.
-	e := parkedEntry[T]{value: v, expires: now.Add(s.ttl)}
-	e.timer = time.AfterFunc(s.ttl, func() { s.expire(handoff) })
-	s.parked[handoff] = e
 	s.mu.Unlock()
 	// Released outside the lock: a consumer's cleanup may make network calls, and
 	// holding the park's lock across one would block every other login.

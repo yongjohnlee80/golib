@@ -15,7 +15,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"sort"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1530,14 +1533,14 @@ func TestSSO_LoginOutlivingItsReservationCannotPark(t *testing.T) {
 	// before the park's insert. Only the TIMING is injected — the decision is still
 	// the real gate's, since inner is the commit hOpt installed.
 	inner := sso.commit
-	sso.commit = func(handoff string) bool {
+	sso.commit = func(handoff string, publish func()) bool {
 		advance(2 * h.pendingHold)
 		// Another login arriving is what reclaims the slot; the sweep is lazy, at
 		// the door, and pending() sweeps the same way enter() does.
 		if held := h.pending.pending(); held != 0 {
 			t.Errorf("%d slots held after the reservation lapsed", held)
 		}
-		return inner(handoff)
+		return inner(handoff, publish)
 	}
 
 	rec := httptest.NewRecorder()
@@ -1561,10 +1564,707 @@ func TestSSO_LoginOutlivingItsReservationCannotPark(t *testing.T) {
 		t.Errorf("released %v, want one LoginFailed — a refused park must not leak "+
 			"the upstream session the factor already opened", released)
 	}
-	// And the ticket never became usable.
-	if _, err := token.NewFactor(store).Verify(context.Background(), &auth.Request{
-		Credentials: map[string]auth.Secret{token.DefaultScheme: auth.NewSecret("x")},
-	}); err == nil {
-		t.Error("an arbitrary ticket verified")
+	// And the ticket that WAS minted is gone from the store. Verifying a literal
+	// "x" proved only that nonsense is rejected, which was never in question
+	// (lector r5); the store's own count is the thing that shows the revoke
+	// happened.
+	if n := store.Len(); n != 0 {
+		t.Errorf("%d tickets left in the store: the ticket minted for a login that "+
+			"could not park is still usable", n)
+	}
+}
+
+// --- the invariant, under concurrency --------------------------------------
+
+// Everything allocated is released exactly once, and both budgets return to zero.
+//
+// Four review rounds found four ordering windows in this flow, every one of them
+// by pausing one side of a pair. A stress run cannot replace those — it would have
+// found none of them reliably — but it covers the thing they were all symptoms of:
+// across many interleavings of login, attach, claim, settle and expiry, no upstream
+// value is leaked or released twice, and neither the park nor the admission gate
+// ends up holding anything.
+//
+// It also fails loudly on a lock-order inversion between the park's mutex and the
+// gate's, which the race detector cannot see: the test simply would not finish.
+//
+// The paths it actually reaches, established by MUTATION rather than by reading
+// the code: a login that parks and is claimed, and a login whose factor allocates
+// and is then refused — deleting either one's cleanup turns this red. Expiry
+// competes with both throughout, and the documented shutdown order runs at the end.
+//
+// It does NOT reach the park-full refusal, the Close/provision race, the
+// reservation lapse, or a double release; deleting those cleanups leaves this test
+// green. Each has its own deterministic test, which is where that coverage lives —
+// and saying so here is the difference between a stress test and a stress test
+// whose passing gets read as a guarantee it never made.
+func TestSSO_ConcurrentLoginsPreserveTheInvariant(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	allocated := map[string]int{}
+	released := map[string]int{}
+	var seq int
+
+	nextID := func(kind string) string {
+		mu.Lock()
+		defer mu.Unlock()
+		seq++
+		id := kind + "-" + strconv.Itoa(seq)
+		allocated[id]++
+		return id
+	}
+
+	sso, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: 50 * time.Millisecond, // short on purpose: expiry competes
+		Provision: func(_ context.Context, id *auth.Identity) (*upstream, error) {
+			return &upstream{id: nextID("provisioned")}, nil
+		},
+		Release: func(u *upstream, _ HandoffReason) {
+			mu.Lock()
+			released[u.id]++
+			mu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hOpt, mOpt := sso.Options()
+
+	store := token.NewMemStore(256)
+	tracker, err := auth.NewMemTracker(256, auth.Backoff{
+		Threshold: 10_000, Base: time.Second, Max: time.Second, Forget: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var verifies int
+	loginPolicy, err := PasswordPolicyExample(
+		stressFactor{
+			sso:   sso,
+			alloc: func() string { return nextID("parked") },
+			mu:    &mu,
+			n:     &verifies,
+		},
+		tracker, contextualFactor{allow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(sso.Factory(
+		func(*Backend, *auth.Identity, *upstream) Runner { return newFakeApp() }), mOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer:         token.NewIssuer(store),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m, HandlerLogger(nopLogger{}), hOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const workers, cycles = 8, 4
+	var wg sync.WaitGroup
+	for w := range workers {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for range cycles {
+				rec := httptest.NewRecorder()
+				h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+				if rec.Code != http.StatusOK {
+					// A refusal is a legitimate outcome under contention — the point
+					// is that a refusal leaks nothing either.
+					continue
+				}
+				var out loginResponse
+				if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+					return
+				}
+				msg := helloMsg()
+				msg.Ticket = out.Ticket
+				c := &fakeConn{block: make(chan struct{})}
+				c.push(msg)
+				// Short: the fake connection never sends again, so serve runs until
+				// the context expires. The invariant under test does not depend on
+				// the session being created — a refused attach must release too —
+				// so this buys interleavings rather than waiting them out.
+				ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+				_ = h.loop.serve(ctx, c, stressReq())
+				cancel()
+			}
+		}(w)
+	}
+
+	// Expiry and shutdown competing with all of the above.
+	stop := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				sso.Sweep()
+				time.Sleep(2 * time.Millisecond)
+			}
+		}
+	}()
+
+	wg.Wait()
+	close(stop)
+
+	// Drain: end every session, then close the park. The documented order.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := m.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	sso.Close()
+
+	if n := sso.Len(); n != 0 {
+		t.Errorf("%d entries still parked after shutdown", n)
+	}
+	if n := h.pending.pending(); n != 0 {
+		t.Errorf("%d admission slots still held after shutdown", n)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(allocated) == 0 {
+		t.Fatal("nothing was allocated: the stress run did no work, so it proved nothing")
+	}
+	var leaked, doubled []string
+	for id := range allocated {
+		switch released[id] {
+		case 1:
+		case 0:
+			leaked = append(leaked, id)
+		default:
+			doubled = append(doubled, id)
+		}
+	}
+	sort.Strings(leaked)
+	sort.Strings(doubled)
+	if len(leaked) > 0 {
+		t.Errorf("%d of %d upstream sessions were never released: %v",
+			len(leaked), len(allocated), leaked)
+	}
+	if len(doubled) > 0 {
+		t.Errorf("%d upstream sessions were released more than once: %v",
+			len(doubled), doubled)
+	}
+	for id := range released {
+		if allocated[id] == 0 {
+			t.Errorf("released %q, which was never allocated", id)
+		}
+	}
+	t.Logf("%d upstream sessions allocated and released exactly once", len(allocated))
+}
+
+// stressFactor stashes a freshly allocated value on every verify — and then fails
+// a deterministic fraction of them.
+//
+// The failing fraction is the point. Without it every login in the run either
+// parked successfully or failed inside hold with the value already taken, so the
+// PRE-PARK path — a factor that allocates and is then refused, whose cleanup is
+// the login route's deferred discard — was never exercised. The control proved it:
+// deleting that discard left this test green. A stress test that cannot see a leak
+// it claims to cover is worse than no stress test, because its passing is read as
+// evidence.
+type stressFactor struct {
+	sso   *SSO[*upstream]
+	alloc func() string
+	mu    *sync.Mutex
+	n     *int
+}
+
+func (stressFactor) Kind() auth.FactorKind { return auth.FactorIdentity }
+func (stressFactor) Claim(r *auth.Request) string {
+	if r == nil {
+		return ""
+	}
+	return r.Credentials["subject"].Reveal()
+}
+
+func (f stressFactor) Verify(ctx context.Context, r *auth.Request) (auth.Contribution, error) {
+	if r.Credentials["subject"].Reveal() != "alice" ||
+		r.Credentials["password"].Reveal() != "pw" {
+		return auth.Contribution{}, auth.Reason("test: refused")
+	}
+	u := &upstream{id: f.alloc()}
+	if err := f.sso.Stash(ctx, u); err != nil {
+		return auth.Contribution{}, auth.Reason("test: stash refused")
+	}
+	// Every third verify allocates and THEN refuses — a factor that opens an
+	// upstream session and only afterwards finds the account disabled. Nothing has
+	// parked yet, so the login route's deferred discard is the only thing that can
+	// release it.
+	f.mu.Lock()
+	*f.n++
+	fail := *f.n%3 == 0
+	f.mu.Unlock()
+	if fail {
+		return auth.Contribution{}, auth.Reason("test: refused after allocating")
+	}
+	return auth.Contribution{Method: "test", Subject: "alice", IssuedAt: time.Now()}, nil
+}
+
+func stressReq() requestInfo {
+	r := httptest.NewRequest(http.MethodGet, "/attach", nil)
+	r.RemoteAddr = "203.0.113.7:44321"
+	r.Host = "tui.example.test"
+	r.Header.Set("Origin", "https://tui.example.test")
+	return requestInfo{http: r}
+}
+
+// A login refused because the PARK IS FULL must not leak what its factor already
+// allocated.
+//
+// Reaching this at all took discovering something worth writing down: when
+// SSO.Options ties the two budgets — the park's Max SETS MaxPendingLogins — the
+// park can never be full at the moment a committed reservation exists. Our own slot
+// is one of the at-most-Max slots and our entry is not inserted yet, so parked
+// entries are at most Max-1. The gate refuses first, at the door, with a 503. The
+// park-full branch is therefore UNREACHABLE in the tied configuration.
+//
+// It becomes reachable again the moment a consumer unties them, which this test
+// does deliberately: apply Options and then override MaxPendingLogins upward. That
+// is an ill-advised configuration and it is a supported one, so the release on that
+// branch is not dead code — and the value has already been taken out of the stash
+// by then, so SSO's own release is the only cleanup that can see it.
+func TestSSO_ParkFullReleasesTheTakenValue(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var released []HandoffReason
+	sso, err := NewSSO(SSOConfig[*upstream]{
+		Max: 1, TTL: time.Minute,
+		Release: func(_ *upstream, r HandoffReason) {
+			mu.Lock()
+			released = append(released, r)
+			mu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hOpt, mOpt := sso.Options()
+
+	store := token.NewMemStore(16)
+	tracker, err := auth.NewMemTracker(16, auth.Backoff{
+		Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginPolicy, err := PasswordPolicyExample(
+		ghostFactor{sso: sso}, tracker, contextualFactor{allow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = m.Shutdown(ctx)
+	})
+	h, err := NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer:         token.NewIssuer(store),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+		// The untying: the gate is now larger than the park, so a second login
+		// reaches the park instead of being turned away at the door.
+	}, m, HandlerLogger(nopLogger{}), hOpt, MaxPendingLogins(8))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The first login fills the park legitimately, through the real route.
+	rec := httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the first login: %d %s", rec.Code, rec.Body.String())
+	}
+	if n := sso.Len(); n != 1 {
+		t.Fatalf("park holds %d after one login, want 1", n)
+	}
+
+	// The second reaches a full park.
+	rec = httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+	if rec.Code == http.StatusOK {
+		t.Error("a login was admitted with the park already at capacity")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(released) != 1 || released[0] != LoginFailed {
+		t.Errorf("released %v, want one LoginFailed — the value SSO took out of the "+
+			"stash before hold failed is SSO's to release, and the login route's "+
+			"discard cannot see it", released)
+	}
+	if n := sso.Len(); n != 1 {
+		t.Errorf("park holds %d, want just the first login's entry", n)
+	}
+	// The first login's slot is still held (its entry is still parked); the second
+	// login's is not.
+	if n := h.pending.pending(); n != 1 {
+		t.Errorf("%d admission slots held, want 1 — the refused login's slot must go "+
+			"back and the parked one's must not", n)
+	}
+}
+
+// The reservation must still be alive at the moment the entry is PUBLISHED, not
+// merely at the moment it was checked.
+//
+// r4's repair checked the reservation before inserting. r5 showed that was still
+// not atomic: gate.commit released the gate's lock as it returned its answer, and
+// the key could be swept between the answer and the insert. A bool returned before
+// a mutation is a time-of-check-to-time-of-use gap however carefully it is
+// computed.
+//
+// This pauses in exactly that gap. The previous test
+// (TestSSO_LoginOutlivingItsReservationCannotPark) pauses BEFORE the check, so it
+// cannot see this; the two windows are one instruction apart and need separate
+// probes.
+func TestSSO_ReservationSweptBetweenCheckAndPublish(t *testing.T) {
+	t.Parallel()
+
+	var clockMu sync.Mutex
+	now := time.Now()
+	shared := func() time.Time {
+		clockMu.Lock()
+		defer clockMu.Unlock()
+		return now
+	}
+	advance := func(d time.Duration) {
+		clockMu.Lock()
+		now = now.Add(d)
+		clockMu.Unlock()
+	}
+
+	var relMu sync.Mutex
+	var released []HandoffReason
+	sso, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: time.Minute, Clock: shared,
+		Release: func(_ *upstream, r HandoffReason) {
+			relMu.Lock()
+			released = append(released, r)
+			relMu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hOpt, mOpt := sso.Options()
+
+	store := token.NewMemStore(16)
+	tracker, err := auth.NewMemTracker(16, auth.Backoff{
+		Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginPolicy, err := PasswordPolicyExample(
+		ghostFactor{sso: sso}, tracker, contextualFactor{allow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = m.Shutdown(ctx)
+	})
+	h, err := NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer:         token.NewIssuer(store),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m, HandlerLogger(nopLogger{}), hOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.now = shared
+	h.pending.now = shared
+
+	// The pause goes INSIDE the publish callback: by the time this runs, the gate
+	// has already checked membership and re-stamped the deadline. Advancing the
+	// clock past it and sweeping is what r5's probe does — and if publication were
+	// not happening under the gate's own lock, the sweep would take the key and the
+	// entry would land anyway.
+	// The pause goes INSIDE the publish callback, which is the gap itself: the gate
+	// has already checked membership and re-stamped the deadline by the time this
+	// runs.
+	//
+	// The clock is advanced so a sweep WANTS to take the key, a sweeper is started
+	// concurrently, and then the entry is published. If publication happened outside
+	// the gate's lock, the sweeper would win and the entry would land on a key that
+	// no longer exists. The clock is rolled back before the callback returns, so the
+	// sweeper — once it is finally let in — measures the live state rather than the
+	// artificial one, and the end-state assertions mean what they say.
+	var sweeperFinished atomic.Bool
+	sweeperDone := make(chan struct{})
+	inner := sso.commit
+	sso.commit = func(handoff string, publish func()) bool {
+		return inner(handoff, func() {
+			before := shared()
+			advance(2 * h.pendingHold)
+
+			go func() {
+				_ = h.pending.pending() // takes the gate's lock, and sweeps
+				sweeperFinished.Store(true)
+				close(sweeperDone)
+			}()
+			// Give it every chance to run: with the lock held it cannot, and that
+			// is the property under test.
+			time.Sleep(50 * time.Millisecond)
+			if sweeperFinished.Load() {
+				t.Error("a sweep completed between the reservation check and the " +
+					"publication, so the entry is about to be published against a " +
+					"key that no longer exists")
+			}
+
+			publish()
+
+			// Rolled back BEFORE returning, so the sweeper — which cannot run until
+			// this returns and the gate's lock is free — measures the real deadline
+			// rather than the artificial one. Waiting for it here would deadlock:
+			// it needs the lock this callback is holding.
+			clockMu.Lock()
+			now = before
+			clockMu.Unlock()
+		})
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case <-sweeperDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the sweeper never got the gate's lock back")
+	}
+
+	// THE INVARIANT: an entry exists only if a slot accounts for it.
+	parked, held := sso.Len(), h.pending.pending()
+	if parked != 1 || held != 1 {
+		t.Errorf("parked=%d held=%d, want 1 and 1 — an entry published with no "+
+			"admission slot accounting for it makes the budget under-count", parked, held)
+	}
+	relMu.Lock()
+	defer relMu.Unlock()
+	if len(released) != 0 {
+		t.Errorf("released %v: the parked value is still live and must not have been "+
+			"cleaned up", released)
+	}
+}
+
+// A RAW-HOOK consumer can be atomic too, without access to the gate.
+//
+// The gate is unexported, so before Stash.CommitPark a consumer not using web.SSO
+// had no way to publish its park entry safely at all — the docs told it to keep the
+// hook short and hope. That is not a contract, and lector r5 was right to say so.
+//
+// This is the raw-hook equivalent of the SSO path: publish inside CommitPark, and
+// refuse to park when it returns false.
+func TestOnLogin_RawHookCanPublishAtomically(t *testing.T) {
+	t.Parallel()
+
+	var clockMu sync.Mutex
+	now := time.Now()
+	shared := func() time.Time {
+		clockMu.Lock()
+		defer clockMu.Unlock()
+		return now
+	}
+
+	type hookResult struct {
+		committed bool
+		parked    bool
+	}
+	var resMu sync.Mutex
+	var results []hookResult
+	var lapse atomic.Bool
+
+	store := token.NewMemStore(16)
+	tracker, err := auth.NewMemTracker(16, auth.Backoff{
+		Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginPolicy, err := PasswordPolicyExample(
+		claimingFactor{subject: "alice", password: "pw"}, tracker,
+		contextualFactor{allow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = m.Shutdown(ctx)
+	})
+
+	// A hand-rolled park: a plain map the hook writes under CommitPark.
+	var parkMu sync.Mutex
+	park := map[string]string{}
+
+	var h *Handler
+	h, err = NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer:         token.NewIssuer(store),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m, HandlerLogger(nopLogger{}), MaxPendingLogins(4),
+		OnLogin(func(handoff string, id *auth.Identity, st *Stash) error {
+			if lapse.Load() {
+				// Simulate a hook that took too long: its reservation is gone.
+				clockMu.Lock()
+				now = now.Add(2 * h.pendingHold)
+				clockMu.Unlock()
+				_ = h.pending.pending() // the sweep another login would trigger
+			}
+			ok := st.CommitPark(func() {
+				parkMu.Lock()
+				park[handoff] = id.Subject
+				parkMu.Unlock()
+			})
+			resMu.Lock()
+			results = append(results, hookResult{committed: ok, parked: ok})
+			resMu.Unlock()
+			if !ok {
+				return errors.New("the admission reservation lapsed; not parking")
+			}
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.now = shared
+	h.pending.now = shared
+
+	// The ordinary case: commits, parks, and holds its slot.
+	rec := httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the ordinary login: %d %s", rec.Code, rec.Body.String())
+	}
+	parkMu.Lock()
+	n := len(park)
+	parkMu.Unlock()
+	if n != 1 {
+		t.Errorf("hand-rolled park holds %d after a successful login, want 1", n)
+	}
+	if held := h.pending.pending(); held != 1 {
+		t.Errorf("%d admission slots held, want 1", held)
+	}
+
+	// The lapsed case: refuses to commit, so the hook must not park.
+	lapse.Store(true)
+	rec = httptest.NewRecorder()
+	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+	if rec.Code == http.StatusOK {
+		t.Error("a login whose reservation had lapsed still got a ticket")
+	}
+
+	resMu.Lock()
+	defer resMu.Unlock()
+	if len(results) != 2 {
+		t.Fatalf("%d hook runs, want 2", len(results))
+	}
+	if !results[0].committed {
+		t.Error("the ordinary login could not commit its reservation")
+	}
+	if results[1].committed {
+		t.Error("CommitPark returned true for a lapsed reservation, so a hand-rolled " +
+			"park has no way to know it must not publish")
+	}
+	parkMu.Lock()
+	defer parkMu.Unlock()
+	if len(park) != 1 {
+		t.Errorf("hand-rolled park holds %d, want just the first login's entry", len(park))
+	}
+}
+
+// A reservation is not a commitment.
+//
+// The distinction is what lets the login route decide whether to return the slot
+// when the hook is done: a hook that parked committed, one that did not did not.
+// Collapsing the two — treating any held key as accounting for an entry — means a
+// hook that parks nothing keeps a slot until the backstop, and a hook that parks
+// without committing keeps one that accounts for an entry the gate never agreed to.
+func TestGate_ReservationIsNotACommitment(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	g := newGate(2)
+	g.now = func() time.Time { return now }
+
+	if !g.enter() {
+		t.Fatal("enter refused")
+	}
+	if !g.hold("k", now.Add(time.Minute)) {
+		t.Fatal("hold refused")
+	}
+	if g.committed("k") {
+		t.Error("a bare reservation reports as committed, so a hook that parks " +
+			"nothing would keep its slot")
+	}
+
+	published := false
+	if !g.commit("k", now.Add(time.Minute), func() { published = true }) {
+		t.Fatal("commit refused a live reservation")
+	}
+	if !published {
+		t.Error("commit did not run the publish callback")
+	}
+	if !g.committed("k") {
+		t.Error("a committed slot does not report as committed, so the login route " +
+			"would return a slot that accounts for a parked entry")
+	}
+
+	// And a commit on a key that is gone neither publishes nor lies about it.
+	g.release("k")
+	published = false
+	if g.commit("k", now.Add(time.Minute), func() { published = true }) {
+		t.Error("commit succeeded for a slot that no longer exists")
+	}
+	if published {
+		t.Error("commit published for a slot that no longer exists — the entry would " +
+			"be unaccounted, which is the whole defect this exists to prevent")
+	}
+	if g.committed("k") {
+		t.Error("a released key reports as committed")
 	}
 }

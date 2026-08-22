@@ -239,11 +239,13 @@ func WithLimits(l Limits) HandlerOption {
 // A hook slow enough to outlive it — a dial to an upstream that hangs — can come
 // back to find its slot reclaimed by another login, and parking anyway produces an
 // entry that nothing accounts for: the budget then allows more parked logins than
-// its cap. Making the two atomic requires knowing, at the moment of the insert,
-// that the reservation is still alive — which only the code doing the insert can
-// do. [SSO] does exactly that: it commits the reservation before inserting and
-// refuses to park otherwise, returning [ErrAdmissionLapsed]. A consumer parking by
-// hand should keep the hook short, and is better off using [SSO].
+// its cap.
+//
+// So do not write to your park directly. Publish it through [Stash.CommitPark],
+// which performs the write while the reservation's own lock is held — making
+// membership and publication one step — and returns false when the reservation has
+// lapsed, in which case you must not park. [SSO] does this for you and returns
+// [ErrAdmissionLapsed] on that path.
 func OnLogin(fn func(handoff string, id *auth.Identity, stash *Stash) error) HandlerOption {
 	return func(h *Handler) { h.onLogin = fn }
 }
