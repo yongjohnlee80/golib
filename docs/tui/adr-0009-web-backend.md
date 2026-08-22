@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 10)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 11)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -692,6 +692,57 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **rev 11 (2026-08-22, Johno — password becomes a ticket minter).** Johno asked
+  whether the login form could live "outside the auth". It can, and the shape is
+  better than the one rev 9 implied.
+
+  Rev 9 permitted a password factor in the ATTACH policy. Rev 11 moves it: a
+  `POST /login` route runs a separate `LoginPolicy`, and on success mints a
+  **single-use, 30-second ticket** that the WebSocket then presents like any
+  other client. Four reasons, all pointing the same way:
+
+  - **The attach path keeps one credential shape.** Every attach presents a
+    ticket, whatever the user actually proved. Mixing a reusable secret into the
+    same message as a spent one would make the replay properties of an attach
+    depend on which field happened to be populated.
+  - **The password crosses once, to a route that does nothing else.** It never
+    touches session creation, frame delivery or the event stream, so no bug in
+    those paths is reachable while a password is in flight.
+  - **Lockout lives where the guessing happens.** The throttle wraps the login
+    policy rather than being entangled with the attach policy that mTLS and SSH
+    signatures also use.
+  - **A captured hello cannot contain a password.** The worst a replayed hello
+    yields is a spent ticket.
+
+  This also closes the gap lector r1 named: the shipped client now has a login
+  form, so password auth is reachable end to end rather than requiring a custom
+  client.
+
+  Consequences recorded deliberately:
+
+  - The login route is the **only unauthenticated endpoint** in the package, so
+    it is written as one — `Origin`/`Host` guarded like everything else (without
+    which any page the user visits could POST a guess), body bounded before
+    buffering, one uniform 401 for every cause including a malformed body, and no
+    statement anywhere about whether a subject exists.
+  - It **404s** when unconfigured, so a deployment that did not ask for password
+    auth looks like one that never had the route.
+  - `LoginPolicy` and `Issuer` must be set together: a policy with no issuer
+    authenticates and then cannot admit anyone, and an issuer with no policy would
+    mint on request.
+  - A ticket-issue failure returns **503, not 401** — the credential was correct
+    and reporting our failure as theirs would send a user to reset a password
+    that is fine.
+  - The password field is `type="password"` with
+    `autocomplete="current-password"`, deliberately UNLIKE the capture textarea.
+    That element is a keystroke conduit and must not be treated as a credential
+    field; this one IS a credential field, so the browser should mask it and a
+    password manager should be able to fill it. A manager is a net security gain,
+    and suppressing it pushes users toward weaker memorable passwords.
+  - No `<form>` element, so the CSP keeps `form-action 'none'`; the credential goes
+    by `fetch` with `credentials: 'omit'` and `redirect: 'error'`, so it cannot
+    carry ambient credentials and cannot be redirected elsewhere.
 
 - **implementation r1 (2026-08-22, lector — `change_requested`, 9 blockers; all
   folded).** The cumulative framer was **approved**: current/acked/in-flight

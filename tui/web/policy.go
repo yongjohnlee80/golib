@@ -59,14 +59,19 @@ func RecommendedPolicy(mechanisms []auth.Factor, constrain ...auth.Factor) (auth
 // package that silently second-guessed it would be lying about where the
 // decision lives. It does refuse to pretend the weaker shape is equivalent.
 //
-// # The shipped client does not collect a password
+// # Password is a TICKET MINTER, not an attach mechanism (rev 11)
 //
-// Password auth is wired server-side — the credential mapping reads `subject`
-// and `password` from the hello — but the client in this package has no login
-// form and never sends them. So a password policy is only reachable with a
-// custom client today. That is a gap, not a design position, and it is stated
-// here rather than left for someone to discover after configuring one
-// (lector r1).
+// A password policy belongs on [Config.LoginPolicy], not [Config.Policy]. The
+// login route authenticates it and returns a single-use ticket; the WebSocket
+// then attaches with that ticket like any other client. See [Handler.ServeLogin]
+// for why that shape is better than putting a password in the attach path — in
+// short, the attach path keeps ONE credential shape, the password crosses once to
+// a route that does nothing else, lockout lives where the guessing happens, and a
+// captured hello is worth a spent ticket rather than a reusable secret.
+//
+// So the policy this helper builds is the LOGIN policy. Putting it on
+// Config.Policy would make a password an attach credential, which is the thing
+// the split exists to prevent.
 //
 //	// password is *password.Factor; tracker is an auth.Tracker.
 //	throttled, err := auth.NewThrottle(password, tracker)
