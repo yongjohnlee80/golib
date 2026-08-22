@@ -255,8 +255,9 @@ func TestLogin_MethodAndHardening(t *testing.T) {
 	}
 }
 
-// The route is the only unauthenticated endpoint, which makes the Origin check
-// load-bearing: without it, any page the user visits could POST a guess.
+// The route is the only unauthenticated endpoint that PROCESSES A CREDENTIAL,
+// which makes the Origin check load-bearing rather than defensive: without it,
+// any page the user visits could POST a guess.
 func TestLogin_IsGuardedAgainstCrossOrigin(t *testing.T) {
 	t.Parallel()
 	h, _ := loginHandler(t, "correct-horse", "alice")
