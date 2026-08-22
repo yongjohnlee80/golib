@@ -50,10 +50,18 @@ func (f loginFactor) Verify(ctx context.Context, r *auth.Request) (auth.Contribu
 
 // Example_singleSignOn shows the whole login-handoff workflow.
 //
-// The shape to copy is that a consumer writes exactly two things — how to
-// allocate (in Verify) and how to release (in SSOConfig.Release) — and the helper
-// owns every path in between: parking on login, claiming on create, releasing on
-// reattach or a failed attach, and sweeping abandoned logins.
+// The shape to copy is that a consumer writes three things — how to allocate for
+// a login (Stash, in Verify), how to allocate for an attach that carried no login
+// (Provision), and how to release (Release) — and the helper owns every path in
+// between: parking on login, claiming on create, provisioning for the direct
+// mechanisms, releasing on reattach, on a failed attach, when the session ends,
+// and sweeping abandoned logins.
+//
+// The two allocation sites exist because golib/auth has two kinds of mechanism. A
+// password authenticates at a LOGIN, so it can allocate while it still holds the
+// credential. A ticket, an mTLS chain and an SSHSIG challenge authenticate at the
+// ATTACH, so no login ran and there is nothing parked to claim. Both arrive at
+// the same build function.
 func Example_singleSignOn() {
 	sso, err := web.NewSSO(web.SSOConfig[*upstreamSession]{
 		Max: 8,
@@ -71,6 +79,19 @@ func Example_singleSignOn() {
 			u.Logout()
 			u.Close()
 		},
+
+		// Provision covers every mechanism that authenticates at the ATTACH
+		// rather than at a login — an SSH-minted ticket, an mTLS verified
+		// chain, an SSHSIG challenge. Those park nothing, so without this they
+		// would each need a second allocation path with its own cleanup, which
+		// is the shape this type exists to prevent.
+		//
+		// Leaving it nil REFUSES such a session rather than handing the app a
+		// nil upstream. A consumer who wants guest sessions returns a guest
+		// value here, so there is one mechanism rather than a flag.
+		Provision: func(ctx context.Context, id *auth.Identity) (*upstreamSession, error) {
+			return &upstreamSession{user: id.Subject}, nil
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -81,17 +102,13 @@ func Example_singleSignOn() {
 	// release side.
 	handlerOpt, managerOpt := sso.Options()
 
+	// Factory is the form to use: the build function receives a READY upstream
+	// session and never sees claim, provision or release, so the release cannot be
+	// forgotten. It runs on every exit path of the app, panics included.
 	mgr, err := web.NewManager(
-		func(b *web.Backend, info *web.SessionInfo) web.Runner {
-			// Claim takes the state parked by the login that created THIS session.
-			// ok is false for an attach that carried no login — an mTLS or SSH
-			// attach parks nothing — which is a normal case, not an error.
-			up, ok := sso.Claim(info)
-			if !ok {
-				return newGuestApp(b, info.Identity)
-			}
-			return newUserApp(b, info.Identity, up)
-		},
+		sso.Factory(func(b *web.Backend, id *auth.Identity, up *upstreamSession) web.Runner {
+			return newUserApp(b, id, up)
+		}),
 		managerOpt,
 		web.MaxSessions(8),
 	)
@@ -122,7 +139,6 @@ func Example_singleSignOn() {
 	// Output: wired
 }
 
-func newGuestApp(*web.Backend, *auth.Identity) web.Runner                  { return nil }
 func newUserApp(*web.Backend, *auth.Identity, *upstreamSession) web.Runner { return nil }
 
 // ipAllowlist stands in for a contextual factor. PasswordPolicyExample requires

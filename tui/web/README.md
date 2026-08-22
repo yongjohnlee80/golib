@@ -323,7 +323,11 @@ wrong.** See `Example_singleSignOn` in the godoc for a complete wiring.
 ```go
 sso, err := web.NewSSO(web.SSOConfig[*myUpstream]{
     Max: 8, TTL: 30 * time.Second,
-    // REQUIRED. Every path that discards a parked value goes through here.
+    // For attaches that carried no login: ticket, mTLS, SSHSIG.
+    Provision: func(ctx context.Context, id *auth.Identity) (*myUpstream, error) {
+        return dial(ctx, id.Subject)
+    },
+    // REQUIRED. Every path that discards a value goes through here.
     // Revoke BEFORE closing: closing a transport does not revoke a credential.
     Release: func(u *myUpstream, r web.HandoffReason) { u.Logout(); u.Close() },
 })
@@ -332,20 +336,49 @@ handlerOpt, managerOpt := sso.Options()      // both hooks, together
 // in the login factor's Verify — the only place holding the credential:
 sso.Stash(ctx, upstream)
 
-// in the AppFactory:
-upstream, ok := sso.Claim(info)              // ok=false for an mTLS/SSH attach
+// the app: one build function for every mechanism, release handled
+mgr, err := web.NewManager(
+    sso.Factory(func(b *web.Backend, id *auth.Identity, up *myUpstream) web.Runner {
+        return myApp(b, id, up)
+    }),
+    managerOpt,
+)
 ```
 
-A consumer writes exactly two things: **how to allocate** (in `Verify`) and **how
-to release** (`SSOConfig.Release`). The helper owns everything between.
+A consumer writes three things: **how to allocate for a login** (`Stash`, in
+`Verify`), **how to allocate for an attach that carried no login** (`Provision`),
+and **how to release** (`Release`). The helper owns everything between.
+
+### Every `golib/auth` mechanism, one route
+
+`golib/auth` has two kinds of mechanism, and they allocate at different moments:
+
+| Mechanism | Authenticates at | Upstream state comes from |
+|---|---|---|
+| `auth/password` (via `ServeLogin`) | the **login** | `Stash` → parked → **claimed** |
+| `auth/token` (SSH-minted or out-of-band ticket) | the **attach** | **`Provision`** |
+| `auth/mtls` (verified chain) | the **attach** | **`Provision`** |
+| `auth/sshkey` (SSHSIG challenge) | the **attach** | **`Provision`** |
+| `auth/ipallow` (contextual) | narrows all of the above | allocates nothing |
+
+`sso.Factory` hides the difference: the build function receives a ready upstream
+session whichever way the user got in. `sso_e2e_test.go` drives all five through
+the real serve path.
+
+A **nil** `Provision` **refuses** an attach that parked nothing, rather than
+handing the app a nil upstream — which would fail later and further from the
+cause. For guest sessions, return a guest value from `Provision`, so there is one
+mechanism rather than a flag.
 
 ### Why a helper rather than documentation
 
 The raw seam has four paths — park on login, claim on create, release on
-reattach, release on failed attach — plus an expiry sweep. Miss any one and
-upstream state leaks, and the easiest to miss is **reattach**, because nothing in
-the happy path exercises it. A protocol with four obligations described in prose
-is a protocol someone implements three-quarters of.
+reattach, release on failed attach — plus an expiry sweep, plus the release when a
+session ends and the second allocation path for attaches that never logged in.
+Miss any one and upstream state leaks, and the easiest to miss is **reattach**,
+because nothing in the happy path exercises it. A protocol with that many
+obligations described in prose is a protocol someone implements three-quarters
+of.
 
 So the obligations are structural:
 
@@ -356,14 +389,18 @@ So the obligations are structural:
 | clean up abandoned logins | the sweep is internal, and a login sweeps first |
 | bounds agree | the park's `Max` **sets** `MaxPendingLogins` |
 | one session per login | `Claim` removes as it hands over |
+| release when the session ends | `Factory` **defers** it — panics included |
+| no path allocates twice | `Session` claims *or* provisions, never both |
+| no app sees a nil upstream | a nil `Provision` refuses the session |
 
 ### The raw hooks
 
 `OnLogin`, `OnHandoffUnused`, `Stash`, `HandoffID` and `MaxPendingLogins` remain
 exported for a consumer whose park must live somewhere else — a shared store
-across replicas, say. If you reach for them, you are taking on all five
-obligations above yourself, and the reattach path is the one to write a test for
-first.
+across replicas, say. `SSO.Claim` and `SSO.Session` likewise remain exported for a
+consumer writing their own `Runner`; if you use `Session` directly, **defer the
+release it returns**. Reach for the raw hooks and you take on every obligation in
+the table yourself, and the reattach path is the one to write a test for first.
 
 Four things about this are load-bearing, and each was forced by a specific defect:
 

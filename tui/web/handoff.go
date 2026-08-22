@@ -56,6 +56,8 @@ func (r HandoffReason) String() string {
 		return "attach-failed"
 	case Expired:
 		return "expired"
+	case SessionEnded:
+		return "session-ended"
 	}
 	return "unknown"
 }

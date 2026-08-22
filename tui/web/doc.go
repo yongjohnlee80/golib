@@ -76,16 +76,24 @@
 //
 // A consumer whose users authenticate against an upstream service should use
 // [SSO], which owns the whole login-handoff workflow of ADR-0009 §2.12 — parking
-// on login, claiming on create, releasing on reattach or a failed attach, and
+// on login, claiming on create, provisioning for an attach that carried no login,
+// releasing on reattach, on a failed attach and when the session ends, and
 // sweeping abandoned logins. A consumer writes only how to allocate and how to
 // release. See Example_singleSignOn.
+//
+// It covers every mechanism this package can authenticate with, and the two kinds
+// allocate at different moments: a password login allocates while it holds the
+// credential, so its state is parked and CLAIMED; a ticket, an mTLS chain and an
+// SSHSIG challenge authenticate at the attach, so their state is PROVISIONED.
+// [SSO.Factory] hides that difference behind one build function, and puts the
+// release on the App's own stack so it runs on every exit path.
 //
 // It is a helper rather than a documented protocol on purpose: the raw seam has
 // four paths plus an expiry sweep, the easiest to miss is reattach because
 // nothing in the happy path exercises it, and a missed path leaks upstream state.
 // [SSO] makes each obligation structural — Release is required, Options returns
-// both hooks together, the sweep is internal, and the park's capacity sets
-// [MaxPendingLogins] so the two bounds cannot disagree.
+// both hooks together, Factory defers the release, the sweep is internal, and the
+// park's capacity sets [MaxPendingLogins] so the two bounds cannot disagree.
 //
 // The raw hooks ([OnLogin], [OnHandoffUnused], [Stash], [HandoffID]) stay
 // exported for a park that must live elsewhere, such as a store shared across
