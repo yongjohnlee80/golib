@@ -412,3 +412,69 @@ func TestSessionEvent_CarriesNoUserContent(t *testing.T) {
 		t.Errorf("String() = %q", got)
 	}
 }
+
+// A render that happens BEFORE the client attaches must not be lost.
+//
+// The fourth candidate of lector's ordering family, checked rather than assumed:
+// Flush requires no size and publishes unconditionally, so an App that renders
+// before Start returns lands cells in a grid no client has measured yet. If the
+// attach-time resize reallocated that grid, the first thing the user ever sees
+// would be blank until something else happened to repaint.
+//
+// It survives, for two independent reasons, and the test pins both: the framer
+// starts at 80x24 rather than empty, so an in-range publish has somewhere to land;
+// and the first frame any client receives is FULL, so it carries the grid rather
+// than a diff against a baseline the client does not hold.
+//
+// Content outside the client's measured grid is still dropped, which is correct —
+// the client cannot display a column it does not have — and the test states that
+// too, so the property is not mistaken for "nothing is ever dropped".
+func TestBackend_RenderBeforeAttachSurvivesIntoTheFirstFrame(t *testing.T) {
+	t.Parallel()
+	b := New()
+	t.Cleanup(func() { _ = b.Stop() })
+
+	// In range of the client's eventual 20x5, and out of range of it.
+	if err := b.Flush([]tui.CellUpdate{
+		{X: 0, Y: 0, Cell: tui.Cell{Content: "A", Width: 1}},
+		{X: 19, Y: 4, Cell: tui.Cell{Content: "B", Width: 1}},
+		{X: 40, Y: 10, Cell: tui.Cell{Content: "C", Width: 1}},
+	}); err != nil {
+		t.Fatalf("Flush before any client attached: %v", err)
+	}
+
+	started := make(chan error, 1)
+	go func() { started <- b.Start(context.Background()) }()
+	if err := b.Attach(hello()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-started:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after the client attached")
+	}
+
+	f, ok := b.framer.next()
+	if !ok {
+		t.Fatal("no frame for a newly attached client")
+	}
+	if !f.Full {
+		t.Error("the first frame is a diff: a client holding no baseline cannot apply one")
+	}
+	got := map[string]bool{}
+	for _, u := range f.Updates {
+		if c := u.Cell.Content; c != " " && c != "" {
+			got[c] = true
+		}
+	}
+	if !got["A"] || !got["B"] {
+		t.Errorf("first frame carries %v: a render that happened before the client "+
+			"attached was lost, so the user's first screen is blank", got)
+	}
+	if got["C"] {
+		t.Error("a cell outside the client's measured grid reached the frame")
+	}
+}
