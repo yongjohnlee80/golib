@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 19)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 20)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -663,6 +663,38 @@ Stated so a consumer does not assume otherwise:
   forward the browser's address explicitly if the upstream needs it, and should
   document that its own audit trail is the one with the browser in it.
 
+#### 2.12.6 The seam ships a HELPER, not just a protocol (rev 20)
+
+A four-path protocol described in prose is a protocol someone implements
+three-quarters of, and the path most likely to be missed is **reattach** —
+because nothing in a working deployment's happy path exercises it. The leak it
+produces is invisible until an upstream runs out of connections or an audit finds
+sessions nobody is using.
+
+So `tui/web` ships [`web.SSO`], and it is the **supported** way to consume the
+seam. A consumer supplies only what is genuinely theirs — how to allocate, and how
+to release — and each obligation is structural rather than documented:
+
+| Obligation | Enforcement |
+| --- | --- |
+| release on every path | `Release` is **required**; `NewSSO` returns an error without it |
+| wire both hooks | `Options()` returns the handler and manager options **together** |
+| clean up abandoned logins | the sweep is internal, and a login sweeps before parking |
+| the two bounds agree | the park's `Max` **sets** `MaxPendingLogins` |
+| one session per login | `Claim` deletes as it hands over |
+
+The raw hooks stay exported for a park that must live elsewhere — a store shared
+across replicas — and the README says plainly that reaching for them means taking
+on all five obligations.
+
+**Why this is worth an ADR entry rather than being an implementation detail.**
+Johno's instruction (2026-08-22) was that a pattern with this much impact on the
+engine should be documented *or* offered as a helper "so that it cannot be
+missed". Given how much of this session was spent finding controls that were
+documented and not enforced, the helper is the honest reading of that: the
+difference between the two options is whether a consumer's mistake is possible,
+not whether it is described.
+
 ### 2.13 Peer binding (rev 19)
 
 **Optional, off by default.** A session may be bound to the peer address that
@@ -950,6 +982,21 @@ decisions:
    than speculation.
 
 ## Review history
+
+- **rev 20 (2026-08-22, Johno — the seam must be unmissable).** Johno's
+  instruction: a pattern with this much impact on the engine should come with
+  documentation or a helper "so that it cannot be missed". §2.12.6 records the
+  choice and why it went to a helper rather than prose — after a session spent
+  finding controls that were documented and not enforced, the distinction that
+  matters is whether a consumer's mistake is *possible*, not whether it is
+  *described*.
+
+  `web.SSO` owns all four paths and the sweep. `Release` is required so the
+  leaking state cannot be constructed; `Options()` returns both hooks together so
+  the login side cannot be wired without the release side; the park's capacity
+  sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
+  hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
+  example is where a consumer actually looks.
 
 - **rev 19 (2026-08-22, jarvis — the login handoff seam and peer binding, from
   autodb ADR-0061).** autodb's web gateway needed single sign-on and could not have

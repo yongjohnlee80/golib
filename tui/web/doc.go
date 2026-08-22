@@ -72,6 +72,25 @@
 //   - Reserved browser shortcuts are neither forwarded nor preventDefault'ed, so
 //     an app cannot see them. The README lists which.
 //
+// # Single sign-on
+//
+// A consumer whose users authenticate against an upstream service should use
+// [SSO], which owns the whole login-handoff workflow of ADR-0009 §2.12 — parking
+// on login, claiming on create, releasing on reattach or a failed attach, and
+// sweeping abandoned logins. A consumer writes only how to allocate and how to
+// release. See Example_singleSignOn.
+//
+// It is a helper rather than a documented protocol on purpose: the raw seam has
+// four paths plus an expiry sweep, the easiest to miss is reattach because
+// nothing in the happy path exercises it, and a missed path leaks upstream state.
+// [SSO] makes each obligation structural — Release is required, Options returns
+// both hooks together, the sweep is internal, and the park's capacity sets
+// [MaxPendingLogins] so the two bounds cannot disagree.
+//
+// The raw hooks ([OnLogin], [OnHandoffUnused], [Stash], [HandoffID]) stay
+// exported for a park that must live elsewhere, such as a store shared across
+// replicas.
+//
 // # Seam report
 //
 // ADR-0009's second purpose was to test whether tui.Backend was drawn in the

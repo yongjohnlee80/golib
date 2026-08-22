@@ -43,6 +43,8 @@ const (
 	// AttachFailed: authentication succeeded but the attach did not — the session
 	// limit, an unusable hello, a transport error.
 	AttachFailed
+
+	// Expired is declared in sso.go, where the park that produces it lives.
 )
 
 // String names the reason for a log line.
@@ -52,6 +54,8 @@ func (r HandoffReason) String() string {
 		return "reattached-existing"
 	case AttachFailed:
 		return "attach-failed"
+	case Expired:
+		return "expired"
 	}
 	return "unknown"
 }

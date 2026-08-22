@@ -311,25 +311,59 @@ the first time.
 The first real-engine run found two harness defects and no product defect, which
 is evidence rather than proof: two engines remain.
 
-## Single sign-on: the login handoff
+## Single sign-on: use `web.SSO`
 
-A consumer whose users authenticate against an **upstream** service (rather than
-against a local password store) needs to carry per-login state — an authenticated
-upstream session — from the login route to the `App` built for that login.
+A consumer whose users authenticate against an **upstream** service (rather than a
+local password store) must carry per-login state — an authenticated upstream
+session — from the login route to the `App` built for that login.
+
+**Use `web.SSO`. It is the supported path and it exists so this cannot be got
+wrong.** See `Example_singleSignOn` in the godoc for a complete wiring.
 
 ```go
-h, _ := web.NewHandler(cfg, mgr,
-    web.OnLogin(func(handoff string, id *auth.Identity, st *web.Stash) error {
-        return myPark.hold(handoff, st.Take())   // moved out of the request slot
-    }),
-)
-mgr, _ := web.NewManager(func(b *web.Backend, info *web.SessionInfo) web.Runner {
-    upstream, _ := myPark.claim(info.Handoff)    // exactly this login's state
-    return myApp(b, info.Identity, upstream)
-}, web.OnHandoffUnused(func(handoff string, r web.HandoffReason) {
-    myPark.release(handoff, r)                   // reattach, or a failed attach
-}))
+sso, err := web.NewSSO(web.SSOConfig[*myUpstream]{
+    Max: 8, TTL: 30 * time.Second,
+    // REQUIRED. Every path that discards a parked value goes through here.
+    // Revoke BEFORE closing: closing a transport does not revoke a credential.
+    Release: func(u *myUpstream, r web.HandoffReason) { u.Logout(); u.Close() },
+})
+handlerOpt, managerOpt := sso.Options()      // both hooks, together
+
+// in the login factor's Verify — the only place holding the credential:
+sso.Stash(ctx, upstream)
+
+// in the AppFactory:
+upstream, ok := sso.Claim(info)              // ok=false for an mTLS/SSH attach
 ```
+
+A consumer writes exactly two things: **how to allocate** (in `Verify`) and **how
+to release** (`SSOConfig.Release`). The helper owns everything between.
+
+### Why a helper rather than documentation
+
+The raw seam has four paths — park on login, claim on create, release on
+reattach, release on failed attach — plus an expiry sweep. Miss any one and
+upstream state leaks, and the easiest to miss is **reattach**, because nothing in
+the happy path exercises it. A protocol with four obligations described in prose
+is a protocol someone implements three-quarters of.
+
+So the obligations are structural:
+
+| Obligation | How it is enforced |
+|---|---|
+| release on every path | `Release` is **required**; `NewSSO` fails without it |
+| wire both hooks | `Options()` returns them **together**, not separately |
+| clean up abandoned logins | the sweep is internal, and a login sweeps first |
+| bounds agree | the park's `Max` **sets** `MaxPendingLogins` |
+| one session per login | `Claim` removes as it hands over |
+
+### The raw hooks
+
+`OnLogin`, `OnHandoffUnused`, `Stash`, `HandoffID` and `MaxPendingLogins` remain
+exported for a consumer whose park must live somewhere else — a shared store
+across replicas, say. If you reach for them, you are taking on all five
+obligations above yourself, and the reattach path is the one to write a test for
+first.
 
 Four things about this are load-bearing, and each was forced by a specific defect:
 
