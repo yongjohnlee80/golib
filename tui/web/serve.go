@@ -40,7 +40,11 @@ func (h *Handler) Guard(next http.Handler) http.Handler {
 }
 
 // Mount registers the page and the WebSocket endpoint on srv, with [Handler.Guard]
-// composed onto every route.
+// composed onto every SENSITIVE route.
+//
+// The page itself is served directly: it carries no credential, processes no
+// input, and refusing it on Origin would break a legitimate first visit, which
+// has no Origin to send. The WebSocket and login routes are guarded.
 //
 // # What this does NOT check
 //
