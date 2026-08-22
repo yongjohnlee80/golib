@@ -40,26 +40,30 @@ client dropped the payload" are different bugs and must not produce the same red
 The composition, dead-key and AltGraph behaviours this file named as the most
 likely divergences all passed on Gecko and WebKit unchanged.
 
-## Gate status: WAIVED for v0.3.8 by Johno, 2026-08-22 — now SATISFIED
+## Gate status: SATISFIED (2026-08-22). The v0.3.8 waiver is spent.
 
-Two of three engines are unrun. Per §2.9 that means the gate is **not satisfied**,
-and rather than quietly tagging around it the waiver is recorded here:
+The gate is met by evidence, not by exception: every engine has run and passed.
+The history is kept below because a waiver that vanishes once it is convenient is
+not a record of anything.
+
+**The waiver, as it stood for v0.3.8:**
 
 > Johno accepted merging and tagging v0.3.8 with Chromium green and Firefox and
 > WebKit unrun (2026-08-22), after being shown this status explicitly.
 
-What that costs, stated so nobody has to reconstruct it later: the text machine is
-verified on **one** engine. The behaviours it depends on are precisely the ones
+**What it cost, and what closing it bought.** For v0.3.8 the text machine was
+verified on **one** engine, and the behaviours it depends on are precisely the ones
 engines differ over — whether a control is updated before `compositionend`
 dispatches, whether a composition-associated `input` arrives in the same task,
-whether `getModifierState("AltGraph")` is reported. Gecko and WebKit are the two
-most likely to diverge, and they are the two unrun. A Firefox or Safari user may
+whether `getModifierState("AltGraph")` is reported. Gecko and WebKit were the two
+most likely to diverge and the two unrun, so a Firefox or Safari user could have
 hit a composition or dead-key defect this suite would have caught.
 
-The gate is **not** removed: `.github/workflows/browser-matrix.yml` still requires
-all three, so the next CI run on this branch or on main will report Firefox and
-WebKit for the first time. Running them is the first item of follow-up work, not a
-someday.
+They have now run. **None of those divergences exists**: every composition,
+dead-key and AltGraph case passed on Gecko and WebKit unchanged. The only failure
+on either engine was a defect in the harness's own paste dispatch, described above.
+That is the answer to the question the waiver left open, and it is a better answer
+than "probably fine".
 
 ## Why this file exists rather than a line in the README
 

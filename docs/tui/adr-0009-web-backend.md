@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
-- **Status:** **Accepted (rev 22)** (2026-08-21 — authored by jarvis; lector
+- **Status:** **Accepted (rev 23)** (2026-08-21 — authored by jarvis; lector
   design r1-r8 folded; lector's final verdict **approved**, and **accepted by
   Johno 2026-08-21**; r8's three amendments applied
   (r8: the capture buffer DRAINS, so no typed history lingers in the DOM) — a correctness defect in rev
@@ -10,8 +10,9 @@
   as the weakest option, with the throttle and allowlist stated as
   requirements". **Rev 21 (2026-08-22)** extends `web.SSO` to every `golib/auth`
   mechanism (§2.12.7), on Johno's instruction. **Rev 22 (2026-08-22)** repairs the
-  lifecycle defects lector's r1 review of PR #14 found (§2.12.8); **awaiting
-  lector r2 and not yet released**. See Review history. Lands on `tui-web`.)
+  lifecycle defects lector's r1 review of PR #14 found (§2.12.8), and **rev 23
+  (2026-08-22)** the two concurrency boundaries r2 found still false (§2.12.9);
+  **awaiting lector r3 and not yet released**. See Review history. Lands on `tui-web`.)
 - **Date:** 2026-08-21
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none — purely additive. `tui.Backend`, `Component`, `Surface`,
@@ -821,6 +822,55 @@ on a miss. And `Options()` returning both hooks together is an API that removes 
 need to KNOW about the second hook; it is not a structural guarantee, because a Go
 caller can discard a return value.
 
+#### 2.12.9 Two boundaries that were claimed and not true (rev 23)
+
+Rev 22 fixed the leaks. Lector's r2 review found that two of the boundaries rev 22
+*asserted* were still reproducibly false — both cases of a check being in the right
+place and the surrounding concurrency making it meaningless.
+
+**The admission slot came back before the park emptied.** Rev 22 had the `Manager`
+return the slot from `CreateFor`, on the reasoning that by then the factory has had
+its chance to claim. That is true of a factory that claims synchronously and false
+of the one this package ships: `SSO.Factory` returns a `Runner`, and the claim
+happens later on the session's own goroutine. So there was a window in which the
+gate had a free slot while the park was still full — a new login passed the door,
+verified a credential, allocated upstream state, and was then told 503. Rev 22's own
+test could not see it, because it waited for the build before starting the next
+cycle, which is exactly the synchronisation the window needs to be absent.
+
+**Only the park knows when its entry is gone**, so the park now returns the slot —
+from `Claim`, from `Release`, from an expiry, from `Close`, and never earlier. The
+`Manager` keeps its `CreateFor` settlement for consumers with no park of their own,
+where it is the best signal available; `SSO.Options` switches it off, because being
+pre-empted by it is precisely the bug. The gate's backstop deadline is now the
+longer of the ticket's life and the park's TTL, so a configured TTL cannot outlive
+the slot that represents it.
+
+**`Close` could return while a `Provision` was still running.** `Session` checked
+the closed flag, unlocked, and then called `Provision` — so a `Provision` blocked
+on I/O could start, `Close` could return, and the `Provision` could then resume and
+hand back a live upstream session with nothing left to close it. The check was
+real; the window after it was the whole problem. The call is now bracketed —
+registered before, retired after — and `Close` waits for the bracket to empty. A
+`Provision` that finishes after `Close` releases what it made and returns
+`ErrStopped`. The consumer's I/O still runs with no lock held, which is why the
+bracket exists instead of a mutex around the call.
+
+One smaller thing, and it is the same species of error: rev 22 documented a
+contained `Release` panic as "recorded, not swallowed", and recorded it by
+incrementing a private field. A counter nobody can read is swallowing it with extra
+steps. It is now emitted through a `logger.Logger` (`SSOConfig.Logger`) and exposed
+as `SSO.ReleasePanics()`.
+
+**The pattern across r1 and r2 is worth naming.** Every defect in both rounds was a
+guarantee stated at the level of a single function while the failure lived in the
+schedule around it: two equal integers called "the bounds agree", a deferred release
+called "panics included" while the process died a moment later, a settlement placed
+where the claim *used to* happen, a flag checked immediately before the I/O that
+invalidates it. A concurrency claim is only worth as much as the test that pauses
+the other side of it, and both of r2's findings came from probes that did exactly
+that — which is now how they are tested.
+
 ### 2.13 Peer binding (rev 19)
 
 **Optional, off by default.** A session may be bound to the peer address that
@@ -1123,6 +1173,25 @@ decisions:
   sets `MaxPendingLogins` so the two bounds cannot drift; and `Claim` removes as it
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
+
+- **rev 23 (2026-08-22, jarvis — the concurrency boundaries from lector r2 on PR #14).**
+  Two must-fixes, both reproduced deterministically by lector with probes that
+  paused the other side: the admission slot was returned by the `Manager` before
+  the park's entry was claimed, and `Close` could return while a `Provision` was
+  still in flight. §2.12.9 records both, plus the contained `Release` panic that
+  was "recorded" into a private counter.
+
+  What I want to remember from this round is that rev 22's tests were not weak by
+  accident — the admission test *synchronised past its own bug* by waiting for the
+  build before the next cycle. A test that waits for the thing to finish cannot see
+  a window that exists only before it finishes. Lector's probes held the claim and
+  held the `Provision`; both new tests do the same, and the paused-claim one drives
+  a hand-written `Runner` calling `SSO.Session` directly rather than gating the gate
+  stub, so it exercises the code instead of the mock.
+
+  Four negative controls: the `Manager` settling early again, `Close` not waiting,
+  a raced `Provision` handed over instead of released, and the panic counted but not
+  emitted. Each turns its test red.
 
 - **rev 22 (2026-08-22, jarvis — the lifecycle repairs from lector r1 on PR #14).**
   Six must-fix findings, five of them leaks: a pending-login slot never returned

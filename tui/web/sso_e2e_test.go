@@ -27,6 +27,7 @@ import (
 	"github.com/yongjohnlee80/golib/auth/password"
 	"github.com/yongjohnlee80/golib/auth/sshkey"
 	"github.com/yongjohnlee80/golib/auth/token"
+	"github.com/yongjohnlee80/golib/logger"
 )
 
 // This file answers one question end to end: does web.SSO serve EVERY mechanism
@@ -159,6 +160,7 @@ type rigConfig struct {
 	brokenIssuer bool
 	panicApp     bool
 	lateRefusal  bool
+	holdBuild    chan struct{}
 }
 
 func noProvision() rigOption { return func(c *rigConfig) { c.noProvision = true } }
@@ -271,7 +273,7 @@ func newSSORigWith(t *testing.T, loginFactor auth.Factor, opts ...rigOption) *ss
 	}
 
 	// --- the consumer's whole app wiring: one build function ----------------
-	m, err := NewManager(sso.Factory(func(_ *Backend, id *auth.Identity, up *e2eUpstream) Runner {
+	build := func(_ *Backend, id *auth.Identity, up *e2eUpstream) Runner {
 		if up == nil {
 			rig.complain("the build function received no upstream state")
 			return newFakeApp()
@@ -284,7 +286,27 @@ func newSSORigWith(t *testing.T, loginFactor auth.Factor, opts ...rigOption) *ss
 			return runnerFunc(func(context.Context) error { panic("the app exploded") })
 		}
 		return newFakeApp()
-	}), mOpt)
+	}
+	factory := sso.Factory(build)
+	if cfg.holdBuild != nil {
+		// A hand-written Runner that calls SSO.Session itself — the form the doc
+		// describes for a consumer writing their own — so the test controls WHEN the
+		// claim happens. Gating sso.settle instead would have been a test of the
+		// gate stub rather than of the code.
+		factory = func(b *Backend, info *SessionInfo) Runner {
+			return runnerFunc(func(ctx context.Context) error {
+				<-cfg.holdBuild
+				up, release, err := sso.Session(ctx, info)
+				if err != nil {
+					return err
+				}
+				defer release()
+				app := build(b, info.Identity, up)
+				return app.Run(ctx)
+			})
+		}
+	}
+	m, err := NewManager(factory, mOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -852,9 +874,56 @@ func TestSSO_PanickingReleaseIsContained(t *testing.T) {
 	if released != 1 {
 		t.Errorf("Release ran %d times", released)
 	}
-	if s.panics != 1 {
-		t.Errorf("panics = %d, want the contained panic recorded", s.panics)
+	if s.ReleasePanics() != 1 {
+		t.Errorf("ReleasePanics = %d, want the contained panic recorded", s.ReleasePanics())
 	}
+}
+
+// And the containment must be VISIBLE. A private counter nobody can read is
+// swallowing the panic with extra steps, which is what the doc promises not to do.
+func TestSSO_PanickingReleaseIsLogged(t *testing.T) {
+	t.Parallel()
+	sink := &countingSink{}
+	s, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: time.Minute, Logger: sink,
+		Provision: func(_ context.Context, id *auth.Identity) (*upstream, error) {
+			return &upstream{id: id.Subject}, nil
+		},
+		Release: func(*upstream, HandoffReason) { panic("consumer cleanup exploded") },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, release, err := s.Session(context.Background(),
+		&SessionInfo{Identity: &auth.Identity{Subject: "a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if n := sink.errors(); n != 1 {
+		t.Errorf("%d error records for a panicking Release — the upstream state is "+
+			"gone and the log line is the only trace of it", n)
+	}
+}
+
+type countingSink struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (c *countingSink) Log(sev logger.Severity, _ any) {
+	if sev != logger.SeverityError {
+		return
+	}
+	c.mu.Lock()
+	c.n++
+	c.mu.Unlock()
+}
+
+func (c *countingSink) errors() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.n
 }
 
 // Shutdown order: after Close, a session that is only now starting must not be
@@ -886,6 +955,12 @@ func TestSSO_SessionRefusedAfterClose(t *testing.T) {
 
 func brokenIssuer() rigOption { return func(c *rigConfig) { c.brokenIssuer = true } }
 func lateRefusal() rigOption  { return func(c *rigConfig) { c.lateRefusal = true } }
+
+// holdBuild blocks the App's construction — and so the claim inside Session —
+// until the channel closes.
+func holdBuild(ch chan struct{}) rigOption {
+	return func(c *rigConfig) { c.holdBuild = ch }
+}
 func panickingApp() rigOption { return func(c *rigConfig) { c.panicApp = true } }
 
 // failingStore is a token store that cannot write, so Issue fails AFTER the
@@ -895,4 +970,146 @@ type failingStore struct{ *token.MemStore }
 
 func (failingStore) Put(token.Hash, token.Record) error {
 	return errors.New("test: the token store is down")
+}
+
+// --- lector r2 on PR #14: the two concurrency boundaries --------------------
+
+// The admission slot must not come back before the PARK entry is gone.
+//
+// CreateFor returns as soon as the factory hands back a Runner; the claim happens
+// later, on the session's own goroutine. Settling on the Manager's schedule left a
+// window where the gate had a free slot while the park was still full — so a new
+// login passed the door, verified a credential, allocated upstream state, and was
+// then told 503. Lector reproduced it by blocking the claim.
+//
+// This test blocks it the same way: the App's construction is held up, so the
+// claim cannot have happened, and the gate must still show the slot as taken.
+func TestSSO_AdmissionSlotHeldUntilTheParkEntryIsGone(t *testing.T) {
+	t.Parallel()
+	gateHeld := make(chan struct{})
+	rig := newSSORigWith(t, nil, holdBuild(gateHeld))
+
+	rec := httptest.NewRecorder()
+	rig.h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", rec.Code, rec.Body.String())
+	}
+	var out loginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if rig.sso.Len() != 1 || rig.h.pending.pending() != 1 {
+		t.Fatalf("parked=%d held=%d after a login, want 1 and 1",
+			rig.sso.Len(), rig.h.pending.pending())
+	}
+
+	msg := helloMsg()
+	msg.Ticket = out.Ticket
+	c := &fakeConn{block: make(chan struct{})}
+	c.push(msg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = rig.h.loop.serve(ctx, c, rig.plainReq()) }()
+
+	// The session exists and the ready frame has gone out, but the claim is held.
+	waitForSession(t, c)
+	waitFor(t, func() bool { return rig.m.Len() == 1 }, "the session to be registered")
+
+	// THE ASSERTION. The park still holds the entry, so the slot must still be
+	// held: the two have to move together or a login can be admitted against
+	// capacity that does not exist.
+	if parked, held := rig.sso.Len(), rig.h.pending.pending(); parked == 1 && held == 0 {
+		t.Fatalf("parked=%d but held=%d: the admission slot came back while the park "+
+			"was still full, so the next login is admitted and then 503'd",
+			parked, held)
+	}
+
+	close(gateHeld) // let the claim happen
+	rig.waitBuild(t)
+	waitFor(t, func() bool { return rig.sso.Len() == 0 && rig.h.pending.pending() == 0 },
+		"the claim to empty the park and return the slot")
+}
+
+// Close must not return while a Provision is still in flight.
+//
+// Session checked the closed flag, unlocked, and then called Provision — so a
+// Provision blocked on I/O could start, Close could return, and the Provision
+// could then resume and hand back a live upstream session that nothing was left
+// to close. Lector reproduced it with a channel-controlled Provision; this is the
+// same shape.
+func TestSSO_CloseWaitsForInFlightProvisioning(t *testing.T) {
+	t.Parallel()
+	started := make(chan struct{})
+	unblock := make(chan struct{})
+	var mu sync.Mutex
+	var made, released []string
+
+	s, err := NewSSO(SSOConfig[*upstream]{
+		Max: 4, TTL: time.Minute,
+		Provision: func(_ context.Context, id *auth.Identity) (*upstream, error) {
+			close(started)
+			<-unblock // the I/O a real Provision does
+			u := &upstream{id: id.Subject}
+			mu.Lock()
+			made = append(made, u.id)
+			mu.Unlock()
+			return u, nil
+		},
+		Release: func(u *upstream, _ HandoffReason) {
+			mu.Lock()
+			released = append(released, u.id)
+			mu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		_, _, err := s.Session(context.Background(),
+			&SessionInfo{Identity: &auth.Identity{Subject: "alice"}})
+		done <- result{err: err}
+	}()
+	<-started
+
+	closed := make(chan struct{})
+	go func() { s.Close(); close(closed) }()
+
+	// Close must still be waiting: the Provision has not returned.
+	select {
+	case <-closed:
+		t.Fatal("Close returned while a Provision was still in flight, so what that " +
+			"Provision produces has nothing left to release it")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(unblock)
+	select {
+	case r := <-done:
+		if !errors.Is(r.err, ErrStopped) {
+			t.Errorf("Session err = %v, want ErrStopped: Close won the race", r.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Session never returned")
+	}
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close never returned")
+	}
+
+	// Whatever the Provision produced was released by the losing side.
+	mu.Lock()
+	defer mu.Unlock()
+	if len(made) != 1 {
+		t.Fatalf("%d values provisioned", len(made))
+	}
+	if len(released) != 1 || released[0] != made[0] {
+		t.Errorf("provisioned %v but released %v — a value allocated across Close is "+
+			"exactly the one nobody else can clean up", made, released)
+	}
 }
