@@ -247,16 +247,24 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// The publishing capability lives only for the hook's CALL — not for the rest
-		// of this request.
+		// of this request, and not past a panic.
 		//
-		// `defer` is function-scoped, not block-scoped, so deferring the retirement
-		// here left the capability live through every path below, including the slow
-		// one: while an error path was blocked in Issuer.Revoke, a retained Stash
-		// published successfully and the cleanup then released the slot, leaving an
-		// entry with no accounting (lector r7 on PR #14). Retired on the next line
-		// instead, and disarm waits for any attempt already in flight.
-		hookErr := h.onLogin(handoff, identity, stash)
-		stash.disarm()
+		// Two attempts got this wrong in the same place. `defer` is function-scoped,
+		// so deferring the retirement inside this block left the capability live
+		// through every path below: while an error path was blocked in
+		// Issuer.Revoke, a retained Stash published successfully (lector r7).
+		// Calling disarm on the line after the hook then skipped it whenever the
+		// hook PANICKED, which leaves the capability alive after the request
+		// unwinds (lector r8).
+		//
+		// An immediately-invoked function is the scope that actually matches the
+		// hook's call: the defer fires on a normal return, an error return, and a
+		// panic, and on nothing else.
+		var hookErr error
+		func() {
+			defer stash.disarm()
+			hookErr = h.onLogin(handoff, identity, stash)
+		}()
 		if err := hookErr; err != nil {
 			// The caller could not record the login, so the login did NOT succeed.
 			// Returning the ticket anyway would hand out a credential for state
