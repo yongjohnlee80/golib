@@ -1,6 +1,6 @@
 # ADR-0010 — `golib/tui`: mouse interaction (click-to-focus, Table, Editor)
 
-- **Status:** **Proposed (rev 2)** (2026-08-24, authored by jarvis at Johno's
+- **Status:** **Proposed (rev 3)** (2026-08-24, authored by jarvis at Johno's
   request). Companion to autodb ADR-0064 §2.2, which is the consumer that asked
   for this and which decided *not* to build a webapp instead.
   - **Lector r2 `change_requested`** — three findings against this ADR, **all
@@ -25,8 +25,17 @@
       **one logical line in both wrap modes** and defers a visual-row viewport
       origin — which would need new state plus invariants across five paths — to
       its own ADR (§2.3).
-  - Rev 1 closed r1's Table-ownership finding outright; r2 also caught stale
-    prose in §5 reviving the disproven "unspecified" framing, corrected here.
+  - Rev 1 closed r1's Table-ownership finding outright.
+  - **Lector r3 `change_requested`** — one finding here, **CONFIRMED**, and it
+    retires an idea I had now defended twice: the focus-mutation **retry is not
+    implementable at all**. A replacement mounted by a `FocusEvent` handler is
+    invisible to `hitTest` until the next layout pass (`tree.go:40`,
+    `routing.go:174`, `app.go:220-232`), so the synchronous retry rev 2 specified
+    could only ever reach a stale ancestor. Rev 3 takes the **skip** rule lector
+    proposed in round one. Two amendments also landed: the genuinely stale §5
+    "unspecified" bullet (r2's correction had been appended to a *different*
+    alternative — the wrong bullet), and "the press never modifies buffer text",
+    which contradicted rev 2's own pending-rune settlement.
   - **Lector r1 `change_requested`** (2026-08-24) raised three findings against
     this ADR; **all three are CONFIRMED against the code and folded into rev 1**,
     two of them by reproducing the behaviour rather than reading it:
@@ -168,19 +177,30 @@ exist and left the trap rule to chance):
    an open modal.
 4. Focus the candidate, emitting the same lost/gained `FocusEvent` pair a
    keyboard focus change does.
-5. **Revalidate the pointer target before delivery, and re-run the whole rule if
-   it changed.** Focus handlers run arbitrary component code synchronously
-   (`tui/focus.go:54-66`) and may unmount the node the press was addressed to.
-   Rev 1 said "re-hit-test once and deliver", which **broke this ADR's own
-   invariant**: the replacement could be a different focusable widget receiving a
-   press while unfocused. So: if the original target is no longer mounted,
-   re-hit-test **and re-run steps 1–4 for the replacement** (scope recomputed,
-   candidate re-chosen, focus applied). **Exactly one retry.** If that second
-   focus change mutates the tree again, **skip delivery** — an unbounded
-   focus/unmount loop is worse than a lost click, and a click that lands on an
-   unfocused widget violates the guarantee in criterion 1.
-6. Deliver the press — to a target that is mounted and whose focus candidate has
-   been focused.
+5. **If focus handling unmounted the pointer target, SKIP this press.** Focus
+   handlers run arbitrary component code synchronously (`tui/focus.go:54-66`) and
+   may unmount the node the press was addressed to. When that happens the press
+   is dropped: the focus change still stands, and the user's next click lands
+   normally on the rebuilt tree.
+
+   Two earlier revisions tried to preserve the press instead, and both were
+   wrong — recorded here because the reason generalises. Rev 1 said "re-hit-test
+   and deliver", which would hand a press to a *different* focusable widget while
+   unfocused, breaking this ADR's own invariant. Rev 2 said "re-run steps 1–4 for
+   the replacement", which **cannot execute**: `mount` creates nodes with
+   `measured=false` / `placed=false` and only marks `layoutDirty`
+   (`tui/tree.go:75-97`); `visible()` requires both flags (`tui/tree.go:40`);
+   `hitTestNode` rejects anything not visible (`tui/routing.go:174`); and input
+   dispatch returns before the queued wake runs layout (`tui/app.go:220-232`). So
+   a synchronous retry can only reach a stale ancestor or nothing — never the
+   replacement it was written for.
+
+   Preserving the press would therefore require either deferring it until after
+   the dirty layout completes (queued input carrying coordinates and a retry
+   marker) or a synchronous relayout mid-dispatch — new framework behaviour, for a
+   rare edge case, to save one click. **Not worth it.** Skip is representable
+   today and cannot deliver to an unfocused or unmounted widget.
+6. Deliver the press to the original target, which is still mounted.
 
 **No focus-delegation capability is introduced.** Rev 0 promised to honour
 `FocusTarget()`; that method is autodb-private (`autodb/tui/results.go:48`) and
@@ -270,7 +290,11 @@ picked one by accident.
   Extending a selection by clicking is drag-selection, which is deferred (below);
   silently keeping the anchor would make the next motion extend a selection the
   user believes they dismissed.
-- The press never itself modifies buffer text.
+- **The press modifies buffer text in exactly one case:** committing a pending
+  insert rune, as above. That is not the click editing the buffer — it is the
+  click settling input the user had already typed, at the caret where they typed
+  it, per ADR-0008. Beyond that single settlement a press never inserts, deletes
+  or replaces text.
 
 **Inverse viewport mapping** must be complete before implementation, because
 this is where an off-by-one is invisible:
@@ -359,10 +383,11 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
    backdrop would let a broken guard pass by accident.
 5. `FocusEvent` pairs fire for a mouse-driven focus change exactly as for a
    keyboard-driven one.
-6. If focus handling unmounts the original pointer target, the retry re-runs
-   candidate/scope/focus resolution so the **replacement is focused before it
-   receives the press**; and if that retry mutates the tree again, the press is
-   **not delivered**. Never delivered to an unmounted component.
+6. If a `FocusEvent` handler **unmounts and mounts a replacement** for the
+   pointer target, the press is **not delivered** — proven with a handler that
+   performs a real unmount+mount, so stale ancestor geometry cannot make the test
+   pass by accident. The focus change itself still stands, and no press ever
+   reaches an unmounted or unfocused component.
 
 **Table (§2.2)**
 
@@ -409,10 +434,12 @@ carry no criteria here rather than carrying unstated ones.
   §1.3: click-to-focus is not expressible inside a widget, and requiring an
   `Editor` to grow a pointer handler in order to be clickable is the wrong
   shape.
-- **Leave `Table` delegating to its inner list.** Rejected: the behaviour is
-  currently determined by which node the hit test happens to reach, and the
-  header offset is unaccounted. Unspecified is worse than absent, because it
-  looks like it works.
+- **Leave `Table` delegating to its inner list.** Rejected: routing is
+  **determinate**, and that is precisely the problem — blind delegation makes the
+  determinate header path *wrong*. A header press reaches `Table`, which forwards
+  Table-local `Y=0` to its list and selects row 0. It is not unspecified; it is
+  specified and incorrect, which is worse than absent because it looks like it
+  works.
 - **Ship drag-selection in rev 0.** Deferred (§2.3), not refused. It needs a
   selection model, and caret placement is the part that unblocks a browser
   frontend.
@@ -422,10 +449,7 @@ carry no criteria here rather than carrying unstated ones.
   retargeting and therefore an **amendment to ADR-0004**'s target-first,
   no-capture contract, and it buys nothing over §2.2 — body presses already land
   correctly, so the only thing needing a decision is the header, which one
-  `MouseEvent` guard settles. (Rev 1's wording here still called the behaviour
-  "determined by which node the hit test happens to reach" and "unspecified".
-  That was the disproven framing: routing is **determinate**, and the defect is
-  that `Table`'s blind delegation makes the determinate header path wrong.)
+  `MouseEvent` guard settles.
 - **A focus-delegation capability** (`FocusTarget` promoted into golib).
   Rejected for rev 1 in §2.1: it is a new externally-implemented interface for a
   case a consumer can express by not accepting focus on the container, and it
