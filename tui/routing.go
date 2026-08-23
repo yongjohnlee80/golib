@@ -40,6 +40,25 @@ func (a *App) dispatch(ev Event) {
 		// (reverse paint order — Stack z-order); coordinates are rewritten
 		// LOCAL to each receiving node at every hop (ADR-0004 §2.5.2).
 		target := a.hitTest(e.X, e.Y)
+		// A PRIMARY PRESS focuses before it is delivered (ADR-0010 §2.1): one
+		// gesture both moves focus into the clicked pane and acts on it. Motion,
+		// wheel and release deliberately do not, so scrolling over an unfocused
+		// pane never steals the keyboard.
+		if target != nil && e.Kind == MousePress && e.Button == MouseLeft {
+			a.focusFromPointer(target)
+			// Focus handlers run arbitrary component code synchronously and may
+			// unmount the very node this press was addressed to. A replacement
+			// mounted during dispatch has measured=false/placed=false and is not
+			// hit-testable until the next layout pass, so there is nothing
+			// correct to re-target: the press is SKIPPED. The focus change
+			// stands, and the user's next click lands on the rebuilt tree
+			// (ADR-0010 §2.1 step 5).
+			if !target.mounted {
+				a.trace(TraceEvent{Kind: TraceUnmount, Node: target.id,
+					Detail: "pointer press skipped: focus handling unmounted the target"})
+				return
+			}
+		}
 		for n := target; n != nil; n = n.parent {
 			local := e
 			local.X = e.X - n.absRect.X
