@@ -1,8 +1,29 @@
 # ADR-0010 — `golib/tui`: mouse interaction (click-to-focus, Table, Editor)
 
-- **Status:** **Proposed (rev 0)** (2026-08-24, authored by jarvis at Johno's
+- **Status:** **Proposed (rev 1)** (2026-08-24, authored by jarvis at Johno's
   request). Companion to autodb ADR-0064 §2.2, which is the consumer that asked
   for this and which decided *not* to build a webapp instead.
+  - **Lector r1 `change_requested`** (2026-08-24) raised three findings against
+    this ADR; **all three are CONFIRMED against the code and folded into rev 1**,
+    two of them by reproducing the behaviour rather than reading it:
+    - **§2.2 was not implementable.** Rev 0 said `Table` would translate row
+      presses "regardless of which node the hit test reached". Under ADR-0004's
+      target-first, no-capture routing it cannot: `List` is a placed child, so a
+      body press reaches `List` directly and `Table` never sees it. A probe on
+      the unmodified tree (`TestCurrentTableMouseRouting`, run independently of
+      lector's) selected **row 2** for a body press at absolute `Y=3` — already
+      correct — and **row 0** for a header press at `Y=0` from a pinned
+      selection of 2, which is the real defect. Rev 1 adopts the ownership the
+      routing actually permits (§2.2).
+    - **§2.1 cited a capability golib does not have.** `FocusTarget` exists only
+      in autodb (`tui/results.go:48`) and appears nowhere in `golib/tui`, so
+      "honours `FocusTarget()`" was unimplementable. Rev 1 drops the promise.
+    - **The trap guard was assumed, not present.** `App.requestFocus`
+      (`tui/focus.go:29-48`) records *entering* a trapping scope but has no
+      guard rejecting a candidate *outside* an existing trap, so acceptance
+      criterion 4 could not have been met by "find candidate, call
+      requestFocus". Rev 1 specifies the scope computation as a precondition.
+  - Wheel-under-pointer without focus was explicitly approved as intentional.
 - **Date:** 2026-08-24
 - **Module:** `github.com/yongjohnlee80/golib` (`tui`, `tui/widget`)
 - **Supersedes:** nothing. **Completes** ADR-0004 §2.5.2 (mouse routing) and
@@ -12,13 +33,14 @@
   Backend, which reports mouse in cell coordinates).
 
 **Abstract:** `golib/tui` transports and routes mouse events end to end, and
-seven widgets already act on them — but the two that matter most for an
-application do not, and **nothing focuses a widget when you click it**. The
-result, measured in autodb's browser frontend, is that clicking anywhere does
-nothing observable. This ADR adds one framework rule (a click focuses the
-focusable node under the pointer, before the widget sees the event) and pointer
-contracts for `Table` and `Editor`, and it declines to invent a general
-"clickable" abstraction.
+seven widgets already act on them — yet **nothing focuses a widget when you click
+it**, and `Editor` ignores the pointer entirely. The result, measured in autodb's
+browser frontend, is that clicking anywhere does nothing observable. This ADR adds
+one framework rule (a primary press focuses the focusable node under the pointer,
+within the active focus trap, before the widget sees the event), corrects `Table`'s
+single unwanted delegation, and specifies what a press means inside a modal
+`Editor`. It declines to invent either a "clickable" abstraction or a
+focus-delegation capability.
 
 ---
 
@@ -62,11 +84,19 @@ reference to `Mouse` at all.
 - `Table.HandleEvent` forwards *everything* to `t.list.HandleEvent`, including
   mouse events that arrive addressed to the Table.
 
-Which means part of table clicking may already work through delegation, and
-part may be off by the header row depending on which node the hit test lands on.
-**That ambiguity is itself the finding**: the behaviour is unspecified, untested,
-and differs by which node the pointer happens to hit. An ADR that guessed here
-would be guessing about its own library.
+Rev 0 called this ambiguous and stopped there. **Rev 1 measured it instead**, and
+the behaviour is determinate — a `TestBackend` probe on the unmodified tree needs
+no daemon and no populated grid, which is what rev 0 wrongly treated as a blocker:
+
+| Press | Node reached | Result |
+| --- | --- | --- |
+| body, absolute `Y=3` | `List` (placed child at `Y:1`) | selects row 2 — **already correct** |
+| header, absolute `Y=0` | `Table` | blind forwarding of `Y=0` → **selects row 0** |
+
+So `Table` is not missing a coordinate system; it has **one unwanted delegation**.
+The header press is the only defect, and it is a defect precisely because it looks
+like it works. Recorded here because "unspecified" was a claim about my own
+reading, not about the library.
 
 **The consumer-visible state**, measured in autodb `--web-ui` (v0.2.1, real
 daemon, headless Chromium): clicking the explorer pane and clicking the query
@@ -95,69 +125,136 @@ the focus machinery that already knows which nodes accept focus.
 
 ### 2.1 A press focuses the focusable node under the pointer, before delivery
 
-On `MousePress` with `MouseLeft`, the App walks from the hit-test target toward
-the root for the first node whose component reports `AcceptsFocus()` (honouring
-`FocusTarget()` where a container redirects focus, as `resultsPanel` does), and
-focuses it — **then** delivers the event through the existing target→root bubble
+On `MousePress` with `MouseLeft`, the App resolves a focus candidate and focuses
+it, **then** delivers the event through the existing target→root bubble
 unchanged.
 
-Properties this must hold:
+**The algorithm, in order** (rev 1 makes each step explicit, because rev 0's
+"walk toward the root honouring `FocusTarget()`" named a capability that does not
+exist and left the trap rule to chance):
 
-1. **Focus first, delivery second, always in that order.** A widget handling the
-   press then sees a consistent world: it is already the focused node, so a
-   click that both focuses and acts (click a list row in an unfocused pane) does
-   the intended thing in one gesture rather than requiring two clicks.
-2. **Only `MousePress`, only the primary button.** Motion, wheel and release
-   never move focus — a wheel over an unfocused pane scrolls that pane without
-   stealing focus, which is what every editor does and what makes reading a
-   result grid while typing possible.
-3. **No focusable ancestor → focus unchanged.** Clicking dead space is not a
-   focus event, and must not clear focus: a modal must not lose focus because
-   the user clicked its border.
-4. **Focus scopes are respected.** A press inside an open modal scope may focus
-   only within that scope (ADR-0004 focus traps); a press outside it is not a
-   way to escape the trap. This is the invariant that autodb's About-splash
-   deadlock (autodb v0.2.1) proved matters: focus leaving an open modal makes
-   the modal unclosable.
-5. **`FocusEvent`s fire exactly as keyboard focus changes do**, so components
-   whose styling tracks focus (`FocusWithin` consumers) need no new code.
+1. **Compute the active trapping scope FIRST**, before any candidate is chosen —
+   `trapScopeOf` of the currently focused node.
+2. Walk from the hit-test target toward the root for the first node whose
+   component is `Focusable` and `AcceptsFocus()`.
+3. **Reject the candidate if it is outside the active trapping scope**, and leave
+   focus unchanged. This is a precondition of the focus call, not a consequence
+   of it: `App.requestFocus` handles *entering* a scope but does not refuse
+   *leaving* one, so a mouse path that simply called it could walk focus out of
+   an open modal.
+4. Focus the candidate, emitting the same lost/gained `FocusEvent` pair a
+   keyboard focus change does.
+5. **Revalidate the pointer target before delivery.** Focus handlers run
+   arbitrary component code and may unmount the node the press was addressed to;
+   if the original target is no longer mounted, **re-hit-test once** and deliver
+   to the new target (chosen over silently skipping, so a click never becomes a
+   no-op merely because focusing rebuilt a subtree).
+6. Deliver the press.
 
-### 2.2 `Table`: an explicit pointer contract, replacing delegation-by-accident
+**No focus-delegation capability is introduced.** Rev 0 promised to honour
+`FocusTarget()`; that method is autodb-private (`autodb/tui/results.go:48`) and
+has no counterpart in `golib/tui`'s capability set (`Focusable`, `Container`,
+`CursorReporter`, `CursorShaper`, `FocusScope`). Adding one would be a new
+externally-implemented interface — the expensive kind of change under
+[[interface-evolution-capability-interfaces]] — for a case a consumer can already
+express by making the delegate the focusable node. A container that wants focus
+to land elsewhere should not report `AcceptsFocus()` and should let its focusable
+child be found by step 2. If a real need for delegation appears later it lands as
+its own optional capability with cycle, nil, mounted-descendant, visibility and
+scope rules stated; it is out of scope here.
 
-`Table` stops forwarding mouse events blindly and states its own behaviour:
+**Unchanged from rev 0, and approved:**
 
-- **A press in the row area** selects the row under the pointer. `Table` is
-  responsible for the header offset — one row — so a press is translated into
-  the inner list's row space regardless of which node the hit test reached.
-- **A press on the header row** does not select a row. It is reserved for column
-  sorting (not in this ADR) and must be inert rather than accidentally selecting
-  row 0, which is the concrete failure mode delegation produces today.
-- **Wheel** scrolls the rows, and does not move the cursor. Scrolling and
-  selection are different intents; conflating them makes a result grid unreadable
-  while a query is being edited.
-- **Double-click in the row area** activates, matching `List`'s existing
-  `doubleClickWindow` semantics rather than inventing a second timing rule.
+- **Only `MousePress`, only the primary button.** Motion, wheel and release never
+  move focus, so the wheel scrolls the pane under the pointer without stealing
+  keyboard focus. "Pane under pointer" and "focused pane" therefore diverge by
+  design; any future keyboard-driven scroll must not assume they agree.
+- **No focusable ancestor → focus unchanged**, and dead space never clears focus.
+- **Focus first, delivery second**, so a widget handling the press already sees
+  itself focused and one gesture both focuses and acts.
 
-The keyboard path is untouched, and the scroll-offset and wide-grapheme
-invariants the keyboard path already honours apply identically: a press must
-resolve to the same row the keyboard would call current after an equivalent
-move. A click that computes the wrong row is worse than a click that does
-nothing, so the tests below pin the offset explicitly.
+### 2.2 `Table`: `List` keeps body presses; `Table` refuses the header
 
-### 2.3 `Editor`: press places the cursor, wheel scrolls
+Rev 1 takes the ownership target-first routing actually permits, which is
+lector's option (1). The alternative — restructuring layout/routing so `Table`
+becomes the pointer target and owns all translation — would mean introducing
+capture or retargeting and **amending ADR-0004**, for no behavioural gain over
+this. Rejected on that basis (§5).
 
-- **Press** places the caret at the clicked cell, clamped to the end of the
-  clicked line and to the buffer. Wide graphemes resolve to the cell the
-  grapheme *starts* at, consistent with ADR-0003's cell invariants.
-- **Wheel** scrolls the viewport without moving the caret.
-- **Drag-select is out of scope** for rev 0. It needs a selection model on the
-  editor and press/motion/release state, and it is separable — placing a caret
-  is the thing that makes a browser frontend usable, and selection can land
-  later without redesign.
+Measured on the unmodified tree, so the design starts from what is rather than
+what was assumed:
 
-`TextInput` and `TextArea` get press-to-place-caret on the same rule. `Box`
-remains inert: it is a frame, and §2.1 already makes a click on its interior
-focus whatever focusable node lives inside it.
+| Press | Node reached | Today | Rev 1 |
+| --- | --- | --- | --- |
+| body, absolute `Y=3` | `List` (child at `Y:1`) | selects row 2 — **correct** | unchanged |
+| header, absolute `Y=0` | `Table` | forwards `Y=0` → **selects row 0** | **inert** |
+
+- **`List` owns body presses, double-click and wheel over the body.** No change
+  is required and none is made: it already receives correct local coordinates
+  because it is a placed child, and it already implements click-to-move-cursor
+  and the `doubleClickWindow` activation. `Table` adds nothing here.
+- **`Table` stops forwarding pointer events.** `Table.HandleEvent` forwards
+  everything to its list so that a controller can hand it navigation keys; that
+  forwarding stays for keys and **stops for `MouseEvent`**. A header press is
+  inert: it selects nothing and changes no state. The header remains reserved
+  for column sorting, which is not in this ADR.
+- **Wheel over the header scrolls the body.** The header is part of the same
+  scrollable surface as far as a user is concerned, and a dead strip at the top
+  of a grid is a worse surprise than a scroll. `Table` forwards only
+  `MouseWheel` to its list, and only wheel.
+
+This is a smaller change than rev 0 proposed and a more honest one: the bug is
+one unwanted delegation, not a missing coordinate system.
+
+### 2.3 `Editor`: a press is a named command-state boundary
+
+Rev 0's "press places the caret" was under-specified: `Editor` carries
+Normal/Insert/Visual mode, a count prefix, a pending operator, a visual anchor,
+a pending insert escape-chord rune, and an open undo group
+(`tui/widget/editor.go:18-50`). A click during `2d`, during Visual, or after the
+first rune of `jk` had several defensible meanings, which means code would have
+picked one by accident.
+
+**A primary press is a command boundary.** Concretely:
+
+- **Pending state is DISCARDED, never completed.** A count, a pending operator,
+  and a pending insert-chord rune are all abandoned. Completing `2d` against a
+  clicked location would turn a mis-click into a destructive edit, and the
+  pointer carries no evidence that the user meant the operator to apply there.
+- **Normal mode**: caret moves; mode unchanged.
+- **Insert mode**: stays in Insert, caret moves, and the press **closes the
+  current undo group**. A click is a deliberate discontinuity, so the text typed
+  before it and after it must undo separately.
+- **Visual / Visual-line**: the press **leaves Visual** and clears the anchor.
+  Extending a selection by clicking is drag-selection, which is deferred (below);
+  silently keeping the anchor would make the next motion extend a selection the
+  user believes they dismissed.
+- The press never itself modifies buffer text.
+
+**Inverse viewport mapping** must be complete before implementation, because
+this is where an off-by-one is invisible:
+
+- **`WrapNone`**: buffer line = `top + localY`; column resolved from `left` plus
+  the clicked cell, by accumulating cell width so a wide grapheme resolves to the
+  cell it **starts** at (ADR-0003).
+- **`WrapSoft`**: one logical line spans several visual rows, so the row→line
+  inverse walks the same wrap computation the renderer used
+  (`editor.go:1131-1208`) rather than dividing by width.
+- **Past end of line** → clamp to the last column (end-of-line in Insert, last
+  grapheme in Normal). **Below the last painted line** → clamp to the last buffer
+  line. **The scroll-indicator column** is not text: a press there is inert.
+- **Wheel** scrolls the viewport without moving the caret; **one wheel event is
+  one visual row** under `WrapSoft` (matching what the user sees move) and one
+  logical line under `WrapNone`, clamped at both ends.
+
+**`TextInput` and `TextArea` are DEFERRED from rev 0** rather than carried
+un-specified: they were named in rev 0's decision but absent from its acceptance
+criteria, which is exactly the gap this ADR is trying to close. They get their
+own rev once `Editor`'s mapping is proven.
+
+**Drag-selection remains deferred**, not refused. It needs a selection model plus
+press/motion/release state, and caret placement is what unblocks a browser
+frontend.
 
 ### 2.4 No general "Clickable" interface
 
@@ -195,31 +292,58 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
 
 ## 4. Acceptance criteria
 
+**Focus (§2.1)**
+
 1. A left press on an unfocused focusable widget focuses it, and the widget also
    receives the press (one gesture, both effects).
-2. Motion, wheel, and release never change focus.
+2. Motion, wheel and release never change focus.
 3. A press with no focusable ancestor leaves focus unchanged — it does not clear
    it.
-4. A press outside an open modal scope cannot move focus out of that scope.
-5. `FocusEvent` pairs (lost/gained) fire for a mouse-driven focus change exactly
-   as for a keyboard-driven one.
-6. `Table`: a press on row *n* of the visible rows selects the row the keyboard
-   would call current after moving to that visual position — **tested at a
-   non-zero scroll offset**, which is where an offset error hides.
-7. `Table`: a press on the header row selects nothing and changes no state.
-8. `Table`: wheel scrolls and leaves the selected row unchanged.
-9. `Table`: double-click inside the row area activates, using `List`'s existing
-   window.
-10. `Editor`: a press places the caret at the clicked cell, clamped at
-    end-of-line; verified across a wide grapheme.
-11. `Editor`: wheel scrolls without moving the caret.
-12. Both backends are exercised: the terminal path through `TestBackend`
-    injection, and the web path through `web/input.go`'s decoder, so the
-    contract is proven against the two producers rather than one.
-13. Every test **fails without its fix** — the negative-control standard from
-    autodb v0.2.1's regression suite, which is what made that fix trustworthy.
+4. A press outside an active trapping scope **does not move focus**, proven with a
+   **custom partial-size `FocusScope`** — not only `widget.Float`, whose full-area
+   backdrop would let a broken guard pass by accident.
+5. `FocusEvent` pairs fire for a mouse-driven focus change exactly as for a
+   keyboard-driven one.
+6. If focus handling unmounts the original pointer target, the press is delivered
+   to a re-hit-tested target and never to an unmounted component.
 
----
+**Table (§2.2)**
+
+7. A body press at a **non-zero scroll offset** selects the row the keyboard would
+   call current at that visual position.
+8. A header press **from a pinned non-zero selection** leaves the selection
+   unchanged — the regression the probe caught (it selected row 0).
+9. A body double-click activates, using `List`'s existing window.
+10. Wheel over the **body** scrolls; wheel over the **header** also scrolls the
+    body; neither moves the selected row.
+
+**Editor (§2.3)**
+
+11. A press in Normal mode with a pending count and pending operator (`2d`)
+    discards both, moves the caret, and modifies no text.
+12. A press mid insert-chord (first rune of `jk`) discards the pending rune and
+    stays in Insert.
+13. A press in Insert mode closes the undo group: text typed before and after the
+    click undo separately.
+14. A press in Visual and in Visual-line leaves Visual and clears the anchor.
+15. Caret placement is correct at non-zero horizontal **and** vertical scroll,
+    under `WrapNone` **and** `WrapSoft`, and across a wide grapheme (resolving to
+    the cell the grapheme starts at).
+16. A press past end-of-line clamps to the last column; below the last line clamps
+    to the last line; on the scroll-indicator column is inert.
+17. Wheel scrolls without moving the caret — one visual row under `WrapSoft`, one
+    logical line under `WrapNone`, clamped at both ends.
+
+**Both backends, and the standard**
+
+18. Every behaviour above is exercised through `TestBackend` injection **and**
+    through `web/input.go`'s decoder, so the contract is proven against both
+    producers rather than one.
+19. Every test **fails without its fix** — the negative-control standard from
+    autodb v0.2.1's regression suite.
+
+`TextInput` and `TextArea` are deliberately absent: §2.3 defers them, so they
+carry no criteria here rather than carrying unstated ones.
 
 ## 5. Rejected alternatives
 
@@ -235,3 +359,14 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
   selection model, and caret placement is the part that unblocks a browser
   frontend.
 - **A `Clickable` capability interface.** Rejected in §2.4.
+- **Restructuring layout/routing so `Table` is the pointer target** and owns all
+  coordinate translation (lector's option 2). Rejected: it requires capture or
+  retargeting and therefore an **amendment to ADR-0004**'s target-first,
+  no-capture contract, and it buys nothing over §2.2 — body presses already land
+  correctly, so the only thing needing a decision is the header, which one
+  `MouseEvent` guard settles.
+- **A focus-delegation capability** (`FocusTarget` promoted into golib).
+  Rejected for rev 1 in §2.1: it is a new externally-implemented interface for a
+  case a consumer can express by not accepting focus on the container, and it
+  would need cycle/nil/mounted/visibility/scope rules that nothing yet demands.
+  Available later as its own optional capability if a real need appears.
