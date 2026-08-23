@@ -172,6 +172,33 @@ func (t *Table[T]) Render(s tui.Surface) {
 	}
 }
 
-// HandleEvent forwards to the row list so navigation keys work when they are
+// HandleEvent forwards KEYS to the row list so navigation works when they are
 // delivered to the Table (e.g. a controller forwarding ↑/↓).
-func (t *Table[T]) HandleEvent(ev tui.Event) bool { return t.list.HandleEvent(ev) }
+//
+// Pointer events are NOT forwarded wholesale (ADR-0010 §2.2). Under ADR-0004's
+// target-first routing the row list is a placed child at local Y:1, so a press in
+// the body reaches it directly with correct local coordinates and never arrives
+// here. What does arrive here is a press on the HEADER row, and forwarding that
+// unchanged passed Table-local Y=0 to the list, which read it as body row `top+0`
+// and moved the selection — clicking a column title silently jumped the cursor to
+// the first visible row. That behaviour was determinate, not ambiguous, which is
+// what made it look intentional.
+//
+// So a header press is INERT, and consumed rather than bubbled: this rectangle
+// belongs to the Table, which chooses to do nothing with it today and is where
+// column sorting will land. Bubbling it would let an ancestor act on a click the
+// user aimed at a column title.
+//
+// The WHEEL is the exception and is forwarded: the header is part of the same
+// scrollable surface as far as the reader is concerned, so scrolling over it
+// scrolls the rows. The list's wheel handling ignores coordinates entirely, so
+// forwarding a header-local event is safe.
+func (t *Table[T]) HandleEvent(ev tui.Event) bool {
+	if m, ok := ev.(tui.MouseEvent); ok {
+		if m.Kind == tui.MouseWheel {
+			return t.list.HandleEvent(m)
+		}
+		return true
+	}
+	return t.list.HandleEvent(ev)
+}
