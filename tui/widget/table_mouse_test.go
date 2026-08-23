@@ -10,7 +10,6 @@ package widget_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -103,7 +102,6 @@ func TestTableBodyDoubleClickActivates(t *testing.T) {
 	if got := selected(t, tbl); got != 1 {
 		t.Errorf("selection = %d, want 1", got)
 	}
-	_ = time.Now
 }
 
 // Criterion 10 — wheel scrolls over BOTH regions and moves no selection.
@@ -143,5 +141,56 @@ func TestTableWheelOverHeaderAndBodyScrolls(t *testing.T) {
 	h.settle()
 	if got := selected(t, tbl); got != 0 {
 		t.Errorf("wheel over the body moved the selection to %d", got)
+	}
+}
+
+// Table must not be a pointer SINK. Lector's r1 implementation review caught this:
+// consuming every non-wheel MouseEvent stopped body motion and release at the
+// Table, so an ancestor never saw them. A Split whose divider drag continues over
+// a Table body then froze, and because the release was swallowed too it stayed in
+// `dragging`, letting a later unpressed motion resize it.
+//
+// This is the ancestor interaction none of the focused Table tests exercised.
+func TestTableDoesNotSwallowAncestorDrag(t *testing.T) {
+	rows := make([]string, 20)
+	for i := range rows {
+		rows[i] = "r"
+	}
+	tbl := widget.NewTable[string]([]widget.TableColumn[string]{
+		{Title: "NAME", Width: 6, Cell: func(s string) string { return s }},
+	})
+	tbl.SetItems(rows)
+	other := widget.NewText("other")
+
+	// Horizontal split: the divider sits at a column, the Table is pane B.
+	sp := widget.NewSplit(widget.Horizontal, other, tbl, widget.WithRatio(0.5))
+	h := startApp(t, sp, 20, 8)
+	h.settle()
+
+	start := sp.Ratio()
+
+	// Press the divider, then drag and release INSIDE the Table body.
+	divider := 10 // 20 cells * 0.5
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: divider, Y: 3})
+	h.settle()
+	h.inject(tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseNone, X: divider + 4, Y: 3})
+	h.settle()
+
+	moved := sp.Ratio()
+	if moved == start {
+		t.Errorf("drag over the Table body did not move the divider: ratio still %.2f — "+
+			"Table swallowed the motion an ancestor needed", start)
+	}
+
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: divider + 4, Y: 3})
+	h.settle()
+
+	// After release the drag must be OVER: an unpressed motion must not resize.
+	afterRelease := sp.Ratio()
+	h.inject(tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseNone, X: divider - 6, Y: 3})
+	h.settle()
+	if got := sp.Ratio(); got != afterRelease {
+		t.Errorf("an unpressed motion changed the ratio %.2f -> %.2f: the release never "+
+			"reached the Split, so it is still dragging", afterRelease, got)
 	}
 }

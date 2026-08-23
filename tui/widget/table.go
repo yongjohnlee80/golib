@@ -189,16 +189,31 @@ func (t *Table[T]) Render(s tui.Surface) {
 // column sorting will land. Bubbling it would let an ancestor act on a click the
 // user aimed at a column title.
 //
+// That ownership covers the header PRESS and nothing else. Motion, release and
+// non-left presses over the body are declined by the row list and must continue
+// to an ancestor — a Split dragging its divider across a Table depends on it.
+//
 // The WHEEL is the exception and is forwarded: the header is part of the same
 // scrollable surface as far as the reader is concerned, so scrolling over it
 // scrolls the rows. The list's wheel handling ignores coordinates entirely, so
 // forwarding a header-local event is safe.
 func (t *Table[T]) HandleEvent(ev tui.Event) bool {
 	if m, ok := ev.(tui.MouseEvent); ok {
-		if m.Kind == tui.MouseWheel {
+		switch {
+		case m.Kind == tui.MouseWheel:
 			return t.list.HandleEvent(m)
+		case m.Kind == tui.MousePress && m.Y == 0:
+			// The header row, and ONLY it: inert and ours.
+			return true
 		}
-		return true
+		// Everything else must keep bubbling. Consuming all non-wheel pointer
+		// events made the Table a sink: the row list declines body motion and
+		// release (and right/middle presses), which then have to reach an
+		// ANCESTOR. A Split whose divider drag continues over a Table body needs
+		// exactly those, and swallowing the release left it dragging forever, so a
+		// later unpressed motion resized it. Ownership is the header press, not
+		// the pointer.
+		return false
 	}
 	return t.list.HandleEvent(ev)
 }
