@@ -1,8 +1,32 @@
 # ADR-0010 — `golib/tui`: mouse interaction (click-to-focus, Table, Editor)
 
-- **Status:** **Proposed (rev 1)** (2026-08-24, authored by jarvis at Johno's
+- **Status:** **Proposed (rev 2)** (2026-08-24, authored by jarvis at Johno's
   request). Companion to autodb ADR-0064 §2.2, which is the consumer that asked
   for this and which decided *not* to build a webapp instead.
+  - **Lector r2 `change_requested`** — three findings against this ADR, **all
+    CONFIRMED against the code and folded into rev 2**. Each was a case of rev 1
+    specifying something the codebase cannot represent or already contradicts:
+    - **The focus-mutation retry broke this ADR's own invariant.** Rev 1 said
+      re-hit-test and deliver; the replacement could then be a *different*
+      focusable widget receiving a press while unfocused, contradicting
+      focus-before-delivery and criterion 1. Rev 2 re-runs candidate/scope/focus
+      for the replacement, exactly once, and skips delivery if it mutates again
+      (§2.1 step 5).
+    - **Discarding a pending insert rune reversed an accepted ADR silently.**
+      ADR-0008 binds *every* non-chord input to settle the pending rune first,
+      and `editor.go:375 settlePendingRune` implements it. Rev 1's "discard" was
+      both data loss (the user typed that character) and an unannounced
+      supersession. Rev 2 **settles at the old caret, then moves** — command
+      state is still discarded, since discarding a count or operator modifies no
+      text (§2.3).
+    - **One-visual-row soft-wrap scrolling is not representable.** `Editor`
+      stores a logical-line origin only (`editor.go:23-27`), and render, `Cursor`
+      and `ensureVisible` all start at logical `top`. Rev 2 makes the wheel step
+      **one logical line in both wrap modes** and defers a visual-row viewport
+      origin — which would need new state plus invariants across five paths — to
+      its own ADR (§2.3).
+  - Rev 1 closed r1's Table-ownership finding outright; r2 also caught stale
+    prose in §5 reviving the disproven "unspecified" framing, corrected here.
   - **Lector r1 `change_requested`** (2026-08-24) raised three findings against
     this ADR; **all three are CONFIRMED against the code and folded into rev 1**,
     two of them by reproducing the behaviour rather than reading it:
@@ -144,12 +168,19 @@ exist and left the trap rule to chance):
    an open modal.
 4. Focus the candidate, emitting the same lost/gained `FocusEvent` pair a
    keyboard focus change does.
-5. **Revalidate the pointer target before delivery.** Focus handlers run
-   arbitrary component code and may unmount the node the press was addressed to;
-   if the original target is no longer mounted, **re-hit-test once** and deliver
-   to the new target (chosen over silently skipping, so a click never becomes a
-   no-op merely because focusing rebuilt a subtree).
-6. Deliver the press.
+5. **Revalidate the pointer target before delivery, and re-run the whole rule if
+   it changed.** Focus handlers run arbitrary component code synchronously
+   (`tui/focus.go:54-66`) and may unmount the node the press was addressed to.
+   Rev 1 said "re-hit-test once and deliver", which **broke this ADR's own
+   invariant**: the replacement could be a different focusable widget receiving a
+   press while unfocused. So: if the original target is no longer mounted,
+   re-hit-test **and re-run steps 1–4 for the replacement** (scope recomputed,
+   candidate re-chosen, focus applied). **Exactly one retry.** If that second
+   focus change mutates the tree again, **skip delivery** — an unbounded
+   focus/unmount loop is worse than a lost click, and a click that lands on an
+   unfocused widget violates the guarantee in criterion 1.
+6. Deliver the press — to a target that is mounted and whose focus candidate has
+   been focused.
 
 **No focus-delegation capability is introduced.** Rev 0 promised to honour
 `FocusTarget()`; that method is autodb-private (`autodb/tui/results.go:48`) and
@@ -217,10 +248,20 @@ picked one by accident.
 
 **A primary press is a command boundary.** Concretely:
 
-- **Pending state is DISCARDED, never completed.** A count, a pending operator,
-  and a pending insert-chord rune are all abandoned. Completing `2d` against a
-  clicked location would turn a mis-click into a destructive edit, and the
-  pointer carries no evidence that the user meant the operator to apply there.
+- **Pending COMMAND state is discarded; a pending insert RUNE is settled.** The
+  two are not the same thing and rev 1 wrongly lumped them together:
+  - A **count** and a **pending operator** are abandoned. Completing `2d` against
+    a clicked location would turn a mis-click into a destructive edit, and the
+    pointer carries no evidence the user meant the operator to apply there.
+    Discarding them modifies no text.
+  - A **pending insert escape-chord rune is SETTLED at the OLD caret** before the
+    caret moves. That rune is **input the user typed**, and accepted ADR-0008
+    binds every non-chord input to settle it first — paste, focus loss,
+    `SetValue` and mode transitions all commit it (`golib-tui-0008` §pending
+    rune; `editor.go:375 settlePendingRune`). Rev 1 said "discard", which was
+    silent data loss *and* an unannounced reversal of an accepted ADR. A click is
+    a non-chord input like any other: settle, then move. ADR-0008 stands
+    unamended.
 - **Normal mode**: caret moves; mode unchanged.
 - **Insert mode**: stays in Insert, caret moves, and the press **closes the
   current undo group**. A click is a deliberate discontinuity, so the text typed
@@ -243,9 +284,23 @@ this is where an off-by-one is invisible:
 - **Past end of line** → clamp to the last column (end-of-line in Insert, last
   grapheme in Normal). **Below the last painted line** → clamp to the last buffer
   line. **The scroll-indicator column** is not text: a press there is inert.
-- **Wheel** scrolls the viewport without moving the caret; **one wheel event is
-  one visual row** under `WrapSoft` (matching what the user sees move) and one
-  logical line under `WrapNone`, clamped at both ends.
+- **Wheel** scrolls the viewport without moving the caret. **One `MouseEvent` is
+  one step** — the event carries a wheel *direction* (`WheelUp`/`WheelDown`) and
+  no magnitude, so a producer sending N notches sends N events; the consumer never
+  multiplies. Clamped at both ends.
+- **One step is one LOGICAL LINE, under both wrap modes.** Rev 1 specified one
+  *visual row* under `WrapSoft`; that is **not representable** by the current
+  viewport, which stores a logical-line origin only (`editor.go:23-27` has `top`
+  and `left`, no intra-line wrapped-row offset) and begins rendering, `Cursor`
+  and `ensureVisible` at logical line `top`. A logical line wrapping to five
+  visual rows therefore cannot be scrolled by one row while remaining the first
+  line. Introducing a visual-row origin would mean new viewport state plus new
+  invariants across **five** paths — render, `Cursor`, `ensureVisible`, click
+  inversion and end clamping — which is a larger change than a wheel nicety
+  justifies, and it is deferred as its own ADR. Logical-line stepping is
+  representable today and correct in both modes.
+  - Click inversion is unaffected: it maps a *rendered* row back through the same
+    wrap computation the renderer used, which needs no new viewport state.
 
 **`TextInput` and `TextArea` are DEFERRED from rev 0** rather than carried
 un-specified: they were named in rev 0's decision but absent from its acceptance
@@ -304,8 +359,10 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
    backdrop would let a broken guard pass by accident.
 5. `FocusEvent` pairs fire for a mouse-driven focus change exactly as for a
    keyboard-driven one.
-6. If focus handling unmounts the original pointer target, the press is delivered
-   to a re-hit-tested target and never to an unmounted component.
+6. If focus handling unmounts the original pointer target, the retry re-runs
+   candidate/scope/focus resolution so the **replacement is focused before it
+   receives the press**; and if that retry mutates the tree again, the press is
+   **not delivered**. Never delivered to an unmounted component.
 
 **Table (§2.2)**
 
@@ -321,8 +378,9 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
 
 11. A press in Normal mode with a pending count and pending operator (`2d`)
     discards both, moves the caret, and modifies no text.
-12. A press mid insert-chord (first rune of `jk`) discards the pending rune and
-    stays in Insert.
+12. A press mid insert-chord (first rune of `jk`) **settles that rune at the old
+    caret** — the character survives in the buffer — then moves the caret and
+    stays in Insert. Nothing typed is lost, per ADR-0008.
 13. A press in Insert mode closes the undo group: text typed before and after the
     click undo separately.
 14. A press in Visual and in Visual-line leaves Visual and clears the anchor.
@@ -331,8 +389,8 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
     the cell the grapheme starts at).
 16. A press past end-of-line clamps to the last column; below the last line clamps
     to the last line; on the scroll-indicator column is inert.
-17. Wheel scrolls without moving the caret — one visual row under `WrapSoft`, one
-    logical line under `WrapNone`, clamped at both ends.
+17. Wheel scrolls without moving the caret — **one logical line per event in both
+    wrap modes**, clamped at both ends, with N notches arriving as N events.
 
 **Both backends, and the standard**
 
@@ -364,7 +422,10 @@ carry no criteria here rather than carrying unstated ones.
   retargeting and therefore an **amendment to ADR-0004**'s target-first,
   no-capture contract, and it buys nothing over §2.2 — body presses already land
   correctly, so the only thing needing a decision is the header, which one
-  `MouseEvent` guard settles.
+  `MouseEvent` guard settles. (Rev 1's wording here still called the behaviour
+  "determined by which node the hit test happens to reach" and "unspecified".
+  That was the disproven framing: routing is **determinate**, and the defect is
+  that `Table`'s blind delegation makes the determinate header path wrong.)
 - **A focus-delegation capability** (`FocusTarget` promoted into golib).
   Rejected for rev 1 in §2.1: it is a new externally-implemented interface for a
   case a consumer can express by not accepting focus on the container, and it
