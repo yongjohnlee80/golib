@@ -1,6 +1,6 @@
 # ADR-0010 — `golib/tui`: mouse interaction (click-to-focus, Table, Editor)
 
-- **Status:** **Proposed (rev 3)** (2026-08-24, authored by jarvis at Johno's
+- **Status:** **Proposed (rev 4)** (2026-08-24, authored by jarvis at Johno's
   request). Companion to autodb ADR-0064 §2.2, which is the consumer that asked
   for this and which decided *not* to build a webapp instead.
   - **Lector r2 `change_requested`** — three findings against this ADR, **all
@@ -36,6 +36,13 @@
     "unspecified" bullet (r2's correction had been appended to a *different*
     alternative — the wrong bullet), and "the press never modifies buffer text",
     which contradicted rev 2's own pending-rune settlement.
+  - **Lector r4 `change_requested`** — one finding, **CONFIRMED**: the trap
+    boundary must be `currentScope()`, not `trapScopeOf(focused)`. golib has a
+    repair state in which the focused child dies, `focused` becomes 0, and the
+    trap survives on `scopeStack`; deriving the boundary from the focused node
+    then finds no trap and lets a click escape it. `currentScope()` is the
+    primitive keyboard traversal already uses and handles that path explicitly.
+    Criterion 4b pins the state (§2.1).
   - **Lector r1 `change_requested`** (2026-08-24) raised three findings against
     this ADR; **all three are CONFIRMED against the code and folded into rev 1**,
     two of them by reproducing the behaviour rather than reading it:
@@ -166,8 +173,19 @@ unchanged.
 "walk toward the root honouring `FocusTarget()`" named a capability that does not
 exist and left the trap rule to chance):
 
-1. **Compute the active trapping scope FIRST**, before any candidate is chosen —
-   `trapScopeOf` of the currently focused node.
+1. **Compute the active trapping scope FIRST**, before any candidate is chosen,
+   using **`currentScope()`** — the same effective boundary keyboard traversal
+   uses. **Not** `trapScopeOf(focused)`, which rev 3 specified and which is wrong
+   in exactly one state: golib deliberately supports a *repair* condition where
+   the focused child dies but its trap survives with no remaining focusables —
+   `repairFocus` sets `focused = 0` and returns (`tui/focus.go:158-165`) while the
+   scope stays on `scopeStack`. With `focused = 0` there is no node to walk from,
+   so `trapScopeOf` yields nil, the algorithm would see *no trap*, and a click on
+   an outside focusable could **escape a surviving trap** — violating criterion 4
+   and leaving the scope stack inconsistent. `currentScope()` already handles this
+   (`focus.go:113-123`: "no live focused node (repair path): fall back to the
+   innermost surviving trap"). Root counts as unrestricted; a surviving non-root
+   scope confines candidates.
 2. Walk from the hit-test target toward the root for the first node whose
    component is `Focusable` and `AcceptsFocus()`.
 3. **Reject the candidate if it is outside the active trapping scope**, and leave
@@ -381,6 +399,11 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
 4. A press outside an active trapping scope **does not move focus**, proven with a
    **custom partial-size `FocusScope`** — not only `widget.Float`, whose full-area
    backdrop would let a broken guard pass by accident.
+4b. **The repair state is covered:** enter a partial trap, remove or disable its
+   last focusable **without unmounting the scope**, confirm focus is empty
+   (`focused = 0`), then click an **outside** focusable and prove focus stays
+   empty/confined. This is the case a `trapScopeOf(focused)` implementation passes
+   every other test while failing.
 5. `FocusEvent` pairs fire for a mouse-driven focus change exactly as for a
    keyboard-driven one.
 6. If a `FocusEvent` handler **unmounts and mounts a replacement** for the
