@@ -125,6 +125,58 @@ func (a *App) currentScope() *node {
 	return a.rootNode
 }
 
+// focusFromPointer focuses the first focusable node at or above the pointer
+// target, provided that node lies inside the ACTIVE focus scope (ADR-0010 §2.1
+// steps 1-4). It is called for a primary press only, BEFORE the event is
+// delivered, so a widget handling the press already sees itself focused and one
+// gesture both focuses and acts.
+//
+// The boundary is [App.currentScope], deliberately NOT trapScopeOf(a.focused).
+// Those agree everywhere except one state golib supports on purpose: when a
+// focused child dies while its trap survives with no remaining focusables,
+// [App.repairFocus] leaves focused = 0 and the scope stays on scopeStack. With
+// no focused node there is nothing to walk from, so trapScopeOf yields nil, a
+// naive rule would conclude there is no active trap, and a click outside would
+// escape a trap that is still standing. currentScope already handles that path.
+//
+// Membership is tested against the scope's focus RING rather than by an ancestor
+// walk, so the mouse admits exactly what Tab traversal would move to: the ring
+// already excludes nested traps' subtrees and anything not visible.
+//
+// Motion, wheel and release never reach here — the wheel scrolls the pane under
+// the pointer without taking keyboard focus from elsewhere. A press on dead
+// space (no hit) or with no focusable ancestor leaves focus unchanged; neither
+// ever CLEARS it.
+func (a *App) focusFromPointer(target *node) {
+	ring := a.focusRing(a.currentScope())
+	for n := target; n != nil; n = n.parent {
+		f, ok := n.comp.(Focusable)
+		if !ok || !f.AcceptsFocus() {
+			continue
+		}
+		if !nodeInRing(ring, n) {
+			// Outside the active scope: refuse rather than escape the trap, and
+			// leave focus exactly where it was.
+			a.trace(TraceEvent{Kind: TraceFocus, Node: n.id, Prev: a.focused,
+				Detail: "pointer refused: candidate outside the active focus scope"})
+			return
+		}
+		a.requestFocus(n)
+		return
+	}
+}
+
+// nodeInRing reports membership without pulling in a dependency for one lookup;
+// focus rings are small (the focusables of one scope).
+func nodeInRing(ring []*node, n *node) bool {
+	for _, r := range ring {
+		if r == n {
+			return true
+		}
+	}
+	return false
+}
+
 // focusStep advances focus by delta (+1 Tab, -1 Shift-Tab) within the
 // current scope's ring, wrapping at the ends (ADR-0004 §2.6.2).
 func (a *App) focusStep(delta int) {
