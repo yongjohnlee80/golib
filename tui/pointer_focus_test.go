@@ -197,13 +197,13 @@ func TestPointerPressSkippedWhenFocusHandlerRebuildsTarget(t *testing.T) {
 	// never a delivery target.
 	for _, ev := range victim.recorded() {
 		if _, ok := ev.(MouseEvent); ok {
-			t.Errorf("the UNMOUNTED target received a MouseEvent; the press must be "+
+			t.Errorf("the UNMOUNTED target received a MouseEvent; the press must be " +
 				"skipped once focus handling unmounted it (ADR-0010 §2.1 step 5)")
 		}
 	}
 	for _, ev := range replacement.recorded() {
 		if _, ok := ev.(MouseEvent); ok {
-			t.Errorf("the replacement received a MouseEvent; a press must not be "+
+			t.Errorf("the replacement received a MouseEvent; a press must not be " +
 				"delivered to a subtree mounted during this dispatch")
 		}
 	}
