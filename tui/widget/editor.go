@@ -820,6 +820,8 @@ func (e *Editor) execAction(act Action, count int) bool {
 // HandleEvent implements the modal key contract.
 func (e *Editor) HandleEvent(ev tui.Event) bool {
 	switch t := ev.(type) {
+	case tui.MouseEvent:
+		return e.handleMouse(t)
 	case tui.PasteEvent:
 		if e.readOnly {
 			return true // a viewer never mutates (bracketed paste included)
@@ -1192,6 +1194,137 @@ func (e *Editor) Cursor() (int, int, bool) {
 		return 0, 0, false
 	}
 	return x, y, true
+}
+
+// handleMouse implements the pointer contract (ADR-0010 §2.3).
+//
+// A press is a COMMAND BOUNDARY, not merely a cursor move, because Editor holds
+// modal state that a click has to resolve one way or the other. The wheel scrolls
+// the viewport and never moves the caret, so a reader can scroll while a caret
+// stays where they left it.
+func (e *Editor) handleMouse(m tui.MouseEvent) bool {
+	switch {
+	case m.Kind == tui.MouseWheel && m.Button == tui.WheelUp:
+		return e.scrollLines(-1)
+	case m.Kind == tui.MouseWheel && m.Button == tui.WheelDown:
+		return e.scrollLines(1)
+	case m.Kind == tui.MousePress && m.Button == tui.MouseLeft:
+		return e.pressAt(m.X, m.Y)
+	}
+	return false
+}
+
+// scrollLines scrolls by whole LOGICAL lines in both wrap modes.
+//
+// One MouseEvent is one step: the event carries a wheel direction and no
+// magnitude, so N notches arrive as N events and this never multiplies. Visual
+// rows are deliberately not the unit — the viewport stores a logical-line origin
+// only (top/left), so an intra-line offset is not representable without new
+// state and new invariants across render, Cursor, ensureVisible, click inversion
+// and clamping. That is deferred to its own ADR.
+func (e *Editor) scrollLines(delta int) bool {
+	before := e.top
+	e.top = min(max(e.top+delta, 0), max(len(e.lines)-1, 0))
+	if e.top != before {
+		e.MarkDirty()
+	}
+	return true
+}
+
+// pressAt places the caret at a clicked cell and settles modal state.
+func (e *Editor) pressAt(x, y int) bool {
+	// The scroll-indicator column is not text. A press there is inert, and
+	// consumed rather than bubbled: the column belongs to this widget.
+	if e.scrollable() && x >= e.wrapWidth() {
+		return true
+	}
+	ln, col := e.posAt(x, y)
+
+	// ---- the command boundary, in this order ----
+	//
+	// A pending insert rune is SETTLED FIRST, at the caret it was typed at, and
+	// before the caret moves. ADR-0008 binds every non-chord input to settle the
+	// pending rune, and a click is a non-chord input like any other; discarding it
+	// would delete a character the user physically typed. This is the only way a
+	// press changes buffer text.
+	if e.mode == ModeInsert {
+		e.settlePendingRune()
+		// A click is a deliberate discontinuity, so text typed before and after it
+		// undo separately.
+		e.groupOpen = false
+	}
+	// Pending COMMAND state is discarded, never completed. Completing `2d`
+	// against a clicked location would turn a mis-click into a destructive edit,
+	// and the pointer carries no evidence the operator was meant to apply there.
+	// Discarding it modifies nothing.
+	e.count, e.pendingCount = 0, 0
+	e.pendingAct, e.pendingChord = ActUnbound, KeyChord{}
+	// Visual exits and the anchor is cleared: extending a selection by clicking is
+	// drag-selection, which this revision defers. Keeping the anchor would make the
+	// next motion extend a selection the user believes they dismissed.
+	if e.mode == ModeVisual || e.mode == ModeVisualLine {
+		e.setMode(ModeNormal)
+		e.vAnchor = taPos{}
+	}
+
+	e.ln, e.col = ln, col
+	if e.mode != ModeInsert {
+		e.clampNormal()
+	}
+	e.desired = -1
+	e.ensureVisible()
+	e.MarkDirty()
+	return true
+}
+
+// posAt inverts the viewport mapping in Cursor(): a viewport cell becomes a
+// buffer position. It is the exact inverse of the forward path for each wrap
+// mode, so a click resolves to the position the caret would be drawn at.
+//
+// Clamping: past end-of-line lands on the last column, below the last painted
+// line lands on the last buffer line. A wide grapheme resolves to the cell it
+// STARTS at (ADR-0003), which is why the column walk accumulates measured widths
+// instead of counting cells.
+func (e *Editor) posAt(x, y int) (ln, col int) {
+	if len(e.lines) == 0 {
+		return 0, 0
+	}
+	lastLn := len(e.lines) - 1
+
+	if e.wrap == WrapNone {
+		ln = min(e.top+max(y, 0), lastLn)
+		return ln, e.colAtCells(e.lineClusters(ln), 0, e.left+max(x, 0))
+	}
+
+	// WrapSoft: walk the same wrap computation the renderer used, rather than
+	// dividing by width — one logical line spans several visual rows.
+	remaining := max(y, 0)
+	for i := e.top; i <= lastLn; i++ {
+		rows := e.rowsOfLine(i)
+		if remaining < rows || i == lastLn {
+			cs := e.lineClusters(i)
+			ranges := wrapRanges(cs, e.wrapWidth(), e.measure)
+			r := ranges[min(remaining, len(ranges)-1)]
+			return i, e.colAtCells(cs, r[0], max(x, 0))
+		}
+		remaining -= rows
+	}
+	return lastLn, e.normalMax(lastLn)
+}
+
+// colAtCells walks clusters from `from`, accumulating measured cell widths, and
+// returns the column whose cell span contains `cells`. A click in the trailing
+// half of a double-width grapheme resolves to that grapheme, not the next one.
+func (e *Editor) colAtCells(cs []string, from, cells int) int {
+	acc := 0
+	for i := from; i < len(cs); i++ {
+		w := e.measure(cs[i])
+		if cells < acc+w {
+			return i
+		}
+		acc += w
+	}
+	return max(from, len(cs)-1) // past end of line: the last column
 }
 
 func (e *Editor) wrapPos(ln, col int) (row, x int) {
