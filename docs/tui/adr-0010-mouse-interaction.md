@@ -43,6 +43,9 @@
     then finds no trap and lets a click escape it. `currentScope()` is the
     primitive keyboard traversal already uses and handles that path explicitly.
     Criterion 4b pins the state (§2.1).
+  - **Lector r5: APPROVED** (2026-08-24) — no remaining design or wording blocker
+    across five rounds. Approval is of the DESIGN only: it is explicitly not
+    authority to implement, and Johno's authorization remains an external gate.
   - **Lector r1 `change_requested`** (2026-08-24) raised three findings against
     this ADR; **all three are CONFIRMED against the code and folded into rev 1**,
     two of them by reproducing the behaviour rather than reading it:
