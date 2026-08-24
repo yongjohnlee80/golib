@@ -1,6 +1,6 @@
 # ADR-0010 — `golib/tui`: mouse interaction (click-to-focus, Table, Editor)
 
-- **Status:** **Proposed (rev 4)** (2026-08-24, authored by jarvis at Johno's
+- **Status:** **Proposed (rev 5)** (2026-08-24, authored by jarvis at Johno's
   request). Companion to autodb ADR-0064 §2.2, which is the consumer that asked
   for this and which decided *not* to build a webapp instead.
   - **Lector r2 `change_requested`** — three findings against this ADR, **all
@@ -46,6 +46,14 @@
   - **Lector r5: APPROVED** (2026-08-24) — no remaining design or wording blocker
     across five rounds. Approval is of the DESIGN only: it is explicitly not
     authority to implement, and Johno's authorization remains an external gate.
+  - **Rev 5 (implementation round r3)** restates criterion 18 only. Lector's r3
+    review cleared all production code and held that three representative web
+    tests do not satisfy "every behaviour through both producers" — correct, and
+    my wording was worse than unachievable: it named `TestBackend` as "the
+    terminal path" while `TestBackend` bypasses the terminal decoder, so the
+    terminal producer had no coverage at all. Criterion 18 now states the
+    three-layer structure that was actually intended, and both producers now
+    have a behavioural integration slice.
   - **Lector r1 `change_requested`** (2026-08-24) raised three findings against
     this ADR; **all three are CONFIRMED against the code and folded into rev 1**,
     two of them by reproducing the behaviour rather than reading it:
@@ -445,9 +453,31 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
 
 **Both backends, and the standard**
 
-18. Every behaviour above is exercised through `TestBackend` injection **and**
-    through `web/input.go`'s decoder, so the contract is proven against both
-    producers rather than one.
+18. The contract is proven against **both real producers**, in three layers.
+    Rev 5 restates this: rev 4 said "every behaviour above is exercised through
+    `TestBackend` injection **and** through `web/input.go`'s decoder", which was
+    both unachievable-by-intent and **incoherent** — it called `TestBackend`
+    injection "the terminal path", and `TestBackend` bypasses `tui/term`'s
+    decoder entirely, so as written it never covered the terminal producer at
+    all. The layers that matter:
+    - **(a) Decode coverage, exhaustive, per producer, by event shape.**
+      `web/input_test.go` for `MouseReport` → `tui.Event`;
+      `term/decoder_test.go` for SGR bytes → `tui.Event`. This is where
+      producer-specific failure modes live: wrong button, wrong coordinate
+      base, wrong kind.
+    - **(b) Behaviour coverage, exhaustive, via `TestBackend` injection.**
+      Producer-agnostic on purpose: both decoders emit ordinary `tui.Event`
+      values, so a widget cannot tell them apart. Duplicating this matrix per
+      producer multiplies tests without adding a failure mode.
+    - **(c) A behavioural integration slice per real producer** — press selects
+      the clicked row, press focuses the clicked widget, N wheel events are N
+      steps — driven from real `MouseReport`s (`tui/web/input_app_test.go`) and
+      real SGR bytes (`tui/term/input_app_test.go`) through a live `App` and
+      real widgets. This is what joins (a) to (b): it proves a decoder's output
+      actually reaches the behaviour, rather than merely having the right shape.
+
+    A behaviour is therefore covered once in (b) and reachable-from-each-producer
+    by (c), instead of once per producer.
 19. Every test **fails without its fix** — the negative-control standard from
     autodb v0.2.1's regression suite.
 
