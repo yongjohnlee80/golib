@@ -659,6 +659,22 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	}
 	r := rows[idx]
 	t.cursor = idx
+	// A SECOND press on the same cell is activation, on the same channel ENTER
+	// already uses — so a host that handles ActivateEvent gets double-click for
+	// free (ADR-0010 §2.5).
+	//
+	// It fires for BRANCHES as well as leaves, and deliberately does NOT also
+	// toggle expansion: the Tree cannot know whether a branch is activatable.
+	// autodb's `tbl:` nodes are branches whose children are columns and whose
+	// activation is a query scaffold, so a Tree that guessed would scaffold AND
+	// expand. Hosts that want folder-opens-on-double-click do it in their own
+	// handler, where the node grammar is known.
+	if e.Count >= 2 {
+		t.ensureVisible()
+		t.MarkDirty()
+		t.publish(ActivateEvent{Owner: t.NodeID(), Index: idx})
+		return true
+	}
 	// A click on the expander glyph toggles; elsewhere selects.
 	if e.X >= r.depth*t.indent && e.X < r.depth*t.indent+2 && !r.node.leaf {
 		if r.node.expanded {

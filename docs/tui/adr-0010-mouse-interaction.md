@@ -1,7 +1,8 @@
 # ADR-0010 — `golib/tui`: mouse interaction (click-to-focus, Table, Editor)
 
-- **Status:** **Proposed (rev 5)** (2026-08-24, authored by jarvis at Johno's
-  request). Companion to autodb ADR-0064 §2.2, which is the consumer that asked
+- **Status:** **Proposed (rev 6)** (2026-08-25, authored by jarvis at Johno's
+  request). **Rev 6 adds §2.5, double-click as activation** — Johno, 2026-08-25:
+  *"Let's implement double mouse click as ENTER."* Nothing in rev 5 changes. Companion to autodb ADR-0064 §2.2, which is the consumer that asked
   for this and which decided *not* to build a webapp instead.
   - **Lector r2 `change_requested`** — three findings against this ADR, **all
     CONFIRMED against the code and folded into rev 2**. Each was a case of rev 1
@@ -375,6 +376,54 @@ retro-inconsistent. §2.1 needs only the focus predicate that already exists.
 
 ---
 
+### 2.5 Double-click is activation, synthesised once at the event boundary
+
+Johno's request is "double click = ENTER". ENTER is not one behaviour, though — it
+means whatever the focused widget makes it mean. So the primitive is
+**activation**, and each widget keeps its own answer.
+
+**`MouseEvent` gains `Count int`.** It is the press ordinal: 1 for a single press,
+2 for the second press of a double, 3 for a triple. It is **0 on every non-press
+kind**, so nothing can read a count off motion, wheel, or release and believe it.
+
+**Synthesised in `dispatch`, not in the producers.** Criterion 18's three-layer
+rule decides this: a click *count* is not decode shape, it is behaviour derived
+from timing and position, so it belongs at the one point every producer's events
+already flow through — the `MouseEvent` case in `App.dispatch`, before hit-testing
+and before the focus step in §2.1. `tui/term/decoder.go` and `tui/web/input.go` are
+**unchanged**; a third producer would inherit the behaviour for free, which is the
+property the layered rule exists to protect.
+
+**Same button, same cell, inside the window.** The App remembers the last press
+(button, x, y, time, count). A press increments the count only when all three hold;
+otherwise the count restarts at 1.
+
+- **Same cell, not "near".** Terminal cells are coarse and a row is one cell tall,
+  so a one-cell drift is a *different row*. Tolerating it would activate the row
+  the user did not click, which is worse than requiring a steady hand.
+- **Window is configurable** — `WithDoubleClickWindow(d)`, default **400ms**. The
+  option exists for tests as much as for taste: a large window makes the positive
+  case deterministic without a clock seam, and `1ns` makes the negative case
+  deterministic for the same reason. Adding an injectable clock to `App` for this
+  would be a larger, more invasive seam than the behaviour warrants.
+- A release between the two presses is normal and does **not** reset the count; a
+  press of a *different* button does.
+
+**`Tree` publishes `ActivateEvent` on a double-click, and does NOT expand.** The
+Tree already publishes `ActivateEvent{Owner, Index}` when ENTER lands on a leaf, so
+double-click reuses that channel rather than inventing one — a host that already
+handles activation gets double-click support without changing.
+
+It fires for **branches as well as leaves**, and the Tree deliberately does not
+also toggle expansion, because the Tree **cannot know** whether a branch is
+activatable: autodb's `tbl:` nodes are branches whose children are columns, and
+whose activation is a query scaffold rather than an expansion. A widget that
+guessed here would scaffold *and* expand. Hosts that want folder-opens-on-double-
+click implement it in their own handler, where the node grammar is known.
+
+The first press of the double has already selected the row through the existing
+single-press path, so activation always targets the row under the pointer.
+
 ## 3. Consequences
 
 **Good.** Click-to-focus is one rule in one place, so every widget — including
@@ -478,7 +527,28 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
 
     A behaviour is therefore covered once in (b) and reachable-from-each-producer
     by (c), instead of once per producer.
-19. Every test **fails without its fix** — the negative-control standard from
+**Double-click (§2.5)**
+
+19. Two left presses on the **same cell** inside the window yield `Count` 1 then 2.
+20. The **same-cell** rule: two presses inside the window one cell apart yield
+    `Count` 1 and 1. Deterministic without a clock.
+21. The **window** rule: with `WithDoubleClickWindow(1ns)`, two immediate presses
+    yield `Count` 1 and 1.
+22. A press of a **different button** inside the window restarts the count.
+23. An intervening **release** does not reset the count; an intervening press
+    elsewhere does.
+24. `Count` is **0** on motion, wheel and release — asserted, so no consumer can
+    read a count that was never computed.
+25. Synthesis happens **before** the §2.1 focus step, so a double-click that also
+    moves focus still carries `Count == 2` to the widget.
+26. **`Tree`**: a double-click publishes `ActivateEvent` for the row under the
+    pointer — for a **branch** as well as a leaf — and does **not** change its
+    expanded state. Negative control: expand on double-click and this fails.
+27. A **single** click publishes no `ActivateEvent`.
+28. Both producers are covered by a behavioural bridge per criterion 18: a real SGR
+    byte sequence through `term`, and a real message through `web`, each yielding
+    `Count == 2` without either producer computing it.
+29. Every test **fails without its fix** — the negative-control standard from
     autodb v0.2.1's regression suite.
 
 `TextInput` and `TextArea` are deliberately absent: §2.3 defers them, so they

@@ -33,30 +33,32 @@ var ErrTaskPanic = errors.New("tui: task panicked")
 // appConfig collects the option-set construction state of an App
 // (pattern: server/scaffold.go:21-28's scaffoldConfig).
 type appConfig struct {
-	backend          Backend
-	theme            *style.Theme
-	minFrameInterval time.Duration
-	panicPolicy      PanicPolicy
-	inputQueueSize   int
-	eventQueueLimit  int
-	taskPoolSize     int
-	widthPolicy      WidthPolicy
-	taskDrainTimeout time.Duration
-	logger           logger.Logger
-	trace            TraceFunc
+	backend           Backend
+	theme             *style.Theme
+	minFrameInterval  time.Duration
+	doubleClickWindow time.Duration
+	panicPolicy       PanicPolicy
+	inputQueueSize    int
+	eventQueueLimit   int
+	taskPoolSize      int
+	widthPolicy       WidthPolicy
+	taskDrainTimeout  time.Duration
+	logger            logger.Logger
+	trace             TraceFunc
 }
 
 // defaultAppConfig returns the documented defaults (ADR-0005 §2.1).
 func defaultAppConfig() appConfig {
 	return appConfig{
-		minFrameInterval: 16 * time.Millisecond,
-		panicPolicy:      PanicRepanic,
-		inputQueueSize:   256,
-		eventQueueLimit:  0, // unlimited
-		taskPoolSize:     16,
-		widthPolicy:      WidthPolicyDefault,
-		taskDrainTimeout: 5 * time.Second,
-		logger:           logger.Nop{},
+		minFrameInterval:  16 * time.Millisecond,
+		doubleClickWindow: 400 * time.Millisecond,
+		panicPolicy:       PanicRepanic,
+		inputQueueSize:    256,
+		eventQueueLimit:   0, // unlimited
+		taskPoolSize:      16,
+		widthPolicy:       WidthPolicyDefault,
+		taskDrainTimeout:  5 * time.Second,
+		logger:            logger.Nop{},
 	}
 }
 
@@ -76,6 +78,18 @@ func WithBackend(b Backend) AppOption {
 // Default: style.DefaultTheme().
 func WithTheme(t *style.Theme) AppOption {
 	return func(c *appConfig) { c.theme = t }
+}
+
+// WithDoubleClickWindow sets how long after a press a second press on the SAME
+// cell with the SAME button still counts as a double-click (ADR-0010 §2.5).
+// Default 400ms. Zero or negative disables multi-click entirely: every press
+// reports Count 1.
+//
+// The option is as much for tests as for taste. A generous window makes the
+// positive case deterministic without giving App an injectable clock, and a 1ns
+// window makes the negative case deterministic the same way.
+func WithDoubleClickWindow(d time.Duration) AppOption {
+	return func(c *appConfig) { c.doubleClickWindow = d }
 }
 
 // WithMinFrameInterval caps the render rate: dirty marks arriving faster are

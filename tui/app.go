@@ -54,7 +54,15 @@ type App struct {
 	layoutDirty  bool
 	framePending bool // a frame deadline sits in the timer heap
 	lastFrame    time.Time
-	frames       uint64
+
+	// Multi-click synthesis state (ADR-0010 §2.5). Owned by the event-loop
+	// goroutine, like the rest of App's dispatch state.
+	lastPressAt     time.Time
+	lastPressX      int
+	lastPressY      int
+	lastPressButton MouseButton
+	lastPressCount  int
+	frames          uint64
 
 	timers      timerHeap
 	timer       *time.Timer
