@@ -139,38 +139,48 @@ func (a *App) currentScope() *node {
 // naive rule would conclude there is no active trap, and a click outside would
 // escape a trap that is still standing. currentScope already handles that path.
 //
-// Membership is tested against the scope's focus RING rather than by an ancestor
-// walk, so the mouse admits exactly what Tab traversal would move to: the ring
-// already excludes nested traps' subtrees and anything not visible.
+// Containment is an ANCESTOR walk, deliberately NOT focusRing membership. A ring
+// excludes nested trapping scopes' subtrees — that is right for Tab traversal,
+// which must not wander into an unentered modal, and wrong for the pointer, which
+// is exactly how a user ENTERS one. Using the ring refused every click into a
+// nested trap while the active scope was root, i.e. while nothing was restricted
+// at all. Rings stay for traversal; the pointer guard asks only "is this candidate
+// inside the active scope".
 //
 // Motion, wheel and release never reach here — the wheel scrolls the pane under
 // the pointer without taking keyboard focus from elsewhere. A press on dead
 // space (no hit) or with no focusable ancestor leaves focus unchanged; neither
 // ever CLEARS it.
-func (a *App) focusFromPointer(target *node) {
-	ring := a.focusRing(a.currentScope())
+// It returns the node it focused, or nil if it focused nothing, so the caller can
+// verify that candidate STILL owns focus before delivering the press.
+func (a *App) focusFromPointer(target *node) *node {
+	scope := a.currentScope()
 	for n := target; n != nil; n = n.parent {
 		f, ok := n.comp.(Focusable)
 		if !ok || !f.AcceptsFocus() {
 			continue
 		}
-		if !nodeInRing(ring, n) {
+		if !withinScope(n, scope) {
 			// Outside the active scope: refuse rather than escape the trap, and
 			// leave focus exactly where it was.
 			a.trace(TraceEvent{Kind: TraceFocus, Node: n.id, Prev: a.focused,
 				Detail: "pointer refused: candidate outside the active focus scope"})
-			return
+			return nil
 		}
 		a.requestFocus(n)
-		return
+		return n
 	}
+	return nil
 }
 
-// nodeInRing reports membership without pulling in a dependency for one lookup;
-// focus rings are small (the focusables of one scope).
-func nodeInRing(ring []*node, n *node) bool {
-	for _, r := range ring {
-		if r == n {
+// withinScope reports whether n is scope or one of its descendants. A nil scope
+// is unrestricted.
+func withinScope(n, scope *node) bool {
+	if scope == nil {
+		return true
+	}
+	for p := n; p != nil; p = p.parent {
+		if p == scope {
 			return true
 		}
 	}
