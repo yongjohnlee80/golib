@@ -88,25 +88,42 @@ func TestWebPressSelectsListRow(t *testing.T) {
 
 // A browser press must also FOCUS the clicked widget (§2.1) when it arrives
 // through the web decoder, not only through TestBackend injection.
+//
+// The first version of this test was VACUOUS and lector caught it: both Lists
+// start at cursor 0, so asserting `bottom.Selected() == 0` was already true
+// before the report was decoded or delivered. It could not fail. This version
+// asserts FOCUS via Context().Focused(), and starts by focusing the TOP list so
+// there is a real transition to observe rather than an initial state to restate.
 func TestWebPressFocusesClickedWidget(t *testing.T) {
 	top := widget.NewList(widget.WithItems([]string{"t0", "t1"}, func(s string) string { return s }))
 	bottom := widget.NewList(widget.WithItems([]string{"b0", "b1"}, func(s string) string { return s }))
 	root := tui.NewFlex(tui.Vertical)
-	root.Add(top, bottom)
-	_, app := runDecoded(t, root, 10, 4, MouseReport{Kind: "down", Button: 0, X: 1, Y: 2})
+	// Weighted, so each list really occupies half the viewport. With plain Add a
+	// List has no intrinsic height and the first can take everything, leaving the
+	// second unplaced and therefore not hit-testable at all.
+	root.AddWeighted(top, 1)
+	root.AddWeighted(bottom, 1)
 
-	// Focus landed on the bottom list: its own row moved, the top one did not.
-	waitUntil(t, "the clicked (bottom) list took the press", func() bool {
-		var i int
-		var ok bool
-		onLoop(t, app, func() { i, ok = bottom.Selected() })
-		return ok && i == 0
-	})
-	var ti int
-	var tok bool
-	onLoop(t, app, func() { ti, tok = top.Selected() })
-	if tok && ti != 0 {
-		t.Errorf("the top list moved its cursor to %d; the press belonged to the bottom list", ti)
+	// Press the TOP list first, so focus starts somewhere it must move FROM.
+	send, app := runDecoded(t, root, 10, 4, MouseReport{Kind: "down", Button: 0, X: 1, Y: 0})
+
+	focused := func(l *widget.List[string]) bool {
+		var f bool
+		onLoop(t, app, func() {
+			if ctx := l.Context(); ctx != nil {
+				f = ctx.Focused()
+			}
+		})
+		return f
+	}
+
+	waitUntil(t, "the top list is focused first", func() bool { return focused(top) })
+
+	// Now click the BOTTOM list: focus must move to it.
+	send(MouseReport{Kind: "down", Button: 0, X: 1, Y: 2})
+	waitUntil(t, "focus moved to the clicked (bottom) list", func() bool { return focused(bottom) })
+	if focused(top) {
+		t.Error("the top list still holds focus after the bottom list was clicked")
 	}
 }
 

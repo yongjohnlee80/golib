@@ -246,12 +246,19 @@ func TestEditorClickAtHorizontalScroll(t *testing.T) {
 		t.Fatalf("precondition: `$` -> col %d, want 19", endCol)
 	}
 
-	// Click the leftmost text cell. With left > 0 this is NOT column 0.
+	// Click the leftmost text cell. With left > 0 this is NOT column 0 — and the
+	// expected column is exact: `left` + 0, where left is whatever ensureVisible
+	// chose to bring column 19 into a width-8 viewport (7 text cells + indicator).
+	// Asserting merely "not 0" would pass for any wrong offset.
+	// The viewport is 8 cells wide and reserves NO indicator column here: this
+	// buffer is a single line, so scrollable() is false. So 8 text cells are
+	// visible, the caret at column 19 sits in the rightmost one, and the leftmost
+	// visible column is 19-7.
+	wantCol := endCol - (8 - 1)
 	h.inject(click(0, 0))
 	h.barrier(sh)
-	if _, _, _, col := edState(h, ed); col == 0 {
-		t.Error("click at x=0 resolved to column 0: the mapping ignored the " +
-			"horizontal scroll offset `left`")
+	if _, _, _, col := edState(h, ed); col != wantCol {
+		t.Errorf("click at x=0 -> column %d, want exactly %d (left + 0)", col, wantCol)
 	}
 }
 
