@@ -1037,6 +1037,22 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 		}
 	}
 
+	// A key carrying a COMMAND modifier other than Ctrl is not this Editor's to
+	// consume, and must bubble to the host.
+	//
+	// KeyChord identity is (Mode, Code, Ctrl) — Alt is not part of it. So without
+	// this check Alt+h built the SAME chord as plain h and was swallowed as a
+	// motion, which silently denied the host every Alt binding while looking like
+	// the key had simply done nothing. Found from autodb, which needs Alt+h/j/k/l
+	// for pane motion precisely because a browser keeps Ctrl-L for its address bar
+	// and will not surrender it.
+	//
+	// Ctrl is excluded from this rule because Ctrl IS part of a chord (Ctrl-r is
+	// redo), so a Ctrl key the keymap does not bind already falls through below.
+	if k.Mods&(tui.ModAlt|tui.ModSuper|tui.ModMeta|tui.ModHyper) != 0 {
+		return false
+	}
+
 	code := k.Code
 	if k.Text != "" && k.Mods&nonTextMods == 0 {
 		code = []rune(k.Text)[0] // shifted letters arrive via Text ("G")
