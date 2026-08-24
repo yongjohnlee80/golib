@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/yongjohnlee80/golib/logger"
+import (
+	"time"
+
+	"github.com/yongjohnlee80/golib/logger"
+)
 
 // Event routing — target-then-bubble, no capture phase (ADR-0004 §2.5): the
 // runtime resolves a single target node per routed event, calls its
@@ -36,6 +40,16 @@ func (a *App) dispatch(ev Event) {
 		}
 
 	case MouseEvent:
+		// The press ORDINAL is stamped here, before hit-testing and before the
+		// focus step below, so a double-click that also moves focus still carries
+		// Count == 2 to the widget. Producers never compute it: a click count is
+		// behaviour derived from timing and position, not decode shape, so it is
+		// synthesised once at the boundary every producer flows through
+		// (ADR-0010 §2.5; criterion 18's layering).
+		if e.Kind == MousePress {
+			e.Count = a.pressOrdinal(e)
+			ev = e
+		}
 		// Target by hit-testing laid-out absolute rects, topmost first
 		// (reverse paint order — Stack z-order); coordinates are rewritten
 		// LOCAL to each receiving node at every hop (ADR-0004 §2.5.2).
@@ -208,4 +222,31 @@ func hitTestNode(n *node, x, y int) *node {
 		}
 	}
 	return n
+}
+
+// pressOrdinal returns the ordinal of this press: 1 for a single press, 2 for the
+// second press of a double-click, and so on (ADR-0010 §2.5).
+//
+// A press continues the run only when the button, the CELL and the window all
+// match. Same cell rather than "near": a terminal row is one cell tall, so a
+// one-cell drift is a different row, and tolerating it would activate a row the
+// user did not click. A release between the two presses is normal and does not
+// interrupt the run; a press of a different button, or on another cell, restarts
+// it at 1.
+func (a *App) pressOrdinal(e MouseEvent) int {
+	window := a.cfg.doubleClickWindow
+	now := time.Now()
+	continues := window > 0 &&
+		a.lastPressCount > 0 &&
+		e.Button == a.lastPressButton &&
+		e.X == a.lastPressX && e.Y == a.lastPressY &&
+		now.Sub(a.lastPressAt) <= window
+
+	count := 1
+	if continues {
+		count = a.lastPressCount + 1
+	}
+	a.lastPressAt, a.lastPressX, a.lastPressY = now, e.X, e.Y
+	a.lastPressButton, a.lastPressCount = e.Button, count
+	return count
 }

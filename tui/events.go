@@ -86,6 +86,15 @@ type MouseEvent struct {
 	Button MouseButton
 	X, Y   int
 	Mods   Mods
+
+	// Count is the press ordinal: 1 for a single press, 2 for the second press of
+	// a double-click, 3 for a triple. It is 0 on every non-press kind, so nothing
+	// can read a count off motion, wheel or release and believe it.
+	//
+	// Producers do NOT set this. It is synthesised once in App.dispatch from
+	// timing and position, because a click count is behaviour rather than decode
+	// shape (ADR-0010 §2.5, and criterion 18's layering).
+	Count int
 }
 
 // --- lifecycle / terminal ---

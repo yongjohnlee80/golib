@@ -2,7 +2,6 @@ package widget
 
 import (
 	"sort"
-	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -51,9 +50,6 @@ type List[T any] struct {
 	top    int
 	count  int // Len() cached at render/refresh; handlers use the cache
 	w, h   int
-
-	lastClickIdx int
-	lastClickAt  time.Time
 
 	emptyText string // shown (muted) in place of rows when the source is empty
 
@@ -259,9 +255,6 @@ func (l *List[T]) activate() {
 	l.publish(ActivateEvent{Owner: l.NodeID(), Index: l.cursor})
 }
 
-// doubleClickWindow bounds the two-click activation gesture.
-const doubleClickWindow = 400 * time.Millisecond
-
 // HandleEvent implements the §2.4 key/mouse contract.
 func (l *List[T]) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
@@ -332,11 +325,14 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 			if idx < 0 || idx >= l.count {
 				return true
 			}
-			now := time.Now()
-			double := idx == l.lastClickIdx && now.Sub(l.lastClickAt) <= doubleClickWindow
-			l.lastClickIdx, l.lastClickAt = idx, now
 			l.moveCursor(idx)
-			if double {
+			// The press ORDINAL comes from the App (ADR-0010 §2.5). List used to
+			// time its own double-clicks with a package constant and time.Now(),
+			// which duplicated behaviour the boundary now owns, could not be
+			// configured, and could not be tested without sleeping. Keying on the
+			// synthesised Count also makes List and Tree agree by construction
+			// rather than by two implementations that happen to match.
+			if e.Count >= 2 {
 				l.activate()
 			}
 			return true
