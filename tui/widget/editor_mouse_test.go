@@ -342,3 +342,38 @@ func wheel(up bool) tui.MouseEvent {
 	}
 	return tui.MouseEvent{Kind: tui.MouseWheel, Button: b, X: 1, Y: 1}
 }
+
+// An Alt-modified key must BUBBLE, not be swallowed as its unmodified motion.
+//
+// KeyChord identity is (Mode, Code, Ctrl), so Alt is not part of it: before this
+// fix Alt+h built the same chord as plain h and moved the cursor, which silently
+// denied the host every Alt binding. Found from autodb, which needs Alt+h/j/k/l
+// for pane motion because a browser keeps Ctrl-L for its address bar.
+func TestEditorAltKeysBubbleRatherThanActingAsMotions(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 20, 4)
+	h.onLoop(func() { ed.SetValue("abcdef") })
+	h.barrier(sh)
+
+	h.inject(key('$')) // caret to the last column
+	h.barrier(sh)
+	_, _, _, before := edState(h, ed)
+	if before == 0 {
+		t.Fatal("precondition: caret did not move to end-of-line")
+	}
+
+	// Alt+h must NOT act as `h`.
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'h', Mods: tui.ModAlt})
+	h.barrier(sh)
+	if _, _, _, col := edState(h, ed); col != before {
+		t.Errorf("Alt+h moved the caret %d -> %d: an Alt chord was consumed as the plain "+
+			"`h` motion, so the host can never bind Alt", before, col)
+	}
+
+	// Plain h still moves, so the test cannot pass by the motion being broken.
+	h.inject(key('h'))
+	h.barrier(sh)
+	if _, _, _, col := edState(h, ed); col != before-1 {
+		t.Errorf("plain h no longer moves left (%d -> %d); the Alt guard is too broad",
+			before, col)
+	}
+}
