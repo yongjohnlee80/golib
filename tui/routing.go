@@ -45,7 +45,7 @@ func (a *App) dispatch(ev Event) {
 		// wheel and release deliberately do not, so scrolling over an unfocused
 		// pane never steals the keyboard.
 		if target != nil && e.Kind == MousePress && e.Button == MouseLeft {
-			a.focusFromPointer(target)
+			focused := a.focusFromPointer(target)
 			// Focus handlers run arbitrary component code synchronously and may
 			// unmount the very node this press was addressed to. A replacement
 			// mounted during dispatch has measured=false/placed=false and is not
@@ -56,6 +56,15 @@ func (a *App) dispatch(ev Event) {
 			if !target.mounted {
 				a.trace(TraceEvent{Kind: TraceUnmount, Node: target.id,
 					Detail: "pointer press skipped: focus handling unmounted the target"})
+				return
+			}
+			// A handler can also REDIRECT focus while leaving the target mounted.
+			// The target would then receive the press unfocused, which is the very
+			// thing focus-before-delivery exists to prevent, so mounted-ness alone
+			// is not enough: the candidate must still own focus.
+			if focused != nil && a.focused != focused.id {
+				a.trace(TraceEvent{Kind: TraceFocus, Node: a.focused, Prev: focused.id,
+					Detail: "pointer press skipped: focus was redirected away from the target"})
 				return
 			}
 		}

@@ -1293,7 +1293,8 @@ func (e *Editor) posAt(x, y int) (ln, col int) {
 
 	if e.wrap == WrapNone {
 		ln = min(e.top+max(y, 0), lastLn)
-		return ln, e.colAtCells(e.lineClusters(ln), 0, e.left+max(x, 0))
+		cs := e.lineClusters(ln)
+		return ln, e.colAtCells(cs, 0, len(cs), e.left+max(x, 0))
 	}
 
 	// WrapSoft: walk the same wrap computation the renderer used, rather than
@@ -1305,26 +1306,32 @@ func (e *Editor) posAt(x, y int) (ln, col int) {
 			cs := e.lineClusters(i)
 			ranges := wrapRanges(cs, e.wrapWidth(), e.measure)
 			r := ranges[min(remaining, len(ranges)-1)]
-			return i, e.colAtCells(cs, r[0], max(x, 0))
+			// Bounded to THIS row: wrapRanges is [start,end), and a word-wrapped
+			// row can be shorter than the viewport, so an unbounded scan would run
+			// through its blank tail into clusters painted on the NEXT visual row.
+			return i, e.colAtCells(cs, r[0], r[1], max(x, 0))
 		}
 		remaining -= rows
 	}
 	return lastLn, e.normalMax(lastLn)
 }
 
-// colAtCells walks clusters from `from`, accumulating measured cell widths, and
+// colAtCells walks clusters in [from,end), accumulating measured cell widths, and
 // returns the column whose cell span contains `cells`. A click in the trailing
 // half of a double-width grapheme resolves to that grapheme, not the next one.
-func (e *Editor) colAtCells(cs []string, from, cells int) int {
+// Past the end of the range it clamps to the range's LAST column, which is what
+// keeps a wrapped row's blank tail on its own row.
+func (e *Editor) colAtCells(cs []string, from, end, cells int) int {
+	end = min(end, len(cs))
 	acc := 0
-	for i := from; i < len(cs); i++ {
+	for i := from; i < end; i++ {
 		w := e.measure(cs[i])
 		if cells < acc+w {
 			return i
 		}
 		acc += w
 	}
-	return max(from, len(cs)-1) // past end of line: the last column
+	return max(from, end-1)
 }
 
 func (e *Editor) wrapPos(ln, col int) (row, x int) {

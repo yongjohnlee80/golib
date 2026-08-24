@@ -212,3 +212,128 @@ func TestEditorWheelScrollsWithoutMovingCaret(t *testing.T) {
 		t.Error("the wheel did not scroll: the top row is still line 0")
 	}
 }
+
+// --- criteria 15-17, the matrix lector's r2 review found missing ---
+
+// Criterion 15 (WrapSoft) — placement on a later visual row of a wrapped line,
+// which the r2 review noted was absent and which concealed the cross-row bug.
+func TestEditorWrapSoftClickOnLaterRow(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 6, 4, widget.WithEditorWrap(widget.WrapSoft))
+	// Width 6 with the scroll indicator -> wrap width 5. "abcdefghij" wraps to
+	// "abcde" on row 0 and "fghij" on row 1.
+	h.onLoop(func() { ed.SetValue("abcdefghij\nzzz\nyyy\nxxx\nwww") })
+	h.barrier(sh)
+
+	h.inject(click(2, 1)) // third cell of the SECOND visual row -> 'h' (col 7)
+	h.barrier(sh)
+	if _, _, ln, col := edState(h, ed); ln != 0 || col != 7 {
+		t.Errorf("click on wrapped row 1 -> (%d,%d), want (0,7)", ln, col)
+	}
+}
+
+// Criterion 15 (horizontal) — placement at a NON-ZERO horizontal offset: the
+// click must invert `left`, not assume a left edge of 0.
+func TestEditorClickAtHorizontalScroll(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 8, 3)
+	h.onLoop(func() { ed.SetValue("0123456789abcdefghij") })
+	h.barrier(sh)
+
+	// `$` jumps to end-of-line, which scrolls the viewport horizontally.
+	h.inject(key('$'))
+	h.barrier(sh)
+	_, _, _, endCol := edState(h, ed)
+	if endCol != 19 {
+		t.Fatalf("precondition: `$` -> col %d, want 19", endCol)
+	}
+
+	// Click the leftmost text cell. With left > 0 this is NOT column 0.
+	h.inject(click(0, 0))
+	h.barrier(sh)
+	if _, _, _, col := edState(h, ed); col == 0 {
+		t.Error("click at x=0 resolved to column 0: the mapping ignored the " +
+			"horizontal scroll offset `left`")
+	}
+}
+
+// Criterion 16 — the scroll-indicator column is not text and a press there is
+// inert.
+func TestEditorClickOnIndicatorColumnIsInert(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 8, 3)
+	// More lines than rows, so the editor is scrollable and reserves the column.
+	h.onLoop(func() { ed.SetValue("aaa\nbbb\nccc\nddd\neee\nfff") })
+	h.barrier(sh)
+
+	h.inject(click(1, 1)) // a normal click first
+	h.barrier(sh)
+	_, _, ln0, col0 := edState(h, ed)
+
+	h.inject(click(7, 2)) // x = w-1 = the indicator column
+	h.barrier(sh)
+	if _, _, ln, col := edState(h, ed); ln != ln0 || col != col0 {
+		t.Errorf("a press on the indicator column moved the caret (%d,%d) -> (%d,%d); "+
+			"that column is not text", ln0, col0, ln, col)
+	}
+}
+
+// Criterion 17 — N wheel events are N steps, clamped at BOTH ends, in BOTH wrap
+// modes. One MouseEvent is one step: the event carries a direction and no
+// magnitude, so the consumer must never multiply.
+func TestEditorWheelStepsAndClamps(t *testing.T) {
+	for _, wrap := range []struct {
+		name string
+		mode widget.WrapMode
+	}{{"wrapnone", widget.WrapNone}, {"wrapsoft", widget.WrapSoft}} {
+		t.Run(wrap.name, func(t *testing.T) {
+			h, ed, sh := focusedEditor(t, 8, 3, widget.WithEditorWrap(wrap.mode))
+			h.onLoop(func() { ed.SetValue("l0\nl1\nl2\nl3\nl4\nl5") })
+			h.barrier(sh)
+
+			topLine := func() int {
+				h.inject(click(0, 0))
+				h.barrier(sh)
+				_, _, ln, _ := edState(h, ed)
+				return ln
+			}
+			if got := topLine(); got != 0 {
+				t.Fatalf("precondition: top line = %d, want 0", got)
+			}
+
+			// Two events = two steps, not one and not four.
+			h.inject(wheel(false), wheel(false))
+			h.barrier(sh)
+			if got := topLine(); got != 2 {
+				t.Errorf("2 wheel events -> top line %d, want 2 (one step per event)", got)
+			}
+
+			// Clamp at the BOTTOM: far more events than lines.
+			for i := 0; i < 20; i++ {
+				h.inject(wheel(false))
+			}
+			h.barrier(sh)
+			bottom := topLine()
+			h.inject(wheel(false))
+			h.barrier(sh)
+			if got := topLine(); got != bottom {
+				t.Errorf("wheel past the end kept scrolling: %d -> %d", bottom, got)
+			}
+
+			// Clamp at the TOP.
+			for i := 0; i < 40; i++ {
+				h.inject(wheel(true))
+			}
+			h.barrier(sh)
+			if got := topLine(); got != 0 {
+				t.Errorf("wheel up did not clamp at the first line: top = %d", got)
+			}
+		})
+	}
+}
+
+// wheel builds one wheel event; up=true scrolls toward the start.
+func wheel(up bool) tui.MouseEvent {
+	b := tui.WheelDown
+	if up {
+		b = tui.WheelUp
+	}
+	return tui.MouseEvent{Kind: tui.MouseWheel, Button: b, X: 1, Y: 1}
+}
