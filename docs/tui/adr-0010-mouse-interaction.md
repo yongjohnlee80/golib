@@ -1,6 +1,6 @@
 # ADR-0010 — `golib/tui`: mouse interaction (click-to-focus, Table, Editor)
 
-- **Status:** **Proposed (rev 7)** (2026-08-25, authored by jarvis at Johno's
+- **Status:** **Proposed (rev 8)** (2026-08-25, authored by jarvis at Johno's
   request). **Rev 6 adds §2.5, double-click as activation** — Johno, 2026-08-25:
   *"Let's implement double mouse click as ENTER."* Nothing in rev 5 changes. Companion to autodb ADR-0064 §2.2, which is the consumer that asked
   for this and which decided *not* to build a webapp instead.
@@ -410,7 +410,9 @@ delivered verbatim, contradicting the promise above. `tui/term/decoder.go` and `
 property the layered rule exists to protect.
 
 **The widget owns LOGICAL identity; the App cannot** (finding 2). An absolute
-cell is not a row. Scroll a `List` between the two presses and the same cell
+cell is not a row — and a row index is not durable either: it names a row only
+within one **source epoch**, so replacing or refreshing a `List`'s source ends the
+pairing (lector r2). Scroll a `List` between the two presses and the same cell
 addresses different data — `List`'s own previous detection compared logical rows
 and refused that pair, so keying activation on the cell alone silently activated
 the wrong row. `List` therefore also requires the same logical row, and `Tree` the
@@ -581,8 +583,12 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
     on its first delivered press.
 25b. Non-press kinds are delivered with `Count == 0` even when **seeded** nonzero.
 25c. `List` does not activate when the two presses land on the same cell but
-    different **logical rows** (a scroll between them); it still activates without
-    the scroll.
+    different **logical rows**, whether they differ because of a scroll, a source
+    **replacement**, or an in-place **refresh**. An index names a row only within
+    one **source epoch**, so the remembered press is cleared on every source
+    change and starts cleared. Paired positive: with the source untouched the same
+    gesture still activates — without it, clearing unconditionally would satisfy
+    every negative control and break double-click entirely.
 25d. `Tree` does not activate when the two presses land on the same cell but
     different **nodes**.
 25e. A triple-click activates **once**, in both `List` and `Tree`.

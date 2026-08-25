@@ -128,3 +128,64 @@ func TestTreeDoubleClickOnTheExpanderTogglesTwiceAndDoesNotActivate(t *testing.T
 			rowsBefore, rowsAfter)
 	}
 }
+
+// Lector r2's blocker — an index is logical identity only WITHIN ONE SOURCE
+// EPOCH. Clicking old row 1, replacing the source, then clicking the same cell
+// used to emit ActivateEvent{Index:1} for the NEW row 1, which the user had
+// clicked exactly once.
+func TestListDoubleClickAcrossASourceReplacementDoesNotActivate(t *testing.T) {
+	src := widget.SliceSource([]string{"a", "b", "c", "d"})
+	h, l, sh := focusedList(t, src, 10, 4)
+	acts := record[widget.ActivateEvent](h)
+
+	h.inject(click(2, 1)) // old logical row 1
+	h.barrier(sh)
+
+	h.onLoop(func() { l.SetItems([]string{"x", "y", "z"}) })
+	h.barrier(sh)
+
+	h.inject(click(2, 1)) // same cell, entirely different row
+	h.barrier(sh)
+
+	if n := acts.count(); n != 0 {
+		ev, _ := acts.last()
+		t.Errorf("activations = %d (%+v), want 0 — the source was replaced between "+
+			"the presses, so the index no longer names the row that was pressed", n, ev)
+	}
+}
+
+// The same shape through RefreshSource, which mutates in place under one source
+// and can reorder rows without SetSource ever being called.
+func TestListDoubleClickAcrossARefreshDoesNotActivate(t *testing.T) {
+	items := []string{"a", "b", "c", "d"}
+	h, l, sh := focusedList(t, widget.SliceSource(items), 10, 4)
+	acts := record[widget.ActivateEvent](h)
+
+	h.inject(click(2, 1))
+	h.barrier(sh)
+	h.onLoop(func() { l.RefreshSource() })
+	h.barrier(sh)
+	h.inject(click(2, 1))
+	h.barrier(sh)
+
+	if n := acts.count(); n != 0 {
+		t.Errorf("activations = %d, want 0 — a refresh ends the source epoch", n)
+	}
+}
+
+// The POSITIVE that keeps the two controls above honest: with the source left
+// alone, the identical gesture still activates. Without this, clearing the index
+// unconditionally would pass both controls and break double-click entirely.
+func TestListDoubleClickWithUnchangedSourceStillActivates(t *testing.T) {
+	src := widget.SliceSource([]string{"a", "b", "c", "d"})
+	h, _, sh := focusedList(t, src, 10, 4)
+	acts := record[widget.ActivateEvent](h)
+
+	h.inject(click(2, 1), click(2, 1))
+	h.barrier(sh)
+
+	if ev, ok := acts.last(); !ok || ev.Index != 1 {
+		t.Errorf("ActivateEvent = %+v (ok=%v), want index 1 — an untouched source "+
+			"must still pair two presses", ev, ok)
+	}
+}
