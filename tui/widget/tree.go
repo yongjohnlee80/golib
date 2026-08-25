@@ -355,6 +355,11 @@ func (t *Tree) adopt(n *TreeNode) {
 // roots adopted (owned roots and duplicate IDs panic), every outstanding
 // generation on the old roots is invalidated by the release.
 func (t *Tree) SetRoots(roots ...*TreeNode) {
+	// Not a correctness fix — lastPressNode keeps its node alive, so Go cannot
+	// allocate a different node at that address and a replacement pointer already
+	// refuses to pair. Cleared so a discarded tree is not retained through it
+	// (lector r2).
+	t.lastPressNode = nil
 	preflightForest(roots, nil)
 	committed := append([]*TreeNode(nil), roots...)
 	for _, old := range t.roots {

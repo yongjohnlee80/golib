@@ -51,6 +51,10 @@ type List[T any] struct {
 	count  int // Len() cached at render/refresh; handlers use the cache
 	// lastPressIdx is the LOGICAL row of the previous press, so a double-click
 	// pair straddling a viewport scroll cannot activate a different row.
+	//
+	// An index identifies a row only WITHIN ONE SOURCE EPOCH. Replacing or
+	// reordering the source makes the same integer mean something else, so it is
+	// cleared to noPress on every source change and starts there (lector r2).
 	lastPressIdx int
 	w, h         int
 
@@ -139,6 +143,10 @@ func (l *List[T]) Len() int { return l.count }
 
 // NewList builds a List. A source (WithSource or WithItems) is required —
 // misconfiguration panics at construction (golib convention).
+// noPress is the lastPressIdx sentinel: no press has happened in this source
+// epoch, so nothing can pair with one. Zero would alias row 0.
+const noPress = -1
+
 func NewList[T any](opts ...ListOption[T]) *List[T] {
 	l := &List[T]{
 		sel: make(map[int]struct{}),
@@ -157,6 +165,7 @@ func NewList[T any](opts ...ListOption[T]) *List[T] {
 		panic("widget: NewList requires WithSource or WithItems")
 	}
 	l.count = l.src.Len()
+	l.lastPressIdx = noPress
 	return l
 }
 
@@ -170,6 +179,10 @@ func (l *List[T]) SetSource(src ListSource[T]) {
 	l.count = src.Len()
 	l.cursor, l.top = 0, 0
 	clear(l.sel)
+	// A new source is a new epoch: the retained press index would otherwise let a
+	// single click on the NEW row N activate, because the OLD row N had been
+	// clicked (lector r2's probe).
+	l.lastPressIdx = noPress
 	l.MarkDirty()
 }
 
@@ -180,6 +193,9 @@ func (l *List[T]) SetItems(items []T) { l.SetSource(SliceSource(items)) }
 // cursor, and repaints.
 func (l *List[T]) RefreshSource() {
 	l.count = l.src.Len()
+	// In-place mutation can reorder or replace rows under the same source, so the
+	// previous index is no longer the row the user pressed.
+	l.lastPressIdx = noPress
 	l.clamp()
 	l.MarkDirty()
 }
