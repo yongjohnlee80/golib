@@ -205,3 +205,95 @@ func TestDoubleClick_SurvivesTheFocusStep(t *testing.T) {
 		t.Errorf("press counts on the newly focused widget = %v, want [1 2]", got)
 	}
 }
+
+// Finding 1 (lector r1) — a press delivered to NOBODY must not advance the run.
+//
+// The ordinal used to be committed on arrival, before hit-testing and before the
+// focus step could decide to skip. So the victim's press counted, and the
+// widget that REPLACED it saw Count == 2 as its first ever delivered press.
+// Count drives activation, so that is a spurious activation on a first click.
+func TestDoubleClick_SkippedPressDoesNotAdvanceTheRun(t *testing.T) {
+	t.Parallel()
+	victim := newFocusProbe("victim", Size{W: 8, H: 1})
+	replacement := newFocusProbe("replacement", Size{W: 8, H: 1})
+	filler := &probe{name: "filler", pref: Size{W: 8, H: 1}}
+	root := NewFlex(Vertical)
+	root.Add(victim, filler)
+	h := startApp(t, root, 8, 4, WithDoubleClickWindow(10*time.Second))
+
+	// The replacement must end up in the VICTIM'S CELL, not merely in the tree:
+	// at a different cell the run could not continue anyway and the assertion
+	// below would pass without testing anything. Flex only appends, so the filler
+	// is re-added after the replacement to restore the row order.
+	victim.onEvent = func(p *probe, ev Event) bool {
+		if fe, ok := ev.(FocusEvent); ok && fe.Gained {
+			root.Remove(victim)
+			root.Remove(filler)
+			root.Add(replacement)
+			root.Add(filler)
+		}
+		return false
+	}
+
+	h.inject(pressAt(1, 0)) // skipped: focus handling unmounts the target
+	waitFor(t, "focus handler unmounted the pointer target", func() bool {
+		return nodeGone(h, victim.nodeID())
+	})
+	if got := pressCounts(&victim.probe); len(got) != 0 {
+		t.Fatalf("precondition: the victim received %v, want nothing — the press must be skipped", got)
+	}
+
+	// The replacement is mounted but has measured=false/placed=false until a
+	// layout pass, so it is not hit-testable yet. Waiting for its first Layout is
+	// what makes the click below actually land — without it the test times out
+	// with no presses and says nothing about counting.
+	waitFor(t, "replacement laid out and hit-testable", func() bool {
+		return replacement.layouts.Load() > 0
+	})
+
+	// The replacement now occupies that cell — a DIFFERENT target at the same
+	// coordinates. Its FIRST delivered press is a first click and must say so.
+	h.inject(pressAt(1, 0))
+	got := waitPresses(t, &replacement.probe, 1)
+	if got[0] != 1 {
+		t.Errorf("the replacement's first delivered press has Count %d, want 1 — "+
+			"a press nobody received advanced the run", got[0])
+	}
+}
+
+// Finding 4 — non-press Count is CANONICALISED, not merely left alone. dispatch
+// used to rewrite presses only, so a producer (or a test) could hand a wheel a
+// count and it would be delivered verbatim, contradicting the ADR.
+func TestDoubleClick_NonPressCountIsCanonicalisedNotIgnored(t *testing.T) {
+	t.Parallel()
+	a := newFocusProbe("a", Size{W: 8, H: 2})
+	root := NewFlex(Vertical)
+	root.Add(a)
+	h := startApp(t, root, 8, 2, WithDoubleClickWindow(10*time.Second))
+
+	// SEEDED nonzero: the previous version of this assertion passed because
+	// nothing ever set a non-press count, not because anything cleared it.
+	h.inject(
+		MouseEvent{Kind: MouseWheel, Button: WheelDown, X: 2, Y: 1, Count: 99},
+		MouseEvent{Kind: MouseRelease, Button: MouseLeft, X: 2, Y: 1, Count: 42},
+		MouseEvent{Kind: MouseMotion, Button: MouseNone, X: 2, Y: 1, Count: 7},
+	)
+	waitFor(t, "all three non-press events delivered", func() bool {
+		n := 0
+		for _, ev := range a.probe.recorded() {
+			if m, ok := ev.(MouseEvent); ok && m.Kind != MousePress {
+				n++
+			}
+		}
+		return n >= 3
+	})
+	for _, ev := range a.probe.recorded() {
+		m, ok := ev.(MouseEvent)
+		if !ok || m.Kind == MousePress {
+			continue
+		}
+		if m.Count != 0 {
+			t.Errorf("%v was delivered with Count %d, want 0 — a seeded count survived", m.Kind, m.Count)
+		}
+	}
+}

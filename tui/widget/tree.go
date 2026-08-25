@@ -275,13 +275,17 @@ type CollapseEvent struct {
 // lifecycle above.
 type Tree struct {
 	Base
-	roots  []*TreeNode
-	cursor int
-	top    int
-	w, h   int
-	indent int
-	styles ListStyles
-	genSeq uint64
+	roots []*TreeNode
+	// lastPressNode is the node of the previous press. Pointer identity, not the
+	// id string: a host may render the same id under two parents (autodb does,
+	// for a connection attached to two workspaces).
+	lastPressNode *TreeNode
+	cursor        int
+	top           int
+	w, h          int
+	indent        int
+	styles        ListStyles
+	genSeq        uint64
 }
 
 var _ tui.Focusable = (*Tree)(nil)
@@ -659,7 +663,11 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	}
 	r := rows[idx]
 	t.cursor = idx
-	// A SECOND press on the same cell is activation, on the same channel ENTER
+	onExpander := e.X >= r.depth*t.indent && e.X < r.depth*t.indent+2 && !r.node.leaf
+	prev := t.lastPressNode
+	t.lastPressNode = r.node
+
+	// A SECOND press on the same NODE is activation, on the same channel ENTER
 	// already uses — so a host that handles ActivateEvent gets double-click for
 	// free (ADR-0010 §2.5).
 	//
@@ -667,16 +675,24 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	// toggle expansion: the Tree cannot know whether a branch is activatable.
 	// autodb's `tbl:` nodes are branches whose children are columns and whose
 	// activation is a query scaffold, so a Tree that guessed would scaffold AND
-	// expand. Hosts that want folder-opens-on-double-click do it in their own
+	// expand. Hosts wanting folder-opens-on-double-click do it in their own
 	// handler, where the node grammar is known.
-	if e.Count >= 2 {
+	//
+	// Three constraints beyond the App's count, each from lector r1:
+	//   - EXACTLY 2, so a triple-click activates once rather than on 2 and 3;
+	//   - the same NODE, because the App's continuity is an absolute cell while
+	//     the rows under it move whenever the tree expands or scrolls;
+	//   - never on the EXPANDER, whose press already toggles — activating there
+	//     too would make one gesture both change expansion and activate. A
+	//     double-click on the expander now simply toggles twice.
+	if e.Count == 2 && !onExpander && r.node == prev {
 		t.ensureVisible()
 		t.MarkDirty()
 		t.publish(ActivateEvent{Owner: t.NodeID(), Index: idx})
 		return true
 	}
 	// A click on the expander glyph toggles; elsewhere selects.
-	if e.X >= r.depth*t.indent && e.X < r.depth*t.indent+2 && !r.node.leaf {
+	if onExpander {
 		if r.node.expanded {
 			t.collapseNode(r.node)
 		} else {

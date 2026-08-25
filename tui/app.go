@@ -62,6 +62,7 @@ type App struct {
 	lastPressY      int
 	lastPressButton MouseButton
 	lastPressCount  int
+	lastPressTarget NodeID
 	frames          uint64
 
 	timers      timerHeap
