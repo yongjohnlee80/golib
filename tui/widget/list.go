@@ -10,6 +10,25 @@ import (
 // ListSource is the data seam List renders through (ADR-0007 §2.4, rev 1).
 // It is v1 API: the shape a windowed/lazy source implements later WITHOUT
 // List needing a v2. Sources are consulted only on the loop goroutine.
+//
+// # Notification contract (normative)
+//
+// A source exposes only Len and Item, so List CANNOT observe a change made
+// behind them: SliceSource aliases the caller's slice, and mutating items[1] on
+// the loop invokes no List method at all. List cannot detect an unannounced
+// change, and anything depending on row identity — the double-click pairing in
+// particular — would then pair two presses across rows that are no longer the
+// same row.
+//
+// So: any IN-PLACE change to a source's length, values, order, or logical row
+// identity MUST be followed, on the loop goroutine, by List.RefreshSource BEFORE
+// any further input event or render observes it. A windowed or lazy source
+// publishes its new data and calls RefreshSource in the SAME loop callback.
+//
+// Replacing the source through SetSource or SetItems already notifies. Mutating
+// a source without notifying is a CALLER VIOLATION, not a List bug — it is
+// undetectable by construction, which is why this is a contract rather than a
+// defence in code.
 type ListSource[T any] interface {
 	// Len is the total row count.
 	Len() int
@@ -17,26 +36,6 @@ type ListSource[T any] interface {
 	// elsewhere (e.g. App.Go) and serve from memory here.
 	Item(i int) T
 }
-
-// NOTIFICATION CONTRACT (normative).
-//
-// A source exposes only Len and Item, so List CANNOT observe a change made
-// behind them: SliceSource aliases the caller's slice, and mutating items[1] on
-// the loop invokes no List method at all. List therefore cannot detect an
-// unannounced change, and anything that depends on row identity — the
-// double-click pairing in particular — would silently pair two presses across
-// rows that are no longer the same row (lector r3).
-//
-// So: any IN-PLACE change to a source's length, values, order, or logical row
-// identity MUST be followed, on the loop goroutine, by List.RefreshSource
-// BEFORE any further input event or render can observe it. A windowed or lazy
-// source publishes its new data and calls RefreshSource in the SAME loop
-// callback.
-//
-// Replacing the source through SetSource/SetItems already notifies. Mutating a
-// source without notifying is a CALLER VIOLATION, not a List bug — it is
-// undetectable by construction, which is why it is stated here as a contract
-// rather than defended against in code.
 
 // sliceSource adapts an in-memory slice — the provided v1 source.
 type sliceSource[T any] []T
