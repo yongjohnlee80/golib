@@ -18,6 +18,26 @@ type ListSource[T any] interface {
 	Item(i int) T
 }
 
+// NOTIFICATION CONTRACT (normative).
+//
+// A source exposes only Len and Item, so List CANNOT observe a change made
+// behind them: SliceSource aliases the caller's slice, and mutating items[1] on
+// the loop invokes no List method at all. List therefore cannot detect an
+// unannounced change, and anything that depends on row identity — the
+// double-click pairing in particular — would silently pair two presses across
+// rows that are no longer the same row (lector r3).
+//
+// So: any IN-PLACE change to a source's length, values, order, or logical row
+// identity MUST be followed, on the loop goroutine, by List.RefreshSource
+// BEFORE any further input event or render can observe it. A windowed or lazy
+// source publishes its new data and calls RefreshSource in the SAME loop
+// callback.
+//
+// Replacing the source through SetSource/SetItems already notifies. Mutating a
+// source without notifying is a CALLER VIOLATION, not a List bug — it is
+// undetectable by construction, which is why it is stated here as a contract
+// rather than defended against in code.
+
 // sliceSource adapts an in-memory slice — the provided v1 source.
 type sliceSource[T any] []T
 
@@ -29,6 +49,9 @@ func (s sliceSource[T]) Item(i int) T { return s[i] }
 // (100k+-row query results) must page at the data layer until the windowed
 // source follow-up (§2.7#2) lands — a new ListSource implementation, no
 // List API change.
+// SliceSource ALIASES items; it does not copy. Mutating the slice afterwards is
+// therefore an in-place source change, and the notification contract above
+// applies: call List.RefreshSource on the loop before anything else observes it.
 func SliceSource[T any](items []T) ListSource[T] { return sliceSource[T](items) }
 
 // List renders selectable rows through a ListSource (ADR-0007 §2.4). The
@@ -189,8 +212,15 @@ func (l *List[T]) SetSource(src ListSource[T]) {
 // SetItems is sugar for SetSource(SliceSource(items)).
 func (l *List[T]) SetItems(items []T) { l.SetSource(SliceSource(items)) }
 
-// RefreshSource re-reads Len after in-place source mutation, clamps the
-// cursor, and repaints.
+// RefreshSource re-reads Len after in-place source mutation, clamps the cursor,
+// and repaints.
+//
+// It is also the NOTIFICATION required by the ListSource contract above: calling
+// it declares that the source's rows may have changed length, value, order or
+// identity, and ends the current source epoch. Row-identity state — the
+// double-click pairing — is discarded here, so a press before the change cannot
+// pair with one after it. Call it on the loop, before any further input event or
+// render observes the new data.
 func (l *List[T]) RefreshSource() {
 	l.count = l.src.Len()
 	// In-place mutation can reorder or replace rows under the same source, so the
