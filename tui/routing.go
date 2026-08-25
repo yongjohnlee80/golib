@@ -40,14 +40,12 @@ func (a *App) dispatch(ev Event) {
 		}
 
 	case MouseEvent:
-		// The press ORDINAL is stamped here, before hit-testing and before the
-		// focus step below, so a double-click that also moves focus still carries
-		// Count == 2 to the widget. Producers never compute it: a click count is
-		// behaviour derived from timing and position, not decode shape, so it is
-		// synthesised once at the boundary every producer flows through
-		// (ADR-0010 §2.5; criterion 18's layering).
-		if e.Kind == MousePress {
-			e.Count = a.pressOrdinal(e)
+		// A count belongs to presses only. Canonicalise every other kind to zero
+		// rather than passing a producer's value through: the ADR promises
+		// non-press Count is 0, and only rewriting presses left an injected
+		// MouseWheel{Count: 99} delivering 99 (lector r1 finding 4).
+		if e.Kind != MousePress {
+			e.Count = 0
 			ev = e
 		}
 		// Target by hit-testing laid-out absolute rects, topmost first
@@ -81,6 +79,23 @@ func (a *App) dispatch(ev Event) {
 					Detail: "pointer press skipped: focus was redirected away from the target"})
 				return
 			}
+		}
+		// The press ORDINAL is committed HERE — after hit-testing, after the focus
+		// step, and immediately before delivery — not on arrival.
+		//
+		// Committing on arrival made a SKIPPED press advance the run: the two
+		// early returns above deliver to nobody, yet the run continued, so the
+		// widget that replaced an unmounted target saw Count == 2 as its FIRST
+		// delivered press (lector r1 finding 1). Count drives activation, so a
+		// press nobody received must not count.
+		//
+		// Continuity is keyed on the DELIVERED TARGET as well as button, cell and
+		// window: a press landing on a different node is a different gesture even
+		// at the same coordinates, which happens whenever the tree under the
+		// pointer changes between clicks.
+		if e.Kind == MousePress {
+			e.Count = a.pressOrdinal(e, target)
+			ev = e
 		}
 		for n := target; n != nil; n = n.parent {
 			local := e
@@ -233,13 +248,18 @@ func hitTestNode(n *node, x, y int) *node {
 // user did not click. A release between the two presses is normal and does not
 // interrupt the run; a press of a different button, or on another cell, restarts
 // it at 1.
-func (a *App) pressOrdinal(e MouseEvent) int {
+func (a *App) pressOrdinal(e MouseEvent, target *node) int {
 	window := a.cfg.doubleClickWindow
 	now := time.Now()
+	var id NodeID
+	if target != nil {
+		id = target.id
+	}
 	continues := window > 0 &&
 		a.lastPressCount > 0 &&
 		e.Button == a.lastPressButton &&
 		e.X == a.lastPressX && e.Y == a.lastPressY &&
+		id == a.lastPressTarget &&
 		now.Sub(a.lastPressAt) <= window
 
 	count := 1
@@ -247,6 +267,6 @@ func (a *App) pressOrdinal(e MouseEvent) int {
 		count = a.lastPressCount + 1
 	}
 	a.lastPressAt, a.lastPressX, a.lastPressY = now, e.X, e.Y
-	a.lastPressButton, a.lastPressCount = e.Button, count
+	a.lastPressButton, a.lastPressCount, a.lastPressTarget = e.Button, count, id
 	return count
 }

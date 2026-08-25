@@ -49,7 +49,10 @@ type List[T any] struct {
 	sel    map[int]struct{} // multi-select set
 	top    int
 	count  int // Len() cached at render/refresh; handlers use the cache
-	w, h   int
+	// lastPressIdx is the LOGICAL row of the previous press, so a double-click
+	// pair straddling a viewport scroll cannot activate a different row.
+	lastPressIdx int
+	w, h         int
 
 	emptyText string // shown (muted) in place of rows when the source is empty
 
@@ -326,15 +329,21 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 				return true
 			}
 			l.moveCursor(idx)
-			// The press ORDINAL comes from the App (ADR-0010 §2.5). List used to
-			// time its own double-clicks with a package constant and time.Now(),
-			// which duplicated behaviour the boundary now owns, could not be
-			// configured, and could not be tested without sleeping. Keying on the
-			// synthesised Count also makes List and Tree agree by construction
-			// rather than by two implementations that happen to match.
-			if e.Count >= 2 {
+			// Timing, cell and target identity come from the App (ADR-0010 §2.5).
+			// LOGICAL ROW identity stays here, because only List knows it: the
+			// App's continuity is an absolute CELL, and a viewport that scrolls
+			// between the two presses maps the same cell to a different row. The
+			// old per-widget detection compared logical rows and refused that
+			// pair; dropping the comparison silently activated the wrong row
+			// (lector r1 finding 2).
+			//
+			// EXACTLY 2, not >= 2: three presses would otherwise activate twice,
+			// on counts 2 and 3, while "double-click = Enter" means one
+			// activation per pair (finding 3).
+			if e.Count == 2 && idx == l.lastPressIdx {
 				l.activate()
 			}
+			l.lastPressIdx = idx
 			return true
 		case e.Kind == tui.MouseWheel && e.Button == tui.WheelUp:
 			l.top = max(l.top-1, 0)

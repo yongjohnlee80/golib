@@ -1,6 +1,6 @@
 # ADR-0010 — `golib/tui`: mouse interaction (click-to-focus, Table, Editor)
 
-- **Status:** **Proposed (rev 6)** (2026-08-25, authored by jarvis at Johno's
+- **Status:** **Proposed (rev 7)** (2026-08-25, authored by jarvis at Johno's
   request). **Rev 6 adds §2.5, double-click as activation** — Johno, 2026-08-25:
   *"Let's implement double mouse click as ENTER."* Nothing in rev 5 changes. Companion to autodb ADR-0064 §2.2, which is the consumer that asked
   for this and which decided *not* to build a webapp instead.
@@ -389,10 +389,43 @@ kind**, so nothing can read a count off motion, wheel, or release and believe it
 **Synthesised in `dispatch`, not in the producers.** Criterion 18's three-layer
 rule decides this: a click *count* is not decode shape, it is behaviour derived
 from timing and position, so it belongs at the one point every producer's events
-already flow through — the `MouseEvent` case in `App.dispatch`, before hit-testing
-and before the focus step in §2.1. `tui/term/decoder.go` and `tui/web/input.go` are
+already flow through — the `MouseEvent` case in `App.dispatch`.
+
+**Committed immediately before DELIVERY, not on arrival** (lector r1 finding 1).
+Rev 6 stamped the ordinal before hit-testing and before the focus step, which
+meant a press the focus step then *skipped* still advanced the run: the widget
+that replaced an unmounted target saw `Count == 2` as its first ever delivered
+press, and `Count` drives activation. A press nobody received must not count. So
+the order is hit-test → focus → **commit** → deliver.
+
+**Continuity includes the DELIVERED TARGET**, not just button, cell and window: a
+press landing on a different node is a different gesture even at identical
+coordinates, which is exactly what happens when the tree under the pointer
+changes between clicks.
+
+**Non-press kinds are canonicalised to zero**, not merely left alone (finding 4).
+Rewriting only presses let a producer hand a wheel event a count that was
+delivered verbatim, contradicting the promise above. `tui/term/decoder.go` and `tui/web/input.go` are
 **unchanged**; a third producer would inherit the behaviour for free, which is the
 property the layered rule exists to protect.
+
+**The widget owns LOGICAL identity; the App cannot** (finding 2). An absolute
+cell is not a row. Scroll a `List` between the two presses and the same cell
+addresses different data — `List`'s own previous detection compared logical rows
+and refused that pair, so keying activation on the cell alone silently activated
+the wrong row. `List` therefore also requires the same logical row, and `Tree` the
+same node (by pointer, since a host may render one id under two parents). The
+split is the point: the App knows timing, button, cell and target; only the widget
+knows what those address.
+
+**Activation is exactly `Count == 2`** (finding 3). `>= 2` made a triple-click
+activate twice, on the 2nd and 3rd press, while "double-click = ENTER" means one
+activation per pair.
+
+**The `Tree` expander is not an activation target.** Its press already toggles, so
+activating there as well would make one gesture both change expansion and
+activate. A double-click on the expander toggles twice and the node ends as it
+started.
 
 **Same button, same cell, inside the window.** The App remembers the last press
 (button, x, y, time, count). A press increments the count only when all three hold;
@@ -539,8 +572,22 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
     elsewhere does.
 24. `Count` is **0** on motion, wheel and release — asserted, so no consumer can
     read a count that was never computed.
-25. Synthesis happens **before** the §2.1 focus step, so a double-click that also
-    moves focus still carries `Count == 2` to the widget.
+25. Synthesis happens **immediately before delivery** — after hit-testing and
+    after the §2.1 focus step — so a double-click that also moves focus still
+    carries `Count == 2`, **and** a press the focus step skips does not advance the
+    run. Negative control: commit on arrival and the skipped-press test fails.
+25a. A press delivered to **nobody** (focus handling unmounted the target) leaves
+    the run untouched: the replacement occupying that same cell sees `Count == 1`
+    on its first delivered press.
+25b. Non-press kinds are delivered with `Count == 0` even when **seeded** nonzero.
+25c. `List` does not activate when the two presses land on the same cell but
+    different **logical rows** (a scroll between them); it still activates without
+    the scroll.
+25d. `Tree` does not activate when the two presses land on the same cell but
+    different **nodes**.
+25e. A triple-click activates **once**, in both `List` and `Tree`.
+25f. A double-click on the `Tree` **expander** activates nothing and leaves the
+    node's expanded state unchanged.
 26. **`Tree`**: a double-click publishes `ActivateEvent` for the row under the
     pointer — for a **branch** as well as a leaf — and does **not** change its
     expanded state. Negative control: expand on double-click and this fails.
