@@ -189,3 +189,39 @@ func TestListDoubleClickWithUnchangedSourceStillActivates(t *testing.T) {
 			"must still pair two presses", ev, ok)
 	}
 }
+
+// A REJECTED SetRoots must leave the Tree untouched (lector r3, non-blocking).
+// The lastPressNode clear used to run before preflightForest, so a call that
+// then panicked had already mutated pairing state — a failed operation with a
+// side effect.
+func TestTreeRejectedSetRootsLeavesPairingIntact(t *testing.T) {
+	a := widget.NewTreeNode("a", "a")
+	child := widget.NewTreeNode("child", "child", widget.WithLeaf())
+	a.SetChildren(0, []*widget.TreeNode{child})
+
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(a))
+	acts := record[widget.ActivateEvent](h)
+	h.onLoop(func() { tr.ExpandPath("a") })
+	h.barrier(sh)
+
+	// First press of a pair, on the child row.
+	h.inject(singlePress(1))
+	h.barrier(sh)
+
+	// A forest naming the same node twice is rejected.
+	dup := widget.NewTreeNode("dup", "dup")
+	h.onLoop(func() {
+		defer func() { _ = recover() }()
+		tr.SetRoots(dup, dup)
+	})
+	h.barrier(sh)
+
+	// The rejected call changed nothing, so the pair still completes.
+	h.inject(singlePress(1))
+	h.barrier(sh)
+
+	if n := acts.count(); n != 1 {
+		t.Errorf("activations = %d, want 1 — a REJECTED SetRoots must not clear "+
+			"pairing state; a failed call had a side effect", n)
+	}
+}
