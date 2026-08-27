@@ -72,12 +72,14 @@ panic; a child this container does not own is a silent no-op, mirroring
 degenerate: single child, only index 0).
 
 The three multi-child containers share their sibling-list machinery through
-`MultiChild[I]` (`container.go`), embedded anonymously — Go's analogue of
-Flutter's `ContainerRenderObjectMixin`: `Init`, `Remove`, `Move`, and
-`Children` promote verbatim; each container shadows only `Add`, whose variadic
-`...Component` signature cannot promote because it must first wrap Components
-in the container's item record (`flexItem{weight}` and friends). Compiles
-checked by the existing `var _ Container` assertions.
+`MultiChild` (`container.go`), embedded anonymously — Go's analogue of
+Flutter's `ContainerRenderObjectMixin`: `Init`, `Move`, and `Children` promote
+verbatim; `Add` and `Remove` are shadowed as a PAIR by each container, because
+only the container knows how to record and clean up per-child metadata, held
+in a side table keyed by the child (`weights`, `layers`, `edges`). The zero
+value of `MultiChild` is usable. Side-table caveats that bit once: a zero-
+value map lookup can alias a real enum value (`DockTop == 0`); unpinned-vs-
+pinned must be decided by PRESENCE of the map entry, not its value.
 
 ### 2.3 `App.moveWithin` — the splice (framework)
 

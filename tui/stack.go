@@ -16,9 +16,10 @@ const (
 	AlignBottomRight
 )
 
-// stackItem is one Stack layer: aligned, or at an explicit offset.
-type stackItem struct {
-	comp      Component
+// stackLayer is a layer's placement metadata: aligned within the stack's
+// area, or at an explicit offset. Lives in a side table keyed by the
+// child; the zero value (AlignTopLeft, no offset) is the default layer.
+type stackLayer struct {
 	align     Align
 	hasOffset bool
 	x, y      int
@@ -31,8 +32,12 @@ type stackItem struct {
 // reverse (ADR-0004 §2.5.2), so the topmost layer wins the mouse. A modal
 // layer = a Stack child implementing FocusScope (ADR-0004 §2.6.3) that
 // consumes all mouse events on its backdrop.
+// Stack layers paint bottom-to-top in document order. Placement metadata
+// lives in a side table keyed by the child; Remove shadows the promoted
+// method to drop the entry alongside the layer.
 type Stack struct {
-	MultiChild[stackItem] // order (== z-order), mount mirror, Remove/Move/Children/Init
+	MultiChild // order (== z-order), mount mirror, Move/Children/Init
+	layers     map[Component]stackLayer
 }
 
 var _ Container = (*Stack)(nil)
@@ -40,17 +45,14 @@ var _ Container = (*Stack)(nil)
 // NewStack builds an empty Stack.
 func NewStack() *Stack {
 	s := &Stack{}
-	s.compOf = func(it stackItem) Component { return it.comp }
-	s.label = "Stack"
+	s.Label("Stack")
 	return s
 }
 
 // Add appends top-left-aligned layers (Container contract): later children
 // paint on top.
 func (s *Stack) Add(children ...Component) {
-	for _, c := range children {
-		s.MultiChild.Add(stackItem{comp: c, align: AlignTopLeft})
-	}
+	s.MultiChild.Add(children...)
 }
 
 // AddAligned appends a layer positioned by align within the stack's area.
@@ -58,26 +60,42 @@ func (s *Stack) AddAligned(child Component, align Align) {
 	if align > AlignBottomRight {
 		panic("tui: Stack.AddAligned: invalid alignment")
 	}
-	s.MultiChild.Add(stackItem{comp: child, align: align})
+	s.MultiChild.Add(child)
+	s.setLayer(child, stackLayer{align: align})
 }
 
 // AddAt appends a layer at an explicit stack-relative offset.
 func (s *Stack) AddAt(child Component, x, y int) {
-	s.MultiChild.Add(stackItem{comp: child, hasOffset: true, x: x, y: y})
+	s.MultiChild.Add(child)
+	s.setLayer(child, stackLayer{hasOffset: true, x: x, y: y})
+}
+
+// Remove unmounts child (cascade) and forgets it, layer entry included.
+func (s *Stack) Remove(child Component) {
+	delete(s.layers, child)
+	s.MultiChild.remove(child)
+}
+
+func (s *Stack) setLayer(child Component, l stackLayer) {
+	if s.layers == nil {
+		s.layers = make(map[Component]stackLayer)
+	}
+	s.layers[child] = l
 }
 
 func (s *Stack) Layout(c Constraints) Size {
 	w, h := c.MaxW, c.MaxH
 	maxW, maxH := 0, 0
 	for _, it := range s.Items() {
-		sz := s.Ctx().LayoutChild(it.comp, Loose(Size{W: w, H: h}))
+		sz := s.Ctx().LayoutChild(it, Loose(Size{W: w, H: h}))
+		l := s.layers[it] // zero value = AlignTopLeft
 		var x, y int
-		if it.hasOffset {
-			x, y = it.x, it.y
+		if l.hasOffset {
+			x, y = l.x, l.y
 		} else if w != Unbounded && h != Unbounded {
-			x, y = alignPos(it.align, Size{W: w, H: h}, sz)
+			x, y = alignPos(l.align, Size{W: w, H: h}, sz)
 		}
-		s.Ctx().PlaceChild(it.comp, Rect{X: x, Y: y, W: sz.W, H: sz.H})
+		s.Ctx().PlaceChild(it, Rect{X: x, Y: y, W: sz.W, H: sz.H})
 		maxW = max(maxW, x+sz.W)
 		maxH = max(maxH, y+sz.H)
 	}
