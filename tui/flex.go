@@ -2,8 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"iter"
-	"slices"
 	"sort"
 )
 
@@ -30,21 +28,25 @@ type flexItem struct {
 // platform; ties broken by lowest child index). Cross-axis: children get
 // the flex's cross extent as a tight constraint (stretch).
 type Flex struct {
-	dir   Direction
-	items []flexItem
-	ctx   *Context // non-nil exactly while mounted
+	MultiChild[flexItem] // order, mount mirror, Remove/Move/Children/Init
+	dir                  Direction
 }
 
 var _ Container = (*Flex)(nil)
 
 // NewFlex builds an empty Flex with the given main axis.
-func NewFlex(dir Direction) *Flex { return &Flex{dir: dir} }
+func NewFlex(dir Direction) *Flex {
+	f := &Flex{dir: dir}
+	f.compOf = func(it flexItem) Component { return it.comp }
+	f.label = "Flex"
+	return f
+}
 
 // Add appends fixed children (Container contract): mounted immediately if
 // the Flex is mounted, otherwise deferred to Init.
 func (f *Flex) Add(children ...Component) {
 	for _, c := range children {
-		f.add(flexItem{comp: c})
+		f.MultiChild.Add(flexItem{comp: c})
 	}
 }
 
@@ -53,72 +55,7 @@ func (f *Flex) AddWeighted(child Component, weight int) {
 	if weight < 1 {
 		panic(fmt.Sprintf("tui: Flex.AddWeighted: weight must be >= 1 (got %d)", weight))
 	}
-	f.add(flexItem{comp: child, weight: weight})
-}
-
-func (f *Flex) add(it flexItem) {
-	if it.comp == nil {
-		panic("tui: Flex: nil child")
-	}
-	f.items = append(f.items, it)
-	if f.ctx != nil {
-		f.ctx.Mount(it.comp)
-	}
-}
-
-// Move relocates child to index to (Container contract), preserving its
-// mount — no unmount/Init cycle. An unmounted Flex reorders items only;
-// the framework mirror happens at Init. Weights ride along with their
-// child, so moves compose with AddWeighted.
-func (f *Flex) Move(child Component, to int) {
-	for i, it := range f.items {
-		if it.comp == child {
-			if to < 0 || to >= len(f.items) {
-				panic(fmt.Sprintf("tui: Flex.Move: index %d out of range [0,%d)", to, len(f.items)))
-			}
-			if i == to {
-				return
-			}
-			f.items = slices.Insert(slices.Delete(f.items, i, i+1), to, it)
-			if f.ctx != nil {
-				f.ctx.Move(child, to)
-			}
-			return
-		}
-	}
-}
-
-// Remove unmounts child (cascade) and forgets it.
-func (f *Flex) Remove(child Component) {
-	for i, it := range f.items {
-		if it.comp == child {
-			f.items = append(f.items[:i], f.items[i+1:]...)
-			if f.ctx != nil {
-				f.ctx.Unmount(child)
-			}
-			return
-		}
-	}
-}
-
-// Children enumerates in document order == focus order == paint order.
-func (f *Flex) Children() iter.Seq[Component] {
-	return func(yield func(Component) bool) {
-		for _, it := range f.items {
-			if !yield(it.comp) {
-				return
-			}
-		}
-	}
-}
-
-// Init mounts the deferred children. Re-entrant across remounts.
-func (f *Flex) Init(ctx *Context) {
-	f.ctx = ctx
-	ctx.OnUnmount(func() { f.ctx = nil })
-	for _, it := range f.items {
-		ctx.Mount(it.comp)
-	}
+	f.MultiChild.Add(flexItem{comp: child, weight: weight})
 }
 
 // Layout implements the ADR-0004 §2.7.2 algorithm: fixed first, then
@@ -131,13 +68,13 @@ func (f *Flex) Layout(c Constraints) Size {
 		mainMax, crossMax = c.MaxH, c.MaxW
 	}
 
-	sizes := make([]Size, len(f.items))
+	sizes := make([]Size, len(f.Items()))
 
 	// Pass 1 — fixed children: loose main-axis constraints, tight cross
 	// (stretch), each measured extent consumed from the remainder.
 	used := 0
 	wsum := 0
-	for i, it := range f.items {
+	for i, it := range f.Items() {
 		if it.weight > 0 {
 			wsum += it.weight
 			continue
@@ -146,7 +83,7 @@ func (f *Flex) Layout(c Constraints) Size {
 		if mainMax != Unbounded {
 			avail = max(mainMax-used, 0)
 		}
-		sizes[i] = f.ctx.LayoutChild(it.comp, f.childConstraints(avail, false, crossMax))
+		sizes[i] = f.Ctx().LayoutChild(it.comp, f.childConstraints(avail, false, crossMax))
 		used += f.main(sizes[i])
 	}
 
@@ -156,11 +93,11 @@ func (f *Flex) Layout(c Constraints) Size {
 	// ties broken by LOWEST child index (deterministic, gap-free).
 	if wsum > 0 && mainMax != Unbounded {
 		r := max(mainMax-used, 0)
-		shares := make(map[int]int, len(f.items)) // item index → main-axis cells
+		shares := make(map[int]int, len(f.Items())) // item index → main-axis cells
 		type rem struct{ idx, rem int }
 		var rems []rem
 		assigned := 0
-		for i, it := range f.items {
+		for i, it := range f.Items() {
 			if it.weight == 0 {
 				continue
 			}
@@ -177,20 +114,20 @@ func (f *Flex) Layout(c Constraints) Size {
 		for i := 0; i < r-assigned; i++ {
 			shares[rems[i].idx]++
 		}
-		for i, it := range f.items {
+		for i, it := range f.Items() {
 			if it.weight == 0 {
 				continue
 			}
-			sizes[i] = f.ctx.LayoutChild(it.comp, f.childConstraints(shares[i], true, crossMax))
+			sizes[i] = f.Ctx().LayoutChild(it.comp, f.childConstraints(shares[i], true, crossMax))
 		}
 	} else if wsum > 0 {
 		// Unbounded main axis: there is no remainder to split — weighted
 		// children size to content like fixed ones.
-		for i, it := range f.items {
+		for i, it := range f.Items() {
 			if it.weight == 0 {
 				continue
 			}
-			sizes[i] = f.ctx.LayoutChild(it.comp, f.childConstraints(Unbounded, false, crossMax))
+			sizes[i] = f.Ctx().LayoutChild(it.comp, f.childConstraints(Unbounded, false, crossMax))
 			used += f.main(sizes[i])
 		}
 	}
@@ -198,12 +135,12 @@ func (f *Flex) Layout(c Constraints) Size {
 	// Pass 3 — placement in declaration order along the main axis.
 	off := 0
 	cross := 0
-	for i, it := range f.items {
+	for i, it := range f.Items() {
 		sz := sizes[i]
 		if horiz {
-			f.ctx.PlaceChild(it.comp, Rect{X: off, Y: 0, W: sz.W, H: sz.H})
+			f.Ctx().PlaceChild(it.comp, Rect{X: off, Y: 0, W: sz.W, H: sz.H})
 		} else {
-			f.ctx.PlaceChild(it.comp, Rect{X: 0, Y: off, W: sz.W, H: sz.H})
+			f.Ctx().PlaceChild(it.comp, Rect{X: 0, Y: off, W: sz.W, H: sz.H})
 		}
 		off += f.main(sz)
 		cross = max(cross, f.cross(sz))
