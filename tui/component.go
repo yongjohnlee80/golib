@@ -2,6 +2,22 @@ package tui
 
 import "iter"
 
+// Keyer (ADR-0011 §2.1) is an optional capability interface (detected
+// like Focusable):
+// keyed containers consult it to preserve a component across REORDERING
+// — same key, same mount, so reordering happens via Container.Move
+// rather than Remove+Add and the component keeps its NodeID, context,
+// in-flight tasks, and focus.
+//
+// The key MUST be non-nil, comparable (it serves as a map key
+// internally), and stable for the component's mounted lifetime. A
+// component not implementing Keyer has POSITIONAL identity (its index)
+// — the default.
+type Keyer interface {
+	// Key returns this component's identity within a keyed container.
+	Key() any
+}
+
 // Component is the single mandatory contract of every node in the tree
 // (ADR-0001 §2.3, ADR-0004 §2.1). All four methods are invoked ONLY on the
 // App loop goroutine (ADR-0005 §2.3).
@@ -69,6 +85,13 @@ type Container interface {
 	Add(children ...Component)
 	// Remove unmounts child (cascade, ADR-0004 §2.4) and forgets it.
 	Remove(child Component)
+	// Move (ADR-0011 §2.2) relocates child to index to in document order
+	// ("the child ends
+	// up at index to") WITHOUT unmounting it: NodeID, context, in-flight
+	// tasks, hooks, and focus all survive; Init is not re-run. Sibling
+	// moves only — reparenting to a different container remains
+	// Remove+Add (a fresh mount).
+	Move(child Component, to int)
 	// Children enumerates in document order == focus order == paint order.
 	Children() iter.Seq[Component]
 }

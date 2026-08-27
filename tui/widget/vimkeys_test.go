@@ -345,6 +345,7 @@ func (c *lateContent) Render(tui.Surface)            {}
 func (c *lateContent) HandleEvent(ev tui.Event) bool { return false }
 func (c *lateContent) Add(...tui.Component)          {}
 func (c *lateContent) Remove(tui.Component)          {}
+func (c *lateContent) Move(tui.Component, int)       {}
 func (c *lateContent) Children() iter.Seq[tui.Component] {
 	return func(yield func(tui.Component) bool) {
 		if c.list != nil {

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"iter"
+	"slices"
 	"sort"
 )
 
@@ -62,6 +63,28 @@ func (f *Flex) add(it flexItem) {
 	f.items = append(f.items, it)
 	if f.ctx != nil {
 		f.ctx.Mount(it.comp)
+	}
+}
+
+// Move relocates child to index to (Container contract), preserving its
+// mount — no unmount/Init cycle. An unmounted Flex reorders items only;
+// the framework mirror happens at Init. Weights ride along with their
+// child, so moves compose with AddWeighted.
+func (f *Flex) Move(child Component, to int) {
+	for i, it := range f.items {
+		if it.comp == child {
+			if to < 0 || to >= len(f.items) {
+				panic(fmt.Sprintf("tui: Flex.Move: index %d out of range [0,%d)", to, len(f.items)))
+			}
+			if i == to {
+				return
+			}
+			f.items = slices.Insert(slices.Delete(f.items, i, i+1), to, it)
+			if f.ctx != nil {
+				f.ctx.Move(child, to)
+			}
+			return
+		}
 	}
 }
 

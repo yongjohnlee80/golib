@@ -1,6 +1,10 @@
 package tui
 
-import "iter"
+import (
+	"fmt"
+	"iter"
+	"slices"
+)
 
 // DockEdge names the side a Dock child pins to. DockCenter children fill
 // whatever the pinned children leave over (ADR-0004 §2.7.3).
@@ -56,6 +60,30 @@ func (d *Dock) Pin(edge DockEdge, child Component) {
 func (d *Dock) Add(children ...Component) {
 	for _, c := range children {
 		d.Pin(DockCenter, c)
+	}
+}
+
+// Move relocates child to index to (Container contract), preserving its
+// mount — no unmount/Init cycle. Declaration order is pin-consumption
+// order, so moving a child past a differently-pinned sibling changes
+// which chrome reserves space first (same-edge moves change paint/focus
+// order only; edges themselves are unaffected). An unmounted Dock
+// reorders items only; the framework mirror happens at Init.
+func (d *Dock) Move(child Component, to int) {
+	for i, it := range d.items {
+		if it.comp == child {
+			if to < 0 || to >= len(d.items) {
+				panic(fmt.Sprintf("tui: Dock.Move: index %d out of range [0,%d)", to, len(d.items)))
+			}
+			if i == to {
+				return
+			}
+			d.items = slices.Insert(slices.Delete(d.items, i, i+1), to, it)
+			if d.ctx != nil {
+				d.ctx.Move(child, to)
+			}
+			return
+		}
 	}
 }
 

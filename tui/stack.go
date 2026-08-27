@@ -1,6 +1,10 @@
 package tui
 
-import "iter"
+import (
+	"fmt"
+	"iter"
+	"slices"
+)
 
 // Align positions a Stack child inside the stack's area when no explicit
 // offset is given (ADR-0004 §2.7.4).
@@ -71,6 +75,29 @@ func (s *Stack) push(it stackItem) {
 	s.items = append(s.items, it)
 	if s.ctx != nil {
 		s.ctx.Mount(it.comp)
+	}
+}
+
+// Move relocates child to index to (Container contract), preserving its
+// mount — no unmount/Init cycle. In a Stack, document order is Z-order:
+// moving toward the end raises the layer (and its hit-test priority).
+// An unmounted Stack reorders items only; the framework mirror happens
+// at Init.
+func (s *Stack) Move(child Component, to int) {
+	for i, it := range s.items {
+		if it.comp == child {
+			if to < 0 || to >= len(s.items) {
+				panic(fmt.Sprintf("tui: Stack.Move: index %d out of range [0,%d)", to, len(s.items)))
+			}
+			if i == to {
+				return
+			}
+			s.items = slices.Insert(slices.Delete(s.items, i, i+1), to, it)
+			if s.ctx != nil {
+				s.ctx.Move(child, to)
+			}
+			return
+		}
 	}
 }
 

@@ -122,6 +122,17 @@ func (c *Context) Unmount(child Component) {
 	c.app.unmountTree(n)
 }
 
+// Move repositions child — a mounted direct child of this node — to
+// index to in document order WITHOUT unmounting it: NodeID, context,
+// in-flight tasks, hooks, and focus survive; Init does not re-run (see
+// App.moveWithin). Loop goroutine only; illegal inside Layout/Render.
+func (c *Context) Move(child Component, to int) {
+	if !c.node.mounted {
+		panic(fmt.Sprintf("tui: Context.Move on unmounted node %d", c.node.id))
+	}
+	c.app.moveWithin(c.node, child, to)
+}
+
 // LayoutChild lays out a mounted child under cc and returns its chosen
 // (clamped) size. Legal ONLY inside this component's Layout call
 // (ADR-0004 §2.2, §2.7).
