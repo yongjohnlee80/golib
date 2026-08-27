@@ -1,11 +1,5 @@
 package tui
 
-import (
-	"fmt"
-	"iter"
-	"slices"
-)
-
 // DockEdge names the side a Dock child pins to. DockCenter children fill
 // whatever the pinned children leave over (ADR-0004 §2.7.3).
 type DockEdge uint8
@@ -31,14 +25,18 @@ type dockItem struct {
 // constraints. Status bars, side panels, command logs — the lazygit chrome —
 // are Dock+Flex compositions.
 type Dock struct {
-	items []dockItem
-	ctx   *Context // non-nil exactly while mounted
+	MultiChild[dockItem] // order (== pin-consumption order), mount mirror, Remove/Move/Children/Init
 }
 
 var _ Container = (*Dock)(nil)
 
 // NewDock builds an empty Dock.
-func NewDock() *Dock { return &Dock{} }
+func NewDock() *Dock {
+	d := &Dock{}
+	d.compOf = func(it dockItem) Component { return it.comp }
+	d.label = "Dock"
+	return d
+}
 
 // Pin appends a child pinned to edge (declaration order is consumption
 // order).
@@ -49,10 +47,7 @@ func (d *Dock) Pin(edge DockEdge, child Component) {
 	if edge > DockCenter {
 		panic("tui: Dock.Pin: invalid edge")
 	}
-	d.items = append(d.items, dockItem{comp: child, edge: edge})
-	if d.ctx != nil {
-		d.ctx.Mount(child)
-	}
+	d.MultiChild.Add(dockItem{comp: child, edge: edge})
 }
 
 // Add appends center children (Container contract): they fill the rect the
@@ -60,63 +55,6 @@ func (d *Dock) Pin(edge DockEdge, child Component) {
 func (d *Dock) Add(children ...Component) {
 	for _, c := range children {
 		d.Pin(DockCenter, c)
-	}
-}
-
-// Move relocates child to index to (Container contract), preserving its
-// mount — no unmount/Init cycle. Declaration order is pin-consumption
-// order, so moving a child past a differently-pinned sibling changes
-// which chrome reserves space first (same-edge moves change paint/focus
-// order only; edges themselves are unaffected). An unmounted Dock
-// reorders items only; the framework mirror happens at Init.
-func (d *Dock) Move(child Component, to int) {
-	for i, it := range d.items {
-		if it.comp == child {
-			if to < 0 || to >= len(d.items) {
-				panic(fmt.Sprintf("tui: Dock.Move: index %d out of range [0,%d)", to, len(d.items)))
-			}
-			if i == to {
-				return
-			}
-			d.items = slices.Insert(slices.Delete(d.items, i, i+1), to, it)
-			if d.ctx != nil {
-				d.ctx.Move(child, to)
-			}
-			return
-		}
-	}
-}
-
-// Remove unmounts child (cascade) and forgets it.
-func (d *Dock) Remove(child Component) {
-	for i, it := range d.items {
-		if it.comp == child {
-			d.items = append(d.items[:i], d.items[i+1:]...)
-			if d.ctx != nil {
-				d.ctx.Unmount(child)
-			}
-			return
-		}
-	}
-}
-
-// Children enumerates in document order == focus order == paint order.
-func (d *Dock) Children() iter.Seq[Component] {
-	return func(yield func(Component) bool) {
-		for _, it := range d.items {
-			if !yield(it.comp) {
-				return
-			}
-		}
-	}
-}
-
-// Init mounts the deferred children. Re-entrant across remounts.
-func (d *Dock) Init(ctx *Context) {
-	d.ctx = ctx
-	ctx.OnUnmount(func() { d.ctx = nil })
-	for _, it := range d.items {
-		ctx.Mount(it.comp)
 	}
 }
 
@@ -132,34 +70,34 @@ func (d *Dock) Layout(c Constraints) Size {
 	}
 	rem := Rect{X: 0, Y: 0, W: w, H: h}
 
-	for _, it := range d.items {
+	for _, it := range d.Items() {
 		switch it.edge {
 		case DockTop:
-			sz := d.ctx.LayoutChild(it.comp, Constraints{MinW: rem.W, MaxW: rem.W, MinH: 0, MaxH: rem.H})
-			d.ctx.PlaceChild(it.comp, Rect{X: rem.X, Y: rem.Y, W: rem.W, H: sz.H})
+			sz := d.Ctx().LayoutChild(it.comp, Constraints{MinW: rem.W, MaxW: rem.W, MinH: 0, MaxH: rem.H})
+			d.Ctx().PlaceChild(it.comp, Rect{X: rem.X, Y: rem.Y, W: rem.W, H: sz.H})
 			rem.Y += sz.H
 			rem.H -= sz.H
 		case DockBottom:
-			sz := d.ctx.LayoutChild(it.comp, Constraints{MinW: rem.W, MaxW: rem.W, MinH: 0, MaxH: rem.H})
-			d.ctx.PlaceChild(it.comp, Rect{X: rem.X, Y: rem.Y + rem.H - sz.H, W: rem.W, H: sz.H})
+			sz := d.Ctx().LayoutChild(it.comp, Constraints{MinW: rem.W, MaxW: rem.W, MinH: 0, MaxH: rem.H})
+			d.Ctx().PlaceChild(it.comp, Rect{X: rem.X, Y: rem.Y + rem.H - sz.H, W: rem.W, H: sz.H})
 			rem.H -= sz.H
 		case DockLeft:
-			sz := d.ctx.LayoutChild(it.comp, Constraints{MinW: 0, MaxW: rem.W, MinH: rem.H, MaxH: rem.H})
-			d.ctx.PlaceChild(it.comp, Rect{X: rem.X, Y: rem.Y, W: sz.W, H: rem.H})
+			sz := d.Ctx().LayoutChild(it.comp, Constraints{MinW: 0, MaxW: rem.W, MinH: rem.H, MaxH: rem.H})
+			d.Ctx().PlaceChild(it.comp, Rect{X: rem.X, Y: rem.Y, W: sz.W, H: rem.H})
 			rem.X += sz.W
 			rem.W -= sz.W
 		case DockRight:
-			sz := d.ctx.LayoutChild(it.comp, Constraints{MinW: 0, MaxW: rem.W, MinH: rem.H, MaxH: rem.H})
-			d.ctx.PlaceChild(it.comp, Rect{X: rem.X + rem.W - sz.W, Y: rem.Y, W: sz.W, H: rem.H})
+			sz := d.Ctx().LayoutChild(it.comp, Constraints{MinW: 0, MaxW: rem.W, MinH: rem.H, MaxH: rem.H})
+			d.Ctx().PlaceChild(it.comp, Rect{X: rem.X + rem.W - sz.W, Y: rem.Y, W: sz.W, H: rem.H})
 			rem.W -= sz.W
 		}
 	}
-	for _, it := range d.items {
+	for _, it := range d.Items() {
 		if it.edge != DockCenter {
 			continue
 		}
-		d.ctx.LayoutChild(it.comp, Tight(Size{W: rem.W, H: rem.H}))
-		d.ctx.PlaceChild(it.comp, rem)
+		d.Ctx().LayoutChild(it.comp, Tight(Size{W: rem.W, H: rem.H}))
+		d.Ctx().PlaceChild(it.comp, rem)
 	}
 	return c.Constrain(Size{W: w, H: h})
 }

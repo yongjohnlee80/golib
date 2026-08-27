@@ -71,6 +71,14 @@ panic; a child this container does not own is a silent no-op, mirroring
 `Remove`. `Flex`, `Stack`, `Dock`, and `widget.Box` implement it (`Box` is
 degenerate: single child, only index 0).
 
+The three multi-child containers share their sibling-list machinery through
+`MultiChild[I]` (`container.go`), embedded anonymously — Go's analogue of
+Flutter's `ContainerRenderObjectMixin`: `Init`, `Remove`, `Move`, and
+`Children` promote verbatim; each container shadows only `Add`, whose variadic
+`...Component` signature cannot promote because it must first wrap Components
+in the container's item record (`flexItem{weight}` and friends). Compiles
+checked by the existing `var _ Container` assertions.
+
 ### 2.3 `App.moveWithin` — the splice (framework)
 
 `moveWithin(parent, child, to)` is the single new tree primitive, placed beside
