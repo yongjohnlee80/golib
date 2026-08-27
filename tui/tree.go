@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 )
 
 // node is the runtime's per-mount bookkeeping record (ADR-0004 §2.4). The
@@ -95,6 +96,40 @@ func (a *App) mount(parent *node, comp Component) *node {
 	a.layoutDirty = true // a new child means geometry may change (step 4)
 	a.queue.wakeUp()
 	return n
+}
+
+// moveWithin (ADR-0011 §2.3) repositions child — a mounted DIRECT child
+// of parent — to
+// index to in the parent's children slice. A splice only: unlike
+// unmountTree + mount it preserves everything the node owns — NodeID
+// (addressed deliveries stay routable, ADR-0005 §2.8), the derived
+// context (in-flight tasks keep running), OnUnmount hooks (none fire),
+// and focus/scope-stack membership; Init is NOT re-run. Focus needs no
+// repair: the node stays registered in a.nodes, so a dangling focus ID
+// is impossible by construction. Loop goroutine only.
+func (a *App) moveWithin(parent *node, child Component, to int) {
+	if a.inLayout || a.inRender {
+		panic("tui: tree mutation (Move) inside Layout/Render is illegal (ADR-0004 §2.1)")
+	}
+	n := a.byComp[child]
+	if n == nil {
+		panic(fmt.Sprintf("tui: Move: component %T is not mounted", child))
+	}
+	if n.parent != parent {
+		panic("tui: Move: child belongs to a different container; cross-container moves are not supported")
+	}
+	cs := parent.children
+	if to < 0 || to >= len(cs) {
+		panic(fmt.Sprintf("tui: Move: index %d out of range [0,%d)", to, len(cs)))
+	}
+	if from := slices.Index(cs, n); from != to {
+		// Post-move-index semantics: remove, then insert at to.
+		cs = slices.Insert(slices.Delete(cs, from, from+1), to, n)
+		parent.children = cs
+	}
+
+	a.layoutDirty = true // document order changed: paint + tab order may change
+	a.queue.wakeUp()
 }
 
 // unmountTree is the top-level unmount entry (Context.Unmount,

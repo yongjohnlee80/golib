@@ -180,6 +180,17 @@ func (x *Box) Add(children ...tui.Component) {
 	}
 }
 
+// Move is degenerate for a single-child container: only index 0 is
+// legal, and moving the child to 0 is a no-op (Container contract).
+func (x *Box) Move(child tui.Component, to int) {
+	if child == nil || x.child != child {
+		return
+	}
+	if to != 0 {
+		panic("widget: Box.Move: Box wraps exactly one child; only index 0 is valid")
+	}
+}
+
 // Remove unmounts the child and forgets it.
 func (x *Box) Remove(child tui.Component) {
 	if child == nil || x.child != child {
