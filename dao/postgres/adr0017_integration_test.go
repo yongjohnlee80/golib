@@ -556,6 +556,12 @@ func TestIntegration_RawRows_PoolAndTxPaths(t *testing.T) {
 // text. Both formats are produced here from real query paths — the default
 // extended protocol (binary for int4) and the simple protocol (everything
 // text) — rather than asserted from one and assumed for the other.
+//
+// Both rows are deep-copied with copyRow before Close and then survive a
+// deliberate churn of the pool, so the assertions below are made against bytes
+// this test owns. That is not ceremony: an outer-slice copy alone leaves the
+// values pointing at pgx's receive buffers, and five subsequent queries
+// rewrite them in place (measured — "alpha" reads back as "zzzzz").
 func TestIntegration_RawRows_FormatCodes(t *testing.T) {
 	ctx := context.Background()
 	const q = `SELECT 1::int4, 'x'::text`
@@ -573,8 +579,9 @@ func TestIntegration_RawRows_FormatCodes(t *testing.T) {
 		t.Fatal("no row")
 	}
 	binFDs := rr.Fields()
-	binVals := append([][]byte(nil), rr.RawValues()...)
+	binVals := copyRow(rr.RawValues())
 	_ = rr.Close()
+	churn(t, binaryConn)
 
 	if binFDs[0].Format != 1 {
 		t.Errorf("int4 format = %d, want 1 (binary)", binFDs[0].Format)
@@ -598,8 +605,9 @@ func TestIntegration_RawRows_FormatCodes(t *testing.T) {
 		t.Fatal("no row")
 	}
 	txtFDs := rr.Fields()
-	txtVals := append([][]byte(nil), rr.RawValues()...)
+	txtVals := copyRow(rr.RawValues())
 	_ = rr.Close()
+	churn(t, textConn)
 
 	if txtFDs[0].Format != 0 {
 		t.Errorf("simple-protocol int4 format = %d, want 0 (text)", txtFDs[0].Format)
@@ -615,6 +623,40 @@ func TestIntegration_RawRows_FormatCodes(t *testing.T) {
 }
 
 // --- helpers -----------------------------------------------------------------
+
+// copyRow deep-copies a borrowed RawValues row so it stays valid after the row
+// stream is closed. Copying the outer slice alone is not enough — the byte
+// slices are pgx's own receive buffers (see dao.RawRows), and the whole point
+// of the capability is that dao does not copy them for you.
+func copyRow(vals [][]byte) [][]byte {
+	out := make([][]byte, len(vals))
+	for i, v := range vals {
+		if v == nil {
+			continue
+		}
+		out[i] = append([]byte(nil), v...)
+	}
+	return out
+}
+
+// churn drives more traffic through the pool so the driver reuses the receive
+// buffers an earlier row stream handed out. It is the positive control for
+// copyRow: swap a shallow outer-slice copy back in and the assertions that
+// follow a churn fail, which is precisely what "borrowed until the next Next
+// or Close" means.
+func churn(t *testing.T, conn *pgxConn) {
+	t.Helper()
+
+	for range 5 {
+		rows, err := conn.QueryContext(context.Background(), `SELECT 'zzzzzzzz'::text, 'yyyyyyyy'::text`)
+		if err != nil {
+			t.Fatalf("churn query: %v", err)
+		}
+		for rows.Next() {
+		}
+		_ = rows.Close()
+	}
+}
 
 // lyingCtx reports a nil Err exactly once, over an already-cancelled parent. It
 // models the unavoidable race between a pre-dispatch context check and the
