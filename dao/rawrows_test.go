@@ -134,17 +134,16 @@ func TestRawValues_AreBorrowedUntilNext(t *testing.T) {
 			"the copy assertions below would be vacuous", kept[0][1], kept[2][1])
 	}
 
-	// The documented consumer discipline: copy what you keep.
+	// The documented consumer discipline: copy what you keep — with
+	// bytes.Clone, which is the only idiom that preserves nil-vs-empty (see
+	// TestRawValues_RetainedCopiesKeepNullEmptyIdentity).
 	var copied [][][]byte
 	rr, _ = RawRowsOf(rows())
 	for rr.Next() {
 		vals := rr.RawValues()
 		row := make([][]byte, len(vals))
 		for i, v := range vals {
-			if v == nil {
-				continue
-			}
-			row[i] = append([]byte(nil), v...)
+			row[i] = bytes.Clone(v)
 		}
 		copied = append(copied, row)
 	}
@@ -184,6 +183,54 @@ func TestRawValues_NullIsNilEmptyIsNotNil(t *testing.T) {
 	}
 	if len(v) != 0 {
 		t.Errorf("empty value has length %d", len(v))
+	}
+}
+
+// The distinction has to survive the copy a consumer makes to keep the value,
+// not merely exist while the row is current — a retained NULL that reads back
+// as empty (or the reverse) is the same corruption arriving one step later.
+//
+// This is a trap with a specific shape: append([]byte(nil), v...) appends zero
+// bytes to a nil destination and returns nil, so it silently turns an empty
+// value into a NULL one. bytes.Clone is the idiom that holds in both
+// directions, and this test is what stops the other one coming back.
+func TestRawValues_RetainedCopiesKeepNullEmptyIdentity(t *testing.T) {
+	t.Parallel()
+
+	rr, _ := RawRowsOf(newReuseRows(rawFields,
+		[][]byte{{0, 0, 0, 1}, nil}, // NULL
+		[][]byte{{0, 0, 0, 2}, {}},  // empty, not NULL
+	))
+
+	var kept [][][]byte
+	for rr.Next() {
+		vals := rr.RawValues()
+		row := make([][]byte, len(vals))
+		for i, v := range vals {
+			row[i] = bytes.Clone(v)
+		}
+		kept = append(kept, row)
+	}
+	if err := rr.Err(); err != nil {
+		t.Fatalf("Err: %v", err)
+	}
+	if err := rr.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if len(kept) != 2 {
+		t.Fatalf("read %d rows, want 2", len(kept))
+	}
+
+	// Both assertions are made after the stream is finished and closed: the
+	// lifetime-crossing case, which is the only one a consumer actually has.
+	if kept[0][1] != nil {
+		t.Errorf("a retained NULL came back as %#v, want a nil slice", kept[0][1])
+	}
+	if kept[1][1] == nil {
+		t.Error("a retained empty value came back as nil — it is not NULL")
+	}
+	if len(kept[1][1]) != 0 {
+		t.Errorf("retained empty value has length %d", len(kept[1][1]))
 	}
 }
 

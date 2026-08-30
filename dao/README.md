@@ -504,6 +504,9 @@ if rr, ok := dao.RawRowsOf(rows); ok {
     for rr.Next() {
         vals := rr.RawValues()   // borrowed until the next Next — copy what you keep
         _ = rr.Fields()          // the server's own descriptors: OID, size, typmod, format
+        for i, v := range vals {
+            kept[i] = bytes.Clone(v)   // NOT append([]byte(nil), v...) — see below
+        }
     }
 }
 ```
@@ -511,6 +514,12 @@ if rr, ok := dao.RawRowsOf(rows); ok {
 Absence is `(nil, false)`, not an error: it is a capability to fall back from,
 not a question without an answer. postgres implements it (pgx already holds
 both); mysql/sqlite do not.
+
+`nil` is SQL NULL and a non-nil zero-length slice is an empty value — a
+distinction worth keeping, and one that **`append([]byte(nil), v...)` destroys**:
+appending zero bytes to a nil destination returns nil, so every empty column
+becomes NULL in the copy. Use `bytes.Clone`, which is correct in both
+directions.
 
 ## Optional logging — SQL + args
 

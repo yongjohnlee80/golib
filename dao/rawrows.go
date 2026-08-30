@@ -48,7 +48,9 @@ type RawRows interface {
 	//
 	// The buffers are BORROWED: they are valid only until the next Next or
 	// Close, after which the driver may overwrite them. A consumer that keeps a
-	// value past that point must copy it.
+	// value past that point must copy it — with bytes.Clone, not
+	// append([]byte(nil), v...): appending zero bytes to a nil destination
+	// yields nil, which would silently turn an empty value into a NULL one.
 	RawValues() [][]byte
 
 	// Fields returns the result set's column descriptors, in projection order.

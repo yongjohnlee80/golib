@@ -632,7 +632,9 @@ for _, fd := range rr.Fields() {
 }
 for rr.Next() {
     for _, v := range rr.RawValues() {
-        // v is BORROWED until the next Next: write it out now, or copy it.
+        // v is BORROWED until the next Next: write it out now, or copy it with
+        // bytes.Clone(v) — NOT append([]byte(nil), v...), which returns nil for
+        // an empty value and so quietly promotes it to NULL in your copy.
         // v == nil is NULL; len(v) == 0 with v != nil is an empty value.
     }
 }

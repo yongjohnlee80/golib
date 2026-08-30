@@ -11,6 +11,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -468,13 +469,10 @@ func TestIntegration_RollbackFailureIsObservable(t *testing.T) {
 // actually sent.
 func TestIntegration_RawRows_PoolAndTxPaths(t *testing.T) {
 	conn := openPG(t)
-	mustExec(t, conn, `DROP TABLE IF EXISTS golib_adr0017_raw`)
-	mustExec(t, conn, `CREATE TABLE golib_adr0017_raw (id int PRIMARY KEY, name varchar(10), note text)`)
-	mustExec(t, conn, `INSERT INTO golib_adr0017_raw VALUES (1, 'a', NULL), (2, '', 'two')`)
-	t.Cleanup(func() { mustExec(t, conn, `DROP TABLE IF EXISTS golib_adr0017_raw`) })
+	setupRawTable(t, conn)
 
 	ctx := context.Background()
-	const q = `SELECT id, name, note FROM golib_adr0017_raw ORDER BY id`
+	const q = rawQuery
 
 	run := func(t *testing.T, ex dao.Querier) {
 		t.Helper()
@@ -551,6 +549,61 @@ func TestIntegration_RawRows_PoolAndTxPaths(t *testing.T) {
 	})
 }
 
+// NULL and empty are different values, and the difference has to survive the
+// copy a consumer makes to keep them — not merely exist while the row is
+// current. A retained NULL that reads back as empty, or an empty that reads
+// back as NULL, is the same corruption arriving one step later, and no
+// assertion made before Close can see it.
+//
+// Both rows are retained across the end of the stream, its Close, and a
+// deliberate churn of the pool: the only lifetime a real pass-through consumer
+// ever has.
+func TestIntegration_RawRows_NullAndEmptySurviveRetention(t *testing.T) {
+	conn := openPG(t)
+	setupRawTable(t, conn)
+
+	rows, err := conn.QueryContext(context.Background(), rawQuery)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	rr, ok := dao.RawRowsOf(rows)
+	if !ok {
+		t.Fatal("the postgres row stream must satisfy dao.RawRows")
+	}
+
+	var kept [][][]byte
+	for rr.Next() {
+		kept = append(kept, copyRow(rr.RawValues()))
+	}
+	if err := rr.Err(); err != nil {
+		t.Fatalf("Err: %v", err)
+	}
+	if err := rr.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	churn(t, conn)
+
+	if len(kept) != 2 {
+		t.Fatalf("read %d rows, want 2", len(kept))
+	}
+	// Row 1: note IS NULL.
+	if kept[0][2] != nil {
+		t.Errorf("a retained NULL came back as %#v, want a nil slice", kept[0][2])
+	}
+	// Row 2: name is an empty varchar — present, not missing.
+	if kept[1][1] == nil {
+		t.Error("a retained empty varchar came back as nil; it is not NULL")
+	}
+	if len(kept[1][1]) != 0 {
+		t.Errorf("retained empty varchar has length %d", len(kept[1][1]))
+	}
+	// And an ordinary value in the same retained row still reads correctly,
+	// so the two assertions above are not passing on a wholly empty copy.
+	if string(kept[1][2]) != "two" {
+		t.Errorf("retained note = %q, want %q", kept[1][2], "two")
+	}
+}
+
 // The format codes are the server's, and they are not all the same: a
 // pass-through consumer that ignored them would misread every binary value as
 // text. Both formats are produced here from real query paths — the default
@@ -624,17 +677,33 @@ func TestIntegration_RawRows_FormatCodes(t *testing.T) {
 
 // --- helpers -----------------------------------------------------------------
 
+// rawQuery reads the scratch table setupRawTable builds, whose second row
+// carries both an empty non-NULL value and a NULL one.
+const rawQuery = `SELECT id, name, note FROM golib_adr0017_raw ORDER BY id`
+
+// setupRawTable (re)creates the raw-rows scratch table and drops it after.
+func setupRawTable(t *testing.T, conn dao.DataConn) {
+	t.Helper()
+
+	mustExec(t, conn, `DROP TABLE IF EXISTS golib_adr0017_raw`)
+	mustExec(t, conn, `CREATE TABLE golib_adr0017_raw (id int PRIMARY KEY, name varchar(10), note text)`)
+	mustExec(t, conn, `INSERT INTO golib_adr0017_raw VALUES (1, 'a', NULL), (2, '', 'two')`)
+	t.Cleanup(func() { mustExec(t, conn, `DROP TABLE IF EXISTS golib_adr0017_raw`) })
+}
+
 // copyRow deep-copies a borrowed RawValues row so it stays valid after the row
 // stream is closed. Copying the outer slice alone is not enough — the byte
 // slices are pgx's own receive buffers (see dao.RawRows), and the whole point
 // of the capability is that dao does not copy them for you.
+//
+// bytes.Clone, specifically. append([]byte(nil), v...) appends zero bytes to a
+// nil destination for an empty value and returns nil, which would quietly
+// promote every empty column to NULL in the retained copy — a corruption the
+// live assertions cannot see because it happens in the copy.
 func copyRow(vals [][]byte) [][]byte {
 	out := make([][]byte, len(vals))
 	for i, v := range vals {
-		if v == nil {
-			continue
-		}
-		out[i] = append([]byte(nil), v...)
+		out[i] = bytes.Clone(v)
 	}
 	return out
 }
@@ -654,7 +723,15 @@ func churn(t *testing.T, conn *pgxConn) {
 		}
 		for rows.Next() {
 		}
-		_ = rows.Close()
+		// A control that fails quietly is not a control: if the churn did not
+		// actually run, every assertion it guards silently weakens to the
+		// pre-churn case.
+		if err := rows.Err(); err != nil {
+			t.Fatalf("churn iteration: %v", err)
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatalf("churn close: %v", err)
+		}
 	}
 }
 
