@@ -541,3 +541,105 @@ if errors.As(err, &ce) && len(ce.PreparedPending) > 0 {
 On a dialect that doesn't support 2PC (`GenericDialect`, sqlite, bigquery),
 `TwoPhase().Commit()` fails fast with `ErrTwoPhaseUnsupported` rather than
 silently degrading to an ordered commit.
+
+## 12. Driver-level transaction options and bounded cleanup (ADR-0017)
+
+Sections 6 and 11 are the *coordinator*: one logical transaction over one or
+more databases. This is the layer underneath — a single connection's own
+`BEGIN`, with the options SQL actually has.
+
+```go
+tx, err := dao.BeginConnTx(ctx, conn, dao.TxOptions{
+    Access:    dao.TxReadOnly,
+    Isolation: dao.TxSerializable,
+})
+if err != nil {
+    var unsup *dao.ErrTxOptionUnsupported
+    var bad   *dao.ErrTxOptionInvalid
+    switch {
+    case errors.As(err, &bad):
+        // you asked for something that has no meaning (a typo, or DEFERRABLE
+        // outside SERIALIZABLE READ ONLY). Does NOT match dao.ErrUnsupported.
+    case errors.As(err, &unsup):
+        // this driver cannot honor it — unsup.Driver, unsup.Option.
+        // Matches dao.ErrUnsupported. No BEGIN was sent.
+    }
+}
+```
+
+A zero `dao.TxOptions{}` is exactly `conn.Begin(ctx)`, so this is a drop-in for
+existing code. `Access: dao.TxReadOnly` on Postgres is enforced by the
+**server** — a write fails with SQLSTATE 25006 — which is the only kind of
+read-only guarantee worth having.
+
+### Cleanup after the caller's context is gone
+
+`tx.Commit()` reuses the context `Begin` was called with. When a transaction is
+pinned across a session, that context dies with the session and there is nothing
+left to clean up *with*. Drivers that can finalize with their own context
+implement `dao.ContextTxConn`; `SessionTxBeginner` hands you one directly, and
+is assertable on the connection before any transaction exists:
+
+```go
+sess, ok := conn.(dao.SessionTxBeginner)
+if !ok {
+    return fmt.Errorf("connection %q cannot host a session: %w", conn.Name(), dao.ErrUnsupported)
+}
+tx, err := sess.BeginSessionTx(sessionCtx, dao.TxOptions{Access: dao.TxReadOnly})
+...
+// the session ended; sessionCtx is cancelled. Clean up with a fresh budget:
+cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+switch err := dao.CommitTx(cleanupCtx, tx); {
+case err == nil:
+    // committed
+case errors.Is(err, dao.ErrTxRolledBack):
+    // definitely NOT committed — safe to report the work as not applied
+case errors.Is(err, dao.ErrTxOutcomeUnknown):
+    // the COMMIT may have reached the server. Record a nonterminal state and
+    // reconcile out of band; do not guess in either direction.
+default:
+    // a context error with neither sentinel means nothing was dispatched:
+    // the handle is still open, roll it back with another context.
+}
+```
+
+`CommitTx`/`RollbackTx` **require** the capability and return
+`dao.ErrUnsupported` without it, rather than falling back to the context-free
+finalizers and throwing your deadline away. Only `dao/postgres` implements them:
+`*sql.Tx` has no context finalizers, so mysql and sqlite say so.
+
+## 13. Forwarding raw result bytes (ADR-0017)
+
+A consumer that hands a result set onward — a proxy, an RPC server streaming to
+its own client — has no reason to decode into Go types and re-encode. Probe for
+the capability:
+
+```go
+rows, err := conn.QueryContext(ctx, userSQL)
+if err != nil {
+    return err
+}
+defer rows.Close()
+
+rr, ok := dao.RawRowsOf(rows)
+if !ok {
+    return scanTheNormalWay(rows) // (nil, false) is a capability miss, not an error
+}
+for _, fd := range rr.Fields() {
+    // fd.Name, fd.TypeOID, fd.TypeModifier, fd.Format (0 text, 1 binary)
+}
+for rr.Next() {
+    for _, v := range rr.RawValues() {
+        // v is BORROWED until the next Next: write it out now, or copy it with
+        // bytes.Clone(v) — NOT append([]byte(nil), v...), which returns nil for
+        // an empty value and so quietly promotes it to NULL in your copy.
+        // v == nil is NULL; len(v) == 0 with v != nil is an empty value.
+    }
+}
+return rr.Err()
+```
+
+`dao/postgres` implements it (pgx already holds the wire bytes and the server's
+`RowDescription`); mysql and sqlite do not, and the probe simply fails.

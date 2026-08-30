@@ -59,6 +59,15 @@ Inherited from `GenericDialect`: double-quoted identifiers, `RETURNING` (modern
 SQLite 3.35+, which modernc bundles), and `ON CONFLICT` upserts. There is **no
 COPY fast-path**, so batches always use the chunked multi-row INSERT path.
 
+It claims **no ADR-0017 capability**: SQLite's transaction semantics come from
+the `BEGIN` keyword itself (`DEFERRED`/`IMMEDIATE`/`EXCLUSIVE`), which
+`database/sql`'s `TxOptions` cannot reach, so implementing `dao.TxBeginner`
+would mean accepting an option set and ignoring most of it. `dao.BeginConnTx`
+refuses any non-default option up front with `*dao.ErrTxOptionUnsupported`
+naming this driver; the zero-option path is the unchanged `conn.Begin(ctx)`.
+`dao.ContextTxConn` is absent for the same reason as on MySQL — `*sql.Tx` has
+no context finalizers.
+
 ## Writing a driver (the sqlite pattern)
 
 sqlite is the minimal template for a new driver: embed `dao.GenericDialect`,

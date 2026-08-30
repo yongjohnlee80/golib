@@ -101,10 +101,19 @@ func (c *pgxConn) copyRows(ctx context.Context, table string, cols []string, row
 	return c.pool.CopyFrom(ctx, tableIdentifier(table), cols, pgx.CopyFromRows(rows))
 }
 
-// pgxTx is a dao.TxConn backed by a pgx transaction.
+// pgxTx is a dao.TxConn backed by a pgx transaction. It additionally satisfies
+// dao.ContextTxConn (ADR-0017 §2.2) — pgx finalizers take a context natively,
+// so the capability is honest here in a way it cannot be over *sql.Tx.
 type pgxTx struct {
 	tx  pgx.Tx
 	ctx context.Context
+
+	// closed records that a finalizer has DISPATCHED. It is not set by a
+	// pre-dispatch context refusal, which leaves the transaction open and
+	// rollable with a fresh context (ADR-0017 §2.2a fault state 1). It carries
+	// no lock: one transaction is single-goroutine (ADR-0015), the same
+	// contract pgx's own tx.closed relies on.
+	closed bool
 }
 
 func (t *pgxTx) QueryContext(ctx context.Context, q string, args ...any) (dao.Rows, error) {
@@ -123,8 +132,12 @@ func (t *pgxTx) ExecContext(ctx context.Context, q string, args ...any) (dao.Res
 	return pgxResult{tag: tag}, nil
 }
 
-func (t *pgxTx) Commit() error   { return t.tx.Commit(t.ctx) }
-func (t *pgxTx) Rollback() error { return t.tx.Rollback(t.ctx) }
+// Commit and Rollback are the unchanged dao.TxConn finalizers: they reuse the
+// context Begin was called with. They record the handle as closed so a later
+// context finalizer reports dao.ErrTransactionClosed rather than reaching pgx
+// twice; the errors they themselves return are unchanged.
+func (t *pgxTx) Commit() error   { t.closed = true; return t.tx.Commit(t.ctx) }
+func (t *pgxTx) Rollback() error { t.closed = true; return t.tx.Rollback(t.ctx) }
 
 func (t *pgxTx) copyRows(ctx context.Context, table string, cols []string, rows [][]any) (int64, error) {
 	return t.tx.CopyFrom(ctx, tableIdentifier(table), cols, pgx.CopyFromRows(rows))
@@ -186,6 +199,7 @@ func (t *pgxTx) prepareTx(ctx context.Context, gid string) error {
 	}
 	// The transaction is now dissociated from the session; Rollback only
 	// returns the connection to the pool (harmless no-tx warning server-side).
+	t.closed = true
 	_ = t.tx.Rollback(t.ctx)
 	return nil
 }
