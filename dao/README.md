@@ -428,6 +428,90 @@ Non-DB resources can participate via `tx.Register(name, dao.ResourceFunc(commit,
 rollback))` (e.g. delete an uploaded file on rollback). One transaction is
 single-goroutine; background work uses an unbound DAO.
 
+## Driver-level transaction options (ADR-0017)
+
+`RunTx`/`Transaction` above is the **coordinator**: one logical transaction,
+possibly spanning several databases. Underneath it, a single `DataConn`'s own
+BEGIN can now carry options — `READ ONLY`, an isolation level, `DEFERRABLE` —
+and its finalizers can take their own context. Both arrive as **optional
+capability interfaces**, so `DataConn` and `TxConn` are unchanged and every
+existing implementation (including your fakes) keeps compiling:
+
+```go
+tx, err := dao.BeginConnTx(ctx, conn, dao.TxOptions{
+    Access:    dao.TxReadOnly,          // server-enforced: a write fails with SQLSTATE 25006
+    Isolation: dao.TxSerializable,
+})
+```
+
+The zero `TxOptions` is today's behavior exactly — it takes the unchanged
+`conn.Begin(ctx)`. Anything non-default requires the `TxBeginner` capability,
+and **nothing degrades silently**:
+
+| | postgres | mysql | sqlite | bigquery |
+|---|---|---|---|---|
+| `TxBeginner` | ✅ (+ `SessionTxBeginner`) | ✅ | – | – |
+| Access | full (RO / explicit RW) | RO only — explicit RW refused | – | – |
+| Isolation | full | full, incl. READ UNCOMMITTED | – | – |
+| Deferrable | with SERIALIZABLE + RO | refused | – | – |
+| `ContextTxConn` | ✅ | – | – | – |
+| `RawRows` | ✅ | – | – | – |
+
+- A driver that cannot honor an option returns `*ErrTxOptionUnsupported`
+  (which **matches `ErrUnsupported`**) **before the BEGIN is sent**.
+- A malformed option set returns `*ErrTxOptionInvalid`, checked first, which
+  deliberately does **not** match `ErrUnsupported` — a typo is not a driver
+  limitation. `DEFERRABLE` is valid only with `SERIALIZABLE` + `READ ONLY`.
+
+### Cleanup after your context is gone
+
+`TxConn.Commit()/Rollback()` reuse the context `Begin` was called with. For a
+transaction pinned across a session that is a dead end: when the session
+context is cancelled there is no usable context left to clean up with. Drivers
+that can finalize with their own context implement `ContextTxConn`:
+
+```go
+tx, err := conn.(dao.SessionTxBeginner).BeginSessionTx(sessionCtx, opts)
+...
+<-sessionCtx.Done()
+err = dao.CommitTx(cleanupCtx, tx)   // or dao.RollbackTx
+```
+
+`CommitTx`/`RollbackTx` **require** the capability — they never fall back to
+the context-free finalizers, which would throw your deadline away. Only
+postgres implements it: `*sql.Tx` has no context finalizers, so mysql/sqlite
+say so instead of faking it.
+
+A failed commit reports what is actually known:
+
+| result | meaning |
+|---|---|
+| raw `ctx.Err()` | nothing was dispatched; the handle is **still open**, roll it back with a fresh context |
+| `errors.Is(err, dao.ErrTxRolledBack)` | the transaction **definitely did not commit** |
+| `errors.Is(err, dao.ErrTxOutcomeUnknown)` | the COMMIT may have reached the server; **unknowable** — record it, do not guess |
+
+The driver's own cause (a `*pgconn.PgError`, a pgx sentinel, a net/context
+error) stays reachable with `errors.As`.
+
+## Raw result access (ADR-0017)
+
+`Rows` exposes only `Scan`, which is all the engine's read path needs. A
+pass-through consumer — forwarding the target's own bytes and the server's
+column metadata onward — probes for more instead:
+
+```go
+if rr, ok := dao.RawRowsOf(rows); ok {
+    for rr.Next() {
+        vals := rr.RawValues()   // borrowed until the next Next — copy what you keep
+        _ = rr.Fields()          // the server's own descriptors: OID, size, typmod, format
+    }
+}
+```
+
+Absence is `(nil, false)`, not an error: it is a capability to fall back from,
+not a question without an answer. postgres implements it (pgx already holds
+both); mysql/sqlite do not.
+
 ## Optional logging — SQL + args
 
 Logging is opt-in and toggleable, and logs the **statement's final SQL and bind
@@ -495,6 +579,12 @@ Set the capability predicates honestly: `SupportsReturning`, `CopySupported`,
   otherwise.
   Single-DB and multi-DB *ordered* commit with `CommitError` detection work on
   every transactional driver.
+- **Driver transaction options, context finalizers and raw rows are
+  implemented** (ADR-0017): `TxOptions` + the `TxBeginner` /
+  `SessionTxBeginner` / `ContextTxConn` / `RawRows` capabilities and the
+  `BeginConnTx` / `CommitTx` / `RollbackTx` / `RawRowsOf` helpers. Purely
+  additive — `DataConn`, `TxConn`, `Rows` and the whole `RunTx`/2PC coordinator
+  are byte-identical.
 - **Declarative column expressions are implemented** (ADR-0016): `Field.Expr`
   plus `dao.T`/`C`/`Str`/`Int`/`SQL`/`Coalesce`/`LeftJoin`/`InnerJoin` and
   `OptionalJoinExpr`, resolved once per schema at `dao.New`. Purely additive —
