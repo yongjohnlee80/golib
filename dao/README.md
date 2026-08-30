@@ -501,13 +501,16 @@ column metadata onward — probes for more instead:
 
 ```go
 if rr, ok := dao.RawRowsOf(rows); ok {
+    fds := rr.Fields()               // the server's own descriptors: OID, size, typmod, format
     for rr.Next() {
-        vals := rr.RawValues()   // borrowed until the next Next — copy what you keep
-        _ = rr.Fields()          // the server's own descriptors: OID, size, typmod, format
+        vals := rr.RawValues()       // BORROWED until the next Next or Close
+        kept := make([][]byte, len(vals))
         for i, v := range vals {
-            kept[i] = bytes.Clone(v)   // NOT append([]byte(nil), v...) — see below
+            kept[i] = bytes.Clone(v) // NOT append([]byte(nil), v...) — see below
         }
+        forward(fds, kept)           // kept is yours to hold; vals is not
     }
+    return rr.Err()
 }
 ```
 
