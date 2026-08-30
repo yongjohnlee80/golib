@@ -23,6 +23,19 @@ go get github.com/yongjohnlee80/golib
   `ListColumns` over `information_schema`.
 - **Result column names** (ADR-0012): `*sql.Rows` satisfies `dao.RowsColumns`
   natively.
+- **Transaction options** (ADR-0017): implements `dao.TxBeginner`. `READ ONLY`
+  and the full isolation domain (including `READ UNCOMMITTED`, which MySQL
+  implements literally) are honored. Explicit `READ WRITE` is **refused** —
+  `sql.TxOptions` carries a bool, and `ReadOnly=false` renders a plain `START
+  TRANSACTION`, a request for the server default rather than an override of it.
+  `DEFERRABLE` is Postgres-only and refused. Both refusals are
+  `*dao.ErrTxOptionUnsupported` (matching `dao.ErrUnsupported`), returned
+  **before** the BEGIN is sent.
+- **No `dao.ContextTxConn`, no `dao.RawRows`** (ADR-0017), deliberately:
+  `*sql.Tx` has no context finalizers — its `BeginTx` context owns the
+  transaction's lifetime — and a pre-check or goroutine wrapper would only
+  fake the guarantee. `dao.CommitTx`/`RollbackTx` therefore refuse a MySQL
+  handle instead of silently discarding the caller's deadline.
 - Errno error translation: duplicate (1062/1586), not-null (1048), foreign
   key (1216/1217/1451/1452), check (3819) → dao sentinels.
 

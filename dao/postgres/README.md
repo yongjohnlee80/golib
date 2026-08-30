@@ -75,6 +75,34 @@ default is `0`); otherwise the prepare fails and `dao.RunTx` reports it. A
 `COMMIT PREPARED` that fails after a successful prepare is surfaced in
 `CommitError.PreparedPending` (name → gid) for operator resolution.
 
+## Driver transaction options, context finalizers, raw rows (ADR-0017)
+
+Postgres is the one driver that opts into every ADR-0017 capability, because
+pgx can honor every one of them natively:
+
+- **`dao.TxBeginner` + `dao.SessionTxBeginner`** — `BEGIN` carries the full
+  option set: `READ ONLY` / explicit `READ WRITE`, all four isolation levels
+  (`READ UNCOMMITTED` is accepted and reported, and behaves as `READ
+  COMMITTED` — Postgres has no dirty-read mode), and `DEFERRABLE` /
+  `NOT DEFERRABLE` under `SERIALIZABLE READ ONLY`. Nothing in the matrix is
+  refused. A write inside a `READ ONLY` transaction fails with SQLSTATE
+  **25006** — the server enforces it, not the client.
+- **`dao.ContextTxConn`** — `CommitContext`/`RollbackContext` take their own
+  context, so cleanup after the transaction's original context is cancelled
+  still has a deadline. pgx's finalizers take a context natively; this is why
+  the capability is honest here and absent on the `database/sql` drivers.
+- **`dao.RawRows`** — `RawValues()` and `Fields()` hand back pgx's own receive
+  buffers and the server's `RowDescription`. The byte slices are **borrowed
+  until the next `Next`**.
+
+A failed `CommitContext` is classified rather than passed through raw:
+`ErrTxRolledBack` when the transaction is proven not to have committed (a
+server-confirmed rollback, `pgx.ErrTxCommitRollback`, or a pgconn error proving
+nothing was written), `ErrTxOutcomeUnknown` when the COMMIT went out and the
+answer did not come back. The pgx/pgconn cause stays reachable with
+`errors.As`; a context cancelled *before* dispatch returns the raw context error
+and leaves the handle open.
+
 ## Integration tests
 
 Build-tagged; require a reachable Postgres:
@@ -86,7 +114,10 @@ TEST_PGURL='postgres://user:pass@localhost:5432/golib?sslmode=disable' \
 
 They (re)create and drop scratch tables and cover CRUD + RETURNING,
 duplicate→`ErrDuplicate`, upsert, native-COPY and chunked batches, `RunTx`
-commit/rollback, and a two-process integration test. The two-phase-commit tests
+commit/rollback, a two-process integration test, and the ADR-0017 suite (the
+option matrix live against the server, the 25006 read-only proof through
+`BeginSessionTx`, fresh-context finalizers, all four commit fault states, and
+raw rows on both the pool and transaction paths). The two-phase-commit tests
 additionally require `max_prepared_transactions > 0` and **skip** with an
 explanatory message when the server has prepared transactions disabled:
 
