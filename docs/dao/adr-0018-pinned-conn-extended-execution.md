@@ -621,7 +621,9 @@ established.
     TERMINAL (a subsequent finalizer reports `dao.ErrTransactionClosed`),
     with `Discard` then reclaiming the pinned lease — the legacy
     observable behavior, not the context-finalizer retry shape (whose
-    own cell remains criterion 4's fault-state-1).16. **The ErrorResponse cleanup tail (r5 MF1):** an Execute-stage
+    own cell remains criterion 4's fault-state-1).
+
+16. **The ErrorResponse cleanup tail (r5 MF1):** an Execute-stage
     ErrorResponse inside an EXPLICIT transaction is driven through the
     error tail — recovery Sync consumed to its terminal ReadyForQuery,
     then the tracked-creation Close+Sync cleanup exchange — and the cell
