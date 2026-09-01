@@ -1,7 +1,8 @@
 # ADR-0018 — `golib/dao`: session-pinned connections with raw extended-protocol execution
 
-- **Status:** **Proposed** — rev 3; design r0's 4 MF (rev 1), r1's 3 MF +
-  1 SF + the boundary supplement (rev 2), and r2's 4 protocol/interface
+- **Status:** **Proposed** — rev 4; design r0's 4 MF (rev 1), r1's 3 MF +
+  1 SF + the boundary supplement (rev 2), r2's 4 protocol/interface
+  corrections (rev 3), and r3's 3 implementability/consistency
   corrections (folded here). The ADR-0017 follow-up that ADR-0075
   (autodb's wire front door) filed: "requires a scoped golib seam
   (pinned-conn extended-exec capability)".
@@ -263,30 +264,55 @@ FULL existing signatures — `args ...any` included — and must not silently
 narrow public behavior. They use a **private driver-owned simple-protocol
 path** on the same raw face:
 
-- **Parameters, byte-for-byte:** when `args` are present, the driver
-  reuses pgx's PROVEN simple-protocol argument sanitizer/encoder —
-  `sanitizeForSimpleQuery` (verified: a standalone method requiring
-  `standard_conforming_strings=on` and `client_encoding=UTF8`, both pinned
-  on autodb target leases by the matrix's own rules) — WITHOUT entering
-  any `Conn` cache: the sanitizer renders the arguments into the SQL text
-  and the driver writes the one simple Query frame itself. No-args calls
-  skip the sanitizer. The existing pool-path behavior for bound args
-  (including NULL and binary-sensitive values, which the sanitizer
-  renders safely or refuses) is thereby preserved, and criterion 14
-  proves it with NULL/binary-sensitive cases.
-- **Multi-statement behavior is PRESERVED, not refused** (r2 MF3: I had
+- **Parameters, byte-for-byte, via a private unnamed extended sequence
+  (r3 MF1 — the rev-2 sanitizer plan was unimplementable).** The rev 2
+  text proposed reusing pgx's `sanitizeForSimpleQuery`; that method is
+  UNEXPORTED and its helpers (`convertSimpleArgument`,
+  `internal/sanitize`) are unreachable from another module — the plan
+  called an API golib cannot access, and the exported `Conn.Exec`/
+  `Conn.Query` simple-protocol modes are no escape: they enter
+  `Conn` bookkeeping (including cached-statement deallocation) and
+  break the structural exclusion. The defined path is instead a private
+  UNNAMED extended sequence on the raw face, built only from exported
+  facilities: `Parse` (unnamed, no OIDs) → `Describe`(S) → the server's
+  `ParameterDescription` supplies the parameter OIDs → each argument is
+  encoded with the exported `pgtype.Map.Encode(oid, format, value, buf)`
+  (text format; a NULL is the wire's own -1 length) → `Bind` (unnamed
+  portal) → `Execute` → `Sync`, with the sequence consuming its own
+  terminal `ReadyForQuery` (the § rev-3 carve-out) and returning the
+  wire to quiescent. This is the same encoding pgx itself performs for
+  an extended ExecParams, driven through the raw frames instead of the
+  `Conn` machinery. Object-lifetime effects are the simple-Query
+  equivalents and are STATED: the sequence occupies and destroys the
+  UNNAMED statement and unnamed portal (whatever the relayed client had
+  there is replaced by `Parse`/`Bind` semantics and dropped at the
+  sequence's `Sync`) — identical in effect to the simple Query it
+  replaces — while NAMED client objects are untouched. No-args calls may
+  take the same sequence with an empty `ParameterDescription`. Criterion
+  14 proves bound args — NULL and binary-sensitive values included —
+  through this path.
+- **Multi-statement behavior is PRESERVED, not narrowed** (r2 MF3: I had
   invented a single-statement refusal dao's `Execer` never promised —
   the existing pgx path accepts multi-statement no-args SQL, and a
-  pinnedTx must not narrow it): a no-args simple Query carries whatever
-  statements the text holds; the driver drains ALL response groups to
-  the terminal state. The ADR records rather than changes the public
-  contract.
-- `QueryContext` streams the LAST result group's rows into a driver-owned
-  `dao.Rows` implementation whose `RawValues` carries the borrowed wire
-  bytes (the ADR-0012/0017 raw-rows rules); `Close` drains any remaining
-  groups to the terminal state and returns the wire to quiescent, and an
-  undrained `Rows` keeps the inbound track at receiving — the guards
-  refuse while it does.
+  pinnedTx must not narrow it). The private path therefore DISPATCHES on
+  its input: a NO-ARGS statement containing more than one statement
+  (detected on the pre-validated statement list, the same split the
+  engine's own classifier performs) is driven as the ONE simple-protocol
+  Query frame it has always been — multi-statement text is simple-Query
+  semantics, cannot ride an unnamed extended sequence, and must not lose
+  the behavior the existing TxConn gives it. The driver drains ALL
+  response groups to the terminal state. Everything else — zero-or-one
+  statement, with or without args — takes the unnamed extended sequence
+  above. The ADR records rather than changes the public contract, and
+  criterion 14 covers the two-statement no-args case through this
+  dispatch.
+- `QueryContext` streams the result group's rows (the LAST group, for a
+  multi-statement dispatch) into a driver-owned `dao.Rows`
+  implementation whose `RawValues` carries the borrowed wire bytes (the
+  ADR-0012/0017 raw-rows rules); `Close` drains any remaining groups to
+  the terminal state and returns the wire to quiescent, and an undrained
+  `Rows` keeps the inbound track at receiving — the guards refuse while
+  it does.
 - **ReadyForQuery ownership carve-out (r2 MF3):** the private
   simple-query path consumes its own terminal `ReadyForQuery` — that is
   HOW it returns the wire to quiescent — so §2.3's "the terminal
@@ -304,17 +330,27 @@ path** on the same raw face:
   query path exists for ENGINE-INTERNAL statements only (the target-xid
   capture, the server-belt arming) — and criterion 11 proves those work.
 
-**Legacy finalizers reuse the BEGIN context** (r2 MF4, corrected): the
-no-context `Commit`/`Rollback` behave exactly as the existing `pgxTx` and
-as ADR-0017 preserves — they dispatch on the context captured at
-`BeginSessionTx` (`t.tx.Commit(t.ctx)` shape, verified in the pool path),
-NOT on `context.Background()` (which would silently remove the bound the
-existing contract gives the caller). `CommitContext`/`RollbackContext`
-take the caller's finalizer context and preserve the four-state
-ADR-0017 outcome contract through the shared classification helper. A
-cancelled BEGIN-context finalizer behaves as the pool path does —
-observable error, no silent unbounding — and criterion 15 proves the
-base methods' context reuse against a cancelled begin context.
+**Legacy finalizers reuse the BEGIN context** (r2 MF4, corrected r3
+MF2): the no-context `Commit`/`Rollback` behave exactly as the existing
+`pgxTx` and as ADR-0017 preserves — they dispatch on the context captured
+at `BeginSessionTx` (`t.tx.Commit(t.ctx)` shape, verified in the pool
+path), NOT on `context.Background()` (which would silently remove the
+bound the existing contract gives the caller). **And their OBSERVABLE
+failure shape is the legacy one, not the context-finalizer one** (r3
+MF2): the base methods mark the handle closed BEFORE dispatch — as the
+existing `pgxTx` does — so a base finalizer attempted with a cancelled
+BEGIN context fails with the context error and leaves the handle
+TERMINAL (subsequent finalizers report `dao.ErrTransactionClosed`; the
+pinned lease's cleanup is `Discard`, which closes the physical
+connection). The open-and-retryable-after-refusal property belongs to
+`CommitContext`/`RollbackContext`'s explicit pre-dispatch `ctx.Err()`
+check — ADR-0017 fault state 1 — and pinnedTx must not silently graft
+that property onto methods whose existing contract does not have it.
+`CommitContext`/`RollbackContext` take the caller's finalizer context
+and preserve the four-state ADR-0017 outcome contract through the
+shared classification helper. Criterion 15 asserts the legacy shape
+exactly: context error, then terminal handle, then `Discard` reclaims
+the lease.
 
 **Quiescent operation, not refusal, is the rule:** these methods are
 SUPPORTED on pinnedTx — first-class, guarded by the same state inspection
@@ -341,12 +377,15 @@ only from quiescent, which by §2.3 means the consumer has already driven
 any failed segment to its terminal `ReadyForQuery` — so the engine's own
 cancel-then-join-then-finalize ordering (the synchronous-demotion
 lifecycle) maps one-to-one onto the seam's states, and a finalizer can
-never interleave with client frames. Named statements/portals owned by the
-relayed client survive the transaction boundary exactly as the server
-keeps them (server-side objects); the unnamed statement is destroyed by the
-simple-protocol finalizer commands per PostgreSQL semantics — the same
-behavior a real backend has, and the consumer's §4a bookkeeping owns
-tracking it.
+never interleave with client frames. The named-object lifetimes SPLIT per
+the protocol's own rules (r3 MF3): **named prepared statements** survive
+the transaction boundary; **named portals are destroyed at transaction
+end** (absent a holdable-cursor mechanism outside this seam) — so a
+relayed client's named statement outlives a COMMIT while its named
+portal does not, exactly as against a real PostgreSQL, and the
+consumer's §4a bookkeeping owns tracking both. The unnamed statement and
+unnamed portal are destroyed by the finalizer's frame semantics like any
+other unnamed object.
 
 ### 2.5 The vocabulary: a CLOSED neutral set, not pgproto3 re-typing
 
@@ -511,8 +550,8 @@ established.
     portal) releases it; only transaction end destroys it, per the
     protocol's own rules.
 12. **The pinned query/exec path (r1 MF3):** from quiescent, pinnedTx
-    `QueryContext` streams rows through the driver's raw simple-protocol
-    path (RawValues byte-faithful; Rows.Close returns the wire to
+    `QueryContext` streams rows through the driver's private path
+    (RawValues byte-faithful; Rows.Close returns the wire to
     quiescent), and `ExecContext` returns the command tag — plus the
     object-lifetime observation: a pinnedTx query destroys the unnamed
     statement/portal, named client objects survive. The mid-segment
@@ -523,17 +562,21 @@ established.
     simple Query reaches the wire through the seam; no alias or re-export
     of the capability exists in `dao` core (grep/compile proof on the
     implementation HEAD, with implementors enumerated at checkout HEAD).
-14. **Bound args preserved (r2 MF3):** pinnedTx `QueryContext`/
+14. **Bound args preserved (r2 MF3, r3 MF1):** pinnedTx `QueryContext`/
     `ExecContext` with bound arguments — including NULL and
-    binary-sensitive values — produce results byte-identical to the
-    existing pool-path behavior through the shared sanitizer; and the
-    no-args MULTI-STATEMENT behavior of the existing TxConn is preserved
-    (a two-statement no-args ExecContext drains both groups), not
-    narrowed.
-15. **Legacy finalizer context reuse (r2 MF4):** pinnedTx's no-context
+    binary-sensitive values — work through the private unnamed extended
+    sequence, compared against the POOL path by DECODED semantic
+    equality (the raw text/binary format difference between the pool's
+    result-format negotiation and this path's is a format choice, not a
+    value difference; the comparator decodes both sides rather than
+    diffing raw bytes). And the no-args MULTI-STATEMENT behavior of the
+    existing TxConn is preserved through the dispatch (a two-statement
+    no-args ExecContext drains both groups), not narrowed.
+15. **Legacy finalizer shape (r2 MF4, r3 MF2):** pinnedTx's no-context
     `Commit`/`Rollback` dispatch on the context captured at
     `BeginSessionTx` — proven by cancelling that context and observing
-    the base method's dispatch fail with the context error while a
-    FRESH-context `RollbackContext` still succeeds (the ADR-0017
-    fault-state-1 shape) — beside the existing context-finalizer matrix
-    of criterion 4.
+    the base method fail with the context error AND the handle go
+    TERMINAL (a subsequent finalizer reports `dao.ErrTransactionClosed`),
+    with `Discard` then reclaiming the pinned lease — the legacy
+    observable behavior, not the context-finalizer retry shape (whose
+    own cell remains criterion 4's fault-state-1).
