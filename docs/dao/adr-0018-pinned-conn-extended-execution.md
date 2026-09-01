@@ -1,9 +1,9 @@
 # ADR-0018 — `golib/dao`: session-pinned connections with raw extended-protocol execution
 
-- **Status:** **Proposed** — rev 1, design review r0 findings folded
-  (lector: 4 MF, all confirmed). The ADR-0017 follow-up that ADR-0075
-  (autodb's wire front door) filed: "requires a scoped golib seam
-  (pinned-conn extended-exec capability)".
+- **Status:** **Proposed** — rev 2; design r0's 4 MF (all folded in rev 1)
+  and r1's 3 MF + 1 SF + jarvis's boundary supplement (folded here).
+  The ADR-0017 follow-up that ADR-0075 (autodb's wire front door) filed:
+  "requires a scoped golib seam (pinned-conn extended-exec capability)".
 - **Date:** 2026-09-02
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Related:** ADR-0017 (the capability-interface idiom this follows; the
@@ -102,15 +102,16 @@ type PinnedConn interface {
     // until the next Receive (the driver owns the buffer; the consumer
     // that keeps a row copies it — bytes.Clone, per the RawRows rule).
     // An *pgconn.PgError arriving as protocol data is returned as a
-    // typed ExtendedError value, NOT a Go error — after it the segment
-    // enters discard-until-sync (§2.3) and the consumer must drive
-    // Sync; the caller classifies and re-frames it for its own client.
+    // typed ExtendedError value, NOT a Go error — after it the inbound
+    // track enters the discarding phase (§2.3) and the consumer's next
+    // Sync is the single call that ends it; the caller classifies and
+    // re-frames it for its own client.
     Receive(ctx context.Context) (ExtendedMessage, error)
-    // Sync sends Sync and consumes through ReadyForQuery, returning the
-    // ReadyForQuery status byte. This is the ONLY call that returns the
-    // wire to the quiescent state; discard-through-Sync on error is driven
-    // by calling Sync repeatedly until it reports the terminal
-    // ReadyForQuery (§2.3).
+    // Sync sends ONE Sync frame and consumes through the terminal
+    // ReadyForQuery, returning the ReadyForQuery status byte. This is the
+    // ONLY call that returns the wire to the quiescent state (both state
+    // tracks reset; §2.3); discard-through-Sync after an ErrorResponse is
+    // this same single call — the terminal ReadyForQuery ends the discard.
     Sync(ctx context.Context) (byte, error)
 
     // BeginSessionTx opens the session's transaction ON THE PINNED
@@ -151,60 +152,77 @@ paper over it (r0 MF1). One `Send` = one queued frame. Nothing reaches the
 server until `Flush`. Responses arrive in groups whose boundaries the
 CONSUMER knows (it sent the frames): `Receive` returns one message at a
 time, and DataRow arrives as an unbounded stream — one message per call,
-borrowed buffers, never accumulated by the driver. The handle's states:
+borrowed buffers, never accumulated by the driver.
 
-```text
-                 Send (queues only)
-   quiescent ────────────────────────────▶ building
-   ▲    ▲                                       │ Flush (writes)
-   │    │                                       ▼
-   │    │             ReadyForQuery        sent ──Receive──▶ receiving
-   │    │        ◀────────────────────────────┘                 │
-   │    │                                                      │
-   │    │ Sync (sent + consumed                          ErrorResponse /
-   │    │      through ReadyForQuery)             PortalSuspended / any
-   │    │                                          protocol outcome
-   │    ▼                                                 ▼
-   │ quiescent ◀── Sync's terminal ReadyForQuery   receiving (client
-   │                                              keeps pulling rows)
-   │                                                      │
-   └──────────── Sync, repeatedly until the terminal ReadyForQuery
-                                              ▼
-                                       discard-until-sync
+**ORTHOGONAL STATE, NOT A SCALAR** (r1 MF2). Pipelining is real — after a
+`PortalSuspended` the consumer may queue a resumed `Execute` while group
+A's messages are still outstanding — so the handle's state is two
+independent tracks:
+
+```go
+// outbound: what the CONSUMER has built on the wire.
+type outboundState int
+const (
+    idleOut    outboundState = iota // nothing queued, socket drained
+    building                       // Send queued ≥1 frame, not flushed
+    flushed                        // Flush wrote them; bytes on the wire
+)
+
+// inbound: where the RESPONSE stream stands.
+type inboundState int
+const (
+    noInbound   inboundState = iota // no response group expected/started
+    receiving                       // messages of the group still arriving
+    discarding                      // ErrorResponse seen; consuming to Sync
+)
 ```
 
-- **quiescent**: nothing queued, nothing pending. Only here may
-  `BeginSessionTx`, `Release`, or a new first `Send` run. A call from any
-  other state returns `ErrSegmentInFlight` immediately, decided under the
-  handle's lock — the check is a state inspection, not a mutex wait
-  (r0 MF2: serialization is not refusal).
-- **building** → **sent** → **receiving**: the ordinary segment. `Send` is
-  legal in all three (pipelined groups); `Receive` blocks only in
-  receiving.
-- **discard-until-sync**: entered on any `ErrorResponse` returned as
-  protocol data, or on a `PortalSuspended` the consumer does not intend to
-  resume. `Receive` in this state consumes and drops messages; `Sync`
-  drives it to the terminal `ReadyForQuery` and returns the wire to
-  quiescent. Exactly `Sync`'s terminal `ReadyForQuery` performs that
-  transition — `Sync` is the owner of quiescence.
-- **poisoned**: a transport-level Go error (EOF, cancelled context at
-  dispatch, socket failure) — as opposed to protocol data. `Receive`/`Send`
-  return the error; the ONLY legal next call is `Discard`, which closes
-  the physical connection. No repair is attempted: a connection whose
-  frame boundaries are unprovable is a discarded member, and pretending
-  otherwise hands the next pool consumer a dirty wire.
+Plus one flag that outranks both: **poisoned** (a transport-level Go error;
+§ poison rule below). Every guard inspects `(outbound, inbound, poisoned)`
+as a triple; the legal-operation table:
 
-`ReadyForQuery` ownership: the terminal `ReadyForQuery` belongs to `Sync`
-(and to `Discard`'s teardown, which never surfaces it). A `Receive` that
-would return a `ReadyForQuery` in a non-terminal position is a contract
-violation by the consumer — it sent no Sync — and returns a typed error;
-the driver does not silently absorb protocol skew.
+| Call | Legal when | Effect |
+|---|---|---|
+| `Send` | not poisoned, not discarding | outbound: idleOut→building, or building stays |
+| `Flush` | not poisoned, outbound==building, inbound ∈ {noInbound, receiving} | outbound→flushed; an INBOUND receiving state is PRESERVED — group A keeps streaming while group B's bytes go out |
+| `Receive` | not poisoned, outbound==flushed, inbound ∈ {receiving, noInbound→receiving on first call} | returns one message; borrowed buffers |
+| `Sync` | not poisoned | sends ONE Sync frame, sets inbound=discarding if receiving, consumes through the terminal ReadyForQuery, returns its status byte, and resets BOTH tracks to idleOut/noInbound |
+| `BeginSessionTx` / `Release` / `pinnedTx` op | not poisoned, outbound==idleOut, inbound==noInbound | proceeds |
+| `Discard` | always | terminal (§2.2) |
+
+`Sync` from any non-poisoned state is legal and is ONE call — it emits one
+Sync frame and consumes until the terminal `ReadyForQuery`; the r0 prose's
+"repeatedly" is removed (multiple Sync frames are never emitted by one
+call, and the consumer never needs a second: the terminal ReadyForQuery
+ends every group and every discard).
+
+**Portal resume and abandonment** (r1 MF2). `PortalSuspended` is protocol
+data in the `receiving` track, and the driver cannot know the consumer's
+intent — so the state machine does not guess. Either next move is legal and
+mechanical: `Send(Execute resume)` + `Flush` continues the portal (the
+Flush row above preserves the inbound receiving track), and the consumer's
+next `Sync` is the EXPLICIT abandonment transition — the portal is dropped
+by the server at Sync, which is PostgreSQL's own rule. There is no
+"discard-because-not-resumed" state.
+
+**`ReadyForQuery` ownership:** the terminal `ReadyForQuery` belongs to
+`Sync` (and to `Discard`'s teardown, which never surfaces it). A `Receive`
+that would return a `ReadyForQuery` is a contract violation by the
+consumer — it sent no Sync — and returns a typed error; the driver does not
+silently absorb protocol skew.
+
+**The poison rule.** A transport-level Go error (EOF, cancelled context at
+dispatch, socket failure) — as opposed to protocol data — sets `poisoned`.
+Every subsequent operation except `Discard` returns the typed poisoned
+error. No repair is attempted: a connection whose frame boundaries are
+unprovable is a discarded member, and pretending otherwise hands the next
+pool consumer a dirty wire.
 
 Blocking and cancellation: `Send` is non-blocking (queue only); `Flush`
 blocks on the write; `Receive` blocks on the read; all bounded by ctx. A
 ctx cancellation during `Flush`/`Receive` is a transport-level outcome →
-poisoned (the frame boundary is unprovable), reported as the raw context
-error with the poisoned state recorded.
+poisoned, reported as the raw context error with the poisoned state
+recorded.
 
 ### 2.4 The guarded pinned transaction
 
@@ -228,6 +246,46 @@ high-level query could run mid-segment with no inspection. Instead
   (`classifyCommit`): the pinned transaction's `ErrTxRolledBack` /
   `ErrTxOutcomeUnknown` / preserved `*pgconn.PgError` causes are the same
   code the pool path uses, shared, not duplicated.
+
+**The query/exec path on pinnedTx (r1 MF3).** `pinnedTx` satisfies
+`dao.TxConn`, so `QueryContext` and `ExecContext` must have a DEFINED
+execution path — they cannot call pgx (structural exclusion, § below) and
+they must not route through `ExtendedOp` (the vocabulary is the relay's,
+§2.5). They use a **private driver-owned simple-protocol path** on the
+same raw face:
+
+- `ExecContext` writes the statement as one simple-protocol Query frame,
+  drains the response group to its terminal state (CommandComplete or
+  ErrorResponse), and returns the tag/rows-affected — refusing, per
+  simple-protocol semantics, anything but a single statement, exactly as
+  `dao`'s own contract requires of `Execer`.
+- `QueryContext` writes the same single simple Query frame and streams the
+  response into a driver-owned `dao.Rows` implementation whose `RawValues`
+  carries the borrowed wire bytes (the ADR-0012/0017 raw-rows rules);
+  `Close` drains to the group's terminal state and returns the wire to
+  quiescent, and an undrained `Rows` keeps the inbound track at receiving —
+  `BeginSessionTx`'s guard refuses while it does.
+- **Object-lifetime effect, stated rather than implied:** a simple-protocol
+  Query destroys the unnamed statement AND the unnamed portal (PostgreSQL
+  semantics — the same rule the finalizers trigger). Named objects owned
+  by the relayed client survive. The ADR records this as a property the
+  CONSUMER's §4a bookkeeping must already account for: autodb's engine
+  never issues high-level statements inside a relayed session's segments
+  (its own gate matrix routes everything through the relay), so the pinned
+  query path exists for ENGINE-INTERNAL statements only (the target-xid
+  capture, the server-belt arming) — and criterion 11 proves those work.
+- The legacy no-context `Commit`/`Rollback` preserve ADR-0017 semantics:
+  they are the context-bounded finalizers on
+  `context.Background()` — a caller upgrading to `ContextTxConn` loses
+  nothing.
+
+**Quiescent operation, not refusal, is the rule:** these methods are
+SUPPORTED on pinnedTx — first-class, guarded by the same state inspection
+as everything else. Silently returning `dao.ErrUnsupported` from a method
+on a type whose interface promise says otherwise is capability dishonesty
+in the other direction (a `ContextTxConn` that is not one), and the
+acceptance criteria require the quiescent-path cells, not only the
+mid-segment refusals.
 
 Because the pinned connection is exclusively held by the handle for its
 lifetime and NO operation exposes pgx's high-level `Conn` query/exec path
@@ -253,17 +311,37 @@ simple-protocol finalizer commands per PostgreSQL semantics — the same
 behavior a real backend has, and the consumer's §4a bookkeeping owns
 tracking it.
 
-### 2.5 The vocabulary: neutral op/message structs, not pgproto3 re-typing
+### 2.5 The vocabulary: a CLOSED neutral set, not pgproto3 re-typing
 
 `ExtendedOp` (the Send argument) and `ExtendedMessage` (the Receive
 result) are small **neutral types declared in `dao/postgres`**, mirroring
-the wire messages a relay must forward (Parse/Bind/Describe/Execute/
-Close/Flush in; ParseComplete/BindComplete/RowDescription/DataRow/
-CommandComplete/PortalSuspended/CloseComplete/NoData/ErrorResponse/
-ReadyForQuery out) and carrying the raw fields byte-faithfully (parameter
-`[][]byte` values, format codes, OIDs, per-column result formats,
-`maxRows`). The conversion to and from `pgproto3` frames happens inside
-the driver, against the pinned `pgconn.PgConn`'s frontend.
+the wire messages a relay must forward and carrying the raw fields
+byte-faithfully (parameter `[][]byte` values, format codes, OIDs,
+per-column result formats, `maxRows`). The conversion to and from
+`pgproto3` frames happens inside the driver, against the pinned
+`pgconn.PgConn`'s frontend.
+
+**The vocabulary is a CLOSED sum** (r1 MF1, jarvis's boundary audit):
+
+- `ExtendedOp` is exactly: `Parse`, `Bind`, `Describe`, `Execute`,
+  `Close`. No `RawFrame`, no `Other`, no `[]byte` passthrough, no embedded
+  `pgproto3` value, no extension hook — any of those would recreate
+  rejected alternative 3 under another name, and a closed sum is the only
+  shape a scoped seam can prove. `Flush` is NOT an op: it is the handle
+  method (§2.2), and listing it as both an op and a method would create
+  two spellings with different state accounting.
+- **The simple-protocol `Query` frame is EXCLUDED from `ExtendedOp` by
+  design.** autodb's classifier/grant gate runs at Parse (and its simple
+  path has its own gated entry); a Query op on this seam would bypass the
+  gate entirely. The exclusion is compile-enforced — the sum has no such
+  constructor — and test-enforced: a criterion-12 cell attempts the
+  forbidden frame shape and is refused at the vocabulary boundary, not at
+  the wire.
+- **No aliases or re-exports from `dao` core.** The capability and its
+  vocabulary live solely in `dao/postgres`; `dao` core gains nothing.
+  The design-stage proof is the docs-only diff; the criterion-13 proof is
+  re-run on the implementation HEAD (implementors enumerated at checkout
+  HEAD, not from the module cache — nested modules are invisible there).
 
 **Rejected:** exposing `*pgproto3.Frontend` directly — it would hand the
 consumer pgconn's internal locking discipline as an implicit contract, and
@@ -332,7 +410,9 @@ established.
 ## 5. Acceptance criteria
 
 1. `var _ SessionPinner = (*pgxConn)(nil)` in `dao/postgres`; `dao` core
-   diff is empty; mysql/sqlite/bigquery compile untouched.
+   diff is empty — proven at IMPLEMENTATION head, not only design stage
+   (r1 MF1); mysql/sqlite/bigquery compile untouched, implementors
+   enumerated at checkout HEAD.
 2. **The asynchrony contract (r0 MF1):** a pinned handle queues Parse and
    Bind back-to-back before ONE Flush and receives their response group
    message-at-a-time — no deadlock, no blocking in Send; and an Execute's
@@ -340,9 +420,10 @@ established.
    one borrowed row per Receive without accumulation; the driver holds at
    most one row buffer).
 3. **The state machine:** ErrorResponse arrives as protocol data, drives
-   discard-until-sync, and the terminal Sync returns the ReadyForQuery
-   status byte and reopens the wire; a transport error poisons the handle
-   and every subsequent operation except `Discard` returns the typed
+   the inbound track to discarding, and the single terminal Sync returns
+   the ReadyForQuery status byte and reopens the wire; a transport error
+   poisons the handle and every subsequent operation except `Discard`
+   returns the typed
    poisoned error; a premature `ReadyForQuery` in Receive is a typed
    contract violation, not silent absorption.
 4. `BeginSessionTx` on the pinned conn returns the guarded `pinnedTx`
@@ -354,11 +435,14 @@ established.
    pinned conn is observably the SAME backend transaction the raw segments
    execute in (`txid_current()` captured via a raw Execute inside the
    pinned tx matches the handle's tx).
-6. **Refusal, not serialization (r0 MF2):** `BeginSessionTx`, `Release`,
-   and every `pinnedTx` operation invoked while a segment is mid-flight
-   return `ErrSegmentInFlight` IMMEDIATELY (state inspection under the
-   handle's synchronization — measured, not asserted: the cell proves no
-   waiting occurred) and the wire stays coherent afterwards.
+6. **Refusal, not serialization (r0 MF2, r1 SF):** `BeginSessionTx`,
+   `Release`, and every `pinnedTx` operation invoked while a segment is
+   mid-flight return `ErrSegmentInFlight` IMMEDIATELY. Immediacy is proven
+   DETERMINISTICALLY, not by elapsed time: a test hook holds the segment
+   in the receiving state on a barrier, the guarded call runs and returns
+   while the barrier is provably still closed, and the segment then resumes
+   and completes coherently. A watchdog timeout guards the mutation that
+   breaks the refusal; scheduler load cannot flake the property.
 7. **No lease leak (r0 MF3):** after a failed Sync / poisoned wire /
    cancelled context mid-segment, a deferred `Discard` reclaims the pool
    slot — proven by a cell that exhausts the pool's max size through
@@ -376,3 +460,23 @@ established.
 10. Race detector clean over concurrent segment steps vs finalizer/Release
     attempts on one handle, and over deferred Discard racing a mid-flight
     Receive.
+11. **Portal resume and abandonment (r1 MF2):** the deterministic sequence
+    Execute → `PortalSuspended` → Send(Execute resume) → Flush → Receive
+    (the resumed group's rows) → Sync — with the Flush provably preserving
+    the inbound receiving track while the resume bytes go out, and the
+    single terminal Sync returning both tracks to quiescent. The
+    abandonment branch: Execute → `PortalSuspended` → Sync (no resume sent)
+    drops the portal server-side.
+12. **The pinned query/exec path (r1 MF3):** from quiescent, pinnedTx
+    `QueryContext` streams rows through the driver's raw simple-protocol
+    path (RawValues byte-faithful; Rows.Close returns the wire to
+    quiescent), and `ExecContext` returns the command tag — plus the
+    object-lifetime observation: a pinnedTx query destroys the unnamed
+    statement/portal, named client objects survive. The mid-segment
+    refusal of both is criterion 6's cell.
+13. **The closed vocabulary (r1 MF1):** the Query-frame exclusion is
+    test-proven — the forbidden shape cannot be constructed through
+    `ExtendedOp` (compile) and the boundary test proves no spelling of a
+    simple Query reaches the wire through the seam; no alias or re-export
+    of the capability exists in `dao` core (grep/compile proof on the
+    implementation HEAD, with implementors enumerated at checkout HEAD).
