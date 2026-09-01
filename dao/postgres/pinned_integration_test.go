@@ -68,13 +68,6 @@ func mustPin(t *testing.T, conn dao.DataConn) *pinnedConn {
 	return h
 }
 
-// tuple reads the handle's state tracks under its lock.
-func tuple(p *pinnedConn) (outboundState, inboundState) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.out, p.in
-}
-
 func wantTuple(t *testing.T, p *pinnedConn, out outboundState, in inboundState, at string) {
 	t.Helper()
 	gotOut, gotIn := tuple(p)
@@ -266,6 +259,11 @@ func TestPinned_C9_CapabilityPresentOnPostgres(t *testing.T) {
 	// The lease went back to the pool as a REUSABLE member: still one total, one idle.
 	if s := conn.pool.Stat(); s.TotalConns() != 1 || s.IdleConns() != 1 {
 		t.Fatalf("after Release: total=%d idle=%d, want 1/1 (recycled, not destroyed)", s.TotalConns(), s.IdleConns())
+	}
+	// …and the handle is terminal (r0 MF1); the full face sweep is
+	// TestPinned_MF1_ReleasedHandleIsTerminal.
+	if err := pc.Send(bg(t), ParseOp("", "SELECT 1", nil)); !errors.Is(err, ErrReleased) {
+		t.Fatalf("Send after Release = %v, want ErrReleased", err)
 	}
 }
 
@@ -769,6 +767,79 @@ func TestPinned_C8_NamedObjectsUnaffectedByPoolCacheChurn(t *testing.T) {
 	mustSync(t, pc)
 }
 
+// --- r0 MF1: Release terminalizes the handle -----------------------------------------
+
+// A successful Release hands the member back to the pool, so the handle must be
+// TERMINAL: its frontend/pgConn/netConn still point at a connection the pool may have
+// already given to someone else, and a surviving Send would queue bytes onto a
+// stranger's wire. Every face refuses with ErrReleased, and the max-pool-1 arm proves
+// the stale handle cannot touch the member after it has been re-borrowed.
+func TestPinned_MF1_ReleasedHandleIsTerminal(t *testing.T) {
+	conn := openPG(t, MaxOpenConns(1))
+	pc := mustPin(t, conn)
+
+	// A working segment first: the refusals below are the release, not a broken handle.
+	if msgs, st := segment(t, pc, "SELECT 'before'"); st != 'I' || string(rowsOf(msgs)[0][0]) != "before" {
+		t.Fatalf("pre-release segment: %c %v", st, rowsOf(msgs))
+	}
+	if err := pc.Release(bg(t)); err != nil {
+		t.Fatalf("Release from quiescent: %v", err)
+	}
+
+	for name, op := range map[string]func() error{
+		"Send":  func() error { return pc.Send(bg(t), ParseOp("", "SELECT 1", nil)) },
+		"Flush": func() error { return pc.Flush(bg(t)) },
+		"Receive": func() error {
+			_, err := pc.Receive(bg(t))
+			return err
+		},
+		"Sync": func() error {
+			_, err := pc.Sync(bg(t))
+			return err
+		},
+		"BeginSessionTx": func() error {
+			_, err := pc.BeginSessionTx(bg(t), dao.TxOptions{})
+			return err
+		},
+		"Release": func() error { return pc.Release(bg(t)) },
+	} {
+		if err := op(); !errors.Is(err, ErrReleased) {
+			t.Errorf("%s after Release = %v, want ErrReleased", name, err)
+		}
+	}
+
+	// The member went back to the pool intact (released, not destroyed) and is
+	// re-borrowable — the single slot proves it is the SAME member.
+	if s := conn.pool.Stat(); s.TotalConns() != 1 || s.IdleConns() != 1 {
+		t.Fatalf("after Release: total=%d idle=%d, want 1/1 (recycled, not destroyed)", s.TotalConns(), s.IdleConns())
+	}
+	next := mustPin(t, conn)
+	if next == pc {
+		t.Fatal("the pool returned the same handle object; the cell cannot distinguish the two owners")
+	}
+	// The new owner works…
+	if msgs, st := segment(t, next, "SELECT 'new owner'"); st != 'I' || string(rowsOf(msgs)[0][0]) != "new owner" {
+		t.Fatalf("new owner's segment: %c %v", st, rowsOf(msgs))
+	}
+	// …and the stale handle still cannot touch it, mid-borrow.
+	if err := pc.Send(bg(t), ParseOp("", "SELECT 'intruder'", nil)); !errors.Is(err, ErrReleased) {
+		t.Fatalf("stale Send while the member is re-borrowed = %v, want ErrReleased", err)
+	}
+	// The new owner is unperturbed by the stale handle's attempt.
+	if msgs, st := segment(t, next, "SELECT 'still fine'"); st != 'I' || string(rowsOf(msgs)[0][0]) != "still fine" {
+		t.Fatalf("new owner after the intruder attempt: %c %v", st, rowsOf(msgs))
+	}
+	// A deferred Discard on the released handle is a clean no-op and must not reclaim
+	// the member the new owner is holding.
+	pc.Discard()
+	if msgs, st := segment(t, next, "SELECT 'after stale discard'"); st != 'I' || string(rowsOf(msgs)[0][0]) != "after stale discard" {
+		t.Fatalf("new owner after the stale Discard: %c %v", st, rowsOf(msgs))
+	}
+	if err := next.Release(bg(t)); err != nil {
+		t.Fatalf("new owner Release: %v", err)
+	}
+}
+
 // --- criterion 10: race detector -----------------------------------------------------
 
 // trySegment runs one unnamed segment without failing the test: it returns
@@ -813,23 +884,26 @@ func TestPinned_C10_RaceSegmentsVsFinalizersAndRelease(t *testing.T) {
 		return err == nil || errors.Is(err, ErrSegmentInFlight) || errors.Is(err, ErrTxStillOpen) || errors.Is(err, dao.ErrTransactionClosed)
 	}
 
-	// Three finalizer/Release/BeginSessionTx spinners run a BOUNDED burst and then exit;
-	// stop closes when all three are done. Every one of their outcomes must be a typed
-	// contract result — never a data race (the -race gate), a panic, or a corrupt wire.
+	// Finalizer / BeginSessionTx spinners run a BOUNDED burst and then exit; stop closes
+	// when they are done. Every one of their outcomes must be a typed contract result —
+	// never a data race (the -race gate), a panic, or a corrupt wire.
+	//
+	// Release is deliberately NOT in this mix: it TERMINALIZES the handle (r0 MF1), so a
+	// Release winning the wire would legitimately end every later segment and the liveness
+	// assertion below would be asserting nothing. The Release race has its own cell,
+	// TestPinned_MF1_ReleasedHandleIsTerminal, where the post-Release refusal IS the
+	// property under test rather than noise.
 	stop := make(chan struct{})
 	var finWg sync.WaitGroup
-	for g := 0; g < 3; g++ {
+	for g := 0; g < 2; g++ {
 		finWg.Add(1)
 		go func(g int) {
 			defer finWg.Done()
-			for i := 0; i < 200; i++ {
+			for i := 0; i < 300; i++ {
 				var err error
-				switch g {
-				case 0:
+				if g == 0 {
 					err = tx.CommitContext(ctx)
-				case 1:
-					err = pc.Release(ctx)
-				default:
+				} else {
 					_, err = pc.BeginSessionTx(ctx, dao.TxOptions{})
 				}
 				if !allowed(err) {
@@ -878,11 +952,10 @@ func TestPinned_C10_RaceSegmentsVsFinalizersAndRelease(t *testing.T) {
 	finWg.Wait()
 	t.Logf("segments run=%d refused-by-racing-finalizer=%d finalizer-attempts=600", segmentsRun, segmentsRefused)
 
-	// Coherence after the storm: whatever the finalizer race did, the wire still speaks
-	// the protocol — unless Release won and returned the member, in which case every
-	// face reports the handle terminal.
-	err = trySegment(ctx, pc, "SELECT 'coherent'")
-	if err != nil && !errors.Is(err, ErrPoisoned) {
+	// Coherence after the storm: the wire still speaks the protocol. Nothing in the mix
+	// terminalizes the handle, so ANY error here is a defect — post-Release success is
+	// not an accepted outcome of this cell (r0 MF1 tightening).
+	if err := trySegment(ctx, pc, "SELECT 'coherent'"); err != nil {
 		t.Fatalf("post-storm segment: %v", err)
 	}
 	_ = tx.RollbackContext(context.Background())

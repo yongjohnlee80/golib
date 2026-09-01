@@ -688,3 +688,48 @@ untouched. Refinements the implementation made explicit, each within the letter 
   25P02 while a MISSING statement/portal still reports 26000/34000, and Close succeeds
   (pgconn's own `Deallocate` relies on this).
 
+### Review round r1 — three lifecycle/concurrency defects folded (2026-09-02)
+
+Both reviewers independently reproduced all three on head `f74bfd1`; each fix has a
+regression cell and a named mutation that reddens it.
+
+- **Release terminalizes the handle (MF1).** `Release` returned the member to the pool
+  but left the handle live: `frontend`/`pgConn`/`netConn` still pointed at a connection
+  the pool could hand to another caller, so a later `Send` queued bytes onto a
+  stranger's wire (mutation `MF1-release-not-terminal`: `Send after Release = <nil>`).
+  A successful `Release` now sets a `released` terminal flag UNDER `mu`, before the
+  lease goes back, and every face refuses with the new `ErrReleased`. Terminality is
+  claimed before `acq.Release` precisely so no concurrent call can slip into the gap.
+  Cell: `TestPinned_MF1_ReleasedHandleIsTerminal` — the full face sweep plus a
+  max-pool-1 arm that re-borrows the same member and proves the stale handle cannot
+  touch it mid-borrow, and that a stale `Discard` does not reclaim the new owner's
+  connection. Criterion 10's oracle was tightened accordingly: `Release` is no longer in
+  its spinner mix (it terminalizes the handle, which would make the liveness assertion
+  vacuous), so any post-storm segment error is now a defect rather than an accepted
+  outcome.
+- **Writes are bounded by cancellation, not only by a deadline (MF2).**
+  `writeBuffered` installed a socket deadline only when `ctx` carried one, so a
+  cancellable no-deadline context — and a cancellation landing before a later deadline —
+  could not interrupt a `frontend.Flush` already parked in `Write`, contrary to
+  `PinnedConn.Flush`'s contract and §2.3 (mutation
+  `MF2-write-bounded-by-deadline-only`). A watcher now shortens the socket deadline the
+  instant `ctx` is done; its teardown is synchronized (`wg.Wait`) before the deadline is
+  cleared so it can never strand a past deadline on the next operation, and the raw
+  context cause is preserved over pgconn's timeout wrapper. A cancellation mid-write
+  stays a transport-level outcome: the handle is poisoned.
+- **`Send` and `Flush` are mutually exclusive over the write buffer (MF3).** Both touch
+  pgproto3's shared `wbuf`. `Send` encoded under `mu` but never owned the wire, so a
+  `Send` arriving while `Flush` was inside `Write` appended a frame that the subsequent
+  buffer reset erased, and `Flush` then overwrote the `building` state that `Send` had
+  just produced (mutation `MF3-send-during-flush-admitted`). `Flush` and `Sync` now
+  claim a `writing` flag under `mu` BEFORE the write begins; `Send`, `Flush` and `Sync`
+  refuse immediately with `ErrSegmentInFlight` while it is held, and the claim is
+  released together with the state transition in one critical section. The
+  Send-during-**Receive** resume path is untouched — `Receive` does not write — and has
+  its own cell (`TestPinned_MF3_ResumeSendDuringReceiveStillAllowed`) guarding against
+  the fix over-reaching.
+
+The two server-free cells drive a `net.Pipe` whose peer is not reading and use a
+gate writer that signals the instant the write parks, so each window is entered
+deliberately rather than raced for.
+

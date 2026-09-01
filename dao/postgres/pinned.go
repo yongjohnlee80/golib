@@ -83,9 +83,10 @@ type PinnedConn interface {
 	// state; anything else is an immediate [ErrSegmentInFlight].
 	BeginSessionTx(ctx context.Context, opts dao.TxOptions) (dao.ContextTxConn, error)
 
-	// Release returns the connection to the pool. Requires the quiescent state and no
-	// open transaction; otherwise it returns ErrSegmentInFlight / ErrTxStillOpen
-	// immediately.
+	// Release returns the connection to the pool and makes the handle TERMINAL: it
+	// requires the quiescent state and no open transaction (otherwise ErrSegmentInFlight
+	// / ErrTxStillOpen immediately), and after a successful Release every face refuses
+	// with ErrReleased — the connection may already belong to another caller.
 	Release(ctx context.Context) error
 
 	// Discard is the idempotent TERMINAL operation: it always relinquishes the pool
@@ -147,6 +148,11 @@ var ErrPoisoned = errors.New("postgres: the pinned connection is poisoned")
 // has not been finalized.
 var ErrTxStillOpen = errors.New("postgres: the pinned transaction is still open")
 
+// ErrReleased reports any operation on a handle whose connection has been returned to
+// the pool by [PinnedConn.Release]. The handle is terminal; the connection may already
+// belong to another caller.
+var ErrReleased = errors.New("postgres: the pinned connection has been released to the pool")
+
 // ErrPrematureReadyForQuery reports a ReadyForQuery observed by [PinnedConn.Receive] —
 // a contract violation, because the terminal ReadyForQuery belongs to Sync and the
 // consumer sent none (ADR-0018 §2.3). The driver does not silently absorb protocol skew.
@@ -178,6 +184,16 @@ type pinnedConn struct {
 	out      outboundState
 	in       inboundState
 	poisoned bool
+	// released records a successful Release: the pool member is gone and the handle is
+	// TERMINAL (MF1). Every face refuses with ErrReleased thereafter — the frontend,
+	// pgConn and netConn still point at a connection the pool may have handed to another
+	// goroutine, so touching them would corrupt a stranger's wire.
+	released bool
+	// writing is held by the one wire-write in progress (Flush or Sync). It is claimed
+	// under mu BEFORE the write starts, so a concurrent Send/Flush/Sync refuses rather
+	// than mutating pgproto3's shared write buffer mid-Write (MF3). Receive does not set
+	// it — the Send-during-Receive resume path stays open.
+	writing bool
 	// wirePrivate is set while a transaction or private-query exchange owns the wire.
 	// A guarded call refuses immediately when it is set — the private exchange does not
 	// touch the (out, in) tracks (it consumes its own terminal ReadyForQuery), so this
@@ -209,10 +225,24 @@ func (c *pgxConn) PinSessionConn(ctx context.Context) (PinnedConn, error) {
 	}, nil
 }
 
+// terminalErrLocked reports the terminal state's error, or nil when the handle is live.
+// Poison outranks release (a poisoned wire is never returned to the pool). Callers hold
+// mu.
+func (p *pinnedConn) terminalErrLocked() error {
+	switch {
+	case p.poisoned:
+		return ErrPoisoned
+	case p.released:
+		return ErrReleased
+	default:
+		return nil
+	}
+}
+
 // quiescentLocked reports whether the wire is at the both-tracks-reset, no-private-
-// exchange state. Callers hold mu.
+// exchange, no-write-in-progress state. Callers hold mu.
 func (p *pinnedConn) quiescentLocked() bool {
-	return p.out == idleOut && p.in == noInbound && !p.wirePrivate
+	return p.out == idleOut && p.in == noInbound && !p.wirePrivate && !p.writing
 }
 
 // Send queues ONE frontend frame (ADR-0018 §2.3's Send row). It is non-blocking: the
@@ -222,8 +252,11 @@ func (p *pinnedConn) quiescentLocked() bool {
 func (p *pinnedConn) Send(_ context.Context, op ExtendedOp) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.poisoned {
-		return ErrPoisoned
+	if err := p.terminalErrLocked(); err != nil {
+		return err
+	}
+	if p.writing {
+		return fmt.Errorf("%w: a flush owns the write buffer", ErrSegmentInFlight)
 	}
 	if p.wirePrivate {
 		return fmt.Errorf("%w: a transaction or query exchange owns the wire", ErrSegmentInFlight)
@@ -243,9 +276,13 @@ func (p *pinnedConn) Send(_ context.Context, op ExtendedOp) error {
 // failure poisons the handle.
 func (p *pinnedConn) Flush(ctx context.Context) error {
 	p.mu.Lock()
-	if p.poisoned {
+	if err := p.terminalErrLocked(); err != nil {
 		p.mu.Unlock()
-		return ErrPoisoned
+		return err
+	}
+	if p.writing {
+		p.mu.Unlock()
+		return fmt.Errorf("%w: a flush already owns the write buffer", ErrSegmentInFlight)
 	}
 	if p.wirePrivate {
 		p.mu.Unlock()
@@ -259,9 +296,13 @@ func (p *pinnedConn) Flush(ctx context.Context) error {
 		p.mu.Unlock()
 		return fmt.Errorf("%w: nothing queued to flush", ErrSegmentInFlight)
 	}
+	// Claim the write buffer BEFORE dropping mu, so a concurrent Send/Sync refuses
+	// rather than mutating pgproto3's shared wbuf while Write reads and resets it (MF3).
+	p.writing = true
 	p.mu.Unlock()
 
 	if err := ctx.Err(); err != nil {
+		p.clearWriting()
 		return err
 	}
 	p.wireMu.Lock()
@@ -272,13 +313,17 @@ func (p *pinnedConn) Flush(ctx context.Context) error {
 	p.frontend.Send(&pgproto3.Flush{})
 	err := p.writeBuffered(ctx)
 	p.wireMu.Unlock()
+
+	p.mu.Lock()
+	p.writing = false
+	if err == nil {
+		p.out = flushed
+	}
+	p.mu.Unlock()
 	if err != nil {
 		p.poison()
 		return err
 	}
-	p.mu.Lock()
-	p.out = flushed
-	p.mu.Unlock()
 	return nil
 }
 
@@ -288,9 +333,9 @@ func (p *pinnedConn) Flush(ctx context.Context) error {
 // ReadyForQuery is a contract violation; a transport error poisons.
 func (p *pinnedConn) Receive(ctx context.Context) (ExtendedMessage, error) {
 	p.mu.Lock()
-	if p.poisoned {
+	if err := p.terminalErrLocked(); err != nil {
 		p.mu.Unlock()
-		return ExtendedMessage{}, ErrPoisoned
+		return ExtendedMessage{}, err
 	}
 	if p.wirePrivate {
 		p.mu.Unlock()
@@ -337,31 +382,48 @@ func (p *pinnedConn) Receive(ctx context.Context) (ExtendedMessage, error) {
 // non-poisoned, non-private state.
 func (p *pinnedConn) Sync(ctx context.Context) (byte, error) {
 	p.mu.Lock()
-	if p.poisoned {
+	if err := p.terminalErrLocked(); err != nil {
 		p.mu.Unlock()
-		return 0, ErrPoisoned
+		return 0, err
+	}
+	if p.writing {
+		p.mu.Unlock()
+		return 0, fmt.Errorf("%w: a flush owns the write buffer", ErrSegmentInFlight)
 	}
 	if p.wirePrivate {
 		p.mu.Unlock()
 		return 0, fmt.Errorf("%w: a transaction or query exchange owns the wire", ErrSegmentInFlight)
 	}
+	p.writing = true
 	p.mu.Unlock()
 
 	if err := ctx.Err(); err != nil {
+		p.clearWriting()
 		return 0, err
 	}
 	p.wireMu.Lock()
 	status, err := p.syncLocked(ctx)
 	p.wireMu.Unlock()
+
+	p.mu.Lock()
+	p.writing = false
+	if err == nil {
+		p.out = idleOut
+		p.in = noInbound
+	}
+	p.mu.Unlock()
 	if err != nil {
 		p.poison()
 		return 0, err
 	}
-	p.mu.Lock()
-	p.out = idleOut
-	p.in = noInbound
-	p.mu.Unlock()
 	return status, nil
+}
+
+// clearWriting releases the write-buffer claim after a pre-write refusal.
+func (p *pinnedConn) clearWriting() {
+	p.mu.Lock()
+	p.writing = false
+	p.mu.Unlock()
 }
 
 // syncLocked emits one Sync frame and drains to the terminal ReadyForQuery. The caller
@@ -414,9 +476,9 @@ func (p *pinnedConn) BeginSessionTx(ctx context.Context, opts dao.TxOptions) (da
 // is mid-segment or the transaction is open. Discard is the unconditional counterpart.
 func (p *pinnedConn) Release(_ context.Context) error {
 	p.mu.Lock()
-	if p.poisoned {
+	if err := p.terminalErrLocked(); err != nil {
 		p.mu.Unlock()
-		return ErrPoisoned
+		return err
 	}
 	// A mid-flight segment is reported before an open transaction: it is the more
 	// immediate fact about the wire (criterion 6), and the transaction cannot be
@@ -429,6 +491,10 @@ func (p *pinnedConn) Release(_ context.Context) error {
 		p.mu.Unlock()
 		return ErrTxStillOpen
 	}
+	// Terminalize UNDER mu, before the lease goes back: the moment acq.Release runs the
+	// pool may hand this member to another goroutine, and every face must already refuse
+	// (MF1). released is set here, not after, so no concurrent Send can slip in between.
+	p.released = true
 	acq := p.acq
 	p.acq = nil
 	p.mu.Unlock()
@@ -459,7 +525,7 @@ func (p *pinnedConn) Discard() {
 	// wire, an unfinalized transaction — is a member the pool must NOT recycle. The
 	// pool's own dirty test (busy / non-idle TxStatus / closed) does not see a
 	// read-timeout-poisoned wire with unread responses, so the decision is made here.
-	reusable := !p.poisoned && !p.txOpen && p.quiescentLocked()
+	reusable := !p.poisoned && !p.released && !p.txOpen && p.quiescentLocked()
 	p.poisoned = true
 	acq := p.acq
 	p.acq = nil
@@ -510,9 +576,9 @@ func (p *pinnedConn) txOpenLoad() bool {
 // the flag and frees the wire; it must be deferred by the caller.
 func (p *pinnedConn) beginPrivate() (func(), error) {
 	p.mu.Lock()
-	if p.poisoned {
+	if err := p.terminalErrLocked(); err != nil {
 		p.mu.Unlock()
-		return nil, ErrPoisoned
+		return nil, err
 	}
 	if !p.quiescentLocked() {
 		p.mu.Unlock()
@@ -524,14 +590,14 @@ func (p *pinnedConn) beginPrivate() (func(), error) {
 	p.wireMu.Lock()
 	// A Discard may have poisoned between the flag set and the wire acquisition.
 	p.mu.Lock()
-	poisoned := p.poisoned
+	termErr := p.terminalErrLocked()
 	p.mu.Unlock()
-	if poisoned {
+	if termErr != nil {
 		p.wireMu.Unlock()
 		p.mu.Lock()
 		p.wirePrivate = false
 		p.mu.Unlock()
-		return nil, ErrPoisoned
+		return nil, termErr
 	}
 	return func() {
 		p.mu.Lock()
@@ -541,17 +607,50 @@ func (p *pinnedConn) beginPrivate() (func(), error) {
 	}, nil
 }
 
-// writeBuffered flushes the frontend's buffered frames to the socket, bounded by ctx's
-// deadline. The caller owns the wire (holds wireMu). pgproto3's Flush has no context, so
-// the deadline is applied to the socket directly and cleared afterward.
+// writeBuffered flushes the frontend's buffered frames to the socket, bounded by ctx.
+// The caller owns the wire (holds wireMu). pgproto3's Flush has no context, so the write
+// is bounded two ways (MF2): a deadline when ctx carries one, AND a watcher that
+// shortens the socket deadline the instant ctx is cancelled — a cancellable context with
+// NO deadline, or cancellation before a later deadline, must still interrupt a blocked
+// Write per PinnedConn.Flush's contract and ADR §2.3. The watcher's teardown is
+// synchronized (wg.Wait) before the deadline is cleared, so it can never strand a past
+// deadline on the next operation, and the raw context cause is preserved over pgconn's
+// timeout wrapper. The caller poisons on any error — a cancellation mid-write is a
+// transport-level outcome.
 func (p *pinnedConn) writeBuffered(ctx context.Context) error {
+	done := ctx.Done()
+	if done == nil {
+		return p.frontend.Flush() // non-cancellable context: no watcher needed
+	}
+	if err := ctx.Err(); err != nil {
+		return err // already cancelled: nothing is dispatched
+	}
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := p.netConn.SetWriteDeadline(deadline); err != nil {
 			return err
 		}
-		defer func() { _ = p.netConn.SetWriteDeadline(time.Time{}) }()
 	}
-	return p.frontend.Flush()
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		select {
+		case <-done:
+			_ = p.netConn.SetWriteDeadline(time.Now())
+		case <-stop:
+		}
+	}()
+	err := p.frontend.Flush()
+	close(stop)
+	wg.Wait()
+	_ = p.netConn.SetWriteDeadline(time.Time{})
+	if err != nil {
+		if cerr := ctx.Err(); cerr != nil {
+			return cerr
+		}
+	}
+	return err
 }
 
 // readMessage reads one backend message on the raw face, bounded by ctx (pgconn's own
