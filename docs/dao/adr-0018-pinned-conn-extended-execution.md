@@ -633,3 +633,58 @@ established.
     segment runs normally. The blind-Close guard is proven in the same
     cell's negative arm: a Parse-stage ErrorResponse (nothing was
     created) issues no Close.
+
+## 6. Implementation record (2026-09-02)
+
+Shipped in `dao/postgres` as `extendedops.go` (vocabulary), `pinned.go` (capability,
+handle, state machine) and `pinnedtx.go` (guarded transaction, private query path,
+driver-owned rows), with `pinned_test.go` (server-free) and
+`pinned_integration_test.go` (one cell per criterion, `-tags integration`). dao core is
+untouched. Refinements the implementation made explicit, each within the letter of §2:
+
+- **`Flush` emits the protocol Flush (`H`) frame** after the queued frames. Without it
+  the server buffers every response until Sync and `Receive` cannot serve a group
+  message-at-a-time (criterion 2). Corollary observed live: the server processes frames
+  in order, so a Flush queued behind an Execute that blocks server-side is not reached
+  until the Execute completes — a consumer that wants Parse/Bind acknowledgements before
+  a long Execute flushes them first.
+- **`ExtendedMessage` also surfaces the three asynchronous backend messages** —
+  `NoticeResponse`, `ParameterStatus`, `NotificationResponse` — as protocol data with
+  their own Kinds, because a relay must forward them verbatim and the server may
+  interleave them with any group. `ExtendedOp` is unchanged: still exactly five shapes.
+  The zero `ExtendedOp{}` (the one spelling constructible without a constructor) is
+  refused by `Send` with `ErrInvalidExtendedOp`.
+- **Typed capability helpers**: `SupportsSessionPinning(conn) bool` and
+  `PinSessionConn(ctx, conn) (PinnedConn, error)`, the latter reporting
+  `dao.ErrUnsupported` on a miss (criterion 9), mirroring `dao.BeginConnTx`.
+- **`Discard` closes the physical connection whenever reuse is unprovable** (poisoned,
+  mid-flight, private exchange, or an unfinalized transaction) before returning the
+  lease, because the pool's own dirty test — busy / non-idle TxStatus / closed — does
+  not see a read-timeout-poisoned wire with unread responses and would recycle it. From
+  a quiescent, transaction-closed handle it recycles. It interrupts an in-flight read
+  with a past socket deadline and barriers on the wire mutex before closing, since
+  closing a pgconn under an active operation is a data race (criterion 10).
+- **`Release` reports a mid-flight segment before an open transaction** — both refusals
+  are immediate; the segment is the more immediate fact about the wire (criterion 6).
+- **Dispatch-aware finalizer errors feed the shared classifier.** pgconn marks every
+  `ReceiveMessage` failure SafeToRetry because its own exec path checks the context
+  before writing; on the raw face the COMMIT frame is already on the wire when the read
+  runs, so that flag would turn a lost answer into a "proven rollback". The raw path
+  therefore returns a not-dispatched shape (SafeToRetry, nothing written, wire clean,
+  server transaction still open — `Release` refuses with `ErrTxStillOpen`, `Discard`
+  closes) when the context is done before the write, and a dispatched-and-lost shape
+  (never SafeToRetry, handle poisoned) after it; `classifyCommit` is reused unchanged and
+  the fault-state matrix (criterion 4) passes through it.
+- **Empty is not NULL on the private Bind.** `pgtype.Map.Encode` signals NULL with a nil
+  slice, and appending zero bytes to a nil scratch buffer also returns nil; encoding into
+  a shared non-nil scratch (as pgx's ExtendedQueryBuilder does) keeps an empty string an
+  empty value. Caught live by criterion 14.
+- **Criterion 16 has a third arm.** PostgreSQL folds `1 / $1::int` at BIND, so that SQL
+  produces a Bind-stage error: statement created, portal not, exactly one Close. The
+  Execute-stage arm uses a set-returning function the planner cannot fold; the Parse-stage
+  arm sends no Close at all.
+- **Two protocol facts the cells depend on**, observed against PostgreSQL 17: in an
+  aborted transaction a Describe of an EXISTING data-returning statement is refused with
+  25P02 while a MISSING statement/portal still reports 26000/34000, and Close succeeds
+  (pgconn's own `Deallocate` relies on this).
+

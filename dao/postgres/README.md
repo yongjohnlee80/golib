@@ -103,6 +103,54 @@ answer did not come back. The pgx/pgconn cause stays reachable with
 `errors.As`; a context cancelled *before* dispatch returns the raw context error
 and leaves the handle open.
 
+## Session-pinned connections & raw extended-protocol execution (ADR-0018)
+
+`SessionPinner` is a Postgres-only capability for a consumer (autodb's pgwire
+front door) that must run a *relayed* client's extended-protocol frames on the
+**same** connection that hosts the session's transaction — a guarantee no pool
+can give:
+
+```go
+pc, err := postgres.PinSessionConn(ctx, conn) // dao.ErrUnsupported on a non-pg conn
+if err != nil { /* … */ }
+defer pc.Discard() // idempotent terminal cleanup — always relinquishes the lease
+
+tx, err := pc.BeginSessionTx(ctx, dao.TxOptions{Access: dao.TxReadOnly})
+// … relay the client's frames on the SAME wire, inside that transaction:
+_ = pc.Send(ctx, postgres.ParseOp("", clientSQL, nil))
+_ = pc.Send(ctx, postgres.BindOp("", "", clientParams, formats, nil))
+_ = pc.Send(ctx, postgres.ExecuteOp("", 0))
+_ = pc.Flush(ctx)
+for {
+    m, err := pc.Receive(ctx) // one message at a time; DataRow buffers are BORROWED
+    if err != nil { /* transport error → the handle is poisoned; Discard */ }
+    if m.Kind == "ErrorResponse" { /* protocol data, not a Go error — classify + reframe */ break }
+    if m.Kind == "CommandComplete" { break }
+}
+status, _ := pc.Sync(ctx) // the ONLY call that returns the wire to quiescent
+```
+
+The contract in one paragraph. `Send` queues one frontend frame (`Parse`,
+`Bind`, `Describe`, `Execute`, `Close` — a **closed** vocabulary; the
+simple-`Query` frame is excluded so a relay's gate at `Parse` is never bypassed);
+`Flush` writes them plus a protocol `Flush` so the server answers without ending
+the exchange; `Receive` returns one backend message at a time with borrowed
+`DataRow` buffers and surfaces a server `ErrorResponse` as **protocol data**, not
+a Go error; `Sync` is the single call that consumes to the terminal
+`ReadyForQuery` and reopens the wire. The state is **two orthogonal tracks**
+(outbound: idle→building→flushed; inbound: none→receiving→discarding) plus a
+poison flag; a guarded call made mid-segment is refused **immediately** with
+`ErrSegmentInFlight`, never serialized. `BeginSessionTx` returns a guarded
+`dao.ContextTxConn` whose finalizers run over the raw wire and reuse the ADR-0017
+`classifyCommit` outcome contract, and whose `QueryContext`/`ExecContext` run a
+private unnamed extended sequence (or a simple `Query` for a no-arg `Exec`) that
+cleans up its own unnamed objects. `Release` returns a quiescent, transaction-
+closed member to the pool; `Discard` is the unconditional terminal that closes
+the physical connection whenever safe reuse cannot be proven — so a poisoned or
+mid-flight member is never recycled dirty. Because the handle never exposes pgx's
+high-level `Conn`, pgx's statement cache is **structurally unreachable** on a
+pinned member and can never disagree with it.
+
 ## Integration tests
 
 Build-tagged; require a reachable Postgres:
@@ -117,7 +165,16 @@ duplicate→`ErrDuplicate`, upsert, native-COPY and chunked batches, `RunTx`
 commit/rollback, a two-process integration test, and the ADR-0017 suite (the
 option matrix live against the server, the 25006 read-only proof through
 `BeginSessionTx`, fresh-context finalizers, all four commit fault states, and
-raw rows on both the pool and transaction paths). The two-phase-commit tests
+raw rows on both the pool and transaction paths), and the ADR-0018 suite — one
+cell per acceptance criterion (`-run TestPinned_`): the async queue-then-stream
+contract in bounded memory, the error/poison/premature-ReadyForQuery state
+machine, the fault-state matrix on the pinned transaction, one-wire-one-backend-
+transaction via `txid_current()`, immediate mid-segment refusal proven with a
+watchdog, no lease leak across poison/discard cycles, portal resume/abandonment
+with exact state tuples, the private query/exec path with object-lifetime
+observation, the closed-vocabulary boundary, arg encoding vs the pool path by
+decoded equality, the legacy finalizer shape, and the ErrorResponse cleanup tail.
+The two-phase-commit tests
 additionally require `max_prepared_transactions > 0` and **skip** with an
 explanatory message when the server has prepared transactions disabled:
 
