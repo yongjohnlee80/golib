@@ -1,12 +1,12 @@
 # ADR-0018 — `golib/dao`: session-pinned connections with raw extended-protocol execution
 
-- **Status:** **Proposed** — rev 5; design r0's 4 MF (rev 1), r1's 3 MF +
+- **Status:** **Proposed** — rev 6; design r0's 4 MF (rev 1), r1's 3 MF +
   1 SF + the boundary supplement (rev 2), r2's 4 protocol/interface
   corrections (rev 3), r3's 3 implementability/consistency corrections
-  (rev 4), and r4's 2 private-path corrections + naming cleanup (folded
-  here). The ADR-0017 follow-up that ADR-0075 (autodb's wire front
-  door) filed: "requires a scoped golib seam (pinned-conn
-  extended-exec capability)".
+  (rev 4), r4's 2 private-path corrections + naming cleanup (rev 5), and
+  r5's error-cleanup ordering correction (folded here). The ADR-0017
+  follow-up that ADR-0075 (autodb's wire front door) filed: "requires a
+  scoped golib seam (pinned-conn extended-exec capability)".
 - **Date:** 2026-09-02
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Related:** ADR-0017 (the capability-interface idiom this follows; the
@@ -279,11 +279,13 @@ driver-owned path** on the same raw face:
   `ParameterDescription` supplies the parameter OIDs → each argument is
   encoded with the exported `pgtype.Map.Encode(oid, format, value, buf)`
   (text format; a NULL is the wire's own -1 length) → `Bind` (unnamed
-  portal) → `Execute` → `Sync`, with the sequence consuming its own
-  terminal `ReadyForQuery` (the § rev-3 carve-out) and returning the
-  wire to quiescent. This is the same encoding pgx itself performs for
-  an extended ExecParams, driven through the raw frames instead of the
-  `Conn` machinery.
+  portal) → `Execute` — and then, per the exit-aware cleanup below
+  (r5 MF1), either the NORMAL tail (explicit unnamed Close frames, then
+  the private Sync consuming its own terminal `ReadyForQuery`, the §
+  rev-3 carve-out) or the ERROR tail (recovery Sync first, then the
+  Close+Sync cleanup exchange). This is the same encoding pgx itself
+  performs for an extended ExecParams, driven through the raw frames
+  instead of the `Conn` machinery.
 - **The dispatch is METHOD/ARGUMENT-SHAPED, not SQL-text-shaped** (r4
   MF1 — the rev-3 statement-split rule was unimplementable: golib
   receives no statement list, the leaf cannot depend on a consumer's
@@ -308,21 +310,38 @@ driver-owned path** on the same raw face:
     multi-statement ExecContext draining both groups through the simple
     frame, and a multi-command QueryContext rejected with the server's
     Parse error.
-- **Object-lifetime parity, achieved by EXPLICIT cleanup** (r4 MF2 — the
-  sequence alone does not have simple Query's post-state). In an
-  explicit transaction, the private Sync ends the exchange but destroys
-  nothing: the client's unnamed statement/portal were overwritten by
-  the sequence's `Parse`/`Bind`, and the private objects would then
-  REMAIN until replacement or transaction end. The invariant is
-  "identical in effect to the simple Query this path replaces" — whose
-  post-state is: unnamed objects GONE — so the driver explicitly issues
-  `Close`(unnamed portal) and `Close`(unnamed statement) before its
-  private Sync, on every exit path: normal completion, `Rows.Close`
-  after streaming, and error cleanup. The wire returns quiescent with
-  the unnamed slots in simple-Query's post-state and named client
-  objects untouched, and criterion 12 observes the cleanup: after a
-  pinnedTx Query, an extended Describe of the unnamed statement returns
-  the server's own no-such-statement error.
+- **Object-lifetime parity, achieved by exit-aware cleanup** (r4 MF2,
+  corrected r5 MF1 — Close frames queued before a recovery Sync are
+  DISCARDED by the server). In an explicit transaction, a Sync ends the
+  exchange but destroys nothing: the client's unnamed statement/portal
+  were overwritten by the sequence's `Parse`/`Bind`, and the private
+  objects would otherwise REMAIN until replacement or transaction end.
+  The invariant is "identical in effect to the simple Query this path
+  replaces" — post-state: unnamed objects GONE — but PostgreSQL discards
+  frontend messages after an extended-query ErrorResponse until Sync, so
+  one Close-then-Sync order cannot serve every exit. The exits are
+  defined SEPARATELY, and the driver tracks which private objects
+  `ParseComplete`/`BindComplete` PROVED were created, so Close is never
+  sent blindly for an object the server never made:
+  - **(a) Normal completion / `Rows.Close` after a successfully streamed
+    group:** close the known-created unnamed portal and statement, then
+    the private Sync — the rev-5 normal tail.
+  - **(b) Protocol ErrorResponse:** issue the RECOVERY Sync first and
+    consume its terminal `ReadyForQuery` — only then, if the creation
+    acknowledgements proved the private objects exist AND the error's
+    transaction state did not already destroy them (a transaction-ending
+    error such as a failed COMMIT leaves nothing to close), run a
+    SECOND private Close+Sync cleanup exchange before returning. The
+    wire returns quiescent with the same post-state as (a).
+  - **(c) Transport/context failure:** mark the handle POISONED and let
+    `Discard` close the physical connection — NO wire cleanup is
+    promised on a connection whose frame boundaries are unprovable.
+  Named client objects are untouched on every exit. Criterion 12
+  observes the cleanup on the normal path, and criterion 16 drives the
+  error path: an Execute-stage ErrorResponse inside an explicit
+  transaction, then proof the wire is quiescent and the private unnamed
+  objects are absent before reuse (an extended Describe of the unnamed
+  statement returns the server's no-such-statement error).
 - `QueryContext` streams the result group's rows into a driver-owned
   `dao.Rows` implementation whose `RawValues` carries the borrowed wire
   bytes (the ADR-0012/0017 raw-rows rules); `Close` completes the
@@ -602,4 +621,13 @@ established.
     TERMINAL (a subsequent finalizer reports `dao.ErrTransactionClosed`),
     with `Discard` then reclaiming the pinned lease — the legacy
     observable behavior, not the context-finalizer retry shape (whose
-    own cell remains criterion 4's fault-state-1).
+    own cell remains criterion 4's fault-state-1).16. **The ErrorResponse cleanup tail (r5 MF1):** an Execute-stage
+    ErrorResponse inside an EXPLICIT transaction is driven through the
+    error tail — recovery Sync consumed to its terminal ReadyForQuery,
+    then the tracked-creation Close+Sync cleanup exchange — and the cell
+    proves the wire quiescent and the private unnamed objects ABSENT
+    before reuse: an extended Describe of the unnamed statement returns
+    the server's no-such-statement error, and a subsequent pinned
+    segment runs normally. The blind-Close guard is proven in the same
+    cell's negative arm: a Parse-stage ErrorResponse (nothing was
+    created) issues no Close.
