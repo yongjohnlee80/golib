@@ -1,11 +1,12 @@
 # ADR-0018 — `golib/dao`: session-pinned connections with raw extended-protocol execution
 
-- **Status:** **Proposed** — rev 4; design r0's 4 MF (rev 1), r1's 3 MF +
+- **Status:** **Proposed** — rev 5; design r0's 4 MF (rev 1), r1's 3 MF +
   1 SF + the boundary supplement (rev 2), r2's 4 protocol/interface
-  corrections (rev 3), and r3's 3 implementability/consistency
-  corrections (folded here). The ADR-0017 follow-up that ADR-0075
-  (autodb's wire front door) filed: "requires a scoped golib seam
-  (pinned-conn extended-exec capability)".
+  corrections (rev 3), r3's 3 implementability/consistency corrections
+  (rev 4), and r4's 2 private-path corrections + naming cleanup (folded
+  here). The ADR-0017 follow-up that ADR-0075 (autodb's wire front
+  door) filed: "requires a scoped golib seam (pinned-conn
+  extended-exec capability)".
 - **Date:** 2026-09-02
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Related:** ADR-0017 (the capability-interface idiom this follows; the
@@ -258,11 +259,11 @@ high-level query could run mid-segment with no inspection. Instead
   `ErrTxOutcomeUnknown` / preserved `*pgconn.PgError` causes are the same
   code the pool path uses, shared, not duplicated.
 
-**The query/exec path on pinnedTx (r1 MF3, corrected r2 MF3).** `pinnedTx`
-satisfies `dao.TxConn`, so `QueryContext` and `ExecContext` must honor the
-FULL existing signatures — `args ...any` included — and must not silently
-narrow public behavior. They use a **private driver-owned simple-protocol
-path** on the same raw face:
+**The query/exec path on pinnedTx (r1 MF3, corrected r2/r3/r4 MF3).**
+`pinnedTx` satisfies `dao.TxConn`, so `QueryContext` and `ExecContext`
+must honor the FULL existing signatures — `args ...any` included — and
+must not silently narrow public behavior. They use a **private
+driver-owned path** on the same raw face:
 
 - **Parameters, byte-for-byte, via a private unnamed extended sequence
   (r3 MF1 — the rev-2 sanitizer plan was unimplementable).** The rev 2
@@ -282,39 +283,55 @@ path** on the same raw face:
   terminal `ReadyForQuery` (the § rev-3 carve-out) and returning the
   wire to quiescent. This is the same encoding pgx itself performs for
   an extended ExecParams, driven through the raw frames instead of the
-  `Conn` machinery. Object-lifetime effects are the simple-Query
-  equivalents and are STATED: the sequence occupies and destroys the
-  UNNAMED statement and unnamed portal (whatever the relayed client had
-  there is replaced by `Parse`/`Bind` semantics and dropped at the
-  sequence's `Sync`) — identical in effect to the simple Query it
-  replaces — while NAMED client objects are untouched. No-args calls may
-  take the same sequence with an empty `ParameterDescription`. Criterion
-  14 proves bound args — NULL and binary-sensitive values included —
-  through this path.
-- **Multi-statement behavior is PRESERVED, not narrowed** (r2 MF3: I had
-  invented a single-statement refusal dao's `Execer` never promised —
-  the existing pgx path accepts multi-statement no-args SQL, and a
-  pinnedTx must not narrow it). The private path therefore DISPATCHES on
-  its input: a NO-ARGS statement containing more than one statement
-  (detected on the pre-validated statement list, the same split the
-  engine's own classifier performs) is driven as the ONE simple-protocol
-  Query frame it has always been — multi-statement text is simple-Query
-  semantics, cannot ride an unnamed extended sequence, and must not lose
-  the behavior the existing TxConn gives it. The driver drains ALL
-  response groups to the terminal state. Everything else — zero-or-one
-  statement, with or without args — takes the unnamed extended sequence
-  above. The ADR records rather than changes the public contract, and
-  criterion 14 covers the two-statement no-args case through this
-  dispatch.
-- `QueryContext` streams the result group's rows (the LAST group, for a
-  multi-statement dispatch) into a driver-owned `dao.Rows`
-  implementation whose `RawValues` carries the borrowed wire bytes (the
-  ADR-0012/0017 raw-rows rules); `Close` drains any remaining groups to
-  the terminal state and returns the wire to quiescent, and an undrained
-  `Rows` keeps the inbound track at receiving — the guards refuse while
-  it does.
+  `Conn` machinery.
+- **The dispatch is METHOD/ARGUMENT-SHAPED, not SQL-text-shaped** (r4
+  MF1 — the rev-3 statement-split rule was unimplementable: golib
+  receives no statement list, the leaf cannot depend on a consumer's
+  classifier, and reliably splitting PostgreSQL SQL is parser work).
+  The rule mirrors pgx's own, VERIFIED against v5.10 source:
+  - `ExecContext` with `len(args)==0` → ONE simple-protocol Query frame,
+    draining every result group to the terminal state — pgx itself always
+    uses the simple protocol for a no-arguments exec
+    (`conn.go`: "Always use simple protocol when there are no
+    arguments"), and multi-statement no-args text keeps the behavior it
+    has always had through it.
+  - `ExecContext` WITH args → the private unnamed extended sequence
+    above.
+  - `QueryContext` → the private unnamed extended sequence, for zero or
+    more args — preserving the EXISTING pool-path default: pgx's
+    default Query modes are extended (`ExecParams`-shaped), and a
+    multi-command statement is rejected BY THE SERVER at Parse with the
+    server's own error, verbatim. The rev-3 "LAST result group" rule is
+    withdrawn — pgx never exposed such a rule and pinnedTx will not
+    invent one. Criterion 14 pins both arms: bound args through the
+    extended sequence by decoded semantic equality, and the no-args
+    multi-statement ExecContext draining both groups through the simple
+    frame, and a multi-command QueryContext rejected with the server's
+    Parse error.
+- **Object-lifetime parity, achieved by EXPLICIT cleanup** (r4 MF2 — the
+  sequence alone does not have simple Query's post-state). In an
+  explicit transaction, the private Sync ends the exchange but destroys
+  nothing: the client's unnamed statement/portal were overwritten by
+  the sequence's `Parse`/`Bind`, and the private objects would then
+  REMAIN until replacement or transaction end. The invariant is
+  "identical in effect to the simple Query this path replaces" — whose
+  post-state is: unnamed objects GONE — so the driver explicitly issues
+  `Close`(unnamed portal) and `Close`(unnamed statement) before its
+  private Sync, on every exit path: normal completion, `Rows.Close`
+  after streaming, and error cleanup. The wire returns quiescent with
+  the unnamed slots in simple-Query's post-state and named client
+  objects untouched, and criterion 12 observes the cleanup: after a
+  pinnedTx Query, an extended Describe of the unnamed statement returns
+  the server's own no-such-statement error.
+- `QueryContext` streams the result group's rows into a driver-owned
+  `dao.Rows` implementation whose `RawValues` carries the borrowed wire
+  bytes (the ADR-0012/0017 raw-rows rules); `Close` completes the
+  cleanup contract above (explicit unnamed Close frames + the private
+  Sync) and returns the wire to quiescent, and an undrained `Rows`
+  keeps the inbound track at receiving — the guards refuse while it
+  does.
 - **ReadyForQuery ownership carve-out (r2 MF3):** the private
-  simple-query path consumes its own terminal `ReadyForQuery` — that is
+  driver-owned path consumes its own terminal `ReadyForQuery` — that is
   HOW it returns the wire to quiescent — so §2.3's "the terminal
   ReadyForQuery belongs to Sync" is scoped to the EXTENDED vocabulary
   surface: a `Receive` through `ExtendedMessage` never yields one, while
@@ -549,29 +566,35 @@ established.
     resumed execution works afterwards — and an explicit Send(Close
     portal) releases it; only transaction end destroys it, per the
     protocol's own rules.
-12. **The pinned query/exec path (r1 MF3):** from quiescent, pinnedTx
+12. **The pinned query/exec path (r1 MF3, r4 MF2):** from quiescent, pinnedTx
     `QueryContext` streams rows through the driver's private path
-    (RawValues byte-faithful; Rows.Close returns the wire to
-    quiescent), and `ExecContext` returns the command tag — plus the
-    object-lifetime observation: a pinnedTx query destroys the unnamed
-    statement/portal, named client objects survive. The mid-segment
-    refusal of both is criterion 6's cell.
+    (RawValues byte-faithful; Rows.Close returns the wire to quiescent),
+    and `ExecContext` returns the command tag — plus the object-lifetime
+    observation IN BOTH DIRECTIONS: the client's unnamed statement/portal
+    are gone after a pinnedTx query (an extended Describe of the unnamed
+    statement returns the server's no-such-statement error — the explicit
+    Close cleanup proven, not the sequence's Sync), and NAMED client
+    objects survive. The mid-segment refusal of both is criterion 6's
+    cell.
 13. **The closed vocabulary (r1 MF1):** the Query-frame exclusion is
     test-proven — the forbidden shape cannot be constructed through
     `ExtendedOp` (compile) and the boundary test proves no spelling of a
     simple Query reaches the wire through the seam; no alias or re-export
     of the capability exists in `dao` core (grep/compile proof on the
     implementation HEAD, with implementors enumerated at checkout HEAD).
-14. **Bound args preserved (r2 MF3, r3 MF1):** pinnedTx `QueryContext`/
-    `ExecContext` with bound arguments — including NULL and
-    binary-sensitive values — work through the private unnamed extended
-    sequence, compared against the POOL path by DECODED semantic
-    equality (the raw text/binary format difference between the pool's
-    result-format negotiation and this path's is a format choice, not a
-    value difference; the comparator decodes both sides rather than
-    diffing raw bytes). And the no-args MULTI-STATEMENT behavior of the
-    existing TxConn is preserved through the dispatch (a two-statement
-    no-args ExecContext drains both groups), not narrowed.
+14. **Args and multi-statement, per the method-shaped dispatch (r2 MF3,
+    r3 MF1, r4 MF1):** pinnedTx `QueryContext`/`ExecContext` with bound
+    arguments — including NULL and binary-sensitive values — work
+    through the private unnamed extended sequence, compared against the
+    POOL path by DECODED semantic equality (the raw text/binary format
+    difference between the pool's result-format negotiation and this
+    path's is a format choice, not a value difference; the comparator
+    decodes both sides rather than diffing raw bytes). A no-args
+    MULTI-STATEMENT `ExecContext` drains both groups through the simple
+    frame (pgx's own no-args behavior, verified v5.10). And a
+    MULTI-COMMAND `QueryContext` is rejected with the server's own Parse
+    error, verbatim — the existing pool-path default behavior, preserved
+    rather than invented around.
 15. **Legacy finalizer shape (r2 MF4, r3 MF2):** pinnedTx's no-context
     `Commit`/`Rollback` dispatch on the context captured at
     `BeginSessionTx` — proven by cancelling that context and observing
