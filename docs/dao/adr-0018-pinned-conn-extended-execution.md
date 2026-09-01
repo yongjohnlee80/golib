@@ -1,9 +1,10 @@
 # ADR-0018 — `golib/dao`: session-pinned connections with raw extended-protocol execution
 
-- **Status:** **Proposed** — rev 2; design r0's 4 MF (all folded in rev 1)
-  and r1's 3 MF + 1 SF + jarvis's boundary supplement (folded here).
-  The ADR-0017 follow-up that ADR-0075 (autodb's wire front door) filed:
-  "requires a scoped golib seam (pinned-conn extended-exec capability)".
+- **Status:** **Proposed** — rev 3; design r0's 4 MF (rev 1), r1's 3 MF +
+  1 SF + the boundary supplement (rev 2), and r2's 4 protocol/interface
+  corrections (folded here). The ADR-0017 follow-up that ADR-0075
+  (autodb's wire front door) filed: "requires a scoped golib seam
+  (pinned-conn extended-exec capability)".
 - **Date:** 2026-09-02
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Related:** ADR-0017 (the capability-interface idiom this follows; the
@@ -183,9 +184,9 @@ as a triple; the legal-operation table:
 
 | Call | Legal when | Effect |
 |---|---|---|
-| `Send` | not poisoned, not discarding | outbound: idleOut→building, or building stays |
+| `Send` | not poisoned, not discarding | outbound: idleOut→building, building→building, or **flushed→building** (r2 MF1: the resume case — group B queues while group A's responses are still inbound; inbound is UNCHANGED by Send) |
 | `Flush` | not poisoned, outbound==building, inbound ∈ {noInbound, receiving} | outbound→flushed; an INBOUND receiving state is PRESERVED — group A keeps streaming while group B's bytes go out |
-| `Receive` | not poisoned, outbound==flushed, inbound ∈ {receiving, noInbound→receiving on first call} | returns one message; borrowed buffers |
+| `Receive` | not poisoned, outbound ∈ {flushed, building}, inbound ∈ {receiving, noInbound→receiving on first call} | returns one message; borrowed buffers. **While outbound==building (resume frames queued but unflushed), Receive serves group A's still-arriving messages — the tracks are independent — and a resumed Execute's group cannot be received until its Flush** (r2 MF1: the unavailability is a consequence of the tracks, not a prohibition) |
 | `Sync` | not poisoned | sends ONE Sync frame, sets inbound=discarding if receiving, consumes through the terminal ReadyForQuery, returns its status byte, and resets BOTH tracks to idleOut/noInbound |
 | `BeginSessionTx` / `Release` / `pinnedTx` op | not poisoned, outbound==idleOut, inbound==noInbound | proceeds |
 | `Discard` | always | terminal (§2.2) |
@@ -196,14 +197,23 @@ Sync frame and consumes until the terminal `ReadyForQuery`; the r0 prose's
 call, and the consumer never needs a second: the terminal ReadyForQuery
 ends every group and every discard).
 
-**Portal resume and abandonment** (r1 MF2). `PortalSuspended` is protocol
-data in the `receiving` track, and the driver cannot know the consumer's
-intent — so the state machine does not guess. Either next move is legal and
-mechanical: `Send(Execute resume)` + `Flush` continues the portal (the
-Flush row above preserves the inbound receiving track), and the consumer's
-next `Sync` is the EXPLICIT abandonment transition — the portal is dropped
-by the server at Sync, which is PostgreSQL's own rule. There is no
-"discard-because-not-resumed" state.
+**Portal resume and abandonment** (r1 MF2, corrected r2 MF2). 
+`PortalSuspended` is protocol data in the `receiving` track, and the driver
+cannot know the consumer's intent — so the state machine does not guess.
+Either next move is legal and mechanical: `Send(Execute resume)` +
+`Flush` continues the portal (the Flush row above preserves the inbound
+receiving track), and the consumer's next `Sync` **abandons further
+execution for this segment — it is NOT a claim that the portal object is
+destroyed.** Portals close at TRANSACTION END in PostgreSQL (the autodb
+matrix's own §4a rule: "transaction end for portals"), and Sync ends only
+an implicit transaction; inside an explicit transaction a suspended NAMED
+portal survives Sync, and its ownership/lifetime remains the CONSUMER's
+until the consumer sends `Close portal`, the transaction ends, or the
+session does. If the consumer wants immediate release, it must
+`Send(Close portal)` before `Sync` when the protocol state permits. The
+seam's Sync contract is therefore about the WIRE (tracks reset, group
+ended), never about server-side object lifetimes — those belong to the
+protocol rules the consumer is relaying.
 
 **`ReadyForQuery` ownership:** the terminal `ReadyForQuery` belongs to
 `Sync` (and to `Discard`'s teardown, which never surfaces it). A `Receive`
@@ -247,24 +257,43 @@ high-level query could run mid-segment with no inspection. Instead
   `ErrTxOutcomeUnknown` / preserved `*pgconn.PgError` causes are the same
   code the pool path uses, shared, not duplicated.
 
-**The query/exec path on pinnedTx (r1 MF3).** `pinnedTx` satisfies
-`dao.TxConn`, so `QueryContext` and `ExecContext` must have a DEFINED
-execution path — they cannot call pgx (structural exclusion, § below) and
-they must not route through `ExtendedOp` (the vocabulary is the relay's,
-§2.5). They use a **private driver-owned simple-protocol path** on the
-same raw face:
+**The query/exec path on pinnedTx (r1 MF3, corrected r2 MF3).** `pinnedTx`
+satisfies `dao.TxConn`, so `QueryContext` and `ExecContext` must honor the
+FULL existing signatures — `args ...any` included — and must not silently
+narrow public behavior. They use a **private driver-owned simple-protocol
+path** on the same raw face:
 
-- `ExecContext` writes the statement as one simple-protocol Query frame,
-  drains the response group to its terminal state (CommandComplete or
-  ErrorResponse), and returns the tag/rows-affected — refusing, per
-  simple-protocol semantics, anything but a single statement, exactly as
-  `dao`'s own contract requires of `Execer`.
-- `QueryContext` writes the same single simple Query frame and streams the
-  response into a driver-owned `dao.Rows` implementation whose `RawValues`
-  carries the borrowed wire bytes (the ADR-0012/0017 raw-rows rules);
-  `Close` drains to the group's terminal state and returns the wire to
-  quiescent, and an undrained `Rows` keeps the inbound track at receiving —
-  `BeginSessionTx`'s guard refuses while it does.
+- **Parameters, byte-for-byte:** when `args` are present, the driver
+  reuses pgx's PROVEN simple-protocol argument sanitizer/encoder —
+  `sanitizeForSimpleQuery` (verified: a standalone method requiring
+  `standard_conforming_strings=on` and `client_encoding=UTF8`, both pinned
+  on autodb target leases by the matrix's own rules) — WITHOUT entering
+  any `Conn` cache: the sanitizer renders the arguments into the SQL text
+  and the driver writes the one simple Query frame itself. No-args calls
+  skip the sanitizer. The existing pool-path behavior for bound args
+  (including NULL and binary-sensitive values, which the sanitizer
+  renders safely or refuses) is thereby preserved, and criterion 14
+  proves it with NULL/binary-sensitive cases.
+- **Multi-statement behavior is PRESERVED, not refused** (r2 MF3: I had
+  invented a single-statement refusal dao's `Execer` never promised —
+  the existing pgx path accepts multi-statement no-args SQL, and a
+  pinnedTx must not narrow it): a no-args simple Query carries whatever
+  statements the text holds; the driver drains ALL response groups to
+  the terminal state. The ADR records rather than changes the public
+  contract.
+- `QueryContext` streams the LAST result group's rows into a driver-owned
+  `dao.Rows` implementation whose `RawValues` carries the borrowed wire
+  bytes (the ADR-0012/0017 raw-rows rules); `Close` drains any remaining
+  groups to the terminal state and returns the wire to quiescent, and an
+  undrained `Rows` keeps the inbound track at receiving — the guards
+  refuse while it does.
+- **ReadyForQuery ownership carve-out (r2 MF3):** the private
+  simple-query path consumes its own terminal `ReadyForQuery` — that is
+  HOW it returns the wire to quiescent — so §2.3's "the terminal
+  ReadyForQuery belongs to Sync" is scoped to the EXTENDED vocabulary
+  surface: a `Receive` through `ExtendedMessage` never yields one, while
+  the private path's internal consumption is invisible to the consumer
+  and is the mechanism, not an exception, of its quiesce.
 - **Object-lifetime effect, stated rather than implied:** a simple-protocol
   Query destroys the unnamed statement AND the unnamed portal (PostgreSQL
   semantics — the same rule the finalizers trigger). Named objects owned
@@ -274,10 +303,18 @@ same raw face:
   (its own gate matrix routes everything through the relay), so the pinned
   query path exists for ENGINE-INTERNAL statements only (the target-xid
   capture, the server-belt arming) — and criterion 11 proves those work.
-- The legacy no-context `Commit`/`Rollback` preserve ADR-0017 semantics:
-  they are the context-bounded finalizers on
-  `context.Background()` — a caller upgrading to `ContextTxConn` loses
-  nothing.
+
+**Legacy finalizers reuse the BEGIN context** (r2 MF4, corrected): the
+no-context `Commit`/`Rollback` behave exactly as the existing `pgxTx` and
+as ADR-0017 preserves — they dispatch on the context captured at
+`BeginSessionTx` (`t.tx.Commit(t.ctx)` shape, verified in the pool path),
+NOT on `context.Background()` (which would silently remove the bound the
+existing contract gives the caller). `CommitContext`/`RollbackContext`
+take the caller's finalizer context and preserve the four-state
+ADR-0017 outcome contract through the shared classification helper. A
+cancelled BEGIN-context finalizer behaves as the pool path does —
+observable error, no silent unbounding — and criterion 15 proves the
+base methods' context reuse against a cancelled begin context.
 
 **Quiescent operation, not refusal, is the rule:** these methods are
 SUPPORTED on pinnedTx — first-class, guarded by the same state inspection
@@ -460,13 +497,19 @@ established.
 10. Race detector clean over concurrent segment steps vs finalizer/Release
     attempts on one handle, and over deferred Discard racing a mid-flight
     Receive.
-11. **Portal resume and abandonment (r1 MF2):** the deterministic sequence
-    Execute → `PortalSuspended` → Send(Execute resume) → Flush → Receive
-    (the resumed group's rows) → Sync — with the Flush provably preserving
-    the inbound receiving track while the resume bytes go out, and the
-    single terminal Sync returning both tracks to quiescent. The
-    abandonment branch: Execute → `PortalSuspended` → Sync (no resume sent)
-    drops the portal server-side.
+11. **Portal resume and abandonment (r1 MF2, r2 MF1/MF2):** the
+    deterministic sequence with EXACT STATE TUPLES asserted at each step —
+    Execute(maxRows) [outbound flushed, inbound receiving] → receive
+    `PortalSuspended` [(flushed, receiving)] → Send(Execute resume)
+    [(**building**, receiving) — the flushed→building transition with the
+    inbound track preserved] → Flush [(flushed, receiving)] → Receive the
+    resumed group's rows → Sync [both tracks reset, status byte returned].
+    The abandonment branch: Execute → `PortalSuspended` → Sync (no resume)
+    ends the SEGMENT. And the named-portal-lifetime cell (r2 MF2): inside
+    an EXPLICIT transaction, a suspended NAMED portal SURVIVES Sync —
+    resumed execution works afterwards — and an explicit Send(Close
+    portal) releases it; only transaction end destroys it, per the
+    protocol's own rules.
 12. **The pinned query/exec path (r1 MF3):** from quiescent, pinnedTx
     `QueryContext` streams rows through the driver's raw simple-protocol
     path (RawValues byte-faithful; Rows.Close returns the wire to
@@ -480,3 +523,17 @@ established.
     simple Query reaches the wire through the seam; no alias or re-export
     of the capability exists in `dao` core (grep/compile proof on the
     implementation HEAD, with implementors enumerated at checkout HEAD).
+14. **Bound args preserved (r2 MF3):** pinnedTx `QueryContext`/
+    `ExecContext` with bound arguments — including NULL and
+    binary-sensitive values — produce results byte-identical to the
+    existing pool-path behavior through the shared sanitizer; and the
+    no-args MULTI-STATEMENT behavior of the existing TxConn is preserved
+    (a two-statement no-args ExecContext drains both groups), not
+    narrowed.
+15. **Legacy finalizer context reuse (r2 MF4):** pinnedTx's no-context
+    `Commit`/`Rollback` dispatch on the context captured at
+    `BeginSessionTx` — proven by cancelling that context and observing
+    the base method's dispatch fail with the context error while a
+    FRESH-context `RollbackContext` still succeeds (the ADR-0017
+    fault-state-1 shape) — beside the existing context-finalizer matrix
+    of criterion 4.
