@@ -777,11 +777,11 @@ autodb's F1 wire loop (ADR-0075) must forward the TARGET's `RowDescription`, `Da
 
 So the F1 simple path has no way to obtain the target's frames, and the loop owner (Ultron) and its first reviewer (Zen) both stopped at this point rather than improvise. Correctly: it is a decision about this seam.
 
-### A1.2 What §2.5 actually excluded, and why this is not a reversal
+### A1.2 What §2.5 actually excluded, and what this amendment reverses
 
 §2.5's rationale, verbatim: *"autodb's classifier/grant gate runs at Parse (and its simple path has its own gated entry); a Query op on this seam would bypass the gate entirely."* The threat model is a **relay consumer** feeding client frames through the seam so that a `Query` skips the Parse-time gate. Two things follow:
 
-- The exclusion is about the `ExtendedOp` **sum** — no `Query` constructor — and that stays exactly as it is. This amendment adds no constructor. Criterion 13's compile half is untouched.
+- The exclusion has two halves. The `ExtendedOp` **sum** has no `Query` constructor, and that stays exactly as it is — this amendment adds no constructor, and that compile boundary is untouched. But criterion 13 also made *no simple Query at all through the pinned connection* an accepted security boundary, and **that half is reversed** here (A1.4). Both statements are true and the second is the one that needs an owner's ratification.
 - §2.5 itself names *"its simple path has its own gated entry."* That entry is autodb's engine: for simple-protocol text, the classifier, capability profile, grants and the F3a shared unit policy run on the SQL **text** before any dispatch — the same gate `WireExecute` applies today. The engine is the gate; the wire is downstream of it. A raw simple query invoked **by the engine after its gate** is the gated entry §2.5 already assumes exists, made real.
 
 The alternatives are worse in ways that matter:
@@ -797,9 +797,12 @@ A **separate capability interface**, declared in `dao/postgres` beside `SessionP
 // SimpleQuerier is the simple-protocol face of a pinned connection: ONE Query
 // frame, the response streamed as protocol data until the terminal
 // ReadyForQuery. It exists for a consumer that gates SQL TEXT before dispatch
-// (autodb's engine); it is not part of PinnedConn, so a relay that holds only
-// the extended face cannot reach it, and a consumer that wants it must assert
-// for it — which is what an acceptance grep can see.
+// (autodb's engine). It is declared as a SEPARATE interface rather than on
+// PinnedConn so that reaching it requires an explicit type assertion — which
+// an acceptance grep can see. That is VISIBILITY, not prevention: the dynamic
+// *pinnedConn implements both faces, so any holder of the handle can assert
+// for this one. golib does not and cannot make the method engine-only; the
+// consumer does (A1.4).
 type SimpleQuerier interface {
     // SimpleQuery sends ONE simple-protocol Query frame carrying sql, then
     // calls emit for every backend message of the response — RowDescription,
@@ -846,13 +849,17 @@ Criterion 13 currently makes *"no simple Query reaches the wire through the pinn
 
 Criterion 13 becomes:
 
-> 13. **The closed vocabulary (r1 MF1, A1):** the Query-frame exclusion from `ExtendedOp` is test-proven — the forbidden shape cannot be constructed through `ExtendedOp` (compile) and the boundary test proves no spelling of a simple Query reaches the wire through the **extended seam** (`Send`/`Flush`/`Receive`/`Sync`); no alias or re-export of either capability exists in `dao` core (grep/compile proof on the implementation HEAD, implementors enumerated at checkout HEAD). The simple-protocol path exists **only** as `SimpleQuerier` (A1.3) and is subject to criterion 15.
+> 13. **The closed vocabulary (r1 MF1, A1):** the Query-frame exclusion from `ExtendedOp` is test-proven — the forbidden shape cannot be constructed through `ExtendedOp` (compile) and the boundary test proves no spelling of a simple Query reaches the wire through the **extended seam** (`Send`/`Flush`/`Receive`/`Sync`); no alias or re-export of either capability exists in `dao` core (grep/compile proof on the implementation HEAD, implementors enumerated at checkout HEAD). The simple-protocol path exists **only** as `SimpleQuerier` (A1.3) and is governed by A1-C1..A1-C4 below. *(This narrows 13's former "no simple Query at all" half; see A1.4.)*
 
-And two new criteria:
+Amendment criteria, numbered `A1-Cn` so they cannot collide with the existing §5 list (lector r1):
 
-> 15. **`SimpleQuerier` is reachable only through the consumer's gate — enforced in autodb, stated honestly in golib.** golib cannot compile-enforce "engine-only" for an exported method; it exposes a narrow leaf capability and says so. In autodb: the sole type assertion for `postgres.SimpleQuerier` lives in `core/exec`, and gate + dispatch are one operation over the exact same SQL bytes (grep/dependency proof on autodb's implementation HEAD: no reference in `tui/`, `webserver/`, `rpc/`, `frontdoor/`; plus bypass/substitution mutations — a dispatch that skips the gate, or a `frontdoor` reference to the capability, reddens). In golib: a `SimpleQuery` on a non-quiescent segment state returns `ErrSegmentInFlight` (cell); with the session transaction OPEN it succeeds and the transaction remains open (cell — the F1 case); a transport failure poisons; an `ErrorResponse` does not.
+> **A1-C1 — Reachable only through the consumer's gate; enforced in autodb, stated honestly in golib.** golib cannot compile-enforce "engine-only" for an exported method and does not claim to; it exposes a narrow leaf capability. In autodb: the sole type assertion for `postgres.SimpleQuerier` lives in `core/exec`; gate (classifier, profile, grants, F3a unit policy) and dispatch are ONE operation over the **exact same SQL bytes**; `frontdoor/` never holds the raw capability. Proven by dependency/grep on autodb's implementation HEAD (no reference in `tui/`, `webserver/`, `rpc/`, `frontdoor/`) **and** by bypass/substitution mutations: a dispatch that skips the gate, a re-read of the text between gate and dispatch, or a `frontdoor` reference to the capability must each redden.
 >
-> 16. **Verbatim and unbounded.** For a query returning more rows than autodb's `DefaultMaxRows`, every `DataRow` reaches `emit` (no paging, no `More`); each `RowDescription` field's `TypeOID`/`Format` equals what a direct `pgconn` execution of the same text reports; a target `ErrorResponse` arrives as `ExtendedMessage.Err` with `*pgconn.PgError` fields byte-equal to a direct execution's; a multi-statement string yields each group in order and exactly one terminal `ReadyForQuery`. Mutations: dropping `DataRow` emission, applying a cap, or rewriting any `PgError` field must each redden.
+> **A1-C2 — Verbatim and unbounded.** For a query returning more rows than autodb's `DefaultMaxRows`, every `DataRow` reaches `emit` with byte-equal payloads to a direct `pgconn` execution (no paging, no `More`, no re-encoding); each `RowDescription` field's `TypeOID`/`Format`/`TypeModifier` equals the direct execution's; `CommandComplete` carries the server's tag verbatim; an empty string yields `EmptyQueryResponse`; a target `ErrorResponse` arrives as `ExtendedMessage.Err` with every `*pgconn.PgError` field byte-equal to a direct execution's and does **not** poison; asynchronous `NoticeResponse`/`ParameterStatus` (e.g. after `SET`) are emitted in their wire position relative to the data messages, not reordered or dropped; a multi-statement string yields each group in order and exactly one terminal `ReadyForQuery`. Mutations that must redden: applying a cap; dropping or rewriting any message kind; rewriting any `PgError` field; reordering an asynchronous message.
+>
+> **A1-C3 — Streaming, and the callback contract.** `emit` is called for each message **as it is decoded**, before the tail is consumed — proven by a cell whose emitter observes the first `DataRow` while the server is still blocked producing later rows (buffer-then-emit reddens it). A nil `emit` fails **before dispatch** with a typed error and sends no frame. `emit` is explicitly non-reentrant: calling any handle method from inside it returns a typed error, never deadlocks. A non-nil error from `emit` stops delivery, the driver **drains to the terminal `ReadyForQuery`**, returns the emitter's error, and the wire is quiescent — proven by a following `SimpleQuery` on the same handle succeeding. The terminal `ReadyForQuery` is **never emitted**; it returns only as the status byte. Mutations: emitting `ReadyForQuery`; returning before the drain completes; buffering rows.
+>
+> **A1-C4 — Failure ordering and poison.** A context cancellation or transport failure during send, read, or the post-emitter-error drain **poisons** the handle per §2.3 and the caller must `Discard`; the returned error is the transport error, which **outranks** a prior emitter error (the emitter's error is not what the wire's state means). A `SimpleQuery` on a non-quiescent segment state returns `ErrSegmentInFlight` immediately; with the session transaction OPEN it succeeds and the transaction remains open (the F1 case); a transaction-track change the statement itself causes (`BEGIN`/`COMMIT` in the text) is reflected in the returned status byte and in the handle's transaction track. Mutations: swallowing the transport error behind the emitter error; treating an `ErrorResponse` as poison; allowing dispatch mid-segment.
 
 ### A1.5 What this does NOT change
 
