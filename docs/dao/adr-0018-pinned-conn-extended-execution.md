@@ -764,7 +764,9 @@ provably hot, which makes the window reachable on demand: the mutation
 
 ---
 
-## Amendment 1 (2026-09-02, PROPOSED by jarvis — awaiting lector design review; re-scopes acceptance criterion 13, so Johno's ratification is requested)
+## Amendment 1 (2026-09-02 — **RATIFIED by Johno 2026-09-02**; technically approved by lector at r5, `10f35f7`, Juliet concurring; proposed by jarvis)
+
+> **Status:** RATIFIED. Criterion 13's "no simple Query at all through the pinned connection" boundary is reversed by the owner's explicit decision, with the safeguards in A1-C1..A1-C4 as the condition. Implementation of `SimpleQuerier` is authorized. Five review rounds (r1–r5) are recorded in lector's durable ruling: `$KB_ROOT/agents/lector/reviews/2026-09-02-golib-adr0018-simple-query-amendment-ruling.md`.
 
 **A result-bearing simple-protocol query on the raw face, reachable only through the consumer's own gate.**
 
