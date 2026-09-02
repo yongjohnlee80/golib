@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"net"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -210,5 +212,115 @@ func TestPinned_MF3_ResumeSendDuringReceiveStillAllowed(t *testing.T) {
 	out, in := tuple(p)
 	if out != building || in != receiving {
 		t.Fatalf("state = (%d, %d), want (building, receiving) — the inbound track must be preserved", out, in)
+	}
+}
+
+// failWriter fails the write, but not until the racing observer is provably hot. The
+// handshake is what makes the MF4 window reachable on demand: entered says the write
+// (and therefore the writing claim) is under way, and the writer then parks until the
+// test says its Release/reuse spinners are running, so the failure propagates into a
+// live race rather than into an empty one.
+type failWriter struct {
+	entered  chan struct{}
+	spinning chan struct{}
+	once     sync.Once
+}
+
+func (f *failWriter) Write(_ []byte) (int, error) {
+	f.once.Do(func() { close(f.entered) })
+	<-f.spinning
+	return 0, io.ErrClosedPipe
+}
+
+// MF4 (r1): a FAILED Sync must publish the poisoned state in the same critical section
+// that releases the writing claim. Sync is legal from quiescent and resets nothing on
+// failure, so clearing writing first left the handle readable as (idleOut, noInbound,
+// !writing, !poisoned) — indistinguishable from a healthy idle handle — and a concurrent
+// Release would hand the failed wire back to the pool while Discard would compute it
+// reusable. Both reviewers reproduced it by spinning (iterations 348 and 18).
+//
+// The two spinners assert the two consequences directly: Release must never accept, and
+// Discard's own reuse predicate must never read true. Both start only after the write
+// is under way, because before that a clean Release is entirely legal.
+func TestPinned_MF4_FailedSyncCannotCleanReleaseOrCleanDiscard(t *testing.T) {
+	t.Parallel()
+
+	const iterations = 400
+	for i := 0; i < iterations; i++ {
+		srv, cli := net.Pipe()
+		fw := &failWriter{entered: make(chan struct{}), spinning: make(chan struct{})}
+		p := &pinnedConn{frontend: pgproto3.NewFrontend(srv, fw), netConn: cli}
+
+		var accepted, reusable atomic.Bool
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { // Release must never accept a wire whose Sync write failed.
+			defer wg.Done()
+			<-fw.entered
+			for j := 0; j < 400; j++ {
+				if err := p.Release(context.Background()); err == nil {
+					accepted.Store(true)
+					return
+				}
+				runtime.Gosched()
+			}
+		}()
+		go func() { // Discard must never compute this member reusable.
+			defer wg.Done()
+			<-fw.entered
+			for j := 0; j < 400; j++ {
+				p.mu.Lock()
+				ok := p.reusableLocked()
+				p.mu.Unlock()
+				if ok {
+					reusable.Store(true)
+					return
+				}
+				runtime.Gosched()
+			}
+		}()
+
+		// Let the spinners reach their loops, then let the write fail into the race.
+		go func() {
+			<-fw.entered
+			runtime.Gosched()
+			close(fw.spinning)
+		}()
+
+		if _, err := p.Sync(context.Background()); err == nil {
+			t.Fatalf("iteration %d: Sync succeeded over a failing writer", i)
+		}
+		wg.Wait()
+		_ = srv.Close()
+		_ = cli.Close()
+
+		if accepted.Load() {
+			t.Fatalf("iteration %d: Release accepted a wire whose Sync write failed", i)
+		}
+		if reusable.Load() {
+			t.Fatalf("iteration %d: Discard would have recycled a wire whose Sync write failed", i)
+		}
+		// And the settled state is terminal, so the failure is not merely hidden by timing.
+		if err := p.Release(context.Background()); !errors.Is(err, ErrPoisoned) {
+			t.Fatalf("iteration %d: Release after a failed Sync = %v, want ErrPoisoned", i, err)
+		}
+	}
+}
+
+// The control for the cell above: from a genuinely quiescent, healthy handle a Release
+// IS accepted. Without this, "Release never returned nil" would also be satisfied by a
+// handle that can never be released at all.
+func TestPinned_MF4_QuiescentReleaseStillAccepted(t *testing.T) {
+	t.Parallel()
+
+	p, _, _ := blockedWireHandle(t)
+	if err := p.Release(context.Background()); err != nil {
+		t.Fatalf("Release from a healthy quiescent handle = %v, want nil", err)
+	}
+	p.mu.Lock()
+	reusableBefore := p.released
+	p.mu.Unlock()
+	if !reusableBefore {
+		t.Fatal("a successful Release did not mark the handle released")
 	}
 }

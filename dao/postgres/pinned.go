@@ -239,6 +239,17 @@ func (p *pinnedConn) terminalErrLocked() error {
 	}
 }
 
+// reusableLocked reports whether this member can be handed back to the pool for reuse.
+// Reuse is provable only when nothing is in flight, the handle is not terminal, and no
+// server-side transaction is open. Anything else — a mid-flight segment, a poisoned
+// wire, an unfinalized transaction — is a member the pool must NOT recycle: the pool's
+// own dirty test (busy / non-idle TxStatus / closed) does not see a
+// read-timeout-poisoned wire with unread responses, so the decision is made here.
+// Callers hold mu.
+func (p *pinnedConn) reusableLocked() bool {
+	return !p.poisoned && !p.released && !p.txOpen && p.quiescentLocked()
+}
+
 // quiescentLocked reports whether the wire is at the both-tracks-reset, no-private-
 // exchange, no-write-in-progress state. Callers hold mu.
 func (p *pinnedConn) quiescentLocked() bool {
@@ -314,14 +325,18 @@ func (p *pinnedConn) Flush(ctx context.Context) error {
 	err := p.writeBuffered(ctx)
 	p.wireMu.Unlock()
 
+	// Same single-critical-section publication as Sync (r1 MF4). A failed Flush happens
+	// to retain out==building, which already blocks clean reuse, but the invariant is
+	// normalized here rather than left resting on that incidental fact.
 	p.mu.Lock()
 	p.writing = false
-	if err == nil {
+	if err != nil {
+		p.poisoned = true
+	} else {
 		p.out = flushed
 	}
 	p.mu.Unlock()
 	if err != nil {
-		p.poison()
 		return err
 	}
 	return nil
@@ -355,6 +370,11 @@ func (p *pinnedConn) Receive(ctx context.Context) (ExtendedMessage, error) {
 	msg, err := p.readMessage(ctx)
 	p.wireMu.Unlock()
 	if err != nil {
+		// Unlike Flush/Sync (r1 MF4) this poison needs no paired state publication:
+		// Receive is only legal from out ∈ {flushed, building} and it resets nothing, so
+		// the handle is never quiescent here and no observer can read it as reusable in
+		// the interval before the flag lands. Do not "simplify" this by resetting the
+		// tracks — that would create exactly the MF4 window.
 		p.poison()
 		return ExtendedMessage{}, err
 	}
@@ -405,15 +425,21 @@ func (p *pinnedConn) Sync(ctx context.Context) (byte, error) {
 	status, err := p.syncLocked(ctx)
 	p.wireMu.Unlock()
 
+	// The failure and the claim release are published in ONE critical section (r1 MF4).
+	// Sync is legal from quiescent, so a failed Sync that cleared writing and only then
+	// poisoned would expose a window in which the handle reads as (idleOut, noInbound,
+	// !writing, !poisoned) — fully clean — and a concurrent Release would hand the failed
+	// wire back to the pool, or Discard would compute it reusable.
 	p.mu.Lock()
 	p.writing = false
-	if err == nil {
+	if err != nil {
+		p.poisoned = true
+	} else {
 		p.out = idleOut
 		p.in = noInbound
 	}
 	p.mu.Unlock()
 	if err != nil {
-		p.poison()
 		return 0, err
 	}
 	return status, nil
@@ -520,12 +546,7 @@ func (p *pinnedConn) Discard() {
 		p.mu.Unlock()
 		return
 	}
-	// Reuse is provable only when nothing is in flight, nothing is poisoned, and no
-	// server-side transaction is open. Anything else — a mid-flight segment, a poisoned
-	// wire, an unfinalized transaction — is a member the pool must NOT recycle. The
-	// pool's own dirty test (busy / non-idle TxStatus / closed) does not see a
-	// read-timeout-poisoned wire with unread responses, so the decision is made here.
-	reusable := !p.poisoned && !p.released && !p.txOpen && p.quiescentLocked()
+	reusable := p.reusableLocked()
 	p.poisoned = true
 	acq := p.acq
 	p.acq = nil

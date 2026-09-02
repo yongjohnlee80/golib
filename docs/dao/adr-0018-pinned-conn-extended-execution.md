@@ -733,3 +733,31 @@ The two server-free cells drive a `net.Pipe` whose peer is not reading and use a
 gate writer that signals the instant the write parks, so each window is entered
 deliberately rather than raced for.
 
+### Review round r2 — MF4, the poison-publication gap (2026-09-02)
+
+Independently reproduced by both reviewers (at iterations 348 and 18) and confirmed
+here. `Sync`'s completion block cleared the `writing` claim and released `mu`, and only
+then called `poison()`, which reacquires it. `Sync` is legal from quiescent and resets
+nothing on failure, so in that gap the handle read as `(idleOut, noInbound, !writing,
+!poisoned)` — indistinguishable from a healthy idle handle. A concurrent `Release` would
+hand the failed wire back to the pool and `Discard` would compute it reusable.
+
+The failure state and the claim release are now published in ONE critical section, in
+both `Sync` and `Flush`. `Flush` was not directly exploitable — it retains `out ==
+building` on failure, which already blocks clean reuse — but the invariant is normalized
+rather than left resting on that incidental fact. `Receive` is audited and deliberately
+unchanged: it is legal only from `out ∈ {flushed, building}` and resets nothing, so the
+handle is never quiescent in its error path; a comment records this so the pairing is not
+"simplified" away later.
+
+Discard's reuse test is now the named `reusableLocked` predicate, so the regression cell
+observes the REAL decision function rather than a copy that could drift from it. The cell
+(`TestPinned_MF4_FailedSyncCannotCleanReleaseOrCleanDiscard`) asserts both consequences —
+`Release` never accepts and `reusableLocked` never reads true — with both spinners
+starting only after the write is under way, because a clean `Release` before that is
+entirely legal. A writer handshake parks the failing write until the spinners are
+provably hot, which makes the window reachable on demand: the mutation
+`MF4-poison-published-after-claim-release` reddens at iteration 7 rather than by luck.
+`TestPinned_MF4_QuiescentReleaseStillAccepted` is its positive control — without it
+"Release never returned nil" would also pass on a handle that can never be released.
+
