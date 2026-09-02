@@ -189,6 +189,19 @@ type pinnedConn struct {
 	// pgConn and netConn still point at a connection the pool may have handed to another
 	// goroutine, so touching them would corrupt a stranger's wire.
 	released bool
+	// recv, when non-nil, replaces pgConn.ReceiveMessage in readMessage. It exists so the
+	// simple-query cells can script a server over a pipe (ADR-0018 A1-C3/C4: streaming
+	// before the tail, emitter-error drain, transport-outranks-emitter, control-tag
+	// detection). Nil in production; only tests set it.
+	recv func(context.Context) (pgproto3.BackendMessage, error)
+	// inEmit is set, under mu, by SimpleQuery for the duration of each emit callback.
+	// It certifies that the goroutine holding wireMu is executing the CONSUMER's code
+	// between two reads — no wire I/O is in flight — which is what lets Discard skip
+	// its wireMu barrier instead of self-deadlocking when the callback discards
+	// (Amendment 1 A1-C3, PR #22 MF1). SimpleQuery re-checks terminal state under mu
+	// when the callback returns, before any further read, so a concurrent Discard
+	// that skipped the barrier is observed before the wire is touched again.
+	inEmit bool
 	// writing is held by the one wire-write in progress (Flush or Sync). It is claimed
 	// under mu BEFORE the write starts, so a concurrent Send/Flush/Sync refuses rather
 	// than mutating pgproto3's shared write buffer mid-Write (MF3). Receive does not set
@@ -547,20 +560,29 @@ func (p *pinnedConn) Discard() {
 		return
 	}
 	reusable := p.reusableLocked()
+	// The wire holder is inside a SimpleQuery emit callback (possibly THIS goroutine).
+	// No I/O is in flight there, and the holder re-checks poisoned under mu before its
+	// next read, so the barrier below is both unnecessary and — on the same goroutine
+	// — a self-deadlock. Decided in the same critical section that poisons.
+	holderInEmit := p.inEmit
 	p.poisoned = true
 	acq := p.acq
 	p.acq = nil
 	p.mu.Unlock()
 
-	if !reusable {
+	if !reusable && !holderInEmit {
 		// Interrupt any in-flight blocking read/write. Setting a past deadline is the
 		// documented way to unblock a pending net.Conn Read; it is safe to call
 		// concurrently with that Read.
 		_ = p.netConn.SetDeadline(time.Now())
 	}
 	// Barrier: no wire op is mid-flight past this point (poisoned refuses new ones).
-	p.wireMu.Lock()
-	p.wireMu.Unlock() //nolint:staticcheck // intentional barrier, see above
+	// Skipped when the holder is inside emit: it holds wireMu across the callback by
+	// design and will stop at its next terminal check rather than read again.
+	if !holderInEmit {
+		p.wireMu.Lock()
+		p.wireMu.Unlock() //nolint:staticcheck // intentional barrier, see above
+	}
 	if !reusable {
 		// Close the physical connection (best-effort Terminate, bounded) so the pool's
 		// Release sees a closed member and destroys it rather than recycling a dirty one.
@@ -680,6 +702,9 @@ func (p *pinnedConn) writeBuffered(ctx context.Context) error {
 // default handler only closes on FATAL, and on this raw face an ErrorResponse is
 // protocol data either way.
 func (p *pinnedConn) readMessage(ctx context.Context) (pgproto3.BackendMessage, error) {
+	if p.recv != nil {
+		return p.recv(ctx)
+	}
 	return p.pgConn.ReceiveMessage(ctx)
 }
 
