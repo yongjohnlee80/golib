@@ -93,6 +93,12 @@ type PinnedConn interface {
 	// lease, closing the physical connection when safe reuse cannot be proven. Every
 	// PinSessionConn success carries a deferred Discard; repeated calls are no-ops.
 	Discard()
+
+	// ReportedParameterStatuses is every ParameterStatus the server has sent on
+	// this connection — the connect-time GUC_REPORT set and later changes — as a
+	// snapshot copy. Empty when the pool was opened without capture. Additive
+	// (autodb protocol matrix §3.3: forward the server's set, not a fixed list).
+	ReportedParameterStatuses() map[string]string
 }
 
 // SupportsSessionPinning reports whether conn can pin a session connection (ADR-0018

@@ -54,6 +54,9 @@ func OpenNamed(ctx context.Context, name, dsn string, opts ...Option) (dao.DataC
 	for _, o := range opts {
 		o(cfg)
 	}
+	// Every connection records the ParameterStatus set the server reports, so a
+	// pinned connection can hand a protocol relay the server's own list (§3.3).
+	installStatusCapture(cfg)
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
