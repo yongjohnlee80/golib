@@ -761,3 +761,96 @@ provably hot, which makes the window reachable on demand: the mutation
 `TestPinned_MF4_QuiescentReleaseStillAccepted` is its positive control — without it
 "Release never returned nil" would also pass on a handle that can never be released.
 
+
+---
+
+## Amendment 1 (2026-09-02, PROPOSED by jarvis — awaiting lector design review; re-scopes acceptance criterion 13, so Johno's ratification is requested)
+
+**A result-bearing simple-protocol query on the raw face, reachable only through the consumer's own gate.**
+
+### A1.1 The gap
+
+autodb's F1 wire loop (ADR-0075) must forward the TARGET's `RowDescription`, `DataRow`, `CommandComplete` and target `ErrorResponse` frames **verbatim** (autodb protocol matrix §5, rows 285–286). Two facts, both verified by reading, make that impossible with what ships today:
+
+1. autodb's `core/exec.Result` is `Columns []string; Rows [][]any; More bool` — decoded through `database/sql`, paged at `maxRows` (500). No OIDs, no per-column formats, no raw bytes. It cannot be re-framed faithfully.
+2. This ADR's §2.5 excludes the simple-protocol `Query` frame from `ExtendedOp` by design, and criterion 13 proves *"no spelling of a simple Query reaches the wire through the seam."* The raw face DOES send a simple Query internally — `execSimpleLocked` drives `BEGIN`/`COMMIT`/`ROLLBACK` and `pinnedTx.ExecContext` with no args (§2.4) — but that path returns only `(tag, *PgError, status)` and **discards** every `RowDescription`/`DataRow` on the way to the terminal `ReadyForQuery`.
+
+So the F1 simple path has no way to obtain the target's frames, and the loop owner (Ultron) and its first reviewer (Zen) both stopped at this point rather than improvise. Correctly: it is a decision about this seam.
+
+### A1.2 What §2.5 actually excluded, and why this is not a reversal
+
+§2.5's rationale, verbatim: *"autodb's classifier/grant gate runs at Parse (and its simple path has its own gated entry); a Query op on this seam would bypass the gate entirely."* The threat model is a **relay consumer** feeding client frames through the seam so that a `Query` skips the Parse-time gate. Two things follow:
+
+- The exclusion is about the `ExtendedOp` **sum** — no `Query` constructor — and that stays exactly as it is. This amendment adds no constructor. Criterion 13's compile half is untouched.
+- §2.5 itself names *"its simple path has its own gated entry."* That entry is autodb's engine: for simple-protocol text, the classifier, capability profile, grants and the F3a shared unit policy run on the SQL **text** before any dispatch — the same gate `WireExecute` applies today. The engine is the gate; the wire is downstream of it. A raw simple query invoked **by the engine after its gate** is the gated entry §2.5 already assumes exists, made real.
+
+The alternatives are worse in ways that matter:
+
+- **(b) Emulate simple via the private unnamed extended sequence.** Wire-faithful frames, no seam change — but `Parse` rejects multi-statement strings with the server's error, and the implicit-transaction-block semantics differ from the simple protocol. ADR-0075 MF2 makes those semantics load-bearing: lib/pq emits **simple** frames for parameterless queries. Emulation would make a real client see behaviour PostgreSQL never produces for the frame it sent. Rejected.
+- **(c) Text-re-encode the decoded rows in the loop.** Functional for `psql`; violates "forwarded verbatim" and "no silent truncation" outright, and could be cited for nothing in §5. Rejected.
+
+### A1.3 The decision
+
+A **separate capability interface**, declared in `dao/postgres` beside `SessionPinner` (§2.5: no alias or re-export in `dao` core), and deliberately **not** added to `PinnedConn`:
+
+```go
+// SimpleQuerier is the simple-protocol face of a pinned connection: ONE Query
+// frame, the response streamed as protocol data until the terminal
+// ReadyForQuery. It exists for a consumer that gates SQL TEXT before dispatch
+// (autodb's engine); it is not part of PinnedConn, so a relay that holds only
+// the extended face cannot reach it, and a consumer that wants it must assert
+// for it — which is what an acceptance grep can see.
+type SimpleQuerier interface {
+    // SimpleQuery sends ONE simple-protocol Query frame carrying sql, then
+    // calls emit for every backend message of the response — RowDescription,
+    // DataRow, CommandComplete, EmptyQueryResponse, ErrorResponse (as
+    // protocol data, ExtendedMessage.Err, never a Go error), and the
+    // asynchronous NoticeResponse/ParameterStatus/NotificationResponse —
+    // in wire order, and consumes the terminal ReadyForQuery itself,
+    // returning its status byte. Multi-statement text produces several
+    // groups and ONE terminal ReadyForQuery, exactly as psql sees it.
+    //
+    // DataRow values are BORROWED for the duration of the emit call (the
+    // RawRows rule: a kept row is bytes.Clone'd by the consumer). Nothing is
+    // accumulated, paged, or truncated by the driver: there is no maxRows
+    // on this path, by construction — a cap is the consumer's policy, and
+    // it is applied where it can be audited.
+    //
+    // Legal only from the quiescent segment state (outbound idleOut,
+    // inbound noInbound, not poisoned) — the same guard as pinnedTx's own
+    // operations (§2.3 table). The transaction track is orthogonal: an OPEN
+    // session transaction is the normal case, since ADR-0075's F1 runs every
+    // Query inside the session transaction. Any other state returns
+    // ErrSegmentInFlight immediately, never a wait.
+    //
+    // A non-nil error from emit stops the stream: the driver still drains to
+    // the terminal ReadyForQuery (so the wire returns to quiescent) and then
+    // returns emit's error. A transport-level failure poisons the handle per
+    // the §2.3 poison rule. An ErrorResponse does NOT poison and needs no
+    // Sync: the simple protocol is self-terminating, and the server sends
+    // ReadyForQuery after the error itself.
+    SimpleQuery(ctx context.Context, sql string, emit func(ExtendedMessage) error) (status byte, err error)
+}
+```
+
+`*pinnedConn` implements it, reusing `execSimpleLocked`'s frame send and read loop and the existing `decodeMessage` (§2.5 vocabulary) — the only new code is *emitting* messages the current loop discards, and the guard. `ExtendedMessage` gains no fields: `RowDescription`/`DataRow`/`CommandComplete`/`ErrorResponse`/`EmptyQueryResponse` and the three asynchronous kinds are already in the closed set.
+
+### A1.4 Criterion 13, re-scoped explicitly rather than quietly
+
+Criterion 13 currently reads *"no spelling of a simple Query reaches the wire through the seam."* With `SimpleQuerier` present that sentence would be false as written, and a criterion that is false-as-written is worse than one that is narrowed on the record. It becomes:
+
+> 13. **The closed vocabulary (r1 MF1, A1):** the Query-frame exclusion from `ExtendedOp` is test-proven — the forbidden shape cannot be constructed through `ExtendedOp` (compile) and the boundary test proves no spelling of a simple Query reaches the wire through the **extended seam** (`Send`/`Flush`/`Receive`/`Sync`); no alias or re-export of either capability exists in `dao` core (grep/compile proof on the implementation HEAD, implementors enumerated at checkout HEAD). The simple-protocol path exists **only** as `SimpleQuerier` (A1.3) and is subject to criterion 15.
+
+And two new criteria:
+
+> 15. **`SimpleQuerier` is reachable only through the consumer's gate.** In autodb, the sole type assertion for `postgres.SimpleQuerier` lives in `core/exec` (grep-enforced on autodb's implementation HEAD: no reference outside that package, none in `tui/`, `webserver/`, `rpc/`, `frontdoor/`). The engine calls it only after the classifier, profile, grants and F3a unit policy have accepted the text. A `SimpleQuery` on a non-quiescent segment state returns `ErrSegmentInFlight` (cell); a `SimpleQuery` with the session transaction OPEN succeeds and the transaction remains open (cell — the F1 case).
+>
+> 16. **Verbatim and unbounded.** For a query returning more rows than autodb's `DefaultMaxRows`, every `DataRow` reaches `emit` (no paging, no `More`); each `RowDescription` field's `TypeOID`/`Format` equals what a direct `pgconn` execution of the same text reports; a target `ErrorResponse` arrives as `ExtendedMessage.Err` with `*pgconn.PgError` fields byte-equal to a direct execution's; a multi-statement string yields each group in order and exactly one terminal `ReadyForQuery`. Mutations: dropping `DataRow` emission, applying a cap, or rewriting any `PgError` field must each redden.
+
+### A1.5 What this does NOT change
+
+The `ExtendedOp` sum, `PinnedConn`'s surface, `pinnedTx`'s dispatch rules (§2.4), the poison rule, and the `dao` core (nothing added). `SessionPinner` is unchanged; `SimpleQuerier` is asserted separately on the same handle.
+
+### A1.6 Sequence
+
+golib: this amendment → lector design review → implementation with criteria 15–16 → release. autodb: repin → `core/exec.WireQuery` (gate the text, then `SimpleQuery`, emitting neutral messages to the loop) → the F1 loop's §5 rows. Until then the loop builds against a message interface with an interim producer cited for nothing in §5.
