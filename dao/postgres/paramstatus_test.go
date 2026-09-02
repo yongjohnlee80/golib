@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"testing"
+	"weak"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -154,7 +155,7 @@ func TestInstallStatusCapture_RegistersPerFrontendAndComposes(t *testing.T) {
 	if prevCalled != 1 {
 		t.Fatalf("the caller's BuildFrontend was called %d times, want 1 (composition)", prevCalled)
 	}
-	v, ok := recorders.Load(f)
+	v, ok := recorders.Load(weak.Make(f))
 	if !ok {
 		t.Fatal("no recorder registered for the built frontend")
 	}
@@ -168,7 +169,7 @@ func TestInstallStatusCapture_RegistersPerFrontendAndComposes(t *testing.T) {
 	if got["server_version"] != want["server_version"] || got["application_name"] != "psql" {
 		t.Fatalf("recorder through the real frontend: %v", got)
 	}
-	recorders.Delete(f)
+	recorders.Delete(weak.Make(f))
 }
 
 // A handle built without a pool (no capture) reports an empty set, not nil.
@@ -177,5 +178,18 @@ func TestReportedParameterStatuses_EmptyWithoutCapture(t *testing.T) {
 	p := &pinnedConn{}
 	if got := p.ReportedParameterStatuses(); got == nil || len(got) != 0 {
 		t.Fatalf("got %v, want an empty non-nil map", got)
+	}
+}
+
+// MF2: the capability is reached by type assertion on the handle, PinnedConn unchanged.
+func TestParameterStatusReporter_IsAnOptionalCapability(t *testing.T) {
+	t.Parallel()
+	var pc PinnedConn = &pinnedConn{}
+	r, ok := pc.(ParameterStatusReporter)
+	if !ok {
+		t.Fatal("*pinnedConn does not offer ParameterStatusReporter")
+	}
+	if got := r.ReportedParameterStatuses(); got == nil || len(got) != 0 {
+		t.Fatalf("capture-less handle reported %v, want empty non-nil", got)
 	}
 }

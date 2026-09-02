@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"testing"
+	"weak"
 )
 
 // Live: the captured set is the server's own. Every captured key agrees with
@@ -48,15 +49,15 @@ func TestParamStatus_Live_LaterSetIsCaptured(t *testing.T) {
 func TestParamStatus_Live_RecorderRemovedOnClose(t *testing.T) {
 	conn := openPG(t)
 	p := mustPin(t, conn)
-	f := p.pgConn.Frontend()
-	if _, ok := recorders.Load(f); !ok {
+	key := weak.Make(p.pgConn.Frontend())
+	if _, ok := recorders.Load(key); !ok {
 		t.Fatal("no recorder for the pinned connection while it is live")
 	}
 	p.Discard() // destroys the member → pool closes the connection → BeforeClose
 	if err := conn.Close(); err != nil {
 		t.Fatalf("pool close: %v", err)
 	}
-	if _, ok := recorders.Load(f); ok {
+	if _, ok := recorders.Load(key); ok {
 		t.Fatal("recorder still registered after the connection was closed — leak")
 	}
 }

@@ -3,7 +3,9 @@ package postgres
 import (
 	"encoding/binary"
 	"io"
+	"runtime"
 	"sync"
+	"weak"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -149,14 +151,20 @@ func indexByte(b []byte, c byte) int {
 	return -1
 }
 
-// recorders maps each connection's *Frontend to its recorder for the life of
-// the connection. Entries are added by the BuildFrontend hook and removed by
-// the pool's BeforeClose hook.
-var recorders sync.Map // *pgproto3.Frontend → *statusRecorder
+// recorders maps each connection's frontend to its recorder for the life of
+// the connection. The key is a WEAK pointer to the *Frontend, so the registry
+// never keeps a frontend alive, and every entry is tied to the frontend's own
+// lifetime through runtime.AddCleanup: a connect that fails after the frontend
+// is built (wrong password, a failed ValidateConnect or AfterConnect) never
+// becomes a pool resource and fires no pool hook, but its frontend becomes
+// unreachable and the cleanup removes the entry (PR #23 MF1). The pool's
+// BeforeClose removes entries eagerly for connections that did become
+// resources.
+var recorders sync.Map // weak.Pointer[pgproto3.Frontend] → *statusRecorder
 
 // installStatusCapture wires the capture into a pool config: every connection
-// the pool opens gets a recording frontend, and the recorder is dropped when
-// the pool closes the connection. Idempotent per config.
+// the pool opens gets a recording frontend. Composes with a caller's own
+// BuildFrontend and BeforeClose.
 func installStatusCapture(cfg *pgxpool.Config) {
 	prevBuild := cfg.ConnConfig.BuildFrontend
 	if prevBuild == nil {
@@ -165,13 +173,17 @@ func installStatusCapture(cfg *pgxpool.Config) {
 	cfg.ConnConfig.BuildFrontend = func(r io.Reader, w io.Writer) *pgproto3.Frontend {
 		rec := &statusRecorder{vals: make(map[string]string)}
 		f := prevBuild(&statusTee{r: r, rec: rec}, w)
-		recorders.Store(f, rec)
+		key := weak.Make(f)
+		recorders.Store(key, rec)
+		// The cleanup's argument is the weak key, never f: an argument that
+		// referenced f would keep it reachable and the cleanup would never run.
+		runtime.AddCleanup(f, func(k weak.Pointer[pgproto3.Frontend]) { recorders.Delete(k) }, key)
 		return f
 	}
 	prevClose := cfg.BeforeClose
 	cfg.BeforeClose = func(c *pgx.Conn) {
-		if pc := c.PgConn(); pc != nil {
-			recorders.Delete(pc.Frontend())
+		if pc := c.PgConn(); pc != nil && pc.Frontend() != nil {
+			recorders.Delete(weak.Make(pc.Frontend()))
 		}
 		if prevClose != nil {
 			prevClose(c)
@@ -182,15 +194,31 @@ func installStatusCapture(cfg *pgxpool.Config) {
 // reportedStatuses returns the recorder for a live connection, or nil when the
 // pool was opened without capture (a handle built by hand, or a pre-capture pool).
 func reportedStatuses(pgConn *pgconn.PgConn) *statusRecorder {
-	if pgConn == nil {
+	if pgConn == nil || pgConn.Frontend() == nil {
 		return nil
 	}
-	v, ok := recorders.Load(pgConn.Frontend())
+	v, ok := recorders.Load(weak.Make(pgConn.Frontend()))
 	if !ok {
 		return nil
 	}
 	return v.(*statusRecorder)
 }
+
+// ParameterStatusReporter is the OPTIONAL capability a pinned connection offers
+// when its pool captures the server's reported ParameterStatus set. It is a
+// separate leaf interface — PinnedConn itself is unchanged, so external
+// implementations of PinnedConn keep compiling (PR #23 MF2; the
+// interface-evolution convention) — reached by type assertion:
+//
+//	if r, ok := pc.(postgres.ParameterStatusReporter); ok { set := r.ReportedParameterStatuses() }
+type ParameterStatusReporter interface {
+	// ReportedParameterStatuses is every ParameterStatus the server has sent on
+	// this connection — the connect-time GUC_REPORT set and later changes — as a
+	// snapshot copy. Empty when the pool was opened without capture.
+	ReportedParameterStatuses() map[string]string
+}
+
+var _ ParameterStatusReporter = (*pinnedConn)(nil)
 
 // ReportedParameterStatuses returns every ParameterStatus the server has sent
 // on this pinned connection — the connect-time GUC_REPORT set and any later
