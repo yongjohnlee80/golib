@@ -320,3 +320,45 @@ func TestSimpleQuery_ReentryAndMidSegmentAreRefused(t *testing.T) {
 		t.Fatalf("SimpleQuery mid-segment returned %v, want ErrSegmentInFlight", err)
 	}
 }
+
+// A1-C3 / wire safety (PR #22 MF2): a PANICKING emitter must not leave the wire
+// looking reusable. The response tail is unread, so the handle must be poisoned
+// BEFORE the panic propagates, inEmit must be restored (a later Discard must not
+// skip its barrier on stale certification), and the next call must be refused
+// WITHOUT reading — a driver that read on would return the previous query's
+// frames as the new query's answer. The panic value reaches the caller unchanged.
+func TestSimpleQuery_EmitterPanicPoisonsBeforePropagating(t *testing.T) {
+	t.Parallel()
+	type sentinel struct{ why string }
+	w := &scriptedWire{msgs: []pgproto3.BackendMessage{rowDesc("n"), row("1"), cc("SELECT 1"), rfq('I'),
+		/* would be the "second query" if the driver read on */ cc("SELECT 0"), rfq('I')}}
+	p := simpleHandle(t, w)
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		_, _ = p.SimpleQuery(context.Background(), "SELECT n FROM t", func(m ExtendedMessage) error {
+			panic(sentinel{"consumer bug"})
+		})
+	}()
+	got, ok := recovered.(sentinel)
+	if !ok || got.why != "consumer bug" {
+		t.Fatalf("recovered %#v, want the emitter's own panic value unchanged", recovered)
+	}
+	p.mu.Lock()
+	poisoned, inEmit := p.poisoned, p.inEmit
+	p.mu.Unlock()
+	if !poisoned {
+		t.Fatal("handle not poisoned after the emitter panicked with the response tail unread")
+	}
+	if inEmit {
+		t.Fatal("inEmit left true after the panic; a later Discard would skip its barrier on stale certification")
+	}
+	readsBefore := w.callCount()
+	st, err := p.SimpleQuery(context.Background(), "SELECT 2", func(ExtendedMessage) error { return nil })
+	if !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("after a recovered emitter panic the next query returned (%c, %v), want ErrPoisoned", st, err)
+	}
+	if w.callCount() != readsBefore {
+		t.Fatalf("the refused query still read %d frame(s) from the wire — it would have consumed the previous response", w.callCount()-readsBefore)
+	}
+}

@@ -190,11 +190,34 @@ func (p *pinnedConn) SimpleQuery(ctx context.Context, sql string, emit func(Exte
 // because inEmit certifies no I/O is in flight, and SimpleQuery stops here
 // instead of reading a connection that is being destroyed. The consumer's own
 // error is returned separately so the drain/precedence rules still apply to it.
+//
+// A PANICKING callback is consumer code failing with the response tail unread:
+// the wire is not at a boundary the driver can resume from, so the handle is
+// poisoned and inEmit restored BEFORE the panic propagates (PR #22 MF2). The
+// deferred private release in SimpleQuery then frees a wire that every face
+// refuses; without the poison it would look quiescent and the next query would
+// consume this one's remaining frames as its own answer. The panic is not
+// recovered here — value and stack reach the caller unchanged.
 func (p *pinnedConn) emitGuarded(emit func(ExtendedMessage) error, m ExtendedMessage) (emitErr, terminal error) {
 	p.mu.Lock()
 	p.inEmit = true
 	p.mu.Unlock()
+	returned := false
+	defer func() {
+		if returned {
+			return
+		}
+		p.mu.Lock()
+		p.inEmit = false
+		p.poisoned = true
+		p.mu.Unlock()
+	}()
 	emitErr = emit(m)
+	returned = true
+	// Clear inEmit and read terminal state in ONE critical section: a concurrent
+	// Discard decides barrier-or-not against inEmit in ITS poison section, so the
+	// two orderings are exactly "Discard waits behind our next read" or "we stop
+	// before it" — never "Discard skipped the barrier and we read anyway".
 	p.mu.Lock()
 	p.inEmit = false
 	terminal = p.terminalErrLocked()

@@ -449,3 +449,26 @@ func TestSimpleQuery_Live_ConcurrentDiscardDuringEmitIsRaceFree(t *testing.T) {
 		}
 	}
 }
+
+// PR #22 MF2, live: after a recovered emitter panic, Discard on the REAL handle
+// must take its normal barrier (inEmit restored) and return; the member is
+// destroyed, not recycled with an unread tail.
+func TestSimpleQuery_Live_EmitterPanicThenDiscardReturnsAndTerminal(t *testing.T) {
+	p := mustPin(t, openPG(t))
+	func() {
+		defer func() { _ = recover() }()
+		_, _ = p.SimpleQuery(bg(t), "SELECT g FROM generate_series(1,5) g", func(m ExtendedMessage) error {
+			panic("consumer bug")
+		})
+	}()
+	if _, _, err := collect(t, p, "SELECT 1"); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("after the panic the next query returned %v, want ErrPoisoned", err)
+	}
+	done := make(chan struct{})
+	go func() { p.Discard(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Discard after a recovered emitter panic did not return")
+	}
+}
