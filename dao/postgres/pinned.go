@@ -189,6 +189,11 @@ type pinnedConn struct {
 	// pgConn and netConn still point at a connection the pool may have handed to another
 	// goroutine, so touching them would corrupt a stranger's wire.
 	released bool
+	// recv, when non-nil, replaces pgConn.ReceiveMessage in readMessage. It exists so the
+	// simple-query cells can script a server over a pipe (ADR-0018 A1-C3/C4: streaming
+	// before the tail, emitter-error drain, transport-outranks-emitter, control-tag
+	// detection). Nil in production; only tests set it.
+	recv func(context.Context) (pgproto3.BackendMessage, error)
 	// writing is held by the one wire-write in progress (Flush or Sync). It is claimed
 	// under mu BEFORE the write starts, so a concurrent Send/Flush/Sync refuses rather
 	// than mutating pgproto3's shared write buffer mid-Write (MF3). Receive does not set
@@ -680,6 +685,9 @@ func (p *pinnedConn) writeBuffered(ctx context.Context) error {
 // default handler only closes on FATAL, and on this raw face an ErrorResponse is
 // protocol data either way.
 func (p *pinnedConn) readMessage(ctx context.Context) (pgproto3.BackendMessage, error) {
+	if p.recv != nil {
+		return p.recv(ctx)
+	}
 	return p.pgConn.ReceiveMessage(ctx)
 }
 
