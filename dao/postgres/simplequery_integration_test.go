@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/yongjohnlee80/golib/dao"
@@ -370,3 +371,81 @@ func TestSimpleQuery_Live_RefusedMidSegmentAndSegmentSurvives(t *testing.T) {
 
 // pidSuffix keeps table names unique across concurrent runs against one database.
 func pidSuffix() int { return os.Getpid() }
+
+// A1-C3: Discard from INSIDE emit — the unconditional terminal operation on the
+// goroutine that holds the wire. It must return, the handle must be terminal,
+// SimpleQuery must return the terminal error without reading further, and the
+// pool member must be destroyed (never recycled dirty). This is the cell lector's
+// MF1 (PR #22 r0) proved deadlocked at b86f649.
+func TestSimpleQuery_Live_DiscardFromInsideEmitDoesNotDeadlock(t *testing.T) {
+	p := mustPin(t, openPG(t))
+	var afterDiscard int
+	done := make(chan struct{})
+	var st byte
+	var err error
+	go func() {
+		defer close(done)
+		st, err = p.SimpleQuery(bg(t), "SELECT g FROM generate_series(1,5) g", func(m ExtendedMessage) error {
+			if m.Kind == "DataRow" && afterDiscard == 0 {
+				p.Discard() // must return
+				afterDiscard = 1
+				return nil
+			}
+			if afterDiscard > 0 {
+				afterDiscard++ // any further emit after Discard is a defect
+			}
+			return nil
+		})
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("SimpleQuery did not return after the emitter called Discard: deadlock on wireMu")
+	}
+	if !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("SimpleQuery returned (%c, %v) after an in-emit Discard, want ErrPoisoned", st, err)
+	}
+	if afterDiscard != 1 {
+		t.Fatalf("emit ran %d more time(s) after Discard; delivery must stop at the callback that discarded", afterDiscard-1)
+	}
+	if _, _, err := collect(t, p, "SELECT 1"); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("handle after in-emit Discard returned %v, want ErrPoisoned (terminal)", err)
+	}
+}
+
+// A1-C3: Discard from ANOTHER goroutine while the emitter is running must not
+// close the connection under an in-flight read: the decision to skip the barrier
+// is taken atomically with the reader's own state, so either the reader stops
+// before its next read or Discard waits behind it. Repeated to shake the race.
+func TestSimpleQuery_Live_ConcurrentDiscardDuringEmitIsRaceFree(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		p := mustPin(t, openPG(t))
+		inEmit := make(chan struct{})
+		release := make(chan struct{})
+		done := make(chan error, 1)
+		go func() {
+			_, err := p.SimpleQuery(bg(t), "SELECT g FROM generate_series(1,50) g", func(m ExtendedMessage) error {
+				if m.Kind == "DataRow" && string(m.Values[0]) == "3" {
+					close(inEmit)
+					<-release
+				}
+				return nil
+			})
+			done <- err
+		}()
+		<-inEmit
+		go func() { p.Discard() }()
+		close(release)
+		select {
+		case err := <-done:
+			if err != nil && !errors.Is(err, ErrPoisoned) {
+				var de *dispatchedError
+				if !errors.As(err, &de) {
+					t.Fatalf("iteration %d: SimpleQuery returned %v; want nil, ErrPoisoned, or a dispatched transport error", i, err)
+				}
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("iteration %d: SimpleQuery did not return", i)
+		}
+	}
+}

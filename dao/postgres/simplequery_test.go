@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/yongjohnlee80/golib/dao"
 )
 
 // scriptedWire is a fake server: it hands the handle a fixed sequence of backend
@@ -292,15 +293,23 @@ func TestSimpleQuery_ReentryAndMidSegmentAreRefused(t *testing.T) {
 	t.Parallel()
 	w := &scriptedWire{msgs: []pgproto3.BackendMessage{cc("SELECT 0"), rfq('I')}}
 	p := simpleHandle(t, w)
-	var reentry error
+	var send, flush, receive, sync, simple, begin, release error
 	if _, err := p.SimpleQuery(context.Background(), "SELECT 1 WHERE false", func(ExtendedMessage) error {
-		reentry = p.Send(context.Background(), ParseOp("", "SELECT 1", nil))
+		send = p.Send(context.Background(), ParseOp("", "SELECT 1", nil))
+		flush = p.Flush(context.Background())
+		_, receive = p.Receive(context.Background())
+		_, sync = p.Sync(context.Background())
+		_, simple = p.SimpleQuery(context.Background(), "SELECT 2", func(ExtendedMessage) error { return nil })
+		_, begin = p.BeginSessionTx(context.Background(), dao.TxOptions{})
+		release = p.Release(context.Background())
 		return nil
 	}); err != nil {
 		t.Fatalf("SimpleQuery: %v", err)
 	}
-	if !errors.Is(reentry, ErrSegmentInFlight) {
-		t.Fatalf("re-entrant Send inside emit returned %v, want ErrSegmentInFlight", reentry)
+	for name, got := range map[string]error{"Send": send, "Flush": flush, "Receive": receive, "Sync": sync, "SimpleQuery": simple, "BeginSessionTx": begin, "Release": release} {
+		if !errors.Is(got, ErrSegmentInFlight) {
+			t.Fatalf("re-entrant %s inside emit returned %v, want ErrSegmentInFlight", name, got)
+		}
 	}
 	// Mid-segment: a queued extended frame makes the handle non-quiescent.
 	p2 := simpleHandle(t, &scriptedWire{})

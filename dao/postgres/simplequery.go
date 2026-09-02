@@ -37,8 +37,11 @@ type SimpleQuerier interface {
 	// Legal only from the quiescent segment state — the same guard as pinnedTx's
 	// own operations; any other state returns ErrSegmentInFlight immediately.
 	// The transaction track is orthogonal: an OPEN session transaction is the
-	// normal case. Inside emit the handle is private: a re-entrant Send / Flush /
-	// Receive / Sync / SimpleQuery returns ErrSegmentInFlight, never deadlocks.
+	// normal case. Inside emit the handle is private and NO handle method
+	// deadlocks: Send / Flush / Receive / Sync / SimpleQuery / BeginSessionTx /
+	// Release return ErrSegmentInFlight; Discard is honoured at once — it
+	// terminalizes the handle and destroys the pool member — and SimpleQuery
+	// returns ErrPoisoned as soon as the callback returns, without reading again.
 	//
 	// A nil emit fails BEFORE dispatch (ErrEmitNil); nothing is written. A
 	// non-nil error from emit stops delivery; the driver still drains to the
@@ -145,7 +148,9 @@ func (p *pinnedConn) SimpleQuery(ctx context.Context, sql string, emit func(Exte
 				controlTag = tag
 			}
 			if emitErr == nil {
-				if e := emit(ExtendedMessage{Kind: "CommandComplete", Tag: tag}); e != nil {
+				if e, term := p.emitGuarded(emit, ExtendedMessage{Kind: "CommandComplete", Tag: tag}); term != nil {
+					return 0, term
+				} else if e != nil {
 					emitErr = e
 				}
 			}
@@ -153,7 +158,9 @@ func (p *pinnedConn) SimpleQuery(ctx context.Context, sql string, emit func(Exte
 			// Protocol data, not a Go error, and not poison: the server will send
 			// its own ReadyForQuery after this.
 			if emitErr == nil {
-				if e := emit(errorResponseMessage(m)); e != nil {
+				if e, term := p.emitGuarded(emit, errorResponseMessage(m)); term != nil {
+					return 0, term
+				} else if e != nil {
 					emitErr = e
 				}
 			}
@@ -166,10 +173,31 @@ func (p *pinnedConn) SimpleQuery(ctx context.Context, sql string, emit func(Exte
 				return 0, &dispatchedError{cause: derr}
 			}
 			if emitErr == nil {
-				if e := emit(dm); e != nil {
+				if e, term := p.emitGuarded(emit, dm); term != nil {
+					return 0, term
+				} else if e != nil {
 					emitErr = e
 				}
 			}
 		}
 	}
+}
+
+// emitGuarded delivers one message to the consumer with inEmit set, then — under
+// the same mu, before any further read — reports whether the handle became
+// terminal while the callback ran. A callback that calls Discard (on this
+// goroutine or any other) is thereby honoured: Discard skips its wireMu barrier
+// because inEmit certifies no I/O is in flight, and SimpleQuery stops here
+// instead of reading a connection that is being destroyed. The consumer's own
+// error is returned separately so the drain/precedence rules still apply to it.
+func (p *pinnedConn) emitGuarded(emit func(ExtendedMessage) error, m ExtendedMessage) (emitErr, terminal error) {
+	p.mu.Lock()
+	p.inEmit = true
+	p.mu.Unlock()
+	emitErr = emit(m)
+	p.mu.Lock()
+	p.inEmit = false
+	terminal = p.terminalErrLocked()
+	p.mu.Unlock()
+	return emitErr, terminal
 }
