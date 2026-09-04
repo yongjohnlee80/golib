@@ -370,6 +370,66 @@ err = dao.RunTx(ctx, func(tx *dao.Transaction) error {
 `schema.OnCtx(ctx)` reads a transaction stashed with `dao.WithTx(ctx, tx)` for code
 that threads a `context.Context` — the explicit `*Transaction` remains source of truth.
 
+### 6.1 Helpers that must work inside *and* outside a transaction
+
+Pass the executor as a parameter and hand it straight to `On`. A nil
+`*Transaction` passed to **`On`** is contract (ADR-0019): it means "no
+transaction is held" and routes to the pool, exactly as `schema.DAO()` does —
+for statements and for `Batch()` alike. One signature, both worlds, no branch:
+
+```go
+// A store helper. Callers inside RunTx pass their tx; callers outside pass nil.
+func rename(tx *dao.Transaction, id, name string) error {
+    return artists.On(tx).With(ArtistID, id).Set(ArtistName, name).Update()
+}
+
+err = dao.RunTx(ctx, func(tx *dao.Transaction) error {
+    return rename(tx, id, "X") // pinned to this transaction
+})
+err = rename(nil, id, "X")     // pool, autocommit — stated at the call site
+```
+
+Two things this replaces:
+
+```go
+// DON'T: the two branches are the same call.
+func pick(tx *dao.Transaction) dao.DAO[*Artist, ArtistField, string] {
+    if tx != nil {
+        return artists.On(tx)
+    }
+    return artists.DAO()
+}
+
+// DON'T: a bare ctx forces pool re-entry, so a caller that already holds a
+// transaction silently draws a SECOND connection — a deadlock at small pool
+// sizes, and a BEGIN on the wrong connection at any size.
+func renameCtx(ctx context.Context, id, name string) error {
+    return artists.OnCtx(ctx).With(ArtistID, id).Set(ArtistName, name).Update()
+}
+```
+
+`OnCtx` stays right for entry-point code that owns no transaction, and for the
+`dao.WithTx(ctx, tx)` sugar above — where the context *does* carry the
+transaction, `OnCtx` finds it.
+
+**One exception, worth knowing before you reach for it: `DAO.Use(nil)` is not
+the same as `On(nil)`.** It unbinds the transaction, so statements run on the
+pool, but it does **not** clear a transaction context the DAO already inherited
+— so a pool statement issued after `Use(nil)` still carries the transaction's
+deadline and cancellation:
+
+```go
+d := artists.On(tx) // inherits tx's context, deadline included
+d.Use(nil)          // pool now — but STILL carrying tx's deadline
+
+artists.On(nil)     // pool, no transaction context
+artists.DAO()       // pool, no transaction context (identical to On(nil))
+```
+
+The stickiness is deliberate (ADR-0009 §2.3 keeps a bound context from being
+demoted). If you want a pool DAO with no transaction context, **acquire** one
+rather than unbinding one.
+
 ## 7. Mapping a constraint to a domain error
 
 ```go
