@@ -15,7 +15,8 @@
   ownership — "you do not pass connections"), ADR-0009 (`WithQueryContext`
   precedence), ADR-0018 (pinned connections). KB: the `golib-dao` convention's
   "The executor parameter — one helper shape for pinned and pool" section and
-  code-review §13 (Pattern 4), which this ADR's §2.5 answers.
+  code-review §13 (Pattern 4), which this ADR's §2.5 answers. KB ADR-0084 /
+  ADR-0085 (autokb, proposed 2026-09-05) for the §2.3 second-consumer check.
 
 ## 1. Context
 
@@ -110,12 +111,34 @@ upstreamed in this ADR**, on the project's own rules:
   already knows its id column, so `Key`/`ByKey`/`KeyOf` could collapse into it.
   Designing that against one call site risks freezing the wrong shape.
 
-**Re-open trigger (explicit, so this is a decision and not a shrug):** a second
-consumer growing an unbounded sweep — the anticipated `autokb` store is the
-likely one — or a second sweep in autodb that the current API does not fit. At
-that point the native-`Schema` variant of §2.3's third bullet is the design to
-evaluate, not a verbatim lift. Until then autodb's copy is the reference
-implementation and stays where its tests are.
+**On `autokb`, the named upcoming consumer.** The assignment behind this task
+asked for the upstream question to be settled "before the autokb
+implementation", so it was checked rather than assumed. As of 2026-09-05 autokb
+is **proposed, not built** (KB ADR-0084 / ADR-0085, authored today), it does
+build on `golib/dao`, and its stated golib prerequisite is **`golib/fs`
+(Local/GCS/SFTP) — not a dao change**. Its storage design (§4.1: SQLite +
+FTS5 + binary-quantized vectors) specifies **no keyset sweep**; the closest
+candidates, `kb.reindex` and the Hamming-distance similarity scan, are a VFS
+walk and a vector scan respectively, neither of which is the
+position+LIMIT+predicate shape over an id-bearing table that `Sweep` exists for.
+So autokb does not yet supply the second consumer, and upstreaming *in
+anticipation* of it would be designing against a document rather than a call
+site.
+
+**Re-open trigger (explicit, so this is a decision and not a shrug), any one of:**
+
+1. An autokb (or other consumer) design or implementation that specifies a
+   bounded scan over a table with a unique monotonic id — a `kb.reindex`
+   incremental pass or a vector re-quantization sweep are the plausible ones.
+2. A second sweep in autodb that `meta.Sweep`'s current API does not fit.
+3. A third consumer hand-rolling position+LIMIT+predicate at all.
+
+At that point the native-`Schema` variant of the third bullet above is the design
+to evaluate, not a verbatim lift. Until then autodb's copy is the reference
+implementation and stays where its tests are. Whoever implements autokb's
+storage layer should read this section before hand-rolling a sweep — that is the
+moment this decision is meant to be revisited, and the pager already exists to
+copy from.
 
 ### 2.4 Join-or-begin (`MustTx`) stays DOWNSTREAM, and needs a name before it moves
 
