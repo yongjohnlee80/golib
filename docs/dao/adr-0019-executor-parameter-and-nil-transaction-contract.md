@@ -1,11 +1,23 @@
 # ADR-0019 — `golib/dao`: the executor parameter — `On(nil)` as contract, and which guardrails stay downstream
 
-- **Status:** **Proposed** — §2.1 and §2.2 are *implemented on this branch* and
-  record a ruling already made downstream (Johno, 2026-09-01, in the
-  `golib-dao` KB convention's "executor parameter" section, upstream ask 4);
-  §2.3, §2.4 and §2.5 are the decisions this ADR asks to ratify. Authored by
-  kimmy-vision from the autodb `golib/dao` upstream check-back task
+- **Status:** **Accepted — RATIFIED by Johno (2026-09-05)**, implemented.
+  §2.1 and §2.2 record a ruling already made downstream (Johno, 2026-09-01, in
+  the `golib-dao` KB convention's "executor parameter" section, upstream ask 4)
+  and ship in golib PR #24. **§2.3, §2.4 and §2.5 — the three declines — were
+  ratified by Johno on 2026-09-05**, so the keyset sweep pager and the
+  join-or-begin helper stay in autodb and dao gains no runtime Pattern-4 guard.
+  Authored by kimmy-vision from the autodb `golib/dao` upstream check-back task
   (`2026-08-31-golibdao-analyze-whether-the-keyset-sweep-pager-should-move-upstream-check-back-task`).
+
+  *Process note, recorded because the sequence is unusual rather than to
+  reopen it:* golib's established order is lector review rounds, then Johno's
+  acceptance stamp (ADR-0017's header is the model). Here the stamp came while
+  lector's r0 was still in flight — a review this ADR's author explicitly asked
+  to challenge §2.5. That review still stands for the **implementation** (the
+  doc comments and the locking tests, which is the part that ships code). If it
+  lands a valid finding against a now-ratified decline, the remedy is an
+  **amendment** to this ADR rather than a pre-acceptance fix. Johno's call; the
+  consequence is named here so a later reader is not confused by the order.
 - **Date:** 2026-09-05
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** nothing. **Documents** an existing, load-bearing behaviour of
@@ -92,7 +104,7 @@ four reasons, recorded here so it is not re-proposed:
    DAO when ctx carries none". `On` behaves the same way and merely failed to
    say so.
 
-### 2.3 The keyset sweep pager stays DOWNSTREAM for now
+### 2.3 The keyset sweep pager stays DOWNSTREAM (ratified 2026-09-05)
 
 `meta.Sweep` (autodb `core/meta/pager.go`) is a good API and transfers cleanly —
 it imports only `context`, `errors`, `fmt` and `dao`. It is nonetheless **not
@@ -140,7 +152,7 @@ storage layer should read this section before hand-rolling a sweep — that is t
 moment this decision is meant to be revisited, and the pager already exists to
 copy from.
 
-### 2.4 Join-or-begin (`MustTx`) stays DOWNSTREAM, and needs a name before it moves
+### 2.4 Join-or-begin (`MustTx`) stays DOWNSTREAM, and needs a name before it moves (ratified 2026-09-05)
 
 `meta.MustTx` — join the caller's transaction when non-nil, begin and own one
 via `RunTx` when nil — is the natural companion to `RunTx` and would sit well in
@@ -158,7 +170,7 @@ via `RunTx` when nil — is the natural companion to `RunTx` and would sit well 
   `dao.RunTxJoining` are candidates; the choice belongs with whoever brings the
   first real caller.
 
-### 2.5 dao does NOT gain a runtime Pattern-4 re-entrance guard
+### 2.5 dao does NOT gain a runtime Pattern-4 re-entrance guard (ratified 2026-09-05)
 
 The companion question was whether dao should gain a dev-build guard that fires
 when code holding a pinned resource re-enters the pool (code-review §13's
@@ -254,7 +266,7 @@ nothing, so they were fixed and re-run rather than scored or dropped.
 4. No exported API added, no signature changed, no behaviour changed. ✅
 5. §2.2's rejection is recorded with its reasons. ✅
 6. §2.3–§2.5 record explicit decisions with re-open triggers, not deferrals. ✅
-7. Ratification by Johno for §2.3, §2.4, §2.5. **Pending.**
+7. Ratification by Johno for §2.3, §2.4, §2.5. ✅ **Ratified 2026-09-05.**
 
 ## 6. Consequences
 
