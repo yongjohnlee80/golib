@@ -405,6 +405,12 @@ func rename(tx *dao.Transaction, id, name string) error {
 Don't wrap that in `if tx != nil { artists.On(tx) } else { artists.DAO() }` —
 the two branches are the same call.
 
+One exception to know: **`DAO.Use(nil)` is not `On(nil)`.** It unbinds the
+transaction but retains a transaction context the DAO already inherited, so a
+pool statement after `Use(nil)` still carries the transaction's deadline and
+cancellation (deliberate ADR-0009 §2.3 stickiness). To get a pool DAO with no
+transaction context, acquire one — `On(nil)` or `DAO()` — rather than unbinding.
+
 **You do not pass connections.** Each schema already holds its `DataConn`, so a
 tx-bound DAO enlists it on its first statement (ADR-0015):
 

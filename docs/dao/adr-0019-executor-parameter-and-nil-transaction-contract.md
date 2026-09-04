@@ -8,6 +8,12 @@
   join-or-begin helper stay in autodb and dao gains no runtime Pattern-4 guard.
   Authored by kimmy-vision from the autodb `golib/dao` upstream check-back task
   (`2026-08-31-golibdao-analyze-whether-the-keyset-sweep-pager-should-move-upstream-check-back-task`).
+  **Revision 1 (2026-09-05)** folds gold-man's r0 review
+  (`agents/gold-man/reviews/2026-09-05-golib-dao-on-nil-contract-pr24-r0-review.md`,
+  `changes_requested`, 1 MF / 1 SF / 2 nits): §2.1 was wrong about the shape of
+  the surface it documents — the contract has **three** doors, not two, and
+  `Use(nil)` is an exception. Reviewer confirmed §2.5 independently and could
+  not break it; all three declines survived review unchanged.
 
   *Process note, recorded because the sequence is unusual rather than to
   reopen it:* golib's established order is lector review rounds, then Johno's
@@ -68,9 +74,45 @@ Normative:
   takes on a non-nil transaction — inheriting `tx.ctx` when no explicit query
   context was given (ADR-0009 §2.3) — has nothing to inherit when there is no
   transaction.
-- There are **two** fallthrough sites, and both are the contract:
+- There are **two** fallthrough sites behind `On`, and both are the contract:
   `queryDAO.handle()` for statements and `queryDAO.Batch()` for the batch
-  writer, which resolves its executor separately.
+  writer, which resolves its executor separately (which is why each carries its
+  own test cell).
+
+**THREE exported doors take a `*Transaction`, and nil does not mean the same
+thing at all three.** Revision 1 of this ADR, after gold-man's r0: the first
+draft enumerated the two *fallthrough sites* and presented that as the contract,
+which is a completeness claim about the whole surface and was wrong. The surface
+is `Schema.On`, `Schema.DAO` (no argument) and `DAO.Use` — and `Use(nil)`
+behaves differently:
+
+| door | transaction | context |
+|---|---|---|
+| `Schema.On(nil)` | unbound → pool | none |
+| `Schema.DAO()` | unbound → pool | none |
+| `DAO.Use(nil)` | unbound → pool | **RETAINS a transaction context already inherited** |
+
+`Use`'s guard (`if tx != nil && !d.explicitCtx { d.ctxv = tx.ctx }`) skips the
+ctxv **assignment** on nil; it does not **clear** an assigned one. So a DAO
+acquired with `On(tx)` and then unbound with `Use(nil)` issues **pool**
+statements carrying the **transaction's deadline and cancellation**. Measured,
+not inferred — at this head, a pool statement after `Use(nil)` reports the
+transaction's exact deadline, while `On(nil)` and `DAO()` report none.
+
+That asymmetry is **deliberate stickiness** (ADR-0009 §2.3 keeps a bound context
+from being demoted), so this ADR **documents it as the one exception** rather
+than flattening it. Clearing `ctxv` so all three doors agree would be a
+**behaviour change** — a caller may depend on the sticky context today — and
+belongs in its own PR with its own decision, not smuggled into a
+documentation-only change. It is recorded here as the open option, not as a
+recommendation.
+
+Why the correction mattered enough to bump the ADR rather than be waved through:
+this document's argument is that leaving the behaviour undocumented cost 14
+conditionals. Documenting it **as uniform when it is not** is the more expensive
+version of that mistake — a consumer reads "a nil tx gives you exactly what
+`Schema.DAO` returns", reaches for `Use(nil)`, and gets a pool statement with a
+deadline attached.
 
 This is the guarantee that makes an executor **parameter** work: one signature
 serves a caller inside `RunTx` (pass the transaction; every statement is pinned
@@ -202,6 +244,22 @@ cannot silently draw from the pool) plus code-review §13 at review time. A
 static analyser over consumer code is a legitimate future option; a dao runtime
 guard is not, and this ADR closes the question rather than leaving it open.
 
+**A PARTIAL guard would be worse than none** (gold-man, r0). The tempting
+half-measure — fire only when the ctx *does* carry the transaction — reports
+**PASS for the bare-ctx case that is the actual defect**. That is the
+`validate-the-verifier` rule pointed at a proposed instrument: an absent guard
+gets attention, while a present-and-blind one converts "nobody checked" into
+"checked and fine". So the choice is not "partial guard vs none"; it is "none vs
+a guard that lies about the only case that matters".
+
+**"No guard is possible" is not "nothing can be done"** — stated so a later
+reader does not over-read this decline. The defect *class* could be shrunk
+without any guard, by having `RunTx` hand `fn` a context carrying the
+transaction, so ctx-plumbed helpers bind through `OnCtx` automatically. That is a
+different proposal with a signature change, it is **not** a counter-argument to
+this section (it still would not catch a helper handed a genuinely bare
+context), and it is out of scope here. Noted as a direction, not a decision.
+
 ## 3. Evidence
 
 Measured 2026-09-05 at `golib` `origin/main` `8dfb0ab` (v0.5.7). Consumers of
@@ -228,10 +286,22 @@ Shipped on `dao-on-nil-contract`:
 - `dao/query_dao.go` — `handle()` gains a doc comment naming the fallthrough as
   contract and pointing at the locking tests; the `Batch()` executor line is
   marked as the same contract.
-- `dao/on_nil_test.go` — five tests (six with subtests): the pool routing and
-  begin-count reading, a non-nil control, `On(nil)`/`DAO()` equivalence on both a
-  bare and a hooked+debug schema, the batch writer's separate executor path, and
-  `WithQueryContext` survival. White-box, stdlib `testing`, no server.
+- `dao/dao.go` — the **exported** `DAO.Use` doc states the `Use(nil)` exception:
+  unbinds the transaction, retains an inherited transaction context, and points
+  at `On(nil)`/`DAO()` for a pool DAO with no transaction context. This is the
+  door a consumer actually reads (r1, MF1).
+- `dao/on_nil_test.go` — eight tests (ten with subtests). Beyond r0's five: a
+  cell locking the `Use(nil)` asymmetry including the inherited **deadline**, a
+  contrast cell asserting `On(nil)`/`DAO()` carry no transaction deadline (which
+  is what gives the `Use` cell its meaning), and a **behavioural** equivalence
+  cell that drives a statement through both doors and requires the same executor
+  reached and the same hooks *fired in the same order*. White-box, stdlib
+  `testing`, no server.
+
+  The behavioural cell exists because r0's SF1 was right: the field comparison
+  checks hooks by **length**, so two same-length different hook sets pass it. It
+  also fails a struct refactor that the behavioural one survives. Both are kept
+  — the field check as the fast lock, the behavioural one as the durable lock.
 
 **Mutation matrix**, run per-mutation with the unmutated suite proven green
 first, each anchor asserted to match exactly once, and each test run in its own
@@ -246,10 +316,28 @@ binary so a panicking mutant cannot mask its siblings (code-review §15):
 | M5 `On()`: nil tx drops the explicit ctx | `HonorsWithQueryContext` | all pass |
 | M6 `On()`: nil tx drops the hooks | `IsEquivalentToDAO` | all pass |
 
-6/6 caught, one cell each, no cross-firing — the matrix is diagonal, so each
-test observes its own claim rather than the package's general health. M1 and M3
-initially failed to **compile** (a missing import); a non-compiling mutant proves
-nothing, so they were fixed and re-run rather than scored or dropped.
+| M7 `Use()`: nil clears the retained ctx | `UseNil_UnbindsButRetainsItsContext` | all pass |
+| M8 `Use()`: nil does not unbind | `UseNil_UnbindsButRetainsItsContext` | all pass |
+| M9 `On()`: nil swaps hooks for a **same-length different set** | `BehavesIdenticallyToDAO` | `IsEquivalentToDAO` **passes** |
+| M10 `ctx()`: pool statements get a default 30s timeout | `OnNilAndDAO_CarryNoTransactionDeadline` | all pass |
+| M6 re-run: `On()` nil drops the hooks | `IsEquivalentToDAO` **and** `BehavesIdenticallyToDAO` | others pass |
+
+10/10 caught. Every cell observes its own claim rather than the package's
+general health — M6 is the only mutant that reddens two cells, correctly, since
+both are hook-equivalence claims.
+
+**M9 is the one that matters**, and it is a positive control rather than an
+assertion: it reproduces SF1's exact gap. A same-length-but-different hook set
+leaves the field-comparison cell **green** while the new behavioural cell fails
+— so the weakness r0 identified is demonstrably real, and the new cell
+demonstrably closes it. Asserting "I addressed SF1" without M9 would have been
+the same unfounded claim the mutation matrix exists to prevent.
+
+M1 and M3 initially failed to **compile** (a missing import); a non-compiling
+mutant proves nothing, so they were fixed and re-run rather than scored or
+dropped. Every anchor was asserted to match exactly once, the unmutated suite
+was proven green before each pass, and each cell ran in its own binary so a
+panicking mutant could not mask its siblings.
 
 `go build ./...` and `go test ./...` are clean at the branch head
 (0 failures, whole module).
@@ -263,6 +351,10 @@ nothing, so they were fixed and re-run rather than scored or dropped.
 3. Tests fail if the fallthrough becomes a panic, an error, or a silent
    `BEGIN`, and fail if `On(nil)` stops matching `DAO()` — each proven by a
    mutant, against a green baseline. ✅
+3a. All **three** doors are documented, with `Use(nil)`'s exception stated on
+   the exported interface and locked by a cell that reads the inherited
+   **deadline**; equivalence is asserted behaviourally as well as
+   field-by-field. ✅ (r1, gold-man MF1 + SF1)
 4. No exported API added, no signature changed, no behaviour changed. ✅
 5. §2.2's rejection is recorded with its reasons. ✅
 6. §2.3–§2.5 record explicit decisions with re-open triggers, not deferrals. ✅
@@ -278,7 +370,10 @@ nothing, so they were fixed and re-run rather than scored or dropped.
   `store/resolve.go`). That cleanup is
   those repos' own work, not this ADR's.
 - A future maintainer who wants `On(nil)` to fail now has to argue with an ADR
-  and six red tests instead of an ambiguous comment. That is the entire point.
+  and ten red tests instead of an ambiguous comment. That is the entire point.
+  The same now holds in the other direction for `Use(nil)`: "tidying" the
+  asymmetry away also reddens a cell, so the behaviour change gets the decision
+  it deserves instead of arriving as a cleanup.
 - autodb keeps `meta.Sweep` and `meta.MustTx` as the reference implementations,
   with the §2.3 re-open trigger recorded. Neither the pager question nor the
   naming question is lost — they are answered "not yet, and here is what would

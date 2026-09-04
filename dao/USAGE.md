@@ -373,9 +373,9 @@ that threads a `context.Context` — the explicit `*Transaction` remains source 
 ### 6.1 Helpers that must work inside *and* outside a transaction
 
 Pass the executor as a parameter and hand it straight to `On`. A nil
-`*Transaction` is contract (ADR-0019): it means "no transaction is held" and
-routes to the pool, exactly as `schema.DAO()` does — for statements and for
-`Batch()` alike. One signature, both worlds, no branch:
+`*Transaction` passed to **`On`** is contract (ADR-0019): it means "no
+transaction is held" and routes to the pool, exactly as `schema.DAO()` does —
+for statements and for `Batch()` alike. One signature, both worlds, no branch:
 
 ```go
 // A store helper. Callers inside RunTx pass their tx; callers outside pass nil.
@@ -411,6 +411,24 @@ func renameCtx(ctx context.Context, id, name string) error {
 `OnCtx` stays right for entry-point code that owns no transaction, and for the
 `dao.WithTx(ctx, tx)` sugar above — where the context *does* carry the
 transaction, `OnCtx` finds it.
+
+**One exception, worth knowing before you reach for it: `DAO.Use(nil)` is not
+the same as `On(nil)`.** It unbinds the transaction, so statements run on the
+pool, but it does **not** clear a transaction context the DAO already inherited
+— so a pool statement issued after `Use(nil)` still carries the transaction's
+deadline and cancellation:
+
+```go
+d := artists.On(tx) // inherits tx's context, deadline included
+d.Use(nil)          // pool now — but STILL carrying tx's deadline
+
+artists.On(nil)     // pool, no transaction context
+artists.DAO()       // pool, no transaction context (identical to On(nil))
+```
+
+The stickiness is deliberate (ADR-0009 §2.3 keeps a bound context from being
+demoted). If you want a pool DAO with no transaction context, **acquire** one
+rather than unbinding one.
 
 ## 7. Mapping a constraint to a domain error
 

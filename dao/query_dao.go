@@ -307,6 +307,14 @@ func (d *queryDAO[R, C, K, ID]) Use(tx *Transaction) DAO[R, C, ID] {
 	d.tx = tx
 	// An explicit WithQueryContext is sticky: late tx binding must not demote
 	// it behind the transaction's context (ADR-0009 §2.3).
+	//
+	// NOTE the asymmetry, which is CONTRACT and is documented on [DAO.Use]
+	// (ADR-0019 §2.1): the guard skips the ASSIGNMENT on a nil tx, it does not
+	// CLEAR an already-assigned ctxv. So Use(nil) unbinds the transaction while
+	// RETAINING its context — a pool statement then carries the transaction's
+	// deadline and cancellation. This is the one door where nil does not mean
+	// "as if no transaction were ever involved"; On(nil) and DAO() do.
+	// TestUseNil_* lock it. Changing it is a behaviour change, not a fix.
 	if tx != nil && !d.explicitCtx {
 		d.ctxv = tx.ctx
 	}
@@ -648,8 +656,9 @@ func (d *queryDAO[R, C, K, ID]) Delete() error {
 }
 
 func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
-	// Pool unless tx-bound — the nil-tx fallthrough of ADR-0019, same contract
-	// as handle().
+	// Pool unless tx-bound — the nil-tx fallthrough of ADR-0019, resolved
+	// SEPARATELY here, same contract as handle(). The separate resolution is
+	// why it carries its own test cell.
 	var exec Execer = d.conn
 	var initErr error
 	if d.tx != nil {

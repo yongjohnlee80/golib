@@ -73,6 +73,19 @@ type DAO[R any, C ~string, ID any] interface {
 
 	// Use binds this DAO to a transaction. Prefer schema.On(tx) (ADR-0006), which
 	// binds at acquisition time; Use exists for completeness.
+	//
+	// Use(nil) is the ONE EXCEPTION to the nil-transaction contract of
+	// [Schema.On] (ADR-0019 §2.1): it unbinds the transaction, so statements run
+	// on the pool, but it does NOT clear a context this DAO already inherited
+	// from a transaction. So a DAO acquired with On(tx) and then unbound with
+	// Use(nil) issues POOL statements carrying the TRANSACTION'S context —
+	// including its deadline and its cancellation. That is deliberate stickiness
+	// (ADR-0009 §2.3 keeps a bound context from being demoted), not a fallthrough
+	// to the pool's own context.
+	//
+	// If you want a pool DAO with no transaction context, acquire one:
+	// schema.On(nil) or schema.DAO(), which are equivalent and carry no
+	// transaction context.
 	Use(tx *Transaction) DAO[R, C, ID]
 
 	// Get returns exactly one row, or [ErrNoRows]. With no cols, the schema's
