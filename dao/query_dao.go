@@ -55,6 +55,12 @@ func (d *queryDAO[R, C, K, ID]) newBuilder() *builder { return &builder{dialect:
 // (issuing BEGIN on first touch), else the pool connection. A tx-bound DAO thus
 // runs every statement on the transaction with no per-statement rebind (fixes the
 // prior art's .Use(tx) footgun, ADR-0005 §4).
+// handle resolves the executor for one statement: the transaction's connection
+// when this DAO is tx-bound, the pool otherwise.
+//
+// The nil-tx fallthrough is CONTRACT (ADR-0019), not an unhandled case — see
+// [Schema.On]. Do not turn it into a panic or an error: every executor-parameter
+// helper in every consumer is built on it, and TestOnNil_* lock it.
 func (d *queryDAO[R, C, K, ID]) handle() (execQuerier, error) {
 	if d.tx != nil {
 		return d.tx.join(d.schema.conn)
@@ -642,6 +648,8 @@ func (d *queryDAO[R, C, K, ID]) Delete() error {
 }
 
 func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
+	// Pool unless tx-bound — the nil-tx fallthrough of ADR-0019, same contract
+	// as handle().
 	var exec Execer = d.conn
 	var initErr error
 	if d.tx != nil {

@@ -388,6 +388,23 @@ rollback-then-**re-panic** on panic. A DAO from `schema.On(tx)` runs every
 statement on the transaction — no per-statement `.Use(tx)` to forget.
 `schema.DAO()` runs on the pool (autocommit) — an explicit choice.
 
+**`On(nil)` is contract, not misuse** (ADR-0019): a nil transaction means "no
+transaction is held" and gives you exactly what `schema.DAO()` gives you — the
+pool, for statements and for `Batch()` alike. It never panics and never begins a
+transaction of its own. That is what lets a helper take its executor as a
+parameter and serve both worlds with one signature:
+
+```go
+// tx from RunTx: every statement is pinned to that transaction.
+// tx nil: every statement runs on the pool.
+func rename(tx *dao.Transaction, id, name string) error {
+    return artists.On(tx).With(ArtistID, id).Set(ArtistName, name).Update()
+}
+```
+
+Don't wrap that in `if tx != nil { artists.On(tx) } else { artists.DAO() }` —
+the two branches are the same call.
+
 **You do not pass connections.** Each schema already holds its `DataConn`, so a
 tx-bound DAO enlists it on its first statement (ADR-0015):
 

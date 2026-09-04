@@ -304,6 +304,8 @@ func (s *Schema[R, C, K, ID]) acquire(opts []QueryOption) queryConfig {
 }
 
 // DAO returns a fresh, query-scoped DAO on the connection pool (autocommit).
+// [Schema.On] with a nil transaction returns the same thing (ADR-0019), which is
+// what lets a helper take an executor parameter and pass it straight through.
 func (s *Schema[R, C, K, ID]) DAO(opts ...QueryOption) DAO[R, C, ID] {
 	qc := s.acquire(opts)
 	return &queryDAO[R, C, K, ID]{schema: s, conn: s.conn,
@@ -313,6 +315,24 @@ func (s *Schema[R, C, K, ID]) DAO(opts ...QueryOption) DAO[R, C, ID] {
 // On returns a fresh, query-scoped DAO bound to a transaction. Every statement on
 // the returned DAO runs on the transaction (resolved via the connection name),
 // with no per-statement rebind — the .Use(tx) footgun is gone (ADR-0005 §4).
+//
+// A nil tx is CONTRACT, not misuse (ADR-0019): it means "no transaction is
+// held", and the returned DAO is exactly the one [Schema.DAO] would return —
+// every statement, and the writer from [DAO.Batch], runs on the connection pool
+// (autocommit). On never panics on a nil transaction and never begins one of its
+// own.
+//
+// That guarantee is what lets a statement-issuing helper take its executor as a
+// parameter and pass it straight through, serving a caller inside [RunTx] and a
+// caller outside one with a single signature and no branch:
+//
+//	func (s *Store) rename(tx *dao.Transaction, id, name string) error {
+//	    // tx from RunTx: runs on that transaction. tx nil: runs on the pool.
+//	    return s.Artists.On(tx).With(ArtistID, id).Set(ArtistName, name).Update()
+//	}
+//
+// Prefer that shape over an `if tx != nil` selector around On/DAO — the two
+// branches it picks between are already the same call.
 func (s *Schema[R, C, K, ID]) On(tx *Transaction, opts ...QueryOption) DAO[R, C, ID] {
 	qc := s.acquire(opts)
 	d := &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: tx,
