@@ -396,8 +396,16 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 	info.Identity = id
 	app := m.factory(backend, &info)
 	if app == nil {
+		// backend is constructed above and no App goroutine exists on this exit,
+		// so this path owns its teardown outright — the same reasoning as the
+		// attach failure below, which is what made the omission visible: without
+		// the Stop this was the only exit past `New` that leaves a backend
+		// un-stopped. Harmless while New allocates channels and starts nothing;
+		// exactly the asymmetry that stops being harmless the day it does.
+		// (gold-man, #27 r0.)
 		m.drop(sid)
 		cancel()
+		_ = backend.Stop()
 		close(s.done)
 		return nil, errors.New("web: AppFactory returned no application")
 	}
@@ -411,6 +419,12 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 			// cleanup outright. Same shape as the AppFactory-returned-nil case
 			// above, plus the Stop that [Manager.Close] does for a session whose
 			// App did start.
+			//
+			// On the ErrPeerChanged exit these are SECOND calls: attachSession
+			// terminates that session itself, by design. Both are idempotent —
+			// cancel by contract, Stop through its once — so the repeat is
+			// deliberate rather than a leak, and this comment exists so a reader
+			// tracing that path does not have to work that out. (gold-man r0.)
 			m.drop(sid)
 			cancel()
 			_ = s.backend.Stop()
