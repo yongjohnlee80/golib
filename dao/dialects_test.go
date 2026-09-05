@@ -3,6 +3,7 @@ package dao
 import (
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -27,6 +28,9 @@ import (
 // (The repo walk here duplicates one in internal/audit on another branch. They
 // merge into a shared helper once both land; noting it rather than leaving it
 // silent, since de-duplication is the sweep these guards belong to.)
+
+// daoImportPath is the package whose constants a driver's Name() must return.
+const daoImportPath = "github.com/yongjohnlee80/golib/dao"
 
 func repoRootT(t *testing.T) string {
 	t.Helper()
@@ -142,26 +146,133 @@ func dialectNameReturns(t *testing.T, files []parsedGo) (byConst map[string][]st
 			if !strings.HasSuffix(recv, "Dialect") {
 				continue
 			}
+			where := pf.rel + " " + recv
 			ret := soleReturn(fd)
 			if ret == nil {
+				// FAIL CLOSED. A Name() whose body is not a single return is
+				// not "fine", it is UNANALYSABLE by this guard, and skipping it
+				// silently is how a computed name would slip through
+				// (lector, r0 MEDIUM).
+				literals = append(literals, where+
+					" has a Name() body this guard cannot analyse (not a single return statement)")
 				continue
 			}
-			where := pf.rel + " " + recv
+			daoName, daoImported := importLocalName(pf.file, daoImportPath)
 			switch e := ret.(type) {
 			case *ast.BasicLit:
 				if e.Kind == token.STRING {
 					literals = append(literals, where+" returns the literal "+e.Value)
+				} else {
+					literals = append(literals, where+" returns a non-string literal")
 				}
 			case *ast.Ident:
-				byConst[e.Name] = append(byConst[e.Name], where)
+				// Only legitimate inside package dao itself, where the constant
+				// is declared. Elsewhere a bare identifier is some local, not
+				// our constant.
+				if strings.HasPrefix(pf.rel, "dao/") && strings.Count(pf.rel, "/") == 1 {
+					byConst[e.Name] = append(byConst[e.Name], where)
+				} else {
+					literals = append(literals, where+" returns the bare identifier "+e.Name+
+						", which cannot be a dao constant outside package dao")
+				}
 			case *ast.SelectorExpr:
-				byConst[e.Sel.Name] = append(byConst[e.Sel.Name], where)
+				// Require the qualifier to RESOLVE to the dao import, rather
+				// than merely be spelled "dao" (lector, r0 MEDIUM).
+				pkg, ok := e.X.(*ast.Ident)
+				switch {
+				case !ok:
+					literals = append(literals, where+" returns a selector on a non-identifier")
+				case !daoImported || pkg.Name != daoName:
+					literals = append(literals, where+" returns "+pkg.Name+"."+e.Sel.Name+
+						", whose qualifier does not resolve to "+daoImportPath)
+				case nameIsShadowed(pf.file, daoName):
+					literals = append(literals, where+" returns "+pkg.Name+"."+e.Sel.Name+
+						" but "+daoName+" is shadowed in this file, so the qualifier is unresolvable")
+				default:
+					byConst[e.Sel.Name] = append(byConst[e.Sel.Name], where)
+				}
 			default:
 				literals = append(literals, where+" returns an unrecognised expression")
 			}
 		}
 	}
 	return byConst, literals
+}
+
+// importLocalName returns the identifier this file binds to path, and whether
+// path is imported at all. It honours an explicit alias, the default
+// last-segment name, and refuses to answer for `_` or `.` imports — matching
+// on the spelling "sql" without resolving the import let an alias or a
+// shadowed variable bypass the check (lector, PR #29 r0 BLOCKING).
+func importLocalName(f *ast.File, path string) (string, bool) {
+	for _, im := range f.Imports {
+		got, err := strconv.Unquote(im.Path.Value)
+		if err != nil || got != path {
+			continue
+		}
+		if im.Name != nil {
+			switch im.Name.Name {
+			case "_", ".":
+				return "", false // unnameable or dot-imported: fail closed
+			default:
+				return im.Name.Name, true
+			}
+		}
+		seg := path
+		if i := strings.LastIndexByte(seg, '/'); i >= 0 {
+			seg = seg[i+1:]
+		}
+		return seg, true
+	}
+	return "", false
+}
+
+// nameIsShadowed reports whether this file declares anything that could rebind
+// name, in which case a selector spelled name.X may not be the import at all.
+// Deliberately coarse and FAIL-CLOSED: a false positive costs an explicit
+// exemption entry, a false negative costs a silent bypass.
+func nameIsShadowed(f *ast.File, name string) bool {
+	shadowed := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.ValueSpec:
+			for _, id := range node.Names {
+				if id.Name == name {
+					shadowed = true
+				}
+			}
+		case *ast.AssignStmt:
+			for _, lhs := range node.Lhs {
+				if id, ok := lhs.(*ast.Ident); ok && id.Name == name {
+					shadowed = true
+				}
+			}
+		case *ast.Field:
+			for _, id := range node.Names {
+				if id.Name == name {
+					shadowed = true
+				}
+			}
+		case *ast.FuncDecl:
+			if node.Name.Name == name {
+				shadowed = true
+			}
+		}
+		return true
+	})
+	return shadowed
+}
+
+// enclosingFunc names the innermost function declaration containing pos.
+func enclosingFunc(f *ast.File, pos token.Pos) string {
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || pos < fd.Pos() || pos >= fd.End() {
+			continue
+		}
+		return fd.Name.Name
+	}
+	return ""
 }
 
 func recvTypeName(e ast.Expr) string {
@@ -237,6 +348,28 @@ func TestDialectNames_EveryConstantIsUsed(t *testing.T) {
 			"either a dialect is missing or the constant is dead surface:\n  %s",
 			len(unused), strings.Join(unused, ", "))
 	}
+	// No two constants may share a VALUE. Engine comparison collapses values,
+	// so two differently named constants with the same string would be
+	// indistinguishable everywhere it matters, and the per-name checks above
+	// would both stay green (lector, r0 LOW).
+	byValue := map[string][]string{}
+	for name, val := range consts {
+		byValue[val] = append(byValue[val], name)
+	}
+	var dupes []string
+	for val, names := range byValue {
+		if len(names) > 1 {
+			sort.Strings(names)
+			dupes = append(dupes, strconv.Quote(val)+" is declared by "+strings.Join(names, ", "))
+		}
+	}
+	sort.Strings(dupes)
+	if len(dupes) > 0 {
+		t.Errorf("%d dialect value(s) are declared by more than one constant — engine "+
+			"comparison is by value, so these are indistinguishable in use:\n  %s",
+			len(dupes), strings.Join(dupes, "\n  "))
+	}
+
 	// And no constant may be claimed by two different dialects.
 	var shared []string
 	for name, sites := range byConst {
@@ -309,8 +442,27 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 		isName[v] = true
 	}
 
-	// Positions of sql.Open's first argument — the named exception.
+	// THE EXEMPTION IS A NAMED ALLOWLIST OF TWO SITES, not a syntactic pattern.
+	//
+	// It used to exempt any call spelled `sql.Open`, which was wrong twice over
+	// (lector, PR #29 r0 BLOCKING): it never resolved the import, so an alias
+	// or a shadowed `sql` bypassed it; and it did not require the argument to
+	// STAY a literal, so replacing it with a dao constant — the namespace
+	// collapse this whole change exists to prevent — passed. Naming the two
+	// sites removes both holes: nothing else is exempt, whatever it is spelled.
+	//
+	// Why these two are exempt at all: the argument is the THIRD-PARTY
+	// DRIVER's database/sql registration name, owned by modernc.org/sqlite and
+	// go-sql-driver/mysql. Its equality with two of our dialect names is a
+	// coincidence, not a contract, so it must NOT become a dao constant.
+	type siteKey struct{ file, fn string }
+	exemptSites := map[siteKey]string{
+		{"dao/sqlite/sqlite.go", "OpenNamed"}: "sqlite",
+		{"dao/mysql/mysql.go", "OpenNamed"}:   "mysql",
+	}
 	allowed := map[token.Pos]bool{}
+	matched := map[siteKey]int{}
+	var notLiteral []string
 	for _, pf := range files {
 		ast.Inspect(pf.file, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
@@ -321,11 +473,63 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 			if !ok || sel.Sel.Name != "Open" {
 				return true
 			}
-			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "sql" {
-				allowed[call.Args[0].Pos()] = true
+			// Resolve the qualifier to database/sql rather than trusting its
+			// spelling, and fail closed if that name is shadowed here.
+			sqlName, imported := importLocalName(pf.file, "database/sql")
+			pkg, isIdent := sel.X.(*ast.Ident)
+			if !imported || !isIdent || pkg.Name != sqlName || nameIsShadowed(pf.file, sqlName) {
+				return true
 			}
+			key := siteKey{pf.rel, enclosingFunc(pf.file, call.Pos())}
+			want, isExempt := exemptSites[key]
+			if !isExempt {
+				return true // not exempt: its literal (if any) is checked below
+			}
+			matched[key]++
+			lit, isLit := call.Args[0].(*ast.BasicLit)
+			if !isLit || lit.Kind != token.STRING {
+				var b strings.Builder
+				_ = printer.Fprint(&b, token.NewFileSet(), call.Args[0])
+				notLiteral = append(notLiteral, pf.rel+":"+
+					strconv.Itoa(pf.fset.Position(call.Args[0].Pos()).Line)+" passes "+b.String())
+				return true
+			}
+			if got, _ := strconv.Unquote(lit.Value); got != want {
+				notLiteral = append(notLiteral, pf.rel+" registers "+lit.Value+
+					", but this site is exempted only for "+strconv.Quote(want))
+				return true
+			}
+			allowed[call.Args[0].Pos()] = true
 			return true
 		})
+	}
+
+	// Every exempt site must be present exactly once. A stale entry means the
+	// exemption is covering nothing, which is untested cover for whatever
+	// drifts into it later; a duplicate means the allowlist is ambiguous.
+	var badSites []string
+	for key := range exemptSites {
+		switch matched[key] {
+		case 1:
+		case 0:
+			badSites = append(badSites, key.file+" "+key.fn+"() — exempt site not found; "+
+				"delete the entry or fix the matcher")
+		default:
+			badSites = append(badSites, key.file+" "+key.fn+"() — matched "+
+				strconv.Itoa(matched[key])+" times; the allowlist must name one call")
+		}
+	}
+	sort.Strings(badSites)
+	if len(badSites) > 0 {
+		t.Errorf("%d exempt site(s) are not exactly one real call:\n  %s",
+			len(badSites), strings.Join(badSites, "\n  "))
+	}
+	sort.Strings(notLiteral)
+	if len(notLiteral) > 0 {
+		t.Errorf("%d driver-registration argument(s) are not the expected string literal. That "+
+			"argument belongs to the third-party driver (modernc.org/sqlite, "+
+			"go-sql-driver/mysql); using a dao constant there asserts a contract that does "+
+			"not exist:\n  %s", len(notLiteral), strings.Join(notLiteral, "\n  "))
 	}
 
 	var stray []string
@@ -353,12 +557,6 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 			"this is a third-party driver registration name, add it to the named exception "+
 			"in this test with the reason:\n  %s", len(stray), strings.Join(stray, "\n  "))
 	}
-	// The exception must actually be exercised, or it is untested cover for
-	// whatever drifts into it later.
-	if len(allowed) == 0 {
-		t.Error("the sql.Open exception matched nothing — either the drivers stopped calling " +
-			"sql.Open, or the matcher is broken and is exempting nothing")
-	}
-	t.Logf("no stray engine-name literals; %d sql.Open registration argument(s) exempted",
-		len(allowed))
+	t.Logf("no stray engine-name literals; %d named driver-registration site(s) exempted, "+
+		"each verified to still pass a string literal", len(allowed))
 }
