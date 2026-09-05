@@ -68,6 +68,17 @@ var pointerPatterns = []struct {
 	{"pull-request-number", regexp.MustCompile(`\bPR #\d+\b`)},
 	// A coordinate into a specification table.
 	{"matrix-coordinate", regexp.MustCompile(`\brow \d+:`)},
+	// A bare review coordinate. These hide in parentheses with nothing else
+	// around them — "(r3)" names a review round nobody outside it can read.
+	{"review-coordinate", regexp.MustCompile(`\(r\d+\)|\br\d+ (review|round|fix)\b`)},
+	// An acceptance-criterion number. "criterion 10" is a line in a document
+	// the reader does not have, and it is frequently the ONLY pointer on its
+	// line, which is what made it invisible to the first version of this test.
+	{"criterion-number", regexp.MustCompile(`(?i)\bcriteri(on|a) \d+\b`)},
+	// A document revision. Every use of this in the repository is a coordinate
+	// into a design record ("rev 3 put it in the domain"), not a protocol or
+	// format version.
+	{"document-revision", regexp.MustCompile(`\brev \d+\b`)},
 }
 
 // commentViolations returns, per repo-relative file path, how many COMMENT
@@ -105,7 +116,11 @@ func commentViolations(t *testing.T) (map[string]int, int) {
 		fset := token.NewFileSet()
 		f, perr := parser.ParseFile(fset, path, nil, parser.ParseComments)
 		if perr != nil {
-			return nil
+			// A file that cannot be parsed cannot be counted, and a file that
+			// is not counted is not held to any budget. Skipping it silently
+			// would make "unparseable" a way out of this test — including for
+			// a file that stops parsing by accident. Fail, and name the path.
+			return fmt.Errorf("parse %s: %w", path, perr)
 		}
 		rel, _ := filepath.Rel(root, path)
 		rel = filepath.ToSlash(rel)
