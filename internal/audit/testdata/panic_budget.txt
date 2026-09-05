@@ -99,7 +99,7 @@ tui/options.go	WithInputQueueSize	61913d54e1b5b9d5	1	unreviewed	not yet read
 tui/options.go	WithEventQueueLimit	4016f82a6a79ec41	1	unreviewed	not yet read
 tui/options.go	WithTaskPoolSize	7832b373c26a8d57	1	unreviewed	not yet read
 tui/options.go	WithTaskDrainTimeout	b9b464698924d785	1	unreviewed	not yet read
-tui/queue.go	programQueue.push	2aab10adc34909b9	1	violation	LIVE: push panics when the program event queue exceeds its limit. That is a RUNTIME CONDITION caused by a runaway producer, not caller misuse, so a library crashes its host process. Needs an error or backpressure path under a written policy (sweep G2).
+tui/queue.go	programQueue.push	2aab10adc34909b9	1	contract	DOCUMENTED OPT-IN, not a defect. The queue is UNLIMITED by default; the panic fires only when an app calls WithEventQueueLimit(n), whose doc says it PANICS and that "apps preferring fail-fast crash detection over memory growth opt in here" (tui/options.go:124-128, rev 1, Lector Q1). App.Post repeats it (tui/app.go:128) and ADR-0005 §2.4 records it. An earlier row here called this a LIVE violation needing "an error or backpressure path under a written policy" — classified from queue.go alone, without reading the option that enables it; the policy it asked for already existed and was ratified in review.
 tui/stack.go	Stack.AddAligned	2777c4f0003a7060	1	unreviewed	not yet read
 tui/style/color.go	ANSI	d30d4bac686ff454	1	unreviewed	not yet read
 tui/style/color.go	ANSI256	d1ebd4f9ac7e6564	1	unreviewed	not yet read

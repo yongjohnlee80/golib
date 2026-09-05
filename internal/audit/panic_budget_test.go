@@ -123,6 +123,21 @@ const (
 	// should be an error return. Must carry a LIVE or LATENT verdict.
 	catViolation category = "violation"
 
+	// catContract: reachable at runtime, and the API DOCUMENTS the panic as its
+	// deliberate behaviour — opt-in, stated at the option that enables it, and
+	// ratified in review. Distinct from catViolation, which is a panic the
+	// contract does not want; and distinct from catInvariant, which is
+	// programmer error no data can cause.
+	//
+	// The distinction is not academic: this file classified tui/queue.go's
+	// overflow panic as a LIVE violation "so a library crashes its host
+	// process", from reading queue.go alone. The option that enables it says
+	// "apps preferring fail-fast crash detection over memory growth opt in
+	// here", the default is unlimited, App.Post repeats it, and ADR-0005 §2.4
+	// records it. A budget that cannot tell a documented opt-in contract from a
+	// defect will send someone to "fix" a behaviour a consumer chose.
+	catContract category = "contract"
+
 	// catUnreviewed: enumerated but not yet read. Permitted ONLY for the
 	// frozen legacy identities in legacyPath.
 	catUnreviewed category = "unreviewed"
@@ -131,12 +146,17 @@ const (
 var validCategories = map[category]bool{
 	catConstruction: true, catInvariant: true, catRepanic: true,
 	catUnreachable: true, catViolation: true, catUnreviewed: true,
+	catContract: true,
 }
 
 // maxViolations pins violation ROWS — sites, not defects; one defect can
 // occupy several sites. Lowering it belongs in the PR that fixes a site;
 // raising it is a reviewed decision, never a fix.
-const maxViolations = 4
+// maxViolations pins violation ROWS. It came down from 4 to 3 when
+// tui/queue.go's overflow panic was reclassified: it is a documented opt-in
+// contract, not a rule violation (see catContract). The remaining three are
+// dao.Str's sites.
+const maxViolations = 3
 
 // verdictRe requires a violation to state whether it is reachable in practice.
 // This replaces the removed numeric column: "is this live?" is answered by
@@ -503,6 +523,11 @@ func loadInventory(t *testing.T) map[string]site {
 		}
 		if !validCategories[s.Cat] {
 			t.Fatalf("%s:%d: unknown category %q", inventoryPath, i+1, s.Cat)
+		}
+		if s.Cat == catContract && s.Reason == "" {
+			t.Fatalf("%s:%d: a contract row must cite WHERE the panic is documented — the "+
+				"option, the method doc, or the ADR — or it is indistinguishable from an "+
+				"unexamined one", inventoryPath, i+1)
 		}
 		if s.Cat == catViolation {
 			if s.Reason == "" {
