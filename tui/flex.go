@@ -202,5 +202,5 @@ func (f *Flex) cross(s Size) int {
 // on the sub-Surfaces the framework hands them.
 func (f *Flex) Render(Surface) {}
 
-// HandleEvent consumes nothing; events bubble through (ADR-0004 §2.5).
+// HandleEvent consumes nothing; events bubble through.
 func (f *Flex) HandleEvent(Event) bool { return false }

@@ -6,14 +6,13 @@ import (
 )
 
 // Surface is what components render onto: a clipped, offset view into the
-// frame's cell buffer, carrying the style-resolution context
-// (ADR-0003 §2.4 — the second portability seam, ADR-0001 §2.4 #5).
+// frame's cell buffer, carrying the style-resolution context (ADR-0003 §2.4
+// — the second portability seam.4 #5).
 type Surface interface {
-	// SetCell writes one grapheme cluster at surface-local (x, y).
-	// content must be a single cluster; if it contains more than one,
-	// only the first is written (callers use Graphemes to iterate text).
-	// Width is measured internally (ADR-0003 §2.7), under the Surface's
-	// width policy, and cached on the Cell.
+	// SetCell writes one grapheme cluster at surface-local (x, y). content
+	// must be a single cluster; if it contains more than one, only the first
+	// is written (callers use Graphemes to iterate text). Width is measured
+	// internally, under the Surface's width policy, and cached on the Cell.
 	// Writes outside the clip are silently dropped (W3 applies).
 	SetCell(x, y int, content string, st style.Style)
 
@@ -32,23 +31,22 @@ type Surface interface {
 	Size() Size
 
 	// StringWidth measures s under the App-configured width policy
-	// (WithWidthPolicy, ADR-0005). NORMATIVE: components MUST measure
-	// text through the Surface (or Context) — never the package-level
-	// default — so the per-App policy is honored (ADR-0003 §2.7).
+	// (WithWidthPolicy). NORMATIVE: components MUST measure text through the
+	// Surface (or Context) — never the package-level default — so the per-App
+	// policy is honored.
 	StringWidth(s string) int
 
-	// Resolution context (ADR-0006): the theme, the negotiated terminal
-	// capabilities, and the width policy travel WITH the surface, so
-	// components and style resolution need no globals and tests can
-	// inject all three.
+	// Resolution context: the theme, the negotiated terminal capabilities, and
+	// the width policy travel WITH the surface, so components and style
+	// resolution need no globals and tests can inject all three.
 	Theme() *style.Theme
 	Caps() Capabilities
 }
 
-// renderContext is the shared style-resolution context every Surface view of
-// one frame carries (ADR-0003 §2.4, ADR-0006 §2.6): theme, capabilities,
-// width policy, theme generation, and the bounded resolution cache. It is
-// owned by the runtime and touched only on the loop goroutine.
+// renderContext is the shared style-resolution context every Surface view
+// of one frame carries: theme, capabilities, width policy, theme
+// generation, and the bounded resolution cache. It is owned by the runtime
+// and touched only on the loop goroutine.
 type renderContext struct {
 	theme    *style.Theme
 	caps     Capabilities
@@ -195,7 +193,7 @@ func (s *bufSurface) Sub(r Rect) Surface {
 func (s *bufSurface) Size() Size { return Size{W: s.w, H: s.h} }
 
 // StringWidth implements Surface: measurement under the App-configured
-// width policy (ADR-0003 §2.4/§2.7).
+// width policy.
 func (s *bufSurface) StringWidth(str string) int {
 	return grapheme.StringWidth(str, s.ctx.policy.ambiguousWide())
 }

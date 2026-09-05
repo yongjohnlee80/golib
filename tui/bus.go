@@ -7,11 +7,10 @@ import (
 )
 
 // Bus is the App's broadcast channel: one instance per App (App.Bus());
-// typed pub/sub with zero reflection at dispatch and ENQUEUE-ONLY publish
-// (ADR-0005 §2.7). A bus that called handlers synchronously on the
-// publisher's goroutine would hand every background task a direct line into
-// component state, reintroducing exactly the races the single loop exists
-// to kill.
+// typed pub/sub with zero reflection at dispatch and ENQUEUE-ONLY publish.
+// A bus that called handlers synchronously on the publisher's goroutine
+// would hand every background task a direct line into component state,
+// reintroducing exactly the races the single loop exists to kill.
 type Bus struct {
 	app *App
 
@@ -19,10 +18,10 @@ type Bus struct {
 	subs map[reflect.Type][]*subscription // copy-on-write slices
 }
 
-// subscription is one registered handler. fn is a compiler-generated closure
-// doing a plain type assertion — dispatch performs NO reflect.Call and NO
-// per-publish allocation. cancelled is the tombstone: a handler cancelled
-// during delivery of the same batch is skipped (ADR-0005 §2.7).
+// subscription is one registered handler. fn is a compiler-generated
+// closure doing a plain type assertion — dispatch performs NO reflect.Call
+// and NO per-publish allocation. cancelled is the tombstone: a handler
+// cancelled during delivery of the same batch is skipped.
 type subscription struct {
 	fn        func(any)
 	cancelled atomic.Bool
@@ -36,10 +35,9 @@ func newBus(app *App) *Bus {
 // Subscribe registers fn for every published value of dynamic type T. The
 // reflect.Type key is resolved ONCE here; fn always runs on the loop
 // goroutine. cancel is idempotent and safe from any goroutine. Matching is
-// exact dynamic type — no interface-assignability fan-out in v1
-// (ADR-0005 §2.7), so subscribing to an interface type never matches.
-// Bare Subscribe is for App-lifetime listeners; components use
-// SubscribeScoped.
+// exact dynamic type — no interface-assignability fan-out in v1, so
+// subscribing to an interface type never matches. Bare Subscribe is for
+// App-lifetime listeners; components use SubscribeScoped.
 func Subscribe[T any](b *Bus, fn func(T)) (cancel func()) {
 	if fn == nil {
 		panic("tui: Subscribe: nil handler")
@@ -93,9 +91,9 @@ func (b *Bus) remove(t reflect.Type, s *subscription) {
 
 // Publish enqueues v for delivery. ENQUEUE-ONLY: it never invokes handlers
 // on the caller's goroutine — delivery happens on the loop goroutine when
-// the program lane drains (ADR-0005 §2.4). Safe from any goroutine; never
-// blocks. Handlers registered during a delivery see only subsequent
-// publishes; handlers are invoked in subscription order.
+// the program lane drains. Safe from any goroutine; never blocks. Handlers
+// registered during a delivery see only subsequent publishes; handlers are
+// invoked in subscription order.
 func (b *Bus) Publish(v any) {
 	if v == nil {
 		panic("tui: Bus.Publish: nil value")

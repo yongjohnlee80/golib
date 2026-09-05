@@ -1,7 +1,7 @@
 package tui
 
 // Align positions a Stack child inside the stack's area when no explicit
-// offset is given (ADR-0004 §2.7.4).
+// offset is given.
 type Align uint8
 
 const (
@@ -26,15 +26,14 @@ type stackLayer struct {
 }
 
 // Stack is z-ordered layering for floating windows, modals, dropdown
-// popups, toasts (ADR-0004 §2.7.4). Children are laid out in order with
-// LOOSE constraints of the stack's full area and positioned by alignment or
-// explicit offset; LATER children paint on top; hit-testing visits them in
-// reverse (ADR-0004 §2.5.2), so the topmost layer wins the mouse. A modal
-// layer = a Stack child implementing FocusScope (ADR-0004 §2.6.3) that
-// consumes all mouse events on its backdrop.
-// Stack layers paint bottom-to-top in document order. Placement metadata
-// lives in a side table keyed by the child; Remove shadows the promoted
-// method to drop the entry alongside the layer.
+// popups, toasts. Children are laid out in order with LOOSE constraints of
+// the stack's full area and positioned by alignment or explicit offset;
+// LATER children paint on top; hit-testing visits them in reverse, so the
+// topmost layer wins the mouse. A modal layer = a Stack child implementing
+// FocusScope that consumes all mouse events on its backdrop. Stack layers
+// paint bottom-to-top in document order. Placement metadata lives in a side
+// table keyed by the child; Remove shadows the promoted method to drop the
+// entry alongside the layer.
 type Stack struct {
 	MultiChild // order (== z-order), mount mirror, Move/Children/Init
 	layers     map[Component]stackLayer

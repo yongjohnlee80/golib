@@ -14,7 +14,7 @@ type buffer struct {
 // invalidCell is the last-buffer sentinel after (re)allocation: it compares
 // unequal to every cell the write path can produce (SetCell never writes a
 // NUL cluster), so a fresh or resized buffer diffs as the full grid — the
-// "never diff across a size change" rule (ADR-0003 §2.6).
+// "never diff across a size change" rule.
 var invalidCell = Cell{Content: "\x00", Width: 1}
 
 // blankCell is the cleared-cell value: a plain space with default attrs.

@@ -3,9 +3,9 @@ package tui
 import "context"
 
 // Backend is the driver seam between the runtime and a concrete terminal
-// (ADR-0001 §2.4 #5, ADR-0002 §2.1). The App owns exactly one Backend for
-// its lifetime. It is Ratatui-Backend-shaped: a cell-diff sink, an event
-// source, and a capability report behind one lifecycle.
+// (ADR-0001 §2.4 #5). The App owns exactly one Backend for its lifetime. It
+// is Ratatui-Backend-shaped: a cell-diff sink, an event source, and a
+// capability report behind one lifecycle.
 type Backend interface {
 	// Start acquires the device: raw mode, VT modes, alternate screen,
 	// the capability probe, and the input reader goroutine. It blocks
@@ -24,9 +24,9 @@ type Backend interface {
 	Size() (Size, error)
 
 	// Flush applies one frame's cell diff plus any latched cursor-state
-	// changes as a SINGLE buffered write (the one-write rule, ADR-0003
-	// §2.5/§2.9). An empty diff with unchanged cursor state writes zero
-	// bytes. The diff is ordered row-major by the caller (ADR-0003 §2.2).
+	// changes as a SINGLE buffered write (the one-write rule). An empty diff
+	// with unchanged cursor state writes zero bytes. The diff is ordered
+	// row-major by the caller.
 	Flush(diff []CellUpdate) error
 
 	// Cursor state is LATCHED, not immediate: these record desired state
@@ -39,22 +39,21 @@ type Backend interface {
 	// Capabilities reports the negotiated profile. Constant after Start.
 	Capabilities() Capabilities
 
-	// Events is the single, ordered, UN-COALESCED event source: key,
-	// mouse, paste, resize, focus — the backend only decodes and emits.
-	// Fed by the backend's one reader goroutine (ADR-0002 §2.9); closed
-	// by Stop. The App's intake stage consumes it exclusively and owns
-	// ALL coalescing and overflow policy (ADR-0005 §2.4).
+	// Events is the single, ordered, UN-COALESCED event source: key, mouse,
+	// paste, resize, focus — the backend only decodes and emits. Fed by the
+	// backend's one reader goroutine; closed by Stop. The App's intake stage
+	// consumes it exclusively and owns ALL coalescing and overflow policy.
 	Events() <-chan Event
 
-	// Err reports the terminal error that stopped the reader or failed
-	// the probe. Valid once Events() is closed or Stop has returned; nil
-	// after a clean Stop. The App loop calls Err when Events() closes to
-	// distinguish clean shutdown from reader failure (ADR-0005).
+	// Err reports the terminal error that stopped the reader or failed the
+	// probe. Valid once Events() is closed or Stop has returned; nil after a
+	// clean Stop. The App loop calls Err when Events() closes to distinguish
+	// clean shutdown from reader failure.
 	Err() error
 }
 
-// CellUpdate is one dirty cell in a frame diff (ADR-0002 §2.1). Cell is
-// ADR-0003's grapheme-cluster cell.
+// CellUpdate is one dirty cell in a frame diff. Cell is ADR-0003's
+// grapheme-cluster cell.
 type CellUpdate struct {
 	X, Y int
 	Cell Cell
@@ -70,10 +69,9 @@ const (
 	CursorShapeBar                          // DECSCUSR 5/6
 )
 
-// ColorProfile is the canonical color-capability tier (ADR-0002 §2.2).
-// ADR-0006 resolves style.Color against exactly this enum — it is the field
-// style resolution consumes; the raw probed colors in Capabilities are
-// supporting data.
+// ColorProfile is the canonical color-capability tier. ADR-0006 resolves
+// style.Color against exactly this enum — it is the field style resolution
+// consumes; the raw probed colors in Capabilities are supporting data.
 type ColorProfile uint8
 
 const (
@@ -84,8 +82,8 @@ const (
 )
 
 // Tri is a three-valued capability answer for features whose support can be
-// genuinely unknowable (ADR-0002 §2.2). An optimistic request is NEVER
-// reported as support — capability honesty.
+// genuinely unknowable. An optimistic request is NEVER reported as support
+// — capability honesty.
 type Tri uint8
 
 const (
@@ -95,8 +93,8 @@ const (
 )
 
 // Capabilities is the negotiated feature profile of the attached terminal,
-// resolved once during Start by live probing (ADR-0002 §2.6) — never from
-// terminfo (ADR-0001 §2.4 #4). Degradation is per-capability, not per-$TERM.
+// resolved once during Start by live probing — never from terminfo
+// (ADR-0001 §2.4 #4). Degradation is per-capability, not per-$TERM.
 type Capabilities struct {
 	ColorProfile   ColorProfile // env pre-seed + XTGETTCAP "RGB"; consumed by ADR-0006
 	KittyKeyboard  bool         // kitty progressive enhancement; flags 1+2 pushed when true
@@ -119,7 +117,7 @@ type Capabilities struct {
 	DefaultBG ProbedColor
 }
 
-// ProbedColor is a raw OSC 10/11 default-color reply (ADR-0002 §2.2).
+// ProbedColor is a raw OSC 10/11 default-color reply.
 type ProbedColor struct {
 	R, G, B uint8
 	Known   bool

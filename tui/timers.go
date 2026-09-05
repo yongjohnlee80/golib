@@ -6,8 +6,8 @@ import (
 )
 
 // timerEntry is one pending deadline in the App's demand-scheduled timer
-// heap (ADR-0005 §2.6): a component timer (After/Every) or a pending frame
-// deadline (the min-frame-interval cap rides the same timer — ADR-0003).
+// heap: a component timer (After/Every) or a pending frame deadline (the
+// min-frame-interval cap rides the same timer — ADR-0003).
 type timerEntry struct {
 	at    time.Time
 	seq   uint64 // allocation order; heap tie-break and the TimerID
@@ -88,7 +88,7 @@ func (a *App) scheduleFrame(at time.Time) {
 // rearmTimer points the App's single time.Timer at the earliest pending
 // deadline — or fully disarms it when the heap is empty: an idle app has an
 // empty heap and a nil timer channel, so the loop's select blocks on input
-// alone; zero wakeups, zero bytes (ADR-0005 G5).
+// alone; zero wakeups, zero bytes.
 func (a *App) rearmTimer() {
 	if len(a.timers) == 0 {
 		if a.timer != nil {
@@ -120,7 +120,7 @@ func (a *App) rearmTimer() {
 
 // fireDueTimers delivers every due deadline (loop goroutine): component
 // timers post an addressed TickEvent; frame deadlines release the pending
-// frame. Every timers re-arm fixed-delay after delivery (ADR-0005 §2.6).
+// frame. Every timers re-arm fixed-delay after delivery.
 func (a *App) fireDueTimers() {
 	now := time.Now()
 	for len(a.timers) > 0 && !a.timers[0].at.After(now) {

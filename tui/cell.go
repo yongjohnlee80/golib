@@ -21,11 +21,11 @@ type Cell struct {
 // Continuation reports whether c is the right half of a wide cell.
 func (c Cell) Continuation() bool { return c.Width == 0 }
 
-// CellAttrs is the resolved, output-form style payload of a Cell
-// (ADR-0006 §2.6): packed fg/bg colors already downsampled to the terminal's
-// ColorProfile, plus the SGR attribute bits. It is produced by the package's
-// style resolver (resolve.go) and consumed by the tui/term emitter; it is a
-// small comparable value so Cell equality stays one ==.
+// CellAttrs is the resolved, output-form style payload of a Cell: packed
+// fg/bg colors already downsampled to the terminal's ColorProfile, plus the
+// SGR attribute bits. It is produced by the package's style resolver
+// (resolve.go) and consumed by the tui/term emitter; it is a small
+// comparable value so Cell equality stays one ==.
 type CellAttrs struct {
 	FG, BG CellColor
 	Mask   AttrMask
@@ -33,7 +33,7 @@ type CellAttrs struct {
 
 // CellColorKind enumerates the output forms a resolved color can take.
 // Unlike style.Color there is no token or adaptive kind: resolution has
-// already happened (ADR-0006 §2.4).
+// already happened.
 type CellColorKind uint8
 
 const (

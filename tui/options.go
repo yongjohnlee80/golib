@@ -10,7 +10,7 @@ import (
 )
 
 // PanicPolicy selects what Run does after a loop/handler panic has been
-// recovered and the terminal restored (ADR-0005 §2.1/§2.2).
+// recovered and the terminal restored.
 type PanicPolicy uint8
 
 const (
@@ -22,12 +22,10 @@ const (
 	PanicReturn
 )
 
-// ErrPanic is wrapped by Run's returned error under PanicReturn
-// (ADR-0005 §2.1).
+// ErrPanic is wrapped by Run's returned error under PanicReturn.
 var ErrPanic = errors.New("tui: recovered panic")
 
-// ErrTaskPanic is wrapped by TaskResult.Err when the task panicked
-// (ADR-0005 §2.8).
+// ErrTaskPanic is wrapped by TaskResult.Err when the task panicked.
 var ErrTaskPanic = errors.New("tui: task panicked")
 
 // appConfig collects the option-set construction state of an App
@@ -47,7 +45,7 @@ type appConfig struct {
 	trace             TraceFunc
 }
 
-// defaultAppConfig returns the documented defaults (ADR-0005 §2.1).
+// defaultAppConfig returns the documented defaults.
 func defaultAppConfig() appConfig {
 	return appConfig{
 		minFrameInterval:  16 * time.Millisecond,
@@ -62,20 +60,19 @@ func defaultAppConfig() appConfig {
 	}
 }
 
-// AppOption configures an App under construction (ADR-0005 §2.1).
+// AppOption configures an App under construction.
 type AppOption func(*appConfig)
 
 // WithBackend sets the driver (REQUIRED). There is no default: the core tui
 // package cannot construct term.Backend (tui/term imports tui, not vice
-// versa — ADR-0001 §2.2), and a hidden registry/init() default is forbidden
-// by golib philosophy. Real apps pass term.New(...); tests pass
+// versa.2), and a hidden registry/init() default is forbidden by golib
+// philosophy. Real apps pass term.New(...); tests pass
 // tui.NewTestBackend().
 func WithBackend(b Backend) AppOption {
 	return func(c *appConfig) { c.backend = b }
 }
 
-// WithTheme sets the initial style.Theme (ADR-0006).
-// Default: style.DefaultTheme().
+// WithTheme sets the initial style.Theme. Default: style.DefaultTheme().
 func WithTheme(t *style.Theme) AppOption {
 	return func(c *appConfig) { c.theme = t }
 }
@@ -92,10 +89,10 @@ func WithDoubleClickWindow(d time.Duration) AppOption {
 	return func(c *appConfig) { c.doubleClickWindow = d }
 }
 
-// WithMinFrameInterval caps the render rate: dirty marks arriving faster are
-// coalesced into one frame per interval (ADR-0003). Default 16ms (~60fps
-// cap). This is a CAP, not a ticker — no dirt, no frame, no wakeup
-// (ADR-0005 G5). Zero disables the cap (every drain with dirt renders).
+// WithMinFrameInterval caps the render rate: dirty marks arriving faster
+// are coalesced into one frame per interval. Default 16ms (~60fps cap).
+// This is a CAP, not a ticker — no dirt, no frame, no wakeup. Zero disables
+// the cap (every drain with dirt renders).
 func WithMinFrameInterval(d time.Duration) AppOption {
 	if d < 0 {
 		panic("tui: WithMinFrameInterval: negative interval")
@@ -104,8 +101,8 @@ func WithMinFrameInterval(d time.Duration) AppOption {
 }
 
 // WithPanicPolicy selects what Run does after a loop/handler panic has been
-// recovered and the terminal restored (ADR-0005 §2.2): PanicRepanic
-// (default) or PanicReturn.
+// recovered and the terminal restored: PanicRepanic (default) or
+// PanicReturn.
 func WithPanicPolicy(p PanicPolicy) AppOption {
 	return func(c *appConfig) { c.panicPolicy = p }
 }

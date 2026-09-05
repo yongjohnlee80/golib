@@ -54,8 +54,7 @@ func (a *App) intake() {
 			}
 			switch e := ev.(type) {
 			case ResizeEvent:
-				// Latest-wins atomic slot — never a queue of sizes
-				// (ADR-0005 §2.4).
+				// Latest-wins atomic slot — never a queue of sizes.
 				resize, haveResize = e, true
 			case MouseEvent:
 				if e.Kind == MouseMotion && len(pending) > 0 {
@@ -82,10 +81,10 @@ func (a *App) intake() {
 }
 
 // intakeEnqueue appends ev to the bounded lane-A queue, applying the
-// drop-oldest overflow policy (ADR-0005 §2.4): input is refreshable, so a
-// full lane drops the OLDEST MOTION first and only then the oldest event of
-// any kind — at that point the app is seconds behind and stale keys are the
-// least-bad loss. Key presses and paste chunks are never coalesced (each is
+// drop-oldest overflow policy: input is refreshable, so a full lane drops
+// the OLDEST MOTION first and only then the oldest event of any kind — at
+// that point the app is seconds behind and stale keys are the least-bad
+// loss. Key presses and paste chunks are never coalesced (each is
 // semantically distinct). Drops are counted and logged via WithLogger.
 func (a *App) intakeEnqueue(pending []Event, ev Event, limit int) []Event {
 	if len(pending) >= limit {

@@ -2,14 +2,13 @@ package tui
 
 import "time"
 
-// Event is the marker interface every concrete event type implements
-// (ADR-0001 §2.3, ADR-0005 §2.5). The set is closed within the package: the
-// unexported method keeps third-party types out so the runtime's type
-// switches stay exhaustive.
+// Event is the marker interface every concrete event type implements. The
+// set is closed within the package: the unexported method keeps third-party
+// types out so the runtime's type switches stay exhaustive.
 type Event interface{ isEvent() }
 
-// NodeID identifies a mounted component. 0 = none; assigned monotonically at
-// mount; never reused for the App's lifetime (ADR-0004 §2.4).
+// NodeID identifies a mounted component. 0 = none; assigned monotonically
+// at mount; never reused for the App's lifetime.
 type NodeID uint64
 
 // --- keyboard (kitty protocol fields — ADR-0002 negotiates flags 1+2;
@@ -100,12 +99,10 @@ type MouseEvent struct {
 // --- lifecycle / terminal ---
 
 // ResizeEvent reports a new terminal size. The App's intake stage coalesces
-// resize storms latest-wins (ADR-0005 §2.4); backends emit ordered and
-// un-coalesced (ADR-0002 §2.8).
+// resize storms latest-wins; backends emit ordered and un-coalesced.
 type ResizeEvent struct{ W, H int }
 
-// PasteEvent is one bracketed paste, with CR and CRLF normalized to \n
-// (ADR-0002 §2.7).
+// PasteEvent is one bracketed paste, with CR and CRLF normalized to \n.
 type PasteEvent struct{ Text string }
 
 // FocusEvent covers both component focus (routed per ADR-0004 §2.6) and
@@ -118,7 +115,7 @@ type FocusEvent struct {
 
 // --- addressed deliveries (no bubbling — ADR-0004 §2.5) ---
 
-// TimerID identifies one timer registration (ADR-0005 §2.6).
+// TimerID identifies one timer registration.
 type TimerID uint64
 
 // TickEvent is an addressed timer firing, delivered directly to Owner.
@@ -129,12 +126,11 @@ type TickEvent struct {
 }
 
 // TaskID identifies one App.Go task. Monotonic per App; never reused
-// (staleness checks, ADR-0005 §2.8).
+// (staleness checks).
 type TaskID uint64
 
 // TaskResult is the terminal outcome of an App.Go task, addressed to the
-// owning component. Err wraps the task's panic when it panicked
-// (ADR-0005 §2.8).
+// owning component. Err wraps the task's panic when it panicked.
 type TaskResult struct {
 	Owner NodeID
 	ID    TaskID

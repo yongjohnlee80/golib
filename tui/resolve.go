@@ -2,9 +2,9 @@ package tui
 
 import "github.com/yongjohnlee80/golib/tui/style"
 
-// ResolveContext carries the inputs style resolution is pure over
-// (ADR-0006 §2.6): the active theme, the negotiated terminal capabilities,
-// and the theme generation counter the runtime bumps on App.SetTheme.
+// ResolveContext carries the inputs style resolution is pure over: the
+// active theme, the negotiated terminal capabilities, and the theme
+// generation counter the runtime bumps on App.SetTheme.
 type ResolveContext struct {
 	Theme    *style.Theme
 	Caps     Capabilities
@@ -12,8 +12,8 @@ type ResolveContext struct {
 }
 
 // dark is the effective background darkness for adaptive picks: the theme's
-// WithDark override when forced, else the probed Capabilities.DarkBackground
-// (ADR-0006 §2.4/§2.5).
+// WithDark override when forced, else the probed
+// Capabilities.DarkBackground.
 func (rc ResolveContext) dark() bool {
 	if rc.Theme != nil {
 		if dark, forced := rc.Theme.Dark(); forced {
@@ -23,11 +23,10 @@ func (rc ResolveContext) dark() bool {
 	return rc.Caps.DarkBackground
 }
 
-// resolveStyle is the pure resolution function (ADR-0006 §2.6):
-// (Style, theme generation, capability profile, dark) → CellAttrs. The chain
-// per color is token lookup → adaptive pick → downsample to the profile
-// (ADR-0006 §2.4). It allocates nothing; the cached entry point is
-// resolver.resolve.
+// resolveStyle is the pure resolution function: (Style, theme generation,
+// capability profile, dark) → CellAttrs. The chain per color is token
+// lookup → adaptive pick → downsample to the profile. It allocates nothing;
+// the cached entry point is resolver.resolve.
 func resolveStyle(st style.Style, rc ResolveContext) CellAttrs {
 	var a CellAttrs
 	dark := rc.dark()
@@ -37,8 +36,8 @@ func resolveStyle(st style.Style, rc ResolveContext) CellAttrs {
 	if bg, ok := st.GetBackground(); ok {
 		a.BG = resolveColor(bg, rc.Theme, rc.Caps.ColorProfile, dark)
 	}
-	// Attributes survive every profile including ProfileMono — the mono
-	// step of the chain drops color and keeps attributes (ADR-0006 §2.4).
+	// Attributes survive every profile including ProfileMono — the mono step
+	// of the chain drops color and keeps attributes.
 	if v, ok := st.GetBold(); ok && v {
 		a.Mask |= AttrBold
 	}
@@ -133,8 +132,8 @@ type resolveKey struct {
 const maxResolveCacheEntries = 1024
 
 // resolver is the render layer's bounded resolution cache. It is owned by
-// the render context and touched only on the loop goroutine (ADR-0005 §2.3),
-// so it is deliberately unsynchronized.
+// the render context and touched only on the loop goroutine, so it is
+// deliberately unsynchronized.
 type resolver struct {
 	cache   map[resolveKey]CellAttrs
 	lastGen uint32
@@ -180,9 +179,9 @@ var ansi16RGB = [16][3]uint8{
 	{92, 92, 255}, {255, 0, 255}, {0, 255, 255}, {255, 255, 255},
 }
 
-// ansi256To16 is the static 256→16 mapping table (ADR-0006 §2.4): identity
-// for the base 16, nearest base color (squared Euclidean in RGB, lowest
-// index wins ties) for the cube and gray ramp.
+// ansi256To16 is the static 256→16 mapping table: identity for the base 16,
+// nearest base color (squared Euclidean in RGB, lowest index wins ties) for
+// the cube and gray ramp.
 var ansi256To16 = buildANSI256To16()
 
 func buildANSI256To16() (t [256]uint8) {
@@ -220,7 +219,7 @@ func ansi256RGB(n uint8) (r, g, b uint8) {
 
 // rgbToANSI256 maps a truecolor value to the nearest ANSI-256 index: the
 // nearest 6×6×6 cube entry compared against the nearest 24-step gray-ramp
-// entry, squared Euclidean in RGB; the cube wins ties (ADR-0006 §2.4).
+// entry, squared Euclidean in RGB; the cube wins ties.
 func rgbToANSI256(r, g, b uint8) uint8 {
 	ri, gi, bi := nearestCubeLevel(r), nearestCubeLevel(g), nearestCubeLevel(b)
 	cubeIdx := uint8(16 + 36*ri + 6*gi + bi)

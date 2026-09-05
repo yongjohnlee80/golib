@@ -6,10 +6,10 @@ import (
 	"github.com/yongjohnlee80/golib/logger"
 )
 
-// Layout — Flutter's box protocol verbatim (ADR-0004 §2.7): constraints
-// down, sizes up, parent positions. ONE pass, no measurement round-trips;
-// v1 relayouts the whole visible tree whenever any layout dirt exists
-// (relayout boundaries are N2's future optimization).
+// Layout — Flutter's box protocol verbatim: constraints down, sizes up,
+// parent positions. ONE pass, no measurement round-trips; v1 relayouts the
+// whole visible tree whenever any layout dirt exists (relayout boundaries
+// are N2's future optimization).
 
 // layoutTree runs the single whole-tree pass: the root receives the
 // terminal size as tight constraints; containers recurse via
@@ -73,7 +73,7 @@ func resetLayoutFlags(n *node) {
 
 // computeAbs derives every visible node's absolute Rect from the placed
 // parent-relative rects — the table mouse hit-testing and the cursor rule
-// look up (ADR-0004 §2.5.2, §2.3).
+// look up.
 func computeAbs(n *node, ox, oy int) {
 	n.absRect = Rect{X: ox + n.rect.X, Y: oy + n.rect.Y, W: n.rect.W, H: n.rect.H}
 	for _, ch := range n.children {

@@ -79,8 +79,8 @@ type testBackendConfig struct {
 // TestBackendOption customizes a TestBackend under construction.
 type TestBackendOption func(*testBackendConfig)
 
-// WithTestCapabilities overrides the reported capability profile.
-// Default: everything on (ADR-0002 §2.3).
+// WithTestCapabilities overrides the reported capability profile. Default:
+// everything on.
 func WithTestCapabilities(c Capabilities) TestBackendOption {
 	return func(cfg *testBackendConfig) { cfg.caps = c }
 }
@@ -143,7 +143,7 @@ func (b *TestBackend) setGridLocked(w, h int) {
 }
 
 // Start implements Backend: it only marks the backend started — a
-// TestBackend has no device to acquire (ADR-0002 §2.3).
+// TestBackend has no device to acquire.
 func (b *TestBackend) Start(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -223,9 +223,9 @@ func (b *TestBackend) injectLocked(evs ...Event) error {
 }
 
 // InjectResize resizes the grid, invalidates it (fresh blank cells), and
-// posts a ResizeEvent — exactly the externally observable behavior of a real
-// resize (ADR-0002 §2.3). It panics if the event buffer is full (fail loud;
-// a resize script that overflows the buffer is a test bug).
+// posts a ResizeEvent — exactly the externally observable behavior of a
+// real resize. It panics if the event buffer is full (fail loud; a resize
+// script that overflows the buffer is a test bug).
 func (b *TestBackend) InjectResize(w, h int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -236,7 +236,7 @@ func (b *TestBackend) InjectResize(w, h int) {
 }
 
 // Cursor ops implement Backend's latched cursor contract: they record
-// desired state which the next Flush applies (ADR-0002 §2.1).
+// desired state which the next Flush applies.
 
 // ShowCursor latches the cursor visible.
 func (b *TestBackend) ShowCursor() {
@@ -267,11 +267,10 @@ func (b *TestBackend) SetCursorShape(s CursorShape) {
 }
 
 // Flush implements Backend: applies the diff to the grid structurally (byte
-// economy is a term-emitter concern — ADR-0003 §2.2), records the latched
-// cursor state as applied, and increments the flush counter. A width-2 head
-// update covers its continuation cell. Flush panics — with the coordinate —
-// on an out-of-range update or a diff that leaves an orphaned wide-cell half
-// (ADR-0003 §2.3 / ADR-0002 §2.3).
+// economy is a term-emitter concern.2), records the latched cursor state as
+// applied, and increments the flush counter. A width-2 head update covers
+// its continuation cell. Flush panics — with the coordinate — on an
+// out-of-range update or a diff that leaves an orphaned wide-cell half.
 func (b *TestBackend) Flush(diff []CellUpdate) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -296,9 +295,9 @@ func (b *TestBackend) Flush(diff []CellUpdate) error {
 }
 
 // assertNoOrphansLocked re-asserts the wide-cell invariants over the whole
-// grid after every applied diff (ADR-0003 §5.3): every continuation has a
-// width-2 head immediately left; every width-2 head has a continuation
-// immediately right.
+// grid after every applied diff: every continuation has a width-2 head
+// immediately left; every width-2 head has a continuation immediately
+// right.
 func (b *TestBackend) assertNoOrphansLocked() {
 	for y, row := range b.grid {
 		for x, c := range row {
@@ -387,8 +386,7 @@ func (b *TestBackend) RecordConstraintViolation(v ConstraintViolation) {
 	b.violations = append(b.violations, v)
 }
 
-// ConstraintViolations returns the violations recorded this run
-// (ADR-0004 §2.7.1).
+// ConstraintViolations returns the violations recorded this run.
 func (b *TestBackend) ConstraintViolations() []ConstraintViolation {
 	b.mu.Lock()
 	defer b.mu.Unlock()

@@ -10,11 +10,11 @@ import (
 	"github.com/yongjohnlee80/golib/logger"
 )
 
-// Task is one unit of background work (ADR-0005 §2.8). It runs OFF the loop
-// goroutine and must treat ctx as its lifetime: ctx derives from the owner's
-// unmount context (ADR-0004 §2.2) AND the App's run context — whichever dies
-// first. Task closures receive NO Surface, *Context, or tree handle: the
-// compiler steers off-loop code toward Post (ADR-0005 §2.3).
+// Task is one unit of background work. It runs OFF the loop goroutine and
+// must treat ctx as its lifetime: ctx derives from the owner's unmount
+// context AND the App's run context — whichever dies first. Task closures
+// receive NO Surface, *Context, or tree handle: the compiler steers
+// off-loop code toward Post.
 type Task func(ctx context.Context) (any, error)
 
 // taskConfig is the option-set state of one Go call.
@@ -48,8 +48,7 @@ type taskIdentity struct {
 }
 
 // TaskInfo extracts the identity Go injected into the task's context — the
-// handle a streaming task needs to address TaskProgress to itself
-// (ADR-0005 §2.8.3).
+// handle a streaming task needs to address TaskProgress to itself.
 func TaskInfo(ctx context.Context) (owner NodeID, id TaskID, ok bool) {
 	ti, ok := ctx.Value(taskInfoKey{}).(taskIdentity)
 	return ti.owner, ti.id, ok
@@ -68,8 +67,8 @@ type exEntry struct {
 }
 
 // asyncState is the App's cross-goroutine task bookkeeping. It has its own
-// lock because App.Go and task completion run off the loop goroutine
-// (ADR-0005 §2.8); everything else on App is loop-owned.
+// lock because App.Go and task completion run off the loop goroutine;
+// everything else on App is loop-owned.
 type asyncState struct {
 	mu        sync.Mutex
 	ctxs      map[NodeID]context.Context // mounted node contexts, for task derivation
@@ -90,12 +89,12 @@ var canceledCtx = func() context.Context {
 }()
 
 // Go schedules task on the bounded pool and returns immediately (never
-// blocks the caller — acquisition happens inside the task's goroutine,
-// ADR-0005 §2.8.1). On completion a TaskResult{Owner, ID, Value, Err} is
-// posted on the program lane and delivered to owner's HandleEvent on the
-// loop goroutine. If owner has unmounted by delivery time, the result is
-// dead-lettered (dropped + counted). Components normally call the
-// owner-implied form Context.Go (ADR-0004 §2.2). Safe from any goroutine.
+// blocks the caller — acquisition happens inside the task's goroutine). On
+// completion a TaskResult{Owner, ID, Value, Err} is posted on the program
+// lane and delivered to owner's HandleEvent on the loop goroutine. If owner
+// has unmounted by delivery time, the result is dead-lettered (dropped +
+// counted). Components normally call the owner-implied form Context.Go.
+// Safe from any goroutine.
 func (a *App) Go(owner NodeID, task Task, opts ...TaskOption) TaskID {
 	if task == nil {
 		panic("tui: App.Go: nil task")
@@ -107,8 +106,8 @@ func (a *App) Go(owner NodeID, task Task, opts ...TaskOption) TaskID {
 		}
 	}
 
-	// Monotonic per App; with never-reused NodeIDs (ADR-0004 §2.4) the
-	// (owner, id) pair is globally unambiguous for the App's lifetime.
+	// Monotonic per App; with never-reused NodeIDs the (owner, id) pair is
+	// globally unambiguous for the App's lifetime.
 	id := TaskID(a.nextTaskID.Add(1))
 
 	a.async.mu.Lock()
@@ -120,8 +119,8 @@ func (a *App) Go(owner NodeID, task Task, opts ...TaskOption) TaskID {
 	tctx := context.WithValue(cctx, taskInfoKey{}, taskIdentity{owner: owner, id: id})
 	if tc.group != "" {
 		k := exKey{owner: owner, group: tc.group}
-		// Preempt every in-flight member of the (owner, group) before
-		// this one starts (ADR-0005 §2.8).
+		// Preempt every in-flight member of the (owner, group) before this one
+		// starts.
 		for _, e := range a.async.exclusive[k] {
 			e.cancel()
 		}
@@ -151,7 +150,7 @@ func (a *App) runTask(tctx context.Context, cancel context.CancelFunc, owner Nod
 	select {
 	case a.sem <- struct{}{}:
 		// A preemption/unmount racing the acquire must still win: a task
-		// cancelled while queued never runs (ADR-0005 §2.8.1, §5.7).
+		// cancelled while queued never runs.
 		if err := tctx.Err(); err != nil {
 			<-a.sem
 			a.Post(TaskResult{Owner: owner, ID: id, Err: err})
