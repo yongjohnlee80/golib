@@ -131,14 +131,28 @@ defer unregister()
 
 ### The pre-establishment gate
 
-For transports where refusal must happen *before* a protocol handshake commits
-(a WebSocket upgrade can't send an HTTP 503 after `101 Switching Protocols`),
-`Reserve` claims a slot before establishment:
+`Reserve` claims a slot **before** establishment, and it exists for two reasons —
+a transport needs it if *either* applies:
+
+1. **Refusal must happen before a protocol handshake commits.** A WebSocket
+   upgrade can't send an HTTP 503 after `101 Switching Protocols`.
+2. **An establishment that hasn't registered yet is invisible to `Drain`.** A
+   drain starting mid-establishment finds nothing to wait for and reports a
+   clean shutdown while the connection is still being set up. This applies to
+   **every** transport that establishes sessions, including ones with no
+   refuse-before-commit problem at all.
+
+Reason 2 is easy to miss, and missing it is not hypothetical: `Scaffold` itself
+registered only after the session existed and could abandon an accepted
+connection while returning `nil` (fixed in #25). If you build on `Scaffold` you
+get the reservation for free — it reserves at accept, before your `ConnHandler`
+runs. **If you run your own accept loop against a bare `Registry`, reserving is
+your responsibility.**
 
 ```go
 res, ok := reg.Reserve()
 if !ok {
-    // Drain has begun — refuse now, while a clean protocol-level refusal is possible
+    // Drain has begun — refuse now (cleanly, if your protocol still can)
     return
 }
 // ... establish (handshake) ...
@@ -147,7 +161,9 @@ unregister := res.Complete(session) // or res.Cancel() on failure
 
 `Drain` waits for open reservations exactly like live sessions, so an
 in-flight establishment that won the race completes and is then drained
-politely — never accepted-then-abandoned.
+politely — never accepted-then-abandoned. `Reserve` returns `ok=false` once the
+drain has begun; release a failed establishment with `res.Cancel()`, or the
+drain waits out its whole budget for a session that never arrives.
 
 ## Adding a transport
 
