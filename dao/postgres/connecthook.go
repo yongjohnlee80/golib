@@ -25,7 +25,20 @@ func WithConnectHook(fn dao.ConnectHook) Option {
 		if fn == nil {
 			return
 		}
+		// COMPOSE, never overwrite. c.AfterConnect may already carry a
+		// callback — from an earlier WithConnectHook, or from a caller's own
+		// Option reaching pgxpool.Config directly — and assigning over it
+		// would drop that setup silently on every connection. The prior
+		// callback runs FIRST and its error SHORT-CIRCUITS: if the connection
+		// could not be set up by the earlier hook, the later one must not run
+		// against a half-configured session (lector, PR #32 r0).
+		prior := c.AfterConnect
 		c.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+			if prior != nil {
+				if err := prior(ctx, conn); err != nil {
+					return err
+				}
+			}
 			return fn(ctx, pgxConnectedConn{conn: conn})
 		}
 	}

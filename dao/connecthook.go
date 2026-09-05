@@ -17,6 +17,10 @@ import "context"
 // A hook is portable: it receives dao-level types, so one hook body works
 // against every driver that accepts one.
 //
+// A hook MUST BE SAFE FOR CONCURRENT USE. Pools open connections from
+// whichever goroutine needs one, so a hook can run on several at once and must
+// synchronise any state it touches. Nothing serialises it.
+//
 // Drivers accept a hook at Open, never afterwards — see each driver's
 // WithConnectHook or OpenHooked. There is deliberately no way to register one
 // on an already-open DataConn: a hook installed after connections exist would
