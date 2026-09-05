@@ -1,12 +1,20 @@
-# Comment pointers still to be rewritten, per file. See
+# Comment pointers still to be rewritten, per file.
+#
+# A comment that explains WHY must be readable on its own. These lines
+# instead point at something the reader cannot see. See
 # comment_budget_test.go for what counts and why, and
-# comment_detectors_test.go for proof each detector fires.
+# comment_detectors_test.go for proof that each detector fires.
 #
 # These numbers MAY ONLY FALL. Delete a line when its file reaches zero;
 # a file that is not listed here is frozen at zero and cannot regain one.
 # The destination is an empty budget.
 #
-# total: 1041 lines in 177 files
+# SCOPE: _test.go files are NOT counted. That is a deliberate cut for this
+# migration, not an oversight, and it is why this total is lower than a
+# whole-tree grep would report. Migrating test comments is tracked
+# separately as its own open item.
+#
+# total: 1049 lines in 179 files
 2 auth/audit.go
 5 auth/auth.go
 2 auth/authhttp/authhttp.go
@@ -28,7 +36,7 @@
 1 auth/token/memstore.go
 6 auth/token/token.go
 6 dao/batch.go
-2 dao/bigquery/bigquery.go
+4 dao/bigquery/bigquery.go
 5 dao/bigquery/dialect.go
 1 dao/columns.go
 1 dao/dao.go
@@ -66,9 +74,10 @@
 2 dao/scanner.go
 9 dao/schema.go
 3 dao/sql.go
-21 dao/transaction.go
-6 dao/txcapabilities.go
+22 dao/transaction.go
+7 dao/txcapabilities.go
 9 dao/txoptions.go
+2 msgpack/doc.go
 1 msgpack/limits.go
 4 partial/bind.go
 2 partial/clear.go
@@ -83,7 +92,8 @@
 5 server/http/server.go
 3 server/registry.go
 11 server/rpc/client.go
-1 server/rpc/doc.go
+2 server/rpc/doc.go
+1 server/rpc/message.go
 1 server/rpc/msgpackrpc/codec.go
 1 server/rpc/server.go
 3 server/scaffold.go

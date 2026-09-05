@@ -61,6 +61,26 @@ var detectorFixtures = map[string]struct {
 		positive: []string{"// the blind-Close guard, criterion 16", "// criteria 3 covers it"},
 		negative: []string{"// the criterion is stated above"},
 	},
+	"review-must-fix": {
+		positive: []string{"// must-fix from the 2026-06-23 review", "// the must-fixes are folded"},
+		negative: []string{"// this must fix the ordering", "// a fix is required here"},
+	},
+	"kb-document-citation": {
+		positive: []string{
+			"// (KB convention interface-evolution-capability-interfaces)",
+			"// treated as attacker-adjacent (KB security-core-hardening",
+			"// a published interface is never grown (KB",
+		},
+		negative: []string{
+			"// Create a body larger than maxHistoryBodySize (64 KB).",
+			"// a buffer of 64 KB",
+			"// KB is 1024 bytes",
+		},
+	},
+	"kb-requirement-number": {
+		positive: []string{"// security-core-hardening R4/R7", "// security-core-hardening R4): declared lengths"},
+		negative: []string{"// the R4 register", "// read-write access"},
+	},
 	"document-revision": {
 		positive: []string{"// rev 3 put it in the domain"},
 		negative: []string{"// reverse the order", "// revision control"},

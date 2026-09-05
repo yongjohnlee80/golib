@@ -22,7 +22,7 @@ type SqliteDialect struct {
 // declarations are what make the capability real for SQLite — delete one and
 // the engine silently falls back to the generic behaviour, which still
 // compiles.
-// REFERENCE: dao/sqlite/introspect_test.go
+// REFERENCE: dao/sqlite/dialect_test.go
 var (
 	_ dao.TableQuoter  = SqliteDialect{}
 	_ dao.Introspector = SqliteDialect{}

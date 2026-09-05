@@ -61,7 +61,9 @@ var pointerPatterns = []struct {
 	{"section-anchor", regexp.MustCompile(`§`)},
 	// Review-round shorthand and the reviewer's name as the authority.
 	{"review-round", regexp.MustCompile(`(?i)\bMF\d+\b|\bnit #?\d+\b|\br\d+ (must-fix|nit)\b`)},
-	{"reviewer-as-authority", regexp.MustCompile(`(?i)\b(lector|gold-man|juliet|kimmy-vision|ultron-prime)\b`)},
+	// A reviewer named as the authority. This list is CLOSED and the fleet
+	// grows, so extend it rather than assume it is complete.
+	{"reviewer-as-authority", regexp.MustCompile(`(?i)\b(lector|gold-man|juliet|kimmy-vision|ultron-prime|white-vision|wanda-maximoff|zen|jarvis)\b`)},
 	// An amendment number carries no rule with it.
 	{"amendment-number", regexp.MustCompile(`(?i)\bamendment \d+\b`)},
 	// A pull request or issue number used as the explanation.
@@ -79,6 +81,21 @@ var pointerPatterns = []struct {
 	// into a design record ("rev 3 put it in the domain"), not a protocol or
 	// format version.
 	{"document-revision", regexp.MustCompile(`\brev \d+\b`)},
+	// A review instruction, with or without the round that issued it. "must-fix
+	// from the 2026-06-23 review" names no round and no reviewer, so none of
+	// the shapes above sees it.
+	{"review-must-fix", regexp.MustCompile(`(?i)\bmust-fix(es)?\b`)},
+	// A citation of a knowledge-base page as the authority. This is the class
+	// the rule names most explicitly, and it was the one with no detector at
+	// all — which left a file carrying one reported CLEAN.
+	//
+	// "KB" is matched only when followed by the name of a document, or as
+	// "(KB" at end of line, where the citation wraps onto the next one. Bare
+	// KB at end of line would catch a size such as "a buffer of 64 KB".
+	{"kb-document-citation", regexp.MustCompile(`\bKB (convention|policy|playbook|synthesis|ADR|[a-z]+(-[a-z]+)+)\b|\(KB$`)},
+	// The continuation line of such a citation, and the requirement numbers
+	// inside it: "security-core-hardening R4/R7".
+	{"kb-requirement-number", regexp.MustCompile(`\b[a-z]+(-[a-z]+)+ R\d+\b`)},
 }
 
 // commentViolations returns, per repo-relative file path, how many COMMENT
