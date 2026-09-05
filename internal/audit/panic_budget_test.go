@@ -7,105 +7,124 @@
 // forbids one on API misuse a caller can reach at runtime with valid types,
 // where the contract is an error return. That rule was written down and
 // nothing checked it, so the tree accumulated panic sites whose categories
-// nobody had established. This test establishes them once, in
-// testdata/panic_budget.txt, and then fails on drift in EITHER direction: a
-// new site missing from the inventory, or an inventory row whose site is gone.
+// nobody had established.
 //
-// WHAT THIS GUARD CAN AND CANNOT SEE, stated up front, because a guard whose
-// blind spots are undocumented gets trusted for things it does not check:
+// # What this is, precisely
 //
-//   - The enclosing function of each panic is EXACT: it is the innermost
-//     function declaration whose source range contains the call, computed from
-//     the syntax tree. A regex over `^func` cannot see methods at all — which
-//     is how an earlier hand count of positional-bool signatures in this repo
-//     came out at 3 when the answer was 7.
+// DEBT SCAFFOLDING plus a classified core — not a finished classified budget.
+// 20 sites carry a category a human read; the rest are recorded as unreviewed,
+// their identities FROZEN, and no new site may join them. Calling the whole
+// thing "classified" would be too strong, and an earlier draft of this file
+// did (lector, PR #28 r0 MF3).
 //
-//   - The reference count is INTRA-REPOSITORY, and it is named golib_refs
-//     rather than "callers" for that reason. It counts references to the
-//     function's name in golib's own non-test files, excluding the
-//     declaration: a plain function by identifier and by qualified selector,
-//     a method by selector. It is RECOMPUTED on every run rather than trusted
-//     from the file, so it cannot rot into an unchecked claim.
+// # Identity: what makes two panics "the same site"
 //
-//     READ ZERO CAREFULLY. Zero means nothing in GOLIB names it — not that
-//     nothing calls it. `dao.RunTx` scores 0 here and has 18 non-test
-//     references in autodb alone. For a public API, reachability has to be
-//     established across the consuming repositories, which this instrument
-//     cannot see; the number's honest use is triage inside golib. What made
-//     `dao.Str` latent was BOTH halves: 1 golib reference (from `lit`) and a
-//     separately measured zero production callers of `Coalesce` in autodb and
-//     both ddex repos. Neither half alone would have shown it.
+// file + function path + a FINGERPRINT of the panic expression + an ordinal
+// among identical fingerprints in that function.
 //
-//     A name shared by several types or packages over-counts (dao.New and
-//     tui.New land on one key); a call through an interface or a func value
-//     under-counts.
+// The fingerprint is load-bearing, and it is the third design this file has
+// had. The first keyed on file + function + ordinal alone, which is POSITIONAL
+// rather than identifying: exchanging two panic messages inside one function
+// left both keys intact, so a reason written for one branch silently attached
+// to the other and every arm stayed green. That draft even carried a comment
+// claiming such a swap "would no longer match" — a relation asserted in prose
+// that nothing in the code observed, which is the exact defect this repository
+// files against other people. Reproduced by lector on dao.New's first two
+// panics.
+//
+// Fingerprinting the panic EXPRESSION alone was not enough either: the
+// exchange leaves the set of (function, expression) pairs intact, so both rows
+// survive and each recorded reason still matches its own message — while that
+// message now sits behind a different condition. So the fingerprint covers the
+// expression AND the guarding condition. A category is a claim about the
+// control path that reaches the panic, and a claim whose subject can move is
+// not pinned.
+//
+// Function literals get their own path segment ($1, $2 by source order within
+// the enclosing declaration) so a panic moved into or out of a closure changes
+// identity rather than inheriting the outer declaration's row.
+//
+// Line numbers are deliberately NOT identity: keying on them meant one comment
+// added atop tui/app.go churned 13 rows, and an inventory that churns on edits
+// nobody made teaches its readers to regenerate without reading.
+//
+// # What it cannot see
 //
 //   - It cannot tell whether a panic is CORRECT. It forces every site to carry
-//     a category, and every rule violation to carry a reason.
-//
+//     a category, every violation to carry a LIVE/LATENT verdict with its
+//     evidence, and every new site to be classified rather than grandfathered.
+//   - It cannot measure reachability. An earlier draft carried a numeric
+//     "callers" column; it double-counted every qualified call, merged every
+//     unrelated symbol sharing a spelling (an unrelated struct field named
+//     RunTx moved dao.RunTx from 0 to 1), and could not see consumers at all —
+//     dao.RunTx has no non-test reference inside golib and 18 in autodb. A
+//     corrupted aggregate that churns the inventory on unrelated edits is
+//     worse than no number, so the column is gone (lector, r0 MF2). Its job is
+//     done instead by the verdict token: a violation must say LIVE or LATENT
+//     and cite its evidence, because the reachability of a public API is a
+//     cross-repository question this instrument structurally cannot answer.
 //   - It covers every .go file in the repository INCLUDING the nested
 //     dao/bigquery module, which `go test ./...` from the root does not reach.
 //
-// Regenerate the inventory with GOLIB_PANIC_BUDGET_UPDATE=1 and re-read the
-// diff: every row that changes is a decision, and a category or reason that
-// the tool cannot infer is preserved from the existing row.
+// Regenerate with GOLIB_PANIC_BUDGET_UPDATE=1 and read the diff: a changed
+// fingerprint means the panic expression changed and its reason needs
+// re-reading, which is the point.
 //
 // Why a Go test rather than a CI script: it runs in the suite everyone already
 // runs, needs no new pinned CI step, and adds no dependency.
 package audit
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 )
 
-const inventoryPath = "testdata/panic_budget.txt"
+const (
+	inventoryPath = "testdata/panic_budget.txt"
+	// legacyPath freezes the identities that were already unreviewed when this
+	// guard was adopted. Pinning only the COUNT let a new unread panic be
+	// admitted by spending one legacy classification — net unchanged, every
+	// arm green (lector, r0 MF3). Identity, not arithmetic, has to be frozen.
+	legacyPath = "testdata/panic_budget_legacy_unreviewed.txt"
+)
 
-// category is a claim about why a panic at this site is acceptable — or that
-// it is not.
 type category string
 
 const (
 	// catConstruction: reached only while building a value, before it is in
-	// use. The contract explicitly permits these ("construction validates and
-	// may panic at New, fail early").
+	// use. The contract explicitly permits these.
 	catConstruction category = "construction"
 
 	// catInvariant: a runtime method, but the panic reports a PROGRAMMER error
 	// that no data input can cause — a nil child, an index out of range, an
-	// operation called from the wrong lifecycle phase. Idiomatic in Go for a
-	// contract a caller cannot violate accidentally with valid values.
+	// operation called from the wrong lifecycle phase.
 	catInvariant category = "invariant"
 
-	// catRepanic: re-raising a recovered panic after cleanup, preserving the
-	// original failure. Not a new failure mode.
+	// catRepanic: re-raising a recovered panic after cleanup.
 	catRepanic category = "repanic"
 
 	// catUnreachable: guards a case the type system should make impossible.
 	catUnreachable category = "unreachable"
 
-	// catUnreviewed: the site is ENUMERATED but nobody has read it yet. This
-	// category exists so the guard can be adopted in one PR without anybody
-	// claiming 126 classifications they have not made — an inventory whose
-	// rows all said "invariant" because a script defaulted them would be a
-	// census wearing a classification's clothes. It is budgeted like a
-	// violation and the budget must fall as sites are read.
-	catUnreviewed category = "unreviewed"
-
 	// catViolation: reachable at runtime with valid types, where the contract
-	// should be an error return. These are the rule violations. They are
-	// permitted IN THE INVENTORY so the guard can be adopted before they are
-	// fixed — but they are counted and the count is pinned, so the number can
-	// only fall without a reviewed edit.
+	// should be an error return. Must carry a LIVE or LATENT verdict.
 	catViolation category = "violation"
+
+	// catUnreviewed: enumerated but not yet read. Permitted ONLY for the
+	// frozen legacy identities in legacyPath.
+	catUnreviewed category = "unreviewed"
 )
 
 var validCategories = map[category]bool{
@@ -113,51 +132,44 @@ var validCategories = map[category]bool{
 	catUnreachable: true, catViolation: true, catUnreviewed: true,
 }
 
-// maxViolations pins the number of catViolation ROWS — sites, not defects; one
-// defect can occupy several sites. It is measured, then pinned: see the
-// inventory header for the current classification. Lowering it belongs in the
-// same PR that fixes a site; raising it is a reviewed decision, never a fix.
+// maxViolations pins violation ROWS — sites, not defects; one defect can
+// occupy several sites. Lowering it belongs in the PR that fixes a site;
+// raising it is a reviewed decision, never a fix.
 const maxViolations = 4
 
-// maxUnreviewed pins how many sites are still unread. It is a DEBT counter:
-// it may only fall, and the PR that reads a batch of sites lowers it in the
-// same change. It is deliberately not zero on adoption — pretending otherwise
-// is what this category exists to prevent.
-const maxUnreviewed = 126
+// verdictRe requires a violation to state whether it is reachable in practice.
+// This replaces the removed numeric column: "is this live?" is answered by
+// evidence a human recorded, not by a spelling total.
+var verdictRe = regexp.MustCompile(`^(LIVE|LATENT): `)
 
 type site struct {
 	File   string // repo-relative, slash-separated
-	Func   string // "F" for a function, "T.M" for a method, "<file-scope>" otherwise
-	Ord    int    // 1-based: the Nth panic inside that function
-	Line   int    // computed for error messages only; NOT part of identity
+	Func   string // "F", "T.M", or with closures "T.M$1"
+	Print  string // fingerprint of the panic expression
+	Ord    int    // among identical (File, Func, Print)
+	Line   int    // for error messages only; NOT identity
 	Cat    category
-	Refs   int // references within golib's own non-test code — see the package comment
 	Reason string
 }
 
-// key identifies a site by file, enclosing function and ordinal within that
-// function — deliberately NOT by line number. Keying on the line made every
-// unrelated edit above a panic invalidate its row: one comment added at the
-// top of tui/app.go would have churned 13 rows, and an inventory that churns
-// on edits nobody made teaches its readers to regenerate without reading,
-// which is the one behaviour that would make this guard worthless.
-func (s site) key() string { return fmt.Sprintf("%s\t%s#%d", s.File, s.Func, s.Ord) }
+func (s site) key() string {
+	return fmt.Sprintf("%s\t%s\t%s#%d", s.File, s.Func, s.Print, s.Ord)
+}
 
-// where is for humans in failure messages; the line is recomputed each run.
-func (s site) where() string { return fmt.Sprintf("%s:%d in %s()", s.File, s.Line, s.Func) }
+func (s site) where() string {
+	return fmt.Sprintf("%s:%d in %s() [%s]", s.File, s.Line, s.Func, s.Print)
+}
 
 func (s site) row() string {
 	return strings.Join([]string{
-		s.File, s.Func, strconv.Itoa(s.Ord), string(s.Cat),
-		strconv.Itoa(s.Refs), s.Reason,
+		s.File, s.Func, s.Print, strconv.Itoa(s.Ord), string(s.Cat), s.Reason,
 	}, "\t")
 }
 
 // ── the census ──────────────────────────────────────────────────────────────
 
-// repoRoot walks up from this test's own directory to the module root. Derived
-// from the test's location rather than a relative guess, so the test cannot
-// silently scan a different tree than the one it lives in.
+// repoRoot walks up from this test's own directory to the module root, so the
+// test cannot silently scan a different tree than the one it lives in.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -217,26 +229,120 @@ func parseTree(t *testing.T, root string) []parsedFile {
 	return out
 }
 
-// census returns every panic call site with its exact enclosing function.
+var wsRe = regexp.MustCompile(`\s+`)
+
+func render(fset *token.FileSet, n ast.Node) string {
+	if n == nil {
+		return ""
+	}
+	var b strings.Builder
+	if err := printer.Fprint(&b, fset, n); err != nil {
+		return "<unprintable>"
+	}
+	return strings.TrimSpace(wsRe.ReplaceAllString(b.String(), " "))
+}
+
+// guardOf renders the CONDITION of the innermost control statement enclosing
+// pos — an if, a switch case, a for or a range.
+//
+// It is part of identity, and it is the third design this file has had.
+// Fingerprinting the panic EXPRESSION alone still missed the bypass lector
+// reproduced: exchanging two panic messages inside one function leaves the set
+// of (function, expression) pairs unchanged, so both rows survive and each
+// recorded reason still matches its own message — while the message now sits
+// behind a DIFFERENT condition. A category is a claim about the control path
+// reaching the panic, so the path has to be in the identity or the claim can
+// migrate silently. (lector, PR #28 r0 MF1.)
+func guardOf(f *ast.File, fset *token.FileSet, pos token.Pos) string {
+	var best ast.Node
+	var bestPos token.Pos
+	ast.Inspect(f, func(n ast.Node) bool {
+		if n == nil || pos < n.Pos() || pos >= n.End() {
+			return true
+		}
+		var cond ast.Node
+		switch node := n.(type) {
+		case *ast.IfStmt:
+			cond = node.Cond
+		case *ast.CaseClause:
+			// A default clause has no expressions; its identity is "default".
+			if len(node.List) > 0 {
+				cond = node.List[0]
+			}
+		case *ast.ForStmt:
+			cond = node.Cond
+		case *ast.RangeStmt:
+			cond = node.X
+		default:
+			return true
+		}
+		if n.Pos() >= bestPos {
+			best, bestPos = n, n.Pos()
+			if cond == nil {
+				best = nil // default clause: recorded as the marker below
+			} else {
+				best = cond
+			}
+		}
+		return true
+	})
+	if bestPos == 0 {
+		return "<unguarded>"
+	}
+	if best == nil {
+		return "<default>"
+	}
+	return render(fset, best)
+}
+
+// fingerprint hashes the panic's arguments TOGETHER WITH the condition
+// guarding it. Whitespace is normalised so gofmt and line wrapping do not
+// change identity, but the tokens are not: rewording a message, or moving it
+// behind a different condition, DOES change the fingerprint, which retires the
+// row and forces its recorded reason to be re-read. That is the point.
+func fingerprint(fset *token.FileSet, f *ast.File, call *ast.CallExpr) string {
+	var b strings.Builder
+	for i, a := range call.Args {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(render(fset, a))
+	}
+	joined := b.String() + "\x00" + guardOf(f, fset, call.Pos())
+	sum := sha256.Sum256([]byte(joined))
+	return hex.EncodeToString(sum[:])[:10]
+}
+
+// funcPathOf builds the innermost enclosing scope path for a position: the
+// declaration name, plus a $n segment per enclosing function literal.
+func funcPathOf(f *ast.File, pos token.Pos) string {
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || pos < fd.Pos() || pos >= fd.End() {
+			continue
+		}
+		path := funcName(fd)
+		var lits []*ast.FuncLit
+		ast.Inspect(fd, func(n ast.Node) bool {
+			if fl, ok := n.(*ast.FuncLit); ok {
+				lits = append(lits, fl)
+			}
+			return true
+		})
+		for i, fl := range lits {
+			if pos >= fl.Pos() && pos < fl.End() {
+				path += "$" + strconv.Itoa(i+1)
+			}
+		}
+		return path
+	}
+	return "<file-scope>"
+}
+
 func census(t *testing.T, files []parsedFile) []site {
 	t.Helper()
 	var out []site
 	for _, pf := range files {
-		// Collect declarations with their ranges, then attribute each panic to
-		// the INNERMOST containing declaration. Position containment is exact
-		// and needs no traversal bookkeeping to get right.
-		type rng struct {
-			name     string
-			from, to token.Pos
-		}
-		var decls []rng
-		for _, d := range pf.file.Decls {
-			fd, ok := d.(*ast.FuncDecl)
-			if !ok {
-				continue
-			}
-			decls = append(decls, rng{name: funcName(fd), from: fd.Pos(), to: fd.End()})
-		}
 		ast.Inspect(pf.file, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -246,17 +352,11 @@ func census(t *testing.T, files []parsedFile) []site {
 			if !ok || id.Name != "panic" {
 				return true
 			}
-			name := "<file-scope>"
-			var best token.Pos
-			for _, d := range decls {
-				if call.Pos() >= d.from && call.Pos() < d.to && d.from >= best {
-					name, best = d.name, d.from
-				}
-			}
 			out = append(out, site{
-				File: pf.rel,
-				Line: pf.fset.Position(call.Lparen).Line,
-				Func: name,
+				File:  pf.rel,
+				Func:  funcPathOf(pf.file, call.Pos()),
+				Print: fingerprint(pf.fset, pf.file, call),
+				Line:  pf.fset.Position(call.Lparen).Line,
 			})
 			return true
 		})
@@ -267,15 +367,12 @@ func census(t *testing.T, files []parsedFile) []site {
 		}
 		return out[i].Line < out[j].Line
 	})
-	// Ordinals are assigned in source order within each (file, func), so they
-	// are stable as long as the panics inside a function keep their relative
-	// order. Reordering two panics inside one function DOES swap their rows —
-	// which is correct: their reasons would no longer match.
+	// Ordinals disambiguate only genuinely identical panics in one function.
 	seen := map[string]int{}
 	for i := range out {
-		fk := out[i].File + "\t" + out[i].Func
-		seen[fk]++
-		out[i].Ord = seen[fk]
+		k := out[i].File + "\t" + out[i].Func + "\t" + out[i].Print
+		seen[k]++
+		out[i].Ord = seen[k]
 	}
 	return out
 }
@@ -288,7 +385,6 @@ func funcName(fd *ast.FuncDecl) string {
 	if star, ok := typ.(*ast.StarExpr); ok {
 		typ = star.X
 	}
-	// A generic receiver arrives as IndexExpr / IndexListExpr; its X is the type.
 	switch idx := typ.(type) {
 	case *ast.IndexExpr:
 		typ = idx.X
@@ -299,49 +395,6 @@ func funcName(fd *ast.FuncDecl) string {
 		return id.Name + "." + fd.Name.Name
 	}
 	return fd.Name.Name
-}
-
-// refCounts counts references per name across golib's own non-test files. See
-// the package comment for what this over- and under-counts, and for why zero
-// does not mean unreachable.
-func refCounts(files []parsedFile) map[string]int {
-	counts := map[string]int{}
-	for _, pf := range files {
-		// Skip the identifier that IS each declaration's name.
-		declNames := map[*ast.Ident]bool{}
-		for _, d := range pf.file.Decls {
-			if fd, ok := d.(*ast.FuncDecl); ok {
-				declNames[fd.Name] = true
-			}
-		}
-		ast.Inspect(pf.file, func(n ast.Node) bool {
-			switch node := n.(type) {
-			case *ast.SelectorExpr:
-				// A method or qualified call: count by the selected name.
-				counts["."+node.Sel.Name]++
-			case *ast.Ident:
-				if !declNames[node] {
-					counts[node.Name]++
-				}
-			}
-			return true
-		})
-	}
-	return counts
-}
-
-// refsTo resolves a census Func name against the counted references.
-//
-// A plain function is called BOTH ways in a multi-package module: unqualified
-// from inside its own package (a bare identifier) and qualified from outside
-// (`dao.RunTx`, a selector). Counting only the identifier missed every
-// cross-package call and reported RunTx as having none; both keys are summed.
-func refsTo(counts map[string]int, fn string) int {
-	if i := strings.IndexByte(fn, '.'); i >= 0 {
-		// A method is only ever reached through a selector.
-		return counts["."+fn[i+1:]]
-	}
-	return counts[fn] + counts["."+fn]
 }
 
 // ── the inventory ───────────────────────────────────────────────────────────
@@ -362,37 +415,56 @@ func loadInventory(t *testing.T) map[string]site {
 			t.Fatalf("%s:%d: want 5 or 6 tab-separated fields, got %d: %q",
 				inventoryPath, i+1, len(parts), line)
 		}
-		ord, err := strconv.Atoi(parts[2])
+		ord, err := strconv.Atoi(parts[3])
 		if err != nil {
-			t.Fatalf("%s:%d: bad ordinal %q", inventoryPath, i+1, parts[2])
+			t.Fatalf("%s:%d: bad ordinal %q", inventoryPath, i+1, parts[3])
 		}
-		refs, err := strconv.Atoi(parts[4])
-		if err != nil {
-			t.Fatalf("%s:%d: bad golib_refs value %q", inventoryPath, i+1, parts[4])
-		}
-		s := site{File: parts[0], Func: parts[1], Ord: ord,
-			Cat: category(parts[3]), Refs: refs}
+		s := site{File: parts[0], Func: parts[1], Print: parts[2], Ord: ord,
+			Cat: category(parts[4])}
 		if len(parts) == 6 {
 			s.Reason = strings.TrimSpace(parts[5])
 		}
 		if !validCategories[s.Cat] {
 			t.Fatalf("%s:%d: unknown category %q", inventoryPath, i+1, s.Cat)
 		}
-		if s.Cat == catViolation && s.Reason == "" {
-			t.Fatalf("%s:%d: a %q row must carry a reason", inventoryPath, i+1, catViolation)
+		if s.Cat == catViolation {
+			if s.Reason == "" {
+				t.Fatalf("%s:%d: a violation row must carry a reason", inventoryPath, i+1)
+			}
+			if !verdictRe.MatchString(s.Reason) {
+				t.Fatalf("%s:%d: a violation reason must begin with \"LIVE: \" or \"LATENT: \" — "+
+					"reachability is the question the removed numeric column could not answer; "+
+					"got %q", inventoryPath, i+1, s.Reason)
+			}
 		}
 		if prev, dup := got[s.key()]; dup {
-			t.Fatalf("%s:%d: duplicate row for %s#%d (also %s)", inventoryPath, i+1,
-				s.File, s.Ord, prev.Func)
+			t.Fatalf("%s:%d: duplicate row for %s (also %s)", inventoryPath, i+1,
+				strings.ReplaceAll(s.key(), "\t", " "), prev.Func)
 		}
 		got[s.key()] = s
 	}
 	return got
 }
 
-// maybeRegenerate rewrites the inventory when GOLIB_PANIC_BUDGET_UPDATE=1,
-// preserving the category and reason of rows whose site still exists.
-func maybeRegenerate(t *testing.T, found []site, inv map[string]site, counts map[string]int) {
+// loadLegacy reads the frozen set of identities that were unreviewed at
+// adoption. Anything not in here may never be unreviewed.
+func loadLegacy(t *testing.T) map[string]bool {
+	t.Helper()
+	raw, err := os.ReadFile(legacyPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", legacyPath, err)
+	}
+	got := map[string]bool{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if s := strings.TrimSpace(line); s == "" || strings.HasPrefix(s, "#") {
+			continue
+		}
+		got[line] = true
+	}
+	return got
+}
+
+func maybeRegenerate(t *testing.T, found []site, inv map[string]site) {
 	if os.Getenv("GOLIB_PANIC_BUDGET_UPDATE") != "1" {
 		return
 	}
@@ -400,13 +472,10 @@ func maybeRegenerate(t *testing.T, found []site, inv map[string]site, counts map
 	var b strings.Builder
 	b.WriteString(inventoryHeader)
 	for _, s := range found {
-		s.Refs = refsTo(counts, s.Func)
 		if prev, ok := inv[s.key()]; ok {
 			s.Cat, s.Reason = prev.Cat, prev.Reason
 		}
 		if s.Cat == "" {
-			// An unread site is recorded as unread, never guessed into a
-			// category that would make the inventory look settled.
 			s.Cat = catUnreviewed
 			s.Reason = "not yet read"
 		}
@@ -422,51 +491,52 @@ func maybeRegenerate(t *testing.T, found []site, inv map[string]site, counts map
 
 const inventoryHeader = `# golib panic budget — one row per panic() call site in non-test code.
 #
-#   file <TAB> enclosing func <TAB> ordinal <TAB> category <TAB> golib_refs <TAB> reason
+#   file <TAB> func path <TAB> fingerprint <TAB> ordinal <TAB> category <TAB> reason
 #
-# A site is identified by file + function + ordinal (the Nth panic inside that
-# function), NOT by line number: keying on the line made every unrelated edit
-# above a panic churn its row, and an inventory that churns on edits nobody
-# made teaches its readers to regenerate without reading.
+# A site is identified by file + function path + a FINGERPRINT of the panic
+# expression AND THE CONDITION GUARDING IT + an ordinal among identical
+# fingerprints. Not by line number (an edit above a panic would churn its row)
+# and NOT by position: an earlier draft keyed on file+func+ordinal, so
+# exchanging two panic messages inside one function silently moved a reason
+# onto different code with every check green. Fingerprinting the expression
+# alone did not fix that either — both rows survive the exchange and each still
+# matches its own message, while the message now sits behind a different
+# condition. A category is a claim about the control path reaching the panic,
+# so the guard is in the identity. Closures get a $n path segment, so moving a
+# panic into or out of one also changes its identity.
 #
-# Categories (see internal/audit/panic_budget_test.go for the full contract):
-#   construction  reached only while building a value, before it is in use — permitted
-#   invariant     a runtime method, but reports programmer error no data input can cause
+# Categories:
+#   construction  reached only while building a value — permitted by golib.md
+#   invariant     a runtime method, but reports programmer error no data can cause
 #   repanic       re-raising a recovered panic after cleanup
 #   unreachable   guards a case the type system should make impossible
-#   violation     REACHABLE AT RUNTIME WITH VALID TYPES — the contract should be an error
-#   unreviewed    enumerated but not yet read by a human; a DEBT that may only fall
+#   violation     REACHABLE AT RUNTIME WITH VALID TYPES — must state LIVE: or LATENT:
+#   unreviewed    enumerated, not yet read — ONLY for the frozen legacy identities
+#                 in panic_budget_legacy_unreviewed.txt; no new site may join
 #
-# golib_refs is RECOMPUTED on every run and asserted against this file, so it
-# cannot rot: references to the function's name in GOLIB's own non-test code,
-# excluding the declaration.
-#
-# ZERO DOES NOT MEAN UNREACHABLE. It means nothing in golib names it. dao.RunTx
-# scores 0 and has 18 non-test references in autodb. For a public API,
-# reachability must be established in the consuming repos, which this
-# instrument cannot see. Over-counts a name shared across packages (dao.New and
-# tui.New share a key); under-counts interface and func-value calls.
+# There is deliberately no numeric reachability column. The one this file used
+# to carry double-counted qualified calls, merged every symbol sharing a
+# spelling, and could not see consumers at all (dao.RunTx: 0 references inside
+# golib, 18 in autodb). Reachability of a public API is a cross-repository
+# question this instrument cannot answer, so a violation states its verdict and
+# cites its evidence instead.
 #
 # Regenerate: GOLIB_PANIC_BUDGET_UPDATE=1 go test ./internal/audit/
-# Every changed row is a decision. A new site defaults to "CLASSIFY ME".
 `
 
 // ── the assertions ──────────────────────────────────────────────────────────
 
 // TestPanicBudget_InventoryMatchesTree fails in BOTH directions: an unrecorded
-// panic site, or a recorded site that no longer exists. One direction alone
-// would pass forever while the other rotted.
+// site, or a row whose site is gone. One direction alone would pass forever
+// while the other rotted.
 func TestPanicBudget_InventoryMatchesTree(t *testing.T) {
 	files := parseTree(t, repoRoot(t))
 	found := census(t, files)
 	if len(found) == 0 {
-		// A census that finds nothing agrees with every inventory. This repo
-		// has panics; zero means the walk or the parse broke, not that the
-		// tree is clean.
 		t.Fatal("census found no panic sites at all — the instrument is broken, not the tree clean")
 	}
 	inv := loadInventory(t)
-	maybeRegenerate(t, found, inv, refCounts(files))
+	maybeRegenerate(t, found, inv)
 
 	seen := map[string]bool{}
 	var unrecorded []string
@@ -479,16 +549,18 @@ func TestPanicBudget_InventoryMatchesTree(t *testing.T) {
 	var stale []string
 	for k, rec := range inv {
 		if !seen[k] {
-			stale = append(stale, fmt.Sprintf("%s (panic #%d in %s(), %s)",
-				strings.ReplaceAll(k, "\t", " "), rec.Ord, rec.Func, rec.Cat))
+			stale = append(stale, fmt.Sprintf("%s (%s, %s)",
+				strings.ReplaceAll(k, "\t", " "), rec.Func, rec.Cat))
 		}
 	}
 	sort.Strings(unrecorded)
 	sort.Strings(stale)
 
 	if len(unrecorded) > 0 {
-		t.Errorf("%d panic site(s) missing from %s — add a row with a category and a reason, "+
-			"or return an error instead:\n  %s",
+		t.Errorf("%d panic site(s) missing from %s — a new site needs a category and a "+
+			"reason, or an error return instead. A CHANGED FINGERPRINT also lands here: the "+
+			"panic expression moved or was reworded, so its recorded reason must be re-read "+
+			"rather than carried over:\n  %s",
 			len(unrecorded), inventoryPath, strings.Join(unrecorded, "\n  "))
 	}
 	if len(stale) > 0 {
@@ -498,51 +570,68 @@ func TestPanicBudget_InventoryMatchesTree(t *testing.T) {
 	t.Logf("census: %d panic sites across %d files", len(found), countFiles(found))
 }
 
-// TestPanicBudget_RefCountsAreRecomputed asserts every inventory golib_refs
-// value against the tree. Without this the numbers would be prose in a data
-// file — a claimed relation that nothing checks, which is the shape this
-// repository's review conventions exist to catch.
-func TestPanicBudget_RefCountsAreRecomputed(t *testing.T) {
-	files := parseTree(t, repoRoot(t))
-	counts := refCounts(files)
+// TestPanicBudget_UnreviewedIsFrozen makes the unread backlog a real
+// constraint. Pinning only its COUNT let a new unread panic in by spending one
+// legacy classification — net unchanged, every arm green (lector, r0 MF3).
+// This pins IDENTITY: only the frozen set may be unreviewed.
+func TestPanicBudget_UnreviewedIsFrozen(t *testing.T) {
 	inv := loadInventory(t)
-
-	// The instrument must be able to observe a difference at all: if every
-	// resolved count were zero, matching the file would prove nothing.
-	nonZero := 0
-	for _, rec := range inv {
-		if refsTo(counts, rec.Func) > 0 {
-			nonZero++
-		}
-	}
-	if nonZero == 0 {
-		t.Fatal("every recomputed golib_refs value is zero — the counter is not observing the tree")
+	legacy := loadLegacy(t)
+	if len(legacy) == 0 {
+		t.Fatal("the frozen legacy set is empty — the freeze is not observing anything")
 	}
 
-	var wrong []string
-	for _, rec := range inv {
-		if got := refsTo(counts, rec.Func); got != rec.Refs {
-			wrong = append(wrong, fmt.Sprintf("%s#%d (%s): file says %d, tree says %d",
-				rec.File, rec.Ord, rec.Func, rec.Refs, got))
+	var intruders []string
+	unreviewed := map[string]bool{}
+	for k, rec := range inv {
+		if rec.Cat != catUnreviewed {
+			continue
+		}
+		unreviewed[k] = true
+		if !legacy[k] {
+			intruders = append(intruders, strings.ReplaceAll(k, "\t", " "))
 		}
 	}
-	sort.Strings(wrong)
-	if len(wrong) > 0 {
-		t.Errorf("%d golib_refs value(s) disagree with the tree — regenerate:\n  %s",
-			len(wrong), strings.Join(wrong, "\n  "))
+	sort.Strings(intruders)
+	if len(intruders) > 0 {
+		t.Errorf("%d site(s) are marked unreviewed but are NOT in the frozen legacy set — a "+
+			"new panic may not be admitted unread, and classifying a legacy row does not buy "+
+			"a slot:\n  %s", len(intruders), strings.Join(intruders, "\n  "))
 	}
-	t.Logf("%d/%d rows resolve to a non-zero golib_refs value", nonZero, len(inv))
+	// The freeze may only shrink deliberately: a frozen identity that has left
+	// the tree must leave the file in the same change.
+	var vanished []string
+	for k := range legacy {
+		if _, ok := inv[k]; !ok {
+			vanished = append(vanished, strings.ReplaceAll(k, "\t", " "))
+		}
+	}
+	sort.Strings(vanished)
+	if len(vanished) > 0 {
+		t.Errorf("%d frozen legacy identit(ies) are absent from the inventory — if that code "+
+			"is gone, remove them from %s in the same change so the freeze cannot silently "+
+			"shrink:\n  %s", len(vanished), legacyPath, strings.Join(vanished, "\n  "))
+	}
+	t.Logf("unreviewed: %d of %d sites, all within the %d frozen legacy identities",
+		len(unreviewed), len(inv), len(legacy))
 }
 
-// TestPanicBudget_ViolationsDoNotGrow gives the inventory teeth: without it a
-// new runtime-reachable panic could be admitted just by adding a row.
+// TestPanicBudget_ViolationsDoNotGrow gives the inventory teeth in both
+// directions: a new violation cannot be admitted, and a fixed one cannot be
+// left with the constant still slack.
 func TestPanicBudget_ViolationsDoNotGrow(t *testing.T) {
 	inv := loadInventory(t)
-	var violations []string
+	var violations, live, latent []string
 	for _, rec := range inv {
-		if rec.Cat == catViolation {
-			violations = append(violations, fmt.Sprintf("%s panic #%d in %s() [%d golib refs] — %s",
-				rec.File, rec.Ord, rec.Func, rec.Refs, rec.Reason))
+		if rec.Cat != catViolation {
+			continue
+		}
+		entry := fmt.Sprintf("%s in %s() — %s", rec.File, rec.Func, rec.Reason)
+		violations = append(violations, entry)
+		if strings.HasPrefix(rec.Reason, "LIVE: ") {
+			live = append(live, entry)
+		} else {
+			latent = append(latent, entry)
 		}
 	}
 	sort.Strings(violations)
@@ -554,62 +643,37 @@ func TestPanicBudget_ViolationsDoNotGrow(t *testing.T) {
 			len(violations), maxViolations, strings.Join(violations, "\n  "))
 	case len(violations) < maxViolations:
 		t.Errorf("only %d violation rows remain but maxViolations is still %d — lower the "+
-			"constant in the same PR that fixed them, or the budget stops constraining "+
-			"anything", len(violations), maxViolations)
+			"constant in the PR that fixed them, or the budget stops constraining anything",
+			len(violations), maxViolations)
 	}
-	t.Logf("violations at budget (%d):\n  %s", len(violations), strings.Join(violations, "\n  "))
+	t.Logf("violations: %d (%d LIVE, %d LATENT)", len(violations), len(live), len(latent))
 }
 
-// TestPanicBudget_UnreviewedDebtOnlyFalls pins the unread backlog. Without it,
-// a new panic could be waved through by marking it unreviewed.
-func TestPanicBudget_UnreviewedDebtOnlyFalls(t *testing.T) {
-	inv := loadInventory(t)
-	n := 0
-	for _, rec := range inv {
-		if rec.Cat == catUnreviewed {
-			n++
-		}
-	}
-	switch {
-	case n > maxUnreviewed:
-		t.Errorf("%d unreviewed sites, budget is %d — a new panic may not be admitted by "+
-			"marking it unreviewed; classify it, or return an error instead", n, maxUnreviewed)
-	case n < maxUnreviewed:
-		t.Errorf("%d unreviewed sites remain but maxUnreviewed is still %d — lower the "+
-			"constant in the PR that read them, or the debt counter stops counting", n, maxUnreviewed)
-	}
-	t.Logf("unreviewed backlog at budget: %d of %d sites", n, len(inv))
-}
-
-// TestPanicBudget_CategoriesAreDistinguishable answers the review requirement
-// that this census distinguish production reachability rather than merely
-// enumerate. A census whose every row carried one category, or recorded no
-// caller counts, would satisfy the arms above and tell a reader nothing.
-func TestPanicBudget_CategoriesAreDistinguishable(t *testing.T) {
+// TestPanicBudget_ClassificationIsMeaningful answers the review requirement
+// that this distinguish reachability rather than merely enumerate. A census
+// whose rows all said one thing, or whose violations recorded no verdict,
+// would satisfy the arms above and tell a reader nothing.
+func TestPanicBudget_ClassificationIsMeaningful(t *testing.T) {
 	inv := loadInventory(t)
 	byCat := map[category]int{}
-	withCallers := 0
 	for _, rec := range inv {
 		byCat[rec.Cat]++
-		if rec.Refs > 0 {
-			withCallers++
-		}
 	}
+	classified := len(inv) - byCat[catUnreviewed]
 	if len(byCat) < 3 {
 		t.Errorf("the inventory uses only %d categories (%v) — a census that cannot tell "+
 			"construction from a runtime path is an enumeration, not a classification",
 			len(byCat), byCat)
 	}
-	if withCallers == 0 {
-		t.Error("no row records a golib_refs value — without one the census ranks a widely " +
-			"referenced runtime path together with one nothing in the tree names")
+	if classified == 0 {
+		t.Error("every row is unreviewed — this is an enumeration with no classified core")
 	}
 	cats := make([]string, 0, len(byCat))
 	for c, n := range byCat {
 		cats = append(cats, fmt.Sprintf("%s=%d", c, n))
 	}
 	sort.Strings(cats)
-	t.Logf("categories: %s (%d rows carry a non-zero golib_refs)", strings.Join(cats, " "), withCallers)
+	t.Logf("categories: %s (%d of %d classified)", strings.Join(cats, " "), classified, len(inv))
 }
 
 func countFiles(ss []site) int {
