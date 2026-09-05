@@ -43,6 +43,10 @@ func (sqliteDialect) Name() string             { return "sqlite" }
 func (sqliteDialect) MaxBindParams() int       { return 999 }
 func (sqliteDialect) Placeholder(n int) string { return "?" }
 
+func (d sqliteDialect) BuildUpsertSuffix(conflictCols, updateCols []string) string {
+	return StandardUpsertSuffix(d, conflictCols, updateCols)
+}
+
 // copyDialect is a COPY-capable dialect that records its Copy calls.
 type copyDialect struct {
 	GenericDialect
@@ -50,11 +54,18 @@ type copyDialect struct {
 	lastRows [][]any
 }
 
-func (*copyDialect) CopySupported() bool { return true }
+// Copy makes it a dao.Copier; the boolean that used to say so is gone.
 func (d *copyDialect) Copy(_ context.Context, _ any, _ string, _ []string, rows [][]any) (int64, error) {
 	d.copies++
 	d.lastRows = rows
 	return int64(len(rows)), nil
+}
+
+// It can upsert too — which it used to inherit from GenericDialect without
+// saying so. Without this it never reaches the ForceCopy-plus-conflict check,
+// because the upsert gate would refuse it first.
+func (d *copyDialect) BuildUpsertSuffix(conflictCols, updateCols []string) string {
+	return StandardUpsertSuffix(d, conflictCols, updateCols)
 }
 
 // --- perChunkRows (the 65535 math) ------------------------------------------
@@ -104,7 +115,7 @@ func TestBatch_SingleStatementWhenFits(t *testing.T) {
 	t.Parallel()
 
 	ex := &fakeExecer{}
-	b := newBatchWriter[any, string](ex, GenericDialect{}, "t")
+	b := newBatchWriter[any, string](ex, returningDialect{}, "t")
 	b.Add(map[string]any{"a": 1, "b": 2}).Add(map[string]any{"a": 3, "b": 4})
 
 	if err := b.Flush(); err != nil {
@@ -153,7 +164,7 @@ func TestBatch_EmptyFlushIsNoop(t *testing.T) {
 	t.Parallel()
 
 	ex := &fakeExecer{}
-	b := newBatchWriter[any, string](ex, GenericDialect{}, "t")
+	b := newBatchWriter[any, string](ex, returningDialect{}, "t")
 	if err := b.Flush(); err != nil {
 		t.Errorf("Flush() = %v, want nil", err)
 	}
@@ -166,7 +177,7 @@ func TestBatch_MissingKeysBecomeNull(t *testing.T) {
 	t.Parallel()
 
 	ex := &fakeExecer{}
-	b := newBatchWriter[any, string](ex, GenericDialect{}, "t")
+	b := newBatchWriter[any, string](ex, returningDialect{}, "t")
 	b.Add(map[string]any{"a": 1}).Add(map[string]any{"b": 2})
 	if err := b.Flush(); err != nil {
 		t.Fatalf("Flush() = %v", err)
@@ -187,7 +198,7 @@ func TestBatch_MissingKeysBecomeNull(t *testing.T) {
 func TestBatch_LenAndReset(t *testing.T) {
 	t.Parallel()
 
-	b := newBatchWriter[any, string](&fakeExecer{}, GenericDialect{}, "t")
+	b := newBatchWriter[any, string](&fakeExecer{}, returningDialect{}, "t")
 	b.Add(map[string]any{"a": 1}).SkipConflicts()
 	if b.Len() != 1 {
 		t.Errorf("Len() = %d, want 1", b.Len())
@@ -204,7 +215,7 @@ func TestBatch_OnConflictUpdate(t *testing.T) {
 	t.Parallel()
 
 	ex := &fakeExecer{}
-	b := newBatchWriter[any, string](ex, GenericDialect{}, "t")
+	b := newBatchWriter[any, string](ex, returningDialect{}, "t")
 	b.Add(map[string]any{"id": 1, "name": "x"}).OnConflictUpdate("id")
 	if err := b.Flush(); err != nil {
 		t.Fatalf("Flush() = %v", err)
@@ -219,7 +230,7 @@ func TestBatch_SkipConflicts(t *testing.T) {
 	t.Parallel()
 
 	ex := &fakeExecer{}
-	b := newBatchWriter[any, string](ex, GenericDialect{}, "t")
+	b := newBatchWriter[any, string](ex, returningDialect{}, "t")
 	b.Add(map[string]any{"id": 1}).SkipConflicts()
 	if err := b.Flush(); err != nil {
 		t.Fatalf("Flush() = %v", err)
@@ -327,7 +338,7 @@ func TestBatch_AddRow(t *testing.T) {
 
 	type artist struct{ Name, URI string }
 	ex := &fakeExecer{}
-	b := newBatchWriter[artist, string](ex, GenericDialect{}, "artist")
+	b := newBatchWriter[artist, string](ex, returningDialect{}, "artist")
 	b.extract = func(a artist) map[string]any { return map[string]any{"name": a.Name, "uri": a.URI} }
 
 	b.AddRow(artist{"a", "u1"}).AddRow(artist{"b", "u2"})

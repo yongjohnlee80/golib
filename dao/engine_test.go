@@ -119,7 +119,26 @@ func buildSchema(conn DataConn, extra ...Option[*artist, artistField, artistSort
 	return New(conn, append(base, extra...)...)
 }
 
-func newConn() *fakeConn { return &fakeConn{d: GenericDialect{}} }
+// returningDialect is what these tests actually mean by "a dialect": Postgres
+// shaped SQL that can RETURNING and upsert. GenericDialect provides the SHAPE and
+// deliberately implements no CAPABILITY, so a test needing one declares it —
+// the same rule the production dialects follow. Before capabilities existed
+// this test suite inherited RETURNING from GenericDialect without saying so,
+// which is precisely the silent-inheritance the split removes.
+type returningDialect struct{ GenericDialect }
+
+func (returningDialect) ReturningClause(quotedIDCol string) string {
+	return StandardReturningClause(quotedIDCol)
+}
+
+// ...and Upserter, for the same reason: ON CONFLICT used to arrive by
+// promotion from GenericDialect, so the suite never had to say it wanted an
+// engine that can upsert. Now it does.
+func (d returningDialect) BuildUpsertSuffix(conflictCols, updateCols []string) string {
+	return StandardUpsertSuffix(d, conflictCols, updateCols)
+}
+
+func newConn() *fakeConn { return &fakeConn{d: returningDialect{}} }
 
 // --- reads ------------------------------------------------------------------
 
@@ -426,7 +445,15 @@ func TestReadOnlyField_StagedError(t *testing.T) {
 
 // --- error translation ------------------------------------------------------
 
+// translatingDialect declares Returner because this test drives the RETURNING
+// path deliberately — its fake reports queryErr, which only the RETURNING
+// branch reaches. Before capabilities it inherited that from GenericDialect
+// without saying so.
 type translatingDialect struct{ GenericDialect }
+
+func (translatingDialect) ReturningClause(quotedIDCol string) string {
+	return StandardReturningClause(quotedIDCol)
+}
 
 func (translatingDialect) TranslateError(err error) error {
 	if err != nil && err.Error() == "dup" {

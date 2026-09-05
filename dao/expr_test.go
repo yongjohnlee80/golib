@@ -112,19 +112,19 @@ func TestExpr_ReadAndWriteEquivalence(t *testing.T) {
 	type emitted struct{ sel, ins, upd, ups string }
 	run := func(fields map[artistField]Field[*artist]) emitted {
 		var e emitted
-		c1 := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+		c1 := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 		s := schemaWith(c1, fields)
 		_, _ = s.DAO().With(aID, "1").Select()
 		e.sel = c1.lastQuery
-		c2 := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+		c2 := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 		s2 := schemaWith(c2, fields)
 		_, _ = s2.DAO().Set(aName, "x").Set(aURI, "u").Insert()
 		e.ins = c2.lastQuery
-		c3 := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+		c3 := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 		s3 := schemaWith(c3, fields)
 		_ = s3.DAO().With(aID, "1").Set(aName, "x").Update()
 		e.upd = c3.lastExec
-		c4 := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+		c4 := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 		s4 := schemaWith(c4, fields)
 		_ = s4.DAO().Set(aName, "x").Set(aURI, "u").Upsert()
 		e.ups = c4.lastExec
@@ -189,7 +189,7 @@ func TestExpr_DeclarationMapNeverMutated(t *testing.T) {
 
 	// And a third New over the same map must still work (it would panic with
 	// "sets both Column and Expr" if resolution had written through).
-	c3 := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+	c3 := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 	_ = schemaWith(c3, shared)
 }
 
@@ -209,7 +209,7 @@ func TestExpr_BothColumnAndExprPanics(t *testing.T) {
 	}()
 	f := exprFields()
 	f[aName] = Field[*artist]{Column: "artist.name", Expr: T("artist", aName)}
-	_ = schemaWith(&fakeConn{d: GenericDialect{}, rows: &fakeRows{}}, f)
+	_ = schemaWith(&fakeConn{d: returningDialect{}, rows: &fakeRows{}}, f)
 }
 
 // --- criteria 4 + 5: literals, the closed set, and refusals ----------------
@@ -362,7 +362,7 @@ func TestExpr_OptionalJoinExprAndPrecedence(t *testing.T) {
 		"LEFT JOIN legacy_string_form ON 1=1")
 
 	// The Expr form applies on exactly the same demand-driven trigger.
-	c := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+	c := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 	s := build(c, exprForm)
 	if _, err := s.DAO().Select(aLabelGroup); err != nil {
 		t.Fatal(err)
@@ -371,7 +371,7 @@ func TestExpr_OptionalJoinExprAndPrecedence(t *testing.T) {
 		t.Errorf("OptionalJoinExpr clause missing: %s", c.lastQuery)
 	}
 	// Untouched: no join when nothing triggers it.
-	c2 := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+	c2 := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 	s2 := build(c2, exprForm)
 	if _, err := s2.DAO().Select(aID); err != nil {
 		t.Fatal(err)
@@ -392,7 +392,7 @@ func TestExpr_OptionalJoinExprAndPrecedence(t *testing.T) {
 		{"expr then string", []O{exprForm, stringForm}, "legacy_string_form", `"label_group"."id"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cc := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+			cc := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 			ss := build(cc, tc.opts...)
 			if _, err := ss.DAO().Select(aLabelGroup); err != nil {
 				t.Fatal(err)
@@ -415,7 +415,7 @@ func TestExpr_WriteColumnSafety(t *testing.T) {
 	build := func(f Field[*artist]) {
 		fields := exprFields()
 		fields[aName] = f
-		_ = schemaWith(&fakeConn{d: GenericDialect{}, rows: &fakeRows{}}, fields)
+		_ = schemaWith(&fakeConn{d: returningDialect{}, rows: &fakeRows{}}, fields)
 	}
 	mk := func(f Field[*artist]) func(*testing.T) {
 		return func(*testing.T) { build(f) }
@@ -448,7 +448,7 @@ func TestExpr_WriteColumnSafety(t *testing.T) {
 // --- criterion 10: no query-time cost -------------------------------------
 
 func BenchmarkSelect_ExprDeclared(b *testing.B) {
-	conn := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+	conn := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 	s := schemaWith(conn, exprFields())
 	b.ReportAllocs()
 	for b.Loop() {
@@ -457,7 +457,7 @@ func BenchmarkSelect_ExprDeclared(b *testing.B) {
 }
 
 func BenchmarkSelect_StringDeclared(b *testing.B) {
-	conn := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+	conn := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 	s := schemaWith(conn, stringFieldsQuoted())
 	b.ReportAllocs()
 	for b.Loop() {
@@ -474,7 +474,7 @@ func TestExpr_ResolutionConsumesTheExpr(t *testing.T) {
 	t.Parallel()
 
 	src := exprFields()
-	s := schemaWith(&fakeConn{d: GenericDialect{}, rows: &fakeRows{}}, src)
+	s := schemaWith(&fakeConn{d: returningDialect{}, rows: &fakeRows{}}, src)
 	for key, f := range s.fields {
 		if f.Expr.isSet() {
 			t.Errorf("field %q: schema retained its Expr closure after resolution", key)
@@ -499,7 +499,7 @@ func TestJoins_FilterIsNotATrigger(t *testing.T) {
 	t.Parallel()
 
 	filterOnJoined := func(run func(DAO[*artist, artistField, string])) (string, string) {
-		c := &fakeConn{d: GenericDialect{}, rows: &fakeRows{}}
+		c := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
 		s := schemaWith(c, exprFields())
 		run(s.DAO())
 		return c.lastQuery, c.lastExec

@@ -173,10 +173,11 @@ func (b *batchWriter[R, C]) Flush() error {
 	// that cannot COPY is ErrUnsupported, and this capability gate wins over the
 	// combination check below (nit #4). Conflict handling on a no-upsert dialect is
 	// likewise ErrUnsupported, never a silent plain-INSERT that drops the clause.
-	if b.forceCopy && !b.dialect.CopySupported() {
+	copier, canCopy := b.dialect.(Copier)
+	if b.forceCopy && !canCopy {
 		return fmt.Errorf("%w: COPY", ErrUnsupported)
 	}
-	if b.hasConflictHandling() && !b.dialect.SupportsUpsert() {
+	if _, canUpsert := b.dialect.(Upserter); b.hasConflictHandling() && !canUpsert {
 		return fmt.Errorf("%w: upsert (batch conflict handling)", ErrUnsupported)
 	}
 	if b.forceCopy && b.hasConflictHandling() {
@@ -195,7 +196,7 @@ func (b *batchWriter[R, C]) Flush() error {
 		if err := pl.beforeExecFrozen(desc); err != nil {
 			return err
 		}
-		n, err := b.dialect.Copy(b.ctx, b.exec, b.table, cols, matrix)
+		n, err := copier.Copy(b.ctx, b.exec, b.table, cols, matrix)
 		return pl.finish(0, n, b.translate(err))
 	}
 
@@ -266,7 +267,7 @@ func (b *batchWriter[R, C]) matrix(keys []C) [][]any {
 // shouldCopy reports whether the COPY fast-path applies. COPY cannot express
 // conflict handling, so any skip/upsert disqualifies it.
 func (b *batchWriter[R, C]) shouldCopy(nrows, _ int) bool {
-	if !b.dialect.CopySupported() || b.forceInsert {
+	if _, canCopy := b.dialect.(Copier); !canCopy || b.forceInsert {
 		return false
 	}
 	if b.hasConflictHandling() {
@@ -285,18 +286,18 @@ func (b *batchWriter[R, C]) suffix(cols []string) string {
 		// OnConflictUpdate() with no columns: the schema's declared target.
 		// Flush has already rejected the case where there is none.
 		conflict := b.schemaConflict
-		return b.dialect.BuildUpsertSuffix(conflict, subtract(cols, conflict))
+		return b.upsertSuffix(conflict, subtract(cols, conflict))
 	case len(b.conflictCols) > 0:
 		conflict := make([]string, len(b.conflictCols))
 		for i, c := range b.conflictCols {
 			conflict[i] = b.colName(c)
 		}
-		return b.dialect.BuildUpsertSuffix(conflict, subtract(cols, conflict))
+		return b.upsertSuffix(conflict, subtract(cols, conflict))
 	case b.skipConflict:
 		// The insert columns ride along as a hint for dialects (MySQL) that
 		// cannot express "do nothing" without naming a column; suffix-complete
 		// dialects ignore them (ADR-0011 §2.3).
-		return b.dialect.BuildUpsertSuffix(nil, cols)
+		return b.upsertSuffix(nil, cols)
 	}
 	return ""
 }
@@ -358,3 +359,15 @@ func (e *chunkError) Unwrap() error { return e.err }
 
 // Index reports which chunk (0-based) failed.
 func (e *chunkError) Index() int { return e.index }
+
+// upsertSuffix renders the conflict clause when the dialect can upsert. An
+// engine that cannot has already been refused by the capability gate above, so
+// reaching here without one would be a bug; the empty string keeps the
+// statement a plain INSERT rather than emitting a clause no engine asked for.
+func (b *batchWriter[R, C]) upsertSuffix(conflict, updateCols []string) string {
+	u, ok := b.dialect.(Upserter)
+	if !ok {
+		return ""
+	}
+	return u.BuildUpsertSuffix(conflict, updateCols)
+}

@@ -513,7 +513,11 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	if set.empty() {
 		return zero, ErrNothingToInsert
 	}
-	returning := d.schema.dialect.SupportsReturning() && d.schema.idColumn != ""
+	// RETURNING is used when the dialect implements Returner — the engine can
+	// hand the generated id back from the INSERT itself — and there is an id
+	// column to ask for.
+	_, canReturn := d.schema.dialect.(Returner)
+	returning := canReturn && d.schema.idColumn != ""
 	b := d.newBuilder()
 	q := b.buildInsert(d.schema.table, set, d.schema.idColumn, returning)
 	args := b.args
@@ -542,8 +546,11 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	if ferr := pl.finish(0, affectedOf(res), nil); ferr != nil {
 		return zero, ferr
 	}
-	if d.schema.dialect.SupportsLastInsertID() {
-		return lastInsertID[ID](res, nil)
+	// No RETURNING. An engine whose INSERT result carries the generated id
+	// implements LastInsertIDReader; that is the second of the three insert
+	// strategies, and MySQL is the one that takes it.
+	if r, ok := d.schema.dialect.(LastInsertIDReader); ok {
+		return lastInsertID[ID](r.LastInsertID(res))
 	}
 	// No RETURNING and no LastInsertID: a documented no-generated-id insert
 	// (ADR-0008 §2.6). The DML ran; the caller supplies ids client-side (e.g. a
@@ -598,7 +605,7 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	if d.err != nil {
 		return d.err
 	}
-	if !d.schema.dialect.SupportsUpsert() {
+	if _, ok := d.schema.dialect.(Upserter); !ok {
 		return fmt.Errorf("%w: upsert", ErrUnsupported)
 	}
 	pl, perr := d.begin(OpUpsert, true)

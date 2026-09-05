@@ -57,22 +57,46 @@ func (c *sqlTxContext) name() string     { return c.n }
 func (c *sqlTxContext) commit() error    { return c.tx.Commit() }
 func (c *sqlTxContext) rollback() error  { return c.tx.Rollback() }
 func (c *sqlTxContext) executor() TxConn { return c.tx }
+
+// twoPhaseSupported is DERIVED from the dialect's type, not declared by it.
+// There is no flag that could answer differently from the implementation: the
+// dialect either has the prepared-transaction methods or it does not.
 func (c *sqlTxContext) twoPhaseSupported() bool {
-	return c.conn.Dialect().TwoPhaseSupported()
+	_, ok := c.conn.Dialect().(TwoPhaser)
+	return ok
+}
+
+// unsupportedTwoPhase names the connection whose engine cannot prepare, so the
+// error says which participant blocked the commit rather than only that one
+// did.
+func (c *sqlTxContext) unsupportedTwoPhase() error {
+	return fmt.Errorf("%w: connection %q", ErrTwoPhaseUnsupported, c.n)
 }
 
 func (c *sqlTxContext) prepare(ctx context.Context, gid string) error {
-	return c.conn.Dialect().Prepare(ctx, c.tx, gid)
+	tp, ok := c.conn.Dialect().(TwoPhaser)
+	if !ok {
+		return c.unsupportedTwoPhase()
+	}
+	return tp.Prepare(ctx, c.tx, gid)
 }
 
 // commitPrepared and rollbackPrepared execute on the pool connection — the
 // preparing session is gone by design (ADR-0005 §2.3).
 func (c *sqlTxContext) commitPrepared(ctx context.Context, gid string) error {
-	return c.conn.Dialect().CommitPrepared(ctx, c.conn, gid)
+	tp, ok := c.conn.Dialect().(TwoPhaser)
+	if !ok {
+		return c.unsupportedTwoPhase()
+	}
+	return tp.CommitPrepared(ctx, c.conn, gid)
 }
 
 func (c *sqlTxContext) rollbackPrepared(ctx context.Context, gid string) error {
-	return c.conn.Dialect().RollbackPrepared(ctx, c.conn, gid)
+	tp, ok := c.conn.Dialect().(TwoPhaser)
+	if !ok {
+		return c.unsupportedTwoPhase()
+	}
+	return tp.RollbackPrepared(ctx, c.conn, gid)
 }
 
 // resourceContext wraps a non-DB [Resource].
@@ -259,7 +283,7 @@ func Begin(ctx context.Context, opts ...TxOption) *Transaction {
 	// that actually joined (§2.5(b)).
 	if t.initErr == nil && cfg.twoPhase {
 		for _, c := range cfg.span {
-			if !c.Dialect().TwoPhaseSupported() {
+			if _, ok := c.Dialect().(TwoPhaser); !ok {
 				t.initErr = fmt.Errorf("%w: connection %q", ErrTwoPhaseUnsupported, c.Name())
 				break
 			}
@@ -348,9 +372,11 @@ func (t *Transaction) join(conn DataConn) (TxConn, error) {
 	// (e.g. BigQuery) is an error only when actually touched — an untouched no-tx
 	// connection in a multi-conn transaction stays unaffected, preserving the lazy
 	// model. Neither RunTx nor Spanning pre-rejects connections before fn runs.
-	if !conn.Dialect().SupportsTransactions() {
-		return nil, fmt.Errorf("%s: %w: transactions", name, ErrUnsupported)
-	}
+	// No capability gate here. A connection whose engine has no interactive
+	// transactions reports that from Begin itself, wrapping ErrUnsupported —
+	// the gate that used to sit on this line asked a flag the same question
+	// the very next call answers, and a second source of truth can only
+	// disagree with the first.
 	tx, err := conn.Begin(t.ctx)
 	if err != nil {
 		return nil, err

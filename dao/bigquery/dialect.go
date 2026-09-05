@@ -39,27 +39,28 @@ func (BigQueryDialect) QuoteIdent(ident string) string {
 // large ingests should prefer a load job (a future COPY-equivalent fast-path).
 func (BigQueryDialect) MaxBindParams() int { return 10000 }
 
-// SupportsReturning reports false: BigQuery has no INSERT ... RETURNING.
-func (BigQueryDialect) SupportsReturning() bool { return false }
-
-// SupportsTransactions reports false: BigQuery has no interactive pooled
-// transactions (only limited in-job scripting), so Begin/RunTx/On(tx) return
-// dao.ErrUnsupported on first touch (ADR-0008 §2.3).
-func (BigQueryDialect) SupportsTransactions() bool { return false }
-
-// SupportsUpsert reports false: BigQuery has no ON CONFLICT INSERT suffix (only
-// MERGE), so DAO.Upsert and batch conflict handling return dao.ErrUnsupported
-// (ADR-0008 §2.4).
-func (BigQueryDialect) SupportsUpsert() bool { return false }
-
-// SupportsLastInsertID reports false: BigQuery has no server-generated insert id.
-// With no RETURNING and no LastInsertID, DAO.Insert runs the DML and returns the
-// zero id with a nil error — callers supply ids client-side (ADR-0008 §2.6).
-func (BigQueryDialect) SupportsLastInsertID() bool { return false }
-
-// BuildUpsertSuffix returns "" defensively: upsert is capability-gated off before
-// this is reached, and BigQuery has no INSERT-suffix upsert to render.
-func (BigQueryDialect) BuildUpsertSuffix(_, _ []string) string { return "" }
+// BigQuery implements NONE of dao's optional capabilities, and that absence is
+// the whole of its profile. It is an append-mostly analytics store, so:
+//
+//   - No dao.Returner. BigQuery has no INSERT ... RETURNING.
+//   - No dao.LastInsertIDReader. There is no server-generated insert id.
+//     With neither, an insert runs the DML and reports a zero id and a nil
+//     error; callers supply ids themselves.
+//   - No dao.Upserter. There is no INSERT-suffix upsert, only MERGE, so an
+//     upsert or batch conflict handling is refused with dao.ErrUnsupported
+//     rather than degraded into a plain insert.
+//   - No dao.Copier. Large ingests should use a load job; that fast path is
+//     not wired to dao's bulk-copy seam.
+//   - No dao.TwoPhaser. There are no prepared transactions.
+//
+// Interactive transactions are likewise absent — BigQuery has only limited
+// in-job scripting — and the connection reports that from Begin when it is
+// first touched, wrapping dao.ErrUnsupported.
+//
+// None of this is declared. There is nothing here to declare it WITH, which is
+// the point: a dialect states what it can do, and says nothing about what it
+// cannot.
+// REFERENCE: dao/capabilities.go
 
 // TranslateError passes the error through unchanged: BigQuery has no unique /
 // foreign-key constraint SQLSTATEs to map to dao.ConstraintError sentinels.

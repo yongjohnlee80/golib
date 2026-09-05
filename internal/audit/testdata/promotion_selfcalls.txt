@@ -1,0 +1,30 @@
+# Methods on an embeddable base that call a sibling method on their own
+# receiver. Go has no virtual dispatch, so these resolve to the BASE's method
+# and ignore any override with the same signature.
+#
+# None of these is live today: every embedder either overrides the caller too,
+# or its same-named method has a DIFFERENT signature and is a wrapper rather
+# than an override. They are one signature-matching override away from being
+# real, which is why they are listed rather than forgotten.
+#
+# This list may only SHRINK. Empty is the destination.
+tui/container.go	MultiChild.Add -> name
+tui/container.go	MultiChild.Move -> indexOf
+tui/container.go	MultiChild.Move -> name
+tui/container.go	MultiChild.remove -> indexOf
+tui/container.go	MultiChild.Remove -> remove
+tui/stack.go	Stack.AddAligned -> setLayer
+tui/stack.go	Stack.AddAt -> setLayer
+tui/widget/textbuffer.go	textBuffer.cellsAt -> lineClusters
+tui/widget/textbuffer.go	textBuffer.clampCol -> lineClusters
+tui/widget/textbuffer.go	textBuffer.colForCells -> lineClusters
+tui/widget/textbuffer.go	textBuffer.deleteRegion -> lineClusters
+tui/widget/textbuffer.go	textBuffer.insertText -> deleteRegion
+tui/widget/textbuffer.go	textBuffer.insertText -> lineClusters
+tui/widget/textbuffer.go	textBuffer.insertText -> selection
+tui/widget/textbuffer.go	textBuffer.moveCursor -> clampCol
+tui/widget/textbuffer.go	textBuffer.textIn -> lineClusters
+tui/widget/textbuffer.go	textBuffer.verticalTarget -> cellsAt
+tui/widget/textbuffer.go	textBuffer.verticalTarget -> colForCells
+tui/widget/textbuffer.go	textBuffer.wordLeft -> lineClusters
+tui/widget/textbuffer.go	textBuffer.wordRight -> lineClusters

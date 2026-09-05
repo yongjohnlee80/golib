@@ -42,17 +42,25 @@ func TestMysqlDialect_CapabilityProfile(t *testing.T) {
 	t.Parallel()
 	var d dao.Dialect = MysqlDialect{}
 
-	if d.SupportsReturning() {
-		t.Error("SupportsReturning = true, want false")
+	// MySQL cannot RETURNING, so it must NOT satisfy Returner — the absence is
+	// the claim, and nothing else asserts it.
+	if _, ok := d.(dao.Returner); ok {
+		t.Error("MysqlDialect satisfies dao.Returner; MySQL has no RETURNING")
 	}
-	if !d.SupportsLastInsertID() {
-		t.Error("SupportsLastInsertID = false, want true (ADR-0008 §2.6)")
+	// It reports the generated id through the INSERT result instead.
+	if _, ok := d.(dao.LastInsertIDReader); !ok {
+		t.Error("MysqlDialect does not satisfy dao.LastInsertIDReader")
 	}
-	if !d.SupportsTransactions() || !d.SupportsUpsert() {
-		t.Error("transactions/upsert must stay supported (GenericDialect defaults)")
+	if _, ok := d.(dao.Upserter); !ok {
+		t.Error("MysqlDialect does not satisfy dao.Upserter; ON DUPLICATE KEY UPDATE is its upsert")
 	}
-	if d.CopySupported() || d.TwoPhaseSupported() {
-		t.Error("COPY/two-phase must stay unsupported")
+	// MySQL has neither bulk COPY nor prepared transactions here, and the
+	// absence of the interfaces is how that is stated.
+	if _, ok := d.(dao.Copier); ok {
+		t.Error("MysqlDialect satisfies dao.Copier; it has no bulk-load fast path")
+	}
+	if _, ok := d.(dao.TwoPhaser); ok {
+		t.Error("MysqlDialect satisfies dao.TwoPhaser; prepared transactions are not implemented here")
 	}
 	if !dao.SupportsIntrospection(MysqlDialect{}) {
 		t.Error("SupportsIntrospection(MysqlDialect) = false, want true (ADR-0013)")

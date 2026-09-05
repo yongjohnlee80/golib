@@ -337,7 +337,7 @@ func (c *ctxConn) QueryContext(ctx context.Context, q string, args ...any) (Rows
 
 func TestHooks_WithQueryContextPropagates(t *testing.T) {
 	t.Parallel()
-	conn := &ctxConn{fakeConn: fakeConn{d: GenericDialect{}, rows: &fakeRows{}}}
+	conn := &ctxConn{fakeConn: fakeConn{d: returningDialect{}, rows: &fakeRows{}}}
 	var sawHook bool
 	s := buildSchema(conn, hookOption(ctxSpy{sawHook: &sawHook}))
 
@@ -355,7 +355,7 @@ func TestHooks_WithQueryContextPropagates(t *testing.T) {
 
 func TestHooks_ExplicitContextStickyAcrossUse(t *testing.T) {
 	t.Parallel()
-	conn := &ctxConn{fakeConn: fakeConn{d: GenericDialect{}, rows: &fakeRows{}}}
+	conn := &ctxConn{fakeConn: fakeConn{d: returningDialect{}, rows: &fakeRows{}}}
 	s := buildSchema(conn)
 
 	explicit := context.WithValue(context.Background(), ctxKey{}, "yes")
@@ -371,7 +371,7 @@ func TestHooks_ExplicitContextStickyAcrossUse(t *testing.T) {
 	}
 
 	// With a live tx the explicit ctx must still win.
-	conn2 := &ctxConn{fakeConn: fakeConn{d: GenericDialect{}, rows: &fakeRows{}}}
+	conn2 := &ctxConn{fakeConn: fakeConn{d: returningDialect{}, rows: &fakeRows{}}}
 	txc := newTxConn("db1")
 	s2 := buildSchema(txc)
 	_ = conn2
