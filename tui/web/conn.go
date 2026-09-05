@@ -212,14 +212,17 @@ func (l *sessionLoop) bind(ctx context.Context, m clientMessage, id *auth.Identi
 		// The session expired while the client was away. A new one is the right
 		// answer, and the client learns its new id from the ready message.
 	}
-	s, err := l.mgr.CreateFor(ctx, id, h, SessionInfo{
+	// One step, not two. CreateFor + AttachFrom raced the App this very call
+	// starts: its teardown drops the session from the registry, so an App that
+	// exits promptly — crashed on startup, refused its config, panicked — was
+	// gone before the attach, and the client got a 1008 policy close with no
+	// frames sent instead of a session that opens and then ends. Measured as a
+	// 1.2% flake in TestSSO_EndToEnd_AppPanicIsContained; it reddened main on a
+	// comment-only merge.
+	s, err := l.mgr.CreateAttachedFor(ctx, id, h, SessionInfo{
 		Identity: id, Handoff: handoff, Peer: peer,
 	})
 	if err != nil {
-		return nil, err
-	}
-	if _, err := l.mgr.AttachFrom(s.ID(), id, h, peer); err != nil {
-		l.mgr.Close(s.ID())
 		return nil, err
 	}
 	return s, nil

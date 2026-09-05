@@ -308,6 +308,31 @@ func (m *Manager) Create(ctx context.Context, id *auth.Identity, h Hello) (*Sess
 // Create delegates here with a bare identity, so a caller with no login handoff
 // keeps the simpler call.
 func (m *Manager) CreateFor(ctx context.Context, id *auth.Identity, h Hello, info SessionInfo) (*Session, error) {
+	return m.create(ctx, id, h, info, false)
+}
+
+// CreateAttachedFor starts a session and attaches the calling connection to it
+// as one step.
+//
+// [Manager.CreateFor] followed by [Manager.AttachFrom] looks equivalent and is
+// not. CreateFor starts the App on its own goroutine, and that goroutine's
+// teardown DROPS the session from the registry — so a caller doing the two-step
+// is racing its own App. An App that exits promptly (crashed on startup,
+// refused its config, panicked) wins that race, the session is gone before the
+// attach, and AttachFrom reports [ErrUnknownSession] for a session the caller
+// has just been handed. On the wire the client then gets a 1008 policy close
+// with no frames sent, indistinguishable from a refusal, rather than a session
+// that opens and immediately ends.
+//
+// This attaches BEFORE the App goroutine starts, so the window does not exist.
+// The ordering difference is confined to this method: CreateFor's behaviour is
+// unchanged for callers that want an unattached session.
+func (m *Manager) CreateAttachedFor(ctx context.Context, id *auth.Identity, h Hello, info SessionInfo) (*Session, error) {
+	return m.create(ctx, id, h, info, true)
+}
+
+// create is CreateFor, optionally attaching the caller before the App runs.
+func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info SessionInfo, attach bool) (*Session, error) {
 	if id == nil || id.Subject == "" {
 		return nil, ErrNoIdentity
 	}
@@ -371,10 +396,41 @@ func (m *Manager) CreateFor(ctx context.Context, id *auth.Identity, h Hello, inf
 	info.Identity = id
 	app := m.factory(backend, &info)
 	if app == nil {
+		// backend is constructed above and no App goroutine exists on this exit,
+		// so this path owns its teardown outright — the same reasoning as the
+		// attach failure below, which is what made the omission visible: without
+		// the Stop this was the only exit past `New` that leaves a backend
+		// un-stopped. Harmless while New allocates channels and starts nothing;
+		// exactly the asymmetry that stops being harmless the day it does.
+		// (gold-man, #27 r0.)
 		m.drop(sid)
 		cancel()
+		_ = backend.Stop()
 		close(s.done)
 		return nil, errors.New("web: AppFactory returned no application")
+	}
+
+	// Attached BEFORE the App goroutine starts, so its teardown cannot drop the
+	// session out from under a caller that has not had its turn yet.
+	if attach {
+		if _, err := m.attachSession(s, id, h, info.Peer); err != nil {
+			// The App goroutine has NOT started, so the teardown defer that
+			// normally stops the backend will never run — this path owns the
+			// cleanup outright. Same shape as the AppFactory-returned-nil case
+			// above, plus the Stop that [Manager.Close] does for a session whose
+			// App did start.
+			//
+			// On the ErrPeerChanged exit these are SECOND calls: attachSession
+			// terminates that session itself, by design. Both are idempotent —
+			// cancel by contract, Stop through its once — so the repeat is
+			// deliberate rather than a leak, and this comment exists so a reader
+			// tracing that path does not have to work that out. (gold-man r0.)
+			m.drop(sid)
+			cancel()
+			_ = s.backend.Stop()
+			close(s.done)
+			return nil, err
+		}
 	}
 
 	go func() {
@@ -444,6 +500,19 @@ func (m *Manager) AttachFrom(sessionID string, id *auth.Identity, h Hello, peer 
 	if !ok {
 		return nil, ErrUnknownSession
 	}
+	return m.attachSession(s, id, h, peer)
+}
+
+// attachSession is AttachFrom without the registry lookup.
+//
+// Split out so the CREATE path can attach a session it already holds a pointer
+// to, without going back through a registry the App's teardown may already have
+// removed it from — see [Manager.CreateAttachedFor]. Every check below is
+// therefore run identically on both paths; for a session created moments ago the
+// ownership and peer checks pass trivially, and that is deliberate. One code
+// path is worth more than the two lines it saves to skip them.
+func (m *Manager) attachSession(s *Session, id *auth.Identity, h Hello, peer string) (*Session, error) {
+	sessionID := s.id
 	if s.subject != id.Subject {
 		logger.Notice(m.log, sessionAudit{Kind: "denied", Subject: id.Subject, ID: sessionID,
 			Reason: "principal does not own this session"})
