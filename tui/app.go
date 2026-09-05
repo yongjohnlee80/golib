@@ -11,12 +11,17 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// App is the master runtime (ADR-0005): it owns the backend, the component
-// tree, the two-lane event queue, the demand-scheduled timer heap, the Bus,
-// and the bounded task pool. One loop goroutine — the caller of Run — owns
-// all component state; everything else enters as posted events
-// (ADR-0005 §2.3, the normative single-goroutine invariant stated in
-// tui/doc.go).
+// App is the master runtime: it owns the backend, the component tree, the
+// two-lane event queue, the demand-scheduled timer heap, the Bus, and the
+// bounded task pool.
+//
+// ONE GOROUTINE — the caller of Run — owns all component state. Nothing else
+// may touch it. Every other goroutine reaches the tree by POSTING AN EVENT,
+// which the loop applies in its own time. This is what makes components safe
+// to write without locks: a component method can assume no other goroutine is
+// inside the tree while it runs. Break it and the damage is a data race in
+// user code that never wrote a goroutine.
+// REFERENCE: tui/doc.go
 type App struct {
 	cfg     appConfig
 	root    Component
@@ -26,14 +31,23 @@ type App struct {
 	quit   chan struct{} // closed when Run exits; stops the intake pump
 	runCtx context.Context
 
-	// Lane A: the App-owned intake stage (ADR-0005 §2.4 rev 1).
-	input      chan Event // unbuffered; the pump's pending queue holds lane-A state
+	// TWO LANES, and they are separate so that neither can starve the other.
+	//
+	// Lane A carries input arriving from the backend — keys, mouse, resize.
+	// The App pumps it, rather than the backend pushing into the loop, so a
+	// slow frame cannot block the terminal read. The channel is unbuffered and
+	// the pump holds the pending queue, which is why a burst of input is
+	// counted as drops here instead of growing without bound.
+	input      chan Event
 	inputDrops atomic.Uint64
 
-	// Lane B: program events (ADR-0005 §2.4).
+	// Lane B carries events the program itself posts. Keeping them off lane A
+	// means a program that posts heavily cannot delay input, and input arriving
+	// faster than it can be handled cannot delay the program.
 	queue programQueue
 
-	// --- loop-goroutine-owned state below (ADR-0005 §2.3) ---
+	// --- Everything below is owned by the loop goroutine. Read or write it
+	// from anywhere else and the single-owner guarantee above is gone. ---
 
 	nodes      map[NodeID]*node
 	byComp     map[Component]*node
@@ -44,7 +58,7 @@ type App struct {
 	inRender  bool
 	layingOut *node // the node whose Layout is executing (LayoutChild legality)
 
-	focused    NodeID // 0 = none (ADR-0004 §2.6.1)
+	focused    NodeID // 0 = none
 	scopeStack []scopeEntry
 
 	size         Size
@@ -55,7 +69,7 @@ type App struct {
 	framePending bool // a frame deadline sits in the timer heap
 	lastFrame    time.Time
 
-	// Multi-click synthesis state (ADR-0010 §2.5). Owned by the event-loop
+	// Multi-click synthesis state. Owned by the event-loop
 	// goroutine, like the rest of App's dispatch state.
 	lastPressAt     time.Time
 	lastPressX      int
@@ -68,12 +82,12 @@ type App struct {
 	timers      timerHeap
 	timer       *time.Timer
 	timerC      <-chan time.Time // nil when nothing is scheduled (idle — G5)
-	timerArms   int              // instrumentation (ADR-0005 §5.9)
+	timerArms   int              // instrumentation
 	nextTimerID uint64
 
 	bus *Bus
 
-	// Task pool (ADR-0005 §2.8): sem bounds RUNNING tasks (the ingestor's
+	// Task pool: sem bounds RUNNING tasks (the ingestor's
 	// bounded-background-work pattern, ingestor/writer.go:28).
 	sem        chan struct{}
 	nextTaskID atomic.Uint64
@@ -119,14 +133,14 @@ func NewApp(root Component, opts ...AppOption) *App {
 	return a
 }
 
-// Bus returns the App's broadcast bus (ADR-0005 §2.7).
+// Bus returns the App's broadcast bus.
 func (a *App) Bus() *Bus { return a.bus }
 
 // Post enqueues ev for delivery on the loop goroutine. Safe from any
 // goroutine, including from inside handlers on the loop itself. Never
 // blocks; program-lane events are never dropped. Panics only when the app
-// explicitly opts into WithEventQueueLimit and the ceiling is exceeded
-// (ADR-0005 §2.4).
+// explicitly opts into WithEventQueueLimit and the ceiling is exceeded. The
+// default is unlimited, so an app that never sets a limit never panics here.
 func (a *App) Post(ev Event) {
 	if ev == nil {
 		panic("tui: App.Post: nil event")
@@ -140,8 +154,9 @@ func (a *App) Post(ev Event) {
 // unrepresentable). Convention: code already running in a handler on the
 // loop goroutine does NOT need Update — it owns the state and mutates
 // directly; an fn enqueued from a handler runs in a later drain, before the
-// next frame (ADR-0005 §2.4 rev 1: no inline execution, no goroutine-id
-// parsing).
+// next frame. It is never executed inline, and the App never inspects the
+// caller's goroutine to decide: an fn always takes the same path, so its
+// ordering relative to other posted work does not depend on who posted it.
 func (a *App) Update(fn func()) {
 	if fn == nil {
 		panic("tui: App.Update: nil func")
@@ -150,7 +165,7 @@ func (a *App) Update(fn func()) {
 }
 
 // Run starts the backend synchronously (raw mode, alternate screen,
-// capability probe — ADR-0002; errors return before any goroutine starts,
+// capability probe; errors return before any goroutine starts,
 // mirroring the scaffold's synchronous bind at server/scaffold.go:144-147),
 // mounts root, runs the event loop ON THE CALLING GOROUTINE until ctx is
 // cancelled or a terminal backend error occurs, then unmounts the tree,
@@ -162,7 +177,7 @@ func (a *App) Update(fn func()) {
 // layout, render, or runtime bug) is recovered, the terminal is restored
 // FIRST (backend.Stop always runs), and then the policy applies — default:
 // repanic with the original value. A TUI that dies must never leave the
-// terminal in raw mode with the alternate screen active (ADR-0005 §2.2).
+// terminal in raw mode with the alternate screen active.
 func (a *App) Run(ctx context.Context) (err error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -204,7 +219,7 @@ func (a *App) Run(ctx context.Context) (err error) {
 	a.layoutDirty, a.renderDirty = true, true
 	a.maybeFrame() // first frame before any input
 
-	// App-owned intake (rev 1): pulls promptly from backend.Events(),
+	// App-owned intake: pulls promptly from backend.Events(),
 	// applies ALL lane-A policy, and closes a.input when Events() closes.
 	go a.intake()
 
@@ -214,7 +229,7 @@ func (a *App) Run(ctx context.Context) (err error) {
 // widthPolicy reports the App's active grapheme width policy — the single
 // source of the policy every Surface's resolution context carries
 // (Surface.StringWidth reads rctx.policy, which is a copy of this). Fixed
-// once per App (WithWidthPolicy, ADR-0003 §2.4). Reads rctx once Run has
+// once per App (WithWidthPolicy). Reads rctx once Run has
 // installed it; before that (Context methods can exist pre-Run) it falls
 // back to the config value that will seed rctx — the same value.
 func (a *App) widthPolicy() WidthPolicy {
@@ -224,22 +239,22 @@ func (a *App) widthPolicy() WidthPolicy {
 	return a.cfg.widthPolicy
 }
 
-// loop is the scaffold's errc-vs-ctx.Done select
-// (server/scaffold.go:152-167) widened to four arms (ADR-0005 §2.2).
+// loop is the scaffold's errc-vs-ctx.Done select, widened to four arms.
+// REFERENCE: server/scaffold.go
 func (a *App) loop(ctx context.Context) error {
 	for {
 		select {
-		case ev, ok := <-a.input: // lane A output, post-intake (§2.4)
+		case ev, ok := <-a.input: // lane A: input, already through the pump
 			if !ok { // backend Events() closed
 				return errors.Join(a.backend.Err(), a.teardown())
 			}
 			a.dispatch(ev)
 
-		case <-a.queue.wake: // program lane has items and/or dirt (§2.4)
+		case <-a.queue.wake: // lane B: the program posted work, or marked dirt
 			a.drainProgramLane()
 			a.maybeFrame()
 
-		case <-a.timerC: // earliest deadline (§2.6) — nil (blocked) when idle
+		case <-a.timerC: // earliest deadline; nil, and so blocked, when idle
 			a.fireDueTimers()
 
 		case <-ctx.Done():
@@ -249,7 +264,7 @@ func (a *App) loop(ctx context.Context) error {
 }
 
 // drainProgramLane processes one lane-B batch snapshot: queued closures,
-// posted events, bus deliveries, task results (ADR-0005 §2.4).
+// posted events, bus deliveries, task results.
 func (a *App) drainProgramLane() {
 	for _, it := range a.queue.drain() {
 		if it.fn != nil {
@@ -261,10 +276,10 @@ func (a *App) drainProgramLane() {
 }
 
 // teardown is the registry-drain shape (server/registry.go:155-198),
-// terminal edition (ADR-0005 §2.2 T1–T3).
+// terminal edition.
 func (a *App) teardown() error {
 	// T1 — unmount the tree, children first: every node context cancels,
-	// which signals every in-flight task (ADR-0004 §2.4).
+	// which signals every in-flight task.
 	if a.rootNode != nil {
 		a.unmountTree(a.rootNode)
 	}
@@ -295,7 +310,7 @@ func (a *App) teardown() error {
 // maybeFrame renders when dirt exists, honoring the min-frame-interval CAP:
 // dirty marks arriving faster than the interval coalesce into one frame per
 // interval via a deadline in the timer heap — a cap, not a ticker: no dirt,
-// no frame, no wakeup (ADR-0003; ADR-0005 G5).
+// no frame, no wakeup.
 func (a *App) maybeFrame() {
 	if !a.renderDirty && !a.layoutDirty {
 		return
@@ -312,7 +327,7 @@ func (a *App) maybeFrame() {
 	a.renderFrame()
 }
 
-// renderFrame runs the frame pipeline against ADR-0003's buffer/diff:
+// renderFrame runs the frame pipeline against the cell buffer and its diff:
 // (re)layout if dirty, repaint the visible tree into the cell buffer, apply
 // the cursor rule, diff, and hand the backend ONE Flush (the one-write
 // rule).
@@ -322,7 +337,8 @@ func (a *App) renderFrame() {
 	}
 	if a.buf.size() != a.size {
 		// Never diff across a size change: resize invalidates the last
-		// buffer entirely (ADR-0003 §2.6) and forces a layout pass.
+		// buffer entirely — cells no longer correspond to the same positions —
+		// and forces a layout pass.
 		a.buf.resize(a.size.W, a.size.H)
 		a.layoutDirty = true
 	}
@@ -337,7 +353,8 @@ func (a *App) renderFrame() {
 	}
 
 	// v1 repaints the whole visible tree; the cell diff keeps the flush
-	// minimal (ADR-0003 §2.2 — the last-frame copy IS the dirty tracking).
+	// minimal — the copy of the last frame IS the dirty tracking, so nothing
+	// else has to remember what changed.
 	for i := range a.buf.curr {
 		a.buf.curr[i] = blankCell
 	}
@@ -352,8 +369,8 @@ func (a *App) renderFrame() {
 	a.frames++
 }
 
-// repairInvisibleFocus enforces the no-invisible-focus rule (ADR-0008
-// §2.3): when a layout pass leaves the focused node without a current
+// repairInvisibleFocus enforces the no-invisible-focus rule: when a layout
+// pass leaves the focused node without a current
 // measure/place (a Split zoomed it away, a Tabs switch unhosted it, any
 // future hider), focus is re-homed exactly like a dead focus — the
 // existing unmount-time repair already picks the first focusable in the
@@ -365,7 +382,7 @@ func (a *App) repairInvisibleFocus() {
 	}
 }
 
-// applyCursor implements the IME real-cursor rule (ADR-0004 §2.3, G6): a
+// applyCursor implements the IME real-cursor rule: a
 // focused CursorReporter parks the hardware cursor at the absolute
 // translation of its reported position; anything else hides it. Cursor state
 // is latched on the backend and emitted by the Flush that follows.
