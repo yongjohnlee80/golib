@@ -164,6 +164,21 @@ func TestScaffold_HandlerPanicIsIsolated(t *testing.T) {
 	if err := stop(); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+	// This read is deliberately a single check after stop(), NOT a bounded poll.
+	//
+	// It used to rely on accidental synchronization — c2's round-trip is served
+	// by a different goroutine and orders nothing against c1's panic — and it
+	// failed on loaded CI accordingly. It is sound now because the accept loop
+	// RESERVES each connection before its goroutine exists, Drain waits for
+	// reservations as well as live sessions, and serveConn logs before it
+	// unregisters. So when stop() returns, the log has necessarily happened.
+	//
+	// Converting this to a poll would make it WEAKER, not safer: it would go
+	// green again if that drain-visibility guarantee regressed, which is the
+	// defect this ordering now depends on.
+	// TestScaffold_DrainWaitsForConnStillInSessionFactory is the cell that
+	// proves the load-bearing link, and a mutation reverting the reservation
+	// reddens it.
 	if lg.errors.Load() == 0 {
 		t.Error("handler panic was not logged")
 	}

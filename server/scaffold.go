@@ -204,7 +204,23 @@ func (s *Scaffold) acceptLoop() error {
 			return err
 		}
 		backoff = 5 * time.Millisecond
-		go s.serveConn(conn)
+		// Claim the slot HERE, synchronously, before the goroutine exists
+		// (ADR-0006 §2.2). Reserving inside serveConn would still leave the gap
+		// between Accept returning and that goroutine being scheduled, in which
+		// the connection is accepted but invisible to a drain.
+		res, ok := s.reg.Reserve()
+		if !ok {
+			// Drain has begun — refuse rather than serve. Logged, because a
+			// silently dropped connection is the same class of problem as a
+			// silently successful drain.
+			s.cfg.logger.Log(logger.SeverityInfo, map[string]any{
+				"server": "scaffold", "event": "connection refused: draining",
+				"remote": remoteStr(conn),
+			})
+			_ = conn.Close()
+			continue
+		}
+		go s.serveConn(conn, res)
 	}
 }
 
@@ -233,9 +249,27 @@ func SessionFromContext(ctx context.Context) Session {
 // Run return — and the process exit that usually follows — while the panic
 // record was still unwritten. The failure was a graceful shutdown that silently
 // dropped the reason a connection died.
-func (s *Scaffold) serveConn(conn net.Conn) {
+// serveConn serves one accepted connection. res is the slot the ACCEPT LOOP
+// already claimed for it: registering only after the session exists left the
+// connection invisible to Drain for the whole of session setup, and that window
+// contains s.cfg.sessionFactory, which is CALLER-SUPPLIED — so a consumer
+// widened it arbitrarily without knowing it existed. A drain starting in that
+// window found an empty registry, concluded there was nothing to wait for, and
+// returned nil while the connection was still being established: "establishment
+// is never accept-then-abandoned" ([Reservation.Complete]) was not true of the
+// scaffold itself. [Registry.Reserve] is the primitive for exactly this, and
+// server/ws already used it for its handshake; the scaffold was the outlier.
+//
+// The reservation fixes the REPORT as well as the wait: Drain's deadline error
+// counts len(live)+reserved, so an establishment that outruns the drain budget
+// is now counted rather than invisible.
+//
+// serveConn owns res from here: it must Complete it or Cancel it on every path,
+// or the drain waits for a session that never arrives.
+func (s *Scaffold) serveConn(conn net.Conn, res *Reservation) {
 	phase := "session setup"
 	var unregister func()
+	established := false
 	defer func() {
 		if rec := recover(); rec != nil {
 			s.cfg.logger.Log(logger.SeverityError, map[string]any{
@@ -244,8 +278,13 @@ func (s *Scaffold) serveConn(conn net.Conn) {
 			})
 		}
 		// After the log, so a drain cannot complete ahead of it.
-		if unregister != nil {
+		if established {
 			unregister()
+		} else {
+			// Setup never completed (a panic in the factory, or an early
+			// return): release the slot, or the drain waits for a session that
+			// will never arrive.
+			res.Cancel()
 		}
 	}()
 	defer conn.Close()
@@ -256,7 +295,8 @@ func (s *Scaffold) serveConn(conn net.Conn) {
 			sess = custom
 		}
 	}
-	unregister = s.reg.Register(sess)
+	unregister = res.Complete(sess)
+	established = true
 	phase = "handler"
 	s.handle(context.WithValue(s.connCtx, sessionCtxKey{}, sess), conn)
 }
