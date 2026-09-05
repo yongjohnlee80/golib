@@ -53,3 +53,13 @@ require (
 	google.golang.org/grpc v1.81.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+// Build against the golib in THIS repository rather than a released tag.
+//
+// Without this the nested module compiles against whatever version it pins, so
+// a change to dao that breaks this driver is invisible until golib is tagged
+// AND this module is repinned — the break is then discovered after release
+// rather than in the pull request that caused it. A replace in a module's own
+// go.mod applies only when that module is the main module, so consumers of
+// this driver are unaffected by it.
+replace github.com/yongjohnlee80/golib => ../..

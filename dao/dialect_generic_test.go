@@ -21,17 +21,37 @@ func TestGenericDialect_Basics(t *testing.T) {
 	if got := d.QuoteIdent(`a"b`); got != `"a""b"` {
 		t.Errorf("QuoteIdent = %q, want %q", got, `"a""b"`)
 	}
-	if !d.SupportsReturning() {
-		t.Error("SupportsReturning() = false, want true")
-	}
-	if d.CopySupported() {
-		t.Error("CopySupported() = true, want false")
+}
+
+// GenericDialect provides the SQL SHAPE and no capability at all. That is what
+// makes promotion safe: a dialect embedding it cannot acquire a capability it
+// never declared, because there is none to promote.
+func TestGenericDialect_ImplementsNoCapability(t *testing.T) {
+	t.Parallel()
+
+	var d any = GenericDialect{}
+	for _, tc := range []struct {
+		name string
+		is   bool
+	}{
+		{"Returner", func() bool { _, ok := d.(Returner); return ok }()},
+		{"Copier", func() bool { _, ok := d.(Copier); return ok }()},
+		{"TwoPhaser", func() bool { _, ok := d.(TwoPhaser); return ok }()},
+		{"Upserter", func() bool { _, ok := d.(Upserter); return ok }()},
+		{"LastInsertIDReader", func() bool { _, ok := d.(LastInsertIDReader); return ok }()},
+	} {
+		if tc.is {
+			t.Errorf("GenericDialect implements %s; every dialect embedding it would "+
+				"inherit that capability without declaring it", tc.name)
+		}
 	}
 }
 
 func TestGenericDialect_UpsertSuffix(t *testing.T) {
 	t.Parallel()
 
+	// The clause moved to StandardUpsertSuffix, which the dialects that can
+	// upsert delegate to. Same expectations, one home.
 	d := GenericDialect{}
 	tests := []struct {
 		name             string
@@ -46,7 +66,7 @@ func TestGenericDialect_UpsertSuffix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := d.BuildUpsertSuffix(tt.conflict, tt.update); got != tt.want {
+			if got := StandardUpsertSuffix(d, tt.conflict, tt.update); got != tt.want {
 				t.Errorf("BuildUpsertSuffix = %q, want %q", got, tt.want)
 			}
 		})
@@ -56,8 +76,10 @@ func TestGenericDialect_UpsertSuffix(t *testing.T) {
 func TestGenericDialect_CopyUnsupported(t *testing.T) {
 	t.Parallel()
 
-	if _, err := (GenericDialect{}).Copy(context.Background(), nil, "t", nil, nil); err == nil {
-		t.Error("Copy() error = nil, want a not-supported error")
+	// GenericDialect has no Copy at all now: bulk load is a capability, and an
+	// engine without it is not a Copier rather than being one that errors.
+	if _, ok := any(GenericDialect{}).(Copier); ok {
+		t.Error("GenericDialect satisfies Copier; it must implement no capability")
 	}
 }
 

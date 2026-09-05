@@ -40,26 +40,21 @@ func (BigQueryDialect) QuoteIdent(ident string) string {
 func (BigQueryDialect) MaxBindParams() int { return 10000 }
 
 // SupportsReturning reports false: BigQuery has no INSERT ... RETURNING.
-func (BigQueryDialect) SupportsReturning() bool { return false }
 
 // SupportsTransactions reports false: BigQuery has no interactive pooled
 // transactions (only limited in-job scripting), so Begin/RunTx/On(tx) return
 // dao.ErrUnsupported on first touch (ADR-0008 §2.3).
-func (BigQueryDialect) SupportsTransactions() bool { return false }
 
 // SupportsUpsert reports false: BigQuery has no ON CONFLICT INSERT suffix (only
 // MERGE), so DAO.Upsert and batch conflict handling return dao.ErrUnsupported
 // (ADR-0008 §2.4).
-func (BigQueryDialect) SupportsUpsert() bool { return false }
 
 // SupportsLastInsertID reports false: BigQuery has no server-generated insert id.
 // With no RETURNING and no LastInsertID, DAO.Insert runs the DML and returns the
 // zero id with a nil error — callers supply ids client-side (ADR-0008 §2.6).
-func (BigQueryDialect) SupportsLastInsertID() bool { return false }
 
 // BuildUpsertSuffix returns "" defensively: upsert is capability-gated off before
 // this is reached, and BigQuery has no INSERT-suffix upsert to render.
-func (BigQueryDialect) BuildUpsertSuffix(_, _ []string) string { return "" }
 
 // TranslateError passes the error through unchanged: BigQuery has no unique /
 // foreign-key constraint SQLSTATEs to map to dao.ConstraintError sentinels.

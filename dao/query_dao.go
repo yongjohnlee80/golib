@@ -605,7 +605,7 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	if d.err != nil {
 		return d.err
 	}
-	if !d.schema.dialect.SupportsUpsert() {
+	if _, ok := d.schema.dialect.(Upserter); !ok {
 		return fmt.Errorf("%w: upsert", ErrUnsupported)
 	}
 	pl, perr := d.begin(OpUpsert, true)

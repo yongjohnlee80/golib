@@ -31,7 +31,7 @@ func TestBuildBatchInsert_Suffix(t *testing.T) {
 
 	d := GenericDialect{}
 	b := &builder{dialect: d}
-	suffix := d.BuildUpsertSuffix([]string{"id"}, []string{"name"})
+	suffix := StandardUpsertSuffix(d, []string{"id"}, []string{"name"})
 	got := b.buildBatchInsert("t", []string{"id", "name"}, [][]any{{1, "x"}}, suffix)
 
 	want := `INSERT INTO "t" ("id", "name") VALUES ($1, $2) ` +

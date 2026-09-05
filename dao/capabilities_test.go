@@ -40,27 +40,21 @@ func probe(d dao.Dialect) caps {
 // TestCapabilityProbes pins what each dialect satisfies RIGHT NOW, during the
 // window where the flags and the interfaces coexist.
 //
-// Three of the five are currently satisfied by EVERY dialect and say nothing
-// about it: dao.GenericDialect declares Copy, the two-phase trio and
-// BuildUpsertSuffix, and all four dialects embed it, so Copier, TwoPhaser and
-// Upserter are granted by PROMOTION regardless of what the engine can actually
-// do. mysql and sqlite report CopySupported() == false and
-// TwoPhaseSupported() == false while satisfying both interfaces.
-//
-// That is the promotion hazard this ADR removes, measured rather than
-// predicted, and it is wider than the RETURNING case that prompted the
-// sequencing split. Only Returner and LastInsertIDReader are meaningful today,
-// because their method names are new and GenericDialect does not have them.
+// Every row is now the engine's real answer. Before the flags were removed,
+// Copier, TwoPhaser and Upserter were true on EVERY row — GenericDialect
+// implemented them and all four dialects embed it — so mysql claimed a COPY
+// fast path it cannot perform. GenericDialect is included precisely because it
+// must satisfy nothing: it provides the SQL shape, never a capability.
 func TestCapabilityProbes(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		d    dao.Dialect
 		want caps
 	}{
-		// copier/twoPhase/upserter are true everywhere below by promotion.
 		{"postgres", postgres.PostgresDialect{}, caps{returner: true, copier: true, twoPhase: true, upserter: true}},
-		{"mysql", mysql.MysqlDialect{}, caps{copier: true, twoPhase: true, upserter: true, lastID: true}},
-		{"sqlite", sqlite.SqliteDialect{}, caps{returner: true, copier: true, twoPhase: true, upserter: true}},
+		{"mysql", mysql.MysqlDialect{}, caps{upserter: true, lastID: true}},
+		{"sqlite", sqlite.SqliteDialect{}, caps{returner: true, upserter: true}},
+		{"generic", dao.GenericDialect{}, caps{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := probe(tc.d); got != tc.want {
@@ -70,86 +64,24 @@ func TestCapabilityProbes(t *testing.T) {
 	}
 }
 
-// TestCapabilitiesAgreeWithFlags is the migration's proof, and it can only be
-// written while both the flags and the interfaces exist.
+// TestCapabilitiesAgreeWithFlags is GONE, and its absence is the result.
 //
-// For the two capabilities whose names are NEW, the interface and the flag must
-// agree exactly — a disagreement there is a behaviour change.
+// While the boolean flags existed it compared each capability against the flag
+// it replaced, and pinned the exact set that could not yet agree: Copier,
+// TwoPhaser and Upserter were satisfied by EVERY dialect because
+// GenericDialect implemented them and every dialect embeds it. mysql reported
+// CopySupported() == false while satisfying Copier.
 //
-// For the three that GenericDialect already implements, they cannot agree yet,
-// and this test pins the EXACT set of disagreements rather than tolerating them
-// loosely. That list is the step-5 checklist: when GenericDialect stops
-// implementing capabilities, every one of these must flip to agreement, and any
-// disagreement NOT listed here is a defect today.
-func TestCapabilitiesAgreeWithFlags(t *testing.T) {
-	// dialect -> capabilities currently granted by promotion despite a false flag.
-	promoted := map[string][]string{
-		"postgres": nil,
-		"mysql":    {"Copier", "TwoPhaser"},
-		"sqlite":   {"Copier", "TwoPhaser"},
-		"generic":  {"Copier", "TwoPhaser"},
-	}
-	has := func(list []string, name string) bool {
-		for _, s := range list {
-			if s == name {
-				return true
-			}
-		}
-		return false
-	}
-
-	for _, tc := range []struct {
-		name string
-		d    dao.Dialect
-	}{
-		{"postgres", postgres.PostgresDialect{}},
-		{"mysql", mysql.MysqlDialect{}},
-		{"sqlite", sqlite.SqliteDialect{}},
-		{"generic", dao.GenericDialect{}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c := probe(tc.d)
-			exc := promoted[tc.name]
-
-			// The clean two: exact agreement required.
-			if c.lastID != tc.d.SupportsLastInsertID() {
-				t.Errorf("LastInsertIDReader=%v but SupportsLastInsertID()=%v", c.lastID, tc.d.SupportsLastInsertID())
-			}
-			// Returner is clean in one direction only: GenericDialect reports
-			// SupportsReturning() == true with nothing behind it, which is
-			// exactly the inherited-capability shape that made sqlite's
-			// RETURNING support removable by accident.
-			if tc.name != "generic" && c.returner != tc.d.SupportsReturning() {
-				t.Errorf("Returner=%v but SupportsReturning()=%v", c.returner, tc.d.SupportsReturning())
-			}
-
-			check := func(name string, got, flag bool) {
-				switch {
-				case got == flag:
-					return
-				case got && !flag && has(exc, name):
-					return // known promotion grant, listed above
-				default:
-					t.Errorf("%s=%v but its flag=%v, and this disagreement is not in the "+
-						"promotion list for %s", name, got, flag, tc.name)
-				}
-			}
-			check("Copier", c.copier, tc.d.CopySupported())
-			check("TwoPhaser", c.twoPhase, tc.d.TwoPhaseSupported())
-			// Upserter is granted to everything, including where the flag is
-			// false; asserted as always-true so a change is visible.
-			if !c.upserter {
-				t.Errorf("Upserter=false; GenericDialect declares BuildUpsertSuffix and every "+
-					"dialect embeds it, so this cannot be false yet (flag says %v)", tc.d.SupportsUpsert())
-			}
-		})
-	}
-}
+// Those flags are now removed and GenericDialect implements no capability, so
+// there is nothing left to disagree. The matrix in TestCapabilityProbes above
+// is the whole truth, and it changed in exactly the places that list predicted.
 
 // The explicit declarations must render EXACTLY what the promoted generic
 // implementation rendered, or step 3 changed behaviour while claiming not to.
 func TestExplicitUpsertMatchesTheFormerGenericOutput(t *testing.T) {
-	var g dao.GenericDialect
+	// The former generic output now lives in dao.StandardUpsertSuffix, which is
+	// the single home the thin implementations delegate to.
+	g := dao.GenericDialect{}
 	for _, tc := range []struct {
 		name string
 		d    dao.Upserter
@@ -164,7 +96,7 @@ func TestExplicitUpsertMatchesTheFormerGenericOutput(t *testing.T) {
 				{[]string{"id"}, []string{"name", "email"}},
 				{[]string{"a", "b"}, []string{"c"}},
 			} {
-				want := g.BuildUpsertSuffix(args.conflict, args.update)
+				want := dao.StandardUpsertSuffix(g, args.conflict, args.update)
 				if got := tc.d.BuildUpsertSuffix(args.conflict, args.update); got != want {
 					t.Errorf("BuildUpsertSuffix(%v, %v) = %q, want the former generic output %q",
 						args.conflict, args.update, got, want)

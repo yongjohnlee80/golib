@@ -105,9 +105,9 @@ func TestBuilder_QualifiedTablePositions(t *testing.T) {
 
 func TestBatchSuffix_SkipConflictsHintIgnoredByGeneric(t *testing.T) {
 	t.Parallel()
-	b := newBatchWriter[*artist, artistField](nil, GenericDialect{}, "artist")
+	b := newBatchWriter[*artist, artistField](nil, returningDialect{}, "artist")
 	b.SkipConflicts()
-	// The hint columns must not change the generic dialect's rendering.
+	// The hint columns must not change the dialect's rendering.
 	if got, want := b.suffix([]string{"name", "uri"}), "ON CONFLICT DO NOTHING"; got != want {
 		t.Errorf("skip-conflicts suffix = %q, want %q", got, want)
 	}

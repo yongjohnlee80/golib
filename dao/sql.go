@@ -169,7 +169,14 @@ func (b *builder) buildInsert(table string, set orderedSet, idCol string, return
 // columns.
 func (b *builder) buildUpsert(table string, set orderedSet, idCol string, returning bool, conflict, updateCols []string) string {
 	b.insertCore(table, set)
-	if suffix := b.dialect.BuildUpsertSuffix(conflict, updateCols); suffix != "" {
+	// The conflict clause belongs to the engine that can upsert. A dialect
+	// that cannot renders none, leaving a plain INSERT — the same statement
+	// this produced before, for the same engines.
+	suffix := ""
+	if u, ok := b.dialect.(Upserter); ok {
+		suffix = u.BuildUpsertSuffix(conflict, updateCols)
+	}
+	if suffix != "" {
 		b.sb.WriteByte(' ')
 		b.sb.WriteString(suffix)
 	}

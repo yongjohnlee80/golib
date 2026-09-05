@@ -33,20 +33,23 @@ func TestDialect_CapabilityProfile(t *testing.T) {
 	if got := d.QuoteIdent("we`ird"); got != "`weird`" {
 		t.Errorf("QuoteIdent backtick strip = %q", got)
 	}
-	for name, got := range map[string]bool{
-		"SupportsReturning":    d.SupportsReturning(),
-		"SupportsTransactions": d.SupportsTransactions(),
-		"SupportsUpsert":       d.SupportsUpsert(),
-		"SupportsLastInsertID": d.SupportsLastInsertID(),
-		"CopySupported":        d.CopySupported(),
-		"TwoPhaseSupported":    d.TwoPhaseSupported(),
+	// BigQuery is an append-mostly OLAP store: it implements NO optional
+	// capability, and the ABSENCE of each interface is how that is stated.
+	// There is no flag to disagree with the implementation, and no inherited
+	// default to grant something the engine cannot do — notably upsert, which
+	// this dialect used to "support" by rendering an empty conflict clause,
+	// turning an upsert into a silent plain INSERT.
+	for name, satisfied := range map[string]bool{
+		"Returner":           func() bool { _, ok := any(d).(dao.Returner); return ok }(),
+		"Copier":             func() bool { _, ok := any(d).(dao.Copier); return ok }(),
+		"TwoPhaser":          func() bool { _, ok := any(d).(dao.TwoPhaser); return ok }(),
+		"Upserter":           func() bool { _, ok := any(d).(dao.Upserter); return ok }(),
+		"LastInsertIDReader": func() bool { _, ok := any(d).(dao.LastInsertIDReader); return ok }(),
 	} {
-		if got {
-			t.Errorf("%s() = true, want false (no-transaction OLAP profile)", name)
+		if satisfied {
+			t.Errorf("BigQueryDialect satisfies dao.%s; the no-transaction OLAP profile "+
+				"implements no capability", name)
 		}
-	}
-	if s := d.BuildUpsertSuffix([]string{"id"}, []string{"name"}); s != "" {
-		t.Errorf("BuildUpsertSuffix = %q, want empty", s)
 	}
 }
 

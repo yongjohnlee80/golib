@@ -8,7 +8,6 @@
 # real, which is why they are listed rather than forgotten.
 #
 # This list may only SHRINK. Empty is the destination.
-dao/dialect_generic.go	GenericDialect.BuildUpsertSuffix -> QuoteIdent
 tui/container.go	MultiChild.Add -> name
 tui/container.go	MultiChild.Move -> indexOf
 tui/container.go	MultiChild.Move -> name
