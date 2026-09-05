@@ -120,3 +120,69 @@ func TestNoCapabilityPredicatesOnInterfaces(t *testing.T) {
 			"disagree with the first.", len(found), strings.Join(found, "\n  "))
 	}
 }
+
+// Every capability has a discovery helper, and every helper names a real
+// capability. Checked in BOTH directions and by reading each helper's actual
+// type assertion rather than matching names — SupportsCopy probes Copier and
+// SupportsLastInsertID probes LastInsertIDReader, so a name-based mapping
+// would be guessing.
+//
+// The point is that a new capability cannot ship without its helper, and a
+// helper cannot outlive the capability it probes.
+func TestEveryCapabilityHasADiscoveryHelper(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "capabilities.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse capabilities.go: %v", err)
+	}
+
+	declared := map[string]bool{}
+	probed := map[string]string{} // capability -> helper that probes it
+
+	for _, d := range f.Decls {
+		switch decl := d.(type) {
+		case *ast.GenDecl:
+			for _, sp := range decl.Specs {
+				ts, ok := sp.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				if _, isIface := ts.Type.(*ast.InterfaceType); isIface && ts.Name.IsExported() {
+					declared[ts.Name.Name] = true
+				}
+			}
+		case *ast.FuncDecl:
+			if decl.Recv != nil || !strings.HasPrefix(decl.Name.Name, "Supports") {
+				continue
+			}
+			ast.Inspect(decl.Body, func(n ast.Node) bool {
+				ta, ok := n.(*ast.TypeAssertExpr)
+				if !ok || ta.Type == nil {
+					return true
+				}
+				if id, ok := ta.Type.(*ast.Ident); ok {
+					if prev, dup := probed[id.Name]; dup {
+						t.Errorf("%s and %s both probe %s", prev, decl.Name.Name, id.Name)
+					}
+					probed[id.Name] = decl.Name.Name
+				}
+				return true
+			})
+		}
+	}
+
+	if len(declared) == 0 {
+		t.Fatal("no capability interfaces found; the parse is broken and this would pass vacuously")
+	}
+	for name := range declared {
+		if _, ok := probed[name]; !ok {
+			t.Errorf("capability %s has no Supports* discovery helper", name)
+		}
+	}
+	for cap, helper := range probed {
+		if !declared[cap] {
+			t.Errorf("%s probes %s, which is not a capability interface declared here", helper, cap)
+		}
+	}
+	t.Logf("%d capabilities, each with a discovery helper", len(declared))
+}

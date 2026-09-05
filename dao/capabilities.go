@@ -136,3 +136,56 @@ func ResultLastInsertID(res Result) (int64, error) {
 	}
 	return res.LastInsertId()
 }
+
+// Capability discovery.
+//
+// These are FUNCTIONS, not methods, and that distinction is the whole design.
+// A method named SupportsUpsert would make every dialect answer a question
+// about a feature most of them have nothing to do with — and, being a second
+// statement of the same fact, it could disagree with the implementation. A
+// function asks the type system instead: it cannot be wrong, because there is
+// nothing to keep in sync.
+//
+// Use them where a call site reads better for it. A direct type assertion is
+// equally correct and is what these do:
+//
+//	if dao.SupportsUpsert(conn.Dialect()) { ... }
+//	if u, ok := conn.Dialect().(dao.Upserter); ok { ... }
+//
+// Prefer the assertion when you also need the interface, and the helper when
+// you only need the answer.
+
+// SupportsUpsert reports whether d can render a conflict clause — insert, or
+// update on conflict.
+func SupportsUpsert(d Dialect) bool {
+	_, ok := d.(Upserter)
+	return ok
+}
+
+// SupportsCopy reports whether d has a bulk-load fast path that bypasses
+// ordinary INSERT batching.
+func SupportsCopy(d Dialect) bool {
+	_, ok := d.(Copier)
+	return ok
+}
+
+// SupportsTwoPhase reports whether d can prepare a transaction on one
+// connection and commit or roll it back later, possibly from another.
+func SupportsTwoPhase(d Dialect) bool {
+	_, ok := d.(TwoPhaser)
+	return ok
+}
+
+// SupportsReturning reports whether d can hand back a generated id from the
+// INSERT itself, rather than needing a second round trip.
+func SupportsReturning(d Dialect) bool {
+	_, ok := d.(Returner)
+	return ok
+}
+
+// SupportsLastInsertID reports whether a plain INSERT's result carries the
+// generated id on d.
+func SupportsLastInsertID(d Dialect) bool {
+	_, ok := d.(LastInsertIDReader)
+	return ok
+}
