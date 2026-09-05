@@ -17,7 +17,7 @@ type MysqlDialect struct {
 }
 
 // Name returns "mysql".
-func (MysqlDialect) Name() string { return "mysql" }
+func (MysqlDialect) Name() string { return dao.DialectMySQL }
 
 // Placeholder renders "?" — MySQL uses positional placeholders.
 func (MysqlDialect) Placeholder(int) string { return "?" }

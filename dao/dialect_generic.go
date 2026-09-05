@@ -22,7 +22,7 @@ import (
 type GenericDialect struct{}
 
 // Name returns "generic".
-func (GenericDialect) Name() string { return "generic" }
+func (GenericDialect) Name() string { return DialectGeneric }
 
 // Placeholder renders "$n".
 func (GenericDialect) Placeholder(n int) string { return "$" + strconv.Itoa(n) }

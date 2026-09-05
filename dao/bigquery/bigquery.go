@@ -32,7 +32,7 @@ import (
 // unqualified table names to dataset. Pass option.ClientOption values (e.g.
 // option.WithCredentialsFile) for auth.
 func Open(ctx context.Context, projectID, dataset string, opts ...option.ClientOption) (dao.DataConn, error) {
-	return OpenNamed(ctx, "bigquery", projectID, dataset, opts...)
+	return OpenNamed(ctx, dao.DialectBigQuery, projectID, dataset, opts...)
 }
 
 // OpenNamed opens a BigQuery dao.DataConn with an explicit name (the key dao uses

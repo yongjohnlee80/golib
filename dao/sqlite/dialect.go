@@ -24,7 +24,7 @@ var (
 )
 
 // Name returns "sqlite".
-func (SqliteDialect) Name() string { return "sqlite" }
+func (SqliteDialect) Name() string { return dao.DialectSQLite }
 
 // QuoteTable implements dao.TableQuoter: each dot-separated qualification
 // part ("main.users", attached-database names) is double-quoted separately

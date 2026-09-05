@@ -40,7 +40,7 @@ func ConnMaxIdleTime(d time.Duration) Option {
 
 // Open opens a pooled Postgres dao.DataConn named "postgres".
 func Open(ctx context.Context, dsn string, opts ...Option) (dao.DataConn, error) {
-	return OpenNamed(ctx, "postgres", dsn, opts...)
+	return OpenNamed(ctx, dao.DialectPostgres, dsn, opts...)
 }
 
 // OpenNamed opens a dao.DataConn with an explicit name (e.g. "postgres-gold") so a

@@ -27,7 +27,7 @@ func ConnMaxIdleTime(d time.Duration) Option { return func(db *sql.DB) { db.SetC
 // DSN — a file path, or ":memory:" (pair an in-memory DSN with MaxOpenConns(1) so
 // every query hits the same database).
 func Open(ctx context.Context, dsn string, opts ...Option) (dao.DataConn, error) {
-	return OpenNamed(ctx, "sqlite", dsn, opts...)
+	return OpenNamed(ctx, dao.DialectSQLite, dsn, opts...)
 }
 
 // OpenNamed opens a dao.DataConn with an explicit name (used for transaction
