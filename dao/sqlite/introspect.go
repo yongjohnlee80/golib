@@ -6,11 +6,19 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// Schema introspection (golib-dao ADR-0013 §3.3). SQLite exposes its catalog
-// through sqlite_master and the table-valued pragma functions; modernc
-// supports binding pragma-function arguments, so table names stay binds. The
-// schema (database) name cannot be a bind anywhere in SQLite — it is quoted
-// as an identifier via the dialect.
+// Schema introspection for SQLite.
+//
+// SQLite exposes its catalog through sqlite_master and the table-valued pragma
+// functions. Table names stay BOUND PARAMETERS here, because the driver
+// supports binding pragma-function arguments and a bound value can never be
+// read as SQL.
+//
+// The schema (database) name is the exception: SQLite accepts no bind in that
+// position anywhere, so it has to be interpolated, and it is quoted as an
+// identifier through the dialect first. That quoting is the only thing
+// standing between a caller-supplied schema name and injected SQL, so it must
+// not be skipped for a name that "looks safe".
+// REFERENCE: https://www.sqlite.org/pragma.html
 
 // ListSchemas lists the attached databases ("main", "temp", and any ATTACHed
 // name), in attachment order.
@@ -83,11 +91,14 @@ func (SqliteDialect) ListColumns(ctx context.Context, q dao.Querier, schema, tab
 		if err := rows.Scan(&c.Name, &c.DataType, &notnull, &def, &cid, &pk); err != nil {
 			return nil, err
 		}
-		// PK columns are normalized to non-nullable per the dao.ColumnInfo
-		// contract: pragma_table_info reports notnull=0 for the rowid-alias
-		// INTEGER PRIMARY KEY, and SQLite's legacy nullable-PK quirk for
-		// some non-INTEGER PKs is deliberately not surfaced (ADR-0013 §3.1;
-		// lector dao-m1 r1 must-fix #2).
+		// A primary-key column is reported as NOT nullable, whatever SQLite
+		// says about it. Two SQLite behaviours make the raw answer misleading:
+		// pragma_table_info reports notnull=0 for an INTEGER PRIMARY KEY
+		// (which is an alias for the rowid and can never be null), and older
+		// SQLite genuinely permits NULLs in some non-INTEGER primary keys.
+		// Passing either through would tell a caller that a key column is
+		// optional, so both are normalised away here.
+		// REFERENCE: https://www.sqlite.org/lang_createtable.html
 		c.Nullable = notnull == 0 && pk == 0
 		if def != nil {
 			c.Default, c.HasDefault = *def, true

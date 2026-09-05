@@ -16,8 +16,13 @@ type SqliteDialect struct {
 	dao.GenericDialect
 }
 
-// SqliteDialect opts into the qualified-table and introspection capabilities
-// (ADR-0013).
+// Qualified-table quoting and schema introspection are OPTIONAL dialect
+// capabilities: a dialect provides one by implementing its interface, and the
+// engine discovers that with a type assertion rather than by asking. These
+// declarations are what make the capability real for SQLite — delete one and
+// the engine silently falls back to the generic behaviour, which still
+// compiles.
+// REFERENCE: dao/sqlite/dialect_test.go
 var (
 	_ dao.TableQuoter  = SqliteDialect{}
 	_ dao.Introspector = SqliteDialect{}
@@ -26,9 +31,14 @@ var (
 // Name returns "sqlite".
 func (SqliteDialect) Name() string { return dao.DialectSQLite }
 
-// QuoteTable implements dao.TableQuoter: each dot-separated qualification
-// part ("main.users", attached-database names) is double-quoted separately
-// (ADR-0013 §2). Unqualified names render identically to QuoteIdent.
+// QuoteTable quotes a table name that may carry a database qualification,
+// such as "main.users" or the name of an attached database.
+//
+// Each dot-separated part is quoted SEPARATELY. Quoting the whole string at
+// once would produce "main.users" as a single identifier — one table whose
+// name contains a dot — which is a different table from the one the caller
+// asked for, and usually one that does not exist. A name with no dot comes out
+// exactly as QuoteIdent would render it.
 func (d SqliteDialect) QuoteTable(ident string) string {
 	parts := strings.Split(ident, ".")
 	for i, p := range parts {
