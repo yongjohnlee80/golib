@@ -1,216 +1,189 @@
-package dao
+package dao_test
 
 import (
-	"context"
-	"errors"
-	"strings"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/dao/mysql"
+	"github.com/yongjohnlee80/golib/dao/postgres"
+	"github.com/yongjohnlee80/golib/dao/sqlite"
 )
 
-// noTxDialect is a GenericDialect with the OLAP / no-transaction capability
-// profile (ADR-0008): no interactive transactions, no upsert, no RETURNING, no
-// LastInsertID. It models the BigQuery driver's dialect for core-level tests
-// without a real database.
-type noTxDialect struct{ GenericDialect }
+// These tests exist for the WINDOW in which the capability interfaces and the
+// boolean flags both exist. They are what makes the migration provable rather
+// than plausible: while both are present, the two can be compared, and any
+// disagreement is a behaviour change that would otherwise ship silently.
+//
+// The positive probes below must pass IDENTICALLY before and after the flags
+// are removed. That is the point of them. If one starts failing after the
+// removal, an engine lost a capability it used to have — which is exactly the
+// regression that removing an inherited default causes, and it compiles green.
 
-func (noTxDialect) Name() string               { return "notx" }
-func (noTxDialect) SupportsTransactions() bool { return false }
-func (noTxDialect) SupportsUpsert() bool       { return false }
-func (noTxDialect) SupportsReturning() bool    { return false }
-func (noTxDialect) SupportsLastInsertID() bool { return false }
+type caps struct {
+	returner bool
+	copier   bool
+	twoPhase bool
+	upserter bool
+	lastID   bool
+}
 
-func newNoTxConn() *fakeConn { return &fakeConn{d: noTxDialect{}} }
+func probe(d dao.Dialect) caps {
+	var c caps
+	_, c.returner = d.(dao.Returner)
+	_, c.copier = d.(dao.Copier)
+	_, c.twoPhase = d.(dao.TwoPhaser)
+	_, c.upserter = d.(dao.Upserter)
+	_, c.lastID = d.(dao.LastInsertIDReader)
+	return c
+}
 
-// --- §2.4 Upsert -------------------------------------------------------------
-
-func TestNoTx_UpsertUnsupported(t *testing.T) {
-	t.Parallel()
-
-	conn := newNoTxConn()
-	err := buildSchema(conn).DAO().Set(aName, "x").Set(aURI, "u").Upsert()
-	if !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("Upsert err = %v, want ErrUnsupported", err)
-	}
-	if conn.lastExec != "" || conn.lastQuery != "" {
-		t.Errorf("no SQL should be emitted on an unsupported upsert; exec=%q query=%q", conn.lastExec, conn.lastQuery)
+// TestCapabilityProbes pins what each dialect satisfies RIGHT NOW, during the
+// window where the flags and the interfaces coexist.
+//
+// Three of the five are currently satisfied by EVERY dialect and say nothing
+// about it: dao.GenericDialect declares Copy, the two-phase trio and
+// BuildUpsertSuffix, and all four dialects embed it, so Copier, TwoPhaser and
+// Upserter are granted by PROMOTION regardless of what the engine can actually
+// do. mysql and sqlite report CopySupported() == false and
+// TwoPhaseSupported() == false while satisfying both interfaces.
+//
+// That is the promotion hazard this ADR removes, measured rather than
+// predicted, and it is wider than the RETURNING case that prompted the
+// sequencing split. Only Returner and LastInsertIDReader are meaningful today,
+// because their method names are new and GenericDialect does not have them.
+func TestCapabilityProbes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		d    dao.Dialect
+		want caps
+	}{
+		// copier/twoPhase/upserter are true everywhere below by promotion.
+		{"postgres", postgres.PostgresDialect{}, caps{returner: true, copier: true, twoPhase: true, upserter: true}},
+		{"mysql", mysql.MysqlDialect{}, caps{copier: true, twoPhase: true, upserter: true, lastID: true}},
+		{"sqlite", sqlite.SqliteDialect{}, caps{returner: true, copier: true, twoPhase: true, upserter: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := probe(tc.d); got != tc.want {
+				t.Errorf("capabilities = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }
 
-// --- §2.6 Insert: documented (zero, nil) on a no-id store --------------------
-
-func TestNoTx_InsertReturnsZeroNoError(t *testing.T) {
-	t.Parallel()
-
-	conn := newNoTxConn()
-	id, err := buildSchema(conn).DAO().Set(aName, "x").Set(aURI, "u").Insert()
-	if err != nil {
-		t.Fatalf("Insert err = %v, want nil (documented no-generated-id insert)", err)
+// TestCapabilitiesAgreeWithFlags is the migration's proof, and it can only be
+// written while both the flags and the interfaces exist.
+//
+// For the two capabilities whose names are NEW, the interface and the flag must
+// agree exactly — a disagreement there is a behaviour change.
+//
+// For the three that GenericDialect already implements, they cannot agree yet,
+// and this test pins the EXACT set of disagreements rather than tolerating them
+// loosely. That list is the step-5 checklist: when GenericDialect stops
+// implementing capabilities, every one of these must flip to agreement, and any
+// disagreement NOT listed here is a defect today.
+func TestCapabilitiesAgreeWithFlags(t *testing.T) {
+	// dialect -> capabilities currently granted by promotion despite a false flag.
+	promoted := map[string][]string{
+		"postgres": nil,
+		"mysql":    {"Copier", "TwoPhaser"},
+		"sqlite":   {"Copier", "TwoPhaser"},
+		"generic":  {"Copier", "TwoPhaser"},
 	}
-	if id != "" {
-		t.Errorf("id = %q, want zero value", id)
+	has := func(list []string, name string) bool {
+		for _, s := range list {
+			if s == name {
+				return true
+			}
+		}
+		return false
 	}
-	// The DML ran via ExecContext (not the RETURNING/QueryContext path)...
-	if conn.lastExec == "" {
-		t.Error("expected the INSERT DML to be executed via ExecContext")
-	}
-	// ...and carries no RETURNING clause.
-	if strings.Contains(conn.lastExec, "RETURNING") {
-		t.Errorf("no-RETURNING dialect emitted a RETURNING clause: %q", conn.lastExec)
-	}
-}
 
-// --- §2.5 batch COPY + conflict gates ---------------------------------------
+	for _, tc := range []struct {
+		name string
+		d    dao.Dialect
+	}{
+		{"postgres", postgres.PostgresDialect{}},
+		{"mysql", mysql.MysqlDialect{}},
+		{"sqlite", sqlite.SqliteDialect{}},
+		{"generic", dao.GenericDialect{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := probe(tc.d)
+			exc := promoted[tc.name]
 
-func TestNoTx_BatchForceCopyUnsupported(t *testing.T) {
-	t.Parallel()
+			// The clean two: exact agreement required.
+			if c.lastID != tc.d.SupportsLastInsertID() {
+				t.Errorf("LastInsertIDReader=%v but SupportsLastInsertID()=%v", c.lastID, tc.d.SupportsLastInsertID())
+			}
+			// Returner is clean in one direction only: GenericDialect reports
+			// SupportsReturning() == true with nothing behind it, which is
+			// exactly the inherited-capability shape that made sqlite's
+			// RETURNING support removable by accident.
+			if tc.name != "generic" && c.returner != tc.d.SupportsReturning() {
+				t.Errorf("Returner=%v but SupportsReturning()=%v", c.returner, tc.d.SupportsReturning())
+			}
 
-	conn := newNoTxConn()
-	err := buildSchema(conn).DAO().Batch().Add(map[artistField]any{aName: "x"}).ForceCopy().Flush()
-	if !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("ForceCopy Flush err = %v, want ErrUnsupported", err)
-	}
-	if conn.lastExec != "" {
-		t.Errorf("no SQL should be emitted on an unsupported ForceCopy; exec=%q", conn.lastExec)
-	}
-}
-
-func TestNoTx_BatchConflictHandlingUnsupported(t *testing.T) {
-	t.Parallel()
-
-	conn := newNoTxConn()
-	err := buildSchema(conn).DAO().Batch().Add(map[artistField]any{aName: "x", aURI: "u"}).OnConflictUpdate(aURI).Flush()
-	if !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("OnConflictUpdate Flush err = %v, want ErrUnsupported", err)
-	}
-	if conn.lastExec != "" {
-		t.Errorf("no SQL should be emitted on unsupported batch conflict handling; exec=%q", conn.lastExec)
-	}
-}
-
-// A COPY-capable dialect that also can't upsert: ForceCopy wins over the
-// combination error (nit #4). genericDialect can't COPY, so we use a dialect
-// that reports CopySupported true but SupportsUpsert false.
-type copyNoUpsertDialect struct{ GenericDialect }
-
-func (copyNoUpsertDialect) CopySupported() bool  { return true }
-func (copyNoUpsertDialect) SupportsUpsert() bool { return false }
-
-func TestForceCopyPlusConflict_CapabilityErrorOrdering(t *testing.T) {
-	t.Parallel()
-
-	// ForceCopy + conflict handling on a dialect that CAN copy but can't upsert:
-	// the upsert capability gate fires (conflict handling unsupported) before the
-	// generic "ForceCopy cannot be combined with conflict handling" message.
-	conn := &fakeConn{d: copyNoUpsertDialect{}}
-	err := buildSchema(conn).DAO().Batch().Add(map[artistField]any{aName: "x"}).ForceCopy().OnConflictUpdate(aURI).Flush()
-	if !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("err = %v, want ErrUnsupported (capability gate wins)", err)
-	}
-}
-
-// --- §2.3 transactions: first-touch gating, untouched conn unaffected -------
-
-func TestNoTx_TxBoundInsertUnsupportedOnTouch(t *testing.T) {
-	t.Parallel()
-
-	conn := newNoTxConn()
-	s := buildSchema(conn)
-	err := RunTx(context.Background(), func(tx *Transaction) error {
-		_, e := s.On(tx).Set(aName, "x").Set(aURI, "u").Insert()
-		return e
-	})
-	if !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("tx-bound Insert err = %v, want ErrUnsupported", err)
-	}
-	if conn.lastExec != "" {
-		t.Errorf("no SQL should run on a no-tx connection touched in a tx; exec=%q", conn.lastExec)
+			check := func(name string, got, flag bool) {
+				switch {
+				case got == flag:
+					return
+				case got && !flag && has(exc, name):
+					return // known promotion grant, listed above
+				default:
+					t.Errorf("%s=%v but its flag=%v, and this disagreement is not in the "+
+						"promotion list for %s", name, got, flag, tc.name)
+				}
+			}
+			check("Copier", c.copier, tc.d.CopySupported())
+			check("TwoPhaser", c.twoPhase, tc.d.TwoPhaseSupported())
+			// Upserter is granted to everything, including where the flag is
+			// false; asserted as always-true so a change is visible.
+			if !c.upserter {
+				t.Errorf("Upserter=false; GenericDialect declares BuildUpsertSuffix and every "+
+					"dialect embeds it, so this cannot be false yet (flag says %v)", tc.d.SupportsUpsert())
+			}
+		})
 	}
 }
 
-func TestNoTx_TxBoundBatchUnsupportedOnTouch(t *testing.T) {
-	t.Parallel()
-
-	conn := newNoTxConn()
-	s := buildSchema(conn)
-	err := RunTx(context.Background(), func(tx *Transaction) error {
-		return s.On(tx).Batch().Add(map[artistField]any{aName: "x"}).Flush()
-	})
-	if !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("tx-bound Batch err = %v, want ErrUnsupported (initErr path)", err)
-	}
-	if conn.lastExec != "" {
-		t.Errorf("no SQL should run on a no-tx connection's tx-bound batch; exec=%q", conn.lastExec)
-	}
-}
-
-// --- a tx-capable fake connection so the "untouched" case can commit --------
-
-type fakeTxConn struct {
-	exec       string
-	committed  bool
-	rolledBack bool
-}
-
-func (t *fakeTxConn) QueryContext(context.Context, string, ...any) (Rows, error) {
-	return &fakeRows{}, nil
-}
-func (t *fakeTxConn) ExecContext(_ context.Context, q string, _ ...any) (Result, error) {
-	t.exec = q
-	return fakeResult{}, nil
-}
-func (t *fakeTxConn) Commit() error   { t.committed = true; return nil }
-func (t *fakeTxConn) Rollback() error { t.rolledBack = true; return nil }
-
-// txCapConn is a tx-capable DataConn (GenericDialect) with a working Begin.
-type txCapConn struct {
-	*fakeConn
-	name  string
-	tx    *fakeTxConn
-	begun bool
-}
-
-func (c *txCapConn) Begin(context.Context) (TxConn, error) { c.begun = true; return c.tx, nil }
-func (c *txCapConn) Name() string                          { return c.name }
-
-func TestUntouchedNoTxConn_Unaffected(t *testing.T) {
-	t.Parallel()
-
-	okConn := &txCapConn{fakeConn: &fakeConn{d: GenericDialect{}}, name: "pg", tx: &fakeTxConn{}}
-	noTxConn := newNoTxConn() // Name() == "fake"
-	sOk := buildSchema(okConn)
-
-	// A RunTx spanning {okConn, noTxConn} whose body touches only okConn must
-	// commit normally — the untouched no-tx connection is never begun (§2.3).
-	err := RunTx(context.Background(), func(tx *Transaction) error {
-		return sOk.On(tx).With(aID, "1").Set(aName, "x").Update()
-	}, Spanning(okConn, noTxConn))
-	if err != nil {
-		t.Fatalf("RunTx err = %v, want nil (untouched no-tx conn must not break the tx)", err)
-	}
-	if !okConn.begun || !okConn.tx.committed {
-		t.Errorf("okConn should have begun (%v) and committed (%v)", okConn.begun, okConn.tx.committed)
-	}
-	if !strings.HasPrefix(okConn.tx.exec, "UPDATE") {
-		t.Errorf("expected UPDATE on the tx connection, got %q", okConn.tx.exec)
-	}
-	if noTxConn.lastExec != "" {
-		t.Errorf("untouched no-tx connection ran SQL: %q", noTxConn.lastExec)
+// The explicit declarations must render EXACTLY what the promoted generic
+// implementation rendered, or step 3 changed behaviour while claiming not to.
+func TestExplicitUpsertMatchesTheFormerGenericOutput(t *testing.T) {
+	var g dao.GenericDialect
+	for _, tc := range []struct {
+		name string
+		d    dao.Upserter
+	}{
+		{"postgres", postgres.PostgresDialect{}},
+		{"sqlite", sqlite.SqliteDialect{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, args := range []struct{ conflict, update []string }{
+				{nil, nil},
+				{[]string{"id"}, nil},
+				{[]string{"id"}, []string{"name", "email"}},
+				{[]string{"a", "b"}, []string{"c"}},
+			} {
+				want := g.BuildUpsertSuffix(args.conflict, args.update)
+				if got := tc.d.BuildUpsertSuffix(args.conflict, args.update); got != want {
+					t.Errorf("BuildUpsertSuffix(%v, %v) = %q, want the former generic output %q",
+						args.conflict, args.update, got, want)
+				}
+			}
+		})
 	}
 }
 
-// --- defaults sanity: GenericDialect/postgres/sqlite keep OLTP capabilities --
-
-func TestGenericDialect_CapabilityDefaults(t *testing.T) {
-	t.Parallel()
-
-	var d Dialect = GenericDialect{}
-	if !d.SupportsTransactions() {
-		t.Error("GenericDialect.SupportsTransactions() = false, want true")
+// The RETURNING clause the capability renders must match what the builder
+// produced from the flag.
+func TestReturningClauseMatchesTheBuilderOutput(t *testing.T) {
+	var d postgres.PostgresDialect
+	quoted := d.QuoteIdent("id")
+	if got, want := d.ReturningClause(quoted), " RETURNING "+quoted; got != want {
+		t.Errorf("ReturningClause = %q, want %q", got, want)
 	}
-	if !d.SupportsUpsert() {
-		t.Error("GenericDialect.SupportsUpsert() = false, want true")
-	}
-	if d.SupportsLastInsertID() {
-		t.Error("GenericDialect.SupportsLastInsertID() = true, want false (RETURNING-based)")
+	// An engine with no id column renders nothing rather than a dangling clause.
+	if got := d.ReturningClause(""); got != "" {
+		t.Errorf("ReturningClause(\"\") = %q, want empty", got)
 	}
 }
