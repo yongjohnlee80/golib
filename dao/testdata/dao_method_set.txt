@@ -1,0 +1,24 @@
+Batch func() dao.BatchWriter[interface {},string]
+Clear func(string) dao.DAO[interface {},string,int]
+Count func() (uint64, error)
+Delete func() error
+Excluding func(string, ...interface {}) dao.DAO[interface {},string,int]
+Exists func() (bool, error)
+Get func(...string) (interface {}, error)
+Insert func() (int, error)
+Iterate func(...string) (dao.Iterator[interface {}], error)
+Join func(...dao.JoinKey) dao.DAO[interface {},string,int]
+Limit func(uint64) dao.DAO[interface {},string,int]
+Name func() string
+Offset func(uint64) dao.DAO[interface {},string,int]
+OrderBy func(...dao.Sort) dao.DAO[interface {},string,int]
+Search func(string) dao.DAO[interface {},string,int]
+Select func(...string) ([]interface {}, error)
+Set func(string, interface {}) dao.DAO[interface {},string,int]
+SetMap func(map[string]interface {}) dao.DAO[interface {},string,int]
+SetRules func(map[string]dao.Rule) dao.DAO[interface {},string,int]
+Update func() error
+Upsert func() error
+Use func(*dao.Transaction) dao.DAO[interface {},string,int]
+With func(string, ...interface {}) dao.DAO[interface {},string,int]
+WithPredicate func(dao.Predicate) dao.DAO[interface {},string,int]

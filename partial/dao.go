@@ -24,8 +24,14 @@ func WithRename(fn func(string) string) ApplyOption {
 // fields and its Field declarations own clearability, so a patch may carry more
 // than the entity writes without ceremony (ADR-0001 §2.9). This is the only
 // file in the package that imports golib/dao.
+// The parameter is dao.Setter, not dao.DAO: staging rules is the only thing
+// this function does, so it asks for the only role it uses. Any DAO satisfies
+// Setter, so every existing call site is unaffected, and a test double for
+// this function now implements four methods instead of twenty-four. The
+// result stays dao.DAO because that is what SetRules returns — the caller
+// gets its full DAO back and keeps chaining.
 func ApplyRules[R any, C ~string, ID any, T any](
-	d dao.DAO[R, C, ID], p *Patch[T], opts ...ApplyOption,
+	d dao.Setter[R, C, ID], p *Patch[T], opts ...ApplyOption,
 ) (dao.DAO[R, C, ID], error) {
 	var cfg applyConfig
 	for _, o := range opts {
@@ -33,7 +39,10 @@ func ApplyRules[R any, C ~string, ID any, T any](
 	}
 	rules, err := p.Rules()
 	if err != nil {
-		return d, err
+		// Staging nothing is the correct response to an unusable patch, and
+		// SetRules with an empty map is that no-op. It also re-widens d to the
+		// DAO the caller passed in, which a bare `return d` no longer can.
+		return d.SetRules(nil), err
 	}
 	m := make(map[C]dao.Rule, len(rules))
 	for name, r := range rules {
