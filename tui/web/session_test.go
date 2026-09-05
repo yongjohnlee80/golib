@@ -426,3 +426,78 @@ func TestManager_ConcurrentLifecycle(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// A session whose App exits immediately must still be attachable by the caller
+// that created it.
+//
+// CreateFor registers the session, starts the App on its own goroutine, and
+// returns — and that goroutine's teardown DROPS the session from the registry.
+// A caller doing create-then-attach is therefore racing its own App, and an App
+// that exits promptly (crashed on startup, refused its config, panicked) wins:
+// the session is gone before the attach, which reports ErrUnknownSession for a
+// session the caller has just been handed. On the wire that is a 1008 policy
+// close with no frames sent, indistinguishable from a refusal.
+//
+// Made deterministic by WAITING for the App to finish rather than by hoping to
+// lose the race: <-Done is the guarantee that teardown has already run. The
+// production symptom was a 1.2% flake in TestSSO_EndToEnd_AppPanicIsContained.
+func TestManager_CreateAttached_SurvivesAnAppThatExitsImmediately(t *testing.T) {
+	t.Parallel()
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner {
+		return runnerFunc(func(context.Context) error { return nil }) // exits at once
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.Shutdown(ctx); err != nil {
+			t.Errorf("shutdown: %v", err)
+		}
+	})
+
+	id := identity("alice")
+	s, err := m.CreateAttachedFor(context.Background(), id, hello(),
+		SessionInfo{Identity: id})
+	if err != nil {
+		t.Fatalf("create+attach for an App that exits immediately: %v", err)
+	}
+	// The App is free to have finished already — that is the point. What must
+	// hold is that this connection was attached before it could.
+	<-s.Done()
+	if s.Lease() == 0 {
+		t.Error("the session was never attached, so the creator holds no lease")
+	}
+}
+
+// The two-step it replaces, kept as the witness for WHY the method exists. If
+// this ever stops failing, the window has closed by some other route and
+// CreateAttachedFor's justification needs re-reading rather than assuming.
+func TestManager_CreateThenAttach_LosesToAnAppThatExitsImmediately(t *testing.T) {
+	t.Parallel()
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner {
+		return runnerFunc(func(context.Context) error { return nil })
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.Shutdown(ctx); err != nil {
+			t.Errorf("shutdown: %v", err)
+		}
+	})
+
+	id := identity("alice")
+	s, err := m.CreateFor(context.Background(), id, hello(), SessionInfo{Identity: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-s.Done() // the App has finished and teardown has dropped the session
+	if _, err := m.AttachFrom(s.ID(), id, hello(), ""); !errors.Is(err, ErrUnknownSession) {
+		t.Fatalf("err = %v, want ErrUnknownSession — if the two-step no longer "+
+			"loses this race, re-read why CreateAttachedFor exists", err)
+	}
+}
