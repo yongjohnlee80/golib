@@ -48,9 +48,16 @@ func (r *Registry) broadcast() {
 	r.changed = make(chan struct{})
 }
 
-// Register adds an established session. During or after Drain the session is
+// Register adds an ESTABLISHED session. During or after Drain the session is
 // closed immediately (no new work during shutdown) and the returned
 // unregister is a no-op.
+//
+// If establishment does real work before the session exists — a protocol
+// handshake, a caller-supplied factory — claim the slot with [Registry.Reserve]
+// FIRST and finish with [Reservation.Complete]. A connection being established
+// but not yet registered is invisible to [Registry.Drain], which then has
+// nothing to wait for and reports a clean shutdown while the work is still in
+// flight. Register alone is correct only when the session already exists.
 func (r *Registry) Register(s Session) (unregister func()) {
 	r.mu.Lock()
 	r.init()
