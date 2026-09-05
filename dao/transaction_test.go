@@ -3,6 +3,7 @@ package dao
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -719,5 +720,53 @@ func TestSpanning_MergesAndDedupes(t *testing.T) {
 		Spanning(capable, other), TwoPhase())
 	if !errors.Is(err, ErrTwoPhaseUnsupported) || !strings.Contains(err.Error(), "db2") {
 		t.Errorf("err = %v, want ErrTwoPhaseUnsupported naming db2", err)
+	}
+}
+
+// noTxConn is a connection whose engine has no interactive transactions, the
+// way BigQuery's does not: Begin refuses, wrapping ErrUnsupported.
+type noTxConn struct{ txConn }
+
+func (c *noTxConn) Begin(context.Context) (TxConn, error) {
+	return nil, fmt.Errorf("%s: %w: interactive transactions", c.nm, ErrUnsupported)
+}
+
+// A connection whose engine cannot do transactions must refuse when it is
+// TOUCHED, and the refusal must reach the caller as ErrUnsupported.
+//
+// This used to be answered by a SupportsTransactions() flag on the dialect,
+// checked on the line immediately above the Begin call it guarded. The flag is
+// gone: Begin already reports the same refusal, and a second source of truth
+// could only disagree with the first.
+//
+// The assertion is errors.Is, deliberately, NOT the message text. Two
+// different sentences produced this error before and after the change — the
+// gate's "unsupported: transactions" and the driver's own "unsupported:
+// interactive transactions" — and both wrap the same sentinel. Pinning the
+// text would pin the wrong thing and would fight the byte-identical-fallback
+// rule the moment either message is reworded.
+func TestNoTransactionConnection_RefusesOnFirstTouch(t *testing.T) {
+	t.Parallel()
+
+	conn := &noTxConn{txConn{nm: "olap", dia: GenericDialect{}}}
+	s := buildSchema(conn)
+
+	err := RunTx(context.Background(), func(tx *Transaction) error {
+		return stageUpdate(s.On(tx))
+	})
+	if err == nil {
+		t.Fatal("RunTx succeeded on a connection that cannot begin a transaction")
+	}
+	if !errors.Is(err, ErrUnsupported) {
+		t.Errorf("err = %v, want it to wrap ErrUnsupported", err)
+	}
+	// Positive control for the arrangement: a connection that CAN begin must
+	// still succeed, or this test would pass for a transaction layer that
+	// refused everything.
+	ok := newTxConn("oltp")
+	if err := RunTx(context.Background(), func(tx *Transaction) error {
+		return stageUpdate(buildSchema(ok).On(tx))
+	}); err != nil {
+		t.Fatalf("a transaction-capable connection must still work: %v", err)
 	}
 }
