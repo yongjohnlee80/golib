@@ -139,10 +139,22 @@ func (b *builder) insertCore(table string, set orderedSet) []string {
 
 // appendReturning appends " RETURNING <idCol>" when the dialect supports it.
 func (b *builder) appendReturning(idCol string, returning bool) {
-	if returning && idCol != "" {
-		b.sb.WriteString(" RETURNING ")
-		b.sb.WriteString(b.dialect.QuoteIdent(idCol))
+	if !returning || idCol == "" {
+		return
 	}
+	quoted := b.dialect.QuoteIdent(idCol)
+	if r, ok := b.dialect.(Returner); ok {
+		// The dialect owns the clause, so an engine whose RETURNING syntax
+		// differs writes its own rather than being rendered for.
+		b.sb.WriteString(r.ReturningClause(quoted))
+		return
+	}
+	// The caller asked for RETURNING on a dialect that does not implement
+	// Returner. Render the historical clause rather than silently dropping it:
+	// omitting it here would turn a query that asks for an id into one that
+	// returns no rows, and the scan would fail somewhere else entirely.
+	b.sb.WriteString(" RETURNING ")
+	b.sb.WriteString(quoted)
 }
 
 // buildInsert renders an INSERT, with RETURNING <idCol> when returning is true.

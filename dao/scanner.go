@@ -144,14 +144,10 @@ func defaultNewRow[R any]() func() R {
 // lastInsertID converts a driver LastInsertId (int64) into the ID type. It
 // supports ID = int64; for other ID types use a dialect with RETURNING support
 // (the Insert path prefers RETURNING and scans the ID generically).
-func lastInsertID[ID any](res Result, err error) (ID, error) {
+func lastInsertID[ID any](id64 int64, err error) (ID, error) {
 	var zero ID
 	if err != nil {
 		return zero, err
-	}
-	id64, lerr := res.LastInsertId()
-	if lerr != nil {
-		return zero, lerr
 	}
 	if v, ok := any(id64).(ID); ok {
 		return v, nil

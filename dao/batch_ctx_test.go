@@ -23,7 +23,7 @@ func (c *ctxExecConn) ExecContext(ctx context.Context, q string, args ...any) (R
 // context.Background regardless.
 func TestBatch_FlushHonorsQueryContext(t *testing.T) {
 	t.Parallel()
-	conn := &ctxExecConn{fakeConn: fakeConn{d: GenericDialect{}}}
+	conn := &ctxExecConn{fakeConn: fakeConn{d: returningDialect{}}}
 	s := buildSchema(conn)
 
 	ctx := context.WithValue(context.Background(), ctxKey{}, "yes")
