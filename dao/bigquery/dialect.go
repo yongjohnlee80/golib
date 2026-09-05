@@ -21,7 +21,7 @@ type BigQueryDialect struct {
 }
 
 // Name returns "bigquery".
-func (BigQueryDialect) Name() string { return "bigquery" }
+func (BigQueryDialect) Name() string { return dao.DialectBigQuery }
 
 // Placeholder renders "?" — BigQuery uses positional query parameters. The driver
 // maps each positional arg to a bigquery.QueryParameter in order.

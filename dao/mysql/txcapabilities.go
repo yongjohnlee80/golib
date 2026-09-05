@@ -55,13 +55,13 @@ func mysqlTxOptions(opts dao.TxOptions) (*sql.TxOptions, error) {
 	}
 	if opts.Access == dao.TxReadWrite {
 		return nil, &dao.ErrTxOptionUnsupported{
-			Driver: "mysql",
+			Driver: dao.DialectMySQL,
 			Option: "Access=" + opts.Access.String(),
 		}
 	}
 	if opts.Deferrable != dao.TxDeferrableDefault {
 		return nil, &dao.ErrTxOptionUnsupported{
-			Driver: "mysql",
+			Driver: dao.DialectMySQL,
 			Option: "Deferrable=" + opts.Deferrable.String(),
 		}
 	}

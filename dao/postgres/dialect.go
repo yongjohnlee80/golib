@@ -25,7 +25,7 @@ var (
 )
 
 // Name returns "postgres".
-func (PostgresDialect) Name() string { return "postgres" }
+func (PostgresDialect) Name() string { return dao.DialectPostgres }
 
 // QuoteTable implements dao.TableQuoter: each dot-separated qualification
 // part is double-quoted separately, so "app.users" renders "app"."users"

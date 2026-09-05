@@ -28,7 +28,7 @@ func ConnMaxIdleTime(d time.Duration) Option { return func(db *sql.DB) { db.SetC
 // ("user:pass@tcp(host:3306)/db?parseTime=true"); parseTime=true is
 // recommended so DATE/DATETIME columns scan into time.Time.
 func Open(ctx context.Context, dsn string, opts ...Option) (dao.DataConn, error) {
-	return OpenNamed(ctx, "mysql", dsn, opts...)
+	return OpenNamed(ctx, dao.DialectMySQL, dsn, opts...)
 }
 
 // OpenNamed opens a dao.DataConn with an explicit name (used for transaction
