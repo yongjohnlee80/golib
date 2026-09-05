@@ -84,6 +84,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -141,6 +142,10 @@ const maxViolations = 4
 // This replaces the removed numeric column: "is this live?" is answered by
 // evidence a human recorded, not by a spelling total.
 var verdictRe = regexp.MustCompile(`^(LIVE|LATENT): `)
+
+// printRe pins the fingerprint grammar. 64 bits, not the 40 an earlier draft
+// truncated to (lector, r1 SHOULD-FIX).
+var printRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 type site struct {
 	File   string // repo-relative, slash-separated
@@ -229,121 +234,181 @@ func parseTree(t *testing.T, root string) []parsedFile {
 	return out
 }
 
-var wsRe = regexp.MustCompile(`\s+`)
-
+// render prints a node from the syntax tree. It does NOT rewrite the output:
+// printer.Fprint already normalises syntactic whitespace (it re-prints from
+// the AST, so `a  +  b` and `a + b` produce one string), while a string
+// literal keeps its raw token text.
+//
+// An earlier draft ran `\s+` -> " " over the printed output, which reached
+// INSIDE literals: panic("a  b") and panic("a b") hashed identically, and the
+// comment above it claimed tokens were not normalised — a false statement
+// about its own code (lector, PR #28 r1 MF2).
 func render(fset *token.FileSet, n ast.Node) string {
-	if n == nil {
+	if n == nil || reflect.ValueOf(n).IsNil() {
 		return ""
 	}
 	var b strings.Builder
 	if err := printer.Fprint(&b, fset, n); err != nil {
 		return "<unprintable>"
 	}
-	return strings.TrimSpace(wsRe.ReplaceAllString(b.String(), " "))
+	return strings.TrimSpace(b.String())
 }
 
-// guardOf renders the CONDITION of the innermost control statement enclosing
-// pos — an if, a switch case, a for or a range.
+// scopePath returns the full structural ancestor path from the enclosing
+// function declaration down to a panic call: every control statement on the
+// way, WITH THE EDGE TAKEN, plus a per-scope index for each function literal.
 //
-// It is part of identity, and it is the third design this file has had.
-// Fingerprinting the panic EXPRESSION alone still missed the bypass lector
-// reproduced: exchanging two panic messages inside one function leaves the set
-// of (function, expression) pairs unchanged, so both rows survive and each
-// recorded reason still matches its own message — while the message now sits
-// behind a DIFFERENT condition. A category is a claim about the control path
-// reaching the panic, so the path has to be in the identity or the claim can
-// migrate silently. (lector, PR #28 r0 MF1.)
-func guardOf(f *ast.File, fset *token.FileSet, pos token.Pos) string {
-	var best ast.Node
-	var bestPos token.Pos
-	ast.Inspect(f, func(n ast.Node) bool {
-		if n == nil || pos < n.Pos() || pos >= n.End() {
-			return true
+// This is the fourth identity design in this file, and each earlier one was
+// defeated by a mutation rather than by reading:
+//
+//   - file+func+ordinal was positional: exchanging two panic messages inside
+//     one function moved a reason onto different code, silently.
+//   - adding a fingerprint of the panic EXPRESSION did not fix that: the set
+//     of (function, expression) pairs survives an exchange intact.
+//   - adding only the INNERMOST guard still missed outer guards, then-vs-else
+//     polarity, the switch subject, every expression after the first in a
+//     multi-expression case, and select arms — so a panic could move between
+//     genuinely different control paths without changing identity
+//     (lector, r1 MF1; his `if x { if y {…} }` vs `if !x { if y {…} }`
+//     collided on 9ed2235862).
+//
+// A category is a claim about the control path that reaches a panic. If the
+// path is not in the identity, the claim can migrate to code it was never
+// written about.
+func scopePath(fset *token.FileSet, stack []ast.Node) (funcPath, guardPath string) {
+	var fnSegs, guardSegs []string
+	for i, n := range stack {
+		var next ast.Node
+		if i+1 < len(stack) {
+			next = stack[i+1]
 		}
-		var cond ast.Node
 		switch node := n.(type) {
+		case *ast.FuncDecl:
+			fnSegs = append(fnSegs, funcName(node))
+		case *ast.FuncLit:
+			fnSegs = append(fnSegs, "func$"+strconv.Itoa(litIndexInScope(stack[:i], node)))
 		case *ast.IfStmt:
-			cond = node.Cond
+			edge := "?"
+			switch {
+			case next == ast.Node(node.Body):
+				edge = "then"
+			case node.Else != nil && next == node.Else:
+				edge = "else"
+			case node.Cond != nil && next == ast.Node(node.Cond):
+				edge = "cond"
+			case node.Init != nil && next == node.Init:
+				edge = "init"
+			}
+			guardSegs = append(guardSegs, "if("+render(fset, node.Cond)+")>"+edge)
+		case *ast.SwitchStmt:
+			guardSegs = append(guardSegs, "switch("+render(fset, node.Tag)+")")
+		case *ast.TypeSwitchStmt:
+			guardSegs = append(guardSegs, "typeswitch("+render(fset, node.Assign)+")")
 		case *ast.CaseClause:
-			// A default clause has no expressions; its identity is "default".
-			if len(node.List) > 0 {
-				cond = node.List[0]
+			if len(node.List) == 0 {
+				guardSegs = append(guardSegs, "case(default)")
+				break
+			}
+			// EVERY expression, not just the first: `case a, b:` and
+			// `case a, c:` are different paths.
+			parts := make([]string, 0, len(node.List))
+			for _, e := range node.List {
+				parts = append(parts, render(fset, e))
+			}
+			guardSegs = append(guardSegs, "case("+strings.Join(parts, ",")+")")
+		case *ast.SelectStmt:
+			guardSegs = append(guardSegs, "select")
+		case *ast.CommClause:
+			if node.Comm == nil {
+				guardSegs = append(guardSegs, "comm(default)")
+			} else {
+				guardSegs = append(guardSegs, "comm("+render(fset, node.Comm)+")")
 			}
 		case *ast.ForStmt:
-			cond = node.Cond
+			guardSegs = append(guardSegs, "for("+render(fset, node.Init)+";"+
+				render(fset, node.Cond)+";"+render(fset, node.Post)+")")
 		case *ast.RangeStmt:
-			cond = node.X
-		default:
+			guardSegs = append(guardSegs, "range("+render(fset, node.X)+")")
+		}
+	}
+	funcPath = strings.Join(fnSegs, ".")
+	if funcPath == "" {
+		funcPath = "<file-scope>"
+	}
+	return funcPath, strings.Join(guardSegs, "/")
+}
+
+// litIndexInScope numbers a function literal among its SIBLINGS — the literals
+// whose nearest enclosing block is the same block as this one's — in source
+// order, 1-based.
+//
+// Scoping matters: indexing among every literal in the enclosing declaration
+// (a global preorder counter) meant adding a closure anywhere earlier
+// renumbered every later one, churning rows for an unrelated edit; indexing
+// within the immediate parent EXPRESSION gave every literal $1, because a
+// `defer func(){}()` parent contains exactly one. Siblings in a block is the
+// scope that matches how a reader thinks about them (lector, r1 SHOULD-FIX).
+func litIndexInScope(ancestors []ast.Node, target *ast.FuncLit) int {
+	// Nearest enclosing block of the target.
+	var scope *ast.BlockStmt
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		if b, ok := ancestors[i].(*ast.BlockStmt); ok {
+			scope = b
+			break
+		}
+	}
+	if scope == nil {
+		return 1
+	}
+	idx := 1
+	var blocks []ast.Node
+	ast.Inspect(scope, func(n ast.Node) bool {
+		if n == nil {
+			blocks = blocks[:len(blocks)-1]
 			return true
 		}
-		if n.Pos() >= bestPos {
-			best, bestPos = n, n.Pos()
-			if cond == nil {
-				best = nil // default clause: recorded as the marker below
-			} else {
-				best = cond
+		blocks = append(blocks, n)
+		fl, ok := n.(*ast.FuncLit)
+		if !ok || fl == target {
+			return true
+		}
+		// Only count literals whose OWN nearest enclosing block is `scope`:
+		// a literal nested inside another literal belongs to a deeper scope
+		// and must not shift its siblings' numbers.
+		var own *ast.BlockStmt
+		for i := len(blocks) - 2; i >= 0; i-- {
+			if b, ok := blocks[i].(*ast.BlockStmt); ok {
+				own = b
+				break
 			}
+		}
+		if own == scope && fl.Pos() < target.Pos() {
+			idx++
 		}
 		return true
 	})
-	if bestPos == 0 {
-		return "<unguarded>"
-	}
-	if best == nil {
-		return "<default>"
-	}
-	return render(fset, best)
+	return idx
 }
 
-// fingerprint hashes the panic's arguments TOGETHER WITH the condition
-// guarding it. Whitespace is normalised so gofmt and line wrapping do not
-// change identity, but the tokens are not: rewording a message, or moving it
-// behind a different condition, DOES change the fingerprint, which retires the
-// row and forces its recorded reason to be re-read. That is the point.
-func fingerprint(fset *token.FileSet, f *ast.File, call *ast.CallExpr) string {
-	var b strings.Builder
-	for i, a := range call.Args {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		b.WriteString(render(fset, a))
-	}
-	joined := b.String() + "\x00" + guardOf(f, fset, call.Pos())
-	sum := sha256.Sum256([]byte(joined))
-	return hex.EncodeToString(sum[:])[:10]
-}
-
-// funcPathOf builds the innermost enclosing scope path for a position: the
-// declaration name, plus a $n segment per enclosing function literal.
-func funcPathOf(f *ast.File, pos token.Pos) string {
-	for _, d := range f.Decls {
-		fd, ok := d.(*ast.FuncDecl)
-		if !ok || pos < fd.Pos() || pos >= fd.End() {
-			continue
-		}
-		path := funcName(fd)
-		var lits []*ast.FuncLit
-		ast.Inspect(fd, func(n ast.Node) bool {
-			if fl, ok := n.(*ast.FuncLit); ok {
-				lits = append(lits, fl)
-			}
-			return true
-		})
-		for i, fl := range lits {
-			if pos >= fl.Pos() && pos < fl.End() {
-				path += "$" + strconv.Itoa(i+1)
-			}
-		}
-		return path
-	}
-	return "<file-scope>"
+// fingerprint hashes the panic's arguments together with the full control path
+// that reaches it. 64 bits, and its grammar is validated on load so a truncated
+// or hand-edited value cannot silently match nothing.
+func fingerprint(args string, guardPath string) string {
+	sum := sha256.Sum256([]byte(args + "\x00" + guardPath))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 func census(t *testing.T, files []parsedFile) []site {
 	t.Helper()
 	var out []site
 	for _, pf := range files {
+		var stack []ast.Node
 		ast.Inspect(pf.file, func(n ast.Node) bool {
+			if n == nil {
+				stack = stack[:len(stack)-1]
+				return true
+			}
+			stack = append(stack, n)
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
 				return true
@@ -352,10 +417,18 @@ func census(t *testing.T, files []parsedFile) []site {
 			if !ok || id.Name != "panic" {
 				return true
 			}
+			fnPath, guardPath := scopePath(pf.fset, stack)
+			var b strings.Builder
+			for i, a := range call.Args {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				b.WriteString(render(pf.fset, a))
+			}
 			out = append(out, site{
 				File:  pf.rel,
-				Func:  funcPathOf(pf.file, call.Pos()),
-				Print: fingerprint(pf.fset, pf.file, call),
+				Func:  fnPath,
+				Print: fingerprint(b.String(), guardPath),
 				Line:  pf.fset.Position(call.Lparen).Line,
 			})
 			return true
@@ -367,7 +440,7 @@ func census(t *testing.T, files []parsedFile) []site {
 		}
 		return out[i].Line < out[j].Line
 	})
-	// Ordinals disambiguate only genuinely identical panics in one function.
+	// Ordinals disambiguate only genuinely identical panics on identical paths.
 	seen := map[string]int{}
 	for i := range out {
 		k := out[i].File + "\t" + out[i].Func + "\t" + out[i].Print
@@ -418,6 +491,10 @@ func loadInventory(t *testing.T) map[string]site {
 		ord, err := strconv.Atoi(parts[3])
 		if err != nil {
 			t.Fatalf("%s:%d: bad ordinal %q", inventoryPath, i+1, parts[3])
+		}
+		if !printRe.MatchString(parts[2]) {
+			t.Fatalf("%s:%d: fingerprint %q is not 16 lowercase hex digits — a truncated or "+
+				"hand-edited value would silently match no site", inventoryPath, i+1, parts[2])
 		}
 		s := site{File: parts[0], Func: parts[1], Print: parts[2], Ord: ord,
 			Cat: category(parts[4])}
@@ -598,19 +675,28 @@ func TestPanicBudget_UnreviewedIsFrozen(t *testing.T) {
 			"new panic may not be admitted unread, and classifying a legacy row does not buy "+
 			"a slot:\n  %s", len(intruders), strings.Join(intruders, "\n  "))
 	}
-	// The freeze may only shrink deliberately: a frozen identity that has left
-	// the tree must leave the file in the same change.
+	// EXACT EQUALITY, not containment. Checking only that unreviewed rows are a
+	// subset of the freeze left a stale grandfather slot: classify a row and
+	// leave its identity in the freeze file, and the slot stays available for
+	// something else later, with every arm green (lector, r1 MF3).
 	var vanished []string
 	for k := range legacy {
-		if _, ok := inv[k]; !ok {
-			vanished = append(vanished, strings.ReplaceAll(k, "\t", " "))
+		rec, inInv := inv[k]
+		switch {
+		case !inInv:
+			vanished = append(vanished, strings.ReplaceAll(k, "\t", " ")+
+				" — no such site; if the code is gone, remove the row in the same change")
+		case rec.Cat != catUnreviewed:
+			vanished = append(vanished, strings.ReplaceAll(k, "\t", " ")+
+				" — now classified as "+string(rec.Cat)+"; remove it from the freeze in the "+
+				"same change, or it stays a spare grandfather slot")
 		}
 	}
 	sort.Strings(vanished)
 	if len(vanished) > 0 {
-		t.Errorf("%d frozen legacy identit(ies) are absent from the inventory — if that code "+
-			"is gone, remove them from %s in the same change so the freeze cannot silently "+
-			"shrink:\n  %s", len(vanished), legacyPath, strings.Join(vanished, "\n  "))
+		t.Errorf("%d frozen legacy identit(ies) are not currently unreviewed sites. The freeze "+
+			"and the unreviewed set must be EXACTLY equal:\n  %s",
+			len(vanished), strings.Join(vanished, "\n  "))
 	}
 	t.Logf("unreviewed: %d of %d sites, all within the %d frozen legacy identities",
 		len(unreviewed), len(inv), len(legacy))

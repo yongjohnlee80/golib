@@ -31,149 +31,149 @@
 # cites its evidence instead.
 #
 # Regenerate: GOLIB_PANIC_BUDGET_UPDATE=1 go test ./internal/audit/
-auth/authhttp/authhttp.go	MetadataHeaders	4be8345a42	1	unreviewed	not yet read
-auth/authhttp/authhttp.go	CorrelationHeader	1da4ef190a	1	unreviewed	not yet read
-auth/authhttp/authhttp.go	Middleware	1523e27201	1	unreviewed	not yet read
-auth/mtls/mtls.go	New	310291b1b9	1	unreviewed	not yet read
-auth/sshkey/sshkey.go	New	33c52347f9	1	unreviewed	not yet read
-auth/sshkey/sshkey.go	New	b0e91fbb66	1	unreviewed	not yet read
-auth/sshkey/sshkey.go	New	3759bc0174	1	unreviewed	not yet read
-dao/batch.go	batchWriter.AddRow	0e9ed19f8a	1	invariant	AddRow on a BatchWriter built without a row extractor is programmer error; no data input reaches it
-dao/expr.go	Expr.mustSet	994de39abb	1	invariant	mustSet rejects a ZERO Expr — a caller passing Expr{} is programmer error, not data
-dao/expr.go	Str	22a80be037	1	violation	LATENT: Str panics on a single quote in a CALLER-SUPPLIED string, reachable with a valid type via lit <- Coalesce. Coalesce has ZERO production callers in golib, autodb or either ddex repo, and dao/expr_test.go:286 pins this panic as REQUIRED behaviour — so changing it is an API decision (sweep G3; Johno 2026-09-06: leave as-is), not a fix.
-dao/expr.go	Str	34cd797b33	1	violation	LATENT: Str panics on a backslash in a caller-supplied string; same path, same evidence as the single-quote site.
-dao/expr.go	Str	24feda6f68	1	violation	LATENT: Str panics on a control character in a caller-supplied string; same path, same evidence as the single-quote site.
-dao/expr.go	lit	46fdc11beb	1	unreachable	lit's switch covers every term of the closed Alt constraint; the panic guards a future widening
-dao/schema.go	New	19194846b8	1	construction	dao.New: nil DataConn — validated before the Schema exists; nothing is running yet
-dao/schema.go	New	60fe734b36	1	construction	dao.New: Table is required — construction-time validation
-dao/schema.go	New	ef056c8cf5	1	construction	dao.New: Fields is required — construction-time validation
-dao/schema.go	New	94fa883319	1	construction	dao.New: ID field is not in Fields — construction-time validation
-dao/schema.go	New	b208257150	1	construction	dao.New: field references an unregistered join — construction-time validation
-dao/schema.go	New	6c1104ce39	1	construction	dao.New: ClearValue without Clearable — construction-time validation
-dao/schema.go	New	3f4ff4056a	1	construction	dao.New: write column is not a plain identifier — construction-time validation
-dao/schema.go	New	d237175da2	1	construction	dao.New: Conflict field is not in Fields — construction-time validation
-dao/schema.go	New	055e34a5d6	1	construction	dao.New: DefaultValues field is not in Fields — construction-time validation
-dao/schema.go	New	ee56256b9c	1	construction	dao.New: nil hook — construction-time validation
-dao/schema.go	New	d81e1596e6	1	construction	dao.New: duplicate hook name — construction-time validation
-dao/schema.go	resolveFields	6068fdf932	1	construction	resolveFields is called only from dao.New; same construction phase
-dao/transaction.go	RunTx$1	a0cd3bbc68	1	repanic	RunTx's deferred recover rolls back and re-raises the ORIGINAL panic, preserving its stack. Not a new failure mode. Attributed to RunTx$1 because it lives in the deferred closure — exactly the distinction the $n path segment exists to make.
-partial/plan.go	planFor	a8f14ff309	1	unreviewed	not yet read
-partial/plan.go	planFor	7023c6b5c2	1	unreviewed	not yet read
-partial/plan.go	collectFields	0ad00e2f48	1	unreviewed	not yet read
-partial/plan.go	collectFields	5825c5cc17	1	unreviewed	not yet read
-server/http/mock.go	MockServer.register	8f9c58f69a	1	unreviewed	not yet read
-server/http/routing.go	Group.register	08d7277469	1	unreviewed	not yet read
-server/http/routing.go	Group.register	8d773be3be	1	unreviewed	not yet read
-server/rpc/client.go	Dial	7f74d9bb30	1	unreviewed	not yet read
-server/rpc/client.go	Dial	63e012f9dd	1	unreviewed	not yet read
-server/rpc/client.go	Dial	a3ba51a2fc	1	unreviewed	not yet read
-server/rpc/client.go	Dial	4ed7b34d99	1	unreviewed	not yet read
-server/rpc/server.go	New	595c2501b5	1	unreviewed	not yet read
-server/rpc/server.go	New	7657c2fff2	1	unreviewed	not yet read
-server/rpc/server.go	New	1c2e9c684f	1	unreviewed	not yet read
-server/rpc/server.go	New	020093061a	1	unreviewed	not yet read
-server/scaffold.go	NewScaffold	83a74f2784	1	unreviewed	not yet read
-tui/app.go	NewApp	163492edf4	1	unreviewed	not yet read
-tui/app.go	NewApp	0002365c1d	1	unreviewed	not yet read
-tui/app.go	App.Post	7e9b39be3d	1	unreviewed	not yet read
-tui/app.go	App.Update	fd50bf2e35	1	unreviewed	not yet read
-tui/app.go	App.Run$1	71f0d00cd5	1	unreviewed	not yet read
-tui/bus.go	Subscribe	af7bd8c611	1	unreviewed	not yet read
-tui/bus.go	Bus.Publish	8d5dc76324	1	unreviewed	not yet read
-tui/container.go	MultiChild.Add	b6e1769436	1	unreviewed	not yet read
-tui/container.go	MultiChild.Move	2d99e4e165	1	unreviewed	not yet read
-tui/context.go	Context.Mount	e446fc8943	1	unreviewed	not yet read
-tui/context.go	Context.Unmount	0e870f7d9d	1	unreviewed	not yet read
-tui/context.go	Context.Move	2020a9a595	1	unreviewed	not yet read
-tui/context.go	Context.LayoutChild	2bc28c4e46	1	unreviewed	not yet read
-tui/context.go	Context.LayoutChild	fa57332c63	1	unreviewed	not yet read
-tui/context.go	Context.PlaceChild	906fa5fccd	1	unreviewed	not yet read
-tui/context.go	Context.PlaceChild	2727b096cb	1	unreviewed	not yet read
-tui/context.go	Context.Every	d65ae4c18c	1	unreviewed	not yet read
-tui/dock.go	Dock.Pin	015878b8c4	1	unreviewed	not yet read
-tui/dock.go	Dock.Pin	3fc6d82995	1	unreviewed	not yet read
-tui/flex.go	Flex.AddWeighted	7007a669cc	1	unreviewed	not yet read
-tui/flex.go	Flex.AddWeighted	ab7c8da5a4	1	unreviewed	not yet read
-tui/options.go	WithMinFrameInterval	6dc37327a6	1	unreviewed	not yet read
-tui/options.go	WithInputQueueSize	9190a46dfa	1	unreviewed	not yet read
-tui/options.go	WithEventQueueLimit	2de38c2abd	1	unreviewed	not yet read
-tui/options.go	WithTaskPoolSize	0c39287813	1	unreviewed	not yet read
-tui/options.go	WithTaskDrainTimeout	9cf5fdcef5	1	unreviewed	not yet read
-tui/queue.go	programQueue.push	396717b99a	1	violation	LIVE: push panics when the program event queue exceeds its limit. That is a RUNTIME CONDITION caused by a runaway producer, not caller misuse, so a library crashes its host process. Needs an error or backpressure path under a written policy (sweep G2).
-tui/stack.go	Stack.AddAligned	e009d9a708	1	unreviewed	not yet read
-tui/style/color.go	ANSI	7743041211	1	unreviewed	not yet read
-tui/style/color.go	ANSI256	4fe6a1c883	1	unreviewed	not yet read
-tui/style/color.go	Adaptive	61a59ecf1f	1	unreviewed	not yet read
-tui/style/color.go	Adaptive	2c85f58869	1	unreviewed	not yet read
-tui/style/style.go	expandSides	f80fab72ff	1	unreviewed	not yet read
-tui/style/style.go	Style.Align	b9d5bad616	1	unreviewed	not yet read
-tui/style/style.go	Style.Align	2535fa96cb	1	unreviewed	not yet read
-tui/style/style.go	Style.Align	0b6065b00b	1	unreviewed	not yet read
-tui/style/style.go	expandEdges	d92c0edbc0	1	unreviewed	not yet read
-tui/style/style.go	Style.copyProp	89fb885003	1	unreviewed	not yet read
-tui/style/theme.go	WithToken	b0d69d9f3e	1	unreviewed	not yet read
-tui/style/theme.go	WithToken	8ca3d94355	1	unreviewed	not yet read
-tui/style/theme.go	NewTheme	7ccad64856	1	unreviewed	not yet read
-tui/style/theme.go	Theme.Color	e9921ec7e4	1	unreviewed	not yet read
-tui/tasks.go	Exclusive	4635ba4ec5	1	unreviewed	not yet read
-tui/tasks.go	App.Go	e9aff4e1e8	1	unreviewed	not yet read
-tui/testbackend.go	TestBackend.InjectResize	033fa5fd1a	1	unreviewed	not yet read
-tui/testbackend.go	TestBackend.Flush	ab068a1e78	1	unreviewed	not yet read
-tui/testbackend.go	TestBackend.Flush	7d3d9d52f7	1	unreviewed	not yet read
-tui/testbackend.go	TestBackend.assertNoOrphansLocked	c044645b7b	1	unreviewed	not yet read
-tui/testbackend.go	TestBackend.assertNoOrphansLocked	51fe8edb0b	1	unreviewed	not yet read
-tui/tree.go	App.mount	5b41788374	1	unreviewed	not yet read
-tui/tree.go	App.mount	73a550916d	1	unreviewed	not yet read
-tui/tree.go	App.mount	0a894c317d	1	unreviewed	not yet read
-tui/tree.go	App.mount	7bb66e3cb0	1	unreviewed	not yet read
-tui/tree.go	App.moveWithin	4139c418c0	1	unreviewed	not yet read
-tui/tree.go	App.moveWithin	f580b901ad	1	unreviewed	not yet read
-tui/tree.go	App.moveWithin	b15f5dbcb3	1	unreviewed	not yet read
-tui/tree.go	App.moveWithin	5e728b397a	1	unreviewed	not yet read
-tui/tree.go	App.unmountTree	34fbc06ed5	1	unreviewed	not yet read
-tui/widget/box.go	WithTitleAlign	d39778c28d	1	unreviewed	not yet read
-tui/widget/box.go	WithStatusAlign	76e44f2cc7	1	unreviewed	not yet read
-tui/widget/box.go	Box.Add	b3fae17dfd	1	unreviewed	not yet read
-tui/widget/box.go	Box.Add	cf027f9f99	1	unreviewed	not yet read
-tui/widget/box.go	Box.Move	0600e8a075	1	unreviewed	not yet read
-tui/widget/bufferview.go	WithMaxLines	99b3b32ab9	1	unreviewed	not yet read
-tui/widget/editor.go	WithEditorWrap	f860b115ae	1	unreviewed	not yet read
-tui/widget/editor.go	WithEscapeChord	c8d2ae84c2	1	unreviewed	not yet read
-tui/widget/editor.go	WithEscapeChord	72a9811e10	1	unreviewed	not yet read
-tui/widget/editor_keymap.go	validateKeymapEntry	5f83e32618	1	unreviewed	not yet read
-tui/widget/editor_keymap.go	validateKeymapEntry	d3352b9cdc	1	unreviewed	not yet read
-tui/widget/editor_keymap.go	validateKeymapEntry	c816254645	1	unreviewed	not yet read
-tui/widget/float.go	NewFloat	8c316a2272	1	unreviewed	not yet read
-tui/widget/float.go	Float.Show	32982b6226	1	unreviewed	not yet read
-tui/widget/list.go	WithSource	bbc20880bd	1	unreviewed	not yet read
-tui/widget/list.go	NewList	0c629b76ce	1	unreviewed	not yet read
-tui/widget/overlay.go	NewOverlayHost	b18bf8f4e9	1	unreviewed	not yet read
-tui/widget/overlay.go	OverlayHost.Attach	57b9579683	1	unreviewed	not yet read
-tui/widget/progress.go	WithSpinner	f9d3d49150	1	unreviewed	not yet read
-tui/widget/progress.go	WithSpinner	054bab7fc1	1	unreviewed	not yet read
-tui/widget/select.go	WithWidth	706cbc3f5f	1	unreviewed	not yet read
-tui/widget/split.go	WithRatio	c4122d4a3c	1	unreviewed	not yet read
-tui/widget/split.go	WithMinSizes	8ea949d8c6	1	unreviewed	not yet read
-tui/widget/split.go	NewSplit	87cc5d37e0	1	unreviewed	not yet read
-tui/widget/split.go	NewSplit	2cc0bf0110	1	unreviewed	not yet read
-tui/widget/split.go	Split.SetRatio	edd7630f95	1	unreviewed	not yet read
-tui/widget/split.go	Split.Zoom	a5b04b8574	1	unreviewed	not yet read
-tui/widget/statusbar.go	setSegment	8901122110	1	unreviewed	not yet read
-tui/widget/table.go	NewTable	0104f894eb	1	unreviewed	not yet read
-tui/widget/tabs.go	WithTab	facf03c4d8	1	unreviewed	not yet read
-tui/widget/tabs.go	NewTabs	9cd542515a	1	unreviewed	not yet read
-tui/widget/tabs.go	Tabs.Add	9941f9d527	1	unreviewed	not yet read
-tui/widget/text.go	WithWrapMode	6d5f88c95a	1	unreviewed	not yet read
-tui/widget/textarea.go	WithWrap	307b446cd7	1	unreviewed	not yet read
-tui/widget/textinput.go	WithMask	2c1676a48c	1	unreviewed	not yet read
-tui/widget/tree.go	NewTreeNode	18610a95dd	1	unreviewed	not yet read
-tui/widget/tree.go	preflightForest$1	30ea6e3ac8	1	unreviewed	not yet read
-tui/widget/tree.go	preflightForest$1	ce0a2a1301	1	unreviewed	not yet read
-tui/widget/tree.go	preflightForest$1	a02304e302	1	unreviewed	not yet read
-tui/widget/tree.go	preflightForest$1	aa7fdc56c1	1	unreviewed	not yet read
-tui/widget/tree.go	preflightForest$1	36e7b59e96	1	unreviewed	not yet read
-tui/widget/tree.go	preflightForest	334f9c335e	1	unreviewed	not yet read
-tui/widget/tree.go	validateSiblingIDs	d4fe115791	1	unreviewed	not yet read
-tui/widget/tree.go	validateSiblingIDs	c919654665	1	unreviewed	not yet read
-tui/widget/tree.go	WithIndent	b07f5bc647	1	unreviewed	not yet read
-tui/widget/tree.go	Tree.adopt	aa7fdc56c1	1	unreviewed	not yet read
+auth/authhttp/authhttp.go	MetadataHeaders	ce9c36eadf3d8e6e	1	unreviewed	not yet read
+auth/authhttp/authhttp.go	CorrelationHeader	0b1d7407793f4da1	1	unreviewed	not yet read
+auth/authhttp/authhttp.go	Middleware	49a4ad3f65baa1e1	1	unreviewed	not yet read
+auth/mtls/mtls.go	New	f6cfe697189f88ed	1	unreviewed	not yet read
+auth/sshkey/sshkey.go	New	7f17541336eb5d45	1	unreviewed	not yet read
+auth/sshkey/sshkey.go	New	4d5f726301e8aca7	1	unreviewed	not yet read
+auth/sshkey/sshkey.go	New	bc5ed94243307511	1	unreviewed	not yet read
+dao/batch.go	batchWriter.AddRow	c617c7aca4da00cf	1	invariant	AddRow on a BatchWriter built without a row extractor is programmer error; no data input reaches it
+dao/expr.go	Expr.mustSet	3f7f56f599589225	1	invariant	mustSet rejects a ZERO Expr — a caller passing Expr{} is programmer error, not data
+dao/expr.go	Str	416ab45c6e4aa48d	1	violation	LATENT: Str panics on a single quote in a CALLER-SUPPLIED string, reachable with a valid type via lit <- Coalesce. Coalesce has ZERO production callers in golib, autodb or either ddex repo, and dao/expr_test.go:286 pins this panic as REQUIRED behaviour — so changing it is an API decision (sweep G3; Johno 2026-09-06: leave as-is), not a fix.
+dao/expr.go	Str	31987f88f80ef74c	1	violation	LATENT: Str panics on a backslash in a caller-supplied string; same path, same evidence as the single-quote site.
+dao/expr.go	Str	4a1e375b2f9d1188	1	violation	LATENT: Str panics on a control character in a caller-supplied string; same path, same evidence as the single-quote site.
+dao/expr.go	lit	35e2931804753617	1	unreachable	lit's switch covers every term of the closed Alt constraint; the panic guards a future widening
+dao/schema.go	New	83bd0006c349d7de	1	construction	dao.New: nil DataConn — validated before the Schema exists; nothing is running yet
+dao/schema.go	New	9abdc415ab30493a	1	construction	dao.New: Table is required — construction-time validation
+dao/schema.go	New	d9176b32918be6a3	1	construction	dao.New: Fields is required — construction-time validation
+dao/schema.go	New	f8ee3279e6b74e11	1	construction	dao.New: ID field is not in Fields — construction-time validation
+dao/schema.go	New	ba27f0c51cad8149	1	construction	dao.New: field references an unregistered join — construction-time validation
+dao/schema.go	New	204448fdc0c98f9e	1	construction	dao.New: ClearValue without Clearable — construction-time validation
+dao/schema.go	New	7150770fac255134	1	construction	dao.New: write column is not a plain identifier — construction-time validation
+dao/schema.go	New	8dd61367a5ed26bb	1	construction	dao.New: Conflict field is not in Fields — construction-time validation
+dao/schema.go	New	3a7f482f3334d02a	1	construction	dao.New: DefaultValues field is not in Fields — construction-time validation
+dao/schema.go	New	241c1698c43cf7a2	1	construction	dao.New: nil hook — construction-time validation
+dao/schema.go	New	549eef755cc8dc82	1	construction	dao.New: duplicate hook name — construction-time validation
+dao/schema.go	resolveFields	ccc9764a071bce12	1	construction	resolveFields is called only from dao.New; same construction phase
+dao/transaction.go	RunTx.func$1	4fa2355b6dd3517d	1	repanic	RunTx's deferred recover rolls back and re-raises the ORIGINAL panic, preserving its stack. Not a new failure mode. The func$ segment in the path is the deferred closure it lives in.
+partial/plan.go	planFor	7f6668e232731ee4	1	unreviewed	not yet read
+partial/plan.go	planFor	0c8b79a4a70e229c	1	unreviewed	not yet read
+partial/plan.go	collectFields	ef4adfab24fac826	1	unreviewed	not yet read
+partial/plan.go	collectFields	d9a9284ba0361cf9	1	unreviewed	not yet read
+server/http/mock.go	MockServer.register	ee934dfb6ed19063	1	unreviewed	not yet read
+server/http/routing.go	Group.register	b6f45f0582347d95	1	unreviewed	not yet read
+server/http/routing.go	Group.register	2cc30a604d810ea0	1	unreviewed	not yet read
+server/rpc/client.go	Dial	76f961c4aa001ad1	1	unreviewed	not yet read
+server/rpc/client.go	Dial	4407bd482eed38b8	1	unreviewed	not yet read
+server/rpc/client.go	Dial	65cba1eeb96f7fc7	1	unreviewed	not yet read
+server/rpc/client.go	Dial	52bba2afd3e8c2a5	1	unreviewed	not yet read
+server/rpc/server.go	New	af5ca7512613d736	1	unreviewed	not yet read
+server/rpc/server.go	New	0782abb4da78892c	1	unreviewed	not yet read
+server/rpc/server.go	New	acab1e116d76d21f	1	unreviewed	not yet read
+server/rpc/server.go	New	cb8f5b7a4ec39ce9	1	unreviewed	not yet read
+server/scaffold.go	NewScaffold	40b8e25e781d8f16	1	unreviewed	not yet read
+tui/app.go	NewApp	19c3e1c513b3cd71	1	unreviewed	not yet read
+tui/app.go	NewApp	e65924d403ff0ad3	1	unreviewed	not yet read
+tui/app.go	App.Post	53e8fff1154f7a17	1	unreviewed	not yet read
+tui/app.go	App.Update	3b994ea4d53edb21	1	unreviewed	not yet read
+tui/app.go	App.Run.func$1	b6c4252a60823d59	1	unreviewed	not yet read
+tui/bus.go	Subscribe	a944156264c46448	1	unreviewed	not yet read
+tui/bus.go	Bus.Publish	1201a06be4e23702	1	unreviewed	not yet read
+tui/container.go	MultiChild.Add	91deb9100d15582b	1	unreviewed	not yet read
+tui/container.go	MultiChild.Move	04cfb72b8d64c7f0	1	unreviewed	not yet read
+tui/context.go	Context.Mount	19cb694b082f3676	1	unreviewed	not yet read
+tui/context.go	Context.Unmount	8300756c596d5775	1	unreviewed	not yet read
+tui/context.go	Context.Move	04860bbcdda3828b	1	unreviewed	not yet read
+tui/context.go	Context.LayoutChild	9c623c658b3a83a2	1	unreviewed	not yet read
+tui/context.go	Context.LayoutChild	972164a9e76304e9	1	unreviewed	not yet read
+tui/context.go	Context.PlaceChild	05f6ac5fcf3b553b	1	unreviewed	not yet read
+tui/context.go	Context.PlaceChild	eeb614acc1187591	1	unreviewed	not yet read
+tui/context.go	Context.Every	1cb1e791e57b0ba1	1	unreviewed	not yet read
+tui/dock.go	Dock.Pin	a12683e0ef5695d7	1	unreviewed	not yet read
+tui/dock.go	Dock.Pin	fb15f5b2d280ef64	1	unreviewed	not yet read
+tui/flex.go	Flex.AddWeighted	1d7a641b179dccda	1	unreviewed	not yet read
+tui/flex.go	Flex.AddWeighted	d10c93e0d24b4b3f	1	unreviewed	not yet read
+tui/options.go	WithMinFrameInterval	5a7d07172b56db89	1	unreviewed	not yet read
+tui/options.go	WithInputQueueSize	61913d54e1b5b9d5	1	unreviewed	not yet read
+tui/options.go	WithEventQueueLimit	4016f82a6a79ec41	1	unreviewed	not yet read
+tui/options.go	WithTaskPoolSize	7832b373c26a8d57	1	unreviewed	not yet read
+tui/options.go	WithTaskDrainTimeout	b9b464698924d785	1	unreviewed	not yet read
+tui/queue.go	programQueue.push	2aab10adc34909b9	1	violation	LIVE: push panics when the program event queue exceeds its limit. That is a RUNTIME CONDITION caused by a runaway producer, not caller misuse, so a library crashes its host process. Needs an error or backpressure path under a written policy (sweep G2).
+tui/stack.go	Stack.AddAligned	2777c4f0003a7060	1	unreviewed	not yet read
+tui/style/color.go	ANSI	d30d4bac686ff454	1	unreviewed	not yet read
+tui/style/color.go	ANSI256	d1ebd4f9ac7e6564	1	unreviewed	not yet read
+tui/style/color.go	Adaptive	de547762f4e46849	1	unreviewed	not yet read
+tui/style/color.go	Adaptive	72182b9f59ba1d68	1	unreviewed	not yet read
+tui/style/style.go	expandSides	bad33af4da5d6b9e	1	unreviewed	not yet read
+tui/style/style.go	Style.Align	3d71cb902f840d47	1	unreviewed	not yet read
+tui/style/style.go	Style.Align	ed8a8c487327665e	1	unreviewed	not yet read
+tui/style/style.go	Style.Align	207ca678263eaa07	1	unreviewed	not yet read
+tui/style/style.go	expandEdges	f1f7a00301965a91	1	unreviewed	not yet read
+tui/style/style.go	Style.copyProp	1f0a8d27f154967f	1	unreviewed	not yet read
+tui/style/theme.go	WithToken	001d2b02a1f7d153	1	unreviewed	not yet read
+tui/style/theme.go	WithToken	b50e71241b4fd08c	1	unreviewed	not yet read
+tui/style/theme.go	NewTheme	c61a94e82bddd760	1	unreviewed	not yet read
+tui/style/theme.go	Theme.Color	93ea312d621556d4	1	unreviewed	not yet read
+tui/tasks.go	Exclusive	a7f52f9cd5eca2f5	1	unreviewed	not yet read
+tui/tasks.go	App.Go	8c04afba59c851f6	1	unreviewed	not yet read
+tui/testbackend.go	TestBackend.InjectResize	3e3bad8e39ad70d7	1	unreviewed	not yet read
+tui/testbackend.go	TestBackend.Flush	fea9418324761fe0	1	unreviewed	not yet read
+tui/testbackend.go	TestBackend.Flush	338cfe3ec026679f	1	unreviewed	not yet read
+tui/testbackend.go	TestBackend.assertNoOrphansLocked	4652194c26dce4a0	1	unreviewed	not yet read
+tui/testbackend.go	TestBackend.assertNoOrphansLocked	3908b1a1fdfa54ed	1	unreviewed	not yet read
+tui/tree.go	App.mount	3e3a6d6ad6e059ae	1	unreviewed	not yet read
+tui/tree.go	App.mount	b0daebf055875c7f	1	unreviewed	not yet read
+tui/tree.go	App.mount	fa9c22990d3335ab	1	unreviewed	not yet read
+tui/tree.go	App.mount	e0be33bc35bf1c39	1	unreviewed	not yet read
+tui/tree.go	App.moveWithin	198084033889bf4c	1	unreviewed	not yet read
+tui/tree.go	App.moveWithin	055d8d461bb1b58e	1	unreviewed	not yet read
+tui/tree.go	App.moveWithin	1bf030de687ed16b	1	unreviewed	not yet read
+tui/tree.go	App.moveWithin	3746ee1f7b7ef149	1	unreviewed	not yet read
+tui/tree.go	App.unmountTree	2c41697abac1c504	1	unreviewed	not yet read
+tui/widget/box.go	WithTitleAlign	5c25a6b2fa4510fb	1	unreviewed	not yet read
+tui/widget/box.go	WithStatusAlign	79d1e2dae23b7075	1	unreviewed	not yet read
+tui/widget/box.go	Box.Add	48f9916531ce5952	1	unreviewed	not yet read
+tui/widget/box.go	Box.Add	e666c9d08180da10	1	unreviewed	not yet read
+tui/widget/box.go	Box.Move	0103c30609c6093b	1	unreviewed	not yet read
+tui/widget/bufferview.go	WithMaxLines	0c5e18ec9521d59a	1	unreviewed	not yet read
+tui/widget/editor.go	WithEditorWrap	fc60653735cd711f	1	unreviewed	not yet read
+tui/widget/editor.go	WithEscapeChord	212181d95a789cf0	1	unreviewed	not yet read
+tui/widget/editor.go	WithEscapeChord	116e23fa46cc7c44	1	unreviewed	not yet read
+tui/widget/editor_keymap.go	validateKeymapEntry	12ec79b88485aad6	1	unreviewed	not yet read
+tui/widget/editor_keymap.go	validateKeymapEntry	02acb73909eba1a5	1	unreviewed	not yet read
+tui/widget/editor_keymap.go	validateKeymapEntry	3527c8bf94d3acd0	1	unreviewed	not yet read
+tui/widget/float.go	NewFloat	00ccbc99f532036e	1	unreviewed	not yet read
+tui/widget/float.go	Float.Show	49377d2c107a9c30	1	unreviewed	not yet read
+tui/widget/list.go	WithSource	2fcbcb429e1ae4f8	1	unreviewed	not yet read
+tui/widget/list.go	NewList	32355b1dc51e324f	1	unreviewed	not yet read
+tui/widget/overlay.go	NewOverlayHost	7303ad8e5abba82a	1	unreviewed	not yet read
+tui/widget/overlay.go	OverlayHost.Attach	182d5722a3ed207c	1	unreviewed	not yet read
+tui/widget/progress.go	WithSpinner	98a273021948db0b	1	unreviewed	not yet read
+tui/widget/progress.go	WithSpinner	d811c771aeb59986	1	unreviewed	not yet read
+tui/widget/select.go	WithWidth	61d15518ddcf26ed	1	unreviewed	not yet read
+tui/widget/split.go	WithRatio	d2e09e4ca445c4b4	1	unreviewed	not yet read
+tui/widget/split.go	WithMinSizes	cbf873298fd249cb	1	unreviewed	not yet read
+tui/widget/split.go	NewSplit	1e6b35772d100bc5	1	unreviewed	not yet read
+tui/widget/split.go	NewSplit	7d9414ca9cf01373	1	unreviewed	not yet read
+tui/widget/split.go	Split.SetRatio	9302138cdca4656e	1	unreviewed	not yet read
+tui/widget/split.go	Split.Zoom	057871ef094285c0	1	unreviewed	not yet read
+tui/widget/statusbar.go	setSegment	c67e39052f88f0e8	1	unreviewed	not yet read
+tui/widget/table.go	NewTable	ffe0e3b2aba57457	1	unreviewed	not yet read
+tui/widget/tabs.go	WithTab	d6da231c9391ab53	1	unreviewed	not yet read
+tui/widget/tabs.go	NewTabs	4debe2eec9ad5d79	1	unreviewed	not yet read
+tui/widget/tabs.go	Tabs.Add	2569155b2fc75fa9	1	unreviewed	not yet read
+tui/widget/text.go	WithWrapMode	4bbd8565f39105e1	1	unreviewed	not yet read
+tui/widget/textarea.go	WithWrap	f23199a44f0cdfc2	1	unreviewed	not yet read
+tui/widget/textinput.go	WithMask	0d6bd8e98f26f51a	1	unreviewed	not yet read
+tui/widget/tree.go	NewTreeNode	fd162a13c54f1891	1	unreviewed	not yet read
+tui/widget/tree.go	preflightForest.func$1	c40046850ef61b22	1	unreviewed	not yet read
+tui/widget/tree.go	preflightForest.func$1	a6dcb06709225f1d	1	unreviewed	not yet read
+tui/widget/tree.go	preflightForest.func$1	50cf501f08452daf	1	unreviewed	not yet read
+tui/widget/tree.go	preflightForest.func$1	39020909c144274c	1	unreviewed	not yet read
+tui/widget/tree.go	preflightForest.func$1	156e65d41f2c0dce	1	unreviewed	not yet read
+tui/widget/tree.go	preflightForest	d307e925a62deab8	1	unreviewed	not yet read
+tui/widget/tree.go	validateSiblingIDs	73b73ece48a4cb0d	1	unreviewed	not yet read
+tui/widget/tree.go	validateSiblingIDs	8431cee3354b6982	1	unreviewed	not yet read
+tui/widget/tree.go	WithIndent	5cd13bc150a2e791	1	unreviewed	not yet read
+tui/widget/tree.go	Tree.adopt	39020909c144274c	1	unreviewed	not yet read
