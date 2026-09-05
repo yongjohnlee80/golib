@@ -11,8 +11,9 @@ import (
 // and — while handlers return false — walks parent links to the root. The
 // first true consumes the event and stops the walk.
 
-// dispatch routes one event on the loop goroutine (ADR-0004 §2.5;
-// ADR-0005's loop calls it for both lanes).
+// dispatch routes one event on the loop goroutine. Both lanes funnel through
+// it, so input and program events are ordered against each other by the order
+// they are drained rather than by which produced them.
 func (a *App) dispatch(ev Event) {
 	switch e := ev.(type) {
 	case KeyEvent:
@@ -41,9 +42,10 @@ func (a *App) dispatch(ev Event) {
 
 	case MouseEvent:
 		// A count belongs to presses only. Canonicalise every other kind to zero
-		// rather than passing a producer's value through: the ADR promises
-		// non-press Count is 0, and only rewriting presses left an injected
-		// MouseWheel{Count: 99} delivering 99 (lector r1 finding 4).
+		// rather than passing a producer's value through. Count is documented
+		// as 0 on every non-press kind, and rewriting only presses left that
+		// promise dependent on the producer: an injected MouseWheel{Count: 99}
+		// was delivered with 99 intact.
 		if e.Kind != MousePress {
 			e.Count = 0
 			ev = e
@@ -63,8 +65,7 @@ func (a *App) dispatch(ev Event) {
 			// mounted during dispatch has measured=false/placed=false and is not
 			// hit-testable until the next layout pass, so there is nothing
 			// correct to re-target: the press is SKIPPED. The focus change
-			// stands, and the user's next click lands on the rebuilt tree
-			// (ADR-0010 §2.1 step 5).
+			// stands, and the user's next click lands on the rebuilt tree.
 			if !target.mounted {
 				a.trace(TraceEvent{Kind: TraceUnmount, Node: target.id,
 					Detail: "pointer press skipped: focus handling unmounted the target"})
@@ -86,8 +87,8 @@ func (a *App) dispatch(ev Event) {
 		// Committing on arrival made a SKIPPED press advance the run: the two
 		// early returns above deliver to nobody, yet the run continued, so the
 		// widget that replaced an unmounted target saw Count == 2 as its FIRST
-		// delivered press (lector r1 finding 1). Count drives activation, so a
-		// press nobody received must not count.
+		// delivered press. Count drives activation, so a press nobody received
+		// must not count.
 		//
 		// Continuity is keyed on the DELIVERED TARGET as well as button, cell and
 		// window: a press landing on a different node is a different gesture even
@@ -238,7 +239,7 @@ func hitTestNode(n *node, x, y int) *node {
 }
 
 // pressOrdinal returns the ordinal of this press: 1 for a single press, 2 for the
-// second press of a double-click, and so on (ADR-0010 §2.5).
+// second press of a double-click, and so on.
 //
 // A press continues the run only when the button, the CELL and the window all
 // match. Same cell rather than "near": a terminal row is one cell tall, so a

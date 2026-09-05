@@ -6,7 +6,7 @@ import (
 )
 
 // Surface is what components render onto: a clipped, offset view into the
-// frame's cell buffer, carrying the style-resolution context (ADR-0003 §2.4
+// frame's cell buffer, carrying the style-resolution context (
 // — the second portability seam.4 #5).
 type Surface interface {
 	// SetCell writes one grapheme cluster at surface-local (x, y). content
@@ -19,7 +19,7 @@ type Surface interface {
 	// Fill sets every cell in r (clipped) to content/st. Fill with a
 	// width-2 cluster fills in steps of two columns; a trailing odd
 	// column, if any, is filled with a SPACE cell in st — never left
-	// untouched (ADR-0003 §2.4 rev 1; W3 still forbids a half-painted
+	// untouched (a half-painted
 	// cluster).
 	Fill(r Rect, content string, st style.Style)
 
@@ -162,7 +162,7 @@ func (s *bufSurface) Fill(r Rect, content string, st style.Style) {
 			continue
 		}
 		// Width-2 cluster: steps of two; the trailing odd column, if any,
-		// is a space cell in the fill's style (ADR-0003 §2.4 rev 1) — never
+		// is a space cell in the fill's style — never
 		// left untouched, and never a half-painted cluster (W3).
 		x := area.X
 		for ; x+1 < area.X+area.W; x += 2 {

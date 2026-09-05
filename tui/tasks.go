@@ -28,7 +28,7 @@ type TaskOption func(*taskConfig)
 // Exclusive assigns the task to a per-owner named group and CANCELS the
 // contexts of all in-flight tasks in that (owner, group) before this one
 // starts — lazygit's preemption semantics (pkg/tasks: Stop channel +
-// monotonic staleness guard; ADR-0005 §2.8). Superseded tasks still emit
+// monotonic staleness guard). Superseded tasks still emit
 // their TaskResult (with ctx.Err()), which the monotonic ID check makes
 // trivially ignorable.
 func Exclusive(group string) TaskOption {
@@ -206,8 +206,7 @@ func (a *App) removeExclusive(owner NodeID, group string, id TaskID) {
 }
 
 // DeadLetters reports how many addressed TaskResult/TaskProgress deliveries
-// were dropped because their owner had unmounted — the test hook behind
-// ADR-0005 §5.4 and ADR-0004 §5.2. Dead-lettering is silent by design
+// were dropped because their owner had unmounted. Dead-lettering is silent by design
 // (unmount races are normal, not errors); the count and WithLogger are its
 // only observers.
 func (a *App) DeadLetters() uint64 { return a.async.deadLetters.Load() }

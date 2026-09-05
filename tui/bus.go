@@ -62,7 +62,7 @@ func Subscribe[T any](b *Bus, fn func(T)) (cancel func()) {
 }
 
 // SubscribeScoped ties the subscription to c's mounted lifetime: unmount
-// cancels it automatically via c.OnUnmount (ADR-0004 §2.4 step 2). This is
+// cancels it automatically via c.OnUnmount. This is
 // the form components use.
 func SubscribeScoped[T any](c *Context, fn func(T)) (cancel func()) {
 	cancel = Subscribe(c.app.bus, fn)

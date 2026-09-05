@@ -7,7 +7,7 @@ import (
 )
 
 // MultiChild is the shared sibling-list machinery every multi-child
-// Container embeds (ADR-0004 §2.7; reorder semantics ADR-0011): the
+// Container embeds: the
 // ordered children slice, plus the framework mirror — mutations mount,
 // unmount, or move through Context immediately when mounted and defer to
 // Init otherwise. It is the Go-embedding analogue of Flutter's

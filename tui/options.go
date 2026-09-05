@@ -78,7 +78,7 @@ func WithTheme(t *style.Theme) AppOption {
 }
 
 // WithDoubleClickWindow sets how long after a press a second press on the SAME
-// cell with the SAME button still counts as a double-click (ADR-0010 §2.5).
+// cell with the SAME button still counts as a double-click.
 // Default 400ms. Zero or negative disables multi-click entirely: every press
 // reports Count 1.
 //
@@ -108,9 +108,12 @@ func WithPanicPolicy(p PanicPolicy) AppOption {
 }
 
 // WithInputQueueSize sets the capacity of the App-owned input intake queue
-// (lane A) fed from backend.Events() (default 256; ADR-0005 §2.4). Rev 1:
-// this queue — and all coalescing/overflow policy — belongs to the App, not
-// the backend.
+// (lane A) fed from backend.Events() (default 256).
+//
+// The queue and ALL coalescing and overflow policy belong to the App, not the
+// backend. A backend that buffered or dropped on its own would make the
+// policy differ per terminal, and a test backend could not reproduce what a
+// real one did.
 func WithInputQueueSize(n int) AppOption {
 	if n < 1 {
 		panic(fmt.Sprintf("tui: WithInputQueueSize: n must be >= 1 (got %d)", n))
@@ -119,10 +122,13 @@ func WithInputQueueSize(n int) AppOption {
 }
 
 // WithEventQueueLimit sets an OPTIONAL hard ceiling on pending lane-B
-// program events (default: unlimited; ADR-0005 §2.4). Exceeding it PANICS
-// with "tui: program event queue exceeded N — runaway producer": lane-B
-// growth past any sane bound is an app bug, and apps preferring fail-fast
-// crash detection over memory growth opt in here. (Rev 1, Lector Q1.)
+// program events. THE DEFAULT IS UNLIMITED, so an app that does not call this
+// never panics here.
+//
+// Exceeding a limit you set PANICS with "tui: program event queue exceeded N
+// — runaway producer". That is the point of opting in: lane-B growth past any
+// sane bound is an application bug, and an app that would rather crash on it
+// than grow memory until the process dies asks for that here.
 func WithEventQueueLimit(n int) AppOption {
 	if n < 1 {
 		panic(fmt.Sprintf("tui: WithEventQueueLimit: n must be >= 1 (got %d)", n))
@@ -130,8 +136,8 @@ func WithEventQueueLimit(n int) AppOption {
 	return func(c *appConfig) { c.eventQueueLimit = n }
 }
 
-// WithTaskPoolSize bounds concurrently RUNNING tasks (default 16;
-// ADR-0005 §2.8).
+// WithTaskPoolSize bounds concurrently RUNNING tasks (default 16). Queued
+// tasks are not bounded by it — the limit is on how many execute at once.
 func WithTaskPoolSize(n int) AppOption {
 	if n < 1 {
 		panic(fmt.Sprintf("tui: WithTaskPoolSize: n must be >= 1 (got %d)", n))
@@ -139,9 +145,14 @@ func WithTaskPoolSize(n int) AppOption {
 	return func(c *appConfig) { c.taskPoolSize = n }
 }
 
-// WithWidthPolicy fixes the App-wide grapheme width policy (ADR-0003 §2.4:
-// WidthPolicyDefault = East Asian Ambiguous narrow; WidthPolicyAmbiguousWide
-// for CJK-legacy contexts). The policy travels with every Surface's
+// WithWidthPolicy fixes the App-wide grapheme width policy:
+// WidthPolicyDefault treats East Asian Ambiguous characters as NARROW, and
+// WidthPolicyAmbiguousWide as wide, which CJK-legacy terminals expect.
+//
+// It is App-wide and fixed once because measuring and rendering must agree: a
+// component that measured a string one way while the buffer laid it out the
+// other would corrupt every column after it. The policy travels with every
+// Surface's
 // resolution context; components measure via Surface.StringWidth to respect
 // it. Default: WidthPolicyDefault.
 func WithWidthPolicy(p WidthPolicy) AppOption {
@@ -149,7 +160,9 @@ func WithWidthPolicy(p WidthPolicy) AppOption {
 }
 
 // WithTaskDrainTimeout bounds how long Run waits for in-flight tasks after
-// the tree unmounts at shutdown (default 5s; ADR-0005 §2.2 step T2).
+// the tree unmounts at shutdown (default 5s). After it expires Run returns
+// anyway: a task that ignores its cancelled context must not hold the process
+// open.
 func WithTaskDrainTimeout(d time.Duration) AppOption {
 	if d < 0 {
 		panic("tui: WithTaskDrainTimeout: negative timeout")

@@ -2,8 +2,8 @@ package tui
 
 import "iter"
 
-// Keyer (ADR-0011 §2.1) is an optional capability interface (detected
-// like Focusable):
+// Keyer is an optional capability interface, discovered by type assertion the
+// way Focusable is:
 // keyed containers consult it to preserve a component across REORDERING
 // — same key, same mount, so reordering happens via Container.Move
 // rather than Remove+Add and the component keeps its NodeID, context,
@@ -18,11 +18,11 @@ type Keyer interface {
 	Key() any
 }
 
-// Component is the single mandatory contract of every node in the tree
-// (ADR-0001 §2.3, ADR-0004 §2.1). All four methods are invoked ONLY on the
-// App loop goroutine (ADR-0005 §2.3).
+// Component is the single mandatory contract of every node in the tree. All
+// four methods are invoked ONLY on the App loop goroutine, which is why a
+// component may hold plain fields and mutate them without locks.
 //
-// IDENTITY CONTRACT (ADR-0004 §2.4, rev 1): a Component's dynamic type MUST
+// IDENTITY CONTRACT: a Component's dynamic type MUST
 // be comparable — normatively, a component is a POINTER to its state struct.
 // Mount panics on non-comparable component types.
 type Component interface {
@@ -67,7 +67,7 @@ type Focusable interface {
 }
 
 // Container is the public child-management surface for composite widgets
-// (Flex, Dock, Stack, and ADR-0007's widget set). The framework's own
+// (Flex, Dock, Stack, and the widget set). The framework's own
 // parent/child links are built by Context.Mount/Unmount; Container is the
 // user-facing mutation API layered on top of them, plus enumeration for
 // traversal-order documentation, devtools, and tests. It is a capability

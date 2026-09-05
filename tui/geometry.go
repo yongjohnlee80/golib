@@ -62,8 +62,8 @@ func (c Constraints) IsTight() bool {
 	return c.MinW == c.MaxW && c.MinH == c.MaxH
 }
 
-// ConstraintViolation records one clamped Layout return (ADR-0004 §2.7.1
-// rev 1): a component returned a Size outside its Constraints and the
+// ConstraintViolation records one clamped Layout return: a component returned
+// a Size outside its Constraints and the
 // framework clamped it. Kept per run, bounded. Production apps observe them
 // via WithLogger; TestBackend retains them for assertion
 // (ConstraintViolations / FailOnViolations).

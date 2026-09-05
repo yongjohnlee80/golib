@@ -7,7 +7,7 @@ import (
 
 // timerEntry is one pending deadline in the App's demand-scheduled timer
 // heap: a component timer (After/Every) or a pending frame deadline (the
-// min-frame-interval cap rides the same timer — ADR-0003).
+// min-frame-interval cap rides the same timer).
 type timerEntry struct {
 	at    time.Time
 	seq   uint64 // allocation order; heap tie-break and the TimerID
@@ -20,8 +20,9 @@ type timerEntry struct {
 }
 
 // timerHeap is a min-heap over deadlines, tie-broken by allocation order
-// for determinism. Loop-goroutine-owned; torn down for free (ADR-0005 §2.6:
-// the heap is loop-local state, unlike scattered time.AfterFunc goroutines).
+// for determinism. Loop-goroutine-owned, and so torn down for free: it is
+// loop-local state, where scattered time.AfterFunc goroutines would each have
+// to be found and stopped.
 type timerHeap []*timerEntry
 
 func (h timerHeap) Len() int { return len(h) }
@@ -76,9 +77,9 @@ func (a *App) addTimer(owner NodeID, d, every time.Duration) (cancel func()) {
 	}
 }
 
-// scheduleFrame pushes a pending-frame deadline (min-frame-interval cap,
-// ADR-0003 / ADR-0005 §2.6: "a pending frame is just one more deadline in
-// the heap").
+// scheduleFrame pushes a pending-frame deadline for the min-frame-interval
+// cap. A pending frame is just one more deadline in the heap, so the idle
+// case costs nothing: no dirt, no deadline, no wakeup.
 func (a *App) scheduleFrame(at time.Time) {
 	a.nextTimerID++
 	heap.Push(&a.timers, &timerEntry{at: at, seq: a.nextTimerID, frame: true})
@@ -115,7 +116,7 @@ func (a *App) rearmTimer() {
 		a.timer.Reset(d)
 	}
 	a.timerC = a.timer.C
-	a.timerArms++ // instrumentation for the idle acceptance test (ADR-0005 §5.9)
+	a.timerArms++ // instrumentation: lets a test assert the idle app arms nothing
 }
 
 // fireDueTimers delivers every due deadline (loop goroutine): component

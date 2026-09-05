@@ -40,18 +40,19 @@ func (n *node) visible() bool { return n.measured && n.placed && !n.rect.Empty()
 
 // mount allocates a NodeID, links the node under parent (nil = root),
 // derives its context from the parent's, calls Init, and marks layout dirty
-// (ADR-0004 §2.4 mount cascade). Loop goroutine only.
+// (the mount cascade). Loop goroutine only.
 func (a *App) mount(parent *node, comp Component) *node {
 	if comp == nil {
 		panic("tui: Mount: nil component")
 	}
 	if a.inLayout || a.inRender {
-		panic("tui: tree mutation (Mount) inside Layout/Render is illegal (ADR-0004 §2.1)")
+		panic("tui: tree mutation (Mount) inside Layout/Render is illegal")
 	}
-	// Identity contract (ADR-0004 §2.4 rev 1, Lector must-fix #4): the
-	// Component-keyed index requires a comparable dynamic type; verify
-	// eagerly with a targeted panic (precedent: server.NewScaffold's
-	// nil-arg panic, server/scaffold.go:87-90).
+	// The Component-keyed index requires a COMPARABLE dynamic type, so verify
+	// it eagerly with a targeted panic. Deferring the check means the failure
+	// surfaces as a map-assignment panic somewhere else entirely, naming
+	// neither the component nor the rule it broke.
+	// REFERENCE: server/scaffold.go
 	if !reflect.TypeOf(comp).Comparable() {
 		panic(fmt.Sprintf("tui: component type %T is not comparable; use a pointer component", comp))
 	}
@@ -81,14 +82,15 @@ func (a *App) mount(parent *node, comp Component) *node {
 		a.rootNode = n
 	}
 
-	// Register the async-visible task context (ADR-0005 §2.8: App.Go is
-	// callable from any goroutine, so this lookup table has its own lock).
+	// Register the async-visible task context. App.Go is callable from any
+	// goroutine, so this lookup table has its own lock — it is the one piece
+	// of node state that is NOT loop-goroutine-owned.
 	a.async.mu.Lock()
 	a.async.ctxs[id] = cctx
 	a.async.mu.Unlock()
 
 	// Init may itself Mount children — the cascade is depth-first and
-	// re-entrant (ADR-0004 §2.4 step 3).
+	// re-entrant.
 	comp.Init(n.ctx)
 
 	a.layoutDirty = true // a new child means geometry may change (step 4)
@@ -152,7 +154,7 @@ func (a *App) unmountTree(n *node) {
 	} else if a.rootNode == n {
 		a.rootNode = nil
 	}
-	a.layoutDirty = true // ADR-0004 §2.4 step 5
+	a.layoutDirty = true
 	a.queue.wakeUp()
 
 	// Scope restore + focus repair. Pop scope entries whose trapping scope

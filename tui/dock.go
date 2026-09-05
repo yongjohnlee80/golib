@@ -66,7 +66,7 @@ func (d *Dock) Add(children ...Component) {
 	}
 }
 
-// Layout implements ADR-0004 §2.7.3: pinned children in declaration order,
+// Layout places pinned children in declaration order,
 // then center children fill the remainder tight.
 func (d *Dock) Layout(c Constraints) Size {
 	w, h := c.MaxW, c.MaxH

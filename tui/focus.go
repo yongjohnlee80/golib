@@ -62,7 +62,7 @@ func (a *App) setFocus(id NodeID) {
 	if nn := a.nodes[id]; nn != nil {
 		a.bubble(nn, FocusEvent{Gained: true})
 	}
-	a.renderDirty = true // the cursor rule re-evaluates next frame (ADR-0004 §2.3)
+	a.renderDirty = true // the cursor rule re-evaluates next frame
 	a.queue.wakeUp()
 }
 
@@ -124,7 +124,7 @@ func (a *App) currentScope() *node {
 }
 
 // focusFromPointer focuses the first focusable node at or above the pointer
-// target, provided that node lies inside the ACTIVE focus scope (ADR-0010 §2.1
+// target, provided that node lies inside the ACTIVE focus scope (
 // steps 1-4). It is called for a primary press only, BEFORE the event is
 // delivered, so a widget handling the press already sees itself focused and one
 // gesture both focuses and acts.

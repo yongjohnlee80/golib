@@ -9,7 +9,8 @@ import (
 
 // programQueueHighWaterStart is the first pending-count threshold that emits
 // a high-water log entry; subsequent entries fire at each doubling
-// (ADR-0005 §2.4 rev 1: high-water-mark logging is mandatory).
+// — the lane is unbounded by default, so the log is the only warning that a
+// producer is outrunning the loop.
 const programQueueHighWaterStart = 64
 
 // programItem is one lane-B entry: a posted Event or a queued closure

@@ -27,7 +27,8 @@ func Graphemes(s string) iter.Seq[string] { return grapheme.Clusters(s) }
 
 // StringWidth is the display width of s under WidthPolicyDefault —
 // explicitly and only. Component code should prefer Surface.StringWidth,
-// which applies the App-configured policy (ADR-0003 §2.4, normative).
+// which applies the App-configured policy. Measuring any other way risks
+// disagreeing with what the buffer lays out.
 func StringWidth(s string) int { return grapheme.StringWidth(s, false) }
 
 // StringWidthPolicy is the display width of s under an explicit policy.

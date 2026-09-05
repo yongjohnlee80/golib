@@ -81,7 +81,6 @@ tui/testbackend.go	TestBackend.InjectResize	3e3bad8e39ad70d7#1
 tui/testbackend.go	TestBackend.assertNoOrphansLocked	3908b1a1fdfa54ed#1
 tui/testbackend.go	TestBackend.assertNoOrphansLocked	4652194c26dce4a0#1
 tui/tree.go	App.mount	3e3a6d6ad6e059ae#1
-tui/tree.go	App.mount	b0daebf055875c7f#1
 tui/tree.go	App.mount	e0be33bc35bf1c39#1
 tui/tree.go	App.mount	fa9c22990d3335ab#1
 tui/tree.go	App.moveWithin	055d8d461bb1b58e#1

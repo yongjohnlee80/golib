@@ -62,7 +62,7 @@ func resolveStyle(st style.Style, rc ResolveContext) CellAttrs {
 	return a
 }
 
-// resolveColor runs one color through the documented chain (ADR-0006 §2.4):
+// resolveColor runs one color through the documented chain:
 //
 //  1. token → look up the active Theme → a concrete Color;
 //  2. adaptive → pick light or dark leaf by background darkness;
@@ -113,10 +113,10 @@ func resolveColor(c style.Color, th *style.Theme, profile ColorProfile, dark boo
 	return CellColor{} // unreachable: exactly one accessor reports ok per Color
 }
 
-// --- the bounded resolution cache (ADR-0006 §2.6) ---
+// --- the bounded resolution cache ---
 
 // resolveKey is the cache key: legal as a map key precisely because
-// style.Style is comparable (ADR-0006 §2.1; styles carrying a non-nil extras
+// style.Style is comparable (styles carrying a non-nil extras
 // pointer key by pointer identity — extras are never consulted by the core
 // resolver, so cache correctness doesn't depend on their contents).
 type resolveKey struct {
@@ -164,7 +164,7 @@ func (r *resolver) resolve(st style.Style, rc ResolveContext) CellAttrs {
 }
 
 // --- downsampling tables (deterministic table math, no color-science
-//     dependency — ADR-0006 §2.4) ---
+//     dependency) ---
 
 // cubeLevels are the xterm 6×6×6 color-cube component levels.
 var cubeLevels = [6]uint8{0, 95, 135, 175, 215, 255}

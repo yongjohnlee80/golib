@@ -2,20 +2,20 @@ package tui
 
 // Cell is one terminal grid cell. Content holds a COMPLETE grapheme cluster —
 // never a partial one, never more than one. This is the tcell v3 / vaxis /
-// bubbletea-v2 convergence (ADR-0003 §2.1;
+// bubbletea-v2 convergence (
 // https://mitchellh.com/writing/grapheme-clusters-in-terminals).
 //
 // Width is cached at write time (measured once by Surface.SetCell, under the
 // Surface's width policy), not recomputed per frame. Attrs is the style
-// payload already resolved to output form (ADR-0006 §2.6): Surfaces resolve
+// payload already resolved to output form: Surfaces resolve
 // style.Style through the theme + capability context at paint time and stamp
 // the concrete CellAttrs on the cell, so the diff, the flush path, and the
 // tui/term emitter never consult a Theme. Cell is comparable, and cell
-// equality — the entire dirty test — is one == (ADR-0003 §2.2).
+// equality — the entire dirty test — is one ==
 type Cell struct {
 	Content string    // one grapheme cluster; "" on a wide-cell continuation
 	Width   uint8     // display columns: 1 or 2; 0 marks a continuation cell
-	Attrs   CellAttrs // resolved style payload (ADR-0006 §2.6)
+	Attrs   CellAttrs // resolved style payload
 }
 
 // Continuation reports whether c is the right half of a wide cell.

@@ -6,13 +6,16 @@ import (
 	"time"
 )
 
-// Context is a mounted component's identity and runtime access
-// (ADR-0004 §2.2) — the ONLY sanctioned channel from a component to the
-// runtime (no globals; golib philosophy). One *Context per mounted node,
+// Context is a mounted component's identity and its ONLY sanctioned channel
+// to the runtime. There are no globals to reach it by, deliberately: a
+// component that could find the App without being handed it could also be
+// used outside one, and the compiler would not say so. One *Context per
+// mounted node,
 // created at mount, invalidated at unmount.
 //
 // Methods are legal only on the loop goroutine except Post and Go, which are
-// safe from any goroutine (they delegate to App — ADR-0005 §2.4, §2.8).
+// safe from any goroutine, because they only hand work to the App rather than
+// touching the tree.
 type Context struct {
 	app  *App
 	node *node
@@ -27,17 +30,19 @@ func (c *Context) ID() NodeID { return c.node.id }
 // so unmount kills in-flight work with zero bookkeeping in the component.
 func (c *Context) Ctx() context.Context { return c.node.cctx }
 
-// MarkDirty requests a repaint of the subtree; geometry unchanged
-// (ADR-0004 §2.7.5 render dirt). Dirty marks only schedule a frame —
-// rendering never happens synchronously inside a handler.
+// MarkDirty requests a repaint of the subtree, leaving geometry unchanged.
+//
+// It only SCHEDULES a frame; rendering never happens synchronously inside a
+// handler. That is what lets a handler mark dirty as many times as it likes,
+// and what stops a component from observing a half-updated tree mid-handler.
 func (c *Context) MarkDirty() {
 	c.app.renderDirty = true
 	c.app.queue.wakeUp()
 }
 
 // RequestLayout signals the node's size may have changed: the next frame
-// runs one full layout pass from the root, then repaints
-// (ADR-0004 §2.7.5 layout dirt).
+// runs one full layout pass from the root, then repaints. Use it when a
+// change affects SIZE; MarkDirty is enough when only appearance changed.
 func (c *Context) RequestLayout() {
 	c.app.layoutDirty = true
 	c.app.queue.wakeUp()
@@ -48,7 +53,8 @@ func (c *Context) RequestLayout() {
 func (c *Context) RequestFocus() { c.app.requestFocus(c.node) }
 
 // FocusWithin reports whether the currently focused node is comp or one of
-// comp's descendants (ADR-0008 — Split.Zoom's transfer check). False when
+// comp's descendants — what a container asks before it hides a subtree, so
+// focus can be moved out rather than stranded somewhere invisible. False when
 // nothing is focused or comp is not mounted.
 func (c *Context) FocusWithin(comp Component) bool {
 	n := c.app.nodes[c.app.focused]
@@ -160,7 +166,7 @@ func (c *Context) PlaceChild(child Component, r Rect) {
 	cn.placed = true
 }
 
-// App returns the owning runtime (ADR-0005 owns its semantics).
+// App returns the owning runtime.
 func (c *Context) App() *App { return c.app }
 
 // StringWidth measures s under the App's active width policy — the SAME
@@ -199,7 +205,8 @@ func (c *Context) After(d time.Duration) (cancel func()) {
 
 // Every registers a repeating timer: a TickEvent addressed to this node
 // every d, re-armed after delivery (fixed-delay, not fixed-rate — no burst
-// catch-up after a stall; ADR-0005 §2.6). The returned cancel is idempotent;
+// catch-up after a stall, so a slow frame cannot be followed by a burst of
+// backdated ticks). The returned cancel is idempotent;
 // unmount cancels automatically.
 func (c *Context) Every(d time.Duration) (cancel func()) {
 	if d <= 0 {
