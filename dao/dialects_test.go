@@ -451,14 +451,19 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 	// collapse this whole change exists to prevent — passed. Naming the two
 	// sites removes both holes: nothing else is exempt, whatever it is spelled.
 	//
+	// These name OpenHooked rather than OpenNamed because the connect-hook
+	// work made OpenHooked the single open path — OpenNamed now delegates to
+	// it with a nil hook, so the driver-registration name is passed in exactly
+	// one place per engine rather than two.
+	//
 	// Why these two are exempt at all: the argument is the THIRD-PARTY
 	// DRIVER's database/sql registration name, owned by modernc.org/sqlite and
 	// go-sql-driver/mysql. Its equality with two of our dialect names is a
 	// coincidence, not a contract, so it must NOT become a dao constant.
 	type siteKey struct{ file, fn string }
 	exemptSites := map[siteKey]string{
-		{"dao/sqlite/sqlite.go", "OpenNamed"}: "sqlite",
-		{"dao/mysql/mysql.go", "OpenNamed"}:   "mysql",
+		{"dao/sqlite/sqlite.go", "OpenHooked"}: "sqlite",
+		{"dao/mysql/mysql.go", "OpenHooked"}:   "mysql",
 	}
 	allowed := map[token.Pos]bool{}
 	matched := map[siteKey]int{}
@@ -470,14 +475,34 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 				return true
 			}
 			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || sel.Sel.Name != "Open" {
+			if !ok {
 				return true
 			}
-			// Resolve the qualifier to database/sql rather than trusting its
-			// spelling, and fail closed if that name is shadowed here.
-			sqlName, imported := importLocalName(pf.file, "database/sql")
+			// The driver-registration name reaches the driver through one of
+			// two entry points: database/sql.Open directly, or the shared
+			// stdsql.OpenHooked that the connect-hook work put in front of it.
+			// Both are listed by IMPORT PATH so a renamed import cannot slip
+			// past, and both fail closed when the qualifier is shadowed here.
+			entryPoints := []struct{ path, fn string }{
+				{"database/sql", "Open"},
+				{"github.com/yongjohnlee80/golib/dao/internal/stdsql", "OpenHooked"},
+			}
 			pkg, isIdent := sel.X.(*ast.Ident)
-			if !imported || !isIdent || pkg.Name != sqlName || nameIsShadowed(pf.file, sqlName) {
+			if !isIdent {
+				return true
+			}
+			isEntry := false
+			for _, ep := range entryPoints {
+				if sel.Sel.Name != ep.fn {
+					continue
+				}
+				local, imported := importLocalName(pf.file, ep.path)
+				if imported && pkg.Name == local && !nameIsShadowed(pf.file, local) {
+					isEntry = true
+					break
+				}
+			}
+			if !isEntry {
 				return true
 			}
 			key := siteKey{pf.rel, enclosingFunc(pf.file, call.Pos())}

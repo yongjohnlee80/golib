@@ -21,6 +21,20 @@ import "context"
 // whichever goroutine needs one, so a hook can run on several at once and must
 // synchronise any state it touches. Nothing serialises it.
 //
+// WHAT A FAILING HOOK DOES depends on the engine, and the difference is worth
+// knowing rather than averaging away.
+//
+//   - postgres (pgx): the error goes to whoever was acquiring the connection.
+//     The hook runs once per attempt.
+//   - mysql and sqlite (database/sql): the same, with ONE exception. An error
+//     that is or wraps [database/sql/driver.ErrBadConn] means "this connection
+//     is unusable" to database/sql, which answers by retrying — measured at
+//     three hook invocations before the error surfaces. Return ErrBadConn only
+//     when you mean that; any other error stops the connect immediately.
+//
+// Either way a hook with a side effect should be safe to run more than once,
+// since a pool retries connects for reasons of its own.
+//
 // Drivers accept a hook at Open, never afterwards — see each driver's
 // WithConnectHook or OpenHooked. There is deliberately no way to register one
 // on an already-open DataConn: a hook installed after connections exist would
