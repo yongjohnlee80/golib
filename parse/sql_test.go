@@ -111,13 +111,37 @@ func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 			want: []string{"SELECT $1", "SELECT 2"},
 		},
 		{
+			// Valid PostgreSQL: the E prefix is the engine's opt-in to backslash
+			// escapes, so the quote after the backslash does NOT close the run.
+			name: "E-string backslash escape when the dialect enables it",
+			sql:  parse.SQL{EStringEscapes: true},
+			src:  `SELECT E'a\'b'; SELECT 2`,
+			want: []string{`SELECT E'a\'b'`, "SELECT 2"},
+		},
+		{
+			// The opt-in is the prefix, not the construct: an ordinary string
+			// keeps the standard reading even with E-strings enabled, so a path
+			// ending in a backslash still closes where it should.
+			name: "an ordinary string keeps standard backslash handling",
+			sql:  parse.SQL{EStringEscapes: true},
+			src:  `SELECT 'C:\'; SELECT 2`,
+			want: []string{`SELECT 'C:\'`, "SELECT 2"},
+		},
+		{
+			// A trailing e on an identifier is not a string prefix.
+			name: "a word ending in e does not make the next string an E-string",
+			sql:  parse.SQL{EStringEscapes: true},
+			src:  `SELECT value'a\'; SELECT 2`,
+			want: []string{`SELECT value'a\'`, "SELECT 2"},
+		},
+		{
 			name: "nested block comment when the dialect nests",
 			sql:  parse.SQL{NestedBlockComments: true},
 			src:  "SELECT /* a /* b; */ c */ 1; SELECT 2",
 			want: []string{"SELECT /* a /* b; */ c */ 1", "SELECT 2"},
 		},
 	}
-	if len(cases) < 14 {
+	if len(cases) < 17 {
 		t.Fatalf("only %d cases; the table has shrunk and this test proves less "+
 			"than it claims", len(cases))
 	}
