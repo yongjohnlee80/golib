@@ -104,13 +104,10 @@ func (v *View) Close() error {
 		return nil
 	}
 	v.c.mu.Lock()
-	for _, s := range held {
-		s.refs--
-	}
 	// The release this view was deferring can now happen. Without this the
-	// watermark is recorded and never acted on, so a span the caller was told
-	// was released stays acquirable and the retained set only grows.
-	v.c.dropLocked()
+	// watermark is recorded and never acted on, so the bytes are kept forever
+	// by a view that no longer exists.
+	v.c.dropHeldLocked(held)
 	v.c.mu.Unlock()
 	return nil
 }

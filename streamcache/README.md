@@ -65,14 +65,26 @@ Peak is **O(segment + retained views)**. A consumer that acquires nothing keeps
 one segment plus whatever it is mid-read on, whatever the size of the stream.
 
 Retention is the **caller's** choice; this package has no policy of its own,
-because it cannot know what a caller still needs. A `Release` that finds a
-segment held records the request and applies it when the last view lets go, so
-*released* does not quietly mean *released unless somebody happened to be
-holding it*.
+because it cannot know what a caller still needs.
+
+`Release(off)` sets a **watermark**, and the watermark alone decides what is
+still acquirable. Nothing below it can be acquired again, whether or not its
+bytes have been freed yet — otherwise the answer would depend on which
+*unrelated* view happened to be holding an *unrelated* segment in front of it,
+which is not something a caller can reason about. Freeing then proceeds on its
+own schedule: a segment the watermark passes while unheld goes immediately, one
+passed while held is freed by its last `Close`, and old views keep reading their
+own bytes throughout. One view of the first byte of a stream does **not** pin
+the rest of it.
 
 A held **partial** segment keeps its whole buffer, including the unwritten
 tail, so a view on one byte of a 32 KiB segment retains 32 KiB. Smaller
 segments trade allocations for finer-grained reclamation.
+
+Directory entries outlive their buffers briefly: removing one from the middle
+costs a copy, so the leading run is truncated for free and stranded entries are
+compacted once they are the majority. The directory therefore carries at most
+twice the entries it needs — tens of bytes per segment, never bytes of stream.
 
 ## Cost
 
@@ -83,7 +95,12 @@ once, and each was found by measurement rather than by reading:
 | operation | cost |
 |---|---|
 | `Acquire`, `AppendTo` | O(segments the span covers) |
-| `Close` reclamation | O(segments actually dropped) |
+| `Release` | O(log n + segments the watermark newly crossed) |
+| `Close` | O(segments that view held) |
+| reclamation over a stream | O(total segments) — each visited once, freed once |
 
 `go test -bench 'Acquire|Append|Close'` — doubling the input should roughly
-double the time. Quadrupling means a per-item search has come back.
+double the time. Quadrupling means a per-item search has come back. The `Close`
+benchmarks run in **both orders**: closing newest-first strands every freed
+entry behind a held one, and a benchmark that only ran the easy order would
+report a shape the implementation does not have.

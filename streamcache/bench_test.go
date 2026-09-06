@@ -61,16 +61,23 @@ func BenchmarkAppend64KiB(b *testing.B)  { benchAppend(b, 64<<10) }
 func BenchmarkAppend128KiB(b *testing.B) { benchAppend(b, 128<<10) }
 func BenchmarkAppend256KiB(b *testing.B) { benchAppend(b, 256<<10) }
 
-// CLOSE SCALING — the measurement lector asked for, and the one that catches
-// the defect this benchmark file exists because of.
+// CLOSE SCALING — the measurement that catches the defect this benchmark file
+// exists because of.
 //
 // Reclamation used to rebuild the whole directory on every final Close, so its
 // cost grew with the number of RETAINED segments rather than with the number
-// DROPPED: ~4x per doubling (512 segments ~0.19 ms, 4096 ~12.5 ms), all under
-// c.mu. Prefix reclamation should make this roughly flat per close.
+// FREED: ~4x per doubling (512 segments ~0.19 ms, 4096 ~12.5 ms), all under
+// c.mu. A cursor should make this roughly linear in the closes.
 //
-// Read the SHAPE across the three sizes, not the absolute figures.
-func benchClose(b *testing.B, segments int) {
+// Read the SHAPE across the four sizes, not the absolute figures. Run BOTH
+// orders: closing oldest-first lets every close truncate the directory head,
+// which is the EASY case. Closing newest-first strands every freed entry behind
+// a still-held one, so it is the case the amortised compaction has to carry —
+// and a benchmark that only ran the easy order would report a shape the
+// implementation does not have.
+func benchClose(b *testing.B, segments int) { benchCloseOrder(b, segments, false) }
+
+func benchCloseOrder(b *testing.B, segments int, newestFirst bool) {
 	const seg = 64
 	size := segments * seg
 	b.ReportAllocs()
@@ -92,8 +99,14 @@ func benchClose(b *testing.B, segments int) {
 		c.Release(int64(size)) // ask for everything; every segment is held
 		b.StartTimer()
 
-		for _, v := range views { // the timed part: reclamation on close
-			v.Close()
+		if newestFirst {
+			for k := len(views) - 1; k >= 0; k-- { // the timed part
+				views[k].Close()
+			}
+		} else {
+			for _, v := range views { // the timed part: reclamation on close
+				v.Close()
+			}
 		}
 	}
 }
@@ -102,3 +115,8 @@ func BenchmarkClose512Segments(b *testing.B)  { benchClose(b, 512) }
 func BenchmarkClose1024Segments(b *testing.B) { benchClose(b, 1024) }
 func BenchmarkClose2048Segments(b *testing.B) { benchClose(b, 2048) }
 func BenchmarkClose4096Segments(b *testing.B) { benchClose(b, 4096) }
+
+func BenchmarkCloseNewestFirst512Segments(b *testing.B)  { benchCloseOrder(b, 512, true) }
+func BenchmarkCloseNewestFirst1024Segments(b *testing.B) { benchCloseOrder(b, 1024, true) }
+func BenchmarkCloseNewestFirst2048Segments(b *testing.B) { benchCloseOrder(b, 2048, true) }
+func BenchmarkCloseNewestFirst4096Segments(b *testing.B) { benchCloseOrder(b, 4096, true) }

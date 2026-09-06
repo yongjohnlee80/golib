@@ -50,11 +50,33 @@ func WithSegmentSize(n int) Option {
 	}
 }
 
+// A segment is one block of the retained region.
+//
+//	base            base+n              base+len(buf)
+//	 |                 |                      |
+//	 v                 v                      v
+//	 +-----------------+----------------------+
+//	 | bytes read      | not yet written      |   refs: views holding it
+//	 +-----------------+----------------------+
+//
+// n advances as the writer fills it; it is never rewritten. A segment with
+// refs > 0 is never written to and never freed, which is what makes a View's
+// bytes stable for its lifetime.
 type segment struct {
 	base int64
 	buf  []byte
 	n    int
-	refs int // views holding this segment; recycling waits for zero, growth does not
+	refs int // views holding this segment; freeing waits for zero, growth does not
+
+	// pending records that the watermark passed this segment while a view held
+	// it. The buffer is freed by the last Close instead — a release must not
+	// be forgotten just because it arrived at an inconvenient moment.
+	pending bool
+
+	// dead means the buffer has been freed. The entry may outlive it: removing
+	// one from the middle of the directory costs a copy, so removal is
+	// amortised (see compactLocked) while the MEMORY goes immediately.
+	dead bool
 }
 
 func (s *segment) covers(off int64) bool {
@@ -73,17 +95,36 @@ type Cache struct {
 	err   error
 	fixed bool // NewBytes-style: one immutable segment, never grown or dropped
 
-	// released is the highest offset the caller has asked to drop. A Release
-	// that finds a segment held cannot drop it THEN, so the request is recorded
-	// and re-applied when the last view lets go. Without this, "released" meant
-	// only "released if nobody happened to be holding it", the span stayed
-	// acquirable afterwards, and the retained set only ever grew.
+	// released is the highest offset the caller has asked to drop: the
+	// WATERMARK. It is the whole definition of what is still acquirable, and it
+	// is deliberately independent of which buffers happen to be freed yet.
+	// Tying the two together makes the speed of the reclamation pass into the
+	// meaning of Release, which is how a span behind a held segment came back
+	// to life after being released.
 	released int64
+
+	// relOff is how far the reclamation pass has already walked. The watermark
+	// only rises, so each segment is examined once over the life of the stream
+	// however many times Release is called.
+	relOff int64
+
+	// dead counts entries in segs whose buffer is freed. Only used to decide
+	// when compacting the directory is worth a copy.
+	dead int
 }
 
 // New returns a Cache over r. It does not close r: ownership stays with the
 // caller, so two caches can be built over one source.
+//
+// A nil reader is a programming error and panics here. The alternative is a nil
+// dereference inside the first fill, which happens under the Cache's own lock,
+// on whichever goroutine happened to advance the stream, arbitrarily far from
+// the call that made the mistake. Reporting it at construction costs nothing
+// and names the right line. Use [NewBytes] for an empty stream.
 func New(r io.Reader, opts ...Option) *Cache {
+	if r == nil {
+		panic("streamcache: New(nil): reader must not be nil; use NewBytes(nil) for an empty stream")
+	}
 	cfg := config{segment: defaultSegmentSize}
 	for _, o := range opts {
 		o(&cfg)
@@ -186,8 +227,10 @@ func (c *Cache) fillLocked() {
 	}
 }
 
-// Release drops every segment lying entirely before off that no view holds.
-// Segments still held are kept; nothing waits.
+// Release lets go of everything before off. Every segment lying entirely below
+// the watermark is freed — not merely the leading run of them — and no span
+// below it can be acquired again, whether or not its buffer has been freed yet.
+// Nothing waits: a segment a view still holds is freed by that view's Close.
 func (c *Cache) Release(off int64) {
 	if c.fixed {
 		return
@@ -197,38 +240,153 @@ func (c *Cache) Release(off int64) {
 	if off > c.released {
 		c.released = off
 	}
-	c.dropLocked()
+	c.reclaimLocked()
 }
 
-// dropLocked discards the reclaimable PREFIX of the directory. Called by
-// Release and by the last View.Close on a segment, so a deferred release
-// happens rather than being forgotten.
+// reclaimLocked frees the buffers the watermark has passed. c.mu must be held.
 //
-// PREFIX ONLY, AND O(DROPPED) — not a scan of the whole directory.
+// # The case that makes this subtle
 //
-// The first version rebuilt the entire slice on every final Close, which moved
-// F4's quadratic from access to reclamation: measured at ~4x per doubling —
-// 512 segments ~0.19 ms, 4096 ~12.5 ms, all under c.mu. That is the same
-// mistake as F4 in a second place, and it is the mistake of reasoning about the
-// SIZE of a set instead of how often it is walked.
+// A view on the FIRST byte of a long stream, then Release(Head):
 //
-// Stopping at the first segment that cannot go is not a weakening: it is the
-// semantics this cache already documents. A held early segment pins everything
-// after it, so peak memory is governed by the OLDEST live view. Scanning past
-// it to reclaim a later hole would contradict that and buy nothing a caller
-// could rely on.
-func (c *Cache) dropLocked() {
-	i := 0
-	for i < len(c.segs) {
+//	         held by a view
+//	             |
+//	    +----+----+----+----+----+----+----+----+
+//	seg |  0 |  1 |  2 |  3 |  4 |  5 |  6 |  7 |     released = Head
+//	    +----+----+----+----+----+----+----+----+
+//	       ^    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//	       |                  |
+//	    KEEP: a live view      FREE: nothing holds these, and the caller
+//	    owns these bytes            has said it is done with them
+//
+// Walking only the leading run stops dead at segment 0 and frees NOTHING, so
+// one view of one byte pins the entire stream and [Cache.Acquire] keeps
+// answering for spans the caller released. Walking the whole directory on every
+// call is the other trap: that is O(directory) per release and quadratic over a
+// stream.
+//
+// # The algorithm
+//
+// A cursor, not a scan. The watermark only rises, so the pass resumes at relOff
+// and each segment is visited ONCE over the life of the stream:
+//
+//	relOff ──►  visit  ──►  wholly below released?  ── no ──► stop, resume later
+//	                              │ yes
+//	                              ▼
+//	                          held by a view?
+//	                       yes │            │ no
+//	                           ▼            ▼
+//	                    mark pending    free the buffer
+//	                   (Close frees)     (memory gone now)
+//
+// # Cost
+//
+//	per Release   O(log n + segments the watermark newly crossed)
+//	per Close     O(segments that view held)
+//	over a stream O(total segments) — each is visited once and freed once
+//
+// Measured, closing N independently held segments after releasing everything,
+// before and after this shape — in BOTH close orders, because closing
+// newest-first strands every freed entry behind a held one and is the case the
+// amortised compaction has to carry:
+//
+//	segments   whole-directory scan   cursor, oldest-first   cursor, newest-first
+//	     512               0.19 ms                 17.0 us                14.1 us
+//	    1024               0.71 ms                 30.0 us                29.1 us
+//	    2048               2.8  ms                 55.1 us                66.7 us
+//	    4096              12.5  ms                139.7 us               124.3 us
+//
+// ~4x per doubling against ~2x, and ~89x faster at 4096. The first is quadratic
+// in the directory; the second is linear in the work actually done, in either
+// order. 0 allocs/op throughout.
+func (c *Cache) reclaimLocked() {
+	i := sort.Search(len(c.segs), func(i int) bool {
+		return c.segs[i].base+int64(c.segs[i].n) > c.relOff
+	})
+	for ; i < len(c.segs); i++ {
 		s := c.segs[i]
-		if s.refs != 0 || s.base+int64(s.n) > c.released {
-			break
+		end := s.base + int64(s.n)
+		if end > c.released {
+			break // the watermark has not passed this segment yet
 		}
-		c.segs[i] = nil // do not pin a dropped segment through the array
+		if i == len(c.segs)-1 && s.refs == 0 && s.n < len(s.buf) {
+			break // the active write target; freeing it would strand the writer
+		}
+		c.relOff = end
+		if s.refs > 0 {
+			s.pending = true // its Close frees it
+			continue
+		}
+		c.killLocked(s)
+	}
+	c.compactLocked()
+}
+
+// killLocked frees one segment's buffer. c.mu must be held.
+//
+// The entry stays until compaction; the BYTES go now, which is the part a
+// memory bound is about.
+func (c *Cache) killLocked(s *segment) {
+	if s.dead {
+		return
+	}
+	s.buf = nil
+	s.dead = true
+	c.dead++
+}
+
+// dropHeldLocked returns a closed view's references and frees anything the
+// watermark passed while it was holding on. c.mu must be held.
+func (c *Cache) dropHeldLocked(held []*segment) {
+	for _, s := range held {
+		s.refs--
+		if s.refs == 0 && s.pending {
+			c.killLocked(s)
+		}
+	}
+	c.compactLocked()
+}
+
+// compactLocked removes freed entries from the directory. c.mu must be held.
+//
+// Two rules, because the two shapes have different costs:
+//
+//	leading run   +--+--+--+----+----+     drop outright: retruncating the
+//	              |XX|XX|XX| 3  | 4  |     slice header is free
+//	              +--+--+--+----+----+
+//	               ^^^^^^^^
+//
+//	stranded      +----+--+--+--+----+     a copy — so only when they are the
+//	              | 0h |XX|XX|XX| 4  |     MAJORITY, which halves them and
+//	              +----+--+--+--+----+     costs O(1) amortised per entry
+//	                    ^^^^^^^^
+//	                 (0h is held; entries behind it cannot be truncated away)
+//
+// The buffers are already gone in both pictures; this is directory hygiene, and
+// paying a copy for it eagerly would put the quadratic straight back.
+func (c *Cache) compactLocked() {
+	i := 0
+	for i < len(c.segs) && c.segs[i].dead {
+		c.segs[i] = nil // do not pin the entry through the array
 		i++
 	}
 	if i > 0 {
 		c.segs = c.segs[i:]
+		c.dead -= i
+	}
+	if c.dead > 0 && 2*c.dead > len(c.segs) {
+		kept := c.segs[:0]
+		for _, s := range c.segs {
+			if s.dead {
+				continue
+			}
+			kept = append(kept, s)
+		}
+		for j := len(kept); j < len(c.segs); j++ {
+			c.segs[j] = nil
+		}
+		c.segs = kept
+		c.dead = 0
 	}
 }
 
@@ -246,6 +404,14 @@ func (c *Cache) Acquire(from, to int64) (*View, error) {
 	defer c.mu.Unlock()
 	if to > c.head {
 		return nil, fmt.Errorf("%w: [%d,%d) past end %d", ErrRange, from, to, c.head)
+	}
+	// THE WATERMARK DECIDES, not the directory. A released span must be refused
+	// even while its buffer is still around — because whether it is around
+	// depends on whether an unrelated view happens to be holding an unrelated
+	// segment in front of it, which is not something a caller can reason about.
+	if from < c.released {
+		return nil, fmt.Errorf("%w: offset %d is below the release watermark %d",
+			ErrReleased, from, c.released)
 	}
 	// Acquiring a span must cost the segments it COVERS, not the segments the
 	// cache holds — a reader taking one span out of a long stream must not get
@@ -275,21 +441,6 @@ func (c *Cache) Acquire(from, to int64) (*View, error) {
 		i++
 	}
 	return &View{c: c, from: from, to: to, held: held}, nil
-}
-
-// findLocked returns the segment covering off, or nil. c.mu must be held.
-//
-// BINARY SEARCH, not a scan. The first version scanned linearly and argued the
-// retained set is "usually one or two" — but Acquire and AppendTo call it once
-// per segment of a span, so the cost was O(k²) in the number of segments a span
-// covers. Measured at 64-byte segments: 6 ms to acquire 256 KiB. Segments are
-// contiguous and ascending by construction, so a search is available for free
-// and the argument for the scan was simply wrong.
-func (c *Cache) findLocked(off int64) *segment {
-	if i := c.indexLocked(off); i >= 0 {
-		return c.segs[i]
-	}
-	return nil
 }
 
 // indexLocked returns the index of the segment covering off, or -1. c.mu must

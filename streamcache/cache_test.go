@@ -376,3 +376,56 @@ func TestWithSegmentSize_RejectsNonPositive(t *testing.T) {
 	// on a constructor that rejected everything.
 	New(strings.NewReader(""), WithSegmentSize(1))
 }
+
+// directoryLen reports how many segment ENTRIES the cache is carrying,
+// including any whose buffer is already freed. TEST-ONLY: freeing the bytes
+// while the entries accumulate would still grow without bound over a stream.
+func (c *Cache) directoryLen() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.segs)
+}
+
+// retainedBytes reports how many bytes of segment buffer the cache is still
+// holding. TEST-ONLY: the number is the memory bound the ADR states, and a
+// bound nothing can read is a bound nothing can check.
+func (c *Cache) retainedBytes() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var n int64
+	for _, s := range c.segs {
+		n += int64(len(s.buf))
+	}
+	return n
+}
+
+// A nil reader is refused at construction, where the mistake was made, rather
+// than dereferenced inside the first fill under the Cache's own lock.
+func TestNew_RejectsNilReader(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("New(nil) did not panic; the nil surfaces later as a dereference " +
+				"inside fillLocked, on whichever goroutine advanced the stream")
+		}
+		if msg, _ := r.(string); !strings.Contains(msg, "New(nil)") {
+			t.Fatalf("panic message %q does not name the call", r)
+		}
+	}()
+	_ = New(nil)
+}
+
+// SPECIFICITY: the panic is about nil, not about construction. NewBytes(nil) is
+// a legitimate empty stream and the message above points callers at it, so that
+// advice has to be true.
+func TestNewBytes_NilIsAnEmptyStream(t *testing.T) {
+	t.Parallel()
+	c := NewBytes(nil)
+	if n, err := c.Ensure(0, 1); n != 0 || err != nil {
+		t.Fatalf("Ensure(0,1) on NewBytes(nil) = %d, %v; want 0, nil", n, err)
+	}
+	if got := c.Head(); got != 0 {
+		t.Fatalf("Head() = %d, want 0", got)
+	}
+}
