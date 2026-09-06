@@ -201,6 +201,33 @@ duplication it appears to fix.
   hard failure on existing debt, which gets the check disabled. New violations
   fail; inherited ones ratchet.
 
+### Finding the couplings that are real
+
+Before rewriting assertions, measure which of them actually depend on someone
+else's text. **A substring hit is not a coupling.** `agent:gold-man`'s first
+instrument grepped an upstream's whole source for each matched string and
+reported fourteen — including `"cap"` in 186 files, `"server"` in 127 and
+`"SET"` in 26. That would have meant rewriting forty assertions to fix four
+problems that did not exist.
+
+**The right test: does the matched text appear inside a string the upstream
+DECLARES as an error** — an `errors.New` or `fmt.Errorf` — rather than anywhere
+in its source? Measured that way against golib's 257 distinct declared error
+texts, autodb's 40 distinct matched strings yielded **two** real couplings, both
+the same sentinel, and two coincidences where ordinary English appeared in an
+unrelated message.
+
+**And separate the two problems, because they have different urgency:**
+
+- **A cross-repo coupling breaks on SOMEONE ELSE'S rewording.** You cannot see
+  it coming and cannot prevent it. Fix these first; there are usually very few.
+- **An internal coupling breaks on YOUR OWN rewording.** It is still a
+  violation of R3/R4 and still worth fixing, but you control when it breaks.
+  This is the large, less urgent half.
+
+Presenting them as one number makes the urgent handful invisible inside the
+patient majority.
+
 ## Do not
 
 - Match on a third-party library's or a driver's message anywhere but a boundary
