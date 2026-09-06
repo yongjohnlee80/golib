@@ -52,6 +52,17 @@ func TestConstructionRefusalsCarryInvalidArgument(t *testing.T) {
 // One condition, one name. Attaching a client that reported no usable metrics
 // was refused in three places with two different sentences and no identity at
 // all; a caller could not act on any of them.
+//
+// COVERAGE BOUNDARY, stated because it is not obvious: this drives ONE of the
+// three sites (Backend.Attach). The other two — the connection's first frame
+// and the session manager — need a live connection and a session fixture, and
+// are not exercised here. Reverting either of them to its own errors.New would
+// NOT fail this test.
+//
+// That is a real limit, not a claim that the sentinel makes it moot: the shared
+// identity means all three CAN be asked one question, and only a test at each
+// site proves all three DO. Reviewer mutations at the other two sites found
+// exactly this gap, which is the honest way for it to be on the record.
 func TestAttach_UnmeasuredClientHasOneIdentity(t *testing.T) {
 	b := New()
 
