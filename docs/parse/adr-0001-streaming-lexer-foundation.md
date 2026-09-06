@@ -1,6 +1,12 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 19)** (2026-09-06, jarvis). Rev 19 lands the run/set
+- **Status:** **Proposed (rev 20)** (2026-09-06, jarvis). Rev 20 lands the SCAN
+  ENGINE (§4): the form walk with precedence, `Incomplete` blocking, the EOF
+  degrade, bounded retry and form-contract enforcement, wired to `streamcache` and
+  `Source` — releasing to the effective watermark `reclaim` returns, and relative
+  to each token's start so a token stays acquirable when it is handed back.
+  `Validate`/`WriteTokens` and criterion 13's no-copy window remain.
+- **Rev 19 (superseded header, kept for the trail):** Rev 19 lands the run/set
   forms: `RunForm` (maximal run, index continuous across the opener) and `SetForm`
   (literal trie, stable first-terminal opener, longest-descendant `End`), with the
   shared-prefix table pinned in §6 and driven at every split by `parsetest`.
@@ -259,11 +265,49 @@ func (s *Scan) Tokens() iter.Seq2[Token, error]
 func (s *Scan) Acquire(t Token) (*streamcache.View, error)
 func (s *Scan) Close() error   // eager; closes r only under OwnReader
 
+func (s *Scan) LocationAt(off int64) (Location, error)  // the diagnostic seam
+
 // The validity seam — no Token in its signature, so ISP is enforced by the
 // compiler rather than by intent.
 func (l *Lexer) Validate(ctx context.Context, r io.Reader) error
 func (l *Lexer) WriteTokens(ctx context.Context, w io.Writer, r io.Reader) error
 ```
+
+> **Landed (rev 20): the engine.** `scan.go` carries `Lexer`, the options,
+> `Ownership`, `Scan`, `Tokens`, `Acquire`, `LocationAt` and `Close`. The walk is
+> the §6.1 contract made executable: declaration-order precedence, first `Matched`
+> wins, the first `Incomplete` **stops** the walk and the window widens for a
+> retry at the same offset, `Incomplete` degrades to `NoMatch` at end of input,
+> and every form-contract violation is reported as `ErrFormContract` naming the
+> form rather than absorbed. A construct is copied out of the cache **once**, not
+> once per retry: the window is appended to in place as it grows.
+>
+> Two things the implementation had to settle that the design did not say:
+>
+> - **Retention is released relative to the token's START, not the new position.**
+>   A token that ends on a newline begins a line at exactly the new position, so
+>   reclaiming to there releases the token being handed back in the same call and
+>   the caller cannot `Acquire` what it was just given. Reverting this makes the
+>   round-trip test fail on the newline token with `ErrReleased`, which is how it
+>   was found. The rule for callers follows from it: **acquire a token's bytes
+>   while it is still the recent past** — a `View`, once held, keeps its own bytes
+>   alive however far the scan runs on.
+> - **`ErrUnclaimed`.** A byte no form claims is refused, naming the offset. The
+>   core will not invent a kind, and stepping over it would drop input silently.
+>   Total coverage is the caller's to arrange, which is what `ByteForm` is for.
+>
+> The EOF degrade is not merely a lexing nicety: with it removed the scan widens a
+> window that can never grow and **fails to terminate**, which is what the control
+> for it demonstrates.
+>
+> **Not yet: `Validate` and `WriteTokens`** — and with them criterion 4's
+> constant-memory path, which is exactly the path that builds no `Source`.
+> **Criterion 13 is also open:** a `Form` needs a CONTIGUOUS window, and the
+> engine currently materialises one by copying out of the cache, so `ScanBytes`
+> does copy the windows it hands to forms even though its cache wraps the caller's
+> slice. Honouring "no copy" needs the cache to lend a span that lies within one
+> segment, held alive by its `View` — a small addition to a package already signed
+> off, and therefore one to propose rather than assume.
 
 `ScanBytes` restores the borrowed, no-copy path (lector r4 B6): its cache is a
 single immutable segment over the caller's slice, never written to and never
