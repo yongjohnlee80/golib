@@ -267,10 +267,25 @@ because two layers independently described the same condition in the same
 English: a far more convincing false positive than a common word, because the
 text matched for a real reason and still meant nothing.
 
-**Only `errors.Is` at the call site, run against a live target, decides it.**
-*"The upstream declares this text"* and *"the error here carries that sentinel"*
-are different claims, and no static instrument can answer the second — it
-depends on what the code constructs at runtime.
+**A static instrument can only ever tell you what the library DECLARES.**
+Whether *this* error carries that identity is decided by what the code
+constructs at runtime, so no amount of refinement gets there — the second
+instrument was strictly better than the first and was still the wrong *kind* of
+tool. That is the useful form of the lesson, because "my pattern was too broad"
+would have suggested a narrower pattern.
+
+**The settling move is to EXECUTE the dependency, not to match on it.** Three
+lines against a live target, and it failed in under a second:
+
+```go
+if !errors.Is(err, dao.ErrTxRolledBack) { t.Errorf(…) }
+```
+
+**And beware the shape of the false positive.** It matched for a real reason and
+still meant nothing: two layers independently described the same condition in
+the same English. That is not noise — it is *convergent design*, and it is
+exactly the coincidence that survives every filter you build. **The better your
+filter, the more confident you are when one gets through.**
 
 The honest count was **zero**. Assume your first number is too high until
 something has run.
