@@ -210,12 +210,23 @@ reported fourteen — including `"cap"` in 186 files, `"server"` in 127 and
 `"SET"` in 26. That would have meant rewriting forty assertions to fix four
 problems that did not exist.
 
-**The right test: does the matched text appear inside a string the upstream
-DECLARES as an error** — an `errors.New` or `fmt.Errorf` — rather than anywhere
-in its source? Measured that way against golib's 257 distinct declared error
-texts, autodb's 40 distinct matched strings yielded **two** real couplings, both
-the same sentinel, and two coincidences where ordinary English appeared in an
-unrelated message.
+A better instrument asks whether the matched text appears inside a string the
+upstream **declares** as an error. That narrowed 14 apparent couplings to 2.
+
+**It was also wrong.** Writing the fix and running it against a live target
+showed the error at those sites was the consumer's own — a `fmt.Errorf` wrapping
+the underlying failure, never carrying the upstream sentinel. The words matched
+because two layers independently described the same condition in the same
+English: a far more convincing false positive than a common word, because the
+text matched for a real reason and still meant nothing.
+
+**Only `errors.Is` at the call site, run against a live target, decides it.**
+*"The upstream declares this text"* and *"the error here carries that sentinel"*
+are different claims, and no static instrument can answer the second — it
+depends on what the code constructs at runtime.
+
+The honest count was **zero**. Assume your first number is too high until
+something has run.
 
 **And separate the two problems, because they have different urgency:**
 
