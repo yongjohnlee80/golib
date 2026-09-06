@@ -118,6 +118,27 @@ var (
 	// errors.Is(err, context.DeadlineExceeded) — wrap that instead when the
 	// deadline came from a context.
 	ErrTimeout = errors.New("timeout")
+
+	// ErrProtocol means the PEER did not speak the protocol: it sent something
+	// the exchange forbids at that point, or omitted something the exchange
+	// requires. A database server sending a message the extended-query flow has
+	// no place for, a client framing a request the wire format cannot express.
+	//
+	// It is the only sentinel here whose subject is the PEER. Every other one
+	// describes the caller (ErrInvalidArgument), the state (ErrPrecondition),
+	// the operation (ErrUnsupported, ErrNotImplemented), or the process
+	// (ErrFatal, ErrClosed, ErrTimeout) — and that difference is exactly what
+	// makes it worth a name, because it selects a different remedy: the caller
+	// did nothing wrong and doing the missing step first will not help. The
+	// connection is the thing that is broken, so a caller reconnects or gives
+	// up rather than retrying the same call against the same peer.
+	//
+	// Reserve it for the peer's OWN misbehaviour. A server that legitimately
+	// answers in a way the caller did not expect — PostgreSQL reporting
+	// ROLLBACK for a PREPARE TRANSACTION inside an aborted transaction, which
+	// is documented behaviour — is [ErrPrecondition]: the state was wrong, the
+	// protocol was kept.
+	ErrProtocol = errors.New("protocol violation")
 )
 
 // Fatal is a broken contract, carried as a VALUE so a recovering caller or a

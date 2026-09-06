@@ -260,7 +260,7 @@ func decodeMessage(msg pgproto3.BackendMessage) (ExtendedMessage, error) {
 	case *pgproto3.NotificationResponse:
 		return ExtendedMessage{Kind: "NotificationResponse", Notification: &pgconn.Notification{PID: m.PID, Channel: m.Channel, Payload: m.Payload}}, nil
 	default:
-		return ExtendedMessage{}, errs.Wrap(errs.ErrPrecondition, "postgres: unexpected backend message %T on the extended face", msg)
+		return ExtendedMessage{}, errs.Wrap(errs.ErrProtocol, "postgres: unexpected backend message %T on the extended face", msg)
 	}
 }
 
