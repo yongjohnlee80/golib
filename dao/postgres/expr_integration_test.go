@@ -1,6 +1,6 @@
 //go:build integration
 
-// Executed coverage for the ADR-0016 expression helpers on Postgres — the wide
+// Executed coverage for the expression helpers on Postgres — the wide
 // net. Everything here runs real SQL against a real server, so it proves not
 // just that the generated text is shaped correctly but that Postgres accepts it
 // and returns the right rows.
@@ -147,7 +147,7 @@ func TestExprPG_ReservedWordCRUD(t *testing.T) {
 	if n, err := s.DAO().Excluding(xOrder, 3).Count(); err != nil || n != 0 {
 		t.Errorf("Excluding count = %d err=%v", n, err)
 	}
-	// NOTE (ADR-0016 §2.7): the raw predicate constructors take a raw column
+	// NOTE: the raw predicate constructors take a raw column
 	// STRING, and expression helpers were deliberately left out of predicate
 	// position. For a reserved word that means the caller must quote it by hand
 	// — dao.Between(string(xOrder), …) emits `order BETWEEN …` and Postgres
@@ -254,7 +254,8 @@ func TestExprPG_SchemaQualifiedTable(t *testing.T) {
 	}
 }
 
-// TestExprPG_MixedCaseColumn pins ADR-0016 §2.4 against a real server: "MyCol"
+// TestExprPG_MixedCaseColumn pins case-sensitive quoting against a real
+// server: "MyCol"
 // was created quoted, so the quoted reference dao.T emits is the one that finds
 // it — and the folded, unquoted spelling genuinely does not exist.
 func TestExprPG_MixedCaseColumn(t *testing.T) {
@@ -270,7 +271,7 @@ func TestExprPG_MixedCaseColumn(t *testing.T) {
 	}
 
 	// The folded spelling must NOT resolve — that is exactly why quoting is not
-	// semantically neutral and why §2.4 documents SQL() as the escape hatch.
+	// semantically neutral and why SQL() is documented as the escape hatch.
 	var probe int
 	rows, err := conn.QueryContext(context.Background(), `SELECT mycol FROM "user" LIMIT 1`)
 	if err == nil {

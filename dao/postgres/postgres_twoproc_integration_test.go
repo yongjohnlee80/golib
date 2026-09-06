@@ -10,7 +10,7 @@
 // each owning its OWN distinctly-named dao.DataConn (its own pgx pool) to the one
 // shared `golib` database — the realistic shape for testing cross-session DB
 // behaviour inside one test binary. Distinct connection names ("pg-a"/"pg-b") are
-// required so a single dao transaction can hold one tx per session (ADR-0005).
+// required so a single dao transaction can hold one tx per session.
 //
 // Set TEST_PGURL (e.g. postgres://user:pass@localhost:5432/golib?sslmode=disable)
 // and run:  go test -tags integration ./dao/postgres/
@@ -190,7 +190,7 @@ func registerRoutes(srv *httpserver.Server, conn dao.DataConn, ws *widgetSchema,
 
 	// Multi-statement transaction across two tables on ONE session: insert a
 	// widget then its parts. Any failure (e.g. a duplicate part label) rolls back
-	// the whole unit (ADR-0005).
+	// the whole unit.
 	srv.Post("/tx/widget-with-parts", httpserver.Handler(func(w http.ResponseWriter, r *http.Request) error {
 		in, err := httpserver.Decode[txIn](r, 0)
 		if err != nil {

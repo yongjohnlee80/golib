@@ -1,6 +1,6 @@
 //go:build integration
 
-// Two-phase-commit integration tests (ADR-0005 §2.3 / acceptance criterion 6).
+// Two-phase-commit integration tests.
 // They require TEST_PGURL and a server started with max_prepared_transactions > 0
 // (postgres defaults it to 0; e.g. docker: -c max_prepared_transactions=10). When
 // the server has it disabled the tests skip with an explanatory message.

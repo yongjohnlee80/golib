@@ -321,7 +321,7 @@ func TestSimpleQuery_ReentryAndMidSegmentAreRefused(t *testing.T) {
 	}
 }
 
-// A1-C3 / wire safety (PR #22 MF2): a PANICKING emitter must not leave the wire
+// WIRE SAFETY: a PANICKING emitter must not leave the wire
 // looking reusable. The response tail is unread, so the handle must be poisoned
 // BEFORE the panic propagates, inEmit must be restored (a later Discard must not
 // skip its barrier on stale certification), and the next call must be refused

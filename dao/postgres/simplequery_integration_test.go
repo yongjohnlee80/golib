@@ -1,6 +1,6 @@
 //go:build integration
 
-// Live acceptance cells for ADR-0018 Amendment 1 (SimpleQuerier). Each names the
+// Live acceptance cells for SimpleQuerier. Each names the
 // criterion it witnesses. Verbatim fidelity (A1-C2) is proven against a SECOND,
 // independent simple-protocol run of the same text through pgconn on its own
 // connection: the bytes the server sends to psql are the bytes emit receives.
@@ -375,8 +375,8 @@ func pidSuffix() int { return os.Getpid() }
 // A1-C3: Discard from INSIDE emit — the unconditional terminal operation on the
 // goroutine that holds the wire. It must return, the handle must be terminal,
 // SimpleQuery must return the terminal error without reading further, and the
-// pool member must be destroyed (never recycled dirty). This is the cell lector's
-// MF1 (PR #22 r0) proved deadlocked at b86f649.
+// pool member must be destroyed (never recycled dirty). This cell was proved
+// DEADLOCKED at b86f649 before the fix.
 func TestSimpleQuery_Live_DiscardFromInsideEmitDoesNotDeadlock(t *testing.T) {
 	p := mustPin(t, openPG(t))
 	var afterDiscard int
@@ -450,7 +450,7 @@ func TestSimpleQuery_Live_ConcurrentDiscardDuringEmitIsRaceFree(t *testing.T) {
 	}
 }
 
-// PR #22 MF2, live: after a recovered emitter panic, Discard on the REAL handle
+// Live: after a recovered emitter panic, Discard on the REAL handle
 // must take its normal barrier (inEmit restored) and return; the member is
 // destroyed, not recycled with an unread tail.
 func TestSimpleQuery_Live_EmitterPanicThenDiscardReturnsAndTerminal(t *testing.T) {

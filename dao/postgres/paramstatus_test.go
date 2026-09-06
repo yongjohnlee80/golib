@@ -181,7 +181,7 @@ func TestReportedParameterStatuses_EmptyWithoutCapture(t *testing.T) {
 	}
 }
 
-// MF2: the capability is reached by type assertion on the handle, PinnedConn unchanged.
+// The capability is reached by type assertion on the handle; PinnedConn is unchanged.
 func TestParameterStatusReporter_IsAnOptionalCapability(t *testing.T) {
 	t.Parallel()
 	var pc PinnedConn = &pinnedConn{}

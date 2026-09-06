@@ -11,11 +11,11 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// ADR-0017 §2.2a, criterion 2 (postgres row) and the commit-outcome
+// The postgres row of the option matrix, and the commit-outcome
 // classification. These need no server: option rendering and outcome
 // classification are pure functions, and the "refused before BEGIN" property is
 // proven by a connection whose pool is nil — reaching the pool would panic.
-// The live half of the matrix, criteria 3–5, is in
+// The live half of the matrix is in
 // postgres_adr0017_integration_test.go.
 
 // --- the option matrix -------------------------------------------------------
@@ -113,7 +113,7 @@ func TestPgBeginTx_InvalidOptionsRefusedBeforeBegin(t *testing.T) {
 // --- commit outcome classification -------------------------------------------
 
 // classifyCommit answers exactly one question — "is it PROVEN that the
-// transaction did not commit?" — and the four §2.2a fault states are its four
+// transaction did not commit?" — and the four fault states are its four
 // answers. States 2/3 are built here from the driver's own error values; the
 // live paths that produce them are exercised in the integration suite.
 func TestClassifyCommit_FaultStates(t *testing.T) {

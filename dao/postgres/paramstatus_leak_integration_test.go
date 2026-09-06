@@ -18,7 +18,7 @@ func recorderCount() int {
 	return n
 }
 
-// PR #23 MF1 (lector): a connect that FAILS after the frontend is built — wrong
+// A connect that FAILS after the frontend is built — wrong
 // password — must not leave a recorder behind. pgconn builds the frontend
 // before authentication, and no pool hook fires for a connection that never
 // became a pool resource, so the registry must not depend on one.

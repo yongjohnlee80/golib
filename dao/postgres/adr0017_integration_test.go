@@ -1,6 +1,6 @@
 //go:build integration
 
-// Live acceptance suite for ADR-0017 (transaction options, per-operation
+// Live acceptance suite for transaction options (per-operation
 // finalizer contexts, raw result access). It requires a reachable Postgres; set
 // TEST_PGURL and run:
 //
@@ -40,7 +40,7 @@ func pgURL(t *testing.T) string {
 	return url
 }
 
-// openPG opens a pool for the ADR-0017 suite. Each test gets its own so a test
+// openPG opens a pool for this suite. Each test gets its own so a test
 // that deliberately destroys a connection cannot perturb another.
 func openPG(t *testing.T, opts ...Option) *pgxConn {
 	t.Helper()
@@ -86,9 +86,9 @@ func scalar(t *testing.T, ex dao.Querier, sql string) string {
 	return out
 }
 
-// --- criterion 2: the matrix, live -------------------------------------------
+// --- the matrix, live --------------------------------------------------------
 
-// Every postgres cell of the §2.2a matrix actually reaches the server and takes
+// Every postgres cell of the option matrix actually reaches the server and takes
 // effect. Rendering the right pgx options is checked without a server
 // (TestPgTxOptions_FullMatrix); this checks the server agrees.
 func TestIntegration_BeginConnTx_MatrixTakesEffect(t *testing.T) {
@@ -105,7 +105,7 @@ func TestIntegration_BeginConnTx_MatrixTakesEffect(t *testing.T) {
 
 		// PostgreSQL accepts READ UNCOMMITTED, reports it back, and behaves as
 		// READ COMMITTED — it has no dirty-read mode. The option is honored,
-		// not refused, which is why rev 3 put it in the domain.
+		// not refused, which is why it is in the domain.
 		{"read uncommitted", dao.TxOptions{Isolation: dao.TxReadUncommitted}, "read uncommitted", ""},
 		{"read committed", dao.TxOptions{Isolation: dao.TxReadCommitted}, "read committed", ""},
 		{"repeatable read", dao.TxOptions{Isolation: dao.TxRepeatableRead}, "repeatable read", ""},
@@ -173,7 +173,7 @@ func TestIntegration_BeginConnTx_ZeroOptionsUnchanged(t *testing.T) {
 	}
 }
 
-// --- criterion 3: engine-enforced read-only through the session path ---------
+// --- engine-enforced read-only through the session path ----------------------
 
 // The proof autodb M9 requires, taken through the exact call autodb makes.
 // A transport-level "does this statement look like a write?" check is not
@@ -218,7 +218,7 @@ func TestIntegration_BeginSessionTx_ReadOnlyIsEnforcedByTheServer(t *testing.T) 
 	}
 }
 
-// --- criterion 4: finalization with fresh contexts and the fault states ------
+// --- finalization with fresh contexts and the fault states -------------------
 
 // The defect this capability exists for: pgxTx captured the Begin context and
 // reused it for Commit/Rollback, so once the session context died there was no
@@ -463,7 +463,7 @@ func TestIntegration_RollbackFailureIsObservable(t *testing.T) {
 	assertPoolDrained(t, conn)
 }
 
-// --- criterion 5: raw result access ------------------------------------------
+// --- raw result access -------------------------------------------------------
 
 // The capability, on both executor paths, with the descriptors the server
 // actually sent.

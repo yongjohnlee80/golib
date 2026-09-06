@@ -58,8 +58,8 @@ func hookURL(t *testing.T) string {
 // for replacements — not once at Open.
 //
 // It asserts SET MEMBERSHIP, not a count. An earlier version compared the hook
-// count before and after recycling and required it to grow, which lector and I
-// both flagged as a thin discriminator: a hook that fired on every OTHER
+// count before and after recycling and required it to grow, which is a thin
+// discriminator: a hook that fired on every OTHER
 // connect would satisfy "it grew". Here every connection is identified by its
 // backend PID, and the assertion is that EVERY pid a query ran on was also
 // seen by the hook. A missed connection is then named, not averaged away.
@@ -70,7 +70,7 @@ func TestConnectHook_RunsOnEveryPhysicalConnect(t *testing.T) {
 	// COUNT per backend, not a set: set membership proves every served
 	// connection was hooked, but not that it was hooked exactly ONCE. A hook
 	// re-run on an existing connection is a different defect and this
-	// distinguishes it (lector, r0).
+	// distinguishes it.
 	hooked := map[int32]int{}
 
 	conn, err := OpenNamed(context.Background(), "hooktest", url,
@@ -136,7 +136,7 @@ func TestConnectHook_RunsOnEveryPhysicalConnect(t *testing.T) {
 	// Rounds of CONCURRENT work, separated by enough idle time that the pool
 	// discards and re-establishes connections. Concurrency is what forces
 	// several physical connects at once rather than one reused serially, and
-	// the idle gap is what forces replacements (lector, r0).
+	// the idle gap is what forces replacements.
 	for round := 0; round < 3; round++ {
 		var wg sync.WaitGroup
 		for i := 0; i < 3; i++ {
