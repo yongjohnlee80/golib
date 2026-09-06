@@ -1,13 +1,13 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 17)** (2026-09-06, jarvis). Rev 16 corrected
-  `Source`'s three r15 defects (lifetime-bearing accessor, watermark-reclaimed
-  index, defined `LocationAt` domain); lector r16 approved those in substance and
-  asked for two width/integration fixes and a run/set-table correction. Rev 17:
-  every `Location` coordinate is `int64` (§5); `reclaim` snaps to a line boundary
-  and returns the effective watermark so cache and index share it, with the
-  memory term stated in §3.4; and §6 carries the chunk-invariant `SetForm` opener
-  and the exact-one-byte fallback (the always-true `RunForm` was not one).
+- **Status:** **Proposed (rev 18)** (2026-09-06, jarvis). Rev 17 made every
+  `Location` coordinate `int64`, gave `reclaim` a line-safe effective watermark
+  shared with the cache (memory term in §3.4), and corrected the `SetForm`/fallback
+  direction (§6); lector r17 approved all of that and asked for one error-domain
+  fix. Rev 18: an early accessor `io.EOF` is an under-delivered range
+  (`io.ErrUnexpectedEOF`), not an interior-rune offset; plus the precise §6 opener
+  wording and the bounded-decode-buffering correction to the no-whole-range-copy
+  claim.
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -332,8 +332,9 @@ lifetime along with them.
 >   a span can cross segments, and `AppendTo` is the only way to a flat slice, by
 >   copying. So `Source` reads through a `read(from, to, func(io.Reader) error)`
 >   seam that holds a `View` for the call and closes it after: no borrowed slice
->   outlives a lookup, and no copy is made for `Source`'s own sake. Rev 15's
->   `func(from,to)([]byte,error)` could not be both no-copy and lifetime-safe.
+>   outlives a lookup, and no whole-range copy or materialization is made — only
+>   the bounded decode buffering an `io.Reader`/`bufio` require (lector r17). Rev
+>   15's `func(from,to)([]byte,error)` could not be both no-copy and lifetime-safe.
 > - **The line index is reclaimed with the watermark, at a line boundary.** It is
 >   not a copy of the source, but it is one `int64` per line, which is O(lines) —
 >   not free. `reclaim` snaps the watermark DOWN to the greatest known line start
@@ -475,9 +476,11 @@ first-terminal opener**: `Starts` answers `Incomplete` until the observed bytes
 reach the shortest literal on their path, then returns that literal's width and
 holds it as the window grows, and `End` resolves the longest completed
 descendant, deferring only while a longer one is still possible. This is
-chunk-invariant even for a shared prefix like `-`/`--` — `Starts` never has to
-choose the short literal, so it never has to un-choose it *(lector r16, correcting
-an earlier claim that a shared prefix could only be resolved by a catch-all)*.
+chunk-invariant even for a shared prefix like `-`/`--`: `Starts` fixes the short
+literal's WIDTH as the opener but does not commit to it as the final token — `End`
+may still extend it — so the `Starts` answer never has to be withdrawn *(lector
+r16–17, correcting an earlier claim that a shared prefix could only be resolved by
+a catch-all)*.
 
 Total coverage is the leaf's to arrange — `SetForm` for its operators and
 punctuation, and where a final fallback is still needed an **exact-one-byte**

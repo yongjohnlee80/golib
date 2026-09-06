@@ -50,7 +50,9 @@ func (l Location) String() string {
 // retained rather than by the length of the stream. Column resolution reads the
 // line's bytes through a lifetime-bearing accessor: over a []byte the slice
 // itself, over a stream a cache View held only for the call, so Source never
-// keeps a borrowed slice past a lookup and never copies for its own sake.
+// keeps a borrowed slice past a lookup. It makes no whole-range copy or
+// materialization — only the bounded decode buffering an io.Reader and bufio
+// necessarily perform.
 //
 // The contract with the lexer:
 //
@@ -218,10 +220,11 @@ func (s *Source) columnAt(lineStart, off int64) (int64, error) {
 			_, size, e := br.ReadRune()
 			if e != nil {
 				if e == io.EOF {
-					// The bytes ran out before reaching off: off is inside the
-					// truncated final rune at head, not a rune boundary.
-					interior = true
-					return nil
+					// upto is at least off, and a rune straddling off is caught
+					// below before it could exhaust the reader, so EOF here means
+					// the accessor supplied fewer bytes than the range it was
+					// asked for — a contract failure, not an interior offset.
+					return io.ErrUnexpectedEOF
 				}
 				return e // an unexpected accessor failure keeps its identity
 			}

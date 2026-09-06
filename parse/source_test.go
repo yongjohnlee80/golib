@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"math"
 	"testing"
 )
 
@@ -206,6 +207,62 @@ func TestSource_AdvanceHeadGatesUnreadOffsets(t *testing.T) {
 	s.advanceHead(6)
 	if loc, err := s.LocationAt(3); err != nil || loc != (Location{Offset: 3, Line: 1, Column: 4}) {
 		t.Errorf("LocationAt(3) after advanceHead(6) = (%+v, %v), want {3,1,4} nil", loc, err)
+	}
+}
+
+// TestColumnAt_AccessorErrorKeepsItsIdentity: an unexpected accessor failure is
+// preserved, not relabelled — the domain check already refused released offsets,
+// so a failure past it is neither a release nor a range error.
+func TestColumnAt_AccessorErrorKeepsItsIdentity(t *testing.T) {
+	sentinel := errors.New("accessor boom")
+	s := newSource(func(from, to int64, fn func(io.Reader) error) error { return sentinel })
+	s.advanceHead(10)
+
+	_, err := s.LocationAt(5)
+	if !errors.Is(err, sentinel) {
+		t.Errorf("LocationAt err = %v, want it to wrap the accessor sentinel", err)
+	}
+	if errors.Is(err, ErrLocationRange) || errors.Is(err, ErrLocationReleased) {
+		t.Errorf("err = %v must not be reclassified as Range or Released", err)
+	}
+}
+
+// TestColumnAt_UnderDeliveredRangeIsUnexpectedEOF: when head claims more bytes
+// than the reader supplies, a valid boundary yields io.ErrUnexpectedEOF — an
+// accessor contract failure — not ErrLocationRange, which would blame the caller.
+func TestColumnAt_UnderDeliveredRangeIsUnexpectedEOF(t *testing.T) {
+	s := newSource(func(from, to int64, fn func(io.Reader) error) error {
+		return fn(bytes.NewReader([]byte("abc"))) // only 3 bytes, whatever the range
+	})
+	s.advanceHead(10) // but head claims 10
+
+	_, err := s.LocationAt(8)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("LocationAt(8) over an under-delivering accessor err = %v, want io.ErrUnexpectedEOF", err)
+	}
+	if errors.Is(err, ErrLocationRange) || errors.Is(err, ErrLocationReleased) {
+		t.Errorf("err = %v must not be reclassified as Range or Released", err)
+	}
+}
+
+// TestColumnAt_LookaheadOverflowGuard: near MaxInt64, off+UTFMax-1 would wrap
+// negative; the guard must clamp the lookahead to head instead, so the range the
+// accessor is asked for never inverts.
+func TestColumnAt_LookaheadOverflowGuard(t *testing.T) {
+	const near = math.MaxInt64
+	var gotFrom, gotTo int64
+	s := newSource(func(from, to int64, fn func(io.Reader) error) error {
+		gotFrom, gotTo = from, to
+		return fn(bytes.NewReader(nil))
+	})
+	s.advanceHead(near)
+
+	_, _ = s.LocationAt(near) // errors (under-delivery); the range is the point
+	if gotTo < gotFrom {
+		t.Errorf("read range [%d, %d) inverted — the lookahead addition overflowed", gotFrom, gotTo)
+	}
+	if gotTo != near {
+		t.Errorf("read upto = %d, want it clamped to head %d", gotTo, int64(near))
 	}
 }
 
