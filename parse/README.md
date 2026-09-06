@@ -28,8 +28,8 @@ forms := []parse.Form{
     parse.SetForm(parse.Operator, "<=", ">=", "<>", "::", "<", ">"),
     parse.SetForm(parse.Terminator, ";"),
 
-    // the exact-one-byte fallback: nothing is left unclaimed
-    parse.RunForm(parse.Operator, func(i int, _ byte) bool { return i == 0 }),
+    // the fallback: exactly one byte, so nothing is left unclaimed
+    parse.ByteForm(parse.Operator),
 }
 ```
 
@@ -40,9 +40,16 @@ mid-stream, is `-` at end of input, and becomes `--` when the second byte
 arrives, because `Starts` fixes the *shortest* literal's width as a stable opener
 and `End` extends it.
 
-**Make the last form claim every byte.** A member true only at index 0 is the
-exact-one-byte fallback. A member that is always true is *not*: with no byte to
-refuse, its maximal run swallows the rest of the stream as one token.
+**Make the last form claim every byte — with `ByteForm`.** Its width is
+*intrinsic*, so it completes the moment its byte is seen. A `RunForm` cannot do
+that job however you write the member: a run stops before the first byte it can
+*see* refused, so at the end of a chunk it has to defer, and a fallback that
+waits for a byte it will never use blocks on I/O. And a member that is always
+true is worse still — with no byte to refuse, its maximal run swallows the rest
+of the stream as one token.
+
+`SetForm` copies its literals, so mutating the slice you passed does not change
+the form afterwards.
 
 `DelimitedForm` is the tag-carrying shape, and **the tag rule comes from you**:
 

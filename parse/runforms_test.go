@@ -68,26 +68,58 @@ func TestRunForm_EndIndexContinuesAcrossTheOpener(t *testing.T) {
 	}
 }
 
-// TestRunForm_ExactOneByteFallbackVsAlwaysTrue pins the difference between the
-// honest total-coverage fallback and the one that looks like it. The always-true
-// member has no refusing byte, so its maximal run consumes the whole remainder —
-// which is why it is not a catch-all.
-func TestRunForm_ExactOneByteFallbackVsAlwaysTrue(t *testing.T) {
-	oneByte := RunForm(Operator, func(i int, _ byte) bool { return i == 0 })
-	if n, m := oneByte.Starts([]byte("-x tail")); m != Matched || n != 1 {
-		t.Fatalf(`one-byte Starts("-x tail") = (%d, %v), want (1, Matched)`, n, m)
+// TestByteForm_CompletesAtAChunkEdge is the fallback's defining property: its
+// width is intrinsic, so it never waits. THE ROW THAT MATTERS is an empty
+// remainder under MoreInput — a form that deferred there would block on I/O, and
+// could spend a retry, for a byte it was never going to use.
+func TestByteForm_CompletesAtAChunkEdge(t *testing.T) {
+	f := ByteForm(Operator)
+
+	if n, m := f.Starts([]byte("")); m != Incomplete || n != 0 {
+		t.Errorf(`Starts("") = (%d, %v), want (0, Incomplete)`, n, m)
 	}
-	for _, bnd := range []InputBoundary{MoreInput, EndOfInput} {
-		if n, err := oneByte.End([]byte("x tail"), []byte("-"), bnd); err != nil || n != 0 {
-			t.Errorf("one-byte End(%v) = (%d, %v), want (0, nil) — the x begins the next token", bnd, n, err)
+	for _, s := range []string{"-", "-x", "-x tail"} {
+		if n, m := f.Starts([]byte(s)); m != Matched || n != 1 {
+			t.Errorf(`Starts(%q) = (%d, %v), want (1, Matched)`, s, n, m)
 		}
 	}
+	for _, rest := range []string{"", "x", "x tail"} {
+		for _, bnd := range []InputBoundary{MoreInput, EndOfInput} {
+			if n, err := f.End([]byte(rest), []byte("-"), bnd); err != nil || n != 0 {
+				t.Errorf("End(%q, %v) = (%d, %v), want (0, nil) — one byte is the whole token, "+
+					"decided the moment it is seen", rest, bnd, n, err)
+			}
+		}
+	}
+}
 
+// TestRunForm_IndexZeroMemberDefersAtAChunkEdge records WHY a RunForm is not the
+// fallback, however its member is written. A run stops before the first byte it
+// can SEE refused; asked with nothing left to see, it must defer, because a
+// membership callback cannot be asked about a byte it was never shown. That is
+// correct for a run and wrong for a fallback — hence ByteForm.
+func TestRunForm_IndexZeroMemberDefersAtAChunkEdge(t *testing.T) {
+	indexZero := RunForm(Operator, func(i int, _ byte) bool { return i == 0 })
+
+	n, err := indexZero.End([]byte(""), []byte("-"), MoreInput)
+	if !errors.Is(err, ErrNeedMore) || n != 0 {
+		t.Errorf("index-zero run End(\"\", MoreInput) = (%d, %v), want (0, ErrNeedMore) — "+
+			"a run cannot rule out an unseen byte", n, err)
+	}
+	// ByteForm decides the same window immediately, which is the difference.
+	if n, err := ByteForm(Operator).End([]byte(""), []byte("-"), MoreInput); err != nil || n != 0 {
+		t.Errorf("ByteForm End(\"\", MoreInput) = (%d, %v), want (0, nil)", n, err)
+	}
+}
+
+// TestRunForm_AlwaysTrueMemberConsumesTheRemainder is the separate maximal-run
+// warning: with no byte it can refuse, the run takes everything.
+func TestRunForm_AlwaysTrueMemberConsumesTheRemainder(t *testing.T) {
 	always := RunForm(Operator, func(int, byte) bool { return true })
 	rest := []byte("x tail and more")
 	if n, err := always.End(rest, []byte("-"), EndOfInput); err != nil || n != len(rest) {
 		t.Errorf("always-true End = (%d, %v), want (%d, nil) — it consumes to end of input, "+
-			"which is exactly why it cannot serve as the one-byte fallback", n, err, len(rest))
+			"which is exactly why it cannot serve as a fallback", n, err, len(rest))
 	}
 }
 
@@ -189,6 +221,48 @@ func TestSetForm_LongestDescendantWins(t *testing.T) {
 	// While a longer descendant is still consistent with what arrived, defer.
 	if n, err := f.End([]byte(""), []byte("<"), MoreInput); !errors.Is(err, ErrNeedMore) || n != 0 {
 		t.Errorf(`End("", "<", MoreInput) = (%d, %v), want (0, ErrNeedMore)`, n, err)
+	}
+}
+
+// TestSetForm_MultiByteOpenerWithDescendant composes the two dimensions the other
+// tests only prove separately: a first terminal WIDER than one byte that still
+// has a longer descendant. An implementation that assumed every opener with
+// descendants is one byte passes both other groups and fails here.
+func TestSetForm_MultiByteOpenerWithDescendant(t *testing.T) {
+	f := SetForm(Operator, "ab", "abc")
+
+	if n, m := f.Starts([]byte("abc")); m != Matched || n != 2 {
+		t.Fatalf(`Starts("abc") = (%d, %v), want (2, Matched) — the opener is the two-byte "ab"`, n, m)
+	}
+	for _, bnd := range []InputBoundary{MoreInput, EndOfInput} {
+		if n, err := f.End([]byte("c"), []byte("ab"), bnd); err != nil || n != 1 {
+			t.Errorf(`End("c", "ab", %v) = (%d, %v), want (1, nil) — opener plus one is "abc"`, bnd, n, err)
+		}
+	}
+	// The opener alone still stands when no descendant matches.
+	if n, err := f.End([]byte("z"), []byte("ab"), EndOfInput); err != nil || n != 0 {
+		t.Errorf(`End("z", "ab") = (%d, %v), want (0, nil)`, n, err)
+	}
+}
+
+// TestSetForm_ConstructionClonesCallerSlice: configuration is immutable after
+// construction. A variadic slice passed with lits... stays caller-owned, so
+// retaining it would let a later mutation change what the Form recognises — and
+// race with a scan already reading it.
+func TestSetForm_ConstructionClonesCallerSlice(t *testing.T) {
+	lits := []string{"-", "--"}
+	f := SetForm(Operator, lits...)
+
+	lits[0], lits[1] = "@", "@@" // the caller mutates their own slice afterwards
+
+	if n, m := f.Starts([]byte("--")); m != Matched || n != 1 {
+		t.Errorf(`Starts("--") = (%d, %v), want (1, Matched) — the form kept its own copy`, n, m)
+	}
+	if n, err := f.End([]byte("-"), []byte("-"), EndOfInput); err != nil || n != 1 {
+		t.Errorf(`End("-", "-") = (%d, %v), want (1, nil) — the descendant "--" is still recognised`, n, err)
+	}
+	if n, m := f.Starts([]byte("@@")); m != NoMatch || n != 0 {
+		t.Errorf(`Starts("@@") = (%d, %v), want (0, NoMatch) — the mutation must not leak in`, n, m)
 	}
 }
 
