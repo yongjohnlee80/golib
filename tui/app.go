@@ -200,17 +200,11 @@ func (a *App) Run(ctx context.Context) (err error) {
 				panic(rec) // after restore, original value
 			}
 			// A panicked ERROR is wrapped, not rendered. The convention
-			// tells authors to panic with a value (errs.Fatal) so that a
-			// caller can errors.As the fields back out; %v here would
-			// flatten that value into text while ErrPanic kept answering
-			// errors.Is, so the error would look healthy and the payload
-			// would be gone. A non-error value has nothing to preserve and
-			// still formats.
-			if pe, ok := rec.(error); ok {
-				err = errors.Join(err, fmt.Errorf("%w: %w", ErrPanic, pe))
-			} else {
-				err = errors.Join(err, fmt.Errorf("%w: %v", ErrPanic, rec))
-			}
+			// errs.Recovered keeps a panicked ERROR recoverable instead of
+			// rendering it into text. Written out by hand, the mistake is
+			// invisible: ErrPanic keeps answering errors.Is, so the error
+			// looks healthy while the payload is gone.
+			err = errors.Join(err, errs.Recovered(ErrPanic, rec, "tui: App.Run"))
 		}
 	}()
 

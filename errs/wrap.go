@@ -109,3 +109,42 @@ func WrapCause(base, cause error, format string, args ...any) error {
 	all = append(all, base, cause)
 	return fmt.Errorf(format+" (%w): %w", all...)
 }
+
+// Recovered builds the error for a value from recover(), keeping that value
+// recoverable when it is an error.
+//
+//	defer func() {
+//		if rec := recover(); rec != nil {
+//			err = errs.Recovered(ErrPanic, rec, "tui: task %d", id)
+//		}
+//	}()
+//
+// A panic value is usually the most informative thing an error will ever
+// carry — the convention asks authors to panic with an [Fatal] precisely so a
+// recovering caller can errors.As the fields back out — and it is the value
+// most easily destroyed on the way out, because the obvious spelling renders it
+// into text:
+//
+//	fmt.Errorf("%w: %v", ErrPanic, rec)   // the identity survives, the value does not
+//
+// That mistake is invisible: errors.Is(err, ErrPanic) still answers true, so
+// the error looks entirely healthy while the payload it was carrying is gone.
+// It was written three separate times in this repository before it was named,
+// each time as the same hand-rolled type switch, which is why it is a function
+// rather than a rule.
+//
+// A nil rec returns nil, so a deferred handler can call this unconditionally:
+// "nothing was recovered" is a real state, not a mistake.
+//
+// A non-error panic value — a string, an int — has no identity to preserve and
+// is formatted into the cause position, so the shape of the message is the same
+// either way.
+func Recovered(base error, rec any, format string, args ...any) error {
+	if rec == nil {
+		return nil
+	}
+	if e, ok := rec.(error); ok {
+		return WrapCause(base, e, format, args...)
+	}
+	return WrapCause(base, fmt.Errorf("%v", rec), format, args...)
+}
