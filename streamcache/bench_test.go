@@ -6,7 +6,7 @@ import (
 )
 
 // Benchmarks are SPLIT so that filling and allocation cannot mask the operation
-// under test (lector r6). The first version built a whole Cache inside the
+// under test. The first version built a whole Cache inside the
 // timed loop, so Acquire and AppendTo were measured through the noise of
 // reading 256 KiB — which is how a quadratic in reclamation hid behind a
 // linear-looking total.

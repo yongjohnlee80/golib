@@ -48,7 +48,7 @@ func mustText(t *testing.T, v *View) string {
 	return s
 }
 
-// CRITERION 6: a span straddling a segment boundary is returned correctly.
+// A span straddling a segment boundary is returned correctly.
 //
 // This is the case a contiguous []byte accessor could not have represented at
 // all, which is why View walks segments instead of returning a slice. The
@@ -81,11 +81,11 @@ func TestView_SpanStraddlesSegments(t *testing.T) {
 	}
 }
 
-// CRITERION 7: a view's bytes stay valid under RELEASE pressure until Close.
+// A view's bytes stay valid under RELEASE pressure until Close.
 //
 // Named for what it does. There is no segment pool and nothing is recycled —
-// dropped segments are garbage — so "reuse pressure" overstated it (lector r5
-// F5). What it exercises is real and worth a cell: acquire early, drive the
+// dropped segments are garbage — so "reuse pressure" overstated it. What it
+// exercises is real and worth a cell: acquire early, drive the
 // writer to the end, ask for everything to be released, and read through the
 // view afterwards.
 func TestView_SurvivesReleasePressure(t *testing.T) {
@@ -107,7 +107,7 @@ func TestView_SurvivesReleasePressure(t *testing.T) {
 	}
 }
 
-// CRITERION 8: a held view never stalls the writer.
+// A held view never stalls the writer.
 //
 // THE DEADLOCK THIS EXISTS FOR: hold the first token of a statement while
 // scanning forward for its terminator. If retention made reuse WAIT, the writer
@@ -144,7 +144,7 @@ func TestCache_HeldViewDoesNotStallTheWriter(t *testing.T) {
 	}
 }
 
-// CRITERION 9: a released span reports ErrReleased; it never returns bytes from
+// A released span reports ErrReleased; it never returns bytes from
 // a recycled segment. Silent wrong bytes are the failure this prevents.
 func TestCache_ReleasedSpanReportsRatherThanLies(t *testing.T) {
 	t.Parallel()
@@ -175,8 +175,8 @@ func TestCache_ReleasedSpanReportsRatherThanLies(t *testing.T) {
 	}
 }
 
-// CRITERION 1 (this layer's half): a []byte and a one-byte-at-a-time reader
-// produce identical bytes at identical offsets. If the two paths could differ,
+// This layer's half of the identical-tokens property: a []byte and a
+// one-byte-at-a-time reader produce identical bytes at identical offsets. If the two paths could differ,
 // "the tokens are the same" would be a hope rather than a property.
 func TestCache_SlowReaderAndBytesAgree(t *testing.T) {
 	t.Parallel()
@@ -200,7 +200,7 @@ func TestCache_SlowReaderAndBytesAgree(t *testing.T) {
 	}
 }
 
-// CRITERION 13: NewBytes performs no copy of the caller's slice.
+// NewBytes performs no copy of the caller's slice.
 func TestNewBytes_DoesNotCopy(t *testing.T) {
 	t.Parallel()
 	src := []byte("borrowed, not copied")
@@ -210,7 +210,7 @@ func TestNewBytes_DoesNotCopy(t *testing.T) {
 	}
 }
 
-// CRITERION 10: concurrent readers with a writer are race-clean, and every
+// Concurrent readers with a writer are race-clean, and every
 // acquired view stays valid for its own lifetime.
 //
 // THE FIRST VERSION OF THIS CELL WAS INERT, and that is the finding worth

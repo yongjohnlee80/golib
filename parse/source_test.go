@@ -131,7 +131,7 @@ func TestLocationAt_ReleasedOffsetsBecomeUnavailable(t *testing.T) {
 	}
 }
 
-// TestReclaim_SnapsToLineBoundaryNotMidLine is the MF2 regression: a token
+// TestReclaim_SnapsToLineBoundaryNotMidLine is the mid-line regression: a token
 // watermark that falls in the middle of a line must not release mid-line and
 // then count a column from the wrong start. reclaim snaps DOWN to the greatest
 // known line start at or below the watermark and returns it, so Scan advances
@@ -160,7 +160,7 @@ func TestReclaim_SnapsToLineBoundaryNotMidLine(t *testing.T) {
 // TestSourceIncrementalMatchesPrecomputed proves the streaming path — an empty
 // Source fed newlines and a head as the lexer advances — lands the same
 // locations as the whole-slice precompute. Identical positions from a []byte and
-// a stream (acceptance criterion 1) rest on this.
+// a stream rest on this.
 func TestSourceIncrementalMatchesPrecomputed(t *testing.T) {
 	b := []byte("a\nbb\n\nc\n日\n")
 	pre := newBytesSource(b)
