@@ -144,7 +144,7 @@ func (a *App) Bus() *Bus { return a.bus }
 // default is unlimited, so an app that never sets a limit never panics here.
 func (a *App) Post(ev Event) {
 	if ev == nil {
-		panic("tui: App.Post: nil event")
+		panic(errs.Fatal{Op: "tui: App.Post", Rule: "nil event"})
 	}
 	a.queue.push(programItem{ev: ev})
 }
@@ -160,7 +160,7 @@ func (a *App) Post(ev Event) {
 // ordering relative to other posted work does not depend on who posted it.
 func (a *App) Update(fn func()) {
 	if fn == nil {
-		panic("tui: App.Update: nil func")
+		panic(errs.Fatal{Op: "tui: App.Update", Rule: "nil func"})
 	}
 	a.queue.push(programItem{fn: fn})
 }

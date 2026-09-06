@@ -156,7 +156,7 @@ func TestTestBackendFlushPanicsOnOrphan(t *testing.T) {
 				if r == nil {
 					t.Fatal("Flush did not panic on an invariant violation")
 				}
-				if !strings.Contains(r.(string), "(") {
+				if !strings.Contains(panicText(r), "(") {
 					t.Errorf("panic %q carries no coordinate", r)
 				}
 			}()

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -96,7 +97,7 @@ func (s *Split) Ratio() float64 { return s.ratio }
 // min sizes at layout). The exported sibling of the drag/Alt-arrow path.
 func (s *Split) SetRatio(r float64) {
 	if r <= 0 || r >= 1 || math.IsNaN(r) {
-		panic(fmt.Sprintf("widget: SetRatio: ratio %v outside (0, 1)", r))
+		panic(errs.Fatal{Op: "widget: SetRatio", Rule: fmt.Sprintf("ratio %v outside (0, 1)", r)})
 	}
 	if r == s.ratio {
 		return
@@ -139,7 +140,7 @@ func (s *Split) Zoomed() SplitPane { return s.zoomed }
 // visibility. PaneNone restores the prior ratio without moving focus.
 func (s *Split) Zoom(p SplitPane) {
 	if p > PaneB {
-		panic("widget: Zoom: invalid pane")
+		panic(errs.Fatal{Op: "widget: Zoom", Rule: "invalid pane"})
 	}
 	if s.zoomed == p {
 		return

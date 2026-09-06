@@ -6,9 +6,10 @@ import (
 	"math"
 	"math/big"
 
-	gcpbq "cloud.google.com/go/bigquery"
 	"testing"
 	"time"
+
+	gcpbq "cloud.google.com/go/bigquery"
 
 	"cloud.google.com/go/civil"
 	"github.com/yongjohnlee80/golib/dao"

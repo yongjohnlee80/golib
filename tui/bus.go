@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Bus is the App's broadcast channel: one instance per App (App.Bus());
@@ -40,7 +42,7 @@ func newBus(app *App) *Bus {
 // App-lifetime listeners; components use SubscribeScoped.
 func Subscribe[T any](b *Bus, fn func(T)) (cancel func()) {
 	if fn == nil {
-		panic("tui: Subscribe: nil handler")
+		panic(errs.Fatal{Op: "tui: Subscribe", Rule: "nil handler"})
 	}
 	t := reflect.TypeOf((*T)(nil)).Elem()
 	s := &subscription{fn: func(v any) { fn(v.(T)) }}
@@ -96,7 +98,7 @@ func (b *Bus) remove(t reflect.Type, s *subscription) {
 // invoked in subscription order.
 func (b *Bus) Publish(v any) {
 	if v == nil {
-		panic("tui: Bus.Publish: nil value")
+		panic(errs.Fatal{Op: "tui: Bus.Publish", Rule: "nil value"})
 	}
 	b.app.queue.push(programItem{fn: func() { b.deliver(v) }})
 }

@@ -239,7 +239,7 @@ func (b *TestBackend) InjectResize(w, h int) {
 	defer b.mu.Unlock()
 	b.setGridLocked(w, h)
 	if err := b.injectLocked(ResizeEvent{W: b.w, H: b.h}); err != nil {
-		panic("tui: TestBackend.InjectResize: " + err.Error())
+		panic(errs.Fatal{Op: "tui: TestBackend.InjectResize", Rule: err.Error()})
 	}
 }
 
@@ -284,10 +284,10 @@ func (b *TestBackend) Flush(diff []CellUpdate) error {
 	defer b.mu.Unlock()
 	for _, u := range diff {
 		if u.X < 0 || u.Y < 0 || u.X >= b.w || u.Y >= b.h {
-			panic(fmt.Sprintf("tui: TestBackend.Flush: update outside the %dx%d grid at (%d, %d)", b.w, b.h, u.X, u.Y))
+			panic(errs.Fatal{Op: "tui: TestBackend.Flush", Rule: fmt.Sprintf("update outside the %dx%d grid at (%d, %d)", b.w, b.h, u.X, u.Y)})
 		}
 		if u.Cell.Width == 2 && u.X+1 >= b.w {
-			panic(fmt.Sprintf("tui: TestBackend.Flush: wide cell in the last column at (%d, %d) — W3 violation", u.X, u.Y))
+			panic(errs.Fatal{Op: "tui: TestBackend.Flush", Rule: fmt.Sprintf("wide cell in the last column at (%d, %d) — W3 violation", u.X, u.Y)})
 		}
 		b.grid[u.Y][u.X] = u.Cell
 		if u.Cell.Width == 2 {
@@ -311,9 +311,9 @@ func (b *TestBackend) assertNoOrphansLocked() {
 		for x, c := range row {
 			switch {
 			case c.Continuation() && (x == 0 || row[x-1].Width != 2):
-				panic(fmt.Sprintf("tui: TestBackend.Flush: orphaned wide-cell continuation at (%d, %d) — no width-2 head to its left (W1)", x, y))
+				panic(errs.Fatal{Op: "tui: TestBackend.Flush", Rule: fmt.Sprintf("orphaned wide-cell continuation at (%d, %d) — no width-2 head to its left (W1)", x, y)})
 			case c.Width == 2 && (x+1 >= b.w || !row[x+1].Continuation()):
-				panic(fmt.Sprintf("tui: TestBackend.Flush: wide-cell head at (%d, %d) without its continuation (W1/W3)", x, y))
+				panic(errs.Fatal{Op: "tui: TestBackend.Flush", Rule: fmt.Sprintf("wide-cell head at (%d, %d) without its continuation (W1/W3)", x, y)})
 			}
 		}
 	}

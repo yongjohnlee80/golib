@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // node is the runtime's per-mount bookkeeping record. The authoritative
@@ -43,7 +45,7 @@ func (n *node) visible() bool { return n.measured && n.placed && !n.rect.Empty()
 // (the mount cascade). Loop goroutine only.
 func (a *App) mount(parent *node, comp Component) *node {
 	if comp == nil {
-		panic("tui: Mount: nil component")
+		panic(errs.Fatal{Op: "tui: Mount", Rule: "nil component"})
 	}
 	if a.inLayout || a.inRender {
 		panic("tui: tree mutation (Mount) inside Layout/Render is illegal (ADR-0004 §2.1)")
@@ -54,10 +56,10 @@ func (a *App) mount(parent *node, comp Component) *node {
 	// neither the component nor the rule it broke.
 	// REFERENCE: server/scaffold.go
 	if !reflect.TypeOf(comp).Comparable() {
-		panic(fmt.Sprintf("tui: component type %T is not comparable; use a pointer component", comp))
+		panic(errs.Fatal{Op: "tui", Rule: fmt.Sprintf("component type %T is not comparable; use a pointer component", comp)})
 	}
 	if _, dup := a.byComp[comp]; dup {
-		panic(fmt.Sprintf("tui: component %T is already mounted; a component value mounts at most once (ADR-0004 §2.4)", comp))
+		panic(errs.Fatal{Op: "tui", Rule: fmt.Sprintf("component %T is already mounted; a component value mounts at most once (ADR-0004 §2.4)", comp)})
 	}
 
 	a.nextNodeID++ // monotonic, starts at 1; 0 reserved as "no node"; never reused
@@ -108,18 +110,18 @@ func (a *App) mount(parent *node, comp Component) *node {
 // construction. Loop goroutine only.
 func (a *App) moveWithin(parent *node, child Component, to int) {
 	if a.inLayout || a.inRender {
-		panic("tui: tree mutation (Move) inside Layout/Render is illegal (ADR-0004 §2.1)")
+		panic(errs.Fatal{Op: "tui", Rule: "tree mutation (Move) inside Layout/Render is illegal (ADR-0004 §2.1)"})
 	}
 	n := a.byComp[child]
 	if n == nil {
-		panic(fmt.Sprintf("tui: Move: component %T is not mounted", child))
+		panic(errs.Fatal{Op: "tui: Move", Rule: fmt.Sprintf("component %T is not mounted", child)})
 	}
 	if n.parent != parent {
-		panic("tui: Move: child belongs to a different container; cross-container moves are not supported")
+		panic(errs.Fatal{Op: "tui: Move", Rule: "child belongs to a different container; cross-container moves are not supported"})
 	}
 	cs := parent.children
 	if to < 0 || to >= len(cs) {
-		panic(fmt.Sprintf("tui: Move: index %d out of range [0,%d)", to, len(cs)))
+		panic(errs.Fatal{Op: "tui: Move", Rule: fmt.Sprintf("index %d out of range [0,%d)", to, len(cs))})
 	}
 	if from := slices.Index(cs, n); from != to {
 		// Post-move-index semantics: remove, then insert at to.
@@ -137,7 +139,7 @@ func (a *App) moveWithin(parent *node, child Component, to int) {
 // renders with a dangling focus ID.
 func (a *App) unmountTree(n *node) {
 	if a.inLayout || a.inRender {
-		panic("tui: tree mutation (Unmount) inside Layout/Render is illegal (ADR-0004 §2.1)")
+		panic(errs.Fatal{Op: "tui", Rule: "tree mutation (Unmount) inside Layout/Render is illegal (ADR-0004 §2.1)"})
 	}
 	focusedBefore := a.focused
 	parent := n.parent

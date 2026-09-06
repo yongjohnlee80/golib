@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"iter"
 	"slices"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // MultiChild is the shared sibling-list machinery every multi-child
@@ -81,7 +83,8 @@ func (m *MultiChild) Move(child Component, to int) {
 		return
 	}
 	if to < 0 || to >= len(m.items) {
-		panic(fmt.Sprintf("tui: %s.Move: index %d out of range [0,%d)", m.name(), to, len(m.items)))
+		panic(errs.Fatal{Op: fmt.Sprintf("tui: %s.Move", m.name()),
+			Rule: fmt.Sprintf("index %d out of range [0,%d)", to, len(m.items))})
 	}
 	m.items = slices.Insert(slices.Delete(m.items, i, i+1), to, child)
 	if m.ctx != nil {

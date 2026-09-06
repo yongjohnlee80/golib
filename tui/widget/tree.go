@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -212,20 +213,20 @@ func preflightForest(kids []*TreeNode, forbidden map[*TreeNode]struct{}) {
 	var walk func(n *TreeNode, parent *TreeNode)
 	walk = func(n *TreeNode, parent *TreeNode) {
 		if n == nil {
-			panic("widget: nil tree node")
+			panic(errs.Fatal{Op: "widget", Rule: "nil tree node"})
 		}
 		if _, dup := visited[n]; dup {
-			panic(fmt.Sprintf("widget: tree node %q appears more than once in the incoming forest", n.id))
+			panic(errs.Fatal{Op: "widget", Rule: fmt.Sprintf("tree node %q appears more than once in the incoming forest", n.id)})
 		}
 		if _, bad := forbidden[n]; bad {
-			panic(fmt.Sprintf("widget: tree node %q would become its own descendant", n.id))
+			panic(errs.Fatal{Op: "widget", Rule: fmt.Sprintf("tree node %q would become its own descendant", n.id)})
 		}
 		visited[n] = struct{}{}
 		if n.owner != nil {
-			panic(fmt.Sprintf("widget: tree node %q is already attached to a tree", n.id))
+			panic(errs.Fatal{Op: "widget", Rule: fmt.Sprintf("tree node %q is already attached to a tree", n.id)})
 		}
 		if parent != nil && n.parent != nil && n.parent != parent {
-			panic(fmt.Sprintf("widget: tree node %q carries an inconsistent parent link", n.id))
+			panic(errs.Fatal{Op: "widget", Rule: fmt.Sprintf("tree node %q carries an inconsistent parent link", n.id)})
 		}
 		validateSiblingIDs(n.children)
 		for _, c := range n.children {
@@ -235,7 +236,7 @@ func preflightForest(kids []*TreeNode, forbidden map[*TreeNode]struct{}) {
 	validateSiblingIDs(kids)
 	for _, k := range kids {
 		if k != nil && k.parent != nil {
-			panic(fmt.Sprintf("widget: tree node %q is still linked inside another assembly", k.id))
+			panic(errs.Fatal{Op: "widget", Rule: fmt.Sprintf("tree node %q is still linked inside another assembly", k.id)})
 		}
 		walk(k, nil)
 	}
@@ -246,10 +247,10 @@ func validateSiblingIDs(kids []*TreeNode) {
 	seen := make(map[string]struct{}, len(kids))
 	for _, k := range kids {
 		if k == nil {
-			panic("widget: nil tree node")
+			panic(errs.Fatal{Op: "widget", Rule: "nil tree node"})
 		}
 		if _, dup := seen[k.id]; dup {
-			panic(fmt.Sprintf("widget: duplicate sibling tree-node id %q", k.id))
+			panic(errs.Fatal{Op: "widget", Rule: fmt.Sprintf("duplicate sibling tree-node id %q", k.id)})
 		}
 		seen[k.id] = struct{}{}
 	}
@@ -342,7 +343,7 @@ func (t *Tree) AcceptsFocus() bool { return true }
 // subtree navigates correctly.
 func (t *Tree) adopt(n *TreeNode) {
 	if n.owner != nil {
-		panic(fmt.Sprintf("widget: tree node %q is already attached to a tree", n.id))
+		panic(errs.Fatal{Op: "widget", Rule: fmt.Sprintf("tree node %q is already attached to a tree", n.id)})
 	}
 	n.owner = t
 	for _, c := range n.children {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"iter"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -187,7 +188,7 @@ func (x *Box) Move(child tui.Component, to int) {
 		return
 	}
 	if to != 0 {
-		panic("widget: Box.Move: Box wraps exactly one child; only index 0 is valid")
+		panic(errs.Fatal{Op: "widget: Box.Move", Rule: "Box wraps exactly one child; only index 0 is valid"})
 	}
 }
 

@@ -38,8 +38,8 @@ auth/mtls/mtls.go	New	f6cfe697189f88ed	1	construction	mtls.New: a SubjectFunc is
 auth/sshkey/sshkey.go	New	7f17541336eb5d45	1	construction	sshkey.New: a Namespace is required, or a signature made for another purpose would verify here. Reached while the value is built, from an argument written at the call site, with no recover above it
 auth/sshkey/sshkey.go	New	4d5f726301e8aca7	1	construction	sshkey.New: a Verifier is required. Reached while the value is built, from an argument written at the call site, with no recover above it
 auth/sshkey/sshkey.go	New	bc5ed94243307511	1	construction	sshkey.New: a ChallengeStore is required. Reached while the value is built, from an argument written at the call site, with no recover above it
-dao/batch.go	batchWriter.AddRow	c617c7aca4da00cf	1	invariant	AddRow on a BatchWriter built without a row extractor is programmer error; no data input reaches it
-dao/expr.go	Expr.mustSet	3f7f56f599589225	1	invariant	mustSet rejects a ZERO Expr — a caller passing Expr{} is programmer error, not data
+dao/batch.go	batchWriter.AddRow	b4c7125028a75004	1	invariant	AddRow on a BatchWriter built without a row extractor is programmer error; no data input reaches it
+dao/expr.go	Expr.mustSet	22c07c6f2d7a7693	1	invariant	mustSet rejects a ZERO Expr — a caller passing Expr{} is programmer error, not data
 dao/expr.go	Str	416ab45c6e4aa48d	1	violation	LATENT: Str panics on a single quote in a CALLER-SUPPLIED string, reachable with a valid type via lit <- Coalesce. Coalesce has ZERO production callers in golib, autodb or either ddex repo, and dao/expr_test.go:286 pins this panic as REQUIRED behaviour — so changing it is an API decision (sweep G3; Johno 2026-09-06: leave as-is), not a fix.
 dao/expr.go	Str	31987f88f80ef74c	1	violation	LATENT: Str panics on a backslash in a caller-supplied string; same path, same evidence as the single-quote site.
 dao/expr.go	Str	4a1e375b2f9d1188	1	violation	LATENT: Str panics on a control character in a caller-supplied string; same path, same evidence as the single-quote site.
@@ -75,21 +75,21 @@ server/rpc/server.go	New	cb8f5b7a4ec39ce9	1	construction	rpc.New: DrainTimeout m
 server/scaffold.go	NewScaffold	40b8e25e781d8f16	1	construction	server.NewScaffold: nil ConnHandler. Reached while the value is built, from an argument written at the call site, with no recover above it
 tui/app.go	NewApp	19c3e1c513b3cd71	1	construction	tui.NewApp: nil root component — an App is being built and the root is a literal at the call site
 tui/app.go	NewApp	e65924d403ff0ad3	1	construction	tui.NewApp: WithBackend is required; the core package cannot construct a terminal driver, and the option is supplied in source
-tui/app.go	App.Post	53e8fff1154f7a17	1	invariant	tui.App.Post: nil event. A runtime method, but a nil event is a programmer error — no data reaching Post can make the event itself nil
-tui/app.go	App.Update	3b994ea4d53edb21	1	invariant	tui.App.Update: nil func — same shape as Post; the closure is written in source
+tui/app.go	App.Post	c6542e4ab0bb6fcf	1	invariant	tui.App.Post: nil event. A runtime method, but a nil event is a programmer error — no data reaching Post can make the event itself nil
+tui/app.go	App.Update	dec28eb4506b3125	1	invariant	tui.App.Update: nil func — same shape as Post; the closure is written in source
 tui/app.go	App.Run.func$1	b6c4252a60823d59	1	repanic	tui.App.Run: re-raises the recovered value after the backend is restored, so the terminal is never left in raw mode by an escaping panic
-tui/bus.go	Subscribe	a944156264c46448	1	invariant	tui.Subscribe: nil handler. Subscribe runs at any time, but the handler is a closure written in source
-tui/bus.go	Bus.Publish	1201a06be4e23702	1	invariant	tui.Bus.Publish: nil value — publishing nothing is a programmer error, not a value the bus can receive
+tui/bus.go	Subscribe	44702c67e6fba213	1	invariant	tui.Subscribe: nil handler. Subscribe runs at any time, but the handler is a closure written in source
+tui/bus.go	Bus.Publish	44e58dc246611c17	1	invariant	tui.Bus.Publish: nil value — publishing nothing is a programmer error, not a value the bus can receive
 tui/container.go	MultiChild.Add	91deb9100d15582b	1	construction	tui.MultiChild.Add: nil child while a container is being built
-tui/container.go	MultiChild.Move	04cfb72b8d64c7f0	1	invariant	tui.MultiChild.Move: destination index out of range; the index comes from the caller's own item list
-tui/context.go	Context.Mount	19cb694b082f3676	1	invariant	tui.Context.Mount on an unmounted node — the component is using a Context that outlived its own mount
-tui/context.go	Context.Unmount	8300756c596d5775	1	invariant	tui.Context.Unmount: the component is not a mounted child
-tui/context.go	Context.Move	04860bbcdda3828b	1	invariant	tui.Context.Move on an unmounted node
-tui/context.go	Context.LayoutChild	9c623c658b3a83a2	1	invariant	tui.Context.LayoutChild called outside this component's Layout, which is the phase contract
-tui/context.go	Context.LayoutChild	972164a9e76304e9	1	invariant	tui.Context.LayoutChild: the target is not a mounted child of this component
-tui/context.go	Context.PlaceChild	05f6ac5fcf3b553b	1	invariant	tui.Context.PlaceChild called outside this component's Layout
-tui/context.go	Context.PlaceChild	eeb614acc1187591	1	invariant	tui.Context.PlaceChild: the target is not a mounted child of this component
-tui/context.go	Context.Every	1cb1e791e57b0ba1	1	invariant	tui.Context.Every: non-positive interval; the interval is written at the call site
+tui/container.go	MultiChild.Move	77b3cbeb7635f945	1	invariant	tui.MultiChild.Move: destination index out of range; the index comes from the caller's own item list
+tui/context.go	Context.Mount	33216904efd47968	1	invariant	tui.Context.Mount on an unmounted node — the component is using a Context that outlived its own mount
+tui/context.go	Context.Unmount	57f9cb74b77ab447	1	invariant	tui.Context.Unmount: the component is not a mounted child
+tui/context.go	Context.Move	37d71e6e6bb3268b	1	invariant	tui.Context.Move on an unmounted node
+tui/context.go	Context.LayoutChild	a1395eabe28957c6	1	invariant	tui.Context.LayoutChild called outside this component's Layout, which is the phase contract
+tui/context.go	Context.LayoutChild	b73a8175db8f2166	1	invariant	tui.Context.LayoutChild: the target is not a mounted child of this component
+tui/context.go	Context.PlaceChild	a05c46622416a39e	1	invariant	tui.Context.PlaceChild called outside this component's Layout
+tui/context.go	Context.PlaceChild	12739c8e974ab5ad	1	invariant	tui.Context.PlaceChild: the target is not a mounted child of this component
+tui/context.go	Context.Every	dbdf0888cad4b4f4	1	invariant	tui.Context.Every: non-positive interval; the interval is written at the call site
 tui/dock.go	Dock.Pin	a12683e0ef5695d7	1	construction	tui.Dock.Pin: nil child while the dock is being built
 tui/dock.go	Dock.Pin	fb15f5b2d280ef64	1	construction	tui.Dock.Pin: an edge outside the four constants, while the dock is being built
 tui/flex.go	Flex.AddWeighted	1d7a641b179dccda	1	construction	tui.Flex.AddWeighted: weight must be at least 1 — a literal at the call site while the container is built
@@ -110,32 +110,32 @@ tui/style/style.go	Style.Align	3d71cb902f840d47	1	construction	style.Align: more
 tui/style/style.go	Style.Align	ed8a8c487327665e	1	construction	style.Align: vertical alignment is not one of the three constants
 tui/style/style.go	Style.Align	207ca678263eaa07	1	construction	style.Align: horizontal alignment is not one of the three constants, while building a Style
 tui/style/style.go	expandEdges	f1f7a00301965a91	1	construction	style: CSS shorthand takes 0-4 edge arguments — an arity mistake while building a Style
-tui/style/style.go	Style.copyProp	1f0a8d27f154967f	1	invariant	style.copyProp: a property bit with no case. Reached only if this package adds a property and forgets to extend the switch — no caller and no data can produce a bit the package never defined
+tui/style/style.go	Style.copyProp	81b0c638ff90b9db	1	invariant	style.copyProp: a property bit with no case. Reached only if this package adds a property and forgets to extend the switch — no caller and no data can produce a bit the package never defined
 tui/style/theme.go	WithToken	001d2b02a1f7d153	1	construction	style.WithToken: token outside the declared range while building a Theme
 tui/style/theme.go	WithToken	b50e71241b4fd08c	1	construction	style.WithToken: a theme slot cannot hold a token color — rejected while the Theme is built
 tui/style/theme.go	NewTheme	c61a94e82bddd760	1	construction	style.NewTheme: a token color cannot be the primary — the slot must hold a concrete or adaptive Color
-tui/style/theme.go	Theme.Color	93ea312d621556d4	1	invariant	style.Theme.Color: token outside the declared range. A runtime lookup, but the token set is a closed enum this package defines, so an out-of-range token is programmer error rather than data
+tui/style/theme.go	Theme.Color	2ca425762b8dbfa7	1	invariant	style.Theme.Color: token outside the declared range. A runtime lookup, but the token set is a closed enum this package defines, so an out-of-range token is programmer error rather than data
 tui/tasks.go	Exclusive	a7f52f9cd5eca2f5	1	construction	tui.Exclusive: empty group name — an option built in source
-tui/tasks.go	App.Go	8c04afba59c851f6	1	invariant	tui.App.Go: nil task; the task is a func written at the call site
-tui/testbackend.go	TestBackend.InjectResize	3e3bad8e39ad70d7	1	invariant	tui.TestBackend.InjectResize: the resize could not be applied. A test double asserting its own precondition
-tui/testbackend.go	TestBackend.Flush	fea9418324761fe0	1	invariant	tui.TestBackend.Flush: an update outside the grid. A test double catching the component author's coordinate error
-tui/testbackend.go	TestBackend.Flush	338cfe3ec026679f	1	invariant	tui.TestBackend.Flush: a wide cell in the last column, which no correct renderer emits
-tui/testbackend.go	TestBackend.assertNoOrphansLocked	4652194c26dce4a0	1	invariant	tui.TestBackend.assertNoOrphansLocked: a wide-cell continuation with no head to its left
-tui/testbackend.go	TestBackend.assertNoOrphansLocked	3908b1a1fdfa54ed	1	invariant	tui.TestBackend.assertNoOrphansLocked: a wide-cell head with no continuation
-tui/tree.go	App.mount	3e3a6d6ad6e059ae	1	invariant	tui.mount: nil component. Mount runs at any time, but a nil component is programmer error rather than data
+tui/tasks.go	App.Go	785ea81eff71010f	1	invariant	tui.App.Go: nil task; the task is a func written at the call site
+tui/testbackend.go	TestBackend.InjectResize	be0d36e0c415f70c	1	invariant	tui.TestBackend.InjectResize: the resize could not be applied. A test double asserting its own precondition
+tui/testbackend.go	TestBackend.Flush	5300615b71c12a49	1	invariant	tui.TestBackend.Flush: an update outside the grid. A test double catching the component author's coordinate error
+tui/testbackend.go	TestBackend.Flush	fc8ba480ed0a8a48	1	invariant	tui.TestBackend.Flush: a wide cell in the last column, which no correct renderer emits
+tui/testbackend.go	TestBackend.assertNoOrphansLocked	e6d89bff1d658029	1	invariant	tui.TestBackend.assertNoOrphansLocked: a wide-cell continuation with no head to its left
+tui/testbackend.go	TestBackend.assertNoOrphansLocked	36873249c53aed07	1	invariant	tui.TestBackend.assertNoOrphansLocked: a wide-cell head with no continuation
+tui/tree.go	App.mount	41a70b1702ac605c	1	invariant	tui.mount: nil component. Mount runs at any time, but a nil component is programmer error rather than data
 tui/tree.go	App.mount	b0daebf055875c7f	1	contract	Mounting inside Layout or Render is documented as illegal: the tree is being walked, and mutating it mid-walk would invalidate the iteration the caller is inside. Panicking names the rule at the moment it is broken; returning an error would let the caller ignore it and corrupt the walk. Read because a rewording briefly changed its fingerprint and the budget refused to carry the old reason over. The rewording was reverted (panic strings are out of scope for a comments-only change) but the reading stands.
-tui/tree.go	App.mount	fa9c22990d3335ab	1	invariant	tui.mount: a component type that is not comparable. Decided by the TYPE the author wrote, not by any value flowing through it
-tui/tree.go	App.mount	e0be33bc35bf1c39	1	invariant	tui.mount: the component value is already mounted. A component mounts at most once, and mounting twice is a structural mistake in the caller's code
-tui/tree.go	App.moveWithin	198084033889bf4c	1	invariant	tui.moveWithin: tree mutation inside Layout or Render — the same contract as mount
-tui/tree.go	App.moveWithin	055d8d461bb1b58e	1	invariant	tui.moveWithin: the component is not mounted
-tui/tree.go	App.moveWithin	1bf030de687ed16b	1	invariant	tui.moveWithin: the child belongs to a different container; cross-container moves are not supported
-tui/tree.go	App.moveWithin	3746ee1f7b7ef149	1	invariant	tui.moveWithin: destination index out of range. The index comes from the caller's own child list, so a bad one is a counting error in source
-tui/tree.go	App.unmountTree	2c41697abac1c504	1	invariant	tui.unmountTree: tree mutation inside Layout or Render — the same contract as mount
+tui/tree.go	App.mount	182d02a70da480c7	1	invariant	tui.mount: a component type that is not comparable. Decided by the TYPE the author wrote, not by any value flowing through it
+tui/tree.go	App.mount	f003c43f1f22f38f	1	invariant	tui.mount: the component value is already mounted. A component mounts at most once, and mounting twice is a structural mistake in the caller's code
+tui/tree.go	App.moveWithin	0eff52d1067f0029	1	invariant	tui.moveWithin: tree mutation inside Layout or Render — the same contract as mount
+tui/tree.go	App.moveWithin	00a9ebc8215b0ea6	1	invariant	tui.moveWithin: the component is not mounted
+tui/tree.go	App.moveWithin	8658960d0c317a3e	1	invariant	tui.moveWithin: the child belongs to a different container; cross-container moves are not supported
+tui/tree.go	App.moveWithin	cbb4491b05737a9b	1	invariant	tui.moveWithin: destination index out of range. The index comes from the caller's own child list, so a bad one is a counting error in source
+tui/tree.go	App.unmountTree	ab3bc87dc329c212	1	invariant	tui.unmountTree: tree mutation inside Layout or Render — the same contract as mount
 tui/widget/box.go	WithTitleAlign	5c25a6b2fa4510fb	1	construction	widget: WithTitleAlign: %d is not AlignLeft/AlignCenter/AlignRight. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/box.go	WithStatusAlign	79d1e2dae23b7075	1	construction	widget: WithStatusAlign: %d is not AlignLeft/AlignCenter/AlignRight. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/box.go	Box.Add	48f9916531ce5952	1	construction	widget: Box.Add: nil child. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/box.go	Box.Add	e666c9d08180da10	1	construction	widget: Box wraps exactly one child (ADR-0007 Q1) — nest a Flex/Split/Dock for more. Reached while the value is being built; the argument is written at the call site and no recover sits above it
-tui/widget/box.go	Box.Move	0103c30609c6093b	1	invariant	Box.Move: Box wraps exactly one child, so only index 0 is a valid move destination. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/box.go	Box.Move	ebba4d888dfd8fe0	1	invariant	Box.Move: Box wraps exactly one child, so only index 0 is a valid move destination. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
 tui/widget/bufferview.go	WithMaxLines	0c5e18ec9521d59a	1	construction	widget: WithMaxLines: n must be >= 1. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/editor.go	WithEditorWrap	fc60653735cd711f	1	construction	widget: WithEditorWrap: mode %d is not WrapNone or WrapSoft. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/editor.go	WithEscapeChord	212181d95a789cf0	1	construction	widget: WithEscapeChord: %q is not exactly two runes (or empty to disable). Reached while the value is being built; the argument is written at the call site and no recover sits above it
@@ -144,7 +144,7 @@ tui/widget/editor_keymap.go	validateKeymapEntry	12ec79b88485aad6	1	construction	
 tui/widget/editor_keymap.go	validateKeymapEntry	02acb73909eba1a5	1	construction	widget: WithKeymap: chord %+v: unknown action %d. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/editor_keymap.go	validateKeymapEntry	3527c8bf94d3acd0	1	construction	widget: WithKeymap: chord %+v: action %d is not supported in that mode. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/float.go	NewFloat	00ccbc99f532036e	1	construction	widget: NewFloat: nil child. Reached while the value is being built; the argument is written at the call site and no recover sits above it
-tui/widget/float.go	Float.Show	49377d2c107a9c30	1	invariant	Float.Show: Show before the Float is mounted; the host attachment is the caller's ordering, not data. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/float.go	Float.Show	74ea58ce1486e5b4	1	invariant	Float.Show: Show before the Float is mounted; the host attachment is the caller's ordering, not data. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
 tui/widget/list.go	WithSource	2fcbcb429e1ae4f8	1	construction	widget: WithSource: nil render func. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/list.go	NewList	32355b1dc51e324f	1	construction	widget: NewList requires WithSource or WithItems. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/overlay.go	NewOverlayHost	7303ad8e5abba82a	1	construction	widget: NewOverlayHost: nil base component. Reached while the value is being built; the argument is written at the call site and no recover sits above it
@@ -156,24 +156,24 @@ tui/widget/split.go	WithRatio	d2e09e4ca445c4b4	1	construction	widget: WithRatio:
 tui/widget/split.go	WithMinSizes	cbf873298fd249cb	1	construction	widget: WithMinSizes: negative minimum. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/split.go	NewSplit	1e6b35772d100bc5	1	construction	widget: NewSplit: invalid orientation. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/split.go	NewSplit	7d9414ca9cf01373	1	construction	widget: NewSplit: nil pane. Reached while the value is being built; the argument is written at the call site and no recover sits above it
-tui/widget/split.go	Split.SetRatio	9302138cdca4656e	1	invariant	Split.SetRatio: SetRatio outside the open interval (0, 1). A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
-tui/widget/split.go	Split.Zoom	057871ef094285c0	1	invariant	Split.Zoom: Zoom names a pane the split does not have. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/split.go	Split.SetRatio	168865881e0ac552	1	invariant	Split.SetRatio: SetRatio outside the open interval (0, 1). A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/split.go	Split.Zoom	8319feef050e8bb5	1	invariant	Split.Zoom: Zoom names a pane the split does not have. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
 tui/widget/statusbar.go	setSegment	c67e39052f88f0e8	1	construction	widget: StatusBar segment: %d styles (want at most 1). Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/table.go	NewTable	ffe0e3b2aba57457	1	construction	widget: NewTable requires at least one column. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/tabs.go	WithTab	d6da231c9391ab53	1	construction	widget: WithTab: nil content. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/tabs.go	NewTabs	4debe2eec9ad5d79	1	construction	widget: NewTabs requires at least one WithTab. Reached while the value is being built; the argument is written at the call site and no recover sits above it
-tui/widget/tabs.go	Tabs.Add	2569155b2fc75fa9	1	invariant	Tabs.Add: Add with nil content. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tabs.go	Tabs.Add	a2638e2252865d1a	1	invariant	Tabs.Add: Add with nil content. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
 tui/widget/text.go	WithWrapMode	4bbd8565f39105e1	1	construction	widget: WithWrapMode: mode %d is not Truncate or Wrap. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/textarea.go	WithWrap	f23199a44f0cdfc2	1	construction	widget: WithWrap: mode %d is not WrapNone or WrapSoft. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/textinput.go	WithMask	0d6bd8e98f26f51a	1	construction	widget: WithMask: zero mask rune. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/tree.go	NewTreeNode	fd162a13c54f1891	1	construction	widget: NewTreeNode: empty id. Reached while the value is being built; the argument is written at the call site and no recover sits above it
-tui/widget/tree.go	preflightForest.func$1	c40046850ef61b22	1	invariant	preflightForest.func$1: a nil node in the incoming forest. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
-tui/widget/tree.go	preflightForest.func$1	a6dcb06709225f1d	1	invariant	preflightForest.func$1: a node appearing more than once in the incoming forest. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
-tui/widget/tree.go	preflightForest.func$1	50cf501f08452daf	1	invariant	preflightForest.func$1: a node that would become its own descendant. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
-tui/widget/tree.go	preflightForest.func$1	39020909c144274c	1	invariant	preflightForest.func$1: a node already attached to a tree. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
-tui/widget/tree.go	preflightForest.func$1	156e65d41f2c0dce	1	invariant	preflightForest.func$1: a node whose parent link contradicts the forest it arrived in. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
-tui/widget/tree.go	preflightForest	d307e925a62deab8	1	invariant	preflightForest: a node still linked inside another assembly. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
-tui/widget/tree.go	validateSiblingIDs	73b73ece48a4cb0d	1	invariant	validateSiblingIDs: a nil node among the siblings. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
-tui/widget/tree.go	validateSiblingIDs	8431cee3354b6982	1	invariant	validateSiblingIDs: two siblings sharing an id. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tree.go	preflightForest.func$1	d2dd3424c8f76b20	1	invariant	preflightForest.func$1: a nil node in the incoming forest. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tree.go	preflightForest.func$1	89e4b9a1ac28d191	1	invariant	preflightForest.func$1: a node appearing more than once in the incoming forest. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tree.go	preflightForest.func$1	2024ddb4a84160ce	1	invariant	preflightForest.func$1: a node that would become its own descendant. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tree.go	preflightForest.func$1	d775ec58bf320a55	1	invariant	preflightForest.func$1: a node already attached to a tree. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tree.go	preflightForest.func$1	2866955cfdb942ea	1	invariant	preflightForest.func$1: a node whose parent link contradicts the forest it arrived in. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tree.go	preflightForest	7033c517e4b6e556	1	invariant	preflightForest: a node still linked inside another assembly. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tree.go	validateSiblingIDs	77d4e3615977c739	1	invariant	validateSiblingIDs: a nil node among the siblings. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tree.go	validateSiblingIDs	1b68eaee9ba0dec0	1	invariant	validateSiblingIDs: two siblings sharing an id. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
 tui/widget/tree.go	WithIndent	5cd13bc150a2e791	1	construction	widget: WithIndent: %d is not positive. Reached while the value is being built; the argument is written at the call site and no recover sits above it
-tui/widget/tree.go	Tree.adopt	39020909c144274c	1	invariant	Tree.adopt: attaching a node that already belongs to a tree. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+tui/widget/tree.go	Tree.adopt	d775ec58bf320a55	1	invariant	Tree.adopt: attaching a node that already belongs to a tree. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
