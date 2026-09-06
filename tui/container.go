@@ -7,7 +7,7 @@ import (
 )
 
 // MultiChild is the shared sibling-list machinery every multi-child
-// Container embeds (ADR-0004 §2.7; reorder semantics ADR-0011): the
+// Container embeds: the
 // ordered children slice, plus the framework mirror — mutations mount,
 // unmount, or move through Context immediately when mounted and defer to
 // Init otherwise. It is the Go-embedding analogue of Flutter's
@@ -52,8 +52,8 @@ func (m *MultiChild) Add(children ...Component) {
 	}
 }
 
-// Remove unmounts child (cascade, ADR-0004 §2.4) and forgets it. A child
-// this container does not own is a silent no-op.
+// Remove unmounts child (cascade) and forgets it. A child this container
+// does not own is a silent no-op.
 func (m *MultiChild) Remove(child Component) {
 	m.remove(child) // shadowable seam: containers pair it with Add
 }
@@ -71,10 +71,10 @@ func (m *MultiChild) remove(child Component) {
 	}
 }
 
-// Move relocates child to index to in document order (ADR-0011 §2.2),
-// preserving its mount — no unmount/Init cycle. An unmounted container
-// reorders items only; the framework mirror happens at Init. A child this
-// container does not own is a silent no-op, mirroring Remove.
+// Move relocates child to index to in document order, preserving its mount
+// — no unmount/Init cycle. An unmounted container reorders items only; the
+// framework mirror happens at Init. A child this container does not own is
+// a silent no-op, mirroring Remove.
 func (m *MultiChild) Move(child Component, to int) {
 	i := m.indexOf(child)
 	if i < 0 || i == to {

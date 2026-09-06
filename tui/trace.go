@@ -2,7 +2,7 @@ package tui
 
 import "fmt"
 
-// Runtime tracing (ADR-0005 §2.8): an opt-in, structured record of the
+// Runtime tracing: an opt-in, structured record of the
 // decisions the runtime makes on behalf of a program — focus moves,
 // mounts, key routing, layer changes. Interactive bugs are timing bugs
 // ("the modal opened but Enter did nothing"), and the state that

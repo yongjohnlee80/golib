@@ -6,50 +6,55 @@ import (
 	"time"
 )
 
-// Context is a mounted component's identity and runtime access
-// (ADR-0004 §2.2) — the ONLY sanctioned channel from a component to the
-// runtime (no globals; golib philosophy). One *Context per mounted node,
+// Context is a mounted component's identity and its ONLY sanctioned channel
+// to the runtime. There are no globals to reach it by, deliberately: a
+// component that could find the App without being handed it could also be
+// used outside one, and the compiler would not say so. One *Context per
+// mounted node,
 // created at mount, invalidated at unmount.
 //
 // Methods are legal only on the loop goroutine except Post and Go, which are
-// safe from any goroutine (they delegate to App — ADR-0005 §2.4, §2.8).
+// safe from any goroutine, because they only hand work to the App rather than
+// touching the tree.
 type Context struct {
 	app  *App
 	node *node
 }
 
 // ID returns the node's identity: stable for this mount; 0 is never
-// assigned; never reused for the App's lifetime (ADR-0004 §2.4).
+// assigned; never reused for the App's lifetime.
 func (c *Context) ID() NodeID { return c.node.id }
 
 // Ctx returns the node's lifetime context, cancelled when this node
-// unmounts (ADR-0004 §2.4). It is the async-lifetime anchor: task contexts
-// derive from it (ADR-0005 §2.8), so unmount kills in-flight work with zero
-// bookkeeping in the component.
+// unmounts. It is the async-lifetime anchor: task contexts derive from it,
+// so unmount kills in-flight work with zero bookkeeping in the component.
 func (c *Context) Ctx() context.Context { return c.node.cctx }
 
-// MarkDirty requests a repaint of the subtree; geometry unchanged
-// (ADR-0004 §2.7.5 render dirt). Dirty marks only schedule a frame —
-// rendering never happens synchronously inside a handler.
+// MarkDirty requests a repaint of the subtree, leaving geometry unchanged.
+//
+// It only SCHEDULES a frame; rendering never happens synchronously inside a
+// handler. That is what lets a handler mark dirty as many times as it likes,
+// and what stops a component from observing a half-updated tree mid-handler.
 func (c *Context) MarkDirty() {
 	c.app.renderDirty = true
 	c.app.queue.wakeUp()
 }
 
 // RequestLayout signals the node's size may have changed: the next frame
-// runs one full layout pass from the root, then repaints
-// (ADR-0004 §2.7.5 layout dirt).
+// runs one full layout pass from the root, then repaints. Use it when a
+// change affects SIZE; MarkDirty is enough when only appearance changed.
 func (c *Context) RequestLayout() {
 	c.app.layoutDirty = true
 	c.app.queue.wakeUp()
 }
 
-// RequestFocus asks the focus manager to focus this node (ADR-0004 §2.6).
-// Ignored unless the component implements Focusable and accepts focus.
+// RequestFocus asks the focus manager to focus this node. Ignored unless
+// the component implements Focusable and accepts focus.
 func (c *Context) RequestFocus() { c.app.requestFocus(c.node) }
 
 // FocusWithin reports whether the currently focused node is comp or one of
-// comp's descendants (ADR-0008 — Split.Zoom's transfer check). False when
+// comp's descendants — what a container asks before it hides a subtree, so
+// focus can be moved out rather than stranded somewhere invisible. False when
 // nothing is focused or comp is not mounted.
 func (c *Context) FocusWithin(comp Component) bool {
 	n := c.app.nodes[c.app.focused]
@@ -88,10 +93,9 @@ func (c *Context) FocusComponent(comp Component) bool {
 // Focused reports whether this node currently holds focus.
 func (c *Context) Focused() bool { return c.app.focused == c.node.id }
 
-// OnUnmount registers a cleanup hook; hooks run LIFO at unmount
-// (ADR-0004 §2.2). SubscribeScoped and After/Every register their cancels
-// through it. Registering on an already-unmounted context runs fn
-// immediately.
+// OnUnmount registers a cleanup hook; hooks run LIFO at unmount.
+// SubscribeScoped and After/Every register their cancels through it.
+// Registering on an already-unmounted context runs fn immediately.
 func (c *Context) OnUnmount(fn func()) {
 	if fn == nil {
 		return
@@ -103,8 +107,8 @@ func (c *Context) OnUnmount(fn func()) {
 	c.node.hooks = append(c.node.hooks, fn)
 }
 
-// Mount mounts child under this node (ADR-0004 §2.4). Loop goroutine only;
-// illegal inside Layout/Render.
+// Mount mounts child under this node. Loop goroutine only; illegal inside
+// Layout/Render.
 func (c *Context) Mount(child Component) {
 	if !c.node.mounted {
 		panic(fmt.Sprintf("tui: Context.Mount on unmounted node %d", c.node.id))
@@ -112,8 +116,8 @@ func (c *Context) Mount(child Component) {
 	c.app.mount(c.node, child)
 }
 
-// Unmount runs the unmount cascade for child (ADR-0004 §2.4). Loop
-// goroutine only; illegal inside Layout/Render.
+// Unmount runs the unmount cascade for child. Loop goroutine only; illegal
+// inside Layout/Render.
 func (c *Context) Unmount(child Component) {
 	n := c.app.byComp[child]
 	if n == nil {
@@ -134,8 +138,7 @@ func (c *Context) Move(child Component, to int) {
 }
 
 // LayoutChild lays out a mounted child under cc and returns its chosen
-// (clamped) size. Legal ONLY inside this component's Layout call
-// (ADR-0004 §2.2, §2.7).
+// (clamped) size. Legal ONLY inside this component's Layout call.
 func (c *Context) LayoutChild(child Component, cc Constraints) Size {
 	a := c.app
 	if a.layingOut != c.node {
@@ -149,7 +152,7 @@ func (c *Context) LayoutChild(child Component, cc Constraints) Size {
 }
 
 // PlaceChild positions a laid-out child at the parent-relative Rect r.
-// Legal ONLY inside this component's Layout call (ADR-0004 §2.2, §2.7).
+// Legal ONLY inside this component's Layout call.
 func (c *Context) PlaceChild(child Component, r Rect) {
 	a := c.app
 	if a.layingOut != c.node {
@@ -163,39 +166,37 @@ func (c *Context) PlaceChild(child Component, r Rect) {
 	cn.placed = true
 }
 
-// App returns the owning runtime (ADR-0005 owns its semantics).
+// App returns the owning runtime.
 func (c *Context) App() *App { return c.app }
 
 // StringWidth measures s under the App's active width policy — the SAME
-// policy Surface.StringWidth applies (WithWidthPolicy, ADR-0003 §2.4). It
-// is the policy-aware measurement surface available OUTSIDE Render (Layout,
-// event handlers, cursor/scroll/wrap/hit-test math), where there is no
-// Surface. NORMATIVE: component layout and state math MUST measure through
-// this (or Surface.StringWidth in Render), never the package-level
-// tui.StringWidth default, so a per-App WidthPolicyAmbiguousWide stays
-// consistent between paint and geometry (ADR-0003 §2.4/§2.7).
+// policy Surface.StringWidth applies (WithWidthPolicy). It is the
+// policy-aware measurement surface available OUTSIDE Render (Layout, event
+// handlers, cursor/scroll/wrap/hit-test math), where there is no Surface.
+// NORMATIVE: component layout and state math MUST measure through this (or
+// Surface.StringWidth in Render), never the package-level tui.StringWidth
+// default, so a per-App WidthPolicyAmbiguousWide stays consistent between
+// paint and geometry.
 func (c *Context) StringWidth(s string) int {
 	return StringWidthPolicy(s, c.app.widthPolicy())
 }
 
-// Post enqueues ev on the program lane. Safe from any goroutine
-// (ADR-0005 §2.4).
+// Post enqueues ev on the program lane. Safe from any goroutine.
 func (c *Context) Post(ev Event) { c.app.Post(ev) }
 
 // Go schedules task on the App's bounded pool with this node as owner: the
 // TaskResult is addressed to this node's HandleEvent, and the task context
-// derives from Ctx() so unmount cancels it (ADR-0005 §2.8). Safe from any
-// goroutine.
+// derives from Ctx() so unmount cancels it. Safe from any goroutine.
 func (c *Context) Go(task Task, opts ...TaskOption) TaskID {
 	return c.app.Go(c.node.id, task, opts...)
 }
 
-// Bus returns the App's broadcast bus (ADR-0005 §2.7).
+// Bus returns the App's broadcast bus.
 func (c *Context) Bus() *Bus { return c.app.bus }
 
 // After registers a one-shot timer: after d, a TickEvent addressed to this
-// node is delivered (ADR-0005 §2.6). The returned cancel is idempotent;
-// unmount cancels automatically.
+// node is delivered. The returned cancel is idempotent; unmount cancels
+// automatically.
 func (c *Context) After(d time.Duration) (cancel func()) {
 	cancel = c.app.addTimer(c.node.id, d, 0)
 	c.OnUnmount(cancel)
@@ -204,7 +205,8 @@ func (c *Context) After(d time.Duration) (cancel func()) {
 
 // Every registers a repeating timer: a TickEvent addressed to this node
 // every d, re-armed after delivery (fixed-delay, not fixed-rate — no burst
-// catch-up after a stall; ADR-0005 §2.6). The returned cancel is idempotent;
+// catch-up after a stall, so a slow frame cannot be followed by a burst of
+// backdated ticks). The returned cancel is idempotent;
 // unmount cancels automatically.
 func (c *Context) Every(d time.Duration) (cancel func()) {
 	if d <= 0 {

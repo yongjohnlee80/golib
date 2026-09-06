@@ -6,17 +6,18 @@ import (
 	"github.com/yongjohnlee80/golib/logger"
 )
 
-// Event routing — target-then-bubble, no capture phase (ADR-0004 §2.5): the
-// runtime resolves a single target node per routed event, calls its
-// HandleEvent, and — while handlers return false — walks parent links to
-// the root. The first true consumes the event and stops the walk.
+// Event routing — target-then-bubble, no capture phase: the runtime
+// resolves a single target node per routed event, calls its HandleEvent,
+// and — while handlers return false — walks parent links to the root. The
+// first true consumes the event and stops the walk.
 
-// dispatch routes one event on the loop goroutine (ADR-0004 §2.5;
-// ADR-0005's loop calls it for both lanes).
+// dispatch routes one event on the loop goroutine. Both lanes funnel through
+// it, so input and program events are ordered against each other by the order
+// they are drained rather than by which produced them.
 func (a *App) dispatch(ev Event) {
 	switch e := ev.(type) {
 	case KeyEvent:
-		// Target = the focused node; none → root (ADR-0004 §2.5.1).
+		// Target = the focused node; none → root.
 		target := a.nodes[a.focused]
 		if target == nil {
 			target = a.rootNode
@@ -24,10 +25,10 @@ func (a *App) dispatch(ev Event) {
 		if target != nil && a.bubble(target, ev) {
 			return
 		}
-		// Unconsumed key at the root falls through to the App's global
-		// keymap — which is how framework Tab traversal works: a
-		// component that consumes Tab (e.g. a text area inserting \t)
-		// thereby opts out of traversal for that press (ADR-0004 §2.6.2).
+		// Unconsumed key at the root falls through to the App's global keymap —
+		// which is how framework Tab traversal works: a component that consumes
+		// Tab (e.g. a text area inserting \t) thereby opts out of traversal for
+		// that press.
 		a.globalKey(e)
 
 	case PasteEvent:
@@ -41,21 +42,22 @@ func (a *App) dispatch(ev Event) {
 
 	case MouseEvent:
 		// A count belongs to presses only. Canonicalise every other kind to zero
-		// rather than passing a producer's value through: the ADR promises
-		// non-press Count is 0, and only rewriting presses left an injected
-		// MouseWheel{Count: 99} delivering 99 (lector r1 finding 4).
+		// rather than passing a producer's value through. Count is documented
+		// as 0 on every non-press kind, and rewriting only presses left that
+		// promise dependent on the producer: an injected MouseWheel{Count: 99}
+		// was delivered with 99 intact.
 		if e.Kind != MousePress {
 			e.Count = 0
 			ev = e
 		}
-		// Target by hit-testing laid-out absolute rects, topmost first
-		// (reverse paint order — Stack z-order); coordinates are rewritten
-		// LOCAL to each receiving node at every hop (ADR-0004 §2.5.2).
+		// Target by hit-testing laid-out absolute rects, topmost first (reverse
+		// paint order — Stack z-order); coordinates are rewritten LOCAL to each
+		// receiving node at every hop.
 		target := a.hitTest(e.X, e.Y)
-		// A PRIMARY PRESS focuses before it is delivered (ADR-0010 §2.1): one
-		// gesture both moves focus into the clicked pane and acts on it. Motion,
-		// wheel and release deliberately do not, so scrolling over an unfocused
-		// pane never steals the keyboard.
+		// A PRIMARY PRESS focuses before it is delivered: one gesture both moves
+		// focus into the clicked pane and acts on it. Motion, wheel and release
+		// deliberately do not, so scrolling over an unfocused pane never steals
+		// the keyboard.
 		if target != nil && e.Kind == MousePress && e.Button == MouseLeft {
 			focused := a.focusFromPointer(target)
 			// Focus handlers run arbitrary component code synchronously and may
@@ -63,8 +65,7 @@ func (a *App) dispatch(ev Event) {
 			// mounted during dispatch has measured=false/placed=false and is not
 			// hit-testable until the next layout pass, so there is nothing
 			// correct to re-target: the press is SKIPPED. The focus change
-			// stands, and the user's next click lands on the rebuilt tree
-			// (ADR-0010 §2.1 step 5).
+			// stands, and the user's next click lands on the rebuilt tree.
 			if !target.mounted {
 				a.trace(TraceEvent{Kind: TraceUnmount, Node: target.id,
 					Detail: "pointer press skipped: focus handling unmounted the target"})
@@ -86,8 +87,8 @@ func (a *App) dispatch(ev Event) {
 		// Committing on arrival made a SKIPPED press advance the run: the two
 		// early returns above deliver to nobody, yet the run continued, so the
 		// widget that replaced an unmounted target saw Count == 2 as its FIRST
-		// delivered press (lector r1 finding 1). Count drives activation, so a
-		// press nobody received must not count.
+		// delivered press. Count drives activation, so a press nobody received
+		// must not count.
 		//
 		// Continuity is keyed on the DELIVERED TARGET as well as button, cell and
 		// window: a press landing on a different node is a different gesture even
@@ -107,10 +108,9 @@ func (a *App) dispatch(ev Event) {
 		}
 
 	case ResizeEvent:
-		// Not routed through the tree: update root constraints, mark
-		// layout dirt + full render dirt (never diff across a size
-		// change), publish on the Bus for components that care about raw
-		// dimensions (ADR-0004 §2.5.5, §2.7.5).
+		// Not routed through the tree: update root constraints, mark layout dirt
+		// + full render dirt (never diff across a size change), publish on the
+		// Bus for components that care about raw dimensions.
 		a.size = Size{W: e.W, H: e.H}
 		a.layoutDirty = true
 		a.renderDirty = true
@@ -118,10 +118,9 @@ func (a *App) dispatch(ev Event) {
 		a.queue.wakeUp()
 
 	case FocusEvent:
-		// Terminal focus in/out (mode 1004): delivered to the focused
-		// component and published on the Bus (ADR-0005 §2.5). Component
-		// focus changes do not pass through dispatch — setFocus bubbles
-		// them directly.
+		// Terminal focus in/out (mode 1004): delivered to the focused component
+		// and published on the Bus. Component focus changes do not pass through
+		// dispatch — setFocus bubbles them directly.
 		if n := a.nodes[a.focused]; n != nil {
 			a.bubble(n, ev)
 		}
@@ -137,7 +136,7 @@ func (a *App) dispatch(ev Event) {
 }
 
 // globalKey is the App-level fallback for keys no component consumed:
-// framework-owned Tab / Shift-Tab traversal (ADR-0004 §2.6.2).
+// framework-owned Tab / Shift-Tab traversal.
 func (a *App) globalKey(e KeyEvent) {
 	if e.Kind == KeyRelease {
 		return
@@ -152,8 +151,8 @@ func (a *App) globalKey(e KeyEvent) {
 	a.focusStep(1)
 }
 
-// bubble walks n's ancestor chain delivering ev until a handler consumes it
-// (ADR-0004 §2.5). Returns whether anything consumed.
+// bubble walks n's ancestor chain delivering ev until a handler consumes
+// it. Returns whether anything consumed.
 func (a *App) bubble(n *node, ev Event) bool {
 	start := n
 	for ; n != nil; n = n.parent {
@@ -187,8 +186,8 @@ func (a *App) traceRouted(ev Event, from *node, consumer NodeID) {
 // deliverAddressed hands an addressed event (TickEvent / TaskResult /
 // TaskProgress) directly to its owner — no bubbling: these are private
 // deliveries; propagating them to ancestors would leak implementation
-// detail (ADR-0004 §2.5.4). An unmounted owner dead-letters task traffic
-// (drop, count, log — ADR-0005 §2.8.2); a stale tick is silently done.
+// detail. An unmounted owner dead-letters task traffic (drop, count,
+// log); a stale tick is silently done.
 func (a *App) deliverAddressed(owner NodeID, ev Event) {
 	n := a.nodes[owner]
 	if n == nil {
@@ -219,7 +218,7 @@ func typeNameAddressed(ev Event) string {
 
 // hitTest finds the deepest visible node whose absolute Rect contains the
 // point, descending into children in reverse paint order so the topmost
-// Stack layer wins the mouse (ADR-0004 §2.5.2, §2.7.4).
+// Stack layer wins the mouse.
 func (a *App) hitTest(x, y int) *node {
 	if a.rootNode == nil {
 		return nil
@@ -240,7 +239,7 @@ func hitTestNode(n *node, x, y int) *node {
 }
 
 // pressOrdinal returns the ordinal of this press: 1 for a single press, 2 for the
-// second press of a double-click, and so on (ADR-0010 §2.5).
+// second press of a double-click, and so on.
 //
 // A press continues the run only when the button, the CELL and the window all
 // match. Same cell rather than "near": a terminal row is one cell tall, so a

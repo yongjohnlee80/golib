@@ -2,7 +2,7 @@ package tui
 
 import "github.com/yongjohnlee80/golib/logger"
 
-// intake is the App-owned input stage (lane A — ADR-0005 §2.4, rev 1): it
+// intake is the App-owned input stage, lane A: it
 // pulls promptly from backend.Events() and applies ALL input policy the
 // backend deliberately does not own — bounded capacity (WithInputQueueSize),
 // drop-oldest overflow, resize latest-wins, motion coalescing — before
@@ -15,11 +15,12 @@ import "github.com/yongjohnlee80/golib/logger"
 // server/ws/ws.go:36-48) effectively never blocks on the App — even while
 // the loop goroutine is stuck inside a slow handler. When Events() closes,
 // intake drains its remainder and closes a.input; the loop then collects
-// backend.Err() (ADR-0005 §2.2).
+// backend.Err().
 //
 // Ordering note: the resize slot has delivery priority — a pending resize
 // supersedes queued input (geometry invalidates everything behind it; the
-// dossier §8 resize-storm rule). Everything else delivers in arrival order.
+// a burst of resizes must not queue up behind stale input). Everything else
+// delivers in arrival order.
 func (a *App) intake() {
 	in := a.backend.Events()
 	limit := a.cfg.inputQueueSize
@@ -54,8 +55,7 @@ func (a *App) intake() {
 			}
 			switch e := ev.(type) {
 			case ResizeEvent:
-				// Latest-wins atomic slot — never a queue of sizes
-				// (ADR-0005 §2.4).
+				// Latest-wins atomic slot — never a queue of sizes.
 				resize, haveResize = e, true
 			case MouseEvent:
 				if e.Kind == MouseMotion && len(pending) > 0 {
@@ -82,10 +82,10 @@ func (a *App) intake() {
 }
 
 // intakeEnqueue appends ev to the bounded lane-A queue, applying the
-// drop-oldest overflow policy (ADR-0005 §2.4): input is refreshable, so a
-// full lane drops the OLDEST MOTION first and only then the oldest event of
-// any kind — at that point the app is seconds behind and stale keys are the
-// least-bad loss. Key presses and paste chunks are never coalesced (each is
+// drop-oldest overflow policy: input is refreshable, so a full lane drops
+// the OLDEST MOTION first and only then the oldest event of any kind — at
+// that point the app is seconds behind and stale keys are the least-bad
+// loss. Key presses and paste chunks are never coalesced (each is
 // semantically distinct). Drops are counted and logged via WithLogger.
 func (a *App) intakeEnqueue(pending []Event, ev Event, limit int) []Event {
 	if len(pending) >= limit {

@@ -7,12 +7,11 @@ import (
 	"slices"
 )
 
-// node is the runtime's per-mount bookkeeping record (ADR-0004 §2.4). The
-// authoritative table is App.nodes (map[NodeID]*node — every internal path
-// is ID-keyed); App.byComp is the Component-keyed identity index serving the
-// public Component-keyed API (Context.Unmount, Container.Remove,
-// LayoutChild/PlaceChild). All fields are loop-goroutine-owned
-// (ADR-0005 §2.3).
+// node is the runtime's per-mount bookkeeping record. The authoritative
+// table is App.nodes (map[NodeID]*node — every internal path is ID-keyed);
+// App.byComp is the Component-keyed identity index serving the public
+// Component-keyed API (Context.Unmount, Container.Remove,
+// LayoutChild/PlaceChild). All fields are loop-goroutine-owned.
 type node struct {
 	id       NodeID
 	comp     Component
@@ -26,9 +25,8 @@ type node struct {
 
 	mounted bool
 
-	// Layout state (ADR-0004 §2.7). measured/placed reset each pass; a
-	// node is visible this frame only when both are set with a non-empty
-	// rect.
+	// Layout state. measured/placed reset each pass; a node is visible this
+	// frame only when both are set with a non-empty rect.
 	rect     Rect // parent-relative, set by PlaceChild
 	absRect  Rect // absolute, derived after the pass
 	size     Size // clamped Layout return
@@ -37,12 +35,12 @@ type node struct {
 }
 
 // visible reports whether n was laid out in the current frame with a
-// non-empty Rect — the render/hit-test/tab-stop condition (ADR-0004 §2.6.2).
+// non-empty Rect — the render/hit-test/tab-stop condition.
 func (n *node) visible() bool { return n.measured && n.placed && !n.rect.Empty() }
 
 // mount allocates a NodeID, links the node under parent (nil = root),
 // derives its context from the parent's, calls Init, and marks layout dirty
-// (ADR-0004 §2.4 mount cascade). Loop goroutine only.
+// (the mount cascade). Loop goroutine only.
 func (a *App) mount(parent *node, comp Component) *node {
 	if comp == nil {
 		panic("tui: Mount: nil component")
@@ -50,10 +48,11 @@ func (a *App) mount(parent *node, comp Component) *node {
 	if a.inLayout || a.inRender {
 		panic("tui: tree mutation (Mount) inside Layout/Render is illegal (ADR-0004 §2.1)")
 	}
-	// Identity contract (ADR-0004 §2.4 rev 1, Lector must-fix #4): the
-	// Component-keyed index requires a comparable dynamic type; verify
-	// eagerly with a targeted panic (precedent: server.NewScaffold's
-	// nil-arg panic, server/scaffold.go:87-90).
+	// The Component-keyed index requires a COMPARABLE dynamic type, so verify
+	// it eagerly with a targeted panic. Deferring the check means the failure
+	// surfaces as a map-assignment panic somewhere else entirely, naming
+	// neither the component nor the rule it broke.
+	// REFERENCE: server/scaffold.go
 	if !reflect.TypeOf(comp).Comparable() {
 		panic(fmt.Sprintf("tui: component type %T is not comparable; use a pointer component", comp))
 	}
@@ -83,14 +82,15 @@ func (a *App) mount(parent *node, comp Component) *node {
 		a.rootNode = n
 	}
 
-	// Register the async-visible task context (ADR-0005 §2.8: App.Go is
-	// callable from any goroutine, so this lookup table has its own lock).
+	// Register the async-visible task context. App.Go is callable from any
+	// goroutine, so this lookup table has its own lock — it is the one piece
+	// of node state that is NOT loop-goroutine-owned.
 	a.async.mu.Lock()
 	a.async.ctxs[id] = cctx
 	a.async.mu.Unlock()
 
 	// Init may itself Mount children — the cascade is depth-first and
-	// re-entrant (ADR-0004 §2.4 step 3).
+	// re-entrant.
 	comp.Init(n.ctx)
 
 	a.layoutDirty = true // a new child means geometry may change (step 4)
@@ -98,15 +98,14 @@ func (a *App) mount(parent *node, comp Component) *node {
 	return n
 }
 
-// moveWithin (ADR-0011 §2.3) repositions child — a mounted DIRECT child
-// of parent — to
+// moveWithin repositions child — a mounted DIRECT child of parent — to
 // index to in the parent's children slice. A splice only: unlike
 // unmountTree + mount it preserves everything the node owns — NodeID
-// (addressed deliveries stay routable, ADR-0005 §2.8), the derived
-// context (in-flight tasks keep running), OnUnmount hooks (none fire),
-// and focus/scope-stack membership; Init is NOT re-run. Focus needs no
-// repair: the node stays registered in a.nodes, so a dangling focus ID
-// is impossible by construction. Loop goroutine only.
+// (addressed deliveries stay routable), the derived context (in-flight
+// tasks keep running), OnUnmount hooks (none fire), and focus/scope-stack
+// membership; Init is NOT re-run. Focus needs no repair: the node stays
+// registered in a.nodes, so a dangling focus ID is impossible by
+// construction. Loop goroutine only.
 func (a *App) moveWithin(parent *node, child Component, to int) {
 	if a.inLayout || a.inRender {
 		panic("tui: tree mutation (Move) inside Layout/Render is illegal (ADR-0004 §2.1)")
@@ -134,8 +133,8 @@ func (a *App) moveWithin(parent *node, child Component, to int) {
 
 // unmountTree is the top-level unmount entry (Context.Unmount,
 // Container.Remove, App teardown): it runs the cascade, detaches from the
-// parent, and performs focus repair / scope restore so no frame ever renders
-// with a dangling focus ID (ADR-0004 §2.4, §2.6.4).
+// parent, and performs focus repair / scope restore so no frame ever
+// renders with a dangling focus ID.
 func (a *App) unmountTree(n *node) {
 	if a.inLayout || a.inRender {
 		panic("tui: tree mutation (Unmount) inside Layout/Render is illegal (ADR-0004 §2.1)")
@@ -155,12 +154,11 @@ func (a *App) unmountTree(n *node) {
 	} else if a.rootNode == n {
 		a.rootNode = nil
 	}
-	a.layoutDirty = true // ADR-0004 §2.4 step 5
+	a.layoutDirty = true
 	a.queue.wakeUp()
 
-	// Scope restore + focus repair (ADR-0004 §2.6.3/§2.6.4). Pop scope
-	// entries whose trapping scope died; the innermost pop supplies the
-	// restore target.
+	// Scope restore + focus repair. Pop scope entries whose trapping scope
+	// died; the innermost pop supplies the restore target.
 	restore := NodeID(0)
 	hadDeadScope := false
 	for len(a.scopeStack) > 0 {
@@ -195,11 +193,10 @@ func (a *App) unmountTree(n *node) {
 }
 
 // unmountNode runs the unmount cascade for n's subtree — children first,
-// depth-first, in reverse document order (ADR-0004 §2.4): cancel the node
-// context (in-flight tasks die), run OnUnmount hooks LIFO (mirroring the
-// deliberate defer stacking of server/ws/ws.go:230-232), then remove from
-// the node tables — from that instant addressed deliveries dead-letter
-// (ADR-0005 §2.8).
+// depth-first, in reverse document order: cancel the node context
+// (in-flight tasks die), run OnUnmount hooks LIFO (mirroring the deliberate
+// defer stacking of server/ws/ws.go:230-232), then remove from the node
+// tables — from that instant addressed deliveries dead-letter.
 func (a *App) unmountNode(n *node) {
 	a.trace(TraceEvent{Kind: TraceUnmount, Node: n.id})
 	for i := len(n.children) - 1; i >= 0; i-- {

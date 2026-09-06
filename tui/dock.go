@@ -1,7 +1,7 @@
 package tui
 
 // DockEdge names the side a Dock child pins to. DockCenter children fill
-// whatever the pinned children leave over (ADR-0004 §2.7.3).
+// whatever the pinned children leave over.
 type DockEdge uint8
 
 const (
@@ -15,12 +15,11 @@ const (
 // Pinned edges live in a side table keyed by the child; absent = a center
 // child filling the remainder.
 
-// Dock is the chrome container (ADR-0004 §2.7.3): children pin to
-// Top/Bottom/Left/Right in declaration order, each measured (loose on its
-// pinned axis, tight on the other) and consuming its extent from the
-// remaining rect; center children fill what is left under tight
-// constraints. Status bars, side panels, command logs — the lazygit chrome —
-// are Dock+Flex compositions.
+// Dock is the chrome container: children pin to Top/Bottom/Left/Right in
+// declaration order, each measured (loose on its pinned axis, tight on the
+// other) and consuming its extent from the remaining rect; center children
+// fill what is left under tight constraints. Status bars, side panels,
+// command logs — the lazygit chrome — are Dock+Flex compositions.
 type Dock struct {
 	MultiChild // order (== pin-consumption order), mount mirror, Move/Children/Init
 	edges      map[Component]DockEdge
@@ -67,7 +66,7 @@ func (d *Dock) Add(children ...Component) {
 	}
 }
 
-// Layout implements ADR-0004 §2.7.3: pinned children in declaration order,
+// Layout places pinned children in declaration order,
 // then center children fill the remainder tight.
 func (d *Dock) Layout(c Constraints) Size {
 	w, h := c.MaxW, c.MaxH

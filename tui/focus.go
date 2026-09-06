@@ -1,24 +1,23 @@
 package tui
 
-// Focus management — framework-owned end to end (ADR-0004 §2.6): one focused
-// NodeID on the App (0 = none), Tab/Shift-Tab traversal in mount (document)
-// order, trapping focus scopes with restore-on-unmount, and focus repair so
-// no frame ever renders with a dangling focus ID.
+// Focus management — framework-owned end to end: one focused NodeID on the
+// App (0 = none), Tab/Shift-Tab traversal in mount (document) order,
+// trapping focus scopes with restore-on-unmount, and focus repair so no
+// frame ever renders with a dangling focus ID.
 
 // scopeEntry records a focus trap entered via RequestFocus: when the
-// trapping scope unmounts, focus restores to the node focused before entry
-// (ADR-0004 §2.6.3).
+// trapping scope unmounts, focus restores to the node focused before entry.
 type scopeEntry struct {
 	scope   NodeID // the trapping FocusScope node
 	restore NodeID // focused node before the trap was entered
 }
 
-// requestFocus implements Context.RequestFocus (ADR-0004 §2.6.1). Ignored
-// unless the component is Focusable and currently accepts focus (the
-// visibility filter applies to traversal only — a component may legally
-// request focus from Init, before any layout pass).
-// requestFocusByID focuses the node with the given id if it exists and is
-// focusable. Reports whether focus ended up there.
+// requestFocus implements Context.RequestFocus. Ignored unless the
+// component is Focusable and currently accepts focus (the visibility filter
+// applies to traversal only — a component may legally request focus from
+// Init, before any layout pass). requestFocusByID focuses the node with the
+// given id if it exists and is focusable. Reports whether focus ended up
+// there.
 func (a *App) requestFocusByID(id NodeID) bool {
 	if n := a.nodes[id]; n != nil {
 		a.requestFocus(n)
@@ -40,17 +39,16 @@ func (a *App) requestFocus(n *node) {
 		oldScope = a.trapScopeOf(on)
 	}
 	if newScope != nil && newScope != oldScope {
-		// Entering a trap: remember where focus came from
-		// (ADR-0004 §2.6.3).
+		// Entering a trap: remember where focus came from.
 		a.scopeStack = append(a.scopeStack, scopeEntry{scope: newScope.id, restore: a.focused})
 		a.trace(TraceEvent{Kind: TraceScope, Node: newScope.id, Prev: a.focused, Detail: "open"})
 	}
 	a.setFocus(n.id)
 }
 
-// setFocus moves focus and delivers the two FocusEvents: Gained=false to the
-// loser, then Gained=true to the gainer; both bubble so ancestor panels can
-// restyle (the lazygit active-panel border pattern — ADR-0004 §2.5.3).
+// setFocus moves focus and delivers the two FocusEvents: Gained=false to
+// the loser, then Gained=true to the gainer; both bubble so ancestor panels
+// can restyle (the lazygit active-panel border pattern.5.3).
 func (a *App) setFocus(id NodeID) {
 	if a.focused == id {
 		return
@@ -64,13 +62,13 @@ func (a *App) setFocus(id NodeID) {
 	if nn := a.nodes[id]; nn != nil {
 		a.bubble(nn, FocusEvent{Gained: true})
 	}
-	a.renderDirty = true // the cursor rule re-evaluates next frame (ADR-0004 §2.3)
+	a.renderDirty = true // the cursor rule re-evaluates next frame
 	a.queue.wakeUp()
 }
 
 // trapScopeOf returns the nearest ancestor (inclusive) implementing
 // FocusScope with TrapsFocus() == true; nil means the root's implicit
-// non-trapping scope (ADR-0004 §2.6.3).
+// non-trapping scope.
 func (a *App) trapScopeOf(n *node) *node {
 	for ; n != nil; n = n.parent {
 		if fs, ok := n.comp.(FocusScope); ok && fs.TrapsFocus() {
@@ -80,10 +78,10 @@ func (a *App) trapScopeOf(n *node) *node {
 	return nil
 }
 
-// focusRing collects the tab stops in traversal order (ADR-0004 §2.6.2):
-// pre-order depth-first in child (document) order, filtered to nodes that
-// (a) implement Focusable, (b) report AcceptsFocus(), and (c) were laid out
-// in the current frame with a non-empty Rect. Nested trapping scopes are
+// focusRing collects the tab stops in traversal order: pre-order
+// depth-first in child (document) order, filtered to nodes that (a)
+// implement Focusable, (b) report AcceptsFocus(), and (c) were laid out in
+// the current frame with a non-empty Rect. Nested trapping scopes are
 // excluded from an enclosing scope's ring — a trap confines traversal both
 // in and out.
 func (a *App) focusRing(scope *node) []*node {
@@ -109,7 +107,7 @@ func (a *App) focusRing(scope *node) []*node {
 }
 
 // currentScope resolves the traversal boundary: the innermost trapping
-// scope of the focused node, else the root (ADR-0004 §2.6.2/§2.6.3).
+// scope of the focused node, else the root.
 func (a *App) currentScope() *node {
 	if fn := a.nodes[a.focused]; fn != nil {
 		if s := a.trapScopeOf(fn); s != nil {
@@ -126,7 +124,7 @@ func (a *App) currentScope() *node {
 }
 
 // focusFromPointer focuses the first focusable node at or above the pointer
-// target, provided that node lies inside the ACTIVE focus scope (ADR-0010 §2.1
+// target, provided that node lies inside the ACTIVE focus scope (
 // steps 1-4). It is called for a primary press only, BEFORE the event is
 // delivered, so a widget handling the press already sees itself focused and one
 // gesture both focuses and acts.
@@ -188,7 +186,7 @@ func withinScope(n, scope *node) bool {
 }
 
 // focusStep advances focus by delta (+1 Tab, -1 Shift-Tab) within the
-// current scope's ring, wrapping at the ends (ADR-0004 §2.6.2).
+// current scope's ring, wrapping at the ends.
 func (a *App) focusStep(delta int) {
 	ring := a.focusRing(a.currentScope())
 	if len(ring) == 0 {
@@ -215,8 +213,8 @@ func (a *App) focusStep(delta int) {
 
 // repairFocus re-homes a dead focus: the first focusable in traversal order
 // within the innermost surviving scope, or 0 (none) when the scope has no
-// focusables (ADR-0004 §2.6.4). Runs inside the unmount cascade so no frame
-// renders a dangling ID.
+// focusables. Runs inside the unmount cascade so no frame renders a
+// dangling ID.
 func (a *App) repairFocus() {
 	ring := a.focusRing(a.currentScope())
 	if len(ring) == 0 {

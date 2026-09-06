@@ -1,7 +1,8 @@
 package tui
 
-// Functional key codes for KeyEvent.Code (ADR-0002 §2.5 key decoding;
-// referenced by ADR-0005's event set as "ADR-0002's table").
+// Functional key codes for KeyEvent.Code. The terminal decoder in tui/term
+// maps escape sequences onto exactly these constants.
+// REFERENCE: tui/term
 //
 // Printable keys carry their Unicode code point in Code. Functional keys
 // use the kitty keyboard protocol's Unicode Private Use Area assignments

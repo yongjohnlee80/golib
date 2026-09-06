@@ -2,18 +2,19 @@ package tui
 
 import "time"
 
-// Event is the marker interface every concrete event type implements
-// (ADR-0001 §2.3, ADR-0005 §2.5). The set is closed within the package: the
-// unexported method keeps third-party types out so the runtime's type
-// switches stay exhaustive.
+// Event is the marker interface every concrete event type implements. The
+// set is closed within the package: the unexported method keeps third-party
+// types out so the runtime's type switches stay exhaustive.
 type Event interface{ isEvent() }
 
-// NodeID identifies a mounted component. 0 = none; assigned monotonically at
-// mount; never reused for the App's lifetime (ADR-0004 §2.4).
+// NodeID identifies a mounted component. 0 = none; assigned monotonically
+// at mount; never reused for the App's lifetime.
 type NodeID uint64
 
-// --- keyboard (kitty protocol fields — ADR-0002 negotiates flags 1+2;
-//     https://sw.kovidgoyal.net/kitty/keyboard-protocol/) ---
+// --- keyboard. The fields below carry kitty-protocol information, which the
+//     backend negotiates at startup; they are zero on terminals that do not
+//     answer.
+// REFERENCE: https://sw.kovidgoyal.net/kitty/keyboard-protocol/ ---
 
 // KeyKind distinguishes press, repeat, and release key actions.
 type KeyKind uint8
@@ -39,8 +40,9 @@ const (
 )
 
 // KeyEvent is one key action. Code is the key's Unicode codepoint or a
-// tui.Key* constant (private-use plane, ADR-0002's table — shipped with the
-// tui/term decoder). Base/Shifted are the kitty "alternate keys" (base-layout
+// tui.Key* constant, allocated in the Unicode private-use plane so a
+// functional key can never collide with a real character.
+// REFERENCE: tui/keys.go Base/Shifted are the kitty "alternate keys" (base-layout
 // and shifted codepoints; 0 when unreported) enabling layout-independent
 // shortcut matching. Text is the associated text ("" for non-text keys); on
 // legacy terminals Kind is always KeyPress and Base/Shifted are 0.
@@ -53,7 +55,8 @@ type KeyEvent struct {
 	Text    string
 }
 
-// --- mouse (SGR encoding — ADR-0002) ---
+// --- mouse. Positions arrive SGR-encoded, which is what makes coordinates
+//     beyond column 223 representable at all. ---
 
 // MouseKind distinguishes press, release, motion, and wheel actions.
 type MouseKind uint8
@@ -80,7 +83,9 @@ const (
 )
 
 // MouseEvent coordinates are LOCAL to the receiving component at every
-// routing hop (ADR-0004 §2.5 rewrites them per level).
+// routing hop: each level rewrites them into its own child's coordinate space,
+// so a component reads a position relative to itself and never has to know
+// where it sits on screen.
 type MouseEvent struct {
 	Kind   MouseKind
 	Button MouseButton
@@ -93,22 +98,22 @@ type MouseEvent struct {
 	//
 	// Producers do NOT set this. It is synthesised once in App.dispatch from
 	// timing and position, because a click count is behaviour rather than decode
-	// shape (ADR-0010 §2.5, and criterion 18's layering).
+	// shape. A decoder that guessed at counts would have to hold timing state
+	// it has no business owning, and two backends would disagree about what a
+	// double-click is.
 	Count int
 }
 
 // --- lifecycle / terminal ---
 
 // ResizeEvent reports a new terminal size. The App's intake stage coalesces
-// resize storms latest-wins (ADR-0005 §2.4); backends emit ordered and
-// un-coalesced (ADR-0002 §2.8).
+// resize storms latest-wins; backends emit ordered and un-coalesced.
 type ResizeEvent struct{ W, H int }
 
-// PasteEvent is one bracketed paste, with CR and CRLF normalized to \n
-// (ADR-0002 §2.7).
+// PasteEvent is one bracketed paste, with CR and CRLF normalized to \n.
 type PasteEvent struct{ Text string }
 
-// FocusEvent covers both component focus (routed per ADR-0004 §2.6) and
+// FocusEvent covers both component focus and
 // terminal focus in/out (Terminal=true, delivered to the focused component
 // and published on the Bus).
 type FocusEvent struct {
@@ -116,9 +121,11 @@ type FocusEvent struct {
 	Terminal bool
 }
 
-// --- addressed deliveries (no bubbling — ADR-0004 §2.5) ---
+// --- addressed deliveries. These go to exactly one node and do NOT bubble:
+//     the addressee asked for the work, so an ancestor seeing its result would
+//     be seeing someone else's mail. ---
 
-// TimerID identifies one timer registration (ADR-0005 §2.6).
+// TimerID identifies one timer registration.
 type TimerID uint64
 
 // TickEvent is an addressed timer firing, delivered directly to Owner.
@@ -129,12 +136,11 @@ type TickEvent struct {
 }
 
 // TaskID identifies one App.Go task. Monotonic per App; never reused
-// (staleness checks, ADR-0005 §2.8).
+// (staleness checks).
 type TaskID uint64
 
 // TaskResult is the terminal outcome of an App.Go task, addressed to the
-// owning component. Err wraps the task's panic when it panicked
-// (ADR-0005 §2.8).
+// owning component. Err wraps the task's panic when it panicked.
 type TaskResult struct {
 	Owner NodeID
 	ID    TaskID
@@ -143,7 +149,7 @@ type TaskResult struct {
 }
 
 // TaskProgress is an intermediate, addressed update from a still-running
-// task (ADR-0005 §2.8 streaming). Routed exactly like TaskResult.
+// task that has not finished. Routed exactly like TaskResult.
 type TaskProgress struct {
 	Owner NodeID
 	ID    TaskID

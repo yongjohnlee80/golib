@@ -14,7 +14,7 @@
 # whole-tree grep would report. Migrating test comments is tracked
 # separately as its own open item.
 #
-# total: 1036 lines in 179 files
+# total: 744 lines in 150 files
 2 auth/audit.go
 5 auth/auth.go
 2 auth/authhttp/authhttp.go
@@ -99,34 +99,12 @@
 3 server/scaffold.go
 1 server/ws/doc.go
 7 server/ws/ws.go
-30 tui/app.go
-20 tui/backend.go
-6 tui/buffer.go
-5 tui/bus.go
-6 tui/cell.go
-19 tui/component.go
-3 tui/container.go
-22 tui/context.go
-6 tui/doc.go
-3 tui/dock.go
-16 tui/events.go
 2 tui/examples/demo/main.go
 5 tui/examples/demoapp/demoapp.go
 1 tui/examples/webdemo/main.go
-4 tui/flex.go
-12 tui/focus.go
-7 tui/geometry.go
-5 tui/intake.go
 2 tui/internal/grapheme/doc.go
 1 tui/internal/grapheme/gen/gen.go
 1 tui/internal/grapheme/width.go
-2 tui/keys.go
-4 tui/layout.go
-17 tui/options.go
-5 tui/queue.go
-12 tui/resolve.go
-18 tui/routing.go
-4 tui/stack.go
 3 tui/style/border.go
 5 tui/style/color.go
 3 tui/style/doc.go
@@ -134,8 +112,6 @@
 3 tui/style/get.go
 2 tui/style/style.go
 8 tui/style/theme.go
-9 tui/surface.go
-12 tui/tasks.go
 13 tui/term/decoder.go
 4 tui/term/doc.go
 9 tui/term/flush.go
@@ -147,10 +123,6 @@
 29 tui/term/term.go
 5 tui/term/tty_unix.go
 5 tui/term/tty_windows.go
-19 tui/testbackend.go
-7 tui/timers.go
-1 tui/trace.go
-15 tui/tree.go
 13 tui/web/backend.go
 2 tui/web/browsertest/fixture/main.go
 11 tui/web/conn.go
@@ -193,4 +165,3 @@
 5 tui/widget/textinput.go
 2 tui/widget/textutil.go
 9 tui/widget/tree.go
-3 tui/width.go

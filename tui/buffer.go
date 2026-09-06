@@ -1,7 +1,7 @@
 package tui
 
-// buffer is the double-buffered cell grid (ADR-0003 §2.2; unexported — owned
-// by the runtime). The tcell model, adopted verbatim: the last-frame copy IS
+// buffer is the double-buffered cell grid, unexported because the runtime owns
+// it. The tcell model, adopted verbatim: the last-frame copy IS
 // the dirty tracking — dirty(i) ≡ curr[i] != last[i]. No separate bitmap or
 // dirty list exists to fall out of sync with reality.
 type buffer struct {
@@ -14,7 +14,7 @@ type buffer struct {
 // invalidCell is the last-buffer sentinel after (re)allocation: it compares
 // unequal to every cell the write path can produce (SetCell never writes a
 // NUL cluster), so a fresh or resized buffer diffs as the full grid — the
-// "never diff across a size change" rule (ADR-0003 §2.6).
+// "never diff across a size change" rule.
 var invalidCell = Cell{Content: "\x00", Width: 1}
 
 // blankCell is the cleared-cell value: a plain space with default attrs.
@@ -30,8 +30,9 @@ func newBuffer(w, h int) *buffer {
 
 // resize reallocates both grids at the new size, clears curr, and
 // invalidates last entirely: post-resize rendering is a full repaint, never
-// a diff across sizes (ADR-0003 §2.6; the ED 2 clear is the term emitter's
-// job).
+// a diff across sizes — after a resize the cells no longer describe the same
+// positions, so a diff would emit changes for coordinates that moved. Clearing
+// the screen itself is the terminal emitter's job, not this one's.
 func (b *buffer) resize(w, h int) {
 	w, h = max(w, 0), max(h, 0)
 	b.w, b.h = w, h
@@ -47,8 +48,8 @@ func (b *buffer) resize(w, h int) {
 func (b *buffer) size() Size { return Size{W: b.w, H: b.h} }
 
 // setCell writes c at grid coordinates (x, y), enforcing the wide-cell
-// boundary invariants (ADR-0003 §2.3) so they hold by construction, not by
-// caller discipline:
+// boundary invariants so they hold by construction rather than by caller
+// discipline:
 //
 //   - W1 — no orphan halves: writing over either half of an existing wide
 //     pair clears both — the overwritten position takes the new content, the
@@ -58,7 +59,7 @@ func (b *buffer) size() Size { return Size{W: b.w, H: b.h} }
 //     half-painted.
 //
 // Out-of-range writes are dropped silently (clipping is a rendering fact,
-// not an error — ADR-0003 §2.4). c.Width must be 1 or 2; continuation cells
+// not an error). c.Width must be 1 or 2; continuation cells
 // are written by setCell itself, never by callers.
 func (b *buffer) setCell(x, y int, c Cell) {
 	if x < 0 || y < 0 || x >= b.w || y >= b.h {
@@ -94,7 +95,7 @@ func (b *buffer) clearOverlap(x, y int) {
 }
 
 // diff walks curr vs last row-major and returns the frame's dirty cells as
-// CellUpdates (ADR-0003 §2.2), updating last as it emits (emission = the
+// CellUpdates, updating last as it emits (emission = the
 // backend will apply it). The returned slice is the buffer's reusable
 // scratch — valid until the next diff call.
 //

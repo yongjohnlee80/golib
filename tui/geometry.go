@@ -2,12 +2,11 @@ package tui
 
 import "math"
 
-// Size is a width/height pair in terminal cells (ADR-0001 §2.3).
+// Size is a width/height pair in terminal cells.
 type Size struct{ W, H int }
 
-// Rect is a positioned rectangle in terminal cells (ADR-0001 §2.3).
-// Coordinate meaning is contextual: parent-relative in layout, surface-local
-// in rendering.
+// Rect is a positioned rectangle in terminal cells. Coordinate meaning is
+// contextual: parent-relative in layout, surface-local in rendering.
 type Rect struct{ X, Y, W, H int }
 
 // Empty reports whether r covers no cells.
@@ -28,9 +27,8 @@ func (r Rect) Contains(x, y int) bool {
 	return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
 }
 
-// Constraints bound the Size a child may return from Layout:
-// MinW <= W <= MaxW, MinH <= H <= MaxH. Invariants: 0 <= Min <= Max per axis
-// (ADR-0004 §2.7.1).
+// Constraints bound the Size a child may return from Layout: MinW <= W <=
+// MaxW, MinH <= H <= MaxH. Invariants: 0 <= Min <= Max per axis.
 type Constraints struct{ MinW, MaxW, MinH, MaxH int }
 
 // Unbounded marks an axis with no maximum (scrollable viewports pass it to
@@ -49,9 +47,9 @@ func Loose(s Size) Constraints {
 	return Constraints{MinW: 0, MaxW: s.W, MinH: 0, MaxH: s.H}
 }
 
-// Constrain clamps s into c. The framework applies it to every Layout return
-// so a misbehaving widget cannot corrupt sibling geometry (ADR-0004 §2.7.1);
-// the clamp is recorded as a ConstraintViolation.
+// Constrain clamps s into c. The framework applies it to every Layout
+// return so a misbehaving widget cannot corrupt sibling geometry; the clamp
+// is recorded as a ConstraintViolation.
 func (c Constraints) Constrain(s Size) Size {
 	return Size{
 		W: min(max(s.W, c.MinW), c.MaxW),
@@ -64,10 +62,10 @@ func (c Constraints) IsTight() bool {
 	return c.MinW == c.MaxW && c.MinH == c.MaxH
 }
 
-// ConstraintViolation records one clamped Layout return (ADR-0004 §2.7.1
-// rev 1): a component returned a Size outside its Constraints and the
+// ConstraintViolation records one clamped Layout return: a component returned
+// a Size outside its Constraints and the
 // framework clamped it. Kept per run, bounded. Production apps observe them
-// via WithLogger (ADR-0005 §2.1); TestBackend retains them for assertion
+// via WithLogger; TestBackend retains them for assertion
 // (ConstraintViolations / FailOnViolations).
 type ConstraintViolation struct {
 	Node NodeID

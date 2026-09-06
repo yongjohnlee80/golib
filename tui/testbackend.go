@@ -9,16 +9,22 @@ import (
 	"testing"
 )
 
-// TestBackend is the deterministic, PTY-free in-memory Backend
-// (ADR-0002 §2.3), mirroring Ratatui's TestBackend and tcell's
-// SimulationScreen. Start and Stop only manage the event channel; Flush
-// applies the diff to the grid, records the latched cursor state, and
-// increments the flush counter. It is the backend behind ADR-0001 acceptance
-// criterion 3 (full interaction scripts in CI, no PTY).
+// TestBackend is the deterministic, PTY-free in-memory Backend, in the shape
+// Ratatui's TestBackend and tcell's SimulationScreen use. Start and Stop only
+// manage the event channel; Flush applies the diff to the grid, records the
+// latched cursor state, and increments the flush counter.
 //
-// Flush PANICS if a diff would leave an orphaned wide-cell half
-// (ADR-0003 §2.3 invariants) — fail loud in tests, where the panic is a test
-// failure with a coordinate in the message.
+// It exists so a full interaction script — keys in, rendered grid out — can
+// run in CI with no PTY and no timing. That is what makes TUI behaviour
+// testable at all: with a real terminal there is nothing to assert against
+// except bytes, and nothing to make deterministic.
+//
+// Flush PANICS if a diff would leave an ORPHANED WIDE-CELL HALF: a double-width
+// grapheme occupies two columns, and a diff that writes one of them without
+// the other leaves a grid that no terminal can render coherently. In a test
+// binary a panic is the right answer — it is a test failure carrying the
+// offending coordinate, where a silently repaired grid would let the bug
+// reach a real terminal.
 type TestBackend struct {
 	mu sync.Mutex
 
@@ -79,8 +85,8 @@ type testBackendConfig struct {
 // TestBackendOption customizes a TestBackend under construction.
 type TestBackendOption func(*testBackendConfig)
 
-// WithTestCapabilities overrides the reported capability profile.
-// Default: everything on (ADR-0002 §2.3).
+// WithTestCapabilities overrides the reported capability profile. Default:
+// everything on.
 func WithTestCapabilities(c Capabilities) TestBackendOption {
 	return func(cfg *testBackendConfig) { cfg.caps = c }
 }
@@ -143,7 +149,7 @@ func (b *TestBackend) setGridLocked(w, h int) {
 }
 
 // Start implements Backend: it only marks the backend started — a
-// TestBackend has no device to acquire (ADR-0002 §2.3).
+// TestBackend has no device to acquire.
 func (b *TestBackend) Start(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -182,7 +188,8 @@ func (b *TestBackend) Capabilities() Capabilities { return b.caps }
 func (b *TestBackend) Events() <-chan Event { return b.events }
 
 // Err implements Backend: nil after a clean Stop, or the error scripted via
-// SetErr (driving ADR-0005's reader-failure loop paths).
+// SetErr. Scripting it is how a test drives the loop's reader-failure paths,
+// which are otherwise only reachable by breaking a real terminal.
 func (b *TestBackend) Err() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -190,7 +197,7 @@ func (b *TestBackend) Err() error {
 }
 
 // SetErr scripts the terminal error surfaced by Err() after the channel
-// closes (ADR-0002 §2.3 rev 1).
+// closes.
 func (b *TestBackend) SetErr(err error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -223,9 +230,9 @@ func (b *TestBackend) injectLocked(evs ...Event) error {
 }
 
 // InjectResize resizes the grid, invalidates it (fresh blank cells), and
-// posts a ResizeEvent — exactly the externally observable behavior of a real
-// resize (ADR-0002 §2.3). It panics if the event buffer is full (fail loud;
-// a resize script that overflows the buffer is a test bug).
+// posts a ResizeEvent — exactly the externally observable behavior of a
+// real resize. It panics if the event buffer is full (fail loud; a resize
+// script that overflows the buffer is a test bug).
 func (b *TestBackend) InjectResize(w, h int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -236,7 +243,7 @@ func (b *TestBackend) InjectResize(w, h int) {
 }
 
 // Cursor ops implement Backend's latched cursor contract: they record
-// desired state which the next Flush applies (ADR-0002 §2.1).
+// desired state which the next Flush applies.
 
 // ShowCursor latches the cursor visible.
 func (b *TestBackend) ShowCursor() {
@@ -267,11 +274,10 @@ func (b *TestBackend) SetCursorShape(s CursorShape) {
 }
 
 // Flush implements Backend: applies the diff to the grid structurally (byte
-// economy is a term-emitter concern — ADR-0003 §2.2), records the latched
-// cursor state as applied, and increments the flush counter. A width-2 head
-// update covers its continuation cell. Flush panics — with the coordinate —
-// on an out-of-range update or a diff that leaves an orphaned wide-cell half
-// (ADR-0003 §2.3 / ADR-0002 §2.3).
+// economy is a term-emitter concern), records the latched cursor state as
+// applied, and increments the flush counter. A width-2 head update covers
+// its continuation cell. Flush panics — with the coordinate — on an
+// out-of-range update or a diff that leaves an orphaned wide-cell half.
 func (b *TestBackend) Flush(diff []CellUpdate) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -296,9 +302,9 @@ func (b *TestBackend) Flush(diff []CellUpdate) error {
 }
 
 // assertNoOrphansLocked re-asserts the wide-cell invariants over the whole
-// grid after every applied diff (ADR-0003 §5.3): every continuation has a
-// width-2 head immediately left; every width-2 head has a continuation
-// immediately right.
+// grid after every applied diff: every continuation has a width-2 head
+// immediately left; every width-2 head has a continuation immediately
+// right.
 func (b *TestBackend) assertNoOrphansLocked() {
 	for y, row := range b.grid {
 		for x, c := range row {
@@ -361,22 +367,30 @@ func (b *TestBackend) CursorShape() CursorShape {
 	return b.curShape
 }
 
-// Flushes returns the Flush count — the write-count assertion hook behind
-// ADR-0001 acceptance criterion 4 / ADR-0002 §5.8.
+// Flushes returns the Flush count, so a test can assert HOW MANY writes a
+// sequence produced rather than only what was drawn. That is the one-write
+// rule's evidence: a frame is meant to reach the terminal as a single
+// buffered write, and a count that grows faster than the frames did means
+// something is flushing per change instead of per frame.
 func (b *TestBackend) Flushes() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.flushes
 }
 
-// maxViolations bounds the retained ConstraintViolation records per run
-// (ADR-0004 §2.7.1: "kept per run, bounded"); further violations are
-// counted, not stored.
+// maxViolations bounds the retained ConstraintViolation records per run;
+// beyond it violations are counted but not stored. A component that clamps on
+// every frame would otherwise grow this slice without limit for the length of
+// the run, and the first few records are what a reader needs anyway.
 const maxViolations = 1024
 
 // RecordConstraintViolation retains one clamped Layout return for later
-// assertion. It is the hook ADR-0004's tree code feeds when the framework
-// clamps a component's Layout answer (ADR-0004 §2.7.1 rev 1).
+// assertion. The framework calls it whenever a component returns a Size
+// outside the Constraints it was given and the tree clamps the answer.
+//
+// Clamping is deliberately silent at runtime — a misbehaving widget must not
+// corrupt its siblings' geometry — so without this record a layout bug would
+// be invisible.
 func (b *TestBackend) RecordConstraintViolation(v ConstraintViolation) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -387,8 +401,7 @@ func (b *TestBackend) RecordConstraintViolation(v ConstraintViolation) {
 	b.violations = append(b.violations, v)
 }
 
-// ConstraintViolations returns the violations recorded this run
-// (ADR-0004 §2.7.1).
+// ConstraintViolations returns the violations recorded this run.
 func (b *TestBackend) ConstraintViolations() []ConstraintViolation {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -397,7 +410,7 @@ func (b *TestBackend) ConstraintViolations() []ConstraintViolation {
 
 // FailOnViolations fails t (with one line per violation) when the run
 // clamped anything — widget test suites call it in a helper/cleanup so
-// silent clamps cannot ship (ADR-0004 §2.7.1 rev 1).
+// silent clamps cannot ship.
 func FailOnViolations(t *testing.T, b *TestBackend) {
 	t.Helper()
 	b.mu.Lock()

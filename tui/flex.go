@@ -13,7 +13,7 @@ const (
 	Vertical
 )
 
-// Flex is the linear container (ADR-0004 §2.7.2): fixed children are
+// Flex is the linear container: fixed children are
 // measured first, then the remainder of the main axis is distributed to
 // weighted children by integer largest-remainder — deterministic and
 // gap-free by construction (Σ assigned == R always, every run, every
@@ -38,7 +38,7 @@ func NewFlex(dir Direction) *Flex {
 	return f
 }
 
-// AddWeighted appends a weighted child (weight ≥ 1; ADR-0004 §2.7.2).
+// AddWeighted appends a weighted child (weight >= 1).
 func (f *Flex) AddWeighted(child Component, weight int) {
 	if weight < 1 {
 		panic(fmt.Sprintf("tui: Flex.AddWeighted: weight must be >= 1 (got %d)", weight))
@@ -59,7 +59,7 @@ func (f *Flex) Remove(child Component) {
 	f.MultiChild.remove(child)
 }
 
-// Layout implements the ADR-0004 §2.7.2 algorithm: fixed first, then
+// Layout implements the flex algorithm: fixed first, then
 // largest-remainder distribution over weights, then placement in
 // declaration order.
 func (f *Flex) Layout(c Constraints) Size {
@@ -202,5 +202,5 @@ func (f *Flex) cross(s Size) int {
 // on the sub-Surfaces the framework hands them.
 func (f *Flex) Render(Surface) {}
 
-// HandleEvent consumes nothing; events bubble through (ADR-0004 §2.5).
+// HandleEvent consumes nothing; events bubble through.
 func (f *Flex) HandleEvent(Event) bool { return false }

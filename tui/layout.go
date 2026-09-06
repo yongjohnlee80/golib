@@ -6,10 +6,10 @@ import (
 	"github.com/yongjohnlee80/golib/logger"
 )
 
-// Layout — Flutter's box protocol verbatim (ADR-0004 §2.7): constraints
-// down, sizes up, parent positions. ONE pass, no measurement round-trips;
-// v1 relayouts the whole visible tree whenever any layout dirt exists
-// (relayout boundaries are N2's future optimization).
+// Layout — Flutter's box protocol verbatim: constraints down, sizes up,
+// parent positions. ONE pass, no measurement round-trips; v1 relayouts the
+// whole visible tree whenever any layout dirt exists (relayout boundaries
+// are N2's future optimization).
 
 // layoutTree runs the single whole-tree pass: the root receives the
 // terminal size as tight constraints; containers recurse via
@@ -36,7 +36,7 @@ func (a *App) layoutTree() {
 // answer, and records any constraint violation: a Size outside the
 // constraints is a component bug, but the framework clamps it so a
 // misbehaving widget cannot corrupt sibling geometry — clamp-and-report
-// (ADR-0004 §2.7.1 rev 1). TestBackend retains violations for
+// TestBackend retains violations for
 // ConstraintViolations()/FailOnViolations; production observes WithLogger.
 func (a *App) layoutComponent(n *node, cc Constraints) Size {
 	prev := a.layingOut
@@ -73,7 +73,7 @@ func resetLayoutFlags(n *node) {
 
 // computeAbs derives every visible node's absolute Rect from the placed
 // parent-relative rects — the table mouse hit-testing and the cursor rule
-// look up (ADR-0004 §2.5.2, §2.3).
+// look up.
 func computeAbs(n *node, ox, oy int) {
 	n.absRect = Rect{X: ox + n.rect.X, Y: oy + n.rect.Y, W: n.rect.W, H: n.rect.H}
 	for _, ch := range n.children {
@@ -85,7 +85,7 @@ func computeAbs(n *node, ox, oy int) {
 
 // renderTree paints the visible tree depth-first in document (paint) order:
 // each component renders its own chrome; the framework hands every child
-// its own sub-Surface (ADR-0004 §2.1 Render contract).
+// its own sub-Surface, so a child cannot paint outside the rect it was given.
 func (a *App) renderTree() {
 	root := a.rootNode
 	if root == nil {
