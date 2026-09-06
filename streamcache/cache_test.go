@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -246,10 +247,24 @@ func TestCache_ConcurrentReadersAndWriter(t *testing.T) {
 			defer wg.Done()
 			buf := make([]byte, 0, 16)
 			for k := 0; k < 300; k++ {
-				from := int64((i*97 + k*13) % 3000)
+				// READ INSIDE THE LIVE WINDOW. The first version picked offsets
+				// from a fixed modulo range, so every request was either ahead of
+				// the writer or behind the release watermark, every Acquire
+				// failed, and the cell validated NOTHING — caught by its own
+				// hits==0 guard rather than by review, which is the only reason
+				// that guard was worth adding.
+				head := c.Head()
+				if head < 32 {
+					runtime.Gosched()
+					continue
+				}
+				from := head - 16 - int64((i*3+k)%8)
+				if from < 0 {
+					continue
+				}
 				v, err := c.Acquire(from, from+10)
 				if err != nil {
-					continue // released behind us, or not yet read: both legitimate
+					continue // released or not yet read: both legitimate races
 				}
 				buf, err = v.AppendTo(buf[:0])
 				if err != nil {
