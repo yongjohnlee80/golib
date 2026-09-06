@@ -1,11 +1,13 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 16)** (2026-09-06, jarvis). Rev 15 landed `Token`
-  and `Source` and recorded the token-production model (runs are forms too, §6);
-  lector r15 approved `Token` but requested three `Source` corrections. Rev 16
-  is that correction: a lifetime-bearing byte accessor, a watermark-reclaimed
-  line index with a constant-memory `Validate` path, and a defined `LocationAt`
-  domain that refuses released, beyond-head, and interior-rune offsets (§5).
+- **Status:** **Proposed (rev 17)** (2026-09-06, jarvis). Rev 16 corrected
+  `Source`'s three r15 defects (lifetime-bearing accessor, watermark-reclaimed
+  index, defined `LocationAt` domain); lector r16 approved those in substance and
+  asked for two width/integration fixes and a run/set-table correction. Rev 17:
+  every `Location` coordinate is `int64` (§5); `reclaim` snaps to a line boundary
+  and returns the effective watermark so cache and index share it, with the
+  memory term stated in §3.4; and §6 carries the chunk-invariant `SetForm` opener
+  and the exact-one-byte fallback (the always-true `RunForm` was not one).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -217,6 +219,17 @@ bytes per segment.
   the **identifier** action, not the dollar path *(lector r3 B4, verified in the
   PostgreSQL source)*.
 
+**A location-bearing scan carries one term more** *(lector r16)*. Resolving a
+token's line and column needs the bytes from its line's start, so a scan that
+will answer `LocationAt` keeps the current line resident and holds its line
+index: peak gains **the longest live line, plus `O(lines in the live window)`**
+for the index. `Source.reclaim` drops both with the watermark — but only to a
+line boundary, so the retained line's true start is always present. A
+multi-gigabyte single line is the control that tells this policy apart from
+releasing at an arbitrary token boundary. `Validate` builds no `Source`, so it
+carries neither term and stays constant — which is why the two paths are kept
+apart.
+
 **Constant memory and unrestricted derived delimiters cannot both be
 unconditional.** The caller chooses, and the error names the delimiter, its
 length and the limit.
@@ -305,9 +318,11 @@ lifetime along with them.
 > core: **one-based lines, columns counted in RUNES, and invalid UTF-8 consuming
 > one byte and one column.**
 >
-> **Landed (rev 15, corrected rev 16): `Token` and `Source`.** `Token{Kind Kind;
-> Start, End int64}` is in `token.go`. The location type is `Location{Offset
-> int64; Line, Column int}`, resolved by `Source.LocationAt(off)` (`source.go`).
+> **Landed (rev 15, corrected rev 16–17): `Token` and `Source`.** `Token{Kind
+> Kind; Start, End int64}` is in `token.go`. The location type is `Location{Offset,
+> Line, Column int64}` — every coordinate is `int64`, so none truncates on a
+> 32-bit build (rev 17, lector r16) — resolved by `Source.LocationAt(off)`
+> (`source.go`).
 >
 > `Source` resolves locations over the **live window** of the stream, which the
 > streaming rewrite makes honest where rev 15 was not (lector r15):
@@ -319,11 +334,14 @@ lifetime along with them.
 >   seam that holds a `View` for the call and closes it after: no borrowed slice
 >   outlives a lookup, and no copy is made for `Source`'s own sake. Rev 15's
 >   `func(from,to)([]byte,error)` could not be both no-copy and lifetime-safe.
-> - **The line index is reclaimed with the watermark.** It is not a copy of the
->   source, but it is one `int64` per line, which is O(lines) — not free. `reclaim`
->   drops the starts below the watermark and frees them, so its cost is bounded by
->   what is still retained, and `Validate` builds **no** `Source` at all, keeping
->   finite-`MaxDelimiter` validation constant-memory (criterion 4).
+> - **The line index is reclaimed with the watermark, at a line boundary.** It is
+>   not a copy of the source, but it is one `int64` per line, which is O(lines) —
+>   not free. `reclaim` snaps the watermark DOWN to the greatest known line start
+>   at or below it, drops the earlier starts and frees them, and **returns that
+>   effective offset** so `Scan` releases the cache to the same place — releasing
+>   mid-line would strand a column with no line-start bytes to count. `Validate`
+>   builds **no** `Source` at all, keeping finite-`MaxDelimiter` validation
+>   constant-memory (criterion 4).
 > - **A released offset is unavailable for line AND column** (`ErrLocationReleased`),
 >   never one exact while the other is gone. `reclaim` advances at line boundaries,
 >   so a retained offset's line begins at a retained offset. Resolve a token's
@@ -447,15 +465,24 @@ func SetForm(k Kind, lits ...string) Form                      // longest of a f
 A `RunForm` opens on its first member byte and ends at the first non-member one
 (the boundary byte is the next token's, not consumed — the `LineComment`
 shape); at a window full of member bytes under `MoreInput` it defers with
-`ErrNeedMore`, because the run may continue. A trailing catch-all
-`RunForm(Operator, func(int, byte) bool { return true })` — or a leaf's own
-final form — guarantees total coverage, so no offset is ever stuck with no
-match. The cost, stated plainly: a run has no terminator, so `End`'s
-`openedWith` argument is meaningless to it, and `Starts` consuming one byte then
-`End` scanning the rest is the delimited interface carrying run semantics it was
-not shaped for. The alternative — a separate classifier — buys a cleaner `End`
-at the price of a second thing a form author must understand, and the uniform
-list was judged worth the awkward argument.
+`ErrNeedMore`, because the run may continue. `End` indexes the run as
+`len(openedWith)+i`, so the opener's WIDTH is load-bearing even though its bytes
+go unused: `Starts` consumed run index 0, and `End` continues from there
+*(lector r16)*.
+
+A `SetForm` recognises the longest of a fixed set of literals with a **stable
+first-terminal opener**: `Starts` answers `Incomplete` until the observed bytes
+reach the shortest literal on their path, then returns that literal's width and
+holds it as the window grows, and `End` resolves the longest completed
+descendant, deferring only while a longer one is still possible. This is
+chunk-invariant even for a shared prefix like `-`/`--` — `Starts` never has to
+choose the short literal, so it never has to un-choose it *(lector r16, correcting
+an earlier claim that a shared prefix could only be resolved by a catch-all)*.
+
+Total coverage is the leaf's to arrange — `SetForm` for its operators and
+punctuation, and where a final fallback is still needed an **exact-one-byte**
+form. An always-true `RunForm` is NOT that fallback: with no terminating byte its
+maximal-run contract swallows the whole remainder as one token.
 
 ### 6.1 The incremental contract
 

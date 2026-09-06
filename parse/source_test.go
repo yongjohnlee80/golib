@@ -17,7 +17,7 @@ func scannerLocs(b []byte) map[int64]Location {
 	locs := map[int64]Location{}
 	for {
 		p := sc.Pos()
-		locs[int64(p.Offset)] = Location{Offset: int64(p.Offset), Line: p.Line, Column: p.Column}
+		locs[int64(p.Offset)] = Location{Offset: int64(p.Offset), Line: int64(p.Line), Column: int64(p.Column)}
 		if _, ok := sc.Next(); !ok {
 			break
 		}
@@ -127,6 +127,32 @@ func TestLocationAt_ReleasedOffsetsBecomeUnavailable(t *testing.T) {
 	}
 	if loc, err := s.LocationAt(7); err != nil || loc != (Location{Offset: 7, Line: 3, Column: 2}) {
 		t.Errorf("LocationAt(7) = (%+v, %v), want {7,3,2} nil", loc, err)
+	}
+}
+
+// TestReclaim_SnapsToLineBoundaryNotMidLine is the MF2 regression: a token
+// watermark that falls in the middle of a line must not release mid-line and
+// then count a column from the wrong start. reclaim snaps DOWN to the greatest
+// known line start at or below the watermark and returns it, so Scan advances
+// the cache to the same safe offset.
+func TestReclaim_SnapsToLineBoundaryNotMidLine(t *testing.T) {
+	b := []byte("abcd\n") // one line beginning at 0; lineStarts = [5]; head = 5
+	s := newBytesSource(b)
+
+	if eff := s.reclaim(2); eff != 0 {
+		t.Errorf("reclaim(2) effective watermark = %d, want 0 (the line begins at 0)", eff)
+	}
+	// Nothing was released, so the column is still counted from the true start.
+	if loc, err := s.LocationAt(3); err != nil || loc != (Location{Offset: 3, Line: 1, Column: 4}) {
+		t.Errorf("LocationAt(3) after reclaim(2) = (%+v, %v), want {3,1,4} nil", loc, err)
+	}
+
+	// A watermark at the next line start does release the whole first line.
+	if eff := s.reclaim(5); eff != 5 {
+		t.Errorf("reclaim(5) effective watermark = %d, want 5", eff)
+	}
+	if _, err := s.LocationAt(3); !errors.Is(err, ErrLocationReleased) {
+		t.Errorf("LocationAt(3) after reclaim(5) err = %v, want ErrLocationReleased", err)
 	}
 }
 

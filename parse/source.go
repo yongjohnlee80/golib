@@ -34,13 +34,13 @@ var ErrLocationRange = errors.New("parse: location offset out of range")
 // diagnostic does not change meaning under the streaming core.
 type Location struct {
 	Offset int64
-	Line   int // one-based
-	Column int // one-based, counted in runes
+	Line   int64 // one-based
+	Column int64 // one-based, counted in runes
 }
 
 // String renders the location as line:column, the form a diagnostic quotes.
 func (l Location) String() string {
-	return strconv.Itoa(l.Line) + ":" + strconv.Itoa(l.Column)
+	return strconv.FormatInt(l.Line, 10) + ":" + strconv.FormatInt(l.Column, 10)
 }
 
 // Source resolves a byte offset to a Location on demand, over the LIVE WINDOW of
@@ -80,7 +80,7 @@ type Source struct {
 	// dropped below the watermark, so a line number is reclaimed + a search of
 	// what remains.
 	lineStarts []int64
-	reclaimed  int
+	reclaimed  int64
 
 	released int64 // watermark: offsets below this are gone
 	head     int64 // one past the last byte read; offsets above this are not yet knowable
@@ -140,24 +140,36 @@ func (s *Source) advanceHead(head int64) {
 	}
 }
 
-// reclaim drops the line starts below watermark and raises the release point,
-// freeing the dropped entries rather than holding the backing array. The
-// watermark is expected at a line boundary (the lexer's discipline), so no
-// retained offset is left with a released line start.
-func (s *Source) reclaim(watermark int64) {
+// reclaim releases up to a LINE BOUNDARY at or below watermark and returns the
+// offset it actually released to — the greatest known line start ≤ watermark,
+// never below the current release point. The caller (Scan) must advance the
+// cache to THIS returned offset, not to its own token watermark: a column is
+// counted from the retained line's true start, so releasing mid-line would strand
+// a column with no bytes to count. Line 1 begins at offset 0 implicitly, which is
+// released's initial value, so the release point is always a line start.
+//
+// The effective offset is at most the last known line start, which is ≤ head, so
+// a watermark beyond head releases only what has been seen — a later newline is
+// always recorded above the release point and never accumulates below it.
+func (s *Source) reclaim(watermark int64) int64 {
+	eff := s.released
+	for _, ls := range s.lineStarts {
+		if ls <= watermark && ls > eff {
+			eff = ls
+		}
+	}
 	i := 0
-	for i < len(s.lineStarts) && s.lineStarts[i] < watermark {
+	for i < len(s.lineStarts) && s.lineStarts[i] < eff {
 		i++
 	}
 	if i > 0 {
 		kept := make([]int64, len(s.lineStarts)-i)
 		copy(kept, s.lineStarts[i:])
 		s.lineStarts = kept
-		s.reclaimed += i
+		s.reclaimed += int64(i)
 	}
-	if watermark > s.released {
-		s.released = watermark
-	}
+	s.released = eff
+	return eff
 }
 
 // LocationAt resolves off to a Location, or reports why it cannot. Line comes
@@ -172,7 +184,7 @@ func (s *Source) LocationAt(off int64) (Location, error) {
 	}
 
 	n := sort.Search(len(s.lineStarts), func(i int) bool { return s.lineStarts[i] > off })
-	line := 1 + s.reclaimed + n
+	line := 1 + s.reclaimed + int64(n)
 	lineStart := s.released // the live window's base line begins here
 	if n > 0 {
 		lineStart = s.lineStarts[n-1]
@@ -189,13 +201,15 @@ func (s *Source) LocationAt(off int64) (Location, error) {
 // It reads a little past off so a rune straddling off decodes in full and is
 // recognised as straddling — an interior-rune offset — rather than mistaken for
 // a truncated one.
-func (s *Source) columnAt(lineStart, off int64) (int, error) {
-	upto := off + int64(utf8.UTFMax) - 1
-	if upto > s.head {
+func (s *Source) columnAt(lineStart, off int64) (int64, error) {
+	// Read a little past off so a rune straddling off decodes in full, guarding
+	// the addition against overflow near the top of the int64 range.
+	upto := off + int64(utf8.UTFMax-1)
+	if upto > s.head || upto < off {
 		upto = s.head
 	}
 
-	col := 1
+	var col int64 = 1
 	interior := false
 	err := s.read(lineStart, upto, func(r io.Reader) error {
 		br := bufio.NewReader(r)
@@ -203,10 +217,13 @@ func (s *Source) columnAt(lineStart, off int64) (int, error) {
 		for cur < off {
 			_, size, e := br.ReadRune()
 			if e != nil {
-				// The bytes ran out before reaching off: off is inside the
-				// truncated final rune at head, which is not a rune boundary.
-				interior = true
-				return nil
+				if e == io.EOF {
+					// The bytes ran out before reaching off: off is inside the
+					// truncated final rune at head, not a rune boundary.
+					interior = true
+					return nil
+				}
+				return e // an unexpected accessor failure keeps its identity
 			}
 			// ReadRune returns size 1 for an invalid byte, matching Scanner, so a
 			// bad byte is a boundary and never straddles.
@@ -220,8 +237,9 @@ func (s *Source) columnAt(lineStart, off int64) (int, error) {
 		return nil
 	})
 	if err != nil {
-		// The bytes were released between the domain check and the read.
-		return 0, fmt.Errorf("%w: %v", ErrLocationReleased, err)
+		// The domain check already refused released offsets, so a failure here is
+		// unexpected: keep its cause rather than relabelling it as a release.
+		return 0, fmt.Errorf("parse: resolving column at offset %d: %w", off, err)
 	}
 	if interior {
 		return 0, fmt.Errorf("%w: offset %d is inside a multibyte rune", ErrLocationRange, off)
