@@ -134,11 +134,11 @@ func NewOpenSSH(allowedSigners string, opts ...OpenSSHOption) (*OpenSSH, error) 
 	// path directly and refuses a current-directory-relative result.
 	found, err := exec.LookPath(name)
 	if err != nil {
-		return nil, fmt.Errorf("%w: ssh-keygen %q is not an executable: %v", ErrVerifierUnavailable, name, err)
+		return nil, fmt.Errorf("%w: ssh-keygen %q is not an executable: %w", ErrVerifierUnavailable, name, err)
 	}
 	o.binary = found // resolved once; PATH is not re-consulted per attempt
 	if err := readablePolicy(o.allowedSigners); err != nil {
-		return nil, fmt.Errorf("%w: allowed_signers %q: %v", ErrVerifierUnavailable, o.allowedSigners, err)
+		return nil, fmt.Errorf("%w: allowed_signers %q: %w", ErrVerifierUnavailable, o.allowedSigners, err)
 	}
 	return o, nil
 }
@@ -178,7 +178,7 @@ func (o *OpenSSH) VerifySignature(ctx context.Context, message, armoredSig []byt
 		return fmt.Errorf("%w: OpenSSH verifier was not built with NewOpenSSH", ErrVerifierUnavailable)
 	}
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("%w: verification cancelled by the caller: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: verification cancelled by the caller: %w", ErrVerifierUnavailable, err)
 	}
 	if err := validIdentity(identity); err != nil {
 		return err
@@ -189,20 +189,20 @@ func (o *OpenSSH) VerifySignature(ctx context.Context, message, armoredSig []byt
 	// — see the ADR. Anything landing inside that gap surfaces as a nonzero exit
 	// and is reported as a rejection; a subsequent attempt reports it correctly.
 	if err := readablePolicy(o.allowedSigners); err != nil {
-		return fmt.Errorf("%w: allowed_signers: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: allowed_signers: %w", ErrVerifierUnavailable, err)
 	}
 
 	dir, err := os.MkdirTemp("", "sshkey-verify-")
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: %w", ErrVerifierUnavailable, err)
 	}
 	defer os.RemoveAll(dir)
 	if err := os.Chmod(dir, 0o700); err != nil {
-		return fmt.Errorf("%w: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: %w", ErrVerifierUnavailable, err)
 	}
 	sigPath := filepath.Join(dir, "sig")
 	if err := os.WriteFile(sigPath, armoredSig, 0o600); err != nil {
-		return fmt.Errorf("%w: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: %w", ErrVerifierUnavailable, err)
 	}
 
 	parent := ctx
@@ -248,7 +248,7 @@ func (o *OpenSSH) VerifySignature(ctx context.Context, message, armoredSig []byt
 		// Distinguish "the caller gave up" from "our own bound expired": an
 		// operator reading the log needs to know whose deadline fired.
 		if parent.Err() != nil {
-			return fmt.Errorf("%w: verification cancelled by the caller: %v", ErrVerifierUnavailable, parent.Err())
+			return fmt.Errorf("%w: verification cancelled by the caller: %w", ErrVerifierUnavailable, parent.Err())
 		}
 		if ctx.Err() != nil {
 			return fmt.Errorf("%w: ssh-keygen exceeded its %s verify timeout", ErrVerifierUnavailable, o.timeout)
@@ -260,7 +260,7 @@ func (o *OpenSSH) VerifySignature(ctx context.Context, message, armoredSig []byt
 			return fmt.Errorf("%w: ssh-keygen: %s", ErrBadSignature, firstLine(stderr.String()))
 		}
 		// Could not run it at all, or WaitDelay expired: no verdict was reached.
-		return fmt.Errorf("%w: %v", ErrVerifierUnavailable, runErr)
+		return fmt.Errorf("%w: %w", ErrVerifierUnavailable, runErr)
 	}
 	return nil
 }
@@ -358,7 +358,7 @@ func (p *PureGo) VerifySignature(ctx context.Context, message, armoredSig []byte
 	// admitted by one and refused by the other — a disagreement about admission,
 	// which is the one thing they may never disagree about.
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("%w: verification cancelled by the caller: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: verification cancelled by the caller: %w", ErrVerifierUnavailable, err)
 	}
 	if err := validIdentity(identity); err != nil {
 		return err
@@ -387,7 +387,7 @@ func (p *PureGo) VerifySignature(ctx context.Context, message, armoredSig []byte
 	// yield an admission, matching what OpenSSH does when its subprocess is
 	// killed part-way.
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("%w: verification cancelled by the caller: %v", ErrVerifierUnavailable, err)
+		return fmt.Errorf("%w: verification cancelled by the caller: %w", ErrVerifierUnavailable, err)
 	}
 	return nil
 }

@@ -317,7 +317,7 @@ func (t *Throttle) lockedAny(ctx context.Context, keys []string, now time.Time) 
 			// Deny. A tracker that cannot answer cannot protect anything, and
 			// continuing would mean running with brute-force protection
 			// silently switched off.
-			return false, fmt.Errorf("%w: %v", ErrTrackerUnavailable, outage)
+			return false, fmt.Errorf("%w: %w", ErrTrackerUnavailable, outage)
 		}
 		// FailOpen was chosen deliberately: proceed as if nothing were locked.
 		return false, nil
