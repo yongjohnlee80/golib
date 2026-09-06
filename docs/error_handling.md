@@ -43,7 +43,8 @@ retyped at every call site is a format that drifts.
 `Sentinel` carries **no brackets of its own** — the bracket belongs to `Wrap`,
 which puts exactly one pair around whatever identity a call site reports,
 however deep the layering goes. A nil base is a misuse, and all three **report it rather than panicking**: the
-result carries `errs.ErrFatal` and still delivers the caller's message, so the
+result carries `errs.ErrInvalidArgument` — the fault is at the call site — and
+still delivers the caller's message, so the
 mistake is loud in a log and catchable by any handler already watching for a
 broken contract. Building an error is not a path that should be able to take a
 process down, and nothing is corrupted by getting there.

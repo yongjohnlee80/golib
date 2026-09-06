@@ -30,13 +30,17 @@ import "fmt"
 //
 // A nil base is a misuse, and it does NOT panic: building an error is not a
 // path that should be able to take a process down, and nothing is corrupted by
-// getting here. Instead the returned error carries [ErrFatal] and says what was
-// wrong, so the mistake is unmissable in a log and catchable by any handler
-// already watching for a broken contract — while the message the caller wanted
-// is still delivered.
+// getting here. Instead the returned error carries [ErrInvalidArgument] and
+// says what was wrong, so the mistake is unmissable in a log and catchable —
+// while the message the caller wanted is still delivered.
+//
+// The identity is ErrInvalidArgument and not [ErrFatal] because nothing is
+// corrupted, and not [ErrPrecondition] because the state was fine: the caller
+// passed something this operation cannot accept, and the fault is at the call
+// site. That is ErrInvalidArgument's contract exactly.
 func Wrap(base error, format string, args ...any) error {
 	if base == nil {
-		return WrapCause(ErrFatal, fmt.Errorf(format, args...),
+		return WrapCause(ErrInvalidArgument, fmt.Errorf(format, args...),
 			"errs.Wrap: base must not be nil, so this error carries no real identity")
 	}
 	all := make([]any, 0, len(args)+1)
@@ -67,7 +71,7 @@ func Wrap(base error, format string, args ...any) error {
 // A nil base is a misuse and is reported the way [Wrap] reports it.
 func Sentinel(base error, detail string) error {
 	if base == nil {
-		return fmt.Errorf("%w: errs.Sentinel: base must not be nil: %s", ErrFatal, detail)
+		return fmt.Errorf("%w: errs.Sentinel: base must not be nil: %s", ErrInvalidArgument, detail)
 	}
 	return fmt.Errorf("%w: %s", base, detail)
 }
@@ -94,7 +98,7 @@ func Sentinel(base error, detail string) error {
 // a real state and not a mistake.
 func WrapCause(base, cause error, format string, args ...any) error {
 	if base == nil {
-		return fmt.Errorf("%w: errs.WrapCause: base must not be nil: %s", ErrFatal,
+		return fmt.Errorf("%w: errs.WrapCause: base must not be nil: %s", ErrInvalidArgument,
 			fmt.Sprintf(format, args...))
 	}
 	if cause == nil {
