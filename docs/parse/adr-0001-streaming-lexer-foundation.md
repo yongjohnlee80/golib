@@ -1,6 +1,10 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 24)** (2026-09-07, jarvis). Rev 24 lands `Validate`
+- **Status:** **Proposed (rev 25)** (2026-09-07, jarvis). Rev 25 records the rule
+  the `parse/sql` review surfaced: a leaf may not classify EXECUTABLE bytes as
+  trivia, because `Comment` is precisely what a consumer is invited to discard
+  (§5).
+- **Rev 24 (superseded header, kept for the trail):** **Proposed (rev 24)** (2026-09-07, jarvis). Rev 24 lands `Validate`
   and `WriteTokens` — the validity and stream-out seams, both building no `Source`
   — and records criterion 4 as MEASURED: 456 kB peak live heap for a 1 MiB source
   and 459 kB for a 4 MiB one (§4).
@@ -516,6 +520,17 @@ lifetime along with them.
 other. An AST builder filters them in one line; a concrete syntax tree cannot
 recover what the lexer discarded. *The layer that cannot undo a decision does
 not get to make it.*
+
+**And a leaf may not classify EXECUTABLE bytes as trivia** *(rev 25, from the
+`parse/sql` review)*. The invitation to filter `Comment` in one line is what
+makes that dangerous: MySQL's `/*! … */` looks like a comment and is executed by
+the server, so a form that emitted one `Comment` token for it would hide
+`/*!50000 DROP TABLE t */` from every consumer that took the invitation. A
+dialect whose comment syntax has an executable variant must refuse it and let its
+contents lex as the tokens they are — untidy delimiters are a smaller price than
+a construct that disappears. The rule generalises past this one case: `Comment`
+means *the layer above may discard this*, so anything a caller must not miss does
+not go there.
 
 **Spans are exact and half-open**, because a tree node spans a range and
 deriving `End` from the next token's `Start` is wrong across trivia and

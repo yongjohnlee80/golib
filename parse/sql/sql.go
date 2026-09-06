@@ -1,27 +1,3 @@
-// Package sql supplies SQL dialects to the lexer as lexical FORM VALUES,
-// assembled from golib/parse's generic constructors.
-//
-// This is the only one of the three packages that names a dialect, and that is
-// the whole arrangement: because the core cannot name one, it is closed to none
-// of them. Everything here is data — character classes, literal sets, and an
-// order — handed to a lexer that has never heard of SQL. Adding a dialect means
-// adding a function here, not editing anything below.
-//
-// # Order is precedence
-//
-// The lists are returned in the order the lexer must try them, and the order
-// carries real decisions: `/*` before `/`, `--` before `-`, `E'` before the word
-// run that would otherwise eat the E. The core does not sort or guess, because
-// which construct wins is a dialect's knowledge.
-//
-// # What these lists say, and what they do not
-//
-// A kind says what a run of bytes IS, never what it means. `SELECT` comes back
-// as a Word here; that it is a verb in one statement and a column name in another
-// is a judgement for the layer above, made with the verbatim bytes still in front
-// of it. There are no keywords in this package for that reason.
-//
-// Every list ends with a one-byte fallback, so no byte is ever left unclaimed.
 package sql
 
 import "github.com/yongjohnlee80/golib/parse"
@@ -63,13 +39,14 @@ func PostgreSQL() []parse.Form {
 		Number(),
 		parse.RunForm(parse.Word, PostgresWordByte),
 
-		parse.SetForm(parse.Operator,
-			"!~~*", "!~~", "~~*", "~~", // LIKE/ILIKE operators
-			"#>>", "->>", "!~*", "<<=", ">>=",
-			"::", "||", "->", "#>", "@>", "<@", "&&", "<<", ">>",
-			"<>", "<=", ">=", "!=", "!~", "~*",
-			"+", "-", "*", "/", "%", "^", "=", "<", ">", "~", "@", "#", "&", "|", "!", "?",
-		),
+		// The cast and assignment tokens, which are NOT operator names: `:` is
+		// not one of PostgreSQL's operator bytes, so the grammar below cannot
+		// reach them.
+		parse.SetForm(parse.Operator, "::", ":="),
+
+		// Not a list: PostgreSQL has a GRAMMAR for operator names, and
+		// CREATE OPERATOR lets a schema add more.
+		PostgresOperator(),
 		parse.SetForm(parse.Terminator, ";"),
 		parse.SetForm(parse.Punct, "(", ")", ",", ".", "[", "]", ":"),
 
@@ -86,13 +63,19 @@ func PostgreSQL() []parse.Form {
 // property, so a caller who runs in that mode swaps the one form rather than
 // getting a flag here.
 //
-// One simplification, stated because it is a real difference: MySQL requires
-// whitespace after `--` for it to begin a comment, and this treats `--` as a
-// comment opener unconditionally. The `#` form has no such condition.
+// Two MySQL-specific forms rather than the generic ones, because MySQL's
+// versions of these constructs are genuinely different: `--` is a comment only
+// when whitespace or a control byte follows it, so `balance--1` stays a
+// subtraction; and `/*! … */` is refused as a comment because the server EXECUTES
+// its contents, which must not reach a caller as trivia it was invited to drop.
+// See [MySQLDashComment] and [MySQLBlockComment].
 func MySQL() []parse.Form {
 	return []parse.Form{
-		parse.BlockComment("/*", "*/", false), // MySQL does NOT nest them
-		parse.LineComment("--"),
+		// MySQL does not nest block comments, and /*! … */ is NOT one: the
+		// server executes what is inside it, so it must not arrive as trivia.
+		MySQLBlockComment(),
+		// `--` is a comment only when whitespace or a control byte follows it.
+		MySQLDashComment(),
 		parse.LineComment("#"),
 
 		parse.QuoteForm("'", "'", parse.QuoteOpts{Doubling: true, Escape: '\\'}),
