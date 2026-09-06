@@ -26,8 +26,41 @@ at the comparison, never at the message.
 ## The canonical shape
 
 ```go
-return fmt.Errorf("dial %s after %s: %w", addr, elapsed, errs.ErrTimeout)
+return errs.Wrap(errs.ErrTimeout, "dial %s after %s", addr, elapsed)
+// dial 10.0.0.1:5432 after 3s (timeout)
 ```
+
+`errs` provides three templates, and between them they cover every shape in this
+document. **Use them rather than retyping the format** — a format that is
+retyped at every call site is a format that drifts.
+
+| | for | produces |
+|---|---|---|
+| `errs.Wrap(base, format, args…)` | a call site reporting a failure | `where, specifically (what)` |
+| `errs.WrapCause(base, cause, format, args…)` | the same, when an underlying error must stay recoverable | `where (what): cause` |
+| `errs.Sentinel(base, detail)` | declaring a package's layered condition | `what: detail` |
+
+`Sentinel` carries **no brackets of its own** — the bracket belongs to `Wrap`,
+which puts exactly one pair around whatever identity a call site reports,
+however deep the layering goes. All three **panic on a nil base**, because an
+error with no identity is the one thing this package exists to prevent, and
+building one quietly would hide the mistake at the only moment it is cheap to
+find.
+
+### Wrapping is not required
+
+A downstream package is under **no obligation** to wrap. If your message would
+say nothing the base does not already say, **return the base**:
+
+```go
+return ErrNoIdentity                            // yes
+return errs.Wrap(ErrNoIdentity, "no identity")  // no — says it twice
+```
+
+A wrapper that restates its base costs a layer, a line of output and a name, and
+tells the reader nothing. The message earns its place with the part the identity
+cannot carry: which address, which file, which id. Either return the upstream
+error, or add something — never wrap for the sake of wrapping.
 
 - The **message** says what happened, specifically, for a person reading a log:
   which address, how long. Write it for a human. It may change tomorrow.
