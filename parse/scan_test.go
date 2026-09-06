@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/yongjohnlee80/golib/streamcache"
@@ -899,5 +900,158 @@ func TestScan_WindowProviders(t *testing.T) {
 	}
 	if unsafe.SliceData(streamWin) == unsafe.SliceData(b) {
 		t.Error("the streamed path aliased the input; segmented bytes must be copied once")
+	}
+}
+
+// countingReader serves a fixed number of bytes and records how many it was
+// asked for, which is how "a diagnostic did not read ahead" becomes observable.
+type countingReader struct {
+	served int64
+	limit  int64
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	if r.served >= r.limit {
+		return 0, io.EOF
+	}
+	k := int64(len(p))
+	if r.served+k > r.limit {
+		k = r.limit - r.served
+	}
+	for i := int64(0); i < k; i++ {
+		p[i] = 'a'
+	}
+	r.served += k
+	return int(k), nil
+}
+
+// A streamed location must not drive the reader forward. Asking about an offset
+// far ahead of what has been indexed is a question about bytes the scan has not
+// reached, and answering it by reading to them turns a diagnostic into an
+// unbounded read — 900 kB of it, before this was refused.
+func TestScan_StreamedLocationIsNotReadForward(t *testing.T) {
+	r := &countingReader{limit: 1 << 20}
+	s := New(WithForms(ByteForm(Punct))).Scan(context.Background(), r, BorrowReader)
+	defer s.Close()
+
+	for range s.Tokens() { // one token: live, but barely read
+		break
+	}
+	before := r.served
+
+	if _, err := s.LocationAt(900000); !errors.Is(err, ErrLocationRange) {
+		t.Fatalf("LocationAt(900000) = %v, want ErrLocationRange", err)
+	}
+	if grew := r.served - before; grew != 0 {
+		t.Errorf("answering a far-future location read %d more bytes from the source; a "+
+			"diagnostic must refuse rather than read ahead", grew)
+	}
+}
+
+// At the live edge the answer IS available, and the lookahead it costs is the
+// bound the doc claims: at most utf8.UTFMax-1 bytes of new indexing.
+func TestScan_LiveEdgeLocationIndexesAtMostTheLookahead(t *testing.T) {
+	r := &countingReader{limit: 1 << 20}
+	s := New(WithForms(ByteForm(Punct))).Scan(context.Background(), r, BorrowReader)
+	defer s.Close()
+
+	for range s.Tokens() {
+		break
+	}
+	edge := s.notedTo
+	if _, err := s.LocationAt(edge); err != nil {
+		t.Fatalf("LocationAt at the indexed edge %d: %v", edge, err)
+	}
+	if grew := s.notedTo - edge; grew > int64(utf8.UTFMax-1) {
+		t.Errorf("the lookahead indexed %d bytes past the edge; at most %d is allowed",
+			grew, utf8.UTFMax-1)
+	}
+}
+
+// Over a slice the whole input is already in memory, so an in-range offset ahead
+// of the walk stays answerable — there is no read to bound.
+func TestScan_FixedProviderStillAnswersAheadOfTheWalk(t *testing.T) {
+	s := New(WithForms(ByteForm(Punct))).ScanBytes(context.Background(), []byte("a\nb\nc"))
+	defer s.Close()
+
+	for range s.Tokens() {
+		break
+	}
+	loc, err := s.LocationAt(4)
+	if err != nil {
+		t.Fatalf("LocationAt(4) over a slice: %v", err)
+	}
+	if loc.Line != 3 || loc.Column != 1 {
+		t.Errorf("LocationAt(4) = %+v, want line 3 column 1", loc)
+	}
+}
+
+// Close drops EVERY reference the Scan owns, not just the buffers: a form list
+// closes over whatever its author put there, and a context can carry a whole
+// value graph.
+func TestScan_CloseDropsEveryReference(t *testing.T) {
+	s := New(WithForms(sqlish()...)).ScanBytes(context.Background(), []byte(corpus))
+	collect(t, s)
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	for _, c := range []struct {
+		name string
+		held bool
+	}{
+		{"the form list", s.forms != nil},
+		{"its context", s.ctx != nil},
+		{"the terminal error", s.err != nil},
+		{"the window buffer", s.win != nil},
+		{"the opener buffer", s.openBuf != nil},
+		{"the lookahead buffer", s.idxBuf != nil},
+		{"the fixed input", s.fixed != nil},
+		{"the cache", s.cache != nil},
+		{"the source", s.src != nil},
+		{"the closer", s.rc != nil},
+	} {
+		if c.held {
+			t.Errorf("Close retained %s", c.name)
+		}
+	}
+}
+
+// A failed scan keeps reporting what went wrong until it is closed; a closed one
+// reports that it is closed, because the error value goes with every other
+// reference. The FACT of the failure is kept as a scalar.
+func TestScan_FailedThenClosedReportsClosed(t *testing.T) {
+	bad := decoyForm{kind: Word, starts: func([]byte) (int, Match) { return 3, NoMatch }}
+	s := New(WithForms(bad)).ScanBytes(context.Background(), []byte("abc"))
+
+	first := func() error {
+		for _, err := range s.Tokens() {
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if err := first(); !errors.Is(err, ErrFormContract) {
+		t.Fatalf("first error = %v, want ErrFormContract", err)
+	}
+	if err := first(); !errors.Is(err, ErrFormContract) {
+		t.Errorf("re-ranged before Close = %v, want the same failure", err)
+	}
+	if !s.failed {
+		t.Error("the failure was not recorded")
+	}
+
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if s.err != nil {
+		t.Error("Close retained the error value")
+	}
+	if !s.failed {
+		t.Error("Close lost the fact that the scan had failed")
+	}
+	if err := first(); !errors.Is(err, ErrScanClosed) {
+		t.Errorf("after Close = %v, want ErrScanClosed", err)
 	}
 }

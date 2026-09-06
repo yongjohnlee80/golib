@@ -1,6 +1,10 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 21)** (2026-09-06, jarvis). Rev 21 corrects four
+- **Status:** **Proposed (rev 22)** (2026-09-06, jarvis). Rev 22 finishes two
+  Scan obligations rev 21 only half met: `Close` now drops the form list, context
+  and terminal error as well as its buffers, and a streamed `LocationAt` refuses
+  an offset ahead of the indexed head instead of reading forward to it (§4).
+- **Rev 21 (superseded header, kept for the trail):** Rev 21 corrects four
   Scan defects — an exclusive-and-remainder-only delimiter bound, a partly
   enforced `End` matrix, provisional locations, and a `Close` that let go of
   nothing — and meets criterion 13 with **two window providers over one state
@@ -344,6 +348,27 @@ func (l *Lexer) WriteTokens(ctx context.Context, w io.Writer, r io.Reader) error
 > gathered somewhere. The walk does not know which provider it is on. This is why
 > the `Form` contract now says the slices are **read-only and callback-lifetime**:
 > a window may be the caller's own memory, or a buffer the next widening moves.
+>
+> **Corrected again (rev 22).** Two obligations the first pass only half met:
+>
+> - **`Close` drops EVERY reference, not the obvious ones.** Nilling the buffers
+>   and the cache left the form list, the context and the terminal error behind —
+>   and a form list closes over whatever its author put there, while a context can
+>   carry a whole value graph. All of them go now; what survives is scalar
+>   terminal state plus `closeErr`, which a caller may still ask for. Dropping the
+>   error value means the FACT of a failure is kept as a scalar instead, and
+>   `step` checks *closed* before *failed*: a scan that failed keeps reporting
+>   what went wrong until it is closed, and afterwards reports that it is closed,
+>   which is the truthful answer about a resource that is gone.
+> - **The bounded lookahead is actually bounded.** `LocationAt` drove the
+>   lookahead unconditionally, so over a stream an offset far ahead of the index
+>   was answered by *reading to it* — 900 kB of a 1 MiB source, which is the
+>   opposite of a bounded diagnostic. A streamed offset ahead of the indexed head
+>   is now refused **before any I/O**: a location is a question about an offset the
+>   scan has already reached. Over a slice the input is in memory already, so any
+>   in-range offset is still answered by indexing forward at no I/O cost. The
+>   controls are a counting reader that must not be advanced at all, and a
+>   live-edge query that may index at most `utf8.UTFMax-1` bytes more.
 >
 > **Not yet: `Validate` and `WriteTokens`** — and with them criterion 4's
 > constant-memory path, which is exactly the path that builds no `Source`.

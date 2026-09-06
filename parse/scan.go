@@ -145,7 +145,10 @@ type Scan struct {
 	end     int64 // total length once known, else -1
 	notedTo int64 // offset through which newlines have been INDEXED
 
-	eofDone  bool
+	eofDone bool
+	// failed records THAT the scan failed, as a scalar, so Close can drop the
+	// error value itself without losing the fact.
+	failed   bool
 	err      error
 	closed   bool
 	closeErr error
@@ -239,11 +242,17 @@ func (s *Scan) Acquire(t Token) (*streamcache.View, error) {
 // LocationAt resolves an offset to a line and column, for a diagnostic.
 //
 // A SUCCESSFUL LOCATION IS NEVER PROVISIONAL. Resolving needs the rune that ends
-// at or straddles the offset to be decodable, so this indexes a bounded
-// lookahead first — at most utf8.UTFMax-1 bytes past the offset, or to the end
-// of input. That is the diagnostic's own small cost in I/O, paid only when a
-// caller asks; without it the same offset could answer with a column while a
-// multi-byte rune was still arriving and then refuse once it completed.
+// at or straddles the offset to be decodable, so this indexes a lookahead first
+// — at most utf8.UTFMax-1 bytes past the offset, or to the end of input. Without
+// it the same offset could answer with a column while a multi-byte rune was still
+// arriving, then refuse once it completed.
+//
+// AND THE LOOKAHEAD IS ALL IT WILL READ. Over a stream, an offset ahead of what
+// has been indexed is refused BEFORE any I/O: a diagnostic is for an offset the
+// scan has already reached, and driving the reader forward to answer one would
+// turn a question about the past into an unbounded read. Over a slice the whole
+// input is already in memory, so any in-range offset is answered by indexing
+// forward, which costs no I/O at all.
 //
 // An offset inside a multibyte rune is not a position and is refused — which
 // byte-oriented forms can produce, so the refusal has to be stable rather than
@@ -253,6 +262,10 @@ func (s *Scan) LocationAt(off int64) (Location, error) {
 		return Location{}, ErrScanClosed
 	}
 	if off >= 0 {
+		if s.fixed == nil && off > s.notedTo {
+			return Location{}, fmt.Errorf("%w: offset %d is ahead of the indexed head %d — a "+
+				"streamed location is not read forward for", ErrLocationRange, off, s.notedTo)
+		}
 		if err := s.indexThrough(off + int64(utf8.UTFMax) - 1); err != nil {
 			return Location{}, err
 		}
@@ -277,18 +290,27 @@ func (s *Scan) Close() error {
 	if s.rc != nil {
 		s.closeErr = s.rc.Close()
 	}
+	// EVERY reference the Scan owns, not just the obvious buffers: a form list
+	// can close over as much as its author likes, a context can carry a whole
+	// value graph, and a terminal error can wrap anything. What is kept is scalar
+	// terminal state plus closeErr, which the caller may still ask for.
 	s.win, s.openBuf, s.idxBuf, s.fixed = nil, nil, nil, nil
 	s.cache, s.src, s.rc = nil, nil, nil
+	s.forms, s.ctx, s.err = nil, nil, nil
 	return s.closeErr
 }
 
 // step produces the next token. ok is false once the stream is finished.
 func (s *Scan) step() (Token, bool, error) {
-	if s.err != nil {
-		return Token{}, false, s.err
-	}
+	// CLOSED IS CHECKED FIRST, because Close drops the error value along with
+	// every other reference: a Scan that failed and was then closed reports
+	// ErrScanClosed, which is the truthful answer about a resource that is gone.
+	// Before Close, a failed scan keeps reporting what went wrong.
 	if s.closed {
 		return Token{}, false, ErrScanClosed
+	}
+	if s.err != nil {
+		return Token{}, false, s.err
 	}
 	if s.eofDone {
 		return Token{}, false, nil
@@ -325,7 +347,7 @@ func (s *Scan) step() (Token, bool, error) {
 }
 
 func (s *Scan) fail(err error) (Token, bool, error) {
-	s.err = err
+	s.failed, s.err = true, err
 	return Token{}, false, err
 }
 
