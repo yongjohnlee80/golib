@@ -30,6 +30,14 @@ type SQL struct {
 	// NestedBlockComments allows /* … /* … */ … */ to nest, as PostgreSQL
 	// does. Without it the first */ closes the comment.
 	NestedBlockComments bool
+	// EStringEscapes treats a string written E'…' as one in which a backslash
+	// escapes the next character, as PostgreSQL does.
+	//
+	// The opt-in is the PREFIX, not the construct: an ordinary '…' keeps the
+	// standard reading in which a backslash is just a character, so a Windows
+	// path or a regular expression ending in one still closes where it should.
+	// Turning this on changes only strings that asked for it by carrying the E.
+	EStringEscapes bool
 }
 
 // Statement is one statement from a script, with its source position.
@@ -75,8 +83,9 @@ func (s SQL) Parse(src []byte) ([]Statement, error) {
 
 // Split implements [Splitter], returning the raw text of each statement.
 //
-// This is the cheap path for a caller that only needs the pieces: it does the
-// same lexical work as Parse and skips building the statement records.
+// Split is Parse without the record building: the SAME single walk, with
+// cheaper output. They are one grammar and cannot drift apart, which is worth
+// saying because two exported entry points usually mean two implementations.
 func (s SQL) Split(src []byte) ([][]byte, error) {
 	spans, err := s.split(src)
 	if err != nil {
@@ -164,19 +173,26 @@ func (s SQL) split(src []byte) ([]span, error) {
 		switch {
 		case r == '\'':
 			begin(at, pos)
-			if err := s.skipQuoted(sc, '\'', true); err != nil {
+			if err := s.skipQuoted(sc, '\'', true, false); err != nil {
 				return nil, err
 			}
 			continue
 		case r == '"':
 			begin(at, pos)
-			if err := s.skipQuoted(sc, '"', true); err != nil {
+			if err := s.skipQuoted(sc, '"', true, false); err != nil {
 				return nil, err
 			}
 			continue
 		case r == '`' && s.Backticks:
 			begin(at, pos)
-			if err := s.skipQuoted(sc, '`', false); err != nil {
+			if err := s.skipQuoted(sc, '`', false, false); err != nil {
+				return nil, err
+			}
+			continue
+		case (r == 'E' || r == 'e') && s.EStringEscapes && s.startsEString(src, at):
+			begin(at, pos)
+			sc.Next()
+			if err := s.skipQuoted(sc, '\'', true, true); err != nil {
 				return nil, err
 			}
 			continue
@@ -250,18 +266,30 @@ func (s SQL) skipBlockComment(sc *Scanner) error {
 	return nil
 }
 
-// skipQuoted consumes a quoted run. doubled says whether the quote character
-// repeated inside the run is an escaped quote rather than the end of it, which
-// is how SQL escapes quotes in strings and in delimited identifiers.
+// skipQuoted consumes a quoted run.
 //
-// A backslash is NOT treated as an escape. Standard SQL does not give it that
-// meaning, and reading it as an escape would mis-split every statement using a
-// Windows path or a regular expression that happens to end in a backslash.
-func (s SQL) skipQuoted(sc *Scanner, quote rune, doubled bool) error {
+// doubled says whether the quote character repeated inside the run is an
+// escaped quote rather than the end of it, which is how SQL escapes quotes in
+// strings and in delimited identifiers.
+//
+// backslash says whether a backslash escapes the character after it. It is off
+// for ordinary strings, because standard SQL gives a backslash no such meaning
+// and reading it as an escape would mis-split every statement containing a
+// Windows path or a regular expression that ends in one. It is on only for a
+// string the source marked with an E prefix, which is the engine's own opt-in.
+func (s SQL) skipQuoted(sc *Scanner, quote rune, doubled, backslash bool) error {
 	openedAt := sc.Pos()
 	sc.Next()
 	for {
 		r, ok := sc.Next()
+		if backslash && r == '\\' && ok {
+			// The escape consumes whatever follows, so an escaped quote cannot
+			// end the run. At end of input there is nothing to consume and the
+			// loop falls through to report the unterminated string.
+			if _, more := sc.Next(); more {
+				continue
+			}
+		}
 		if !ok {
 			return SyntaxError{
 				Format: "sql", Pos: openedAt,
@@ -354,6 +382,22 @@ func leadingVerb(text string) string {
 		end++
 	}
 	return strings.ToUpper(rest[:end])
+}
+
+// startsEString reports whether an E at offset at begins an E'…' string rather
+// than sitting inside an identifier.
+//
+// The check that the preceding byte is not part of a word is what keeps a
+// column named "value" from having its trailing e read as a string prefix when
+// the next character is a quote.
+func (s SQL) startsEString(src []byte, at int) bool {
+	if at+1 >= len(src) || src[at+1] != '\'' {
+		return false
+	}
+	if at > 0 && (isWordByte(src[at-1]) || src[at-1] >= '0' && src[at-1] <= '9') {
+		return false
+	}
+	return true
 }
 
 func isSpace(r rune) bool {

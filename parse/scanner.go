@@ -38,6 +38,11 @@ func (s *Scanner) Done() bool { return s.pos.Offset >= len(s.src) }
 // so a malformed source still advances and cannot spin a caller forever.
 func (s *Scanner) Next() (rune, bool) {
 	if s.Done() {
+		// Nothing was read, so there must be nothing to step back over. Without
+		// this the previous rune stays the undo target and a caller that calls
+		// Unread after a failed Next rewinds onto it, which makes Done false
+		// again and re-reads that rune forever.
+		s.prev = s.pos
 		return 0, false
 	}
 	s.prev = s.pos
@@ -92,6 +97,11 @@ func (s *Scanner) PeekAt(n int) (rune, bool) {
 // same place rather than going further back. This is enough for the one-rune
 // lookahead a hand-written scanner needs, and refusing to pretend otherwise
 // keeps callers from relying on a deeper history that is not there.
+//
+// Unread after a Next that returned false does nothing, because that Next
+// consumed nothing. This matters more than it looks: the alternative rewinds
+// onto the last real rune, which makes Done report false again and turns the
+// ordinary scan-with-lookahead loop into one that never ends.
 func (s *Scanner) Unread() { s.pos = s.prev }
 
 // HasPrefix reports whether the source at the cursor begins with lit, without
