@@ -245,9 +245,11 @@ func TestCache_ConcurrentReadersAndWriter(t *testing.T) {
 	// writerDone lets a reader tell "the window has not filled YET" apart from
 	// "it never will", so neither case has to be guessed at from a lap count.
 	var writerDone atomic.Bool
-	// A backstop, because a reader that waits on a writer that never arrives
-	// would otherwise hang instead of failing, and a cell that hangs reports
-	// nothing.
+	// A backstop for the reader poll below and nothing wider: a writer that
+	// never produces a window fails this cell instead of spinning it. It does
+	// NOT bound the cell as a whole — the writer is in the WaitGroup, so one
+	// that stalls mid-stream still blocks Wait, and the suite timeout is what
+	// reports that.
 	deadline := time.Now().Add(30 * time.Second)
 
 	var wg sync.WaitGroup
