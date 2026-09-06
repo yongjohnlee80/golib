@@ -151,21 +151,30 @@ var validCategories = map[category]bool{
 // maxViolations pins violation ROWS — sites, not defects; one defect can
 // occupy several sites. Lowering it belongs in the PR that fixes a site;
 // raising it is a reviewed decision, never a fix.
-// maxViolations pins violation ROWS. It came down from 4 to 3 when
-// tui/queue.go's overflow panic was reclassified: it is a documented opt-in
-// contract, not a rule violation (see catContract). The remaining three are
-// dao.Str's sites.
-// RAISED 3 -> 4 when dao.Str gained the StringQuoter capability. This is a
-// reviewed decision and not a fix: the fourth row is a NEW runtime panic path —
-// a dialect that HAS a quoting rule refusing a particular string — introduced
-// deliberately, because the alternative was Str guessing an escaping rule on
-// the dialect's behalf, which is an injection rather than a panic.
 //
-// The three that were already here got NARROWER in the same change: they now
-// fire only for a dialect that states no rule at all, so PostgreSQL and SQLite
-// no longer reach them. The count went up and the exposure went down, which is
-// exactly the case this cap exists to make someone say out loud.
-const maxViolations = 4
+// IT IS ZERO. The history is worth keeping, because the number moved in both
+// directions and only the last move was a fix:
+//
+//	4 -> 3  tui/queue.go's overflow panic was RECLASSIFIED, not fixed: it is a
+//	        documented opt-in contract rather than a rule violation (catContract).
+//	3 -> 4  dao.Str gained the StringQuoter capability, which ADDED a runtime
+//	        panic path — a dialect that HAS a quoting rule refusing a particular
+//	        string. A reviewed decision, not a fix: the alternative was Str
+//	        guessing an escaping rule on the dialect's behalf, which is an
+//	        injection rather than a panic. The three older rows got NARROWER in
+//	        the same change, so the count went up while the exposure went down —
+//	        exactly the case this cap exists to make someone say out loud.
+//	4 -> 0  dao.Str was REMOVED. All four rows were its sites, and they existed
+//	        because Str had to turn a Go string into a SQL literal with no
+//	        portable way to do it — MySQL's escaping depends on session state,
+//	        and a declaration is written before any connection exists. Coalesce
+//	        now takes two Expr values, so the same mistakes are COMPILE errors
+//	        (see dao/testdata/negative) and there is nothing left to refuse at
+//	        render time.
+//
+// Zero is a destination, not a streak: a new violation row is a reviewed
+// decision that has to argue for itself against an empty budget.
+const maxViolations = 0
 
 // verdictRe requires a violation to state whether it is reachable in practice.
 // This replaces the removed numeric column: "is this live?" is answered by

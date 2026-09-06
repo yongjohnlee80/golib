@@ -75,7 +75,7 @@ func exprFields() map[artistField]Field[*artist] {
 		aID:   {Expr: T("artist", aID), Scan: func(a *artist) any { return &a.ID }},
 		aName: {Expr: T("artist", aName), Scan: func(a *artist) any { return &a.Name }, Value: func(a *artist) any { return a.Name }},
 		aURI:  {Expr: T("artist", aURI), Scan: func(a *artist) any { return &a.URI }, Value: func(a *artist) any { return a.URI }},
-		aLabelGroup: {Expr: Coalesce(T("label_group", "name"), ""), Join: "label_group", ReadOnly: true,
+		aLabelGroup: {Expr: Coalesce(T("label_group", "name"), SQL("''")), Join: "label_group", ReadOnly: true,
 			Scan: func(a *artist) any { return &a.LabelGroup }},
 		aPublic: {Expr: T("artist", aPublic), Scan: func(a *artist) any { return &a.Public }, Value: func(a *artist) any { return a.Public }},
 	}
@@ -220,14 +220,11 @@ func TestExpr_CoalesceAndLiterals(t *testing.T) {
 	d := GenericDialect{}
 	col := T("t", "c")
 	cases := []struct{ got, want string }{
-		{Coalesce(col, "").render(d), `COALESCE("t"."c", '')`},
-		{Coalesce(col, Str("")).render(d), `COALESCE("t"."c", '')`},
 		{Coalesce(col, SQL("''")).render(d), `COALESCE("t"."c", '')`},
-		{Coalesce(col, 0).render(d), `COALESCE("t"."c", 0)`},
-		{Coalesce(col, int64(0)).render(d), `COALESCE("t"."c", 0)`},
+		{Coalesce(col, SQL("'n/a'")).render(d), `COALESCE("t"."c", 'n/a')`},
 		{Coalesce(col, Int(0)).render(d), `COALESCE("t"."c", 0)`},
-		{Coalesce(col, "n/a").render(d), `COALESCE("t"."c", 'n/a')`},
-		{Coalesce(col, -7).render(d), `COALESCE("t"."c", -7)`},
+		{Coalesce(col, Int(-7)).render(d), `COALESCE("t"."c", -7)`},
+		{Coalesce(col, T("u", "d")).render(d), `COALESCE("t"."c", "u"."d")`},
 		{SQL("NOW()").render(d), "NOW()"},
 	}
 	for _, c := range cases {
@@ -237,79 +234,16 @@ func TestExpr_CoalesceAndLiterals(t *testing.T) {
 	}
 
 	// A Coalesce carries no write identity.
-	if e := Coalesce(col, ""); e.write != "" {
+	if e := Coalesce(col, SQL("''")); e.write != "" {
 		t.Errorf("Coalesce write identity = %q, want empty", e.write)
 	}
-}
-
-// TestExpr_AltTermsAllRoute is the lockstep invariant: every term of Alt must
-// produce a non-nil renderer, so widening Alt without adding a lit case fails
-// here instead of nil-dereferencing at statement time.
-func TestExpr_AltTermsAllRoute(t *testing.T) {
-	t.Parallel()
-
-	if e := lit(Str("x")); !e.isSet() {
-		t.Error("Alt term Expr did not route")
-	}
-	if e := lit("x"); !e.isSet() {
-		t.Error("Alt term string did not route")
-	}
-	if e := lit(1); !e.isSet() {
-		t.Error("Alt term int did not route")
-	}
-	if e := lit(int64(1)); !e.isSet() {
-		t.Error("Alt term int64 did not route")
-	}
-}
-
-// The refusal is now made AT RENDER, not at declaration, and that is a
-// deliberate contract change rather than a slip.
-//
-// Str cannot know which engine it will render for until it is handed a Dialect,
-// and only the dialect knows whether a backslash is an escape. Refusing at
-// declaration meant refusing conservatively for every engine — including
-// PostgreSQL and SQLite, which can represent all of these perfectly well. So the
-// decision moved to the one place that has the information.
-//
-// The safety property is unchanged and still pinned here: a dialect that has
-// NOT stated its quoting rule refuses exactly what it refused before. What
-// changed is that a dialect which HAS stated one is now allowed to answer.
-func TestExpr_StrRefusesUnportableInput(t *testing.T) {
-	t.Parallel()
-
-	for name, s := range map[string]string{
-		"single quote": "it's",
-		"backslash":    `a\b`,
-		"newline":      "a\nb",
-		"tab":          "a\tb",
-		"del":          "a\x7fb",
-	} {
-		t.Run(name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r == nil {
-					t.Errorf("Str(%q) must panic", s)
-				}
-			}()
-			_ = Str(s).render(GenericDialect{})
-		})
-	}
-
-	// Coalesce's string sugar routes through Str, so it inherits the refusal.
-	t.Run("via Coalesce", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("Coalesce with an unportable string must panic")
-			}
-		}()
-		_ = Coalesce(T("t", "c"), "it's").render(GenericDialect{})
-	})
 }
 
 func TestExpr_ZeroExprPanicsAtDeclaration(t *testing.T) {
 	t.Parallel()
 
 	for name, fn := range map[string]func(){
-		"Coalesce base": func() { _ = Coalesce(Expr{}, "") },
+		"Coalesce base": func() { _ = Coalesce(Expr{}, SQL("")) },
 		"Coalesce alt":  func() { _ = Coalesce(T("t", "c"), Expr{}) },
 		"LeftJoin left": func() { _ = LeftJoin("t", Expr{}, T("t", "c")) },
 		"LeftJoin right": func() {
@@ -445,12 +379,12 @@ func TestExpr_WriteColumnSafety(t *testing.T) {
 				t.Errorf("panic = %v", r)
 			}
 		}()
-		build(Field[*artist]{Expr: Coalesce(T("t", "c"), ""), Scan: scan})
+		build(Field[*artist]{Expr: Coalesce(T("t", "c"), SQL("''")), Scan: scan})
 	})
 
 	// The two documented ways out both construct fine.
-	t.Run("ReadOnly is fine", mk(Field[*artist]{Expr: Coalesce(T("t", "c"), ""), Scan: scan, ReadOnly: true}))
-	t.Run("explicit WriteColumn is fine", mk(Field[*artist]{Expr: Coalesce(T("t", "c"), ""), Scan: scan, WriteColumn: "name"}))
+	t.Run("ReadOnly is fine", mk(Field[*artist]{Expr: Coalesce(T("t", "c"), SQL("''")), Scan: scan, ReadOnly: true}))
+	t.Run("explicit WriteColumn is fine", mk(Field[*artist]{Expr: Coalesce(T("t", "c"), SQL("''")), Scan: scan, WriteColumn: "name"}))
 	// A plain string declaration (today's form) must keep working.
 	t.Run("string column is fine", mk(Field[*artist]{Column: "artist.name", Scan: scan}))
 	// A quoted-but-plain Expr column is fine: T carries the raw write identity.
