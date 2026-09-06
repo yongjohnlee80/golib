@@ -1,16 +1,21 @@
 //go:build integration
 
-// NOTE ON THE PIN. go.mod requires golib v0.5.9, but it ALSO carries
-// `replace github.com/yongjohnlee80/golib => ../..`, and a replace beats a
-// require — so this module builds against the LOCAL tree, not the release. The
-// pin is inert. An earlier version of this note had it backwards and used the
-// pin to justify calling dao.RunTx with a stale argument list.
+// NOTE ON THE PIN. This module now requires a RELEASED golib (v0.5.12) with no
+// replace directive, so it compiles against exactly what a third party would
+// get. That was impossible until v0.5.12: the module needs golib/errs, and no
+// tag contained that package, so an earlier `replace => ../..` was the only
+// thing making it build. An earlier version of this note had that backwards
+// and used the inert pin to justify calling dao.RunTx with a stale argument
+// list, which did not compile.
 //
-// THAT CALL DID NOT COMPILE, and two independent things had to be true for
-// nobody to notice: this is a NESTED MODULE, so `go build ./...` at the repo
-// root never compiles it at all; and the file is behind the `integration` build
-// tag, so even inside the module the default vet skips it. Seeing it requires
-// `go vet -tags integration ./...` FROM here, which nothing in CI runs.
+// TWO THINGS STILL HIDE BREAKAGE HERE, and both had to be true for that stale
+// call to survive: this is a NESTED MODULE, so `go build ./...` at the repo
+// root never compiles it at all; and this file is behind the `integration`
+// build tag, so even inside the module the default vet skips it. Seeing it
+// requires `go vet -tags integration ./...` FROM here, which nothing in CI
+// runs. Dropping the replace narrows the window — an incompatible golib change
+// now surfaces loudly at the next version bump rather than silently — but it
+// does not close it.
 //
 // Integration tests for the BigQuery driver. They run against a REAL dataset and
 // are gated on credentials, so they are excluded from normal builds (the

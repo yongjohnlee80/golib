@@ -5,7 +5,7 @@ go 1.25.3
 require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/bigquery v1.77.0
-	github.com/yongjohnlee80/golib v0.5.9
+	github.com/yongjohnlee80/golib v0.5.12
 	google.golang.org/api v0.280.0
 )
 
@@ -62,4 +62,3 @@ require (
 // rather than in the pull request that caused it. A replace in a module's own
 // go.mod applies only when that module is the main module, so consumers of
 // this driver are unaffected by it.
-replace github.com/yongjohnlee80/golib => ../..
