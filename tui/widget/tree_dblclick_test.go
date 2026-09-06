@@ -10,10 +10,9 @@ package widget_test
 // query scaffold. A Tree that guessed would scaffold AND expand.
 
 import (
-	"testing"
-
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
+	"testing"
 )
 
 // singlePress is one press. A test CANNOT fake a double-click by setting Count:
