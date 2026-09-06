@@ -37,13 +37,13 @@ const (
 
 	TokenTextMuted       // de-emphasized text color on Background/Surface (color ONLY)
 	TokenTextOnPrimary   // readable text atop Primary fills
-	TokenTextOnSecondary // readable text atop Secondary fills (Select/List secondary selection fills, ADR-0007)
+	TokenTextOnSecondary // readable text atop Secondary fills (Select/List secondary selection fills)
 	TokenTextOnAccent
 	TokenTextOnError
 	TokenTextOnSuccess
 	TokenTextOnWarning
-	TokenBorder        // default border color (Box and friends, ADR-0007)
-	TokenBorderFocused // border color of the focused panel (ADR-0007 Box focus visuals)
+	TokenBorder        // default border color (Box and friends)
+	TokenBorderFocused // border color of the focused panel (Box focus visuals)
 
 	numTokens // internal bound
 )

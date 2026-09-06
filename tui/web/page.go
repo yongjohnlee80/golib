@@ -102,8 +102,8 @@ type clientConfig struct {
 // that a "+" in a standard-alphabet nonce BREAKS the page, because html/template
 // renders it as "&#43;". The escaping is real; the conclusion was invented. A
 // browser decodes HTML entities before comparing the nonce, so
-// script-src 'nonce-a+b' matches a source nonce written a&#43;b — lector verified
-// that in headless Chromium. This encoding is a legitimate simplification, not a
+// script-src 'nonce-a+b' matches a source nonce written a&#43;b, which is what
+// headless Chromium does. This encoding is a legitimate simplification, not a
 // bug fix, and the test below asserts source-level identity rather than browser
 // behavior it cannot observe.
 func nonce() (string, error) {
@@ -302,9 +302,9 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 	if mgr == nil {
 		return nil, errs.Wrap(errs.ErrInvalidArgument, "web.NewHandler: a session Manager is required")
 	}
-	// The allowlist is CLONED. A caller mutating their slice after NewHandler
-	// changed the live allowlist in lector's probe, which makes it configuration
-	// only until someone writes to it.
+	// The allowlist is CLONED. Without this, a caller mutating their slice after
+	// NewHandler returned would change the live allowlist, which leaves the
+	// configuration mutable long after construction.
 	cfg.AllowedOrigins = slices.Clone(cfg.AllowedOrigins)
 	h := &Handler{
 		cfg:              cfg,

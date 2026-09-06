@@ -169,8 +169,8 @@ func (s *Split) Zoom(p SplitPane) {
 }
 
 // listChildren feeds the package's focus walk, honoring zoom: a hidden
-// pane is not a focus target (MF7 — a nested zoomed Split must not let
-// focusFirst wander into its logically hidden side).
+// pane is not a focus target, so a nested zoomed Split cannot let focusFirst
+// wander into its logically hidden side.
 func (s *Split) listChildren() []tui.Component {
 	switch s.zoomed {
 	case PaneA:

@@ -17,13 +17,13 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 )
 
-// ADR-0018: the session-pinned connection capability. dao core is untouched;
+// The session-pinned connection capability. dao core is untouched;
 // everything here lives in the leaf, behind optional interfaces probed by type
 // assertion, and pgx's high-level Conn machinery is structurally unreachable on a
 // pinned member for the whole pinned lifetime (the handle never hands the *pgx.Conn out
 // and its own methods use only the raw pgproto3 face).
 //
-// The state machine is the ADR's: two ORTHOGONAL tracks — outbound (what the
+// The state machine has two ORTHOGONAL tracks — outbound (what the
 // consumer has built on the wire) and inbound (where the response stream stands) — plus
 // a poison flag that outranks both, and a private-exchange flag the transaction and
 // query paths hold. Refusal of a guarded call is an immediate state inspection under
@@ -191,9 +191,9 @@ type pinnedConn struct {
 	// goroutine, so touching them would corrupt a stranger's wire.
 	released bool
 	// recv, when non-nil, replaces pgConn.ReceiveMessage in readMessage. It exists so the
-	// simple-query cells can script a server over a pipe (ADR-0018 A1-C3/C4: streaming
-	// before the tail, emitter-error drain, transport-outranks-emitter, control-tag
-	// detection). Nil in production; only tests set it.
+	// simple-query cells can script a server over a pipe, which is the only way to
+	// drive streaming before the tail, an emitter-error drain, transport outranking
+	// the emitter, and control-tag detection. Nil in production; only tests set it.
 	recv func(context.Context) (pgproto3.BackendMessage, error)
 	// inEmit is set, under mu, by SimpleQuery for the duration of each emit callback.
 	// It certifies that the goroutine holding wireMu is executing the CONSUMER's code

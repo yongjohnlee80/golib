@@ -280,7 +280,7 @@ func (t *pinnedTx) QueryContext(ctx context.Context, q string, args ...any) (dao
 // privateSequence is one run of the driver-owned unnamed extended sequence:
 // Parse(unnamed) → Describe(S) → ParameterDescription supplies the OIDs → each
 // argument encoded in text format with the exported pgtype.Map.Encode → Bind(unnamed
-// portal) → Execute → Sync, and then the exit-aware cleanup (r5 MF1): the objects
+// portal) → Execute → Sync, and then the exit-aware cleanup: the objects
 // ParseComplete/BindComplete PROVED were created are closed in a second Close+Sync
 // exchange, on the normal path and on the ErrorResponse path alike, after the group's
 // own terminal ReadyForQuery has been consumed — because PostgreSQL discards frontend

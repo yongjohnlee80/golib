@@ -198,8 +198,8 @@ func (o *overload) clear() { o.since = time.Time{} }
 // held by a parked login handoff that outlives its request. A keyed slot is
 // returned when its handoff settles, and expires on its own if it never does: a
 // login whose ticket is never presented cannot be settled by anyone, so without an
-// expiry the slot would be lost for the process's lifetime (lector r1 on PR #14
-// reproduced exactly that — the ninth login 503'd forever).
+// expiry the slot would be lost for the process's lifetime: with a cap of eight,
+// the ninth login then 503s forever.
 type gate struct {
 	mu   sync.Mutex
 	n    int
@@ -215,8 +215,7 @@ type gate struct {
 // The distinction is what tells the login route whether to return the slot when the
 // hook is done: a hook that parked committed, and one that did not did not. Asking
 // the stash whether its value was taken was the wrong question, because a
-// hand-rolled park need not take anything from the stash to park (lector r5 found
-// the docs gap; the test for it found this).
+// hand-rolled park need not take anything from the stash to park.
 type slot struct {
 	expires   time.Time
 	committed bool
@@ -319,8 +318,8 @@ func (g *gate) commit(key string, until time.Time, publish func()) bool {
 	// written — which is only true for a callback that panics before it mutates.
 	// A consumer's callback can insert into its own park and then panic, and
 	// undoing that is not something this package can do: the mutation is in the
-	// consumer's data structure (lector r7 on PR #14 reproduced parked=1,
-	// committed=0 that way).
+	// consumer's data structure. Rolling back there yields parked=1 with
+	// committed=0 — an entry nothing accounts for.
 	//
 	// So the accounting is preserved CONSERVATIVELY. The two possible errors are
 	// not symmetric: keeping a commitment for an entry that was never written

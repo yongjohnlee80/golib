@@ -167,8 +167,8 @@ func (b *Backend) start(ctx context.Context) error {
 			return err
 		}
 		b.restoreOut = restore
-		// §2.9: the read-deadline unblock needs a poller-managed fd,
-		// and an inherited tty arrives blocking. After makeRaw (whose
+		// The read-deadline unblock needs a poller-managed fd, and an
+		// inherited tty arrives blocking. After makeRaw (whose
 		// Fd() call forces blocking mode), swap in a pollable handle;
 		// nothing may call Fd() on it from here on.
 		in, cleanup := makePollable(b.inFile)
@@ -210,7 +210,7 @@ func (b *Backend) start(ctx context.Context) error {
 		b.mouseOn = true
 	}
 	if caps.KittyKeyboard {
-		enable.WriteString("\x1b[>3u") // push flags 1+2 (§2.5)
+		enable.WriteString("\x1b[>3u") // push flags 1+2
 		b.kittyPush = true
 		b.kittyOn.Store(true)
 	}
@@ -492,7 +492,7 @@ func (b *Backend) decodeLoop(readCh <-chan []byte) {
 	d := &decoder{
 		emit:      b.emitEvent,
 		probe:     b.probeReply,
-		onFocusIn: func() { checkSize(false) }, // §2.8 focus-in re-check
+		onFocusIn: func() { checkSize(false) }, // focus-in re-check
 	}
 
 	var escTimer *time.Timer
@@ -515,7 +515,7 @@ func (b *Backend) decodeLoop(readCh <-chan []byte) {
 			}
 			disarm()
 			if time.Since(lastRead) > quietPeriod {
-				checkSize(false) // §2.8 first-input-after-quiet re-check
+				checkSize(false) // first-input-after-quiet re-check
 			}
 			lastRead = time.Now()
 			d.feedBytes(chunk)

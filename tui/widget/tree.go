@@ -15,7 +15,7 @@ import (
 // SetLoadError carrying that token — every outcome settles the spinner,
 // stale generations are inert.
 //
-// Ownership (r3): attaching a node — via SetRoots or SetChildren — stamps
+// Ownership: attaching a node — via SetRoots or SetChildren — stamps
 // it and its subtree with the owning Tree. Attaching an already-owned node
 // panics (duplicate pointers, cross-tree reuse, ancestor adoption are all
 // impossible by construction). Detaching (being replaced out, or Reset's

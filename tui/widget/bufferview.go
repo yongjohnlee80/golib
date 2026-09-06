@@ -24,8 +24,8 @@ var ErrClosed = errors.New("widget: buffer view closed")
 // Writer(): safe from any goroutine, bounded pending bytes (writes block
 // when the loop lags — never unbounded buffering, mirroring
 // ingestor/writer.go's semaphore model), ordered delivery, ErrClosed after
-// unmount. *BufferView itself deliberately does NOT implement io.Writer
-// (Lector Q2).
+// unmount. *BufferView itself deliberately does NOT implement io.Writer:
+// that would make the loop-owned value look safe to write from anywhere.
 //
 // Keys (focused): Up/Down/PgUp/PgDn/Home/End scroll; End resumes
 // follow-tail. The wheel scrolls. BufferView never consumes printable keys
@@ -466,9 +466,9 @@ const (
 	writerChunk  = 32 << 10
 )
 
-// bufWriter is the separate any-goroutine handle behind BufferView.Writer
-// (rev 1). writeMu serializes whole Write calls (order = acquisition
-// order); mu guards the byte budget and closed flag.
+// bufWriter is the separate any-goroutine handle behind BufferView.Writer.
+// writeMu serializes whole Write calls (order = acquisition order); mu guards
+// the byte budget and closed flag.
 type bufWriter struct {
 	view *BufferView // touched only inside app.Update closures (loop)
 

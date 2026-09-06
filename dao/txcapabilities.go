@@ -6,13 +6,12 @@ import (
 	"fmt"
 )
 
-// Optional transaction capabilities. [DataConn] and [TxConn]
-// are unchanged — a published interface others implement is never grown (KB
-// convention interface-evolution-capability-interfaces; golib policy: existing
-// capabilities are not broken for the rest of the consumers). Options-bearing
-// BEGIN and context-bounded finalization arrive as separate interfaces a driver
-// opts into, probed by type assertion at the call site or, preferably, through
-// the typed helpers below.
+// Optional transaction capabilities. [DataConn] and [TxConn] are unchanged: a
+// published interface that code outside this repository implements is never
+// grown, because every added method breaks each of those implementations at
+// once. Options-bearing BEGIN and context-bounded finalization arrive instead
+// as separate interfaces a driver opts into, probed by type assertion at the
+// call site or, preferably, through the typed helpers below.
 //
 // The helpers never silently fall back. A missing capability is reported as
 // [ErrUnsupported] (or [ErrTxOptionUnsupported], which matches it), because the

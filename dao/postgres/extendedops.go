@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 )
 
-// ADR-0018 §2.5: the closed neutral vocabulary. [ExtendedOp] is the [PinnedConn.Send]
+// The closed neutral vocabulary. [ExtendedOp] is the [PinnedConn.Send]
 // argument, [ExtendedMessage] the [PinnedConn.Receive] result — small types mirroring
 // the wire messages a relay must forward, byte-faithfully, with the conversion to and
 // from pgproto3 frames kept inside the driver.

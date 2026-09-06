@@ -22,7 +22,7 @@ import "github.com/yongjohnlee80/golib/tui"
 //     only boundary Go respects.
 //   - Widgets that override Init MUST call b.Base.Init(ctx) first (the
 //     compiler can't enforce it; the widget test suite catches a missed
-//     chain via nil-Context panics on TestBackend runs — ADR-0007 §5.2).
+//     chain via nil-Context panics on TestBackend runs).
 //   - Capability interfaces (tui.Focusable, tui.Container, tui.FocusScope,
 //     tui.CursorReporter) are detected by type assertion on the outer type;
 //     Base deliberately implements none of them, so embedding never
