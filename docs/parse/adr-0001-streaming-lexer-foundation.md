@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 10)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 11)** (2026-09-06, jarvis).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -266,6 +266,33 @@ A `Token` is **inert**: kind and span, nothing more. It cannot answer for its ow
 bytes and does not pretend to; bytes come from `Scan.Acquire`, which returns a
 lifetime along with them.
 
+> **PROPOSED AMENDMENT — the span is offsets, and line/column is derived.**
+> Two problems with `Start`/`End` as `Position`, one measured and one a
+> collision:
+>
+> | shape | size |
+> |---|---|
+> | `Token{Kind, Position, Position}` | **56 bytes** — 56 MiB per million tokens |
+> | `Token{Kind, int64, int64}` | **24 bytes** — 24 MiB per million tokens |
+>
+> And line/column is not free at any size: it costs a per-byte newline scan of
+> the entire source, performed whether or not anyone ever asks. For a lexer
+> whose whole point is streaming and O(1) per token, charging every token for a
+> diagnostic that a minority of them will ever need is the wrong default. It is
+> also derivable — the definition of data that should not be stored twice.
+>
+> The second problem is concrete: `parse.Position` **already exists** in this
+> package, with `Offset int`. streamcache is `int64` throughout, so either the
+> new core converts at every boundary and truncates on a 32-bit build, or the
+> legacy type changes and that is a breaking change to an interface Johno asked
+> to keep for now.
+>
+> Proposed: `Token{Kind Kind; Start, End int64}`, with offset→`Position`
+> resolved on demand by a line index the lexer builds from the newlines it
+> already passes over. `Position` keeps its current definition and its current
+> callers; nothing breaks; diagnostics are unchanged; and a token is 24 bytes.
+> *Awaiting review — no code written against either shape.*
+
 **Trivia is emitted, never dropped.** `Comment` and `Space` are kinds like any
 other. An AST builder filters them in one line; a concrete syntax tree cannot
 recover what the lexer discarded. *The layer that cannot undo a decision does
@@ -289,9 +316,21 @@ dialect-specific artefact, out of the core entirely.
 type Form interface {
     // Starts reports whether src opens this form. THREE ANSWERS, not two.
     Starts(src []byte) (n int, r Match)
-    End(src []byte, openedWith []byte) (n int, err error)
+
+    // End reports where the construct closes. It is told whether more input
+    // may arrive, because whether EOF COMPLETES a construct is a property of
+    // the form, not of the core.
+    End(src []byte, openedWith []byte, boundary InputBoundary) (n int, err error)
+
     Kind() Kind
 }
+
+// InputBoundary says whether src is all there will ever be.
+type InputBoundary uint8
+const (
+    MoreInput   InputBoundary = iota // src may grow; a decision can be deferred
+    EndOfInput                       // src is the whole remainder; decide now
+)
 
 type Match uint8
 const (
@@ -309,6 +348,15 @@ func DelimitedForm(prefix, suffix byte) Form // the $tag$ SHAPE, unnamed
 
 `DelimitedForm` generalises the tag-carrying shape, so PostgreSQL's
 dollar-quoting is one call from a leaf rather than a branch in the core.
+
+> **PROPOSED AMENDMENT — the conformance suite is `parse/parsetest`, not
+> `parse`.** Rev 8 named it `parse.TestForm`, which puts `import "testing"` in
+> the core. That registers testing's flags in every binary that links the
+> parser, for a symbol no production caller uses. The standard library keeps
+> exactly this kind of helper one package out — `testing/fstest`,
+> `testing/iotest`, `net/http/httptest` — and the same reason applies here:
+> a test-only dependency does not belong in the package under test. Proposed:
+> `parsetest.Form(t, f, corpus)`. *Awaiting review.*
 
 ### 6.1 The incremental contract
 
@@ -345,7 +393,7 @@ Three rules the core enforces so a `Form` cannot get them wrong:
    boundary — the hardest case to test and the easiest to ship broken.
 
    Since the type system will not hold this, a **conformance suite must**:
-   `parse.TestForm(t, f, corpus)` ships alongside the interface, for form
+   `parsetest.Form(t, f, corpus)` ships alongside the interface, for form
    authors to run, and drives every input **at every split**, asserting the
    answer is identical however the bytes arrive. A stateful `Form` fails it; a
    `Form` whose author never runs it is that author's risk — stated here so it
@@ -405,6 +453,37 @@ a single `/` is not an unterminated block comment; it is a division operator,
 and reporting a bounded-construct error there would reject a **valid** input.
 The bounded error is for a construct that genuinely runs past the limit with
 input still arriving.
+
+**`End` needs the boundary; `Starts` does not.** The asymmetry is not an
+inconsistency, and it is worth stating why, because the obvious move is to give
+both the same treatment. `Starts` degrades uniformly — an `Incomplete` opener
+that never completes is *not that form*, for every form there is or will be — so
+the core owns the rule. `End` does not degrade uniformly:
+
+| at end of input | line comment | quoted string |
+|---|---|---|
+| no terminator seen | **complete** — a comment may end at EOF | **error** — unterminated literal |
+
+There is no policy the core could apply to both without being wrong about one,
+so the form decides, and to decide it must be told. A raw `bool` would carry the
+answer but not the question — `End(src, opener, true)` says nothing at the call
+site — so the boundary is a named type.
+
+The rules, complete:
+
+1. **`MoreInput`, terminator absent** → `ErrNeedMore`, `n == 0`. The core widens
+   the window and calls again from the same offset.
+2. **`EndOfInput`, terminator absent** → the form's choice. A form that may end
+   at EOF returns `n == len(src)` and a nil error, consuming the remainder. A
+   form that may not returns its typed unterminated error and `n == 0`; the
+   error names the construct and where it started.
+3. **Terminator present** → identical in both modes: `n` counts the bytes after
+   the opener up to and including the terminator. The boundary must not change
+   the answer for input that already decides itself, or the same bytes would
+   lex differently depending on how they arrived.
+4. **`ErrNeedMore` at `EndOfInput` is a contract violation** (`ErrFormContract`).
+   It asks for input that cannot exist; honouring it is an infinite loop and
+   ignoring it silently picks one of the two answers in the table above.
 
 **Retry bounds.** The core retries while both hold: more input may exist, and
 the window **actually grew** since the last walk. A retry that widens by nothing
@@ -480,46 +559,54 @@ behaving differently depending on how input was supplied.
     operator token, NOT a bounded-construct error. Driven at EOF and with the
     same bytes mid-stream, which must differ: mid-stream it waits.
 19. **A form contract violation is reported, not absorbed** — `Matched` with
-    `n == 0` (which would loop at one offset forever), `n > len(src)`, and a
-    non-zero `n` alongside `NoMatch`/`Incomplete` each produce
-    `ErrFormContract` naming the offending form.
-20. **`parse.TestForm` is shipped and detects a stateful form** — proven with a
+    `n == 0` (which would loop at one offset forever), `n > len(src)`, a
+    non-zero `n` alongside `NoMatch`/`Incomplete`, and `ErrNeedMore` returned
+    at `EndOfInput` each produce `ErrFormContract` naming the offending form.
+20. **EOF completes a line comment and fails an unterminated quote** — the same
+    unterminated bytes, the same call, one boundary value apart: `EndOfInput`
+    gives `n == len(src)` and nil for a line comment, and a typed unterminated
+    error with `n == 0` for a quote. Under `MoreInput` both return
+    `ErrNeedMore`, proving the boundary is what decides and not the bytes.
+21. **A present terminator is unaffected by the boundary** — driven under both
+    values, asserting an identical `n`: input that already decides itself must
+    not lex differently because of how it arrived.
+22. **the conformance suite is shipped and detects a stateful form** — proven with a
     deliberately stateful decoy that answers differently on its second call.
-21. A form whose construct straddles the window returns `ErrNeedMore` and is
+23. A form whose construct straddles the window returns `ErrNeedMore` and is
     retried with a superset until it decides or `MaxDelimiter` is reached — and
     the same input supplied in one chunk and in many yields identical tokens.
-22. Reclamation is **linear in the segments actually freed**, not in the
+24. Reclamation is **linear in the segments actually freed**, not in the
     directory — an isolated close benchmark over independently held segments
     whose time roughly doubles when their number doubles, run in **both close
     orders**, since closing newest-first strands every freed entry behind a held
     one. *(Measured at 512/1024/2048/4096 segments: oldest-first 17/30/55/140 µs,
     newest-first 14/29/67/124 µs, 0 allocs — against 0.19/0.71/2.8/12.5 ms for a
     whole-directory scan.)*
-23. **A released span stays released, and its memory goes** — proven separately,
+25. **A released span stays released, and its memory goes** — proven separately,
     because freeing the bytes makes the refusal happen for free and hides
     whether the rule exists at all. One probe refuses a span below the watermark
     whose bytes are demonstrably still present (a segment straddling the
     watermark; a segment another view still holds); another asserts an oldest
     view pins its own segment and neither the bytes nor the directory entries
     behind it.
-24. **A freed entry is never written to** — the sequence that produced a nil
+26. **A freed entry is never written to** — the sequence that produced a nil
     slice: a full, unheld tail segment freed by the watermark while older held
     entries keep compaction from removing it, then a fill. Asserted on the
     bytes as well as the absence of a panic, since reusing a dead entry
     corrupts offsets too.
-25. **A released request performs no I/O and reports no source error** — a
+27. **A released request performs no I/O and reports no source error** — a
     source that fails on its second read, a span below the watermark: the
     answer is `ErrReleased`, not the source's error, and the reader is not
     called again. Both halves matter; the second is what points a diagnosis at
     the right component.
-26. **A watermark set beyond head applies to bytes that arrive later** —
+28. **A watermark set beyond head applies to bytes that arrive later** —
     released, then read: retention stays flat **at its peak, measured while
     reading**, and the span is refused, with no second `Release`. The final
     state is not the claim: reclaiming once the range completes leaves the same
     final zero with a peak of the whole range, so the probe samples from inside
     the reader. Its control removes in-loop reclamation and must show the peak
     growing linearly with the range while the final state is unchanged.
-27. Span access is **linear in the segments a span covers**, demonstrated by a
+29. Span access is **linear in the segments a span covers**, demonstrated by a
     benchmark whose time roughly doubles when the span doubles. *(Measured
     after the O(k²) fix: 172/342/630 µs at 64/128/256 KiB, against 0.4/1.5/6.0
     ms before.)*
