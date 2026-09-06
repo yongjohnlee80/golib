@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// Introspector is an optional [Dialect] capability (ADR-0013 §3): a dialect
+// Introspector is an optional [Dialect] capability: a dialect
 // with catalog queries implements it, and the package-level ListSchemas /
 // ListTables / ListColumns then work on its connections. Deliberately NOT
 // part of Dialect and NOT implemented by [GenericDialect] — an embedded
@@ -33,7 +33,7 @@ func SupportsIntrospection(d Dialect) bool {
 	return ok
 }
 
-// Schema introspection (ADR-0013): a uniform, dialect-owned catalog surface
+// Schema introspection: a uniform, dialect-owned catalog surface
 // for listing schemas, tables, and columns. The package-level functions below
 // are the consumer entry points; they probe the connection's [Dialect] for
 // the optional [Introspector] capability and return ErrUnsupported (wrapped)
@@ -133,7 +133,7 @@ const (
 	RoutineKindProcedure RoutineKind = "procedure"
 )
 
-// RoutineInfo describes one stored routine (ADR-0014).
+// RoutineInfo describes one stored routine.
 type RoutineInfo struct {
 	// Schema is the containing schema's name.
 	Schema string
@@ -148,7 +148,7 @@ type RoutineInfo struct {
 	Signature string
 }
 
-// RoutineIntrospector is an optional [Dialect] capability (ADR-0014),
+// RoutineIntrospector is an optional [Dialect] capability,
 // mirroring [Introspector]'s seam exactly: implemented by dialects with
 // routine catalogs, probed through the connection's Dialect, executing on
 // the [Querier] it is handed. Deliberately NOT part of Dialect and NOT

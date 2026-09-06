@@ -55,7 +55,7 @@ type BatchWriter[R any, C ~string] interface {
 	Reset()
 }
 
-// batchWriter is the concrete BatchWriter. The schema/factory (ADR-0006) supplies
+// batchWriter is the concrete BatchWriter. The schema/factory supplies
 // the table, the field-to-column resolver (colName), the row extractor for
 // AddRow (extract), the error translator, and the debug log hook; until then the
 // constructor defaults make it fully usable via Add.
@@ -171,7 +171,7 @@ func (b *batchWriter[R, C]) Flush() error {
 	if len(b.rows) == 0 {
 		return nil
 	}
-	// Capability gates (ADR-0008 §2.4/§2.5). An explicit ForceCopy on a dialect
+	// Capability gates. An explicit ForceCopy on a dialect
 	// that cannot COPY is ErrUnsupported, and this capability gate wins over the
 	// combination check below (nit #4). Conflict handling on a no-upsert dialect is
 	// likewise ErrUnsupported, never a silent plain-INSERT that drops the clause.
@@ -190,7 +190,7 @@ func (b *batchWriter[R, C]) Flush() error {
 	matrix := b.matrix(keys)
 
 	if b.shouldCopy(len(matrix), len(cols)) {
-		// Observe-only hook event (ADR-0009 §2.6): COPY has no SQL statement;
+		// Observe-only hook event: COPY has no SQL statement;
 		// a hook that mutates the synthetic descriptor fails the flush, and a
 		// hook error vetoes the COPY per the ordinary abort rule.
 		pl := b.pipe(OpBatchCopy)
@@ -298,7 +298,7 @@ func (b *batchWriter[R, C]) suffix(cols []string) string {
 	case b.skipConflict:
 		// The insert columns ride along as a hint for dialects (MySQL) that
 		// cannot express "do nothing" without naming a column; suffix-complete
-		// dialects ignore them (ADR-0011 §2.3).
+		// dialects ignore them.
 		return b.upsertSuffix(nil, cols)
 	}
 	return ""

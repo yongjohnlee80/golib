@@ -4,7 +4,7 @@ import "strings"
 
 // JoinKey names an optional join registered on a [Schema] (via dao.OptionalJoin
 // or dao.OptionalJoinExpr, ADR-0006). A [Field] carrying a non-empty Join
-// triggers that join when the field is SELECTED (ADR-0003 resolves those) or
+// triggers that join when the field is SELECTED or
 // when a sort key declares it via JoinForSort.
 //
 // Filtering alone does NOT trigger it: force the join with DAO.Join when a
@@ -21,7 +21,7 @@ type Field[R any] struct {
 	// column name is derived from it (see WriteColumn / writeCol).
 	Column string
 
-	// Expr is the dialect-resolved alternative to Column (ADR-0016): [New]
+	// Expr is the dialect-resolved alternative to Column: [New]
 	// renders it once against the connection's dialect and stores the result as
 	// Column, and — unless WriteColumn is set explicitly — takes the raw write
 	// identity from it, so everything downstream is byte-identical to a

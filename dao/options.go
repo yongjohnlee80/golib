@@ -38,7 +38,7 @@ func NewRow[R any, C ~string, K ~string, ID any](fn func() R) Option[R, C, K, ID
 // (Field.Join) or a forced DAO.Join triggers it.
 // OptionalJoinExpr registers an optional join whose clause is resolved against
 // the connection's dialect at [New] — the [Expr] sibling of [OptionalJoin],
-// built with [LeftJoin] / [InnerJoin] (ADR-0016 §2.5).
+// built with [LeftJoin] / [InnerJoin].
 //
 // For one key the later option wins across BOTH spellings: registering either
 // form deletes the other, so a stale representation can never decide the clause.
@@ -79,7 +79,7 @@ func JoinForSort[R any, C ~string, K ~string, ID any](sortKey K, join JoinKey) O
 // SortMap maps each sort-enum key to its ORDER BY expression.
 //
 // Note: ADR-0006 names this option Sort; it is SortMap here because Sort is the
-// ORDER BY term type (ADR-0002) and a package can't have both.
+// ORDER BY term type and a package can't have both.
 func SortMap[R any, C ~string, K ~string, ID any](m map[K]string) Option[R, C, K, ID] {
 	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] { c.sortMap = m; return c }
 }
@@ -106,7 +106,7 @@ func DefaultValues[R any, C ~string, K ~string, ID any](m map[C]any) Option[R, C
 }
 
 // StrictClears makes a rules-driven Clear on a non-Clearable field an error
-// (ErrNotClearable) instead of a silent skip (ADR-0010 §2.2). Schema-wide,
+// (ErrNotClearable) instead of a silent skip. Schema-wide,
 // build-time. The error is carried on the field's resolved rule and surfaces
 // at the write verb only when it is the field's final rule — a later
 // Write/Skip/valid Clear for the same field replaces it (last-rule-wins).
@@ -120,7 +120,7 @@ func Errors[R any, C ~string, K ~string, ID any](m ErrorMap) Option[R, C, K, ID]
 }
 
 // Hooks registers hooks on every DAO the schema produces, in registration
-// order (ADR-0009 §2.2). Per-call hooks (WithHooks) run after these; the
+// order. Per-call hooks (WithHooks) run after these; the
 // debug logger, when enabled, always runs last. Duplicate NamedHook names
 // panic at New.
 func Hooks[R any, C ~string, K ~string, ID any](hs ...Hook) Option[R, C, K, ID] {

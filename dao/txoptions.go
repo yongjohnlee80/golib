@@ -2,7 +2,7 @@ package dao
 
 import "fmt"
 
-// Driver-transaction options (ADR-0017 §2.1). [TxOptions] is the value a
+// Driver-transaction options. [TxOptions] is the value a
 // driver's BEGIN carries — access mode, isolation level, deferrability. It is
 // deliberately NOT the coordinator's [TxOption] (a functional option
 // configuring a logical [Transaction], ADR-0015 §2.3): the two live at
@@ -117,7 +117,7 @@ func (d TxDeferrableMode) valid() bool {
 }
 
 // TxOptions are the driver-transaction options carried by [TxBeginner.BeginTx]
-// and [SessionTxBeginner.BeginSessionTx] (ADR-0017 §2.1). The zero value means
+// and [SessionTxBeginner.BeginSessionTx]. The zero value means
 // "server defaults" and is what [DataConn.Begin] has always sent.
 //
 // Not every driver can honor every field; the per-driver matrix is ADR-0017
@@ -216,7 +216,7 @@ func (o TxOptions) nonDefault() string {
 //
 // It deliberately does NOT match [ErrUnsupported]: bad input is not a
 // capability miss, and conflating the two would let a caller "handle" a typo
-// as a driver limitation (ADR-0017 §2.2a). Extract it with errors.As.
+// as a driver limitation. Extract it with errors.As.
 type ErrTxOptionInvalid struct {
 	// Option is the offending field's name ("Access", "Isolation",
 	// "Deferrable").
@@ -242,8 +242,8 @@ func (e *ErrTxOptionInvalid) Error() string {
 
 // ErrTxOptionUnsupported reports a well-formed option the driver cannot honor.
 // It is checked SECOND — only after [ErrTxOptionInvalid] passes — and, like
-// every capability miss in this package, it matches [ErrUnsupported]
-// (ADR-0008): errors.Is(err, dao.ErrUnsupported) is guaranteed. Extract the
+// every capability miss in this package, it matches [ErrUnsupported]:
+// errors.Is(err, dao.ErrUnsupported) is guaranteed. Extract the
 // struct with errors.As to report the driver and the option by name.
 //
 // It is always returned before a BEGIN reaches the wire: a refused option

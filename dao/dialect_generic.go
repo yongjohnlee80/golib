@@ -35,7 +35,7 @@ func (GenericDialect) MaxBatchRows() int { return 0 }
 //
 // GenericDialect deliberately does NOT implement [TableQuoter] — a promoted
 // QuoteTable would silently leak into every embedding dialect and override
-// its own table-quoting conventions in mixed-version builds (ADR-0013 §2).
+// its own table-quoting conventions in mixed-version builds.
 func (GenericDialect) QuoteIdent(ident string) string {
 	return `"` + strings.ReplaceAll(ident, `"`, `""`) + `"`
 }

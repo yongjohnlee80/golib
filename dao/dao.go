@@ -2,7 +2,7 @@ package dao
 
 // DAO is the query-scoped, generic data-access contract for a single entity.
 //
-// A DAO value is cheap and single-use: obtain one from a [Schema] (ADR-0006) via
+// A DAO value is cheap and single-use: obtain one from a [Schema] via
 // schema.DAO() or schema.On(tx), chain intent methods, then call a terminal verb.
 // Intent methods mutate the receiver and return it, so calls chain fluently. A
 // DAO value is not safe for concurrent use; acquire a fresh one per query.

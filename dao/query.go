@@ -83,7 +83,7 @@ func IsNull(col string) Predicate { return &nullCheck{col, false} }
 // IsNotNull renders "col IS NOT NULL".
 //
 // Note: ADR-0002 names this predicate NotNull; it is IsNotNull here to avoid
-// colliding with the NotNull [ConstraintKind] constant (ADR-0004). The pairing
+// colliding with the NotNull [ConstraintKind] constant. The pairing
 // with IsNull also reads better.
 func IsNotNull(col string) Predicate { return &nullCheck{col, true} }
 
@@ -220,7 +220,7 @@ func (g *group) ToSQL(d Dialect, next *int) (string, []any) {
 }
 
 // Sort is one ORDER BY term, identified by a sort key (a K-enum value) plus
-// direction. The schema (ADR-0006) maps the key to one or more SQL expressions.
+// direction. The schema maps the key to one or more SQL expressions.
 type Sort struct {
 	Key  string
 	Desc bool
@@ -254,7 +254,7 @@ func ParseSorts(specs ...string) []Sort {
 }
 
 // SearchOp maps a search-query token to a predicate factory. The entity declares
-// its operators via dao.Search(...) (ADR-0006); DAO.Search(query) parses the
+// its operators via dao.Search(...); DAO.Search(query) parses the
 // query and applies each matching operator.
 type SearchOp interface {
 	Token() string
@@ -264,13 +264,13 @@ type SearchOp interface {
 // StringOp matches token:value with a case-insensitive substring match, rendered
 // portably as LOWER(col) LIKE LOWER('%value%') so it works on Postgres, SQLite,
 // and MySQL alike (ILIKE is Postgres-only). field is the field-enum key; until a
-// schema binds it to a column (ADR-0006), the field key is used as the column.
+// schema binds it to a column, the field key is used as the column.
 func StringOp(token string, field any) SearchOp {
 	return &stringOp{token: token, field: fmt.Sprint(field)}
 }
 
 // ExactOp matches token:value with equality (col = value). field is the
-// field-enum key, bound to a column by the schema (ADR-0006).
+// field-enum key, bound to a column by the schema.
 func ExactOp(token string, field any) SearchOp {
 	return &exactOp{token: token, field: fmt.Sprint(field)}
 }
@@ -289,7 +289,7 @@ func RawOp(token string, fn func(value string) Predicate) SearchOp {
 }
 
 // fieldSearchOp is implemented by search ops declared against a field enum. The
-// schema (ADR-0006) resolves the field to a column and calls withColumn at build
+// schema resolves the field to a column and calls withColumn at build
 // time; until then column() falls back to the field key.
 type fieldSearchOp interface {
 	SearchOp

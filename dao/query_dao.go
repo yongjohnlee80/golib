@@ -58,7 +58,7 @@ func (d *queryDAO[R, C, K, ID]) newBuilder() *builder { return &builder{dialect:
 // handle resolves the executor for one statement: the transaction's connection
 // when this DAO is tx-bound, the pool otherwise.
 //
-// The nil-tx fallthrough is CONTRACT (ADR-0019), not an unhandled case — see
+// The nil-tx fallthrough is CONTRACT, not an unhandled case — see
 // [Schema.On]. Do not turn it into a panic or an error: every executor-parameter
 // helper in every consumer is built on it, and TestOnNil_* lock it.
 func (d *queryDAO[R, C, K, ID]) handle() (execQuerier, error) {
@@ -155,7 +155,7 @@ func (d *queryDAO[R, C, K, ID]) collectJoins(base []joinClause) []joinClause {
 }
 
 // stagedSet merges the write layers in fixed precedence — schema defaults,
-// per-call staged values, then rules (ADR-0010 §2.3) — and reports the first
+// per-call staged values, then rules — and reports the first
 // surviving StrictClears violation (by column order, deterministically).
 func (d *queryDAO[R, C, K, ID]) stagedSet() (orderedSet, error) {
 	var set orderedSet
@@ -306,10 +306,10 @@ func (d *queryDAO[R, C, K, ID]) Join(keys ...JoinKey) DAO[R, C, ID] {
 func (d *queryDAO[R, C, K, ID]) Use(tx *Transaction) DAO[R, C, ID] {
 	d.tx = tx
 	// An explicit WithQueryContext is sticky: late tx binding must not demote
-	// it behind the transaction's context (ADR-0009 §2.3).
+	// it behind the transaction's context.
 	//
-	// NOTE the asymmetry, which is CONTRACT and is documented on [DAO.Use]
-	// (ADR-0019 §2.1): the guard skips the ASSIGNMENT on a nil tx, it does not
+	// NOTE the asymmetry, which is CONTRACT and is documented on [DAO.Use]:
+	// the guard skips the ASSIGNMENT on a nil tx, it does not
 	// CLEAR an already-assigned ctxv. So Use(nil) unbinds the transaction while
 	// RETAINING its context — a pool statement then carries the transaction's
 	// deadline and cancellation. This is the one door where nil does not mean
@@ -430,7 +430,7 @@ func (d *queryDAO[R, C, K, ID]) Iterate(cols ...C) (Iterator[R], error) {
 	if qerr != nil {
 		return nil, pl.finish(-1, -1, d.schema.translate(qerr))
 	}
-	// Execution-only AfterExec (ADR-0009 §2.6): consumption/scan errors surface
+	// Execution-only AfterExec: consumption/scan errors surface
 	// through the iterator untransformed by hooks.
 	if ferr := pl.finish(-1, -1, nil); ferr != nil {
 		rows.Close()
@@ -552,8 +552,8 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	if r, ok := d.schema.dialect.(LastInsertIDReader); ok {
 		return lastInsertID[ID](r.LastInsertID(res))
 	}
-	// No RETURNING and no LastInsertID: a documented no-generated-id insert
-	// (ADR-0008 §2.6). The DML ran; the caller supplies ids client-side (e.g. a
+	// No RETURNING and no LastInsertID: a documented no-generated-id insert.
+	// The DML ran; the caller supplies ids client-side (e.g. a
 	// UUID) for append-only stores and must not treat the zero id as meaningful.
 	return zero, nil
 }

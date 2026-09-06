@@ -63,7 +63,7 @@ type Filterer[R any, C ~string, ID any] interface {
 	// raw expressions).
 	WithPredicate(p Predicate) DAO[R, C, ID]
 
-	// Search applies the entity's declared search operators (ADR-0006) to a
+	// Search applies the entity's declared search operators to a
 	// structured query string, e.g. "title:liquid public:true".
 	Search(query string) DAO[R, C, ID]
 }
@@ -82,12 +82,12 @@ type Setter[R any, C ~string, ID any] interface {
 	SetMap(values map[C]any) DAO[R, C, ID]
 
 	// Clear stages a column to be written as NULL, distinct from "not set".
-	// A field declaring a ClearValue (ADR-0010 §2.2) stages that sentinel
+	// A field declaring a ClearValue stages that sentinel
 	// instead. Developer intent in trusted code: it does not consult
 	// Clearable — request-derived clears go through SetRules.
 	Clear(field C) DAO[R, C, ID]
 
-	// SetRules stages a partial-write disposition per field (ADR-0010): Write
+	// SetRules stages a partial-write disposition per field: Write
 	// stages a value, Skip removes any staged value for the field, Clear
 	// stages the field's declared cleared state. Rules are authoritative for
 	// their field over Set/SetMap/DefaultValues regardless of call order;
@@ -128,16 +128,16 @@ type ResultShaper[R any, C ~string, ID any] interface {
 // so the rare code that must move an existing value between scopes can say
 // so in its signature and gets nothing else.
 type TxBinder[R any, C ~string, ID any] interface {
-	// Use binds this DAO to a transaction. Prefer schema.On(tx) (ADR-0006), which
+	// Use binds this DAO to a transaction. Prefer schema.On(tx), which
 	// binds at acquisition time; Use exists for completeness.
 	//
 	// Use(nil) is the ONE EXCEPTION to the nil-transaction contract of
-	// [Schema.On] (ADR-0019 §2.1): it unbinds the transaction, so statements run
+	// [Schema.On]: it unbinds the transaction, so statements run
 	// on the pool, but it does NOT clear a context this DAO already inherited
 	// from a transaction. So a DAO acquired with On(tx) and then unbound with
 	// Use(nil) issues POOL statements carrying the TRANSACTION'S context —
-	// including its deadline and its cancellation. That is deliberate stickiness
-	// (ADR-0009 §2.3 keeps a bound context from being demoted), not a fallthrough
+	// including its deadline and its cancellation. That is deliberate stickiness,
+	// not a fallthrough
 	// to the pool's own context.
 	//
 	// If you want a pool DAO with no transaction context, acquire one:
@@ -187,7 +187,7 @@ type Writer[ID any] interface {
 	Update() error
 
 	// Upsert inserts, or updates the staged columns on conflict with the
-	// configured conflict target (ADR-0006).
+	// configured conflict target.
 	Upsert() error
 
 	// Delete deletes rows matching the predicates. It returns [ErrNoConditions]
@@ -201,6 +201,6 @@ type Writer[ID any] interface {
 // different failure model from the single-row verbs on Writer, and most code
 // that writes never needs it.
 type Batcher[R any, C ~string] interface {
-	// Batch returns a batch writer for bulk insert/upsert (ADR-0004).
+	// Batch returns a batch writer for bulk insert/upsert.
 	Batch() BatchWriter[R, C]
 }

@@ -4,7 +4,7 @@ import "strings"
 
 // builder renders SQL text and collects its bind arguments against a [Dialect].
 // It is the core's minimal, zero-dependency SQL builder. This file currently
-// implements the batch-insert path (ADR-0004); the SELECT/UPDATE/DELETE builders
+// implements the batch-insert path; the SELECT/UPDATE/DELETE builders
 // are added by ADR-0003.
 type builder struct {
 	dialect Dialect
@@ -16,7 +16,7 @@ type builder struct {
 // quoteTable quotes a table-position identifier: dialects implementing the
 // optional [TableQuoter] capability get qualified (dot-split) quoting; all
 // others keep the historical behavior — the whole string quoted as one
-// identifier via QuoteIdent (ADR-0013 §2).
+// identifier via QuoteIdent.
 func quoteTable(d Dialect, table string) string {
 	if tq, ok := d.(TableQuoter); ok {
 		return tq.QuoteTable(table)

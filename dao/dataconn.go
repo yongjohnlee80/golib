@@ -52,10 +52,10 @@ type DataConn interface {
 	//   - shared ONLY by handles to the SAME logical database (two pools against
 	//     one database may share a name; two databases must never).
 	//
-	// A [Transaction] admits participants and orders its commit by this name
-	// (ADR-0015 §2.4). Capability decisions are NOT made from it: two-phase
+	// A [Transaction] admits participants and orders its commit by this name.
+	// Capability decisions are NOT made from it: two-phase
 	// commit is validated against the participant that actually joined, not
-	// against a same-named declaration (ADR-0015 §2.5).
+	// against a same-named declaration.
 	Name() string
 
 	// Close releases the underlying pool.
