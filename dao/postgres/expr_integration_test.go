@@ -97,7 +97,7 @@ func rsvdSchema(t *testing.T, conn dao.DataConn) *dao.Schema[*xuser, xfield, xso
 		xGrpID: {Expr: dao.T(xTblRsvd, xGrpID), Value: func(u *xuser) any { return nil }},
 		xMyCol: {Expr: dao.T(xTblRsvd, xMyCol), Scan: func(u *xuser) any { return &u.MyCol }, Value: func(u *xuser) any { return u.MyCol }},
 		xGroup: {
-			Expr:     dao.Coalesce(dao.T(xTblGrp, xName), "«none»"),
+			Expr:     dao.Coalesce(dao.T(xTblGrp, xName), dao.SQL("'«none»'")),
 			Join:     dao.JoinKey(xTblGrp),
 			ReadOnly: true,
 			Scan:     func(u *xuser) any { return &u.Group },
@@ -355,8 +355,8 @@ func TestExprPG_LiteralsAndEscapeHatch(t *testing.T) {
 		dao.ID[*lrow, lfield, lsort, int](lID),
 		dao.Fields[*lrow, lfield, lsort, int](map[lfield]dao.Field[*lrow]{
 			lID:  {Expr: dao.T(xTblRsvd, "id"), Scan: func(r *lrow) any { return &r.ID }},
-			lStr: {Expr: dao.Coalesce(dao.T(xTblRsvd, "MyCol"), "fallback"), ReadOnly: true, Scan: func(r *lrow) any { return &r.Str }},
-			lNum: {Expr: dao.Coalesce(dao.T(xTblRsvd, "order"), 0), ReadOnly: true, Scan: func(r *lrow) any { return &r.Num }},
+			lStr: {Expr: dao.Coalesce(dao.T(xTblRsvd, "MyCol"), dao.SQL("'fallback'")), ReadOnly: true, Scan: func(r *lrow) any { return &r.Str }},
+			lNum: {Expr: dao.Coalesce(dao.T(xTblRsvd, "order"), dao.Int(0)), ReadOnly: true, Scan: func(r *lrow) any { return &r.Num }},
 			lNow: {Expr: dao.SQL("to_char(now(), 'YYYY')"), ReadOnly: true, Scan: func(r *lrow) any { return &r.Now }},
 		}),
 		dao.Default[*lrow, lfield, lsort, int](lID, lStr, lNum, lNow),

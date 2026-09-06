@@ -6,16 +6,19 @@ import (
 	"testing"
 )
 
-// TestExpr_AltRejectionsAreCompileErrors is the negative half of the
+// TestExpr_CoalesceRejectionsAreCompileErrors is the negative half of the
 // expression surface: what must NOT compile.
-// The Alt constraint's whole point is that a bad fallback fails at BUILD time,
-// which no ordinary test can observe — so this one compiles a fixture that must
-// not build and asserts each rejection by name.
+//
+// Coalesce takes two Expr values, so every bad fallback is a BUILD error — which
+// no ordinary test can observe, so this one compiles a fixture that must not
+// build and asserts each rejection by name. This is what replaced a runtime
+// panic: the string overload accepted `Coalesce(col, "it's")` and blew up at
+// render time; now it does not compile.
 //
 // The fixture lives under testdata/ so the go tool skips it for every package
 // pattern; only this test names it explicitly. It costs one toolchain
 // invocation, which is why it skips under -short.
-func TestExpr_AltRejectionsAreCompileErrors(t *testing.T) {
+func TestExpr_CoalesceRejectionsAreCompileErrors(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping the toolchain-invoking negative-typing check in -short mode")
 	}
@@ -25,15 +28,19 @@ func TestExpr_AltRejectionsAreCompileErrors(t *testing.T) {
 
 	out, err := exec.Command("go", "build", "-o", "/dev/null", "./testdata/negative/").CombinedOutput()
 	if err == nil {
-		t.Fatalf("testdata/negative built successfully — the Alt constraint has been widened:\n%s", out)
+		t.Fatalf("testdata/negative built successfully — Coalesce has been widened past Expr:\n%s", out)
 	}
 
 	// Every case must be rejected, and each for the right reason.
 	for _, want := range []string{
-		"float64 does not satisfy dao.Alt",
-		"bool does not satisfy dao.Alt",
-		"artistField does not satisfy dao.Alt", // a ~string field enum: the tilde trap
-		"struct{} does not satisfy dao.Alt",
+		// Each names the TYPE that was offered, so a widening shows up as a
+		// missing rejection rather than a silently different error.
+		"cannot use \"n/a\"",
+		"cannot use 0",
+		"cannot use 0.5",
+		"cannot use true",
+		"cannot use aName",
+		"cannot use struct{}{}",
 	} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("compiler output does not reject %q:\n%s", want, out)

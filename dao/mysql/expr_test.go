@@ -100,7 +100,7 @@ func exprSchema(t *testing.T, conn dao.DataConn) *dao.Schema[*mrow, mfield, msor
 			fName:  {Expr: dao.T(tblUser, fName), Scan: func(r *mrow) any { return &r.Name }, Value: func(r *mrow) any { return r.Name }},
 			fGrpID: {Expr: dao.T(tblUser, fGrpID), Value: func(r *mrow) any { return nil }},
 			fGroup: {
-				Expr:     dao.Coalesce(dao.T(tblGrp, fName), ""),
+				Expr:     dao.Coalesce(dao.T(tblGrp, fName), dao.SQL("''")),
 				Join:     dao.JoinKey(tblGrp),
 				ReadOnly: true,
 				Scan:     func(r *mrow) any { return &r.Group },

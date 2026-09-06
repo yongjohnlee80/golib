@@ -28,13 +28,18 @@
 // connection's [Dialect] — into Column. A declaration is written before any
 // connection exists, so an Expr is what lets identifier quoting be correct per
 // dialect instead of hand-written for one: [T] qualifies a column with its
-// table, [C] leaves it unqualified, and [Coalesce], [Str], [Int], [SQL],
-// [LeftJoin] and [InnerJoin] compose from there ([OptionalJoinExpr] registers a
-// resolved join clause).
+// table, [C] leaves it unqualified, and [Int], [SQL], [LeftJoin] and
+// [InnerJoin] compose from there ([OptionalJoinExpr] registers a resolved join
+// clause).
+//
+// There is no string-literal helper. An integer literal has one spelling in
+// every dialect; a string literal does not — its escaping depends on the
+// dialect and, for MySQL, on session state — so quoting one correctly is the
+// author's call and belongs in [SQL], where the text is visibly theirs.
 //
 // T and C also carry the raw column name the write path needs, so
 // INSERT/UPDATE quote one identifier exactly once. An expression has no column
-// to write to: a writable field declared with [Coalesce] or [SQL] must set
+// to write to: a writable field declared with [SQL] must set
 // ReadOnly or WriteColumn, which New enforces rather than emitting invalid DML.
 //
 // # Batch writes

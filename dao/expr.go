@@ -34,7 +34,7 @@ func (e Expr) isSet() bool { return e.render != nil }
 // worse, at statement time with a nil renderer.
 func (e Expr) mustSet(who string) Expr {
 	if !e.isSet() {
-		panic(errs.Fatal{Op: "dao." + who, Rule: "zero Expr (build it with dao.T, dao.C, dao.Str, dao.Int or dao.SQL)"})
+		panic(errs.Fatal{Op: "dao." + who, Rule: "zero Expr (build it with dao.T, dao.C, dao.Int or dao.SQL)"})
 	}
 	return e
 }
@@ -70,52 +70,6 @@ func C[Col ~string](col Col) Expr {
 	}
 }
 
-// Str is a string literal. It refuses anything it cannot render identically on
-// every supported dialect: a string containing a single quote, a backslash or a
-// control character panics at declaration.
-//
-// This is deliberate. MySQL's escaping depends on NO_BACKSLASH_ESCAPES and the
-// connection charset, so a portable contract cannot be "escape correctly" — it
-// can only be "accept what needs no escaping". That covers every literal a
-// declaration has needed in practice (the empty string, simple defaults).
-// Anything richer belongs in [SQL], where the author owns the text.
-func Str(s string) Expr {
-	return Expr{render: func(d Dialect) string {
-		// The dialect quotes when it can say how. Only it knows whether a
-		// backslash is an escape, what a NUL byte does, and which delimiters
-		// are correct — so this asks rather than guesses.
-		if q, ok := SupportsStringQuoting(d); ok {
-			lit, err := q.QuoteString(s)
-			if err != nil {
-				panic(errs.Fatal{Op: "dao.Str",
-					Rule:   "the dialect cannot represent this string as a literal",
-					Detail: err.Error()})
-			}
-			return lit
-		}
-		// No capability: refuse exactly what has no portable inline escaping,
-		// rather than inherit a guess. This is the pre-capability behaviour and
-		// stays the answer for a dialect that has not stated its rule.
-		for i := 0; i < len(s); i++ {
-			switch b := s[i]; {
-			case b == '\'':
-				panic(errs.Fatal{Op: "dao.Str",
-					Rule:   "string contains a single quote and " + d.Name() + " has not stated its quoting rule",
-					Detail: "use dao.SQL, or give the dialect a QuoteString"})
-			case b == '\\':
-				panic(errs.Fatal{Op: "dao.Str",
-					Rule:   "string contains a backslash and " + d.Name() + " has not stated its quoting rule",
-					Detail: "use dao.SQL, or give the dialect a QuoteString"})
-			case b < 0x20 || b == 0x7f:
-				panic(errs.Fatal{Op: "dao.Str",
-					Rule:   "string contains a control character and " + d.Name() + " has not stated its quoting rule",
-					Detail: "use dao.SQL, or give the dialect a QuoteString"})
-			}
-		}
-		return "'" + s + "'"
-	}}
-}
-
 // Int is an integer literal, rendered in decimal. Floats are deliberately
 // absent: their text form is precision-sensitive and non-finite values have no
 // portable spelling. NULL is absent because COALESCE(x, NULL) is a no-op.
@@ -134,51 +88,37 @@ func SQL(text string) Expr {
 	return Expr{render: func(Dialect) string { return text }}
 }
 
-// Alt is what [Coalesce] accepts as its fallback: an [Expr], or a string or
-// integer literal. Anything else is a COMPILE error, not a runtime panic.
+// Coalesce renders COALESCE(e, alt). Both sides are [Expr], so both are
+// rendered by the connection's dialect and neither is text this function had to
+// quote.
 //
-// The terms are deliberately NOT ~string / ~int. A tilde term would admit a
-// NAMED type — a field enum is ~string — which satisfies the constraint but
-// does not match `case string` in the routing below; the literal would never be
-// built and the zero Expr's nil renderer would fail at statement time.
-// Excluding tildes closes that hole and additionally makes
-// Coalesce(T(t, c), ArtistName) — a column enum where a VALUE belongs — stop
-// compiling.
-type Alt interface {
-	Expr | string | int | int64
-}
-
-// lit routes an [Alt] to an Expr through the closed literal set.
+// THERE IS NO STRING OVERLOAD, deliberately. An earlier version accepted a bare
+// Go string (and an int) through a type-constrained fallback, which read well —
+// Coalesce(T(t, c), "n/a") — but it meant this package had to turn a string into
+// a SQL literal, and there is no portable way to do that: MySQL's escaping
+// depends on NO_BACKSLASH_ESCAPES and the connection charset, both session
+// state, while a declaration is written before any connection exists. The old
+// helper resolved that by PANICKING on anything needing an escape, which made it
+// correct only for the strings a caller could safely have written by hand.
 //
-// INVARIANT: the terms of Alt and the cases here are kept in lockstep. A term
-// with no case yields a zero Expr, i.e. a nil renderer — expr_test.go asserts a
-// non-nil renderer for every term so a future widening fails a test instead of
-// a caller.
-func lit[A Alt](alt A) Expr {
-	switch v := any(alt).(type) {
-	case Expr:
-		return v.mustSet("Coalesce")
-	case string:
-		return Str(v)
-	case int:
-		return Int(int64(v))
-	case int64:
-		return Int(v)
-	}
-	panic("dao: unreachable — an Alt term has no lit case")
-}
-
-// Coalesce renders COALESCE(e, alt). alt is used directly when it is an Expr;
-// otherwise it is a literal routed through the same closed set and the same
-// refusal rules, so Coalesce(T(t, c), "") reads as intended and cannot produce
-// a literal this package would not render identically everywhere.
+// So a literal fallback is spelled with the constructor that fits it: [Int] for
+// a number, which has one portable spelling and cannot render anything but
+// digits, or [SQL] for anything else, where the text is visibly the author's.
 //
-// The result carries no write identity: a COALESCE has no column to write to.
-func Coalesce[A Alt](e Expr, alt A) Expr {
+//	Coalesce(T(t, c), Int(0))
+//	Coalesce(T(t, c), SQL("''"))
+//
+// Values that are DATA rather than declaration belong in a predicate, where they
+// travel as bind parameters and the driver escapes them — see [Eq] and friends.
+// Nothing on this path needs to be inline.
+//
+// A Coalesce carries no write identity: a writable field declared with one must
+// set ReadOnly or WriteColumn.
+func Coalesce(e, alt Expr) Expr {
 	e.mustSet("Coalesce")
-	a := lit(alt)
+	alt.mustSet("Coalesce")
 	return Expr{render: func(d Dialect) string {
-		return "COALESCE(" + e.render(d) + ", " + a.render(d) + ")"
+		return "COALESCE(" + e.render(d) + ", " + alt.render(d) + ")"
 	}}
 }
 

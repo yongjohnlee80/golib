@@ -169,7 +169,7 @@ func TestExpr_CoalesceOverOptionalJoin(t *testing.T) {
 		mName:  {Expr: dao.T(tableMember, mName), Scan: func(r *mrow) any { return &r.Name }, Value: func(r *mrow) any { return r.Name }},
 		mGrpID: {Expr: dao.T(tableMember, mGrpID), Value: func(r *mrow) any { return nil }},
 		mGroup: {
-			Expr:     dao.Coalesce(dao.T(tableGrp, mName), "«none»"),
+			Expr:     dao.Coalesce(dao.T(tableGrp, mName), dao.SQL("'«none»'")),
 			Join:     dao.JoinKey(tableGrp),
 			ReadOnly: true,
 			Scan:     func(r *mrow) any { return &r.Group },

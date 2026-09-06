@@ -25,7 +25,7 @@ type Field[R any] struct {
 	// renders it once against the connection's dialect and stores the result as
 	// Column, and — unless WriteColumn is set explicitly — takes the raw write
 	// identity from it, so everything downstream is byte-identical to a
-	// hand-written declaration. Build one with [T], [C], [Coalesce] and friends.
+	// hand-written declaration. Build one with [T], [C], [Int], [SQL] and friends.
 	//
 	// Setting both Column and Expr is a declaration error: [New] panics.
 	Expr Expr
