@@ -680,7 +680,29 @@ func TestPanicBudget_UnreviewedIsFrozen(t *testing.T) {
 	inv := loadInventory(t)
 	legacy := loadLegacy(t)
 	if len(legacy) == 0 {
-		t.Fatal("the frozen legacy set is empty — the freeze is not observing anything")
+		// The backlog is gone: every panic site has been read. The freeze was
+		// never the goal — it was scaffolding that stopped the unread set
+		// growing while it was being worked down, and an empty set means it has
+		// done its job.
+		//
+		// So the rule gets STRONGER rather than being switched off. "Only these
+		// listed sites may be unreviewed" becomes "no site may be unreviewed",
+		// which is the same constraint with the exception removed. This branch
+		// asserts that, and it is not a weaker check: it fails on any unreviewed
+		// row at all, where the branch below tolerates the listed ones.
+		var unread []string
+		for k, rec := range inv {
+			if rec.Cat == catUnreviewed {
+				unread = append(unread, strings.ReplaceAll(k, "\t", " "))
+			}
+		}
+		sort.Strings(unread)
+		if len(unread) > 0 {
+			t.Fatalf("the frozen legacy set is empty, so NO site may be unreviewed, "+
+				"but %d still are:\n  %s", len(unread), strings.Join(unread, "\n  "))
+		}
+		t.Logf("every panic site is classified; the unreviewed backlog is closed")
+		return
 	}
 
 	var intruders []string
