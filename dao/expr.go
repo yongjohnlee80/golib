@@ -83,11 +83,17 @@ func Str(s string) Expr {
 	for i := 0; i < len(s); i++ {
 		switch b := s[i]; {
 		case b == '\'':
-			panic("dao.Str: string contains a single quote, which has no portable escaping (use dao.SQL)")
+			panic(errs.Fatal{Op: "dao.Str",
+				Rule:   "string contains a single quote, which has no portable escaping",
+				Detail: "use dao.SQL, or bind the value instead of inlining it"})
 		case b == '\\':
-			panic("dao.Str: string contains a backslash, whose meaning depends on the MySQL escaping mode (use dao.SQL)")
+			panic(errs.Fatal{Op: "dao.Str",
+				Rule:   "string contains a backslash, whose meaning depends on the MySQL escaping mode",
+				Detail: "use dao.SQL, or bind the value instead of inlining it"})
 		case b < 0x20 || b == 0x7f:
-			panic("dao.Str: string contains a control character (use dao.SQL)")
+			panic(errs.Fatal{Op: "dao.Str",
+				Rule:   "string contains a control character",
+				Detail: "use dao.SQL, or bind the value instead of inlining it"})
 		}
 	}
 	lit := "'" + s + "'"

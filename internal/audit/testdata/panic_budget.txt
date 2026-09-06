@@ -40,9 +40,9 @@ auth/sshkey/sshkey.go	New	4d5f726301e8aca7	1	construction	sshkey.New: a Verifier
 auth/sshkey/sshkey.go	New	bc5ed94243307511	1	construction	sshkey.New: a ChallengeStore is required. Reached while the value is built, from an argument written at the call site, with no recover above it
 dao/batch.go	batchWriter.AddRow	b4c7125028a75004	1	invariant	AddRow on a BatchWriter built without a row extractor is programmer error; no data input reaches it
 dao/expr.go	Expr.mustSet	22c07c6f2d7a7693	1	invariant	mustSet rejects a ZERO Expr — a caller passing Expr{} is programmer error, not data
-dao/expr.go	Str	416ab45c6e4aa48d	1	violation	LATENT: Str panics on a single quote in a CALLER-SUPPLIED string, reachable with a valid type via lit <- Coalesce. Coalesce has ZERO production callers in golib, autodb or either ddex repo, and dao/expr_test.go:286 pins this panic as REQUIRED behaviour — so changing it is an API decision (sweep G3; Johno 2026-09-06: leave as-is), not a fix.
-dao/expr.go	Str	31987f88f80ef74c	1	violation	LATENT: Str panics on a backslash in a caller-supplied string; same path, same evidence as the single-quote site.
-dao/expr.go	Str	4a1e375b2f9d1188	1	violation	LATENT: Str panics on a control character in a caller-supplied string; same path, same evidence as the single-quote site.
+dao/expr.go	Str	1a95be56c0923027	1	violation	LATENT: Str panics on a single quote in a CALLER-SUPPLIED string, reachable with a valid type via lit <- Coalesce. Coalesce has ZERO production callers in golib, autodb or either ddex repo, and dao/expr_test.go:286 pins this panic as REQUIRED behaviour — so changing it is an API decision (sweep G3; Johno 2026-09-06: leave as-is), not a fix.
+dao/expr.go	Str	ae91812ee2444c7e	1	violation	LATENT: Str panics on a backslash in a caller-supplied string; same path, same evidence as the single-quote site.
+dao/expr.go	Str	d2b532ddf6f0af19	1	violation	LATENT: Str panics on a control character in a caller-supplied string; same path, same evidence as the single-quote site.
 dao/expr.go	lit	35e2931804753617	1	unreachable	lit's switch covers every term of the closed Alt constraint; the panic guards a future widening
 dao/schema.go	New	83bd0006c349d7de	1	construction	dao.New: nil DataConn — validated before the Schema exists; nothing is running yet
 dao/schema.go	New	9abdc415ab30493a	1	construction	dao.New: Table is required — construction-time validation
