@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// TreeNode is one explorer entry (ADR-0008 §2.2). Children are unknown
+// TreeNode is one explorer entry. Children are unknown
 // until the node is expanded: the Tree publishes ExpandRequestEvent with a
 // generation token and the application answers with SetChildren or
 // SetLoadError carrying that token — every outcome settles the spinner,
@@ -269,7 +269,7 @@ type CollapseEvent struct {
 	Node  *TreeNode
 }
 
-// Tree is the lazy expandable hierarchy (ADR-0008 §2.2): flattened
+// Tree is the lazy expandable hierarchy: flattened
 // virtualized rows over owner-stamped nodes, vim-style navigation
 // (j/k/l/h + arrows + Enter), spinner/error badges, and the generation
 // lifecycle above.
@@ -356,7 +356,7 @@ func (t *Tree) adopt(n *TreeNode) {
 // generation on the old roots is invalidated by the release.
 func (t *Tree) SetRoots(roots ...*TreeNode) {
 	preflightForest(roots, nil)
-	// AFTER preflight, so a rejected call leaves the Tree untouched (lector r3).
+	// AFTER preflight, so a rejected call leaves the Tree untouched.
 	// Not a correctness fix in itself — lastPressNode keeps its node alive, so Go
 	// cannot allocate a different node at that address and a replacement pointer
 	// already refuses to pair. Cleared so a discarded tree is not retained.
@@ -674,7 +674,7 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 
 	// A SECOND press on the same NODE is activation, on the same channel ENTER
 	// already uses — so a host that handles ActivateEvent gets double-click for
-	// free (ADR-0010 §2.5).
+	// free.
 	//
 	// It fires for BRANCHES as well as leaves, and deliberately does NOT also
 	// toggle expansion: the Tree cannot know whether a branch is activatable.
@@ -771,7 +771,7 @@ func (t *Tree) Render(s tui.Surface) {
 			st = r.node.st.Inherit(st)
 		}
 		// The cursor row paints regardless of focus — same contract as
-		// List (ADR-0008 §2.2 reuses the List viewport arithmetic).
+		// List, reusing the List viewport arithmetic.
 		// Composites routinely hold focus in a wrapper and forward keys,
 		// and a cursor that vanishes with focus reads as "no cursor".
 		if idx == t.cursor {

@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// ListSource is the data seam List renders through (ADR-0007 §2.4, rev 1).
+// ListSource is the data seam List renders through.
 // It is v1 API: the shape a windowed/lazy source implements later WITHOUT
 // List needing a v2. Sources are consulted only on the loop goroutine.
 //
@@ -53,7 +53,7 @@ func (s sliceSource[T]) Item(i int) T { return s[i] }
 // applies: call List.RefreshSource on the loop before anything else observes it.
 func SliceSource[T any](items []T) ListSource[T] { return sliceSource[T](items) }
 
-// List renders selectable rows through a ListSource (ADR-0007 §2.4). The
+// List renders selectable rows through a ListSource. The
 // rendering path is virtualization-shaped: Item(i) is called only for rows
 // intersecting the viewport, and Len() once per render pass.
 //
@@ -76,7 +76,7 @@ type List[T any] struct {
 	//
 	// An index identifies a row only WITHIN ONE SOURCE EPOCH. Replacing or
 	// reordering the source makes the same integer mean something else, so it is
-	// cleared to noPress on every source change and starts there (lector r2).
+	// cleared to noPress on every source change and starts there.
 	lastPressIdx int
 	w, h         int
 
@@ -203,7 +203,7 @@ func (l *List[T]) SetSource(src ListSource[T]) {
 	clear(l.sel)
 	// A new source is a new epoch: the retained press index would otherwise let a
 	// single click on the NEW row N activate, because the OLD row N had been
-	// clicked (lector r2's probe).
+	// clicked.
 	l.lastPressIdx = noPress
 	l.MarkDirty()
 }
@@ -374,13 +374,12 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 				return true
 			}
 			l.moveCursor(idx)
-			// Timing, cell and target identity come from the App (ADR-0010 §2.5).
+			// Timing, cell and target identity come from the App.
 			// LOGICAL ROW identity stays here, because only List knows it: the
 			// App's continuity is an absolute CELL, and a viewport that scrolls
 			// between the two presses maps the same cell to a different row. The
 			// old per-widget detection compared logical rows and refused that
-			// pair; dropping the comparison silently activated the wrong row
-			// (lector r1 finding 2).
+			// pair; dropping the comparison silently activated the wrong row.
 			//
 			// EXACTLY 2, not >= 2: three presses would otherwise activate twice,
 			// on counts 2 and 3, while "double-click = Enter" means one
@@ -405,7 +404,7 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 }
 
 // Layout is greedy on both axes. It uses the cached count — Len() is read
-// once per render pass (ADR-0007 §5.11), not here.
+// once per render pass, not here.
 func (l *List[T]) Layout(c tui.Constraints) tui.Size {
 	l.w = boundedMax(c.MaxW, max(c.MinW, 1))
 	l.h = boundedMax(c.MaxH, max(c.MinH, 1))

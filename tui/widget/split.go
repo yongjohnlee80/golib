@@ -18,7 +18,7 @@ const (
 	Vertical
 )
 
-// Split is the two-pane interactive splitter (ADR-0007 §2.5): a one-cell
+// Split is the two-pane interactive splitter: a one-cell
 // divider whose position follows a ratio, adjustable by Alt+arrows when
 // either pane holds focus (the lazygit resize precedent, generalized) and
 // by mouse drag on the divider. Min sizes clamp; the integer division is
@@ -128,7 +128,7 @@ type SplitZoomEvent struct {
 // Zoomed reports the current zoom state.
 func (s *Split) Zoomed() SplitPane { return s.zoomed }
 
-// Zoom gives one pane the full rect (ADR-0008 §2.3): the other pane is not
+// Zoom gives one pane the full rect: the other pane is not
 // laid out, rendered, hit-tested, or focusable, and the divider disappears
 // (divider interaction is inert while zoomed and any drag is cancelled).
 // If focus currently lives inside the pane being hidden, it transfers to

@@ -8,7 +8,7 @@ import (
 )
 
 // StatusBar is a height-1, dock-bottom chrome line with left/center/right
-// segments (ADR-0007 §2.5). Segments truncate center-first, then left, then
+// segments. Segments truncate center-first, then left, then
 // right — the rightmost content (usually keybinding hints) survives longest,
 // the lazygit convention. Not focusable; consumes nothing.
 type StatusBar struct {

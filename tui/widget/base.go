@@ -3,7 +3,7 @@ package widget
 import "github.com/yongjohnlee80/golib/tui"
 
 // Base provides NodeID/Context plumbing, dirty-marking, and default no-op
-// event behavior (ADR-0007 §2.1). Widgets embed it by value.
+// event behavior. Widgets embed it by value.
 //
 // What Go embedding gives us: method promotion (a widget that doesn't
 // override HandleEvent satisfies the event half of tui.Component through
@@ -17,7 +17,7 @@ import "github.com/yongjohnlee80/golib/tui"
 // into the contract:
 //
 //   - Base never calls "overridable" methods. Template-method patterns are
-//     forbidden; the runtime (ADR-0004) calls the OUTER component's interface
+//     forbidden; the runtime calls the OUTER component's interface
 //     methods directly, so overriding works at the interface boundary — the
 //     only boundary Go respects.
 //   - Widgets that override Init MUST call b.Base.Init(ctx) first (the
@@ -35,7 +35,7 @@ type Base struct {
 }
 
 // Init stores the mount context. Widgets overriding Init must chain to it
-// first. Re-entrant across remounts of the same widget value (ADR-0004).
+// first. Re-entrant across remounts of the same widget value.
 func (b *Base) Init(ctx *tui.Context) { b.ctx = ctx }
 
 // Context returns the mount context (nil before the first mount).
@@ -58,7 +58,7 @@ func (b *Base) MarkDirty() {
 	}
 }
 
-// RequestLayout signals the widget's size may have changed (ADR-0004 name).
+// RequestLayout signals the widget's size may have changed.
 // Safe to call before mount (no-op).
 func (b *Base) RequestLayout() {
 	if b.ctx != nil {
@@ -118,7 +118,7 @@ type childLister interface{ listChildren() []tui.Component }
 
 // focusFirst walks c's subtree in document order and focuses the first
 // package widget that is Focusable and accepts focus. Used by Float to seed
-// focus into a freshly shown modal (ADR-0007 §2.5). Returns whether focus
+// focus into a freshly shown modal. Returns whether focus
 // landed.
 func focusFirst(c tui.Component) bool {
 	if f, ok := c.(tui.Focusable); ok && f.AcceptsFocus() {

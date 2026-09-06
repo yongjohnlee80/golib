@@ -14,7 +14,10 @@
 # whole-tree grep would report. Migrating test comments is tracked
 # separately as its own open item.
 #
-# total: 642 lines in 141 files
+# The total is NOT recorded here. It is derived from the lines below, and a
+# stored copy conflicts every time two migration rungs run in parallel — which
+# it did, on a line neither rung had a real disagreement about. The budget test
+# prints the total when it runs; that is the single place it is computed.
 2 auth/audit.go
 5 auth/auth.go
 2 auth/authhttp/authhttp.go
@@ -134,25 +137,22 @@
 16 tui/web/session.go
 14 tui/web/sso.go
 2 tui/widget/ansi.go
-9 tui/widget/base.go
-7 tui/widget/box.go
-5 tui/widget/bufferview.go
-5 tui/widget/doc.go
-19 tui/widget/editor.go
-3 tui/widget/editor_keymap.go
-2 tui/widget/events.go
-4 tui/widget/float.go
-11 tui/widget/list.go
-2 tui/widget/overlay.go
-3 tui/widget/progress.go
-5 tui/widget/select.go
-4 tui/widget/split.go
-1 tui/widget/statusbar.go
+4 tui/widget/base.go
+4 tui/widget/box.go
+3 tui/widget/bufferview.go
+2 tui/widget/doc.go
+8 tui/widget/editor.go
+2 tui/widget/editor_keymap.go
+2 tui/widget/float.go
+4 tui/widget/list.go
+1 tui/widget/overlay.go
+1 tui/widget/progress.go
+4 tui/widget/select.go
+2 tui/widget/split.go
 2 tui/widget/table.go
-3 tui/widget/tabs.go
-3 tui/widget/text.go
-4 tui/widget/textarea.go
-1 tui/widget/textbuffer.go
-5 tui/widget/textinput.go
-2 tui/widget/textutil.go
-9 tui/widget/tree.go
+2 tui/widget/tabs.go
+1 tui/widget/text.go
+2 tui/widget/textarea.go
+1 tui/widget/textinput.go
+1 tui/widget/textutil.go
+4 tui/widget/tree.go

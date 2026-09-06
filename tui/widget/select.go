@@ -13,7 +13,7 @@ type SelectItem[T any] struct {
 	Value T
 }
 
-// Select is the dropdown (ADR-0007 §2.4). Closed, it renders as a one-line
+// Select is the dropdown. Closed, it renders as a one-line
 // field (current label + "▾"); Enter/Space/Down opens a floating option
 // list on the overlay layer with a focus trap (both ADR-0004 mechanisms,
 // realized by OverlayHost). Esc closes without change and restores the

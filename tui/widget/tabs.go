@@ -5,7 +5,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Tabs is the tab bar + content switcher (ADR-0007 §2.5): a one-row bar
+// Tabs is the tab bar + content switcher: a one-row bar
 // with the active content below. Only the active child is mounted, laid
 // out, and rendered; switching unmounts the old child unless
 // WithKeepMounted(true) (which preserves child state — and live

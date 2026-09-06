@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Editor is the vim-modal multi-line editor (ADR-0008 §2.1): the textBuffer
+// Editor is the vim-modal multi-line editor: the textBuffer
 // substrate under a Normal/Insert/Visual state machine with a data-driven
 // keymap, a single unnamed register, bounded undo, and a configurable
 // escape chord. Unbound keys in Normal/Visual mode — Space included —
@@ -99,7 +99,7 @@ func WithInitialText(s string) EditorOption {
 
 // WithEscapeChord sets the Insert-mode escape chord (default "jk"): exactly
 // two unmodified printable runes, or "" to disable (Esc alone). Anything
-// else panics (ADR-0008 §2.1).
+// else panics.
 func WithEscapeChord(chord string) EditorOption {
 	rs := []rune(chord)
 	if chord != "" && len(rs) != 2 {
@@ -159,7 +159,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 // Value returns the buffer joined with newlines.
 func (e *Editor) Value() string { return e.value() }
 
-// SetValue is a document-boundary operation (ADR-0008 §2.1): pending input
+// SetValue is a document-boundary operation: pending input
 // settles, the editor returns to Normal mode, cursor and command state
 // reset, content is replaced, and undo/redo history is CLEARED. The
 // register is preserved.
@@ -186,7 +186,7 @@ func (e *Editor) ReadOnly() bool { return e.readOnly }
 // selection, yank, and search all work; every mutating action (insert
 // entry, delete, paste, undo/redo, typed text) is refused, and an active
 // Insert session returns to Normal. Hosts use it for panels the user
-// navigates but must not change (ADR-0008 §2.1).
+// navigates but must not change.
 func (e *Editor) SetReadOnly(v bool) {
 	if e.readOnly == v {
 		return
@@ -370,8 +370,8 @@ func (e *Editor) edited() {
 
 // --- escape chord ---------------------------------------------------------
 
-// settlePendingRune commits a held first chord rune as an insertion
-// (ADR-0008 §2.1: every non-chord input settles the pending rune first).
+// settlePendingRune commits a held first chord rune as an insertion: every
+// non-chord input settles the pending rune first.
 func (e *Editor) settlePendingRune() {
 	if e.pendingRune == 0 {
 		return
@@ -858,7 +858,7 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 			// Focus loss settles the chord rune, ends the Insert undo
 			// group (mode unchanged), and clears EVERY partial command:
 			// pending count and the double-key prefix must not survive a
-			// focus round-trip (ADR-0008 §2.1, r2).
+			// focus round-trip.
 			e.settlePendingRune()
 			e.groupOpen = false
 			e.count = 0
@@ -894,12 +894,12 @@ func (e *Editor) handleKey(k tui.KeyEvent) bool {
 }
 
 // handleInsertKey: structural Insert handling (text, chord, Esc, editing
-// keys). Tab INSERTS a tab in Insert mode (ADR-0008 §2.1); traversal
+// keys). Tab INSERTS a tab in Insert mode; traversal
 // belongs to Normal mode, where Tab bubbles.
 func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 	isText := k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
 
-	// Chord state machine first (ADR-0008 §2.1 — dispatch-ordered).
+	// Chord state machine first.
 	if e.pendingRune != 0 {
 		if isText && []rune(k.Text)[0] == e.chord[1] {
 			// Second chord rune dispatched before the tick: escape.
@@ -926,7 +926,7 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 
 	switch k.Code {
 	case tui.KeyTab:
-		// Insert mode consumes Tab as text (ADR-0008 §2.1); traversal
+		// Insert mode consumes Tab as text; traversal
 		// belongs to Normal mode, where Tab bubbles.
 		e.beginGroup()
 		e.insertText("\t")
@@ -1212,7 +1212,7 @@ func (e *Editor) Cursor() (int, int, bool) {
 	return x, y, true
 }
 
-// handleMouse implements the pointer contract (ADR-0010 §2.3).
+// handleMouse implements the pointer contract.
 //
 // A press is a COMMAND BOUNDARY, not merely a cursor move, because Editor holds
 // modal state that a click has to resolve one way or the other. The wheel scrolls
@@ -1299,7 +1299,7 @@ func (e *Editor) pressAt(x, y int) bool {
 //
 // Clamping: past end-of-line lands on the last column, below the last painted
 // line lands on the last buffer line. A wide grapheme resolves to the cell it
-// STARTS at (ADR-0003), which is why the column walk accumulates measured widths
+// STARTS at, which is why the column walk accumulates measured widths
 // instead of counting cells.
 func (e *Editor) posAt(x, y int) (ln, col int) {
 	if len(e.lines) == 0 {

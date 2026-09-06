@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Box is the base container (ADR-0007 §2.2): a bordered single-child panel
+// Box is the base container: a bordered single-child panel
 // where title (top border) and status line (bottom border) are
 // configuration, not custom drawing. Every widget that reads as a "panel"
 // (List, BufferView, TextArea, …) is used wrapped in a Box — one chrome
@@ -164,7 +164,7 @@ func (x *Box) Init(ctx *tui.Context) {
 func (x *Box) AcceptsFocus() bool { return x.focusable }
 
 // Add sets the single child (Container contract). A Box wraps exactly one
-// child (ADR-0007 Q1); adding to an occupied Box panics.
+// child; adding to an occupied Box panics.
 func (x *Box) Add(children ...tui.Component) {
 	for _, c := range children {
 		if c == nil {
@@ -288,7 +288,7 @@ func (x *Box) paintStyle() style.Style {
 }
 
 // Render paints border, title, status, and the interior background. The
-// child paints itself afterwards on its own sub-Surface (ADR-0004).
+// child paints itself afterwards on its own sub-Surface.
 func (x *Box) Render(s tui.Surface) {
 	sz := s.Size()
 	st := x.paintStyle()

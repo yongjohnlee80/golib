@@ -6,7 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// EditorMode is the Editor's modal state (ADR-0008 §2.1).
+// EditorMode is the Editor's modal state.
 type EditorMode uint8
 
 const (

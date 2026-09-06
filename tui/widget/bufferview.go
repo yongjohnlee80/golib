@@ -14,7 +14,7 @@ import (
 // unmounted (or never mounted).
 var ErrClosed = errors.New("widget: buffer view closed")
 
-// BufferView is the lazygit-class log/pager panel (ADR-0007 §2.4): an
+// BufferView is the lazygit-class log/pager panel: an
 // append-oriented, ring-bounded line buffer with scrollback, follow-tail,
 // soft wrapping, and a bounded SGR-only ANSI interpreter feeding styled
 // cells.
@@ -122,7 +122,7 @@ func (v *BufferView) Init(ctx *tui.Context) {
 // remains loop-owned. Contract: safe from any goroutine; bounded pending
 // bytes (writes block when the loop lags); ordered delivery; ErrClosed
 // after the view unmounts. Bytes are handed to the loop via the program
-// lane (ADR-0005); parsing and cell conversion happen on the loop
+// lane; parsing and cell conversion happen on the loop
 // goroutine.
 //
 // Do not write from the loop goroutine itself while the budget is
