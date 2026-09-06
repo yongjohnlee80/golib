@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 12)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 13)** (2026-09-06, jarvis).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -610,12 +610,29 @@ behaving differently depending on how input was supplied.
 21. **A present terminator is unaffected by the boundary** — driven under both
     values, asserting an identical `n`: input that already decides itself must
     not lex differently because of how it arrived.
-22. **the conformance suite is shipped and detects what it claims** — proven
-    against four decoys, each shown failing: a stateful form that answers
-    differently on its second call, a `Matched` of width zero, an `ErrNeedMore`
-    at `EndOfInput`, and an `End` whose terminator moves with the window. The
-    green baseline comes first: all six generic forms pass it, because a suite
-    that fails everything detects nothing.
+22. **the conformance suite enforces the WHOLE matrix it documents, and is
+    proven to** — driven at **every prefix of the remainder under both
+    boundaries**, not once on the whole of it, because a form is free to
+    misbehave on every shorter window and that is where a stream spends its
+    time. Per prefix:
+
+    | | permitted | forbidden |
+    |---|---|---|
+    | `MoreInput` | `(n, nil)` with `0 ≤ n ≤ len(window)`, or exactly `(0, ErrNeedMore)` | any terminal or untyped error — the bytes that would settle it may still arrive |
+    | `EndOfInput` | `(n, nil)` in range, or `(0, *UnterminatedError)` | `ErrNeedMore`, an untyped error, or a non-zero `n` beside one |
+
+    Where `MoreInput` succeeds, `EndOfInput` on the **same window** must give
+    the identical `n`. Successful `n` is **not** compared across prefixes at
+    `EndOfInput`: a form that may end at EOF completes every prefix at its own
+    length, and that is correct rather than drift.
+
+    Ten decoys, each breaking exactly ONE rule and each shown failing — a decoy
+    that breaks two lets each check hide behind the other and neither gets
+    proven. The green baseline comes first: all six generic forms pass, because
+    a suite that fails everything detects nothing. Every check carries a
+    mutation control; the one whose violation is also caught by a neighbouring
+    check is pinned by asserting the **diagnosis**, since being detected under
+    the wrong name sends the author to fix the wrong thing.
 23. **A multi-byte closer is not ambiguous once a visible byte disagrees** —
     with doubling enabled, deferring requires what follows the closer to be a
     PROPER PREFIX of it (empty included). Testing only "fewer bytes remain than

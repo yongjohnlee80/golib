@@ -117,54 +117,78 @@ func checkEnd(t reporter, f parse.Form, src string) {
 	opener := []byte(src[:openN])
 	rest := src[openN:]
 
-	// ErrNeedMore at EndOfInput asks for bytes that cannot exist. Honouring it
-	// loops forever; ignoring it silently picks an answer only the form knows.
-	if _, err := f.End([]byte(rest), opener, parse.EndOfInput); errors.Is(err, parse.ErrNeedMore) {
-		t.Errorf("End(%q, EndOfInput) = ErrNeedMore: there is no more input to give", rest)
-	}
-
-	// WHERE A CONSTRUCT ENDS DOES NOT DEPEND ON HOW MUCH WAS READ PAST IT.
-	//
-	// Stated as "every window that ANSWERS must agree", not "every window from
-	// the terminator onwards must answer". Deferring is always legitimate on a
-	// window that may still grow — a doubling quote whose closer is the last
-	// byte cannot yet tell a terminator from the first half of an escaped pair,
-	// and demanding an answer there would be demanding the coin flip this
-	// design exists to avoid. What is NOT legitimate is two different answers.
+	// EVERY PREFIX, BOTH BOUNDARIES. Calling EndOfInput only for the whole
+	// remainder leaves a form free to misbehave on every shorter window, which
+	// is where a stream actually spends its time.
 	answered := false
 	var want, wantAt int
-	for i := 0; i <= len(rest); i++ {
-		n, err := f.End([]byte(rest[:i]), opener, parse.MoreInput)
-		if err != nil {
-			if !errors.Is(err, parse.ErrNeedMore) {
-				var unterm *parse.UnterminatedError
-				if !errors.As(err, &unterm) {
-					t.Errorf("End(%q) = %v: a Form may only report ErrNeedMore or an "+
-						"unterminated construct", rest[:i], err)
-				}
-			}
-			continue
-		}
-		if n < 0 || n > i {
-			t.Errorf("End(%q) = %d, outside [0, %d] — a form may not claim bytes it was "+
-				"not shown", rest[:i], n, i)
-			continue
-		}
-		if !answered {
-			answered, want, wantAt = true, n, i
-			continue
-		}
-		if n != want {
-			t.Errorf("End(%q) = %d but End(%q) = %d — where a construct ends cannot depend "+
-				"on how much was read past its terminator", rest[:i], n, rest[:wantAt], want)
-		}
-	}
 
-	// And the boundary must not move a terminator that is present.
-	if full, err := f.End([]byte(rest), opener, parse.MoreInput); err == nil {
-		if n, err := f.End([]byte(rest), opener, parse.EndOfInput); err != nil || n != full {
+	for i := 0; i <= len(rest); i++ {
+		window := []byte(rest[:i])
+
+		// --- MoreInput -----------------------------------------------------
+		// Two legitimate answers and no third: a terminator that is present,
+		// or a request for the bytes that would settle it. A terminal error
+		// here is a form giving up on input that has not arrived.
+		n, err := f.End(window, opener, parse.MoreInput)
+		switch {
+		case err == nil:
+			if n < 0 || n > i {
+				t.Errorf("End(%q, MoreInput) = %d, outside [0, %d] — a form may not claim "+
+					"bytes it was not shown", rest[:i], n, i)
+			} else if !answered {
+				answered, want, wantAt = true, n, i
+			} else if n != want {
+				t.Errorf("End(%q, MoreInput) = %d but End(%q, MoreInput) = %d — where a "+
+					"construct ends cannot depend on how much was read past its terminator",
+					rest[:i], n, rest[:wantAt], want)
+			}
+		case errors.Is(err, parse.ErrNeedMore):
+			if n != 0 {
+				t.Errorf("End(%q, MoreInput) = (%d, ErrNeedMore): n must be 0 when no "+
+					"decision was reached — a count here claims bytes the form just said "+
+					"it could not judge", rest[:i], n)
+			}
+		default:
+			t.Errorf("End(%q, MoreInput) = %v: the only refusal available while more input "+
+				"may arrive is ErrNeedMore. Reporting the construct terminal here decides "+
+				"against bytes that have not been read yet", rest[:i], err)
+		}
+
+		// --- EndOfInput ----------------------------------------------------
+		// Success, or a typed unterminated report. Never a request for input.
+		//
+		// The successful n is NOT compared across prefixes: a form that may end
+		// at EOF completes every prefix, each at its own length, and that is
+		// correct rather than drift.
+		eofN, eofErr := f.End(window, opener, parse.EndOfInput)
+		switch {
+		case eofErr == nil:
+			if eofN < 0 || eofN > i {
+				t.Errorf("End(%q, EndOfInput) = %d, outside [0, %d]", rest[:i], eofN, i)
+			}
+		case errors.Is(eofErr, parse.ErrNeedMore):
+			t.Errorf("End(%q, EndOfInput) = ErrNeedMore: there is no more input to give, so "+
+				"honouring it loops forever and ignoring it picks an answer only the form "+
+				"knows", rest[:i])
+		default:
+			var unterm *parse.UnterminatedError
+			if !errors.As(eofErr, &unterm) {
+				t.Errorf("End(%q, EndOfInput) = %v: a construct that cannot close at end of "+
+					"input reports *parse.UnterminatedError, so a caller can name what was "+
+					"left open", rest[:i], eofErr)
+			} else if eofN != 0 {
+				t.Errorf("End(%q, EndOfInput) = (%d, %v): n must be 0 alongside an error",
+					rest[:i], eofN, eofErr)
+			}
+		}
+
+		// --- the two agree where the bytes decide ---------------------------
+		// SAME WINDOW, so this compares the boundary and nothing else.
+		if err == nil && (eofErr != nil || eofN != n) {
 			t.Errorf("End(%q) = %d at MoreInput but (%d, %v) at EndOfInput — a terminator "+
-				"that is present decides the answer, not the boundary", rest, full, n, err)
+				"that is present decides the answer, not the boundary",
+				rest[:i], n, eofN, eofErr)
 		}
 	}
 }

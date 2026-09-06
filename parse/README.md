@@ -77,7 +77,13 @@ func TestMyForm(t *testing.T) {
 }
 ```
 
-`parsetest` is one package out so the core does not import `testing`. It checks
-the protocol, not the meaning: a form that recognises the wrong thing
+`parsetest` is one package out so the core does not import `testing`. It drives
+every prefix of the input under **both** boundaries and enforces the full
+answer matrix — under `MoreInput` the only refusal is `ErrNeedMore` with `n ==
+0`, since a terminal error there decides against bytes that have not arrived;
+at `EndOfInput` an unterminated construct must be reported as
+`*parse.UnterminatedError` so a caller can name what was left open.
+
+It checks the protocol, not the meaning: a form that recognises the wrong thing
 consistently will pass, which is what your own tests are for. Its own suite
-proves it fails on four decoys before it is trusted to pass anything.
+proves it fails on ten decoys before it is trusted to pass anything.
