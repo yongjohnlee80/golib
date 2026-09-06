@@ -59,10 +59,10 @@ func TestLayered_SiblingsAreNotInterchangeable(t *testing.T) {
 // Fatal carries its identity whatever its message says — the property the
 // whole convention exists for.
 func TestFatal_IdentitySurvivesAnyMessage(t *testing.T) {
-	a := &errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render"}
-	b := &errs.Fatal{Op: "dao: Insert", Rule: "something else entirely", Detail: "id=7"}
+	a := errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render"}
+	b := errs.Fatal{Op: "dao: Insert", Rule: "something else entirely", Detail: "id=7"}
 
-	for _, f := range []*errs.Fatal{a, b} {
+	for _, f := range []errs.Fatal{a, b} {
 		if !errors.Is(f, errs.ErrFatal) {
 			t.Errorf("%q must satisfy ErrFatal regardless of its message", f.Error())
 		}
@@ -75,12 +75,12 @@ func TestFatal_IdentitySurvivesAnyMessage(t *testing.T) {
 // errors.As recovers the VALUE through several wraps, which is the whole
 // reason Fatal is a type rather than a sentinel.
 func TestFatal_AsRecoversTheFieldsThroughWrapping(t *testing.T) {
-	orig := &errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render", Detail: "node 7"}
+	orig := errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render", Detail: "node 7"}
 	wrapped := fmt.Errorf("app: render: %w", fmt.Errorf("tree: %w", fmt.Errorf("mount: %w", orig)))
 
-	var got *errs.Fatal
+	var got errs.Fatal
 	if !errors.As(wrapped, &got) {
-		t.Fatal("errors.As must recover the *Fatal through three wraps")
+		t.Fatal("errors.As must recover the Fatal through three wraps")
 	}
 	if got.Op != orig.Op || got.Rule != orig.Rule || got.Detail != orig.Detail {
 		t.Errorf("recovered %+v, want %+v", got, orig)
@@ -95,13 +95,13 @@ func TestFatal_AsRecoversTheFieldsThroughWrapping(t *testing.T) {
 // identity check passes, so the caller concludes nothing was lost, and every
 // field the panic was carrying has become text.
 func TestFatal_FlatteningWithVerbDestroysTheValue(t *testing.T) {
-	orig := &errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render"}
+	orig := errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render"}
 	sentinel := errors.New("tui: task panicked")
 
 	flattened := fmt.Errorf("%w: %v", sentinel, orig) // the mistake
 	wrapped := fmt.Errorf("%w: %w", sentinel, orig)   // the fix
 
-	var f *errs.Fatal
+	var f errs.Fatal
 	if errors.As(flattened, &f) {
 		t.Error("a flattened error must NOT be recoverable by errors.As; if this " +
 			"passes, the negative control is broken and the wrapping rule is unproven")
@@ -113,7 +113,7 @@ func TestFatal_FlatteningWithVerbDestroysTheValue(t *testing.T) {
 		t.Error("the sentinel SURVIVES flattening — that is precisely why the mistake looks like success")
 	}
 
-	var g *errs.Fatal
+	var g errs.Fatal
 	if !errors.As(wrapped, &g) || g.Op != orig.Op {
 		t.Error("a properly wrapped error must be recoverable with its fields intact")
 	}
@@ -146,41 +146,40 @@ func TestSentinelsAreDistinct(t *testing.T) {
 	}
 }
 
-// A typed-nil *Fatal must not impersonate a real one.
+// Fatal is a VALUE type, which is what removes the typed-nil failure rather
+// than guarding against it.
 //
-// A nil *Fatal assigned to an error is non-nil as an interface value while
-// carrying nothing — the classic Go trap. Before the nil guards, such a value
-// answered errors.Is(err, ErrFatal) TRUE and panicked the moment anything
-// rendered it, so a caller would take the fatal path and then crash in its own
-// logging. Both halves are pinned here because either alone would let the
-// other regress unnoticed.
-func TestFatal_TypedNilDoesNotImpersonate(t *testing.T) {
-	var f *errs.Fatal
-	var err error = f // non-nil interface, nil pointer
+// An earlier revision used a pointer receiver, and review found that a nil
+// *Fatal assigned to an error answered errors.Is(err, ErrFatal) TRUE and
+// panicked in Error(). Both were patched with nil checks. Johno's ruling was
+// that the design, not the symptom, was the defect: Error() must not be
+// reachable on a nil reference at all.
+//
+// With a value receiver there is no pointer to be nil. This test pins the two
+// properties that follow, so a change back to a pointer receiver fails here
+// rather than in a consumer.
+func TestFatal_IsAValueTypeSoNoNilStateExists(t *testing.T) {
+	// 1. The VALUE implements error. If this stops compiling, someone moved
+	//    to a pointer receiver and reintroduced the typed-nil state.
+	var _ error = errs.Fatal{}
 
-	if err == nil {
-		t.Fatal("the fixture is wrong: a typed nil must be a non-nil interface, " +
-			"or this test proves nothing about the trap")
+	// 2. The zero value is a usable error, not a crash and not "<nil>".
+	//    Nothing has to be set for Error() to be safe to call.
+	var zero errs.Fatal
+	msg := zero.Error()
+	if msg == "" || msg == "<nil>" {
+		t.Errorf("the zero Fatal must render as real prose, got %q", msg)
 	}
-	if errors.Is(err, errs.ErrFatal) {
-		t.Error("a nil *Fatal must NOT satisfy ErrFatal; it would send every caller " +
-			"down the fatal path carrying nothing")
-	}
-
-	// And it must render rather than panic, because logging is where this is
-	// otherwise discovered.
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("Error() panicked on a nil *Fatal: %v", r)
-		}
-	}()
-	if got := err.Error(); got != "<nil>" {
-		t.Errorf("Error() = %q, want %q", got, "<nil>")
+	if !errors.Is(zero, errs.ErrFatal) {
+		t.Error("the zero Fatal must still answer the general question")
 	}
 
-	// A real Fatal is unaffected — the guard must not have disabled the identity.
-	real := &errs.Fatal{Op: "pkg: Op", Rule: "the rule"}
-	if !errors.Is(real, errs.ErrFatal) {
-		t.Error("the nil guard must not stop a real Fatal from satisfying ErrFatal")
+	// 3. A constructed Fatal reads as a detailed, human-readable sentence —
+	//    identity is for code, the message is for a person, and requiring
+	//    identity comparison is not a licence to make the text useless.
+	f := errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout", Detail: "node 7"}
+	want := "tui: Mount: tree mutation inside Layout (node 7)"
+	if got := f.Error(); got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
 	}
 }
