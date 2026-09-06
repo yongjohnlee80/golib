@@ -401,3 +401,82 @@ func TestValidate_AcceptsARealStatementAndNamesWhatIsLeftOpen(t *testing.T) {
 		t.Errorf("UnterminatedError.Kind = %v, want Ident — it reports what was left open", unterm.Kind)
 	}
 }
+
+// PostgreSQL has a grammar for operator names, not a list, so a preset that
+// enumerated the built-ins would split the ones it had not thought of and would
+// never see a user-defined name at all.
+func TestPostgresOperator_IsAGrammarNotAList(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{"an @ earns its trailing sign", `a @- b`, `Word(a) Space( ) Operator(@-) Space( ) Word(b)`},
+		{"question-pipe is one name", `a ?| b`, `Word(a) Space( ) Operator(?|) Space( ) Word(b)`},
+		{"question-ampersand is one name", `a ?& b`, `Word(a) Space( ) Operator(?&) Space( ) Word(b)`},
+		{"hash-minus is one name", `a #- b`, `Word(a) Space( ) Operator(#-) Space( ) Word(b)`},
+		{"a backtick is an operator byte here", "a ` b", "Word(a) Space( ) Operator(`) Space( ) Word(b)"},
+		{"a name nobody built in", `a @#&| b`, `Word(a) Space( ) Operator(@#&|) Space( ) Word(b)`},
+
+		// The trailing-sign rule: without a special byte the sign is not part of
+		// the name, which is what keeps arithmetic arithmetic.
+		{"a sum of a negative is not an operator", `1+-2`, `Number(1) Operator(+) Operator(-) Number(2)`},
+		// PostgreSQL's `--` is unconditional, unlike MySQL's — so this is a
+		// comment, and the operator name simply may not run into it.
+		{"a comment wins over a name that would contain it", `1--2`, `Number(1) Comment(--2)`},
+		{"a special byte still cannot absorb a comment opener", `1@--2`, `Number(1) Operator(@) Comment(--2)`},
+		{"but a special byte earns it", `1@-2`, `Number(1) Operator(@-) Number(2)`},
+
+		// A name may not contain a comment opener.
+		{"a name stops before a line comment", "1+-- c\n2", "Number(1) Operator(+) Comment(-- c) Space(\n) Number(2)"},
+		{"and before a block comment", `1+/*c*/2`, `Number(1) Operator(+) Comment(/*c*/) Number(2)`},
+
+		{"the familiar ones still work", `a<=b<>c::d`, `Word(a) Operator(<=) Word(b) Operator(<>) Word(c) Operator(::) Word(d)`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := render(lex(t, sql.PostgreSQL(), c.src, false)); got != c.want {
+				t.Errorf("\n src  %q\n got  %s\n want %s", c.src, got, c.want)
+			}
+			// and identically one byte at a time, where the lookahead is real
+			if got := render(lex(t, sql.PostgreSQL(), c.src, true)); got != c.want {
+				t.Errorf("streamed:\n src  %q\n got  %s\n want %s", c.src, got, c.want)
+			}
+		})
+	}
+}
+
+// MySQL's `--` needs whitespace or a control byte after it. Without that rule
+// `balance--1` loses the rest of the line to a comment that is not there.
+func TestMySQLDashComment_NeedsItsFollowingGap(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{"no gap is subtraction, not a comment", `balance--1`, `Word(balance) Operator(-) Operator(-) Number(1)`},
+		{"a space makes it a comment", "balance-- 1", "Word(balance) Comment(-- 1)"},
+		{"so does a tab", "a--\tc", "Word(a) Comment(--\tc)"},
+		{"so does a newline, which stays the next token's", "a--\nb", "Word(a) Comment(--) Space(\n) Word(b)"},
+		{"at end of input there is no gap, so it is two operators", `a--`, `Word(a) Operator(-) Operator(-)`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := render(lex(t, sql.MySQL(), c.src, false)); got != c.want {
+				t.Errorf("\n src  %q\n got  %s\n want %s", c.src, got, c.want)
+			}
+			if got := render(lex(t, sql.MySQL(), c.src, true)); got != c.want {
+				t.Errorf("streamed:\n src  %q\n got  %s\n want %s", c.src, got, c.want)
+			}
+		})
+	}
+}
+
+// An executable version comment must not arrive as trivia. A consumer is invited
+// to discard Comment; anything hidden in one is hidden from the caller.
+func TestMySQLBlockComment_RefusesAnExecutableVersionComment(t *testing.T) {
+	got := render(lex(t, sql.MySQL(), `/*!50000 DROP TABLE t */`, false))
+	if strings.HasPrefix(got, "Comment(") {
+		t.Fatalf("an executable version comment arrived as trivia: %s", got)
+	}
+	// The dangerous words are visible as ordinary tokens.
+	for _, want := range []string{"Word(DROP)", "Word(TABLE)", "Word(t)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s is not in the token stream: %s", want, got)
+		}
+	}
+	// An ordinary block comment is still trivia, and still does not nest.
+	if g := render(lex(t, sql.MySQL(), `/* a /* b */ x`, false)); g != `Comment(/* a /* b */) Space( ) Word(x)` {
+		t.Errorf("ordinary block comment = %s", g)
+	}
+}
