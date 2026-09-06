@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // defaultCopyThreshold is the staged-row count at or above which a COPY-capable
@@ -181,7 +183,7 @@ func (b *batchWriter[R, C]) Flush() error {
 		return fmt.Errorf("%w: upsert (batch conflict handling)", ErrUnsupported)
 	}
 	if b.forceCopy && b.hasConflictHandling() {
-		return errors.New("dao: ForceCopy cannot be combined with conflict handling (COPY cannot express upsert/skip)")
+		return fmt.Errorf("dao: ForceCopy cannot be combined with conflict handling, because COPY cannot express upsert or skip (%w)", errs.ErrInvalidArgument)
 	}
 
 	keys, cols := b.keysAndCols()

@@ -3,9 +3,11 @@ package password
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Store holds encoded credentials. It is an interface because a credential
@@ -69,7 +71,7 @@ func OnError(fn func(error)) Option { return func(f *Factor) { f.onErr = fn } }
 // point: the cost has to be identical to a real one.
 func New(store Store, opts ...Option) (*Factor, error) {
 	if store == nil {
-		return nil, errors.New("password.New: a Store is required")
+		return nil, fmt.Errorf("password.New: a Store is required (%w)", errs.ErrInvalidArgument)
 	}
 	f := &Factor{store: store, hasher: Default(), subKey: "subject", pwKey: "password", now: time.Now}
 	for _, o := range opts {
@@ -78,7 +80,7 @@ func New(store Store, opts ...Option) (*Factor, error) {
 		}
 	}
 	if f.hasher == nil {
-		return nil, errors.New("password.New: Hash(nil) — pass a Hasher or omit the option")
+		return nil, fmt.Errorf("password.New: Hash(nil) — pass a Hasher or omit the option (%w)", errs.ErrInvalidArgument)
 	}
 	throwaway, err := randomSalt(32)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -141,7 +143,7 @@ func (b *Backend) Start(ctx context.Context) error {
 		return ErrClosed
 	}
 	if b.started.Swap(true) {
-		return errors.New("term: Start called twice")
+		return fmt.Errorf("term: Start called twice (%w)", errs.ErrPrecondition)
 	}
 	if err := b.start(ctx); err != nil {
 		if stopErr := b.Stop(); stopErr != nil {
