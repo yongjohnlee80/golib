@@ -1,6 +1,6 @@
 package term
 
-// Criterion 18, terminal producer (ADR-0010): the pointer contract driven from
+// The POINTER contract on the terminal producer, driven from
 // real SGR bytes through this package's decoder into a live App and real widgets.
 //
 // The rest of the branch injects events straight into a TestBackend. That is the

@@ -8,7 +8,7 @@ import (
 )
 
 // decodeEvents runs the full byte→event path synchronously (no goroutines):
-// the decode surface asserted by ADR-0002 §5.2.
+// the whole decode surface, asserted directly.
 func decodeEvents(t *testing.T, input string) []tui.Event {
 	t.Helper()
 	var out []tui.Event
@@ -22,7 +22,7 @@ func key(code rune, mods tui.Mods) tui.KeyEvent {
 }
 
 func TestDecodeLegacyKeys(t *testing.T) {
-	// ADR-0002 §5.2: every ctlseqs sequence shape in §2.5 — arrows CSI/SS3,
+	// Every ctlseqs sequence shape the decoder claims — arrows CSI/SS3,
 	// Home/End both encodings, tilde keys, F-keys, xterm modifier encoding,
 	// Alt-as-ESC-prefix, Ctrl+letter.
 	cases := []struct {
@@ -93,7 +93,7 @@ func TestDecodeLegacyKeys(t *testing.T) {
 }
 
 func TestDecodeKittyKeys(t *testing.T) {
-	// ADR-0002 §5.2: kitty CSI u sequences with sub-parameters
+	// Kitty CSI u sequences with sub-parameters
 	// (https://sw.kovidgoyal.net/kitty/keyboard-protocol/).
 	cases := []struct {
 		name  string
@@ -128,7 +128,7 @@ func TestDecodeKittyKeys(t *testing.T) {
 }
 
 func TestDecodeMouseSGR(t *testing.T) {
-	// ADR-0002 §5.2 + §2.7: SGR press/release/motion/wheel with modifier
+	// SGR press/release/motion/wheel with modifier
 	// bits (0–2 button, +4 shift, +8 meta, +16 ctrl, +32 motion, +64 wheel).
 	// Coordinates are 1-based on the wire, 0-based in events.
 	cases := []struct {
@@ -168,7 +168,7 @@ func TestDecodeMouseSGR(t *testing.T) {
 }
 
 func TestDecodeBracketedPaste(t *testing.T) {
-	// ADR-0002 §2.7 / §5.2: framing, CR and CRLF normalized to \n, embedded
+	// Paste framing: CR and CRLF normalized to \n, embedded
 	// ESC captured literally, a 200~ opener inside a paste is literal text.
 	cases := []struct {
 		name  string
@@ -201,7 +201,7 @@ func TestDecodeBracketedPaste(t *testing.T) {
 }
 
 func TestDecodeUnterminatedPasteFlushedOnFinish(t *testing.T) {
-	// ADR-0002 §2.7: an unterminated paste is flushed as a paste on Stop
+	// An unterminated paste is flushed as a paste on Stop
 	// rather than dropped — including a dangling partial terminator.
 	var out []tui.Event
 	d := &decoder{emit: func(ev tui.Event) { out = append(out, ev) }}
@@ -232,7 +232,7 @@ func TestDecodePasteSplitAcrossChunks(t *testing.T) {
 }
 
 func TestDecodeInBandResize(t *testing.T) {
-	// ADR-0002 §2.8: mode-2048 report CSI 48 ; rows ; cols ; hpx ; wpx t.
+	// The mode-2048 report: CSI 48 ; rows ; cols ; hpx ; wpx t.
 	got := decodeEvents(t, "\x1b[48;30;120;600;1920t")
 	want := []tui.Event{tui.ResizeEvent{W: 120, H: 30}}
 	if !reflect.DeepEqual(got, want) {
@@ -261,7 +261,7 @@ func TestDecodeFocus(t *testing.T) {
 }
 
 func TestDecodeProbeRepliesAreNotEvents(t *testing.T) {
-	// ADR-0002 §2.6: probe replies route to the probe callback, never onto
+	// Probe replies route to the probe callback, never onto
 	// the event stream.
 	var evs []tui.Event
 	var replies []probeReply
@@ -322,7 +322,7 @@ func TestParseOSCColor(t *testing.T) {
 }
 
 func TestDecodeEscResolution(t *testing.T) {
-	// The decoder half of the §2.5 ESC disambiguation: a pending lone ESC
+	// The decoder half of the ESC disambiguation: a pending lone ESC
 	// resolves to the Escape key; a pending ESC O resolves to Alt+O.
 	var out []tui.Event
 	d := &decoder{emit: func(ev tui.Event) { out = append(out, ev) }}

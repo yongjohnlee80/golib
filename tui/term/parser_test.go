@@ -68,8 +68,8 @@ func parse(input string) []string {
 }
 
 // parserCorpus is the shared table for both the direct decode assertions and
-// the split-boundary property test (ADR-0002 §5.2): every ctlseqs shape from
-// §2.5, kitty sub-parameters, OSC/DCS with ST and BEL terminators, CAN/SUB
+// the split-boundary property test: every ctlseqs shape the parser claims,
+// kitty sub-parameters, OSC/DCS with ST and BEL terminators, CAN/SUB
 // aborts, and ESC-from-anywhere restarts.
 var parserCorpus = []struct {
 	name  string
@@ -127,7 +127,7 @@ var parserCorpus = []struct {
 }
 
 func TestParserCorpus(t *testing.T) {
-	// ADR-0002 §5.2: the table-driven corpus.
+	// The table-driven corpus.
 	for _, tc := range parserCorpus {
 		t.Run(tc.name, func(t *testing.T) {
 			got := parse(tc.input)
@@ -139,7 +139,7 @@ func TestParserCorpus(t *testing.T) {
 }
 
 func TestParserSplitBoundaries(t *testing.T) {
-	// ADR-0002 §5.2 property: byte-stream splits at arbitrary boundaries
+	// The split property: byte-stream splits at arbitrary boundaries
 	// never change the decoded action sequence. Byte-at-a-time plus random
 	// multi-way splits per corpus entry.
 	rng := rand.New(rand.NewSource(42))
@@ -179,7 +179,7 @@ func TestParserSplitBoundaries(t *testing.T) {
 }
 
 func TestParserParamOverflowStillConsumes(t *testing.T) {
-	// ADR-0002 §2.5: 32 params x 4 subparams, saturating — excess ignored,
+	// 32 params x 4 subparams, saturating — excess ignored,
 	// sequence still consumed.
 	var sb strings.Builder
 	sb.WriteString("\x1b[")
@@ -218,7 +218,7 @@ func TestParserOSCDataCap(t *testing.T) {
 }
 
 func FuzzParserSplit(f *testing.F) {
-	// ADR-0002 §5.2 fuzz: any byte stream, split anywhere, decodes to the
+	// Fuzz: any byte stream, split anywhere, decodes to the
 	// same action sequence as the contiguous feed.
 	for _, tc := range parserCorpus {
 		f.Add([]byte(tc.input), 1)

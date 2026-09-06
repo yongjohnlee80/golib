@@ -8,7 +8,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// countingWriter records every Write — the ADR-0002 §5.5 counting writer.
+// countingWriter records every Write, so the tests can assert write COUNTS
+// and not just bytes.
 type countingWriter struct {
 	mu     sync.Mutex
 	writes int
@@ -98,7 +99,7 @@ func TestFlushShortWritesReassembleFullFrame(t *testing.T) {
 }
 
 func TestFlushEmptyDiffWritesZeroBytes(t *testing.T) {
-	// ADR-0002 §5.5: empty diff + unchanged cursor = zero bytes, zero Writes.
+	// Empty diff + unchanged cursor = zero bytes, zero Writes.
 	b, w := flushBackend(tui.Capabilities{SyncOutput: true})
 	if err := b.Flush(nil); err != nil {
 		t.Fatal(err)
@@ -109,7 +110,7 @@ func TestFlushEmptyDiffWritesZeroBytes(t *testing.T) {
 }
 
 func TestFlushOneWritePerFrame(t *testing.T) {
-	// ADR-0002 §5.5 / ADR-0003 R3: any non-empty frame is exactly one Write.
+	// Any non-empty frame is exactly ONE Write.
 	b, w := flushBackend(tui.Capabilities{SyncOutput: true})
 	diff := []tui.CellUpdate{
 		cellAt(0, 0, "h", tui.CellAttrs{}),
@@ -127,7 +128,7 @@ func TestFlushOneWritePerFrame(t *testing.T) {
 }
 
 func TestFlushGoldenBasicRun(t *testing.T) {
-	// ADR-0003 §2.5 / R1–R3 without mode 2026: hide cursor, single CUP for
+	// Without mode 2026: hide cursor, single CUP for
 	// a contiguous run, single SGR for uniform attrs, overwrite in place —
 	// no ED/EL anywhere.
 	b, w := flushBackend(tui.Capabilities{})
@@ -151,7 +152,7 @@ func TestFlushGoldenBasicRun(t *testing.T) {
 }
 
 func TestFlushGoldenSyncBrackets(t *testing.T) {
-	// ADR-0003 R4: mode-2026 brackets around the frame when SyncOutput.
+	// Mode-2026 brackets the frame when SyncOutput is available.
 	b, w := flushBackend(tui.Capabilities{SyncOutput: true})
 	if err := b.Flush([]tui.CellUpdate{cellAt(0, 0, "x", tui.CellAttrs{})}); err != nil {
 		t.Fatal(err)
@@ -264,7 +265,7 @@ func TestFlushWideCellDiscipline(t *testing.T) {
 }
 
 func TestFlushRiskyClusterReanchor(t *testing.T) {
-	// ADR-0003 §2.8: without mode 2027 the cursor is re-anchored absolutely
+	// Without mode 2027 the cursor is re-anchored absolutely
 	// after a risky (ZWJ) cluster; with 2027 the advance is trusted.
 	farmer := "\U0001F9D1‍\U0001F33E" // 🧑‍🌾
 
@@ -316,7 +317,7 @@ func TestRiskyCluster(t *testing.T) {
 }
 
 func TestFlushLatchedCursor(t *testing.T) {
-	// ADR-0002 §2.1: cursor ops are latched and land in the same write as
+	// Cursor ops are latched and land in the same write as
 	// the diff; cursor-only changes flush without cells.
 	b, w := flushBackend(tui.Capabilities{})
 	b.SetCursor(2, 1)
@@ -347,7 +348,7 @@ func TestFlushLatchedCursor(t *testing.T) {
 	}
 
 	// Cursor-only change flushes without cells (one write). The latched
-	// position is re-asserted absolutely — ADR-0003 §2.5(d) does this
+	// position is re-asserted absolutely, which the flush path does
 	// unconditionally on every emitting frame.
 	b.HideCursor()
 	if err := b.Flush(nil); err != nil {

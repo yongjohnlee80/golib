@@ -15,7 +15,7 @@ import (
 // developer's COLORTERM/TERM.
 func noEnv(string) (string, bool) { return "", false }
 
-// termScript is the scripted pty-less harness of ADR-0002 §5.3: the backend
+// termScript is the scripted pty-less harness: the backend
 // reads canned replies from an in-memory pipe and its writes are captured.
 type termScript struct {
 	t  *testing.T
@@ -83,7 +83,7 @@ func (s *termScript) waitEvent(timeout time.Duration) (tui.Event, bool) {
 	}
 }
 
-// fullModernReplies answers every probe row (ADR-0002 §2.6 table) in request
+// fullModernReplies answers every row of the probe table in request
 // order: DECRPM 2004/2026/2027/2048/1006 all set, XTGETTCAP RGB+Smulx,
 // OSC 10/11, kitty flags, then the DA1 fence.
 const fullModernReplies = "\x1b[?2004;1$y" +
@@ -98,7 +98,7 @@ const fullModernReplies = "\x1b[?2004;1$y" +
 	"\x1b[?62;4;22c"
 
 func TestProbeFullModern(t *testing.T) {
-	// ADR-0002 §5.3(a): full-modern replies set every flag, including
+	// Full-modern replies set every flag, including
 	// Mouse == TriYes from the DECRQM ?1006 answer.
 	s := newScript(t)
 	s.respond(fullModernReplies)
@@ -123,8 +123,8 @@ func TestProbeFullModern(t *testing.T) {
 		t.Fatalf("caps mismatch\n got: %+v\nwant: %+v", caps, want)
 	}
 
-	// ADR-0002 §5.4: kitty push emitted iff the probe reported support,
-	// plus the negotiated mode enables (§2.6), all after the fence.
+	// Kitty push is emitted IFF the probe reported support, plus the
+	// negotiated mode enables, all after the fence.
 	out := s.w.String()
 	for _, seq := range []string{"\x1b[?2004h", "\x1b[?1002h\x1b[?1006h", "\x1b[>3u", "\x1b[?2048h", "\x1b[?1004h"} {
 		if !strings.Contains(out, seq) {
@@ -134,7 +134,7 @@ func TestProbeFullModern(t *testing.T) {
 }
 
 func TestProbeDA1Only(t *testing.T) {
-	// ADR-0002 §5.3(b): DA1-only replies return before the deadline with
+	// DA1-only replies return before the deadline with
 	// Mouse == TriUnknown, the mode flags false, and DarkBackground == true
 	// (the documented assume-dark fallback).
 	s := newScript(t, WithProbeTimeout(time.Second))
@@ -166,7 +166,7 @@ func TestProbeDA1Only(t *testing.T) {
 }
 
 func TestProbeSilenceHitsDeadline(t *testing.T) {
-	// ADR-0002 §5.3(c): total silence returns at the deadline with the same
+	// Total silence returns at the deadline with the same
 	// defaults. 60ms probe timeout (the [50ms, 1s] clamp keeps it).
 	s := newScript(t, WithProbeTimeout(60*time.Millisecond))
 	startAt := time.Now()
@@ -189,7 +189,7 @@ func TestProbeSilenceHitsDeadline(t *testing.T) {
 }
 
 func TestProbePreseedSurvivesSilence(t *testing.T) {
-	// ADR-0002 §5.3(d): $COLORTERM=truecolor pre-seed survives probe
+	// A $COLORTERM=truecolor pre-seed survives probe
 	// silence as ProfileTrueColor — never downgraded by silence.
 	env := func(k string) (string, bool) {
 		if k == "COLORTERM" {
@@ -207,7 +207,7 @@ func TestProbePreseedSurvivesSilence(t *testing.T) {
 }
 
 func TestPreseedProfile(t *testing.T) {
-	// ADR-0002 §2.6 pre-seed derivation (no I/O).
+	// Pre-seed derivation from the environment alone (no I/O).
 	envOf := func(m map[string]string) func(string) (string, bool) {
 		return func(k string) (string, bool) { v, ok := m[k]; return v, ok }
 	}
@@ -251,7 +251,7 @@ func TestProbeLightBackground(t *testing.T) {
 }
 
 func TestProbeRepliesAfterFenceDiscarded(t *testing.T) {
-	// ADR-0002 §5.3(e): replies after the fence are discarded harmlessly —
+	// Replies after the fence are discarded harmlessly —
 	// no events, no capability mutation.
 	s := newScript(t)
 	s.respond("\x1b[?62c")
@@ -269,7 +269,7 @@ func TestProbeRepliesAfterFenceDiscarded(t *testing.T) {
 }
 
 func TestProbeCtxCancel(t *testing.T) {
-	// ADR-0002 §5.3(f): ctx cancellation mid-probe discards partial
+	// A ctx cancellation mid-probe discards partial
 	// replies, restores acquired terminal state, and returns ctx.Err().
 	s := newScript(t, WithProbeTimeout(time.Second))
 	// Answer two rows but never the fence: the probe stays in flight and
