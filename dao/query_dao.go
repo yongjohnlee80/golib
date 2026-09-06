@@ -3,6 +3,8 @@ package dao
 import (
 	"context"
 	"fmt"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // queryDAO is the concrete, query-scoped implementation behind the [DAO]
@@ -620,7 +622,7 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 		return ErrNothingToInsert
 	}
 	if len(d.schema.conflict) == 0 {
-		return fmt.Errorf("dao: Upsert requires a conflict target (use dao.Conflict)")
+		return errs.Wrap(errs.ErrInvalidArgument, "dao: Upsert requires a conflict target; use dao.Conflict")
 	}
 	update := subtract(set.sortedKeys(), d.schema.conflict)
 	b := d.newBuilder()

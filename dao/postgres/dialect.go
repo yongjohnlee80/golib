@@ -2,10 +2,10 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // PostgresDialect implements dao.Dialect for PostgreSQL. It embeds
@@ -48,7 +48,7 @@ func (PostgresDialect) CopySupported() bool { return true }
 func (PostgresDialect) Copy(ctx context.Context, ex any, table string, cols []string, rows [][]any) (int64, error) {
 	c, ok := ex.(pgxCopier)
 	if !ok {
-		return 0, fmt.Errorf("postgres: executor %T does not support COPY (not a postgres connection)", ex)
+		return 0, errs.Wrap(errs.ErrUnsupported, "postgres: executor %T does not support COPY; it is not a postgres connection", ex)
 	}
 	return c.copyRows(ctx, table, cols, rows)
 }
@@ -81,7 +81,7 @@ func (PostgresDialect) Prepare(ctx context.Context, tx dao.TxConn, gid string) e
 		prepareTx(ctx context.Context, gid string) error
 	})
 	if !ok {
-		return fmt.Errorf("postgres: executor %T does not support PREPARE TRANSACTION (not a postgres transaction)", tx)
+		return errs.Wrap(errs.ErrUnsupported, "postgres: executor %T does not support PREPARE TRANSACTION; it is not a postgres transaction", tx)
 	}
 	return p.prepareTx(ctx, gid)
 }

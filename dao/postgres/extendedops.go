@@ -2,10 +2,10 @@ package postgres
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // ADR-0018 §2.5: the closed neutral vocabulary. [ExtendedOp] is the [PinnedConn.Send]
@@ -141,7 +141,7 @@ func (op ExtendedOp) encode(fe *pgproto3.Frontend) error {
 	case opInvalid:
 		return ErrInvalidExtendedOp
 	default:
-		return fmt.Errorf("postgres: unknown extended op kind %d", op.kind)
+		return errs.Wrap(errs.ErrInvalidArgument, "postgres: unknown extended op kind %d", op.kind)
 	}
 	return nil
 }
@@ -260,7 +260,7 @@ func decodeMessage(msg pgproto3.BackendMessage) (ExtendedMessage, error) {
 	case *pgproto3.NotificationResponse:
 		return ExtendedMessage{Kind: "NotificationResponse", Notification: &pgconn.Notification{PID: m.PID, Channel: m.Channel, Payload: m.Payload}}, nil
 	default:
-		return ExtendedMessage{}, fmt.Errorf("postgres: unexpected backend message %T on the extended face", msg)
+		return ExtendedMessage{}, errs.Wrap(errs.ErrPrecondition, "postgres: unexpected backend message %T on the extended face", msg)
 	}
 }
 
