@@ -95,14 +95,14 @@ type SSO[T any] struct {
 	// Runner, and the claim happens later on the session's own goroutine. Settling
 	// on the Manager's schedule left a window in which the gate had a free slot
 	// while the park was still full, so a new login could authenticate, allocate,
-	// and then be told 503 (lector r2 on PR #14).
+	// and then be told 503.
 	settle func(string)
 
 	// commit converts this login's admission reservation into an accounted slot AND
 	// publishes the park entry while the gate's own lock is held, so membership and
 	// publication are indivisible. Reporting the answer and letting hold insert
 	// afterwards was still a time-of-check-to-time-of-use gap: the key could be
-	// swept in between (lector r5 on PR #14).
+	// swept in between.
 	//
 	// false means the reservation lapsed and the entry was NOT published.
 	commit func(handoff string, publish func()) bool
@@ -125,7 +125,7 @@ type parkedEntry[T any] struct {
 	// park then costs nothing and a lone abandoned login is still released on time.
 	// The previous version only swept when ANOTHER login arrived, so on an idle
 	// server one abandoned login stayed logged in upstream indefinitely — the
-	// doc claimed an internal sweep that did not exist (lector r1 on PR #14).
+	// doc claimed an internal sweep that did not exist.
 	timer *time.Timer
 }
 
@@ -311,7 +311,7 @@ func (s *SSO[T]) releaseValue(v T, r HandoffReason) {
 			s.mu.Unlock()
 			// EMITTED, not merely counted. The doc says a panicking Release is
 			// recorded rather than swallowed, and a private counter nobody can read
-			// is swallowing it with extra steps (lector r2 on PR #14). The upstream
+			// is swallowing it with extra steps. The upstream
 			// state is gone either way, so the line is the only trace there is.
 			logger.Error(s.log, fmt.Errorf("web: SSO Release panicked: %v", rec),
 				map[string]any{"component": "web.SSO", "event": "release panic",
@@ -354,8 +354,8 @@ func (s *SSO[T]) Claim(info *SessionInfo) (T, bool) {
 	s.settleHandoff(info.Handoff)
 	// An entry past its TTL is REFUSED and released, not handed over. Claim used
 	// to ignore expires entirely, so a TTL shorter than the attach ticket's had no
-	// effect and an App could be handed state the park had already given up on
-	// (lector r1 on PR #14). Released outside the lock.
+	// effect and an App could be handed state the park had already given up on.
+	// Released outside the lock.
 	// Deadline reached counts as expired, so an entry cannot sit exactly on its
 	// deadline and be handed over.
 	if !e.expires.After(s.now()) {
@@ -379,7 +379,7 @@ func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 				// verifies a hash and knows nothing about this package, so it cannot
 				// call Stash. Refusing the login here meant the shipped password
 				// mechanism returned 503 through the helper that claimed to support
-				// every mechanism (lector r1 on PR #14).
+				// every mechanism.
 				//
 				// With a Provision, the login is fine: it mints its ticket, parks
 				// nothing, and the attach provisions like any other direct

@@ -6,7 +6,7 @@
 // It is the package's first LastInsertId-profile dialect (golib-dao ADR-0008
 // §2.6): no INSERT ... RETURNING, ids come from the OK packet. Upserts render
 // as ON DUPLICATE KEY UPDATE, which fires on ANY unique-key conflict — the
-// conflict target cannot be narrowed to specific columns (ADR-0011 §2.3).
+// conflict target cannot be narrowed to specific columns.
 //
 // Open takes a go-sql-driver DSN, e.g.
 //

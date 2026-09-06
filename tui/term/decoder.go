@@ -14,9 +14,9 @@ import (
 // CSI u keys, SGR mouse, bracketed-paste framing, mode-2048 in-band resize
 // reports, and terminal focus. Probe replies (DECRPM, DA1, kitty query,
 // OSC 10/11 colors, XTGETTCAP) are classified here and routed to the probe
-// callback — they are never user events (ADR-0002 §2.6).
+// callback — they are never user events.
 
-// probeKind classifies one capability-probe reply (ADR-0002 §2.6).
+// probeKind classifies one capability-probe reply.
 type probeKind uint8
 
 const (
@@ -37,19 +37,19 @@ type probeReply struct {
 
 // decoder turns a byte stream into tui events. It is synchronous and
 // goroutine-free: feedBytes drives the parser and invokes the callbacks
-// inline, which keeps the whole decode path table-testable (ADR-0002 §5.2).
+// inline, which keeps the whole decode path table-testable.
 type decoder struct {
 	p     parser
 	emit  func(tui.Event)
 	probe func(probeReply)
 
 	// onFocusIn, when set, fires after a terminal focus-in event — the
-	// backend uses it for the opportunistic size re-check (ADR-0002 §2.8).
+	// backend uses it for the opportunistic size re-check.
 	onFocusIn func()
 
 	ss3 bool // ESC O seen; next byte is the SS3 final
 
-	// Bracketed-paste capture (ADR-0002 §2.7). While pasting, bytes bypass
+	// Bracketed-paste capture. While pasting, bytes bypass
 	// the parser entirely and are captured literally until the exact
 	// ESC [ 2 0 1 ~ terminator — a CSI 200~ opener inside an unterminated
 	// paste therefore lands in the text as literal bytes.
@@ -73,7 +73,7 @@ func (d *decoder) feedBytes(p []byte) {
 }
 
 // finish flushes decoder state at stream end (Stop or reader failure): an
-// unterminated paste is delivered rather than dropped (ADR-0002 §2.7), and a
+// unterminated paste is delivered rather than dropped, and a
 // pending lone ESC is delivered as the Escape key.
 func (d *decoder) finish() {
 	if d.pasting {
@@ -87,7 +87,7 @@ func (d *decoder) finish() {
 }
 
 // awaitingEsc reports whether the stream ends in an ambiguous ESC that the
-// legacy disambiguation timeout should resolve (ADR-0002 §2.5).
+// legacy disambiguation timeout should resolve.
 func (d *decoder) awaitingEsc() bool {
 	return d.ss3 || d.p.state == sEscape
 }
@@ -418,8 +418,8 @@ func (d *decoder) kittyKey(a *action) {
 }
 
 // mouse decodes an SGR mouse report: CSI < b ; x ; y M/m with button bits per
-// xterm — 0–2 button, +4 shift, +8 meta, +16 ctrl, +32 motion, +64 wheel
-// (ADR-0002 §2.7). Coordinates arrive 1-based and are emitted 0-based.
+// xterm — 0–2 button, +4 shift, +8 meta, +16 ctrl, +32 motion, +64 wheel.
+// Coordinates arrive 1-based and are emitted 0-based.
 func (d *decoder) mouse(a *action) {
 	b0 := a.param(0, 0)
 	x := a.param(1, 1) - 1

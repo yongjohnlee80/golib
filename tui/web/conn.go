@@ -81,14 +81,14 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 	// The unauthenticated waiting room is BOUNDED. MaxSessions bounds only what
 	// exists after a successful hello, so without this a responsive non-browser
 	// that forges Host and Origin holds sockets and goroutines while consuming no
-	// session slot (lector r2).
+	// session slot.
 	// The slot covers the PRE-AUTH window only, and is released the moment
 	// authentication succeeds.
 	//
 	// Holding it for the whole authenticated pump made MaxPending a cap on live
 	// sessions as well: with MaxPending=1, one healthy session refused every
-	// newcomer even with spare MaxSessions and nothing actually pending
-	// (lector r3). releaseOnce keeps the deferred release from double-counting.
+	// newcomer even with spare MaxSessions and nothing actually pending.
+	// releaseOnce keeps the deferred release from double-counting.
 	var releaseOnce sync.Once
 	release := func() {}
 	if l.pending != nil {
@@ -255,8 +255,7 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 	//
 	// The sessionLoop is shared by every connection a Handler serves, so a field
 	// here was written by each concurrent readPump and read by each deliver —
-	// a data race, and clients throttling each other even without one
-	// (lector r2).
+	// a data race, and clients throttling each other even without one.
 	limiter := newBucket(l.limits.EventsPerSecond, l.limits.Burst, l.now)
 
 	for {
@@ -268,7 +267,7 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 			// A read error is a CONNECTION failure, not a session failure. Calling
 			// Fail here stopped the Backend and so killed the App, which made the
 			// detach window unreachable — a dropped socket destroyed the user's
-			// work (lector r1). The session survives; the manager evicts it if
+			// work. The session survives; the manager evicts it if
 			// nobody comes back.
 			logger.Info(l.log, protocolNote{What: "read", Reason: err.Error()})
 			return err
@@ -314,7 +313,7 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 // this RETRIES until the event is accepted, the context ends, or the overload
 // grace elapses — at which point the connection closes and the client is told.
 // An earlier version retried once and then advanced past the event, which lost
-// input while still claiming an ordered un-coalesced stream (lector r1).
+// input while still claiming an ordered un-coalesced stream.
 func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limiter *bucket, ev tui.Event) error {
 	backend := sess.Backend()
 	over := newOverload(l.limits.OverloadGrace, l.now)
@@ -353,7 +352,7 @@ func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limite
 // that size, and the next one arrives only when the user drags the window again.
 // An earlier version logged an overflow and advanced, so a resize that arrived
 // while the App was busy was lost and the client stayed the wrong size
-// indefinitely (lector r2).
+// indefinitely.
 func (l *sessionLoop) deliverResize(ctx context.Context, c conn, sess *Session, limiter *bucket, cols, rows int) error {
 	backend := sess.Backend()
 	over := newOverload(l.limits.OverloadGrace, l.now)

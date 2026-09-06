@@ -6,7 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// The frame emitter (ADR-0003 §2.5, rules R1–R4):
+// The frame emitter:
 //
 //   - R1 — the cursor is hidden (?25l) before any cell emission and re-shown
 //     only per the latched state, within the same write.
@@ -14,17 +14,16 @@ import (
 //     ED/EL is ever emitted here.
 //   - R3 — one frame, one Write: the entire frame (brackets, cursor ops,
 //     cells) accumulates into one reusable buffer and hits the fd as a single
-//     Write syscall. The latched cursor ops (ADR-0002 §2.1) exist to serve
+//     Write syscall. The latched cursor ops exist to serve
 //     this rule.
 //   - R4 — mode-2026 synchronized-update brackets around every frame when
 //     Capabilities().SyncOutput; never latched on.
 //
 // CUP is emitted only on discontinuity, SGR only on attribute change; after a
 // risky cluster on a terminal without mode 2027, the next emission is
-// re-anchored absolutely (ADR-0003 §2.8).
+// re-anchored absolutely.
 
-// ShowCursor latches the cursor visible; the next Flush emits it
-// (ADR-0002 §2.1).
+// ShowCursor latches the cursor visible; the next Flush emits it.
 func (b *Backend) ShowCursor() {
 	b.cmu.Lock()
 	if !b.want.visible {
@@ -66,7 +65,7 @@ func (b *Backend) SetCursorShape(s tui.CursorShape) {
 }
 
 // Flush applies one frame's cell diff plus any latched cursor-state changes
-// as a SINGLE buffered write (ADR-0002 §2.1, ADR-0003 §2.5). An empty diff
+// as a SINGLE buffered write. An empty diff
 // with unchanged cursor state writes zero bytes. The diff is ordered
 // row-major by the caller.
 func (b *Backend) Flush(diff []tui.CellUpdate) error {
@@ -129,7 +128,7 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 		}
 	}
 
-	// Latched cursor state, applied within the same Write (ADR-0003 §2.5d).
+	// Latched cursor state, applied within the same Write.
 	if want.posSet {
 		b.writeCUP(want.x, want.y)
 		b.penX, b.penY, b.penKnown = want.x, want.y, true
@@ -257,7 +256,7 @@ func (b *Backend) writeShape(s tui.CursorShape) {
 }
 
 // riskyCluster reports whether the terminal's width opinion for the cluster
-// may disagree with ours (ADR-0003 §2.8): multi-rune clusters containing ZWJ,
+// may disagree with ours: multi-rune clusters containing ZWJ,
 // VS15/VS16, or a regional-indicator pair. Single-rune wide CJK is never
 // risky — every terminal agrees on it.
 func riskyCluster(s string) bool {

@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Metrics are the client's MEASURED font metrics (ADR-0009 §2.6).
+// Metrics are the client's MEASURED font metrics.
 //
 // The client measures and the server never guesses. Sizes are in device pixels
 // rather than `ch` units, because `ch` is itself font-relative and so begs the
@@ -155,7 +155,7 @@ var (
 
 // cellColorToken is a rendering-only marker for "emit the theme's custom
 // property". It is deliberately outside tui's CellColorKind range: resolution
-// already happened upstream (ADR-0006 §2.4) and this package must not appear to
+// already happened upstream and this package must not appear to
 // add a new resolved kind.
 const cellColorToken tui.CellColorKind = 200
 

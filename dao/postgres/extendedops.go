@@ -157,7 +157,7 @@ func objectTypeByte(portal bool) byte {
 
 // ExtendedMessage is one backend message of a response group, as protocol data. An
 // ErrorResponse arrives as [ExtendedMessage.Err], NOT a Go error — the consumer
-// classifies and re-frames it for its own client (ADR-0018 §2.2).
+// classifies and re-frames it for its own client.
 type ExtendedMessage struct {
 	// Kind names the message: "ParseComplete", "BindComplete",
 	// "ParameterDescription", "RowDescription", "DataRow", "CommandComplete",
@@ -198,7 +198,7 @@ type ExtendedMessage struct {
 }
 
 // ExtendedFieldDescription is a RowDescription column descriptor — the same shape
-// [dao.FieldDescription] exposes (ADR-0012/0017), re-declared here because the ADR-0018
+// [dao.FieldDescription] exposes, re-declared here because the ADR-0018
 // vocabulary is leaf-local: dao core gains no aliases for this capability (§2.5).
 type ExtendedFieldDescription struct {
 	// Name is the column's name in the result set.

@@ -17,8 +17,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Backend is the concrete ANSI terminal implementation of tui.Backend
-// (ADR-0002). Construct it with Open; all terminal state changes happen in
+// Backend is the concrete ANSI terminal implementation of tui.Backend.
+// Construct it with Open; all terminal state changes happen in
 // Start, so a constructed-but-unstarted Backend is inert.
 type Backend struct {
 	cfg config
@@ -49,7 +49,7 @@ type Backend struct {
 	readErr error
 
 	// Acquired-state flags for teardown, set on the Start goroutine and
-	// consumed by teardown (ADR-0002 §2.10).
+	// consumed by teardown.
 	restoreIn   func() error
 	restoreOut  func() error
 	pollCleanup func() error // undo makePollable, after the reader joins
@@ -73,7 +73,7 @@ type Backend struct {
 	lastAttrs   tui.CellAttrs
 	forceAnchor bool
 
-	// Latched cursor state (ADR-0002 §2.1), guarded by cmu.
+	// Latched cursor state, guarded by cmu.
 	cmu         sync.Mutex
 	want        cursorState
 	cursorDirty bool
@@ -90,7 +90,7 @@ var _ tui.Backend = (*Backend)(nil)
 
 // Open validates the TTY and builds the backend WITHOUT touching terminal
 // state; all mode changes happen in Start so a constructed-but-unstarted
-// backend is inert (ADR-0002 §2.4).
+// backend is inert.
 func Open(opts ...Option) (*Backend, error) {
 	cfg := defaultConfig()
 	for _, o := range opts {
@@ -122,7 +122,7 @@ func newBackend(cfg config) *Backend {
 }
 
 // newHarness builds a Backend over an arbitrary reader/writer pair — the
-// pty-less test seam (ADR-0002 §5.3). No raw mode, no fd queries.
+// pty-less test seam. No raw mode, no fd queries.
 func newHarness(in io.Reader, out io.Writer, opts ...Option) *Backend {
 	cfg := defaultConfig()
 	cfg.in, cfg.out = nil, nil
@@ -134,7 +134,7 @@ func newHarness(in io.Reader, out io.Writer, opts ...Option) *Backend {
 	return b
 }
 
-// Start acquires the device (ADR-0002 §2.4): raw mode (and Windows output VT
+// Start acquires the device: raw mode (and Windows output VT
 // modes), alternate screen, the reader goroutine, the capability probe, and
 // negotiated mode enablement — each step's undo is recorded before the step
 // runs, so a failure mid-Start restores exactly what was acquired.
@@ -236,14 +236,14 @@ func (b *Backend) start(ctx context.Context) error {
 
 // Stop restores the terminal completely and stops the reader goroutine.
 // Idempotent (sync.Once); safe from deferred panic-recovery paths. After
-// Stop returns, Events() is closed (ADR-0002 §2.10).
+// Stop returns, Events() is closed.
 func (b *Backend) Stop() error {
 	b.stopOnce.Do(func() { b.stopErr = b.teardown() })
 	return b.stopErr
 }
 
 // teardown restores in reverse order of acquisition, best-effort on every
-// step, joining failures (ADR-0002 §2.10).
+// step, joining failures.
 func (b *Backend) teardown() error {
 	b.stopped.Store(true)
 	var errs []error
@@ -329,7 +329,7 @@ func (b *Backend) querySize() (tui.Size, error) {
 // Capabilities reports the negotiated profile. Constant after Start.
 func (b *Backend) Capabilities() tui.Capabilities { return b.caps }
 
-// Events is the single, ordered, un-coalesced event source (ADR-0002 §2.9).
+// Events is the single, ordered, un-coalesced event source.
 // Closed by Stop, and on abnormal reader exit.
 func (b *Backend) Events() <-chan tui.Event { return b.events }
 
@@ -381,7 +381,7 @@ func (b *Backend) WriteClipboard(p []byte) error {
 }
 
 // writeAll writes all of p, tolerating short writes and — on a non-blocking
-// tty — EAGAIN. A frame is emitted as one Write (ADR-0002 §2.1); when the
+// tty — EAGAIN. A frame is emitted as one Write; when the
 // output description is non-blocking (makePollable flips O_NONBLOCK on a
 // stdin/stdout pair that share one open-file description) the kernel accepts
 // only what fits its buffer and returns a short count with EAGAIN. Dropping
@@ -554,7 +554,7 @@ func (b *Backend) emitEvent(ev tui.Event) {
 }
 
 // probeReply routes a decoded probe reply to the in-flight probe; replies
-// after the fence are discarded harmlessly (ADR-0002 §5.3e).
+// after the fence are discarded harmlessly.
 func (b *Backend) probeReply(r probeReply) {
 	if !b.probing.Load() {
 		return

@@ -1,4 +1,4 @@
-// Package web renders an existing golib TUI in a browser (ADR-0009).
+// Package web renders an existing golib TUI in a browser.
 //
 // It implements [github.com/yongjohnlee80/golib/tui.Backend] over a server-side
 // cell grid: each Flush diff is applied to the grid, and the grid is emitted as

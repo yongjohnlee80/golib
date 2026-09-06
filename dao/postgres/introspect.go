@@ -6,7 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// PostgresDialect opts into routine introspection (ADR-0014) alongside the
+// PostgresDialect opts into routine introspection alongside the
 // ADR-0013 capabilities.
 var _ dao.RoutineIntrospector = PostgresDialect{}
 
@@ -112,7 +112,7 @@ func (PostgresDialect) ListColumns(ctx context.Context, q dao.Querier, schema, t
 	return out, rows.Err()
 }
 
-// ListRoutines lists the functions and procedures of schema (ADR-0014):
+// ListRoutines lists the functions and procedures of schema:
 // pg_proc joined to pg_namespace, prokind f/p only (aggregates and window
 // functions excluded), Signature rendered server-side from
 // pg_get_function_arguments + pg_get_function_result — functions render

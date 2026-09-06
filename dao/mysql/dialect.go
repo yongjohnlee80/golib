@@ -33,8 +33,7 @@ func (MysqlDialect) QuoteIdent(ident string) string {
 }
 
 // QuoteTable backtick-quotes a table-position identifier, quoting each
-// dot-separated qualification part separately: "app.users" → `app`.`users`
-// (ADR-0013 §2).
+// dot-separated qualification part separately: "app.users" → `app`.`users`.
 func (d MysqlDialect) QuoteTable(ident string) string {
 	parts := strings.Split(ident, ".")
 	for i, p := range parts {
@@ -48,11 +47,11 @@ func (d MysqlDialect) QuoteTable(ident string) string {
 func (MysqlDialect) SupportsReturning() bool { return false }
 
 // SupportsLastInsertID reports true: the generated id arrives in the OK
-// packet and database/sql exposes it via Result.LastInsertId (ADR-0008 §2.6).
+// packet and database/sql exposes it via Result.LastInsertId.
 func (MysqlDialect) SupportsLastInsertID() bool { return true }
 
-// BuildUpsertSuffix renders MySQL's ON DUPLICATE KEY UPDATE clause
-// (ADR-0011 §2.3). MySQL cannot name a conflict target — the clause fires on
+// BuildUpsertSuffix renders MySQL's ON DUPLICATE KEY UPDATE clause.
+// MySQL cannot name a conflict target — the clause fires on
 // ANY unique-key conflict, so conflictCols select only the update shape:
 //
 //   - conflictCols + updateCols → one "col = VALUES(col)" assignment per

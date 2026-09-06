@@ -38,7 +38,7 @@ type Limits struct {
 	// MaxSessions bounds only what exists AFTER a successful hello, so without
 	// this a responsive non-browser that forges Host and Origin can hold
 	// arbitrarily many sockets and goroutines while consuming no session slot at
-	// all (lector r2). This is the bound on the unauthenticated waiting room.
+	// all. This is the bound on the unauthenticated waiting room.
 	MaxPending int
 
 	// HelloTimeout bounds how long a connection may sit before its first

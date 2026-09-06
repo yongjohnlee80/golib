@@ -34,7 +34,7 @@ var (
 	ErrEventOverflow = errors.New("web: event queue overflow")
 )
 
-// Hello is what a client reports when it attaches (ADR-0009 §2.3, §2.6).
+// Hello is what a client reports when it attaches.
 //
 // Every capability the backend claims derives from this, because the alternative
 // is flattering itself: a browser is not a terminal, and the profile must say so.
@@ -47,7 +47,7 @@ type Hello struct {
 
 	// Pointer reports whether the client has a pointing device. Mouse support is
 	// TriYes only when this is true — an optimistic assumption is never reported
-	// as support (ADR-0002 §2.2).
+	// as support.
 	Pointer bool
 
 	// PrefersDark comes from the client's prefers-color-scheme.
@@ -140,13 +140,13 @@ type Backend struct {
 	// Submitting the event and mutating the grid are separate operations, so an
 	// App could dequeue the ResizeEvent and call Size() in the window between
 	// them — and get the OLD size, which is the exact disagreement the submit-
-	// first ordering was supposed to prevent (lector r2).
+	// first ordering was supposed to prevent.
 	//
 	// Size AND Flush both take it. Flush matters at least as much: an App that
 	// dequeues an expansion and paints at a coordinate valid in the NEW size
 	// would otherwise have its cells applied to the old, smaller grid, which
 	// drops them silently — the App's render is simply lost and the screen stays
-	// blank there (lector r3). Serializing Flush makes "the event is visible" and
+	// blank there. Serializing Flush makes "the event is visible" and
 	// "the grid can accept the new coordinates" the same moment.
 	resizeMu sync.Mutex
 
@@ -184,7 +184,7 @@ func WithLogger(l logger.Logger) Option {
 // The queue is bounded because an unbounded one is a memory-exhaustion vector
 // driven by whoever is typing. It is NOT coalesced, because coalescing is the
 // App intake stage's job and doing it here would silently change the semantics
-// every other backend provides (ADR-0005 §2.4).
+// every other backend provides.
 func EventQueue(n int) Option {
 	return func(b *Backend) {
 		if n > 0 {
@@ -264,7 +264,7 @@ func capabilitiesFrom(h Hello) tui.Capabilities {
 		// Resize is reported in band on the same channel as everything else.
 		InBandResize: true,
 		// No browser analogue. An optimistic request is never reported as
-		// support (ADR-0002 §2.2).
+		// support.
 		KittyKeyboard: false,
 		// Only on the client's confirmation, and even then §2.6 describes it
 		// conservatively: the probe informs this bit, it does not prove it.

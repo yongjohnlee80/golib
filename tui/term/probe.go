@@ -8,8 +8,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// The startup capability probe (ADR-0002 §2.6): one batched write, one fence,
-// one deadline — no terminfo (ADR-0001 §2.4 #4). All queries go out in a
+// The startup capability probe: one batched write, one fence,
+// one deadline — no terminfo. All queries go out in a
 // single Write, then replies are read until the DA1 fence answers. Every real
 // terminal answers DA1, and answers arrive in request order, so when the DA1
 // reply arrives all still-unanswered probes are marked unsupported and Start
@@ -44,7 +44,7 @@ func preseedProfile(lookup func(string) (string, bool)) tui.ColorProfile {
 			return tui.ProfileTrueColor
 		}
 	}
-	// Heuristic pre-seeds, never authority (ADR-0002 §2.4/§2.6): these
+	// Heuristic pre-seeds, never authority: these
 	// terminals are all truecolor-capable.
 	if _, ok := lookup("WT_SESSION"); ok {
 		return tui.ProfileTrueColor
@@ -60,12 +60,12 @@ func preseedProfile(lookup func(string) (string, bool)) tui.ColorProfile {
 
 // runProbe executes the startup probe and resolves Capabilities. On ctx
 // cancellation it returns ctx.Err() and the caller discards everything —
-// a partially-negotiated profile is never observable (ADR-0002 §2.6).
+// a partially-negotiated profile is never observable.
 func (b *Backend) runProbe(ctx context.Context) (tui.Capabilities, error) {
 	caps := tui.Capabilities{
 		ColorProfile: preseedProfile(b.cfg.env),
 		// The documented, fixed unknown-fallback: when OSC 11 goes
-		// unanswered, ASSUME DARK (ADR-0002 §2.2).
+		// unanswered, ASSUME DARK.
 		DarkBackground: true,
 	}
 
@@ -148,7 +148,7 @@ collect:
 }
 
 // relativeLuminance approximates the relative luminance of c in [0, 1]
-// (Rec. 709 coefficients) for the DarkBackground derivation (ADR-0002 §2.2).
+// (Rec. 709 coefficients) for the DarkBackground derivation.
 func relativeLuminance(c tui.ProbedColor) float64 {
 	return (0.2126*float64(c.R) + 0.7152*float64(c.G) + 0.0722*float64(c.B)) / 255
 }

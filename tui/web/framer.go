@@ -7,7 +7,7 @@ import (
 )
 
 // cursorState is the latched cursor, emitted with the next frame rather than
-// immediately (ADR-0009 §2.2).
+// immediately.
 type cursorState struct {
 	Visible bool
 	X, Y    int

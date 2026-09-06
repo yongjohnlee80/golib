@@ -21,10 +21,9 @@ import (
 //     and its BeginTx context already owns the transaction's lifetime and
 //     auto-rollback. A pre-check would not bound an in-flight COMMIT and a
 //     goroutine wrapper would race a false completion report, so claiming the
-//     capability would be a lie the caller cannot detect (ADR-0017 §2.2).
+//     capability would be a lie the caller cannot detect.
 //
-// Compile-time proof of the base contracts and the one capability
-// (ADR-0017 criterion 1).
+// Compile-time proof of the base contracts and the one capability.
 var (
 	_ dao.DataConn   = (*mysqlConn)(nil)
 	_ dao.TxConn     = (*mysqlTx)(nil)

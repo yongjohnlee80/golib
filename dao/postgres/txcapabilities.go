@@ -16,7 +16,7 @@ import (
 // the server's column descriptors.
 //
 // Compile-time proof that the base contracts are unchanged and that each
-// capability is actually satisfied by the concrete type (ADR-0017 criterion 1).
+// capability is actually satisfied by the concrete type.
 var (
 	_ dao.DataConn          = (*pgxConn)(nil)
 	_ dao.TxConn            = (*pgxTx)(nil)

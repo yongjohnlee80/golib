@@ -19,7 +19,7 @@ import (
 //
 // The Origin and Host checks previously ran inside the WebSocket session loop —
 // which is after server/ws has already called websocket.Accept, so the upgrade
-// had happened and a 101 had been sent before the request was judged (lector r1).
+// had happened and a 101 had been sent before the request was judged.
 // A refusal after the upgrade is still a refusal, but it means the connection
 // existed, the client saw a successful handshake, and any per-connection cost was
 // already paid.
@@ -53,8 +53,7 @@ func (h *Handler) Guard(next http.Handler) http.Handler {
 // address or TLS settings. So mounting on a server bound to plaintext
 // 0.0.0.0 succeeds even when the Config says loopback-plus-TLS: the routes are
 // safe, the BIND is the caller's. An earlier version of this comment said Mount
-// binds the validated config to the listener, which was simply untrue
-// (lector r2).
+// binds the validated config to the listener, which was simply untrue.
 //
 // [Handler.Serve] is the path where the validated Config and the listener are
 // the same decision. Use Mount when you are composing this into a larger server
@@ -101,7 +100,7 @@ func (h *Handler) WebSocketHandler(reg *server.Registry) http.Handler {
 // TLS settings [Config.validate] checked are the ones used here, so a
 // non-loopback plaintext bind cannot happen. Previously validate() inspected
 // fields nothing consumed, so it described an intention rather than constraining
-// anything (lector r1).
+// anything.
 //
 // Prefer this over [Handler.Mount] unless you are deliberately composing into a
 // server whose bind you own.
@@ -117,8 +116,8 @@ func (h *Handler) Serve(ctx context.Context) (err error) {
 	defer stopSweep()
 	// A NAMED result, because `return shutdownErr` evaluated the variable before
 	// the deferred function assigned it — so a failed shutdown returned nil and
-	// the error I had just been told not to discard was discarded anyway
-	// (lector r3). errors.Join keeps both causes when the server also failed.
+	// the error I had just been told not to discard was discarded anyway.
+	// errors.Join keeps both causes when the server also failed.
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), h.grace)
 		defer cancel()

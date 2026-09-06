@@ -25,7 +25,7 @@ import (
 //     The ticket it converts into is single-use and expires in 30 seconds, and
 //     it is accepted only behind the separately-enforced Origin allowlist — the
 //     ticket itself carries no origin binding, and earlier revisions of this
-//     comment wrongly said it did (lector r5).
+//     comment wrongly said it did.
 //     (An earlier version of this comment said every attach presents a ticket,
 //     which is simply untrue — mTLS and the SSH challenge attach on their own.
 //     The real invariant is narrower and is the one that matters: a reusable
@@ -53,7 +53,7 @@ import (
 // The internal check is not redundancy. An earlier version relied entirely on
 // Guard, which [Handler.Mount] applies — so a caller who mounted the exported
 // handler directly got an unguarded login endpoint, and a direct call with an
-// attacker Host and Origin minted a ticket for a correct password (lector r4).
+// attacker Host and Origin minted a ticket for a correct password.
 // The doc comment claimed the route itself carried those controls; it did not.
 // For an endpoint that turns a password into a credential, the check belongs
 // where the handler is, not only where someone remembered to wrap it.
@@ -122,8 +122,8 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	//
 	// io.LimitReader plus a single Decode was not a bound at all: Decode stops at
 	// the end of the first JSON value, so a correct-password object followed by
-	// 8 KiB of junk decoded fine, never hit the limit, and minted a ticket
-	// (lector r3). MaxBytesReader makes the read itself fail past the cap, and
+	// 8 KiB of junk decoded fine, never hit the limit, and minted a ticket.
+	// MaxBytesReader makes the read itself fail past the cap, and
 	// requiring EOF makes trailing bytes a rejection rather than something nobody
 	// looked at.
 	r.Body = http.MaxBytesReader(w, r.Body, maxLoginBody)
@@ -160,7 +160,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	// owning it, in which case whoever settles that handoff returns it — see
 	// gate.hold. The previous version simply stopped returning the slot on a
 	// successful login and nothing ever gave it back, so the ninth login 503'd
-	// forever (lector r1 on PR #14).
+	// forever.
 	//
 	// leased is one-way: once a handoff owns this slot the KEY is the sole unit of
 	// accounting, and gate.release is idempotent per key. Flipping it back would
@@ -238,7 +238,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 			leased = h.pending.hold(handoff, h.now().Add(h.pendingHold))
 			// The hook's capability to publish its own park entry atomically with
 			// that reservation. Without it a consumer not using web.SSO had no way
-			// to be safe here at all, because the gate is unexported (lector r5).
+			// to be safe here at all, because the gate is unexported.
 			stash.mu.Lock()
 			stash.commit = func(publish func()) bool {
 				return h.pending.commit(handoff, h.now().Add(h.pendingHold), publish)
@@ -252,10 +252,10 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// Two attempts got this wrong in the same place. `defer` is function-scoped,
 		// so deferring the retirement inside this block left the capability live
 		// through every path below: while an error path was blocked in
-		// Issuer.Revoke, a retained Stash published successfully (lector r7).
+		// Issuer.Revoke, a retained Stash published successfully.
 		// Calling disarm on the line after the hook then skipped it whenever the
 		// hook PANICKED, which leaves the capability alive after the request
-		// unwinds (lector r8).
+		// unwinds.
 		//
 		// An immediately-invoked function is the scope that actually matches the
 		// hook's call: the defer fires on a normal return, an error return, and a
@@ -269,8 +269,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 			// The caller could not record the login, so the login did NOT succeed.
 			// Returning the ticket anyway would hand out a credential for state
 			// that does not exist — so the ticket is REVOKED before the refusal.
-			// Leaving it in the store left a usable credential behind a 503
-			// (lector r1 on PR #14).
+			// Leaving it in the store left a usable credential behind a 503.
 			if rerr := h.cfg.Issuer.Revoke(secret.Reveal()); rerr != nil {
 				logger.Warning(h.log, rerr, sessionAudit{Kind: "login-denied",
 					Subject: identity.Subject, Reason: "ticket revoke failed"})

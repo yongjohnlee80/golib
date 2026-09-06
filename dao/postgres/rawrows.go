@@ -4,7 +4,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// Raw result access for the Postgres driver (ADR-0017 §2.3). pgx already holds
+// Raw result access for the Postgres driver. pgx already holds
 // the current row's wire bytes and the server's RowDescription; dao.Rows erased
 // both, forcing a pass-through consumer to decode into Go types it has no
 // reason to name and re-encode them. pgxRows opts into dao.RawRows to hand them

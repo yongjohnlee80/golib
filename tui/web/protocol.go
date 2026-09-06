@@ -50,7 +50,7 @@ type clientMessage struct {
 	// Rev 11 made password a ticket minter rather than an attach mechanism, and
 	// leaving the fields in place meant a custom client could still authenticate
 	// a password directly over the WebSocket — the split existed in the prose and
-	// not in the protocol (lector r3). A password goes to the login route, which
+	// not in the protocol. A password goes to the login route, which
 	// returns a ticket; the ticket arrives above.
 
 	// Measurements, on hello and resize.

@@ -29,14 +29,14 @@ import (
 // query paths hold. Refusal of a guarded call is an immediate state inspection under
 // [pinnedConn.mu], never a wait for the segment to end (serialization is not refusal).
 
-// Compile-time proof of the capability (ADR-0018 criterion 1). The dao-core proof that
+// Compile-time proof of the capability. The dao-core proof that
 // the base interfaces are unchanged lives in txcapabilities.go's assertion block.
 var _ SessionPinner = (*pgxConn)(nil)
 
 // SessionPinner is an optional postgres-driver capability: the ability to pin ONE
 // connection exclusively, for a session's lifetime, and hand back a handle that can
 // both run raw extended-protocol segments and host the session's transaction on that
-// same connection (ADR-0018 §2.1).
+// same connection.
 //
 // Probe it with [SupportsSessionPinning] at the consumer's entry point; a miss reports
 // [dao.ErrUnsupported] — never a silent pool fallback, which would put the session's
@@ -80,7 +80,7 @@ type PinnedConn interface {
 	Sync(ctx context.Context) (byte, error)
 
 	// BeginSessionTx opens the session's transaction ON THE PINNED CONNECTION,
-	// returning a guarded [dao.ContextTxConn] (ADR-0018 §2.4). Requires the quiescent
+	// returning a guarded [dao.ContextTxConn]. Requires the quiescent
 	// state; anything else is an immediate [ErrSegmentInFlight].
 	BeginSessionTx(ctx context.Context, opts dao.TxOptions) (dao.ContextTxConn, error)
 
@@ -105,7 +105,7 @@ func SupportsSessionPinning(conn dao.DataConn) bool {
 }
 
 // PinSessionConn probes conn for [SessionPinner] and pins a connection, or reports
-// [dao.ErrUnsupported] when conn lacks the capability (ADR-0018 criterion 9). It is the
+// [dao.ErrUnsupported] when conn lacks the capability. It is the
 // typed entry point a consumer calls instead of asserting the interface itself, mirroring
 // [dao.BeginConnTx]: a miss is an error the caller handles, never a panic and never a
 // silent fallback to the pool.
@@ -117,7 +117,7 @@ func PinSessionConn(ctx context.Context, conn dao.DataConn) (PinnedConn, error) 
 	return sp.PinSessionConn(ctx)
 }
 
-// outboundState is what the CONSUMER has built on the wire (ADR-0018 §2.3).
+// outboundState is what the CONSUMER has built on the wire.
 type outboundState int
 
 const (
@@ -126,7 +126,7 @@ const (
 	flushed                       // Flush wrote them; bytes on the wire
 )
 
-// inboundState is where the RESPONSE stream stands (ADR-0018 §2.3).
+// inboundState is where the RESPONSE stream stands.
 type inboundState int
 
 const (
@@ -156,7 +156,7 @@ var ErrReleased = errors.New("postgres: the pinned connection has been released 
 
 // ErrPrematureReadyForQuery reports a ReadyForQuery observed by [PinnedConn.Receive] —
 // a contract violation, because the terminal ReadyForQuery belongs to Sync and the
-// consumer sent none (ADR-0018 §2.3). The driver does not silently absorb protocol skew.
+// consumer sent none. The driver does not silently absorb protocol skew.
 var ErrPrematureReadyForQuery = errors.New("postgres: premature ReadyForQuery in Receive — a terminal ReadyForQuery belongs to Sync, and none was sent")
 
 // pinnedConn is the ADR-0018 handle: one acquired pool member plus the state machine
@@ -220,8 +220,7 @@ type pinnedConn struct {
 	wireMu sync.Mutex
 }
 
-// PinSessionConn acquires one pool member and holds it for the handle's lifetime
-// (ADR-0018 §2.1).
+// PinSessionConn acquires one pool member and holds it for the handle's lifetime.
 func (c *pgxConn) PinSessionConn(ctx context.Context) (PinnedConn, error) {
 	acq, err := c.pool.Acquire(ctx)
 	if err != nil {
@@ -333,7 +332,7 @@ func (p *pinnedConn) Flush(ctx context.Context) error {
 	p.wireMu.Lock()
 	// The protocol Flush ('H') frame makes the server emit the responses to every frame
 	// processed so far WITHOUT ending the exchange — it is what lets Receive serve a
-	// group message-at-a-time before the consumer's Sync (ADR-0018 §2.3, criterion 2). A
+	// group message-at-a-time before the consumer's Sync. A
 	// TCP flush alone would leave them in the server's output buffer until Sync.
 	p.frontend.Send(&pgproto3.Flush{})
 	err := p.writeBuffered(ctx)
@@ -477,7 +476,7 @@ func (p *pinnedConn) syncLocked(ctx context.Context) (byte, error) {
 }
 
 // BeginSessionTx opens the session transaction on the pinned wire via a raw
-// simple-protocol BEGIN and returns the guarded pinnedTx (ADR-0018 §2.4). It requires
+// simple-protocol BEGIN and returns the guarded pinnedTx. It requires
 // the quiescent state and no already-open transaction.
 func (p *pinnedConn) BeginSessionTx(ctx context.Context, opts dao.TxOptions) (dao.ContextTxConn, error) {
 	sql, err := beginSQL(opts)
@@ -512,7 +511,7 @@ func (p *pinnedConn) BeginSessionTx(ctx context.Context, opts dao.TxOptions) (da
 	return &pinnedTx{p: p, ctx: ctx}, nil
 }
 
-// Release returns the connection to the pool (ADR-0018 §2.2): it refuses while the wire
+// Release returns the connection to the pool: it refuses while the wire
 // is mid-segment or the transaction is open. Discard is the unconditional counterpart.
 func (p *pinnedConn) Release(_ context.Context) error {
 	p.mu.Lock()
@@ -544,7 +543,7 @@ func (p *pinnedConn) Release(_ context.Context) error {
 	return nil
 }
 
-// Discard is the idempotent terminal operation (ADR-0018 §2.2): it always relinquishes
+// Discard is the idempotent terminal operation: it always relinquishes
 // the pool lease; the pool destroys a member whose TxStatus is not idle, whose wire is
 // busy, or that is closed, which is exactly the ADR's "discarded, never dirty" rule.
 //
@@ -710,7 +709,7 @@ func (p *pinnedConn) readMessage(ctx context.Context) (pgproto3.BackendMessage, 
 }
 
 // drainToReady consumes messages until the terminal ReadyForQuery, which ends every
-// group and every discard (ADR-0018 §2.3). The caller owns the wire.
+// group and every discard. The caller owns the wire.
 func (p *pinnedConn) drainToReady(ctx context.Context) (byte, error) {
 	for {
 		msg, err := p.readMessage(ctx)
