@@ -200,21 +200,36 @@ func (c *Cache) Release(off int64) {
 	c.dropLocked()
 }
 
-// dropLocked discards every unheld segment lying entirely below the release
-// watermark. Called both by Release and by the last View.Close on a segment, so
-// a deferred release actually happens rather than being forgotten.
+// dropLocked discards the reclaimable PREFIX of the directory. Called by
+// Release and by the last View.Close on a segment, so a deferred release
+// happens rather than being forgotten.
+//
+// PREFIX ONLY, AND O(DROPPED) — not a scan of the whole directory.
+//
+// The first version rebuilt the entire slice on every final Close, which moved
+// F4's quadratic from access to reclamation: measured at ~4x per doubling —
+// 512 segments ~0.19 ms, 4096 ~12.5 ms, all under c.mu. That is the same
+// mistake as F4 in a second place, and it is the mistake of reasoning about the
+// SIZE of a set instead of how often it is walked.
+//
+// Stopping at the first segment that cannot go is not a weakening: it is the
+// semantics this cache already documents. A held early segment pins everything
+// after it, so peak memory is governed by the OLDEST live view. Scanning past
+// it to reclaim a later hole would contradict that and buy nothing a caller
+// could rely on.
 func (c *Cache) dropLocked() {
-	keep := c.segs[:0]
-	for _, s := range c.segs {
-		if s.refs == 0 && s.base+int64(s.n) <= c.released {
-			continue
+	i := 0
+	for i < len(c.segs) {
+		s := c.segs[i]
+		if s.refs != 0 || s.base+int64(s.n) > c.released {
+			break
 		}
-		keep = append(keep, s)
+		c.segs[i] = nil // do not pin a dropped segment through the array
+		i++
 	}
-	for i := len(keep); i < len(c.segs); i++ {
-		c.segs[i] = nil // do not pin dropped segments through the array
+	if i > 0 {
+		c.segs = c.segs[i:]
 	}
-	c.segs = keep
 }
 
 // Acquire resolves [from,to) and takes a reference on every segment covering
@@ -232,18 +247,32 @@ func (c *Cache) Acquire(from, to int64) (*View, error) {
 	if to > c.head {
 		return nil, fmt.Errorf("%w: [%d,%d) past end %d", ErrRange, from, to, c.head)
 	}
+	// Acquiring a span must cost the segments it COVERS, not the segments the
+	// cache holds — a reader taking one span out of a long stream must not get
+	// slower as the stream grows behind it. So: one search to find the first
+	// segment, then a cursor walk. Searching again per segment is O(k log n)
+	// and reintroduces the dependency on n that the search was meant to remove.
+	//
+	// Arithmetic indexing is NOT available here: a segment held by a view is
+	// left short when the writer moves on, so segment sizes vary.
+	i := c.indexLocked(from)
+	if i < 0 {
+		return nil, fmt.Errorf("%w: offset %d", ErrReleased, from)
+	}
 	var held []*segment
-	for off := from; off < to; {
-		s := c.findLocked(off)
-		if s == nil {
+	off := from
+	for off < to {
+		if i >= len(c.segs) || !c.segs[i].covers(off) {
 			for _, h := range held {
 				h.refs--
 			}
 			return nil, fmt.Errorf("%w: offset %d", ErrReleased, off)
 		}
+		s := c.segs[i]
 		s.refs++
 		held = append(held, s)
 		off = s.base + int64(s.n)
+		i++
 	}
 	return &View{c: c, from: from, to: to, held: held}, nil
 }
@@ -257,11 +286,22 @@ func (c *Cache) Acquire(from, to int64) (*View, error) {
 // contiguous and ascending by construction, so a search is available for free
 // and the argument for the scan was simply wrong.
 func (c *Cache) findLocked(off int64) *segment {
+	if i := c.indexLocked(off); i >= 0 {
+		return c.segs[i]
+	}
+	return nil
+}
+
+// indexLocked returns the index of the segment covering off, or -1. c.mu must
+// be held. Segments are contiguous and ascending by construction, so a search
+// is available; arithmetic is NOT, because a held partial segment is left short
+// and the next one starts after it, so sizes vary.
+func (c *Cache) indexLocked(off int64) int {
 	i := sort.Search(len(c.segs), func(i int) bool {
 		return c.segs[i].base+int64(c.segs[i].n) > off
 	})
 	if i < len(c.segs) && c.segs[i].covers(off) {
-		return c.segs[i]
+		return i
 	}
-	return nil
+	return -1
 }

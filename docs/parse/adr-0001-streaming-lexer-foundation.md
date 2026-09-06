@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 6)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 7)** (2026-09-06, jarvis).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -72,7 +72,7 @@ func (c *Cache) Acquire(from, to int64) (*View, error)
 
 type View struct{ … }
 func (v *View) Reader() io.Reader          // no copy; walks segments
-func (v *View) AppendTo(dst []byte) []byte // correct across boundaries
+func (v *View) AppendTo(dst []byte) ([]byte, error) // correct across boundaries
 func (v *View) Len() int64
 func (v *View) Close() error               // releases; idempotent
 ```
@@ -110,7 +110,11 @@ retain*, not by a segment count.
 Rev 4 claimed constant-memory `Validate` **and** unbounded delimiters. Those are
 incompatible (lector r4 B2). The truthful statement:
 
-> **Peak memory is `O(buffer + longest active delimiter + retained views)`.**
+> **Peak memory is `O(buffer + longest active delimiter + retained views)`**,
+> where a retained view costs its segments' **full buffers** — including the
+> unwritten tail of a held partial segment. A view on one byte of a 32 KiB
+> segment retains 32 KiB (lector r6: the earlier wording implied span-sized
+> cost). Smaller segments trade allocations for finer reclamation.
 
 - A caller that acquires nothing and configures a finite `MaxDelimiter` has
   **constant** memory, whatever the size of the stream.
@@ -196,10 +200,18 @@ dialect-specific artefact, out of the core entirely.
 // A Form recognises one construct. New forms are new implementations; the
 // lexer is never edited to accept them.
 type Form interface {
-    Starts(src []byte) (n int, ok bool)
+    // Starts reports whether src opens this form. THREE ANSWERS, not two.
+    Starts(src []byte) (n int, r Match)
     End(src []byte, openedWith []byte) (n int, err error)
     Kind() Kind
 }
+
+type Match uint8
+const (
+    NoMatch    Match = iota // definitely not this form
+    Matched                 // opens this form, consuming n bytes
+    Incomplete              // CANNOT DECIDE with the bytes given
+)
 
 // Generic constructors in the core. None names a dialect.
 func QuoteForm(open, close string, o QuoteOpts) Form
@@ -211,11 +223,19 @@ func DelimitedForm(prefix, suffix byte) Form // the $tag$ SHAPE, unnamed
 `DelimitedForm` generalises the tag-carrying shape, so PostgreSQL's
 dollar-quoting is one call from a leaf rather than a branch in the core.
 
-### 6.1 The incremental contract (lector r5 F7)
+### 6.1 The incremental contract (lector r5 F7, completed r6 B2)
 
 A `[]byte`-in/`int`-out signature cannot express a form whose construct **spans
 more input than it has been shown**, which is the ordinary case for a streaming
 lexer: a delimiter, a long comment, a literal larger than a segment.
+
+**`Starts` needs the third answer just as much as `End` does**, and rev 6 gave
+it only to `End`. The minimal counterexample is `/` against `/*`: with a single
+`/` visible at the window edge, a two-valued `Starts` must answer *matched* or
+*no match*, and **both are wrong** — declaration order cannot rescue it, because
+the ambiguity is about how much input was seen, not about which form wins.
+`Incomplete` is the only honest answer, and without it every shared-prefix
+opener is a latent bug that appears only when a chunk boundary lands inside it.
 
 ```go
 // ErrNeedMore reports that a decision cannot be made with the bytes supplied.
@@ -227,12 +247,23 @@ var ErrNeedMore = errors.New("parse: need more input")
 
 Three rules the core enforces so a `Form` cannot get them wrong:
 
-1. **`ErrNeedMore` is a request, not a failure.** The lexer retries with more
-   input, up to `MaxDelimiter` (§3.3), and only then reports a bounded error.
-2. **Forms are pure.** No `Form` may remember anything between calls; the same
-   `(src, openedWith)` must always give the same answer. Statefulness would be
-   invisible until an input straddled a boundary, which is the hardest case to
-   test and the easiest to ship broken.
+1. **`Incomplete` and `ErrNeedMore` are requests, not failures.** The lexer
+   widens the window and calls again from the same offset, up to
+   `MaxDelimiter` (§3.3), and only then reports a bounded error naming the
+   construct.
+2. **Forms are pure**, and *the interface cannot enforce it* (lector r6). A
+   `Form` may not remember anything between calls: the same
+   `(src, openedWith)` must always give the same answer, because it will be
+   called again from the same offset with more input. Statefulness is invisible
+   until an input straddles a boundary — the hardest case to test and the
+   easiest to ship broken.
+
+   Since the type system will not hold this, a **conformance suite must**:
+   `parse.TestForm(t, f, corpus)` ships alongside the interface, for form
+   authors to run, and drives every input **at every split**, asserting the
+   answer is identical however the bytes arrive. A stateful `Form` fails it; a
+   `Form` whose author never runs it is that author's risk — stated here so it
+   is a choice rather than an accident.
 3. **Precedence is declaration order**, first match wins, and it is the
    caller's to arrange. `--` before `-`, `/*` before `/`. The core does not
    sort by length or guess, because a dialect's precedence is a dialect's
@@ -242,9 +273,13 @@ Three rules the core enforces so a `Form` cannot get them wrong:
 
 The **AST and grammar tree**; **intention and threat classification**; a
 `pg_query_go` **adapter**; **`dao` read-only enforcement**. A
-**tree-structured cache** was analysed and deferred (Johno): with fixed-size
-segments, offset→segment is O(1) arithmetic; a tree buys O(log n) over a set
-that is almost always tiny and charges every lookup for it. Trees belong one
+**tree-structured cache** was analysed and deferred (Johno). The original
+argument said offset→segment is O(1) arithmetic with fixed-size segments; that
+is **false in the implementation** and the ADR was stale (lector r6). A held
+partial segment is left short and the next begins after it, so sizes vary and
+arithmetic indexing is unavailable. Lookup is a binary search — done **once**
+per span, then a cursor walk — which is O(log n + k) and still well inside what
+a tree would buy over a set this size. Trees belong one
 layer up, where spans are the domain model. **A wrapper converts to a
 grammar-fit structure when its shape is known.**
 
@@ -271,8 +306,10 @@ behaving differently depending on how input was supplied.
    limit**.
 6. A span straddling a segment boundary is returned correctly by `Reader` and
    `AppendTo`.
-7. **A view's bytes stay valid under reuse pressure** until `Close` — proven by
-   acquiring, forcing the writer to need space, and reading through afterwards.
+7. **A view's bytes stay valid under release pressure** until `Close` — proven
+   by acquiring, driving the writer to the end, asking for everything to be
+   released, and reading through afterwards. *(Nothing is recycled; dropped
+   segments are garbage, so "reuse" overstated it.)*
 8. **A held view never stalls the writer:** a scan that acquires the first token
    and does not release it until the last completes, on a source far larger than
    any segment budget.
@@ -289,10 +326,22 @@ behaving differently depending on how input was supplied.
 15. Lexing allocates **O(1) per token** for tokens never acquired.
 16. **The core names no dialect:** grep `golib/parse` for `sql`, `postgres`,
     `mysql`, case-insensitive → nothing.
-17. A form whose construct straddles the window returns `ErrNeedMore` and is
+17. **`Starts` answers `Incomplete`, not a guess, at a window edge** — driven
+    over **every split** of a shared-prefix opener pair (`/` / `/*`, `-` /
+    `--`), asserting the same token stream at each, and asserting the
+    two-valued answers are never reached with the prefix alone. A positive
+    control that removes `Incomplete` must redden it.
+18. **`parse.TestForm` is shipped and detects a stateful form** — proven with a
+    deliberately stateful decoy that answers differently on its second call.
+19. A form whose construct straddles the window returns `ErrNeedMore` and is
     retried with a superset until it decides or `MaxDelimiter` is reached — and
     the same input supplied in one chunk and in many yields identical tokens.
-18. Span access is **linear in the segments a span covers**, demonstrated by a
+20. Reclamation is **linear in the segments actually dropped**, not in the
+    directory — an isolated close benchmark over independently held segments
+    whose time roughly doubles when their number doubles. *(Measured after the
+    fix: 10/20/43/100 µs at 512/1024/2048/4096 segments, against 0.19/0.71/2.8/
+    12.5 ms before.)*
+21. Span access is **linear in the segments a span covers**, demonstrated by a
     benchmark whose time roughly doubles when the span doubles. *(Measured
     after the O(k²) fix: 172/342/630 µs at 64/128/256 KiB, against 0.4/1.5/6.0
     ms before.)*
