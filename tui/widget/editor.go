@@ -1114,37 +1114,11 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 
 // --- viewport & rendering (TextArea discipline) ------------------------------
 
-func (e *Editor) wrapWidth() int {
-	w := e.w
-	if e.scrollable() {
-		w--
-	}
-	return max(w, 1)
-}
+func (e *Editor) wrapWidth() int { return wrapUsableWidth(e.lines, e.view()) }
 
-func (e *Editor) scrollable() bool {
-	if e.h <= 0 {
-		return false
-	}
-	if e.wrap == WrapNone {
-		return len(e.lines) > e.h
-	}
-	rows := 0
-	for i := range e.lines {
-		rows += len(wrapRanges(e.lineClusters(i), max(e.w-1, 1), e.measure))
-		if rows > e.h {
-			return true
-		}
-	}
-	return false
-}
+func (e *Editor) scrollable() bool { return wrapScrollable(e.lines, e.view()) }
 
-func (e *Editor) rowsOfLine(i int) int {
-	if e.wrap == WrapNone {
-		return 1
-	}
-	return len(wrapRanges(e.lineClusters(i), e.wrapWidth(), e.measure))
-}
+func (e *Editor) rowsOfLine(i int) int { return wrapRowsOfLine(e.lines, i, e.view()) }
 
 func (e *Editor) ensureVisible() {
 	if e.h <= 0 || e.w <= 0 {
@@ -1351,17 +1325,7 @@ func (e *Editor) colAtCells(cs []string, from, end, cells int) int {
 }
 
 func (e *Editor) wrapPos(ln, col int) (row, x int) {
-	cs := e.lineClusters(ln)
-	rows := wrapRanges(cs, e.wrapWidth(), e.measure)
-	for i, r := range rows {
-		if col < r[0] {
-			return i, 0
-		}
-		if col <= r[1] || i == len(rows)-1 {
-			return i, cellsBefore(cs[r[0]:], min(col, r[1])-r[0], e.measure)
-		}
-	}
-	return 0, 0
+	return wrapPosOf(e.lines, ln, col, e.view())
 }
 
 // inVisual reports whether (ln, col) is inside the visual highlight.
@@ -1434,4 +1398,10 @@ func (e *Editor) Render(s tui.Surface) {
 	if e.scrollable() {
 		paintScrollIndicator(s, sz.W-1, sz.H, e.top, len(e.lines))
 	}
+}
+
+// view is the layout state the shared soft-wrap geometry needs. It is the
+// only place this widget's viewport is handed to textBuffer.
+func (e *Editor) view() wrapView {
+	return wrapView{w: e.w, h: e.h, wrap: e.wrap, measure: e.measure}
 }

@@ -280,39 +280,13 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 
 // wrapWidth is the content width available for text (minus the scroll
 // indicator column when one is painted).
-func (t *TextArea) wrapWidth() int {
-	w := t.w
-	if t.scrollable() {
-		w--
-	}
-	return max(w, 1)
-}
+func (t *TextArea) wrapWidth() int { return wrapUsableWidth(t.lines, t.view()) }
 
 // scrollable reports whether content exceeds the viewport vertically.
-func (t *TextArea) scrollable() bool {
-	if t.h <= 0 {
-		return false
-	}
-	if t.wrap == WrapNone {
-		return len(t.lines) > t.h
-	}
-	rows := 0
-	for i := range t.lines {
-		rows += len(wrapRanges(t.lineClusters(i), max(t.w-1, 1), t.measure))
-		if rows > t.h {
-			return true
-		}
-	}
-	return false
-}
+func (t *TextArea) scrollable() bool { return wrapScrollable(t.lines, t.view()) }
 
 // rowsOfLine is the wrapped visual height of line i at the current width.
-func (t *TextArea) rowsOfLine(i int) int {
-	if t.wrap == WrapNone {
-		return 1
-	}
-	return len(wrapRanges(t.lineClusters(i), t.wrapWidth(), t.measure))
-}
+func (t *TextArea) rowsOfLine(i int) int { return wrapRowsOfLine(t.lines, i, t.view()) }
 
 // ensureVisible adjusts top/left so the cursor stays inside the viewport
 // (using the last layout size).
@@ -386,17 +360,7 @@ func (t *TextArea) Cursor() (int, int, bool) {
 // wrapPos locates cluster column col inside line ln's wrapped rows: the row
 // index and the cell offset within that row.
 func (t *TextArea) wrapPos(ln, col int) (row, x int) {
-	cs := t.lineClusters(ln)
-	rows := wrapRanges(cs, t.wrapWidth(), t.measure)
-	for i, r := range rows {
-		if col < r[0] {
-			return i, 0 // col is a wrap-consumed break space
-		}
-		if col <= r[1] || i == len(rows)-1 {
-			return i, cellsBefore(cs[r[0]:], min(col, r[1])-r[0], t.measure)
-		}
-	}
-	return 0, 0
+	return wrapPosOf(t.lines, ln, col, t.view())
 }
 
 // posKey orders buffer positions for selection painting.
@@ -454,4 +418,10 @@ func (t *TextArea) Render(s tui.Surface) {
 	if t.scrollable() {
 		paintScrollIndicator(s, sz.W-1, sz.H, t.top, len(t.lines))
 	}
+}
+
+// view is the layout state the shared soft-wrap geometry needs. It is the
+// only place this widget's viewport is handed to textBuffer.
+func (t *TextArea) view() wrapView {
+	return wrapView{w: t.w, h: t.h, wrap: t.wrap, measure: t.measure}
 }
