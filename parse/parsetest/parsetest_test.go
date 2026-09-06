@@ -88,7 +88,7 @@ func (f *statefulForm) End(src, openedWith []byte, b parse.InputBoundary) (int, 
 	return len(src), nil
 }
 
-// CRITERION 22: the suite detects a stateful form. Shown failing, not asserted
+// The suite detects a stateful form. Shown failing, not asserted
 // to be capable of it.
 func TestSuiteDetectsAStatefulForm(t *testing.T) {
 	t.Parallel()

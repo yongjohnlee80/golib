@@ -83,9 +83,9 @@ func collect(t *testing.T, s *Scan) ([]Token, string) {
 
 const corpus = "select a1, 'it''s' /* c /* n */ */ from t -- tail\nwhere x <= 3;\n"
 
-// CRITERION 1: a source supplied as []byte and as a one-byte-at-a-time reader
-// yields IDENTICAL tokens. CRITERION 2: concatenating every token's bytes,
-// trivia included, reproduces the source exactly. CRITERION 3: the spans are
+// A source supplied as []byte and as a one-byte-at-a-time reader yields
+// IDENTICAL tokens; concatenating every token's bytes, trivia included,
+// reproduces the source exactly; and the spans are
 // disjoint and ordered.
 func TestScan_ByteAndStreamAgreeAndReproduceTheSource(t *testing.T) {
 	lex := New(WithForms(sqlish()...))
@@ -148,7 +148,7 @@ func TestScan_TriviaIsEmitted(t *testing.T) {
 	}
 }
 
-// CRITERION 18: a source ending in a shared prefix lexes as the SHORTER form —
+// A source ending in a shared prefix lexes as the SHORTER form —
 // `/` with `/*` declared first is an operator, not an unterminated block
 // comment. Driven at EOF and with the same bytes mid-stream, which must differ:
 // mid-stream it waits, and then resolves on what actually arrives.
@@ -208,7 +208,7 @@ func TestScan_UnterminatedQuoteReportsItsOffset(t *testing.T) {
 	}
 }
 
-// CRITERION 5 (the rejecting half): with a limit set, a construct that outruns it
+// The rejecting half of the bound: with a limit set, a construct that outruns it
 // is refused NAMING the delimiter, the length and the limit.
 func TestScan_MaxDelimiterRejectsNamingDelimiterLengthAndLimit(t *testing.T) {
 	long := "a '" + strings.Repeat("x", 200)
@@ -281,7 +281,7 @@ func TestScan_NoFormClaimsTheByte(t *testing.T) {
 	}
 }
 
-// --- form-contract decoys (CRITERION 19, the core's half) -------------------
+// --- form-contract decoys (the core's half) --------------------------------
 
 type decoyForm struct {
 	kind   Kind
@@ -374,7 +374,7 @@ func TestScan_FormContractViolationsAreReportedNotAbsorbed(t *testing.T) {
 	}
 }
 
-// --- ownership and close (CRITERIA 11 and 12) --------------------------------
+// --- ownership and close ----------------------------------------------------
 
 type recordingReader struct {
 	io.Reader
@@ -406,7 +406,7 @@ func TestScan_OwnershipDecidesWhetherTheReaderIsClosed(t *testing.T) {
 	}
 }
 
-// CRITERION 11: a Scan created and never ranged still releases on Close, and a
+// A Scan created and never ranged still releases on Close, and a
 // Close error after an early stop reaches the caller.
 func TestScan_CloseWithoutRangingAndCloseErrorReachesTheCaller(t *testing.T) {
 	never := &recordingReader{Reader: strings.NewReader("abc")}

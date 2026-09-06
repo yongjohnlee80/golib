@@ -19,7 +19,7 @@ func everySplit(f Form, src string) []Match {
 	return out
 }
 
-// CRITERION 17: Starts answers Incomplete rather than guessing at a window
+// Starts answers Incomplete rather than guessing at a window
 // edge, driven over EVERY split of a shared-prefix opener pair.
 //
 // `/` against `/*` is the case that cannot be decided by declaration order: with
@@ -69,7 +69,7 @@ func TestStarts_UnrelatedFirstByteIsRefusedImmediately(t *testing.T) {
 	}
 }
 
-// CRITERION 20: the same unterminated bytes, the same call, one boundary value
+// The same unterminated bytes, the same call, one boundary value
 // apart. This is the whole reason End takes a boundary.
 func TestEnd_TheBoundaryDecidesWhatEOFMeans(t *testing.T) {
 	t.Parallel()
@@ -101,7 +101,7 @@ func TestEnd_TheBoundaryDecidesWhatEOFMeans(t *testing.T) {
 	}
 }
 
-// CRITERION 21: input that already decides itself must not lex differently
+// Input that already decides itself must not lex differently
 // because of how it arrived.
 func TestEnd_APresentTerminatorIsUnaffectedByTheBoundary(t *testing.T) {
 	t.Parallel()
@@ -243,7 +243,7 @@ func TestForms_AcceptOrdinaryDelimiters(t *testing.T) {
 // visible byte that disagrees while the question is still open. With "END",
 // `xENDz` has a complete closer AND a `z` that already rules out a second one —
 // deferring there stalls a live stream on input that has decided itself, and
-// makes the answer depend on the boundary, which criterion 21 forbids.
+// makes the answer depend on the boundary, which the contract forbids.
 func TestQuoteForm_MultiByteDoublingDefersOnlyOnAProperPrefix(t *testing.T) {
 	t.Parallel()
 	f := QuoteForm("BEGIN", "END", QuoteOpts{Doubling: true})
@@ -273,7 +273,7 @@ func TestQuoteForm_MultiByteDoublingDefersOnlyOnAProperPrefix(t *testing.T) {
 			if err != nil || n != tc.wantN {
 				t.Fatalf("End(%q, MoreInput) = (%d, %v), want (%d, nil)", tc.src, n, err, tc.wantN)
 			}
-			// CRITERION 21: input that decides itself gives the same answer
+			// Input that decides itself gives the same answer
 			// however it arrived.
 			eofN, eofErr := f.End([]byte(tc.src), []byte("BEGIN"), EndOfInput)
 			if eofErr != nil || eofN != tc.wantN {
@@ -285,7 +285,8 @@ func TestQuoteForm_MultiByteDoublingDefersOnlyOnAProperPrefix(t *testing.T) {
 }
 
 // pgTag is the rule a PostgreSQL leaf would supply. It lives in the TEST,
-// because writing it into forms.go is exactly what criterion 16 forbids: the
+// because writing it into forms.go is exactly what the no-dialect rule forbids:
+// the
 // core would then know a dialect by name.
 func pgTag(index int, b byte) bool {
 	letter := b == '_' || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b >= 0x80
