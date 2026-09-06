@@ -12,7 +12,7 @@ type Anchor struct {
 	rect   tui.Rect
 }
 
-// The alignment anchors (ADR-0007 §2.5). Center is the Float default.
+// The alignment anchors. Center is the Float default.
 var (
 	Center      = Anchor{align: tui.AlignCenter}
 	TopLeft     = Anchor{align: tui.AlignTopLeft}
@@ -36,7 +36,7 @@ func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
 // Modal floats install a focus trap (an internal FocusScope layer — Tab
 // cycles inside only), consume Esc as dismiss, and optionally dim the
 // backdrop. Hiding unmounts the trap layer, so the runtime restores focus
-// to the previously focused node (ADR-0004 §2.6.3). Non-modal floats don't
+// to the previously focused node. Non-modal floats don't
 // trap and are dismissed by their owner.
 //
 // Backdrop dimming note: the ADR describes a compositor attribute

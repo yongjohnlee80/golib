@@ -1,4 +1,4 @@
-// Package widget is golib/tui's standard widget set v1 (ADR-0007): the
+// Package widget is golib/tui's standard widget set v1: the
 // Base embedding contract, the Box titled-window container, and the eleven
 // widgets sufficient to build sqlit- and lazygit-shaped applications out of
 // the box.
@@ -19,9 +19,9 @@
 //	Text         display        no          —
 //
 // All events carry Owner (the emitting widget's NodeID) as their first
-// field; publication is enqueue-only onto the App loop (ADR-0005).
+// field; publication is enqueue-only onto the App loop.
 //
-// Widgets are tui.Component implementations (ADR-0004): retained, mutable,
+// Widgets are tui.Component implementations: retained, mutable,
 // living on the loop goroutine. Every widget method — constructors aside —
 // is loop-goroutine-only, with ONE sanctioned exception: the io.Writer
 // handle returned by BufferView.Writer is safe from any goroutine (bounded

@@ -9,8 +9,7 @@ import (
 )
 
 // WrapMode selects how text-bearing widgets treat overflow. Text accepts
-// Truncate (default) and Wrap; TextArea accepts WrapNone and WrapSoft
-// (ADR-0007 §2.4/§2.5).
+// Truncate (default) and Wrap; TextArea accepts WrapNone and WrapSoft.
 type WrapMode uint8
 
 const (
@@ -24,7 +23,7 @@ const (
 	WrapSoft
 )
 
-// Text is a styled static label (ADR-0007 §2.5): plain text, truncated with
+// Text is a styled static label: plain text, truncated with
 // ellipsis or soft-wrapped. Not focusable; consumes nothing.
 type Text struct {
 	Base

@@ -2,9 +2,9 @@ package widget
 
 import "github.com/yongjohnlee80/golib/tui"
 
-// Bus event inventory (ADR-0007 §2.3). Every event carries Owner — the
+// Bus event inventory. Every event carries Owner — the
 // emitting widget's NodeID — as its first field so subscribers filter by
-// source. Publication is enqueue-only onto the App loop (ADR-0005 §2.7):
+// source. Publication is enqueue-only onto the App loop:
 // widgets publish via Context.Bus(), handlers run on the loop goroutine.
 //
 // These are Bus values, not tui.Event tree events: they never route or

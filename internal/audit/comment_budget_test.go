@@ -205,6 +205,18 @@ func TestCommentBudget(t *testing.T) {
 	actual, walked := commentViolations(t)
 	budget := readBudget(t)
 
+	// The total is REPORTED here rather than recorded in the budget file. A
+	// stored copy is derived data that two migration rungs both have to touch,
+	// so it conflicted on every parallel pass over a number neither rung
+	// actually disagreed about. Computing it in one place removes the conflict
+	// class instead of resolving it repeatedly.
+	budgeted := 0
+	for _, n := range budget {
+		budgeted += n
+	}
+	t.Logf("comment budget: %d pointer lines in %d files (destination: 0)",
+		budgeted, len(budget))
+
 	var overBudget, unlisted, stale []string
 
 	for file, got := range actual {

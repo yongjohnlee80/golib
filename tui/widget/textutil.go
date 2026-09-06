@@ -169,7 +169,7 @@ func drawText(sur tui.Surface, x, y int, s string, st style.Style) int {
 }
 
 // paintScrollIndicator paints the minimal per-widget scroll indicator
-// column (ADR-0007 N5 — chrome, not a widget): a proportional thumb at
+// column (chrome, not a widget): a proportional thumb at
 // column x over h rows, for a viewport whose first visible unit is top out
 // of total.
 func paintScrollIndicator(s tui.Surface, x, h, top, total int) {

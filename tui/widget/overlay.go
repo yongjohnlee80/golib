@@ -5,7 +5,7 @@ import (
 )
 
 // OverlayHost is the package's concrete realization of "the Stack overlay
-// layer" (ADR-0007 §2.4/§2.5; ADR-0004 §2.7.4): a root-level tui.Stack
+// layer": a root-level tui.Stack
 // whose bottom layer is the application UI and whose upper layers are
 // overlays. Wrap the app root once —
 //

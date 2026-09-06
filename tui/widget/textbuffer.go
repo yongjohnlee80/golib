@@ -3,7 +3,7 @@ package widget
 import "strings"
 
 // textBuffer is the multi-line grapheme-addressed buffer substrate shared by
-// TextArea and Editor (ADR-0008 §2.1): a []string of lines with a cursor
+// TextArea and Editor: a []string of lines with a cursor
 // (line + cluster column), a sticky desired column for vertical moves, and a
 // single char-wise selection anchor. Methods here are PURE buffer/motion
 // operations — no widget concerns (no dirt marking, events, viewport, or

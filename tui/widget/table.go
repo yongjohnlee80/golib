@@ -175,7 +175,7 @@ func (t *Table[T]) Render(s tui.Surface) {
 // HandleEvent forwards KEYS to the row list so navigation works when they are
 // delivered to the Table (e.g. a controller forwarding ↑/↓).
 //
-// Pointer events are NOT forwarded wholesale (ADR-0010 §2.2). Under ADR-0004's
+// Pointer events are NOT forwarded wholesale. Under ADR-0004's
 // target-first routing the row list is a placed child at local Y:1, so a press in
 // the body reaches it directly with correct local coordinates and never arrives
 // here. What does arrive here is a press on the HEADER row, and forwarding that

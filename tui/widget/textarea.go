@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// TextArea is the multi-line editor (ADR-0007 §2.4). The buffer is a
+// TextArea is the multi-line editor. The buffer is a
 // []string of lines, grapheme-addressed within a line — deliberately simple,
 // no rope/gap buffer in v1: the target is commit-message / query-editor
 // scale (kilobytes), not code editors; very large single lines degrade. The
@@ -15,8 +15,8 @@ import (
 // change.
 //
 // Keys: TextInput's set plus Up/Down/PgUp/PgDn, Enter = newline, and
-// Ctrl+Home/End (buffer start/end). There is deliberately NO submit key
-// (ADR-0007 Q5): a Box-wrapped TextArea form submits via an app-level
+// Ctrl+Home/End (buffer start/end). There is deliberately NO submit key:
+// a Box-wrapped TextArea form submits via an app-level
 // keybinding. Tab is not consumed (focus traversal).
 //
 // Emits ChangeEvent, coalesced per input event (one per paste, not per

@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// TextInput is the single-line editor (ADR-0007 §2.4): grapheme-cluster
+// TextInput is the single-line editor: grapheme-cluster
 // addressed value, cursor + selection, horizontal scroll, placeholder,
 // masking, and a validation hook.
 //
@@ -15,7 +15,7 @@ import (
 // Ctrl/Alt), Home/End, Shift+arrows (selection), Ctrl+A/E/U/W (readline
 // subset), Enter (SubmitEvent when validation passes; a failing validation
 // sets the error state and consumes the key). Tab is NOT consumed — focus
-// traversal stays framework-owned (ADR-0004 §2.6.2).
+// traversal stays framework-owned.
 //
 // Bracketed paste (tui.PasteEvent) inserts atomically at the cursor — never
 // replayed as keystrokes, so a pasted newline cannot fake a submit; newlines
@@ -23,7 +23,7 @@ import (
 //
 // IME/real cursor: TextInput implements tui.CursorReporter, so while it is
 // focused the runtime parks the HARDWARE cursor at the insertion point
-// (ADR-0003 rule) and OS IMEs anchor their composition window there.
+// and OS IMEs anchor their composition window there.
 type TextInput struct {
 	Base
 	cs     []string // value as grapheme clusters
@@ -45,7 +45,7 @@ var (
 	_ tui.CursorReporter = (*TextInput)(nil)
 )
 
-// TextInputStyles are the TextInput style hooks (ADR-0007 §2.4). Zero
+// TextInputStyles are the TextInput style hooks. Zero
 // fields inherit the defaults.
 type TextInputStyles struct {
 	Text        style.Style // value text (default: theme foreground)
