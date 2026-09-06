@@ -1,6 +1,6 @@
 package widget_test
 
-// TextArea contract (ADR-0007 §2.4; Q5: no submit key).
+// TextArea contract, including the deliberate absence of a submit key.
 
 import (
 	"testing"
@@ -20,7 +20,7 @@ func focusedArea(t *testing.T, w, h int, opts ...widget.TextAreaOption) (*harnes
 }
 
 // TestTextAreaEnterIsNewline: Enter inserts a newline and emits NO submit
-// event (ADR-0007 Q5) — only ChangeEvent.
+// event at all — only ChangeEvent.
 func TestTextAreaEnterIsNewline(t *testing.T) {
 	h, ta, sh := focusedArea(t, 20, 5)
 	submits := record[widget.SubmitEvent](h)

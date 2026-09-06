@@ -1,6 +1,6 @@
 package widget_test
 
-// MF3 (lector r2) — WrapSoft click inversion must not cross visual rows.
+// WrapSoft click inversion must not cross visual rows.
 
 import (
 	"testing"

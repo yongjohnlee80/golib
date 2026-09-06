@@ -1,6 +1,6 @@
 package widget_test
 
-// Split zoom & SetRatio contract (ADR-0008 §2.3).
+// Split zoom & SetRatio contract.
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// --- Zoom (ADR-0008 §2.3) ---
+// --- Zoom ---
 
 func TestSplitZoomHidesPaneAndTransfersFocus(t *testing.T) {
 	a := widget.NewTextInput()

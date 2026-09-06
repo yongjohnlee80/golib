@@ -1,6 +1,6 @@
 package widget_test
 
-// TextInput contract (ADR-0007 §2.4, §5.3, §5.5).
+// TextInput contract.
 
 import (
 	"errors"
@@ -49,7 +49,7 @@ func TestTextInputTypingAndEvents(t *testing.T) {
 	h.wantContains("hi")
 }
 
-// TestTextInputKeysConsumedVsBubbled walks the §2.4 key inventory
+// TestTextInputKeysConsumedVsBubbled walks the whole key inventory
 // (table-driven): editing keys are consumed; Tab and unknown chords bubble.
 func TestTextInputKeysConsumedVsBubbled(t *testing.T) {
 	cases := []struct {
@@ -95,7 +95,7 @@ func TestTextInputKeysConsumedVsBubbled(t *testing.T) {
 	}
 }
 
-// TestTextInputPasteAtomic asserts §5.5: bracketed paste inserts atomically
+// TestTextInputPasteAtomic asserts bracketed paste inserts atomically
 // — one ChangeEvent, no SubmitEvent from a pasted newline.
 func TestTextInputPasteAtomic(t *testing.T) {
 	h, in, sh := focusedInput(t)
@@ -118,7 +118,7 @@ func TestTextInputPasteAtomic(t *testing.T) {
 	}
 }
 
-// TestTextInputMask asserts §5.5: mask runes paint; Value() returns raw.
+// TestTextInputMask asserts mask runes paint; Value() returns raw.
 func TestTextInputMask(t *testing.T) {
 	h, in, sh := focusedInput(t, widget.WithMask('•'))
 	h.inject(typeString("secret")...)
@@ -132,8 +132,8 @@ func TestTextInputMask(t *testing.T) {
 	h.wantNotContains("secret")
 }
 
-// TestTextInputIMECursor asserts §5.5: the hardware cursor parks at the
-// insertion point while focused (ADR-0003 rule), via TestBackend cursor
+// TestTextInputIMECursor asserts the hardware cursor parks at the
+// insertion point while focused, via TestBackend cursor
 // state.
 func TestTextInputIMECursor(t *testing.T) {
 	h, _, sh := focusedInput(t)

@@ -1,6 +1,6 @@
 package widget_test
 
-// Base embedding contract + Box chrome (ADR-0007 §5.2, §5.4).
+// Base embedding contract + Box chrome.
 
 import (
 	"strings"
@@ -18,7 +18,7 @@ type contexter interface {
 }
 
 // TestBaseInitPlumbing mounts every v1 widget and asserts the Base Init
-// chain ran: non-nil Context, valid NodeID (ADR-0007 §5.2 — catches missed
+// chain ran: non-nil Context, valid NodeID (which catches a missed
 // Base.Init chaining).
 func TestBaseInitPlumbing(t *testing.T) {
 	widgets := map[string]tui.Component{
@@ -51,7 +51,7 @@ func TestBaseInitPlumbing(t *testing.T) {
 	}
 }
 
-// TestBoxChrome asserts §5.4: title and status render inside the border
+// TestBoxChrome asserts title and status render inside the border
 // rows (outer height = child + 2), truncate with ellipsis, and the
 // focused-style merge activates when a descendant gains focus.
 func TestBoxChrome(t *testing.T) {

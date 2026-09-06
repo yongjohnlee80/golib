@@ -30,8 +30,13 @@ var detectorFixtures = map[string]struct {
 		negative: []string{"// golib-dao is the package family"},
 	},
 	"section-anchor": {
-		positive: []string{"// the rule in §2.3"},
-		negative: []string{"// section 2 of this file"},
+		positive: []string{"// the rule in §2.3", "// see § 4.1 of the spec"},
+		negative: []string{
+			"// section 2 of this file",
+			// § as DATA, not as a coordinate. This is a real comment in
+			// tui/widget: the glyph is the input whose width is under test.
+			`// an East-Asian-ambiguous cluster — "§" is width 1 by default`,
+		},
 	},
 	"review-round": {
 		positive: []string{"// folded MF2 during the pass", "// nit 4 asked for this"},

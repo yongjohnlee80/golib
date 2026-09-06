@@ -1,7 +1,7 @@
 package widget_test
 
-// Shared TestBackend harness for the widget contract suites (ADR-0007 §5;
-// ADR-0001 §5.3): drives a real App over tui.TestBackend — no PTY — with
+// Shared TestBackend harness for the widget contract suites: drives a real App
+// over tui.TestBackend — no PTY — with
 // deterministic waits keyed on observable state (flush counts, grid
 // contents, recorded Bus events).
 
@@ -78,7 +78,7 @@ func (h *harness) sync() {
 }
 
 // onLoop runs fn on the loop goroutine and waits — the sanctioned way for
-// tests to touch loop-owned widget state (ADR-0005 §2.3).
+// tests to touch loop-owned widget state.
 func (h *harness) onLoop(fn func()) {
 	h.t.Helper()
 	done := make(chan struct{})
@@ -246,7 +246,7 @@ func (r *recorder[T]) last() (T, bool) {
 // --- consumption probe ---
 
 // shell wraps a child and records every event that bubbles up unconsumed —
-// the "keys consumed vs bubbled" assertion hook (ADR-0007 §5.3a).
+// the "keys consumed vs bubbled" assertion hook.
 type shell struct {
 	child tui.Component
 	ctx   *tui.Context
