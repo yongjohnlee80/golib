@@ -6,7 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Criterion 7: every row of §2.9's table, asserted against the REAL struct
+// Every row of the documented defaults, asserted against the REAL struct
 // fields. An unmapped browser key is dropped with no phantom event.
 func TestDecodeKey_Table(t *testing.T) {
 	t.Parallel()
@@ -244,7 +244,7 @@ func TestDecodeText_DropsInvalidUTF8(t *testing.T) {
 }
 
 // The web backend's scalar sequence for a given text must match what the
-// terminal decoder would produce, which is the parity claim in criterion 7.
+// terminal decoder would produce — the two producers must reach PARITY.
 func TestDecodeText_MatchesTerminalScalarSequence(t *testing.T) {
 	t.Parallel()
 	for _, text := range []string{"hello", "héllo wörld", "漢字テスト", "🙂🙃", "👨‍👩‍👦"} {

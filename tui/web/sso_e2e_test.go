@@ -67,7 +67,7 @@ type ssoRig struct {
 	// builds carries each App construction to the TEST goroutine. The ready frame
 	// does not order the runner: the session is registered, attached and answered
 	// before the runner goroutine is scheduled, so asserting on `built` right after
-	// a ready frame read zero about one run in a hundred (lector r1 on PR #14).
+	// a ready frame read zero about one run in a hundred.
 	builds chan *e2eUpstream
 	mu     sync.Mutex
 	built  []*e2eUpstream
@@ -384,7 +384,7 @@ func TestSSO_EndToEnd_PasswordLoginClaims(t *testing.T) {
 	}
 }
 
-// auth/token: a ticket minted out of band — the SSH-key handoff of ADR-0001 —
+// auth/token: a ticket minted out of band, as the SSH-key handoff does,
 // authenticates at the attach, so nothing was parked and SSO must provision.
 func TestSSO_EndToEnd_TicketProvisions(t *testing.T) {
 	t.Parallel()
@@ -562,7 +562,7 @@ func sshsigArmor(t *testing.T, s ssh.Signer, namespace string, message []byte) [
 // wrong: password.Factor verifies a hash and knows nothing about this package, so
 // it cannot call SSO.Stash. Options treated an empty stash as a fatal login error
 // and the shipped password mechanism returned 503 through the helper that claimed
-// to support every mechanism (lector r1 on PR #14).
+// to support every mechanism.
 //
 // A login through it now succeeds, parks nothing, and the attach provisions.
 func TestSSO_EndToEnd_StockPasswordFactorProvisions(t *testing.T) {
@@ -634,7 +634,7 @@ func stockPasswordFactor(t *testing.T) auth.Factor {
 	return f
 }
 
-// --- lector r1 on PR #14: the lifecycle regressions -------------------------
+// --- the lifecycle regressions ----------------------------------------------
 
 // The admission slot a parked login owns must come BACK.
 //
@@ -975,7 +975,7 @@ func (failingStore) Put(token.Hash, token.Record) error {
 	return errors.New("test: the token store is down")
 }
 
-// --- lector r2 on PR #14: the two concurrency boundaries --------------------
+// --- the two concurrency boundaries -----------------------------------------
 
 // The admission slot must not come back before the PARK entry is gone.
 //
@@ -983,7 +983,7 @@ func (failingStore) Put(token.Hash, token.Record) error {
 // later, on the session's own goroutine. Settling on the Manager's schedule left a
 // window where the gate had a free slot while the park was still full — so a new
 // login passed the door, verified a credential, allocated upstream state, and was
-// then told 503. Lector reproduced it by blocking the claim.
+// then told 503. Blocking the claim reproduces it.
 //
 // This test blocks it the same way: the App's construction is held up, so the
 // claim cannot have happened, and the gate must still show the slot as taken.
@@ -1038,8 +1038,8 @@ func TestSSO_AdmissionSlotHeldUntilTheParkEntryIsGone(t *testing.T) {
 // Session checked the closed flag, unlocked, and then called Provision — so a
 // Provision blocked on I/O could start, Close could return, and the Provision
 // could then resume and hand back a live upstream session that nothing was left
-// to close. Lector reproduced it with a channel-controlled Provision; this is the
-// same shape.
+// to close. A channel-controlled Provision reproduces it; this is the same
+// shape.
 func TestSSO_CloseWaitsForInFlightProvisioning(t *testing.T) {
 	t.Parallel()
 	started := make(chan struct{})
@@ -1326,7 +1326,7 @@ func TestGate_BackstopExpiryThenLateClaimDoesNotDoubleFree(t *testing.T) {
 // the entry in between — its own expiry, a Sweep, a concurrent Close — found no
 // key and did nothing, and the lease installed a moment later was owned by a
 // handoff that no longer existed. It then sat on the budget until the backstop
-// expiry, tens of seconds later. Lector r3 reproduced parked=0, held=1.
+// expiry, tens of seconds later. The observable state was parked=0, held=1.
 //
 // Deterministic rather than timed: the OnLogin hook parks and then sweeps the park
 // itself, which puts the settle exactly inside the window.
@@ -1453,7 +1453,7 @@ func (f ghostFactor) Verify(ctx context.Context, r *auth.Request) (auth.Contribu
 // — a dial to an upstream that hangs is exactly that — came back to find its slot
 // lazily swept by another login's arrival, and parked anyway. The result was an
 // entry nothing accounted for: the budget under-counts, so more logins can park
-// than the cap allows. Lector r4 reproduced parked=1, held=0.
+// than the cap allows. The observable state was parked=1, held=0.
 //
 // Deterministic on a SHARED fake clock: the hook advances it past the reservation,
 // triggers the lazy sweep the way a real second login would (at the door), and
@@ -1565,9 +1565,8 @@ func TestSSO_LoginOutlivingItsReservationCannotPark(t *testing.T) {
 			"the upstream session the factor already opened", released)
 	}
 	// And the ticket that WAS minted is gone from the store. Verifying a literal
-	// "x" proved only that nonsense is rejected, which was never in question
-	// (lector r5); the store's own count is the thing that shows the revoke
-	// happened.
+	// "x" proved only that nonsense is rejected, which was never in question;
+	// the store's own count is the thing that shows the revoke happened.
 	if n := store.Len(); n != 0 {
 		t.Errorf("%d tickets left in the store: the ticket minted for a login that "+
 			"could not park is still usable", n)
@@ -2030,7 +2029,7 @@ func TestSSO_ReservationSweptBetweenCheckAndPublish(t *testing.T) {
 			advance(2 * h.pendingHold)
 
 			// DETERMINISTIC, not timed. A sleep-and-check can miss a sweeper that is
-			// merely slow to start, so it proves nothing on a fast pass (lector r6).
+			// merely slow to start, so it proves nothing on a fast pass.
 			// TryLock asks the question directly: can anything else enter the gate
 			// right now? While publication is atomic the answer must be no, and the
 			// answer does not depend on scheduling.
@@ -2074,7 +2073,7 @@ func TestSSO_ReservationSweptBetweenCheckAndPublish(t *testing.T) {
 //
 // The gate is unexported, so before Stash.CommitPark a consumer not using web.SSO
 // had no way to publish its park entry safely at all — the docs told it to keep the
-// hook short and hope. That is not a contract, and lector r5 was right to say so.
+// hook short and hope. That is not a contract.
 //
 // This is the raw-hook equivalent of the SSO path: publish inside CommitPark, and
 // refuse to park when it returns false.
@@ -2298,7 +2297,7 @@ func TestGate_PanickingPublishDoesNotWedgeTheGate(t *testing.T) {
 
 // One reservation publishes at most ONE entry, and never zero-with-a-commitment.
 //
-// Lector r6's two probes: "one admission slot published 2 park entries" and "nil
+// Two probes drove this: "one admission slot published 2 park entries" and "nil
 // publisher committed the slot even though no park entry exists". Both came from
 // the same mistake — I had reasoned that a concurrent second commit on one Stash
 // might be legitimate and so declined to make the capability single-use. It is not
@@ -2461,7 +2460,7 @@ func TestGate_RefusesASecondCommitOnItsOwn(t *testing.T) {
 // published, so nothing should be accounted for — but that reasoning holds only for
 // a callback that panics BEFORE it mutates. A consumer's callback can insert into
 // its own park and then panic, and this package cannot undo a write to a data
-// structure it does not own (lector r7 reproduced parked=1, committed=0 that way).
+// structure it does not own, which yields parked=1 with committed=0.
 //
 // The two errors are not symmetric, which is what settles it. Keeping a commitment
 // for an entry never written holds one slot until the backstop expiry — bounded,
@@ -2520,7 +2519,7 @@ func TestGate_PanickingPublishKeepsTheCommitmentConservatively(t *testing.T) {
 // A hook that spawns a goroutine and returns must not be able to publish behind
 // the login route's back.
 //
-// This is the race I flagged to lector rather than found: Stash.disarm runs when
+// This race was reasoned about rather than observed first: Stash.disarm runs when
 // the hook returns, and it sets the commit closure to nil. But CommitPark treats a
 // nil closure as "this handler keeps no pending-login budget, so just write" —
 // which after a disarm would publish into the consumer's park with nothing
@@ -2606,8 +2605,8 @@ func TestStash_LateCommitAfterTheHookReturnsIsRefused(t *testing.T) {
 //
 // `defer` in Go is function-scoped, so `defer stash.disarm()` inside the
 // `if h.onLogin != nil` block retired the capability when ServeLogin returned —
-// leaving it live through every path below, including the slow ones. Lector r7
-// reproduced it by blocking the error path inside Issuer.Revoke: a retained Stash
+// leaving it live through every path below, including the slow ones. Blocking the
+// error path inside Issuer.Revoke reproduces it: a retained Stash
 // published successfully in that window, and the cleanup then released the slot,
 // leaving an entry with nothing accounting for it.
 //
@@ -2727,13 +2726,13 @@ func (s *blockingRevokeStore) Revoke(h token.Hash) error {
 // A PANICKING hook must not leave the publishing capability alive.
 //
 // The third attempt at one lifetime. `defer stash.disarm()` inside the block was
-// function-scoped and retired the capability when the request ended (r7); calling
-// disarm on the line after the hook skipped it whenever the hook panicked (r8),
+// function-scoped and retired the capability when the request ended; calling
+// disarm on the line after the hook skipped it whenever the hook panicked,
 // which leaves the capability alive after the request unwinds.
 //
 // What that costs is NOT an unaccounted entry — the keyed reservation survives the
 // unwind and is reclaimed by the backstop, so the accounting stays consistent
-// (lector r9 corrected an earlier version of this comment that said otherwise). It
+// — an earlier version of this comment said otherwise and was wrong. It
 // is that a login which never delivered a ticket can still publish upstream state:
 // nothing will ever present that ticket, so nothing will ever claim the entry, and
 // the session it names sits open until the park's TTL. An abandoned login that

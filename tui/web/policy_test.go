@@ -125,7 +125,7 @@ func TestPasswordPolicyExample(t *testing.T) {
 	// password is refused rather than falling through to some other arm. It takes
 	// no "stronger mechanisms" parameter, because ServeLogin projects only a
 	// subject and a password — a ticket or certificate placed here could never be
-	// presented to it (lector r3).
+	// presented to it.
 	if _, err := p.Authenticate(context.Background(), &auth.Request{}); err == nil {
 		t.Error("an empty request authenticated against the login policy")
 	}

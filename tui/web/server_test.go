@@ -13,7 +13,7 @@ import (
 )
 
 // alwaysPolicy authenticates everything. Used only to satisfy Config.validate in
-// tests about OTHER controls; the auth behavior itself is ADR-0001's suite.
+// tests about OTHER controls; the auth behaviour has its own suite in auth/.
 type alwaysFactor struct{ subject string }
 
 func (alwaysFactor) Kind() auth.FactorKind { return auth.FactorIdentity }
@@ -39,7 +39,7 @@ func baseConfig(t *testing.T) Config {
 	}
 }
 
-// Criterion 9: a non-loopback bind without TLS FAILS TO START. An error, never a
+// A non-loopback bind without TLS FAILS TO START. An error, never a
 // warning — a warning in a log is not a control.
 func TestConfig_NonLoopbackPlaintextIsAStartupError(t *testing.T) {
 	t.Parallel()

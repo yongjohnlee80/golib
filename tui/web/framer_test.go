@@ -48,7 +48,7 @@ func pump(t *testing.T, f *framer, c *client) int {
 
 // TestDivergence_CoalescedSendStillConverges is the rev-0 defect, pinned.
 //
-// Rev 0 of ADR-0009 said a newer frame REPLACES the pending one. With
+// An earlier design said a newer frame REPLACES the pending one. With
 // dirty-cell-only frames that loses data permanently: drop the frame carrying
 // row A, then change only row B, and a replacement frame carries B alone — row A
 // never reaches the client and nothing notices. The aggregate must accumulate.
@@ -86,7 +86,7 @@ func TestDivergence_CoalescedSendStillConverges(t *testing.T) {
 	}
 }
 
-// The second case from criterion 4: the ACKNOWLEDGEMENT is dropped rather than
+// The second divergence case: the ACKNOWLEDGEMENT is dropped rather than
 // the send. A transmitted-but-unacknowledged cell must stay in the aggregate,
 // because a send that was never acknowledged may never have landed.
 func TestDivergence_UnacknowledgedSendStaysInTheAggregate(t *testing.T) {
@@ -249,7 +249,7 @@ func TestFramer_RevisionsAndResync(t *testing.T) {
 	}
 }
 
-// Criterion 5: a resize changes the reported size, the next frame matches the
+// A resize changes the reported size, the next frame matches the
 // new grid, and it does not tear — a diff cannot cross a shape change, so the
 // frame must be full.
 func TestFramer_ResizeForcesFullFrame(t *testing.T) {
@@ -309,7 +309,7 @@ func TestFramer_ShrinkDropsOutOfRangeUpdates(t *testing.T) {
 	}
 }
 
-// Cursor state is latched and travels with a frame, never immediately (§2.2).
+// Cursor state is latched and travels with a frame, never immediately.
 func TestFramer_CursorTravelsWithTheFrame(t *testing.T) {
 	t.Parallel()
 	f := newFramer(3, 2)

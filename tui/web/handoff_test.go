@@ -121,7 +121,7 @@ func TestStash_ConcurrentSameSubjectAreIndependent(t *testing.T) {
 // --- the four paths ---------------------------------------------------------
 
 // parkingHandler builds a Handler whose login parks into a fake upstream park, so
-// every §2.12.2 path can be observed.
+// every handoff path can be observed.
 type park struct {
 	mu       sync.Mutex
 	held     map[string]string // handoff -> upstream session
@@ -320,7 +320,8 @@ func TestHandoff_CreateClaims(t *testing.T) {
 }
 
 // Path 3: a REATTACH runs no factory, so nothing claims that login's handoff.
-// This is what leaked before §2.12 and is the reason the release hook exists.
+// This is what leaked before handoffs were released, and is the reason the
+// release hook exists.
 func TestHandoff_ReattachReleases(t *testing.T) {
 	t.Parallel()
 	p := newPark()
@@ -430,7 +431,7 @@ func TestHandoff_OnLoginErrorFailsTheLogin(t *testing.T) {
 	_ = store
 }
 
-// §2.12.4: a reconnect at a FULL session cap must still be able to log in. This
+// A reconnect at a FULL session cap must still be able to log in. This
 // is the deadlock that counting parked handoffs against MaxSessions produces.
 func TestHandoff_ReconnectAtFullSessionCap(t *testing.T) {
 	t.Parallel()
@@ -511,7 +512,7 @@ func tryLogin(h *Handler) (string, error) {
 	return out.Ticket, nil
 }
 
-// --- peer binding (§2.13) ---------------------------------------------------
+// --- peer binding -----------------------------------------------------------
 
 func TestBindPeer(t *testing.T) {
 	t.Parallel()
@@ -561,7 +562,7 @@ func TestBindPeer(t *testing.T) {
 	})
 
 	t.Run("the loopback no-op is real", func(t *testing.T) {
-		// §2.13.2: under the documented SSH local-forward every connection arrives
+		// Under the documented SSH local-forward every connection arrives
 		// from 127.0.0.1, so binding binds to a constant. Asserted so nobody
 		// deploys behind a forward believing this protects them.
 		m, _ := manager(t, BindPeer(true))

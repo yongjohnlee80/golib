@@ -20,7 +20,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Regressions for lector r2.
+// Second round of review regressions.
 
 // #1: the limiter lived on the shared sessionLoop, so concurrent connections
 // overwrote each other's bucket — a data race, and clients throttling each other

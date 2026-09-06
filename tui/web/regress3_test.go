@@ -15,7 +15,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Regressions for lector r3.
+// Third round of review regressions.
 
 // #1: Resize held resizeMu across delivery and mutation, but Flush did not — so
 // an App that dequeued an expansion and painted at a coordinate valid in the NEW
@@ -137,9 +137,9 @@ func TestRegress3_PendingSlotIsReleasedAfterAuth(t *testing.T) {
 // #3: `return shutdownErr` evaluated the variable before the deferred function
 // assigned it, so a failed shutdown returned nil.
 //
-// This tests Handler.Serve, which is where the bug was. My r3 version called
-// Manager.Shutdown directly and so passed against BOTH the broken and the fixed
-// code — a test of the wrong boundary is a test that cannot fail (lector r4). The
+// This tests Handler.Serve, which is where the bug was. An earlier version
+// called Manager.Shutdown directly and so passed against BOTH the broken and
+// the fixed code — a test of the wrong boundary is a test that cannot fail. The
 // grace is injected so the boundary is observable without a 30-second wait, and
 // the stubborn App is bounded rather than leaking a goroutine for the rest of the
 // run.
@@ -189,7 +189,7 @@ func (s *stubbornApp) Run(context.Context) error {
 	return nil
 }
 
-// #4: rev 11 declared password a ticket minter, but the attach protocol still
+// #4: password became a ticket MINTER, but the attach protocol still
 // carried subject/pw and the credential mapping still projected them — so a
 // custom client could authenticate a password directly over the WebSocket. The
 // split existed in the prose and not in the code.

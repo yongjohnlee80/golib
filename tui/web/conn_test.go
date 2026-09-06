@@ -155,7 +155,7 @@ func helloMsg() clientMessage {
 	return clientMessage{T: msgHello, Cols: 20, Rows: 5, CellW: 8, CellH: 16}
 }
 
-// THE ordering contract of §2.8: no App exists until Policy.Authenticate
+// THE ordering contract: no App exists until Policy.Authenticate
 // succeeds, on every branch.
 func TestSessionLoop_NoAppBeforeAuthentication(t *testing.T) {
 	t.Parallel()
@@ -456,7 +456,7 @@ func TestLimits_Normalize(t *testing.T) {
 	if got.MaxMessage != d.MaxMessage || got.EventsPerSecond != d.EventsPerSecond {
 		t.Errorf("setting one field cleared others: %+v", got)
 	}
-	// §2.9's table.
+	// The documented defaults, exactly.
 	if d.MaxMessage != 64<<10 || d.EventsPerSecond != 500 || d.Burst != 2000 ||
 		d.QueueDepth != 1024 || d.OverloadGrace != 2*time.Second {
 		t.Errorf("defaults drifted from ADR-0009 §2.9: %+v", d)
