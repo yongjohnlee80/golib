@@ -346,3 +346,32 @@ func TestSuiteDetectsEOFBeggingOnAnIntermediateSplit(t *testing.T) {
 		t.Fatalf("detected, but diagnosed as something else: %q", rec.msgs)
 	}
 }
+
+// withdrawsEnd finds its terminator, then un-finds it when shown more input.
+// Every per-call cell of the matrix is obeyed and the same-window EOF rule
+// holds, so ONLY a check on the sequence can catch it.
+type withdrawsEnd struct{ opensOnQuote }
+
+func (withdrawsEnd) End(src, openedWith []byte, b parse.InputBoundary) (int, error) {
+	if len(src) == 1 {
+		return 1, nil // decided
+	}
+	if b == parse.EndOfInput {
+		return len(src), nil
+	}
+	return 0, parse.ErrNeedMore // ... and now undecided again
+}
+
+func TestSuiteDetectsAWithdrawnEndDecision(t *testing.T) {
+	t.Parallel()
+	rec := &recorder{}
+	run(rec, withdrawsEnd{}, []string{"'abc' tail"})
+	if len(rec.msgs) == 0 {
+		t.Fatal("the suite accepted a form that found its terminator and then asked for " +
+			"more input on a larger window; appending bytes cannot make an earlier " +
+			"window undecidable")
+	}
+	if !rec.says("already decided") {
+		t.Fatalf("detected, but not as a withdrawn decision: %q", rec.msgs)
+	}
+}

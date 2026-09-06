@@ -149,6 +149,17 @@ func checkEnd(t reporter, f parse.Form, src string) {
 					"decision was reached — a count here claims bytes the form just said "+
 					"it could not judge", rest[:i], n)
 			}
+			// A DECISION IS NOT WITHDRAWN BY MORE INPUT. Once a terminator has
+			// been found, appending bytes cannot make an earlier window
+			// undecidable — the terminator is still in it. Every per-call cell
+			// of this matrix can be obeyed while the SEQUENCE of answers is
+			// nonsense, so this is checked here and not in the cells. It is the
+			// End analogue of Starts refusing Incomplete after a decision.
+			if answered {
+				t.Errorf("End(%q, MoreInput) = ErrNeedMore, but End(%q, MoreInput) already "+
+					"decided at %d — more input cannot un-find a terminator",
+					rest[:i], rest[:wantAt], want)
+			}
 		default:
 			t.Errorf("End(%q, MoreInput) = %v: the only refusal available while more input "+
 				"may arrive is ErrNeedMore. Reporting the construct terminal here decides "+
