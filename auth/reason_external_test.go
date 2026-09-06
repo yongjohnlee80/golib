@@ -44,12 +44,12 @@ func (r rejecting) Verify(context.Context, *auth.Request) (auth.Contribution, er
 // TestBuiltInReasonsAreDistinguishable is the cross-package half of the
 // safe-reason contract.
 //
-// §2.2 promises the private record says WHAT happened. A migration that missed a
-// package collapses every failure in it to one opaque line, so a malformed
-// token, an expired one and a consumed one become indistinguishable to the
-// operator — losing exactly the value §2.2 exists to provide. The first cut of
-// the migration missed four packages, and only a test that reaches across them
-// can see that.
+// The private record must say WHAT happened. A package the migration missed
+// collapses every failure in it to one opaque line, so a malformed token, an
+// expired one and a consumed one become indistinguishable to the operator —
+// losing exactly the value a private reason exists to provide. The first cut
+// of the migration missed four packages, and only a test that reaches across
+// them can see that.
 func TestBuiltInReasonsAreDistinguishable(t *testing.T) {
 	t.Parallel()
 

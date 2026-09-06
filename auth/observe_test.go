@@ -339,8 +339,8 @@ func TestAttempt_ForgedSubjectCannotInjectALogLine(t *testing.T) {
 	}
 }
 
-// §2.7 promises exactly one record per authentication. A nil request was a
-// silent hole in that trail.
+// EXACTLY ONE audit record per authentication is promised, and a nil request
+// was a silent hole in that trail.
 func TestPolicy_NilRequestStillEmitsOneAttempt(t *testing.T) {
 	t.Parallel()
 	sink := &capture{}

@@ -69,7 +69,7 @@ func TestConnWriteBoundBoundary(t *testing.T) {
 	}
 }
 
-// ADR-0009: msgids never wrap — exhaustion poisons with ErrMsgIDExhausted.
+// Msgids never wrap — exhaustion poisons with ErrMsgIDExhausted.
 func TestClientMsgIDExhaustionPoisons(t *testing.T) {
 	c := &Client{
 		conn:    nopConn{},

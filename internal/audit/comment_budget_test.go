@@ -40,11 +40,36 @@ import (
 // being rewritten anyway. The protection that matters is the zero-freeze, and
 // the destination is a budget file with nothing in it.
 
-const budgetFile = "testdata/comment_budget.txt"
+// A scope is one half of the repository, each with its own budget that falls
+// independently. They are separate because they were migrated separately and
+// because the PRODUCTION budget is finished: it is empty, and every file in it
+// is frozen at zero. Folding the unfinished test budget into it would put a
+// number back into a file whose whole statement is that it has none.
+type scope struct {
+	name       string
+	budgetFile string
+	// wantTests selects which files the walk counts.
+	wantTests bool
+	// minWalked is a vacuity guard. Every assertion here is driven by a
+	// directory walk, and a walk that finds nothing reports a clean
+	// repository, so a broken walk must fail rather than pass.
+	minWalked int
+}
 
-// minWalkedFiles is a vacuity guard. Every assertion here is driven by a
-// directory walk, and a walk that finds nothing reports a clean repository.
-const minWalkedFiles = 100
+var (
+	production = scope{
+		name:       "production",
+		budgetFile: "testdata/comment_budget.txt",
+		wantTests:  false,
+		minWalked:  100,
+	}
+	tests = scope{
+		name:       "tests",
+		budgetFile: "testdata/comment_budget_tests.txt",
+		wantTests:  true,
+		minWalked:  100,
+	}
+)
 
 // pointerPatterns are the shapes rule 9 names as non-compliant CONTENT. Each
 // is deliberately narrow: this test's job is to be right about what it flags,
@@ -101,7 +126,7 @@ var pointerPatterns = []struct {
 // commentViolations returns, per repo-relative file path, how many COMMENT
 // LINES carry at least one pointer pattern. A line is counted once however
 // many patterns it matches, so the number is "lines to rewrite".
-func commentViolations(t *testing.T) (map[string]int, int) {
+func commentViolations(t *testing.T, sc scope) (map[string]int, int) {
 	t.Helper()
 	root, err := filepath.Abs("../..")
 	if err != nil {
@@ -121,11 +146,13 @@ func commentViolations(t *testing.T) (map[string]int, int) {
 			}
 			return nil
 		}
-		// Tests are out of scope for this pass. The migration plan is about
-		// the comments a reader of the LIBRARY meets; test comments are a
-		// separate, larger job and pretending otherwise would freeze a number
-		// nobody intends to drive down.
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		// Each scope walks its own half. Production and test comments were
+		// migrated as separate programs with separate budgets, so a file
+		// counted here is never counted by the other scope.
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		if strings.HasSuffix(path, "_test.go") != sc.wantTests {
 			return nil
 		}
 		walked++
@@ -164,19 +191,19 @@ func commentViolations(t *testing.T) (map[string]int, int) {
 	if err != nil {
 		t.Fatalf("walking the repo: %v", err)
 	}
-	if walked < minWalkedFiles {
-		t.Fatalf("walked only %d source files, expected at least %d; the walk is "+
-			"broken and this budget would report a clean repository",
-			walked, minWalkedFiles)
+	if walked < sc.minWalked {
+		t.Fatalf("%s scope: walked only %d source files, expected at least %d; the "+
+			"walk is broken and this budget would report a clean repository",
+			sc.name, walked, sc.minWalked)
 	}
 	return counts, walked
 }
 
-func readBudget(t *testing.T) map[string]int {
+func readBudget(t *testing.T, sc scope) map[string]int {
 	t.Helper()
-	raw, err := os.ReadFile(budgetFile)
+	raw, err := os.ReadFile(sc.budgetFile)
 	if err != nil {
-		t.Fatalf("read %s: %v", budgetFile, err)
+		t.Fatalf("read %s: %v", sc.budgetFile, err)
 	}
 	out := map[string]int{}
 	for i, line := range strings.Split(string(raw), "\n") {
@@ -186,24 +213,25 @@ func readBudget(t *testing.T) map[string]int {
 		}
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
-			t.Fatalf("%s:%d: want '<count> <path>', got %q", budgetFile, i+1, line)
+			t.Fatalf("%s:%d: want '<count> <path>', got %q", sc.budgetFile, i+1, line)
 		}
 		n, err := strconv.Atoi(fields[0])
 		if err != nil {
-			t.Fatalf("%s:%d: %q is not a count", budgetFile, i+1, fields[0])
+			t.Fatalf("%s:%d: %q is not a count", sc.budgetFile, i+1, fields[0])
 		}
 		if n <= 0 {
 			t.Fatalf("%s:%d: a budget of %d is not a budget — delete the line, "+
-				"which freezes the file at zero", budgetFile, i+1, n)
+				"which freezes the file at zero", sc.budgetFile, i+1, n)
 		}
 		out[fields[1]] = n
 	}
 	return out
 }
 
-func TestCommentBudget(t *testing.T) {
-	actual, walked := commentViolations(t)
-	budget := readBudget(t)
+func assertCommentBudget(t *testing.T, sc scope) {
+	t.Helper()
+	actual, walked := commentViolations(t, sc)
+	budget := readBudget(t, sc)
 
 	// The total is REPORTED here rather than recorded in the budget file. A
 	// stored copy is derived data that two migration rungs both have to touch,
@@ -214,8 +242,8 @@ func TestCommentBudget(t *testing.T) {
 	for _, n := range budget {
 		budgeted += n
 	}
-	t.Logf("comment budget: %d pointer lines in %d files (destination: 0)",
-		budgeted, len(budget))
+	t.Logf("%s comment budget: %d pointer lines in %d files (destination: 0)",
+		sc.name, budgeted, len(budget))
 
 	var overBudget, unlisted, stale []string
 
@@ -270,6 +298,32 @@ func TestCommentBudget(t *testing.T) {
 	for _, n := range actual {
 		total += n
 	}
-	t.Logf("%d comment lines carry a pointer, across %d of %d files walked",
-		total, len(actual), walked)
+	t.Logf("%s: %d comment lines carry a pointer, across %d of %d files walked",
+		sc.name, total, len(actual), walked)
+}
+
+// The two scopes are asserted separately so a failure names which half of the
+// repository regressed, and so the finished production budget cannot be
+// relaxed by work on the unfinished test one.
+func TestCommentBudget(t *testing.T) {
+	assertCommentBudget(t, production)
+}
+
+// TestCommentBudget_Tests holds the _test.go half to its own falling budget.
+//
+// This scope was DELIBERATELY excluded from the production migration — the
+// exclusion is recorded in that budget's header — on the reviewer's condition
+// that it be tracked rather than dropped. This is that tracking, and it is a
+// real ratchet rather than a note: the numbers may only fall, and a file that
+// reaches zero leaves the budget and is frozen there.
+//
+// A pointer in a test is not automatically the same defect as a pointer in
+// production code, and that is worth stating because it is the argument for
+// migrating them at all. A test comment reading "criterion 9" or "ADR-0013
+// §3.1" is trying to say WHICH REQUIREMENT this test pins — genuinely useful
+// information, wearing a form the reader cannot resolve. The migration keeps
+// the information and drops the coordinate: state the requirement, so the test
+// says what it is defending instead of naming a document that defends it.
+func TestCommentBudget_Tests(t *testing.T) {
+	assertCommentBudget(t, tests)
 }

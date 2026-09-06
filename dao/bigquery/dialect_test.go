@@ -152,7 +152,7 @@ func TestAssign_TypeConversions(t *testing.T) {
 	})
 }
 
-// TestAssign_CheckedNumericConversions covers the 2026-06-23 review must-fix:
+// TestAssign_CheckedNumericConversions pins the checked-conversion rule:
 // a numeric value the destination cannot represent exactly must error, never
 // silently wrap, truncate, or change sign.
 func TestAssign_CheckedNumericConversions(t *testing.T) {
@@ -233,7 +233,7 @@ func TestAssign_CheckedNumericConversions(t *testing.T) {
 	})
 }
 
-// TestScan_CountMismatch covers the 2026-06-23 review must-fix: destination /
+// TestScan_CountMismatch pins the count-mismatch refusal: destination /
 // column count mismatches must error instead of silently zero-filling or
 // dropping columns.
 func TestScan_CountMismatch(t *testing.T) {

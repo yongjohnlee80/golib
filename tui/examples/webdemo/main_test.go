@@ -10,8 +10,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui/web"
 )
 
-// TestCriterion1_SameTreeOnTheWebBackend is ADR-0009 acceptance criterion 1,
-// asserted mechanically rather than by inspection.
+// TestCriterion1_SameTreeOnTheWebBackend asserts the SAME-TREE guarantee
+// mechanically rather than by inspection.
 //
 // It runs the demo's component tree — the same package the terminal demo runs,
 // whose own interaction script passes against tui.TestBackend — through

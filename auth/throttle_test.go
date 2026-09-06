@@ -279,8 +279,8 @@ func equalSeq(a, b []string) bool {
 	return true
 }
 
-// A full tracker must not change the shape OR the cost of the work. Criterion 4
-// requires both a structural and a wall-clock check, so this does both, with a
+// A full tracker must not change the shape OR the cost of the work. Proving
+// that needs both a structural and a wall-clock check, so this does both, with a
 // negative control proving the measurement can actually see an O(cap) regression.
 func TestThrottle_TrackerFullPathIsEquivalent(t *testing.T) {
 	const cap = 4096

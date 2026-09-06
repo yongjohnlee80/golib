@@ -541,7 +541,7 @@ func (failingStore) Lookup(context.Context, string) (string, error) {
 // sameDigest is the last line before the comparison, and the length check has to
 // come first: subtle.ConstantTimeCompare RETURNS EARLY on a length mismatch, so
 // handing it variable-length material reintroduces the very leak it exists to
-// prevent (ADR-0001 §2.6).
+// prevent.
 func TestSameDigest(t *testing.T) {
 	t.Parallel()
 	a := []byte("0123456789abcdef")

@@ -1,6 +1,6 @@
 package rpc_test
 
-// Client contract (ADR-0009): msgid correlation under concurrency,
+// Client contract: msgid correlation under concurrency,
 // ctx-bounded calls, Done/Err terminal state, bounded reentrancy-safe
 // notification dispatch, and the hostile-message taxonomy.
 
@@ -361,7 +361,7 @@ func TestClientNotifyReachesServer(t *testing.T) {
 	}
 }
 
-// MF6: after a callback panic (or any terminal state), buffered
+// After a callback panic (or any terminal state), buffered
 // notifications are NOT drained — dispatch stops immediately.
 func TestClientDispatchStopsAfterPanic(t *testing.T) {
 	t.Parallel()

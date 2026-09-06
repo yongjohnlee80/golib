@@ -56,7 +56,7 @@ func TestNewPolicy_TreeValidation(t *testing.T) {
 		root    Node
 		wantErr error
 	}{
-		// The ADR-0009 policy and its optional wrapper: both valid.
+		// The recommended policy and its optional wrapper: both valid.
 		{"Any(mtls, All(ipallow, challenge))", Any(Leaf(mtls), All(Leaf(ipallow), Leaf(challenge))), nil},
 		{"Any(ticket, mtls, challenge)", Any(Leaf(ticket), Leaf(mtls), Leaf(challenge)), nil},
 		{"All(ipallow, Any(ticket, mtls))", All(Leaf(ipallow), Any(Leaf(ticket), Leaf(mtls))), nil},
@@ -87,7 +87,7 @@ func TestNewPolicy_TreeValidation(t *testing.T) {
 }
 
 // An empty node nested below a valid root DENIES at evaluation — distinct from
-// the construction error a bad root gives (criterion 3).
+// the construction error a bad root gives.
 func TestPolicy_EmptyNodeDeniesAtEvaluation(t *testing.T) {
 	t.Parallel()
 
@@ -101,7 +101,7 @@ func TestPolicy_EmptyNodeDeniesAtEvaluation(t *testing.T) {
 	}
 }
 
-// --- criterion 2: order, short-circuit, uniform error -----------------------
+// --- order, short-circuit, uniform error ------------------------------------
 
 func TestPolicy_OrderAndShortCircuit(t *testing.T) {
 	t.Parallel()
@@ -262,7 +262,7 @@ func TestPolicy_ValidityInterval(t *testing.T) {
 	})
 }
 
-// --- criterion 10: structural redaction ------------------------------------
+// --- structural redaction ---------------------------------------------------
 
 func TestSecret_RedactedEverywhere(t *testing.T) {
 	t.Parallel()

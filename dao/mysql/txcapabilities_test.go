@@ -9,8 +9,9 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// ADR-0017 §2.2a, criterion 2 (mysql row). No server needed: the whole point of
-// the row is which options are refused, and every refusal happens before
+// The mysql row of the transaction-capability matrix. No server needed: the
+// whole point of the row is which options are refused, and every refusal
+// happens before
 // database/sql is reached — proven here by a connection whose *sql.DB is nil,
 // which would panic if the BEGIN were attempted.
 
@@ -27,8 +28,8 @@ func TestMysqlTxOptions_Honored(t *testing.T) {
 		{"read only", dao.TxOptions{Access: dao.TxReadOnly}, sql.TxOptions{Isolation: sql.LevelDefault, ReadOnly: true}},
 
 		// The full isolation domain, READ UNCOMMITTED included — MySQL is the
-		// driver that implements it literally, which is why rev 3 put it in the
-		// domain at all.
+		// driver that implements it literally, which is why it is in the domain
+		// at all.
 		{"read uncommitted", dao.TxOptions{Isolation: dao.TxReadUncommitted}, sql.TxOptions{Isolation: sql.LevelReadUncommitted}},
 		{"read committed", dao.TxOptions{Isolation: dao.TxReadCommitted}, sql.TxOptions{Isolation: sql.LevelReadCommitted}},
 		{"repeatable read", dao.TxOptions{Isolation: dao.TxRepeatableRead}, sql.TxOptions{Isolation: sql.LevelRepeatableRead}},

@@ -260,7 +260,7 @@ func TestIssue_Rejects(t *testing.T) {
 	}
 }
 
-// The WebTUI policy from ADR-0009 §2.8, built for real.
+// The WebTUI policy, built for real.
 func TestWebTUIPolicy_TicketBranch(t *testing.T) {
 	t.Parallel()
 

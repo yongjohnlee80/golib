@@ -104,8 +104,8 @@ func allowedSigners(t *testing.T, dir string, pairs [][2]string) (string, []Allo
 	return path, set
 }
 
-// TestVerifiers_Agree is the load-bearing test for ADR-0001 §2.5's
-// substitutability claim: swapping OpenSSH for PureGo must not change WHO gets
+// TestVerifiers_Agree is the load-bearing test for the verifiers'
+// SUBSTITUTABILITY: swapping OpenSSH for PureGo must not change WHO gets
 // in. The sentinel errors legitimately differ — ssh-keygen reports one exit
 // status for every failure — so the assertion is on the accept/reject decision,
 // which is the only part an authentication outcome depends on.

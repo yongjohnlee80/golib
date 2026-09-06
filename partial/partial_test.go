@@ -17,7 +17,7 @@ type release struct {
 	Grid  string `json:"grid"`
 }
 
-// --- criterion 1: three states bind correctly (ClearOnNull) -----------------
+// --- three states bind correctly (ClearOnNull) ------------------------------
 
 func TestBind_ThreeStates(t *testing.T) {
 	t.Parallel()
@@ -55,7 +55,7 @@ func TestBind_ThreeStates(t *testing.T) {
 	}
 }
 
-// --- criterion 2: ExplicitClear compat + one clear namespace ----------------
+// --- ExplicitClear compat + one clear namespace -----------------------------
 
 func TestBind_ExplicitClear(t *testing.T) {
 	t.Parallel()
@@ -98,7 +98,7 @@ func TestBind_ExplicitClear(t *testing.T) {
 	}
 }
 
-// --- criterion 3: bind-time typed validation --------------------------------
+// --- bind-time typed validation ---------------------------------------------
 
 func TestBind_TypedValidation(t *testing.T) {
 	t.Parallel()
@@ -109,7 +109,7 @@ func TestBind_TypedValidation(t *testing.T) {
 	}
 }
 
-// --- criterion 4: one name space, deterministic across case-fold collisions --
+// --- one name space, deterministic across case-fold collisions --------------
 
 type tagged struct {
 	Title string `json:"artist_title"`
@@ -158,7 +158,7 @@ func TestBind_NameSpaceAndOrder(t *testing.T) {
 	}
 }
 
-// --- criterion 5: plan hardening --------------------------------------------
+// --- plan hardening ---------------------------------------------------------
 
 type inner struct {
 	A string `json:"a"`
@@ -198,7 +198,7 @@ func TestPlan_Hardening(t *testing.T) {
 	}
 }
 
-// --- criterion 6: mutator semantics -----------------------------------------
+// --- mutator semantics ------------------------------------------------------
 
 func TestMutators(t *testing.T) {
 	t.Parallel()
@@ -249,7 +249,7 @@ func TestMutators(t *testing.T) {
 	}
 }
 
-// --- criterion 7: rules projection + ApplyRules onto a dao fake -------------
+// --- rules projection + ApplyRules onto a dao fake --------------------------
 
 func TestRules_And_ApplyRules(t *testing.T) {
 	t.Parallel()
@@ -290,7 +290,7 @@ func TestRules_And_ApplyRules(t *testing.T) {
 	}
 }
 
-// --- criterion 8: composition & round-trip ----------------------------------
+// --- composition & round-trip -----------------------------------------------
 
 type outer struct {
 	Name  string         `json:"name"`

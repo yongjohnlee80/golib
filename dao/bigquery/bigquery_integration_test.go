@@ -1,9 +1,9 @@
 //go:build integration
 
-// NOTE (ADR-0015): this nested module pins a RELEASED golib (see go.mod), so the
-// dao.RunTx call below still uses the pre-ADR-0015 `[]dao.DataConn` signature.
-// Migrate it to `dao.RunTx(ctx, fn)` in the same commit that bumps the golib
-// require to the release carrying ADR-0015 — not before, or this module stops
+// NOTE: this nested module pins a RELEASED golib (see go.mod), so the dao.RunTx
+// call below still uses the older `[]dao.DataConn` executor signature. Migrate
+// it to `dao.RunTx(ctx, fn)` in the SAME commit that bumps the golib require to
+// a release carrying the variadic signature — not before, or this module stops
 // building.
 //
 // Integration tests for the BigQuery driver. They run against a REAL dataset and
@@ -90,7 +90,7 @@ func TestIntegration_CRUDAndCapabilities(t *testing.T) {
 		dao.Conflict[*row, rowField, rowSort, string](fID),
 	)
 
-	// Insert returns (zero ID, nil) — no server-generated id (ADR-0008 §2.6).
+	// Insert returns (zero ID, nil): BigQuery generates no server-side id.
 	id, err := s.DAO().Set(fID, "a").Set(fName, "Alpha").Set(fN, int64(1)).Insert()
 	if err != nil {
 		t.Fatalf("Insert: %v", err)
@@ -126,7 +126,7 @@ func TestIntegration_CRUDAndCapabilities(t *testing.T) {
 		t.Errorf("post-delete Count = %d, want 1", n)
 	}
 
-	// Capability gates (ADR-0008): all must be dao.ErrUnsupported, no panic.
+	// Capability gates: all must be dao.ErrUnsupported, and none may panic.
 	if err := s.DAO().Set(fID, "c").Set(fName, "C").Upsert(); !errors.Is(err, dao.ErrUnsupported) {
 		t.Errorf("Upsert err = %v, want ErrUnsupported", err)
 	}

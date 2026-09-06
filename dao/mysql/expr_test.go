@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// ADR-0016 expression helpers against the REAL MysqlDialect. MySQL is where a
+// The expression helpers against the REAL MysqlDialect. MySQL is where a
 // hand-quoted declaration goes wrong — ANSI double quotes are string literals
 // here, not identifiers — so these assertions are the reason Expr exists.
 //

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// The drain-visibility contract (ADR-0006 §2.2).
+// The drain-visibility contract.
 //
 // A connection is claimed with Registry.Reserve BEFORE any establishment work,
 // so a drain that begins mid-establishment waits for it. Registering only after
