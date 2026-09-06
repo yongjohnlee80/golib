@@ -54,11 +54,22 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-// Build against the golib in THIS repository rather than a released tag.
+// Build against a RELEASED golib, with no replace directive, so this module
+// compiles from exactly what a third party gets.
 //
-// Without this the nested module compiles against whatever version it pins, so
-// a change to dao that breaks this driver is invisible until golib is tagged
-// AND this module is repinned — the break is then discovered after release
-// rather than in the pull request that caused it. A replace in a module's own
-// go.mod applies only when that module is the main module, so consumers of
-// this driver are unaffected by it.
+// There WAS a replace pointing at ../.. here, and the comment that justified it
+// is what this replaced: it argued that compiling against the tree catches a
+// dao change that breaks this driver in the pull request that caused it, rather
+// than after a release. That argument is still true, and it is the cost of the
+// current setup rather than a reason to undo it — an incompatible golib change
+// now surfaces at the next version bump instead of immediately.
+//
+// The reason it changed: this module needs golib/errs, and no tag contained that
+// package, so the replace was the only thing making it build at all. v0.5.12 is
+// the first release carrying errs.
+//
+// WHAT NEITHER SETUP FIXES: this is a nested module, so the repo-root
+// `go build ./...` never compiles it, and its integration tests sit behind a
+// build tag, so the module's own default vet skips those too. Only
+// `go vet -mod=readonly -tags integration ./...` run FROM this directory sees
+// them, and nothing in CI does that yet.
