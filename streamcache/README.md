@@ -68,7 +68,8 @@ Retention is the **caller's** choice; this package has no policy of its own,
 because it cannot know what a caller still needs.
 
 `Release(off)` sets a **watermark**, and the watermark alone decides what is
-still acquirable. Nothing below it can be acquired again, whether or not its
+still acquirable. `off` may be beyond what has been read, meaning *skip
+forward*: those bytes are dropped as they arrive, with no second call needed. Nothing below it can be acquired again, whether or not its
 bytes have been freed yet — otherwise the answer would depend on which
 *unrelated* view happened to be holding an *unrelated* segment in front of it,
 which is not something a caller can reason about. Freeing then proceeds on its
@@ -95,9 +96,14 @@ once, and each was found by measurement rather than by reading:
 | operation | cost |
 |---|---|
 | `Acquire`, `AppendTo` | O(segments the span covers) |
-| `Release` | O(log n + segments the watermark newly crossed) |
-| `Close` | O(segments that view held) |
+| `Release` | O(log n + segments the watermark newly crossed), amortised |
+| `Close` | O(segments that view held), amortised |
 | reclamation over a stream | O(total segments) — each visited once, freed once |
+
+Amortised, not worst case: a call may also pay for a compaction pass. That pass
+runs only when freed entries are the majority and removes all of them, so it
+costs O(1) per entry across the calls that created them — the total is the last
+row, and no single call is bounded by it.
 
 `go test -bench 'Acquire|Append|Close'` — doubling the input should roughly
 double the time. Quadrupling means a per-item search has come back. The `Close`

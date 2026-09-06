@@ -113,8 +113,13 @@ type Cache struct {
 	dead int
 }
 
-// New returns a Cache over r. It does not close r: ownership stays with the
-// caller, so two caches can be built over one source.
+// New returns a Cache over r. It does not close r: ownership, and therefore the
+// decision about when to close it, stays with the caller.
+//
+// The Cache becomes the only legitimate consumer of r. Reading r elsewhere —
+// including through a second Cache — interleaves with this one's fills and
+// gives both a stream with holes in it, which no offset arithmetic can
+// reconcile afterwards.
 //
 // A nil reader is a programming error and panics here. The alternative is a nil
 // dereference inside the first fill, which happens under the Cache's own lock,
@@ -182,6 +187,16 @@ func (c *Cache) Ensure(off int64, n int) (int, error) {
 		empties = 0
 	}
 
+	// A WATERMARK AHEAD OF HEAD applies to bytes that had not arrived when it
+	// was set. Release(off) is a statement about the stream, not about the
+	// bytes read so far, so a caller that skips forward past unread input must
+	// not have to call Release a second time to make the skipped bytes go. The
+	// cursor makes this cheap: there is pending work only when it has not
+	// reached the watermark.
+	if c.relOff < c.released {
+		c.reclaimLocked()
+	}
+
 	avail := c.head - off
 	switch {
 	case avail < 0:
@@ -212,9 +227,15 @@ func (c *Cache) Ensure(off int64, n int) (int, error) {
 //     reader, which leaves a held segment PARTIAL and therefore still a write
 //     target; the committed suite could not reach it because its reader
 //     delivered full blocks and every held segment was already complete.
+//
+// It also appends when the last entry is DEAD. A freed entry keeps its n —
+// that is what bounds it for lookups — so the fullness test n == len(buf)
+// compares a live count against a nil buffer, reads "not full", and slices
+// buf[n:] on nil. Emptiness of the buffer, not the arithmetic over it, is what
+// says an entry can still be written to.
 func (c *Cache) fillLocked() {
 	last := len(c.segs) - 1
-	if last < 0 || c.segs[last].n == len(c.segs[last].buf) || c.segs[last].refs > 0 {
+	if last < 0 || c.segs[last].dead || c.segs[last].n == len(c.segs[last].buf) || c.segs[last].refs > 0 {
 		c.segs = append(c.segs, &segment{base: c.head, buf: make([]byte, c.cfg.segment)})
 		last = len(c.segs) - 1
 	}
@@ -231,6 +252,10 @@ func (c *Cache) fillLocked() {
 // the watermark is freed — not merely the leading run of them — and no span
 // below it can be acquired again, whether or not its buffer has been freed yet.
 // Nothing waits: a segment a view still holds is freed by that view's Close.
+//
+// off may be BEYOND the stream's current head, which means "skip forward": the
+// bytes are dropped as they arrive, without a second call. The watermark only
+// rises, so a later Release with a smaller off changes nothing.
 func (c *Cache) Release(off int64) {
 	if c.fixed {
 		return
@@ -281,9 +306,15 @@ func (c *Cache) Release(off int64) {
 //
 // # Cost
 //
-//	per Release   O(log n + segments the watermark newly crossed)
-//	per Close     O(segments that view held)
+//	per Release   O(log n + segments the watermark newly crossed), AMORTISED
+//	per Close     O(segments that view held), AMORTISED
 //	over a stream O(total segments) — each is visited once and freed once
+//
+// Amortised, not worst case: an individual call may also pay for a compaction
+// pass over the directory. That pass runs only when freed entries are the
+// majority and it removes all of them, so its cost is O(1) per entry spread
+// across the calls that created them — the total is what the last line states,
+// and no single call is bounded by it.
 //
 // Measured, closing N independently held segments after releasing everything,
 // before and after this shape — in BOTH close orders, because closing
@@ -397,6 +428,20 @@ func (c *Cache) Acquire(from, to int64) (*View, error) {
 	if from < 0 || to < from {
 		return nil, fmt.Errorf("%w: Acquire(%d, %d)", ErrRange, from, to)
 	}
+	// BEFORE THE SOURCE IS TOUCHED. Reading forward to serve a span the caller
+	// already released is work that cannot help, and it lets a source failure
+	// arrive first: the caller is then told their SOURCE broke when in fact
+	// their request was invalid, which points the diagnosis at the wrong
+	// component. The watermark only rises, so a pass here is never a false
+	// refusal; the recheck under the main lock below covers a Release that
+	// lands during the read.
+	c.mu.Lock()
+	released := c.released
+	c.mu.Unlock()
+	if from < released {
+		return nil, fmt.Errorf("%w: offset %d is below the release watermark %d",
+			ErrReleased, from, released)
+	}
 	if _, err := c.Ensure(from, int(to-from)); err != nil {
 		return nil, err
 	}
@@ -409,6 +454,10 @@ func (c *Cache) Acquire(from, to int64) (*View, error) {
 	// even while its buffer is still around — because whether it is around
 	// depends on whether an unrelated view happens to be holding an unrelated
 	// segment in front of it, which is not something a caller can reason about.
+	//
+	// Rechecked here as well as before the read: the precheck stops needless
+	// I/O, this one is the correctness half, because a Release may land while
+	// the source is being read.
 	if from < c.released {
 		return nil, fmt.Errorf("%w: offset %d is below the release watermark %d",
 			ErrReleased, from, c.released)
