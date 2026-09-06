@@ -1,12 +1,12 @@
 package dao
 
-// Raw result access (ADR-0017 §2.3). [Rows] deliberately exposes only Scan:
+// Raw result access. [Rows] deliberately exposes only Scan:
 // the engine's own read path always knows the Go types it is scanning into. A
 // pass-through consumer does not — it forwards the target's own bytes and the
 // server's own column metadata to its caller, and Scan would force a decode and
 // re-encode through Go types it has no reason to name.
 //
-// Like [RowsColumns] (ADR-0012), this arrives as an optional extension of Rows
+// Like [RowsColumns], this arrives as an optional extension of Rows
 // rather than a wider Rows, so every existing implementation stays valid.
 
 // FieldDescription is a result column's server-side descriptor, as reported by

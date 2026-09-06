@@ -91,7 +91,7 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 
 	// Resolve declared Exprs into a schema-owned clone BEFORE anything reads a
 	// field: the id column, the search-op binding, the conflict columns and the
-	// default values all consume Column/writeCol below (ADR-0016 §2.2).
+	// default values all consume Column/writeCol below.
 	cfg.fields = resolveFields[R, C](conn.Dialect(), cfg.fields)
 
 	s := &Schema[R, C, K, ID]{
@@ -140,7 +140,7 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 		if f.ClearValue != nil && !f.Clearable {
 			panic(fmt.Sprintf("dao.New: field %q declares ClearValue without Clearable", any(key)))
 		}
-		// Write-column safety (ADR-0016 §2.6). writeCol derives the bare name as
+		// Write-column safety. writeCol derives the bare name as
 		// the tail after the last dot, which is meaningless for an expression —
 		// COALESCE(...) yields `"name", '')`. A writable field must therefore
 		// resolve to a plain identifier. Runs after resolution, so T/C fields
@@ -195,7 +195,7 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 	}
 
 	// hooks: registration order preserved; duplicate names are construction
-	// errors (ADR-0009 §2.2)
+	// errors
 	names := map[string]bool{}
 	for _, h := range cfg.hooks {
 		if h == nil {
@@ -224,7 +224,7 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 }
 
 // resolveFields returns a schema-owned copy of the declared fields with every
-// [Expr] rendered against this connection's dialect (ADR-0016 §2.2).
+// [Expr] rendered against this connection's dialect.
 //
 // It clones deliberately. Fields aliases the map it is handed and New stores
 // that same reference, so resolving in place would mutate a package-level var:
@@ -262,8 +262,8 @@ func resolveFields[R any, C ~string](d Dialect, in map[C]Field[R]) map[C]Field[R
 
 // acquire assembles the effective per-call state from QueryOptions: schema
 // hooks first, then per-call hooks, minus skipped names, with the debug
-// logger (when enabled) appended last so it logs the final SQL as executed
-// (ADR-0009 §2.2, §2.5). With nothing registered it returns a nil slice —
+// logger (when enabled) appended last so it logs the final SQL as executed.
+// With nothing registered it returns a nil slice —
 // the zero-cost fast path.
 func (s *Schema[R, C, K, ID]) acquire(opts []QueryOption) queryConfig {
 	var qc queryConfig
@@ -304,7 +304,7 @@ func (s *Schema[R, C, K, ID]) acquire(opts []QueryOption) queryConfig {
 }
 
 // DAO returns a fresh, query-scoped DAO on the connection pool (autocommit).
-// [Schema.On] with a nil transaction returns the same thing (ADR-0019), which is
+// [Schema.On] with a nil transaction returns the same thing, which is
 // what lets a helper take an executor parameter and pass it straight through.
 func (s *Schema[R, C, K, ID]) DAO(opts ...QueryOption) DAO[R, C, ID] {
 	qc := s.acquire(opts)
@@ -314,9 +314,9 @@ func (s *Schema[R, C, K, ID]) DAO(opts ...QueryOption) DAO[R, C, ID] {
 
 // On returns a fresh, query-scoped DAO bound to a transaction. Every statement on
 // the returned DAO runs on the transaction (resolved via the connection name),
-// with no per-statement rebind — the .Use(tx) footgun is gone (ADR-0005 §4).
+// with no per-statement rebind — the.Use(tx) footgun is gone.
 //
-// A nil tx is CONTRACT, not misuse (ADR-0019): it means "no transaction is
+// A nil tx is CONTRACT, not misuse: it means "no transaction is
 // held", and the returned DAO is exactly the one [Schema.DAO] would return —
 // every statement, and the writer from [DAO.Batch], runs on the connection pool
 // (autocommit). On never panics on a nil transaction and never begins one of its
@@ -346,7 +346,7 @@ func (s *Schema[R, C, K, ID]) On(tx *Transaction, opts ...QueryOption) DAO[R, C,
 // OnCtx returns a query-scoped DAO bound to the transaction carried by ctx (via
 // [WithTx]), or an unbound pool DAO when ctx carries none. It is convenience sugar
 // over On; the explicit *Transaction remains the source of truth. A
-// WithQueryContext option outranks ctx (ADR-0009 §2.3).
+// WithQueryContext option outranks ctx.
 func (s *Schema[R, C, K, ID]) OnCtx(ctx context.Context, opts ...QueryOption) DAO[R, C, ID] {
 	qc := s.acquire(opts)
 	d := &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: txFromContext(ctx),

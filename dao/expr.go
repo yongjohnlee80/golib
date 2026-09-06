@@ -6,7 +6,7 @@ import (
 )
 
 // Expr is a SQL expression that can only be rendered once a dialect is known,
-// plus the raw column identity the write path needs (ADR-0016 §2.1).
+// plus the raw column identity the write path needs.
 //
 // A declaration is written long before any [DataConn] exists — a package-level
 // map[Field]dao.Field[R] is initialized at init time — so an expression that
@@ -103,7 +103,7 @@ func Int(i int64) Expr {
 // SQL is the escape hatch: text is emitted verbatim, unquoted and unresolved,
 // for expressions the helpers do not cover (NOW(), a window function, a
 // dialect-specific cast). It carries no write identity, so a writable field
-// using one must declare ReadOnly or an explicit WriteColumn (ADR-0016 §2.6).
+// using one must declare ReadOnly or an explicit WriteColumn.
 //
 // Named SQL because [Raw] is already the predicate-position escape hatch.
 func SQL(text string) Expr {
@@ -194,7 +194,7 @@ func joinClauseExpr(kind, table string, left, right Expr) Expr {
 }
 
 // plainIdent reports whether s is usable as a bare write column: no whitespace,
-// parentheses, commas or quotes (ADR-0016 §2.6).
+// parentheses, commas or quotes.
 func plainIdent(s string) bool {
 	if s == "" {
 		return false

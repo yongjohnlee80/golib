@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// Optional transaction capabilities (ADR-0017 §2.2). [DataConn] and [TxConn]
+// Optional transaction capabilities. [DataConn] and [TxConn]
 // are unchanged — a published interface others implement is never grown (KB
 // convention interface-evolution-capability-interfaces; golib policy: existing
 // capabilities are not broken for the rest of the consumers). Options-bearing
@@ -47,7 +47,7 @@ type TxBeginner interface {
 // and its BeginTx context owns the transaction's lifetime and auto-rollback, so
 // database/sql-backed drivers (mysql, sqlite) honestly do not implement this:
 // a pre-check cannot bound an in-flight COMMIT, and a goroutine wrapper would
-// race a false completion report (ADR-0017 §2.2).
+// race a false completion report.
 //
 // Outcome contract for the finalizers — see [ErrTxRolledBack] and
 // [ErrTxOutcomeUnknown].
@@ -78,7 +78,7 @@ type ContextTxConn interface {
 //
 // It exists so a consumer that REQUIRES both — autodb's session engine, which
 // pins one transaction across RPC calls and must clean it up after the session
-// context is gone (ADR-0074) — can assert the requirement on the connection at
+// context is gone — can assert the requirement on the connection at
 // the moment it is marked session-capable, before any Begin. Asserting
 // [ContextTxConn] cannot do that: the TxConn only exists after a transaction
 // has already started, which is far too late to report "this connection cannot
@@ -92,7 +92,7 @@ type SessionTxBeginner interface {
 	BeginSessionTx(ctx context.Context, opts TxOptions) (ContextTxConn, error)
 }
 
-// Transaction finalization outcomes (ADR-0017 §2.2a). A commit that fails is
+// Transaction finalization outcomes. A commit that fails is
 // not one thing: the DAL classifies what is actually known and lets the caller
 // map it into its own audit state. Test with errors.Is; the driver's own cause
 // (a *pgconn.PgError, a pgx sentinel, a net or context error) stays reachable
@@ -112,7 +112,7 @@ var (
 )
 
 // BeginConnTx starts a transaction on c with opts, without the caller writing a
-// type assertion (ADR-0017 §2.2).
+// type assertion.
 //
 // Zero opts take the unchanged [DataConn.Begin] path, so this is a drop-in for
 // existing code. Non-default opts REQUIRE [TxBeginner]: a connection that does

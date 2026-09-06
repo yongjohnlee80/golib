@@ -9,8 +9,8 @@ package dao
 // engine and package-level helpers probe by type assertion — [TableQuoter]
 // (schema-qualified table quoting) and [Introspector] (catalog listing), plus
 // the row-stream extension [RowsColumns] on a driver's Rows. Capabilities are
-// deliberately not Dialect methods and have no GenericDialect defaults
-// (ADR-0013 rev 1; KB convention interface-evolution-capability-interfaces).
+// deliberately not Dialect methods and have no GenericDialect defaults, so a
+// dialect that cannot do one simply does not implement it.
 type Dialect interface {
 	// Name is a short dialect id ("postgres", "mysql", "sqlite").
 	Name() string
@@ -38,7 +38,7 @@ type Dialect interface {
 	TranslateError(err error) error
 }
 
-// TableQuoter is an optional [Dialect] capability (ADR-0013 §2): a dialect
+// TableQuoter is an optional [Dialect] capability: a dialect
 // that understands schema-qualified table names implements it, and the engine
 // then quotes table-position identifiers through QuoteTable instead of
 // QuoteIdent. Deliberately NOT part of Dialect and NOT implemented by

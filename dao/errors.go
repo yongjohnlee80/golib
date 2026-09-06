@@ -11,8 +11,8 @@ import (
 // boundary (see [Dialect.TranslateError]) so callers never see raw driver
 // errors. Compare with errors.Is.
 //
-// This is the foundational set the driver layer (ADR-0004) needs; the error-map
-// translation layer (ADR-0003 §5) extends it.
+// This is the foundational set the driver layer needs; the error-map
+// translation layer extends it.
 var (
 	// ErrNoRows is returned when a single-row read finds nothing.
 	ErrNoRows = errors.New("dao: no rows in result set")
@@ -59,7 +59,7 @@ var (
 	// ErrUnknownConnection is returned when a tx-bound DAO's connection may not
 	// participate in its transaction: it is outside a declared [Spanning] set,
 	// or — with no span declared — it is a second, different database in a
-	// transaction already bound to one (ADR-0015 §2.4). The remedy for the
+	// transaction already bound to one. The remedy for the
 	// latter is to declare the span.
 	ErrUnknownConnection = errors.New("dao: connection not in transaction")
 

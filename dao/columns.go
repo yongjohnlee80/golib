@@ -2,7 +2,7 @@ package dao
 
 import "fmt"
 
-// Result-set column names (ADR-0012): the engine's own scan path never needs
+// Result-set column names: the engine's own scan path never needs
 // them (projection and scan plan come from the same Schema.resolve pass), but
 // consumers running raw SQL through [DataConn]'s Querier surface do. Drivers
 // expose the capability through the optional [RowsColumns] extension rather

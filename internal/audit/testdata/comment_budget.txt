@@ -14,7 +14,7 @@
 # whole-tree grep would report. Migrating test comments is tracked
 # separately as its own open item.
 #
-# total: 742 lines in 150 files
+# total: 642 lines in 141 files
 2 auth/audit.go
 5 auth/auth.go
 2 auth/authhttp/authhttp.go
@@ -35,26 +35,20 @@
 2 auth/throttle.go
 1 auth/token/memstore.go
 6 auth/token/token.go
-6 dao/batch.go
+2 dao/batch.go
 4 dao/bigquery/bigquery.go
 2 dao/bigquery/dialect.go
-1 dao/columns.go
-1 dao/dao.go
-2 dao/dataconn.go
-2 dao/dialect.go
-1 dao/dialect_generic.go
 2 dao/doc.go
-5 dao/errors.go
-4 dao/expr.go
-4 dao/field.go
-10 dao/hooks.go
-5 dao/introspect.go
-1 dao/join.go
+2 dao/errors.go
+1 dao/expr.go
+2 dao/field.go
+1 dao/hooks.go
+1 dao/introspect.go
 5 dao/mysql/dialect.go
 3 dao/mysql/doc.go
 5 dao/mysql/introspect.go
 4 dao/mysql/txcapabilities.go
-5 dao/options.go
+1 dao/options.go
 1 dao/postgres/connecthook.go
 3 dao/postgres/dialect.go
 6 dao/postgres/extendedops.go
@@ -66,17 +60,14 @@
 1 dao/postgres/rawrows.go
 3 dao/postgres/simplequery.go
 7 dao/postgres/txcapabilities.go
-7 dao/query.go
-13 dao/query_dao.go
-2 dao/rawrows.go
-8 dao/roles.go
-4 dao/rules.go
+1 dao/query.go
+7 dao/query_dao.go
+1 dao/rules.go
 2 dao/scanner.go
-9 dao/schema.go
-3 dao/sql.go
-22 dao/transaction.go
-7 dao/txcapabilities.go
-9 dao/txoptions.go
+1 dao/sql.go
+4 dao/transaction.go
+2 dao/txcapabilities.go
+5 dao/txoptions.go
 2 msgpack/doc.go
 1 msgpack/limits.go
 4 partial/bind.go

@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 )
 
-// Op identifies the statement kind a hook observes (ADR-0009 §2.1).
+// Op identifies the statement kind a hook observes.
 type Op string
 
 const (
@@ -28,7 +28,7 @@ const (
 	OpBatch Op = "batch"
 
 	// OpBatchCopy is a bulk-load fast path (dialect COPY): there is no SQL
-	// statement to rewrite — the event is observe-only (ADR-0009 §2.6).
+	// statement to rewrite — the event is observe-only.
 	// QueryInfo.SQL carries a synthetic descriptor; mutating SQL/Args fails
 	// the flush.
 	OpBatchCopy Op = "batch-copy"
@@ -86,7 +86,7 @@ type Outcome struct {
 // implemented by the engine over the query-scoped DAO's per-call state; the
 // generic With/Set surface (typed by field enum) remains the caller-facing
 // API — Stager exists so schema-agnostic hooks can be written once and shared
-// across entities (ADR-0009 §2.1).
+// across entities.
 type Stager interface {
 	// Where ANDs a predicate into the statement on the where-capable ops:
 	// Get/Select/Iterate/Exists/Count/Update/Delete. INSERT and UPSERT have
@@ -110,11 +110,11 @@ type Stager interface {
 
 // ErrHookWhereUnsupported reports a BeforeBuild hook calling Stager.Where on
 // an op with no WHERE clause (insert/upsert). Loud by design: the alternative
-// is an unscoped write that looks scoped (ADR-0009 §2.1).
+// is an unscoped write that looks scoped.
 var ErrHookWhereUnsupported = errors.New(
 	"dao: hook Where is not supported on insert/upsert — branch on Op and use SetColumn")
 
-// Hook observes and augments statement execution (ADR-0009 §2.1). Embed
+// Hook observes and augments statement execution. Embed
 // [NopHook] and override only the phases you need (the GenericDialect pattern).
 type Hook interface {
 	// BeforeBuild runs before SQL is rendered. Mutations through s become part
@@ -159,7 +159,7 @@ type queryConfig struct {
 // (Schema.DAO / On / OnCtx).
 type QueryOption func(*queryConfig)
 
-// WithHooks appends per-call hooks after the schema's hooks (ADR-0009 §2.2).
+// WithHooks appends per-call hooks after the schema's hooks.
 func WithHooks(hs ...Hook) QueryOption {
 	return func(c *queryConfig) { c.hooks = append(c.hooks, hs...) }
 }
@@ -179,7 +179,7 @@ func SkipHooks(names ...string) QueryOption {
 }
 
 // WithQueryContext binds ctx to this DAO's statements and hooks. It is the
-// top of the context precedence order (ADR-0009 §2.3) and is sticky: a later
+// top of the context precedence order and is sticky: a later
 // Use(tx) binds the transaction without demoting this context.
 func WithQueryContext(ctx context.Context) QueryOption {
 	return func(c *queryConfig) { c.ctx = ctx; c.explicitCtx = true }
@@ -196,7 +196,7 @@ func hookName(h Hook) string {
 // --- pipeline -----------------------------------------------------------------
 
 // pipeline carries one statement through the hook phases. A nil *pipeline is
-// the no-hooks fast path: every method no-ops (ADR-0009 §2.4).
+// the no-hooks fast path: every method no-ops.
 type pipeline struct {
 	hooks []Hook
 	ctx   context.Context
@@ -274,7 +274,7 @@ func (p *pipeline) finish(rows int, affected int64, err error) error {
 
 // logHook reimplements the schema debug logger as the final hook of every
 // effective slice, so it logs the FINAL SQL/args as executed — including any
-// per-call BeforeExec rewrite (ADR-0009 §2.5). Skippable as "dao.log".
+// per-call BeforeExec rewrite. Skippable as "dao.log".
 type logHook struct {
 	NopHook
 	log func(sql string, args []any)
