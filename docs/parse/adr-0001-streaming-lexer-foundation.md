@@ -1,9 +1,11 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 15)** (2026-09-06, jarvis). Rev 15: the form
-  foundation was signed off at rev 14 (`Token`/`Source`/`Scan` cleared to
-  begin); this revision lands `Token` and `Source` with concrete shapes (§5) and
-  records the accepted token-production model — runs are forms too (§6).
+- **Status:** **Proposed (rev 16)** (2026-09-06, jarvis). Rev 15 landed `Token`
+  and `Source` and recorded the token-production model (runs are forms too, §6);
+  lector r15 approved `Token` but requested three `Source` corrections. Rev 16
+  is that correction: a lifetime-bearing byte accessor, a watermark-reclaimed
+  line index with a constant-memory `Validate` path, and a defined `LocationAt`
+  domain that refuses released, beyond-head, and interior-rune offsets (§5).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -303,17 +305,40 @@ lifetime along with them.
 > core: **one-based lines, columns counted in RUNES, and invalid UTF-8 consuming
 > one byte and one column.**
 >
-> **Landed (rev 15): `Token` and `Source`.** `Token{Kind Kind; Start, End
-> int64}` is in `token.go`. The location type is `Location{Offset int64; Line,
-> Column int}`, resolved by `Source.LocationAt(off)` (`source.go`) from a line
-> index built out of the newlines the lexer passes over — `Line` in O(log lines)
-> from the index alone, `Column` a rune count over the line prefix, obtained
-> through a byte accessor so `Source` copies nothing (the slice itself over
-> `[]byte`, the cache over a stream). `source_test.go` cross-checks every offset
-> against a `Scanner` walk of the same bytes, so the pinned semantics are tested,
-> not asserted. `Scan` — which builds the `Source` and drives the forms — is
-> next, and the non-delimited kinds it emits are covered by the token-production
-> decision in §6.*
+> **Landed (rev 15, corrected rev 16): `Token` and `Source`.** `Token{Kind Kind;
+> Start, End int64}` is in `token.go`. The location type is `Location{Offset
+> int64; Line, Column int}`, resolved by `Source.LocationAt(off)` (`source.go`).
+>
+> `Source` resolves locations over the **live window** of the stream, which the
+> streaming rewrite makes honest where rev 15 was not (lector r15):
+>
+> - **The byte accessor is lifetime-bearing.** Column is a rune count over the
+>   line's bytes, and streamcache lends those bytes only while a `View` is open —
+>   a span can cross segments, and `AppendTo` is the only way to a flat slice, by
+>   copying. So `Source` reads through a `read(from, to, func(io.Reader) error)`
+>   seam that holds a `View` for the call and closes it after: no borrowed slice
+>   outlives a lookup, and no copy is made for `Source`'s own sake. Rev 15's
+>   `func(from,to)([]byte,error)` could not be both no-copy and lifetime-safe.
+> - **The line index is reclaimed with the watermark.** It is not a copy of the
+>   source, but it is one `int64` per line, which is O(lines) — not free. `reclaim`
+>   drops the starts below the watermark and frees them, so its cost is bounded by
+>   what is still retained, and `Validate` builds **no** `Source` at all, keeping
+>   finite-`MaxDelimiter` validation constant-memory (criterion 4).
+> - **A released offset is unavailable for line AND column** (`ErrLocationReleased`),
+>   never one exact while the other is gone. `reclaim` advances at line boundaries,
+>   so a retained offset's line begins at a retained offset. Resolve a token's
+>   location before the retention behind it drops.
+> - **`LocationAt`'s domain is defined.** An offset that is negative, past the
+>   known head, or **inside a multibyte rune** is refused (`ErrLocationRange`) —
+>   the interior of a rune is not a position, and rev 15 answered one with a
+>   column that marched forward then fell back as the rune closed.
+>
+> `source_test.go` drives the `Scanner` oracle at every boundary AND every byte
+> offset (each is either a boundary location or a refusal, never an invented one),
+> plus beyond-head, interior-rune, released, and reclaim cases. `Scan` — which
+> builds the `Source`, advances its head, notes its newlines and drives its
+> reclaim — is next, and the non-delimited kinds it emits are covered by the
+> token-production decision in §6.*
 
 **Trivia is emitted, never dropped.** `Comment` and `Space` are kinds like any
 other. An AST builder filters them in one line; a concrete syntax tree cannot
