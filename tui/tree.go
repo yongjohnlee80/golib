@@ -46,7 +46,7 @@ func (a *App) mount(parent *node, comp Component) *node {
 		panic("tui: Mount: nil component")
 	}
 	if a.inLayout || a.inRender {
-		panic("tui: tree mutation (Mount) inside Layout/Render is illegal")
+		panic("tui: tree mutation (Mount) inside Layout/Render is illegal (ADR-0004 §2.1)")
 	}
 	// The Component-keyed index requires a COMPARABLE dynamic type, so verify
 	// it eagerly with a targeted panic. Deferring the check means the failure

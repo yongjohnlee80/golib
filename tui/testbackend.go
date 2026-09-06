@@ -274,7 +274,7 @@ func (b *TestBackend) SetCursorShape(s CursorShape) {
 }
 
 // Flush implements Backend: applies the diff to the grid structurally (byte
-// economy is a term-emitter concern.2), records the latched cursor state as
+// economy is a term-emitter concern), records the latched cursor state as
 // applied, and increments the flush counter. A width-2 head update covers
 // its continuation cell. Flush panics — with the coordinate — on an
 // out-of-range update or a diff that leaves an orphaned wide-cell half.

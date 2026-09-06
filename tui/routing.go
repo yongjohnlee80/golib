@@ -187,7 +187,7 @@ func (a *App) traceRouted(ev Event, from *node, consumer NodeID) {
 // TaskProgress) directly to its owner — no bubbling: these are private
 // deliveries; propagating them to ancestors would leak implementation
 // detail. An unmounted owner dead-letters task traffic (drop, count,
-// log.8.2); a stale tick is silently done.
+// log); a stale tick is silently done.
 func (a *App) deliverAddressed(owner NodeID, ev Event) {
 	n := a.nodes[owner]
 	if n == nil {
