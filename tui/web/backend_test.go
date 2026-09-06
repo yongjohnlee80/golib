@@ -102,7 +102,7 @@ func TestBackend_StartRespectsContext(t *testing.T) {
 }
 
 // A hello without a measured size or font metrics is refused: the server never
-// guesses (§2.6).
+// guesses.
 func TestBackend_AttachRequiresMeasurements(t *testing.T) {
 	t.Parallel()
 	for name, h := range map[string]Hello{
@@ -121,7 +121,7 @@ func TestBackend_AttachRequiresMeasurements(t *testing.T) {
 	}
 }
 
-// Criterion 11: no capability is TriYes without a verifiable basis, and
+// No capability is TriYes without a verifiable basis, and
 // KittyKeyboard is false because a browser has no analogue.
 func TestBackend_CapabilitiesAreHonest(t *testing.T) {
 	t.Parallel()
@@ -428,7 +428,7 @@ func TestSessionEvent_CarriesNoUserContent(t *testing.T) {
 
 // A render that happens BEFORE the client attaches must not be lost.
 //
-// The fourth candidate of lector's ordering family, checked rather than assumed:
+// The fourth candidate in the ordering family, checked rather than assumed:
 // Flush requires no size and publishes unconditionally, so an App that renders
 // before Start returns lands cells in a grid no client has measured yet. If the
 // attach-time resize reallocated that grid, the first thing the user ever sees

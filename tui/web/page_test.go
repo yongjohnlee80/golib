@@ -100,9 +100,9 @@ func TestServePage_Hardening(t *testing.T) {
 // This asserts SOURCE-LEVEL identity, which is all a Go test can observe. It is
 // deliberately not a claim about whether a browser would accept a nonce the
 // template altered: browsers decode HTML entities before comparing, so
-// script-src 'nonce-a+b' matches a source nonce written a&#43;b (verified in
-// headless Chromium by lector r1, correcting an earlier claim of mine that said
-// otherwise). What this test buys is a template that cannot silently rewrite the
+// script-src 'nonce-a+b' matches a source nonce written a&#43;b, which is
+// verified in headless Chromium; an earlier claim here said otherwise and was
+// wrong. What this test buys is a template that cannot silently rewrite the
 // value, which keeps header and source comparable by inspection.
 func TestServePage_NonceSurvivesTemplateEscaping(t *testing.T) {
 	t.Parallel()
@@ -210,7 +210,7 @@ func TestServePage_NonGETIsRefused(t *testing.T) {
 
 // The capture element must be focusable, so it cannot be display:none or
 // visibility:hidden, and it must carry the attributes that disable autocomplete
-// and autocorrect (§2.9 r8).
+// and autocorrect.
 func TestServePage_CaptureElementAttributes(t *testing.T) {
 	t.Parallel()
 	h := handlerFor(t)
@@ -255,7 +255,7 @@ func TestServePage_CaptureElementAttributes(t *testing.T) {
 	}
 }
 
-// §2.6's containment must be in the shipped stylesheet: the probe informs the
+// The containment rules must be in the SHIPPED stylesheet: the probe informs the
 // capability report, these rules are the actual guarantee.
 func TestClientCSS_ContainsTheWideGraphemeHazard(t *testing.T) {
 	t.Parallel()

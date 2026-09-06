@@ -1,6 +1,6 @@
 package web
 
-// Criterion 28 (ADR-0010 §2.5): the DOUBLE-CLICK contract proven against this
+// The DOUBLE-CLICK contract, proven against this
 // real producer.
 //
 // Neither producer computes a click count — the ordinal is synthesised once in

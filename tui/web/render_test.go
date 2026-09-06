@@ -17,7 +17,7 @@ func rowHTML(cells ...tui.Cell) string {
 func wide(s string) tui.Cell { return tui.Cell{Content: s, Width: 2} }
 func cont() tui.Cell         { return tui.Cell{Content: "", Width: 0} }
 
-// Criterion 6: a wide grapheme occupies exactly two columns, a Width-0
+// A wide grapheme occupies exactly two columns, a Width-0
 // continuation emits no glyph, and a mismatched font cannot shift the rest of
 // the row.
 func TestRender_WideGraphemeOccupiesTwoColumns(t *testing.T) {
@@ -223,7 +223,7 @@ func TestRender_ReverseSwapsColors(t *testing.T) {
 	}
 }
 
-// Criterion 3: identical input renders to byte-identical HTML across runs. Map
+// Identical input renders to byte-identical HTML across runs. Map
 // iteration or time-dependent output would break this.
 func TestRender_IsDeterministic(t *testing.T) {
 	t.Parallel()

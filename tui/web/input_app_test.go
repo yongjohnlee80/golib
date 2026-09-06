@@ -1,13 +1,13 @@
 package web
 
-// Criterion 18 (ADR-0010): the pointer contract must be proven against BOTH
+// The POINTER contract must be proven against BOTH
 // producers, not one. Every other test in this branch injects events straight
 // into a TestBackend; these drive the real web path — a client MouseReport
 // through this package's decoder — and then assert the App and a real widget
 // behave, rather than asserting the decoded event's shape.
 //
-// The existing input_test.go cases pin decode SHAPE. What was missing, and what
-// lector's r2 review required before merge, is a behavioural path.
+// The existing input_test.go cases pin decode SHAPE. What was missing is a
+// BEHAVIOURAL path.
 
 import (
 	"context"
@@ -86,10 +86,10 @@ func TestWebPressSelectsListRow(t *testing.T) {
 	})
 }
 
-// A browser press must also FOCUS the clicked widget (§2.1) when it arrives
+// A browser press must also FOCUS the clicked widget when it arrives
 // through the web decoder, not only through TestBackend injection.
 //
-// The first version of this test was VACUOUS and lector caught it: both Lists
+// The first version of this test was VACUOUS: both Lists
 // start at cursor 0, so asserting `bottom.Selected() == 0` was already true
 // before the report was decoded or delivered. It could not fail. This version
 // asserts FOCUS via Context().Focused(), and starts by focusing the TOP list so
@@ -128,7 +128,7 @@ func TestWebPressFocusesClickedWidget(t *testing.T) {
 }
 
 // A browser wheel scrolls, and N reports are N steps — the producer rule stated
-// in §2.3, proven on the producer that actually sends them.
+// by the wire protocol, proven on the producer that actually sends them.
 func TestWebWheelIsOneStepPerReport(t *testing.T) {
 	items := make([]string, 20)
 	for i := range items {

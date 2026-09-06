@@ -17,7 +17,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Regressions for lector r1. Each one reproduces a probe that failed.
+// First round of review regressions. Each one reproduces a probe that failed.
 
 // #7: Stop closed the events channel while Submit could pass the done check and
 // then send into it — a data race, then a send on a closed channel.
@@ -185,7 +185,7 @@ func TestRegress_DeliverRetriesUntilAccepted(t *testing.T) {
 }
 
 // #4a: the App's context came from the WebSocket, so a disconnect cancelled it
-// immediately and the detach window of §2.8 was unreachable.
+// immediately and the detach window was unreachable.
 func TestRegress_SessionOutlivesTheConnectionContext(t *testing.T) {
 	t.Parallel()
 	m, _ := manager(t, IdleTimeout(time.Hour))

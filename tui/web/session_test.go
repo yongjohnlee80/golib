@@ -55,7 +55,7 @@ func manager(t *testing.T, opts ...ManagerOption) (*Manager, *[]*fakeApp) {
 	return m, &apps
 }
 
-// THE invariant of §2.8, made structural: no App exists before authentication.
+// THE invariant, made structural: no App exists before authentication.
 //
 // The signature requires an *auth.Identity, so an unauthenticated call cannot be
 // written — which is a stronger guarantee than an ordering rule a later refactor
@@ -116,7 +116,7 @@ func TestManager_AttachChecksThePrincipal(t *testing.T) {
 	}
 }
 
-// Criterion 8: the session cap is enforced, and it refuses rather than evicting
+// The session cap is enforced, and it refuses rather than evicting
 // somebody else's live session — otherwise the cap becomes a DoS tool against
 // existing users.
 func TestManager_SessionCapRefusesRatherThanEvicts(t *testing.T) {
@@ -196,7 +196,7 @@ func TestManager_IdleEvictionAfterDetach(t *testing.T) {
 	}
 }
 
-// Criterion 8: after disconnect and after eviction, Stop has run and goroutines
+// After disconnect and after eviction, Stop has run and goroutines
 // have exited.
 func TestManager_NoGoroutineLeak(t *testing.T) {
 	// Not parallel: it counts goroutines.
