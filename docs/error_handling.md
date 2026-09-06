@@ -110,6 +110,20 @@ One question decides it:
 - **No → the package that owns the concept.** `dao.ErrTxRolledBack` is a fact
   about `dao`; nothing outside it can mean that.
 
+**Peers only — a consumer wraps, it does not promote.** The word *unrelated* is
+load-bearing: the two packages must be **peers**, neither importing the other.
+
+- **Peers.** `dao` and `tui` can both be *closed* and neither owns the other, so
+  the base belongs in `errs` and each wraps it.
+- **Consumer and producer.** If package A imports package B and refuses for the
+  same reason B would, A's refusal *is B's condition seen one layer up*. **A
+  wraps B's sentinel.** Nothing moves to `errs`.
+
+Promoting a consumer-shared condition puts it in a package that knows nothing
+about the domain, and a reader must then look in `errs` to find out what a
+downstream package meant. Applied to peers only, `errs` stays a handful of
+conditions; applied to everything shared, it becomes a registry.
+
 **Test the condition, never the name.** Two packages using the same *word* for
 different situations must stay separate — consolidating them would make
 `errors.Is` answer true across unrelated failures, which is worse than the
