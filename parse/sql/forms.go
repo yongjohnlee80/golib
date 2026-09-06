@@ -160,26 +160,35 @@ func (mysqlDashComment) End(src, openedWith []byte, boundary parse.InputBoundary
 	return lineBody(src, boundary)
 }
 
-// MySQLBlockComment returns the form for MySQL's `/* … */`, which deliberately
-// DOES NOT match an executable version comment.
+// MySQLExecutableOpen returns the form for the OPENER of a MySQL construct that
+// looks like a comment and is not one: `/*! … */`, which the server executes, and
+// `/*+ … */`, the optimizer hint that changes how a statement runs.
 //
-// `/*! … */` and `/*!50000 … */` are not comments in MySQL: the server executes
-// what is inside them. Lexing that as a Comment would be the worst possible
-// answer, because trivia is exactly what a consumer is invited to discard — an
-// AST builder filters it in one line, and `/*!50000 DROP TABLE t */` would
-// vanish on the way past. For anything examining SQL it must not.
+// # Why the opener is its own token
 //
-// So this form refuses `/*!`, and the bytes inside are lexed as the ordinary
-// tokens they are. The delimiters come through as operators, which is untidy and
-// deliberately so: it is visible, and nothing executable is hidden inside a token
-// a caller was told was safe to drop.
-func MySQLBlockComment() parse.Form { return mysqlBlockComment{} }
+// Neither may arrive as Comment, because Comment is precisely the kind a consumer
+// is invited to discard — an AST builder filters trivia in one line, and
+// `/*!50000 DROP TABLE t */` would vanish on the way past. But refusing to match
+// them at all is worse in a different direction: the closer then goes unchecked,
+// and an unterminated executable comment reads as valid.
+//
+// So this matches the opener alone and hands back a delimiter, while End SCANS
+// FOR THE CLOSER WITHOUT CONSUMING IT — the `*/` has to be there, and saying so
+// is what keeps `/*!50000 DROP TABLE t` an error, but the bytes between are left
+// for the lexer to read as the ordinary tokens they are.
+//
+// That is deliberately better than one opaque token of some other kind would be.
+// A caller looking for a dangerous statement sees Word(DROP) and Word(TABLE) in
+// the stream, rather than having to know to re-lex the inside of a token it was
+// handed whole.
+func MySQLExecutableOpen() parse.Form { return mysqlExecutableOpen{} }
 
-type mysqlBlockComment struct{}
+type mysqlExecutableOpen struct{}
 
-func (mysqlBlockComment) Kind() parse.Kind { return parse.Comment }
+// A delimiter is punctuation. What matters is that it is NOT Comment.
+func (mysqlExecutableOpen) Kind() parse.Kind { return parse.Punct }
 
-func (mysqlBlockComment) Starts(src []byte) (int, parse.Match) {
+func (mysqlExecutableOpen) Starts(src []byte) (int, parse.Match) {
 	for i, want := range []byte{'/', '*'} {
 		if i >= len(src) {
 			return 0, parse.Incomplete
@@ -188,27 +197,30 @@ func (mysqlBlockComment) Starts(src []byte) (int, parse.Match) {
 			return 0, parse.NoMatch
 		}
 	}
-	// A third byte of `!` makes this executable, and executable is not trivia.
+	// The third byte is what separates an executable construct from a comment.
+	// With none yet this is undecidable; at end of input the core degrades it and
+	// the ordinary block comment behind this one takes it, closer check included.
 	if len(src) < 3 {
 		return 0, parse.Incomplete
 	}
-	if src[2] == '!' {
+	if src[2] != '!' && src[2] != '+' {
 		return 0, parse.NoMatch
 	}
-	return 2, parse.Matched
+	return 3, parse.Matched
 }
 
-func (mysqlBlockComment) End(src, openedWith []byte, boundary parse.InputBoundary) (int, error) {
-	// MySQL does not nest block comments: the first close ends it.
+// End requires the closer to exist and consumes none of it: the token is the
+// opener, and everything after it lexes normally.
+func (mysqlExecutableOpen) End(src, openedWith []byte, boundary parse.InputBoundary) (int, error) {
 	for i := 0; i+1 < len(src); i++ {
 		if src[i] == '*' && src[i+1] == '/' {
-			return i + 2, nil
+			return 0, nil
 		}
 	}
 	if boundary == parse.MoreInput {
 		return 0, parse.ErrNeedMore
 	}
-	return 0, &parse.UnterminatedError{Kind: parse.Comment, Open: string(openedWith)}
+	return 0, &parse.UnterminatedError{Kind: parse.Punct, Open: string(openedWith)}
 }
 
 // lineBody is the shared tail of a to-end-of-line comment: the newline is the

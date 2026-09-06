@@ -66,14 +66,18 @@ func PostgreSQL() []parse.Form {
 // Two MySQL-specific forms rather than the generic ones, because MySQL's
 // versions of these constructs are genuinely different: `--` is a comment only
 // when whitespace or a control byte follows it, so `balance--1` stays a
-// subtraction; and `/*! … */` is refused as a comment because the server EXECUTES
-// its contents, which must not reach a caller as trivia it was invited to drop.
-// See [MySQLDashComment] and [MySQLBlockComment].
+// subtraction; and `/*! … */` and `/*+ … */` are not comments at all, since the
+// server executes one and plans by the other. See [MySQLDashComment] and
+// [MySQLExecutableOpen].
 func MySQL() []parse.Form {
 	return []parse.Form{
-		// MySQL does not nest block comments, and /*! … */ is NOT one: the
-		// server executes what is inside it, so it must not arrive as trivia.
-		MySQLBlockComment(),
+		// /*! … */ and /*+ … */ are not comments: the server executes one and
+		// the other steers the planner. Their opener is matched alone, so the
+		// bytes inside stay visible — and its End still demands the closer.
+		MySQLExecutableOpen(),
+		// An ordinary block comment, which does validate its own closer. It sits
+		// behind the form above, so it never sees an executable opener.
+		parse.BlockComment("/*", "*/", false), // MySQL does NOT nest them
 		// `--` is a comment only when whitespace or a control byte follows it.
 		MySQLDashComment(),
 		parse.LineComment("#"),

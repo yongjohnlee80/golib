@@ -462,19 +462,54 @@ func TestMySQLDashComment_NeedsItsFollowingGap(t *testing.T) {
 	}
 }
 
-// An executable version comment must not arrive as trivia. A consumer is invited
-// to discard Comment; anything hidden in one is hidden from the caller.
-func TestMySQLBlockComment_RefusesAnExecutableVersionComment(t *testing.T) {
-	got := render(lex(t, sql.MySQL(), `/*!50000 DROP TABLE t */`, false))
-	if strings.HasPrefix(got, "Comment(") {
-		t.Fatalf("an executable version comment arrived as trivia: %s", got)
+// An executable construct must not arrive as trivia, and refusing to match it is
+// not the answer either: the closer still has to be checked. The opener is its
+// own token, the body lexes as ordinary tokens, and the `*/` is required.
+func TestMySQLExecutable_VisibleBodyAndAValidatedCloser(t *testing.T) {
+	lx := parse.New(parse.WithForms(sql.MySQL()...))
+	validate := func(src string) error {
+		return lx.Validate(context.Background(), strings.NewReader(src))
 	}
-	// The dangerous words are visible as ordinary tokens.
-	for _, want := range []string{"Word(DROP)", "Word(TABLE)", "Word(t)"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("%s is not in the token stream: %s", want, got)
+
+	// The dangerous words are ordinary tokens, not hidden inside trivia.
+	for _, src := range []string{`/*!50000 DROP TABLE t */`, `/*+ MAX_EXECUTION_TIME(1000) */`} {
+		got := render(lex(t, sql.MySQL(), src, false))
+		if strings.Contains(got, "Comment(") {
+			t.Errorf("%q arrived as trivia: %s", src, got)
+		}
+		if streamed := render(lex(t, sql.MySQL(), src, true)); streamed != got {
+			t.Errorf("%q lexes differently streamed:\n got %s\nwant %s", src, streamed, got)
 		}
 	}
+	if got := render(lex(t, sql.MySQL(), `/*!50000 DROP TABLE t */`, false)); !strings.Contains(got, "Word(DROP)") ||
+		!strings.Contains(got, "Word(TABLE)") {
+		t.Errorf("the executable body is not visible: %s", got)
+	}
+	if got := render(lex(t, sql.MySQL(), `/*+ MAX_EXECUTION_TIME(1000) */`, false)); !strings.Contains(got, "Word(MAX_EXECUTION_TIME)") {
+		t.Errorf("the optimizer hint is not visible: %s", got)
+	}
+
+	// CLOSERS ARE VALIDATED — for the ordinary form and the executable one, and
+	// for the bare opener that used to slip through as two operators.
+	for _, c := range []struct {
+		src  string
+		want bool // want an unterminated report
+	}{
+		{`/*`, true},
+		{`/* unterminated`, true},
+		{`/*!50000 DROP TABLE t`, true},
+		{`/*+ hint`, true},
+		{`/* closed */`, false},
+		{`/*! closed */`, false},
+		{`/*+ closed */`, false},
+	} {
+		err := validate(c.src)
+		var unterm *parse.UnterminatedError
+		if got := errors.As(err, &unterm); got != c.want {
+			t.Errorf("Validate(%q) = %v; want unterminated report: %v", c.src, err, c.want)
+		}
+	}
+
 	// An ordinary block comment is still trivia, and still does not nest.
 	if g := render(lex(t, sql.MySQL(), `/* a /* b */ x`, false)); g != `Comment(/* a /* b */) Space( ) Word(x)` {
 		t.Errorf("ordinary block comment = %s", g)
