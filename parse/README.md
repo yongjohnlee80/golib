@@ -19,8 +19,25 @@ forms := []parse.Form{
     parse.LineComment("--"),
     parse.QuoteForm("'", "'", parse.QuoteOpts{Doubling: true}),
     parse.QuoteForm(`"`, `"`, parse.QuoteOpts{Doubling: true}),
+    parse.DelimitedForm('$', '$', parse.DelimitedOpts{TagByte: pgTag}),
 }
 ```
+
+`DelimitedForm` is the tag-carrying shape, and **the tag rule comes from you**:
+
+```go
+func pgTag(index int, b byte) bool {
+    letter := b == '_' || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b >= 0x80
+    if index == 0 {
+        return letter          // rejects $1$, which is a parameter here
+    }
+    return letter || (b >= '0' && b <= '9')   // accepts $a1$
+}
+```
+
+The predicate takes an index because a `func(byte) bool` could not do both. A
+rejected tag is `NoMatch`, not an unterminated construct — the prefix belongs to
+whatever form can lex it.
 
 Order is precedence: the first match wins, and it is the caller's to arrange.
 Declare `/*` before `/`, `--` before `-`. The core does not sort by length or
@@ -52,5 +69,15 @@ gives the same answer under either boundary.
 A `Form` is called again from the same offset with more input, so anything
 remembered between calls is a wrong answer waiting for an unlucky split. The
 type system will not enforce this. Drive your form over every split of its
-corpus and assert the answers do not depend on how the bytes arrived — the
-tests here do exactly that (`everySplit`).
+corpus and assert the answers do not depend on how the bytes arrived:
+
+```go
+func TestMyForm(t *testing.T) {
+    parsetest.Form(t, myForm, []string{"...", "..."})
+}
+```
+
+`parsetest` is one package out so the core does not import `testing`. It checks
+the protocol, not the meaning: a form that recognises the wrong thing
+consistently will pass, which is what your own tests are for. Its own suite
+proves it fails on four decoys before it is trusted to pass anything.

@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 11)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 12)** (2026-09-06, jarvis).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -287,11 +287,20 @@ lifetime along with them.
 > legacy type changes and that is a breaking change to an interface Johno asked
 > to keep for now.
 >
-> Proposed: `Token{Kind Kind; Start, End int64}`, with offset→`Position`
-> resolved on demand by a line index the lexer builds from the newlines it
-> already passes over. `Position` keeps its current definition and its current
-> callers; nothing breaks; diagnostics are unchanged; and a token is 24 bytes.
-> *Awaiting review — no code written against either shape.*
+> Accepted in direction (lector r11): `Token{Kind Kind; Start, End int64}`, with
+> coordinates resolved on demand from a line index the lexer builds out of the
+> newlines it already passes over.
+>
+> **With one refinement, which is his: converting `int64` to the legacy
+> `Position` truncates `Position.Offset` on a 32-bit build at the moment a
+> diagnostic is requested** — the truncation is moved, not removed. So the
+> lookup returns a NEW non-truncating location type, and `Position` keeps both
+> its definition and its callers. The line/column semantics are pinned to what
+> `Scanner` already does, so a diagnostic does not change meaning under the new
+> core: **one-based lines, columns counted in RUNES, and invalid UTF-8 consuming
+> one byte and one column.**
+>
+> *No code written yet: `Token`, `Source` and `Scan` land in the Scan round.*
 
 **Trivia is emitted, never dropped.** `Comment` and `Space` are kinds like any
 other. An AST builder filters them in one line; a concrete syntax tree cannot
@@ -343,20 +352,43 @@ const (
 func QuoteForm(open, close string, o QuoteOpts) Form
 func LineComment(open string) Form
 func BlockComment(open, close string, nests bool) Form
-func DelimitedForm(prefix, suffix byte) Form // the $tag$ SHAPE, unnamed
+func DelimitedForm(prefix, suffix byte, o DelimitedOpts) Form // the $tag$ SHAPE, unnamed
 ```
 
 `DelimitedForm` generalises the tag-carrying shape, so PostgreSQL's
 dollar-quoting is one call from a leaf rather than a branch in the core.
 
-> **PROPOSED AMENDMENT — the conformance suite is `parse/parsetest`, not
-> `parse`.** Rev 8 named it `parse.TestForm`, which puts `import "testing"` in
-> the core. That registers testing's flags in every binary that links the
-> parser, for a symbol no production caller uses. The standard library keeps
-> exactly this kind of helper one package out — `testing/fstest`,
-> `testing/iotest`, `net/http/httptest` — and the same reason applies here:
-> a test-only dependency does not belong in the package under test. Proposed:
-> `parsetest.Form(t, f, corpus)`. *Awaiting review.*
+**The tag rule is the leaf's** *(lector r11)*. Unconstrained, the shape is too
+permissive to be useful — `$1$` would open a literal in a dialect where `$1` is
+a parameter — and with PostgreSQL's charset written into the core, the core has
+named a dialect, which criterion 16 forbids. So:
+
+```go
+type DelimitedOpts struct {
+    TagByte     func(index int, b byte) bool // POSITION-AWARE; joins the purity contract
+    AllowEmpty  bool                          // is `$$` a form?
+    MaxTagBytes int                           // 0 = bounded only by the scan's limit
+}
+```
+
+`TagByte` takes the index because a single `func(byte) bool` cannot express the
+ordinary rule: a leading digit is illegal where a trailing one is fine, so it
+could not both reject `$1$` and accept `$a1$`. It is called again on the same
+bytes as the window widens, so it joins the purity contract.
+
+**A rejected byte, or a tag past its bound, is `NoMatch` — not an unterminated
+construct.** The prefix belongs to some later form, and claiming it here would
+take a token away from whatever can lex it. The bound is decidable before the
+suffix arrives: once the tag is longer than it may ever be, no later byte can
+rescue it.
+
+**The conformance suite is `parse/parsetest`** *(accepted, lector r11)*. Rev 8
+named it `parse.TestForm`, which puts `import "testing"` in the core and
+registers testing's flags in every binary that links the parser, for a symbol no
+production caller uses. The standard library keeps exactly this helper one
+package out — `testing/fstest`, `testing/iotest`, `net/http/httptest`.
+`parsetest.Form(t, f, corpus)` drives `Starts` and `End` across every split and
+both boundaries, and its own suite proves it fails on four decoys.
 
 ### 6.1 The incremental contract
 
@@ -485,6 +517,13 @@ The rules, complete:
    It asks for input that cannot exist; honouring it is an infinite loop and
    ignoring it silently picks one of the two answers in the table above.
 
+   *Status, stated precisely (lector r11): the generic forms OBEY this rule and
+   `parsetest` DETECTS its violation, shown against a decoy. Enforcement by the
+   core — turning an arbitrary form's `ErrNeedMore` at EOF into
+   `ErrFormContract` — lands with `Scan`, which does not exist yet. Criterion 19
+   is not met until then, and saying otherwise would claim a guarantee nothing
+   currently makes.*
+
 **Retry bounds.** The core retries while both hold: more input may exist, and
 the window **actually grew** since the last walk. A retry that widens by nothing
 is not a retry — it is the spin that this design already refused once, and it
@@ -558,7 +597,8 @@ behaving differently depending on how input was supplied.
     one-byte case: input ending in `/` with `/*` declared first yields an
     operator token, NOT a bounded-construct error. Driven at EOF and with the
     same bytes mid-stream, which must differ: mid-stream it waits.
-19. **A form contract violation is reported, not absorbed** — `Matched` with
+19. **A form contract violation is reported, not absorbed** *(the core's half
+    lands with `Scan`; `parsetest` already detects each of these)* — `Matched` with
     `n == 0` (which would loop at one offset forever), `n > len(src)`, a
     non-zero `n` alongside `NoMatch`/`Incomplete`, and `ErrNeedMore` returned
     at `EndOfInput` each produce `ErrFormContract` naming the offending form.
@@ -570,43 +610,57 @@ behaving differently depending on how input was supplied.
 21. **A present terminator is unaffected by the boundary** — driven under both
     values, asserting an identical `n`: input that already decides itself must
     not lex differently because of how it arrived.
-22. **the conformance suite is shipped and detects a stateful form** — proven with a
-    deliberately stateful decoy that answers differently on its second call.
-23. A form whose construct straddles the window returns `ErrNeedMore` and is
+22. **the conformance suite is shipped and detects what it claims** — proven
+    against four decoys, each shown failing: a stateful form that answers
+    differently on its second call, a `Matched` of width zero, an `ErrNeedMore`
+    at `EndOfInput`, and an `End` whose terminator moves with the window. The
+    green baseline comes first: all six generic forms pass it, because a suite
+    that fails everything detects nothing.
+23. **A multi-byte closer is not ambiguous once a visible byte disagrees** —
+    with doubling enabled, deferring requires what follows the closer to be a
+    PROPER PREFIX of it (empty included). Testing only "fewer bytes remain than
+    the closer needs" defers on every short remainder and stalls a live stream
+    on input that has decided itself. Driven with a multi-byte closer, which is
+    the only width that can expose it.
+24. **A tag rule is the leaf's, and position-aware** — the same predicate
+    rejects `$1$` and accepts `$a1$`, which no `func(byte) bool` can do. An
+    over-long tag answers `NoMatch` without waiting for a suffix that cannot
+    change it.
+25. A form whose construct straddles the window returns `ErrNeedMore` and is
     retried with a superset until it decides or `MaxDelimiter` is reached — and
     the same input supplied in one chunk and in many yields identical tokens.
-24. Reclamation is **linear in the segments actually freed**, not in the
+26. Reclamation is **linear in the segments actually freed**, not in the
     directory — an isolated close benchmark over independently held segments
     whose time roughly doubles when their number doubles, run in **both close
     orders**, since closing newest-first strands every freed entry behind a held
     one. *(Measured at 512/1024/2048/4096 segments: oldest-first 17/30/55/140 µs,
     newest-first 14/29/67/124 µs, 0 allocs — against 0.19/0.71/2.8/12.5 ms for a
     whole-directory scan.)*
-25. **A released span stays released, and its memory goes** — proven separately,
+27. **A released span stays released, and its memory goes** — proven separately,
     because freeing the bytes makes the refusal happen for free and hides
     whether the rule exists at all. One probe refuses a span below the watermark
     whose bytes are demonstrably still present (a segment straddling the
     watermark; a segment another view still holds); another asserts an oldest
     view pins its own segment and neither the bytes nor the directory entries
     behind it.
-26. **A freed entry is never written to** — the sequence that produced a nil
+28. **A freed entry is never written to** — the sequence that produced a nil
     slice: a full, unheld tail segment freed by the watermark while older held
     entries keep compaction from removing it, then a fill. Asserted on the
     bytes as well as the absence of a panic, since reusing a dead entry
     corrupts offsets too.
-27. **A released request performs no I/O and reports no source error** — a
+29. **A released request performs no I/O and reports no source error** — a
     source that fails on its second read, a span below the watermark: the
     answer is `ErrReleased`, not the source's error, and the reader is not
     called again. Both halves matter; the second is what points a diagnosis at
     the right component.
-28. **A watermark set beyond head applies to bytes that arrive later** —
+30. **A watermark set beyond head applies to bytes that arrive later** —
     released, then read: retention stays flat **at its peak, measured while
     reading**, and the span is refused, with no second `Release`. The final
     state is not the claim: reclaiming once the range completes leaves the same
     final zero with a peak of the whole range, so the probe samples from inside
     the reader. Its control removes in-loop reclamation and must show the peak
     growing linearly with the range while the final state is unchanged.
-29. Span access is **linear in the segments a span covers**, demonstrated by a
+31. Span access is **linear in the segments a span covers**, demonstrated by a
     benchmark whose time roughly doubles when the span doubles. *(Measured
     after the O(k²) fix: 172/342/630 µs at 64/128/256 KiB, against 0.4/1.5/6.0
     ms before.)*
