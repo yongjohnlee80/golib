@@ -1,220 +1,224 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 1)** (2026-09-06 — authored by jarvis; awaiting
+- **Status:** **Proposed (rev 2)** (2026-09-06 — authored by jarvis; awaiting
   lector design review).
-- **Scope:** the **foundational layer only** — source handling, the token
-  model, and the streaming contract. The AST hierarchy and the risk/intention
-  analyzer are layered on top of this and are deliberately **not** decided here.
-- **Supersedes:** the statement-splitting implementation in `parse/sql.go`.
-  That code is replaced by this design rather than extended (Johno, 2026-09-06).
+- **Scope:** the foundational layer — input, the token model, and the streaming
+  contract. The AST hierarchy and the risk analyzer layer on top and are **not**
+  decided here.
+- **Framing (Johno, 2026-09-06):** this is designed **from scratch** on
+  architectural merit. The existing `parse` implementation is superseded;
+  nothing here is justified by what that code does or fails to do. The existing
+  public *interfaces* are kept for compatibility and adapted to — a decision
+  deferred to §7, deliberately downstream of the core design so it cannot shape
+  it.
 
 ---
 
-## 1. Why this ADR exists
+## 1. What this layer is for
 
-`golib/parse` today offers a generic parser framework (`Parser[T]`,
-`Validator`, `StreamParser[T]`, `Splitter`, capability detection) over a
-position-tracking `Scanner`, with SQL as its only format. `SQL.Parse` walks the
-source once, recognises comments, three quoting styles, E-strings and
-dollar-quoted bodies, and returns `[]Statement{Text, Pos, Verb}`.
+A caller hands us bytes that claim to be a language and needs, in order of
+increasing commitment:
 
-**Everything that walk learns about the source is discarded** except the
-statement boundaries and the leading verb. A caller that needs to know whether
-a `DELETE` carries a `WHERE` — or whether `1=1` inside it is a literal or an
-identifier — has nothing to work with but the text again.
+1. **Is it well formed?** — a yes/no, cheaply, over input of any size.
+2. **Where are its pieces?** — a stream of lexical units with positions.
+3. **What does it mean?** — structure, and then intent.
 
-Two further properties make the current shape the wrong base to build on:
-
-1. **`ParseStream` does not stream.** It is `io.ReadAll` followed by `Parse`.
-   The whole source is resident before the first statement is produced. Its own
-   doc comment explains the difficulty honestly — a terminator can appear inside
-   a string — but the resolution taken was to give up streaming, not to solve it.
-2. **The output is materialised whole.** `Parse` returns a slice. A caller that
-   wants one statement, or wants to stop at the first refusal, pays for all of
-   them.
-
-For a front door that must decide about a statement **before** it reaches a
-database, both of those are the wrong default.
+Each answer is strictly more expensive than the last. **The architecture's job
+is to let a caller stop at the answer they need and pay for nothing beyond it.**
+That single sentence generates most of what follows.
 
 ---
 
-## 2. Constraints
+## 2. Principles this design is accountable to
 
-These are requirements, not preferences. Each is testable.
-
-1. **Stream in.** The lexer consumes an `io.Reader` and must not require the
-   whole source to be resident. A 100 MB dump and a 40-byte query use the same
-   path, and the second must not pay for the first's design.
-2. **Stream out.** Tokens are produced as they are recognised. A caller may
-   stop at any point — and stopping must actually stop the work, not merely
-   discard a finished slice.
-3. **Discardable at zero cost.** *(Johno, 2026-09-06.)* A caller that wants only
-   statement boundaries, or only a validity answer, must not pay to build tokens
-   it never reads. **The token stream is opt-in by construction, not by a flag
-   checked after the allocation.**
-4. **Position fidelity.** Every token carries byte offset, line and column, so a
-   refusal can be framed with `ErrorResponse.Position` pointing at the offending
-   construct rather than at the statement.
-5. **Zero external dependencies.** Consistent with the rest of `golib`, and the
-   reason neither `pg_query_go` nor TiDB's parser is adopted wholesale (§6).
-6. **Dialect-parameterised, not dialect-forked.** One lexer, configured.
-7. **Additive to the existing framework.** Per golib's API-evolution convention,
-   the new capability arrives as an interface a format may implement; existing
-   `Parser[T]`/`Validator`/`Splitter` consumers are untouched.
+| principle | how it binds here |
+|---|---|
+| **SRP** | Input, lexing, structure and meaning are four responsibilities in four types. A change of dialect touches configuration; a change of grammar touches the parser; neither touches input handling. |
+| **OCP** | New dialects and new formats arrive as data and implementations, never as edits to the lexer core. |
+| **LSP** | Any input source substitutes for any other. A file, a socket and a `[]byte` are indistinguishable to the lexer, and produce identical tokens. |
+| **ISP** | A caller that wants validity must not compile against the token type; one that wants tokens must not compile against the AST. Small interfaces are how §1's "pay for nothing beyond it" is enforced at the type level rather than by discipline. |
+| **DIP** | The lexer depends on `io.Reader`, not on a buffer. Nothing in it knows whether bytes came from memory or a network. |
+| **DRY** | **One** lexing implementation. Not a fast path for `[]byte` and a slow path for readers — two implementations of one rule diverge, and the divergence surfaces as a dialect bug nobody can reproduce. |
 
 ---
 
-## 3. Decision
+## 3. The public boundary
 
-### 3.1 Three independent layers, each usable alone
-
-```
-io.Reader ──▶ Source ──▶ Lexer ──▶ [Parser ──▶ AST]      (AST: later ADR)
-              │          │          │
-              │          │          └─ statements, risk analysis
-              │          └─ tokens with position
-              └─ windowed bytes, never the whole file
-```
-
-The layering is the decision. Each arrow is a **public seam**: a caller may
-take tokens and never build an AST, or take statement boundaries and never look
-at tokens. **Nothing above a layer is constructed unless asked for**, which is
-how constraint 3 is met structurally rather than by a conditional.
-
-### 3.2 `Source` — bounded windowed input
-
-`Source` wraps an `io.Reader` and presents the rune-level primitives the lexer
-needs (`Next`, `Peek`, `PeekAt`, `Unread`, `HasPrefix`, `Take`, `Slice`) over a
-**sliding window**, not over the whole input.
-
-The window must be large enough for the longest construct the lexer needs to
-recognise atomically — a dollar-quote tag, an operator, a keyword. It grows on
-demand and only when a construct genuinely spans the boundary. `[]byte` input
-takes the same path via a reader over the slice, so there is **one
-implementation**, not a fast path and a slow path that can disagree.
-
-> **Why not keep today's `Scanner`.** Its API is the right shape and this
-> borrows it deliberately, but it is defined over a resident `[]byte` and
-> `Slice(from, to)` assumes any earlier offset is still addressable. Streaming
-> makes that false. The names survive; the backing does not.
-
-### 3.3 `Token` — what is retained
+**Public API speaks `io`. Internals speak `[]byte`.** (Johno, 2026-09-06.)
 
 ```go
+// Lexer is the whole public surface of this layer.
+type Lexer interface {
+    // Tokens yields tokens until the input is exhausted or the caller stops.
+    Tokens(r io.Reader) iter.Seq2[Token, error]
+}
+
+// Two conveniences, both defined in terms of the above — never beside it.
+func TokensFrom(b []byte) iter.Seq2[Token, error]  // bytes.NewReader
+func WriteTokens(w io.Writer, r io.Reader) error   // stream in, stream out
+```
+
+Three consequences worth stating:
+
+- **`io.Reader` in.** A caller with a file, a socket, a decompressor or a
+  `[]byte` uses one entry point. `io.ReadCloser` is accepted where ownership
+  transfers; this layer never closes what it did not open.
+- **`io.Writer` out.** `WriteTokens` gives a byte-in/byte-out pipeline for
+  callers that want to persist, forward or diff a token stream without holding
+  it. It is a *composition* of `Tokens`, not a second implementation.
+- **`[]byte` is an internal concern.** The window, the slices handed to token
+  construction, the scratch buffers — all `[]byte`, none of it in a signature.
+
+### 3.1 Why `iter.Seq2` for the stream
+
+It is already golib's idiom on Go 1.25 (`collections`, `tui/width`,
+`tui/internal/grapheme`), so it costs a reader nothing new. Its pull semantics
+are what make §1 real: **the loop body stopping stops production.** A caller
+reading until the first error and returning has, by construction, done no work
+past that error. `iter.Pull2` is available where a caller must interleave.
+
+**Errors travel in the stream**, at the position they occurred, and end it. This
+is ISP again: "is it valid?" is answered by the same seam that answers "what are
+its tokens?", without a second entry point and without a token slice.
+
+---
+
+## 4. Input: one path, bounded memory
+
+`Source` adapts an `io.Reader` into the rune-level primitives lexing needs —
+peek, advance, unread, match a literal, slice the current lexeme — over a
+**sliding window**, never the whole input.
+
+**The window is the only design constraint that leaks upward**, so it is stated
+plainly rather than hidden:
+
+- The window must hold the longest lexeme the lexer recognises **atomically**.
+  For SQL that is an operator, a keyword, a delimiter or a dollar-quote tag —
+  all short and boundable. It is *not* the longest string literal or comment,
+  because those are consumed incrementally and their content is not needed to
+  find their end.
+- It grows only when a construct genuinely spans the boundary, and growth is
+  bounded by an explicit maximum. Exceeding that maximum is a **reported
+  error naming the construct and its position**, never a silent truncation.
+- **`Unread` past the window start is an error, not a silent wrong answer.**
+  This is the one place a streaming source is genuinely weaker than a resident
+  buffer, and the weakness is made explicit rather than discovered later.
+
+`[]byte` input takes this same path through a `bytes.Reader`. That is DRY, and
+it is also the only way to keep LSP honest: if the two paths differed, "the
+tokens are the same" would be a hope rather than a property.
+
+---
+
+## 5. The token model
+
+```go
+type Kind uint8 // Word, Ident, String, Number, Operator, Punct, Comment, Terminator, EOF
+
 type Token struct {
-    Kind  Kind      // Word, Ident, String, Number, Operator, Punct, Comment, Terminator, EOF
-    Text  string    // the source text, verbatim
-    Pos   Position  // offset, line, column of the first byte
+    Kind Kind
+    Text string   // verbatim source text
+    Pos  Position // offset, line, column of the first byte
 }
 ```
 
-Two properties are load-bearing:
+Two properties carry weight:
 
-- **`Text` is verbatim, never normalised.** Case folding, unquoting and keyword
-  recognition are *interpretations*, and they belong to the layer that has a
-  dialect's opinion. A lexer that upper-cases has already decided something.
-- **`Kind` distinguishes what the source said, not what it means.** `Ident`
-  covers a quoted identifier; whether it names a table is the parser's question.
-  This keeps the keyword set — the largest dialect-specific artefact — out of
-  the lexer entirely.
+**`Text` is verbatim.** No case folding, no unquoting, no unescaping. Those are
+*interpretations*, and a lexer that performs them has taken a position on a
+dialect it should not hold. A caller that wants the unquoted value asks the
+layer that knows the dialect's escaping rules.
 
-### 3.4 The streaming contract
+**`Kind` says what the source *is*, never what it *means*.** `Ident` covers a
+quoted identifier; whether it names a table is the parser's question. This keeps
+the keyword set — the largest, most dialect-specific artefact in any SQL
+implementation — **out of the lexer entirely**, which is what lets one lexer
+serve several dialects (OCP) instead of forking per dialect.
+
+`Position` carries offset, line and column so a refusal can point at the
+offending construct rather than at the statement containing it.
+
+---
+
+## 6. Dialects as configuration, not as code
+
+A dialect is a value, not a type:
 
 ```go
-// Tokens yields tokens until the source is exhausted or the caller stops.
-Tokens(r io.Reader) iter.Seq2[Token, error]
+type Dialect struct {
+    Backticks           bool // `x` is a quoted identifier
+    DollarQuotes        bool // $$…$$ and $tag$…$tag$ are strings
+    NestedBlockComments bool // /* /* */ */ nests
+    EStringEscapes      bool // E'…' gives backslash escapes
+}
 ```
 
-`iter.Seq2` is chosen because it is **already golib's idiom** (`collections`,
-`tui/width`, `tui/internal/grapheme`) on Go 1.25, and because its pull semantics
-give constraint 2 for free: the loop body stopping stops production, and
-`iter.Pull2` gives a caller explicit control when it needs to interleave.
-
-**Errors travel in the stream, not out of band.** A malformed construct yields
-its error at the position it occurred, and the sequence ends. A caller that
-wants "is this valid?" reads until the first error and stops — without building
-a token slice or a statement list.
-
-### 3.5 Dialects
-
-The four axes already proven necessary are carried forward **as requirements**,
-each because a real engine differs:
-
-| axis | on | off |
-|---|---|---|
-| `Backticks` | `` `x` `` is a quoted identifier (MySQL) | ordinary text |
-| `DollarQuotes` | `$$…$$`, `$tag$…$tag$` are strings (PostgreSQL) | `$` ordinary |
-| `NestedBlockComments` | `/* /* */ */` nests (PostgreSQL) | first `*/` closes |
-| `EStringEscapes` | `E'…'` gives backslash escapes | backslash literal |
-
-`EStringEscapes` keys off the **prefix**, not the construct: an ordinary `'…'`
-keeps the standard reading, so a Windows path or a trailing-backslash regex
-still closes where it should. That subtlety is preserved because it was learned
-from a defect, not designed.
+Adding a dialect adds a value; it does not touch the lexer (OCP). The axes are
+chosen because real engines differ on exactly these points — and one subtlety is
+recorded because it is easy to get wrong: **`EStringEscapes` keys off the
+prefix, not the construct.** An ordinary `'…'` keeps the standard reading, so a
+Windows path or a trailing-backslash regular expression still closes where it
+should. Only a literal that announced itself with `E` changes meaning.
 
 ---
 
-## 4. What this ADR does **not** decide
+## 7. Compatibility with the existing interfaces — deferred, on purpose
 
-Named so that the next reviewer knows they are absent by intent:
+The existing `Parser[T]`, `Validator`, `Splitter`, `StreamParser[T]` and `Named`
+interfaces are **kept**, and the new implementation will be adapted to satisfy
+them so current consumers compile unchanged.
 
-- **The AST hierarchy** — node interfaces, expression trees, the visitor.
-- **Intention and threat classification** — the risk analyzer.
-- **The `pg_query_go` adapter seam** — worth having, but it is an adapter to a
-  tree, and there is no tree yet.
-- **`dao` read-only enforcement** — a consumer of the analyzer, two layers up.
-
----
-
-## 5. Consequences
-
-**Gained.** A front door can refuse a statement before it reaches a database,
-citing a position. A validity check costs one pass and no allocation. A large
-dump is processed without becoming resident. Formats other than SQL can reuse
-`Source` and `Token`.
-
-**Paid.** A windowed source is harder than a resident slice — `Unread` past the
-window start must be an error rather than silently wrong, and that boundary
-needs its own tests. The rewrite also discards working, tested code; the
-dialect *behaviours* are preserved by porting the existing package's test
-corpus forward as the acceptance floor, which is the only honest way to show
-the replacement is not a regression.
-
-**Migration.** `Statement{Text, Pos, Verb}` is retained as the statement-layer
-output so existing consumers compile unchanged. `Verb` becomes a derived
-convenience over the token stream rather than a second, independent scan.
+**That adaptation is deliberately decided after this ADR, not within it.** An
+adapter that must satisfy a fixed interface is a small, local problem. Letting
+that interface reach backwards into the foundation's shape is how a design
+inherits constraints nobody chose. The layering here is settled on its own
+merits first; the adapter is fitted to it second.
 
 ---
 
-## 6. Alternatives rejected
+## 8. What this ADR does not decide
 
-- **`pganalyze/pg_query_go`** — 100% PostgreSQL fidelity by embedding the server
-  parser, at the cost of CGo/Wasm, a large binary, ~50–150 µs per parse, and
-  rejecting valid MySQL/SQLite. Violates constraints 1, 5 and 6. Retained as a
-  future *adapter* where exact server fidelity is worth its price.
+Named so a reviewer knows they are absent by intent: the **AST hierarchy** and
+its visitor; **intention and threat classification**; a **`pg_query_go` adapter
+seam** (an adapter to a tree, and there is no tree yet); and **`dao` read-only
+enforcement**, which consumes the analyzer two layers up.
+
+---
+
+## 9. Alternatives rejected
+
+- **`pganalyze/pg_query_go`** — exact PostgreSQL fidelity by embedding the
+  server parser, at the cost of CGo/Wasm, a large binary, ~50–150 µs per parse,
+  and rejecting valid MySQL/SQLite. Fails DIP (binds the foundation to one
+  engine's implementation) and the zero-dependency constraint. Retained as a
+  possible **adapter** where exact fidelity is worth its price.
 - **`pingcap/tidb/pkg/parser`** — pure Go and fast, but pulls TiDB's dependency
-  graph and is MySQL-dialect-shaped: no dollar-quoting, no PostgreSQL operators.
-  Violates 5 and 6.
-- **Extending the current splitter to emit tokens.** Considered and rejected by
-  the owner: the splitter is superseded by this work rather than grown into it.
-  Its *requirements* are preserved (§3.5) and its test corpus becomes the
-  acceptance floor (§5); its implementation is not.
-- **Materialising `[]Token`.** Simpler, and fails constraints 2 and 3: the
-  caller who wants a boundary or a yes/no pays for every token in the file.
+  graph and is MySQL-shaped: no dollar-quoting, no PostgreSQL operators. Fails
+  OCP for our dialect range.
+- **Materialising `[]Token`.** Simpler, and forfeits §1 entirely: the caller who
+  wants a yes/no pays for every token in the file.
+- **Separate `[]byte` and `io.Reader` implementations.** Faster in the resident
+  case, and a direct DRY violation whose failure mode is a dialect behaving
+  differently depending on how the caller happened to supply its input.
 
 ---
 
-## 7. Acceptance criteria
+## 10. Acceptance criteria
 
-1. Tokenising a source that exceeds the window yields identical tokens to the
-   same source read from memory — the streaming and resident paths agree.
-2. A caller that stops after *n* tokens causes no work beyond token *n+1*,
-   demonstrated by an instrumented reader counting bytes consumed.
-3. A validity check over a large source allocates a bounded amount independent
+1. The same source, supplied as a `[]byte` and as a slow `io.Reader` delivering
+   one byte per call, yields **identical** token streams — including positions.
+2. A caller that stops after *n* tokens leaves the reader positioned within one
+   window of token *n*, demonstrated by an instrumented reader counting bytes
+   consumed. *(Stated as a window bound, not as "no further work": a windowed
+   reader legitimately consumes a whole window, and claiming otherwise would be
+   a criterion the design cannot meet.)*
+3. Validity checking over a large source allocates a bounded amount independent
    of source size.
-4. Every construct in the existing package's test corpus lexes to the expected
-   kinds, on both dialect settings where an axis applies.
-5. Every token's `Pos` addresses its first byte in the original source,
-   including after multi-byte runes and inside dollar-quoted bodies.
-6. A malformed construct yields exactly one error, at the offending position,
+4. Every token's `Pos` addresses its first byte in the original source,
+   including after multi-byte runes and inside quoted bodies.
+5. A malformed construct yields exactly one error, at the offending position,
    and ends the sequence.
+6. A construct exceeding the maximum window yields a **named** error, not a
+   truncation.
+7. Each dialect axis is exercised in both settings, and a source that lexes
+   differently between them is asserted to differ **in the expected way**.
