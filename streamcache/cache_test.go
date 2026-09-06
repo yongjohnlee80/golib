@@ -8,7 +8,9 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // slowReader delivers one byte per Read, which is the shape that separates a
@@ -240,13 +242,30 @@ func TestCache_ConcurrentReadersAndWriter(t *testing.T) {
 		mu.Unlock()
 	}
 
+	// writerDone lets a reader tell "the window has not filled YET" apart from
+	// "it never will", so neither case has to be guessed at from a lap count.
+	var writerDone atomic.Bool
+	// A backstop, because a reader that waits on a writer that never arrives
+	// would otherwise hang instead of failing, and a cell that hangs reports
+	// nothing.
+	deadline := time.Now().Add(30 * time.Second)
+
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			buf := make([]byte, 0, 16)
-			for k := 0; k < 300; k++ {
+			// THE BUDGET COUNTS OPPORTUNITIES, NOT LAPS. A lap that finds no
+			// live window examined nothing, so spending the budget on it makes
+			// the count a proxy for what this cell measures rather than the
+			// thing itself. It counted laps once, and on a loaded machine all
+			// eight readers could spend all 2400 of them before the writer was
+			// ever scheduled: the writer then finished, the progress guard was
+			// satisfied, and the cell failed with "no reader ever validated a
+			// view" while the cache was working perfectly. Two milliseconds of
+			// head start for the readers is enough to do it.
+			for attempts := 0; attempts < 300; {
 				// READ INSIDE THE LIVE WINDOW. The first version picked offsets
 				// from a fixed modulo range, so every request was either ahead of
 				// the writer or behind the release watermark, every Acquire
@@ -255,13 +274,16 @@ func TestCache_ConcurrentReadersAndWriter(t *testing.T) {
 				// that guard was worth adding.
 				head := c.Head()
 				if head < 32 {
+					if writerDone.Load() || time.Now().After(deadline) {
+						break // no window is coming; the guards below say so properly
+					}
 					runtime.Gosched()
 					continue
 				}
-				from := head - 16 - int64((i*3+k)%8)
-				if from < 0 {
-					continue
-				}
+				// head >= 32 puts the whole span at or above offset 9, so it is
+				// the live window that bounds the offset, not a floor at zero.
+				from := head - 16 - int64((i*3+attempts)%8)
+				attempts++
 				v, err := c.Acquire(from, from+10)
 				if err != nil {
 					continue // released or not yet read: both legitimate races
@@ -284,6 +306,7 @@ func TestCache_ConcurrentReadersAndWriter(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer writerDone.Store(true)
 		for off := int64(0); off < int64(len(src)); {
 			n, err := c.Ensure(off, 128)
 			if err != nil {
