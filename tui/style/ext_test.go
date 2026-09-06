@@ -7,8 +7,8 @@ var (
 	extB = ExtKey{Pkg: "acme/tuix", Name: "hyperlink"}
 )
 
-// TestExtCopyOnWrite covers ADR-0006 §5 acceptance criterion 9 (copy-on-write
-// half): Ext never mutates the receiver's map — the extras map is cloned per
+// TestExtCopyOnWrite covers the COPY-ON-WRITE half of the extras contract:
+// Ext never mutates the receiver's map — the extras map is cloned per
 // call, so prior copies are untouched.
 func TestExtCopyOnWrite(t *testing.T) {
 	a := New().Ext(extA, 1)
@@ -33,12 +33,12 @@ func TestExtCopyOnWrite(t *testing.T) {
 	}
 }
 
-// TestExtNeverAffectsCore covers criterion 9 (extras-never-consulted half,
-// as visible from this package): a style with Ext(...) set is identical to
+// TestExtNeverAffectsCore covers the EXTRAS-NEVER-CONSULTED half, as visible
+// from this package: a style with Ext(...) set is identical to
 // the same style without it on every core property — same props bits, same
 // values — so the tui resolver, which reads only the core surface, renders
 // both identically. (The resolver-side render comparison itself lives in
-// package tui, §2.6.)
+// package tui.)
 func TestExtNeverAffectsCore(t *testing.T) {
 	plain := New().Foreground(ANSI(1)).Bold(true).Padding(1, 2).Border(BorderRounded)
 	extended := plain.Ext(extA, 42)
@@ -53,10 +53,10 @@ func TestExtNeverAffectsCore(t *testing.T) {
 	}
 }
 
-// TestExtrasPointerComparability covers the documented §2.1 semantics: the
+// TestExtrasPointerComparability covers the documented extras semantics: the
 // extras pointer compares by identity, so copies share it and stay ==, while
 // two styles with equal-but-distinct extras maps compare unequal — Style
-// remains comparable (criterion 2) with extras present.
+// remains comparable with extras present.
 func TestExtrasPointerComparability(t *testing.T) {
 	a := New().Ext(extA, 1)
 	b := a // plain copy: shares the pointer
@@ -74,7 +74,7 @@ func TestExtrasPointerComparability(t *testing.T) {
 	}
 }
 
-// TestApplyBatchesExtClones covers §2.7 (rev 1, Q5): Apply is the batching
+// TestApplyBatchesExtClones covers CLONE BATCHING: Apply is the batching
 // path — every option receives the SAME working copy, so N Ext calls inside
 // one Apply share a single clone instead of Ext-chaining's O(N²).
 func TestApplyBatchesExtClones(t *testing.T) {
@@ -118,7 +118,7 @@ func TestApplyBatchesExtClones(t *testing.T) {
 
 // TestApplyComposesCoreSetters: Apply is the general StyleOption seam, not
 // just an extras path — options can use the whole fluent surface, and the
-// result equals the equivalent direct chain (comparable, criterion 2).
+// result equals the equivalent direct chain, and stays comparable.
 func TestApplyComposesCoreSetters(t *testing.T) {
 	bolden := func(s *Style) { *s = s.Bold(true) }
 	pad := func(s *Style) { *s = s.Padding(1, 2) }

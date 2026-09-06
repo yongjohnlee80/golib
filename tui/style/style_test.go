@@ -43,7 +43,7 @@ var setters = []struct {
 	{"BorderLeftForeground", func(s Style) Style { return s.BorderLeftForeground(ANSI(4)) }},
 }
 
-// TestStyleComparable covers ADR-0006 §5 acceptance criterion 2: Style is
+// TestStyleComparable pins COMPARABILITY: Style is
 // comparable — usable as a map key, == for identically-built chains, and
 // unequal after any single setter.
 func TestStyleComparable(t *testing.T) {
@@ -83,7 +83,7 @@ func TestStyleComparable(t *testing.T) {
 	}
 }
 
-// TestValueSemantics covers acceptance criterion 3: mutate-after-copy
+// TestValueSemantics pins VALUE SEMANTICS: mutate-after-copy
 // independence — a derived style leaves the original untouched (props bit
 // and value both).
 func TestValueSemantics(t *testing.T) {
@@ -116,7 +116,7 @@ func TestValueSemantics(t *testing.T) {
 	}
 }
 
-// TestSetnessDistinctFromZero covers acceptance criterion 5:
+// TestSetnessDistinctFromZero pins SETNESS as distinct from the zero value:
 // New().Bold(false) reports (false, true); New() reports (false, false).
 func TestSetnessDistinctFromZero(t *testing.T) {
 	if v, ok := New().GetBold(); v || ok {
@@ -132,7 +132,7 @@ func TestSetnessDistinctFromZero(t *testing.T) {
 }
 
 // TestUnsetRestoresZeroValue: Unset* clears the props bit AND zeroes the
-// field, so unset-then-compare equals never-set (supports criterion 2's ==
+// field, so unset-then-compare equals never-set (which is what makes ==
 // semantics).
 func TestUnsetRestoresZeroValue(t *testing.T) {
 	tests := []struct {
@@ -170,7 +170,7 @@ func TestUnsetRestoresZeroValue(t *testing.T) {
 }
 
 // TestCSSShorthand: variadic Padding/Margin expansion — 1 arg = all,
-// 2 = v/h, 3 = t/h/b, 4 = t/r/b/l; 0 or >4 panic (§2.3).
+// 2 = v/h, 3 = t/h/b, 4 = t/r/b/l; 0 or >4 panic.
 func TestCSSShorthand(t *testing.T) {
 	tests := []struct {
 		name                     string
@@ -252,7 +252,7 @@ func TestAlign(t *testing.T) {
 }
 
 // TestColorSpecFlattening: setters accept Color or Token; a Token flattens
-// into the internal Color representation at set time (§2.4) — Style never
+// into the internal Color representation at set time — Style never
 // stores an interface.
 func TestColorSpecFlattening(t *testing.T) {
 	st := New().Foreground(TokenError)
@@ -279,7 +279,7 @@ func TestColorSpecFlattening(t *testing.T) {
 }
 
 // TestBitfieldIsSetSemantics: the props bitfield tracks set-ness per
-// property independently of values (§2.1).
+// property independently of values.
 func TestBitfieldIsSetSemantics(t *testing.T) {
 	st := New().Bold(true).Italic(false).Width(7)
 	for _, tc := range []struct {

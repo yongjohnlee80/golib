@@ -2,13 +2,13 @@ package style
 
 import "testing"
 
-// TestThemeDerivationDefaults covers ADR-0006 §5 acceptance criterion 7:
+// TestThemeDerivationDefaults pins theme DERIVATION:
 // NewTheme(ANSI(4)) yields the documented defaults for all 20 slots (11
 // base + 9 derived, incl. TokenBorder/TokenBorderFocused/
 // TokenTextOnSecondary), and every default token resolves to kindANSI or
 // kindDefault (G7 — no truecolor in the default theme). Token resolution
 // returns a Color only — the API cannot attach SGR attributes on a token's
-// behalf (TokenTextMuted is color-only, §2.5 normative rule).
+// behalf (TokenTextMuted is color-only, by normative rule).
 func TestThemeDerivationDefaults(t *testing.T) {
 	th := NewTheme(ANSI(4))
 	want := map[Token]Color{
@@ -93,7 +93,7 @@ func TestThemeDerivationCascade(t *testing.T) {
 
 // TestThemeAdaptiveSlot: adaptivity lives behind the token — an Adaptive
 // color in a Theme slot is the sanctioned replacement for token-in-Adaptive
-// (§2.4).
+// unchanged.
 func TestThemeAdaptiveSlot(t *testing.T) {
 	ad := Adaptive(ANSI(0), ANSI(15))
 	th := NewTheme(ANSI(4), WithToken(TokenForeground, ad))
@@ -107,7 +107,7 @@ func TestThemeAdaptiveSlot(t *testing.T) {
 }
 
 // TestThemeWithDark: WithDark forces adaptivity instead of the background
-// probe (§2.5).
+// probe.
 func TestThemeWithDark(t *testing.T) {
 	if dark, forced := NewTheme(ANSI(4)).Dark(); dark || forced {
 		t.Error("un-forced theme reports a dark override")
@@ -121,7 +121,7 @@ func TestThemeWithDark(t *testing.T) {
 }
 
 // TestThemePanics: misconfiguration fails loud at construction — token-kind
-// colors cannot occupy theme slots (single-pass resolution, §2.4) and
+// colors cannot occupy theme slots (resolution is single-pass) and
 // out-of-range tokens are rejected.
 func TestThemePanics(t *testing.T) {
 	tokenColor, _ := New().Foreground(TokenPrimary).GetForeground()

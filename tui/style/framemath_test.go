@@ -2,10 +2,10 @@ package style
 
 import "testing"
 
-// TestFrameMathBoxModel covers the package-side slice of ADR-0006 §5
-// acceptance criterion 10: for styles with known padding/border/margin the
+// TestFrameMathBoxModel covers the package-side half of the box model: for
+// styles with known padding/border/margin the
 // frame-math getters agree with the box model (content → padding → border →
-// margin, §2.3). The TestBackend render cross-check against ADR-0007 Box
+// margin). The TestBackend render cross-check against the Box
 // lands with the tui render layer; here the getters are pinned against
 // hand-computed frame sizes.
 func TestFrameMathBoxModel(t *testing.T) {
@@ -89,7 +89,7 @@ func TestFrameMathBoxModel(t *testing.T) {
 
 // TestFrameMathDecomposition: the frame getters are internally consistent —
 // frame = margins + border + padding, side by side — so outer↔content rect
-// conversion (ADR-0004/0007) can rely on either form.
+// conversion can rely on either form.
 func TestFrameMathDecomposition(t *testing.T) {
 	st := New().Padding(1, 2, 3, 4).Margin(4, 3, 2, 1).Border(BorderThick, true, true, false, true)
 

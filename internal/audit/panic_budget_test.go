@@ -15,7 +15,7 @@
 // 20 sites carry a category a human read; the rest are recorded as unreviewed,
 // their identities FROZEN, and no new site may join them. Calling the whole
 // thing "classified" would be too strong, and an earlier draft of this file
-// did (lector, PR #28 r0 MF3).
+// did.
 //
 // # Identity: what makes two panics "the same site"
 //
@@ -29,8 +29,7 @@
 // to the other and every arm stayed green. That draft even carried a comment
 // claiming such a swap "would no longer match" — a relation asserted in prose
 // that nothing in the code observed, which is the exact defect this repository
-// files against other people. Reproduced by lector on dao.New's first two
-// panics.
+// files against other people. Reproduced on dao.New's first two panics.
 //
 // Fingerprinting the panic EXPRESSION alone was not enough either: the
 // exchange leaves the set of (function, expression) pairs intact, so both rows
@@ -59,7 +58,7 @@
 //     RunTx moved dao.RunTx from 0 to 1), and could not see consumers at all —
 //     dao.RunTx has no non-test reference inside golib and 18 in autodb. A
 //     corrupted aggregate that churns the inventory on unrelated edits is
-//     worse than no number, so the column is gone (lector, r0 MF2). Its job is
+//     worse than no number, so the column is gone. Its job is
 //     done instead by the verdict token: a violation must say LIVE or LATENT
 //     and cite its evidence, because the reachability of a public API is a
 //     cross-repository question this instrument structurally cannot answer.
@@ -97,7 +96,7 @@ const (
 	// legacyPath freezes the identities that were already unreviewed when this
 	// guard was adopted. Pinning only the COUNT let a new unread panic be
 	// admitted by spending one legacy classification — net unchanged, every
-	// arm green (lector, r0 MF3). Identity, not arithmetic, has to be frozen.
+	// arm green. Identity, not arithmetic, has to be frozen.
 	legacyPath = "testdata/panic_budget_legacy_unreviewed.txt"
 )
 
@@ -133,8 +132,8 @@ const (
 	// overflow panic as a LIVE violation "so a library crashes its host
 	// process", from reading queue.go alone. The option that enables it says
 	// "apps preferring fail-fast crash detection over memory growth opt in
-	// here", the default is unlimited, App.Post repeats it, and ADR-0005 §2.4
-	// records it. A budget that cannot tell a documented opt-in contract from a
+	// here", the default is unlimited, and App.Post repeats it. A budget that
+	// cannot tell a documented opt-in contract from a
 	// defect will send someone to "fix" a behaviour a consumer chose.
 	catContract category = "contract"
 
@@ -174,7 +173,7 @@ const maxViolations = 4
 var verdictRe = regexp.MustCompile(`^(LIVE|LATENT): `)
 
 // printRe pins the fingerprint grammar. 64 bits, not the 40 an earlier draft
-// truncated to (lector, r1 SHOULD-FIX).
+// truncated to.
 var printRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 type site struct {
@@ -272,7 +271,7 @@ func parseTree(t *testing.T, root string) []parsedFile {
 // An earlier draft ran `\s+` -> " " over the printed output, which reached
 // INSIDE literals: panic("a  b") and panic("a b") hashed identically, and the
 // comment above it claimed tokens were not normalised — a false statement
-// about its own code (lector, PR #28 r1 MF2).
+// about its own code.
 func render(fset *token.FileSet, n ast.Node) string {
 	if n == nil || reflect.ValueOf(n).IsNil() {
 		return ""
@@ -299,8 +298,8 @@ func render(fset *token.FileSet, n ast.Node) string {
 //     polarity, the switch subject, every expression after the first in a
 //     multi-expression case, and select arms — so a panic could move between
 //     genuinely different control paths without changing identity
-//     (lector, r1 MF1; his `if x { if y {…} }` vs `if !x { if y {…} }`
-//     collided on 9ed2235862).
+//     — `if x { if y {…} }` and `if !x { if y {…} }` collided on
+//     9ed2235862.
 //
 // A category is a claim about the control path that reaches a panic. If the
 // path is not in the identity, the claim can migrate to code it was never
@@ -377,7 +376,7 @@ func scopePath(fset *token.FileSet, stack []ast.Node) (funcPath, guardPath strin
 // renumbered every later one, churning rows for an unrelated edit; indexing
 // within the immediate parent EXPRESSION gave every literal $1, because a
 // `defer func(){}()` parent contains exactly one. Siblings in a block is the
-// scope that matches how a reader thinks about them (lector, r1 SHOULD-FIX).
+// scope that matches how a reader thinks about them.
 func litIndexInScope(ancestors []ast.Node, target *ast.FuncLit) int {
 	// Nearest enclosing block of the target.
 	var scope *ast.BlockStmt
@@ -684,7 +683,7 @@ func TestPanicBudget_InventoryMatchesTree(t *testing.T) {
 
 // TestPanicBudget_UnreviewedIsFrozen makes the unread backlog a real
 // constraint. Pinning only its COUNT let a new unread panic in by spending one
-// legacy classification — net unchanged, every arm green (lector, r0 MF3).
+// legacy classification — net unchanged, every arm green.
 // This pins IDENTITY: only the frozen set may be unreviewed.
 func TestPanicBudget_UnreviewedIsFrozen(t *testing.T) {
 	inv := loadInventory(t)
@@ -735,7 +734,7 @@ func TestPanicBudget_UnreviewedIsFrozen(t *testing.T) {
 	// EXACT EQUALITY, not containment. Checking only that unreviewed rows are a
 	// subset of the freeze left a stale grandfather slot: classify a row and
 	// leave its identity in the freeze file, and the slot stays available for
-	// something else later, with every arm green (lector, r1 MF3).
+	// something else later, with every arm green.
 	var vanished []string
 	for k := range legacy {
 		rec, inInv := inv[k]

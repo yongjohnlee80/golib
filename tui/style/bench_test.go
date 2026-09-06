@@ -2,17 +2,16 @@ package style
 
 import "testing"
 
-// Benchmarks co-located per golib convention (ADR-0006 §5 criterion 8).
+// Benchmarks are co-located with the code they measure, per golib convention.
 // BenchmarkStyleSet must report 0 allocs/op with extras == nil; the
-// resolver-side BenchmarkResolve lives in package tui with the resolver
-// (§2.6).
+// resolver-side BenchmarkResolve lives in package tui with the resolver.
 
 var (
 	sinkStyle Style
 	sinkBool  bool
 )
 
-// BenchmarkStyleSet: one setter (criterion 8).
+// BenchmarkStyleSet: one setter, which must not allocate.
 func BenchmarkStyleSet(b *testing.B) {
 	s := New()
 	b.ReportAllocs()
@@ -36,7 +35,7 @@ func BenchmarkStyleSetterChain(b *testing.B) {
 }
 
 // BenchmarkStyleIsSet: the is-set check — one uint64 AND on the props
-// bitfield (§2.1), read on the render hot path.
+// bitfield, read on the render hot path.
 func BenchmarkStyleIsSet(b *testing.B) {
 	s := New().Bold(true)
 	b.ReportAllocs()
@@ -45,7 +44,7 @@ func BenchmarkStyleIsSet(b *testing.B) {
 	}
 }
 
-// TestSetterZeroAllocs pins criterion 8's alloc contract in a regular test
+// TestSetterZeroAllocs pins the zero-alloc contract in a regular test
 // so it fails fast without running benchmarks: with extras == nil, a setter
 // and an is-set check perform zero heap allocations.
 func TestSetterZeroAllocs(t *testing.T) {
