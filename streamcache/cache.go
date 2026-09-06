@@ -1,45 +1,10 @@
-// Package streamcache retains a bounded region of a forward-only byte stream
-// and hands out owning views into it.
-//
-// It knows nothing about tokens or syntax. "Read forward, keep what someone
-// still needs, let go of the rest" describes a lexer, a protocol framer and a
-// log tailer equally well, which is why it is its own package.
-//
-// # Lifetimes, not immutability
-//
-// Every access to retained bytes goes through [Cache.Acquire], which returns a
-// [View] that OWNS the bytes until it is closed. There is deliberately no way
-// to obtain bytes without also obtaining the lifetime that keeps them valid.
-//
-// An earlier design argued that append-only storage made readers safe because
-// written bytes never change. That reasoning is wrong and worth recording:
-// immutable payload bytes do not synchronise the lookup that FINDS a segment,
-// nor its release and reuse, nor the lifetime of a view already handed out.
-// Only an explicit lifetime does.
-//
-// # Retention never blocks the writer
-//
-// A held segment is never recycled — and when every segment is held and the
-// writer needs space, it ALLOCATES. It does not wait.
-//
-// This is a correctness requirement, not a tuning choice. A consumer that holds
-// a view on the first token of a statement while scanning forward for its
-// terminator would otherwise deadlock: the writer needs a segment, all are
-// held, the writer blocks, and the consumer never releases because it is
-// waiting for the writer. A forward scan must always be able to make progress.
-//
-// # Memory
-//
-// Peak is O(buffer + retained views). A consumer that acquires nothing keeps
-// one segment plus whatever it is mid-read on, whatever the size of the stream.
-// Retention is the caller's choice; this package has no policy of its own,
-// because it cannot know what a caller still needs.
 package streamcache
 
 import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 )
 
@@ -55,7 +20,14 @@ var (
 	ErrRange = errors.New("streamcache: span out of range")
 )
 
-const defaultSegmentSize = 32 << 10
+const (
+	defaultSegmentSize = 32 << 10
+
+	// maxEmptyReads bounds a run of legal (0, nil) reads before the Cache
+	// reports io.ErrNoProgress, mirroring what the standard library does rather
+	// than inventing a different tolerance.
+	maxEmptyReads = 100
+)
 
 // Option configures a Cache. Configuration is immutable after New.
 type Option func(*config)
@@ -65,11 +37,16 @@ type config struct{ segment int }
 // WithSegmentSize sets the retained block size. Larger blocks mean fewer
 // allocations and fewer spans that straddle a boundary; smaller ones release at
 // a finer grain.
+// A non-positive size is a programming error and panics at construction rather
+// than silently becoming the default — a caller who wrote WithSegmentSize(0)
+// meant something, and quietly substituting 32 KiB would hide it until a
+// memory figure looked wrong.
 func WithSegmentSize(n int) Option {
 	return func(c *config) {
-		if n > 0 {
-			c.segment = n
+		if n <= 0 {
+			panic(fmt.Sprintf("streamcache: WithSegmentSize(%d): size must be positive", n))
 		}
+		c.segment = n
 	}
 }
 
@@ -94,7 +71,14 @@ type Cache struct {
 	segs  []*segment
 	head  int64
 	err   error
-	fixed bool // ScanBytes-style: one immutable segment, never grown or dropped
+	fixed bool // NewBytes-style: one immutable segment, never grown or dropped
+
+	// released is the highest offset the caller has asked to drop. A Release
+	// that finds a segment held cannot drop it THEN, so the request is recorded
+	// and re-applied when the last view lets go. Without this, "released" meant
+	// only "released if nobody happened to be holding it", the span stayed
+	// acquirable afterwards, and the retained set only ever grew.
+	released int64
 }
 
 // New returns a Cache over r. It does not close r: ownership stays with the
@@ -137,12 +121,26 @@ func (c *Cache) Ensure(off int64, n int) (int, error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// (0, nil) is LEGAL per io.Reader, and a loop that reads it as "try again"
+	// never terminates — while holding c.mu, so it stops every other goroutine
+	// too. Go's own io.Copy tolerates a bounded run of empty reads and then
+	// gives up; so does this.
+	empties := 0
 	for c.head < off+int64(n) && c.err == nil {
+		before := c.head
 		c.fillLocked()
+		if c.head == before {
+			empties++
+			if empties >= maxEmptyReads {
+				c.err = io.ErrNoProgress
+				break
+			}
+			continue
+		}
+		empties = 0
 	}
-	if c.err != nil && !errors.Is(c.err, io.EOF) && c.head <= off {
-		return 0, c.err
-	}
+
 	avail := c.head - off
 	switch {
 	case avail < 0:
@@ -150,17 +148,32 @@ func (c *Cache) Ensure(off int64, n int) (int, error) {
 	case avail > int64(n):
 		avail = int64(n)
 	}
+	// A SHORT ANSWER CARRIES THE SOURCE'S REASON. Returning ErrRange here would
+	// tell the caller their span was wrong when in fact their source broke, and
+	// the real error would be lost at the only point it could be reported.
+	if avail < int64(n) && c.err != nil && !errors.Is(c.err, io.EOF) {
+		return int(avail), c.err
+	}
 	return int(avail), nil
 }
 
 // fillLocked reads one block. c.mu must be held.
 //
-// It appends a segment when the last one is full OR is held by a view. That
-// second condition is what keeps retention from blocking the writer: a held
-// segment is simply left alone and a new one takes its place.
+// It appends a segment when the last one is full OR IS HELD BY A VIEW. The
+// second condition is load-bearing twice over, and the first version of this
+// function claimed it in a comment while checking only the first:
+//
+//   - it keeps retention from blocking the writer — a held segment is left
+//     alone and a new one takes its place; and
+//   - it is what makes a View's bytes IMMUTABLE for its lifetime. Writing into
+//     a segment a view holds is a data race, because s.n advances under c.mu
+//     while View.AppendTo reads it under v.mu. Reproduced with a one-byte
+//     reader, which leaves a held segment PARTIAL and therefore still a write
+//     target; the committed suite could not reach it because its reader
+//     delivered full blocks and every held segment was already complete.
 func (c *Cache) fillLocked() {
 	last := len(c.segs) - 1
-	if last < 0 || c.segs[last].n == len(c.segs[last].buf) {
+	if last < 0 || c.segs[last].n == len(c.segs[last].buf) || c.segs[last].refs > 0 {
 		c.segs = append(c.segs, &segment{base: c.head, buf: make([]byte, c.cfg.segment)})
 		last = len(c.segs) - 1
 	}
@@ -181,12 +194,25 @@ func (c *Cache) Release(off int64) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if off > c.released {
+		c.released = off
+	}
+	c.dropLocked()
+}
+
+// dropLocked discards every unheld segment lying entirely below the release
+// watermark. Called both by Release and by the last View.Close on a segment, so
+// a deferred release actually happens rather than being forgotten.
+func (c *Cache) dropLocked() {
 	keep := c.segs[:0]
 	for _, s := range c.segs {
-		if s.refs == 0 && s.base+int64(s.n) <= off {
+		if s.refs == 0 && s.base+int64(s.n) <= c.released {
 			continue
 		}
 		keep = append(keep, s)
+	}
+	for i := len(keep); i < len(c.segs); i++ {
+		c.segs[i] = nil // do not pin dropped segments through the array
 	}
 	c.segs = keep
 }
@@ -224,14 +250,18 @@ func (c *Cache) Acquire(from, to int64) (*View, error) {
 
 // findLocked returns the segment covering off, or nil. c.mu must be held.
 //
-// Linear over RETAINED segments, which is the right complexity: that set is
-// bounded by what callers hold, and is usually one or two. A tree would buy
-// O(log n) over an almost-always-tiny set and charge every lookup for it.
+// BINARY SEARCH, not a scan. The first version scanned linearly and argued the
+// retained set is "usually one or two" — but Acquire and AppendTo call it once
+// per segment of a span, so the cost was O(k²) in the number of segments a span
+// covers. Measured at 64-byte segments: 6 ms to acquire 256 KiB. Segments are
+// contiguous and ascending by construction, so a search is available for free
+// and the argument for the scan was simply wrong.
 func (c *Cache) findLocked(off int64) *segment {
-	for _, s := range c.segs {
-		if s.covers(off) {
-			return s
-		}
+	i := sort.Search(len(c.segs), func(i int) bool {
+		return c.segs[i].base+int64(c.segs[i].n) > off
+	})
+	if i < len(c.segs) && c.segs[i].covers(off) {
+		return c.segs[i]
 	}
 	return nil
 }

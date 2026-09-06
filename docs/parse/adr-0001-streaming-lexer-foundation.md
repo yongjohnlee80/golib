@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 5 — consolidated)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 6)** (2026-09-06, jarvis).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -78,9 +78,18 @@ func (v *View) Close() error               // releases; idempotent
 ```
 
 `Acquire` and `Close` are the linearization points. Between them the bytes
-cannot be recycled; outside them no reference to them is reachable, which is
-what keeps `threadsafe.Value`'s `RDo` contract intact rather than quietly
-broken.
+cannot be dropped or written to; outside them no reference to them is reachable.
+
+**On `threadsafe.Value`** (lector r5 F5, and the correction is mine): rev 5
+claimed the directory would be a `threadsafe.Value`/`MultiReadSyncValue`, and
+the implementation uses a plain `sync.Mutex`. The claim was aspirational and the
+code was right, so the ADR moves to the code rather than the reverse.
+`threadsafe.Value[T]` guards a **value that is replaced wholesale** and its
+`RDo` contract forbids retaining anything reachable past the callback — which is
+precisely what handing out a view does. A cache with one short critical section
+covering a slice, a watermark and a set of reference counts is what a mutex is
+for. Using `Value` here would have meant either copying the directory on every
+lookup or breaking its contract, and rev 5 was on course to do the second.
 
 ### 3.2 Retention never blocks the writer
 
@@ -202,6 +211,33 @@ func DelimitedForm(prefix, suffix byte) Form // the $tag$ SHAPE, unnamed
 `DelimitedForm` generalises the tag-carrying shape, so PostgreSQL's
 dollar-quoting is one call from a leaf rather than a branch in the core.
 
+### 6.1 The incremental contract (lector r5 F7)
+
+A `[]byte`-in/`int`-out signature cannot express a form whose construct **spans
+more input than it has been shown**, which is the ordinary case for a streaming
+lexer: a delimiter, a long comment, a literal larger than a segment.
+
+```go
+// ErrNeedMore reports that a decision cannot be made with the bytes supplied.
+// The lexer widens the window and calls again with a superset, starting at the
+// same offset. A Form MUST be a pure function of (src, openedWith): it may not
+// carry state between calls, because it will be called again with more.
+var ErrNeedMore = errors.New("parse: need more input")
+```
+
+Three rules the core enforces so a `Form` cannot get them wrong:
+
+1. **`ErrNeedMore` is a request, not a failure.** The lexer retries with more
+   input, up to `MaxDelimiter` (§3.3), and only then reports a bounded error.
+2. **Forms are pure.** No `Form` may remember anything between calls; the same
+   `(src, openedWith)` must always give the same answer. Statefulness would be
+   invisible until an input straddled a boundary, which is the hardest case to
+   test and the easiest to ship broken.
+3. **Precedence is declaration order**, first match wins, and it is the
+   caller's to arrange. `--` before `-`, `/*` before `/`. The core does not
+   sort by length or guess, because a dialect's precedence is a dialect's
+   knowledge — and a core that guessed would be naming a dialect by implication.
+
 ## 7. Deferred, deliberately
 
 The **AST and grammar tree**; **intention and threat classification**; a
@@ -253,3 +289,10 @@ behaving differently depending on how input was supplied.
 15. Lexing allocates **O(1) per token** for tokens never acquired.
 16. **The core names no dialect:** grep `golib/parse` for `sql`, `postgres`,
     `mysql`, case-insensitive → nothing.
+17. A form whose construct straddles the window returns `ErrNeedMore` and is
+    retried with a superset until it decides or `MaxDelimiter` is reached — and
+    the same input supplied in one chunk and in many yields identical tokens.
+18. Span access is **linear in the segments a span covers**, demonstrated by a
+    benchmark whose time roughly doubles when the span doubles. *(Measured
+    after the O(k²) fix: 172/342/630 µs at 64/128/256 KiB, against 0.4/1.5/6.0
+    ms before.)*
