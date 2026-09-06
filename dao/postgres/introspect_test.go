@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// pgxRows must satisfy dao.RowsColumns (ADR-0012).
+// pgxRows must satisfy dao.RowsColumns.
 var _ dao.RowsColumns = (*pgxRows)(nil)
 
 // testConn opens a connection from TEST_PGURL, skipping when unset (the
@@ -118,7 +118,7 @@ func TestColumns_RawQuery_Postgres(t *testing.T) {
 	}
 }
 
-// TestRoutineIntrospection_Postgres (ADR-0014): functions and procedures
+// TestRoutineIntrospection_Postgres: functions and procedures
 // list with rendered signatures; an overload pair appears as distinct rows
 // in deterministic argument order.
 func TestRoutineIntrospection_Postgres(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// ADR-0016 expression helpers against the REAL PostgresDialect, with no server:
+// The expression helpers against the REAL PostgresDialect, with no server:
 // a capturing DataConn records the SQL the engine emits, so a change in this
 // driver's quoting shows up here rather than in a consumer's logs.
 // The executed half lives in expr_integration_test.go.

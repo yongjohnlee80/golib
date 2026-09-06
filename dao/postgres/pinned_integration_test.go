@@ -1,6 +1,6 @@
 //go:build integration
 
-// Live acceptance suite for ADR-0018 (session-pinned connections with raw
+// Live acceptance suite for session-pinned connections (with raw
 // extended-protocol execution). One test per acceptance criterion, named for it. It
 // requires a reachable PostgreSQL; set TEST_PGURL and run:
 //
@@ -8,7 +8,7 @@
 //
 // Every table it creates is dropped again; nothing else is touched. The harness helpers
 // (pgURL, openPG, mustExec, scalar, setupSlowCommit, assertPoolDrained, lyingCtx) are
-// shared with the ADR-0017 suite in this package.
+// shared with the transaction-options suite in this package.
 package postgres
 
 import (
@@ -36,7 +36,7 @@ import (
 // per test and memoized — a fresh context per call would retain a timer and a cleanup
 // closure per call, which in a 20000-row streaming loop is 21 MB of harness garbage that
 // the bounded-memory cell would misattribute to the driver (that is exactly how the
-// first live run of criterion 2 failed).
+// first live run of the bounded-memory cell failed).
 func bg(t *testing.T) context.Context {
 	if v, ok := bgCtxs.Load(t); ok {
 		return v.(context.Context)
@@ -240,9 +240,9 @@ func poisonByTimeout(t *testing.T, p PinnedConn) {
 	}
 }
 
-// --- criterion 1 / 9: capability present, miss honest --------------------------------
+// --- capability present, miss honest -------------------------------------------------
 
-// Criterion 9 (live half): the real driver has the capability through the typed helper
+// The LIVE half: the real driver has the capability through the typed helper
 // and through the probe. The miss half is TestPinned_CapabilityMissIsErrUnsupported.
 func TestPinned_C9_CapabilityPresentOnPostgres(t *testing.T) {
 	conn := openPG(t)
@@ -260,14 +260,14 @@ func TestPinned_C9_CapabilityPresentOnPostgres(t *testing.T) {
 	if s := conn.pool.Stat(); s.TotalConns() != 1 || s.IdleConns() != 1 {
 		t.Fatalf("after Release: total=%d idle=%d, want 1/1 (recycled, not destroyed)", s.TotalConns(), s.IdleConns())
 	}
-	// …and the handle is terminal (r0 MF1); the full face sweep is
+	// …and the handle is terminal; the full face sweep is
 	// TestPinned_MF1_ReleasedHandleIsTerminal.
 	if err := pc.Send(bg(t), ParseOp("", "SELECT 1", nil)); !errors.Is(err, ErrReleased) {
 		t.Fatalf("Send after Release = %v, want ErrReleased", err)
 	}
 }
 
-// --- criterion 2: asynchrony + bounded memory ----------------------------------------
+// --- asynchrony + bounded memory -----------------------------------------------------
 
 func TestPinned_C2_QueueThenStreamInBoundedMemory(t *testing.T) {
 	conn := openPG(t)
@@ -332,7 +332,7 @@ func TestPinned_C2_QueueThenStreamInBoundedMemory(t *testing.T) {
 	wantTuple(t, pc, idleOut, noInbound, "after Sync")
 }
 
-// --- criterion 3: the state machine --------------------------------------------------
+// --- the state machine ---------------------------------------------------------------
 
 func TestPinned_C3_ErrorResponseIsProtocolDataThenSyncReopens(t *testing.T) {
 	conn := openPG(t)
@@ -421,7 +421,7 @@ func TestPinned_C3_PrematureReadyForQueryIsTyped(t *testing.T) {
 	}
 }
 
-// --- criterion 4: the fault-state matrix through the shared classifier ---------------
+// --- the fault-state matrix through the shared classifier ----------------------------
 
 func TestPinned_C4_FaultStateMatrix(t *testing.T) {
 	t.Run("state 1: pre-dispatch cancellation leaves the handle open", func(t *testing.T) {
@@ -562,7 +562,7 @@ func TestPinned_C4_FaultStateMatrix(t *testing.T) {
 	})
 }
 
-// --- criterion 5: one wire, one backend transaction ----------------------------------
+// --- one wire, one backend transaction -----------------------------------------------
 
 func TestPinned_C5_RawSegmentAndPinnedTxShareTheBackendTransaction(t *testing.T) {
 	conn := openPG(t)
@@ -588,7 +588,7 @@ func TestPinned_C5_RawSegmentAndPinnedTxShareTheBackendTransaction(t *testing.T)
 	}
 }
 
-// --- criterion 6: refusal, not serialization -----------------------------------------
+// --- refusal, not serialization ------------------------------------------------------
 
 func TestPinned_C6_GuardsRefuseImmediatelyWhileBarrierHeld(t *testing.T) {
 	const key = 424218
@@ -669,7 +669,7 @@ func TestPinned_C6_GuardsRefuseImmediatelyWhileBarrierHeld(t *testing.T) {
 	}
 }
 
-// --- criterion 7: no lease leak ------------------------------------------------------
+// --- no lease leak -------------------------------------------------------------------
 
 func TestPinned_C7_PoisonAndDiscardCyclesNeverLeakOrRecycleDirty(t *testing.T) {
 	conn := openPG(t, MaxOpenConns(1))
@@ -700,7 +700,7 @@ func TestPinned_C7_PoisonAndDiscardCyclesNeverLeakOrRecycleDirty(t *testing.T) {
 	}
 }
 
-// --- criterion 8: no cache collision, structurally -----------------------------------
+// --- no cache collision, structurally ------------------------------------------------
 
 func TestPinned_C8_NamedObjectsUnaffectedByPoolCacheChurn(t *testing.T) {
 	conn := openPG(t, MaxOpenConns(6))
@@ -767,7 +767,7 @@ func TestPinned_C8_NamedObjectsUnaffectedByPoolCacheChurn(t *testing.T) {
 	mustSync(t, pc)
 }
 
-// --- r0 MF1: Release terminalizes the handle -----------------------------------------
+// --- Release terminalizes the handle -------------------------------------------------
 
 // A successful Release hands the member back to the pool, so the handle must be
 // TERMINAL: its frontend/pgConn/netConn still point at a connection the pool may have
@@ -840,7 +840,7 @@ func TestPinned_MF1_ReleasedHandleIsTerminal(t *testing.T) {
 	}
 }
 
-// --- criterion 10: race detector -----------------------------------------------------
+// --- race detector -------------------------------------------------------------------
 
 // trySegment runs one unnamed segment without failing the test: it returns
 // ErrSegmentInFlight when a racing private exchange (a finalizer) legitimately owns the
@@ -888,7 +888,7 @@ func TestPinned_C10_RaceSegmentsVsFinalizersAndRelease(t *testing.T) {
 	// when they are done. Every one of their outcomes must be a typed contract result —
 	// never a data race (the -race gate), a panic, or a corrupt wire.
 	//
-	// Release is deliberately NOT in this mix: it TERMINALIZES the handle (r0 MF1), so a
+	// Release is deliberately NOT in this mix: it TERMINALIZES the handle, so a
 	// Release winning the wire would legitimately end every later segment and the liveness
 	// assertion below would be asserting nothing. The Release race has its own cell,
 	// TestPinned_MF1_ReleasedHandleIsTerminal, where the post-Release refusal IS the
@@ -954,7 +954,7 @@ func TestPinned_C10_RaceSegmentsVsFinalizersAndRelease(t *testing.T) {
 
 	// Coherence after the storm: the wire still speaks the protocol. Nothing in the mix
 	// terminalizes the handle, so ANY error here is a defect — post-Release success is
-	// not an accepted outcome of this cell (r0 MF1 tightening).
+	// not an accepted outcome of this cell.
 	if err := trySegment(ctx, pc, "SELECT 'coherent'"); err != nil {
 		t.Fatalf("post-storm segment: %v", err)
 	}
@@ -1001,7 +1001,7 @@ func TestPinned_C10_RaceDiscardVsBlockedReceive(t *testing.T) {
 	}
 }
 
-// --- criterion 11: portal resume and abandonment -------------------------------------
+// --- portal resume and abandonment ---------------------------------------------------
 
 func TestPinned_C11_PortalResumeAbandonAndNamedLifetime(t *testing.T) {
 	conn := openPG(t)
@@ -1116,7 +1116,7 @@ func TestPinned_C11_PortalResumeAbandonAndNamedLifetime(t *testing.T) {
 	mustSync(t, pc)
 }
 
-// --- criterion 12: the pinned query/exec path ----------------------------------------
+// --- the pinned query/exec path ------------------------------------------------------
 
 func TestPinned_C12_PinnedQueryPathStreamsAndCleansUp(t *testing.T) {
 	conn := openPG(t)
@@ -1221,7 +1221,7 @@ func TestPinned_C12_PinnedQueryPathStreamsAndCleansUp(t *testing.T) {
 	mustSync(t, pc)
 }
 
-// --- criterion 13: the closed vocabulary ---------------------------------------------
+// --- the closed vocabulary -----------------------------------------------------------
 
 func TestPinned_C13_NoQueryFrameCrossesTheSeam(t *testing.T) {
 	conn := openPG(t)
@@ -1261,7 +1261,7 @@ func TestPinned_C13_NoQueryFrameCrossesTheSeam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// BEGIN itself travels as a simple Query frame on the raw face (ADR-0018 §2.4).
+	// BEGIN itself travels as a simple Query frame on the raw face.
 	if countFrontend(trace.String(), "Query") != 1 || !strings.Contains(trace.String(), `"BEGIN"`) {
 		t.Fatalf("control: BEGIN did not travel as one simple Query frame:\n%s", trace.String())
 	}
@@ -1275,7 +1275,7 @@ func TestPinned_C13_NoQueryFrameCrossesTheSeam(t *testing.T) {
 	_ = tx.RollbackContext(bg(t))
 }
 
-// --- criterion 14: args and multi-statement dispatch ---------------------------------
+// --- args and multi-statement dispatch -----------------------------------------------
 
 func TestPinned_C14_ArgsAndMultiStatementDispatch(t *testing.T) {
 	conn := openPG(t)
@@ -1383,7 +1383,7 @@ func TestPinned_C14_ArgsAndMultiStatementDispatch(t *testing.T) {
 	}
 }
 
-// --- criterion 15: legacy finalizer shape --------------------------------------------
+// --- legacy finalizer shape ----------------------------------------------------------
 
 func TestPinned_C15_LegacyFinalizersDispatchOnBeginContext(t *testing.T) {
 	for _, tc := range []struct {
@@ -1447,7 +1447,7 @@ func TestPinned_C15_LegacyFinalizersDispatchOnBeginContext(t *testing.T) {
 	})
 }
 
-// --- criterion 16: the ErrorResponse cleanup tail ------------------------------------
+// --- the ErrorResponse cleanup tail --------------------------------------------------
 
 func TestPinned_C16_ErrorTailClosesOnlyWhatWasCreated(t *testing.T) {
 	conn := openPG(t)

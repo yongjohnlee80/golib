@@ -14,10 +14,10 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 )
 
-// Server-free regression cells for the PR #20 r0 review findings (MF2, MF3). Both drive
+// Server-free regression cells for two review findings. Both drive
 // the handle over a net.Pipe whose peer is not reading, so a write blocks deterministically
 // and the window each finding names can be entered on purpose rather than raced for.
-// MF1's cell needs a real pool and lives in pinned_integration_test.go.
+// The third one's cell needs a real pool and lives in pinned_integration_test.go.
 
 // tuple reads the handle's state tracks under its lock. It lives in this untagged file
 // so both the default and the integration build see it.
@@ -78,7 +78,7 @@ func drainPeer(t *testing.T, srv net.Conn) {
 	}()
 }
 
-// MF2 (r0): Flush must be bounded by ctx CANCELLATION, not only by ctx.Deadline. A
+// Flush must be bounded by ctx CANCELLATION, not only by ctx.Deadline. A
 // cancellable context with no deadline — and a cancellation that lands before a later
 // deadline — must both interrupt a write already parked on the socket. Before the fix
 // writeBuffered installed a socket deadline only when ctx carried one, so these two
@@ -137,7 +137,7 @@ func TestPinned_MF2_FlushIsBoundedByCancellationNotOnlyDeadline(t *testing.T) {
 	}
 }
 
-// MF3 (r0): Send and Flush share pgproto3's write buffer, so they must not overlap. Flush
+// Send and Flush share pgproto3's write buffer, so they must not overlap. Flush
 // claims the buffer under mu before it starts writing; a Send arriving while that write
 // is parked is refused rather than appending to a wbuf that Write is reading and is about
 // to reset. Before the fix the Send was admitted, its frame was dropped by the buffer
@@ -194,7 +194,7 @@ func TestPinned_MF3_SendDuringFlushIsRefusedNotLost(t *testing.T) {
 	}
 }
 
-// The Send-during-RECEIVE resume path must stay open: the MF3 claim covers the write
+// The Send-during-RECEIVE resume path must stay open: the no-overlap rule covers the write
 // buffer only, and Receive does not touch it. This is the property the fix could most
 // easily have broken.
 func TestPinned_MF3_ResumeSendDuringReceiveStillAllowed(t *testing.T) {
@@ -216,7 +216,7 @@ func TestPinned_MF3_ResumeSendDuringReceiveStillAllowed(t *testing.T) {
 }
 
 // failWriter fails the write, but not until the racing observer is provably hot. The
-// handshake is what makes the MF4 window reachable on demand: entered says the write
+// handshake is what makes the failure window reachable on demand: entered says the write
 // (and therefore the writing claim) is under way, and the writer then parks until the
 // test says its Release/reuse spinners are running, so the failure propagates into a
 // live race rather than into an empty one.
@@ -232,7 +232,7 @@ func (f *failWriter) Write(_ []byte) (int, error) {
 	return 0, io.ErrClosedPipe
 }
 
-// MF4 (r1): a FAILED Sync must publish the poisoned state in the same critical section
+// A FAILED Sync must publish the poisoned state in the same critical section
 // that releases the writing claim. Sync is legal from quiescent and resets nothing on
 // failure, so clearing writing first left the handle readable as (idleOut, noInbound,
 // !writing, !poisoned) — indistinguishable from a healthy idle handle — and a concurrent

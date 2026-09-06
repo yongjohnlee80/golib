@@ -13,14 +13,15 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// Server-free cells for ADR-0018. Everything that needs a live PostgreSQL is in
+// Server-free cells for the pinned connection. Everything needing a live
+// PostgreSQL is in
 // pinned_integration_test.go (build tag integration); these run in the default gate.
 
 // noPinConn is a dao.DataConn without the SessionPinner capability. The embedded nil
 // interface satisfies the method set; nothing here ever calls through it.
 type noPinConn struct{ dao.DataConn }
 
-// Criterion 9 (server-free half): a DataConn without the capability is reported
+// The SERVER-FREE half: a DataConn without the capability is reported
 // honestly through the typed helper — dao.ErrUnsupported, never a panic.
 func TestPinned_CapabilityMissIsErrUnsupported(t *testing.T) {
 	t.Parallel()
@@ -42,7 +43,7 @@ func TestPinned_CapabilityMissIsErrUnsupported(t *testing.T) {
 	}
 }
 
-// Criterion 13 (server-free half): the zero ExtendedOp{} — the one spelling a caller
+// The closed vocabulary, server-free half: the zero ExtendedOp{} — the one spelling a caller
 // can build without a constructor — is refused at the vocabulary boundary, and the
 // handle's outbound track is untouched by the refusal.
 func TestPinned_ZeroExtendedOpIsRefused(t *testing.T) {
@@ -124,7 +125,7 @@ func TestPinned_EncodeTextArgs(t *testing.T) {
 	}
 	// The last entry is the empty string: zero-length and NON-nil — an empty value, not
 	// NULL. (Encoding into a nil scratch buffer would have returned nil here and sent a
-	// NULL; the first live run of criterion 14 caught exactly that.)
+	// NULL; the first live run of the args cell caught exactly that.)
 	want := [][]byte{[]byte("abc"), []byte("42"), []byte(`\x00ff`), []byte("t"), []byte("1.5"), nil, nil, {}}
 	if got[7] == nil || len(got[7]) != 0 {
 		t.Fatalf("empty string encoded as %#v, want a zero-length non-nil slice (NOT NULL)", got[7])

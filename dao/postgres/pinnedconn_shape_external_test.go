@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao/postgres"
 )
 
-// External-package compile witness (PR #23 MF2): PinnedConn keeps exactly the
+// External-package compile witness: PinnedConn keeps exactly the
 // v0.5.6 method set, so an implementation outside this package compiles
 // unchanged. If a method is ever added to PinnedConn, this file stops compiling
 // — which is the point: that change is not PATCH-additive.

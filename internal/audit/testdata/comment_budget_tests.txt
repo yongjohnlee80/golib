@@ -28,22 +28,6 @@
 # document what each one catches. The reason, the premise it rests on and a
 # liveness check all live with the guard -- see selfDocumenting there.
 1 dao/hooks_test.go
-8 dao/postgres/adr0017_integration_test.go
-3 dao/postgres/connecthook_test.go
-4 dao/postgres/expr_integration_test.go
-1 dao/postgres/expr_test.go
-2 dao/postgres/introspect_test.go
-1 dao/postgres/paramstatus_leak_integration_test.go
-1 dao/postgres/paramstatus_test.go
-24 dao/postgres/pinned_integration_test.go
-7 dao/postgres/pinned_review_test.go
-4 dao/postgres/pinned_test.go
-1 dao/postgres/pinnedconn_shape_external_test.go
-2 dao/postgres/postgres_twoproc_integration_test.go
-4 dao/postgres/simplequery_integration_test.go
-1 dao/postgres/simplequery_test.go
-1 dao/postgres/twophase_integration_test.go
-3 dao/postgres/txcapabilities_test.go
 1 dao/sqlite/sqlite_test.go
 9 tui/app_test.go
 15 tui/buffer_test.go
