@@ -10,7 +10,8 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// ADR-0017 §2.2a, criterion 2 (sqlite row) — the "no capability" row. It runs
+// The sqlite row of the transaction-capability matrix — the "no capability"
+// row. It runs
 // against a real database, because the claim being tested is not only that the
 // options are refused but that the UNCHANGED zero-option path still works
 // exactly as it did.
@@ -26,7 +27,7 @@ func openScratch(t *testing.T) dao.DataConn {
 	return conn
 }
 
-// SQLite claims no ADR-0017 capability at all. modernc/sqlite's transaction
+// SQLite claims no transaction capability at all. modernc/sqlite's transaction
 // semantics come from the BEGIN keyword (DEFERRED/IMMEDIATE/EXCLUSIVE), which
 // database/sql's TxOptions cannot reach; claiming TxBeginner would mean
 // accepting an option set and ignoring most of it.

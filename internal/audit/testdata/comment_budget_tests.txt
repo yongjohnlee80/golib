@@ -1,0 +1,122 @@
+# Comment pointers still to be rewritten in _test.go files, per file.
+#
+# The SECOND of two budgets. The production budget (comment_budget.txt) is
+# finished and empty; this one is not, and the two fall independently.
+#
+# WHY THIS SCOPE EXISTS. Test comments were deliberately excluded from the
+# production migration, on the reviewer's condition that the exclusion be
+# TRACKED rather than dropped. A note would have aged; this is a ratchet.
+#
+# A pointer in a test is not automatically the same defect as one in production
+# code, and saying so is the argument for migrating them. A comment reading
+# "criterion 9" or "ADR-0013 section 3.1" is trying to say WHICH REQUIREMENT
+# the test pins -- real information, in a form the reader cannot resolve. The
+# migration keeps the information and drops the coordinate: state the
+# requirement, so the test says what it defends rather than naming the document
+# that defends it.
+#
+# These numbers MAY ONLY FALL. Delete a line when its file reaches zero; a file
+# that is not listed here is frozen at zero and cannot regain one. The budget is
+# EXACT, not a ceiling, so an improvement must be recorded in the same change or
+# it can be silently undone later. The destination is an empty file.
+#
+# The total is NOT stored here -- it is derived from the lines below and printed
+# by the test, which is the single place it is computed.
+1 dao/batch_ctx_test.go
+5 dao/dialects_test.go
+1 dao/expr_negative_test.go
+12 dao/expr_test.go
+10 dao/hooks_test.go
+4 dao/on_nil_test.go
+8 dao/postgres/adr0017_integration_test.go
+3 dao/postgres/connecthook_test.go
+4 dao/postgres/expr_integration_test.go
+1 dao/postgres/expr_test.go
+2 dao/postgres/introspect_test.go
+1 dao/postgres/paramstatus_leak_integration_test.go
+1 dao/postgres/paramstatus_test.go
+24 dao/postgres/pinned_integration_test.go
+7 dao/postgres/pinned_review_test.go
+4 dao/postgres/pinned_test.go
+1 dao/postgres/pinnedconn_shape_external_test.go
+2 dao/postgres/postgres_twoproc_integration_test.go
+4 dao/postgres/simplequery_integration_test.go
+1 dao/postgres/simplequery_test.go
+1 dao/postgres/twophase_integration_test.go
+3 dao/postgres/txcapabilities_test.go
+4 dao/quote_table_test.go
+1 dao/rawrows_test.go
+8 dao/rules_test.go
+1 dao/sqlite/sqlite_test.go
+9 dao/transaction_test.go
+4 dao/txcapabilities_test.go
+6 dao/txoptions_test.go
+7 internal/audit/comment_budget_test.go
+11 internal/audit/panic_budget_test.go
+9 tui/app_test.go
+15 tui/buffer_test.go
+4 tui/bus_test.go
+5 tui/focus_test.go
+2 tui/geometry_test.go
+7 tui/intake_test.go
+9 tui/layout_test.go
+9 tui/multiclick_test.go
+4 tui/pointer_focus_r2_test.go
+6 tui/pointer_focus_test.go
+5 tui/queue_test.go
+9 tui/resolve_test.go
+4 tui/routing_test.go
+3 tui/runtime_test.go
+5 tui/style/bench_test.go
+6 tui/style/color_test.go
+7 tui/style/ext_test.go
+4 tui/style/framemath_test.go
+3 tui/style/inherit_test.go
+7 tui/style/style_test.go
+5 tui/style/theme_test.go
+9 tui/surface_test.go
+8 tui/tasks_test.go
+1 tui/term/dblclick_bridge_test.go
+9 tui/term/decoder_test.go
+8 tui/term/flush_test.go
+1 tui/term/input_app_test.go
+10 tui/term/lifecycle_test.go
+6 tui/term/parser_test.go
+11 tui/term/probe_test.go
+1 tui/term/pty_linux_test.go
+10 tui/testbackend_test.go
+4 tui/timers_test.go
+7 tui/tree_test.go
+3 tui/web/backend_test.go
+2 tui/web/conn_test.go
+1 tui/web/dblclick_bridge_test.go
+4 tui/web/framer_test.go
+5 tui/web/handoff_test.go
+5 tui/web/input_app_test.go
+2 tui/web/input_test.go
+3 tui/web/page_test.go
+1 tui/web/policy_test.go
+1 tui/web/regress2_test.go
+3 tui/web/regress3_test.go
+2 tui/web/regress_test.go
+2 tui/web/render_test.go
+2 tui/web/server_test.go
+3 tui/web/session_test.go
+19 tui/web/sso_e2e_test.go
+3 tui/widget/base_box_test.go
+9 tui/widget/bufferview_test.go
+3 tui/widget/chrome_test.go
+6 tui/widget/composition_test.go
+16 tui/widget/editor_mouse_test.go
+6 tui/widget/editor_test.go
+1 tui/widget/editor_wrapsoft_test.go
+4 tui/widget/harness_test.go
+3 tui/widget/list_test.go
+3 tui/widget/multiclick_identity_test.go
+6 tui/widget/select_test.go
+2 tui/widget/split_test.go
+7 tui/widget/table_mouse_test.go
+2 tui/widget/textarea_test.go
+7 tui/widget/textinput_test.go
+3 tui/widget/tree_dblclick_test.go
+4 tui/widget/tree_test.go

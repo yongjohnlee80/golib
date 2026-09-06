@@ -1,9 +1,9 @@
 package demoapp
 
-// The ADR-0001 §5.3 CI gate: the demo's full interaction script driven
+// The CI gate for the demo: its full interaction script driven
 // deterministically on tui.TestBackend — no PTY: mount, resize, Tab cycling
 // across panes, typing, submit, async list fill via App.Go, a concurrent
-// BufferView write, grid snapshots at each step, and the §5.4 write
+// BufferView write, grid snapshots at each step, and the write
 // discipline (exactly one Flush per change, zero flushes when idle).
 
 import (
@@ -97,7 +97,7 @@ func (g *gate) waitFor(desc string, cond func() bool) {
 	g.t.Fatalf("timed out waiting for %s\n%s", desc, g.tb.String())
 }
 
-// settle waits for flush quiescence (baseline for §5.4 counting).
+// settle waits for flush quiescence, the baseline for flush counting.
 func (g *gate) settle() {
 	g.t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -154,7 +154,7 @@ func (g *gate) attrsAt(x, y int) tui.CellAttrs {
 	return snap[y][x].Attrs
 }
 
-// TestDemoInteractionScript is the §5.3 gate.
+// TestDemoInteractionScript is that gate.
 func TestDemoInteractionScript(t *testing.T) {
 	g := startDemo(t, 80, 24)
 
@@ -196,7 +196,7 @@ func TestDemoInteractionScript(t *testing.T) {
 		t.Fatalf("cursor at (%d,%d), want the input row 1", x, y)
 	}
 
-	// 4 — type into the input: §5.4 exactly one flush per keystroke.
+	// 4 — type into the input: exactly one flush per keystroke.
 	g.settle()
 	f = g.tb.Flushes()
 	g.inject(key('h'))
@@ -241,7 +241,7 @@ func TestDemoInteractionScript(t *testing.T) {
 	}
 	g.waitFor("streamed lines", func() bool { return g.contains("stream-1") && g.contains("stream-2") })
 
-	// 7 — §5.4 idle: zero flushes with no input.
+	// 7 — idle: zero flushes with no input.
 	g.settle()
 	f = g.tb.Flushes()
 	time.Sleep(80 * time.Millisecond)

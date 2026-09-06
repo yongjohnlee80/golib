@@ -193,8 +193,7 @@ func TestFatal_IsAValueTypeSoNoNilStateExists(t *testing.T) {
 // gets false with no error and concludes the payload was not there. That is
 // rule 2's failure shape — the check passes, and the value is gone — arriving
 // through the spelling of the target rather than through a %v.
-//
-// Found by zen probing the value-receiver change (PR #38 r2).
+
 func TestFatal_AsTargetMustBeSpelledAsAValue(t *testing.T) {
 	err := fmt.Errorf("outer: %w", errs.Fatal{Op: "tui: Mount", Rule: "the rule"})
 

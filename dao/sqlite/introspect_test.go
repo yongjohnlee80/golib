@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// *sql.Rows must keep satisfying dao.RowsColumns (ADR-0012).
+// *sql.Rows must keep satisfying dao.RowsColumns.
 var _ dao.RowsColumns = (*sql.Rows)(nil)
 
 // openMem opens an in-memory database with a single connection so every
@@ -78,9 +78,9 @@ func TestIntrospection_Sqlite(t *testing.T) {
 	if id.Name != "id" || !id.PrimaryKey || id.Position != 1 {
 		t.Errorf("id = %+v, want pk at position 1", id)
 	}
-	// lector dao-m1 r1 must-fix #2: pragma_table_info reports notnull=0 for
-	// the rowid-alias PK; the dao contract normalizes PK columns to
-	// non-nullable (dao.ColumnInfo.Nullable doc).
+	// pragma_table_info reports notnull=0 for the rowid-alias PK; the dao
+	// contract normalizes PK columns to non-nullable, which
+	// dao.ColumnInfo.Nullable documents.
 	if id.Nullable {
 		t.Errorf("id.Nullable = true, want false (PK columns report non-nullable)")
 	}
@@ -115,7 +115,7 @@ func TestColumns_RawQuery_Sqlite(t *testing.T) {
 	}
 }
 
-// ADR-0014: SQLite has no stored routines — the capability is absent and
+// SQLite has no stored routines — the capability is absent and
 // the prober reports ErrUnsupported (consumers render absence, no error).
 func TestRoutineIntrospection_SqliteUnsupported(t *testing.T) {
 	conn := openMem(t)

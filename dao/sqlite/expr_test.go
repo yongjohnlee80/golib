@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// ADR-0016 expression helpers against the real SqliteDialect, EXECUTED against a
+// The expression helpers against the real SqliteDialect, EXECUTED against a
 // real database — sqlite needs no server, so this suite proves the generated SQL
 // is not merely shaped right but accepted and correct.
 
@@ -109,7 +109,7 @@ func TestExpr_ReservedWordsRoundTrip(t *testing.T) {
 	}
 }
 
-// TestExpr_MixedCaseNeedsTheEscapeHatch pins ADR-0016 §2.4: quoting is not
+// TestExpr_MixedCaseNeedsTheEscapeHatch pins the rule that quoting is not
 // semantically neutral. "MyCol" was created quoted, so the quoted form finds it
 // and an unquoted lower-case reference would not.
 func TestExpr_MixedCaseColumn(t *testing.T) {

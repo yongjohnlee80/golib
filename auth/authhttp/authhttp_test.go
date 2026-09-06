@@ -221,7 +221,7 @@ func TestMiddleware_HonorsOptions(t *testing.T) {
 }
 
 // TLS must be projected through mtls.FromConnectionState, which refuses to carry
-// PeerCertificates — any self-signed certificate lands there (§2.6a).
+// PeerCertificates — any self-signed certificate lands there.
 func TestFromRequest_TLSCarriesOnlyVerifiedChains(t *testing.T) {
 	t.Parallel()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)

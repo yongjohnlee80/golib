@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// *sql.Rows must keep satisfying dao.RowsColumns (ADR-0012) — a future
+// *sql.Rows must keep satisfying dao.RowsColumns — a future
 // wrapper around the stdlib rows would silently drop the capability.
 var _ dao.RowsColumns = (*sql.Rows)(nil)
 

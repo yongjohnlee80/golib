@@ -505,7 +505,7 @@ func TestRPC_ManySequentialMessagesOneConnection(t *testing.T) {
 	}
 }
 
-// --- review-fold regression tests (2026-08-16 lector round 1) ---
+// --- review-fold regression tests ---
 
 // Finding 3: peer disconnect must cancel in-flight handler contexts.
 func TestRPC_DisconnectCancelsHandlers(t *testing.T) {

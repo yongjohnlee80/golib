@@ -59,7 +59,7 @@ func echoFn(ctx context.Context, s *ws.Session) {
 	}
 }
 
-// criterion 1: echo round-trip (text, binary, JSON) through the full
+// Echo round-trip (text, binary, JSON) through the full
 // middleware stack — end-to-end through the wrapRecorder path.
 func TestWS_EchoThroughMiddleware(t *testing.T) {
 	t.Parallel()
@@ -101,7 +101,7 @@ func TestWS_EchoThroughMiddleware(t *testing.T) {
 	_ = c.Close(websocket.StatusNormalClosure, "")
 }
 
-// criterion 2: same-origin default-deny; allow-pattern opt-in; refusal is an
+// Same-origin default-deny; allow-pattern opt-in; refusal is an
 // ordinary HTTP error.
 func TestWS_OriginPolicy(t *testing.T) {
 	t.Parallel()
@@ -132,7 +132,7 @@ func TestWS_OriginPolicy(t *testing.T) {
 	_ = c.Close(websocket.StatusNormalClosure, "")
 }
 
-// criterion 3: the shutdown boundary — live sessions get StatusGoingAway,
+// The shutdown boundary — live sessions get StatusGoingAway,
 // fresh dials during drain get HTTP 503, registry empties, shutdown returns.
 func TestWS_ShutdownBoundary(t *testing.T) {
 	t.Parallel()
@@ -183,7 +183,7 @@ func TestWS_ShutdownBoundary(t *testing.T) {
 	}
 }
 
-// criterion 3 (gate half): a request reaching the handler during drain gets
+// The shutdown boundary, gate half: a request reaching the handler during drain gets
 // a plain HTTP 503 from the pre-handshake Reserve gate — the upgrade is never
 // accepted (no 101), so accept-then-instant-close cannot occur.
 func TestWS_UpgradeDuringDrainGets503(t *testing.T) {
@@ -249,7 +249,7 @@ func (h holdSession) Drain(ctx context.Context) error {
 	return nil
 }
 
-// criterion 4: oversize message → read fails, close 1009, goroutine exits.
+// Oversize message → read fails, close 1009, goroutine exits.
 func TestWS_ReadLimit(t *testing.T) {
 	t.Parallel()
 	srv, stop := startWS(t, ws.ReadLimit(16))
@@ -286,7 +286,7 @@ func TestWS_ReadLimit(t *testing.T) {
 	}
 }
 
-// criterion 5: a peer that never reads (so never pongs) is detected by
+// A peer that never reads (so never pongs) is detected by
 // keepalive and the session ends without leaking.
 func TestWS_KeepaliveDetectsDeadPeer(t *testing.T) {
 	t.Parallel()
@@ -313,7 +313,7 @@ func TestWS_KeepaliveDetectsDeadPeer(t *testing.T) {
 	}
 }
 
-// criterion 7: dependency isolation — only server/ws imports the websocket
+// Dependency isolation — only server/ws imports the websocket
 // library; the core packages stay dependency-free.
 func TestWS_DependencyIsolation(t *testing.T) {
 	t.Parallel()
