@@ -87,24 +87,30 @@ func TestHookRunsOncePerPhysicalConnection(t *testing.T) {
 
 	var mu sync.Mutex
 	hookedPerConn := map[int]int{}
-	var calls atomic.Int64
+	var hookErrs []error // a hook that FAILS is invisible unless it is recorded
 	var nextID atomic.Int64
 
 	db, err := OpenHooked("sqlite", dsn(t), func(ctx context.Context, c dao.ConnectedConn) error {
-		calls.Add(1)
 		// Stamp this connection with an id only it can see, so the pool can
 		// tell its physical connections apart the way pg_backend_pid does.
 		id := int(nextID.Add(1))
+		record := func(err error) error {
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				hookErrs = append(hookErrs, err)
+				return err
+			}
+			hookedPerConn[id]++
+			return nil
+		}
 		if _, err := c.ExecContext(ctx, `CREATE TEMP TABLE conn_id (v INTEGER)`); err != nil {
-			return err
+			return record(err)
 		}
 		if _, err := c.ExecContext(ctx, fmt.Sprintf(`INSERT INTO conn_id (v) VALUES (%d)`, id)); err != nil {
-			return err
+			return record(err)
 		}
-		mu.Lock()
-		hookedPerConn[id]++
-		mu.Unlock()
-		return nil
+		return record(nil)
 	})
 	if err != nil {
 		t.Fatalf("OpenHooked: %v", err)
@@ -140,9 +146,12 @@ func TestHookRunsOncePerPhysicalConnection(t *testing.T) {
 	if len(hookedPerConn) == 0 {
 		t.Fatal("no connection was hooked")
 	}
-	if int64(len(hookedPerConn)) != calls.Load() {
-		t.Errorf("%d hook calls produced %d distinct connections; a connection was hooked twice",
-			calls.Load(), len(hookedPerConn))
+	// A FAILED hook is reported as itself. It used to be invisible: the failure
+	// incremented an entry counter, never reached the map, and the mismatch
+	// surfaced as "a connection was hooked twice" — a message for a completely
+	// different fault, and one that could not be told apart from the real thing.
+	if len(hookErrs) > 0 {
+		t.Errorf("%d hook invocation(s) failed; the first was: %v", len(hookErrs), hookErrs[0])
 	}
 	for id, n := range hookedPerConn {
 		if n != 1 {
