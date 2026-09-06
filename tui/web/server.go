@@ -54,7 +54,7 @@ type Config struct {
 	// Policy authenticates every attach. Required — there is no
 	// unauthenticated mode, not even on loopback.
 	//
-	// # A password factor does NOT belong here (rev 11)
+	// # A password factor does NOT belong here
 	//
 	// This is the ATTACH policy, and the attach protocol carries no password
 	// fields at all — so a password factor placed here can never be satisfied.
@@ -87,7 +87,7 @@ type Config struct {
 	// Required when LoginPolicy is set.
 	Issuer *token.Issuer
 
-	// ExpectedHost is the exact Host header required. REQUIRED: §2.7 says Host
+	// ExpectedHost is the exact Host header required. REQUIRED: says Host
 	// and Origin expectations come from configuration and are never inferred,
 	// and an optional check is an inferred one with extra steps — the request
 	// decides whether it is checked at all.
@@ -201,7 +201,7 @@ func (c Config) hostAllowed(host string) bool {
 	return strings.EqualFold(host, c.ExpectedHost)
 }
 
-// hardeningHeaders sets the response headers of §2.7 on every response.
+// hardeningHeaders sets the response headers of on every response.
 //
 // The CSP is restrictive on purpose. The served client needs an inline script
 // and inline styles — the cell attributes ARE inline styles — so those are

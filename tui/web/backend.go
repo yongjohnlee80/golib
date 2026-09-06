@@ -56,7 +56,7 @@ type Hello struct {
 	// FontAgreement reports that the client's width probe agreed with the
 	// server's width calculation. It informs UnicodeCore and is never presented
 	// as proof: a finite probe string cannot establish that every Unicode
-	// grapheme agrees (§2.6).
+	// grapheme agrees.
 	FontAgreement bool
 }
 
@@ -199,7 +199,7 @@ const DefaultEventQueue = 256
 // New builds a Backend for one session.
 //
 // The grid starts at a placeholder size and is replaced by the client's measured
-// size at attach: the server never guesses font metrics (§2.6).
+// size at attach: the server never guesses font metrics.
 func New(opts ...Option) *Backend {
 	b := &Backend{
 		log:      logger.Nop{},
@@ -242,7 +242,7 @@ func (b *Backend) Start(ctx context.Context) error {
 	}
 }
 
-// capabilitiesFrom builds an HONEST profile (§2.3).
+// capabilitiesFrom builds an HONEST profile.
 //
 // Every field is either structurally true of this backend or reported by the
 // client. Nothing is assumed: KittyKeyboard is false because a browser has no
@@ -266,7 +266,7 @@ func capabilitiesFrom(h Hello) tui.Capabilities {
 		// No browser analogue. An optimistic request is never reported as
 		// support.
 		KittyKeyboard: false,
-		// Only on the client's confirmation, and even then §2.6 describes it
+		// Only on the client's confirmation, and even then describes it
 		// conservatively: the probe informs this bit, it does not prove it.
 		UnicodeCore: h.FontAgreement,
 		Mouse:       mouse,
@@ -313,8 +313,8 @@ func (b *Backend) Size() (tui.Size, error) {
 // Flush applies one frame's diff and latched cursor state, then publishes.
 //
 // It never blocks on network I/O and never waits for a client. The App loop
-// calls this once per frame and ADR-0003's one-write rule assumes it is fast; a
-// slow or vanished browser must not stall the UI (§2.4).
+// calls this once per frame and 's one-write rule assumes it is fast; a
+// slow or vanished browser must not stall the UI.
 func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	select {
 	case <-b.done:
@@ -334,7 +334,7 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 }
 
 // Cursor state is LATCHED, never immediate: it is recorded here and emitted with
-// the next frame, so a frame remains one atomic update (§2.2).
+// the next frame, so a frame remains one atomic update.
 
 // ShowCursor latches the cursor visible.
 func (b *Backend) ShowCursor() {

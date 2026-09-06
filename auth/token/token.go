@@ -1,9 +1,9 @@
 // Package token issues and verifies opaque bearer tokens, including the
-// single-use tickets ADR-0009's WebTUI handshake needs (ADR-0001 §2.3, §2.6).
+// single-use tickets 's WebTUI handshake needs.
 //
 // This package owns CREDENTIAL VALIDITY and CONSUMPTION. It does not own
 // session lifecycle: a consumed ticket is a point-in-time proof, and its
-// redemption deadline must never become a session's lifetime (ADR-0001 §2.2.1).
+// redemption deadline must never become a session's lifetime.
 package token
 
 import (
@@ -33,7 +33,7 @@ const rawLen = 32
 var encodedLen = base64.RawURLEncoding.EncodedLen(rawLen)
 
 // Hash is a stored token's index key: the SHA-256 of the token string. The
-// plaintext is never stored (ADR-0001 §2.6).
+// plaintext is never stored.
 type Hash [sha256.Size]byte
 
 // Record is what a store holds for one token. It never contains the plaintext.
@@ -49,7 +49,7 @@ type Record struct {
 // Consume MUST be ONE atomic operation: fetch, validate, and — for a single-use
 // record — remove, indivisibly. A verify-then-delete pair races two concurrent
 // redeemers into both succeeding, which for a WebTUI attach ticket means two
-// sessions from one credential (ADR-0001 §2.6).
+// sessions from one credential.
 type Store interface {
 	Put(h Hash, rec Record) error
 	Consume(h Hash, now time.Time) (Record, error)
@@ -110,7 +110,7 @@ func (f *Factor) Kind() auth.FactorKind { return auth.FactorIdentity }
 // The presented material is length-checked and decoded to a FIXED length before
 // any comparison: subtle.ConstantTimeCompare returns early on a length
 // mismatch, so handing it variable-length input reintroduces the very leak it
-// exists to prevent (ADR-0001 §2.6).
+// exists to prevent.
 func (f *Factor) Verify(_ context.Context, r *auth.Request) (auth.Contribution, error) {
 	if r == nil {
 		return auth.Contribution{}, ErrMalformed
@@ -131,7 +131,7 @@ func (f *Factor) Verify(_ context.Context, r *auth.Request) (auth.Contribution, 
 	// comparison here to make constant. The store is indexed by the token's
 	// SHA-256, so lookup is a fixed-size-key map hit rather than a comparison
 	// against a stored secret — "constant-time lookup" would be a meaningless
-	// claim (ADR-0001 §2.6). What matters, and is done above, is that the
+	// claim. What matters, and is done above, is that the
 	// presented material is length-checked and decoded to a FIXED length before
 	// it reaches anything: subtle.ConstantTimeCompare returns early on a length
 	// mismatch, so a variable-length path is what would leak. A method that

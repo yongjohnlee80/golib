@@ -1,6 +1,6 @@
 package style
 
-// Extensibility (ADR-0006 §2.7): StyleOption hooks plus one extras escape
+// Extensibility: StyleOption hooks plus one extras escape
 // hatch. Third parties cannot add typed fields to Style; these two
 // mechanisms cover them without taxing the core — the render path never
 // consults extras, and styles that never touch Ext carry one nil pointer
@@ -18,7 +18,7 @@ type StyleOption func(*Style)
 type ExtKey struct{ Pkg, Name string }
 
 // extraProps wraps the third-party property map behind the one pointer
-// field Style carries. The pointer compares by identity (§2.1): two styles
+// field Style carries. The pointer compares by identity: two styles
 // differing only in equal-but-distinct extras maps compare unequal.
 type extraProps struct {
 	m map[ExtKey]any

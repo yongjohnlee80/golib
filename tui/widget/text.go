@@ -79,7 +79,7 @@ func (t *Text) lines() []string {
 	return strings.Split(t.text, "\n")
 }
 
-// Layout measures content within constraints (grapheme width, ADR-0003):
+// Layout measures content within constraints (grapheme width):
 // Truncate reports one line; Wrap reports the wrapped height.
 func (t *Text) Layout(c tui.Constraints) tui.Size {
 	if t.mode == Truncate {

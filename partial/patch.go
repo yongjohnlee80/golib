@@ -9,8 +9,7 @@ import (
 
 // Patch is a presence-aware partial payload for the model type T. It is the
 // unit passed between bind, server-side mutation, and the DAO adapter; the
-// typed T is derived on demand (Data) from one underlying parse (ADR-0001
-// §2.1).
+// typed T is derived on demand (Data) from one underlying parse.
 //
 // The zero Patch is empty and usable (a server-constructed patch starts zero
 // and is populated via Set/Clear). A Patch is not safe for concurrent use.
@@ -33,7 +32,7 @@ const (
 	Cleared              // marked cleared: write the cleared state
 )
 
-// plan resolves the model's canonical name space. Cached per T (§2.4).
+// plan resolves the model's canonical name space. Cached per T.
 func (p *Patch[T]) plan() *plan { return planFor[T]() }
 
 func (p *Patch[T]) ensure() {

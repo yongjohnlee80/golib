@@ -65,7 +65,7 @@ func DrainTimeout(d time.Duration) ScaffoldOption {
 }
 
 // ScaffoldSessionFactory replaces the session registered for each accepted
-// connection (ADR-0006 amendment, via ADR-0008). By default the scaffold
+// connection (amendment, via). By default the scaffold
 // registers a bare conn-closing session; a transport whose drain must be
 // polite (finish in-flight replies before close) supplies a factory whose
 // Session also implements Drainer. The ConnHandler retrieves the factory's
@@ -76,8 +76,8 @@ func ScaffoldSessionFactory(fn func(ctx context.Context, conn net.Conn) Session)
 }
 
 // Scaffold owns the accept-loop lifecycle every connection-oriented transport
-// otherwise reimplements (ADR-0006 §2.1): bind (or accept an injected
-// listener), optional TLS, per-connection goroutine + context, structured
+// otherwise reimplements: bind (or accept an injected listener), optional
+// TLS, per-connection goroutine + context, structured
 // accept-error handling with backoff, and drain-aware graceful shutdown via a
 // session Registry. Scaffold satisfies the Server lifecycle contract.
 type Scaffold struct {
@@ -204,8 +204,8 @@ func (s *Scaffold) acceptLoop() error {
 			return err
 		}
 		backoff = 5 * time.Millisecond
-		// Claim the slot HERE, synchronously, before the goroutine exists
-		// (ADR-0006 §2.2). Reserving inside serveConn would still leave the gap
+		// Claim the slot HERE, synchronously, before the goroutine exists.
+		// Reserving inside serveConn would still leave the gap
 		// between Accept returning and that goroutine being scheduled, in which
 		// the connection is accepted but invisible to a drain.
 		res, ok := s.reg.Reserve()

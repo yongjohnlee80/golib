@@ -53,7 +53,7 @@
 // finalizes through [CommitTx] / [RollbackTx]. Both are typed helpers over
 // OPTIONAL interfaces — [TxBeginner], [ContextTxConn], [SessionTxBeginner] —
 // so [DataConn] and [TxConn] themselves are unchanged and every existing
-// implementation stays valid (ADR-0017; KB convention
+// implementation stays valid (; KB convention
 // interface-evolution-capability-interfaces).
 //
 // Nothing degrades silently. An option a driver cannot honor is refused with
@@ -85,6 +85,6 @@
 // [ErrForeignKey]) and, for constraint violations, a [ConstraintError] carrying
 // the constraint name and [ConstraintKind].
 //
-// This package is built incrementally per the ADR-0001…0017 design set; see the
+// This package is built incrementally per the …0017 design set; see the
 // dao design dossier for the full contract.
 package dao

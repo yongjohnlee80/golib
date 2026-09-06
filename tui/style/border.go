@@ -2,14 +2,14 @@ package style
 
 // BorderStyle describes the eight pieces of a box border. The fields are
 // strings, not runes: border pieces may be multi-byte graphemes; cells hold
-// grapheme strings (ADR-0003). BorderStyle is a flat comparable struct, so
-// Style stays comparable (ADR-0006 §2.1).
+// grapheme strings. BorderStyle is a flat comparable struct, so
+// Style stays comparable.
 type BorderStyle struct {
 	Top, Bottom, Left, Right                   string
 	TopLeft, TopRight, BottomLeft, BottomRight string
 }
 
-// Standard border prefabs (ADR-0006 §2.3).
+// Standard border prefabs.
 var (
 	// BorderNormal is the standard single-line box border.
 	BorderNormal = BorderStyle{

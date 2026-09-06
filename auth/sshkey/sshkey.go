@@ -1,5 +1,5 @@
 // Package sshkey authenticates a client by an SSH signature over a
-// server-issued challenge (ADR-0001 §2.5).
+// server-issued challenge.
 //
 // # Why this shape
 //
@@ -406,8 +406,7 @@ type Challenge struct {
 }
 
 // Binding ties a challenge to the context it was issued for, so a signature
-// obtained for one session or origin cannot be presented for another
-// (ADR-0001 §2.5).
+// obtained for one session or origin cannot be presented for another.
 type Binding struct {
 	Session string
 	Origin  string
@@ -460,7 +459,7 @@ func originOf(r *auth.Request) string {
 // ChallengeStore holds outstanding challenges.
 //
 // Consume MUST be ONE atomic operation — fetch, validate, remove — so a nonce
-// cannot be redeemed twice even by simultaneous attempts (ADR-0001 §2.5).
+// cannot be redeemed twice even by simultaneous attempts.
 type ChallengeStore interface {
 	Put(id string, rec ChallengeRecord) error
 	Consume(id string, now time.Time) (ChallengeRecord, error)

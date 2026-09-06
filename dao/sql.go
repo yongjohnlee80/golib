@@ -5,7 +5,7 @@ import "strings"
 // builder renders SQL text and collects its bind arguments against a [Dialect].
 // It is the core's minimal, zero-dependency SQL builder. This file currently
 // implements the batch-insert path; the SELECT/UPDATE/DELETE builders
-// are added by ADR-0003.
+// are added by.
 type builder struct {
 	dialect Dialect
 	sb      strings.Builder

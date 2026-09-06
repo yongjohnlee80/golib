@@ -234,7 +234,7 @@ func (e *Editor) SelectedText() string {
 }
 
 // SetRegister imports text into the unnamed register (the application's
-// value-inspect copy path, ADR-0008 §2.1).
+// value-inspect copy path).
 func (e *Editor) SetRegister(text string, linewise bool) {
 	e.regText, e.regLinewise = text, linewise
 }
@@ -1233,7 +1233,7 @@ func (e *Editor) pressAt(x, y int) bool {
 	// ---- the command boundary, in this order ----
 	//
 	// A pending insert rune is SETTLED FIRST, at the caret it was typed at, and
-	// before the caret moves. ADR-0008 binds every non-chord input to settle the
+	// before the caret moves. binds every non-chord input to settle the
 	// pending rune, and a click is a non-chord input like any other; discarding it
 	// would delete a character the user physically typed. This is the only way a
 	// press changes buffer text.

@@ -47,7 +47,7 @@ func (e Expr) mustSet(who string) Expr {
 // The table part is rendered in TABLE position (through the same helper the
 // builder uses), so a schema-qualified constant like "app.users" splits into
 // two quoted parts on a dialect implementing [TableQuoter] and falls back to
-// whole-string quoting otherwise — the documented ADR-0013 behavior.
+// whole-string quoting otherwise — the documented behavior.
 //
 // The write identity is the raw column: INSERT/UPDATE see "name" and quote it
 // exactly once, byte-identical to a hand-written Column of "artist.name".

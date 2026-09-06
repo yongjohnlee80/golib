@@ -31,8 +31,8 @@ var (
 	ErrReadOnlyField = errors.New("dao: cannot write a read-only field")
 
 	// ErrNotClearable is returned by a write verb when, under StrictClears, a
-	// field's FINAL rule is a Clear targeting a non-Clearable field (ADR-0010
-	// §2.2). Wrapped with the field name; test with errors.Is.
+	// field's FINAL rule is a Clear targeting a non-Clearable field. Wrapped
+	// with the field name; test with errors.Is.
 	ErrNotClearable = errors.New("dao: field is not clearable")
 
 	// ErrNoConditions is returned by Update/Delete when no predicate is set, to

@@ -1,6 +1,5 @@
 // Package ipallow authenticates nothing: it constrains an identity proved
-// elsewhere by checking the client address against an allowlist (ADR-0001
-// §2.3, §2.6).
+// elsewhere by checking the client address against an allowlist.
 //
 // An address is a FACTOR, never an identity. This factor reports
 // auth.FactorContextual, so auth.NewPolicy structurally refuses any policy that
@@ -40,7 +39,7 @@ type Option func(*Factor)
 //
 // Without this, forwarded headers are ignored entirely: `X-Forwarded-For` is
 // attacker-controlled on any directly reachable listener, so believing it by
-// default would turn the allowlist into a decoration (ADR-0001 §2.6).
+// default would turn the allowlist into a decoration.
 func TrustedProxies(prefixes ...netip.Prefix) Option {
 	return func(f *Factor) { f.trustedProxies = append(f.trustedProxies, prefixes...) }
 }
@@ -68,8 +67,7 @@ func (f *Factor) Kind() auth.FactorKind { return auth.FactorContextual }
 
 // Verify resolves the client address and checks it against the allowlist. The
 // Contribution carries NO Subject (it proves no identity) and NO expiry: a
-// static observation about one request imposes no post-authentication bound
-// (ADR-0001 §2.2.1).
+// static observation about one request imposes no post-authentication bound.
 func (f *Factor) Verify(_ context.Context, r *auth.Request) (auth.Contribution, error) {
 	if len(f.allowed) == 0 {
 		return auth.Contribution{}, ErrEmptyPolicy

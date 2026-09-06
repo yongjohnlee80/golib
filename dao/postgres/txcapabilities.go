@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// ADR-0017 capabilities for the Postgres driver. Postgres is the one driver
+// capabilities for the Postgres driver. Postgres is the one driver
 // that can honor all of them: pgx begins with an explicit option set, its
 // Commit/Rollback take a context, and its row stream keeps the wire bytes and
 // the server's column descriptors.
@@ -28,7 +28,7 @@ var (
 
 // BeginTx starts a transaction with opts, satisfying dao.TxBeginner. Options
 // are validated before the BEGIN is built, so a malformed option set never
-// reaches the wire; Postgres itself refuses nothing in the ADR-0017 §2.2a
+// reaches the wire; Postgres itself refuses nothing in the
 // matrix.
 func (c *pgxConn) BeginTx(ctx context.Context, opts dao.TxOptions) (dao.TxConn, error) {
 	tx, err := c.beginTx(ctx, opts)
@@ -40,7 +40,7 @@ func (c *pgxConn) BeginTx(ctx context.Context, opts dao.TxOptions) (dao.TxConn, 
 
 // BeginSessionTx starts a transaction with opts and returns a
 // context-finalizable handle, satisfying dao.SessionTxBeginner. It is the call
-// a session-pinned consumer makes (autodb ADR-0074): the capability is
+// a session-pinned consumer makes (autodb): the capability is
 // assertable on this connection before any transaction exists, and the handle
 // it returns can be cleaned up after the session's own context is gone.
 func (c *pgxConn) BeginSessionTx(ctx context.Context, opts dao.TxOptions) (dao.ContextTxConn, error) {
@@ -99,7 +99,7 @@ func pgTxOptions(opts dao.TxOptions) (pgx.TxOptions, error) {
 }
 
 // CommitContext commits with ctx bounding the COMMIT, satisfying
-// dao.ContextTxConn. The outcome is classified per ADR-0017 §2.2a rather than
+// dao.ContextTxConn. The outcome is classified per rather than
 // handed back raw, because "the commit failed" is three different facts and a
 // caller keeping an audit trail must not conflate them.
 func (t *pgxTx) CommitContext(ctx context.Context) error {
@@ -138,7 +138,7 @@ func (t *pgxTx) RollbackContext(ctx context.Context) error {
 	return nil
 }
 
-// classifyCommit maps a pgx commit failure onto the ADR-0017 §2.2a outcome
+// classifyCommit maps a pgx commit failure onto the outcome
 // contract. The question it answers is only ever "is it PROVEN that the
 // transaction did not commit?" — anything short of proof is unknown.
 func classifyCommit(err error) error {
@@ -174,7 +174,7 @@ func isPgError(err error) bool {
 }
 
 // txOutcomeError joins a dao outcome sentinel to the driver cause that produced
-// it. It stays unexported deliberately: the ADR-0017 public error surface is
+// it. It stays unexported deliberately: the public error surface is
 // the two sentinels plus the preserved cause, so callers match the outcome with
 // errors.Is and reach pgx/pgconn/net/context details with errors.As — there is
 // no third thing to type-assert.

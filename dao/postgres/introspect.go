@@ -7,10 +7,10 @@ import (
 )
 
 // PostgresDialect opts into routine introspection alongside the
-// ADR-0013 capabilities.
+// capabilities.
 var _ dao.RoutineIntrospector = PostgresDialect{}
 
-// Schema introspection (golib-dao ADR-0013 §3.3). Queries read pg_catalog
+// Schema introspection (golib-dao). Queries read pg_catalog
 // rather than information_schema: it is faster, complete (partitioned tables,
 // materialized views), and keys the column lookup on a bind-safe
 // format('%I.%I', $1, $2)::regclass instead of interpolated identifiers.

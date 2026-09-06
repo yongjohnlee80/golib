@@ -7,8 +7,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Text measurement note. All width math is policy-aware (ADR-0003 §2.4
-// normative). Render paths measure through Surface.StringWidth; layout,
+// Text measurement note. All width math is policy-aware (normative). Render
+// paths measure through Surface.StringWidth; layout,
 // event, cursor, scroll, wrap, and hit-test paths measure through
 // Base.measure (Context.StringWidth). Both resolve the App's single active
 // width policy, so paint and geometry agree under WidthPolicyAmbiguousWide.

@@ -185,10 +185,10 @@ func (b *Backend) start(ctx context.Context) error {
 	}
 
 	// 3. Reader goroutines — running during the probe so replies are
-	// consumed while early user input is queued, not lost (§2.6).
+	// consumed while early user input is queued, not lost.
 	b.startReader()
 
-	// 4. The capability probe (§2.6). Cancellation discards partial
+	// 4. The capability probe. Cancellation discards partial
 	// replies: caps is only assigned on success, so a partially-negotiated
 	// profile is never observable.
 	caps, err := b.runProbe(ctx)
@@ -197,7 +197,7 @@ func (b *Backend) start(ctx context.Context) error {
 	}
 	b.caps = caps
 
-	// 5. Negotiated mode enablement — one write (§2.6).
+	// 5. Negotiated mode enablement — one write.
 	var enable bytes.Buffer
 	if caps.BracketedPaste {
 		enable.WriteString("\x1b[?2004h")
@@ -205,7 +205,7 @@ func (b *Backend) start(ctx context.Context) error {
 	}
 	if b.cfg.mouse && caps.Mouse != tui.TriNo {
 		// The enable may be attempted on TriUnknown; Capabilities keeps
-		// reporting TriUnknown in that case — capability honesty (§2.6).
+		// reporting TriUnknown in that case — capability honesty.
 		enable.WriteString("\x1b[?1002h\x1b[?1006h")
 		b.mouseOn = true
 	}
@@ -219,14 +219,14 @@ func (b *Backend) start(ctx context.Context) error {
 		b.resize2048 = true
 	}
 	// Focus reporting: required to deliver tui.FocusEvent (Terminal=true)
-	// and for the §2.8 focus-in size re-check. Harmless where unsupported.
+	// and for the focus-in size re-check. Harmless where unsupported.
 	enable.WriteString("\x1b[?1004h")
 	b.focusOn = true
 	if err := b.write(enable.Bytes()); err != nil {
 		return err
 	}
 
-	// 6. OS resize notifications (§2.8) — real terminals only; the harness
+	// 6. OS resize notifications — real terminals only; the harness
 	// exercises resize via mode-2048 reports and scripted events.
 	if b.inFile != nil {
 		b.startResizeWatcher()
@@ -290,7 +290,7 @@ func (b *Backend) teardown() error {
 
 	// Stop the reader: close done, unblock the fd read, wait, then the
 	// decode goroutine closes Events() — only the reader's owner closes the
-	// channel, and only after the reader has exited (§2.9).
+	// channel, and only after the reader has exited.
 	close(b.done)
 	b.unblockReader()
 	b.wg.Wait()
@@ -299,7 +299,7 @@ func (b *Backend) teardown() error {
 	}
 	// Undo makePollable only after the reader has joined: close the
 	// private /dev/tty description, or restore O_NONBLOCK on a shared
-	// one (§2.9).
+	// one.
 	if b.pollCleanup != nil {
 		if err := b.pollCleanup(); err != nil {
 			errs = append(errs, err)
@@ -409,7 +409,7 @@ func (b *Backend) writeAll(p []byte) error {
 	return nil
 }
 
-// --- reader goroutines (§2.9: the ws.go one-reader discipline) ---
+// --- reader goroutines (: the ws.go one-reader discipline) ---
 
 func (b *Backend) startReader() {
 	readCh := make(chan []byte, 8)
@@ -468,8 +468,8 @@ func (b *Backend) unblockReader() {
 
 // decodeLoop owns the decoder and the Events() channel: it feeds chunks to
 // the parser, materializes resize notifications through the same producer
-// path (§2.8/§2.9, single logical producer), runs the legacy ESC
-// disambiguation timer (§2.5), and closes Events() on exit.
+// path (/, single logical producer), runs the legacy ESC
+// disambiguation timer, and closes Events on exit.
 func (b *Backend) decodeLoop(readCh <-chan []byte) {
 	defer b.wg.Done()
 	defer close(b.events)
@@ -520,7 +520,7 @@ func (b *Backend) decodeLoop(readCh <-chan []byte) {
 			lastRead = time.Now()
 			d.feedBytes(chunk)
 			// ESC disambiguation timeout ONLY when kitty is inactive:
-			// flag 1's purpose is removing this ambiguity (§2.5).
+			// flag 1's purpose is removing this ambiguity.
 			if !b.kittyOn.Load() && d.awaitingEsc() {
 				if escTimer == nil {
 					escTimer = time.NewTimer(b.cfg.escTimeout)
@@ -534,7 +534,7 @@ func (b *Backend) decodeLoop(readCh <-chan []byte) {
 			d.resolveEsc()
 		case <-b.resizeCh:
 			// OS notification: re-query fresh truth, emit ordered and
-			// un-coalesced — the App intake owns coalescing (§2.8, rev 1).
+			// un-coalesced — the App intake owns coalescing.
 			checkSize(true)
 		case <-b.done:
 			disarm()
@@ -544,8 +544,8 @@ func (b *Backend) decodeLoop(readCh <-chan []byte) {
 	}
 }
 
-// emitEvent delivers on Events(), blocking if the consumer stalls (events
-// are never dropped, §2.9) but never outliving Stop.
+// emitEvent delivers on Events, blocking if the consumer stalls (events are
+// never dropped) but never outliving Stop.
 func (b *Backend) emitEvent(ev tui.Event) {
 	select {
 	case b.events <- ev:

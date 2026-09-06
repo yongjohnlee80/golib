@@ -16,7 +16,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Close codes this package uses. RFC 6455 §7.4.
+// Close codes this package uses. RFC 6455
 const (
 	closeTryAgain    = ws.StatusCode(1013) // Try Again Later
 	closeNormal      = ws.StatusNormalClosure
@@ -64,7 +64,7 @@ type sessionLoop struct {
 
 // serve handles one connection from handshake to teardown.
 //
-// The order is the security contract of §2.8 and it is deliberate:
+// The order is the security contract of and it is deliberate:
 //
 //  1. handshake checks — Origin and Host, credential-free, so a cross-origin
 //     probe never reaches the auth machinery;
@@ -171,7 +171,7 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 	if err != nil {
 		// Authentication succeeded but the attach did not, so the parked handoff
 		// will never be claimed. Releasing it here is what stops a session-limit
-		// refusal leaking upstream state (§2.12.2).
+		// refusal leaking upstream state.
 		l.mgr.releaseHandoff(handoff, AttachFailed)
 		_ = c.Close(closePolicy, "unavailable")
 		return err
@@ -199,7 +199,7 @@ func (l *sessionLoop) bind(ctx context.Context, m clientMessage, id *auth.Identi
 		s, err := l.mgr.AttachFrom(m.Session, id, h, peer)
 		if err == nil {
 			// A REATTACH ran no factory, so nothing will ever claim this login's
-			// handoff. This is the path that leaked before §2.12: a reconnecting
+			// handoff. This is the path that leaked before: a reconnecting
 			// client logs in afresh, parks state, and resumes an existing App.
 			l.mgr.releaseHandoff(handoff, ReattachedExisting)
 			return s, nil
@@ -412,7 +412,7 @@ func (l *sessionLoop) translate(m clientMessage) ([]tui.Event, error) {
 		if ev, ok := l.decoder.decodeKey(m.keyReport()); ok {
 			return []tui.Event{ev}, nil
 		}
-		// A dropped key is a DECISION, not a gap: §2.9's table says so for every
+		// A dropped key is a DECISION, not a gap: 's table says so for every
 		// shape that lands here.
 		return nil, nil
 	case msgText:

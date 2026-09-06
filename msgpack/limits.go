@@ -66,7 +66,7 @@ type Limits struct {
 	MaxTotalBytes int64
 }
 
-// DefaultLimits returns the standard decode bounds (ADR-0008 §2.2):
+// DefaultLimits returns the standard decode bounds:
 // depth 64, 8 MiB per string/binary, 1 M elements per collection,
 // 1 M total decoded values and 16 MiB total payload bytes per decode
 // (order-of-tens-of-MiB decoded footprint for scalar-heavy input;

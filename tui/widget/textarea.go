@@ -137,7 +137,7 @@ func (t *TextArea) vertical(delta int, extend bool) {
 	t.desired = d // moveTo clears nothing here, but keep it explicit
 }
 
-// HandleEvent implements the §2.4 key contract.
+// HandleEvent implements the key contract.
 func (t *TextArea) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.PasteEvent:

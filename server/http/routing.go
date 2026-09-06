@@ -59,7 +59,7 @@ func (g *Group) With(mw ...Middleware) *Group {
 }
 
 // register bakes the group chain into h and registers it. A bad pattern or a
-// duplicate route is a programmer error at startup, so it panics (per ADR-0002).
+// duplicate route is a programmer error at startup, so it panics (per).
 // Registration after the server has started is the same class of error: the
 // router is built-then-read and is not synchronized against concurrent Match,
 // so a late registration would be a data race — it panics too.

@@ -6,11 +6,11 @@ import (
 )
 
 // FromConn projects a connection into a [Request], for the transports that are
-// not HTTP — `server/rpc`, `server/ws`, or a plain listener (ADR-0001 §2.8).
+// not HTTP — `server/rpc`, `server/ws`, or a plain listener.
 //
 // It takes only `net`, so the core stays free of framework coupling. TLS state
 // is deliberately NOT extracted here: projecting it correctly means refusing to
-// carry `PeerCertificates` (§2.6a), which is `auth/mtls`'s job. A caller with a
+// carry `PeerCertificates`, which is `auth/mtls`'s job. A caller with a
 // TLS connection sets Request.TLS from mtls.FromConnectionState:
 //
 //	r := auth.FromConn(c, creds)

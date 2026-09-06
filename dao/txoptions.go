@@ -5,7 +5,7 @@ import "fmt"
 // Driver-transaction options. [TxOptions] is the value a
 // driver's BEGIN carries — access mode, isolation level, deferrability. It is
 // deliberately NOT the coordinator's [TxOption] (a functional option
-// configuring a logical [Transaction], ADR-0015 §2.3): the two live at
+// configuring a logical [Transaction]): the two live at
 // different layers and never mix.
 //
 // Every field is tri-state, so an explicit READ WRITE / NOT DEFERRABLE is
@@ -22,7 +22,7 @@ const (
 	TxAccessDefault TxAccess = iota
 	// TxReadOnly begins a READ ONLY transaction. On PostgreSQL a write inside
 	// it fails with SQLSTATE 25006 — the engine-enforced read-only guarantee
-	// (autodb ADR-0074 M9), which no transport-level check can provide.
+	// (autodb M9), which no transport-level check can provide.
 	TxReadOnly
 	// TxReadWrite begins an explicit READ WRITE transaction, overriding a
 	// server default of READ ONLY.
@@ -120,8 +120,8 @@ func (d TxDeferrableMode) valid() bool {
 // and [SessionTxBeginner.BeginSessionTx]. The zero value means
 // "server defaults" and is what [DataConn.Begin] has always sent.
 //
-// Not every driver can honor every field; the per-driver matrix is ADR-0017
-// §2.2a and is enforced before any BEGIN reaches the wire — see
+// Not every driver can honor every field; the per-driver matrix is
+// and is enforced before any BEGIN reaches the wire — see
 // [ErrTxOptionInvalid] and [ErrTxOptionUnsupported].
 type TxOptions struct {
 	// Access is the transaction's access mode.
@@ -165,7 +165,7 @@ func (o TxOptions) String() string {
 //
 // It runs BEFORE any capability probe, so malformed input is reported as
 // malformed input ([ErrTxOptionInvalid]) rather than as a capability miss
-// ([ErrTxOptionUnsupported]) — validation order 1 of ADR-0017 §2.2a.
+// ([ErrTxOptionUnsupported]) — validation order 1 of.
 // [BeginConnTx] calls it for you; a driver implementing [TxBeginner] calls it
 // itself, before building its BEGIN, so the ordering holds however the
 // capability is reached.

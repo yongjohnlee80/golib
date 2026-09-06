@@ -20,7 +20,7 @@ var (
 	// ErrClientClosed is the terminal cause after a local Close.
 	ErrClientClosed = errors.New("rpc: client closed")
 	// ErrMsgIDExhausted poisons the client when the monotonic uint32 msgid
-	// space runs out — ids are NEVER reused within a connection (ADR-0009);
+	// space runs out — ids are NEVER reused within a connection;
 	// reconnect for a fresh id domain.
 	ErrMsgIDExhausted = errors.New("rpc: msgid space exhausted; reconnect")
 	// ErrNotificationOverflow poisons the client when the bounded
@@ -92,7 +92,7 @@ func OnNotification(fn func(method string, params []any)) ClientOption {
 	return func(c *clientConfig) { c.onNotif = fn }
 }
 
-// Client is the Go side of the wire (ADR-0009): concurrent Calls with
+// Client is the Go side of the wire: concurrent Calls with
 // msgid correlation over one connection, fire-and-forget Notify, a bounded
 // notification queue, and a Done/Err terminal-state signal the consumer's
 // reconnect loop is driven by. No auto-reconnect: session state belongs to
@@ -291,7 +291,7 @@ func (c *Client) unregister(id uint32) {
 // send stages the frame under the outbound cap and writes it as one
 // bounded network write. Admission (the write slot) selects on ctx; the
 // network write is bounded by the write timeout; a frame that MAY have
-// partially reached the wire poisons the connection (ADR-0009).
+// partially reached the wire poisons the connection.
 func (c *Client) send(ctx context.Context, m *Message) error {
 	select {
 	case c.writeSem <- struct{}{}:
@@ -411,7 +411,7 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 }
 
 // readLoop demultiplexes responses to their pending calls and feeds the
-// bounded notification queue. Hostile-message taxonomy (ADR-0009): the
+// bounded notification queue. Hostile-message taxonomy: the
 // single tolerated anomaly is a well-formed response with no pending id
 // (an abandoned wait) — dropped and logged; everything else — malformed
 // frames, oversized messages, server-initiated requests — poisons.

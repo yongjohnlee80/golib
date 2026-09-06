@@ -2,12 +2,12 @@ package auth
 
 // Node is one position in a policy tree. The interface is CLOSED — its only
 // method is unexported — so the only nodes are Leaf, All and Any. That closure
-// is what lets NewPolicy reason about a finished tree (ADR-0001 §2.2.2).
+// is what lets NewPolicy reason about a finished tree.
 type Node interface {
 	isNode()
 
 	// identityBearing reports whether a SUCCESS of this node necessarily
-	// carried an identity proof. The algebra (ADR-0001 §2.2.2):
+	// carried an identity proof. The algebra:
 	//
 	//	leaf  — its Kind() == FactorIdentity
 	//	All   — ANY child is identity-bearing (the others constrain it)
@@ -40,7 +40,7 @@ type allNode struct{ children []Node }
 
 // All builds a node satisfied only when every child is. All() with no children
 // is a node that DENIES — distinct from an invalid policy, which is NewPolicy's
-// concern (ADR-0001 §2.2).
+// concern.
 func All(ns ...Node) Node { return allNode{children: ns} }
 
 func (allNode) isNode() {}

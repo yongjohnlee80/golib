@@ -25,7 +25,7 @@ import (
 // explicit [TxOptions]. Drivers that cannot express any non-default option do
 // not implement it (modernc/sqlite), and drivers that can express only some
 // refuse the rest with [ErrTxOptionUnsupported] before the BEGIN is sent
-// (mysql — see the ADR-0017 §2.2a matrix).
+// (mysql — see the matrix).
 //
 // The returned TxConn is finalized with the base Commit/Rollback unless it also
 // satisfies [ContextTxConn].

@@ -684,7 +684,7 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	// expand. Hosts wanting folder-opens-on-double-click do it in their own
 	// handler, where the node grammar is known.
 	//
-	// Three constraints beyond the App's count, each from lector r1:
+	// Three constraints beyond the App's count, each from:
 	//   - EXACTLY 2, so a triple-click activates once rather than on 2 and 3;
 	//   - the same NODE, because the App's continuity is an absolute cell while
 	//     the rows under it move whenever the tree expands or scrolls;

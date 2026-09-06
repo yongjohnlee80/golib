@@ -7,7 +7,7 @@ import (
 )
 
 // BigQueryDialect implements dao.Dialect for Google BigQuery — a read-mostly,
-// no-transaction OLAP store (golib-dao ADR-0008). It embeds dao.GenericDialect
+// no-transaction OLAP store (golib-dao). It embeds dao.GenericDialect
 // and overrides the BigQuery specifics: backtick-quoted identifiers, "?"
 // positional placeholders, and the no-transaction / no-upsert / no-RETURNING
 // capability profile.
@@ -15,7 +15,7 @@ import (
 // What works through this dialect: Select/Get/Count/Exists/Iterate (reads) and
 // Insert/Update/Delete via standard DML. What returns dao.ErrUnsupported:
 // transactions (Begin/RunTx/On(tx)), Upsert (and batch conflict handling), and
-// the explicit COPY fast-path. See ADR-0008 §3.
+// the explicit COPY fast-path.
 type BigQueryDialect struct {
 	dao.GenericDialect
 }

@@ -78,7 +78,7 @@ func StringWidth(s string, ambiguousWide bool) int {
 }
 
 // runeWidth returns the display width (0, 1, or 2) of a single rune under
-// the wcwidth model of ADR-0003 §2.7.
+// the wcwidth model of
 func runeWidth(r rune, ambiguousWide bool) int {
 	switch {
 	case r < 0x20:

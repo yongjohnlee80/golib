@@ -10,7 +10,7 @@ import (
 )
 
 // Tracker records authentication failures and decides whether a key is
-// currently in backoff (ADR-0001 §2.6b).
+// currently in backoff.
 //
 // Every method MUST be atomic with respect to the others. The seam is an
 // interface so the multi-replica case — a shared Redis or SQL counter — does not
@@ -62,7 +62,7 @@ var (
 	ErrTrackerUnavailable = Reason("auth: failure tracker unavailable")
 )
 
-// Throttle wraps a Factor with failure counting and backoff (ADR-0001 §2.6).
+// Throttle wraps a Factor with failure counting and backoff.
 //
 // # Two modes, because one contract cannot cover both
 //

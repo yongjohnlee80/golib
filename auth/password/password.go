@@ -105,7 +105,7 @@ func (f *Factor) Kind() auth.FactorKind { return auth.FactorIdentity }
 // An unknown subject is hashed against a dummy credential and then rejected.
 // Without that, "no such user" returns in microseconds while "wrong password"
 // takes 60 milliseconds, and the difference is a user-enumeration oracle
-// readable over the network (ADR-0001 §2.6). The dummy hash is not a
+// readable over the network. The dummy hash is not a
 // nicety — it is the only reason the two paths are indistinguishable.
 //
 // It closes the hashing oracle only. Per-subject and per-address counters are a

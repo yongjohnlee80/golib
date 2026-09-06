@@ -212,7 +212,7 @@ func (b *batchWriter[R, C]) Flush() error {
 		sqlText := bld.buildBatchInsert(b.table, cols, chunk, suffix)
 		args := bld.args
 		// Each chunk is a real statement: the full rewrite contract applies
-		// (Op: OpBatch, ADR-0009 §2.6).
+		// (Op: OpBatch).
 		pl := b.pipe(OpBatch)
 		if err := pl.beforeExec(&sqlText, &args); err != nil {
 			errs = append(errs, &chunkError{index: i / perChunk, err: err})

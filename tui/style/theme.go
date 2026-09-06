@@ -10,7 +10,7 @@ import (
 // render time. Widgets style themselves in semantic terms (TokenPrimary,
 // TokenError) and whole applications re-skin by swapping one Theme.
 //
-// Tokens are colors, never attributes (ADR-0006 §2.5, normative): a Token
+// Tokens are colors, never attributes (normative): a Token
 // resolves to exactly one Color, and the resolver never attaches SGR
 // attributes on a token's behalf. TokenTextMuted is therefore a color only —
 // widgets that want faint muted text say so themselves:
@@ -33,7 +33,7 @@ const (
 	TokenAccent
 	TokenBoost // translucent-overlay analogue: a slightly offset surface
 
-	// Derived variants — the deliberately minimal set (ADR-0006 §2.5):
+	// Derived variants — the deliberately minimal set:
 
 	TokenTextMuted       // de-emphasized text color on Background/Surface (color ONLY)
 	TokenTextOnPrimary   // readable text atop Primary fills
@@ -69,7 +69,7 @@ type ThemeOption func(*themeBuilder)
 // WithToken supplies an explicit Color for one token slot, overriding its
 // derivation default. It panics on an out-of-range token or a token-kind
 // Color (a theme slot cannot indirect to another token — resolution is
-// single-pass, ADR-0006 §2.4). Adaptive colors are allowed: putting an
+// single-pass). Adaptive colors are allowed: putting an
 // Adaptive(...) color in a slot is exactly how a theme makes a token
 // adaptive.
 func WithToken(t Token, c Color) ThemeOption {
@@ -97,7 +97,7 @@ func WithDark(dark bool) ThemeOption {
 
 // NewTheme builds a Theme from the required Primary color plus options.
 // Every slot not supplied via WithToken receives its derivation default
-// (ADR-0006 §2.5) — one line of deterministic logic per slot, no color math:
+// — one line of deterministic logic per slot, no color math:
 //
 //	Secondary, Accent               ← Primary
 //	Foreground, Background          ← Default() (terminal's own fg/bg)
@@ -176,5 +176,5 @@ func (th Theme) Color(t Token) Color {
 // Dark returns the WithDark override: forced reports whether the theme
 // forces adaptivity, and dark is the forced value when it does. When forced
 // is false the resolver falls back to the probed
-// Capabilities.DarkBackground (ADR-0002).
+// Capabilities.DarkBackground.
 func (th Theme) Dark() (dark, forced bool) { return th.dark, th.darkSet }

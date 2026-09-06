@@ -9,7 +9,7 @@ import (
 // Secret wraps credential material so it cannot be printed by accident.
 // Redaction is STRUCTURAL, not a convention: String, Format, MarshalJSON and
 // MarshalText all return a placeholder, so %v, %+v, %s, log.Printf and JSON
-// encoding are all safe (ADR-0001 §2.7, RULES.md #1).
+// encoding are all safe (RULES.md #1).
 //
 // No claim is made that the bytes are erased from memory — Go offers no such
 // guarantee. The claim is that Secret does not leak through formatting.

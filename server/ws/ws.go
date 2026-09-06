@@ -21,7 +21,7 @@ const (
 	Binary = MessageType(websocket.MessageBinary)
 )
 
-// StatusCode is a WebSocket close code (RFC 6455 §7.4).
+// StatusCode is a WebSocket close code (RFC 6455).
 type StatusCode int
 
 const (
@@ -32,8 +32,8 @@ const (
 )
 
 // Session is one established WebSocket connection. Methods are safe for one
-// concurrent reader and one concurrent writer (the protocol's constraint —
-// ADR-0007 §2.2); all take ctx and honor its cancellation.
+// concurrent reader and one concurrent writer (the protocol's constraint —);
+// all take ctx and honor its cancellation.
 type Session struct {
 	c      *websocket.Conn
 	req    *http.Request
@@ -138,7 +138,7 @@ func Subprotocols(names ...string) Option {
 // InsecureAllowOrigins relaxes the SAME-ORIGIN DEFAULT: patterns are matched
 // against the Origin header's host (e.g. "app.example.com"). The name says
 // what it does — cross-origin browser access (CSWSH exposure) is a
-// deliberate, visible decision (ADR-0007 §1.2 G4).
+// deliberate, visible decision (G4).
 func InsecureAllowOrigins(patterns ...string) Option {
 	return func(c *config) { c.originPatterns = patterns }
 }
@@ -169,8 +169,8 @@ func (e wsEntry) Close() error { return e.s.c.CloseNow() }
 // Drain ends the session politely: initiate the StatusGoingAway close
 // handshake (which unblocks the handler's pending Read via the peer's echo)
 // and wait for the handler to return — bounded by ctx, after which the
-// context is cancelled and the connection force-closed (ADR-0006 §2.2 /
-// ADR-0007 §2.2). The handshake is initiated before any cancellation so the
+// context is cancelled and the connection force-closed (/). The handshake is
+// initiated before any cancellation so the
 // peer deterministically observes GoingAway, never a bare teardown.
 func (e wsEntry) Drain(ctx context.Context) error {
 	go e.s.closeWith(StatusGoingAway, "server shutting down")
@@ -185,9 +185,9 @@ func (e wsEntry) Drain(ctx context.Context) error {
 
 // Handler gates, upgrades, and serves one WebSocket endpoint with fn — an
 // ordinary http.Handler, registered on the router and wrapped by middleware
-// like any route (ADR-0007 §2.1).
+// like any route.
 //
-// Drain gate (ADR-0006 §2.2): Handler reserves a registry slot BEFORE the
+// Drain gate: Handler reserves a registry slot BEFORE the
 // handshake; during shutdown Reserve refuses and the request receives a plain
 // HTTP 503 — never a successful upgrade followed by an immediate close. On
 // success the reservation completes with the established session, which

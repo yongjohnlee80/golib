@@ -23,7 +23,7 @@ import (
 // pinned member for the whole pinned lifetime (the handle never hands the *pgx.Conn out
 // and its own methods use only the raw pgproto3 face).
 //
-// The state machine is the ADR's §2.3: two ORTHOGONAL tracks — outbound (what the
+// The state machine is the ADR's: two ORTHOGONAL tracks — outbound (what the
 // consumer has built on the wire) and inbound (where the response stream stands) — plus
 // a poison flag that outranks both, and a private-exchange flag the transaction and
 // query paths hold. Refusal of a guarded call is an immediate state inspection under
@@ -49,9 +49,9 @@ type SessionPinner interface {
 	PinSessionConn(ctx context.Context) (PinnedConn, error)
 }
 
-// PinnedConn is one PostgreSQL connection, pinned for a session's lifetime (ADR-0018
-// §2.2). It has two faces — raw extended-protocol execution, and the session
-// transaction — sharing ONE wire, serialized by the state machine (§2.3) rather than a
+// PinnedConn is one PostgreSQL connection, pinned for a session's lifetime.
+// It has two faces — raw extended-protocol execution, and the session
+// transaction — sharing ONE wire, serialized by the state machine rather than a
 // bare mutex.
 type PinnedConn interface {
 	// Send queues ONE extended-protocol frontend frame. It does not flush and does not
@@ -96,8 +96,8 @@ type PinnedConn interface {
 	Discard()
 }
 
-// SupportsSessionPinning reports whether conn can pin a session connection (ADR-0018
-// §2.1). It is the capability-honest probe: a false answer means the consumer must
+// SupportsSessionPinning reports whether conn can pin a session connection.
+// It is the capability-honest probe: a false answer means the consumer must
 // report [dao.ErrUnsupported], never fall back to the pool.
 func SupportsSessionPinning(conn dao.DataConn) bool {
 	_, ok := conn.(SessionPinner)
@@ -137,7 +137,7 @@ const (
 
 // ErrSegmentInFlight reports a guarded call made while the wire is not quiescent. It is
 // typed and immediate: the guard inspects persistent state under the handle's
-// synchronization and returns; it never waits for the segment to end (ADR-0018 §2.3 —
+// synchronization and returns; it never waits for the segment to end (—
 // serialization is not refusal).
 var ErrSegmentInFlight = errors.New("postgres: an extended segment is in flight")
 
@@ -159,7 +159,7 @@ var ErrReleased = errors.New("postgres: the pinned connection has been released 
 // consumer sent none. The driver does not silently absorb protocol skew.
 var ErrPrematureReadyForQuery = errors.New("postgres: premature ReadyForQuery in Receive — a terminal ReadyForQuery belongs to Sync, and none was sent")
 
-// pinnedConn is the ADR-0018 handle: one acquired pool member plus the state machine
+// pinnedConn is the handle: one acquired pool member plus the state machine
 // that serializes every face against every other.
 //
 // Two locks, never held simultaneously by design:
@@ -269,7 +269,7 @@ func (p *pinnedConn) quiescentLocked() bool {
 	return p.out == idleOut && p.in == noInbound && !p.wirePrivate && !p.writing
 }
 
-// Send queues ONE frontend frame (ADR-0018 §2.3's Send row). It is non-blocking: the
+// Send queues ONE frontend frame ('s Send row). It is non-blocking: the
 // frame is buffered on the frontend and nothing reaches the server until Flush. The
 // resume transition flushed→building is legal — group B queues while group A's
 // responses are still inbound; the inbound track is UNCHANGED by Send.
@@ -295,7 +295,7 @@ func (p *pinnedConn) Send(_ context.Context, op ExtendedOp) error {
 	return nil
 }
 
-// Flush writes the queued frames (ADR-0018 §2.3's Flush row). It preserves an inbound
+// Flush writes the queued frames ('s Flush row). It preserves an inbound
 // receiving track: group A keeps streaming while group B's bytes go out. A write
 // failure poisons the handle.
 func (p *pinnedConn) Flush(ctx context.Context) error {
@@ -355,7 +355,7 @@ func (p *pinnedConn) Flush(ctx context.Context) error {
 	return nil
 }
 
-// Receive returns the next backend message (ADR-0018 §2.3's Receive row). The blocking
+// Receive returns the next backend message ('s Receive row). The blocking
 // read runs under wireMu but not mu, so a concurrent guarded call stays immediate while
 // it blocks. ErrorResponse is protocol data (drives inbound→discarding); a terminal
 // ReadyForQuery is a contract violation; a transport error poisons.
@@ -410,8 +410,8 @@ func (p *pinnedConn) Receive(ctx context.Context) (ExtendedMessage, error) {
 	}
 }
 
-// Sync sends ONE Sync frame and consumes through the terminal ReadyForQuery (ADR-0018
-// §2.3's Sync row): the single call that resets both tracks. It is legal from any
+// Sync sends ONE Sync frame and consumes through the terminal ReadyForQuery
+// ('s Sync row): the single call that resets both tracks. It is legal from any
 // non-poisoned, non-private state.
 func (p *pinnedConn) Sync(ctx context.Context) (byte, error) {
 	p.mu.Lock()
@@ -520,7 +520,7 @@ func (p *pinnedConn) Release(_ context.Context) error {
 		return err
 	}
 	// A mid-flight segment is reported before an open transaction: it is the more
-	// immediate fact about the wire (criterion 6), and the transaction cannot be
+	// immediate fact about the wire, and the transaction cannot be
 	// finalized until it ends anyway.
 	if !p.quiescentLocked() {
 		p.mu.Unlock()
@@ -548,7 +548,7 @@ func (p *pinnedConn) Release(_ context.Context) error {
 // busy, or that is closed, which is exactly the ADR's "discarded, never dirty" rule.
 //
 // Discard is safe to call while another goroutine holds a blocking read (the deferred-
-// Discard-racing-Receive case, criterion 10): it poisons first (so no NEW wire op
+// Discard-racing-Receive case): it poisons first (so no NEW wire op
 // proceeds), interrupts any in-flight read/write by shortening the socket deadline, then
 // barriers on wireMu so the in-flight op has fully released the connection before the
 // pool destroys it. This avoids the pgconn contract violation of closing a conn under an
@@ -655,7 +655,7 @@ func (p *pinnedConn) beginPrivate() (func(), error) {
 // is bounded two ways (MF2): a deadline when ctx carries one, AND a watcher that
 // shortens the socket deadline the instant ctx is cancelled — a cancellable context with
 // NO deadline, or cancellation before a later deadline, must still interrupt a blocked
-// Write per PinnedConn.Flush's contract and ADR §2.3. The watcher's teardown is
+// Write per PinnedConn.Flush's contract and ADR The watcher's teardown is
 // synchronized (wg.Wait) before the deadline is cleared, so it can never strand a past
 // deadline on the next operation, and the raw context cause is preserved over pgconn's
 // timeout wrapper. The caller poisons on any error — a cancellation mid-write is a

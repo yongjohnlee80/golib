@@ -15,8 +15,8 @@ type SelectItem[T any] struct {
 
 // Select is the dropdown. Closed, it renders as a one-line
 // field (current label + "▾"); Enter/Space/Down opens a floating option
-// list on the overlay layer with a focus trap (both ADR-0004 mechanisms,
-// realized by OverlayHost). Esc closes without change and restores the
+// list on the overlay layer with a focus trap (both mechanisms, realized by
+// OverlayHost). Esc closes without change and restores the
 // prior focus; Enter commits (SelectionChangedEvent); clicks outside close
 // — the overlay layer sees them first.
 //
@@ -25,11 +25,11 @@ type SelectItem[T any] struct {
 //
 // Options are loadable via App.Go: schedule the load with the Select's
 // NodeID as owner and return []SelectItem[T]; the addressed TaskResult is
-// converted and installed by Select's own HandleEvent (§2.6). Compare
+// converted and installed by Select's own HandleEvent. Compare
 // TaskResult.ID against the last-issued TaskID for staleness when issuing
 // concurrent loads.
 //
-// Positioning note: ADR-0007 anchors the open list below the field; the
+// Positioning note: anchors the open list below the field; the
 // runtime exposes no absolute-rect query to components in v1, so the list
 // opens centered on the overlay area (command-palette style) — reported as
 // a core follow-up.
@@ -165,7 +165,7 @@ func (s *Select[T]) commit(i int) {
 	s.closePopup()
 }
 
-// HandleEvent: closed-state keys, plus the §2.6 TaskResult conversion.
+// HandleEvent: closed-state keys, plus the TaskResult conversion.
 func (s *Select[T]) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.TaskResult:

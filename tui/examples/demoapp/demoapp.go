@@ -2,7 +2,7 @@
 //
 // It was moved out of tui/examples/demo verbatim so that the SAME component code
 // can be driven by two different backends — the terminal and tui/web — which is
-// ADR-0009 acceptance criterion 1. The component logic below is unchanged by the
+// acceptance. The component logic below is unchanged by the
 // move; only the package clause and the constructor's visibility differ, because
 // package main cannot be imported.
 package demoapp
@@ -17,7 +17,7 @@ import (
 )
 
 // demo is the root controller component: it mounts the widget tree, wires
-// the Bus subscriptions, and owns the async tasks (ADR-0005 App.Go).
+// the Bus subscriptions, and owns the async tasks (App.Go).
 type demo struct {
 	root   tui.Component
 	items  *widget.List[string]
@@ -32,7 +32,7 @@ type demo struct {
 	ctx *tui.Context
 }
 
-// newDemo assembles the §5.3 layout:
+// newDemo assembles the layout:
 //
 //	┌ Items ─┐┌ Input ────────────┐
 //	│ (list) ││ (text input)      │
@@ -76,7 +76,7 @@ func (d *demo) Init(ctx *tui.Context) {
 	d.status.SetCenter("Tab: focus · Enter: submit · Ctrl+C: quit")
 	d.status.SetRight("loading…")
 
-	// Submits append to the log and clear the input (Bus, ADR-0005 §2.7).
+	// Submits append to the log and clear the input (Bus).
 	tui.SubscribeScoped(ctx, func(ev widget.SubmitEvent) {
 		if ev.Owner != d.input.NodeID() || ev.Value == "" {
 			return
@@ -87,7 +87,7 @@ func (d *demo) Init(ctx *tui.Context) {
 		d.status.SetRight(fmt.Sprintf("%d submitted", d.submitted))
 	})
 
-	// Async list fill (ADR-0001 §5.3): the TaskResult is addressed back to
+	// Async list fill: the TaskResult is addressed back to
 	// this controller.
 	ctx.Go(func(context.Context) (any, error) {
 		return []string{"alpha", "beta", "gamma", "delta", "epsilon"}, nil

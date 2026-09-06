@@ -12,8 +12,8 @@ import (
 // This exists for ONE reason: a caller with an explicit FIPS requirement.
 // PBKDF2 is not memory-hard, so it is materially weaker than [Argon2id] against
 // GPU and ASIC cracking, and selecting it to "avoid a dependency" would be a
-// bad trade — `golang.org/x/crypto` is in this module's graph regardless
-// (ADR-0001 §2.4). Never the default.
+// bad trade — `golang.org/x/crypto` is in this module's graph regardless.
+// Never the default.
 type PBKDF2 struct {
 	// Iterations is the work factor. OWASP's 2023 floor for
 	// PBKDF2-HMAC-SHA256 is 600,000.

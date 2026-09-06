@@ -108,15 +108,15 @@ func (s Style) GetBorderLeftForeground() (Color, bool) {
 	return s.borderFg[3], s.isSet(propBorderLeftForeground)
 }
 
-// Frame math. The box model is lipgloss's, kept verbatim (ADR-0006 §2.3):
+// Frame math. The box model is lipgloss's, kept verbatim:
 // content → padding → border → margin, border outside padding, margin
-// outside border. Used by ADR-0004 layout and ADR-0007 Box to convert
+// outside border. Used by layout and Box to convert
 // outer ↔ content rects.
 
 // borderEdgeSize is 1 when the border is set, the edge is enabled, and its
 // glyph is non-empty (BorderHidden's spaces still count — it preserves frame
 // size for alignment stability); otherwise 0. Border pieces occupy one cell
-// each: cells hold grapheme strings (ADR-0003), so multi-byte glyphs are
+// each: cells hold grapheme strings, so multi-byte glyphs are
 // still one column.
 func (s Style) borderEdgeSize(edge uint8, glyph string) int {
 	if !s.isSet(propBorderStyle) || s.borderEdges&edge == 0 || glyph == "" {

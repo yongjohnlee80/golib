@@ -376,7 +376,7 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 	// WebSocket that happened to create the session.
 	//
 	// Deriving it from the connection meant a disconnect cancelled the App
-	// immediately, so the detach window of §2.8 — the whole reason a flaky
+	// immediately, so the detach window of — the whole reason a flaky
 	// network does not destroy work — was unreachable: Session.Done fired the
 	// moment the socket closed. ctx is honored for the CREATE call
 	// only; the session outlives it by design.
@@ -489,7 +489,7 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 //
 // # Why the identity is required here too
 //
-// Every attach re-runs the completed policy from scratch (§2.8), so this also
+// Every attach re-runs the completed policy from scratch, so this also
 // takes an identity — and it checks that the principal MATCHES the session's.
 // Without that check, any authenticated user could attach to any session id and
 // look at somebody else's screen; authentication would establish that you are
@@ -534,7 +534,7 @@ func (m *Manager) attachSession(s *Session, id *auth.Identity, h Hello, peer str
 	// PEER BINDING. Checked before the lease, so a mismatched address cannot even
 	// take the connection slot. Terminating rather than merely refusing is
 	// deliberate: if the address changed because a credential was stolen, the
-	// session is what the thief is reaching for (§2.13).
+	// session is what the thief is reaching for.
 	if m.bindPeer && s.peer != "" && peer != "" && s.peer != peer {
 		logger.Notice(m.log, sessionAudit{Kind: "denied", Subject: id.Subject, ID: sessionID,
 			Reason: "peer address changed"})

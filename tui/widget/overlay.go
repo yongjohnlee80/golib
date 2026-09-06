@@ -49,7 +49,7 @@ func (h *OverlayHost) Attach(f *Float) {
 // Init chains the Stack's child mounting and subscribes to the package's
 // overlay protocol: open requests mount a popup layer on top; close
 // requests unmount it (which restores focus through the runtime's scope
-// stack — ADR-0004 §2.6.3).
+// stack —).
 func (h *OverlayHost) Init(ctx *tui.Context) {
 	h.Stack.Init(ctx)
 	tui.SubscribeScoped(ctx, func(ev overlayOpenEvent) {

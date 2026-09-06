@@ -30,7 +30,7 @@ const probeBatch = "\x1b[?2004$p" +
 	"\x1b[c"
 
 // preseedProfile derives the ColorProfile pre-seed from the environment
-// (ADR-0002 §2.6, no I/O). Pre-seeds are only ever upgraded by probe replies,
+// (no I/O). Pre-seeds are only ever upgraded by probe replies,
 // never downgraded by probe silence.
 func preseedProfile(lookup func(string) (string, bool)) tui.ColorProfile {
 	profile := tui.ProfileANSI16
@@ -122,7 +122,7 @@ collect:
 	caps.UnicodeCore = supported(2027)
 	caps.InBandResize = supported(2048)
 
-	// Mouse is tri-state (rev 1): TriYes only on a verifiable DECRQM ?1006
+	// Mouse is tri-state: TriYes only on a verifiable DECRQM ?1006
 	// answer; silence stays TriUnknown — a requested-but-unverified enable
 	// is never reported as support.
 	switch v, ok := modes[1006]; {

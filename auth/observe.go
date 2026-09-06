@@ -7,8 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/logger"
 )
 
-// Attempt is the record emitted for every authentication attempt (ADR-0001
-// §2.7).
+// Attempt is the record emitted for every authentication attempt.
 //
 // It carries NO credential material — not the password, not the token, not the
 // signature. What it does carry is the correlation ID, which is the whole point:

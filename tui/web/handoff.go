@@ -39,7 +39,7 @@ type HandoffReason uint8
 
 const (
 	// ReattachedExisting: the attach resumed an existing session, so no factory
-	// ran. The commonest case and the one that leaked before §2.12.
+	// ran. The commonest case and the one that leaked before
 	ReattachedExisting HandoffReason = iota
 
 	// AttachFailed: authentication succeeded but the attach did not — the session
@@ -90,7 +90,7 @@ type SessionInfo struct {
 	Handoff string
 
 	// Peer is the transport's view of the client that created the session, or the
-	// zero value when unknown. It is never a forwarded header: see §2.13.
+	// zero value when unknown. It is never a forwarded header: see
 	Peer string
 }
 
@@ -158,7 +158,7 @@ func (s *Stash) Set(v any) {
 // can fail: another factor in the policy can refuse after this one succeeded, the
 // ticket can fail to mint, the park can be full. Each of those returns from the
 // request having allocated an upstream session that nothing will ever close
-// (lector r1 on PR #14 reproduced two of them).
+// (on PR #14 reproduced two of them).
 //
 // A second call is REFUSED rather than overwriting: the first value would become
 // unreachable with its cleanup already registered, and last-write-wins is not a

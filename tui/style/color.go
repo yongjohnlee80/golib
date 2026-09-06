@@ -17,7 +17,7 @@ const (
 
 // Color is a comparable value describing a color at one of the kinds above,
 // resolved to concrete output at render time against the Backend capability
-// profile (ADR-0002). The zero Color means "unset / terminal default"
+// profile. The zero Color means "unset / terminal default"
 // (SGR 39/49).
 //
 // Colors are constructed only through [ANSI], [ANSI256], [RGB], [Adaptive],
@@ -58,7 +58,7 @@ func ANSI256(n int) Color {
 }
 
 // RGB returns a truecolor Color. It downsamples per the resolver's chain on
-// terminals with a lesser color profile (ADR-0006 §2.4).
+// terminals with a lesser color profile.
 func RGB(r, g, b uint8) Color {
 	return Color{kind: kindRGB, light: colorLeaf{kind: kindRGB, r: r, g: g, b: b}}
 }
@@ -68,10 +68,10 @@ func RGB(r, g, b uint8) Color {
 func Default() Color { return Color{} }
 
 // Adaptive returns a Color that resolves to light or dark depending on the
-// terminal background darkness at resolve time (ADR-0002's OSC 10/11 probe,
-// or a Theme's WithDark override).
+// terminal background darkness at resolve time ('s OSC 10/11 probe, or a
+// Theme's WithDark override).
 //
-// Token and adaptive leaves are REJECTED in v1 (ADR-0006 §2.4, rev 1):
+// Token and adaptive leaves are REJECTED in v1:
 // resolution stays single-pass over flat comparable values. The type system
 // already prevents tokens here (Token is not a Color); this panic is the
 // belt-and-braces guard for Colors of token or adaptive kind. Theme authors
@@ -103,7 +103,7 @@ func colorFromLeaf(l colorLeaf) Color { return Color{kind: l.kind, light: l} }
 
 // Resolver read surface.
 //
-// The style resolver lives in package tui (ADR-0003/ADR-0006 §2.6), outside
+// The style resolver lives in package tui (/), outside
 // this package, so it cannot see Color's private fields. The accessors below
 // are the minimal exported read surface it needs to run the documented
 // resolution chain (token lookup → adaptive pick → downsample); exactly one

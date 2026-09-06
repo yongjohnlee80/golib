@@ -15,7 +15,7 @@ func Healthz() http.HandlerFunc {
 
 // Readyz returns a readiness handler with a drain gate: 200 while serving,
 // 503 from the moment Shutdown begins — load balancers stop routing while
-// in-flight work and long-lived sessions drain (ADR-0006 §2.3).
+// in-flight work and long-lived sessions drain.
 func (s *Server) Readyz() http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		if s.draining.Load() {

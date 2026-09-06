@@ -9,7 +9,7 @@ import (
 )
 
 // plan maps canonical effective JSON names to the fields of a model type T.
-// One plan is built per T and cached (ADR-0001 §2.4); it is the single
+// One plan is built per T and cached; it is the single
 // source of the name space shared by presence tracking, mutation, rules, and
 // the typed decode.
 type plan struct {
@@ -41,7 +41,7 @@ var plans sync.Map // reflect.Type -> *plan
 // planFor returns the cached plan for T, building it once. It panics (loud,
 // first-use) on a model that cannot be a partial payload: an anonymous
 // pointer embed (silent-presence cliff) or a field whose canonical name is
-// the reserved ClearKey (ADR-0001 §2.4).
+// the reserved ClearKey.
 func planFor[T any]() *plan {
 	var zero T
 	typ := reflect.TypeOf(zero)

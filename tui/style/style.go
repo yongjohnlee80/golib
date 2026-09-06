@@ -97,7 +97,7 @@ const (
 // style. Copy by assignment; every setter returns a new Style by value.
 //
 // Style is comparable (usable with == and as a map key) — a binding
-// constraint (ADR-0006 §2.1/§2.6): no map/slice/func fields live directly on
+// constraint: no map/slice/func fields live directly on
 // Style; the extras map hides behind a pointer, which compares by identity.
 // Two styles differing only in equal-but-distinct extras maps therefore
 // compare unequal — documented and acceptable, since extras are the escape

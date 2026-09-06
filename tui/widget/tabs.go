@@ -10,7 +10,7 @@ import (
 // with the active content below. Only the active child is mounted, laid
 // out, and rendered; switching unmounts the old child unless
 // WithKeepMounted(true) (which preserves child state — and live
-// subscriptions — across switches; ADR-0004 mount semantics).
+// subscriptions — across switches; mount semantics).
 //
 // Keys: Ctrl+PgUp/PgDn cycle from anywhere inside the Tabs subtree; [ and ]
 // and the ←/→ arrows cycle when the bar itself is focused. Click selects.
@@ -156,7 +156,7 @@ func (t *Tabs) cycle(delta int) {
 // cellLabel is the painted form of one tab label.
 func cellLabel(label string) string { return " " + label + " " }
 
-// HandleEvent implements the §2.5 key/mouse contract.
+// HandleEvent implements the key/mouse contract.
 func (t *Tabs) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:

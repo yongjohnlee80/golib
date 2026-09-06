@@ -38,7 +38,7 @@ func Clear() Rule { return Rule{kind: ruleClear} }
 // schema: the write column is the map key, a clear carries its resolved
 // value, and a StrictClears violation travels here — NOT through the DAO's
 // sticky first-error path — so a later rule for the same field replaces it
-// (last-rule-wins, ADR-0010 §2.3). err is non-nil only with kind ruleSkip.
+// (last-rule-wins). err is non-nil only with kind ruleSkip.
 type resolvedRule struct {
 	kind  ruleKind
 	value any

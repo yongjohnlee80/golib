@@ -16,7 +16,7 @@ import (
 // implementation, uniform focus visuals.
 //
 // Focus visuals: when the Box or any descendant holds focus, FocusedStyle is
-// merged (Inherit semantics, ADR-0006) over the base style. Defaults are
+// merged (Inherit semantics) over the base style. Defaults are
 // token-driven — border style.TokenBorder, focused border
 // style.TokenBorderFocused — so every panel gets the lazygit "active panel
 // highlight" for free, re-themable via the Theme alone.
@@ -221,7 +221,7 @@ func (x *Box) frame() (top, right, bottom, left int) {
 	return mt + bt + pt, mr + br + pr, mb + bb + pb, ml + bl + pl
 }
 
-// borderEdgeSizes mirrors the ADR-0006 frame math per edge: 1 when the
+// borderEdgeSizes mirrors the frame math per edge: 1 when the
 // border is set, the edge enabled, and its glyph non-empty.
 func borderEdgeSizes(st style.Style) (t, r, b, l int) {
 	bs, ok := st.GetBorder()
@@ -244,8 +244,8 @@ func borderEdgeSizes(st style.Style) (t, r, b, l int) {
 	return t, r, b, l
 }
 
-// Layout subtracts the frame (border + padding + margin, ADR-0006 frame
-// math) from the constraints, lays out the child, and reports child size +
+// Layout subtracts the frame (border + padding + margin, frame math) from
+// the constraints, lays out the child, and reports child size +
 // frame. Title and status cost zero extra rows: they render inside the
 // border rows.
 func (x *Box) Layout(c tui.Constraints) tui.Size {
@@ -280,7 +280,7 @@ func (x *Box) HandleEvent(ev tui.Event) bool {
 }
 
 // paintStyle is the effective style for this frame: focused merge over base
-// when focus is within (Inherit semantics — ADR-0006).
+// when focus is within (Inherit semantics —).
 func (x *Box) paintStyle() style.Style {
 	if x.focusWithin || x.focused() {
 		return x.focusedSt.Inherit(x.base)

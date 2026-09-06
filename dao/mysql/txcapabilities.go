@@ -7,8 +7,8 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// ADR-0017 capabilities for the MySQL driver. MySQL opts into dao.TxBeginner
-// and nothing else, which is the honest half of the §2.2a matrix:
+// capabilities for the MySQL driver. MySQL opts into dao.TxBeginner
+// and nothing else, which is the honest half of the matrix:
 //
 //   - Isolation is fully expressible through database/sql, READ UNCOMMITTED
 //     included — MySQL implements it literally.

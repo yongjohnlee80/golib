@@ -43,7 +43,7 @@ type Frame struct {
 // # Why two grids and not a merged diff list
 //
 // The pending frame must be the diff of the CURRENT server grid against the last
-// baseline the client ACKNOWLEDGED (§2.4). Rev 0 of the ADR said a newer frame
+// baseline the client ACKNOWLEDGED. of the ADR said a newer frame
 // replaces an older one, which is a correctness bug rather than an
 // optimisation: frames carry only dirty cells, so if the frame containing row A
 // is dropped and the next frame changes only row B, a replacement carries B
@@ -73,7 +73,7 @@ type framer struct {
 
 	// coalesced counts publications that were folded into a later frame. It is
 	// reported rather than discarded: silently swallowing one is a debugging
-	// trap (§2.4).
+	// trap.
 	coalesced uint64
 }
 
@@ -89,8 +89,7 @@ func newFramer(w, h int) *framer {
 // publish applies a diff to the server grid and marks a frame pending.
 //
 // It never blocks on network I/O and never waits for a client: the App loop
-// calls this once per frame and ADR-0003's one-write rule assumes it is fast
-// (§2.4).
+// calls this once per frame and 's one-write rule assumes it is fast.
 func (f *framer) publish(updates []tui.CellUpdate, cursor cursorState) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

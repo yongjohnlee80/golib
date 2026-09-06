@@ -7,7 +7,7 @@ import "github.com/yongjohnlee80/golib/tui"
 // JSON rather than a compact binary encoding because the payload is dominated by
 // cell content that compresses well, the client is a browser where JSON is free,
 // and a wire format nobody can read in devtools is a debugging cost paid on
-// every future problem. §5 records the binary alternative.
+// every future problem. records the binary alternative.
 
 // Client→server message types.
 const (
@@ -38,7 +38,7 @@ type clientMessage struct {
 
 	// Hello. Credentials arrive in the FIRST MESSAGE, never in the URL — a URL
 	// lands in browser history, in a Referer, and in every access log between
-	// here and the client (§2.8).
+	// here and the client.
 	Ticket   string `json:"ticket,omitempty"`
 	Session  string `json:"session,omitempty"`
 	Identity string `json:"identity,omitempty"` // claimed principal, for sshkey
@@ -47,7 +47,7 @@ type clientMessage struct {
 
 	// There are deliberately NO password fields here.
 	//
-	// Rev 11 made password a ticket minter rather than an attach mechanism, and
+	// made password a ticket minter rather than an attach mechanism, and
 	// leaving the fields in place meant a custom client could still authenticate
 	// a password directly over the WebSocket — the split existed in the prose and
 	// not in the protocol. A password goes to the login route, which

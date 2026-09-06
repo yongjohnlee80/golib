@@ -1,5 +1,5 @@
-// Package msgpack is a zero-dependency MessagePack value codec (server ADR
-// 0008). It encodes and decodes the full MessagePack family over a fixed Go
+// Package msgpack is a zero-dependency MessagePack value codec (server). It
+// encodes and decodes the full MessagePack family over a fixed Go
 // vocabulary: nil, bool, int64/uint64 (all wire widths), float64 (and
 // float32 on the wire), string, []byte, []any, map[string]any (string keys
 // only, both directions), and Ext (application extension types — e.g.

@@ -1,6 +1,6 @@
 // Command webdemo runs the golib TUI demo in a browser.
 //
-// It is ADR-0009 acceptance criterion 1: the SAME component tree the terminal
+// It is acceptance: the SAME component tree the terminal
 // demo uses, driven by tui/web instead of tui/term. The only difference between
 // this file and tui/examples/demo/main.go is which backend is handed to
 // tui.NewApp — the component code is shared and unmodified.

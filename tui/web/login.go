@@ -39,8 +39,8 @@ import (
 //   - **A captured hello cannot contain a password.** The worst a replayed hello
 //     yields is a spent ticket.
 //
-// This is a change in shape from ADR-0009 §2.8's original phrasing, which
-// contemplated password as an attach mechanism. Recorded as rev 11.
+// This is a change in shape from 's original phrasing, which
+// contemplated password as an attach mechanism. Recorded as.
 //
 // # What this route must therefore be
 //
@@ -147,7 +147,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 
 	// The pending-login budget, checked BEFORE the credential is verified.
 	//
-	// Parked logins bound a different resource than live sessions (§2.12.4), so
+	// Parked logins bound a different resource than live sessions, so
 	// they get their own budget: counting them against MaxSessions is what made a
 	// reconnect at full capacity impossible, since a reconnect must log in before
 	// it can reattach.
@@ -180,7 +180,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	// A per-REQUEST slot for state the credential check produces. Verify holds the
 	// credential and is the only place that can allocate upstream state, but the
 	// handoff is not known until the ticket is minted below — so the move happens
-	// in two steps within one request rather than through a shared key (§2.12.3).
+	// in two steps within one request rather than through a shared key.
 	stash := &Stash{}
 	ctx = withStash(ctx, stash)
 	authReq := &auth.Request{
@@ -220,7 +220,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The handoff is derived from the ticket, so this package stores nothing and
-	// only the ticket holder can compute it (§2.12.1).
+	// only the ticket holder can compute it.
 	handoff := HandoffID(secret.Reveal())
 	if h.onLogin != nil {
 		// THE LEASE GOES IN FIRST, before the hook that parks.
@@ -229,7 +229,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// timer, by a Sweep, by a concurrent Close. If that settle lands before the
 		// lease is installed it finds no key and does nothing, and the lease
 		// installed a moment later is a ghost: no park entry will ever settle it, so
-		// it sits on the budget until the backstop expiry. Lector r3 on PR #14
+		// it sits on the budget until the backstop expiry. on PR #14
 		// reproduced exactly that — parked=0, held=1.
 		//
 		// Installing first inverts the race harmlessly: a settle that arrives early

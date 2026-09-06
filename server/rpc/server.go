@@ -15,7 +15,7 @@ import (
 )
 
 // Server is a connection-oriented RPC server over a pluggable Codec, built
-// on server.Scaffold (ADR-0008). Register handlers with Handle before Run.
+// on server.Scaffold. Register handlers with Handle before Run.
 type Server struct {
 	codec    Codec
 	cfg      config

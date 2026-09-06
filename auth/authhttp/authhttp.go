@@ -1,4 +1,4 @@
-// Package authhttp adapts an [auth.Policy] to net/http (ADR-0001 §2.8).
+// Package authhttp adapts an [auth.Policy] to net/http.
 //
 // It exists so the core stays free of net/http: one policy value serves a web
 // handler, an RPC server and a CLI prompt, and only this package knows what an
@@ -175,7 +175,7 @@ func peerOf(r *http.Request) netip.AddrPort {
 //
 // It deliberately routes through mtls.FromConnectionState, which refuses to
 // project PeerCertificates: any self-signed certificate lands there, so a later
-// reader must not be able to reach one (ADR-0001 §2.6a).
+// reader must not be able to reach one.
 func projectTLS(st *tls.ConnectionState) *auth.TLSState {
 	return mtls.FromConnectionState(st)
 }
