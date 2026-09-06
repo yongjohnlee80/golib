@@ -80,12 +80,14 @@ func TestView_SpanStraddlesSegments(t *testing.T) {
 	}
 }
 
-// CRITERION 7: a view's bytes stay valid under reuse pressure until Close.
+// CRITERION 7: a view's bytes stay valid under RELEASE pressure until Close.
 //
-// Acquire early, then force the writer to need space far beyond that segment,
-// then read through the view. If retention were advisory the bytes would be
-// gone or wrong.
-func TestView_SurvivesReusePressure(t *testing.T) {
+// Named for what it does. There is no segment pool and nothing is recycled —
+// dropped segments are garbage — so "reuse pressure" overstated it (lector r5
+// F5). What it exercises is real and worth a cell: acquire early, drive the
+// writer to the end, ask for everything to be released, and read through the
+// view afterwards.
+func TestView_SurvivesReleasePressure(t *testing.T) {
 	t.Parallel()
 	src := strings.Repeat("0123456789", 200) // 2000 bytes
 	c := New(strings.NewReader(src), WithSegmentSize(16))
@@ -100,7 +102,7 @@ func TestView_SurvivesReusePressure(t *testing.T) {
 	c.Release(c.Head())
 
 	if got, want := mustText(t, v), src[0:10]; got != want {
-		t.Fatalf("view after reuse pressure = %q, want %q — retention did not hold", got, want)
+		t.Fatalf("view after release pressure = %q, want %q — retention did not hold", got, want)
 	}
 }
 
@@ -207,28 +209,58 @@ func TestNewBytes_DoesNotCopy(t *testing.T) {
 	}
 }
 
-// CRITERION 10: concurrent readers with a writer appending are race-clean and
-// every view stays valid for its own lifetime. Run under -race to mean anything.
+// CRITERION 10: concurrent readers with a writer are race-clean, and every
+// acquired view stays valid for its own lifetime.
+//
+// THE FIRST VERSION OF THIS CELL WAS INERT, and that is the finding worth
+// recording: it used a strings.Reader (full blocks, so no held segment was ever
+// PARTIAL and therefore never a write target), never called Release (so
+// retention was never under pressure), swallowed every error from Acquire and
+// String, and asserted nothing at the end. Full-module -race stayed green while
+// a real data race existed in fillLocked. A concurrency test that cannot fail
+// is worse than none, because it is counted as coverage.
+//
+// This version fixes each of those: a one-byte reader keeps segments partial,
+// the writer releases behind itself, errors are collected rather than dropped,
+// and progress is asserted at the end.
 func TestCache_ConcurrentReadersAndWriter(t *testing.T) {
 	t.Parallel()
 	src := strings.Repeat("abcdefghij", 2000)
-	c := New(strings.NewReader(src), WithSegmentSize(128))
+	c := New(&slowReader{src: []byte(src)}, WithSegmentSize(128))
+
+	var (
+		mu   sync.Mutex
+		errs []error
+		hits int
+	)
+	record := func(err error) {
+		mu.Lock()
+		errs = append(errs, err)
+		mu.Unlock()
+	}
 
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for k := 0; k < 200; k++ {
-				from := int64((i*97 + k*13) % 4000)
+			buf := make([]byte, 0, 16)
+			for k := 0; k < 300; k++ {
+				from := int64((i*97 + k*13) % 3000)
 				v, err := c.Acquire(from, from+10)
 				if err != nil {
-					continue // released behind us is legitimate
+					continue // released behind us, or not yet read: both legitimate
 				}
-				got, err := v.String()
-				if err == nil && got != src[from:from+10] {
-					t.Errorf("concurrent view [%d,%d) = %q, want %q",
-						from, from+10, got, src[from:from+10])
+				buf, err = v.AppendTo(buf[:0])
+				if err != nil {
+					record(fmt.Errorf("AppendTo [%d,%d): %w", from, from+10, err))
+				} else if string(buf) != src[from:from+10] {
+					record(fmt.Errorf("view [%d,%d) = %q, want %q",
+						from, from+10, buf, src[from:from+10]))
+				} else {
+					mu.Lock()
+					hits++
+					mu.Unlock()
 				}
 				v.Close()
 			}
@@ -237,13 +269,33 @@ func TestCache_ConcurrentReadersAndWriter(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for off := int64(0); off < int64(len(src)); off += 128 {
-			if _, err := c.Ensure(off, 128); err != nil {
+		for off := int64(0); off < int64(len(src)); {
+			n, err := c.Ensure(off, 128)
+			if err != nil {
+				record(fmt.Errorf("Ensure at %d: %w", off, err))
 				return
 			}
+			if n == 0 {
+				return
+			}
+			off += int64(n)
+			c.Release(off - 512) // keep retention genuinely under pressure
 		}
 	}()
 	wg.Wait()
+
+	for _, err := range errs {
+		t.Error(err)
+	}
+	// PROGRESS. Without this the cell passes when every Acquire fails, which is
+	// exactly what a broken cache would do.
+	if c.Head() != int64(len(src)) {
+		t.Fatalf("writer reached %d of %d bytes", c.Head(), len(src))
+	}
+	if hits == 0 {
+		t.Fatal("no reader ever validated a view: the cell proved nothing")
+	}
+	t.Logf("validated %d concurrent views while the writer streamed %d bytes", hits, c.Head())
 }
 
 // Close is idempotent: a double release must not decrement twice and let a live
