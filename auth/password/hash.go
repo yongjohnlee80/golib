@@ -1,4 +1,4 @@
-// Package password verifies a password against a stored hash (ADR-0001 §2.4).
+// Package password verifies a password against a stored hash.
 //
 // # What is stored
 //
@@ -139,8 +139,8 @@ func randomSalt(n int) ([]byte, error) {
 //
 // The length check is explicit and comes FIRST because
 // subtle.ConstantTimeCompare returns early on a length mismatch — handing it
-// variable-length material reintroduces exactly the leak it exists to prevent
-// (ADR-0001 §2.6). Every caller here derives its candidate at the STORED
+// variable-length material reintroduces exactly the leak it exists to prevent.
+// Every caller here derives its candidate at the STORED
 // digest's length, so a mismatch means a corrupt credential, not a wrong
 // password.
 func sameDigest(want, got []byte) error {

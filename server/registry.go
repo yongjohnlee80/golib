@@ -9,7 +9,7 @@ import (
 
 // Session is anything with a connection-scoped lifetime that graceful
 // shutdown must account for: a raw conn, a WebSocket session, an SFTP
-// channel. Close force-terminates it (ADR-0006 §2.2).
+// channel. Close force-terminates it.
 type Session interface{ Close() error }
 
 // Drainer is optionally implemented by Sessions that can end politely

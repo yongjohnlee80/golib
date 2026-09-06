@@ -55,7 +55,7 @@ func OpenNamed(ctx context.Context, name, dsn string, opts ...Option) (dao.DataC
 		o(cfg)
 	}
 	// Every connection records the ParameterStatus set the server reports, so a
-	// pinned connection can hand a protocol relay the server's own list (§3.3).
+	// pinned connection can hand a protocol relay the server's own list.
 	installStatusCapture(cfg)
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -113,7 +113,7 @@ type pgxTx struct {
 
 	// closed records that a finalizer has DISPATCHED. It is not set by a
 	// pre-dispatch context refusal, which leaves the transaction open and
-	// rollable with a fresh context (ADR-0017 §2.2a fault state 1). It carries
+	// rollable with a fresh context (fault state 1). It carries
 	// no lock: one transaction is single-goroutine, the same
 	// contract pgx's own tx.closed relies on.
 	closed bool

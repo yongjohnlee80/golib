@@ -5,8 +5,7 @@ import (
 	"fmt"
 )
 
-// ClearMode declares what "clear this field" looks like on the wire
-// (ADR-0001 §2.3).
+// ClearMode declares what "clear this field" looks like on the wire.
 type ClearMode uint8
 
 const (
@@ -27,7 +26,7 @@ const (
 // json:"$clear"). planFor rejects any model whose canonical name is ClearKey,
 // and Bind consumes ClearKey at the document level before per-field
 // canonicalization — so a model field can never intercept the clear channel,
-// nor the clear channel a field (ADR-0001 §2.3).
+// nor the clear channel a field.
 const ClearKey = "$clear"
 
 // applyClearArray resolves the raw $clear array (ExplicitClear mode) into the

@@ -2,9 +2,8 @@ package partial
 
 import "reflect"
 
-// RuleKind mirrors the Write/Skip/Clear disposition of dao ADR-0010 without
-// importing dao — the projection is data, the adapter (dao.go) is the coupling
-// (ADR-0001 §2.9).
+// RuleKind mirrors the Write/Skip/Clear disposition of dao without
+// importing dao — the projection is data, the adapter (dao.go) is the coupling.
 type RuleKind uint8
 
 const (

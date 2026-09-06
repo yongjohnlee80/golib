@@ -6,8 +6,8 @@ import (
 )
 
 // Internal reasons. These never reach a caller — Authenticate returns
-// ErrUnauthenticated — and exist so the audit record can say what happened
-// (ADR-0001 §2.2).
+// ErrUnauthenticated — and exist so the audit record can say what happened.
+//
 // They are [Reason] values, not errors.New, so their text is compile-time and
 // the audit trail may record it verbatim.
 const (
@@ -21,7 +21,7 @@ const (
 
 // Audit is the private, structured record of one authentication attempt. It
 // carries a correlation ID so an operator can tie a user's report to a specific
-// attempt without the caller-visible error revealing anything (ADR-0001 §2.2).
+// attempt without the caller-visible error revealing anything.
 //
 // It never holds credential material.
 type Audit struct {

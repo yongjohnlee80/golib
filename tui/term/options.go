@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Typed sentinels (golib convention: fail loud, typed; ADR-0002 §2.4).
+// Typed sentinels (golib convention: fail loud, typed;).
 var (
 	// ErrNotTerminal reports that one of the configured file descriptors is
 	// not a terminal.
@@ -35,8 +35,8 @@ const (
 	eventBufferSize = 64
 
 	// quietPeriod is the input-idle span after which the first new input
-	// triggers an opportunistic size re-check (ADR-0002 §2.8: a KVM switch
-	// or detached multiplexer can eat SIGWINCH).
+	// triggers an opportunistic size re-check (: a KVM switch or detached
+	// multiplexer can eat SIGWINCH).
 	quietPeriod = 2 * time.Second
 )
 

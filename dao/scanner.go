@@ -129,7 +129,7 @@ func (it *rowsIterator[R]) Close() error { return it.rows.Close() }
 // returns a func building new(T); for other R it returns the zero value (a
 // consumer with a non-pointer row should supply dao.NewRow).
 //
-// Note: ADR-0001 suggested a reflection-free default, which is not achievable for
+// Note: suggested a reflection-free default, which is not achievable for
 // R = *T in Go generics without a second type parameter. reflect is stdlib, so
 // the core's zero-external-dependency property is preserved.
 func defaultNewRow[R any]() func() R {

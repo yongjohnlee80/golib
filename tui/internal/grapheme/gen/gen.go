@@ -5,7 +5,7 @@
 // default, committed to the repository so regeneration needs no network) and
 // emits sorted, non-overlapping rune-range tables with binary-search lookups —
 // the runewidth/uniseg recipe, hand-rolled to keep golib/tui zero-dep
-// (golib/tui ADR-0001 §2.2, ADR-0003 §2.7).
+// (golib/tui).
 //
 // Usage (from the grapheme package directory):
 //

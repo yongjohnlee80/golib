@@ -43,10 +43,10 @@ type sliceSource[T any] []T
 func (s sliceSource[T]) Len() int     { return len(s) }
 func (s sliceSource[T]) Item(i int) T { return s[i] }
 
-// SliceSource adapts an in-memory slice into a ListSource. NOTE (ADR-0007
-// N3): this source holds every item in memory, so very large datasets
+// SliceSource adapts an in-memory slice into a ListSource. NOTE (N3): this
+// source holds every item in memory, so very large datasets
 // (100k+-row query results) must page at the data layer until the windowed
-// source follow-up (§2.7#2) lands — a new ListSource implementation, no
+// source follow-up (#2) lands — a new ListSource implementation, no
 // List API change.
 // SliceSource ALIASES items; it does not copy. Mutating the slice afterwards is
 // therefore an in-place source change, and the notification contract above
@@ -303,7 +303,7 @@ func (l *List[T]) activate() {
 	l.publish(ActivateEvent{Owner: l.NodeID(), Index: l.cursor})
 }
 
-// HandleEvent implements the §2.4 key/mouse contract.
+// HandleEvent implements the key/mouse contract.
 func (l *List[T]) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
@@ -317,7 +317,7 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 		}
 		// Vim motions alongside the arrows: the widget set is used in
 		// vim-keyed applications, and j/k/g/G are the house vocabulary
-		// (widget.Tree has honored them since ADR-0008 §2.2).
+		// (widget.Tree has honored them since).
 		code := e.Code
 		if e.Text != "" {
 			code = []rune(e.Text)[0]

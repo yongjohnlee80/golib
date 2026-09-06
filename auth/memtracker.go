@@ -78,7 +78,7 @@ func (b Backoff) delay(n int) time.Duration {
 	return b.Base << shift
 }
 
-// MemTracker is the bounded in-process [Tracker] (ADR-0001 §2.6b).
+// MemTracker is the bounded in-process [Tracker].
 //
 // # Why the bound matters
 //

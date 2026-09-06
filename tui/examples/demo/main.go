@@ -1,8 +1,8 @@
 // Command demo runs the golib TUI demo on a terminal.
 //
 // The component tree lives in tui/examples/demoapp so the SAME code can also be
-// driven by tui/web (see tui/examples/webdemo). That split is ADR-0009 acceptance
-// criterion 1: one component tree, two backends, no changes to the tree.
+// driven by tui/web (see tui/examples/webdemo). That split is acceptance:
+// one component tree, two backends, no changes to the tree.
 package main
 
 import (

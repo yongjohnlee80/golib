@@ -1,6 +1,6 @@
 // Command fixture serves a tui/web instance for the browser matrix.
 //
-// It is a REAL tui/web server, not a mock: the whole point of ADR-0009 §2.9's
+// It is a REAL tui/web server, not a mock: the whole point of 's
 // matrix is that synthetic dispatch hides engine divergences, and a fake server
 // would hide them just as effectively.
 //
@@ -87,7 +87,7 @@ func (r *recorder) snapshot() []logged {
 	defer r.mu.Unlock()
 	// A non-nil empty slice, so an empty log encodes as [] rather than null. A
 	// test asserting "no events were emitted" must be able to call .filter on
-	// the result — and "emits nothing" is precisely what several §2.9 cases
+	// the result — and "emits nothing" is precisely what several cases
 	// check, so null there turns a passing property into a TypeError.
 	out := make([]logged, 0, len(r.events))
 	return append(out, r.events...)

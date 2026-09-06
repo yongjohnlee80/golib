@@ -38,12 +38,13 @@
 // functional options; misconfiguration panics at construction; the package
 // imports only the standard library, tui, and tui/style.
 //
-// Known v1 limits (deliberate, ADR-0007 §1.2):
+// Known v1 limits (deliberate):
 //
 //   - List's provided source (SliceSource) holds all items in memory;
 //     100k+-row datasets must page at the data layer until a windowed
-//     ListSource ships (§2.7#2 — a new source implementation behind the
-//     existing seam, no List API change).
+//
+// ListSource ships (#2 — a new source implementation behind the existing
+// seam, no List API change).
 //   - TextArea's []string line buffer targets commit-message/query-editor
 //     scale (kilobytes); very large single lines degrade.
 //   - Text renders styled plain text — no markdown or syntax highlighting.

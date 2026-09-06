@@ -1,7 +1,7 @@
 // Package bigquery is the golib/dao driver for Google BigQuery — a read-mostly,
 // no-transaction OLAP store. It implements dao.DataConn over
 // cloud.google.com/go/bigquery against the read-mostly / no-transaction driver
-// contract (golib-dao ADR-0008).
+// contract (golib-dao).
 //
 // Reads (Select/Get/Count/Exists/Iterate) and DML writes (Insert/Update/Delete)
 // work; transactions, Upsert, and the COPY fast-path return dao.ErrUnsupported.

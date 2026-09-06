@@ -19,7 +19,7 @@ import (
 // client_encoding, DateStyle, TimeZone, …) and again whenever one changes. The
 // SERVER decides what is in that set — newer servers add to it — and a consumer
 // relaying the protocol must forward every one of them verbatim rather than a
-// fixed list (autodb protocol matrix §3.3). pgconn keeps the set in a private
+// fixed list (autodb protocol matrix). pgconn keeps the set in a private
 // map and exposes only a per-key lookup, so nothing above the driver can
 // enumerate what was reported.
 //

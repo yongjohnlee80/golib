@@ -42,8 +42,8 @@ type Server struct {
 	addr    string
 
 	// reg tracks long-lived sessions (WebSocket upgrades, SSE) that
-	// http.Server.Shutdown cannot see; Shutdown drains it in addition
-	// (ADR-0006 §2.2).
+	// http.Server.Shutdown cannot see; Shutdown drains it in addition.
+	//
 	reg server.Registry
 
 	// draining flips when Shutdown begins; Readyz reports 503 from then on.
@@ -171,13 +171,13 @@ func WithTLSConfig(cfg *tls.Config) Option {
 
 // WithListener injects a pre-bound listener (tests without real ports,
 // systemd socket activation, zero-downtime restarts). Listen adopts it
-// instead of binding Addr (ADR-0006 §2.3).
+// instead of binding Addr.
 func WithListener(ln net.Listener) Option {
 	return func(c *config) *config { c.listener = ln; return c }
 }
 
 // WithConnMetrics observes connection state transitions with an
-// active-connection gauge — the minimal metrics seam (ADR-0006 §2.3).
+// active-connection gauge — the minimal metrics seam.
 // Request-level metrics belong to middleware.
 func WithConnMetrics(fn func(state http.ConnState, active int)) Option {
 	return func(c *config) *config { c.connMetrics = fn; return c }
@@ -289,7 +289,7 @@ func (s *Server) Listen(ctx context.Context) error {
 		s.httpSrv.BaseContext = func(net.Listener) context.Context { return base }
 	}
 	// Server-level errors (TLS handshakes, malformed requests) flow through
-	// the structured logger instead of bypassing it to stderr (ADR-0006 §2.3).
+	// the structured logger instead of bypassing it to stderr.
 	if _, isNop := s.log.(logger.Nop); !isNop {
 		s.httpSrv.ErrorLog = log.New(errorLogWriter{s.log}, "", 0)
 	}
@@ -386,7 +386,7 @@ func (s *Server) RunUntilSignal(ctx context.Context) error {
 // Sessions returns the server's session registry. Handlers that hijack the
 // connection (WebSocket upgrades — see golib/server/ws) register there so
 // Shutdown can drain them; http.Server.Shutdown alone cannot see hijacked
-// connections (ADR-0006 §2.2).
+// connections.
 func (s *Server) Sessions() *server.Registry { return &s.reg }
 
 // Shutdown gracefully drains, bounded by ctx: readiness flips to draining

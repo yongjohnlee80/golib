@@ -16,12 +16,12 @@ import (
 
 // The guarded pinned transaction. The handle does NOT return the
 // pool-path pgxTx: that wrapper's methods call pgx directly and know nothing of the
-// handle's state, so handing it out would make the §2.3 enforcement a lie. pinnedTx
+// handle's state, so handing it out would make the enforcement a lie. pinnedTx
 // shares the handle's lock and state machine — every operation first inspects the
 // handle state and proceeds only from quiescent; anything else is an immediate typed
 // ErrSegmentInFlight — and drives BEGIN/COMMIT/ROLLBACK through the RAW face as
 // simple-protocol text, so no pgx cache machinery ever runs on the pinned wire. Outcome
-// classification is delegated to the ADR-0017 helper classifyCommit: the same code the
+// classification is delegated to the helper classifyCommit: the same code the
 // pool path uses, shared, not duplicated.
 
 // Compile-time proof that the guarded transaction honors the published contracts.
@@ -37,12 +37,12 @@ var (
 type pinnedTx struct {
 	p *pinnedConn
 	// ctx is the BEGIN context. The legacy no-context finalizers dispatch on it, exactly
-	// as the pool-path pgxTx does (ADR-0018 §2.4, r2 MF4 / r3 MF2).
+	// as the pool-path pgxTx does (r2 MF4 / r3 MF2).
 	ctx context.Context
 
 	// closed records that a finalizer has DISPATCHED (or, for the legacy finalizers,
 	// was attempted — they mark the handle closed BEFORE dispatch, the legacy shape).
-	// It is guarded by p.mu so a concurrent finalizer attempt (criterion 10) is
+	// It is guarded by p.mu so a concurrent finalizer attempt is
 	// race-clean even though one transaction is single-goroutine by contract.
 	closed bool
 }
@@ -51,7 +51,7 @@ type pinnedTx struct {
 
 // Commit is the unchanged dao.TxConn finalizer: it dispatches on the BEGIN context and
 // marks the handle closed BEFORE dispatch, so a cancelled BEGIN context fails with the
-// context error and leaves the handle TERMINAL (the legacy shape, ADR-0018 §2.4 r3 MF2).
+// context error and leaves the handle TERMINAL (the legacy shape, r3 MF2).
 // A mid-segment call is refused first and leaves the transaction open.
 func (t *pinnedTx) Commit() error { return t.finalizeLegacy(commitSQL) }
 
@@ -59,7 +59,7 @@ func (t *pinnedTx) Commit() error { return t.finalizeLegacy(commitSQL) }
 func (t *pinnedTx) Rollback() error { return t.finalizeLegacy(rollbackSQL) }
 
 // CommitContext commits with ctx bounding the COMMIT, satisfying dao.ContextTxConn. The
-// outcome is classified per ADR-0017 §2.2a through the shared helper: fault state 1 (ctx
+// outcome is classified per through the shared helper: fault state 1 (ctx
 // already dead) returns the raw context error and leaves the handle OPEN; the other
 // three states arrive as ErrTxRolledBack / ErrTxOutcomeUnknown with the cause preserved.
 func (t *pinnedTx) CommitContext(ctx context.Context) error {
@@ -120,7 +120,7 @@ func (t *pinnedTx) finalizeLegacy(sql string) error {
 
 // finalizeContext is the body of CommitContext/RollbackContext. Order: closed →
 // ErrTransactionClosed; mid-segment → ErrSegmentInFlight; ctx already dead → the raw
-// context error with the handle STILL OPEN (ADR-0017 fault state 1); then closed=true and
+// context error with the handle STILL OPEN (fault state 1); then closed=true and
 // the raw exchange.
 func (t *pinnedTx) finalizeContext(ctx context.Context, sql string) error {
 	if t.isClosed() {
@@ -201,7 +201,7 @@ func lower(sql string) string {
 
 // --- the private query/exec path ---------------------------------------------------
 
-// ExecContext runs q on the pinned wire from quiescent (ADR-0018 §2.4, method-shaped
+// ExecContext runs q on the pinned wire from quiescent (method-shaped
 // dispatch): with no arguments it is ONE simple-protocol Query frame draining every
 // result group — pgx's own no-args behavior, so multi-statement text keeps working — and
 // with arguments it is the private unnamed extended sequence. A server error is
@@ -277,8 +277,8 @@ func (t *pinnedTx) QueryContext(ctx context.Context, q string, args ...any) (dao
 	return &pinnedRows{seq: seq, ctx: ctx, release: release}, nil
 }
 
-// privateSequence is one run of the driver-owned unnamed extended sequence (ADR-0018
-// §2.4): Parse(unnamed) → Describe(S) → ParameterDescription supplies the OIDs → each
+// privateSequence is one run of the driver-owned unnamed extended sequence:
+// Parse(unnamed) → Describe(S) → ParameterDescription supplies the OIDs → each
 // argument encoded in text format with the exported pgtype.Map.Encode → Bind(unnamed
 // portal) → Execute → Sync, and then the exit-aware cleanup (r5 MF1): the objects
 // ParseComplete/BindComplete PROVED were created are closed in a second Close+Sync
@@ -475,10 +475,10 @@ func (s *privateSequence) recoverLocked(ctx context.Context) error {
 	return s.cleanupLocked(ctx)
 }
 
-// cleanupLocked is the exit-aware cleanup exchange (ADR-0018 §2.4 r5 MF1): it closes
+// cleanupLocked is the exit-aware cleanup exchange (r5 MF1): it closes
 // the unnamed statement and/or portal ONLY if their creation was acknowledged, then
 // Syncs and consumes the terminal ReadyForQuery. Nothing is sent when nothing was
-// created (the blind-Close guard, criterion 16's negative arm). Close is legal in an
+// created (the blind-Close guard, 's negative arm). Close is legal in an
 // aborted transaction, so the error tail reuses it unchanged. The unnamed statement and
 // portal are never destroyed by a Sync inside an explicit transaction, which is why this
 // exchange exists at all.
@@ -554,7 +554,7 @@ func cloneFields(in []pgproto3.FieldDescription) []pgproto3.FieldDescription {
 
 // pinnedRows streams the private sequence's result group. It satisfies dao.Rows,
 // dao.RowsColumns and dao.RawRows; RawValues are pgproto3's receive buffers, valid only
-// until the next Next or Close (the ADR-0012/0017 borrowed-buffer rule).
+// until the next Next or Close (the /0017 borrowed-buffer rule).
 type pinnedRows struct {
 	seq     *privateSequence
 	ctx     context.Context

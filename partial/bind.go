@@ -14,7 +14,7 @@ type bindConfig struct {
 	mode ClearMode
 }
 
-// WithClearMode selects the clear policy (default ClearOnNull, §2.3).
+// WithClearMode selects the clear policy (default ClearOnNull).
 func WithClearMode(m ClearMode) BindOption {
 	return func(c *bindConfig) { c.mode = m }
 }
@@ -25,7 +25,6 @@ func WithClearMode(m ClearMode) BindOption {
 // decode run once — so every type mismatch surfaces HERE, as a
 // *ValidationError, not later in a handler. Unknown keys are ignored (they are
 // not fields of T; rejecting request shape is an API-layer choice). See
-// ADR-0001 §2.2.
 func Bind[T any](body []byte, opts ...BindOption) (*Patch[T], error) {
 	cfg := bindConfig{mode: ClearOnNull}
 	for _, o := range opts {
@@ -103,7 +102,7 @@ func Bind[T any](body []byte, opts ...BindOption) (*Patch[T], error) {
 
 // UnmarshalJSON lets a Patch[T] bind itself when it appears as a field of an
 // outer decoded type — a Patch[Inner] inside a struct, or inside another
-// Patch[Outer]'s T (ADR-0001 §2.7). It uses the default ClearOnNull mode: Go
+// Patch[Outer]'s T. It uses the default ClearOnNull mode: Go
 // gives UnmarshalJSON no options channel, so an LM-compat nested contract must
 // bind the inner type explicitly instead.
 func (p *Patch[T]) UnmarshalJSON(data []byte) error {
@@ -131,7 +130,7 @@ func isNull(raw json.RawMessage) bool {
 }
 
 // decode is the single typed-decode funnel (raw bytes -> into). Isolating it
-// here keeps the future encoding/json/v2 swap local (ADR-0001 §1.4, §2.5).
+// here keeps the future encoding/json/v2 swap local.
 func decode(raw []byte, into any) error {
 	return json.Unmarshal(raw, into)
 }

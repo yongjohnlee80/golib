@@ -78,7 +78,7 @@ func JoinForSort[R any, C ~string, K ~string, ID any](sortKey K, join JoinKey) O
 
 // SortMap maps each sort-enum key to its ORDER BY expression.
 //
-// Note: ADR-0006 names this option Sort; it is SortMap here because Sort is the
+// Note: names this option Sort; it is SortMap here because Sort is the
 // ORDER BY term type and a package can't have both.
 func SortMap[R any, C ~string, K ~string, ID any](m map[K]string) Option[R, C, K, ID] {
 	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] { c.sortMap = m; return c }

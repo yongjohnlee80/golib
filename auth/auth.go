@@ -8,7 +8,7 @@ import (
 
 // Sentinels callers branch on. Everything a caller can see about a failed
 // authentication is ErrUnauthenticated: a more specific outward error would be
-// an oracle telling an attacker which factor failed (ADR-0001 §2.2). The detail
+// an oracle telling an attacker which factor failed. The detail
 // goes to the audit record instead.
 var (
 	// ErrUnauthenticated is the ONLY outward failure of Policy.Authenticate.
@@ -16,7 +16,7 @@ var (
 
 	// ErrNoIdentityProof is returned by NewPolicy when a tree could be
 	// satisfied without proving an identity — a policy that admits on
-	// contextual factors alone (ADR-0001 §2.2.2).
+	// contextual factors alone.
 	ErrNoIdentityProof = Reason("auth: policy has no identity-bearing proof")
 
 	// ErrEmptyPolicy is returned by NewPolicy for a nil root.
@@ -47,7 +47,7 @@ func (k FactorKind) String() string {
 
 // Request is the transport-agnostic material a factor may inspect. It is
 // deliberately not net/http: an RPC server, a WebSocket handshake and a CLI
-// prompt all construct one (ADR-0001 §2.1, §2.8).
+// prompt all construct one.
 type Request struct {
 	// Peer is the immediate peer address — the transport's own view, never a
 	// header. auth/ipallow decides whether any forwarded header may override
@@ -74,7 +74,7 @@ type TLSState struct {
 	// VerifiedChains is non-empty ONLY when the peer certificate chained to a
 	// configured client-auth root. auth/mtls accepts nothing else — a peer
 	// certificate on its own proves nothing, since any self-signed certificate
-	// is presented exactly the same way (ADR-0001 §2.6a).
+	// is presented exactly the same way.
 	VerifiedChains [][]Certificate
 }
 
@@ -99,7 +99,7 @@ type Certificate struct {
 // Contribution is what one factor proved. Subject is required when the factor
 // declares FactorIdentity and MUST be empty when it declares FactorContextual;
 // Policy validates that at evaluation time, so the classification a tree was
-// built with cannot drift from the one it runs with (ADR-0001 §2.1).
+// built with cannot drift from the one it runs with.
 //
 // It carries no Kind of its own — duplicating the classification is exactly
 // that drift.

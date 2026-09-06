@@ -82,7 +82,7 @@ func IsNull(col string) Predicate { return &nullCheck{col, false} }
 
 // IsNotNull renders "col IS NOT NULL".
 //
-// Note: ADR-0002 names this predicate NotNull; it is IsNotNull here to avoid
+// Note: names this predicate NotNull; it is IsNotNull here to avoid
 // colliding with the NotNull [ConstraintKind] constant. The pairing
 // with IsNull also reads better.
 func IsNotNull(col string) Predicate { return &nullCheck{col, true} }

@@ -75,7 +75,7 @@
 // # Single sign-on
 //
 // A consumer whose users authenticate against an upstream service should use
-// [SSO], which owns the whole login-handoff workflow of ADR-0009 §2.12 — parking
+// [SSO], which owns the whole login-handoff workflow of — parking
 // on login, claiming on create, provisioning for an attach that carried no login,
 // releasing on reattach, on a failed attach and when the session ends, and
 // sweeping abandoned logins. A consumer writes only how to allocate and how to
@@ -101,7 +101,7 @@
 //
 // # Seam report
 //
-// ADR-0009's second purpose was to test whether tui.Backend was drawn in the
+// 's second purpose was to test whether tui.Backend was drawn in the
 // right place. The README carries the result in full; the summary is that the
 // seam held with two costs, both in the contract's SILENCE rather than its shape:
 // [Backend.Err] conflates a transport failure with a backend failure, which for a

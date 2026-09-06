@@ -146,8 +146,7 @@ func decoration(m tui.AttrMask) string {
 	return strings.Join(parts, " ")
 }
 
-// Theme tokens the reverse-video swap resolves against (ADR-0006 custom
-// properties).
+// Theme tokens the reverse-video swap resolves against (custom properties).
 var (
 	defaultFGToken = tui.CellColor{Kind: cellColorToken, Index: tokenFG}
 	defaultBGToken = tui.CellColor{Kind: cellColorToken, Index: tokenBG}

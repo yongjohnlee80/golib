@@ -7,8 +7,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// sgrInterp is BufferView's bounded, SGR-only ANSI interpreter (ADR-0007
-// §2.4): colors (ANSI-16 / ANSI-256 / truecolor) and
+// sgrInterp is BufferView's bounded, SGR-only ANSI interpreter: colors
+// (ANSI-16 / ANSI-256 / truecolor) and
 // bold/faint/italic/underline/blink/reverse/strikethrough map directly to
 // style properties; every other escape (cursor movement, modes, OSC) is
 // recognized and stripped. State machines and pending buffers are bounded:

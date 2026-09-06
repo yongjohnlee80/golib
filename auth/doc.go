@@ -1,6 +1,6 @@
 // Package auth answers one question — does this request carry a valid
 // credential? — and returns an [Identity] or an error. It is not an
-// authorization, session, or user-management library (ADR-0001 §3).
+// authorization, session, or user-management library.
 //
 // # The model
 //

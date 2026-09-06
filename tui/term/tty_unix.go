@@ -15,7 +15,7 @@ import (
 )
 
 // Unix terminal plumbing: x/term's MakeRaw/Restore/GetSize
-// replace per-GOOS ioctl code with the canonical implementation (§2.11).
+// replace per-GOOS ioctl code with the canonical implementation.
 // MakeRaw clears OPOST (irrelevant: the emitter cursor-addresses everything)
 // and ISIG — Ctrl+C arrives as byte 0x03 and is a KeyEvent, not a signal.
 
@@ -66,7 +66,7 @@ func waitWritable(fd int) error {
 // pollability at Start, so the deadline lands.
 func unblockFile(f *os.File) { _ = f.SetReadDeadline(time.Now()) }
 
-// makePollable hands the input fd to the runtime poller so the §2.9
+// makePollable hands the input fd to the runtime poller so the
 // read-deadline unblock works. A tty inherited on stdin arrives in
 // BLOCKING mode: SetReadDeadline is a silent no-op there
 // (os.ErrNoDeadline), Stop's unblock never lands, the pump stays

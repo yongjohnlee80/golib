@@ -2,8 +2,8 @@ package dao
 
 import "strings"
 
-// JoinKey names an optional join registered on a [Schema] (via dao.OptionalJoin
-// or dao.OptionalJoinExpr, ADR-0006). A [Field] carrying a non-empty Join
+// JoinKey names an optional join registered on a [Schema] (via
+// dao.OptionalJoin or dao.OptionalJoinExpr). A [Field] carrying a non-empty Join
 // triggers that join when the field is SELECTED or
 // when a sort key declares it via JoinForSort.
 //
@@ -66,7 +66,7 @@ type Field[R any] struct {
 	// "name"). Optional; defaults to the unqualified tail of Column.
 	WriteColumn string
 
-	// Clearable declares that a rules-driven Clear (SetRules, ADR-0010) may
+	// Clearable declares that a rules-driven Clear (SetRules) may
 	// target this column. It is a deliberate per-column decision — never
 	// inferred from the Go field's nilability (a nilable column without this
 	// flag is not clearable; a NOT NULL column can be Clearable via ClearValue).

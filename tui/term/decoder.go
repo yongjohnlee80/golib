@@ -9,8 +9,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// This file maps parser actions onto the core tui event set (ADR-0002 §2.5,
-// §2.7): legacy CSI/SS3 key decoding with the xterm modifier encoding, kitty
+// This file maps parser actions onto the core tui event set: legacy CSI/SS3
+// key decoding with the xterm modifier encoding, kitty
 // CSI u keys, SGR mouse, bracketed-paste framing, mode-2048 in-band resize
 // reports, and terminal focus. Probe replies (DECRPM, DA1, kitty query,
 // OSC 10/11 colors, XTGETTCAP) are classified here and routed to the probe
@@ -179,8 +179,8 @@ func (d *decoder) handle(a *action) {
 
 // ctrlKey decodes a C0 control byte (plus DEL) into its legacy key meaning.
 // The known-unfixable legacy collisions — Ctrl+I = Tab, Ctrl+M = Enter,
-// Ctrl+[ = ESC, no key release — are inherent to this encoding (ADR-0002
-// §2.5) and are exactly what kitty mode removes.
+// Ctrl+[ = ESC, no key release — are inherent to this encoding and are
+// exactly what kitty mode removes.
 func ctrlKey(b byte) (tui.KeyEvent, bool) {
 	switch b {
 	case 0x0D:
@@ -321,8 +321,8 @@ func (d *decoder) csiDispatch(a *action) {
 	case 'O':
 		d.emit(tui.FocusEvent{Gained: false, Terminal: true})
 	case 'M':
-		// Legacy X10 mouse encoding — never enabled (SGR is mandatory,
-		// ADR-0002 §2.6); ignore rather than misparse the 3 raw bytes.
+		// Legacy X10 mouse encoding — never enabled (SGR is mandatory); ignore
+		// rather than misparse the 3 raw bytes.
 	}
 }
 

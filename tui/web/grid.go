@@ -9,7 +9,7 @@ import "github.com/yongjohnlee80/golib/tui"
 // baseline the client ACKNOWLEDGED — because the frame that goes on the wire is
 // the difference between them. Deriving the frame from two grids rather than
 // merging diff lists is what makes the aggregate cumulative by construction
-// instead of by careful bookkeeping (§2.4).
+// instead of by careful bookkeeping.
 type grid struct {
 	w, h  int
 	cells []tui.Cell
@@ -84,7 +84,7 @@ func (g *grid) sameShape(o *grid) bool { return g.w == o.w && g.h == o.h }
 
 // diff returns the cells where g differs from base, row-major.
 //
-// Row-major order matches ADR-0003 §2.2's contract for a frame diff, and it
+// Row-major order matches 's contract for a frame diff, and it
 // means the renderer can walk updates in the order it paints.
 func (g *grid) diff(base *grid) []tui.CellUpdate {
 	if !g.sameShape(base) {

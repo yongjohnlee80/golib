@@ -8,8 +8,8 @@ import (
 
 // MysqlDialect implements dao.Dialect for MySQL. It embeds dao.GenericDialect
 // and overrides the MySQL specifics: "?" positional placeholders, backtick
-// identifier quoting, the LastInsertId profile (no RETURNING; ids from the OK
-// packet — ADR-0008 §2.6), the ON DUPLICATE KEY UPDATE upsert suffix, and
+// identifier quoting, the LastInsertId profile (no RETURNING; ids from the
+// OK packet —), the ON DUPLICATE KEY UPDATE upsert suffix, and
 // errno-based error translation. There is no COPY fast-path, so batches use
 // the chunked multi-row INSERT path.
 type MysqlDialect struct {
@@ -59,7 +59,8 @@ func (MysqlDialect) SupportsLastInsertID() bool { return true }
 //   - conflictCols only → the do-nothing idiom, a self-assignment of the
 //     first conflict column.
 //   - no conflictCols (skip-conflicts) → the engine passes the insert columns
-//     as updateCols (the ADR-0011 hint); self-assignment of the first one.
+//
+// as updateCols (the hint); self-assignment of the first one.
 //   - both empty → unreachable through the engine; renders the bare (invalid)
 //     clause so a direct misuse fails loudly at the server rather than
 //     silently dropping conflict handling.

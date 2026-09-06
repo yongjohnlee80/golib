@@ -278,10 +278,10 @@ func Begin(ctx context.Context, opts ...TxOption) *Transaction {
 			t.span[c.Name()] = struct{}{}
 		}
 	}
-	// Two-phase pre-flight (ADR-0015 §2.5(a)): an early diagnostic over the
+	// Two-phase pre-flight ((a)): an early diagnostic over the
 	// DECLARED connections, so an impossible transaction performs no side
 	// effects. It is not authority — Commit always validates the participants
-	// that actually joined (§2.5(b)).
+	// that actually joined ((b)).
 	if t.initErr == nil && cfg.twoPhase {
 		for _, c := range cfg.span {
 			if _, ok := c.Dialect().(TwoPhaser); !ok {
@@ -565,7 +565,7 @@ func newGID(name string) string {
 // inspects the connections the caller DECLARED, while join enlists the
 // connection each [Schema] SUPPLIED, and admission is by name —
 // so a capable declaration and an incapable participant can share a name. The
-// pre-flight is a diagnostic; this is the authority (ADR-0015 §2.5(b)).
+// pre-flight is a diagnostic; this is the authority ((b)).
 //
 // A participant that does not implement [twoPhaseContext] fails exactly like
 // one reporting no support: ErrTwoPhaseUnsupported, before anything is

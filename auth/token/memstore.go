@@ -6,8 +6,7 @@ import (
 )
 
 // MemStore is the bounded in-process Store: correct for a single-process
-// deployment, and the default so nothing has to be configured to start
-// (ADR-0001 §2.6b).
+// deployment, and the default so nothing has to be configured to start.
 //
 // Consume holds one lock across fetch, validation and removal, so it is atomic
 // by construction — exactly one concurrent redeemer of a single-use token can

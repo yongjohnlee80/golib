@@ -1,5 +1,5 @@
 // Package msgpackrpc implements the msgpack-RPC wire format as an rpc.Codec
-// (server ADR-0008 §2.5) — the framing Neovim's sockconnect(..., {rpc=true})
+// (server) — the framing Neovim's sockconnect(..., {rpc=true})
 // speaks: request [0, msgid, method, params], response [1, msgid, error,
 // result], notification [2, method, params]. Values ride the zero-dep
 // golib msgpack codec; Neovim's EXT handle types (Buffer=0, Window=1,

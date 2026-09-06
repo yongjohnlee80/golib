@@ -17,7 +17,7 @@ type evalCtx struct {
 
 // NewPolicy validates a FINISHED tree and returns the only thing callers
 // invoke. Validation is on the whole tree, not a node in isolation: an Any
-// cannot know whether it is the root (ADR-0001 §2.2.2).
+// cannot know whether it is the root.
 //
 // It returns an error rather than panicking, because policies are frequently
 // assembled from configuration.
@@ -47,11 +47,11 @@ type policy struct {
 //
 // Every failure returns ErrUnauthenticated and a nil Identity; the specific
 // reason goes to the returned Audit via the request's audit sink, never to the
-// caller (ADR-0001 §2.2).
+// caller.
 func (p *policy) Authenticate(ctx context.Context, r *Request) (*Identity, error) {
 	a := newAudit()
 	if r == nil {
-		// §2.7 promises exactly ONE record per authentication, so this path emits
+		// promises exactly ONE record per authentication, so this path emits
 		// one too rather than being a silent hole in the trail.
 		a.note("request", errNilRequest.AuditDetail())
 		p.emit(ctx, Attempt{ID: a.AttemptID, Outcome: "failure", Reasons: a.Reasons})
@@ -98,7 +98,7 @@ func outcomeFor(err error) string {
 
 // eval for a leaf: run the factor, then enforce the Subject rule against the
 // factor's DECLARED kind so evaluation cannot disagree with the classification
-// the tree was validated under (ADR-0001 §2.1).
+// the tree was validated under.
 func (n leafNode) eval(ec evalCtx) ([]scoped, error) {
 	kind := n.f.Kind()
 	c, err := n.f.Verify(ec.ctx, ec.req)
@@ -162,7 +162,7 @@ func (n anyNode) eval(ec evalCtx) ([]scoped, error) {
 	return nil, joined
 }
 
-// merge turns contributions into one Identity (ADR-0001 §2.2.1):
+// merge turns contributions into one Identity:
 //
 //   - every subject-bearing contribution must AGREE on Subject; disagreement is
 //     a failure, not a merge — it means two different principals were proved;

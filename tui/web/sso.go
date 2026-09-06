@@ -12,7 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/logger"
 )
 
-// SSO wires the whole login-handoff workflow of ADR-0009 §2.12, so a consumer
+// SSO wires the whole login-handoff workflow of, so a consumer
 // supplies only the things that are genuinely theirs: how to allocate upstream
 // state, and how to release it.
 //
@@ -132,7 +132,7 @@ type parkedEntry[T any] struct {
 // SSOConfig configures [NewSSO].
 type SSOConfig[T any] struct {
 	// Provision allocates upstream state for a session whose attach carried NO
-	// login — the direct mechanisms of ADR-0001: an SSH-minted ticket, an mTLS
+	// login — the direct mechanisms of: an SSH-minted ticket, an mTLS
 	// verified chain, or an SSHSIG challenge. Those authenticate at attach, so no
 	// login route ran and nothing was parked.
 	//
@@ -368,7 +368,7 @@ func (s *SSO[T]) Claim(info *SessionInfo) (T, bool) {
 // Options returns the handler and manager wiring, together.
 //
 // Together on purpose. Returning them separately would let a consumer wire the
-// login side and forget the release side, which is the leak of §2.12 with extra
+// login side and forget the release side, which is the leak of with extra
 // steps.
 func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 	hOpt := func(h *Handler) {

@@ -9,7 +9,7 @@ import (
 
 // ProgressBar renders determinate progress, an indeterminate sweep, or a
 // one-cell spinner. Animation is driven by an addressed
-// TickEvent registration (Context.Every, ADR-0005 §2.6) held ONLY while the
+// TickEvent registration (Context.Every) held ONLY while the
 // bar is animating: it is registered on entering the indeterminate state and
 // cancelled on leaving it (and at unmount, automatically), so a finished
 // progress bar costs zero wakeups and the idle-app zero-byte guarantee

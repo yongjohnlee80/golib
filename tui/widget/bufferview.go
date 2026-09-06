@@ -25,7 +25,7 @@ var ErrClosed = errors.New("widget: buffer view closed")
 // when the loop lags — never unbounded buffering, mirroring
 // ingestor/writer.go's semaphore model), ordered delivery, ErrClosed after
 // unmount. *BufferView itself deliberately does NOT implement io.Writer
-// (rev 1, Lector Q2).
+// (Lector Q2).
 //
 // Keys (focused): Up/Down/PgUp/PgDn/Home/End scroll; End resumes
 // follow-tail. The wheel scrolls. BufferView never consumes printable keys
@@ -512,7 +512,7 @@ func (w *bufWriter) release(n int) {
 	w.mu.Unlock()
 }
 
-// Write implements io.Writer per the §2.4 handle contract: any-goroutine,
+// Write implements io.Writer per the handle contract: any-goroutine,
 // bounded pending bytes (blocks when the loop lags), ordered, ErrClosed
 // after unmount.
 func (w *bufWriter) Write(p []byte) (int, error) {

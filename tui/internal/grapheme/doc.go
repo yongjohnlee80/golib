@@ -3,7 +3,7 @@
 // (UAX #11 East Asian Width plus UTS #51 emoji data) with zero dependencies,
 // backed by generated, committed tables.
 //
-// It is the Unicode layer beneath golib/tui's cell buffer (ADR-0003 §2.7):
+// It is the Unicode layer beneath golib/tui's cell buffer:
 // tui.Graphemes, tui.StringWidth, tui.StringWidthPolicy, and
 // Surface.StringWidth are thin wrappers over Clusters, ClusterWidth, and
 // StringWidth.
@@ -28,7 +28,7 @@
 //
 // # Width
 //
-// The width model is wcwidth-shaped, per cluster (ADR-0003 §2.7): each rune
+// The width model is wcwidth-shaped, per cluster: each rune
 // is 0, 1, or 2 columns — 0 for C0/C1 controls, combining marks (Mn/Me), and
 // default-ignorable code points (which include ZWJ, ZWNJ, and the variation
 // selectors); 2 for East Asian Wide/Fullwidth and Emoji_Presentation; 1

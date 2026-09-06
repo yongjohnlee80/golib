@@ -8,7 +8,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// Argon2id hashes with Argon2id. It is the default (ADR-0001 §2.4).
+// Argon2id hashes with Argon2id. It is the default.
 type Argon2id struct {
 	// Memory is the memory cost in KiB.
 	Memory uint32

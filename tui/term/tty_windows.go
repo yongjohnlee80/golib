@@ -26,7 +26,7 @@ func waitWritable(int) error { return nil }
 // stream, so there is exactly one input parser on every platform. MakeRaw
 // never touches stdout, so output VT processing is enabled here. Supported
 // floor: Windows 10 1809+ (N4); std syscall lacks SetConsoleMode entirely,
-// which is why x/sys is the sanctioned dependency (§2.11).
+// which is why x/sys is the sanctioned dependency.
 
 const (
 	waitObject0 = 0x00000000

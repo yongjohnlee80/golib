@@ -55,8 +55,8 @@ func (d *queryDAO[R, C, K, ID]) newBuilder() *builder { return &builder{dialect:
 
 // handle resolves the statement executor: the transaction's TxConn when bound
 // (issuing BEGIN on first touch), else the pool connection. A tx-bound DAO thus
-// runs every statement on the transaction with no per-statement rebind (fixes the
-// prior art's .Use(tx) footgun, ADR-0005 §4).
+// runs every statement on the transaction with no per-statement rebind
+// (fixes the prior art's.Use(tx) footgun).
 // handle resolves the executor for one statement: the transaction's connection
 // when this DAO is tx-bound, the pool otherwise.
 //
@@ -95,7 +95,7 @@ func (d *queryDAO[R, C, K, ID]) begin(op Op, fireBuild bool) (*pipeline, error) 
 }
 
 // stagerFor adapts one queryDAO's staged state to the type-erased [Stager]
-// surface, enforcing the per-op semantics of ADR-0009 §2.1.
+// surface, enforcing the per-op semantics of
 type stagerFor[R any, C ~string, K ~string, ID any] struct {
 	d   *queryDAO[R, C, K, ID]
 	op  Op
@@ -665,7 +665,7 @@ func (d *queryDAO[R, C, K, ID]) Delete() error {
 }
 
 func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
-	// Pool unless tx-bound — the nil-tx fallthrough of ADR-0019, resolved
+	// Pool unless tx-bound — the nil-tx fallthrough of, resolved
 	// SEPARATELY here, same contract as handle(). The separate resolution is
 	// why it carries its own test cell.
 	var exec Execer = d.conn

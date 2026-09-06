@@ -1,5 +1,5 @@
 // Package partial models an HTTP PATCH body as a presence-aware, three-state
-// payload for a model type T (ADR-0001).
+// payload for a model type T.
 //
 // A PATCH field is one of three states — it carries a value, it is omitted, or
 // it is asked to be cleared — a distinction encoding/json collapses (an
@@ -15,6 +15,6 @@
 // Server code mutates the patch with Set/Clear/Remove/Only (last mutation
 // wins over a clear; unknown field names are loud). Rules projects the patch
 // into a Write/Skip/Clear disposition per field; ApplyRules (the only
-// dao-importing surface) stages that onto a dao.DAO via ADR-0010's SetRules —
+// dao-importing surface) stages that onto a dao.DAO via 's SetRules —
 // end-to-end PATCH with zero per-entity code.
 package partial

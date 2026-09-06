@@ -73,7 +73,7 @@ const (
 	ActPageUp
 	ActPageDown
 
-	// Double-key prefixes (the one-key pending buffer, ADR-0008 §2.1).
+	// Double-key prefixes (the one-key pending buffer).
 	ActDeletePrefix // d → dd
 	ActYankPrefix   // y → yy
 	ActGoPrefix     // g → gg

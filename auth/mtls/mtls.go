@@ -1,6 +1,5 @@
 // Package mtls authenticates a client by its TLS certificate — but only a
-// certificate that VERIFIED against configured client-auth roots (ADR-0001
-// §2.6a).
+// certificate that VERIFIED against configured client-auth roots.
 //
 // The distinction is the whole package: any peer can present a certificate, and
 // a self-signed one arrives looking exactly like a real one. Only
@@ -101,7 +100,7 @@ func (f *Factor) Kind() auth.FactorKind { return auth.FactorIdentity }
 // leaf, and a non-empty mapped subject.
 //
 // The Contribution's ExpiresAt is the leaf's NotAfter: an identity proved by a
-// certificate cannot outlive it (ADR-0001 §2.6a).
+// certificate cannot outlive it.
 func (f *Factor) Verify(_ context.Context, r *auth.Request) (auth.Contribution, error) {
 	if r == nil || r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
 		return auth.Contribution{}, ErrNoVerifiedChain

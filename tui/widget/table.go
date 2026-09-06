@@ -29,8 +29,8 @@ const (
 )
 
 // Table is a List with column structure: a one-row header (muted, underlined)
-// above a cursor-driven row list (ADR-0007 List semantics — ↑/↓, paging,
-// selection, empty text). Rows are formatted from TableColumn cells, padded
+// above a cursor-driven row list (List semantics — ↑/↓, paging, selection,
+// empty text). Rows are formatted from TableColumn cells, padded
 // and truncated to the per-layout resolved column widths, so the header and
 // the cells stay aligned at any terminal size.
 //
@@ -175,7 +175,7 @@ func (t *Table[T]) Render(s tui.Surface) {
 // HandleEvent forwards KEYS to the row list so navigation works when they are
 // delivered to the Table (e.g. a controller forwarding ↑/↓).
 //
-// Pointer events are NOT forwarded wholesale. Under ADR-0004's
+// Pointer events are NOT forwarded wholesale. Under 's
 // target-first routing the row list is a placed child at local Y:1, so a press in
 // the body reaches it directly with correct local coordinates and never arrives
 // here. What does arrive here is a press on the HEADER row, and forwarding that

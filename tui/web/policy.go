@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 )
 
-// RecommendedPolicy composes the shape ADR-0009 §2.8 recommends: any ONE
+// RecommendedPolicy composes the shape recommends: any ONE
 // identity-bearing mechanism, optionally constrained by a contextual factor.
 //
 // Pass nil for any mechanism you do not use. At least one is required — an empty
@@ -15,7 +15,7 @@ import (
 // default.
 //
 // The `constrain` factors are contextual (an IP allowlist, say). They can NARROW
-// who may attempt but can never satisfy the policy alone; ADR-0001 §2.2.2
+// who may attempt but can never satisfy the policy alone;
 // enforces that structurally, so a mistake here is a construction error rather
 // than a quiet weakening.
 func RecommendedPolicy(mechanisms []auth.Factor, constrain ...auth.Factor) (auth.Policy, error) {
@@ -45,15 +45,17 @@ func RecommendedPolicy(mechanisms []auth.Factor, constrain ...auth.Factor) (auth
 
 // PasswordPolicyExample builds the LOGIN policy for password authentication.
 //
-// Password is permitted and is the weakest supported mechanism (ADR-0009 §2.8
-// rev 9, reshaped in rev 11). What sits behind the credential is a shell, so:
+// Password is permitted and is the weakest supported mechanism (rev 9,
+// reshaped in rev 11). What sits behind the credential is a shell, so:
 //
 //   - the password factor is wrapped in [auth.Throttle], because a reusable
 //     secret with no backoff is an online guessing attack waiting to happen;
 //   - it is constrained by a CONTEXTUAL factor, so an allowlist narrows who may
-//     even try. A contextual factor cannot satisfy a policy alone — ADR-0001
-//     §2.2.2 enforces that structurally — so this narrows without adding a way
-//     in. An identity factor is refused here for exactly that reason.
+//
+// even try. A contextual factor cannot satisfy a policy alone —
+// enforces that structurally — so this narrows without adding a way
+//
+//	in. An identity factor is refused here for exactly that reason.
 //
 // # This builds Config.LoginPolicy, not Config.Policy
 //

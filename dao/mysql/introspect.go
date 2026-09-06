@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/dao"
 )
 
-// Schema introspection (golib-dao ADR-0013 §3.3) over information_schema.
+// Schema introspection (golib-dao) over information_schema.
 // An empty schema resolves to the connection's current database via
 // DATABASE(). String flags (IS_NULLABLE, COLUMN_KEY) are compared in Go, not
 // SQL, to avoid driver bool-conversion trouble.

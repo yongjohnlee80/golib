@@ -13,7 +13,7 @@ import (
 // the client.
 //
 // The client reports; the SERVER decides. Putting the resolution order here
-// rather than in the served JavaScript means the rules of §2.9 are testable
+// rather than in the served JavaScript means the rules of are testable
 // against the real [tui.Event] structs, and a client cannot talk the backend
 // into emitting an event shape the table does not allow.
 //
@@ -60,7 +60,7 @@ type MouseReport struct {
 	Ctrl, Alt, Shift, Meta bool
 }
 
-// namedKeys maps KeyboardEvent.key values to tui key constants (§2.9 rule 3).
+// namedKeys maps KeyboardEvent.key values to tui key constants (rule 3).
 //
 // Order matters only in the sense that this map is consulted BEFORE the
 // modified-printable rule: "Enter" with Ctrl held is Ctrl+Enter, not a
@@ -124,7 +124,7 @@ type reservedRule struct {
 	Need string `json:"need,omitempty"`
 }
 
-// reservedRules are the chords the BROWSER keeps (§2.9 rule 1).
+// reservedRules are the chords the BROWSER keeps (rule 1).
 //
 // Stealing these is how a web terminal becomes hostile: a user who cannot open a
 // tab, reload, or reach devtools has lost control of their own browser. The
@@ -169,7 +169,7 @@ func (r reservedRule) matches(k KeyReport) bool {
 }
 
 // reservedShortcut reports whether a chord belongs to the BROWSER and must not
-// be forwarded or preventDefault'ed (§2.9 rule 1).
+// be forwarded or preventDefault'ed (rule 1).
 func reservedShortcut(r KeyReport) bool {
 	for _, rule := range reservedRules {
 		if rule.matches(r) {
@@ -182,7 +182,7 @@ func reservedShortcut(r KeyReport) bool {
 // ReservedShortcut is the exported form, for tests and callers.
 func ReservedShortcut(r KeyReport) bool { return reservedShortcut(r) }
 
-// decoder applies §2.9's resolution order.
+// decoder applies 's resolution order.
 type decoder struct {
 	// treatCtrlAltAsAltGraph enables the Ctrl+Alt heuristic on browsers that do
 	// not report AltGraph. OFF by default: inferring AltGraph from Ctrl+Alt

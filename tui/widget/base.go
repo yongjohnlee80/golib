@@ -41,8 +41,8 @@ func (b *Base) Init(ctx *tui.Context) { b.ctx = ctx }
 // Context returns the mount context (nil before the first mount).
 func (b *Base) Context() *tui.Context { return b.ctx }
 
-// NodeID returns the widget's node identity for this mount (ADR-0004
-// Context.ID()); 0 before the first mount.
+// NodeID returns the widget's node identity for this mount (Context.ID); 0
+// before the first mount.
 func (b *Base) NodeID() tui.NodeID {
 	if b.ctx == nil {
 		return 0
@@ -72,8 +72,8 @@ func (b *Base) HandleEvent(ev tui.Event) bool { return false }
 
 // measure is the policy-aware text width every widget MUST use for layout,
 // cursor, scroll, wrap-recount, and hit-test math OUTSIDE Render — it routes
-// through Context.StringWidth, so the App's width policy (WithWidthPolicy,
-// ADR-0003 §2.4) governs geometry exactly as Surface.StringWidth governs
+// through Context.StringWidth, so the App's width policy (WithWidthPolicy)
+// governs geometry exactly as Surface.StringWidth governs
 // paint. Before the first mount (ctx nil, e.g. a setter measuring at
 // construction) it falls back to the default policy, matching a Surface
 // under WidthPolicyDefault.
@@ -86,7 +86,7 @@ func (b *Base) measure(s string) int {
 
 // --- unexported plumbing shared by the package's widgets ---
 
-// publish enqueues v on the App bus (enqueue-only; ADR-0005 §2.7). No-op
+// publish enqueues v on the App bus (enqueue-only;). No-op
 // before mount.
 func (b *Base) publish(v any) {
 	if b.ctx != nil {

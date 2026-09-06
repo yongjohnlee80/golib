@@ -96,7 +96,7 @@ func (h *Handler) WebSocketHandler(reg *server.Registry) http.Handler {
 
 // Serve builds the listener FROM the validated config and serves until ctx ends.
 //
-// This is the path where the §2.5 guarantees actually hold: the bind address and
+// This is the path where the guarantees actually hold: the bind address and
 // TLS settings [Config.validate] checked are the ones used here, so a
 // non-loopback plaintext bind cannot happen. Previously validate() inspected
 // fields nothing consumed, so it described an intention rather than constraining
@@ -121,7 +121,7 @@ func (h *Handler) Serve(ctx context.Context) (err error) {
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), h.grace)
 		defer cancel()
-		// A Shutdown error means a session did not exit, which is exactly §2.8's
+		// A Shutdown error means a session did not exit, which is exactly 's
 		// guaranteed-teardown promise failing. Hiding it behind a clean return is
 		// worse than the leak it conceals.
 		if serr := h.mgr.Shutdown(shutdownCtx); serr != nil {

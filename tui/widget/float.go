@@ -29,8 +29,8 @@ var (
 // AtRect anchors the float at an explicit overlay-relative rectangle.
 func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
 
-// Float is a floating window living on an overlay Stack layer (ADR-0007
-// §2.5; ADR-0004 §2.7.4). Attach it to an OverlayHost (host.Attach) or add
+// Float is a floating window living on an overlay Stack layer. Attach it to
+// an OverlayHost (host.Attach) or add
 // it to any full-area tui.Stack layer, then toggle with Show/Hide. While
 // hidden it occupies zero cells (invisible, not hit-testable, no tab stop).
 //

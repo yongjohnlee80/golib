@@ -1,5 +1,5 @@
 // Package style provides the styling, design-token, and theming layer of
-// golib/tui (ADR-0006): an immutable, fluent [Style] value, a resolvable
+// golib/tui: an immutable, fluent [Style] value, a resolvable
 // [Color] sum type, a semantic [Token] vocabulary with a derivation-driven
 // [Theme], and the [BorderStyle] prefabs. It is stdlib-only and imports no
 // other tui package; the render-time resolver (Style → cell attributes)
@@ -37,7 +37,7 @@
 // [Color] is a flat comparable sum type: terminal default, ANSI-16 index,
 // ANSI-256 index, truecolor RGB, or an adaptive light/dark pair, built via
 // [Default], [ANSI], [ANSI256], [RGB], and [Adaptive]. Colors resolve at
-// render time against the terminal's capability profile (ADR-0002),
+// render time against the terminal's capability profile,
 // downsampling truecolor → 256 → 16 → mono and never upsampling: an ANSI-16
 // color always emits the ANSI-16 SGR so the user's own palette renders it.
 //
@@ -53,7 +53,7 @@
 // …): 11 base slots adopting Textual's theme vocabulary plus 9 derived
 // slots. Widgets style themselves in tokens; swapping the active [Theme]
 // re-skins the whole application with zero widget cooperation (the swap
-// itself is App-level, ADR-0005).
+// itself is App-level).
 //
 // [NewTheme] requires only Primary; every other slot has a documented
 // derivation default. [DefaultTheme] is NewTheme(ANSI(4)): every default

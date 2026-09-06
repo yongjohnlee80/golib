@@ -11,18 +11,18 @@ type applyConfig struct {
 
 // WithRename installs a field-name translation for entities whose dao field
 // enums diverge from their wire names. The default is identity — the
-// convention (dao ADR-0010 §2.6) is that an entity's field-enum values ARE its
+// convention (dao) is that an entity's field-enum values ARE its
 // wire names, so the adapter is a type cast.
 func WithRename(fn func(string) string) ApplyOption {
 	return func(c *applyConfig) { c.rename = fn }
 }
 
-// ApplyRules stages the patch onto a DAO via dao ADR-0010's SetRules: canonical
+// ApplyRules stages the patch onto a DAO via dao 's SetRules: canonical
 // field names cast to the DAO's field enum C, kinds mapped 1:1. The returned
 // error is the patch's (bind/mutator state) — check it before executing the
 // verb. dao's SetRules is lenient on keys that don't resolve to writable
 // fields and its Field declarations own clearability, so a patch may carry more
-// than the entity writes without ceremony (ADR-0001 §2.9). This is the only
+// than the entity writes without ceremony. This is the only
 // file in the package that imports golib/dao.
 //
 // The parameter is dao.Setter, not dao.DAO: staging rules is the only thing

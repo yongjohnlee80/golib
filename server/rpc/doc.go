@@ -1,5 +1,5 @@
 // Package rpc is a connection-oriented RPC transport core over a pluggable
-// wire Codec (server ADR-0008), built on server.Scaffold: per-connection
+// wire Codec (server), built on server.Scaffold: per-connection
 // read loop, bounded concurrent dispatch with backpressure, per-request
 // contexts cancelled on Shutdown, a pre-dispatch Gate for
 // handshake-before-methods policy, per-message size bounds, and polite drain

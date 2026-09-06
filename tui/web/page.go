@@ -213,7 +213,7 @@ func WSPath(p string) HandlerOption {
 	}
 }
 
-// WithLimits overrides §2.9's resource limits. Zero fields keep their defaults.
+// WithLimits overrides 's resource limits. Zero fields keep their defaults.
 func WithLimits(l Limits) HandlerOption {
 	return func(h *Handler) { h.limits = l.normalize() }
 }
@@ -252,8 +252,7 @@ func OnLogin(fn func(handoff string, id *auth.Identity, stash *Stash) error) Han
 // MaxPendingLogins caps logins parked awaiting an attach (default 8).
 //
 // A separate budget from [MaxSessions] on purpose: they bound different
-// resources, and a reconnect at a full session cap must still be able to log in
-// (§2.12.4).
+// resources, and a reconnect at a full session cap must still be able to log in.
 func MaxPendingLogins(n int) HandlerOption {
 	return func(h *Handler) {
 		if n > 0 {
@@ -295,7 +294,7 @@ const (
 //
 // Validation happens HERE, so a misconfigured WebTUI fails before it can accept
 // a connection: a non-loopback plaintext bind, a missing policy and an empty
-// Origin allowlist are all startup errors (§2.5, §2.8).
+// Origin allowlist are all startup errors.
 func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -362,7 +361,7 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 // defence, but it is meant to sit behind [Handler.Guard], which refuses before
 // the upgrade — reaching this function already means a 101 was sent. An earlier
 // comment said to wire it directly into ws.Handler, which invited exactly the
-// post-upgrade-check arrangement lector r1 flagged. [Handler.Mount] composes the
+// post-upgrade-check arrangement flagged. [Handler.Mount] composes the
 // two correctly; use this directly only if you are replicating that composition
 // deliberately.
 func (h *Handler) ServeWS(ctx context.Context, s *ws.Session) {

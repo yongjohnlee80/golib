@@ -1,4 +1,4 @@
-// Package ws is golib's WebSocket transport (golib-server ADR-0007): endpoints
+// Package ws is golib's WebSocket transport (golib-server): endpoints
 // are ordinary routes on the golib/server/http router, wrapped by the same
 // middleware as any handler, with a ctx-first Session API.
 //

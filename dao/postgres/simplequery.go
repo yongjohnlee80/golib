@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 )
 
-// SimpleQuerier is the simple-protocol face of a pinned connection (ADR-0018
-// Amendment 1, RATIFIED 2026-09-02): ONE Query frame, the response streamed as
+// SimpleQuerier is the simple-protocol face of a pinned connection
+// (Amendment 1, RATIFIED 2026-09-02): ONE Query frame, the response streamed as
 // protocol data until the terminal ReadyForQuery.
 //
 // It exists for a consumer that gates SQL TEXT before dispatch — autodb's

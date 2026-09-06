@@ -15,7 +15,7 @@ import (
 // lands in browser history, in a Referer header, and in every access log and
 // proxy between the client and here. The ticket travels to the browser in a URL
 // FRAGMENT — which is never transmitted — and the client scrubs it with
-// history.replaceState before opening the socket (§2.8).
+// history.replaceState before opening the socket.
 //
 // Peer comes from the HTTP request's RemoteAddr, the transport's own view. A
 // forwarded header is available to an ipallow factor under its own trusted-proxy
@@ -46,7 +46,7 @@ func authRequest(r *http.Request, m clientMessage) *auth.Request {
 	// NO password credentials are projected here, and the protocol carries none.
 	// A password authenticates at the login route and yields a ticket; the attach
 	// path sees only tickets, certificates and signatures. Mapping subject and
-	// password here would have made rev 11's split true of the documentation and
+	// password here would have made 's split true of the documentation and
 	// false of the code.
 
 	// Origin reaches the factors because an sshkey challenge is bound to it.
@@ -63,11 +63,10 @@ func authRequest(r *http.Request, m clientMessage) *auth.Request {
 	//
 	// This was omitted, so a request arriving with a verified client-certificate
 	// chain reached the factor as TLS=nil and mtls returned ErrNoVerifiedChain
-	// every time — the mTLS branch of §2.8's policy was unreachable in practice.
+	// every time — the mTLS branch of 's policy was unreachable in practice.
 	// The projection goes through mtls.FromConnectionState, which
 	// refuses to carry PeerCertificates: any self-signed certificate lands there,
-	// so a later reader must not be able to authenticate from one (ADR-0001
-	// §2.6a).
+	// so a later reader must not be able to authenticate from one.
 	if r.TLS != nil {
 		req.TLS = mtls.FromConnectionState(r.TLS)
 	}
