@@ -169,7 +169,14 @@ func (a *App) runTask(tctx context.Context, cancel context.CancelFunc, owner Nod
 				// One crashing task never kills the app; the owner finds
 				// out through the same channel as any failure
 				// (errors.Is(res.Err, tui.ErrTaskPanic)).
-				err = fmt.Errorf("%w: %v", ErrTaskPanic, rec)
+				// A panicked ERROR is wrapped so the owner can errors.As
+				// its fields back; %v would flatten the value while
+				// ErrTaskPanic kept answering, hiding the loss.
+				if pe, ok := rec.(error); ok {
+					err = fmt.Errorf("%w: %w", ErrTaskPanic, pe)
+				} else {
+					err = fmt.Errorf("%w: %v", ErrTaskPanic, rec)
+				}
 				logger.Error(a.cfg.logger, err, map[string]any{
 					"tui": "task panic", "owner": uint64(owner), "task": uint64(id),
 					"stack": string(debug.Stack()),

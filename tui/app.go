@@ -199,7 +199,18 @@ func (a *App) Run(ctx context.Context) (err error) {
 			if a.cfg.panicPolicy == PanicRepanic {
 				panic(rec) // after restore, original value
 			}
-			err = errors.Join(err, fmt.Errorf("%w: %v", ErrPanic, rec))
+			// A panicked ERROR is wrapped, not rendered. The convention
+			// tells authors to panic with a value (errs.Fatal) so that a
+			// caller can errors.As the fields back out; %v here would
+			// flatten that value into text while ErrPanic kept answering
+			// errors.Is, so the error would look healthy and the payload
+			// would be gone. A non-error value has nothing to preserve and
+			// still formats.
+			if pe, ok := rec.(error); ok {
+				err = errors.Join(err, fmt.Errorf("%w: %w", ErrPanic, pe))
+			} else {
+				err = errors.Join(err, fmt.Errorf("%w: %v", ErrPanic, rec))
+			}
 		}
 	}()
 
