@@ -1,4 +1,4 @@
-// Package term is golib/tui's concrete ANSI terminal driver (ADR-0002): the
+// Package term is golib/tui's concrete ANSI terminal driver: the
 // real-terminal implementation of the [tui.Backend] seam on unix and Windows.
 //
 // [Open] validates the TTY and builds an inert [Backend]; Start acquires the
@@ -11,8 +11,8 @@
 //
 // # Capability truth, not capability folklore
 //
-// Capabilities are resolved by live probing at Start — never terminfo
-// (ADR-0001 §2.4 #4): one batched write of DECRQM 2004/2026/2027/2048/1006,
+// Capabilities are resolved by live probing at Start — never terminfo:
+// one batched write of DECRQM 2004/2026/2027/2048/1006,
 // XTGETTCAP RGB+Smulx, OSC 10/11, and the kitty query, fenced by DA1. Every
 // real terminal answers DA1, so healthy terminals never pay the probe
 // timeout (default 250ms, WithProbeTimeout). Degradation is per-capability,
@@ -31,14 +31,14 @@
 //
 // # Output
 //
-// Flush emits one frame as one Write (ADR-0003 R1–R4): cursor hidden during
+// Flush emits one frame as one Write: cursor hidden during
 // paint, overwrite-in-place (never clear-then-redraw), CUP only on
 // discontinuity, SGR only on attribute change, and mode-2026 synchronized
 // -update brackets when the terminal supports them. Cursor operations are
 // latched, not immediate, so they land in the same write as the cell diff.
 //
 // This is the ONLY golib package that imports golang.org/x/term and
-// golang.org/x/sys (ADR-0001 §2.2); the tui core, style, and widget packages
+// golang.org/x/sys; the tui core, style, and widget packages
 // are stdlib-only, and tests of those packages use tui.TestBackend instead
 // of this driver.
 package term

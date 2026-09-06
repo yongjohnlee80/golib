@@ -37,7 +37,7 @@ var (
 	// that created the session, with [BindPeer] on. The session is terminated.
 	ErrPeerChanged = errors.New("web: peer address changed; session terminated")
 
-	// ErrPendingLogins means the parked-login budget is full (ADR-0009 §2.12.4).
+	// ErrPendingLogins means the parked-login budget is full.
 	ErrPendingLogins = errors.New("web: too many logins awaiting an attach")
 )
 
@@ -60,11 +60,10 @@ type Runner interface {
 // It receives a [SessionInfo] carrying the authenticated identity, the login
 // handoff (if any) and the creating peer. The identity is what makes a per-user
 // App possible at all; an earlier signature took only the Backend and so could
-// not know who the session was for (ADR-0009 §2.12).
+// not know who the session was for.
 type AppFactory func(*Backend, *SessionInfo) Runner
 
-// Manager owns session lifecycle: create, attach, detach, evict, shut down
-// (ADR-0009 §2.8).
+// Manager owns session lifecycle: create, attach, detach, evict, shut down.
 //
 // Sessions are the real work of this package. Rendering a grid is
 // straightforward; making sure that a browser closing its laptop lid does not
@@ -142,7 +141,7 @@ func ManagerLogger(l logger.Logger) ManagerOption {
 }
 
 // BindPeer binds a session to the peer address that created it: an attach from a
-// different address is refused and the session terminated (ADR-0009 §2.13).
+// different address is refused and the session terminated.
 //
 // OFF by default, for two reasons stated in the ADR and worth repeating where a
 // caller will read them. Under the documented SSH local-forward every connection
@@ -155,7 +154,7 @@ func BindPeer(on bool) ManagerOption {
 }
 
 // OnHandoffUnused registers the release hook for handoffs no [AppFactory] will
-// claim (ADR-0009 §2.12.2).
+// claim.
 //
 // Called at most once per handoff, for a reattach or a failed attach. Without it
 // a consumer that parks per-login state leaks an entry on every reconnect.
@@ -194,7 +193,7 @@ var ErrSessionBusy = errors.New("web: session already has a live connection")
 //
 // Without a scheduler, eviction only ran when a Create happened to trigger it,
 // so a detached session on an idle server lived forever and held its App, its
-// grid and its goroutines (lector r1). The sweep interval is a quarter of the
+// grid and its goroutines. The sweep interval is a quarter of the
 // idle timeout, so a session is evicted within 25% of the configured window
 // rather than at some arbitrary later moment.
 func (m *Manager) Start() (stop func()) {
@@ -346,7 +345,7 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 	}
 	// Checked BEFORE the lock. An earlier version checked it while holding m.mu
 	// and then called m.drop, which takes m.mu again — a self-deadlock on a path
-	// a cancelled connection reaches routinely (lector r2). No session exists
+	// a cancelled connection reaches routinely. No session exists
 	// yet here, so there is nothing to drop either.
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -378,7 +377,7 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 	// Deriving it from the connection meant a disconnect cancelled the App
 	// immediately, so the detach window of §2.8 — the whole reason a flaky
 	// network does not destroy work — was unreachable: Session.Done fired the
-	// moment the socket closed (lector r1). ctx is honored for the CREATE call
+	// moment the socket closed. ctx is honored for the CREATE call
 	// only; the session outlives it by design.
 	runCtx, cancel := context.WithCancel(m.base)
 	s := &Session{
@@ -403,7 +402,6 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 		// the Stop this was the only exit past `New` that leaves a backend
 		// un-stopped. Harmless while New allocates channels and starts nothing;
 		// exactly the asymmetry that stops being harmless the day it does.
-		// (gold-man, #27 r0.)
 		m.drop(sid)
 		cancel()
 		_ = backend.Stop()
@@ -425,7 +423,7 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 			// terminates that session itself, by design. Both are idempotent —
 			// cancel by contract, Stop through its once — so the repeat is
 			// deliberate rather than a leak, and this comment exists so a reader
-			// tracing that path does not have to work that out. (gold-man r0.)
+			// tracing that path does not have to work that out.
 			m.drop(sid)
 			cancel()
 			_ = s.backend.Stop()
@@ -536,7 +534,7 @@ func (m *Manager) attachSession(s *Session, id *auth.Identity, h Hello, peer str
 
 	// ONE connection at a time. A second attach while one is live was silently
 	// accepted, so two browsers shared a grid, a cursor and an event stream and
-	// the last writer won (lector r1). Concurrent takeover is an authorization
+	// the last writer won. Concurrent takeover is an authorization
 	// decision, and the answer here is no: reconnect after the first connection
 	// is gone.
 	s.mu.Lock()

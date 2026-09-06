@@ -19,7 +19,7 @@ var (
 
 	// ErrConsoleTooOld reports a Windows console without VT processing.
 	// The supported floor is Windows 10 1809+; there is no non-VT rendering
-	// path (ADR-0002 §2.4, N4).
+	// path.
 	ErrConsoleTooOld = errors.New("term: console lacks VT processing (Windows 10 1809+ required)")
 )
 
@@ -30,7 +30,7 @@ const (
 	defaultEscTimeout   = 35 * time.Millisecond // the vim ttimeoutlen band
 
 	// eventBufferSize is the Events() channel buffer: a small, documented
-	// decoupling buffer, not a policy queue (ADR-0002 §2.9). If the consumer
+	// decoupling buffer, not a policy queue. If the consumer
 	// stalls, the reader blocks; events are never dropped.
 	eventBufferSize = 64
 
@@ -75,7 +75,7 @@ func (c *config) normalize() {
 	}
 }
 
-// Option configures Open (ADR-0002 §2.4).
+// Option configures Open.
 type Option func(*config)
 
 // WithTTY sets the terminal file pair. Default os.Stdin, os.Stdout.
@@ -83,7 +83,7 @@ func WithTTY(in, out *os.File) Option {
 	return func(c *config) { c.in, c.out = in, out }
 }
 
-// WithProbeTimeout bounds the startup capability probe (ADR-0002 §2.6).
+// WithProbeTimeout bounds the startup capability probe.
 // Default 250ms, clamped to [50ms, 1s]. The DA1 fence means healthy terminals
 // return far earlier; the timeout is only the backstop for terminals and
 // multiplexers that never answer DA1.
@@ -91,7 +91,7 @@ func WithProbeTimeout(d time.Duration) Option {
 	return func(c *config) { c.probeTimeout = d }
 }
 
-// WithEscTimeout sets the legacy ESC disambiguation hold (ADR-0002 §2.5).
+// WithEscTimeout sets the legacy ESC disambiguation hold.
 // Default 35ms; non-positive values restore the default. Only active when
 // the kitty keyboard protocol is NOT negotiated — kitty flag 1 removes the
 // ambiguity entirely. Over slow SSH links, split packets can misfire a lone
@@ -101,20 +101,20 @@ func WithEscTimeout(d time.Duration) Option {
 }
 
 // WithoutAltScreen selects inline mode: the alternate screen (?1049) is never
-// entered (ADR-0002 §2.7).
+// entered.
 func WithoutAltScreen() Option {
 	return func(c *config) { c.altScreen = false }
 }
 
-// WithoutMouse disables mouse reporting: ?1002/?1006 are never enabled
-// (ADR-0002 §2.4). The capability probe still reports the terminal's actual
+// WithoutMouse disables mouse reporting: ?1002/?1006 are never enabled.
+// The capability probe still reports the terminal's actual
 // SGR-mouse support in Capabilities.
 func WithoutMouse() Option {
 	return func(c *config) { c.mouse = false }
 }
 
-// WithEnv overrides environment lookup for the capability pre-seed
-// (ADR-0002 §2.6). Default os.LookupEnv; a test seam.
+// WithEnv overrides environment lookup for the capability pre-seed.
+// Default os.LookupEnv; a test seam.
 func WithEnv(lookup func(string) (string, bool)) Option {
 	return func(c *config) { c.env = lookup }
 }

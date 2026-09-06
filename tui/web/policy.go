@@ -60,7 +60,7 @@ func RecommendedPolicy(mechanisms []auth.Factor, constrain ...auth.Factor) (auth
 // It takes no "stronger mechanisms" parameter. An earlier version did, and the
 // arms it accepted were unreachable: [Handler.ServeLogin] projects only a subject
 // and a password, so a ticket, certificate or SSH signature placed in this policy
-// could never be presented to it (lector r3). Tickets, mTLS and SSH belong on
+// could never be presented to it. Tickets, mTLS and SSH belong on
 // [Config.Policy] via [RecommendedPolicy]; this is the front door that mints the
 // ticket that policy accepts.
 //
@@ -93,7 +93,7 @@ func PasswordPolicyExample(
 		// The constraint must actually be CONTEXTUAL. Checking only for non-nil
 		// accepted an identity factor, which would satisfy the policy on its own
 		// and so add a second way in rather than narrowing the first — the
-		// opposite of what this parameter promises (lector r2).
+		// opposite of what this parameter promises.
 		if f.Kind() != auth.FactorContextual {
 			return nil, fmt.Errorf("web.PasswordPolicyExample: %T is %v, not a contextual "+
 				"factor — a constraint must narrow who may attempt, not add another "+

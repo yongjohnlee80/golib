@@ -98,7 +98,7 @@ type clientConfig struct {
 // document. That makes the header and the source directly comparable and removes
 // a whole class of question.
 //
-// CORRECTION (lector r1, 2026-08-22): an earlier version of this comment claimed
+// CORRECTION: an earlier version of this comment claimed
 // that a "+" in a standard-alphabet nonce BREAKS the page, because html/template
 // renders it as "&#43;". The escaping is real; the conclusion was invented. A
 // browser decodes HTML entities before comparing the nonce, so
@@ -138,7 +138,7 @@ func (h *Handler) ServePage(w http.ResponseWriter, r *http.Request) {
 		NamedKeys: NamedKeys(),
 		// Injected, not reimplemented. The reserved table was previously
 		// hard-coded in BOTH places while the client's comment claimed it was
-		// injected (lector r1), so the two could drift with nothing to notice.
+		// injected, so the two could drift with nothing to notice.
 		Reserved: ReservedRules(),
 	})
 	if err != nil {
@@ -219,7 +219,7 @@ func WithLimits(l Limits) HandlerOption {
 }
 
 // OnLogin registers the hook that runs after [Config.LoginPolicy] succeeds and
-// the attach ticket is minted (ADR-0009 §2.12.2).
+// the attach ticket is minted.
 //
 // It receives the ticket's [HandoffID], the authenticated identity, and the
 // request's [Stash] — so a consumer moves whatever its factor allocated during
@@ -341,8 +341,8 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 	}
 	// Limits.QueueDepth is the single source of the event queue's capacity.
 	// It previously said 1024 while Backend defaulted to 256 and nothing read
-	// the field, so the documented limit and the real one were different numbers
-	// (lector r1). The Manager builds each session's Backend, so the option is
+	// the field, so the documented limit and the real one were different numbers.
+	// The Manager builds each session's Backend, so the option is
 	// pushed there.
 	mgr.setQueueDepth(h.limits.QueueDepth)
 	h.loop = &sessionLoop{

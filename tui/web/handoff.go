@@ -11,7 +11,7 @@ import (
 )
 
 // HandoffID is the opaque, single-claim correlation between one successful login
-// and the session that login authorizes (ADR-0009 §2.12).
+// and the session that login authorizes.
 //
 // It is DERIVED from the ticket rather than generated and stored, which buys
 // three things:
@@ -71,7 +71,7 @@ func (r HandoffReason) String() string {
 //
 // It exists because the factory previously received only a [Backend], so it could
 // not know WHICH user the session was for — which made single sign-on
-// unimplementable by any consumer (ADR-0009 §2.12).
+// unimplementable by any consumer.
 type SessionInfo struct {
 	// Identity is the authenticated principal. Never nil when a factory is
 	// called: [Manager.Create] refuses without one.
@@ -84,7 +84,7 @@ type SessionInfo struct {
 	// A NON-EMPTY handoff does not mean a login parked anything. Every presented
 	// ticket derives one, including a ticket minted out of band by an SSH tool, so
 	// the question "did a login park state for this session?" is answered by
-	// LOOKING IN THE PARK, not by the handoff being set (lector r1 on PR #14).
+	// LOOKING IN THE PARK, not by the handoff being set.
 	// [SSO.Session] is built that way: it claims, and provisions when the claim
 	// misses.
 	Handoff string
@@ -316,7 +316,7 @@ func (s *Stash) disarm() {
 }
 
 // It does NOT wait for an attempt already in flight, and that was a deliberate
-// reversal (lector r8). A fence looked like diligence and bought no invariant: the
+// reversal. A fence looked like diligence and bought no invariant: the
 // interleaving it appears to prevent — the login route deciding nothing was
 // committed, and a publish landing afterwards — is already impossible, because
 // gate.commit marks the slot and publishes under one lock, so a publish that runs at

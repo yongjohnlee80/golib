@@ -44,7 +44,7 @@ func Open(ctx context.Context, dsn string, opts ...Option) (dao.DataConn, error)
 }
 
 // OpenNamed opens a dao.DataConn with an explicit name (e.g. "postgres-gold") so a
-// transaction can hold one tx per database (ADR-0005). The name is what dao keys
+// transaction can hold one tx per database. The name is what dao keys
 // transaction contexts and logs on.
 func OpenNamed(ctx context.Context, name, dsn string, opts ...Option) (dao.DataConn, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
@@ -105,7 +105,7 @@ func (c *pgxConn) copyRows(ctx context.Context, table string, cols []string, row
 }
 
 // pgxTx is a dao.TxConn backed by a pgx transaction. It additionally satisfies
-// dao.ContextTxConn (ADR-0017 §2.2) — pgx finalizers take a context natively,
+// dao.ContextTxConn — pgx finalizers take a context natively,
 // so the capability is honest here in a way it cannot be over *sql.Tx.
 type pgxTx struct {
 	tx  pgx.Tx
@@ -114,7 +114,7 @@ type pgxTx struct {
 	// closed records that a finalizer has DISPATCHED. It is not set by a
 	// pre-dispatch context refusal, which leaves the transaction open and
 	// rollable with a fresh context (ADR-0017 §2.2a fault state 1). It carries
-	// no lock: one transaction is single-goroutine (ADR-0015), the same
+	// no lock: one transaction is single-goroutine, the same
 	// contract pgx's own tx.closed relies on.
 	closed bool
 }
@@ -148,7 +148,7 @@ func (t *pgxTx) copyRows(ctx context.Context, table string, cols []string, rows 
 
 // tableIdentifier parses a possibly schema-qualified table name into a pgx
 // Identifier, one part per qualification level, matching the engine's
-// QuoteTable dot-separator contract (ADR-0013 §2).
+// QuoteTable dot-separator contract.
 func tableIdentifier(table string) pgx.Identifier {
 	return pgx.Identifier(strings.Split(table, "."))
 }
@@ -164,7 +164,7 @@ func (r *pgxRows) Err() error             { return r.rows.Err() }
 func (r *pgxRows) Close() error           { r.rows.Close(); return r.rows.Err() }
 
 // Columns reports the result set's column names from pgx's field
-// descriptions, satisfying dao.RowsColumns (ADR-0012).
+// descriptions, satisfying dao.RowsColumns.
 func (r *pgxRows) Columns() ([]string, error) {
 	fds := r.rows.FieldDescriptions()
 	out := make([]string, len(fds))

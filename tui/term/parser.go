@@ -2,7 +2,7 @@ package term
 
 import "unicode/utf8"
 
-// This file implements the DEC ANSI parser (ADR-0002 §2.5): a byte-at-a-time,
+// This file implements the DEC ANSI parser: a byte-at-a-time,
 // incremental implementation of Paul Flo Williams' state machine
 // (https://vt100.net/emu/dec_ansi_parser) — ground, escape,
 // escape-intermediate, the four CSI states, osc-string, the five DCS states,
@@ -10,9 +10,9 @@ import "unicode/utf8"
 // restart, and CAN/SUB abort. It is a pure state machine with no I/O:
 // feed(b, emit) consumes one byte and emits zero or more actions, so
 // sequences split across arbitrary read boundaries decode identically to
-// contiguous input (ADR-0002 §5.2).
+// contiguous input.
 //
-// Extensions over the 1990s model, per modern practice (ADR-0002 §2.5):
+// Extensions over the 1990s model, per modern practice:
 //
 //   - ':' is accepted as a sub-parameter separator inside CSI/DCS params
 //     (kitty keys, SGR colon-form truecolor in DECRQSS replies).
@@ -27,7 +27,7 @@ import "unicode/utf8"
 //   - CAN/SUB abort the in-flight sequence AND emit an execute action:
 //     0x18/0x1A are Ctrl+X / Ctrl+Z on an input stream.
 
-// Parser limits (ADR-0002 §2.5): parameter storage allows 32 params x 4
+// Parser limits: parameter storage allows 32 params x 4
 // sub-params, saturating — excess is ignored but the sequence is still
 // consumed. String payloads (OSC/DCS) are capped to bound memory.
 const (

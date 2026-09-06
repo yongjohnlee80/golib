@@ -18,7 +18,7 @@ type PostgresDialect struct {
 }
 
 // PostgresDialect opts into the qualified-table and introspection
-// capabilities (ADR-0013).
+// capabilities.
 var (
 	_ dao.TableQuoter  = PostgresDialect{}
 	_ dao.Introspector = PostgresDialect{}
@@ -28,8 +28,8 @@ var (
 func (PostgresDialect) Name() string { return dao.DialectPostgres }
 
 // QuoteTable implements dao.TableQuoter: each dot-separated qualification
-// part is double-quoted separately, so "app.users" renders "app"."users"
-// (ADR-0013 §2). Unqualified names render identically to QuoteIdent.
+// part is double-quoted separately, so "app.users" renders "app"."users".
+// Unqualified names render identically to QuoteIdent.
 func (d PostgresDialect) QuoteTable(ident string) string {
 	parts := strings.Split(ident, ".")
 	for i, p := range parts {
@@ -62,7 +62,7 @@ type pgxCopier interface {
 	copyRows(ctx context.Context, table string, cols []string, rows [][]any) (int64, error)
 }
 
-// --- two-phase commit (ADR-0005 §2.3) ----------------------------------------
+// --- two-phase commit ----------------------------------------
 
 // TwoPhaseSupported reports true: Postgres implements prepared transactions.
 // The SERVER must also allow them — max_prepared_transactions defaults to 0

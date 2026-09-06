@@ -3,7 +3,7 @@ package web
 import "github.com/yongjohnlee80/golib/tui"
 
 // grid is a server-side cell grid: the backend's model of what the client
-// should be showing (ADR-0009 §2.1).
+// should be showing.
 //
 // Two of these exist per session — the CURRENT server truth and the last
 // baseline the client ACKNOWLEDGED — because the frame that goes on the wire is

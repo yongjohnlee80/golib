@@ -47,10 +47,10 @@ func authRequest(r *http.Request, m clientMessage) *auth.Request {
 	// A password authenticates at the login route and yields a ticket; the attach
 	// path sees only tickets, certificates and signatures. Mapping subject and
 	// password here would have made rev 11's split true of the documentation and
-	// false of the code (lector r3).
+	// false of the code.
 
-	// Origin reaches the factors because an sshkey challenge is bound to it
-	// (ADR-0001 §2.5). It is copied by allowlist, exactly as auth/authhttp does:
+	// Origin reaches the factors because an sshkey challenge is bound to it.
+	// It is copied by allowlist, exactly as auth/authhttp does:
 	// Metadata is a plain map that auth.Secret does not protect, so a
 	// credential-bearing header must never land there.
 	for _, name := range []string{"Origin", "User-Agent"} {
@@ -63,8 +63,8 @@ func authRequest(r *http.Request, m clientMessage) *auth.Request {
 	//
 	// This was omitted, so a request arriving with a verified client-certificate
 	// chain reached the factor as TLS=nil and mtls returned ErrNoVerifiedChain
-	// every time — the mTLS branch of §2.8's policy was unreachable in practice
-	// (lector r1). The projection goes through mtls.FromConnectionState, which
+	// every time — the mTLS branch of §2.8's policy was unreachable in practice.
+	// The projection goes through mtls.FromConnectionState, which
 	// refuses to carry PeerCertificates: any self-signed certificate lands there,
 	// so a later reader must not be able to authenticate from one (ADR-0001
 	// §2.6a).

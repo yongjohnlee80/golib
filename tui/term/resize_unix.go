@@ -9,7 +9,7 @@ import (
 )
 
 // startResizeWatcher forwards SIGWINCH into the decode loop, which re-queries
-// the fresh size and emits an ordered ResizeEvent (ADR-0002 §2.8). SIGWINCH
+// the fresh size and emits an ordered ResizeEvent. SIGWINCH
 // stays armed even when mode-2048 in-band reports are active — the harmless
 // duplication is absorbed by the App intake's latest-wins policy.
 func (b *Backend) startResizeWatcher() {

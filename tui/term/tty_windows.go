@@ -20,7 +20,7 @@ import (
 // ever handles ordinary short writes.
 func waitWritable(int) error { return nil }
 
-// Windows terminal plumbing (ADR-0002 §2.4). x/term's MakeRaw sets
+// Windows terminal plumbing. x/term's MakeRaw sets
 // ENABLE_VIRTUAL_TERMINAL_INPUT on stdin — the console then encodes keys (and
 // Windows Terminal encodes mouse/paste) as VT sequences into the stdin byte
 // stream, so there is exactly one input parser on every platform. MakeRaw
@@ -48,7 +48,7 @@ func makeRaw(f *os.File) (func() error, error) {
 // DISABLE_NEWLINE_AUTO_RETURN on the stdout handle, with the documented
 // degradation retry: older builds reject DISABLE_NEWLINE_AUTO_RETURN with
 // ERROR_INVALID_PARAMETER, so retry with VT processing alone; if even that
-// fails, there is no non-VT rendering path — ErrConsoleTooOld (ADR-0002 §2.4).
+// fails, there is no non-VT rendering path — ErrConsoleTooOld.
 func enableOutputVT(f *os.File) (func() error, error) {
 	h := windows.Handle(f.Fd())
 	var mode uint32
@@ -75,7 +75,7 @@ func fdSize(f *os.File) (tui.Size, error) {
 }
 
 // unblockFile is a no-op on Windows: readFile waits on the console handle
-// with a short bounded wait and re-checks done itself (ADR-0002 §2.9).
+// with a short bounded wait and re-checks done itself.
 func unblockFile(*os.File) {}
 
 // makePollable is a no-op on Windows for the same reason — the bounded
@@ -84,7 +84,7 @@ func makePollable(f *os.File) (*os.File, func() error) { return f, nil }
 
 // readFile waits for console input with a bounded wait, re-checking done
 // between waits, then reads the VT byte stream. ReadConsoleInput is never
-// mixed with stream reads on the same handle (ADR-0002 §2.8, §4.2).
+// mixed with stream reads on the same handle.
 func (b *Backend) readFile(p []byte) (int, error) {
 	h := windows.Handle(b.inFile.Fd())
 	for {

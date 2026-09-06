@@ -31,7 +31,7 @@ func WithConnectHook(fn dao.ConnectHook) Option {
 		// would drop that setup silently on every connection. The prior
 		// callback runs FIRST and its error SHORT-CIRCUITS: if the connection
 		// could not be set up by the earlier hook, the later one must not run
-		// against a half-configured session (lector, PR #32 r0).
+		// against a half-configured session.
 		prior := c.AfterConnect
 		c.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 			if prior != nil {

@@ -131,7 +131,7 @@ func (c *bqConn) Close() error { return c.client.Close() }
 // bqRows adapts a *bigquery.RowIterator to dao.Rows. Each row is read into a
 // []bigquery.Value and assigned positionally into the Scan destinations — the
 // reflection adapter that bridges BigQuery's single-dest Next(dest) to dao's
-// variadic Scan(dest ...any) (ADR-0008 §2.7).
+// variadic Scan(dest...any).
 type bqRows struct {
 	it      *bigquery.RowIterator
 	current []bigquery.Value

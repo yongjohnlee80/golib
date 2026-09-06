@@ -14,7 +14,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 )
 
-// The guarded pinned transaction (ADR-0018 §2.4). The handle does NOT return the
+// The guarded pinned transaction. The handle does NOT return the
 // pool-path pgxTx: that wrapper's methods call pgx directly and know nothing of the
 // handle's state, so handing it out would make the §2.3 enforcement a lie. pinnedTx
 // shares the handle's lock and state machine — every operation first inspects the

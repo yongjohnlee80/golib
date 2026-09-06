@@ -14,7 +14,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Unix terminal plumbing (ADR-0002 §2.4): x/term's MakeRaw/Restore/GetSize
+// Unix terminal plumbing: x/term's MakeRaw/Restore/GetSize
 // replace per-GOOS ioctl code with the canonical implementation (§2.11).
 // MakeRaw clears OPOST (irrelevant: the emitter cursor-addresses everything)
 // and ISIG — Ctrl+C arrives as byte 0x03 and is a KeyEvent, not a signal.
@@ -43,7 +43,7 @@ func fdSize(f *os.File) (tui.Size, error) {
 
 // waitWritable blocks until fd is writable, so writeAll can resume after an
 // EAGAIN on a non-blocking output description instead of dropping the frame's
-// tail (ADR-0002 §2.1). EINTR retries; the 1s poll timeout just re-arms (a
+// tail. EINTR retries; the 1s poll timeout just re-arms (a
 // paused terminal is not an error).
 func waitWritable(fd int) error {
 	pfd := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}}
@@ -62,7 +62,7 @@ func waitWritable(fd int) error {
 }
 
 // unblockFile unblocks a pending read during Stop: a read deadline in the
-// past is valid for pollable ttys (ADR-0002 §2.9). makePollable guarantees
+// past is valid for pollable ttys. makePollable guarantees
 // pollability at Start, so the deadline lands.
 func unblockFile(f *os.File) { _ = f.SetReadDeadline(time.Now()) }
 

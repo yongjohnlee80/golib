@@ -12,8 +12,7 @@ import (
 // DATABASE(). String flags (IS_NULLABLE, COLUMN_KEY) are compared in Go, not
 // SQL, to avoid driver bool-conversion trouble.
 
-// MysqlDialect opts into the qualified-table and introspection capabilities
-// (ADR-0013).
+// MysqlDialect opts into the qualified-table and introspection capabilities.
 var (
 	_ dao.TableQuoter         = MysqlDialect{}
 	_ dao.Introspector        = MysqlDialect{}
@@ -101,7 +100,7 @@ func (MysqlDialect) ListColumns(ctx context.Context, q dao.Querier, schema, tabl
 	return out, rows.Err()
 }
 
-// ListRoutines lists the functions and procedures of schema (ADR-0014):
+// ListRoutines lists the functions and procedures of schema:
 // information_schema.ROUTINES joined to PARAMETERS ordered by
 // ORDINAL_POSITION. Parameters render "MODE name type" comma-joined;
 // position 0 (the return row, functions only) renders after "->" —
