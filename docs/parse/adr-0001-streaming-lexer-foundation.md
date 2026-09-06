@@ -1,6 +1,11 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 20)** (2026-09-06, jarvis). Rev 20 lands the SCAN
+- **Status:** **Proposed (rev 21)** (2026-09-06, jarvis). Rev 21 corrects four
+  Scan defects — an exclusive-and-remainder-only delimiter bound, a partly
+  enforced `End` matrix, provisional locations, and a `Close` that let go of
+  nothing — and meets criterion 13 with **two window providers over one state
+  machine** rather than a new `streamcache` accessor (§4).
+- **Rev 20 (superseded header, kept for the trail):** Rev 20 lands the SCAN
   ENGINE (§4): the form walk with precedence, `Incomplete` blocking, the EOF
   degrade, bounded retry and form-contract enforcement, wired to `streamcache` and
   `Source` — releasing to the effective watermark `reclaim` returns, and relative
@@ -300,14 +305,48 @@ func (l *Lexer) WriteTokens(ctx context.Context, w io.Writer, r io.Reader) error
 > window that can never grow and **fails to terminate**, which is what the control
 > for it demonstrates.
 >
+> **Corrected (rev 21).** Four defects, each reproduced before it was fixed:
+>
+> - **The delimiter bound is INCLUSIVE, and covers the whole construct.** The
+>   geometric widen rejected before ever showing a form its allowance — a limit of
+>   3 refused the literal `abc` after two bytes — so growth is now clamped to the
+>   limit and refuses only when still undecided at exactly it. And `End` measured
+>   its bound against the REMAINDER, so a two-byte opener under a limit of 4 could
+>   read six; the bound is now driven on `opener + remainder`. What observes that
+>   is the remainder `End` is *shown*, not the length reported afterwards — a
+>   report is not proof of having stopped. `BoundError.Open` is the opener itself,
+>   not the opener plus the body scanned so far.
+> - **The `End` matrix is enforced whole.** `(1, boom)` used to propagate: a count
+>   beside an error now violates the contract, as does any terminal error under
+>   `MoreInput` (there the only refusal is `ErrNeedMore`) and any untyped error at
+>   `EndOfInput` (an unclosable construct must report `*UnterminatedError`).
+>   Contract errors name the form's **index in the list**, because a list may hold
+>   several instances of one type and a type name cannot say which misbehaved.
+> - **A successful location is never PROVISIONAL.** `Source`'s head tracked what
+>   the CACHE had read rather than what had been INDEXED, so an offset inside a
+>   four-byte rune answered `1:2` from a lone lead byte and then refused once the
+>   rune completed — and an offset on a later line could be answered from an empty
+>   line index as line 1. The head now means indexed bytes, and `LocationAt`
+>   indexes a bounded lookahead first (at most `utf8.UTFMax-1` past the offset, or
+>   to end of input): the diagnostic's own small cost in I/O, paid only when asked.
+>   Interior-rune boundaries, which byte-oriented forms can produce, are refused
+>   *stably* rather than according to how much has been read.
+> - **`Close` lets go.** A closed `Scan` retained its window buffer — as wide as
+>   the widest construct seen — and the whole cache and source graph. It now drops
+>   them; a `View` the caller holds keeps the cache alive on its own, so letting go
+>   cannot invalidate one.
+>
+> **Criterion 13 is met without touching `streamcache`.** A `Form` needs a
+> CONTIGUOUS window, and over a `[]byte` the caller's slice already is one: there
+> are now **two window providers over one state machine**. `ScanBytes` reslices
+> the input (`b[from:to:to]`) and aliases the opener there, so nothing is copied;
+> the streamed path keeps its copied buffer, because segmented bytes have to be
+> gathered somewhere. The walk does not know which provider it is on. This is why
+> the `Form` contract now says the slices are **read-only and callback-lifetime**:
+> a window may be the caller's own memory, or a buffer the next widening moves.
+>
 > **Not yet: `Validate` and `WriteTokens`** — and with them criterion 4's
 > constant-memory path, which is exactly the path that builds no `Source`.
-> **Criterion 13 is also open:** a `Form` needs a CONTIGUOUS window, and the
-> engine currently materialises one by copying out of the cache, so `ScanBytes`
-> does copy the windows it hands to forms even though its cache wraps the caller's
-> slice. Honouring "no copy" needs the cache to lend a span that lies within one
-> segment, held alive by its `View` — a small addition to a package already signed
-> off, and therefore one to propose rather than assume.
 
 `ScanBytes` restores the borrowed, no-copy path (lector r4 B6): its cache is a
 single immutable segment over the caller's slice, never written to and never

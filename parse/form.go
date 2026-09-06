@@ -23,6 +23,15 @@ import (
 // from the same offset with more input, so anything remembered between calls
 // is a wrong answer waiting for an unlucky split. The type system will not
 // hold this; the conformance suite drives every input at every split and will.
+//
+// # The byte slices are READ-ONLY and live only for the call
+//
+// src and openedWith are windows the scan owns, not copies made for the form. A
+// window may be a reslice of the caller's own input, or a shared buffer the next
+// widening appends to. So a Form must not write to either slice and must not
+// retain either past the call that received it: doing the first corrupts the
+// caller's bytes, and the second leaves a form reading a buffer that has since
+// moved on.
 type Form interface {
 	// Starts reports whether src opens this form. THREE ANSWERS, not two.
 	Starts(src []byte) (n int, r Match)
