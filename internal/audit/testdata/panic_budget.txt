@@ -31,13 +31,13 @@
 # cites its evidence instead.
 #
 # Regenerate: GOLIB_PANIC_BUDGET_UPDATE=1 go test ./internal/audit/
-auth/authhttp/authhttp.go	MetadataHeaders	ce9c36eadf3d8e6e	1	unreviewed	not yet read
-auth/authhttp/authhttp.go	CorrelationHeader	0b1d7407793f4da1	1	unreviewed	not yet read
-auth/authhttp/authhttp.go	Middleware	49a4ad3f65baa1e1	1	unreviewed	not yet read
-auth/mtls/mtls.go	New	f6cfe697189f88ed	1	unreviewed	not yet read
-auth/sshkey/sshkey.go	New	7f17541336eb5d45	1	unreviewed	not yet read
-auth/sshkey/sshkey.go	New	4d5f726301e8aca7	1	unreviewed	not yet read
-auth/sshkey/sshkey.go	New	bc5ed94243307511	1	unreviewed	not yet read
+auth/authhttp/authhttp.go	MetadataHeaders	ce9c36eadf3d8e6e	1	construction	MetadataHeaders: a header carrying credentials cannot be exposed as metadata. Rejected while the option is built, from a name written in source. Reached while the value is built, from an argument written at the call site, with no recover above it
+auth/authhttp/authhttp.go	CorrelationHeader	0b1d7407793f4da1	1	construction	CorrelationHeader: not a valid HTTP header name, checked while the option is built. Reached while the value is built, from an argument written at the call site, with no recover above it
+auth/authhttp/authhttp.go	Middleware	49a4ad3f65baa1e1	1	construction	Middleware: nil policy — refusing to build a middleware that would admit everything. A construction-time refusal, and the safest possible place for it. Reached while the value is built, from an argument written at the call site, with no recover above it
+auth/mtls/mtls.go	New	f6cfe697189f88ed	1	construction	mtls.New: a SubjectFunc is required, because the identity mapping must be explicit rather than defaulted. Reached while the value is built, from an argument written at the call site, with no recover above it
+auth/sshkey/sshkey.go	New	7f17541336eb5d45	1	construction	sshkey.New: a Namespace is required, or a signature made for another purpose would verify here. Reached while the value is built, from an argument written at the call site, with no recover above it
+auth/sshkey/sshkey.go	New	4d5f726301e8aca7	1	construction	sshkey.New: a Verifier is required. Reached while the value is built, from an argument written at the call site, with no recover above it
+auth/sshkey/sshkey.go	New	bc5ed94243307511	1	construction	sshkey.New: a ChallengeStore is required. Reached while the value is built, from an argument written at the call site, with no recover above it
 dao/batch.go	batchWriter.AddRow	c617c7aca4da00cf	1	invariant	AddRow on a BatchWriter built without a row extractor is programmer error; no data input reaches it
 dao/expr.go	Expr.mustSet	3f7f56f599589225	1	invariant	mustSet rejects a ZERO Expr — a caller passing Expr{} is programmer error, not data
 dao/expr.go	Str	416ab45c6e4aa48d	1	violation	LATENT: Str panics on a single quote in a CALLER-SUPPLIED string, reachable with a valid type via lit <- Coalesce. Coalesce has ZERO production callers in golib, autodb or either ddex repo, and dao/expr_test.go:286 pins this panic as REQUIRED behaviour — so changing it is an API decision (sweep G3; Johno 2026-09-06: leave as-is), not a fix.
@@ -57,22 +57,22 @@ dao/schema.go	New	241c1698c43cf7a2	1	construction	dao.New: nil hook — construc
 dao/schema.go	New	549eef755cc8dc82	1	construction	dao.New: duplicate hook name — construction-time validation
 dao/schema.go	resolveFields	ccc9764a071bce12	1	construction	resolveFields is called only from dao.New; same construction phase
 dao/transaction.go	RunTx.func$1	4fa2355b6dd3517d	1	repanic	RunTx's deferred recover rolls back and re-raises the ORIGINAL panic, preserving its stack. Not a new failure mode. The func$ segment in the path is the deferred closure it lives in.
-partial/plan.go	planFor	7f6668e232731ee4	1	unreviewed	not yet read
-partial/plan.go	planFor	0c8b79a4a70e229c	1	unreviewed	not yet read
-partial/plan.go	collectFields	ef4adfab24fac826	1	unreviewed	not yet read
-partial/plan.go	collectFields	d9a9284ba0361cf9	1	unreviewed	not yet read
-server/http/mock.go	MockServer.register	ee934dfb6ed19063	1	unreviewed	not yet read
-server/http/routing.go	Group.register	b6f45f0582347d95	1	unreviewed	not yet read
-server/http/routing.go	Group.register	2cc30a604d810ea0	1	unreviewed	not yet read
-server/rpc/client.go	Dial	76f961c4aa001ad1	1	unreviewed	not yet read
-server/rpc/client.go	Dial	4407bd482eed38b8	1	unreviewed	not yet read
-server/rpc/client.go	Dial	65cba1eeb96f7fc7	1	unreviewed	not yet read
-server/rpc/client.go	Dial	52bba2afd3e8c2a5	1	unreviewed	not yet read
-server/rpc/server.go	New	af5ca7512613d736	1	unreviewed	not yet read
-server/rpc/server.go	New	0782abb4da78892c	1	unreviewed	not yet read
-server/rpc/server.go	New	acab1e116d76d21f	1	unreviewed	not yet read
-server/rpc/server.go	New	cb8f5b7a4ec39ce9	1	unreviewed	not yet read
-server/scaffold.go	NewScaffold	40b8e25e781d8f16	1	unreviewed	not yet read
+partial/plan.go	planFor	7f6668e232731ee4	1	construction	partial: the model type is a nil interface. A plan is built once from a Go type, so the type is written at the call site
+partial/plan.go	planFor	0c8b79a4a70e229c	1	construction	partial: the model type is not a struct — same construction-time reflection check. Reached while the value is built, from an argument written at the call site, with no recover above it
+partial/plan.go	collectFields	ef4adfab24fac826	1	construction	partial: a field the plan cannot represent, rejected while the plan is built from the type. Reached while the value is built, from an argument written at the call site, with no recover above it
+partial/plan.go	collectFields	d9a9284ba0361cf9	1	construction	partial: a field the plan cannot represent, rejected while the plan is built from the type. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/http/mock.go	MockServer.register	ee934dfb6ed19063	1	construction	httpserver mock: route registration failed. A test double asserting its own setup. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/http/routing.go	Group.register	b6f45f0582347d95	1	construction	httpserver: a route is already registered for this method and pattern. The route table is built at startup from patterns written in source. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/http/routing.go	Group.register	2cc30a604d810ea0	1	construction	httpserver: route registration failed — same startup construction of the route table. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/rpc/client.go	Dial	76f961c4aa001ad1	1	construction	rpc.Dial: nil Codec. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/rpc/client.go	Dial	4407bd482eed38b8	1	construction	rpc.Dial: ClientMaxMessageBytes must be positive. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/rpc/client.go	Dial	65cba1eeb96f7fc7	1	construction	rpc.Dial: ClientWriteTimeout must be positive. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/rpc/client.go	Dial	52bba2afd3e8c2a5	1	construction	rpc.Dial: NotificationBuffer must be positive. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/rpc/server.go	New	af5ca7512613d736	1	construction	rpc.New: nil Codec. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/rpc/server.go	New	0782abb4da78892c	1	construction	rpc.New: MaxConcurrent must be positive. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/rpc/server.go	New	acab1e116d76d21f	1	construction	rpc.New: MaxMessageBytes must be positive. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/rpc/server.go	New	cb8f5b7a4ec39ce9	1	construction	rpc.New: DrainTimeout must be positive. Reached while the value is built, from an argument written at the call site, with no recover above it
+server/scaffold.go	NewScaffold	40b8e25e781d8f16	1	construction	server.NewScaffold: nil ConnHandler. Reached while the value is built, from an argument written at the call site, with no recover above it
 tui/app.go	NewApp	19c3e1c513b3cd71	1	construction	tui.NewApp: nil root component — an App is being built and the root is a literal at the call site
 tui/app.go	NewApp	e65924d403ff0ad3	1	construction	tui.NewApp: WithBackend is required; the core package cannot construct a terminal driver, and the option is supplied in source
 tui/app.go	App.Post	53e8fff1154f7a17	1	invariant	tui.App.Post: nil event. A runtime method, but a nil event is a programmer error — no data reaching Post can make the event itself nil
