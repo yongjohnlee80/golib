@@ -2,7 +2,7 @@ package style
 
 import "testing"
 
-// TestInheritOnlyUnsetProps covers ADR-0006 §5 acceptance criterion 4 (part
+// TestInheritOnlyUnsetProps covers inheritance, part
 // 1): Inherit copies from other ONLY the properties not already set on the
 // receiver.
 func TestInheritOnlyUnsetProps(t *testing.T) {
@@ -31,7 +31,7 @@ func TestInheritOnlyUnsetProps(t *testing.T) {
 	}
 }
 
-// TestInheritNeverCopiesMarginsPadding covers criterion 4 (part 2): margins
+// TestInheritNeverCopiesMarginsPadding covers inheritance part 2: margins
 // and padding are NEVER inherited — they are placement, not appearance (the
 // lipgloss rule, kept verbatim).
 func TestInheritNeverCopiesMarginsPadding(t *testing.T) {
@@ -58,7 +58,7 @@ func TestInheritNeverCopiesMarginsPadding(t *testing.T) {
 	}
 }
 
-// TestUnsetThenInheritReadmits covers criterion 4 (part 3): Unset* then
+// TestUnsetThenInheritReadmits covers inheritance part 3: Unset* then
 // Inherit re-admits a property.
 func TestUnsetThenInheritReadmits(t *testing.T) {
 	parent := New().Bold(true).Foreground(ANSI(3))

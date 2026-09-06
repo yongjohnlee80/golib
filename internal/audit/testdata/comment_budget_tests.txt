@@ -22,6 +22,12 @@
 #
 # The total is NOT stored here -- it is derived from the lines below and printed
 # by the test, which is the single place it is computed.
+#
+# ONE FILE IS EXEMPT BY NAME, not by shape: internal/audit/comment_budget_test.go,
+# whose pointer "hits" are the shapes the detectors match, quoted in prose to
+# document what each one catches. The reason, the premise it rests on and a
+# liveness check all live with the guard -- see selfDocumenting there.
+
 1 dao/batch_ctx_test.go
 5 dao/dialects_test.go
 1 dao/expr_negative_test.go
@@ -51,8 +57,6 @@
 9 dao/transaction_test.go
 4 dao/txcapabilities_test.go
 6 dao/txoptions_test.go
-7 internal/audit/comment_budget_test.go
-11 internal/audit/panic_budget_test.go
 9 tui/app_test.go
 15 tui/buffer_test.go
 4 tui/bus_test.go
@@ -67,13 +71,6 @@
 9 tui/resolve_test.go
 4 tui/routing_test.go
 3 tui/runtime_test.go
-5 tui/style/bench_test.go
-6 tui/style/color_test.go
-7 tui/style/ext_test.go
-4 tui/style/framemath_test.go
-3 tui/style/inherit_test.go
-7 tui/style/style_test.go
-5 tui/style/theme_test.go
 9 tui/surface_test.go
 8 tui/tasks_test.go
 1 tui/term/dblclick_bridge_test.go

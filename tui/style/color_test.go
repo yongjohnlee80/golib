@@ -3,7 +3,7 @@ package style
 import "testing"
 
 // TestColorConstructors: each constructor produces a Color whose read
-// accessors report exactly its own kind (§2.4).
+// accessors report exactly its own kind.
 func TestColorConstructors(t *testing.T) {
 	// Default / zero value.
 	if !Default().IsDefault() {
@@ -66,7 +66,7 @@ func TestColorConstructors(t *testing.T) {
 }
 
 // TestColorConstructorRangePanics: out-of-range palette indices fail loud at
-// construction (golib convention, §2.4).
+// construction, per golib convention.
 func TestColorConstructorRangePanics(t *testing.T) {
 	mustPanic(t, "ANSI(-1)", func() { ANSI(-1) })
 	mustPanic(t, "ANSI(16)", func() { ANSI(16) })
@@ -74,13 +74,13 @@ func TestColorConstructorRangePanics(t *testing.T) {
 	mustPanic(t, "ANSI256(256)", func() { ANSI256(256) })
 }
 
-// TestAdaptiveRejectsTokenAndAdaptiveLeaves covers the construction-side
-// slice of ADR-0006 §5 acceptance criterion 6: Adaptive handed a token- or
-// adaptive-kind Color panics at construction (§2.4, rev 1). The type system
-// already blocks Token arguments (Token is not a Color); a token-kind Color
-// is only reachable by reading one back out of a Style — exercised here.
-// (The rest of criterion 6 — the downsampling chain and the DarkBackground
-// pick — lives with the resolver in package tui, per §2.6.)
+// TestAdaptiveRejectsTokenAndAdaptiveLeaves covers the construction-side half
+// of the no-nested-adaptive rule: Adaptive handed a token- or adaptive-kind
+// Color panics at construction. The type system already blocks Token
+// arguments (Token is not a Color); a token-kind Color is only reachable by
+// reading one back out of a Style — exercised here.
+// (The other half — the downsampling chain and the DarkBackground pick —
+// lives with the resolver in package tui.)
 func TestAdaptiveRejectsTokenAndAdaptiveLeaves(t *testing.T) {
 	tokenColor, _ := New().Foreground(TokenPrimary).GetForeground()
 	if _, ok := tokenColor.Token(); !ok {

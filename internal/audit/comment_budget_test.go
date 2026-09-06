@@ -2,6 +2,7 @@ package audit
 
 import (
 	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -54,6 +55,14 @@ type scope struct {
 	// directory walk, and a walk that finds nothing reports a clean
 	// repository, so a broken walk must fail rather than pass.
 	minWalked int
+	// exempt maps a repo-relative path to the top-level identifier whose
+	// DECLARATION in that file is the premise of its exemption.
+	//
+	// It belongs to the scope rather than the package because a liveness check
+	// only means anything in the scope that actually walks the file: asking the
+	// production scope whether a _test.go exemption is live reports "dead" for
+	// a file it never looks at.
+	exempt map[string]string
 }
 
 var (
@@ -68,6 +77,12 @@ var (
 		budgetFile: "testdata/comment_budget_tests.txt",
 		wantTests:  true,
 		minWalked:  100,
+		exempt: map[string]string{
+			// Its pointer "hits" ARE the shapes the detectors match, quoted in
+			// prose to document what each one catches. Rewriting them would
+			// delete the documentation of the rule to satisfy the rule.
+			"internal/audit/comment_budget_test.go": "pointerPatterns",
+		},
 	}
 )
 
@@ -121,6 +136,90 @@ var pointerPatterns = []struct {
 	// The continuation line of such a citation, and the requirement numbers
 	// inside it: "security-core-hardening R4/R7".
 	{"kb-requirement-number", regexp.MustCompile(`\b[a-z]+(-[a-z]+)+ R\d+\b`)},
+}
+
+// declaresTopLevel reports whether file declares a top-level var, const, type
+// or func with the given name.
+//
+// It parses rather than greps, and that is the whole point. The first version
+// of this check used strings.Contains, which is VACUOUS for the one file that
+// matters: comment_budget_test.go declares its own exemption, so the premise
+// string appears in it no matter what the premise is. A mutation replacing
+// "pointerPatterns" with a name nothing declares still PASSED, because the
+// replacement was itself now written in the file being searched. A declaration
+// name cannot be faked by a string literal.
+func declaresTopLevel(t *testing.T, path, name string) bool {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Errorf("parsing %s for its exemption premise: %v", path, err)
+		return false
+	}
+	for _, d := range f.Decls {
+		switch decl := d.(type) {
+		case *ast.FuncDecl:
+			if decl.Name.Name == name {
+				return true
+			}
+		case *ast.GenDecl:
+			for _, spec := range decl.Specs {
+				switch sp := spec.(type) {
+				case *ast.ValueSpec:
+					for _, id := range sp.Names {
+						if id.Name == name {
+							return true
+						}
+					}
+				case *ast.TypeSpec:
+					if sp.Name.Name == name {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// checkExemptions holds each of a scope's exemptions to its premise AND to
+// being live.
+//
+// Exemptions are BY NAME, never by shape: a shape-based excuse ("any comment
+// containing a quoted pointer") is one a future site can satisfy by accident,
+// while one naming a file can only be satisfied by being that file. The reason
+// lives with the guard, in the scope declaration above, because that is where a
+// reader wonders why something was let through.
+//
+// The PREMISE is that the file still declares the named identifier — that it is
+// still the file that DEFINES the detectors, rather than one that inherited the
+// path. If that stops holding, the exemption excuses something it was never
+// argued for.
+//
+// LIVENESS matters for a reason easy to miss: an exemption naming a site with
+// nothing to exempt is not dormant, it is a standing pre-authorisation for
+// whatever gets written under that name next. Silence becomes assent. So a
+// clean exempted file FAILS here, and the fix is to delete the entry.
+func checkExemptions(t *testing.T, sc scope, root string, hits map[string]int) {
+	t.Helper()
+	for rel, premise := range sc.exempt {
+		abs := filepath.Join(root, rel)
+		if _, err := os.Stat(abs); err != nil {
+			t.Errorf("%s scope exempts %s, which is not there (%v); an exemption "+
+				"naming a missing file excuses whatever is written under that "+
+				"name next — delete the entry", sc.name, rel, err)
+			continue
+		}
+		if !declaresTopLevel(t, abs, premise) {
+			t.Errorf("%s scope exempts %s because it declares %s, and it no longer "+
+				"does; the exemption is a bypass wearing a justification — "+
+				"re-argue it or delete the entry", sc.name, rel, premise)
+		}
+		if hits[rel] == 0 {
+			t.Errorf("%s scope exempts %s, which carries NO pointer comment, so the "+
+				"exemption is dead. A dead exemption does not lapse — it waits, and "+
+				"excuses the next thing written there. Delete the entry.", sc.name, rel)
+		}
+	}
 }
 
 // commentViolations returns, per repo-relative file path, how many COMMENT
@@ -191,6 +290,13 @@ func commentViolations(t *testing.T, sc scope) (map[string]int, int) {
 	if err != nil {
 		t.Fatalf("walking the repo: %v", err)
 	}
+	// Exemptions are checked against the RAW counts, then removed, so a dead or
+	// unjustified exemption fails even though its file is excluded below.
+	checkExemptions(t, sc, root, counts)
+	for rel := range sc.exempt {
+		delete(counts, rel)
+	}
+
 	if walked < sc.minWalked {
 		t.Fatalf("%s scope: walked only %d source files, expected at least %d; the "+
 			"walk is broken and this budget would report a clean repository",
