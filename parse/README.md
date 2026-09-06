@@ -86,4 +86,7 @@ at `EndOfInput` an unterminated construct must be reported as
 
 It checks the protocol, not the meaning: a form that recognises the wrong thing
 consistently will pass, which is what your own tests are for. Its own suite
-proves it fails on ten decoys before it is trusted to pass anything.
+proves it fails on eleven decoys before it is trusted to pass anything —
+including the ones that obey every individual rule while the SEQUENCE of
+answers is nonsense, such as a form that finds its terminator and then asks for
+more input on a larger window.

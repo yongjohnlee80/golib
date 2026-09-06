@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 13)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 14)** (2026-09-06, jarvis).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -626,7 +626,15 @@ behaving differently depending on how input was supplied.
     `EndOfInput`: a form that may end at EOF completes every prefix at its own
     length, and that is correct rather than drift.
 
-    Ten decoys, each breaking exactly ONE rule and each shown failing — a decoy
+    **And the SEQUENCE is checked, not only the cells.** Under `MoreInput` the
+    answers must be monotone in information: once a terminator has been found,
+    a larger window may not return `ErrNeedMore`, because appending bytes
+    cannot un-find it. Every per-call cell can be obeyed while the sequence is
+    nonsense, which is why this cannot live in the cells. It is the `End`
+    analogue of `Starts` refusing `Incomplete` after a decision — and the
+    absence of it was a real hole, found by review rather than by the suite.
+
+    Eleven decoys, each breaking exactly ONE rule and each shown failing — a decoy
     that breaks two lets each check hide behind the other and neither gets
     proven. The green baseline comes first: all six generic forms pass, because
     a suite that fails everything detects nothing. Every check carries a
