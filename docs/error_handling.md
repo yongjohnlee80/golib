@@ -123,6 +123,26 @@ near-identical prefixes and the reader learns nothing from four of them.
 
 ---
 
+### Siblings or a refinement? Identity follows behaviour
+
+When one condition looks like a special case of another, ask **whether the
+caller's permitted next action differs**. If it does, they are siblings over the
+shared base; if not, the second name is not needed at all.
+
+The worked case, from `parse`: unfinished input and wrong input are both "the
+source is not acceptable", so making `ErrUnterminated` a refinement of
+`ErrSyntax` looks natural. It is wrong — unfinished input is **resumable** (send
+more text) and a syntax error is not. If unterminated also answered `ErrSyntax`,
+an interactive caller's *give up on syntax errors* handler would fire on input
+that merely needed another line.
+
+The cost of siblings — "any bad input" takes two questions — is a convenience
+cost the shared base already absorbs, since `errs.ErrInvalidArgument` **is** that
+question in one `Is` call.
+
+The reading that produces a refinement describes the *source*. Identity is for
+the *caller*, so it follows behaviour, not taxonomy.
+
 ## Where an error belongs
 
 One question decides it:
