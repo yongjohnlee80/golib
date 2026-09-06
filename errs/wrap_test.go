@@ -92,33 +92,48 @@ func TestWrapCause_KeepsBothIdentities(t *testing.T) {
 	}
 }
 
-// A nil base is the one thing these helpers must not accept quietly: an error
-// with no identity is exactly what this package exists to prevent, and building
-// one silently would hide the mistake at the only moment it is cheap to find.
-func TestHelpers_RejectANilBaseLoudly(t *testing.T) {
-	cases := map[string]func(){
-		"Wrap":      func() { _ = errs.Wrap(nil, "something") },
-		"Sentinel":  func() { _ = errs.Sentinel(nil, "something") },
-		"WrapCause": func() { _ = errs.WrapCause(nil, context.Canceled, "something") },
+// A nil base is a misuse, and it must be unmissable WITHOUT taking the process
+// down: building an error is not a path that should be able to panic, and
+// nothing is corrupted by getting here.
+//
+// So the result carries ErrFatal — catchable by any handler already watching
+// for a broken contract, and loud in a log — while still delivering the message
+// the caller wanted, which is what makes the mistake diagnosable rather than
+// merely fatal.
+func TestHelpers_ANilBaseIsReportedNotPanicked(t *testing.T) {
+	cases := map[string]func() error{
+		"Wrap":      func() error { return errs.Wrap(nil, "dial %s", "10.0.0.1") },
+		"Sentinel":  func() error { return errs.Sentinel(nil, "backend is stopped") },
+		"WrapCause": func() error { return errs.WrapCause(nil, context.Canceled, "dial %s", "10.0.0.1") },
 	}
 	for name, call := range cases {
 		t.Run(name, func(t *testing.T) {
-			defer func() {
-				rec := recover()
-				if rec == nil {
-					t.Fatal("a nil base must panic, not produce an identity-less error")
-				}
-				// And it panics with a VALUE, per the convention, so whatever
-				// recovers it can read the fields instead of matching text.
-				var f errs.Fatal
-				if err, ok := rec.(error); !ok || !errors.As(err, &f) {
-					t.Fatalf("panicked with %#v; want an errs.Fatal value", rec)
-				}
-				if f.Op == "" || f.Rule == "" {
-					t.Errorf("the Fatal must say which operation and which rule: %+v", f)
-				}
+			var err error
+			func() {
+				defer func() {
+					if rec := recover(); rec != nil {
+						t.Fatalf("building an error must not panic, got %v", rec)
+					}
+				}()
+				err = call()
 			}()
-			call()
+
+			if err == nil {
+				t.Fatal("a nil base must still produce an error, not nil")
+			}
+			if !errors.Is(err, errs.ErrFatal) {
+				t.Errorf("must carry ErrFatal so the misuse is catchable; got %v", err)
+			}
+			// The caller's own message survives, or the report says the mistake
+			// happened without saying where.
+			if !strings.Contains(err.Error(), name) {
+				t.Errorf("the report must name the helper that was misused: %q", err)
+			}
 		})
+	}
+
+	// The detail the caller passed is not thrown away either.
+	if got := errs.Wrap(nil, "dial %s", "10.0.0.1").Error(); !strings.Contains(got, "10.0.0.1") {
+		t.Errorf("the caller's message must survive the misuse report: %q", got)
 	}
 }
