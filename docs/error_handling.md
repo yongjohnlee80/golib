@@ -113,6 +113,10 @@ Assignment is an *alias*, not a redeclaration (rule 7): `errors.Is` answers true
 in both directions. A second `errors.New` would answer **false**. Their own
 error reaching three layers is fine — the budget is per-repository.
 
+The **two-layer bound is Johno's ruling**; the identity-vs-context distinction
+that follows is the maintainer's reading of it, not a second ruling — and the
+bound is **a review rule, not an instrument**, since no test enforces depth.
+
 Separately, **context wraps go at boundaries, not at every frame.** A frame that
 adds nothing should return the error unchanged, or five callers produce five
 near-identical prefixes and the reader learns nothing from four of them.
