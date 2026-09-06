@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -229,7 +230,7 @@ func (b *Backend) Start(ctx context.Context) error {
 	case <-b.done:
 		return ErrStopped
 	case <-ctx.Done():
-		return errors.Join(ErrNoClient, ctx.Err())
+		return errs.WrapCause(ErrNoClient, ctx.Err(), "web: Start: waiting for a client to attach")
 	case hello := <-b.attached:
 		b.mu.Lock()
 		b.started = true

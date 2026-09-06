@@ -3,7 +3,6 @@
 package term
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -53,14 +52,20 @@ func enableOutputVT(f *os.File) (func() error, error) {
 	h := windows.Handle(f.Fd())
 	var mode uint32
 	if err := windows.GetConsoleMode(h, &mode); err != nil {
-		return nil, errors.Join(ErrConsoleTooOld, err)
+		return nil, errs.WrapCause(ErrConsoleTooOld, err, "term: reading the console mode")
 	}
 	saved := mode
 	both := mode | windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING | windows.DISABLE_NEWLINE_AUTO_RETURN
 	if err := windows.SetConsoleMode(h, both); err != nil {
 		vtOnly := mode | windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING
 		if err2 := windows.SetConsoleMode(h, vtOnly); err2 != nil {
-			return nil, errors.Join(ErrConsoleTooOld, err, err2)
+			// err2 is the cause that matters: err is the EXPECTED rejection on an
+			// older build (the documented degradation above), so the retry failing
+			// is what leaves no rendering path. err is kept as detail rather than
+			// as a second identity — joining all three would make errors.Is answer
+			// true for a routine rejection as loudly as for the real failure.
+			return nil, errs.WrapCause(ErrConsoleTooOld, err2,
+				"term: enabling VT processing alone, after the combined-flags attempt was rejected with %v", err)
 		}
 	}
 	return func() error { return windows.SetConsoleMode(h, saved) }, nil

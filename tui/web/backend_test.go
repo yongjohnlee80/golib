@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -85,6 +86,18 @@ func TestBackend_StartRespectsContext(t *testing.T) {
 	err := b.Start(ctx)
 	if !errors.Is(err, ErrNoClient) || !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want both ErrNoClient and context.Canceled", err)
+	}
+	// The identities above are only half the contract. This is a sentinel with
+	// a CAUSE — one failure described two ways — and errors.Join renders that
+	// as two lines, so the message a caller logs or shows a user carries an
+	// embedded newline. Both spellings satisfy the assertions above, which is
+	// exactly why the message needs its own.
+	if strings.Contains(err.Error(), "\n") {
+		t.Errorf("err.Error() = %q, want one line: a sentinel and its cause are "+
+			"one error, so they belong in one message, not joined", err.Error())
+	}
+	if !strings.Contains(err.Error(), "(") {
+		t.Errorf("err.Error() = %q, want the base error in brackets", err.Error())
 	}
 }
 
