@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 7)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 8)** (2026-09-06, jarvis).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -105,7 +105,44 @@ waiting for the writer. **A forward scan must always be able to make progress.**
 Growth is therefore the release valve, and memory is bounded by *what callers
 retain*, not by a segment count.
 
-### 3.3 Memory, stated honestly
+### 3.3 `Release` is a watermark, not a pass over the directory
+
+**What is still acquirable is defined by the release offset alone**, and is
+deliberately independent of which buffers have actually been freed. The two must
+not be conflated, and rev 7 conflated them (lector r7): reclaiming only the
+directory's *leading run* stopped at the first segment a view held, so
+everything behind it was neither freed nor refused — a span the caller had
+released stayed acquirable, and one view of the first byte pinned the whole
+stream.
+
+```
+            held by a view
+                |
+       +----+----+----+----+----+----+----+----+
+   seg |  0 |  1 |  2 |  3 |  4 |  5 |  6 |  7 |     released = Head
+       +----+----+----+----+----+----+----+----+
+          ^    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          |                 |
+       KEEP: a live view     FREE: nothing holds these, and the caller
+       owns these bytes           has said it is done with them
+```
+
+Whether a released span's bytes happen to survive depends on whether an
+*unrelated* view is holding an *unrelated* segment in front of it. That is not
+something a caller can reason about, so it cannot be allowed to change an
+answer. `Acquire` therefore refuses anything below the watermark outright, and
+freeing proceeds independently:
+
+- a segment the watermark passes while **unheld** is freed immediately;
+- one passed while **held** is marked, and freed by its last `Close`;
+- old views keep reading their own bytes throughout.
+
+The pass is a **cursor**, not a scan: the watermark only rises, so each segment
+is examined once over the life of the stream — `O(log n + segments newly
+crossed)` per `Release`, `O(segments held)` per `Close`, and `O(total segments)`
+over a stream, in any close order.
+
+### 3.4 Memory, stated honestly
 
 Rev 4 claimed constant-memory `Validate` **and** unbounded delimiters. Those are
 incompatible (lector r4 B2). The truthful statement:
@@ -115,6 +152,14 @@ incompatible (lector r4 B2). The truthful statement:
 > unwritten tail of a held partial segment. A view on one byte of a 32 KiB
 > segment retains 32 KiB (lector r6: the earlier wording implied span-sized
 > cost). Smaller segments trade allocations for finer reclamation.
+
+Plus one term that is not bytes of stream: **directory entries**. An entry whose
+buffer has been freed cannot be removed from the middle of the directory without
+a copy, so removal is amortised — the leading run is truncated for free, and
+stranded entries are compacted only once they are the majority, which halves
+them and costs `O(1)` per entry. Between compactions the directory carries at
+most twice the entries it needs: `O(bytes retained ÷ segment size)`, tens of
+bytes per segment.
 
 - A caller that acquires nothing and configures a finite `MaxDelimiter` has
   **constant** memory, whatever the size of the stream.
@@ -135,7 +180,7 @@ length and the limit.
 // Construction — functional options, immutable configuration.
 func New(opts ...Option) *Lexer
 func WithForms(f ...Form) Option
-func WithMaxDelimiter(n int) Option   // 0 = unbounded; see §3.3
+func WithMaxDelimiter(n int) Option   // 0 = unbounded; see §3.4
 
 // One pass over one input. Ownership of the reader is an ARGUMENT, never an
 // effect hidden in a name (lector r4 B6).
@@ -208,9 +253,9 @@ type Form interface {
 
 type Match uint8
 const (
-    NoMatch    Match = iota // definitely not this form
-    Matched                 // opens this form, consuming n bytes
-    Incomplete              // CANNOT DECIDE with the bytes given
+    NoMatch    Match = iota // not this form, whatever arrives later; n == 0
+    Matched                 // opens this form, consuming n bytes; 0 < n <= len(src)
+    Incomplete              // CANNOT DECIDE with these bytes; n == 0
 )
 
 // Generic constructors in the core. None names a dialect.
@@ -223,7 +268,7 @@ func DelimitedForm(prefix, suffix byte) Form // the $tag$ SHAPE, unnamed
 `DelimitedForm` generalises the tag-carrying shape, so PostgreSQL's
 dollar-quoting is one call from a leaf rather than a branch in the core.
 
-### 6.1 The incremental contract (lector r5 F7, completed r6 B2)
+### 6.1 The incremental contract
 
 A `[]byte`-in/`int`-out signature cannot express a form whose construct **spans
 more input than it has been shown**, which is the ordinary case for a streaming
@@ -249,14 +294,13 @@ Three rules the core enforces so a `Form` cannot get them wrong:
 
 1. **`Incomplete` and `ErrNeedMore` are requests, not failures.** The lexer
    widens the window and calls again from the same offset, up to
-   `MaxDelimiter` (§3.3), and only then reports a bounded error naming the
+   `MaxDelimiter` (§3.4), and only then reports a bounded error naming the
    construct.
-2. **Forms are pure**, and *the interface cannot enforce it* (lector r6). A
-   `Form` may not remember anything between calls: the same
-   `(src, openedWith)` must always give the same answer, because it will be
-   called again from the same offset with more input. Statefulness is invisible
-   until an input straddles a boundary — the hardest case to test and the
-   easiest to ship broken.
+2. **Forms are pure**, and *the interface cannot enforce it*. A `Form` may not
+   remember anything between calls: the same `(src, openedWith)` must always
+   give the same answer, because it will be called again from the same offset
+   with more input. Statefulness is invisible until an input straddles a
+   boundary — the hardest case to test and the easiest to ship broken.
 
    Since the type system will not hold this, a **conformance suite must**:
    `parse.TestForm(t, f, corpus)` ships alongside the interface, for form
@@ -269,7 +313,65 @@ Three rules the core enforces so a `Form` cannot get them wrong:
    sort by length or guess, because a dialect's precedence is a dialect's
    knowledge — and a core that guessed would be naming a dialect by implication.
 
-## 7. Deferred, deliberately
+#### The resolution rules
+
+A third answer is only worth having if it is fully specified. What follows is
+the whole contract; anything a `Form` does outside it is a **form contract
+violation** (`ErrFormContract`), reported with the form's position in the list,
+not absorbed.
+
+**What `n` means.**
+
+| answer       | `n`            | meaning                                            |
+|--------------|----------------|----------------------------------------------------|
+| `Matched`    | `0 < n ≤ len(src)` | the opener consumed `n` bytes                  |
+| `NoMatch`    | must be `0`    | not this form, whatever arrives later               |
+| `Incomplete` | must be `0`    | cannot decide with these bytes                      |
+
+`Matched` with `n ≤ 0` is a violation, not a no-op: the scan would return to
+the same offset with the same input forever. `n > len(src)` is a violation
+because the form is claiming bytes it was not shown. `Incomplete` carries **no**
+byte count on purpose — a form that could say how many more bytes it needs
+would be a form that had already decided, and a hint the core must range-check
+and cannot trust buys nothing the retry bound does not already give.
+
+**`Incomplete` blocks the forms behind it.** At offset `p`, the core walks the
+list in declaration order. The first `Matched` wins. The first `Incomplete`
+**stops the walk**: forms declared later are not consulted, because a later form
+matching now could be overruled by the earlier one once more bytes arrive, and
+a token emitted cannot be taken back. The core then widens the window and
+restarts the walk **at `p`, from the top of the list**.
+
+**At EOF, `Incomplete` degrades to `NoMatch`.** `Incomplete` is a claim
+*conditional on more input existing*. When the source is exhausted the condition
+is false, so the walk resumes past it and the shorter form wins:
+
+```
+input ends with "/"        forms: [ blockComment "/*", opSlash "/" ]
+
+  more input possible                    EOF
+  ───────────────────                    ───
+  blockComment.Starts("/")               blockComment.Starts("/")
+      → Incomplete                           → Incomplete → treated as NoMatch
+      → STOP, widen the window               → continue the walk
+      → retry the whole walk at p            opSlash.Starts("/")
+                                                 → Matched(1)  ⇒ operator token
+```
+
+This is the case that a `MaxDelimiter` error would get wrong. A source ending in
+a single `/` is not an unterminated block comment; it is a division operator,
+and reporting a bounded-construct error there would reject a **valid** input.
+The bounded error is for a construct that genuinely runs past the limit with
+input still arriving.
+
+**Retry bounds.** The core retries while both hold: more input may exist, and
+the window **actually grew** since the last walk. A retry that widens by nothing
+is not a retry — it is the spin that this design already refused once, and it
+surfaces as the cache's own `io.ErrNoProgress` rather than a new failure mode.
+The walk at one offset is bounded by `MaxDelimiter` bytes from `p`; exceeding it
+reports a bounded error naming the construct and the offset it started at.
+
+## 7. Deferred, deliberately## 7. Deferred, deliberately
 
 The **AST and grammar tree**; **intention and threat classification**; a
 `pg_query_go` **adapter**; **`dao` read-only enforcement**. A
@@ -331,17 +433,34 @@ behaving differently depending on how input was supplied.
     `--`), asserting the same token stream at each, and asserting the
     two-valued answers are never reached with the prefix alone. A positive
     control that removes `Incomplete` must redden it.
-18. **`parse.TestForm` is shipped and detects a stateful form** — proven with a
+18. **A source ending in a shared prefix lexes as the shorter form** — the
+    one-byte case: input ending in `/` with `/*` declared first yields an
+    operator token, NOT a bounded-construct error. Driven at EOF and with the
+    same bytes mid-stream, which must differ: mid-stream it waits.
+19. **A form contract violation is reported, not absorbed** — `Matched` with
+    `n == 0` (which would loop at one offset forever), `n > len(src)`, and a
+    non-zero `n` alongside `NoMatch`/`Incomplete` each produce
+    `ErrFormContract` naming the offending form.
+20. **`parse.TestForm` is shipped and detects a stateful form** — proven with a
     deliberately stateful decoy that answers differently on its second call.
-19. A form whose construct straddles the window returns `ErrNeedMore` and is
+21. A form whose construct straddles the window returns `ErrNeedMore` and is
     retried with a superset until it decides or `MaxDelimiter` is reached — and
     the same input supplied in one chunk and in many yields identical tokens.
-20. Reclamation is **linear in the segments actually dropped**, not in the
+22. Reclamation is **linear in the segments actually freed**, not in the
     directory — an isolated close benchmark over independently held segments
-    whose time roughly doubles when their number doubles. *(Measured after the
-    fix: 10/20/43/100 µs at 512/1024/2048/4096 segments, against 0.19/0.71/2.8/
-    12.5 ms before.)*
-21. Span access is **linear in the segments a span covers**, demonstrated by a
+    whose time roughly doubles when their number doubles, run in **both close
+    orders**, since closing newest-first strands every freed entry behind a held
+    one. *(Measured at 512/1024/2048/4096 segments: oldest-first 17/30/55/140 µs,
+    newest-first 14/29/67/124 µs, 0 allocs — against 0.19/0.71/2.8/12.5 ms for a
+    whole-directory scan.)*
+23. **A released span stays released, and its memory goes** — proven separately,
+    because freeing the bytes makes the refusal happen for free and hides
+    whether the rule exists at all. One probe refuses a span below the watermark
+    whose bytes are demonstrably still present (a segment straddling the
+    watermark; a segment another view still holds); another asserts an oldest
+    view pins its own segment and neither the bytes nor the directory entries
+    behind it.
+24. Span access is **linear in the segments a span covers**, demonstrated by a
     benchmark whose time roughly doubles when the span doubles. *(Measured
     after the O(k²) fix: 172/342/630 µs at 64/128/256 KiB, against 0.4/1.5/6.0
     ms before.)*

@@ -2,6 +2,7 @@ package streamcache
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -35,24 +36,80 @@ func TestRace_WriterFillsAHeldPartialSegment(t *testing.T) {
 	}
 	defer v.Close()
 
-	var wg sync.WaitGroup
+	// The errors are NOT discarded. A writer that stops on its first error and a
+	// reader that ignores AppendTo's would leave both goroutines idling while
+	// the test still passed: the detector cannot fire on work that did not
+	// happen, so a silent early exit turns this into a probe of nothing.
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		errs    []error
+		fills   int
+		reads   int
+		lastGot string
+	)
+	fail := func(err error) {
+		mu.Lock()
+		errs = append(errs, err)
+		mu.Unlock()
+	}
+
 	wg.Add(2)
 	go func() { // the writer keeps filling the segment the view holds
 		defer wg.Done()
-		for off := int64(0); off < int64(len(src)); off += 64 {
-			if _, err := c.Ensure(off, 64); err != nil {
+		for off := int64(0); off+64 <= int64(len(src)); off += 64 {
+			n, err := c.Ensure(off, 64)
+			if err != nil {
+				fail(fmt.Errorf("Ensure(%d, 64): %w", off, err))
 				return
 			}
+			if n != 64 {
+				fail(fmt.Errorf("Ensure(%d, 64) = %d, want 64", off, n))
+				return
+			}
+			mu.Lock()
+			fills++
+			mu.Unlock()
 		}
 	}()
 	go func() { // the reader keeps reading through the held view
 		defer wg.Done()
 		buf := make([]byte, 0, 8)
 		for i := 0; i < 2000; i++ {
-			buf, _ = v.AppendTo(buf[:0])
+			var err error
+			buf, err = v.AppendTo(buf[:0])
+			if err != nil {
+				fail(fmt.Errorf("AppendTo #%d: %w", i, err))
+				return
+			}
+			if len(buf) != 8 {
+				fail(fmt.Errorf("AppendTo #%d returned %d bytes, want 8", i, len(buf)))
+				return
+			}
+			mu.Lock()
+			reads++
+			lastGot = string(buf)
+			mu.Unlock()
 		}
 	}()
 	wg.Wait()
+
+	for _, err := range errs {
+		t.Error(err)
+	}
+	// PROGRESS IS THE PRECONDITION. Without both counts the -race verdict is
+	// "no race was detected in the work that ran", and the work that ran may
+	// have been none of it.
+	if wantFills := len(src)/64 - 1; fills < wantFills {
+		t.Fatalf("writer completed %d fills, want at least %d — the reader and writer "+
+			"did not overlap and the detector had nothing to watch", fills, wantFills)
+	}
+	if reads < 2000 {
+		t.Fatalf("reader completed %d reads of 2000", reads)
+	}
+	if lastGot != src[:8] {
+		t.Fatalf("view read %q, want %q", lastGot, src[:8])
+	}
 }
 
 // F2 — a released span must STAY released.
@@ -81,10 +138,6 @@ func TestRelease_HeldSegmentGoesWhenItsViewCloses(t *testing.T) {
 			"%s", err,
 			"A release watermark must outlive the view that deferred it, or 'released' "+
 				"means nothing and the retained set only grows.")
-	}
-	if false {
-		t.Fatal("Acquire succeeded on a span that Release was asked to drop and whose " +
-			"only holder has closed.")
 	}
 }
 
@@ -156,3 +209,158 @@ func (r *errAfter) Read(p []byte) (int, error) {
 // unrelated short-read path in the cache rather than on the source's own error
 // travelling through.
 var errBoom = errors.New("streamcache_test: the source broke")
+
+// F7 — RECLAMATION MUST NOT REDEFINE RELEASE.
+//
+// Reclaiming only the directory's leading run stops at the first segment a view
+// still holds. Everything AFTER that segment is then neither dropped nor
+// refused, so a span the caller was told to release stays acquirable — the
+// speed of the reclamation pass silently became the definition of "released".
+//
+// The counterexample is small on purpose: four-byte segments, a view on the
+// first byte, sixteen bytes read, release everything. The span at [8,9) is in a
+// segment no view holds, wholly below the watermark, and behind the held one.
+func TestRelease_SuffixBehindAHeldSegmentIsReleased(t *testing.T) {
+	t.Parallel()
+	c := New(strings.NewReader("0123456789abcdef"), WithSegmentSize(4))
+
+	v, err := c.Acquire(0, 1) // pins segment 0 and nothing else
+	if err != nil {
+		t.Fatalf("Acquire(0,1): %v", err)
+	}
+	defer v.Close()
+	if _, err := c.Ensure(0, 16); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	c.Release(c.Head())
+
+	if _, err := c.Acquire(8, 9); !errors.Is(err, ErrReleased) {
+		t.Fatalf("Acquire(8,9) after Release(%d): err=%v, want ErrReleased.\n"+
+			"%s", c.Head(), err,
+			"Release drops every eligible segment, not the leading run of them. A view "+
+				"holding the FIRST byte of a stream must not make the rest of it "+
+				"acquirable again.")
+	}
+
+	// SPECIFICITY: the held view's own bytes are untouched by all of this.
+	if got, err := v.String(); err != nil || got != "0" {
+		t.Fatalf("held view after Release: got %q, %v; want %q, nil", got, err, "0")
+	}
+}
+
+// F9 — THE WATERMARK DECIDES, NOT THE DIRECTORY.
+//
+// F7 above is satisfied by freeing the buffer: once the segment is gone the
+// lookup fails and ErrReleased comes out for free. That makes it BLIND to the
+// rule it is named for. Removing the watermark check from Acquire leaves F7
+// green, which is how this probe came to exist.
+//
+// So: two spans that are below the watermark while their bytes are DEMONSTRABLY
+// still in the cache. Both must be refused, or "released" means "released
+// unless some unrelated view is holding something in front of it" — a rule no
+// caller can reason about.
+func TestAcquire_BelowWatermarkIsRefusedWhileTheBytesAreStillThere(t *testing.T) {
+	t.Parallel()
+
+	t.Run("segment straddling the watermark", func(t *testing.T) {
+		t.Parallel()
+		c := New(strings.NewReader("0123456789abcdef"), WithSegmentSize(8))
+		if _, err := c.Ensure(0, 16); err != nil {
+			t.Fatalf("Ensure: %v", err)
+		}
+		c.Release(4) // segment 0 is [0,8): NOT wholly below, so it survives
+
+		// The bytes are still here — proven, not assumed.
+		if v, err := c.Acquire(4, 8); err != nil {
+			t.Fatalf("control failed: [4,8) should still be acquirable: %v", err)
+		} else {
+			if got, _ := v.String(); got != "4567" {
+				t.Fatalf("control failed: [4,8) reads %q, want %q", got, "4567")
+			}
+			v.Close()
+		}
+		if _, err := c.Acquire(0, 1); !errors.Is(err, ErrReleased) {
+			t.Fatalf("Acquire(0,1) after Release(4): err=%v, want ErrReleased.\n%s", err,
+				"The span is below the watermark. That its segment survives because it "+
+					"straddles the watermark is an implementation accident.")
+		}
+	})
+
+	t.Run("segment still held by an earlier view", func(t *testing.T) {
+		t.Parallel()
+		c := New(strings.NewReader("0123456789abcdef"), WithSegmentSize(8))
+		v, err := c.Acquire(0, 4)
+		if err != nil {
+			t.Fatalf("Acquire(0,4): %v", err)
+		}
+		defer v.Close() // stays open for the whole test: segment 0 cannot be freed
+		if _, err := c.Ensure(0, 16); err != nil {
+			t.Fatalf("Ensure: %v", err)
+		}
+		c.Release(c.Head())
+
+		// Still readable through the view that owns it, so the bytes are there.
+		if got, err := v.String(); err != nil || got != "0123" {
+			t.Fatalf("control failed: the holding view reads %q, %v; want %q", got, err, "0123")
+		}
+		if _, err := c.Acquire(0, 1); !errors.Is(err, ErrReleased) {
+			t.Fatalf("Acquire(0,1) after Release(Head) with the segment still held: "+
+				"err=%v, want ErrReleased.\n%s", err,
+				"A second caller must not reach released bytes through the retention of "+
+					"an unrelated view.")
+		}
+	})
+}
+
+// F8 — AND IT MUST ACTUALLY FREE THE MEMORY.
+//
+// A control for the fix above: refusing the acquire is only half of it. One
+// oldest view over a long stream must retain ITS OWN segment, not the suffix
+// behind it. This is the memory bound stated in the ADR, measured rather than
+// asserted.
+func TestRelease_OldestViewDoesNotPinTheSuffix(t *testing.T) {
+	t.Parallel()
+	const segSize, segments = 64, 256
+	src := strings.Repeat("x", segSize*segments)
+	c := New(strings.NewReader(src), WithSegmentSize(segSize))
+
+	v, err := c.Acquire(0, 1)
+	if err != nil {
+		t.Fatalf("Acquire(0,1): %v", err)
+	}
+	defer v.Close()
+	if _, err := c.Ensure(0, len(src)); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+
+	before, dirBefore := c.retainedBytes(), c.directoryLen()
+	c.Release(c.Head())
+	after, dirAfter := c.retainedBytes(), c.directoryLen()
+
+	// One segment is legitimately retained: the one the view holds. Allow the
+	// active write target as well, which the writer may not have finished.
+	if max := int64(2 * segSize); after > max {
+		t.Fatalf("after Release(%d) with one view on byte 0: %d bytes retained, want <= %d "+
+			"(was %d before)\n%s", c.Head(), after, max, before,
+			"An oldest view pins its own segment. If it pins the suffix, peak memory "+
+				"is the whole stream and the bound in the ADR is not a bound.")
+	}
+	if before <= after {
+		t.Fatalf("control failed: %d bytes retained before Release, %d after — the "+
+			"probe cannot observe reclamation at all", before, after)
+	}
+
+	// THE DIRECTORY TOO. Freeing the buffers while the entries pile up behind a
+	// held segment is still unbounded growth over a stream, just at a smaller
+	// constant, and it is invisible to a byte count.
+	if dirAfter > 2 {
+		t.Fatalf("after Release(%d): %d directory entries, want <= 2 (was %d)\n%s",
+			c.Head(), dirAfter, dirBefore,
+			"Entries stranded behind a held segment must be compacted away, or the "+
+				"directory grows with the stream even though the bytes are gone.")
+	}
+	if dirBefore <= dirAfter {
+		t.Fatalf("control failed: %d directory entries before Release, %d after",
+			dirBefore, dirAfter)
+	}
+}

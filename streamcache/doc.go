@@ -40,9 +40,14 @@
 // Retention is the caller's choice; this package has no policy of its own,
 // because it cannot know what a caller still needs.
 //
-// A [Cache.Release] that finds a segment held records the request and applies
-// it when the last view lets go, so "released" does not quietly mean "released
-// unless somebody happened to be holding it".
+// [Cache.Release] sets a WATERMARK, and the watermark alone decides what is
+// still acquirable — not which buffers happen to have been freed. Otherwise the
+// answer would depend on whether an unrelated view is holding an unrelated
+// segment in front of the span, which is not something a caller can reason
+// about. Freeing follows on its own schedule: unheld segments below the
+// watermark go at once, held ones are freed by their last Close, and old views
+// keep reading their own bytes throughout. One view of the first byte of a
+// stream does not pin the rest of it.
 //
 // # Concurrency
 //
