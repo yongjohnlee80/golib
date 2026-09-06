@@ -125,13 +125,29 @@ var (
 //
 // A panic passes one of these rather than a string:
 //
-//	panic(&errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render"})
+//	panic(errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render"})
 //
 // and whatever recovers it uses errors.As to get the fields back. That only
 // works if every wrap on the way out uses %w — flattening it with %v renders
 // the value into text and destroys everything As would have returned, while
 // leaving errors.Is(err, ErrFatal) answering true. The check passes and the
 // payload is gone.
+//
+// # Why a value and not a pointer
+//
+// The methods below take a VALUE receiver, so errs.Fatal is itself an error
+// and the natural way to write one — errs.Fatal{...} — has no nil state to
+// reach. Error() cannot nil-dereference because there is no pointer to
+// dereference.
+//
+// A pointer receiver would make *errs.Fatal the only spelling that implements
+// error, which makes a typed nil the easy mistake: var f *Fatal; return f
+// yields a NON-nil error interface holding a nil pointer, so `err != nil` is
+// true, Error() panics, and Is() answers for a value that was never
+// constructed. Guarding each method against nil hides that state behind a
+// caveat rather than removing it. A value type removes it.
+//
+// The cost is a 3-word copy on each wrap, which no error path will notice.
 type Fatal struct {
 	// Op is the operation whose contract was broken, e.g. "tui: Mount".
 	Op string
@@ -144,10 +160,7 @@ type Fatal struct {
 
 // Error implements error. The text is prose and may change; code compares
 // identity with errors.Is or reads the fields with errors.As.
-func (f *Fatal) Error() string {
-	if f == nil {
-		return "<nil>"
-	}
+func (f Fatal) Error() string {
 	s := f.Op
 	if s == "" {
 		s = "fatal"
@@ -163,9 +176,6 @@ func (f *Fatal) Error() string {
 
 // Is reports whether target is [ErrFatal], so every Fatal answers the general
 // question regardless of its Op, Rule or message.
-func (f *Fatal) Is(target error) bool {
-	if f == nil {
-		return false
-	}
+func (f Fatal) Is(target error) bool {
 	return target == ErrFatal
 }

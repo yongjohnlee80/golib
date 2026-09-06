@@ -3,9 +3,17 @@
 How errors are produced, wrapped, named, compared and recovered in this
 repository. It applies to every package here, and to code that consumes golib.
 
-**The one-sentence version:** an error's **identity** is its contract and its
-**message** is prose — so compare with `errors.As` or `errors.Is`, never with
-text, and a message may be reworded at any time without breaking anyone.
+**The one-sentence version:** **error comparison and detection must never rely
+on message text.** An error's *identity* — a sentinel or a type — is its
+contract; its *message* is prose for a person. Compare with `errors.As` or
+`errors.Is`, and a message may then be reworded at any time without breaking
+anyone.
+
+**The message must still be excellent.** `Error()` should say exactly what
+failed, where, and with what values. These are not a trade-off, and a terse
+message is not a step toward identity — it is just a worse message. Never strip
+detail from an error to discourage matching on it; the fix for text-matching is
+at the comparison, never at the message.
 
 > This document is **complete on its own** — nothing in it requires another
 > source, and you need nothing but this repository to follow it. It is also
@@ -73,21 +81,37 @@ Everything before the bracket is **where**; everything inside it is **what**.
 Keep a base sentinel's own message terse — `"closed"`, not `"errs: closed"` —
 because it appears inside the bracket of every error layered on it.
 
-### Prefer one or two layers; three is the maximum
+### Two layers is the ceiling here; the third belongs to the consumer
 
 ```
-errs.ErrClosed                                 layer 1 — often enough on its own
-  └── tui.ErrBackendClosed                     layer 2 — the usual case
-        └── tui.ErrBackendClosedDuringResize   layer 3 — allowed when needed; the maximum
+errs.ErrClosed                         layer 1 — often enough on its own
+  └── tui.ErrBackendClosed             layer 2 — the ceiling IN THIS REPOSITORY
+        └── app.ErrRenderAborted       layer 3 — the CONSUMER's, if they want it
 ```
 
 **One layer is a real answer.** If nothing package-specific would change a
 caller's behaviour, return `errs.ErrClosed` directly rather than adding a
 near-identical name to the API.
 
-**Three is allowed** where a caller genuinely must distinguish a sub-case — do
-not contort a design to avoid it. **A fourth is the wrong tool**: the hierarchy
-is doing work that a typed error's *fields* should do.
+**Two is the ceiling in golib.** A library cannot know what distinctions its
+consumers need, and a third layer added here is a guess at a decision that
+belongs downstream — one that becomes API the moment it ships. Wanting a third
+*inside* golib means the hierarchy is doing work a typed error's *fields* should
+do.
+
+**The consumer owns the third layer**, and chooses freely between:
+
+```go
+// wrap — keeps our identity and adds theirs; both questions answer true
+var ErrRenderAborted = fmt.Errorf("(%w: render aborted)", tui.ErrBackendClosed)
+
+// map by assignment — adopts our identity under their name, adding no layer
+var ErrShutdown = tui.ErrBackendClosed
+```
+
+Assignment is an *alias*, not a redeclaration (rule 7): `errors.Is` answers true
+in both directions. A second `errors.New` would answer **false**. Their own
+error reaching three layers is fine — the budget is per-repository.
 
 Separately, **context wraps go at boundaries, not at every frame.** A frame that
 adds nothing should return the error unchanged, or five callers produce five
@@ -160,10 +184,21 @@ duplication it appears to fix.
 6. **A panic carries a value, not a bare string,** wherever a `recover()` sits
    above it on some call path:
    ```go
-   panic(&errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render"})
+   panic(errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render"})
    ```
    and whatever recovers it uses `errors.As` to read the fields. Rule 2 applies
    hardest here: a recovered value flattened with `%v` loses everything.
+
+6b. **An error type is a VALUE type — give it value receivers.** `Error()` must
+   never be reachable on a nil reference, and the way to guarantee that is to
+   leave no reference to be nil. With a pointer receiver, `*T` is the only
+   spelling that implements `error`, which makes the typed nil the *easy*
+   mistake: `var e *T; return e` yields a non-nil `error` holding a nil pointer,
+   so `err != nil` is true, `Error()` panics, and `Is` answers for a value
+   nobody constructed. Guarding each method against nil hides that state behind
+   a caveat; a value receiver removes it, and the zero value renders as prose.
+   Pin it with a compile-time assertion — `var _ error = errs.Fatal{}` stops
+   compiling the moment someone switches back.
 
 7. **Cross-repository errors live upstream.** One source of truth; never
    re-declared in a consumer. If two packages must share a sentinel, one
@@ -177,10 +212,22 @@ duplication it appears to fix.
    ```
    Information a caller *needs* goes in a field, not only in the message.
 
-9. **Do not log and return.** Handle it or return it; doing both puts one
+9. **Avoid `errors.Join` unless you need several independent failures.** A
+   joined error answers `errors.Is` true for *every* branch at once, so *"what
+   is this?"* stops having one answer and identity dispatch becomes
+   order-dependent; `errors.As` returns only the first match and drops the rest.
+   Legitimate for a cleanup that must attempt every step and report all of them.
+   Never as a way to attach a sentinel to a cause — that is one error with an
+   identity and a cause, and `%w` already says it:
+   ```go
+   fmt.Errorf("close %s: %w", name, errs.ErrClosed)  // yes — one identity
+   errors.Join(errs.ErrClosed, cause)                // no  — two, ambiguous
+   ```
+
+10. **Do not log and return.** Handle it or return it; doing both puts one
    failure in the record twice and a reader cannot tell it was one event.
 
-10. **A message may be reworded at any time.** That freedom is what identity
+11. **A message may be reworded at any time.** That freedom is what identity
     buys — and code that breaks when a message changes was already wrong.
 
 ---
