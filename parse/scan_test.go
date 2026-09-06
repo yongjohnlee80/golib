@@ -948,8 +948,14 @@ func TestScan_StreamedLocationIsNotReadForward(t *testing.T) {
 	}
 }
 
-// At the live edge the answer IS available, and the lookahead it costs is the
-// bound the doc claims: at most utf8.UTFMax-1 bytes of new indexing.
+// At the live edge the answer IS available, and the lookahead costs at most
+// utf8.UTFMax-1 bytes of new INDEXING.
+//
+// Indexing only. This says nothing about bytes consumed from the reader, which
+// the cache decides — see TestScan_LiveEdgeLocationConsumesAtMostOneSegment for
+// that ceiling. Asserting the index growth and calling it I/O is how the doc came
+// to claim the lookahead was all it would read: a 3-byte index growth sat happily
+// on top of a 32 KiB segment fill.
 func TestScan_LiveEdgeLocationIndexesAtMostTheLookahead(t *testing.T) {
 	r := &countingReader{limit: 1 << 20}
 	s := New(WithForms(ByteForm(Punct))).Scan(context.Background(), r, BorrowReader)
@@ -1053,5 +1059,65 @@ func TestScan_FailedThenClosedReportsClosed(t *testing.T) {
 	}
 	if err := first(); !errors.Is(err, ErrScanClosed) {
 		t.Errorf("after Close = %v, want ErrScanClosed", err)
+	}
+}
+
+// stagedReader dribbles one byte on its first call and fills the buffer after
+// that. The dribble is what leaves the cache nearly empty at the live edge, so
+// the NEXT read — a segment fill — becomes observable instead of being served
+// from bytes the cache had already gathered.
+type stagedReader struct {
+	served, limit int64
+	calls         int
+}
+
+func (r *stagedReader) Read(p []byte) (int, error) {
+	if r.served >= r.limit {
+		return 0, io.EOF
+	}
+	r.calls++
+	k := int64(len(p))
+	if r.calls == 1 {
+		k = 1
+	}
+	if r.served+k > r.limit {
+		k = r.limit - r.served
+	}
+	for i := int64(0); i < k; i++ {
+		p[i] = 'a'
+	}
+	r.served += k
+	return int(k), nil
+}
+
+// The I/O ceiling for a live-edge location is ONE SEGMENT, not three bytes and
+// not the rest of the stream. The cache reads a segment at a time on purpose —
+// the alternative is a syscall per rune — so a three-byte lookahead can ride on
+// top of a segment fill. What must never happen is draining the gap to an
+// arbitrary offset, which the streamed refusal above prevents.
+func TestScan_LiveEdgeLocationConsumesAtMostOneSegment(t *testing.T) {
+	const streamSize = 1 << 20
+	const segment = 32 << 10 // streamcache's default; the ceiling pinned here
+
+	r := &stagedReader{limit: streamSize}
+	s := New(WithForms(ByteForm(Punct))).Scan(context.Background(), r, BorrowReader)
+	defer s.Close()
+
+	for range s.Tokens() {
+		break
+	}
+	before := r.served
+	if _, err := s.LocationAt(s.notedTo); err != nil {
+		t.Fatalf("LocationAt at the indexed edge: %v", err)
+	}
+
+	grew := r.served - before
+	if grew > segment {
+		t.Errorf("a live-edge location consumed %d underlying bytes; the ceiling is one "+
+			"segment (%d)", grew, segment)
+	}
+	if grew >= streamSize/2 {
+		t.Errorf("a live-edge location drained %d of a %d-byte stream; it must never read an "+
+			"arbitrary gap", grew, streamSize)
 	}
 }

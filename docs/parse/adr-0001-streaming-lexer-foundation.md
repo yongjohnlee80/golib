@@ -1,6 +1,11 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 22)** (2026-09-06, jarvis). Rev 22 finishes two
+- **Status:** **Proposed (rev 23)** (2026-09-06, jarvis). Rev 23 states the
+  location lookahead's REAL cost: it bounds what is INDEXED (≤ `utf8.UTFMax-1`)
+  and drains no arbitrary gap, but the cache reads in segments, so the I/O ceiling
+  is one configured segment — rev 22 claimed otherwise and its test measured the
+  index rather than the reader (§4).
+- **Rev 22 (superseded header, kept for the trail):** Rev 22 finishes two
   Scan obligations rev 21 only half met: `Close` now drops the form list, context
   and terminal error as well as its buffers, and a streamed `LocationAt` refuses
   an offset ahead of the indexed head instead of reading forward to it (§4).
@@ -360,15 +365,25 @@ func (l *Lexer) WriteTokens(ctx context.Context, w io.Writer, r io.Reader) error
 >   `step` checks *closed* before *failed*: a scan that failed keeps reporting
 >   what went wrong until it is closed, and afterwards reports that it is closed,
 >   which is the truthful answer about a resource that is gone.
-> - **The bounded lookahead is actually bounded.** `LocationAt` drove the
->   lookahead unconditionally, so over a stream an offset far ahead of the index
->   was answered by *reading to it* — 900 kB of a 1 MiB source, which is the
->   opposite of a bounded diagnostic. A streamed offset ahead of the indexed head
->   is now refused **before any I/O**: a location is a question about an offset the
->   scan has already reached. Over a slice the input is in memory already, so any
->   in-range offset is still answered by indexing forward at no I/O cost. The
->   controls are a counting reader that must not be advanced at all, and a
->   live-edge query that may index at most `utf8.UTFMax-1` bytes more.
+> - **No arbitrary gap is drained.** `LocationAt` drove the lookahead
+>   unconditionally, so over a stream an offset far ahead of the index was answered
+>   by *reading to it* — 900 kB of a 1 MiB source, which is the opposite of a
+>   bounded diagnostic. A streamed offset ahead of the indexed head is now refused
+>   **before any I/O**: a location is a question about an offset the scan has
+>   already reached. Over a slice the input is in memory already, so any in-range
+>   offset is still answered by indexing forward at no I/O cost.
+>
+>   **And the honest bound is stated (rev 23).** Rev 22 claimed the lookahead was
+>   all it would read. That was wrong, and the test that "proved" it measured the
+>   INDEX rather than the reader. The cache reads in SEGMENTS, so a three-byte
+>   lookahead at the live edge can ride on top of a segment fill — measured at
+>   32,767 bytes with a staged reader while the index grew by exactly 3. That
+>   read-ahead is deliberate, since the alternative is a syscall per rune, so the
+>   documented ceiling is **one configured segment**, never the rest of the stream,
+>   and two separate controls hold it: a counting reader that must not be advanced
+>   at all for a far-future offset, and a staged reader that pins the one-segment
+>   ceiling at the live edge. *A proxy measurement agreeing with a claim is not
+>   evidence for it — the third time that lesson was paid for in this ADR.*
 >
 > **Not yet: `Validate` and `WriteTokens`** — and with them criterion 4's
 > constant-memory path, which is exactly the path that builds no `Source`.
