@@ -14,7 +14,7 @@
 # whole-tree grep would report. Migrating test comments is tracked
 # separately as its own open item.
 #
-# total: 744 lines in 150 files
+# total: 742 lines in 150 files
 2 auth/audit.go
 5 auth/auth.go
 2 auth/authhttp/authhttp.go
@@ -44,10 +44,10 @@
 2 dao/dialect.go
 1 dao/dialect_generic.go
 2 dao/doc.go
-6 dao/errors.go
+5 dao/errors.go
 4 dao/expr.go
 4 dao/field.go
-11 dao/hooks.go
+10 dao/hooks.go
 5 dao/introspect.go
 1 dao/join.go
 5 dao/mysql/dialect.go

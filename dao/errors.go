@@ -3,6 +3,8 @@ package dao
 import (
 	"errors"
 	"fmt"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Package error sentinels. Driver errors are translated to these at the DAL
@@ -67,12 +69,49 @@ var (
 
 	// ErrUnsupported is returned by a capability-gated operation that the
 	// connection's dialect does not implement — e.g. transactions (Begin/RunTx),
-	// Upsert, or the COPY bulk-load fast-path on an OLAP / append-only store
-	// (ADR-0008). It never panics; test with errors.Is(err, ErrUnsupported).
+	// Upsert, or the COPY bulk-load fast-path on an OLAP / append-only store.
+	// It never panics; test with errors.Is(err, ErrUnsupported).
 	// Drivers wrap it with context, e.g.
 	// fmt.Errorf("bigquery: %w: interactive transactions", dao.ErrUnsupported).
-	ErrUnsupported = errors.New("dao: operation not supported by this dialect")
+	//
+	// It also answers the workspace-wide unsupported question, so a caller that
+	// handles "this cannot be done" uniformly across packages may ask
+	// errors.Is(err, errs.ErrUnsupported) instead and get the same answer.
+	ErrUnsupported error = unsupportedSentinel{}
 )
+
+// unsupportedSentinel is ErrUnsupported's concrete type.
+//
+// It exists so that ErrUnsupported can gain an [errs.ErrUnsupported] identity
+// WITHOUT its message changing. The obvious spelling —
+//
+//	var ErrUnsupported = fmt.Errorf("dao: … (%w)", errs.ErrUnsupported)
+//
+// would rewrite the text of every error in this package that wraps it, and the
+// text has been published for as long as the sentinel has. Rewording is
+// normally free precisely because callers compare identity, but this change is
+// the one that GIVES them the identity to compare, so it cannot also rely on
+// their already having it.
+//
+// An assignment alias — var ErrUnsupported = errs.ErrUnsupported — was the
+// other candidate and is worse: it makes the two the SAME value, so an
+// unrelated package's unsupported error would answer errors.Is(err,
+// dao.ErrUnsupported) true. A caller asking "is this a dialect limitation?"
+// would get yes for a terminal that cannot do colour. Aliasing is for two names
+// that must mean one condition; this is one condition layered on a more general
+// one, which is a wrap.
+//
+// The receiver is a VALUE, so the sentinel has no nil state and Error cannot be
+// reached on a nil reference.
+type unsupportedSentinel struct{}
+
+func (unsupportedSentinel) Error() string {
+	return "dao: operation not supported by this dialect"
+}
+
+// Unwrap makes every dao unsupported error answer the shared question too,
+// without this package's callers having to know that errs exists.
+func (unsupportedSentinel) Unwrap() error { return errs.ErrUnsupported }
 
 // ConstraintKind classifies a constraint violation.
 type ConstraintKind int
