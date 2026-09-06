@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 )
 
@@ -395,7 +396,7 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 	case n != frameLen:
 		// Defensive: a short nil-error write violates net.Conn's contract;
 		// treat the stream as unrecoverable.
-		c.poison(fmt.Errorf("rpc: short write: %d of %d bytes", n, frameLen))
+		c.poison(errs.Wrap(errs.ErrFatal, "rpc: short write: %d of %d bytes", n, frameLen))
 		return c.Err()
 	case wakeErr != nil:
 		// The cancellation wake could not be applied: deadline control is
@@ -453,7 +454,7 @@ func (c *Client) readLoop() {
 		default:
 			// A server-initiated request is a peer contract violation for
 			// this client: continuing would hide drift.
-			c.poison(fmt.Errorf("rpc: peer sent a request frame (method %q)", m.Method))
+			c.poison(errs.Wrap(errs.ErrPrecondition, "rpc: peer sent a request frame, method %q", m.Method))
 			return
 		}
 	}
@@ -518,5 +519,5 @@ func wireErrToError(v any) error {
 			return &Error{Code: code, Message: msg}
 		}
 	}
-	return fmt.Errorf("rpc: server error: %v", v)
+	return errs.Wrap(errs.ErrPrecondition, "rpc: server error: %v", v)
 }

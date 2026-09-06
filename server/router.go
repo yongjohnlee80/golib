@@ -1,9 +1,10 @@
 package server
 
 import (
-	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // MatchResult reports the outcome of [Router.Match].
@@ -65,7 +66,7 @@ func (r *Router[H]) Group(prefix string) *Router[H] {
 // wildcard, or a duplicate route.
 func (r *Router[H]) Handle(method, pattern string, h H) error {
 	if method == "" {
-		return fmt.Errorf("server: empty method for pattern %q", pattern)
+		return errs.Wrap(errs.ErrInvalidArgument, "server: empty method for pattern %q", pattern)
 	}
 	segs := splitSegments(r.prefix + pattern)
 	cur := r.root
@@ -73,7 +74,7 @@ func (r *Router[H]) Handle(method, pattern string, h H) error {
 		switch {
 		case isWildcard(seg):
 			if i != len(segs)-1 {
-				return fmt.Errorf("server: wildcard %q must be the last segment in %q", seg, pattern)
+				return errs.Wrap(errs.ErrInvalidArgument, "server: wildcard %q must be the last segment in %q", seg, pattern)
 			}
 			if cur.wild == nil {
 				cur.wild = &node[H]{pname: captureName(seg)}
@@ -100,7 +101,7 @@ func (r *Router[H]) Handle(method, pattern string, h H) error {
 		cur.handlers = map[string]H{}
 	}
 	if _, dup := cur.handlers[method]; dup {
-		return fmt.Errorf("server: duplicate route %s %q", method, pattern)
+		return errs.Wrap(errs.ErrInvalidArgument, "server: duplicate route %s %q", method, pattern)
 	}
 	cur.handlers[method] = h
 	return nil

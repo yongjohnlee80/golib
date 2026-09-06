@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Backoff describes how failures translate into lockout.
@@ -40,13 +42,13 @@ func DefaultBackoff() Backoff {
 func (b Backoff) validate() error {
 	switch {
 	case b.Threshold < 0:
-		return fmt.Errorf("negative Threshold %d", b.Threshold)
+		return errs.Wrap(errs.ErrInvalidArgument, "auth: negative Threshold %d", b.Threshold)
 	case b.Base <= 0:
-		return fmt.Errorf("Base must be positive, got %s", b.Base)
+		return errs.Wrap(errs.ErrInvalidArgument, "auth: Base must be positive, got %s", b.Base)
 	case b.Max < b.Base:
-		return fmt.Errorf("Max %s is below Base %s", b.Max, b.Base)
+		return errs.Wrap(errs.ErrInvalidArgument, "auth: Max %s is below Base %s", b.Max, b.Base)
 	case b.Forget <= 0:
-		return fmt.Errorf("Forget must be positive, got %s", b.Forget)
+		return errs.Wrap(errs.ErrInvalidArgument, "auth: Forget must be positive, got %s", b.Forget)
 	}
 	return nil
 }
@@ -138,7 +140,7 @@ const evictionSample = 8
 // repair, because these are security parameters.
 func NewMemTracker(max int, b Backoff) (*MemTracker, error) {
 	if max < 0 {
-		return nil, fmt.Errorf("auth.NewMemTracker: negative size %d", max)
+		return nil, errs.Wrap(errs.ErrInvalidArgument, "auth.NewMemTracker: negative size %d", max)
 	}
 	if max == 0 {
 		max = DefaultTrackerSize

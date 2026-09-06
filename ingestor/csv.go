@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"reflect"
 	"time"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 const (
@@ -72,13 +74,13 @@ func CSVHeaderRow[T any](sample T) ([]string, error) {
 	val := reflect.ValueOf(sample)
 	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
-			return nil, fmt.Errorf("CSV expects non-nil struct pointer, got nil")
+			return nil, errs.Wrap(errs.ErrInvalidArgument, "ingestor: CSV expects a non-nil struct pointer, got nil")
 		}
 		val = val.Elem()
 	}
 
 	if val.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("CSV expects struct or pointer to struct, got %v", val.Kind())
+		return nil, errs.Wrap(errs.ErrInvalidArgument, "ingestor: CSV expects a struct or a pointer to struct, got %v", val.Kind())
 	}
 
 	typ := val.Type()
