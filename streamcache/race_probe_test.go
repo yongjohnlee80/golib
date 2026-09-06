@@ -1,6 +1,7 @@
 package streamcache
 
 import (
+	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -74,10 +75,16 @@ func TestRelease_HeldSegmentGoesWhenItsViewCloses(t *testing.T) {
 	c.Release(c.Head()) // asked for everything; segment 0 is held, so it stays
 	v.Close()           // ... and now the reason to keep it is gone
 
-	if _, err := c.Acquire(0, 8); err == nil {
+	if _, err := c.Acquire(0, 8); !errors.Is(err, ErrReleased) {
+		t.Fatalf("Acquire on a span Release was asked to drop, whose only holder has "+
+			"closed: err=%v, want ErrReleased.\n"+
+			"%s", err,
+			"A release watermark must outlive the view that deferred it, or 'released' "+
+				"means nothing and the retained set only grows.")
+	}
+	if false {
 		t.Fatal("Acquire succeeded on a span that Release was asked to drop and whose " +
-			"only holder has closed. A release watermark must outlive the view that " +
-			"deferred it, or 'released' means nothing and the retained set only grows.")
+			"only holder has closed.")
 	}
 }
 
@@ -88,14 +95,20 @@ func TestRelease_HeldSegmentGoesWhenItsViewCloses(t *testing.T) {
 // too. The test's own deadline is the witness.
 func TestEnsure_ZeroProgressReaderDoesNotSpin(t *testing.T) {
 	t.Parallel()
-	done := make(chan struct{})
+	done := make(chan error, 1)
 	go func() {
-		defer close(done)
 		c := New(zeroReader{}, WithSegmentSize(16))
-		_, _ = c.Ensure(0, 8) // must return, not spin
+		_, err := c.Ensure(0, 8) // must return, not spin
+		done <- err
 	}()
 	select {
-	case <-done:
+	case err := <-done:
+		// ASSERT THE SENTINEL, not merely that it returned. "It came back" is
+		// also true of a version that returns a nil error and a short count,
+		// which would leave a caller looping forever one level up.
+		if !errors.Is(err, io.ErrNoProgress) {
+			t.Fatalf("Ensure on a (0, nil) reader: err=%v, want io.ErrNoProgress", err)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Ensure spun on a (0, nil) reader — legal per io.Reader, and it holds " +
 			"c.mu while spinning, so it stops every other goroutine too")
@@ -110,7 +123,7 @@ func TestEnsure_SourceErrorSurvives(t *testing.T) {
 		t.Fatalf("first 4 bytes should read cleanly: %v", err)
 	}
 	_, err := c.Ensure(0, 64) // past what the source will give
-	if err == nil || err.Error() != errBoom.Error() {
+	if !errors.Is(err, errBoom) {
 		t.Fatalf("Ensure past a failed source: err=%v, want the source's own error. "+
 			"Replacing it with ErrRange tells the caller their span was wrong when in "+
 			"fact their source broke", err)
@@ -139,4 +152,7 @@ func (r *errAfter) Read(p []byte) (int, error) {
 	return 1, nil
 }
 
-var errBoom = io.ErrUnexpectedEOF
+// A sentinel of our own. Using io.ErrUnexpectedEOF would let this pass on any
+// unrelated short-read path in the cache rather than on the source's own error
+// travelling through.
+var errBoom = errors.New("streamcache_test: the source broke")

@@ -355,3 +355,24 @@ func ExampleCache_Acquire() {
 	fmt.Println(s)
 	// Output: world
 }
+
+// A non-positive segment size is a programming error and must be reported, not
+// silently replaced by the default — which would hide the caller's mistake
+// until a memory figure looked wrong.
+func TestWithSegmentSize_RejectsNonPositive(t *testing.T) {
+	t.Parallel()
+	for _, n := range []int{0, -1} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("WithSegmentSize(%d) did not panic; a silent default is the "+
+						"fault this replaced", n)
+				}
+			}()
+			New(strings.NewReader(""), WithSegmentSize(n))
+		}()
+	}
+	// SPECIFICITY: a positive size must NOT panic, or the check above would pass
+	// on a constructor that rejected everything.
+	New(strings.NewReader(""), WithSegmentSize(1))
+}
