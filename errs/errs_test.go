@@ -145,3 +145,42 @@ func TestSentinelsAreDistinct(t *testing.T) {
 		t.Fatalf("only %d sentinels checked; the table is stale and this passes vacuously", len(all))
 	}
 }
+
+// A typed-nil *Fatal must not impersonate a real one.
+//
+// A nil *Fatal assigned to an error is non-nil as an interface value while
+// carrying nothing — the classic Go trap. Before the nil guards, such a value
+// answered errors.Is(err, ErrFatal) TRUE and panicked the moment anything
+// rendered it, so a caller would take the fatal path and then crash in its own
+// logging. Both halves are pinned here because either alone would let the
+// other regress unnoticed.
+func TestFatal_TypedNilDoesNotImpersonate(t *testing.T) {
+	var f *errs.Fatal
+	var err error = f // non-nil interface, nil pointer
+
+	if err == nil {
+		t.Fatal("the fixture is wrong: a typed nil must be a non-nil interface, " +
+			"or this test proves nothing about the trap")
+	}
+	if errors.Is(err, errs.ErrFatal) {
+		t.Error("a nil *Fatal must NOT satisfy ErrFatal; it would send every caller " +
+			"down the fatal path carrying nothing")
+	}
+
+	// And it must render rather than panic, because logging is where this is
+	// otherwise discovered.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Error() panicked on a nil *Fatal: %v", r)
+		}
+	}()
+	if got := err.Error(); got != "<nil>" {
+		t.Errorf("Error() = %q, want %q", got, "<nil>")
+	}
+
+	// A real Fatal is unaffected — the guard must not have disabled the identity.
+	real := &errs.Fatal{Op: "pkg: Op", Rule: "the rule"}
+	if !errors.Is(real, errs.ErrFatal) {
+		t.Error("the nil guard must not stop a real Fatal from satisfying ErrFatal")
+	}
+}

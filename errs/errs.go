@@ -145,6 +145,9 @@ type Fatal struct {
 // Error implements error. The text is prose and may change; code compares
 // identity with errors.Is or reads the fields with errors.As.
 func (f *Fatal) Error() string {
+	if f == nil {
+		return "<nil>"
+	}
 	s := f.Op
 	if s == "" {
 		s = "fatal"
@@ -160,4 +163,9 @@ func (f *Fatal) Error() string {
 
 // Is reports whether target is [ErrFatal], so every Fatal answers the general
 // question regardless of its Op, Rule or message.
-func (f *Fatal) Is(target error) bool { return target == ErrFatal }
+func (f *Fatal) Is(target error) bool {
+	if f == nil {
+		return false
+	}
+	return target == ErrFatal
+}
