@@ -1,6 +1,10 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 23)** (2026-09-06, jarvis). Rev 23 states the
+- **Status:** **Proposed (rev 24)** (2026-09-07, jarvis). Rev 24 lands `Validate`
+  and `WriteTokens` — the validity and stream-out seams, both building no `Source`
+  — and records criterion 4 as MEASURED: 456 kB peak live heap for a 1 MiB source
+  and 459 kB for a 4 MiB one (§4).
+- **Rev 23 (superseded header, kept for the trail):** Rev 23 states the
   location lookahead's REAL cost: it bounds what is INDEXED (≤ `utf8.UTFMax-1`)
   and drains no arbitrary gap, but the cache reads in segments, so the I/O ceiling
   is one configured segment — rev 22 claimed otherwise and its test measured the
@@ -385,8 +389,29 @@ func (l *Lexer) WriteTokens(ctx context.Context, w io.Writer, r io.Reader) error
 >   ceiling at the live edge. *A proxy measurement agreeing with a claim is not
 >   evidence for it — the third time that lesson was paid for in this ADR.*
 >
-> **Not yet: `Validate` and `WriteTokens`** — and with them criterion 4's
-> constant-memory path, which is exactly the path that builds no `Source`.
+> **Landed (rev 24): `Validate` and `WriteTokens`.** Both build **no `Source`** —
+> the line index is the engine's only per-line cost, and a caller who never asks
+> for a location does not pay it — and both release each token's bytes as soon as
+> that token has been judged. Neither closes the reader.
+>
+> `Validate` mentions no `Token`, so §1's separation is the compiler's to enforce
+> rather than a comment's to request: a caller who needs only the verdict cannot
+> come to depend on the token stream. `WriteTokens` is the stream-OUT half —
+> tokens as bytes, one per line, with no `[]Token` ever materialised, so its cost
+> does not grow with the number of tokens.
+>
+> **Criterion 4, measured.** Peak LIVE heap, sampled from inside the reader while
+> the scan runs (measuring afterwards would only see what the collector had
+> already taken): **456,176 bytes for a 1 MiB source and 458,912 for a 4 MiB
+> one** — 2.7 kB more for 3 MiB more input. Its control removes the release
+> behind the scan, and the peak then tracks the input, 1.2 MB to 4.4 MB, which is
+> what a working set that scales looks like.
+>
+> One thing that fell out of testing it: a scan WITH locations is constant-memory
+> over this input too, because the line index is reclaimed with the watermark
+> rather than accumulated. §3.4's terms still hold — the longest live line plus
+> the live-window index — but they are bounded by retention, not by the stream, so
+> the two paths differ in what they can ANSWER far more than in what they cost.
 
 `ScanBytes` restores the borrowed, no-copy path (lector r4 B6): its cache is a
 single immutable segment over the caller's slice, never written to and never

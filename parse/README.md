@@ -1,9 +1,26 @@
 # parse — a streaming lexer core that names no dialect
 
-**Status: partial.** The form contract, the delimited forms, the run/set forms,
-`Token`, `Source` (offset → line/column) and the `Scan` engine are here.
-`Validate` and `WriteTokens` are not yet. See
+**Status: the foundation is complete.** The form contract, the delimited forms,
+the run/set forms, `Token`, `Source` (offset → line/column), the `Scan` engine,
+`Validate` and `WriteTokens` are all here. The AST, the grammar tree and any
+dialect leaf are above this layer and are not decided here. See
 `docs/parse/adr-0001-streaming-lexer-foundation.md`.
+
+## Stopping at the answer you need
+
+```go
+// Is it lexically valid? No Token in the signature, so a caller who wants only
+// the verdict cannot come to depend on the token stream — and pays for neither
+// the line index nor the tokens.
+err := lex.Validate(ctx, r)
+
+// The tokens, as bytes, without a []Token ever existing.
+err = lex.WriteTokens(ctx, w, r)
+```
+
+Both build no line index and release each token as soon as it has been judged, so
+under a finite `WithMaxDelimiter` their memory is constant however large the
+stream is. Neither closes the reader.
 
 ## Scanning
 

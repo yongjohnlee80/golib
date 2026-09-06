@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -1119,5 +1120,161 @@ func TestScan_LiveEdgeLocationConsumesAtMostOneSegment(t *testing.T) {
 	if grew >= streamSize/2 {
 		t.Errorf("a live-edge location drained %d of a %d-byte stream; it must never read an "+
 			"arbitrary gap", grew, streamSize)
+	}
+}
+
+// --- the validity seam ------------------------------------------------------
+
+func TestValidate_ReportsTheFirstFailureAndNothingElse(t *testing.T) {
+	lex := New(WithForms(sqlish()...))
+	if err := lex.Validate(context.Background(),
+		strings.NewReader("select a /*c*/ from t -- x\nwhere y <= 3;\n")); err != nil {
+		t.Errorf("Validate of a well-formed source = %v, want nil", err)
+	}
+
+	err := lex.Validate(context.Background(), strings.NewReader("a 'oops"))
+	var unterm *UnterminatedError
+	if !errors.As(err, &unterm) {
+		t.Errorf("Validate of an unterminated quote = %v, want *UnterminatedError", err)
+	}
+
+	err = New(WithForms(sqlish()...), WithMaxDelimiter(8)).Validate(context.Background(),
+		strings.NewReader("a '"+strings.Repeat("x", 500)))
+	var be *BoundError
+	if !errors.As(err, &be) {
+		t.Errorf("Validate past the bound = %v, want *BoundError", err)
+	}
+
+	bad := decoyForm{kind: Word, starts: func([]byte) (int, Match) { return 3, NoMatch }}
+	if err := New(WithForms(bad)).Validate(context.Background(),
+		strings.NewReader("abc")); !errors.Is(err, ErrFormContract) {
+		t.Errorf("Validate of a contract-breaking form = %v, want ErrFormContract", err)
+	}
+}
+
+// Validate builds no line index at all — that is the whole reason it can be the
+// constant-memory path, and it is why locations are unavailable on it.
+func TestValidate_BuildsNoLineIndex(t *testing.T) {
+	lex := New(WithForms(sqlish()...))
+	s := lex.newScan(context.Background(), streamcache.NewBytes([]byte("a\nb\nc")), nil, withoutSource)
+	defer s.Close()
+	if s.src != nil {
+		t.Error("a validation scan built a Source; the index is the per-line cost it exists to avoid")
+	}
+	if _, err := s.LocationAt(0); !errors.Is(err, ErrLocationRange) {
+		t.Errorf("LocationAt on an index-less scan = %v, want ErrLocationRange", err)
+	}
+	// It still lexes multi-line input correctly.
+	if err := lex.Validate(context.Background(), strings.NewReader("a\nb\n-- c\n'q'\n")); err != nil {
+		t.Errorf("Validate over multi-line input = %v, want nil", err)
+	}
+}
+
+func TestWriteTokens_StreamsTheSameTokensAsAScan(t *testing.T) {
+	lex := New(WithForms(sqlish()...))
+
+	var want []string
+	s := lex.ScanBytes(context.Background(), []byte(corpus))
+	defer s.Close()
+	for tok, err := range s.Tokens() {
+		if err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		want = append(want, tok.String())
+	}
+
+	var buf bytes.Buffer
+	if err := lex.WriteTokens(context.Background(), &buf, strings.NewReader(corpus)); err != nil {
+		t.Fatalf("WriteTokens: %v", err)
+	}
+	got := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	if len(got) != len(want) {
+		t.Fatalf("WriteTokens wrote %d lines, the scan produced %d tokens", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestWriteTokens_ReportsAWriteFailure(t *testing.T) {
+	boom := errors.New("disk full")
+	err := New(WithForms(sqlish()...)).WriteTokens(context.Background(),
+		failingWriter{err: boom}, strings.NewReader(corpus))
+	if !errors.Is(err, boom) {
+		t.Errorf("WriteTokens over a failing writer = %v, want %v", err, boom)
+	}
+}
+
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+// --- constant memory --------------------------------------------------------
+
+// samplingReader serves a repeating lexable pattern and records the PEAK LIVE
+// heap while it is being consumed.
+//
+// Sampled from INSIDE the reader on purpose: measuring after the run would see
+// whatever the collector had already taken, which says nothing about the working
+// set the scan actually held while running.
+type samplingReader struct {
+	tmpl          []byte
+	served, limit int64
+	every, nextAt int64
+	peak          uint64
+}
+
+func (r *samplingReader) Read(p []byte) (int, error) {
+	if r.served >= r.limit {
+		return 0, io.EOF
+	}
+	k := int64(len(p))
+	if r.served+k > r.limit {
+		k = r.limit - r.served
+	}
+	for i := int64(0); i < k; i++ {
+		p[i] = r.tmpl[(r.served+i)%int64(len(r.tmpl))]
+	}
+	r.served += k
+	if r.served >= r.nextAt {
+		r.nextAt = r.served + r.every
+		var m runtime.MemStats
+		runtime.GC() // a live figure, not an accumulated one
+		runtime.ReadMemStats(&m)
+		if m.HeapAlloc > r.peak {
+			r.peak = m.HeapAlloc
+		}
+	}
+	return int(k), nil
+}
+
+// Validation's working set does not grow with the size of the stream. Quadrupling
+// the input must not quadruple the live heap — the scan holds a window and a
+// segment, and lets go of everything behind it.
+func TestValidate_MemoryDoesNotGrowWithTheStream(t *testing.T) {
+	tmpl := []byte("select a, b from t where x = 1;\n")
+	lex := New(WithForms(sqlish()...), WithMaxDelimiter(4096))
+
+	peakFor := func(size int64) uint64 {
+		r := &samplingReader{tmpl: tmpl, limit: size, every: 256 << 10}
+		if err := lex.Validate(context.Background(), r); err != nil {
+			t.Fatalf("Validate over %d bytes: %v", size, err)
+		}
+		return r.peak
+	}
+
+	small := peakFor(1 << 20)
+	large := peakFor(4 << 20)
+	t.Logf("peak live heap: 1 MiB source = %d bytes, 4 MiB source = %d bytes", small, large)
+
+	// Linear growth would add ~3 MiB. The measured difference is a few kilobytes,
+	// so 512 KiB of slack is generous for allocator noise and still tight enough
+	// to catch a working set that scales — including the line index a scan WITH
+	// locations would accumulate over the same input.
+	if large > small+(512<<10) {
+		t.Errorf("peak live heap grew from %d to %d bytes when the stream grew by 3 MiB; "+
+			"validation's working set must not scale with the input", small, large)
 	}
 }

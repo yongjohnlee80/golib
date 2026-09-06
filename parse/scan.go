@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -154,9 +155,21 @@ type Scan struct {
 	closeErr error
 }
 
+// sourceMode says whether a Scan builds the line index that locations are
+// resolved from. Validation does not: the index is the only per-line cost in the
+// whole engine, and a caller that never asks for a location should not pay it —
+// which is exactly what lets validation stay constant-memory over a stream of any
+// size.
+type sourceMode bool
+
+const (
+	withSource    sourceMode = true
+	withoutSource sourceMode = false
+)
+
 // Scan begins a pass over r. Nothing is read until the tokens are ranged over.
 func (l *Lexer) Scan(ctx context.Context, r io.Reader, own Ownership) *Scan {
-	s := l.newScan(ctx, streamcache.New(r), nil)
+	s := l.newScan(ctx, streamcache.New(r), nil, withSource)
 	if own == OwnReader {
 		if rc, ok := r.(io.Closer); ok {
 			s.rc = rc
@@ -169,10 +182,10 @@ func (l *Lexer) Scan(ctx context.Context, r io.Reader, own Ownership) *Scan {
 // not into the windows handed to forms, which are reslices of b. The caller must
 // not mutate b for the life of the Scan.
 func (l *Lexer) ScanBytes(ctx context.Context, b []byte) *Scan {
-	return l.newScan(ctx, streamcache.NewBytes(b), b)
+	return l.newScan(ctx, streamcache.NewBytes(b), b, withSource)
 }
 
-func (l *Lexer) newScan(ctx context.Context, c *streamcache.Cache, fixed []byte) *Scan {
+func (l *Lexer) newScan(ctx context.Context, c *streamcache.Cache, fixed []byte, mode sourceMode) *Scan {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -186,6 +199,9 @@ func (l *Lexer) newScan(ctx context.Context, c *streamcache.Cache, fixed []byte)
 	}
 	if fixed != nil {
 		s.end = int64(len(fixed))
+	}
+	if mode == withoutSource {
+		return s
 	}
 	// The Source's byte access is lifetime-bearing: it holds a View for the
 	// duration of the callback and closes it before returning, so no borrowed
@@ -267,6 +283,9 @@ func (s *Scan) LocationAt(off int64) (Location, error) {
 	if s.closed {
 		return Location{}, ErrScanClosed
 	}
+	if s.src == nil {
+		return Location{}, fmt.Errorf("%w: this scan builds no line index", ErrLocationRange)
+	}
 	if off >= 0 {
 		if s.fixed == nil && off > s.notedTo {
 			return Location{}, fmt.Errorf("%w: offset %d is ahead of the indexed head %d — a "+
@@ -304,6 +323,56 @@ func (s *Scan) Close() error {
 	s.cache, s.src, s.rc = nil, nil, nil
 	s.forms, s.ctx, s.err = nil, nil, nil
 	return s.closeErr
+}
+
+// Validate reports whether r is lexically valid — do its comments, strings and
+// quoted identifiers open and close — and nothing else. It drives the whole scan
+// and returns the first error, or nil.
+//
+// NO Token APPEARS IN THE SIGNATURE, so the separation is the compiler's to
+// enforce rather than a comment's to request: a caller who needs only the verdict
+// cannot come to depend on the token stream, and does not pay for it. It builds no
+// line index and lets go of each token's bytes as soon as that token has been
+// judged, so under a finite delimiter bound its memory is CONSTANT however large
+// the stream is.
+//
+// It does not close r: ownership, and the decision about when to close, stay with
+// the caller.
+func (l *Lexer) Validate(ctx context.Context, r io.Reader) error {
+	s := l.newScan(ctx, streamcache.New(r), nil, withoutSource)
+	defer s.Close()
+	for _, err := range s.Tokens() {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// WriteTokens streams the tokens to w, one per line, each as its kind and
+// half-open span.
+//
+// It is the stream-OUT half of the same idea. A caller who wants the tokens
+// rather than a verdict gets them as bytes, and the lexer never materialises a
+// []Token, so what it costs does not grow with the number of tokens. Like
+// Validate it builds no line index and does not close r.
+func (l *Lexer) WriteTokens(ctx context.Context, w io.Writer, r io.Reader) error {
+	s := l.newScan(ctx, streamcache.New(r), nil, withoutSource)
+	defer s.Close()
+
+	bw := bufio.NewWriter(w)
+	for tok, err := range s.Tokens() {
+		if err != nil {
+			return err
+		}
+		if _, werr := bw.WriteString(tok.String()); werr != nil {
+			return werr
+		}
+		if werr := bw.WriteByte('\n'); werr != nil {
+			return werr
+		}
+	}
+	return bw.Flush()
 }
 
 // step produces the next token. ok is false once the stream is finished.
@@ -348,13 +417,31 @@ func (s *Scan) step() (Token, bool, error) {
 	// Relative to the token's START, not to the new position: a token that ends
 	// on a newline begins a line at exactly s.pos, and reclaiming to there would
 	// release the token being handed back in this very call.
-	s.cache.Release(s.src.reclaim(tok.Start))
+	s.cache.Release(s.releaseTo(tok))
 	return tok, true, nil
 }
 
 func (s *Scan) fail(err error) (Token, bool, error) {
 	s.failed, s.err = true, err
 	return Token{}, false, err
+}
+
+// releaseTo is how far the cache may be released once tok has been handed back.
+//
+// With a line index, back to the LINE the token starts on: a column is counted
+// from its line's true start, and it is relative to the token's START rather
+// than the new position because a token that ends on a newline begins a line at
+// exactly that position — reclaiming to there would release the token being
+// returned in the same call.
+//
+// Without one, straight to the end of the token. Nothing can ask for a location
+// and nothing is retained on a line's behalf, which is what makes validation
+// constant-memory whatever the size of the stream.
+func (s *Scan) releaseTo(tok Token) int64 {
+	if s.src == nil {
+		return tok.End
+	}
+	return s.src.reclaim(tok.Start)
 }
 
 // lexOne walks the form list at s.pos and returns the one token that starts
@@ -600,6 +687,9 @@ func (s *Scan) fillFixed(want int) ([]byte, bool, error) {
 // high-water mark is what keeps a re-filled or resliced window from recording a
 // line twice.
 func (s *Scan) indexNewlines(abs int64, buf []byte) {
+	if s.src == nil {
+		return // nothing resolves locations, so nothing needs an index
+	}
 	i := int64(0)
 	if abs < s.notedTo {
 		i = s.notedTo - abs
@@ -622,6 +712,9 @@ func (s *Scan) indexNewlines(abs int64, buf []byte) {
 // it cannot be provisional. It is bounded: callers ask for a few bytes past an
 // offset that is already live, never for the rest of the stream.
 func (s *Scan) indexThrough(target int64) error {
+	if s.src == nil {
+		return nil
+	}
 	if s.end >= 0 && target > s.end {
 		target = s.end
 	}
