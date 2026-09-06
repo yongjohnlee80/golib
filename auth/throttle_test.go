@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -279,6 +280,83 @@ func equalSeq(a, b []string) bool {
 	return true
 }
 
+// --- (a) the ALGORITHMIC property, observed without a clock ------------------
+
+// Eviction must not scan the table. It examines a bounded SAMPLE
+// (evictionSample records) and evicts the oldest of those — so its cost does
+// not grow with the cap.
+//
+// THIS ASSERTS THAT WITHOUT TIMING ANYTHING, which is the point. A full scan
+// and a bounded sample differ in an observable way that no machine load can
+// perturb: a full scan always finds the globally-oldest record and evicts it,
+// while a sample of 8 out of `cap` finds it only by luck. Seed one record as
+// distinctly oldest, insert a new key, and ask whether that record survived.
+//
+// The arithmetic is what makes this deterministic in practice rather than
+// flaky. With cap = 4096 and evictionSample = 8, a sampled eviction touches the
+// distinctly-oldest record with probability 8/4096 — about 0.2% — so over 20
+// rounds it is expected to survive ~19.96 times. A full scan evicts it 20 times
+// out of 20. The threshold below sits between those two, nowhere near either.
+func TestThrottle_EvictionSamplesRatherThanScanning(t *testing.T) {
+	t.Parallel()
+
+	const (
+		cap    = 4096
+		rounds = 20
+		// A full scan would score 0. A bounded sample is expected to score
+		// ~19.96. Anything at or above this is incompatible with a scan.
+		minSurvivals = 17
+	)
+
+	survived := 0
+	for r := 0; r < rounds; r++ {
+		m := tracker(t, cap, Backoff{Threshold: 1_000_000, Base: time.Second, Max: time.Second, Forget: time.Hour})
+		now := time.Now()
+		ctx := context.Background()
+		for i := 0; i < cap; i++ {
+			if _, err := m.Fail(ctx, fmt.Sprintf("k%d", i), now); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := m.Len(); got != cap {
+			t.Fatalf("round %d: filled to %d, want %d", r, got, cap)
+		}
+
+		// One record is distinctly the oldest BY lastSeen, which is what
+		// eviction orders on. `last` stays recent on purpose: an old `last`
+		// would make it EXPIRED, and expired records are dropped by a
+		// different branch, which would prove nothing about ordering.
+		const victim = "k0"
+		m.mu.Lock()
+		m.records[victim].lastSeen = now.Add(-24 * time.Hour)
+		m.mu.Unlock()
+
+		if _, err := m.Fail(ctx, fmt.Sprintf("new-%d", r), now); err != nil {
+			t.Fatal(err)
+		}
+
+		m.mu.Lock()
+		_, stillThere := m.records[victim]
+		m.mu.Unlock()
+		if stillThere {
+			survived++
+		}
+	}
+
+	t.Logf("globally-oldest record survived %d/%d evictions (a full scan scores 0, "+
+		"a %d-of-%d sample is expected to score ~%.2f)",
+		survived, rounds, evictionSample, cap,
+		float64(rounds)*(1-float64(evictionSample)/float64(cap)))
+
+	if survived < minSurvivals {
+		t.Errorf("the globally-oldest record survived only %d/%d evictions, want >= %d: "+
+			"eviction is finding the true oldest, which means it is SCANNING the table "+
+			"rather than sampling it — cost then grows with the cap, which is both a DoS "+
+			"amplifier and a timing signal for \"new key at capacity\"",
+			survived, rounds, minSurvivals)
+	}
+}
+
 // A full tracker must not change the shape OR the cost of the work. Proving
 // that needs both a structural and a wall-clock check, so this does both, with a
 // negative control proving the measurement can actually see an O(cap) regression.
@@ -325,35 +403,78 @@ func TestThrottle_TrackerFullPathIsEquivalent(t *testing.T) {
 	}
 
 	// --- wall clock -----------------------------------------------------
-	const iterations = 300
-	atCapacity := timeInserts(t, full, iterations, "hot")
-
+	//
+	// The ALGORITHMIC half of this property is asserted without a clock, by
+	// TestThrottle_EvictionSamplesRatherThanScanning. What is left here is the
+	// half that is genuinely ABOUT wall clock and cannot be counted: two paths
+	// can perform identical operations and still be distinguishable by TIME,
+	// which is what lets an attacker ask "is this a new key at capacity?".
+	//
+	// THREE THINGS MAKE THE MEASUREMENT ROBUST, and each closes a specific way
+	// the earlier version could mislead:
+	//
+	//  1. The three sample streams are INTERLEAVED, a slice of each per round.
+	//     Measuring all of one then all of another lets a burst of machine load
+	//     land on one stream and not the others; a 28.2x reading was observed
+	//     that way, under load, and did not reproduce.
+	//  2. The statistic is a MEDIAN over rounds, not one long sum, so a single
+	//     descheduled round cannot carry the result.
+	//  3. The limit is DERIVED from the control measured in the same rounds,
+	//     not hard-coded. A fixed 10x is a claim about the machine; the control
+	//     is a measurement of it.
+	//
+	// The control also had to move. It used to be fullScan/notFull — the SAME
+	// denominator as the assertion — so jitter in the cold sample scaled both,
+	// and the guard reported a healthy instrument during exactly the run where
+	// the instrument was unhealthy. Interleaving is what makes it independent.
+	const (
+		rounds  = 9
+		perRoun = 40
+	)
 	empty := tracker(t, cap, Backoff{Threshold: 1_000_000, Base: time.Second, Max: time.Second, Forget: time.Hour})
-	notFull := timeInserts(t, empty, iterations, "cold")
 
-	// Negative control: a deliberate O(cap) scan over a table of the same size.
-	// If the harness cannot distinguish THIS from a normal insert, it could not
-	// have detected an O(cap) eviction either, and the assertion below would be
-	// vacuous.
-	fullScan := timeFullScan(full, iterations)
-
-	ratio := float64(atCapacity) / float64(notFull)
-	controlRatio := float64(fullScan) / float64(notFull)
-	t.Logf("at-capacity %v, not-full %v (ratio %.1fx); O(cap) control %v (ratio %.1fx)",
-		atCapacity, notFull, ratio, fullScan, controlRatio)
-
-	if controlRatio < 10 {
-		t.Fatalf("the negative control is only %.1fx slower than a normal insert, so this "+
-			"measurement could not detect an O(cap) regression — the assertion below is vacuous", controlRatio)
+	hotS := make([]float64, 0, rounds)
+	coldS := make([]float64, 0, rounds)
+	ctlS := make([]float64, 0, rounds)
+	for r := 0; r < rounds; r++ {
+		hotS = append(hotS, float64(timeInserts(t, full, perRoun, fmt.Sprintf("hot%d", r))))
+		coldS = append(coldS, float64(timeInserts(t, empty, perRoun, fmt.Sprintf("cold%d", r))))
+		ctlS = append(ctlS, float64(timeFullScan(full, perRoun)))
 	}
-	// Tolerant: the sampled eviction does strictly more work than a plain insert
-	// (a few map lookups and deletes), just not work proportional to the cap.
-	const allowed = 10
+	atCapacity, notFull, fullScan := median(hotS), median(coldS), median(ctlS)
+
+	ratio := atCapacity / notFull
+	controlRatio := fullScan / notFull
+	t.Logf("medians over %d interleaved rounds: at-capacity %v, not-full %v (ratio %.1fx); "+
+		"O(cap) control %v (ratio %.1fx)",
+		rounds, time.Duration(atCapacity), time.Duration(notFull), ratio,
+		time.Duration(fullScan), controlRatio)
+
+	if controlRatio < 4 {
+		t.Fatalf("the O(cap) control is only %.1fx a normal insert, so this measurement "+
+			"could not detect an O(cap) regression and the assertion below would be "+
+			"vacuous", controlRatio)
+	}
+	// DERIVED, not hard-coded: a sampled eviction does strictly more work than a
+	// plain insert — a few map lookups and a delete — but it must sit far closer
+	// to a normal insert than to a full scan. Half the measured control distance
+	// is the line, so the bound scales with whatever this machine actually is.
+	allowed := 1 + (controlRatio-1)/2
 	if ratio > allowed {
-		t.Errorf("inserting at capacity is %.1fx a normal insert (limit %dx): eviction work "+
-			"looks proportional to the table size, which is both a DoS amplifier and a "+
-			"timing signal for \"new key at capacity\"", ratio, allowed)
+		t.Errorf("inserting at capacity is %.1fx a normal insert, past the %.1fx derived "+
+			"from this run's O(cap) control (%.1fx): eviction work looks proportional to "+
+			"the table size, which is both a DoS amplifier and a timing signal for "+
+			"\"new key at capacity\"", ratio, allowed, controlRatio)
 	}
+}
+
+// median returns the middle value, sorting a copy so the caller's slice is
+// untouched. A median rather than a mean because the failure mode being guarded
+// against is one descheduled round, and a mean carries it.
+func median(xs []float64) float64 {
+	c := slices.Clone(xs)
+	slices.Sort(c)
+	return c[len(c)/2]
 }
 
 // timeInserts measures per-insert cost for keys that are misses.
