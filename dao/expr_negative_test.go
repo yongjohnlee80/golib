@@ -6,7 +6,8 @@ import (
 	"testing"
 )
 
-// TestExpr_AltRejectionsAreCompileErrors is the negative half of ADR-0016 §2.3.
+// TestExpr_AltRejectionsAreCompileErrors is the negative half of the
+// expression surface: what must NOT compile.
 // The Alt constraint's whole point is that a bad fallback fails at BUILD time,
 // which no ordinary test can observe — so this one compiles a fixture that must
 // not build and asserts each rejection by name.

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// ADR-0017 §2.2, criterion 2 — the typed helpers. The property under test
+// The typed capability helpers. The property under test
 // throughout is that nothing falls back silently: a helper either does exactly
 // what was asked, or says it cannot.
 
@@ -159,7 +159,7 @@ func TestBeginConnTx_ZeroOptionsTakeThePlainBeginPath(t *testing.T) {
 
 // A driver that cannot express the option is told so — and the BEGIN never
 // happens, so the caller never holds a transaction weaker than the one asked
-// for (ADR-0017 §2.2a: refusal before BEGIN).
+// for — refusal happens BEFORE BEGIN.
 func TestBeginConnTx_NonDefaultWithoutCapabilityIsRefusedBeforeBegin(t *testing.T) {
 	t.Parallel()
 
@@ -192,7 +192,7 @@ func TestBeginConnTx_NonDefaultWithoutCapabilityIsRefusedBeforeBegin(t *testing.
 	}
 }
 
-// Validation order (ADR-0017 §2.2a): malformed input is reported as malformed
+// Validation ORDER: malformed input is reported as malformed
 // input even on a connection that would ALSO have failed the capability probe.
 // The reverse would tell a caller their driver is limited when in fact they
 // typed nonsense.
@@ -286,7 +286,7 @@ func TestBeginConnTx_DriverErrorPassesThrough(t *testing.T) {
 // The capability is assertable on the CONNECTION, before any transaction
 // exists. That is the whole reason it exists: a session-capable connection can
 // be rejected at the moment it is declared session-capable, instead of at the
-// user's first BEGIN (rev 2, MF1).
+// user's first BEGIN.
 func TestSessionTxBeginner_AssertableOnTheConnection(t *testing.T) {
 	t.Parallel()
 

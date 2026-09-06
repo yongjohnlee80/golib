@@ -152,7 +152,7 @@ func dialectNameReturns(t *testing.T, files []parsedGo) (byConst map[string][]st
 				// FAIL CLOSED. A Name() whose body is not a single return is
 				// not "fine", it is UNANALYSABLE by this guard, and skipping it
 				// silently is how a computed name would slip through
-				// (lector, r0 MEDIUM).
+				// at all.
 				literals = append(literals, where+
 					" has a Name() body this guard cannot analyse (not a single return statement)")
 				continue
@@ -177,7 +177,7 @@ func dialectNameReturns(t *testing.T, files []parsedGo) (byConst map[string][]st
 				}
 			case *ast.SelectorExpr:
 				// Require the qualifier to RESOLVE to the dao import, rather
-				// than merely be spelled "dao" (lector, r0 MEDIUM).
+				// than merely be spelled "dao".
 				pkg, ok := e.X.(*ast.Ident)
 				switch {
 				case !ok:
@@ -203,7 +203,7 @@ func dialectNameReturns(t *testing.T, files []parsedGo) (byConst map[string][]st
 // path is imported at all. It honours an explicit alias, the default
 // last-segment name, and refuses to answer for `_` or `.` imports — matching
 // on the spelling "sql" without resolving the import let an alias or a
-// shadowed variable bypass the check (lector, PR #29 r0 BLOCKING).
+// shadowed variable bypass the check.
 func importLocalName(f *ast.File, path string) (string, bool) {
 	for _, im := range f.Imports {
 		got, err := strconv.Unquote(im.Path.Value)
@@ -351,7 +351,7 @@ func TestDialectNames_EveryConstantIsUsed(t *testing.T) {
 	// No two constants may share a VALUE. Engine comparison collapses values,
 	// so two differently named constants with the same string would be
 	// indistinguishable everywhere it matters, and the per-name checks above
-	// would both stay green (lector, r0 LOW).
+	// would both stay green.
 	byValue := map[string][]string{}
 	for name, val := range consts {
 		byValue[val] = append(byValue[val], name)
@@ -444,8 +444,8 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 
 	// THE EXEMPTION IS A NAMED ALLOWLIST OF TWO SITES, not a syntactic pattern.
 	//
-	// It used to exempt any call spelled `sql.Open`, which was wrong twice over
-	// (lector, PR #29 r0 BLOCKING): it never resolved the import, so an alias
+	// It used to exempt any call spelled `sql.Open`, which was wrong twice
+	// over: it never resolved the import, so an alias
 	// or a shadowed `sql` bypassed it; and it did not require the argument to
 	// STAY a literal, so replacing it with a dao constant — the namespace
 	// collapse this whole change exists to prevent — passed. Naming the two

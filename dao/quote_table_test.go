@@ -17,7 +17,7 @@ func (d tqDialect) QuoteTable(ident string) string {
 }
 
 // bqLike models a lagging embedder with its own quoting conventions (the
-// BigQuery shape from lector's dao-m1 r1 must-fix #1): it overrides
+// BigQuery shape): it overrides
 // QuoteIdent to a backtick dot-path and does NOT implement TableQuoter. The
 // engine's fallback must use ITS QuoteIdent — the capability design exists
 // precisely so no promoted default can override it.
@@ -27,12 +27,12 @@ func (bqLike) QuoteIdent(ident string) string {
 	return "`" + strings.ReplaceAll(ident, "`", "") + "`"
 }
 
-// --- quoteTable probe + fallback (ADR-0013 §2, rev 1) -------------------------
+// --- quoteTable probe + fallback --------------------------------------------
 
 func TestQuoteTable_FallbackKeepsHistoricalBehavior(t *testing.T) {
 	t.Parallel()
 	// GenericDialect does not implement TableQuoter: the whole string quotes
-	// as ONE identifier — byte-identical to pre-ADR-0013 output.
+	// as ONE identifier — byte-identical to the output before the probe existed.
 	if got, want := quoteTable(GenericDialect{}, "app.users"), `"app.users"`; got != want {
 		t.Errorf("fallback = %q, want %q", got, want)
 	}
@@ -101,7 +101,7 @@ func TestBuilder_QualifiedTablePositions(t *testing.T) {
 	}
 }
 
-// --- skip-conflicts column hint (ADR-0011 §2.3) -------------------------------
+// --- skip-conflicts column hint ---------------------------------------------
 
 func TestBatchSuffix_SkipConflictsHintIgnoredByGeneric(t *testing.T) {
 	t.Parallel()

@@ -52,7 +52,7 @@ func buildRelSchema(conn DataConn, extra ...Option[*release, relField, relSort, 
 	return New(conn, append(base, extra...)...)
 }
 
-// --- criterion 1: Write/Skip/Clear(NULL)/Clear(sentinel) land in SQL --------
+// --- Write/Skip/Clear(NULL)/Clear(sentinel) land in SQL ---------------------
 
 func TestSetRules_RulesLandInSQL(t *testing.T) {
 	t.Parallel()
@@ -82,7 +82,7 @@ func TestSetRules_RulesLandInSQL(t *testing.T) {
 	}
 }
 
-// --- criterion 2: order independence / rules are authoritative --------------
+// --- order independence / rules are authoritative ---------------------------
 
 func TestSetRules_OrderIndependence(t *testing.T) {
 	t.Parallel()
@@ -145,7 +145,7 @@ func TestSetRules_LastRuleWinsPerField(t *testing.T) {
 	}
 }
 
-// --- criterion 3: downgrade-to-skip on non-clearable fields -----------------
+// --- downgrade-to-skip on non-clearable fields ------------------------------
 
 func TestSetRules_ClearDowngradesToSkip(t *testing.T) {
 	t.Parallel()
@@ -177,7 +177,7 @@ func TestSetRules_ClearDowngradesToSkip(t *testing.T) {
 	}
 }
 
-// --- criterion 4: strict mode, last-rule-wins --------------------------------
+// --- strict mode, last-rule-wins --------------------------------------------
 
 func TestSetRules_StrictClears(t *testing.T) {
 	t.Parallel()
@@ -237,7 +237,7 @@ func TestSetRules_StrictClears(t *testing.T) {
 	}
 }
 
-// --- criterion 5: lenient SetRules keys vs loud Set/SetMap -------------------
+// --- lenient SetRules keys vs loud Set/SetMap -------------------------------
 
 func TestSetRules_LenientKeys(t *testing.T) {
 	t.Parallel()
@@ -271,7 +271,7 @@ func TestSetRules_LenientKeys(t *testing.T) {
 	}
 }
 
-// --- criterion 6: dao.New rejects ClearValue without Clearable ---------------
+// --- dao.New rejects ClearValue without Clearable ---------------------------
 
 func TestNew_ClearValueRequiresClearable(t *testing.T) {
 	t.Parallel()
@@ -297,7 +297,7 @@ func TestNew_ClearValueRequiresClearable(t *testing.T) {
 	)
 }
 
-// --- criterion 7: fluent Clear() honors a declared ClearValue ----------------
+// --- fluent Clear() honors a declared ClearValue ----------------------------
 
 func TestClear_HonorsClearValue(t *testing.T) {
 	t.Parallel()
@@ -325,7 +325,7 @@ func TestClear_HonorsClearValue(t *testing.T) {
 	}
 }
 
-// --- criterion 8: Insert/Upsert honor rules ----------------------------------
+// --- Insert/Upsert honor rules ----------------------------------------------
 
 func TestSetRules_InsertAndUpsert(t *testing.T) {
 	t.Parallel()
