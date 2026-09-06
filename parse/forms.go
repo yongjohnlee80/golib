@@ -145,9 +145,22 @@ func (f quoteForm) End(src, openedWith []byte, boundary InputBoundary) (int, err
 				i = j + len(f.close) // an escaped occurrence, not the end
 				continue
 			}
-			if j+len(f.close) > len(src) && boundary == MoreInput {
-				// AMBIGUOUS AT THE EDGE: this close may be the terminator, or
-				// the first half of a doubled one. Deciding now is a coin flip.
+			// AMBIGUOUS ONLY WHILE A DOUBLING IS STILL POSSIBLE. What follows
+			// the closer must be a PROPER PREFIX of it — the empty string
+			// included — for the question to be open at all:
+			//
+			//	close = "END"      after the closer    a second END is
+			//	                                       ...
+			//	                   ""                  still possible -> defer
+			//	                   "EN"                still possible -> defer
+			//	                   "z"                 ruled out      -> final
+			//
+			// Testing only "are there fewer bytes left than the closer needs"
+			// defers on every short remainder, including one whose first byte
+			// already disagrees. That stalls a live stream on input that has
+			// decided itself, and makes the answer depend on the boundary for
+			// bytes that do not.
+			if boundary == MoreInput && isProperPrefix(src[j:], f.close) {
 				return 0, ErrNeedMore
 			}
 		}
@@ -157,6 +170,13 @@ func (f quoteForm) End(src, openedWith []byte, boundary InputBoundary) (int, err
 		return 0, ErrNeedMore
 	}
 	return 0, &UnterminatedError{Kind: String, Open: string(openedWith)}
+}
+
+// isProperPrefix reports whether got is a prefix of want and SHORTER than it.
+// The empty slice qualifies: nothing has arrived yet, so anything is still
+// possible. A got as long as want is not open — it either matched or did not.
+func isProperPrefix(got []byte, want string) bool {
+	return len(got) < len(want) && string(got) == want[:len(got)]
 }
 
 func hasPrefixAt(src []byte, i int, s string) bool {
@@ -173,4 +193,94 @@ func mustNotBeEmpty(who string, parts ...string) {
 			panic("parse: " + who + ": delimiters must not be empty")
 		}
 	}
+}
+
+// DelimitedOpts constrains the TAG of a delimited form.
+//
+// Without a constraint the shape is too permissive to be useful: `$1$` would
+// open a delimited literal in a dialect where `$1` is a parameter. With
+// PostgreSQL's tag charset written into this package, the core would have named
+// a dialect. So the rule is supplied by the leaf, and the core only applies it.
+type DelimitedOpts struct {
+	// TagByte reports whether b is legal at index (0-based, within the tag).
+	//
+	// POSITION-AWARE, because a single func(byte) bool cannot express the
+	// ordinary rule: a leading digit is illegal while a trailing one is fine,
+	// so it could not both reject `$1$` and accept `$a1$`.
+	//
+	// It joins the purity contract: it is called again on the same bytes as the
+	// window widens, and must answer identically every time. nil accepts every
+	// byte, which is a decision, not a default — see AllowEmpty.
+	TagByte func(index int, b byte) bool
+
+	// AllowEmpty permits the zero-length tag, `$$` in the familiar shape.
+	AllowEmpty bool
+
+	// MaxTagBytes bounds the tag. Zero means unbounded HERE, leaving the scan's
+	// own delimiter limit as the only bound — the trade the ADR states, and one
+	// a caller should make on purpose rather than inherit.
+	MaxTagBytes int
+}
+
+// DelimitedForm recognises the tag-carrying shape `<prefix>TAG<suffix> … the
+// same again`, of which PostgreSQL's dollar quoting is one configuration. The
+// core never names that dialect: the tag rule arrives from the caller.
+func DelimitedForm(prefix, suffix byte, o DelimitedOpts) Form {
+	if o.MaxTagBytes < 0 {
+		panic("parse: DelimitedForm: MaxTagBytes must not be negative")
+	}
+	return delimitedForm{prefix: prefix, suffix: suffix, opts: o}
+}
+
+type delimitedForm struct {
+	prefix, suffix byte
+	opts           DelimitedOpts
+}
+
+func (f delimitedForm) Kind() Kind { return String }
+
+func (f delimitedForm) Starts(src []byte) (int, Match) {
+	if len(src) == 0 {
+		return 0, Incomplete
+	}
+	if src[0] != f.prefix {
+		return 0, NoMatch
+	}
+	for i := 1; i < len(src); i++ {
+		if src[i] == f.suffix {
+			if i == 1 && !f.opts.AllowEmpty {
+				return 0, NoMatch
+			}
+			return i + 1, Matched
+		}
+		// A REJECTED BYTE IS NoMatch, NOT AN UNTERMINATED CONSTRUCT. The prefix
+		// belongs to some later form — an operator, a parameter marker — and
+		// claiming it here would take a token away from a form that can lex it.
+		if f.opts.TagByte != nil && !f.opts.TagByte(i-1, src[i]) {
+			return 0, NoMatch
+		}
+		if f.opts.MaxTagBytes > 0 && i > f.opts.MaxTagBytes {
+			return 0, NoMatch
+		}
+	}
+	// Ran out of window inside a tag that is still legal. No second bound check
+	// belongs here: the in-loop one fires as soon as the tag exceeds its limit,
+	// which is strictly before the loop can end this way, so a check here would
+	// be unreachable. (It was written, and a control that failed to redden is
+	// what showed it never ran.)
+	return 0, Incomplete
+}
+
+func (f delimitedForm) End(src, openedWith []byte, boundary InputBoundary) (int, error) {
+	if len(openedWith) == 0 {
+		// Nothing to look for. Reported rather than scanned forever.
+		return 0, contractf(f, "End called with an empty opener")
+	}
+	if i := bytes.Index(src, openedWith); i >= 0 {
+		return i + len(openedWith), nil
+	}
+	if boundary == MoreInput {
+		return 0, ErrNeedMore
+	}
+	return 0, &UnterminatedError{Kind: String, Open: string(openedWith)}
 }
