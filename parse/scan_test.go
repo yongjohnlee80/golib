@@ -7,6 +7,9 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"unsafe"
+
+	"github.com/yongjohnlee80/golib/streamcache"
 )
 
 // sqlish is a realistic form list: delimited constructs first, then the runs and
@@ -567,5 +570,334 @@ func TestScan_AcquireYieldsTheTokenBytes(t *testing.T) {
 		if !bytes.Equal(got, []byte("word")) {
 			t.Fatalf("token %v bytes = %q, want %q", tok, got, "word")
 		}
+	}
+}
+
+// --- the delimiter bound is INCLUSIVE ---------------------------------------
+
+// A construct exactly as wide as the limit is legal. The geometric widen used to
+// reject before ever showing the form its whole allowance: with a limit of 3 and
+// the literal "abc", growth went 1, 2, then refused at 4 without examining 3.
+func TestScan_BoundIsInclusiveSoAnExactlyWideConstructLexes(t *testing.T) {
+	lex := New(WithForms(SetForm(Operator, "abc")), WithMaxDelimiter(3))
+	s := lex.ScanBytes(context.Background(), []byte("abc"))
+	defer s.Close()
+
+	toks, text := collect(t, s)
+	if len(toks) != 2 || toks[0].Kind != Operator || toks[0].Len() != 3 {
+		t.Fatalf("tokens = %v, want a 3-byte Operator then EOF", toks)
+	}
+	if text != "abc" {
+		t.Errorf("text = %q, want %q", text, "abc")
+	}
+}
+
+// And a construct that genuinely outruns the limit fails only after being shown
+// exactly it — the reported length is the limit, never less and never more.
+func TestScan_BoundFailsAtExactlyTheLimit(t *testing.T) {
+	lex := New(WithForms(SetForm(Operator, "abc")), WithMaxDelimiter(2))
+	s := lex.ScanBytes(context.Background(), []byte("abc"))
+	defer s.Close()
+
+	var got error
+	for _, err := range s.Tokens() {
+		if err != nil {
+			got = err
+			break
+		}
+	}
+	var be *BoundError
+	if !errors.As(got, &be) {
+		t.Fatalf("error = %v, want a *BoundError", got)
+	}
+	if be.Length != 2 || be.Limit != 2 {
+		t.Errorf("BoundError{Length:%d, Limit:%d}, want {2, 2} — it must examine exactly the limit",
+			be.Length, be.Limit)
+	}
+}
+
+// The bound covers the WHOLE construct, opener included. Resolving End used to
+// measure only the remainder, so a 2-byte opener under a limit of 4 could read 6.
+// BoundError.Open must also be the opener itself, not the opener plus the body
+// scanned so far.
+func TestScan_BoundCoversOpenerPlusRemainder(t *testing.T) {
+	// The remainder End is SHOWN is what observes the defect: reporting a length
+	// is not the same as having stopped reading at one.
+	maxRest := 0
+	twoByteOpener := decoyForm{
+		kind: String,
+		starts: func(src []byte) (int, Match) {
+			if len(src) < 2 {
+				return 0, Incomplete
+			}
+			return 2, Matched
+		},
+		ends: func(src, _ []byte, b InputBoundary) (int, error) {
+			if len(src) > maxRest {
+				maxRest = len(src)
+			}
+			if b == MoreInput {
+				return 0, ErrNeedMore // never decides, so the bound must stop it
+			}
+			return 0, &UnterminatedError{Kind: String, Open: "ab"}
+		},
+	}
+	lex := New(WithForms(twoByteOpener), WithMaxDelimiter(4))
+	s := lex.ScanBytes(context.Background(), []byte("abcdefghij"))
+	defer s.Close()
+
+	var got error
+	for _, err := range s.Tokens() {
+		if err != nil {
+			got = err
+			break
+		}
+	}
+	var be *BoundError
+	if !errors.As(got, &be) {
+		t.Fatalf("error = %v, want a *BoundError", got)
+	}
+	if maxRest > 2 {
+		t.Errorf("End was shown a %d-byte remainder; with a 2-byte opener under a limit of 4 it "+
+			"may be shown at most 2 — the opener counts toward the bound", maxRest)
+	}
+	if be.Length != 4 {
+		t.Errorf("BoundError.Length = %d, want 4 — the whole construct's width", be.Length)
+	}
+	if be.Open != "ab" {
+		t.Errorf("BoundError.Open = %q, want %q — the opener, not the opener plus the body", be.Open, "ab")
+	}
+}
+
+// --- the End matrix is enforced whole ---------------------------------------
+
+func TestScan_EndMatrixViolationsAreReported(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		ends func(src, opener []byte, b InputBoundary) (int, error)
+	}{
+		{
+			// A count beside an error claims bytes the form just refused to judge.
+			"non-zero n beside a terminal error",
+			func(_, _ []byte, _ InputBoundary) (int, error) {
+				return 1, errors.New("boom")
+			},
+		},
+		{
+			// While more input may arrive the only refusal available is ErrNeedMore.
+			"terminal error under MoreInput",
+			func(_, _ []byte, b InputBoundary) (int, error) {
+				if b == MoreInput {
+					return 0, errors.New("gave up early")
+				}
+				return 0, nil
+			},
+		},
+		{
+			// At end of input an unclosable construct must say so in a type a
+			// caller can name.
+			"untyped error at EndOfInput",
+			func(_, _ []byte, b InputBoundary) (int, error) {
+				if b == MoreInput {
+					return 0, ErrNeedMore
+				}
+				return 0, errors.New("just an error")
+			},
+		},
+		{
+			"negative success",
+			func(_, _ []byte, _ InputBoundary) (int, error) { return -1, nil },
+		},
+		{
+			"non-zero n beside ErrNeedMore",
+			func(_, _ []byte, b InputBoundary) (int, error) {
+				if b == MoreInput {
+					return 2, ErrNeedMore
+				}
+				return 0, nil
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := decoyForm{kind: Word, ends: c.ends}
+			s := New(WithForms(f)).Scan(context.Background(),
+				&oneByteAtATime{b: []byte("abcdef")}, BorrowReader)
+			defer s.Close()
+
+			var got error
+			for _, err := range s.Tokens() {
+				if err != nil {
+					got = err
+					break
+				}
+			}
+			if !errors.Is(got, ErrFormContract) {
+				t.Fatalf("error = %v, want ErrFormContract", got)
+			}
+		})
+	}
+}
+
+// A contract error names the form's POSITION in the list. Two instances of one
+// type are ordinary, and a type name alone cannot say which of them is wrong.
+func TestScan_ContractErrorsNameTheFormsListIndex(t *testing.T) {
+	good := decoyForm{kind: Word, starts: func(src []byte) (int, Match) { return 0, NoMatch }}
+	bad := decoyForm{kind: Word, starts: func(src []byte) (int, Match) { return 3, NoMatch }}
+	s := New(WithForms(good, good, bad)).ScanBytes(context.Background(), []byte("abc"))
+	defer s.Close()
+
+	var got error
+	for _, err := range s.Tokens() {
+		if err != nil {
+			got = err
+			break
+		}
+	}
+	if !errors.Is(got, ErrFormContract) {
+		t.Fatalf("error = %v, want ErrFormContract", got)
+	}
+	if !strings.Contains(got.Error(), "form[2]") {
+		t.Errorf("error %q must name the offending form's index in the list", got)
+	}
+}
+
+// --- a successful location is never provisional -----------------------------
+
+// A four-byte rune arriving one byte at a time. Offset 1 is inside it, so it is
+// not a position and must be refused CONSISTENTLY. The head used to track what
+// the CACHE had read rather than what had been INDEXED, so the same offset
+// answered 1:2 from a lone lead byte and then refused once the rune completed.
+func TestScan_ALocationIsNeverProvisional(t *testing.T) {
+	s := New(WithForms(ByteForm(Punct))).Scan(context.Background(),
+		&oneByteAtATime{b: []byte("\U0001F600x")}, BorrowReader)
+	defer s.Close()
+
+	seen := 0
+	for tok, err := range s.Tokens() {
+		if err != nil {
+			t.Fatalf("stream error: %v", err)
+		}
+		_ = tok
+		seen++
+		if _, lerr := s.LocationAt(1); !errors.Is(lerr, ErrLocationRange) {
+			t.Fatalf("observation %d: LocationAt(1) = %v, want a stable ErrLocationRange — "+
+				"offset 1 is inside a four-byte rune at every point in the scan", seen, lerr)
+		}
+	}
+	if seen == 0 {
+		t.Fatal("the scan produced no tokens")
+	}
+}
+
+// Asking about a later line before the walk reaches it must be answered from the
+// line index, not from whatever the cache happens to have read. NewBytes knows
+// the whole length immediately, so the cache head runs far ahead of the index;
+// the old code reported line 1 for an offset on line 3.
+func TestScan_LocationAheadOfTheWalkIsIndexedNotGuessed(t *testing.T) {
+	s := New(WithForms(sqlish()...)).ScanBytes(context.Background(), []byte("a\nb\nc"))
+	defer s.Close()
+
+	loc, err := s.LocationAt(4) // the "c", on line 3
+	if err != nil {
+		t.Fatalf("LocationAt(4): %v", err)
+	}
+	if loc.Line != 3 || loc.Column != 1 {
+		t.Errorf("LocationAt(4) = %+v, want line 3 column 1", loc)
+	}
+}
+
+// --- Close lets go of what the Scan holds -----------------------------------
+
+func TestScan_CloseDropsItsBuffersAndAHeldViewSurvives(t *testing.T) {
+	s := New(WithForms(sqlish()...)).ScanBytes(context.Background(), []byte(corpus))
+
+	var held *streamcache.View
+	for tok, err := range s.Tokens() {
+		if err != nil {
+			t.Fatalf("stream error: %v", err)
+		}
+		if held == nil && tok.Kind == Word {
+			v, aerr := s.Acquire(tok)
+			if aerr != nil {
+				t.Fatalf("Acquire(%v): %v", tok, aerr)
+			}
+			held = v
+		}
+	}
+	if held == nil {
+		t.Fatal("no word token to hold")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// The View retains the cache on its own, so closing the Scan cannot
+	// invalidate it.
+	got, rerr := held.AppendTo(nil)
+	held.Close()
+	if rerr != nil {
+		t.Fatalf("a View held across Close: %v", rerr)
+	}
+	if string(got) != "select" {
+		t.Errorf("held View = %q, want %q", got, "select")
+	}
+
+	if s.win != nil || s.openBuf != nil || s.idxBuf != nil || s.fixed != nil {
+		t.Error("Close left the Scan holding its window buffers")
+	}
+	if s.cache != nil || s.src != nil {
+		t.Error("Close left the Scan holding the cache and source graph")
+	}
+}
+
+// --- two window providers, one state machine --------------------------------
+
+// ScanBytes hands forms a RESLICE of the caller's input; the streamed path hands
+// them its own copied buffer. The probe retains the window, which the Form
+// contract forbids — deliberately, because pointer identity is the property
+// under test.
+func TestScan_WindowProviders(t *testing.T) {
+	probe := func(seen *[]byte) Form {
+		return decoyForm{kind: Word, starts: func(src []byte) (int, Match) {
+			if *seen == nil && len(src) > 0 {
+				*seen = src
+			}
+			if len(src) == 0 {
+				return 0, Incomplete
+			}
+			return 1, Matched
+		}}
+	}
+
+	b := []byte("abcdef")
+	var fixedWin []byte
+	sb := New(WithForms(probe(&fixedWin))).ScanBytes(context.Background(), b)
+	defer sb.Close()
+	for _, err := range sb.Tokens() {
+		if err != nil {
+			t.Fatalf("ScanBytes: %v", err)
+		}
+	}
+	if fixedWin == nil {
+		t.Fatal("the probe never saw a window")
+	}
+	if unsafe.SliceData(fixedWin) != unsafe.SliceData(b) {
+		t.Error("ScanBytes copied the window; it must reslice the caller's slice")
+	}
+
+	var streamWin []byte
+	sr := New(WithForms(probe(&streamWin))).Scan(context.Background(),
+		&oneByteAtATime{b: b}, BorrowReader)
+	defer sr.Close()
+	for _, err := range sr.Tokens() {
+		if err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+	}
+	if streamWin == nil {
+		t.Fatal("the probe never saw a streamed window")
+	}
+	if unsafe.SliceData(streamWin) == unsafe.SliceData(b) {
+		t.Error("the streamed path aliased the input; segmented bytes must be copied once")
 	}
 }

@@ -21,6 +21,9 @@ for tok, err := range s.Tokens() {
     if err != nil { return err }
     text, _ := v.String()
     v.Close()
+    // Acquire while the iteration is still inside this yield. Once you ask for
+    // the next token the scan has released behind itself, and only a View you
+    // already hold is guaranteed — a held View outlives the rest of the scan.
 
     loc, _ := s.LocationAt(tok.Start) // line:column, only when you ask
     fmt.Println(loc, tok.Kind, text)
