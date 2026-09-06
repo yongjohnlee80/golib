@@ -1,7 +1,6 @@
 package widget_test
 
-// Select: overlay, focus trap, filter, async options (ADR-0007 §2.4, §2.6,
-// §5.6).
+// Select: overlay, focus trap, filter, async options.
 
 import (
 	"context"
@@ -35,7 +34,7 @@ func selectFixture(t *testing.T, opts ...widget.SelectOption[string]) (*harness,
 	return h, sel, sh
 }
 
-// TestSelectOpenOverlayAndCommit asserts §5.6: the open state renders on
+// TestSelectOpenOverlayAndCommit asserts the open state renders on
 // the overlay layer, Enter commits with SelectionChangedEvent, and the
 // popup closes.
 func TestSelectOpenOverlayAndCommit(t *testing.T) {
@@ -76,7 +75,7 @@ func TestSelectOpenOverlayAndCommit(t *testing.T) {
 	h.wantContains("beta")     // field shows the committed label
 }
 
-// TestSelectFocusTrapAndEsc asserts §5.6: Tab cycles within the open
+// TestSelectFocusTrapAndEsc asserts that Tab cycles within the open
 // overlay (the trap), Esc restores the prior focus and selection.
 func TestSelectFocusTrapAndEsc(t *testing.T) {
 	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")))
@@ -106,7 +105,7 @@ func TestSelectFocusTrapAndEsc(t *testing.T) {
 	h.wantContains("beta")
 }
 
-// TestSelectFilter asserts §5.6: filter-as-you-type narrows options;
+// TestSelectFilter asserts filter-as-you-type narrows options;
 // Backspace edits the filter.
 func TestSelectFilter(t *testing.T) {
 	h, _, sh := selectFixture(t,
@@ -134,7 +133,7 @@ func TestSelectFilter(t *testing.T) {
 	h.wantContains("banana") // committed label in the field
 }
 
-// TestSelectAsyncOptions asserts §2.6: options loaded via App.Go with the
+// TestSelectAsyncOptions asserts options loaded via App.Go with the
 // Select's NodeID as owner arrive through the addressed TaskResult.
 func TestSelectAsyncOptions(t *testing.T) {
 	h, sel, sh := selectFixture(t)

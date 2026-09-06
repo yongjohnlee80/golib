@@ -1,6 +1,6 @@
 package widget_test
 
-// Logical identity for double-click activation (lector r1 findings 2 and 3, and
+// Logical identity for double-click activation (two review findings, and
 // the expander design note).
 //
 // The App supplies timing, button, cell and delivered target. It cannot supply
@@ -129,7 +129,7 @@ func TestTreeDoubleClickOnTheExpanderTogglesTwiceAndDoesNotActivate(t *testing.T
 	}
 }
 
-// Lector r2's blocker — an index is logical identity only WITHIN ONE SOURCE
+// THE BLOCKING case — an index is logical identity only WITHIN ONE SOURCE
 // EPOCH. Clicking old row 1, replacing the source, then clicking the same cell
 // used to emit ActivateEvent{Index:1} for the NEW row 1, which the user had
 // clicked exactly once.
@@ -190,7 +190,7 @@ func TestListDoubleClickWithUnchangedSourceStillActivates(t *testing.T) {
 	}
 }
 
-// A REJECTED SetRoots must leave the Tree untouched (lector r3, non-blocking).
+// A REJECTED SetRoots must leave the Tree untouched.
 // The lastPressNode clear used to run before preflightForest, so a call that
 // then panicked had already mutated pairing state — a failed operation with a
 // side effect.

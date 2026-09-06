@@ -1,6 +1,6 @@
 package widget_test
 
-// BufferView + Writer handle contract (ADR-0007 §2.4 rev 1, §5.7).
+// BufferView + Writer handle contract.
 
 import (
 	"errors"
@@ -16,7 +16,7 @@ import (
 )
 
 // TestBufferViewNotAWriter: *BufferView itself must NOT satisfy io.Writer
-// (rev 1, Lector Q2) — the handle is the only concurrent surface. (A
+// — the handle is the only concurrent surface. (A
 // negative interface-satisfaction assertion cannot be a compile error, so
 // the type assertion runs here; if someone adds Write methods to the
 // widget, this fails.)
@@ -49,7 +49,7 @@ func write(t *testing.T, w io.Writer, s string) {
 	}
 }
 
-// TestBufferViewANSIStyledCells asserts §5.7: git-style SGR content through
+// TestBufferViewANSIStyledCells asserts git-style SGR content through
 // Writer() produces styled cells matching the escapes.
 func TestBufferViewANSIStyledCells(t *testing.T) {
 	h, v, _ := mountedView(t, 30, 5)
@@ -76,7 +76,7 @@ func TestBufferViewANSIStyledCells(t *testing.T) {
 	}
 }
 
-// TestBufferViewPassthroughOff asserts §5.7: WithANSIPassthrough(false)
+// TestBufferViewPassthroughOff asserts that WithANSIPassthrough(false)
 // strips escapes.
 func TestBufferViewPassthroughOff(t *testing.T) {
 	h, v, _ := mountedView(t, 30, 5, widget.WithANSIPassthrough(false))
@@ -89,7 +89,7 @@ func TestBufferViewPassthroughOff(t *testing.T) {
 	}
 }
 
-// TestBufferViewFollowTail asserts §5.7: follow keeps the tail pinned;
+// TestBufferViewFollowTail asserts follow keeps the tail pinned;
 // scroll-up disengages (event); End re-engages (event).
 func TestBufferViewFollowTail(t *testing.T) {
 	h, v, sh := mountedView(t, 20, 3)
@@ -124,7 +124,7 @@ func TestBufferViewFollowTail(t *testing.T) {
 	h.wantContains("line-7")
 }
 
-// TestBufferViewRing asserts §5.7: the MaxLines ring drops the oldest
+// TestBufferViewRing asserts the MaxLines ring drops the oldest
 // lines.
 func TestBufferViewRing(t *testing.T) {
 	h, v, _ := mountedView(t, 20, 10, widget.WithMaxLines(3))
@@ -142,7 +142,7 @@ func TestBufferViewRing(t *testing.T) {
 	h.wantContains("d")
 }
 
-// TestBufferViewConcurrentWriters asserts §5.7: 8 goroutines through ONE
+// TestBufferViewConcurrentWriters asserts 8 goroutines through ONE
 // handle under -race produce ordered, uncorrupted lines.
 func TestBufferViewConcurrentWriters(t *testing.T) {
 	const goroutines, lines = 8, 50
@@ -197,7 +197,7 @@ func TestBufferViewConcurrentWriters(t *testing.T) {
 	}
 }
 
-// TestBufferViewWriterClosed asserts §5.7: writes after unmount return
+// TestBufferViewWriterClosed asserts writes after unmount return
 // ErrClosed.
 func TestBufferViewWriterClosed(t *testing.T) {
 	v := widget.NewBufferView()
@@ -214,7 +214,7 @@ func TestBufferViewWriterClosed(t *testing.T) {
 	}
 }
 
-// TestBufferViewBoundedPending asserts §5.7: a stalled loop blocks writers
+// TestBufferViewBoundedPending asserts a stalled loop blocks writers
 // (bounded pending bytes) rather than buffering unboundedly.
 func TestBufferViewBoundedPending(t *testing.T) {
 	h, v, _ := mountedView(t, 20, 5)

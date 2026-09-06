@@ -97,8 +97,13 @@ var pointerPatterns = []struct {
 	// A design-record number, in any of the spellings this repo has used.
 	{"design-record-number", regexp.MustCompile(`(?i)\bADR[-\s]?\d{3,4}\b`)},
 	{"design-record-slug", regexp.MustCompile(`(?i)\bgolib-(dao|tui)[-\s]?\d{4}\b`)},
-	// A section anchor into a document the reader does not have.
-	{"section-anchor", regexp.MustCompile(`§`)},
+	// A section anchor into a document the reader does not have. The NUMBER is
+	// required: a bare § is not a coordinate, and matching it flagged a comment
+	// in which "§" is the test DATA — an East-Asian-ambiguous cluster whose
+	// width the widget's cursor math has to agree about. Rewriting that line to
+	// satisfy this detector would have deleted the only statement of what the
+	// test feeds in, which is the exact cost a false positive carries here.
+	{"section-anchor", regexp.MustCompile(`§\s*\d`)},
 	// Review-round shorthand and the reviewer's name as the authority.
 	{"review-round", regexp.MustCompile(`(?i)\bMF\d+\b|\bnit #?\d+\b|\br\d+ (must-fix|nit)\b`)},
 	// A reviewer named as the authority. This list is CLOSED and the fleet

@@ -1,6 +1,6 @@
 package widget_test
 
-// List + ListSource seam (ADR-0007 §2.4 rev 1, §5.11).
+// List + ListSource seam.
 
 import (
 	"fmt"
@@ -57,7 +57,7 @@ func focusedList(t *testing.T, src widget.ListSource[string], w, hh int, opts ..
 	return h, l, sh
 }
 
-// TestListViewportOnlyFetch asserts §5.11: Item(i) only for
+// TestListViewportOnlyFetch asserts that Item(i) is called only for
 // viewport-intersecting rows, Len() once per render pass.
 func TestListViewportOnlyFetch(t *testing.T) {
 	src := &countingSource{n: 10_000}
@@ -121,7 +121,7 @@ func TestListKeysAndEvents(t *testing.T) {
 	}
 }
 
-// TestListWithItemsSugar asserts §5.11: WithItems/SetItems behave as
+// TestListWithItemsSugar asserts that WithItems/SetItems behave as
 // SliceSource sugar, and RefreshSource re-reads Len and clamps the cursor.
 func TestListWithItemsSugar(t *testing.T) {
 	l := widget.NewList(widget.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))

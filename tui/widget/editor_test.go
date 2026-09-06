@@ -1,6 +1,6 @@
 package widget_test
 
-// Editor contract (ADR-0008 §2.1): modal state machine, counts, the
+// Editor contract: modal state machine, counts, the
 // double-key pending buffer, the escape chord's dispatch-order semantics,
 // inclusive visual ranges, register linewise-ness, undo groups, and the
 // bubble rule for unbound keys.
@@ -195,7 +195,7 @@ func TestEditorLineDeleteYankPaste(t *testing.T) {
 }
 
 func TestEditorDoubleKeyCancel(t *testing.T) {
-	// ADR-0008 §2.1: `d` followed by anything but `d` cancels the pending
+	// `d` followed by anything but `d` cancels the pending
 	// buffer and processes the key normally — `dw` deliberately moves.
 	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("alpha beta"))
 	h.inject(typeString("dw")...)
@@ -429,7 +429,7 @@ func TestEditorDefaultKeymapIsACopy(t *testing.T) {
 
 // --- implementation-review r1 regressions (2026-08-16) ---
 
-// MF9: "jjk" commits the first j and treats the second as a fresh chord
+// "jjk" commits the first j and treats the second as a fresh chord
 // start — commit-then-process re-enters the chord state machine.
 func TestEditorChordDoubledFirstRune(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 6)
@@ -442,7 +442,7 @@ func TestEditorChordDoubledFirstRune(t *testing.T) {
 	}
 }
 
-// MF8: Insert-mode Tab inserts; word motions treat tabs as whitespace.
+// Insert-mode Tab inserts; word motions treat tabs as whitespace.
 func TestEditorTabInsertAndWhitespaceMotions(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 6)
 	h.inject(key('i'))
@@ -473,7 +473,7 @@ func TestEditorTabInsertAndWhitespaceMotions(t *testing.T) {
 	}
 }
 
-// MF10: the count cap is a hard ceiling; explicit counts drive gg and G.
+// The count cap is a hard ceiling; explicit counts drive gg and G.
 func TestEditorCountCapAndGoToLine(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 8,
 		widget.WithInitialText("l1\nl2\nl3\nl4\nl5"))
@@ -503,7 +503,7 @@ func TestEditorCountCapAndGoToLine(t *testing.T) {
 	}
 }
 
-// MF10: a REBOUND prefix completes on its own chord, not a hard-coded rune.
+// A REBOUND prefix completes on its own chord, not a hard-coded rune.
 func TestEditorReboundPrefixCompletesOnItsChord(t *testing.T) {
 	overlay := widget.Keymap{
 		{Mode: widget.ModeNormal, Code: 's'}: widget.ActDeletePrefix, // ss = dd

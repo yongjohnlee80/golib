@@ -1,6 +1,6 @@
 package widget_test
 
-// Tree contract (ADR-0008 §2.2): generation-tokened lazy loading where every
+// Tree contract: generation-tokened lazy loading where every
 // outcome settles the spinner and stale results are inert; owner-stamped
 // attachment; vim navigation over the flattened rows.
 
@@ -235,7 +235,7 @@ func TestTreeExpandPathAndActivate(t *testing.T) {
 
 // --- implementation-review r1 regressions (2026-08-16) ---
 
-// MF1: attachment validates the WHOLE incoming forest before any mutation —
+// Attachment validates the WHOLE incoming forest before any mutation —
 // a bad forest leaves the existing tree fully intact.
 func TestTreePreflightBeforeMutation(t *testing.T) {
 	good := widget.NewTreeNode("good", "good", widget.WithLeaf())
@@ -269,7 +269,7 @@ func TestTreePreflightBeforeMutation(t *testing.T) {
 	}
 }
 
-// MF2: a released multi-level subtree keeps its internal ancestry and
+// A released multi-level subtree keeps its internal ancestry and
 // navigates correctly after re-attachment.
 func TestTreeReattachedSubtreeKeepsAncestry(t *testing.T) {
 	parent := widget.NewTreeNode("p", "parent")
@@ -305,7 +305,7 @@ func TestTreeReattachedSubtreeKeepsAncestry(t *testing.T) {
 	}
 }
 
-// MF3: shrinking mutations reconcile the cursor synchronously — the next
+// Shrinking mutations reconcile the cursor synchronously — the next
 // key operates on a real row, never a stale modulo-wrapped index.
 func TestTreeCursorReconcileOnShrink(t *testing.T) {
 	root := widget.NewTreeNode("r", "root")

@@ -1,6 +1,6 @@
 package widget_test
 
-// Composition checks (ADR-0007 §2.8, §5.9, §5.10): the sqlit and
+// Composition checks: the sqlit and
 // lazygit-shaped UIs assemble from the v1 inventory alone and their
 // interaction scripts pass deterministically on TestBackend.
 
@@ -16,7 +16,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// sqlitApp is the §2.8 sqlit shape: tables sidebar, query editor, results
+// sqlitApp is the sqlit shape: tables sidebar, query editor, results
 // pane, status bar.
 type sqlitApp struct {
 	root    tui.Component
@@ -54,7 +54,7 @@ func (a *sqlitApp) Init(ctx *tui.Context) {
 	ctx.Mount(a.root)
 	a.status.SetLeft("sqlit")
 	a.status.SetRight("Tab: focus · F5: run")
-	// Async table fill (§2.6): owner = this controller.
+	// Async table fill: owner = this controller.
 	ctx.Go(func(context.Context) (any, error) {
 		return []string{"users", "orders", "invoices"}, nil
 	})
@@ -91,7 +91,7 @@ func (a *sqlitApp) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
-// TestSqlitComposition asserts §5.9: the composition builds and its
+// TestSqlitComposition asserts the composition builds and its
 // interaction script (focus cycle, async table fill, query→results flow,
 // status updates) passes deterministically.
 func TestSqlitComposition(t *testing.T) {
@@ -135,7 +135,7 @@ func TestSqlitComposition(t *testing.T) {
 	h.waitFor("activate", func() bool { return acts.count() > 0 })
 }
 
-// TestLazygitComposition asserts §5.10: the 5-panel lazygit shape builds;
+// TestLazygitComposition asserts the 5-panel lazygit shape builds;
 // the modal Float traps focus, dims, dismisses on Esc with DismissEvent;
 // BufferView streams a fake subprocess script with ANSI colors intact.
 func TestLazygitComposition(t *testing.T) {
@@ -169,7 +169,7 @@ func TestLazygitComposition(t *testing.T) {
 		h.wantContains(panel)
 	}
 
-	// Fake `git log --color=always` through the Writer handle (§2.6).
+	// Fake `git log --color=always` through the Writer handle.
 	var w io.Writer
 	h.onLoop(func() { w = view.Writer() })
 	if _, err := w.Write([]byte("\x1b[33mcommit abc123\x1b[0m\nAuthor: dev\n")); err != nil {

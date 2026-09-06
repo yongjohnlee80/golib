@@ -1,9 +1,9 @@
 package widget_test
 
-// Pointer behaviour for Table (ADR-0010 §2.2, criteria 7-10).
+// Pointer behaviour for Table.
 //
 // Body presses, double-click and body wheel are List's, and are asserted here
-// because Table must not break them — under ADR-0004's target-first routing the
+// because Table must not break them — under target-first routing the
 // row list is a placed child at local Y:1, so those events reach it directly.
 // What Table owns is the HEADER row: a press there is inert, and the wheel is
 // forwarded so scrolling over a column title still scrolls the rows.
@@ -44,7 +44,7 @@ func press(y int) tui.MouseEvent {
 	return tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 2, Y: y}
 }
 
-// Criterion 8 — THE NEGATIVE CONTROL for this change. Before the fix, Table
+// THE NEGATIVE CONTROL for this change. Before the fix, Table
 // forwarded the header press with Table-local Y=0 and the list selected row 0.
 func TestTableHeaderPressIsInert(t *testing.T) {
 	h, tbl := tableWithRows(t, 8, 20, 6)
@@ -64,7 +64,7 @@ func TestTableHeaderPressIsInert(t *testing.T) {
 	}
 }
 
-// Criterion 7 — body press selects the row the keyboard would call current,
+// Body press selects the row the keyboard would call current,
 // at a NON-ZERO scroll offset, which is where a header-offset error hides.
 func TestTableBodyPressAtScrollOffset(t *testing.T) {
 	h, tbl := tableWithRows(t, 30, 20, 6) // header + 5 body rows
@@ -84,7 +84,7 @@ func TestTableBodyPressAtScrollOffset(t *testing.T) {
 	}
 }
 
-// Criterion 9 — double-click in the body activates, using List's existing window.
+// Double-click in the body activates, using List's existing window.
 func TestTableBodyDoubleClickActivates(t *testing.T) {
 	h, tbl := tableWithRows(t, 8, 20, 6)
 	acts := record[widget.ActivateEvent](h)
@@ -104,7 +104,7 @@ func TestTableBodyDoubleClickActivates(t *testing.T) {
 	}
 }
 
-// Criterion 10 — wheel scrolls over BOTH regions and moves no selection.
+// Wheel scrolls over BOTH regions and moves no selection.
 func TestTableWheelOverHeaderAndBodyScrolls(t *testing.T) {
 	h, tbl := tableWithRows(t, 30, 20, 6)
 
@@ -144,7 +144,7 @@ func TestTableWheelOverHeaderAndBodyScrolls(t *testing.T) {
 	}
 }
 
-// Table must not be a pointer SINK. Lector's r1 implementation review caught this:
+// Table must not be a pointer SINK, which an implementation review caught:
 // consuming every non-wheel MouseEvent stopped body motion and release at the
 // Table, so an ancestor never saw them. A Split whose divider drag continues over
 // a Table body then froze, and because the release was swallowed too it stayed in

@@ -1,12 +1,12 @@
 package widget_test
 
-// Editor pointer behaviour (ADR-0010 §2.3, criteria 11-17).
+// Editor pointer behaviour.
 //
 // A press is a COMMAND BOUNDARY, not just a cursor move: Editor carries modal
 // state (counts, pending operators, an insert escape-chord rune, a visual anchor,
 // an open undo group) and a click has to resolve every one of them deliberately.
 // The rule that carries the most weight is the pending RUNE: it is input the user
-// physically typed, and accepted ADR-0008 binds every non-chord input to settle
+// physically typed, and the accepted design binds every non-chord input to settle
 // it first, so a click settles rather than discards.
 
 import (
@@ -17,7 +17,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// Criterion 11 — a press in Normal mode with a pending count AND pending
+// A press in Normal mode with a pending count AND pending
 // operator discards both, moves the caret, and modifies no text.
 func TestEditorPressDiscardsPendingOperator(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 6)
@@ -49,9 +49,9 @@ func TestEditorPressDiscardsPendingOperator(t *testing.T) {
 
 }
 
-// Criterion 12 — a press mid insert-chord SETTLES the held rune at the OLD caret.
+// A press mid insert-chord SETTLES the held rune at the OLD caret.
 // Discarding it would delete a character the user typed and would silently
-// reverse accepted ADR-0008.
+// reverse that decision.
 func TestEditorPressSettlesPendingChordRune(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 6)
 	h.inject(key('i'))
@@ -76,7 +76,7 @@ func TestEditorPressSettlesPendingChordRune(t *testing.T) {
 	}
 }
 
-// Criterion 13 — a press closes the Insert undo group, so text typed before and
+// A press closes the Insert undo group, so text typed before and
 // after the click undo separately. A click is a deliberate discontinuity.
 func TestEditorPressClosesUndoGroup(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 6)
@@ -103,7 +103,7 @@ func TestEditorPressClosesUndoGroup(t *testing.T) {
 	}
 }
 
-// Criterion 14 — a press leaves Visual and Visual-line, clearing the anchor.
+// A press leaves Visual and Visual-line, clearing the anchor.
 func TestEditorPressExitsVisual(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -138,7 +138,7 @@ func TestEditorPressExitsVisual(t *testing.T) {
 	}
 }
 
-// Criterion 15 — caret placement across a WIDE grapheme resolves to the cell the
+// Caret placement across a WIDE grapheme resolves to the cell the
 // grapheme STARTS at, and is correct at a non-zero vertical scroll.
 func TestEditorPressWideGraphemeAndScroll(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 20, 3) // 3 visible rows
@@ -168,7 +168,7 @@ func TestEditorPressWideGraphemeAndScroll(t *testing.T) {
 	}
 }
 
-// Criterion 16 — clamping: past end-of-line lands on the last column, and below
+// Clamping: past end-of-line lands on the last column, and below
 // the last line lands on the last buffer line.
 func TestEditorPressClamps(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 8)
@@ -188,7 +188,7 @@ func TestEditorPressClamps(t *testing.T) {
 	}
 }
 
-// Criterion 17 — the wheel scrolls and never moves the caret.
+// The wheel scrolls and never moves the caret.
 func TestEditorWheelScrollsWithoutMovingCaret(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 20, 3)
 	h.onLoop(func() { ed.SetValue("one\ntwo\nthree\nfour\nfive") })
@@ -213,10 +213,10 @@ func TestEditorWheelScrollsWithoutMovingCaret(t *testing.T) {
 	}
 }
 
-// --- criteria 15-17, the matrix lector's r2 review found missing ---
+// --- the placement/scroll matrix a review found missing ---
 
-// Criterion 15 (WrapSoft) — placement on a later visual row of a wrapped line,
-// which the r2 review noted was absent and which concealed the cross-row bug.
+// Placement on a later visual row of a wrapped line,
+// which was absent before, and whose absence concealed the cross-row bug.
 func TestEditorWrapSoftClickOnLaterRow(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 6, 4, widget.WithEditorWrap(widget.WrapSoft))
 	// Width 6 with the scroll indicator -> wrap width 5. "abcdefghij" wraps to
@@ -231,7 +231,7 @@ func TestEditorWrapSoftClickOnLaterRow(t *testing.T) {
 	}
 }
 
-// Criterion 15 (horizontal) — placement at a NON-ZERO horizontal offset: the
+// Placement at a NON-ZERO horizontal offset: the
 // click must invert `left`, not assume a left edge of 0.
 func TestEditorClickAtHorizontalScroll(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 8, 3)
@@ -260,7 +260,7 @@ func TestEditorClickAtHorizontalScroll(t *testing.T) {
 	}
 }
 
-// Criterion 16 — the scroll-indicator column is not text and a press there is
+// The scroll-indicator column is not text and a press there is
 // inert.
 func TestEditorClickOnIndicatorColumnIsInert(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 8, 3)
@@ -280,7 +280,7 @@ func TestEditorClickOnIndicatorColumnIsInert(t *testing.T) {
 	}
 }
 
-// Criterion 17 — N wheel events are N steps, clamped at BOTH ends, in BOTH wrap
+// N wheel events are N steps, clamped at BOTH ends, in BOTH wrap
 // modes. One MouseEvent is one step: the event carries a direction and no
 // magnitude, so the consumer must never multiply.
 func TestEditorWheelStepsAndClamps(t *testing.T) {

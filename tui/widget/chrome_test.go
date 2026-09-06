@@ -1,7 +1,6 @@
 package widget_test
 
-// Tabs, Split, Float, StatusBar, ProgressBar, Text contracts (ADR-0007
-// §2.5, §5.3, §5.8).
+// Tabs, Split, Float, StatusBar, ProgressBar and Text contracts.
 
 import (
 	"strings"
@@ -291,7 +290,7 @@ func TestStatusBarSegments(t *testing.T) {
 	h.waitFor("narrow bar", func() bool { return strings.HasSuffix(h.row(0), "RIGHT") && !strings.Contains(h.row(0), "CENTER") })
 }
 
-// TestProgressBarIdleZeroFlush asserts §5.8: no tick registration while
+// TestProgressBarIdleZeroFlush asserts no tick registration while
 // determinate-and-idle — the idle app emits zero bytes (no flushes).
 func TestProgressBarIdleZeroFlush(t *testing.T) {
 	p := widget.NewProgressBar()

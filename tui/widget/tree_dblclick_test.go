@@ -1,6 +1,6 @@
 package widget_test
 
-// Tree double-click (ADR-0010 §2.5, criteria 26-27).
+// Tree double-click.
 //
 // A double-click is activation, published on the same channel ENTER already
 // uses, so a host that already handles ActivateEvent gains double-click without
@@ -24,7 +24,7 @@ func singlePress(y int) tui.MouseEvent {
 	return tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 6, Y: y}
 }
 
-// Criterion 26 — a double-click on a BRANCH activates it and leaves its expanded
+// A double-click on a BRANCH activates it and leaves its expanded
 // state alone.
 func TestTreeDoubleClickActivatesABranchWithoutExpanding(t *testing.T) {
 	ws := widget.NewTreeNode("ws", "workspace")
@@ -62,7 +62,7 @@ func TestTreeDoubleClickActivatesABranchWithoutExpanding(t *testing.T) {
 	}
 }
 
-// Criterion 27 — a SINGLE click selects and publishes nothing.
+// A SINGLE click selects and publishes nothing.
 func TestTreeSingleClickDoesNotActivate(t *testing.T) {
 	ws := widget.NewTreeNode("ws", "workspace")
 	tbl := widget.NewTreeNode("tbl", "a_table")
