@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 9)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 10)** (2026-09-06, jarvis).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -151,6 +151,23 @@ dropped as they arrive, without a second call once they have been read. A
 watermark is a statement about the stream, not about how much of it happens to
 have been read when it is set. It only ever rises, so a later, smaller `off`
 changes nothing.
+
+**"As they arrive" is a claim about the PEAK, and the peak is where it was
+wrong** (lector r9). Reclaiming once the requested range is complete gives the
+correct *final* state and a peak of the entire range — measured at 1 MiB, every
+byte resident at once. The cursor therefore runs **inside** the fill loop, and
+a probe for this must record the maximum retained size *while reading*: a probe
+that reads the final state cannot see the difference at all.
+
+| skipped range | peak, reclaiming after the fill | peak, reclaiming during it |
+|---|---|---|
+| 1 KiB | 1,024 B / 16 entries | 64 B / 1 entry |
+| 2 KiB | 2,048 B / 32 entries | 64 B / 1 entry |
+| 4 KiB | 4,096 B / 64 entries | 64 B / 1 entry |
+| 8 KiB | 8,192 B / 128 entries | 64 B / 1 entry |
+
+*(64-byte segments; final retained size is zero in both columns, which is
+exactly why the final state proves nothing.)*
 
 Two ordering rules fall out of separating the two concerns, and both were
 defects first (lector r8):
@@ -496,8 +513,12 @@ behaving differently depending on how input was supplied.
     called again. Both halves matter; the second is what points a diagnosis at
     the right component.
 26. **A watermark set beyond head applies to bytes that arrive later** —
-    released, then read: retention stays flat and the span is refused, with no
-    second `Release`.
+    released, then read: retention stays flat **at its peak, measured while
+    reading**, and the span is refused, with no second `Release`. The final
+    state is not the claim: reclaiming once the range completes leaves the same
+    final zero with a peak of the whole range, so the probe samples from inside
+    the reader. Its control removes in-loop reclamation and must show the peak
+    growing linearly with the range while the final state is unchanged.
 27. Span access is **linear in the segments a span covers**, demonstrated by a
     benchmark whose time roughly doubles when the span doubles. *(Measured
     after the O(k²) fix: 172/342/630 µs at 64/128/256 KiB, against 0.4/1.5/6.0

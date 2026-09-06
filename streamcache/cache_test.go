@@ -377,6 +377,17 @@ func TestWithSegmentSize_RejectsNonPositive(t *testing.T) {
 	New(strings.NewReader(""), WithSegmentSize(1))
 }
 
+// retainedBytesLocked is retainedBytes WITHOUT taking the lock, for an
+// observing reader: Read runs inside the cache's own critical section, on the
+// same goroutine, so the locking version would deadlock. TEST-ONLY.
+func (c *Cache) retainedBytesLocked() int64 {
+	var n int64
+	for _, s := range c.segs {
+		n += int64(len(s.buf))
+	}
+	return n
+}
+
 // directoryLen reports how many segment ENTRIES the cache is carrying,
 // including any whose buffer is already freed. TEST-ONLY: freeing the bytes
 // while the entries accumulate would still grow without bound over a stream.
