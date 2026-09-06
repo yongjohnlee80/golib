@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 3)** (2026-09-06 — authored by jarvis; awaiting
+- **Status:** **Proposed (rev 4)** (2026-09-06 — authored by jarvis; awaiting
   lector design review).
 - **Scope:** the foundational layer — input, the token model, and the streaming
   contract. The AST hierarchy and the risk analyzer layer on top and are **not**
@@ -51,30 +51,52 @@ That single sentence generates most of what follows.
 **Public API speaks `io`. Internals speak `[]byte`.** (Johno, 2026-09-06.)
 
 ```go
-// Construction: a dialect (§6) selects lexical forms; nothing else configures.
-func New(d Dialect) *Lexer
+// Construction: functional options, immutable config (golib house rule).
+func New(opts ...Option) *Lexer
+func WithDialect(d Dialect) Option        // presets: PostgreSQL(), MySQL(), ANSI()
+func WithMaxAtomicLexeme(n int) Option    // 0 = unbounded; see §4.2
 
-// The token seam.
-func (l *Lexer) Tokens(ctx context.Context, r io.Reader) iter.Seq2[Token, error]
+// A Scan is one pass over one input. It OWNS the cache, so everything that
+// needs the retained region is reachable from it (lector r3 B1) — a bare
+// Token cannot answer for its own bytes and no longer pretends to.
+func (l *Lexer) Scan(ctx context.Context, r io.Reader) *Scan
 
-// The VALIDITY seam — deliberately free of Token, so a caller asking
-// "is this lexically valid?" does not compile against the token type (ISP).
-func (l *Lexer) Validate(ctx context.Context, r io.Reader) error
+func (s *Scan) Tokens() iter.Seq2[Token, error]
 
-// Conveniences, defined in terms of the seams above — never beside them.
-func (l *Lexer) TokensFrom(ctx context.Context, b []byte) iter.Seq2[Token, error]
+// Bytes are obtained through the Scan, and every accessor can fail: a span may
+// have been released, and a span may cross a segment boundary (§5.2).
+func (s *Scan) AppendTo(dst []byte, t Token) ([]byte, error) // always correct
+func (s *Scan) Reader(t Token) (io.Reader, error)            // no copy, any span
+func (s *Scan) Text(t Token) (string, error)                 // materialised
+
+// Retention. Pin returns a handle; the span is retained until it is released.
+func (s *Scan) Pin(t Token) (Pin, error)
+func (p Pin) Release()
+
+// CLOSING IS EXPLICIT AND EAGER (lector r3 B6). A lazy sequence that owns a
+// Closer cannot close when nobody ranges it, and cannot report a Close failure
+// to a consumer that stopped early. So Scan is a resource with a Close, and
+// ownership of the reader is a documented argument rather than a hidden effect.
+func (s *Scan) Close() error
+
+// Conveniences over the same seams — never beside them.
+func (l *Lexer) Validate(ctx context.Context, r io.Reader) error   // no Token in sight (ISP)
 func (l *Lexer) WriteTokens(ctx context.Context, w io.Writer, r io.Reader) error
-
-// Ownership transfers only where it is in the signature.
-func (l *Lexer) TokensAndClose(ctx context.Context, rc io.ReadCloser) iter.Seq2[Token, error]
 ```
 
-Four corrections from lector r2 MF2, each a gap rather than a preference:
-**dialect selection had no constructor**; **the helpers could not compose an
-unspecified interface**, so `Lexer` is a concrete type with methods;
-**`context.Context` was missing** on operations that block on I/O; and the
-ReadCloser ownership rule was **prose with no signature** — it is now the one
-function that closes, named so it cannot be assumed of the others.
+**What r3 changed and why.** rev 3 put `Bytes`/`Text` on `Token` taking a
+`*Source` the API never handed back, so the capability was **unreachable**
+(B1) — and typed them as returning `[]byte` with no error while the acceptance
+criteria demanded one. A `Token` is now an inert value: kind and span, nothing
+else. Everything that needs the retained region goes through the `Scan` that
+owns it, and every accessor can fail, because two things genuinely can go wrong
+(released span, non-contiguous span).
+
+`TokensAndClose` is gone (B6). A lazily-evaluated sequence that owns an
+`io.ReadCloser` closes **nothing** if the caller never ranges it, and has
+nowhere to report a `Close` error if the caller stops early. `Scan.Close` is an
+ordinary resource close, and whether the reader is also closed is an argument
+the caller passes, not an effect hidden in a constructor's name.
 
 Three consequences worth stating:
 
@@ -199,21 +221,34 @@ already has the vocabulary for that: `threadsafe.Value[T]`, with
 `SynchronizedValue`, `MultiReadSyncValue` and `AtomicValue` behind one
 interface. `ingestor` uses it; so does this.
 
-**The design detail that makes sharing cheap is storage layout, not locking.**
-Storage is **append-only segments**, never a slice that grows by reallocation:
+**rev 3's argument had a hole and lector found it (r3 B3).** I claimed
+append-only storage means readers need no lock, because payload bytes are
+immutable once written. Immutable payload bytes do not synchronise:
 
-- A view handed out earlier can never be invalidated by a later append, because
-  nothing moves. **Concurrent readers therefore need no lock at all** to read
-  bytes they already hold a view into.
-- Only the *bookkeeping* — the live mark set, and which segments may be
-  released — is shared mutable state, and that is a `threadsafe.Value` over a
-  small struct. `MultiReadSyncValue` is the right flavour: many readers
-  consulting the retained bound, an occasional writer moving it.
+- **the directory** — *which* segment holds offset X — which is mutable;
+- **release and reuse** — a segment recycled while a view into it is live;
+- **view lifetime** — and golib's own `Value.RDo` contract *forbids retaining a
+  reachable reference after the callback returns*, which is exactly what a
+  zero-copy view does.
 
-The result is that the **single-threaded lexer pays approximately nothing** for
-a property only shared consumers need, which is the usual objection to making a
-hot structure thread-safe. Had storage been one growing buffer, every read would
-have needed the lock, and the objection would have been correct.
+So the immutability argument was answering a different question than the one
+sharing asks. What actually makes a view safe is **an explicit lifetime**, and
+that is what `Pin` is (§3):
+
+- A segment carries a reference count. `Pin` increments it; `Release`
+  decrements. **A segment is never recycled while its count is non-zero** —
+  reuse waits, it does not race.
+- The directory is a `threadsafe.Value` (`MultiReadSyncValue`: many lookups,
+  rare mutation), and lookups **copy the small directory entry out** inside
+  `RDo` rather than retaining anything reachable — honouring the contract
+  instead of quietly breaking it.
+- An unpinned read is still lock-free *within* one already-resolved segment;
+  what needed the lock all along was finding it.
+
+The single-threaded lexer still pays little — it pins the lexeme it is building
+and releases it on emit — but the claim is now "cheap because lifetimes are
+explicit", not "free because bytes are immutable". The second was elegant and
+false.
 
 ### 4.6 A tree-structured cache — analysed, and rejected for now
 
@@ -286,9 +321,20 @@ tokens are punctuation and keywords whose text a tree never stores.
 So **a token carries positions, not a string.** Its bytes are obtained on demand
 from the cache (§4), which is what makes this possible at all:
 
-- `Bytes()` is **zero-copy** — a view into the retained region. Free.
-- `Text()` **materialises**, for the minority of tokens whose text is kept
-  (identifiers, literals) or that must outlive their span's release.
+**A span can cross a segment boundary, so no accessor may promise one
+contiguous slice** (lector r3 B2 — rev 3's `Bytes() []byte` was unimplementable
+against fixed-size segments the moment a lexeme straddled two):
+
+- `Reader(t)` — **no copy, any span.** The general accessor: it walks the
+  segments the span covers. This is the one to reach for.
+- `AppendTo(dst, t)` — **always correct**, copying only where the span is
+  discontiguous, and reusing the caller's buffer so a hot loop allocates once.
+- `Text(t)` — materialises a string, for the minority of tokens whose text is
+  kept (identifiers, literals) or that must outlive their span.
+
+Zero-copy is still the common case — most lexemes are short and sit inside one
+segment — but it is now a *property of a particular span*, not a promise in a
+signature that some spans cannot keep.
 
 This is the direct payoff of the caching requirement: without a retained region
 there is nothing for a token to point *at*, and `Token` would be forced to carry
@@ -312,7 +358,42 @@ Likewise the lexer never folds case, unquotes or unescapes. Those are
 *interpretations*; a lexer that performs them has taken a position on a dialect
 it should not hold, and has destroyed the verbatim text a grammar tree needs.
 
-## 6. Dialects as configuration, not as code
+## 6. The core knows no dialect
+
+**Requirement (Johno, 2026-09-06): the foundation must not be tied to any leaf
+implementation such as PostgreSQL.**
+
+This is the strongest form of lector r3 B5's finding, and it settles it
+structurally rather than by promise. rev 3 kept `PostgreSQL()` and `MySQL()` in
+the core and justified `MaxAtomicLexeme` by PostgreSQL's `NAMEDATALEN`. Both
+tie the foundation to one leaf — and a core that names a dialect will always be
+one dialect short.
+
+**Three packages, each ignorant of the one above it:**
+
+```
+golib/streamcache   bytes, marks, pins        — knows nothing of tokens
+golib/parse         Source, Token, Form, Scan — knows nothing of SQL
+golib/parse/sql     Form values, presets      — knows nothing of a caller
+```
+
+`golib/parse` defines **what a lexical form is**; it ships no SQL forms, no
+keyword set, no dialect name. `PostgreSQL()` and `MySQL()` live in
+`parse/sql` and are ordinary `Form` values built from the core's own
+constructors. Anything else — a config language, a log format, an expression
+grammar — is a sibling of `parse/sql`, not a special case inside the core.
+
+The test of this is blunt and worth keeping as a criterion: **grep the core for
+"sql", "postgres" or "mysql" and find nothing.**
+
+`MaxAtomicLexeme` survives in the core, but as a **generic bound on any
+delimiter-carrying form** rather than as PostgreSQL's identifier limit. The
+tradeoff of §4.2 is unchanged; only its justification moves to where the
+knowledge belongs. The PostgreSQL evidence — `dolqdelim` unbounded,
+`truncate_identifier` on the identifier path only — is a fact about a leaf, and
+is recorded in `parse/sql`'s documentation, not here.
+
+## 6.1 Forms as configuration, not as code
 
 **Four booleans are not OCP** (lector r2 MF4, and the finding is correct): they
 select among forms the lexer already hard-codes. Adding a form the lexer does
@@ -437,4 +518,23 @@ enforcement**, which consumes the analyzer two layers up.
     asserted rather than assumed.
 15. Concurrent readers over a shared cache, with a writer appending and
     releasing throughout, are **race-clean under `-race`** and every view stays
-    valid for the life of its mark.
+    valid for the life of its **pin**.
+16. A span deliberately straddling a segment boundary is returned **correctly**
+    by `Reader` and `AppendTo` — the case rev 3's contiguous `Bytes` could not
+    represent (B2).
+17. A **pinned** segment is not recycled while a view into it is live, proven by
+    a test that pins, forces reuse pressure, and reads through the pin
+    afterwards (B3).
+18. With `MaxAtomicLexeme = 0`, a dollar tag **longer than any buffer** lexes
+    correctly — full PostgreSQL fidelity. With a limit set, the same input is
+    **rejected with an error naming the tag, its length and the limit** (B4).
+19. A `Scan` that is created and never ranged still releases its resources on
+    `Close`, and a `Close` error after an early consumer stop **reaches the
+    caller** (B6).
+20. A lexical form the lexer has never seen — a `#` line comment, a `[bracket]`
+    identifier, a `~tag~` delimited body — is added **as a `Form` value with no
+    change to the lexer**, and lexes correctly (B5).
+21. **The core names no dialect**: a grep of `golib/parse` for `sql`,
+    `postgres` or `mysql`, case-insensitive, returns nothing. A non-SQL format
+    is lexed using only core constructors, proving the foundation is not an SQL
+    lexer wearing a general name.
