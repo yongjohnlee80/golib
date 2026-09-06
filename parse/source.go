@@ -1,10 +1,27 @@
 package parse
 
 import (
+	"bufio"
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"unicode/utf8"
 )
+
+// ErrLocationReleased reports that an offset was valid but its bytes have been
+// released, so neither its line nor its column can be given any longer. It is
+// not a caller error: a streaming Source keeps locations only for the live
+// window, so a caller that wants a token's location resolves it before the
+// retention behind that token is dropped.
+var ErrLocationReleased = errors.New("parse: location released")
+
+// ErrLocationRange reports an offset this Source cannot resolve: negative, past
+// the bytes read so far, or inside a multibyte rune — a location is a position
+// between runes, and the interior of one is not a position.
+var ErrLocationRange = errors.New("parse: location offset out of range")
 
 // Location is a human-facing position: a byte offset with one-based line and
 // column. Its Offset is int64, so it does not truncate on a 32-bit build the way
@@ -12,11 +29,9 @@ import (
 // than the package's existing Position, whose int Offset and callers are left as
 // they are for now.
 //
-// Its semantics are pinned to what Scanner already does, so a diagnostic does
-// not change meaning under the streaming core: lines and columns are one-based,
-// COLUMNS ARE COUNTED IN RUNES, and invalid UTF-8 consumes one byte and one
-// column. The pinning is not a comment — source_test.go cross-checks every
-// offset against a Scanner walk of the same bytes.
+// Line and column are one-based, columns are counted in RUNES, and invalid UTF-8
+// counts one byte as one column — pinned to what Scanner already does so a
+// diagnostic does not change meaning under the streaming core.
 type Location struct {
 	Offset int64
 	Line   int // one-based
@@ -28,44 +43,63 @@ func (l Location) String() string {
 	return strconv.Itoa(l.Line) + ":" + strconv.Itoa(l.Column)
 }
 
-// Source resolves a byte offset to a Location on demand.
+// Source resolves a byte offset to a Location on demand, over the LIVE WINDOW of
+// a stream. It holds a line index — the offsets lines begin at, built from the
+// newlines the lexer passes over — not a copy of the source, and it reclaims
+// that index with the cache watermark so its memory is bounded by what is still
+// retained rather than by the length of the stream. Column resolution reads the
+// line's bytes through a lifetime-bearing accessor: over a []byte the slice
+// itself, over a stream a cache View held only for the call, so Source never
+// keeps a borrowed slice past a lookup and never copies for its own sake.
 //
-// It holds a line index — the offsets at which lines begin — built from the
-// newlines the lexer passes over anyway, and NOT a copy of the source. Line is
-// answered from the index alone, in O(log lines). Column needs the bytes of the
-// line up to the offset, because it is a RUNE count, so Source is given a byte
-// accessor rather than owning the bytes: over a []byte it is the slice itself
-// (no copy), and over a stream it reads back through the cache. Charging column
-// resolution the cost of the line's bytes, only when a caller asks, is the trade
-// that keeps the token stream itself O(1) per token.
+// The contract with the lexer:
+//
+//   - Line is answered from the index in O(log lines); column costs the runes
+//     of the line up to the offset, and only when asked.
+//   - An offset below the watermark is released: LocationAt reports
+//     ErrLocationReleased for it, line AND column, because keeping one exact
+//     while the other is gone is the worst of both. Resolve a token's location
+//     before the retention behind it is dropped.
+//   - reclaim advances at LINE boundaries, so every retained offset's line
+//     begins at a retained offset and its column is always computable.
+//   - Validation that must stay constant-memory builds no Source at all: the
+//     index is the only per-line cost, and a caller that never asks for a
+//     location never pays it.
 //
 // The zero value is unusable. Sources are built by Scan; newBytesSource builds
 // one over a whole slice, which is also what the tests drive.
 type Source struct {
-	// lineStarts[i] is the offset of the first byte of line i+2 (line 1 begins
-	// at offset 0 implicitly). Strictly increasing: appended once per '\n' the
-	// lexer consumes, in offset order.
-	lineStarts []int64
+	// read presents the bytes in [from, to) to fn as an io.Reader, for the
+	// duration of the call, then releases them. Lifetime-bearing on purpose: it
+	// is where a stream holds a View and closes it, and a []byte hands back a
+	// reader over itself. Source must not retain the reader past fn.
+	read func(from, to int64, fn func(io.Reader) error) error
 
-	// bytesAt returns the bytes in [from, to). It clamps its own arguments; over
-	// a released stream region it may return an error, in which case Line is
-	// still exact and Column is reported as 0 rather than guessed.
-	bytesAt func(from, to int64) ([]byte, error)
+	// lineStarts holds the offsets at which retained lines begin — those at or
+	// above released — in ascending order. reclaimed counts the starts already
+	// dropped below the watermark, so a line number is reclaimed + a search of
+	// what remains.
+	lineStarts []int64
+	reclaimed  int
+
+	released int64 // watermark: offsets below this are gone
+	head     int64 // one past the last byte read; offsets above this are not yet knowable
 }
 
-// newSource returns an empty Source whose line index the caller fills with
-// noteNewlineAt as it advances. Used by the streaming Scan path.
-func newSource(bytesAt func(from, to int64) ([]byte, error)) *Source {
-	return &Source{bytesAt: bytesAt}
+// newSource returns an empty streaming Source. The lexer fills its index with
+// noteNewlineAt, advances head with advanceHead, and drops the tail with reclaim
+// as the cache watermark rises.
+func newSource(read func(from, to int64, fn func(io.Reader) error) error) *Source {
+	return &Source{read: read}
 }
 
 // newBytesSource returns a Source over the whole of b, with its line index
-// precomputed. The slice is NOT copied: bytesAt returns sub-slices of it.
+// precomputed and nothing ever released. The slice is NOT copied: read hands
+// back a reader over sub-slices of it.
 //
-// A '\n' byte begins a line however it is reached, which is exactly Scanner's
-// rule — a bad lead byte consumes only itself, so a following 0x0A is still
-// decoded as a newline — so scanning for the byte gives the same line breaks a
-// rune walk would.
+// A '\n' byte begins a line however it is reached, which is Scanner's rule — a
+// bad lead byte consumes only itself, so a following 0x0A is still a newline —
+// so scanning for the byte gives the same line breaks a rune walk would.
 func newBytesSource(b []byte) *Source {
 	var starts []int64
 	for i := 0; i < len(b); i++ {
@@ -75,7 +109,8 @@ func newBytesSource(b []byte) *Source {
 	}
 	return &Source{
 		lineStarts: starts,
-		bytesAt: func(from, to int64) ([]byte, error) {
+		head:       int64(len(b)),
+		read: func(from, to int64, fn func(io.Reader) error) error {
 			if from < 0 {
 				from = 0
 			}
@@ -83,58 +118,113 @@ func newBytesSource(b []byte) *Source {
 				to = int64(len(b))
 			}
 			if from >= to {
-				return nil, nil
+				return fn(bytes.NewReader(nil))
 			}
-			return b[from:to], nil
+			return fn(bytes.NewReader(b[from:to]))
 		},
 	}
 }
 
 // noteNewlineAt records that a line begins just after the '\n' at nlOffset. It
-// must be called in increasing offset order and at most once per newline; the
-// streaming lexer calls it as it consumes each 0x0A.
+// must be called in increasing offset order, at most once per newline.
 func (s *Source) noteNewlineAt(nlOffset int64) {
 	s.lineStarts = append(s.lineStarts, nlOffset+1)
 }
 
-// LocationAt resolves off to a Location. The line comes from the index; the
-// column is one plus the number of runes between the line's start and off.
-//
-// A negative offset is the caller's error and answers line 1, column 1 with a
-// zero offset rather than panicking on a slice — a location is a diagnostic, and
-// a diagnostic that panics is worse than one that is merely at the origin.
-func (s *Source) LocationAt(off int64) (Location, error) {
-	if off < 0 {
-		return Location{Offset: 0, Line: 1, Column: 1}, nil
+// advanceHead moves the known head forward as the lexer reads. Offsets at or
+// below head can be resolved; offsets above it cannot, so a short read can never
+// yield a Location for bytes it did not return.
+func (s *Source) advanceHead(head int64) {
+	if head > s.head {
+		s.head = head
 	}
-	// The number of recorded line starts at or before off is the count of
-	// newlines already passed, which is the line number minus one.
+}
+
+// reclaim drops the line starts below watermark and raises the release point,
+// freeing the dropped entries rather than holding the backing array. The
+// watermark is expected at a line boundary (the lexer's discipline), so no
+// retained offset is left with a released line start.
+func (s *Source) reclaim(watermark int64) {
+	i := 0
+	for i < len(s.lineStarts) && s.lineStarts[i] < watermark {
+		i++
+	}
+	if i > 0 {
+		kept := make([]int64, len(s.lineStarts)-i)
+		copy(kept, s.lineStarts[i:])
+		s.lineStarts = kept
+		s.reclaimed += i
+	}
+	if watermark > s.released {
+		s.released = watermark
+	}
+}
+
+// LocationAt resolves off to a Location, or reports why it cannot. Line comes
+// from the index; column is one plus the runes between the line's start and off,
+// counted through the byte accessor with Scanner's invalid-UTF-8 rule.
+func (s *Source) LocationAt(off int64) (Location, error) {
+	if off < 0 || off > s.head {
+		return Location{}, fmt.Errorf("%w: offset %d not in [0, %d]", ErrLocationRange, off, s.head)
+	}
+	if off < s.released {
+		return Location{}, fmt.Errorf("%w: offset %d below watermark %d", ErrLocationReleased, off, s.released)
+	}
+
 	n := sort.Search(len(s.lineStarts), func(i int) bool { return s.lineStarts[i] > off })
-	line := n + 1
-	var lineStart int64
+	line := 1 + s.reclaimed + n
+	lineStart := s.released // the live window's base line begins here
 	if n > 0 {
 		lineStart = s.lineStarts[n-1]
 	}
-	b, err := s.bytesAt(lineStart, off)
+
+	col, err := s.columnAt(lineStart, off)
 	if err != nil {
-		return Location{Offset: off, Line: line, Column: 0}, err
+		return Location{}, err
 	}
-	return Location{Offset: off, Line: line, Column: 1 + runeLen(b)}, nil
+	return Location{Offset: off, Line: line, Column: col}, nil
 }
 
-// runeLen counts runes the way Scanner advances over them: a valid rune counts
-// once, and invalid UTF-8 counts one per byte. The guard is size <= 1 rather
-// than a RuneError test alone, so a genuine U+FFFD in the source (three bytes)
-// is one rune, not three.
-func runeLen(b []byte) int {
-	n := 0
-	for i := 0; i < len(b); {
-		r, size := utf8.DecodeRune(b[i:])
-		if r == utf8.RuneError && size <= 1 {
-			size = 1
-		}
-		i += size
-		n++
+// columnAt counts the runes in [lineStart, off) and returns one more than that.
+// It reads a little past off so a rune straddling off decodes in full and is
+// recognised as straddling — an interior-rune offset — rather than mistaken for
+// a truncated one.
+func (s *Source) columnAt(lineStart, off int64) (int, error) {
+	upto := off + int64(utf8.UTFMax) - 1
+	if upto > s.head {
+		upto = s.head
 	}
-	return n
+
+	col := 1
+	interior := false
+	err := s.read(lineStart, upto, func(r io.Reader) error {
+		br := bufio.NewReader(r)
+		cur := lineStart
+		for cur < off {
+			_, size, e := br.ReadRune()
+			if e != nil {
+				// The bytes ran out before reaching off: off is inside the
+				// truncated final rune at head, which is not a rune boundary.
+				interior = true
+				return nil
+			}
+			// ReadRune returns size 1 for an invalid byte, matching Scanner, so a
+			// bad byte is a boundary and never straddles.
+			if cur+int64(size) > off {
+				interior = true // a multibyte rune covers off; off is in its interior
+				return nil
+			}
+			cur += int64(size)
+			col++
+		}
+		return nil
+	})
+	if err != nil {
+		// The bytes were released between the domain check and the read.
+		return 0, fmt.Errorf("%w: %v", ErrLocationReleased, err)
+	}
+	if interior {
+		return 0, fmt.Errorf("%w: offset %d is inside a multibyte rune", ErrLocationRange, off)
+	}
+	return col, nil
 }

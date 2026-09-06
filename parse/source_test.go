@@ -1,15 +1,17 @@
 package parse
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"testing"
 )
 
 // scannerLocs walks b with the package's existing Scanner and records the
-// Location at every offset the Scanner stops on — every rune start, and the EOF
-// offset. Scanner is the authority the ADR pins the new core's line/column
-// semantics to, so it is the oracle here rather than a second hand-written
-// expectation that could be wrong in the same way.
+// Location at every offset the Scanner stops on — every RUNE BOUNDARY and the
+// EOF offset, and nothing in between. Scanner is the authority the ADR pins the
+// new core's line/column semantics to, so it is the oracle here rather than a
+// second hand-written expectation that could be wrong in the same way.
 func scannerLocs(b []byte) map[int64]Location {
 	sc := NewScanner(b)
 	locs := map[int64]Location{}
@@ -23,7 +25,7 @@ func scannerLocs(b []byte) map[int64]Location {
 	return locs
 }
 
-func TestSourceLocationMatchesScanner(t *testing.T) {
+func TestSourceLocationMatchesScannerAtEveryBoundary(t *testing.T) {
 	// The corpus mixes single- and multi-byte runes and an empty line so the
 	// rune-counted column differs from a byte-counted one: a Source that counted
 	// bytes would pass on the ASCII rows and fail here, which is the point.
@@ -41,15 +43,15 @@ func TestSourceLocationMatchesScanner(t *testing.T) {
 		"\n\n\n",       // nothing but newlines
 	}
 	for _, s := range corpus {
-		checkEveryOffset(t, []byte(s))
+		checkBoundaries(t, []byte(s))
 	}
 	// Invalid UTF-8: a lone 0xff, and a truncated two-byte sequence 0xc3 0x28.
 	// Scanner consumes each bad byte as one column; Source must agree, and the
 	// 0x0a after the 0xff must still register as a newline.
-	checkEveryOffset(t, []byte{'a', 0xff, 'b', '\n', 0xc3, 0x28, 'z'})
+	checkBoundaries(t, []byte{'a', 0xff, 'b', '\n', 0xc3, 0x28, 'z'})
 }
 
-func checkEveryOffset(t *testing.T, b []byte) {
+func checkBoundaries(t *testing.T, b []byte) {
 	t.Helper()
 	src := newBytesSource(b)
 	for off, want := range scannerLocs(b) {
@@ -63,58 +65,121 @@ func checkEveryOffset(t *testing.T, b []byte) {
 	}
 }
 
-// TestSourceIncrementalIndexMatchesPrecomputed proves the line index the
-// streaming path fills byte by byte with noteNewlineAt lands in the same place
-// as the whole-slice precompute. Identical positions from a []byte and a stream
-// (acceptance criterion 1) rest on this.
-func TestSourceIncrementalIndexMatchesPrecomputed(t *testing.T) {
+// TestLocationAt_EveryByteOffsetIsSoundOrRejected is the domain guarantee: over
+// every byte offset — not only the Scanner boundaries — LocationAt either
+// reproduces the boundary location or REJECTS the offset as out of range. It
+// never invents a Location for an interior byte, which is the defect the earlier
+// version shipped (columns marched 2,3,4 then fell back to 2 as a rune closed).
+func TestLocationAt_EveryByteOffsetIsSoundOrRejected(t *testing.T) {
+	for _, str := range []string{"abc", "héllo", "日本語", "😀x", "a\n😀"} {
+		b := []byte(str)
+		s := newBytesSource(b)
+		bounds := scannerLocs(b)
+		for off := int64(0); off <= int64(len(b)); off++ {
+			loc, err := s.LocationAt(off)
+			if want, ok := bounds[off]; ok {
+				if err != nil || loc != want {
+					t.Errorf("%q LocationAt(%d) = (%+v, %v), want %+v", str, off, loc, err, want)
+				}
+				continue
+			}
+			// Not a rune boundary: it is the interior of a multibyte rune and
+			// must be refused, never resolved.
+			if !errors.Is(err, ErrLocationRange) {
+				t.Errorf("%q LocationAt(%d) interior = (%+v, %v), want ErrLocationRange", str, off, loc, err)
+			}
+		}
+	}
+}
+
+func TestLocationAt_BeyondHeadOrNegativeRejected(t *testing.T) {
+	s := newBytesSource([]byte("abc")) // head = 3
+	for _, off := range []int64{-1, 4, 100} {
+		if _, err := s.LocationAt(off); !errors.Is(err, ErrLocationRange) {
+			t.Errorf("LocationAt(%d) err = %v, want ErrLocationRange", off, err)
+		}
+	}
+	// off == head is the EOF position and IS resolvable.
+	loc, err := s.LocationAt(3)
+	if err != nil || loc != (Location{Offset: 3, Line: 1, Column: 4}) {
+		t.Errorf("LocationAt(3) = (%+v, %v), want {3,1,4} nil", loc, err)
+	}
+}
+
+// TestLocationAt_ReleasedOffsetsBecomeUnavailable pins the live-window contract:
+// after the watermark rises past a line, offsets below it report
+// ErrLocationReleased for BOTH line and column, while retained offsets keep
+// exact locations — the reclaimed line count keeping their line numbers right.
+func TestLocationAt_ReleasedOffsetsBecomeUnavailable(t *testing.T) {
+	b := []byte("l1\nl2\nl3\n") // lines begin at 0, 3, 6, 9; head = 9
+	s := newBytesSource(b)
+	s.reclaim(6) // release lines 1 and 2 (through offset 5); line 3 begins at 6
+
+	for _, off := range []int64{0, 3, 5} {
+		if _, err := s.LocationAt(off); !errors.Is(err, ErrLocationReleased) {
+			t.Errorf("LocationAt(%d) after reclaim(6) err = %v, want ErrLocationReleased", off, err)
+		}
+	}
+	// The retained line keeps its true line number (3), not 1, because reclaim
+	// accounts for the dropped starts.
+	if loc, err := s.LocationAt(6); err != nil || loc != (Location{Offset: 6, Line: 3, Column: 1}) {
+		t.Errorf("LocationAt(6) = (%+v, %v), want {6,3,1} nil", loc, err)
+	}
+	if loc, err := s.LocationAt(7); err != nil || loc != (Location{Offset: 7, Line: 3, Column: 2}) {
+		t.Errorf("LocationAt(7) = (%+v, %v), want {7,3,2} nil", loc, err)
+	}
+}
+
+// TestSourceIncrementalMatchesPrecomputed proves the streaming path — an empty
+// Source fed newlines and a head as the lexer advances — lands the same
+// locations as the whole-slice precompute. Identical positions from a []byte and
+// a stream (acceptance criterion 1) rest on this.
+func TestSourceIncrementalMatchesPrecomputed(t *testing.T) {
 	b := []byte("a\nbb\n\nc\n日\n")
 	pre := newBytesSource(b)
 
-	inc := newSource(pre.bytesAt) // same byte accessor, empty index
+	inc := newSource(pre.read) // same lifetime-bearing accessor, empty index
 	for i := 0; i < len(b); i++ {
 		if b[i] == '\n' {
 			inc.noteNewlineAt(int64(i))
 		}
 	}
+	inc.advanceHead(int64(len(b)))
 
 	for off := range scannerLocs(b) {
-		gotPre, _ := pre.LocationAt(off)
-		gotInc, _ := inc.LocationAt(off)
+		gotPre, errPre := pre.LocationAt(off)
+		gotInc, errInc := inc.LocationAt(off)
+		if errPre != nil || errInc != nil {
+			t.Fatalf("offset %d: pre err %v, inc err %v", off, errPre, errInc)
+		}
 		if gotPre != gotInc {
 			t.Errorf("offset %d: precomputed %+v, incremental %+v", off, gotPre, gotInc)
 		}
 	}
 }
 
-// TestLocationColumnUnknownWhenBytesUnavailable pins the released-region
-// contract: Line is answered from the index and stays exact, and Column is
-// reported as 0 with the error rather than guessed from bytes that are gone.
-func TestLocationColumnUnknownWhenBytesUnavailable(t *testing.T) {
-	released := errors.New("streamcache: span is no longer retained")
-	src := &Source{
-		lineStarts: []int64{2, 5}, // line 1 [0,2), line 2 [2,5), line 3 [5,…)
-		bytesAt:    func(from, to int64) ([]byte, error) { return nil, released },
+func TestSource_AdvanceHeadGatesUnreadOffsets(t *testing.T) {
+	// A streaming Source cannot resolve an offset it has not read to yet: a short
+	// read must never yield a Location for bytes it did not return.
+	b := []byte("abcdef")
+	s := newSource(func(from, to int64, fn func(io.Reader) error) error {
+		if from < 0 {
+			from = 0
+		}
+		if to > int64(len(b)) {
+			to = int64(len(b))
+		}
+		if from >= to {
+			return fn(bytes.NewReader(nil))
+		}
+		return fn(bytes.NewReader(b[from:to]))
+	})
+	if _, err := s.LocationAt(3); !errors.Is(err, ErrLocationRange) {
+		t.Errorf("LocationAt(3) with head 0 = %v, want ErrLocationRange", err)
 	}
-	loc, err := src.LocationAt(6)
-	if !errors.Is(err, released) {
-		t.Fatalf("LocationAt error = %v, want %v", err, released)
-	}
-	if loc.Line != 3 {
-		t.Errorf("Line = %d, want 3 (must be exact from the index)", loc.Line)
-	}
-	if loc.Column != 0 {
-		t.Errorf("Column = %d, want 0 (unknown, not guessed)", loc.Column)
-	}
-}
-
-func TestLocationNegativeOffsetIsOrigin(t *testing.T) {
-	loc, err := newBytesSource([]byte("abc")).LocationAt(-1)
-	if err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if want := (Location{Offset: 0, Line: 1, Column: 1}); loc != want {
-		t.Errorf("LocationAt(-1) = %+v, want %+v", loc, want)
+	s.advanceHead(6)
+	if loc, err := s.LocationAt(3); err != nil || loc != (Location{Offset: 3, Line: 1, Column: 4}) {
+		t.Errorf("LocationAt(3) after advanceHead(6) = (%+v, %v), want {3,1,4} nil", loc, err)
 	}
 }
 
