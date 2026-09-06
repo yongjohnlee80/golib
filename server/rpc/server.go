@@ -251,7 +251,7 @@ func (s *Server) dispatch(ctx context.Context, c *conn, m *Message) {
 					"remote": c.sess.Peer().String(), "method": m.Method, "recover": rec,
 				})
 				// Generic wire message: panic detail is server-internal.
-				err = &Error{Code: CodeInternal, Message: "internal error"}
+				err = errInternal
 			}
 		}()
 		h := s.lookup(m.Method)
@@ -310,8 +310,7 @@ func (s *Server) reply(c *conn, m *Message) {
 			"server": "rpc", "event": "unencodable response replaced",
 			"remote": c.sess.Peer().String(), "msgid": m.ID, "err": err.Error(),
 		})
-		fallback := &Message{Kind: KindResponse, ID: m.ID,
-			Err: map[string]any{"code": CodeInternal, "message": "internal error"}}
+		fallback := &Message{Kind: KindResponse, ID: m.ID, Err: wireError(errInternal)}
 		if err = c.write(s.codec, fallback, s.cfg.maxMessageBytes); err == nil {
 			return
 		}

@@ -77,6 +77,15 @@ const (
 // single message exceeds the transport's MaxMessageBytes window.
 var ErrMessageTooLarge = errors.New("rpc: message exceeds size limit")
 
+// errInternal is the ONE internal error this package puts on the wire.
+//
+// The pairing of CodeInternal with its message was written out three times —
+// twice as a map built inline and once as an *Error — so a reworded message or
+// a changed code would have had to be found in three places, and the two forms
+// could disagree without anything failing. There is one now, and the two forms
+// are derived from it.
+var errInternal = &Error{Code: CodeInternal, Message: "internal error"}
+
 // wireError converts an error to its wire form. Only *Error text is
 // public; everything else becomes a generic internal error (the caller is
 // responsible for logging the withheld detail).
@@ -85,5 +94,5 @@ func wireError(err error) map[string]any {
 	if errors.As(err, &e) {
 		return map[string]any{"code": e.Code, "message": e.Message}
 	}
-	return map[string]any{"code": CodeInternal, "message": "internal error"}
+	return map[string]any{"code": errInternal.Code, "message": errInternal.Message}
 }
