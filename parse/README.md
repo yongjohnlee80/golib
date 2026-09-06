@@ -1,9 +1,8 @@
 # parse — a streaming lexer core that names no dialect
 
-**Status: partial.** The form contract, the generic forms, `Token` and `Source`
-(offset → line/column) are here. `Scan` — the one pass that drives the forms
-over a stream and emits the tokens — is not yet; nor are the run/set forms that
-give it the non-delimited kinds. See
+**Status: partial.** The form contract, the delimited forms, the run/set forms,
+`Token` and `Source` (offset → line/column) are here. `Scan` — the one pass that
+drives the forms over a stream and emits the tokens — is the remaining piece. See
 `docs/parse/adr-0001-streaming-lexer-foundation.md`.
 
 This package answers *what a run of bytes IS*, never what it means. `SELECT` is
@@ -22,8 +21,28 @@ forms := []parse.Form{
     parse.QuoteForm("'", "'", parse.QuoteOpts{Doubling: true}),
     parse.QuoteForm(`"`, `"`, parse.QuoteOpts{Doubling: true}),
     parse.DelimitedForm('$', '$', parse.DelimitedOpts{TagByte: pgTag}),
+
+    // the kinds between the delimited ones — the classes are yours
+    parse.RunForm(parse.Space, isSpace),
+    parse.RunForm(parse.Word, isWordByte),
+    parse.SetForm(parse.Operator, "<=", ">=", "<>", "::", "<", ">"),
+    parse.SetForm(parse.Terminator, ";"),
+
+    // the exact-one-byte fallback: nothing is left unclaimed
+    parse.RunForm(parse.Operator, func(i int, _ byte) bool { return i == 0 }),
 }
 ```
+
+`RunForm` takes a maximal run of member bytes — a word, a number, a whitespace
+gap — and the byte after the run belongs to the next token. `SetForm` takes the
+longest of a set of literals, and handles a shared prefix on its own: `-` defers
+mid-stream, is `-` at end of input, and becomes `--` when the second byte
+arrives, because `Starts` fixes the *shortest* literal's width as a stable opener
+and `End` extends it.
+
+**Make the last form claim every byte.** A member true only at index 0 is the
+exact-one-byte fallback. A member that is always true is *not*: with no byte to
+refuse, its maximal run swallows the rest of the stream as one token.
 
 `DelimitedForm` is the tag-carrying shape, and **the tag rule comes from you**:
 
