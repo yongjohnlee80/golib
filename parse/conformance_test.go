@@ -41,8 +41,11 @@ func TestRunFormConformsAtEverySplit(t *testing.T) {
 			[]string{"", " ", "  ", " \t\n", "  x", "x", "\n\n"},
 		},
 		{
-			// The exact-one-byte fallback: a member true only at index 0.
-			"exact one byte", parse.RunForm(parse.Operator, func(i int, _ byte) bool { return i == 0 }),
+			// An index-zero member: conformant, but conservatively incremental —
+			// it defers at an empty remainder, which is why ByteForm is the
+			// fallback instead. parsetest permits that deferral, so the latency is
+			// pinned by the semantic test rather than here.
+			"index-zero run", parse.RunForm(parse.Operator, func(i int, _ byte) bool { return i == 0 }),
 			[]string{"", "+", "+=", "===", "-x tail"},
 		},
 		{
@@ -62,6 +65,13 @@ func TestRunFormConformsAtEverySplit(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) { parsetest.Form(t, c.form, c.corpus) })
 	}
+}
+
+// TestByteFormConformsAtEverySplit: the intrinsic-width fallback obeys the
+// protocol too, and completes rather than deferring at every split.
+func TestByteFormConformsAtEverySplit(t *testing.T) {
+	parsetest.Form(t, parse.ByteForm(parse.Operator),
+		[]string{"", "+", "+=", "===", "-x tail", "\x00\xff"})
 }
 
 func TestSetFormConformsAtEverySplit(t *testing.T) {
@@ -90,6 +100,12 @@ func TestSetFormConformsAtEverySplit(t *testing.T) {
 		{
 			"mixed widths", parse.SetForm(parse.Punct, ";", "::", ":", "::="),
 			[]string{"", ";", ":", "::", "::=", ":x", "::x", ";;", "x"},
+		},
+		{
+			// A first terminal WIDER than one byte that still has a descendant —
+			// the two dimensions composed rather than proved separately.
+			"multi-byte opener with descendant", parse.SetForm(parse.Operator, "ab", "abc"),
+			[]string{"", "a", "ab", "abc", "abcd", "abz", "az", "b"},
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { parsetest.Form(t, c.form, c.corpus) })

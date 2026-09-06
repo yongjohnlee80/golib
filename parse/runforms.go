@@ -28,9 +28,14 @@ import "strings"
 // End resolves its own bytes at len(openedWith)+i. The opener's bytes go unused,
 // but its WIDTH is what places the rest of the run.
 //
-// A member that is true only at index 0 is the exact-one-byte form — the honest
-// fallback for total coverage. A member that is true for every byte is NOT: with
-// no refusing byte the maximal run swallows the whole remainder as one token.
+// A RunForm is CONSERVATIVELY INCREMENTAL, and deliberately so: it stops before
+// the first byte it can SEE refused, so with an empty remainder and more input
+// possible it must defer — a membership callback cannot be asked whether some
+// byte it has not been shown would have joined. That makes even a member true
+// only at index 0 the wrong final fallback, because it waits at a chunk edge for
+// a byte it would refuse anyway. Use [ByteForm], whose width is intrinsic. And a
+// member true for EVERY byte is worse than either: with no refusing byte the
+// maximal run swallows the whole remainder as one token.
 func RunForm(k Kind, member func(index int, b byte) bool) Form {
 	if member == nil {
 		panic("parse: RunForm: member must not be nil")
@@ -69,10 +74,40 @@ func (f runForm) End(src, openedWith []byte, boundary InputBoundary) (int, error
 	return 0, ErrNeedMore
 }
 
+// ByteForm recognises exactly ONE byte, whatever it is. Last in a form list it is
+// what makes total coverage possible: no offset can be left with no match.
+//
+// Its width is INTRINSIC rather than discovered, which is the whole difference
+// from a [RunForm] whose member happens to refuse every index past zero. A run
+// must defer at an empty remainder because it cannot know that no unseen byte
+// would have joined; ByteForm knows — one byte is the whole token — so End
+// completes immediately, at a chunk edge as much as anywhere. A fallback that
+// waited for a byte it will never use would block on I/O and could spend a retry
+// on a construct whose end was already decided.
+func ByteForm(k Kind) Form { return byteForm{kind: k} }
+
+type byteForm struct{ kind Kind }
+
+func (f byteForm) Kind() Kind { return f.kind }
+
+func (f byteForm) Starts(src []byte) (int, Match) {
+	if len(src) == 0 {
+		return 0, Incomplete
+	}
+	return 1, Matched
+}
+
+// End always completes. The opener was the whole token, so nothing after it
+// belongs to this form and no boundary can change that.
+func (f byteForm) End(src, openedWith []byte, boundary InputBoundary) (int, error) {
+	return 0, nil
+}
+
 // SetForm recognises the longest of a fixed set of literals — the shape for a
 // dialect's operators and punctuation, where `<=` must beat `<` and `--` must
-// beat `-`. It walks the literals as a trie, and the split between Starts and End
-// is what makes a shared prefix chunk-invariant.
+// beat `-`. It has TRIE SEMANTICS — the literals are read as paths, and the split
+// between Starts and End is what makes a shared prefix chunk-invariant — though
+// at operator-set scale it scans the literal slice rather than building a trie.
 //
 // Starts answers Incomplete while the observed bytes are still on a path toward a
 // literal but have reached none, and NoMatch once they leave every path. When
@@ -95,7 +130,11 @@ func SetForm(k Kind, lits ...string) Form {
 			panic("parse: SetForm: an empty literal matches everywhere and consumes nothing")
 		}
 	}
-	return setForm{kind: k, lits: lits}
+	// CLONE. A variadic slice passed as lits... stays owned by the caller, so
+	// keeping it would let a later mutation change what this Form recognises —
+	// and race with a scan already reading it. Configuration is immutable after
+	// construction; strings are values, so a shallow copy is enough.
+	return setForm{kind: k, lits: append([]string(nil), lits...)}
 }
 
 type setForm struct {

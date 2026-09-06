@@ -465,6 +465,7 @@ one list and the OCP claim holds without an asterisk:
 // names no dialect. Runs join the purity contract like every other form.
 func RunForm(k Kind, member func(index int, b byte) bool) Form // maximal run of member bytes
 func SetForm(k Kind, lits ...string) Form                      // longest of a fixed set; -- before -
+func ByteForm(k Kind) Form                                     // exactly one byte; the final fallback
 ```
 
 A `RunForm` opens on its first member byte and ends at the first non-member one
@@ -503,11 +504,27 @@ control that makes `Starts` prefer it fails conformance with *"`Starts("--")` =
 input"*, which is the defect the shortest-terminal rule exists to prevent.
 
 Total coverage is the leaf's to arrange — `SetForm` for its operators and
-punctuation, and where a final fallback is still needed an **exact-one-byte**
-form (`RunForm` with a member true only at index 0). An always-true `RunForm` is
-NOT that fallback: with no terminating byte its maximal-run contract swallows the
-whole remainder as one token, which `runforms_test.go` pins against a mixed
-remainder so the mistake fails visibly rather than quietly eating a stream.
+punctuation, and **`ByteForm` last** as the final fallback, so no offset is left
+with no match.
+
+The fallback has to be its own form, and the reason is a real distinction rather
+than a naming preference *(lector r19)*. A run stops before the first byte it can
+SEE refused, so asked with an empty remainder and more input possible it **must
+defer** — a membership callback cannot be asked about a byte it was never shown.
+That is right for a run and wrong for a fallback: `RunForm` with a member true
+only at index 0 looks like an exact-one-byte form, but at a chunk edge it blocks
+for I/O, and can spend a retry, on a token whose end is already decided.
+`ByteForm`'s width is **intrinsic**, so its `End` completes immediately —
+including the empty-remainder-under-`MoreInput` row, which `runforms_test.go`
+pins and a control that makes it defer must redden. An always-true `RunForm` is
+worse than either: with no byte to refuse, the maximal run swallows the whole
+remainder as one token, pinned against a mixed remainder so the mistake fails
+visibly rather than quietly eating a stream.
+
+`SetForm` also **copies its literals at construction**: a variadic slice passed
+as `lits...` stays caller-owned, and retaining it would let a later mutation
+change what the form recognises and race with a scan already reading it.
+Configuration is immutable after construction.
 
 ### 6.1 The incremental contract
 
