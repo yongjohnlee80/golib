@@ -409,7 +409,7 @@ func (b *Backend) writeAll(p []byte) error {
 	return nil
 }
 
-// --- reader goroutines (: the ws.go one-reader discipline) ---
+// --- reader goroutines: exactly one reader owns the fd, as ws.go does ---
 
 func (b *Backend) startReader() {
 	readCh := make(chan []byte, 8)

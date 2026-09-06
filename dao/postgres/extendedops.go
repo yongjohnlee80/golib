@@ -19,8 +19,8 @@ import (
 // simple-protocol Query frame is EXCLUDED BY DESIGN: a relay consumer's classifier /
 // grant gate runs at Parse, and a Query op on this seam would bypass it entirely. There
 // is no constructor for it — the exclusion is compile-enforced — and the boundary test
-// proves no spelling of a simple Query reaches the wire through the seam
-// (criterion 13).
+// proves no spelling of a simple Query reaches the wire through the seam.
+//
 
 // ExtendedOp is one extended-protocol frontend frame the consumer may queue with
 // [PinnedConn.Send]. Exactly five shapes exist; the type is a closed sum, built only

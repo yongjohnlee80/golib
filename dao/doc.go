@@ -53,8 +53,8 @@
 // finalizes through [CommitTx] / [RollbackTx]. Both are typed helpers over
 // OPTIONAL interfaces — [TxBeginner], [ContextTxConn], [SessionTxBeginner] —
 // so [DataConn] and [TxConn] themselves are unchanged and every existing
-// implementation stays valid (; KB convention
-// interface-evolution-capability-interfaces).
+// implementation stays valid: a published interface others implement is never
+// grown, it gains optional companions.
 //
 // Nothing degrades silently. An option a driver cannot honor is refused with
 // [ErrTxOptionUnsupported] before the BEGIN is sent, never turned into a

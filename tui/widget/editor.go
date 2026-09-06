@@ -575,7 +575,7 @@ func (e *Editor) move(act Action, count int) {
 
 // goToLine is the shared gg/G target motion: an EXPLICIT count means
 // "line count" (1-based, clamped); without one, gg goes to the top and G
-// to the bottom (MF10).
+// to the bottom.
 func (e *Editor) goToLine(hadCount bool, count int, bottom bool) {
 	e.desired = -1
 	ln := 0
@@ -912,8 +912,8 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 			return true
 		}
 		// Commit the held rune, then process THIS key from the top of the
-		// Insert state machine — it may itself be a fresh chord start
-		// (MF9: "jjk" commits the first j and escapes on the second+k).
+		// Insert state machine — it may itself be a fresh chord start, so
+		// "jjk" commits the first j and escapes on the second j plus k.
 		e.settlePendingRune()
 	}
 	if isText && e.chord != nil && e.pendingRune == 0 && []rune(k.Text)[0] == e.chord[0] {
@@ -1027,7 +1027,7 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	}
 
 	// Count accumulation: 1-9 always; 0 only extends an existing count.
-	// Clamp BEFORE assignment so the cap is a hard ceiling (MF10).
+	// Clamp BEFORE assignment so the cap is a hard ceiling.
 	if !ctrl && k.Text != "" {
 		r := []rune(k.Text)[0]
 		if r >= '1' && r <= '9' || (r == '0' && e.count > 0) {

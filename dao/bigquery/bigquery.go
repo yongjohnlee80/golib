@@ -234,7 +234,7 @@ func assign(dest any, val bigquery.Value) error {
 
 	// Numeric conversion (e.g. INT64 → int/uint, FLOAT64 → float32). Checked:
 	// a value the target cannot represent exactly is an error, never a silent
-	// wraparound or truncation (must-fix from the 2026-06-23 review).
+	// wraparound or truncation.
 	if isNumeric(sv.Kind()) && isNumeric(tt.Kind()) {
 		return assignNumeric(target, sv, val)
 	}

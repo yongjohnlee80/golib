@@ -109,7 +109,7 @@ func (MysqlDialect) ListColumns(ctx context.Context, q dao.Querier, schema, tabl
 func (MysqlDialect) ListRoutines(ctx context.Context, q dao.Querier, schema string) ([]dao.RoutineInfo, error) {
 	// The PARAMETERS join matches ROUTINE_TYPE too, and accumulation keys
 	// on schema+name+TYPE: MySQL permits a FUNCTION and a PROCEDURE with
-	// the same name, and they must stay distinct rows (MF11).
+	// the same name, and they must stay distinct rows.
 	const stmt = `SELECT r.ROUTINE_SCHEMA, r.ROUTINE_NAME, r.ROUTINE_TYPE,
 			COALESCE(p.ORDINAL_POSITION, -1),
 			COALESCE(p.PARAMETER_MODE, ''), COALESCE(p.PARAMETER_NAME, ''),
@@ -156,7 +156,7 @@ func (MysqlDialect) ListRoutines(ctx context.Context, q dao.Querier, schema stri
 			a.ret = dtd
 		case pos > 0:
 			// Render "MODE name type" with EVERY non-empty mode — IN
-			// included, per the ADR's rendering rule (MF11).
+			// included, per the ADR's rendering rule.
 			part := dtd
 			if pname != "" {
 				part = pname + " " + dtd

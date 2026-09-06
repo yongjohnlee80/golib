@@ -229,7 +229,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// timer, by a Sweep, by a concurrent Close. If that settle lands before the
 		// lease is installed it finds no key and does nothing, and the lease
 		// installed a moment later is a ghost: no park entry will ever settle it, so
-		// it sits on the budget until the backstop expiry. on PR #14
+		// it sits on the budget until the backstop expiry. on
 		// reproduced exactly that — parked=0, held=1.
 		//
 		// Installing first inverts the race harmlessly: a settle that arrives early
