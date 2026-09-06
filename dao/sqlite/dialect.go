@@ -1,9 +1,11 @@
 package sqlite
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // SqliteDialect implements dao.Dialect for SQLite. It embeds dao.GenericDialect
@@ -55,3 +57,20 @@ func (SqliteDialect) MaxBindParams() int { return 999 }
 
 // TranslateError maps SQLite constraint result codes to dao sentinels.
 func (SqliteDialect) TranslateError(err error) error { return translateError(err) }
+
+// QuoteString implements the optional [dao.StringQuoter] capability.
+//
+// SQLite's rule is the SQL standard one and nothing more: inside a
+// single-quoted literal, a doubled quote is the only escape and a backslash is
+// an ordinary character. There is no escaping mode to depend on, which is why
+// this dialect can state a rule where MySQL cannot.
+//
+// A NUL byte is refused: SQLite terminates text values at it, so a literal
+// containing one would silently mean a shorter string than the caller wrote.
+func (SqliteDialect) QuoteString(s string) (string, error) {
+	if strings.IndexByte(s, 0) >= 0 {
+		return "", fmt.Errorf("sqlite: a text value cannot contain a NUL byte (%w)",
+			errs.ErrInvalidArgument)
+	}
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'", nil
+}

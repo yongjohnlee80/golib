@@ -40,9 +40,6 @@ auth/sshkey/sshkey.go	New	4d5f726301e8aca7	1	construction	sshkey.New: a Verifier
 auth/sshkey/sshkey.go	New	bc5ed94243307511	1	construction	sshkey.New: a ChallengeStore is required. Reached while the value is built, from an argument written at the call site, with no recover above it
 dao/batch.go	batchWriter.AddRow	b4c7125028a75004	1	invariant	AddRow on a BatchWriter built without a row extractor is programmer error; no data input reaches it
 dao/expr.go	Expr.mustSet	22c07c6f2d7a7693	1	invariant	mustSet rejects a ZERO Expr — a caller passing Expr{} is programmer error, not data
-dao/expr.go	Str	1a95be56c0923027	1	violation	LATENT: Str panics on a single quote in a CALLER-SUPPLIED string, reachable with a valid type via lit <- Coalesce. Coalesce has ZERO production callers in golib, autodb or either ddex repo, and dao/expr_test.go:286 pins this panic as REQUIRED behaviour — so changing it is an API decision (sweep G3; Johno 2026-09-06: leave as-is), not a fix.
-dao/expr.go	Str	ae91812ee2444c7e	1	violation	LATENT: Str panics on a backslash in a caller-supplied string; same path, same evidence as the single-quote site.
-dao/expr.go	Str	d2b532ddf6f0af19	1	violation	LATENT: Str panics on a control character in a caller-supplied string; same path, same evidence as the single-quote site.
 dao/expr.go	lit	35e2931804753617	1	unreachable	lit's switch covers every term of the closed Alt constraint; the panic guards a future widening
 dao/schema.go	New	83bd0006c349d7de	1	construction	dao.New: nil DataConn — validated before the Schema exists; nothing is running yet
 dao/schema.go	New	9abdc415ab30493a	1	construction	dao.New: Table is required — construction-time validation
@@ -177,3 +174,7 @@ tui/widget/tree.go	validateSiblingIDs	77d4e3615977c739	1	invariant	validateSibli
 tui/widget/tree.go	validateSiblingIDs	1b68eaee9ba0dec0	1	invariant	validateSiblingIDs: two siblings sharing an id. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
 tui/widget/tree.go	WithIndent	5cd13bc150a2e791	1	construction	widget: WithIndent: %d is not positive. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/tree.go	Tree.adopt	d775ec58bf320a55	1	invariant	Tree.adopt: attaching a node that already belongs to a tree. A method on a built widget, so it runs at any time — but the condition is the caller's structure, not a value flowing through it
+dao/expr.go	Str.func$1	0514baf34c73a449	1	violation	LATENT: the dialect refused to represent this string (a NUL byte, say). Reachable at runtime with a valid type via Coalesce, but only for a dialect that HAS a quoting rule and declined this input — the refusal is the dialect's, and it is carried rather than guessed.
+dao/expr.go	Str.func$1	f37b20593ea4935f	1	violation	LATENT: single quote on a dialect that states NO quoting rule. Reachable via Coalesce with a caller-supplied string. Postgres and SQLite no longer reach it — they implement StringQuoter — so this is now the generic/mysql/bigquery path only.
+dao/expr.go	Str.func$1	8b118d0db31634fa	1	violation	LATENT: backslash on a dialect that states no quoting rule; same path and same evidence as the single-quote site. MySQL deliberately does not implement StringQuoter because its backslash meaning is a session mode, not a dialect property.
+dao/expr.go	Str.func$1	70e898654300dce7	1	violation	LATENT: control character on a dialect that states no quoting rule; same path and same evidence as the single-quote site.

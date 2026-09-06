@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/dao"
@@ -107,6 +108,29 @@ func (PostgresDialect) RollbackPrepared(ctx context.Context, conn dao.DataConn, 
 // TRANSACTION and friends are utility statements that cannot take bind
 // parameters, so the gid must be inlined; doubling embedded quotes keeps the
 // literal safe.
+//
+// It is the ONE place this package doubles a quote — QuoteString calls it too,
+// rather than repeating the rule, so the capability and the utility-statement
+// path cannot drift apart.
 func quoteLiteral(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// QuoteString implements the optional [dao.StringQuoter] capability.
+//
+// PostgreSQL's rule is stated rather than guessed: with
+// standard_conforming_strings on — the default since 9.1, and the only setting
+// this driver supports — a backslash inside a single-quoted literal is an
+// ordinary character, and the ONLY escape is a doubled quote. So doubling the
+// quote is the whole rule, and a backslash needs no special treatment.
+//
+// A NUL byte is refused. PostgreSQL cannot store one in a text value at all, so
+// there is no literal that means it; quoting it would produce SQL that silently
+// means something shorter than the caller wrote.
+func (PostgresDialect) QuoteString(s string) (string, error) {
+	if strings.IndexByte(s, 0) >= 0 {
+		return "", fmt.Errorf("postgres: a text value cannot contain a NUL byte (%w)",
+			errs.ErrInvalidArgument)
+	}
+	return quoteLiteral(s), nil
 }
