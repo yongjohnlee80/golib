@@ -57,8 +57,15 @@ func (o Op) whereCapable() bool {
 // without SQL (not rendered yet); BeforeExec and AfterExec see SQL and Args.
 // A BeforeExec hook may REPLACE SQL and Args on statement ops (consistently —
 // replacing one without the other is a bug the engine cannot detect); on
-// OpBatchCopy events any mutation fails the flush (ADR-0009 §2.6). All other
-// fields are informational.
+// OpBatchCopy events any mutation fails the flush. All other fields are
+// informational.
+//
+// That failure carries [errs.ErrPrecondition]: the HOOK broke a contract, so it
+// is deliberately not an invalid-argument error, which would point a reader at
+// the caller's arguments instead. A hook author who wants to recognise their own
+// case more finely than "a precondition failed" should read [QueryInfo.Op] —
+// that field, not a narrower sentinel, is the seam, and it is already available
+// on every error path a hook can reach.
 type QueryInfo struct {
 	Op    Op
 	Table string // the schema's table
