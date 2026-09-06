@@ -7,6 +7,12 @@ repository. It applies to every package here, and to code that consumes golib.
 **message** is prose — so compare with `errors.As` or `errors.Is`, never with
 text, and a message may be reworded at any time without breaking anyone.
 
+> This document is **complete on its own** — nothing in it requires another
+> source, and you need nothing but this repository to follow it. It is also
+> maintained as a workspace-wide convention outside this repo, so if you change
+> a rule here, say so in the pull request: the two are kept in step deliberately
+> and a one-sided edit is a defect rather than a difference.
+
 ---
 
 ## The canonical shape
