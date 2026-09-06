@@ -2,7 +2,7 @@ package tui
 
 // App.Go tests: addressed results on the loop goroutine, dead-lettering,
 // exclusive preemption, staleness IDs, panic isolation, pool bound,
-// TaskProgress streaming (ADR-0005 §5.4–§5.7).
+// TaskProgress streaming.
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func taskProgresses(p *probe) []TaskProgress {
 	return out
 }
 
-// TestTaskResultAddressedToOwner: ADR-0005 §5.4 — ctx.Go from component X
+// TestTaskResultAddressedToOwner: ctx.Go from component X
 // delivers TaskResult{Owner: X.ID} to X's HandleEvent on the loop goroutine.
 func TestTaskResultAddressedToOwner(t *testing.T) {
 	t.Parallel()
@@ -65,7 +65,7 @@ func TestTaskResultAddressedToOwner(t *testing.T) {
 	}
 }
 
-// TestDeadLetterAfterUnmount: ADR-0005 §5.4 — unmounting the owner first
+// TestDeadLetterAfterUnmount: unmounting the owner first
 // dead-letters the result (count exposed), no method of the owner is
 // invoked, and the in-flight task observes ctx.Err() != nil.
 func TestDeadLetterAfterUnmount(t *testing.T) {
@@ -110,7 +110,7 @@ func TestDeadLetterAfterUnmount(t *testing.T) {
 	}
 }
 
-// TestExclusivePreemptionAndStaleness: ADR-0005 §5.5 — the first
+// TestExclusivePreemptionAndStaleness: the first
 // Exclusive("search") task observes cancellation; both results arrive;
 // TaskIDs strictly increase; last-request-wins discards the stale one.
 func TestExclusivePreemptionAndStaleness(t *testing.T) {
@@ -156,7 +156,7 @@ func TestExclusivePreemptionAndStaleness(t *testing.T) {
 	}
 }
 
-// TestTaskPanicIsolation: ADR-0005 §5.6 — a panicking task produces
+// TestTaskPanicIsolation: a panicking task produces
 // errors.Is(res.Err, ErrTaskPanic), the app keeps processing events, and
 // the recovered stack appears via WithLogger.
 func TestTaskPanicIsolation(t *testing.T) {
@@ -182,7 +182,7 @@ func TestTaskPanicIsolation(t *testing.T) {
 	waitFor(t, "post-panic event processing", func() bool { return root.eventCount() > before })
 }
 
-// TestTaskPoolBound: ADR-0005 §5.7 — with WithTaskPoolSize(2), 10 queued
+// TestTaskPoolBound: with WithTaskPoolSize(2), 10 queued
 // tasks never exceed 2 running concurrently; cancelling a queued task
 // prevents it from ever starting.
 func TestTaskPoolBound(t *testing.T) {
@@ -212,7 +212,7 @@ func TestTaskPoolBound(t *testing.T) {
 	}
 }
 
-// TestQueuedTaskCancelledNeverRuns: the second half of ADR-0005 §5.7 — a
+// TestQueuedTaskCancelledNeverRuns: the second half of the pool bound — a
 // task cancelled while waiting for the pool semaphore never runs.
 func TestQueuedTaskCancelledNeverRuns(t *testing.T) {
 	t.Parallel()
@@ -245,7 +245,7 @@ func TestQueuedTaskCancelledNeverRuns(t *testing.T) {
 	}
 }
 
-// TestTaskProgressStreaming: ADR-0005 §2.8.3 — a task streams TaskProgress
+// TestTaskProgressStreaming: a task streams TaskProgress
 // via TaskInfo + Post; the final TaskResult still arrives.
 func TestTaskProgressStreaming(t *testing.T) {
 	t.Parallel()

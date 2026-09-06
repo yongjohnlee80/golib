@@ -1,8 +1,7 @@
 package tui
 
 // Tree mechanics tests: lifecycle order, mount/unmount cascade, LIFO hooks,
-// NodeID monotonicity, the comparability identity contract
-// (ADR-0004 §5.1, §5.2, §5.9).
+// NodeID monotonicity, the comparability identity contract.
 
 import (
 	"context"
@@ -11,7 +10,7 @@ import (
 	"time"
 )
 
-// TestLifecycleOrder: ADR-0004 §5.1 — exactly Init → Layout → Render on
+// TestLifecycleOrder: exactly Init → Layout → Render on
 // mount; remount assigns a fresh, strictly larger NodeID and a fresh Init.
 func TestLifecycleOrder(t *testing.T) {
 	t.Parallel()
@@ -42,7 +41,7 @@ func TestLifecycleOrder(t *testing.T) {
 	}
 }
 
-// TestUnmountCascade: ADR-0004 §5.2 — unmounting a depth-3 subtree cancels
+// TestUnmountCascade: unmounting a depth-3 subtree cancels
 // every descendant's Ctx(), runs OnUnmount hooks LIFO, children before
 // parents, and a TaskResult posted afterward for a dead ID dead-letters.
 func TestUnmountCascade(t *testing.T) {
@@ -113,7 +112,7 @@ func TestUnmountCascade(t *testing.T) {
 }
 
 // valueComp is a NON-comparable value component (slice field, value
-// receivers) — the ADR-0004 §5.9 misuse case.
+// receivers) — the misuse case Mount must refuse.
 type valueComp struct{ data []int }
 
 func (valueComp) Init(*Context)             {}
@@ -121,7 +120,7 @@ func (valueComp) Layout(c Constraints) Size { return c.Constrain(Size{}) }
 func (valueComp) Render(Surface)            {}
 func (valueComp) HandleEvent(Event) bool    { return false }
 
-// TestMountComparabilityPanic: ADR-0004 §5.9 — mounting a component whose
+// TestMountComparabilityPanic: mounting a component whose
 // dynamic type is not comparable panics at Mount with the targeted message;
 // the terminal is restored before the panic propagates.
 func TestMountComparabilityPanic(t *testing.T) {
@@ -135,7 +134,7 @@ func TestMountComparabilityPanic(t *testing.T) {
 		}
 		msg := panicText(rec)
 		if !strings.Contains(msg, "is not comparable; use a pointer component") {
-			t.Fatalf("panic = %q, want the ADR-0004 §2.4 message", rec)
+			t.Fatalf("panic = %q, want the comparability message", rec)
 		}
 		if err := tb.Inject(keyEv('x')); err == nil {
 			t.Fatal("backend not stopped before the mount panic propagated")
@@ -144,7 +143,7 @@ func TestMountComparabilityPanic(t *testing.T) {
 	_ = app.Run(context.Background())
 }
 
-// TestMountSameValueTwicePanics: ADR-0004 §5.9 — mounting the same pointer
+// TestMountSameValueTwicePanics: mounting the same pointer
 // twice simultaneously panics.
 func TestMountSameValueTwicePanics(t *testing.T) {
 	t.Parallel()
@@ -165,7 +164,7 @@ func TestMountSameValueTwicePanics(t *testing.T) {
 }
 
 // TestTreeMutationInsideLayoutPanics: Mount/Unmount are illegal inside
-// Layout (ADR-0004 §2.1/§2.2).
+// Layout.
 func TestTreeMutationInsideLayoutPanics(t *testing.T) {
 	t.Parallel()
 	extra := &probe{name: "extra"}

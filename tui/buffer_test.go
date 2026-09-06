@@ -15,7 +15,7 @@ func styled(content string, width uint8, mask AttrMask) Cell {
 }
 
 // assertNoOrphans scans the buffer's curr grid for wide-cell invariant
-// violations (ADR-0003 §2.3 W1/W3 — the §5.3 property).
+// violations.
 func assertNoOrphans(t *testing.T, b *buffer) {
 	t.Helper()
 	for y := 0; y < b.h; y++ {
@@ -31,9 +31,9 @@ func assertNoOrphans(t *testing.T, b *buffer) {
 	}
 }
 
-// TestSetCellWideInvariants covers ADR-0003 §2.3 W1 (no orphan halves — both
-// halves clear on any overwrite) and W3 (no wide write into the last column),
-// per acceptance criterion §5.3.
+// TestSetCellWideInvariants covers the two WIDE-CELL invariants: no orphan
+// halves (both halves clear on any overwrite), and no wide write into the last
+// column.
 func TestSetCellWideInvariants(t *testing.T) {
 	const headMask = AttrBold
 	tests := []struct {
@@ -128,7 +128,7 @@ func TestSetCellWideInvariants(t *testing.T) {
 			b := newBuffer(4, 1)
 			for _, w := range tt.writes {
 				b.setCell(w.x, w.y, w.c)
-				assertNoOrphans(t, b) // W1/W3 hold after EVERY operation (§5.3)
+				assertNoOrphans(t, b) // W1/W3 hold after EVERY operation
 			}
 			for x := 0; x < 4; x++ {
 				want, ok := tt.want[x]
@@ -144,7 +144,7 @@ func TestSetCellWideInvariants(t *testing.T) {
 }
 
 // TestSetCellOutOfRange: out-of-range writes are dropped silently
-// (clipping is a rendering fact, not an error — ADR-0003 §2.4).
+// (clipping is a rendering fact, not an error).
 func TestSetCellOutOfRange(t *testing.T) {
 	b := newBuffer(2, 2)
 	for _, p := range [][2]int{{-1, 0}, {0, -1}, {2, 0}, {0, 2}} {
@@ -158,9 +158,8 @@ func TestSetCellOutOfRange(t *testing.T) {
 }
 
 // TestDiffMinimal checks the golden-diff contract: scripted buffer mutations
-// produce the exact expected []CellUpdate sets (ADR-0003 §2.2, acceptance
-// criterion §5.4). SGR/CUP byte economy is term-emitter scope and not tested
-// here (ADR-0002 §2.2).
+// produce the exact expected []CellUpdate sets. SGR/CUP byte economy is
+// term-emitter scope and not tested here.
 func TestDiffMinimal(t *testing.T) {
 	b := newBuffer(4, 2)
 	b.diff() // sync away the initial full invalidate
@@ -220,7 +219,7 @@ func TestDiffMinimal(t *testing.T) {
 
 // TestDiffResizeFullInvalidate: resize reallocates and invalidates last
 // entirely — the post-resize diff equals the full grid, never a diff across
-// sizes (ADR-0003 §2.6, acceptance criterion §5.6).
+// sizes.
 func TestDiffResizeFullInvalidate(t *testing.T) {
 	b := newBuffer(3, 2)
 	b.setCell(1, 1, narrow("x"))
@@ -242,8 +241,7 @@ func TestDiffResizeFullInvalidate(t *testing.T) {
 }
 
 // TestDiffFlushRoundTrip drives the produced diff into a TestBackend and
-// asserts the applied grid — the ADR-0002 §2.1 Flush contract consuming the
-// ADR-0003 §2.2 diff.
+// asserts the applied grid — the Flush contract consuming the diff.
 func TestDiffFlushRoundTrip(t *testing.T) {
 	b := newBuffer(4, 1)
 	be := NewTestBackend(4, 1)
@@ -260,14 +258,14 @@ func TestDiffFlushRoundTrip(t *testing.T) {
 		t.Fatalf("flushes = %d, want 1", be.Flushes())
 	}
 
-	// Steady state: nothing changed, nothing to flush (ADR-0003 G2).
+	// Steady state: nothing changed, nothing to flush.
 	if d := b.diff(); len(d) != 0 {
 		t.Fatalf("steady-state diff = %+v, want empty", d)
 	}
 }
 
 // TestDiffSteadyStateAllocs: the diff path reuses its scratch slice — the
-// steady-state frame allocates nothing (ADR-0003 §5.8).
+// steady-state frame allocates nothing.
 func TestDiffSteadyStateAllocs(t *testing.T) {
 	b := newBuffer(20, 10)
 	b.diff() // sync; also grows scratch to full-grid capacity
@@ -288,8 +286,7 @@ func TestDiffSteadyStateAllocs(t *testing.T) {
 	}
 }
 
-// BenchmarkDiffFullRepaint: full-repaint diff of a 200×60 grid
-// (ADR-0003 §5.8).
+// BenchmarkDiffFullRepaint: full-repaint diff of a 200×60 grid.
 func BenchmarkDiffFullRepaint(b *testing.B) {
 	buf := newBuffer(200, 60)
 	buf.diff() // sync + grow scratch
@@ -314,7 +311,7 @@ func BenchmarkDiffFullRepaint(b *testing.B) {
 }
 
 // BenchmarkDiffSteadyState: a small dirty region in a large clean grid
-// (ADR-0003 §5.8) — the steady-state frame path allocates zero bytes
+// — the steady-state frame path allocates zero bytes
 // amortized (reused scratch).
 func BenchmarkDiffSteadyState(b *testing.B) {
 	buf := newBuffer(200, 60)

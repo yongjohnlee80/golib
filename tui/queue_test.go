@@ -1,8 +1,7 @@
 package tui
 
 // Lane-B (program queue) tests: never-block Post, always-enqueue Update,
-// high-water logging, and the opt-in WithEventQueueLimit ceiling
-// (ADR-0005 §5.2, §5.11).
+// high-water logging, and the opt-in WithEventQueueLimit ceiling.
 
 import (
 	"sync"
@@ -39,7 +38,7 @@ func stall(t *testing.T, h *harness, entered chan struct{}) {
 	}
 }
 
-// TestPostConcurrentNeverBlocks: ADR-0005 §5.2 — 100 goroutines calling Post
+// TestPostConcurrentNeverBlocks: 100 goroutines calling Post
 // while the loop is blocked inside a slow handler: no call blocks, none
 // panics, all events deliver after the handler returns, in enqueue order
 // per producer.
@@ -96,7 +95,7 @@ func TestPostConcurrentNeverBlocks(t *testing.T) {
 	}
 }
 
-// TestUpdateFromHandlerDeferred: ADR-0005 §5.2 rev 1 — Update called from
+// TestUpdateFromHandlerDeferred: Update called from
 // inside a handler returns immediately without deadlock; its fn runs on the
 // loop goroutine in a later drain, BEFORE the next frame.
 func TestUpdateFromHandlerDeferred(t *testing.T) {
@@ -145,7 +144,7 @@ func TestUpdateFromHandlerDeferred(t *testing.T) {
 	}
 }
 
-// TestEventQueueLimitPanics: ADR-0005 §5.11 — with WithEventQueueLimit(100)
+// TestEventQueueLimitPanics: with WithEventQueueLimit(100)
 // the 101st pending program event panics with the runaway-producer message;
 // the identical load without the option only grows memory and logs.
 func TestEventQueueLimitPanics(t *testing.T) {
@@ -175,7 +174,7 @@ func TestEventQueueLimitPanics(t *testing.T) {
 	}()
 }
 
-// TestQueueHighWaterLogging: ADR-0005 §5.11 — driving lane B to a high
+// TestQueueHighWaterLogging: driving lane B to a high
 // pending count while the loop is stalled emits high-water-mark log entries
 // via WithLogger.
 func TestQueueHighWaterLogging(t *testing.T) {

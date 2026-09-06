@@ -1,7 +1,7 @@
 package tui
 
 // Timer tests: demand-armed heap, After/Every, unmount cancellation, and
-// the idle criterion — no goroutines/timers when idle (ADR-0005 §5.9).
+// the idle criterion — no goroutines/timers when idle.
 
 import (
 	"testing"
@@ -68,8 +68,7 @@ func TestEveryRepeatsAndCancelDisarms(t *testing.T) {
 	}
 }
 
-// TestTimerCancelledOnUnmount: unmount auto-cancels via OnUnmount
-// (ADR-0005 §2.6; ADR-0004 §2.4 step 2).
+// TestTimerCancelledOnUnmount: unmount auto-cancels via OnUnmount.
 func TestTimerCancelledOnUnmount(t *testing.T) {
 	t.Parallel()
 	child := &probe{name: "child", pref: Size{W: 2, H: 1}}
@@ -87,7 +86,7 @@ func TestTimerCancelledOnUnmount(t *testing.T) {
 	}
 }
 
-// TestIdleSchedulesNothing: ADR-0005 §5.9 — an app with no timers, no
+// TestIdleSchedulesNothing: an app with no timers, no
 // tasks, and no dirt performs zero timer arms and writes zero bytes over an
 // observed idle window (TestBackend flush count + instrumented timer arm
 // count + timer-heap introspection).
@@ -122,7 +121,7 @@ func TestIdleSchedulesNothing(t *testing.T) {
 }
 
 // TestMinFrameIntervalCoalesces: dirty marks faster than the cap coalesce
-// into one deferred frame via a heap deadline (ADR-0003 / ADR-0005 §2.6).
+// into one deferred frame via a heap deadline.
 func TestMinFrameIntervalCoalesces(t *testing.T) {
 	t.Parallel()
 	root := &probe{name: "root", pref: Size{W: 4, H: 2}}

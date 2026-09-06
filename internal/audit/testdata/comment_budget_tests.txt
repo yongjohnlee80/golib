@@ -26,26 +26,13 @@
 # ONE FILE IS EXEMPT BY NAME, not by shape: internal/audit/comment_budget_test.go,
 # whose pointer "hits" are the shapes the detectors match, quoted in prose to
 # document what each one catches. The reason, the premise it rests on and a
-# liveness check all live with the guard -- see selfDocumenting there.
-1 dao/hooks_test.go
-1 dao/sqlite/sqlite_test.go
-9 tui/app_test.go
-15 tui/buffer_test.go
-4 tui/bus_test.go
-5 tui/focus_test.go
-2 tui/geometry_test.go
-7 tui/intake_test.go
-9 tui/layout_test.go
-9 tui/multiclick_test.go
-4 tui/pointer_focus_r2_test.go
-6 tui/pointer_focus_test.go
-5 tui/queue_test.go
-9 tui/resolve_test.go
-4 tui/routing_test.go
-3 tui/runtime_test.go
-9 tui/surface_test.go
-8 tui/tasks_test.go
-1 tui/term/lifecycle_test.go
-10 tui/testbackend_test.go
-4 tui/timers_test.go
-7 tui/tree_test.go
+# liveness check all live with the guard -- see the tests scope's `exempt` map
+# and checkExemptions in comment_budget_test.go.
+#
+# THE BUDGET IS EMPTY. Every _test.go file in this repository is frozen at zero
+# pointer comments, exactly as the production budget is. A file that is not
+# listed here cannot gain one, and nothing is listed here. Adding a line back is
+# UNDOING the migration, not recording work in progress.
+#
+# The single named exemption above is the one deliberate exception, and it is
+# held to its premise and its liveness by the guard rather than by trust.

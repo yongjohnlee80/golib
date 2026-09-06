@@ -1,6 +1,6 @@
 package tui
 
-// Pointer focus (ADR-0010 §2.1, criteria 1-6).
+// Pointer focus.
 //
 // A primary press focuses the first focusable node at or above the hit-test
 // target, provided it lies inside the ACTIVE focus scope, and only then is the
@@ -16,7 +16,7 @@ func pressAt(x, y int) MouseEvent {
 	return MouseEvent{Kind: MousePress, Button: MouseLeft, X: x, Y: y}
 }
 
-// Criterion 1 — a press focuses the widget under it, and that widget also
+// A press focuses the widget under it, and that widget also
 // receives the press: one gesture, both effects.
 func TestPointerPressFocusesAndDelivers(t *testing.T) {
 	t.Parallel()
@@ -34,7 +34,7 @@ func TestPointerPressFocusesAndDelivers(t *testing.T) {
 	}
 }
 
-// Criterion 2 — wheel, motion and release never move focus. This is what lets a
+// Wheel, motion and release never move focus. This is what lets a
 // reader scroll a result grid without losing the keyboard.
 func TestPointerNonPressDoesNotMoveFocus(t *testing.T) {
 	t.Parallel()
@@ -58,7 +58,7 @@ func TestPointerNonPressDoesNotMoveFocus(t *testing.T) {
 	}
 }
 
-// Criterion 3 — a press with no focusable ancestor leaves focus alone. Dead
+// A press with no focusable ancestor leaves focus alone. Dead
 // space must not CLEAR focus, which would make a stray click lose the keyboard.
 func TestPointerPressOnDeadSpaceKeepsFocus(t *testing.T) {
 	t.Parallel()
@@ -79,7 +79,7 @@ func TestPointerPressOnDeadSpaceKeepsFocus(t *testing.T) {
 	}
 }
 
-// Criterion 4 — a press OUTSIDE an active trap does not move focus.
+// A press OUTSIDE an active trap does not move focus.
 //
 // Deliberately built on a custom PARTIAL-SIZE FocusScope rather than a Float:
 // a full-area modal backdrop covers the outside widget, so a broken guard would
@@ -158,7 +158,7 @@ func TestPointerRespectsSurvivingTrapWithNoFocusables(t *testing.T) {
 	})
 }
 
-// Criterion 6 — if focus handling unmounts and REPLACES the pointer target, the
+// If focus handling unmounts and REPLACES the pointer target, the
 // press is not delivered. A replacement mounted during dispatch has
 // measured=false/placed=false and is not hit-testable until layout runs, so
 // there is nothing correct to re-target.

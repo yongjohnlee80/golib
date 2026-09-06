@@ -1,7 +1,7 @@
 package tui
 
-// App construction and Run lifecycle tests (ADR-0005 §5.1, §5.10, plus the
-// ADR-0001 §5.4 idle/one-flush end-to-end).
+// App construction and Run lifecycle tests, plus the idle/one-flush
+// end-to-end.
 
 import (
 	"context"
@@ -61,7 +61,7 @@ func TestNewAppConstructionPanics(t *testing.T) {
 	}
 }
 
-// TestRunPanicRepanic: ADR-0005 §5.1 — a panicking handler leaves the
+// TestRunPanicRepanic: a panicking handler leaves the
 // terminal restored (backend stopped) before the ORIGINAL panic value
 // propagates (PanicRepanic default).
 func TestRunPanicRepanic(t *testing.T) {
@@ -89,13 +89,13 @@ func TestRunPanicRepanic(t *testing.T) {
 		t.Fatalf("repanic value = %v, want the original %q", res.rec, boom)
 	}
 	// Restore-before-repanic: by the time the panic escaped Run the
-	// backend must already be stopped (ADR-0005 §2.2).
+	// backend must already be stopped.
 	if err := h.tb.Inject(keyEv('y')); err == nil {
 		t.Fatal("backend still accepts events — Stop did not run before the repanic")
 	}
 }
 
-// TestRunPanicReturn: ADR-0005 §5.1 — under PanicReturn the same panic
+// TestRunPanicReturn: under PanicReturn the same panic
 // surfaces as errors.Is(err, ErrPanic) with no propagation.
 func TestRunPanicReturn(t *testing.T) {
 	t.Parallel()
@@ -137,7 +137,7 @@ func TestRunTwiceErrors(t *testing.T) {
 }
 
 // TestRunBackendEventsClosed: the loop collects backend.Err() when Events()
-// closes (ADR-0005 §2.2 / ADR-0002 rev 1).
+// closes.
 func TestRunBackendEventsClosed(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("reader died")
@@ -157,7 +157,7 @@ func TestRunBackendEventsClosed(t *testing.T) {
 	}
 }
 
-// TestTeardownAbandonedTasks: ADR-0005 §5.10 — cancelling Run's ctx with 3
+// TestTeardownAbandonedTasks: cancelling Run's ctx with 3
 // in-flight tasks (2 well-behaved, 1 ignoring its ctx) returns within the
 // drain timeout +ε reporting "1 task(s) abandoned".
 func TestTeardownAbandonedTasks(t *testing.T) {
@@ -200,7 +200,7 @@ func TestTeardownAbandonedTasks(t *testing.T) {
 
 // TestEndToEndTwoPane: mount a two-pane Flex on TestBackend, inject keys and
 // a resize, and assert grid snapshots plus EXACTLY one Flush per change and
-// zero flushes while idle (ADR-0001 §5.4; ADR-0005 §5.9 write side).
+// zero flushes while idle.
 func TestEndToEndTwoPane(t *testing.T) {
 	t.Parallel()
 	left := newFocusProbe("left", Size{})
@@ -259,7 +259,7 @@ func TestEndToEndTwoPane(t *testing.T) {
 }
 
 // TestWidthPolicyTravelsWithSurface: WithWidthPolicy reaches components via
-// Surface.StringWidth (ADR-0005 §2.1 rev 1 / ADR-0003 §2.4).
+// Surface.StringWidth.
 func TestWidthPolicyTravelsWithSurface(t *testing.T) {
 	t.Parallel()
 	const ambiguous = "±" // East Asian Ambiguous: width 1 default, 2 wide

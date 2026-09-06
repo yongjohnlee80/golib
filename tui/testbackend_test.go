@@ -8,7 +8,7 @@ import (
 )
 
 // TestTestBackendInjectOrder: scripted input arrives on Events() in call
-// order across event kinds (ADR-0002 §2.3, §2.9 ordering contract).
+// order across event kinds.
 func TestTestBackendInjectOrder(t *testing.T) {
 	b := NewTestBackend(10, 4)
 	if err := b.Start(context.Background()); err != nil {
@@ -31,8 +31,7 @@ func TestTestBackendInjectOrder(t *testing.T) {
 }
 
 // TestTestBackendInjectOverflow: Inject returns an error when the script
-// exceeds the configured buffer instead of blocking — fail loud
-// (ADR-0002 §2.3 rev 1).
+// exceeds the configured buffer instead of blocking — fail loud.
 func TestTestBackendInjectOverflow(t *testing.T) {
 	b := NewTestBackend(10, 4, WithTestEventBuffer(2))
 	err := b.Inject(
@@ -55,15 +54,14 @@ func TestTestBackendInjectOverflow(t *testing.T) {
 }
 
 // TestTestBackendStopAndErr: Stop closes Events() and is idempotent; Err()
-// is nil after a clean Stop and returns the scripted error after SetErr
-// (ADR-0002 §2.3, §5.7).
+// is nil after a clean Stop and returns the scripted error after SetErr.
 func TestTestBackendStopAndErr(t *testing.T) {
 	t.Run("clean stop", func(t *testing.T) {
 		b := NewTestBackend(4, 2)
 		if err := b.Stop(); err != nil {
 			t.Fatal(err)
 		}
-		if err := b.Stop(); err != nil { // double-Stop is a no-op (ADR-0002 §5.6)
+		if err := b.Stop(); err != nil { // double-Stop is a no-op
 			t.Fatalf("second Stop = %v", err)
 		}
 		if _, open := <-b.Events(); open {
@@ -121,8 +119,7 @@ func TestTestBackendSnapshotAndString(t *testing.T) {
 }
 
 // TestTestBackendFlushPanicsOnOrphan: a diff that leaves an orphaned
-// wide-cell half panics with a coordinate in the message (ADR-0002 §2.3 /
-// ADR-0003 §2.3 W1, §5.3).
+// wide-cell half panics with a grid coordinate in the message.
 func TestTestBackendFlushPanicsOnOrphan(t *testing.T) {
 	tests := []struct {
 		name string
@@ -167,7 +164,7 @@ func TestTestBackendFlushPanicsOnOrphan(t *testing.T) {
 
 // TestTestBackendInjectResize: InjectResize resizes and invalidates the
 // grid and posts a ResizeEvent — the externally observable behavior of a
-// real resize (ADR-0002 §2.3).
+// real resize.
 func TestTestBackendInjectResize(t *testing.T) {
 	b := NewTestBackend(4, 2)
 	if err := b.Flush([]CellUpdate{{X: 0, Y: 0, Cell: narrow("x")}}); err != nil {
@@ -187,7 +184,7 @@ func TestTestBackendInjectResize(t *testing.T) {
 }
 
 // TestTestBackendCursorLatching: cursor ops record desired state which only
-// the next Flush applies — a frame is always one write (ADR-0002 §2.1).
+// the next Flush applies — a frame is always one write.
 func TestTestBackendCursorLatching(t *testing.T) {
 	b := NewTestBackend(4, 2)
 	b.SetCursor(2, 1)
@@ -212,7 +209,7 @@ func TestTestBackendCursorLatching(t *testing.T) {
 }
 
 // TestTestBackendCapabilities: the default profile is everything-on; the
-// option overrides it (ADR-0002 §2.3).
+// option overrides it.
 func TestTestBackendCapabilities(t *testing.T) {
 	if caps := NewTestBackend(4, 2).Capabilities(); caps != fullCapabilities() {
 		t.Fatalf("default caps = %+v", caps)
@@ -223,7 +220,7 @@ func TestTestBackendCapabilities(t *testing.T) {
 	}
 }
 
-// TestTestBackendConstraintViolations: the ADR-0004 §2.7.1 rev 1 recording
+// TestTestBackendConstraintViolations: the recording
 // stub retains violations for assertion; FailOnViolations passes on a clean
 // run.
 func TestTestBackendConstraintViolations(t *testing.T) {

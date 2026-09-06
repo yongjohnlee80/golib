@@ -2,7 +2,7 @@ package tui
 
 // Routing tests: target-then-bubble keyboard, mouse hit-testing with
 // per-hop local coordinate rewriting, topmost Stack layer wins, addressed
-// events never bubble (ADR-0004 §5.3).
+// events never bubble.
 
 import (
 	"testing"
@@ -30,7 +30,7 @@ func (b *bubbleProbe) HandleEvent(ev Event) bool {
 	return false
 }
 
-// TestKeyTargetThenBubble: ADR-0004 §5.3 — a key event reaches
+// TestKeyTargetThenBubble: a key event reaches
 // focused-leaf → parent → root in order; a true return at any hop stops the
 // walk (table-driven over consumption points).
 func TestKeyTargetThenBubble(t *testing.T) {
@@ -96,7 +96,7 @@ func (e *eventFlex) HandleEvent(ev Event) bool {
 	return false
 }
 
-// TestMouseHitTestTopmostAndLocalCoords: ADR-0004 §5.3 — mouse hit-testing
+// TestMouseHitTestTopmostAndLocalCoords: mouse hit-testing
 // on overlapping Stack layers targets the topmost, and delivered
 // coordinates are local at every hop.
 func TestMouseHitTestTopmostAndLocalCoords(t *testing.T) {
@@ -165,7 +165,7 @@ func TestMouseBubbleRewritesPerHop(t *testing.T) {
 	}
 }
 
-// TestAddressedEventsNeverBubble: ADR-0004 §2.5.4 — TickEvent / TaskResult
+// TestAddressedEventsNeverBubble: TickEvent / TaskResult
 // go to the owner only; unconsumed means silently done.
 func TestAddressedEventsNeverBubble(t *testing.T) {
 	t.Parallel()

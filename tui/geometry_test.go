@@ -2,8 +2,7 @@ package tui
 
 import "testing"
 
-// TestRectIntersect covers the clipping primitive (ADR-0003 §2.4 clip
-// composition).
+// TestRectIntersect covers the clipping primitive and how clips compose.
 func TestRectIntersect(t *testing.T) {
 	tests := []struct {
 		name string
@@ -45,7 +44,7 @@ func TestRectEmptyAndContains(t *testing.T) {
 	}
 }
 
-// TestConstraints covers ADR-0004 §2.7.1: Tight forces the answer, Loose
+// TestConstraints covers the constraint modes: Tight forces the answer, Loose
 // admits [0, max], Constrain clamps a misbehaving Size into the box.
 func TestConstraints(t *testing.T) {
 	tight := Tight(Size{W: 8, H: 3})

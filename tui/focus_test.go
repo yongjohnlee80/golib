@@ -1,7 +1,7 @@
 package tui
 
 // Focus tests: Tab traversal with wrap and skips, trapping scopes, restore
-// on scope unmount, repair on focused-node unmount (ADR-0004 §5.4).
+// on scope unmount, repair on focused-node unmount.
 
 import (
 	"testing"
@@ -14,7 +14,7 @@ func focusedID(h *harness) NodeID {
 	return id
 }
 
-// TestTabTraversalWrapsAndSkips: ADR-0004 §5.4 — Tab from the last
+// TestTabTraversalWrapsAndSkips: Tab from the last
 // focusable wraps to the first; AcceptsFocus()==false and zero-Rect nodes
 // are skipped.
 func TestTabTraversalWrapsAndSkips(t *testing.T) {
@@ -56,7 +56,7 @@ func TestFocusComponent(t *testing.T) {
 
 // TestFocusEventsAndBubble: every move delivers Gained=false to the loser
 // then Gained=true to the gainer, and FocusEvents bubble so ancestors can
-// restyle (ADR-0004 §2.6.1, §2.5.3).
+// restyle.
 func TestFocusEventsAndBubble(t *testing.T) {
 	t.Parallel()
 	a := newFocusProbe("a", Size{W: 2, H: 1})
@@ -97,7 +97,7 @@ func TestFocusEventsAndBubble(t *testing.T) {
 	}
 }
 
-// TestFocusScopeTrapsAndRestores: ADR-0004 §5.4 — a trapping FocusScope
+// TestFocusScopeTrapsAndRestores: a trapping FocusScope
 // confines Tab within its subtree; closing the scope restores focus to the
 // pre-modal node.
 func TestFocusScopeTrapsAndRestores(t *testing.T) {
@@ -145,7 +145,7 @@ func TestTrapExcludedFromOuterRing(t *testing.T) {
 	waitFor(t, "b focused, m1 skipped", func() bool { return focusedID(h) == b.nodeID() })
 }
 
-// TestUnmountFocusedRepairsFocus: ADR-0004 §5.4 — unmounting the focused
+// TestUnmountFocusedRepairsFocus: unmounting the focused
 // node repairs focus within the same frame (no dangling ID).
 func TestUnmountFocusedRepairsFocus(t *testing.T) {
 	t.Parallel()

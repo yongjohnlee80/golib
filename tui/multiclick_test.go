@@ -1,6 +1,6 @@
 package tui
 
-// Double-click as activation (ADR-0010 §2.5, criteria 19-25).
+// Double-click as activation.
 //
 // The press ORDINAL is synthesised once in dispatch, from timing and position,
 // because a click count is behaviour rather than decode shape. These assert the
@@ -54,7 +54,7 @@ func equalInts(a, b []int) bool {
 	return true
 }
 
-// Criterion 19 — two presses on the same cell inside the window count 1 then 2.
+// Two presses on the same cell inside the window count 1 then 2.
 func TestDoubleClick_SameCellInsideWindowCounts(t *testing.T) {
 	t.Parallel()
 	a := newFocusProbe("a", Size{W: 8, H: 2})
@@ -69,7 +69,7 @@ func TestDoubleClick_SameCellInsideWindowCounts(t *testing.T) {
 	}
 }
 
-// Criterion 20 — ONE CELL APART is not a double-click. A terminal row is one
+// ONE CELL APART is not a double-click. A terminal row is one
 // cell tall, so a drift is a different row, and activating the row the user did
 // not click is worse than requiring a steady hand.
 func TestDoubleClick_DifferentCellRestarts(t *testing.T) {
@@ -86,7 +86,7 @@ func TestDoubleClick_DifferentCellRestarts(t *testing.T) {
 	}
 }
 
-// Criterion 21 — outside the window is not a double-click. A 1ns window makes
+// Outside the window is not a double-click. A 1ns window makes
 // this deterministic without giving App an injectable clock.
 func TestDoubleClick_OutsideWindowRestarts(t *testing.T) {
 	t.Parallel()
@@ -102,7 +102,7 @@ func TestDoubleClick_OutsideWindowRestarts(t *testing.T) {
 	}
 }
 
-// Criterion 22 — a different button restarts the run.
+// A different button restarts the run.
 func TestDoubleClick_DifferentButtonRestarts(t *testing.T) {
 	t.Parallel()
 	a := newFocusProbe("a", Size{W: 8, H: 2})
@@ -120,7 +120,7 @@ func TestDoubleClick_DifferentButtonRestarts(t *testing.T) {
 	}
 }
 
-// Criterion 23 — a release between the presses is NORMAL and must not interrupt
+// A release between the presses is NORMAL and must not interrupt
 // the run; that is what a real double-click looks like on the wire.
 func TestDoubleClick_InterveningReleaseDoesNotReset(t *testing.T) {
 	t.Parallel()
@@ -140,7 +140,7 @@ func TestDoubleClick_InterveningReleaseDoesNotReset(t *testing.T) {
 	}
 }
 
-// Criterion 24 — Count is 0 on every non-press kind, so no consumer can read a
+// Count is 0 on every non-press kind, so no consumer can read a
 // count that was never computed.
 func TestDoubleClick_NonPressKindsCarryNoCount(t *testing.T) {
 	t.Parallel()
@@ -184,7 +184,7 @@ func TestDoubleClick_NonPressKindsCarryNoCount(t *testing.T) {
 	}
 }
 
-// Criterion 25 — the ordinal is stamped BEFORE the §2.1 focus step, so a
+// The ordinal is stamped BEFORE the focus step, so a
 // double-click that also moves focus still delivers Count 2.
 func TestDoubleClick_SurvivesTheFocusStep(t *testing.T) {
 	t.Parallel()
@@ -206,7 +206,7 @@ func TestDoubleClick_SurvivesTheFocusStep(t *testing.T) {
 	}
 }
 
-// Finding 1 (lector r1) — a press delivered to NOBODY must not advance the run.
+// A press delivered to NOBODY must not advance the run.
 //
 // The ordinal used to be committed on arrival, before hit-testing and before the
 // focus step could decide to skip. So the victim's press counted, and the

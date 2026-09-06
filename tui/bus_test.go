@@ -1,8 +1,7 @@
 package tui
 
 // Bus tests: typed dispatch, subscription order, loop-goroutine delivery,
-// enqueue-only publish, scoped auto-unsubscribe, idempotent cancel
-// (ADR-0005 §5.8).
+// enqueue-only publish, scoped auto-unsubscribe, idempotent cancel.
 
 import (
 	"sync/atomic"
@@ -75,7 +74,7 @@ func TestBusPublishEnqueueOnly(t *testing.T) {
 	waitFor(t, "delivery after drain", func() bool { return delivered.Load() })
 }
 
-// TestSubscribeScopedAutoUnsubscribe: ADR-0005 §5.8 — SubscribeScoped stops
+// TestSubscribeScopedAutoUnsubscribe: SubscribeScoped stops
 // after owner unmount; cancel is idempotent.
 func TestSubscribeScopedAutoUnsubscribe(t *testing.T) {
 	t.Parallel()
@@ -107,7 +106,7 @@ func TestSubscribeScopedAutoUnsubscribe(t *testing.T) {
 }
 
 // TestBusCancelDuringDeliveryTombstones: a handler cancelled during delivery
-// of the same batch is skipped (ADR-0005 §2.7).
+// of the same batch is skipped.
 func TestBusCancelDuringDeliveryTombstones(t *testing.T) {
 	t.Parallel()
 	root := &probe{name: "root", pref: Size{W: 4, H: 2}}
@@ -130,7 +129,7 @@ func TestBusCancelDuringDeliveryTombstones(t *testing.T) {
 }
 
 // TestBusPublishFromHandler: publish-during-drain delivers in a later drain
-// — no livelock, no re-entrancy (ADR-0005 §2.7).
+// — no livelock, no re-entrancy.
 func TestBusPublishFromHandler(t *testing.T) {
 	t.Parallel()
 	root := &probe{name: "root", pref: Size{W: 4, H: 2}}
