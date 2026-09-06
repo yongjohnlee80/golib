@@ -107,11 +107,20 @@ type QuoteOpts struct {
 	Doubling bool
 	// Escape, when non-zero, is a byte that makes the NEXT byte literal.
 	Escape byte
+	// Kind is the token kind this construct produces. The zero value means
+	// String, which is what a quoted literal usually is — but the SAME shape is
+	// a dialect's quoted IDENTIFIER, and the core has no way to tell the two
+	// apart. So the kind is the caller's to state, as it already is for a run or
+	// a literal set, rather than something the core decided for everyone.
+	Kind Kind
 }
 
 // QuoteForm recognises a delimited literal.
 func QuoteForm(open, close string, o QuoteOpts) Form {
 	mustNotBeEmpty("QuoteForm", open, close)
+	if o.Kind == Invalid {
+		o.Kind = String
+	}
 	return quoteForm{open: open, close: close, opts: o}
 }
 
@@ -120,7 +129,7 @@ type quoteForm struct {
 	opts        QuoteOpts
 }
 
-func (f quoteForm) Kind() Kind { return String }
+func (f quoteForm) Kind() Kind { return f.opts.Kind }
 
 func (f quoteForm) Starts(src []byte) (int, Match) { return prefixMatch(src, f.open) }
 
@@ -169,7 +178,7 @@ func (f quoteForm) End(src, openedWith []byte, boundary InputBoundary) (int, err
 	if boundary == MoreInput {
 		return 0, ErrNeedMore
 	}
-	return 0, &UnterminatedError{Kind: String, Open: string(openedWith)}
+	return 0, &UnterminatedError{Kind: f.opts.Kind, Open: string(openedWith)}
 }
 
 // isProperPrefix reports whether got is a prefix of want and SHORTER than it.
@@ -220,6 +229,11 @@ type DelimitedOpts struct {
 	// own delimiter limit as the only bound — the trade the ADR states, and one
 	// a caller should make on purpose rather than inherit.
 	MaxTagBytes int
+
+	// Kind is the token kind this construct produces. The zero value means
+	// String, for the same reason it does on a quoted literal: the shape does not
+	// say whether a dialect means a literal or an identifier by it.
+	Kind Kind
 }
 
 // DelimitedForm recognises the tag-carrying shape `<prefix>TAG<suffix> … the
@@ -229,6 +243,9 @@ func DelimitedForm(prefix, suffix byte, o DelimitedOpts) Form {
 	if o.MaxTagBytes < 0 {
 		panic("parse: DelimitedForm: MaxTagBytes must not be negative")
 	}
+	if o.Kind == Invalid {
+		o.Kind = String
+	}
 	return delimitedForm{prefix: prefix, suffix: suffix, opts: o}
 }
 
@@ -237,7 +254,7 @@ type delimitedForm struct {
 	opts           DelimitedOpts
 }
 
-func (f delimitedForm) Kind() Kind { return String }
+func (f delimitedForm) Kind() Kind { return f.opts.Kind }
 
 func (f delimitedForm) Starts(src []byte) (int, Match) {
 	if len(src) == 0 {
@@ -282,5 +299,5 @@ func (f delimitedForm) End(src, openedWith []byte, boundary InputBoundary) (int,
 	if boundary == MoreInput {
 		return 0, ErrNeedMore
 	}
-	return 0, &UnterminatedError{Kind: String, Open: string(openedWith)}
+	return 0, &UnterminatedError{Kind: f.opts.Kind, Open: string(openedWith)}
 }

@@ -416,3 +416,54 @@ func TestDelimitedForm_ZeroBoundIsUnbounded(t *testing.T) {
 		t.Fatalf("Starts(len %d tag) = (%d, %v), want (%d, Matched)", len(long), n, m, len(long))
 	}
 }
+
+// A quoted construct's KIND is the caller's to state. The shape of `"col"` and
+// of `'text'` is identical, and only a dialect knows that one is an identifier
+// and the other a literal — so the core cannot answer it for everyone, and Ident
+// was a documented kind nothing could produce until it could be declared.
+func TestQuoteForm_TheKindIsDeclaredNotAssumed(t *testing.T) {
+	t.Parallel()
+
+	lit := QuoteForm("'", "'", QuoteOpts{Doubling: true})
+	if lit.Kind() != String {
+		t.Errorf("an undeclared kind = %v, want String — the default a literal expects", lit.Kind())
+	}
+
+	ident := QuoteForm(`"`, `"`, QuoteOpts{Doubling: true, Kind: Ident})
+	if ident.Kind() != Ident {
+		t.Errorf("Kind() = %v, want Ident", ident.Kind())
+	}
+
+	// And the unterminated report carries it: an identifier left open must not be
+	// described as a string.
+	_, err := ident.End([]byte("col"), []byte(`"`), EndOfInput)
+	var unterm *UnterminatedError
+	if !errors.As(err, &unterm) {
+		t.Fatalf("End at EndOfInput = %v, want *UnterminatedError", err)
+	}
+	if unterm.Kind != Ident {
+		t.Errorf("UnterminatedError.Kind = %v, want Ident — it reports what was left open", unterm.Kind)
+	}
+}
+
+func TestDelimitedForm_TheKindIsDeclaredNotAssumed(t *testing.T) {
+	t.Parallel()
+
+	body := DelimitedForm('$', '$', DelimitedOpts{TagByte: pgTag, AllowEmpty: true})
+	if body.Kind() != String {
+		t.Errorf("an undeclared kind = %v, want String", body.Kind())
+	}
+
+	tagged := DelimitedForm('~', '~', DelimitedOpts{AllowEmpty: true, Kind: Ident})
+	if tagged.Kind() != Ident {
+		t.Errorf("Kind() = %v, want Ident", tagged.Kind())
+	}
+	_, err := tagged.End([]byte("body"), []byte("~t~"), EndOfInput)
+	var unterm *UnterminatedError
+	if !errors.As(err, &unterm) {
+		t.Fatalf("End at EndOfInput = %v, want *UnterminatedError", err)
+	}
+	if unterm.Kind != Ident {
+		t.Errorf("UnterminatedError.Kind = %v, want Ident", unterm.Kind)
+	}
+}
