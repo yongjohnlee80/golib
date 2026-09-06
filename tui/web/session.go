@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 )
 
@@ -225,7 +226,7 @@ func (m *Manager) Start() (stop func()) {
 // startup.
 func NewManager(factory AppFactory, opts ...ManagerOption) (*Manager, error) {
 	if factory == nil {
-		return nil, errors.New("web.NewManager: an AppFactory is required")
+		return nil, errs.Wrap(errs.ErrInvalidArgument, "web.NewManager: an AppFactory is required")
 	}
 	m := &Manager{
 		base:     context.Background(),
@@ -341,7 +342,7 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 	// nothing is still waiting for it, so its admission slot goes back.
 	defer m.settleHandoff(info.Handoff)
 	if !h.valid() {
-		return nil, errors.New("web: client hello has no usable size or font metrics")
+		return nil, ErrUnmeasuredClient
 	}
 	// Checked BEFORE the lock. An earlier version checked it while holding m.mu
 	// and then called m.drop, which takes m.mu again — a self-deadlock on a path
@@ -407,7 +408,7 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 		cancel()
 		_ = backend.Stop()
 		close(s.done)
-		return nil, errors.New("web: AppFactory returned no application")
+		return nil, errs.Wrap(errs.ErrPrecondition, "web: AppFactory returned no application")
 	}
 
 	// Attached BEFORE the App goroutine starts, so its teardown cannot drop the

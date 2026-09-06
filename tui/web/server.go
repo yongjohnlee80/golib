@@ -11,6 +11,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/auth"
 	"github.com/yongjohnlee80/golib/auth/token"
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 )
 
@@ -143,17 +144,17 @@ func (c Config) validate() error {
 		}
 	}
 	if c.ExpectedHost == "" {
-		return errors.New("web: ExpectedHost is required — §2.7 forbids inferring it " +
+		return errs.Wrap(errs.ErrInvalidArgument, "web: ExpectedHost is required; it cannot be inferred "+
 			"from the request, and an optional check is one the request decides")
 	}
 	if (c.LoginPolicy == nil) != (c.Issuer == nil) {
 		// One without the other is a half-configured front door: a policy with no
 		// issuer authenticates and then cannot admit anyone, and an issuer with no
 		// policy would mint on request.
-		return errors.New("web: LoginPolicy and Issuer must be set together")
+		return errs.Wrap(errs.ErrInvalidArgument, "web: LoginPolicy and Issuer must be set together")
 	}
 	if c.Addr == "" {
-		return errors.New("web: no bind address")
+		return errs.Wrap(errs.ErrInvalidArgument, "web: no bind address")
 	}
 	local, err := loopbackOnly(c.Addr)
 	if err != nil {

@@ -1,10 +1,10 @@
 package web
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // RecommendedPolicy composes the shape ADR-0009 §2.8 recommends: any ONE
@@ -82,13 +82,13 @@ func PasswordPolicyExample(
 	// contextual factor should compose [RecommendedPolicy] directly and own that
 	// decision explicitly.
 	if len(constrain) == 0 {
-		return nil, errors.New("web.PasswordPolicyExample: a contextual constraint is " +
-			"required — use RecommendedPolicy directly to build an unconstrained " +
+		return nil, errs.Wrap(errs.ErrInvalidArgument, "web.PasswordPolicyExample: a contextual constraint is "+
+			"required — use RecommendedPolicy directly to build an unconstrained "+
 			"password policy deliberately")
 	}
 	for _, f := range constrain {
 		if f == nil {
-			return nil, errors.New("web.PasswordPolicyExample: nil constraint")
+			return nil, errs.Wrap(errs.ErrInvalidArgument, "web.PasswordPolicyExample: nil constraint")
 		}
 		// The constraint must actually be CONTEXTUAL. Checking only for non-nil
 		// accepted an identity factor, which would satisfy the policy on its own

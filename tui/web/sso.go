@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 )
 
@@ -231,7 +232,7 @@ const Expired HandoffReason = 2
 // and defaulting would make the dangerous case the quiet one.
 func NewSSO[T any](cfg SSOConfig[T]) (*SSO[T], error) {
 	if cfg.Release == nil {
-		return nil, errors.New("web.NewSSO: Release is required — parked state that is " +
+		return nil, errs.Wrap(errs.ErrInvalidArgument, "web.NewSSO: Release is required — parked state that is "+
 			"dropped without cleanup is the leak this type exists to prevent")
 	}
 	if cfg.Max < 0 {
@@ -276,7 +277,7 @@ func NewSSO[T any](cfg SSOConfig[T]) (*SSO[T], error) {
 func (s *SSO[T]) Stash(ctx context.Context, v T) error {
 	slot := StashFromContext(ctx)
 	if slot == nil {
-		return errors.New("web: Stash called outside a login request — the value would " +
+		return errs.Wrap(errs.ErrPrecondition, "web: Stash called outside a login request — the value would "+
 			"be discarded and its upstream state leaked")
 	}
 	// The cleanup is registered WITH the value, so every path between here and the
@@ -388,8 +389,8 @@ func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
 				if s.provision != nil {
 					return nil
 				}
-				return errors.New("web: the login stashed no upstream state and no " +
-					"Provision is configured, so the ticket it would mint could not " +
+				return errs.Wrap(errs.ErrPrecondition, "web: the login stashed no upstream state and no "+
+					"Provision is configured, so the ticket it would mint could not "+
 					"produce a usable session")
 			}
 			if err := s.hold(handoff, v); err != nil {
@@ -453,7 +454,7 @@ func (s *SSO[T]) Session(ctx context.Context, info *SessionInfo) (T, func(), err
 	var zero T
 	noop := func() {}
 	if info == nil || info.Identity == nil {
-		return zero, noop, errors.New("web: no identity")
+		return zero, noop, ErrNoIdentity
 	}
 	if v, ok := s.Claim(info); ok {
 		return v, s.releaseOnce(v), nil
@@ -579,7 +580,7 @@ func (r *ssoRunner[T]) Run(ctx context.Context) error {
 
 	app := r.build(r.backend, r.info.Identity, up)
 	if app == nil {
-		return errors.New("web: the build function returned no application")
+		return errs.Wrap(errs.ErrPrecondition, "web: the build function returned no application")
 	}
 	return app.Run(ctx)
 }
@@ -588,7 +589,7 @@ func (r *ssoRunner[T]) Run(ctx context.Context) error {
 // occupy capacity indefinitely.
 func (s *SSO[T]) hold(handoff string, v T) error {
 	if handoff == "" {
-		return errors.New("web: empty handoff")
+		return errs.Wrap(errs.ErrInvalidArgument, "web: empty handoff")
 	}
 	now := s.now()
 	s.mu.Lock()
@@ -605,7 +606,7 @@ func (s *SSO[T]) hold(handoff string, v T) error {
 	if _, dup := s.parked[handoff]; dup {
 		s.mu.Unlock()
 		s.releaseAll(stale, Expired)
-		return errors.New("web: this handoff is already parked")
+		return errs.Wrap(errs.ErrPrecondition, "web: this handoff is already parked")
 	}
 	// PUBLISH UNDER THE RESERVATION'S OWN LOCK.
 	//
