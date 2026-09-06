@@ -247,12 +247,18 @@ func (s *Scan) Acquire(t Token) (*streamcache.View, error) {
 // it the same offset could answer with a column while a multi-byte rune was still
 // arriving, then refuse once it completed.
 //
-// AND THE LOOKAHEAD IS ALL IT WILL READ. Over a stream, an offset ahead of what
-// has been indexed is refused BEFORE any I/O: a diagnostic is for an offset the
-// scan has already reached, and driving the reader forward to answer one would
-// turn a question about the past into an unbounded read. Over a slice the whole
-// input is already in memory, so any in-range offset is answered by indexing
-// forward, which costs no I/O at all.
+// THE LOOKAHEAD BOUNDS WHAT IS INDEXED, NOT WHAT THE CACHE READS. Over a stream,
+// an offset ahead of what has been indexed is refused BEFORE any I/O: a
+// diagnostic is for an offset the scan has already reached, and driving the
+// reader forward to answer one would turn a question about the past into an
+// unbounded read. So no arbitrary gap is ever drained.
+//
+// But the cache reads in SEGMENTS, not in the three bytes asked of it, so
+// answering at the live edge can consume up to the remainder of one configured
+// segment from the underlying reader. That is the cache's deliberate granularity
+// — the alternative is a syscall per rune — and the ceiling is one segment, never
+// the rest of the stream. Over a slice there is no read at all: the input is
+// already in memory, so any in-range offset is answered by indexing forward.
 //
 // An offset inside a multibyte rune is not a position and is refused — which
 // byte-oriented forms can produce, so the refusal has to be stable rather than
