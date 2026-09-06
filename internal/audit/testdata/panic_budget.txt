@@ -101,20 +101,20 @@ tui/options.go	WithTaskPoolSize	7832b373c26a8d57	1	unreviewed	not yet read
 tui/options.go	WithTaskDrainTimeout	b9b464698924d785	1	unreviewed	not yet read
 tui/queue.go	programQueue.push	2aab10adc34909b9	1	contract	DOCUMENTED OPT-IN, not a defect. The queue is UNLIMITED by default; the panic fires only when an app calls WithEventQueueLimit(n), whose doc says it PANICS and that "apps preferring fail-fast crash detection over memory growth opt in here" (tui/options.go:124-128, rev 1, Lector Q1). App.Post repeats it (tui/app.go:128) and ADR-0005 §2.4 records it. An earlier row here called this a LIVE violation needing "an error or backpressure path under a written policy" — classified from queue.go alone, without reading the option that enables it; the policy it asked for already existed and was ratified in review.
 tui/stack.go	Stack.AddAligned	2777c4f0003a7060	1	unreviewed	not yet read
-tui/style/color.go	ANSI	d30d4bac686ff454	1	unreviewed	not yet read
-tui/style/color.go	ANSI256	d1ebd4f9ac7e6564	1	unreviewed	not yet read
-tui/style/color.go	Adaptive	de547762f4e46849	1	unreviewed	not yet read
-tui/style/color.go	Adaptive	72182b9f59ba1d68	1	unreviewed	not yet read
-tui/style/style.go	expandSides	bad33af4da5d6b9e	1	unreviewed	not yet read
-tui/style/style.go	Style.Align	3d71cb902f840d47	1	unreviewed	not yet read
-tui/style/style.go	Style.Align	ed8a8c487327665e	1	unreviewed	not yet read
-tui/style/style.go	Style.Align	207ca678263eaa07	1	unreviewed	not yet read
-tui/style/style.go	expandEdges	f1f7a00301965a91	1	unreviewed	not yet read
-tui/style/style.go	Style.copyProp	1f0a8d27f154967f	1	unreviewed	not yet read
-tui/style/theme.go	WithToken	001d2b02a1f7d153	1	unreviewed	not yet read
-tui/style/theme.go	WithToken	b50e71241b4fd08c	1	unreviewed	not yet read
-tui/style/theme.go	NewTheme	c61a94e82bddd760	1	unreviewed	not yet read
-tui/style/theme.go	Theme.Color	93ea312d621556d4	1	unreviewed	not yet read
+tui/style/color.go	ANSI	d30d4bac686ff454	1	construction	style.ANSI: palette index outside the ANSI-16 range — a Color under construction, and the index is a literal at every call site in this tree
+tui/style/color.go	ANSI256	d1ebd4f9ac7e6564	1	construction	style.ANSI256: palette index outside the ANSI-256 range — same shape as ANSI, a value under construction
+tui/style/color.go	Adaptive	de547762f4e46849	1	construction	style.Adaptive: adaptive leaves cannot nest — the nesting is written in source and cannot arise from data
+tui/style/color.go	Adaptive	72182b9f59ba1d68	1	construction	style.Adaptive: a token leaf is rejected while the Color is built; the composition is written in source, not chosen at runtime
+tui/style/style.go	expandSides	bad33af4da5d6b9e	1	construction	style: CSS shorthand takes 1-4 side arguments — an arity mistake while building a Style
+tui/style/style.go	Style.Align	3d71cb902f840d47	1	construction	style.Align: more than one vertical argument — an arity mistake fixed in source
+tui/style/style.go	Style.Align	ed8a8c487327665e	1	construction	style.Align: vertical alignment is not one of the three constants
+tui/style/style.go	Style.Align	207ca678263eaa07	1	construction	style.Align: horizontal alignment is not one of the three constants, while building a Style
+tui/style/style.go	expandEdges	f1f7a00301965a91	1	construction	style: CSS shorthand takes 0-4 edge arguments — an arity mistake while building a Style
+tui/style/style.go	Style.copyProp	1f0a8d27f154967f	1	invariant	style.copyProp: a property bit with no case. Reached only if this package adds a property and forgets to extend the switch — no caller and no data can produce a bit the package never defined
+tui/style/theme.go	WithToken	001d2b02a1f7d153	1	construction	style.WithToken: token outside the declared range while building a Theme
+tui/style/theme.go	WithToken	b50e71241b4fd08c	1	construction	style.WithToken: a theme slot cannot hold a token color — rejected while the Theme is built
+tui/style/theme.go	NewTheme	c61a94e82bddd760	1	construction	style.NewTheme: a token color cannot be the primary — the slot must hold a concrete or adaptive Color
+tui/style/theme.go	Theme.Color	93ea312d621556d4	1	invariant	style.Theme.Color: token outside the declared range. A runtime lookup, but the token set is a closed enum this package defines, so an out-of-range token is programmer error rather than data
 tui/tasks.go	Exclusive	a7f52f9cd5eca2f5	1	unreviewed	not yet read
 tui/tasks.go	App.Go	8c04afba59c851f6	1	unreviewed	not yet read
 tui/testbackend.go	TestBackend.InjectResize	3e3bad8e39ad70d7	1	unreviewed	not yet read
