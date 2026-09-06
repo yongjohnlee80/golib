@@ -1,6 +1,9 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 14)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 15)** (2026-09-06, jarvis). Rev 15: the form
+  foundation was signed off at rev 14 (`Token`/`Source`/`Scan` cleared to
+  begin); this revision lands `Token` and `Source` with concrete shapes (§5) and
+  records the accepted token-production model — runs are forms too (§6).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -300,7 +303,17 @@ lifetime along with them.
 > core: **one-based lines, columns counted in RUNES, and invalid UTF-8 consuming
 > one byte and one column.**
 >
-> *No code written yet: `Token`, `Source` and `Scan` land in the Scan round.*
+> **Landed (rev 15): `Token` and `Source`.** `Token{Kind Kind; Start, End
+> int64}` is in `token.go`. The location type is `Location{Offset int64; Line,
+> Column int}`, resolved by `Source.LocationAt(off)` (`source.go`) from a line
+> index built out of the newlines the lexer passes over — `Line` in O(log lines)
+> from the index alone, `Column` a rune count over the line prefix, obtained
+> through a byte accessor so `Source` copies nothing (the slice itself over
+> `[]byte`, the cache over a stream). `source_test.go` cross-checks every offset
+> against a `Scanner` walk of the same bytes, so the pinned semantics are tested,
+> not asserted. `Scan` — which builds the `Source` and drives the forms — is
+> next, and the non-delimited kinds it emits are covered by the token-production
+> decision in §6.*
 
 **Trivia is emitted, never dropped.** `Comment` and `Space` are kinds like any
 other. An AST builder filters them in one line; a concrete syntax tree cannot
@@ -389,6 +402,35 @@ production caller uses. The standard library keeps exactly this helper one
 package out — `testing/fstest`, `testing/iotest`, `net/http/httptest`.
 `parsetest.Form(t, f, corpus)` drives `Starts` and `End` across every split and
 both boundaries, and its own suite proves it fails on four decoys.
+
+**Every kind is a form, including the runs between the delimited ones**
+*(accepted in direction, Johno on resume 2026-09-06; lands with `Scan`, not
+written yet)*. The `Kind` enum has `Word`, `Number`, `Space`, `Operator`,
+`Punct` and `Terminator` besides the delimited `Comment`/`String`/`Ident`, and
+criterion 2 requires **every** byte to fall in some token. Rather than a second
+extension mechanism beside forms — a default classifier the lexer would consult
+where no form matched — these are forms too, so the lexer still only ever walks
+one list and the OCP claim holds without an asterisk:
+
+```go
+// Generic, and the character classes come from the LEAF, so the core still
+// names no dialect. Runs join the purity contract like every other form.
+func RunForm(k Kind, member func(index int, b byte) bool) Form // maximal run of member bytes
+func SetForm(k Kind, lits ...string) Form                      // longest of a fixed set; -- before -
+```
+
+A `RunForm` opens on its first member byte and ends at the first non-member one
+(the boundary byte is the next token's, not consumed — the `LineComment`
+shape); at a window full of member bytes under `MoreInput` it defers with
+`ErrNeedMore`, because the run may continue. A trailing catch-all
+`RunForm(Operator, func(int, byte) bool { return true })` — or a leaf's own
+final form — guarantees total coverage, so no offset is ever stuck with no
+match. The cost, stated plainly: a run has no terminator, so `End`'s
+`openedWith` argument is meaningless to it, and `Starts` consuming one byte then
+`End` scanning the rest is the delimited interface carrying run semantics it was
+not shaped for. The alternative — a separate classifier — buys a cleaner `End`
+at the price of a second thing a form author must understand, and the uniform
+list was judged worth the awkward argument.
 
 ### 6.1 The incremental contract
 
