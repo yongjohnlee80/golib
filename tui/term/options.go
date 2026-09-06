@@ -24,7 +24,7 @@ var (
 )
 
 const (
-	defaultProbeTimeout = 250 * time.Millisecond // ADR-0002 §2.6 (rev 1)
+	defaultProbeTimeout = 250 * time.Millisecond
 	minProbeTimeout     = 50 * time.Millisecond
 	maxProbeTimeout     = time.Second
 	defaultEscTimeout   = 35 * time.Millisecond // the vim ttimeoutlen band

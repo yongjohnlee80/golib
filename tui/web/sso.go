@@ -202,8 +202,7 @@ const LoginFailed HandoffReason = 4
 //
 // The reservation is taken AFTER the login policy succeeds and the ticket is
 // minted, and covers the [OnLogin] hook — not the factor's verification, which has
-// already finished by then (lector r5 corrected an earlier version of this text
-// that said otherwise). A hook slow enough to outlive it — one that dials an
+// already finished by then. A hook slow enough to outlive it — one that dials an
 // upstream and hangs — finds its slot reclaimed by another login. The park then
 // refuses the entry rather than holding state nothing accounts for, so the login
 // fails and the client may retry.
@@ -464,15 +463,14 @@ func (s *SSO[T]) Session(ctx context.Context, info *SessionInfo) (T, func(), err
 	}
 	// After Close, provisioning is refused. Close is the last step of shutdown, so
 	// anything allocated after it has nothing left to release it — and a Manager
-	// can still be draining a session whose Run has only just started (lector r1
-	// on PR #14). Shutdown order is handler stop, Manager shutdown, then this.
+	// can still be draining a session whose Run has only just started. Shutdown
+	// order is handler stop, Manager shutdown, then this.
 	//
 	// Checking the flag and then calling Provision was not enough: a Provision
 	// blocked on I/O could start, Close could return, and the Provision could then
-	// resume and hand back a live session nothing was left to close (lector r2
-	// reproduced it). So the call is BRACKETED — registered before, retired after —
-	// and Close waits for the bracket to empty. The consumer's I/O still happens
-	// with no lock held.
+	// resume and hand back a live session nothing was left to close. So the call
+	// is BRACKETED — registered before, retired after — and Close waits for the
+	// bracket to empty. The consumer's I/O still happens with no lock held.
 	v, err, raced := s.provisionBracketed(ctx, info.Identity)
 	if err != nil {
 		return zero, noop, err
@@ -612,9 +610,8 @@ func (s *SSO[T]) hold(handoff string, v T) error {
 	//
 	// The entry must exist only if an admission slot accounts for it. Checking the
 	// reservation and then inserting was not enough — the check released the gate's
-	// lock as it answered, and the key could be swept before the insert landed
-	// (lector r4 found the unchecked version, r5 found the checked-then-inserted
-	// one). So the insert is handed to the gate as a callback and runs while the
+	// lock as it answered, and the key could be swept before the insert landed.
+	// So the insert is handed to the gate as a callback and runs while the
 	// gate still holds its lock: membership and publication are one step.
 	//
 	// The timer is what makes the expiry real without a consumer's ticker. It is

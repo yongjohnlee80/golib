@@ -260,7 +260,7 @@ func (d *queryDAO[R, C, K, ID]) SetRules(rules map[C]Rule) DAO[R, C, ID] {
 	for field, r := range rules {
 		f, ok := d.schema.fields[field]
 		if !ok || f.ReadOnly {
-			continue // wire-facing leniency: request-derived keys (ADR-0010 §2.4)
+			continue // wire-facing leniency: request-derived keys
 		}
 		rr := resolvedRule{kind: r.kind, value: r.value}
 		if r.kind == ruleClear {
@@ -271,7 +271,7 @@ func (d *queryDAO[R, C, K, ID]) SetRules(rules map[C]Rule) DAO[R, C, ID] {
 				rr = resolvedRule{kind: ruleSkip,
 					err: fmt.Errorf("%w: %v", ErrNotClearable, any(field))}
 			default:
-				rr = resolvedRule{kind: ruleSkip} // downgrade (ADR-0010 §2.2)
+				rr = resolvedRule{kind: ruleSkip} // downgrade
 			}
 		}
 		if d.w.rules == nil {
@@ -680,11 +680,11 @@ func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
 	}
 	b := newBatchWriter[R, C](exec, d.schema.dialect, d.schema.table)
 	b.schemaConflict = d.schema.conflict // OnConflictUpdate() with no columns
-	b.ctx = d.ctx()                      // Flush honors WithQueryContext / the tx context (ADR-0009 §2.3)
+	b.ctx = d.ctx()                      // Flush honors WithQueryContext / the tx context
 	b.initErr = initErr
 	b.translate = d.schema.translate
 	b.pipe = func(op Op) *pipeline {
-		p, _ := d.begin(op, false) // batch fires no BeforeBuild (ADR-0009 §2.6)
+		p, _ := d.begin(op, false) // batch fires no BeforeBuild
 		return p
 	}
 	b.colName = func(c C) string {

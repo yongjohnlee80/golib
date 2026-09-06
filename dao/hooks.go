@@ -77,7 +77,7 @@ type QueryInfo struct {
 // Outcome reports a statement's result to AfterExec.
 type Outcome struct {
 	Duration time.Duration
-	Rows     int   // rows scanned; -1 when unknown (Iterate streams, ADR-0009 §2.6)
+	Rows     int   // rows scanned; -1 when unknown (Iterate streams)
 	Affected int64 // driver-reported affected rows; -1 when not applicable
 	Err      error // the statement's error after dialect/ErrorMap translation
 }

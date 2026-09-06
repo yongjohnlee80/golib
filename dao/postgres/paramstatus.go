@@ -207,8 +207,7 @@ func reportedStatuses(pgConn *pgconn.PgConn) *statusRecorder {
 // ParameterStatusReporter is the OPTIONAL capability a pinned connection offers
 // when its pool captures the server's reported ParameterStatus set. It is a
 // separate leaf interface — PinnedConn itself is unchanged, so external
-// implementations of PinnedConn keep compiling (PR #23 MF2; the
-// interface-evolution convention) — reached by type assertion:
+// implementations of it keep compiling — reached by type assertion:
 //
 //	if r, ok := pc.(postgres.ParameterStatusReporter); ok { set := r.ReportedParameterStatuses() }
 type ParameterStatusReporter interface {

@@ -9,8 +9,8 @@
 // Neovim speaks natively. The Codec seam exists so alternate wire formats
 // (e.g. jsonrpc) can reuse the same lifecycle unchanged.
 //
-// Wire input is treated as attacker-adjacent (KB security-core-hardening
-// R4/R7): a message overrunning MaxMessageBytes or failing to frame closes
-// the connection; handler panics are isolated to an internal-error reply;
-// dispatch concurrency is bounded per connection.
+// Wire input is treated as attacker-adjacent: a message overrunning
+// MaxMessageBytes or failing to frame closes the connection; handler panics
+// are isolated to an internal-error reply; dispatch concurrency is bounded
+// per connection.
 package rpc

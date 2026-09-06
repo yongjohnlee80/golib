@@ -83,7 +83,7 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	defer b.wmu.Unlock()
 
 	if len(diff) == 0 && !dirty {
-		return nil // zero bytes (ADR-0002 §5.5)
+		return nil // zero bytes
 	}
 
 	buf := &b.buf
@@ -122,8 +122,8 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 		b.penX, b.penY = u.X+int(u.Cell.Width), u.Y
 		b.penKnown = true
 		if !b.caps.UnicodeCore && riskyCluster(content) {
-			// ADR-0003 §2.8: without mode 2027 the terminal's advance for
-			// this cluster is untrusted — re-anchor absolutely next time.
+			// Without mode 2027 the terminal's advance for this cluster is
+			// untrusted — re-anchor absolutely next time.
 			b.forceAnchor = true
 		}
 	}

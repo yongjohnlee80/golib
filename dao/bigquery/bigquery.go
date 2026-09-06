@@ -158,8 +158,7 @@ func (r *bqRows) Next() bool {
 
 func (r *bqRows) Scan(dest ...any) error {
 	// A count mismatch is a schema/projection bug: silently zeroing missing
-	// targets or dropping extra columns would corrupt reads (must-fix from the
-	// 2026-06-23 review).
+	// targets or dropping extra columns would corrupt reads.
 	if len(dest) != len(r.current) {
 		return errs.Wrap(errs.ErrInvalidArgument, "bigquery: scan: %d destinations for %d columns", len(dest), len(r.current))
 	}

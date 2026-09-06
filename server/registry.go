@@ -87,10 +87,9 @@ func (r *Registry) Len() int {
 	return len(r.live)
 }
 
-// Reservation is a claimed-but-not-yet-established session slot (ADR-0006
-// §2.2): take it with Reserve before establishment work (e.g. a WebSocket
-// handshake) so shutdown can refuse new work while a protocol-level refusal
-// is still possible.
+// Reservation is a claimed-but-not-yet-established session slot: take it with
+// Reserve before establishment work (e.g. a WebSocket handshake) so shutdown
+// can refuse new work while a protocol-level refusal is still possible.
 type Reservation struct {
 	r    *Registry
 	once sync.Once

@@ -77,7 +77,7 @@ type ColumnInfo struct {
 	// are always reported non-nullable: dialects normalize engine quirks here
 	// (SQLite's pragma reports notnull=0 for rowid-alias PKs, and its legacy
 	// nullable-PK behavior for some non-INTEGER PKs is intentionally not
-	// surfaced — ADR-0013 §3.1).
+	// surfaced).
 	Nullable bool
 	// Default is the dialect-native default expression; meaningful only when
 	// HasDefault is true.

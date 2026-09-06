@@ -161,7 +161,7 @@ func (c Config) validate() error {
 		return err
 	}
 	if !local && c.TLS == nil {
-		// Criterion 9. Plaintext is permitted ONLY for a loopback bind,
+		// Plaintext is permitted ONLY for a loopback bind,
 		// including inside the documented SSH local-forward, where the tunnel is
 		// the boundary.
 		return fmt.Errorf("%w: %s has no TLS configured. Bind loopback and use "+

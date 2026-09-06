@@ -298,8 +298,7 @@ func (s *Session) Err() error {
 // caller: auth.Identity is an exported struct, so any code in the binary can
 // write `&auth.Identity{Subject: "root"}` and call this — the tests in this
 // package do exactly that. Earlier comments called an unauthenticated call
-// "impossible to write"; that was an overstatement (lector r1, and r2 because I
-// left it standing in several other doc comments after narrowing one).
+// "impossible to write"; that was an overstatement.
 func (m *Manager) Create(ctx context.Context, id *auth.Identity, h Hello) (*Session, error) {
 	return m.CreateFor(ctx, id, h, SessionInfo{Identity: id})
 }
@@ -733,8 +732,8 @@ func (s sessionAudit) String() string {
 	// principal, which makes it tempting to treat as trusted — but "authenticated"
 	// only means a factor vouched for it, and a subject can legitimately come
 	// from an allowed_signers principal or a certificate CN, neither of which is
-	// constrained to be free of newlines. One forged the second line of a log in
-	// lector's probe.
+	// constrained to be free of newlines. A newline in either one forges the
+	// second line of a log record.
 	out := "web session " + s.Kind
 	if s.Subject != "" {
 		out += " subject=" + sanitizeHeader(s.Subject)

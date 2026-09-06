@@ -45,17 +45,15 @@ func RecommendedPolicy(mechanisms []auth.Factor, constrain ...auth.Factor) (auth
 
 // PasswordPolicyExample builds the LOGIN policy for password authentication.
 //
-// Password is permitted and is the weakest supported mechanism (rev 9,
-// reshaped in rev 11). What sits behind the credential is a shell, so:
+// Password is permitted and is the weakest supported mechanism. What sits
+// behind the credential is a shell, so:
 //
 //   - the password factor is wrapped in [auth.Throttle], because a reusable
 //     secret with no backoff is an online guessing attack waiting to happen;
 //   - it is constrained by a CONTEXTUAL factor, so an allowlist narrows who may
-//
-// even try. A contextual factor cannot satisfy a policy alone —
-// enforces that structurally — so this narrows without adding a way
-//
-//	in. An identity factor is refused here for exactly that reason.
+//     even try. A contextual factor cannot satisfy a policy alone — the auth
+//     package enforces that structurally — so this narrows without adding a way
+//     in. An identity factor is refused here for exactly that reason.
 //
 // # This builds Config.LoginPolicy, not Config.Policy
 //

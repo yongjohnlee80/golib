@@ -26,7 +26,7 @@ type orderClause struct {
 // writeState is the mutable staged-value intent for INSERT/UPDATE/UPSERT.
 type writeState struct {
 	set   orderedSet
-	rules map[string]resolvedRule // writeCol → resolved SetRules disposition (ADR-0010)
+	rules map[string]resolvedRule // writeCol → resolved SetRules disposition
 }
 
 // orderedSet is a column->value map with deterministic (sorted-key) iteration, so

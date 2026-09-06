@@ -314,9 +314,8 @@ func (e *Editor) snapshot() editorSnap {
 
 // beginGroup pushes an undo snapshot for a new edit group: every
 // Normal-mode edit is one group; an Insert session is one group opened
-// lazily at its first mutation (ADR-0008 §2.1 r3 — a paste during Insert
-// stays inside the open group; focus loss closes it without leaving
-// Insert).
+// lazily at its first mutation. A paste during Insert stays inside the open
+// group; focus loss closes it without leaving Insert.
 func (e *Editor) beginGroup() {
 	if e.mode == ModeInsert && e.groupOpen {
 		return
@@ -390,8 +389,8 @@ func (e *Editor) settlePendingRune() {
 // --- motions ---------------------------------------------------------------
 
 // isWS classifies a grapheme cluster as whitespace for the Editor's word
-// motions (MF8: tabs and Unicode whitespace count, not just the literal
-// space; the substrate's readline hops keep their own space-only rule).
+// motions: tabs and Unicode whitespace count, not just the literal space.
+// The substrate's readline hops keep their own space-only rule.
 func isWS(cluster string) bool {
 	return strings.TrimSpace(cluster) == ""
 }
@@ -1059,8 +1058,8 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	}
 	kc := KeyChord{Mode: modeClass(e.mode), Code: code, Ctrl: ctrl}
 
-	// Double-key pending buffer, keyed by the ARMING CHORD (MF10 — a
-	// rebound prefix completes on its own chord, not a hard-coded rune):
+	// Double-key pending buffer, keyed by the ARMING CHORD, so a rebound
+	// prefix completes on its own chord rather than a hard-coded rune:
 	// only the same chord again completes; any other key clears the
 	// pending state and is processed normally.
 	if e.pendingAct != ActUnbound {

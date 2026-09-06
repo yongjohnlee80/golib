@@ -116,7 +116,7 @@ type Style struct {
 	borderFg                           [4]Color // per-edge border foreground
 
 	extraMode extState    // Apply-scoped copy-on-write state; extCOW at rest
-	extras    *extraProps // §2.7 escape hatch; nil in the common case
+	extras    *extraProps // escape hatch; nil in the common case
 }
 
 // New returns an empty Style. Equivalent to the zero value; provided for the

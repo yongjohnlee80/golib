@@ -29,7 +29,7 @@ import (
 //     (An earlier version of this comment said every attach presents a ticket,
 //     which is simply untrue — mTLS and the SSH challenge attach on their own.
 //     The real invariant is narrower and is the one that matters: a reusable
-//     secret is not among the things the attach path will accept — lector r4.)
+//     secret is not among the things the attach path will accept.)
 //   - **The password crosses once, to a route that does nothing else.** It never
 //     touches session creation, frame delivery or the event stream, so no bug in
 //     those paths can be reached while a password is in flight.

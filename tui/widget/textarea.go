@@ -159,7 +159,7 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 
 	switch e.Code {
 	case tui.KeyEnter:
-		t.insert("\n") // newline — no submit event (ADR-0007 Q5)
+		t.insert("\n") // newline — no submit event (Q5)
 		return true
 	case tui.KeyBackspace:
 		switch lo, hi, ok := t.selection(); {

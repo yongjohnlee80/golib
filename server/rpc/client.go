@@ -341,7 +341,7 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 		return c.Err()
 	}
 	// The watcher is JOINED before the deadline reset and before this send
-	// returns (r2): a late-scheduled watcher must never force a past
+	// returns, because a late-scheduled watcher must never force a past
 	// deadline onto the reset state or a later frame's deadline. Its own
 	// deadline-control failure is recorded and treated as a transport
 	// failure after the join.
@@ -375,7 +375,7 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 			return terr // a concurrent poison owns the cause
 		}
 		// Deadline-control failures poison BEFORE the clean-cancellation
-		// return (r3): a broken wake or reset means the bounded-write
+		// return: a broken wake or reset means the bounded-write
 		// guarantee is gone regardless of why this write failed. Only a
 		// cancellation whose deadline wake AND reset succeeded reports
 		// ctx.Err() with the connection intact.
@@ -389,7 +389,7 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 		}
 		if ctx.Err() != nil {
 			// Zero bytes written and the caller's context is done: the
-			// cancellation woke the write; report it as cancellation (r2).
+			// cancellation woke the write; report it as cancellation.
 			return ctx.Err()
 		}
 		return fmt.Errorf("rpc: write: %w", err)
@@ -400,7 +400,7 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 		return c.Err()
 	case wakeErr != nil:
 		// The cancellation wake could not be applied: deadline control is
-		// broken, so the bounded-write guarantee is gone (r2).
+		// broken, so the bounded-write guarantee is gone.
 		c.poison(fmt.Errorf("rpc: cancellation wake failed: %w", wakeErr))
 		return c.Err()
 	case resetErr != nil:

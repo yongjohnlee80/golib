@@ -151,7 +151,7 @@ func DefaultKeymap() Keymap {
 		tui.KeyHome: ActLineStart, tui.KeyEnd: ActLineEnd,
 		'w': ActWordForward, 'b': ActWordBack, 'e': ActWordEnd,
 		'{': ActParaBack, '}': ActParaForward,
-		'[': ActParaBack, ']': ActParaForward, // v1 aliases (ADR-0008 §2.1)
+		'[': ActParaBack, ']': ActParaForward, // v1 aliases
 		'G':           ActGoBottom,
 		tui.KeyPageUp: ActPageUp, tui.KeyPageDown: ActPageDown,
 		'g': ActGoPrefix,
