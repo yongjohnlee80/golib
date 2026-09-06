@@ -1,8 +1,7 @@
 package tui
 
 // Layout tests: Flex largest-remainder determinism, Dock, Stack golden
-// frames, constraint-violation clamping, relayout economy, the cursor rule
-// (ADR-0004 §5.5–§5.8).
+// frames, constraint-violation clamping, relayout economy, the cursor rule.
 
 import (
 	"math/rand"
@@ -22,7 +21,7 @@ func childRects(h *harness, comps ...Component) []Rect {
 	return out
 }
 
-// TestFlexLargestRemainder: ADR-0004 §5.5 — table-driven Flex distribution:
+// TestFlexLargestRemainder: table-driven Flex distribution:
 // R=10 over (1,1,1) → 4,3,3; R=7 over (2,3) → 3,4; ties broken by index;
 // Σ assigned == R.
 func TestFlexLargestRemainder(t *testing.T) {
@@ -71,7 +70,7 @@ func TestFlexLargestRemainder(t *testing.T) {
 	}
 }
 
-// TestFlexDistributionSumFuzz: ADR-0004 §5.5 — Σ assigned == R proven for a
+// TestFlexDistributionSumFuzz: Σ assigned == R proven for a
 // fuzz range of (R, weights).
 func TestFlexDistributionSumFuzz(t *testing.T) {
 	t.Parallel()
@@ -105,7 +104,7 @@ func TestFlexDistributionSumFuzz(t *testing.T) {
 }
 
 // TestFlexGoldenFramesDeterministic: byte-identical TestBackend frames
-// across repeated runs (ADR-0004 §5.5).
+// across repeated runs.
 func TestFlexGoldenFramesDeterministic(t *testing.T) {
 	t.Parallel()
 	render := func() string {
@@ -145,7 +144,7 @@ func TestFlexFixedThenWeighted(t *testing.T) {
 	FailOnViolations(t, h.tb)
 }
 
-// TestDockLayout: ADR-0004 §2.7.3 — pinned edges consume in declaration
+// TestDockLayout: pinned edges consume in declaration
 // order; center fills the rest.
 func TestDockLayout(t *testing.T) {
 	t.Parallel()
@@ -163,7 +162,7 @@ func TestDockLayout(t *testing.T) {
 	}
 }
 
-// TestStackZOrderPaint: ADR-0004 §2.7.4 — later children paint on top.
+// TestStackZOrderPaint: later children paint on top.
 func TestStackZOrderPaint(t *testing.T) {
 	t.Parallel()
 	base := &probe{name: "base", pref: Size{W: 10, H: 3}, fill: "a"}
@@ -193,7 +192,7 @@ func TestStackAlignment(t *testing.T) {
 	}
 }
 
-// TestConstraintViolationClamped: ADR-0004 §5.6 — a child returning a Size
+// TestConstraintViolationClamped: a child returning a Size
 // outside its Constraints is clamped, siblings are unaffected, and the
 // violation is recorded on the TestBackend with node/type/sizes.
 func TestConstraintViolationClamped(t *testing.T) {
@@ -224,7 +223,7 @@ func TestConstraintViolationClamped(t *testing.T) {
 	}
 }
 
-// TestRelayoutEconomy: ADR-0004 §5.7 — MarkDirty alone repaints with ZERO
+// TestRelayoutEconomy: MarkDirty alone repaints with ZERO
 // Layout calls; RequestLayout triggers exactly one full pass; ResizeEvent
 // produces one pass plus a full repaint.
 func TestRelayoutEconomy(t *testing.T) {
@@ -264,7 +263,7 @@ func TestRelayoutEconomy(t *testing.T) {
 	}
 }
 
-// TestCursorRule: ADR-0004 §5.8 — focusing a CursorReporter that reports
+// TestCursorRule: focusing a CursorReporter that reports
 // (x,y,true) parks the backend cursor at the absolute translation and shows
 // it; focusing a non-reporter hides it.
 func TestCursorRule(t *testing.T) {

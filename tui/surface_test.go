@@ -18,7 +18,7 @@ func newTestSurface(w, h int, policy WidthPolicy) (*bufSurface, *buffer) {
 func cellAt(b *buffer, x, y int) Cell { return b.curr[y*b.w+x] }
 
 // TestSurfaceClipping: writes outside the clip are silently dropped;
-// in-clip writes land translated (ADR-0003 §2.4).
+// in-clip writes land translated.
 func TestSurfaceClipping(t *testing.T) {
 	root, buf := newTestSurface(10, 5, WidthPolicyDefault)
 	sub := root.Sub(Rect{X: 2, Y: 1, W: 4, H: 2})
@@ -60,7 +60,7 @@ func TestSurfaceClipping(t *testing.T) {
 }
 
 // TestSubOfSubComposes: nested Sub offsets accumulate and clips intersect;
-// the style context flows unchanged (ADR-0003 §2.4).
+// the style context flows unchanged.
 func TestSubOfSubComposes(t *testing.T) {
 	root, buf := newTestSurface(10, 6, WidthPolicyDefault)
 	a := root.Sub(Rect{X: 2, Y: 1, W: 6, H: 4})
@@ -89,7 +89,7 @@ func TestSubOfSubComposes(t *testing.T) {
 }
 
 // TestSurfaceWideAtClipEdge: W3 against the clip — a width-2 cluster whose
-// continuation would leave the clip is dropped whole (ADR-0003 §2.3 W3).
+// continuation would leave the clip is dropped whole.
 func TestSurfaceWideAtClipEdge(t *testing.T) {
 	root, buf := newTestSurface(10, 3, WidthPolicyDefault)
 	sub := root.Sub(Rect{X: 1, Y: 0, W: 4, H: 1})
@@ -108,7 +108,7 @@ func TestSurfaceWideAtClipEdge(t *testing.T) {
 }
 
 // TestSurfaceSetCellFirstClusterOnly: content with more than one cluster
-// writes only the first (ADR-0003 §2.4).
+// writes only the first.
 func TestSurfaceSetCellFirstClusterOnly(t *testing.T) {
 	root, buf := newTestSurface(4, 1, WidthPolicyDefault)
 	root.SetCell(0, 0, "ab", style.New())
@@ -126,8 +126,7 @@ func TestSurfaceSetCellFirstClusterOnly(t *testing.T) {
 
 // TestFillTrailingOddColumn: Fill with a width-2 cluster fills in steps of
 // two and paints the trailing odd column with a SPACE cell in the fill's
-// style — never left untouched (ADR-0003 §2.4 rev 1, acceptance criterion
-// §5.9).
+// style — never left untouched.
 func TestFillTrailingOddColumn(t *testing.T) {
 	root, buf := newTestSurface(7, 2, WidthPolicyDefault)
 	st := style.New().Bold(true)
@@ -175,7 +174,7 @@ func TestFillClippedAndNarrow(t *testing.T) {
 // Surface.StringWidth measures ambiguous clusters at 2 columns while the
 // package-level StringWidth stays pinned to WidthPolicyDefault at 1 —
 // proving the policy flows through the Surface context and the package
-// default stays fixed (ADR-0003 §2.4/§2.7 rev 1, acceptance criterion §5.9).
+// default stays fixed.
 func TestWidthPolicyDivergence(t *testing.T) {
 	const ambiguous = "±" // East Asian Ambiguous (UAX #11)
 
@@ -199,7 +198,7 @@ func TestWidthPolicyDivergence(t *testing.T) {
 	}
 
 	// SetCell caches the width measured under the Surface's policy
-	// (ADR-0003 §2.1): the ambiguous cluster becomes a wide pair.
+	// The ambiguous cluster becomes a wide pair.
 	wideSurf.SetCell(0, 0, ambiguous, style.New())
 	if got := cellAt(buf, 0, 0); got.Width != 2 {
 		t.Errorf("SetCell under AmbiguousWide cached width %d, want 2", got.Width)
@@ -208,7 +207,7 @@ func TestWidthPolicyDivergence(t *testing.T) {
 }
 
 // TestGraphemesSegmentationOnly: Graphemes is segmentation-only and
-// policy-independent (ADR-0003 §2.4).
+// policy-independent.
 func TestGraphemesSegmentationOnly(t *testing.T) {
 	var got []string
 	for c := range Graphemes("a世🇦🇺") {

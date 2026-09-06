@@ -11,9 +11,9 @@ func capsWith(p ColorProfile, dark bool) Capabilities {
 	return Capabilities{ColorProfile: p, DarkBackground: dark}
 }
 
-// TestResolveDownsampling is the ADR-0006 §5.6 table: for each ColorProfile
+// TestResolveDownsampling is the downsampling table: for each ColorProfile
 // × each Color kind (default/ANSI/256/RGB/adaptive/token), the resolved
-// output form matches the documented chain (ADR-0006 §2.4): token lookup →
+// output form matches the documented chain: token lookup →
 // adaptive pick → truecolor→256→16→mono downsample; ANSI-16 colors are never
 // upsampled; mono drops color and keeps attributes.
 func TestResolveDownsampling(t *testing.T) {
@@ -74,7 +74,7 @@ func TestResolveDownsampling(t *testing.T) {
 }
 
 // TestResolveThemeDarkOverride: a Theme's WithDark forces adaptivity instead
-// of the probed Capabilities.DarkBackground (ADR-0006 §2.5).
+// of the probed Capabilities.DarkBackground.
 func TestResolveThemeDarkOverride(t *testing.T) {
 	adaptive := style.Adaptive(style.ANSI(15), style.ANSI(0))
 	theme := style.NewTheme(style.ANSI(4), style.WithDark(false))
@@ -88,7 +88,7 @@ func TestResolveThemeDarkOverride(t *testing.T) {
 
 // TestResolveAttributes: set attributes map to mask bits; unset and
 // explicitly-false attributes do not; mono keeps attributes while dropping
-// color (ADR-0006 §2.4).
+// color.
 func TestResolveAttributes(t *testing.T) {
 	st := style.New().
 		Foreground(style.ANSI(1)).
@@ -108,7 +108,7 @@ func TestResolveAttributes(t *testing.T) {
 	}
 }
 
-// TestResolverCache covers the ADR-0006 §2.6 cache contract: hit/miss,
+// TestResolverCache covers the cache contract: hit/miss,
 // flush on theme-generation bump, and the size bound.
 func TestResolverCache(t *testing.T) {
 	theme := style.DefaultTheme()
@@ -159,7 +159,7 @@ func TestResolverCache(t *testing.T) {
 }
 
 // TestResolveExtrasIgnored: a style with Ext(...) set resolves identically —
-// extras are never consulted by the core resolver (ADR-0006 §2.7).
+// extras are never consulted by the core resolver.
 func TestResolveExtrasIgnored(t *testing.T) {
 	rc := ResolveContext{Caps: capsWith(ProfileTrueColor, true)}
 	plain := style.New().Foreground(style.RGB(1, 2, 3)).Bold(true)
@@ -179,7 +179,7 @@ func TestANSI256To16Identity(t *testing.T) {
 }
 
 // TestRGBToANSI256Exact: cube corners and gray-ramp values map to their
-// exact palette entries (deterministic table math, ADR-0006 §2.4).
+// exact palette entries.
 func TestRGBToANSI256Exact(t *testing.T) {
 	tests := []struct {
 		r, g, b uint8
@@ -204,7 +204,7 @@ func TestRGBToANSI256Exact(t *testing.T) {
 }
 
 // TestResolveAllocs: the full resolve is allocation-free, and so is a cache
-// hit (ADR-0006 §5.8).
+// hit.
 func TestResolveAllocs(t *testing.T) {
 	theme := style.DefaultTheme()
 	rc := ResolveContext{Theme: &theme, Caps: capsWith(ProfileANSI256, true)}
@@ -221,7 +221,7 @@ func TestResolveAllocs(t *testing.T) {
 	}
 }
 
-// BenchmarkResolve is ADR-0006 §5.8's full-resolve benchmark (no cache).
+// BenchmarkResolve is the full-resolve benchmark (no cache).
 func BenchmarkResolve(b *testing.B) {
 	theme := style.DefaultTheme()
 	rc := ResolveContext{Theme: &theme, Caps: capsWith(ProfileANSI256, true)}

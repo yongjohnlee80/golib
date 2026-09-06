@@ -1,10 +1,19 @@
 //go:build integration
 
-// NOTE: this nested module pins a RELEASED golib (see go.mod), so the dao.RunTx
-// call below still uses the older `[]dao.DataConn` executor signature. Migrate
-// it to `dao.RunTx(ctx, fn)` in the SAME commit that bumps the golib require to
-// a release carrying the variadic signature — not before, or this module stops
-// building.
+// BROKEN UNDER THE `integration` TAG, and has been for a while. The dao.RunTx
+// call below passes `[]dao.DataConn`, which is the OLD executor signature, so
+// this file does not compile: `go vet -tags integration ./...` inside this
+// module fails at the RunTx call.
+//
+// go.mod requires golib v0.5.9 and an earlier version of this note claimed the
+// pin was why the old signature was still correct. It is not: go.mod ALSO
+// carries `replace github.com/yongjohnlee80/golib => ../..`, and a replace
+// beats a require, so this module builds against the LOCAL tree and gets the
+// current variadic signature. The pin is inert.
+//
+// The fix is `dao.RunTx(ctx, fn)`. It is left alone here because these tests
+// need real BigQuery credentials to run at all, so nobody has been able to
+// confirm the migrated call against a live dataset.
 //
 // Integration tests for the BigQuery driver. They run against a REAL dataset and
 // are gated on credentials, so they are excluded from normal builds (the

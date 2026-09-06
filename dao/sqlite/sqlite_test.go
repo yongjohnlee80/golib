@@ -154,7 +154,7 @@ func TestSQLite_BatchChunked(t *testing.T) {
 
 func TestSQLite_Transaction(t *testing.T) {
 	t.Parallel()
-	_, s := setup(t) // no connection needed: the schema carries it (ADR-0015)
+	_, s := setup(t) // no connection needed: the schema carries it
 
 	// Commit.
 	err := dao.RunTx(context.Background(), func(tx *dao.Transaction) error {

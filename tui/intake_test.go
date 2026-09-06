@@ -1,14 +1,14 @@
 package tui
 
 // Lane-A intake tests: promptness, drop-oldest, resize latest-wins, motion
-// coalescing (ADR-0005 §5.3).
+// coalescing.
 
 import (
 	"testing"
 	"time"
 )
 
-// TestIntakePromptness: ADR-0005 §5.3 rev 1 — TestBackend injection during
+// TestIntakePromptness: TestBackend injection during
 // a slow handler never stalls the backend side: the intake stage keeps
 // Events() drained while the loop is busy. The backend buffer (4) is far
 // smaller than the flood (30); only a promptly draining intake lets every
@@ -45,7 +45,7 @@ func TestIntakePromptness(t *testing.T) {
 	waitFor(t, "flood tail delivered", func() bool { return root.eventCount() == 1+8 })
 }
 
-// TestIntakeDropOldest: ADR-0005 §5.3 — lane-A overflow drops the oldest
+// TestIntakeDropOldest: lane-A overflow drops the oldest
 // events, keeping the newest, with drops counted.
 func TestIntakeDropOldest(t *testing.T) {
 	t.Parallel()
@@ -67,7 +67,7 @@ func TestIntakeDropOldest(t *testing.T) {
 	})
 	close(release)
 	// Delivered: the stalling key + the newest `capacity` flood keys; the
-	// oldest flood keys were dropped (drop-oldest, ADR-0005 §2.4).
+	// oldest flood keys were dropped.
 	waitFor(t, "flood tail delivered", func() bool {
 		return root.eventCount() == 1+capacity
 	})
@@ -84,7 +84,7 @@ func TestIntakeDropOldest(t *testing.T) {
 	}
 }
 
-// TestIntakeKeysNeverDroppedBelowCapacity: ADR-0005 §5.3 — no KeyEvent is
+// TestIntakeKeysNeverDroppedBelowCapacity: no KeyEvent is
 // ever dropped below lane-A capacity.
 func TestIntakeKeysNeverDroppedBelowCapacity(t *testing.T) {
 	t.Parallel()
@@ -107,7 +107,7 @@ func TestIntakeKeysNeverDroppedBelowCapacity(t *testing.T) {
 	}
 }
 
-// TestResizeLatestWins: ADR-0005 §5.3 — a burst of resizes yields exactly
+// TestResizeLatestWins: a burst of resizes yields exactly
 // one delivery carrying the final size (the atomic slot, never a queue of
 // sizes).
 func TestResizeLatestWins(t *testing.T) {
@@ -145,7 +145,7 @@ func TestResizeLatestWins(t *testing.T) {
 	}
 }
 
-// TestMotionCoalescing: ADR-0005 §5.3 — consecutive mouse motions collapse
+// TestMotionCoalescing: consecutive mouse motions collapse
 // to the newest; non-consecutive runs are preserved around keys.
 func TestMotionCoalescing(t *testing.T) {
 	t.Parallel()

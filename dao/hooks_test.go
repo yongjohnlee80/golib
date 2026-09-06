@@ -375,7 +375,7 @@ func TestHooks_ExplicitContextStickyAcrossUse(t *testing.T) {
 	txc := newTxConn("db1")
 	s2 := buildSchema(txc)
 	_ = conn2
-	tx2 := Begin(context.Background()) // txc joins lazily via s2's schema (ADR-0015 §2.2)
+	tx2 := Begin(context.Background()) // txc joins lazily via s2's schema
 	d2 := s2.DAO(WithQueryContext(explicit)).Use(tx2)
 	_ = stageUpdate(d2)
 	if txc.tc == nil {

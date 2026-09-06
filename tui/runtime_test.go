@@ -1,7 +1,7 @@
 package tui
 
-// Shared test harness for the runtime + component tree suites
-// (ADR-0004 §5, ADR-0005 §5): probe components, an App runner over
+// Shared test harness for the runtime + component tree suites: probe
+// components, an App runner over
 // TestBackend (no PTY), a polling waiter, a capturing logger, and a
 // goroutine-id helper for loop-goroutine assertions.
 
@@ -21,7 +21,7 @@ import (
 
 // goid parses the current goroutine id from runtime.Stack — TEST-ONLY
 // tooling for asserting the loop-goroutine invariant (the runtime itself
-// never does this; ADR-0005 §2.4 rev 1 dropped gid parsing from the API).
+// never does this — gid parsing was dropped from the API).
 func goid() int64 {
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)
@@ -288,7 +288,7 @@ func (h *harness) sync() {
 }
 
 // onLoop runs fn on the loop goroutine and waits for it — the sanctioned
-// way for tests to read loop-owned state (ADR-0005 §2.3).
+// way for tests to read loop-owned state.
 func (h *harness) onLoop(fn func()) {
 	h.t.Helper()
 	done := make(chan struct{})

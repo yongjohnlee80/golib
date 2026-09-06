@@ -1,11 +1,11 @@
 package tui
 
-// Boundaries found by lector's r2 implementation review, verified here before
+// Boundaries found by an implementation review, verified here before
 // being fixed (challenge-review-verdicts).
 
 import "testing"
 
-// MF1 — a press must be able to ENTER a trap. focusRing(scope) deliberately
+// A press must be able to ENTER a trap. focusRing(scope) deliberately
 // excludes nested trapping scopes, so using it as the containment check refuses
 // a click into a modal while the active scope is root ("unrestricted").
 func TestPointerCanEnterNestedTrap(t *testing.T) {
@@ -28,8 +28,9 @@ func TestPointerCanEnterNestedTrap(t *testing.T) {
 	waitFor(t, "click entered the trap", func() bool { return focusedID(h) == inner.nodeID() })
 }
 
-// MF2 — a gained-focus handler may REDIRECT focus while leaving the target
-// mounted. The target then receives the press unfocused, which criterion 1/6
+// A gained-focus handler may REDIRECT focus while leaving the target
+// mounted. The target then receives the press unfocused, which the
+// press-focuses-the-target rule
 // forbids. Checking target.mounted alone does not catch it.
 func TestPointerPressSkippedWhenFocusRedirected(t *testing.T) {
 	t.Parallel()

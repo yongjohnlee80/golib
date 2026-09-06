@@ -69,7 +69,7 @@ func TestLifecycleTeardownOrder(t *testing.T) {
 	}
 	out := s.w.String()
 	order := []string{
-		"\x1b[<u", // 1. kitty pop (§5.4: on every Stop path that pushed)
+		"\x1b[<u", // 1. kitty pop — on every Stop path that pushed
 		"\x1b[?1004l",
 		"\x1b[?2048l",
 		"\x1b[?1006l",
