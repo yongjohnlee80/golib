@@ -1,6 +1,11 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 18)** (2026-09-06, jarvis). Rev 17 made every
+- **Status:** **Proposed (rev 19)** (2026-09-06, jarvis). Rev 19 lands the run/set
+  forms: `RunForm` (maximal run, index continuous across the opener) and `SetForm`
+  (literal trie, stable first-terminal opener, longest-descendant `End`), with the
+  shared-prefix table pinned in §6 and driven at every split by `parsetest`.
+  `Source` was signed off at rev 18; `Scan` is the last piece.
+- **Rev 18 (superseded header, kept for the trail):** Rev 17 made every
   `Location` coordinate `int64`, gave `reclaim` a line-safe effective watermark
   shared with the cache (memory term in §3.4), and corrected the `SetForm`/fallback
   direction (§6); lector r17 approved all of that and asked for one error-domain
@@ -448,8 +453,7 @@ package out — `testing/fstest`, `testing/iotest`, `net/http/httptest`.
 both boundaries, and its own suite proves it fails on four decoys.
 
 **Every kind is a form, including the runs between the delimited ones**
-*(accepted in direction, Johno on resume 2026-09-06; lands with `Scan`, not
-written yet)*. The `Kind` enum has `Word`, `Number`, `Space`, `Operator`,
+*(Johno on resume 2026-09-06; **landed rev 19** in `runforms.go`)*. The `Kind` enum has `Word`, `Number`, `Space`, `Operator`,
 `Punct` and `Terminator` besides the delimited `Comment`/`String`/`Ident`, and
 criterion 2 requires **every** byte to fall in some token. Rather than a second
 extension mechanism beside forms — a default classifier the lexer would consult
@@ -482,10 +486,28 @@ may still extend it — so the `Starts` answer never has to be withdrawn *(lecto
 r16–17, correcting an earlier claim that a shared prefix could only be resolved by
 a catch-all)*.
 
+The shared-prefix table, which `runforms_test.go` pins row by row and
+`parsetest` drives at every split — `SetForm(Operator, "-", "--")`, opener `-`:
+
+| complete source | `Starts` | `End` input / boundary | `End` | token |
+|---|---:|---|---:|---|
+| `-`, more may arrive | `Matched(1)` | `""`, `MoreInput` | `ErrNeedMore` | *defer* |
+| `-`, end of input | `Matched(1)` | `""`, `EndOfInput` | `0, nil` | `-` |
+| `--` | `Matched(1)` | `"-"`, either | `1, nil` | `--` |
+| `-x` | `Matched(1)` | `"x"`, either | `0, nil` | `-`, then `x` |
+
+One stable opener in every row: the answer is fixed at the first terminal and
+never withdrawn. Choosing the LONGEST terminal instead breaks exactly this — the
+control that makes `Starts` prefer it fails conformance with *"`Starts("--")` =
+(2, Matched) but `Starts("-")` = (1, Matched) — the answer changed with more
+input"*, which is the defect the shortest-terminal rule exists to prevent.
+
 Total coverage is the leaf's to arrange — `SetForm` for its operators and
 punctuation, and where a final fallback is still needed an **exact-one-byte**
-form. An always-true `RunForm` is NOT that fallback: with no terminating byte its
-maximal-run contract swallows the whole remainder as one token.
+form (`RunForm` with a member true only at index 0). An always-true `RunForm` is
+NOT that fallback: with no terminating byte its maximal-run contract swallows the
+whole remainder as one token, which `runforms_test.go` pins against a mixed
+remainder so the mistake fails visibly rather than quietly eating a stream.
 
 ### 6.1 The incremental contract
 
