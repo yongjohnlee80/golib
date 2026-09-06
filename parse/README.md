@@ -1,8 +1,10 @@
 # parse — a streaming lexer core that names no dialect
 
-**Status: partial.** The form contract and the generic forms are here. `Token`,
-`Source` and `Scan` are not: their shape is under review (see the proposed
-amendments in `docs/parse/adr-0001-streaming-lexer-foundation.md`).
+**Status: partial.** The form contract, the generic forms, `Token` and `Source`
+(offset → line/column) are here. `Scan` — the one pass that drives the forms
+over a stream and emits the tokens — is not yet; nor are the run/set forms that
+give it the non-delimited kinds. See
+`docs/parse/adr-0001-streaming-lexer-foundation.md`.
 
 This package answers *what a run of bytes IS*, never what it means. `SELECT` is
 a `Word`; that it is a verb in one dialect, a column name in another and
