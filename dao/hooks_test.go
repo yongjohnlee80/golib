@@ -70,7 +70,7 @@ func (h recHook) AfterExec(_ context.Context, _ *QueryInfo, out Outcome) error {
 	return out.Err
 }
 
-// --- criterion 1: tenant hook scopes every op ---------------------------------
+// --- tenant hook scopes every op --------------------------------------------
 
 func TestHooks_TenantScopesEveryOp(t *testing.T) {
 	t.Parallel()
@@ -124,7 +124,7 @@ func TestHooks_TenantScopesEveryOp(t *testing.T) {
 	}, lastE, `"org_id"`)
 }
 
-// --- criterion 2: Where on insert/upsert fails loudly ---------------------------
+// --- Where on insert/upsert fails loudly ------------------------------------
 
 func TestHooks_WhereOnInsertFailsLoudly(t *testing.T) {
 	t.Parallel()
@@ -144,7 +144,7 @@ func TestHooks_WhereOnInsertFailsLoudly(t *testing.T) {
 	}
 }
 
-// --- criterion 3: SkipHooks + duplicate names ------------------------------------
+// --- SkipHooks + duplicate names --------------------------------------------
 
 func TestHooks_SoftDeleteAndSkip(t *testing.T) {
 	t.Parallel()
@@ -179,7 +179,7 @@ func TestHooks_DuplicateNamesPanicAtNew(t *testing.T) {
 	_ = buildSchema(newConn(), hookOption(softDeleteHook{}, softDeleteHook{}))
 }
 
-// --- criterion 4: BeforeExec rewrite honored; error aborts ----------------------
+// --- BeforeExec rewrite honored; error aborts -------------------------------
 
 type rewriteHook struct{ NopHook }
 
@@ -238,7 +238,7 @@ func TestHooks_BeforeExecErrorAborts(t *testing.T) {
 	}
 }
 
-// --- criterion 5: AfterExec outcome, replacement, onion order --------------------
+// --- AfterExec outcome, replacement, onion order ----------------------------
 
 type enrichHook struct{ NopHook }
 
@@ -306,7 +306,7 @@ func TestHooks_OnionOrdering(t *testing.T) {
 	}
 }
 
-// --- criterion 6: WithQueryContext propagation + stickiness ----------------------
+// --- WithQueryContext propagation + stickiness ------------------------------
 
 type ctxKey struct{}
 
@@ -384,7 +384,7 @@ func TestHooks_ExplicitContextStickyAcrossUse(t *testing.T) {
 	_ = tx2.Rollback()
 }
 
-// --- criterion 7: debug logger as final hook -------------------------------------
+// --- debug logger as final hook ---------------------------------------------
 
 // sqlLogger records debug lines.
 type sqlLogger struct {
@@ -434,7 +434,7 @@ func TestHooks_DebugLoggerLogsFinalSQL(t *testing.T) {
 	}
 }
 
-// --- criterion 8: zero-cost fast path ---------------------------------------------
+// --- zero-cost fast path ----------------------------------------------------
 
 func BenchmarkSelect_NoHooks(b *testing.B) {
 	conn := newConn()
@@ -446,7 +446,7 @@ func BenchmarkSelect_NoHooks(b *testing.B) {
 	}
 }
 
-// --- criterion 9: batch events ------------------------------------------------------
+// --- batch events -----------------------------------------------------------
 
 type batchSpy struct {
 	NopHook

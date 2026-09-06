@@ -27,12 +27,7 @@
 # whose pointer "hits" are the shapes the detectors match, quoted in prose to
 # document what each one catches. The reason, the premise it rests on and a
 # liveness check all live with the guard -- see selfDocumenting there.
-1 dao/batch_ctx_test.go
-5 dao/dialects_test.go
-1 dao/expr_negative_test.go
-12 dao/expr_test.go
-10 dao/hooks_test.go
-4 dao/on_nil_test.go
+1 dao/hooks_test.go
 8 dao/postgres/adr0017_integration_test.go
 3 dao/postgres/connecthook_test.go
 4 dao/postgres/expr_integration_test.go
@@ -49,13 +44,7 @@
 1 dao/postgres/simplequery_test.go
 1 dao/postgres/twophase_integration_test.go
 3 dao/postgres/txcapabilities_test.go
-4 dao/quote_table_test.go
-1 dao/rawrows_test.go
-8 dao/rules_test.go
 1 dao/sqlite/sqlite_test.go
-9 dao/transaction_test.go
-4 dao/txcapabilities_test.go
-6 dao/txoptions_test.go
 9 tui/app_test.go
 15 tui/buffer_test.go
 4 tui/bus_test.go

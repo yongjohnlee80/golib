@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// ADR-0017 §2.1 / §2.2a, criterion 2 — the driver-neutral half of the option
+// The driver-neutral half of the option
 // contract: the value domain, the cross-field policy, and the error identities
 // that let a caller tell "you typed something wrong" apart from "this driver
 // cannot do that".
@@ -63,9 +63,9 @@ func TestTxOptions_StringRendersTheSQLTail(t *testing.T) {
 	}
 }
 
-// The full isolation domain is enumerable and stable: rev 3 added READ
-// UNCOMMITTED because pgx and mysql both accept it, and a matrix that omitted
-// it was dishonest.
+// The full isolation domain is enumerable and stable. READ UNCOMMITTED is in
+// it because pgx and mysql both accept it, and a matrix that omitted it was
+// dishonest.
 func TestTxOptions_IsolationDomain(t *testing.T) {
 	t.Parallel()
 
@@ -110,7 +110,7 @@ func TestTxOptions_InvalidEnumValue(t *testing.T) {
 				t.Errorf("Option = %q, want %q", invalid.Option, tt.option)
 			}
 			// Malformed input is NOT a capability miss: a caller must not be
-			// able to "handle" a typo as a driver limitation (ADR-0017 §2.2a).
+			// able to "handle" a typo as a driver limitation.
 			if errors.Is(err, ErrUnsupported) {
 				t.Error("ErrTxOptionInvalid must NOT match dao.ErrUnsupported")
 			}
@@ -162,8 +162,8 @@ func TestTxOptions_DeferrableRequiresSerializableReadOnly(t *testing.T) {
 }
 
 // The capability-miss error is the mirror image: it DOES match ErrUnsupported
-// (the ADR-0008 contract every capability-gated operation in this package
-// honors), and errors.As reaches the driver and option names.
+// (the contract every capability-gated operation in this package honors), and
+// errors.As reaches the driver and option names.
 func TestErrTxOptionUnsupported_Identity(t *testing.T) {
 	t.Parallel()
 
@@ -171,8 +171,8 @@ func TestErrTxOptionUnsupported_Identity(t *testing.T) {
 	if !errors.Is(err, ErrUnsupported) {
 		t.Error("ErrTxOptionUnsupported must match dao.ErrUnsupported")
 	}
-	// It is emphatically not the std library's sentinel — rev 3 pinned the
-	// existing dao one, and matching both would blur the ADR-0008 contract.
+	// It is emphatically not the std library's sentinel: this pins the existing
+	// dao one, and matching both would blur the capability contract.
 	if errors.Is(err, errors.ErrUnsupported) {
 		t.Error("ErrTxOptionUnsupported must not match errors.ErrUnsupported (std)")
 	}

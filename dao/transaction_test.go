@@ -469,9 +469,9 @@ func TestTransaction_TwoPhaseResourceCommitsAfterDBs(t *testing.T) {
 	}
 }
 
-// --- ADR-0015: connection ownership, admission, option semantics -------------
+// --- connection ownership, admission, option semantics ----------------------
 
-// TestTransaction_UndeclaredSecondConnRejected covers ADR-0015 criterion 2: with
+// TestTransaction_UndeclaredSecondConnRejected: with
 // no declared span the first database locks the transaction, so a second one
 // fails typed before any BEGIN on it, and the first rolls back.
 func TestTransaction_UndeclaredSecondConnRejected(t *testing.T) {
@@ -503,7 +503,8 @@ func TestTransaction_UndeclaredSecondConnRejected(t *testing.T) {
 	}
 }
 
-// TestTransaction_SpanningAdmitsOnlyDeclared covers ADR-0015 criterion 3.
+// TestTransaction_SpanningAdmitsOnlyDeclared: only a DECLARED connection is
+// admitted.
 func TestTransaction_SpanningAdmitsOnlyDeclared(t *testing.T) {
 	t.Parallel()
 
@@ -535,7 +536,7 @@ func TestTransaction_SpanningAdmitsOnlyDeclared(t *testing.T) {
 	}
 }
 
-// TestTransaction_TwoPhasePreflightFailsBeforeFn covers ADR-0015 criterion 4:
+// TestTransaction_TwoPhasePreflightFailsBeforeFn:
 // a declared span whose dialect cannot prepare fails from RunTx without
 // invoking fn and without any driver BEGIN.
 func TestTransaction_TwoPhasePreflightFailsBeforeFn(t *testing.T) {
@@ -568,8 +569,8 @@ func TestTransaction_TwoPhasePreflightFailsBeforeFn(t *testing.T) {
 	}
 }
 
-// TestTransaction_TwoPhaseValidatesActualParticipant covers ADR-0015
-// criterion 5: capability is decided by the participant that joined, never by a
+// TestTransaction_TwoPhaseValidatesActualParticipant: capability is decided by
+// the participant that joined, never by a
 // same-named declaration. The pre-flight passes (the declared connection is
 // capable) and Commit still refuses, because the schema supplied an incapable
 // connection under the same name.
@@ -600,7 +601,7 @@ func TestTransaction_TwoPhaseValidatesActualParticipant(t *testing.T) {
 }
 
 // bareDBContext is a database participant with no two-phase capability at all —
-// the defensive half of ADR-0015 criterion 5 (a dbTxContext that fails the
+// the defensive half of that rule (a dbTxContext that fails the
 // twoPhaseContext assertion must fail exactly like an unsupported one).
 type bareDBContext struct {
 	n          string
@@ -632,7 +633,7 @@ func TestTransaction_TwoPhaseMissingCapabilityFailsClosed(t *testing.T) {
 	}
 }
 
-// TestSpanning_ConstructionErrors covers ADR-0015 criterion 9: a nil or empty
+// TestSpanning_ConstructionErrors: a nil or empty
 // span fails the transaction before any work, on both paths, without panicking.
 func TestSpanning_ConstructionErrors(t *testing.T) {
 	t.Parallel()
@@ -687,7 +688,7 @@ func TestSpanning_ConstructionErrors(t *testing.T) {
 	}
 }
 
-// TestSpanning_MergesAndDedupes covers the ADR-0015 §2.3 normalization rules:
+// TestSpanning_MergesAndDedupes covers the normalization rules:
 // repeated options merge, duplicate names keep their first connection and
 // position, and declaration order drives pre-flight reporting.
 func TestSpanning_MergesAndDedupes(t *testing.T) {

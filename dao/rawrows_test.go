@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// ADR-0017 §2.3, criterion 5 — the raw-result capability at the core level:
+// The raw-result capability at the core level:
 // the probe, and the borrowed-buffer contract.
 
 // --- fakes -------------------------------------------------------------------

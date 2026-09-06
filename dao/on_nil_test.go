@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// The nil-transaction contract (ADR-0019).
+// The nil-transaction contract.
 //
 // A nil *Transaction passed to Schema.On means "no transaction is held" and
 // routes to the pool, exactly as Schema.DAO does. It is load-bearing: every
@@ -24,7 +24,7 @@ import (
 //	DAO.Use(nil)    -> pool, but RETAINS a transaction context already
 //	                   inherited, deadline and cancellation included
 //
-// Use's asymmetry falls out of ADR-0009 §2.3 stickiness: its guard skips the
+// Use's asymmetry falls out of context STICKINESS: its guard skips the
 // ctxv ASSIGNMENT on nil, it does not CLEAR an assigned one. Locked by
 // TestUseNil_* below so it cannot be "tidied" in either direction unnoticed.
 //
@@ -160,7 +160,7 @@ func TestOnNil_HonorsWithQueryContext(t *testing.T) {
 	}
 }
 
-// MF1 (gold-man r0): Use(nil) unbinds the transaction but RETAINS its context,
+// Use(nil) unbinds the transaction but RETAINS its context,
 // so a pool statement issued afterwards carries the transaction's deadline and
 // cancellation. Verified by execution before being documented, not inferred
 // from the guard. This cell exists so the asymmetry cannot drift in either
@@ -232,7 +232,7 @@ func TestOnNilAndDAO_CarryNoTransactionDeadline(t *testing.T) {
 	}
 }
 
-// SF1 (gold-man r0): the field-by-field comparison above is the fast lock but
+// The field-by-field comparison above is the fast lock, but it
 // would not survive a struct refactor, and compares hooks by LENGTH. This is
 // the durable one — it asserts BEHAVIOURAL equivalence: the same executor is
 // reached and the same hooks fire, in the same order, through both doors.

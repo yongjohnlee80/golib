@@ -21,7 +21,7 @@ func (d mysqlLike) QuoteTable(ident string) string {
 	return strings.Join(parts, ".")
 }
 
-// --- criterion 1: rendering + quoting ---------------------------------------
+// --- rendering + quoting ----------------------------------------------------
 
 func TestExpr_TAndCRenderPerDialect(t *testing.T) {
 	t.Parallel()
@@ -34,12 +34,12 @@ func TestExpr_TAndCRenderPerDialect(t *testing.T) {
 		wantQal string // T over a schema-qualified table constant
 	}{
 		// GenericDialect does not implement TableQuoter: the whole table string
-		// quotes as ONE identifier (the ADR-0013 fallback).
+		// quotes as ONE identifier, which is the fallback.
 		{"generic", GenericDialect{}, `"artist"."name"`, `"name"`, `"app.users"."name"`},
 		{"tableQuoter", tqDialect{}, `"artist"."name"`, `"name"`, `"app"."users"."name"`},
 		{"mysqlLike", mysqlLike{}, "`artist`.`name`", "`name`", "`app`.`users`.`name`"},
 		// A lagging embedder with its own QuoteIdent and no TableQuoter must be
-		// rendered with ITS conventions (the dao-m1 must-fix #1 shape).
+		// rendered with ITS conventions.
 		{"bqLike", bqLike{}, "`artist`.`name`", "`name`", "`app.users`.`name`"},
 	}
 	for _, c := range cases {
@@ -67,7 +67,7 @@ func TestExpr_TAndCRenderPerDialect(t *testing.T) {
 	}
 }
 
-// --- criteria 2 + 3b: read AND write equivalence, no map mutation -----------
+// --- read AND write equivalence, no map mutation ----------------------------
 
 // exprFields mirrors artistFields exactly, declared with Exprs.
 func exprFields() map[artistField]Field[*artist] {
@@ -193,7 +193,7 @@ func TestExpr_DeclarationMapNeverMutated(t *testing.T) {
 	_ = schemaWith(c3, shared)
 }
 
-// --- criterion 3: both-set is a declaration error ---------------------------
+// --- both-set is a declaration error ----------------------------------------
 
 func TestExpr_BothColumnAndExprPanics(t *testing.T) {
 	t.Parallel()
@@ -212,7 +212,7 @@ func TestExpr_BothColumnAndExprPanics(t *testing.T) {
 	_ = schemaWith(&fakeConn{d: returningDialect{}, rows: &fakeRows{}}, f)
 }
 
-// --- criteria 4 + 5: literals, the closed set, and refusals ----------------
+// --- literals, the closed set, and refusals ---------------------------------
 
 func TestExpr_CoalesceAndLiterals(t *testing.T) {
 	t.Parallel()
@@ -328,7 +328,7 @@ func TestExpr_ZeroExprPanicsAtDeclaration(t *testing.T) {
 	}
 }
 
-// --- criterion 6: join clause rendering ------------------------------------
+// --- join clause rendering --------------------------------------------------
 
 func TestExpr_JoinHelpers(t *testing.T) {
 	t.Parallel()
@@ -352,7 +352,7 @@ func TestExpr_JoinHelpers(t *testing.T) {
 	}
 }
 
-// --- criterion 7: OptionalJoinExpr + same-key precedence -------------------
+// --- OptionalJoinExpr + same-key precedence ---------------------------------
 
 func TestExpr_OptionalJoinExprAndPrecedence(t *testing.T) {
 	t.Parallel()
@@ -419,7 +419,7 @@ func TestExpr_OptionalJoinExprAndPrecedence(t *testing.T) {
 	}
 }
 
-// --- criterion 8: write-column safety -------------------------------------
+// --- write-column safety ----------------------------------------------------
 
 func TestExpr_WriteColumnSafety(t *testing.T) {
 	t.Parallel()
@@ -457,7 +457,7 @@ func TestExpr_WriteColumnSafety(t *testing.T) {
 	t.Run("T column is fine", mk(Field[*artist]{Expr: T("artist", aName), Scan: scan}))
 }
 
-// --- criterion 10: no query-time cost -------------------------------------
+// --- no query-time cost -----------------------------------------------------
 
 func BenchmarkSelect_ExprDeclared(b *testing.B) {
 	conn := &fakeConn{d: returningDialect{}, rows: &fakeRows{}}
@@ -477,7 +477,7 @@ func BenchmarkSelect_StringDeclared(b *testing.B) {
 	}
 }
 
-// TestExpr_ResolutionConsumesTheExpr pins the §2.2 decision that the resolved
+// TestExpr_ResolutionConsumesTheExpr pins the decision that the resolved
 // clone drops the renderer closure. It is not bookkeeping: retaining closures
 // left the Expr-declared schema measurably slower per query (~4%, identical
 // allocations) purely through GC pressure from the extra live objects. With the
@@ -504,7 +504,7 @@ func TestExpr_ResolutionConsumesTheExpr(t *testing.T) {
 }
 
 // TestJoins_FilterIsNotATrigger pins the join-trigger matrix that Field.Join,
-// README "On-demand joins" and USAGE §3 all now state explicitly: a predicate is
+// README "On-demand joins" and USAGE all now state explicitly: a predicate is
 // NOT a trigger. It exists because the opposite claim sat in Field.Join's doc
 // comment until a live Postgres run rejected the SQL it implied.
 func TestJoins_FilterIsNotATrigger(t *testing.T) {

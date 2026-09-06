@@ -19,8 +19,7 @@ func (c *ctxExecConn) ExecContext(ctx context.Context, q string, args ...any) (R
 }
 
 // Batch flushes must honor WithQueryContext like every other statement
-// (ADR-0009 §2.3); before the dao-m1 fix the writer executed on
-// context.Background regardless.
+// — before the fix, the writer executed on context.Background regardless.
 func TestBatch_FlushHonorsQueryContext(t *testing.T) {
 	t.Parallel()
 	conn := &ctxExecConn{fakeConn: fakeConn{d: returningDialect{}}}
