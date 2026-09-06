@@ -1,6 +1,6 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 8)** (2026-09-06, jarvis).
+- **Status:** **Proposed (rev 9)** (2026-09-06, jarvis).
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
@@ -139,8 +139,33 @@ freeing proceeds independently:
 
 The pass is a **cursor**, not a scan: the watermark only rises, so each segment
 is examined once over the life of the stream — `O(log n + segments newly
-crossed)` per `Release`, `O(segments held)` per `Close`, and `O(total segments)`
-over a stream, in any close order.
+crossed)` per `Release` and `O(segments held)` per `Close`, both **amortised**,
+`O(total segments)` over a stream, in any close order. Amortised rather than
+worst case because an individual call may also pay for a compaction pass; that
+pass runs only when freed entries are the majority and removes all of them, so
+its cost is `O(1)` per entry spread over the calls that created them, and no
+single call is bounded by the total.
+
+`off` may be **beyond the current head**, meaning *skip forward*: the bytes are
+dropped as they arrive, without a second call once they have been read. A
+watermark is a statement about the stream, not about how much of it happens to
+have been read when it is set. It only ever rises, so a later, smaller `off`
+changes nothing.
+
+Two ordering rules fall out of separating the two concerns, and both were
+defects first (lector r8):
+
+- **A freed entry is not a write target.** Its `n` survives — that is what
+  bounds it for lookups — so a fullness test of `n == len(buf)` compares a live
+  count against a nil buffer, reads *not full*, and slices `buf[n:]` on nil.
+  Emptiness of the buffer, not arithmetic over it, is what says an entry can
+  still be written to.
+- **The watermark is checked before the source is touched.** Reading forward to
+  serve an already-released span is work that cannot help, and it lets a source
+  failure arrive first — telling the caller their *source* broke when their
+  *request* was invalid, which points the diagnosis at the wrong component
+  entirely. The check is repeated after the read, which is the correctness half:
+  a `Release` may land while the source is being read.
 
 ### 3.4 Memory, stated honestly
 
@@ -371,7 +396,7 @@ surfaces as the cache's own `io.ErrNoProgress` rather than a new failure mode.
 The walk at one offset is bounded by `MaxDelimiter` bytes from `p`; exceeding it
 reports a bounded error naming the construct and the offset it started at.
 
-## 7. Deferred, deliberately## 7. Deferred, deliberately
+## 7. Deferred, deliberately
 
 The **AST and grammar tree**; **intention and threat classification**; a
 `pg_query_go` **adapter**; **`dao` read-only enforcement**. A
@@ -460,7 +485,20 @@ behaving differently depending on how input was supplied.
     watermark; a segment another view still holds); another asserts an oldest
     view pins its own segment and neither the bytes nor the directory entries
     behind it.
-24. Span access is **linear in the segments a span covers**, demonstrated by a
+24. **A freed entry is never written to** — the sequence that produced a nil
+    slice: a full, unheld tail segment freed by the watermark while older held
+    entries keep compaction from removing it, then a fill. Asserted on the
+    bytes as well as the absence of a panic, since reusing a dead entry
+    corrupts offsets too.
+25. **A released request performs no I/O and reports no source error** — a
+    source that fails on its second read, a span below the watermark: the
+    answer is `ErrReleased`, not the source's error, and the reader is not
+    called again. Both halves matter; the second is what points a diagnosis at
+    the right component.
+26. **A watermark set beyond head applies to bytes that arrive later** —
+    released, then read: retention stays flat and the span is refused, with no
+    second `Release`.
+27. Span access is **linear in the segments a span covers**, demonstrated by a
     benchmark whose time roughly doubles when the span doubles. *(Measured
     after the O(k²) fix: 172/342/630 µs at 64/128/256 KiB, against 0.4/1.5/6.0
     ms before.)*

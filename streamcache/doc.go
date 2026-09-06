@@ -41,7 +41,9 @@
 // because it cannot know what a caller still needs.
 //
 // [Cache.Release] sets a WATERMARK, and the watermark alone decides what is
-// still acquirable — not which buffers happen to have been freed. Otherwise the
+// still acquirable. The offset may be beyond what has been read, meaning "skip
+// forward": those bytes are dropped as they arrive. It is a statement about the
+// stream, not about how much of it happens to have been read when it is made — not which buffers happen to have been freed. Otherwise the
 // answer would depend on whether an unrelated view is holding an unrelated
 // segment in front of the span, which is not something a caller can reason
 // about. Freeing follows on its own schedule: unheld segments below the

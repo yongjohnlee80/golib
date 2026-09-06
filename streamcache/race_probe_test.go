@@ -364,3 +364,146 @@ func TestRelease_OldestViewDoesNotPinTheSuffix(t *testing.T) {
 			dirBefore, dirAfter)
 	}
 }
+
+// F10 — A FREED SEGMENT MUST NOT BECOME THE WRITE TARGET.
+//
+// Killing a segment leaves its entry behind with buf == nil and n unchanged: n
+// is what bounds the entry for lookups, so it cannot be zeroed. The writer's
+// "is the last segment full?" test is n == len(buf), and against a nil buffer
+// that reads 4 == 0 — not full — so it reuses the entry and slices buf[4:] on
+// nil.
+//
+// It needs the last segment to be FULL (an unfull one is protected as the
+// active write target) and compaction not to have removed the entry, which is
+// why the older held segments are there: they keep freed entries from being the
+// strict majority.
+func TestFill_DoesNotWriteIntoAFreedSegment(t *testing.T) {
+	t.Parallel()
+	c := New(strings.NewReader("0123456789ab"), WithSegmentSize(4))
+
+	// Three older held entries, so compaction cannot rescue this by removing
+	// the freed one — the defect must be reachable on its own terms.
+	var holds []*View
+	for _, off := range []int64{0, 1, 2} {
+		v, err := c.Acquire(off, off+1)
+		if err != nil {
+			t.Fatalf("Acquire(%d,%d): %v", off, off+1, err)
+		}
+		holds = append(holds, v)
+	}
+	defer func() {
+		for _, v := range holds {
+			v.Close()
+		}
+	}()
+
+	if _, err := c.Ensure(4, 4); err != nil { // segment 1 = [4,8), full, unheld
+		t.Fatalf("Ensure(4,4): %v", err)
+	}
+	c.Release(c.Head()) // 8: segment 1 is wholly below it and nothing holds it
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Ensure(8,4) panicked: %v\n%s", r,
+				"A segment whose buffer has been freed is not a write target. Its entry "+
+					"survives for lookups, so the writer's fullness test sees n against a "+
+					"nil buffer and reuses it.")
+		}
+	}()
+	if _, err := c.Ensure(8, 4); err != nil {
+		t.Fatalf("Ensure(8,4): %v", err)
+	}
+	// And the bytes must be right: reusing a dead entry would also corrupt
+	// offsets, which a panic-only assertion would not notice.
+	v, err := c.Acquire(8, 12)
+	if err != nil {
+		t.Fatalf("Acquire(8,12): %v", err)
+	}
+	defer v.Close()
+	if got, _ := v.String(); got != "89ab" {
+		t.Fatalf("Acquire(8,12) = %q, want %q", got, "89ab")
+	}
+}
+
+// errSentinel is a source failure distinguishable from anything the cache
+// raises on its own.
+var errSentinel = errors.New("streamcache_test: the source failed on the second read")
+
+// countingFailReader hands out one short chunk, then fails, and counts calls.
+type countingFailReader struct {
+	first []byte
+	calls int
+}
+
+func (r *countingFailReader) Read(p []byte) (int, error) {
+	r.calls++
+	if r.first != nil {
+		n := copy(p, r.first)
+		r.first = nil
+		return n, nil
+	}
+	return 0, errSentinel
+}
+
+// F11 — A RELEASED REQUEST MUST NOT TOUCH THE SOURCE.
+//
+// Acquire checked the watermark AFTER Ensure, so a request for released bytes
+// read forward first. Two consequences, and the second is the one that matters:
+// the caller is told their SOURCE broke when in fact their request was invalid,
+// and the diagnosis points at the wrong component entirely.
+func TestAcquire_ReleasedRequestDoesNotReadOrReportTheSource(t *testing.T) {
+	t.Parallel()
+	r := &countingFailReader{first: []byte("0123")}
+	c := New(r, WithSegmentSize(8))
+
+	if n, err := c.Ensure(0, 4); n != 4 || err != nil {
+		t.Fatalf("Ensure(0,4) = %d, %v; want 4, nil", n, err)
+	}
+	c.Release(4)
+	calls := r.calls
+
+	_, err := c.Acquire(0, 8) // below the watermark, and needs bytes we do not have
+	if !errors.Is(err, ErrReleased) {
+		t.Fatalf("Acquire(0,8) after Release(4): err=%v, want ErrReleased.\n%s", err,
+			"The span is released. Reading forward to discover that the source is also "+
+				"broken reports the wrong component.")
+	}
+	if errors.Is(err, errSentinel) {
+		t.Fatalf("Acquire returned the source's error for a released span: %v", err)
+	}
+	if r.calls != calls {
+		t.Fatalf("Acquire on a released span made %d further reader call(s); want 0",
+			r.calls-calls)
+	}
+}
+
+// F12 — A WATERMARK AHEAD OF HEAD APPLIES AS THE BYTES ARRIVE.
+//
+// Release(off) is a statement about the stream, not about the bytes read so
+// far. A caller skipping forward past input it does not want must not have to
+// call Release a second time, once the bytes it already disowned have been
+// read, to make them go.
+func TestRelease_BeyondHeadDropsBytesAsTheyArrive(t *testing.T) {
+	t.Parallel()
+	const segSize, segments = 32, 64
+	src := strings.Repeat("y", segSize*segments)
+	c := New(strings.NewReader(src), WithSegmentSize(segSize))
+
+	if _, err := c.Ensure(0, segSize); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	c.Release(int64(len(src))) // the whole stream, most of which is unread
+
+	if _, err := c.Ensure(0, len(src)); err != nil { // now read all of it
+		t.Fatalf("Ensure(all): %v", err)
+	}
+	if got := c.retainedBytes(); got > 2*segSize {
+		t.Fatalf("%d bytes retained after reading a stream already released; want <= %d\n%s",
+			got, 2*segSize,
+			"A watermark set beyond head must apply to the bytes that arrive after it, "+
+				"or a forward skip keeps everything it skipped.")
+	}
+	if _, err := c.Acquire(0, 1); !errors.Is(err, ErrReleased) {
+		t.Fatalf("Acquire(0,1) = %v, want ErrReleased", err)
+	}
+}
