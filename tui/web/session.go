@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/auth"
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // Session-layer errors.
@@ -456,7 +457,17 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 		// the value.
 		defer func() {
 			if rec := recover(); rec != nil {
-				err := fmt.Errorf("web: the application panicked: %v", rec)
+				// errs.Recovered keeps a panicked ERROR recoverable. The comment
+				// above says this record "carries the value", and %v did not:
+				// it rendered the value into text while the message still read
+				// correctly, so a consumer reading RunErr could see that a panic
+				// happened and never recover what it carried.
+				//
+				// The identity is tui.ErrPanic rather than a new one: this is
+				// the same condition App.Run reports under PanicReturn, and a
+				// consumer asking "did the app panic?" should not have to ask
+				// two different questions depending on which layer caught it.
+				err := errs.Recovered(tui.ErrPanic, rec, "web: the application panicked")
 				s.mu.Lock()
 				s.runErr = err
 				s.mu.Unlock()
