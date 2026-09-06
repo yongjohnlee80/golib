@@ -262,6 +262,18 @@ func TestExpr_AltTermsAllRoute(t *testing.T) {
 	}
 }
 
+// The refusal is now made AT RENDER, not at declaration, and that is a
+// deliberate contract change rather than a slip.
+//
+// Str cannot know which engine it will render for until it is handed a Dialect,
+// and only the dialect knows whether a backslash is an escape. Refusing at
+// declaration meant refusing conservatively for every engine — including
+// PostgreSQL and SQLite, which can represent all of these perfectly well. So the
+// decision moved to the one place that has the information.
+//
+// The safety property is unchanged and still pinned here: a dialect that has
+// NOT stated its quoting rule refuses exactly what it refused before. What
+// changed is that a dialect which HAS stated one is now allowed to answer.
 func TestExpr_StrRefusesUnportableInput(t *testing.T) {
 	t.Parallel()
 
@@ -278,7 +290,7 @@ func TestExpr_StrRefusesUnportableInput(t *testing.T) {
 					t.Errorf("Str(%q) must panic", s)
 				}
 			}()
-			_ = Str(s)
+			_ = Str(s).render(GenericDialect{})
 		})
 	}
 
@@ -289,7 +301,7 @@ func TestExpr_StrRefusesUnportableInput(t *testing.T) {
 				t.Error("Coalesce with an unportable string must panic")
 			}
 		}()
-		_ = Coalesce(T("t", "c"), "it's")
+		_ = Coalesce(T("t", "c"), "it's").render(GenericDialect{})
 	})
 }
 

@@ -189,3 +189,36 @@ func SupportsLastInsertID(d Dialect) bool {
 	_, ok := d.(LastInsertIDReader)
 	return ok
 }
+
+// StringQuoter is an optional [Dialect] capability: a dialect that can render a
+// Go string as a literal for its own engine implements it, and [Str] then
+// quotes through it instead of refusing the characters it cannot escape
+// portably.
+//
+// It is a CAPABILITY and not a [Dialect] method for the same reason TableQuoter
+// is, only with more at stake. A promoted [GenericDialect] default would apply
+// silently to every dialect that did not write its own — and a wrong default
+// here is not a mis-quoted table name, it is an injection. A dialect that
+// cannot state its own rule must keep refusing rather than inherit a guess.
+//
+// QuoteString RETURNS AN ERROR because refusal is a legitimate answer. Some
+// inputs have no representation as a literal in some engines — a NUL byte, or a
+// backslash where the escaping mode is a session setting rather than a property
+// of the dialect — and a quoter that cannot represent its input must say so
+// instead of producing SQL that means something else.
+//
+// The returned string INCLUDES its delimiters, because which delimiters are
+// correct is part of what the dialect knows.
+type StringQuoter interface {
+	QuoteString(s string) (string, error)
+}
+
+// SupportsStringQuoting reports whether d can render a Go string as a literal
+// for its engine, returning the capability if so.
+//
+// A caller that gets false must not fall back to quoting the string itself:
+// the whole point of the capability is that only the dialect knows the rule.
+func SupportsStringQuoting(d Dialect) (StringQuoter, bool) {
+	q, ok := d.(StringQuoter)
+	return q, ok
+}

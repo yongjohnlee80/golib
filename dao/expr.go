@@ -80,24 +80,40 @@ func C[Col ~string](col Col) Expr {
 // declaration has needed in practice (the empty string, simple defaults).
 // Anything richer belongs in [SQL], where the author owns the text.
 func Str(s string) Expr {
-	for i := 0; i < len(s); i++ {
-		switch b := s[i]; {
-		case b == '\'':
-			panic(errs.Fatal{Op: "dao.Str",
-				Rule:   "string contains a single quote, which has no portable escaping",
-				Detail: "use dao.SQL, or bind the value instead of inlining it"})
-		case b == '\\':
-			panic(errs.Fatal{Op: "dao.Str",
-				Rule:   "string contains a backslash, whose meaning depends on the MySQL escaping mode",
-				Detail: "use dao.SQL, or bind the value instead of inlining it"})
-		case b < 0x20 || b == 0x7f:
-			panic(errs.Fatal{Op: "dao.Str",
-				Rule:   "string contains a control character",
-				Detail: "use dao.SQL, or bind the value instead of inlining it"})
+	return Expr{render: func(d Dialect) string {
+		// The dialect quotes when it can say how. Only it knows whether a
+		// backslash is an escape, what a NUL byte does, and which delimiters
+		// are correct — so this asks rather than guesses.
+		if q, ok := SupportsStringQuoting(d); ok {
+			lit, err := q.QuoteString(s)
+			if err != nil {
+				panic(errs.Fatal{Op: "dao.Str",
+					Rule:   "the dialect cannot represent this string as a literal",
+					Detail: err.Error()})
+			}
+			return lit
 		}
-	}
-	lit := "'" + s + "'"
-	return Expr{render: func(Dialect) string { return lit }}
+		// No capability: refuse exactly what has no portable inline escaping,
+		// rather than inherit a guess. This is the pre-capability behaviour and
+		// stays the answer for a dialect that has not stated its rule.
+		for i := 0; i < len(s); i++ {
+			switch b := s[i]; {
+			case b == '\'':
+				panic(errs.Fatal{Op: "dao.Str",
+					Rule:   "string contains a single quote and " + d.Name() + " has not stated its quoting rule",
+					Detail: "use dao.SQL, or give the dialect a QuoteString"})
+			case b == '\\':
+				panic(errs.Fatal{Op: "dao.Str",
+					Rule:   "string contains a backslash and " + d.Name() + " has not stated its quoting rule",
+					Detail: "use dao.SQL, or give the dialect a QuoteString"})
+			case b < 0x20 || b == 0x7f:
+				panic(errs.Fatal{Op: "dao.Str",
+					Rule:   "string contains a control character and " + d.Name() + " has not stated its quoting rule",
+					Detail: "use dao.SQL, or give the dialect a QuoteString"})
+			}
+		}
+		return "'" + s + "'"
+	}}
 }
 
 // Int is an integer literal, rendered in decimal. Floats are deliberately
