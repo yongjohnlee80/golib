@@ -104,3 +104,39 @@ func TestRecovered_TheMistakeItReplacesActuallyLosesTheValue(t *testing.T) {
 			"proves nothing about what Recovered buys")
 	}
 }
+
+// Adoption CHANGES the message, and this records exactly how rather than
+// claiming it does not.
+//
+// Review asked for a byte-identity assertion, the way Wrap carries one, so that
+// adopting the helper is provably not a behaviour change. That rests on an
+// assumption this design does not meet: Wrap replaces a spelling that produced
+// the same text, whereas Recovered takes a FORMAT the old hand-rolled version
+// had nowhere to put. The call site gains context it could not previously
+// carry, and the text moves.
+//
+// That is permitted — a message may be reworded at any time, which is the whole
+// point of comparing identity — but it must not be smuggled in under a claim of
+// equivalence. So the shape is pinned here, and the property that actually
+// matters (identity and payload) is pinned above.
+func TestRecovered_TheMessageShapeIsNewAndIntentional(t *testing.T) {
+	sentinel := errors.New("tui: recovered panic")
+
+	before := fmt.Errorf("%w: %v", sentinel, "controlled")
+	after := errs.Recovered(sentinel, "controlled", "tui: App.Run")
+
+	if before.Error() == after.Error() {
+		t.Fatal("the fixture is stale: this test exists to record that the texts " +
+			"DIFFER, so if they have become identical the comment above is wrong")
+	}
+	if got, want := before.Error(), "tui: recovered panic: controlled"; got != want {
+		t.Errorf("the old shape was %q, want %q", got, want)
+	}
+	if got, want := after.Error(), "tui: App.Run (tui: recovered panic): controlled"; got != want {
+		t.Errorf("the new shape is %q, want %q", got, want)
+	}
+	// What must NOT change: the identity every existing caller asks for.
+	if !errors.Is(after, sentinel) {
+		t.Error("the identity callers already branch on must survive adoption")
+	}
+}
