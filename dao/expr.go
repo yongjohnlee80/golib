@@ -3,6 +3,8 @@ package dao
 import (
 	"strconv"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Expr is a SQL expression that can only be rendered once a dialect is known,
@@ -32,7 +34,7 @@ func (e Expr) isSet() bool { return e.render != nil }
 // worse, at statement time with a nil renderer.
 func (e Expr) mustSet(who string) Expr {
 	if !e.isSet() {
-		panic("dao." + who + ": zero Expr (build it with dao.T, dao.C, dao.Str, dao.Int or dao.SQL)")
+		panic(errs.Fatal{Op: "dao." + who, Rule: "zero Expr (build it with dao.T, dao.C, dao.Str, dao.Int or dao.SQL)"})
 	}
 	return e
 }

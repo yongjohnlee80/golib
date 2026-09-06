@@ -1,6 +1,10 @@
 package style
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/yongjohnlee80/golib/errs"
+)
 
 // propKey identifies one settable property; a bit in Style.props.
 type propKey uint64
@@ -395,7 +399,7 @@ func (s *Style) copyProp(other Style, k propKey) {
 	case propBorderLeftForeground:
 		s.borderFg[3] = other.borderFg[3]
 	default:
-		panic(fmt.Sprintf("style: copyProp: unhandled property bit %#x", uint64(k)))
+		panic(errs.Fatal{Op: "style: copyProp", Rule: fmt.Sprintf("unhandled property bit %#x", uint64(k))})
 	}
 	s.set(k)
 }

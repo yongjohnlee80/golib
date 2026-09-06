@@ -1,6 +1,10 @@
 package style
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/yongjohnlee80/golib/errs"
+)
 
 // Token is a semantic color slot, resolved through the active Theme at
 // render time. Widgets style themselves in semantic terms (TokenPrimary,
@@ -164,7 +168,7 @@ func DefaultTheme() Theme { return NewTheme(ANSI(4)) }
 // single pass.
 func (th Theme) Color(t Token) Color {
 	if t < 0 || t >= numTokens {
-		panic(fmt.Sprintf("style.Theme.Color: token %d outside the token range [0, %d)", t, numTokens))
+		panic(errs.Fatal{Op: "style.Theme.Color", Rule: fmt.Sprintf("token %d outside the token range [0, %d)", t, numTokens)})
 	}
 	return th.colors[t]
 }

@@ -281,7 +281,7 @@ func TestNew_ClearValueRequiresClearable(t *testing.T) {
 		if r == nil {
 			t.Fatal("dao.New did not panic")
 		}
-		if msg, ok := r.(string); !ok || !strings.Contains(msg, "ClearValue without Clearable") ||
+		if msg := panicText(r); !strings.Contains(msg, "ClearValue without Clearable") ||
 			!strings.Contains(msg, "title") {
 			t.Errorf("panic = %v, want message naming field %q", r, "title")
 		}

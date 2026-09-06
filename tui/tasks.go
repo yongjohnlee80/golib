@@ -97,7 +97,7 @@ var canceledCtx = func() context.Context {
 // Safe from any goroutine.
 func (a *App) Go(owner NodeID, task Task, opts ...TaskOption) TaskID {
 	if task == nil {
-		panic("tui: App.Go: nil task")
+		panic(errs.Fatal{Op: "tui: App.Go", Rule: "nil task"})
 	}
 	var tc taskConfig
 	for _, o := range opts {

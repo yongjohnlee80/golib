@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -91,7 +92,7 @@ func NewTabs(opts ...TabsOption) *Tabs {
 // Add appends a tab at runtime; its content mounts lazily on first select.
 func (t *Tabs) Add(label string, content tui.Component) {
 	if content == nil {
-		panic("widget: Tabs.Add: nil content")
+		panic(errs.Fatal{Op: "widget: Tabs.Add", Rule: "nil content"})
 	}
 	t.tabs = append(t.tabs, tabEntry{label: label, comp: content})
 	t.MarkDirty()

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Context is a mounted component's identity and its ONLY sanctioned channel
@@ -111,7 +113,7 @@ func (c *Context) OnUnmount(fn func()) {
 // Layout/Render.
 func (c *Context) Mount(child Component) {
 	if !c.node.mounted {
-		panic(fmt.Sprintf("tui: Context.Mount on unmounted node %d", c.node.id))
+		panic(errs.Fatal{Op: "tui", Rule: fmt.Sprintf("Context.Mount on unmounted node %d", c.node.id)})
 	}
 	c.app.mount(c.node, child)
 }
@@ -121,7 +123,7 @@ func (c *Context) Mount(child Component) {
 func (c *Context) Unmount(child Component) {
 	n := c.app.byComp[child]
 	if n == nil {
-		panic(fmt.Sprintf("tui: Context.Unmount: component %T is not mounted", child))
+		panic(errs.Fatal{Op: "tui: Context.Unmount", Rule: fmt.Sprintf("component %T is not mounted", child)})
 	}
 	c.app.unmountTree(n)
 }
@@ -132,7 +134,7 @@ func (c *Context) Unmount(child Component) {
 // App.moveWithin). Loop goroutine only; illegal inside Layout/Render.
 func (c *Context) Move(child Component, to int) {
 	if !c.node.mounted {
-		panic(fmt.Sprintf("tui: Context.Move on unmounted node %d", c.node.id))
+		panic(errs.Fatal{Op: "tui", Rule: fmt.Sprintf("Context.Move on unmounted node %d", c.node.id)})
 	}
 	c.app.moveWithin(c.node, child, to)
 }
@@ -142,11 +144,11 @@ func (c *Context) Move(child Component, to int) {
 func (c *Context) LayoutChild(child Component, cc Constraints) Size {
 	a := c.app
 	if a.layingOut != c.node {
-		panic("tui: Context.LayoutChild is legal only inside this component's Layout (ADR-0004 §2.2)")
+		panic(errs.Fatal{Op: "tui", Rule: "Context.LayoutChild is legal only inside this component's Layout (ADR-0004 §2.2)"})
 	}
 	cn := a.byComp[child]
 	if cn == nil || cn.parent != c.node {
-		panic(fmt.Sprintf("tui: LayoutChild: %T is not a mounted child of %T", child, c.node.comp))
+		panic(errs.Fatal{Op: "tui: LayoutChild", Rule: fmt.Sprintf("%T is not a mounted child of %T", child, c.node.comp)})
 	}
 	return a.layoutComponent(cn, cc)
 }
@@ -156,11 +158,11 @@ func (c *Context) LayoutChild(child Component, cc Constraints) Size {
 func (c *Context) PlaceChild(child Component, r Rect) {
 	a := c.app
 	if a.layingOut != c.node {
-		panic("tui: Context.PlaceChild is legal only inside this component's Layout (ADR-0004 §2.2)")
+		panic(errs.Fatal{Op: "tui", Rule: "Context.PlaceChild is legal only inside this component's Layout (ADR-0004 §2.2)"})
 	}
 	cn := a.byComp[child]
 	if cn == nil || cn.parent != c.node {
-		panic(fmt.Sprintf("tui: PlaceChild: %T is not a mounted child of %T", child, c.node.comp))
+		panic(errs.Fatal{Op: "tui: PlaceChild", Rule: fmt.Sprintf("%T is not a mounted child of %T", child, c.node.comp)})
 	}
 	cn.rect = r
 	cn.placed = true
@@ -210,7 +212,7 @@ func (c *Context) After(d time.Duration) (cancel func()) {
 // unmount cancels automatically.
 func (c *Context) Every(d time.Duration) (cancel func()) {
 	if d <= 0 {
-		panic("tui: Context.Every: non-positive interval")
+		panic(errs.Fatal{Op: "tui: Context.Every", Rule: "non-positive interval"})
 	}
 	cancel = c.app.addTimer(c.node.id, d, d)
 	c.OnUnmount(cancel)

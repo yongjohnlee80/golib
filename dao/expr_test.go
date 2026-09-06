@@ -203,7 +203,7 @@ func TestExpr_BothColumnAndExprPanics(t *testing.T) {
 		if r == nil {
 			t.Fatal("expected a panic")
 		}
-		if msg, _ := r.(string); !strings.Contains(msg, "sets both Column and Expr") || !strings.Contains(msg, "name") {
+		if msg := panicText(r); !strings.Contains(msg, "sets both Column and Expr") || !strings.Contains(msg, "name") {
 			t.Errorf("panic = %v, want one naming the field and both-set", r)
 		}
 	}()
@@ -428,7 +428,7 @@ func TestExpr_WriteColumnSafety(t *testing.T) {
 			if r == nil {
 				t.Fatal("expected a panic")
 			}
-			msg, _ := r.(string)
+			msg := panicText(r)
 			if !strings.Contains(msg, "not a plain identifier") || !strings.Contains(msg, "name") {
 				t.Errorf("panic = %v", r)
 			}

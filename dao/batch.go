@@ -110,7 +110,7 @@ func (b *batchWriter[R, C]) Add(values map[C]any) BatchWriter[R, C] {
 
 func (b *batchWriter[R, C]) AddRow(r R) BatchWriter[R, C] {
 	if b.extract == nil {
-		panic("dao: AddRow requires a schema-built BatchWriter (ADR-0006 wires the row extractor); use Add(map[C]any) until then")
+		panic(errs.Fatal{Op: "dao", Rule: "AddRow requires a schema-built BatchWriter (ADR-0006 wires the row extractor); use Add(map[C]any) until then"})
 	}
 	return b.Add(b.extract(r))
 }

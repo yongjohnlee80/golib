@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -127,7 +128,7 @@ func (f *Float) Shown() bool { return f.shown }
 // stack.
 func (f *Float) Show() {
 	if f.ctx == nil {
-		panic("widget: Float.Show before mount — attach the Float to an OverlayHost (host.Attach) or a Stack layer first")
+		panic(errs.Fatal{Op: "widget", Rule: "Float.Show before mount — attach the Float to an OverlayHost (host.Attach) or a Stack layer first"})
 	}
 	if f.shown {
 		return

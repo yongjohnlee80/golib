@@ -133,7 +133,7 @@ func TestMountComparabilityPanic(t *testing.T) {
 		if rec == nil {
 			t.Fatal("expected the comparability panic")
 		}
-		msg, _ := rec.(string)
+		msg := panicText(rec)
 		if !strings.Contains(msg, "is not comparable; use a pointer component") {
 			t.Fatalf("panic = %q, want the ADR-0004 §2.4 message", rec)
 		}
@@ -156,7 +156,7 @@ func TestMountSameValueTwicePanics(t *testing.T) {
 	app := NewApp(root, WithBackend(tb))
 	defer func() {
 		rec := recover()
-		msg, _ := rec.(string)
+		msg := panicText(rec)
 		if rec == nil || !strings.Contains(msg, "already mounted") {
 			t.Fatalf("panic = %v, want 'already mounted'", rec)
 		}

@@ -52,7 +52,7 @@ func TestNewAppConstructionPanics(t *testing.T) {
 				if rec == nil {
 					t.Fatalf("expected panic")
 				}
-				if msg, _ := rec.(string); !strings.Contains(msg, tc.want) {
+				if msg := panicText(rec); !strings.Contains(msg, tc.want) {
 					t.Fatalf("panic %q does not mention %q", rec, tc.want)
 				}
 			}()
