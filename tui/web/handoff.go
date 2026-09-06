@@ -4,10 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"errors"
 	"sync"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // HandoffID is the opaque, single-claim correlation between one successful login
@@ -166,12 +166,12 @@ func (s *Stash) Set(v any) {
 // caller owns the value it could not park.
 func (s *Stash) setOwned(v any, release func()) error {
 	if s == nil {
-		return errors.New("web: no login request to stash into")
+		return errs.Wrap(errs.ErrPrecondition, "web: no login request to stash into")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.value != nil || s.taken {
-		return errors.New("web: this login already stashed upstream state — the " +
+		return errs.Wrap(errs.ErrPrecondition, "web: this login already stashed upstream state — the "+
 			"second value cannot be parked and remains the caller's to release")
 	}
 	s.value, s.release = v, release

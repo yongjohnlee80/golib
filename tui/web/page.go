@@ -12,9 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"errors"
-
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/server/ws"
 )
@@ -302,7 +301,7 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 		return nil, err
 	}
 	if mgr == nil {
-		return nil, errors.New("web.NewHandler: a session Manager is required")
+		return nil, errs.Wrap(errs.ErrInvalidArgument, "web.NewHandler: a session Manager is required")
 	}
 	// The allowlist is CLONED. A caller mutating their slice after NewHandler
 	// changed the live allowlist in lector's probe, which makes it configuration

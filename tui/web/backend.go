@@ -76,6 +76,15 @@ const (
 // ErrGridTooLarge means a client asked for a grid this server will not allocate.
 var ErrGridTooLarge = errors.New("web: requested grid exceeds the configured bounds")
 
+// ErrUnmeasuredClient means a client's hello carried no usable size or font
+// metrics, so there is nothing to render into.
+//
+// Three call sites refused this separately and anonymously, in two different
+// wordings: Attach, the connection's first frame, and the session manager. A
+// caller cannot act on a refusal it cannot name, and an operator reading two
+// spellings has to work out that they are one fault.
+var ErrUnmeasuredClient = errors.New("web: client hello has no usable size or font metrics")
+
 // validGrid checks a client-supplied size BEFORE anything is allocated.
 //
 // The multiplication is done on int64 and compared, rather than performed in int
@@ -382,7 +391,7 @@ func (b *Backend) Err() error {
 // and answering it here would mean whoever connects last wins.
 func (b *Backend) Attach(h Hello) error {
 	if !h.valid() {
-		return errors.New("web: client hello has no usable size or font metrics")
+		return ErrUnmeasuredClient
 	}
 	select {
 	case <-b.done:

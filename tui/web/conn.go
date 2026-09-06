@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/server/ws"
 	"github.com/yongjohnlee80/golib/tui"
@@ -128,7 +129,7 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 	h := first.hello()
 	if !h.valid() {
 		_ = c.Close(closePolicy, "unmeasured client")
-		return errors.New("web: hello carried no usable size or font metrics")
+		return ErrUnmeasuredClient
 	}
 
 	// Step 3. Every attach re-runs the completed policy from scratch. Nothing is
@@ -431,9 +432,9 @@ func (l *sessionLoop) translate(m clientMessage) ([]tui.Event, error) {
 		// re-authenticating mid-stream: re-authentication happens by
 		// reconnecting, which is a path that already exists and is already
 		// tested.
-		return nil, errors.New("unexpected second hello")
+		return nil, errs.Wrap(errs.ErrPrecondition, "web: unexpected second hello")
 	}
-	return nil, errors.New("unknown message type")
+	return nil, errs.Wrap(errs.ErrUnsupported, "web: unknown message type")
 }
 
 // writePump sends frames as they become available.
