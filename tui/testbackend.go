@@ -2,11 +2,12 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // TestBackend is the deterministic, PTY-free in-memory Backend, in the shape
@@ -61,7 +62,7 @@ func (b *TestBackend) WriteClipboard(p []byte) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.stopped {
-		return errors.New("tui: TestBackend.WriteClipboard after Stop")
+		return fmt.Errorf("tui: TestBackend.WriteClipboard after Stop (%w)", errs.ErrClosed)
 	}
 	b.clipboard = append(b.clipboard[:0], p...)
 	return nil
@@ -157,7 +158,7 @@ func (b *TestBackend) Start(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.stopped {
-		return errors.New("tui: TestBackend is stopped")
+		return fmt.Errorf("tui: TestBackend is stopped (%w)", errs.ErrClosed)
 	}
 	b.started = true
 	return nil
@@ -216,7 +217,7 @@ func (b *TestBackend) Inject(evs ...Event) error {
 
 func (b *TestBackend) injectLocked(evs ...Event) error {
 	if b.stopped {
-		return errors.New("tui: TestBackend.Inject after Stop")
+		return fmt.Errorf("tui: TestBackend.Inject after Stop (%w)", errs.ErrClosed)
 	}
 	for i, ev := range evs {
 		select {

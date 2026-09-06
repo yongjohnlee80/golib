@@ -4,12 +4,14 @@ package term
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
 	"golang.org/x/sys/windows"
 	xterm "golang.org/x/term"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -101,7 +103,7 @@ func (b *Backend) readFile(p []byte) (int, error) {
 		case waitTimeout:
 			// re-check done and wait again
 		default:
-			return 0, errors.New("term: unexpected console wait result")
+			return 0, fmt.Errorf("term: console wait returned the undocumented result %d (%w)", ev, errs.ErrFatal)
 		}
 	}
 }

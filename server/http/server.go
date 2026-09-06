@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/server"
 )
@@ -325,7 +327,7 @@ func (s *Server) Serve() error {
 	cert, key := s.cfg.tlsCert, s.cfg.tlsKey
 	s.mu.Unlock()
 	if srv == nil || ln == nil {
-		return errors.New("httpserver: Serve called before Listen")
+		return fmt.Errorf("httpserver: Serve called before Listen (%w)", errs.ErrPrecondition)
 	}
 	if s.cfg.tlsConfig != nil {
 		return srv.ServeTLS(ln, "", "") // certs come from TLSConfig

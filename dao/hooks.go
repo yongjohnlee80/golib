@@ -3,7 +3,10 @@ package dao
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Op identifies the statement kind a hook observes (ADR-0009 §2.1).
@@ -237,9 +240,9 @@ func (p *pipeline) beforeExecFrozen(sql string) error {
 			return err
 		}
 		if p.info.SQL != sql || p.info.Args != nil {
-			return errors.New("dao: a hook mutated SQL/Args on an observe-only " +
-				string(p.info.Op) + " event; COPY has no statement to rewrite — " +
-				"use chunked INSERT batches for the rewrite contract")
+			return fmt.Errorf("dao: a hook mutated SQL/Args on an observe-only %s event; "+
+				"COPY has no statement to rewrite — use chunked INSERT batches for "+
+				"the rewrite contract (%w)", p.info.Op, errs.ErrPrecondition)
 		}
 	}
 	p.start = time.Now()

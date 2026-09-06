@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Option configures the pgx pool at Open time.
@@ -182,7 +182,7 @@ type pgxResult struct {
 
 func (r pgxResult) RowsAffected() (int64, error) { return r.tag.RowsAffected(), nil }
 func (r pgxResult) LastInsertId() (int64, error) {
-	return 0, errors.New("postgres: no LastInsertId; use a RETURNING id")
+	return 0, fmt.Errorf("postgres: no LastInsertId; use a RETURNING id (%w)", errs.ErrUnsupported)
 }
 
 // prepareTx runs PREPARE TRANSACTION for gid on this transaction's session and

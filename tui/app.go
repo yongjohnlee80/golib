@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -183,7 +184,7 @@ func (a *App) Run(ctx context.Context) (err error) {
 		ctx = context.Background()
 	}
 	if !a.ran.CompareAndSwap(false, true) {
-		return errors.New("tui: App.Run called more than once")
+		return fmt.Errorf("tui: App.Run called more than once (%w)", errs.ErrPrecondition)
 	}
 	if err := a.backend.Start(ctx); err != nil { // synchronous acquisition
 		return err
