@@ -12,9 +12,9 @@ import (
 )
 
 func TestLifecycleCleanStop(t *testing.T) {
-	// ADR-0002 §5.7: Events() is closed after Stop returns and never
+	// Events() is closed after Stop returns and never
 	// receives a send afterwards (this test runs under -race); Err()
-	// returns nil after a clean Stop. Double-Stop is a no-op (§5.6).
+	// returns nil after a clean Stop. Double-Stop is a no-op.
 	s := newScript(t)
 	s.respond(fullModernReplies)
 	if err := s.start(t.Context()); err != nil {
@@ -56,7 +56,7 @@ closed:
 }
 
 func TestLifecycleTeardownOrder(t *testing.T) {
-	// ADR-0002 §2.10: restore in reverse order of acquisition — kitty pop,
+	// Restore in REVERSE order of acquisition — kitty pop,
 	// mode disables, cursor restore, alt-screen leave — as one final write.
 	s := newScript(t)
 	s.respond(fullModernReplies)
@@ -97,7 +97,7 @@ func TestLifecycleTeardownOrder(t *testing.T) {
 }
 
 func TestLifecycleRestoreOnPanic(t *testing.T) {
-	// ADR-0002 §5.6: a panic inside a render callback (the App.Run defer
+	// A panic inside a render callback (the App.Run defer
 	// discipline) leaves the scripted terminal restored — kitty popped,
 	// modes disabled, cursor shown/reset, alt screen exited — and the panic
 	// still propagates. Double-Stop is a no-op.
@@ -133,7 +133,7 @@ func TestLifecycleRestoreOnPanic(t *testing.T) {
 }
 
 func TestLifecycleReaderFailureSetsErr(t *testing.T) {
-	// ADR-0002 §5.7: a term fixture whose input pipe fails mid-read closes
+	// A term fixture whose input pipe fails mid-read closes
 	// Events() and Err() returns the terminal error.
 	s := newScript(t)
 	s.respond("\x1b[?62c")
@@ -174,7 +174,7 @@ func TestLifecycleStopBeforeStart(t *testing.T) {
 }
 
 func TestEscTimeoutDeliversLoneEsc(t *testing.T) {
-	// ADR-0002 §2.5: on a non-kitty terminal a lone ESC is held for
+	// On a non-kitty terminal a lone ESC is held for
 	// WithEscTimeout and then delivered as the Escape key.
 	s := newScript(t, WithEscTimeout(20*time.Millisecond))
 	s.respond("\x1b[?62c") // no kitty support: the timeout path is active
@@ -216,7 +216,7 @@ func TestEscTimeoutContinuationWins(t *testing.T) {
 }
 
 func TestEscTimeoutDisabledUnderKitty(t *testing.T) {
-	// ADR-0002 §2.5: on kitty terminals the timeout path is disabled
+	// On kitty terminals the timeout path is disabled
 	// entirely — a raw ESC is genuinely a sequence prefix and is held.
 	s := newScript(t, WithEscTimeout(20*time.Millisecond))
 	s.respond(fullModernReplies) // kitty negotiated + pushed
@@ -242,7 +242,7 @@ func TestEscTimeoutDisabledUnderKitty(t *testing.T) {
 }
 
 func TestInBandResizeEmitsOrderedEvents(t *testing.T) {
-	// ADR-0002 §2.8: mode-2048 reports become ResizeEvents through the same
+	// Mode-2048 reports become ResizeEvents through the same
 	// producer path, ordered and un-coalesced relative to keys.
 	s := newScript(t)
 	s.respond(fullModernReplies)
@@ -267,7 +267,7 @@ func TestInBandResizeEmitsOrderedEvents(t *testing.T) {
 }
 
 func TestOpenRejectsNonTerminal(t *testing.T) {
-	// ADR-0002 §2.4: Open errors with ErrNotTerminal when IsTerminal fails
+	// Open errors with ErrNotTerminal when IsTerminal fails
 	// on either fd. Pipes are not terminals, so this is hermetic.
 	r, w, err := os.Pipe()
 	if err != nil {

@@ -27,7 +27,6 @@
 # whose pointer "hits" are the shapes the detectors match, quoted in prose to
 # document what each one catches. The reason, the premise it rests on and a
 # liveness check all live with the guard -- see selfDocumenting there.
-
 1 dao/batch_ctx_test.go
 5 dao/dialects_test.go
 1 dao/expr_negative_test.go
@@ -73,14 +72,7 @@
 3 tui/runtime_test.go
 9 tui/surface_test.go
 8 tui/tasks_test.go
-1 tui/term/dblclick_bridge_test.go
-9 tui/term/decoder_test.go
-8 tui/term/flush_test.go
-1 tui/term/input_app_test.go
-10 tui/term/lifecycle_test.go
-6 tui/term/parser_test.go
-11 tui/term/probe_test.go
-1 tui/term/pty_linux_test.go
+1 tui/term/lifecycle_test.go
 10 tui/testbackend_test.go
 4 tui/timers_test.go
 7 tui/tree_test.go

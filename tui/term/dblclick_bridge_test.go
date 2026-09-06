@@ -1,7 +1,6 @@
 package term
 
-// Criterion 28 (ADR-0010 §2.5): the DOUBLE-CLICK contract proven against this
-// real producer.
+// The DOUBLE-CLICK contract, proven against this real producer.
 //
 // Neither producer computes a click count — the ordinal is synthesised once in
 // App.dispatch. That is exactly why it needs a behavioural bridge per producer:

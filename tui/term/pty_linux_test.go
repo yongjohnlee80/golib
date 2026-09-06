@@ -4,7 +4,7 @@ package term
 
 // Regression gate for the blocking-stdin shutdown hang (db-tui finding
 // #1, 2026-07-10): a tty inherited on stdin arrives in BLOCKING mode,
-// where SetReadDeadline is a silent no-op — Stop's §2.9 unblock never
+// where SetReadDeadline is a silent no-op — Stop's unblock never
 // landed, the pump stayed parked in read(2), and teardown hung on
 // wg.Wait. The lifecycle tests miss this because they fake the tty
 // pair with pipes, which are poller-registered and deadline-capable.
