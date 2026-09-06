@@ -96,10 +96,12 @@ func TestWrapCause_KeepsBothIdentities(t *testing.T) {
 // down: building an error is not a path that should be able to panic, and
 // nothing is corrupted by getting here.
 //
-// So the result carries ErrFatal — catchable by any handler already watching
-// for a broken contract, and loud in a log — while still delivering the message
-// the caller wanted, which is what makes the mistake diagnosable rather than
-// merely fatal.
+// So the result carries ErrInvalidArgument — the caller passed something the
+// operation cannot accept and the fault is at the call site, which is that
+// sentinel's contract exactly. NOT ErrFatal, whose contract is that continuing
+// would corrupt state, and nothing here is corrupted; NOT ErrPrecondition,
+// whose contract is that the arguments were fine and the state was not, and
+// here it is the argument that is wrong.
 func TestHelpers_ANilBaseIsReportedNotPanicked(t *testing.T) {
 	cases := map[string]func() error{
 		"Wrap":      func() error { return errs.Wrap(nil, "dial %s", "10.0.0.1") },
@@ -121,8 +123,19 @@ func TestHelpers_ANilBaseIsReportedNotPanicked(t *testing.T) {
 			if err == nil {
 				t.Fatal("a nil base must still produce an error, not nil")
 			}
-			if !errors.Is(err, errs.ErrFatal) {
-				t.Errorf("must carry ErrFatal so the misuse is catchable; got %v", err)
+			if !errors.Is(err, errs.ErrInvalidArgument) {
+				t.Errorf("must carry ErrInvalidArgument — the fault is at the call "+
+					"site; got %v", err)
+			}
+			if errors.Is(err, errs.ErrFatal) {
+				t.Error("must NOT carry ErrFatal: nothing is corrupted here, and a " +
+					"caller branching on ErrFatal to mean 'the process is unsound' " +
+					"would take that branch on a logging mistake")
+			}
+			if errors.Is(err, errs.ErrPrecondition) {
+				t.Error("must NOT carry ErrPrecondition: its contract is that the " +
+					"arguments were fine and the state was not, and here the " +
+					"argument is the thing that is wrong")
 			}
 			// The caller's own message survives, or the report says the mistake
 			// happened without saying where.
