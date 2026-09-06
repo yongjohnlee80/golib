@@ -351,7 +351,7 @@ phase1:
 			// asynchronous; not part of the group
 		default:
 			s.p.poison()
-			return errs.Wrap(errs.ErrPrecondition, "postgres: unexpected %T during private parse/describe", msg)
+			return errs.Wrap(errs.ErrProtocol, "postgres: unexpected %T during private parse/describe", msg)
 		}
 	}
 	if len(paramOIDs) != len(args) {
@@ -426,7 +426,7 @@ func (s *privateSequence) next(ctx context.Context) ([][]byte, error) {
 			// asynchronous; not part of the group
 		default:
 			s.p.poison()
-			return nil, errs.Wrap(errs.ErrPrecondition, "postgres: unexpected %T during private execute", msg)
+			return nil, errs.Wrap(errs.ErrProtocol, "postgres: unexpected %T during private execute", msg)
 		}
 	}
 }

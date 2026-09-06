@@ -127,6 +127,7 @@ func TestFatal_FlatteningWithVerbDestroysTheValue(t *testing.T) {
 func TestSentinelsAreDistinct(t *testing.T) {
 	all := map[string]error{
 		"ErrFatal": errs.ErrFatal, "ErrUnsupported": errs.ErrUnsupported,
+		"ErrProtocol":       errs.ErrProtocol,
 		"ErrNotImplemented": errs.ErrNotImplemented, "ErrInvalidArgument": errs.ErrInvalidArgument,
 		"ErrPrecondition": errs.ErrPrecondition, "ErrClosed": errs.ErrClosed,
 		"ErrTimeout": errs.ErrTimeout,
@@ -141,7 +142,7 @@ func TestSentinelsAreDistinct(t *testing.T) {
 			}
 		}
 	}
-	if len(all) < 7 {
+	if len(all) < 8 {
 		t.Fatalf("only %d sentinels checked; the table is stale and this passes vacuously", len(all))
 	}
 }
@@ -212,5 +213,41 @@ func TestFatal_AsTargetMustBeSpelledAsAValue(t *testing.T) {
 	if errors.As(err, &ptr) {
 		t.Error("a POINTER target now matches; errs.go's doc comment says it cannot " +
 			"and must be corrected")
+	}
+}
+
+// ErrProtocol names the peer's misbehaviour, and the distinction it draws is
+// the reason it exists rather than a synonym for the sentinels beside it.
+//
+// The remedy differs: a caller that gets ErrPrecondition does the missing step
+// and retries the same call; a caller that gets ErrProtocol cannot fix anything
+// by retrying, because the thing that is wrong is the peer. A caller that
+// treated them alike would retry forever against a connection that will never
+// answer correctly.
+func TestErrProtocol_IsNotTheSentinelsItSitsBeside(t *testing.T) {
+	peer := errs.Wrap(errs.ErrProtocol, "postgres: unexpected %T on the extended face", struct{}{})
+
+	if !errors.Is(peer, errs.ErrProtocol) {
+		t.Fatal("the fixture is wrong")
+	}
+	for name, other := range map[string]error{
+		"ErrPrecondition":    errs.ErrPrecondition,
+		"ErrInvalidArgument": errs.ErrInvalidArgument,
+		"ErrUnsupported":     errs.ErrUnsupported,
+		"ErrFatal":           errs.ErrFatal,
+	} {
+		if errors.Is(peer, other) {
+			t.Errorf("a protocol violation must NOT satisfy %s — they select "+
+				"different remedies, and conflating them makes a caller retry "+
+				"against a peer that will never answer correctly", name)
+		}
+	}
+
+	// And the reverse: a state failure must not be read as the peer's fault.
+	state := errs.Wrap(errs.ErrPrecondition, "postgres: prepare did not take effect")
+	if errors.Is(state, errs.ErrProtocol) {
+		t.Error("a documented server behaviour the caller did not expect is a " +
+			"STATE failure; blaming the protocol would send a reader to the wrong " +
+			"layer entirely")
 	}
 }

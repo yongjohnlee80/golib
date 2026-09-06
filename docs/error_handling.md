@@ -49,6 +49,24 @@ mistake is loud in a log and catchable by any handler already watching for a
 broken contract. Building an error is not a path that should be able to take a
 process down, and nothing is corrupted by getting there.
 
+### The one sentinel whose subject is the peer
+
+`errs.ErrProtocol` means the **peer** did not speak the protocol — it sent
+something the exchange forbids at that point, or omitted something it requires.
+
+Every other sentinel describes the caller (`ErrInvalidArgument`), the state
+(`ErrPrecondition`), the operation (`ErrUnsupported`, `ErrNotImplemented`) or the
+process (`ErrFatal`, `ErrClosed`, `ErrTimeout`). That difference is the reason it
+earns a name: it **selects a different remedy**. The caller did nothing wrong and
+doing the missing step first will not help, because the connection is what is
+broken — so a caller reconnects or gives up rather than retrying the same call
+against the same peer.
+
+Reserve it for the peer's own misbehaviour. A server that *legitimately* answers
+in a way the caller did not expect — PostgreSQL reporting `ROLLBACK` for a
+`PREPARE TRANSACTION` inside an aborted transaction, which is documented
+behaviour — is `ErrPrecondition`: the state was wrong, the protocol was kept.
+
 ### Wrapping is not required
 
 A downstream package is under **no obligation** to wrap. If your message would
