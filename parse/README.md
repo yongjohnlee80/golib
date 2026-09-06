@@ -1,9 +1,35 @@
 # parse — a streaming lexer core that names no dialect
 
 **Status: partial.** The form contract, the delimited forms, the run/set forms,
-`Token` and `Source` (offset → line/column) are here. `Scan` — the one pass that
-drives the forms over a stream and emits the tokens — is the remaining piece. See
+`Token`, `Source` (offset → line/column) and the `Scan` engine are here.
+`Validate` and `WriteTokens` are not yet. See
 `docs/parse/adr-0001-streaming-lexer-foundation.md`.
+
+## Scanning
+
+```go
+lex := parse.New(parse.WithForms(forms...), parse.WithMaxDelimiter(1<<16))
+
+s := lex.Scan(ctx, r, parse.OwnReader) // or lex.ScanBytes(ctx, b)
+defer s.Close()
+
+for tok, err := range s.Tokens() {
+    if err != nil { return err }
+    // The bytes, with the lifetime that keeps them valid. Acquire while the
+    // token is still the recent past: the scan releases behind itself.
+    v, err := s.Acquire(tok)
+    if err != nil { return err }
+    text, _ := v.String()
+    v.Close()
+
+    loc, _ := s.LocationAt(tok.Start) // line:column, only when you ask
+    fmt.Println(loc, tok.Kind, text)
+}
+```
+
+The stream ends with an `EOF` token at a real position. `Close` is eager: it
+releases retention and, under `OwnReader`, closes the reader and reports its
+error — including for a `Scan` that was never ranged over.
 
 This package answers *what a run of bytes IS*, never what it means. `SELECT` is
 a `Word`; that it is a verb in one dialect, a column name in another and
