@@ -70,9 +70,49 @@ func C[Col ~string](col Col) Expr {
 	}
 }
 
-// Int is an integer literal, rendered in decimal. Floats are deliberately
-// absent: their text form is precision-sensitive and non-finite values have no
-// portable spelling. NULL is absent because COALESCE(x, NULL) is a no-op.
+// Int is an integer literal, rendered in decimal.
+//
+// IT IS THE ONLY LITERAL HELPER, and the reason is worth stating because the
+// obvious companion — a string literal — was removed rather than added.
+//
+// An integer has ONE spelling in every SQL dialect: decimal digits. No quoting,
+// no escaping, no delimiter choice, nothing that depends on the connection. And
+// because the text comes from [strconv.FormatInt], this cannot render anything
+// but digits — so it is safe BY CONSTRUCTION, which [SQL] is not:
+//
+//	Coalesce(T("track", "plays"), Int(0))   // COALESCE("track"."plays", 0)
+//	Coalesce(T("track", "plays"), SQL("0")) // same output, but SQL accepts anything
+//
+// A string literal has none of those properties. Quoting one correctly needs the
+// dialect's escaping rules, and there is no portable answer: MySQL's depend on
+// NO_BACKSLASH_ESCAPES and the connection charset — session state — while a
+// declaration like this is written before any connection exists. A dao.Str
+// existed and resolved that by PANICKING on anything needing an escape, which
+// left it correct only for strings a caller could have written by hand. It was
+// removed. Spell a string fallback with [SQL], where the text is visibly the
+// author's and the quoting decision is theirs:
+//
+//	Coalesce(T("label_group", "name"), SQL("''"))
+//	Coalesce(T("label_group", "name"), SQL("'n/a'"))
+//
+// FLOATS, BOOLS AND TIMES ARE ABSENT for the same reason, not an oversight: a
+// float's text form is precision-sensitive and non-finite values have no
+// portable spelling, a boolean literal is spelled differently across engines,
+// and a timestamp literal needs a format and a zone. Each is a TEXT-rendering
+// problem — which is a property of this seam, not of the values.
+//
+// SO PUT DATA IN A PREDICATE, NOT IN A DECLARATION. [Eq], [In], [Gt] and friends
+// return (sql, args) and their values travel as BIND PARAMETERS: the driver
+// escapes them, every Go type it supports works, and no dialect knowledge is
+// needed anywhere:
+//
+//	dao.Eq("released_on", someTime)   // any type, bound, no quoting
+//
+// An Expr renders to a string with no args channel, so a literal here must be
+// inlined as text. That is the whole boundary: declarations carry the shape of
+// the query, predicates carry its values.
+//
+// NULL is absent too, because COALESCE(x, NULL) is a no-op.
 func Int(i int64) Expr {
 	lit := strconv.FormatInt(i, 10)
 	return Expr{render: func(Dialect) string { return lit }}
