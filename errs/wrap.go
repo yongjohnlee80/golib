@@ -28,15 +28,16 @@ import "fmt"
 // name, and tells the reader nothing. The point of a message is the part the
 // identity cannot carry: which address, which file, which id.
 //
-// Wrap PANICS if base is nil, because an error with no identity is the one
-// thing this package exists to prevent and silently returning one would hide
-// the mistake at the only moment it is cheap to find.
+// A nil base is a misuse, and it does NOT panic: building an error is not a
+// path that should be able to take a process down, and nothing is corrupted by
+// getting here. Instead the returned error carries [ErrFatal] and says what was
+// wrong, so the mistake is unmissable in a log and catchable by any handler
+// already watching for a broken contract — while the message the caller wanted
+// is still delivered.
 func Wrap(base error, format string, args ...any) error {
 	if base == nil {
-		panic(Fatal{
-			Op:   "errs.Wrap",
-			Rule: "base must not be nil — an error built here always carries an identity",
-		})
+		return WrapCause(ErrFatal, fmt.Errorf(format, args...),
+			"errs.Wrap: base must not be nil, so this error carries no real identity")
 	}
 	all := make([]any, 0, len(args)+1)
 	all = append(all, args...)
@@ -63,13 +64,10 @@ func Wrap(base error, format string, args ...any) error {
 // where Wrap describes an OCCURRENCE. A package whose condition is simply the
 // shared one needs no sentinel of its own and should return the base directly.
 //
-// Sentinel PANICS if base is nil, for the reason [Wrap] does.
+// A nil base is a misuse and is reported the way [Wrap] reports it.
 func Sentinel(base error, detail string) error {
 	if base == nil {
-		panic(Fatal{
-			Op:   "errs.Sentinel",
-			Rule: "base must not be nil — a layered sentinel is defined by what it layers on",
-		})
+		return fmt.Errorf("%w: errs.Sentinel: base must not be nil: %s", ErrFatal, detail)
 	}
 	return fmt.Errorf("%w: %s", base, detail)
 }
@@ -91,15 +89,13 @@ func Sentinel(base error, detail string) error {
 // everything errors.As would have returned, while the base still answers
 // errors.Is, so the check passes and the payload is gone.
 //
-// WrapCause PANICS if base is nil, for the reason [Wrap] does. A nil CAUSE is
-// allowed and degrades to [Wrap], because "there was no underlying error" is a
-// real state and not a mistake.
+// A nil base is a misuse and is reported the way [Wrap] reports it. A nil CAUSE
+// is allowed and degrades to [Wrap], because "there was no underlying error" is
+// a real state and not a mistake.
 func WrapCause(base, cause error, format string, args ...any) error {
 	if base == nil {
-		panic(Fatal{
-			Op:   "errs.WrapCause",
-			Rule: "base must not be nil — an error built here always carries an identity",
-		})
+		return fmt.Errorf("%w: errs.WrapCause: base must not be nil: %s", ErrFatal,
+			fmt.Sprintf(format, args...))
 	}
 	if cause == nil {
 		return Wrap(base, format, args...)
