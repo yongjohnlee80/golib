@@ -99,8 +99,8 @@ func (f blockComment) End(src, openedWith []byte, boundary InputBoundary) (int, 
 }
 
 // QuoteOpts configures how a quoted literal escapes its own terminator. Both
-// mechanisms are generic shapes, not dialects: SQL doubles, C backslashes, and
-// plenty of formats do one, both or neither.
+// mechanisms are generic shapes, not dialects: some formats double the closing
+// delimiter, some escape it with a backslash, and plenty do one, both or neither.
 type QuoteOpts struct {
 	// Doubling: the close delimiter written twice is a literal occurrence of
 	// it, not the end.
@@ -207,9 +207,9 @@ func mustNotBeEmpty(who string, parts ...string) {
 // DelimitedOpts constrains the TAG of a delimited form.
 //
 // Without a constraint the shape is too permissive to be useful: `$1$` would
-// open a delimited literal in a dialect where `$1` is a parameter. With
-// PostgreSQL's tag charset written into this package, the core would have named
-// a dialect. So the rule is supplied by the leaf, and the core only applies it.
+// open a delimited literal in a dialect where `$1` is a parameter. With any one
+// dialect's tag charset written into this package, the core would have named a
+// dialect. So the rule is supplied by the leaf, and the core only applies it.
 type DelimitedOpts struct {
 	// TagByte reports whether b is legal at index (0-based, within the tag).
 	//
@@ -237,8 +237,8 @@ type DelimitedOpts struct {
 }
 
 // DelimitedForm recognises the tag-carrying shape `<prefix>TAG<suffix> … the
-// same again`, of which PostgreSQL's dollar quoting is one configuration. The
-// core never names that dialect: the tag rule arrives from the caller.
+// same again`, of which a leaf's dollar-quoting is one configuration. The core
+// never names the dialect that wants it: the tag rule arrives from the caller.
 func DelimitedForm(prefix, suffix byte, o DelimitedOpts) Form {
 	if o.MaxTagBytes < 0 {
 		panic("parse: DelimitedForm: MaxTagBytes must not be negative")
