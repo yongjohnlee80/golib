@@ -312,7 +312,7 @@ func (a *App) teardown() error {
 	case <-done:
 	case <-timer.C:
 		if n := a.async.inflight.Load(); n > 0 {
-			return fmt.Errorf("tui: task drain deadline: %d task(s) abandoned", n)
+			return errs.Wrap(errs.ErrTimeout, "tui: task drain deadline: %d task(s) abandoned", n)
 		}
 	}
 	// T3 — return; the deferred backend.Stop() restores the terminal.

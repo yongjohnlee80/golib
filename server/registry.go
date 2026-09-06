@@ -2,8 +2,9 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"sync"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Session is anything with a connection-scoped lifetime that graceful
@@ -198,7 +199,7 @@ func (r *Registry) Drain(ctx context.Context) error {
 			r.live = map[*regEntry]struct{}{}
 			r.asked = map[*regEntry]struct{}{}
 			r.mu.Unlock()
-			return fmt.Errorf("server: drain deadline: %d session(s) force-closed", n)
+			return errs.Wrap(errs.ErrTimeout, "server: drain deadline: %d session(s) force-closed", n)
 		}
 		r.mu.Lock()
 	}

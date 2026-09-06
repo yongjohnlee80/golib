@@ -47,6 +47,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Internal errors; auth.Policy maps every failure to auth.ErrUnauthenticated.
@@ -96,7 +97,7 @@ func ParseAuthorizedKeys(b []byte, subjectOf func(comment string, key ssh.Public
 			return nil, fmt.Errorf("sshkey: authorized_keys line %d: %w", line, err)
 		}
 		if subject == "" {
-			return nil, fmt.Errorf("sshkey: authorized_keys line %d: empty subject", line)
+			return nil, errs.Wrap(errs.ErrInvalidArgument, "sshkey: authorized_keys line %d: empty subject", line)
 		}
 		out = append(out, Allowed{Key: key, Subject: subject})
 		rest = remaining
