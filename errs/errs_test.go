@@ -183,3 +183,34 @@ func TestFatal_IsAValueTypeSoNoNilStateExists(t *testing.T) {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}
 }
+
+// The errors.As target must be spelled as a VALUE, and the pointer spelling
+// fails SILENTLY — which is why this is pinned rather than only documented.
+//
+// Fatal is the first value-receiver error type in this repository, so a reader
+// reaching for the universal *T idiom that every other typed error here uses
+// gets false with no error and concludes the payload was not there. That is
+// rule 2's failure shape — the check passes, and the value is gone — arriving
+// through the spelling of the target rather than through a %v.
+//
+// Found by zen probing the value-receiver change (PR #38 r2).
+func TestFatal_AsTargetMustBeSpelledAsAValue(t *testing.T) {
+	err := fmt.Errorf("outer: %w", errs.Fatal{Op: "tui: Mount", Rule: "the rule"})
+
+	// The working idiom.
+	var val errs.Fatal
+	if !errors.As(err, &val) {
+		t.Fatal("a VALUE target must match a wrapped Fatal; the documented idiom is broken")
+	}
+	if val.Op != "tui: Mount" {
+		t.Errorf("As matched but recovered the wrong value: %+v", val)
+	}
+
+	// The trap, pinned. If a later change to Fatal's receivers makes this
+	// start passing, the doc comment in errs.go is stale and must be updated.
+	var ptr *errs.Fatal
+	if errors.As(err, &ptr) {
+		t.Error("a POINTER target now matches; errs.go's doc comment says it cannot " +
+			"and must be corrected")
+	}
+}

@@ -193,6 +193,13 @@ duplication it appears to fix.
    and whatever recovers it uses `errors.As` to read the fields. Rule 2 applies
    hardest here: a recovered value flattened with `%v` loses everything.
 
+   **Spell the `errors.As` target as a value**, because rule 6b makes these
+   value types and the usual `*T` idiom then fails **silently**:
+   ```go
+   var f errs.Fatal;  errors.As(err, &f)   // yes — matches
+   var f *errs.Fatal; errors.As(err, &f)   // NO  — false, with no error
+   ```
+
 6b. **An error type is a VALUE type — give it value receivers.** `Error()` must
    never be reachable on a nil reference, and the way to guarantee that is to
    leave no reference to be nil. With a pointer receiver, `*T` is the only
