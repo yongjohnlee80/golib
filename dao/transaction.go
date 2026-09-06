@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sync"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // txContext is one participant in a [Transaction]: a single database's driver tx,
@@ -173,12 +175,12 @@ type TxOption func(*txConfig)
 func Spanning(conns ...DataConn) TxOption {
 	return func(c *txConfig) {
 		if len(conns) == 0 {
-			c.fail(fmt.Errorf("dao: Spanning: no connections declared; omit the option for a single-database transaction"))
+			c.fail(errs.Wrap(errs.ErrInvalidArgument, "dao: Spanning: no connections declared; omit the option for a single-database transaction"))
 			return
 		}
 		for i, conn := range conns {
 			if conn == nil {
-				c.fail(fmt.Errorf("dao: Spanning: nil connection at index %d", i))
+				c.fail(errs.Wrap(errs.ErrInvalidArgument, "dao: Spanning: nil connection at index %d", i))
 				return
 			}
 			name := conn.Name()
@@ -360,7 +362,7 @@ func (t *Transaction) join(conn DataConn) (TxConn, error) {
 	if c, ok := t.contexts[name]; ok {
 		db, ok := c.(dbTxContext)
 		if !ok {
-			return nil, fmt.Errorf("dao: transaction context %q is not a database connection", name)
+			return nil, errs.Wrap(errs.ErrInvalidArgument, "dao: transaction context %q is not a database connection", name)
 		}
 		return db.executor(), nil
 	}

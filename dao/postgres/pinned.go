@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // ADR-0018: the session-pinned connection capability. dao core is untouched;
@@ -503,7 +504,7 @@ func (p *pinnedConn) BeginSessionTx(ctx context.Context, opts dao.TxOptions) (da
 		return nil, translateError(srvErr)
 	}
 	if tag != "BEGIN" {
-		return nil, fmt.Errorf("postgres: pinned BEGIN did not take effect (server returned %q)", tag)
+		return nil, errs.Wrap(errs.ErrPrecondition, "postgres: pinned BEGIN did not take effect; the server returned %q", tag)
 	}
 	p.mu.Lock()
 	p.txOpen = true

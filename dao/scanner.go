@@ -1,9 +1,10 @@
 package dao
 
 import (
-	"fmt"
 	"reflect"
 	"sort"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // queryState is the mutable read/where/shape intent accumulated on a query-scoped
@@ -152,5 +153,5 @@ func lastInsertID[ID any](id64 int64, err error) (ID, error) {
 	if v, ok := any(id64).(ID); ok {
 		return v, nil
 	}
-	return zero, fmt.Errorf("dao: LastInsertId returned int64 but ID is %T; use a RETURNING dialect", zero)
+	return zero, errs.Wrap(errs.ErrUnsupported, "dao: LastInsertId returned int64 but ID is %T; use a RETURNING dialect", zero)
 }

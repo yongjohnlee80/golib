@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // The guarded pinned transaction (ADR-0018 §2.4). The handle does NOT return the
@@ -350,7 +351,7 @@ phase1:
 			// asynchronous; not part of the group
 		default:
 			s.p.poison()
-			return fmt.Errorf("postgres: unexpected %T during private parse/describe", msg)
+			return errs.Wrap(errs.ErrPrecondition, "postgres: unexpected %T during private parse/describe", msg)
 		}
 	}
 	if len(paramOIDs) != len(args) {
@@ -359,7 +360,7 @@ phase1:
 		if err := s.recoverLocked(ctx); err != nil {
 			return err
 		}
-		return fmt.Errorf("postgres: expected %d arguments, got %d", len(paramOIDs), len(args))
+		return errs.Wrap(errs.ErrInvalidArgument, "postgres: expected %d arguments, got %d", len(paramOIDs), len(args))
 	}
 	values, err := encodeTextArgs(s.p.typeMap, paramOIDs, args)
 	if err != nil {
@@ -425,7 +426,7 @@ func (s *privateSequence) next(ctx context.Context) ([][]byte, error) {
 			// asynchronous; not part of the group
 		default:
 			s.p.poison()
-			return nil, fmt.Errorf("postgres: unexpected %T during private execute", msg)
+			return nil, errs.Wrap(errs.ErrPrecondition, "postgres: unexpected %T during private execute", msg)
 		}
 	}
 }
@@ -585,7 +586,7 @@ func (r *pinnedRows) Scan(dest ...any) error {
 	}
 	vals := r.seq.values
 	if len(dest) != len(vals) {
-		return fmt.Errorf("postgres: Scan: %d destinations for %d columns", len(dest), len(vals))
+		return errs.Wrap(errs.ErrInvalidArgument, "postgres: Scan: %d destinations for %d columns", len(dest), len(vals))
 	}
 	for i, d := range dest {
 		fd := r.seq.fields[i]

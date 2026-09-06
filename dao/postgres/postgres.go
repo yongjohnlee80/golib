@@ -198,7 +198,7 @@ func (t *pgxTx) prepareTx(ctx context.Context, gid string) error {
 		return translateError(err)
 	}
 	if tag.String() != "PREPARE TRANSACTION" {
-		return fmt.Errorf("postgres: prepare of %q did not take effect (server returned %q; the transaction was aborted and has been rolled back)", gid, tag.String())
+		return errs.Wrap(errs.ErrPrecondition, "postgres: prepare of %q did not take effect; the server returned %q, so the transaction was aborted and has been rolled back", gid, tag.String())
 	}
 	// The transaction is now dissociated from the session; Rollback only
 	// returns the connection to the pool (harmless no-tx warning server-side).

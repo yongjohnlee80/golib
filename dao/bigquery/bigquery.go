@@ -24,6 +24,7 @@ import (
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/civil"
 	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/errs"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -160,7 +161,7 @@ func (r *bqRows) Scan(dest ...any) error {
 	// targets or dropping extra columns would corrupt reads (must-fix from the
 	// 2026-06-23 review).
 	if len(dest) != len(r.current) {
-		return fmt.Errorf("bigquery: scan: %d destinations for %d columns", len(dest), len(r.current))
+		return errs.Wrap(errs.ErrInvalidArgument, "bigquery: scan: %d destinations for %d columns", len(dest), len(r.current))
 	}
 	for i, d := range dest {
 		if err := assign(d, r.current[i]); err != nil {
@@ -197,11 +198,11 @@ func assign(dest any, val bigquery.Value) error {
 	}
 	dv := reflect.ValueOf(dest)
 	if dv.Kind() != reflect.Pointer || dv.IsNil() {
-		return fmt.Errorf("scan destination must be a non-nil pointer, got %T", dest)
+		return errs.Wrap(errs.ErrInvalidArgument, "bigquery: scan destination must be a non-nil pointer, got %T", dest)
 	}
 	target := dv.Elem()
 	if !target.CanSet() {
-		return fmt.Errorf("scan destination %T is not settable", dest)
+		return errs.Wrap(errs.ErrInvalidArgument, "bigquery: scan destination %T is not settable", dest)
 	}
 	tt := target.Type()
 	sv := reflect.ValueOf(val)
@@ -238,7 +239,7 @@ func assign(dest any, val bigquery.Value) error {
 		return assignNumeric(target, sv, val)
 	}
 
-	return fmt.Errorf("cannot assign bigquery value of type %T to %s", val, tt)
+	return errs.Wrap(errs.ErrInvalidArgument, "bigquery: cannot assign a value of type %T to %s", val, tt)
 }
 
 // assignNumeric converts a numeric source value into a numeric target with
@@ -253,7 +254,7 @@ func assign(dest any, val bigquery.Value) error {
 func assignNumeric(target reflect.Value, sv reflect.Value, val bigquery.Value) error {
 	tt := target.Type()
 	fail := func() error {
-		return fmt.Errorf("bigquery value %v (%T) does not fit destination %s", val, val, tt)
+		return errs.Wrap(errs.ErrInvalidArgument, "bigquery: value %v (%T) does not fit destination %s", val, val, tt)
 	}
 	switch {
 	case isInt(sv.Kind()):
