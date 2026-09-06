@@ -21,6 +21,19 @@ lex := parse.New(
 err := lex.Validate(ctx, r) // or lex.Scan(ctx, r, parse.OwnReader)
 ```
 
+## Install
+
+```sh
+go get github.com/yongjohnlee80/golib
+```
+
+```go
+import (
+    "github.com/yongjohnlee80/golib/parse"
+    "github.com/yongjohnlee80/golib/parse/sql"
+)
+```
+
 ## Order is precedence
 
 The slices come back in the order the lexer must try them, and the order carries
@@ -48,12 +61,22 @@ single name.
 byte follows, so `balance--1` is a subtraction. Reading it as a comment would
 silently delete the rest of the line from the token stream.
 
-**MySQL's `/*! … */` is not a comment at all** — the server executes what is
-inside it. `MySQLBlockComment` therefore refuses it, and its contents are lexed
-as the ordinary tokens they are. The delimiters arrive as operators, which is
-untidy and deliberate: trivia is what a consumer is invited to discard, and
-`/*!50000 DROP TABLE t */` must not vanish inside a token someone was told was
-safe to drop.
+**MySQL's `/*! … */` and `/*+ … */` are not comments at all** — the server
+executes one and plans by the other. Trivia is what a consumer is invited to
+discard, so `/*!50000 DROP TABLE t */` must not vanish inside a token someone was
+told was safe to drop.
+
+`MySQLExecutableOpen` matches the **opener alone** and hands back a delimiter,
+and its `End` scans for the closer *without consuming it* — so the `*/` is still
+required, and `/*!50000 DROP TABLE t` is an error rather than valid SQL. The
+bytes between are left for the lexer to read as the tokens they are, which is why
+`Word(DROP)` and `Word(TABLE)` show up in the stream. That is deliberately better
+than one opaque token of some other kind: a caller looking for a dangerous
+statement does not have to know to re-lex the inside of something it was handed
+whole.
+
+The ordinary `/* … */` sits behind that form, still `Comment`, still validating
+its own closer, and still not nesting.
 
 ## Numbers are a Form, not a Run
 
@@ -93,3 +116,7 @@ property, so swap that one form rather than expecting a flag here.
 Deliberately not covered, because each wants a decision rather than a guess:
 PostgreSQL's `U&'…'` unicode escapes, `B'…'` and `X'…'` bit and hex strings, and
 operator names inside `OPERATOR(...)`.
+
+## License
+
+MIT, with the rest of golib — see [LICENSE](../../LICENSE).
