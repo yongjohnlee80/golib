@@ -1,19 +1,16 @@
 //go:build integration
 
-// BROKEN UNDER THE `integration` TAG, and has been for a while. The dao.RunTx
-// call below passes `[]dao.DataConn`, which is the OLD executor signature, so
-// this file does not compile: `go vet -tags integration ./...` inside this
-// module fails at the RunTx call.
+// NOTE ON THE PIN. go.mod requires golib v0.5.9, but it ALSO carries
+// `replace github.com/yongjohnlee80/golib => ../..`, and a replace beats a
+// require — so this module builds against the LOCAL tree, not the release. The
+// pin is inert. An earlier version of this note had it backwards and used the
+// pin to justify calling dao.RunTx with a stale argument list.
 //
-// go.mod requires golib v0.5.9 and an earlier version of this note claimed the
-// pin was why the old signature was still correct. It is not: go.mod ALSO
-// carries `replace github.com/yongjohnlee80/golib => ../..`, and a replace
-// beats a require, so this module builds against the LOCAL tree and gets the
-// current variadic signature. The pin is inert.
-//
-// The fix is `dao.RunTx(ctx, fn)`. It is left alone here because these tests
-// need real BigQuery credentials to run at all, so nobody has been able to
-// confirm the migrated call against a live dataset.
+// THAT CALL DID NOT COMPILE, and two independent things had to be true for
+// nobody to notice: this is a NESTED MODULE, so `go build ./...` at the repo
+// root never compiles it at all; and the file is behind the `integration` build
+// tag, so even inside the module the default vet skips it. Seeing it requires
+// `go vet -tags integration ./...` FROM here, which nothing in CI runs.
 //
 // Integration tests for the BigQuery driver. They run against a REAL dataset and
 // are gated on credentials, so they are excluded from normal builds (the
@@ -142,7 +139,7 @@ func TestIntegration_CRUDAndCapabilities(t *testing.T) {
 	if _, err := conn.Begin(context.Background()); !errors.Is(err, dao.ErrUnsupported) {
 		t.Errorf("Begin err = %v, want ErrUnsupported", err)
 	}
-	txErr := dao.RunTx(context.Background(), []dao.DataConn{conn}, func(tx *dao.Transaction) error {
+	txErr := dao.RunTx(context.Background(), func(tx *dao.Transaction) error {
 		_, e := s.On(tx).Set(fID, "d").Set(fName, "D").Insert()
 		return e
 	})
