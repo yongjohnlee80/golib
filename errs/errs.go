@@ -127,7 +127,17 @@ var (
 //
 //	panic(errs.Fatal{Op: "tui: Mount", Rule: "tree mutation inside Layout or Render"})
 //
-// and whatever recovers it uses errors.As to get the fields back. That only
+// and whatever recovers it uses errors.As to get the fields back. SPELL THE
+// TARGET AS A VALUE — Fatal has value receivers, so the usual *T idiom does
+// not match and errors.As returns false with no error:
+//
+//	var f errs.Fatal
+//	if errors.As(err, &f) { … }   // yes — matches a wrapped Fatal
+//
+//	var f *errs.Fatal
+//	if errors.As(err, &f) { … }   // NO — silently false, never matches
+//
+// That only
 // works if every wrap on the way out uses %w — flattening it with %v renders
 // the value into text and destroys everything As would have returned, while
 // leaving errors.Is(err, ErrFatal) answering true. The check passes and the
