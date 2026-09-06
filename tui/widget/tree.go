@@ -99,7 +99,7 @@ func (n *TreeNode) dirty() {
 
 // structureChanged marks the owner dirty AND reconciles its cursor
 // synchronously — input handling must never depend on a later render to
-// make model state valid (MF3).
+// make model state valid.
 func (n *TreeNode) structureChanged() {
 	if n.owner != nil {
 		n.owner.reconcile()
@@ -186,7 +186,7 @@ func (n *TreeNode) Reset() {
 
 // release detaches a subtree: ownership clears recursively but ONLY the
 // detached root's external parent edge is cut — the subtree's internal
-// ancestry survives for re-attachment (r3 release precision + MF2).
+// ancestry survives for re-attachment (r3 release precision +).
 func (n *TreeNode) release() {
 	n.parent = nil
 	n.releaseOwned()

@@ -28,7 +28,7 @@ type dbTxContext interface {
 
 // twoPhaseContext is the optional two-phase-commit capability of a database
 // participant. It is a capability interface probed by assertion rather than
-// methods on [txContext] (KB convention interface-evolution-capability-interfaces),
+// methods on [txContext],
 // and it is what keeps [Transaction] free of any [DataConn]: the participant
 // delegates to the connection it carries.
 type twoPhaseContext interface {

@@ -157,7 +157,7 @@ func indexByte(b []byte, c byte) int {
 // lifetime through runtime.AddCleanup: a connect that fails after the frontend
 // is built (wrong password, a failed ValidateConnect or AfterConnect) never
 // becomes a pool resource and fires no pool hook, but its frontend becomes
-// unreachable and the cleanup removes the entry (PR #23 MF1). The pool's
+// unreachable and the cleanup removes the entry. The pool's
 // BeforeClose removes entries eagerly for connections that did become
 // resources.
 var recorders sync.Map // weak.Pointer[pgproto3.Frontend] → *statusRecorder

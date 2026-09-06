@@ -154,7 +154,7 @@ func (s *Split) Zoom(p SplitPane) {
 		}
 		if ctx.FocusWithin(hidden) {
 			// listChildren honors nested zoom, so this walk cannot land in
-			// a logically hidden pane (MF7). When the retained pane has no
+			// a logically hidden pane. When the retained pane has no
 			// focusable, focus is deliberately LEFT IN PLACE: the pane is
 			// still on screen until the zoom's layout runs, and that layout
 			// pass re-homes trap-aware via repairInvisibleFocus against

@@ -32,7 +32,7 @@ type Message struct {
 
 // Codec owns the wire format: one Message in, one Message out. Read must
 // consume exactly one message and treat the byte stream as attacker-adjacent
-// (bounded, panic-free — KB security-core-hardening R4/R7). Write buffers
+// (bounded, panic-free —). Write buffers
 // into w; the transport owns flushing.
 //
 // Concurrency contract: the Server shares ONE Codec instance across every

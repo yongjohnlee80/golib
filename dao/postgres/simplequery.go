@@ -10,7 +10,7 @@ import (
 )
 
 // SimpleQuerier is the simple-protocol face of a pinned connection
-// (Amendment 1, RATIFIED 2026-09-02): ONE Query frame, the response streamed as
+// (RATIFIED 2026-09-02): ONE Query frame, the response streamed as
 // protocol data until the terminal ReadyForQuery.
 //
 // It exists for a consumer that gates SQL TEXT before dispatch — autodb's
@@ -18,9 +18,9 @@ import (
 // so that reaching it requires an explicit type assertion, which an acceptance
 // grep can see. That is VISIBILITY, not prevention: the dynamic *pinnedConn
 // implements both faces, so any holder of the handle can assert for this one.
-// golib does not and cannot make the method engine-only; the consumer does
-// (A1-C1). What golib DOES enforce is below: transaction control that reaches
-// this face poisons the handle (A1-C4).
+// golib does not and cannot make the method engine-only; the consumer does.
+// What golib DOES enforce is below: transaction control that reaches
+// this face poisons the handle.
 type SimpleQuerier interface {
 	// SimpleQuery sends ONE simple-protocol Query frame carrying sql, then calls
 	// emit for every backend message of the response — RowDescription, DataRow,
@@ -79,7 +79,7 @@ var (
 // transaction-ownership or boundary control. The set is closed and matches
 // PostgreSQL's tags: START TRANSACTION tags as BEGIN, END as COMMIT, ABORT and
 // ROLLBACK TO as ROLLBACK. SET TRANSACTION tags as the indistinguishable SET and
-// is the consumer gate's alone (A1-C4 (i)).
+// is the consumer gate's alone ((i)).
 func isTransactionControlTag(tag string) bool {
 	switch tag {
 	case "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE":
@@ -193,7 +193,7 @@ func (p *pinnedConn) SimpleQuery(ctx context.Context, sql string, emit func(Exte
 //
 // A PANICKING callback is consumer code failing with the response tail unread:
 // the wire is not at a boundary the driver can resume from, so the handle is
-// poisoned and inEmit restored BEFORE the panic propagates (PR #22 MF2). The
+// poisoned and inEmit restored BEFORE the panic propagates. The
 // deferred private release in SimpleQuery then frees a wire that every face
 // refuses; without the poison it would look quiescent and the next query would
 // consume this one's remaining frames as its own answer. The panic is not

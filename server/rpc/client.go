@@ -304,7 +304,7 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 
 	// Terminal-state recheck AFTER admission: a concurrent Close/poison
 	// that raced the select must surface the stable terminal cause, never
-	// a raw closed-connection error (MF5).
+	// a raw closed-connection error.
 	if err := c.Err(); err != nil {
 		return err
 	}
@@ -329,7 +329,7 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 
 	// The write deadline is the EARLIER of the configured timeout and the
 	// context deadline, and a deadline-less cancellation wakes the write
-	// through a watcher that forces the deadline into the past (MF4).
+	// through a watcher that forces the deadline into the past.
 	// A conn that cannot apply deadlines is a transport failure: the
 	// bounded-write guarantee would silently vanish.
 	deadline := time.Now().Add(c.cfg.writeTimeout)
@@ -462,7 +462,7 @@ func (c *Client) readLoop() {
 
 // dispatchNotifications serves the queue on one goroutine in arrival
 // order, each callback inside an R16 recover boundary. Dispatch STOPS the
-// moment the client turns terminal (MF6): buffered callbacks are never
+// moment the client turns terminal: buffered callbacks are never
 // drained after Close, transport poison, overflow, or a recovered callback
 // panic — the panic contract declares consumer state undefined, and a
 // closed client must not surprise the consumer with late callbacks.

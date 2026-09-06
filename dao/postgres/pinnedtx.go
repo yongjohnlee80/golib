@@ -37,7 +37,7 @@ var (
 type pinnedTx struct {
 	p *pinnedConn
 	// ctx is the BEGIN context. The legacy no-context finalizers dispatch on it, exactly
-	// as the pool-path pgxTx does (r2 MF4 / r3 MF2).
+	// as the pool-path pgxTx does (/).
 	ctx context.Context
 
 	// closed records that a finalizer has DISPATCHED (or, for the legacy finalizers,
@@ -51,7 +51,7 @@ type pinnedTx struct {
 
 // Commit is the unchanged dao.TxConn finalizer: it dispatches on the BEGIN context and
 // marks the handle closed BEFORE dispatch, so a cancelled BEGIN context fails with the
-// context error and leaves the handle TERMINAL (the legacy shape, r3 MF2).
+// context error and leaves the handle TERMINAL (the legacy shape).
 // A mid-segment call is refused first and leaves the transaction open.
 func (t *pinnedTx) Commit() error { return t.finalizeLegacy(commitSQL) }
 
@@ -475,7 +475,7 @@ func (s *privateSequence) recoverLocked(ctx context.Context) error {
 	return s.cleanupLocked(ctx)
 }
 
-// cleanupLocked is the exit-aware cleanup exchange (r5 MF1): it closes
+// cleanupLocked is the exit-aware cleanup exchange: it closes
 // the unnamed statement and/or portal ONLY if their creation was acknowledged, then
 // Syncs and consumes the terminal ReadyForQuery. Nothing is sent when nothing was
 // created (the blind-Close guard, 's negative arm). Close is legal in an

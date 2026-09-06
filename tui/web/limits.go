@@ -274,7 +274,7 @@ func (g *gate) hold(key string, until time.Time) bool {
 // inside it. A hook slow enough to outlive its reservation — a real dial to an
 // upstream is exactly that — came back to find its slot swept, and parked anyway:
 // an entry with no accounting, so the budget under-counted and more logins could
-// park than the cap allows (on PR #14, probe: parked=1, held=0).
+// park than the cap allows (on, probe: parked=1, held=0).
 //
 // So parking is now conditional on this returning true, which makes the pair
 // atomic in the only sense that matters: the entry exists only if a slot accounts
@@ -283,7 +283,7 @@ func (g *gate) hold(key string, until time.Time) bool {
 // The publish callback is why this takes one: returning a bool and letting the
 // caller mutate afterwards is still a time-of-check-to-time-of-use gap, because
 // this lock is released as the function returns and the key can be swept in
-// between (on PR #14 reproduced exactly that after the first repair).
+// between (on reproduced exactly that after the first repair).
 // The callback runs while g.mu is STILL HELD, so membership and publication are
 // indivisible.
 //

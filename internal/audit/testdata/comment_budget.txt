@@ -18,34 +18,27 @@
 # stored copy conflicts every time two migration rungs run in parallel — which
 # it did, on a line neither rung had a real disagreement about. The budget test
 # prints the total when it runs; that is the single place it is computed.
-1 dao/batch.go
-2 dao/bigquery/bigquery.go
-1 dao/doc.go
+1 dao/bigquery/bigquery.go
 1 dao/hooks.go
 1 dao/introspect.go
-2 dao/mysql/introspect.go
-2 dao/postgres/extendedops.go
-2 dao/postgres/paramstatus.go
-12 dao/postgres/pinned.go
-4 dao/postgres/pinnedtx.go
-2 dao/postgres/simplequery.go
+1 dao/postgres/extendedops.go
+1 dao/postgres/paramstatus.go
+2 dao/postgres/pinned.go
+1 dao/postgres/pinnedtx.go
 4 dao/query_dao.go
 1 dao/scanner.go
-1 dao/transaction.go
 1 dao/txcapabilities.go
 2 msgpack/doc.go
 2 server/registry.go
-7 server/rpc/client.go
+4 server/rpc/client.go
 1 server/rpc/doc.go
-1 server/rpc/message.go
 1 tui/style/style.go
 3 tui/style/theme.go
 2 tui/term/flush.go
 1 tui/term/options.go
 4 tui/term/term.go
-1 tui/web/handoff.go
-5 tui/web/limits.go
-2 tui/web/login.go
+3 tui/web/limits.go
+1 tui/web/login.go
 2 tui/web/page.go
 2 tui/web/policy.go
 1 tui/web/server.go
@@ -53,8 +46,8 @@
 5 tui/web/sso.go
 1 tui/widget/base.go
 2 tui/widget/bufferview.go
-6 tui/widget/editor.go
+3 tui/widget/editor.go
 1 tui/widget/editor_keymap.go
-2 tui/widget/split.go
+1 tui/widget/split.go
 1 tui/widget/textarea.go
-3 tui/widget/tree.go
+1 tui/widget/tree.go

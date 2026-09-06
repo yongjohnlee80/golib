@@ -158,7 +158,7 @@ func (s *Stash) Set(v any) {
 // can fail: another factor in the policy can refuse after this one succeeded, the
 // ticket can fail to mint, the park can be full. Each of those returns from the
 // request having allocated an upstream session that nothing will ever close
-// (on PR #14 reproduced two of them).
+// (on reproduced two of them).
 //
 // A second call is REFUSED rather than overwriting: the first value would become
 // unreachable with its cleanup already registered, and last-write-wins is not a

@@ -173,7 +173,7 @@ func (b *batchWriter[R, C]) Flush() error {
 	}
 	// Capability gates. An explicit ForceCopy on a dialect
 	// that cannot COPY is ErrUnsupported, and this capability gate wins over the
-	// combination check below (nit #4). Conflict handling on a no-upsert dialect is
+	// combination check below. Conflict handling on a no-upsert dialect is
 	// likewise ErrUnsupported, never a silent plain-INSERT that drops the clause.
 	copier, canCopy := b.dialect.(Copier)
 	if b.forceCopy && !canCopy {

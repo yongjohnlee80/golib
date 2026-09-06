@@ -35,8 +35,8 @@ const (
 	eventBufferSize = 64
 
 	// quietPeriod is the input-idle span after which the first new input
-	// triggers an opportunistic size re-check (: a KVM switch or detached
-	// multiplexer can eat SIGWINCH).
+	// triggers an opportunistic size re-check, because a KVM switch or a
+	// detached multiplexer can eat SIGWINCH.
 	quietPeriod = 2 * time.Second
 )
 

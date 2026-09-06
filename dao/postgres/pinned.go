@@ -186,7 +186,7 @@ type pinnedConn struct {
 	in       inboundState
 	poisoned bool
 	// released records a successful Release: the pool member is gone and the handle is
-	// TERMINAL (MF1). Every face refuses with ErrReleased thereafter — the frontend,
+	// TERMINAL. Every face refuses with ErrReleased thereafter — the frontend,
 	// pgConn and netConn still point at a connection the pool may have handed to another
 	// goroutine, so touching them would corrupt a stranger's wire.
 	released bool
@@ -198,14 +198,14 @@ type pinnedConn struct {
 	// inEmit is set, under mu, by SimpleQuery for the duration of each emit callback.
 	// It certifies that the goroutine holding wireMu is executing the CONSUMER's code
 	// between two reads — no wire I/O is in flight — which is what lets Discard skip
-	// its wireMu barrier instead of self-deadlocking when the callback discards
-	// (Amendment 1 A1-C3, PR #22 MF1). SimpleQuery re-checks terminal state under mu
+	// its wireMu barrier instead of self-deadlocking when the callback discards.
+	// SimpleQuery re-checks terminal state under mu
 	// when the callback returns, before any further read, so a concurrent Discard
 	// that skipped the barrier is observed before the wire is touched again.
 	inEmit bool
 	// writing is held by the one wire-write in progress (Flush or Sync). It is claimed
 	// under mu BEFORE the write starts, so a concurrent Send/Flush/Sync refuses rather
-	// than mutating pgproto3's shared write buffer mid-Write (MF3). Receive does not set
+	// than mutating pgproto3's shared write buffer mid-Write. Receive does not set
 	// it — the Send-during-Receive resume path stays open.
 	writing bool
 	// wirePrivate is set while a transaction or private-query exchange owns the wire.
@@ -321,7 +321,7 @@ func (p *pinnedConn) Flush(ctx context.Context) error {
 		return fmt.Errorf("%w: nothing queued to flush", ErrSegmentInFlight)
 	}
 	// Claim the write buffer BEFORE dropping mu, so a concurrent Send/Sync refuses
-	// rather than mutating pgproto3's shared wbuf while Write reads and resets it (MF3).
+	// rather than mutating pgproto3's shared wbuf while Write reads and resets it.
 	p.writing = true
 	p.mu.Unlock()
 
@@ -338,7 +338,7 @@ func (p *pinnedConn) Flush(ctx context.Context) error {
 	err := p.writeBuffered(ctx)
 	p.wireMu.Unlock()
 
-	// Same single-critical-section publication as Sync (r1 MF4). A failed Flush happens
+	// Same single-critical-section publication as Sync. A failed Flush happens
 	// to retain out==building, which already blocks clean reuse, but the invariant is
 	// normalized here rather than left resting on that incidental fact.
 	p.mu.Lock()
@@ -383,11 +383,11 @@ func (p *pinnedConn) Receive(ctx context.Context) (ExtendedMessage, error) {
 	msg, err := p.readMessage(ctx)
 	p.wireMu.Unlock()
 	if err != nil {
-		// Unlike Flush/Sync (r1 MF4) this poison needs no paired state publication:
+		// Unlike Flush/Sync this poison needs no paired state publication:
 		// Receive is only legal from out ∈ {flushed, building} and it resets nothing, so
 		// the handle is never quiescent here and no observer can read it as reusable in
 		// the interval before the flag lands. Do not "simplify" this by resetting the
-		// tracks — that would create exactly the MF4 window.
+		// tracks — that would create exactly the window.
 		p.poison()
 		return ExtendedMessage{}, err
 	}
@@ -438,7 +438,7 @@ func (p *pinnedConn) Sync(ctx context.Context) (byte, error) {
 	status, err := p.syncLocked(ctx)
 	p.wireMu.Unlock()
 
-	// The failure and the claim release are published in ONE critical section (r1 MF4).
+	// The failure and the claim release are published in ONE critical section.
 	// Sync is legal from quiescent, so a failed Sync that cleared writing and only then
 	// poisoned would expose a window in which the handle reads as (idleOut, noInbound,
 	// !writing, !poisoned) — fully clean — and a concurrent Release would hand the failed
@@ -531,8 +531,8 @@ func (p *pinnedConn) Release(_ context.Context) error {
 		return ErrTxStillOpen
 	}
 	// Terminalize UNDER mu, before the lease goes back: the moment acq.Release runs the
-	// pool may hand this member to another goroutine, and every face must already refuse
-	// (MF1). released is set here, not after, so no concurrent Send can slip in between.
+	// pool may hand this member to another goroutine, and every face must already refuse.
+	// released is set here, not after, so no concurrent Send can slip in between.
 	p.released = true
 	acq := p.acq
 	p.acq = nil
@@ -652,7 +652,7 @@ func (p *pinnedConn) beginPrivate() (func(), error) {
 
 // writeBuffered flushes the frontend's buffered frames to the socket, bounded by ctx.
 // The caller owns the wire (holds wireMu). pgproto3's Flush has no context, so the write
-// is bounded two ways (MF2): a deadline when ctx carries one, AND a watcher that
+// is bounded two ways: a deadline when ctx carries one, AND a watcher that
 // shortens the socket deadline the instant ctx is cancelled — a cancellable context with
 // NO deadline, or cancellation before a later deadline, must still interrupt a blocked
 // Write per PinnedConn.Flush's contract and ADR The watcher's teardown is
