@@ -185,14 +185,22 @@ func (c *Cache) Ensure(off int64, n int) (int, error) {
 			continue
 		}
 		empties = 0
+		// INSIDE THE LOOP, not after it. A watermark ahead of head is a promise
+		// that the skipped bytes are dropped AS THEY ARRIVE, and reclaiming once
+		// the range is complete keeps that promise only in the final state: the
+		// peak is then the whole range, every byte of it resident at once. A
+		// caller skipping a megabyte would hold a megabyte.
+		//
+		// The cursor is what makes this affordable per fill rather than per
+		// range, and the comparison costs nothing when no forward watermark is
+		// outstanding, which is the ordinary case.
+		if c.relOff < c.released {
+			c.reclaimLocked()
+		}
 	}
 
-	// A WATERMARK AHEAD OF HEAD applies to bytes that had not arrived when it
-	// was set. Release(off) is a statement about the stream, not about the
-	// bytes read so far, so a caller that skips forward past unread input must
-	// not have to call Release a second time to make the skipped bytes go. The
-	// cursor makes this cheap: there is pending work only when it has not
-	// reached the watermark.
+	// And once more after the loop, for the bytes of the final fill and for a
+	// range that was already resident when Ensure was called.
 	if c.relOff < c.released {
 		c.reclaimLocked()
 	}

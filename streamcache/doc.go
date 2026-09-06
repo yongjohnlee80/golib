@@ -41,15 +41,20 @@
 // because it cannot know what a caller still needs.
 //
 // [Cache.Release] sets a WATERMARK, and the watermark alone decides what is
-// still acquirable. The offset may be beyond what has been read, meaning "skip
-// forward": those bytes are dropped as they arrive. It is a statement about the
-// stream, not about how much of it happens to have been read when it is made — not which buffers happen to have been freed. Otherwise the
+// still acquirable — not which buffers happen to have been freed. Otherwise the
 // answer would depend on whether an unrelated view is holding an unrelated
 // segment in front of the span, which is not something a caller can reason
-// about. Freeing follows on its own schedule: unheld segments below the
-// watermark go at once, held ones are freed by their last Close, and old views
-// keep reading their own bytes throughout. One view of the first byte of a
-// stream does not pin the rest of it.
+// about.
+//
+// Freeing follows on its own schedule: unheld segments below the watermark go
+// at once, held ones are freed by their last Close, and old views keep reading
+// their own bytes throughout. One view of the first byte of a stream does not
+// pin the rest of it.
+//
+// The offset may be beyond what has been read, meaning "skip forward": those
+// bytes are dropped as they arrive, not once the range is complete. A watermark
+// is a statement about the stream, not about how much of it happens to have
+// been read when it is set.
 //
 // # Concurrency
 //

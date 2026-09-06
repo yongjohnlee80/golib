@@ -381,8 +381,12 @@ func TestFill_DoesNotWriteIntoAFreedSegment(t *testing.T) {
 	t.Parallel()
 	c := New(strings.NewReader("0123456789ab"), WithSegmentSize(4))
 
-	// Three older held entries, so compaction cannot rescue this by removing
-	// the freed one — the defect must be reachable on its own terms.
+	// These are three views on ONE segment, not three entries: with four-byte
+	// segments, offsets 0, 1 and 2 all fall inside segment 0. What the probe
+	// needs is that segment 0 stays HELD, which blocks compaction's leading-run
+	// truncation, while one freed entry out of two is not a majority so the
+	// rebuild does not fire either. The freed entry therefore survives in the
+	// directory, which is the precondition for the writer to find it.
 	var holds []*View
 	for _, off := range []int64{0, 1, 2} {
 		v, err := c.Acquire(off, off+1)
@@ -503,7 +507,64 @@ func TestRelease_BeyondHeadDropsBytesAsTheyArrive(t *testing.T) {
 			"A watermark set beyond head must apply to the bytes that arrive after it, "+
 				"or a forward skip keeps everything it skipped.")
 	}
+
+	// THE FINAL STATE IS NOT THE CLAIM. "Dropped as they arrive" is a statement
+	// about the PEAK, and a probe that only reads retainedBytes() at the end is
+	// blind to it: reclaiming once after the whole range has been filled leaves
+	// the same final zero and a peak of the entire range. Measured from inside
+	// the reader, on the goroutine that holds the lock.
+	obs := &observingReader{src: []byte(src), chunk: segSize}
+	c2 := New(obs, WithSegmentSize(segSize))
+	obs.c = c2
+	c2.Release(int64(len(src)))
+	if _, err := c2.Ensure(0, len(src)); err != nil {
+		t.Fatalf("Ensure(all) on the observed cache: %v", err)
+	}
+	if maxPeak := int64(3 * segSize); obs.peakBytes > maxPeak {
+		t.Fatalf("PEAK retention while reading %d bytes already released: %d; want <= %d\n%s",
+			len(src), obs.peakBytes, maxPeak,
+			"Reclaiming once after the fill completes gives the right final answer and "+
+				"the wrong peak — the bytes were all resident at once.")
+	}
+	if obs.peakDir > 3 {
+		t.Fatalf("PEAK directory while reading a released stream: %d entries, want <= 3",
+			obs.peakDir)
+	}
+	if obs.peakBytes == 0 {
+		t.Fatal("control failed: the observing reader sampled nothing")
+	}
 	if _, err := c.Acquire(0, 1); !errors.Is(err, ErrReleased) {
 		t.Fatalf("Acquire(0,1) = %v, want ErrReleased", err)
 	}
+}
+
+// observingReader samples the cache's retained size on every Read, so a probe
+// can assert a PEAK rather than only a final state.
+//
+// Read is called from inside the cache's critical section on the same
+// goroutine, which is exactly why it uses the unlocked accessor.
+type observingReader struct {
+	src       []byte
+	off       int
+	chunk     int
+	c         *Cache
+	peakBytes int64
+	peakDir   int
+}
+
+func (r *observingReader) Read(p []byte) (int, error) {
+	if r.c != nil {
+		if got := r.c.retainedBytesLocked(); got > r.peakBytes {
+			r.peakBytes = got
+		}
+		if got := len(r.c.segs); got > r.peakDir {
+			r.peakDir = got
+		}
+	}
+	if r.off >= len(r.src) {
+		return 0, io.EOF
+	}
+	n := copy(p, r.src[r.off:min(r.off+r.chunk, len(r.src))])
+	r.off += n
+	return n, nil
 }
