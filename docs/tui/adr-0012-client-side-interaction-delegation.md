@@ -16,6 +16,14 @@ option space, scores the four named options against it, and proposes a
 minimal opt-in seam. **No implementation is proposed yet** — §7 names the
 measurements that should gate it.
 
+**Read §10 and §11 before acting on §6.** §10 records that this analysis
+assumes ADR-0009 §1.1's audience (remote access to a CLI TUI) and that
+AutoKB's browser-primary audience inverts the recommendation. §11 evaluates
+Johno's stronger alternative — full component hoisting via
+`widget.AllowedOnClientSide()` — and concludes it beats §6's recommendation
+for the case it targets, once narrowed from "hoist a component" to "hoist a
+text buffer".
+
 - **Status:** **Proposed** (2026-09-08) — analysis only, for Johno's decision
 - **Date:** 2026-09-08
 - **Module:** `github.com/yongjohnlee80/golib`
@@ -577,8 +585,299 @@ These are true now, independent of any option:
 
 - Running arbitrary terminal programs in a browser — that is ADR-0009 §5(C)
   (PTY + xterm.js) and stays the right answer to that different question.
-- Client-side **authority** over anything (§2.1). Refused, permanently.
+- Client-side **authority** over anything (§2.1) — for the *prediction* design
+  of §5, refused permanently. **§11 is a different design and does require
+  authority**, deliberately and only over a free-text buffer the user authored;
+  §11.2(e) and §11.5 bound where that is admissible. The two must not be
+  conflated: §5 predicts and can be wrong harmlessly, §11 owns and cannot.
 - A second render path per widget (ADR-0009 §5(B)). Delegation adds a
   *prediction* declaration, not a second `Render`.
 - Changing `CellUpdate`, `Flush`, `Component`, or any widget.
 - Any change to the terminal backend, which ignores every seam proposed here.
+
+---
+
+## 10. Applicability — what this analysis assumes about the audience
+
+**This ADR reasons from ADR-0009 §1.1's premise**, and that premise is narrow:
+
+> "the goal this tui.web engine is just to allow users to remotely connect to a
+> CLI server where TUI is already available without extra costs. It won't be a
+> fancy webapp but more likely a way to access the CLI tool which already has a
+> TUI."
+
+Every recommendation above — especially Option 0 — is scored against that: the
+browser is a **remote-access surface for people who are already TUI users**, so
+the only thing missing is latency, and prediction is the cheapest way to remove
+it.
+
+**That premise does not hold for AutoKB** (Johno, 2026-09-08). AutoKB is a
+knowledge-base application offering Obsidian- and Notion-class features, hosted
+server-side, with **devs *and directors* working from the browser** and
+therefore "much more user interactions". There the browser is the **primary
+product surface for most of its users**, not a convenience for TUI users.
+
+For that audience the cell grid is not slow — it is **structurally unable to be
+a document surface**, and no amount of prediction changes any of it:
+
+- **No reflow, no responsive layout.** `client.js:rebuild` pins
+  `repeat(cols, <cellW>px)` from a measured monospace advance. A laptop and a
+  4K display get the same fixed grid.
+- **No document semantics for assistive technology.** The DOM is `w*h` bare
+  `<i class="c">` elements — no headings, no landmarks, no ARIA anywhere. A
+  screen reader sees 8,120 anonymous spans. For a director-facing tool that is
+  not a nicety.
+- **No links, images, or embeds.** There is no anchor element in the client.
+- **No variable-width type, and no rich-text editing.** WYSIWYG in a character
+  grid is a category error, not a hard problem.
+- **Selection and copy are row-major over a fixed grid** (DOM order is
+  row-major), so a selection cannot follow a paragraph or a column. Exact
+  find-in-page behaviour across per-grapheme elements is untested and should
+  be measured rather than assumed either way.
+
+So for AutoKB the answer is the one **ADR-0009 §5(B)** rejected — a semantic
+frontend. Its rejection reasons do not transfer: "a second render path per
+widget" is a real cost, but §5(B) weighed it against a *convenience* surface.
+
+**And the structural recommendation for AutoKB is neither §5(B) nor this ADR:
+do not render the TUI to the browser at all.** Make the engine/RPC API the
+shared thing and treat TUI and Web as two independent clients of it.
+autokb ADR-0084 §5 already defines that RPC surface, and §6.3 already leaves
+the door open — *"rendered via `golib/tui`'s web backend **or dedicated HTTP/WS
+endpoints**"*. TUI-first sequencing then costs nothing: building it first
+hardens the API the web client consumes.
+
+**Do not apply Option 0 to AutoKB's director-facing surface.** It is the right
+answer for operating a TUI remotely, which is a different job.
+
+---
+
+## 11. Full component hoisting — `widget.AllowedOnClientSide()`
+
+Johno's alternative, evaluated on its own terms (2026-09-08). The proposal is
+stronger than "predict and reconcile": a widget declares itself hoistable and
+the client takes over **rendering *and* event handling** for it, owning the
+state, with the backend fetching the result after a deliberate delay.
+
+```go
+editor := widget.NewEditor(widget.AllowedOnClientSide())
+
+enhancedWebUIBackend, err := enhancedWeb.Open()
+tui.NewApp(app, tui.WithBackend(enhancedWebUIBackend)).Run(ctx)
+```
+
+*"with `AllowedOnClientSide()` … the js render engine can hoist the component
+in the clientside for components' full business logic such as event handling on
+the FE side. Of course, if the WithBackend is provided with `term.Open()` … this
+option is to be ignored."*
+
+### 11.1 Where the design is right, and it is right about several things
+
+1. **The API shape is correct and needs no invention.** `NewEditor` is already
+   `func NewEditor(opts ...EditorOption) *Editor` (`widget/editor.go:140`), so
+   `widget.AllowedOnClientSide()` drops into an existing variadic option list
+   with zero API friction.
+2. **Per-INSTANCE opt-in beats per-type capability.** §5.1 above put the
+   declaration on the widget *type* (`Delegable` asserted like `Focusable`) with
+   an opt-out wrapper. Johno's is better: an app can hoist the note editor and
+   leave the command palette alone, and nothing is hoisted unless someone asked.
+   **§5.1 should be revised to this form** if any of this is built.
+3. **"Ignored by `term.Open()`" is the right default and costs nothing.** The
+   terminal backend never reads the flag; every existing consumer is unaffected
+   whether or not it declares hoisting.
+4. **A text editor is the one widget where client authority is genuinely
+   defensible.** Text entry is the highest-frequency interaction there is, and
+   the buffer is *the user's own input* — the server holds no competing opinion
+   about what the user typed. Debounced sync is how every real web editor
+   works. Johno's instinct about *which* widget to hoist first is correct.
+
+### 11.2 Where it breaks down
+
+**(a) "Full business logic" means a second IMPLEMENTATION, and that is the
+cost — quantified.** The JS engine does not know what an editor *is*. golib's
+editor is a **four-mode vim editor**: `ModeNormal` / `ModeInsert` /
+`ModeVisual` / `ModeVisualLine` (`editor_keymap.go:12-21`), a keymap keyed by
+mode class, a `jk` chord with a 300 ms timeout (`editor.go:148-149`),
+grapheme-aware cursor motion, and text objects — **2,058 lines** across
+`editor.go` (1,406), `editor_keymap.go` (201), `textbuffer.go` (267) and
+`textutil.go` (184).
+
+Hoisting "full business logic" means writing those 2,058 lines again in
+JavaScript and keeping the two in agreement forever. ADR-0009 §5(B) rejected a
+second **render** path per widget; this is a second **behaviour** path, which is
+strictly worse: a render divergence is a visual bug, while a behaviour
+divergence means the editor *does different things* depending on which frontend
+you opened. Nothing in the option declaration prevents that drift, and no test
+can span the two languages cheaply.
+
+**(b) Rendering the hoisted widget is a fork in the road, and both branches
+cost.** Either the hoisted editor still paints as cells — in which case it
+keeps every §10 limitation and buys only latency — or it becomes real DOM (a
+`<textarea>` / contenteditable island absolutely positioned into the rect the
+TUI's layout assigned it). The second is what makes hoisting *worth* doing, and
+it splits layout authority: the browser wraps text by its own rules while
+golib's `textbuffer` and `Editor.wrap` decide the TUI's. Cursor position,
+scroll offset, line numbers and the surrounding status line then disagree with
+the content. That is ADR-0009 §2.6's wide-grapheme hazard one level up, and
+§2.6's containment trick (geometric boxes that clip) does not apply to a
+reflowing island.
+
+**(c) One-directional sync cannot express a server-side write, and AutoKB needs
+them.** "BE can only fetch the contents of the buffer" is a pull. But the
+server legitimately wants to *change* the buffer: a file reload, an undo driven
+from a menu, an **agent writing to the document**, or another user editing.
+AutoKB is exactly this case — ADR-0084 §6.3 promises *"real-time synchronized
+document viewing and editing"*, and the KB's whole premise is agents authoring
+alongside humans. A client that owns the buffer turns every server-side write
+into a conflict, and resolving conflicts on shared text is OT or CRDT. That is
+a large, well-understood cost, and it is the reason Notion and Google Docs
+carry one. **This is the single biggest gap in the design as stated.**
+
+**(d) "Deliberate time lapse" is a data-loss window with a named cause.**
+Whatever the debounce is, that is how much typing a closed tab, a dropped
+socket or an eviction discards. ADR-0009 §2.8 specifies **idle eviction with a
+configurable timeout and a hard cap on concurrent sessions** — so the session
+can legitimately disappear inside the window. Solvable (flush on
+`beforeunload`, local persistence, sequence-numbered acks) but it must be
+designed rather than assumed.
+
+**(e) The security posture changes from prediction to AUTHORITY, and the option
+must therefore not be universal.** §2.1 refuses client authority permanently;
+this design requires it. For a text buffer that is acceptable — it is the
+user's own text, and the server must validate on persist regardless. It is
+**not** acceptable for a widget whose logic *enforces* something: a permissions
+picker, a destructive-action confirmation, a query builder deciding what SQL
+runs. So `AllowedOnClientSide()` cannot be an option available on every widget;
+it belongs only on widgets whose state is free user input, and that restriction
+should be expressed in the type system rather than in documentation.
+
+**(f) `enhancedWeb.Open()` as a second backend duplicates the expensive half.**
+A separate package means a second implementation of sessions, authentication,
+SSO, the handoff seam, peer binding and transport — the part ADR-0009 §2.8 calls
+*"the real work, not rendering"*, which took that ADR 30 revisions and eight
+consecutive review rounds to get right (§2.12.8-15 are one mistake made eight
+ways). Hoisting is a **capability of the existing web backend**, not a new
+backend: `web.Open(web.WithHoisting(true))`, negotiated through the `hello`
+message that already carries `pointer` / `fontok` / `dark` capability flags.
+
+### 11.3 The narrowing that saves it
+
+Keep Johno's API **verbatim** and change only what it means. Not *"hoist this
+component's logic"* but:
+
+> **This widget's TEXT BUFFER is client-owned, edited by the client's single
+> text-editing implementation.**
+
+That one substitution answers (a), (b) and (e) at once:
+
+- **One JS implementation total**, not one per widget — `textinput`, `textarea`
+  and `editor` all hoist onto the same client buffer.
+- **It stays a closed capability** (like §5.1's `Kind` enum): the server ships
+  no behaviour, and a component cannot smuggle code to the browser.
+- **The option only exists where it is safe**, because "has a free-text buffer"
+  is exactly the safe set from (e).
+- The island renders as a real `<textarea>` — native selection, native
+  clipboard, screen-reader support, IME — which is the actual §10 win, not just
+  latency.
+
+**And the audience split dissolves the modal-editing fork.** The client
+implementation is *plain* text editing; golib's four-mode vim keymap is **not**
+hoisted. That is not a compromise — a director does not want modal editing, and
+a dev who does can use the TUI, where the real editor already lives. The person
+who wants `ciw` is not the person in the browser. So the 2,058 lines never need
+a second implementation, and the option's docs say plainly: **hoisting trades
+the modal keymap for native text affordances.**
+
+(c) and (d) remain and are unavoidable: pick a conflict policy explicitly —
+last-writer-wins with a visible "changed on the server" banner is a legitimate
+and cheap answer for single-author documents, and CRDT is the answer only if
+concurrent authorship is a requirement. Do not leave it implicit.
+
+### 11.4 Verdict
+
+**The design holds up well as an API and for one widget class; it does not hold
+up as a general mechanism.** Adopted as written — hoist any component's full
+business logic — it reintroduces ADR-0009 §5(B)'s rejected cost in a worse
+form, per widget, in a second language. Adopted as §11.3's narrowing — hoist a
+text buffer onto one client implementation, opted in per instance, ignored by
+the terminal backend — it is **better than this ADR's own Option 0** for the
+case it targets, because it delivers the §10 affordances (selection, clipboard,
+a11y, IME) that prediction cannot.
+
+**Where it lands for AutoKB:** a good mechanism for the **dev** path — a real
+editing experience in the TUI's web backend without a second frontend. Still
+**not** the answer for the director-facing document surface, which wants a web
+client against the RPC API (§10). Those two conclusions are compatible: hoisting
+makes the remote-TUI path genuinely usable for writing, and the API-backed web
+client serves the audience that was never going to use a TUI.
+
+### 11.5 The diagnosis is exactly right — and the text path is already half-built
+
+Johno, 2026-09-08: *"I suspect the browser events are captured in the client
+side first then sent to the TUI backend, and what I'm suggesting is to prevent
+the roundtrip."*
+
+**Confirmed in the code, and it is worth writing the path out because it makes
+the proposal cheaper than §11.2(a) implies.**
+
+```
+keydown  (client.js:210)
+  ├─ reserved(e)?           → browser keeps it, nothing sent      (client.js:164)
+  ├─ named or modified key  → e.preventDefault(); send({t:'key'})  (client.js:216-220)
+  └─ plain text             → return; the `input` event handles it (client.js:215)
+
+input    (client.js:205) → drain()                                (client.js:186)
+  └─ send({t:'text', x: <capture element's value>}) and CLEAR IT SYNCHRONOUSLY
+```
+
+Then: WebSocket → server → the App's handler → cells → `frame` →
+`applyFrame` → `paint`. **Nothing on screen changes until the frame returns.**
+The client holds the event, has already decided it is meaningful, and has
+everything it needs to act — and does nothing but forward it. That is the round
+trip, and the only reason it exists is that **the client does not know what the
+event means**. Johno's option is precisely the missing declaration.
+
+**The text case is cheaper than it looks, because the browser is already doing
+the work.** `capture` is a real DOM input element with full composition
+handling (`compositionstart` / `compositionupdate` / `compositionend`,
+`client.js:197-203`) — so IME, dead keys and autocorrect already work natively.
+`drain()` reads its value and then **destroys it synchronously on every
+keystroke**.
+
+So for a hoisted text buffer, §11.3's narrowing is not "write a text editor in
+JavaScript". It is **"stop draining"** — let the native element keep its own
+value, make it visible in place of the cells, and sync on the debounce. The
+browser's text control already provides selection, clipboard, IME,
+screen-reader support and undo. §11.2(a)'s 2,058 lines are the cost of hoisting
+*golib's modal editor*; they are not the cost of hoisting *a text buffer*, and
+§11.3 is what keeps them off the bill.
+
+**But the drain is a SECURITY CONTROL, not an implementation detail** — and
+hoisting reverses it. `client.js:180-184` states why it exists:
+
+> Draining is also what keeps the DOM from becoming a keystroke log: without
+> it, every character the user ever typed — passwords included — would sit in
+> an element on a page reachable over the network.
+
+That is ADR-0009 r8's requirement ("the capture buffer DRAINS, so no typed
+history lingers in the DOM"). A hoisted buffer is, by definition, typed history
+living in the DOM until the next sync. Three consequences, all of which belong
+in the option's contract rather than in a reviewer's memory:
+
+1. **The drain stays the default.** Only a widget that explicitly declares
+   hoisting keeps its value, and only for its own element.
+2. **`AllowedOnClientSide()` must be unavailable for secret input.** Whatever
+   masks or collects a credential must not be hoistable — reinforcing
+   §11.2(e)'s point that this cannot be a universal widget option. A
+   `PasswordInput` that accepted the option would be a defect, so it should not
+   compile.
+3. **A hoisted buffer needs a bounded lifetime**, not just a debounce: cleared
+   on blur-to-another-widget, on detach, and on session teardown. The
+   `beforeunload` flush of §11.2(d) and this clearing are the same mechanism
+   viewed from two directions, and they must agree about which happens first.
+
+**This strengthens the verdict in §11.4 rather than changing it.** The
+diagnosis is correct, the API is correct, and for a text buffer the
+implementation is far smaller than a general hoisting mechanism would be —
+provided it is scoped to the buffer (§11.3) and provided the drain reversal is
+made explicit and type-restricted rather than assumed harmless.
