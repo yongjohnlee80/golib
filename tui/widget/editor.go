@@ -613,6 +613,27 @@ func (e *Editor) visualLines() (lo, hi int) {
 
 // --- edit operations ---------------------------------------------------------
 
+// exportYank puts a yanked selection on the SYSTEM clipboard and reports the
+// outcome, and it is called only from the explicit yank actions.
+//
+// NOT from yankSet, which is the REGISTER seam: a vim delete populates the
+// register too -- correctly -- so exporting there would push deleted text out
+// over OSC 52. Delete a line holding a secret and it would land in the
+// clipboard of whoever ran the app. Two seams, because they mean two different
+// things.
+//
+// A raw-mode TUI blocks the terminal's own selection, so the widget owes its
+// user a way to copy out; bufferview already does this on `y` for the same
+// reason. Backends without a ClipboardWriter make CopyToClipboard report
+// false, which is surfaced rather than treated as an error.
+func (e *Editor) exportYank(text string) {
+	delivered := false
+	if ctx := e.Context(); ctx != nil {
+		delivered = ctx.CopyToClipboard(text)
+	}
+	e.publish(YankEvent{Owner: e.NodeID(), ClipboardDelivered: delivered})
+}
+
 func (e *Editor) yankSet(text string, linewise bool) {
 	e.regText, e.regLinewise = text, linewise
 }
@@ -784,11 +805,15 @@ func (e *Editor) execAction(act Action, count int) bool {
 	case ActVisualYank:
 		if e.mode == ModeVisualLine {
 			lo, hi := e.visualLines()
-			e.yankSet(strings.Join(e.lines[lo:hi+1], "\n"), true)
+			text := strings.Join(e.lines[lo:hi+1], "\n")
+			e.yankSet(text, true)
+			e.exportYank(text)
 			e.ln, e.col = lo, 0
 		} else {
 			lo, hiEx := e.visualRange()
-			e.yankSet(e.textIn(lo, hiEx), false)
+			text := e.textIn(lo, hiEx)
+			e.yankSet(text, false)
+			e.exportYank(text)
 			e.ln, e.col = lo.ln, lo.col
 		}
 		e.exitVisual()
@@ -1076,7 +1101,9 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 				}
 				e.deleteLines(e.ln, min(e.ln+count-1, len(e.lines)-1))
 			case ActYankPrefix:
-				e.yankSet(strings.Join(e.lines[e.ln:min(e.ln+count-1, len(e.lines)-1)+1], "\n"), true)
+				text := strings.Join(e.lines[e.ln:min(e.ln+count-1, len(e.lines)-1)+1], "\n")
+				e.yankSet(text, true)
+				e.exportYank(text)
 			case ActGoPrefix:
 				e.goToLine(hadCount, count, false) // [count]gg
 			}

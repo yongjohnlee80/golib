@@ -17,6 +17,30 @@ type SubmitEvent struct {
 	Value string
 }
 
+// YankEvent is emitted by Editor when an EXPLICIT yank runs — visual `y` or
+// `yy` — and reports whether the text reached the system clipboard.
+//
+// OUTCOME ONLY. It deliberately carries no text, unlike SubmitEvent, whose
+// Value IS the point of a form field. A yank's payload may be a secret: the
+// widget is used read-only to display credentials, and an event is exactly the
+// kind of thing that ends up in a log line or a debug dump. A parent already
+// knows what it rendered; what it cannot otherwise learn is whether the copy
+// landed, because CopyToClipboard's bool is consumed inside the widget and
+// HandleEvent returns only "handled".
+//
+// ClipboardDelivered is false — truthfully — when the backend implements no
+// ClipboardWriter. That keeps the optional-capability contract (the widget
+// does not error on a backend that cannot copy) while still letting a parent
+// tell the user their copy did not leave the application.
+//
+// DELETES DO NOT EMIT THIS. `x`, `D`, `dd` and visual `d` fill the same
+// register, correctly, but exporting them would publish text nobody asked to
+// share.
+type YankEvent struct {
+	Owner              tui.NodeID
+	ClipboardDelivered bool
+}
+
 // ChangeEvent is emitted by TextInput and TextArea whenever the value
 // changes through user input — coalesced per input event (one event per
 // paste, not per rune).
