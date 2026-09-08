@@ -1,0 +1,12 @@
+# golib-test.sh per-run logs and ledgers.
+#
+# The harness writes these into whichever worktree it tested, so every worktree
+# it has ever run in is permanently dirty -- and a ledger that cannot attest a
+# clean tree is a ledger that attests nothing. A review found this repository
+# had no .gitignore at all, so this is where that starts.
+.golib-test-logs/
+
+# Local Go workspace. It points at sibling checkouts on THIS machine, so
+# committing it would break every other clone and CI.
+go.work
+go.work.sum

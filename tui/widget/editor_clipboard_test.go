@@ -182,8 +182,13 @@ func TestEditorYank_UnsupportedBackendReportsUndelivered(t *testing.T) {
 // A yank's payload may be a secret — this widget is used read-only to display
 // credentials — and an event is exactly what ends up in a log line or a debug
 // dump. A parent already knows what it rendered; what it cannot otherwise
-// learn is whether the copy landed. Asserted structurally, so adding a text
-// field later fails here rather than in an incident.
+// learn is whether the copy landed.
+//
+// BEHAVIOURAL, not structural, and a review was right to correct me on the
+// word: this formats the event and looks for the secret, so it catches a
+// POPULATED payload field. A field added and left empty would pass it. The
+// compile-time guarantee is the type itself, which has no payload; this cell
+// is the tripwire for someone filling one in.
 func TestEditorYank_EventCarriesNoSecretText(t *testing.T) {
 	h, _, _ := focusedEditor(t, 40, 6)
 	rec := record[widget.YankEvent](h)
