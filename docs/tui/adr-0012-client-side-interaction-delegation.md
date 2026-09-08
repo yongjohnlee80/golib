@@ -881,3 +881,277 @@ diagnosis is correct, the API is correct, and for a text buffer the
 implementation is far smaller than a general hoisting mechanism would be —
 provided it is scoped to the buffer (§11.3) and provided the drain reversal is
 made explicit and type-restricted rather than assumed harmless.
+
+---
+
+## 12. Enforcing hoistability — the event list, and what Go can actually check
+
+Johno, 2026-09-08: *"we should have list of all available events in the client
+side since we anticipate those. If the option is declared with the components
+only handling these events can be hoisted but we can throw compile time error
+if the component handles BE side events also — as not fit for client side
+hoisting."*
+
+The goal is right and it is the correct answer to §11.2(e). What follows is
+what is achievable, at what cost, and one property the framing misses that
+matters more than the events do.
+
+### 12.1 The list already exists and is already closed — partition it, do not invent it
+
+`tui.Event` is a **closed** interface: `type Event interface{ isEvent() }`
+(`events.go:8`), and `isEvent` is unexported, so no consumer can add an event
+kind. There are exactly eight implementors, and they split cleanly:
+
+| Event | Origin | Client-reproducible? |
+| --- | --- | --- |
+| `KeyEvent` (`events.go:49`) | the browser | **yes** — the client already holds it (§11.5) |
+| `MouseEvent` (`:89`) | the browser | **yes** — reported in cell coordinates today |
+| `PasteEvent` (`:114`) | the browser | **yes** — `paste` listener, `client.js:223` |
+| `FocusEvent` (`:119`) | the browser | **yes** — window focus/blur, `client.js:263` |
+| `ResizeEvent` (`:111`) | the browser | **yes** — the client *measures* it |
+| `TickEvent` (`:132`) | `App` timers (`ctx.After`/`Every`) | **no** |
+| `TaskResult` (`:144`) | `ctx.Go` completion | **no** |
+| `TaskProgress` (`:153`) | `ctx.Go` progress | **no** |
+
+**Five client, three backend, and the boundary is not a judgement call** — it is
+"did this originate in the browser". That is the enumeration Johno wants, and
+the right move is to *name the partition on the existing closed set* rather than
+maintain a second list that can drift from it (the
+`specified-vocabulary-enumeration` convention: enumerate from the catalogue,
+never from your own reachable paths).
+
+Note `ResizeEvent` is a trap: the client produces it, but a resize changes
+**layout**, which the server owns. A hoisted component may observe it; it may
+not conclude anything about its own size from it.
+
+### 12.2 A literal compile-time error on the HANDLED SET is not achievable
+
+Two independent blockers, both structural:
+
+1. **The handled set lives inside a method body.** `Component` has one entry
+   point — `HandleEvent(ev Event) bool` (`component.go:55`) — and which events a
+   component handles is decided by a `switch ev := ev.(type)` inside it. Go's
+   type checker does not see into method bodies. There is no type-level
+   difference between a component that handles `KeyEvent` and one that handles
+   `TaskResult`.
+2. **Go has no negative type constraints.** Even after splitting the interface
+   (§12.3), "T must **not** implement `TaskResultHandler`" is inexpressible in a
+   generic constraint. Go can require a method set; it cannot forbid one.
+
+So the direct form of the request — declare the option, get a compile error if
+the component also handles backend events — cannot be built as stated. Saying so
+plainly matters, because a design that assumes an impossible check will ship
+with the check silently absent.
+
+### 12.3 What IS compile-time enforceable, and it is the half that matters
+
+**The option's *applicability* can be decided by the type checker**, which is
+what kills §11.5(2)'s password hazard. golib's options are already
+widget-typed: `type EditorOption func(*Editor)` (`editor.go:69`). So an option
+value simply *cannot* be passed to a widget that does not accept it.
+
+Consequence for the sketched API: `widget.AllowedOnClientSide()` cannot be one
+untyped function shared by every widget — with `func(*Editor)` option types it
+would have to be either per-widget (`widget.EditorOnClientSide()`) or generic.
+The cleaner form makes options an interface:
+
+```go
+// Only golib can implement it (unexported method), and only widgets whose
+// state is free user text define the apply half.
+type EditorOption interface{ applyEditor(*Editor) }
+
+type hoist struct{ syncAfter time.Duration }
+func AllowedOnClientSide(o ...HoistOption) hoist
+
+func (h hoist) applyEditor(e *Editor)       { e.hoist = &h }   // Editor accepts
+func (h hoist) applyTextArea(t *TextArea)   { t.hoist = &h }   // TextArea accepts
+// PasswordInput defines NO apply method for hoist, so
+//   widget.NewPasswordInput(widget.AllowedOnClientSide())
+// FAILS TO COMPILE. Not documented — refused.
+```
+
+**Cost, stated honestly:** `EditorOption` (and each sibling) changes from a func
+type to an interface. Existing options (`WithEditorStyles`, …) keep their
+signatures behind a one-line shim (`type editorOptFunc func(*Editor)`
+implementing `applyEditor`), so consumers are unaffected — but it is a
+breaking change to the *option type*, and golib is pre-1.0 with a patch-only
+release policy, so it is affordable rather than free.
+
+### 12.4 The property that actually decides safety is EFFECTS, not events
+
+This is the part the framing misses, and it dominates. A component can handle
+**only** `KeyEvent` and still be unhoistable, because `HandleEvent` runs with a
+`*Context` whose surface reaches the whole runtime (`context.go`):
+
+| `Context` call | Why a hoisted handler must not make it |
+| --- | --- |
+| `Go(task, …)` (`:192`) | starts server-side async work — the entire point of the backend |
+| `Post(ev)` (`:187`) | injects into the App's event loop |
+| `Bus()` (`:197`) | publishes to every other component |
+| `After` / `Every` (`:202`, `:213`) | arms App-owned timers, producing `TickEvent`s |
+| `Mount` / `Unmount` / `Move` (`:114`, `:123`, `:135`) | mutates the tree the server owns |
+| `RequestLayout` (`:48`) | invalidates layout the server computes |
+| **`App()` (`:172`)** | hands out the whole `*App` — an escape hatch past every rule above |
+
+An editor that handles only keystrokes but calls `ctx.Go` to hit the database on
+`Enter` is **not** hoistable, and no event-set check would notice. So the real
+predicate is:
+
+> handles only client-origin events **and** produces no `Context` effect other
+> than `MarkDirty`.
+
+`MarkDirty` is the one safe call, because a hoisted component repainting itself
+locally is exactly what hoisting is.
+
+This predicate is also inside a method body, so it is no more compile-checkable
+than the first — but it is the one worth checking, and §12.5 can check it.
+
+### 12.5 For what the type system cannot see: a `go vet` analyzer
+
+The event switch and the `Context` calls are both plainly visible in the AST.
+A `golang.org/x/tools/go/analysis` pass can, for any type constructed with the
+hoist option:
+
+1. walk its `HandleEvent` body,
+2. flag `case` arms on `TickEvent` / `TaskResult` / `TaskProgress`,
+3. flag calls to the §12.4 denylist — `App()` unconditionally, since it defeats
+   the rest,
+4. and follow direct method calls one level deep, because `HandleEvent` usually
+   delegates (`Table.HandleEvent` forwards to `t.list.HandleEvent`,
+   `widget/table.go:200-218`).
+
+That is "compile time" in the sense Johno means — a CI gate that fails the
+build — without claiming the type system does something it cannot. It is
+**sound in the direction that matters**: it can miss a violation reached through
+an interface or reflection, so it must be paired with §12.6 or with a runtime
+refusal at mount, and it must never be described as a proof.
+
+### 12.6 The design that needs no check at all
+
+The strongest resolution is the §11.3 narrowing, and it is stronger *because of*
+this section. If the hoisted thing is a **text buffer** rather than a
+**component**, then:
+
+- it has **no `HandleEvent`** to audit,
+- it has **no `Context`**, so §12.4's denylist is unreachable by construction,
+- and its event set is fixed by the client's one text implementation, not
+  declared per widget.
+
+There is then nothing for a compile-time check to find, because the unsafe
+thing was never expressible. §12.3's typed-option refusal still applies and is
+still worth having — it is what stops a credential field opting in — but §12.4
+and §12.5 become unnecessary.
+
+**That is the argument for narrowing, restated from the enforcement side:** a
+mechanism whose misuse cannot be represented needs no verifier, and every
+verifier we would otherwise have to write here is one we would also have to
+trust.
+
+### 12.7 The enforcement ladder, in order of strength
+
+**Superseded by §12.9** — kept because the reasoning below is still the
+argument for rows 1 and 2, and only the ordering and the runtime row changed.
+
+| Mechanism | Catches | Real compile time? |
+| --- | --- | --- |
+| **Hoist a buffer, not a component** (§11.3, §12.6) | everything — the unsafe form is inexpressible | n/a — nothing to check |
+| **Typed option applicability** (§12.3) | a widget opting in that must never hoist (credentials) | **yes** |
+| **Split per-kind handler interfaces** | makes the handled set visible in the *type*, so a runtime assert at mount is exact | no — Go cannot forbid a method set |
+| **`go vet` analyzer** (§12.5) | backend-event arms and `Context` effects in `HandleEvent` | CI gate, not the type system |
+| **Runtime refusal at mount** | anything the above miss; loud and immediate | no |
+| Documentation | nothing | no |
+
+**Recommendation: rows 1 and 2.** Row 1 removes the class; row 2 is cheap, real
+compile-time enforcement of the one thing row 1 does not cover. Add row 4 only
+if component-level hoisting is pursued after all — in which case it is not
+optional, because rows 1 and 3 are then both unavailable.
+
+### 12.8 Fail loudly instead of no-op — and golib already has the machinery
+
+Johno, 2026-09-08: *"or we can throw error in those event handling so that the
+tester can pick those up rather than silent no ops."*
+
+**Right, and it repairs a real weakness in §12.5.** The vet analyzer is
+*unsound* — it cannot follow an interface dispatch or reflection — so on its own
+it licenses exactly the outcome it was meant to prevent: a hoisted component
+whose `ctx.Go` quietly does nothing, an app that looks like it works, and a
+missing feature found by a user rather than a test. A silent no-op is the worst
+available failure mode, and this is the family's own recorded lesson
+(`never-silence-smoke-failures`, `validate-the-verifier`).
+
+**But guard the CAUSE, not the SYMPTOM.** "Throw in those event handlings" has
+the blame backwards for half the cases:
+
+- **Receiving** a `TickEvent` or `TaskResult` is not the component's doing — the
+  framework routed it there. Erroring on delivery blames the wrong party and the
+  stack trace points at the router.
+- **Arming** it is. `ctx.After` / `Every` / `Go` are calls the component makes.
+  Refusing *there* means the offending event never exists, the diagnostic names
+  the actual line, and there is no symptom left to catch downstream.
+
+So the guard belongs on the `Context` effect surface (§12.4), at call time.
+That is also §12.7 row 5 improved: **refusal at effect, not at mount** — mount
+time cannot see what a handler will later do.
+
+**No new machinery is needed. Both halves already exist:**
+
+| Need | Existing surface |
+| --- | --- |
+| A configurable stance on "loud vs contained" | `PanicPolicy` — `PanicRepanic` (default) / `PanicReturn` (`options.go:14-20`), already honoured in `App.Run`'s restore-before-repanic defer (`app.go:195-204`) |
+| An ordered diagnostic channel a test can capture | `WithTrace(TraceFunc)` + `TraceEvent{Kind, Node, Comp, Detail}`, delivered on the loop goroutine in order (`trace.go:56-78`) |
+
+A hoisting violation is therefore a new `TraceKind` plus a policy consultation —
+consistent with how `TraceFocus` already reports focus repairs, and requiring
+nothing invented.
+
+**Strict by default in tests, contained in production — with no configuration.**
+The module is on **go 1.25.3**, so `testing.Testing()` is available. That gives
+Johno's requirement literally for free:
+
+```go
+// Default: strict under `go test`, contained in a real session.
+// A director's editing session must not die because a widget armed a timer;
+// a test must not pass while it does.
+strict := testing.Testing()          // overridable by an explicit option
+```
+
+- **Under test:** emit the trace event **and** panic (or fail through a hook).
+  The tester picks it up, exactly as asked.
+- **In production:** emit the trace event, increment a counter, and refuse the
+  effect. Never kill the session — ADR-0009 §2.8 makes a session a user's
+  workspace, and `tui/web` already contains per-session panics
+  (`session_panic_test.go`), so a crash would be survivable but still wrong as
+  a *policy*.
+
+**Prefer a recorded diagnostic over a bare panic**, and this is not a style
+preference: a panic stops at the *first* violation, so a component with four of
+them takes four test runs to clean up. A captured `[]TraceEvent` lets one test
+assert *which* violations occurred and *how many* — and lets a test assert
+there were **none**, which a panic-only design cannot express.
+
+**The guard needs a positive control, or its silence proves nothing.** A
+strict-mode check that never fires is indistinguishable from a clean codebase
+(`prove-the-instrument-observes`). So the suite must contain a component that
+deliberately calls `ctx.Go` while hoisted and assert the diagnostic fires, with
+the right `Comp` and `Detail`. Without that cell, "no hoisting violations" is
+an unverified claim rather than a measurement — the precise error ADR-0064's
+own r0 made about its latency numbers and was corrected on.
+
+### 12.9 Revised enforcement ladder
+
+Replaces §12.7's table with the causes-not-symptoms ordering:
+
+| Mechanism | Catches | When it fires |
+| --- | --- | --- |
+| **Hoist a buffer, not a component** (§11.3, §12.6) | everything — the unsafe form is inexpressible | n/a: nothing to check |
+| **Typed option applicability** (§12.3) | credentials or any widget that must never hoist | **compile** |
+| **`go vet` analyzer** (§12.5) | backend-event arms and `Context` effects visible in the AST | **CI, pre-merge** |
+| **Refusal at effect + trace, strict under `testing.Testing()`** (§12.8) | every violation actually executed, including those vet cannot see | **test run** (loud) / **production** (contained + counted) |
+| Split per-kind handler interfaces | makes the handled set visible in the type | assert at mount |
+| Documentation | nothing | never |
+
+**Recommendation: rows 1, 2 and 4.** Row 1 removes the class, row 2 is real
+compile-time enforcement of what row 1 does not cover, and row 4 is the honest
+backstop for an unsound static pass — with the positive control that makes its
+silence mean something. Row 3 is worth having if component-level hoisting is
+pursued, and is redundant under row 1.
