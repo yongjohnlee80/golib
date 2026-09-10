@@ -4,19 +4,19 @@ package tui
 //
 // # Architectural Principles
 //
-// 1. Complete Grapheme Clusters: Content holds exactly one complete UTF-8 grapheme
-//    cluster — never a partial cluster, and never multiple clusters. This reflects the
-//    modern terminal consensus (tcell v3, vaxis, bubbletea v2) preventing multi-byte
-//    or combining rune rendering corruption.
-// 2. Pre-Measured Display Width: Width caches the monospace column span (1 or 2)
-//    measured at write time under the active WidthPolicy. A continuation cell
-//    (the right half of a wide character) has Width == 0 and Content == "".
-// 3. Pre-Resolved Attributes: Attrs carries the final style payload already downsampled
-//    to the terminal's ColorProfile with SGR attribute bits set. Neither the frame
-//    differ nor the terminal emitter ever needs to consult a Theme.
-// 4. Comparable Struct Equality (==): Cell contains only comparable fields (string,
-//    uint8, CellAttrs). Consequently, dirty checking during frame diffing is a single
-//    Go struct comparison: `curr[i] == last[i]`.
+//  1. Complete Grapheme Clusters: Content holds exactly one complete UTF-8 grapheme
+//     cluster — never a partial cluster, and never multiple clusters. This reflects the
+//     modern terminal consensus (tcell v3, vaxis, bubbletea v2) preventing multi-byte
+//     or combining rune rendering corruption.
+//  2. Pre-Measured Display Width: Width caches the monospace column span (1 or 2)
+//     measured at write time under the active WidthPolicy. A continuation cell
+//     (the right half of a wide character) has Width == 0 and Content == "".
+//  3. Pre-Resolved Attributes: Attrs carries the final style payload already downsampled
+//     to the terminal's ColorProfile with SGR attribute bits set. Neither the frame
+//     differ nor the terminal emitter ever needs to consult a Theme.
+//  4. Comparable Struct Equality (==): Cell contains only comparable fields (string,
+//     uint8, CellAttrs). Consequently, dirty checking during frame diffing is a single
+//     Go struct comparison: `curr[i] == last[i]`.
 type Cell struct {
 	Content string    // one complete grapheme cluster; "" on wide continuation cells
 	Width   uint8     // display column width: 1 or 2; 0 indicates a continuation cell

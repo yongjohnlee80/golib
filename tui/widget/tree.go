@@ -17,27 +17,27 @@ import (
 // are often expensive to fetch and should not be loaded upfront. TreeNode supports
 // lazy asynchronous loading via generation tokens:
 //
-//	           User expands node (e.g. presses 'l' or Enter)
-//	                               │
-//	                               ▼
-//	                 ┌───────────────────────────┐
-//	                 │ gen = ++t.genSeq          │
-//	                 │ node.loading = true       │
-//	                 │ Publish ExpandRequestEvent│
-//	                 └─────────────┬─────────────┘
-//	                               │
-//	                               ▼
-//	               App handles event & spawns App.Go
-//	                               │
-//	                               ▼
-//	              Background task finishes asynchronously
-//	                               │
-//	                               ▼
-//	             node.SetChildren(gen, children)
-//	                               │
-//	                 Does gen == node.gen?
-//	                 ├── YES: Install children, loading=false, MarkDirty
-//	                 └── NO:  Stale response! Ignored completely.
+//	User expands node (e.g. presses 'l' or Enter)
+//	                    │
+//	                    ▼
+//	      ┌───────────────────────────┐
+//	      │ gen = ++t.genSeq          │
+//	      │ node.loading = true       │
+//	      │ Publish ExpandRequestEvent│
+//	      └─────────────┬─────────────┘
+//	                    │
+//	                    ▼
+//	    App handles event & spawns App.Go
+//	                    │
+//	                    ▼
+//	   Background task finishes asynchronously
+//	                    │
+//	                    ▼
+//	  node.SetChildren(gen, children)
+//	                    │
+//	      Does gen == node.gen?
+//	      ├── YES: Install children, loading=false, MarkDirty
+//	      └── NO:  Stale response! Ignored completely.
 //
 // If the user collapses the node, resets the tree, or initiates a subsequent reload
 // before the background worker finishes, node.gen increments or resets. Stale responses

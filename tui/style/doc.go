@@ -16,16 +16,16 @@
 //     themes, use restricted color palettes (16-color, 256-color), or run in high-contrast modes.
 //
 // Package style solves these problems through four design pillars:
-//  - Complete Separation of Style from Rendering: This package is stdlib-only and contains
-//    zero terminal escape generation logic. It models visual intent; the render-time resolver
-//    (in package tui) translates styles to terminal cell attributes against hardware profiles.
-//  - Zero-Allocation Immutable Value Semantics: [Style] is a flat struct copied by value.
-//    Setters execute in ~18ns with 0 heap allocations, assignment is a deep copy, and derived
-//    styles never alias their parents.
-//  - Strict Struct Comparability: [Style] is fully comparable with == and functions natively
-//    as a map key, enabling O(1) cell attribute caching in the renderer.
-//  - Semantic Token & Theming System: Widgets express styling via abstract tokens ([TokenPrimary],
-//    [TokenSurface]), while [Theme] maps tokens to colors with deterministic cascades.
+//   - Complete Separation of Style from Rendering: This package is stdlib-only and contains
+//     zero terminal escape generation logic. It models visual intent; the render-time resolver
+//     (in package tui) translates styles to terminal cell attributes against hardware profiles.
+//   - Zero-Allocation Immutable Value Semantics: [Style] is a flat struct copied by value.
+//     Setters execute in ~18ns with 0 heap allocations, assignment is a deep copy, and derived
+//     styles never alias their parents.
+//   - Strict Struct Comparability: [Style] is fully comparable with == and functions natively
+//     as a map key, enabling O(1) cell attribute caching in the renderer.
+//   - Semantic Token & Theming System: Widgets express styling via abstract tokens ([TokenPrimary],
+//     [TokenSurface]), while [Theme] maps tokens to colors with deterministic cascades.
 //
 // # Architecture & Resolution Pipeline
 //

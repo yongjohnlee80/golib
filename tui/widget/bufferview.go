@@ -23,28 +23,28 @@ var ErrClosed = errors.New("widget: buffer view closed")
 //
 // BufferView cleanly separates concurrent ingestion from loop-owned UI rendering:
 //
-//	   Background Goroutine                     Application Loop Goroutine
-//	   (exec.Cmd / Stream)                      (tui.App / Surface Render)
-//	         │                                              │
-//	         ▼                                              │
-//	   bufWriter.Write(p)                                   │
-//	         │                                              │
-//	         ├── Acquire semaphore (bounded buffer)         │
-//	         │                                              │
-//	         ├── App.Update(chunk) ─────────────────────────►
-//	         │                                              │
-//	         │                                        sgrInterp.feed(chunk)
-//	         │                                              │
-//	         │                                        Parse ANSI SGR codes
-//	         │                                        & multi-byte UTF-8
-//	         │                                              │
-//	         │                                        Append to ring buffer
-//	         │                                        lines[head:] (maxLines)
-//	         │                                              │
-//	         │                                        Update scroll position
-//	         │                                        (followTail: auto-pin)
-//	         │                                              │
-//	         │                                        MarkDirty()
+//	Background Goroutine                     Application Loop Goroutine
+//	(exec.Cmd / Stream)                      (tui.App / Surface Render)
+//	      │                                              │
+//	      ▼                                              │
+//	bufWriter.Write(p)                                   │
+//	      │                                              │
+//	      ├── Acquire semaphore (bounded buffer)         │
+//	      │                                              │
+//	      ├── App.Update(chunk) ─────────────────────────►
+//	      │                                              │
+//	      │                                        sgrInterp.feed(chunk)
+//	      │                                              │
+//	      │                                        Parse ANSI SGR codes
+//	      │                                        & multi-byte UTF-8
+//	      │                                              │
+//	      │                                        Append to ring buffer
+//	      │                                        lines[head:] (maxLines)
+//	      │                                              │
+//	      │                                        Update scroll position
+//	      │                                        (followTail: auto-pin)
+//	      │                                              │
+//	      │                                        MarkDirty()
 //
 // # Architectural Invariants
 //

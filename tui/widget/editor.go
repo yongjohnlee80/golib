@@ -17,32 +17,32 @@ import (
 //
 // Editor implements the classical Vim tripartite modal state machine:
 //
-//	               ┌────────────────────────────────────────────────────────┐
-//	               │                      NORMAL MODE                       │
-//	               │  - Navigation (h, j, k, l, w, b, e, 0, $, gg, G)       │
-//	               │  - Operators (d, y, c, p, P, x, r, u, Ctrl+R)          │
-//	               │  - Numeric counts (e.g. 5j, 3dd, 10w)                  │
-//	               │  - Unbound keys (Space!) BUBBLE for app leader menus   │
-//	               └───────────┬───────────────────────────────▲────────────┘
-//	          i, a, o, O, c    │                               │  Esc or "jk"
-//	          enters insert    │                               │  chord timeout
-//	                           ▼                               │
-//	               ┌───────────────────────────────┐           │
-//	               │          INSERT MODE          │           │
-//	               │  - Direct text typing         │───────────┘
-//	               │  - Real-cursor IME anchoring  │
-//	               │  - "jk" fast escape chord     │
-//	               └───────────────────────────────┘
-//	                           ▲
-//	               v, V        │                               │ Esc
-//	               enters      │                               │ returns to Normal
-//	               visual      ▼                               │
-//	               ┌───────────────────────────────────────────┴┐
-//	               │            VISUAL / VISUAL-LINE            │
-//	               │  - Character-wise (v) or Line-wise (V)     │
-//	               │  - Active selection highlighting           │
-//	               │  - Actions (y: yank, d: delete, c: change) │
-//	               └────────────────────────────────────────────┘
+//	     ┌────────────────────────────────────────────────────────┐
+//	     │                      NORMAL MODE                       │
+//	     │  - Navigation (h, j, k, l, w, b, e, 0, $, gg, G)       │
+//	     │  - Operators (d, y, c, p, P, x, r, u, Ctrl+R)          │
+//	     │  - Numeric counts (e.g. 5j, 3dd, 10w)                  │
+//	     │  - Unbound keys (Space!) BUBBLE for app leader menus   │
+//	     └───────────┬───────────────────────────────▲────────────┘
+//	i, a, o, O, c    │                               │  Esc or "jk"
+//	enters insert    │                               │  chord timeout
+//	                 ▼                               │
+//	     ┌───────────────────────────────┐           │
+//	     │          INSERT MODE          │           │
+//	     │  - Direct text typing         │───────────┘
+//	     │  - Real-cursor IME anchoring  │
+//	     │  - "jk" fast escape chord     │
+//	     └───────────────────────────────┘
+//	                 ▲
+//	     v, V        │                               │ Esc
+//	     enters      │                               │ returns to Normal
+//	     visual      ▼                               │
+//	     ┌───────────────────────────────────────────┴┐
+//	     │            VISUAL / VISUAL-LINE            │
+//	     │  - Character-wise (v) or Line-wise (V)     │
+//	     │  - Active selection highlighting           │
+//	     │  - Actions (y: yank, d: delete, c: change) │
+//	     └────────────────────────────────────────────┘
 //
 // # Architectural Invariants and Capabilities
 //

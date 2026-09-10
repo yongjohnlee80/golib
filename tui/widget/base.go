@@ -28,30 +28,30 @@ import "github.com/yongjohnlee80/golib/tui"
 // What Go struct embedding does NOT provide (and why it matters):
 // Go embedding is NOT object-oriented inheritance. There is NO virtual dispatch:
 //
-//	   ┌────────────────────────────────────────────────────────────┐
-//	   │                        tui.Runtime                         │
-//	   └─────────────────────────────┬──────────────────────────────┘
-//	                                 │ Calls interface methods
-//	                                 │ (Component, Focusable, etc.)
-//	                                 ▼
-//	                  ┌──────────────────────────────┐
-//	                  │       Outer Component        │
-//	                  │         (*TextInput)         │
-//	                  │                              │
-//	                  │  - Init(ctx)                 │
-//	                  │  - Layout(c)                 │
-//	                  │  - Render(s)                 │
-//	                  │  - HandleEvent(ev)           │
-//	                  │  - AcceptsFocus()            │
-//	                  │                              │
-//	                  │   ┌──────────────────────┐   │
-//	                  │   │    Embedded Base     │   │
-//	                  │   │                      │   │
-//	                  │   │  - ctx *Context      │   │
-//	                  │   │  - MarkDirty()       │   │
-//	                  │   │  - RequestLayout()   │   │
-//	                  │   └──────────────────────┘   │
-//	                  └──────────────────────────────┘
+//	┌────────────────────────────────────────────────────────────┐
+//	│                        tui.Runtime                         │
+//	└─────────────────────────────┬──────────────────────────────┘
+//	                              │ Calls interface methods
+//	                              │ (Component, Focusable, etc.)
+//	                              ▼
+//	               ┌──────────────────────────────┐
+//	               │       Outer Component        │
+//	               │         (*TextInput)         │
+//	               │                              │
+//	               │  - Init(ctx)                 │
+//	               │  - Layout(c)                 │
+//	               │  - Render(s)                 │
+//	               │  - HandleEvent(ev)           │
+//	               │  - AcceptsFocus()            │
+//	               │                              │
+//	               │   ┌──────────────────────┐   │
+//	               │   │    Embedded Base     │   │
+//	               │   │                      │   │
+//	               │   │  - ctx *Context      │   │
+//	               │   │  - MarkDirty()       │   │
+//	               │   │  - RequestLayout()   │   │
+//	               │   └──────────────────────┘   │
+//	               └──────────────────────────────┘
 //
 // If Base were to call a method also defined on the outer widget, the Base version would run
 // because the embedded struct has no pointer to or knowledge of the outer type.

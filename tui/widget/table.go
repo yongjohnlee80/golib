@@ -54,21 +54,21 @@ const (
 //
 // At each Layout pass with available width W:
 //
-//	 ┌───────────────┬───────────────────────────────┬───────────────────────────────┐
-//	 │ Col 0 (Fixed) │         Col 1 (Flex)          │         Col 2 (Flex)          │
-//	 │    Width=8    │   Width = share + remainder   │         Width = share         │
-//	 └───────────────┴───────────────────────────────┴───────────────────────────────┘
-//	        ▲                        ▲                               ▲
-//	        │                        │                               │
-//	        └── tableGap (2 spaces) ─┴───── tableGap (2 spaces) ─────┘
+//		 ┌───────────────┬───────────────────────────────┬───────────────────────────────┐
+//		 │ Col 0 (Fixed) │         Col 1 (Flex)          │         Col 2 (Flex)          │
+//		 │    Width=8    │   Width = share + remainder   │         Width = share         │
+//		 └───────────────┴───────────────────────────────┴───────────────────────────────┘
+//		        ▲                        ▲                               ▲
+//		        │                        │                               │
+//		        └── tableGap (2 spaces) ─┴───── tableGap (2 spaces) ─────┘
 //
-//  1. Fixed Deduction: Fixed columns (Width > 0) and inter-column gaps
-//     (tableGap = 2 cells) are deducted from available width W.
-//  2. Flex Division: Remaining space is divided evenly across all flex columns (Width == 0),
-//     clamped to flexMinWidth (8 cells).
-//  3. Remainder Allocation: Any integer remainder from integer division is distributed to
-//     the leftmost flex columns (one extra cell each), guaranteeing complete horizontal fill
-//     without edge jitter.
+//	 1. Fixed Deduction: Fixed columns (Width > 0) and inter-column gaps
+//	    (tableGap = 2 cells) are deducted from available width W.
+//	 2. Flex Division: Remaining space is divided evenly across all flex columns (Width == 0),
+//	    clamped to flexMinWidth (8 cells).
+//	 3. Remainder Allocation: Any integer remainder from integer division is distributed to
+//	    the leftmost flex columns (one extra cell each), guaranteeing complete horizontal fill
+//	    without edge jitter.
 //
 // # Usage Example
 //

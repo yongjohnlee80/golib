@@ -12,15 +12,15 @@ import (
 //
 // # Architectural Invariants
 //
-// 1. Zero-Reflection Dispatch: Subscriptions compile down to direct type-asserted closures.
-//    Event publication performs NO reflect.Call and incurs zero per-publish heap allocations.
-// 2. Enqueue-Only Publish: Publishing an event (Bus.Publish) enqueues a delivery task onto
-//    the App loop's program queue (Lane B) and returns immediately. Handlers are NEVER
-//    executed synchronously on the publisher's goroutine. If handlers executed synchronously,
-//    background worker tasks could directly mutate component state, destroying the
-//    single-goroutine concurrency guarantee.
-// 3. Copy-on-Write Subscription Lists: Delivery snapshots iterate over subscription slices
-//    without holding mutex locks, allowing handlers to safely subscribe or unsubscribe mid-delivery.
+//  1. Zero-Reflection Dispatch: Subscriptions compile down to direct type-asserted closures.
+//     Event publication performs NO reflect.Call and incurs zero per-publish heap allocations.
+//  2. Enqueue-Only Publish: Publishing an event (Bus.Publish) enqueues a delivery task onto
+//     the App loop's program queue (Lane B) and returns immediately. Handlers are NEVER
+//     executed synchronously on the publisher's goroutine. If handlers executed synchronously,
+//     background worker tasks could directly mutate component state, destroying the
+//     single-goroutine concurrency guarantee.
+//  3. Copy-on-Write Subscription Lists: Delivery snapshots iterate over subscription slices
+//     without holding mutex locks, allowing handlers to safely subscribe or unsubscribe mid-delivery.
 type Bus struct {
 	app *App
 

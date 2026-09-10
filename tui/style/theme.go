@@ -21,10 +21,10 @@ import (
 //
 // The Token and Theme subsystem resolves these issues by decoupling widget authoring from
 // concrete color definitions:
-//  - Widgets style themselves strictly in semantic terms ([TokenPrimary], [TokenError], [TokenSurface]).
-//  - Applications supply a [Theme] that binds those tokens to concrete [Color] instances.
-//  - The TUI resolver maps tokens to colors and handles capability downsampling (Truecolor → 256 → 16 → mono)
-//    and light/dark background adaptation seamlessly.
+//   - Widgets style themselves strictly in semantic terms ([TokenPrimary], [TokenError], [TokenSurface]).
+//   - Applications supply a [Theme] that binds those tokens to concrete [Color] instances.
+//   - The TUI resolver maps tokens to colors and handles capability downsampling (Truecolor → 256 → 16 → mono)
+//     and light/dark background adaptation seamlessly.
 //
 // # Invariant: Tokens Are Colors, Never Attributes
 //
@@ -140,34 +140,34 @@ func WithDark(dark bool) ThemeOption {
 // Only the Primary color is mandatory. Every other slot is derived deterministically
 // using single-pass logic without heuristic RGB blending or color-math distortion:
 //
-//	                     Primary
-//	                    ┌───┴───┐
-//	                    ▼       ▼
-//	                Secondary  Accent ──────► BorderFocused
-//	                            │
-//	   Default() ───────────────┼───────────► Surface ────┬► Panel
-//	  (Background)              │                         └► Boost
-//	                            ▼
-//	   Default() ─────► TextMuted, Border
-//	  (Foreground)
-//	                            ▼
-//	   Default() ─────► TextOn* (TextOnPrimary, TextOnSecondary, TextOnAccent...)
-//	  (Background)
+//	                   Primary
+//	                  ┌───┴───┐
+//	                  ▼       ▼
+//	              Secondary  Accent ──────► BorderFocused
+//	                          │
+//	 Default() ───────────────┼───────────► Surface ────┬► Panel
+//	(Background)              │                         └► Boost
+//	                          ▼
+//	 Default() ─────► TextMuted, Border
+//	(Foreground)
+//	                          ▼
+//	 Default() ─────► TextOn* (TextOnPrimary, TextOnSecondary, TextOnAccent...)
+//	(Background)
 //
-//	  Fixed Status Slots:
-//	    Warning ──► ANSI(3) [Yellow]
-//	    Error   ──► ANSI(1) [Red]
-//	    Success ──► ANSI(2) [Green]
+//	Fixed Status Slots:
+//	  Warning ──► ANSI(3) [Yellow]
+//	  Error   ──► ANSI(1) [Red]
+//	  Success ──► ANSI(2) [Green]
 //
 // # Cascading Overrides
 //
 // Derivations inspect the slot values after all options have been processed. Therefore,
 // overriding an upstream slot automatically recalculates all unconfigured downstream slots:
-//  - Overriding [TokenPrimary] cascades to [TokenSecondary] and [TokenAccent].
-//  - Overriding [TokenAccent] cascades to [TokenBorderFocused].
-//  - Overriding [TokenBackground] cascades to [TokenSurface], [TokenPanel], [TokenBoost], and all [TokenTextOn*] slots.
-//  - Overriding [TokenSurface] cascades to [TokenPanel] and [TokenBoost].
-//  - Overriding [TokenForeground] cascades to [TokenTextMuted] and [TokenBorder].
+//   - Overriding [TokenPrimary] cascades to [TokenSecondary] and [TokenAccent].
+//   - Overriding [TokenAccent] cascades to [TokenBorderFocused].
+//   - Overriding [TokenBackground] cascades to [TokenSurface], [TokenPanel], [TokenBoost], and all [TokenTextOn*] slots.
+//   - Overriding [TokenSurface] cascades to [TokenPanel] and [TokenBoost].
+//   - Overriding [TokenForeground] cascades to [TokenTextMuted] and [TokenBorder].
 //
 // # Invariants
 //
