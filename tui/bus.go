@@ -8,11 +8,19 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 )
 
-// Bus is the App's broadcast channel: one instance per App (App.Bus());
-// typed pub/sub with zero reflection at dispatch and ENQUEUE-ONLY publish.
-// A bus that called handlers synchronously on the publisher's goroutine
-// would hand every background task a direct line into component state,
-// reintroducing exactly the races the single loop exists to kill.
+// Bus is the App's broadcast event bus: exactly one instance exists per App (App.Bus()).
+//
+// # Architectural Invariants
+//
+// 1. Zero-Reflection Dispatch: Subscriptions compile down to direct type-asserted closures.
+//    Event publication performs NO reflect.Call and incurs zero per-publish heap allocations.
+// 2. Enqueue-Only Publish: Publishing an event (Bus.Publish) enqueues a delivery task onto
+//    the App loop's program queue (Lane B) and returns immediately. Handlers are NEVER
+//    executed synchronously on the publisher's goroutine. If handlers executed synchronously,
+//    background worker tasks could directly mutate component state, destroying the
+//    single-goroutine concurrency guarantee.
+// 3. Copy-on-Write Subscription Lists: Delivery snapshots iterate over subscription slices
+//    without holding mutex locks, allowing handlers to safely subscribe or unsubscribe mid-delivery.
 type Bus struct {
 	app *App
 
@@ -63,9 +71,10 @@ func Subscribe[T any](b *Bus, fn func(T)) (cancel func()) {
 	}
 }
 
-// SubscribeScoped ties the subscription to c's mounted lifetime: unmount
-// cancels it automatically via c.OnUnmount. This is
-// the form components use.
+// SubscribeScoped binds a bus subscription to the component's mounted lifetime.
+// When the component unmounts, the subscription is automatically cancelled via
+// Context.OnUnmount, preventing memory leaks and stale event delivery. This is
+// the standard subscription method recommended for all components and widgets.
 func SubscribeScoped[T any](c *Context, fn func(T)) (cancel func()) {
 	cancel = Subscribe(c.app.bus, fn)
 	c.OnUnmount(cancel)

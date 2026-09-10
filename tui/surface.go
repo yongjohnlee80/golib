@@ -6,40 +6,48 @@ import (
 )
 
 // Surface is what components render onto: a clipped, offset view into the
-// frame's cell buffer, carrying the style-resolution context (
-// — the second portability seam.4 #5).
+// frame's cell buffer, carrying the style-resolution context (theme, capabilities,
+// and width policy) — representing the second portability seam of the framework.
+//
+// Surfaces are cheap view headers (origin coordinate offset plus bounding clip Rect)
+// over the underlying double-buffered cell grid. When a parent delegates painting
+// to a child via s.Sub(childRect), the child receives a sub-Surface whose (0,0)
+// origin is relocated to the child's top-left corner and whose clipping boundary
+// is the intersection of the parent's clip and the child's placed geometry.
+// A child component can never draw outside the Rect assigned to it by its parent.
 type Surface interface {
 	// SetCell writes one grapheme cluster at surface-local (x, y). content
 	// must be a single cluster; if it contains more than one, only the first
-	// is written (callers use Graphemes to iterate text). Width is measured
-	// internally, under the Surface's width policy, and cached on the Cell.
-	// Writes outside the clip are silently dropped (W3 applies).
+	// is written (callers use grapheme.Clusters to iterate text). Width is measured
+	// internally under the Surface's active width policy and cached on the Cell.
+	// Writes falling outside the clip boundary are dropped silently.
 	SetCell(x, y int, content string, st style.Style)
 
-	// Fill sets every cell in r (clipped) to content/st. Fill with a
-	// width-2 cluster fills in steps of two columns; a trailing odd
-	// column, if any, is filled with a SPACE cell in st — never left
-	// untouched (a half-painted
-	// cluster).
+	// Fill sets every cell in r (clipped to the surface bounds) to content and st.
+	// When filling with a width-2 cluster, Fill advances in steps of two columns;
+	// a trailing odd column, if any, is filled with an ASCII SPACE cell in st to
+	// guarantee no cell is left half-painted (enforcing wide-cell invariant W3).
 	Fill(r Rect, content string, st style.Style)
 
 	// Sub returns a child Surface clipped to r ∩ bounds, with r's origin
 	// as the child's (0,0). Sub of Sub composes; the style context flows
-	// to the child unchanged. Cheap: a view header, no cell copying.
+	// to the child unchanged. Sub is an allocation-free view header with no
+	// cell grid copying.
 	Sub(r Rect) Surface
 
+	// Size reports the nominal dimensions of this surface view in cells.
 	Size() Size
 
 	// StringWidth measures s under the App-configured width policy
 	// (WithWidthPolicy). NORMATIVE: components MUST measure text through the
 	// Surface (or Context) — never the package-level default — so the per-App
-	// policy is honored.
+	// policy is honored consistently between geometry and rendering.
 	StringWidth(s string) int
 
-	// Resolution context: the theme, the negotiated terminal capabilities, and
-	// the width policy travel WITH the surface, so components and style
-	// resolution need no globals and tests can inject all three.
+	// Theme returns the active theme attached to the render context.
 	Theme() *style.Theme
+
+	// Caps returns the negotiated terminal capabilities profile.
 	Caps() Capabilities
 }
 

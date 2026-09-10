@@ -1,13 +1,8 @@
 # tui
 
-A minimal-dependency, retained-mode terminal UI framework: a grapheme-cluster
-cell buffer with diff-based flushing, a single-goroutine runtime (event loop,
-typed pub/sub bus, bounded task pool, demand-scheduled timers), a component
-tree with constraints-down/sizes-up layout, and a driver seam that makes every
-app fully testable in CI without a PTY.
+A minimal-dependency, retained-mode terminal UI framework: a grapheme-cluster cell buffer with diff-based flushing, a single-goroutine runtime (two-lane event loop, typed pub/sub bus, bounded task pool, demand-scheduled timers), a component tree with constraints-down/sizes-up layout, and a two-seam driver architecture that makes every application fully testable in CI without a PTY.
 
-The core imports nothing outside the standard library and golib; the one
-terminal driver (`tui/term`) confines `golang.org/x/term`/`x/sys` to the leaf.
+The core imports nothing outside the standard library and `golib`; the one terminal driver (`tui/term`) isolates `golang.org/x/term` and `golang.org/x/sys` to the terminal leaf.
 
 ```bash
 go get github.com/yongjohnlee80/golib/tui
@@ -17,38 +12,119 @@ go get github.com/yongjohnlee80/golib/tui
 import (
     "github.com/yongjohnlee80/golib/tui"        // runtime, tree, events, cells
     "github.com/yongjohnlee80/golib/tui/style"  // styles, tokens, themes
-    "github.com/yongjohnlee80/golib/tui/term"   // the ANSI terminal driver
-    "github.com/yongjohnlee80/golib/tui/widget" // the standard widget set
+    "github.com/yongjohnlee80/golib/tui/term"   // ANSI terminal driver
+    "github.com/yongjohnlee80/golib/tui/widget" // standard widget suite
 )
 ```
 
-## The loop-goroutine invariant (normative)
+---
 
-All component state — the tree, every component's fields, focus, layout
-rects, the cell buffer — is owned by the loop goroutine. `Init`, `Layout`,
-`Render`, `HandleEvent`, bus handlers, and queued closures execute ONLY
-there. The only operations legal from other goroutines are `App.Post`,
-`App.Update`, `App.Go`, `Bus.Publish`, and `Context.Post`/`Context.Go` — all
-of which enqueue and return.
+## Architecture & Concurrency Model
 
-Convention: code already running in a handler on the loop goroutine does not
-need `App.Update` — it owns the state and mutates directly; an fn enqueued
-from a handler runs in a later drain, before the next frame.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                           External World                               │
+│  (TTY Keyboard, Mouse, Terminal Signals)    (Background Worker Tasks)  │
+└───────────────────┬────────────────────────────────────┬───────────────┘
+                    │ Raw Input                          │ Goroutine Work
+                    ▼                                    ▼
+        ┌──────────────────────┐             ┌──────────────────────┐
+        │   Backend.Events()   │             │   App.Post / Go      │
+        │   (Terminal Intake)  │             │   Bus.Publish        │
+        └───────────┬──────────┘             └───────────┬──────────┘
+                    │                                    │
+                    ▼                                    ▼
+        ┌──────────────────────┐             ┌──────────────────────┐
+        │   Lane A: Input      │             │   Lane B: Program    │
+        │   (Unbuffered Pump,  │             │   (Unbounded Queue,  │
+        │    Drop-Protected)   │             │    Never Dropped)    │
+        └───────────┬──────────┘             └───────────┬──────────┘
+                    │                                    │
+                    └───────────────┬────────────────────┘
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │    Single Event Loop (Run)   │
+                     │    - Route Key/Mouse Events  │
+                     │    - Drain Program Queue     │
+                     │    - Fire Timer Deadlines    │
+                     │    - Coalesce Render Frames  │
+                     └──────────────┬───────────────┘
+                                    │
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │      Frame Pipeline Pass     │
+                     │    1. Layout (if dirty)      │
+                     │    2. Render to Buffer       │
+                     │    3. Apply Hardware Cursor  │
+                     │    4. Diff against Last Frame│
+                     │    5. Backend.Flush(diff)    │
+                     └──────────────────────────────┘
+```
 
-(The widget layer adds exactly one sanctioned any-goroutine surface on top:
-the separate `io.Writer` handle returned by `widget.BufferView.Writer` —
-bounded, ordered, and closed at unmount.)
+### 1. The Loop-Goroutine Invariant (Normative)
+All component state — the tree, every component's fields, focus, layout rects, and the cell buffer — is owned exclusively by the loop goroutine. `Init`, `Layout`, `Render`, `HandleEvent`, bus handlers, and queued closures execute **only** there.
 
-## The two-seam portability contract
+The only thread-safe operations legal from external background goroutines are:
+- `App.Post(ev)` and `Context.Post(ev)` — enqueue an event onto the program lane.
+- `App.Update(fn)` — enqueue a state mutation closure.
+- `App.Go(...)` and `Context.Go(...)` — schedule background tasks on the bounded pool.
+- `Bus.Publish(v)` — publish a typed domain event.
 
-Portability is two seams. `Backend` (what a terminal is) and `Surface` (what
-components draw on). Test/SSH/web backends are cheap and ship or are
-trivially possible; a pixel driver is possible behind the same seams but
-explicitly out of scope for v1. Component and runtime code never names a
-platform: a real terminal, the in-memory `TestBackend`, and any future driver
-all satisfy the same two interfaces.
+All of these enqueue asynchronously and return immediately. Components never need mutexes or atomic locks.
 
-## Quick start
+### 2. The Two-Seam Portability Contract
+Portability is achieved through two clean interfaces:
+- **`Backend`**: Abstracts the terminal device. It handles raw mode, alternate screen setup, live capability probing (Kitty keyboard, TrueColor, synchronized output), un-coalesced event streams, and atomic diff flushing.
+- **`Surface`**: Abstracts the drawing canvas. Components receive a local, pre-clipped `Surface` with bounds checking, grapheme cluster writes, box filling, and style resolution.
+
+---
+
+## Core Container Guide
+
+Layout in `golib/tui` is single-pass, Flutter-inspired **constraints down, sizes up**: parents provide constraints (`MinW <= W <= MaxW`, `MinH <= H <= MaxH`), children report their chosen `Size`, and parents position children.
+
+| Container | Role | Sizing Strategy |
+|-----------|------|-----------------|
+| `Flex` | Linear multi-child layout (`Horizontal` or `Vertical`) | Fixed children measured first; remaining space distributed to weighted children via integer largest-remainder (zero gaps). Cross axis stretches tight. |
+| `Dock` | Window chrome framing | Pinned children hug edges (`DockTop`, `DockBottom`, `DockLeft`, `DockRight`) in declaration order; `DockCenter` children fill remaining area. |
+| `Stack` | Z-ordered layering & popups | Children receive loose constraints; placed via alignment (`AlignCenter`, `AlignTopRight`) or explicit offsets. Later children paint on top and win mouse hit-tests. |
+
+---
+
+## Component Protocol in Sixty Seconds
+
+Every node in the UI tree implements `Component`, whose four methods execute solely on the loop goroutine:
+
+```go
+type Component interface {
+    Init(ctx *tui.Context)             // called once at mount; retain ctx
+    Layout(c tui.Constraints) tui.Size // constraints down, size up
+    Render(s tui.Surface)              // paint own chrome; children paint themselves
+    HandleEvent(ev tui.Event) bool     // true = consumed, bubbling stops
+}
+```
+
+Optional capability interfaces are detected at runtime via type assertions on the outer widget:
+- `Focusable`: Opts the component into Tab/Shift-Tab traversal (`AcceptsFocus() bool`).
+- `Container`: Public child-management surface (`Add`, `Remove`, `Move`, `Children`).
+- `FocusScope`: Traps focus navigation within a subtree (used by modals and popups).
+- `CursorReporter`: Reports local insertion point for real OS IME candidate window placement.
+- `CursorShaper`: Changes terminal hardware cursor shape (block, underline, bar).
+
+---
+
+## Deterministic Testing Without a PTY
+
+`tui.TestBackend` provides a deterministic in-memory terminal simulator designed for headless CI environments:
+- Inject key, mouse, and resize events via `tb.Inject(...)`.
+- Assert cell grid text and ANSI attributes via `tb.String()` or `tb.Snapshot()`.
+- Validate hardware cursor coordinates via `tb.CursorPos()`.
+- Verify write discipline via `tb.Flushes()` — an idle app emits zero flushes; one state change emits exactly one.
+- Catch wide-cell half-cell corruption and layout constraint violations automatically.
+
+---
+
+## Quick Start Example
 
 ```go
 package main
@@ -63,100 +139,19 @@ import (
 )
 
 func main() {
-    backend, err := term.Open() // raw mode, alt screen, capability probe
+    backend, err := term.Open() // raw mode, alt screen, live capability probe
     if err != nil {
         os.Exit(1)
     }
-    input := widget.NewTextInput(widget.WithPlaceholder("type here"))
-    root := widget.NewOverlayHost(
-        widget.NewBox(input, widget.WithTitle("Hello")))
+    defer backend.Stop()
+
+    input := widget.NewTextInput(widget.WithPlaceholder("Enter query..."))
+    box := widget.NewBox(input, widget.WithTitle("Search"))
+    root := widget.NewOverlayHost(box)
+
     app := tui.NewApp(root, tui.WithBackend(backend))
-    _ = app.Run(context.Background()) // the loop runs on THIS goroutine
+    if err := app.Run(context.Background()); err != nil {
+        os.Exit(1)
+    }
 }
 ```
-
-A complete application — split layout, focus cycling, async list fill,
-streaming log panel, status bar — lives in `examples/demo`, and its whole
-interaction script runs against `TestBackend` in `examples/demo/demo_test.go`.
-
-## What's where
-
-| Package | Contents |
-|---|---|
-| `tui` | `App` (loop, queue, timers, tasks), `Bus`, `Component`/`Context`, `Flex`/`Dock`/`Stack`, focus, `Surface`, `Cell`, events, `TestBackend` |
-| `tui/style` | immutable `Style` values, semantic color `Token`s, `Theme`, borders, frame math |
-| `tui/term` | the ANSI driver: input decoding (kitty + legacy), capability probing, diff flushing, terminal lifecycle |
-| `tui/widget` | the standard widget set v1: `Box`, `TextInput`, `TextArea`, `Select`, `List`, `BufferView`, `Tabs`, `Split`, `Float`, `StatusBar`, `ProgressBar`, `Text` |
-
-## Components in sixty seconds
-
-A component implements four methods, all invoked on the loop goroutine:
-
-```go
-type Component interface {
-    Init(ctx *tui.Context)             // once per mount; keep ctx
-    Layout(c tui.Constraints) tui.Size // constraints down, size up
-    Render(s tui.Surface)              // paint own chrome; children paint themselves
-    HandleEvent(ev tui.Event) bool     // true = consumed, bubbling stops
-}
-```
-
-Capabilities are opt-in interfaces detected on the concrete type:
-`Focusable` (tab stops), `Container` (child management), `CursorReporter`
-(the hardware-cursor/IME rule), `FocusScope` (modal focus traps).
-
-Background work never touches the tree directly:
-
-```go
-ctx.Go(func(c context.Context) (any, error) {
-    return db.ListTables(c) // c is cancelled when the component unmounts
-})
-// → delivered back as an addressed tui.TaskResult to HandleEvent.
-```
-
-## Testing without a PTY
-
-`tui.TestBackend` is a deterministic in-memory terminal: inject events,
-assert the cell grid (`String()`, `Snapshot()`), the hardware cursor
-(`CursorPos()`), and the write discipline (`Flushes()` — an idle app makes
-zero writes; one change makes one). Every widget contract test and the demo
-gate in this repository runs on it.
-
-## Debugging: turn the trace on
-
-Interactive bugs are timing bugs — "the modal is on screen, I press Enter,
-nothing happens" — and everything that decides the outcome belongs to the
-runtime, not to your component: who holds focus, what was mounted when the
-key arrived, which node consumed it, whether a modal trap is open.
-
-```go
-app := tui.NewApp(root,
-    tui.WithBackend(backend),
-    tui.WithTrace(func(ev tui.TraceEvent) { log.Println(ev.Kind, ev.Comp, ev.Detail) }),
-)
-```
-
-An empty `Node` on a `key` record means **nobody consumed it** — usually
-the key arrived before the thing you meant to press it on existed. Off
-unless you pass `WithTrace`, one nil check per emit site when off, so it
-is safe behind a `--trace` flag in a shipped binary.
-→ [tutorial chapter 8](tutorial/08-debugging.md)
-
-## Learning the package
-
-The [tutorial](tutorial/README.md) is the front door — eight chapters,
-each leading with the mistake that cost an afternoon (a bare widget as
-app root renders one line; a modal seeds focus before your data arrives;
-a wrapper that holds focus hides its child's cursor).
-
-## Design documents
-
-The package is specified by ADRs 0001–0008 under `docs/tui/`: overview and
-architecture, terminal backend and capability model, cell buffer and render
-pipeline, component tree and layout, runtime and async, styling and theming,
-the standard widget set, and the vim Editor / Tree / pane zoom.
-
-`docs/tui/incident-register-2026-08-autodb-m6.md` catalogues every defect
-a real consumer (autodb) hit while building on this package, with each
-remedy scored: fixed at the source, or patched at the consumer on a
-guess. It is the evidence behind several of the rules above.

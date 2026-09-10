@@ -3,7 +3,7 @@ package grapheme
 import "unicode/utf8"
 
 // Variation selectors that switch a base character between text and emoji
-// presentation (UTS #51 §5).
+// presentation (UTS #51 Section 5).
 const (
 	// vs15 (U+FE0E) VARIATION SELECTOR-15 requests text presentation (narrow, 1 column).
 	// Example: U+2602 (umbrella '☂') + VS15 -> '☂︎' rendered as monochrome text (1 column).

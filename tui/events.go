@@ -39,13 +39,22 @@ const (
 	ModNumLock
 )
 
-// KeyEvent is one key action. Code is the key's Unicode codepoint or a
-// tui.Key* constant, allocated in the Unicode private-use plane so a
-// functional key can never collide with a real character.
-// REFERENCE: tui/keys.go Base/Shifted are the kitty "alternate keys" (base-layout
-// and shifted codepoints; 0 when unreported) enabling layout-independent
-// shortcut matching. Text is the associated text ("" for non-text keys); on
-// legacy terminals Kind is always KeyPress and Base/Shifted are 0.
+// KeyEvent represents one keyboard action.
+//
+// Codepoint Mapping:
+// Code holds the key's Unicode codepoint or a Key* constant (defined in keys.go)
+// allocated in the Unicode private-use plane so functional keys (such as KeyF1,
+// KeyEnter, KeyArrowUp) never collide with printable characters.
+//
+// Kitty Keyboard Protocol Extensions:
+// When connected to a Kitty-protocol capable terminal:
+//   - Kind distinguishes KeyPress, KeyRepeat, and KeyRelease.
+//   - Base and Shifted carry the Kitty "alternate keys" (base-layout and shifted
+//     codepoints, 0 when unreported), enabling layout-independent keyboard shortcut matching.
+//   - Text contains the associated text string ("" for non-text keys).
+//
+// On legacy terminals without Kitty protocol support, Kind is always KeyPress,
+// and Base/Shifted remain 0.
 type KeyEvent struct {
 	Kind    KeyKind
 	Code    rune

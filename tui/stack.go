@@ -25,15 +25,33 @@ type stackLayer struct {
 	x, y      int
 }
 
-// Stack is z-ordered layering for floating windows, modals, dropdown
-// popups, toasts. Children are laid out in order with LOOSE constraints of
-// the stack's full area and positioned by alignment or explicit offset;
-// LATER children paint on top; hit-testing visits them in reverse, so the
-// topmost layer wins the mouse. A modal layer = a Stack child implementing
-// FocusScope that consumes all mouse events on its backdrop. Stack layers
-// paint bottom-to-top in document order. Placement metadata lives in a side
-// table keyed by the child; Remove shadows the promoted method to drop the
-// entry alongside the layer.
+// Stack provides z-ordered layered layout for floating windows, modals,
+// dropdown popups, toasts, and notification banners.
+//
+// # Layering, Sizing & Hit-Testing Rules
+//
+// Stack positions children atop one another within its bounding area:
+//
+//	┌────────────────────────────────────────────────────────┐
+//	│ Stack Layer Z-Order                                    │
+//	│                                                        │
+//	│  Top Layer:    Toast Notifications / Dropdown Popups   │
+//	│                ▲                                       │
+//	│  Middle Layer: Modal Dialog Window (Centered)          │
+//	│                ▲                                       │
+//	│  Bottom Layer: Primary Application Workspace (Flex/Dock│
+//	└────────────────────────────────────────────────────────┘
+//
+// 1. Sizing: All children are laid out with loose constraints up to the stack's
+//    full area (0 <= W <= MaxW, 0 <= H <= MaxH).
+// 2. Positioning: Children are positioned either via [Align] (such as [AlignCenter],
+//    [AlignTopRight], [AlignBottom]) or at an explicit (x, y) offset via [Stack.AddAt].
+// 3. Painting & Z-Order: Children paint bottom-to-top in document order (later children
+//    paint over earlier children).
+// 4. Hit-Testing: Mouse event dispatch traverses children in reverse document order
+//    (top-to-bottom), ensuring the topmost layer wins pointer clicks. A modal layer
+//    that consumes all mouse events on its backdrop acts as an input blocker for
+//    underlying layers.
 type Stack struct {
 	MultiChild // order (== z-order), mount mirror, Move/Children/Init
 	layers     map[Component]stackLayer

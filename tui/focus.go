@@ -1,10 +1,20 @@
 package tui
 
-// Focus management — framework-owned end to end: one focused NodeID on the
-// App (0 = none), Tab/Shift-Tab traversal in mount (document) order,
-// trapping focus scopes with restore-on-unmount, and focus repair so no
-// frame ever renders with a dangling focus ID.
-
+// Focus management is framework-owned end-to-end:
+//
+//  1. Single Active Focus: Exactly one NodeID on the App holds focus at any time
+//     (0 indicates no component is currently focused).
+//  2. Tab Traversal Order: Tab and Shift-Tab walk the focus ring pre-order depth-first
+//     in document order (which corresponds to child mount and painter's z-order).
+//  3. Trapping Focus Scopes: Modal dialogs, dropdowns, and floating windows implement
+//     FocusScope with TrapsFocus() == true. Entering a trapping scope records the
+//     prior focus target on a LIFO stack; when the scope unmounts, focus is restored
+//     automatically to the previously focused node.
+//  4. Dead-Focus & Invisible-Focus Repair: If a focused node is unmounted, disabled,
+//     or hidden by layout (e.g. zoomed away in a Split or switched out in Tabs),
+//     the runtime repairs focus to the first focusable candidate in the active scope
+//     so no frame ever renders with a dangling or invisible focus ID.
+//
 // scopeEntry records a focus trap entered via RequestFocus: when the
 // trapping scope unmounts, focus restores to the node focused before entry.
 type scopeEntry struct {
@@ -47,8 +57,9 @@ func (a *App) requestFocus(n *node) {
 }
 
 // setFocus moves focus and delivers the two FocusEvents: Gained=false to
-// the loser, then Gained=true to the gainer; both bubble so ancestor panels
-// can restyle (the lazygit active-panel border pattern.5.3).
+// the loser, then Gained=true to the gainer; both events bubble up the tree
+// so ancestor panels (such as widget.Box) can restyle their border chrome
+// (the lazygit active-panel highlight pattern).
 func (a *App) setFocus(id NodeID) {
 	if a.focused == id {
 		return

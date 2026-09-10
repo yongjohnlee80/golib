@@ -12,17 +12,29 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// App is the master runtime: it owns the backend, the component tree, the
-// two-lane event queue, the demand-scheduled timer heap, the Bus, and the
-// bounded task pool.
+// App is the master runtime coordinator: it owns the terminal backend seam,
+// the retained component tree, the two-lane event queue, the demand-scheduled
+// timer min-heap, the typed broadcast bus, and the bounded background task pool.
 //
-// ONE GOROUTINE — the caller of Run — owns all component state. Nothing else
-// may touch it. Every other goroutine reaches the tree by POSTING AN EVENT,
-// which the loop applies in its own time. This is what makes components safe
-// to write without locks: a component method can assume no other goroutine is
-// inside the tree while it runs. Break it and the damage is a data race in
-// user code that never wrote a goroutine.
-// REFERENCE: tui/doc.go
+// # Single-Goroutine Ownership Model (Normative)
+//
+// Exactly ONE goroutine — the caller of App.Run — owns all component state.
+// No other goroutine may inspect or modify the component tree.
+//
+// Every external goroutine reaches the tree by ENQUEUING an event (App.Post,
+// App.Update, Bus.Publish), which the event loop drains and applies on its own
+// schedule. This invariant allows component authors to write plain Go code without
+// mutexes: a component method can assume that no concurrent thread is mutating
+// its struct fields.
+//
+// # The Two-Lane Event Funnel
+//
+// Input events and program events are isolated into two independent lanes:
+//   - Lane A (Input): Receives hardware terminal events (keys, mouse, resize).
+//     An App intake pump reads from Backend.Events() into an unbuffered channel
+//     with bounded overflow protection, preventing slow frames from blocking terminal reads.
+//   - Lane B (Program): Carries user-posted closures (App.Update), bus deliveries,
+//     and completed task results. Lane B never drops events and cannot starve Lane A.
 type App struct {
 	cfg     appConfig
 	root    Component
@@ -110,7 +122,7 @@ func NewApp(root Component, opts ...AppOption) *App {
 		}
 	}
 	if cfg.backend == nil {
-		panic("tui: NewApp: WithBackend is required — the core package cannot construct a terminal driver (ADR-0005 §2.1)")
+		panic("tui: NewApp: WithBackend is required — the core package cannot construct a terminal driver")
 	}
 	if cfg.theme == nil {
 		t := style.DefaultTheme()
@@ -375,23 +387,31 @@ func (a *App) renderFrame() {
 	a.frames++
 }
 
-// repairInvisibleFocus enforces the no-invisible-focus rule: when a layout
-// pass leaves the focused node without a current
-// measure/place (a Split zoomed it away, a Tabs switch unhosted it, any
-// future hider), focus is re-homed exactly like a dead focus — the
-// existing unmount-time repair already picks the first focusable in the
-// innermost surviving scope, or none. No component can keep receiving
-// keys invisibly.
+// repairInvisibleFocus enforces the no-invisible-focus invariant: when a layout
+// pass leaves the currently focused node without a valid measure or placement
+// (for instance, when a Split zooms and conceals a pane, or a Tabs switch unhosts
+// a child page), focus is immediately re-homed.
+//
+// Repair selects the first focusable component in the innermost surviving focus scope,
+// or clears focus if no candidate is available. This guarantees that no component
+// can receive keyboard input invisibly without being displayed on screen.
 func (a *App) repairInvisibleFocus() {
 	if n := a.nodes[a.focused]; n != nil && !n.visible() {
 		a.repairFocus()
 	}
 }
 
-// applyCursor implements the IME real-cursor rule: a
-// focused CursorReporter parks the hardware cursor at the absolute
-// translation of its reported position; anything else hides it. Cursor state
-// is latched on the backend and emitted by the Flush that follows.
+// applyCursor implements the real hardware cursor positioning invariant.
+//
+// If the focused node implements CursorReporter and reports an active insertion point,
+// the runtime translates the local surface coordinates through the laid-out Rect
+// chain to absolute screen coordinates and sets the hardware cursor position.
+// If the component also implements CursorShaper, its desired cursor shape (block,
+// underline, or bar) is latched onto the backend.
+//
+// If no focused node reports an active cursor, the hardware cursor is hidden.
+// This hardware cursor anchoring is required so operating system IME composition
+// windows anchor properly above or below the active text input cell.
 func (a *App) applyCursor() {
 	if n := a.nodes[a.focused]; n != nil && n.visible() {
 		if cr, ok := n.comp.(CursorReporter); ok {
