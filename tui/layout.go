@@ -6,10 +6,39 @@ import (
 	"github.com/yongjohnlee80/golib/logger"
 )
 
-// Layout — Flutter's box protocol verbatim: constraints down, sizes up,
-// parent positions. ONE pass, no measurement round-trips; v1 relayouts the
-// whole visible tree whenever any layout dirt exists (relayout boundaries
-// are N2's future optimization).
+// Layout implements the Flutter box protocol verbatim: constraints down,
+// sizes up, parent positions.
+//
+// # Layout Protocol & Geometry Flow
+//
+// The framework executes layout in a single whole-tree pass with zero measurement
+// round-trips:
+//
+//	                 ┌─────────────────────────────┐
+//	                 │     Parent Container        │
+//	                 └──────────────┬──────────────┘
+//	                                │
+//	       1. Constraints Down      │  3. PlaceChild(child, rect)
+//	       (MinW, MaxW, MinH, MaxH) │  (Parent positions child)
+//	                                ▼
+//	                 ┌─────────────────────────────┐
+//	                 │        Child Widget         │
+//	                 └──────────────┬──────────────┘
+//	                                │
+//	                                │ 2. Size Up (W, H)
+//	                                │ (Child reports chosen dimensions)
+//	                                ▼
+//
+// 1. Constraints Down: The parent computes allowed bounds (e.g. Tight or Loose)
+//    and calls ctx.LayoutChild(child, constraints).
+// 2. Sizes Up: The child computes its layout and returns its chosen Size within
+//    those bounds.
+// 3. Parent Positions: The parent assigns the child's final parent-relative Rect
+//    via ctx.PlaceChild(child, rect).
+//
+// Whole-tree relayout occurs whenever layout dirt exists (a node calls ctx.RequestLayout
+// or the terminal window resizes). Every node placed in the pass is flagged as placed
+// and measured, which drives hit-testing visibility and tab traversal rings.
 
 // layoutTree runs the single whole-tree pass: the root receives the
 // terminal size as tight constraints; containers recurse via
@@ -32,12 +61,15 @@ func (a *App) layoutTree() {
 	computeAbs(root, 0, 0)
 }
 
-// layoutComponent invokes one component's Layout under cc, clamps the
-// answer, and records any constraint violation: a Size outside the
-// constraints is a component bug, but the framework clamps it so a
-// misbehaving widget cannot corrupt sibling geometry — clamp-and-report
-// TestBackend retains violations for
-// ConstraintViolations()/FailOnViolations; production observes WithLogger.
+// layoutComponent invokes one component's Layout under cc, clamps the returned
+// Size, and records any constraint violation.
+//
+// Clamp-and-Report Invariant:
+// Returning a Size outside constraints is a component bug. However, the framework
+// clamps the result so a misbehaving child cannot corrupt sibling geometry or cause
+// buffer overflows. TestBackend retains recorded violations for test assertions
+// (via tb.ConstraintViolations() and tb.FailOnViolations()), while production runs
+// log them via WithLogger.
 func (a *App) layoutComponent(n *node, cc Constraints) Size {
 	prev := a.layingOut
 	a.layingOut = n

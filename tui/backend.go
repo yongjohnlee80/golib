@@ -2,10 +2,24 @@ package tui
 
 import "context"
 
-// Backend is the driver seam between the runtime and a concrete terminal.
-// The App owns exactly one Backend for its lifetime. It
-// is Ratatui-Backend-shaped: a cell-diff sink, an event source, and a
-// capability report behind one lifecycle.
+// Backend is the primary driver seam between the TUI runtime and the underlying
+// terminal display device.
+//
+// The App owns exactly one Backend for its lifetime. Backend provides a clean,
+// portable abstraction consisting of four core responsibilities:
+//
+//  1. Device Lifecycle: Synchronous acquisition of raw mode, alternate screen buffer,
+//     and terminal capability probing ([Backend.Start]), plus guaranteed teardown
+//     and terminal restoration ([Backend.Stop]).
+//  2. Event Stream: An ordered, un-coalesced stream of decoded terminal input events
+//     (keystrokes, mouse actions, window resize, bracketed paste) via [Backend.Events].
+//  3. Capability Negotiation: Live feature detection results ([Backend.Capabilities])
+//     determining supported color depths, Kitty keyboard protocol, and synchronized output.
+//  4. Frame Output: Latched hardware cursor positioning and atomic frame emission
+//     via [Backend.Flush], which receives the row-major slice of dirty cell updates.
+//
+// In production, the ANSI driver in tui/term implements Backend. In tests, [TestBackend]
+// provides a fully deterministic in-memory simulator that runs without a PTY.
 type Backend interface {
 	// Start acquires the device: raw mode, VT modes, alternate screen,
 	// the capability probe, and the input reader goroutine. It blocks

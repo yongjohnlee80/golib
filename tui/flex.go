@@ -13,16 +13,35 @@ const (
 	Vertical
 )
 
-// Flex is the linear container: fixed children are
-// measured first, then the remainder of the main axis is distributed to
-// weighted children by integer largest-remainder — deterministic and
-// gap-free by construction (Σ assigned == R always, every run, every
-// platform; ties broken by lowest child index). Cross-axis: children get
-// the flex's cross extent as a tight constraint (stretch).
+// Flex is the linear layout container:
 //
-// Weights live in a side table keyed by the child itself; zero-weight
-// (fixed) children have no entry. Remove shadows the promoted method to
-// drop the weight entry alongside the child.
+// # Sizing Algorithm & Integer Largest-Remainder Distribution
+//
+// Flex arranges child components along a single main axis ([Horizontal] or [Vertical]):
+//
+//	Horizontal Flex Layout:
+//	┌─────────────┬───────────────────────────┬──────────────────────┐
+//	│ Fixed Child │ Weighted Child (weight=2) │ Weighted Child (w=1) │
+//	│ (e.g. 15 col│ (takes 2/3 of remainder)  │ (takes 1/3 remainder)│
+//	└─────────────┴───────────────────────────┴──────────────────────┘
+//	◄────────────────────── Main Axis Extent ────────────────────────►
+//
+// 1. Pass 1 (Fixed Children): Unweighted children (added via Add) are measured
+//    first with loose main-axis constraints and tight cross-axis constraints (stretch).
+//    Their measured extents are deducted from the available main-axis extent to yield
+//    the remainder R.
+// 2. Pass 2 (Weighted Distribution): Weighted children (added via AddWeighted)
+//    distribute remainder R using the integer largest-remainder method:
+//    each child receives its floor share `floor(R * w_i / W_sum)`, and the remaining
+//    fractional cells are distributed one by one to the children with the largest
+//    remainders `(R * w_i) mod W_sum` (ties broken deterministically by lowest child index).
+//    This guarantees zero gaps and exact total sizing: `sum(assigned) == R` across
+//    all platforms and resolutions.
+// 3. Cross-Axis Stretch: All children receive the flex's cross-axis dimension as
+//    a tight constraint.
+//
+// Weights live in an internal side table keyed by the Component value; unweighted
+// children have no entry. Remove cleans up the side table entry alongside the child.
 type Flex struct {
 	MultiChild // order, mount mirror, Move/Children/Init
 	dir        Direction

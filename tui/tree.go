@@ -48,7 +48,7 @@ func (a *App) mount(parent *node, comp Component) *node {
 		panic(errs.Fatal{Op: "tui: Mount", Rule: "nil component"})
 	}
 	if a.inLayout || a.inRender {
-		panic("tui: tree mutation (Mount) inside Layout/Render is illegal (ADR-0004 §2.1)")
+		panic("tui: tree mutation (Mount) inside Layout/Render is illegal")
 	}
 	// The Component-keyed index requires a COMPARABLE dynamic type, so verify
 	// it eagerly with a targeted panic. Deferring the check means the failure
@@ -59,7 +59,7 @@ func (a *App) mount(parent *node, comp Component) *node {
 		panic(errs.Fatal{Op: "tui", Rule: fmt.Sprintf("component type %T is not comparable; use a pointer component", comp)})
 	}
 	if _, dup := a.byComp[comp]; dup {
-		panic(errs.Fatal{Op: "tui", Rule: fmt.Sprintf("component %T is already mounted; a component value mounts at most once (ADR-0004 §2.4)", comp)})
+		panic(errs.Fatal{Op: "tui", Rule: fmt.Sprintf("component %T is already mounted; a component value mounts at most once", comp)})
 	}
 
 	a.nextNodeID++ // monotonic, starts at 1; 0 reserved as "no node"; never reused
@@ -110,7 +110,7 @@ func (a *App) mount(parent *node, comp Component) *node {
 // construction. Loop goroutine only.
 func (a *App) moveWithin(parent *node, child Component, to int) {
 	if a.inLayout || a.inRender {
-		panic(errs.Fatal{Op: "tui", Rule: "tree mutation (Move) inside Layout/Render is illegal (ADR-0004 §2.1)"})
+		panic(errs.Fatal{Op: "tui", Rule: "tree mutation (Move) inside Layout/Render is illegal"})
 	}
 	n := a.byComp[child]
 	if n == nil {
@@ -139,7 +139,7 @@ func (a *App) moveWithin(parent *node, child Component, to int) {
 // renders with a dangling focus ID.
 func (a *App) unmountTree(n *node) {
 	if a.inLayout || a.inRender {
-		panic(errs.Fatal{Op: "tui", Rule: "tree mutation (Unmount) inside Layout/Render is illegal (ADR-0004 §2.1)"})
+		panic(errs.Fatal{Op: "tui", Rule: "tree mutation (Unmount) inside Layout/Render is illegal"})
 	}
 	focusedBefore := a.focused
 	parent := n.parent

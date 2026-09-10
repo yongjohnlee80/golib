@@ -15,11 +15,33 @@ const (
 // Pinned edges live in a side table keyed by the child; absent = a center
 // child filling the remainder.
 
-// Dock is the chrome container: children pin to Top/Bottom/Left/Right in
-// declaration order, each measured (loose on its pinned axis, tight on the
-// other) and consuming its extent from the remaining rect; center children
-// fill what is left under tight constraints. Status bars, side panels,
-// command logs — the lazygit chrome — are Dock+Flex compositions.
+// Dock is the window chrome and edge-framing container:
+//
+// # Geometry Model & Edge Consumption
+//
+// Dock pins children to the perimeter edges in declaration order, deducting each
+// pinned child's size from the remaining available area:
+//
+//	┌────────────────────────────────────────────────────────┐
+//	│                 DockTop (e.g. MenuBar)                 │
+//	├──────────┬──────────────────────────────────┬──────────┤
+//	│          │                                  │          │
+//	│ DockLeft │       DockCenter (Body Area)     │DockRight │
+//	│ (Sidebar)│       (Fills All Remainder)      │(Inspector│
+//	│          │                                  │          │
+//	├──────────┴──────────────────────────────────┴──────────┤
+//	│                DockBottom (e.g. StatusBar)             │
+//	└────────────────────────────────────────────────────────┘
+//
+// 1. Pinned Children: Children pinned via Pin (DockTop, DockBottom, DockLeft, DockRight)
+//    are laid out in declaration order. Pinned children receive loose constraints along
+//    their pinned axis and tight constraints across the orthogonal axis. Their measured
+//    extent is deducted from the remaining Rect.
+// 2. Center Children: Children added without an edge (via Add or Pin with DockCenter)
+//    fill whatever area remains under tight constraints.
+//
+// Status bars, side navigation drawers, search toolbars, and inspector panels
+// are easily composed using Dock in combination with Flex and Box.
 type Dock struct {
 	MultiChild // order (== pin-consumption order), mount mirror, Move/Children/Init
 	edges      map[Component]DockEdge

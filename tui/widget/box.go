@@ -226,7 +226,7 @@ func (x *Box) Add(children ...tui.Component) {
 			panic("widget: Box.Add: nil child")
 		}
 		if x.child != nil {
-			panic("widget: Box wraps exactly one child (ADR-0007 Q1) — nest a Flex/Split/Dock for more")
+			panic("widget: Box wraps exactly one child — nest a Flex/Split/Dock for more")
 		}
 		x.child = c
 		if x.ctx != nil {

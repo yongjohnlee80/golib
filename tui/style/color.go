@@ -81,9 +81,9 @@ func Adaptive(light, dark Color) Color {
 	for _, c := range [...]Color{light, dark} {
 		switch c.kind {
 		case kindToken:
-			panic("style.Adaptive: token leaves are rejected in v1 — put the Adaptive color in the Theme slot instead (ADR-0006 §2.4)")
+			panic("style.Adaptive: token leaves are rejected in v1 — put the Adaptive color in the Theme slot instead")
 		case kindAdaptive:
-			panic("style.Adaptive: adaptive leaves cannot nest — pass concrete colors (ADR-0006 §2.4)")
+			panic("style.Adaptive: adaptive leaves cannot nest — pass concrete colors")
 		}
 	}
 	return Color{kind: kindAdaptive, light: light.light, dark: dark.light}

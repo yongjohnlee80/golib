@@ -6,7 +6,7 @@ import (
 )
 
 // gbProp represents a Unicode Grapheme_Cluster_Break property value defined in
-// UAX #29 §3. It categorizes code points according to their boundary-breaking
+// UAX #29 Section 3. It categorizes code points according to their boundary-breaking
 // behavior.
 //
 // In addition to the standard UAX #29 properties, UTS #51's Extended_Pictographic
@@ -275,7 +275,7 @@ func clusterLen(s string) int {
 // boundary reports whether an extended grapheme cluster break boundary exists
 // between the preceding rune (property prev) and the current rune (property cur).
 //
-// The rules correspond directly to UAX #29 §3.1.1 (Unicode 15.0.0):
+// The rules correspond directly to UAX #29 Section 3.1.1 (Unicode 15.0.0):
 //
 //	Rule      Condition                                 Action  Description
 //	--------  ----------------------------------------  ------  ------------------------------------

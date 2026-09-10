@@ -144,7 +144,7 @@ func (c *Context) Move(child Component, to int) {
 func (c *Context) LayoutChild(child Component, cc Constraints) Size {
 	a := c.app
 	if a.layingOut != c.node {
-		panic(errs.Fatal{Op: "tui", Rule: "Context.LayoutChild is legal only inside this component's Layout (ADR-0004 §2.2)"})
+		panic(errs.Fatal{Op: "tui", Rule: "Context.LayoutChild is legal only inside this component's Layout"})
 	}
 	cn := a.byComp[child]
 	if cn == nil || cn.parent != c.node {
@@ -158,7 +158,7 @@ func (c *Context) LayoutChild(child Component, cc Constraints) Size {
 func (c *Context) PlaceChild(child Component, r Rect) {
 	a := c.app
 	if a.layingOut != c.node {
-		panic(errs.Fatal{Op: "tui", Rule: "Context.PlaceChild is legal only inside this component's Layout (ADR-0004 §2.2)"})
+		panic(errs.Fatal{Op: "tui", Rule: "Context.PlaceChild is legal only inside this component's Layout"})
 	}
 	cn := a.byComp[child]
 	if cn == nil || cn.parent != c.node {
