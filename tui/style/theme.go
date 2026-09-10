@@ -6,15 +6,53 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 )
 
-// Token is a semantic color slot, resolved through the active Theme at
-// render time. Widgets style themselves in semantic terms (TokenPrimary,
-// TokenError) and whole applications re-skin by swapping one Theme.
+// Token is a semantic color slot, resolved through the active [Theme] at render time.
 //
-// Tokens are colors, never attributes (normative): a Token
-// resolves to exactly one Color, and the resolver never attaches SGR
-// attributes on a token's behalf. TokenTextMuted is therefore a color only —
-// widgets that want faint muted text say so themselves:
-// style.New().Foreground(style.TokenTextMuted).Faint(true).
+// # What Tokens and Themes Solve
+//
+// In traditional TUI applications, hardcoding raw ANSI escape codes or hex RGB values directly
+// inside widgets creates severe usability and maintenance challenges:
+//  1. Theme Brittleness: Swapping a color palette requires finding and modifying color constants
+//     across every widget in the codebase.
+//  2. Contrast & Readability Inversion: Hardcoded dark-mode colors become unreadable when run on
+//     a user's light-mode terminal emulator.
+//  3. Palette Hijacking: Truecolor assumptions break when running on 16-color or 256-color
+//     terminals or restricted SSH/serial environments.
+//
+// The Token and Theme subsystem resolves these issues by decoupling widget authoring from
+// concrete color definitions:
+//  - Widgets style themselves strictly in semantic terms ([TokenPrimary], [TokenError], [TokenSurface]).
+//  - Applications supply a [Theme] that binds those tokens to concrete [Color] instances.
+//  - The TUI resolver maps tokens to colors and handles capability downsampling (Truecolor → 256 → 16 → mono)
+//    and light/dark background adaptation seamlessly.
+//
+// # Invariant: Tokens Are Colors, Never Attributes
+//
+// A Token resolves to exactly one [Color]. The resolver never attaches SGR attributes (bold, faint,
+// underline) on a token's behalf.
+//
+// For example, [TokenTextMuted] is solely the de-emphasized text color (typically matching Foreground);
+// widgets that desire dim/faint text must explicitly combine the token with the faint attribute:
+//
+//	style.New().Foreground(style.TokenTextMuted).Faint(true)
+//
+// # Usage Examples
+//
+// 1. Styling a widget using semantic tokens:
+//
+//	badgeStyle := style.New().
+//		Foreground(style.TokenTextOnPrimary).
+//		Background(style.TokenPrimary).
+//		Bold(true).
+//		Padding(0, 1)
+//
+// 2. Styling an error callout box:
+//
+//	errorBox := style.New().
+//		Foreground(style.TokenTextOnError).
+//		Background(style.TokenError).
+//		Border(style.BorderThick).
+//		BorderForeground(style.TokenError)
 type Token int
 
 const (
@@ -95,24 +133,67 @@ func WithDark(dark bool) ThemeOption {
 	}
 }
 
-// NewTheme builds a Theme from the required Primary color plus options.
-// Every slot not supplied via WithToken receives its derivation default
-// — one line of deterministic logic per slot, no color math:
+// NewTheme builds an immutable [Theme] from a required Primary color and optional slot overrides.
 //
-//	Secondary, Accent               ← Primary
-//	Foreground, Background          ← Default() (terminal's own fg/bg)
-//	Surface                         ← Background
-//	Panel, Boost                    ← Surface
-//	Warning / Error / Success       ← ANSI(3) / ANSI(1) / ANSI(2)
-//	TextMuted                       ← Foreground (color only)
-//	TextOn*                         ← Background (inverted text on a colored fill)
-//	Border                          ← Foreground
-//	BorderFocused                   ← Accent
+// # Derivation Cascade Architecture
 //
-// Derivations read the slot values after options are applied, so overriding
-// e.g. Surface also moves the Panel and Boost defaults.
+// Only the Primary color is mandatory. Every other slot is derived deterministically
+// using single-pass logic without heuristic RGB blending or color-math distortion:
 //
-// Like WithToken, NewTheme panics if primary is a token-kind Color.
+//	                     Primary
+//	                    ┌───┴───┐
+//	                    ▼       ▼
+//	                Secondary  Accent ──────► BorderFocused
+//	                            │
+//	   Default() ───────────────┼───────────► Surface ────┬► Panel
+//	  (Background)              │                         └► Boost
+//	                            ▼
+//	   Default() ─────► TextMuted, Border
+//	  (Foreground)
+//	                            ▼
+//	   Default() ─────► TextOn* (TextOnPrimary, TextOnSecondary, TextOnAccent...)
+//	  (Background)
+//
+//	  Fixed Status Slots:
+//	    Warning ──► ANSI(3) [Yellow]
+//	    Error   ──► ANSI(1) [Red]
+//	    Success ──► ANSI(2) [Green]
+//
+// # Cascading Overrides
+//
+// Derivations inspect the slot values after all options have been processed. Therefore,
+// overriding an upstream slot automatically recalculates all unconfigured downstream slots:
+//  - Overriding [TokenPrimary] cascades to [TokenSecondary] and [TokenAccent].
+//  - Overriding [TokenAccent] cascades to [TokenBorderFocused].
+//  - Overriding [TokenBackground] cascades to [TokenSurface], [TokenPanel], [TokenBoost], and all [TokenTextOn*] slots.
+//  - Overriding [TokenSurface] cascades to [TokenPanel] and [TokenBoost].
+//  - Overriding [TokenForeground] cascades to [TokenTextMuted] and [TokenBorder].
+//
+// # Invariants
+//
+// Primary cannot be a token-kind Color (panics at construction). Resolution is strictly
+// single-pass (Token → Color); nested token indirections are disallowed.
+//
+// # Usage Examples
+//
+// 1. Framework default theme (ANSI-16-first, G7):
+//
+//	th := style.DefaultTheme() // NewTheme(style.ANSI(4))
+//
+// 2. Custom truecolor brand theme:
+//
+//	th := style.NewTheme(
+//		style.RGB(0x7a, 0x5c, 0xff), // Primary purple
+//		style.WithToken(style.TokenSurface, style.ANSI256(236)),
+//		style.WithToken(style.TokenAccent, style.RGB(0x00, 0xd7, 0xaf)),
+//	)
+//
+// 3. Adaptive light/dark theme:
+//
+//	th := style.NewTheme(
+//		style.Adaptive(style.ANSI(4), style.ANSI(12)), // Light/dark primary
+//		style.WithToken(style.TokenSurface, style.Adaptive(style.ANSI(15), style.ANSI(0))),
+//	)
 func NewTheme(primary Color, opts ...ThemeOption) Theme {
 	if primary.kind == kindToken {
 		panic("style.NewTheme: primary cannot be a token color — supply a concrete or adaptive Color")
