@@ -214,10 +214,44 @@ func TestBufferViewWriterClosed(t *testing.T) {
 	}
 }
 
+// TestBufferViewWriterBudgetDefault pins the pending-byte bound consumers
+// actually get. TestBufferViewBoundedPending shrinks the budget to keep its
+// drain cheap, so without this nothing would assert the shipped value.
+func TestBufferViewWriterBudgetDefault(t *testing.T) {
+	const want = 256 << 10
+	if got := widget.WriterBudgetDefaultForTest; got != want {
+		t.Errorf("writer budget constant = %d, want %d (the documented bound)", got, want)
+	}
+	// On a real view, not just the constant: this is the half that fails if a
+	// writer ever stops reading the default.
+	if got := widget.WriterBudgetOfForTest(widget.NewBufferView()); got != want {
+		t.Errorf("fresh view's writer budget = %d, want %d", got, want)
+	}
+}
+
 // TestBufferViewBoundedPending asserts a stalled loop blocks writers
 // (bounded pending bytes) rather than buffering unboundedly.
+//
+// The budget is shrunk to one chunk first. The contract is scale-free — Write
+// blocks once pending would exceed the budget, whatever the budget is — but the
+// COST of proving it is not: filling the production 256 KiB queues nine or more
+// 32 KiB chunks, and every queued chunk is an app.Update the loop still has to
+// ingest and render while the app shuts down. Measured on one CPU under -race,
+// that backlog costs ~731ms to drain at 512 KiB and ~5.0s at 2 MiB, which is
+// how this test came to fail on a loaded CI runner against the harness's fixed
+// 5s shutdown budget (2026-09-09, main) while passing locally every time and in
+// its own PR run. Shrinking the budget removes that floor instead of trading
+// one wall-clock guess for a larger one; the shipped value stays pinned by
+// TestBufferViewWriterBudgetDefault.
 func TestBufferViewBoundedPending(t *testing.T) {
 	h, v, _ := mountedView(t, 20, 5)
+
+	// One chunk fits; the second must block. Set before any write — the handle
+	// reads its budget on the writing goroutine, so changing it under a live
+	// writer would be a race rather than a fixture.
+	const budget = widget.WriterChunkForTest
+	widget.SetWriterBudgetForTest(v, budget)
+
 	var w io.Writer
 	h.onLoop(func() { w = v.Writer() })
 
@@ -225,20 +259,18 @@ func TestBufferViewBoundedPending(t *testing.T) {
 	release := make(chan struct{})
 	h.app.Update(func() { <-release })
 
-	// Push well past the 256 KiB budget: the writer must block.
+	// Push past the budget: the writer must block.
+	const total = 3 * widget.WriterChunkForTest
 	done := make(chan struct{})
+	var werr error
 	go func() {
-		big := strings.Repeat("x", 64<<10)
-		for i := 0; i < 8; i++ { // 512 KiB total
-			if _, err := w.Write([]byte(big)); err != nil {
-				break
-			}
-		}
+		_, werr = w.Write([]byte(strings.Repeat("x", total)))
 		close(done)
 	}()
 	select {
 	case <-done:
-		t.Fatalf("512 KiB write completed against a stalled loop — pending bytes are unbounded")
+		t.Fatalf("%d KiB write completed against a stalled loop with a %d KiB budget (err=%v) — pending bytes are unbounded",
+			total>>10, budget>>10, werr)
 	case <-time.After(100 * time.Millisecond):
 		// blocked, as required
 	}
@@ -248,6 +280,15 @@ func TestBufferViewBoundedPending(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatalf("writer did not resume after the loop drained")
 	}
+	if werr != nil {
+		t.Fatalf("write failed after the loop drained: %v", werr)
+	}
+
+	// Drain before cleanup. sync() round-trips an Update through the loop, so
+	// every chunk enqueued above has been ingested when it returns — leaving
+	// cancel with an empty queue. That is what keeps the harness's 5s shutdown
+	// budget a deadlock check rather than a race against a render backlog.
+	h.sync()
 }
 
 // TestBufferViewPartialLineAndCR: a partial trailing line renders and is

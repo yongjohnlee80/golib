@@ -532,10 +532,22 @@ type bufWriter struct {
 	app     *tui.App
 	pending int
 	closed  bool
+
+	// budget is writerBudget for every production writer. It is per-INSTANCE
+	// rather than the constant read directly so a test can prove the blocking
+	// contract at a small size: the contract is scale-free, but the drain cost
+	// is not, and a test forced to fill 256 KiB queues nine-plus 32 KiB chunks
+	// that the loop must still render at shutdown. Measured on one CPU under
+	// -race: 512 KiB of backlog costs ~731ms to drain and 2 MiB costs ~5.0s,
+	// which is what made `TestBufferViewBoundedPending` fail on a loaded CI
+	// runner against the harness's fixed 5s shutdown budget while passing
+	// everywhere else. A per-instance field keeps that out of package state,
+	// so nothing is shared between concurrent apps.
+	budget int
 }
 
 func newBufWriter(v *BufferView) *bufWriter {
-	w := &bufWriter{view: v, closed: true}
+	w := &bufWriter{view: v, closed: true, budget: writerBudget}
 	w.cond = sync.NewCond(&w.mu)
 	return w
 }
@@ -577,7 +589,7 @@ func (w *bufWriter) Write(p []byte) (int, error) {
 		chunk := append([]byte(nil), p[:n]...)
 
 		w.mu.Lock()
-		for !w.closed && w.pending > 0 && w.pending+n > writerBudget {
+		for !w.closed && w.pending > 0 && w.pending+n > w.budget {
 			w.cond.Wait()
 		}
 		if w.closed {
