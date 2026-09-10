@@ -17,8 +17,8 @@ package style
 //  3. Risk breaking struct comparability (==) if slices or functions were added.
 //
 // The extensibility system solves this tension via two decoupled mechanisms:
-//  - [ExtKey] & [Style.Ext]: A namespaced, copy-on-write dynamic property map.
-//  - [StyleOption] & [Style.Apply]: A composable, batching functional option seam.
+//   - [ExtKey] & [Style.Ext]: A namespaced, copy-on-write dynamic property map.
+//   - [StyleOption] & [Style.Apply]: A composable, batching functional option seam.
 //
 // In standard use (where extensions are not touched), [Style] carries only a single
 // nil pointer with zero heap allocations and zero render overhead.
@@ -33,35 +33,35 @@ package style
 //
 // To eliminate this overhead, [Style.Apply] implements a batching state machine:
 //
-//	                 st.Apply(opt1, opt2, opt3)
-//	                            │
-//	                            ▼
-//	                 ┌──────────────────────┐
-//	                 │  c.extraMode =       │
-//	                 │       extBatch       │
-//	                 └──────────┬───────────┘
-//	                            │
-//	              First Ext(k, v) within Apply?
-//	                            │
-//	                            ▼
-//	                 ┌──────────────────────┐
-//	                 │ Clone map ONCE;      │
-//	                 │ set extOwned         │
-//	                 └──────────┬───────────┘
-//	                            │
-//	             Subsequent Ext(k, v) in Apply:
-//	                            │
-//	                            ▼
-//	                 ┌──────────────────────┐
-//	                 │ Mutate in place      │
-//	                 │ (safe: copy is owned)│
-//	                 └──────────┬───────────┘
-//	                            │
-//	                            ▼
-//	                 ┌──────────────────────┐
-//	                 │ Reset to extCOW;     │
-//	                 │ return modified copy │
-//	                 └──────────────────────┘
+//	    st.Apply(opt1, opt2, opt3)
+//	               │
+//	               ▼
+//	    ┌──────────────────────┐
+//	    │  c.extraMode =       │
+//	    │       extBatch       │
+//	    └──────────┬───────────┘
+//	               │
+//	 First Ext(k, v) within Apply?
+//	               │
+//	               ▼
+//	    ┌──────────────────────┐
+//	    │ Clone map ONCE;      │
+//	    │ set extOwned         │
+//	    └──────────┬───────────┘
+//	               │
+//	Subsequent Ext(k, v) in Apply:
+//	               │
+//	               ▼
+//	    ┌──────────────────────┐
+//	    │ Mutate in place      │
+//	    │ (safe: copy is owned)│
+//	    └──────────┬───────────┘
+//	               │
+//	               ▼
+//	    ┌──────────────────────┐
+//	    │ Reset to extCOW;     │
+//	    │ return modified copy │
+//	    └──────────────────────┘
 //
 // Through this mechanism, N extensions applied inside a single Apply call share exactly
 // ONE map clone.

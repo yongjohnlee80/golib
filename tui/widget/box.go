@@ -22,14 +22,14 @@ import (
 //
 // Box embeds its title and status lines directly into the border glyph rows:
 //
-//	     TopLeft          Title (truncated with ellipsis)          TopRight
-//	        ┌─ [Explorer: /src/app] ────────────────────────────────────┐
-//	        │                                                           │
-//	        │                    Child Content Area                     │
-//	        │                  (List, Table, Editor)                    │
-//	        │                                                           │
-//	        └──────────────────────────────────────────── [1/42 items] ─┘
-//	    BottomLeft                                    Status (truncated)  BottomRight
+//	 TopLeft          Title (truncated with ellipsis)          TopRight
+//	    ┌─ [Explorer: /src/app] ────────────────────────────────────┐
+//	    │                                                           │
+//	    │                    Child Content Area                     │
+//	    │                  (List, Table, Editor)                    │
+//	    │                                                           │
+//	    └──────────────────────────────────────────── [1/42 items] ─┘
+//	BottomLeft                                    Status (truncated)  BottomRight
 //
 // Design Rationale:
 // Traditional TUI frameworks frequently consume dedicated terminal lines above

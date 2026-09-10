@@ -42,16 +42,18 @@ type stackLayer struct {
 //	│  Bottom Layer: Primary Application Workspace (Flex/Dock│
 //	└────────────────────────────────────────────────────────┘
 //
-// 1. Sizing: All children are laid out with loose constraints up to the stack's
-//    full area (0 <= W <= MaxW, 0 <= H <= MaxH).
-// 2. Positioning: Children are positioned either via [Align] (such as [AlignCenter],
-//    [AlignTopRight], [AlignBottom]) or at an explicit (x, y) offset via [Stack.AddAt].
-// 3. Painting & Z-Order: Children paint bottom-to-top in document order (later children
-//    paint over earlier children).
-// 4. Hit-Testing: Mouse event dispatch traverses children in reverse document order
-//    (top-to-bottom), ensuring the topmost layer wins pointer clicks. A modal layer
-//    that consumes all mouse events on its backdrop acts as an input blocker for
-//    underlying layers.
+// Each layer is sized, placed, painted and hit-tested by these rules:
+//
+//  1. Sizing: All children are laid out with loose constraints up to the stack's
+//     full area (0 <= W <= MaxW, 0 <= H <= MaxH).
+//  2. Positioning: Children are positioned either via [Align] (such as [AlignCenter],
+//     [AlignTopRight], [AlignBottom]) or at an explicit (x, y) offset via [Stack.AddAt].
+//  3. Painting & Z-Order: Children paint bottom-to-top in document order (later children
+//     paint over earlier children).
+//  4. Hit-Testing: Mouse event dispatch traverses children in reverse document order
+//     (top-to-bottom), ensuring the topmost layer wins pointer clicks. A modal layer
+//     that consumes all mouse events on its backdrop acts as an input blocker for
+//     underlying layers.
 type Stack struct {
 	MultiChild // order (== z-order), mount mirror, Move/Children/Init
 	layers     map[Component]stackLayer

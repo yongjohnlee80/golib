@@ -33,12 +33,14 @@ const (
 //	│                DockBottom (e.g. StatusBar)             │
 //	└────────────────────────────────────────────────────────┘
 //
-// 1. Pinned Children: Children pinned via Pin (DockTop, DockBottom, DockLeft, DockRight)
-//    are laid out in declaration order. Pinned children receive loose constraints along
-//    their pinned axis and tight constraints across the orthogonal axis. Their measured
-//    extent is deducted from the remaining Rect.
-// 2. Center Children: Children added without an edge (via Add or Pin with DockCenter)
-//    fill whatever area remains under tight constraints.
+// The edge-consumption algorithm, in the order children are laid out:
+//
+//  1. Pinned Children: Children pinned via Pin (DockTop, DockBottom, DockLeft, DockRight)
+//     are laid out in declaration order. Pinned children receive loose constraints along
+//     their pinned axis and tight constraints across the orthogonal axis. Their measured
+//     extent is deducted from the remaining Rect.
+//  2. Center Children: Children added without an edge (via Add or Pin with DockCenter)
+//     fill whatever area remains under tight constraints.
 //
 // Status bars, side navigation drawers, search toolbars, and inspector panels
 // are easily composed using Dock in combination with Flex and Box.

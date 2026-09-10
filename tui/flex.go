@@ -26,19 +26,21 @@ const (
 //	└─────────────┴───────────────────────────┴──────────────────────┘
 //	◄────────────────────── Main Axis Extent ────────────────────────►
 //
-// 1. Pass 1 (Fixed Children): Unweighted children (added via Add) are measured
-//    first with loose main-axis constraints and tight cross-axis constraints (stretch).
-//    Their measured extents are deducted from the available main-axis extent to yield
-//    the remainder R.
-// 2. Pass 2 (Weighted Distribution): Weighted children (added via AddWeighted)
-//    distribute remainder R using the integer largest-remainder method:
-//    each child receives its floor share `floor(R * w_i / W_sum)`, and the remaining
-//    fractional cells are distributed one by one to the children with the largest
-//    remainders `(R * w_i) mod W_sum` (ties broken deterministically by lowest child index).
-//    This guarantees zero gaps and exact total sizing: `sum(assigned) == R` across
-//    all platforms and resolutions.
-// 3. Cross-Axis Stretch: All children receive the flex's cross-axis dimension as
-//    a tight constraint.
+// Main-axis extent is resolved in two passes, then the cross axis is stretched:
+//
+//  1. Pass 1 (Fixed Children): Unweighted children (added via Add) are measured
+//     first with loose main-axis constraints and tight cross-axis constraints (stretch).
+//     Their measured extents are deducted from the available main-axis extent to yield
+//     the remainder R.
+//  2. Pass 2 (Weighted Distribution): Weighted children (added via AddWeighted)
+//     distribute remainder R using the integer largest-remainder method:
+//     each child receives its floor share `floor(R * w_i / W_sum)`, and the remaining
+//     fractional cells are distributed one by one to the children with the largest
+//     remainders `(R * w_i) mod W_sum` (ties broken deterministically by lowest child index).
+//     This guarantees zero gaps and exact total sizing: `sum(assigned) == R` across
+//     all platforms and resolutions.
+//  3. Cross-Axis Stretch: All children receive the flex's cross-axis dimension as
+//     a tight constraint.
 //
 // Weights live in an internal side table keyed by the Component value; unweighted
 // children have no entry. Remove cleans up the side table entry alongside the child.

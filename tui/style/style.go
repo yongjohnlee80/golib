@@ -110,13 +110,13 @@ const (
 //     using == or map caches, destroying render pipeline memoization.
 //
 // Style resolves all four issues:
-//  - Immutable Value Semantics: Setters receive s by value, mutate the local copy, and return
-//    it. Assignment is a deep copy, eliminatng defensive copying.
-//  - Zero Allocations: Modifying properties executes in ~18ns with zero heap allocations.
-//  - Explicit Set-Bitfield: A uint64 props bitfield tracks whether each property has been
-//    explicitly configured, powering selective [Style.Inherit] and clean [Style.Unset] behavior.
-//  - Comparable: Style is a flat struct (no slices or maps directly). It is strictly comparable
-//    with == and functions natively as a map key for render-time attribute caches.
+//   - Immutable Value Semantics: Setters receive s by value, mutate the local copy, and return
+//     it. Assignment is a deep copy, eliminatng defensive copying.
+//   - Zero Allocations: Modifying properties executes in ~18ns with zero heap allocations.
+//   - Explicit Set-Bitfield: A uint64 props bitfield tracks whether each property has been
+//     explicitly configured, powering selective [Style.Inherit] and clean [Style.Unset] behavior.
+//   - Comparable: Style is a flat struct (no slices or maps directly). It is strictly comparable
+//     with == and functions natively as a map key for render-time attribute caches.
 //
 // # The TUI Box Model Hierarchy
 //

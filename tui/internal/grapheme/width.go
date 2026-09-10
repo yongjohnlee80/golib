@@ -41,7 +41,7 @@ const (
 //
 //  1. Base Width: Scan the cluster runes to find the first non-zero-width rune.
 //     - 0 columns: C0/C1 controls, combining marks (Mn/Me), and default-ignorable
-//       code points (ZWJ, ZWNJ, variation selectors).
+//     code points (ZWJ, ZWNJ, variation selectors).
 //     - 2 columns: East Asian Wide/Fullwidth (UAX #11) and Emoji_Presentation runes.
 //     - 1 column: All other printable code points.
 //
@@ -49,7 +49,7 @@ const (
 //     - VS16 (U+FE0F): If present, forces the cluster width to 2 columns (emoji presentation).
 //     - VS15 (U+FE0E): If present, forces the cluster width to 1 column (text presentation).
 //     - Regional Indicators: If the cluster contains 2 or more RI runes (a flag pair,
-//       such as 🇰 + 🇷 = 🇰🇷), the width is forced to 2 columns.
+//     such as 🇰 + 🇷 = 🇰🇷), the width is forced to 2 columns.
 //
 //  3. Degenerate Zero-Width: If the cluster contains only zero-width runes
 //     (e.g., a lone ZWJ, a bare combining mark, or a bare CR LF), 0 is returned.
