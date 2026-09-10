@@ -19,14 +19,47 @@ const (
 	Vertical
 )
 
-// Split is the two-pane interactive splitter: a one-cell
-// divider whose position follows a ratio, adjustable by Alt+arrows when
-// either pane holds focus (the lazygit resize precedent, generalized) and
-// by mouse drag on the divider. Min sizes clamp; the integer division is
-// deterministic (same ratio, same cells — every run, every platform).
+// Split is an interactive two-pane divider container supporting both horizontal
+// (side-by-side) and vertical (stacked) arrangements.
 //
-// Split is not itself focusable; its panes are ordinary members of the
-// focus chain.
+// # Divider Geometry & Layout Model
+//
+// Split separates its two child components with a 1-cell divider line:
+//
+//	Horizontal Orientation:              Vertical Orientation:
+//	┌─────────────┬───┬─────────────┐   ┌─────────────────────────────┐
+//	│             │ │ │             │   │           Pane A            │
+//	│   Pane A    │ │ │   Pane B    │   ├─────────────────────────────┤ ◄── Divider
+//	│             │ │ │             │   │           Pane B            │
+//	└─────────────┴───┴─────────────┘   └─────────────────────────────┘
+//	                ▲
+//	                └── Divider (1 cell)
+//
+// Available space along the main axis is (Total - 1). The division follows [Split.Ratio]
+// (0 < r < 1; default 0.5), clamped by [WithMinSizes]. Integer cell division is strictly
+// deterministic: the exact same ratio produces identical cell allocations on every run
+// and across all operating systems.
+//
+// # Keyboard and Mouse Interaction
+//
+//  1. Keyboard Resizing: When either child pane holds focus, pressing Alt+Left/Right
+//     (horizontal) or Alt+Up/Down (vertical) adjusts the division ratio by ±5% per keystroke.
+//     This generalizes the popular lazygit pane resizing precedent across all split layouts.
+//  2. Mouse Dragging: Clicking and dragging the 1-cell divider line repositions the split
+//     interactively in real time.
+//  3. Resized Notification: Moving the divider publishes [SplitResizedEvent] carrying the new ratio.
+//
+// # Zooming / Maximizing Panes
+//
+// Split supports maximizing a single pane to occupy 100% of the container:
+//   - [Split.Zoom](PaneA) or [Split.Zoom](PaneB) hides the other pane and the divider.
+//   - [Split.Unzoom]() restores the dual-pane view and previous ratio.
+//   - Transitions publish [SplitZoomEvent].
+//
+// # Focus Model
+//
+// Split itself is not focusable ([tui.Component] without [tui.Focusable]). Its child panes
+// participate directly in normal focus traversal.
 type Split struct {
 	Base
 	o          Orientation

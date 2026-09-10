@@ -9,17 +9,71 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Box is the base container: a bordered single-child panel
-// where title (top border) and status line (bottom border) are
-// configuration, not custom drawing. Every widget that reads as a "panel"
-// (List, BufferView, TextArea, …) is used wrapped in a Box — one chrome
-// implementation, uniform focus visuals.
+// Box is the standard panel container: a bordered, single-child panel
+// where title (embedded in the top border) and status line (embedded in the
+// bottom border) are declarative configuration rather than custom drawing routines.
 //
-// Focus visuals: when the Box or any descendant holds focus, FocusedStyle is
-// merged (Inherit semantics) over the base style. Defaults are
-// token-driven — border style.TokenBorder, focused border
-// style.TokenBorderFocused — so every panel gets the lazygit "active panel
-// highlight" for free, re-themable via the Theme alone.
+// Every widget that presents as an application "panel" (such as [List], [Table],
+// [Tree], [BufferView], or [Editor]) is intended to be used wrapped inside a [Box].
+// This provides a single, uniform chrome implementation and consistent focus
+// visual treatment across the entire application.
+//
+// # In-Border Chrome Layout Model
+//
+// Box embeds its title and status lines directly into the border glyph rows:
+//
+//	     TopLeft          Title (truncated with ellipsis)          TopRight
+//	        ┌─ [Explorer: /src/app] ────────────────────────────────────┐
+//	        │                                                           │
+//	        │                    Child Content Area                     │
+//	        │                  (List, Table, Editor)                    │
+//	        │                                                           │
+//	        └──────────────────────────────────────────── [1/42 items] ─┘
+//	    BottomLeft                                    Status (truncated)  BottomRight
+//
+// Design Rationale:
+// Traditional TUI frameworks frequently consume dedicated terminal lines above
+// or below a widget for titles and keybinding hints. In terminal applications
+// where vertical screen real estate is at a premium, dedicating separate rows
+// per panel severely constrains data visibility. Box embeds text directly into
+// the Top and Bottom border rows, delivering informative framing with ZERO
+// extra vertical height consumption.
+//
+// # Focus Visuals and Style Inheritance
+//
+// When the Box itself or ANY component in its descendant subtree currently holds
+// focus, FocusedStyle is merged ([style.Style.Inherit] semantics) over the base style.
+// The default styles are semantic token-driven:
+//   - Unfocused border: [style.TokenBorder]
+//   - Focused border:   [style.TokenBorderFocused]
+//
+// This architecture gives every panel the familiar active-panel highlight (made
+// famous by tools like lazygit) for free, completely re-themable through the
+// application [style.Theme] without modifying widget code.
+//
+// # Usage Examples
+//
+// 1. Wrapping a list in a standard titled panel:
+//
+//	panel := widget.NewBox(myList,
+//		widget.WithTitle("Git Branches"),
+//		widget.WithStatus("enter: checkout | d: delete"),
+//	)
+//
+// 2. Custom border styling with centered header:
+//
+//	modalBox := widget.NewBox(form,
+//		widget.WithTitle("Create Pull Request"),
+//		widget.WithTitleAlign(style.AlignCenter),
+//		widget.WithBorder(style.BorderRounded),
+//	)
+//
+// 3. Child-less focusable pane (e.g. an empty placeholder panel):
+//
+//	emptyPane := widget.NewBox(nil,
+//		widget.WithTitle("Preview"),
+//		widget.WithFocusable(true),
+//	)
 type Box struct {
 	Base
 	child tui.Component

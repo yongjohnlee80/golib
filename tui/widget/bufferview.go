@@ -14,22 +14,75 @@ import (
 // unmounted (or never mounted).
 var ErrClosed = errors.New("widget: buffer view closed")
 
-// BufferView is the lazygit-class log/pager panel: an
-// append-oriented, ring-bounded line buffer with scrollback, follow-tail,
-// soft wrapping, and a bounded SGR-only ANSI interpreter feeding styled
-// cells.
+// BufferView provides a high-performance, append-oriented log pager and terminal output
+// viewer. Modeled after lazygit's streaming log views, it features ring-bounded scrollback,
+// automatic follow-tail scrolling, soft wrapping, and an ANSI SGR interpreter that transforms
+// terminal escape sequences into styled cells.
 //
-// The widget value is loop-owned like every other widget. The one
-// sanctioned any-goroutine surface is the SEPARATE handle returned by
-// Writer(): safe from any goroutine, bounded pending bytes (writes block
-// when the loop lags — never unbounded buffering, mirroring
-// ingestor/writer.go's semaphore model), ordered delivery, ErrClosed after
-// unmount. *BufferView itself deliberately does NOT implement io.Writer:
-// that would make the loop-owned value look safe to write from anywhere.
+// # Streaming Data Pipeline & Concurrency Seam
 //
-// Keys (focused): Up/Down/PgUp/PgDn/Home/End scroll; End resumes
-// follow-tail. The wheel scrolls. BufferView never consumes printable keys
-// — it is a viewer.
+// BufferView cleanly separates concurrent ingestion from loop-owned UI rendering:
+//
+//	   Background Goroutine                     Application Loop Goroutine
+//	   (exec.Cmd / Stream)                      (tui.App / Surface Render)
+//	         │                                              │
+//	         ▼                                              │
+//	   bufWriter.Write(p)                                   │
+//	         │                                              │
+//	         ├── Acquire semaphore (bounded buffer)         │
+//	         │                                              │
+//	         ├── App.Update(chunk) ─────────────────────────►
+//	         │                                              │
+//	         │                                        sgrInterp.feed(chunk)
+//	         │                                              │
+//	         │                                        Parse ANSI SGR codes
+//	         │                                        & multi-byte UTF-8
+//	         │                                              │
+//	         │                                        Append to ring buffer
+//	         │                                        lines[head:] (maxLines)
+//	         │                                              │
+//	         │                                        Update scroll position
+//	         │                                        (followTail: auto-pin)
+//	         │                                              │
+//	         │                                        MarkDirty()
+//
+// # Architectural Invariants
+//
+//  1. The Concurrent Handle Invariant:
+//     BufferView itself is strictly loop-owned and deliberately does NOT implement [io.Writer]
+//     (which would falsely suggest the widget value is safe to mutate concurrently).
+//     Instead, [BufferView.Writer] returns a distinct, thread-safe handle specifically designed
+//     for cross-goroutine streaming.
+//
+//  2. Bounded Backpressure Semaphore:
+//     Unlike naive in-memory buffers that grow indefinitely if an external process floods stdout,
+//     the writer handle enforces a strict pending byte budget. When pending writes exceed the
+//     budget, Write() blocks until the application loop drains the queue, providing true
+//     backpressure to the producing process.
+//
+//  3. Follow-Tail State Machine:
+//     When follow-tail is active ([WithFollowTail], default true), incoming lines automatically
+//     scroll the viewport to keep the latest output visible. If the user scrolls up (Up Arrow,
+//     PgUp, mouse wheel), follow-tail disengages immediately and publishes
+//     [FollowTailChangedEvent] with Following=false. Pressing End or scrolling to the bottom
+//     resumes follow-tail, publishing Following=true.
+//
+//  4. Clean Lifecycle Termination:
+//     When the owning component tree unmounts, the writer handle is closed. Subsequent writes
+//     immediately return [ErrClosed], signaling producing goroutines to terminate cleanly.
+//
+// # Usage Example
+//
+//	logs := widget.NewBufferView(
+//		widget.WithMaxLines(5000),
+//		widget.WithFollowTail(true),
+//	)
+//
+//	// Concurrently stream subprocess output:
+//	cmd := exec.CommandContext(ctx, "git", "diff", "--color=always")
+//	cmd.Stdout = logs.Writer()
+//	cmd.Stderr = logs.Writer()
+//	go cmd.Run()
 type BufferView struct {
 	Base
 	maxLines    int

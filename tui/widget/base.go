@@ -2,34 +2,75 @@ package widget
 
 import "github.com/yongjohnlee80/golib/tui"
 
-// Base provides NodeID/Context plumbing, dirty-marking, and default no-op
-// event behavior. Widgets embed it by value.
+// Base provides NodeID and Context plumbing, dirty-marking, layout invalidation,
+// and default event behavior for all components in package widget. Widgets embed it
+// by value.
 //
-// What Go embedding gives us: method promotion (a widget that doesn't
-// override HandleEvent satisfies the event half of tui.Component through
-// Base's), shared state plumbing written once, and zero-cost composition
-// (embedded by value, no indirection).
+// # Architectural Model: Embedding vs Virtual Dispatch
 //
-// What it does NOT give us — documented so nobody designs against
-// inheritance that isn't there: there is no virtual dispatch. If Base.Init
-// called a method also defined on the outer widget, the Base version would
-// run — the embedded struct never sees the outer type. Consequences baked
-// into the contract:
+// Widgets embed Base by value:
 //
-//   - Base never calls "overridable" methods. Template-method patterns are
-//     forbidden; the runtime calls the OUTER component's interface
-//     methods directly, so overriding works at the interface boundary — the
-//     only boundary Go respects.
-//   - Widgets that override Init MUST call b.Base.Init(ctx) first (the
-//     compiler can't enforce it; the widget test suite catches a missed
-//     chain via nil-Context panics on TestBackend runs).
-//   - Capability interfaces (tui.Focusable, tui.Container, tui.FocusScope,
-//     tui.CursorReporter) are detected by type assertion on the outer type;
-//     Base deliberately implements none of them, so embedding never
-//     accidentally advertises a capability.
+//	type MyWidget struct {
+//	    widget.Base
+//	    // ... widget-specific fields ...
+//	}
 //
-// Base supplies no Layout or Render: there is no sensible default; every
-// widget implements both.
+// What Go struct embedding provides:
+//  1. Method Promotion: Methods on Base ([Base.Context], [Base.NodeID], [Base.MarkDirty],
+//     [Base.RequestLayout], and the default [Base.HandleEvent]) are promoted directly onto
+//     the outer struct. A widget that does not override HandleEvent automatically satisfies
+//     the event handling portion of [tui.Component].
+//  2. Zero-Cost Composition: Embedding by value incurs zero pointer indirection and keeps
+//     widget memory flat and cache-friendly.
+//  3. Shared Runtime Plumbing: Context storage and node identity are implemented once rather
+//     than re-implemented across dozens of components.
+//
+// What Go struct embedding does NOT provide (and why it matters):
+// Go embedding is NOT object-oriented inheritance. There is NO virtual dispatch:
+//
+//	   ┌────────────────────────────────────────────────────────────┐
+//	   │                        tui.Runtime                         │
+//	   └─────────────────────────────┬──────────────────────────────┘
+//	                                 │ Calls interface methods
+//	                                 │ (Component, Focusable, etc.)
+//	                                 ▼
+//	                  ┌──────────────────────────────┐
+//	                  │       Outer Component        │
+//	                  │         (*TextInput)         │
+//	                  │                              │
+//	                  │  - Init(ctx)                 │
+//	                  │  - Layout(c)                 │
+//	                  │  - Render(s)                 │
+//	                  │  - HandleEvent(ev)           │
+//	                  │  - AcceptsFocus()            │
+//	                  │                              │
+//	                  │   ┌──────────────────────┐   │
+//	                  │   │    Embedded Base     │   │
+//	                  │   │                      │   │
+//	                  │   │  - ctx *Context      │   │
+//	                  │   │  - MarkDirty()       │   │
+//	                  │   │  - RequestLayout()   │   │
+//	                  │   └──────────────────────┘   │
+//	                  └──────────────────────────────┘
+//
+// If Base were to call a method also defined on the outer widget, the Base version would run
+// because the embedded struct has no pointer to or knowledge of the outer type.
+// From this invariant, three binding rules govern the package contract:
+//
+//   - No Template Methods: Base never calls "overridable" methods. Template-method patterns
+//     are forbidden; the runtime calls the OUTER component's interface methods directly, so
+//     polymorphism functions at the interface boundary—the only boundary Go respects.
+//   - Mandatory Chaining on Init: Any widget that overrides Init MUST call b.Base.Init(ctx)
+//     first. The compiler cannot enforce this chain, but omitting it leaves b.ctx nil,
+//     causing immediate panics in unit test suites.
+//   - Capability Cleanliness: Base deliberately implements NO capability interfaces
+//     ([tui.Focusable], [tui.Container], [tui.FocusScope], [tui.CursorReporter],
+//     [tui.CursorShaper]). The runtime discovers capabilities via type assertions on the
+//     outer type; if Base implemented them with dummy no-ops, every embedding widget would
+//     accidentally advertise capabilities it does not support.
+//
+// Base supplies no Layout or Render: there is no sensible default geometry or paint routine;
+// every concrete widget must implement both.
 type Base struct {
 	ctx *tui.Context // set by Init; carries NodeID, App handles, unmount context
 }

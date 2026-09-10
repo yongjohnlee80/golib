@@ -7,37 +7,91 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// TableColumn describes one column of a Table: a header title, a width, and
-// the cell extractor for a row item.
+// TableColumn describes one column of a [Table]: a header title, a width specification,
+// and a cell extractor function for row items.
 type TableColumn[T any] struct {
 	// Title is rendered in the header row.
 	Title string
-	// Width is the fixed cell width in columns. 0 marks a FLEX column:
-	// the width remaining after the fixed columns and gaps is shared
-	// EVENLY among all flex columns (each at least flexMinWidth; the
-	// division remainder goes to the leftmost ones). A table of all-flex
-	// columns therefore renders equal-width columns rather than letting
-	// the first one swallow the row.
+
+	// Width is the fixed cell width in monospace columns.
+	//
+	// Setting Width = 0 designates a FLEX column:
+	// The space remaining after fixed columns and inter-column gaps are subtracted
+	// is divided EVENLY among all flex columns (subject to flexMinWidth = 8). Any integer
+	// division remainder is assigned to the leftmost flex columns.
+	//
+	// Consequently, a table configured with all-flex columns divides the terminal width
+	// equally among them, rather than allowing the first column to monopolize the row.
 	Width int
-	// Cell extracts the cell text for an item.
+
+	// Cell extracts the display string for this column from an item of type T.
 	Cell func(T) string
 }
 
 const (
-	tableGap     = 2 // spaces between columns
-	flexMinWidth = 8
+	tableGap     = 2 // horizontal space (cells) between adjacent columns
+	flexMinWidth = 8 // minimum width (cells) guaranteed to any flex column
 )
 
-// Table is a List with column structure: a one-row header (muted, underlined)
-// above a cursor-driven row list (List semantics — ↑/↓, paging, selection,
-// empty text). Rows are formatted from TableColumn cells, padded
-// and truncated to the per-layout resolved column widths, so the header and
-// the cells stay aligned at any terminal size.
+// Table provides a column-structured tabular view atop a virtualized [List].
+// It pairs a fixed one-row header (styled muted, bold, and underlined) above a
+// cursor-driven row list supporting keyboard navigation (↑/↓, PgUp/PgDn, Home/End),
+// mouse selection, and empty-state placeholders.
 //
-// The embedded List remains the focusable/scrolling widget; Table is the
-// container that owns the header and the column geometry. List options
-// (WithEmptyText, WithListStyles, …) pass through NewTable; do not pass
-// WithItems/WithSource — the row renderer is the Table's.
+// # What Table Solves
+//
+// Displaying tabular records in a terminal requires addressing three recurring challenges:
+//  1. Column Alignment across Window Resizes: Table resolves column widths on every
+//     Layout pass, dynamically recalculating flex widths so headers and cells remain
+//     pixel-perfectly aligned across terminal resizing.
+//  2. Eliminating Code Duplication: Instead of re-implementing scrolling, cursor tracking,
+//     paging, and activation logic, Table embeds and mounts a standard [List], reusing
+//     all list navigation mechanics while owning column formatting.
+//  3. Renderer Hijacking Protection: Table ensures its internal column-formatting renderer
+//     cannot be accidentally overridden by caller-provided ListOptions.
+//
+// # Column Width Resolution Model
+//
+// At each Layout pass with available width W:
+//
+//	 ┌───────────────┬───────────────────────────────┬───────────────────────────────┐
+//	 │ Col 0 (Fixed) │         Col 1 (Flex)          │         Col 2 (Flex)          │
+//	 │    Width=8    │   Width = share + remainder   │         Width = share         │
+//	 └───────────────┴───────────────────────────────┴───────────────────────────────┘
+//	        ▲                        ▲                               ▲
+//	        │                        │                               │
+//	        └── tableGap (2 spaces) ─┴───── tableGap (2 spaces) ─────┘
+//
+//  1. Fixed Deduction: Fixed columns (Width > 0) and inter-column gaps
+//     (tableGap = 2 cells) are deducted from available width W.
+//  2. Flex Division: Remaining space is divided evenly across all flex columns (Width == 0),
+//     clamped to flexMinWidth (8 cells).
+//  3. Remainder Allocation: Any integer remainder from integer division is distributed to
+//     the leftmost flex columns (one extra cell each), guaranteeing complete horizontal fill
+//     without edge jitter.
+//
+// # Usage Example
+//
+//	type Process struct {
+//		PID    int
+//		User   string
+//		CPU    float64
+//		Memory string
+//		Cmd    string
+//	}
+//
+//	cols := []widget.TableColumn[Process]{
+//		{Title: "PID", Width: 8, Cell: func(p Process) string { return strconv.Itoa(p.PID) }},
+//		{Title: "USER", Width: 12, Cell: func(p Process) string { return p.User }},
+//		{Title: "CPU%", Width: 8, Cell: func(p Process) string { return fmt.Sprintf("%.1f", p.CPU) }},
+//		{Title: "MEM", Width: 8, Cell: func(p Process) string { return p.Memory }},
+//		{Title: "COMMAND", Width: 0, Cell: func(p Process) string { return p.Cmd }}, // flex
+//	}
+//
+//	table := widget.NewTable(cols,
+//		widget.WithEmptyText("No active processes"),
+//	)
+//	table.SetItems(runningProcesses)
 type Table[T any] struct {
 	Base
 	cols   []TableColumn[T]

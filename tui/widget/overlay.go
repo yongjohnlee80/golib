@@ -4,24 +4,46 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// OverlayHost is the package's concrete realization of "the Stack overlay
-// layer": a root-level tui.Stack
-// whose bottom layer is the application UI and whose upper layers are
-// overlays. Wrap the app root once —
+// OverlayHost is the root-level container that manages full-screen overlays,
+// floating modal dialogs, and ephemeral popups above the primary application UI.
+//
+// # The Overlay Layer Hierarchy
+//
+// OverlayHost embeds [tui.Stack], laying out layers such that subsequent layers
+// paint on top of earlier ones, while mouse hit-testing evaluates top-to-bottom:
+//
+//	┌──────────────────────────────────────────────────────────────────┐
+//	│ [OverlayHost] Layer Stack                                        │
+//	│                                                                  │
+//	│  Top Layer:    Ephemeral Popups ([Select] dropdown list)         │
+//	│                - Dynamically added via internal bus handshake    │
+//	│                - Focus-trapped; clicks outside close             │
+//	│                ▲                                                 │
+//	│  Mid Layer:    Floating Modals ([Float] dialogs)                 │
+//	│                - Attached via [OverlayHost.Attach]               │
+//	│                - Hidden until [Float.Show]; Esc dismisses        │
+//	│                ▲                                                 │
+//	│  Scrim Layer:  Dimmer Backdrop ("░" shaded cells)                │
+//	│                - Visually dims base content during modals        │
+//	│                ▲                                                 │
+//	│  Base Layer:   Application UI Root (Panels, Splits, Flex)        │
+//	│                - The primary interactive workspace               │
+//	└──────────────────────────────────────────────────────────────────┘
+//
+// # How Widgets Discover the OverlayHost
+//
+// Applications wrap the root layout once during initialization:
 //
 //	root := widget.NewOverlayHost(body)
 //
-// — and the widgets that float will find it:
-//
-//   - Select mounts its open option list here (discovered via an internal
-//     Bus handshake, so a Select buried anywhere in the tree needs no
-//     wiring). Without a mounted OverlayHost, opening a Select is a no-op.
-//   - Float attaches here explicitly (host.Attach), then Show/Hide toggles
-//     it. A Float added to any other full-area Stack layer works the same.
-//
-// OverlayHost embeds tui.Stack: it is a Container and lays out layers per
-// the Stack contract (later layers paint on top; hit-testing visits them in
-// reverse).
+// Once mounted, floating components interact with OverlayHost through two distinct mechanisms:
+//  1. Automatic Popups: [Select] projects its open option list onto the overlay host
+//     via an internal unexported bus handshake ([overlayOpenEvent] / [overlayCloseEvent]).
+//     A [Select] nested arbitrarily deep inside split panes or flex containers requires
+//     zero manual wiring to project its dropdown above the UI.
+//  2. Explicit Modals: [Float] instances are registered via [OverlayHost.Attach].
+//     While hidden, a Float occupies zero cells, participates in no hit-testing, and
+//     is omitted from tab navigation until activated by [Float.Show].
 type OverlayHost struct {
 	*tui.Stack
 }

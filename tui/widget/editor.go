@@ -10,11 +10,76 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Editor is the vim-modal multi-line editor: the textBuffer
-// substrate under a Normal/Insert/Visual state machine with a data-driven
-// keymap, a single unnamed register, bounded undo, and a configurable
-// escape chord. Unbound keys in Normal/Visual mode — Space included —
-// bubble, so an application leader menu needs no editor cooperation.
+// Editor provides an embedded, modal Vim-like multi-line text editor designed for
+// code editing, configuration editing, and interactive query authoring.
+//
+// # Modal State Machine Architecture
+//
+// Editor implements the classical Vim tripartite modal state machine:
+//
+//	               ┌────────────────────────────────────────────────────────┐
+//	               │                      NORMAL MODE                       │
+//	               │  - Navigation (h, j, k, l, w, b, e, 0, $, gg, G)       │
+//	               │  - Operators (d, y, c, p, P, x, r, u, Ctrl+R)          │
+//	               │  - Numeric counts (e.g. 5j, 3dd, 10w)                  │
+//	               │  - Unbound keys (Space!) BUBBLE for app leader menus   │
+//	               └───────────┬───────────────────────────────▲────────────┘
+//	          i, a, o, O, c    │                               │  Esc or "jk"
+//	          enters insert    │                               │  chord timeout
+//	                           ▼                               │
+//	               ┌───────────────────────────────┐           │
+//	               │          INSERT MODE          │           │
+//	               │  - Direct text typing         │───────────┘
+//	               │  - Real-cursor IME anchoring  │
+//	               │  - "jk" fast escape chord     │
+//	               └───────────────────────────────┘
+//	                           ▲
+//	               v, V        │                               │ Esc
+//	               enters      │                               │ returns to Normal
+//	               visual      ▼                               │
+//	               ┌───────────────────────────────────────────┴┐
+//	               │            VISUAL / VISUAL-LINE            │
+//	               │  - Character-wise (v) or Line-wise (V)     │
+//	               │  - Active selection highlighting           │
+//	               │  - Actions (y: yank, d: delete, c: change) │
+//	               └────────────────────────────────────────────┘
+//
+// # Architectural Invariants and Capabilities
+//
+//  1. Unbound Key Bubbling and Leader Menus:
+//     In Normal and Visual modes, any key not explicitly bound in the keymap—including
+//     the Space bar—is NOT consumed (HandleEvent returns false). The event bubbles up
+//     the component tree, allowing the hosting application to attach global leader-key
+//     menus (e.g. "Space f f" to open finder, "Space w" to switch splits) with ZERO
+//     custom editor cooperation or intercepted event wrappers.
+//
+//  2. Fast Escape Chord ("jk"):
+//     In Insert mode, Editor supports two-key escape chords (default "jk"). When the
+//     first rune is typed, it is held temporarily. If the second rune arrives within
+//     chordTimeout (180ms), the editor transitions to Normal mode without modifying
+//     buffer text. If the timeout expires or an unrelated key arrives, the held rune
+//     is flushed into the buffer as normal text.
+//
+//  3. Single Unnamed Register & Linewise Semantics:
+//     Yank and delete operations populate an internal unnamed register. Linewise
+//     operations (dd, yy, VisualLine) record their linewise attribute so that paste
+//     (p / P) opens and populates lines above or below the cursor.
+//
+//  4. System Clipboard & Secret Safety:
+//     Explicit yanks ('y' in visual mode or 'yy' in normal mode) copy text to the
+//     operating system clipboard (if supported by the backend) and publish [YankEvent].
+//     Crucially, deletions (d, dd, x) fill only the internal register and NEVER copy
+//     to the system clipboard or emit YankEvent. This ensures sensitive strings
+//     (passwords, tokens) deleted during editing are never leaked to external clipboards.
+//
+//  5. Bounded Undo Ring with Edit Grouping:
+//     The undo history is ring-bounded ([editorUndoCap] = 64 snapshots). Continuous
+//     typing in Insert mode is batched into a single undo transaction, so a single 'u'
+//     in Normal mode reverts the entire insert session.
+//
+//  6. Hardware Cursor Reporting and Shaping:
+//     Editor implements [tui.CursorReporter] and [tui.CursorShaper]. In Normal mode,
+//     the terminal cursor is configured as a block; in Insert mode, as a vertical beam.
 type Editor struct {
 	readOnly bool // viewer mode: motions and yank only
 	Base

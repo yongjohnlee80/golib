@@ -2,14 +2,53 @@ package widget
 
 import "github.com/yongjohnlee80/golib/tui"
 
-// Bus event inventory. Every event carries Owner — the
-// emitting widget's NodeID — as its first field so subscribers filter by
-// source. Publication is enqueue-only onto the App loop:
-// widgets publish via Context.Bus(), handlers run on the loop goroutine.
+// Package widget provides a decoupled, type-safe event model built on top of [tui.Bus].
 //
-// These are Bus values, not tui.Event tree events: they never route or
-// bubble through the component tree; subscribers receive them by exact
-// dynamic type (tui.Subscribe / tui.SubscribeScoped).
+// # Bus Events vs Tree Events
+//
+// There are two distinct event mechanisms in golib/tui:
+//  1. Tree Events ([tui.Event], [tui.KeyEvent], [tui.MouseEvent]): Handled by [tui.Component.HandleEvent].
+//     These route down the focused branch or bubble up from hit-tested leaf components.
+//  2. Bus Events (the struct types defined here and in sibling files): Broadcast domain notifications
+//     published via [tui.Context.Bus] and received by exact dynamic type through [tui.Subscribe]
+//     or [tui.SubscribeScoped].
+//
+// Bus events NEVER route or bubble through the component tree. They allow decoupled communication
+// between parent views, sibling widgets, and state controllers without requiring direct struct
+// pointer wiring or callback spaghetti.
+//
+// # The Owner Invariant
+//
+// Every public bus event carries Owner ([tui.NodeID]) as its first field. Because bus subscriptions
+// are typed globally or per-scope, multiple instances of the same widget type (e.g. three [TextInput]
+// fields in one dialog) publish the same event type. Subscribers inspect ev.Owner to match against
+// the specific widget they care about:
+//
+//	tui.SubscribeScoped(ctx, func(ev widget.SubmitEvent) {
+//		if ev.Owner == usernameInput.NodeID() {
+//			passwordInput.RequestFocus()
+//		}
+//	})
+//
+// # Publication & Concurrency: Input Lane vs Program Lane
+//
+// Publication onto the bus is strictly enqueue-only onto the application loop goroutine.
+// The runtime processes events in two alternating lanes:
+//   - Input Lane: Dispatches raw keyboard and mouse events from the terminal driver.
+//   - Program Lane: Delivers enqueued bus events and asynchronous [tui.TaskResult] payloads.
+//
+// Because the runtime alternates between lanes, publishing a bus event introduces an asynchronous
+// queue hop. If an action must execute immediately before the next pending keypress is dispatched
+// (such as moving focus to prevent pasted characters from leaking into a vacated field), use
+// synchronous hooks—such as [WithOnSubmit] on [TextInput]—rather than relying solely on [SubmitEvent].
+//
+// # Complete Event Inventory Across Package Widget
+//
+// In addition to the events declared below, sibling files declare specialized domain events:
+//   - [SplitZoomEvent] (split.go): Published when a [Split] pane enters or exits full-screen zoom.
+//   - [ExpandRequestEvent] (tree.go): Published when an unloaded [TreeNode] requests async children.
+//   - [CollapseEvent] (tree.go): Published when a [TreeNode] collapses.
+//   - [ModeChangedEvent] (editor_keymap.go): Published on Vim [EditorMode] transitions.
 
 // SubmitEvent is emitted by TextInput on Enter when validation passes.
 type SubmitEvent struct {
