@@ -9,17 +9,50 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// TreeNode is one explorer entry. Children are unknown
-// until the node is expanded: the Tree publishes ExpandRequestEvent with a
-// generation token and the application answers with SetChildren or
-// SetLoadError carrying that token — every outcome settles the spinner,
-// stale generations are inert.
+// TreeNode represents a single node in a hierarchical [Tree] explorer.
 //
-// Ownership: attaching a node — via SetRoots or SetChildren — stamps
-// it and its subtree with the owning Tree. Attaching an already-owned node
-// panics (duplicate pointers, cross-tree reuse, ancestor adoption are all
-// impossible by construction). Detaching (being replaced out, or Reset's
-// discard) releases the subtree for re-attachment.
+// # Async Expansion and the Generation Token Protocol
+//
+// In large hierarchies (file systems, database catalogs, cloud resources), child nodes
+// are often expensive to fetch and should not be loaded upfront. TreeNode supports
+// lazy asynchronous loading via generation tokens:
+//
+//	           User expands node (e.g. presses 'l' or Enter)
+//	                               │
+//	                               ▼
+//	                 ┌───────────────────────────┐
+//	                 │ gen = ++t.genSeq          │
+//	                 │ node.loading = true       │
+//	                 │ Publish ExpandRequestEvent│
+//	                 └─────────────┬─────────────┘
+//	                               │
+//	                               ▼
+//	               App handles event & spawns App.Go
+//	                               │
+//	                               ▼
+//	              Background task finishes asynchronously
+//	                               │
+//	                               ▼
+//	             node.SetChildren(gen, children)
+//	                               │
+//	                 Does gen == node.gen?
+//	                 ├── YES: Install children, loading=false, MarkDirty
+//	                 └── NO:  Stale response! Ignored completely.
+//
+// If the user collapses the node, resets the tree, or initiates a subsequent reload
+// before the background worker finishes, node.gen increments or resets. Stale responses
+// arriving from earlier calls are dropped safely with zero risk of state corruption.
+//
+// # Ownership and Preflight Invariants
+//
+// Attaching a node—via [Tree.SetRoots] or [TreeNode.SetChildren]—stamps the node and its
+// entire subtree with pointer references to the owning [Tree].
+//
+// The tree enforces strict structural invariants at attachment time:
+//   - An already-owned node cannot be attached elsewhere without detaching (prevents cross-tree aliasing).
+//   - Duplicate pointer addresses within a forest are rejected (prevents cyclic graphs).
+//   - Duplicate IDs within any sibling set panic at construction.
+//   - Detaching a subtree releases ownership stamps, allowing the nodes to be cleanly re-attached.
 type TreeNode struct {
 	id    string
 	label string
@@ -270,10 +303,37 @@ type CollapseEvent struct {
 	Node  *TreeNode
 }
 
-// Tree is the lazy expandable hierarchy: flattened
-// virtualized rows over owner-stamped nodes, vim-style navigation
-// (j/k/l/h + arrows + Enter), spinner/error badges, and the generation
-// lifecycle above.
+// Tree provides an interactive, lazy-expandable hierarchy widget designed for
+// file browsers, database schema explorers, and nested resource trees.
+//
+// # Visual Representation and Layout
+//
+// Tree flattens the currently expanded node hierarchy into virtualized linear rows:
+//
+//	▼ src/
+//	  ▶ cmd/                            [dir]
+//	  ▼ internal/                       [dir]
+//	    ▼ widget/                       [dir]
+//	      • base.go                     [164 lines]
+//	      • box.go                      [396 lines]
+//	      • tree.go                     [loading...]
+//	  • go.mod
+//
+// Glyphs:
+//   - "▼ ": Expanded branch node.
+//   - "▶ ": Collapsed branch node.
+//   - "• ": Leaf node (configured via [WithLeaf] or having zero children when loaded).
+//   - Trailing annotations: Badges configured via [WithBadge] or animated spinner frames.
+//
+// # Keyboard and Mouse Navigation Model
+//
+// Tree supports full Vim-style and standard keyboard navigation:
+//   - 'j' / Down Arrow: Move cursor to the next visible row.
+//   - 'k' / Up Arrow:   Move cursor to the previous visible row.
+//   - 'l' / Right Arrow: If on a collapsed branch, expands it. If already expanded, moves cursor to its first child.
+//   - 'h' / Left Arrow:  If on an expanded branch, collapses it. If on a collapsed branch or leaf, jumps to parent.
+//   - Enter: Toggles expansion on branch nodes; emits [ActivateEvent] on leaf nodes.
+//   - Mouse: Single-click moves selection; double-click toggles expansion or activates leaf.
 type Tree struct {
 	Base
 	roots []*TreeNode
