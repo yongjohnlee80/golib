@@ -20,7 +20,7 @@
 //	    ├─────┼─────┼─────┴─────┼─────┼─────┼─────┼─────┤
 //	y=1 │ 'e' │ '́'  │    '世'    │    '界'    │ '!' │     │  (é=1 cell; CJK=2 cells each)
 //	    ├─────┴─────┼───────────┴─────┬─────┼─────┼─────┤
-//	y=2 │   '🇯🇵'    │      '👩‍👩‍👦'      │ 'x' │     │     │  (Flag=2 cells; Emoji ZWJ=2 cells)
+//	y=2 │   '🇰🇷'    │      '👩‍👩‍👦'      │ 'x' │     │     │  (Flag=2 cells; Emoji ZWJ=2 cells)
 //	    └───────────┴─────────────────┴─────┴─────┴─────┘
 //
 // Misunderstanding the distinctions between Unicode representations leads directly
@@ -46,7 +46,7 @@
 //     - 0 cells: combining marks, control characters, default-ignorable code points.
 //     - 1 cell:  standard Latin, ASCII, halfwidth Katakana, European alphabets.
 //     - 2 cells: East Asian Wide/Fullwidth (CJK kanji/hanja/katakana), emoji
-//       presentation sequences, and Regional Indicator flag pairs.
+//     presentation sequences, and Regional Indicator flag pairs.
 //
 // # Representation Mapping
 //
@@ -56,9 +56,9 @@
 //	"é" (composed)    2      1      1         1              [é]
 //	"e\u0301" (decom) 3      2      1         1              [é]  (combining mark)
 //	"世" (CJK)        3      1      1         2              [ 世 ] (wide)
-//	"🇯🇵" (Flag)       8      2      1         2              [ 🇯🇵 ] (RI pair)
+//	"🇰🇷" (Flag)       8      2      1         2              [ 🇰🇷 ] (RI pair)
 //	"❤️" (Heart+VS16) 6      2      1         2              [ ❤️ ] (emoji VS)
-//	"👨‍👩‍👧" (Family)    18     5      1         2              [ 👨‍👩‍👧 ] (ZWJ chain)
+//	"👨‍👩‍👧" (Family)    18      5      1         2              [ 👨‍👩‍👧 ] (ZWJ chain)
 //
 // # Architecture & Zero-Allocation Design
 //

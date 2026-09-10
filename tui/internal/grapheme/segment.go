@@ -42,7 +42,7 @@ const (
 	prZWJ
 
 	// prRegionalIndicator represents Regional Indicator symbols U+1F1E6..U+1F1FF.
-	// Two adjacent RIs combine pairwise to form a two-letter country flag (e.g. 🇯 + 🇵 = 🇯🇵).
+	// Two adjacent RIs combine pairwise to form a two-letter country flag (e.g. 🇰 + 🇷 = 🇰🇷).
 	prRegionalIndicator
 
 	// prPrepend represents characters that visually bind to the following base character.
@@ -157,7 +157,7 @@ func inRanges(r rune, t []runeRange) bool {
 //	"\r\n"                   "\r\n"                       GB3 (CR × LF joins)
 //	"e\u0301"                "é"                          GB9 (Extend absorbs into 'e')
 //	"각" (Hangul L+V+T)     "각"                        GB6, GB7 (Hangul Jamo joins)
-//	"🇯🇵" (RI + RI)           "🇯🇵"                         GB12/13 (RI pair forms flag)
+//	"🇰🇷" (RI + RI)           "🇰🇷"                         GB12/13 (RI pair forms flag)
 //	"👩‍👩‍👦" (Family emoji)    "👩‍👩‍👦"                       GB11 (ExtPict + ZWJ chain)
 func Clusters(s string) iter.Seq[string] {
 	return func(yield func(string) bool) {
