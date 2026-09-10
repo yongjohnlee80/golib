@@ -1,7 +1,61 @@
 package style
 
-// Unset* clears a property's props bit AND zeroes its value field, so an
-// unset-then-compared style is == to one that never set the property.
+// Package style's Unset methods provide granular reversion of individual style properties
+// back to their untouched, un-configured state.
+//
+// # Why Unset Exists
+//
+// In component-based TUI architectures, widgets frequently derive their appearance by inheriting
+// from shared themes or parent container styles (e.g., a standard modal card, a highlighted
+// table row). However, child widgets often need to selectively opt out of specific attributes—such
+// as stripping borders in nested panels, dropping margins in compact modes, or resetting text
+// attributes when rendering unselected items.
+//
+// # Structural Equality Invariant: The Dual-Clear Mechanism
+//
+// Every Unset* method performs two coordinated operations on the copied [Style]:
+//  1. Clears the property's bit in the uint64 props bitfield (marking it as untouched).
+//  2. Zeroes the corresponding value field (e.g., zeroing Color, unmasking packed uint16 attrs,
+//     clearing int16 dimensions).
+//
+// Why both? Go compares structs field-by-field. If an Unset method only cleared the bitfield
+// flag but left residual bits in the value field, a style modified and then unset would NOT
+// be structurally equal (==) to a fresh style:
+//
+//	st := style.New().Bold(true).UnsetBold()
+//	st == style.New() // Evaluates to TRUE because attrs and props are both zeroed.
+//
+// This reflexivity invariant ensures that the TUI resolver's internal attribute cache
+// (which uses [Style] directly as a map key) never misses cache hits due to "ghost" attribute values.
+//
+// # Interaction with Inherit
+//
+// [Style.Inherit] copies properties from another style ONLY if the receiver does not already
+// have them set (!s.isSet(k)). Calling an Unset method clears the set bit, effectively
+// re-admitting that property to participate in subsequent inheritance:
+//
+//	base := style.New().Foreground(style.TokenPrimary).Bold(true)
+//	custom := base.UnsetBold() // custom now has Bold untouched
+//
+//	fallback := style.New().Bold(false).Italic(true)
+//	result := custom.Inherit(fallback) // result inherits Italic, and re-inherits Bold(false)
+//
+// # Usage Examples
+//
+// 1. Reverting text styling for an unselected menu item:
+//
+//	// Derived from an active item style
+//	itemStyle := activeItemStyle.UnsetBold().UnsetUnderline().Foreground(style.TokenTextMuted)
+//
+// 2. Stripping borders and padding for a compact inner container:
+//
+//	// Remove framing so inner content fits snugly inside a parent card
+//	innerStyle := cardStyle.UnsetBorder().UnsetPadding().UnsetMargin()
+//
+// 3. Selectively unsetting edge-specific border colors:
+//
+//	// Retain top/bottom/right border colors, but reset left accent border to default
+//	neutralized := calloutStyle.UnsetBorderLeftForeground()
 
 // UnsetForeground clears the foreground color.
 func (s Style) UnsetForeground() Style {
