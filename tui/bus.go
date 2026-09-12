@@ -10,15 +10,66 @@ import (
 
 // Bus is the App's broadcast event bus: exactly one instance exists per App (App.Bus()).
 //
+// # Architectural Diagram & Event Flow
+//
+//	[ Background Worker / Task ]      [ Component Event Handler ]
+//	              │                                 │
+//	              │  Bus.Publish(Event{})           │  Bus.Publish(Event{})
+//	              ▼                                 ▼
+//	+─────────────────────────────────────────────────────────────+
+//	│                App Program Queue (Lane B)                   │
+//	│   - Thread-safe, non-blocking MPSC queue                    │
+//	│   - Program-lane items (fn closures) never dropped          │
+//	+─────────────────────────────────────────────────────────────+
+//	                              │
+//	                              │ Drained by Single Loop Goroutine
+//	                              ▼
+//	+─────────────────────────────────────────────────────────────+
+//	│                    App Event Loop Goroutine                 │
+//	│                                                             │
+//	│   b.deliver(v)                                              │
+//	│     1. Resolve dynamic type: t := reflect.TypeOf(v)         │
+//	│     2. Snapshot subscriber slice: subs := b.subs[t] (COW)  │
+//	│     3. Iterate unlocked in registration order:             │
+//	│        ├── Check tombstone: s.cancelled.Load()             │
+//	│        └── Invoke closure:  s.fn(v.(T)) [Zero-Reflection]  │
+//	+─────────────────────────────────────────────────────────────+
+//	              │                                 │
+//	              ▼                                 ▼
+//	   [ Subscriber Component A ]        [ Subscriber Component B ]
+//	      (Mutates state safely             (Mutates state safely
+//	        without mutex locks)              without mutex locks)
+//
+// # Detailed Delivery Flow
+//
+//  1. Registration (Subscribe / SubscribeScoped):
+//     - The concrete event type T is resolved via reflect.TypeOf((*T)(nil)).Elem() once at registration.
+//     - A typed closure func(v any) { fn(v.(T)) } is instantiated, bypassing reflect.Call at runtime.
+//     - The subscription list for T is updated under mutex using Copy-On-Write semantics (b.subs[t]
+//     reallocated and replaced), ensuring lockless reads during dispatch.
+//     - If registered via SubscribeScoped(ctx, fn), the cancel func is hooked into Context.OnUnmount.
+//
+//  2. Publication (Bus.Publish):
+//     - Publish(v) is thread-safe and safe to call from any goroutine (including background tasks).
+//     - ENQUEUE-ONLY: It wraps b.deliver(v) in an App.queue item (Lane B) and returns immediately.
+//     - Handlers are NEVER invoked synchronously on the publisher's goroutine. This guarantees that
+//     component handlers always execute on the single App loop goroutine and can mutate component
+//     state without mutex synchronization.
+//
+//  3. Dispatch & Delivery (b.deliver):
+//     - The App loop drains Lane B and executes the deliver closure.
+//     - b.subs[reflect.TypeOf(v)] is read under a brief mutex lock to obtain the COW snapshot.
+//     - Handlers are invoked sequentially in FIFO subscription order.
+//     - Tombstone checking: If a subscriber unsubscribed mid-delivery, s.cancelled is true and the
+//     handler is skipped without blocking.
+//
 // # Architectural Invariants
 //
 //  1. Zero-Reflection Dispatch: Subscriptions compile down to direct type-asserted closures.
 //     Event publication performs NO reflect.Call and incurs zero per-publish heap allocations.
 //  2. Enqueue-Only Publish: Publishing an event (Bus.Publish) enqueues a delivery task onto
 //     the App loop's program queue (Lane B) and returns immediately. Handlers are NEVER
-//     executed synchronously on the publisher's goroutine. If handlers executed synchronously,
-//     background worker tasks could directly mutate component state, destroying the
-//     single-goroutine concurrency guarantee.
+//     executed synchronously on the publisher's goroutine.
 //  3. Copy-on-Write Subscription Lists: Delivery snapshots iterate over subscription slices
 //     without holding mutex locks, allowing handlers to safely subscribe or unsubscribe mid-delivery.
 type Bus struct {

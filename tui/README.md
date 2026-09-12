@@ -62,9 +62,11 @@ import (
 ```
 
 ### 1. The Loop-Goroutine Invariant (Normative)
+
 All component state — the tree, every component's fields, focus, layout rects, and the cell buffer — is owned exclusively by the loop goroutine. `Init`, `Layout`, `Render`, `HandleEvent`, bus handlers, and queued closures execute **only** there.
 
 The only thread-safe operations legal from external background goroutines are:
+
 - `App.Post(ev)` and `Context.Post(ev)` — enqueue an event onto the program lane.
 - `App.Update(fn)` — enqueue a state mutation closure.
 - `App.Go(...)` and `Context.Go(...)` — schedule background tasks on the bounded pool.
@@ -73,7 +75,9 @@ The only thread-safe operations legal from external background goroutines are:
 All of these enqueue asynchronously and return immediately. Components never need mutexes or atomic locks.
 
 ### 2. The Two-Seam Portability Contract
+
 Portability is achieved through two clean interfaces:
+
 - **`Backend`**: Abstracts the terminal device. It handles raw mode, alternate screen setup, live capability probing (Kitty keyboard, TrueColor, synchronized output), un-coalesced event streams, and atomic diff flushing.
 - **`Surface`**: Abstracts the drawing canvas. Components receive a local, pre-clipped `Surface` with bounds checking, grapheme cluster writes, box filling, and style resolution.
 
@@ -83,11 +87,11 @@ Portability is achieved through two clean interfaces:
 
 Layout in `golib/tui` is single-pass, Flutter-inspired **constraints down, sizes up**: parents provide constraints (`MinW <= W <= MaxW`, `MinH <= H <= MaxH`), children report their chosen `Size`, and parents position children.
 
-| Container | Role | Sizing Strategy |
-|-----------|------|-----------------|
-| `Flex` | Linear multi-child layout (`Horizontal` or `Vertical`) | Fixed children measured first; remaining space distributed to weighted children via integer largest-remainder (zero gaps). Cross axis stretches tight. |
-| `Dock` | Window chrome framing | Pinned children hug edges (`DockTop`, `DockBottom`, `DockLeft`, `DockRight`) in declaration order; `DockCenter` children fill remaining area. |
-| `Stack` | Z-ordered layering & popups | Children receive loose constraints; placed via alignment (`AlignCenter`, `AlignTopRight`) or explicit offsets. Later children paint on top and win mouse hit-tests. |
+| Container | Role                                                   | Sizing Strategy                                                                                                                                                     |
+| --------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Flex`    | Linear multi-child layout (`Horizontal` or `Vertical`) | Fixed children measured first; remaining space distributed to weighted children via integer largest-remainder (zero gaps). Cross axis stretches tight.              |
+| `Dock`    | Window chrome framing                                  | Pinned children hug edges (`DockTop`, `DockBottom`, `DockLeft`, `DockRight`) in declaration order; `DockCenter` children fill remaining area.                       |
+| `Stack`   | Z-ordered layering & popups                            | Children receive loose constraints; placed via alignment (`AlignCenter`, `AlignTopRight`) or explicit offsets. Later children paint on top and win mouse hit-tests. |
 
 ---
 
@@ -105,6 +109,7 @@ type Component interface {
 ```
 
 Optional capability interfaces are detected at runtime via type assertions on the outer widget:
+
 - `Focusable`: Opts the component into Tab/Shift-Tab traversal (`AcceptsFocus() bool`).
 - `Container`: Public child-management surface (`Add`, `Remove`, `Move`, `Children`).
 - `FocusScope`: Traps focus navigation within a subtree (used by modals and popups).
@@ -116,6 +121,7 @@ Optional capability interfaces are detected at runtime via type assertions on th
 ## Deterministic Testing Without a PTY
 
 `tui.TestBackend` provides a deterministic in-memory terminal simulator designed for headless CI environments:
+
 - Inject key, mouse, and resize events via `tb.Inject(...)`.
 - Assert cell grid text and ANSI attributes via `tb.String()` or `tb.Snapshot()`.
 - Validate hardware cursor coordinates via `tb.CursorPos()`.

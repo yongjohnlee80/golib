@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -9,40 +8,53 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// PanicPolicy selects what Run does after a loop/handler panic has been
-// recovered and the terminal restored.
-type PanicPolicy uint8
-
-const (
-	// PanicRepanic (the default) propagates the recovered panic with its
-	// original value after the terminal is restored — golib fail-loud.
-	PanicRepanic PanicPolicy = iota
-	// PanicReturn converts the recovered panic into an error wrapping
-	// ErrPanic returned from Run.
-	PanicReturn
-)
-
-// ErrPanic is wrapped by Run's returned error under PanicReturn.
-var ErrPanic = errors.New("tui: recovered panic")
-
-// ErrTaskPanic is wrapped by TaskResult.Err when the task panicked.
-var ErrTaskPanic = errors.New("tui: task panicked")
-
 // appConfig collects the option-set construction state of an App
 // (pattern: server/scaffold.go:21-28's scaffoldConfig).
 type appConfig struct {
-	backend           Backend
-	theme             *style.Theme
-	minFrameInterval  time.Duration
+	// backend is the required terminal/display driver (e.g. term.New or NewTestBackend)
+	// handling low-level terminal I/O, raw mode, and screen dimensions.
+	backend Backend
+
+	// theme defines the semantic color palette and base styling applied across components.
+	theme *style.Theme
+
+	// minFrameInterval caps the maximum rendering frame rate; dirty marks arriving faster
+	// than this duration are coalesced into a single frame to save CPU cycles.
+	minFrameInterval time.Duration
+
+	// doubleClickWindow sets the maximum duration between two successive mouse clicks on
+	// the same cell and button to be recognized and dispatched as a multi-click event.
 	doubleClickWindow time.Duration
-	panicPolicy       PanicPolicy
-	inputQueueSize    int
-	eventQueueLimit   int
-	taskPoolSize      int
-	widthPolicy       WidthPolicy
-	taskDrainTimeout  time.Duration
-	logger            logger.Logger
-	trace             TraceFunc
+
+	// panicPolicy determines how loop/handler panics are handled after restoring the terminal:
+	// PanicRepanic re-raises the panic, while PanicReturn converts it to an error wrapping ErrPanic.
+	panicPolicy PanicPolicy
+
+	// inputQueueSize sets the channel buffer capacity for Lane-A hardware input events
+	// (keys, mouse, resize) pumped from the backend before dropping overflown events.
+	inputQueueSize int
+
+	// eventQueueLimit sets an optional maximum ceiling on pending Lane-B program events.
+	// Defaults to 0 (unlimited); exceeding a set ceiling panics to fail early on runaway producers.
+	eventQueueLimit int
+
+	// taskPoolSize caps the maximum number of concurrently running background tasks dispatched via App.Go.
+	taskPoolSize int
+
+	// widthPolicy sets the East Asian character width measurement rule (e.g. narrow vs. ambiguous wide)
+	// enforced consistently across text measurement and cell surface rendering.
+	widthPolicy WidthPolicy
+
+	// taskDrainTimeout sets the grace period for in-flight background tasks to terminate upon shutdown
+	// before App.Run returns, preventing stalled tasks from holding the process indefinitely.
+	taskDrainTimeout time.Duration
+
+	// logger is the structured diagnostics logger for queue high-water marks, dropped events,
+	// dead-lettered results, and recovered task panics.
+	logger logger.Logger
+
+	// trace is an optional hook invoked across the lifecycle of event dispatch, rendering, and task execution.
+	trace TraceFunc
 }
 
 // defaultAppConfig returns the documented defaults.
