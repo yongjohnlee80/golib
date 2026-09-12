@@ -32,6 +32,7 @@ go get github.com/yongjohnlee80/golib
 
 | Package | Purpose | Docs |
 |---|---|---|
+| [`covercheck`](covercheck/README.md) | CI-neutral Go coverage profile comparison, changed-block measurement, and policy enforcement | [README](covercheck/README.md) |
 | [`threadsafe`](threadsafe/README.md) | Generic thread-safe value containers (mutex, RWMutex, lock-free) behind one `Value[T]` interface | [README](threadsafe/README.md) |
 | [`collections`](collections/README.md) | Generic `Set[T]` and stdlib-shaped `Map`/`Filter`/`Reduce` slice ops | [README](collections/README.md) |
 | [`logger`](logger/README.md) | Small level-based logging seam; `Fields`/`Entry`, `Adapt`, and both `slog` bridges | [README](logger/README.md) |
