@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -203,5 +204,201 @@ func TestListUnknownKeysBubble(t *testing.T) {
 	h.barrier(sh)
 	if got := len(sh.bubbledKeys()); got < 2 {
 		t.Fatalf("expected x and Ctrl+R to bubble, got %v", sh.bubbledKeys())
+	}
+}
+
+func TestListHonorsVimMotions(t *testing.T) {
+	l := widget.NewList(widget.WithItems([]string{"a", "b", "c", "d"}, func(s string) string { return s }))
+	sh := newShell(l)
+	h := startApp(t, sh, 30, 6)
+	h.inject(tab())
+	h.barrier(sh)
+
+	at := func() int {
+		var i int
+		h.onLoop(func() { i, _ = l.Selected() })
+		return i
+	}
+	h.inject(key('j'))
+	h.barrier(sh)
+	if got := at(); got != 1 {
+		t.Fatalf("j: cursor = %d, want 1", got)
+	}
+	h.inject(key('j'), key('k'))
+	h.barrier(sh)
+	if got := at(); got != 1 {
+		t.Fatalf("jk: cursor = %d, want 1", got)
+	}
+	h.inject(key('G'))
+	h.barrier(sh)
+	if got := at(); got != 3 {
+		t.Fatalf("G: cursor = %d, want 3", got)
+	}
+	h.inject(key('g'))
+	h.barrier(sh)
+	if got := at(); got != 0 {
+		t.Fatalf("g: cursor = %d, want 0", got)
+	}
+}
+
+func TestListIgnoresApplicationChords(t *testing.T) {
+	l := widget.NewList(widget.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))
+	sh := newShell(l)
+	h := startApp(t, sh, 30, 6)
+	h.inject(tab())
+	h.barrier(sh)
+
+	h.inject(keyMod('j', tui.ModCtrl))
+	h.barrier(sh)
+	var idx int
+	h.onLoop(func() { idx, _ = l.Selected() })
+	if idx != 0 {
+		t.Fatalf("Ctrl-j must bubble, not move the cursor: got %d", idx)
+	}
+}
+
+func TestListHostControls(t *testing.T) {
+	l := widget.NewList(widget.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))
+	sh := newShell(l)
+	h := startApp(t, sh, 30, 6)
+	h.inject(tab())
+	h.barrier(sh)
+
+	h.onLoop(func() {
+		l.SetCursor(2)
+		l.SetStyles(widget.ListStyles{CursorRow: style.New().Background(style.ANSI(8))})
+	})
+	h.barrier(sh)
+	var idx, n int
+	h.onLoop(func() {
+		idx, _ = l.Selected()
+		n = l.Len()
+	})
+	if idx != 2 || n != 3 {
+		t.Fatalf("SetCursor/Len: cursor=%d len=%d, want 2/3", idx, n)
+	}
+}
+
+// Finding 2 — THE REGRESSION CONTROL. List's own detection compared logical
+// rows and refused this pair; the first conversion to the boundary count
+// compared only the cell and activated row 2 after a click on row 1.
+func TestListDoubleClickAcrossAScrollDoesNotActivate(t *testing.T) {
+	src := widget.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
+	h, l, sh := focusedList(t, src, 10, 3)
+	acts := record[widget.ActivateEvent](h)
+
+	h.inject(click(2, 1)) // logical row 1
+	h.barrier(sh)
+	var first int
+	h.onLoop(func() { first, _ = l.Selected() })
+	if first != 1 {
+		t.Fatalf("precondition: selected %d, want 1", first)
+	}
+
+	// Scroll one row: the SAME cell now addresses logical row 2.
+	h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 2, Y: 1})
+	h.barrier(sh)
+
+	h.inject(click(2, 1))
+	h.barrier(sh)
+
+	if n := acts.count(); n != 0 {
+		ev, _ := acts.last()
+		t.Errorf("activations = %d (%+v), want 0 — the two presses landed on "+
+			"different logical rows, so this is not a double-click", n, ev)
+	}
+}
+
+// The same pair WITHOUT the scroll still activates, so the control above is
+// about identity and not about the wheel resetting something.
+func TestListDoubleClickWithoutScrollStillActivates(t *testing.T) {
+	src := widget.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
+	h, l, sh := focusedList(t, src, 10, 3)
+	acts := record[widget.ActivateEvent](h)
+	_ = l
+
+	h.inject(click(2, 1))
+	h.barrier(sh)
+	h.inject(click(2, 1))
+	h.barrier(sh)
+
+	if ev, ok := acts.last(); !ok || ev.Index != 1 {
+		t.Errorf("ActivateEvent = %+v (ok=%v), want index 1", ev, ok)
+	}
+}
+
+// Finding 3 — a triple-click is ONE activation, not two. With `>= 2` it fired
+// on counts 2 and 3.
+func TestListTripleClickActivatesOnce(t *testing.T) {
+	src := widget.SliceSource([]string{"a", "b", "c", "d"})
+	h, _, sh := focusedList(t, src, 10, 4)
+	acts := record[widget.ActivateEvent](h)
+
+	h.inject(click(2, 1), click(2, 1), click(2, 1))
+	h.barrier(sh)
+
+	if n := acts.count(); n != 1 {
+		t.Errorf("activations from a triple-click = %d, want exactly 1", n)
+	}
+}
+
+// THE BLOCKING case — an index is logical identity only WITHIN ONE SOURCE
+// EPOCH. Clicking old row 1, replacing the source, then clicking the same cell
+// used to emit ActivateEvent{Index:1} for the NEW row 1, which the user had
+// clicked exactly once.
+func TestListDoubleClickAcrossASourceReplacementDoesNotActivate(t *testing.T) {
+	src := widget.SliceSource([]string{"a", "b", "c", "d"})
+	h, l, sh := focusedList(t, src, 10, 4)
+	acts := record[widget.ActivateEvent](h)
+
+	h.inject(click(2, 1)) // old logical row 1
+	h.barrier(sh)
+
+	h.onLoop(func() { l.SetItems([]string{"x", "y", "z"}) })
+	h.barrier(sh)
+
+	h.inject(click(2, 1)) // same cell, entirely different row
+	h.barrier(sh)
+
+	if n := acts.count(); n != 0 {
+		ev, _ := acts.last()
+		t.Errorf("activations = %d (%+v), want 0 — the source was replaced between "+
+			"the presses, so the index no longer names the row that was pressed", n, ev)
+	}
+}
+
+// The same shape through RefreshSource, which mutates in place under one source
+// and can reorder rows without SetSource ever being called.
+func TestListDoubleClickAcrossARefreshDoesNotActivate(t *testing.T) {
+	items := []string{"a", "b", "c", "d"}
+	h, l, sh := focusedList(t, widget.SliceSource(items), 10, 4)
+	acts := record[widget.ActivateEvent](h)
+
+	h.inject(click(2, 1))
+	h.barrier(sh)
+	h.onLoop(func() { l.RefreshSource() })
+	h.barrier(sh)
+	h.inject(click(2, 1))
+	h.barrier(sh)
+
+	if n := acts.count(); n != 0 {
+		t.Errorf("activations = %d, want 0 — a refresh ends the source epoch", n)
+	}
+}
+
+// The POSITIVE that keeps the two controls above honest: with the source left
+// alone, the identical gesture still activates. Without this, clearing the index
+// unconditionally would pass both controls and break double-click entirely.
+func TestListDoubleClickWithUnchangedSourceStillActivates(t *testing.T) {
+	src := widget.SliceSource([]string{"a", "b", "c", "d"})
+	h, _, sh := focusedList(t, src, 10, 4)
+	acts := record[widget.ActivateEvent](h)
+
+	h.inject(click(2, 1), click(2, 1))
+	h.barrier(sh)
+
+	if ev, ok := acts.last(); !ok || ev.Index != 1 {
+		t.Errorf("ActivateEvent = %+v (ok=%v), want index 1 — an untouched source "+
+			"must still pair two presses", ev, ok)
 	}
 }

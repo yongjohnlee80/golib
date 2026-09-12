@@ -6,6 +6,8 @@ package widget_test
 // bubble rule for unbound keys.
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -556,5 +558,606 @@ func TestEditorFocusLossClearsPendingCommand(t *testing.T) {
 	h.onLoop(func() { val = ed.Value() })
 	if val != "one\ntwo" {
 		t.Fatalf("stale dd completed across focus loss: %q", val)
+	}
+}
+
+// Hosts drive the editor cursor for search / jump-to-line.
+func TestEditorSetLineAndLines(t *testing.T) {
+	e := widget.NewEditor()
+	sh := newShell(e)
+	h := startApp(t, sh, 40, 8)
+	h.inject(tab())
+	h.barrier(sh)
+
+	h.onLoop(func() { e.SetValue("alpha\nbeta\ngamma") })
+	h.barrier(sh)
+
+	var lines []string
+	var row, col int
+	h.onLoop(func() {
+		lines = e.Lines()
+		e.SetLine(2, 3)
+		row, col = e.Line()
+	})
+	h.barrier(sh)
+	if len(lines) != 3 || lines[1] != "beta" {
+		t.Fatalf("Lines: %v", lines)
+	}
+	if row != 2 || col != 3 {
+		t.Fatalf("SetLine: got %d,%d want 2,3", row, col)
+	}
+	// Out-of-range targets clamp instead of panicking.
+	h.onLoop(func() {
+		e.SetLine(99, 99)
+		row, col = e.Line()
+	})
+	h.barrier(sh)
+	if row != 2 || col > 4 {
+		t.Fatalf("SetLine clamp: got %d,%d", row, col)
+	}
+}
+
+// A read-only Editor is a VIEWER: motions, visual selection, and yank
+// work; nothing mutates the document.
+func TestEditorReadOnlyViewer(t *testing.T) {
+	e := widget.NewEditor()
+	sh := newShell(e)
+	h := startApp(t, sh, 40, 8)
+	h.inject(tab())
+	h.barrier(sh)
+
+	const doc = "alpha\nbeta\ngamma"
+	h.onLoop(func() {
+		e.SetValue(doc)
+		e.SetReadOnly(true)
+	})
+	h.barrier(sh)
+
+	// Insert entry, typed text, delete, paste, undo — all refused.
+	h.inject(key('i'), key('X'), key('x'), key('d'), key('d'), key('p'), key('u'))
+	h.barrier(sh)
+	var got string
+	var mode widget.EditorMode
+	h.onLoop(func() { got, mode = e.Value(), e.Mode() })
+	if got != doc {
+		t.Fatalf("read-only document changed: %q", got)
+	}
+	if mode != widget.ModeNormal {
+		t.Fatalf("read-only editor entered mode %v", mode)
+	}
+
+	// Motions and visual yank still work.
+	h.inject(key('j'), key('V'), key('y'))
+	h.barrier(sh)
+	var reg string
+	var row int
+	h.onLoop(func() {
+		reg, _ = e.Register()
+		row, _ = e.Line()
+	})
+	if row != 1 {
+		t.Fatalf("j should move in read-only mode: row = %d", row)
+	}
+	if !strings.Contains(reg, "beta") {
+		t.Fatalf("visual yank should work in read-only mode: register = %q", reg)
+	}
+	// Paste events cannot sneak text in either.
+	h.inject(tui.PasteEvent{Text: "nope"})
+	h.barrier(sh)
+	h.onLoop(func() { got = e.Value() })
+	if got != doc {
+		t.Fatalf("paste mutated a read-only document: %q", got)
+	}
+}
+
+// Esc is a vim no-op in Normal mode: the Editor must let it BUBBLE so a
+// host can dismiss the float (or panel) the editor lives in. It still
+// consumes Esc when there is something to cancel.
+func TestEditorEscBubblesWhenIdle(t *testing.T) {
+	e := widget.NewEditor()
+	sh := newShell(e)
+	h := startApp(t, sh, 40, 8)
+	h.inject(tab())
+	h.barrier(sh)
+	h.onLoop(func() { e.SetValue("alpha\nbeta") })
+	h.barrier(sh)
+
+	esc := func() bool {
+		var consumed bool
+		h.onLoop(func() {
+			consumed = e.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+		})
+		h.barrier(sh)
+		return consumed
+	}
+
+	if esc() {
+		t.Fatal("idle Normal-mode Esc must bubble, not be consumed")
+	}
+	// Visual mode: Esc leaves the selection and IS consumed.
+	h.inject(key('v'))
+	h.barrier(sh)
+	if !esc() {
+		t.Fatal("Esc in Visual mode must be consumed (it exits Visual)")
+	}
+	var mode widget.EditorMode
+	h.onLoop(func() { mode = e.Mode() })
+	if mode != widget.ModeNormal {
+		t.Fatalf("Esc should leave Visual: mode = %v", mode)
+	}
+	if esc() {
+		t.Fatal("Esc must keep bubbling once Visual is left")
+	}
+}
+
+// visual `y` DELIVERS THE EXACT BYTES, multi-byte selection included.
+func TestEditorYank_VisualYankDeliversExactUTF8(t *testing.T) {
+	h, ed, _ := focusedEditor(t, 40, 6)
+	rec := record[widget.YankEvent](h)
+
+	insertLines(h, "日本語テキスト")
+	h.inject(key('0'), key('v'), key('$'), key('y'))
+	h.settle()
+
+	got := string(h.tb.Clipboard())
+	if got != "日本語テキスト" {
+		t.Errorf("clipboard = %q, want %q", got, "日本語テキスト")
+	}
+
+	evs := rec.events()
+	if len(evs) != 1 {
+		t.Fatalf("expected exactly one YankEvent, got %d: %+v", len(evs), evs)
+	}
+	if !evs[0].ClipboardDelivered {
+		t.Error("the event reports the copy as undelivered although the backend took it")
+	}
+	var owner tui.NodeID
+	h.onLoop(func() { owner = ed.NodeID() })
+	if evs[0].Owner != owner {
+		t.Errorf("YankEvent.Owner = %v, want the editor's node %v", evs[0].Owner, owner)
+	}
+}
+
+// `yy` and `2yy` DELIVER, and the second is what a count-prefixed yank looks
+// like — the same call site, so the count must not skip the export.
+func TestEditorYank_LinewiseYankDelivers(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		keys []tui.Event
+		want string
+	}{
+		{"yy", []tui.Event{key('y'), key('y')}, "alpha"},
+		{"2yy", []tui.Event{key('2'), key('y'), key('y')}, "alpha\nbeta"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _, _ := focusedEditor(t, 40, 6)
+			rec := record[widget.YankEvent](h)
+			insertLines(h, "alpha", "beta", "gamma")
+			h.inject(key('g'), key('g'))
+			h.inject(tc.keys...)
+			h.settle()
+
+			if got := string(h.tb.Clipboard()); got != tc.want {
+				t.Errorf("clipboard = %q, want %q", got, tc.want)
+			}
+			if rec.count() != 1 {
+				t.Errorf("expected one YankEvent, got %d", rec.count())
+			}
+		})
+	}
+}
+
+// DELETES DO NOT REACH THE SYSTEM CLIPBOARD.
+func TestEditorYank_DeletesNeverTouchTheSystemClipboard(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		keys []tui.Event
+	}{
+		{"x", []tui.Event{key('x')}},
+		{"D", []tui.Event{keyShift('d')}},
+		{"dd", []tui.Event{key('d'), key('d')}},
+		{"2dd", []tui.Event{key('2'), key('d'), key('d')}},
+		{"visual d", []tui.Event{key('v'), key('$'), key('d')}},
+		{"visual x", []tui.Event{key('v'), key('$'), key('x')}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, ed, _ := focusedEditor(t, 40, 6)
+			rec := record[widget.YankEvent](h)
+			insertLines(h, "secret-value", "second")
+			h.inject(key('g'), key('g'), key('0'))
+			h.inject(tc.keys...)
+			h.settle()
+
+			if got := h.tb.Clipboard(); len(got) != 0 {
+				t.Errorf("%s exported %q to the system clipboard", tc.name, string(got))
+			}
+			if rec.count() != 0 {
+				t.Errorf("%s published a YankEvent (%d), so a parent would report a copy "+
+					"that nobody asked for", tc.name, rec.count())
+			}
+			h.inject(key('p'))
+			h.settle()
+			val, _, _, _ := edState(h, ed)
+			if val == "" {
+				t.Errorf("%s left the register empty; the internal yank was broken, not just "+
+					"the export", tc.name)
+			}
+		})
+	}
+}
+
+type noClipboard struct{ tui.Backend }
+
+func TestEditorYank_UnsupportedBackendReportsUndelivered(t *testing.T) {
+	ed := widget.NewEditor()
+	sh := newShell(ed)
+	tb := tui.NewTestBackend(40, 6)
+	h := startAppOpts(t, sh, 40, 6, tui.WithBackend(noClipboard{tb}))
+	inject := func(evs ...tui.Event) {
+		for _, ev := range evs {
+			if err := tb.Inject(ev); err != nil {
+				t.Fatal(err)
+			}
+		}
+		h.settle()
+	}
+	inject(tab())
+
+	rec := record[widget.YankEvent](h)
+	inject(key('i'))
+	inject(typeString("plain")...)
+	inject(key(tui.KeyEscape))
+	inject(key('y'), key('y'))
+
+	evs := rec.events()
+	if len(evs) != 1 {
+		t.Fatalf("expected one YankEvent even without clipboard support, got %d", len(evs))
+	}
+	if evs[0].ClipboardDelivered {
+		t.Error("the event claims delivery on a backend that cannot copy")
+	}
+	inject(key('p'))
+	val, _, _, _ := edState(h, ed)
+	if val != "plain\nplain" {
+		t.Errorf("the internal yank stopped working without clipboard support: %q", val)
+	}
+}
+
+func TestEditorYank_EventCarriesNoSecretText(t *testing.T) {
+	h, _, _ := focusedEditor(t, 40, 6)
+	rec := record[widget.YankEvent](h)
+	insertLines(h, "adb_pat_supersecret.value")
+	h.inject(key('y'), key('y'))
+	h.settle()
+
+	evs := rec.events()
+	if len(evs) != 1 {
+		t.Fatalf("expected one YankEvent, got %d", len(evs))
+	}
+	if fmtEvent := fmt.Sprintf("%#v", evs[0]); strings.Contains(fmtEvent, "supersecret") {
+		t.Errorf("the YankEvent carries the yanked text (%s) -- an event this shape reaches "+
+			"logs and debug dumps", fmtEvent)
+	}
+}
+
+func insertLines(h *harness, lines ...string) {
+	h.inject(key('i'))
+	for i, l := range lines {
+		if i > 0 {
+			h.inject(key(tui.KeyEnter))
+		}
+		h.inject(typeString(l)...)
+	}
+	h.inject(key(tui.KeyEscape))
+	h.settle()
+}
+
+func TestEditorPressDiscardsPendingOperator(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 30, 6)
+	h.onLoop(func() { ed.SetValue("alpha\nbravo\ncharlie") })
+	h.barrier(sh)
+
+	before, _, _, _ := edState(h, ed)
+
+	h.inject(key('2'), key('d'), click(2, 1), key('d')) // click: row 1, column 2
+	h.barrier(sh)
+
+	val, mode, ln, col := edState(h, ed)
+	if val != before {
+		t.Errorf("a press completed the pending operator: text changed\n before: %q\n after:  %q",
+			before, val)
+	}
+	if mode != widget.ModeNormal {
+		t.Errorf("mode = %v, want Normal", mode)
+	}
+	if ln != 1 || col != 2 {
+		t.Errorf("caret = (%d,%d), want (1,2)", ln, col)
+	}
+}
+
+func TestEditorPressSettlesPendingChordRune(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 30, 6)
+	h.inject(key('i'))
+	h.inject(typeString("abc")...)
+	h.barrier(sh)
+
+	h.inject(key('j'), click(0, 0))
+	h.barrier(sh)
+
+	val, mode, _, _ := edState(h, ed)
+	if !strings.Contains(val, "abcj") {
+		t.Errorf("the pending chord rune was LOST: value = %q, want it settled as \"abcj\" "+
+			"at the caret where it was typed (ADR-0008)", val)
+	}
+	if mode != widget.ModeInsert {
+		t.Errorf("mode = %v, want Insert retained across the click", mode)
+	}
+}
+
+func TestEditorPressClosesUndoGroup(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 30, 6)
+	h.inject(key('i'))
+	h.inject(typeString("first")...)
+	h.barrier(sh)
+
+	h.inject(click(0, 0)) // boundary
+	h.barrier(sh)
+	h.inject(typeString("X")...)
+	h.barrier(sh)
+
+	withBoth, _, _, _ := edState(h, ed)
+	h.inject(key(tui.KeyEscape), key('u')) // one undo
+	h.barrier(sh)
+	afterUndo, _, _, _ := edState(h, ed)
+
+	if afterUndo == withBoth {
+		t.Fatalf("undo did nothing (value %q)", withBoth)
+	}
+	if !strings.Contains(afterUndo, "first") {
+		t.Errorf("one undo removed text from BEFORE the click too: %q — the press must "+
+			"close the group so the two edits undo separately", afterUndo)
+	}
+}
+
+func TestEditorPressExitsVisual(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		enter rune
+	}{{"visual", 'v'}, {"visual-line", 'V'}} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, ed, sh := focusedEditor(t, 30, 6)
+			h.onLoop(func() { ed.SetValue("alpha\nbravo") })
+			h.barrier(sh)
+
+			h.inject(key(tc.enter), key('l')) // select something
+			h.barrier(sh)
+
+			h.inject(click(1, 1))
+			h.barrier(sh)
+
+			_, mode, _, _ := edState(h, ed)
+			if mode != widget.ModeNormal {
+				t.Errorf("mode = %v after a press, want Normal (the press must exit %s)",
+					mode, tc.name)
+			}
+			before, _, _, _ := edState(h, ed)
+			h.inject(key('l'), key('d'))
+			h.barrier(sh)
+			if after, _, _, _ := edState(h, ed); after != before {
+				t.Errorf("a stale visual anchor survived the press: `d` after the click "+
+					"deleted a selection\n before: %q\n after:  %q", before, after)
+			}
+		})
+	}
+}
+
+func TestEditorPressWideGraphemeAndScroll(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 20, 3) // 3 visible rows
+	h.onLoop(func() { ed.SetValue("a漢b\nsecond\nthird\nfourth\nfifth") })
+	h.barrier(sh)
+
+	h.inject(click(2, 0))
+	h.barrier(sh)
+	if _, _, ln, col := edState(h, ed); ln != 0 || col != 1 {
+		t.Errorf("click on the trailing half of a wide grapheme -> (%d,%d), want (0,1)", ln, col)
+	}
+
+	h.inject(
+		tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 1, Y: 1},
+		tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 1, Y: 1},
+	)
+	h.barrier(sh)
+	h.inject(click(0, 0))
+	h.barrier(sh)
+	if _, _, ln, _ := edState(h, ed); ln != 2 {
+		t.Errorf("after scrolling 2 lines, a click on the top row -> line %d, want 2", ln)
+	}
+}
+
+func TestEditorPressClamps(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 30, 8)
+	h.onLoop(func() { ed.SetValue("ab\nlonger line") })
+	h.barrier(sh)
+
+	h.inject(click(25, 0)) // far past the end of "ab"
+	h.barrier(sh)
+	if _, _, ln, col := edState(h, ed); ln != 0 || col != 1 {
+		t.Errorf("click past EOL -> (%d,%d), want (0,1) — the last column of \"ab\"", ln, col)
+	}
+
+	h.inject(click(0, 6)) // below the last line
+	h.barrier(sh)
+	if _, _, ln, _ := edState(h, ed); ln != 1 {
+		t.Errorf("click below the last line -> line %d, want 1 (the last buffer line)", ln)
+	}
+}
+
+func TestEditorWheelScrollsWithoutMovingCaret(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 20, 3)
+	h.onLoop(func() { ed.SetValue("one\ntwo\nthree\nfour\nfive") })
+	h.barrier(sh)
+
+	_, _, ln0, col0 := edState(h, ed)
+
+	h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 1, Y: 1})
+	h.barrier(sh)
+
+	_, _, ln1, col1 := edState(h, ed)
+	if ln1 != ln0 || col1 != col0 {
+		t.Errorf("the wheel moved the caret (%d,%d) -> (%d,%d); it must only scroll",
+			ln0, col0, ln1, col1)
+	}
+
+	h.inject(click(0, 0))
+	h.barrier(sh)
+	if _, _, ln, _ := edState(h, ed); ln == 0 {
+		t.Error("the wheel did not scroll: the top row is still line 0")
+	}
+}
+
+func TestEditorWrapSoftClickOnLaterRow(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 6, 4, widget.WithEditorWrap(widget.WrapSoft))
+	h.onLoop(func() { ed.SetValue("abcdefghij\nzzz\nyyy\nxxx\nwww") })
+	h.barrier(sh)
+
+	h.inject(click(2, 1)) // third cell of the SECOND visual row -> 'h' (col 7)
+	h.barrier(sh)
+	if _, _, ln, col := edState(h, ed); ln != 0 || col != 7 {
+		t.Errorf("click on wrapped row 1 -> (%d,%d), want (0,7)", ln, col)
+	}
+}
+
+func TestEditorClickAtHorizontalScroll(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 8, 3)
+	h.onLoop(func() { ed.SetValue("0123456789abcdefghij") })
+	h.barrier(sh)
+
+	h.inject(key('$'))
+	h.barrier(sh)
+	_, _, _, endCol := edState(h, ed)
+	if endCol != 19 {
+		t.Fatalf("precondition: `$` -> col %d, want 19", endCol)
+	}
+
+	wantCol := endCol - (8 - 1)
+	h.inject(click(0, 0))
+	h.barrier(sh)
+	if _, _, _, col := edState(h, ed); col != wantCol {
+		t.Errorf("click at x=0 -> column %d, want exactly %d (left + 0)", col, wantCol)
+	}
+}
+
+func TestEditorClickOnIndicatorColumnIsInert(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 8, 3)
+	h.onLoop(func() { ed.SetValue("aaa\nbbb\nccc\nddd\neee\nfff") })
+	h.barrier(sh)
+
+	h.inject(click(1, 1))
+	h.barrier(sh)
+	_, _, ln0, col0 := edState(h, ed)
+
+	h.inject(click(7, 2))
+	h.barrier(sh)
+	if _, _, ln, col := edState(h, ed); ln != ln0 || col != col0 {
+		t.Errorf("a press on the indicator column moved the caret (%d,%d) -> (%d,%d); "+
+			"that column is not text", ln0, col0, ln, col)
+	}
+}
+
+func TestEditorWheelStepsAndClamps(t *testing.T) {
+	for _, wrap := range []struct {
+		name string
+		mode widget.WrapMode
+	}{{"wrapnone", widget.WrapNone}, {"wrapsoft", widget.WrapSoft}} {
+		t.Run(wrap.name, func(t *testing.T) {
+			h, ed, sh := focusedEditor(t, 8, 3, widget.WithEditorWrap(wrap.mode))
+			h.onLoop(func() { ed.SetValue("l0\nl1\nl2\nl3\nl4\nl5") })
+			h.barrier(sh)
+
+			topLine := func() int {
+				h.inject(click(0, 0))
+				h.barrier(sh)
+				_, _, ln, _ := edState(h, ed)
+				return ln
+			}
+			if got := topLine(); got != 0 {
+				t.Fatalf("precondition: top line = %d, want 0", got)
+			}
+
+			h.inject(wheel(false), wheel(false))
+			h.barrier(sh)
+			if got := topLine(); got != 2 {
+				t.Errorf("2 wheel events -> top line %d, want 2 (one step per event)", got)
+			}
+
+			for i := 0; i < 20; i++ {
+				h.inject(wheel(false))
+			}
+			h.barrier(sh)
+			bottom := topLine()
+			h.inject(wheel(false))
+			h.barrier(sh)
+			if got := topLine(); got != bottom {
+				t.Errorf("wheel past the end kept scrolling: %d -> %d", bottom, got)
+			}
+
+			for i := 0; i < 40; i++ {
+				h.inject(wheel(true))
+			}
+			h.barrier(sh)
+			if got := topLine(); got != 0 {
+				t.Errorf("wheel up did not clamp at the first line: top = %d", got)
+			}
+		})
+	}
+}
+
+func wheel(up bool) tui.MouseEvent {
+	b := tui.WheelDown
+	if up {
+		b = tui.WheelUp
+	}
+	return tui.MouseEvent{Kind: tui.MouseWheel, Button: b, X: 1, Y: 1}
+}
+
+func TestEditorAltKeysBubbleRatherThanActingAsMotions(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 20, 4)
+	h.onLoop(func() { ed.SetValue("abcdef") })
+	h.barrier(sh)
+
+	h.inject(key('$'))
+	h.barrier(sh)
+	_, _, _, before := edState(h, ed)
+	if before == 0 {
+		t.Fatal("precondition: caret did not move to end-of-line")
+	}
+
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'h', Mods: tui.ModAlt})
+	h.barrier(sh)
+	if _, _, _, col := edState(h, ed); col != before {
+		t.Errorf("Alt+h moved the caret %d -> %d: an Alt chord was consumed as the plain "+
+			"`h` motion, so the host can never bind Alt", before, col)
+	}
+
+	h.inject(key('h'))
+	h.barrier(sh)
+	if _, _, _, col := edState(h, ed); col != before-1 {
+		t.Errorf("plain h no longer moves left (%d -> %d); the Alt guard is too broad",
+			before, col)
+	}
+}
+
+func TestEditorWrapSoftClickStaysOnItsRow(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 6, 4, widget.WithEditorWrap(widget.WrapSoft))
+	h.onLoop(func() { ed.SetValue("a bbbbb") })
+	h.barrier(sh)
+
+	h.inject(click(4, 0))
+	h.barrier(sh)
+
+	_, _, ln, col := edState(h, ed)
+	if ln != 0 || col != 0 {
+		t.Errorf("click in row 0's blank tail -> (%d,%d); want (0,0), the last column "+
+			"painted on that row.", ln, col)
 	}
 }
