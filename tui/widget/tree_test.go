@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -368,4 +369,282 @@ func TestTreeReceiverCycleRejected(t *testing.T) {
 	// The graph is untouched: root still parents child, no cycle.
 	tr := widget.NewTree(widget.WithRoots(root))
 	_ = tr
+}
+
+// Ctrl-l/Ctrl-h are pane motion in vim-keyed hosts; the tree must not
+// read them as its own expand/collapse letters.
+func TestTreeIgnoresApplicationChords(t *testing.T) {
+	root := widget.NewTreeNode("conns", "connections")
+	h, _, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
+	reqs := record[widget.ExpandRequestEvent](h)
+
+	h.inject(keyMod('l', tui.ModCtrl))
+	h.barrier(sh)
+	if got := reqs.count(); got != 0 {
+		t.Fatalf("Ctrl-l must bubble, not expand: %d expand request(s)", got)
+	}
+	// The bare letter still expands.
+	h.inject(key('l'))
+	h.barrier(sh)
+	if got := reqs.count(); got != 1 {
+		t.Fatalf("bare l should expand: %d expand request(s)", got)
+	}
+}
+
+func TestTreeHostControls(t *testing.T) {
+	root := widget.NewTreeNode("ws", "workspace")
+	root.SetChildren(0, []*widget.TreeNode{
+		widget.NewTreeNode("a", "alpha", widget.WithLeaf()),
+		widget.NewTreeNode("b", "beta", widget.WithLeaf()),
+	})
+	th, tr, tsh := focusedTree(t, 40, 10, widget.WithRoots(root))
+	th.inject(key('l')) // expand the pre-assembled root
+	th.barrier(tsh)
+
+	var labels []string
+	var cur int
+	th.onLoop(func() {
+		tr.SetStyles(widget.ListStyles{CursorRow: style.New().Background(style.ANSI(8))})
+		for _, n := range tr.VisibleRows() {
+			labels = append(labels, n.Label())
+		}
+		tr.SetCursor(2)
+		cur = tr.Cursor()
+	})
+	th.barrier(tsh)
+	if len(labels) != 3 || labels[0] != "workspace" || labels[2] != "beta" {
+		t.Fatalf("VisibleRows/Label: %v", labels)
+	}
+	if cur != 2 {
+		t.Fatalf("Tree.SetCursor: cursor = %d, want 2", cur)
+	}
+	if id := selectedID(th, tr); id != "b" {
+		t.Fatalf("cursor should sit on beta, got %q", id)
+	}
+}
+
+// Tree.Reload refreshes a subtree in place: an expanded node re-requests
+// its children under a new generation, the cursor stays put, and a
+// collapsed node simply drops what it cached.
+func TestTreeReloadSubtree(t *testing.T) {
+	root := widget.NewTreeNode("ws", "workspace")
+	notes := widget.NewTreeNode("notes", "notes")
+	root.SetChildren(0, []*widget.TreeNode{notes})
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
+	reqs := record[widget.ExpandRequestEvent](h)
+
+	h.inject(key('l'), key('j'), key('l')) // expand ws, onto notes, expand it
+	h.barrier(sh)
+	if reqs.count() != 1 {
+		t.Fatalf("expected one expand request, got %d", reqs.count())
+	}
+	ev, _ := reqs.last()
+	h.onLoop(func() {
+		ev.Node.SetChildren(ev.Gen, []*widget.TreeNode{
+			widget.NewTreeNode("a", "a.sql", widget.WithLeaf()),
+		})
+	})
+	h.barrier(sh)
+	h.wantContains("a.sql")
+
+	before := selectedID(h, tr)
+	var ok bool
+	h.onLoop(func() { ok = tr.Reload("notes") })
+	h.barrier(sh)
+	if !ok {
+		t.Fatal("Reload reported no such node")
+	}
+	if reqs.count() != 2 {
+		t.Fatalf("an expanded node should re-request: %d requests", reqs.count())
+	}
+	if after := selectedID(h, tr); after != before {
+		t.Fatalf("Reload moved the cursor: %q → %q", before, after)
+	}
+	// The new generation differs, so the stale load cannot install.
+	ev2, _ := reqs.last()
+	if ev2.Gen == ev.Gen {
+		t.Fatalf("Reload reused generation %d", ev.Gen)
+	}
+	h.onLoop(func() {
+		ev.Node.SetChildren(ev.Gen, []*widget.TreeNode{
+			widget.NewTreeNode("stale", "stale.sql", widget.WithLeaf()),
+		})
+	})
+	h.barrier(sh)
+	h.wantNotContains("stale.sql")
+}
+
+// singlePress is one press. A test CANNOT fake a double-click by setting Count:
+// dispatch recomputes it for every press, precisely so a component can trust it
+// and no producer can forge it. A double-click is therefore two real presses on
+// the same cell inside the window (the harness uses the 400ms default).
+func singlePress(y int) tui.MouseEvent {
+	return tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 6, Y: y}
+}
+
+// A double-click on a BRANCH activates it and leaves its expanded
+// state alone.
+func TestTreeDoubleClickActivatesABranchWithoutExpanding(t *testing.T) {
+	ws := widget.NewTreeNode("ws", "workspace")
+	tbl := widget.NewTreeNode("tbl", "a_table") // a BRANCH: children are columns
+	col := widget.NewTreeNode("col", "id", widget.WithLeaf())
+	tbl.SetChildren(0, []*widget.TreeNode{col})
+	ws.SetChildren(0, []*widget.TreeNode{tbl})
+
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+	acts := record[widget.ActivateEvent](h)
+
+	h.onLoop(func() { tr.ExpandPath("ws") })
+	h.barrier(sh)
+
+	var rowsBefore int
+	h.onLoop(func() { rowsBefore = len(tr.VisibleRows()) })
+
+	// Row 1 is the table under the expanded workspace.
+	h.inject(singlePress(1), singlePress(1))
+	h.barrier(sh)
+
+	var rowsAfter int
+	h.onLoop(func() { rowsAfter = len(tr.VisibleRows()) })
+
+	if acts.count() != 1 {
+		t.Errorf("activations = %d, want 1 — a double-click must activate a branch", acts.count())
+	}
+	if rowsAfter != rowsBefore {
+		t.Errorf("visible rows %d → %d: the Tree expanded on double-click, which it "+
+			"must not do — the host cannot then distinguish activate from expand",
+			rowsBefore, rowsAfter)
+	}
+	if id := selectedID(h, tr); id != "tbl" {
+		t.Errorf("selected = %q, want tbl — activation targets the row under the pointer", id)
+	}
+}
+
+// A SINGLE click selects and publishes nothing.
+func TestTreeSingleClickDoesNotActivate(t *testing.T) {
+	ws := widget.NewTreeNode("ws", "workspace")
+	tbl := widget.NewTreeNode("tbl", "a_table")
+	ws.SetChildren(0, []*widget.TreeNode{tbl})
+
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+	acts := record[widget.ActivateEvent](h)
+
+	h.onLoop(func() { tr.ExpandPath("ws") })
+	h.barrier(sh)
+
+	h.inject(singlePress(1))
+	h.barrier(sh)
+
+	if acts.count() != 0 {
+		t.Errorf("activations = %d, want 0 — a single click only selects", acts.count())
+	}
+	if id := selectedID(h, tr); id != "tbl" {
+		t.Errorf("selected = %q, want tbl", id)
+	}
+}
+
+// A leaf double-click activates too, on the same channel as ENTER — so a host
+// that already handles leaf activation needs no new code.
+func TestTreeDoubleClickActivatesALeaf(t *testing.T) {
+	ws := widget.NewTreeNode("ws", "workspace")
+	leaf := widget.NewTreeNode("note", "query.sql", widget.WithLeaf())
+	ws.SetChildren(0, []*widget.TreeNode{leaf})
+
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+	acts := record[widget.ActivateEvent](h)
+	h.onLoop(func() { tr.ExpandPath("ws") })
+	h.barrier(sh)
+
+	h.inject(singlePress(1), singlePress(1))
+	h.barrier(sh)
+
+	if acts.count() != 1 {
+		t.Errorf("activations = %d, want 1", acts.count())
+	}
+}
+
+func TestTreeTripleClickActivatesOnce(t *testing.T) {
+	ws := widget.NewTreeNode("ws", "workspace")
+	tbl := widget.NewTreeNode("tbl", "a_table")
+	ws.SetChildren(0, []*widget.TreeNode{tbl})
+
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+	acts := record[widget.ActivateEvent](h)
+	h.onLoop(func() { tr.ExpandPath("ws") })
+	h.barrier(sh)
+
+	h.inject(singlePress(1), singlePress(1), singlePress(1))
+	h.barrier(sh)
+
+	if n := acts.count(); n != 1 {
+		t.Errorf("activations from a triple-click = %d, want exactly 1", n)
+	}
+}
+
+// Design note — the EXPANDER is not an activation target. Its press already
+// toggles, so activating there too would make one gesture both change expansion
+// and activate. A double-click on the expander toggles twice: no activation, and
+// the node ends as it started.
+func TestTreeDoubleClickOnTheExpanderTogglesTwiceAndDoesNotActivate(t *testing.T) {
+	ws := widget.NewTreeNode("ws", "workspace")
+	child := widget.NewTreeNode("child", "a_child", widget.WithLeaf())
+	ws.SetChildren(0, []*widget.TreeNode{child})
+
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+	acts := record[widget.ActivateEvent](h)
+
+	var rowsBefore int
+	h.onLoop(func() { rowsBefore = len(tr.VisibleRows()) })
+
+	// x=0 is the expander column of a depth-0 row.
+	expander := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 0, Y: 0}
+	h.inject(expander, expander)
+	h.barrier(sh)
+
+	var rowsAfter int
+	h.onLoop(func() { rowsAfter = len(tr.VisibleRows()) })
+
+	if n := acts.count(); n != 0 {
+		t.Errorf("activations = %d, want 0 — the expander toggles, it does not activate", n)
+	}
+	if rowsAfter != rowsBefore {
+		t.Errorf("visible rows %d → %d: two toggles must leave the node as it started",
+			rowsBefore, rowsAfter)
+	}
+}
+
+// A REJECTED SetRoots must leave the Tree untouched.
+// The lastPressNode clear used to run before preflightForest, so a call that
+// then panicked had already mutated pairing state — a failed operation with a
+// side effect.
+func TestTreeRejectedSetRootsLeavesPairingIntact(t *testing.T) {
+	a := widget.NewTreeNode("a", "a")
+	child := widget.NewTreeNode("child", "child", widget.WithLeaf())
+	a.SetChildren(0, []*widget.TreeNode{child})
+
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(a))
+	acts := record[widget.ActivateEvent](h)
+	h.onLoop(func() { tr.ExpandPath("a") })
+	h.barrier(sh)
+
+	// First press of a pair, on the child row.
+	h.inject(singlePress(1))
+	h.barrier(sh)
+
+	// A forest naming the same node twice is rejected.
+	dup := widget.NewTreeNode("dup", "dup")
+	h.onLoop(func() {
+		defer func() { _ = recover() }()
+		tr.SetRoots(dup, dup)
+	})
+	h.barrier(sh)
+
+	// The rejected call changed nothing, so the pair still completes.
+	h.inject(singlePress(1))
+	h.barrier(sh)
+
+	if n := acts.count(); n != 1 {
+		t.Errorf("activations = %d, want 1 — a REJECTED SetRoots must not clear "+
+			"pairing state; a failed call had a side effect", n)
+	}
 }

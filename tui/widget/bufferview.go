@@ -612,3 +612,30 @@ func (w *bufWriter) Write(p []byte) (int, error) {
 	}
 	return total, nil
 }
+
+// SetWriterBudgetForTest shrinks the pending-byte budget of v's writer handle.
+//
+// Call before mounting: the handle reads its budget on the writing goroutine,
+// so changing it under a live writer would be a race rather than a fixture.
+func SetWriterBudgetForTest(v *BufferView, n int) {
+	v.wr.mu.Lock()
+	defer v.wr.mu.Unlock()
+	v.wr.budget = n
+}
+
+// WriterBudgetDefaultForTest is the production pending-byte budget, exposed so
+// a test can assert the shipped value rather than restate the number in a
+// comment.
+const WriterBudgetDefaultForTest = writerBudget
+
+// WriterChunkForTest is the enqueue granularity, exposed so a test can compute
+// how many chunks a given write produces instead of hard-coding a count that
+// silently stops matching if the granularity changes.
+const WriterChunkForTest = writerChunk
+
+// WriterBudgetOfForTest reports the budget v's handle is actually using.
+func WriterBudgetOfForTest(v *BufferView) int {
+	v.wr.mu.Lock()
+	defer v.wr.mu.Unlock()
+	return v.wr.budget
+}
