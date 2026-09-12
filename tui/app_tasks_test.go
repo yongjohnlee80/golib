@@ -156,8 +156,6 @@ func TestExclusivePreemptionAndStaleness(t *testing.T) {
 	}
 }
 
-
-
 // TestTaskPoolBound: with WithTaskPoolSize(2), 10 queued
 // tasks never exceed 2 running concurrently; cancelling a queued task
 // prevents it from ever starting.
