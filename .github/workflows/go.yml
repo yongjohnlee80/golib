@@ -47,3 +47,53 @@ jobs:
       # pressure that catches the common ordering races.
       - name: test
         run: go test -race -count=2 -timeout 20m ./...
+
+  coverage:
+    name: coverage policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: generate head coverage
+        run: >-
+          go test -count=1 -timeout 20m -covermode=atomic
+          -coverpkg=./... -coverprofile="$RUNNER_TEMP/coverage-head.out" ./...
+
+      - name: generate base coverage
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/coverage-base" "$BASE_SHA"
+          cd "$RUNNER_TEMP/coverage-base"
+          go test -count=1 -timeout 20m -covermode=atomic \
+            -coverpkg=./... -coverprofile="$RUNNER_TEMP/coverage-base.out" ./...
+
+      - name: enforce coverage policy
+        run: |
+          set +e
+          go run ./cmd/covercheck \
+            --base-profile "$RUNNER_TEMP/coverage-base.out" \
+            --head-profile "$RUNNER_TEMP/coverage-head.out" \
+            --base-ref "$BASE_SHA" \
+            --head-ref "$HEAD_SHA" \
+            --minimum-changed 70 \
+            --maximum-total-regression 1 \
+            --maximum-file-regression 1 \
+            --require-changed-files \
+            --format markdown > "$RUNNER_TEMP/coverage-report.md"
+          status=$?
+          cat "$RUNNER_TEMP/coverage-report.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/coverage-report.md"
+          exit "$status"
