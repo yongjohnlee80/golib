@@ -7,10 +7,53 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// StatusBar is a height-1, dock-bottom chrome line with left/center/right
-// segments. Segments truncate center-first, then left, then
-// right — the rightmost content (usually keybinding hints) survives longest,
-// the lazygit convention. Not focusable; consumes nothing.
+// Status Bar & Triple-Segment Dock Chrome Architecture
+//
+// StatusBar provides a fixed single-row dock footer that renders information across
+// three independent, prioritized segments: Left, Center, and Right.
+//
+// # Subsystem Role & Responsibilities
+//
+//  1. Triple-Segment Distribution:
+//     - Left Segment: Typically displays active mode, view title, or working branch.
+//     - Center Segment: Displays ephemeral status messages, notifications, or progress summaries.
+//     - Right Segment: Displays persistent help hints, keyboard shortcuts, or system metrics.
+//  2. Graceful Truncation Priority:
+//     When screen width contracts, segments truncate in strict prioritized order:
+//     Center truncates first, followed by Left, while Right survives longest.
+//     This ensures critical shortcuts and quit hints remain visible even on narrow terminals.
+//  3. Non-Focusable Chrome:
+//     StatusBar is pure presentation chrome. It does not accept focus or consume events.
+//
+// # Layout & Segment Placement Model
+//
+//	┌─────────────────────────────────────────────────────────────┐
+//	│ [StatusBar] Single-Row Dock Footer (Height = 1)             │
+//	│                                                             │
+//	│  LEFT                  CENTER (Truncates First)       RIGHT │
+//	│  [ NORMAL ]            [ Synced 12 items ]      [ ? Help ]  │
+//	└─────────────────────────────────────────────────────────────┘
+//
+// # Architectural Invariants
+//
+//  1. Single-Line Height Invariant:
+//     Layout always returns `Size{W: c.MaxW, H: 1}` (clamped to available constraints).
+//  2. Right-Preservation Priority:
+//     Rightward content is never truncated if sufficient width exists to display it.
+//
+// # Concurrency & Goroutine Ownership
+//
+// StatusBar is loop-goroutine-owned. Calling [StatusBar.SetLeft], [StatusBar.SetCenter],
+// or [StatusBar.SetRight] must occur on the main application loop goroutine.
+//
+// # Usage Examples
+//
+//  1. Setting up an application status footer:
+//
+//     bar := widget.NewStatusBar()
+//     bar.SetLeft("main*")
+//     bar.SetCenter("Ready")
+//     bar.SetRight("q: Quit | ?: Help", style.New().Bold(true))
 type StatusBar struct {
 	Base
 	bar                 style.Style

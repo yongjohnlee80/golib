@@ -33,4 +33,3 @@ func TestOverlayHostRendersBase(t *testing.T) {
 	h.settle()
 	h.wantContains("hello from base")
 }
-

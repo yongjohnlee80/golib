@@ -29,21 +29,99 @@ var (
 // AtRect anchors the float at an explicit overlay-relative rectangle.
 func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
 
-// Float is a floating window living on an overlay Stack layer. Attach it to
-// an OverlayHost (host.Attach) or add
-// it to any full-area tui.Stack layer, then toggle with Show/Hide. While
-// hidden it occupies zero cells (invisible, not hit-testable, no tab stop).
+// Floating Window, Modal Dialog & Overlay Presentation Architecture
 //
-// Modal floats install a focus trap (an internal FocusScope layer — Tab
-// cycles inside only), consume Esc as dismiss, and optionally dim the
-// backdrop. Hiding unmounts the trap layer, so the runtime restores focus
-// to the previously focused node. Non-modal floats don't
-// trap and are dismissed by their owner.
+// Float provides an overlay-managed floating window that lives on a [tui.Stack] or
+// [OverlayHost] layer. Designed for alerts, confirmation cards, form popups, and
+// fullscreen-fractional tooling (such as file finders and log viewers), Float
+// features customizable viewport anchoring, modal focus trapping, backdrop dimming,
+// Esc dismissal, and automatic focus restoration.
 //
-// Backdrop dimming note: the ADR describes a compositor attribute
-// transform; the core compositor doesn't expose one in v1, so DimBackground
-// paints a faint "░" scrim over the backdrop instead — same visual intent,
-// widget-local implementation.
+// # Subsystem Role & Responsibilities
+//
+//  1. Layer-Bound Visibility: While hidden ([Float.Hide]), a Float occupies zero cells,
+//     participates in no hit-testing, and presents no tab stops. When displayed ([Float.Show]),
+//     it mounts an overlay layer that fills the available container bounds and arranges content.
+//  2. Focus Trap ([tui.FocusScope]): When configured with [WithModal](true), the float acts
+//     as a keyboard focus trap. Tab navigation cycles exclusively among focusable children
+//     inside the dialog.
+//  3. Focus Seeding & Scope Restoration: Upon Show(), focus is automatically seeded into
+//     the first focusable descendant of the child tree. When dismissed via Esc or [Float.Hide],
+//     the runtime unmounts the modal scope, automatically restoring focus to the component
+//     that was active prior to opening.
+//  4. Responsive Geometric Anchoring: Supports 9 cardinal alignment anchors ([Center],
+//     [TopLeft], [BottomRight], etc.), explicit rectangle placement ([AtRect]), and
+//     responsive screen-percentage constraints ([WithSizeFraction]).
+//  5. Backdrop Scrim Dimming: When [WithDimBackground](true) is enabled, the surrounding
+//     screen area beneath the modal card is shaded with a faint "░" stipple pattern,
+//     visually receding background panels.
+//
+// # Concurrency & Goroutine Ownership
+//
+// All methods on Float ([Float.Show], [Float.Hide], [Float.Layout], [Float.Render])
+// are strictly loop-goroutine-owned and must only be called on the main application
+// loop (e.g. from event handlers, lifecycle hooks, or [tui.App.Update]).
+//
+// # Layout & Component Stack Hierarchy
+//
+//	┌──────────────────────────────────────────────────────────────────┐
+//	│ [OverlayHost] / [tui.Stack] Full Window Area                     │
+//	│                                                                  │
+//	│  ┌────────────────────────────────────────────────────────────┐  │
+//	│  │ floatLayer (FocusScope Trap + Scrim Canvas)                │  │
+//	│  │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  │
+//	│  │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  │
+//	│  │ ░░░░░░░░░░┌───────────────────────────────┐░░░░░░░░░░░░░░░░│  │
+//	│  │ ░░░░░░░░░░│ Child Component (e.g. [Box])   │░░░░░░░░░░░░░░░░│  │
+//	│  │ ░░░░░░░░░░│ - Focused Input Field         │░░░░░░░░░░░░░░░░│  │
+//	│  │ ░░░░░░░░░░│ - Action Buttons [OK] [Cancel]│░░░░░░░░░░░░░░░░│  │
+//	│  │ ░░░░░░░░░░└───────────────────────────────┘░░░░░░░░░░░░░░░░│  │
+//	│  │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  │
+//	│  └────────────────────────────────────────────────────────────┘  │
+//	│                                                                  │
+//	│  Base Application View (Dimmed beneath Scrim)                    │
+//	└──────────────────────────────────────────────────────────────────┘
+//
+// # Architectural Invariants
+//
+//  1. Zero Footprint While Hidden:
+//     Layout returns Size{0, 0} while hidden. It consumes zero cells, never hit-tests,
+//     and will not receive dispatched events.
+//  2. Fallback Tab Stop for Non-Focusable Modals:
+//     If a modal float contains no focusable children (e.g. an informational alert text
+//     box), the floatLayer itself acts as a fallback focus stop so that Escape keypresses
+//     remain trapped and reliably dismiss the modal.
+//  3. Notification Contract:
+//     Every dismissal, whether triggered via Escape key or programmatic [Float.Hide],
+//     publishes a [DismissEvent] stamped with the Float's [tui.NodeID].
+//
+// # Usage Examples
+//
+//  1. Creating a centered modal confirmation dialog:
+//
+//     form := widget.NewBox(
+//     widget.NewText("Save changes before closing?"),
+//     widget.WithTitle("Confirm"),
+//     )
+//     dialog := widget.NewFloat(
+//     form,
+//     widget.WithModal(true),
+//     widget.WithDimBackground(true),
+//     widget.WithAnchor(widget.Center),
+//     )
+//     host.Attach(dialog)
+//
+//     // Trigger display:
+//     dialog.Show()
+//
+//  2. Responsive fractional search modal (90% width, 60% height):
+//
+//     searchView := widget.NewFloat(
+//     finderBox,
+//     widget.WithModal(true),
+//     widget.WithSizeFraction(90, 60),
+//     widget.WithAnchor(widget.Top),
+//     )
 type Float struct {
 	Base
 	child  tui.Component

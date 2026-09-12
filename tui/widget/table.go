@@ -70,6 +70,23 @@ const (
 //	    the leftmost flex columns (one extra cell each), guaranteeing complete horizontal fill
 //	    without edge jitter.
 //
+// # Architectural Invariants
+//
+//  1. Column Alignment Determinism:
+//     Headers and body cells use identical resolved widths computed in [Table.resolveWidths].
+//     Width adjustments across window resizing preserve proportional flex shares without drift.
+//  2. Header Invariance to Mouse Interaction:
+//     Mouse presses on row 0 (the header) are strictly inert and never select a row.
+//     Mouse wheel events on the header are transparently forwarded to scroll the underlying list.
+//  3. Non-Swallowing Pointer Pass-Through:
+//     Mouse motion and release events are never swallowed as sinks, allowing ancestor splitters
+//     or drag handles to complete drags across table boundaries smoothly.
+//
+// # Concurrency & Goroutine Ownership
+//
+// Table and its inner [List] are loop-goroutine-owned. State modifications ([Table.SetItems],
+// [Table.Selected]) must execute on the main application loop goroutine.
+//
 // # Usage Example
 //
 //	type Process struct {

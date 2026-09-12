@@ -13,26 +13,89 @@ type SelectItem[T any] struct {
 	Value T
 }
 
-// Select is the dropdown. Closed, it renders as a one-line
-// field (current label + "▾"); Enter/Space/Down opens a floating option
-// list on the overlay layer with a focus trap (both mechanisms, realized by
-// OverlayHost). Esc closes without change and restores the
-// prior focus; Enter commits (SelectionChangedEvent); clicks outside close
-// — the overlay layer sees them first.
+// Dropdown Select & Overlay Option Picker Architecture
 //
-// Filter-as-you-type (WithFilter): printable keys in the open state narrow
-// the visible options case-insensitively; Backspace edits the filter.
+// Select provides a single-selection dropdown menu and option picker. In its
+// resting closed state, it presents a compact 1-line field with a down-triangle
+// affordance ("▾"). When activated (Enter, Space, or Down arrow), it projects a
+// floating option list onto the application's [OverlayHost] stack layer, complete
+// with focus trapping, interactive filtering, and outside-click dismissal.
 //
-// Options are loadable via App.Go: schedule the load with the Select's
-// NodeID as owner and return []SelectItem[T]; the addressed TaskResult is
-// converted and installed by Select's own HandleEvent. Compare
-// TaskResult.ID against the last-issued TaskID for staleness when issuing
-// concurrent loads.
+// # Subsystem Role & Responsibilities
 //
-// Positioning note: anchors the open list below the field; the
-// runtime exposes no absolute-rect query to components in v1, so the list
-// opens centered on the overlay area (command-palette style) — reported as
-// a core follow-up.
+//  1. Two-Phase Presentation:
+//     - Closed Phase: Occupies 1 row in the parent layout, displaying the currently
+//     selected item label.
+//     - Open Phase: Projects a modal [selectPopup] onto the root [OverlayHost] via an
+//     internal bus handshake ([overlayOpenEvent] / [overlayCloseEvent]).
+//  2. Focus Trap & Outside Dismissal:
+//     When opened, focus is transferred to the overlay popup list. Tab traversal is
+//     trapped within the popup. Clicking anywhere outside the popup or pressing Escape
+//     dismisses the menu without altering the selection, cleanly restoring focus to the field.
+//  3. Filter-As-You-Type ([WithFilter]):
+//     Typing printable characters while open dynamically filters the visible options
+//     using case-insensitive substring matching. Backspace edits the filter query.
+//  4. Asynchronous Option Loading:
+//     Compatible with [tui.App.Go]. Background loaders return `[]SelectItem[T]` in a
+//     [tui.TaskResult] addressed to the Select's [tui.NodeID]. Select's [Select.HandleEvent]
+//     automatically installs the arriving items or captures errors.
+//
+// # Layout & Overlay Handshake Hierarchy
+//
+//	┌─────────────────────────────────────────────────────────────┐
+//	│ [OverlayHost] Stack Canvas                                  │
+//	│                                                             │
+//	│  ┌───────────────────────────────────────────────────────┐  │
+//	│  │ selectPopup (FocusScope Trap on Top Overlay Layer)    │  │
+//	│  │ ┌───────────────────────────────────────────────────┐ │  │
+//	│  │ │ [ Filter Input: "da..." ]                         │ │  │
+//	│  │ │ ───────────────────────────────────────────────── │ │  │
+//	│  │ │  > Database Alpha                                 │ │  │
+//	│  │ │    Database Beta                                  │ │  │
+//	│  │ └───────────────────────────────────────────────────┘ │  │
+//	│  └───────────────────────────────────────────────────────┘  │
+//	│                             ▲ (Projects above base UI)      │
+//	│  Base UI:                   │                               │
+//	│  [ Connection Profile: Database Alpha ▾ ]                   │
+//	└─────────────────────────────────────────────────────────────┘
+//
+// # Architectural Invariants
+//
+//  1. Decoupled Overlay Attachment:
+//     Select communicates with the enclosing [OverlayHost] exclusively via bus events.
+//     A Select can be nested at arbitrary layout depths without requiring parent pointer passing.
+//  2. State Isolation Across Cancellation:
+//     Pressing Escape or clicking outside closes the popup and leaves the selected index untouched.
+//  3. Notification Contract:
+//     Committing a new selection publishes [SelectionChangedEvent]. Opening and closing publish
+//     [OpenedEvent] and [ClosedEvent] respectively, stamped with the Select's [tui.NodeID].
+//
+// # Concurrency & Goroutine Ownership
+//
+// Select is loop-goroutine-owned. Selecting items or updating options must occur on the
+// main application loop goroutine.
+//
+// # Usage Examples
+//
+//  1. Standard static option dropdown:
+//
+//     items := []widget.SelectItem[string]{
+//     {Label: "PostgreSQL", Value: "postgres"},
+//     {Label: "MySQL", Value: "mysql"},
+//     {Label: "SQLite", Value: "sqlite"},
+//     }
+//     sel := widget.NewSelect(
+//     widget.WithOptions(items),
+//     widget.WithFilter[string](true),
+//     )
+//
+//  2. Listening to selection changes:
+//
+//     tui.Subscribe(ctx, func(ev widget.SelectionChangedEvent) {
+//     if ev.Owner == sel.NodeID() {
+//     log.Printf("Selected engine: %s (index %d)", ev.Label, ev.Index)
+//     }
+//     })
 type Select[T any] struct {
 	Base
 	items    []SelectItem[T]

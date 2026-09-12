@@ -6,15 +6,80 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Tabs is the tab bar + content switcher: a one-row bar
-// with the active content below. Only the active child is mounted, laid
-// out, and rendered; switching unmounts the old child unless
-// WithKeepMounted(true) (which preserves child state — and live
-// subscriptions — across switches; mount semantics).
+// Multi-Tab Bar & Content Switcher Architecture
 //
-// Keys: Ctrl+PgUp/PgDn cycle from anywhere inside the Tabs subtree; [ and ]
-// and the ←/→ arrows cycle when the bar itself is focused. Click selects.
-// Emits TabChangedEvent.
+// Tabs provides a unified tab navigation header and content pane switcher.
+// Modeled after modern terminal multiplexers and editor tab bars, Tabs displays
+// a top navigation row of labeled tabs above a dynamic content area displaying
+// the active tab's view.
+//
+// # Subsystem Role & Responsibilities
+//
+//  1. Content Lifecycle & Mount Modes:
+//     - Default Dynamic Unmount: By default, switching tabs unmounts deactivated
+//     components to reclaim layout memory and detach inactive subscriptions.
+//     - Persistent Mount ([WithKeepMounted]): Preserves all tab component trees
+//     in mounted state across switches, retaining scroll positions, active selections,
+//     and long-running bus subscriptions while hiding inactive views from layout.
+//  2. Header Presentation Modes:
+//     - Standard Header: Displays a 1-row styled tab bar with active highlights.
+//     - Headless Switcher ([WithoutBar]): Hides the tab bar entirely, allocating
+//     100% of vertical height to the active content pane while still providing
+//     keyboard navigation and programmatic switching via [Tabs.Select].
+//  3. Comprehensive Keyboard & Mouse Navigation:
+//     - Subtree Chords: Ctrl+PageUp and Ctrl+PageDown cycle tabs from anywhere within
+//     the active child component tree.
+//     - Focused Bar Motions: When the tab bar holds focus, '[' and ']' or Left/Right
+//     arrow keys switch tabs incrementally.
+//     - Direct Mouse Clicks: Clicking any tab label on row 0 immediately activates it.
+//
+// # Layout & Component Stack Hierarchy
+//
+//	┌─────────────────────────────────────────────────────────────┐
+//	│ [Tabs] Container Area                                       │
+//	│                                                             │
+//	│  Row 0:  [ Tab One ]  [ Tab Two (Active) ]  [ Tab Three ]    │ ◄── Tab Bar (1 row)
+//	│  ─────────────────────────────────────────────────────────  │
+//	│                                                             │
+//	│  Row 1+: Active Tab Content (e.g. Table, BufferView, Form)  │
+//	│          - Full remaining width & height (MaxH - 1)         │
+//	│          - Only active component laid out & rendered        │
+//	│                                                             │
+//	└─────────────────────────────────────────────────────────────┘
+//
+// # Architectural Invariants
+//
+//  1. Single Active Child Rendering:
+//     Regardless of the number of registered tabs, exactly one tab content component
+//     is laid out and rendered per frame.
+//  2. Automatic Focus Initialization ([WithAutoFocus]):
+//     When configured with [WithAutoFocus](true), Tabs claims focus on Init, allowing
+//     top-level application screens to accept tab navigation keys immediately without
+//     requiring an initial Tab press.
+//  3. Event Notification Contract:
+//     Every tab change publishes [TabChangedEvent] carrying the Tabs node ID, new index,
+//     and label string.
+//
+// # Concurrency & Goroutine Ownership
+//
+// Tabs is loop-goroutine-owned. All mutations ([Tabs.Select]) and lifecycle hooks
+// must run strictly on the main application loop goroutine.
+//
+// # Usage Examples
+//
+//  1. Standard tabbed workspace with three views:
+//
+//     tabs := widget.NewTabs(
+//     widget.WithTab("Editor", editorView),
+//     widget.WithTab("Logs", logBufferView),
+//     widget.WithTab("Status", statusTable),
+//     widget.WithKeepMounted(true), // retain log scrollback while editing
+//     )
+//
+//  2. Programmatic tab switching:
+//
+//     // Switch to "Logs" view (tab index 1):
+//     tabs.Select(1)
 type Tabs struct {
 	Base
 	tabs      []tabEntry

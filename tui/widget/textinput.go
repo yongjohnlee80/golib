@@ -7,23 +7,80 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// TextInput is the single-line editor: grapheme-cluster
-// addressed value, cursor + selection, horizontal scroll, placeholder,
-// masking, and a validation hook.
+// Single-Line Text Input & Form Field Architecture
 //
-// Keys consumed: printable runes, Backspace/Delete, arrows (±word with
-// Ctrl/Alt), Home/End, Shift+arrows (selection), Ctrl+A/E/U/W (readline
-// subset), Enter (SubmitEvent when validation passes; a failing validation
-// sets the error state and consumes the key). Tab is NOT consumed — focus
-// traversal stays framework-owned.
+// TextInput provides a feature-rich, single-line text input field designed for forms,
+// prompt inputs, search bars, and dialog credentials. It features UAX #29 grapheme
+// cluster cursor navigation, anchor selection, horizontal viewport scrolling, placeholder
+// hints, password character masking, validation hooks, and synchronized form advance.
 //
-// Bracketed paste (tui.PasteEvent) inserts atomically at the cursor — never
-// replayed as keystrokes, so a pasted newline cannot fake a submit; newlines
-// become spaces in this single-line widget.
+// # Subsystem Role & Responsibilities
 //
-// IME/real cursor: TextInput implements tui.CursorReporter, so while it is
-// focused the runtime parks the HARDWARE cursor at the insertion point
-// and OS IMEs anchor their composition window there.
+//  1. Grapheme Cluster Integrity: Values are stored and addressed as Unicode Standard
+//     Annex #29 extended grapheme clusters ([TextInput.cs]). Multi-byte runes, emoji
+//     zwj sequences, and combining accents never suffer midpoint truncation or splitting.
+//  2. IME & Hardware Cursor Integration: Implements [tui.CursorReporter]. While focused,
+//     the runtime places the terminal's hardware cursor exactly at the input caret cell,
+//     anchoring OS IME composition popups directly beneath the active insertion point.
+//  3. Bracketed Paste Protection: Ingests [tui.PasteEvent] atomically without replaying
+//     as simulated keystrokes. Internal newlines are transformed into spaces, preventing
+//     malicious or pasted multiline strings from inadvertently triggering early form submission.
+//  4. Synchronous Advance Hook ([WithOnSubmit]): Supports synchronous form focus transitions.
+//     When Enter is pressed and validation passes, [WithOnSubmit] executes immediately inside
+//     the key handler before subsequent buffered keystrokes can leak into the vacated field.
+//  5. Readline Keyboard Navigation: Supports common Readline / Emacs motion chords
+//     (Ctrl+A for start, Ctrl+E for end, Ctrl+U to clear before cursor, Ctrl+W to delete word)
+//     alongside standard arrow keys and Shift+arrow range selection.
+//
+// # Layout & Cursor Pipeline
+//
+//	┌─────────────────────────────────────────────────────────────┐
+//	│ [TextInput] Single-Line Viewport (Height = 1)               │
+//	│                                                             │
+//	│  Visible Viewport Cells: [ w = Layout Width ]               │
+//	│  ┌────────────────────────────────────────────────────────┐ │
+//	│  │ ...scrolled text... [ Active Caret █ ] remainder text  │ │
+//	│  └────────────────────────────────────────────────────────┘ │
+//	│       ▲                        ▲                            │
+//	│   scroll offset           Hardware Cursor Anchor            │
+//	└─────────────────────────────────────────────────────────────┘
+//
+// # Architectural Invariants
+//
+//  1. Tab Traversal Non-Consumption:
+//     TextInput explicitly does NOT consume Tab or Shift+Tab. Focus navigation remains
+//     strictly framework-owned and orchestratable across sibling components.
+//  2. Atomic Paste Events:
+//     Paste operations generate exactly one [ChangeEvent] and never trigger a [SubmitEvent].
+//  3. Validation Preflight on Enter:
+//     Failing validation ([WithValidate]) sets the internal error state, visually styles the
+//     text with [TextInputStyles.Error], and suppresses both [WithOnSubmit] and [SubmitEvent].
+//
+// # Concurrency & Goroutine Ownership
+//
+// TextInput is loop-goroutine-owned. Reading or setting values ([TextInput.Value],
+// [TextInput.SetValue]) must be performed on the main application loop goroutine.
+//
+// # Usage Examples
+//
+//  1. Creating a validated username field with placeholder:
+//
+//     usernameInput := widget.NewTextInput(
+//     widget.WithPlaceholder("Enter username (min 3 chars)..."),
+//     widget.WithValidate(func(val string) error {
+//     if len(strings.TrimSpace(val)) < 3 {
+//     return errors.New("username too short")
+//     }
+//     return nil
+//     }),
+//     )
+//
+//  2. Creating a password input field:
+//
+//     passwordInput := widget.NewTextInput(
+//     widget.WithPlaceholder("Password..."),
+//     widget.WithMask('*'),
+//     )
 type TextInput struct {
 	Base
 	cs     []string // value as grapheme clusters

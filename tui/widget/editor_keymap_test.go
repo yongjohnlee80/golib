@@ -51,4 +51,3 @@ func TestKeymapOverlayUnbind(t *testing.T) {
 		t.Errorf("chord should be unbound, but got action %v", act)
 	}
 }
-

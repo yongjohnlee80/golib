@@ -53,14 +53,76 @@ func (s sliceSource[T]) Item(i int) T { return s[i] }
 // applies: call List.RefreshSource on the loop before anything else observes it.
 func SliceSource[T any](items []T) ListSource[T] { return sliceSource[T](items) }
 
-// List renders selectable rows through a ListSource. The
-// rendering path is virtualization-shaped: Item(i) is called only for rows
-// intersecting the viewport, and Len() once per render pass.
+// Virtualized List & Row Selection Architecture
 //
-// Keys consumed: Up/Down/PgUp/PgDn/Home/End (cursor movement, emitting
-// SelectionChangedEvent in single-select mode), Space (multi-select
-// toggle), Enter (ActivateEvent). Mouse: click selects, wheel scrolls,
-// double-click activates.
+// List provides a high-performance, single-column virtualized list view designed
+// for navigators, pickers, sidebars, and data tables. It abstracts data retrieval
+// through [ListSource], fetches only viewport-visible rows during rendering, and
+// supports single-selection, multi-selection, Vim motions, mouse interactions, and
+// double-click activation with strict logical identity preservation across scrolling.
+//
+// # Subsystem Role & Responsibilities
+//
+//  1. Viewport Virtualization: Decouples large dataset scales from rendering time.
+//     During the render pass, [ListSource.Len] is called once, while [ListSource.Item]
+//     is called only for rows intersecting the visible viewport `[top, top + Height)`.
+//  2. Dual Selection Modes:
+//     - Single-Select (Default): Moving the cursor (arrows, j/k, g/G) updates the single
+//     selection and publishes [SelectionChangedEvent].
+//     - Multi-Select ([WithMultiSelect]): Space toggles individual row selections without
+//     moving the cursor. Multi-selections are queried via [List.SelectedAll].
+//  3. Unified Keyboard & Vim Navigation:
+//     - Standard: Up/Down, PageUp/PageDown, Home/End.
+//     - Vim Motions: 'j' (down), 'k' (up), 'g' (top), 'G' (bottom). Application chords
+//     (Ctrl+j, Alt+j) bubble untouched to allow host window management.
+//  4. Mouse & Double-Click Identity Protection:
+//     Clicking selects a row, mouse wheel scrolls the viewport, and double-clicking
+//     publishes [ActivateEvent]. Double-click pairing verifies logical row identity
+//     ([List.lastPressIdx]) rather than screen cells, ensuring scrolling between presses
+//     never triggers an accidental double-click activation on a different row.
+//
+// # Layout & Virtualization Geometry
+//
+//	┌─────────────────────────────────────────────────────────────┐
+//	│ [List] Container Viewport (Height = H)                      │
+//	│                                                             │
+//	│  Off-screen above: rows [0 .. top-1]                        │
+//	│  ─────────────────────────────────────────────────────────  │
+//	│  Row [top+0]: item-004                                      │
+//	│  Row [top+1]: item-005 (Focused Cursor) ◄── Item(5) fetched │
+//	│  Row [top+2]: item-006                                      │
+//	│  ─────────────────────────────────────────────────────────  │
+//	│  Off-screen below: rows [top+H .. Len()-1]                  │
+//	└─────────────────────────────────────────────────────────────┘
+//
+// # Architectural Invariants
+//
+//  1. Pure Viewport-Bounded Fetches:
+//     Rows outside `[top, top + H)` are never evaluated by the renderer. Datasets with
+//     100,000+ items remain fast and responsive.
+//  2. In-Place Notification Contract:
+//     Any modification to an underlying [SliceSource] slice or custom source must be
+//     followed immediately by [List.RefreshSource] on the application loop goroutine
+//     to re-clamp cursors and terminate active double-click pairing epochs.
+//  3. Concurrency Safety:
+//     List is loop-goroutine-owned. It must be created, mutated, and driven strictly
+//     on the main application loop goroutine.
+//
+// # Usage Examples
+//
+//  1. Creating a string picker list with Vim navigation:
+//
+//     files := []string{"main.go", "config.go", "router.go", "handler.go"}
+//     list := widget.NewList(
+//     widget.WithItems(files, func(s string) string { return s }),
+//     )
+//
+//  2. Creating a multi-select checklist:
+//
+//     tasks := widget.NewList(
+//     widget.WithItems([]string{"Build", "Test", "Deploy"}, func(s string) string { return s }),
+//     widget.WithMultiSelect[string](true),
+//     )
 type List[T any] struct {
 	Base
 	src    ListSource[T]
