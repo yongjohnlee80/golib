@@ -46,6 +46,11 @@ func TestParseProfileRejectsMalformedInput(t *testing.T) {
 			}
 		})
 	}
+	_, err := ParseProfile(strings.NewReader("mode: set\nexample.com/p/a.go:nope 1 1\n"), WithModulePath("example.com/p"))
+	var profileError *ProfileError
+	if !errors.As(err, &profileError) || profileError.Line != 2 {
+		t.Fatalf("error = %#v, want ProfileError at line 2", err)
+	}
 }
 
 func TestParseProfileRejectsOtherModule(t *testing.T) {
