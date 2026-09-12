@@ -7,18 +7,107 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// sgrInterp is BufferView's bounded, SGR-only ANSI interpreter: colors
-// (ANSI-16 / ANSI-256 / truecolor) and
-// bold/faint/italic/underline/blink/reverse/strikethrough map directly to
-// style properties; every other escape (cursor movement, modes, OSC) is
-// recognized and stripped. State machines and pending buffers are bounded:
-// an escape sequence longer than maxEscape is abandoned and dropped.
+// ANSI SGR Stream Interpreter & Escape Filter Architecture
+//
+// sgrInterp implements a streaming, chunk-boundary-resilient ECMA-48 / ANSI SGR
+// (Select Graphic Rendition) interpreter specifically optimized for terminal log
+// streaming and command output pagers (e.g. [BufferView]).
+//
+// # Subsystem Role & Responsibilities
+//
+//  1. ANSI SGR Parsing: Interprets standard 16-color ANSI, 256-color palette (38;5 / 48;5),
+//     24-bit TrueColor RGB (38;2;r;g;b / 48;2;r;g;b), and text attribute modifications
+//     (bold, faint, italic, underline, blink, reverse, strikethrough).
+//  2. Escape Stripping: Strips terminal control sequences (cursor repositioning, window
+//     title OSC strings, private DEC modes, bracketed paste toggles) that could corrupt
+//     the TUI display canvas.
+//  3. Chunk & Fragment Boundary Resilience: Safely buffers split escape sequences across
+//     incoming I/O chunk boundaries (e.g. "\x1b[" delivered in chunk 1, "31m" in chunk 2).
+//  4. Bounded Allocation & Denial-of-Service Defense: Caps pending escape sequences at
+//     [maxEscape] bytes (128 bytes). Malformed or endless escape streams are dropped
+//     without unbounded memory growth.
+//  5. Terminal Carriage Return (\r) State Machine: Implements terminal-style progress
+//     bar overwrites where a bare '\r' triggers line replacement ([sgrCarriage]), while
+//     '\r\n' is preserved as a standard newline ([sgrNewline]).
+//
+// # Data Flow Pipeline
+//
+//	Incoming Raw Stream Chunks ([]byte from io.Reader)
+//	                      │
+//	                      ▼
+//	               sgrInterp.feed(chunk, emit)
+//	                      │
+//	       ┌──────────────┴──────────────┐
+//	       ▼                             ▼
+//	Regular Text & C0            Escape Sequence (0x1b)
+//	       │                             │
+//	       ├── Bare '\r' ──> sgrCarriage ├── CSI '[' ──> Parse SGR / Strip
+//	       ├── '\n'      ──> sgrNewline  ├── OSC ']' ──> Strip BEL / ST
+//	       ├── '\t'      ──> 4 Spaces    └── 2-Byte  ──> Strip (ESC c, etc.)
+//	       └── Printable ──> sgrText(text, style)
+//
+// # Architectural Invariants
+//
+//  1. Pure Loop-Goroutine Concurrency Contract:
+//     sgrInterp is strictly loop-goroutine-owned and stateful. It is called from the
+//     main application loop during [BufferView.ingest] and contains no locks.
+//     Thread-safe ingestion from background goroutines is handled by [bufWriter].
+//  2. Bounded Memory Invariant:
+//     The pending escape buffer never exceeds [maxEscape] (128 bytes). Sequences
+//     exceeding this limit reset parser mode to [escNone] and discard accumulated bytes.
+//  3. Clean State Reset on Clear:
+//     Resetting style via SGR 0 ('\x1b[0m' or bare '\x1b[m') clears [style.Style] back
+//     to its empty zero-value, matching terminal default attributes.
+//  4. Separation of Escape and UTF-8 Boundaries:
+//     The interpreter buffers split escape fragments ([sgrInterp.esc]). Partial multi-byte
+//     UTF-8 rune fragments are carried by the caller ([BufferView.utf8Tail]) to maintain
+//     clear separation of concerns.
+//
+// # Usage Examples
+//
+//  1. Basic streaming parser usage:
+//
+//     interp := &sgrInterp{passthrough: true}
+//     interp.feed([]byte("\x1b[1;32mSUCCESS\x1b[0m: done\n"), func(ev sgrEvent) {
+//     switch ev.kind {
+//     case sgrText:
+//     // ev.text contains text; ev.st carries applied Style (Green + Bold)
+//     renderText(ev.text, ev.st)
+//     case sgrNewline:
+//     advanceLine()
+//     case sgrCarriage:
+//     rewindCurrentLine()
+//     }
+//     })
+//
+//  2. Disabling ANSI color passthrough (strip all styling):
+//
+//     // passthrough=false strips escape codes without applying SGR styling:
+//     cleanInterp := &sgrInterp{passthrough: false}
+//     cleanInterp.feed([]byte("\x1b[31mError text\x1b[0m"), func(ev sgrEvent) {
+//     // ev.st is style.Style{} (empty), ev.text is "Error text"
+//     })
 type sgrInterp struct {
-	passthrough bool        // false = strip escapes AND ignore SGR
-	st          style.Style // current SGR state
-	esc         []byte      // pending escape bytes (bounded)
-	mode        escMode
-	pendingCR   bool // a bare \r was seen; \n turns it into a newline
+	// passthrough controls whether SGR styles are captured (true) or stripped (false).
+	// loop-goroutine-owned: immutable during feed execution.
+	passthrough bool
+
+	// st represents the active style state accumulated across SGR sequences.
+	// loop-goroutine-owned.
+	st style.Style
+
+	// esc holds partially ingested escape sequence bytes across chunk boundaries.
+	// loop-goroutine-owned: bounded by maxEscape.
+	esc []byte
+
+	// mode tracks the active escape parser state machine (escNone, escStarted, escCSI, escOSC).
+	// loop-goroutine-owned.
+	mode escMode
+
+	// pendingCR indicates a bare '\r' was seen; resolved to sgrNewline if followed by '\n',
+	// or sgrCarriage if followed by any other byte or chunk boundary.
+	// loop-goroutine-owned.
+	pendingCR bool
 }
 
 type escMode uint8
@@ -33,24 +122,33 @@ const (
 // maxEscape bounds one pending escape sequence.
 const maxEscape = 128
 
-// sgrEvent is one interpreter output.
+// sgrEvent is one interpreter output unit emitted to the feed callback.
 type sgrEvent struct {
 	kind sgrKind
-	text string      // kind == sgrText
-	st   style.Style // kind == sgrText
+	text string      // text payload when kind == sgrText
+	st   style.Style // visual style when kind == sgrText
 }
 
+// sgrKind enumerates the distinct output tokens produced by sgrInterp.
 type sgrKind uint8
 
 const (
+	// sgrText denotes a span of text rendered with the associated style.Style.
 	sgrText sgrKind = iota
+
+	// sgrNewline denotes a line break ('\n' or '\r\n').
 	sgrNewline
-	sgrCarriage // bare \r: overwrite the current line
+
+	// sgrCarriage denotes a bare carriage return ('\r') indicating an in-place line overwrite.
+	sgrCarriage
 )
 
-// feed consumes one chunk, invoking emit per event. Chunks may split
-// escape sequences and UTF-8 runes at any byte; the caller carries rune
-// fragments (the interpreter carries escape fragments).
+// feed consumes one chunk of input bytes and calls emit for every parsed text or control event.
+//
+// Chunks may split escape sequences and multi-byte UTF-8 runes at arbitrary byte offsets.
+// Escape fragments are preserved internally within p.esc.
+//
+// Concurrency: loop-goroutine-owned (must only be called from the application loop).
 func (p *sgrInterp) feed(b []byte, emit func(sgrEvent)) {
 	var run []byte
 	flush := func() {
@@ -130,7 +228,8 @@ func (p *sgrInterp) feed(b []byte, emit func(sgrEvent)) {
 	flush()
 }
 
-// applySGR folds one SGR parameter string into the current style.
+// applySGR parses an SGR parameter string (e.g. "1;31;48;5;42") and applies the
+// resulting color and text attribute mutations onto p.st.
 func (p *sgrInterp) applySGR(params string) {
 	if params == "" {
 		p.st = style.Style{}
@@ -203,8 +302,8 @@ func (p *sgrInterp) applySGR(params string) {
 	}
 }
 
-// extendedColor decodes the 38/48 extended color forms (5;n and 2;r;g;b),
-// returning the color, the parameters consumed, and validity.
+// extendedColor decodes the 38/48 extended color forms (5;n for ANSI-256 and 2;r;g;b for TrueColor RGB),
+// returning the parsed style.Color, the count of parameters consumed, and whether the sequence was valid.
 func extendedColor(rest []int) (style.Color, int, bool) {
 	if len(rest) >= 2 && rest[0] == 5 {
 		n := rest[1]
