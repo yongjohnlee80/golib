@@ -1246,3 +1246,88 @@ func TestEditorStandardKeymap(t *testing.T) {
 		t.Fatalf("after Ctrl+V: got %q, want \"sample text\"", val)
 	}
 }
+
+func TestEditorVimKeysetEscapeChord(t *testing.T) {
+	// Confirm that 'jk' functions as escape for Vim keyset by default
+	h, ed, sh := focusedEditor(t, 40, 10, widget.WithVimKeymap(), widget.WithInitialText("start"))
+
+	if chord := ed.EscapeChord(); chord != "jk" {
+		t.Fatalf("ed.EscapeChord() = %q, want \"jk\"", chord)
+	}
+
+	// Enter insert mode and type text
+	h.inject(key('A'))
+	h.inject(typeString(" more text")...)
+	h.barrier(sh)
+
+	if mode := ed.Mode(); mode != widget.ModeInsert {
+		t.Fatalf("expected ModeInsert, got %v", mode)
+	}
+
+	// Type fast escape chord 'jk'
+	h.inject(key('j'), key('k'))
+	h.barrier(sh)
+
+	// Mode must return to Normal and "jk" must NOT be in the buffer
+	wantState(t, h, ed, "start more text", widget.ModeNormal, 0, 14)
+}
+
+func TestEditorRuntimeKeymapReflection(t *testing.T) {
+	ed := widget.NewEditor(widget.WithVimKeymap())
+
+	if ed.Keyset() != widget.KeysetVim {
+		t.Errorf("ed.Keyset() = %v, want KeysetVim", ed.Keyset())
+	}
+	if ed.EscapeChord() != "jk" {
+		t.Errorf("ed.EscapeChord() = %q, want \"jk\"", ed.EscapeChord())
+	}
+
+	snap := ed.SnapshotKeymap()
+	if snap.KeysetName != "Vim" || !snap.Modal || snap.EscapeChord != "jk" {
+		t.Errorf("unexpected snapshot metadata: %+v", snap)
+	}
+	if len(snap.Bindings) == 0 {
+		t.Fatal("expected bindings in snapshot")
+	}
+
+	// Check that 'jk' escape chord is reflected in insert bindings
+	insertBindings := ed.BindingsForMode(widget.ModeInsert)
+	foundJk := false
+	for _, b := range insertBindings {
+		if b.Key == "jk" && b.Action == widget.ActEscape {
+			foundJk = true
+			break
+		}
+	}
+	if !foundJk {
+		t.Errorf("expected 'jk' escape chord in BindingsForMode(ModeInsert), got: %+v", insertBindings)
+	}
+
+	// ActionForChord lookup
+	act, ok := ed.ActionForChord(widget.KeyChord{Mode: widget.ModeNormal, Code: 'j'})
+	if !ok || act != widget.ActDown {
+		t.Errorf("ActionForChord(Normal, 'j') = (%v, %v), want (ActDown, true)", act, ok)
+	}
+
+	// ChordsForAction reverse lookup
+	chords := ed.ChordsForAction(widget.ActDown)
+	foundJ := false
+	for _, c := range chords {
+		if c.Mode == widget.ModeNormal && c.Code == 'j' {
+			foundJ = true
+			break
+		}
+	}
+	if !foundJ {
+		t.Errorf("ChordsForAction(ActDown) = %+v, expected to include Normal 'j'", chords)
+	}
+
+	// Keymap defensive copy
+	km1 := ed.Keymap()
+	km1[widget.KeyChord{Mode: widget.ModeNormal, Code: 'j'}] = widget.ActUp
+	km2 := ed.Keymap()
+	if km2[widget.KeyChord{Mode: widget.ModeNormal, Code: 'j'}] != widget.ActDown {
+		t.Errorf("mutating Keymap copy affected internal keymap")
+	}
+}
+

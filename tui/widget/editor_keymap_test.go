@@ -2,6 +2,8 @@ package widget
 
 import (
 	"testing"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 func TestEditorModeString(t *testing.T) {
@@ -89,3 +91,60 @@ func TestKeymapOverlayUnbind(t *testing.T) {
 		t.Errorf("chord should be unbound, but got action %v", act)
 	}
 }
+
+func TestKeyChordString(t *testing.T) {
+	cases := []struct {
+		chord KeyChord
+		want  string
+	}{
+		{KeyChord{Mode: ModeNormal, Code: 'h'}, "h"},
+		{KeyChord{Mode: ModeNormal, Code: 'r', Ctrl: true}, "Ctrl+r"},
+		{KeyChord{Mode: ModeNormal, Code: tui.KeyLeft}, "Left"},
+		{KeyChord{Mode: ModeNormal, Code: tui.KeyHome}, "Home"},
+		{KeyChord{Mode: ModeInsert, Code: 'k', Ctrl: true}, "Ctrl+k"},
+	}
+	for _, tc := range cases {
+		if got := tc.chord.String(); got != tc.want {
+			t.Errorf("chord %+v: got %q, want %q", tc.chord, got, tc.want)
+		}
+	}
+}
+
+func TestActionStringAndDescription(t *testing.T) {
+	for act := ActUnbound; act < actMax; act++ {
+		str := act.String()
+		desc := act.Description()
+		if str == "" {
+			t.Errorf("action %d has empty String()", act)
+		}
+		if desc == "" {
+			t.Errorf("action %d has empty Description()", act)
+		}
+	}
+}
+
+func TestKeysetString(t *testing.T) {
+	if got := KeysetVim.String(); got != "Vim" {
+		t.Errorf("KeysetVim.String() = %q, want \"Vim\"", got)
+	}
+	if got := KeysetNano.String(); got != "Nano" {
+		t.Errorf("KeysetNano.String() = %q, want \"Nano\"", got)
+	}
+	if got := KeysetStandard.String(); got != "Standard" {
+		t.Errorf("KeysetStandard.String() = %q, want \"Standard\"", got)
+	}
+}
+
+func TestKeymapBindings(t *testing.T) {
+	km := VimKeymap()
+	bindings := km.Bindings()
+	if len(bindings) == 0 {
+		t.Fatal("expected non-empty bindings from VimKeymap()")
+	}
+	for _, b := range bindings {
+		if b.Key == "" || b.Name == "" || b.Description == "" {
+			t.Errorf("incomplete binding: %+v", b)
+		}
+	}
+}
+
