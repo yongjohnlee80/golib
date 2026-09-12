@@ -8,11 +8,11 @@
 # real, which is why they are listed rather than forgotten.
 #
 # This list may only SHRINK. Empty is the destination.
-tui/container.go	MultiChild.Add -> name
-tui/container.go	MultiChild.Move -> indexOf
-tui/container.go	MultiChild.Move -> name
-tui/container.go	MultiChild.remove -> indexOf
-tui/container.go	MultiChild.Remove -> remove
+tui/container_multi.go	MultiChild.Add -> name
+tui/container_multi.go	MultiChild.Move -> indexOf
+tui/container_multi.go	MultiChild.Move -> name
+tui/container_multi.go	MultiChild.remove -> indexOf
+tui/container_multi.go	MultiChild.Remove -> remove
 tui/stack.go	Stack.AddAligned -> setLayer
 tui/stack.go	Stack.AddAt -> setLayer
 tui/widget/textbuffer.go	textBuffer.cellsAt -> lineClusters
