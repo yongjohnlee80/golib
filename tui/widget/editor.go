@@ -140,14 +140,14 @@ type Editor struct {
 	groupOpen   bool // an Insert-mode edit group is open
 
 	chordTimeout time.Duration
-}
 
-type editorSnap struct {
-	lines   []string
-	ln, col int
+	// Configurable capabilities.
+	modal     bool   // true = Vim tripartite state machine; false = modeless editor
+	canSelect bool   // true = visual / selection active
+	canYank   bool   // true = system clipboard & register yanking active
+	canUndo   bool   // true = bounded undo / redo history active
+	keyset    Keyset // active editing & keymap profile
 }
-
-const editorUndoCap = 64
 
 var (
 	_ tui.Focusable      = (*Editor)(nil)
@@ -225,6 +225,65 @@ func WithKeymap(overlay Keymap) EditorOption {
 	}
 }
 
+// WithModalEditing configures whether the editor operates the Vim tripartite
+// modal state machine (Normal, Insert, Visual) or acts as a modeless editor.
+func WithModalEditing(modal bool) EditorOption {
+	return func(e *Editor) {
+		e.modal = modal
+		if !modal {
+			e.setMode(ModeInsert)
+		}
+	}
+}
+
+// WithEditorReadOnly configures whether the editor is in read-only viewer mode.
+func WithEditorReadOnly(ro bool) EditorOption {
+	return func(e *Editor) {
+		e.readOnly = ro
+	}
+}
+
+// WithVimKeymap configures the modal Vim keymap and editing model.
+func WithVimKeymap() EditorOption {
+	return func(e *Editor) {
+		e.keyset = KeysetVim
+		e.modal = true
+		e.keymap = VimKeymap()
+	}
+}
+
+// WithNanoKeymap configures the non-modal Nano-style editing profile.
+func WithNanoKeymap() EditorOption {
+	return func(e *Editor) {
+		e.keyset = KeysetNano
+		e.modal = false
+		e.keymap = NanoKeymap()
+		e.setMode(ModeInsert)
+	}
+}
+
+// WithStandardKeymap configures the standard GUI/TextEdit editing profile.
+func WithStandardKeymap() EditorOption {
+	return func(e *Editor) {
+		e.keyset = KeysetStandard
+		e.modal = false
+		e.keymap = StandardKeymap()
+		e.setMode(ModeInsert)
+	}
+}
+
+// WithKeyset selects a predefined keyset and editing profile.
+func WithKeyset(ks Keyset) EditorOption {
+	switch ks {
+	case KeysetNano:
+		return WithNanoKeymap()
+	case KeysetStandard:
+		return WithStandardKeymap()
+	default:
+		return WithVimKeymap()
+	}
+}
+
 // NewEditor builds an empty Normal-mode editor with the default keymap and
 // the "jk" escape chord.
 func NewEditor(opts ...EditorOption) *Editor {
@@ -237,11 +296,19 @@ func NewEditor(opts ...EditorOption) *Editor {
 		keymap:       DefaultKeymap(),
 		chord:        []rune{'j', 'k'},
 		chordTimeout: 300 * time.Millisecond,
+		modal:        true,
+		canSelect:    true,
+		canYank:      true,
+		canUndo:      true,
+		keyset:       KeysetVim,
 	}
 	for _, o := range opts {
 		if o != nil {
 			o(e)
 		}
+	}
+	if !e.modal && e.mode == ModeNormal {
+		e.setMode(ModeInsert)
 	}
 	return e
 }
@@ -250,9 +317,9 @@ func NewEditor(opts ...EditorOption) *Editor {
 func (e *Editor) Value() string { return e.value() }
 
 // SetValue is a document-boundary operation: pending input
-// settles, the editor returns to Normal mode, cursor and command state
-// reset, content is replaced, and undo/redo history is CLEARED. The
-// register is preserved.
+// settles, the editor returns to Normal mode (or Insert mode if modeless),
+// cursor and command state reset, content is replaced, and undo/redo history
+// is CLEARED. The register is preserved.
 func (e *Editor) SetValue(s string) {
 	e.settlePendingRune()
 	e.count, e.pendingAct = 0, ActUnbound
@@ -260,7 +327,11 @@ func (e *Editor) SetValue(s string) {
 	e.undo, e.redo = nil, nil
 	e.setValue(s)
 	e.ln, e.col = 0, 0
-	e.setMode(ModeNormal)
+	if e.modal {
+		e.setMode(ModeNormal)
+	} else {
+		e.setMode(ModeInsert)
+	}
 	e.top, e.left = 0, 0
 	e.ensureVisible()
 	e.MarkDirty()
@@ -282,7 +353,7 @@ func (e *Editor) SetReadOnly(v bool) {
 		return
 	}
 	e.readOnly = v
-	if v && (e.mode == ModeInsert) {
+	if v && (e.mode == ModeInsert) && e.modal {
 		e.settlePendingRune()
 		e.setMode(ModeNormal)
 		e.clampNormal()
@@ -301,7 +372,9 @@ func (e *Editor) SetLine(row, col int) {
 	e.settlePendingRune()
 	e.ln = max(0, min(row, len(e.lines)-1))
 	e.col = max(0, col)
-	e.clampNormal()
+	if e.modal {
+		e.clampNormal()
+	}
 	e.ensureVisible()
 	e.MarkDirty()
 }
@@ -309,30 +382,6 @@ func (e *Editor) SetLine(row, col int) {
 // Lines returns a snapshot of the document's lines — what a host needs to
 // search without re-splitting Value().
 func (e *Editor) Lines() []string { return append([]string(nil), e.lines...) }
-
-// SelectedText returns the visual selection ("" outside visual modes).
-func (e *Editor) SelectedText() string {
-	switch e.mode {
-	case ModeVisual:
-		lo, hi := e.visualRange()
-		return e.textIn(lo, hi)
-	case ModeVisualLine:
-		lo, hi := e.visualLines()
-		return strings.Join(e.lines[lo:hi+1], "\n")
-	}
-	return ""
-}
-
-// SetRegister imports text into the unnamed register (the application's
-// value-inspect copy path).
-func (e *Editor) SetRegister(text string, linewise bool) {
-	e.regText, e.regLinewise = text, linewise
-}
-
-// Register returns the unnamed register's content.
-func (e *Editor) Register() (text string, linewise bool) {
-	return e.regText, e.regLinewise
-}
 
 // AcceptsFocus implements tui.Focusable.
 func (e *Editor) AcceptsFocus() bool { return true }
@@ -378,6 +427,9 @@ func (e *Editor) enterInsert() {
 
 // exitInsert implements Insert→Normal: cursor one cluster left, clamped.
 func (e *Editor) exitInsert() {
+	if !e.modal {
+		return
+	}
 	e.groupOpen = false
 	e.col = max(0, e.col-1)
 	e.clampNormal()
@@ -389,72 +441,13 @@ func (e *Editor) exitInsert() {
 
 func (e *Editor) exitVisual() {
 	e.anchor = nil
-	e.setMode(ModeNormal)
-	e.clampNormal()
+	if e.modal {
+		e.setMode(ModeNormal)
+		e.clampNormal()
+	} else {
+		e.setMode(ModeInsert)
+	}
 	e.MarkDirty()
-}
-
-// --- undo ----------------------------------------------------------------
-
-func (e *Editor) snapshot() editorSnap {
-	lines := make([]string, len(e.lines))
-	copy(lines, e.lines)
-	return editorSnap{lines: lines, ln: e.ln, col: e.col}
-}
-
-// beginGroup pushes an undo snapshot for a new edit group: every
-// Normal-mode edit is one group; an Insert session is one group opened
-// lazily at its first mutation. A paste during Insert stays inside the open
-// group; focus loss closes it without leaving Insert.
-func (e *Editor) beginGroup() {
-	if e.mode == ModeInsert && e.groupOpen {
-		return
-	}
-	e.undo = append(e.undo, e.snapshot())
-	if len(e.undo) > editorUndoCap {
-		e.undo = e.undo[1:]
-	}
-	e.redo = nil
-	if e.mode == ModeInsert {
-		e.groupOpen = true
-	}
-}
-
-func (e *Editor) doUndo() {
-	if len(e.undo) == 0 {
-		return
-	}
-	snap := e.undo[len(e.undo)-1]
-	e.undo = e.undo[:len(e.undo)-1]
-	e.redo = append(e.redo, e.snapshot())
-	e.restore(snap)
-}
-
-func (e *Editor) doRedo() {
-	if len(e.redo) == 0 {
-		return
-	}
-	snap := e.redo[len(e.redo)-1]
-	e.redo = e.redo[:len(e.redo)-1]
-	e.undo = append(e.undo, e.snapshot())
-	e.restore(snap)
-}
-
-func (e *Editor) restore(s editorSnap) {
-	e.lines = s.lines
-	e.ln = max(0, min(s.ln, len(e.lines)-1))
-	e.col = s.col
-	e.anchor = nil
-	e.clampNormal()
-	e.edited()
-}
-
-// edited finalizes any buffer mutation: viewport, dirt, change event.
-func (e *Editor) edited() {
-	e.desired = -1
-	e.ensureVisible()
-	e.MarkDirty()
-	e.publish(ChangeEvent{Owner: e.NodeID(), Value: e.Value()})
 }
 
 // --- escape chord ---------------------------------------------------------
@@ -476,302 +469,6 @@ func (e *Editor) settlePendingRune() {
 	e.edited()
 }
 
-// --- motions ---------------------------------------------------------------
-
-// isWS classifies a grapheme cluster as whitespace for the Editor's word
-// motions: tabs and Unicode whitespace count, not just the literal space.
-// The substrate's readline hops keep their own space-only rule.
-func isWS(cluster string) bool {
-	return strings.TrimSpace(cluster) == ""
-}
-
-// vimWordForward implements vim `w`: past the current word run, over
-// whitespace, onto the start of the next word (crossing line ends).
-func (e *Editor) vimWordForward() (int, int) {
-	ln, col := e.ln, e.col
-	cs := e.lineClusters(ln)
-	i := col
-	for i < len(cs) && !isWS(cs[i]) {
-		i++ // leave the current run
-	}
-	for {
-		for i < len(cs) && isWS(cs[i]) {
-			i++
-		}
-		if i < len(cs) {
-			return ln, i
-		}
-		if ln >= len(e.lines)-1 {
-			return ln, max(0, len(cs)-1)
-		}
-		ln, cs, i = ln+1, e.lineClusters(ln+1), 0
-	}
-}
-
-// vimWordBack implements vim `b`: back over whitespace onto the start of
-// the previous word run (crossing line ends).
-func (e *Editor) vimWordBack() (int, int) {
-	ln, col := e.ln, e.col
-	cs := e.lineClusters(ln)
-	i := col
-	for {
-		for i > 0 && isWS(cs[i-1]) {
-			i--
-		}
-		if i > 0 {
-			for i > 0 && !isWS(cs[i-1]) {
-				i--
-			}
-			return ln, i
-		}
-		if ln == 0 {
-			return 0, 0
-		}
-		ln--
-		cs = e.lineClusters(ln)
-		i = len(cs)
-	}
-}
-
-// wordEnd moves to the end of the current/next word (vim `e`, cluster form).
-func (e *Editor) wordEnd() (int, int) {
-	ln, col := e.ln, e.col
-	for {
-		cs := e.lineClusters(ln)
-		i := col + 1
-		for i < len(cs) && isWS(cs[i]) {
-			i++
-		}
-		if i >= len(cs) {
-			if ln < len(e.lines)-1 {
-				ln, col = ln+1, -1
-				continue
-			}
-			return ln, max(0, len(cs)-1)
-		}
-		for i+1 < len(cs) && !isWS(cs[i+1]) {
-			i++
-		}
-		return ln, i
-	}
-}
-
-// paraForward/paraBack: next/previous blank-line boundary.
-func (e *Editor) paraForward(count int) int {
-	ln := e.ln
-	for ; count > 0; count-- {
-		i := ln + 1
-		for i < len(e.lines) && strings.TrimSpace(e.lines[i]) != "" {
-			i++
-		}
-		ln = min(i, len(e.lines)-1)
-	}
-	return ln
-}
-
-func (e *Editor) paraBack(count int) int {
-	ln := e.ln
-	for ; count > 0; count-- {
-		i := ln - 1
-		for i > 0 && strings.TrimSpace(e.lines[i]) != "" {
-			i--
-		}
-		ln = max(i, 0)
-	}
-	return ln
-}
-
-// move applies a motion action count times, extending the selection in
-// visual modes.
-func (e *Editor) move(act Action, count int) {
-	// Visual highlights derive from vAnchor + cursor; the buffer's own
-	// selection anchor stays nil so insertText never sees a stray region.
-	const extend = false
-	apply := func(ln, col int) {
-		e.moveCursor(ln, col, extend)
-		if e.mode != ModeInsert {
-			e.clampNormal()
-		}
-		e.ensureVisible()
-		e.MarkDirty()
-	}
-	switch act {
-	case ActLeft:
-		apply(e.ln, e.col-count)
-		e.desired = -1
-	case ActRight:
-		apply(e.ln, min(e.col+count, e.normalMax(e.ln)))
-		e.desired = -1
-	case ActDown, ActUp:
-		delta := count
-		if act == ActUp {
-			delta = -count
-		}
-		ln, col := e.verticalTarget(delta, e.measure)
-		d := e.desired
-		apply(ln, col)
-		e.desired = d
-	case ActPageDown, ActPageUp:
-		delta := max(e.h, 1) * count
-		if act == ActPageUp {
-			delta = -delta
-		}
-		ln, col := e.verticalTarget(delta, e.measure)
-		d := e.desired
-		apply(ln, col)
-		e.desired = d
-	case ActLineStart:
-		e.desired = -1
-		apply(e.ln, 0)
-	case ActLineEnd:
-		e.desired = -1
-		apply(e.ln, e.normalMax(e.ln))
-	case ActWordForward:
-		e.desired = -1
-		for i := 0; i < count; i++ {
-			ln, col := e.vimWordForward()
-			e.moveCursor(ln, col, false)
-		}
-		e.clampNormal()
-		e.ensureVisible()
-		e.MarkDirty()
-	case ActWordBack:
-		e.desired = -1
-		for i := 0; i < count; i++ {
-			ln, col := e.vimWordBack()
-			e.moveCursor(ln, col, false)
-		}
-		e.clampNormal()
-		e.ensureVisible()
-		e.MarkDirty()
-	case ActWordEnd:
-		e.desired = -1
-		for i := 0; i < count; i++ {
-			ln, col := e.wordEnd()
-			e.moveCursor(ln, col, false)
-		}
-		e.clampNormal()
-		e.ensureVisible()
-		e.MarkDirty()
-	case ActParaForward:
-		e.desired = -1
-		apply(e.paraForward(count), 0)
-	case ActParaBack:
-		e.desired = -1
-		apply(e.paraBack(count), 0)
-	}
-}
-
-// goToLine is the shared gg/G target motion: an EXPLICIT count means
-// "line count" (1-based, clamped); without one, gg goes to the top and G
-// to the bottom.
-func (e *Editor) goToLine(hadCount bool, count int, bottom bool) {
-	e.desired = -1
-	ln := 0
-	switch {
-	case hadCount:
-		ln = min(count-1, len(e.lines)-1)
-	case bottom:
-		ln = len(e.lines) - 1
-	}
-	e.moveCursor(ln, 0, false)
-	e.clampNormal()
-	e.ensureVisible()
-	e.MarkDirty()
-}
-
-// --- visual ranges ----------------------------------------------------------
-
-// visualRange returns the INCLUSIVE charwise selection as an exclusive
-// [lo, hiEx) buffer region.
-func (e *Editor) visualRange() (lo, hiEx taPos) {
-	a, b := e.vAnchor, taPos{ln: e.ln, col: e.col}
-	if a.ln > b.ln || (a.ln == b.ln && a.col > b.col) {
-		a, b = b, a
-	}
-	return a, taPos{ln: b.ln, col: min(b.col+1, len(e.lineClusters(b.ln)))}
-}
-
-// visualLines returns the inclusive line span of a line-wise selection.
-func (e *Editor) visualLines() (lo, hi int) {
-	lo, hi = e.vAnchor.ln, e.ln
-	if lo > hi {
-		lo, hi = hi, lo
-	}
-	return lo, hi
-}
-
-// --- edit operations ---------------------------------------------------------
-
-// exportYank puts a yanked selection on the SYSTEM clipboard and reports the
-// outcome, and it is called only from the explicit yank actions.
-//
-// NOT from yankSet, which is the REGISTER seam: a vim delete populates the
-// register too -- correctly -- so exporting there would push deleted text out
-// over OSC 52. Delete a line holding a secret and it would land in the
-// clipboard of whoever ran the app. Two seams, because they mean two different
-// things.
-//
-// A raw-mode TUI blocks the terminal's own selection, so the widget owes its
-// user a way to copy out; bufferview already does this on `y` for the same
-// reason. Backends without a ClipboardWriter make CopyToClipboard report
-// false, which is surfaced rather than treated as an error.
-func (e *Editor) exportYank(text string) {
-	delivered := false
-	if ctx := e.Context(); ctx != nil {
-		delivered = ctx.CopyToClipboard(text)
-	}
-	e.publish(YankEvent{Owner: e.NodeID(), ClipboardDelivered: delivered})
-}
-
-func (e *Editor) yankSet(text string, linewise bool) {
-	e.regText, e.regLinewise = text, linewise
-}
-
-// deleteLines removes [lo, hi] inclusive into the register (linewise).
-func (e *Editor) deleteLines(lo, hi int) {
-	e.beginGroup()
-	e.yankSet(strings.Join(e.lines[lo:hi+1], "\n"), true)
-	rest := append([]string{}, e.lines[:lo]...)
-	rest = append(rest, e.lines[hi+1:]...)
-	if len(rest) == 0 {
-		rest = []string{""}
-	}
-	e.lines = rest
-	e.ln = min(lo, len(e.lines)-1)
-	e.col = 0
-	e.anchor = nil
-	e.clampNormal()
-	e.edited()
-}
-
-func (e *Editor) pasteRegister(after bool) {
-	if e.regText == "" && !e.regLinewise {
-		return
-	}
-	e.beginGroup()
-	if e.regLinewise {
-		at := e.ln
-		if after {
-			at++
-		}
-		newLines := strings.Split(e.regText, "\n")
-		e.lines = append(e.lines[:at], append(append([]string{}, newLines...), e.lines[at:]...)...)
-		e.ln, e.col = at, 0
-	} else {
-		col := e.col
-		if after && len(e.lineClusters(e.ln)) > 0 {
-			col++
-		}
-		e.col = e.clampCol(e.ln, col)
-		e.insertText(e.regText)
-		// vim leaves the cursor ON the last pasted cluster.
-		e.col = max(0, e.col-1)
-		e.clampNormal()
-	}
-	e.edited()
-}
-
 // mutatingActions are refused in read-only mode (motions, visual entry,
 // and yank stay available — a viewer still navigates and copies).
 func mutatingAction(act Action) bool {
@@ -779,7 +476,7 @@ func mutatingAction(act Action) bool {
 	case ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
 		ActOpenBelow, ActOpenAbove, ActDeleteChar, ActDeleteToEnd,
 		ActPasteAfter, ActPasteBefore, ActUndo, ActRedo,
-		ActDeletePrefix, ActVisualDelete:
+		ActDeletePrefix, ActVisualDelete, ActCut, ActPaste:
 		return true
 	}
 	return false
@@ -871,6 +568,9 @@ func (e *Editor) execAction(act Action, count int) bool {
 
 	// Visual entry/exit.
 	case ActVisual:
+		if !e.canSelect {
+			return true
+		}
 		switch e.mode {
 		case ModeVisual:
 			e.exitVisual()
@@ -880,6 +580,9 @@ func (e *Editor) execAction(act Action, count int) bool {
 		}
 		return true
 	case ActVisualLine:
+		if !e.canSelect {
+			return true
+		}
 		switch e.mode {
 		case ModeVisualLine:
 			e.exitVisual()
@@ -912,18 +615,50 @@ func (e *Editor) execAction(act Action, count int) bool {
 	case ActVisualDelete:
 		if e.mode == ModeVisualLine {
 			lo, hi := e.visualLines()
-			e.setMode(ModeNormal)
-			e.anchor = nil
+			e.exitVisual()
 			e.deleteLines(lo, hi)
 		} else {
 			lo, hiEx := e.visualRange()
 			e.beginGroup()
 			e.yankSet(e.textIn(lo, hiEx), false)
 			e.deleteRegion(lo, hiEx)
-			e.setMode(ModeNormal)
-			e.clampNormal()
+			e.exitVisual()
 			e.edited()
 		}
+		return true
+
+	// General actions (Nano / Standard).
+	case ActCut:
+		if e.mode == ModeVisual || e.mode == ModeVisualLine {
+			return e.execAction(ActVisualDelete, count)
+		}
+		e.deleteLines(e.ln, e.ln)
+		return true
+
+	case ActCopy:
+		if e.mode == ModeVisual || e.mode == ModeVisualLine {
+			return e.execAction(ActVisualYank, count)
+		}
+		if e.ln < len(e.lines) {
+			text := e.lines[e.ln]
+			e.yankSet(text, true)
+			e.exportYank(text)
+		}
+		return true
+
+	case ActPaste:
+		e.pasteRegister(false)
+		return true
+
+	case ActSelectAll:
+		if !e.canSelect || len(e.lines) == 0 {
+			return true
+		}
+		e.vAnchor = taPos{ln: 0, col: 0}
+		lastLn := len(e.lines) - 1
+		e.ln = lastLn
+		e.col = max(0, len(e.lineClusters(lastLn))-1)
+		e.setMode(ModeVisual)
 		return true
 	}
 	return false
@@ -1011,10 +746,36 @@ func (e *Editor) handleKey(k tui.KeyEvent) bool {
 // keys). Tab INSERTS a tab in Insert mode; traversal
 // belongs to Normal mode, where Tab bubbles.
 func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
+	// Keysets or overlays may bind shortcut chords in Insert mode (e.g. Nano Ctrl+K, Standard Ctrl+Z/C/V/X).
+	ctrl := k.Mods&tui.ModCtrl != 0
+	if ctrl || k.Code >= 0xF000 {
+		code := k.Code
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			code = []rune(k.Text)[0]
+		}
+		kc := KeyChord{Mode: ModeInsert, Code: code, Ctrl: ctrl}
+		var (
+			act   Action
+			bound bool
+		)
+		switch e.keyset {
+		case KeysetNano:
+			act, bound = NanoKeymap()[kc]
+		case KeysetStandard:
+			act, bound = StandardKeymap()[kc]
+		default:
+			act, bound = e.keymap[kc]
+		}
+		if bound {
+			e.settlePendingRune()
+			return e.execAction(act, 1)
+		}
+	}
+
 	isText := k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
 
-	// Chord state machine first.
-	if e.pendingRune != 0 {
+	// Chord state machine first (only in modal editing).
+	if e.modal && e.pendingRune != 0 {
 		if isText && []rune(k.Text)[0] == e.chord[1] {
 			// Second chord rune dispatched before the tick: escape.
 			e.pendingRune = 0
@@ -1030,7 +791,7 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 		// "jjk" commits the first j and escapes on the second j plus k.
 		e.settlePendingRune()
 	}
-	if isText && e.chord != nil && e.pendingRune == 0 && []rune(k.Text)[0] == e.chord[0] {
+	if e.modal && isText && e.chord != nil && e.pendingRune == 0 && []rune(k.Text)[0] == e.chord[0] {
 		e.pendingRune = e.chord[0]
 		if ctx := e.Context(); ctx != nil {
 			e.chordCancel = ctx.After(e.chordTimeout)
@@ -1047,8 +808,16 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 		e.edited()
 		return true
 	case tui.KeyEscape:
-		e.exitInsert()
-		return true
+		if e.modal {
+			e.exitInsert()
+			return true
+		}
+		if e.vAnchor != (taPos{}) {
+			e.vAnchor = taPos{}
+			e.MarkDirty()
+			return true
+		}
+		return false
 	case tui.KeyEnter:
 		e.beginGroup()
 		e.insertText("\n")
@@ -1442,20 +1211,6 @@ func (e *Editor) colAtCells(cs []string, from, end, cells int) int {
 
 func (e *Editor) wrapPos(ln, col int) (row, x int) {
 	return wrapPosOf(e.lines, ln, col, e.view())
-}
-
-// inVisual reports whether (ln, col) is inside the visual highlight.
-func (e *Editor) inVisual(ln, col int) bool {
-	switch e.mode {
-	case ModeVisual:
-		lo, hiEx := e.visualRange()
-		p := taPos{ln: ln, col: col}
-		return posLE(lo, p.ln, p.col) && !posLE(hiEx, p.ln, p.col)
-	case ModeVisualLine:
-		lo, hi := e.visualLines()
-		return ln >= lo && ln <= hi
-	}
-	return false
 }
 
 // Render paints the viewport with the visual-selection fill.
