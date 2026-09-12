@@ -186,40 +186,6 @@ func (b *Base) focusSelf() bool {
 	return b.ctx.Focused()
 }
 
-// selfFocuser is satisfied (by promotion) by every widget embedding Base.
-type selfFocuser interface{ focusSelf() bool }
-
-// childLister lets non-Container widgets expose their children to
-// focusFirst's walk (Split, Tabs).
-type childLister interface{ listChildren() []tui.Component }
-
-// focusFirst walks c's subtree in document order and focuses the first
-// package widget that is Focusable and accepts focus. Used by Float to seed
-// focus into a freshly shown modal. Returns whether focus
-// landed.
-func focusFirst(c tui.Component) bool {
-	if f, ok := c.(tui.Focusable); ok && f.AcceptsFocus() {
-		if sf, ok := c.(selfFocuser); ok && sf.focusSelf() {
-			return true
-		}
-	}
-	switch ct := c.(type) {
-	case tui.Container:
-		for ch := range ct.Children() {
-			if focusFirst(ch) {
-				return true
-			}
-		}
-	case childLister:
-		for _, ch := range ct.listChildren() {
-			if focusFirst(ch) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // boundedMax resolves a constraint axis for greedy widgets: the max when
 // bounded, else the min (a greedy widget asked for its intrinsic extent on
 // an unbounded axis must not answer Unbounded).
