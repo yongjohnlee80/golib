@@ -12,8 +12,12 @@ import (
 // to the runtime. There are no globals to reach it by, deliberately: a
 // component that could find the App without being handed it could also be
 // used outside one, and the compiler would not say so. One *Context per
-// mounted node,
-// created at mount, invalidated at unmount.
+// mounted node, created at mount, invalidated at unmount.
+//
+// Context is deliberately a concrete struct rather than an interface: it encapsulates
+// unexported runtime pointers (*App, *node) and is passed directly by pointer to
+// Component.Init(*Context). It does NOT implement context.Context; rather, it exposes
+// the standard async lifetime context via Ctx().
 //
 // Methods are legal only on the loop goroutine except Post and Go, which are
 // safe from any goroutine, because they only hand work to the App rather than
@@ -183,12 +187,100 @@ func (c *Context) StringWidth(s string) int {
 	return StringWidthPolicy(s, c.app.widthPolicy())
 }
 
-// Post enqueues ev on the program lane. Safe from any goroutine.
+// Post enqueues ev for delivery on Lane B (the Program Lane).
+//
+// # Lane & Dispatch Semantics
+//
+//   - Lane B (Program Queue): ev enters the non-blocking, unbounded-by-default
+//     program queue (see queue.go). Program-lane events are never dropped due
+//     to input overflow and never block the sender.
+//   - Concurrency: Safe to call from ANY goroutine — including external watchers,
+//     background network loops, and component handlers on the loop itself.
+//   - Delivery Target: ev is delivered on the loop goroutine through standard
+//     event routing, bubbling or targeting the active component tree.
+//
+// # Example Usage
+//
+//	// In a background goroutine, file watcher, or network listener:
+//	go func() {
+//	    data, err := loadData()
+//	    if err != nil {
+//	        ctx.Post(ErrorEvent{Err: err})
+//	        return
+//	    }
+//	    ctx.Post(DataLoadedEvent{Payload: data})
+//	}()
+//
+//	// Handled in the component's HandleEvent:
+//	func (c *MyComponent) HandleEvent(ev tui.Event) bool {
+//	    switch e := ev.(type) {
+//	    case DataLoadedEvent:
+//	        c.data = e.Payload
+//	        c.ctx.MarkDirty()
+//	        return true
+//	    case ErrorEvent:
+//	        c.err = e.Err
+//	        c.ctx.MarkDirty()
+//	        return true
+//	    }
+//	    return false
+//	}
 func (c *Context) Post(ev Event) { c.app.Post(ev) }
 
-// Go schedules task on the App's bounded pool with this node as owner: the
-// TaskResult is addressed to this node's HandleEvent, and the task context
-// derives from Ctx() so unmount cancels it. Safe from any goroutine.
+// Go schedules task on the App's bounded background worker pool, binding this
+// component node as the task owner.
+//
+// # Lane & Lifecycle Semantics
+//
+//   - Execution Pool: task runs off the loop goroutine inside the bounded worker
+//     pool (default size 64, configurable via WithTaskPoolSize).
+//   - Context & Cancellation: The context.Context passed to task derives from
+//     c.Ctx() (the node's lifetime context) and the App's run context. If the
+//     component unmounts before the task completes, ctx is cancelled immediately.
+//   - Lane B Completion (TaskResult): When task returns or panics, the runtime
+//     synthesizes a TaskResult{ID, Value, Err} and enqueues it into Lane B (the
+//     Program Lane).
+//   - Direct Node Addressing: The resulting TaskResult is addressed strictly to
+//     this component node's HandleEvent, bypassing normal bubbling and leaf-focus
+//     routing. If the node was unmounted while the task was running, delivery is
+//     safely skipped.
+//   - Concurrency: Safe to call from any goroutine, though most commonly initiated
+//     inside Component.Init or HandleEvent.
+//
+// # Options
+//
+//   - Exclusive(group): Cancels any in-flight task on this node sharing the same
+//     group name before launching the new one (e.g. preempting stale search queries).
+//
+// # Example Usage
+//
+//	// Trigger an asynchronous fetch on button click or query change:
+//	taskID := ctx.Go(func(tctx context.Context) (any, error) {
+//	    req, err := http.NewRequestWithContext(tctx, "GET", "https://api.example.com/items", nil)
+//	    if err != nil {
+//	        return nil, err
+//	    }
+//	    resp, err := http.DefaultClient.Do(req)
+//	    if err != nil {
+//	        return nil, err
+//	    }
+//	    defer resp.Body.Close()
+//	    return io.ReadAll(resp.Body)
+//	}, tui.Exclusive("search"))
+//
+//	// Handled on the loop goroutine in HandleEvent:
+//	func (c *MyComponent) HandleEvent(ev tui.Event) bool {
+//	    if res, ok := ev.(tui.TaskResult); ok {
+//	        if res.Err != nil {
+//	            c.err = res.Err
+//	        } else {
+//	            c.items = parseItems(res.Value.([]byte))
+//	        }
+//	        c.ctx.MarkDirty()
+//	        return true
+//	    }
+//	    return false
+//	}
 func (c *Context) Go(task Task, opts ...TaskOption) TaskID {
 	return c.app.Go(c.node.id, task, opts...)
 }

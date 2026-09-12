@@ -46,7 +46,7 @@ type App struct {
 
 	// TWO LANES, and they are separate so that neither can starve the other.
 	//
-	// Lane A carries input arriving from the backend — keys, mouse, resize.
+	// **Lane A** carries input arriving from the backend — keys, mouse, resize.
 	// The App pumps it, rather than the backend pushing into the loop, so a
 	// slow frame cannot block the terminal read. The channel is unbuffered and
 	// the pump holds the pending queue, which is why a burst of input is
@@ -54,7 +54,7 @@ type App struct {
 	input      chan Event
 	inputDrops atomic.Uint64
 
-	// Lane B carries events the program itself posts. Keeping them off lane A
+	// **Lane B** carries events the program itself posts. Keeping them off lane A
 	// means a program that posts heavily cannot delay input, and input arriving
 	// faster than it can be handled cannot delay the program.
 	queue programQueue
@@ -268,7 +268,7 @@ func (a *App) loop(ctx context.Context) error {
 			}
 			a.dispatch(ev)
 
-		case <-a.queue.wake: // lane B: the program posted work, or marked dirt
+		case <-a.queue.wake: // lane B: the program posted work, or marked dirty
 			a.drainProgramLane()
 			a.maybeFrame()
 
