@@ -104,8 +104,9 @@ type sgrInterp struct {
 	// loop-goroutine-owned.
 	mode escMode
 
-	// pendingCR indicates a bare '\r' was seen; resolved to sgrNewline if followed by '\n',
-	// or sgrCarriage if followed by any other byte or chunk boundary.
+	// pendingCR indicates a bare '\r' was seen; retained across chunk boundaries
+	// to fold '\r\n' into a single sgrNewline, or resolved to sgrCarriage upon
+	// encountering any non-'\n' byte.
 	// loop-goroutine-owned.
 	pendingCR bool
 }

@@ -63,19 +63,20 @@ import (
 //
 // 1. Setting up the root overlay host in an application:
 //
-//	rootLayout := widget.NewSplit(sidebar, mainView, widget.WithRatio(0.25))
+//	rootLayout := widget.NewSplit(widget.Horizontal, sidebar, mainView, widget.WithRatio(0.25))
 //	overlayHost := widget.NewOverlayHost(rootLayout)
 //
 // 2. Attaching a modal dialog to the overlay host:
 //
 //	modalDialog := widget.NewFloat(confirmBox,
-//		widget.WithFloatPlacement(widget.PlaceCenter),
-//		widget.WithScrim(true),
+//		widget.WithModal(true),
+//		widget.WithDimBackground(true),
+//		widget.WithAnchor(widget.Center),
 //	)
 //	overlayHost.Attach(modalDialog)
 //
-//	// Later, trigger the modal on user action:
-//	modalDialog.Show()
+//	// When mounted on the event loop, trigger the modal:
+//	// modalDialog.Show()
 type OverlayHost struct {
 	*tui.Stack
 }

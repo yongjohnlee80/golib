@@ -403,24 +403,27 @@ func modeClass(m EditorMode) EditorMode {
 }
 
 // actionModes reports which binding classes accept an action.
-func actionModes(a Action) (normal, visual bool) {
+func actionModes(a Action) (normal, visual, insert bool) {
 	switch a {
 	case ActLeft, ActDown, ActUp, ActRight, ActLineStart, ActLineEnd,
 		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
-		ActGoBottom, ActPageUp, ActPageDown, ActGoPrefix,
-		ActVisual, ActVisualLine:
-		return true, true
+		ActPageUp, ActPageDown:
+		return true, true, true
+	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine:
+		return true, true, false
 	case ActDeletePrefix, ActYankPrefix,
 		ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
 		ActOpenBelow, ActOpenAbove,
-		ActDeleteChar, ActDeleteToEnd, ActPasteAfter, ActPasteBefore,
-		ActUndo, ActRedo,
-		ActCut, ActCopy, ActPaste, ActSelectAll, ActEscape:
-		return true, false
+		ActDeleteChar, ActDeleteToEnd, ActPasteAfter, ActPasteBefore:
+		return true, false, false
+	case ActCut, ActCopy, ActPaste, ActSelectAll, ActEscape:
+		return true, true, true
+	case ActUndo, ActRedo:
+		return true, false, true
 	case ActVisualYank, ActVisualDelete:
-		return false, true
+		return false, true, false
 	}
-	return false, false
+	return false, false, false
 }
 
 // Keymap maps chords to actions. Overlays passed to WithKeymap replace (or,
@@ -593,8 +596,8 @@ func (k Keyset) String() string {
 
 // validateKeymapEntry panics on an entry the Editor cannot honor.
 func validateKeymapEntry(kc KeyChord, act Action) {
-	if kc.Mode != ModeNormal && kc.Mode != ModeVisual {
-		panic(fmt.Sprintf("widget: WithKeymap: chord %+v: bindings exist only for ModeNormal/ModeVisual", kc))
+	if kc.Mode != ModeNormal && kc.Mode != ModeVisual && kc.Mode != ModeInsert {
+		panic(fmt.Sprintf("widget: WithKeymap: chord %+v: bindings exist only for ModeNormal/ModeVisual/ModeInsert", kc))
 	}
 	if act >= actMax {
 		panic(fmt.Sprintf("widget: WithKeymap: chord %+v: unknown action %d", kc, act))
@@ -602,8 +605,8 @@ func validateKeymapEntry(kc KeyChord, act Action) {
 	if act == ActUnbound {
 		return // always allowed: removes the default
 	}
-	nOK, vOK := actionModes(act)
-	if (kc.Mode == ModeNormal && !nOK) || (kc.Mode == ModeVisual && !vOK) {
+	nOK, vOK, iOK := actionModes(act)
+	if (kc.Mode == ModeNormal && !nOK) || (kc.Mode == ModeVisual && !vOK) || (kc.Mode == ModeInsert && !iOK) {
 		panic(fmt.Sprintf("widget: WithKeymap: chord %+v: action %d is not supported in that mode", kc, act))
 	}
 }

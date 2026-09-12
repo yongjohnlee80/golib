@@ -85,3 +85,54 @@ func TestEditorHistoryRingCapacity(t *testing.T) {
 		t.Fatalf("expected ring buffer cap to leave 7 lines, got %d", numLines)
 	}
 }
+
+func TestEditorHistoryModelessUndoRedo(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 40, 10,
+		widget.WithInitialText(""),
+		widget.WithKeymap(widget.StandardKeymap()),
+		widget.WithModalEditing(false),
+	)
+
+	// Type "ab"
+	h.inject(typeString("ab")...)
+	h.barrier(sh)
+	if got := ed.Value(); got != "ab" {
+		t.Fatalf("after typing 'ab': got %q, want %q", got, "ab")
+	}
+
+	// Ctrl+Z to undo
+	h.inject(keyMod('z', tui.ModCtrl))
+	h.barrier(sh)
+	if got := ed.Value(); got != "" {
+		t.Fatalf("after Ctrl+Z: got %q, want %q", got, "")
+	}
+
+	// Type "c"
+	h.inject(typeString("c")...)
+	h.barrier(sh)
+	if got := ed.Value(); got != "c" {
+		t.Fatalf("after typing 'c': got %q, want %q", got, "c")
+	}
+
+	// Ctrl+Z to undo again
+	h.inject(keyMod('z', tui.ModCtrl))
+	h.barrier(sh)
+	if got := ed.Value(); got != "" {
+		t.Fatalf("after second Ctrl+Z: got %q, want %q", got, "")
+	}
+
+	// Cursor navigation should also break undo grouping in modeless
+	h.inject(typeString("hello")...)
+	h.inject(key(tui.KeyLeft))
+	h.inject(typeString("!")...)
+	h.barrier(sh)
+	if got := ed.Value(); got != "hell!o" {
+		t.Fatalf("after insert with navigation: got %q, want %q", got, "hell!o")
+	}
+
+	h.inject(keyMod('z', tui.ModCtrl))
+	h.barrier(sh)
+	if got := ed.Value(); got != "hello" {
+		t.Fatalf("after undo following navigation: got %q, want %q", got, "hello")
+	}
+}

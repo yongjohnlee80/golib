@@ -47,13 +47,14 @@ import (
 // or [StatusBar.SetRight] must occur on the main application loop goroutine.
 //
 // # Usage Examples
+// # Usage Examples
 //
-//  1. Setting up an application status footer:
+// 1. Setting up an application status footer:
 //
-//     bar := widget.NewStatusBar()
-//     bar.SetLeft("main*")
-//     bar.SetCenter("Ready")
-//     bar.SetRight("q: Quit | ?: Help", style.New().Bold(true))
+//	bar := widget.NewStatusBar()
+//	bar.SetLeft("main*")
+//	bar.SetCenter("Ready")
+//	bar.SetRight("q: Quit | ?: Help", style.New().Bold(true))
 type StatusBar struct {
 	Base
 	bar                 style.Style

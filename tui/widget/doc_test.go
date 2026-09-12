@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -555,4 +556,35 @@ func TestLazygitComposition(t *testing.T) {
 	h.waitFor("dialog dismissed", func() bool { return dismissed.count() == 1 })
 	h.waitFor("dialog gone", func() bool { return !strings.Contains(h.grid(), "Commit message") })
 	h.wantNotContains("░")
+}
+
+func ExampleOverlayHost() {
+	sidebar := widget.NewBox(widget.NewText("Sidebar"))
+	mainView := widget.NewBox(widget.NewText("Main View"))
+	confirmBox := widget.NewBox(widget.NewText("Confirm action"))
+
+	rootLayout := widget.NewSplit(widget.Horizontal, sidebar, mainView, widget.WithRatio(0.25))
+	overlayHost := widget.NewOverlayHost(rootLayout)
+
+	modalDialog := widget.NewFloat(confirmBox,
+		widget.WithModal(true),
+		widget.WithDimBackground(true),
+		widget.WithAnchor(widget.Center),
+	)
+	overlayHost.Attach(modalDialog)
+	_ = overlayHost
+	// Output:
+}
+
+func ExampleText() {
+	_ = widget.NewText("Active Project: golib / tui / widget",
+		widget.WithTextStyle(style.New().Bold(true)),
+		widget.WithWrapMode(widget.Truncate),
+	)
+
+	_ = widget.NewText("This panel displays high-volume logging output with backpressure.",
+		widget.WithTextStyle(style.New().Faint(true)),
+		widget.WithWrapMode(widget.Wrap),
+	)
+	// Output:
 }

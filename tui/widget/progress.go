@@ -56,18 +56,18 @@ import (
 //
 // # Usage Examples
 //
-//  1. Standard determinate progress bar:
+// 1. Standard determinate progress bar:
 //
-//     bar := widget.NewProgressBar()
-//     // Update progress to 60%:
-//     bar.SetProgress(0.60)
+//	bar := widget.NewProgressBar()
+//	// Update progress to 60%:
+//	bar.SetProgress(0.60)
 //
-//  2. Indeterminate braille spinner:
+// 2. Indeterminate braille spinner:
 //
-//     spinner := widget.NewProgressBar(
-//     widget.WithSpinner([]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}, 80*time.Millisecond),
-//     )
-//     spinner.SetIndeterminate()
+//	spinner := widget.NewProgressBar(
+//		widget.WithSpinner([]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}, 80*time.Millisecond),
+//	)
+//	spinner.SetIndeterminate()
 type ProgressBar struct {
 	Base
 	progress      float64

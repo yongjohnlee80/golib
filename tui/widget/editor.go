@@ -461,30 +461,14 @@ func (e *Editor) EscapeChord() string {
 	return string(e.chord)
 }
 
-// Bindings returns all active keybindings configured on this editor, sorted deterministically
-// by mode, key chord, and action. If an escape chord is active in modal mode, it is included.
+// Bindings returns all discrete key chords configured in this editor's active keymap,
+// sorted deterministically by mode, key chord, and action.
+//
+// Multi-rune escape sequences (such as the modal Insert-mode "jk" chord) operate via
+// the chord timeout engine rather than single-chord mappings, and are reported via
+// [Editor.EscapeChord] and [KeymapSnapshot.EscapeChord].
 func (e *Editor) Bindings() []KeyBinding {
-	base := e.keymap.Bindings()
-	if e.modal && len(e.chord) > 0 {
-		chordStr := string(e.chord)
-		base = append(base, KeyBinding{
-			Mode:        ModeInsert,
-			Key:         chordStr,
-			Action:      ActEscape,
-			Name:        "Escape",
-			Description: fmt.Sprintf("Fast escape chord (%q) returning to Normal mode", chordStr),
-		})
-		sort.Slice(base, func(i, j int) bool {
-			if base[i].Mode != base[j].Mode {
-				return base[i].Mode < base[j].Mode
-			}
-			if base[i].Key != base[j].Key {
-				return base[i].Key < base[j].Key
-			}
-			return base[i].Action < base[j].Action
-		})
-	}
-	return base
+	return e.keymap.Bindings()
 }
 
 // BindingsForMode returns all active bindings available when the editor is in mode m.
@@ -736,6 +720,10 @@ func (e *Editor) execAction(act Action, count int) bool {
 
 	// Visual operations.
 	case ActVisualYank:
+		if !e.canYank {
+			e.exitVisual()
+			return true
+		}
 		if e.mode == ModeVisualLine {
 			lo, hi := e.visualLines()
 			text := strings.Join(e.lines[lo:hi+1], "\n")
@@ -776,6 +764,12 @@ func (e *Editor) execAction(act Action, count int) bool {
 		return true
 
 	case ActCopy:
+		if !e.canYank {
+			if e.mode == ModeVisual || e.mode == ModeVisualLine {
+				e.exitVisual()
+			}
+			return true
+		}
 		if e.mode == ModeVisual || e.mode == ModeVisualLine {
 			return e.execAction(ActVisualYank, count)
 		}
@@ -895,19 +889,7 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 			code = []rune(k.Text)[0]
 		}
 		kc := KeyChord{Mode: ModeInsert, Code: code, Ctrl: ctrl}
-		var (
-			act   Action
-			bound bool
-		)
-		switch e.keyset {
-		case KeysetNano:
-			act, bound = NanoKeymap()[kc]
-		case KeysetStandard:
-			act, bound = StandardKeymap()[kc]
-		default:
-			act, bound = e.keymap[kc]
-		}
-		if bound {
+		if act, bound := e.keymap[kc]; bound {
 			e.settlePendingRune()
 			return e.execAction(act, 1)
 		}
@@ -987,18 +969,21 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 		}
 		return true
 	case tui.KeyLeft:
+		e.groupOpen = false
 		e.desired = -1
 		e.moveCursor(e.ln, e.col-1, false)
 		e.ensureVisible()
 		e.MarkDirty()
 		return true
 	case tui.KeyRight:
+		e.groupOpen = false
 		e.desired = -1
 		e.moveCursor(e.ln, e.col+1, false)
 		e.ensureVisible()
 		e.MarkDirty()
 		return true
 	case tui.KeyUp, tui.KeyDown:
+		e.groupOpen = false
 		delta := 1
 		if k.Code == tui.KeyUp {
 			delta = -1
@@ -1011,11 +996,13 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 		e.MarkDirty()
 		return true
 	case tui.KeyHome:
+		e.groupOpen = false
 		e.desired = -1
 		e.moveCursor(e.ln, 0, false)
 		e.MarkDirty()
 		return true
 	case tui.KeyEnd:
+		e.groupOpen = false
 		e.desired = -1
 		e.moveCursor(e.ln, len(e.lineClusters(e.ln)), false)
 		e.MarkDirty()
@@ -1101,9 +1088,11 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 				}
 				e.deleteLines(e.ln, min(e.ln+count-1, len(e.lines)-1))
 			case ActYankPrefix:
-				text := strings.Join(e.lines[e.ln:min(e.ln+count-1, len(e.lines)-1)+1], "\n")
-				e.yankSet(text, true)
-				e.exportYank(text)
+				if e.canYank {
+					text := strings.Join(e.lines[e.ln:min(e.ln+count-1, len(e.lines)-1)+1], "\n")
+					e.yankSet(text, true)
+					e.exportYank(text)
+				}
 			case ActGoPrefix:
 				e.goToLine(hadCount, count, false) // [count]gg
 			}
@@ -1124,6 +1113,9 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 
 	switch act {
 	case ActDeletePrefix, ActYankPrefix, ActGoPrefix:
+		if act == ActYankPrefix && !e.canYank {
+			return true
+		}
 		e.pendingAct = act
 		e.pendingChord = kc
 		e.pendingCount = 0
