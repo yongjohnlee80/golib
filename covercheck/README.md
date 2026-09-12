@@ -20,6 +20,8 @@ go install github.com/yongjohnlee80/golib/cmd/covercheck@latest
 - Minimum total/package/file/changed coverage thresholds.
 - Total and per-file regression budgets.
 - Regular-expression exclusions and library-level file overrides.
+- Go-parser classification keeps declaration-only files at `N/A` while strict
+  mode fails executable changed files missing from the head profile.
 - Text, Markdown, and JSON output with stable CI exit codes.
 - No network calls, hosted service, token, or third-party Go dependency.
 

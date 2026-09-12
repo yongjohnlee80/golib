@@ -14,6 +14,7 @@ import (
 func TestRunExitContract(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
+	writeFixture(t, root, "a.go", "package fixture\nfunc value() int { return 1 }\n")
 	base := writeFixture(t, root, "base.out", "mode: set\nexample.com/p/a.go:1.1,2.2 1 1\n")
 	head := writeFixture(t, root, "head.out", "mode: set\nexample.com/p/a.go:1.1,2.2 1 0\n")
 	diff := writeFixture(t, root, "change.diff", "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-old\n+new\n")
@@ -42,6 +43,7 @@ func TestRunExitContract(t *testing.T) {
 func TestRunJSONMatchesPolicy(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
+	writeFixture(t, root, "a.go", "package fixture\nfunc value() int { return 1 }\n")
 	base := writeFixture(t, root, "base.out", "mode: count\nexample.com/p/a.go:1.1,2.2 1 1\n")
 	head := writeFixture(t, root, "head.out", "mode: count\nexample.com/p/a.go:1.1,2.2 1 1\n")
 	diff := writeFixture(t, root, "change.diff", "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-old\n+new\n")
@@ -65,6 +67,26 @@ func TestProductionGoChanges(t *testing.T) {
 	})
 	if len(changes) != 2 || changes[0].NewPath != "a.go" || changes[1].OldPath != "deleted.go" {
 		t.Fatalf("filtered changes = %#v", changes)
+	}
+}
+
+func TestAnnotateExecutability(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, "doc.go", "// Package fixture documents a fixture.\npackage fixture\n")
+	writeFixture(t, root, "run.go", "package fixture\nfunc run() { println(1) }\n")
+	changes := []covercheck.FileChange{
+		{NewPath: "doc.go", Kind: covercheck.ChangeAdded},
+		{NewPath: "run.go", Kind: covercheck.ChangeAdded},
+	}
+	if err := annotateExecutability(root, changes); err != nil {
+		t.Fatal(err)
+	}
+	if changes[0].Executability != covercheck.ExecutabilityAbsent {
+		t.Fatalf("doc.go = %q, want absent", changes[0].Executability)
+	}
+	if changes[1].Executability != covercheck.ExecutabilityPresent {
+		t.Fatalf("run.go = %q, want present", changes[1].Executability)
 	}
 }
 

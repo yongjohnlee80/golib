@@ -36,12 +36,28 @@ type LineRange struct {
 	End   int `json:"end"`
 }
 
+// Executability records whether a changed file is known to contain executable
+// Go statements. Diff parsing alone cannot determine this; a caller with head
+// source access may annotate the change before analysis.
+type Executability string
+
+const (
+	// ExecutabilityUnknown means source executability was not inspected.
+	ExecutabilityUnknown Executability = "unknown"
+	// ExecutabilityPresent means the head file contains executable statements.
+	ExecutabilityPresent Executability = "present"
+	// ExecutabilityAbsent means the head file contains declarations/comments but
+	// no executable statements and may correctly be absent from a Go profile.
+	ExecutabilityAbsent Executability = "absent"
+)
+
 // FileChange describes one file and its added or modified head-side lines.
 type FileChange struct {
-	OldPath string      `json:"old_path,omitempty"`
-	NewPath string      `json:"new_path,omitempty"`
-	Kind    ChangeKind  `json:"kind"`
-	Ranges  []LineRange `json:"ranges,omitempty"`
+	OldPath       string        `json:"old_path,omitempty"`
+	NewPath       string        `json:"new_path,omitempty"`
+	Kind          ChangeKind    `json:"kind"`
+	Ranges        []LineRange   `json:"ranges,omitempty"`
+	Executability Executability `json:"executability,omitempty"`
 }
 
 // DiffError describes one malformed unified-diff line.

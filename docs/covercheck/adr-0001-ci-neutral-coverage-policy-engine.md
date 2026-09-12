@@ -71,7 +71,7 @@ The package is intended for reuse by other Go repositories. It therefore cannot 
 
    **Why:** Callers can render or store measurements without enforcing them, and policy evolution does not contaminate parsing.
 
-8. **Use explicit edge semantics.** New files have no base delta and are evaluated by head/changed thresholds. Deleted files do not fail head thresholds. Renames use the Git rename mapping. Files with no executable coverage blocks report `N/A`, not zero. Missing changed production files are reported rather than silently omitted.
+8. **Use explicit edge semantics.** New files have no base delta and are evaluated by head/changed thresholds. Deleted files do not fail head thresholds. Renames use the Git rename mapping. Files with no executable coverage blocks report `N/A`, not zero. Missing changed production files are reported rather than silently omitted. Because absence from a profile alone cannot distinguish an uninstrumented executable file from a declaration-only file, the CLI classifies head source with the standard-library Go parser and passes that evidence into analysis; library callers without source access may leave executability unknown for conservative handling.
 
 9. **Keep the executable CI-neutral.** It writes a text table by default and supports Markdown and JSON. Exit `0` means policy passed, `1` means a valid report failed policy, and `2` means inputs/configuration/operation were invalid. GitHub annotations or PR comments are outside the core and outside the initial release.
 
