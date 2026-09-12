@@ -315,10 +315,10 @@ func hitTestNode(n *node, x, y int) *node {
 // 2 for the second press of a double-click, 3 for triple-click, etc.
 //
 // A press continues the run only when ALL four criteria match:
-//   1. Button matches the previous press.
-//   2. Exact cell coordinates (X, Y) match (terminal cells are 1-cell high; drift is disallowed).
-//   3. Target NodeID matches (clicking a different widget at the same position starts a new run).
-//   4. Elapsed time since the prior press is within doubleClickWindow.
+//  1. Button matches the previous press.
+//  2. Exact cell coordinates (X, Y) match (terminal cells are 1-cell high; drift is disallowed).
+//  3. Target NodeID matches (clicking a different widget at the same position starts a new run).
+//  4. Elapsed time since the prior press is within doubleClickWindow.
 //
 // A MouseRelease between presses is expected and does not interrupt the run.
 // Any mismatch resets the ordinal count back to 1.

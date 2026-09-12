@@ -119,4 +119,3 @@ func StringWidth(s string) int { return grapheme.StringWidth(s, false) }
 func StringWidthPolicy(s string, p WidthPolicy) int {
 	return grapheme.StringWidth(s, p.ambiguousWide())
 }
-

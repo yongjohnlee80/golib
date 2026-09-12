@@ -220,4 +220,3 @@ func TestBusNilGuards(t *testing.T) {
 		})
 	})
 }
-

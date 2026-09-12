@@ -95,7 +95,7 @@ import (
 // min-frame-interval cap rides the same timer).
 type timerEntry struct {
 	at    time.Time
-	seq   uint64        // allocation order; heap tie-break and the TimerID
+	seq   uint64 // allocation order; heap tie-break and the TimerID
 	owner NodeID
 	every time.Duration // 0 = one-shot
 	frame bool          // a pending-frame deadline, not a component timer
