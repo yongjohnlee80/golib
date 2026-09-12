@@ -2,6 +2,7 @@ package widget
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -244,11 +245,16 @@ func WithEditorReadOnly(ro bool) EditorOption {
 }
 
 // WithVimKeymap configures the modal Vim keymap and editing model.
+// Also ensures the fast escape chord "jk" is armed by default.
 func WithVimKeymap() EditorOption {
 	return func(e *Editor) {
 		e.keyset = KeysetVim
 		e.modal = true
 		e.keymap = VimKeymap()
+		if len(e.chord) == 0 {
+			e.chord = []rune{'j', 'k'}
+			e.chordTimeout = 300 * time.Millisecond
+		}
 	}
 }
 
@@ -396,6 +402,99 @@ func (e *Editor) CursorShape() tui.CursorShape {
 		return tui.CursorShapeUnderline
 	}
 	return tui.CursorShapeBlock
+}
+
+// --- runtime keymap reflection -------------------------------------------
+
+// Keyset reports the active editing & keymap profile.
+func (e *Editor) Keyset() Keyset { return e.keyset }
+
+// Keymap returns a defensive copy of the editor's active keymap.
+func (e *Editor) Keymap() Keymap {
+	cp := make(Keymap, len(e.keymap))
+	for k, v := range e.keymap {
+		cp[k] = v
+	}
+	return cp
+}
+
+// EscapeChord returns the configured two-rune escape chord (e.g. "jk"), or "" if disabled.
+func (e *Editor) EscapeChord() string {
+	return string(e.chord)
+}
+
+// Bindings returns all active keybindings configured on this editor, sorted deterministically
+// by mode, key chord, and action. If an escape chord is active in modal mode, it is included.
+func (e *Editor) Bindings() []KeyBinding {
+	base := e.keymap.Bindings()
+	if e.modal && len(e.chord) > 0 {
+		chordStr := string(e.chord)
+		base = append(base, KeyBinding{
+			Mode:        ModeInsert,
+			Key:         chordStr,
+			Action:      ActEscape,
+			Name:        "Escape",
+			Description: fmt.Sprintf("Fast escape chord (%q) returning to Normal mode", chordStr),
+		})
+		sort.Slice(base, func(i, j int) bool {
+			if base[i].Mode != base[j].Mode {
+				return base[i].Mode < base[j].Mode
+			}
+			if base[i].Key != base[j].Key {
+				return base[i].Key < base[j].Key
+			}
+			return base[i].Action < base[j].Action
+		})
+	}
+	return base
+}
+
+// BindingsForMode returns all active bindings available when the editor is in mode m.
+func (e *Editor) BindingsForMode(m EditorMode) []KeyBinding {
+	all := e.Bindings()
+	filtered := make([]KeyBinding, 0, len(all))
+	targetMode := modeClass(m)
+	for _, b := range all {
+		if modeClass(b.Mode) == targetMode {
+			filtered = append(filtered, b)
+		}
+	}
+	return filtered
+}
+
+// SnapshotKeymap generates a complete, serializable runtime reflection snapshot of the
+// editor's active key configuration, profile, and action mappings.
+func (e *Editor) SnapshotKeymap() KeymapSnapshot {
+	return KeymapSnapshot{
+		Keyset:      e.keyset,
+		KeysetName:  e.keyset.String(),
+		Modal:       e.modal,
+		EscapeChord: string(e.chord),
+		Bindings:    e.Bindings(),
+	}
+}
+
+// ActionForChord looks up the bound action for a given key chord.
+func (e *Editor) ActionForChord(kc KeyChord) (Action, bool) {
+	act, ok := e.keymap[kc]
+	return act, ok
+}
+
+// ChordsForAction returns all key chords that map to the specified action.
+func (e *Editor) ChordsForAction(act Action) []KeyChord {
+	var chords []KeyChord
+	for kc, a := range e.keymap {
+		if a == act {
+			chords = append(chords, kc)
+		}
+	}
+	sort.Slice(chords, func(i, j int) bool {
+		if chords[i].Mode != chords[j].Mode {
+			return chords[i].Mode < chords[j].Mode
+		}
+		return chords[i].String() < chords[j].String()
+	})
+	return chords
 }
 
 // --- mode & cursor invariants -------------------------------------------

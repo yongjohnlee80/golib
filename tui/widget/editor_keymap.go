@@ -2,6 +2,7 @@ package widget
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -76,6 +77,49 @@ type KeyChord struct {
 	Ctrl bool
 }
 
+// String returns a human-readable display label for the key chord (e.g. "Ctrl+K", "Home", "w").
+func (kc KeyChord) String() string {
+	var s string
+	switch kc.Code {
+	case tui.KeyLeft:
+		s = "Left"
+	case tui.KeyRight:
+		s = "Right"
+	case tui.KeyUp:
+		s = "Up"
+	case tui.KeyDown:
+		s = "Down"
+	case tui.KeyHome:
+		s = "Home"
+	case tui.KeyEnd:
+		s = "End"
+	case tui.KeyPageUp:
+		s = "PageUp"
+	case tui.KeyPageDown:
+		s = "PageDown"
+	case tui.KeyEscape:
+		s = "Esc"
+	case tui.KeyEnter:
+		s = "Enter"
+	case tui.KeyTab:
+		s = "Tab"
+	case tui.KeyBackspace:
+		s = "Backspace"
+	case tui.KeyDelete:
+		s = "Delete"
+	default:
+		if kc.Code >= 0x20 && kc.Code < 0xE000 {
+			s = string(kc.Code)
+		} else {
+			s = fmt.Sprintf("Key(0x%x)", kc.Code)
+		}
+	}
+	if kc.Ctrl {
+		return "Ctrl+" + s
+	}
+	return s
+}
+
 // Action is one enumerated Editor operation a chord can bind.
 type Action uint8
 
@@ -131,9 +175,224 @@ const (
 	ActCopy      // Copy selection or line (Standard Ctrl+C)
 	ActPaste     // Paste at cursor (Nano Ctrl+U, Standard Ctrl+V)
 	ActSelectAll // Select entire buffer (Standard Ctrl+A)
+	ActEscape    // Escape / return to Normal mode
 
 	actMax // sentinel for validation
 )
+
+// String returns the canonical identifier name for an Action.
+func (a Action) String() string {
+	switch a {
+	case ActUnbound:
+		return "Unbound"
+	case ActLeft:
+		return "Left"
+	case ActDown:
+		return "Down"
+	case ActUp:
+		return "Up"
+	case ActRight:
+		return "Right"
+	case ActLineStart:
+		return "LineStart"
+	case ActLineEnd:
+		return "LineEnd"
+	case ActWordForward:
+		return "WordForward"
+	case ActWordBack:
+		return "WordBack"
+	case ActWordEnd:
+		return "WordEnd"
+	case ActParaForward:
+		return "ParaForward"
+	case ActParaBack:
+		return "ParaBack"
+	case ActGoBottom:
+		return "GoBottom"
+	case ActPageUp:
+		return "PageUp"
+	case ActPageDown:
+		return "PageDown"
+	case ActDeletePrefix:
+		return "DeletePrefix"
+	case ActYankPrefix:
+		return "YankPrefix"
+	case ActGoPrefix:
+		return "GoPrefix"
+	case ActInsert:
+		return "Insert"
+	case ActAppend:
+		return "Append"
+	case ActInsertLineStart:
+		return "InsertLineStart"
+	case ActAppendLineEnd:
+		return "AppendLineEnd"
+	case ActOpenBelow:
+		return "OpenBelow"
+	case ActOpenAbove:
+		return "OpenAbove"
+	case ActDeleteChar:
+		return "DeleteChar"
+	case ActDeleteToEnd:
+		return "DeleteToEnd"
+	case ActPasteAfter:
+		return "PasteAfter"
+	case ActPasteBefore:
+		return "PasteBefore"
+	case ActUndo:
+		return "Undo"
+	case ActRedo:
+		return "Redo"
+	case ActVisual:
+		return "Visual"
+	case ActVisualLine:
+		return "VisualLine"
+	case ActVisualYank:
+		return "VisualYank"
+	case ActVisualDelete:
+		return "VisualDelete"
+	case ActCut:
+		return "Cut"
+	case ActCopy:
+		return "Copy"
+	case ActPaste:
+		return "Paste"
+	case ActSelectAll:
+		return "SelectAll"
+	case ActEscape:
+		return "Escape"
+	}
+	return fmt.Sprintf("Action(%d)", a)
+}
+
+// Description returns a concise human-readable explanation of the action.
+func (a Action) Description() string {
+	switch a {
+	case ActUnbound:
+		return "Unbound key (bubbles to parent component)"
+	case ActLeft:
+		return "Move cursor left"
+	case ActDown:
+		return "Move cursor down"
+	case ActUp:
+		return "Move cursor up"
+	case ActRight:
+		return "Move cursor right"
+	case ActLineStart:
+		return "Move cursor to start of line"
+	case ActLineEnd:
+		return "Move cursor to end of line"
+	case ActWordForward:
+		return "Move cursor to start of next word"
+	case ActWordBack:
+		return "Move cursor to start of previous word"
+	case ActWordEnd:
+		return "Move cursor to end of current word"
+	case ActParaForward:
+		return "Move cursor to next paragraph boundary"
+	case ActParaBack:
+		return "Move cursor to previous paragraph boundary"
+	case ActGoBottom:
+		return "Move cursor to bottom line"
+	case ActPageUp:
+		return "Scroll and move cursor up one page"
+	case ActPageDown:
+		return "Scroll and move cursor down one page"
+	case ActDeletePrefix:
+		return "Arm linewise delete prefix (dd)"
+	case ActYankPrefix:
+		return "Arm linewise yank prefix (yy)"
+	case ActGoPrefix:
+		return "Arm jump to line prefix (gg)"
+	case ActInsert:
+		return "Enter Insert mode before cursor"
+	case ActAppend:
+		return "Enter Insert mode after cursor"
+	case ActInsertLineStart:
+		return "Enter Insert mode at start of line"
+	case ActAppendLineEnd:
+		return "Enter Insert mode at end of line"
+	case ActOpenBelow:
+		return "Open new line below and enter Insert mode"
+	case ActOpenAbove:
+		return "Open new line above and enter Insert mode"
+	case ActDeleteChar:
+		return "Delete character at cursor"
+	case ActDeleteToEnd:
+		return "Delete characters to end of line"
+	case ActPasteAfter:
+		return "Paste register content after cursor"
+	case ActPasteBefore:
+		return "Paste register content before cursor"
+	case ActUndo:
+		return "Undo previous edit"
+	case ActRedo:
+		return "Redo previously undone edit"
+	case ActVisual:
+		return "Toggle character-wise Visual mode"
+	case ActVisualLine:
+		return "Toggle line-wise Visual mode"
+	case ActVisualYank:
+		return "Yank selection to register and system clipboard"
+	case ActVisualDelete:
+		return "Delete selection to register"
+	case ActCut:
+		return "Cut selection or current line to register"
+	case ActCopy:
+		return "Copy selection or current line to register"
+	case ActPaste:
+		return "Paste register content at cursor"
+	case ActSelectAll:
+		return "Select entire buffer content"
+	case ActEscape:
+		return "Escape to Normal mode"
+	}
+	return "Custom action"
+}
+
+// KeyBinding represents a concrete key chord mapped to an action at runtime.
+type KeyBinding struct {
+	Mode        EditorMode `json:"mode"`
+	Chord       KeyChord   `json:"chord"`
+	Key         string     `json:"key"`
+	Action      Action     `json:"action"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+}
+
+// KeymapSnapshot provides a structural runtime reflection of the editor's keymap.
+type KeymapSnapshot struct {
+	Keyset      Keyset       `json:"keyset"`
+	KeysetName  string       `json:"keyset_name"`
+	Modal       bool         `json:"modal"`
+	EscapeChord string       `json:"escape_chord,omitempty"`
+	Bindings    []KeyBinding `json:"bindings"`
+}
+
+// Bindings returns all bindings in the keymap sorted deterministically by mode, key, and action.
+func (km Keymap) Bindings() []KeyBinding {
+	list := make([]KeyBinding, 0, len(km))
+	for kc, act := range km {
+		list = append(list, KeyBinding{
+			Mode:        kc.Mode,
+			Chord:       kc,
+			Key:         kc.String(),
+			Action:      act,
+			Name:        act.String(),
+			Description: act.Description(),
+		})
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Mode != list[j].Mode {
+			return list[i].Mode < list[j].Mode
+		}
+		if list[i].Key != list[j].Key {
+			return list[i].Key < list[j].Key
+		}
+		return list[i].Action < list[j].Action
+	})
+	return list
+}
 
 // modeClass maps an editor mode onto its binding class.
 func modeClass(m EditorMode) EditorMode {
@@ -156,7 +415,7 @@ func actionModes(a Action) (normal, visual bool) {
 		ActOpenBelow, ActOpenAbove,
 		ActDeleteChar, ActDeleteToEnd, ActPasteAfter, ActPasteBefore,
 		ActUndo, ActRedo,
-		ActCut, ActCopy, ActPaste, ActSelectAll:
+		ActCut, ActCopy, ActPaste, ActSelectAll, ActEscape:
 		return true, false
 	case ActVisualYank, ActVisualDelete:
 		return false, true
@@ -318,6 +577,19 @@ const (
 	// KeysetStandard enables non-modal GUI/TextEdit-style editing (Ctrl+X/C/V/Z/A).
 	KeysetStandard
 )
+
+// String returns the human-readable profile name.
+func (k Keyset) String() string {
+	switch k {
+	case KeysetVim:
+		return "Vim"
+	case KeysetNano:
+		return "Nano"
+	case KeysetStandard:
+		return "Standard"
+	}
+	return "Custom"
+}
 
 // validateKeymapEntry panics on an entry the Editor cannot honor.
 func validateKeymapEntry(kc KeyChord, act Action) {
