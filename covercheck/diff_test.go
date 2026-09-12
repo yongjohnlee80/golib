@@ -49,3 +49,18 @@ deleted file mode 100644
 		t.Fatalf("deletion = %#v", changes[2])
 	}
 }
+
+func TestParseUnifiedDiffQuotedPath(t *testing.T) {
+	t.Parallel()
+	diff := "diff --git \"a/pkg/\\303\\251.go\" \"b/pkg/\\303\\251.go\"\n" +
+		"--- \"a/pkg/\\303\\251.go\"\n" +
+		"+++ \"b/pkg/\\303\\251.go\"\n" +
+		"@@ -1 +1 @@\n-old\n+new\n"
+	changes, err := ParseUnifiedDiff(strings.NewReader(diff))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 || changes[0].NewPath != "pkg/é.go" {
+		t.Fatalf("changes = %#v", changes)
+	}
+}

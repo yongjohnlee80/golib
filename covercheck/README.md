@@ -88,6 +88,37 @@ the same command shown above. The repository workflow—not this package—decid
 whether the comparison revision is the PR head or GitHub's synthetic merge
 commit.
 
+```yaml
+permissions:
+  contents: read
+
+steps:
+  - uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+  - uses: actions/setup-go@v5
+    with:
+      go-version-file: go.mod
+  - run: go test -count=1 -covermode=atomic -coverpkg=./... -coverprofile="$RUNNER_TEMP/head.out" ./...
+  - name: collect base coverage
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    run: |
+      git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+      cd "$RUNNER_TEMP/base"
+      go test -count=1 -covermode=atomic -coverpkg=./... -coverprofile="$RUNNER_TEMP/base.out" ./...
+  - run: go install github.com/yongjohnlee80/golib/cmd/covercheck@v0.6.0
+  - name: compare coverage
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.sha }}
+    run: >-
+      covercheck --base-profile "$RUNNER_TEMP/base.out"
+      --head-profile "$RUNNER_TEMP/head.out"
+      --base-ref "$BASE_SHA" --head-ref "$HEAD_SHA"
+      --minimum-changed 80 --maximum-total-regression 0
+```
+
 Other CI systems use the identical executable and profiles; only checkout and
 artifact orchestration changes.
 
