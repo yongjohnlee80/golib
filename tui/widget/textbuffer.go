@@ -5,11 +5,32 @@ import "strings"
 // textBuffer is the multi-line grapheme-addressed buffer substrate shared by
 // TextArea and Editor: a []string of lines with a cursor
 // (line + cluster column), a sticky desired column for vertical moves, and a
-// single char-wise selection anchor. Methods here are PURE buffer/motion
-// operations — no widget concerns (no dirt marking, events, viewport, or
-// styles), so the two widgets keep their own interaction semantics on one
-// tested core. Cell-based computations take the measuring function as a
-// parameter rather than binding to a widget.
+// single char-wise selection anchor.
+//
+// # Architectural Model
+//
+// Methods on textBuffer are PURE buffer and motion operations. It maintains no widget
+// concerns (no dirt marking, events, viewports, or style references). This guarantees
+// that TextArea (standard typing) and Editor (modal Vim editing) share an identical,
+// thoroughly tested multi-line buffer implementation while maintaining distinct
+// event and visual semantics.
+//
+// # Architectural Invariants
+//
+//  1. Grapheme Addressing: Cursor columns and anchor offsets are counted strictly in
+//     UAX #29 grapheme clusters, preventing unicode mutilation when slicing multibyte or
+//     composed emoji characters.
+//  2. Pure Measurement Independence: All cell-width calculations require the caller to pass
+//     a measuring function, ensuring textBuffer never binds to a global or wrong width policy.
+//  3. Desired Column Latch: Vertical motions (Up/Down) latch the desired horizontal cell position
+//     on the initial move; traversing over shorter intermediate lines does not degrade the column
+//     target when arriving at subsequent longer lines.
+//  4. Line Splitting Normalization: SetValue normalizes CRLF and CR to LF before splitting.
+//
+// # Concurrency Model
+//
+//   - Ownership: loop-goroutine-owned through its embedding container ([TextArea] or [Editor]).
+//   - Zero Background Mutation: Concurrent mutation from other goroutines is not supported.
 type textBuffer struct {
 	lines   []string
 	ln, col int // cursor line + cluster column

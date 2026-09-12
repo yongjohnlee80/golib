@@ -7,14 +7,34 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Text measurement note. All width math is policy-aware (normative). Render
-// paths measure through Surface.StringWidth; layout,
-// event, cursor, scroll, wrap, and hit-test paths measure through
-// Base.measure (Context.StringWidth). Both resolve the App's single active
-// width policy, so paint and geometry agree under WidthPolicyAmbiguousWide.
-// The free helpers below take the caller's measure func so no path silently
-// falls back to the package-level default.
-
+// Text measurement utilities and layout helpers shared across package widget.
+//
+// # Architectural Model: Policy-Aware Measurement
+//
+// All text measurement across package widget is strictly policy-aware:
+//   - Render paths measure cells using [tui.Surface.StringWidth].
+//   - Layout, hit-testing, scrolling, wrapping, and cursor paths measure cells using
+//     [Base.measure] (which delegates to [tui.Context.StringWidth]).
+//
+// Both routes resolve against the application's active [tui.WidthPolicy] (e.g. WidthPolicyAmbiguousWide).
+// The free utility functions declared here take an explicit measure function parameter rather than
+// capturing a global fallback, ensuring that paint and geometry never diverge under CJK or emoji runes.
+//
+// # Architectural Invariants
+//
+//  1. Mandatory Measurement Injection: Utility functions calculating cell extents ([cellsBefore],
+//     [truncate], [wrapLine]) must accept an explicit `measure func(string) int`. No path may
+//     silently invoke an unconfigured package-level width default.
+//  2. Grapheme Cluster Integrity: String splitting relies exclusively on UAX #29 grapheme boundaries
+//     via [tui.Graphemes]. Code points forming a single user-perceived character (such as flag sequences
+//     or skin-tone modifiers) are never bisected.
+//  3. Ellipsis Bound: Truncation never exceeds the requested maximum cell width `w`. When `w <= 0`,
+//     an empty string is returned; when `w == 1`, only the single ellipsis glyph "…" is produced.
+//
+// # Concurrency Model
+//
+//   - Stateless Functions: All helpers in textutil.go are pure, stateless functions safe for
+//     concurrent execution from any goroutine provided the passed measure function is thread-safe.
 const ellipsis = "…"
 
 // clusters splits s into grapheme clusters (UAX #29 via tui.Graphemes).

@@ -6,6 +6,29 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
+// Editor keymap definitions, modal enumeration, and action dispatch bindings.
+//
+// # Architectural Model
+//
+// The keymap subsystem translates incoming [tui.KeyEvent] input chords into semantic [Action]
+// enumerations. Key bindings are organized by [EditorMode], allowing identical keystrokes to
+// perform different actions depending on whether the editor is in [ModeNormal] or [ModeVisual].
+//
+// # Architectural Invariants
+//
+//  1. Insert Mode Independence: [ModeInsert] possesses zero chord bindings in the keymap table.
+//     All text typing, escape chording, backspace, and arrow navigation are handled structurally
+//     in the editor core rather than via configurable action mapping.
+//  2. Visual Line Shared Bindings: [ModeVisualLine] dynamically shares the exact binding set of
+//     [ModeVisual], ensuring consistent operator selection behavior.
+//  3. Unbound Bubbling Sentinel: [ActUnbound] explicitly unbinds a default chord, permitting the
+//     unhandled keystroke to bubble up the component hierarchy to application leader handlers.
+//
+// # Concurrency Model
+//
+//   - Ownership: loop-goroutine-owned. Keymap evaluation occurs synchronously during event handling.
+//   - Immutable Tables: Default keymap tables are static and read-only.
+//
 // EditorMode is the Editor's modal state.
 type EditorMode uint8
 

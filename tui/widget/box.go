@@ -51,6 +51,20 @@ import (
 // famous by tools like lazygit) for free, completely re-themable through the
 // application [style.Theme] without modifying widget code.
 //
+// # Architectural Invariants
+//
+//  1. Single-Child Encapsulation: Box hosts at most one direct child; geometry constraints
+//     are calculated by subtracting border lines and padding margins before passing to the child.
+//  2. Focus-Within Invariant: Box tracks both direct focus and focus across its entire descendant
+//     subtree, dynamically applying [style.TokenBorderFocused] to highlight active panels.
+//  3. Chrome Zero-Height Penalty: Title and status strings are drawn directly into the top and
+//     bottom border rows (with ellipsis truncation), preserving maximum vertical space for content.
+//
+// # Concurrency Model
+//
+//   - Ownership: loop-goroutine-owned. Mutation of title, status, or children must occur on the loop.
+//   - Layout/Render: Synchronous within the runtime frame cycle.
+//
 // # Usage Examples
 //
 // 1. Wrapping a list in a standard titled panel:

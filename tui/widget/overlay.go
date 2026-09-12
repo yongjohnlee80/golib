@@ -44,6 +44,38 @@ import (
 //  2. Explicit Modals: [Float] instances are registered via [OverlayHost.Attach].
 //     While hidden, a Float occupies zero cells, participates in no hit-testing, and
 //     is omitted from tab navigation until activated by [Float.Show].
+//
+// # Architectural Invariants
+//
+//  1. Base Layer Anchoring: Layer index 0 in the underlying [tui.Stack] is permanently
+//     occupied by the base application UI; overlays and popups strictly stack above index 0.
+//  2. Automatic Popup Lifecycle: Dynamic popup layers pushed via [overlayOpenEvent] are
+//     removed upon [overlayCloseEvent], immediately restoring previous focus without manual cleanup.
+//  3. Reverse Hit-Testing Priority: Mouse hit-tests and pointer interactions are evaluated from
+//     the topmost layer down, preventing clicks from penetrating through active modal dialogs.
+//
+// # Concurrency Model
+//
+//   - Ownership: loop-goroutine-owned. Layer addition, removal, and modal triggers must run
+//     on the application event loop goroutine.
+//
+// # Usage Examples
+//
+// 1. Setting up the root overlay host in an application:
+//
+//	rootLayout := widget.NewSplit(sidebar, mainView, widget.WithRatio(0.25))
+//	overlayHost := widget.NewOverlayHost(rootLayout)
+//
+// 2. Attaching a modal dialog to the overlay host:
+//
+//	modalDialog := widget.NewFloat(confirmBox,
+//		widget.WithFloatPlacement(widget.PlaceCenter),
+//		widget.WithScrim(true),
+//	)
+//	overlayHost.Attach(modalDialog)
+//
+//	// Later, trigger the modal on user action:
+//	modalDialog.Show()
 type OverlayHost struct {
 	*tui.Stack
 }
