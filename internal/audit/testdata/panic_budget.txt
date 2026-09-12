@@ -82,10 +82,30 @@ tui/app.go	NewApp	1da35ea1310d5d4a	1	construction	tui.NewApp: WithBackend is req
 tui/app.go	App.Post	c6542e4ab0bb6fcf	1	invariant	tui.App.Post: nil event. A runtime method, but a nil event is a programmer error — no data reaching Post can make the event itself nil
 tui/app.go	App.Update	dec28eb4506b3125	1	invariant	tui.App.Update: nil func — same shape as Post; the closure is written in source
 tui/app.go	App.Run.func$1	b6c4252a60823d59	1	repanic	tui.App.Run: re-raises the recovered value after the backend is restored, so the terminal is never left in raw mode by an escaping panic
+tui/app_options.go	WithMinFrameInterval	5a7d07172b56db89	1	construction	tui.WithMinFrameInterval: negative interval — an option built in source
+tui/app_options.go	WithInputQueueSize	61913d54e1b5b9d5	1	construction	tui.WithInputQueueSize: size must be at least 1
+tui/app_options.go	WithEventQueueLimit	4016f82a6a79ec41	1	construction	tui.WithEventQueueLimit: limit must be at least 1
+tui/app_options.go	WithTaskPoolSize	7832b373c26a8d57	1	construction	tui.WithTaskPoolSize: size must be at least 1
+tui/app_options.go	WithTaskDrainTimeout	b9b464698924d785	1	construction	tui.WithTaskDrainTimeout: negative timeout
+tui/app_tasks.go	Exclusive	a7f52f9cd5eca2f5	1	construction	tui.Exclusive: empty group name — an option built in source
+tui/app_tasks.go	App.Go	785ea81eff71010f	1	invariant	tui.App.Go: nil task; the task is a func written at the call site
+tui/app_tree.go	App.mount	41a70b1702ac605c	1	invariant	tui.mount: nil component. Mount runs at any time, but a nil component is programmer error rather than data
+tui/app_tree.go	App.mount	850f07d53ecb8bd1	1	contract	Mounting inside Layout or Render is documented as illegal: the tree is being walked, and mutating it mid-walk would invalidate the iteration the caller is inside. Panicking names the rule at the moment it is broken; returning an error would let the caller ignore it and corrupt the walk. Read because a rewording briefly changed its fingerprint and the budget refused to carry the old reason over. The rewording was reverted (panic strings are out of scope for a comments-only change) but the reading stands.
+tui/app_tree.go	App.mount	182d02a70da480c7	1	invariant	tui.mount: a component type that is not comparable. Decided by the TYPE the author wrote, not by any value flowing through it
+tui/app_tree.go	App.mount	2ba2b5ef75b4a427	1	invariant	tui.mount: the component value is already mounted. A component mounts at most once, and mounting twice is a structural mistake in the caller's code
+tui/app_tree.go	App.moveWithin	9776cc61c048c60f	1	invariant	tui.moveWithin: tree mutation inside Layout or Render — the same contract as mount
+tui/app_tree.go	App.moveWithin	00a9ebc8215b0ea6	1	invariant	tui.moveWithin: the component is not mounted
+tui/app_tree.go	App.moveWithin	8658960d0c317a3e	1	invariant	tui.moveWithin: the child belongs to a different container; cross-container moves are not supported
+tui/app_tree.go	App.moveWithin	cbb4491b05737a9b	1	invariant	tui.moveWithin: destination index out of range. The index comes from the caller's own child list, so a bad one is a counting error in source
+tui/app_tree.go	App.unmountTree	063fbe1151227d5a	1	invariant	tui.unmountTree: tree mutation inside Layout or Render — the same contract as mount
+tui/bus.go	newBus	88a8cb7291e25bb0	1	invariant	tui.newBus: nil app. Internal constructor called by NewApp
+tui/bus.go	Subscribe	bc874323b86e78bb	1	invariant	tui.Subscribe: nil bus. Programmer error passing uninitialized or nil bus
 tui/bus.go	Subscribe	44702c67e6fba213	1	invariant	tui.Subscribe: nil handler. Subscribe runs at any time, but the handler is a closure written in source
+tui/bus.go	SubscribeScoped	bca218218c20d147	1	invariant	tui.SubscribeScoped: nil context. Programmer error passing nil context
+tui/bus.go	Bus.Publish	3ca643db989a7190	1	invariant	tui.Bus.Publish: nil bus. Programmer error calling Publish on nil bus
 tui/bus.go	Bus.Publish	44e58dc246611c17	1	invariant	tui.Bus.Publish: nil value — publishing nothing is a programmer error, not a value the bus can receive
-tui/container.go	MultiChild.Add	91deb9100d15582b	1	construction	tui.MultiChild.Add: nil child while a container is being built
-tui/container.go	MultiChild.Move	77b3cbeb7635f945	1	invariant	tui.MultiChild.Move: destination index out of range; the index comes from the caller's own item list
+tui/container_multi.go	MultiChild.Add	91deb9100d15582b	1	construction	tui.MultiChild.Add: nil child while a container is being built
+tui/container_multi.go	MultiChild.Move	a151125e01f0ae6a	1	invariant	tui.MultiChild.Move: destination index out of range; the index comes from the caller's own item list
 tui/context.go	Context.Mount	33216904efd47968	1	invariant	tui.Context.Mount on an unmounted node — the component is using a Context that outlived its own mount
 tui/context.go	Context.Unmount	57f9cb74b77ab447	1	invariant	tui.Context.Unmount: the component is not a mounted child
 tui/context.go	Context.Move	37d71e6e6bb3268b	1	invariant	tui.Context.Move on an unmounted node
@@ -98,12 +118,7 @@ tui/dock.go	Dock.Pin	a12683e0ef5695d7	1	construction	tui.Dock.Pin: nil child whi
 tui/dock.go	Dock.Pin	fb15f5b2d280ef64	1	construction	tui.Dock.Pin: an edge outside the four constants, while the dock is being built
 tui/flex.go	Flex.AddWeighted	1d7a641b179dccda	1	construction	tui.Flex.AddWeighted: weight must be at least 1 — a literal at the call site while the container is built
 tui/flex.go	Flex.AddWeighted	d10c93e0d24b4b3f	1	construction	tui.Flex.AddWeighted: nil child while the flex container is being built
-tui/options.go	WithMinFrameInterval	5a7d07172b56db89	1	construction	tui.WithMinFrameInterval: negative interval — an option built in source
-tui/options.go	WithInputQueueSize	61913d54e1b5b9d5	1	construction	tui.WithInputQueueSize: size must be at least 1
-tui/options.go	WithEventQueueLimit	4016f82a6a79ec41	1	construction	tui.WithEventQueueLimit: limit must be at least 1
-tui/options.go	WithTaskPoolSize	7832b373c26a8d57	1	construction	tui.WithTaskPoolSize: size must be at least 1
-tui/options.go	WithTaskDrainTimeout	b9b464698924d785	1	construction	tui.WithTaskDrainTimeout: negative timeout
-tui/queue.go	programQueue.push	2aab10adc34909b9	1	contract	DOCUMENTED OPT-IN, not a defect. The queue is UNLIMITED by default; the panic fires only when an app calls WithEventQueueLimit(n), whose doc says it PANICS and that "apps preferring fail-fast crash detection over memory growth opt in here" (tui/options.go:124-128, rev 1, Lector Q1). App.Post repeats it (tui/app.go:128) and ADR-0005 §2.4 records it. An earlier row here called this a LIVE violation needing "an error or backpressure path under a written policy" — classified from queue.go alone, without reading the option that enables it; the policy it asked for already existed and was ratified in review.
+tui/program_queue.go	programQueue.push	2aab10adc34909b9	1	contract	DOCUMENTED OPT-IN, not a defect. The queue is UNLIMITED by default; the panic fires only when an app calls WithEventQueueLimit(n), whose doc says it PANICS and that "apps preferring fail-fast crash detection over memory growth opt in here" (tui/options.go:124-128, rev 1, Lector Q1). App.Post repeats it (tui/app.go:128) and ADR-0005 §2.4 records it. An earlier row here called this a LIVE violation needing "an error or backpressure path under a written policy" — classified from queue.go alone, without reading the option that enables it; the policy it asked for already existed and was ratified in review.
 tui/stack.go	Stack.AddAligned	2777c4f0003a7060	1	construction	tui.Stack.AddAligned: an alignment outside the declared constants, while the stack is built
 tui/style/color.go	ANSI	d30d4bac686ff454	1	construction	style.ANSI: palette index outside the ANSI-16 range — a Color under construction, and the index is a literal at every call site in this tree
 tui/style/color.go	ANSI256	d1ebd4f9ac7e6564	1	construction	style.ANSI256: palette index outside the ANSI-256 range — same shape as ANSI, a value under construction
@@ -119,22 +134,11 @@ tui/style/theme.go	WithToken	001d2b02a1f7d153	1	construction	style.WithToken: to
 tui/style/theme.go	WithToken	b50e71241b4fd08c	1	construction	style.WithToken: a theme slot cannot hold a token color — rejected while the Theme is built
 tui/style/theme.go	NewTheme	c61a94e82bddd760	1	construction	style.NewTheme: a token color cannot be the primary — the slot must hold a concrete or adaptive Color
 tui/style/theme.go	Theme.Color	2ca425762b8dbfa7	1	invariant	style.Theme.Color: token outside the declared range. A runtime lookup, but the token set is a closed enum this package defines, so an out-of-range token is programmer error rather than data
-tui/tasks.go	Exclusive	a7f52f9cd5eca2f5	1	construction	tui.Exclusive: empty group name — an option built in source
-tui/tasks.go	App.Go	785ea81eff71010f	1	invariant	tui.App.Go: nil task; the task is a func written at the call site
 tui/testbackend.go	TestBackend.InjectResize	be0d36e0c415f70c	1	invariant	tui.TestBackend.InjectResize: the resize could not be applied. A test double asserting its own precondition
 tui/testbackend.go	TestBackend.Flush	5300615b71c12a49	1	invariant	tui.TestBackend.Flush: an update outside the grid. A test double catching the component author's coordinate error
 tui/testbackend.go	TestBackend.Flush	fc8ba480ed0a8a48	1	invariant	tui.TestBackend.Flush: a wide cell in the last column, which no correct renderer emits
 tui/testbackend.go	TestBackend.assertNoOrphansLocked	e6d89bff1d658029	1	invariant	tui.TestBackend.assertNoOrphansLocked: a wide-cell continuation with no head to its left
 tui/testbackend.go	TestBackend.assertNoOrphansLocked	36873249c53aed07	1	invariant	tui.TestBackend.assertNoOrphansLocked: a wide-cell head with no continuation
-tui/tree.go	App.mount	41a70b1702ac605c	1	invariant	tui.mount: nil component. Mount runs at any time, but a nil component is programmer error rather than data
-tui/tree.go	App.mount	850f07d53ecb8bd1	1	contract	Mounting inside Layout or Render is documented as illegal: the tree is being walked, and mutating it mid-walk would invalidate the iteration the caller is inside. Panicking names the rule at the moment it is broken; returning an error would let the caller ignore it and corrupt the walk. Read because a rewording briefly changed its fingerprint and the budget refused to carry the old reason over. The rewording was reverted (panic strings are out of scope for a comments-only change) but the reading stands.
-tui/tree.go	App.mount	182d02a70da480c7	1	invariant	tui.mount: a component type that is not comparable. Decided by the TYPE the author wrote, not by any value flowing through it
-tui/tree.go	App.mount	2ba2b5ef75b4a427	1	invariant	tui.mount: the component value is already mounted. A component mounts at most once, and mounting twice is a structural mistake in the caller's code
-tui/tree.go	App.moveWithin	9776cc61c048c60f	1	invariant	tui.moveWithin: tree mutation inside Layout or Render — the same contract as mount
-tui/tree.go	App.moveWithin	00a9ebc8215b0ea6	1	invariant	tui.moveWithin: the component is not mounted
-tui/tree.go	App.moveWithin	8658960d0c317a3e	1	invariant	tui.moveWithin: the child belongs to a different container; cross-container moves are not supported
-tui/tree.go	App.moveWithin	cbb4491b05737a9b	1	invariant	tui.moveWithin: destination index out of range. The index comes from the caller's own child list, so a bad one is a counting error in source
-tui/tree.go	App.unmountTree	063fbe1151227d5a	1	invariant	tui.unmountTree: tree mutation inside Layout or Render — the same contract as mount
 tui/widget/box.go	WithTitleAlign	5c25a6b2fa4510fb	1	construction	widget: WithTitleAlign: %d is not AlignLeft/AlignCenter/AlignRight. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/box.go	WithStatusAlign	79d1e2dae23b7075	1	construction	widget: WithStatusAlign: %d is not AlignLeft/AlignCenter/AlignRight. Reached while the value is being built; the argument is written at the call site and no recover sits above it
 tui/widget/box.go	Box.Add	48f9916531ce5952	1	construction	widget: Box.Add: nil child. Reached while the value is being built; the argument is written at the call site and no recover sits above it
