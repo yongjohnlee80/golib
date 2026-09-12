@@ -1331,3 +1331,31 @@ func TestEditorRuntimeKeymapReflection(t *testing.T) {
 	}
 }
 
+func TestEditorMousePressModelessVisualExit(t *testing.T) {
+	ed := widget.NewEditor(widget.WithStandardKeymap(), widget.WithInitialText("hello\nworld"))
+	_ = ed.Layout(tui.Tight(tui.Size{W: 20, H: 10}))
+
+	// Select all with Ctrl+A -> ModeVisual
+	ed.HandleEvent(tui.KeyEvent{Code: 'a', Mods: tui.ModCtrl})
+	if ed.Mode() != widget.ModeVisual {
+		t.Fatalf("expected ModeVisual after Ctrl+A, got %v", ed.Mode())
+	}
+
+	// Mouse press at (1, 1) -> must exit visual mode and return to ModeInsert (modeless)
+	ed.HandleEvent(tui.MouseEvent{
+		Kind:   tui.MousePress,
+		Button: tui.MouseLeft,
+		X:      1,
+		Y:      1,
+	})
+
+	if ed.Mode() != widget.ModeInsert {
+		t.Errorf("expected ModeInsert after mouse press in modeless editor, got %v", ed.Mode())
+	}
+	row, col := ed.Line()
+	if row != 1 || col != 1 {
+		t.Errorf("expected cursor at (1, 1), got (%d, %d)", row, col)
+	}
+}
+
+
