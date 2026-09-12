@@ -1161,3 +1161,88 @@ func TestEditorWrapSoftClickStaysOnItsRow(t *testing.T) {
 			"painted on that row.", ln, col)
 	}
 }
+
+func TestEditorNanoKeymap(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 40, 10,
+		widget.WithNanoKeymap(),
+		widget.WithInitialText("first line\nsecond line"),
+	)
+
+	// Nano starts in insert mode immediately (modeless)
+	if mode := ed.Mode(); mode != widget.ModeInsert {
+		t.Fatalf("expected initial mode ModeInsert for Nano, got %v", mode)
+	}
+
+	// Directly typing text does not require 'i'
+	h.inject(typeString("hello ")...)
+	h.barrier(sh)
+
+	val, _, _, _ := edState(h, ed)
+	if !strings.HasPrefix(val, "hello first line") {
+		t.Fatalf("after direct typing in Nano: got %q", val)
+	}
+
+	// Ctrl+K cuts line
+	h.inject(keyMod('k', tui.ModCtrl))
+	h.barrier(sh)
+
+	val, _, _, _ = edState(h, ed)
+	if val != "second line" {
+		t.Fatalf("after Ctrl+K: got %q, want \"second line\"", val)
+	}
+
+	// Ctrl+U uncuts / pastes line
+	h.inject(keyMod('u', tui.ModCtrl))
+	h.barrier(sh)
+
+	val, _, _, _ = edState(h, ed)
+	if !strings.Contains(val, "hello first line") {
+		t.Fatalf("after Ctrl+U: got %q", val)
+	}
+}
+
+func TestEditorStandardKeymap(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 40, 10,
+		widget.WithStandardKeymap(),
+		widget.WithInitialText("sample text"),
+	)
+
+	if mode := ed.Mode(); mode != widget.ModeInsert {
+		t.Fatalf("expected initial mode ModeInsert for Standard, got %v", mode)
+	}
+
+	// Ctrl+A selects all text
+	h.inject(keyMod('a', tui.ModCtrl))
+	h.barrier(sh)
+
+	// Ctrl+C copies selection
+	h.inject(keyMod('c', tui.ModCtrl))
+	h.barrier(sh)
+
+	reg, _ := ed.Register()
+	if reg != "sample text" {
+		t.Fatalf("after Ctrl+C: register has %q, want \"sample text\"", reg)
+	}
+
+	// Re-select all for cut
+	h.inject(keyMod('a', tui.ModCtrl))
+	h.barrier(sh)
+
+	// Ctrl+X cuts selection
+	h.inject(keyMod('x', tui.ModCtrl))
+	h.barrier(sh)
+
+	val, _, _, _ := edState(h, ed)
+	if val != "" {
+		t.Fatalf("after Ctrl+X: got %q, want empty", val)
+	}
+
+	// Ctrl+V pastes selection
+	h.inject(keyMod('v', tui.ModCtrl))
+	h.barrier(sh)
+
+	val, _, _, _ = edState(h, ed)
+	if val != "sample text" {
+		t.Fatalf("after Ctrl+V: got %q, want \"sample text\"", val)
+	}
+}

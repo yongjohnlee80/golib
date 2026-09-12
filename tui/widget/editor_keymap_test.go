@@ -24,7 +24,7 @@ func TestEditorModeString(t *testing.T) {
 
 func TestDefaultKeymapBindings(t *testing.T) {
 	km := DefaultKeymap()
-	if act, ok := km[KeyChord{Mode: ModeNormal, Code: 'j'}]; !ok || act != ActLeft && act != ActDown {
+	if act, ok := km[KeyChord{Mode: ModeNormal, Code: 'j'}]; !ok || act != ActDown {
 		t.Errorf("normal 'j' -> (%v, %v), want ActDown, true", act, ok)
 	}
 	if act, ok := km[KeyChord{Mode: ModeNormal, Code: 'k'}]; !ok || act != ActUp {
@@ -38,6 +38,44 @@ func TestDefaultKeymapBindings(t *testing.T) {
 	}
 	if act, ok := km[KeyChord{Mode: ModeVisual, Code: 'y'}]; !ok || act != ActVisualYank {
 		t.Errorf("visual 'y' -> (%v, %v), want ActVisualYank, true", act, ok)
+	}
+}
+
+func TestNanoKeymapBindings(t *testing.T) {
+	km := NanoKeymap()
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'k', Ctrl: true}]; !ok || act != ActCut {
+		t.Errorf("nano Ctrl+K -> (%v, %v), want ActCut, true", act, ok)
+	}
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'u', Ctrl: true}]; !ok || act != ActPaste {
+		t.Errorf("nano Ctrl+U -> (%v, %v), want ActPaste, true", act, ok)
+	}
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'a', Ctrl: true}]; !ok || act != ActLineStart {
+		t.Errorf("nano Ctrl+A -> (%v, %v), want ActLineStart, true", act, ok)
+	}
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'e', Ctrl: true}]; !ok || act != ActLineEnd {
+		t.Errorf("nano Ctrl+E -> (%v, %v), want ActLineEnd, true", act, ok)
+	}
+}
+
+func TestStandardKeymapBindings(t *testing.T) {
+	km := StandardKeymap()
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'z', Ctrl: true}]; !ok || act != ActUndo {
+		t.Errorf("standard Ctrl+Z -> (%v, %v), want ActUndo, true", act, ok)
+	}
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'y', Ctrl: true}]; !ok || act != ActRedo {
+		t.Errorf("standard Ctrl+Y -> (%v, %v), want ActRedo, true", act, ok)
+	}
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'c', Ctrl: true}]; !ok || act != ActCopy {
+		t.Errorf("standard Ctrl+C -> (%v, %v), want ActCopy, true", act, ok)
+	}
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'v', Ctrl: true}]; !ok || act != ActPaste {
+		t.Errorf("standard Ctrl+V -> (%v, %v), want ActPaste, true", act, ok)
+	}
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'x', Ctrl: true}]; !ok || act != ActCut {
+		t.Errorf("standard Ctrl+X -> (%v, %v), want ActCut, true", act, ok)
+	}
+	if act, ok := km[KeyChord{Mode: ModeInsert, Code: 'a', Ctrl: true}]; !ok || act != ActSelectAll {
+		t.Errorf("standard Ctrl+A -> (%v, %v), want ActSelectAll, true", act, ok)
 	}
 }
 
