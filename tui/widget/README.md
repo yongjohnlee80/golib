@@ -12,22 +12,22 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 
 ## Complete Widget Inventory
 
-| Widget | Category | Focusable | Primary Emitted Events (Bus) |
-|--------|------|-----------|-------------|
-| `TextInput` | Form Input | yes | `SubmitEvent`, `ChangeEvent` |
-| `TextArea` | Multi-line Text | yes | `ChangeEvent` |
-| `Select[T]` | Form Input | yes | `SelectionChangedEvent`, `OpenedEvent`, `ClosedEvent` |
-| `List[T]` | Collection | yes | `SelectionChangedEvent`, `ActivateEvent` |
-| `Table[T]` | Collection | yes (via List) | `SelectionChangedEvent`, `ActivateEvent` |
-| `Tree` | Navigation | yes | `ExpandRequestEvent`, `CollapseEvent`, `ActivateEvent` |
-| `Editor` | Modal Text | yes | `ModeChangedEvent`, `YankEvent` |
-| `BufferView` | Stream / Pager | yes (scroll) | `FollowTailChangedEvent` |
-| `Tabs` | Navigation | yes (bar) | `TabChangedEvent` |
-| `Split` | Container | no (panes are) | `SplitResizedEvent`, `SplitZoomEvent` |
-| `Float` | Overlay / Modal | children | `DismissEvent` |
-| `StatusBar` | Chrome | no | — |
-| `ProgressBar` | Feedback | no | — |
-| `Text` | Static Display | no | — |
+| Widget        | Category        | Focusable      | Primary Emitted Events (Bus)                           |
+| ------------- | --------------- | -------------- | ------------------------------------------------------ |
+| `TextInput`   | Form Input      | yes            | `SubmitEvent`, `ChangeEvent`                           |
+| `TextArea`    | Multi-line Text | yes            | `ChangeEvent`                                          |
+| `Select[T]`   | Form Input      | yes            | `SelectionChangedEvent`, `OpenedEvent`, `ClosedEvent`  |
+| `List[T]`     | Collection      | yes            | `SelectionChangedEvent`, `ActivateEvent`               |
+| `Table[T]`    | Collection      | yes (via List) | `SelectionChangedEvent`, `ActivateEvent`               |
+| `Tree`        | Navigation      | yes            | `ExpandRequestEvent`, `CollapseEvent`, `ActivateEvent` |
+| `Editor`      | Modal Text      | yes            | `ModeChangedEvent`, `YankEvent`                        |
+| `BufferView`  | Stream / Pager  | yes (scroll)   | `FollowTailChangedEvent`                               |
+| `Tabs`        | Navigation      | yes (bar)      | `TabChangedEvent`                                      |
+| `Split`       | Container       | no (panes are) | `SplitResizedEvent`, `SplitZoomEvent`                  |
+| `Float`       | Overlay / Modal | children       | `DismissEvent`                                         |
+| `StatusBar`   | Chrome          | no             | —                                                      |
+| `ProgressBar` | Feedback        | no             | —                                                      |
+| `Text`        | Static Display  | no             | —                                                      |
 
 Every bus event carries `Owner tui.NodeID` as its first field so subscribers can filter by source. Publication is enqueue-only onto the application loop.
 
@@ -36,6 +36,7 @@ Every bus event carries `Owner tui.NodeID` as its first field so subscribers can
 ## Architectural Principles
 
 ### 1. Loop-Goroutine Ownership & Concurrency Boundaries
+
 All widgets are retained, mutable `tui.Component` implementations living strictly on the loop goroutine. Every widget method is loop-goroutine-only.
 
 **The One Concurrent Exception:** `BufferView.Writer()` returns an `io.Writer` handle that is safe to call from any background goroutine (e.g. streaming `exec.Cmd.Stdout`). It utilizes a bounded semaphore queue to prevent unbounded memory allocation when the loop lags, guarantees ordered delivery, and returns `widget.ErrClosed` after unmount. The `BufferView` itself remains loop-owned and deliberately does not implement `io.Writer`.
@@ -43,6 +44,7 @@ All widgets are retained, mutable `tui.Component` implementations living strictl
 **Async Tasks:** Background workloads schedule work via `App.Go` addressing the widget's `NodeID`, and results arrive safely on the loop as a typed `tui.TaskResult`.
 
 ### 2. Composable Panel Chrome (`Box`)
+
 Widgets remain chrome-free. Any visual panel is wrapped in a `Box`:
 
 ```
@@ -63,9 +65,11 @@ panel := widget.NewBox(list,
 ```
 
 ### 3. Base Embedding Contract
+
 Every widget embeds `widget.Base` by value, gaining method promotion (`Context`, `NodeID`, `MarkDirty`, `RequestLayout`) without indirection. Go embedding is not virtual dispatch: `Base` never calls template methods, and capability interfaces (`tui.Focusable`, `tui.Container`, `tui.CursorReporter`) are asserted on the outer type.
 
 ### 4. Stack Overlays & Floating Windows
+
 Wrap your root layout in an `OverlayHost` once:
 
 ```go
@@ -96,6 +100,7 @@ root := widget.NewOverlayHost(mainLayout)
 ### Form Controls
 
 #### `TextInput`
+
 Single-line grapheme-addressed editor with selection, horizontal scrolling, placeholder, password masking, validation hooks, and real hardware cursor positioning for IME composition.
 
 ```go
@@ -115,6 +120,7 @@ input := widget.NewTextInput(
 ```
 
 #### `TextArea`
+
 Multi-line text editor with soft wrapping (`WrapSoft`) or horizontal scrolling (`WrapNone`), grapheme addressing, selection, and clipboard paste safety.
 
 ```go
@@ -127,6 +133,7 @@ area := widget.NewTextArea(
 ```
 
 #### `Select[T]`
+
 Dropdown selector with closed-state rendering, filter-as-you-type in the open popup, and asynchronous option loading:
 
 ```go
@@ -143,6 +150,7 @@ sel := widget.NewSelect[string](
 ### Collections & Explorers
 
 #### `List[T]`
+
 High-performance virtualized list rendering through the `ListSource[T]` seam. Only visible rows are rendered:
 
 ```go
@@ -155,6 +163,7 @@ list := widget.NewList(
 ```
 
 #### `Table[T]`
+
 Column-structured list with fixed and flex column widths, automatic remainder distribution, and header rendering:
 
 ```go
@@ -169,6 +178,7 @@ table.SetItems(processList)
 ```
 
 #### `Tree`
+
 Hierarchical tree explorer supporting lazy-loaded asynchronous subtrees via generation tokens (`ExpandRequestEvent`), trailing badges, and structural cursor reconciliation:
 
 ```go
@@ -190,6 +200,7 @@ tui.Subscribe(bus, func(ev widget.ExpandRequestEvent) {
 ### Editors & Streaming Viewers
 
 #### `Editor`
+
 Embedded modal Vim-like editor featuring Normal, Insert, and Visual modes, a data-driven keymap, single unnamed register, bounded undo ring (64 snapshots), and escape chord support ("jk"):
 
 ```go
@@ -202,6 +213,7 @@ editor := widget.NewEditor(
 ```
 
 #### `BufferView`
+
 High-throughput append-oriented log pager with ring-bounded scrollback, ANSI SGR color interpretation, follow-tail auto-scrolling, and thread-safe streaming writer:
 
 ```go
@@ -219,6 +231,7 @@ go cmd.Run()
 ### Layout & Containers
 
 #### `Split`
+
 Interactive two-pane divider (horizontal or vertical) with Alt+arrow keyboard resize, mouse drag, deterministic integer division, and zoom toggle (`SplitZoomEvent`):
 
 ```go
@@ -233,6 +246,7 @@ split.Unzoom()
 ```
 
 #### `Float`
+
 Floating window for modal dialogs and alert popups, supporting focus trapping, background scrimming (`░`), and percentage-based sizing:
 
 ```go
@@ -251,6 +265,7 @@ modal.Show() // Esc dismisses and restores previous focus
 ### Application Chrome & Indicators
 
 #### `StatusBar`
+
 One-line docked footer bar with left, center, and right segments. Truncation priority is center-first, then left, preserving critical right-hand keybinding hints:
 
 ```go
@@ -261,6 +276,7 @@ bar.SetRight("utf-8 | 12:45 | ?: help")
 ```
 
 #### `ProgressBar`
+
 Determinate progress bar (with sub-cell 1/8th block precision), sweeping indeterminate block, or single-cell spinner. Employs zero-wakeup idle timers:
 
 ```go

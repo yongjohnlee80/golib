@@ -185,22 +185,3 @@ func (b *Base) focusSelf() bool {
 	b.ctx.RequestFocus()
 	return b.ctx.Focused()
 }
-
-// boundedMax resolves a constraint axis for greedy widgets: the max when
-// bounded, else the min (a greedy widget asked for its intrinsic extent on
-// an unbounded axis must not answer Unbounded).
-func boundedMax(maxV, minV int) int {
-	if maxV == tui.Unbounded {
-		return minV
-	}
-	return maxV
-}
-
-// subFrame subtracts a frame size from a constraint max, preserving
-// Unbounded.
-func subFrame(maxV, frame int) int {
-	if maxV == tui.Unbounded {
-		return tui.Unbounded
-	}
-	return max(maxV-frame, 0)
-}
