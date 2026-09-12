@@ -1,9 +1,15 @@
 package tui
 
-// Shared test harness for the runtime + component tree suites: probe
-// components, an App runner over
-// TestBackend (no PTY), a polling waiter, a capturing logger, and a
-// goroutine-id helper for loop-goroutine assertions.
+// Shared Test Harness & Fixtures
+//
+// This file provides test infrastructure, mocks, and test-only helper types
+// shared across all package test suites:
+//   - probe / focusProbe / cursorProbe / scopeProbe: instrumented test components
+//   - harness / startApp / runApp: background App runner over TestBackend
+//   - waitFor: deterministic polling condition assertion
+//   - logCapture: structured logger recorder
+//   - callLog: ordered method invocation tracker
+//   - goid: goroutine ID extractor for verifying loop-goroutine-only invariants
 
 import (
 	"context"

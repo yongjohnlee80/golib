@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-
-
 func TestRunTwiceErrors(t *testing.T) {
 	t.Parallel()
 	root := &probe{name: "root", pref: Size{W: 4, H: 2}}
