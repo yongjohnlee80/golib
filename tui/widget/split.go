@@ -60,6 +60,47 @@ const (
 //
 // Split itself is not focusable ([tui.Component] without [tui.Focusable]). Its child panes
 // participate directly in normal focus traversal.
+//
+// # Architectural Invariants
+//
+//  1. Pure Deterministic Division:
+//     Available space along the primary axis is strictly (Total - 1). Cell boundary
+//     calculations are rounded deterministically, ensuring that resizing back and forth
+//     does not experience creeping arithmetic drift.
+//  2. Minimum Bounds Clamping:
+//     Configured minimum pane dimensions ([WithMinSizes]) are unconditionally honored
+//     during both keyboard adjustment and mouse dragging. Neither pane can be shrunk below
+//     its minimum constraint unless the container's total size itself is smaller.
+//  3. Event Publishing Contract:
+//     Divider shifts publish [SplitResizedEvent], while zoom/unzoom actions publish
+//     [SplitZoomEvent], stamped with the Split's [tui.NodeID].
+//
+// # Concurrency & Goroutine Ownership
+//
+// Split and its state methods ([Split.SetRatio], [Split.Zoom], [Split.Unzoom]) are
+// loop-goroutine-owned and must be driven from the application loop goroutine.
+//
+// # Usage Examples
+//
+//  1. Standard side-by-side split with 50/50 ratio:
+//
+//     sidebar := widget.NewBox(treeView, widget.WithTitle("Explorer"))
+//     editor := widget.NewEditor()
+//     split := widget.NewSplit(
+//     widget.Horizontal,
+//     sidebar,
+//     editor,
+//     widget.WithRatio(0.3),
+//     widget.WithMinSizes(15, 30),
+//     )
+//
+//  2. Maximizing / Zooming a pane:
+//
+//     // Zoom editor to 100% full-screen view:
+//     split.Zoom(widget.PaneB)
+//
+//     // Restore dual-pane view:
+//     split.Unzoom()
 type Split struct {
 	Base
 	o          Orientation
