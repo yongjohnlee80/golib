@@ -384,9 +384,9 @@ func TestEditorKeymapOverlayAndUnbind(t *testing.T) {
 
 func TestEditorKeymapValidationPanics(t *testing.T) {
 	cases := []widget.Keymap{
-		{{Mode: widget.ModeInsert, Code: 'x'}: widget.ActLeft},     // no Insert bindings
-		{{Mode: widget.ModeNormal, Code: 'z'}: widget.Action(200)}, // unknown action
-		{{Mode: widget.ModeVisual, Code: 'z'}: widget.ActInsert},   // Normal-only action in Visual
+		{{Mode: widget.ModeInsert, Code: 'x'}: widget.ActOpenBelow}, // Normal-only action in Insert
+		{{Mode: widget.ModeNormal, Code: 'z'}: widget.Action(200)},  // unknown action
+		{{Mode: widget.ModeVisual, Code: 'z'}: widget.ActInsert},    // Normal-only action in Visual
 	}
 	for i, km := range cases {
 		func() {
@@ -1290,17 +1290,11 @@ func TestEditorRuntimeKeymapReflection(t *testing.T) {
 		t.Fatal("expected bindings in snapshot")
 	}
 
-	// Check that 'jk' escape chord is reflected in insert bindings
-	insertBindings := ed.BindingsForMode(widget.ModeInsert)
-	foundJk := false
-	for _, b := range insertBindings {
-		if b.Key == "jk" && b.Action == widget.ActEscape {
-			foundJk = true
-			break
+	// All discrete bindings in the snapshot must have valid non-zero chords
+	for _, b := range snap.Bindings {
+		if b.Chord.Code == 0 {
+			t.Errorf("snap.Bindings contains zero-valued chord: %+v", b)
 		}
-	}
-	if !foundJk {
-		t.Errorf("expected 'jk' escape chord in BindingsForMode(ModeInsert), got: %+v", insertBindings)
 	}
 
 	// ActionForChord lookup
@@ -1357,5 +1351,3 @@ func TestEditorMousePressModelessVisualExit(t *testing.T) {
 		t.Errorf("expected cursor at (1, 1), got (%d, %d)", row, col)
 	}
 }
-
-

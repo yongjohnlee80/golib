@@ -77,25 +77,25 @@ type SelectItem[T any] struct {
 //
 // # Usage Examples
 //
-//  1. Standard static option dropdown:
+// 1. Standard static option dropdown:
 //
-//     items := []widget.SelectItem[string]{
-//     {Label: "PostgreSQL", Value: "postgres"},
-//     {Label: "MySQL", Value: "mysql"},
-//     {Label: "SQLite", Value: "sqlite"},
-//     }
-//     sel := widget.NewSelect(
-//     widget.WithOptions(items),
-//     widget.WithFilter[string](true),
-//     )
+//	items := []widget.SelectItem[string]{
+//		{Label: "PostgreSQL", Value: "postgres"},
+//		{Label: "MySQL", Value: "mysql"},
+//		{Label: "SQLite", Value: "sqlite"},
+//	}
+//	sel := widget.NewSelect(
+//		widget.WithOptions(items),
+//		widget.WithFilter[string](true),
+//	)
 //
-//  2. Listening to selection changes:
+// 2. Listening to selection changes:
 //
-//     tui.Subscribe(ctx, func(ev widget.SelectionChangedEvent) {
-//     if ev.Owner == sel.NodeID() {
-//     log.Printf("Selected engine: %s (index %d)", ev.Label, ev.Index)
-//     }
-//     })
+//	tui.Subscribe(ctx, func(ev widget.SelectionChangedEvent) {
+//		if ev.Owner == sel.NodeID() {
+//			log.Printf("Selected engine: %s (index %d)", ev.Label, ev.Index)
+//		}
+//	})
 type Select[T any] struct {
 	Base
 	items    []SelectItem[T]

@@ -42,6 +42,7 @@ func (e *Editor) doUndo() {
 	if !e.canUndo || len(e.undo) == 0 {
 		return
 	}
+	e.groupOpen = false
 	snap := e.undo[len(e.undo)-1]
 	e.undo = e.undo[:len(e.undo)-1]
 	e.redo = append(e.redo, e.snapshot())
@@ -53,6 +54,7 @@ func (e *Editor) doRedo() {
 	if !e.canUndo || len(e.redo) == 0 {
 		return
 	}
+	e.groupOpen = false
 	snap := e.redo[len(e.redo)-1]
 	e.redo = e.redo[:len(e.redo)-1]
 	e.undo = append(e.undo, e.snapshot())
@@ -65,7 +67,9 @@ func (e *Editor) restore(s editorSnap) {
 	e.ln = max(0, min(s.ln, len(e.lines)-1))
 	e.col = s.col
 	e.anchor = nil
-	e.clampNormal()
+	if e.modal {
+		e.clampNormal()
+	}
 	e.edited()
 }
 

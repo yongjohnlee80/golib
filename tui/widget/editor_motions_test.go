@@ -3,6 +3,7 @@ package widget_test
 import (
 	"testing"
 
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -70,5 +71,30 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	row, _ = ed.Line()
 	if row != 0 {
 		t.Errorf("after '{': got row %d, want 0", row)
+	}
+}
+
+func TestEditorMotionsNanoLineEnd(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 40, 10,
+		widget.WithInitialText("abc"),
+		widget.WithKeymap(widget.NanoKeymap()),
+		widget.WithModalEditing(false),
+	)
+
+	// Ctrl+E in Nano moves to insertion boundary at end of line (col 3)
+	h.inject(keyMod('e', tui.ModCtrl))
+	h.barrier(sh)
+
+	row, col := ed.Line()
+	if row != 0 || col != 3 {
+		t.Fatalf("after Ctrl+E in Nano: got (%d, %d), want (0, 3)", row, col)
+	}
+
+	// Type 'X' - should append after 'c', producing "abcX"
+	h.inject(key('X'))
+	h.barrier(sh)
+
+	if got := ed.Value(); got != "abcX" {
+		t.Errorf("value after typing 'X' at end of line: got %q, want %q", got, "abcX")
 	}
 }

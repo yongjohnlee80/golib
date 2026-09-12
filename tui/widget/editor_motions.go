@@ -149,7 +149,11 @@ func (e *Editor) move(act Action, count int) {
 		apply(e.ln, 0)
 	case ActLineEnd:
 		e.desired = -1
-		apply(e.ln, e.normalMax(e.ln))
+		col := e.normalMax(e.ln)
+		if e.mode == ModeInsert {
+			col = len(e.lineClusters(e.ln))
+		}
+		apply(e.ln, col)
 	case ActWordForward:
 		e.desired = -1
 		for i := 0; i < count; i++ {

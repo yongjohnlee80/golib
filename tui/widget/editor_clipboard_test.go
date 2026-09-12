@@ -71,3 +71,38 @@ func TestEditorClipboardDisabledFeatures(t *testing.T) {
 		t.Errorf("SelectedText() with selection disabled: got %q, want empty", ed.SelectedText())
 	}
 }
+
+func TestEditorClipboardDisabledYank(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 40, 10,
+		widget.WithInitialText("ab"),
+		widget.WithYank(false),
+	)
+
+	h.inject(key('v'))
+	h.inject(key('l'))
+	h.barrier(sh)
+
+	if got := ed.SelectedText(); got != "ab" {
+		t.Fatalf("SelectedText() during visual: got %q, want %q", got, "ab")
+	}
+
+	h.inject(key('y'))
+	h.barrier(sh)
+
+	if ed.Mode() != widget.ModeNormal {
+		t.Errorf("after yank: mode is %v, want ModeNormal", ed.Mode())
+	}
+
+	text, linewise := ed.Register()
+	if text != "" || linewise {
+		t.Errorf("register after yank with WithYank(false): got (%q, %v), want (\"\", false)", text, linewise)
+	}
+
+	// Also verify normal-mode yy
+	h.inject(key('y'), key('y'))
+	h.barrier(sh)
+	text, linewise = ed.Register()
+	if text != "" || linewise {
+		t.Errorf("register after yy with WithYank(false): got (%q, %v), want (\"\", false)", text, linewise)
+	}
+}

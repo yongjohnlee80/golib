@@ -67,19 +67,19 @@ import (
 //
 // # Usage Examples
 //
-//  1. Standard tabbed workspace with three views:
+// 1. Standard tabbed workspace with three views:
 //
-//     tabs := widget.NewTabs(
-//     widget.WithTab("Editor", editorView),
-//     widget.WithTab("Logs", logBufferView),
-//     widget.WithTab("Status", statusTable),
-//     widget.WithKeepMounted(true), // retain log scrollback while editing
-//     )
+//	tabs := widget.NewTabs(
+//		widget.WithTab("Editor", editorView),
+//		widget.WithTab("Logs", logBufferView),
+//		widget.WithTab("Status", statusTable),
+//		widget.WithKeepMounted(true), // retain log scrollback while editing
+//	)
 //
-//  2. Programmatic tab switching:
+// 2. Programmatic tab switching:
 //
-//     // Switch to "Logs" view (tab index 1):
-//     tabs.Select(1)
+//	// Switch to "Logs" view (tab index 1):
+//	tabs.Select(1)
 type Tabs struct {
 	Base
 	tabs      []tabEntry

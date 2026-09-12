@@ -89,8 +89,8 @@ import "github.com/yongjohnlee80/golib/tui"
 //
 //   - Ownership: loop-goroutine-owned. All methods on Base are intended to be called exclusively
 //     from the application event loop goroutine.
-//   - Pre-Mount Safety: Setter invocations during widget instantiation are thread-safe if
-//     performed prior to mounting the widget tree.
+//   - Pre-Mount Invariant: Setters called before mounting (when ctx is nil) safely no-op their
+//     dirty/layout marks without nil dereferences; all access must remain loop-goroutine-owned.
 //
 // # Usage Example
 //

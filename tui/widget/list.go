@@ -110,19 +110,19 @@ func SliceSource[T any](items []T) ListSource[T] { return sliceSource[T](items) 
 //
 // # Usage Examples
 //
-//  1. Creating a string picker list with Vim navigation:
+// 1. Creating a string picker list with Vim navigation:
 //
-//     files := []string{"main.go", "config.go", "router.go", "handler.go"}
-//     list := widget.NewList(
-//     widget.WithItems(files, func(s string) string { return s }),
-//     )
+//	files := []string{"main.go", "config.go", "router.go", "handler.go"}
+//	list := widget.NewList(
+//		widget.WithItems(files, func(s string) string { return s }),
+//	)
 //
-//  2. Creating a multi-select checklist:
+// 2. Creating a multi-select checklist:
 //
-//     tasks := widget.NewList(
-//     widget.WithItems([]string{"Build", "Test", "Deploy"}, func(s string) string { return s }),
-//     widget.WithMultiSelect[string](true),
-//     )
+//	tasks := widget.NewList(
+//		widget.WithItems([]string{"Build", "Test", "Deploy"}, func(s string) string { return s }),
+//		widget.WithMultiSelect[string](true),
+//	)
 type List[T any] struct {
 	Base
 	src    ListSource[T]

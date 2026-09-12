@@ -148,3 +148,59 @@ func TestKeymapBindings(t *testing.T) {
 	}
 }
 
+func TestInsertKeymapOverlayAndUnbind(t *testing.T) {
+	// 1. WithKeymap accepting ModeInsert chord
+	overlay := Keymap{
+		KeyChord{Mode: ModeInsert, Code: 'q', Ctrl: true}: ActUndo,
+	}
+	ed := NewEditor(WithKeymap(overlay))
+	if act, ok := ed.keymap[KeyChord{Mode: ModeInsert, Code: 'q', Ctrl: true}]; !ok || act != ActUndo {
+		t.Fatalf("expected ModeInsert Ctrl+Q -> ActUndo, got (%v, %v)", act, ok)
+	}
+
+	// 2. Overlay unbinding a standard ModeInsert chord
+	stdWithUnbind := StandardKeymap()
+	stdWithUnbind[KeyChord{Mode: ModeInsert, Code: 'z', Ctrl: true}] = ActUnbound
+	edStd := NewEditor(WithKeymap(stdWithUnbind), WithModalEditing(false))
+	if _, ok := edStd.keymap[KeyChord{Mode: ModeInsert, Code: 'z', Ctrl: true}]; ok {
+		t.Fatalf("expected Ctrl+Z to be unbound in edStd")
+	}
+}
+
+func TestSnapshotKeymapReflection(t *testing.T) {
+	ed := NewEditor(WithEscapeChord("jk"))
+	snap := ed.SnapshotKeymap()
+
+	if snap.EscapeChord != "jk" {
+		t.Errorf("snap.EscapeChord: got %q, want %q", snap.EscapeChord, "jk")
+	}
+	if len(snap.Bindings) == 0 {
+		t.Fatal("expected non-empty snap.Bindings")
+	}
+
+	// Check reverse lookup
+	chords := ed.ChordsForAction(ActDown)
+	found := false
+	for _, c := range chords {
+		if c.Mode == ModeNormal && c.Code == 'j' && !c.Ctrl {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("ChordsForAction(ActDown) did not contain normal 'j': %+v", chords)
+	}
+
+	// Check chord lookup
+	act, ok := ed.ActionForChord(KeyChord{Mode: ModeNormal, Code: 'j'})
+	if !ok || act != ActDown {
+		t.Errorf("ActionForChord(normal 'j'): got (%v, %v), want (ActDown, true)", act, ok)
+	}
+
+	// Structural chords in bindings should all have valid non-zero codes
+	for _, b := range snap.Bindings {
+		if b.Chord.Code == 0 {
+			t.Errorf("snap.Bindings contains zero-valued chord: %+v", b)
+		}
+	}
+}

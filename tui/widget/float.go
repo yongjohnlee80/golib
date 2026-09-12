@@ -97,31 +97,31 @@ func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
 //
 // # Usage Examples
 //
-//  1. Creating a centered modal confirmation dialog:
+// 1. Creating a centered modal confirmation dialog:
 //
-//     form := widget.NewBox(
-//     widget.NewText("Save changes before closing?"),
-//     widget.WithTitle("Confirm"),
-//     )
-//     dialog := widget.NewFloat(
-//     form,
-//     widget.WithModal(true),
-//     widget.WithDimBackground(true),
-//     widget.WithAnchor(widget.Center),
-//     )
-//     host.Attach(dialog)
+//	form := widget.NewBox(
+//		widget.NewText("Save changes before closing?"),
+//		widget.WithTitle("Confirm"),
+//	)
+//	dialog := widget.NewFloat(
+//		form,
+//		widget.WithModal(true),
+//		widget.WithDimBackground(true),
+//		widget.WithAnchor(widget.Center),
+//	)
+//	host.Attach(dialog)
 //
-//     // Trigger display:
-//     dialog.Show()
+//	// Trigger display:
+//	dialog.Show()
 //
-//  2. Responsive fractional search modal (90% width, 60% height):
+// 2. Responsive fractional search modal (90% width, 60% height):
 //
-//     searchView := widget.NewFloat(
-//     finderBox,
-//     widget.WithModal(true),
-//     widget.WithSizeFraction(90, 60),
-//     widget.WithAnchor(widget.Top),
-//     )
+//	searchView := widget.NewFloat(
+//		finderBox,
+//		widget.WithModal(true),
+//		widget.WithSizeFraction(90, 60),
+//		widget.WithAnchor(widget.Top),
+//	)
 type Float struct {
 	Base
 	child  tui.Component

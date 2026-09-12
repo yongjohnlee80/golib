@@ -65,21 +65,21 @@ const (
 //
 //   - Ownership: loop-goroutine-owned. Mutation via [Text.SetText] must be performed
 //     on the application event loop goroutine or via App.Update.
-//   - Zero Concurrent Allocation: Rendering reads immutable strings and slices without heap churn.
+//   - Allocation Profile: Rendering splits and formats text lines against layout width constraints.
 //
 // # Usage Examples
 //
 // 1. Single-line truncated header label:
 //
 //	title := widget.NewText("Active Project: golib / tui / widget",
-//		widget.WithTextStyle(style.Default().Bold()),
+//		widget.WithTextStyle(style.New().Bold(true)),
 //		widget.WithWrapMode(widget.Truncate),
 //	)
 //
 // 2. Multi-line wrapped description block:
 //
 //	desc := widget.NewText("This panel displays high-volume logging output with backpressure.",
-//		widget.WithTextStyle(style.Default().Faint()),
+//		widget.WithTextStyle(style.New().Faint(true)),
 //		widget.WithWrapMode(widget.Wrap),
 //	)
 type Text struct {

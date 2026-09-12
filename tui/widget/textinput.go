@@ -63,24 +63,24 @@ import (
 //
 // # Usage Examples
 //
-//  1. Creating a validated username field with placeholder:
+// 1. Creating a validated username field with placeholder:
 //
-//     usernameInput := widget.NewTextInput(
-//     widget.WithPlaceholder("Enter username (min 3 chars)..."),
-//     widget.WithValidate(func(val string) error {
-//     if len(strings.TrimSpace(val)) < 3 {
-//     return errors.New("username too short")
-//     }
-//     return nil
-//     }),
-//     )
+//	usernameInput := widget.NewTextInput(
+//		widget.WithPlaceholder("Enter username (min 3 chars)..."),
+//		widget.WithValidate(func(val string) error {
+//			if len(strings.TrimSpace(val)) < 3 {
+//				return errors.New("username too short")
+//			}
+//			return nil
+//		}),
+//	)
 //
-//  2. Creating a password input field:
+// 2. Creating a password input field:
 //
-//     passwordInput := widget.NewTextInput(
-//     widget.WithPlaceholder("Password..."),
-//     widget.WithMask('*'),
-//     )
+//	passwordInput := widget.NewTextInput(
+//		widget.WithPlaceholder("Password..."),
+//		widget.WithMask('*'),
+//	)
 type TextInput struct {
 	Base
 	cs     []string // value as grapheme clusters

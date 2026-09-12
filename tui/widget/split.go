@@ -82,25 +82,25 @@ const (
 //
 // # Usage Examples
 //
-//  1. Standard side-by-side split with 50/50 ratio:
+// 1. Standard side-by-side split with 50/50 ratio:
 //
-//     sidebar := widget.NewBox(treeView, widget.WithTitle("Explorer"))
-//     editor := widget.NewEditor()
-//     split := widget.NewSplit(
-//     widget.Horizontal,
-//     sidebar,
-//     editor,
-//     widget.WithRatio(0.3),
-//     widget.WithMinSizes(15, 30),
-//     )
+//	sidebar := widget.NewBox(treeView, widget.WithTitle("Explorer"))
+//	editor := widget.NewEditor()
+//	split := widget.NewSplit(
+//		widget.Horizontal,
+//		sidebar,
+//		editor,
+//		widget.WithRatio(0.3),
+//		widget.WithMinSizes(15, 30),
+//	)
 //
-//  2. Maximizing / Zooming a pane:
+// 2. Maximizing / Zooming a pane:
 //
-//     // Zoom editor to 100% full-screen view:
-//     split.Zoom(widget.PaneB)
+//	// Zoom editor to 100% full-screen view:
+//	split.Zoom(widget.PaneB)
 //
-//     // Restore dual-pane view:
-//     split.Unzoom()
+//	// Restore dual-pane view:
+//	split.Unzoom()
 type Split struct {
 	Base
 	o          Orientation
