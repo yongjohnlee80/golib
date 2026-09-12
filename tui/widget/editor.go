@@ -80,6 +80,31 @@ import (
 //  6. Hardware Cursor Reporting and Shaping:
 //     Editor implements [tui.CursorReporter] and [tui.CursorShaper]. In Normal mode,
 //     the terminal cursor is configured as a block; in Insert mode, as a vertical beam.
+//
+// # Concurrency Model
+//
+//   - Ownership: loop-goroutine-owned. All editing methods, mode switches, and buffer mutations
+//     must run on the application event loop goroutine.
+//   - Timers: Escape chord timeouts are managed via internal loop ticks, eliminating background goroutines.
+//
+// # Usage Examples
+//
+// 1. Embedding in a titled panel with status hints:
+//
+//	ed := widget.NewEditor(
+//		widget.WithEditorReadOnly(false),
+//	)
+//	panel := widget.NewBox(ed,
+//		widget.WithTitle("Configuration Editor"),
+//		widget.WithStatus("i: insert | Esc: normal | :w write"),
+//	)
+//
+// 2. Custom escape chord and initial text:
+//
+//	codeEditor := widget.NewEditor(
+//		widget.WithEscapeChord('j', 'k'),
+//	)
+//	codeEditor.SetValue("package main\n\nfunc main() {\n\tprintln(\"hello world\")\n}\n")
 type Editor struct {
 	readOnly bool // viewer mode: motions and yank only
 	Base

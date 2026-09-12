@@ -334,6 +334,41 @@ type CollapseEvent struct {
 //   - 'h' / Left Arrow:  If on an expanded branch, collapses it. If on a collapsed branch or leaf, jumps to parent.
 //   - Enter: Toggles expansion on branch nodes; emits [ActivateEvent] on leaf nodes.
 //   - Mouse: Single-click moves selection; double-click toggles expansion or activates leaf.
+//
+// # Architectural Invariants
+//
+//  1. Atomic Preflight Validation: Attaching forests (via [Tree.SetRoots] or [TreeNode.SetChildren])
+//     validates the entire subtree before applying changes. Any detected cycles, duplicate pointers,
+//     or duplicate sibling IDs trigger a non-destructive panic leaving previous tree state untouched.
+//  2. Synchronous Cursor Reconciliation: When nodes expand, collapse, or are detached, cursor and
+//     viewport bounds are reconciled immediately, ensuring input handlers never query stale row indices.
+//  3. Stale Async Load Rejection: Asynchronous child loading is guarded by generational tokens;
+//     responses bearing superseded generation numbers are discarded immediately with zero side effects.
+//
+// # Concurrency Model
+//
+//   - Ownership: loop-goroutine-owned. Tree mutation, expansion, and navigation must occur on the loop.
+//   - Asynchronous Loading Seam: Background workers must load children asynchronously and deliver
+//     results back via App.Go or App.Update to call [TreeNode.SetChildren].
+//
+// # Usage Examples
+//
+// 1. Building a file explorer tree:
+//
+//	rootNode := widget.NewTreeNode("src", "src/")
+//	cmdNode := widget.NewTreeNode("cmd", "cmd/")
+//	mainFile := widget.NewTreeNode("main", "main.go", widget.WithLeaf(), widget.WithBadge("entry"))
+//	cmdNode.SetChildren(0, []*widget.TreeNode{mainFile})
+//	rootNode.SetChildren(0, []*widget.TreeNode{cmdNode})
+//
+//	tree := widget.NewTree(widget.WithRoots(rootNode))
+//
+// 2. Wrapping in a titled panel and listening for leaf activation:
+//
+//	panel := widget.NewBox(tree,
+//		widget.WithTitle("Project Files"),
+//		widget.WithStatus("Enter: open | h/l: collapse/expand"),
+//	)
 type Tree struct {
 	Base
 	roots []*TreeNode

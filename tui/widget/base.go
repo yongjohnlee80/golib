@@ -71,6 +71,42 @@ import "github.com/yongjohnlee80/golib/tui"
 //
 // Base supplies no Layout or Render: there is no sensible default geometry or paint routine;
 // every concrete widget must implement both.
+//
+// # Architectural Invariants
+//
+//  1. Pure Embedding Contract: Base is strictly embedded by value into widget structs;
+//     it possesses no reference to the outer wrapper and initiates no template method calls.
+//  2. Safe Pre-Mount Invalidation: [Base.MarkDirty] and [Base.RequestLayout] are complete
+//     no-ops before mount (when ctx is nil), allowing option functions and constructors to
+//     invoke mutating setters without requiring defensive nil checks.
+//  3. Unified Policy-Aware Measurement: Outside of Render (which draws into a Surface), all
+//     width, wrapping, and cursor calculations must route through [Base.measure], delegating to
+//     [tui.Context.StringWidth] so terminal ambiguous-width policies remain perfectly coherent.
+//  4. Promoted Focus Dispatch: [Base.focusSelf] uses the outer widget's [tui.Context] to request
+//     focus for the outer node ID, powering recursive container traversal ([focusFirst]).
+//
+// # Concurrency Model
+//
+//   - Ownership: loop-goroutine-owned. All methods on Base are intended to be called exclusively
+//     from the application event loop goroutine.
+//   - Pre-Mount Safety: Setter invocations during widget instantiation are thread-safe if
+//     performed prior to mounting the widget tree.
+//
+// # Usage Example
+//
+//	type CustomWidget struct {
+//		widget.Base
+//		label string
+//	}
+//
+//	func (w *CustomWidget) Init(ctx *tui.Context) {
+//		w.Base.Init(ctx) // Mandatory chaining
+//	}
+//
+//	func (w *CustomWidget) SetLabel(s string) {
+//		w.label = s
+//		w.MarkDirty() // Safe both before and after mount
+//	}
 type Base struct {
 	ctx *tui.Context // set by Init; carries NodeID, App handles, unmount context
 }

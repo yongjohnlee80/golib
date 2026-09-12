@@ -23,8 +23,65 @@ const (
 	WrapSoft
 )
 
-// Text is a styled static label: plain text, truncated with
-// ellipsis or soft-wrapped. Not focusable; consumes nothing.
+// Text provides a lightweight, styled static text label supporting both single-line
+// truncation (with ellipsis) and multi-line soft wrapping. It is purely presentational:
+// not focusable, consumes no input events, and occupies minimal memory.
+//
+// # Layout Models: Truncate vs Wrap
+//
+// Text operates in one of two distinct layout modes configured via [WithWrapMode]:
+//
+//  1. Truncate Mode (Default):
+//     - Flattened into a single line (newlines replaced with spaces).
+//     - Height is strictly 1 row.
+//     - Overflow beyond constraint MaxW is truncated with an ellipsis "…".
+//
+//     ┌──────────────────────────────────────────────┐
+//     │ System Status: All cluster nodes operational…│ (w=46, h=1)
+//     └──────────────────────────────────────────────┘
+//
+//  2. Wrap Mode:
+//     - Hard newlines preserved as paragraph breaks.
+//     - Each line soft-wrapped at viewport boundary w = MaxW.
+//     - Height expands dynamically to accommodate wrapped lines.
+//
+//     ┌───────────────────────────┐
+//     │ Antigravity runtime       │ (row 0)
+//     │ initialized on node-042   │ (row 1)
+//     │ with 16 worker threads.   │ (row 2)
+//     └───────────────────────────┘
+//
+// # Architectural Invariants
+//
+//  1. Pure Presentation: Text implements only [tui.Component]. It never accepts focus,
+//     has no cursor, and emits no bus events.
+//  2. Layout Invalidation on Content Mutation: Calling [Text.SetText] issues both
+//     [Base.RequestLayout] (to recount wrap geometry or width) and [Base.MarkDirty]
+//     (to schedule repainting).
+//  3. Ellipsis Grace: In Truncate mode, if available width is exactly 1 cell and overflow
+//     occurs, Text renders only the single ellipsis glyph "…".
+//
+// # Concurrency Model
+//
+//   - Ownership: loop-goroutine-owned. Mutation via [Text.SetText] must be performed
+//     on the application event loop goroutine or via App.Update.
+//   - Zero Concurrent Allocation: Rendering reads immutable strings and slices without heap churn.
+//
+// # Usage Examples
+//
+// 1. Single-line truncated header label:
+//
+//	title := widget.NewText("Active Project: golib / tui / widget",
+//		widget.WithTextStyle(style.Default().Bold()),
+//		widget.WithWrapMode(widget.Truncate),
+//	)
+//
+// 2. Multi-line wrapped description block:
+//
+//	desc := widget.NewText("This panel displays high-volume logging output with backpressure.",
+//		widget.WithTextStyle(style.Default().Faint()),
+//		widget.WithWrapMode(widget.Wrap),
+//	)
 type Text struct {
 	Base
 	text string

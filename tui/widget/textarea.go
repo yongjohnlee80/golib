@@ -7,20 +7,68 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// TextArea is the multi-line editor. The buffer is a
-// []string of lines, grapheme-addressed within a line — deliberately simple,
-// no rope/gap buffer in v1: the target is commit-message / query-editor
-// scale (kilobytes), not code editors; very large single lines degrade. The
-// line-slice is internal representation, swappable later without API
-// change.
+// TextArea provides an interactive multi-line text editor suitable for commit messages,
+// SQL query composition, comments, and configuration notes.
 //
-// Keys: TextInput's set plus Up/Down/PgUp/PgDn, Enter = newline, and
-// Ctrl+Home/End (buffer start/end). There is deliberately NO submit key:
-// a Box-wrapped TextArea form submits via an app-level
-// keybinding. Tab is not consumed (focus traversal).
+// # Buffer & Viewport Model
 //
-// Emits ChangeEvent, coalesced per input event (one per paste, not per
-// rune). Implements the real-cursor IME rule via tui.CursorReporter.
+// TextArea embeds [textBuffer] for line-and-cluster addressing, paired with a viewport window:
+//
+//	┌──────────────────────────────────────────────────────────┐
+//	│ Viewport Window (w=58, h=6)                              │
+//	│                                                          │
+//	│ 0: fix(tui): handle ambiguous-width grapheme clusters    │
+//	│ 1:                                                       │
+//	│ 2: In terminal environments where emoji or CJK glyphs    │
+//	│ 3: are rendered, character width varies across policies. │
+//	│ 4: This commit synchronizes layout with paint cells.█    │ (cursor at ln=4, col=54)
+//	│                                                          │
+//	└──────────────────────────────────────────────────────────┘
+//
+// # Key Responsibilities
+//
+//  1. Multi-Line Editing: Grapheme-accurate insertion, deletion, newline splitting, and backspace.
+//  2. Flexible Wrap Disciplines: Supports both [WrapNone] (horizontal scrolling) and [WrapSoft]
+//     (visual wrapping within the viewport width).
+//  3. Sticky Cursor Physics: Maintains a desired horizontal column during vertical navigation
+//     across lines of unequal length.
+//  4. Hardware Cursor Integration: Implements [tui.CursorReporter] to anchor terminal IME composition
+//     windows directly at the insertion point.
+//
+// # Architectural Invariants
+//
+//  1. Deliberate Absence of Submit Key: Unlike [TextInput], Enter in TextArea always inserts a newline.
+//     Form submission must be triggered by an app-level keybinding (e.g. Ctrl+S or Space leader).
+//  2. Tab Traversal Integrity: Tab and Shift+Tab are intentionally unconsumed, ensuring focus can always
+//     traverse forward and backward to sibling widgets without trapping the user.
+//  3. Coalesced Change Notifications: Multi-character pastes or programmatic updates emit exactly one
+//     [ChangeEvent] rather than flooding the bus per rune.
+//
+// # Concurrency Model
+//
+//   - Ownership: loop-goroutine-owned. All editing methods, value setters, and focus changes must run
+//     on the application loop goroutine.
+//   - Non-Thread-Safe Buffer: Direct manipulation from background goroutines is forbidden; use App.Update.
+//
+// # Usage Examples
+//
+// 1. Commit message editor wrapped in a titled panel:
+//
+//	commitMsg := widget.NewTextArea(
+//		widget.WithWrap(widget.WrapSoft),
+//		widget.WithPlaceholder("Enter commit title and summary..."),
+//	)
+//	panel := widget.NewBox(commitMsg,
+//		widget.WithTitle("Commit Message"),
+//		widget.WithStatus("Ctrl+S: commit | Esc: cancel"),
+//	)
+//
+// 2. Query editor with pre-filled content:
+//
+//	queryInput := widget.NewTextArea(
+//		widget.WithWrap(widget.WrapNone),
+//	)
+//	queryInput.SetValue("SELECT id, name, created_at\nFROM users\nWHERE active = true;")
 type TextArea struct {
 	Base
 	textBuffer
