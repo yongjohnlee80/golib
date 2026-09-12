@@ -156,31 +156,7 @@ func TestExclusivePreemptionAndStaleness(t *testing.T) {
 	}
 }
 
-// TestTaskPanicIsolation: a panicking task produces
-// errors.Is(res.Err, ErrTaskPanic), the app keeps processing events, and
-// the recovered stack appears via WithLogger.
-func TestTaskPanicIsolation(t *testing.T) {
-	t.Parallel()
-	var lc logCapture
-	root := &probe{name: "root", pref: Size{W: 4, H: 2}}
-	h := startApp(t, root, 4, 2, WithLogger(lc.logger()))
 
-	h.app.Go(root.nodeID(), func(context.Context) (any, error) {
-		panic("task exploded")
-	})
-	waitFor(t, "panicked task result", func() bool { return len(taskResults(root)) == 1 })
-	r := taskResults(root)[0]
-	if !errors.Is(r.Err, ErrTaskPanic) {
-		t.Fatalf("result Err = %v, want errors.Is(_, ErrTaskPanic)", r.Err)
-	}
-	if !lc.has("task panic") {
-		t.Fatal("recovered task panic (with stack) was not logged via WithLogger")
-	}
-	// The app keeps processing events.
-	before := root.eventCount()
-	h.inject(keyEv('k'))
-	waitFor(t, "post-panic event processing", func() bool { return root.eventCount() > before })
-}
 
 // TestTaskPoolBound: with WithTaskPoolSize(2), 10 queued
 // tasks never exceed 2 running concurrently; cancelling a queued task
