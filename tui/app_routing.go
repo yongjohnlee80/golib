@@ -6,10 +6,67 @@ import (
 	"github.com/yongjohnlee80/golib/logger"
 )
 
-// Event routing — target-then-bubble, no capture phase: the runtime
-// resolves a single target node per routed event, calls its HandleEvent,
-// and — while handlers return false — walks parent links to the root. The
-// first true consumes the event and stops the walk.
+// Event Routing Pipeline
+//
+// The TUI event system operates on a single-threaded "target-then-bubble"
+// paradigm (no capture phase). All external terminal input (Lane A: keys,
+// mouse, paste, window resize, terminal focus) and internal asynchronous
+// worker/timer/program events (Lane B: Post, Go TaskResult, TaskProgress,
+// TickEvent) funnel sequentially into dispatch() on the loop goroutine.
+//
+//               ┌─────────────────────────────────────────┐
+//               │       Lane A: Terminal Input            │
+//               │   (Keys, Mouse, Paste, Focus, Resize)   │
+//               └────────────────────┬────────────────────┘
+//                                    │
+//               ┌────────────────────┴────────────────────┐
+//               │       Lane B: Program & Async           │
+//               │   (Post, TaskResult, Progress, Tick)    │
+//               └────────────────────┬────────────────────┘
+//                                    ▼
+//                      App.dispatch(ev Event)
+//                                    │
+//        ┌───────────────────────────┼───────────────────────────┐
+//        ▼                           ▼                           ▼
+//   [Key / Paste]              [Mouse Event]            [Addressed / System]
+//        │                           │                           │
+//   Target: Focused            1. Hit-Test (Topmost)             ├─ ResizeEvent:
+//   (Fallback: Root)              Reverse paint order;           │    Update size,
+//        │                        Z-order Stack topmost          │    dirty layout+render,
+//   Bubble Up:                    wins pointer hit.              │    Publish to Bus.
+//   Target -> Parent -> ...          │                           │
+//        │                     2. Primary Left Press:            ├─ FocusEvent:
+//        ├─ Consumed: Return      Focus candidate pane           │    Bubble to focused,
+//        │                        (focusFromPointer).            │    Publish to Bus.
+//        └─ Unconsumed Key:       If focus unmounts/redirects    │
+//           Fallback to           target, press is skipped!      ├─ TickEvent /
+//           App.globalKey(e)         │                           │  TaskResult /
+//           (Tab traversal)   3. Ordinal Commit:                 │  TaskProgress:
+//                                 pressOrdinal (1=single,        │    Direct delivery
+//                                 2=double, 3=triple click).     │    to Owner node.
+//                                    │                           │    NO BUBBLING.
+//                             4. Bubble & Local Coords:          │    Dead-letter if
+//                                 Rewrite (X, Y) relative        │    unmounted.
+//                                 to n.absRect at each hop.      │
+//                                 Target -> Parent -> ...        │
+//
+// Core Invariants:
+//  1. Single-Threaded Dispatch: dispatch() runs strictly on the main loop
+//     goroutine. Handlers never need internal mutexes to guard component
+//     state during HandleEvent.
+//  2. Topmost Hit-Testing: Mouse clicks are evaluated against laid-out
+//     absolute rectangles (n.absRect) in reverse paint order (last child
+//     first). Stack overlays and modal dialogs reliably intercept clicks.
+//  3. Coordinate Sandboxing: Mouse coordinates are rewritten relative to
+//     n.absRect at every hop during bubble traversal. A component receives
+//     (0,0) when clicked at its top-left corner regardless of screen position.
+//  4. Pointer Focus Precedes Delivery: Clicking a pane moves focus into that
+//     pane before the MousePress is delivered. If focus change unmounts or
+//     redirects the target, delivery of the press is aborted to prevent
+//     phantom clicks on unmeasured or inactive nodes.
+//  5. Isolated Addressed Deliveries: Tasks (TaskResult, TaskProgress) and
+//     Ticks are private to the owning node. They never bubble to ancestors,
+//     preventing implementation leaks and accidental child-task interception.
 
 // dispatch routes one event on the loop goroutine. Both lanes funnel through
 // it, so input and program events are ordered against each other by the order
@@ -136,7 +193,12 @@ func (a *App) dispatch(ev Event) {
 }
 
 // globalKey is the App-level fallback for keys no component consumed:
-// framework-owned Tab / Shift-Tab traversal.
+// framework-owned Tab / Shift-Tab focus traversal.
+//
+// Key releases and modified tabs (other than Shift) are ignored. If Shift is
+// held, focus steps backward (-1); otherwise forward (+1). Components that
+// consume Tab (e.g. text editors inserting \t) return true from HandleEvent,
+// naturally opting out of global focus stepping.
 func (a *App) globalKey(e KeyEvent) {
 	if e.Kind == KeyRelease {
 		return
@@ -152,7 +214,10 @@ func (a *App) globalKey(e KeyEvent) {
 }
 
 // bubble walks n's ancestor chain delivering ev until a handler consumes
-// it. Returns whether anything consumed.
+// it (returns true). Returns whether any handler consumed the event.
+//
+// If an event bubbles all the way to the root without being consumed,
+// bubble returns false, allowing callers to apply fallbacks (such as globalKey).
 func (a *App) bubble(n *node, ev Event) bool {
 	start := n
 	for ; n != nil; n = n.parent {
@@ -165,8 +230,9 @@ func (a *App) bubble(n *node, ev Event) bool {
 	return false
 }
 
-// traceRouted records which node consumed a key (0 = nobody). Only keys:
-// mouse and paste traffic would drown the trace without adding much.
+// traceRouted records which node consumed a key (0 = nobody).
+// Only key presses are traced: mouse motion/press and paste traffic would
+// overwhelm the ring buffer without providing actionable debugging insight.
 func (a *App) traceRouted(ev Event, from *node, consumer NodeID) {
 	if !a.tracing() {
 		return
@@ -184,10 +250,15 @@ func (a *App) traceRouted(ev Event, from *node, consumer NodeID) {
 }
 
 // deliverAddressed hands an addressed event (TickEvent / TaskResult /
-// TaskProgress) directly to its owner — no bubbling: these are private
-// deliveries; propagating them to ancestors would leak implementation
-// detail. An unmounted owner dead-letters task traffic (drop, count,
-// log); a stale tick is silently done.
+// TaskProgress) directly to its owner node — no bubbling: these are private
+// deliveries targeted specifically to the node that initiated them.
+// Propagating them to ancestors would violate encapsulation and leak child
+// implementation details.
+//
+// If the owner has unmounted before delivery:
+//   - TaskResult / TaskProgress: dead-lettered (dropped, counted in
+//     a.async.deadLetters, and logged as a warning).
+//   - TickEvent: silently dropped as ticks are idempotent and time-bound.
 func (a *App) deliverAddressed(owner NodeID, ev Event) {
 	n := a.nodes[owner]
 	if n == nil {
@@ -217,8 +288,9 @@ func typeNameAddressed(ev Event) string {
 }
 
 // hitTest finds the deepest visible node whose absolute Rect contains the
-// point, descending into children in reverse paint order so the topmost
-// Stack layer wins the mouse.
+// point (x, y). Traversal descends into children in reverse paint order
+// (last child first) so that topmost layers (e.g. Stack overlays, popup menus,
+// floating modals) win pointer events over occluded siblings.
 func (a *App) hitTest(x, y int) *node {
 	if a.rootNode == nil {
 		return nil
@@ -226,6 +298,7 @@ func (a *App) hitTest(x, y int) *node {
 	return hitTestNode(a.rootNode, x, y)
 }
 
+// hitTestNode recursively inspects n and its visible children for containment.
 func hitTestNode(n *node, x, y int) *node {
 	if !n.visible() || !n.absRect.Contains(x, y) {
 		return nil
@@ -238,15 +311,17 @@ func hitTestNode(n *node, x, y int) *node {
 	return n
 }
 
-// pressOrdinal returns the ordinal of this press: 1 for a single press, 2 for the
-// second press of a double-click, and so on.
+// pressOrdinal returns the ordinal count of this press: 1 for a single press,
+// 2 for the second press of a double-click, 3 for triple-click, etc.
 //
-// A press continues the run only when the button, the CELL and the window all
-// match. Same cell rather than "near": a terminal row is one cell tall, so a
-// one-cell drift is a different row, and tolerating it would activate a row the
-// user did not click. A release between the two presses is normal and does not
-// interrupt the run; a press of a different button, or on another cell, restarts
-// it at 1.
+// A press continues the run only when ALL four criteria match:
+//   1. Button matches the previous press.
+//   2. Exact cell coordinates (X, Y) match (terminal cells are 1-cell high; drift is disallowed).
+//   3. Target NodeID matches (clicking a different widget at the same position starts a new run).
+//   4. Elapsed time since the prior press is within doubleClickWindow.
+//
+// A MouseRelease between presses is expected and does not interrupt the run.
+// Any mismatch resets the ordinal count back to 1.
 func (a *App) pressOrdinal(e MouseEvent, target *node) int {
 	window := a.cfg.doubleClickWindow
 	now := time.Now()

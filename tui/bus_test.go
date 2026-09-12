@@ -4,9 +4,12 @@ package tui
 // enqueue-only publish, scoped auto-unsubscribe, idempotent cancel.
 
 import (
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 type fooMsg struct{ n int }
@@ -148,3 +151,73 @@ func TestBusPublishFromHandler(t *testing.T) {
 	h.app.Bus().Publish(fooMsg{n: 1})
 	waitFor(t, "chained publish delivery", func() bool { return chained.Load() })
 }
+
+// TestBusNilGuards asserts that nil arguments fail loud with errs.Fatal.
+func TestBusNilGuards(t *testing.T) {
+	t.Parallel()
+	root := &probe{name: "root", pref: Size{W: 4, H: 2}}
+	h := startApp(t, root, 4, 2)
+
+	assertFatal := func(name string, wantOp, wantRule string, fn func()) {
+		t.Helper()
+		defer func() {
+			rec := recover()
+			if rec == nil {
+				t.Fatalf("%s: expected panic, got nil", name)
+			}
+			err, ok := rec.(error)
+			if !ok {
+				t.Fatalf("%s: expected error panic, got %T (%v)", name, rec, rec)
+			}
+			var fatal errs.Fatal
+			if !errors.As(err, &fatal) {
+				t.Fatalf("%s: expected errs.Fatal, got %v", name, err)
+			}
+			if fatal.Op != wantOp {
+				t.Fatalf("%s: op = %q, want %q", name, fatal.Op, wantOp)
+			}
+			if fatal.Rule != wantRule {
+				t.Fatalf("%s: rule = %q, want %q", name, fatal.Rule, wantRule)
+			}
+		}()
+		fn()
+	}
+
+	t.Run("newBus nil app", func(t *testing.T) {
+		assertFatal("newBus(nil)", "tui: newBus", "nil app", func() {
+			newBus(nil)
+		})
+	})
+
+	t.Run("Subscribe nil bus", func(t *testing.T) {
+		assertFatal("Subscribe(nil, fn)", "tui: Subscribe", "nil bus", func() {
+			Subscribe[fooMsg](nil, func(fooMsg) {})
+		})
+	})
+
+	t.Run("Subscribe nil handler", func(t *testing.T) {
+		assertFatal("Subscribe(b, nil)", "tui: Subscribe", "nil handler", func() {
+			Subscribe[fooMsg](h.app.Bus(), nil)
+		})
+	})
+
+	t.Run("SubscribeScoped nil context", func(t *testing.T) {
+		assertFatal("SubscribeScoped(nil, fn)", "tui: SubscribeScoped", "nil context", func() {
+			SubscribeScoped[fooMsg](nil, func(fooMsg) {})
+		})
+	})
+
+	t.Run("Publish nil bus", func(t *testing.T) {
+		assertFatal("(*Bus)(nil).Publish", "tui: Bus.Publish", "nil bus", func() {
+			var b *Bus
+			b.Publish(fooMsg{n: 1})
+		})
+	})
+
+	t.Run("Publish nil value", func(t *testing.T) {
+		assertFatal("Publish(nil)", "tui: Bus.Publish", "nil value", func() {
+			h.app.Bus().Publish(nil)
+		})
+	})
+}
+

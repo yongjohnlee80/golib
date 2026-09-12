@@ -115,9 +115,23 @@ func computeAbs(n *node, ox, oy int) {
 	}
 }
 
-// renderTree paints the visible tree depth-first in document (paint) order:
-// each component renders its own chrome; the framework hands every child
-// its own sub-Surface, so a child cannot paint outside the rect it was given.
+// renderTree paints the mounted, visible component tree depth-first in document order.
+//
+// # Architectural Invariants & Execution Guarantees
+//
+//  1. Single-Owner Loop Goroutine:
+//     renderTree executes strictly on the App loop goroutine. It sets the a.inRender
+//     guard flag for the duration of the traversal, ensuring that any illicit tree
+//     mutation (Mount, Unmount, Move) attempted during Render triggers a fail-loud panic.
+//
+//  2. Root Surface Initialization:
+//     Traverses from a.rootNode using a freshly instantiated root Surface (newRootSurface)
+//     bound to the terminal back-buffer (a.buf) and render context (a.rctx).
+//
+//  3. Painter's Algorithm & Sandboxed Clipping:
+//     Traverses depth-first so parent containers paint their chrome/background first,
+//     followed by their children in document order. Children paint into isolated sub-surfaces
+//     (s.Sub), enforcing bounding box clipping and local (0, 0) coordinate spaces.
 func (a *App) renderTree() {
 	root := a.rootNode
 	if root == nil {
@@ -128,6 +142,24 @@ func (a *App) renderTree() {
 	a.renderNode(root, newRootSurface(a.buf, a.rctx))
 }
 
+// renderNode recursively paints node n and all its visible children.
+//
+// # Traversal & Sandboxing Mechanics
+//
+//  1. Self Paint:
+//     n.comp.Render(s) paints the current component onto Surface s. The coordinates
+//     in s are relative to n's own origin (0, 0 to n.rect.W x n.rect.H).
+//
+//  2. Visibility Pruning:
+//     Iterates over n.children in document order. Any child where ch.visible() is
+//     false (such as unplaced nodes, hidden tabs, or zero-dimension components)
+//     is pruned immediately from rendering along with its entire subtree.
+//
+//  3. Sub-Surface Isolation:
+//     Visible children are recursively rendered via s.Sub(ch.rect). This constructs
+//     a clipped sub-surface viewport: a child cannot draw outside its assigned
+//     parent-relative rectangle, preventing rogue components from overwriting
+//     neighboring sibling or parent cells.
 func (a *App) renderNode(n *node, s Surface) {
 	n.comp.Render(s)
 	for _, ch := range n.children {

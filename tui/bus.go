@@ -90,6 +90,9 @@ type subscription struct {
 
 // newBus builds the App's bus.
 func newBus(app *App) *Bus {
+	if app == nil {
+		panic(errs.Fatal{Op: "tui: newBus", Rule: "nil app"})
+	}
 	return &Bus{app: app, subs: make(map[reflect.Type][]*subscription)}
 }
 
@@ -100,6 +103,9 @@ func newBus(app *App) *Bus {
 // subscribing to an interface type never matches. Bare Subscribe is for
 // App-lifetime listeners; components use SubscribeScoped.
 func Subscribe[T any](b *Bus, fn func(T)) (cancel func()) {
+	if b == nil {
+		panic(errs.Fatal{Op: "tui: Subscribe", Rule: "nil bus"})
+	}
 	if fn == nil {
 		panic(errs.Fatal{Op: "tui: Subscribe", Rule: "nil handler"})
 	}
@@ -127,6 +133,9 @@ func Subscribe[T any](b *Bus, fn func(T)) (cancel func()) {
 // Context.OnUnmount, preventing memory leaks and stale event delivery. This is
 // the standard subscription method recommended for all components and widgets.
 func SubscribeScoped[T any](c *Context, fn func(T)) (cancel func()) {
+	if c == nil {
+		panic(errs.Fatal{Op: "tui: SubscribeScoped", Rule: "nil context"})
+	}
 	cancel = Subscribe(c.app.bus, fn)
 	c.OnUnmount(cancel)
 	return cancel
@@ -157,6 +166,9 @@ func (b *Bus) remove(t reflect.Type, s *subscription) {
 // registered during a delivery see only subsequent publishes; handlers are
 // invoked in subscription order.
 func (b *Bus) Publish(v any) {
+	if b == nil {
+		panic(errs.Fatal{Op: "tui: Bus.Publish", Rule: "nil bus"})
+	}
 	if v == nil {
 		panic(errs.Fatal{Op: "tui: Bus.Publish", Rule: "nil value"})
 	}
