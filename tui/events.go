@@ -7,10 +7,6 @@ import "time"
 // types out so the runtime's type switches stay exhaustive.
 type Event interface{ isEvent() }
 
-// NodeID identifies a mounted component. 0 = none; assigned monotonically
-// at mount; never reused for the App's lifetime.
-type NodeID uint64
-
 // --- lifecycle / terminal ---
 
 // ResizeEvent reports a new terminal size. The App's intake stage coalesces
