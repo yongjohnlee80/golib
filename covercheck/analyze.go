@@ -121,7 +121,7 @@ func analyzeFile(change FileChange, base, head *Profile, baseFiles, headFiles ma
 		OldPath:       change.OldPath,
 		Kind:          change.Kind,
 		Coverage:      compareStats(baseStats, headStats, baseOK, headOK),
-		MissingAtHead: change.Kind != ChangeDeleted && isProductionGo(newPath) && !headOK,
+		MissingAtHead: change.Kind != ChangeDeleted && isProductionGo(newPath) && change.Executability != ExecutabilityAbsent && !headOK,
 	}
 	if change.Kind != ChangeDeleted {
 		file.ChangedBlocks = intersectStats(head.Files[newPath], change.Ranges)

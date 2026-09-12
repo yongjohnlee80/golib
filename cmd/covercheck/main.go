@@ -7,6 +7,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"os/exec"
@@ -136,6 +139,9 @@ func execute(ctx context.Context, cfg config) (covercheck.Result, error) {
 		return covercheck.Result{}, err
 	}
 	changes = productionGoChanges(changes)
+	if err := annotateExecutability(root, changes); err != nil {
+		return covercheck.Result{}, err
+	}
 	report, err := covercheck.Analyze(base, head, changes)
 	if err != nil {
 		return covercheck.Result{}, err
@@ -202,6 +208,37 @@ func productionGoChanges(changes []covercheck.FileChange) []covercheck.FileChang
 		filtered = append(filtered, change)
 	}
 	return filtered
+}
+
+func annotateExecutability(root string, changes []covercheck.FileChange) error {
+	for index := range changes {
+		change := &changes[index]
+		if change.Kind == covercheck.ChangeDeleted || change.NewPath == "" {
+			continue
+		}
+		filename := filepath.Join(root, filepath.FromSlash(change.NewPath))
+		source, err := parser.ParseFile(token.NewFileSet(), filename, nil, 0)
+		if err != nil {
+			return fmt.Errorf("classifying executable statements in %s: %w", change.NewPath, err)
+		}
+		change.Executability = covercheck.ExecutabilityAbsent
+		ast.Inspect(source, func(node ast.Node) bool {
+			switch value := node.(type) {
+			case *ast.FuncDecl:
+				if value.Body != nil && len(value.Body.List) > 0 {
+					change.Executability = covercheck.ExecutabilityPresent
+					return false
+				}
+			case *ast.FuncLit:
+				if value.Body != nil && len(value.Body.List) > 0 {
+					change.Executability = covercheck.ExecutabilityPresent
+					return false
+				}
+			}
+			return change.Executability != covercheck.ExecutabilityPresent
+		})
+	}
+	return nil
 }
 
 func readModulePath(filename string) (string, error) {

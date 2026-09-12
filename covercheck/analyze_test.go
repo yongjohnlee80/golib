@@ -22,7 +22,7 @@ example.com/p/pkg/new.go:1.1,2.2 1 1
 	report, err := Analyze(base, head, []FileChange{
 		{OldPath: "pkg/a.go", NewPath: "pkg/a.go", Kind: ChangeModified, Ranges: []LineRange{{Start: 6, End: 6}}},
 		{OldPath: "pkg/old.go", NewPath: "pkg/new.go", Kind: ChangeRenamed, Ranges: []LineRange{{Start: 1, End: 1}}},
-		{NewPath: "pkg/missing.go", Kind: ChangeAdded, Ranges: []LineRange{{Start: 1, End: 2}}},
+		{NewPath: "pkg/missing.go", Kind: ChangeAdded, Ranges: []LineRange{{Start: 1, End: 2}}, Executability: ExecutabilityPresent},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +50,23 @@ example.com/p/pkg/new.go:1.1,2.2 1 1
 			t.Logf("%s %s %s", violation.Scope, violation.Path, violation.Rule)
 		}
 		t.Fatalf("violations = %d, want 3", len(violations))
+	}
+}
+
+func TestAnalyzeDoesNotMarkDeclarationOnlyFileMissing(t *testing.T) {
+	t.Parallel()
+	base := mustProfileWithMode(t, "set")
+	head := mustProfileWithMode(t, "set")
+	report, err := Analyze(base, head, []FileChange{{
+		NewPath:       "doc.go",
+		Kind:          ChangeAdded,
+		Executability: ExecutabilityAbsent,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Files[0].MissingAtHead {
+		t.Fatalf("declaration-only file reported missing: %#v", report.Files[0])
 	}
 }
 
