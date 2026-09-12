@@ -11,12 +11,24 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// Editor provides an embedded, modal Vim-like multi-line text editor designed for
+// Editor provides an embedded, configurable multi-line text editor designed for
 // code editing, configuration editing, and interactive query authoring.
 //
-// # Modal State Machine Architecture
+// # Architecture & Editing Profiles
 //
-// Editor implements the classical Vim tripartite modal state machine:
+// Editor supports configurable editing profiles and keysets ([Keyset]):
+//
+//   - [KeysetVim] (default): Classical Vim tripartite modal state machine (Normal, Insert, Visual).
+//   - [KeysetNano]: Modeless terminal editor with Nano-style control shortcuts (Ctrl+O, Ctrl+K, Ctrl+U, etc.).
+//   - [KeysetStandard]: Modeless desktop/GUI editor with standard shortcuts (Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+Z, etc.).
+//
+// In addition to predefined keysets, the editor supports custom keymap overlays ([WithKeymap]),
+// configurable escape chords ([WithEscapeChord]), and toggling modal vs modeless editing ([WithModalEditing]).
+//
+// # Modal State Machine Architecture (Vim Keyset)
+//
+// When modal editing is active ([KeysetVim] or [WithModalEditing](true)), Editor implements
+// the classical Vim tripartite modal state machine:
 //
 //	     ┌────────────────────────────────────────────────────────┐
 //	     │                      NORMAL MODE                       │
@@ -57,7 +69,7 @@ import (
 //  2. Fast Escape Chord ("jk"):
 //     In Insert mode, Editor supports two-key escape chords (default "jk"). When the
 //     first rune is typed, it is held temporarily. If the second rune arrives within
-//     chordTimeout (180ms), the editor transitions to Normal mode without modifying
+//     chordTimeout (default 300ms), the editor transitions to Normal mode without modifying
 //     buffer text. If the timeout expires or an unrelated key arrives, the held rune
 //     is flushed into the buffer as normal text.
 //
@@ -82,6 +94,20 @@ import (
 //     Editor implements [tui.CursorReporter] and [tui.CursorShaper]. In Normal mode,
 //     the terminal cursor is configured as a block; in Insert mode, as a vertical beam.
 //
+//  7. Configurable Capabilities:
+//     Editor capabilities can be fine-tuned or restricted:
+//     - Selection: Visual modes and range selection can be enabled or disabled ([canSelect]).
+//     - Yank & System Clipboard: OS clipboard and internal register copying can be enabled or restricted ([canYank]).
+//     - Bounded Undo Ring: Undo and redo tracking can be enabled or bypassed ([canUndo]).
+//     - Modality: The editor can run modally (Vim tripartite) or modelessly (Nano, Standard) ([WithModalEditing], [WithKeyset]).
+//
+//  8. Structural Runtime Keymap Reflection:
+//     Hosts and overlays can introspect the editor's live key configuration at runtime:
+//     - Query active profile ([Editor.Keyset]) and escape chord ([Editor.EscapeChord]).
+//     - Query structured keybindings with semantic actions and human-readable descriptions ([Editor.Bindings], [Editor.BindingsForMode]).
+//     - Export serializable snapshots for command palettes or help popups ([Editor.SnapshotKeymap]).
+//     - Resolve chord actions ([Editor.ActionForChord]) or find chords for an action ([Editor.ChordsForAction]).
+//
 // # Concurrency Model
 //
 //   - Ownership: loop-goroutine-owned. All editing methods, mode switches, and buffer mutations
@@ -103,9 +129,19 @@ import (
 // 2. Custom escape chord and initial text:
 //
 //	codeEditor := widget.NewEditor(
-//		widget.WithEscapeChord('j', 'k'),
+//		widget.WithEscapeChord("jk"),
 //	)
 //	codeEditor.SetValue("package main\n\nfunc main() {\n\tprintln(\"hello world\")\n}\n")
+//
+// 3. Modeless standard editor with runtime keymap reflection:
+//
+//	ed := widget.NewEditor(
+//		widget.WithStandardKeymap(),
+//	)
+//	snap := ed.SnapshotKeymap()
+//	for _, b := range snap.Bindings {
+//		fmt.Printf("%s: %s (%s)\n", b.Chord, b.Name, b.Description)
+//	}
 type Editor struct {
 	readOnly bool // viewer mode: motions and yank only
 	Base
@@ -179,7 +215,7 @@ func WithEditorWrap(m WrapMode) EditorOption {
 	return func(e *Editor) { e.wrap = m }
 }
 
-// WithInitialText seeds the buffer (cursor at the document start, Normal
+// WithInitialText seeds the buffer (cursor at the document start, initial editing
 // mode, empty undo history).
 func WithInitialText(s string) EditorOption {
 	return func(e *Editor) {
@@ -290,8 +326,10 @@ func WithKeyset(ks Keyset) EditorOption {
 	}
 }
 
-// NewEditor builds an empty Normal-mode editor with the default keymap and
-// the "jk" escape chord.
+// NewEditor builds an empty editor initialized with the default Vim keymap,
+// modal editing enabled, and the "jk" escape chord armed. Custom options
+// can select alternative keysets (e.g. WithNanoKeymap, WithStandardKeymap)
+// or customize capabilities and styles.
 func NewEditor(opts ...EditorOption) *Editor {
 	e := &Editor{
 		textBuffer: newTextBuffer(),
@@ -352,7 +390,7 @@ func (e *Editor) ReadOnly() bool { return e.readOnly }
 // SetReadOnly makes the editor a VIEWER: motions, counts, visual
 // selection, yank, and search all work; every mutating action (insert
 // entry, delete, paste, undo/redo, typed text) is refused, and an active
-// Insert session returns to Normal. Hosts use it for panels the user
+// Insert session returns to Normal (in modal mode). Hosts use it for panels the user
 // navigates but must not change.
 func (e *Editor) SetReadOnly(v bool) {
 	if e.readOnly == v {
@@ -524,7 +562,8 @@ func (e *Editor) enterInsert() {
 	e.setMode(ModeInsert)
 }
 
-// exitInsert implements Insert→Normal: cursor one cluster left, clamped.
+// exitInsert implements Insert→Normal in modal mode: cursor one cluster left, clamped.
+// In modeless editing, this is a no-op as the editor remains in Insert mode.
 func (e *Editor) exitInsert() {
 	if !e.modal {
 		return
@@ -538,6 +577,8 @@ func (e *Editor) exitInsert() {
 	e.MarkDirty()
 }
 
+// exitVisual clears the selection anchor and transitions out of visual mode:
+// returning to Normal mode if modal editing is active, or to Insert mode if modeless.
 func (e *Editor) exitVisual() {
 	e.anchor = nil
 	if e.modal {
@@ -765,7 +806,8 @@ func (e *Editor) execAction(act Action, count int) bool {
 
 // --- event handling -----------------------------------------------------------
 
-// HandleEvent implements the modal key contract.
+// HandleEvent handles mouse, bracketed paste, focus, chord timer ticks, and keyboard events
+// across modal and modeless editing profiles.
 func (e *Editor) HandleEvent(ev tui.Event) bool {
 	switch t := ev.(type) {
 	case tui.MouseEvent:
@@ -1237,7 +1279,11 @@ func (e *Editor) pressAt(x, y int) bool {
 	// drag-selection, which this revision defers. Keeping the anchor would make the
 	// next motion extend a selection the user believes they dismissed.
 	if e.mode == ModeVisual || e.mode == ModeVisualLine {
-		e.setMode(ModeNormal)
+		if e.modal {
+			e.setMode(ModeNormal)
+		} else {
+			e.setMode(ModeInsert)
+		}
 		e.vAnchor = taPos{}
 	}
 
