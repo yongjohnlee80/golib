@@ -188,7 +188,8 @@ edStd := widget.NewEditor(
 edCustom := widget.NewEditor(
     widget.WithModalEditing(false),
     widget.WithKeymap(widget.Keymap{
-        widget.KeyChord{Mode: widget.ModeInsert, Code: 's', Ctrl: true}: widget.ActSave,
+        widget.KeyChord{Mode: widget.ModeInsert, Code: 'a', Ctrl: true}: widget.ActSelectAll,
+        widget.KeyChord{Mode: widget.ModeInsert, Code: 'z', Ctrl: true}: widget.ActUndo,
     }),
 )
 ```
@@ -199,13 +200,14 @@ Disable features when building constrained input surfaces or read-only viewers:
 
 ```go
 ed := widget.NewEditor(
-    widget.WithSelection(false), // disable visual selection / ranges
-    widget.WithYank(false),      // disable clipboard copying / pasting
+    widget.WithSelection(false), // disable visual selection / ranges (v, V)
+    widget.WithYank(false),      // disable explicit copy/yank actions (y, yy, ActCopy)
     widget.WithUndo(false),      // disable undo / redo history stack
-    widget.WithTabWidth(4),      // indentation width
-    widget.WithWrap(widget.WrapSoft), // soft line-wrapping
+    widget.WithEditorWrap(widget.WrapSoft), // soft line-wrapping
 )
 ```
+
+Note: `WithYank(false)` disables explicit yank/copy actions (`ActCopy`, `ActVisualYank`). It does not disable pasting; internal register paste remains supported, and destructive edits (such as line delete) can still populate the internal register.
 
 ### 3. Read-only viewer mode
 

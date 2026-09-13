@@ -58,10 +58,7 @@ Below is a complete, production-ready custom component: `SearchableList`, which 
 package myapp
 
 import (
-	"strings"
-
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -77,21 +74,19 @@ type SearchableList[T any] struct {
 
 func NewSearchableList[T any](
 	items []T,
-	renderItem func(item T, selected bool) string,
+	renderItem func(item T) string,
 	filterFn func(item T, query string) bool,
 ) *SearchableList[T] {
-	sl := &SearchableList[T]{
+	return &SearchableList[T]{
 		allItems: items,
 		filterFn: filterFn,
 		input: widget.NewTextInput(
 			widget.WithPlaceholder("Search... (/ to focus, Esc to clear)"),
 		),
 		list: widget.NewList(
-			items,
-			renderItem,
+			widget.WithItems(items, renderItem),
 		),
 	}
-	return sl
 }
 
 // 1. Init: Mount children and listen for text changes
@@ -99,6 +94,13 @@ func (sl *SearchableList[T]) Init(ctx *tui.Context) {
 	sl.ctx = ctx
 	ctx.Mount(sl.input)
 	ctx.Mount(sl.list)
+
+	// Subscribe to filter input text changes with automatic mount-bound cleanup:
+	tui.SubscribeScoped(ctx, func(ev widget.ChangeEvent) {
+		if ev.Owner == sl.input.NodeID() {
+			sl.applyFilter(ev.Value)
+		}
+	})
 }
 
 // 2. Layout: Position input at top, list takes the remainder

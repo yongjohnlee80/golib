@@ -13,8 +13,8 @@ for future design reviews, RFCs, and refactoring rounds.
 
 ### The Deficit
 The `App` runtime separates events into two lanes:
-- **Lane A (Input)**: Hardware terminal events (keys, mouse, resize) read via an unbuffered pump into a bounded channel (`inputQueueSize`).
-- **Lane B (Program)**: Application updates (`App.Update`), task results (`TaskResult`), and bus deliveries (`Bus.Publish`) queued on an unbounded channel.
+- **Lane A (Input)**: Hardware terminal events (keys, mouse, resize) delivered over an unbuffered handoff channel (`a.input`) fed by an intake-owned bounded FIFO slice queue (`cfg.inputQueueSize`, default 256).
+- **Lane B (Program)**: Application updates (`App.Update`), task results (`TaskResult`), and bus deliveries (`Bus.Publish`) queued on a mutex-protected slice queue (`programQueue`) backed by a 1-capacity wake channel and an optional ceiling (`WithEventQueueLimit`, default 0 = unlimited).
 
 In `App.loop`, the runtime selects between lanes. However, when Lane B is selected, `drainProgramLane` captures the pending batch and executes **every single item** before returning to the `select`:
 
@@ -38,18 +38,16 @@ If a background task or external goroutine pushes a massive burst of closures or
 
 ---
 
-## 2. Pre-Mount BufferView Write Dropping
+## 2. Pre-Mount BufferView Write Rejection
 
 ### The Deficit
-`BufferView.Writer()` provides an `io.Writer` interface designed for logging and stream capture. However, writes made before the `BufferView` is mounted into an active component tree (`Init(ctx)`) are silently discarded because the underlying node and context do not yet exist:
+`BufferView.Writer()` provides an `io.Writer` interface via `*bufWriter` designed for logging and stream capture. However, writes made before the `BufferView` is mounted into an active component tree (`Init(ctx)`) or after it is unmounted fail immediately with `widget.ErrClosed`:
 
 ```go
-func (v *BufferView) Writer() io.Writer {
-    return &bufferWriter{v: v}
-}
+func (v *BufferView) Writer() io.Writer { return v.wr }
 ```
 
-In typical applications, logging sinks are created during application startup—before `app.Run(ctx)` is called. As a consequence, critical initialization logs, configuration dumps, and early connection errors are silently lost unless the application developer manually creates an intermediate staging buffer (the "deferred writer" pattern).
+In typical applications, logging sinks are initialized during application startup—before `app.Run(ctx)` is called. As a consequence, critical initialization logs, configuration dumps, and early connection errors fail to write unless the application developer manually defers writes or creates an intermediate staging buffer (the "deferred writer" pattern).
 
 ### Discussion & Potential Directions
 - **Internal Pre-Mount Ring Buffer**: `BufferView` could maintain an internal ring buffer (e.g. holding the last 256 lines) when unmounted. Upon `Init(ctx)`, the view automatically flushes this pre-mount backlog into the active cell buffer, making `logView.Writer()` safe to use immediately at application initialization.
@@ -93,11 +91,11 @@ In high-throughput scenarios (e.g. high-frequency telemetry, cursor movement tra
 ## 5. Editor Key Chord Resolution: Ad-hoc State vs. Declarative Trie
 
 ### The Deficit
-The `widget.Editor` now supports modular keysets (`KeysetVim`, `KeysetNano`, `KeysetStandard`), customizable chords, and `ActUnbound` bubbling.
+The `widget.Editor` supports modular keysets (`KeysetVim`, `KeysetNano`, `KeysetStandard`), customizable chords, and `ActUnbound` bubbling.
 
-However, composite multi-key sequences in Vim mode (such as `dd` delete line, `dw` delete word, `ciw` change inner word, or two-key escape sequences like `jk`) are currently tracked using manual struct fields (`pendingRune`, `pendingAction`, `chordTimer`).
+However, composite multi-key sequences in Vim mode (such as double-key prefix actions `ActDeletePrefix` for `dd`, `ActYankPrefix` for `yy`, `ActGoPrefix` for `gg`, and insert escape chords like `jk`) are currently tracked using manual struct fields (`pendingAct`, `pendingChord`, `pendingCount`, `pendingRune`, `chordCancel`).
 
-As new motions and operator-pending combinations are added, managing transitions and timeouts via mutable struct flags becomes error-prone and difficult to test exhaustively.
+As new motions and operator-pending combinations are added, managing transitions, arming chords, counts, and cancellation timers via mutable struct flags becomes error-prone and difficult to test exhaustively.
 
 ### Discussion & Potential Directions
 - **Declarative Key Trie Router**: Replace ad-hoc pending flags with a generic Trie-based keymap router. Each incoming keystroke traverses nodes in the Trie; leaf nodes execute actions, intermediate nodes transition state and start cancellation timers, and unmatched chords bubble immediately.
