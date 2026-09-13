@@ -25,7 +25,7 @@ defer cancel()
 
 app := tui.NewApp(newRoot(cancel),
     tui.WithBackend(backend),
-    tui.WithTaskPoolSize(16),            // semaphore concurrency limit for active ctx.Go tasks (default 16)
+    tui.WithTaskPoolSize(16),            // semaphore limit for active ctx.Go task execution (default 16)
     // WithEventQueueLimit(n) is omitted here to keep Lane B unlimited (the default).
     // Pass n >= 1 to enforce a fail-loud ceiling that panics if producers run away.
     tui.WithMinFrameInterval(16*time.Millisecond), // target ~60fps frame rate
@@ -42,7 +42,7 @@ return app.Run(ctx)
 |---|---|---|
 | `WithBackend(b)` | *Required* | Terminal driver (`term.Open()` for production, `NewTestBackend()` for tests). |
 | `WithTheme(t)` | `DefaultTheme()` | Color palette and standard attribute mapping across all widgets. |
-| `WithTaskPoolSize(n)` | `16` | Semaphore concurrency limit for active `ctx.Go` tasks (each task spawns a goroutine bounded by this execution pool). |
+| `WithTaskPoolSize(n)` | `16` | Concurrency limit for active `ctx.Go` task execution (each submission spawns a goroutine; semaphore bounds concurrently executing task functions). |
 | `WithEventQueueLimit(n)` | Omitted (`0` / unlimited) | Enforces a fail-loud capacity ceiling for the Lane B program queue (`n >= 1`). Exceeding the limit panics to catch runaway producers; Lane B never silently drops events. |
 | `WithMinFrameInterval(d)` | `16ms` (~60fps) | Frame limiter coalescing multiple dirty updates into atomic frame flushes. Use `0` in tests for instant renders. |
 | `WithDoubleClickWindow(d)` | `400ms` | Maximum elapsed time between clicks on the same cell to emit a double-click event. Set $\le 0$ to disable. |
