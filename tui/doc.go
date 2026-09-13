@@ -17,8 +17,9 @@
 //
 //  1. Single-Goroutine State Ownership Discipline: All component state, layout geometry,
 //     focus, and cell buffers are owned and modified exclusively on the event loop
-//     goroutine. Widget methods never acquire locks, and cross-goroutine mutation
-//     is restricted to [App.Update] or managed tasks.
+//     goroutine. Widget methods never acquire locks, and external goroutines communicate
+//     with the loop by posting closures through [App.Update], dispatching managed tasks
+//     via [Context.Go], or emitting events over [Bus.Publish].
 //  2. Two-Seam Portability: The entire runtime interacts with the external world
 //     through exactly two interfaces: [Backend] (what a terminal is) and [Surface]
 //     (what components draw on). Real ANSI terminals and headless CI test harnesses
