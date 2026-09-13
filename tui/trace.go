@@ -69,7 +69,7 @@ import "fmt"
 //	        traces = append(traces, ev)
 //	    }),
 //	)
-//	tb.Inject(tui.KeyEv('j'))
+//	tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'j'})
 //	// Assert that the key was consumed by the expected component:
 //	last := traces[len(traces)-1]
 //	if last.Kind == tui.TraceKey && last.Comp != "*widget.List" {
@@ -81,7 +81,7 @@ import "fmt"
 //	app := tui.NewApp(root,
 //	    tui.WithBackend(backend),
 //	    tui.WithTrace(func(ev tui.TraceEvent) {
-//	        logger.Debug("tui trace",
+//	        slog.Debug("tui trace",
 //	            "kind", ev.Kind.String(),
 //	            "node", ev.Node,
 //	            "comp", ev.Comp,

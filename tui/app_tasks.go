@@ -109,8 +109,8 @@ type TaskOption func(*taskConfig)
 //	func (c *SearchComponent) HandleEvent(ev tui.Event) bool {
 //	    switch e := ev.(type) {
 //	    case tui.KeyEvent:
-//	        if e.Kind == tui.KeyPress && e.Rune != 0 {
-//	            c.query += string(e.Rune)
+//	        if e.Kind == tui.KeyPress && e.Text != "" {
+//	            c.query += e.Text
 //	            // Any running search for the previous query is cancelled immediately.
 //	            c.activeTask = c.ctx.Go(runSearch(c.query), tui.Exclusive("search-query"))
 //	            return true

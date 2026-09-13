@@ -66,7 +66,7 @@ import (
 // # Architectural Invariants
 //
 //  1. Zero-Reflection Dispatch: Subscriptions compile down to direct type-asserted closures.
-//     Event publication performs NO reflect.Call and incurs zero per-publish heap allocations.
+//     Event publication performs NO reflect.Call; dispatch runs closures queued via Lane B.
 //  2. Enqueue-Only Publish: Publishing an event (Bus.Publish) enqueues a delivery task onto
 //     the App loop's program queue (Lane B) and returns immediately. Handlers are NEVER
 //     executed synchronously on the publisher's goroutine.
@@ -80,9 +80,9 @@ type Bus struct {
 }
 
 // subscription is one registered handler. fn is a compiler-generated
-// closure doing a plain type assertion — dispatch performs NO reflect.Call
-// and NO per-publish allocation. cancelled is the tombstone: a handler
-// cancelled during delivery of the same batch is skipped.
+// closure doing a plain type assertion — dispatch performs NO reflect.Call.
+// cancelled is the tombstone: a handler cancelled during delivery of the
+// same batch is skipped.
 type subscription struct {
 	fn        func(any)
 	cancelled atomic.Bool

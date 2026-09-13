@@ -19,7 +19,7 @@ import (
 // Editor supports configurable editing profiles and keysets ([Keyset]):
 //
 //   - [KeysetVim] (default): Classical Vim tripartite modal state machine (Normal, Insert, Visual).
-//   - [KeysetNano]: Modeless terminal editor with Nano-style control shortcuts (Ctrl+O, Ctrl+K, Ctrl+U, etc.).
+//   - [KeysetNano]: Modeless terminal editor with Nano-style control shortcuts (Ctrl+K cut line, Ctrl+U paste, Ctrl+A/E line start/end).
 //   - [KeysetStandard]: Modeless desktop/GUI editor with standard shortcuts (Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+Z, etc.).
 //
 // In addition to predefined keysets, the editor supports custom keymap overlays ([WithKeymap]),
@@ -33,11 +33,11 @@ import (
 //	     ┌────────────────────────────────────────────────────────┐
 //	     │                      NORMAL MODE                       │
 //	     │  - Navigation (h, j, k, l, w, b, e, 0, $, gg, G)       │
-//	     │  - Operators (d, y, c, p, P, x, r, u, Ctrl+R)          │
+//	     │  - Operators (d, y, p, P, x, u, Ctrl+R)                │
 //	     │  - Numeric counts (e.g. 5j, 3dd, 10w)                  │
 //	     │  - Unbound keys (Space!) BUBBLE for app leader menus   │
 //	     └───────────┬───────────────────────────────▲────────────┘
-//	i, a, o, O, c    │                               │  Esc or "jk"
+//	i, a, o, O       │                               │  Esc or "jk"
 //	enters insert    │                               │  chord timeout
 //	                 ▼                               │
 //	     ┌───────────────────────────────┐           │
@@ -54,7 +54,7 @@ import (
 //	     │            VISUAL / VISUAL-LINE            │
 //	     │  - Character-wise (v) or Line-wise (V)     │
 //	     │  - Active selection highlighting           │
-//	     │  - Actions (y: yank, d: delete, c: change) │
+//	     │  - Actions (y: yank, d/x: delete)          │
 //	     └────────────────────────────────────────────┘
 //
 // # Architectural Invariants and Capabilities
@@ -123,7 +123,7 @@ import (
 //	)
 //	panel := widget.NewBox(ed,
 //		widget.WithTitle("Configuration Editor"),
-//		widget.WithStatus("i: insert | Esc: normal | :w write"),
+//		widget.WithStatus("i: insert | Esc: normal | u: undo"),
 //	)
 //
 // 2. Custom escape chord and initial text:
@@ -153,8 +153,9 @@ type Editor struct {
 	left int
 	w, h int
 
-	styles TextInputStyles
-	keymap Keymap
+	styles  TextInputStyles
+	keymap  Keymap
+	unbound map[KeyChord]bool // explicitly unbound chords (via ActUnbound)
 
 	mode EditorMode
 
@@ -255,8 +256,15 @@ func WithKeymap(overlay Keymap) EditorOption {
 			validateKeymapEntry(kc, act)
 			if act == ActUnbound {
 				delete(e.keymap, kc)
+				if e.unbound == nil {
+					e.unbound = make(map[KeyChord]bool)
+				}
+				e.unbound[kc] = true
 			} else {
 				e.keymap[kc] = act
+				if e.unbound != nil {
+					delete(e.unbound, kc)
+				}
 			}
 		}
 	}
@@ -287,6 +295,7 @@ func WithVimKeymap() EditorOption {
 		e.keyset = KeysetVim
 		e.modal = true
 		e.keymap = VimKeymap()
+		e.unbound = make(map[KeyChord]bool)
 		if len(e.chord) == 0 {
 			e.chord = []rune{'j', 'k'}
 			e.chordTimeout = 300 * time.Millisecond
@@ -300,6 +309,7 @@ func WithNanoKeymap() EditorOption {
 		e.keyset = KeysetNano
 		e.modal = false
 		e.keymap = NanoKeymap()
+		e.unbound = make(map[KeyChord]bool)
 		e.setMode(ModeInsert)
 	}
 }
@@ -310,6 +320,7 @@ func WithStandardKeymap() EditorOption {
 		e.keyset = KeysetStandard
 		e.modal = false
 		e.keymap = StandardKeymap()
+		e.unbound = make(map[KeyChord]bool)
 		e.setMode(ModeInsert)
 	}
 }
@@ -338,6 +349,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 			Selection: style.New().Background(style.TokenSecondary).Foreground(style.TokenTextOnSecondary),
 		},
 		keymap:       DefaultKeymap(),
+		unbound:      make(map[KeyChord]bool),
 		chord:        []rune{'j', 'k'},
 		chordTimeout: 300 * time.Millisecond,
 		modal:        true,
@@ -498,6 +510,9 @@ func (e *Editor) SnapshotKeymap() KeymapSnapshot {
 
 // ActionForChord looks up the bound action for a given key chord.
 func (e *Editor) ActionForChord(kc KeyChord) (Action, bool) {
+	if e.unbound[kc] {
+		return ActUnbound, false
+	}
 	act, ok := e.keymap[kc]
 	return act, ok
 }
@@ -881,18 +896,23 @@ func (e *Editor) handleKey(k tui.KeyEvent) bool {
 // keys). Tab INSERTS a tab in Insert mode; traversal
 // belongs to Normal mode, where Tab bubbles.
 func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
-	// Keysets or overlays may bind shortcut chords in Insert mode (e.g. Nano Ctrl+K, Standard Ctrl+Z/C/V/X).
 	ctrl := k.Mods&tui.ModCtrl != 0
-	if ctrl || k.Code >= 0xF000 {
-		code := k.Code
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
-			code = []rune(k.Text)[0]
-		}
-		kc := KeyChord{Mode: ModeInsert, Code: code, Ctrl: ctrl}
-		if act, bound := e.keymap[kc]; bound {
-			e.settlePendingRune()
-			return e.execAction(act, 1)
-		}
+	code := k.Code
+	if k.Text != "" && k.Mods&nonTextMods == 0 {
+		code = []rune(k.Text)[0]
+	}
+	kc := KeyChord{Mode: ModeInsert, Code: code, Ctrl: ctrl}
+
+	// 1. Explicit unbind sentinel: unhandled keystroke bubbles up to application.
+	if e.unbound[kc] {
+		e.settlePendingRune()
+		return false
+	}
+
+	// 2. Configured keymap actions (custom bindings, Nano/Standard profiles, etc.).
+	if act, bound := e.keymap[kc]; bound {
+		e.settlePendingRune()
+		return e.execAction(act, 1)
 	}
 
 	isText := k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
@@ -1007,6 +1027,12 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 		e.moveCursor(e.ln, len(e.lineClusters(e.ln)), false)
 		e.MarkDirty()
 		return true
+	case tui.KeyPageUp:
+		e.move(ActPageUp, 1)
+		return true
+	case tui.KeyPageDown:
+		e.move(ActPageDown, 1)
+		return true
 	}
 
 	if isText {
@@ -1069,6 +1095,12 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 		code = []rune(k.Text)[0] // shifted letters arrive via Text ("G")
 	}
 	kc := KeyChord{Mode: modeClass(e.mode), Code: code, Ctrl: ctrl}
+
+	if e.unbound[kc] {
+		e.count = 0
+		e.pendingAct = ActUnbound
+		return false
+	}
 
 	// Double-key pending buffer, keyed by the ARMING CHORD, so a rebound
 	// prefix completes on its own chord rather than a hard-coded rune:

@@ -78,7 +78,7 @@ type AppOption func(*appConfig)
 // WithBackend sets the driver (REQUIRED). There is no default: the core tui
 // package cannot construct term.Backend (tui/term imports tui, not vice
 // versa), and a hidden registry/init() default is forbidden by golib
-// philosophy. Real apps pass term.New(...); tests pass
+// philosophy. Real apps pass term.Open(...); tests pass
 // tui.NewTestBackend().
 func WithBackend(b Backend) AppOption {
 	return func(c *appConfig) { c.backend = b }

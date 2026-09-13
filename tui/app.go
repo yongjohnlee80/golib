@@ -34,7 +34,7 @@ import (
 //     An App intake pump reads from Backend.Events() into an unbuffered channel
 //     with bounded overflow protection, preventing slow frames from blocking terminal reads.
 //   - Lane B (Program): Carries user-posted closures (App.Update), bus deliveries,
-//     and completed task results. Lane B never drops events and cannot starve Lane A.
+//     and completed task results. Lane B never drops events and provides queue isolation from Lane A.
 type App struct {
 	cfg     appConfig
 	root    Component
@@ -44,7 +44,8 @@ type App struct {
 	quit   chan struct{} // closed when Run exits; stops the intake pump
 	runCtx context.Context
 
-	// TWO LANES, and they are separate so that neither can starve the other.
+	// TWO LANES, and they are separate to provide queue isolation between
+	// terminal input and program updates.
 	//
 	// **Lane A** carries input arriving from the backend — keys, mouse, resize.
 	// The App pumps it, rather than the backend pushing into the loop, so a
@@ -55,8 +56,8 @@ type App struct {
 	inputDrops atomic.Uint64
 
 	// **Lane B** carries events the program itself posts. Keeping them off lane A
-	// means a program that posts heavily cannot delay input, and input arriving
-	// faster than it can be handled cannot delay the program.
+	// provides queue isolation, so heavy program posting does not delay or drop
+	// input handling, and input bursts do not block program queuing.
 	queue programQueue
 
 	// --- Everything below is owned by the loop goroutine. Read or write it
@@ -178,7 +179,7 @@ func (a *App) Update(fn func()) {
 }
 
 // Run starts the backend synchronously (raw mode, alternate screen,
-// capability probe; errors return before any goroutine starts,
+// capability probe; errors return before the event loop and intake pump start,
 // mirroring the scaffold's synchronous bind at server/scaffold.go:144-147),
 // mounts root, runs the event loop ON THE CALLING GOROUTINE until ctx is
 // cancelled or a terminal backend error occurs, then unmounts the tree,

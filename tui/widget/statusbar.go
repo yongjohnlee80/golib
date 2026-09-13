@@ -47,7 +47,6 @@ import (
 // or [StatusBar.SetRight] must occur on the main application loop goroutine.
 //
 // # Usage Examples
-// # Usage Examples
 //
 // 1. Setting up an application status footer:
 //
