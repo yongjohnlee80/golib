@@ -511,9 +511,9 @@ func (v *View) HandleEvent(ev tui.Event) bool {
 
 ### Pattern 5: Panic Resilience with `tui.ErrTaskPanic`
 
-If a background task panics (e.g. from an unexpected nil pointer in third-party library code), the `golib/tui` runtime catches the panic, restores the terminal state, and wraps it into `tui.ErrTaskPanic` inside `TaskResult.Err`.
+If a background task panics (e.g. from an unexpected nil pointer in third-party library code), the `golib/tui` task runner catches the panic, wraps it into `tui.ErrTaskPanic` inside `TaskResult.Err`, and dispatches it back to the component. The terminal state is **not** restored because the application does not crash—the UI event loop continues running normally. (Full terminal restoration is reserved for unhandled loop-level panics or explicit application exit).
 
-Always verify `res.Err != nil` before type-asserting `res.Value`:
+Always verify `res.Err == nil` and check that `res.Value != nil` before type-asserting `res.Value`. Note that a task returning `(nil, nil)` yields `res.Value == nil` with `res.Err == nil`:
 
 ```go
 if res.Err != nil {
@@ -525,8 +525,12 @@ if res.Err != nil {
     return true
 }
 
-// Safe: res.Value is guaranteed valid and non-nil
-v.data = res.Value.(Payload)
+// Check for nil and safely assert res.Value:
+if payload, ok := res.Value.(Payload); ok {
+    v.data = payload
+}
+v.ctx.MarkDirty()
+return true
 ```
 
 ---

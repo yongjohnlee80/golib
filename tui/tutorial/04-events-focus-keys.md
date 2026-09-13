@@ -71,12 +71,16 @@ Ctrl-modified keys arrive with the **bare letter** in `Code`:
 without checking `Mods` will read it as plain `l`, act on it, and consume
 it — and your `Ctrl-hjkl` pane motion will never fire.
 
-The shipped widgets bubble anything carrying Ctrl/Alt/Super/Hyper/Meta.
-Do the same in your own:
+Widgets that do not bind a modifier chord bubble it so applications can use it
+(e.g. `Ctrl-C`, `Ctrl-D`). Note that widgets with text editing capabilities
+(like `Editor` and `TextInput`) intentionally consume their own supported
+shortcuts (such as `Ctrl+A`, `Ctrl+Z`, `Ctrl+K`), but bubble unhandled chords.
+Do the same in your custom components: bubble unhandled chords so application-level
+shortcuts keep working:
 
 ```go
 if k.Mods&(tui.ModCtrl|tui.ModAlt|tui.ModSuper) != 0 {
-    return false // an application chord, not widget input
+    return false // an unhandled application chord, bubble up
 }
 ```
 
@@ -141,13 +145,13 @@ central event loop:
 
 1. **Lane A (Input)**:
    - Receives hardware terminal events (keystrokes, mouse moves, terminal resize).
-   - An internal intake pump reads from `Backend.Events()` into an unbuffered channel.
+   - An internal intake pump reads from `Backend.Events()` into an unbuffered channel backed by a bounded queue (`inputQueueSize`).
    - High-volume input bursts (e.g. rapid mouse dragging) employ bounded drop-oldest protection, preventing slow frames from blocking terminal reads.
 2. **Lane B (Program)**:
    - Carries application-driven signals: completed `ctx.Go` tasks, `Bus.Publish` events, and user-posted closures via `App.Update`.
-   - Lane B events are never dropped and have an independent queue capacity from Lane A.
+   - By default, Lane B has an unlimited queue (`eventQueueLimit == 0`) and never drops events. If an optional limit is configured via `WithEventQueueLimit`, overflow items will drop when the queue fills.
 3. **Queue Capacity Isolation vs Serialized Dispatch**:
-   - Independent queues prevent Lane B from exhausting Lane A's queue buffer (and vice versa).
+   - Independent queue capacities prevent Lane B from exhausting Lane A's queue buffer (and vice versa).
    - However, the event loop itself runs on a **single goroutine**: when Lane B has events, `drainProgramLane` processes the captured batch. Draining a very large or slow batch can temporarily delay the next Lane A selection. Keep event handlers and closures fast!
 
 ## The pub/sub bus
@@ -157,9 +161,9 @@ Components and widgets communicate decoupled state changes through the applicati
 - Shipped widget events:
   - `widget.ActivateEvent`: Enter pressed on a table or list row (`Owner`, `Index`).
   - `widget.SelectionChangedEvent`: Selection moved in a list or table (`Owner`, `Index`).
-  - `widget.SubmitEvent`: Enter pressed in a `TextInput` (`Owner`, `Text`).
+  - `widget.SubmitEvent`: Enter pressed in a `TextInput` (`Owner`, `Value`).
   - `widget.TabChangedEvent`: Active tab switched in `Tabs` (`Owner`, `Index`).
-  - `widget.DismissEvent`: Modal float dismissed via Esc or backdrop click (`Owner`).
+  - `widget.DismissEvent`: Modal float dismissed via Esc (`Owner`). (Backdrop mouse clicks are trapped and consumed by the modal layer, but do not dismiss it).
 
 ### 1. Scoped Subscriptions (`tui.SubscribeScoped`)
 
@@ -180,7 +184,7 @@ func (c *myController) Init(ctx *tui.Context) {
 }
 ```
 
-If you use bare `tui.Subscribe(bus, handler)`, the subscription is tied to the lifetime of the application, leaking memory if components mount and unmount repeatedly.
+Bare subscriptions (`cancel := tui.Subscribe(bus, handler)`) return a cancellation function that must be called explicitly when tearing down to avoid leaks. `tui.SubscribeScoped` handles this automatically upon component unmount.
 
 ### 2. Thread-Safe Publishing
 

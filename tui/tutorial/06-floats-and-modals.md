@@ -158,23 +158,23 @@ To use modals reliably, understand how `OverlayHost`, `Float`, and the render pi
 └────────────────────────────────────────────────────────────┘
 ```
 
-1. **`OverlayHost`**: Mounts your base application tree as its primary child and maintains a `LayerStack`.
-2. **`floatLayer`**: When you attach a `Float` and call `Show()`, `OverlayHost` mounts an internal `floatLayer` component.
+1. **`OverlayHost`**: Embeds `*tui.Stack`, mounting your base application tree as its primary layer and managing superimposed layers.
+2. **`floatLayer`**: When you attach a `Float` and call `Show()`, `Float` instantiates an internal `floatLayer` and mounts it into its context (`f.ctx.Mount(f.layer)`), then requests layout on itself.
    - **Focus Scope**: If `WithModal(true)` is enabled, `floatLayer.TrapsFocus()` returns `true`. The focus ring is sealed—`Tab` and `Shift-Tab` will never jump outside the modal.
-   - **Scrim Rendering**: When `WithDimBackground(true)` is set, `floatLayer.Render()` iterates over background cells beneath the float rect, applying dim attributes or stippling patterns.
+   - **Scrim Rendering**: When `WithDimBackground(true)` is set, `floatLayer.Render()` calls `s.Fill(..., "░", scrim)` over its own layer surface—it paints a stipple pattern over its layer rather than inspecting underlying cells.
    - **Anchoring**: `Float` positions its child using anchors:
      - `widget.Center`: centered horizontally and vertically.
      - `widget.TopRight`, `widget.BottomLeft`, etc.: pinned to viewport edges.
-     - `widget.AtRect(r)`: pinned relative to another widget's coordinates (for dropdowns, autocomplete menus, and context tooltips).
+     - `widget.AtRect(r)`: pinned to an explicit overlay-relative coordinate rectangle `r` (useful for dropdowns, autocomplete menus, and context tooltips).
 
-### 2. Double-Buffering & The One-Write Render Pass
+### 2. Double-Buffering & The Render Pass
 
 `golib/tui` uses a retained-mode, grapheme-cluster double-buffering pipeline:
 
 1. **Local Surface Drawing**: When a component's `Render(s tui.Surface)` runs, `s` is a sub-surface clipped and translated to the component's placed rectangle. Writing outside bounds is safely clipped.
 2. **Grapheme Clusters**: The cell buffer stores full Unicode grapheme clusters (including multi-byte emoji and zero-width joiners) and caches display column widths (1 or 2 cells).
-3. **Dirty Coalescing**: Calling `ctx.MarkDirty()` marks the layout branch as dirty. The runtime throttles renders to `WithMinFrameInterval` (~60fps), coalescing rapid state mutations into a single draw pass.
-4. **Cell Diff & One-Write Flush**: Before outputting bytes to the terminal, the engine diffs the newly rendered frame against the previous frame. **Only modified cells are sent to the terminal driver**, and `Backend.Flush` writes the entire ANSI update sequence in a **single atomic I/O write**. This completely eliminates terminal flicker.
+3. **Dirty Coalescing & Invalidation**: Calling `ctx.MarkDirty()` marks rendering dirty, scheduling a redraw. In contrast, `ctx.RequestLayout()` invalidates geometry and triggers a re-layout pass before rendering. The runtime throttles renders to `WithMinFrameInterval` (~60fps), coalescing rapid state mutations into a single draw pass.
+4. **Cell Diff & Buffered Flush**: Before outputting bytes to the terminal, the engine diffs the newly rendered frame against the previous frame. **Only modified cells are sent to the terminal driver**, and `Backend.Flush` writes the ANSI update sequence in a buffered write to minimize terminal tearing and redraw overhead across supported terminal emulators.
 
 ### 3. Overlay Best Practices Checklist
 
