@@ -531,6 +531,54 @@ v.data = res.Value.(Payload)
 
 ---
 
+## 6. External Background Goroutines: Communicating via `App.Update`
+
+Some background systems are long-running daemons that live independently of any single component's lifecycle:
+- An incoming webhook HTTP server
+- A persistent WebSocket connection
+- A database change-data-capture (CDC) listener
+- An OS signal listener
+
+These external goroutines **must never touch component state or invoke widget methods directly**. They communicate with the UI through two sanctioned channels:
+
+### Approach A: Posting Closures with `App.Update`
+
+`App.Update(fn func())` accepts a closure and queues it onto Lane B:
+
+```go
+// In an external background goroutine (e.g. WebSocket listener):
+go func() {
+    for msg := range wsConn.Messages() {
+        app.Update(func() {
+            // This runs safely ON THE EVENT LOOP goroutine!
+            model.AppendMessage(msg)
+            appContext.MarkDirty()
+        })
+    }
+}()
+```
+
+**Guarantees of `App.Update`:**
+1. **Thread-Safe**: Safe to call concurrently from any number of external goroutines.
+2. **Never Executed Inline**: It is always enqueued onto Lane B and drained by the event loop.
+3. **Queue Isolation**: Uses Lane B, preventing external work from blocking hardware terminal reads.
+
+### Approach B: Publishing to the `Bus`
+
+If multiple components need to react to external messages, publish a typed event instead:
+
+```go
+go func() {
+    for ev := range fileWatcher.Events() {
+        bus.Publish(FileChangedEvent{Path: ev.Path})
+    }
+}()
+```
+
+Subscribers receive the event on the loop goroutine via `tui.SubscribeScoped`.
+
+---
+
 ## Summary: When to Use Which Async Mechanism
 
 | Mechanism | Purpose | Goroutine | Delivery |

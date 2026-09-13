@@ -130,4 +130,58 @@ if e.Code == 'q' && len(m.floats) > 0 {
 
 …and say so in the status bar (`Esc/q close`) while a float is open.
 
+---
+
+## The Overlay Architecture & Render Pipeline
+
+To use modals reliably, understand how `OverlayHost`, `Float`, and the render pipeline cooperate:
+
+### 1. The Overlay Layer Stack
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ Terminal Screen (Back Buffer)                              │
+│                                                            │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Base UI (Dock, Split, Tabs, BufferView)              │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                             ▲                              │
+│                             │ Composited Beneath           │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Scrim Canvas (Dimmed background cells: ░░░░░░░░░░)   │  │
+│  │ ┌──────────────────────────────────────────────────┐ │  │
+│  │ │ Modal Float (Anchored Center / AtRect)           │ │  │
+│  │ │ - FocusScope Trap (Tab cycles inside)            │ │  │
+│  │ │ - Child Box & Content (Input fields, Buttons)    │ │  │
+│  │ └──────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────┘
+```
+
+1. **`OverlayHost`**: Mounts your base application tree as its primary child and maintains a `LayerStack`.
+2. **`floatLayer`**: When you attach a `Float` and call `Show()`, `OverlayHost` mounts an internal `floatLayer` component.
+   - **Focus Scope**: If `WithModal(true)` is enabled, `floatLayer.TrapsFocus()` returns `true`. The focus ring is sealed—`Tab` and `Shift-Tab` will never jump outside the modal.
+   - **Scrim Rendering**: When `WithDimBackground(true)` is set, `floatLayer.Render()` iterates over background cells beneath the float rect, applying dim attributes or stippling patterns.
+   - **Anchoring**: `Float` positions its child using anchors:
+     - `widget.Center`: centered horizontally and vertically.
+     - `widget.TopRight`, `widget.BottomLeft`, etc.: pinned to viewport edges.
+     - `widget.AtRect(r)`: pinned relative to another widget's coordinates (for dropdowns, autocomplete menus, and context tooltips).
+
+### 2. Double-Buffering & The One-Write Render Pass
+
+`golib/tui` uses a retained-mode, grapheme-cluster double-buffering pipeline:
+
+1. **Local Surface Drawing**: When a component's `Render(s tui.Surface)` runs, `s` is a sub-surface clipped and translated to the component's placed rectangle. Writing outside bounds is safely clipped.
+2. **Grapheme Clusters**: The cell buffer stores full Unicode grapheme clusters (including multi-byte emoji and zero-width joiners) and caches display column widths (1 or 2 cells).
+3. **Dirty Coalescing**: Calling `ctx.MarkDirty()` marks the layout branch as dirty. The runtime throttles renders to `WithMinFrameInterval` (~60fps), coalescing rapid state mutations into a single draw pass.
+4. **Cell Diff & One-Write Flush**: Before outputting bytes to the terminal, the engine diffs the newly rendered frame against the previous frame. **Only modified cells are sent to the terminal driver**, and `Backend.Flush` writes the entire ANSI update sequence in a **single atomic I/O write**. This completely eliminates terminal flicker.
+
+### 3. Overlay Best Practices Checklist
+
+- [ ] **Always wrap the root in `OverlayHost`** during application bootstrap, even if no floats are shown initially.
+- [ ] **Always subscribe to `DismissEvent`** to remove ephemeral floats from `host.Stack`, preventing unneeded hidden layers from accumulating in memory.
+- [ ] **Use `WithSizeFraction`** for document and log viewers so they scale gracefully with terminal resizing.
+- [ ] **Re-seed focus in your data callback** if the modal's contents load asynchronously.
+- [ ] **Do not consume `Esc`** unless actively canceling a local action (e.g. exiting insert mode); let unhandled `Esc` bubble to the float layer for clean dismissal.
+
 Next: [the pitfalls list](07-pitfalls.md).

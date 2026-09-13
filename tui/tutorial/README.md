@@ -14,14 +14,16 @@ nothing, go straight to [chapter 8](08-debugging.md).
 
 | # | Chapter | You will learn |
 |---|---------|----------------|
-| 1 | [Getting started](01-getting-started.md) | Backend, App, run loop, headless fallback, TestBackend |
+| 1 | [Getting started](01-getting-started.md) | Backend, App options (pool size, limits, theme), run loop, headless fallback, TestBackend |
 | 2 | [The root controller](02-the-root-controller.md) | Why a bare widget as app root renders one line — mount, fill-layout, global keys |
-| 3 | [Widgets](03-widgets.md) | Box, Tabs, Table, List, BufferView, StatusBar, Split, Dock — composition patterns |
-| 4 | [Events, focus and keys](04-events-focus-keys.md) | Target-then-bubble routing, Focusable, FocusComponent, quit keys in raw mode |
-| 5 | [Async: tasks, ticks and writers](05-async-tasks.md) | ctx.Go + TaskResult, ctx.Every auto-refresh, the BufferView writer contract |
-| 6 | [Floats and modals](06-floats-and-modals.md) | OverlayHost, modal Float, Esc dismissal, the focus-seed gotcha |
+| 3 | [Widgets](03-widgets.md) | Box, Tabs, Table, List, BufferView, StatusBar, Split, Dock, Editor (keysets, reflection, viewers) |
+| 4 | [Events, focus and keys](04-events-focus-keys.md) | Two-Lane event funnel (Lane A vs B), Pub/Sub Bus, target-then-bubble routing, Focusable, ActUnbound |
+| 5 | [Async: tasks, ticks and writers](05-async-tasks.md) | ctx.Go + TaskResult, Exclusive groups, progress streaming, App.Update closures from external goroutines |
+| 6 | [Floats and modals](06-floats-and-modals.md) | OverlayHost, modal Float, focus trap, scrim canvas, double-buffered grapheme render pipeline |
 | 7 | [Pitfalls](07-pitfalls.md) | The complete list of ways this package has actually bitten people |
 | 8 | [Debugging](08-debugging.md) | `WithTrace`: reading focus, mount and key-routing decisions when "the key does nothing" |
+| 9 | [Custom components](09-custom-components.md) | Building and wrapping widgets: layout pass-through, event interception, focus delegation |
+| 10 | [Architectural observations](10-architectural-observations.md) | Design deficits, tension points (Lane B blocking, pre-mount writer, async modal seeding), and future backlog |
 
 ## The 60-second version
 

@@ -109,22 +109,99 @@ you must override its own binding (Enter on a tree node, say) — that is
 the one reason to hold focus in the wrapper, and then the child's cursor
 must be one that paints unfocused (`List` and `Tree` both do).
 
-## The pub/sub bus
+## The Two-Lane Event Funnel (Lane A vs Lane B)
 
-Widgets announce semantic events on a bus rather than requiring wrapping:
-`widget.ActivateEvent` (Enter on a list row), `SelectionChangedEvent`,
-`SubmitEvent` (text input Enter), `TabChangedEvent`, `DismissEvent` (float
-closed). Subscribe in `Init` with automatic cleanup at unmount:
+Input events and program events travel down two independent lanes to reach the
+central event loop:
 
-```go
-tui.SubscribeScoped(ctx, func(ev widget.ActivateEvent) {
-    if ev.Owner != myTable.List().NodeID() { // events carry their OWNER —
-        return                               // always filter, or you will
-    }                                        // react to other lists too
-    openDetail(rows[ev.Index])
-})
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                              External World                            │
+│     (Keyboard, Mouse, Terminal TTY)       (Background Workers, Tasks)  │
+└───────────────────┬────────────────────────────────────┬───────────────┘
+                    │ Raw Input                          │ Program Closures / Events
+                    ▼                                    ▼
+        ┌──────────────────────┐             ┌──────────────────────┐
+        │   Lane A: Input      │             │   Lane B: Program    │
+        │   - Backend.Events() │             │   - ctx.Go TaskResult│
+        │   - Unbuffered pump  │             │   - ctx.Post events  │
+        │   - Drop-oldest rate │             │   - App.Update fn    │
+        │   - Latest-wins size │             │   - Bus.Publish ev   │
+        └───────────┬──────────┘             └───────────┬──────────┘
+                    │                                    │
+                    └───────────────┬────────────────────┘
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │    Single Event Loop (Run)   │
+                     │    - Process Lane A Input    │
+                     │    - Drain Lane B Program Q  │
+                     │    - Render Dirty Frame      │
+                     └──────────────────────────────┘
 ```
 
-The `Owner != …NodeID()` check matters the moment your app has two lists.
+1. **Lane A (Input)**:
+   - Receives hardware terminal events (keystrokes, mouse moves, terminal resize).
+   - An internal intake pump reads from `Backend.Events()` into an unbuffered channel.
+   - High-volume input bursts (e.g. rapid mouse dragging) employ bounded drop-oldest protection, preventing slow frames from blocking terminal reads.
+2. **Lane B (Program)**:
+   - Carries application-driven signals: completed `ctx.Go` tasks, `Bus.Publish` events, and user-posted closures via `App.Update`.
+   - Lane B events are never dropped and have an independent queue capacity from Lane A.
+3. **Queue Capacity Isolation vs Serialized Dispatch**:
+   - Independent queues prevent Lane B from exhausting Lane A's queue buffer (and vice versa).
+   - However, the event loop itself runs on a **single goroutine**: when Lane B has events, `drainProgramLane` processes the captured batch. Draining a very large or slow batch can temporarily delay the next Lane A selection. Keep event handlers and closures fast!
 
-Next: [async work](05-async-tasks.md).
+## The pub/sub bus
+
+Components and widgets communicate decoupled state changes through the application `Bus` without tight parent-child coupling:
+
+- Shipped widget events:
+  - `widget.ActivateEvent`: Enter pressed on a table or list row (`Owner`, `Index`).
+  - `widget.SelectionChangedEvent`: Selection moved in a list or table (`Owner`, `Index`).
+  - `widget.SubmitEvent`: Enter pressed in a `TextInput` (`Owner`, `Text`).
+  - `widget.TabChangedEvent`: Active tab switched in `Tabs` (`Owner`, `Index`).
+  - `widget.DismissEvent`: Modal float dismissed via Esc or backdrop click (`Owner`).
+
+### 1. Scoped Subscriptions (`tui.SubscribeScoped`)
+
+Always prefer `tui.SubscribeScoped(ctx, handler)` inside a component's `Init(ctx)`:
+
+```go
+func (c *myController) Init(ctx *tui.Context) {
+    c.ctx = ctx
+    ctx.Mount(c.table)
+
+    // Automatically unsubscribed when c unmounts:
+    tui.SubscribeScoped(ctx, func(ev widget.ActivateEvent) {
+        if ev.Owner != c.table.List().NodeID() {
+            return // Filter by owner!
+        }
+        c.openDetail(ev.Index)
+    })
+}
+```
+
+If you use bare `tui.Subscribe(bus, handler)`, the subscription is tied to the lifetime of the application, leaking memory if components mount and unmount repeatedly.
+
+### 2. Thread-Safe Publishing
+
+Any goroutine can safely publish to the bus:
+
+```go
+// From anywhere (loop or worker goroutine):
+bus.Publish(MyCustomEvent{ID: 42, Status: "synced"})
+```
+
+Events are queued onto Lane B and delivered synchronously to subscribers on the event loop goroutine.
+
+### 3. Defining Custom Application Events
+
+Custom events are standard Go structs. Always include an `Owner` or source identifier when multiple instances could publish the same event:
+
+```go
+type OrderSelectedEvent struct {
+    Owner   tui.NodeID
+    OrderID string
+}
+```
+
+Next: [async work and tasks](05-async-tasks.md).
