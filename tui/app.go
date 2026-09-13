@@ -55,9 +55,10 @@ type App struct {
 	input      chan Event
 	inputDrops atomic.Uint64
 
-	// **Lane B** carries events the program itself posts. Keeping them off lane A
-	// provides queue isolation, so heavy program posting does not delay or drop
-	// input handling, and input bursts do not block program queuing.
+	// **Lane B** carries events the program itself posts. Keeping Lane B separate
+	// prevents either lane from consuming the other's queue capacity; dispatch
+	// remains serialized, so a large or slow batch can delay the next selection
+	// from the other lane.
 	queue programQueue
 
 	// --- Everything below is owned by the loop goroutine. Read or write it
