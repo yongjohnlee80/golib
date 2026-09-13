@@ -132,3 +132,12 @@ float titles collide, so a wait can pass against the wrong surface and
 run ahead of the one you meant. Anchor on text only the target can
 render, or gate on the previous surface closing.
 → [chapter 8](08-debugging.md)
+
+## "A keystroke is unexpectedly eaten instead of bubbling from an Editor"
+
+The default Vim, Nano, and Standard keymaps handle common editing chords. If you
+want a specific chord (such as `KeyHome`, `Ctrl+O`, or an arrow key) to bypass the
+editor and bubble to a parent modal or controller, explicitly bind it to
+`widget.ActUnbound` in `WithKeymap(...)`. Leaving it absent from a custom keymap can
+still let structural fallbacks consume it.
+→ [chapter 3](03-widgets.md)

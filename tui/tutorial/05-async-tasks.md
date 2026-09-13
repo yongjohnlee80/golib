@@ -43,7 +43,7 @@ Understanding *which lane* your work travels on is essential:
 ```
 
 - **Lane A (Input Lane):** Manages external terminal user input (keystrokes, mouse moves, terminal resizes). It is subject to drop-oldest overflow to keep the application responsive during heavy input floods.
-- **Lane B (Program Lane):** Manages internal application signals: `ctx.Go` task completions, `ctx.Post` custom events, `Bus.Publish` notifications, and `app.Update` closures. **Lane B events are never dropped** due to input backlog and never block the sender.
+- **Lane B (Program Lane):** Manages internal application signals: `ctx.Go` task completions, `ctx.Post` custom events, `Bus.Publish` notifications, and `app.Update` closures. **Lane B events are never dropped** and have an independent queue capacity from Lane A. However, dispatch remains serialized on the single event loop goroutine, so draining a very large or slow program batch can delay processing from Lane A.
 
 ---
 
@@ -63,7 +63,7 @@ type Task func(ctx context.Context) (any, error)
 
 ### What `ctx.Go` guarantees:
 
-1. **Off-Loop Execution:** The `task` closure executes on the App's bounded background worker pool (default 64 workers, configured via `WithTaskPoolSize`), never blocking the UI.
+1. **Off-Loop Execution:** The `task` closure executes on the App's bounded background worker pool (default 16 workers, configured via `WithTaskPoolSize`), never blocking the UI. Tasks run off-loop and must never mutate component state directly; return values are delivered back to the loop via `TaskResult`.
 2. **Mount-Bound Cancellation:** The provided `context.Context` derives from `ctx.Ctx()` (the component's lifetime context). If the component unmounts while the request is in flight, **`ctx` is cancelled immediately**.
 3. **Targeted Delivery (No Bubbling):** When the task finishes, the runtime packages the returned `(any, error)` into a `tui.TaskResult` event and pushes it onto **Lane B**. Unlike keyboard events, `TaskResult` is addressed **directly to the node that scheduled it**—it does not bubble or steal focus.
 4. **Lifecycle Safety:** If the component node was removed from the tree before the task finishes, the runtime safely drops the result. It will never invoke `HandleEvent` on an unmounted node.

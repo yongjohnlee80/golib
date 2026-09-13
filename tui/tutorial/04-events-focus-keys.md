@@ -14,6 +14,10 @@ This single rule explains most "why didn't my key work" confusion:
 - A focused `List` consumes `↑/↓/Enter`; an *unfocused* list never sees
   them — but your controller can forward events explicitly:
   `list.HandleEvent(ev)` from its own HandleEvent.
+- In configurable widgets like `Editor`, you can explicitly unbind chords using
+  `ActUnbound`. An unbound chord does not execute or get consumed by structural
+  fallbacks; it returns `false` from `HandleEvent` and bubbles directly up to parent
+  containers (chapter 3).
 - Anything nobody consumed reaches the root — that is where `q`, `Ctrl-C`
   and app-wide shortcuts belong (chapter 2).
 
