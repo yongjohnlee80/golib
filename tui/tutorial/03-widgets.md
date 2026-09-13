@@ -156,10 +156,58 @@ status.SetRight("↵ open · ←/→ menu · q quit")
 Update `SetRight` per mode (which tab is active, whether a modal is open) —
 it is the difference between a discoverable UI and a guessing game.
 
-## Editor — a modal vim buffer (and a read-only viewer)
+## Editor — multi-line text editing, keymaps, and viewers
 
-`widget.Editor` is the vim-modal editor (ADR-0008). Beyond editing, two
-host seams matter:
+`widget.Editor` is a configurable multi-line text editor supporting both
+modal (Vim) and modeless (Nano, Standard/GUI) interaction styles, granular
+feature capabilities, dynamic keymap reflection, and read-only viewing.
+
+### 1. Keymap profiles and modal editing
+
+By default, the editor boots with modal Vim editing (`KeysetVim`). You can
+configure modeless editing or switch to alternative keymap profiles:
+
+```go
+// 1. Default Vim modal editor (Normal, Insert, Visual, VisualLine)
+edVim := widget.NewEditor(
+    widget.WithVimKeymap(),
+    widget.WithEscapeChord("jk"), // map 'jk' to Esc in insert mode
+)
+
+// 2. Modeless Nano-style editor (Ctrl+K cut, Ctrl+U paste, Ctrl+A/E home/end)
+edNano := widget.NewEditor(
+    widget.WithNanoKeymap(),
+)
+
+// 3. Modeless Standard GUI-style editor (Ctrl+Z/Y undo/redo, Ctrl+C/V/X clipboard, Ctrl+A select all)
+edStd := widget.NewEditor(
+    widget.WithStandardKeymap(),
+)
+
+// 4. Custom modeless editing with custom bindings
+edCustom := widget.NewEditor(
+    widget.WithModalEditing(false),
+    widget.WithKeymap(widget.Keymap{
+        widget.KeyChord{Mode: widget.ModeInsert, Code: 's', Ctrl: true}: widget.ActSave,
+    }),
+)
+```
+
+### 2. Granular capability toggles
+
+Disable features when building constrained input surfaces or read-only viewers:
+
+```go
+ed := widget.NewEditor(
+    widget.WithSelection(false), // disable visual selection / ranges
+    widget.WithYank(false),      // disable clipboard copying / pasting
+    widget.WithUndo(false),      // disable undo / redo history stack
+    widget.WithTabWidth(4),      // indentation width
+    widget.WithWrap(widget.WrapSoft), // soft line-wrapping
+)
+```
+
+### 3. Read-only viewer mode
 
 ```go
 ed.SetValue(doc); ed.Lines()      // document in / snapshot out
@@ -167,12 +215,40 @@ ed.SetLine(row, col)              // jump — search hits, error locations
 ed.SetReadOnly(true)              // VIEWER: motions, visual select, yank; no edits
 ```
 
-`SetReadOnly` turns the editor into a navigable document: `hjkl`, word
-and paragraph motions, `v`/`V` selection and `y` all work, while insert
-entry, `dd`, paste and bracketed-paste input are refused. That is the
-right widget for any panel a user reads and copies from but must not
-change — a JSON result view, a recorded script, a log with structure.
-A `BufferView` cannot do it: it has no cursor and no selection.
+`SetReadOnly` turns the editor into a navigable document: motions (`hjkl`,
+arrows, word/paragraph jumps), visual selection (`v`/`V`), and yank (`y`)
+work normally, while text insertion, deletions, paste, and bracketed-paste
+are refused. This is ideal for structured logs, query result panels, or JSON
+inspectors where `BufferView` is insufficient because you need cursor navigation
+and text selection.
+
+### 4. Runtime keymap reflection & bubbling
+
+The editor exposes its runtime keymap structure, allowing parent controllers
+and status bars to dynamically display active bindings:
+
+```go
+// Query editor mode for status bars (NORMAL, INSERT, VISUAL, V-LINE)
+mode := ed.Mode().String()
+
+// Inspect configured bindings and escape chord
+snap := ed.SnapshotKeymap()
+escape := snap.EscapeChord // "jk"
+bindings := snap.Bindings  // []KeyBinding: chord, action name, description
+
+// Query bindings for a specific mode or reverse-lookup chords
+normalBindings := ed.BindingsForMode(widget.ModeNormal)
+copyChords := ed.ChordsForAction(widget.ActCopy)
+action, bound := ed.ActionForChord(widget.KeyChord{Mode: widget.ModeInsert, Code: 's', Ctrl: true})
+
+// Unbinding: allow specific keys to bubble up to parent containers
+edBubbling := widget.NewEditor(
+    widget.WithKeymap(widget.Keymap{
+        // Unbinding KeyHome lets it bubble to parent instead of moving editor cursor
+        widget.KeyChord{Mode: widget.ModeInsert, Code: tui.KeyHome}: widget.ActUnbound,
+    }),
+)
+```
 
 ## Text inputs — forms
 
