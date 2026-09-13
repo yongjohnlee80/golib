@@ -25,7 +25,7 @@ error, never a stderr fallback. → [chapter 1](01-getting-started.md)
 
 ## "My startup log lines never show in the log pane"
 
-`BufferView.Writer()` DROPS writes made before the view mounts. Buffer
+`BufferView.Writer()` REJECTS writes made before the view mounts (returning `(0, widget.ErrClosed)`). Buffer
 pre-mount writes and replay them at root Init (`deferredWriter` pattern).
 → [chapter 5](05-async-tasks.md)
 

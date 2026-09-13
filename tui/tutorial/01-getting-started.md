@@ -25,8 +25,9 @@ defer cancel()
 
 app := tui.NewApp(newRoot(cancel),
     tui.WithBackend(backend),
-    tui.WithTaskPoolSize(16),            // semaphore concurrency limit for ctx.Go tasks (default 16)
-    tui.WithEventQueueLimit(0),          // Lane B program queue limit (default 0 = unlimited)
+    tui.WithTaskPoolSize(16),            // semaphore concurrency limit for active ctx.Go tasks (default 16)
+    // WithEventQueueLimit(n) is omitted here to keep Lane B unlimited (the default).
+    // Pass n >= 1 to enforce a fail-loud ceiling that panics if producers run away.
     tui.WithMinFrameInterval(16*time.Millisecond), // target ~60fps frame rate
     tui.WithDoubleClickWindow(400*time.Millisecond), // double-click detection window
 )
@@ -42,7 +43,7 @@ return app.Run(ctx)
 | `WithBackend(b)` | *Required* | Terminal driver (`term.Open()` for production, `NewTestBackend()` for tests). |
 | `WithTheme(t)` | `DefaultTheme()` | Color palette and standard attribute mapping across all widgets. |
 | `WithTaskPoolSize(n)` | `16` | Semaphore concurrency limit for active `ctx.Go` tasks (each task spawns a goroutine bounded by this execution pool). |
-| `WithEventQueueLimit(n)` | `0` (unlimited) | Capacity limit for the Lane B program event queue. `0` disables dropping; setting $> 0$ bounds memory under extreme load. |
+| `WithEventQueueLimit(n)` | Omitted (`0` / unlimited) | Enforces a fail-loud capacity ceiling for the Lane B program queue (`n >= 1`). Exceeding the limit panics to catch runaway producers; Lane B never silently drops events. |
 | `WithMinFrameInterval(d)` | `16ms` (~60fps) | Frame limiter coalescing multiple dirty updates into atomic frame flushes. Use `0` in tests for instant renders. |
 | `WithDoubleClickWindow(d)` | `400ms` | Maximum elapsed time between clicks on the same cell to emit a double-click event. Set $\le 0$ to disable. |
 | `WithTrace(fn)` | `nil` (off) | Synchronous event tracing callback (`TraceEvent`) for debugging focus, mounts, and keys (chapter 8). Zero allocation when disabled. |
