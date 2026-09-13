@@ -22,9 +22,38 @@ if err != nil {
 }
 ctx, cancel := context.WithCancel(context.Background())
 defer cancel()
-app := tui.NewApp(newRoot(cancel), tui.WithBackend(backend))
+
+app := tui.NewApp(newRoot(cancel),
+    tui.WithBackend(backend),
+    tui.WithTaskPoolSize(16),            // background async task pool (default 16)
+    tui.WithEventQueueLimit(1024),       // Lane B program queue capacity (default 1024)
+    tui.WithMinFrameInterval(16*time.Millisecond), // target ~60fps frame rate
+    tui.WithDoubleClickWindow(400*time.Millisecond), // double-click detection window
+)
 return app.Run(ctx)
 ```
+
+## Base App configuration options
+
+`tui.NewApp` configures the central runtime before the loop starts:
+
+| Option | Default | Purpose |
+|---|---|---|
+| `WithBackend(b)` | *Required* | Terminal driver (`term.Open()` for production, `NewTestBackend()` for tests). |
+| `WithTheme(t)` | `DefaultTheme()` | Color palette and standard attribute mapping across all widgets. |
+| `WithTaskPoolSize(n)` | `16` | Bounded worker goroutines for background `ctx.Go` tasks. Prevents runaway async concurrency. |
+| `WithEventQueueLimit(n)` | `1024` | Capacity of the Lane B program event queue. |
+| `WithMinFrameInterval(d)` | `16ms` (~60fps) | Frame limiter coalescing multiple dirty updates into atomic frame flushes. Use `0` in tests for instant renders. |
+| `WithDoubleClickWindow(d)` | `400ms` | Maximum elapsed time between clicks on the same cell to emit a double-click event. Set $\le 0$ to disable. |
+| `WithTrace(fn)` | `nil` (off) | Synchronous event tracing callback (`TraceEvent`) for debugging focus, mounts, and keys (chapter 8). Zero allocation when disabled. |
+| `WithLogger(l)` | Discard | Structured logging sink (`*slog.Logger`) for runtime warnings and queue drops. |
+
+## Synchronous startup & panic contract
+
+When `app.Run(ctx)` is invoked:
+1. **Device acquisition is synchronous**: Raw mode, alternate screen buffer, and VT modes are engaged immediately.
+2. **Bounded capability probe**: The runtime probes terminal capabilities (Kitty keyboard protocol, truecolor support, synchronized output). Unanswered probes time out safely after 250ms (leaving features at `TriUnknown` for optimistic fallback) rather than hanging startup.
+3. **Panic guarantee**: Any panic on the event loop (in layout, rendering, or handlers) is caught by a top-level defer. **The terminal is restored completely before the panic is re-thrown**, ensuring a crash never leaves your user's shell in a corrupted or raw state.
 
 ## Shutdown: cancel the context
 
