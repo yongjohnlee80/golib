@@ -587,8 +587,8 @@ Subscribers receive the event on the loop goroutine via `tui.SubscribeScoped`.
 
 | Mechanism | Purpose | Goroutine | Delivery |
 | :--- | :--- | :--- | :--- |
-| **`ctx.Go`** | Running background I/O (HTTP fetch, DB query, exec) | Worker Pool | Addressed `TaskResult` to component's `HandleEvent` |
-| **`tui.Exclusive`** | Preempting obsolete in-flight requests (e.g. typing) | Worker Pool | Cancels earlier task in same group |
+| **`ctx.Go`** | Running background I/O (HTTP fetch, DB query, exec) | Per-submission goroutine (semaphore-limited execution) | Addressed `TaskResult` to component's `HandleEvent` |
+| **`tui.Exclusive`** | Preempting obsolete in-flight requests (e.g. typing) | (Cancellation option for `ctx.Go`) | Cancels earlier task in same group |
 | **`ctx.Post`** | External events or progress from outside goroutines | External / Task | Dispatched on Lane B into event routing |
 | **`ctx.Every` / `After`** | Recurring timers and polling | Runtime Loop | Addressed `TickEvent` to component's `HandleEvent` |
 | **`app.Update`** | Direct escape-hatch mutation closure | Any Goroutine | Executes closure directly on loop goroutine |

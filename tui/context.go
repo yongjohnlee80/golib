@@ -227,13 +227,14 @@ func (c *Context) StringWidth(s string) int {
 //	}
 func (c *Context) Post(ev Event) { c.app.Post(ev) }
 
-// Go schedules task on the App's bounded background worker pool, binding this
+// Go schedules task on the App's background task runner, binding this
 // component node as the task owner.
 //
 // # Lane & Lifecycle Semantics
 //
-//   - Execution Pool: task runs off the loop goroutine inside the bounded worker
-//     pool (default size 16, configurable via WithTaskPoolSize).
+//   - Concurrency & Execution: Each submission starts a separate goroutine, while
+//     a semaphore limits concurrently executing task functions (default 16,
+//     configurable via WithTaskPoolSize).
 //   - Context & Cancellation: The context.Context passed to task derives from
 //     c.Ctx() (the node's lifetime context) and the App's run context. If the
 //     component unmounts before the task completes, ctx is cancelled immediately.
