@@ -204,3 +204,77 @@ func TestSnapshotKeymapReflection(t *testing.T) {
 		}
 	}
 }
+
+func TestInsertKeymapHandleEventDispatch(t *testing.T) {
+	// 1. Unmodified printable key bound to an action in insert mode (e.g. 'q' -> ActUndo)
+	// Must execute the action instead of typing the character.
+	ed1 := NewEditor(
+		WithModalEditing(false),
+		WithKeymap(Keymap{
+			KeyChord{Mode: ModeInsert, Code: 'q'}: ActUndo,
+		}),
+	)
+	ed1.SetValue("hello")
+	ed1.SetLine(0, 5)
+	// Type '!' to verify normal insert works
+	ed1.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: '!', Text: "!"})
+	if got := ed1.Value(); got != "hello!" {
+		t.Fatalf("expected 'hello!', got %q", got)
+	}
+	// Press 'q' -> should execute ActUndo, reverting the '!' insertion, NOT typing 'q'
+	handled := ed1.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: 'q', Text: "q"})
+	if !handled {
+		t.Errorf("expected 'q' key event to be handled by custom binding")
+	}
+	if got := ed1.Value(); got != "hello" {
+		t.Errorf("expected undo to restore 'hello', got %q", got)
+	}
+
+	// 2. Functional navigation unbinding: KeyHome -> ActUnbound
+	// When unbound, pressing KeyHome must bubble (return false) and NOT trigger the
+	// structural fallback (cursor remains at col 5, does not move to 0).
+	ed2 := NewEditor(
+		WithModalEditing(false),
+		WithKeymap(Keymap{
+			KeyChord{Mode: ModeInsert, Code: tui.KeyHome}: ActUnbound,
+		}),
+	)
+	ed2.SetValue("hello world")
+	ed2.SetLine(0, 5)
+	handledHome := ed2.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyHome})
+	if handledHome {
+		t.Errorf("expected unbound KeyHome event to bubble (return false)")
+	}
+	_, col := ed2.Line()
+	if col != 5 {
+		t.Errorf("expected cursor col to stay 5, got %d", col)
+	}
+
+	// 3. Functional key binding: KeyF1 -> ActUndo
+	// Functional keys (Code in PUA 0xE000 range) must be dispatched if bound.
+	ed3 := NewEditor(
+		WithModalEditing(false),
+		WithKeymap(Keymap{
+			KeyChord{Mode: ModeInsert, Code: tui.KeyF1}: ActUndo,
+		}),
+	)
+	ed3.SetValue("foo")
+	ed3.SetLine(0, 3)
+	ed3.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: '!', Text: "!"})
+	if got := ed3.Value(); got != "foo!" {
+		t.Fatalf("expected 'foo!', got %q", got)
+	}
+	handledF1 := ed3.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF1})
+	if !handledF1 {
+		t.Errorf("expected KeyF1 to be handled")
+	}
+	if got := ed3.Value(); got != "foo" {
+		t.Errorf("expected F1 undo to restore 'foo', got %q", got)
+	}
+
+	// 4. ActionForChord for unbound chord
+	act, ok := ed2.ActionForChord(KeyChord{Mode: ModeInsert, Code: tui.KeyHome})
+	if ok || act != ActUnbound {
+		t.Errorf("ActionForChord for unbound chord: got (%v, %v), want (ActUnbound, false)", act, ok)
+	}
+}

@@ -26,8 +26,8 @@ type Backend interface {
 	// until the probe fence resolves or the probe timeout expires
 	// (bounded, 250ms by default), then returns. The bound matters: a
 	// terminal that never answers a capability query must not hang startup,
-	// so an unanswered probe becomes a negative capability rather than a
-	// wait.
+	// so an unanswered probe times out safely (leaving capabilities like mouse
+	// at TriUnknown for optimistic fallback) rather than hanging.
 	// Cancelling ctx during the probe aborts it, discards partial
 	// capability replies, restores the terminal, and returns ctx.Err().
 	Start(ctx context.Context) error

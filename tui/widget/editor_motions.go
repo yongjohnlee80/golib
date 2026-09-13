@@ -108,6 +108,7 @@ func (e *Editor) paraBack(count int) int {
 // move applies a motion action count times, extending the selection in
 // visual modes.
 func (e *Editor) move(act Action, count int) {
+	e.groupOpen = false
 	// Visual highlights derive from vAnchor + cursor; the buffer's own
 	// selection anchor stays nil so insertText never sees a stray region.
 	const extend = false

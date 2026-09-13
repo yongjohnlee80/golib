@@ -13,15 +13,16 @@
 // widget methods.
 //
 // golib/tui is built on four core architectural pillars designed for deterministic,
-// zero-allocation, flicker-free terminal applications:
+// low-allocation, flicker-free terminal applications:
 //
-//  1. Single-Goroutine State Ownership: Exactly one goroutine owns all component
-//     state, layout geometry, focus, and cell buffers. Widget methods never acquire
-//     locks, and race conditions are structurally unrepresentable.
+//  1. Single-Goroutine State Ownership Discipline: All component state, layout geometry,
+//     focus, and cell buffers are owned and modified exclusively on the event loop
+//     goroutine. Widget methods never acquire locks, and cross-goroutine mutation
+//     is restricted to [App.Update] or managed tasks.
 //  2. Two-Seam Portability: The entire runtime interacts with the external world
 //     through exactly two interfaces: [Backend] (what a terminal is) and [Surface]
-//     (what components draw on). Real ANSI terminals, headless CI test harnesses,
-//     and web/SSH backends all satisfy the same contracts.
+//     (what components draw on). Real ANSI terminals and headless CI test harnesses
+//     all satisfy the same contracts.
 //  3. Flutter-Style Box Layout: A strict single-pass constraints-down, sizes-up
 //     geometry protocol. Parents pass constraints to children; children choose
 //     their size within those bounds; parents position children.
