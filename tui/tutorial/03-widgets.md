@@ -140,7 +140,8 @@ w := logView.Writer() // io.Writer, safe from ANY goroutine…
 ```
 
 …but read the writer contract in chapter 5 before you use it: **writes made
-before the view mounts are dropped**, which eats your startup logs.
+before the view mounts return `(0, widget.ErrClosed)`**, rejecting your startup
+logs unless deferred or relayed.
 
 `y` (focused) copies the whole buffer to the system clipboard via OSC 52;
 `PlainText()` gives you the unstyled contents.

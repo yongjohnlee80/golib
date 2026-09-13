@@ -29,7 +29,7 @@ Understanding *which lane* your work travels on is essential:
         │   - backend.Events() │             │   - ctx.Go TaskResult│
         │   - Bounded queue    │             │   - ctx.Post events  │
         │   - Drops old motion │             │   - app.Update closures│
-        │   - Latest-wins resize│            │   - Unbounded / no-drop│
+        │   - Latest-wins resize│            │   - Unbounded (default)│
         └───────────┬──────────┘             └───────────┬──────────┘
                     │                                    │
                     └───────────────┬────────────────────┘
@@ -43,7 +43,7 @@ Understanding *which lane* your work travels on is essential:
 ```
 
 - **Lane A (Input Lane):** Manages external terminal user input (keystrokes, mouse moves, terminal resizes). It is subject to drop-oldest overflow to keep the application responsive during heavy input floods.
-- **Lane B (Program Lane):** Manages internal application signals: `ctx.Go` task completions, `ctx.Post` custom events, `Bus.Publish` notifications, and `app.Update` closures. **Lane B events are never dropped** and have an independent queue capacity from Lane A. However, dispatch remains serialized on the single event loop goroutine, so draining a very large or slow program batch can delay processing from Lane A.
+- **Lane B (Program Lane):** Manages internal application signals: `ctx.Go` task completions, `ctx.Post` custom events, `Bus.Publish` notifications, and `app.Update` closures. By default, Lane B has an unlimited queue and events are never dropped. If an optional ceiling is configured via `WithEventQueueLimit(n)`, exceeding the limit triggers an immediate fail-loud panic (Lane B never silently drops events). Queue capacity is isolated from Lane A, though dispatch remains serialized on the single event loop goroutine, so draining a very large or slow program batch can delay processing from Lane A and indirectly fill its bounded intake queue.
 
 ---
 
@@ -63,7 +63,7 @@ type Task func(ctx context.Context) (any, error)
 
 ### What `ctx.Go` guarantees:
 
-1. **Off-Loop Execution:** The `task` closure executes on the App's bounded background worker pool (default 16 workers, configured via `WithTaskPoolSize`), never blocking the UI. Tasks run off-loop and must never mutate component state directly; return values are delivered back to the loop via `TaskResult`.
+1. **Off-Loop Execution:** Each task submission spawns a separate goroutine, while a concurrency semaphore limits concurrently executing tasks to 16 by default (configured via `WithTaskPoolSize`), preventing CPU starvation while keeping the UI responsive. Tasks run off-loop and must never mutate component state directly; return values are delivered back to the loop via `TaskResult`.
 2. **Mount-Bound Cancellation:** The provided `context.Context` derives from `ctx.Ctx()` (the component's lifetime context). If the component unmounts while the request is in flight, **`ctx` is cancelled immediately**.
 3. **Targeted Delivery (No Bubbling):** When the task finishes, the runtime packages the returned `(any, error)` into a `tui.TaskResult` event and pushes it onto **Lane B**. Unlike keyboard events, `TaskResult` is addressed **directly to the node that scheduled it**—it does not bubble or steal focus.
 4. **Lifecycle Safety:** If the component node was removed from the tree before the task finishes, the runtime safely drops the result. It will never invoke `HandleEvent` on an unmounted node.
@@ -117,7 +117,7 @@ func (v *ReleaseViewer) fetchRelease() {
 	v.err = nil
 	v.ctx.MarkDirty() // Request repaint to display "Loading..."
 
-	// Schedule background task on the worker pool:
+	// Schedule background task (execution bounded by the task concurrency semaphore):
 	v.ctx.Go(func(tctx context.Context) (any, error) {
 		req, err := http.NewRequestWithContext(tctx, "GET", "https://api.github.com/repos/golang/go/releases/latest", nil)
 		if err != nil {
@@ -315,9 +315,9 @@ func (v *Dashboard) HandleEvent(ev tui.Event) bool {
 If you want background loggers or process outputs (like `exec.Cmd.Stdout`) to stream directly into a `widget.BufferView`, use `bufferView.Writer()`.
 
 `bufferView.Writer()` is thread-safe, but has one important caveat:
-> **Writes made before the BufferView is mounted are dropped.**
+> **Writes made before the BufferView is mounted reject with `(0, widget.ErrClosed)`.**
 
-To ensure startup logs are never lost before `app.Run` mounts the tree, use a small relay:
+If callers ignore this error, startup logs are lost. To ensure startup logs are never lost before `app.Run` mounts the tree, use a small relay:
 
 ```go
 type deferredWriter struct {
@@ -565,7 +565,7 @@ go func() {
 **Guarantees of `App.Update`:**
 1. **Thread-Safe**: Safe to call concurrently from any number of external goroutines.
 2. **Never Executed Inline**: It is always enqueued onto Lane B and drained by the event loop.
-3. **Queue Isolation**: Uses Lane B, preventing external work from blocking hardware terminal reads.
+3. **Queue Capacity Isolation**: Uses Lane B's independent queue capacity, preventing external work from consuming Lane A intake slots. Note that because loop dispatch is serialized, draining large program batches can still delay Lane A handling and indirectly cause intake queue overflow.
 
 ### Approach B: Publishing to the `Bus`
 

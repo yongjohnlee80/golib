@@ -149,7 +149,7 @@ central event loop:
    - High-volume input bursts (e.g. rapid mouse dragging) employ bounded drop-oldest protection, preventing slow frames from blocking terminal reads.
 2. **Lane B (Program)**:
    - Carries application-driven signals: completed `ctx.Go` tasks, `Bus.Publish` events, and user-posted closures via `App.Update`.
-   - By default, Lane B has an unlimited queue (`eventQueueLimit == 0`) and never drops events. If an optional limit is configured via `WithEventQueueLimit`, overflow items will drop when the queue fills.
+   - By default, Lane B has an unlimited queue (`eventQueueLimit == 0`) and never drops events. If an optional ceiling is configured via `WithEventQueueLimit(n)`, exceeding the limit triggers an immediate fail-loud panic rather than silently dropping events.
 3. **Queue Capacity Isolation vs Serialized Dispatch**:
    - Independent queue capacities prevent Lane B from exhausting Lane A's queue buffer (and vice versa).
    - However, the event loop itself runs on a **single goroutine**: when Lane B has events, `drainProgramLane` processes the captured batch. Draining a very large or slow batch can temporarily delay the next Lane A selection. Keep event handlers and closures fast!
