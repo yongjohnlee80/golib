@@ -41,24 +41,30 @@ type colorLeaf struct {
 // ANSI-16 SGR so the user's own palette renders them (G7, ANSI-16-first).
 // It panics if n is outside [0, 15] — misconfiguration fails loud at
 // construction (golib convention).
-// | Index    | Color Name              | FG SGR | BG SGR | Reference Hex | Typical Role / Semantic                     |
-// | -------- | ----------------------- | ------ | ------ | ------------- | ------------------------------------------- |
-// | **`0`**  | **Black**               | `30`   | `40`   | `#000000`     | Terminal backdrop / dark base               |
-// | **`1`**  | **Red**                 | `31`   | `41`   | `#CD0000`     | Errors, deletions, refutations              |
-// | **`2`**  | **Green**               | `32`   | `42`   | `#00CD00`     | Success indicators, additions, strings      |
-// | **`3`**  | **Yellow**              | `33`   | `43`   | `#CDCD00`     | Warnings, search highlights                 |
-// | **`4`**  | **Blue**                | `34`   | `44`   | `#0000EE`     | Mode badges (`COMMAND:`), primary accent    |
-// | **`5`**  | **Magenta**             | `35`   | `45`   | `#CD00CD`     | Keywords, special symbols                   |
-// | **`6`**  | **Cyan**                | `36`   | `46`   | `#00CDCD`     | Functions, identifiers, links               |
-// | **`7`**  | **White**               | `37`   | `47`   | `#E5E5E5`     | Standard light gray / text foreground       |
-// | **`8`**  | **Bright Black** (Gray) | `90`   | `100`  | `#7F7F7F`     | Muted text, line numbers, borders           |
-// | **`9`**  | **Bright Red**          | `91`   | `101`  | `#FF0000`     | Critical alerts, compiler errors            |
-// | **`10`** | **Bright Green**        | `92`   | `102`  | `#00FF00`     | Active diff additions                       |
-// | **`11`** | **Bright Yellow**       | `93`   | `103`  | `#FFFF00`     | Cursor line highlights, active search match |
-// | **`12`** | **Bright Blue**         | `94`   | `104`  | `#5C5CFF`     | Directory listings, selection fills         |
-// | **`13`** | **Bright Magenta**      | `95`   | `105`  | `#FF00FF`     | Types, constants, numbers                   |
-// | **`14`** | **Bright Cyan**         | `96`   | `106`  | `#00FFFF`     | Preprocessor directives, regex groups       |
-// | **`15`** | **Bright White**        | `97`   | `107`  | `#FFFFFF`     | Emphasized text, high-contrast badges       |
+//
+// The sixteen slots, with the SGR codes they emit. Names and hex values are an
+// xterm-style reference only: ANSI-16 defines slots and codes, not colors, so
+// the actual RGB a slot renders is whatever the user's terminal palette says
+// it is. The roles are illustrative of common conventions, not anything this
+// package assigns or relies on.
+//
+//	idx  name            fg   bg   ref hex   commonly used for
+//	 0   black           30   40   #000000   backdrop, dark base
+//	 1   red             31   41   #CD0000   errors, deletions
+//	 2   green           32   42   #00CD00   success, additions
+//	 3   yellow          33   43   #CDCD00   warnings, search highlights
+//	 4   blue            34   44   #0000EE   primary accent
+//	 5   magenta         35   45   #CD00CD   keywords, special symbols
+//	 6   cyan            36   46   #00CDCD   functions, identifiers, links
+//	 7   white           37   47   #E5E5E5   default foreground
+//	 8   bright black    90  100   #7F7F7F   muted text, line numbers, borders
+//	 9   bright red      91  101   #FF0000   critical alerts
+//	10   bright green    92  102   #00FF00   active additions
+//	11   bright yellow   93  103   #FFFF00   cursor line, active match
+//	12   bright blue     94  104   #5C5CFF   directories, selection fills
+//	13   bright magenta  95  105   #FF00FF   types, constants, numbers
+//	14   bright cyan     96  106   #00FFFF   preprocessor, regex groups
+//	15   bright white    97  107   #FFFFFF   emphasis, high-contrast badges
 func ANSI(n int) Color {
 	if n < 0 || n > 15 {
 		panic(fmt.Sprintf("style.ANSI: palette index %d outside the ANSI-16 range [0, 15]", n))
