@@ -1,8 +1,8 @@
 // Package widget provides golib/tui's standard widget suite: the [Base] embedding
 // contract, the [Box] titled-panel container, the [OverlayHost] modal/popup layer,
-// and the complete set of fourteen production-grade TUI components sufficient to build
-// sophisticated terminal applications (such as lazygit-, sqlit-, and neovim-shaped tools)
-// out of the box with zero custom widget plumbing.
+// and the sixteen production-grade TUI components inventoried below, sufficient to
+// build sophisticated terminal applications (such as lazygit-, sqlit-, and
+// neovim-shaped tools) out of the box with zero custom widget plumbing.
 //
 // # Complete Widget Inventory
 //
@@ -19,6 +19,7 @@
 //	Tabs            Navigation       yes (bar)       [TabChangedEvent]
 //	Split           Container        no (panes are)  [SplitResizedEvent], [SplitZoomEvent]
 //	Float           Overlay / Modal  children        [DismissEvent]
+//	Modal           Dialog           trap owner      [OverlayDismissedEvent]
 //	StatusBar       Chrome           no              —
 //	ProgressBar     Feedback         no              —
 //	Text            Static Display   no              —
@@ -144,10 +145,100 @@
 // [OverlayHost] implements the overlay protocol:
 //   - [Select] automatically discovers the mounted [OverlayHost] via an internal bus handshake
 //     and projects its dropdown option list onto the top overlay layer, complete with a focus trap.
-//   - [Float] attaches explicitly via [OverlayHost.Attach] and provides toggleable dialogs
-//     ([Float.Show] / [Float.Hide]), focus trapping, Esc-dismissal, and background dimming.
+//   - [Float] attaches explicitly via [OverlayHost.Attach] (and detaches via
+//     [OverlayHost.Detach]) and provides toggleable windows ([Float.Show] /
+//     [Float.Hide]), focus trapping, Esc-dismissal, and background dimming. It is the
+//     LOWER-LEVEL primitive: a positioned, trapping layer around arbitrary content.
+//   - [Modal] is the COMPOSED dialog built on the same stack: a card with a title,
+//     a body and role-carrying buttons, plus the lifecycle a dialog needs — Open and
+//     Dismiss, LIFO stacking, typed dismissal reasons, and one backdrop shared by
+//     whichever dialog is on top. Reach for Modal when you want a dialog; reach for
+//     Float when you want a floating layer and intend to supply the behaviour
+//     yourself. See the Modal section below.
 //
 // # Practical Composition Example
+//
+// # Modal
+//
+// Modal is the composed dialog: a focus trap filling its host, holding a card
+// that carries a title, the caller's body, and a row of buttons. It is three
+// nodes rather than one, and the split is forced rather than tidy — a component
+// cannot place ITSELF, so centring a card requires a parent to do it, and a
+// card-sized surface cannot paint a full-screen backdrop.
+//
+//	OverlayHost (Stack)
+//	└── Modal          ← fills the host; owns the trap, the lifecycle, dismissal,
+//	    │                the card's placement and the backdrop PREFERENCE
+//	    └── card       ← non-focusable; border, title, body, buttons
+//
+// Minimal use:
+//
+//	host := widget.NewOverlayHost(appRoot)   // once, wrapping the whole UI
+//
+//	ok := widget.NewButton("Save", widget.WithRole(widget.ButtonRoleDefault),
+//		widget.WithOnActivate(func() { save() }))
+//	no := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleCancel))
+//
+//	dlg := widget.NewModal(widget.NewText("Save your changes?"),
+//		widget.WithModalTitle("Unsaved work"),
+//		widget.WithButtons(no, ok),
+//		widget.WithOnDismiss(func(r widget.DismissReason) { log(r) }))
+//
+//	if err := dlg.Open(host); err != nil { … }   // loop goroutine
+//
+// LIFECYCLE. Open mounts the dialog as the topmost layer and moves focus into
+// it before returning, so no input can reach the covered UI in between. Opening
+// one that is already open returns [ErrModalAlreadyOpen] and changes nothing; a
+// dialog whose own tree cannot be mounted returns [ErrModalNotMountable] and
+// leaves the host exactly as it was. Dismiss is idempotent — dismissal arrives
+// from Escape, a Cancel button and the program at once, so closing twice
+// publishes one [OverlayDismissedEvent] carrying a [DismissReason].
+//
+// ORDERING. The dialog is removed from the tree BEFORE the WithOnDismiss
+// callback runs, and the event is published after it. That is what makes
+// reopening the same dialog from its own dismissal callback ordinary rather
+// than a double-mount panic.
+//
+// FOCUS. The dialog traps focus, so Tab cannot reach the controls underneath.
+// It nominates where focus lands through [tui.InitialFocusProvider]: the enabled
+// button carrying [ButtonRoleDefault], else the first enabled button, else the
+// Modal node itself. The last case is what keeps Escape reachable when every
+// control is disabled — the ring inside a trap must never be empty. The
+// preference applies on EVERY focus repair, not only at open, so a button
+// enabled or added later still takes focus if it is the default.
+// [Modal.SelectedButton] reports the focused button's index, or -1 when the
+// Modal node itself holds focus.
+//
+// ESCAPE resolves the CANCEL ROLE, never a label or a position: matching
+// "Cancel" breaks under translation and matching the last button breaks under
+// reordering. When a cancel-role button exists Escape activates it through the
+// runtime — publishing the same [tui.ControlActivatedEvent] a click would, with
+// keyboard provenance — and then dismisses with [DismissCancel]. With no such
+// button it dismisses with [DismissEscape].
+//
+// STACKING is LIFO and owned by the host. Several dialogs may be open at once;
+// only the topmost dims the background, and dismissing one that is not on top
+// closes every dialog above it first, topmost-first, each publishing its own
+// event with reason [DismissReplaced]. [OverlayHost.TopModal] reports which is
+// current.
+//
+// RUNTIME CHANGES. [Modal.SetButtons] replaces the button list atomically: the
+// whole list is validated first — no nil entries, no repeated *Button, nothing
+// already mounted elsewhere, at most one Default and one Cancel — and a rejected
+// call changes nothing at all, returning an error matching both
+// [ErrInvalidButtonList] and the specific sentinel. Accepted, it reconciles the
+// mounted tree in one batch, moving retained buttons rather than remounting
+// them, so their identity and focus survive a reorder.
+// [Modal.WithPointerPolicy] sets the pointer policy for the whole dialog
+// subtree, and [Modal.WithStyle] restyles the live card and its backdrop
+// together.
+//
+// ACCESSIBILITY AND KEYBOARD PARITY. Everything a pointer can do here, a
+// keyboard can do: Tab and Shift-Tab cycle the dialog's buttons and stop at its
+// edges, Enter activates the focused button, Escape resolves the cancel role,
+// and focus returns to where it came from when the dialog closes. A dialog with
+// its pointer policy disabled remains fully operable. Nothing depends on the
+// mouse, and no control is reachable only by clicking.
 //
 // Below is a complete example demonstrating how standard widgets compose into a responsive,
 // two-pane database/file exploration workspace with a status bar:

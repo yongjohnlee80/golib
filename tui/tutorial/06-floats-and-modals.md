@@ -1,5 +1,13 @@
 # 6 — Floats and modals
 
+> **Which one do I want?** `widget.Modal` is the composed dialog — title, body,
+> role-carrying buttons, Open/Dismiss, LIFO stacking, typed dismissal reasons
+> and one shared backdrop. `widget.Float` is the lower-level floating layer:
+> positioned, trapping, and otherwise yours to fill. Reach for `Modal` when you
+> want a dialog; the rest of this page covers `Float`. The composed dialog is
+> documented in the widget package overview and in
+> [widget/README.md](../widget/README.md#modal).
+
 ## Setup: OverlayHost at the root
 
 Floats live on overlay layers above your UI. Wrap the root tree once:

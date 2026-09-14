@@ -64,6 +64,14 @@ import (
 //   - tui/widget/doc.go
 //   - tui/widget/README.md
 
+// A required term must be one the surface did NOT already satisfy before the
+// feature it stands for existed. A bare "Modal" fails that test in all three
+// files below — doc.go and the README have said "Modal Text" and "Overlay /
+// Modal" since long before the composed dialog landed, and the tutorial is
+// titled "Floats and modals" — so requiring it would report the whole class
+// documented no matter what the files say. The terms are named symbols instead,
+// and the mutation matrix checks that removing the documentation fails this.
+
 // docRequirement is one documentation surface and the terms it must carry.
 type docRequirement struct {
 	path string
@@ -92,13 +100,22 @@ var routingDocs = []docRequirement{
 	},
 	{
 		path: "tui/widget/doc.go",
-		why:  "the widget inventory must list Button and the capability it implements",
-		must: []string{"Button", "tui.Activatable", "ActivationAvailability", "ControlActivatedEvent"},
+		why:  "the widget inventory must list Button and the capability it implements, and must name the composed dialog rather than leaving Float as the only modal primitive",
+		must: []string{"Button", "tui.Activatable", "ActivationAvailability", "ControlActivatedEvent",
+			"OverlayDismissedEvent", "ButtonRoleDefault", "DismissReason",
+			"SetButtons", "TopModal", "ErrModalAlreadyOpen"},
 	},
 	{
 		path: "tui/widget/README.md",
 		why:  "the widget README carries the same inventory as doc.go",
-		must: []string{"Button", "tui.Activatable", "ActivationAvailability", "ControlActivatedEvent"},
+		must: []string{"Button", "tui.Activatable", "ActivationAvailability", "ControlActivatedEvent",
+			"OverlayDismissedEvent", "ButtonRoleDefault", "DismissReason",
+			"SetButtons", "TopModal", "ErrModalAlreadyOpen"},
+	},
+	{
+		path: "tui/tutorial/06-floats-and-modals.md",
+		why:  "this page teaches Float as THE way to build a dialog, which stopped being true when the composed Modal landed; a reader following it writes the lifecycle by hand",
+		must: []string{"widget.Modal"},
 	},
 }
 

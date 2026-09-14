@@ -459,3 +459,176 @@ func TestForwardActionRefusesATargetOutsideTheSubtree(t *testing.T) {
 		})
 	}
 }
+
+// rawForwardingProbe attempts a forward from its RAW event handler, which the
+// published contract forbids.
+type rawForwardingProbe struct {
+	Flex
+	ctx      *Context
+	target   Component
+	attempts atomic.Int64
+	granted  atomic.Bool
+}
+
+func newRawForwardingProbe(target Component) *rawForwardingProbe {
+	return &rawForwardingProbe{Flex: *NewFlex(Vertical), target: target}
+}
+
+func (p *rawForwardingProbe) Init(ctx *Context) {
+	p.ctx = ctx
+	p.Flex.Init(ctx)
+}
+
+func (p *rawForwardingProbe) AcceptsFocus() bool { return true }
+
+func (p *rawForwardingProbe) HandleEvent(ev Event) bool {
+	k, ok := ev.(KeyEvent)
+	if !ok || k.Kind != KeyPress || k.Code != KeyF2 {
+		return false
+	}
+	p.attempts.Add(1)
+	p.granted.Store(p.ctx.ForwardAction(p.target, ActivateAction{}))
+	return true
+}
+
+// TestForwardActionIsRefusedFromTheRawEventLane.
+//
+// Forwarding carries the runtime's record of what the user did, and only an
+// action delivery has one. A raw HandleEvent has no invocation behind it, so a
+// forward from there either invents a default provenance or — worse, while an
+// action delivery is still open further up — borrows one belonging to a
+// different event entirely.
+//
+// The marker the runtime keeps for "a handler is running" deliberately covers
+// BOTH HandleEvent and HandleAction, because pointer capture may be taken from
+// either. Reusing it here is what let the raw lane through.
+func TestForwardActionIsRefusedFromTheRawEventLane(t *testing.T) {
+	t.Parallel()
+	child := newActivatableProbe("child")
+	parent := newRawForwardingProbe(child)
+	parent.Add(child)
+	h := startApp(t, parent, 8, 8)
+
+	var events []ControlActivatedEvent
+	unsub := Subscribe(h.app.Bus(), func(ev ControlActivatedEvent) {
+		events = append(events, ev)
+	})
+	defer unsub()
+
+	h.onLoop(func() { parent.ctx.RequestFocus() })
+	waitFor(t, "parent focused", func() bool { return focusedID(h) == parent.ctx.ID() })
+	h.inject(KeyEvent{Kind: KeyPress, Code: KeyF2})
+	// Wait on the attempt itself, so the absences below are measured after the
+	// raw handler ran rather than before it.
+	waitFor(t, "the raw handler attempted a forward", func() bool {
+		return parent.attempts.Load() == 1
+	})
+	h.sync()
+	h.sync()
+
+	if parent.granted.Load() {
+		t.Error("ForwardAction succeeded from HandleEvent, which owns no action provenance")
+	}
+	if got := child.activations.Load(); got != 0 {
+		t.Errorf("the child was activated %d times from the raw lane, want 0", got)
+	}
+	if len(events) != 0 {
+		t.Errorf("%d activation events published from the raw lane, want 0", len(events))
+	}
+}
+
+// nestedRawProbe moves focus from inside its own action handler. That is what
+// puts a RAW delivery inside an action delivery: setFocus bubbles a FocusEvent
+// through deliverTo while the enclosing HandleAction frame is still open.
+//
+// The unhandled-action fallthrough is NOT such a case, and that is worth
+// recording: routeToNode runs the raw step after dispatchAction has returned, so
+// deliverAction's defer has already restored the marker. Those two are
+// sequential, and a test built on them observes nothing about nesting.
+type nestedRawProbe struct {
+	rawForwardingProbe
+	sibling   Component
+	sawAction atomic.Int64
+	sawRaw    atomic.Int64
+}
+
+// Init registers the resolver from the component's OWN Init, which is the only
+// phase SetDefaultActionResolvers accepts.
+func (p *nestedRawProbe) Init(ctx *Context) {
+	p.rawForwardingProbe.Init(ctx)
+	ctx.SetDefaultActionResolvers(p)
+}
+
+func (p *nestedRawProbe) Resolve(ev Event) (Action, bool) {
+	if k, ok := ev.(KeyEvent); ok && k.Kind == KeyPress && k.Code == KeyF1 {
+		return forwardTrigger{}, true
+	}
+	return nil, false
+}
+
+func (p *nestedRawProbe) HandleAction(inv ActionInvocation) bool {
+	if _, ok := inv.Action.(forwardTrigger); !ok {
+		return false
+	}
+	p.sawAction.Add(1)
+	// Focus moves synchronously and its FocusEvent bubbles to this node, so this
+	// node's own HandleEvent runs before this line returns.
+	p.ctx.FocusComponent(p.sibling)
+	return true
+}
+
+func (p *nestedRawProbe) HandleEvent(ev Event) bool {
+	if _, ok := ev.(FocusEvent); !ok {
+		return false
+	}
+	p.sawRaw.Add(1)
+	if p.ctx.ForwardAction(p.target, ActivateAction{}) {
+		p.granted.Store(true)
+	}
+	return false
+}
+
+// TestForwardActionCannotBorrowAnOuterInvocationFromARawHandler.
+//
+// The nested case, and the reason a phase marker has to be separate rather than
+// merely checked later: the raw delivery happens INSIDE an action delivery, so
+// the runtime's saved origin and source are still those of the action. A raw
+// handler forwarding there would not invent a provenance — it would borrow a
+// real one belonging to an event the child never received.
+func TestForwardActionCannotBorrowAnOuterInvocationFromARawHandler(t *testing.T) {
+	t.Parallel()
+	child := newActivatableProbe("child")
+	sibling := newFocusProbe("sibling", Size{W: 2, H: 1})
+	parent := &nestedRawProbe{rawForwardingProbe: *newRawForwardingProbe(child)}
+	parent.sibling = sibling
+	parent.Add(child, sibling)
+	h := startApp(t, parent, 8, 8)
+
+	h.onLoop(func() { parent.ctx.RequestFocus() })
+	waitFor(t, "parent focused", func() bool { return focusedID(h) == parent.ctx.ID() })
+	// Focusing the parent already bubbled a FocusEvent to it, so the raw counter
+	// is non-zero before the interesting part begins. Reset it, or the wait below
+	// is satisfied by the setup and the assertions run before the key arrives.
+	parent.sawRaw.Store(0)
+
+	h.inject(KeyEvent{Kind: KeyPress, Code: KeyF1})
+	waitFor(t, "the action was delivered", func() bool { return parent.sawAction.Load() == 1 })
+	h.sync()
+
+	if parent.sawRaw.Load() == 0 {
+		t.Fatal("precondition failed: no raw delivery happened inside the action " +
+			"handler, so nothing here could have borrowed its provenance")
+	}
+	if parent.sawAction.Load() != 1 {
+		t.Fatalf("precondition failed: the action was delivered %d times, want 1 — "+
+			"the raw handler must run inside it for this to test anything",
+			parent.sawAction.Load())
+	}
+	if parent.granted.Load() {
+		t.Error("a raw handler nested inside an action delivery borrowed that " +
+			"action's provenance")
+	}
+	if got := child.activations.Load(); got != 0 {
+		t.Errorf("the child was activated %d times with a borrowed invocation, want 0", got)
+	}
+}

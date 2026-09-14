@@ -337,9 +337,11 @@ func (c *Context) ForwardAction(target Component, a Action) bool {
 		return false
 	}
 	app := c.app
-	if app.handlerNode != c.node.id {
+	if app.actionHandlerNode != c.node.id {
 		// Not inside this node's own HandleAction, so there is no invocation to
-		// take provenance from. Refusing beats inventing one.
+		// take provenance from. Refusing beats inventing one — and beats the
+		// worse case, a raw handler nested inside somebody's action delivery
+		// borrowing a real provenance that belongs to a different event.
 		return false
 	}
 	tn := app.byComp[target]
@@ -414,16 +416,17 @@ func (a *App) dispatchAction(n *node, inv ActionInvocation) bool {
 // take the pointer in another's name from inside an action handler, which is
 // the hole already closed on the event path.
 func (a *App) deliverAction(n *node, h ActionHandler, inv ActionInvocation) bool {
-	prev := a.handlerNode
+	prev, prevAction := a.handlerNode, a.actionHandlerNode
 	prevOrigin, prevSource := a.handlerOrigin, a.handlerSource
 	a.handlerNode = n.id
+	a.actionHandlerNode = n.id
 	// Recorded so Context.ForwardAction can carry this invocation's provenance
 	// to a child without the handler being able to state it — and restored on
 	// the way out, so a nested delivery cannot leave the outer one describing
 	// the wrong input.
 	a.handlerOrigin, a.handlerSource = inv.Origin, inv.Source
 	defer func() {
-		a.handlerNode = prev
+		a.handlerNode, a.actionHandlerNode = prev, prevAction
 		a.handlerOrigin, a.handlerSource = prevOrigin, prevSource
 	}()
 	return h.HandleAction(inv)
