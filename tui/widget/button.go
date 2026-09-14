@@ -359,40 +359,19 @@ func (b *Button) markDirty() {
 	}
 }
 
-// checkButtonRoles rejects a second Default or Cancel among buttons that share
-// a container.
+// checkButtonRoles is the CONSTRUCTION adapter over validateButtonRoles.
 //
 // A panic rather than a silent precedence rule: with two defaults, Enter would
-// pick one of them by an ordering the author never stated, and the dialog would
-// do the wrong thing in a way that looks like a toolkit bug rather than a
-// mistake in the button list. Containers call this when they take their
-// buttons.
+// pick one by an ordering the author never stated, and the dialog would do the
+// wrong thing in a way that reads as a toolkit bug rather than a mistake in the
+// button list. Construction options have no error to return, and the list is
+// written in source, so this is a programmer error.
+//
+// It shares its rule with the runtime setter's typed error rather than
+// restating it, so the two cannot come to disagree about what a valid list is.
 func checkButtonRoles(op string, buttons []*Button) {
-	var seenDefault, seenCancel bool
-	for i, b := range buttons {
-		if b == nil {
-			continue
-		}
-		switch b.role {
-		case ButtonRoleDefault:
-			if seenDefault {
-				panic(errs.Fatal{
-					Op:     op,
-					Rule:   "at most one ButtonRoleDefault per container",
-					Detail: "second one at index " + itoa(i),
-				})
-			}
-			seenDefault = true
-		case ButtonRoleCancel:
-			if seenCancel {
-				panic(errs.Fatal{
-					Op:     op,
-					Rule:   "at most one ButtonRoleCancel per container",
-					Detail: "second one at index " + itoa(i),
-				})
-			}
-			seenCancel = true
-		}
+	if f := validateButtonRoles(buttons); f != nil {
+		panic(errs.Fatal{Op: op, Rule: f.describe()})
 	}
 }
 
