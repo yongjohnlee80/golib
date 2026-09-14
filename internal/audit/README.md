@@ -1,5 +1,7 @@
 # The `internal/audit` Guards and Tree Integrity Framework
 
+> **Canonical Architecture Documentation**: The canonical repository-level design narrative and deep-dive documentation lives in [`docs/audit/`](../../docs/audit/README.md). This document serves as the package-local developer runbook, guard inventory, and pipeline reference for `internal/audit`.
+
 `internal/audit` holds repository-wide structural guards that assert invariants of the **source tree itself** rather than the runtime behaviour of any single package. It is test-only: it exports nothing and is imported by nothing. Its whole output is a pass or a failure in the standard test suite (`go test ./...`) executed during local development and CI/CD pipelines.
 
 **The one-sentence version:** A rule that is written down and checked by nobody is not a rule, it is a preference — these guards are the mechanical difference.
@@ -29,8 +31,8 @@ The guards run as part of the standard `go test ./...` invocation in CI/CD (such
    Panic Budget & Census                    Comment Budget & Ratchet                    Promotion & Architecture
    - panic_budget_test.go                   - comment_budget_test.go                    - promotion_test.go
    - panic_identity_test.go                 - comment_detectors_test.go                 - routing_docs_test.go
-   [Verifies panic classification &         [Verifies self-contained plain              [Verifies method shadowing &
-    caps runtime violations at 0]            comments; zero external pointers]           architecture doc accuracy]
+   [Verifies inventory consistency &        [Scans for 14 known pointer                 [Verifies method shadowing &
+    caps violation rows at 0]                regexes; ratchets ledger to 0]              routing vocabulary presence]
          │                                           │                                           │
          └───────────────────────────────────────────┼───────────────────────────────────────────┘
                                                      │
@@ -54,24 +56,24 @@ They could have been bash scripts or custom CI linters. They are standard Go tes
 
 ## The Inventory of Guards
 
-| Guard | Test File(s) | Primary Assertion | Ledger / Testdata | Trigger / Env Var |
+| Guard | Test File(s) | Primary Assertion (Mechanical Check) | Ledger / Testdata | Trigger / Env Var |
 | --- | --- | --- | --- | --- |
-| **Panic Budget** | `panic_budget_test.go` | Every `panic()` in non-test code is enumerated, classified, and runtime violations are capped at zero | `testdata/panic_budget.txt`<br>`testdata/panic_budget_legacy_unreviewed.txt` | Standard / `GOLIB_PANIC_BUDGET_UPDATE=1` |
-| **Panic Identity Controls** | `panic_identity_test.go` | Proves the panic identity hashing function distinguishes divergent control paths while ignoring benign edits | None (In-code fixtures) | Standard |
-| **Comment Budget** | `comment_budget_test.go` | Enforces self-contained comments in plain language; ratchets unresolvable external pointer coordinates to zero | `testdata/comment_budget.txt`<br>`testdata/comment_budget_tests.txt` | Standard |
-| **Comment Detectors** | `comment_detectors_test.go` | Proves all 14 pointer detectors are sensitive to true positives and specific against lookalikes | None (In-code fixtures) | Standard |
-| **Promotion Self-Calls** | `promotion_test.go` | Detects Go receiver shadowing on embedded base types; forbids LIVE defects and ratchets LATENT debt | `testdata/promotion_selfcalls.txt` | Standard |
-| **Routing Documentation** | `routing_docs_test.go` | Verifies that architectural documentation in `tui/` and `tui/widget/` accurately describes the runtime event routing model | None (Scans doc surfaces) | Standard |
-| **Comments-Only Check** | `commentsonly_test.go` | Verifies that a comment migration modified zero executable Go code by AST-stripping comments and comparing byte-for-byte | None (Compares git tree) | `COMMENTS_ONLY_BASE=<rev>` (Opt-in) |
+| **Panic Budget** | `panic_budget_test.go` | Enumerates non-test `panic()` call sites; reconciles inventory against ledger; checks category consistency and enforces that rows classified `violation` are capped at zero | `testdata/panic_budget.txt`<br>`testdata/panic_budget_legacy_unreviewed.txt` | Standard / `GOLIB_PANIC_BUDGET_UPDATE=1` |
+| **Panic Identity Controls** | `panic_identity_test.go` | Asserts that the structural panic identity hasher distinguishes divergent control paths while remaining invariant under benign edits (whitespace, comments, unrelated statements) | None (In-code fixtures) | Standard |
+| **Comment Budget** | `comment_budget_test.go` | Scans comments for 14 known external coordinate regex patterns; asserts exact match against ledgers ratcheting toward zero | `testdata/comment_budget.txt`<br>`testdata/comment_budget_tests.txt` | Standard |
+| **Comment Detectors** | `comment_detectors_test.go` | Proves all 14 pointer regex detectors fire on positive examples and stay silent on negative controls | None (In-code fixtures) | Standard |
+| **Promotion Self-Calls** | `promotion_test.go` | Scans embeddable base methods for sibling self-calls on own receiver; forbids LIVE defects and enforces ratcheted LATENT allowlist (currently 24 sites across 20 allowlisted keys) | `testdata/promotion_selfcalls.txt` | Standard |
+| **Routing Documentation** | `routing_docs_test.go` | Asserts required routing vocabulary is present across monitored doc surfaces and one obsolete sentence claiming raw handlers run first is absent | None (Scans doc surfaces) | Standard |
+| **Comments-Only Check** | `commentsonly_test.go` | Asserts that a comment migration modified zero executable Go code by AST-stripping comments and comparing byte-for-byte against a base revision | None (Compares git tree) | `COMMENTS_ONLY_BASE=<rev>` (Opt-in) |
 
 ---
 
-## The Three Non-Negotiable Guard Properties
+## Three Anti-Vacuity Patterns, Used Where Applicable
 
-Every guard in `internal/audit` adheres to three mechanical invariants designed to prevent vacuous passes and silent test erosion:
+Not every guard uses all three patterns — fixture controls (`comment_detectors_test.go`, `panic_identity_test.go`) have neither ledgers nor exemptions. These patterns are deployed where applicable to prevent silent test erosion and vacuous passes:
 
-### 1. It Fails Vacuously Loudly
-Every guard driven by a directory walk enforces a minimum threshold of discovered source files (`minWalked`). A broken walk path or misconfigured filter that matches zero files would otherwise report a falsely clean tree:
+### 1. Fails Vacuously Loudly (`minWalked`)
+Guards driven by directory walks (`comment_budget`, `panic_budget`, `promotion_test`) enforce a minimum threshold of discovered source files (`minWalked`). A broken walk path or misconfigured filter that matches zero files would otherwise report a falsely clean tree:
 
 ```go
 if walked < sc.minWalked {
@@ -82,20 +84,20 @@ if walked < sc.minWalked {
 
 Similarly, the panic census fails if no panic sites are discovered, and the comment-migration check refuses to pass on an empty git diff.
 
-### 2. Its Ledger Is Exact, Not a Ceiling
-Budget ledgers record the exact number of sites existing in each file. If an improvement reduces the count in a file, the guard fails until the ledger is lowered:
+### 2. Exact Ledger Matching vs. Review-Only Ratchet
+Ledger-backed guards assert **exact equality** with recorded counts, rather than a ceiling. If an improvement reduces the count in a file, the guard fails until the ledger is lowered:
 
 ```
 FAIL: path/to/file.go: 2, budgeted 4 — lower it to 2
 ```
 
-An improvement that is not committed alongside a ledger reduction can be silently undone later. Exact matching turns the budget into a one-way ratchet: numbers may only fall, and files reaching zero are frozen at zero forever.
+Exact equality is mechanically enforced by the test. However, the requirement that numbers **"may only fall / shrink"** is a **binding code-review policy** rather than an automated git-diff check: the tests compare against the ledger on disk, so code review enforces that contributors do not raise counts or re-add lines.
 
-### 3. Exemptions Are Named, Premise-Bound, and Liveness-Checked
-Exemptions are never granted by generic patterns (which future defects could accidentally match). An exemption must:
-- Name the exact relative file path.
-- State a **premise identifier** declared as a top-level AST symbol in that file (parsed, not grepped).
-- Be **live**: if the exempted file no longer triggers any violation, the guard fails until the dead exemption is deleted.
+### 3. Named Premise / Liveness Exemptions
+Exemptions are never granted by generic patterns. Where exemptions exist (specifically in `comment_budget` for `comment_budget_test.go`):
+- **Named by exact path**: The exemption identifies the exact relative file path.
+- **Bound to a premise identifier**: Requires a top-level AST symbol (`pointerPatterns`) declared in that file, verifying the file still defines the detectors.
+- **Liveness-checked**: The exempted file must still trigger a violation. If it becomes clean, the guard fails until the dead exemption is deleted.
 
 ---
 
@@ -215,14 +217,17 @@ OuterStruct (Embeds Base)                BaseStruct
 
 ### 6. Routing Documentation Guard (`routing_docs_test.go`)
 
-Guards against documentation drift in event routing architecture. Verifies that `tui/doc.go`, `tui/README.md`, `tui/widget/doc.go`, `tui/widget/README.md`, and `tui/tutorial/04-events-focus-keys.md` accurately document the event interpretation model:
+Guards against documentation drift in event routing architecture. Mechanically asserts that `tui/doc.go`, `tui/README.md`, `tui/widget/doc.go`, `tui/widget/README.md`, and `tui/tutorial/04-events-focus-keys.md` contain required routing vocabulary and omit the specific obsolete sentence claiming raw handlers run before resolution.
 
-1. Action Resolver (`App` / Scope Keymaps)
-2. `HandleAction` (Semantic Action Dispatch)
-3. Raw `HandleEvent` on focused node (Bubbling up ancestor hierarchy)
-4. Gesture recognizer / pointer fallbacks
-
-Enforces required vocabulary and forbids legacy sentences claiming raw `HandleEvent` runs first before resolution.
+The runtime event routing sequence enforced across documentation is the **bounded per-node walk**:
+1. **Target Selection**: Key/UserEvent targets the confined focused node (within active trapping scope ceiling); pointer input targets the hit-test node; `CaptureRaw` targets the active capture node (direct dispatch without bubbling); `CaptureGesture` routes directly to the active gesture recognizer.
+2. **Per-Node Sequence (`routeToNode` on `n`)**:
+   - **Pointer Policy Gate**: If pointer-derived and effective pointer policy is `PointerDisabled`, skips `n` entirely and continues to parent.
+   - **Action Resolution**: First match over consumer resolvers, then defaults.
+   - **Semantic Action Dispatch**: Delivers to `ActionHandler.HandleAction`. If unhandled and action is concrete `ActivateAction` (or `*ActivateAction`), falls back to `Activatable.Activate` and publishes `ControlActivatedEvent`.
+   - **Raw Delivery**: If no action was produced or the action went unhandled, delivers raw `HandleEvent` to the same node `n` (semantic delivery comes first).
+3. **Walk Continuation**: If unconsumed, bubbles up `n.parent` up to the active trapping scope ceiling (`confinement()`).
+4. **Post-Walk Fallbacks**: Global key bindings for unconsumed key events; eligible unconsumed primary press falls through to the Gesture Recognizer (only if target is `Activatable`, availability is active, and pointer policy is enabled).
 
 ---
 
