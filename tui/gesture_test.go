@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // The recogniser exists so that press-arm/release-activate is written once
@@ -678,5 +680,270 @@ func TestAConsumedPressNeverReachesTheRecognizer(t *testing.T) {
 	if held != 0 {
 		t.Errorf("a consumed press still took capture %d; the widget would be holding "+
 			"the pointer for a gesture it never began", held)
+	}
+}
+
+// --- F1: a typed-nil action from a recogniser ---
+
+// nilActionRecognizer arms normally but hands back a TYPED-NIL action on
+// release: an interface with a live *ActivateAction descriptor and no value.
+type nilActionRecognizer struct{}
+
+func (nilActionRecognizer) OnPointer(ev MouseEvent, gc GestureCtx) (Action, bool, GestureState) {
+	switch ev.Kind {
+	case MousePress:
+		if ev.Button == MouseLeft && gc.Inside {
+			return nil, true, GestureArmed
+		}
+	case MouseRelease:
+		if ev.Button == MouseLeft {
+			var typed *ActivateAction
+			return typed, true, GestureIdle // claims nothing, but not with a plain nil
+		}
+	}
+	return nil, false, gc.State
+}
+
+// TestATypedNilRecognizerActionActivatesNothing. A typed nil passes an
+// act != nil check and then matches dispatchAction's pointer arm, so a
+// recogniser producing no action at all could activate a control and publish
+// an event for it. Recognisers legitimately consume an event while returning
+// nothing, so this is treated as an absent action rather than an error.
+func TestATypedNilRecognizerActionActivatesNothing(t *testing.T) {
+	h, c := gestureFixture(t, WithGestureRecognizer(nilActionRecognizer{}))
+	defer h.wait()
+
+	var mu sync.Mutex
+	var events int
+	unsub := Subscribe(h.app.Bus(), func(ControlActivatedEvent) {
+		mu.Lock()
+		events++
+		mu.Unlock()
+	})
+	defer unsub()
+
+	press(h, 2, 1)
+	waitFor(t, "armed", func() bool { return c.armTrue.Load() == 1 })
+	release(h, 2, 1)
+	waitFor(t, "disarmed", func() bool { return c.armFalse.Load() == 1 })
+	h.sync()
+
+	if got := c.activations.Load(); got != 0 {
+		t.Errorf("a typed-nil action activated the control %d time(s), want 0", got)
+	}
+	mu.Lock()
+	n := events
+	mu.Unlock()
+	if n != 0 {
+		t.Errorf("%d ControlActivatedEvent(s) published for a typed-nil action, want 0", n)
+	}
+	// The gesture still ends cleanly: consuming without producing is legal.
+	var held NodeID
+	h.onLoop(func() { held = h.app.captureOwner })
+	if held != 0 {
+		t.Errorf("capture still held by %d", held)
+	}
+	if c.armed.Load() {
+		t.Error("the control is still armed")
+	}
+}
+
+// --- F2: runtime replacement ---
+
+// TestReplacingTheRecognizerMidGestureCancelsIt. No gesture may span two
+// recognisers: the replacement would be handed a sequence whose beginning it
+// never saw and whose state it cannot interpret.
+func TestReplacingTheRecognizerMidGestureCancelsIt(t *testing.T) {
+	old := &countingRecognizer{}
+	root := &counter{size: Size{W: 20, H: 4}}
+	c := newControl(8, 2)
+	root.Add(c)
+	h := startApp(t, root, 20, 4, WithGestureRecognizer(armingRecognizer{}))
+	defer h.wait()
+	h.sync()
+	_ = old
+
+	press(h, 2, 1)
+	waitFor(t, "armed by the original", func() bool { return c.armTrue.Load() == 1 })
+
+	replacement := &countingRecognizer{}
+	h.onLoop(func() { h.app.byComp[c].ctx.SetGestureRecognizer(replacement) })
+	waitFor(t, "the in-flight gesture was cancelled", func() bool { return c.armFalse.Load() == 1 })
+	h.sync()
+
+	if c.armed.Load() {
+		t.Error("the old target is still armed after the recogniser was replaced")
+	}
+	var held NodeID
+	h.onLoop(func() { held = h.app.captureOwner })
+	if held != 0 {
+		t.Errorf("capture still held by %d after replacement", held)
+	}
+	// Exactly one cancellation, and it says why.
+	if got := c.armFalse.Load(); got != 1 {
+		t.Errorf("SetArmed(false) called %d times, want exactly 1", got)
+	}
+
+	// The replacement alone handles the next press.
+	press(h, 2, 1)
+	waitFor(t, "the replacement was consulted", func() bool { return replacement.calls.Load() >= 1 })
+}
+
+// armingRecognizer arms on a left press inside and otherwise does nothing, so a
+// gesture can be put in flight and then interrupted.
+type armingRecognizer struct{}
+
+func (armingRecognizer) OnPointer(ev MouseEvent, gc GestureCtx) (Action, bool, GestureState) {
+	if ev.Kind == MousePress && ev.Button == MouseLeft && gc.Inside {
+		return nil, true, GestureArmed
+	}
+	return nil, false, gc.State
+}
+
+// TestRecognitionCanBeDisabledAtRuntime, by nil and by a typed nil alike.
+func TestRecognitionCanBeDisabledAtRuntime(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func(c *Context)
+	}{
+		{"nil interface", func(c *Context) { c.SetGestureRecognizer(nil) }},
+		{"typed nil", func(c *Context) {
+			var r *countingRecognizer
+			c.SetGestureRecognizer(r)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := &counter{size: Size{W: 20, H: 4}}
+			c := newControl(8, 2)
+			sentinel := &counter{size: Size{W: 12, H: 4}}
+			root.Add(c, sentinel)
+			h := startApp(t, root, 20, 4)
+			defer h.wait()
+			h.sync()
+
+			h.onLoop(func() { tc.set(h.app.byComp[c].ctx) })
+			h.sync()
+
+			press(h, 2, 1)
+			release(h, 2, 1)
+			press(h, 15, 1) // ordered lane-A sentinel
+			waitFor(t, "sentinel dispatched", func() bool {
+				_, _, m := sentinel.totals()
+				return m > 0
+			})
+			h.sync()
+
+			if got := c.armCalls.Load(); got != 0 {
+				t.Errorf("SetArmed called %d times after runtime disablement, want 0", got)
+			}
+		})
+	}
+}
+
+// --- F3: unrelated buttons must not end the primary gesture ---
+
+// TestAnUnrelatedButtonDoesNotEndThePrimaryGesture. A right-click during a left
+// drag changes nothing about the left drag; disarming or dropping the capture
+// there would abandon a gesture the user is still performing.
+func TestAnUnrelatedButtonDoesNotEndThePrimaryGesture(t *testing.T) {
+	h, c := gestureFixture(t)
+	defer h.wait()
+
+	press(h, 2, 1)
+	waitFor(t, "armed", func() bool { return c.armTrue.Load() == 1 })
+
+	// A complete secondary click while the primary gesture is live.
+	h.inject(MouseEvent{Kind: MousePress, Button: MouseRight, X: 2, Y: 1})
+	h.inject(MouseEvent{Kind: MouseRelease, Button: MouseRight, X: 2, Y: 1})
+
+	// The primary release must still activate — which also proves the events
+	// above were processed, so no separate sentinel is needed.
+	release(h, 2, 1)
+	waitFor(t, "the primary gesture still completed", func() bool {
+		return c.activations.Load() == 1
+	})
+	h.sync()
+
+	if got := c.armFalse.Load(); got != 1 {
+		t.Errorf("SetArmed(false) called %d times, want exactly 1: an unrelated button "+
+			"must not disarm the primary gesture", got)
+	}
+	if got := c.activations.Load(); got != 1 {
+		t.Errorf("activations = %d, want exactly 1", got)
+	}
+}
+
+// --- F4: an invalid state is refused before anything moves ---
+
+// badStateRecognizer returns a value outside the closed enum.
+type badStateRecognizer struct{}
+
+func (badStateRecognizer) OnPointer(ev MouseEvent, gc GestureCtx) (Action, bool, GestureState) {
+	if ev.Kind == MousePress && ev.Button == MouseLeft && gc.Inside {
+		return nil, true, GestureArmed
+	}
+	if ev.Kind == MouseMotion {
+		// The FIRST value past the closed set. A far-out one like 200 is
+		// rejected by an off-by-one bound exactly as readily as by a correct
+		// one, so it cannot tell the edge from a mistake about the edge.
+		return nil, true, GestureArmed + 1
+	}
+	return nil, false, gc.State
+}
+
+// TestAnInvalidGestureStateIsRefusedBeforeAnythingChanges. GestureState is a
+// published closed enum, so a value outside it is a broken recogniser rather
+// than data — and half-applying an interpretation nothing can read is worse
+// than refusing it.
+func TestAnInvalidGestureStateIsRefusedBeforeAnythingChanges(t *testing.T) {
+	h, c := gestureFixture(t, WithGestureRecognizer(badStateRecognizer{}))
+	defer h.wait()
+
+	press(h, 2, 1)
+	waitFor(t, "armed", func() bool { return c.armTrue.Load() == 1 })
+
+	var before, after NodeID
+	var stBefore, stAfter GestureState
+	var armedAfter bool
+	var fatal *errs.Fatal
+	h.onLoop(func() {
+		before, stBefore = h.app.captureOwner, h.app.gestureState
+		n := h.app.byComp[c]
+		local := MouseEvent{Kind: MouseMotion, X: 1, Y: 1}
+		fatal = fatalFrom(func() { h.app.runRecognizer(badStateRecognizer{}, n, local) })
+		after, stAfter, armedAfter = h.app.captureOwner, h.app.gestureState, h.app.gestureArmed
+	})
+	h.sync()
+
+	if fatal == nil {
+		t.Fatal("a GestureState outside the closed enum was accepted")
+	}
+	if after != before {
+		t.Errorf("capture owner changed from %d to %d on a refused result", before, after)
+	}
+	if stAfter != stBefore {
+		t.Errorf("gesture state changed from %v to %v on a refused result", stBefore, stAfter)
+	}
+	if !armedAfter {
+		t.Error("the control was disarmed by a refused result; validation must happen " +
+			"before any mutation")
+	}
+	if c.armFalse.Load() != 0 {
+		t.Errorf("SetArmed(false) was called %d times on a refused result", c.armFalse.Load())
+	}
+
+	// The bound must reject ONLY what is invalid: GestureArmed itself, the last
+	// legal value, still goes through.
+	var legal *errs.Fatal
+	h.onLoop(func() {
+		n := h.app.byComp[c]
+		legal = fatalFrom(func() {
+			h.app.runRecognizer(armingRecognizer{}, n,
+				MouseEvent{Kind: MousePress, Button: MouseLeft, X: 1, Y: 1})
+		})
+	})
+	h.sync()
+	if legal != nil {
+		t.Errorf("GestureArmed was rejected (%v); the bound excludes a legal value", legal.Rule)
 	}
 }

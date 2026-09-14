@@ -60,9 +60,6 @@ type appConfig struct {
 	// defaults to press-arm/release-activate; WithGestureRecognizer replaces
 	// it, and setting it to nil switches gesture recognition off.
 	recognizer GestureRecognizer
-	// recognizerSet distinguishes "never configured" from "deliberately set
-	// to nil", so that opting out is not silently overwritten by the default.
-	recognizerSet bool
 }
 
 // defaultAppConfig returns the documented defaults.
