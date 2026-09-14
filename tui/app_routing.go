@@ -101,6 +101,17 @@ func (a *App) dispatch(ev Event) {
 			a.bubbleWithin(target, limit, ev)
 		}
 
+	case UserEvent:
+		// Consumer-defined input routes exactly like a key: to the focused
+		// node, bubbling within the active scope. It is input, so it is
+		// confined by a trap for the same reason a keystroke is — a gamepad
+		// must not reach the controls a dialog is covering. Anything else
+		// would make UserEvent a way around the scope rules.
+		limit := a.confinement()
+		if target := a.confinedTarget(a.nodes[a.focused], limit); target != nil {
+			a.bubbleWithin(target, limit, ev)
+		}
+
 	case MouseEvent:
 		// A count belongs to presses only. Canonicalise every other kind to zero
 		// rather than passing a producer's value through. Count is documented
@@ -201,7 +212,7 @@ func (a *App) dispatch(ev Event) {
 			local := e
 			local.X = e.X - n.absRect.X
 			local.Y = e.Y - n.absRect.Y
-			if a.deliverTo(n, local) {
+			if a.routeToNode(n, local) {
 				break
 			}
 			if n == limit {
@@ -277,8 +288,21 @@ func (a *App) globalKey(e KeyEvent) {
 //
 // If an event bubbles all the way to the root without being consumed,
 // bubble returns false, allowing callers to apply fallbacks (such as globalKey).
+// It delivers RAW only, running no resolvers. Its callers are notifications —
+// the runtime telling components that focus moved — rather than input, and an
+// action names what the USER meant. Resolving a focus notification into an
+// intent would invent one nobody expressed, and would also consult every
+// resolver on the path each time focus changed.
 func (a *App) bubble(n *node, ev Event) bool {
-	return a.bubbleWithin(n, nil, ev)
+	start := n
+	for ; n != nil; n = n.parent {
+		if a.deliverTo(n, ev) {
+			a.traceRouted(ev, start, n.id)
+			return true
+		}
+	}
+	a.traceRouted(ev, start, 0)
+	return false
 }
 
 // bubbleWithin is bubble with a ceiling: it delivers from n upward and STOPS
@@ -295,7 +319,7 @@ func (a *App) bubble(n *node, ev Event) bool {
 func (a *App) bubbleWithin(n, limit *node, ev Event) bool {
 	start := n
 	for ; n != nil; n = n.parent {
-		if a.deliverTo(n, ev) {
+		if a.routeToNode(n, ev) {
 			a.traceRouted(ev, start, n.id)
 			return true
 		}
@@ -305,6 +329,44 @@ func (a *App) bubbleWithin(n, limit *node, ev Event) bool {
 	}
 	a.traceRouted(ev, start, 0)
 	return false
+}
+
+// routeToNode runs the per-node input sequence for ONE node and reports whether
+// that node consumed the event. It is the whole of what any single node does
+// with an event; the bubble loop above just walks it up the tree.
+//
+//  1. POLICY GATE — pointer input to a node whose effective policy is disabled
+//     skips the node ENTIRELY, semantic and raw alike, and carries on to the
+//     parent. Gating only one path would half-disable composite widgets.
+//  2. RESOLVE      — first match over consumer resolvers, then defaults.
+//  3. SEMANTIC     — dispatch the resolved action.
+//  4. RAW          — if no action was produced, or the one produced went
+//     unhandled, deliver the raw event to the same node.
+//
+// SEMANTIC COMES FIRST, and that ordering is forced rather than chosen. With
+// raw first, a widget that reads MouseEvent directly would swallow the press
+// that its own resolver was meant to turn into a begin-drag action, so mouse
+// and keyboard would take different paths through the same widget — which is
+// the duplication actions exist to remove.
+//
+// An unhandled action falls through to raw on the SAME node, but does NOT try
+// later resolvers: first match wins, so a resolver claiming an event and then
+// producing something the node ignores does not hand the event to the next
+// resolver in line.
+func (a *App) routeToNode(n *node, ev Event) bool {
+	if pointerDerived(ev) && effectivePointerPolicy(n) == PointerDisabled {
+		return false
+	}
+	if act, ok := a.resolveFor(n, ev); ok {
+		if a.dispatchAction(n, ActionInvocation{
+			Action: act,
+			Origin: originFor(ev),
+			Source: ev,
+		}) {
+			return true
+		}
+	}
+	return a.deliverTo(n, ev)
 }
 
 // confinement reports the ceiling for keyboard and pointer routing: the
@@ -402,11 +464,18 @@ func (a *App) deliverAddressed(owner NodeID, ev Event) {
 // Nothing bubbles. An ancestor did not ask for this gesture and cannot tell it
 // apart from one of its own.
 //
-// INCOMPLETE UNTIL THE ACTION LAYER. This calls HandleEvent directly. The
-// design requires a captured event to run the same interpretation an
-// uncaptured one runs, so that a drag begun as a semantic action continues as
-// one; that machinery does not exist yet, and the direct call is a placeholder
-// for it rather than a decision against it.
+// The owner runs the SAME per-node sequence an uncaptured event runs — policy
+// gate, resolve, semantic dispatch, then raw — just without the parent walk. A
+// drag begun as a semantic action therefore continues as one; delivering
+// captured motion straight to HandleEvent would have forced every widget to
+// keep a second state machine for the captured half of its own gesture.
+//
+// There is deliberately NO policy check here. A capture and a disabled policy
+// can meet in exactly two ways, and both are handled where they happen: the
+// policy changing under a live capture cancels it at the setter, and a node
+// whose pointer input is disabled is refused the capture in the first place.
+// A third check here would be one nothing can reach, which is worse than
+// absent — it reads as a guarded case and can never be shown to work.
 func (a *App) deliverCaptured(e MouseEvent) bool {
 	owner := a.nodes[a.captureOwner]
 	if owner == nil || !owner.mounted {
@@ -421,7 +490,7 @@ func (a *App) deliverCaptured(e MouseEvent) bool {
 	local := e
 	local.X = e.X - owner.absRect.X
 	local.Y = e.Y - owner.absRect.Y
-	a.deliverTo(owner, local)
+	a.routeToNode(owner, local)
 	a.traceRouted(e, owner, owner.id)
 	return true
 }

@@ -61,8 +61,14 @@ func (a *App) mount(parent *node, comp Component) *node {
 	a.async.mu.Unlock()
 
 	// Init may itself Mount children — the cascade is depth-first and
-	// re-entrant.
+	// re-entrant. The marker is saved and restored rather than cleared for
+	// exactly that reason: a child's Init runs inside its parent's, and
+	// clearing on the inner return would leave the parent's remaining Init
+	// wrongly classified as no longer initialising.
+	prevInit := a.initNode
+	a.initNode = n.id
 	comp.Init(n.ctx)
+	a.initNode = prevInit
 
 	a.layoutDirty = true // a new child means geometry may change (step 4)
 	a.queue.wakeUp()
