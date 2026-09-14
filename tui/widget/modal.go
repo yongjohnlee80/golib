@@ -305,19 +305,15 @@ func (m *Modal) Dismiss(reason DismissReason) {
 	if !m.open {
 		return
 	}
-	host := m.host
-	if host == nil {
-		// Open never succeeded, or the host is already gone. Settle the flag so
-		// a second call stays silent, and there is nothing to unwind.
-		m.open = false
-		m.host = nil
-		return
-	}
+	// open and host are set together by a successful Open and cleared together by
+	// finishDismiss, so an open dialog always has its host; there is no
+	// open-but-hostless state to guard against.
+	//
 	// The HOST performs the transition, because dismissing a dialog that is not
 	// on top means closing the ones above it first, and only the host knows the
 	// order. A Modal deciding its own removal could unwind nothing above itself
 	// and leave a stack with a hole in it.
-	host.dismissModal(m, reason)
+	m.host.dismissModal(m, reason)
 }
 
 // finishDismiss performs one dialog's close, in the order the lifecycle
@@ -333,6 +329,14 @@ func (m *Modal) Dismiss(reason DismissReason) {
 // because after the unmount there is no context to ask and the event would
 // silently not be published.
 func (m *Modal) finishDismiss(reason DismissReason, unmount func()) {
+	// Already closed. Reachable from a callback: unwinding a stack runs each
+	// dialog's onDismiss, and one of those may dismiss a dialog further down that
+	// the same unwind is about to reach. Without this the second visit unmounts
+	// nothing and publishes a duplicate event, so a listener counting closures
+	// counts one dialog twice.
+	if !m.open {
+		return
+	}
 	m.open = false
 	m.host = nil
 

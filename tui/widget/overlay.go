@@ -3,6 +3,7 @@ package widget
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -264,16 +265,24 @@ func (h *OverlayHost) openModal(m *Modal) (err error) {
 // and reporting the caller's reason for them would attribute an accept or a
 // cancel to a dialog nobody answered.
 func (h *OverlayHost) dismissModal(m *Modal, reason DismissReason) {
-	i := h.indexOf(m)
-	if i < 0 {
-		// Not on the stack. Settle the dialog's own flags so a second call stays
-		// silent, and publish nothing: there is no transition to report.
-		m.finishDismiss(reason, func() {})
-		return
-	}
 	// Topmost first, so each close sees a stack that is valid beneath it.
-	for j := len(h.modals) - 1; j > i; j-- {
-		above := h.modals[j]
+	//
+	// The target's position is RE-DERIVED every iteration rather than captured
+	// once, because each close runs a callback and a callback may dismiss another
+	// dialog on this same stack. Indexing by a position taken before that ran
+	// walked off the end of a slice the callback had already shortened.
+	//
+	// A target the host does not hold yields -1 and unwinds nothing, which is the
+	// right answer rather than a special case: there is no transition to make on
+	// a stack this dialog is not part of, and its own close below still settles
+	// its flags. The counter bounds the loop so that no bookkeeping slip can turn
+	// a re-entrant dismissal into a hang.
+	for n := len(h.modals); n > 0; n-- {
+		i := slices.Index(h.modals, m)
+		if i < 0 || i == len(h.modals)-1 {
+			break
+		}
+		above := h.modals[len(h.modals)-1]
 		above.finishDismiss(DismissReplaced, func() { h.removeModal(above) })
 	}
 	m.finishDismiss(reason, func() { h.removeModal(m) })
@@ -284,8 +293,8 @@ func (h *OverlayHost) dismissModal(m *Modal, reason DismissReason) {
 func (h *OverlayHost) removeModal(m *Modal) {
 	h.dropScrim()
 	h.Stack.Remove(m)
-	if i := h.indexOf(m); i >= 0 {
-		h.modals = append(h.modals[:i], h.modals[i+1:]...)
+	if i := slices.Index(h.modals, m); i >= 0 {
+		h.modals = slices.Delete(h.modals, i, i+1)
 	}
 	h.restoreScrimForTop()
 }
@@ -331,16 +340,6 @@ func (h *OverlayHost) restyleScrim(owner *Modal, st *ModalStyle) {
 	}
 }
 
-// indexOf reports m's position in the modal stack, or -1.
-func (h *OverlayHost) indexOf(m *Modal) int {
-	for i, om := range h.modals {
-		if om == m {
-			return i
-		}
-	}
-	return -1
-}
-
 // dropScrim removes the current backdrop, if any.
 func (h *OverlayHost) dropScrim() {
 	if h.scrim == nil {
@@ -366,10 +365,10 @@ func (h *OverlayHost) TopModal() *Modal {
 // on button order. Failing that, the first enabled button; failing that, the
 // Modal itself, which is the target of last resort that keeps Escape reachable.
 func (m *Modal) focusInitial() {
-	target, ok := m.InitialFocus()
-	if !ok || target == nil {
-		return
-	}
+	// InitialFocus always nominates — a button, or failing that the Modal node
+	// itself — so there is no "no nomination" case to handle here. Guarding for
+	// one would be a branch nothing can reach.
+	target, _ := m.InitialFocus()
 	if ctx := m.Context(); ctx != nil {
 		ctx.FocusComponent(target)
 	}

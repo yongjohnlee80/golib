@@ -784,3 +784,152 @@ func TestModalPointerPolicyRejectsAnOutOfRangeValue(t *testing.T) {
 		t.Error("Modal.WithPointerPolicy accepted the first value past the declared set")
 	}
 }
+
+// TestASurvivorThatWantsNoBackdropGetsNone.
+//
+// The backdrop belongs to whichever dialog is on top, and "on top" changes when
+// one closes — so the survivor's own preference decides, not the preference of
+// the dialog that just went away. A restore that assumed every dialog wants one
+// would dim the screen behind a dialog that explicitly asked not to.
+func TestASurvivorThatWantsNoBackdropGetsNone(t *testing.T) {
+	lower := widget.NewModal(widget.NewText("plain"),
+		widget.WithModalTitle("Alpha"), widget.WithScrim(false))
+	upper := widget.NewModal(widget.NewText("later"), widget.WithModalTitle("Bravo"))
+
+	h, host, base := modalFixture(t, lower, 40, 12)
+	defer h.stop()
+	openOn(t, h, lower, host)
+	alone := h.grid()
+	if !strings.Contains(alone, base.Label()) {
+		t.Fatalf("precondition failed: an unscrimmed dialog should leave the base "+
+			"visible, but %q is not on screen:\n%s", base.Label(), alone)
+	}
+
+	openOn(t, h, upper, host)
+	h.onLoop(func() { upper.Dismiss(widget.DismissProgrammatic) })
+	h.settle()
+
+	if got := h.grid(); got != alone {
+		t.Errorf("closing the upper dialog did not restore the unscrimmed screen.\n"+
+			"want:\n%s\ngot:\n%s", alone, got)
+	}
+}
+
+// TestRestylingADialogThatIsNotOnTopLeavesTheBackdropAlone.
+//
+// Only the topmost dialog owns the backdrop. A lower dialog restyling itself
+// must repaint its own card and nothing else — repainting the scrim would let a
+// covered dialog change the look of the one covering it.
+func TestRestylingADialogThatIsNotOnTopLeavesTheBackdropAlone(t *testing.T) {
+	lower := widget.NewModal(widget.NewText("low"), widget.WithModalTitle("Alpha"))
+	upper := widget.NewModal(widget.NewText("up"), widget.WithModalTitle("Bravo"))
+	h, host, _ := modalFixture(t, lower, 30, 10)
+	defer h.stop()
+	openOn(t, h, lower, host)
+	openOn(t, h, upper, host)
+
+	underlined := widget.NewModalStyle(styleOf(1), styleOf(2)).
+		WithScrim(style.New().Underline(true))
+	h.onLoop(func() { lower.WithStyle(underlined) })
+	h.settle()
+
+	grid := h.tb.Snapshot()
+	corner := grid[len(grid)-1][0]
+	if corner.Attrs.Mask&tui.AttrUnderline != 0 {
+		t.Error("a dialog that is not on top restyled the backdrop it does not own")
+	}
+
+	// The control: the same style on the TOP dialog does reach the scrim, so the
+	// assertion above is observing ownership rather than a restyle that never
+	// works from this fixture at all.
+	h.onLoop(func() { upper.WithStyle(underlined) })
+	h.settle()
+	grid = h.tb.Snapshot()
+	if grid[len(grid)-1][0].Attrs.Mask&tui.AttrUnderline == 0 {
+		t.Error("the topmost dialog's restyle did not reach the backdrop either")
+	}
+}
+
+// TestACallbackDismissingADialogTheUnwindWillReachClosesItOnce.
+//
+// Unwinding a stack runs each dialog's callback, and one of those may dismiss a
+// dialog further down that the same unwind is about to reach. Without a guard
+// the second visit unmounts nothing and publishes a duplicate event, so a
+// listener counting closures counts one dialog twice.
+func TestACallbackDismissingADialogTheUnwindWillReachClosesItOnce(t *testing.T) {
+	bottom := widget.NewModal(widget.NewText("1"), widget.WithModalTitle("One"))
+	middle := widget.NewModal(widget.NewText("2"), widget.WithModalTitle("Two"))
+	top := widget.NewModal(widget.NewText("3"), widget.WithModalTitle("Three"),
+		widget.WithOnDismiss(func(widget.DismissReason) {
+			// Reaches down past itself, into the part of the stack the unwind
+			// has not visited yet.
+			middle.Dismiss(widget.DismissProgrammatic)
+		}))
+
+	h, host, _ := modalFixture(t, bottom, 40, 14)
+	defer h.stop()
+	openOn(t, h, bottom, host)
+	openOn(t, h, middle, host)
+	openOn(t, h, top, host)
+
+	var mu sync.Mutex
+	var seen []widget.OverlayDismissedEvent
+	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+		mu.Lock()
+		seen = append(seen, ev)
+		mu.Unlock()
+	})
+	defer unsub()
+
+	h.onLoop(func() { bottom.Dismiss(widget.DismissAccept) })
+	h.waitFor("three dismissals published", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(seen) >= 3
+	})
+	h.settle()
+	h.settle()
+
+	mu.Lock()
+	got := append([]widget.OverlayDismissedEvent(nil), seen...)
+	mu.Unlock()
+	if len(got) != 3 {
+		t.Errorf("%d dismissal events for three dialogs, want exactly 3", len(got))
+	}
+	owners := map[tui.NodeID]int{}
+	for _, ev := range got {
+		owners[ev.Owner]++
+	}
+	for owner, n := range owners {
+		if n != 1 {
+			t.Errorf("dialog %d was reported closed %d times", owner, n)
+		}
+	}
+}
+
+// TestADialogWithNoBodyIsStillUsable.
+//
+// A confirmation whose whole content is its buttons is an ordinary dialog, not
+// a degenerate one. The card lays out and paints around an absent body rather
+// than requiring callers to pass an empty placeholder.
+func TestADialogWithNoBodyIsStillUsable(t *testing.T) {
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	m := widget.NewModal(nil, widget.WithModalTitle("Sure?"), widget.WithButtons(ok))
+	h, host, _ := modalFixture(t, m, 30, 10)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	if got := h.grid(); !strings.Contains(got, "Sure?") || !strings.Contains(got, "OK") {
+		t.Errorf("a bodiless dialog did not paint its title and button:\n%s", got)
+	}
+	if !focusedOn(t, h, ok) {
+		t.Error("focus did not reach the only button of a bodiless dialog")
+	}
+	// And its button is at index 0 of the card's children, which is where the
+	// reconcile has to place it when there is no body ahead of it.
+	var sel int
+	h.onLoop(func() { sel = m.SelectedButton() })
+	if sel != 0 {
+		t.Errorf("SelectedButton() = %d, want 0", sel)
+	}
+}
