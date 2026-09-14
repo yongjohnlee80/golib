@@ -179,6 +179,17 @@ Development conventions and the project philosophy are maintained alongside the
 codebase; new code follows the zero-dep, small-seam, fail-loud-and-typed rules
 above. Structural changes are ADR-first — design records live under `docs/`.
 
+Several of those conventions are not left to good intentions. `internal/audit`
+holds repo-wide guards that assert properties of the source tree itself — the
+panic budget, the comment budget, the promotion self-call guard and others — and
+they run as part of `go test ./...`. See [docs/audit/](docs/audit/) for what
+each one checks, what its ledger means, and what it cannot see;
+[docs/audit/verification-discipline.md](docs/audit/verification-discipline.md)
+covers the mutation matrix and the gates a change passes before it is submitted.
+
+Error identity, wrapping and comparison are covered separately in
+[docs/error_handling.md](docs/error_handling.md).
+
 ## License
 
 See [LICENSE](LICENSE).
