@@ -95,9 +95,15 @@ type OverlayHost struct {
 	modals []*Modal
 	// scrim is the single backdrop layer, owned by whichever dialog is on top.
 	scrim *scrimLayer
+	// anchored holds the layers positioned against an anchor rather than by
+	// the stack's own alignment, in registration order.
+	anchored []anchoredLayer
 	// ctx is kept because the embedded Stack's own Context is private to the
-	// tui package; the host needs one to schedule the post-mount focus step.
+	// tui package; the host needs one to resolve anchors and to schedule the
+	// commit that closes the layers whose anchors have gone.
 	ctx *tui.Context
+	// lostAnchors are the ids noticed during layout and closed just after it.
+	lostAnchors []LayerID
 }
 
 var _ tui.Container = (*OverlayHost)(nil)
@@ -186,6 +192,45 @@ func (h *OverlayHost) Init(ctx *tui.Context) {
 		}
 		h.Stack.Remove(ev.layer)
 	})
+}
+
+// Layout lays the stack out, then re-places the anchored layers against their
+// anchors and dismisses any whose anchor has gone.
+//
+// The stack pass runs first and unchanged, so an anchored layer is measured and
+// placed like any other child; this pass then overrides the position of the ones
+// that have an anchor. Measuring them a second time is the price of composing
+// with Stack rather than reimplementing it, and Layout is a pure function of its
+// constraints, so the second answer is the first answer.
+//
+// Anchor loss is committed AFTER the walk. Closing unmounts, and unmounting a
+// child while laying the children out is the mutation the layout phase forbids.
+func (h *OverlayHost) Layout(c tui.Constraints) tui.Size {
+	size := h.Stack.Layout(c)
+	if len(h.anchored) == 0 || h.ctx == nil {
+		return size
+	}
+	viewport := tui.Rect{X: 0, Y: 0, W: size.W, H: size.H}
+	lost := h.placeAnchored(h.ctx, viewport)
+	for _, id := range lost {
+		h.lostAnchors = append(h.lostAnchors, id)
+	}
+	if len(h.lostAnchors) > 0 {
+		// Scheduled onto the loop rather than done here: this is still Layout.
+		h.ctx.App().Update(h.commitAnchorLoss)
+	}
+	return size
+}
+
+// commitAnchorLoss closes the layers whose anchors vanished during the last
+// layout. Separate from the pass that noticed, because closing is a tree
+// mutation and the pass that noticed was a layout.
+func (h *OverlayHost) commitAnchorLoss() {
+	lost := h.lostAnchors
+	h.lostAnchors = nil
+	for _, id := range lost {
+		h.CloseAnchored(id, DismissAnchorLost)
+	}
 }
 
 // --- Modal stacking ---
