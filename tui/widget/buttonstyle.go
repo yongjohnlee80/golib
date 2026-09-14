@@ -7,11 +7,14 @@ import "github.com/yongjohnlee80/golib/tui/style"
 // A widget that hardcodes its own colours cannot be re-themed, and a whole
 // application cannot switch between light and dark without editing every
 // control it contains. The style is an ASSOCIATION: a Button holds a pointer to
-// a ButtonStyle it does not own, so one style value can dress every button in
-// the app and swapping it changes all of them at once.
+// a ButtonStyle it does not own, so one immutable value can safely dress every
+// button in the app.
 //
-// The values are style tokens rather than literal colours, so what a Button
-// finally paints is decided by the App's theme at render time.
+// Sharing is safe precisely BECAUSE the value is immutable — but that also
+// means reassigning the variable a caller happens to hold changes nothing: each
+// live Button needs its own WithStyle call to point at a different style. What
+// does change every button at once is the theme, because these are style tokens
+// rather than literal colours and the App resolves them at render time.
 
 // ButtonStyle carries the four looks a button can have. It is IMMUTABLE: every
 // With* method returns a new value, so a style shared by a hundred buttons

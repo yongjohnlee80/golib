@@ -239,7 +239,14 @@ func (a *App) dispatch(ev Event) {
 			// release. Without this condition a plain container swallowed the
 			// second click of a double-click and a press aimed into a nested
 			// trap never arrived — two existing tests caught exactly that.
-			if _, activatable := target.comp.(Activatable); activatable {
+			// Also skipped when the control says it cannot currently be
+			// activated. Without this a disabled button still starts a gesture
+			// and holds the pointer until release: it never arms and never
+			// activates, so it looks right, but it silently swallows every
+			// pointer event in between — the same harm as engaging on a
+			// component that is not Activatable at all.
+			if _, activatable := target.comp.(Activatable); activatable &&
+				activationAvailable(target) {
 				if r := a.recognizerFor(); r != nil &&
 					effectivePointerPolicy(target) != PointerDisabled {
 					local := e

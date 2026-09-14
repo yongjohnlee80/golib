@@ -11,9 +11,9 @@ import (
 // it is deliberately the demonstration that the runtime layers underneath it
 // carry their weight. It contains NO pointer arithmetic, no press/release
 // bookkeeping, no hit-testing, no capture handling and no key binding of its
-// own. It says what it is — activatable, focusable — implements two methods,
-// and the runtime supplies the behaviour, identically across the terminal, the
-// web backend and TestBackend.
+// own. It says what it is — activatable, focusable — implements Activate and
+// SetArmed, and the runtime supplies the behaviour, identically across the
+// terminal, the web backend and TestBackend.
 //
 // Everything a button traditionally re-implements lives elsewhere by now:
 // press-arm/release-activate and drag-out-and-back in the gesture recogniser,
@@ -53,10 +53,12 @@ func (r ButtonRole) String() string {
 // Button is a labelled control that can be activated by keyboard, pointer or
 // program.
 //
-// Its zero configured state is inert but usable: normal role, enabled, mouse
-// enabled, default style, no callback. It is visible and focusable and does
-// nothing when activated, which is the right default for a control an author
-// has not finished wiring up.
+// Its zero configured state is callback-free but ACTIVATABLE: normal role,
+// enabled, mouse enabled, default style, no callback. Activating it succeeds
+// and publishes ControlActivatedEvent — it simply runs no callback of its own,
+// so observers on the bus still see the activation. That is the right default
+// for a control an author has not finished wiring up, and it is not the same as
+// inert.
 type Button struct {
 	Base
 
@@ -67,6 +69,11 @@ type Button struct {
 	enabled  bool
 	armed    bool
 	onAction func()
+
+	// pointerPolicy is the policy the author asked for, remembered so that a
+	// chained WithPointerPolicy before mount is applied when the Context
+	// arrives rather than silently discarded.
+	pointerPolicy tui.PointerPolicy
 }
 
 // ButtonOption configures a Button at construction.
@@ -126,7 +133,21 @@ func (b *Button) WithStyle(s *ButtonStyle) *Button {
 // A runtime method rather than a construction option because the option name
 // cannot be shared across widget option types, and because turning the mouse
 // off is usually a decision made while the app is running.
+// The request is REMEMBERED as well as applied. NewButton(...).WithPointerPolicy(...)
+// is the most natural way to write this and runs before there is any Context;
+// applying it only when mounted made that chain a silent no-op.
+//
+// An invalid value is rejected before the stored policy changes, so a refused
+// call leaves the previous request intact rather than half-applied.
 func (b *Button) WithPointerPolicy(p tui.PointerPolicy) *Button {
+	if !p.Valid() {
+		panic(errs.Fatal{
+			Op:     "widget: Button.WithPointerPolicy",
+			Rule:   "value outside PointerInherit, PointerEnabled, PointerDisabled",
+			Detail: "got " + itoa(int(p)),
+		})
+	}
+	b.pointerPolicy = p
 	if ctx := b.Context(); ctx != nil {
 		ctx.SetPointerPolicy(p)
 	}
@@ -145,7 +166,11 @@ func (b *Button) SetLabel(s string) {
 		return
 	}
 	b.label = s
-	b.markDirty()
+	// RequestLayout, not MarkDirty: the label IS the button's intrinsic width,
+	// so a parent that only repainted would keep stale geometry and stale hit
+	// bounds after a short-to-long change. RequestLayout schedules the repaint
+	// too, so a second invalidation would be redundant.
+	b.RequestLayout()
 }
 
 // Enabled reports whether the button can be activated.
@@ -162,7 +187,24 @@ func (b *Button) SetEnabled(v bool) {
 	}
 	b.enabled = v
 	if !v {
+		// Cancel first, so disabling mid-press releases the capture through the
+		// ordinary loss path and the owner is told once, rather than being left
+		// holding a gesture that can no longer produce anything.
+		if ctx := b.Context(); ctx != nil {
+			ctx.CancelGesture()
+		}
 		b.armed = false
+	}
+	// Focusability just changed, so the active scope has to be revalidated
+	// SYNCHRONOUSLY and on BOTH transitions.
+	//
+	// On disable, the focused node may be this one and is now ineligible. On
+	// ENABLE it is just as necessary and less obvious: enabling the first
+	// control in a dialog where everything was disabled makes the dialog itself
+	// stop being the fallback focus, which is a change to a node other than
+	// this one.
+	if ctx := b.Context(); ctx != nil {
+		ctx.InvalidateFocusability()
 	}
 	b.markDirty()
 }
@@ -206,13 +248,24 @@ func (b *Button) SetArmed(v bool) {
 // Armed reports whether the button is currently showing pressed.
 func (b *Button) Armed() bool { return b.armed }
 
-// AcceptsFocus reports that a button is a tab stop.
+// AcceptsFocus reports whether a button is currently a tab stop.
 //
-// A DISABLED BUTTON STILL TAKES FOCUS. Removing it from the ring as it is
-// disabled would move the user's focus out from under them mid-interaction,
-// and a keyboard user would lose their place in a dialog every time a field
-// validated. It focuses, shows its unavailable look, and refuses to activate.
-func (b *Button) AcceptsFocus() bool { return true }
+// A DISABLED BUTTON LEAVES THE RING. Tab must not stop on a control that cannot
+// be used, and the containers built on this depend on it: a dialog cycles its
+// enabled buttons, prefers the enabled default on opening, and falls back to
+// itself only when every button is disabled. None of that is expressible while
+// disabled controls remain focusable.
+//
+// Focus already ON a disabled button is repaired synchronously by SetEnabled
+// rather than left dangling.
+func (b *Button) AcceptsFocus() bool { return b.enabled }
+
+// ActivationAvailable reports whether activating this button could do anything.
+//
+// The runtime uses it to decide whether starting a pointer gesture is
+// worthwhile. It is a routing hint only: Activate is still the authority, and
+// still refuses on its own.
+func (b *Button) ActivationAvailable() bool { return b.enabled }
 
 // State reports the look that applies right now, by the toolkit's one
 // precedence rule.
@@ -229,6 +282,10 @@ func (b *Button) State() WidgetState {
 func (b *Button) Init(ctx *tui.Context) {
 	b.Base.Init(ctx)
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(activateKeys))
+	// Apply a policy requested before there was a Context to apply it to.
+	if b.pointerPolicy != tui.PointerInherit {
+		ctx.SetPointerPolicy(b.pointerPolicy)
+	}
 }
 
 // activateKeys turns the two conventional activation keys into the runtime's
@@ -250,7 +307,12 @@ func activateKeys(ev tui.Event) (tui.Action, bool) {
 // Layout sizes the button to its label plus one cell of padding either side,
 // clamped to the offered constraints.
 func (b *Button) Layout(cs tui.Constraints) tui.Size {
-	return cs.Constrain(tui.Size{W: len([]rune(b.label)) + 2, H: 1})
+	// measure, not a rune count. A rune count is wrong in three separate ways:
+	// a CJK ideograph occupies two columns, a combining mark occupies none, and
+	// an emoji ZWJ sequence is many runes in one cell. Base.measure asks the
+	// mounted Context for the active width policy, so layout agrees with what
+	// the backend will actually draw.
+	return cs.Constrain(tui.Size{W: b.measure(b.label) + 2, H: 1})
 }
 
 // Render paints the label centred in the button's current look.
@@ -265,19 +327,27 @@ func (b *Button) Render(s tui.Surface) {
 	st := b.st.Style(b.State())
 	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", st)
 
-	// Centre horizontally; a label wider than the box starts at the left edge
-	// and is clipped by the surface rather than overflowing it.
+	// Centre using the SURFACE's policy, which is the one that will draw this.
+	// Layout used the Context's; they are the same policy, and taking each from
+	// its own phase is what keeps them so.
 	w := s.StringWidth(b.label)
 	x := (sz.W - w) / 2
 	if x < 0 {
 		x = 0
 	}
-	for _, r := range b.label {
-		if x >= sz.W {
+	// Iterate extended grapheme CLUSTERS, not runes. A cluster is the unit the
+	// terminal draws: painting rune by rune puts a zero-width combining mark in
+	// its own cell, where it overwrites the character it belongs to.
+	for cluster := range tui.Graphemes(b.label) {
+		cw := s.StringWidth(cluster)
+		// Stop before writing a cluster that does not fit. Half of a
+		// double-width cluster in the final column is a broken cell rather than
+		// a truncated string.
+		if x+cw > sz.W {
 			break
 		}
-		s.SetCell(x, 0, string(r), st)
-		x += s.StringWidth(string(r))
+		s.SetCell(x, 0, cluster, st)
+		x += cw
 	}
 }
 

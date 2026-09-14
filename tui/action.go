@@ -127,6 +127,38 @@ type Activatable interface {
 	SetArmed(bool)
 }
 
+// ActivationAvailability is the optional capability a control implements to
+// say whether activating it could currently do anything.
+//
+// It is a ROUTING HINT, not an authorization check. The runtime consults it
+// before starting a gesture, because a gesture whose only possible outcome is
+// an activation that will be refused takes the pointer and holds it until the
+// release while achieving nothing. Activate remains the sole authority on
+// whether an activation actually happens, for every producer.
+//
+// Optional and probed by type assertion, so a component that does not implement
+// it behaves exactly as it did before this existed.
+type ActivationAvailability interface {
+	Component
+	ActivationAvailable() bool
+}
+
+// The method is deliberately NOT named with an Enabled or Supports prefix. The
+// repository bans those spellings on interface methods, because a capability a
+// caller must ASK about is one every implementor has to answer, whereas a
+// capability discovered by type assertion is answered by the type system. This
+// interface is itself the assertion; the method reports a control's CURRENT
+// availability, which is state rather than capability.
+
+// activationAvailable reports whether n would accept an activation, for the
+// routing decision only. A component that says nothing is treated as available.
+func activationAvailable(n *node) bool {
+	if a, ok := n.comp.(ActivationAvailability); ok {
+		return a.ActivationAvailable()
+	}
+	return true
+}
+
 // ActivateAction is the one concrete action core owns, because the runtime
 // itself produces it and cannot import the widget package.
 //
