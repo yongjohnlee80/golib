@@ -80,14 +80,7 @@ func (a *App) dispatch(ev Event) {
 		// with no focusable descendant (see focus.go), and defaulting to root
 		// there would hand the key to the controls the trap is covering.
 		limit := a.confinement()
-		target := a.nodes[a.focused]
-		if target == nil {
-			if limit != nil {
-				target = limit
-			} else {
-				target = a.rootNode
-			}
-		}
+		target := a.confinedTarget(a.nodes[a.focused], limit)
 		if target != nil && a.bubbleWithin(target, limit, ev) {
 			return
 		}
@@ -104,15 +97,7 @@ func (a *App) dispatch(ev Event) {
 
 	case PasteEvent:
 		limit := a.confinement()
-		target := a.nodes[a.focused]
-		if target == nil {
-			if limit != nil {
-				target = limit
-			} else {
-				target = a.rootNode
-			}
-		}
-		if target != nil {
+		if target := a.confinedTarget(a.nodes[a.focused], limit); target != nil {
 			a.bubbleWithin(target, limit, ev)
 		}
 
@@ -304,6 +289,29 @@ func (a *App) confinement() *node {
 		return nil
 	}
 	return s
+}
+
+// confinedTarget picks where a focus-routed event (key, paste) starts.
+//
+// It is the defensive backstop for the confinement rule: with a live trap,
+// an event NEVER
+// starts outside it, even if focus is somehow already outside. bubbleWithin
+// only stops when it meets the ceiling, so a walk that begins outside the
+// subtree can never meet it and would run to the root — the confinement would
+// silently evaporate exactly when a focus transition had gone wrong.
+//
+// Without a trap this is just "the focused node, else the root", unchanged.
+func (a *App) confinedTarget(focused, limit *node) *node {
+	if limit == nil {
+		if focused != nil {
+			return focused
+		}
+		return a.rootNode
+	}
+	if focused == nil || !withinScope(focused, limit) {
+		return limit
+	}
+	return focused
 }
 
 // traceRouted records which node consumed a key (0 = nobody).
