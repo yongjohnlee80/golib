@@ -100,10 +100,9 @@ type GestureRecognizer interface {
 // say "this app interprets its own pointer input" — every press then falls
 // through to ordinary routing.
 //
-// Installing one while a gesture is in flight CANCELS that gesture first: the
-// capture is released and the target left disarmed. No gesture ever spans two
-// recognisers, because the second one would be asked to finish a sequence whose
-// beginning it never saw.
+// This is construction-only, so it can never meet a gesture in flight. Use
+// [Context.SetGestureRecognizer] to replace one on a running App, where that
+// case has to be handled.
 func WithGestureRecognizer(r GestureRecognizer) AppOption {
 	return func(c *appConfig) { c.recognizer = normalizeRecognizer(r) }
 }
