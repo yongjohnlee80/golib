@@ -71,10 +71,19 @@ type App struct {
 
 	inLayout  bool
 	inRender  bool
+	inHandler bool  // a component's HandleEvent is executing (CapturePointer legality)
 	layingOut *node // the node whose Layout is executing (LayoutChild legality)
 
 	focused    NodeID // 0 = none
 	scopeStack []scopeEntry
+
+	// Pointer capture. captureOwner is 0 when nobody holds the pointer.
+	// captureFocus is the focused node sampled at acquisition, which is what
+	// "focus left the owner's subtree" is measured against — the owner itself
+	// need not be focusable, so its own focus state cannot serve.
+	captureOwner NodeID
+	captureKind  CaptureKind
+	captureFocus NodeID
 
 	size         Size
 	buf          *buffer
@@ -298,6 +307,12 @@ func (a *App) drainProgramLane() {
 // teardown is the registry-drain shape (server/registry.go:155-198),
 // terminal edition.
 func (a *App) teardown() error {
+	// T0 — end any capture as a SHUTDOWN, before the unmount below would end
+	// it as an unmount. Both are true, but the owner is being told why its
+	// gesture died, and "the application is stopping" is the reason that
+	// distinguishes an orderly exit from a widget being torn out of a live UI.
+	a.loseCapture(CaptureLostShutdown)
+
 	// T1 — unmount the tree, children first: every node context cancels,
 	// which signals every in-flight task.
 	if a.rootNode != nil {
@@ -366,6 +381,16 @@ func (a *App) renderFrame() {
 		a.layoutTree()
 		a.layoutDirty = false
 		a.renderDirty = true // geometry changed; repaint
+		// Visibility is only knowable once the pass has placed everything, so
+		// this is the earliest honest moment to end a capture whose owner is
+		// no longer on screen.
+		//
+		// It runs BEFORE the focus repair below on purpose. An owner that went
+		// invisible usually loses focus in the same pass, and both losses are
+		// genuinely true; checking visibility first means the owner is told the
+		// reason that actually explains its gesture ending rather than the
+		// knock-on one.
+		a.captureCheckVisible()
 		a.repairInvisibleFocus()
 	}
 	if !a.renderDirty {

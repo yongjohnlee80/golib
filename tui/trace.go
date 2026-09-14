@@ -116,6 +116,16 @@ const (
 	// TraceScope reports a focus trap (modal layer or popup overlay)
 	// opening or closing.
 	TraceScope
+
+	// TraceCapture reports the pointer being captured, released, or lost.
+	// Node is the capture owner, and Detail says which of the three happened
+	// and — for a loss — why.
+	//
+	// Capture has its own kind rather than borrowing TraceScope because a
+	// dropped drag and a misbehaving modal look identical in a log that files
+	// them together, and telling those two apart is the main reason to be
+	// reading the trace at all.
+	TraceCapture
 )
 
 // String renders the kind for log lines.
@@ -133,6 +143,8 @@ func (k TraceKind) String() string {
 		return "key"
 	case TraceScope:
 		return "scope"
+	case TraceCapture:
+		return "capture"
 	}
 	return "?"
 }

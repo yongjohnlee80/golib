@@ -104,6 +104,8 @@ tui/bus.go	Subscribe	44702c67e6fba213	1	invariant	tui.Subscribe: nil handler. Su
 tui/bus.go	SubscribeScoped	bca218218c20d147	1	invariant	tui.SubscribeScoped: nil context. Programmer error passing nil context
 tui/bus.go	Bus.Publish	3ca643db989a7190	1	invariant	tui.Bus.Publish: nil bus. Programmer error calling Publish on nil bus
 tui/bus.go	Bus.Publish	44e58dc246611c17	1	invariant	tui.Bus.Publish: nil value — publishing nothing is a programmer error, not a value the bus can receive
+tui/capture.go	Context.CapturePointer	47ab5b42a2722ea7	1	invariant	tui.CapturePointer: called outside the component's own HandleEvent. Capture is meaningless without a gesture in hand, and one taken during Init or Layout would outlive the thing that caused it. Which phase the loop is in is decided by the call site the author wrote, not by any value flowing through it
+tui/capture.go	App.assertReleasablePhase	8b70e6d332c57eeb	1	invariant	tui.ReleasePointer/CancelGesture: called inside Layout or Render, where mutating dispatch state would change the tree mid-walk. The same contract as moveWithin's Layout/Render rule, and likewise a mistake in source rather than one data can cause
 tui/container_multi.go	MultiChild.Add	91deb9100d15582b	1	construction	tui.MultiChild.Add: nil child while a container is being built
 tui/container_multi.go	MultiChild.Move	a151125e01f0ae6a	1	invariant	tui.MultiChild.Move: destination index out of range; the index comes from the caller's own item list
 tui/context.go	Context.Mount	33216904efd47968	1	invariant	tui.Context.Mount on an unmounted node — the component is using a Context that outlived its own mount
