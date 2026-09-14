@@ -335,12 +335,25 @@ func (s *shell) sawBarriers() int {
 // dispatched (lane-A order is preserved).
 const barrierKey = tui.KeyF12
 
-// barrier injects the sentinel and waits for the shell to see it.
+// barrier injects the sentinel and waits until the runtime has consumed it.
+//
+// It waits on the BACKEND QUEUE draining, not on the sentinel reaching the
+// shell. Those are different things, and conflating them made this helper
+// depend on routing policy: a trapping focus scope confines input to its own
+// subtree, so with a modal open the sentinel legitimately never reaches the
+// root and the old wait timed out. Synchronisation must not care where an
+// event is routed — only that it has been routed.
+//
+// Ordering still holds. Lane A is a single ordered queue, so once the sentinel
+// has been taken off it, everything injected before it has been too; the
+// double sync then guarantees those dispatches completed on the loop.
 func (h *harness) barrier(s *shell) {
 	h.t.Helper()
-	want := s.sawBarriers() + 1
+	_ = s // retained: callers name the shell they are synchronising against
 	h.inject(key(barrierKey))
-	h.waitFor("input barrier", func() bool { return s.sawBarriers() >= want })
+	h.waitFor("input barrier", func() bool { return len(h.tb.Events()) == 0 })
+	h.sync()
+	h.sync()
 	h.settle()
 }
 

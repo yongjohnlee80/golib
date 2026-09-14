@@ -74,27 +74,46 @@ import (
 func (a *App) dispatch(ev Event) {
 	switch e := ev.(type) {
 	case KeyEvent:
-		// Target = the focused node; none → root.
+		// Target = the focused node. With nothing focused the fallback is the
+		// active trapping scope if there is one, and only otherwise the root:
+		// repairFocus legitimately leaves focused == 0 while a trap survives
+		// with no focusable descendant (see focus.go), and defaulting to root
+		// there would hand the key to the controls the trap is covering.
+		limit := a.confinement()
 		target := a.nodes[a.focused]
 		if target == nil {
-			target = a.rootNode
+			if limit != nil {
+				target = limit
+			} else {
+				target = a.rootNode
+			}
 		}
-		if target != nil && a.bubble(target, ev) {
+		if target != nil && a.bubbleWithin(target, limit, ev) {
 			return
 		}
-		// Unconsumed key at the root falls through to the App's global keymap —
-		// which is how framework Tab traversal works: a component that consumes
-		// Tab (e.g. a text area inserting \t) thereby opts out of traversal for
-		// that press.
+		// Unconsumed key falls through to the App's global keymap — which is how
+		// framework Tab traversal works: a component that consumes Tab (e.g. a
+		// text area inserting \t) thereby opts out of traversal for that press.
+		//
+		// globalKey stays reachable INSIDE a trap on purpose. It is the only
+		// implementation of Tab/Shift-Tab, so skipping it would leave a generic
+		// scope with no traversal at all; and it is safe, because focusStep
+		// walks the ring of the current scope and cannot move focus out of one.
+		// Every other unconsumed key is simply dropped at the ceiling.
 		a.globalKey(e)
 
 	case PasteEvent:
+		limit := a.confinement()
 		target := a.nodes[a.focused]
 		if target == nil {
-			target = a.rootNode
+			if limit != nil {
+				target = limit
+			} else {
+				target = a.rootNode
+			}
 		}
 		if target != nil {
-			a.bubble(target, ev)
+			a.bubbleWithin(target, limit, ev)
 		}
 
 	case MouseEvent:
@@ -110,7 +129,29 @@ func (a *App) dispatch(ev Event) {
 		// Target by hit-testing laid-out absolute rects, topmost first (reverse
 		// paint order — Stack z-order); coordinates are rewritten LOCAL to each
 		// receiving node at every hop.
-		target := a.hitTest(e.X, e.Y)
+		//
+		// While a scope traps, the search is ROOTED AT THAT SCOPE, so a position
+		// outside its subtree resolves to no target and the event is dropped.
+		// Refusing the focus change is not enough on its own: focusFromPointer
+		// already declines to move focus outside the trap, but the press was
+		// still being delivered to whatever sat under the pointer.
+		//
+		// Dropping rather than retargeting to the scope is deliberate. A click on
+		// the dimmed area behind a dialog means "nothing"; synthesising a
+		// delivery to the dialog would invent an interaction the user did not
+		// make.
+		limit := a.confinement()
+		var target *node
+		if limit != nil {
+			target = hitTestNode(limit, e.X, e.Y)
+		} else {
+			target = a.hitTest(e.X, e.Y)
+		}
+		if target == nil && limit != nil {
+			a.trace(TraceEvent{Kind: TraceScope, Node: limit.id,
+				Detail: "pointer dropped: outside the active focus scope"})
+			return
+		}
 		// A PRIMARY PRESS focuses before it is delivered: one gesture both moves
 		// focus into the clicked pane and acts on it. Motion, wheel and release
 		// deliberately do not, so scrolling over an unfocused pane never steals
@@ -161,6 +202,9 @@ func (a *App) dispatch(ev Event) {
 			local.Y = e.Y - n.absRect.Y
 			if n.comp.HandleEvent(local) {
 				break
+			}
+			if n == limit {
+				break // same ceiling as the keyboard path
 			}
 		}
 
@@ -219,15 +263,47 @@ func (a *App) globalKey(e KeyEvent) {
 // If an event bubbles all the way to the root without being consumed,
 // bubble returns false, allowing callers to apply fallbacks (such as globalKey).
 func (a *App) bubble(n *node, ev Event) bool {
+	return a.bubbleWithin(n, nil, ev)
+}
+
+// bubbleWithin is bubble with a ceiling: it delivers from n upward and STOPS
+// after limit, which is delivered to and then not passed. A nil limit means no
+// ceiling, which is ordinary bubble.
+//
+// The ceiling exists because a trapping focus scope has to confine input, and
+// choosing a different node to start from cannot do that — bubbling walks to
+// the root from wherever it begins. Without a ceiling, a key delivered inside
+// an open dialog reaches the controls behind it on the very next hop.
+//
+// Delivery order and the consumed/unconsumed result are otherwise identical to
+// bubble, so an unconsumed event still lets the caller apply a fallback.
+func (a *App) bubbleWithin(n, limit *node, ev Event) bool {
 	start := n
 	for ; n != nil; n = n.parent {
 		if n.comp.HandleEvent(ev) {
 			a.traceRouted(ev, start, n.id)
 			return true
 		}
+		if n == limit {
+			break // limit is delivered to, then bubbling stops
+		}
 	}
 	a.traceRouted(ev, start, 0)
 	return false
+}
+
+// confinement reports the ceiling for keyboard and pointer routing: the
+// innermost trapping focus scope when one is active, else nil for "no ceiling".
+//
+// currentScope returns the root when nothing traps, and the root is not a
+// ceiling — every event may legally reach it — so that case is normalised to
+// nil here rather than at each call site.
+func (a *App) confinement() *node {
+	s := a.currentScope()
+	if s == nil || s == a.rootNode {
+		return nil
+	}
+	return s
 }
 
 // traceRouted records which node consumed a key (0 = nobody).
