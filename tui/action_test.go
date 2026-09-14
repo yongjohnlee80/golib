@@ -76,6 +76,8 @@ func (ac *actor) Activate(origin ActionOrigin) bool {
 	return true
 }
 
+func (ac *actor) SetArmed(bool) {} // visual only; nothing drives it yet
+
 func (ac *actor) inv() ActionInvocation {
 	ac.mu.Lock()
 	defer ac.mu.Unlock()
@@ -487,6 +489,7 @@ func (a *activateOnly) Activate(origin ActionOrigin) bool {
 	a.origin.Store(int64(origin))
 	return true
 }
+func (a *activateOnly) SetArmed(bool)            {} // visual only; nothing drives it yet
 func (a *activateOnly) lastOrigin() ActionOrigin { return ActionOrigin(a.origin.Load()) }
 
 // TestAComponentWithoutAnActionHandlerIsUnaffected. Actions are an optional
@@ -1019,14 +1022,32 @@ func TestMalformedResolverAndActionAreRejectedAtTheirSource(t *testing.T) {
 	defer h.wait()
 	h.sync()
 
-	t.Run("nil action to DoAction", func(t *testing.T) {
-		var fatal *errs.Fatal
+	t.Run("nil action to DoAction is a no-op, not a panic", func(t *testing.T) {
+		// Asking the runtime to dispatch nothing is a request to do nothing. A
+		// caller legitimately holding a sometimes-nil action should not have to
+		// write the guard the runtime is better placed to hold.
+		before := ac.actions.Load()
+		var got, gotTyped bool
+		var fatal, fatalTyped *errs.Fatal
 		h.onLoop(func() {
-			fatal = fatalFrom(func() { h.app.byComp[ac].ctx.DoAction(nil) })
+			fatal = fatalFrom(func() { got = h.app.byComp[ac].ctx.DoAction(nil) })
+			// A TYPED nil: satisfies Action with a live type descriptor, so an
+			// == nil check passes it straight through to a nil receiver.
+			var typed *nilAction
+			fatalTyped = fatalFrom(func() { gotTyped = h.app.byComp[ac].ctx.DoAction(typed) })
 		})
 		h.sync()
-		if fatal == nil {
-			t.Error("DoAction(nil) did not raise errs.Fatal")
+		if fatal != nil {
+			t.Errorf("DoAction(nil) panicked (%v); the contract is return false and do nothing", fatal.Rule)
+		}
+		if fatalTyped != nil {
+			t.Errorf("DoAction(typed nil) panicked (%v); a typed nil is still nothing to dispatch", fatalTyped.Rule)
+		}
+		if got || gotTyped {
+			t.Errorf("DoAction reported handled for a nil action (nil=%v typed=%v)", got, gotTyped)
+		}
+		if after := ac.actions.Load(); after != before {
+			t.Errorf("a nil action reached the handler %d time(s); it must not be dispatched", after-before)
 		}
 	})
 
@@ -1050,6 +1071,94 @@ func TestMalformedResolverAndActionAreRejectedAtTheirSource(t *testing.T) {
 		if fatal == nil {
 			t.Error("a resolver returning (nil, true) did not raise errs.Fatal; the nil " +
 				"would otherwise surface inside dispatch with nothing naming its source")
+		}
+		h.onLoop(func() { h.app.byComp[ac].ctx.SetActionResolvers() })
+	})
+}
+
+// nilAction exists only so a TYPED nil Action can be constructed. A typed nil
+// satisfies the interface with a live type descriptor, which is exactly why an
+// == nil check does not catch it.
+type nilAction struct{}
+
+func (*nilAction) ActionID() ActionID { return "test.nil" }
+
+// nilResolver is the pointer-receiver equivalent for resolvers.
+type nilResolver struct{}
+
+func (*nilResolver) Resolve(Event) (Action, bool) { return moveAction{Delta: 1}, true }
+
+// TestTypedNilsAreRejectedEverywhereTheyCanEnter. A plain == nil check passes
+// every one of these: they carry a real type descriptor and only fail when
+// something calls through them, by which point the panic names a nil method
+// call rather than whoever supplied it.
+func TestTypedNilsAreRejectedEverywhereTheyCanEnter(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	ac := &actor{size: Size{W: 20, H: 4}}
+	root.Add(ac)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	// Install a known-good layer first, so the atomicity check below has
+	// something to preserve.
+	h.onLoop(func() { h.app.byComp[ac].ctx.SetActionResolvers(moveResolver{delta: 7}) })
+
+	cases := []struct {
+		name string
+		bad  ActionResolver
+	}{
+		{"nil interface", nil},
+		{"typed-nil func", ActionResolverFunc(nil)},
+		{"typed-nil pointer", (*nilResolver)(nil)},
+	}
+	for _, tc := range cases {
+		t.Run("setter rejects "+tc.name, func(t *testing.T) {
+			var fatal *errs.Fatal
+			h.onLoop(func() {
+				fatal = fatalFrom(func() {
+					h.app.byComp[ac].ctx.SetActionResolvers(moveResolver{delta: 1}, tc.bad)
+				})
+			})
+			h.sync()
+			if fatal == nil {
+				t.Fatalf("a %s resolver was accepted by the setter", tc.name)
+			}
+			// ATOMICITY: the previous layer must survive a rejected call. A
+			// setter that validated while copying would install the good entry
+			// and then panic, leaving the node half-replaced.
+			var chain []ActionResolver
+			h.onLoop(func() { chain = h.app.byComp[ac].ctx.ActionResolvers() })
+			if len(chain) != 1 {
+				t.Fatalf("after a rejected call the chain holds %d resolvers, want the "+
+					"1 that was there before", len(chain))
+			}
+			if mr, ok := chain[0].(moveResolver); !ok || mr.delta != 7 {
+				t.Errorf("the surviving resolver is %#v, want the original moveResolver{7}", chain[0])
+			}
+		})
+	}
+
+	t.Run("a matching resolver returning a typed-nil action is fatal", func(t *testing.T) {
+		h.onLoop(func() {
+			h.app.byComp[ac].ctx.SetActionResolvers(ActionResolverFunc(
+				func(ev Event) (Action, bool) {
+					if _, ok := ev.(KeyEvent); ok {
+						var typed *nilAction
+						return typed, true // claims a match, supplies nothing
+					}
+					return nil, false
+				}))
+		})
+		var fatal *errs.Fatal
+		h.onLoop(func() {
+			fatal = fatalFrom(func() { h.app.routeToNode(h.app.byComp[ac], keyEv('j')) })
+		})
+		h.sync()
+		if fatal == nil {
+			t.Error("a resolver returning a TYPED nil with ok==true was accepted; unlike " +
+				"DoAction(nil), claiming a match and supplying nothing is a contract breach")
 		}
 		h.onLoop(func() { h.app.byComp[ac].ctx.SetActionResolvers() })
 	})

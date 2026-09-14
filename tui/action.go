@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/yongjohnlee80/golib/errs"
+import (
+	"reflect"
+
+	"github.com/yongjohnlee80/golib/errs"
+)
 
 // TYPED SEMANTIC ACTIONS.
 //
@@ -105,9 +109,22 @@ type ActionHandler interface {
 // Activatable is the optional capability for "this control can be triggered",
 // which is what a button, a menu item or a checkbox all share regardless of
 // whether the trigger came from Enter, a click, or the program.
+//
+// Activate performs the trigger and reports whether it happened. The check for
+// "am I disabled?" lives here and only here, so every producer gets the same
+// answer without each one having to ask first.
+//
+// SetArmed is the pressed-but-not-yet-released look, and is visual only — the
+// runtime drives it, and a component must not infer anything else from it. It
+// is called only on transitions and only while the runtime owns the gesture,
+// and the runtime guarantees the component is left disarmed however the gesture
+// ends. Nothing drives it until the gesture recogniser lands; it is published
+// now because adding a method to this interface later would break every
+// implementation written against it in the meantime.
 type Activatable interface {
 	Component
 	Activate(origin ActionOrigin) bool
+	SetArmed(bool)
 }
 
 // ActivateAction is the one concrete action core owns, because the runtime
@@ -158,12 +175,38 @@ func (rs *resolverSet) chain() []ActionResolver {
 	return append(out, rs.defaults...)
 }
 
-// checkResolvers rejects nil entries at the setter rather than at dispatch. A
-// nil resolver reaching the chain would panic in the middle of routing an
-// event, naming neither the component that supplied it nor the call that did.
+// isNilLike reports whether v is nil OR a typed nil — an interface holding a
+// nil pointer, a nil func, or another nil-capable zero value.
+//
+// A plain v == nil catches only the first. ActionResolverFunc(nil) and a nil
+// *myResolver both satisfy the interface with a non-nil type descriptor, so
+// they pass an == nil check and then panic on call, deep inside routing, with
+// nothing naming what supplied them. The kind switch matters as much as the
+// reflection: IsNil panics on kinds that cannot be nil, so asking it about a
+// struct value would turn a validity check into a crash.
+func isNilLike(v any) bool {
+	if v == nil {
+		return true
+	}
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface,
+		reflect.Map, reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
+		return rv.IsNil()
+	}
+	return false
+}
+
+// checkResolvers rejects nil and typed-nil entries at the setter rather than at
+// dispatch. Such a resolver reaching the chain would panic in the middle of
+// routing an event, naming neither the component that supplied it nor the call
+// that did.
+//
+// It runs BEFORE any mutation, so a rejected call leaves the previous layer
+// exactly as it was: a setter that validated as it copied would install the
+// good entries and then panic, leaving a half-replaced chain.
 func checkResolvers(op string, r []ActionResolver) {
 	for i, x := range r {
-		if x == nil {
+		if isNilLike(x) {
 			panic(errs.Fatal{
 				Op:     "tui: Context." + op,
 				Rule:   "nil resolver",
@@ -214,9 +257,17 @@ func (c *Context) ActionResolvers() []ActionResolver {
 // is nil, because no input produced it.
 //
 // It does not bubble. The caller named the node it meant.
+//
+// A nil action — including a typed nil — returns false and does nothing: no
+// handler is called, no resolver is consulted, and nothing is traced. Asking
+// the runtime to dispatch nothing is a request to do nothing, and answering it
+// with a panic would make a caller that legitimately holds a sometimes-nil
+// action write the guard the runtime is better placed to hold. That is the
+// opposite of a resolver returning (nil, true), which claims a match it cannot
+// supply and stays a contract breach.
 func (c *Context) DoAction(a Action) bool {
-	if a == nil {
-		panic(errs.Fatal{Op: "tui: Context.DoAction", Rule: "nil action"})
+	if isNilLike(a) {
+		return false
 	}
 	return c.app.dispatchAction(c.node, ActionInvocation{
 		Action: a,
@@ -277,7 +328,11 @@ func (a *App) deliverAction(n *node, h ActionHandler, inv ActionInvocation) bool
 func (a *App) resolveFor(n *node, ev Event) (Action, bool) {
 	for _, r := range n.resolvers.chain() {
 		if act, ok := r.Resolve(ev); ok {
-			if act == nil { // a resolver claiming a match must produce an action
+			// A typed nil counts. It satisfies Action with a live type
+			// descriptor, so an == nil check passes it through and the nil
+			// then reaches a method call on a nil receiver inside dispatch,
+			// where nothing names the resolver that produced it.
+			if isNilLike(act) {
 				panic(errs.Fatal{
 					Op:   "tui: ActionResolver.Resolve",
 					Rule: "returned (nil, true); a resolver that matches must return an action",

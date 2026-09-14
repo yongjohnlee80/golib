@@ -5,6 +5,12 @@ import "math"
 // Size represents a two-dimensional extent in terminal cells.
 type Size struct{ W, H int }
 
+// Point is a position in terminal cells. Its frame is contextual in the same
+// way Rect's is: a pointer position delivered to a component is local to that
+// component, and may be negative or past its edge when a captured gesture has
+// travelled outside it.
+type Point struct{ X, Y int }
+
 // Rect is a positioned rectangle in terminal cell coordinates.
 //
 // Coordinate Frame Semantics:

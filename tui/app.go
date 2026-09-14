@@ -72,11 +72,13 @@ type App struct {
 	inLayout bool
 	inRender bool
 
-	// handlerNode is the node whose HandleEvent is executing, or 0 outside
-	// event delivery. It is an IDENTITY rather than a flag because capture is
-	// granted to a specific node: with a bare "some handler is running"
-	// boolean, node A's handler could call a retained Context belonging to
-	// node B and take the pointer in B's name.
+	// handlerNode is the node whose HandleEvent OR HandleAction is executing,
+	// or 0 outside input delivery. Both phases mark it, because capture may be
+	// taken from either and is granted to a specific node.
+	//
+	// It is an IDENTITY rather than a flag: with a bare "some handler is
+	// running" boolean, node A's handler could call a retained Context
+	// belonging to node B and take the pointer in B's name.
 	handlerNode NodeID
 
 	// initNode is the node whose Init is running, or 0 outside mounting. Like

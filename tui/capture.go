@@ -31,7 +31,9 @@ type CaptureKind uint8
 
 const (
 	// CaptureRaw is held by a component that asked for it directly. Its events
-	// go to the owner untranslated.
+	// still run the owner's full per-node sequence — policy gate, resolver,
+	// action, then raw — and skip only gesture recognition. "Raw" names who
+	// took the capture, not what the owner is delivered.
 	CaptureRaw CaptureKind = iota
 
 	// CaptureGesture is held by the runtime on a component's behalf, so that
@@ -133,7 +135,7 @@ func (c *Context) CapturePointer() bool {
 	if a.handlerNode != c.node.id {
 		panic(errs.Fatal{
 			Op:   "tui: Context.CapturePointer",
-			Rule: "legal only while this component's own HandleEvent is running",
+			Rule: "legal only while this component's own HandleEvent or HandleAction is running",
 			Detail: fmt.Sprintf("requested for node %d while node %d is handling",
 				c.node.id, a.handlerNode),
 		})
@@ -173,8 +175,8 @@ func (c *Context) CapturePointer() bool {
 // ReleasePointer ends a capture this node holds. It delivers nothing, because
 // the caller already knows. Releasing when this node holds nothing is a no-op.
 //
-// Legal from event handling, from an App.Update callback, and from the commit
-// phase; illegal inside Init, Layout and Render. The programmatic transitions
+// Legal from a component's HandleEvent or HandleAction, from an App.Update
+// callback, and from the commit phase; illegal inside Init, Layout and Render. The programmatic transitions
 // that most need to release — hiding an overlay, zooming a pane, resizing from
 // a setter — run outside event handling, so restricting this to handlers would
 // leave them no way to end a drag they just invalidated.
@@ -224,8 +226,8 @@ func (c *Context) HasPointerCapture() bool {
 // contract breach. A negative list has to be complete to be correct, and this
 // one was not.
 //
-// A handler or an Update callback is currently the whole legal set. The action
-// and commit phases join it when those layers exist.
+// An input handler — HandleEvent or HandleAction — or an Update callback is
+// the whole legal set. The commit phase joins it when that layer exists.
 //
 // Layout and Render VETO regardless of what encloses them. They are always
 // reached from somewhere — usually an Update or a handler — so treating the
@@ -244,7 +246,7 @@ func (a *App) assertReleasablePhase(op string) {
 	}
 	panic(errs.Fatal{
 		Op:   fmt.Sprintf("tui: Context.%s", op),
-		Rule: "legal only from a component's HandleEvent or an App.Update callback",
+		Rule: "legal only from a component's HandleEvent or HandleAction, or an App.Update callback",
 	})
 }
 

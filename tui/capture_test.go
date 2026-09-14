@@ -1357,3 +1357,73 @@ func TestFocusMovingWithinTheOwnersSubtreeKeepsTheCapture(t *testing.T) {
 		t.Errorf("delivered %d loss event(s) for an in-subtree focus move, want 0", got)
 	}
 }
+
+// The two tests below assert the TEXT of a diagnostic, which is unusual and
+// deliberate. Capture is now legal from HandleAction as well as HandleEvent,
+// and a rule string that still names only HandleEvent sends the reader of a
+// panic to look for a bug in code that is behaving correctly. The stale text
+// survived a whole layer precisely because nothing asserted it.
+
+// TestCapturePointerDiagnosticsNameHandleAction.
+func TestCapturePointerDiagnosticsNameHandleAction(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	owner := &dragger{size: Size{W: 20, H: 4}}
+	root.Add(owner)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	var fatal *errs.Fatal
+	h.onLoop(func() {
+		fatal = fatalFrom(func() { h.app.byComp[owner].ctx.CapturePointer() })
+	})
+	h.sync()
+
+	if fatal == nil {
+		t.Fatal("CapturePointer outside a handler did not raise errs.Fatal")
+	}
+	if !strings.Contains(fatal.Rule, "HandleAction") {
+		t.Errorf("the rule reads %q; it must name HandleAction, which is now a legal "+
+			"acquisition phase, or it sends the reader hunting a bug that is not there",
+			fatal.Rule)
+	}
+	if !strings.Contains(fatal.Rule, "HandleEvent") {
+		t.Errorf("the rule reads %q; it must still name HandleEvent", fatal.Rule)
+	}
+}
+
+// TestReleaseDiagnosticNamesHandleAction covers the other half: release and
+// cancel are legal from an action handler too.
+func TestReleaseDiagnosticNamesHandleAction(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	owner := &dragger{size: Size{W: 20, H: 4}}
+	root.Add(owner)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+	startDrag(t, h, owner, 2, 1)
+
+	var ctx *Context
+	h.onLoop(func() { ctx = h.app.byComp[owner].ctx })
+
+	var fatal *errs.Fatal
+	var ran atomic.Bool
+	unsub := Subscribe(h.app.Bus(), func(busProbe) {
+		ran.Store(true)
+		fatal = fatalFrom(func() { ctx.ReleasePointer() })
+	})
+	defer unsub()
+	h.app.Bus().Publish(busProbe{})
+	waitFor(t, "bus subscriber ran", func() bool { return ran.Load() })
+	h.sync()
+
+	if fatal == nil {
+		t.Fatal("ReleasePointer from a Bus delivery did not raise errs.Fatal")
+	}
+	if !strings.Contains(fatal.Rule, "HandleAction") {
+		t.Errorf("the rule reads %q; it must name HandleAction among the legal phases",
+			fatal.Rule)
+	}
+}

@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/yongjohnlee80/golib/errs"
+
 // PER-NODE POINTER POLICY.
 //
 // "This widget does not take mouse input" has to gate BOTH the semantic and the
@@ -47,7 +49,22 @@ func (p PointerPolicy) String() string {
 // capture. Leaving it running would strand a gesture that no further pointer
 // event can finish, because the events that would finish it are the ones now
 // being refused.
+//
+// An out-of-range value is refused BEFORE anything changes. Storing one would
+// be worse than useless: EffectivePointerPolicy promises an actual policy and
+// would hand the invalid value back, while routing and capture both test only
+// for PointerDisabled — so the tree would behave as though the mouse were
+// enabled while reporting a policy that is neither. This is a closed enum
+// written in source, so a value outside it is a programmer error rather than
+// anything data can produce, and there is no error return to carry it.
 func (c *Context) SetPointerPolicy(p PointerPolicy) {
+	if p > PointerDisabled {
+		panic(errs.Fatal{
+			Op:     "tui: Context.SetPointerPolicy",
+			Rule:   "value outside PointerInherit, PointerEnabled, PointerDisabled",
+			Detail: "got " + itoa(int(p)),
+		})
+	}
 	c.node.pointerPolicy = p
 	c.app.captureCheckPolicy()
 }

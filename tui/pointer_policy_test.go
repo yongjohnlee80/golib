@@ -3,6 +3,8 @@ package tui
 import (
 	"sync/atomic"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // "This widget does not take mouse input" is easy to implement as a half
@@ -248,5 +250,138 @@ func TestDisablingAnAncestorDuringACaptureCancelsIt(t *testing.T) {
 
 	if got := CaptureLostReason(owner.lastReason.Load()); got != CaptureLostCancelled {
 		t.Errorf("loss reason = %v, want %v", got, CaptureLostCancelled)
+	}
+}
+
+// TestAnInvalidPointerPolicyIsRefusedBeforeItIsStored.
+//
+// Storing an out-of-range value is worse than refusing it. EffectivePointerPolicy
+// promises an actual policy and would hand the invalid value straight back,
+// while routing and capture both test only for PointerDisabled — so the tree
+// behaves as though the mouse were enabled while reporting a policy that is
+// neither enabled nor disabled. Asserting only that String() renders "unknown"
+// would test the renderer and normalise exactly that state.
+func TestAnInvalidPointerPolicyIsRefusedBeforeItIsStored(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	owner := &dragger{size: Size{W: 20, H: 4}}
+	root.Add(owner)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	// PART 1 — where the boundary sits. The FIRST invalid value is the one that
+	// matters: PointerPolicy(200) is rejected by an off-by-one bound as readily
+	// as by a correct one, so probing only that says nothing about the edge.
+	firstInvalid := PointerDisabled + 1
+	var atEdge, farOut, lastValid *errs.Fatal
+	h.onLoop(func() {
+		c := h.app.byComp[owner].ctx
+		atEdge = fatalFrom(func() { c.SetPointerPolicy(firstInvalid) })
+		farOut = fatalFrom(func() { c.SetPointerPolicy(PointerPolicy(200)) })
+		lastValid = fatalFrom(func() { c.SetPointerPolicy(PointerDisabled) })
+	})
+	h.sync()
+	if atEdge == nil {
+		t.Fatalf("PointerPolicy(%d), the first value past the closed set, was accepted; "+
+			"the bound is off by one", firstInvalid)
+	}
+	if farOut == nil {
+		t.Fatal("a far out-of-range PointerPolicy was accepted")
+	}
+	if lastValid != nil {
+		t.Errorf("PointerDisabled was rejected (%v); the bound excludes a legal value",
+			lastValid.Rule)
+	}
+
+	// PART 2 — that nothing changed. Establish a known policy and a live
+	// capture, then reject a call and prove both survived it.
+	h.onLoop(func() { h.app.byComp[owner].ctx.SetPointerPolicy(PointerEnabled) })
+	h.sync()
+	startDrag(t, h, owner, 2, 1)
+
+	var rejected *errs.Fatal
+	h.onLoop(func() {
+		rejected = fatalFrom(func() { h.app.byComp[owner].ctx.SetPointerPolicy(PointerPolicy(200)) })
+	})
+	h.sync()
+	if rejected == nil {
+		t.Fatal("an out-of-range PointerPolicy was accepted")
+	}
+
+	var own, eff PointerPolicy
+	var held NodeID
+	h.onLoop(func() {
+		own = h.app.byComp[owner].pointerPolicy
+		eff = h.app.byComp[owner].ctx.EffectivePointerPolicy()
+		held = h.app.captureOwner
+	})
+	if own != PointerEnabled {
+		t.Errorf("stored policy is %v after a rejected call, want %v: validation must "+
+			"happen BEFORE the mutation", own, PointerEnabled)
+	}
+	if eff != PointerEnabled {
+		t.Errorf("effective policy is %v after a rejected call, want %v", eff, PointerEnabled)
+	}
+	if held == 0 {
+		t.Error("the active capture was lost by a rejected policy call")
+	}
+	if got := owner.losses.Load(); got != 0 {
+		t.Errorf("a rejected policy call delivered %d capture loss(es), want 0", got)
+	}
+}
+
+// armRecorder records SetArmed transitions so the published Activatable shape
+// is exercised rather than merely declared. Nothing drives SetArmed until the
+// gesture recogniser lands; this pins the method set and its idempotence now,
+// while nothing depends on it.
+type armRecorder struct {
+	MultiChild
+	size   Size
+	armed  atomic.Bool
+	calls  atomic.Int64
+	trues  atomic.Int64
+	falses atomic.Int64
+}
+
+func (ar *armRecorder) Layout(cs Constraints) Size { return cs.Constrain(ar.size) }
+func (ar *armRecorder) Render(Surface)             {}
+func (ar *armRecorder) AcceptsFocus() bool         { return true }
+func (ar *armRecorder) HandleEvent(Event) bool     { return false }
+func (ar *armRecorder) Activate(origin ActionOrigin) bool {
+	return true
+}
+func (ar *armRecorder) SetArmed(v bool) {
+	ar.calls.Add(1)
+	if v {
+		ar.trues.Add(1)
+	} else {
+		ar.falses.Add(1)
+	}
+	ar.armed.Store(v)
+}
+
+// TestActivatableIsSatisfiedByItsCompleteMethodSet is a compile-time assertion
+// with a runtime tail. The interface gained SetArmed in this layer so that the
+// recogniser has something to drive in the next one without a breaking change;
+// this fails to build if the published set drifts.
+func TestActivatableIsSatisfiedByItsCompleteMethodSet(t *testing.T) {
+	var _ Activatable = (*armRecorder)(nil)
+
+	ar := &armRecorder{size: Size{W: 4, H: 1}}
+	if !ar.Activate(OriginKey) {
+		t.Error("Activate returned false for the fixture")
+	}
+	// Idempotence is the runtime's obligation, not the widget's: the widget
+	// records every call it is given, and the runtime is what must not call it
+	// twice for the same state. Pinning the widget side here keeps the two
+	// halves separable when the recogniser starts driving it.
+	ar.SetArmed(true)
+	ar.SetArmed(false)
+	if got := ar.calls.Load(); got != 2 {
+		t.Errorf("SetArmed calls = %d, want 2", got)
+	}
+	if ar.armed.Load() {
+		t.Error("the fixture is still armed after SetArmed(false)")
 	}
 }
