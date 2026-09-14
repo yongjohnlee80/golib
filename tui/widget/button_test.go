@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/errs"
+
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -151,18 +153,17 @@ func TestTheButtonArmsAndDisarmsWithoutOwningAnyPointerCode(t *testing.T) {
 	h.waitFor("disarmed after the release", func() bool { return !armedOn(h, b) })
 }
 
-// TestADisabledButtonRefusesEveryProducerButKeepsItsPlace.
+// TestADisabledButtonRefusesEveryProducerAndLeavesTheRing.
 //
-// It still takes focus. Dropping a disabled control out of the tab ring moves
-// the user's focus out from under them mid-interaction, so a keyboard user
-// would lose their place in a dialog every time a field validated.
-func TestADisabledButtonRefusesEveryProducerButKeepsItsPlace(t *testing.T) {
+// Leaving the focus ring is what makes the container contracts expressible: a
+// dialog cycles its ENABLED buttons, prefers the enabled default on opening,
+// and falls back to itself only when every button is disabled. None of that can
+// be stated while disabled controls remain tab stops.
+func TestADisabledButtonRefusesEveryProducerAndLeavesTheRing(t *testing.T) {
 	var fired, sentinelFired atomic.Int64
 	b := widget.NewButton("OK", widget.WithOnActivate(func() { fired.Add(1) }))
-	// An ENABLED sibling, used as an ordered lane-A sentinel. Injected input
-	// and App.Update travel different lanes, so a lane-B sync cannot prove the
-	// presses below were dispatched — and this test's central claim is that
-	// nothing happened, where "not yet" and "never" are indistinguishable.
+	// An enabled sibling: an ordered lane-A sentinel, and also the node focus
+	// should be repaired to when the first button is disabled.
 	sentinel := widget.NewButton("S", widget.WithOnActivate(func() { sentinelFired.Add(1) }))
 	root := tui.NewFlex(tui.Horizontal)
 	root.Add(b, sentinel)
@@ -170,35 +171,43 @@ func TestADisabledButtonRefusesEveryProducerButKeepsItsPlace(t *testing.T) {
 	defer h.stop()
 	h.onLoop(func() { b.Context().RequestFocus() })
 	h.sync()
+
+	var focusedBefore bool
+	h.onLoop(func() { focusedBefore = b.Context().Focused() })
+	if !focusedBefore {
+		t.Fatal("precondition failed: the button under test never held focus")
+	}
+
 	setEnabledOn(h, b, false)
 
-	if !b.AcceptsFocus() {
-		t.Error("a disabled button dropped out of the focus ring")
+	if b.AcceptsFocus() {
+		t.Error("a disabled button is still a tab stop")
 	}
-	var focused bool
-	h.onLoop(func() { focused = b.Context().Focused() })
-	if !focused {
-		t.Error("a disabled button lost the focus it already held")
+	// Repaired SYNCHRONOUSLY. Anything after this line — a traversal, a query,
+	// a repaint — would otherwise run against a focus that is already wrong.
+	var stillFocused bool
+	h.onLoop(func() { stillFocused = b.Context().Focused() })
+	if stillFocused {
+		t.Error("focus stayed on a button that stopped accepting it; SetEnabled must " +
+			"revalidate the scope before returning")
 	}
 	if got := stateOn(h, b); got != widget.WidgetStateDisabled {
 		t.Errorf("state = %v, want %v", got, widget.WidgetStateDisabled)
 	}
 
-	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	// No keyboard case here, and its absence is the point: once a disabled
+	// button has left the focus ring it cannot hold focus, so a key can no
+	// longer be addressed to it at all. Injecting Enter would land on whichever
+	// enabled control focus was repaired to, and would be testing that instead.
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
 	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0})
 
-	// Press the SENTINEL and wait for it. Dispatch is ordered, so its
-	// activation proves everything above has already been handled, and the
-	// "nothing fired" assertion below is a real never rather than a not-yet.
-	//
-	// It goes after the disabled button's RELEASE on purpose: a press starts a
-	// gesture that holds the pointer even on a disabled control, so a sentinel
-	// sent mid-gesture would be delivered to the capture owner and never reach
-	// the sibling at all.
+	// The sentinel press is the ordered proof the two above were dispatched. It
+	// ALSO proves the disabled button no longer takes a gesture capture: if it
+	// did, this press would be delivered to the capture owner and never arrive.
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 6, Y: 0})
 	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 6, Y: 0})
-	h.waitFor("the enabled sentinel activated", func() bool { return sentinelFired.Load() == 1 })
+	h.waitFor("the enabled sentinel activated", func() bool { return sentinelFired.Load() >= 1 })
 
 	var direct bool
 	h.onLoop(func() { direct = b.Activate(tui.OriginProgrammatic) })
@@ -212,6 +221,12 @@ func TestADisabledButtonRefusesEveryProducerButKeepsItsPlace(t *testing.T) {
 	}
 	if armedOn(h, b) {
 		t.Error("a disabled button showed the pressed look")
+	}
+
+	// Re-enabling puts it back in the ring.
+	setEnabledOn(h, b, true)
+	if !b.AcceptsFocus() {
+		t.Error("a re-enabled button did not return to the focus ring")
 	}
 }
 
@@ -685,4 +700,348 @@ func TestTheLabelCanBeReadAndReplaced(t *testing.T) {
 	}
 	h.wantContains("Second")
 	h.wantNotContains("First")
+}
+
+// TestLabelWidthFollowsGraphemeClustersNotRunes.
+//
+// A rune count is wrong in three independent ways, and each one is a different
+// visible defect: a CJK ideograph needs two columns, a combining mark needs
+// none and would otherwise overwrite the character it belongs to, and an emoji
+// ZWJ sequence is many runes in a single cell.
+func TestLabelWidthFollowsGraphemeClustersNotRunes(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		label string
+		want  int // expected label width in columns
+	}{
+		{"ascii", "OK", 2},
+		{"cjk wide", "確定", 4},
+		{"combining mark", "é", 1},
+		{"zwj emoji", "\U0001F468‍\U0001F4BB", 2},
+		{"mixed", "a確", 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := widget.NewButton(tc.label)
+			flex := tui.NewFlex(tui.Horizontal)
+			flex.Add(b)
+			// A terminal far wider than any label, so what is measured is the
+			// size the button CHOOSES rather than a clamp against the screen.
+			h := startApp(t, flex, 40, 1)
+			defer h.stop()
+			h.settle()
+
+			var got tui.Size
+			h.onLoop(func() { got = b.Layout(tui.Loose(tui.Size{W: 40, H: 1})) })
+			if got.W != tc.want+2 {
+				t.Errorf("intrinsic width = %d, want %d (label %d + 2 padding): a rune "+
+					"count would give %d", got.W, tc.want+2, tc.want, len([]rune(tc.label))+2)
+			}
+		})
+	}
+}
+
+// TestAWideClusterIsNeverSplitAcrossTheEdge. Half a double-width cluster in the
+// final column is a broken cell, not a truncated string: the terminal has no
+// way to draw it and the row's alignment is lost from there on.
+func TestAWideClusterIsNeverSplitAcrossTheEdge(t *testing.T) {
+	// Three wide clusters want six columns; the surface offers five.
+	b := widget.NewButton("確定中")
+	flex := tui.NewFlex(tui.Horizontal)
+	flex.Add(b)
+	h := startApp(t, flex, 5, 1)
+	defer h.stop()
+	h.settle()
+
+	snap := h.tb.Snapshot()
+	for x, cell := range snap[0] {
+		if cell.Width == 2 && x == len(snap[0])-1 {
+			t.Errorf("a double-width cluster was written into the last column (%d); "+
+				"its second half has nowhere to go", x)
+		}
+	}
+}
+
+// TestChangingTheLabelRelayoutsTheParent. The label IS the button's intrinsic
+// width, so a repaint alone leaves the parent holding stale geometry — and
+// therefore stale hit bounds, which is a wrong answer to a mouse click rather
+// than merely a stale picture.
+func TestChangingTheLabelRelayoutsTheParent(t *testing.T) {
+	var fired atomic.Int64
+	b := widget.NewButton("Hi", widget.WithOnActivate(func() { fired.Add(1) }))
+	flex := tui.NewFlex(tui.Horizontal)
+	flex.Add(b)
+	h := startApp(t, flex, 30, 1)
+	defer h.stop()
+	h.settle()
+
+	// x=8 is beyond "Hi" (4 columns) and inside "Much longer label" (19).
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 8, Y: 0})
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 8, Y: 0})
+	h.settle()
+	if got := fired.Load(); got != 0 {
+		t.Fatalf("precondition failed: x=8 already hit the short button (%d activations)", got)
+	}
+
+	h.onLoop(func() { b.SetLabel("Much longer label") })
+	h.settle()
+	h.wantContains("Much longer label")
+
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 8, Y: 0})
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 8, Y: 0})
+	h.waitFor("the widened button is hit at x=8", func() bool { return fired.Load() == 1 })
+}
+
+// TestPointerPolicyChainedBeforeMountIsHonoured. NewButton(...).WithPointerPolicy(...)
+// is the most natural way to write this and runs before any Context exists;
+// applying it only when mounted made that chain a silent no-op.
+func TestPointerPolicyChainedBeforeMountIsHonoured(t *testing.T) {
+	var fired atomic.Int64
+	b := widget.NewButton("OK", widget.WithOnActivate(func() { fired.Add(1) })).
+		WithPointerPolicy(tui.PointerDisabled)
+
+	h := startApp(t, b, 12, 1)
+	defer h.stop()
+	h.onLoop(func() { b.Context().RequestFocus() })
+	h.sync()
+
+	var eff tui.PointerPolicy
+	h.onLoop(func() { eff = b.Context().EffectivePointerPolicy() })
+	if eff != tui.PointerDisabled {
+		t.Errorf("effective policy after mount = %v, want %v: a policy requested "+
+			"before mount must be applied when the Context arrives", eff, tui.PointerDisabled)
+	}
+
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0})
+	// The keyboard still works, and is the ordered proof the pointer events
+	// above were dispatched.
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	h.waitFor("the keyboard still activates", func() bool { return fired.Load() == 1 })
+	h.sync()
+
+	if got := fired.Load(); got != 1 {
+		t.Errorf("activations = %d, want 1 (keyboard only)", got)
+	}
+}
+
+// TestAnInvalidPointerPolicyIsRejectedBeforeMountWithoutMutating.
+func TestAnInvalidPointerPolicyIsRejectedBeforeMountWithoutMutating(t *testing.T) {
+	b := widget.NewButton("OK").WithPointerPolicy(tui.PointerDisabled)
+
+	fatal := fatalFromWidgetExt(func() { b.WithPointerPolicy(tui.PointerPolicy(200)) })
+	if fatal == nil {
+		t.Fatal("an out-of-range policy was accepted before mount")
+	}
+
+	// The earlier request survives: a rejected call changes nothing.
+	h := startApp(t, b, 12, 1)
+	defer h.stop()
+	h.sync()
+	var eff tui.PointerPolicy
+	h.onLoop(func() { eff = b.Context().EffectivePointerPolicy() })
+	if eff != tui.PointerDisabled {
+		t.Errorf("effective policy = %v, want %v: a rejected call must leave the "+
+			"previous request intact", eff, tui.PointerDisabled)
+	}
+}
+
+// TestACallbackFreeButtonStillPublishesItsActivation. It is callback-free, not
+// inert — observers on the bus still see the activation, and the documentation
+// now says so.
+func TestACallbackFreeButtonStillPublishesItsActivation(t *testing.T) {
+	b := widget.NewButton("Hi") // no WithOnActivate
+	h := startApp(t, b, 12, 1)
+	defer h.stop()
+	h.sync()
+
+	var seen atomic.Int64
+	unsub := tui.Subscribe(h.app.Bus(), func(tui.ControlActivatedEvent) { seen.Add(1) })
+	defer unsub()
+
+	var ok bool
+	h.onLoop(func() { ok = b.Context().DoAction(tui.ActivateAction{}) })
+	h.waitFor("the activation was published", func() bool { return seen.Load() == 1 })
+
+	if !ok {
+		t.Error("a callback-free button refused to activate")
+	}
+}
+
+// fatalFromWidgetExt is the external-package twin of the internal helper.
+func fatalFromWidgetExt(fn func()) (f *errs.Fatal) {
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(errs.Fatal); ok {
+				f = &e
+			}
+		}
+	}()
+	fn()
+	return nil
+}
+
+// TestDisablingMidPressCancelsTheGestureOnce.
+//
+// The capture has to be released through the ordinary loss path, not merely
+// dropped: the owner is told once, with a reason, exactly as it would be for
+// any other way a gesture dies.
+func TestDisablingMidPressCancelsTheGestureOnce(t *testing.T) {
+	b := widget.NewButton("OK")
+	var sentinelFired atomic.Int64
+	sentinel := widget.NewButton("S", widget.WithOnActivate(func() { sentinelFired.Add(1) }))
+	root := tui.NewFlex(tui.Horizontal)
+	root.Add(b, sentinel)
+	h := startApp(t, root, 20, 1)
+	defer h.stop()
+	h.settle()
+
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
+	h.waitFor("armed", func() bool { return armedOn(h, b) })
+
+	setEnabledOn(h, b, false)
+	if armedOn(h, b) {
+		t.Error("still armed after being disabled mid-press")
+	}
+
+	// The capture must be gone: a press on the sibling now reaches it. While a
+	// capture is held every pointer event goes to the owner instead, so this is
+	// the observable difference between releasing and merely disarming.
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 6, Y: 0})
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 6, Y: 0})
+	h.waitFor("the sibling is reachable again", func() bool { return sentinelFired.Load() == 1 })
+}
+
+// TestADisabledButtonNeverStartsAGesture is the routing half of F4, separate
+// from the visual half: the runtime must not begin a gesture whose only
+// possible outcome is an activation that will be refused.
+func TestADisabledButtonNeverStartsAGesture(t *testing.T) {
+	b := widget.NewButton("OK")
+	var sibFired atomic.Int64
+	sib := widget.NewButton("S", widget.WithOnActivate(func() { sibFired.Add(1) }))
+	root := tui.NewFlex(tui.Horizontal)
+	root.Add(b, sib)
+	h := startApp(t, root, 20, 1)
+	defer h.stop()
+	h.settle()
+	setEnabledOn(h, b, false)
+
+	// Press the disabled button and DO NOT release it. If a gesture had begun,
+	// the capture would still be held here and the sibling press below would be
+	// delivered to the disabled button instead of reaching the sibling.
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 6, Y: 0})
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 6, Y: 0})
+	h.waitFor("the sibling was reached mid-press", func() bool { return sibFired.Load() == 1 })
+
+	if armedOn(h, b) {
+		t.Error("a disabled button was armed")
+	}
+}
+
+// lossRecordingButton records the capture-loss events its Button is sent, so a
+// cancellation can be checked at the boundary a real widget would act on rather
+// than through the runtime's private state.
+type lossRecordingButton struct {
+	*widget.Button
+	losses atomic.Int64
+	reason atomic.Int64
+}
+
+func (l *lossRecordingButton) HandleEvent(ev tui.Event) bool {
+	if e, ok := ev.(tui.PointerCaptureLostEvent); ok {
+		l.losses.Add(1)
+		l.reason.Store(int64(e.Reason))
+	}
+	return l.Button.HandleEvent(ev)
+}
+
+// TestDisablingMidPressCancelsRatherThanDriftingOut.
+//
+// Focus repair would release the capture anyway, so the count alone proves
+// nothing — both paths deliver exactly one loss. What differs is the REASON,
+// and the reason is what a widget branches on: "the program ended this
+// gesture" and "focus wandered off" call for different cleanup.
+func TestDisablingMidPressCancelsRatherThanDriftingOut(t *testing.T) {
+	lb := &lossRecordingButton{Button: widget.NewButton("OK")}
+	flex := tui.NewFlex(tui.Horizontal)
+	flex.Add(lb)
+	h := startApp(t, flex, 20, 1)
+	defer h.stop()
+	h.settle()
+
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
+	h.waitFor("armed", func() bool { return armedOn(h, lb.Button) })
+
+	h.onLoop(func() { lb.SetEnabled(false) })
+	h.waitFor("the owner was told", func() bool { return lb.losses.Load() == 1 })
+	h.settle()
+
+	if got := lb.losses.Load(); got != 1 {
+		t.Errorf("capture losses = %d, want exactly 1", got)
+	}
+	if got := tui.CaptureLostReason(lb.reason.Load()); got != tui.CaptureLostCancelled {
+		t.Errorf("loss reason = %v, want %v: disabling is the program ending the "+
+			"gesture, not focus drifting away from it", got, tui.CaptureLostCancelled)
+	}
+}
+
+// TestACombiningMarkIsPaintedWithItsBaseCharacter.
+//
+// Painting rune by rune puts the zero-width mark in its own cell, where it
+// overwrites the character it belongs to — the label renders as the wrong text
+// rather than merely being mis-measured, which is why the width test alone does
+// not cover this.
+func TestACombiningMarkIsPaintedWithItsBaseCharacter(t *testing.T) {
+	b := widget.NewButton("éx") // "éx" as base + combining acute
+	flex := tui.NewFlex(tui.Horizontal)
+	flex.Add(b)
+	h := startApp(t, flex, 10, 1)
+	defer h.stop()
+	h.settle()
+
+	snap := h.tb.Snapshot()
+	var painted []string
+	for _, c := range snap[0] {
+		if c.Content != "" && c.Content != " " {
+			painted = append(painted, c.Content)
+		}
+	}
+	if len(painted) != 2 {
+		t.Fatalf("painted %d non-blank cells %q, want 2: the base and its combining "+
+			"mark belong in ONE cell", len(painted), painted)
+	}
+	if painted[0] != "é" {
+		t.Errorf("first painted cell = %q, want %q: the combining mark must travel "+
+			"with its base character", painted[0], "é")
+	}
+	if painted[1] != "x" {
+		t.Errorf("second painted cell = %q, want %q", painted[1], "x")
+	}
+}
+
+// TestDisablingClearsAnArmedLookThatNoGestureOwns.
+//
+// Distinct from disabling mid-press, and not covered by it: SetArmed is public,
+// so a control can be showing pressed without the runtime holding a gesture for
+// it. Cancelling the gesture then clears nothing, and only SetEnabled's own
+// reset gets the button out of a pressed-and-unavailable state.
+func TestDisablingClearsAnArmedLookThatNoGestureOwns(t *testing.T) {
+	b := widget.NewButton("OK")
+	h := startApp(t, b, 12, 1)
+	defer h.stop()
+	h.sync()
+
+	h.onLoop(func() { b.SetArmed(true) })
+	if !armedOn(h, b) {
+		t.Fatal("precondition failed: the button is not armed, so disabling it clears nothing")
+	}
+	setEnabledOn(h, b, false)
+
+	if armedOn(h, b) {
+		t.Error("a button armed without a gesture stayed pressed after being disabled; " +
+			"cancelling a gesture cannot clear a look no gesture owns")
+	}
+	if got := stateOn(h, b); got != widget.WidgetStateDisabled {
+		t.Errorf("state = %v, want %v", got, widget.WidgetStateDisabled)
+	}
 }

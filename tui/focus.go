@@ -273,3 +273,33 @@ func (a *App) repairFocus() {
 		Detail: "re-homed to the first focusable in scope"})
 	a.setFocus(ring[0].id)
 }
+
+// InvalidateFocusability revalidates the whole active focus scope after a
+// component's focusability has changed, and repairs focus before returning.
+//
+// WHOLE SCOPE, not just the calling node, and that is the point rather than an
+// excess of caution. Enabling the first control in a dialog where everything
+// was disabled changes the eligibility of a node that is not the one that
+// changed: the dialog itself had been accepting focus as the fallback, and now
+// must stop. A per-node revalidation cannot see that.
+//
+// SYNCHRONOUS, because the caller has just made the currently focused node
+// ineligible and every subsequent line — a traversal, a query, a repaint —
+// would otherwise run against a focus that is already wrong. Deferring it would
+// make "disabled" mean "disabled one frame from now".
+func (c *Context) InvalidateFocusability() {
+	a := c.app
+	if n := a.nodes[a.focused]; n != nil && a.acceptsFocus(n) {
+		return // the focused node is still eligible; nothing to repair
+	}
+	a.repairFocus()
+}
+
+// acceptsFocus reports whether n is a live focus candidate right now.
+func (a *App) acceptsFocus(n *node) bool {
+	if n == nil || !n.mounted || !n.visible() {
+		return false
+	}
+	f, ok := n.comp.(Focusable)
+	return ok && f.AcceptsFocus()
+}

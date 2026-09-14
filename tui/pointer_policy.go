@@ -42,6 +42,13 @@ func (p PointerPolicy) String() string {
 	return "unknown"
 }
 
+// Valid reports whether p is one of the declared policies.
+//
+// Exported because the check is needed before a Context exists: a widget that
+// accepts a policy at construction has to reject an invalid one there, and
+// duplicating the bound in every widget is how the two drift apart.
+func (p PointerPolicy) Valid() bool { return p <= PointerDisabled }
+
 // SetPointerPolicy sets this node's own policy, which its descendants inherit
 // unless they set one of their own.
 //
@@ -58,7 +65,7 @@ func (p PointerPolicy) String() string {
 // written in source, so a value outside it is a programmer error rather than
 // anything data can produce, and there is no error return to carry it.
 func (c *Context) SetPointerPolicy(p PointerPolicy) {
-	if p > PointerDisabled {
+	if !p.Valid() {
 		panic(errs.Fatal{
 			Op:     "tui: Context.SetPointerPolicy",
 			Rule:   "value outside PointerInherit, PointerEnabled, PointerDisabled",
