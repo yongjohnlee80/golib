@@ -71,6 +71,51 @@
 //
 // Why a Go test rather than a CI script: it runs in the suite everyone already
 // runs, needs no new pinned CI step, and adds no dependency.
+//
+// PANIC BUDGET & CENSUS ARCHITECTURAL PIPELINE:
+//
+//   [All Non-Test Go Source Files (*.go, including dao/bigquery)]
+//                             │
+//                             ▼
+//   ┌─────────────────────────────────────────────────────────┐
+//   │ AST Traversal (go/parser.ParseFile & ast.Inspect)       │
+//   │ - Filter ast.CallExpr where Fun is Ident "panic"        │
+//   └─────────────────────────┬───────────────────────────────┘
+//                             │
+//                             ▼
+//   ┌─────────────────────────────────────────────────────────┐
+//   │ Compute Structural Site Identity                        │
+//   │ 1. File Path (repo-relative, forward slashes)           │
+//   │ 2. Function / Closure Path (Declaration + $1, $2)       │
+//   │ 3. Control Ancestor Path (if/else/switch/select edges)  │
+//   │ 4. Panic Expression String                              │
+//   │ 5. SHA-256 Fingerprint (64-bit Hex) + Ordinal           │
+//   └─────────────────────────┬───────────────────────────────┘
+//                             │
+//                             ▼
+//   ┌─────────────────────────────────────────────────────────┐
+//   │ Reconcile with Ledger (testdata/panic_budget.txt)       │
+//   └─────────────────────────┬───────────────────────────────┘
+//                             │
+//        ┌────────────────────┼────────────────────┐
+//        ▼                    ▼                    ▼
+//   [Inventory Match]    [Category Caps]      [Ratchet Checks]
+//   - Unmatched site?    - violation == 0     - unreviewed frozen
+//     FAIL (new panic)     (capped at zero)     (legacy freeze)
+//   - Orphaned row?      - contract valid     - classification
+//     FAIL (moved/gone)    (cites location)     must be meaningful
+//
+// PANIC CATEGORY TAXONOMY:
+//
+//   Category       Permitted?   Semantics & Lifecycle Phase
+//   ──────────────────────────────────────────────────────────────────────────
+//   construction   YES          Setup / init phase; fails before runtime starts
+//   invariant      YES          Programmer bug: unreachable state, nil child, bad phase
+//   repanic        YES          Re-throwing caught panic after teardown/cleanup
+//   contract       YES (Strict) Documented deliberate opt-in runtime crash behavior
+//   unreachable    YES (Strict) Mathematically impossible branch under type system
+//   violation      NO (CAPPED)  Runtime crash on valid input; MUST BE ERROR RETURN (0)
+//   unreviewed     FROZEN       Legacy unclassified debt; frozen and closed (0)
 package audit
 
 import (
@@ -649,6 +694,20 @@ const inventoryHeader = `# golib panic budget — one row per panic() call site 
 // TestPanicBudget_InventoryMatchesTree fails in BOTH directions: an unrecorded
 // site, or a row whose site is gone. One direction alone would pass forever
 // while the other rotted.
+//
+// BIDIRECTIONAL RECONCILIATION FLOW:
+//
+//   Live Code Census (found)                Recorded Ledger (inv)
+//   ┌──────────────────────┐                ┌──────────────────────┐
+//   │ All AST panic sites  │                │ testdata/panic_...   │
+//   └──────────┬───────────┘                └──────────┬───────────┘
+//              │                                       │
+//              ├───────────────────┬───────────────────┤
+//              ▼                                       ▼
+//      [found not in inv]                      [inv not in found]
+//      Unrecorded Site!                        Orphaned Site!
+//      FAIL: Missing from ledger.              FAIL: Site deleted or moved.
+//      Fix: Classify & regenerate.             Fix: Regenerate ledger.
 func TestPanicBudget_InventoryMatchesTree(t *testing.T) {
 	files := parseTree(t, repoRoot(t))
 	found := census(t, files)

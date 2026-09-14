@@ -38,6 +38,35 @@ import (
 // remaining code must be BYTE-IDENTICAL. If it is not, the tool touched code,
 // whatever it was aiming at.
 //
+// COMMENT-STRIPPING BYTE-EQUIVALENCE PIPELINE:
+//
+//   Base Commit (e.g. COMMENTS_ONLY_BASE=origin/main)     Working Tree
+//   ┌───────────────────────────────────────────┐     ┌───────────────────────────────────────────┐
+//   │ File A (executable code + legacy comments)│     │ File A (executable code + modern comments)│
+//   └─────────────────────┬─────────────────────┘     └─────────────────────┬─────────────────────┘
+//                         │                                                 │
+//                         ▼                                                 ▼
+//   ┌───────────────────────────────────────────┐     ┌───────────────────────────────────────────┐
+//   │ go/parser.ParseFile (Mode = 0)            │     │ go/parser.ParseFile (Mode = 0)            │
+//   │ (No ParseComments; f.Comments = nil)      │     │ (No ParseComments; f.Comments = nil)      │
+//   └─────────────────────┬─────────────────────┘     └─────────────────────┬─────────────────────┘
+//                         │                                                 │
+//                         ▼                                                 ▼
+//   ┌───────────────────────────────────────────┐     ┌───────────────────────────────────────────┐
+//   │ go/printer.Fprint                         │     │ go/printer.Fprint                         │
+//   │ Canonical formatting of pure syntax AST   │     │ Canonical formatting of pure syntax AST   │
+//   └─────────────────────┬─────────────────────┘     └─────────────────────┬─────────────────────┘
+//                         │                                                 │
+//                         ▼                                                 ▼
+//                 [Normalized Code A]                               [Normalized Code B]
+//                         │                                                 │
+//                         └───────────────────────┬─────────────────────────┘
+//                                                 │
+//                                                 ▼
+//                                      cb == ca (Byte Identical?)
+//                                                 ├── YES ──► PASS: Comments only modified
+//                                                 └── NO  ──► FAIL: Executable code was mutated!
+//
 // It is a MIGRATION TOOL, not a guard, so it is opt-in and skips by default —
 // it needs a base revision to compare against and there is no meaningful
 // default for that:

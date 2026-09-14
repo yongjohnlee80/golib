@@ -18,6 +18,36 @@ import (
 // identity is just as important: it pins what may be edited freely, and
 // without those the honest fix would be to hash the whole file and force a
 // re-read on every commit.
+//
+// PANIC IDENTITY DISCRIMINATOR CONTROL MATRIX:
+//
+//                 Snippet A                            Snippet B
+//         ┌───────────────────────┐            ┌───────────────────────┐
+//         │ Code Variant A        │            │ Code Variant B        │
+//         └──────────┬────────────┘            └──────────┬────────────┘
+//                    │                                    │
+//                    ▼                                    ▼
+//              identityOf(A)                        identityOf(B)
+//              - Parse AST                          - Parse AST
+//              - Extract Call & Stack               - Extract Call & Stack
+//              - Render & Hash Ancestors            - Render & Hash Ancestors
+//                    │                                    │
+//                    ▼                                    ▼
+//             (funcPathA, fpA)                     (funcPathB, fpB)
+//                    │                                    │
+//                    └─────────────────┬──────────────────┘
+//                                      │
+//                                      ▼
+//                    (same path AND same fingerprint)?
+//                                      │
+//                  ┌───────────────────┴───────────────────┐
+//                  ▼                                       ▼
+//        wantSame == true                        wantSame == false
+//        (Benign Edits Test)                     (Semantic Control Drift Test)
+//        Must yield identical fingerprint        Must diverge! (Cannot migrate)
+//        e.g. whitespace, comments,              e.g. inverted if, swapped branch,
+//        unrelated statements                    modified switch/select
+
 
 // identityOf parses src, finds its single panic, and returns func path +
 // fingerprint exactly as the census computes them.
