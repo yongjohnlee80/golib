@@ -55,6 +55,14 @@ type appConfig struct {
 
 	// trace is an optional hook invoked across the lifecycle of event dispatch, rendering, and task execution.
 	trace TraceFunc
+
+	// recognizer interprets unconsumed primary presses as gestures. It
+	// defaults to press-arm/release-activate; WithGestureRecognizer replaces
+	// it, and setting it to nil switches gesture recognition off.
+	recognizer GestureRecognizer
+	// recognizerSet distinguishes "never configured" from "deliberately set
+	// to nil", so that opting out is not silently overwritten by the default.
+	recognizerSet bool
 }
 
 // defaultAppConfig returns the documented defaults.
@@ -65,6 +73,7 @@ func defaultAppConfig() appConfig {
 		panicPolicy:       PanicRepanic,
 		inputQueueSize:    256,
 		eventQueueLimit:   0, // unlimited
+		recognizer:        pressActivateRecognizer{},
 		taskPoolSize:      16,
 		widthPolicy:       WidthPolicyDefault,
 		taskDrainTimeout:  5 * time.Second,

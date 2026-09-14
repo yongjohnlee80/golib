@@ -106,6 +106,13 @@ type App struct {
 	captureKind  CaptureKind
 	captureFocus NodeID
 
+	// Gesture recognition state. gestureState is what the recogniser is
+	// handed and returns; gestureArmed is the runtime's own record of
+	// whether it has called SetArmed(true) without a matching false, which
+	// is what lets it guarantee the target ends up disarmed.
+	gestureState GestureState
+	gestureArmed bool
+
 	size         Size
 	buf          *buffer
 	rctx         *renderContext

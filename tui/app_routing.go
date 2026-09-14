@@ -208,15 +208,45 @@ func (a *App) dispatch(ev Event) {
 			e.Count = a.pressOrdinal(e, target)
 			ev = e
 		}
+		consumed := false
 		for n := target; n != nil; n = n.parent {
 			local := e
 			local.X = e.X - n.absRect.X
 			local.Y = e.Y - n.absRect.Y
 			if a.routeToNode(n, local) {
+				consumed = true
 				break
 			}
 			if n == limit {
 				break // same ceiling as the keyboard path
+			}
+		}
+		// STEP 6 — the gesture recogniser, last and only on what nobody wanted.
+		//
+		// It sees a primary press ONLY after every node on the path has declined
+		// it, so a widget that handles its own presses is never second-guessed;
+		// the recogniser exists for the ones that would rather describe what
+		// they do than when they were clicked.
+		if !consumed && target != nil && e.Kind == MousePress && e.Button == MouseLeft {
+			// An OPTED-IN target, which means two things: it implements
+			// Activatable, and its effective pointer policy allows the mouse.
+			//
+			// The Activatable half is not decoration. A gesture whose only
+			// possible outcome is an activation is meaningless on a component
+			// that cannot be activated, and engaging anyway is actively
+			// harmful: the recogniser takes a capture on the press, and that
+			// capture then pre-empts routing for every pointer event until the
+			// release. Without this condition a plain container swallowed the
+			// second click of a double-click and a press aimed into a nested
+			// trap never arrived — two existing tests caught exactly that.
+			if _, activatable := target.comp.(Activatable); activatable {
+				if r := a.recognizerFor(); r != nil &&
+					effectivePointerPolicy(target) != PointerDisabled {
+					local := e
+					local.X = e.X - target.absRect.X
+					local.Y = e.Y - target.absRect.Y
+					a.runRecognizer(r, target, local)
+				}
 			}
 		}
 
@@ -479,6 +509,25 @@ func (a *App) deliverAddressed(owner NodeID, ev Event) {
 func (a *App) deliverCaptured(e MouseEvent) bool {
 	owner := a.nodes[a.captureOwner]
 	if owner == nil || !owner.mounted {
+		return false
+	}
+	// A GESTURE capture belongs to the recogniser, which took it and is the
+	// only thing that can finish it. Routing these to the owner instead is the
+	// exact mistake that stranded an earlier design: the recogniser captures on
+	// the press, so sending its own motion and release past it left it unable
+	// to ever re-arm, abandon or activate.
+	if a.captureKind == CaptureGesture {
+		if r := a.recognizerFor(); r != nil {
+			local := e
+			local.X = e.X - owner.absRect.X
+			local.Y = e.Y - owner.absRect.Y
+			a.runRecognizer(r, owner, local)
+			a.traceRouted(e, owner, owner.id)
+			return true
+		}
+		// The recogniser was removed mid-gesture. Nothing can complete it, so
+		// end it rather than leave the target armed forever.
+		a.endGesture()
 		return false
 	}
 	// The press ordinal is still committed here, for the same reason it is on
