@@ -750,27 +750,86 @@ func TestATypedNilRecognizerActionActivatesNothing(t *testing.T) {
 
 // --- F2: runtime replacement ---
 
-// TestReplacingTheRecognizerMidGestureCancelsIt. No gesture may span two
-// recognisers: the replacement would be handed a sequence whose beginning it
-// never saw and whose state it cannot interpret.
+// armingCountingRecognizer both arms a gesture and counts every event it is
+// shown, so "this recogniser stopped being consulted" is observable rather than
+// inferred.
+type armingCountingRecognizer struct{ calls atomic.Int64 }
+
+func (r *armingCountingRecognizer) OnPointer(ev MouseEvent, gc GestureCtx) (Action, bool, GestureState) {
+	r.calls.Add(1)
+	if ev.Kind == MousePress && ev.Button == MouseLeft && gc.Inside {
+		return nil, true, GestureArmed
+	}
+	return nil, false, gc.State
+}
+
+// lossControl is a control that also records the capture-loss events it is
+// sent, so the cancellation can be checked at the PUBLIC boundary — the event a
+// real widget would act on — rather than through the runtime's private state.
+type lossControl struct {
+	control
+	losses     atomic.Int64
+	lastReason atomic.Int64
+	lastOwner  atomic.Uint64
+}
+
+func (l *lossControl) HandleEvent(ev Event) bool {
+	if e, ok := ev.(PointerCaptureLostEvent); ok {
+		l.losses.Add(1)
+		l.lastReason.Store(int64(e.Reason))
+		l.lastOwner.Store(uint64(e.Owner))
+	}
+	return false
+}
+
+// TestReplacingTheRecognizerMidGestureCancelsIt.
+//
+// No gesture may span two recognisers: the replacement would be handed a
+// sequence whose beginning it never saw and whose state it cannot interpret.
+//
+// Everything here is observed through the public boundary. An earlier version
+// of this test built an "old" recogniser, never installed it, and checked only
+// that SetArmed(false) had been called — so it proved neither that the old
+// recogniser stopped being consulted nor that the owner was told WHY its
+// capture ended. Both of those are the actual promise.
 func TestReplacingTheRecognizerMidGestureCancelsIt(t *testing.T) {
-	old := &countingRecognizer{}
+	original := &armingCountingRecognizer{}
 	root := &counter{size: Size{W: 20, H: 4}}
-	c := newControl(8, 2)
+	c := &lossControl{control: *newControl(8, 2)}
 	root.Add(c)
-	h := startApp(t, root, 20, 4, WithGestureRecognizer(armingRecognizer{}))
+	h := startApp(t, root, 20, 4, WithGestureRecognizer(original))
 	defer h.wait()
 	h.sync()
-	_ = old
 
 	press(h, 2, 1)
 	waitFor(t, "armed by the original", func() bool { return c.armTrue.Load() == 1 })
+	callsBefore := original.calls.Load()
+	if callsBefore == 0 {
+		t.Fatal("precondition failed: the original recogniser was never consulted")
+	}
 
-	replacement := &countingRecognizer{}
+	var ownerID NodeID
+	h.onLoop(func() { ownerID = h.app.byComp[c].id })
+
+	replacement := &armingCountingRecognizer{}
 	h.onLoop(func() { h.app.byComp[c].ctx.SetGestureRecognizer(replacement) })
-	waitFor(t, "the in-flight gesture was cancelled", func() bool { return c.armFalse.Load() == 1 })
+	waitFor(t, "the owner was told its capture ended", func() bool { return c.losses.Load() == 1 })
 	h.sync()
 
+	// The cancellation, at the boundary a widget actually sees.
+	if got := c.losses.Load(); got != 1 {
+		t.Errorf("PointerCaptureLostEvent delivered %d times, want exactly 1", got)
+	}
+	if got := CaptureLostReason(c.lastReason.Load()); got != CaptureLostCancelled {
+		t.Errorf("loss reason = %v, want %v: replacement is the program deciding this "+
+			"gesture is over", got, CaptureLostCancelled)
+	}
+	if got := NodeID(c.lastOwner.Load()); got != ownerID {
+		t.Errorf("loss event named owner %d, want %d", got, ownerID)
+	}
+	if got := c.armFalse.Load(); got != 1 {
+		t.Errorf("SetArmed(false) called %d times, want exactly 1", got)
+	}
 	if c.armed.Load() {
 		t.Error("the old target is still armed after the recogniser was replaced")
 	}
@@ -779,25 +838,20 @@ func TestReplacingTheRecognizerMidGestureCancelsIt(t *testing.T) {
 	if held != 0 {
 		t.Errorf("capture still held by %d after replacement", held)
 	}
-	// Exactly one cancellation, and it says why.
-	if got := c.armFalse.Load(); got != 1 {
-		t.Errorf("SetArmed(false) called %d times, want exactly 1", got)
-	}
 
-	// The replacement alone handles the next press.
+	// ISOLATION: the next press goes to the replacement and the original never
+	// sees it again. Asserting only that the replacement advanced would pass
+	// just as well against a runtime that consulted both.
+	frozen := original.calls.Load()
 	press(h, 2, 1)
 	waitFor(t, "the replacement was consulted", func() bool { return replacement.calls.Load() >= 1 })
-}
+	h.sync()
 
-// armingRecognizer arms on a left press inside and otherwise does nothing, so a
-// gesture can be put in flight and then interrupted.
-type armingRecognizer struct{}
-
-func (armingRecognizer) OnPointer(ev MouseEvent, gc GestureCtx) (Action, bool, GestureState) {
-	if ev.Kind == MousePress && ev.Button == MouseLeft && gc.Inside {
-		return nil, true, GestureArmed
+	if got := original.calls.Load(); got != frozen {
+		t.Errorf("the replaced recogniser saw %d further event(s), want 0: no gesture "+
+			"and no event may reach a recogniser that has been swapped out",
+			got-frozen)
 	}
-	return nil, false, gc.State
 }
 
 // TestRecognitionCanBeDisabledAtRuntime, by nil and by a typed nil alike.
@@ -938,12 +992,41 @@ func TestAnInvalidGestureStateIsRefusedBeforeAnythingChanges(t *testing.T) {
 	h.onLoop(func() {
 		n := h.app.byComp[c]
 		legal = fatalFrom(func() {
-			h.app.runRecognizer(armingRecognizer{}, n,
+			h.app.runRecognizer(&armingCountingRecognizer{}, n,
 				MouseEvent{Kind: MousePress, Button: MouseLeft, X: 1, Y: 1})
 		})
 	})
 	h.sync()
 	if legal != nil {
 		t.Errorf("GestureArmed was rejected (%v); the bound excludes a legal value", legal.Rule)
+	}
+}
+
+// TestConstructionTimeTypedNilDisablesRecognition. The construction path shares
+// the runtime path's normaliser, and this pins that it does: a future
+// "simplification" of the option back to a direct assignment would install a
+// typed nil, which then panics on a nil receiver at the first press.
+func TestConstructionTimeTypedNilDisablesRecognition(t *testing.T) {
+	var typed *armingCountingRecognizer
+	root := &counter{size: Size{W: 20, H: 4}}
+	c := newControl(8, 2)
+	sentinel := &counter{size: Size{W: 12, H: 4}}
+	root.Add(c, sentinel)
+	h := startApp(t, root, 20, 4, WithGestureRecognizer(typed))
+	defer h.wait()
+	h.sync()
+
+	press(h, 2, 1)
+	release(h, 2, 1)
+	press(h, 15, 1) // ordered lane-A sentinel
+	waitFor(t, "sentinel dispatched", func() bool {
+		_, _, m := sentinel.totals()
+		return m > 0
+	})
+	h.sync()
+
+	if got := c.armCalls.Load(); got != 0 {
+		t.Errorf("SetArmed called %d times with a typed-nil recogniser installed at "+
+			"construction, want 0", got)
 	}
 }
