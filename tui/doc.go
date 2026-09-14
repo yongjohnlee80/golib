@@ -75,6 +75,32 @@
 //	                     │    5. Backend.Flush(diff)    │
 //	                     └──────────────────────────────┘
 //
+// # Interpretation: what happens to an event at each node
+//
+// The two lanes above are TRANSPORT. Once they converge, an event is offered to
+// one node at a time along the bounded bubble path, and at each node the
+// runtime performs four steps in order:
+//
+//  1. Pointer policy — pointer input to a node whose effective policy is
+//     disabled skips that node entirely, semantic and raw alike.
+//  2. Resolve — the node's action resolvers are tried, consumer entries before
+//     the widget's own defaults; first match wins.
+//  3. Semantic dispatch — a resolved action goes to [ActionHandler.HandleAction],
+//     and consumes the event if it returns true.
+//  4. Raw dispatch — otherwise the original event goes to
+//     [Component.HandleEvent].
+//
+// This is NOT a third transport lane. Nothing about Lane A or Lane B changes;
+// this describes what an already-delivered event meets on arrival. A component
+// with no resolvers and no HandleAction is byte-for-byte unaffected, which is
+// why most widgets only ever implement HandleEvent.
+//
+// After the bounded walk, an unconsumed primary press on an opted-in control is
+// offered to the gesture recogniser ([GestureRecognizer]), which may take the
+// pointer ([Context.CapturePointer]) and later produce an [ActivateAction].
+// While a capture is held, its events bypass hit-testing and run the same four
+// steps on the owner alone, so a drag begun semantically continues that way.
+//
 // # The Loop-Goroutine Invariant (Normative)
 //
 // INVARIANT: All component state — the component tree, every component's struct fields,

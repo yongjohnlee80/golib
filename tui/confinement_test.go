@@ -624,3 +624,54 @@ func TestPointerCannotFocusAnAncestorOutsideTheTrap(t *testing.T) {
 		t.Errorf("focused = %d, want 0: no candidate inside the trap accepts focus", focused)
 	}
 }
+
+// TestInvalidateFocusabilityRepairsFocusStrandedOutsideTheScope.
+//
+// The early return has to check BOTH that the focused node still accepts focus
+// and that it belongs to the scope being revalidated. Those come apart in a
+// state this runtime supports on purpose: a trap can be live while focus sits
+// outside it, which L1a made reachable and which the confinement rules then
+// have to correct. A focusability check alone returns early for that node —
+// it is perfectly focusable — and leaves the scope unrepaired while reporting
+// that it was checked.
+func TestInvalidateFocusabilityRepairsFocusStrandedOutsideTheScope(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	outside := &focusableCounter{counter{size: Size{W: 10, H: 4}}}
+	trap := &trapScope{size: Size{W: 10, H: 4}}
+	inTrap := &focusableCounter{counter{size: Size{W: 4, H: 1}}}
+	trap.Add(inTrap)
+	root.Add(outside, trap)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	// Open the trap, then strand focus on the still-eligible node outside it —
+	// the exact state a plain focusability check cannot distinguish.
+	h.onLoop(func() {
+		a := h.app
+		a.scopeStack = append(a.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
+		a.focused = a.byComp[outside].id
+	})
+	h.onLoop(func() {
+		a := h.app
+		if a.confinement() == nil {
+			t.Fatal("precondition failed: no active trap, so there is no scope to be outside of")
+		}
+		if !a.acceptsFocus(a.nodes[a.focused]) {
+			t.Fatal("precondition failed: the stranded node is not focusable, so a " +
+				"focusability check alone would already repair it and this proves nothing")
+		}
+	})
+
+	h.onLoop(func() { h.app.byComp[outside].ctx.InvalidateFocusability() })
+	h.sync()
+
+	var focused, want NodeID
+	h.onLoop(func() { focused, want = h.app.focused, h.app.byComp[inTrap].id })
+	if focused != want {
+		t.Errorf("focused = %d after revalidation, want %d (the focusable inside the "+
+			"active trap): an eligible node OUTSIDE the scope must not satisfy the "+
+			"early return", focused, want)
+	}
+}
