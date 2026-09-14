@@ -34,7 +34,7 @@ They could have been CI scripts. They are tests because:
 | --- | --- | --- | --- |
 | [Panic budget](guards.md#1-the-panic-budget) | `TestPanicBudget_*` (4) | Non-test `panic()` calls match human-reviewed inventory; rows classified `violation` capped at zero | `testdata/panic_budget.txt`, `testdata/panic_budget_legacy_unreviewed.txt` |
 | [Panic identity controls](guards.md#2-the-panic-identity-controls) | `TestPanicIdentity_*` (3) | Identity hashing function distinguishes control paths and ignores benign edits | — |
-| [Comment budget](guards.md#3-the-comment-budget) | `TestCommentBudget`, `TestCommentBudget_Tests` | Comments contain zero matches for the 14 known external coordinate regex patterns; ledgers match exactly | `testdata/comment_budget.txt`, `testdata/comment_budget_tests.txt` |
+| [Comment budget](guards.md#3-the-comment-budget) | `TestCommentBudget`, `TestCommentBudget_Tests` | Comments contain zero non-exempt matches for the 14 known external coordinate regex patterns; ledgers match exactly | `testdata/comment_budget.txt`, `testdata/comment_budget_tests.txt` |
 | [Comment detectors](guards.md#4-the-comment-detectors) | `TestCommentDetectors` | Each of the 14 pointer detectors fires on a real example and stays silent on a lookalike | — |
 | [Promotion self-calls](guards.md#5-the-promotion-self-call-guard) | `TestPromotionSelfCalls` | Zero LIVE sibling self-calls on embeddable base receivers; LATENT debt bounded to allowlisted keys | `testdata/promotion_selfcalls.txt` |
 | [Routing docs](guards.md#6-the-routing-documentation-audit) | `TestRoutingDocs*` (2) | Monitored doc surfaces contain required routing vocabulary and omit obsolete sentence claiming raw handlers run first | — |
@@ -134,8 +134,13 @@ The bar is not "this would be nice to check". It is:
    catch *and* the lookalike it must ignore. `comment_detectors_test.go` and
    `panic_identity_test.go` exist for exactly this, and both were written
    *after* an earlier version of their guard was found to be blind.
-3. **Give it a vacuity floor.** See property 1 above.
-4. **Make its ledger exact.** See property 2.
+3. **Give it a vacuity floor (if walking the tree).** A guard that searches
+   directories must assert a minimum threshold on discovered files or census
+   items, so a broken path or parser failure cannot report a falsely clean tree.
+4. **Make its ledger exact (if ledger-backed).** A ledger must assert exact
+   equality with recorded counts. Reductions must be committed immediately, and
+   increases are forbidden by review policy. (Fixture-only controls require
+   neither ledgers nor exemptions).
 5. **Mutation-test it.** A guard is code, and a guard that passes when its
    subject is broken is worse than no guard. See
    [`verification-discipline.md`](verification-discipline.md).

@@ -245,8 +245,10 @@ h.onLoop(func() { armed = b.Armed() })
 
 An instrument blind to a class reports that class **passing**, never *unknown*.
 Before trusting a reading, show the instrument producing the opposite reading on
-a case you constructed — a positive control. Every guard in `internal/audit` has
-one built in; see [the three properties](README.md#the-three-properties-every-guard-here-has).
+a case you constructed — a positive control. Detector and identity guards carry
+committed in-code fixtures (`comment_detectors_test.go`, `panic_identity_test.go`);
+production-tree and documentation guards still require a review-time mutation or
+other discriminating check before their output is trusted. See [the anti-vacuity patterns](README.md#three-anti-vacuity-patterns-used-where-applicable).
 
 ### 6. Reporting a number from memory
 

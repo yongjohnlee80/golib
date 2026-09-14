@@ -51,7 +51,8 @@ import (
 //   └────────────────────────────────────────────────────────────────────────────────────────┘
 //
 //   Post-Walk Fallbacks (When Bounded Walk Completes Unconsumed):
-//   ├── Key / UserEvent    ──► Global key bindings / App-level keymap fallback
+//   ├── KeyEvent           ──► Global key bindings / App-level keymap fallback (App.globalKey)
+//   ├── UserEvent          ──► Dropped when unconsumed by the bounded walk (no post-walk fallback)
 //   └── Primary Press      ──► Eligible unconsumed primary press falls through to Gesture
 //                              Recognizer (only if target is Activatable, availability is
 //                              active, and pointer policy is not disabled)
