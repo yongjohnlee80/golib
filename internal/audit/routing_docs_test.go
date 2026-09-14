@@ -53,7 +53,6 @@ import (
 //   - tui/widget/doc.go
 //   - tui/widget/README.md
 
-
 // docRequirement is one documentation surface and the terms it must carry.
 type docRequirement struct {
 	path string

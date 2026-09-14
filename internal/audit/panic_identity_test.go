@@ -48,7 +48,6 @@ import (
 //        e.g. whitespace, comments,              e.g. inverted if, swapped branch,
 //        unrelated statements                    modified switch/select
 
-
 // identityOf parses src, finds its single panic, and returns func path +
 // fingerprint exactly as the census computes them.
 func identityOf(t *testing.T, src string) (string, string) {

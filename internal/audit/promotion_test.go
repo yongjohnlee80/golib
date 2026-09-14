@@ -79,7 +79,6 @@ import (
 //
 // The allowlist below may only SHRINK.
 
-
 const promotionBudget = "testdata/promotion_selfcalls.txt"
 
 // A site is LIVE when some embedder overrides the callee but inherits the
