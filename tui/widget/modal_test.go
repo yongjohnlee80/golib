@@ -2,6 +2,7 @@ package widget_test
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -415,22 +416,161 @@ func TestTheCardIsCentredWithinTheHost(t *testing.T) {
 
 	// The card's border is the leftmost non-blank cell on its row. Centred, it
 	// cannot start at column 0.
+	x0, _, _, _ := cardBounds(t, h)
+	if x0 <= 0 {
+		t.Errorf("the card's top-left corner is at column %d; a centred card in a "+
+			"40-column host cannot start at the left edge", x0)
+	}
+}
+
+// cardBounds locates the card's frame corners on screen, as inclusive
+// coordinates. It reads the border glyphs rather than asking the widget where
+// it placed itself, so a placement test observes what a user would see rather
+// than the number the code under test computed.
+func cardBounds(t *testing.T, h *harness) (x0, y0, x1, y1 int) {
+	t.Helper()
 	grid := h.tb.Snapshot()
-	firstCol := -1
+	x0, y0, x1, y1 = -1, -1, -1, -1
 	for y := range grid {
 		for x, c := range grid[y] {
-			if c.Content == "┌" {
-				firstCol = x
-				break
+			switch c.Content {
+			case "┌":
+				x0, y0 = x, y
+			case "┘":
+				x1, y1 = x, y
 			}
 		}
-		if firstCol >= 0 {
-			break
-		}
 	}
-	if firstCol <= 0 {
-		t.Errorf("the card's top-left corner is at column %d; a centred card in a "+
-			"40-column host cannot start at the left edge", firstCol)
+	if x0 < 0 || x1 < 0 {
+		t.Fatalf("no card frame on screen:\n%s", h.grid())
+	}
+	return x0, y0, x1, y1
+}
+
+// TestEachPlacementPutsTheCardWhereItSays.
+//
+// The four corners are one switch away from each other, and a swapped axis or
+// a dropped clamp reads as plausible in the source. The expectation here is
+// derived from the card's own measured size rather than a hardcoded column, so
+// the test says "flush against that edge" rather than restating an arithmetic
+// the code already performs.
+func TestEachPlacementPutsTheCardWhereItSays(t *testing.T) {
+	const hostW, hostH = 40, 12
+	for _, tc := range []struct {
+		p                 widget.ModalPlacement
+		wantLeft, wantTop bool
+	}{
+		{widget.PlacementTopLeft, true, true},
+		{widget.PlacementTopRight, false, true},
+		{widget.PlacementBottomLeft, true, false},
+		{widget.PlacementBottomRight, false, false},
+	} {
+		t.Run(tc.p.String(), func(t *testing.T) {
+			m := widget.NewModal(widget.NewText("Hi"),
+				widget.WithModalTitle("T"), widget.WithPlacement(tc.p))
+			h, host, _ := modalFixture(t, m, hostW, hostH)
+			defer h.stop()
+			openOn(t, h, m, host)
+
+			x0, y0, x1, y1 := cardBounds(t, h)
+			wantX0, wantY0 := hostW-1-(x1-x0), hostH-1-(y1-y0)
+			if tc.wantLeft {
+				wantX0 = 0
+			}
+			if tc.wantTop {
+				wantY0 = 0
+			}
+			if x0 != wantX0 || y0 != wantY0 {
+				t.Errorf("card at (%d,%d), want (%d,%d) for %s in a %dx%d host:\n%s",
+					x0, y0, wantX0, wantY0, tc.p, hostW, hostH, h.grid())
+			}
+		})
+	}
+}
+
+// TestClosingAStackedDialogRestoresTheBackdropBeneathTheOneBelow.
+//
+// Two dialogs share ONE backdrop, because the backdrop belongs to whichever is
+// on top. Closing the upper one therefore has to give the scrim back to the
+// lower one and put it UNDERNEATH — and both halves fail invisibly on their
+// own: a scrim that is never restored just looks undimmed, and one restored on
+// top of the surviving dialog just looks blank. So the assertion is the whole
+// screen: after the upper dialog closes, what is left must be exactly what was
+// there before it opened.
+func TestClosingAStackedDialogRestoresTheBackdropBeneathTheOneBelow(t *testing.T) {
+	lower := widget.NewModal(widget.NewText("first"), widget.WithModalTitle("Alpha"))
+	upper := widget.NewModal(widget.NewText("later"), widget.WithModalTitle("Bravo"))
+
+	h, host, _ := modalFixture(t, lower, 40, 12)
+	defer h.stop()
+
+	openOn(t, h, lower, host)
+	alone := h.grid()
+	if !strings.Contains(alone, "Alpha") {
+		t.Fatalf("precondition failed: the first dialog is not on screen:\n%s", alone)
+	}
+
+	openOn(t, h, upper, host)
+	if h.grid() == alone {
+		t.Fatal("opening a second dialog changed nothing on screen, so the " +
+			"comparison below cannot observe the restore either")
+	}
+
+	var top *widget.Modal
+	h.onLoop(func() { top = host.TopModal() })
+	if top != upper {
+		t.Error("TopModal() is not the dialog opened last")
+	}
+
+	h.onLoop(func() { upper.Dismiss(widget.DismissProgrammatic) })
+	h.settle()
+
+	if got := h.grid(); got != alone {
+		t.Errorf("closing the upper dialog did not restore the screen beneath it.\n"+
+			"want:\n%s\ngot:\n%s", alone, got)
+	}
+	h.onLoop(func() { top = host.TopModal() })
+	if top != lower {
+		t.Error("the dialog underneath did not become topmost after the one above closed")
+	}
+
+	h.onLoop(func() { lower.Dismiss(widget.DismissProgrammatic) })
+	h.settle()
+	h.onLoop(func() { top = host.TopModal() })
+	if top != nil {
+		t.Errorf("TopModal() = %v with every dialog closed, want nil", top)
+	}
+}
+
+// TestAnAssociatedStyleDressesTheScrim.
+//
+// Style is an association rather than something a widget hard-codes, and the
+// scrim is where that is easiest to get wrong: it is painted by the HOST on the
+// dialog's behalf, so a style that stopped at the card would leave the backdrop
+// in its default look while everything else changed with the theme.
+func TestAnAssociatedStyleDressesTheScrim(t *testing.T) {
+	// NewModalStyle states the two looks a caller cares about and derives the
+	// rest; the scrim is then replaced so it is distinguishable from the default.
+	st := widget.NewModalStyle(styleOf(1), styleOf(2)).
+		WithScrim(style.New().Underline(true))
+	m := widget.NewModal(widget.NewText("Body"),
+		widget.WithModalTitle("T"), widget.WithModalStyle(st))
+
+	h, host, _ := modalFixture(t, m, 30, 8)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	// The bottom-left cell is outside any centred card, so whatever occupies it
+	// is the backdrop.
+	grid := h.tb.Snapshot()
+	corner := grid[len(grid)-1][0]
+	if corner.Content != "" && corner.Content != " " {
+		t.Fatalf("precondition failed: the bottom-left cell holds %q, so it is not "+
+			"backdrop:\n%s", corner.Content, h.grid())
+	}
+	if corner.Attrs.Mask&tui.AttrUnderline == 0 {
+		t.Error("the backdrop does not carry the associated scrim style; the " +
+			"dialog's style is not reaching the host that paints it")
 	}
 }
 
@@ -511,6 +651,31 @@ func TestPlacementEnumsValidateAndName(t *testing.T) {
 	if got := widget.ModalPlacement(200).String(); got != "unknown" {
 		t.Errorf("an undefined placement rendered as %q", got)
 	}
+	for s, want := range map[widget.PlacementSide]string{
+		widget.PlacementBelow: "below",
+		widget.PlacementAbove: "above",
+		widget.PlacementRight: "right",
+		widget.PlacementLeft:  "left",
+	} {
+		if got := s.String(); got != want {
+			t.Errorf("PlacementSide(%d).String() = %q, want %q", s, got, want)
+		}
+	}
+	if got := widget.PlacementSide(9).String(); got != "unknown" {
+		t.Errorf("an undefined side rendered as %q", got)
+	}
+	for a, want := range map[widget.PlacementAlign]string{
+		widget.PlacementAlignStart:  "start",
+		widget.PlacementAlignCenter: "center",
+		widget.PlacementAlignEnd:    "end",
+	} {
+		if got := a.String(); got != want {
+			t.Errorf("PlacementAlign(%d).String() = %q, want %q", a, got, want)
+		}
+	}
+	if got := widget.PlacementAlign(9).String(); got != "unknown" {
+		t.Errorf("an undefined alignment rendered as %q", got)
+	}
 }
 
 // TestAnInvalidPlacementIsRefusedAtConstruction.
@@ -545,6 +710,50 @@ func TestModalStyleIsNilSafeAndImmutable(t *testing.T) {
 	}
 	if derived.Title() != base.Title() {
 		t.Error("WithCard also changed an unrelated look")
+	}
+
+	// Every other With* accessor owes the same contract. Checking only one of
+	// four would leave three setters free to mutate in place, which is a defect
+	// that surfaces on the SECOND dialog sharing the value rather than the first.
+	for name, tc := range map[string]struct {
+		derive func(*widget.ModalStyle) *widget.ModalStyle
+		read   func(*widget.ModalStyle) style.Style
+	}{
+		"WithTitle": {
+			func(s *widget.ModalStyle) *widget.ModalStyle { return s.WithTitle(styleOf(6)) },
+			(*widget.ModalStyle).Title,
+		},
+		"WithBorder": {
+			func(s *widget.ModalStyle) *widget.ModalStyle { return s.WithBorder(styleOf(6)) },
+			(*widget.ModalStyle).Border,
+		},
+		"WithScrim": {
+			func(s *widget.ModalStyle) *widget.ModalStyle { return s.WithScrim(styleOf(6)) },
+			(*widget.ModalStyle).Scrim,
+		},
+	} {
+		was := tc.read(base)
+		got := tc.derive(base)
+		if tc.read(got) != styleOf(6) {
+			t.Errorf("%s did not change the copy", name)
+		}
+		if tc.read(base) != was {
+			t.Errorf("%s mutated the receiver; styles are shared and must be copied", name)
+		}
+		if got.Card() != base.Card() {
+			t.Errorf("%s also changed an unrelated look", name)
+		}
+	}
+
+	// NewModalStyle states the two looks a caller has an opinion about and
+	// derives the other two, so a partial statement still yields a complete
+	// style rather than two empty surfaces.
+	derivedFull := widget.NewModalStyle(styleOf(5), styleOf(6))
+	if derivedFull.Border() != derivedFull.Card() {
+		t.Error("NewModalStyle did not derive the border from the card")
+	}
+	if derivedFull.Scrim() != widget.DefaultModalStyle().Scrim() {
+		t.Error("NewModalStyle did not fall back to the default scrim")
 	}
 }
 
