@@ -859,11 +859,15 @@ func TestRestylingADialogThatIsNotOnTopLeavesTheBackdropAlone(t *testing.T) {
 func TestACallbackDismissingADialogTheUnwindWillReachClosesItOnce(t *testing.T) {
 	bottom := widget.NewModal(widget.NewText("1"), widget.WithModalTitle("One"))
 	middle := widget.NewModal(widget.NewText("2"), widget.WithModalTitle("Two"))
+	// The callback dismisses BOTH a dialog the unwind has yet to reach and the
+	// TARGET of the transition itself. The target is the case a re-derived
+	// position cannot handle on its own: its own close is still pending at the
+	// bottom of dismissModal, so without an already-closed guard it is closed
+	// once by the callback and once again on the way out.
 	top := widget.NewModal(widget.NewText("3"), widget.WithModalTitle("Three"),
 		widget.WithOnDismiss(func(widget.DismissReason) {
-			// Reaches down past itself, into the part of the stack the unwind
-			// has not visited yet.
 			middle.Dismiss(widget.DismissProgrammatic)
+			bottom.Dismiss(widget.DismissProgrammatic)
 		}))
 
 	h, host, _ := modalFixture(t, bottom, 40, 14)
@@ -925,11 +929,23 @@ func TestADialogWithNoBodyIsStillUsable(t *testing.T) {
 	if !focusedOn(t, h, ok) {
 		t.Error("focus did not reach the only button of a bodiless dialog")
 	}
-	// And its button is at index 0 of the card's children, which is where the
-	// reconcile has to place it when there is no body ahead of it.
+	// And a RECONCILE places them correctly too. Construction mounts the list
+	// directly, so only SetButtons exercises the offset the card applies when
+	// there is no body ahead of its buttons — with one, a wrong offset puts the
+	// first button past the end of the child list.
+	more := widget.NewButton("More")
+	var err error
+	h.onLoop(func() { err = m.SetButtons(more, ok) })
+	if err != nil {
+		t.Fatalf("SetButtons on a bodiless dialog: %v", err)
+	}
+	h.settle()
+	if got := h.grid(); !strings.Contains(got, "More") {
+		t.Errorf("the reconciled button is not on screen:\n%s", got)
+	}
 	var sel int
 	h.onLoop(func() { sel = m.SelectedButton() })
-	if sel != 0 {
-		t.Errorf("SelectedButton() = %d, want 0", sel)
+	if sel != 1 {
+		t.Errorf("SelectedButton() = %d, want 1 (the Default button after the reorder)", sel)
 	}
 }
