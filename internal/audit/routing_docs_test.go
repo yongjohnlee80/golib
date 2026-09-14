@@ -18,33 +18,43 @@ import (
 // mentions the stage it is required to describe, which is the failure that
 // actually happened.
 //
-// EVENT INTERPRETATION PIPELINE VS DOC SYNCHRONIZATION:
+// BOUNDED PER-NODE EVENT ROUTING SEQUENCE:
 //
-//   Incoming Key / Mouse Event (Lane A)
-//                  │
-//                  ▼
-//   ┌──────────────────────────────────────────────┐
-//   │ 1. Keymap Resolution (Scope & App Resolvers) │ ◄── MUST BE DOCUMENTED
-//   │    Resolves KeyEvent to Action               │     ("resolver")
-//   └──────────────────────┬───────────────────────┘
-//                          │
-//         ┌────────────────┴────────────────┐
-//         ▼ Action Resolved                 ▼ No Action (Fallthrough)
-//   ┌───────────────────────────┐     ┌───────────────────────────┐
-//   │ 2. HandleAction Dispatch  │     │ 3. Raw HandleEvent        │ ◄── ("not first!")
-//   │    (Activatable Widgets)  │     │    (Focused Node)         │
-//   └─────────────┬─────────────┘     └─────────────┬─────────────┘
-//                 │                                 │
-//                 │ Handled                         ▼ Returns false
-//                 ▼                   ┌───────────────────────────┐
-//              [Done]                 │ 4. Bubble Ancestor Path   │
-//                                     └─────────────┬─────────────┘
-//                                                   │
-//                                                   ▼ Unconsumed
-//                                     ┌───────────────────────────┐
-//                                     │ 5. Gesture Recognizer     │ ◄── ("gesture",
-//                                     │    (Pointer & Drag Policy)│      "CaptureGesture")
-//                                     └───────────────────────────┘
+//   Transport Lanes (Target Selection)
+//   ├── Key / UserEvent    ──► Target = Confined focused node (within active trapping scope ceiling)
+//   ├── CaptureRaw         ──► Target = Active capture node (direct dispatch; no bubbling)
+//   ├── CaptureGesture     ──► Routes directly to active gesture recognizer
+//   └── Pointer Event      ──► Target = Hit-test node; commits press ordinal before delivery
+//
+//   Bounded Walk: for n := target; n != nil; n = n.parent (up to confinement ceiling)
+//   ┌────────────────────────────────────────────────────────────────────────────────────────┐
+//   │ At each visited node n: routeToNode(n, ev)                                             │
+//   │                                                                                        │
+//   │ 1. Pointer Policy Gate:                                                                │
+//   │    If pointer-derived and effectivePointerPolicy(n) == PointerDisabled, skip n         │
+//   │                                                                                        │
+//   │ 2. Action Resolution:                                                                  │
+//   │    First match over consumer resolvers, then defaults: resolveFor(n, ev)               │
+//   │                                                                                        │
+//   │ 3. Semantic Action Dispatch:                                                           │
+//   │    a. ActionHandler: If node implements ActionHandler, call HandleAction(inv)          │
+//   │    b. Activatable Fallback: If unhandled AND action is concrete ActivateAction        │
+//   │       (or *ActivateAction) AND node implements Activatable, call Activate(origin)      │
+//   │       and publish ControlActivatedEvent.                                               │
+//   │                                                                                        │
+//   │ 4. Raw Delivery (Semantic comes first):                                                │
+//   │    If no action resolved or action unhandled, deliver raw HandleEvent(local) to n      │
+//   │                                                                                        │
+//   │ 5. Walk Continuation:                                                                  │
+//   │    If consumed (true): STOP walk.                                                      │
+//   │    If unconsumed (false): bubble to n.parent (unless n == confinement ceiling)         │
+//   └────────────────────────────────────────────────────────────────────────────────────────┘
+//
+//   Post-Walk Fallbacks (When Bounded Walk Completes Unconsumed):
+//   ├── Key / UserEvent    ──► Global key bindings / App-level keymap fallback
+//   └── Primary Press      ──► Eligible unconsumed primary press falls through to Gesture
+//                              Recognizer (only if target is Activatable, availability is
+//                              active, and pointer policy is not disabled)
 //
 // DOCUMENTATION SURFACES MONITORED:
 //   - tui/doc.go

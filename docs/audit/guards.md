@@ -279,14 +279,9 @@ a document that defends it.
 
 ### The ratchet
 
-Numbers **may only fall**. The budget is **exact**, not a ceiling: a file whose
-real count is *below* its budget line fails, because an improvement that is not
-recorded can be silently undone later. A file that reaches zero has its line
-deleted and is frozen there permanently — a file not listed in the ledger
-cannot gain a pointer.
+Numbers **may only fall** under review policy. The budget is mechanically **exact**, not a ceiling: a file whose real count is *below* its budget line fails, ensuring that an improvement must be recorded in the ledger immediately. When paired with the code-review rule that forbids increasing counts or re-adding lines, exact matching functions as a one-way ratchet. A file that reaches zero has its line deleted and is frozen there permanently — a file not listed in the ledger cannot gain a pointer.
 
-Both ledgers are now empty. Adding a line back is **undoing the migration**,
-not recording work in progress.
+Both ledgers are now empty. Adding a line back is **undoing the migration**, not recording work in progress.
 
 The total is deliberately **not stored** in the ledger. It is derived data that
 two migration rungs both had to touch, so it conflicted on every parallel pass
@@ -455,8 +450,7 @@ this was fixed.
 - `tui/stack.go` — 2
 - `tui/widget/textbuffer.go` — 13
 
-None is live. The list may only **shrink**, and it is exact: a line whose site
-is gone fails, so an improvement has to be recorded in the same change.
+None is live. The ledger is mechanically exact: a line whose site is gone fails the test, so reductions must be recorded in the same change. Under code-review policy, the allowlist may only **shrink**.
 
 ---
 

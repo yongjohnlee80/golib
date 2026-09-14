@@ -1,6 +1,6 @@
 # Verification discipline
 
-The guards in [`internal/audit`](README.md) check the source tree. This document
+The guards in [`internal/audit`](../../internal/audit/README.md) check the source tree. This document
 covers the practice they are one instrument of: **how a change in this
 repository is proven, rather than merely observed to be green.**
 
@@ -126,8 +126,7 @@ Contrast a cell that was kept and fixed:
 
 ### Mechanics
 
-The matrix is driven by a small script rather than by hand, so that the restore
-step cannot be forgotten and the outcomes are classified uniformly. The shape:
+The matrix is typically driven by an ad-hoc runner script rather than by hand, so that the restore step cannot be forgotten and outcomes are classified uniformly. Below is a schematic pattern for such a temporary runner:
 
 ```python
 CELLS = [

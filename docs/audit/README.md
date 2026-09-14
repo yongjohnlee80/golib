@@ -30,17 +30,17 @@ They could have been CI scripts. They are tests because:
 
 ## The inventory
 
-| Guard | Test(s) | Asserts | Ledger |
+| Guard | Test(s) | Asserts (Mechanical Check) | Ledger |
 | --- | --- | --- | --- |
-| [Panic budget](guards.md#1-the-panic-budget) | `TestPanicBudget_*` (4) | Every `panic()` in non-test code is enumerated, classified, and none is reachable at runtime with valid types | `testdata/panic_budget.txt`, `testdata/panic_budget_legacy_unreviewed.txt` |
-| [Panic identity controls](guards.md#2-the-panic-identity-controls) | `TestPanicIdentity_*` (3) | The panic budget's identity function distinguishes what it claims to, and does not churn on what it claims not to | — |
-| [Comment budget](guards.md#3-the-comment-budget) | `TestCommentBudget`, `TestCommentBudget_Tests` | No comment explains itself by pointing at a document the reader cannot open | `testdata/comment_budget.txt`, `testdata/comment_budget_tests.txt` |
+| [Panic budget](guards.md#1-the-panic-budget) | `TestPanicBudget_*` (4) | Non-test `panic()` calls match human-reviewed inventory; rows classified `violation` capped at zero | `testdata/panic_budget.txt`, `testdata/panic_budget_legacy_unreviewed.txt` |
+| [Panic identity controls](guards.md#2-the-panic-identity-controls) | `TestPanicIdentity_*` (3) | Identity hashing function distinguishes control paths and ignores benign edits | — |
+| [Comment budget](guards.md#3-the-comment-budget) | `TestCommentBudget`, `TestCommentBudget_Tests` | Comments contain zero matches for the 14 known external coordinate regex patterns; ledgers match exactly | `testdata/comment_budget.txt`, `testdata/comment_budget_tests.txt` |
 | [Comment detectors](guards.md#4-the-comment-detectors) | `TestCommentDetectors` | Each of the 14 pointer detectors fires on a real example and stays silent on a lookalike | — |
-| [Promotion self-calls](guards.md#5-the-promotion-self-call-guard) | `TestPromotionSelfCalls` | No method on an embeddable base calls a sibling on its own receiver, silently ignoring every override | `testdata/promotion_selfcalls.txt` |
-| [Routing docs](guards.md#6-the-routing-documentation-audit) | `TestRoutingDocs*` (2) | The architecture documents still describe the routing model the runtime actually has | — |
-| [Comments-only change](guards.md#7-the-comments-only-check) | `TestCommentsOnlyChange` | A comment migration changed no code. **Opt-in; skips by default** | — |
+| [Promotion self-calls](guards.md#5-the-promotion-self-call-guard) | `TestPromotionSelfCalls` | Zero LIVE sibling self-calls on embeddable base receivers; LATENT debt bounded to allowlisted keys | `testdata/promotion_selfcalls.txt` |
+| [Routing docs](guards.md#6-the-routing-documentation-audit) | `TestRoutingDocs*` (2) | Monitored doc surfaces contain required routing vocabulary and omit obsolete sentence claiming raw handlers run first | — |
+| [Comments-only change](guards.md#7-the-comments-only-check) | `TestCommentsOnlyChange` | A comment migration changed zero executable syntax by AST-stripped byte comparison. **Opt-in; skips by default** | — |
 
-Current state, from the guards' own output at the head of `widget-menu`:
+Snapshot of guard census at exact commit `ba602e2`:
 
 ```
 production comment budget: 0 pointer lines in 0 files (destination: 0), 307 files walked
@@ -70,14 +70,11 @@ GOLIB_PANIC_BUDGET_UPDATE=1 go test ./internal/audit/
 COMMENTS_ONLY_BASE=origin/main go test ./internal/audit/ -run TestCommentsOnlyChange -v
 ```
 
-## The three properties every guard here has
+## Three anti-vacuity patterns, used where applicable
 
-These are not stylistic preferences. Each one is the fix for a way an earlier
-draft of one of these guards reported a clean tree while the tree was dirty.
+These are not stylistic preferences, but patterns applied where applicable (fixture-only guards like comment detectors and panic identity controls need neither ledgers nor exemptions). Each one is the fix for a way an earlier draft of a guard reported a clean tree while the tree was dirty:
 
-**1. It fails vacuously loudly.** Every guard driven by a directory walk
-asserts a floor on what the walk found, because a walk that finds nothing
-reports a clean repository:
+**1. It fails vacuously loudly.** Every guard driven by a directory walk (`panic_budget`, `comment_budget`, `promotion_test`) asserts a floor on what the walk found, because a walk that finds nothing reports a clean repository:
 
 ```go
 if walked < sc.minWalked {
@@ -86,24 +83,21 @@ if walked < sc.minWalked {
 }
 ```
 
-The panic census does the same (`"census found no panic sites at all — the
-instrument is broken, not the tree clean"`), and the comments-only check refuses
-to pass on an empty diff (`"there is nothing to check, which is not a pass"`).
+The panic census does the same (`"census found no panic sites at all — the instrument is broken, not the tree clean"`), and the comments-only check refuses to pass on an empty diff (`"there is nothing to check, which is not a pass"`).
 
-**2. Its ledger is exact, not a ceiling.** A budget file records the number a
-file currently has, and the guard fails when the real number is **lower** as
-well as higher. An improvement that is not recorded in the same change can be
-silently undone later, and then the ratchet has no teeth. Deleting a line
-freezes that file at zero forever.
+**2. Its ledger is exact, not a ceiling (with review-enforced ratchet).** A budget file records the number a file currently has, and the guard fails when the real number is **lower** as well as higher:
 
-**3. Its exemptions are by name, held to a premise, and checked for liveness.**
-A shape-based excuse ("any comment containing a quoted pointer") is one a future
-site can satisfy by accident. An exemption naming a file can only be satisfied
-by being that file — and it must still be *doing something*, because an
-exemption with nothing left to exempt is not dormant, it is a standing
-pre-authorisation for whatever gets written under that name next. There is
-exactly one exemption in the whole package, and all three checks are applied to
-it.
+```
+FAIL: path/to/file.go: 2, budgeted 4 — lower it to 2
+```
+
+Exact matching is mechanically enforced by the test: an improvement that is not recorded in the same change fails until the ledger is lowered. However, the requirement that counts **may only fall** is a **binding code-review policy** rather than an automated git-history check, because tests compare against the file on disk. Deleting a line freezes that file at zero forever.
+
+**3. Its exemptions are by name, held to a premise, and checked for liveness.** A shape-based excuse ("any comment containing a quoted pointer") is one a future site can satisfy by accident. Where an exemption exists (currently only in `comment_budget` for `comment_budget_test.go`), an exemption must:
+- Name the exact relative file path.
+- State a **premise identifier** declared as a top-level AST symbol in that file (`pointerPatterns`), proving it still defines the detectors.
+- Be **live**: the file must still carry a violation; an exemption with nothing left to exempt fails the test until removed.
+
 
 ## What to do when one fails
 
