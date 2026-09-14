@@ -26,6 +26,12 @@ type node struct {
 
 	mounted bool
 
+	// resolvers is this node's two-layer action resolver chain, and
+	// pointerPolicy its own pointer decision (PointerInherit = defer to an
+	// ancestor). Both are loop-goroutine-owned like everything else here.
+	resolvers     resolverSet
+	pointerPolicy PointerPolicy
+
 	// Layout state. measured/placed reset each pass; a node is visible this
 	// frame only when both are set with a non-empty rect.
 	rect     Rect // parent-relative, set by PlaceChild

@@ -20,20 +20,10 @@ import (
 // a newly active focus trap excluding the owner, the owner cancelling, the
 // terminal losing focus, or the App shutting down.
 //
-// INCOMPLETE ON PURPOSE. Two behaviours named in the interaction design are
-// deliberately absent here and arrive with the semantic-action layer; until
-// then this is the capture CORE, not the finished capture contract, and no
-// widget may be written against the two gaps:
-//
-//  1. Capture may be taken only while a component's HandleEvent runs. The
-//     design also permits it from the semantic-action handler, which does not
-//     exist yet.
-//  2. A captured event is delivered straight to the owner's HandleEvent. The
-//     design requires it to run the same policy-gate and action-resolution
-//     sequence an uncaptured event runs, so that a drag begun semantically
-//     continues semantically. Resolution has no implementation yet, so there
-//     is nothing to run; wiring it in is the action layer's job, not a change
-//     of intent here.
+// Capture may be taken from a component's own HandleEvent or its own
+// HandleAction, and a captured event runs the same per-node sequence an
+// uncaptured one runs — so a drag begun as a semantic action continues as one
+// rather than degrading into raw events halfway through.
 
 // CaptureKind distinguishes who owns a capture, which decides how a captured
 // event is routed.
@@ -116,10 +106,15 @@ func (PointerCaptureLostEvent) isEvent() {}
 // CapturePointer routes subsequent pointer press, motion and release to this
 // node until it is released or lost, and reports whether it was granted.
 //
-// Legal only while this node's HandleEvent is running, and a panic otherwise:
-// capture with no gesture in hand is meaningless, and one taken during Init or
-// Layout would outlive the thing that caused it. (The semantic-action handler
-// will also be a legal caller once that layer exists; it does not yet.)
+// Legal only while this node's own HandleEvent or HandleAction is running, and
+// a panic otherwise: capture with no gesture in hand is meaningless, and one
+// taken during Init or Layout would outlive the thing that caused it.
+//
+// Both input phases qualify because both are runtime-dispatched with a live
+// gesture in hand, and because a drag begun semantically must be able to take
+// the pointer: a resize handle resolves a press into a begin-drag action and
+// captures from HandleAction, which is what lets keyboard and pointer share one
+// path instead of each having its own.
 //
 // It returns false and changes nothing when another node already holds the
 // capture — a capture is never stolen, because the widget that owns the drag
@@ -160,6 +155,15 @@ func (c *Context) CapturePointer() bool {
 	if scope := a.confinement(); scope != nil && !withinScope(c.node, scope) {
 		a.trace(TraceEvent{Kind: TraceCapture, Node: c.node.id, Prev: scope.id,
 			Detail: "capture refused: caller is outside the active focus scope"})
+		return false
+	}
+	// A node that may not RECEIVE pointer input may not HOLD the pointer. Only
+	// pointer events are gated by policy, so without this a node under a
+	// disabled ancestor could still take the capture from a key-driven handler
+	// and then sit holding a gesture whose every event the gate discards.
+	if effectivePointerPolicy(c.node) == PointerDisabled {
+		a.trace(TraceEvent{Kind: TraceCapture, Node: c.node.id,
+			Detail: "capture refused: pointer input is disabled for this node"})
 		return false
 	}
 	a.setCapture(c.node.id, CaptureRaw)

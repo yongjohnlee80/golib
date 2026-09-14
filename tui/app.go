@@ -79,6 +79,11 @@ type App struct {
 	// node B and take the pointer in B's name.
 	handlerNode NodeID
 
+	// initNode is the node whose Init is running, or 0 outside mounting. Like
+	// handlerNode it is an identity, because the setter it gates publishes a
+	// specific component's own default bindings.
+	initNode NodeID
+
 	// updateDepth counts nested App.Update callbacks currently executing. The
 	// phases in which a capture may be ENDED are stated positively — a handler
 	// or an Update — because the forbidden list was incomplete twice over:

@@ -117,6 +117,10 @@ const (
 	// opening or closing.
 	TraceScope
 
+	// TraceAction reports a semantic action being handled or an activation
+	// firing. Node is the receiver and Detail names the action and its origin.
+	TraceAction
+
 	// TraceCapture reports the pointer being captured, released, or lost.
 	// Node is the capture owner, and Detail says which of the three happened
 	// and — for a loss — why.
@@ -143,6 +147,8 @@ func (k TraceKind) String() string {
 		return "key"
 	case TraceScope:
 		return "scope"
+	case TraceAction:
+		return "action"
 	case TraceCapture:
 		return "capture"
 	}
