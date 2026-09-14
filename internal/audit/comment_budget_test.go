@@ -89,7 +89,6 @@ import (
 //   [unlisted file with actual > 0]     [actual == budget == 0]
 //   FROZEN ZERO VIOLATION               SUCCESS: Clean repository
 
-
 // A scope is one half of the repository, each with its own budget that falls
 // independently. They are separate because they were migrated separately and
 // because the PRODUCTION budget is finished: it is empty, and every file in it
@@ -205,23 +204,23 @@ var pointerPatterns = []struct {
 //
 // AST PREMISE DISCRIMINATION FLOW:
 //
-//   Target Path + Premise Symbol Name
-//                 │
-//                 ▼
-//        go/parser.ParseFile (SkipObjectResolution)
-//                 │
-//                 ▼
-//        Walk f.Decls (Top-level declarations only)
-//        ├── *ast.FuncDecl:
-//        │     └── decl.Name.Name == premise? ──────────► [MATCH: Valid]
-//        └── *ast.GenDecl:
-//              ├── *ast.ValueSpec (var / const):
-//              │     └── id.Name == premise? ───────────► [MATCH: Valid]
-//              └── *ast.TypeSpec (type):
-//                    └── sp.Name.Name == premise? ──────► [MATCH: Valid]
-//                 │
-//                 ▼
-//     No declaration matched AST symbol ────────────────► [REJECT: Invalid Premise]
+//	Target Path + Premise Symbol Name
+//	              │
+//	              ▼
+//	     go/parser.ParseFile (SkipObjectResolution)
+//	              │
+//	              ▼
+//	     Walk f.Decls (Top-level declarations only)
+//	     ├── *ast.FuncDecl:
+//	     │     └── decl.Name.Name == premise? ──────────► [MATCH: Valid]
+//	     └── *ast.GenDecl:
+//	           ├── *ast.ValueSpec (var / const):
+//	           │     └── id.Name == premise? ───────────► [MATCH: Valid]
+//	           └── *ast.TypeSpec (type):
+//	                 └── sp.Name.Name == premise? ──────► [MATCH: Valid]
+//	              │
+//	              ▼
+//	  No declaration matched AST symbol ────────────────► [REJECT: Invalid Premise]
 func declaresTopLevel(t *testing.T, path, name string) bool {
 	t.Helper()
 	f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
@@ -424,13 +423,13 @@ func readBudget(t *testing.T, sc scope) map[string]int {
 
 // EXACT LEDGER RATCHET DECISION TABLE:
 //
-//   File Status in Ledger  Actual vs Budget  Outcome    Action Required
-//   ────────────────────────────────────────────────────────────────────────────
-//   Listed (budget > 0)    actual > budget   FAIL       Regression: new pointer introduced
-//   Listed (budget > 0)    actual < budget   FAIL       Stale Ledger: lower budget to actual
-//   Unlisted (budget == 0) actual > 0        FAIL       Zero-Freeze Violation: revert or rewrite
-//   Listed (budget > 0)    actual == 0       FAIL       Stale Line: delete line from ledger
-//   Any                    actual == budget  PASS       Matches ratchet target
+//	File Status in Ledger  Actual vs Budget  Outcome    Action Required
+//	────────────────────────────────────────────────────────────────────────────
+//	Listed (budget > 0)    actual > budget   FAIL       Regression: new pointer introduced
+//	Listed (budget > 0)    actual < budget   FAIL       Stale Ledger: lower budget to actual
+//	Unlisted (budget == 0) actual > 0        FAIL       Zero-Freeze Violation: revert or rewrite
+//	Listed (budget > 0)    actual == 0       FAIL       Stale Line: delete line from ledger
+//	Any                    actual == budget  PASS       Matches ratchet target
 func assertCommentBudget(t *testing.T, sc scope) {
 	t.Helper()
 	actual, walked := commentViolations(t, sc)

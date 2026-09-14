@@ -20,28 +20,29 @@ import (
 //
 // DETECTOR SENSITIVITY AND SPECIFICITY VERIFICATION MATRIX:
 //
-//               ┌─────────────────────────────────────────┐
-//               │       14 Pointer Regex Detectors        │
-//               └────────────────────┬────────────────────┘
-//                                    │
-//            ┌───────────────────────┴───────────────────────┐
-//            ▼                                               ▼
-//   [Positive Fixtures]                             [Negative Lookalikes]
-//   (e.g. coordinates, numbers)                     (e.g. text data, runes)
-//            │                                               │
-//            ▼                                               ▼
-//   Evaluate matchingDetectors(line)                Evaluate matchingDetectors(line)
-//            │                                               │
-//            ▼                                               ▼
-//   Must match TARGET detector!                     Must match ZERO detectors!
-//   ├── len(got) == 0: FAIL (Blind detector)        └── len(got) > 0: FAIL (False positive)
-//   ├── Wrong detector: FAIL (Accidental catch)
-//   └── Exact match: PASS (Sensitive)
+//	            ┌─────────────────────────────────────────┐
+//	            │       14 Pointer Regex Detectors        │
+//	            └────────────────────┬────────────────────┘
+//	                                 │
+//	         ┌───────────────────────┴───────────────────────┐
+//	         ▼                                               ▼
+//	[Positive Fixtures]                             [Negative Lookalikes]
+//	(e.g. coordinates, numbers)                     (e.g. text data, runes)
+//	         │                                               │
+//	         ▼                                               ▼
+//	Evaluate matchingDetectors(line)                Evaluate matchingDetectors(line)
+//	         │                                               │
+//	         ▼                                               ▼
+//	Must match TARGET detector!                     Must match ZERO detectors!
+//	├── len(got) == 0: FAIL (Blind detector)        └── len(got) > 0: FAIL (False positive)
+//	├── Wrong detector: FAIL (Accidental catch)
+//	└── Exact match: PASS (Sensitive)
 //
 // BIDIRECTIONAL COMPLETENESS CHECK:
-//   pointerPatterns (14) <══════════ [1:1 Mirror] ══════════> detectorFixtures (14)
-//   - Every declared detector MUST have fixtures.
-//   - Every fixture entry MUST map to an actively declared detector.
+//
+//	pointerPatterns (14) <══════════ [1:1 Mirror] ══════════> detectorFixtures (14)
+//	- Every declared detector MUST have fixtures.
+//	- Every fixture entry MUST map to an actively declared detector.
 var detectorFixtures = map[string]struct {
 	positive []string // must be counted, and by THIS detector
 	negative []string // must be counted by NO detector
