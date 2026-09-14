@@ -186,6 +186,18 @@ func (h *OverlayHost) Init(ctx *tui.Context) {
 		}
 		h.Stack.Add(ev.layer)
 	})
+	tui.SubscribeScoped(ctx, func(ev anchoredOpenEvent) {
+		// A failure here has nobody to return to: the publisher is long gone by
+		// the time this drains. Publishing the refusal keeps it observable
+		// rather than swallowing it, and a panic would take the loop down for
+		// something a consumer can legitimately get wrong.
+		if err := h.OpenAnchored(ev.id, ev.layer, ev.spec, ev.policy); err != nil {
+			ctx.Bus().Publish(AnchoredOpenFailedEvent{Layer: ev.id, Err: err})
+		}
+	})
+	tui.SubscribeScoped(ctx, func(ev anchoredCloseEvent) {
+		h.CloseAnchored(ev.id, ev.reason)
+	})
 	tui.SubscribeScoped(ctx, func(ev overlayCloseEvent) {
 		if ev.layer == nil || !h.hasLayer(ev.layer) {
 			return

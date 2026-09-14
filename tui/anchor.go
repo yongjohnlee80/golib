@@ -76,6 +76,18 @@ func (c *Context) DeclareRegion(id RegionID, local Rect) AnchorRef {
 		c.node.regions = make(map[RegionID]Rect)
 	}
 	c.node.regions[id] = local
+	return c.RegionAnchor(id)
+}
+
+// RegionAnchor returns an anchor for one of this node's regions WITHOUT
+// declaring it.
+//
+// Declaring happens during Layout, when the owner knows where its rows are; an
+// anchor is usually wanted later, from a handler deciding to open a popup. That
+// handler has no geometry to declare and must not invent any — so it names the
+// region and lets resolution fail later if the row is no longer laid out, which
+// is exactly the anchor-loss path rather than a special case.
+func (c *Context) RegionAnchor(id RegionID) AnchorRef {
 	return AnchorRef{owner: c.node.id, region: id, gen: c.node.anchorGen}
 }
 
