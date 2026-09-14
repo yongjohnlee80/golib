@@ -72,8 +72,8 @@ They could have been bash scripts or custom CI linters. They are standard Go tes
 
 Not every guard uses all three patterns — fixture controls (`comment_detectors_test.go`, `panic_identity_test.go`) have neither ledgers nor exemptions. These patterns are deployed where applicable to prevent silent test erosion and vacuous passes:
 
-### 1. Fails Vacuously Loudly (`minWalked`)
-Guards driven by directory walks (`comment_budget`, `panic_budget`, `promotion_test`) enforce a minimum threshold of discovered source files (`minWalked`). A broken walk path or misconfigured filter that matches zero files would otherwise report a falsely clean tree:
+### 1. Fails Vacuously Loudly (`minWalked` and Non-Empty Censuses)
+Guards that walk the source tree (`comment_budget`, `promotion_test`) enforce a minimum threshold of discovered source files (`minWalked`). A broken walk path or misconfigured filter that matches zero files would otherwise report a falsely clean tree:
 
 ```go
 if walked < sc.minWalked {
@@ -82,7 +82,7 @@ if walked < sc.minWalked {
 }
 ```
 
-Similarly, the panic census fails if no panic sites are discovered, and the comment-migration check refuses to pass on an empty git diff.
+Separately, `panic_budget` requires a non-empty panic-site census (`"census found no panic sites at all — the instrument is broken, not the tree clean"`), and the comment-migration check (`commentsonly_test.go`) refuses to pass on an empty git diff (`"there is nothing to check, which is not a pass"`).
 
 ### 2. Exact Ledger Matching vs. Review-Only Ratchet
 Ledger-backed guards assert **exact equality** with recorded counts, rather than a ceiling. If an improvement reduces the count in a file, the guard fails until the ledger is lowered:
@@ -219,7 +219,7 @@ OuterStruct (Embeds Base)                BaseStruct
 
 Guards against documentation drift in event routing architecture. Mechanically asserts that `tui/doc.go`, `tui/README.md`, `tui/widget/doc.go`, `tui/widget/README.md`, and `tui/tutorial/04-events-focus-keys.md` contain required routing vocabulary and omit the specific obsolete sentence claiming raw handlers run before resolution.
 
-The runtime event routing sequence enforced across documentation is the **bounded per-node walk**:
+The runtime event routing sequence the documents are **expected to describe** (which the test monitors via required vocabulary and banned obsolete claims) is the **bounded per-node walk**:
 1. **Target Selection**: Key/UserEvent targets the confined focused node (within active trapping scope ceiling); pointer input targets the hit-test node; `CaptureRaw` targets the active capture node (direct dispatch without bubbling); `CaptureGesture` routes directly to the active gesture recognizer.
 2. **Per-Node Sequence (`routeToNode` on `n`)**:
    - **Pointer Policy Gate**: If pointer-derived and effective pointer policy is `PointerDisabled`, skips `n` entirely and continues to parent.
@@ -227,7 +227,7 @@ The runtime event routing sequence enforced across documentation is the **bounde
    - **Semantic Action Dispatch**: Delivers to `ActionHandler.HandleAction`. If unhandled and action is concrete `ActivateAction` (or `*ActivateAction`), falls back to `Activatable.Activate` and publishes `ControlActivatedEvent`.
    - **Raw Delivery**: If no action was produced or the action went unhandled, delivers raw `HandleEvent` to the same node `n` (semantic delivery comes first).
 3. **Walk Continuation**: If unconsumed, bubbles up `n.parent` up to the active trapping scope ceiling (`confinement()`).
-4. **Post-Walk Fallbacks**: Global key bindings for unconsumed key events; eligible unconsumed primary press falls through to the Gesture Recognizer (only if target is `Activatable`, availability is active, and pointer policy is enabled).
+4. **Post-Walk Fallbacks**: Global key bindings (`App.globalKey`) for unconsumed `KeyEvent`s; unconsumed `UserEvent`s are dropped (no post-walk fallback); eligible unconsumed primary press falls through to the Gesture Recognizer (only if target is `Activatable`, availability is active, and pointer policy is enabled).
 
 ---
 
