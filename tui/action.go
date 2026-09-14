@@ -307,6 +307,52 @@ func (c *Context) DoAction(a Action) bool {
 	})
 }
 
+// ForwardAction dispatches a to a DESCENDANT of this node, carrying the
+// provenance of the invocation currently being delivered to this node.
+//
+// WHY THIS EXISTS. A composite frequently has to make a child act on the user's
+// behalf: Escape on a dialog must mean exactly what pressing its Cancel button
+// means. Calling the child's own Activate directly runs its callback and stops
+// there — the runtime is the sole publisher of ControlActivatedEvent, so an
+// observer counting activations never sees it, and "Escape is the same as
+// pressing the button" becomes a claim the code does not keep. Routing through
+// the runtime instead makes the two paths one path.
+//
+// WHY IT TAKES NO ORIGIN. Origin is the runtime's record of what the USER did,
+// and a value a consumer can pass is a value a consumer can forge — a
+// programmatic call could then be indistinguishable from a keypress in
+// everything that reads provenance. So the origin is not a parameter: it is
+// taken from the invocation the runtime is delivering right now, which is why
+// this is legal only from inside HandleAction and returns false anywhere else.
+//
+// The target must be a descendant of this node. Forwarding to an arbitrary node
+// would let any component act in another's name with borrowed provenance, which
+// is the hole the handler-identity rule already closes for capture.
+//
+// It does not bubble: the caller named the node it meant. A nil action, an
+// unmounted target, or a target outside this subtree returns false and does
+// nothing.
+func (c *Context) ForwardAction(target Component, a Action) bool {
+	if isNilLike(a) || target == nil {
+		return false
+	}
+	app := c.app
+	if app.handlerNode != c.node.id {
+		// Not inside this node's own HandleAction, so there is no invocation to
+		// take provenance from. Refusing beats inventing one.
+		return false
+	}
+	tn := app.byComp[target]
+	if tn == nil || !tn.mounted || tn == c.node || !withinScope(tn, c.node) {
+		return false
+	}
+	return app.dispatchAction(tn, ActionInvocation{
+		Action: a,
+		Origin: app.handlerOrigin,
+		Source: app.handlerSource,
+	})
+}
+
 // dispatchAction is the ONE activation rule, used by every producer: key
 // resolvers, pointer resolvers, UserEvents, DoAction, and later the gesture
 // recogniser.
@@ -369,8 +415,17 @@ func (a *App) dispatchAction(n *node, inv ActionInvocation) bool {
 // the hole already closed on the event path.
 func (a *App) deliverAction(n *node, h ActionHandler, inv ActionInvocation) bool {
 	prev := a.handlerNode
+	prevOrigin, prevSource := a.handlerOrigin, a.handlerSource
 	a.handlerNode = n.id
-	defer func() { a.handlerNode = prev }()
+	// Recorded so Context.ForwardAction can carry this invocation's provenance
+	// to a child without the handler being able to state it — and restored on
+	// the way out, so a nested delivery cannot leave the outer one describing
+	// the wrong input.
+	a.handlerOrigin, a.handlerSource = inv.Origin, inv.Source
+	defer func() {
+		a.handlerNode = prev
+		a.handlerOrigin, a.handlerSource = prevOrigin, prevSource
+	}()
 	return h.HandleAction(inv)
 }
 

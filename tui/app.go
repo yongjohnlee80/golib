@@ -81,6 +81,18 @@ type App struct {
 	// belonging to node B and take the pointer in B's name.
 	handlerNode NodeID
 
+	// handlerOrigin and handlerSource are the provenance of the action
+	// invocation currently being delivered, kept so Context.ForwardAction can
+	// pass it to a child without the handler supplying it. Provenance a
+	// consumer can state is provenance a consumer can forge, so the only way to
+	// carry it is to read it back from the runtime that recorded it.
+	//
+	// Meaningful only while handlerNode names an action delivery; both are
+	// saved and restored around every delivery so a nested one cannot leave the
+	// outer invocation described by the wrong input.
+	handlerOrigin ActionOrigin
+	handlerSource Event
+
 	// initNode is the node whose Init is running, or 0 outside mounting. Like
 	// handlerNode it is an identity, because the setter it gates publishes a
 	// specific component's own default bindings.
@@ -97,6 +109,25 @@ type App struct {
 
 	focused    NodeID // 0 = none
 	scopeStack []scopeEntry
+
+	// batchDepth counts the nested Context.BatchTreeMutation calls currently
+	// executing, and batchRepair records that something inside one asked for a
+	// focus repair. Focus is a single global, so batching is APP-WIDE rather
+	// than per-node: two compositions mutating in one batch still share the one
+	// focused node, and a per-node depth would let each conclude it was the
+	// outermost and repair against the other's half-applied tree.
+	//
+	// Only focus repair and focusability revalidation are deferred. Capture
+	// loss, OnUnmount hooks and lifetime-context cancellation stay synchronous:
+	// they are safety-critical, and deferring them would strand resources for
+	// the length of the batch.
+	batchDepth  int
+	batchRepair bool
+
+	// pendingRepair records that a focus repair ran while its only candidates
+	// had not been laid out, and must be retried once the frame has run. See
+	// repairFocus's empty-scope branch.
+	pendingRepair bool
 
 	// Pointer capture. captureOwner is 0 when nobody holds the pointer.
 	// captureFocus is the focused node sampled at acquisition, which is what
@@ -477,6 +508,34 @@ func (a *App) repairInvisibleFocus() {
 	if n := a.nodes[a.focused]; n != nil && !n.visible() {
 		a.repairFocus()
 	}
+	a.retryDeferredFocusRepair()
+}
+
+// retryDeferredFocusRepair re-runs a repair that could not be satisfied before
+// this layout.
+//
+// Focusability requires a measure and a placement, so a repair triggered by a
+// mutation that MOUNTED new nodes runs against candidates that do not yet
+// qualify — a dialog replacing its buttons repairs into an empty scope and
+// leaves focus nowhere, even though the buttons appear on the very next frame.
+// Running the repair again after layout is what distinguishes "this scope has no
+// focusable" from "its focusables did not exist yet".
+//
+// It runs the same whole-scope revalidation as the immediate path, rather than a
+// bare repair, because the deferral has two causes and only one of them leaves
+// focus nowhere: a scope whose candidates were unborn, and a scope whose owner
+// nominated a control that had not been laid out while focus remained valid
+// elsewhere. A bare repair would fix the first and silently skip the second.
+//
+// Self-limiting: a scope that is genuinely empty, or a nominee that never
+// becomes visible, produces no repaint and therefore no further frame to retry
+// in. The flag is cleared before the retry, so one layout buys one attempt.
+func (a *App) retryDeferredFocusRepair() {
+	if !a.pendingRepair {
+		return
+	}
+	a.pendingRepair = false
+	a.revalidateFocus()
 }
 
 // applyCursor implements the real hardware cursor positioning invariant.

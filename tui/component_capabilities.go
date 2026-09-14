@@ -18,6 +18,33 @@ type Focusable interface {
 	AcceptsFocus() bool
 }
 
+// InitialFocusProvider lets a component nominate where focus should land inside
+// its own subtree, instead of accepting the runtime's document-order choice.
+//
+// The runtime's own repair rule is "the first focusable in document order". That
+// is the right default and it knows nothing about meaning: a dialog's
+// affirmative control is where a user expects to land, and which button that is
+// cannot be derived from position. Without this seam a dialog could only get its
+// preference honoured at the moment it opened, by reaching for focus itself —
+// and would lose it again on the next repair, because every later repair falls
+// back to document order.
+//
+// A nominee is VALIDATED before use, never trusted: it must be mounted,
+// currently accept focus, and lie inside BOTH the provider's own subtree and the
+// active focus scope. A nominee failing any check is ignored and the repair
+// falls back to document order, because a provider that nominates something
+// ineligible must not be able to leave focus nowhere.
+//
+// It is consulted ONCE per repair. The nominee is used as given and never
+// re-consulted, so a nomination cannot recurse or chain into a loop.
+type InitialFocusProvider interface {
+	Component
+	// InitialFocus returns the component focus should move to, and whether there
+	// is a nomination at all. Returning (nil, true) is treated as no
+	// nomination — a claim the provider cannot supply is not a nomination.
+	InitialFocus() (Component, bool)
+}
+
 // Container is the public child-management contract for composite layout widgets
 // (such as Flex, Dock, Stack, and composite widget panels).
 //
