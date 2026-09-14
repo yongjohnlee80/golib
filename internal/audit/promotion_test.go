@@ -37,7 +37,48 @@ import (
 // reach for the receiver — pass the dialect, so the caller's own QuoteIdent
 // does the work. See dao.StandardUpsertSuffix.
 //
+// METHOD SHADOWING & STATIC DISPATCH DEFECT:
+//
+//   OuterStruct (Embedder)                   BaseStruct (Embedded)
+//   ┌───────────────────────────┐            ┌───────────────────────────┐
+//   │ Overrides Callee()        │            │ Caller()                  │
+//   │ Inherits Caller()         │            │ Callee()                  │
+//   └─────────────┬─────────────┘            └─────────────┬─────────────┘
+//                 │                                        │
+//                 │ outer.Caller()                         │
+//                 └───────────────────────────────────────►│ Base.Caller() executes:
+//                                                          │   b.Callee()  <── STATIC CALL!
+//                                                          │       │
+//                                                          │       ▼
+//                                                          │ Calls Base.Callee()!
+//                                                          │ (Outer's override is ignored!)
+//
+// PROMOTION AUDIT SCANNER & CLASSIFIER:
+//
+//   [All Repo AST Files]
+//            │
+//            ├── 1. Build Type & Method Catalog
+//            │      - Track struct definitions and embedding relationships
+//            │      - Index all methods with normalized signatures
+//            │
+//            ├── 2. Detect Base Receiver Self-Calls
+//            │      - Method Base.Caller calls b.Callee where b is Base receiver
+//            │
+//            └── 3. Classify Against Embedders
+//                   │
+//                   ├── LIVE DEFECT:
+//                   │   An outer type overrides Callee, but inherits Caller.
+//                   │   Runtime defect in active code!
+//                   │   ──► ALWAYS FAILS (Capped at 0, never allowlisted)
+//                   │
+//                   └── LATENT DEFECT:
+//                       Embedder overrides both, or inherits both.
+//                       Fragile debt: one override away from LIVE defect!
+//                       ──► Checked against testdata/promotion_selfcalls.txt
+//                           (Allowlist may only shrink)
+//
 // The allowlist below may only SHRINK.
+
 
 const promotionBudget = "testdata/promotion_selfcalls.txt"
 

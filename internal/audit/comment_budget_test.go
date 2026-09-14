@@ -40,6 +40,55 @@ import (
 // considered and rejected as too churn-prone for a thousand sites whose text is
 // being rewritten anyway. The protection that matters is the zero-freeze, and
 // the destination is a budget file with nothing in it.
+//
+// ARCHITECTURAL FLOW:
+//
+//   [Source Repository (.go files)]
+//                 │
+//                 ▼
+//   ┌───────────────────────────┐
+//   │ Scope Partitioning        │ ──► production (wantTests: false)
+//   │ filepath.WalkDir          │ ──► tests      (wantTests: true)
+//   └─────────────┬─────────────┘
+//                 │
+//                 ▼
+//   ┌───────────────────────────┐
+//   │ AST Parser (go/parser)    │ ──► ParseComments: true
+//   │ Extract CommentGroup.List │ ──► Filter out "//go:" directives
+//   └─────────────┬─────────────┘
+//                 │
+//                 ▼
+//   ┌───────────────────────────┐
+//   │ Line-Level Pattern Match  │ ──► Matches against 14 pointerPatterns
+//   │ (Deduplicated per line)   │ ──► Counts "lines needing rewrite" per file
+//   └─────────────┬─────────────┘
+//                 │
+//                 ▼
+//   ┌───────────────────────────┐
+//   │ Exemption Check & Filter  │ ──► Verify file exists on disk
+//   │ (Premise & Liveness)      │ ──► Verify AST declares premise identifier
+//   └─────────────┬─────────────┘ ──► Verify file still has active matches (liveness)
+//                 │                   (Remove exempt file from final count map)
+//                 ▼
+//   ┌───────────────────────────┐
+//   │ Vacuity Guard             │ ──► walked >= minWalked (prevents false passes)
+//   └─────────────┬─────────────┘
+//                 │
+//                 ▼
+//   ┌───────────────────────────┐
+//   │ Exact Ledger Comparison   │ ──► Read testdata/comment_budget*.txt
+//   └─────────────┬─────────────┘
+//                 │
+//        ┌────────┴──────────────────────────┐
+//        ▼                                   ▼
+//   [actual > budget]                   [actual < budget]
+//   REGRESSION: new pointer added       STALE LEDGER: ratchet improvement
+//   Action: Rewrite in plain language   Action: Lower number in ledger file
+//        │                                   │
+//        ▼                                   ▼
+//   [unlisted file with actual > 0]     [actual == budget == 0]
+//   FROZEN ZERO VIOLATION               SUCCESS: Clean repository
+
 
 // A scope is one half of the repository, each with its own budget that falls
 // independently. They are separate because they were migrated separately and
@@ -153,6 +202,26 @@ var pointerPatterns = []struct {
 // "pointerPatterns" with a name nothing declares still PASSED, because the
 // replacement was itself now written in the file being searched. A declaration
 // name cannot be faked by a string literal.
+//
+// AST PREMISE DISCRIMINATION FLOW:
+//
+//   Target Path + Premise Symbol Name
+//                 │
+//                 ▼
+//        go/parser.ParseFile (SkipObjectResolution)
+//                 │
+//                 ▼
+//        Walk f.Decls (Top-level declarations only)
+//        ├── *ast.FuncDecl:
+//        │     └── decl.Name.Name == premise? ──────────► [MATCH: Valid]
+//        └── *ast.GenDecl:
+//              ├── *ast.ValueSpec (var / const):
+//              │     └── id.Name == premise? ───────────► [MATCH: Valid]
+//              └── *ast.TypeSpec (type):
+//                    └── sp.Name.Name == premise? ──────► [MATCH: Valid]
+//                 │
+//                 ▼
+//     No declaration matched AST symbol ────────────────► [REJECT: Invalid Premise]
 func declaresTopLevel(t *testing.T, path, name string) bool {
 	t.Helper()
 	f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
@@ -204,6 +273,20 @@ func declaresTopLevel(t *testing.T, path, name string) bool {
 // nothing to exempt is not dormant, it is a standing pre-authorisation for
 // whatever gets written under that name next. Silence becomes assent. So a
 // clean exempted file FAILS here, and the fix is to delete the entry.
+//
+// NAMED EXEMPTION VERIFICATION TRIAD:
+//
+//   Scope Exemption Entry: [Relative Path -> Premise Symbol]
+//                 │
+//                 ├── 1. Existence Check: os.Stat(abs)
+//                 │      └── File gone? ─────────────► FAIL: Exemption for missing file
+//                 │
+//                 ├── 2. Premise Verification: declaresTopLevel(abs, premise)
+//                 │      └── Symbol missing? ────────► FAIL: Exemption premise broken
+//                 │
+//                 └── 3. Liveness Check: rawHits[rel] > 0
+//                        └── Zero matches? ──────────► FAIL: Dead exemption must be deleted
+
 func checkExemptions(t *testing.T, sc scope, root string, hits map[string]int) {
 	t.Helper()
 	for rel, premise := range sc.exempt {
@@ -339,6 +422,15 @@ func readBudget(t *testing.T, sc scope) map[string]int {
 	return out
 }
 
+// EXACT LEDGER RATCHET DECISION TABLE:
+//
+//   File Status in Ledger  Actual vs Budget  Outcome    Action Required
+//   ────────────────────────────────────────────────────────────────────────────
+//   Listed (budget > 0)    actual > budget   FAIL       Regression: new pointer introduced
+//   Listed (budget > 0)    actual < budget   FAIL       Stale Ledger: lower budget to actual
+//   Unlisted (budget == 0) actual > 0        FAIL       Zero-Freeze Violation: revert or rewrite
+//   Listed (budget > 0)    actual == 0       FAIL       Stale Line: delete line from ledger
+//   Any                    actual == budget  PASS       Matches ratchet target
 func assertCommentBudget(t *testing.T, sc scope) {
 	t.Helper()
 	actual, walked := commentViolations(t, sc)

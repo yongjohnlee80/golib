@@ -17,6 +17,42 @@ import (
 // tell whether an explanation is good; it can tell whether a surface still
 // mentions the stage it is required to describe, which is the failure that
 // actually happened.
+//
+// EVENT INTERPRETATION PIPELINE VS DOC SYNCHRONIZATION:
+//
+//   Incoming Key / Mouse Event (Lane A)
+//                  │
+//                  ▼
+//   ┌──────────────────────────────────────────────┐
+//   │ 1. Keymap Resolution (Scope & App Resolvers) │ ◄── MUST BE DOCUMENTED
+//   │    Resolves KeyEvent to Action               │     ("resolver")
+//   └──────────────────────┬───────────────────────┘
+//                          │
+//         ┌────────────────┴────────────────┐
+//         ▼ Action Resolved                 ▼ No Action (Fallthrough)
+//   ┌───────────────────────────┐     ┌───────────────────────────┐
+//   │ 2. HandleAction Dispatch  │     │ 3. Raw HandleEvent        │ ◄── ("not first!")
+//   │    (Activatable Widgets)  │     │    (Focused Node)         │
+//   └─────────────┬─────────────┘     └─────────────┬─────────────┘
+//                 │                                 │
+//                 │ Handled                         ▼ Returns false
+//                 ▼                   ┌───────────────────────────┐
+//              [Done]                 │ 4. Bubble Ancestor Path   │
+//                                     └─────────────┬─────────────┘
+//                                                   │
+//                                                   ▼ Unconsumed
+//                                     ┌───────────────────────────┐
+//                                     │ 5. Gesture Recognizer     │ ◄── ("gesture",
+//                                     │    (Pointer & Drag Policy)│      "CaptureGesture")
+//                                     └───────────────────────────┘
+//
+// DOCUMENTATION SURFACES MONITORED:
+//   - tui/doc.go
+//   - tui/README.md
+//   - tui/tutorial/04-events-focus-keys.md
+//   - tui/widget/doc.go
+//   - tui/widget/README.md
+
 
 // docRequirement is one documentation surface and the terms it must carry.
 type docRequirement struct {
