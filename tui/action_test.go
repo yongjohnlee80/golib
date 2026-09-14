@@ -1163,3 +1163,116 @@ func TestTypedNilsAreRejectedEverywhereTheyCanEnter(t *testing.T) {
 		h.onLoop(func() { h.app.byComp[ac].ctx.SetActionResolvers() })
 	})
 }
+
+// TestBothActivateActionFormsReachActivatable.
+//
+// ActivateAction.ActionID has a value receiver, so &ActivateAction{} satisfies
+// Action exactly as ActivateAction{} does and reports the same id. A consumer
+// resolver returning the pointer form, or a caller passing one to DoAction, is
+// doing something entirely legal — so the same published action must not behave
+// differently according to how it was allocated.
+//
+// Table-driven over BOTH producers, because the two reach dispatchAction by
+// different routes and an arm added for one would not necessarily serve the
+// other.
+func TestBothActivateActionFormsReachActivatable(t *testing.T) {
+	forms := []struct {
+		name string
+		act  Action
+	}{
+		{"value", ActivateAction{}},
+		{"pointer", &ActivateAction{}},
+	}
+
+	for _, f := range forms {
+		t.Run(f.name+" via a key resolver", func(t *testing.T) {
+			root := &counter{size: Size{W: 20, H: 4}}
+			ac := &activateOnly{size: Size{W: 20, H: 4}}
+			root.Add(ac)
+
+			h := startApp(t, root, 20, 4)
+			defer h.wait()
+			h.sync()
+			h.onLoop(func() {
+				h.app.byComp[ac].ctx.SetActionResolvers(ActionResolverFunc(
+					func(ev Event) (Action, bool) {
+						if _, ok := ev.(KeyEvent); ok {
+							return f.act, true
+						}
+						return nil, false
+					}))
+				h.app.requestFocus(h.app.byComp[ac])
+			})
+			h.sync()
+
+			h.inject(keyEv('\r'))
+			waitFor(t, "activation", func() bool { return ac.activations.Load() == 1 })
+			h.sync()
+
+			if got := ac.activations.Load(); got != 1 {
+				t.Errorf("activations = %d, want exactly 1", got)
+			}
+			if got := ac.lastOrigin(); got != OriginKey {
+				t.Errorf("origin = %v, want %v", got, OriginKey)
+			}
+		})
+
+		t.Run(f.name+" via DoAction", func(t *testing.T) {
+			root := &counter{size: Size{W: 20, H: 4}}
+			ac := &activateOnly{size: Size{W: 20, H: 4}}
+			root.Add(ac)
+
+			h := startApp(t, root, 20, 4)
+			defer h.wait()
+			h.sync()
+
+			var ok bool
+			h.onLoop(func() { ok = h.app.byComp[ac].ctx.DoAction(f.act) })
+			h.sync()
+
+			if !ok {
+				t.Errorf("DoAction(%s form) returned false; both forms are legal Actions "+
+					"and must reach the Activatable fallback", f.name)
+			}
+			if got := ac.activations.Load(); got != 1 {
+				t.Errorf("activations = %d, want exactly 1", got)
+			}
+			if got := ac.lastOrigin(); got != OriginProgrammatic {
+				t.Errorf("origin = %v, want %v", got, OriginProgrammatic)
+			}
+		})
+	}
+}
+
+// TestATypedNilActivateActionIsStillRejected. Widening the switch to accept the
+// pointer form must not widen it to accept a nil one: the nil-like gates at
+// DoAction and at a matching resolver are what keep that out, and this pins
+// that they still do.
+func TestATypedNilActivateActionIsStillRejected(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	ac := &activateOnly{size: Size{W: 20, H: 4}}
+	root.Add(ac)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	var got bool
+	var fatal *errs.Fatal
+	h.onLoop(func() {
+		var typed *ActivateAction
+		fatal = fatalFrom(func() { got = h.app.byComp[ac].ctx.DoAction(typed) })
+	})
+	h.sync()
+
+	if fatal != nil {
+		t.Errorf("DoAction(typed-nil *ActivateAction) panicked (%v); a nil action is a "+
+			"no-op, not a contract breach", fatal.Rule)
+	}
+	if got {
+		t.Error("DoAction reported handled for a typed-nil action")
+	}
+	if n := ac.activations.Load(); n != 0 {
+		t.Errorf("a typed-nil action activated the component %d time(s)", n)
+	}
+}
