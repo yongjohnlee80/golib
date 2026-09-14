@@ -261,6 +261,12 @@ func (a *App) repairFocus() {
 		a.trace(TraceEvent{Kind: TraceFocusRepair, Prev: a.focused,
 			Detail: "no focusable in scope"})
 		a.focused = 0
+		// This assignment bypasses setFocus, so the capture check setFocus
+		// performs has to be repeated here. This is the FINAL result of the
+		// repair, not the temporary zero the unmount path writes before it has
+		// chosen a restore target, so a loss decided here is decided once and
+		// against the focus the tree actually ended up with.
+		a.captureCheckFocus()
 		return
 	}
 	a.trace(TraceEvent{Kind: TraceFocusRepair, Node: ring[0].id, Prev: a.focused,

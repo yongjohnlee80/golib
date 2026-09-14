@@ -224,10 +224,17 @@ func (a *App) dispatch(ev Event) {
 		// and published on the Bus. Component focus changes do not pass through
 		// dispatch — setFocus bubbles them directly.
 		//
-		// The WINDOW losing focus ends any capture. No further motion or
-		// release is coming while another window has the pointer, so the owner
-		// would otherwise be left mid-drag with no event able to finish it.
-		if !e.Gained {
+		// The TERMINAL WINDOW losing focus ends any capture. No further motion
+		// or release is coming while another window has the pointer, so the
+		// owner would otherwise be left mid-drag with no event able to finish
+		// it.
+		//
+		// Terminal is required, not just Gained==false. FocusEvent carries both
+		// component focus and terminal focus, and only the terminal kind means
+		// input has stopped arriving; treating a component focus-loss as a
+		// backend loss would cancel drags for a reason that never happened and
+		// report the wrong one.
+		if e.Terminal && !e.Gained {
 			a.loseCapture(CaptureLostBackend)
 		}
 		if n := a.nodes[a.focused]; n != nil {
@@ -428,9 +435,9 @@ func (a *App) deliverCaptured(e MouseEvent) bool {
 // synchronously. Restoring the previous value rather than clearing outright
 // keeps the flag true for the remainder of the outer handler.
 func (a *App) deliverTo(n *node, ev Event) bool {
-	prev := a.inHandler
-	a.inHandler = true
-	defer func() { a.inHandler = prev }()
+	prev := a.handlerNode
+	a.handlerNode = n.id
+	defer func() { a.handlerNode = prev }()
 	return n.comp.HandleEvent(ev)
 }
 

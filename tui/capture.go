@@ -129,10 +129,18 @@ func (PointerCaptureLostEvent) isEvent() {}
 // idempotent and returns true.
 func (c *Context) CapturePointer() bool {
 	a := c.app
-	if !a.inHandler {
+	// The running handler must be THIS node's. A Context outlives the handler
+	// that was given it, so a component holding a reference to another's could
+	// otherwise take the pointer in that node's name from inside its own
+	// handler — and every loss check would then be measured against the wrong
+	// subtree. Checking identity rather than "some handler is running" is what
+	// makes the promise in this method's doc comment true.
+	if a.handlerNode != c.node.id {
 		panic(errs.Fatal{
 			Op:   "tui: Context.CapturePointer",
-			Rule: "legal only while this component's HandleEvent is running",
+			Rule: "legal only while this component's own HandleEvent is running",
+			Detail: fmt.Sprintf("requested for node %d while node %d is handling",
+				c.node.id, a.handlerNode),
 		})
 	}
 	if !c.node.mounted {
@@ -201,16 +209,39 @@ func (c *Context) HasPointerCapture() bool {
 	return c.app.captureOwner == c.node.id
 }
 
-// assertReleasablePhase rejects the phases in which ending a capture is
-// meaningless or unsafe. Layout and Render must not mutate dispatch state, and
-// Init runs before the node can possibly hold a capture.
+// assertReleasablePhase admits the phases in which ending a capture is
+// meaningful and safe, and rejects everything else.
+//
+// The legal set is stated POSITIVELY. An earlier version listed the forbidden
+// phases instead and named only Layout and Render, which silently admitted two
+// more: Init, where the node cannot yet hold a capture at all, and any callback
+// reached outside an Update — including one running on another goroutine, where
+// touching loop-owned capture state is a data race rather than merely a
+// contract breach. A negative list has to be complete to be correct, and this
+// one was not.
+//
+// A handler or an Update callback is currently the whole legal set. The action
+// and commit phases join it when those layers exist.
+//
+// Layout and Render VETO regardless of what encloses them. They are always
+// reached from somewhere — usually an Update or a handler — so treating the
+// admitting phases as sufficient would let a Layout that an Update triggered
+// mutate dispatch state mid-walk. Being inside a legal phase is necessary, not
+// sufficient.
 func (a *App) assertReleasablePhase(op string) {
 	if a.inLayout || a.inRender {
 		panic(errs.Fatal{
 			Op:   fmt.Sprintf("tui: Context.%s", op),
-			Rule: "illegal inside Layout or Render",
+			Rule: "illegal inside Layout or Render, which must not mutate dispatch state",
 		})
 	}
+	if a.handlerNode != 0 || a.updateDepth > 0 {
+		return
+	}
+	panic(errs.Fatal{
+		Op:   fmt.Sprintf("tui: Context.%s", op),
+		Rule: "legal only from a component's HandleEvent or an App.Update callback",
+	})
 }
 
 // setCapture records a new owner. Callers have already checked eligibility.
@@ -225,16 +256,23 @@ func (a *App) setCapture(owner NodeID, kind CaptureKind) {
 	a.trace(TraceEvent{Kind: TraceCapture, Node: owner, Detail: "pointer captured"})
 }
 
-// clearCapture forgets the capture without telling anyone, which is what an
-// explicit release wants.
+// resetCapture drops the capture state and says nothing. It is shared by the
+// explicit and involuntary paths so that each can emit its OWN trace record and
+// only that one.
+func (a *App) resetCapture() {
+	a.captureOwner = 0
+	a.captureKind = CaptureRaw
+	a.captureFocus = 0
+}
+
+// clearCapture forgets the capture without telling the owner, which is what an
+// explicit release wants, and records that a release is what happened.
 func (a *App) clearCapture() {
 	if a.captureOwner == 0 {
 		return
 	}
 	a.trace(TraceEvent{Kind: TraceCapture, Node: a.captureOwner, Detail: "pointer released"})
-	a.captureOwner = 0
-	a.captureKind = CaptureRaw
-	a.captureFocus = 0
+	a.resetCapture()
 }
 
 // loseCapture ends a capture involuntarily and notifies the owner exactly once.
@@ -250,7 +288,10 @@ func (a *App) loseCapture(reason CaptureLostReason) {
 		return
 	}
 	n := a.nodes[owner]
-	a.clearCapture()
+	// resetCapture, not clearCapture: the owner did NOT release, and emitting a
+	// "released" record here put an event on the trace that never happened,
+	// directly before the record explaining what actually did.
+	a.resetCapture()
 	a.trace(TraceEvent{Kind: TraceCapture, Node: owner,
 		Detail: "pointer capture lost: " + reason.String()})
 	if n != nil && n.mounted {
@@ -273,14 +314,29 @@ func (a *App) captureLostOnUnmount(n *node) {
 // Focus moving WITHIN the subtree does not end it: a drag begun on a divider
 // while one of the panes it separates holds focus must survive focus moving
 // between those panes, which is an ordinary consequence of the drag itself.
+//
+// The sampled focus taken at acquisition is the transition state this compares
+// against, and a retained in-subtree move RE-BASELINES it. Without that the
+// sample would only ever describe the instant the drag began, and the field
+// would be written and never read — which is what it was.
+//
+// Focus becoming nothing at all counts as leaving. A non-focusable owner — a
+// divider, a resize grip — is the case that makes this matter: its only focused
+// descendant can be removed, leaving focus genuinely outside the subtree with
+// no new node to point at.
 func (a *App) captureCheckFocus() {
 	owner := a.nodes[a.captureOwner]
 	if owner == nil {
 		return
 	}
-	if fn := a.nodes[a.focused]; fn == nil || !withinScope(fn, owner) {
-		a.loseCapture(CaptureLostFocusChange)
+	if a.focused == a.captureFocus {
+		return // focus did not actually move
 	}
+	if fn := a.nodes[a.focused]; fn != nil && withinScope(fn, owner) {
+		a.captureFocus = a.focused
+		return
+	}
+	a.loseCapture(CaptureLostFocusChange)
 }
 
 // captureCheckScope ends a capture whose owner a newly active trapping scope
