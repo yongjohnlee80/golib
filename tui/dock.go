@@ -102,7 +102,7 @@ func (d *Dock) Layout(c Constraints) Size {
 	}
 	rem := Rect{X: 0, Y: 0, W: w, H: h}
 
-	for _, it := range d.Items() {
+	for _, it := range d.All() {
 		// Center children have NO edges entry — a zero-value lookup would
 		// read as DockTop (0); unpin by presence, not by value.
 		edge, pinned := d.edges[it]
@@ -130,7 +130,7 @@ func (d *Dock) Layout(c Constraints) Size {
 			rem.W -= sz.W
 		}
 	}
-	for _, it := range d.Items() {
+	for _, it := range d.All() {
 		if _, pinned := d.edges[it]; pinned {
 			continue
 		}
