@@ -105,7 +105,7 @@ func (s *Stack) setLayer(child Component, l stackLayer) {
 func (s *Stack) Layout(c Constraints) Size {
 	w, h := c.MaxW, c.MaxH
 	maxW, maxH := 0, 0
-	for _, it := range s.Items() {
+	for _, it := range s.All() {
 		sz := s.Ctx().LayoutChild(it, Loose(Size{W: w, H: h}))
 		l := s.layers[it] // zero value = AlignTopLeft
 		var x, y int

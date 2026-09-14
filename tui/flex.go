@@ -90,13 +90,13 @@ func (f *Flex) Layout(c Constraints) Size {
 		mainMax, crossMax = c.MaxH, c.MaxW
 	}
 
-	sizes := make([]Size, len(f.Items()))
+	sizes := make([]Size, f.Len())
 
 	// Pass 1 — fixed children: loose main-axis constraints, tight cross
 	// (stretch), each measured extent consumed from the remainder.
 	used := 0
 	wsum := 0
-	for i, it := range f.Items() {
+	for i, it := range f.All() {
 		w := f.weights[it]
 		if w > 0 {
 			wsum += w
@@ -116,11 +116,11 @@ func (f *Flex) Layout(c Constraints) Size {
 	// ties broken by LOWEST child index (deterministic, gap-free).
 	if wsum > 0 && mainMax != Unbounded {
 		r := max(mainMax-used, 0)
-		shares := make(map[int]int, len(f.Items())) // item index → main-axis cells
+		shares := make(map[int]int, f.Len()) // item index → main-axis cells
 		type rem struct{ idx, rem int }
 		var rems []rem
 		assigned := 0
-		for i, it := range f.Items() {
+		for i, it := range f.All() {
 			w := f.weights[it]
 			if w == 0 {
 				continue
@@ -138,7 +138,7 @@ func (f *Flex) Layout(c Constraints) Size {
 		for i := 0; i < r-assigned; i++ {
 			shares[rems[i].idx]++
 		}
-		for i, it := range f.Items() {
+		for i, it := range f.All() {
 			if f.weights[it] == 0 {
 				continue
 			}
@@ -147,7 +147,7 @@ func (f *Flex) Layout(c Constraints) Size {
 	} else if wsum > 0 {
 		// Unbounded main axis: there is no remainder to split — weighted
 		// children size to content like fixed ones.
-		for i, it := range f.Items() {
+		for i, it := range f.All() {
 			if f.weights[it] == 0 {
 				continue
 			}
@@ -159,7 +159,7 @@ func (f *Flex) Layout(c Constraints) Size {
 	// Pass 3 — placement in declaration order along the main axis.
 	off := 0
 	cross := 0
-	for i, it := range f.Items() {
+	for i, it := range f.All() {
 		sz := sizes[i]
 		if horiz {
 			f.Ctx().PlaceChild(it, Rect{X: off, Y: 0, W: sz.W, H: sz.H})

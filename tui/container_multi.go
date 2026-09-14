@@ -118,7 +118,40 @@ func (m *MultiChild) Init(ctx *Context) {
 // Items exposes the children slice for the container's own Layout/Render —
 // read-only by convention: all mutation goes through Add/Remove/Move so
 // the framework mirror stays in sync.
+//
+// Deprecated: Items returns the live backing slice, so "read-only" rests on
+// convention rather than on the type — a caller can reorder or overwrite it
+// and bypass the Mount/Unmount/Move mirror entirely. Use [MultiChild.Len] and
+// [MultiChild.All], which cannot alias. Items is retained unchanged because no
+// repository search can prove there is no external caller; it is scheduled for
+// removal in a later deliberate break (ADR golib-tui-0011 §4, ledger 19).
 func (m *MultiChild) Items() []Component { return m.items }
+
+// Len reports how many children are mounted, in document order terms. It is
+// the aliasing-free replacement for len(Items()).
+func (m *MultiChild) Len() int { return len(m.items) }
+
+// All iterates the children in document order — which is also focus tab order
+// and painter's z-order — yielding each child with its index.
+//
+// It is the aliasing-free replacement for ranging over Items: the sequence
+// hands out no slice, so a consumer cannot reorder or overwrite the backing
+// storage and desynchronise the framework mirror. Index and child together
+// cover the callers that need position (see Flex), which a plain
+// iter.Seq[Component] could not.
+//
+// Stopping early (break, or a false yield) is safe and simply ends iteration.
+// Like [MultiChild.Items], All is a read view for the container's own
+// Layout/Render; mutating the tree while iterating is not supported.
+func (m *MultiChild) All() iter.Seq2[int, Component] {
+	return func(yield func(int, Component) bool) {
+		for i, c := range m.items {
+			if !yield(i, c) {
+				return
+			}
+		}
+	}
+}
 
 // Ctx returns the mount context (nil before mount), for the container's
 // LayoutChild/PlaceChild calls.
