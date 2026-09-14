@@ -79,6 +79,16 @@ import (
 //	// modalDialog.Show()
 type OverlayHost struct {
 	*tui.Stack
+
+	// modals is the open dialog stack, bottom to top. The host tracks it
+	// because "which dialog is topmost" is a question about global order that
+	// no individual dialog can answer about itself.
+	modals []*Modal
+	// scrim is the single backdrop layer, owned by whichever dialog is on top.
+	scrim *scrimLayer
+	// ctx is kept because the embedded Stack's own Context is private to the
+	// tui package; the host needs one to schedule the post-mount focus step.
+	ctx *tui.Context
 }
 
 var _ tui.Container = (*OverlayHost)(nil)
@@ -106,6 +116,7 @@ func (h *OverlayHost) Attach(f *Float) {
 // requests unmount it (which restores focus through the runtime's scope
 // stack —).
 func (h *OverlayHost) Init(ctx *tui.Context) {
+	h.ctx = ctx
 	h.Stack.Init(ctx)
 	tui.SubscribeScoped(ctx, func(ev overlayOpenEvent) {
 		h.Stack.Add(ev.layer)
@@ -113,4 +124,111 @@ func (h *OverlayHost) Init(ctx *tui.Context) {
 	tui.SubscribeScoped(ctx, func(ev overlayCloseEvent) {
 		h.Stack.Remove(ev.layer)
 	})
+}
+
+// --- Modal stacking ---
+//
+// The host owns stack ORDER, so it owns the two things that depend on it:
+// which dialog is topmost, and where the scrim goes. A Modal states whether it
+// wants a backdrop; it never asks whether it is the top one, because answering
+// that would mean reaching outside itself into global state.
+
+// openModal mounts a dialog as the topmost layer, with its scrim beneath it if
+// it asked for one, and moves focus into it.
+func (h *OverlayHost) openModal(m *Modal) {
+	// Exactly one scrim exists at a time, and it belongs to whichever dialog is
+	// on top. The one below is now covered, so its backdrop is removed before
+	// the new pair goes on.
+	h.dropScrim()
+
+	if m.wantScrim {
+		h.scrim = &scrimLayer{st: m.card.st}
+		h.Stack.Add(h.scrim)
+	}
+	h.modals = append(h.modals, m)
+	h.Stack.Add(m)
+
+	// Focus moves in after mounting, so the ring already contains the dialog's
+	// buttons when the target is chosen.
+	// Focus is moved in a scheduled step rather than inline: the dialog and its
+	// buttons have only just been added, so their nodes are not laid out yet
+	// and the focus ring would not contain them.
+	if h.ctx != nil {
+		h.ctx.App().Update(func() { m.focusInitial() })
+	}
+}
+
+// closeModal unmounts a dialog and restores the backdrop to whichever dialog is
+// left on top.
+func (h *OverlayHost) closeModal(m *Modal) {
+	h.dropScrim()
+	h.Stack.Remove(m)
+	for i, om := range h.modals {
+		if om == m {
+			h.modals = append(h.modals[:i], h.modals[i+1:]...)
+			break
+		}
+	}
+	// A dialog underneath becomes topmost, and gets its backdrop back. Without
+	// this, closing a stacked dialog would leave the one beneath it undimmed.
+	if n := len(h.modals); n > 0 {
+		top := h.modals[n-1]
+		if top.wantScrim {
+			h.scrim = &scrimLayer{st: top.card.st}
+			// Re-added BELOW the surviving dialog: remove and re-add it so the
+			// scrim lands underneath rather than on top of the dialog it dims.
+			h.Stack.Remove(top)
+			h.Stack.Add(h.scrim)
+			h.Stack.Add(top)
+		}
+	}
+}
+
+// dropScrim removes the current backdrop, if any.
+func (h *OverlayHost) dropScrim() {
+	if h.scrim == nil {
+		return
+	}
+	h.Stack.Remove(h.scrim)
+	h.scrim = nil
+}
+
+// TopModal reports the dialog currently on top, or nil when none is open.
+func (h *OverlayHost) TopModal() *Modal {
+	if n := len(h.modals); n > 0 {
+		return h.modals[n-1]
+	}
+	return nil
+}
+
+// focusInitial moves focus to the dialog's preferred starting control.
+//
+// The DEFAULT-role button is preferred unconditionally, not merely as a
+// tie-break: a dialog's affirmative action is where a user expects to land, and
+// choosing it only when nothing else qualified would make the preference depend
+// on button order. Failing that, the first enabled button; failing that, the
+// Modal itself, which is the target of last resort that keeps Escape reachable.
+func (m *Modal) focusInitial() {
+	for _, b := range m.card.buttons {
+		if b != nil && b.Enabled() && b.Role() == ButtonRoleDefault {
+			if ctx := b.Context(); ctx != nil {
+				ctx.RequestFocus()
+				m.refreshSelection()
+				return
+			}
+		}
+	}
+	for _, b := range m.card.buttons {
+		if b != nil && b.Enabled() {
+			if ctx := b.Context(); ctx != nil {
+				ctx.RequestFocus()
+				m.refreshSelection()
+				return
+			}
+		}
+	}
+	if ctx := m.Context(); ctx != nil {
+		ctx.RequestFocus()
+	}
+	m.selected = -1
 }
