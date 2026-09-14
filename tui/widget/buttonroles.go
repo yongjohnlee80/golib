@@ -40,7 +40,7 @@ var ErrRepeatedButton = errors.New("widget: repeated button")
 // ErrForeignButton reports a button already mounted somewhere else in the tree.
 var ErrForeignButton = errors.New("widget: button mounted elsewhere")
 
-// ButtonListError is what a runtime setter returns for a rejected list.
+// buttonListError is what a runtime setter returns for a rejected list.
 //
 // It answers to BOTH ErrInvalidButtonList and the specific sentinel for the
 // fault, because callers legitimately want either level: a form handler shows
@@ -49,21 +49,29 @@ var ErrForeignButton = errors.New("widget: button mounted elsewhere")
 // sentinel — which is what this package did — left the umbrella matching
 // nothing at all, so the general handler never ran and the failure read as an
 // unrelated error class.
-type ButtonListError struct {
-	// Kind is the specific sentinel: ErrNilButton, ErrRepeatedButton,
-	// ErrForeignButton or ErrDuplicateButtonRole.
-	Kind error
-	// Detail names the offending entries.
-	Detail string
+//
+// UNEXPORTED, and the published contract is the sentinels plus errors.Is rather
+// than this type. An exported struct with exported fields is a second, mutable
+// surface nobody asked for: its zero value panics on Error, a caller could
+// construct one that claims a fault this package never found, and it would owe
+// compatibility for fields that exist only to build one string. The sentinels
+// carry everything a caller can act on.
+type buttonListError struct {
+	// kind is the specific sentinel: ErrNilButton, ErrRepeatedButton,
+	// ErrForeignButton or ErrDuplicateButtonRole. Never nil — the single
+	// constructor below is the only way one of these exists.
+	kind error
+	// detail names the offending entries.
+	detail string
 }
 
 // Error renders the sentinel and the specifics together.
-func (e *ButtonListError) Error() string { return e.Kind.Error() + ": " + e.Detail }
+func (e *buttonListError) Error() string { return e.kind.Error() + ": " + e.detail }
 
 // Unwrap returns both identities. errors.Is walks every branch of a multi-error
 // unwrap, which is what lets one value answer to the umbrella and to its own
 // sentinel without the two competing for the single-error chain.
-func (e *ButtonListError) Unwrap() []error { return []error{ErrInvalidButtonList, e.Kind} }
+func (e *buttonListError) Unwrap() []error { return []error{ErrInvalidButtonList, e.kind} }
 
 // listFault describes a failed validation precisely enough for both adapters:
 // the error text and the panic detail are built from the same words.
@@ -97,7 +105,7 @@ func (f listFault) describe() string {
 
 // err builds the typed error the runtime adapters return.
 func (f listFault) err() error {
-	return &ButtonListError{Kind: f.kind, Detail: f.describe()}
+	return &buttonListError{kind: f.kind, detail: f.describe()}
 }
 
 // validateButtonList is the ONE rule set. It reports the first fault it finds,

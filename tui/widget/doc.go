@@ -156,8 +156,6 @@
 //     Float when you want a floating layer and intend to supply the behaviour
 //     yourself. See the Modal section below.
 //
-// # Practical Composition Example
-//
 // # Modal
 //
 // Modal is the composed dialog: a focus trap filling its host, holding a card
@@ -239,6 +237,8 @@
 // and focus returns to where it came from when the dialog closes. A dialog with
 // its pointer policy disabled remains fully operable. Nothing depends on the
 // mouse, and no control is reachable only by clicking.
+//
+// # Practical Composition Example
 //
 // Below is a complete example demonstrating how standard widgets compose into a responsive,
 // two-pane database/file exploration workspace with a status bar:
