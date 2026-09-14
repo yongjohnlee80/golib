@@ -61,6 +61,33 @@ import (
                      └──────────────────────────────┘
 ```
 
+### Interpretation: what happens to an event at each node
+
+The two lanes above are **transport**. Once they converge, an event is offered
+to one node at a time along the bounded bubble path, and at each node the
+runtime performs four steps in order:
+
+1. **Pointer policy** — pointer input to a node whose effective policy is
+   disabled skips that node entirely, semantic and raw alike.
+2. **Resolve** — the node's action resolvers are tried, consumer entries before
+   the widget's own defaults; first match wins.
+3. **Semantic dispatch** — a resolved action goes to `HandleAction`, and
+   consumes the event if it returns `true`.
+4. **Raw dispatch** — otherwise the original event goes to `HandleEvent`.
+
+This is **not a third transport lane**. Nothing about Lane A or Lane B changes;
+this is what an already-delivered event meets on arrival. A component with no
+resolvers and no `HandleAction` is byte-for-byte unaffected, which is why most
+widgets only ever implement `HandleEvent`.
+
+After the bounded walk, an unconsumed primary press on an opted-in control is
+offered to the **gesture recogniser**, which may take the pointer and later
+produce an `ActivateAction`. While a capture is held its events bypass
+hit-testing and run the same four steps on the owner alone, so a drag begun
+semantically continues that way.
+
+See `tutorial/04-events-focus-keys.md` for the walked-through version.
+
 ### 1. The Loop-Goroutine Invariant (Normative)
 
 All component state — the tree, every component's fields, focus, layout rects, and the cell buffer — is owned exclusively by the loop goroutine. `Init`, `Layout`, `Render`, `HandleEvent`, bus handlers, and queued closures execute **only** there.

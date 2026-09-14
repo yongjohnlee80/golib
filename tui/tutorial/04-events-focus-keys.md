@@ -2,11 +2,42 @@
 
 ## Routing: target, then bubble
 
-Every key event goes to the **focused** node first. If its `HandleEvent`
-returns `false`, the event walks UP the parent chain until something returns
-`true` — ending at your root controller. There is no capture phase.
+Every key event goes to the **focused** node first, and walks UP the parent
+chain until something consumes it — ending at your root controller. There is no
+capture phase.
 
-This single rule explains most "why didn't my key work" confusion:
+At each node on that walk the runtime does four things in order:
+
+1. **Pointer policy.** If the event is pointer input and this node's effective
+   policy is disabled, the node is skipped entirely and the walk continues.
+2. **Resolve.** The node's action resolvers are tried, consumer entries first
+   and then the widget's own defaults. The first one to claim the event wins.
+3. **Semantic dispatch.** If a resolver produced an action, it goes to the
+   node's `HandleAction`. Returning `true` consumes the event.
+4. **Raw dispatch.** Otherwise — no resolver matched, or the action went
+   unhandled — the node's `HandleEvent` receives the original event.
+
+Most widgets implement only `HandleEvent` and never notice steps 1–3: a
+component with no resolvers and no `HandleAction` behaves exactly as it did
+before actions existed. That is why the old one-line summary was almost right.
+
+The interpretation stage is **not a third transport lane**. Lane A and Lane B
+still converge into one ordered dispatch (chapter 2); this is what happens to an
+event *after* it arrives, at each node it is offered to.
+
+Two consequences worth knowing:
+
+- **Semantic beats raw on the same node.** A widget that reads `MouseEvent`
+  directly and also resolves presses into actions gets the action, not the raw
+  event — otherwise its own resolver could never fire.
+- **An unconsumed primary press may become a gesture.** After the whole walk
+  finds no taker, the runtime offers the press to its gesture recogniser, which
+  is what makes `Button` work with no pointer code of its own. A gesture holds
+  the pointer until release, and those captured events run the same four steps
+  on the owner. See `Activatable`, `ActivationAvailability` and
+  `WithGestureRecognizer`.
+
+This explains most "why didn't my key work" confusion:
 
 - The focused `TextInput` consumes printable keys — your global `'y'`
   shortcut won't fire while the user is typing. That is correct behavior;

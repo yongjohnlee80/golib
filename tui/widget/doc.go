@@ -7,6 +7,7 @@
 // # Complete Widget Inventory
 //
 //	Widget          Category         Focusable       Primary Emitted Events (Bus)
+//	Button          Control          when enabled    [tui.ControlActivatedEvent]
 //	TextInput       Form Input       yes             [SubmitEvent], [ChangeEvent]
 //	TextArea        Multi-line Text  yes             [ChangeEvent]
 //	Select[T]       Form Input       yes             [SelectionChangedEvent], [OpenedEvent], [ClosedEvent]
@@ -25,6 +26,35 @@
 // Every bus event carries Owner ([tui.NodeID]) as its first field, allowing subscribers
 // to filter events by emitting widget identity. Bus publication is strictly enqueue-only
 // onto the application event loop.
+//
+// # Button
+//
+// Button is the smallest complete interactive widget, and the demonstration
+// that the runtime carries the interaction burden rather than each widget. It
+// holds no pointer arithmetic, no press/release bookkeeping, no hit-testing and
+// no capture handling: it implements [tui.Activatable] — Activate and SetArmed —
+// and the runtime supplies keyboard, pointer, drag-out-and-back and
+// programmatic activation identically across every backend.
+//
+// Four behaviours are worth knowing before using it:
+//
+//   - A callback-free Button is ACTIVATABLE, not inert. Activating it succeeds
+//     and publishes [tui.ControlActivatedEvent]; it simply runs no callback of
+//     its own, so observers on the bus still see the activation.
+//   - A DISABLED Button leaves the focus ring. Tab does not stop on it, and
+//     [Context.InvalidateFocusability] repairs focus synchronously if it held
+//     focus when it was disabled.
+//   - POINTER POLICY is per-widget and inherited by the subtree. It may be set
+//     before mount by chaining [Button.WithPointerPolicy] onto the constructor,
+//     and is applied when the Context arrives.
+//   - [tui.ActivationAvailability] is an optional runtime HINT, implemented here
+//     so the gesture recogniser does not begin a gesture on a control that
+//     cannot be activated. It never replaces the authorization check, which
+//     lives in Activate and only there.
+//
+// Styling is an association: a Button holds a [ButtonStyle] it does not own, so
+// one immutable style value can safely dress many Buttons. Its values are style
+// tokens, so the App's theme decides the rendered colours.
 //
 // # The Five Architectural Pillars
 //

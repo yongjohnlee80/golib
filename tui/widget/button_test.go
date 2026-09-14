@@ -1045,3 +1045,116 @@ func TestDisablingClearsAnArmedLookThatNoGestureOwns(t *testing.T) {
 		t.Errorf("state = %v, want %v", got, widget.WidgetStateDisabled)
 	}
 }
+
+// focusWatcher records the focus-loss events bubbled to it, so the promised
+// notification can be observed rather than inferred from the focused id.
+type focusWatcher struct {
+	*widget.Button
+	losses atomic.Int64
+}
+
+func (f *focusWatcher) HandleEvent(ev tui.Event) bool {
+	if e, ok := ev.(tui.FocusEvent); ok && !e.Gained && !e.Terminal {
+		f.losses.Add(1)
+	}
+	return f.Button.HandleEvent(ev)
+}
+
+// TestDisablingTheOnlyFocusedButtonNotifiesItBeforeReturning.
+//
+// Clearing the focused id directly changes it behind the node's back: the
+// component and its ancestors never learn they lost focus, so anything that
+// repaints on the event keeps drawing itself focused. The notification is the
+// point, not the id.
+func TestDisablingTheOnlyFocusedButtonNotifiesItBeforeReturning(t *testing.T) {
+	fw := &focusWatcher{Button: widget.NewButton("Only")}
+	flex := tui.NewFlex(tui.Horizontal)
+	flex.Add(fw)
+	h := startApp(t, flex, 20, 1)
+	defer h.stop()
+	h.onLoop(func() { fw.Context().RequestFocus() })
+	h.sync()
+
+	var focused bool
+	h.onLoop(func() { focused = fw.Context().Focused() })
+	if !focused {
+		t.Fatal("precondition failed: the only button never held focus")
+	}
+	if got := fw.losses.Load(); got != 0 {
+		t.Fatalf("precondition failed: %d focus losses before disabling", got)
+	}
+
+	setEnabledOn(h, fw.Button, false)
+
+	// Both checked with no further sync: SetEnabled must have completed the
+	// whole transition before returning.
+	if got := fw.losses.Load(); got != 1 {
+		t.Errorf("bubbled FocusEvent{Gained:false} count = %d, want exactly 1: the "+
+			"node must be told it lost focus, not merely stop being the focused id", got)
+	}
+	var stillFocused bool
+	h.onLoop(func() { stillFocused = fw.Context().Focused() })
+	if stillFocused {
+		t.Error("the disabled button still holds focus")
+	}
+}
+
+// TestDisablingTheFocusedButtonFocusesTheEnabledSibling.
+//
+// Asserting only that the disabled button lost focus is not enough: a repair
+// that cleared focus to nothing would satisfy that and leave the dialog with no
+// keyboard target at all. The sibling must be the actual destination.
+func TestDisablingTheFocusedButtonFocusesTheEnabledSibling(t *testing.T) {
+	a := widget.NewButton("A")
+	b := widget.NewButton("B")
+	flex := tui.NewFlex(tui.Horizontal)
+	flex.Add(a, b)
+	h := startApp(t, flex, 20, 1)
+	defer h.stop()
+	h.onLoop(func() { a.Context().RequestFocus() })
+	h.sync()
+
+	setEnabledOn(h, a, false)
+
+	var bFocused, aFocused bool
+	h.onLoop(func() { bFocused = b.Context().Focused(); aFocused = a.Context().Focused() })
+	if aFocused {
+		t.Error("the disabled button still holds focus")
+	}
+	if !bFocused {
+		t.Error("focus was not moved to the enabled sibling; a repair that merely " +
+			"cleared focus would leave the scope with no keyboard target")
+	}
+}
+
+// TestLabelWidthFollowsTheActiveWidthPolicy.
+//
+// The Unicode table above runs entirely under the default policy, so it kills a
+// rune count but not the subtler error: measuring with the PACKAGE-level width
+// function instead of the mounted Context's. An East Asian ambiguous character
+// is the only input that separates them, because it is the one whose width the
+// policy actually changes.
+func TestLabelWidthFollowsTheActiveWidthPolicy(t *testing.T) {
+	const ambiguous = "①" // East Asian Ambiguous: narrow by default, wide under the CJK policy
+
+	widthUnder := func(p tui.WidthPolicy) int {
+		b := widget.NewButton(ambiguous)
+		flex := tui.NewFlex(tui.Horizontal)
+		flex.Add(b)
+		h := startAppOpts(t, flex, 20, 1, tui.WithWidthPolicy(p))
+		defer h.stop()
+		h.settle()
+		var got tui.Size
+		h.onLoop(func() { got = b.Layout(tui.Loose(tui.Size{W: 20, H: 1})) })
+		return got.W
+	}
+
+	narrow := widthUnder(tui.WidthPolicyDefault)
+	wide := widthUnder(tui.WidthPolicyAmbiguousWide)
+
+	if wide-narrow != 1 {
+		t.Errorf("width under AmbiguousWide - width under Default = %d, want exactly 1 "+
+			"(%d vs %d): the button must measure through the MOUNTED policy, not a "+
+			"package-level default", wide-narrow, wide, narrow)
+	}
+}

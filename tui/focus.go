@@ -260,12 +260,29 @@ func (a *App) repairFocus() {
 	if len(ring) == 0 {
 		a.trace(TraceEvent{Kind: TraceFocusRepair, Prev: a.focused,
 			Detail: "no focusable in scope"})
-		a.focused = 0
-		// This assignment bypasses setFocus, so the capture check setFocus
-		// performs has to be repeated here. This is the FINAL result of the
-		// repair, not the temporary zero the unmount path writes before it has
-		// chosen a restore target, so a loss decided here is decided once and
-		// against the focus the tree actually ended up with.
+		// setFocus(0), not a direct assignment. This path was written for
+		// unmount, where the dead id is already cleared and nobody is left to
+		// notify — but it is now also reached from the public invalidation
+		// seam, with a node that is still MOUNTED and has merely stopped
+		// accepting focus. Assigning directly changed the focused id behind
+		// that node's back: neither it nor its ancestors received the
+		// focus-loss event the runtime promises.
+		//
+		// setFocus does the whole transition — the loser's bubbled
+		// FocusEvent, the capture revalidation, the repaint and the wake-up —
+		// and is a no-op when focus is already zero, so the unmount path is
+		// unchanged.
+		a.setFocus(0)
+		// And the capture check explicitly, because setFocus cannot do it on
+		// every path that reaches here. The UNMOUNT caller zeroes focus before
+		// calling repair, so setFocus(0) is then a no-op — correct for the
+		// notification, since the dead node cannot be told anything, but it
+		// also skips the capture revalidation that the same step used to
+		// perform. A non-focusable capture owner would keep the pointer after
+		// its only focused descendant died.
+		//
+		// Idempotent: once a loss has been delivered there is no owner left, so
+		// the live path running this a second time does nothing.
 		a.captureCheckFocus()
 		return
 	}
@@ -289,8 +306,13 @@ func (a *App) repairFocus() {
 // make "disabled" mean "disabled one frame from now".
 func (c *Context) InvalidateFocusability() {
 	a := c.app
-	if n := a.nodes[a.focused]; n != nil && a.acceptsFocus(n) {
-		return // the focused node is still eligible; nothing to repair
+	// Eligible AND inside the scope this is revalidating. A focused node can be
+	// perfectly focusable while sitting outside the active scope — the trap
+	// rules make that state reachable — and returning early for it would leave
+	// the scope unrepaired while reporting that it had been checked.
+	scope := a.currentScope()
+	if n := a.nodes[a.focused]; n != nil && withinScope(n, scope) && a.acceptsFocus(n) {
+		return
 	}
 	a.repairFocus()
 }

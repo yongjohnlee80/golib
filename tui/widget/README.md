@@ -14,6 +14,7 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 
 | Widget        | Category        | Focusable      | Primary Emitted Events (Bus)                           |
 | ------------- | --------------- | -------------- | ------------------------------------------------------ |
+| `Button`      | Control         | when enabled   | `tui.ControlActivatedEvent`                            |
 | `TextInput`   | Form Input      | yes            | `SubmitEvent`, `ChangeEvent`                           |
 | `TextArea`    | Multi-line Text | yes            | `ChangeEvent`                                          |
 | `Select[T]`   | Form Input      | yes            | `SelectionChangedEvent`, `OpenedEvent`, `ClosedEvent`  |
@@ -32,6 +33,29 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 Every bus event carries `Owner tui.NodeID` as its first field so subscribers can filter by source. Publication is enqueue-only onto the application loop.
 
 ---
+
+### Button
+
+The smallest complete interactive widget, and the demonstration that the runtime
+carries the interaction burden rather than each widget. It has no pointer
+arithmetic, no press/release bookkeeping, no hit-testing and no capture
+handling: it implements `tui.Activatable` — `Activate` and `SetArmed` — and the
+runtime supplies keyboard, pointer, drag-out-and-back and programmatic
+activation identically across every backend.
+
+- A **callback-free Button is activatable, not inert**: activating it succeeds
+  and publishes `tui.ControlActivatedEvent`, it simply runs no callback.
+- A **disabled Button leaves the focus ring**, and focus is repaired
+  synchronously if it held focus when disabled.
+- **Pointer policy** is per-widget and inherited; `WithPointerPolicy` may be
+  chained onto the constructor before mount and is applied at `Init`.
+- **`tui.ActivationAvailability`** is an optional runtime hint that stops the
+  gesture recogniser starting a gesture on a control that cannot be activated.
+  It never replaces the authorization check, which lives in `Activate` alone.
+
+Styling is an association: a Button holds a `ButtonStyle` it does not own, so one
+immutable value can safely dress many Buttons, and its style tokens let the
+App's theme decide the rendered colours.
 
 ## Architectural Principles
 
