@@ -71,20 +71,39 @@ runtime performs four steps in order:
    disabled skips that node entirely, semantic and raw alike.
 2. **Resolve** — the node's action resolvers are tried, consumer entries before
    the widget's own defaults; first match wins.
-3. **Semantic dispatch** — a resolved action goes to `HandleAction`, and
-   consumes the event if it returns `true`.
+3. **Semantic dispatch** — a resolved action is offered in two stages:
+   `HandleAction` if the node implements it, then — for an `ActivateAction`
+   nobody handled — `Activatable.Activate`. Either returning `true` consumes it.
 4. **Raw dispatch** — otherwise the original event goes to `HandleEvent`.
+
+The `Activatable` stage is not a detail: **`widget.Button` implements no
+`HandleAction` at all.** Its keyboard resolver produces an `ActivateAction`, no
+action handler takes it, and the fallback reaches `Activate`. That is how one
+control serves keyboard, pointer and programmatic activation without
+implementing any of the three.
 
 This is **not a third transport lane**. Nothing about Lane A or Lane B changes;
 this is what an already-delivered event meets on arrival. A component with no
-resolvers and no `HandleAction` is byte-for-byte unaffected, which is why most
-widgets only ever implement `HandleEvent`.
+resolvers, no `HandleAction` and no `Activatable` is byte-for-byte unaffected,
+which is why most widgets only ever implement `HandleEvent`.
 
 After the bounded walk, an unconsumed primary press on an opted-in control is
 offered to the **gesture recogniser**, which may take the pointer and later
-produce an `ActivateAction`. While a capture is held its events bypass
-hit-testing and run the same four steps on the owner alone, so a drag begun
-semantically continues that way.
+produce an `ActivateAction`.
+
+What a **held capture** does with an event depends on who owns it:
+
+- **`CaptureRaw`**, taken by a component through `Context`, runs the same four
+  steps on the owner alone — no hit-test, no parent walk — so a drag begun
+  semantically continues semantically.
+- **`CaptureGesture`**, taken by the runtime on a component's behalf, goes to
+  the recogniser **only**. It never re-enters the node pipeline; any action the
+  recogniser produces is then dispatched to the owner.
+
+"No capture phase" refers to **event routing** — there is no DOM-style downward
+phase in which ancestors preview an event before its target. That is unrelated
+to **pointer capture**, which is about which node keeps receiving pointer events
+once a gesture has begun.
 
 See `tutorial/04-events-focus-keys.md` for the walked-through version.
 

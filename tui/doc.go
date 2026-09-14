@@ -85,21 +85,42 @@
 //     disabled skips that node entirely, semantic and raw alike.
 //  2. Resolve — the node's action resolvers are tried, consumer entries before
 //     the widget's own defaults; first match wins.
-//  3. Semantic dispatch — a resolved action goes to [ActionHandler.HandleAction],
-//     and consumes the event if it returns true.
+//  3. Semantic dispatch — a resolved action is offered to the node in two
+//     stages. First [ActionHandler.HandleAction], if the node implements it.
+//     Then, for an [ActivateAction] that nobody handled, [Activatable.Activate].
+//     Either returning true consumes the event.
 //  4. Raw dispatch — otherwise the original event goes to
 //     [Component.HandleEvent].
 //
+// The Activatable stage is not a detail: [widget.Button] implements no
+// HandleAction at all. Its keyboard resolver produces an ActivateAction, no
+// action handler exists to take it, and the fallback reaches Activate. That is
+// how one control serves keyboard, pointer and programmatic activation without
+// implementing any of the three.
+//
 // This is NOT a third transport lane. Nothing about Lane A or Lane B changes;
 // this describes what an already-delivered event meets on arrival. A component
-// with no resolvers and no HandleAction is byte-for-byte unaffected, which is
-// why most widgets only ever implement HandleEvent.
+// with no resolvers, no HandleAction and no Activatable is byte-for-byte
+// unaffected, which is why most widgets only ever implement HandleEvent.
 //
 // After the bounded walk, an unconsumed primary press on an opted-in control is
 // offered to the gesture recogniser ([GestureRecognizer]), which may take the
 // pointer ([Context.CapturePointer]) and later produce an [ActivateAction].
-// While a capture is held, its events bypass hit-testing and run the same four
-// steps on the owner alone, so a drag begun semantically continues that way.
+//
+// What a HELD capture does with an event depends on who owns it, and the two
+// differ:
+//
+//   - [CaptureRaw], taken by a component through Context, runs the same four
+//     steps above on the owner alone — no hit-test, no parent walk — so a drag
+//     begun semantically continues semantically.
+//   - [CaptureGesture], taken by the runtime on a component's behalf, goes to
+//     the recogniser ONLY. It never re-enters the node pipeline; any action the
+//     recogniser produces is then dispatched to the owner.
+//
+// "No capture phase" above refers to EVENT ROUTING: there is no DOM-style
+// downward phase in which ancestors preview an event before its target. That is
+// unrelated to pointer capture, which is about which node keeps receiving
+// pointer events once a gesture has begun.
 //
 // # The Loop-Goroutine Invariant (Normative)
 //

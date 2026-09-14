@@ -3,8 +3,12 @@
 ## Routing: target, then bubble
 
 Every key event goes to the **focused** node first, and walks UP the parent
-chain until something consumes it — ending at your root controller. There is no
-capture phase.
+chain until something consumes it — ending at your root controller.
+
+There is no **capture phase**: no DOM-style downward pass in which ancestors
+preview an event before it reaches its target. (That is a different thing from
+*pointer capture*, further down, which decides who keeps receiving pointer
+events once a drag has begun.)
 
 At each node on that walk the runtime does four things in order:
 
@@ -12,14 +16,24 @@ At each node on that walk the runtime does four things in order:
    policy is disabled, the node is skipped entirely and the walk continues.
 2. **Resolve.** The node's action resolvers are tried, consumer entries first
    and then the widget's own defaults. The first one to claim the event wins.
-3. **Semantic dispatch.** If a resolver produced an action, it goes to the
-   node's `HandleAction`. Returning `true` consumes the event.
+3. **Semantic dispatch.** A resolved action is offered in two stages: the
+   node's `HandleAction` if it has one, and then — for an `ActivateAction` that
+   nobody handled — its `Activate` method, if it implements `tui.Activatable`.
+   Either returning `true` consumes the event.
 4. **Raw dispatch.** Otherwise — no resolver matched, or the action went
-   unhandled — the node's `HandleEvent` receives the original event.
+   unhandled by both stages — the node's `HandleEvent` receives the original
+   event.
+
+That second stage of step 3 is how `Button` works. **It implements no
+`HandleAction` at all**: its resolver turns Enter and Space into an
+`ActivateAction`, no action handler takes it, and the fallback calls `Activate`.
+One method, and the same control answers keyboard, pointer and programmatic
+activation.
 
 Most widgets implement only `HandleEvent` and never notice steps 1–3: a
-component with no resolvers and no `HandleAction` behaves exactly as it did
-before actions existed. That is why the old one-line summary was almost right.
+component with no resolvers, no `HandleAction` and no `Activate` behaves exactly
+as it did before actions existed. That is why the old one-line summary was
+almost right.
 
 The interpretation stage is **not a third transport lane**. Lane A and Lane B
 still converge into one ordered dispatch (chapter 2); this is what happens to an
@@ -32,10 +46,13 @@ Two consequences worth knowing:
   event — otherwise its own resolver could never fire.
 - **An unconsumed primary press may become a gesture.** After the whole walk
   finds no taker, the runtime offers the press to its gesture recogniser, which
-  is what makes `Button` work with no pointer code of its own. A gesture holds
-  the pointer until release, and those captured events run the same four steps
-  on the owner. See `Activatable`, `ActivationAvailability` and
-  `WithGestureRecognizer`.
+  is what makes `Button` work with no pointer code of its own. See
+  `Activatable`, `ActivationAvailability` and `WithGestureRecognizer`.
+- **A held capture routes by who owns it.** `CaptureRaw` — taken by a component
+  itself — runs the same four steps on the owner alone. `CaptureGesture` — taken
+  by the runtime for a recogniser — goes to the recogniser **only** and never
+  re-enters the node pipeline; whatever action it produces is dispatched to the
+  owner afterwards.
 
 This explains most "why didn't my key work" confusion:
 
