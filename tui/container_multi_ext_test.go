@@ -7,10 +7,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// External-boundary coverage for ADR golib-tui-0011 L0 (verification row 25,
-// and the §8.1 rule that extension probes run from a package importing tui as
-// an ordinary consumer). Everything here uses only exported API — if any of it
-// stopped compiling, an external caller's code would have broken too.
+// External-boundary coverage proves the compatibility and alias-safe iteration
+// contracts using only exported API. If this stops compiling, an external
+// caller has broken.
 
 type extProbe struct{ id int }
 
@@ -29,10 +28,10 @@ func fill(m *tui.MultiChild, n int) []tui.Component {
 	return want
 }
 
-// TestItemsStillCompilesAndBehavesExternally is the compatibility guarantee
-// ledger 19 makes: Items is preserved unchanged, so code written against the
-// pre-L0 API keeps working. This test exists to fail if Items is ever removed
-// or its signature altered without the deliberate break that was promised.
+// TestItemsStillCompilesAndBehavesExternally pins the compatibility guarantee:
+// Items is preserved unchanged, so code written against the older API keeps
+// working. This test fails if Items is ever removed or its signature altered
+// outside a deliberate breaking release.
 func TestItemsStillCompilesAndBehavesExternally(t *testing.T) {
 	var m tui.MultiChild
 	want := fill(&m, 3)

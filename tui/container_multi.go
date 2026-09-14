@@ -122,13 +122,12 @@ func (m *MultiChild) Init(ctx *Context) {
 // Deprecated: Items returns the live backing slice, so "read-only" rests on
 // convention rather than on the type — a caller can reorder or overwrite it
 // and bypass the Mount/Unmount/Move mirror entirely. Use [MultiChild.Len] and
-// [MultiChild.All], which cannot alias. Items is retained unchanged because no
-// repository search can prove there is no external caller; it is scheduled for
-// removal in a later deliberate break (ADR golib-tui-0011 §4, ledger 19).
+// [MultiChild.All], which cannot alias. Items remains for source
+// compatibility and may be removed only in a deliberate breaking release.
 func (m *MultiChild) Items() []Component { return m.items }
 
-// Len reports how many children are mounted, in document order terms. It is
-// the aliasing-free replacement for len(Items()).
+// Len reports the number of children this container owns, whether mounting is
+// active or deferred. It is the aliasing-free replacement for len(Items()).
 func (m *MultiChild) Len() int { return len(m.items) }
 
 // All iterates the children in document order — which is also focus tab order

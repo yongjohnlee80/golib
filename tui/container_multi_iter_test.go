@@ -5,10 +5,9 @@ import (
 	"testing"
 )
 
-// L0 of ADR golib-tui-0011: MultiChild gains Len and All; Items is preserved
-// byte-identically because no repository search can prove there is no external
-// caller (ledger 19). These tests pin BOTH halves of that promise — the new
-// surface behaves, and the old one did not move.
+// These tests pin both halves of the compatibility promise: the new alias-safe
+// iteration surface behaves correctly, while the deprecated live slice remains
+// unchanged until a deliberate breaking release.
 
 // Children are the package's existing test component (app_test.go), so these
 // tests exercise the same shape every other tui test does.
