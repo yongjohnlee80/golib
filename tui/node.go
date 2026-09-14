@@ -32,6 +32,13 @@ type node struct {
 	resolvers     resolverSet
 	pointerPolicy PointerPolicy
 
+	// Anchor state. anchorGen stamps every AnchorRef this node issues, so
+	// InvalidateAnchors can retire all of them at once by moving the number;
+	// regions holds the sub-areas declared during Layout, in this node's own
+	// local coordinates.
+	anchorGen uint64
+	regions   map[RegionID]Rect
+
 	// Layout state. measured/placed reset each pass; a node is visible this
 	// frame only when both are set with a non-empty rect.
 	rect     Rect // parent-relative, set by PlaceChild

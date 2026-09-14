@@ -95,9 +95,17 @@ func (a *App) layoutComponent(n *node, cc Constraints) Size {
 // resetLayoutFlags clears the per-pass flags over the subtree: nodes a
 // container skips this pass stay invisible (not rendered, not hit-testable,
 // not tab stops).
+//
+// Declared anchor regions are per-pass too, and for the same reason. A region
+// names a sub-area of THIS frame's layout — a menu row at a particular offset —
+// so one that is not redeclared no longer exists, and keeping it would let a
+// popup stay anchored to a row that has scrolled away or been removed from the
+// model. Dropping them here is what turns "absent from this layout" into the
+// anchor loss the host commits on.
 func resetLayoutFlags(n *node) {
 	n.measured = false
 	n.placed = false
+	n.regions = nil
 	for _, ch := range n.children {
 		resetLayoutFlags(ch)
 	}
