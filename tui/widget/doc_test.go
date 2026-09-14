@@ -13,6 +13,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -27,6 +28,10 @@ type harness struct {
 	t   *testing.T
 	app *tui.App
 	tb  *tui.TestBackend
+
+	// barriers counts sentinel keys the runtime has actually DISPATCHED, as
+	// reported by the trace seam. See barrier.
+	barriers atomic.Int64
 
 	cancel   context.CancelFunc
 	resc     chan error
@@ -46,10 +51,26 @@ func startApp(t *testing.T, root tui.Component, w, h int) *harness {
 func startAppOpts(t *testing.T, root tui.Component, w, h int, opts ...tui.AppOption) *harness {
 	t.Helper()
 	tb := tui.NewTestBackend(w, h)
+	h2 := &harness{t: t, tb: tb, resc: make(chan error, 1)}
+
+	// The barrier's dispatch acknowledgment. traceRouted fires SYNCHRONOUSLY
+	// inside dispatch for every key press, consumed or not — including one
+	// stopped at a trapping scope — so it observes dispatch itself rather than
+	// where the key ended up.
+	//
+	// Appended after the caller's options, so it wins if a caller ever passes
+	// WithTrace. No widget test does today; if one needs to, compose the two
+	// callbacks here explicitly rather than letting either silently replace the
+	// other.
 	appOpts := append([]tui.AppOption{tui.WithBackend(tb), tui.WithMinFrameInterval(0)}, opts...)
+	appOpts = append(appOpts, tui.WithTrace(func(ev tui.TraceEvent) {
+		if ev.Kind == tui.TraceKey && ev.Detail == string(barrierKey) {
+			h2.barriers.Add(1)
+		}
+	}))
 	app := tui.NewApp(root, appOpts...)
 	ctx, cancel := context.WithCancel(context.Background())
-	h2 := &harness{t: t, app: app, tb: tb, cancel: cancel, resc: make(chan error, 1)}
+	h2.t, h2.app, h2.cancel = t, app, cancel
 	go func() { h2.resc <- app.Run(ctx) }()
 	h2.sync()
 	t.Cleanup(func() {
@@ -317,43 +338,37 @@ func (s *shell) bubbledKeys() []tui.KeyEvent {
 	return out
 }
 
-// sawBarriers counts barrier sentinels received so far.
-func (s *shell) sawBarriers() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	n := 0
-	for _, k := range s.keys {
-		if k.Code == barrierKey {
-			n++
-		}
-	}
-	return n
-}
-
-// barrierKey is a sentinel no widget consumes: injected after the events
-// under test, its arrival at the shell proves everything before it was
-// dispatched (lane-A order is preserved).
+// barrierKey is a sentinel no widget consumes: injected after the events under
+// test, its DISPATCH proves everything before it was dispatched too, because
+// lane A is a single ordered queue. See barrier for why dispatch, and not
+// arrival at any particular component, is the thing worth waiting on.
 const barrierKey = tui.KeyF12
 
-// barrier injects the sentinel and waits until the runtime has consumed it.
+// barrier injects the sentinel and waits for the runtime to acknowledge having
+// DISPATCHED it, via the trace seam.
 //
-// It waits on the BACKEND QUEUE draining, not on the sentinel reaching the
-// shell. Those are different things, and conflating them made this helper
-// depend on routing policy: a trapping focus scope confines input to its own
-// subtree, so with a modal open the sentinel legitimately never reaches the
-// root and the old wait timed out. Synchronisation must not care where an
-// event is routed — only that it has been routed.
+// It deliberately does not wait for the sentinel to reach any particular
+// component. Two earlier designs were unsound for the same underlying reason —
+// they inferred dispatch from something that does not imply it:
 //
-// Ordering still holds. Lane A is a single ordered queue, so once the sentinel
-// has been taken off it, everything injected before it has been too; the
-// double sync then guarantees those dispatches completed on the loop.
+//   - waiting for the sentinel to reach the ROOT shell depends on routing
+//     policy, and a trapping focus scope legitimately stops it earlier;
+//   - waiting for the backend queue to empty proves only that intake took the
+//     event off the channel. It may still sit in intake's pending slice or be
+//     blocked sending on the unbuffered input channel. sync() round-trips
+//     lane B while the sentinel is lane A, and the loop's select may take
+//     ready lane-B work first, so no number of syncs adds the missing
+//     happens-before edge.
+//
+// The trace callback runs inside dispatch on the loop goroutine, which is the
+// edge. Ordering still holds: lane A is one ordered queue, so once the
+// sentinel has been dispatched, everything injected before it has been too.
 func (h *harness) barrier(s *shell) {
 	h.t.Helper()
 	_ = s // retained: callers name the shell they are synchronising against
+	want := h.barriers.Load() + 1
 	h.inject(key(barrierKey))
-	h.waitFor("input barrier", func() bool { return len(h.tb.Events()) == 0 })
-	h.sync()
-	h.sync()
+	h.waitFor("input barrier", func() bool { return h.barriers.Load() >= want })
 	h.settle()
 }
 
@@ -601,3 +616,23 @@ func ExampleText() {
 	)
 	// Output:
 }
+
+// NOTE ON BARRIER COVERAGE.
+//
+// A regression proving barrier waits for DISPATCH rather than for the backend
+// queue to drain was attempted and removed, because it did not discriminate.
+// Two reasons, both worth recording so the next person does not repeat it:
+//
+//   - asserting the trace counter increments proves nothing: the trace hook
+//     fires on dispatch regardless of what barrier waits on, so the assertion
+//     passes for the unsound implementation too;
+//   - asserting on return timing does not work either, because barrier ends
+//     with settle(), which round-trips the loop. Any scenario that can be
+//     forced deterministically therefore blocks the unsound version as well.
+//
+// The soundness difference appears only in the lane-A/lane-B select race —
+// the sentinel still pending in intake while a later lane-B Update is chosen
+// first — which could not be provoked reliably here. The fix itself is
+// verified by construction: the trace callback runs inside dispatch on the
+// loop goroutine, which is the happens-before edge the previous versions
+// lacked.

@@ -285,3 +285,342 @@ func TestConfinementFixtureIsWellFormed(t *testing.T) {
 		return m > 0
 	})
 }
+
+// TestRequestFocusRefusedOutsideTrap covers the first escape path: an outside
+// component calling RequestFocus while a modal is still mounted. Without the
+// refusal, focus moves out, currentScope falls back to the root, and the whole
+// confinement dissolves from the outside while the scope entry is still live.
+func TestRequestFocusRefusedOutsideTrap(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	trap := &trapScope{size: Size{W: 10, H: 4}}
+	inside := newFocusProbe("inside", Size{W: 4, H: 1})
+	outside := newFocusProbe("outside", Size{W: 4, H: 1})
+	trap.Add(inside)
+	root.Add(trap, outside)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	var insideID, outsideID NodeID
+	h.onLoop(func() {
+		a := h.app
+		insideID, outsideID = a.byComp[inside].id, a.byComp[outside].id
+		a.requestFocus(a.byComp[inside]) // enter the trap: legal
+	})
+	h.onLoop(func() {
+		if h.app.focused != insideID {
+			t.Fatalf("precondition failed: focus is %d, want the in-trap node %d",
+				h.app.focused, insideID)
+		}
+	})
+
+	// The outside sibling asks for focus. It must be refused.
+	h.onLoop(func() { h.app.requestFocus(h.app.byComp[outside]) })
+
+	var got NodeID
+	h.onLoop(func() { got = h.app.focused })
+	if got == outsideID {
+		t.Fatal("RequestFocus from outside an active trap was granted; " +
+			"confinement can be dissolved from the outside")
+	}
+	if got != insideID {
+		t.Errorf("focus = %d, want it to stay on the in-trap node %d", got, insideID)
+	}
+}
+
+// TestStaleOutsideFocusStillConfined is the backstop regression. It forces the
+// state the refusal above is meant to prevent — focus parked outside while the
+// stack entry is live — and proves dispatch still confines.
+//
+// This is what kills removal of the retarget in confinedTarget: bubbleWithin
+// only stops when it MEETS the ceiling, so a walk that starts outside the
+// subtree never meets it and would run to the root.
+func TestStaleOutsideFocusStillConfined(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	trap := &trapScope{size: Size{W: 10, H: 4}}
+	outside := &counter{size: Size{W: 10, H: 4}}
+	root.Add(trap, outside)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	// Live stack entry, and focus deliberately forced OUTSIDE it.
+	h.onLoop(func() {
+		a := h.app
+		a.scopeStack = append(a.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
+		a.focused = a.byComp[outside].id
+	})
+	h.onLoop(func() {
+		if h.app.confinement() == nil {
+			t.Fatal("precondition failed: the live stack entry is not governing")
+		}
+	})
+
+	h.inject(keyEv('\r'))
+	h.inject(PasteEvent{Text: "x"})
+	h.inject(MouseEvent{Kind: MousePress, Button: MouseLeft, X: 2, Y: 1}) // sentinel, inside
+	waitFor(t, "sentinel press inside the trap", func() bool {
+		_, _, m := trap.totals()
+		return m > 0
+	})
+	h.sync()
+
+	if k, p, _ := trap.totals(); k != 1 || p != 1 {
+		t.Errorf("scope received keys=%d pastes=%d, want 1 and 1: a stale outside "+
+			"focus must be retargeted to the confinement, not honoured", k, p)
+	}
+	if k, p, m := outside.totals(); k != 0 || p != 0 || m != 0 {
+		t.Errorf("outside node received keys=%d pastes=%d mouse=%d despite a live trap", k, p, m)
+	}
+	if k, p, m := root.totals(); k != 0 || p != 0 || m != 0 {
+		t.Errorf("root received keys=%d pastes=%d mouse=%d despite a live trap", k, p, m)
+	}
+}
+
+// TestTrapGovernsViaAncestryWithoutStackEntry covers the fallback path.
+//
+// The stack is the first authority, but it is not the only one: focus can land
+// inside a trapping subtree without that trap ever being entered through
+// requestFocus, so no stack entry exists. The scope must still govern, by
+// ancestry.
+func TestTrapGovernsViaAncestryWithoutStackEntry(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	trap := &trapScope{size: Size{W: 10, H: 4}}
+	inside := newFocusProbe("inside", Size{W: 4, H: 1})
+	trap.Add(inside)
+	root.Add(trap)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	// setFocus, not requestFocus: it moves focus without pushing a scope entry,
+	// which is exactly the state this fallback exists for.
+	h.onLoop(func() {
+		a := h.app
+		a.setFocus(a.byComp[inside].id)
+		if len(a.scopeStack) != 0 {
+			t.Fatalf("precondition failed: stack has %d entries, want none", len(a.scopeStack))
+		}
+	})
+
+	var governing bool
+	h.onLoop(func() {
+		s := h.app.confinement()
+		governing = s != nil && s == h.app.byComp[trap]
+	})
+	if !governing {
+		t.Fatal("a trapping ancestor of the focused node must govern even with an empty scope stack")
+	}
+
+	// And it really confines: an unconsumed key must not reach the root.
+	h.inject(keyEv('\r'))
+	h.inject(MouseEvent{Kind: MousePress, Button: MouseLeft, X: 2, Y: 1})
+	waitFor(t, "sentinel press inside the trap", func() bool {
+		_, _, m := trap.totals()
+		return m > 0
+	})
+	h.sync()
+	if k, _, m := root.totals(); k != 0 || m != 0 {
+		t.Errorf("root received keys=%d mouse=%d through an ancestry-only trap", k, m)
+	}
+}
+
+// TestRepairLeavesFocusEmptyInsideSurvivingTrap exercises the real path into
+// the state every other test here reaches by poking scopeStack directly.
+//
+// A trap whose only focusable child is removed has an empty focus ring, so
+// repair leaves focused == 0 while the scope itself survives. That is the
+// precondition the whole confinement rule exists for, and reaching it through
+// ordinary Remove — rather than by hand — proves the runtime really produces
+// it, not just that the tests can simulate it.
+func TestRepairLeavesFocusEmptyInsideSurvivingTrap(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	trap := &trapScope{size: Size{W: 10, H: 4}}
+	only := newFocusProbe("only", Size{W: 4, H: 1})
+	outside := &counter{size: Size{W: 10, H: 4}}
+	trap.Add(only)
+	root.Add(trap, outside)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	// Enter the trap for real: requestFocus pushes the scope entry.
+	h.onLoop(func() { h.app.requestFocus(h.app.byComp[only]) })
+	h.onLoop(func() {
+		if h.app.focused == 0 {
+			t.Fatal("precondition failed: focus never entered the trap")
+		}
+		if len(h.app.scopeStack) == 0 {
+			t.Fatal("precondition failed: entering the trap pushed no scope entry")
+		}
+	})
+
+	// Remove the only focusable. Repair finds an empty ring inside a scope that
+	// is still mounted.
+	h.onLoop(func() { trap.Remove(only) })
+
+	h.onLoop(func() {
+		if h.app.focused != 0 {
+			t.Errorf("focused = %d after removing the only focusable, want 0", h.app.focused)
+		}
+		if h.app.confinement() == nil {
+			t.Fatal("the surviving trap stopped governing once focus emptied")
+		}
+	})
+
+	// And input is still confined in that state.
+	h.inject(keyEv('\r'))
+	h.inject(MouseEvent{Kind: MousePress, Button: MouseLeft, X: 15, Y: 1}) // outside
+	h.inject(MouseEvent{Kind: MousePress, Button: MouseLeft, X: 2, Y: 1})  // sentinel, inside
+	waitFor(t, "sentinel press inside the trap", func() bool {
+		_, _, m := trap.totals()
+		return m > 0
+	})
+	h.sync()
+
+	if k, _, m := root.totals(); k != 0 || m != 0 {
+		t.Errorf("root received keys=%d mouse=%d with focus empty inside a live trap", k, m)
+	}
+	if _, _, m := outside.totals(); m != 0 {
+		t.Errorf("outside node received %d mouse events", m)
+	}
+}
+
+// focusEventCounter counts FocusEvent deliveries and nothing else. It is
+// deliberately separate from counter: counter.totals measures the confined
+// input families (key, paste, mouse), and mixing focus traffic into it would
+// blur what those assertions mean.
+type focusEventCounter struct {
+	MultiChild
+	size   Size
+	focus  atomic.Int64
+	accept atomic.Bool
+}
+
+func (f *focusEventCounter) Layout(cs Constraints) Size {
+	if f.ctx != nil {
+		for _, ch := range f.All() {
+			sz := f.ctx.LayoutChild(ch, Loose(Size{W: cs.MaxW, H: cs.MaxH}))
+			f.ctx.PlaceChild(ch, Rect{W: sz.W, H: sz.H})
+		}
+	}
+	return cs.Constrain(f.size)
+}
+func (f *focusEventCounter) Render(Surface)     {}
+func (f *focusEventCounter) AcceptsFocus() bool { return f.accept.Load() }
+func (f *focusEventCounter) HandleEvent(ev Event) bool {
+	if _, ok := ev.(FocusEvent); ok {
+		f.focus.Add(1)
+	}
+	return false
+}
+
+// TestFocusingTheFocusedNodeIsANoOp pins focus idempotence.
+//
+// A redundant setFocus must emit no FocusEvents: ancestors style themselves
+// from those, so a spurious loss/gain pair would flicker focus-within chrome.
+//
+// The counter here must observe FocusEvent specifically. An earlier version of
+// this test asserted against counter.totals, which only tracks key, paste and
+// mouse — so it could not have failed however many focus events were emitted.
+func TestFocusingTheFocusedNodeIsANoOp(t *testing.T) {
+	root := &focusEventCounter{size: Size{W: 20, H: 4}}
+	only := &focusEventCounter{size: Size{W: 4, H: 1}}
+	only.accept.Store(true)
+	root.Add(only)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	var id NodeID
+	h.onLoop(func() {
+		a := h.app
+		a.requestFocus(a.byComp[only])
+		id = a.focused
+	})
+	if id == 0 {
+		t.Fatal("precondition failed: nothing focused")
+	}
+	// Focusing it in the first place MUST have emitted events, or the counter
+	// is not observing and the assertion below is worthless.
+	if got := only.focus.Load(); got == 0 {
+		t.Fatal("focus counter observed nothing on the initial focus; " +
+			"it cannot detect a spurious event either")
+	}
+
+	before := only.focus.Load()
+	beforeRoot := root.focus.Load()
+	h.onLoop(func() { h.app.setFocus(id) }) // the same node again
+
+	var after NodeID
+	h.onLoop(func() { after = h.app.focused })
+	if after != id {
+		t.Errorf("focus moved to %d on a redundant setFocus, want %d", after, id)
+	}
+	if got := only.focus.Load(); got != before {
+		t.Errorf("redundant setFocus emitted %d FocusEvent(s) to the node", got-before)
+	}
+	if got := root.focus.Load(); got != beforeRoot {
+		t.Errorf("redundant setFocus bubbled %d FocusEvent(s) to the ancestor", got-beforeRoot)
+	}
+}
+
+// focusableCounter is a counter that can take focus, so it can stand in for a
+// focusable ancestor ABOVE a trapping scope.
+type focusableCounter struct{ counter }
+
+func (f *focusableCounter) AcceptsFocus() bool { return true }
+
+// TestPointerCannotFocusAnAncestorOutsideTheTrap covers the escape path that
+// scope-rooted hit-testing does NOT close.
+//
+// Rooting the hit-test at the scope bounds the TARGET, but focusFromPointer
+// then walks UP from that target looking for something focusable — and that
+// walk can climb straight out of the trap to a focusable ancestor above it.
+// The guard inside focusFromPointer is what stops it, and this is the case
+// that proves the guard is still load-bearing rather than dead.
+func TestPointerCannotFocusAnAncestorOutsideTheTrap(t *testing.T) {
+	root := &focusableCounter{counter{size: Size{W: 20, H: 4}}}
+	trap := &trapScope{size: Size{W: 10, H: 4}}
+	inert := &counter{size: Size{W: 10, H: 4}} // inside the trap, NOT focusable
+	trap.Add(inert)
+	root.Add(trap)
+
+	h := startApp(t, root, 20, 4)
+	defer h.wait()
+	h.sync()
+
+	// Enter the trap so it governs, with nothing focusable inside it.
+	h.onLoop(func() {
+		a := h.app
+		a.scopeStack = append(a.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
+		a.focused = 0
+	})
+
+	// Press INSIDE the trap. The target is in scope, but the only focusable
+	// candidate on the way up is the root, which is outside it.
+	h.inject(MouseEvent{Kind: MousePress, Button: MouseLeft, X: 2, Y: 1})
+	waitFor(t, "press delivered inside the trap", func() bool {
+		_, _, m := trap.totals()
+		return m > 0
+	})
+	h.sync()
+
+	var focused, rootID NodeID
+	h.onLoop(func() {
+		focused = h.app.focused
+		rootID = h.app.byComp[root].id
+	})
+	if focused == rootID {
+		t.Fatal("a press inside the trap focused an ancestor OUTSIDE it; " +
+			"the ancestor walk escaped the scope")
+	}
+	if focused != 0 {
+		t.Errorf("focused = %d, want 0: no candidate inside the trap accepts focus", focused)
+	}
+}

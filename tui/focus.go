@@ -43,6 +43,17 @@ func (a *App) requestFocus(n *node) {
 	if a.focused == n.id {
 		return
 	}
+	// A trap must not be reachable around. Computing the active scope BEFORE
+	// moving focus is what makes this safe to check: entering the first trap is
+	// still legal, because the active scope is then the root; entering a nested
+	// trap is still legal, because that trap's node lies within the outer scope.
+	// Without this, an outside component could call RequestFocus while a modal
+	// was mounted and dissolve the confinement from the outside.
+	if scope := a.confinement(); scope != nil && !withinScope(n, scope) {
+		a.trace(TraceEvent{Kind: TraceFocus, Node: n.id, Prev: a.focused,
+			Detail: "focus refused: target outside the active focus scope"})
+		return
+	}
 	newScope := a.trapScopeOf(n)
 	var oldScope *node
 	if on := a.nodes[a.focused]; on != nil {
@@ -117,18 +128,26 @@ func (a *App) focusRing(scope *node) []*node {
 	return out
 }
 
-// currentScope resolves the traversal boundary: the innermost trapping
-// scope of the focused node, else the root.
+// currentScope resolves the active traversal boundary: the innermost live
+// scope-stack entry first, otherwise the nearest trapping ancestor of the
+// focused node, and finally the root.
 func (a *App) currentScope() *node {
+	// The innermost LIVE stack entry is the first authority. A mounted trap
+	// governs while it is on the stack, whatever focus happens to be doing —
+	// consulting the stack only when focused == 0 let a trap stop governing the
+	// moment focus existed outside it, which is precisely when confinement
+	// matters most. Entries are removed by the unmount cascade, so a surviving
+	// entry means a live trap.
+	for i := len(a.scopeStack) - 1; i >= 0; i-- {
+		if sn := a.nodes[a.scopeStack[i].scope]; sn != nil && sn.mounted {
+			return sn
+		}
+	}
+	// No stack entry: a component may still trap by being an ancestor of the
+	// focused node without having been entered through requestFocus.
 	if fn := a.nodes[a.focused]; fn != nil {
 		if s := a.trapScopeOf(fn); s != nil {
 			return s
-		}
-	} else if len(a.scopeStack) > 0 {
-		// No live focused node (repair path): fall back to the innermost
-		// surviving trap, if any.
-		if sn := a.nodes[a.scopeStack[len(a.scopeStack)-1].scope]; sn != nil {
-			return sn
 		}
 	}
 	return a.rootNode
