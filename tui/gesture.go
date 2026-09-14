@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/yongjohnlee80/golib/errs"
+
 // THE GESTURE RECOGNISER.
 //
 // Press-arm, release-activate is the behaviour every clickable control shares:
@@ -22,16 +24,21 @@ package tui
 // CaptureGesture routes to the recogniser and CaptureRaw to the owner, so the
 // two cannot be confused.
 
-// GestureState is the state of the gesture in flight.
+// GestureState is how far along the gesture in flight is.
 //
 // The runtime holds it and passes it in and out of OnPointer, so one recogniser
 // value serves every node in the tree without keeping per-node bookkeeping —
-// and so a recogniser cannot accumulate state the runtime is unable to discard
-// when the gesture dies.
+// and so a recogniser cannot accumulate progress the runtime is unable to
+// discard when the gesture dies.
+//
+// It says nothing about whether a gesture EXISTS. Capture ownership answers
+// that: a gesture is in flight while it holds the pointer, whatever its state.
 type GestureState uint8
 
 const (
-	// GestureIdle: nothing in progress.
+	// GestureIdle: not currently armed — a release now would not activate.
+	// This is ALSO the state of a live gesture whose pointer has been dragged
+	// outside its target, which is why it does not mean "no gesture".
 	GestureIdle GestureState = iota
 	// GestureArmed: pressed, and would activate if released now.
 	GestureArmed
@@ -48,9 +55,9 @@ func (g GestureState) String() string {
 	return "unknown"
 }
 
-// GestureCtx is everything a recogniser is given, and everything it is allowed
-// to know. It never reaches into the tree, so it cannot depend on geometry or
-// state that belongs to somebody else.
+// GestureCtx is everything a recogniser is given about the tree, and everything
+// it is entitled to know about it, so it cannot come to depend on geometry or
+// state belonging to somebody else.
 type GestureCtx struct {
 	// Target is the node the gesture belongs to, fixed when the press started
 	// it. A recogniser cannot move a gesture to a different node mid-flight.
@@ -72,9 +79,17 @@ type GestureCtx struct {
 // GestureRecognizer interprets a stream of pointer events as a gesture.
 //
 // OnPointer returns the action to dispatch (nil for none), whether the event is
-// consumed, and the next state. It never touches the tree, and it does not
-// state provenance: the runtime wraps whatever it returns, so a recogniser
-// cannot claim an activation came from somewhere it did not.
+// consumed, and the next state. It does not state provenance: the runtime wraps
+// whatever it returns, so a recogniser cannot claim an activation came from
+// somewhere it did not.
+//
+// The requirement is TREE INDEPENDENCE, not purity in the strict sense — an
+// implementation may perfectly well hold immutable configuration or count what
+// it has seen for diagnostics. What it must not do is reach into the component
+// tree: everything it is entitled to know arrives in GestureCtx, and any
+// progress the runtime needs to act on comes back as GestureState rather than
+// being remembered privately, so that the runtime can discard a dead gesture
+// completely.
 type GestureRecognizer interface {
 	OnPointer(ev MouseEvent, gc GestureCtx) (Action, bool, GestureState)
 }
@@ -90,10 +105,42 @@ type GestureRecognizer interface {
 // recognisers, because the second one would be asked to finish a sequence whose
 // beginning it never saw.
 func WithGestureRecognizer(r GestureRecognizer) AppOption {
-	return func(c *appConfig) {
-		c.recognizer = r
-		c.recognizerSet = true
+	return func(c *appConfig) { c.recognizer = normalizeRecognizer(r) }
+}
+
+// SetGestureRecognizer replaces the recogniser on a running App.
+//
+// It is APP-SCOPED despite hanging off Context: there is one recogniser for the
+// whole tree, and Context is simply the sanctioned channel a component has to
+// the runtime. Loop-goroutine only, like every other Context mutation.
+//
+// An in-flight gesture is CANCELLED first, through the ordinary loss path: the
+// target is disarmed, the capture released, and the owner told once with
+// CaptureLostCancelled. No gesture ever spans two recognisers, because the
+// replacement would otherwise be handed a sequence whose beginning it never saw
+// and whose state it has no way to interpret.
+//
+// A nil recogniser — including a typed nil — switches recognition off.
+func (c *Context) SetGestureRecognizer(r GestureRecognizer) {
+	a := c.app
+	if a.captureOwner != 0 && a.captureKind == CaptureGesture {
+		a.loseCapture(CaptureLostCancelled)
 	}
+	a.cfg.recognizer = normalizeRecognizer(r)
+}
+
+// normalizeRecognizer collapses every "no recogniser" spelling to a true nil,
+// so the one place that asks whether recognition is on gets a straight answer.
+//
+// A typed nil matters here for the same reason it does for actions and
+// resolvers: it satisfies the interface with a live type descriptor, so an
+// == nil check passes it and the first call panics on a nil receiver, far from
+// whoever installed it.
+func normalizeRecognizer(r GestureRecognizer) GestureRecognizer {
+	if isNilLike(r) {
+		return nil
+	}
+	return r
 }
 
 // pressActivateRecognizer is the default: press arms, release inside activates,
@@ -108,8 +155,17 @@ type pressActivateRecognizer struct{}
 func (pressActivateRecognizer) OnPointer(ev MouseEvent, gc GestureCtx) (Action, bool, GestureState) {
 	switch ev.Kind {
 	case MousePress:
-		// Only a primary press inside the target begins a gesture.
-		if ev.Button != MouseLeft || !gc.Inside {
+		// A press from another button is not part of this gesture. Preserve the
+		// state rather than returning Idle: a right-click during a left drag
+		// would otherwise disarm the control, even though nothing about the
+		// primary gesture changed.
+		if ev.Button != MouseLeft {
+			return nil, false, gc.State
+		}
+		// A primary press outside the target disarms it. That only happens once
+		// a gesture already holds the pointer; an uncaptured press always lands
+		// on the node it hit.
+		if !gc.Inside {
 			return nil, false, GestureIdle
 		}
 		return nil, true, GestureArmed
@@ -179,10 +235,23 @@ func (a *App) gestureCtxFor(n *node, local MouseEvent) GestureCtx {
 // action it produced. It reports whether the event was consumed.
 //
 // The arming, the capture and the dispatch are applied HERE rather than by the
-// recogniser, which is what keeps the recogniser a pure function of the event
-// and keeps every way a gesture can end in one place.
+// recogniser. That keeps a recogniser to interpreting events, and keeps every
+// way a gesture can end in one place instead of spread across implementations.
 func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool {
 	act, consumed, next := r.OnPointer(local, a.gestureCtxFor(n, local))
+
+	// Validate BEFORE touching anything. GestureState is a published closed
+	// enum, so a value outside it is a broken recogniser rather than data — and
+	// checking first means a rejected result leaves the state, the capture and
+	// the armed flag exactly as they were, instead of half-applying an
+	// interpretation nothing can make sense of.
+	if next > GestureArmed {
+		panic(errs.Fatal{
+			Op:     "tui: GestureRecognizer.OnPointer",
+			Rule:   "returned a GestureState outside GestureIdle, GestureArmed",
+			Detail: "got " + itoa(int(next)),
+		})
+	}
 
 	// A gesture that has begun holds the pointer, so the recogniser keeps
 	// seeing motion and release after they leave the target. Taken here and
@@ -201,7 +270,12 @@ func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool
 	//
 	// A gesture is alive while its capture is held, and ends on the release
 	// that completes or abandons it.
-	if act != nil {
+	// isNilLike, not act != nil. A recogniser returning a typed-nil
+	// *ActivateAction would otherwise pass the check, match dispatchAction's
+	// pointer arm, and activate a control on the strength of no action at all.
+	// Recognisers legitimately consume an event while producing nothing, so a
+	// typed nil is treated exactly like an absent action rather than as an error.
+	if !isNilLike(act) {
 		// Dispatch BEFORE the disarm, so the widget observes arm, activate,
 		// disarm in that order. Disarming first would make anything repainting
 		// on the callbacks flash through an unpressed frame before firing.
@@ -217,7 +291,10 @@ func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool
 	}
 	a.setGestureArmed(n, next == GestureArmed)
 
-	if local.Kind == MouseRelease {
+	// Only the LEFT release ends this gesture. Ending on any release discarded
+	// the state the recogniser had deliberately preserved, so releasing an
+	// unrelated button mid-drag disarmed the control and dropped the capture.
+	if local.Kind == MouseRelease && local.Button == MouseLeft {
 		a.endGesture()
 	}
 	return consumed
