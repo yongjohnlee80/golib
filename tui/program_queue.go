@@ -18,6 +18,13 @@ const programQueueHighWaterStart = 64
 type programItem struct {
 	ev Event
 	fn func()
+
+	// isUpdate marks a closure that came from App.Update, as opposed to one
+	// lane B merely carries — a Bus delivery, for instance. The phases in which
+	// a component may mutate loop-owned state are named ones, and travelling on
+	// the same lane is not the same as being an Update: a Bus subscriber that
+	// needs such a mutation has to enqueue an Update of its own.
+	isUpdate bool
 }
 
 // programQueue is Lane B of the two-lane event architecture: it carries internal

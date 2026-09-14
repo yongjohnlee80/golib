@@ -69,9 +69,23 @@ type App struct {
 	rootNode   *node
 	nextNodeID uint64
 
-	inLayout  bool
-	inRender  bool
-	inHandler bool  // a component's HandleEvent is executing (CapturePointer legality)
+	inLayout bool
+	inRender bool
+
+	// handlerNode is the node whose HandleEvent is executing, or 0 outside
+	// event delivery. It is an IDENTITY rather than a flag because capture is
+	// granted to a specific node: with a bare "some handler is running"
+	// boolean, node A's handler could call a retained Context belonging to
+	// node B and take the pointer in B's name.
+	handlerNode NodeID
+
+	// updateDepth counts nested App.Update callbacks currently executing. The
+	// phases in which a capture may be ENDED are stated positively — a handler
+	// or an Update — because the forbidden list was incomplete twice over:
+	// Init and any callback reached outside an Update both slipped through a
+	// Layout/Render-only check.
+	updateDepth int
+
 	layingOut *node // the node whose Layout is executing (LayoutChild legality)
 
 	focused    NodeID // 0 = none
@@ -185,7 +199,7 @@ func (a *App) Update(fn func()) {
 	if fn == nil {
 		panic(errs.Fatal{Op: "tui: App.Update", Rule: "nil func"})
 	}
-	a.queue.push(programItem{fn: fn})
+	a.queue.push(programItem{fn: fn, isUpdate: true})
 }
 
 // Run starts the backend synchronously (raw mode, alternate screen,
@@ -297,11 +311,34 @@ func (a *App) loop(ctx context.Context) error {
 func (a *App) drainProgramLane() {
 	for _, it := range a.queue.drain() {
 		if it.fn != nil {
-			it.fn()
+			if it.isUpdate {
+				a.runUpdate(it.fn)
+			} else {
+				// Not an Update — a Bus delivery or other lane-B closure. It
+				// runs on the loop goroutine but in no named phase, so the
+				// phase-gated operations correctly refuse it.
+				it.fn()
+			}
 			continue
 		}
 		a.dispatch(it.ev)
 	}
+}
+
+// runUpdate executes one App.Update callback with the Update phase marked, so
+// the operations legal "from an Update" can tell an actual Update callback from
+// any other code that happens to be running on the loop goroutine.
+//
+// The depth is a COUNT, not a flag: an Update callback may run a nested one
+// synchronously, and clearing outright on the inner return would leave the
+// outer callback's remainder wrongly classified as no phase at all.
+//
+// A Bus delivery is not an Update merely because both travel lane B. Bus
+// subscribers that need a phase-gated mutation must enqueue an Update.
+func (a *App) runUpdate(fn func()) {
+	a.updateDepth++
+	defer func() { a.updateDepth-- }()
+	fn()
 }
 
 // teardown is the registry-drain shape (server/registry.go:155-198),
