@@ -1,0 +1,380 @@
+package widget
+
+import (
+	"fmt"
+	"slices"
+
+	"github.com/yongjohnlee80/golib/tui"
+)
+
+// MENU.
+//
+// A Menu owns a MODEL and paints it. Its rows are values, not mounted children,
+// so the runtime cannot hit-test them, cannot arm them, and cannot tell one from
+// another: every row shares the Menu's single NodeID. Menu therefore does three
+// things a leaf widget does not have to.
+//
+//  1. It DECLARES A REGION per visible row during Layout, which is what lets a
+//     submenu anchor to the row that opened it and what its own pointer
+//     resolver maps coordinates through.
+//  2. It runs its OWN press-arm / release-activate machine, driven by the named
+//     actions in menuactions.go rather than by raw event handling, so the mouse,
+//     the keyboard, a UserEvent and DoAction all end at one activation path.
+//  3. It owns the open submenu levels as anchored overlay layers, opened and
+//     closed through exactly one pair of functions, so no field is ever assigned
+//     nil to "close" and leave a mounted child orphaned.
+//
+// A Menu is the ROOT LEVEL, rendered vertically. Nested levels are popups it
+// opens on the overlay host. MenuBar replaces only the root level's layout.
+
+// Menu is a model-driven menu: a vertical list of rows, with cascading submenu
+// levels opened as anchored overlays.
+type Menu struct {
+	Base
+
+	items    []MenuItemModel
+	style    *MenuStyle
+	rows     RowRenderer
+	exec     func(tui.ActionInvocation) bool
+	onSelect func(ItemID)
+	policy   AnchorPolicy
+
+	// selected is the highlighted row, empty when nothing is.
+	selected ItemID
+	// pressed and armed are the pointer gesture. pressed is the row the press
+	// landed on and does not change for the life of the gesture; armed says
+	// whether the pointer is currently back over it, and is what a release
+	// checks. Two fields rather than one, because moving off a row and back on
+	// must re-arm, which a single "armed row" cannot express.
+	pressed ItemID
+	armed   bool
+
+	// levels is the open submenu chain, outermost first. Each entry is a
+	// mounted popup; openLevel and closeLevel are the only things that change
+	// this slice or the mounts it tracks.
+	levels []menuOpenLevel
+
+	// rowRects is where each visible row was placed by the LAST COMMITTED
+	// layout, in this node's local coordinates. The pointer resolver maps
+	// through it, so hit-testing agrees with what is on screen by construction
+	// rather than by a second calculation that could drift.
+	rowRects map[ItemID]tui.Rect
+
+	// horizontal is set by MenuBar, which lays the root level along an edge
+	// instead of down the side. It changes layout and the arrow keys, nothing
+	// else — there is one lifecycle, not two.
+	horizontal bool
+	// dropSide is where a bar's first level opens, set by MenuBar so a bottom
+	// bar drops upward rather than back across itself. Zero means "the default
+	// for this orientation", which is what a bare Menu wants.
+	dropSide PlacementSide
+
+	pointerPolicy tui.PointerPolicy
+}
+
+// menuOpenLevel is one open submenu: the row that opened it and the layer id it
+// was registered under.
+type menuOpenLevel struct {
+	parent ItemID
+	layer  LayerID
+	popup  *menuPopup
+}
+
+// MenuOption configures a Menu at construction.
+type MenuOption func(*Menu)
+
+// NewMenu builds an empty menu. Supply a model with SetModel.
+func NewMenu(opts ...MenuOption) *Menu {
+	m := &Menu{pointerPolicy: tui.PointerInherit}
+	for _, o := range opts {
+		if o != nil {
+			o(m)
+		}
+	}
+	return m
+}
+
+// WithMenuStyle associates a style. The Menu does not own it; several menus may
+// share one.
+func WithMenuStyle(s *MenuStyle) MenuOption {
+	return func(m *Menu) { m.style = s }
+}
+
+// WithAnchorPolicy sets how submenu levels are placed when the preferred side
+// does not fit. nil selects FlipClipPolicy.
+func WithAnchorPolicy(p AnchorPolicy) MenuOption {
+	return func(m *Menu) { m.policy = p }
+}
+
+// WithRowRenderer supplies a custom row painter — the declared extension seam
+// for appearances the closed ItemKind does not provide.
+func WithRowRenderer(r RowRenderer) MenuOption {
+	return func(m *Menu) { m.rows = r }
+}
+
+// WithOnSelectionChanged registers a callback for selection movement. It runs
+// synchronously; the bus also carries MenuSelectionChangedEvent for observers
+// that would rather not be coupled to construction.
+func WithOnSelectionChanged(fn func(ItemID)) MenuOption {
+	return func(m *Menu) { m.onSelect = fn }
+}
+
+// WithActionExecutor supplies the function a row's Action is handed to.
+//
+// THE DISPATCH SEAM, and it has to exist: a row's Action has nowhere else to go.
+// Context.DoAction is addressed to the calling node and does not bubble, and a
+// Menu cannot implement an arbitrary application's ActionHandler after
+// construction.
+//
+// Menu stores only the function and NEVER supplies it a Context. It is called
+// synchronously and never after the Menu unmounts. A closure may still capture
+// arbitrary application values and the consumer owns their lifetime — prefer a
+// long-lived controller or store to capturing another component's Context.
+func WithActionExecutor(fn func(tui.ActionInvocation) bool) MenuOption {
+	return func(m *Menu) { m.exec = fn }
+}
+
+// SetModel replaces the whole model, atomically.
+//
+// ONE TRANSITION, in this exact order, with no intermediate state any render can
+// observe:
+//
+//  1. Validate and DEEP-COPY the complete new model before touching anything.
+//  2. Keep an open level only when its row still names a visible, enabled
+//     submenu; close every other level and all of its descendants.
+//  3. Keep the selection only for a still-selectable row; otherwise fall back
+//     to the first selectable one.
+//  4. Request layout. Rows absent from the new model are simply not redeclared,
+//     and any popup anchored to one is dismissed by the host's anchor-loss
+//     commit.
+//
+// No generation bump is involved: a stable ItemID IS stable region identity, so
+// surviving levels stay associated without one. Invalidating anchors here would
+// close the very levels step 2 exists to preserve.
+//
+// On error NOTHING changes — not the model, not the open levels, not the
+// selection. Failure is returned rather than panicked because model data is
+// frequently externally sourced, and a malformed feed is an ordinary outcome.
+func (m *Menu) SetModel(items []MenuItemModel) error {
+	if err := validateItems(items, map[ItemID]bool{}, "items"); err != nil {
+		return err
+	}
+	next := copyItems(items)
+
+	// Close the levels the new model cannot justify, before the model changes,
+	// so closeLevel still sees the tree it was opened against.
+	for i := len(m.levels) - 1; i >= 0; i-- {
+		row := findItem(next, m.levels[i].parent)
+		if row == nil || row.Kind != KindSubmenu || !row.Visible || !row.Enabled {
+			m.closeLevelsFrom(i)
+			break
+		}
+	}
+
+	m.items = next
+	m.repairSelection()
+	if ctx := m.Context(); ctx != nil {
+		ctx.RequestLayout()
+	}
+	return nil
+}
+
+// Model returns a deep copy, so a caller cannot reach inside a mounted Menu by
+// writing through the slice it was handed.
+func (m *Menu) Model() []MenuItemModel { return copyItems(m.items) }
+
+// SetEnabled sets a row's availability and reports whether the row exists.
+// Repairs the selection if it was resting on a row that just became unusable.
+func (m *Menu) SetEnabled(id ItemID, v bool) bool {
+	return m.mutate(id, func(it *MenuItemModel) { it.Enabled = v })
+}
+
+// SetVisible sets a row's presence and reports whether the row exists.
+//
+// Visibility is presentation: a hidden row KEEPS its checked state, because
+// hiding a checked option does not uncheck it, and a caller that meant to
+// uncheck it has SetChecked.
+func (m *Menu) SetVisible(id ItemID, v bool) bool {
+	return m.mutate(id, func(it *MenuItemModel) { it.Visible = v })
+}
+
+// SetChecked sets a check or radio row and reports whether the row exists.
+// Setting a radio clears the rest of its group, at every depth.
+func (m *Menu) SetChecked(id ItemID, v bool) bool {
+	return m.mutate(id, func(it *MenuItemModel) {
+		it.Checked = v
+		if v && it.Kind == KindRadio {
+			clearGroupExcept(m.items, it.Group, it.ID)
+		}
+	})
+}
+
+// mutate applies fn to one row and repairs everything the change can invalidate.
+// One place, so no mutator forgets the repair — which is how a selection ends up
+// resting on a row that is no longer there.
+func (m *Menu) mutate(id ItemID, fn func(*MenuItemModel)) bool {
+	it := findItem(m.items, id)
+	if it == nil {
+		return false
+	}
+	fn(it)
+	m.closeUnjustifiedLevels()
+	m.repairSelection()
+	if ctx := m.Context(); ctx != nil {
+		ctx.RequestLayout()
+	}
+	return true
+}
+
+// closeUnjustifiedLevels closes the deepest run of levels whose opening row no
+// longer qualifies, from the shallowest such level down.
+func (m *Menu) closeUnjustifiedLevels() {
+	for i := 0; i < len(m.levels); i++ {
+		row := findItem(m.items, m.levels[i].parent)
+		if row == nil || row.Kind != KindSubmenu || !row.Visible || !row.Enabled {
+			m.closeLevelsFrom(i)
+			return
+		}
+	}
+}
+
+// Selected reports the highlighted row, and whether anything is selected.
+func (m *Menu) Selected() (ItemID, bool) {
+	return m.selected, m.selected != ""
+}
+
+// Select moves the highlight to a row, and reports whether it could. A row that
+// is hidden, disabled or a separator cannot hold the selection.
+func (m *Menu) Select(id ItemID) bool {
+	it := findItem(m.items, id)
+	if it == nil || !it.selectable() {
+		return false
+	}
+	m.setSelected(id)
+	return true
+}
+
+// setSelected moves the selection and announces it once, to the callback and the
+// bus. One place, so the two cannot come to disagree about when a change
+// happened, and a no-op move announces nothing.
+func (m *Menu) setSelected(id ItemID) {
+	if m.selected == id {
+		return
+	}
+	m.selected = id
+	if m.onSelect != nil {
+		m.onSelect(id)
+	}
+	if ctx := m.Context(); ctx != nil {
+		ctx.Bus().Publish(MenuSelectionChangedEvent{Owner: m.NodeID(), ItemID: id})
+		ctx.MarkDirty()
+	}
+}
+
+// repairSelection keeps the selection on a still-selectable row, or moves it to
+// the first selectable row of the deepest open level.
+func (m *Menu) repairSelection() {
+	level := m.currentLevelItems()
+	if it := findItem(level, m.selected); it != nil && it.selectable() {
+		return
+	}
+	for i := range level {
+		if level[i].selectable() {
+			m.setSelected(level[i].ID)
+			return
+		}
+	}
+	m.setSelected("")
+}
+
+// currentLevelItems is the row slice the keyboard is currently acting on: the
+// deepest open level, or the root.
+func (m *Menu) currentLevelItems() []MenuItemModel {
+	if n := len(m.levels); n > 0 {
+		if row := findItem(m.items, m.levels[n-1].parent); row != nil {
+			return row.Children
+		}
+	}
+	return m.items
+}
+
+// OpenLevels reports how many submenu levels are open.
+func (m *Menu) OpenLevels() int { return len(m.levels) }
+
+// Open opens the submenu named by id.
+//
+// Typed errors rather than silence: a caller asking for a row that is not a
+// submenu, or is disabled, hidden or absent, has a bug, and returning nil would
+// leave it looking for a popup that was never going to appear.
+func (m *Menu) Open(id ItemID) error {
+	it := findItem(m.items, id)
+	switch {
+	case it == nil:
+		return fmt.Errorf("%w: no row %q", ErrInvalidMenuModel, id)
+	case it.Kind != KindSubmenu:
+		return fmt.Errorf("%w: row %q is a %s, not a submenu", ErrInvalidMenuModel, id, it.Kind)
+	case !it.Visible:
+		return fmt.Errorf("%w: row %q is hidden", ErrInvalidMenuModel, id)
+	case !it.Enabled:
+		return fmt.Errorf("%w: row %q is disabled", ErrInvalidMenuModel, id)
+	}
+	return m.openLevel(id, it.Children)
+}
+
+// Close closes every open level and leaves the selection on the root.
+func (m *Menu) Close() {
+	m.closeLevelsFrom(0)
+	m.repairSelection()
+}
+
+// WithStyle associates a style at runtime and returns the menu for chaining.
+// nil reverts to the default look, so there is no separate clear API. Open
+// levels are restyled too — a theme swap that reached only the root would leave
+// a cascade half-dressed.
+func (m *Menu) WithStyle(s *MenuStyle) *Menu {
+	m.style = s
+	for _, lv := range m.levels {
+		lv.popup.st = s
+		if ctx := lv.popup.Context(); ctx != nil {
+			ctx.MarkDirty()
+		}
+	}
+	if ctx := m.Context(); ctx != nil {
+		ctx.MarkDirty()
+	}
+	return m
+}
+
+// WithPointerPolicy sets whether this menu and its subtree accept pointer input,
+// and returns the menu for chaining.
+//
+// Remembered as well as applied, because NewMenu(...).WithPointerPolicy(...) is
+// the natural way to write it and runs before there is any Context. Keyboard
+// operation is unaffected: every action this widget resolves is reachable from
+// the keyboard, so a pointer-disabled menu stays fully usable.
+func (m *Menu) WithPointerPolicy(p tui.PointerPolicy) *Menu {
+	if !p.Valid() {
+		panic(tuiFatal("widget: Menu.WithPointerPolicy",
+			"value outside PointerInherit, PointerEnabled, PointerDisabled", int(p)))
+	}
+	m.pointerPolicy = p
+	if ctx := m.Context(); ctx != nil {
+		ctx.SetPointerPolicy(p)
+	}
+	return m
+}
+
+// AcceptsFocus reports that a menu is a tab stop whenever it has a row worth
+// landing on. An empty menu is not: it would be a stop where nothing happens.
+func (m *Menu) AcceptsFocus() bool {
+	return slices.ContainsFunc(m.items, func(it MenuItemModel) bool { return it.selectable() })
+}
+
+// Init installs the menu's own key and pointer bindings as its DEFAULT resolver
+// layer, so a consumer may add bindings without re-supplying these.
+func (m *Menu) Init(ctx *tui.Context) {
+	m.Base.Init(ctx)
+	ctx.SetPointerPolicy(m.pointerPolicy)
+	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(m.resolve))
+	m.repairSelection()
+}
