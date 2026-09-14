@@ -1,0 +1,786 @@
+package widget_test
+
+// A dialog's LIFECYCLE, as distinct from how it looks. Everything here is a
+// state the rendered output cannot distinguish: a modal that was remounted looks
+// exactly like one that was reordered, a dialog closed out of order looks like
+// one closed in order until you ask what is still open, and an activation that
+// published no event looks like one that did until something is listening.
+//
+// That is the common shape of these cases and the reason they are grouped: a
+// screen comparison is the wrong instrument for all of them, so each test names
+// the identity, the event or the ordering it is actually pinning.
+
+import (
+	"errors"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget"
+)
+
+// nodeIDOf reads a mounted component's node identity on the loop.
+func nodeIDOf(t *testing.T, h *harness, c interface{ NodeID() tui.NodeID }) tui.NodeID {
+	t.Helper()
+	var id tui.NodeID
+	h.onLoop(func() { id = c.NodeID() })
+	return id
+}
+
+// focusedOn reports whether the given button holds focus, read on the loop.
+func focusedOn(t *testing.T, h *harness, b *widget.Button) bool {
+	t.Helper()
+	var f bool
+	h.onLoop(func() { f = b.Context() != nil && b.Context().Focused() })
+	return f
+}
+
+// cellOfLabel finds where a label is painted, so a pointer test can aim at the
+// control a user would actually click rather than at a hardcoded coordinate
+// that silently stops pointing at it when the layout shifts.
+func cellOfLabel(t *testing.T, h *harness, label string) (x, y int) {
+	t.Helper()
+	grid := h.tb.Snapshot()
+	for row := range grid {
+		line := ""
+		for _, c := range grid[row] {
+			if c.Continuation() {
+				continue
+			}
+			if c.Content == "" {
+				line += " "
+				continue
+			}
+			line += c.Content
+		}
+		if i := strings.Index(line, label); i >= 0 {
+			return i, row
+		}
+	}
+	t.Fatalf("label %q is not on screen:\n%s", label, h.grid())
+	return 0, 0
+}
+
+// ─── the focus provider ──────────────────────────────────────────────────────
+
+// TestSetButtonsHonoursTheDefaultRoleOnEveryRepair.
+//
+// A dialog's affirmative control is where a user expects to land, and that
+// preference has to survive changes to the button list — not merely be applied
+// once when the dialog opens. The runtime's own repair picks the first focusable
+// in DOCUMENT order and knows nothing about roles, so without a provider seam
+// the Default-role button is preferred exactly once and never again.
+func TestSetButtonsHonoursTheDefaultRoleOnEveryRepair(t *testing.T) {
+	m := widget.NewModal(widget.NewText("Body"))
+	h, host, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	// Opened with no buttons at all, so the Modal node itself holds focus and
+	// there is no incumbent to bias the choice.
+	normal := widget.NewButton("Normal")
+	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+
+	var err error
+	// Listed FIRST is the plain button, so "the first enabled button" and "the
+	// first in document order" both pick the wrong one.
+	h.onLoop(func() { err = m.SetButtons(normal, def) })
+	if err != nil {
+		t.Fatalf("SetButtons: %v", err)
+	}
+	h.settle()
+
+	if !focusedOn(t, h, def) {
+		t.Error("focus did not land on the Default-role button after SetButtons; " +
+			"the dialog's preference applied only at open")
+	}
+	var sel int
+	h.onLoop(func() { sel = m.SelectedButton() })
+	if sel != 1 {
+		t.Errorf("SelectedButton() = %d, want 1 (the Default button's index)", sel)
+	}
+}
+
+// TestSetButtonsKeepsSelectionForAStillFocusedButton.
+//
+// Replacing a list with an identical one changes nothing a user can see, and
+// must therefore change nothing they can query. Clearing selection optimistically
+// and waiting for a focus event to restore it does not work: focus never moved,
+// so no event is emitted and the dialog is left reporting that nothing is
+// selected while a button is visibly focused.
+func TestSetButtonsKeepsSelectionForAStillFocusedButton(t *testing.T) {
+	a := widget.NewButton("A")
+	b := widget.NewButton("B")
+	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(a, b))
+	h, host, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	h.onLoop(func() { a.Context().RequestFocus() })
+	h.settle()
+	if !focusedOn(t, h, a) {
+		t.Fatal("precondition failed: A does not hold focus, so nothing has to be preserved")
+	}
+
+	var err error
+	h.onLoop(func() { err = m.SetButtons(a, b) }) // the identical list
+	if err != nil {
+		t.Fatalf("SetButtons: %v", err)
+	}
+	h.settle()
+
+	if !focusedOn(t, h, a) {
+		t.Error("an identity SetButtons moved focus off the focused button")
+	}
+	var sel int
+	h.onLoop(func() { sel = m.SelectedButton() })
+	if sel != 0 {
+		t.Errorf("SelectedButton() = %d, want 0; the focused button and the reported "+
+			"selection disagree", sel)
+	}
+}
+
+// TestAddingADefaultButtonMovesFocusToItEvenWhenTheCurrentOneIsStillValid.
+//
+// The other half of "the preference applies on every repair". Here the focused
+// button remains perfectly focusable and in scope, so the runtime has no reason
+// to repair at all — and an implementation that only consults the dialog when
+// focus DIED leaves focus legal and wrong: the affirmative control has just
+// appeared and nothing moves to it.
+func TestAddingADefaultButtonMovesFocusToItEvenWhenTheCurrentOneIsStillValid(t *testing.T) {
+	plain := widget.NewButton("Plain")
+	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(plain))
+	h, host, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+	openOn(t, h, m, host)
+	if !focusedOn(t, h, plain) {
+		t.Fatal("precondition failed: the only button never took focus")
+	}
+
+	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	var err error
+	h.onLoop(func() { err = m.SetButtons(plain, def) })
+	if err != nil {
+		t.Fatalf("SetButtons: %v", err)
+	}
+	h.settle()
+
+	if !focusedOn(t, h, def) {
+		t.Error("focus stayed on the plain button after a Default-role button was " +
+			"added; the dialog is consulted only when focus dies")
+	}
+}
+
+// ─── list validation ─────────────────────────────────────────────────────────
+
+// TestSetButtonsRejectsAnUnusableListWithoutChangingAnything.
+//
+// Every rejected call must leave the dialog exactly as it was — the list, the
+// selection, the focus and the mounted tree. A validator that checked while
+// installing would apply the acceptable entries first, which is how a refused
+// call ends up doing half its work.
+func TestSetButtonsRejectsAnUnusableListWithoutChangingAnything(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want error
+		list func(host *widget.OverlayHost, base *widget.Button, keep *widget.Button) []*widget.Button
+	}{
+		{
+			name: "a nil entry",
+			want: widget.ErrNilButton,
+			list: func(_ *widget.OverlayHost, _ *widget.Button, keep *widget.Button) []*widget.Button {
+				return []*widget.Button{keep, nil}
+			},
+		},
+		{
+			name: "the same button twice",
+			want: widget.ErrRepeatedButton,
+			list: func(_ *widget.OverlayHost, _ *widget.Button, keep *widget.Button) []*widget.Button {
+				return []*widget.Button{keep, keep}
+			},
+		},
+		{
+			name: "a button mounted elsewhere in the tree",
+			want: widget.ErrForeignButton,
+			list: func(_ *widget.OverlayHost, base *widget.Button, keep *widget.Button) []*widget.Button {
+				return []*widget.Button{keep, base}
+			},
+		},
+		{
+			name: "two buttons carrying the Default role",
+			want: widget.ErrDuplicateButtonRole,
+			list: func(_ *widget.OverlayHost, _ *widget.Button, keep *widget.Button) []*widget.Button {
+				return []*widget.Button{
+					keep,
+					widget.NewButton("X", widget.WithRole(widget.ButtonRoleDefault)),
+					widget.NewButton("Y", widget.WithRole(widget.ButtonRoleDefault)),
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keep := widget.NewButton("Keep")
+			m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(keep))
+			h, host, base := modalFixture(t, m, 40, 12)
+			defer h.stop()
+			openOn(t, h, m, host)
+
+			beforeID := nodeIDOf(t, h, keep)
+			var before []*widget.Button
+			h.onLoop(func() { before = m.Buttons() })
+
+			var err error
+			h.onLoop(func() { err = m.SetButtons(tc.list(host, base, keep)...) })
+			h.settle()
+
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("SetButtons returned %v, want %v", err, tc.want)
+			}
+			var after []*widget.Button
+			var sel int
+			h.onLoop(func() {
+				after = m.Buttons()
+				sel = m.SelectedButton()
+			})
+			if len(after) != len(before) || (len(after) > 0 && after[0] != before[0]) {
+				t.Errorf("a rejected SetButtons changed the list: %d buttons, want %d",
+					len(after), len(before))
+			}
+			if got := nodeIDOf(t, h, keep); got != beforeID {
+				t.Errorf("the surviving button was remounted by a REJECTED call "+
+					"(NodeID %d -> %d)", beforeID, got)
+			}
+			if !focusedOn(t, h, keep) {
+				t.Error("a rejected SetButtons moved focus")
+			}
+			if sel != 0 {
+				t.Errorf("SelectedButton() = %d after a rejected call, want 0", sel)
+			}
+		})
+	}
+}
+
+// TestReorderingButtonsMovesThemWithoutRemounting.
+//
+// A caller reordering the controls asked for a cosmetic change. Remounting to
+// achieve it gives every button a new NodeID, cancels its lifetime context and
+// throws away its focus — and the screen looks identical either way, so nothing
+// about the appearance can catch it. Document order is also TAB order, so the
+// reorder has to reach the tree rather than only the paint.
+func TestReorderingButtonsMovesThemWithoutRemounting(t *testing.T) {
+	a := widget.NewButton("A")
+	b := widget.NewButton("B")
+	c := widget.NewButton("C")
+	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(a, b, c))
+	h, host, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	ids := [3]tui.NodeID{nodeIDOf(t, h, a), nodeIDOf(t, h, b), nodeIDOf(t, h, c)}
+
+	// REVERSED, deliberately not rotated. Tab traversal is cyclic, so a rotation
+	// of the list produces the same sequence from the same starting point as the
+	// original order does — an assertion over c,a,b starting at c passes whether
+	// or not the tree was reordered at all. Reversal is the cheapest arrangement
+	// the two orders disagree about.
+	var err error
+	h.onLoop(func() { err = m.SetButtons(c, b, a) })
+	if err != nil {
+		t.Fatalf("SetButtons: %v", err)
+	}
+	h.settle()
+
+	for i, pair := range []struct {
+		b  *widget.Button
+		id tui.NodeID
+	}{{a, ids[0]}, {b, ids[1]}, {c, ids[2]}} {
+		if got := nodeIDOf(t, h, pair.b); got != pair.id {
+			t.Errorf("button %d was remounted by a reorder (NodeID %d -> %d)",
+				i, pair.id, got)
+		}
+	}
+
+	// Tab order must follow the NEW visual order: c, b, a. Under the old tree
+	// order (a, b, c) the same walk from c would visit a then b.
+	h.onLoop(func() { c.Context().RequestFocus() })
+	h.settle()
+	for _, want := range []*widget.Button{b, a, c} {
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
+		h.settle()
+		if !focusedOn(t, h, want) {
+			var order []string
+			h.onLoop(func() {
+				for _, bb := range m.Buttons() {
+					order = append(order, bb.Label())
+				}
+			})
+			t.Fatalf("Tab did not reach %q next; list order is %v but the tree was "+
+				"not reordered to match", want.Label(), order)
+		}
+	}
+}
+
+// ─── stacking ────────────────────────────────────────────────────────────────
+
+// TestClosingAStackedDialogDoesNotRemountTheSurvivor.
+//
+// Restoring the lower dialog's backdrop means inserting a layer BENEATH it.
+// Doing that by removing and re-adding the dialog produces exactly the right
+// picture and destroys the dialog on the way: new NodeID, cancelled lifetime
+// context, unmount hooks fired, focus gone, Init re-run on everything inside.
+// None of that is visible on screen, which is why a rendered-output test —
+// including the one this package already had — cannot see it.
+func TestClosingAStackedDialogDoesNotRemountTheSurvivor(t *testing.T) {
+	lowerBtn := widget.NewButton("Lower")
+	lower := widget.NewModal(widget.NewText("first"), widget.WithButtons(lowerBtn))
+	upper := widget.NewModal(widget.NewText("later"), widget.WithModalTitle("Bravo"))
+
+	h, host, _ := modalFixture(t, lower, 40, 12)
+	defer h.stop()
+
+	openOn(t, h, lower, host)
+	lowerID := nodeIDOf(t, h, lower)
+	btnID := nodeIDOf(t, h, lowerBtn)
+	if !focusedOn(t, h, lowerBtn) {
+		t.Fatal("precondition failed: the lower dialog's button never took focus")
+	}
+
+	openOn(t, h, upper, host)
+	h.onLoop(func() { upper.Dismiss(widget.DismissProgrammatic) })
+	h.settle()
+
+	if got := nodeIDOf(t, h, lower); got != lowerID {
+		t.Errorf("the surviving dialog was remounted (NodeID %d -> %d); the scrim "+
+			"was reinserted by removing and re-adding it", lowerID, got)
+	}
+	if got := nodeIDOf(t, h, lowerBtn); got != btnID {
+		t.Errorf("the survivor's button was remounted (NodeID %d -> %d)", btnID, got)
+	}
+	if !focusedOn(t, h, lowerBtn) {
+		t.Error("the survivor lost focus when the dialog above it closed")
+	}
+	// And it is still usable: Escape must still reach it.
+	var dismissed atomic.Int64
+	unsub := tui.Subscribe(h.app.Bus(), func(widget.OverlayDismissedEvent) { dismissed.Add(1) })
+	defer unsub()
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	h.waitFor("the survivor still responds to Escape", func() bool { return dismissed.Load() == 1 })
+}
+
+// TestDismissingANonTopDialogUnwindsEverythingAboveIt.
+//
+// Dialogs are a stack. Closing one in the middle while leaving those above open
+// produces a state the model does not have — a dialog on top of nothing, still
+// trapping focus — and the ones above are then unreachable and uncloseable.
+func TestDismissingANonTopDialogUnwindsEverythingAboveIt(t *testing.T) {
+	bottom := widget.NewModal(widget.NewText("1"), widget.WithModalTitle("One"))
+	middle := widget.NewModal(widget.NewText("2"), widget.WithModalTitle("Two"))
+	top := widget.NewModal(widget.NewText("3"), widget.WithModalTitle("Three"))
+
+	h, host, _ := modalFixture(t, bottom, 40, 14)
+	defer h.stop()
+	openOn(t, h, bottom, host)
+	openOn(t, h, middle, host)
+	openOn(t, h, top, host)
+
+	var mu sync.Mutex
+	var reasons []widget.DismissReason
+	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+		mu.Lock()
+		reasons = append(reasons, ev.Reason)
+		mu.Unlock()
+	})
+	defer unsub()
+
+	h.onLoop(func() { bottom.Dismiss(widget.DismissAccept) })
+	h.waitFor("three dismissals published", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(reasons) == 3
+	})
+	h.settle()
+
+	for _, m := range []struct {
+		name string
+		m    *widget.Modal
+	}{{"bottom", bottom}, {"middle", middle}, {"top", top}} {
+		if m.m.IsOpen() {
+			t.Errorf("%s is still open after the bottom dialog was dismissed", m.name)
+		}
+	}
+	var left *widget.Modal
+	h.onLoop(func() { left = host.TopModal() })
+	if left != nil {
+		t.Error("the host still holds an open dialog")
+	}
+
+	mu.Lock()
+	got := append([]widget.DismissReason(nil), reasons...)
+	mu.Unlock()
+	// Topmost first, and the ones the user did not act on are REPLACED: reporting
+	// the caller's Accept for all three would attribute an answer to two dialogs
+	// nobody answered.
+	want := []widget.DismissReason{
+		widget.DismissReplaced, widget.DismissReplaced, widget.DismissAccept,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("%d dismissal events, want %d (one per dialog)", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("dismissal %d reported %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+// ─── dismissal ordering ──────────────────────────────────────────────────────
+
+// TestAnOnDismissCallbackMayReopenTheDialog.
+//
+// "Are you sure?" that reopens itself is ordinary application code. Running the
+// callback while the component is still mounted makes it a crash instead: the
+// reopen passes the open guard and the runtime refuses to mount one component
+// twice.
+func TestAnOnDismissCallbackMayReopenTheDialog(t *testing.T) {
+	var host *widget.OverlayHost
+	var m *widget.Modal
+	var reopens atomic.Int64
+	var reopenErr error
+
+	m = widget.NewModal(widget.NewText("Body"), widget.WithOnDismiss(func(widget.DismissReason) {
+		if reopens.Add(1) == 1 {
+			reopenErr = m.Open(host)
+		}
+	}))
+	h, hh, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+	host = hh
+	openOn(t, h, m, host)
+
+	h.onLoop(func() { m.Dismiss(widget.DismissProgrammatic) })
+	h.settle()
+
+	if reopenErr != nil {
+		t.Fatalf("reopening from the dismissal callback failed: %v", reopenErr)
+	}
+	if !m.IsOpen() {
+		t.Error("the dialog did not reopen; the callback ran but the reopen did not take")
+	}
+	var top *widget.Modal
+	h.onLoop(func() { top = host.TopModal() })
+	if top != m {
+		t.Error("the reopened dialog is not on the host's stack")
+	}
+}
+
+// TestOpenMovesFocusBeforeItReturns.
+//
+// A dialog that is mounted and covering the UI while the control underneath
+// still holds focus is a real window, however short: input already queued behind
+// Open reaches content the dialog exists to trap. Deferring the focus move to a
+// scheduled step created that window for no benefit — direct RequestFocus is
+// legal before layout.
+func TestOpenMovesFocusBeforeItReturns(t *testing.T) {
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
+	h, host, base := modalFixture(t, m, 40, 12)
+	defer h.stop()
+
+	var baseStillFocused, dialogFocused bool
+	// Everything inside ONE loop turn: the assertion is about the state the
+	// instant Open returns, and settling first would let a scheduled step run
+	// and hide exactly the defect under test.
+	h.onLoop(func() {
+		if err := m.Open(host); err != nil {
+			t.Errorf("Open: %v", err)
+			return
+		}
+		baseStillFocused = base.Context().Focused()
+		dialogFocused = ok.Context() != nil && ok.Context().Focused()
+	})
+	h.settle()
+
+	if baseStillFocused {
+		t.Error("Open returned with the covered control still focused")
+	}
+	if !dialogFocused {
+		t.Error("Open returned before focus reached the dialog")
+	}
+}
+
+// TestOpenRollsBackWhenTheDialogCannotMount.
+//
+// The documented guarantee is that a failed Open leaves no trace. Committing
+// open/host state before the mount broke it for the one reachable case: a
+// descendant already mounted elsewhere, which leaves a dialog marked open with
+// nothing on screen and no way to close it.
+func TestOpenRollsBackWhenTheDialogCannotMount(t *testing.T) {
+	// The BODY is the reachable case. Button lists are validated at both
+	// construction and Open, so a foreign button never reaches the mount; a body
+	// is the caller's arbitrary component and is not, which is exactly why the
+	// mount itself has to be able to fail safely.
+	shared := widget.NewText("shared")
+	baseRow := tui.NewFlex(tui.Vertical)
+	base := widget.NewButton("base")
+	baseRow.Add(base, shared)
+	host := widget.NewOverlayHost(baseRow)
+	h := startApp(t, host, 40, 12)
+	defer h.stop()
+	h.onLoop(func() { base.Context().RequestFocus() })
+	h.settle()
+
+	first := widget.NewModal(widget.NewText("first"), widget.WithModalTitle("Alpha"))
+	openOn(t, h, first, host)
+	before := h.grid()
+
+	bad := widget.NewModal(shared) // already mounted under baseRow
+	var openErr error
+	h.onLoop(func() { openErr = bad.Open(host) })
+	h.settle()
+
+	if openErr == nil {
+		t.Fatal("Open accepted a dialog whose body is mounted elsewhere")
+	}
+	if !errors.Is(openErr, widget.ErrModalNotMountable) {
+		t.Errorf("Open returned %v, want ErrModalNotMountable", openErr)
+	}
+	if bad.IsOpen() {
+		t.Error("a refused Open left the dialog marked open")
+	}
+	var top *widget.Modal
+	h.onLoop(func() { top = host.TopModal() })
+	if top != first {
+		t.Error("a refused Open changed which dialog is topmost")
+	}
+	if got := h.grid(); got != before {
+		t.Errorf("a refused Open changed the screen.\nwant:\n%s\ngot:\n%s", before, got)
+	}
+}
+
+// ─── Escape and provenance ───────────────────────────────────────────────────
+
+// TestEscapeActivatesTheCancelButtonThroughTheRuntime.
+//
+// "Escape means exactly what pressing the Cancel button means" is a claim about
+// what OBSERVERS see, not only about which callback runs. The runtime is the
+// sole publisher of ControlActivatedEvent, so calling Activate directly runs the
+// callback and publishes nothing: a command log, an undo stack or a test
+// watching the bus sees a keypress that activated nothing.
+func TestEscapeActivatesTheCancelButtonThroughTheRuntime(t *testing.T) {
+	var ran atomic.Int64
+	cancel := widget.NewButton("Nope",
+		widget.WithRole(widget.ButtonRoleCancel),
+		widget.WithOnActivate(func() { ran.Add(1) }))
+	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(cancel))
+
+	h, host, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	var mu sync.Mutex
+	var acts []tui.ControlActivatedEvent
+	var dismissals []widget.OverlayDismissedEvent
+	unsubA := tui.Subscribe(h.app.Bus(), func(ev tui.ControlActivatedEvent) {
+		mu.Lock()
+		acts = append(acts, ev)
+		mu.Unlock()
+	})
+	defer unsubA()
+	unsubD := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+		mu.Lock()
+		dismissals = append(dismissals, ev)
+		mu.Unlock()
+	})
+	defer unsubD()
+
+	cancelID := nodeIDOf(t, h, cancel)
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	h.waitFor("dismissed", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(dismissals) == 1
+	})
+	h.settle()
+
+	mu.Lock()
+	gotActs := append([]tui.ControlActivatedEvent(nil), acts...)
+	gotDis := append([]widget.OverlayDismissedEvent(nil), dismissals...)
+	mu.Unlock()
+
+	if ran.Load() != 1 {
+		t.Errorf("the Cancel callback ran %d times, want 1", ran.Load())
+	}
+	if len(gotActs) != 1 {
+		t.Fatalf("%d ControlActivatedEvent, want exactly 1; Escape activated the "+
+			"button without the runtime recording it", len(gotActs))
+	}
+	if gotActs[0].Owner != cancelID {
+		t.Errorf("activation names node %d, want the Cancel button %d",
+			gotActs[0].Owner, cancelID)
+	}
+	if gotActs[0].Origin != tui.OriginKey {
+		t.Errorf("activation origin = %v, want OriginKey: the provenance of the "+
+			"keypress must survive the forward", gotActs[0].Origin)
+	}
+	if len(gotDis) != 1 || gotDis[0].Reason != widget.DismissCancel {
+		t.Errorf("dismissals = %v, want exactly one with reason cancel", gotDis)
+	}
+}
+
+// ─── the new public controls ─────────────────────────────────────────────────
+
+// TestModalPointerPolicyReachesTheWholeSubtree.
+//
+// "This dialog is keyboard-only" is one decision, so it is stated once on the
+// dialog rather than repeated on every control. Set before mount it must still
+// apply, because NewModal(...).WithPointerPolicy(...) is the natural way to
+// write it and runs before there is any Context.
+func TestModalPointerPolicyReachesTheWholeSubtree(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		preMount bool
+	}{{"set before mount", true}, {"set while open", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var acts atomic.Int64
+			ok := widget.NewButton("OK",
+				widget.WithRole(widget.ButtonRoleDefault),
+				widget.WithOnActivate(func() { acts.Add(1) }))
+			m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
+			if tc.preMount {
+				m.WithPointerPolicy(tui.PointerDisabled)
+			}
+			h, host, _ := modalFixture(t, m, 40, 12)
+			defer h.stop()
+			openOn(t, h, m, host)
+			if !tc.preMount {
+				h.onLoop(func() { m.WithPointerPolicy(tui.PointerDisabled) })
+				h.settle()
+			}
+
+			// A press and release on the button's own cell. With the pointer
+			// disabled for the subtree, neither reaches it.
+			bx, by := cellOfLabel(t, h, "OK")
+			h.inject(
+				tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: bx, Y: by},
+				tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: bx, Y: by},
+			)
+			h.settle()
+			h.settle()
+
+			if got := acts.Load(); got != 0 {
+				t.Errorf("the button activated %d times through a disabled pointer "+
+					"policy set on the dialog", got)
+			}
+			// The control: the keyboard still works, so the test is observing a
+			// pointer policy rather than a broken button.
+			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+			h.waitFor("keyboard activation still works", func() bool { return acts.Load() == 1 })
+		})
+	}
+}
+
+// TestModalWithStyleRestylesTheLiveCardAndScrim.
+//
+// A theme swap has to reach a dialog that is already open, not merely the next
+// one. The scrim is the host's layer but wears this dialog's look, so a restyle
+// that stopped at the card would leave the backdrop in the old theme.
+func TestModalWithStyleRestylesTheLiveCardAndScrim(t *testing.T) {
+	m := widget.NewModal(widget.NewText("Body"), widget.WithModalTitle("T"))
+	h, host, _ := modalFixture(t, m, 30, 8)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	underlined := widget.NewModalStyle(styleOf(1), styleOf(2)).
+		WithScrim(style.New().Underline(true)).
+		WithCard(style.New().Underline(true))
+	h.onLoop(func() { m.WithStyle(underlined) })
+	h.settle()
+
+	grid := h.tb.Snapshot()
+	corner := grid[len(grid)-1][0] // outside any centred card: the backdrop
+	if corner.Attrs.Mask&tui.AttrUnderline == 0 {
+		t.Error("the live scrim kept its old style; a restyle of an open dialog " +
+			"stopped at the card")
+	}
+	x0, y0, x1, y1 := cardBounds(t, h)
+	mid := grid[(y0+y1)/2][(x0+x1)/2]
+	if mid.Attrs.Mask&tui.AttrUnderline == 0 {
+		t.Error("the live card kept its old style")
+	}
+}
+
+// TestDetachRemovesAnAttachedFloat.
+//
+// Attach used to be permanent, which made a Float usable only by an owner that
+// lived as long as the application. Detaching runs the ordinary unmount cascade,
+// so a Float holding focus has it returned rather than stranded.
+func TestDetachRemovesAnAttachedFloat(t *testing.T) {
+	inner := widget.NewButton("Inside")
+	f := widget.NewFloat(inner)
+	base := widget.NewButton("base")
+	host := widget.NewOverlayHost(base)
+	h := startApp(t, host, 30, 10)
+	defer h.stop()
+
+	h.onLoop(func() {
+		host.Attach(f)
+		host.Attach(f) // twice: one layer, not two
+		f.Show()
+	})
+	h.settle()
+	h.onLoop(func() { inner.Context().RequestFocus() })
+	h.settle()
+	if !focusedOn(t, h, inner) {
+		t.Fatal("precondition failed: the Float's control never took focus")
+	}
+
+	h.onLoop(func() { host.Detach(f) })
+	h.settle()
+
+	// Read the SCREEN, not the widget's cached context pointer: Base keeps that
+	// pointer across an unmount, so it reports "mounted" for a component the
+	// runtime has already forgotten and would pass whether or not Detach worked.
+	if got := h.grid(); strings.Contains(got, "Inside") {
+		t.Errorf("Detach left the Float's content on screen:\n%s", got)
+	}
+	if f.Shown() {
+		t.Error("Detach left the Float believing it was still shown; a later Show " +
+			"would take the already-shown early return and mount nothing")
+	}
+	if !focusedOn(t, h, base) {
+		t.Error("focus was not returned to the base after the Float was detached")
+	}
+	// Detaching again is a no-op rather than a panic.
+	h.onLoop(func() { host.Detach(f) })
+	h.settle()
+
+	// And it can be used again: a Float that can only be detached once is not
+	// reusable, which was the whole point of adding Detach.
+	h.onLoop(func() {
+		host.Attach(f)
+		f.Show()
+	})
+	h.settle()
+	if got := h.grid(); !strings.Contains(got, "Inside") {
+		t.Errorf("the Float could not be re-attached and shown:\n%s", got)
+	}
+}
+
+// TestModalPointerPolicyRejectsAnOutOfRangeValue.
+//
+// Probing the FIRST invalid value, not a far one: an off-by-one bound rejects
+// 200 exactly as readily as a correct bound does, so a far probe cannot see the
+// edge move. The last valid value is asserted accepted in the same breath, which
+// is the half that catches a bound that moved the other way.
+func TestModalPointerPolicyRejectsAnOutOfRangeValue(t *testing.T) {
+	m := widget.NewModal(widget.NewText("Body"))
+	if f := fatalFromWidgetExt(func() { m.WithPointerPolicy(tui.PointerDisabled) }); f != nil {
+		t.Errorf("the last valid policy was rejected: %v", f.Rule)
+	}
+	if f := fatalFromWidgetExt(func() { m.WithPointerPolicy(tui.PointerDisabled + 1) }); f == nil {
+		t.Error("Modal.WithPointerPolicy accepted the first value past the declared set")
+	}
+}

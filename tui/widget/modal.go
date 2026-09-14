@@ -50,6 +50,10 @@ type Modal struct {
 
 	host *OverlayHost
 	open bool
+	// pointerPolicy is the subtree-wide pointer setting, remembered so a
+	// chained WithPointerPolicy before mount is applied when the Context
+	// arrives rather than being silently dropped.
+	pointerPolicy tui.PointerPolicy
 	// selected is the index of the focused button, or -1 when focus is on the
 	// Modal node itself — which happens when it owns no enabled button.
 	selected int
@@ -66,17 +70,18 @@ type ModalOption func(*Modal)
 // through one validator so they cannot come to disagree.
 func NewModal(body tui.Component, opts ...ModalOption) *Modal {
 	m := &Modal{
-		card:      newModalCard(body),
-		placement: PlacementCenter,
-		wantScrim: true,
-		selected:  -1,
+		card:          newModalCard(body),
+		placement:     PlacementCenter,
+		wantScrim:     true,
+		selected:      -1,
+		pointerPolicy: tui.PointerInherit,
 	}
 	for _, o := range opts {
 		if o != nil {
 			o(m)
 		}
 	}
-	checkButtonRoles("widget: NewModal", m.card.buttons)
+	checkButtonList("widget: NewModal", m.card.buttons, m.card)
 	return m
 }
 
@@ -139,21 +144,101 @@ func WithScrim(v bool) ModalOption {
 // that validated while copying would install the acceptable entries and then
 // fail, which is the worst of both.
 func (m *Modal) SetButtons(b ...*Button) error {
-	if f := validateButtonRoles(b); f != nil {
-		return fmt.Errorf("%w: %s", ErrDuplicateButtonRole, f.describe())
+	if f := validateButtonList(b, m.card); f != nil {
+		return fmt.Errorf("%w: %s", f.kind, f.describe())
 	}
 	// The card owns the children, so it does the reconcile: the list and the
-	// mounted tree are two views of the same thing and must move together.
+	// mounted tree are two views of the same thing and must move together. It
+	// batches, so the focus repair below is the only one that runs.
 	m.card.setButtons(b)
-	m.selected = -1
 	if ctx := m.Context(); ctx != nil {
 		ctx.RequestLayout()
 		// Focusability across the whole scope has changed: buttons appeared or
 		// vanished, so the Modal node itself may have just started or stopped
-		// being the fallback focus target.
+		// being the fallback focus target, and the dialog's Default-role
+		// preference may now name a different control.
 		ctx.InvalidateFocusability()
 	}
+	// Selection is recomputed from where focus ACTUALLY is, after every repair
+	// has run — never assigned optimistically. Clearing it to -1 here used to
+	// leave a still-focused surviving button paired with "nothing selected",
+	// because a focus that remains valid emits no event for the Modal to
+	// observe and nothing put the number back.
+	m.refreshSelection()
 	return nil
+}
+
+// InitialFocus nominates where focus belongs inside this dialog: the enabled
+// Default-role button, else the first enabled button, else the Modal node.
+//
+// The DEFAULT ROLE IS PREFERRED UNCONDITIONALLY, not as a tie-break. A dialog's
+// affirmative action is where a user expects to land, and choosing it only when
+// nothing else qualified would make the landing spot depend on the order the
+// buttons happened to be listed in.
+//
+// This is consulted on EVERY repair, not only when the dialog opens. A dialog
+// that only reached for focus at open time lost its preference the first time
+// anything changed underneath it — enabling a button, replacing the list — because
+// the runtime's fallback is document order and knows nothing about roles.
+//
+// The Modal node itself is the last resort, which is what keeps the ring inside
+// the trap non-empty and Escape reachable when every control is disabled.
+func (m *Modal) InitialFocus() (tui.Component, bool) {
+	for _, b := range m.card.buttons {
+		if b != nil && b.Enabled() && b.Role() == ButtonRoleDefault {
+			return b, true
+		}
+	}
+	for _, b := range m.card.buttons {
+		if b != nil && b.Enabled() {
+			return b, true
+		}
+	}
+	return m, true
+}
+
+// WithStyle associates a style with the dialog and returns it for chaining.
+//
+// It restyles the LIVE dialog, card and currently-owned scrim together, so a
+// theme swap takes effect on an open dialog rather than only on the next one.
+// The scrim is the host's layer but wears this dialog's style, which is why it
+// has to be reached from here; a dialog that is not on top owns no scrim and
+// there is simply nothing extra to repaint.
+//
+// nil reverts to the default look, so there is no separate clear API.
+func (m *Modal) WithStyle(s *ModalStyle) *Modal {
+	m.card.st = s
+	if ctx := m.card.Context(); ctx != nil {
+		ctx.MarkDirty()
+	}
+	if m.host != nil {
+		m.host.restyleScrim(m, s)
+	}
+	return m
+}
+
+// WithPointerPolicy sets whether this dialog and its WHOLE SUBTREE accept
+// pointer input, and returns the dialog for chaining.
+//
+// Set on the Modal node, which is the subtree root, so it reaches the card, the
+// body and every button through ordinary inheritance rather than being pushed
+// to each. A dialog is the natural place to state this once: "this dialog is
+// keyboard-only" is one decision, not one per control.
+//
+// The request is REMEMBERED as well as applied, because
+// NewModal(...).WithPointerPolicy(...) is the natural way to write it and runs
+// before there is any Context; applying it only when mounted made that chain a
+// silent no-op. An invalid value is rejected before the stored policy changes.
+func (m *Modal) WithPointerPolicy(p tui.PointerPolicy) *Modal {
+	if !p.Valid() {
+		panic(tuiFatal("widget: Modal.WithPointerPolicy",
+			"value outside PointerInherit, PointerEnabled, PointerDisabled", int(p)))
+	}
+	m.pointerPolicy = p
+	if ctx := m.Context(); ctx != nil {
+		ctx.SetPointerPolicy(p)
+	}
+	return m
 }
 
 // Buttons returns the dialog's buttons, as a fresh slice so a caller cannot
@@ -186,13 +271,27 @@ func (m *Modal) Open(h *OverlayHost) error {
 		return ErrModalAlreadyOpen
 	}
 	// Validate before mutating, for the same reason SetButtons does: a dialog
-	// that fails to open must leave no trace.
-	if f := validateButtonRoles(m.card.buttons); f != nil {
-		return fmt.Errorf("%w: %s", ErrDuplicateButtonRole, f.describe())
+	// that fails to open must leave no trace. The card is not mounted yet, so
+	// "mounted elsewhere" here means genuinely elsewhere.
+	if f := validateButtonList(m.card.buttons, m.card); f != nil {
+		return fmt.Errorf("%w: %s", f.kind, f.describe())
+	}
+	// The host mounts, and only a successful mount commits open/host state. The
+	// previous order set them first, so a descendant that failed to mount left
+	// a dialog marked open with nothing on screen and no way to close it —
+	// contradicting the rollback this method documents.
+	if err := h.openModal(m); err != nil {
+		return err
 	}
 	m.host = h
 	m.open = true
-	h.openModal(m)
+	// Focus moves in SYNCHRONOUSLY, before Open returns. Deferring it to a
+	// scheduled Update left an interval in which the dialog was mounted and
+	// covering the UI while the control underneath still held focus, so input
+	// already queued behind Open reached content the dialog was supposed to be
+	// trapping. RequestFocus is explicitly legal before layout, so there was
+	// never a reason to wait.
+	m.focusInitial()
 	return nil
 }
 
@@ -206,21 +305,54 @@ func (m *Modal) Dismiss(reason DismissReason) {
 	if !m.open {
 		return
 	}
-	m.open = false
-	owner := m.NodeID()
 	host := m.host
+	if host == nil {
+		// Open never succeeded, or the host is already gone. Settle the flag so
+		// a second call stays silent, and there is nothing to unwind.
+		m.open = false
+		m.host = nil
+		return
+	}
+	// The HOST performs the transition, because dismissing a dialog that is not
+	// on top means closing the ones above it first, and only the host knows the
+	// order. A Modal deciding its own removal could unwind nothing above itself
+	// and leave a stack with a hole in it.
+	host.dismissModal(m, reason)
+}
+
+// finishDismiss performs one dialog's close, in the order the lifecycle
+// requires. Called only by the host, once per transition.
+//
+// THE STRUCTURE COMES DOWN FIRST, then the callback, then the event. The old
+// order ran the callback while the component was still mounted, so a callback
+// that reopened the dialog — an entirely reasonable "ask again" — passed the
+// open guard and panicked inside the runtime on mounting the same component
+// twice. Settling the tree first makes reopening from a callback ordinary.
+//
+// The bus and the owner id are captured while the context is still live,
+// because after the unmount there is no context to ask and the event would
+// silently not be published.
+func (m *Modal) finishDismiss(reason DismissReason, unmount func()) {
+	m.open = false
 	m.host = nil
 
-	// The callback runs BEFORE the event is published, so anything observing
-	// the bus sees state the callback has already settled.
+	var bus *tui.Bus
+	owner := m.NodeID()
+	if ctx := m.Context(); ctx != nil {
+		bus = ctx.Bus()
+	}
+
+	unmount()
+
 	if m.onDismiss != nil {
 		m.onDismiss(reason)
 	}
-	if host != nil {
-		host.closeModal(m)
-	}
-	if ctx := m.Context(); ctx != nil {
-		ctx.Bus().Publish(OverlayDismissedEvent{Owner: owner, Reason: reason})
+	// Published after the callback so an observer sees state the callback has
+	// already settled. Bus.Publish is enqueue-only, so a subscriber runs in a
+	// later drain regardless; the ordering that matters here is that the
+	// component is gone from the tree before either runs.
+	if bus != nil {
+		bus.Publish(OverlayDismissedEvent{Owner: owner, Reason: reason})
 	}
 }
 
@@ -254,6 +386,9 @@ func (m *Modal) enabledButtonCount() int {
 // these.
 func (m *Modal) Init(ctx *tui.Context) {
 	m.Base.Init(ctx)
+	// Applied before the subtree exists, so every descendant inherits it as it
+	// mounts rather than needing a second pass afterwards.
+	ctx.SetPointerPolicy(m.pointerPolicy)
 	ctx.Mount(m.card)
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(modalKeys))
 }
@@ -288,11 +423,24 @@ func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
 	if _, ok := inv.Action.(dismissAction); !ok {
 		return false
 	}
-	// A Cancel-role button, if the dialog has one, is activated so its own
-	// callback runs; Escape then means exactly what pressing that button means.
+	// A Cancel-role button, if the dialog has one, is activated so Escape means
+	// exactly what pressing that button means.
+	//
+	// Forwarded through the RUNTIME rather than by calling Button.Activate
+	// directly. The runtime is the sole publisher of ControlActivatedEvent, so a
+	// direct call ran the button's own callback and nothing else: anything
+	// watching the bus for activations — a command log, an undo stack, a test —
+	// saw a keypress that activated nothing, and the equivalence this comment
+	// claims was not one the code kept. ForwardAction carries this invocation's
+	// provenance, so the activation is recorded as the keyboard event it was.
 	for _, b := range m.card.buttons {
 		if b != nil && b.Role() == ButtonRoleCancel && b.Enabled() {
-			b.Activate(inv.Origin)
+			if ctx := m.Context(); ctx != nil {
+				ctx.ForwardAction(b, tui.ActivateAction{})
+			}
+			// Dismiss even if the button refused: Escape closes the dialog, and
+			// a Cancel handler that declined is not a reason to trap the user.
+			// Idempotent, so a callback that dismissed already costs nothing.
 			m.Dismiss(DismissCancel)
 			return true
 		}

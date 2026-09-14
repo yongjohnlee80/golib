@@ -44,45 +44,82 @@ func (c *modalCard) Init(ctx *tui.Context) {
 // AcceptsFocus reports that the card is not a tab stop. See the type comment.
 func (c *modalCard) AcceptsFocus() bool { return false }
 
-// setButtons swaps the button list AND reconciles the mounted children.
+// setButtons swaps the button list AND reconciles the mounted children, as one
+// tree mutation.
 //
 // Replacing only the slice is the obvious mistake and a loud one: the departing
 // buttons stay mounted while the arriving ones never are, and the next layout
 // pass panics on the first unmounted child it is asked to measure. The list and
 // the tree are two representations of the same thing and have to move together.
 //
-// Buttons carried over from the old list are left alone rather than remounted,
-// so a caller reordering or appending does not destroy and rebuild the controls
-// the user is currently looking at — which would also throw away their focus.
+// THE WHOLE RECONCILE IS ONE BATCH. Each Unmount repairs focus on its own, so an
+// unbatched three-out-two-in replacement repairs five times against lists that
+// were never a state anybody asked for, and leaves focus wherever the last
+// intermediate step happened to put it. Inside a batch there is exactly one
+// repair, at the end, against the final list.
+//
+// RETAINED BUTTONS ARE MOVED, NEVER REMOUNTED. A caller reordering the controls
+// wants them reordered, not destroyed and rebuilt: a remount would give each a
+// new NodeID, cancel its lifetime context, run its unmount hooks and throw away
+// its focus, for a change the user asked to be cosmetic. Move preserves all of
+// that and still updates document order — which IS tab order, so a visual
+// reorder that skipped the Move would leave Tab visiting the old sequence.
+//
+// The caller has already validated the list; this method assumes it and only
+// reconciles.
 func (c *modalCard) setButtons(b []*Button) {
 	ctx := c.Context()
 	if ctx == nil {
 		c.buttons = append([]*Button(nil), b...)
 		return // not mounted yet; Init will mount whatever is here
 	}
-	keep := make(map[*Button]bool, len(b))
-	for _, nb := range b {
-		if nb != nil {
-			keep[nb] = true
-		}
+	next := append([]*Button(nil), b...)
+	old := c.buttons // snapshot: c.buttons is replaced before the tree catches up
+
+	keep := make(map[*Button]bool, len(next))
+	for _, nb := range next {
+		keep[nb] = true
 	}
-	for _, ob := range c.buttons {
-		if ob != nil && !keep[ob] {
-			ctx.Unmount(ob)
-		}
-	}
-	had := make(map[*Button]bool, len(c.buttons))
-	for _, ob := range c.buttons {
+	had := make(map[*Button]bool, len(old))
+	for _, ob := range old {
 		if ob != nil {
 			had[ob] = true
 		}
 	}
-	c.buttons = append([]*Button(nil), b...)
-	for _, nb := range c.buttons {
-		if nb != nil && !had[nb] {
-			ctx.Mount(nb)
+
+	ctx.BatchTreeMutation(func() {
+		// The logical list is installed FIRST, so that anything reached during
+		// the mutation — a focus repair, an InitialFocus nomination, a layout
+		// request — sees the list the caller asked for rather than a mixture.
+		c.buttons = next
+		for _, ob := range old {
+			if ob != nil && !keep[ob] {
+				ctx.Unmount(ob)
+			}
 		}
+		for _, nb := range next {
+			if !had[nb] {
+				ctx.Mount(nb)
+			}
+		}
+		// Order every button, arrivals included, in one pass. Mounting appends,
+		// so an arrival is already last and a Move to its real index is what
+		// puts it where the caller asked; Move is a no-op when the child is
+		// already there, so this costs nothing for an unchanged list.
+		off := c.childOffset()
+		for i, nb := range next {
+			ctx.Move(nb, i+off)
+		}
+	})
+}
+
+// childOffset is the number of the card's children that precede its buttons.
+// The body, when there is one, is mounted first.
+func (c *modalCard) childOffset() int {
+	if c.body != nil {
+		return 1
 	}
+	return 0
 }
 
 // Layout stacks the body above a right-aligned button row, inside a one-cell

@@ -45,7 +45,7 @@ func TestAnUnknownRoleIsRetainedNotRejected(t *testing.T) {
 		t.Errorf("role = %v, want the value the app supplied (%d)", got, appRole)
 	}
 	// And it does not count as a Default or a Cancel for a container.
-	checkButtonRoles("test", []*Button{b, NewButton("A", WithRole(appRole))})
+	checkButtonList("test", []*Button{b, NewButton("A", WithRole(appRole))}, nil)
 }
 
 // TestASecondDefaultOrCancelIsRefusedAtConstruction.
@@ -63,10 +63,10 @@ func TestASecondDefaultOrCancelIsRefusedAtConstruction(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fatal := fatalFromWidget(func() {
-				checkButtonRoles("test", []*Button{
+				checkButtonList("test", []*Button{
 					NewButton("A", WithRole(tc.role)),
 					NewButton("B", WithRole(tc.role)),
-				})
+				}, nil)
 			})
 			if fatal == nil {
 				t.Fatalf("a second %v was accepted", tc.role)
@@ -76,12 +76,12 @@ func TestASecondDefaultOrCancelIsRefusedAtConstruction(t *testing.T) {
 
 	// The control: one of each, plus normals, is fine.
 	fatal := fatalFromWidget(func() {
-		checkButtonRoles("test", []*Button{
+		checkButtonList("test", []*Button{
 			NewButton("OK", WithRole(ButtonRoleDefault)),
 			NewButton("Cancel", WithRole(ButtonRoleCancel)),
 			NewButton("Other"),
 			NewButton("Another"),
-		})
+		}, nil)
 	})
 	if fatal != nil {
 		t.Errorf("a legal button set was rejected (%v)", fatal.Rule)

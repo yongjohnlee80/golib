@@ -132,6 +132,28 @@ func (c *Context) Unmount(child Component) {
 	c.app.unmountTree(n)
 }
 
+// ParentIs reports whether this node's direct parent is comp.
+//
+// It answers the one question a container has to settle before adopting a
+// component it did not create: is this already mounted somewhere ELSE? A
+// container can tell "mounted" from "not mounted" on its own, but not "mine"
+// from "someone else's" — and the difference decides between an ordinary
+// reorder of a child it already owns and a mount that will panic partway
+// through a reconcile.
+//
+// The obvious substitute is for the container to consult its own list of
+// children, which is a proxy for parentage rather than parentage: the two agree
+// until the list and the tree disagree, which is exactly the situation such a
+// check exists to detect.
+//
+// Reports false for an unmounted node, for the root, and for a nil comp.
+func (c *Context) ParentIs(comp Component) bool {
+	if comp == nil || !c.node.mounted || c.node.parent == nil {
+		return false
+	}
+	return c.node.parent.comp == comp
+}
+
 // Move repositions child — a mounted direct child of this node — to
 // index to in document order WITHOUT unmounting it: NodeID, context,
 // in-flight tasks, hooks, and focus survive; Init does not re-run (see
@@ -141,6 +163,62 @@ func (c *Context) Move(child Component, to int) {
 		panic(errs.Fatal{Op: "tui", Rule: fmt.Sprintf("Context.Move on unmounted node %d", c.node.id)})
 	}
 	c.app.moveWithin(c.node, child, to)
+}
+
+// BatchTreeMutation runs fn as one tree mutation, deferring focus repair and
+// focusability revalidation until it returns and then performing exactly one.
+//
+// WHY A COMPOSITION NEEDS THIS. Replacing a dialog's three buttons with two is
+// one change to the caller and five to the runtime: three unmounts and two
+// mounts, each of which repairs focus against a list that is half of neither the
+// old set nor the new one. Focus lands wherever the last intermediate state
+// happened to put it, which is not a state anybody asked for — and a widget
+// cannot fix that itself, because the repair is the runtime's and runs inside
+// each Unmount. Sequencing the calls differently does not help; the only fix is
+// a boundary, and one runtime primitive gives it to every composition rather
+// than to one widget.
+//
+// WHAT IS DEFERRED, precisely: focus repair and focusability revalidation, and
+// nothing else. Capture loss, OnUnmount hooks and lifetime-context cancellation
+// still happen as they always did, synchronously, inside each Unmount. They are
+// safety-critical — a deferred capture release strands the pointer on a dead
+// node — so the guarantee here is deliberately narrower than "no event can
+// observe a half-applied tree", which would have been easier to state and
+// impossible to keep.
+//
+// WHAT A CALLER MAY RELY ON: one run-loop mutation with no input dispatch and no
+// render interleaved, and exactly one focus repair at the end.
+//
+// Nested calls are counted and only the outermost is a boundary. A panic inside
+// fn cannot strand the runtime in batching mode: the depth is restored and the
+// pending repair runs on the way out, before the panic continues to propagate.
+func (c *Context) BatchTreeMutation(fn func()) {
+	if fn == nil {
+		return
+	}
+	a := c.app
+	if a.inLayout || a.inRender {
+		panic(errs.Fatal{
+			Op:   "tui: Context.BatchTreeMutation",
+			Rule: "tree mutation inside Layout/Render is illegal",
+		})
+	}
+	a.batchDepth++
+	defer func() {
+		a.batchDepth--
+		if a.batchDepth > 0 {
+			return // an inner call is not a boundary
+		}
+		if !a.batchRepair {
+			return
+		}
+		a.batchRepair = false
+		// The same revalidation the immediate path runs, so deferring cannot
+		// change what "repaired" means. Running it here rather than after fn()
+		// is what makes the boundary hold on the panic path too.
+		a.revalidateFocus()
+	}()
+	fn()
 }
 
 // LayoutChild lays out a mounted child under cc and returns its chosen
