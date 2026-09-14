@@ -111,6 +111,22 @@ func (a *App) dispatch(ev Event) {
 			e.Count = 0
 			ev = e
 		}
+		// A HELD CAPTURE PRE-EMPTS EVERYTHING BELOW. Press, motion and release
+		// go straight to the owner: no hit-test, no focus step, no bubbling.
+		// That is the whole point — the pointer has left the widget that owns
+		// the drag, so every mechanism that asks "what is under the pointer?"
+		// now answers with the wrong widget.
+		//
+		// The wheel is deliberately NOT captured. Scrolling addresses the pane
+		// under the pointer without taking focus, and capturing it would freeze
+		// scrolling for the duration of a drag.
+		if a.captureOwner != 0 && e.Kind != MouseWheel {
+			if a.deliverCaptured(e) {
+				return
+			}
+			// The owner vanished between acquisition and this event. Fall
+			// through and route normally rather than dropping the event.
+		}
 		// Target by hit-testing laid-out absolute rects, topmost first (reverse
 		// paint order — Stack z-order); coordinates are rewritten LOCAL to each
 		// receiving node at every hop.
@@ -185,7 +201,7 @@ func (a *App) dispatch(ev Event) {
 			local := e
 			local.X = e.X - n.absRect.X
 			local.Y = e.Y - n.absRect.Y
-			if n.comp.HandleEvent(local) {
+			if a.deliverTo(n, local) {
 				break
 			}
 			if n == limit {
@@ -207,6 +223,13 @@ func (a *App) dispatch(ev Event) {
 		// Terminal focus in/out (mode 1004): delivered to the focused component
 		// and published on the Bus. Component focus changes do not pass through
 		// dispatch — setFocus bubbles them directly.
+		//
+		// The WINDOW losing focus ends any capture. No further motion or
+		// release is coming while another window has the pointer, so the owner
+		// would otherwise be left mid-drag with no event able to finish it.
+		if !e.Gained {
+			a.loseCapture(CaptureLostBackend)
+		}
 		if n := a.nodes[a.focused]; n != nil {
 			a.bubble(n, ev)
 		}
@@ -265,7 +288,7 @@ func (a *App) bubble(n *node, ev Event) bool {
 func (a *App) bubbleWithin(n, limit *node, ev Event) bool {
 	start := n
 	for ; n != nil; n = n.parent {
-		if n.comp.HandleEvent(ev) {
+		if a.deliverTo(n, ev) {
 			a.traceRouted(ev, start, n.id)
 			return true
 		}
@@ -356,7 +379,59 @@ func (a *App) deliverAddressed(owner NodeID, ev Event) {
 		}
 		return
 	}
-	n.comp.HandleEvent(ev) // unconsumed = silently done
+	a.deliverTo(n, ev) // unconsumed = silently done
+}
+
+// deliverCaptured hands one pointer event to the node holding the capture and
+// reports whether it was able to. A false result means the capture is stale —
+// the owner is gone from the tree — and the caller should route normally.
+//
+// Coordinates are made local to the owner and are NOT clamped to it. Negative
+// and past-the-edge values are the expected case, not a fault: a drag that has
+// travelled off the widget is precisely what capture exists to keep delivering,
+// and clamping would report the pointer as parked on the border instead of
+// where it actually is.
+//
+// Nothing bubbles. An ancestor did not ask for this gesture and cannot tell it
+// apart from one of its own.
+//
+// INCOMPLETE UNTIL THE ACTION LAYER. This calls HandleEvent directly. The
+// design requires a captured event to run the same interpretation an
+// uncaptured one runs, so that a drag begun as a semantic action continues as
+// one; that machinery does not exist yet, and the direct call is a placeholder
+// for it rather than a decision against it.
+func (a *App) deliverCaptured(e MouseEvent) bool {
+	owner := a.nodes[a.captureOwner]
+	if owner == nil || !owner.mounted {
+		return false
+	}
+	// The press ordinal is still committed here, for the same reason it is on
+	// the uncaptured path: Count drives activation, and a captured press is a
+	// press the owner really did receive.
+	if e.Kind == MousePress {
+		e.Count = a.pressOrdinal(e, owner)
+	}
+	local := e
+	local.X = e.X - owner.absRect.X
+	local.Y = e.Y - owner.absRect.Y
+	a.deliverTo(owner, local)
+	a.traceRouted(e, owner, owner.id)
+	return true
+}
+
+// deliverTo is the ONE place a component's HandleEvent is entered, so that the
+// "a handler is running" phase is exactly the set of moments a component can
+// observe and not one instant wider.
+//
+// Nesting is real and must not clear the flag early: a handler can post work,
+// change focus, or unmount a subtree, any of which can deliver a further event
+// synchronously. Restoring the previous value rather than clearing outright
+// keeps the flag true for the remainder of the outer handler.
+func (a *App) deliverTo(n *node, ev Event) bool {
+	prev := a.inHandler
+	a.inHandler = true
+	defer func() { a.inHandler = prev }()
+	return n.comp.HandleEvent(ev)
 }
 
 // typeNameAddressed names addressed events for the dead-letter log line.

@@ -170,6 +170,11 @@ func (a *App) unmountTree(n *node) {
 // tables — from that instant addressed deliveries dead-letter.
 func (a *App) unmountNode(n *node) {
 	a.trace(TraceEvent{Kind: TraceUnmount, Node: n.id})
+	// Tell a capture owner it has lost the pointer while it is still mounted
+	// and still legally callable. Everything below this line is the teardown
+	// past which no component method may be invoked, so a notification issued
+	// any later would be a call into an unmounted component.
+	a.captureLostOnUnmount(n)
 	for i := len(n.children) - 1; i >= 0; i-- {
 		a.unmountNode(n.children[i])
 	}

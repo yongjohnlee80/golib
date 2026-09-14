@@ -63,6 +63,11 @@ func (a *App) requestFocus(n *node) {
 		// Entering a trap: remember where focus came from.
 		a.scopeStack = append(a.scopeStack, scopeEntry{scope: newScope.id, restore: a.focused})
 		a.trace(TraceEvent{Kind: TraceScope, Node: newScope.id, Prev: a.focused, Detail: "open"})
+		// A trap that has just become active must not leave a drag running
+		// behind it. Checked here, at the push, rather than when the next
+		// pointer event arrives: with no further mouse input the owner would
+		// otherwise sit in its dragging state indefinitely.
+		a.captureCheckScope()
 	}
 	a.setFocus(n.id)
 }
@@ -84,6 +89,11 @@ func (a *App) setFocus(id NodeID) {
 	if nn := a.nodes[id]; nn != nil {
 		a.bubble(nn, FocusEvent{Gained: true})
 	}
+	// A capture survives focus moving around inside the owner's own subtree and
+	// ends when focus leaves it. Checked after the FocusEvents are delivered so
+	// that a handler which moves focus onward is accounted for by the check
+	// rather than racing it.
+	a.captureCheckFocus()
 	a.renderDirty = true // the cursor rule re-evaluates next frame
 	a.queue.wakeUp()
 }
