@@ -252,9 +252,9 @@ func (c *Context) ActionResolvers() []ActionResolver {
 	return append([]ActionResolver(nil), c.node.resolvers.chain()...)
 }
 
-// DoAction dispatches a to this node directly, skipping resolution entirely,
-// and reports whether it was handled. Origin is OriginProgrammatic and Source
-// is nil, because no input produced it.
+// DoAction dispatches an action to this node directly, skipping resolution
+// entirely, and reports whether it was handled. Origin is OriginProgrammatic
+// and Source is nil, because no input produced it.
 //
 // It does not bubble. The caller named the node it meant.
 //
@@ -296,7 +296,21 @@ func (a *App) dispatchAction(n *node, inv ActionInvocation) bool {
 			return true
 		}
 	}
-	if _, isActivate := inv.Action.(ActivateAction); isActivate {
+	// BOTH forms, because both are legal. ActionID has a value receiver, so
+	// &ActivateAction{} satisfies Action exactly as ActivateAction{} does and
+	// reports the same id; matching only the value form gave one published
+	// action two behaviours according to how the caller happened to allocate it.
+	//
+	// Matched by concrete TYPE, deliberately not by ActionID. Comparing the id
+	// string would let any consumer action returning "control.activate"
+	// impersonate the core action and drive Activatable on components that
+	// never opted into it.
+	//
+	// A typed-nil *ActivateAction never arrives here: isNilLike rejects it at
+	// DoAction and at a matching resolver, which is why this switch does not
+	// need its own nil guard.
+	switch inv.Action.(type) {
+	case ActivateAction, *ActivateAction:
 		if act, ok := n.comp.(Activatable); ok && act.Activate(inv.Origin) {
 			a.trace(TraceEvent{Kind: TraceAction, Node: n.id,
 				Detail: "activated (" + inv.Origin.String() + ")"})

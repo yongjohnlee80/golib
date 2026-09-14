@@ -176,10 +176,12 @@ func (c *Context) CapturePointer() bool {
 // the caller already knows. Releasing when this node holds nothing is a no-op.
 //
 // Legal from a component's HandleEvent or HandleAction, from an App.Update
-// callback, and from the commit phase; illegal inside Init, Layout and Render. The programmatic transitions
-// that most need to release — hiding an overlay, zooming a pane, resizing from
-// a setter — run outside event handling, so restricting this to handlers would
-// leave them no way to end a drag they just invalidated.
+// callback, and from the commit phase; illegal inside Init, Layout and Render.
+//
+// The programmatic transitions that most need to release — hiding an overlay,
+// zooming a pane, resizing from a setter — run outside event handling, so
+// restricting this to handlers would leave them no way to end a drag they have
+// just invalidated.
 func (c *Context) ReleasePointer() {
 	a := c.app
 	a.assertReleasablePhase("ReleasePointer")
