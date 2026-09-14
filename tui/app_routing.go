@@ -560,9 +560,15 @@ func (a *App) deliverCaptured(e MouseEvent) bool {
 // synchronously. Restoring the previous value rather than clearing outright
 // keeps the flag true for the remainder of the outer handler.
 func (a *App) deliverTo(n *node, ev Event) bool {
-	prev := a.handlerNode
+	prev, prevAction := a.handlerNode, a.actionHandlerNode
 	a.handlerNode = n.id
-	defer func() { a.handlerNode = prev }()
+	// Raw delivery is NOT an action delivery, and says so. The runtime reaches
+	// here from inside an action handler on the same node whenever an action
+	// goes unhandled, and leaving the action marker standing would let this raw
+	// handler forward a child action carrying the outer invocation's
+	// provenance — a real origin, belonging to an event the child never saw.
+	a.actionHandlerNode = 0
+	defer func() { a.handlerNode, a.actionHandlerNode = prev, prevAction }()
 	return n.comp.HandleEvent(ev)
 }
 

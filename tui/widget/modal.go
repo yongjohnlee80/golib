@@ -2,7 +2,6 @@ package widget
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -145,7 +144,7 @@ func WithScrim(v bool) ModalOption {
 // fail, which is the worst of both.
 func (m *Modal) SetButtons(b ...*Button) error {
 	if f := validateButtonList(b, m.card); f != nil {
-		return fmt.Errorf("%w: %s", f.kind, f.describe())
+		return f.err()
 	}
 	// The card owns the children, so it does the reconcile: the list and the
 	// mounted tree are two views of the same thing and must move together. It
@@ -274,7 +273,7 @@ func (m *Modal) Open(h *OverlayHost) error {
 	// that fails to open must leave no trace. The card is not mounted yet, so
 	// "mounted elsewhere" here means genuinely elsewhere.
 	if f := validateButtonList(m.card.buttons, m.card); f != nil {
-		return fmt.Errorf("%w: %s", f.kind, f.describe())
+		return f.err()
 	}
 	// The host mounts, and only a successful mount commits open/host state. The
 	// previous order set them first, so a descendant that failed to mount left

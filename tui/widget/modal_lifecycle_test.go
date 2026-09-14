@@ -949,3 +949,154 @@ func TestADialogWithNoBodyIsStillUsable(t *testing.T) {
 		t.Errorf("SelectedButton() = %d, want 1 (the Default button after the reorder)", sel)
 	}
 }
+
+// ─── component reuse ─────────────────────────────────────────────────────────
+
+// TestAReopenedDialogMayKeepItsButtons.
+//
+// A dialog is opened, dismissed and opened again with the same controls — the
+// ordinary shape of "ask the user, then ask again". An unmounted component is
+// reusable by design, so nothing here should be refused.
+//
+// The trap this pins is that a widget REMEMBERS its last Context after the
+// runtime has forgotten the node, so "has a Context" is not "is mounted". A
+// validator built on the retained pointer reads a perfectly reusable button as
+// belonging to someone else.
+func TestAReopenedDialogMayKeepItsButtons(t *testing.T) {
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	m := widget.NewModal(widget.NewText("Again?"), widget.WithButtons(ok))
+	h, host, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+
+	openOn(t, h, m, host)
+	h.onLoop(func() { m.Dismiss(widget.DismissProgrammatic) })
+	h.settle()
+
+	var err error
+	h.onLoop(func() { err = m.Open(host) })
+	h.settle()
+	if err != nil {
+		t.Fatalf("reopening a dialog with its own retained button failed: %v", err)
+	}
+	if !m.IsOpen() {
+		t.Error("the dialog did not reopen")
+	}
+	if !focusedOn(t, h, ok) {
+		t.Error("the reopened dialog did not take focus on its own button")
+	}
+}
+
+// TestADismissCallbackMayReopenADialogThatHasButtons.
+//
+// The reopen-from-callback guarantee, exercised on a dialog with controls. The
+// existing callback test uses a buttonless dialog, so it cannot observe a
+// validation rule that only fires once there is a button to validate.
+func TestADismissCallbackMayReopenADialogThatHasButtons(t *testing.T) {
+	var host *widget.OverlayHost
+	var m *widget.Modal
+	var reopens atomic.Int64
+	var reopenErr error
+
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	m = widget.NewModal(widget.NewText("Body"),
+		widget.WithButtons(ok),
+		widget.WithOnDismiss(func(widget.DismissReason) {
+			if reopens.Add(1) == 1 {
+				reopenErr = m.Open(host)
+			}
+		}))
+	h, hh, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+	host = hh
+	openOn(t, h, m, host)
+
+	h.onLoop(func() { m.Dismiss(widget.DismissProgrammatic) })
+	h.settle()
+
+	if reopenErr != nil {
+		t.Fatalf("reopening from the dismissal callback failed: %v", reopenErr)
+	}
+	if !m.IsOpen() {
+		t.Error("the dialog with buttons did not reopen from its own callback")
+	}
+}
+
+// TestAButtonMayBeRemovedAndAddedBackAgain.
+//
+// Taking a control out of a dialog and putting the same value back is ordinary
+// list editing, and the intervening unmount must not make it someone else's
+// component.
+func TestAButtonMayBeRemovedAndAddedBackAgain(t *testing.T) {
+	keep := widget.NewButton("Keep")
+	gone := widget.NewButton("Gone")
+	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(keep, gone))
+	h, host, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	var errOut, errBack error
+	h.onLoop(func() { errOut = m.SetButtons(keep) })
+	h.settle()
+	if errOut != nil {
+		t.Fatalf("removing a button: %v", errOut)
+	}
+	h.onLoop(func() { errBack = m.SetButtons(keep, gone) })
+	h.settle()
+	if errBack != nil {
+		t.Fatalf("adding the same button back: %v", errBack)
+	}
+	if got := h.grid(); !strings.Contains(got, "Gone") {
+		t.Errorf("the re-added button is not on screen:\n%s", got)
+	}
+}
+
+// TestEveryValidationErrorMatchesBothTheUmbrellaAndItsOwnSentinel.
+//
+// The exported documentation promises callers can match either level. A caller
+// writing errors.Is(err, ErrInvalidButtonList) to mean "the list was bad" gets
+// false for every list, so the general handler never runs and the failure looks
+// like an unrelated error class.
+func TestEveryValidationErrorMatchesBothTheUmbrellaAndItsOwnSentinel(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		leaf error
+		list func(base, keep *widget.Button) []*widget.Button
+	}{
+		{"nil entry", widget.ErrNilButton,
+			func(_, keep *widget.Button) []*widget.Button { return []*widget.Button{keep, nil} }},
+		{"repeated button", widget.ErrRepeatedButton,
+			func(_, keep *widget.Button) []*widget.Button { return []*widget.Button{keep, keep} }},
+		{"foreign button", widget.ErrForeignButton,
+			func(base, keep *widget.Button) []*widget.Button { return []*widget.Button{keep, base} }},
+		{"duplicate role", widget.ErrDuplicateButtonRole,
+			func(_, keep *widget.Button) []*widget.Button {
+				return []*widget.Button{
+					widget.NewButton("X", widget.WithRole(widget.ButtonRoleCancel)),
+					widget.NewButton("Y", widget.WithRole(widget.ButtonRoleCancel)),
+				}
+			}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keep := widget.NewButton("Keep")
+			m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(keep))
+			h, host, base := modalFixture(t, m, 40, 12)
+			defer h.stop()
+			openOn(t, h, m, host)
+
+			var err error
+			h.onLoop(func() { err = m.SetButtons(tc.list(base, keep)...) })
+			h.settle()
+
+			if err == nil {
+				t.Fatal("the list was accepted")
+			}
+			if !errors.Is(err, tc.leaf) {
+				t.Errorf("errors.Is(err, %v) = false; err = %v", tc.leaf, err)
+			}
+			if !errors.Is(err, widget.ErrInvalidButtonList) {
+				t.Errorf("errors.Is(err, ErrInvalidButtonList) = false, so a caller "+
+					"handling the whole class never matches; err = %v", err)
+			}
+		})
+	}
+}

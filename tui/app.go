@@ -81,6 +81,16 @@ type App struct {
 	// belonging to node B and take the pointer in B's name.
 	handlerNode NodeID
 
+	// actionHandlerNode is the node whose HandleAction is executing, or 0
+	// outside an action delivery. SEPARATE from handlerNode on purpose:
+	// handlerNode deliberately covers HandleEvent as well, because pointer
+	// capture may be taken from either phase, and reusing it to gate action
+	// forwarding let the RAW lane forward with provenance it does not own.
+	//
+	// Raw delivery clears it for its duration, so a raw handler running inside
+	// an action delivery cannot borrow the invocation still open above it.
+	actionHandlerNode NodeID
+
 	// handlerOrigin and handlerSource are the provenance of the action
 	// invocation currently being delivered, kept so Context.ForwardAction can
 	// pass it to a child without the handler supplying it. Provenance a

@@ -1,6 +1,6 @@
 # tui/widget
 
-The standard widget suite for `golib/tui`: a complete set of fourteen production-grade TUI components designed to build complex, terminal-native applications (such as `lazygit`-, `sqlit`-, and `neovim`-shaped tools) out of the box with zero custom widget plumbing.
+The standard widget suite for `golib/tui`: the sixteen production-grade TUI components inventoried below, designed to build complex, terminal-native applications (such as `lazygit`-, `sqlit`-, and `neovim`-shaped tools) out of the box with zero custom widget plumbing.
 
 ```go
 import "github.com/yongjohnlee80/golib/tui/widget"
@@ -26,6 +26,7 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `Tabs`        | Navigation      | yes (bar)      | `TabChangedEvent`                                      |
 | `Split`       | Container       | no (panes are) | `SplitResizedEvent`, `SplitZoomEvent`                  |
 | `Float`       | Overlay / Modal | children       | `DismissEvent`                                         |
+| `Modal`       | Dialog          | trap owner     | `OverlayDismissedEvent`                                |
 | `StatusBar`   | Chrome          | no             | —                                                      |
 | `ProgressBar` | Feedback        | no             | —                                                      |
 | `Text`        | Static Display  | no             | —                                                      |
@@ -115,7 +116,8 @@ root := widget.NewOverlayHost(mainLayout)
 ```
 
 - `Select` automatically projects its open options list onto the overlay host via an internal bus handshake.
-- `Float` attaches via `host.Attach(float)` and provides toggleable modals (`Show()` / `Hide()`), focus trapping, background scrimming, and Esc-dismissal.
+- `Float` attaches via `host.Attach(float)` (and detaches via `host.Detach(float)`) and provides toggleable windows (`Show()` / `Hide()`), focus trapping, background scrimming, and Esc-dismissal. It is the **lower-level** primitive: a positioned, trapping layer around arbitrary content.
+- `Modal` is the **composed dialog** on the same stack — a card with a title, body and role-carrying buttons, plus the lifecycle a dialog needs. Reach for `Modal` when you want a dialog; reach for `Float` when you want a floating layer and intend to supply the behaviour yourself. See [`Modal`](#modal) below.
 
 ---
 
@@ -268,6 +270,66 @@ split := widget.NewSplit(widget.Horizontal, leftPane, rightPane,
 split.Zoom(widget.PaneA)
 split.Unzoom()
 ```
+
+#### `Modal`
+
+The composed dialog. `Modal` fills its host, traps focus, and places a card
+carrying a title, your body content and a row of buttons:
+
+```go
+host := widget.NewOverlayHost(appRoot) // once, wrapping the whole UI
+
+ok := widget.NewButton("Save", widget.WithRole(widget.ButtonRoleDefault),
+    widget.WithOnActivate(func() { save() }))
+no := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleCancel))
+
+dlg := widget.NewModal(widget.NewText("Save your changes?"),
+    widget.WithModalTitle("Unsaved work"),
+    widget.WithButtons(no, ok),
+    widget.WithOnDismiss(func(r widget.DismissReason) { log(r) }))
+
+if err := dlg.Open(host); err != nil { /* … */ } // loop goroutine
+```
+
+**Lifecycle.** `Open` mounts the dialog on top and moves focus into it *before
+returning*, so no input reaches the covered UI in between. Reopening an open
+dialog returns `ErrModalAlreadyOpen` and changes nothing; a dialog whose tree
+cannot be mounted returns `ErrModalNotMountable` and leaves the host untouched.
+`Dismiss` is idempotent, publishing exactly one `OverlayDismissedEvent` per
+closure with a typed `DismissReason`.
+
+**Ordering.** The dialog leaves the tree *before* the `WithOnDismiss` callback
+runs, and the event is published after it — which is what makes reopening the
+same dialog from its own callback ordinary rather than a double-mount panic.
+
+**Focus.** Focus lands on the enabled `ButtonRoleDefault` button, else the first
+enabled button, else the `Modal` node itself — the last case keeps Escape
+reachable when every control is disabled. The preference is honoured on *every*
+focus repair, not only at open. `SelectedButton()` reports the focused button's
+index, or `-1` when the dialog itself holds focus.
+
+**Escape** resolves the **cancel role**, never a label or a position. With a
+cancel-role button it activates it through the runtime — publishing the same
+`tui.ControlActivatedEvent` a click would, with keyboard provenance — then
+dismisses with `DismissCancel`; otherwise `DismissEscape`.
+
+**Stacking** is LIFO and owned by the host. Only the topmost dialog dims the
+background, and dismissing one that is not on top closes everything above it
+first, each with reason `DismissReplaced`. `host.TopModal()` reports the current
+one.
+
+**At runtime,** `SetButtons` validates the whole list before changing anything —
+no nil entries, no repeated `*Button`, nothing mounted elsewhere, at most one
+Default and one Cancel — and returns an error matching both
+`ErrInvalidButtonList` and the specific sentinel. Accepted, it reconciles in one
+batch and *moves* retained buttons rather than remounting them, so identity and
+focus survive a reorder. `WithPointerPolicy` covers the whole dialog subtree;
+`WithStyle` restyles the live card and its backdrop together.
+
+**Keyboard parity.** Tab and Shift-Tab cycle the dialog's buttons and stop at
+its edges, Enter activates the focused one, Escape resolves the cancel role, and
+focus returns where it came from on close. A dialog with the pointer disabled
+stays fully operable; no control is reachable only by clicking.
 
 #### `Float`
 

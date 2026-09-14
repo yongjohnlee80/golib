@@ -23,8 +23,9 @@ import (
 // was. A validator that checked while installing would install the acceptable
 // entries and then fail, which is the worst of both.
 
-// ErrInvalidButtonList reports a button list this container cannot accept.
-// Callers match it, and the more specific errors below, with errors.Is.
+// ErrInvalidButtonList reports a button list this container cannot accept. It
+// is the UMBRELLA: every rejection matches it, so a caller that only wants to
+// know the list was bad writes one comparison.
 var ErrInvalidButtonList = errors.New("widget: invalid button list")
 
 // ErrDuplicateButtonRole reports a list carrying two Defaults or two Cancels.
@@ -38,6 +39,31 @@ var ErrRepeatedButton = errors.New("widget: repeated button")
 
 // ErrForeignButton reports a button already mounted somewhere else in the tree.
 var ErrForeignButton = errors.New("widget: button mounted elsewhere")
+
+// ButtonListError is what a runtime setter returns for a rejected list.
+//
+// It answers to BOTH ErrInvalidButtonList and the specific sentinel for the
+// fault, because callers legitimately want either level: a form handler shows
+// one message for any bad list, while a caller assembling a list from user
+// input wants to know it was the duplicate role. Wrapping only the specific
+// sentinel — which is what this package did — left the umbrella matching
+// nothing at all, so the general handler never ran and the failure read as an
+// unrelated error class.
+type ButtonListError struct {
+	// Kind is the specific sentinel: ErrNilButton, ErrRepeatedButton,
+	// ErrForeignButton or ErrDuplicateButtonRole.
+	Kind error
+	// Detail names the offending entries.
+	Detail string
+}
+
+// Error renders the sentinel and the specifics together.
+func (e *ButtonListError) Error() string { return e.Kind.Error() + ": " + e.Detail }
+
+// Unwrap returns both identities. errors.Is walks every branch of a multi-error
+// unwrap, which is what lets one value answer to the umbrella and to its own
+// sentinel without the two competing for the single-error chain.
+func (e *ButtonListError) Unwrap() []error { return []error{ErrInvalidButtonList, e.Kind} }
 
 // listFault describes a failed validation precisely enough for both adapters:
 // the error text and the panic detail are built from the same words.
@@ -69,6 +95,11 @@ func (f listFault) describe() string {
 	return "invalid button list"
 }
 
+// err builds the typed error the runtime adapters return.
+func (f listFault) err() error {
+	return &ButtonListError{Kind: f.kind, Detail: f.describe()}
+}
+
 // validateButtonList is the ONE rule set. It reports the first fault it finds,
 // or nil when the list is acceptable.
 //
@@ -93,12 +124,18 @@ func validateButtonList(buttons []*Button, owner tui.Component) *listFault {
 			return &listFault{kind: ErrRepeatedButton, first: first, dup: i}
 		}
 		at[b] = i
-		// A button that is mounted, and whose parent is not the container about
-		// to adopt it, belongs to another subtree. Mounting it here panics
-		// inside the runtime AFTER the departures have already been unmounted,
-		// which is precisely the half-applied state this validator exists to
-		// make unreachable.
-		if ctx := b.Context(); ctx != nil && !ctx.ParentIs(owner) {
+		// A button that is CURRENTLY MOUNTED, and whose parent is not the
+		// container about to adopt it, belongs to another subtree. Mounting it
+		// here panics inside the runtime AFTER the departures have already been
+		// unmounted, which is precisely the half-applied state this validator
+		// exists to make unreachable.
+		//
+		// Mounted is asked explicitly rather than inferred from a non-nil
+		// Context. A widget keeps its last Context after unmount, so the pointer
+		// test conflates "unmounted and reusable" with "mounted elsewhere" — and
+		// every button of a dialog that has been closed once is then refused on
+		// reopen, which is the ordinary way a dialog is used twice.
+		if ctx := b.Context(); ctx != nil && ctx.Mounted() && !ctx.ParentIs(owner) {
 			return &listFault{kind: ErrForeignButton, first: -1, dup: i}
 		}
 		switch b.role {

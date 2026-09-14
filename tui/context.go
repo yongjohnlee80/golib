@@ -132,6 +132,17 @@ func (c *Context) Unmount(child Component) {
 	c.app.unmountTree(n)
 }
 
+// Mounted reports whether this context's node is still in the tree.
+//
+// A widget REMEMBERS its Context after the runtime has forgotten the node —
+// widget.Base keeps the pointer so that MarkDirty and friends stay safe to call
+// at any time — so "has a Context" is emphatically not "is mounted". Anything
+// that needs the difference has to ask, and before this there was nothing to
+// ask: a container checking a child's mount state could only test the retained
+// pointer, which answers a different question and answers it wrongly for every
+// component that has ever been mounted.
+func (c *Context) Mounted() bool { return c.node.mounted }
+
 // ParentIs reports whether this node's direct parent is comp.
 //
 // It answers the one question a container has to settle before adopting a
