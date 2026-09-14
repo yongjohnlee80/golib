@@ -29,17 +29,20 @@ var routingDocs = []docRequirement{
 	{
 		path: "tui/doc.go",
 		why:  "the package overview is where the transport lanes are drawn, so it is where the interpretation stage after them belongs",
-		must: []string{"HandleAction", "resolver", "gesture", "not a third transport lane"},
+		must: []string{"HandleAction", "Activatable", "resolver", "gesture",
+			"CaptureRaw", "CaptureGesture", "not a third transport lane"},
 	},
 	{
 		path: "tui/README.md",
 		why:  "the README carries the same architecture diagram as doc.go and must not contradict it",
-		must: []string{"HandleAction", "resolver", "gesture", "not a third transport lane"},
+		must: []string{"HandleAction", "Activatable", "resolver", "gesture",
+			"CaptureRaw", "CaptureGesture", "not a third transport lane"},
 	},
 	{
 		path: "tui/tutorial/04-events-focus-keys.md",
 		why:  "this is the document that told readers raw HandleEvent came first",
-		must: []string{"HandleAction", "resolver", "Pointer policy", "gesture recogniser"},
+		must: []string{"HandleAction", "Activatable", "resolver", "Pointer policy",
+			"gesture recogniser", "CaptureRaw", "CaptureGesture"},
 	},
 	{
 		path: "tui/widget/doc.go",
