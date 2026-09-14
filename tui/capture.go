@@ -296,6 +296,10 @@ func (a *App) loseCapture(reason CaptureLostReason) {
 		return
 	}
 	n := a.nodes[owner]
+	// Disarm FIRST, while the owner is still known and still the capture owner.
+	// This is what makes "the target is left disarmed however the gesture ends"
+	// true on the loss paths as well as the ordinary ones.
+	a.gestureLost()
 	// resetCapture, not clearCapture: the owner did NOT release, and emitting a
 	// "released" record here put an event on the trace that never happened,
 	// directly before the record explaining what actually did.

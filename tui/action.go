@@ -314,6 +314,12 @@ func (a *App) dispatchAction(n *node, inv ActionInvocation) bool {
 		if act, ok := n.comp.(Activatable); ok && act.Activate(inv.Origin) {
 			a.trace(TraceEvent{Kind: TraceAction, Node: n.id,
 				Detail: "activated (" + inv.Origin.String() + ")"})
+			// Published AFTER Activate returns, so the widget's own callback has
+			// already run and any observer sees a state that has settled. Only
+			// a successful activation publishes: a refused one — disabled,
+			// unmounted — says nothing, so a listener counting these is
+			// counting activations rather than attempts.
+			a.bus.Publish(ControlActivatedEvent{Owner: n.id, Origin: inv.Origin})
 			return true
 		}
 	}
