@@ -472,8 +472,15 @@ func TestANonPrimaryReleaseDoesNotEndAPrimaryGesture(t *testing.T) {
 	}
 }
 
-// TestEscapeRestoresTheFocusTheMenuTookAndClosesEveryLevel.
-func TestEscapeRestoresTheFocusTheMenuTookAndClosesEveryLevel(t *testing.T) {
+// TestEscapeClosesOneLevelPerPressAndThenBubbles.
+//
+// STAGED, not all-at-once. Escape used to close the whole cascade in one press
+// and report itself handled even with nothing open. Both halves were wrong:
+// from a nested submenu the first press should return to the dropdown that
+// opened it, which is the state the user is aiming at, and claiming the key at
+// the root swallows it from a consumer that may have its own meaning for it —
+// a menu can be nested inside something that does.
+func TestEscapeClosesOneLevelPerPressAndThenBubbles(t *testing.T) {
 	m := widget.NewMenu()
 	if err := m.SetModel([]widget.MenuItemModel{
 		widget.NewSubmenu("a", "A", []widget.MenuItemModel{
@@ -504,19 +511,42 @@ func TestEscapeRestoresTheFocusTheMenuTookAndClosesEveryLevel(t *testing.T) {
 		t.Fatalf("precondition failed: %d levels open, want 2", openLevelsOn(t, h, m))
 	}
 
-	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
-	h.waitFor("every level closed", func() bool { return openLevelsOn(t, h, m) == 0 })
-	h.settle()
+	esc := func() {
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+		h.settle()
+		h.settle()
+	}
+
+	esc()
+	if got := openLevelsOn(t, h, m); got != 1 {
+		t.Fatalf("the first Escape left %d levels open, want 1 — it should close the "+
+			"deepest, not the cascade", got)
+	}
+	if got := h.grid(); strings.Contains(got, "Deep") {
+		t.Errorf("the deepest level survived its own Escape:\n%s", got)
+	}
+
+	esc()
+	if got := openLevelsOn(t, h, m); got != 0 {
+		t.Errorf("the second Escape left %d levels open, want 0", got)
+	}
 
 	// Focus is still on the menu itself, which is where it was before the
-	// cascade opened: the levels never took it.
+	// cascade opened: the levels never took it, and Escape at the root is for
+	// the consumer to interpret rather than for the menu to act on.
 	var focused bool
 	h.onLoop(func() { focused = m.Context().Focused() })
 	if !focused {
 		t.Error("the menu does not hold focus after Escape closed its levels")
 	}
-	if got := h.grid(); strings.Contains(got, "Deep") {
-		t.Errorf("a level survived Escape:\n%s", got)
+
+	// A third Escape is UNHANDLED: the menu has nothing left to close, so the
+	// key belongs to whatever contains it.
+	esc()
+	h.onLoop(func() { focused = m.Context().Focused() })
+	if !focused {
+		t.Error("Escape at the root moved focus; leaving the menu is the consumer's " +
+			"decision, not the widget's")
 	}
 }
 
