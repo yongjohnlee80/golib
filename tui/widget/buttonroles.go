@@ -61,8 +61,8 @@ var ErrDuplicateMnemonic = errors.New("widget: duplicate button mnemonic")
 // carry everything a caller can act on.
 type buttonListError struct {
 	// kind is the specific sentinel: ErrNilButton, ErrRepeatedButton,
-	// ErrForeignButton or ErrDuplicateButtonRole. Never nil — the single
-	// constructor below is the only way one of these exists.
+	// ErrForeignButton, ErrDuplicateButtonRole or ErrDuplicateMnemonic. Never
+	// nil — the single constructor below is the only way one of these exists.
 	kind error
 	// detail names the offending entries.
 	detail string
@@ -155,10 +155,19 @@ func validateButtonList(buttons []*Button, owner tui.Component) *listFault {
 		if ctx := b.Context(); ctx != nil && ctx.Mounted() && !ctx.ParentIs(owner) {
 			return &listFault{kind: ErrForeignButton, first: -1, dup: i}
 		}
-		// DUPLICATE MNEMONICS AMONG THE ENABLED. Two disabled twins are
-		// harmless — neither answers — and rejecting them would refuse a dialog
-		// that greys out one of a matched pair, which is an ordinary shape.
-		if b.mnemonic != 0 && b.enabled {
+		// UNIQUE FOR THE LIST'S LIFETIME, not merely right now. An earlier
+		// version checked only the ENABLED buttons, reasoning that two greyed
+		// twins are harmless because neither answers. They are harmless until
+		// someone calls SetEnabled(true) on both — which revalidates nothing,
+		// because enabled is a runtime property of one button and this is a
+		// property of the list. The dialog would then have two controls
+		// underlining the same key, and mnemonicButton would silently pick
+		// whichever came first, so the behaviour depended on list order.
+		//
+		// Enabled is MUTABLE; the declaration is not. Uniqueness is checked
+		// against the declaration, exactly as duplicate Default and Cancel
+		// roles are, and a disabled control simply stays non-responsive.
+		if b.mnemonic != 0 {
 			if first, dup := seenKeys[lowerRune(b.mnemonic)]; dup {
 				return &listFault{kind: ErrDuplicateMnemonic, first: first, dup: i}
 			}

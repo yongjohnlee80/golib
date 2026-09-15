@@ -65,10 +65,12 @@ type ModalOption func(*Modal)
 
 // NewModal builds a dialog around the caller's content.
 //
-// Panics on a button list carrying two Defaults or two Cancels: at construction
-// the list is written in source, so a duplicate is an authoring error. The
-// runtime setter returns an error for the same rule instead, and both go
-// through one validator so they cannot come to disagree.
+// Panics on a button list the validator refuses: a nil entry, the same *Button
+// twice, one already mounted elsewhere, two Defaults or two Cancels, or two
+// buttons declaring the same mnemonic. At construction the list is written in
+// source, so any of those is an authoring error. The runtime setter returns an
+// error for the same rules instead, and both go through one validator so they
+// cannot come to disagree.
 func NewModal(body tui.Component, opts ...ModalOption) *Modal {
 	m := &Modal{
 		card:          newModalCard(body),
@@ -86,7 +88,8 @@ func NewModal(body tui.Component, opts ...ModalOption) *Modal {
 	return m
 }
 
-// WithButtons supplies the dialog's buttons.
+// WithButtons supplies the dialog's buttons. The list is validated at
+// construction; see [NewModal] for what is refused.
 func WithButtons(b ...*Button) ModalOption {
 	return func(m *Modal) { m.card.buttons = append([]*Button(nil), b...) }
 }
