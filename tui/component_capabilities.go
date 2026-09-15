@@ -2,6 +2,12 @@ package tui
 
 import "iter"
 
+// This file holds the structural component capabilities. Input interpretation
+// is optional too, but lives with its contracts: ActionHandler, Activatable and
+// ActivationAvailability are documented in action.go; pointer capture is
+// runtime-owned state exposed through Context in capture.go. Keeping those
+// separate avoids presenting semantic actions as a third transport lane.
+
 // Focusable opts a component into the framework's tab-order focus management.
 // Components that do not implement Focusable are transparent to keyboard focus
 // and are skipped during Tab/Shift-Tab navigation.

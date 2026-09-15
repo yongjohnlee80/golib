@@ -158,9 +158,10 @@ func (sl *SearchableList[T]) HandleEvent(ev tui.Event) bool {
 		}
 
 	case tui.KeyDown, tui.KeyUp:
-		// When input is focused, Down arrow moves focus directly into the list
+		// Transfer focus. The next navigation key reaches the List through the
+		// runtime; do not call another component's HandleEvent directly.
 		sl.ctx.FocusComponent(sl.list)
-		return sl.list.HandleEvent(ev)
+		return true
 	}
 
 	return false
@@ -181,8 +182,7 @@ func (sl *SearchableList[T]) applyFilter(query string) {
 	sl.list.SetItems(matched)
 }
 
-// 5. Focus delegation: Wrapper itself is not a focus stop
-func (sl *SearchableList[T]) AcceptsFocus() bool { return false }
+// 5. Focus delegation: the wrapper omits tui.Focusable, so it is not a tab stop.
 func (sl *SearchableList[T]) FocusTarget() tui.Component { return sl.list }
 ```
 
@@ -192,7 +192,9 @@ func (sl *SearchableList[T]) FocusTarget() tui.Component { return sl.list }
 
 ### A. Focus Delegation & The Terminal Cursor
 
-1. **Containers do not accept focus**: A container or wrapper should return `false` from `AcceptsFocus()`.
+1. **Transparent containers omit `tui.Focusable`**: Do not add an
+   `AcceptsFocus() bool { return false }` method merely to say the wrapper is not
+   a stop; absence of the optional capability already says that structurally.
 2. **Delegate to the child with a cursor**: If a child draws a terminal cursor (like `Editor` or `TextInput`), that child **must hold actual focus**. If the wrapper steals focus, the runtime cursor reporter cannot find the inner widget, and the cursor disappears.
 3. Provide a `FocusTarget() tui.Component` method so parent controllers can easily focus the active child:
    ```go
@@ -202,17 +204,32 @@ func (sl *SearchableList[T]) FocusTarget() tui.Component { return sl.list }
 ### B. Event Forwarding vs Bubbling
 
 - **Target-then-bubble**: Events reach the focused child first. If the child does not consume the event (`return false`), it bubbles up to the parent wrapper automatically.
-- **Forwarding**: If your wrapper is focused or intercepting an event, you can forward it explicitly to a child:
-  ```go
-  if ke.Code == tui.KeyDown {
-      return myChild.HandleEvent(ev)
-  }
-  ```
+- **Do not call another component's `HandleEvent` directly**: doing so bypasses
+  runtime pointer policy, semantic resolution, provenance, tracing, and capture.
+  Move focus, let normal bubbling work, expose a typed method, or dispatch a
+  semantic action with `Context.DoAction`.
 - **Selective Interception**: Only return `true` if you took meaningful action. Returning `true` indiscriminately swallows application-wide shortcuts (`Ctrl+C`, `q`, modal `Esc`).
 
-### C. State Mutation Discipline
+### C. Optional interaction capabilities
 
-- Always mutate UI state on the **loop goroutine** (inside `Init`, `Layout`, `Render`, or `HandleEvent`).
+- Implement `tui.ActionHandler` when the component owns a typed intent such as
+  menu movement or resizing. Keep physical input in resolvers so keyboard,
+  pointer, and consumer-defined input share the same state transition.
+- Implement `tui.Activatable` for a leaf control with one trigger operation.
+- Implement `tui.FocusScope` only when the subtree genuinely traps traversal,
+  such as an open modal.
+- Acquire pointer capture only inside the component's own `HandleEvent` or
+  `HandleAction`. End the gesture on release and on
+  `tui.PointerCaptureLostEvent`; captured coordinates may be outside the widget.
+
+### D. State Mutation Discipline
+
+- Mutate UI state on the **loop goroutine**, but keep `Layout` and `Render`
+  pure. They may measure, place, and paint; they must not publish, mount,
+  unmount, or store geometry-derived state.
+- When a state change depends on final geometry, register it from `Layout` with
+  `ctx.AfterLayout(key, fn)`. The keyed commit runs after layout and before
+  rendering, coalescing repeated registrations by the same owner and key.
 - When external data updates arrive, post them onto the loop with `App.Update` or via `TaskResult` from `ctx.Go`.
 - Call `ctx.MarkDirty()` whenever visual state changes so the runtime schedules a coalesced frame render.
 

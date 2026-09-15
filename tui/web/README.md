@@ -119,6 +119,21 @@ them: `Ctrl`/`Cmd`+`T`/`N`/`W`/`L`/`R`, `Ctrl+Tab`, `F5`, `F11`, `F12`, `Cmd+Q`.
 A user who cannot open a tab, reload, or reach devtools has lost control of their
 own browser. `Ctrl+Q` is deliberately *not* reserved.
 
+## Pointer normalization and capture loss
+
+The client reports grid-relative presses, motion, releases, and wheel steps;
+Go converts them to the same `tui.MouseEvent` values used by the terminal
+backend. The browser reports ordinary motion with `MouseNone`, because the DOM
+button bitset has no lossless place in the current core event shape. Hit-testing,
+click counts, semantic actions, and pointer capture all remain App behaviour.
+
+The current client registers press, motion, and release listeners on the grid.
+A release outside the grid is therefore not forwarded. Leaving the grid alone
+does not cancel a runtime capture, but browser-window blur emits terminal-level
+focus loss, and the App converts that to `PointerCaptureLostEvent`. A draggable
+component must finish on an in-grid release and abort on capture loss; consumers
+must not assume the browser supplies DOM pointer capture outside the grid.
+
 ## Capabilities
 
 `ColorProfile: TrueColor`, `SyncOutput: true`, `BracketedPaste: true`,

@@ -125,6 +125,30 @@ record means nobody consumed it — usually the key arrived before the
 thing you meant to press it on existed.
 → [chapter 8](08-debugging.md)
 
+## "My custom action never runs"
+
+An action resolver only translates input; it does not execute the action by
+itself. The target must implement `ActionHandler`, or implement `Activatable`
+for `ActivateAction`. Pointer-derived actions are also skipped when the node's
+effective pointer policy is disabled. Inspect `action` trace records to see the
+identifier, origin, and receiver.
+→ [chapter 4](04-events-focus-keys.md), [chapter 8](08-debugging.md)
+
+## "A drag freezes when the pointer crosses the edge"
+
+The drag owner did not acquire pointer capture, or did not handle capture loss.
+Capture in the begin action/handler, release on the matching release, and clear
+gesture state on `PointerCaptureLostEvent`. Do not clamp captured coordinates;
+negative and beyond-edge positions are meaningful.
+→ [chapter 4](04-events-focus-keys.md)
+
+## "Layout keeps running or publishes the same change twice"
+
+State or publication happened inside `Layout`. Layout may be repeated while a
+frame settles. Compute there, then register the geometry-dependent mutation
+with `Context.AfterLayout`; the keyed commit coalesces duplicate registrations.
+→ [chapter 9](09-custom-components.md)
+
 ## "My test passes locally and fails under load"
 
 Screen-scraping matches the WHOLE grid. Status bars, menu labels and

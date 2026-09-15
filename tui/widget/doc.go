@@ -1,8 +1,8 @@
 // Package widget provides golib/tui's standard widget suite: the [Base] embedding
 // contract, the [Box] titled-panel container, the [OverlayHost] modal/popup layer,
-// and the twenty production-grade TUI components inventoried below, sufficient to
-// build sophisticated terminal applications (such as lazygit-, sqlit-, and
-// neovim-shaped tools) out of the box with zero custom widget plumbing.
+// and the twenty production-grade TUI components inventoried below. Applications
+// compose these primitives and add domain-specific controllers rather than
+// reimplementing their interaction machinery.
 //
 // # Complete Widget Inventory
 //
@@ -18,7 +18,7 @@
 //	BufferView      Stream / Pager   yes (scroll)    [FollowTailChangedEvent]
 //	Tabs            Navigation       yes (bar)       [TabChangedEvent]
 //	Split           Container        no (panes are)  [SplitResizedEvent], [SplitZoomEvent]
-//	Resizable       Wrapper          yes             [ResizedEvent]
+//	Resizable       Wrapper          content only    [ResizedEvent]
 //	Float           Overlay / Modal  children        [DismissEvent]
 //	Modal           Dialog           trap owner      [OverlayDismissedEvent]
 //	Menu            Menu / Command   yes             [MenuActivatedEvent], [MenuSelectionChangedEvent]

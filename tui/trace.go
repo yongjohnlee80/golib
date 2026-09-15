@@ -180,6 +180,9 @@ type TraceEvent struct {
 	// Detail provides kind-specific contextual metadata:
 	//   - TraceKey: the string representation of the key ("Ctrl-c", "Enter", "Tab").
 	//   - TraceScope: "open" or "close".
+	//   - TraceAction: action identifier, origin, and whether a handler or
+	//     Activatable consumed it.
+	//   - TraceCapture: acquisition, release, refusal, or loss and its reason.
 	//   - TraceFocusRepair: human-readable reason for repair ("node unmounted", "node hidden").
 	//   - Pointer press aborts: explanation why a click was skipped.
 	Detail string
@@ -193,8 +196,9 @@ type TraceFunc func(TraceEvent)
 
 // WithTrace configures runtime event tracing on the application.
 //
-// Pass nil to disable tracing. When enabled, every focus shift, modal trap,
-// key consumption, and tree unmount fires fn synchronously.
+// Pass nil to disable tracing. When enabled, focus, tree lifetime, key
+// consumption, focus scopes, semantic actions and pointer-capture transitions
+// fire fn synchronously.
 func WithTrace(fn TraceFunc) AppOption {
 	return func(c *appConfig) { c.trace = fn }
 }

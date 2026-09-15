@@ -13,6 +13,22 @@ highlighting for free by focusing the content inside.
 widget.NewBox(content, widget.WithTitle("Logs"))
 ```
 
+## Button — one activation path
+
+`Button` handles Enter, Space, pointer clicks, drag-out-and-back, and
+programmatic activation through the runtime's single `Activatable` seam. It
+does not duplicate raw key and mouse state machines:
+
+```go
+save := widget.NewButton("Save", widget.WithOnActivate(saveDocument))
+save.Activate(tui.OriginProgrammatic) // same authorization and callback path
+```
+
+Use `MenuItem` for a standalone menu-shaped control. Use `Menu`/`MenuBar` for a
+model of commands, nested levels, mnemonics, accelerators, keyboard navigation,
+and row hit-testing. Menu rows are values rather than mounted child components;
+the menu owns their selection and open-level state.
+
 ## Split and Dock — the page skeleton
 
 `Split` divides an area between two children by ratio with minimums;
@@ -76,6 +92,11 @@ split as above. Two things are worth knowing before you reach for it:
 // Grow whatever is focused, wrapper or split, by one cell.
 ctx.DoAction(widget.ResizeStepAction{DX: 1, Unit: widget.StepCells})
 ```
+
+Press and motion begin/continue a drag through semantic resize actions. The
+runtime captures the pointer for the gesture, so the same owner receives motion
+and release beyond its rectangle. A backend focus loss ends that capture and
+the widget drops its drag state without treating the last size as a cancel.
 
 ## Tabs — switching content
 

@@ -139,6 +139,9 @@
 //   - [Bus.Publish] (enqueue a typed broadcast event)
 //
 // All of these methods are thread-safe, non-blocking, and return immediately.
+// [App.SetTheme] follows the same rule: it queues the App-owned theme swap on
+// the program lane, invalidates resolved-style caches, and repaints every
+// token-valued widget style without asking widgets to observe the theme.
 //
 // # The Two-Seam Portability Contract
 //

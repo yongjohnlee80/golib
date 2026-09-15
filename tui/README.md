@@ -188,8 +188,16 @@ Optional capability interfaces are detected at runtime via type assertions on th
 - `Focusable`: Opts the component into Tab/Shift-Tab traversal (`AcceptsFocus() bool`).
 - `Container`: Public child-management surface (`Add`, `Remove`, `Move`, `Children`).
 - `FocusScope`: Traps focus navigation within a subtree (used by modals and popups).
+- `ActionHandler`: Handles typed semantic intent after an event resolver matches.
+- `Activatable`: Gives buttons and other leaf controls one activation path for
+  keyboard, pointer, and programmatic input.
 - `CursorReporter`: Reports local insertion point for real OS IME candidate window placement.
 - `CursorShaper`: Changes terminal hardware cursor shape (block, underline, bar).
+
+Pointer capture is runtime state, not another capability interface. A component
+may acquire it only from its own event/action handler and must treat
+`PointerCaptureLostEvent` as the end of the gesture. Geometry-dependent state
+changes belong in `Context.AfterLayout`; `Layout` and `Render` remain pure.
 
 ---
 
@@ -202,6 +210,18 @@ Optional capability interfaces are detected at runtime via type assertions on th
 - Validate hardware cursor coordinates via `tb.CursorPos()`.
 - Verify write discipline via `tb.Flushes()` — an idle app emits zero flushes; one state change emits exactly one.
 - Catch wide-cell half-cell corruption and layout constraint violations automatically.
+
+`Inject` preserves the event supplied by the test; it does not synthesize a
+press/motion/release sequence or clamp pointer coordinates. This makes pointer
+tests explicit: inject the same normalized events a real backend would emit,
+and inject `FocusEvent{Gained: false, Terminal: true}` to exercise backend
+capture loss. Routing, hit-testing, semantic actions, and capture remain the
+real App implementations.
+
+Themes remain App-owned. `app.SetTheme(&theme)` may be called from any
+goroutine; it queues the swap on Lane B, invalidates resolved-style caches, and
+repaints without relayout. Widgets holding token-valued styles follow the new
+theme automatically.
 
 ---
 

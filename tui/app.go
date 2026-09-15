@@ -261,6 +261,29 @@ func (a *App) Update(fn func()) {
 	a.queue.push(programItem{fn: fn, isUpdate: true})
 }
 
+// SetTheme schedules an application-wide theme change on the loop goroutine.
+// Every Surface resolves semantic style tokens through this one theme, so
+// widgets need no theme reference and no notification callback of their own.
+// The resolution generation is bumped to invalidate cached CellAttrs and the
+// next frame repaints the whole tree without forcing a layout pass.
+//
+// Safe from any goroutine, including an event handler. Like Update, it always
+// enqueues and returns; the change is visible after the program lane processes
+// it. A nil theme is a configuration error and panics before anything is queued.
+func (a *App) SetTheme(th *style.Theme) {
+	if th == nil {
+		panic(errs.Fatal{Op: "tui: App.SetTheme", Rule: "nil theme"})
+	}
+	a.Update(func() {
+		a.cfg.theme = th
+		if a.rctx != nil {
+			a.rctx.theme = th
+			a.rctx.themeGen++
+		}
+		a.renderDirty = true
+	})
+}
+
 // Run starts the backend synchronously (raw mode, alternate screen,
 // capability probe; errors return before the event loop and intake pump start,
 // mirroring the scaffold's synchronous bind at server/scaffold.go:144-147),
