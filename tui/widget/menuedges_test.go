@@ -271,3 +271,157 @@ func TestButtonAlignNamesItself(t *testing.T) {
 		t.Error("an out-of-range ButtonAlign reported itself valid")
 	}
 }
+
+// TestClosingACascadeLeavesTheSelectionSomewHereVisible.
+//
+// repairSelection asked findItem whether the selection still exists in the
+// current level — and findItem RECURSES into children. So after closing
+// Option → Keymaps it found the Keymaps row nested inside the root slice,
+// decided the selection was fine, and returned. The selection was then sitting
+// on a row nobody can see: no category highlighted, the arrows starting from
+// somewhere invisible, and F10 appearing inert because the menu was still
+// focused with nothing to show for it.
+//
+// "Still in the model" and "still on screen" are different questions, and only
+// the second one is what a selection has to satisfy.
+func TestClosingACascadeLeavesTheSelectionSomewhereVisible(t *testing.T) {
+	model := []widget.MenuItemModel{
+		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
+			widget.NewCommand("new", "New", nil),
+		}),
+		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
+			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
+				widget.NewCommand("vim", "Vim", nil),
+			}),
+		}),
+	}
+	rootIDs := map[widget.ItemID]bool{"file": true, "option": true}
+
+	for _, tc := range []struct {
+		name  string
+		close func(m *widget.Menu)
+	}{
+		{"Close from one level deep", func(m *widget.Menu) { m.Close() }},
+		{"Close from two levels deep", func(m *widget.Menu) {
+			_ = m.Open("km")
+			m.Close()
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := widget.NewMenu()
+			h, _ := barFixture(t, m, model, 50, 14)
+			defer h.stop()
+			h.onLoop(func() { m.Context().RequestFocus() })
+			h.settle()
+			h.onLoop(func() { _ = m.Open("option") })
+			h.settle()
+			h.settle()
+			h.onLoop(func() { tc.close(m) })
+			h.settle()
+			h.settle()
+
+			var sel widget.ItemID
+			var ok bool
+			h.onLoop(func() { sel, ok = m.Selected() })
+			if !ok {
+				t.Fatalf("no selection at all after closing; the bar has nothing to act on")
+			}
+			if !rootIDs[sel] {
+				t.Errorf("the selection is %q, which is not a row on screen — closing "+
+					"left it on a hidden descendant", sel)
+			}
+			// And it is the category the cascade came from, not merely any row:
+			// closing Option should leave the user on Option.
+			if sel != "option" {
+				t.Errorf("the selection is %q; closing a cascade should leave the "+
+					"category that owned it selected", sel)
+			}
+
+			// EXACTLY ONE BAR ROW IS LIT. The ID being visible is not enough on
+			// its own — a selection pointing at a real row that nothing paints
+			// looks identical to the defect from the user's side.
+			fx, fy := cellOfLabel(t, h, "File")
+			ox, _ := cellOfLabel(t, h, "Option")
+			fileSt, optSt := rowStyleAt(t, h, fx, fy), rowStyleAt(t, h, ox, fy)
+			if fileSt == optSt {
+				t.Errorf("File and Option are painted alike after closing; no category "+
+					"is highlighted\n%s", h.grid())
+			}
+
+			// AND THE ARROWS MOVE FROM HERE. A selection the user cannot see is
+			// also a selection they cannot navigate away from predictably: the
+			// first Right went somewhere unrelated to what was on screen.
+			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft})
+			h.settle()
+			h.settle()
+			var moved widget.ItemID
+			h.onLoop(func() { moved, _ = m.Selected() })
+			if moved != "file" {
+				t.Errorf("Left from the restored selection went to %q, want the "+
+					"neighbouring visible category", moved)
+			}
+		})
+	}
+}
+
+// TestHidingAnOpenCategoryDoesNotStrandTheSelectionInsideIt.
+//
+// THE WITNESS FOR repairSelection ITSELF. Close was taught to restore the
+// category that owned the cascade, and that masks the repair: the selection is
+// already on a visible root row before repair runs, so a repair that does
+// nothing looks correct. Reverting repairSelection alone left the close test
+// passing, which is the whole reason this one exists.
+//
+// Hiding the open category reaches the repair by another road — mutate closes
+// the unjustified levels and repairs, with nothing restoring an owner in
+// between. With the recursive lookup the selection stayed on a row that is now
+// neither visible nor reachable.
+func TestHidingAnOpenCategoryDoesNotStrandTheSelectionInsideIt(t *testing.T) {
+	model := []widget.MenuItemModel{
+		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
+			widget.NewCommand("new", "New", nil),
+		}),
+		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
+			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
+				widget.NewCommand("vim", "Vim", nil),
+			}),
+		}),
+	}
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, model, 50, 14)
+	defer h.stop()
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
+	// SETTLED BETWEEN THE TWO OPENS. A level anchors to the row that opened it,
+	// and that row has no rect until the level holding it has been laid out —
+	// so opening both in one pass silently opens only the first.
+	h.onLoop(func() { _ = m.Open("option") })
+	h.settle()
+	h.settle()
+	h.onLoop(func() { _ = m.Open("km") })
+	h.settle()
+	h.settle()
+
+	var sel widget.ItemID
+	h.onLoop(func() { sel, _ = m.Selected() })
+	if sel != "vim" {
+		t.Fatalf("the cascade opened on %q; this test needs the selection two "+
+			"levels down before it hides the category", sel)
+	}
+
+	// Hiding the category the cascade hangs from closes it — and the selection
+	// must come back with it.
+	h.onLoop(func() { m.SetVisible("option", false) })
+	h.settle()
+	h.settle()
+
+	h.onLoop(func() { sel, _ = m.Selected() })
+	if sel == "vim" || sel == "km" || sel == "option" {
+		t.Errorf("the selection is %q after its category was hidden: a row that is "+
+			"no longer on screen, found only because the lookup recursed into "+
+			"children", sel)
+	}
+	if sel != "file" {
+		t.Errorf("the selection is %q, want the remaining visible category", sel)
+	}
+}

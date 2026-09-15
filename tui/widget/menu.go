@@ -354,8 +354,17 @@ func (m *Menu) setSelected(id ItemID) {
 // the first selectable row of the deepest open level.
 func (m *Menu) repairSelection() {
 	level := m.currentLevelItems()
-	if it := findItem(level, m.selected); it != nil && it.selectable() {
-		return
+	// DIRECT MEMBERSHIP, never findItem. findItem RECURSES into children, so it
+	// answers "is this row anywhere in the model" — and the question here is
+	// "is it on screen". After closing Option → Keymaps it found the Keymaps
+	// row nested inside the root slice, declared the selection healthy and
+	// returned, leaving it on a row nobody can see: no category highlighted,
+	// the arrows starting from somewhere invisible, and the menu still focused
+	// with nothing to show for it.
+	for i := range level {
+		if level[i].ID == m.selected && level[i].selectable() {
+			return
+		}
 	}
 	for i := range level {
 		if level[i].selectable() {
@@ -409,7 +418,21 @@ func (m *Menu) Open(id ItemID) error {
 
 // Close closes every open level and leaves the selection on the root.
 func (m *Menu) Close() {
+	// THE CATEGORY THE CASCADE CAME FROM KEEPS THE SELECTION. Closing Option's
+	// dropdown should leave the user on Option, not deposit them on whichever
+	// row happens to be first — repairSelection's fallback is a floor, not a
+	// destination, and landing on File after closing Option is a jump the user
+	// did not ask for. Read before the levels go, since that is what knows.
+	var owner ItemID
+	if len(m.levels) > 0 {
+		owner = m.levels[0].parent
+	}
 	m.closeLevelsFrom(0)
+	if owner != "" {
+		if it := findItem(m.items, owner); it != nil && it.selectable() {
+			m.setSelected(owner)
+		}
+	}
 	m.repairSelection()
 }
 
