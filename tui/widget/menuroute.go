@@ -436,12 +436,12 @@ func (m *Menu) levelOpenFor(id ItemID) bool {
 // level whose widest row is a long plain command has slack from its neighbours
 // to absorb the error. MenuItem.Layout — the standalone row — has always used
 // measure(label)+2; this is the model-driven painter agreeing with it.
-func (m *Menu) rowWidth(it MenuItemModel) int {
+func (m *Menu) rowWidth(it MenuItemModel, marker bool) int {
 	w := m.measure(it.Label) + 2
 	if it.Accel != "" {
 		w += 2 + m.measure(it.Accel)
 	}
-	if it.Kind == ItemKindSubmenu {
+	if marker && it.Kind == ItemKindSubmenu {
 		w += 2
 	}
 	if it.Kind == ItemKindCheck || it.Kind == ItemKindRadio {
@@ -455,7 +455,7 @@ func (m *Menu) rowWidth(it MenuItemModel) int {
 // The delegation is total: a RowRenderer that is supplied paints the whole row,
 // because a hook that painted only part of one would have to agree with this
 // function about where the parts are, and the two would drift.
-func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState) {
+func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState, marker bool) {
 	base := rowStyle(m.style, viewOf(it), st)
 	s.Fill(r, " ", base)
 	// A plain != nil is correct HERE because the option normalised a typed nil
@@ -489,7 +489,7 @@ func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState
 			m.paintText(s, it.Accel, ax, r.Y, m.style.Accel())
 		}
 	}
-	if it.Kind == ItemKindSubmenu {
+	if marker && it.Kind == ItemKindSubmenu {
 		s.SetCell(r.X+r.W-2, r.Y, "▸", base)
 	}
 }

@@ -110,6 +110,52 @@ func WithModalStyle(s *ModalStyle) ModalOption {
 	return func(m *Modal) { m.card.st = s }
 }
 
+// ButtonAlign is where a dialog's row of buttons sits within its card.
+//
+// The zero value CENTRES them, which is the conventional look for a
+// confirmation and the one a caller who says nothing should get: a pair of
+// controls hugging one edge of a card wider than they are reads as detached
+// from the question above.
+type ButtonAlign uint8
+
+const (
+	// ButtonsCenter centres the row. The default.
+	ButtonsCenter ButtonAlign = iota
+	// ButtonsLeft packs the row against the leading edge.
+	ButtonsLeft
+	// ButtonsRight packs it against the trailing edge, the placement a form-like
+	// dialog with a wide body usually wants.
+	ButtonsRight
+)
+
+// Valid reports whether a is one of the declared alignments.
+func (a ButtonAlign) Valid() bool { return a <= ButtonsRight }
+
+// String names the alignment for traces and test failures.
+func (a ButtonAlign) String() string {
+	switch a {
+	case ButtonsCenter:
+		return "center"
+	case ButtonsLeft:
+		return "left"
+	case ButtonsRight:
+		return "right"
+	}
+	return "unknown"
+}
+
+// WithButtonAlign sets where the button row sits. An invalid value is refused
+// at construction rather than stored, like every other closed set here.
+func WithButtonAlign(a ButtonAlign) ModalOption {
+	return func(m *Modal) {
+		if !a.Valid() {
+			panic(tuiFatal("widget: WithButtonAlign",
+				"value outside the declared ButtonAlign set", int(a)))
+		}
+		m.card.align = a
+	}
+}
+
 // WithPlacement sets where the card sits within the host. Default is centred,
 // which is what a dialog almost always wants — and what a plain stack layer
 // does NOT do on its own, since a stack places an unaligned layer top-left.

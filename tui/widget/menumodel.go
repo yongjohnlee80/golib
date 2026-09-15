@@ -112,6 +112,15 @@ type MenuItemModel struct {
 	Action tui.Action
 	// Children are a submenu's rows.
 	Children []MenuItemModel
+	// PegRight pushes this row to the FAR END of a horizontal bar instead of
+	// letting it follow the row before it. Help belongs there by long
+	// convention, and the alternative — a spacer row sized to whatever is left
+	// — has to be recomputed on every resize by the consumer.
+	//
+	// Ignored by a vertical menu and inside a popup, where there is no far end
+	// to peg to: rows there are a column, and a right-aligned column entry is
+	// just an indented one.
+	PegRight bool
 }
 
 // NewCommand builds an enabled, visible command row.
@@ -368,4 +377,14 @@ func visibleRows(items []MenuItemModel) []int {
 		}
 	}
 	return slices.Clip(out)
+}
+
+// reverseVisible is visibleRows in reverse, for laying a bar's pegged rows out
+// from the right edge inward. Model order is preserved on screen that way: the
+// LAST pegged row in the model ends up nearest the edge, which is the same
+// left-to-right reading the leading run has.
+func reverseVisible(items []MenuItemModel) []int {
+	out := visibleRows(items)
+	slices.Reverse(out)
+	return out
 }
