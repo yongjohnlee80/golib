@@ -66,6 +66,12 @@ type Button struct {
 	role  ButtonRole
 	st    *ButtonStyle
 	deco  decoration
+	// mnemonic is the key that reaches this button directly, or 0. METADATA
+	// ONLY: the button never claims the rune itself. A standalone control that
+	// grabbed an unmodified letter out of the air would break every text field
+	// beside it — it is the CONTAINER, which knows the whole set and which of
+	// them are enabled, that resolves one.
+	mnemonic rune
 
 	enabled  bool
 	armed    bool
@@ -100,6 +106,18 @@ func NewButton(label string, opts ...ButtonOption) *Button {
 		}
 	}
 	return b
+}
+
+// WithMnemonic sets the key that reaches this button directly, such as 'y' on
+// a Yes button.
+//
+// The button records it and underlines it in the label; it does NOT bind it.
+// Resolution belongs to the container: a Modal matches a keystroke against its
+// own enabled buttons, so the same metadata can later mean something slightly
+// different in a toolbar or a form without every button in the tree competing
+// for unmodified letters.
+func WithMnemonic(r rune) ButtonOption {
+	return func(b *Button) { b.mnemonic = r }
 }
 
 // WithButtonDecoration replaces the pair a button is wrapped in. Two empty
@@ -174,6 +192,10 @@ func (b *Button) WithPointerPolicy(p tui.PointerPolicy) *Button {
 }
 
 // Role reports what the button means to its container.
+// Mnemonic is the key that reaches this button directly, or 0 for none. The
+// button records and underlines it; the CONTAINER resolves it.
+func (b *Button) Mnemonic() rune { return b.mnemonic }
+
 func (b *Button) Role() ButtonRole { return b.role }
 
 // Label reports the button's text.
@@ -373,6 +395,7 @@ func (b *Button) Render(s tui.Surface) {
 	// Iterate extended grapheme CLUSTERS, not runes. A cluster is the unit the
 	// terminal draws: painting rune by rune puts a zero-width combining mark in
 	// its own cell, where it overwrites the character it belongs to.
+	marked := false
 	for cluster := range tui.Graphemes(painted) {
 		cw := s.StringWidth(cluster)
 		// Stop before writing a cluster that does not fit. Half of a
@@ -381,7 +404,15 @@ func (b *Button) Render(s tui.Surface) {
 		if x+cw > sz.W {
 			break
 		}
-		s.SetCell(x, 0, cluster, st)
+		cst := st
+		// THE FIRST MATCHING CLUSTER ONLY. A mnemonic names one key, so marking
+		// every "o" in "Choose Folder" would advertise three ways in where
+		// there is one.
+		if !marked && b.mnemonic != 0 && eqFold([]rune(cluster)[0], b.mnemonic) {
+			cst = st.Underline(true)
+			marked = true
+		}
+		s.SetCell(x, 0, cluster, cst)
 		x += cw
 	}
 }

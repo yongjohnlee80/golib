@@ -40,6 +40,9 @@ var ErrRepeatedButton = errors.New("widget: repeated button")
 // ErrForeignButton reports a button already mounted somewhere else in the tree.
 var ErrForeignButton = errors.New("widget: button mounted elsewhere")
 
+// ErrDuplicateMnemonic reports two ENABLED buttons claiming the same key.
+var ErrDuplicateMnemonic = errors.New("widget: duplicate button mnemonic")
+
 // buttonListError is what a runtime setter returns for a rejected list.
 //
 // It answers to BOTH ErrInvalidButtonList and the specific sentinel for the
@@ -99,6 +102,11 @@ func (f listFault) describe() string {
 	case ErrForeignButton:
 		return "index " + itoa(f.dup) + " is already mounted elsewhere in the tree; " +
 			"adopting it would unmount it from its current parent behind that parent's back"
+	case ErrDuplicateMnemonic:
+		return "index " + itoa(f.first) + " and index " + itoa(f.dup) + " are both " +
+			"enabled and both answer to the same key; one keystroke cannot mean two " +
+			"controls, and picking either silently would make the dialog behave " +
+			"differently from how it reads"
 	}
 	return "invalid button list"
 }
@@ -124,6 +132,7 @@ func (f listFault) err() error {
 func validateButtonList(buttons []*Button, owner tui.Component) *listFault {
 	seen := map[ButtonRole]int{}
 	at := map[*Button]int{}
+	seenKeys := map[rune]int{}
 	for i, b := range buttons {
 		if b == nil {
 			return &listFault{kind: ErrNilButton, first: -1, dup: i}
@@ -146,6 +155,15 @@ func validateButtonList(buttons []*Button, owner tui.Component) *listFault {
 		if ctx := b.Context(); ctx != nil && ctx.Mounted() && !ctx.ParentIs(owner) {
 			return &listFault{kind: ErrForeignButton, first: -1, dup: i}
 		}
+		// DUPLICATE MNEMONICS AMONG THE ENABLED. Two disabled twins are
+		// harmless — neither answers — and rejecting them would refuse a dialog
+		// that greys out one of a matched pair, which is an ordinary shape.
+		if b.mnemonic != 0 && b.enabled {
+			if first, dup := seenKeys[lowerRune(b.mnemonic)]; dup {
+				return &listFault{kind: ErrDuplicateMnemonic, first: first, dup: i}
+			}
+			seenKeys[lowerRune(b.mnemonic)] = i
+		}
 		switch b.role {
 		case ButtonRoleDefault, ButtonRoleCancel:
 			if first, dup := seen[b.role]; dup {
@@ -155,4 +173,13 @@ func validateButtonList(buttons []*Button, owner tui.Component) *listFault {
 		}
 	}
 	return nil
+}
+
+// lowerRune folds an ASCII mnemonic for comparison. A mnemonic is drawn from
+// the range a keyboard produces unmodified, so 'Y' and 'y' are one key.
+func lowerRune(r rune) rune {
+	if r >= 'A' && r <= 'Z' {
+		return r + ('a' - 'A')
+	}
+	return r
 }

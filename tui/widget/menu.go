@@ -84,6 +84,8 @@ type Menu struct {
 	// Keeps a cascade of short categories from looking ragged, one narrow box
 	// per level.
 	levelMinWidth int
+	// vimKeys adds hjkl as aliases for the arrow keys.
+	vimKeys bool
 	// dropSide is where a bar's first level opens, set by MenuBar so a bottom
 	// bar drops upward rather than back across itself. Zero means "the default
 	// for this orientation", which is what a bare Menu wants.
@@ -156,6 +158,24 @@ func WithLevelMinWidth(cols int) MenuOption {
 		}
 		m.levelMinWidth = cols
 	}
+}
+
+// WithMenuVimNavigation adds h/j/k/l as aliases for the arrow keys, at every
+// level. Off by default.
+//
+// ALIASES FOR THE PHYSICAL DIRECTIONS, resolved before the orientation-aware
+// bindings: h is Left, j is Down, k is Up, l is Right. So they inherit the
+// meaning each direction already has — in a bar h and l walk the bar while j
+// opens and k closes, and in a column they move and cascade — rather than
+// being a second, separate vocabulary that could drift from the first.
+//
+// A DECLARED MNEMONIC ALWAYS WINS. A row whose hotkey is 'k' stays reachable
+// with 'k'; only when the visible level has no row answering to the key does it
+// become navigation. Without that precedence, turning this on would silently
+// make some rows unreachable, and the author who declared the hotkey would have
+// no way to see why.
+func WithMenuVimNavigation(v bool) MenuOption {
+	return func(m *Menu) { m.vimKeys = v }
 }
 
 // WithLevelTitle decides whether a dropdown names the row that opened it in

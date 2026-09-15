@@ -82,6 +82,21 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 	if e.Kind == tui.KeyRelease || e.Mods.Chord() != 0 {
 		return nil, false
 	}
+	// A MNEMONIC IS CHECKED BEFORE A VIM ALIAS, and that ordering is the whole
+	// reason the aliases are safe to offer: a row whose hotkey is 'k' must stay
+	// reachable with 'k'. Only a key no visible row answers to becomes a
+	// direction. The arrow keys themselves are unaffected — no row's mnemonic
+	// is an arrow — so this costs nothing when the aliases are off.
+	code := e.Code
+	if m.vimKeys {
+		if _, isMnemonic := m.mnemonic(code); !isMnemonic {
+			if dir, ok := vimDirection(code); ok {
+				code = dir
+			}
+		}
+	}
+	e.Code = code
+
 	if m.horizontal {
 		if a, ok := m.resolveBarKey(e); ok {
 			return a, ok
@@ -91,7 +106,22 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 	}
 	switch e.Code {
 	case tui.KeyEscape:
-		return MenuCloseAction{All: true}, true
+		// STAGED, ONE LEVEL PER PRESS, and unhandled once there are none.
+		//
+		// Escape used to close the whole cascade and report itself handled even
+		// with nothing open. Both halves were wrong. Closing everything skips
+		// the intermediate states a user is aiming at — from a nested submenu
+		// the first Escape should return to the dropdown that opened it, not to
+		// the bar. And claiming the key with nothing open swallows it: a menu
+		// may be nested inside something with its own meaning for Escape, and
+		// the consumer is the only one who knows what leaving the root means.
+		//
+		// MenuCloseAction{All: true} remains the programmatic close — DoAction,
+		// hide, unmount — it is simply not what the keyboard does.
+		if len(m.levels) > 0 {
+			return MenuCloseAction{All: false}, true
+		}
+		return nil, false
 	case tui.KeyEnter, ' ':
 		if id, ok := m.Selected(); ok {
 			return MenuActivateAction{ItemID: id}, true
@@ -105,6 +135,22 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 		return MenuActivateAction{ItemID: id}, true
 	}
 	return nil, false
+}
+
+// vimDirection maps an hjkl key onto the arrow it stands for. Reported rather
+// than applied, so the caller decides whether a mnemonic has first claim.
+func vimDirection(r rune) (rune, bool) {
+	switch r {
+	case 'h':
+		return tui.KeyLeft, true
+	case 'j':
+		return tui.KeyDown, true
+	case 'k':
+		return tui.KeyUp, true
+	case 'l':
+		return tui.KeyRight, true
+	}
+	return 0, false
 }
 
 // resolveBarKey is the arrow vocabulary of a horizontal MENU BAR.
