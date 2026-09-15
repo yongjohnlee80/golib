@@ -103,20 +103,34 @@ func (s *MenuStyle) Border() style.Style {
 	return s.border
 }
 
-// Row returns the look for one row in a given state — ONE selector, so a
-// renderer never reimplements the precedence between selected, armed and
-// disabled and cannot come to disagree with another one that did.
+// rowStyle is the built-in look for one row — ONE selector, so the Menu's
+// painter, MenuItem and anything else drawing a row share the precedence rather
+// than each reimplementing it.
 //
-// Disabled wins over selected: a row that cannot be acted on must not look like
-// the row the keyboard is about to act on, even while the selection is resting
-// on it during traversal.
-func (s *MenuStyle) Row(st RowState) style.Style {
-	switch st {
-	case RowStateDisabled:
+// PRIVATE, and it takes BOTH the row and the state. Disabled is a property of
+// the ROW (not enabled, or a separator) while armed and selected are properties
+// of the interaction, so a selector given only the state could not apply the
+// rule below; and this precedence is the package's own presentation choice
+// rather than a contract a consumer's renderer has to obey. A RowRenderer gets
+// the four independent flags and decides for itself.
+//
+// What the first case actually does is give a disabled row and a separator the
+// DISABLED look rather than the ordinary surface. It is written as a precedence
+// over Selected as well, and that half is currently unreachable: repairSelection
+// moves the selection off any row that stops being selectable, so "disabled and
+// selected" is a state the Menu does not produce. It is kept because the
+// ordering is the right shape if that ever changes, and it is recorded as
+// unreachable rather than asserted as behaviour nothing can exercise.
+//
+// Armed above Selected IS reachable — a press arms the row the selection is
+// already on — and a press that did not visibly arm reads as a dropped click.
+func rowStyle(s *MenuStyle, row RowView, st RowState) style.Style {
+	switch {
+	case !row.Enabled || row.Kind == ItemKindSeparator:
 		return s.Disabled()
-	case RowStateArmed:
+	case st.Armed:
 		return s.Armed()
-	case RowStateSelected:
+	case st.Selected:
 		return s.Selected()
 	}
 	return s.Surface()

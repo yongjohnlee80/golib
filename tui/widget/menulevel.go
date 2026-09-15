@@ -87,7 +87,7 @@ func (p *menuPopup) Layout(cs tui.Constraints) tui.Size {
 	}
 	clear(p.rects) // per-pass, like the runtime's own declared regions
 	if ctx := p.Context(); ctx != nil {
-		p.owner.declareRows(ctx, rows, tui.Rect{X: 1, Y: 1, W: size.W - 2, H: size.H - 2}, p.rects)
+		p.owner.declareRows(ctx, rows, p.interior(size), p.rects)
 	}
 	return size
 }
@@ -100,7 +100,17 @@ func (p *menuPopup) Render(s tui.Surface) {
 	}
 	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", p.st.Surface())
 	drawBorder(s, sz, p.st.Border())
-	p.owner.paintRows(s, p.rowsOf(), tui.Rect{X: 1, Y: 1, W: sz.W - 2, H: sz.H - 2})
+	p.owner.paintRows(s, p.rowsOf(), p.interior(sz))
+}
+
+// interior is the rect inside the frame, never negative.
+//
+// A popup constrained below the frame's own two cells would otherwise hand a
+// negative width or height down as an area, and a negative extent is not a
+// smaller rectangle — it is one whose arithmetic silently inverts every bound
+// computed from it.
+func (p *menuPopup) interior(size tui.Size) tui.Rect {
+	return tui.Rect{X: 1, Y: 1, W: max(size.W-2, 0), H: max(size.H-2, 0)}
 }
 
 // measureRows is the natural size of a list of rows: the widest row, and one
@@ -119,9 +129,19 @@ func (m *Menu) measureRows(rows []MenuItemModel) (w, h int) {
 // ONE PASS produces both, which is the point: the region a submenu anchors to
 // and the rect a click is mapped through are the same rectangle, so they cannot
 // disagree about where a row is.
+// BOUNDED BY THE AREA. A row below the last line the parent gave this level is
+// not on screen: the surface clips the paint, but a region declared for it is
+// still a live anchor and a rect still hit-tests. A Menu squeezed to one line
+// would therefore open a submenu hanging off a row nobody can see, and a click
+// in the space below would arm one. "Not painted" and "not addressable" have to
+// be the same condition, so both loops stop at the same line.
 func (m *Menu) declareRows(ctx *tui.Context, rows []MenuItemModel, area tui.Rect, into map[ItemID]tui.Rect) {
 	y := area.Y
+	bottom := area.Y + max(area.H, 0)
 	for _, i := range visibleRows(rows) {
+		if y >= bottom || area.W <= 0 {
+			return
+		}
 		r := tui.Rect{X: area.X, Y: y, W: area.W, H: 1}
 		ctx.DeclareRegion(tui.RegionID(rows[i].ID), r)
 		into[rows[i].ID] = r
@@ -129,10 +149,16 @@ func (m *Menu) declareRows(ctx *tui.Context, rows []MenuItemModel, area tui.Rect
 	}
 }
 
-// paintRows draws each visible row into its line of area.
+// paintRows draws each visible row into its line of area, stopping at the same
+// line declareRows does so that what is painted and what is addressable are one
+// set of rows rather than two.
 func (m *Menu) paintRows(s tui.Surface, rows []MenuItemModel, area tui.Rect) {
 	y := area.Y
+	bottom := area.Y + max(area.H, 0)
 	for _, i := range visibleRows(rows) {
+		if y >= bottom || area.W <= 0 {
+			return
+		}
 		it := rows[i]
 		m.paintRow(s, it, tui.Rect{X: area.X, Y: y, W: area.W, H: 1}, m.rowStateOf(it))
 		y++
@@ -152,10 +178,21 @@ func (m *Menu) Layout(cs tui.Constraints) tui.Size {
 	clear(m.rowRects)
 
 	if m.horizontal {
-		w, h := 0, 1
+		// The ceiling is the constrained width, and a row beyond it is not on
+		// screen — so it declares nothing and gets no rect, for the same reason
+		// a clipped row of a vertical menu does not. A row that starts inside
+		// and runs past the edge is TRUNCATED rather than dropped: it has
+		// painted cells, so it is addressable through the cells it has.
+		limit := cs.MaxW // tui.Unbounded means the parent imposed no ceiling
 		x := 0
 		for _, i := range visibleRows(m.items) {
 			rw := m.rowWidth(m.items[i]) + 2
+			if limit != tui.Unbounded {
+				if x >= limit {
+					break
+				}
+				rw = min(rw, limit-x)
+			}
 			r := tui.Rect{X: x, Y: 0, W: rw, H: 1}
 			if ctx != nil {
 				ctx.DeclareRegion(tui.RegionID(m.items[i].ID), r)
@@ -163,8 +200,7 @@ func (m *Menu) Layout(cs tui.Constraints) tui.Size {
 			m.rowRects[m.items[i].ID] = r
 			x += rw
 		}
-		w = x
-		return cs.Constrain(tui.Size{W: w, H: h})
+		return cs.Constrain(tui.Size{W: x, H: 1})
 	}
 
 	w, h := m.measureRows(m.items)
@@ -192,7 +228,56 @@ func (m *Menu) Render(s tui.Surface) {
 	m.paintRows(s, m.items, tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H})
 }
 
+// anchorHost is the overlay operation set a Menu needs from the container that
+// will hold its levels.
+//
+// An INTERFACE rather than *OverlayHost, so the lookup states exactly what it
+// requires and a consumer can supply a host of their own without this package
+// naming their type.
+type anchorHost interface {
+	OpenAnchored(id LayerID, layer tui.Component, spec AnchorSpec, pol AnchorPolicy) error
+	CloseAnchored(id LayerID, reason DismissReason)
+}
+
+// host resolves the ONE container that will hold this Menu's levels: the
+// nearest enclosing overlay host.
+//
+// This replaced an app-wide bus broadcast, and the difference is ownership. The
+// broadcast had no addressee, so every mounted OverlayHost in the application
+// received each request: the one containing the Menu satisfied it and all the
+// others refused a request that was never theirs, each publishing a failure
+// event. An application watching those events to detect a broken menu therefore
+// saw one every time a menu opened correctly. Worse, the request was
+// ASYNCHRONOUS — the Menu appended its logical level immediately and found out
+// later, or never, whether anything had been mounted.
+//
+// Resolved on each use rather than cached at mount: the answer is live tree
+// state, and a Menu can legitimately be re-parented between one open and the
+// next.
+func (m *Menu) host() anchorHost {
+	ctx := m.Context()
+	if ctx == nil {
+		return nil
+	}
+	found := ctx.Ancestor(func(c tui.Component) bool {
+		_, ok := c.(anchorHost)
+		return ok
+	})
+	if found == nil {
+		return nil
+	}
+	h, _ := found.(anchorHost)
+	return h
+}
+
 // openLevel mounts one submenu level, anchored to the row that opened it.
+//
+// A TRANSACTION, in this order: resolve the host, check the anchor, mount, and
+// only then record the level and move the selection. The old order recorded
+// first and asked afterwards, so a request that mounted nothing still left a
+// level in the model — and because opening an already-open row is idempotent,
+// that stale entry made the NEXT open look like a duplicate and silently do
+// nothing. The row became permanently unopenable.
 //
 // Opening a level while a DEEPER one is open closes the deeper ones first: a
 // cascade is a stack, and leaving an orphan hanging off a row whose sibling was
@@ -200,7 +285,7 @@ func (m *Menu) Render(s tui.Surface) {
 func (m *Menu) openLevel(parent ItemID, children []MenuItemModel) error {
 	ctx := m.Context()
 	if ctx == nil {
-		return nil // not mounted: nothing to open onto, and nothing to report
+		return fmt.Errorf("%w: the menu is not mounted", ErrAnchorUnusable)
 	}
 	// Already the deepest level? Opening it again is what a second click on the
 	// same row means, and it should not rebuild anything.
@@ -213,11 +298,12 @@ func (m *Menu) openLevel(parent ItemID, children []MenuItemModel) error {
 			return nil
 		}
 	}
+	host := m.host()
+	if host == nil {
+		return fmt.Errorf("%w: a Menu must be mounted inside an OverlayHost to open a level",
+			ErrAnchorUnusable)
+	}
 
-	popup := &menuPopup{owner: m, parent: parent, st: m.style}
-	// The layer id namespaces the row under the owning Menu's node, so two menus
-	// with the same ItemID in their models cannot collide on the host.
-	id := LayerID(fmt.Sprintf("menu:%d:%s", ctx.ID(), parent))
 	// A nested level always cascades to the side; only a bar's FIRST level
 	// opens away from the bar's own edge.
 	side := PlacementRight
@@ -228,12 +314,23 @@ func (m *Menu) openLevel(parent ItemID, children []MenuItemModel) error {
 		Ref:  m.anchorFor(ctx, parent),
 		Pref: Placement{Side: side},
 	}
+	// A row that has not been laid out — or has been clipped out of the rect its
+	// parent allowed — declared no region, so there is nothing to anchor to. An
+	// ERROR rather than a silent nil: the caller asked for a popup, and telling
+	// them nothing happened is how they end up looking for one that was never
+	// going to appear.
 	if !spec.Ref.Valid() {
-		return nil // the row has not been laid out yet; nothing to anchor to
+		return fmt.Errorf("%w: row %q is not currently laid out", ErrAnchorUnusable, parent)
 	}
-	ctx.Bus().Publish(anchoredOpenEvent{
-		id: id, layer: popup, spec: spec, policy: m.policy,
-	})
+
+	popup := &menuPopup{owner: m, parent: parent, st: m.style}
+	// The layer id namespaces the row under the owning Menu's node, so two menus
+	// with the same ItemID in their models cannot collide on the host.
+	id := LayerID(fmt.Sprintf("menu:%d:%s", ctx.ID(), parent))
+	if err := host.OpenAnchored(id, popup, spec, m.policy); err != nil {
+		return err // nothing recorded: the model still describes what is mounted
+	}
+
 	m.levels = append(m.levels, menuOpenLevel{parent: parent, layer: id, popup: popup})
 	// The new level owns the selection: its first selectable row.
 	for _, it := range children {
@@ -243,6 +340,22 @@ func (m *Menu) openLevel(parent ItemID, children []MenuItemModel) error {
 		}
 	}
 	return nil
+}
+
+// dropLevel removes the level registered under id from the model WITHOUT asking
+// the host to close it, which is what a host-driven dismissal needs: the layer
+// is already gone, and the model has to catch up.
+//
+// Deeper levels go with it. A level hangs off a row of the one above, so a level
+// whose parent has been dismissed is anchored to something that is no longer on
+// screen.
+func (m *Menu) dropLevel(id LayerID) {
+	for i, lv := range m.levels {
+		if lv.layer == id {
+			m.closeLevelsFrom(i)
+			return
+		}
+	}
 }
 
 // anchorFor returns the anchor for a row: the region the owning level declared.
@@ -282,16 +395,45 @@ func (m *Menu) closeLevelsFrom(i int) {
 	if i < 0 || i >= len(m.levels) {
 		return
 	}
-	ctx := m.Context()
-	for j := len(m.levels) - 1; j >= i; j-- {
-		if ctx != nil {
-			ctx.Bus().Publish(anchoredCloseEvent{
-				id: m.levels[j].layer, reason: DismissProgrammatic,
-			})
+	// The model is truncated FIRST, so anything reached during the close sees a
+	// Menu that already excludes these levels. The bus is not that path — a
+	// dismissal is delivered on the program lane, so the Menu's own
+	// reconciliation cannot run inside this call — but a popup's unmount hooks
+	// do run synchronously, and the ordering costs nothing to get right.
+	closing := append([]menuOpenLevel(nil), m.levels[i:]...)
+	m.levels = m.levels[:i]
+
+	if host := m.host(); host != nil {
+		for j := len(closing) - 1; j >= 0; j-- {
+			host.CloseAnchored(closing[j].layer, DismissProgrammatic)
 		}
 	}
-	m.levels = m.levels[:i]
-	if ctx != nil {
+	if ctx := m.Context(); ctx != nil {
 		ctx.MarkDirty()
 	}
+}
+
+// closeAllOnUnmount is the Menu's teardown: a level must not outlive the widget
+// that opened it.
+//
+// The levels are the HOST's children, not the Menu's, so the runtime's own
+// unmount cascade does not reach them — unmounting the Menu used to leave its
+// popups mounted and its model still counting them. Registered as an unmount
+// hook so the cleanup is synchronous and cannot be missed by a caller who
+// removed the Menu without calling Close.
+//
+// A layer that is ALREADY unmounted is left alone. When the host itself is being
+// torn down its layers have already gone, and asking it to close them again
+// would mutate the child list the cascade is walking.
+func (m *Menu) closeAllOnUnmount() {
+	ctx := m.Context()
+	host := m.host()
+	for j := len(m.levels) - 1; j >= 0; j-- {
+		if host != nil && ctx != nil && ctx.MountedComponent(m.levels[j].popup) {
+			host.CloseAnchored(m.levels[j].layer, DismissProgrammatic)
+		}
+	}
+	m.levels = nil
+	m.pressed, m.armed = "", false
+	m.releaseCapture()
 }

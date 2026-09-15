@@ -917,7 +917,7 @@ func TestTheBarStatesItsDropSideRatherThanRelyingOnTheFlip(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarBottom))
+	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarPlacementBottom))
 	body := widget.NewText("body")
 	root := tui.NewFlex(tui.Vertical)
 	root.AddWeighted(body, 1)

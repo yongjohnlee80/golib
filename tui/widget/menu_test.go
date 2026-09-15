@@ -69,7 +69,7 @@ func modelOn(t *testing.T, h *harness, m *widget.Menu) []widget.MenuItemModel {
 // nothing instead — and the constructors are what opt a row in.
 func TestTheZeroRowIsInertRatherThanAnEnabledNoOp(t *testing.T) {
 	var zero widget.MenuItemModel
-	if zero.Kind != widget.KindCommand {
+	if zero.Kind != widget.ItemKindCommand {
 		t.Errorf("zero Kind = %v, want command", zero.Kind)
 	}
 	if zero.Enabled || zero.Visible {
@@ -110,7 +110,7 @@ func TestSetModelRejectsWhatCannotBeAddressed(t *testing.T) {
 			}),
 		}},
 		{"an undeclared kind", widget.ErrUnknownItemKind, []widget.MenuItemModel{
-			{ID: "x", Kind: widget.KindRadio + 1, Visible: true, Enabled: true},
+			{ID: "x", Kind: widget.ItemKindRadio + 1, Visible: true, Enabled: true},
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -696,4 +696,50 @@ func flatten(items []widget.MenuItemModel) []widget.MenuItemModel {
 		out = append(out, flatten(it.Children)...)
 	}
 	return out
+}
+
+// nilableAction is a POINTER-shaped action, so a nil *nilableAction still
+// satisfies tui.Action with a live type descriptor. That is the shape `== nil`
+// cannot see.
+type nilableAction struct{}
+
+func (*nilableAction) ActionID() tui.ActionID { return "test.nilable" }
+
+// TestATypedNilRowActionIsNoAction.
+//
+// tui defines a typed-nil Action as NO action, and the runtime's own seams
+// enforce it. A Menu that checked only `it.Action == nil` disagreed: a row
+// carrying (*T)(nil) looked like it had an action, so the executor was handed
+// one, and a consumer switching on the concrete type reached a nil receiver in
+// its own code for a row the model says does nothing.
+func TestATypedNilRowActionIsNoAction(t *testing.T) {
+	var ran atomic.Int64
+	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+		ran.Add(1)
+		return true
+	}))
+	var nilAction *nilableAction
+	if err := m.SetModel([]widget.MenuItemModel{
+		widget.NewCommand("dead", "Dead", nilAction),
+		widget.NewCommand("live", "Live", saveAction{}),
+	}); err != nil {
+		t.Fatalf("SetModel: %v", err)
+	}
+	h, _ := menuFixture(t, m, 30, 10)
+	defer h.stop()
+
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	h.settle()
+	h.settle()
+	if n := ran.Load(); n != 0 {
+		t.Errorf("the executor ran %d time(s) for a row whose Action is a typed nil; "+
+			"a typed nil is no action", n)
+	}
+
+	// The positive control: the instrument does see a real action on the next
+	// row, so the zero above is a refusal rather than a silent test.
+	h.onLoop(func() { m.Select("live") })
+	h.settle()
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	h.waitFor("the real action ran", func() bool { return ran.Load() == 1 })
 }

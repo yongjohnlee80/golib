@@ -280,25 +280,68 @@ A `Menu` owns a **model** and paints it. Rows are `MenuItemModel` *values*, not
 mounted children:
 
 ```go
+// The dispatch table is the application's; the Menu only needs a function.
+commands := map[tui.ActionID]func() bool{
+    "file.new": editor.NewFile,
+    "app.quit": app.Quit,
+}
+
 menu := widget.NewMenu(
     widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
-        return app.Run(inv) // your dispatch; true == handled
+        run, ok := commands[inv.Action.ActionID()]
+        if !ok {
+            return false // unhandled: the menu stays open
+        }
+        return run()
     }))
 
-err := menu.SetModel([]widget.MenuItemModel{
+if err := menu.SetModel([]widget.MenuItemModel{
     widget.NewSubmenu("file", "File", []widget.MenuItemModel{
         widget.NewCommand("new", "New", NewFileAction{}),
         widget.NewSeparator("s1"),
         widget.NewCheck("wrap", "Wrap lines", ToggleWrapAction{}),
     }),
     widget.NewCommand("quit", "Quit", QuitAction{}),
-})
+}); err != nil {
+    return err
+}
 
-bar := widget.NewMenuBar(menu) // optional: lay the root level along an edge
+// Optional: lay the root level along an edge. The bar wraps a Menu that
+// already exists.
+bar := widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
+
+// A Menu's levels are anchored overlay layers, so whichever of the two is
+// mounted must sit inside an OverlayHost.
+root := widget.NewOverlayHost(bar)
 ```
 
-A `Menu` must sit inside an `OverlayHost`: its submenu levels are anchored
-overlay layers.
+This arrangement is compile-checked as `ExampleNewMenu` in
+`tui/widget/example_menu_test.go`, so it cannot drift from the public API.
+
+**The nearest enclosing `OverlayHost` holds the levels**, and opening one is a
+*synchronous transaction* against that one host: resolve it, check the anchor,
+mount, and only then record the level. `Open` returns the host's error — with no
+host above it, an error matching `ErrAnchorUnusable` rather than silence. Two
+sibling hosts each serve their own menus, and a host nested inside another serves
+the menus inside it.
+
+Three things close a level and the Menu's record follows all three: a row that
+stops being a visible, enabled submenu; the host's anchor-loss commit when the
+row is no longer laid out; and an explicit `host.CloseAnchored`. Unmounting the
+Menu closes every level it owns — the levels are the host's children, so nothing
+else would.
+
+**A clipped row is not a row.** A row outside the rect the Menu's parent allowed
+declares no anchor region and gets no hit rectangle, so it cannot be clicked and
+cannot be opened.
+
+**The renderer seam.** `RowRenderer` is handed a `RowView` and a `RowState`
+whose four flags — `Selected`, `Armed`, `Focused`, `Open` — are *independent*.
+That is what lets a custom painter distinguish a selected row that owns the open
+submenu from one that does not, or draw the selection faintly while the menu has
+lost focus. Disabled is deliberately absent: it is derivable from `RowView`
+(`Enabled`, and the kind for a separator), and a flag duplicating a value in the
+same call is a second copy of one fact.
 
 **The model.** `ItemKind` is deliberately **closed** — Command, Submenu,
 Separator, Check, Radio. A new kind would need a switch edit or a polymorphic
@@ -330,7 +373,9 @@ anywhere in the level. Everything the pointer can do, the keyboard can do.
 open/close all stay on the `Menu` and are reached through `bar.Menu()`. It does
 not position itself — put it at the bottom of the screen by putting it at the
 bottom of the layout that owns it. `BarPlacement` decides orientation and drop
-direction.
+direction, and it applies for exactly as long as the bar is **mounted**:
+constructing a bar changes nothing about the Menu, and a Menu taken out of a bar
+is a vertical menu again.
 
 **`MenuItem` is the standalone leaf** — a mountable, focusable control for
 ordinary layouts. `MenuItemModel` is inert data a `Menu` owns; `MenuItem` is a

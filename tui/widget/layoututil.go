@@ -1,6 +1,10 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"reflect"
+
+	"github.com/yongjohnlee80/golib/tui"
+)
 
 // Layout constraint calculation and frame sizing utilities shared across package widget.
 //
@@ -53,4 +57,31 @@ func subFrame(maxV, frame int) int {
 		return tui.Unbounded
 	}
 	return max(maxV-frame, 0)
+}
+
+// nilLike reports whether v is nil OR a TYPED nil — an interface holding a nil
+// pointer, a nil func, or another nil-capable zero value.
+//
+// A plain v == nil catches only the first. A nil *myAction and an
+// AnchorPolicyFunc(nil) both satisfy their interface with a live type
+// descriptor, so they pass an == nil check and then panic on call — somewhere
+// else entirely, in a layout pass or a consumer's executor, with nothing naming
+// what supplied them. The runtime already defines a typed nil as ABSENT at its
+// own action and resolver seams; this is the same rule for the seams this
+// package owns, in ONE place, because three slightly different local rules is
+// how two of them come to disagree.
+//
+// The kind switch matters as much as the reflection: IsNil panics on kinds that
+// cannot be nil, so asking it about a struct value would turn a validity check
+// into the crash it exists to prevent.
+func nilLike(v any) bool {
+	if v == nil {
+		return true
+	}
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface,
+		reflect.Map, reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
+		return rv.IsNil()
+	}
+	return false
 }

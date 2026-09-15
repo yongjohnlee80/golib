@@ -95,7 +95,7 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 		return MenuSelectAction{ItemID: m.neighbour(-1)}, true
 	case open:
 		if id, ok := m.Selected(); ok {
-			if it := findItem(m.items, id); it != nil && it.Kind == KindSubmenu {
+			if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
 				return MenuActivateAction{ItemID: id}, true
 			}
 		}
@@ -321,16 +321,16 @@ func (m *Menu) activate(id ItemID, inv tui.ActionInvocation) bool {
 	m.releaseCapture()
 
 	switch it.Kind {
-	case KindSeparator:
+	case ItemKindSeparator:
 		return false // unreachable through selectable(), and stated anyway
-	case KindSubmenu:
+	case ItemKindSubmenu:
 		// No executor call and no activation event: opening a level is
 		// navigation, not a command, and reporting it as one would make every
 		// listener filter submenus back out.
 		return m.openLevel(id, it.Children) == nil
-	case KindCheck:
+	case ItemKindCheck:
 		it.Checked = !it.Checked
-	case KindRadio:
+	case ItemKindRadio:
 		it.Checked = true
 		clearGroupExcept(m.items, it.Group, it.ID)
 	}
@@ -356,7 +356,11 @@ func (m *Menu) activate(id ItemID, inv tui.ActionInvocation) bool {
 // the user's actual input, and the Menu has no way to state either, so it cannot
 // claim a keypress produced something a click did.
 func (m *Menu) runRowAction(it *MenuItemModel, inv tui.ActionInvocation) bool {
-	if it.Action == nil || m.exec == nil {
+	// nilLike, not == nil: a row carrying a nil *myAction satisfies tui.Action
+	// with a live type descriptor, and handing that to the executor makes a
+	// consumer's own type switch reach a nil receiver for a row the model says
+	// does nothing. The runtime defines a typed nil as no action; so does this.
+	if nilLike(it.Action) || m.exec == nil {
 		return false
 	}
 	forwarded := inv
@@ -381,18 +385,42 @@ func (m *Menu) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
-// rowStateOf is the look one row should currently have. One function, so the
-// Menu's own painter and a consumer's RowRenderer agree by construction.
+// rowStateOf is the state one row is currently in. One function, so the Menu's
+// own painter and a consumer's RowRenderer are answering from the same source
+// rather than each deciding for itself.
+//
+// The four flags are INDEPENDENT and all four are computed: a row can be
+// selected and open, or armed in a menu that has lost focus, and a renderer that
+// cannot see the combination cannot draw it.
 func (m *Menu) rowStateOf(it MenuItemModel) RowState {
-	switch {
-	case !it.Enabled || it.Kind == KindSeparator:
-		return RowStateDisabled
-	case m.armed && it.ID == m.pressed:
-		return RowStateArmed
-	case it.ID == m.selected:
-		return RowStateSelected
+	return RowState{
+		Selected: it.ID == m.selected,
+		Armed:    m.armed && it.ID == m.pressed,
+		Focused:  m.hasFocus(),
+		Open:     m.levelOpenFor(it.ID),
 	}
-	return RowStateNormal
+}
+
+// hasFocus reports whether the owning Menu contains focus, which is what a
+// renderer needs in order to draw the selection differently when the menu is not
+// the active widget. FocusWithin, not Focused: while a level is open the focus
+// may legitimately be on a descendant.
+func (m *Menu) hasFocus() bool {
+	ctx := m.Context()
+	if ctx == nil {
+		return false
+	}
+	return ctx.Focused() || ctx.FocusWithin(m)
+}
+
+// levelOpenFor reports whether an open level hangs off this row.
+func (m *Menu) levelOpenFor(id ItemID) bool {
+	for _, lv := range m.levels {
+		if lv.parent == id {
+			return true
+		}
+	}
+	return false
 }
 
 // rowWidth is the width one row wants: label, a gap, the accelerator, and room
@@ -402,10 +430,10 @@ func (m *Menu) rowWidth(it MenuItemModel) int {
 	if it.Accel != "" {
 		w += 2 + m.measure(it.Accel)
 	}
-	if it.Kind == KindSubmenu {
+	if it.Kind == ItemKindSubmenu {
 		w += 2
 	}
-	if it.Kind == KindCheck || it.Kind == KindRadio {
+	if it.Kind == ItemKindCheck || it.Kind == ItemKindRadio {
 		w += 2
 	}
 	return w
@@ -417,20 +445,25 @@ func (m *Menu) rowWidth(it MenuItemModel) int {
 // because a hook that painted only part of one would have to agree with this
 // function about where the parts are, and the two would drift.
 func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState) {
-	base := m.style.Row(st)
+	base := rowStyle(m.style, viewOf(it), st)
 	s.Fill(r, " ", base)
+	// A plain != nil is correct HERE because the option normalised a typed nil
+	// to absent before storing it. That is the whole point of normalising at the
+	// boundary: one check at the door, and every reader afterwards can trust the
+	// stored value instead of repeating it — a second check here would be a
+	// second rule, and two rules are what come to disagree.
 	if m.rows != nil {
 		m.rows.RenderRow(s.Sub(r), viewOf(it), st)
 		return
 	}
-	if it.Kind == KindSeparator {
+	if it.Kind == ItemKindSeparator {
 		for x := r.X; x < r.X+r.W; x++ {
 			s.SetCell(x, r.Y, "─", m.style.Border())
 		}
 		return
 	}
 	x := r.X + 1
-	if it.Kind == KindCheck || it.Kind == KindRadio {
+	if it.Kind == ItemKindCheck || it.Kind == ItemKindRadio {
 		mark := " "
 		if it.Checked {
 			mark = "✓"
@@ -445,7 +478,7 @@ func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState
 			m.paintText(s, it.Accel, ax, r.Y, m.style.Accel())
 		}
 	}
-	if it.Kind == KindSubmenu {
+	if it.Kind == ItemKindSubmenu {
 		s.SetCell(r.X+r.W-2, r.Y, "▸", base)
 	}
 }

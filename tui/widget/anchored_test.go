@@ -398,3 +398,84 @@ func TestCloseAnchoredIsIdempotentAndReportsTheReason(t *testing.T) {
 		t.Errorf("%d dismissal events for one closure, want exactly 1", len(reasons))
 	}
 }
+
+// TestAnAlreadyStaleAnchorIsRefusedBeforeAnythingIsMounted.
+//
+// OpenAnchored is a registration TRANSACTION: it either registers a usable
+// layer or changes nothing. It checked the reference's shape and its owner, but
+// never asked whether the reference still resolves — so a ref whose generation
+// had already been invalidated was accepted, and the host registered a layer
+// that could only ever be dismissed by the anchor-loss commit on the next pass.
+// A caller holding a stale ref got success and a popup that immediately vanished.
+func TestAnAlreadyStaleAnchorIsRefusedBeforeAnythingIsMounted(t *testing.T) {
+	owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
+	host := widget.NewOverlayHost(owner)
+	h := startApp(t, host, 30, 12)
+	defer h.stop()
+	h.settle()
+
+	stale := owner.ref
+	// A positive control first: this exact ref works before it is invalidated.
+	var ok error
+	h.onLoop(func() { ok = host.OpenAnchored("live", widget.NewText("L"), widget.AnchorSpec{Ref: stale}, nil) })
+	h.settle()
+	if ok != nil {
+		t.Fatalf("the control open failed, so the refusal below would prove nothing: %v", ok)
+	}
+	h.onLoop(func() { host.CloseAnchored("live", widget.DismissProgrammatic) })
+	h.settle()
+
+	// Now invalidate it. The ref's generation no longer matches the owner's.
+	h.onLoop(func() { owner.Context().InvalidateAnchors() })
+	h.settle()
+
+	var err error
+	h.onLoop(func() { err = host.OpenAnchored("p", widget.NewText("POPUP"), widget.AnchorSpec{Ref: stale}, nil) })
+	h.settle()
+	if !errors.Is(err, widget.ErrAnchorUnusable) {
+		t.Errorf("OpenAnchored returned %v for an already-stale ref, want ErrAnchorUnusable", err)
+	}
+	n := 0
+	h.onLoop(func() {
+		for range host.AnchoredLayers() {
+			n++
+		}
+	})
+	if n != 0 {
+		t.Errorf("a refused open registered %d layers; the transaction must change nothing", n)
+	}
+}
+
+// TestATypedNilPolicyIsTheDefaultPolicy.
+//
+// A nil-like interface value is not nil: an AnchorPolicyFunc holding no function
+// satisfies AnchorPolicy with a live type descriptor, so `p == nil` is false and
+// the host called straight through into a nil function. The runtime's action and
+// gesture seams already treat typed nil as absent; the boundary that stores a
+// policy for later must do the same, because the panic arrives during a layout
+// pass far from the call that supplied it.
+func TestATypedNilPolicyIsTheDefaultPolicy(t *testing.T) {
+	owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
+	host := widget.NewOverlayHost(owner)
+	h := startApp(t, host, 30, 12)
+	defer h.stop()
+	h.settle()
+
+	var nilPolicy widget.AnchorPolicyFunc // typed nil: non-nil interface, nil func
+	var err error
+	h.onLoop(func() {
+		err = host.OpenAnchored("p", widget.NewText("POPUP"),
+			widget.AnchorSpec{Ref: owner.ref}, nilPolicy)
+	})
+	if err != nil {
+		t.Fatalf("OpenAnchored: %v", err)
+	}
+	h.settle() // the layout pass that places it is where the nil call happened
+
+	// Placed by the default policy: directly below the region at (0,1).
+	x, y := cellOfLabel(t, h, "POPUP")
+	if x != 0 || y != 2 {
+		t.Errorf("popup painted at (%d,%d), want (0,2) from the default policy:\n%s",
+			x, y, h.grid())
+	}
+}

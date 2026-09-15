@@ -165,6 +165,43 @@ func (c *Context) ParentIs(comp Component) bool {
 	return c.node.parent.comp == comp
 }
 
+// Ancestor returns the nearest ancestor component for which match reports true,
+// or nil when no ancestor matches.
+//
+// WHY THE RUNTIME OWNS THIS. A widget frequently needs the one container that
+// will act on its behalf — the overlay host that must mount its popup, the
+// scroller that must bring it into view. The alternatives are all worse. A
+// broadcast on the bus has no addressee, so EVERY host in the application
+// answers a request that belongs to one of them: the containing host succeeds
+// and the rest refuse a request that was never theirs, which turns a correct
+// operation into a stream of false failures. Making the collaborator a
+// constructor parameter pushes a wiring detail the tree already knows into every
+// call site, and it goes stale the moment the widget is re-parented.
+//
+// It walks PARENTS only, never children, so a match is an enclosing scope by
+// construction and the answer cannot depend on document order among siblings.
+// The nearest one wins, which is what makes nested hosts work: an inner host
+// serves the widgets inside it without the outer one ever hearing about them.
+//
+// The search starts at this node's PARENT: a component is not its own ancestor,
+// so a container asking for the nearest container of its own kind gets the one
+// enclosing it rather than itself.
+//
+// Returns nil for an unmounted node and for a nil match. The result is live tree
+// state and must not be retained across mutations — ask again rather than
+// caching, because the cheap walk is what keeps the answer true.
+func (c *Context) Ancestor(match func(Component) bool) Component {
+	if match == nil || !c.node.mounted {
+		return nil
+	}
+	for n := c.node.parent; n != nil; n = n.parent {
+		if n.comp != nil && match(n.comp) {
+			return n.comp
+		}
+	}
+	return nil
+}
+
 // Move repositions child — a mounted direct child of this node — to
 // index to in document order WITHOUT unmounting it: NodeID, context,
 // in-flight tasks, hooks, and focus survive; Init does not re-run (see

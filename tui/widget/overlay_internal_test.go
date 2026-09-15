@@ -121,38 +121,40 @@ func countLayers(h *OverlayHost, c tui.Component) int {
 	return n
 }
 
-// TestARefusedAnchoredOpenIsReportedRatherThanSwallowed.
+// TestARefusedAnchoredOpenChangesNothing.
 //
-// The internal handshake has no return value: the widget that asked is long gone
-// by the time the host drains the request. Publishing the refusal is what keeps
-// it observable — the alternative is a popup that never appears and nothing
-// anywhere saying why.
-func TestARefusedAnchoredOpenIsReportedRatherThanSwallowed(t *testing.T) {
+// OpenAnchored is a registration transaction and the caller gets the error
+// directly — there is no longer an asynchronous handshake to lose it in. What
+// still has to hold is the other half: a refusal leaves the host exactly as it
+// was, with nothing mounted and nothing registered.
+func TestARefusedAnchoredOpenChangesNothing(t *testing.T) {
 	base := NewButton("base")
 	host := NewOverlayHost(base)
 	h := startAppInternal(t, host, 20, 6)
 	defer h.stopInternal()
 
-	var failures []AnchoredOpenFailedEvent
-	unsub := tui.Subscribe(host.ctx.Bus(), func(ev AnchoredOpenFailedEvent) {
-		failures = append(failures, ev)
-	})
-	defer unsub()
-
-	// The zero AnchorRef names no owner, so the host must refuse it.
+	before := host.Stack.Len()
+	var err error
 	h.onLoopInternal(func() {
-		host.ctx.Bus().Publish(anchoredOpenEvent{id: "p", layer: NewText("x")})
+		// The zero AnchorRef names no owner, so the host must refuse it.
+		err = host.OpenAnchored("p", NewText("x"), AnchorSpec{}, nil)
 	})
 	h.syncInternal()
-	h.syncInternal()
 
-	if len(failures) != 1 {
-		t.Fatalf("%d failure events, want exactly 1", len(failures))
+	if err == nil {
+		t.Fatal("OpenAnchored accepted the zero AnchorRef")
 	}
-	if failures[0].Layer != "p" || failures[0].Err == nil {
-		t.Errorf("failure event = %+v, want layer p with an error", failures[0])
+	if got := host.Stack.Len(); got != before {
+		t.Errorf("the stack holds %d layers after a refused open, want the %d it had",
+			got, before)
 	}
-	if countLayers(host, nil) != 0 && host.Stack.Len() != 1 {
-		t.Errorf("the refused layer was mounted anyway: %d layers", host.Stack.Len())
+	n := 0
+	h.onLoopInternal(func() {
+		for range host.AnchoredLayers() {
+			n++
+		}
+	})
+	if n != 0 {
+		t.Errorf("a refused open registered %d anchored layers", n)
 	}
 }

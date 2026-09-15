@@ -8,6 +8,7 @@ package widget_test
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -65,22 +66,39 @@ func TestMenuStyleIsNilSafeAndImmutable(t *testing.T) {
 	}
 }
 
-// TestTheRowSelectorPutsDisabledAboveSelected.
+// TestADisabledRowPaintsAsDisabled.
 //
-// ONE selector, so a renderer never reimplements the precedence — and disabled
-// wins, because a row that cannot be acted on must not look like the row the
-// keyboard is about to act on, even while traversal rests on it.
-func TestTheRowSelectorPutsDisabledAboveSelected(t *testing.T) {
-	s := widget.NewMenuStyle(styleOf(1), styleOf(2))
-	for st, want := range map[widget.RowState]style.Style{
-		widget.RowStateNormal:   s.Surface(),
-		widget.RowStateSelected: s.Selected(),
-		widget.RowStateArmed:    s.Armed(),
-		widget.RowStateDisabled: s.Disabled(),
-	} {
-		if got := s.Row(st); got != want {
-			t.Errorf("Row(%v) returned the wrong look", st)
-		}
+// Asserted where a user sees it — in the painted cells — rather than through a
+// selector function, because the precedence is the package's own presentation
+// choice and not a contract a consumer's RowRenderer has to obey.
+//
+// It deliberately does NOT assert disabled-over-selected: repairSelection moves
+// the selection off a row that stops being selectable, so that combination is
+// one the Menu cannot produce, and a test asserting it would be measuring an
+// arrangement no user can reach.
+func TestADisabledRowPaintsAsDisabled(t *testing.T) {
+	st := widget.NewMenuStyle(styleOf(1), styleOf(2))
+	m := widget.NewMenu(widget.WithMenuStyle(st))
+	if err := m.SetModel([]widget.MenuItemModel{
+		widget.NewCommand("first", "First", nil),
+		widget.NewCommand("second", "Second", nil),
+	}); err != nil {
+		t.Fatalf("SetModel: %v", err)
+	}
+	h, _ := menuFixture(t, m, 20, 6)
+	defer h.stop()
+	h.settle()
+
+	// Row 1 is not the selection (row 0 is), so it carries the ordinary look.
+	normal := cellAttrs(h, 1, 1)
+
+	h.onLoop(func() { m.SetEnabled("second", false) })
+	h.settle()
+	disabled := cellAttrs(h, 1, 1)
+
+	if normal == disabled {
+		t.Error("a disabled row paints exactly like an enabled one; the disabled " +
+			"look is the only thing telling a user the row will not respond")
 	}
 }
 
@@ -88,11 +106,11 @@ func TestTheRowSelectorPutsDisabledAboveSelected(t *testing.T) {
 // a kind that renders as a number is a message nobody can read.
 func TestTheEnumsNameEveryValue(t *testing.T) {
 	for k, want := range map[widget.ItemKind]string{
-		widget.KindCommand:   "command",
-		widget.KindSubmenu:   "submenu",
-		widget.KindSeparator: "separator",
-		widget.KindCheck:     "check",
-		widget.KindRadio:     "radio",
+		widget.ItemKindCommand:   "command",
+		widget.ItemKindSubmenu:   "submenu",
+		widget.ItemKindSeparator: "separator",
+		widget.ItemKindCheck:     "check",
+		widget.ItemKindRadio:     "radio",
 	} {
 		if got := k.String(); got != want {
 			t.Errorf("ItemKind(%d).String() = %q, want %q", k, got, want)
@@ -100,38 +118,41 @@ func TestTheEnumsNameEveryValue(t *testing.T) {
 	}
 	// The FIRST invalid value, not a far one: an off-by-one bound rejects 200 as
 	// readily as a correct bound does.
-	if !widget.KindRadio.Valid() || (widget.KindRadio + 1).Valid() {
+	if !widget.ItemKindRadio.Valid() || (widget.ItemKindRadio + 1).Valid() {
 		t.Error("ItemKind.Valid does not bound the declared set at its edge")
 	}
-	if got := (widget.KindRadio + 1).String(); got != "unknown" {
+	if got := (widget.ItemKindRadio + 1).String(); got != "unknown" {
 		t.Errorf("an undeclared kind rendered as %q", got)
 	}
 
-	for r, want := range map[widget.RowState]string{
-		widget.RowStateNormal:   "normal",
-		widget.RowStateSelected: "selected",
-		widget.RowStateArmed:    "armed",
-		widget.RowStateDisabled: "disabled",
+	// RowState is four INDEPENDENT flags, so its rendering has to show
+	// combinations rather than pick the winner an enum would have to.
+	for _, tc := range []struct {
+		st   widget.RowState
+		want string
+	}{
+		{widget.RowState{}, "normal"},
+		{widget.RowState{Selected: true}, "selected"},
+		{widget.RowState{Armed: true}, "armed"},
+		{widget.RowState{Selected: true, Open: true}, "selected+open"},
+		{widget.RowState{Selected: true, Focused: true, Open: true}, "selected+focused+open"},
 	} {
-		if got := r.String(); got != want {
-			t.Errorf("RowState(%d).String() = %q, want %q", r, got, want)
+		if got := tc.st.String(); got != tc.want {
+			t.Errorf("RowState%+v.String() = %q, want %q", tc.st, got, tc.want)
 		}
-	}
-	if got := (widget.RowStateDisabled + 1).String(); got != "unknown" {
-		t.Errorf("an undeclared row state rendered as %q", got)
 	}
 
 	for p, want := range map[widget.BarPlacement]string{
-		widget.BarTop:    "top",
-		widget.BarBottom: "bottom",
-		widget.BarLeft:   "left",
-		widget.BarRight:  "right",
+		widget.BarPlacementTop:    "top",
+		widget.BarPlacementBottom: "bottom",
+		widget.BarPlacementLeft:   "left",
+		widget.BarPlacementRight:  "right",
 	} {
 		if got := p.String(); got != want {
 			t.Errorf("BarPlacement(%d).String() = %q, want %q", p, got, want)
 		}
 	}
-	if got := (widget.BarRight + 1).String(); got != "unknown" {
+	if got := (widget.BarPlacementRight + 1).String(); got != "unknown" {
 		t.Errorf("an undeclared placement rendered as %q", got)
 	}
 }
@@ -180,7 +201,7 @@ func TestARowRendererPaintsTheWholeRowAndSeesNoChildren(t *testing.T) {
 	if !seen[0].HasChildren {
 		t.Error("HasChildren is false for a submenu row")
 	}
-	if seen[0].Kind != widget.KindSubmenu {
+	if seen[0].Kind != widget.ItemKindSubmenu {
 		t.Errorf("the view's kind is %v, want submenu", seen[0].Kind)
 	}
 }
@@ -314,7 +335,7 @@ func TestAStyledMenuReachesItsRowsAndItsAccessors(t *testing.T) {
 // TestAMenuItemReportsWhatItWasBuiltWith.
 func TestAMenuItemReportsWhatItWasBuiltWith(t *testing.T) {
 	item := widget.NewMenuItem("Rename",
-		widget.WithItemKind(widget.KindCheck),
+		widget.WithItemKind(widget.ItemKindCheck),
 		widget.WithItemAccel("F2"),
 		widget.WithItemChecked(true),
 		widget.WithItemStyle(widget.NewMenuStyle(styleOf(1), styleOf(2))))
@@ -322,7 +343,7 @@ func TestAMenuItemReportsWhatItWasBuiltWith(t *testing.T) {
 	if item.Label() != "Rename" {
 		t.Errorf("Label() = %q", item.Label())
 	}
-	if item.Kind() != widget.KindCheck {
+	if item.Kind() != widget.ItemKindCheck {
 		t.Errorf("Kind() = %v, want check", item.Kind())
 	}
 	if !item.Checked() {
@@ -352,7 +373,7 @@ func TestAMenuItemReportsWhatItWasBuiltWith(t *testing.T) {
 // shows up as an accelerator that overwrites the label.
 func TestAMenuItemPaintsItsMarkLabelAndAccelerator(t *testing.T) {
 	item := widget.NewMenuItem("Wrap lines",
-		widget.WithItemKind(widget.KindCheck),
+		widget.WithItemKind(widget.ItemKindCheck),
 		widget.WithItemChecked(true),
 		widget.WithItemAccel("Ctrl+W"))
 	host := widget.NewOverlayHost(item)
@@ -414,8 +435,8 @@ func TestABarReportsItsPlacementAndIsNotATabStop(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarRight))
-	if bar.Placement() != widget.BarRight {
+	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarPlacementRight))
+	if bar.Placement() != widget.BarPlacementRight {
 		t.Errorf("Placement() = %v, want right", bar.Placement())
 	}
 
@@ -450,7 +471,7 @@ func TestAVerticalBarLaysItsRowsDownAColumn(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarLeft))
+	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarPlacementLeft))
 	host := widget.NewOverlayHost(bar)
 	h := startApp(t, host, 40, 10)
 	defer h.stop()
@@ -578,5 +599,92 @@ func TestAModelRejectionSaysWhichRowAndWhy(t *testing.T) {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the message %q does not mention %q", msg, want)
 		}
+	}
+}
+
+// stateRecorder is a consumer row painter that records the state it was handed
+// for each row, which is the only way to assert what the renderer contract
+// actually delivers.
+type stateRecorder struct {
+	mu   sync.Mutex
+	seen map[widget.ItemID]widget.RowState
+}
+
+func (r *stateRecorder) RenderRow(s tui.Surface, row widget.RowView, st widget.RowState) {
+	r.mu.Lock()
+	if r.seen == nil {
+		r.seen = map[widget.ItemID]widget.RowState{}
+	}
+	r.seen[row.ID] = st
+	r.mu.Unlock()
+	s.SetCell(0, 0, "x", style.New())
+}
+
+func (r *stateRecorder) stateOf(id widget.ItemID) widget.RowState {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.seen[id]
+}
+
+// TestARendererSeesFourIndependentFlags.
+//
+// This is the whole reason RowState is a struct. An enum can report only the
+// highest-priority thing true at the moment, so a renderer could not tell a
+// selected row that owns the open submenu from a selected row that does not,
+// nor either of them from the same row in a menu that has lost focus. Those are
+// precisely the distinctions a custom row painter exists to draw.
+func TestARendererSeesFourIndependentFlags(t *testing.T) {
+	rr := &stateRecorder{}
+	m := widget.NewMenu(widget.WithRowRenderer(rr))
+	if err := m.SetModel([]widget.MenuItemModel{
+		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
+			widget.NewCommand("new", "New", nil),
+		}),
+	}); err != nil {
+		t.Fatalf("SetModel: %v", err)
+	}
+	elsewhere := widget.NewButton("elsewhere")
+	root := tui.NewFlex(tui.Vertical)
+	root.Add(m, elsewhere)
+	host := widget.NewOverlayHost(root)
+	h := startApp(t, host, 40, 20)
+	defer h.stop()
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
+
+	// Selected and focused, nothing open.
+	if got := rr.stateOf("file"); got != (widget.RowState{Selected: true, Focused: true}) {
+		t.Errorf("state = %+v, want selected+focused", got)
+	}
+
+	// Opening the level moves the SELECTION into it — the new level owns the
+	// keyboard — while the parent row gains Open. That combination is the one an
+	// enum cannot express: the row is not selected and is not armed, yet it is
+	// the row a cascade draws as active, and only Open says so.
+	h.onLoop(func() {
+		if err := m.Open("file"); err != nil {
+			t.Errorf("Open: %v", err)
+		}
+	})
+	h.settle()
+	if got := rr.stateOf("file"); !got.Open {
+		t.Errorf("state = %+v after opening its level, want Open set", got)
+	}
+	if got := rr.stateOf("new"); !got.Selected {
+		t.Errorf("the child row's state = %+v, want the selection to have moved into "+
+			"the level that just opened", got)
+	}
+
+	// Focus leaves the Menu. Focused goes; Open does not — the level is still
+	// open, and a renderer drawing the cascade must still see it.
+	h.onLoop(func() { elsewhere.Context().RequestFocus() })
+	h.settle()
+	h.settle()
+	got := rr.stateOf("file")
+	if got.Focused {
+		t.Errorf("state = %+v after focus left the menu, want Focused clear", got)
+	}
+	if !got.Open {
+		t.Errorf("state = %+v: losing focus did not close the level, so Open stands", got)
 	}
 }

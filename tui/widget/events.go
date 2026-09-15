@@ -142,36 +142,3 @@ type overlayOpenEvent struct{ layer tui.Component }
 
 // overlayCloseEvent asks the mounted OverlayHost to unmount layer.
 type overlayCloseEvent struct{ layer tui.Component }
-
-// anchoredOpenEvent and anchoredCloseEvent are the same internal handshake for
-// ANCHORED layers, so a Menu nested arbitrarily deep can open a submenu without
-// being handed the OverlayHost and without the consumer wiring anything.
-//
-// Unexported for the same reason the pair above is: this is a protocol between
-// two widgets in one package, not a published API. A consumer reaching the host
-// directly uses OverlayHost.OpenAnchored.
-type anchoredOpenEvent struct {
-	id     LayerID
-	layer  tui.Component
-	spec   AnchorSpec
-	policy AnchorPolicy
-}
-
-type anchoredCloseEvent struct {
-	id     LayerID
-	reason DismissReason
-}
-
-// AnchoredOpenFailedEvent reports that an anchored open requested through the
-// internal handshake was refused.
-//
-// It exists because that path has no return value: the widget that asked is
-// long gone by the time the host drains the request, so the error has nowhere
-// to go. Publishing it keeps a refusal observable — by a test, by a log
-// subscriber — rather than silently producing a popup that never appears.
-type AnchoredOpenFailedEvent struct {
-	// Layer is the id the open was requested under.
-	Layer LayerID
-	// Err is why it was refused.
-	Err error
-}
