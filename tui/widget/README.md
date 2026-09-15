@@ -1,6 +1,6 @@
 # tui/widget
 
-The standard widget suite for `golib/tui`: the sixteen production-grade TUI components inventoried below, designed to build complex, terminal-native applications (such as `lazygit`-, `sqlit`-, and `neovim`-shaped tools) out of the box with zero custom widget plumbing.
+The standard widget suite for `golib/tui`: the nineteen production-grade TUI components inventoried below, designed to build complex, terminal-native applications (such as `lazygit`-, `sqlit`-, and `neovim`-shaped tools) out of the box with zero custom widget plumbing.
 
 ```go
 import "github.com/yongjohnlee80/golib/tui/widget"
@@ -27,6 +27,9 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `Split`       | Container       | no (panes are) | `SplitResizedEvent`, `SplitZoomEvent`                  |
 | `Float`       | Overlay / Modal | children       | `DismissEvent`                                         |
 | `Modal`       | Dialog          | trap owner     | `OverlayDismissedEvent`                                |
+| `Menu`        | Menu / Command  | yes            | `MenuActivatedEvent`, `MenuSelectionChangedEvent`      |
+| `MenuBar`     | Menu / Chrome   | no (menu is)   | — (delegates to `Menu`)                                |
+| `MenuItem`    | Control         | when enabled   | `tui.ControlActivatedEvent`                            |
 | `StatusBar`   | Chrome          | no             | —                                                      |
 | `ProgressBar` | Feedback        | no             | —                                                      |
 | `Text`        | Static Display  | no             | —                                                      |
@@ -270,6 +273,68 @@ split := widget.NewSplit(widget.Horizontal, leftPane, rightPane,
 split.Zoom(widget.PaneA)
 split.Unzoom()
 ```
+
+#### `Menu`, `MenuBar` and `MenuItem`
+
+A `Menu` owns a **model** and paints it. Rows are `MenuItemModel` *values*, not
+mounted children:
+
+```go
+menu := widget.NewMenu(
+    widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
+        return app.Run(inv) // your dispatch; true == handled
+    }))
+
+err := menu.SetModel([]widget.MenuItemModel{
+    widget.NewSubmenu("file", "File", []widget.MenuItemModel{
+        widget.NewCommand("new", "New", NewFileAction{}),
+        widget.NewSeparator("s1"),
+        widget.NewCheck("wrap", "Wrap lines", ToggleWrapAction{}),
+    }),
+    widget.NewCommand("quit", "Quit", QuitAction{}),
+})
+
+bar := widget.NewMenuBar(menu) // optional: lay the root level along an edge
+```
+
+A `Menu` must sit inside an `OverlayHost`: its submenu levels are anchored
+overlay layers.
+
+**The model.** `ItemKind` is deliberately **closed** — Command, Submenu,
+Separator, Check, Radio. A new kind would need a switch edit or a polymorphic
+row seam, so the package ships the seam instead: `RowRenderer` for appearance,
+`Action` for behaviour. A zero `MenuItemModel` is inert (disabled, invisible), so
+a half-filled row shows nothing rather than appearing as a blank clickable entry.
+
+`ItemID`s are unique **recursively**, across every level — every operation names
+a row by ID alone. `SetModel` returns an error matching both
+`ErrInvalidMenuModel` and a specific sentinel, and on error *nothing* changes.
+The model is a value on both sides: `SetModel` deep-copies and `Model()` returns
+a copy.
+
+**Activation** is state → action → close. A check toggles before its action runs;
+a radio also clears its group at any depth. The menu closes **only when the
+action was handled**, because a command that could not run must not look like one
+that did. `MenuActivatedEvent` fires exactly once per activation *including* when
+it was not handled, and says which. Rows need their own event because
+`tui.ControlActivatedEvent` identifies a node, and every row of one menu shares
+it.
+
+**Keys follow the layout.** A vertical menu steps with Up/Down and opens to the
+side; a `MenuBar` steps with Left/Right and opens away from its edge. Escape
+closes every level, Left closes the deepest and returns the selection to the row
+that opened it, Enter and Space activate, and a row's `Hotkey` activates it from
+anywhere in the level. Everything the pointer can do, the keyboard can do.
+
+**`MenuBar` is a placement shell**, not a parallel widget: model, selection and
+open/close all stay on the `Menu` and are reached through `bar.Menu()`. It does
+not position itself — put it at the bottom of the screen by putting it at the
+bottom of the layout that owns it. `BarPlacement` decides orientation and drop
+direction.
+
+**`MenuItem` is the standalone leaf** — a mountable, focusable control for
+ordinary layouts. `MenuItemModel` is inert data a `Menu` owns; `MenuItem` is a
+node, so the runtime arms it and it emits `tui.ControlActivatedEvent`.
 
 #### `Modal`
 

@@ -246,6 +246,17 @@ func (h *OverlayHost) OpenAnchored(id LayerID, layer tui.Component, spec AnchorS
 		return nil
 	}
 
+	// Already mounted somewhere — as this host's content, or in another tree.
+	// Checked BEFORE the add rather than discovered by the panic it would
+	// cause: the undo for a failed add is to remove the child, and removing a
+	// component that was already mounted elsewhere unmounts it from where it
+	// legitimately lives. Placed after the same-layer-same-id return above,
+	// because re-registering the layer already open under this id is not an
+	// attempt to mount it twice.
+	if h.ctx.MountedComponent(layer) {
+		return fmt.Errorf("%w: it is already mounted elsewhere", ErrAnchorUnusable)
+	}
+
 	if err := h.mountLayer(layer); err != nil {
 		return err // the old layer, if any, is untouched
 	}
@@ -264,9 +275,12 @@ func (h *OverlayHost) OpenAnchored(id LayerID, layer tui.Component, spec AnchorS
 // mountLayer adds a layer to the stack, converting a failed mount into an error
 // rather than letting it escape as a panic from inside the runtime.
 func (h *OverlayHost) mountLayer(layer tui.Component) (err error) {
+	// A DESCENDANT that cannot mount is what is left after the preflight above,
+	// and there the layer itself did mount — so removing it is the correct
+	// unwind of a partial subtree rather than a destructive one.
 	defer func() {
 		if r := recover(); r != nil {
-			h.Stack.Remove(layer) // undo a partial mount, as openModal does
+			h.Stack.Remove(layer)
 			err = fmt.Errorf("%w: %v", ErrModalNotMountable, r)
 		}
 	}()

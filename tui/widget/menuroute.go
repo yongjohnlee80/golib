@@ -17,9 +17,16 @@ import (
 // resolve is the Menu's default resolver: pointer events mapped through the
 // regions of the last committed layout, plus the keyboard bindings.
 func (m *Menu) resolve(ev tui.Event) (tui.Action, bool) {
+	return m.resolveIn(ev, m.rowRects)
+}
+
+// resolveIn is the resolver for ONE level: the Menu's own rows, or an open
+// popup's. Which rect map to map through is the only thing that differs between
+// them, so it is a parameter rather than a second resolver that could drift.
+func (m *Menu) resolveIn(ev tui.Event, rects map[ItemID]tui.Rect) (tui.Action, bool) {
 	switch e := ev.(type) {
 	case tui.MouseEvent:
-		return m.resolveMouse(e)
+		return m.resolveMouse(e, rects)
 	case tui.KeyEvent:
 		return m.resolveKey(e)
 	}
@@ -29,13 +36,13 @@ func (m *Menu) resolve(ev tui.Event) (tui.Action, bool) {
 // resolveMouse maps owner-local coordinates through the last committed row
 // rects. It never consults the model for geometry: the rects ARE what was
 // painted, so a hit cannot disagree with what the user aimed at.
-func (m *Menu) resolveMouse(e tui.MouseEvent) (tui.Action, bool) {
+func (m *Menu) resolveMouse(e tui.MouseEvent, rects map[ItemID]tui.Rect) (tui.Action, bool) {
 	if e.Button != tui.MouseLeft && e.Kind != tui.MouseMotion {
 		// A non-primary release during a primary gesture is ignored entirely:
 		// the gesture is still running and its capture is still owned.
 		return nil, false
 	}
-	row, hit := m.rowAt(e.X, e.Y)
+	row, hit := m.rowAt(e.X, e.Y, rects)
 
 	switch e.Kind {
 	case tui.MousePress:
@@ -164,8 +171,8 @@ func eqFold(a, b rune) bool {
 // rowAt maps owner-local coordinates to a SELECTABLE row. A separator, a
 // disabled row or a hidden one is not a hit: they cannot be armed, so reporting
 // them would make every caller re-check.
-func (m *Menu) rowAt(x, y int) (ItemID, bool) {
-	for id, r := range m.rowRects {
+func (m *Menu) rowAt(x, y int, rects map[ItemID]tui.Rect) (ItemID, bool) {
+	for id, r := range rects {
 		if x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
 			if it := findItem(m.items, id); it != nil && it.selectable() {
 				return id, true
@@ -178,9 +185,19 @@ func (m *Menu) rowAt(x, y int) (ItemID, bool) {
 
 // HandleAction is the one place the menu's vocabulary is interpreted.
 func (m *Menu) HandleAction(inv tui.ActionInvocation) bool {
+	return m.handleIn(inv, m.Context())
+}
+
+// handleIn is the machine, told which node's handler is running.
+//
+// The capturing node matters: a press can land on the root Menu or on any open
+// level, and only the node that took a capture may release it. Passing the
+// context in is what lets one machine serve every level rather than each level
+// growing its own copy.
+func (m *Menu) handleIn(inv tui.ActionInvocation, ctx *tui.Context) bool {
 	switch a := inv.Action.(type) {
 	case MenuArmAction:
-		return m.arm(a.ItemID)
+		return m.arm(a.ItemID, ctx)
 	case MenuSelectAction:
 		return m.selectRow(a.ItemID)
 	case MenuDisarmAction:
@@ -197,15 +214,16 @@ func (m *Menu) HandleAction(inv tui.ActionInvocation) bool {
 
 // arm presses a row: select it, remember it, and take the pointer so motion and
 // the release keep arriving here even when they leave the menu's own rect.
-func (m *Menu) arm(id ItemID) bool {
+func (m *Menu) arm(id ItemID, ctx *tui.Context) bool {
 	it := findItem(m.items, id)
 	if it == nil || !it.selectable() {
 		return false
 	}
 	m.setSelected(id)
 	m.pressed, m.armed = id, true
-	if ctx := m.Context(); ctx != nil {
+	if ctx != nil {
 		ctx.CapturePointer()
+		m.captureCtx = ctx
 		ctx.MarkDirty()
 	}
 	return true
@@ -252,11 +270,21 @@ func (m *Menu) cancelGesture() bool {
 		return false
 	}
 	m.pressed, m.armed = "", false
+	m.releaseCapture()
 	if ctx := m.Context(); ctx != nil {
-		ctx.ReleasePointer()
 		ctx.MarkDirty()
 	}
 	return true
+}
+
+// releaseCapture ends the gesture's capture through the node that took it, and
+// forgets it. Only the owner may release, so releasing through the Menu when a
+// level took the pointer would silently do nothing.
+func (m *Menu) releaseCapture() {
+	if m.captureCtx != nil {
+		m.captureCtx.ReleasePointer()
+		m.captureCtx = nil
+	}
 }
 
 // closeAction closes levels. Any active pointer gesture is cancelled FIRST, so a
@@ -290,9 +318,7 @@ func (m *Menu) activate(id ItemID, inv tui.ActionInvocation) bool {
 	}
 	// The gesture is over however this ends.
 	m.pressed, m.armed = "", false
-	if ctx := m.Context(); ctx != nil {
-		ctx.ReleasePointer()
-	}
+	m.releaseCapture()
 
 	switch it.Kind {
 	case KindSeparator:
@@ -347,6 +373,7 @@ func (m *Menu) runRowAction(it *MenuItemModel, inv tui.ActionInvocation) bool {
 func (m *Menu) HandleEvent(ev tui.Event) bool {
 	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
 		m.pressed, m.armed = "", false
+		m.captureCtx = nil // the runtime has already taken it away
 		if ctx := m.Context(); ctx != nil {
 			ctx.MarkDirty()
 		}

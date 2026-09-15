@@ -120,6 +120,25 @@ func (c *Context) SubtreeContains(id NodeID) bool {
 	return n != nil && withinScope(n, c.node)
 }
 
+// MountedComponent reports whether comp is currently mounted anywhere in this
+// App's tree.
+//
+// The question a container must answer BEFORE adopting a component it did not
+// create. Finding out by trying is not an option here: the runtime refuses a
+// double mount by panicking from inside the add, which leaves the container
+// holding a child it has recorded but not mounted — and the obvious undo,
+// removing it, unmounts the component from wherever it legitimately lives.
+//
+// Distinct from Mounted, which asks about the calling node itself. This asks
+// about someone else, which is why it takes the component.
+func (c *Context) MountedComponent(comp Component) bool {
+	if comp == nil {
+		return false
+	}
+	n := c.app.byComp[comp]
+	return n != nil && n.mounted
+}
+
 // ResolveAnchor returns the rect an anchor currently names, IN THE CALLING
 // NODE'S OWN LOCAL COORDINATES, and whether it still resolves at all.
 //
