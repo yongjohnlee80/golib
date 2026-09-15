@@ -26,6 +26,16 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
+func TestSetThemeRejectsNilBeforeQueueMutation(t *testing.T) {
+	a := NewApp(&probe{}, WithBackend(NewTestBackend(1, 1)))
+	defer func() {
+		if recover() == nil {
+			t.Fatal("SetTheme(nil) did not panic")
+		}
+	}()
+	a.SetTheme(nil)
+}
+
 // goid parses the current goroutine id from runtime.Stack — TEST-ONLY
 // tooling for asserting the loop-goroutine invariant (the runtime itself
 // never does this — gid parsing was dropped from the API).

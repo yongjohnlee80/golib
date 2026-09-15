@@ -44,6 +44,8 @@ What you get:
 | `mount` / `unmount` | component tree lifecycle |
 | `key` | a key event and the node that CONSUMED it — `Node` empty means **nobody did** |
 | `scope` | a modal trap opened |
+| `action` | a semantic action was handled or an activation fired; detail includes identifier and origin |
+| `capture` | pointer capture was acquired, released, refused, or lost; detail carries the reason |
 
 Components are named by Go type (`*widget.List[string]`), not by a bare
 node id, because the id tells you nothing while reading.
@@ -97,6 +99,12 @@ t.Fatalf("waiting for %s: %q never appeared.\nscreen:\n%s\n\ntrace:\n%s",
   hidden — usually a swap that unmounted the focused child.
 - **"The widget is stale."** Compare `mount` / `unmount` ordering against
   when your data arrived.
+- **"My semantic binding did nothing."** Find the `action` record. Its detail
+  distinguishes key, pointer, user, and programmatic origins and names the
+  stage that consumed it. No record means no resolver matched.
+- **"My drag stopped."** Read the `capture` records. A refusal names the owner
+  or policy that blocked acquisition; a loss names the lifetime, focus-scope,
+  backend, cancellation, or shutdown reason.
 
 ## Rules that survived the session that produced this chapter
 

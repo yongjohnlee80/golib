@@ -1,6 +1,9 @@
 # tui/widget
 
-The standard widget suite for `golib/tui`: the nineteen production-grade TUI components inventoried below, designed to build complex, terminal-native applications (such as `lazygit`-, `sqlit`-, and `neovim`-shaped tools) out of the box with zero custom widget plumbing.
+The standard widget suite for `golib/tui`: twenty production-grade components
+covering text, collections, layout, overlays, controls, menus, dialogs, and
+resizing. Applications compose these primitives and add domain-specific
+controllers rather than reimplementing their interaction machinery.
 
 ```go
 import "github.com/yongjohnlee80/golib/tui/widget"
@@ -25,7 +28,7 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `BufferView`  | Stream / Pager  | yes (scroll)   | `FollowTailChangedEvent`                               |
 | `Tabs`        | Navigation      | yes (bar)      | `TabChangedEvent`                                      |
 | `Split`       | Container       | no (panes are) | `SplitResizedEvent`, `SplitZoomEvent`                  |
-| `Resizable`   | Wrapper         | yes            | `ResizedEvent`                                         |
+| `Resizable`   | Wrapper         | content only   | `ResizedEvent`                                         |
 | `Float`       | Overlay / Modal | children       | `DismissEvent`                                         |
 | `Modal`       | Dialog          | trap owner     | `OverlayDismissedEvent`                                |
 | `Menu`        | Menu / Command  | yes            | `MenuActivatedEvent`, `MenuSelectionChangedEvent`      |

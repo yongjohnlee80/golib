@@ -54,10 +54,14 @@ In typical applications, logging sinks are initialized during application startu
 
 ---
 
-## 3. Modal Focus Seeding vs. Asynchronous Data Race
+## 3. Low-level Float Focus Seeding vs. Asynchronous Data Race
 
 ### The Deficit
-When a modal `Float` is displayed (`f.Show()`), the `floatLayer` immediately attempts to seed focus to the first focusable child inside its content tree.
+When a modal `Float` is displayed (`f.Show()`), the `floatLayer` immediately attempts to seed focus to the first focusable child inside its content tree. This
+is a limitation of composing a dialog directly from the lower-level `Float`.
+For ordinary dialogs prefer `widget.Modal`, whose composed lifecycle and
+`InitialFocusProvider` support are designed for that job; use `Float` when the
+consumer intentionally owns the remaining behaviour.
 
 However:
 1. At the time `f.Show()` is called, the float has not undergone its first layout pass.
