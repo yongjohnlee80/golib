@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -42,12 +43,25 @@ const (
 //
 // # Keyboard and Mouse Interaction
 //
-//  1. Keyboard Resizing: When either child pane holds focus, pressing Alt+Left/Right
-//     (horizontal) or Alt+Up/Down (vertical) adjusts the division ratio by ±5% per keystroke.
-//     This generalizes the popular lazygit pane resizing precedent across all split layouts.
+//  1. Keyboard Resizing: when focus is anywhere inside the split, Alt+Left/Right
+//     (horizontal) or Alt+Up/Down (vertical) moves the divider by ONE CELL per
+//     keystroke — [WithSplitResizeStep] changes the amount and the unit. This
+//     generalizes the lazygit pane-resizing precedent across all split layouts.
+//     The arrows work along the split's OWN axis only: Alt+Left on a vertical
+//     split is a different gesture, not a smaller step, and consuming it would
+//     swallow a binding the application may want.
 //  2. Mouse Dragging: Clicking and dragging the 1-cell divider line repositions the split
 //     interactively in real time.
-//  3. Resized Notification: Moving the divider publishes [SplitResizedEvent] carrying the new ratio.
+//  3. Resized Notification: a divider that MOVES publishes [SplitResizedEvent]
+//     from the commit phase, carrying the effective ratio and both pane extents
+//     in cells. Motion that changes no cells publishes nothing.
+//
+// Both the divider and [Resizable] speak ONE action vocabulary —
+// [ResizeBeginAction], [ResizeUpdateAction], [ResizeStepAction],
+// [ResizeSetAction], [ResizeEndAction] and [ResizeCancelAction] — so a consumer
+// binding a key to a resize action need not know which widget will answer it.
+// A Split selects the divider handle for its own axis
+// ([HandleVerticalDivider] for a horizontal split) and ignores the other axis.
 //
 // # Zooming / Maximizing Panes
 //
@@ -131,6 +145,14 @@ type Split struct {
 	dragCtx *tui.Context
 
 	divider style.Style
+	// glyph is the divider's character, and step/stepUnit the keyboard's
+	// movement. Split-qualified option names, because the generic ones already
+	// belong to Resizable and two options of the same name returning different
+	// types is the ambiguity a consumer meets at the call site.
+	glyphH, glyphV string
+	step           int
+	stepUnit       StepUnit
+	pointerPolicy  tui.PointerPolicy
 }
 
 var _ tui.Component = (*Split)(nil)
@@ -160,6 +182,47 @@ func WithDividerStyle(st style.Style) SplitOption {
 	return func(s *Split) { s.divider = st }
 }
 
+// WithSplitDividerGlyphs replaces the characters the divider is drawn with:
+// first the VERTICAL line a horizontal split uses, then the horizontal line a
+// vertical split uses.
+//
+// Both, in one option, because a Split has exactly one orientation but a
+// consumer styling an application sets them together — and an option that took
+// only the one for the current axis would silently do nothing on the other.
+// Each must be a single grapheme of width one: the divider occupies one cell by
+// construction, and a wide glyph in it renders nothing.
+func WithSplitDividerGlyphs(vertical, horizontal string) SplitOption {
+	return func(s *Split) {
+		for _, g := range []string{vertical, horizontal} {
+			n := 0
+			for range grapheme.Clusters(g) {
+				n++
+			}
+			if n != 1 || grapheme.StringWidth(g, false) != 1 {
+				panic(fatalOf("widget: WithSplitDividerGlyphs",
+					"each divider glyph must be one grapheme cluster of display width one",
+					fmt.Sprintf("%q", g)))
+			}
+		}
+		s.glyphV, s.glyphH = vertical, horizontal
+	}
+}
+
+// WithSplitResizeStep sets how far one keyboard step moves the divider, and in
+// what unit. Split-qualified because Resizable already owns the generic name.
+func WithSplitResizeStep(n int, u StepUnit) SplitOption {
+	return func(s *Split) {
+		if n < 1 {
+			panic(tuiFatal("widget: WithSplitResizeStep", "step must be at least 1", n))
+		}
+		if !u.Valid() {
+			panic(tuiFatal("widget: WithSplitResizeStep",
+				"value outside the declared StepUnit set", int(u)))
+		}
+		s.step, s.stepUnit = n, u
+	}
+}
+
 // NewSplit builds a splitter around two panes.
 func NewSplit(o Orientation, a, b tui.Component, opts ...SplitOption) *Split {
 	if o > Vertical {
@@ -172,6 +235,10 @@ func NewSplit(o Orientation, a, b tui.Component, opts ...SplitOption) *Split {
 		o: o, a: a, b: b,
 		requested: 0.5,
 		divider:   style.New().Foreground(style.TokenBorder),
+		glyphV:    "│",
+		glyphH:    "─",
+		step:      1,
+		stepUnit:  StepCells,
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -240,6 +307,25 @@ type SplitZoomEvent struct {
 	Pane  SplitPane
 }
 
+// WithPointerPolicy sets whether this split and its subtree accept pointer
+// input, and returns the split for chaining.
+//
+// Remembered as well as applied, because NewSplit(...).WithPointerPolicy(...) is
+// the natural way to write it and runs before there is any Context. Keyboard
+// operation is unaffected: every action the divider resolves is reachable from
+// the keyboard, so a pointer-disabled split stays fully usable.
+func (s *Split) WithPointerPolicy(p tui.PointerPolicy) *Split {
+	if !p.Valid() {
+		panic(tuiFatal("widget: Split.WithPointerPolicy",
+			"value outside PointerInherit, PointerEnabled, PointerDisabled", int(p)))
+	}
+	s.pointerPolicy = p
+	if ctx := s.Context(); ctx != nil {
+		ctx.SetPointerPolicy(p)
+	}
+	return s
+}
+
 // Zoomed reports the current zoom state.
 func (s *Split) Zoomed() SplitPane { return s.zoomed }
 
@@ -298,6 +384,7 @@ func (s *Split) listChildren() []tui.Component {
 // Init mounts both panes. Re-entrant across remounts.
 func (s *Split) Init(ctx *tui.Context) {
 	s.Base.Init(ctx)
+	ctx.SetPointerPolicy(s.pointerPolicy)
 	s.drag, s.dragCtx = nil, nil
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(s.resolve))
 	ctx.Mount(s.a)
@@ -360,9 +447,9 @@ func (s *Split) Render(sur tui.Surface) {
 		return
 	}
 	if s.o == Horizontal {
-		sur.Fill(tui.Rect{X: s.aCells, Y: 0, W: 1, H: sz.H}, "│", s.divider)
+		sur.Fill(tui.Rect{X: s.aCells, Y: 0, W: 1, H: sz.H}, s.glyphV, s.divider)
 	} else {
-		sur.Fill(tui.Rect{X: 0, Y: s.aCells, W: sz.W, H: 1}, "─", s.divider)
+		sur.Fill(tui.Rect{X: 0, Y: s.aCells, W: sz.W, H: 1}, s.glyphH, s.divider)
 	}
 }
 
@@ -443,38 +530,21 @@ type splitDrag struct {
 	beginRequested float64
 }
 
-// SplitDragBeginAction starts a divider drag.
-type SplitDragBeginAction struct{}
+// dividerHandle is the handle this split's divider IS: a horizontal split puts
+// its panes side by side, so the line between them runs down the screen.
+func (s *Split) dividerHandle() Handle {
+	if s.o == Horizontal {
+		return HandleVerticalDivider
+	}
+	return HandleHorizontalDivider
+}
 
-// ActionID returns the stable published name of this action.
-func (SplitDragBeginAction) ActionID() tui.ActionID { return "split.drag.begin" }
-
-// SplitDragAction moves the divider to a main-axis position during a drag.
-type SplitDragAction struct{ Pos int }
-
-// ActionID returns the stable published name of this action.
-func (SplitDragAction) ActionID() tui.ActionID { return "split.drag" }
-
-// SplitDragEndAction finishes a drag at the current position.
-type SplitDragEndAction struct{ Pos int }
-
-// ActionID returns the stable published name of this action.
-func (SplitDragEndAction) ActionID() tui.ActionID { return "split.drag.end" }
-
-// SplitStepAction nudges the divider by one cell.
-type SplitStepAction struct{ Delta int }
-
-// ActionID returns the stable published name of this action.
-func (SplitStepAction) ActionID() tui.ActionID { return "split.step" }
-
-// SplitCancelAction abandons a drag and restores the division asked for when it
-// began. Bound to Escape by default.
-type SplitCancelAction struct{}
-
-// ActionID returns the stable published name of this action.
-func (SplitCancelAction) ActionID() tui.ActionID { return "split.cancel" }
-
-// resolve maps the divider's input onto its vocabulary.
+// resolve maps the divider's input onto the SHARED resize vocabulary.
+//
+// One vocabulary for both resizing widgets: a consumer binding a key to
+// ResizeStepAction gets a divider step here and a box step on a Resizable,
+// without having to know which widget will answer. The parallel split.* family
+// this replaced meant the same intent had two names and two implementations.
 func (s *Split) resolve(ev tui.Event) (tui.Action, bool) {
 	if s.zoomed != PaneNone {
 		return nil, false // no divider: resize keys and drag are inert
@@ -498,39 +568,46 @@ func (s *Split) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 		return nil, false
 	}
 	if e.Code == tui.KeyEscape && e.Mods == 0 {
-		return SplitCancelAction{}, true
+		return ResizeCancelAction{}, true
 	}
 	if e.Mods&tui.ModAlt == 0 || e.Mods&^tui.ModAlt != 0 {
 		return nil, false
 	}
 	horiz := s.o == Horizontal
+	step := func(d int) (tui.Action, bool) {
+		if horiz {
+			return ResizeStepAction{DX: d, Unit: s.stepUnit}, true
+		}
+		return ResizeStepAction{DY: d, Unit: s.stepUnit}, true
+	}
 	switch e.Code {
 	case tui.KeyLeft:
 		if horiz {
-			return SplitStepAction{Delta: -1}, true
+			return step(-1)
 		}
 	case tui.KeyRight:
 		if horiz {
-			return SplitStepAction{Delta: 1}, true
+			return step(1)
 		}
 	case tui.KeyUp:
 		if !horiz {
-			return SplitStepAction{Delta: -1}, true
+			return step(-1)
 		}
 	case tui.KeyDown:
 		if !horiz {
-			return SplitStepAction{Delta: 1}, true
+			return step(1)
 		}
 	}
 	return nil, false
 }
 
 // resolveMouse maps a press on the divider, and everything after it, onto the
-// drag vocabulary.
+// gesture vocabulary.
 func (s *Split) resolveMouse(e tui.MouseEvent) (tui.Action, bool) {
 	if e.Button != tui.MouseLeft && e.Kind != tui.MouseMotion {
 		return nil, false // a non-primary release does not end a primary drag
 	}
+	at := tui.Point{X: e.X, Y: e.Y}
 	pos := e.X
 	if s.o == Vertical {
 		pos = e.Y
@@ -540,54 +617,114 @@ func (s *Split) resolveMouse(e tui.MouseEvent) (tui.Action, bool) {
 		if pos != s.aCells {
 			return nil, false // not on the divider
 		}
-		return SplitDragBeginAction{}, true
+		return ResizeBeginAction{Handle: s.dividerHandle(), At: at}, true
 	case tui.MouseMotion:
 		if s.drag == nil {
 			return nil, false
 		}
-		return SplitDragAction{Pos: pos}, true
+		return ResizeUpdateAction{At: at}, true
 	case tui.MouseRelease:
 		if s.drag == nil {
 			return nil, false
 		}
-		return SplitDragEndAction{Pos: pos}, true
+		return ResizeEndAction{}, true
 	}
 	return nil, false
 }
 
-// HandleAction interprets the divider vocabulary.
+// mainAxis projects a point onto the axis the divider moves along.
+func (s *Split) mainAxis(p tui.Point) int {
+	if s.o == Vertical {
+		return p.Y
+	}
+	return p.X
+}
+
+// HandleAction interprets the shared resize vocabulary for the divider.
+//
+// Every case validates before it mutates, for the same reason the wrapper's
+// does: an action is public input, and a refused one must leave no gesture
+// state behind for a later Update to act on.
 func (s *Split) HandleAction(inv tui.ActionInvocation) bool {
 	switch a := inv.Action.(type) {
-	case SplitDragBeginAction:
-		return s.beginDrag()
-	case SplitDragAction:
+	case ResizeBeginAction:
+		return s.beginDrag(a.Handle)
+	case ResizeUpdateAction:
 		if s.drag == nil {
 			return false
 		}
-		s.requestCells(a.Pos)
+		s.requestCells(s.mainAxis(a.At))
 		return true
-	case SplitDragEndAction:
+	case ResizeStepAction:
+		return s.stepBy(a)
+	case ResizeSetAction:
+		return s.setFromAction(a.Size)
+	case ResizeEndAction:
 		if s.drag == nil {
 			return false
 		}
-		s.requestCells(a.Pos)
 		s.endDrag()
 		return true
-	case SplitStepAction:
-		if s.zoomed != PaneNone {
-			return false
-		}
-		return s.requestCells(s.aCells + a.Delta)
-	case SplitCancelAction:
+	case ResizeCancelAction:
 		return s.cancelDrag()
 	}
 	return false
 }
 
+// stepBy nudges the divider along its own axis.
+//
+// The off-axis component is IGNORED rather than refused: one vocabulary serves
+// both widgets, so a consumer's "grow by one" binding carries both axes and a
+// split simply has nothing to do with the one it does not have.
+func (s *Split) stepBy(a ResizeStepAction) bool {
+	if !a.Unit.Valid() || s.zoomed != PaneNone || s.avail <= 0 {
+		return false
+	}
+	d := a.DX
+	if s.o == Vertical {
+		d = a.DY
+	}
+	if d == 0 {
+		return false
+	}
+	return s.requestCells(s.aCells + d*s.stepCells(a.Unit))
+}
+
+// stepCells is how many cells one step moves, in the unit asked for.
+func (s *Split) stepCells(unit StepUnit) int {
+	if unit == StepPercent {
+		// At least one cell, for the same reason the wrapper rounds up: a
+		// percentage of a narrow split rounds to zero, and a keypress that
+		// provably cannot move anything is worse than a slow one.
+		return max(s.avail*s.step/100, 1)
+	}
+	return s.step
+}
+
+// setFromAction places the divider at an absolute main-axis size, routed
+// through the same request path as everything else.
+func (s *Split) setFromAction(sz tui.Size) bool {
+	if s.zoomed != PaneNone || s.avail <= 0 {
+		return false
+	}
+	n := sz.W
+	if s.o == Vertical {
+		n = sz.H
+	}
+	return s.requestCells(n)
+}
+
 // beginDrag records the request to restore on cancel and takes the pointer, so
 // motion and the release keep arriving even once the pointer has left the
 // Split's own rect.
-func (s *Split) beginDrag() bool {
+func (s *Split) beginDrag(h Handle) bool {
+	// The handle must be THIS split's divider. A box handle, the other axis's
+	// divider, or a value outside the declared set is refused with no drag
+	// stored — so the Update and End that follow are inert too, rather than
+	// moving a divider the gesture never legitimately grabbed.
+	if h != s.dividerHandle() {
+		return false
+	}
 	if s.zoomed != PaneNone || s.avail <= 0 {
 		return false
 	}

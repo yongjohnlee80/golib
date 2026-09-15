@@ -498,3 +498,99 @@ func TestADragEmitsOneEventPerCOMMITTEDStep(t *testing.T) {
 			"divider nowhere is not a resize", n)
 	}
 }
+
+// TestASplitRefusesAGestureOnAHandleItDoesNotHave.
+//
+// One vocabulary serves both widgets, which means a Split receives actions
+// naming handles that are none of its business: a box corner, or the divider of
+// the other axis. Each must be refused with NO gesture stored, so the update
+// and end that follow are inert too — a split that accepted a corner grip would
+// move its divider for a drag the user started somewhere else entirely.
+func TestASplitRefusesAGestureOnAHandleItDoesNotHave(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		handle widget.Handle
+	}{
+		{"a box corner", widget.HandleBottomRight},
+		{"the other axis's divider", widget.HandleHorizontalDivider},
+		{"a value outside the declared set", widget.HandleHorizontalDivider + 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, s, sh := splitFixture(t, 40, 8) // horizontal: a VERTICAL divider
+			a0 := aCellsOn(t, h, s)
+
+			var begun, updated bool
+			h.onLoop(func() {
+				begun = s.Context().DoAction(widget.ResizeBeginAction{
+					Handle: tc.handle, At: tui.Point{X: a0, Y: 0}})
+				updated = s.Context().DoAction(widget.ResizeUpdateAction{
+					At: tui.Point{X: a0 + 6, Y: 0}})
+			})
+			h.barrier(sh)
+
+			if begun {
+				t.Error("the begin was handled; this handle is not this split's divider")
+			}
+			if updated {
+				t.Error("the update was handled after a refused begin; a refusal must " +
+					"leave no gesture state behind")
+			}
+			if got := aCellsOn(t, h, s); got != a0 {
+				t.Errorf("pane A holds %d cells, want the untouched %d", got, a0)
+			}
+		})
+	}
+
+	// The positive control: its OWN divider is accepted, so the refusals above
+	// are about the handle rather than about DoAction never reaching the split.
+	h, s, sh := splitFixture(t, 40, 8)
+	a0 := aCellsOn(t, h, s)
+	var ok bool
+	h.onLoop(func() {
+		ok = s.Context().DoAction(widget.ResizeBeginAction{
+			Handle: widget.HandleVerticalDivider, At: tui.Point{X: a0, Y: 0}})
+		s.Context().DoAction(widget.ResizeUpdateAction{At: tui.Point{X: a0 + 4, Y: 0}})
+		s.Context().DoAction(widget.ResizeEndAction{})
+	})
+	h.barrier(sh)
+	if !ok {
+		t.Fatal("the split refused a gesture on its OWN divider")
+	}
+	if got := aCellsOn(t, h, s); got != a0+4 {
+		t.Errorf("pane A holds %d cells after a divider gesture, want %d", got, a0+4)
+	}
+}
+
+// TestASplitIgnoresTheAxisItDoesNotHave.
+//
+// One vocabulary serves both widgets, so a consumer's "grow" binding carries
+// both axes and a Split receives the component it has nothing to do with. It
+// must IGNORE that component rather than fold it in: a horizontal split fed a
+// vertical step would move its divider sideways for a keystroke that asked for
+// something else entirely, which is indistinguishable from a sign error.
+func TestASplitIgnoresTheAxisItDoesNotHave(t *testing.T) {
+	h, s, sh := splitFixture(t, 40, 8) // horizontal: DX is its axis
+	a0 := aCellsOn(t, h, s)
+
+	var offAxis bool
+	h.onLoop(func() {
+		offAxis = s.Context().DoAction(widget.ResizeStepAction{DY: 3, Unit: widget.StepCells})
+	})
+	h.barrier(sh)
+	if offAxis {
+		t.Error("a step on the axis this split does not have was handled")
+	}
+	if got := aCellsOn(t, h, s); got != a0 {
+		t.Errorf("pane A holds %d cells after an off-axis step, want the untouched %d",
+			got, a0)
+	}
+
+	// The positive control, and the mixed case that pins the rule down: an
+	// action carrying BOTH components moves by the on-axis one only.
+	h.onLoop(func() {
+		s.Context().DoAction(widget.ResizeStepAction{DX: 2, DY: 5, Unit: widget.StepCells})
+	})
+	h.waitFor("the on-axis component moved the divider", func() bool {
+		return aCellsOn(t, h, s) == a0+2
+	})
+}

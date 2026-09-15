@@ -191,11 +191,20 @@ func TestReleasingOutsideDoesNotActivate(t *testing.T) {
 	if got := c.activations.Load(); got != 0 {
 		t.Errorf("activated %d time(s) on a release OUTSIDE the control, want 0", got)
 	}
-	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
-	if held != 0 {
-		t.Errorf("capture still held by %d after the gesture ended", held)
-	}
+	// WAITED FOR, not sampled once. The disarm and the capture release both
+	// happen while the release event is being dispatched on lane A, and
+	// h.sync() round-trips lane B — so observing the disarm says nothing about
+	// whether the handler has reached the release yet. Sampling here passed
+	// almost always and failed on a loaded CI runner, which is the signature of
+	// an under-synchronised assertion rather than an intermittent product bug.
+	//
+	// This still FAILS a capture that is genuinely never released: waitFor has
+	// a deadline, so the only thing the wait removes is the race, not the check.
+	waitFor(t, "the capture to be released", func() bool {
+		var held NodeID
+		h.onLoop(func() { held = h.app.captureOwner })
+		return held == 0
+	})
 }
 
 // TestAGestureHoldsThePointer. Motion after the press must keep reaching the

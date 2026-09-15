@@ -415,20 +415,35 @@
 //
 // Each handle in [WithHandles] is a real component, so the runtime hit-tests,
 // styles and captures it instead of the wrapper doing coordinate arithmetic by
-// hand. Grips are NOT tab stops: adding nodes to the tree must not pollute Tab
-// order. [WithHandlePlacement] chooses whether a grip costs the child a cell
-// ([PlacementReserve]) or paints over its edge ([PlacementOverlay]), and a grip
-// that will not fit is dropped for the frame rather than shrinking the child to
-// make room for its own affordance.
+// hand. [WithHandlePlacement] chooses whether a grip costs the child cells
+// ([PlacementReserve]) or paints over its edge ([PlacementOverlay]); reserve is
+// DIRECTIONAL, taking its band off the side each handle is on and offsetting
+// the child accordingly, so a top-left grip never sits on the child's first
+// cell. A grip whose own rectangle will not fit is dropped for the frame — a
+// two-column glyph needs two columns, and one placed in a single column renders
+// nothing at all. [WithHandleGlyph] therefore rejects anything but a single
+// grapheme of display width one or two, at construction.
 //
-// Keyboard parity is not a nicety: [ResizeStepAction], [ResizeBeginAction],
-// [ResizeDragAction], [ResizeEndAction] and [ResizeCancelAction] all resolve on
-// the WRAPPER, so a Resizable with its pointer disabled resizes identically from
-// Shift-arrows. The divider has the matching vocabulary —
-// [SplitDragBeginAction], [SplitDragAction], [SplitDragEndAction],
-// [SplitStepAction] and [SplitCancelAction] — bound to Alt-arrows along the
-// split's OWN axis only, because Alt-Left on a vertical split is a different
-// gesture rather than a smaller step.
+// NEITHER THE GRIPS NOR THE WRAPPER ARE TAB STOPS: wrapping arbitrary content
+// changes traversal in no way. Keyboard resizing still works, because resolvers
+// run at every node on the bubble path and an unhandled Shift-arrow from a
+// focused DESCENDANT meets the wrapper's resolver on its way up. Two
+// compositions do not get that — content with nothing focusable inside it, and
+// content that CONSUMES the keys, as an [Editor] or [TextArea] does for
+// selection — and those drive resizing through the grips, through
+// [tui.Context.DoAction], or from a focus owner of their own.
+//
+// ONE VOCABULARY SERVES BOTH WIDGETS. [ResizeBeginAction],
+// [ResizeUpdateAction], [ResizeStepAction], [ResizeSetAction],
+// [ResizeEndAction] and [ResizeCancelAction] are interpreted by Resizable and by
+// Split alike, so a consumer binding a key to a resize action need not know
+// which widget will answer it. A Split selects the divider handle for its own
+// axis — [HandleVerticalDivider] for a horizontal split — and ignores the axis
+// it does not have; its arrows are Alt-bound along that axis only, because
+// Alt-Left on a vertical split is a different gesture rather than a smaller
+// step. [Handle] is a closed set of ten: four edges, four corners, two
+// dividers. An unknown or unsupported handle is refused with no gesture stored,
+// so the update and end that follow are inert too.
 //
 // GEOMETRY TRUTH. Both widgets separate what was asked for from what is on
 // screen, and publish only the latter:

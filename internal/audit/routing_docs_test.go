@@ -109,7 +109,12 @@ var routingDocs = []docRequirement{
 			"MenuActivatedEvent", "RowRenderer", "ItemKind", "ErrInvalidMenuModel",
 			"BarPlacement", "MenuItemModel",
 			"Resizable", "SizeExplicit", "PlacementReserve", "RequestedRatio",
-			"SplitDragBeginAction"},
+			// The SHARED resize vocabulary, named as symbols: the whole point
+			// of the correction that introduced it is that one action realm
+			// serves both widgets, and a doc still describing a Split-private
+			// protocol would send a consumer looking for symbols that no
+			// longer exist.
+			"ResizeUpdateAction", "ResizeSetAction", "HandleVerticalDivider"},
 	},
 	{
 		path: "tui/widget/README.md",
@@ -120,7 +125,12 @@ var routingDocs = []docRequirement{
 			"MenuActivatedEvent", "RowRenderer", "ItemKind", "ErrInvalidMenuModel",
 			"BarPlacement", "MenuItemModel",
 			"Resizable", "SizeExplicit", "PlacementReserve", "RequestedRatio",
-			"SplitDragBeginAction"},
+			// The SHARED resize vocabulary, named as symbols: the whole point
+			// of the correction that introduced it is that one action realm
+			// serves both widgets, and a doc still describing a Split-private
+			// protocol would send a consumer looking for symbols that no
+			// longer exist.
+			"ResizeUpdateAction", "ResizeSetAction", "HandleVerticalDivider"},
 	},
 	{
 		path: "tui/tutorial/06-floats-and-modals.md",

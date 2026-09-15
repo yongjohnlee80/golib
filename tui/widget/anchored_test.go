@@ -479,3 +479,95 @@ func TestATypedNilPolicyIsTheDefaultPolicy(t *testing.T) {
 			x, y, h.grid())
 	}
 }
+
+// remeasure lays its child out TWICE in one pass, which is what a parent trying
+// a trial size does — and what a commit that dirties layout produces. Only the
+// LAST measurement describes the geometry that will be painted.
+type remeasure struct {
+	widget.Base
+	child       tui.Component
+	first, last tui.Size
+	double      bool // off until the test has opened its popup
+}
+
+func (r *remeasure) Init(ctx *tui.Context) {
+	r.Base.Init(ctx)
+	ctx.Mount(r.child)
+}
+
+func (r *remeasure) Layout(cs tui.Constraints) tui.Size {
+	ctx := r.Context()
+	if r.double {
+		ctx.LayoutChild(r.child, tui.Tight(r.first)) // the trial, discarded
+	}
+	got := ctx.LayoutChild(r.child, tui.Tight(r.last)) // the one that counts
+	ctx.PlaceChild(r.child, tui.Rect{X: 0, Y: 0, W: got.W, H: got.H})
+	return cs.Constrain(got)
+}
+
+func (r *remeasure) Render(tui.Surface) {}
+
+// TestTheLASTMeasurementDecidesWhetherAnAnchorWasLost.
+//
+// A host can be measured more than once in one pass, and only the final
+// measurement describes what will be painted. Accumulating losses across
+// measurements made an anchor that vanished at a TRIAL size stay lost after a
+// later measurement found it perfectly valid, so the commit closed a popup that
+// was on screen and correctly placed.
+//
+// Both orderings, because "final geometry wins" is a claim about ordering, and
+// one direction alone is satisfied by a host that simply never closes anything.
+func TestTheLASTMeasurementDecidesWhetherAnAnchorWasLost(t *testing.T) {
+	big := tui.Size{W: 40, H: 20} // the anchor's owner is laid out; ref resolves
+	none := tui.Size{W: 0, H: 0}  // nothing is laid out; the anchor is lost
+	for _, tc := range []struct {
+		name        string
+		first, last tui.Size
+		wantOpen    bool
+		because     string
+	}{
+		{"lost, then valid", none, big, true,
+			"the last measurement had room for the anchor, so the popup stays"},
+		{"valid, then lost", big, none, false,
+			"the last measurement had no room, so the popup goes"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
+			host := widget.NewOverlayHost(owner)
+			outer := &remeasure{child: host, last: big}
+			h := startApp(t, outer, 40, 20)
+			defer h.stop()
+			h.settle()
+
+			// Opened while the geometry is valid and measured ONCE, so the
+			// popup is genuinely on screen before the double measurement runs.
+			h.onLoop(func() {
+				if err := host.OpenAnchored("p", widget.NewText("POPUP"),
+					widget.AnchorSpec{Ref: owner.ref}, nil); err != nil {
+					t.Fatalf("OpenAnchored: %v", err)
+				}
+			})
+			h.settle()
+
+			h.onLoop(func() {
+				outer.first, outer.last, outer.double = tc.first, tc.last, true
+				outer.Context().RequestLayout()
+			})
+			h.settle()
+			h.settle()
+
+			n := 0
+			h.onLoop(func() {
+				for range host.AnchoredLayers() {
+					n++
+				}
+			})
+			if tc.wantOpen && n != 1 {
+				t.Errorf("the popup was closed (%d layers): %s", n, tc.because)
+			}
+			if !tc.wantOpen && n != 0 {
+				t.Errorf("the popup is still open (%d layers): %s", n, tc.because)
+			}
+		})
+	}
+}

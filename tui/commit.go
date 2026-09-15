@@ -62,10 +62,23 @@ const maxCommitPasses = 8
 // persistent behaviour is a component's own state.
 func (c *Context) AfterLayout(key CommitKey, fn func()) {
 	a := c.app
-	if !a.inLayout {
+	// BOTH the phase and the CALLER'S IDENTITY. Checking only the phase let any
+	// code running during somebody else's Layout register a record owned by a
+	// node that is not laying out — a Context outlives the handler it was given
+	// to, so a component holding a sibling's retained Context could register in
+	// that sibling's name. The record then runs, or is discarded, according to
+	// the WRONG node's lifetime: if the registrant disappears and the named
+	// owner survives, a callback nobody can account for still fires.
+	//
+	// LayoutChild restores the parent's identity when a child's Layout returns,
+	// so a parent may still register after laying its children out. This is the
+	// same rule CapturePointer enforces for handlers, and for the same reason:
+	// identity, not merely "some phase is running".
+	if !a.inLayout || a.layingOut != c.node {
 		panic(errs.Fatal{
-			Op:   "tui: Context.AfterLayout",
-			Rule: "legal only inside a component's Layout; geometry is not final anywhere else",
+			Op: "tui: Context.AfterLayout",
+			Rule: "legal only inside this component's own Layout; geometry is not " +
+				"final anywhere else, and a record must be owned by the node registering it",
 		})
 	}
 	if fn == nil {
