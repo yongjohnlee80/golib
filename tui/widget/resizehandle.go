@@ -75,7 +75,7 @@ func (r *Resizable) resizeKeys(ev tui.Event) (tui.Action, bool) {
 	if !ok || k.Kind == tui.KeyRelease {
 		return nil, false
 	}
-	if k.Code == tui.KeyEscape && k.Mods == 0 {
+	if k.Code == tui.KeyEscape && k.Mods.Chord() == 0 {
 		return ResizeCancelAction{}, true
 	}
 	if k.Mods != tui.ModShift {

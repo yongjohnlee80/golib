@@ -468,3 +468,157 @@ func TestOpeningACategoryClosesTheOneBeforeIt(t *testing.T) {
 		}
 	})
 }
+
+// TestALockKeyDoesNotDisableTheKeyboard.
+//
+// THE DEFECT, and it is invisible in most test setups. Under the kitty keyboard
+// protocol a terminal reports Caps Lock and Num Lock as MODIFIER BITS, set on
+// every keystroke while the lock is engaged. A binding that asks `Mods != 0`
+// therefore rejects every arrow, Enter and mnemonic the moment Num Lock is on —
+// which is its resting state on most keyboards.
+//
+// It cannot be reproduced under tmux or any terminal still speaking the legacy
+// sequences, because those cannot encode a lock bit at all. That is exactly why
+// it reached a user: it works on the developer's setup and the widget appears
+// to have stopped responding to the keyboard on theirs.
+func TestALockKeyDoesNotDisableTheKeyboard(t *testing.T) {
+	for _, mods := range []tui.Mods{
+		0,
+		tui.ModNumLock,
+		tui.ModCapsLock,
+		tui.ModNumLock | tui.ModCapsLock,
+	} {
+		t.Run(mods.String(), func(t *testing.T) {
+			m := widget.NewMenu()
+			h, _ := barFixture(t, m, twoCategories(false), 50, 10)
+			defer h.stop()
+			h.onLoop(func() { m.Context().RequestFocus() })
+			h.settle()
+			h.onLoop(func() { m.Select("file") })
+			h.settle()
+
+			// Right steps along the bar.
+			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: mods})
+			h.settle()
+			var sel widget.ItemID
+			h.onLoop(func() { sel, _ = m.Selected() })
+			if sel != "help" {
+				t.Errorf("Right with mods %v left the selection on %q; a lock key "+
+					"is not a chord and must not disable the binding", mods, sel)
+			}
+
+			// And Enter still activates.
+			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter, Mods: mods})
+			h.settle()
+			h.settle()
+			if n := openLevelsOn(t, h, m); n != 1 {
+				t.Errorf("Enter with mods %v opened %d levels, want 1", mods, n)
+			}
+		})
+	}
+}
+
+// TestARealModifierIsStillRejected is the control for the test above: masking
+// the lock bits must not turn every chord into a plain keystroke, or Ctrl-Right
+// would step the menu while the user meant it for something else.
+func TestARealModifierIsStillRejected(t *testing.T) {
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, twoCategories(false), 50, 10)
+	defer h.stop()
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
+	h.onLoop(func() { m.Select("file") })
+	h.settle()
+
+	for _, mods := range []tui.Mods{tui.ModCtrl, tui.ModAlt, tui.ModCtrl | tui.ModNumLock} {
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: mods})
+		h.settle()
+		var sel widget.ItemID
+		h.onLoop(func() { sel, _ = m.Selected() })
+		if sel != "file" {
+			t.Errorf("Right with %v moved the selection to %q; a real chord is not "+
+				"the menu's binding", mods, sel)
+		}
+	}
+}
+
+// TestLeftAndRightWalkTheBarWhileADropdownIsOpen.
+//
+// With a level open, Right was bound to "cascade into a submenu" and did
+// NOTHING on an ordinary row, while Left closed the level — so the bar felt
+// half-wired: one direction responded and the other was dead. Walking the
+// categories with a dropdown following along is what a menu bar has always
+// done.
+func TestLeftAndRightWalkTheBarWhileADropdownIsOpen(t *testing.T) {
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, twoCategories(false), 50, 12)
+	defer h.stop()
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
+	h.onLoop(func() {
+		if err := m.Open("file"); err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+	})
+	h.settle()
+	h.settle()
+	if !strings.Contains(h.grid(), "New") {
+		t.Fatalf("File's dropdown did not open:\n%s", h.grid())
+	}
+
+	// Right moves to the next category AND brings the dropdown with it.
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight})
+	h.settle()
+	h.settle()
+	grid := h.grid()
+	if !strings.Contains(grid, "About") {
+		t.Errorf("Right did not open the next category:\n%s", grid)
+	}
+	if strings.Contains(grid, "New") {
+		t.Errorf("Right left the previous dropdown open:\n%s", grid)
+	}
+	if n := openLevelsOn(t, h, m); n != 1 {
+		t.Errorf("OpenLevels() = %d after stepping the bar, want 1", n)
+	}
+
+	// Left comes back, so the two directions are symmetric.
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft})
+	h.settle()
+	h.settle()
+	if grid := h.grid(); !strings.Contains(grid, "New") {
+		t.Errorf("Left did not walk back to File:\n%s", grid)
+	}
+}
+
+// TestLeftStillClosesANestedLevel is the control: making Left walk the bar must
+// not cost the cascade its way back out.
+func TestLeftStillClosesANestedLevel(t *testing.T) {
+	nested := []widget.MenuItemModel{
+		widget.NewSubmenu("opt", "Option", []widget.MenuItemModel{
+			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
+				widget.NewCommand("vim", "Vim", nil),
+			}),
+		}),
+	}
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, nested, 50, 12)
+	defer h.stop()
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
+	h.onLoop(func() { _ = m.Open("opt") })
+	h.settle()
+	h.onLoop(func() { _ = m.Open("km") })
+	h.settle()
+	h.settle()
+	if n := openLevelsOn(t, h, m); n != 2 {
+		t.Fatalf("OpenLevels() = %d, want a two-deep cascade", n)
+	}
+
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft})
+	h.settle()
+	h.settle()
+	if n := openLevelsOn(t, h, m); n != 1 {
+		t.Errorf("OpenLevels() = %d after Left inside a cascade, want 1 — Left must "+
+			"still step back out before it walks the bar", n)
+	}
+}

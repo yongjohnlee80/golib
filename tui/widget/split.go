@@ -588,7 +588,7 @@ func (s *Split) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 	if e.Kind == tui.KeyRelease {
 		return nil, false
 	}
-	if e.Code == tui.KeyEscape && e.Mods == 0 {
+	if e.Code == tui.KeyEscape && e.Mods.Chord() == 0 {
 		return ResizeCancelAction{}, true
 	}
 	if e.Mods&tui.ModAlt == 0 || e.Mods&^tui.ModAlt != 0 {
