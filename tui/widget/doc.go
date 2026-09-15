@@ -146,8 +146,9 @@
 //	└──────────────────────────────────────────────────────────────────┘
 //
 // [OverlayHost] implements the overlay protocol:
-//   - [Select] automatically discovers the mounted [OverlayHost] via an internal bus handshake
-//     and projects its dropdown option list onto the top overlay layer, complete with a focus trap.
+//   - [Select] resolves the NEAREST ENCLOSING [OverlayHost] from the component tree
+//     and projects its dropdown option list onto its top overlay layer, complete with a
+//     focus trap. Two hosts in one application each serve only the widgets inside them.
 //   - [Float] attaches explicitly via [OverlayHost.Attach] (and detaches via
 //     [OverlayHost.Detach]) and provides toggleable windows ([Float.Show] /
 //     [Float.Hide]), focus trapping, Esc-dismissal, and background dimming. It is the

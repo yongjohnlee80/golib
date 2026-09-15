@@ -25,7 +25,7 @@ var ErrModalNotMountable = errors.New("widget: modal cannot be mounted")
 //	│ [OverlayHost] Layer Stack                                        │
 //	│                                                                  │
 //	│  Top Layer:    Ephemeral Popups ([Select] dropdown list)         │
-//	│                - Dynamically added via internal bus handshake    │
+//	│                - Added by the widget, through the host it found  │
 //	│                - Focus-trapped; clicks outside close             │
 //	│                ▲                                                 │
 //	│  Mid Layer:    Floating Modals ([Float] dialogs)                 │
@@ -46,10 +46,11 @@ var ErrModalNotMountable = errors.New("widget: modal cannot be mounted")
 //	root := widget.NewOverlayHost(body)
 //
 // Once mounted, floating components interact with OverlayHost through two distinct mechanisms:
-//  1. Automatic Popups: [Select] projects its open option list onto the overlay host
-//     via an internal unexported bus handshake ([overlayOpenEvent] / [overlayCloseEvent]).
-//     A [Select] nested arbitrarily deep inside split panes or flex containers requires
-//     zero manual wiring to project its dropdown above the UI.
+//  1. Automatic Popups: [Select] and [Menu] project their layers onto the NEAREST
+//     ENCLOSING host, which each resolves from the component tree and then calls
+//     directly. A widget nested arbitrarily deep inside split panes or flex containers
+//     requires zero manual wiring, and — unlike the bus broadcast this replaced — two
+//     hosts in one application each serve only the widgets inside them.
 //  2. Explicit Modals: [Float] instances are registered via [OverlayHost.Attach].
 //     While hidden, a Float occupies zero cells, participates in no hit-testing, and
 //     is omitted from tab navigation until activated by [Float.Show].
@@ -58,8 +59,9 @@ var ErrModalNotMountable = errors.New("widget: modal cannot be mounted")
 //
 //  1. Base Layer Anchoring: Layer index 0 in the underlying [tui.Stack] is permanently
 //     occupied by the base application UI; overlays and popups strictly stack above index 0.
-//  2. Automatic Popup Lifecycle: Dynamic popup layers pushed via [overlayOpenEvent] are
-//     removed upon [overlayCloseEvent], immediately restoring previous focus without manual cleanup.
+//  2. Automatic Popup Lifecycle: a widget that opened a layer closes it — on its own
+//     transition, and on its own unmount — immediately restoring previous focus without
+//     manual cleanup.
 //  3. Reverse Hit-Testing Priority: Mouse hit-tests and pointer interactions are evaluated from
 //     the topmost layer down, preventing clicks from penetrating through active modal dialogs.
 //
@@ -166,32 +168,53 @@ func (h *OverlayHost) hasLayer(c tui.Component) bool {
 	return false
 }
 
-// Init chains the Stack's child mounting and subscribes to the package's
-// overlay protocol: open requests mount a popup layer on top; close
-// requests unmount it (which restores focus through the runtime's scope
-// stack —).
+// Init chains the Stack's child mounting.
 //
-// BOTH ARE IDEMPOTENT. A duplicate open is an ordinary consequence of double
-// activation — two clicks, a key and a click, a re-entrant handler — and the
-// runtime refuses to mount one component twice by panicking, so the unguarded
-// version crashed the application for something the caller could only have
-// prevented by tracking mount state the runtime owns. A duplicate close was the
-// mirror: harmless today, and only because Stack.Remove happens to tolerate it.
+// It no longer subscribes to anything. The overlay protocol used to be a pair
+// of Bus events every host in the application received; layers are now added
+// and removed by the widget that owns them, through the host it resolved from
+// the tree.
 func (h *OverlayHost) Init(ctx *tui.Context) {
 	h.ctx = ctx
 	h.Stack.Init(ctx)
-	tui.SubscribeScoped(ctx, func(ev overlayOpenEvent) {
-		if ev.layer == nil || h.hasLayer(ev.layer) {
-			return
-		}
-		h.Stack.Add(ev.layer)
-	})
-	tui.SubscribeScoped(ctx, func(ev overlayCloseEvent) {
-		if ev.layer == nil || !h.hasLayer(ev.layer) {
-			return
-		}
-		h.Stack.Remove(ev.layer)
-	})
+}
+
+// addLayer mounts an unkeyed popup layer on top of the stack.
+//
+// ADDRESSED, not broadcast. This used to be a Bus subscription, so a request
+// published by one widget reached EVERY mounted OverlayHost: with two hosts in
+// one application, both tried to mount the same component and the runtime
+// panicked — a component value mounts at most once — taking the application
+// down for opening a dropdown. A widget now resolves the host that contains it
+// and calls this.
+//
+// Idempotent. A duplicate open is an ordinary consequence of double activation,
+// and the runtime refuses to mount one component twice.
+func (h *OverlayHost) addLayer(layer tui.Component) {
+	if layer == nil || h.hasLayer(layer) {
+		return
+	}
+	h.Stack.Add(layer)
+}
+
+// removeLayer unmounts a popup layer, restoring focus through the runtime's
+// scope stack. Idempotent, mirroring addLayer.
+//
+// The mounted check is the APP TEARDOWN case, and it is not hypothetical: the
+// unmount cascade takes this host's children — the layers among them — before it
+// reaches the widget whose own unmount hook closes its layer. By then the layer
+// is still in the stack's list, because a cascade does not edit container
+// bookkeeping, but its node is gone; unmounting it again panics. Asking whether
+// it is still mounted is the difference between a clean shutdown and a crash on
+// the way out.
+func (h *OverlayHost) removeLayer(layer tui.Component) {
+	if layer == nil || !h.hasLayer(layer) {
+		return
+	}
+	if h.ctx == nil || !h.ctx.MountedComponent(layer) {
+		return
+	}
+	h.Stack.Remove(layer)
 }
 
 // Layout lays the stack out, then re-places the anchored layers against their

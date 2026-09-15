@@ -606,3 +606,78 @@ func TestAHostRefusalLeavesTheMenuExactlyAsItWas(t *testing.T) {
 		t.Errorf("OpenLevels() = %d once the host accepted, want 1", n)
 	}
 }
+
+// TestASelectOpensInItsOwnHostOnly.
+//
+// The same defect as the Menu's, in the widget that had it first, and worse:
+// Select's open request was an unaddressed Bus event, so EVERY mounted
+// OverlayHost received it and each tried to mount the same popup component.
+// The runtime refuses to mount one component twice — by panicking — so an
+// application with two hosts CRASHED when the user opened a dropdown.
+//
+// The assertion is therefore that the app is still running, plus that the
+// unrelated host stayed empty.
+func TestASelectOpensInItsOwnHostOnly(t *testing.T) {
+	sel := widget.NewSelect(widget.WithOptions([]widget.SelectItem[string]{
+		{Label: "alpha", Value: "alpha"},
+		{Label: "beta", Value: "beta"},
+	}))
+	mine := widget.NewOverlayHost(sel)
+	theirs := widget.NewOverlayHost(widget.NewText("unrelated"))
+	root := tui.NewFlex(tui.Vertical)
+	root.AddWeighted(mine, 1)
+	root.AddWeighted(theirs, 1)
+	h := startApp(t, root, 40, 20)
+	h.settle()
+
+	h.onLoop(func() { sel.Context().RequestFocus() })
+	h.settle()
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	h.waitFor("the dropdown opened", func() bool {
+		return strings.Contains(h.grid(), "alpha")
+	})
+
+	// The containing host holds it; the other one holds only its own content.
+	var mineN, theirsN int
+	h.onLoop(func() {
+		mineN, theirsN = mine.Stack.Len(), theirs.Stack.Len()
+	})
+	if mineN != 2 {
+		t.Errorf("the containing host holds %d layers, want 2 (content + popup)", mineN)
+	}
+	if theirsN != 1 {
+		t.Errorf("an unrelated host holds %d layers, want 1 (its own content only)", theirsN)
+	}
+
+	// Closing takes it down again, and the loop is still alive to say so.
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	h.waitFor("the dropdown closed", func() bool {
+		return !strings.Contains(h.grid(), "alpha")
+	})
+}
+
+// TestASelectWithNoHostDoesNotClaimToBeOpen.
+//
+// A Select needs somewhere to put its dropdown. With no OverlayHost above it
+// there is nowhere, and the honest response is to stay closed: the old code
+// published its request into the void, set its own open flag, and then drew a
+// field claiming a list was showing that no host had ever mounted.
+func TestASelectWithNoHostDoesNotClaimToBeOpen(t *testing.T) {
+	sel := widget.NewSelect(widget.WithOptions([]widget.SelectItem[string]{
+		{Label: "alpha", Value: "alpha"},
+	}))
+	root := tui.NewFlex(tui.Vertical)
+	root.Add(sel) // no OverlayHost anywhere above it
+	h := startApp(t, root, 30, 8)
+	h.settle()
+
+	h.onLoop(func() { sel.Context().RequestFocus() })
+	h.settle()
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	h.settle()
+	h.settle()
+
+	// No option list on screen, and the loop is still alive to be asked.
+	h.wantNotContains("alpha")
+	h.onLoop(func() {})
+}
