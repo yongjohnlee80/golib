@@ -8,6 +8,15 @@
 > documented in the widget package overview and in
 > [widget/README.md](../widget/README.md#modal).
 
+`Modal` owns dialog semantics rather than only drawing a floating rectangle:
+button roles determine initial focus and default/cancel behaviour, dismissal is
+typed, nested dialogs close in LIFO order, and the active modal is a trapping
+`FocusScope`. Enter/Space, clicks, and programmatic activation converge on the
+same button activation path. Pointer events outside the active trap do not
+reach the obscured application, while a click inside a menu or editor at the
+same non-trapping level still goes to the component under that coordinate even
+when another component currently has keyboard focus.
+
 ## Setup: OverlayHost at the root
 
 Floats live on overlay layers above your UI. Wrap the root tree once:

@@ -29,6 +29,11 @@
 // the core tui event set. A lone ESC is disambiguated by a short hold
 // (WithEscTimeout, default 35ms) only when kitty mode is inactive.
 //
+// Mouse input is normalized to press, motion, release and wheel events; the
+// driver does not hit-test or capture. The App owns those semantics. Focus-out
+// is emitted as terminal-level focus loss, which makes the App revoke a held
+// pointer capture and notify its owner rather than leaving a drag armed.
+//
 // # Output
 //
 // Flush emits one frame as one Write: cursor hidden during

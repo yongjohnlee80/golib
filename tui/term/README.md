@@ -83,7 +83,11 @@ speak VT into stdin, so there is no second input path.
   A lone ESC is held `WithEscTimeout` (default 35ms) and delivered as the
   Escape key if no continuation arrives — disabled entirely under kitty.
 - **Mouse**: SGR encoding only (`?1002` + `?1006`) — press, release, drag
-  motion, wheel, with shift/alt/ctrl bits.
+  motion, wheel, with shift/alt/ctrl bits. Motion reports the held button when
+  the protocol supplies one. The driver only normalizes input; the App owns
+  hit-testing, click counts, semantic actions and capture. A terminal focus-out
+  event ends any held capture, because the driver can no longer promise the
+  matching release.
 - **Paste**: `?2004` brackets become a single `tui.PasteEvent` with CR/CRLF
   normalized to `\n`; embedded escapes are captured literally; an
   unterminated paste is flushed on Stop, not dropped.

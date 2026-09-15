@@ -53,6 +53,15 @@
 //   - sessions and authentication, since this exposes a terminal to a network.
 //     See [Manager] and [Handler.ServeLogin].
 //
+// # Pointer input and capture
+//
+// The client normalizes grid presses, motion, releases and wheel steps; the App
+// performs hit-testing, action resolution and capture exactly as it does for a
+// terminal backend. The current client does not use DOM pointer capture: a
+// release outside the grid is not forwarded. Window blur is forwarded as
+// terminal-level focus loss, so the App revokes any held capture and delivers
+// [github.com/yongjohnlee80/golib/tui.PointerCaptureLostEvent] to its owner.
+//
 // # Authentication is mandatory
 //
 // There is no unauthenticated mode, not even on loopback. [Config.Policy] is

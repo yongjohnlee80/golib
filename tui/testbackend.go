@@ -26,6 +26,12 @@ import (
 // binary a panic is the right answer — it is a test failure carrying the
 // offending coordinate, where a silently repaired grid would let the bug
 // reach a real terminal.
+//
+// Inject preserves the events supplied by the test. It does not clamp mouse
+// coordinates or synthesize a press/motion/release sequence. Tests therefore
+// inject normalized pointer events explicitly; to model a backend losing the
+// pointer before release, inject FocusEvent{Gained:false, Terminal:true}. The
+// App then exercises its real routing, semantic-action and capture-loss paths.
 type TestBackend struct {
 	mu sync.Mutex
 

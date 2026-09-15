@@ -46,7 +46,7 @@ return app.Run(ctx)
 | `WithEventQueueLimit(n)` | Omitted (`0` / unlimited) | Enforces a fail-loud capacity ceiling for the Lane B program queue (`n >= 1`). Exceeding the limit panics to catch runaway producers; Lane B never silently drops events. |
 | `WithMinFrameInterval(d)` | `16ms` (~60fps) | Frame limiter coalescing multiple dirty updates into atomic frame flushes. Use `0` in tests for instant renders. |
 | `WithDoubleClickWindow(d)` | `400ms` | Maximum elapsed time between clicks on the same cell to emit a double-click event. Set $\le 0$ to disable. |
-| `WithTrace(fn)` | `nil` (off) | Synchronous event tracing callback (`TraceEvent`) for debugging focus, mounts, and keys (chapter 8). Zero allocation when disabled. |
+| `WithTrace(fn)` | `nil` (off) | Synchronous event tracing callback (`TraceEvent`) for debugging focus, mounts, keys, semantic actions, and pointer capture (chapter 8). Zero allocation when disabled. |
 | `WithLogger(l)` | Discard | Structured logging sink (`logger.Logger`) for runtime warnings and queue drops. |
 
 ## Synchronous startup & panic contract
@@ -104,6 +104,11 @@ waitFor(t, func() bool { return strings.Contains(tb.String(), "Releases") })
 current screen; `tb.Clipboard()` records OSC 52 copies. Rendering is
 asynchronous — always poll with a deadline rather than asserting
 immediately after an Inject.
+
+Mouse events are injected verbatim: `TestBackend` does not synthesize a
+release or clamp captured coordinates. Supply the complete press/motion/release
+sequence, or inject `tui.FocusEvent{Gained: false, Terminal: true}` to verify
+that a backend loss cancels the App's held pointer capture.
 
 Next: [the root controller](02-the-root-controller.md) — the one pattern
 you cannot skip.

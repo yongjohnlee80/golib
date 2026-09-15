@@ -59,9 +59,10 @@ This explains most "why didn't my key work" confusion:
 - The focused `TextInput` consumes printable keys — your global `'y'`
   shortcut won't fire while the user is typing. That is correct behavior;
   don't fight it.
-- A focused `List` consumes `↑/↓/Enter`; an *unfocused* list never sees
-  them — but your controller can forward events explicitly:
-  `list.HandleEvent(ev)` from its own HandleEvent.
+- A focused `List` consumes `↑/↓/Enter`; an *unfocused* list never sees them.
+  Move focus to it, or expose a typed controller operation. Calling another
+  component's `HandleEvent` directly bypasses runtime pointer policy, action
+  resolution, provenance, tracing, and capture rules.
 - In configurable widgets like `Editor`, you can explicitly unbind chords using
   `ActUnbound`. An unbound chord does not execute or get consumed by structural
   fallbacks; it returns `false` from `HandleEvent` and bubbles directly up to parent
@@ -150,10 +151,13 @@ So: if your panel wraps a child that draws a cursor (an editor, a list),
 **delegate focus to the child**:
 
 ```go
-func (p *panel) AcceptsFocus() bool { return false }   // container, not a stop
 func (p *panel) FocusTarget() tui.Component { return p.current }
 // host: ctx.FocusComponent(panel.FocusTarget())
 ```
+
+A transparent wrapper should simply omit `Focusable`; implementing
+`AcceptsFocus() == false` has the same current runtime result but advertises a
+capability the type does not provide.
 
 Unconsumed keys still bubble from the child up through the panel, so
 panel-level bindings keep working. Only intercept *before* the child when
