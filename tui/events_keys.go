@@ -1,5 +1,7 @@
 package tui
 
+import "strings"
+
 // KeyEvent represents one keyboard action.
 //
 // Codepoint Mapping:
@@ -54,6 +56,53 @@ const (
 	ModCapsLock
 	ModNumLock
 )
+
+// LockMods are the modifiers that report a LOCK STATE rather than a key the
+// user is holding down. They are on for every keystroke while the lock is
+// engaged, including keystrokes the user thinks are unmodified.
+const LockMods = ModCapsLock | ModNumLock
+
+// Chord is the modifiers a key BINDING should match on: everything the user is
+// actually holding, with the lock state removed.
+//
+// COMPARE WITH THIS, NEVER WITH THE RAW FIELD. `Mods != 0` looks like "the key
+// was pressed on its own" and is not: under the kitty keyboard protocol the
+// terminal reports Caps Lock and Num Lock as modifier bits, so with Num Lock on
+// — which is its normal state on most keyboards — every arrow key, Enter and
+// Escape carries a modifier and a bare inequality rejects all of them. The bug
+// hides completely under tmux and under any terminal still speaking the legacy
+// sequences, because those cannot express a lock bit at all; it appears only on
+// a terminal that negotiated the modern protocol, which is where it looks like
+// the widget has simply stopped responding to the keyboard.
+//
+// Shift is deliberately KEPT: shift is a key the user is holding, and Shift-Tab
+// is a different binding from Tab.
+func (m Mods) Chord() Mods { return m &^ LockMods }
+
+// String names the modifiers that are set, for traces and test failures.
+//
+// Worth having for this type in particular: a failure reporting "mods 128" is
+// unreadable, and 128 is Num Lock — the bit most likely to be the reason a
+// binding did not fire.
+func (m Mods) String() string {
+	if m == 0 {
+		return "none"
+	}
+	var out []string
+	for _, p := range []struct {
+		bit  Mods
+		name string
+	}{
+		{ModShift, "shift"}, {ModAlt, "alt"}, {ModCtrl, "ctrl"},
+		{ModSuper, "super"}, {ModHyper, "hyper"}, {ModMeta, "meta"},
+		{ModCapsLock, "capslock"}, {ModNumLock, "numlock"},
+	} {
+		if m&p.bit != 0 {
+			out = append(out, p.name)
+		}
+	}
+	return strings.Join(out, "+")
+}
 
 // Functional key codes for KeyEvent.Code. The terminal decoder in tui/term
 // maps escape sequences onto exactly these constants.

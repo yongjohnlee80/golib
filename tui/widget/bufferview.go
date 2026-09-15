@@ -339,7 +339,7 @@ func (v *BufferView) HandleEvent(ev tui.Event) bool {
 			// Copy the whole buffer to the system clipboard (OSC 52); a
 			// raw-mode TUI blocks terminal-native selection, so the viewer
 			// owns copy. No-op when the backend lacks clipboard support.
-			if e.Mods == 0 && v.Context() != nil {
+			if e.Mods.Chord() == 0 && v.Context() != nil {
 				v.Context().CopyToClipboard(v.PlainText())
 				return true
 			}

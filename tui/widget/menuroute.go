@@ -79,7 +79,7 @@ func (m *Menu) resolveMouse(e tui.MouseEvent, rects map[ItemID]tui.Rect) (tui.Ac
 // alternative — one fixed mapping — makes a menu bar behave like a list rotated
 // ninety degrees, which every user notices immediately.
 func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
-	if e.Kind == tui.KeyRelease || e.Mods != 0 {
+	if e.Kind == tui.KeyRelease || e.Mods.Chord() != 0 {
 		return nil, false
 	}
 	step, open, back := tui.KeyDown, tui.KeyRight, tui.KeyLeft
@@ -99,8 +99,25 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 				return MenuActivateAction{ItemID: id}, true
 			}
 		}
+		// NOT A SUBMENU, so there is nothing to cascade into — and in a BAR the
+		// key still means something: move along the bar to the next category and
+		// open it, which is what a menu bar has done since they were invented.
+		// It used to do nothing at all here, so with a dropdown open Left closed
+		// a level and Right was simply dead.
+		if id, ok := m.barNeighbour(+1); ok {
+			return MenuActivateAction{ItemID: id}, true
+		}
 		return nil, false
 	case back:
+		// Deeper than the first level: step back out of the cascade. At the
+		// first level the same key walks to the PREVIOUS category, mirroring
+		// open above rather than dead-ending.
+		if len(m.levels) > 1 {
+			return MenuCloseAction{}, true
+		}
+		if id, ok := m.barNeighbour(-1); ok {
+			return MenuActivateAction{ItemID: id}, true
+		}
 		if len(m.levels) > 0 {
 			return MenuCloseAction{}, true
 		}
@@ -120,6 +137,39 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 		return MenuActivateAction{ItemID: id}, true
 	}
 	return nil, false
+}
+
+// barNeighbour is the next selectable ROOT row, for a horizontal bar with a
+// level open — the category Left and Right walk to while a dropdown is showing.
+//
+// Only for a bar with something open. A vertical menu has no "along the bar" to
+// walk, and a bar with nothing open already steps its root rows with the same
+// keys through the ordinary neighbour path.
+func (m *Menu) barNeighbour(delta int) (ItemID, bool) {
+	if !m.horizontal || len(m.levels) == 0 {
+		return "", false
+	}
+	// Which root row the open cascade belongs to, regardless of how deep the
+	// selection currently is.
+	root := m.levels[0].parent
+	idx := -1
+	for i := range m.items {
+		if m.items[i].ID == root {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return "", false
+	}
+	n := len(m.items)
+	for stepN := 1; stepN <= n; stepN++ {
+		j := ((idx+delta*stepN)%n + n) % n
+		if m.items[j].selectable() && m.items[j].Kind == ItemKindSubmenu {
+			return m.items[j].ID, true
+		}
+	}
+	return "", false
 }
 
 // neighbour is the next selectable row in the current level, wrapping. Returns

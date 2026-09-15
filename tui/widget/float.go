@@ -365,7 +365,7 @@ func (l *floatLayer) HandleEvent(ev tui.Event) bool {
 	}
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		if e.Kind != tui.KeyRelease && e.Code == tui.KeyEscape && e.Mods == 0 {
+		if e.Kind != tui.KeyRelease && e.Code == tui.KeyEscape && e.Mods.Chord() == 0 {
 			l.owner.Hide()
 			return true
 		}

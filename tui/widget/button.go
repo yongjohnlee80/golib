@@ -295,7 +295,7 @@ func activateKeys(ev tui.Event) (tui.Action, bool) {
 	if !ok || k.Kind == tui.KeyRelease {
 		return nil, false
 	}
-	if k.Mods != 0 {
+	if k.Mods.Chord() != 0 {
 		return nil, false // Ctrl-Enter and friends are somebody else's binding
 	}
 	if k.Code == tui.KeyEnter || k.Code == ' ' {

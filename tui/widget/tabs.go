@@ -239,7 +239,7 @@ func (t *Tabs) HandleEvent(ev tui.Event) bool {
 			}
 			return false
 		}
-		if t.focused() && e.Mods == 0 {
+		if t.focused() && e.Mods.Chord() == 0 {
 			switch e.Code {
 			case '[', tui.KeyLeft:
 				t.cycle(-1)

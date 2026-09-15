@@ -447,7 +447,7 @@ func (m *Modal) Init(ctx *tui.Context) {
 // dialog would shadow every button's own activation.
 func modalKeys(ev tui.Event) (tui.Action, bool) {
 	k, ok := ev.(tui.KeyEvent)
-	if !ok || k.Kind == tui.KeyRelease || k.Mods != 0 {
+	if !ok || k.Kind == tui.KeyRelease || k.Mods.Chord() != 0 {
 		return nil, false
 	}
 	if k.Code == tui.KeyEscape {
