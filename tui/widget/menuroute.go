@@ -423,10 +423,21 @@ func (m *Menu) levelOpenFor(id ItemID) bool {
 	return false
 }
 
-// rowWidth is the width one row wants: label, a gap, the accelerator, and room
-// for the submenu marker.
+// rowWidth is the width one row wants: A PAD ON EACH SIDE, the label, a gap,
+// the accelerator, and room for the mark or the submenu marker.
+//
+// THE PADS ARE PART OF THE ROW, not decoration the frame supplies. paintRow
+// starts the label at x+1 and puts the submenu arrow at x+w-2, so a row sized to
+// its bare content is one short at each end: the widest row of a level sets the
+// popup's width, and it then painted its last cell onto the border. A submenu
+// row lost a character of its label too, the arrow landing on top of it.
+//
+// It stayed hidden because only the WIDEST row of a level is affected, and a
+// level whose widest row is a long plain command has slack from its neighbours
+// to absorb the error. MenuItem.Layout — the standalone row — has always used
+// measure(label)+2; this is the model-driven painter agreeing with it.
 func (m *Menu) rowWidth(it MenuItemModel) int {
-	w := m.measure(it.Label)
+	w := m.measure(it.Label) + 2
 	if it.Accel != "" {
 		w += 2 + m.measure(it.Accel)
 	}

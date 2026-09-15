@@ -370,6 +370,22 @@ func TestReleasingElsewhereLeavesTheOpenLevelsAlone(t *testing.T) {
 // An involuntary loss is not a decision the user made about the menu. It must
 // clear the half-finished gesture — so a later release cannot activate something
 // the user has stopped pointing at — and leave the levels exactly as they were.
+//
+// HOW THE LOSS IS PRODUCED MATTERS, and this test used to get it wrong. It
+// called CancelGesture on the MENU's context, which is documented to do nothing
+// unless that node is the capture owner — and it never is: a gesture started in
+// a level is captured BY THAT LEVEL, because only the node whose handler runs
+// may take the pointer. So the call was a no-op and the assertions below were
+// measuring a menu that had never been touched.
+//
+// It looked green for a second reason, since fixed: rows were sized without
+// their pads, so the press at the label's first cell missed the row's hit rect
+// entirely and armed nothing. A test asserting "this release activates nothing"
+// passes easily when no gesture was ever started.
+//
+// Moving focus out of the capture owner's scope is a loss the runtime really
+// produces (CaptureLostFocusChange), and it is the one named in the sentence
+// above: the event reaches the level, which forwards it to the Menu.
 func TestLosingTheCaptureClearsTheGestureWithoutClosingAnything(t *testing.T) {
 	var ran atomic.Int64
 	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
@@ -383,7 +399,15 @@ func TestLosingTheCaptureClearsTheGestureWithoutClosingAnything(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	h, _ := menuFixture(t, m, 40, 14)
+	// Something else focusable, so focus has somewhere to go that the capture
+	// owner's scope does not contain.
+	elsewhere := widget.NewButton("Elsewhere")
+	base := tui.NewStack()
+	base.Add(m, elsewhere)
+	host := widget.NewOverlayHost(base)
+	h := startApp(t, host, 40, 14)
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
 	defer h.stop()
 	h.onLoop(func() {
 		if err := m.Open("file"); err != nil {
@@ -398,7 +422,8 @@ func TestLosingTheCaptureClearsTheGestureWithoutClosingAnything(t *testing.T) {
 	h.settle()
 
 	// The runtime takes the capture away, as it does on a scope change.
-	h.onLoop(func() { m.Context().CancelGesture() })
+	h.onLoop(func() { elsewhere.Context().RequestFocus() })
+	h.settle()
 	h.settle()
 
 	if got := openLevelsOn(t, h, m); got != 1 {
