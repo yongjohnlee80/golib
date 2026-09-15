@@ -279,13 +279,43 @@ func TestTheResizeEventComesFromCommitWithTheRightTiming(t *testing.T) {
 		}
 	})
 
-	// A request that changes no cells publishes nothing.
+	// A request that changes no cells publishes nothing. This one is now caught
+	// EARLY, in SetSize, which returns before requesting layout at all.
 	h.onLoop(func() { r.SetSize(tui.Size{W: 12, H: 6}) })
 	h.settle()
 	h.settle()
 	h.onLoop(func() {
 		if len(events) != 1 {
 			t.Errorf("%d events after a no-op resize, want still 1", len(events))
+		}
+	})
+
+	// AND A LAYOUT PASS THAT NOBODY ASKED FOR. Making SetSize a no-op closed the
+	// path above before it reaches the commit phase, so on its own it would leave
+	// commit's own "nothing changed" guard with nothing observing it. This is the
+	// case that still reaches it, and the one a user actually hits: the terminal
+	// is resized, every widget lays out again, and a box that is explicitly 12x6
+	// inside a ceiling that still fits it comes out 12x6. A listener counting
+	// resizes must not see one, or every window-manager drag reports the box as
+	// resized when it did not move a cell.
+	h.tb.InjectResize(50, 24)
+	h.settle()
+	h.settle()
+	h.onLoop(func() {
+		if len(events) != 1 {
+			t.Errorf("%d events after an ambient re-layout that left the size at "+
+				"12x6, want still 1", len(events))
+		}
+	})
+	// The control: the same ambient path DOES publish when the size really moves,
+	// so the zero above is a guard doing its job rather than a wrapper that has
+	// stopped publishing.
+	h.onLoop(func() { r.SetSize(tui.Size{W: 14, H: 6}) })
+	h.settle()
+	h.settle()
+	h.onLoop(func() {
+		if len(events) != 2 {
+			t.Errorf("%d events after a real change, want 2", len(events))
 		}
 	})
 }
