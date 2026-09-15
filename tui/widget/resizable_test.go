@@ -24,12 +24,18 @@ type sizedChild struct {
 	pref    tui.Size
 	sawMinW int
 	sawMaxW int
-	passes  int
+	passes  atomic.Int64
 }
 
 // layouts reports how many times this child has been measured, read the
 // sanctioned way. One change must cost one measurement.
-func (c *sizedChild) layouts() int { return c.passes }
+//
+// ATOMIC, unlike the sawMin/sawMax fields beside it, because this one is polled
+// from the test goroutine while the loop goroutine is still laying out: a
+// waitFor condition has no synchronisation with the loop, where an onLoop or
+// settle round-trip supplies one. A plain int here is a data race the race
+// detector catches only on the runs where the poll and a pass overlap.
+func (c *sizedChild) layouts() int { return int(c.passes.Load()) }
 
 // AcceptsFocus makes this a tab stop, which the wrapper is deliberately NOT.
 // Resize keys reach a Resizable by BUBBLING from a focused descendant, so a
@@ -40,7 +46,7 @@ func (c *sizedChild) AcceptsFocus() bool { return true }
 
 func (c *sizedChild) Layout(cs tui.Constraints) tui.Size {
 	c.sawMinW, c.sawMaxW = cs.MinW, cs.MaxW
-	c.passes++
+	c.passes.Add(1)
 	return cs.Constrain(c.pref)
 }
 
@@ -528,6 +534,24 @@ func TestConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 		{"a multi-grapheme grip glyph", func() {
 			widget.NewResizable(child, widget.WithHandleGlyph("ab"))
 		}},
+		{"a negative minimum width", func() {
+			widget.NewResizable(child, widget.WithMinSize(tui.Size{W: -1, H: 4}))
+		}},
+		{"a negative minimum height", func() {
+			widget.NewResizable(child, widget.WithMinSize(tui.Size{W: 4, H: -1}))
+		}},
+		{"Unbounded as a minimum width", func() {
+			// Unbounded is legal for a MAXIMUM only: as a minimum it asks for a
+			// box no terminal can satisfy, and normalising it away later hides
+			// the author's mistake instead of reporting it.
+			widget.NewResizable(child, widget.WithMinSize(tui.Size{W: tui.Unbounded, H: 4}))
+		}},
+		{"Unbounded as a minimum height", func() {
+			widget.NewResizable(child, widget.WithMinSize(tui.Size{W: 4, H: tui.Unbounded}))
+		}},
+		{"a negative maximum", func() {
+			widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: -1, H: 10}))
+		}},
 		{"a zero-width grip glyph", func() {
 			// One cluster, no cells. It would be placed, hit-tested and
 			// invisible — the same failure as a wide glyph in a narrow rect,
@@ -555,6 +579,10 @@ func TestConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 		widget.NewResizable(child,
 			widget.WithHandles(widget.HandleBottomRight),
 			widget.WithHandleGlyph("世"), // wide, but declared and measured
+			// The boundary values of the minimum/maximum domain: zero is a
+			// legal minimum, and Unbounded is legal as a maximum.
+			widget.WithMinSize(tui.Size{W: 0, H: 0}),
+			widget.WithMaxSize(tui.Size{W: tui.Unbounded, H: 40}),
 			widget.WithHandlePlacement(widget.PlacementReserve),
 			widget.WithResizeStep(1, widget.StepPercent))
 	}); f != nil {
