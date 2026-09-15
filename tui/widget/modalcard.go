@@ -224,7 +224,10 @@ func (c *modalCard) Render(s tui.Surface) {
 	// ON THE BORDER LINE, with a space either side so the rule does not touch
 	// the text. Clipped to the space between the corners rather than allowed to
 	// overwrite them, so a long title cannot break the frame.
-	limit := sz.W - 2
+	// The last WRITABLE cell is sz.W-2: the frame owns column sz.W-1. An
+	// exclusive limit of sz.W-2 is one short and clips the title's trailing
+	// space against the corner, which reads as the text running into the frame.
+	limit := sz.W - 1
 	x := 1
 	if x < limit {
 		s.SetCell(x, 0, " ", c.st.Border())

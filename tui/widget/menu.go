@@ -75,6 +75,11 @@ type Menu struct {
 	// two cells to every entry. Inside a popup the marker distinguishes the rows
 	// that cascade from the rows that act, so there it is always drawn.
 	barMarkers bool
+	// levelTitles is whether a dropdown names the row that opened it, in its
+	// own top border. On by default: a level that says where it came from
+	// stays readable beside a sibling and reads as a window of its own, which
+	// is what a detached or floating menu needs.
+	levelTitles bool
 	// dropSide is where a bar's first level opens, set by MenuBar so a bottom
 	// bar drops upward rather than back across itself. Zero means "the default
 	// for this orientation", which is what a bare Menu wants.
@@ -96,7 +101,7 @@ type MenuOption func(*Menu)
 
 // NewMenu builds an empty menu. Supply a model with SetModel.
 func NewMenu(opts ...MenuOption) *Menu {
-	m := &Menu{pointerPolicy: tui.PointerInherit}
+	m := &Menu{levelTitles: true, pointerPolicy: tui.PointerInherit}
 	for _, o := range opts {
 		if o != nil {
 			o(m)
@@ -121,6 +126,12 @@ func WithAnchorPolicy(p AnchorPolicy) MenuOption {
 		}
 		m.policy = p
 	}
+}
+
+// WithLevelTitle decides whether a dropdown names the row that opened it in
+// its top border. On by default.
+func WithLevelTitle(v bool) MenuOption {
+	return func(m *Menu) { m.levelTitles = v }
 }
 
 // WithBarSubmenuMarker decides whether a horizontal bar's own rows draw the

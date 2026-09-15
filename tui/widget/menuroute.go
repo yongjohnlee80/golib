@@ -82,46 +82,14 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 	if e.Kind == tui.KeyRelease || e.Mods.Chord() != 0 {
 		return nil, false
 	}
-	step, open, back := tui.KeyDown, tui.KeyRight, tui.KeyLeft
-	prev := tui.KeyUp
-	if m.horizontal && len(m.levels) == 0 {
-		step, prev = tui.KeyRight, tui.KeyLeft
-		open, back = tui.KeyDown, tui.KeyUp
+	if m.horizontal {
+		if a, ok := m.resolveBarKey(e); ok {
+			return a, ok
+		}
+	} else if a, ok := m.resolveColumnKey(e); ok {
+		return a, ok
 	}
 	switch e.Code {
-	case step:
-		return MenuSelectAction{ItemID: m.neighbour(+1)}, true
-	case prev:
-		return MenuSelectAction{ItemID: m.neighbour(-1)}, true
-	case open:
-		if id, ok := m.Selected(); ok {
-			if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
-				return MenuActivateAction{ItemID: id}, true
-			}
-		}
-		// NOT A SUBMENU, so there is nothing to cascade into — and in a BAR the
-		// key still means something: move along the bar to the next category and
-		// open it, which is what a menu bar has done since they were invented.
-		// It used to do nothing at all here, so with a dropdown open Left closed
-		// a level and Right was simply dead.
-		if id, ok := m.barNeighbour(+1); ok {
-			return MenuActivateAction{ItemID: id}, true
-		}
-		return nil, false
-	case back:
-		// Deeper than the first level: step back out of the cascade. At the
-		// first level the same key walks to the PREVIOUS category, mirroring
-		// open above rather than dead-ending.
-		if len(m.levels) > 1 {
-			return MenuCloseAction{}, true
-		}
-		if id, ok := m.barNeighbour(-1); ok {
-			return MenuActivateAction{ItemID: id}, true
-		}
-		if len(m.levels) > 0 {
-			return MenuCloseAction{}, true
-		}
-		return nil, false
 	case tui.KeyEscape:
 		return MenuCloseAction{All: true}, true
 	case tui.KeyEnter, ' ':
@@ -137,6 +105,133 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 		return MenuActivateAction{ItemID: id}, true
 	}
 	return nil, false
+}
+
+// resolveBarKey is the arrow vocabulary of a horizontal MENU BAR.
+//
+// THE TWO AXES MEAN DIFFERENT THINGS, and keeping them separate is the whole
+// point. Left and Right walk the BAR — always, whatever is open and whatever
+// kind of row the selection is on. Up and Down walk the open dropdown.
+//
+// Right used to open a submenu when the selection was on one, which made the
+// bar unreachable from inside a category whose first row cascades: in a menu
+// whose Option holds "Keymaps", Right opened Keymaps and there was no way to
+// reach Help at all. One key cannot both walk the bar and descend a cascade;
+// Enter descends, and Up comes back out.
+//
+// Up at the first row CLOSES the level rather than wrapping to the last. A
+// cascade is a stack, and the way out of a stack is back the way you came —
+// wrapping to the bottom of a four-row dropdown when the user is trying to get
+// back to the bar is a small maze.
+func (m *Menu) resolveBarKey(e tui.KeyEvent) (tui.Action, bool) {
+	switch e.Code {
+	case tui.KeyRight:
+		// A SUBMENU ROW STILL DESCENDS. Right is how you reach the keymaps
+		// under Option, and taking that away to free the key for the bar would
+		// trade one unreachable place for another.
+		//
+		// What makes both possible is that Up now closes a level: from a
+		// category whose only row cascades, the way to the next category is Up
+		// and then Right, rather than being stuck inside the cascade with no
+		// exit — which is what it was before.
+		// ONLY INSIDE A LEVEL. On the bar itself every row is a submenu, so a
+		// descend-if-submenu rule there would make Right open the current
+		// category instead of stepping to the next one — which is Down's job
+		// and was briefly Right's too, breaking the bar entirely.
+		if len(m.levels) > 0 {
+			if id, ok := m.Selected(); ok {
+				if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
+					return MenuActivateAction{ItemID: id}, true
+				}
+			}
+		}
+		return m.barStep(+1)
+	case tui.KeyLeft:
+		// Inside a cascade, back out one level — the mirror of Right
+		// descending. At the first level there is nothing to back out of, so
+		// the key walks the bar.
+		if len(m.levels) > 1 {
+			return MenuCloseAction{}, true
+		}
+		return m.barStep(-1)
+	case tui.KeyDown:
+		if len(m.levels) == 0 {
+			// Down opens the category the selection is on, which is the only
+			// way into the cascade from the bar besides Enter.
+			if id, ok := m.Selected(); ok {
+				if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
+					return MenuActivateAction{ItemID: id}, true
+				}
+			}
+			return nil, false
+		}
+		return MenuSelectAction{ItemID: m.neighbour(+1)}, true
+	case tui.KeyUp:
+		if len(m.levels) == 0 {
+			return nil, false // nothing above the bar
+		}
+		if m.atLevelTop() {
+			return MenuCloseAction{}, true
+		}
+		return MenuSelectAction{ItemID: m.neighbour(-1)}, true
+	}
+	return nil, false
+}
+
+// resolveColumnKey is the arrow vocabulary of a VERTICAL menu, which has no bar
+// to walk: Up and Down move, Right descends into a submenu, Left comes back.
+//
+// Unchanged, and deliberately not merged with the bar's. A column has one axis
+// of travel and cascades sideways; a bar has two axes that mean different
+// things. Forcing one table to serve both is what produced a Right key that
+// sometimes walked and sometimes descended.
+func (m *Menu) resolveColumnKey(e tui.KeyEvent) (tui.Action, bool) {
+	switch e.Code {
+	case tui.KeyDown:
+		return MenuSelectAction{ItemID: m.neighbour(+1)}, true
+	case tui.KeyUp:
+		return MenuSelectAction{ItemID: m.neighbour(-1)}, true
+	case tui.KeyRight:
+		if id, ok := m.Selected(); ok {
+			if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
+				return MenuActivateAction{ItemID: id}, true
+			}
+		}
+		return nil, false
+	case tui.KeyLeft:
+		if len(m.levels) > 0 {
+			return MenuCloseAction{}, true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// atLevelTop reports whether the selection is the FIRST selectable row of the
+// level currently on screen — the row where Up stops moving and starts closing.
+func (m *Menu) atLevelTop() bool {
+	for _, it := range m.currentLevelItems() {
+		if it.selectable() {
+			return it.ID == m.selected
+		}
+	}
+	return false
+}
+
+// barStep walks the bar by delta, carrying an open dropdown with it.
+//
+// With a level open the step ACTIVATES the neighbouring category, which both
+// opens its dropdown and — since opening truncates to the row's own depth —
+// closes the one being left. With nothing open it is an ordinary selection
+// move along the bar.
+func (m *Menu) barStep(delta int) (tui.Action, bool) {
+	if len(m.levels) > 0 {
+		if id, ok := m.barNeighbour(delta); ok {
+			return MenuActivateAction{ItemID: id}, true
+		}
+		return nil, false
+	}
+	return MenuSelectAction{ItemID: m.neighbour(delta)}, true
 }
 
 // barNeighbour is the next selectable ROOT row, for a horizontal bar with a

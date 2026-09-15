@@ -94,6 +94,12 @@ func (p *menuPopup) AcceptsFocus() bool { return false }
 func (p *menuPopup) Layout(cs tui.Constraints) tui.Size {
 	rows := p.rowsOf()
 	w, h := p.owner.measureRows(rows)
+	// THE TITLE IS PART OF THE WIDTH. Sized to the rows alone, a level whose
+	// opening row has a longer name than anything inside it would drop its own
+	// title for want of two cells.
+	if t := p.titleText(); t != "" {
+		w = max(w, p.owner.measure(t)+2) // a space either side of the name
+	}
 	size := cs.Constrain(tui.Size{W: w + 2, H: h + 2}) // +2 for the frame
 	if p.rects == nil {
 		p.rects = make(map[ItemID]tui.Rect)
@@ -113,7 +119,60 @@ func (p *menuPopup) Render(s tui.Surface) {
 	}
 	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", p.st.Surface())
 	drawBorder(s, sz, p.st.Border())
+	p.paintTitle(s, sz)
 	p.owner.paintRows(s, p.rowsOf(), p.interior(sz))
+}
+
+// paintTitle writes the OPENING ROW'S LABEL into the popup's top border.
+//
+// A dropdown that names the category it came from stays readable once it has
+// been torn off the bar or stacked beside a sibling: the frame says "File"
+// rather than leaving four verbs floating over the document. It is also what
+// makes a level legible as a window in its own right, which is the shape a
+// floating or detached menu needs.
+//
+// Skipped when the frame is too narrow to hold the name AND its spaces, rather
+// than clipping to something half-legible: a truncated title on a frame is
+// harder to read than no title.
+func (p *menuPopup) paintTitle(s tui.Surface, sz tui.Size) {
+	title := p.titleText()
+	if title == "" {
+		return
+	}
+	// The last WRITABLE cell is sz.W-2: the frame owns column sz.W-1. An
+	// exclusive limit of sz.W-2 is one short and clips the title's trailing
+	// space against the corner, which reads as the text running into the frame.
+	limit := sz.W - 1
+	if s.StringWidth(title)+2 > limit {
+		return
+	}
+	x := 1
+	s.SetCell(x, 0, " ", p.st.Border())
+	x++
+	for cluster := range tui.Graphemes(title) {
+		w := s.StringWidth(cluster)
+		if x+w > limit {
+			break
+		}
+		s.SetCell(x, 0, cluster, p.st.Selected())
+		x += w
+	}
+	if x < limit {
+		s.SetCell(x, 0, " ", p.st.Border())
+	}
+}
+
+// titleText is the name this level shows on its frame, or "" when it shows
+// none. One source for the width and the paint, so a level cannot reserve room
+// for a title it then declines to draw.
+func (p *menuPopup) titleText() string {
+	if !p.owner.levelTitles {
+		return ""
+	}
+	if it := findItem(p.owner.items, p.parent); it != nil {
+		return it.Label
+	}
+	return ""
 }
 
 // interior is the rect inside the frame, never negative.
