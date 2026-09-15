@@ -222,11 +222,16 @@ type resizeHandle struct {
 	handle Handle
 }
 
-// AcceptsFocus is deliberately absent from this type's contract: a grip is not
-// a tab stop, and adding nodes to the tree must not pollute traversal. It is
-// stated as a method returning false rather than by omission so the intent is
-// visible at the site.
-func (g *resizeHandle) AcceptsFocus() bool { return false }
+// A GRIP DOES NOT IMPLEMENT tui.Focusable, and its absence is the mechanism
+// rather than an omission: the runtime asks for the interface, so a type that
+// does not have it can never be a tab stop. Adding nodes to the tree must not
+// pollute traversal, and a resize grip is a pointer and action affordance, not
+// a place the keyboard stops.
+//
+// Written as absence rather than as AcceptsFocus() returning false because the
+// two are not equivalent to a reader: a method returning false invites someone
+// to make it conditional later, which is exactly how a grip becomes a tab stop
+// in one edit.
 
 // Init installs the grip's pointer resolver.
 func (g *resizeHandle) Init(ctx *tui.Context) {

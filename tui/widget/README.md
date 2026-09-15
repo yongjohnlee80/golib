@@ -25,6 +25,7 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `BufferView`  | Stream / Pager  | yes (scroll)   | `FollowTailChangedEvent`                               |
 | `Tabs`        | Navigation      | yes (bar)      | `TabChangedEvent`                                      |
 | `Split`       | Container       | no (panes are) | `SplitResizedEvent`, `SplitZoomEvent`                  |
+| `Resizable`   | Wrapper         | yes            | `ResizedEvent`                                         |
 | `Float`       | Overlay / Modal | children       | `DismissEvent`                                         |
 | `Modal`       | Dialog          | trap owner     | `OverlayDismissedEvent`                                |
 | `Menu`        | Menu / Command  | yes            | `MenuActivatedEvent`, `MenuSelectionChangedEvent`      |
@@ -273,6 +274,74 @@ split := widget.NewSplit(widget.Horizontal, leftPane, rightPane,
 split.Zoom(widget.PaneA)
 split.Unzoom()
 ```
+
+The divider runs on a **pointer capture** and a named action vocabulary —
+`SplitDragBeginAction`, `SplitDragAction`, `SplitDragEndAction`,
+`SplitStepAction`, `SplitCancelAction` — so a drag keeps receiving motion and
+its own release once the pointer has left the Split's rect, and the keyboard and
+the mouse reach one implementation. Alt-arrows step along the split's **own
+axis** only: `Alt+Left` on a vertical split is a different gesture, not a
+smaller step, and consuming it would swallow a binding the application may want.
+
+**Geometry truth.** What was asked for and what is on screen are different
+questions, and `Split` answers them separately:
+
+| Method             | Answers                                                       |
+| ------------------ | ------------------------------------------------------------- |
+| `RequestedRatio()` | the last explicit request, unclamped — **this is what to persist** |
+| `Ratio()`          | the effective division, as the last commit stored it           |
+| `Cells()`          | the same answer in integers, plus whether a layout has committed |
+
+Persisting the effective value is the bug this prevents: a split clamped by a
+min size on a narrow terminal would save the clamp, and every restore at that
+width would walk the divider a little further.
+
+`SetRatio` records a request, clamps nothing, and publishes nothing
+synchronously. `SplitResizedEvent` comes from the **commit phase**
+(`tui.Context.AfterLayout`) and carries `Ratio`, `ACells` and `BCells` — the
+division actually reached. The timing is exact: nothing on the first layout; one
+event when the cells move, including when a terminal resize moved them and
+nobody called a setter; and nothing at all for a request that changes no cells,
+however far the pointer travelled. Escape cancels a drag back to the **request**
+in force when it began, while a capture the *runtime* revokes is not a
+cancellation — the division reached stands and only the gesture ends.
+
+#### `Resizable`
+
+A wrapper, not a capability: anything can be made resizable without knowing it
+is. `Resizable` **sizes one box**, whereas a `Split` divider **redistributes one
+shared extent** between two panes — expressing the second as the first would
+make every pane's minimum a negotiation with its sibling through a wrapper that
+cannot see it.
+
+```go
+box := widget.NewResizable(widget.NewBox(tree, widget.WithTitle("Files")),
+    widget.WithMinSize(tui.Size{W: 12, H: 4}),
+    widget.WithMaxSize(tui.Size{W: 60, H: 30}),
+    widget.WithHandles(widget.HandleBottomRight, widget.HandleRight),
+    widget.WithResizeStep(5, widget.StepPercent),
+)
+```
+
+`SizeMode()` reports which of two modes it is in. `SizeAuto` tracks the child's
+intrinsic size on *every* pass — continuous, not a one-shot adoption — while
+`SizeExplicit` holds a request that `SetSize` records and `RequestedSize`
+reports. `Size()` is what the wrapper actually reached; the two differ whenever a
+parent, a min or a max had something to say, and a `Resizable` inside a
+fixed-rect `Float` reports the truth rather than being a special case.
+
+Each handle in `WithHandles` is a real component, so the runtime hit-tests,
+styles and captures it. Grips are **not** tab stops — adding nodes to the tree
+must not pollute Tab order. `WithHandlePlacement` chooses whether a grip costs
+the child a cell (`PlacementReserve`) or paints over its edge
+(`PlacementOverlay`), and a grip that will not fit is dropped for the frame
+rather than shrinking the child to make room for its own affordance.
+
+Every resize action — `ResizeStepAction`, `ResizeBeginAction`,
+`ResizeDragAction`, `ResizeEndAction`, `ResizeCancelAction` — resolves on the
+**wrapper**, so a `Resizable` with its pointer disabled resizes identically from
+Shift-arrows. `ResizedEvent` follows the same commit-phase timing rules as
+`SplitResizedEvent` above.
 
 #### `Menu`, `MenuBar` and `MenuItem`
 

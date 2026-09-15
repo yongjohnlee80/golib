@@ -1,6 +1,6 @@
 // Package widget provides golib/tui's standard widget suite: the [Base] embedding
 // contract, the [Box] titled-panel container, the [OverlayHost] modal/popup layer,
-// and the nineteen production-grade TUI components inventoried below, sufficient to
+// and the twenty production-grade TUI components inventoried below, sufficient to
 // build sophisticated terminal applications (such as lazygit-, sqlit-, and
 // neovim-shaped tools) out of the box with zero custom widget plumbing.
 //
@@ -18,6 +18,7 @@
 //	BufferView      Stream / Pager   yes (scroll)    [FollowTailChangedEvent]
 //	Tabs            Navigation       yes (bar)       [TabChangedEvent]
 //	Split           Container        no (panes are)  [SplitResizedEvent], [SplitZoomEvent]
+//	Resizable       Wrapper          yes             [ResizedEvent]
 //	Float           Overlay / Modal  children        [DismissEvent]
 //	Modal           Dialog           trap owner      [OverlayDismissedEvent]
 //	Menu            Menu / Command   yes             [MenuActivatedEvent], [MenuSelectionChangedEvent]
@@ -385,6 +386,76 @@
 // MenuItemModel is inert data a Menu owns, while MenuItem is a node, so the
 // runtime's generic recogniser arms it and it emits [tui.ControlActivatedEvent]
 // because Owner identifies it.
+//
+// # Resizable, and the Split divider
+//
+// Two widgets change a size interactively, and they are deliberately not the
+// same widget. [Resizable] SIZES ONE BOX; a [Split] divider REDISTRIBUTES ONE
+// SHARED EXTENT between two panes. Expressing the second as the first would
+// make every pane's minimum a negotiation with its sibling through a wrapper
+// that cannot see it.
+//
+// RESIZABLE IS A WRAPPER, not a capability a widget opts into. Anything can be
+// made resizable without knowing it is, which is what keeps the feature from
+// reappearing in every widget that ever wants it:
+//
+//	box := widget.NewResizable(widget.NewBox(tree, widget.WithTitle("Files")),
+//		widget.WithMinSize(tui.Size{W: 12, H: 4}),
+//		widget.WithMaxSize(tui.Size{W: 60, H: 30}),
+//		widget.WithHandles(widget.HandleBottomRight, widget.HandleRight),
+//		widget.WithResizeStep(5, widget.StepPercent))
+//
+// It has two modes, reported by [SizeMode]. [SizeAuto] tracks the child's
+// intrinsic size on EVERY pass — it is continuous, not a one-shot adoption, so a
+// child that grows is followed. [SizeExplicit] holds a requested size, which
+// [Resizable.SetSize] records and [Resizable.RequestedSize] reports. What the
+// wrapper actually reached is [Resizable.Size]; the two differ whenever a parent,
+// a min or a max had something to say, and a wrapper inside a fixed-rect
+// [Float] tells the truth rather than being a special case.
+//
+// Each handle in [WithHandles] is a real component, so the runtime hit-tests,
+// styles and captures it instead of the wrapper doing coordinate arithmetic by
+// hand. Grips are NOT tab stops: adding nodes to the tree must not pollute Tab
+// order. [WithHandlePlacement] chooses whether a grip costs the child a cell
+// ([PlacementReserve]) or paints over its edge ([PlacementOverlay]), and a grip
+// that will not fit is dropped for the frame rather than shrinking the child to
+// make room for its own affordance.
+//
+// Keyboard parity is not a nicety: [ResizeStepAction], [ResizeBeginAction],
+// [ResizeDragAction], [ResizeEndAction] and [ResizeCancelAction] all resolve on
+// the WRAPPER, so a Resizable with its pointer disabled resizes identically from
+// Shift-arrows. The divider has the matching vocabulary —
+// [SplitDragBeginAction], [SplitDragAction], [SplitDragEndAction],
+// [SplitStepAction] and [SplitCancelAction] — bound to Alt-arrows along the
+// split's OWN axis only, because Alt-Left on a vertical split is a different
+// gesture rather than a smaller step.
+//
+// GEOMETRY TRUTH. Both widgets separate what was asked for from what is on
+// screen, and publish only the latter:
+//
+//	[Split.RequestedRatio]  the last explicit request, unclamped — what to PERSIST
+//	[Split.Ratio]           the effective division, as the last commit stored it
+//	[Split.Cells]           that same answer in integers, plus whether it exists yet
+//
+// Persisting the effective value is the bug this prevents: a split clamped by a
+// min size on a narrow terminal would save the clamp, and every restore at that
+// width would walk the divider a little further.
+//
+// Both publish from the COMMIT phase (see [tui.Context.AfterLayout]) rather than
+// from their setters, which fixes the timing rather than merely the value.
+// [SplitResizedEvent] and [ResizedEvent] carry what the geometry reached, and the
+// rules are the same for both: nothing on the first layout, one event when the
+// cells actually move — including when a terminal resize moved them and nobody
+// called a setter — and nothing at all for a request that changes no cells,
+// however far the pointer travelled.
+//
+// A drag holds the POINTER CAPTURE, so motion and the release keep arriving once
+// the pointer has left the widget's rect; without it a drag froze at the edge
+// and never saw its own release. Cancelling (Escape) restores the REQUEST that
+// was in force when the gesture began — not the effective value, or a cancel on
+// a narrow terminal would quietly commit the clamp as the user's choice. A
+// capture the RUNTIME revokes is not a cancellation: the size reached stands,
+// and only the gesture ends.
 //
 // # Practical Composition Example
 //

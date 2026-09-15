@@ -54,12 +54,41 @@ import (
                      ┌──────────────────────────────┐
                      │      Frame Pipeline Pass     │
                      │    1. Layout (if dirty)      │
-                     │    2. Render to Buffer       │
-                     │    3. Apply Hardware Cursor  │
-                     │    4. Diff against Last Frame│
-                     │    5. Backend.Flush(diff)    │
+                     │    2. Commit (side effects)  │
+                     │    3. Render to Buffer       │
+                     │    4. Apply Hardware Cursor  │
+                     │    5. Diff against Last Frame│
+                     │    6. Backend.Flush(diff)    │
                      └──────────────────────────────┘
 ```
+
+### The commit phase
+
+Layout is **pure**: it measures and places, and it does not publish, mount,
+unmount or store. That rule is what lets the runtime run a layout pass whenever
+it needs one — twice in a frame, or not at all — without a component observing
+the difference.
+
+Some things genuinely depend on geometry and genuinely have to happen, though: a
+split publishing the ratio it actually reached, a wrapper storing the size it
+was clamped to, an overlay closing because the row it hangs off is no longer
+laid out. Doing them inside `Layout` is what an earlier design did, and it made
+the purity rule a comment rather than a rule. So the frame carries one ordered
+phase between the two pure ones:
+
+```
+… → layout (pure) → COMMIT → render (pure) → present
+```
+
+`Context.AfterLayout(key, fn)` registers a callback from inside `Layout` — and
+only from inside `Layout`, because geometry is not final anywhere else.
+Registrations are keyed by `(owner, CommitKey)`, so a component that lays out
+twice in one frame replaces its own pending record and keeps its queue position
+rather than committing twice. Records run FIFO; one whose owner has been
+unmounted by an earlier callback is discarded unrun. A callback may legitimately
+dirty layout, so layout and commit alternate until they settle, bounded at eight
+passes — exhaustion is a fatal, because silently rendering the eighth attempt
+would hide a feedback loop forever.
 
 ### Interpretation: what happens to an event at each node
 

@@ -127,7 +127,14 @@ type TabChangedEvent struct {
 // mouse drag).
 type SplitResizedEvent struct {
 	Owner tui.NodeID
+	// Ratio is the EFFECTIVE division — what is on screen after the min sizes
+	// and the available cells have had their say, not what was asked for.
 	Ratio float64
+	// ACells and BCells are that same answer in integers, which is what a
+	// consumer persisting or reporting a layout actually needs: a ratio has to
+	// be re-derived against an extent, and two readers dividing it differently
+	// is how a restored split lands one cell off.
+	ACells, BCells int
 }
 
 // DismissEvent is emitted by Float when it hides (Esc on a modal, or
