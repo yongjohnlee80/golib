@@ -86,6 +86,10 @@ type Menu struct {
 	levelMinWidth int
 	// vimKeys adds hjkl as aliases for the arrow keys.
 	vimKeys bool
+	// pending is a submenu asked for before its row had been laid out, held
+	// until the parent level's next Layout can give it an anchor. Empty when
+	// there is nothing waiting.
+	pending ItemID
 	// dropSide is where a bar's first level opens, set by MenuBar so a bottom
 	// bar drops upward rather than back across itself. Zero means "the default
 	// for this orientation", which is what a bare Menu wants.
@@ -255,6 +259,7 @@ func WithActionExecutor(fn func(tui.ActionInvocation) bool) MenuOption {
 // selection. Failure is returned rather than panicked because model data is
 // frequently externally sourced, and a malformed feed is an ordinary outcome.
 func (m *Menu) SetModel(items []MenuItemModel) error {
+	m.pending = "" // an intent recorded against the old rows means nothing now
 	if err := validateItems(items, map[ItemID]bool{}, "items"); err != nil {
 		return err
 	}

@@ -283,21 +283,37 @@ func TestTwoEnabledButtonsCannotShareAMnemonic(t *testing.T) {
 	}); f == nil {
 		t.Error("two enabled buttons sharing a key were accepted")
 	}
-	// The control: distinct keys are fine, and so is a DISABLED twin — neither
-	// of a greyed pair answers, so refusing that shape would reject a dialog
-	// that merely greys one of two related controls.
+	// A DISABLED TWIN IS REFUSED TOO, and that is the point of checking the
+	// declaration rather than the current state. Enabled is mutable: accepting
+	// two greyed twins means SetEnabled(true) on both later produces a dialog
+	// with two controls answering one key and nothing revalidating it, where
+	// which one wins depends on list order.
+	dis := mk("Send", 's')
+	dis.SetEnabled(false)
+	if f := fatalFromWidgetExt(func() {
+		widget.NewModal(widget.NewText("x"), widget.WithButtons(mk("Save", 's'), dis))
+	}); f == nil {
+		t.Error("an enabled and a disabled button sharing a key were accepted; " +
+			"enabling the second later would make the dialog ambiguous")
+	}
+	bothOff := []*widget.Button{mk("Save", 's'), mk("Send", 's')}
+	for _, b := range bothOff {
+		b.SetEnabled(false)
+	}
+	if f := fatalFromWidgetExt(func() {
+		widget.NewModal(widget.NewText("x"), widget.WithButtons(bothOff...))
+	}); f == nil {
+		t.Error("two disabled buttons sharing a key were accepted; uniqueness has " +
+			"to hold for the list's lifetime, not just while they are greyed")
+	}
+
+	// The control: distinct keys are accepted, so the refusals above are about
+	// the collision rather than about mnemonics being rejected outright.
 	if f := fatalFromWidgetExt(func() {
 		widget.NewModal(widget.NewText("x"),
 			widget.WithButtons(mk("Save", 's'), mk("Quit", 'q')))
 	}); f != nil {
 		t.Errorf("distinct mnemonics were refused: %v", f)
-	}
-	dis := mk("Send", 's')
-	dis.SetEnabled(false)
-	if f := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("x"), widget.WithButtons(mk("Save", 's'), dis))
-	}); f != nil {
-		t.Errorf("a disabled twin was refused: %v", f)
 	}
 }
 
@@ -465,4 +481,155 @@ func TestADialogWithNothingToStepToIsQuiet(t *testing.T) {
 			t.Errorf("a disabled sole button was reached (%d activations)", fired.Load())
 		}
 	})
+}
+
+// TestACascadeOpensWithoutWaitingForAFrame.
+//
+// THE DEFECT, and it is one my own tests were hiding. A nested level anchors to
+// a row of its parent, and that row has no rect until the parent popup has been
+// laid out — so a second open issued in the same turn found no anchor, returned
+// ErrAnchorUnusable, and was simply lost. A user pressing Alt+O then k faster
+// than a frame got Option and never Keymaps.
+//
+// Every cascade test in this package settles between the two opens, which is
+// what a human does and is exactly why none of them saw it. This one does NOT
+// settle: both intents are issued in one turn, as a terminal delivers a burst
+// of keystrokes, and the cascade must arrive anyway.
+func TestACascadeOpensWithoutWaitingForAFrame(t *testing.T) {
+	model := []widget.MenuItemModel{
+		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
+			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
+				widget.NewCommand("vim", "Vim", nil),
+			}),
+		}),
+	}
+
+	t.Run("two Opens in one turn", func(t *testing.T) {
+		m := widget.NewMenu()
+		h, _ := barFixture(t, m, model, 50, 14)
+		defer h.stop()
+		h.onLoop(func() { m.Context().RequestFocus() })
+		h.settle()
+
+		// NO SETTLE BETWEEN. The second open lands before the first level has
+		// been laid out, which is the whole point.
+		h.onLoop(func() {
+			_ = m.Open("option")
+			_ = m.Open("km")
+		})
+		h.settle()
+		h.settle()
+
+		if n := openLevelsOn(t, h, m); n != 2 {
+			t.Errorf("OpenLevels() = %d after two opens in one turn, want 2 — the "+
+				"nested open was dropped for want of a frame\n%s", n, h.grid())
+		}
+		if !strings.Contains(h.grid(), "Vim") {
+			t.Errorf("the nested level never appeared:\n%s", h.grid())
+		}
+	})
+
+	t.Run("a burst of keystrokes", func(t *testing.T) {
+		// The same thing through real input: the mnemonic that opens Option and
+		// the one that opens Keymaps, injected together.
+		opt := model[0]
+		opt.Hotkey = 'o'
+		km := opt.Children[0]
+		km.Hotkey = 'k'
+		opt.Children = []widget.MenuItemModel{km}
+		burst := []widget.MenuItemModel{opt}
+
+		m := widget.NewMenu()
+		h, _ := barFixture(t, m, burst, 50, 14)
+		defer h.stop()
+		h.onLoop(func() { m.Context().RequestFocus() })
+		h.settle()
+
+		h.inject(
+			tui.KeyEvent{Kind: tui.KeyPress, Code: 'o'},
+			tui.KeyEvent{Kind: tui.KeyPress, Code: 'k'},
+		)
+		h.settle()
+		h.settle()
+
+		if n := openLevelsOn(t, h, m); n != 2 {
+			t.Errorf("OpenLevels() = %d after o then k in one burst, want 2\n%s",
+				n, h.grid())
+		}
+	})
+}
+
+// TestAnImpossibleAnchorIsStillAnError.
+//
+// The control for queuing. "Not laid out yet" is early and worth waiting a
+// frame for; "not on screen at all" is not, and retrying it would leave the
+// caller waiting for a frame that is never going to help — the failure mode
+// queuing was introduced to avoid, arrived at from the other side.
+func TestAnImpossibleAnchorIsStillAnError(t *testing.T) {
+	model := []widget.MenuItemModel{
+		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
+			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
+				widget.NewCommand("vim", "Vim", nil),
+			}),
+		}),
+	}
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, model, 50, 14)
+	defer h.stop()
+
+	// "km" lives two levels down and NOTHING is open, so its row is nowhere on
+	// screen and no future layout will give it a rect.
+	var err error
+	h.onLoop(func() { err = m.Open("km") })
+	h.settle()
+	h.settle()
+	if err == nil {
+		t.Error("opening a row whose parent level is closed was accepted; it has " +
+			"no anchor now and will not grow one")
+	}
+	if n := openLevelsOn(t, h, m); n != 0 {
+		t.Errorf("OpenLevels() = %d after a refused open, want 0", n)
+	}
+
+	// And a row that is not in the model at all.
+	h.onLoop(func() { err = m.Open("nosuchrow") })
+	h.settle()
+	if err == nil {
+		t.Error("opening a row the model does not contain was accepted")
+	}
+}
+
+// TestAQueuedOpenDoesNotSurviveItsCascade.
+//
+// An intent recorded against one arrangement of rows must not be carried into
+// another: a queued open that outlived a close would reopen a level the user
+// had just dismissed, a frame later and for no reason they could see.
+func TestAQueuedOpenDoesNotSurviveItsCascade(t *testing.T) {
+	model := []widget.MenuItemModel{
+		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
+			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
+				widget.NewCommand("vim", "Vim", nil),
+			}),
+		}),
+	}
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, model, 50, 14)
+	defer h.stop()
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
+
+	// Queue the nested open and close the whole cascade in the SAME turn, so
+	// the intent is still outstanding when the levels go.
+	h.onLoop(func() {
+		_ = m.Open("option")
+		_ = m.Open("km")
+		m.Close()
+	})
+	h.settle()
+	h.settle()
+
+	if n := openLevelsOn(t, h, m); n != 0 {
+		t.Errorf("OpenLevels() = %d after closing with an open queued; the queued "+
+			"intent reopened a dismissed cascade\n%s", n, h.grid())
+	}
 }

@@ -111,8 +111,52 @@ func (p *menuPopup) Layout(cs tui.Constraints) tui.Size {
 	clear(p.rects) // per-pass, like the runtime's own declared regions
 	if ctx := p.Context(); ctx != nil {
 		p.owner.declareRows(ctx, rows, p.interior(size), p.rects)
+		p.owner.drainPending(ctx, p.rects)
 	}
 	return size
+}
+
+// canQueue reports whether an open that cannot find its anchor is merely EARLY
+// rather than impossible: the row belongs to a level that exists, so the next
+// layout of that level will give it a rect.
+//
+// Anything else is a genuinely unusable anchor — a row that is clipped away, or
+// absent from the model — and must stay an error. Retrying those would leave a
+// caller waiting for a frame that is never going to help.
+func (m *Menu) canQueue(parent ItemID) bool {
+	d, ok := m.depthOfRow(parent)
+	return ok && d > 0 && d <= len(m.levels)
+}
+
+// drainPending opens a submenu that was asked for before its row had a rect.
+//
+// Deferred to the COMMIT phase rather than run here: Layout is pure, and
+// opening a level mounts a node on the host. AfterLayout is the sanctioned
+// place for a geometry-derived side effect, and by the time it runs the rect
+// this open needs is the one that was just declared.
+//
+// Revalidated rather than trusted. Between the request and the commit the model
+// may have changed or the cascade may have been closed, and an intent is not a
+// promise that the row is still there.
+func (m *Menu) drainPending(ctx *tui.Context, rects map[ItemID]tui.Rect) {
+	want := m.pending
+	if want == "" {
+		return
+	}
+	if _, here := rects[want]; !here {
+		return // a different level's layout; the owning one will find it
+	}
+	ctx.AfterLayout("menu.pendingOpen", func() {
+		if m.pending != want {
+			return // superseded or cleared while the frame was in flight
+		}
+		m.pending = ""
+		it := findItem(m.items, want)
+		if it == nil || it.Kind != ItemKindSubmenu || !it.selectable() {
+			return
+		}
+		_ = m.openLevel(want, it.Children)
+	})
 }
 
 // Render paints the frame and the rows.
@@ -153,18 +197,18 @@ func (p *menuPopup) paintTitle(s tui.Surface, sz tui.Size) {
 	x := 1
 	s.SetCell(x, 0, " ", p.st.Border())
 	x++
+	// No per-cluster bound: the whole title is already known to fit, because the
+	// clusters this loop walks are exactly the ones StringWidth summed above. A
+	// re-check here would be a guard that cannot fire, and the surface drops
+	// out-of-clip writes anyway.
 	for cluster := range tui.Graphemes(title) {
-		w := s.StringWidth(cluster)
-		if x+w > limit {
-			break
-		}
 		// THE SURFACE LOOK, NOT THE SELECTION. The title names the level; it is
 		// not a row, cannot be moved to and cannot be activated. Painting it
 		// highlighted puts a second lit thing on screen beside the row that
 		// really is selected, and the two compete to mean "here" — with the
 		// category already lit on the bar above, that was three.
 		s.SetCell(x, 0, cluster, p.st.Surface())
-		x += w
+		x += s.StringWidth(cluster)
 	}
 	if x < limit {
 		s.SetCell(x, 0, " ", p.st.Border())
@@ -509,22 +553,39 @@ func (m *Menu) openLevel(parent ItemID, children []MenuItemModel) error {
 		Ref:  m.anchorFor(ctx, parent),
 		Pref: Placement{Side: side},
 	}
-	// A row that has not been laid out — or has been clipped out of the rect its
-	// parent allowed — declared no region, so there is nothing to anchor to. An
-	// ERROR rather than a silent nil: the caller asked for a popup, and telling
-	// them nothing happened is how they end up looking for one that was never
-	// going to appear.
-	if !spec.Ref.Valid() {
-		return fmt.Errorf("%w: row %q is not currently laid out", ErrAnchorUnusable, parent)
-	}
-
+	// THE HOST IS THE ONE PLACE A BAD ANCHOR IS REFUSED. A ref this method can
+	// build always names an owner — anchorFor issues it from a mounted context,
+	// and Valid() asks only whether an owner is named — so a local pre-check
+	// here would be a guard that cannot fire. What it was meant to catch (a row
+	// that has declared no region: not yet measured, or clipped out of the rect
+	// its parent allowed) is caught one step later, where the ref is actually
+	// RESOLVED against the tree, and comes back as the same ErrAnchorUnusable
+	// [Menu.Open] documents.
 	popup := &menuPopup{owner: m, parent: parent, st: m.style}
 	// The layer id namespaces the row under the owning Menu's node, so two menus
 	// with the same ItemID in their models cannot collide on the host.
 	id := LayerID(fmt.Sprintf("menu:%d:%s", ctx.ID(), parent))
 	if err := host.OpenAnchored(id, popup, spec, m.policy); err != nil {
+		// NOT YET LAID OUT IS NOT THE SAME AS NOT THERE. A level opened in this
+		// same turn has not been measured, so its rows have declared no regions
+		// and a cascade issued in one burst — Alt+O then k faster than a frame —
+		// found no anchor and was thrown away. The user simply lost the second
+		// keystroke, and every test in this package settled between opens, so
+		// none of them saw it.
+		//
+		// When the row BELONGS to a level that exists, the intent is sound and
+		// only early: remember it, and the parent's next Layout opens it once
+		// the rows have rects. Anything else is a genuinely unusable anchor and
+		// still an error — a caller asking for a popup on a row that is clipped
+		// away or absent has to be told, not left waiting for a frame that will
+		// not help.
+		if m.canQueue(parent) {
+			m.pending = parent
+			return nil
+		}
 		return err // nothing recorded: the model still describes what is mounted
 	}
+	m.pending = "" // satisfied
 
 	m.levels = append(m.levels, menuOpenLevel{parent: parent, layer: id, popup: popup})
 	// The new level owns the selection: its first selectable row.
@@ -604,7 +665,12 @@ func rowsContain(rows []MenuItemModel, id ItemID) bool {
 // THE ONE UNMOUNT PATH for a level. Deepest first, so each close sees a cascade
 // that is valid above it, and every entry is removed from the slice by this
 // function rather than by a caller that might forget one.
+// A QUEUED OPEN DOES NOT SURVIVE THE CASCADE IT BELONGED TO. An intent recorded
+// against one arrangement of rows must not be carried into another: closing the
+// levels, or replacing the model, makes the row it named a different row or no
+// row at all.
 func (m *Menu) closeLevelsFrom(i int) {
+	m.pending = ""
 	if i < 0 || i >= len(m.levels) {
 		return
 	}

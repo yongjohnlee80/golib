@@ -206,6 +206,90 @@ func TestAPeggedRowDoesNotOverlapTheRowBeforeIt(t *testing.T) {
 	}
 }
 
+// TestABarTooNarrowForItsPeggedRowsDropsThemRatherThanStacksThem.
+//
+// The degenerate end of pegging, and the one a naive right-to-left placement
+// gets wrong: when the bar is narrower than the rows pegged to its far end,
+// the arithmetic that walks leftward runs past column zero. Rows then land at
+// negative or zero-width rects, which either paint on top of each other at the
+// left edge or claim cells outside the bar entirely.
+//
+// What must happen instead is that the row NEAREST the edge takes what space
+// there is — clipped, because a clipped row still has cells and is still
+// addressable through them — and the rows behind it are not placed at all. A
+// row with no rect is not painted and cannot be clicked, which is the honest
+// outcome: there is nowhere to put it.
+func TestABarTooNarrowForItsPeggedRowsDropsThemRatherThanStacksThem(t *testing.T) {
+	// Two pegged rows and a leading one. "Help" needs six columns with its
+	// padding and the bar is given four, so Help must be clipped, Tools must
+	// find nothing left, and File must never reach the pegged block.
+	crowded := func() []widget.MenuItemModel {
+		file := widget.NewSubmenu("file", "File", []widget.MenuItemModel{
+			widget.NewCommand("new", "New", nil),
+		})
+		tools := widget.NewSubmenu("tools", "Tools", []widget.MenuItemModel{
+			widget.NewCommand("fmt", "Format", nil),
+		})
+		help := widget.NewSubmenu("help", "Help", []widget.MenuItemModel{
+			widget.NewCommand("about", "About", nil),
+		})
+		tools.PegRight = true
+		help.PegRight = true
+		return []widget.MenuItemModel{file, tools, help}
+	}
+
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, crowded(), 4, 6)
+	defer h.stop()
+
+	line := h.row(0)
+	if !strings.Contains(line, "H") {
+		t.Errorf("the row nearest the edge was not painted at all in %q; a clipped "+
+			"row still has cells and should keep them\n%s", line, h.grid())
+	}
+	if strings.Contains(line, "T") {
+		t.Errorf("Tools was painted in %q with no columns left for it, so two "+
+			"pegged rows are sharing cells\n%s", line, h.grid())
+	}
+	if strings.Contains(line, "F") {
+		t.Errorf("File was painted in %q although the pegged block starts at "+
+			"column 0; the leading run ran underneath it\n%s", line, h.grid())
+	}
+
+	// NOT PLACED MEANS NOT ANCHORABLE, and that is the difference between
+	// skipping the row and giving it a zero-width rect. A zero-width rect still
+	// declares a region, so the anchor would resolve and Open would mount a
+	// dropdown hanging off a row the user cannot see — which is the outcome
+	// [Menu.Open] promises not to have.
+	var err error
+	h.onLoop(func() { err = m.Open("tools") })
+	h.settle()
+	if err == nil {
+		t.Errorf("opening a pegged row that had no room was accepted; it is not "+
+			"on screen, so there is nothing for its dropdown to hang off\n%s", h.grid())
+	}
+
+	// THE CONTROL: the same model on a bar with room places all three and Tools
+	// opens, so the absences above are about the width and not about pegging
+	// dropping rows it should have kept.
+	m2 := widget.NewMenu()
+	h2, _ := barFixture(t, m2, crowded(), 50, 6)
+	defer h2.stop()
+	wide := h2.row(0)
+	for _, label := range []string{"File", "Tools", "Help"} {
+		if !strings.Contains(wide, label) {
+			t.Errorf("%q is missing from a bar with room for it: %q\n%s",
+				label, wide, h2.grid())
+		}
+	}
+	h2.onLoop(func() { err = m2.Open("tools") })
+	h2.settle()
+	if err != nil {
+		t.Errorf("Open(tools) = %v on a bar with room for it; the refusal above "+
+			"is not about the row being off screen", err)
+	}
+}
+
 // TestADialogTitleSitsOnItsBorder.
 //
 // The title used to be painted on the first row INSIDE the frame, which spends

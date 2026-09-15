@@ -111,7 +111,10 @@ func NewButton(label string, opts ...ButtonOption) *Button {
 // WithMnemonic sets the key that reaches this button directly, such as 'y' on
 // a Yes button.
 //
-// The button records it and underlines it in the label; it does NOT bind it.
+// The button records it and underlines it IN THE LABEL WHEN THE LABEL CONTAINS
+// IT — a mnemonic naming a letter the label does not have still works as a key
+// and simply has nothing to mark, which is a legitimate shape for an icon or a
+// translated label. It does NOT bind the key.
 // Resolution belongs to the container: a Modal matches a keystroke against its
 // own enabled buttons, so the same metadata can later mean something slightly
 // different in a toolbar or a form without every button in the tree competing
@@ -191,11 +194,11 @@ func (b *Button) WithPointerPolicy(p tui.PointerPolicy) *Button {
 	return b
 }
 
-// Role reports what the button means to its container.
 // Mnemonic is the key that reaches this button directly, or 0 for none. The
-// button records and underlines it; the CONTAINER resolves it.
+// button records it and marks it in the label; the CONTAINER resolves it.
 func (b *Button) Mnemonic() rune { return b.mnemonic }
 
+// Role reports what the button means to its container.
 func (b *Button) Role() ButtonRole { return b.role }
 
 // Label reports the button's text.
