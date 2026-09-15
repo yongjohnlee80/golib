@@ -702,6 +702,11 @@ func TestADropdownNamesTheRowThatOpenedIt(t *testing.T) {
 		m := widget.NewMenu()
 		h, _ := barFixture(t, m, twoCategories(false), 50, 12)
 		defer h.stop()
+		// FOCUSED, so the selected row wears the real selection look. Blurred,
+		// it wears the surface — the same look as the title — and the
+		// comparison below would pass on two things that are both unhighlighted.
+		h.onLoop(func() { m.Context().RequestFocus() })
+		h.settle()
 		h.onLoop(func() { _ = m.Open("file") })
 		h.settle()
 		h.settle()
@@ -722,6 +727,16 @@ func TestADropdownNamesTheRowThatOpenedIt(t *testing.T) {
 			if !strings.Contains(grid, want) {
 				t.Errorf("row %q went missing:\n%s", want, grid)
 			}
+		}
+		// THE TITLE IS NOT HIGHLIGHTED. It names the level; it is not a row,
+		// cannot be selected and cannot be activated, so painting it like the
+		// selection puts a second lit thing beside the row that really is
+		// selected and the two compete to mean "here".
+		tx := strings.Index(line, "File")
+		nx, ny := cellOfLabel(t, h, "New")
+		if rowStyleAt(t, h, tx, row) == rowStyleAt(t, h, nx, ny) {
+			t.Errorf("the level's title is painted like its selected row; only one "+
+				"of them is somewhere the keyboard can go\n%s", grid)
 		}
 	})
 
@@ -928,4 +943,94 @@ func TestTheBarsTwoAxesMeanDifferentThings(t *testing.T) {
 			t.Errorf("Up from the second row closed the level (%d open)", n)
 		}
 	})
+}
+
+// TestADropdownHasAMinimumWidth.
+//
+// Without a floor each level is exactly as wide as its own longest row, so a
+// menu whose categories hold short verbs renders as a row of differently-sized
+// boxes — one per category, each a different width, none of them wrong on its
+// own.
+func TestADropdownHasAMinimumWidth(t *testing.T) {
+	// Rows far shorter than the floor, so the floor is what decides the width.
+	narrow := []widget.MenuItemModel{
+		widget.NewSubmenu("a", "A", []widget.MenuItemModel{
+			widget.NewCommand("x", "Go", nil),
+		}),
+	}
+	widthOf := func(t *testing.T, m *widget.Menu) int {
+		t.Helper()
+		h, _ := barFixture(t, m, narrow, 60, 12)
+		defer h.stop()
+		h.onLoop(func() { _ = m.Open("a") })
+		h.settle()
+		h.settle()
+		grid := h.grid()
+		row := rowContaining(grid, "┌")
+		if row < 0 {
+			t.Fatalf("no frame:\n%s", grid)
+		}
+		// COLUMNS, NOT BYTES. strings.Index would report a byte offset, and the
+		// frame glyphs are three bytes each — which is how a 14-column box
+		// measures 34.
+		runes := []rune(strings.Split(grid, "\n")[row])
+		start, end := -1, -1
+		for i, r := range runes {
+			switch {
+			case r == '┌' && start < 0:
+				start = i
+			case r == '┐' && start >= 0 && end < 0:
+				end = i
+			}
+		}
+		if start < 0 || end < 0 {
+			t.Fatalf("incomplete frame on row %d\n%s", row, grid)
+		}
+		return end - start + 1
+	}
+
+	floored := widthOf(t, widget.NewMenu())
+	// The floor is an INTERIOR, so the frame is two wider.
+	if want := 12 + 2; floored != want {
+		t.Errorf("a narrow dropdown is %d columns wide, want %d", floored, want)
+	}
+
+	// Removable, and the control that the number above comes from the floor
+	// rather than from the content.
+	unfloored := widthOf(t, widget.NewMenu(widget.WithLevelMinWidth(0)))
+	if unfloored >= floored {
+		t.Errorf("with the floor removed the dropdown is %d wide and with it %d; "+
+			"the floor is not what widened it", unfloored, floored)
+	}
+
+	// And the floor never SHRINKS a level that needs more.
+	wide := []widget.MenuItemModel{
+		widget.NewSubmenu("a", "A", []widget.MenuItemModel{
+			widget.NewCommand("x", "A considerably longer row than the floor", nil),
+		}),
+	}
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, wide, 70, 12)
+	defer h.stop()
+	h.onLoop(func() { _ = m.Open("a") })
+	h.settle()
+	h.settle()
+	if !strings.Contains(h.grid(), "A considerably longer row than the floor") {
+		t.Errorf("the floor clipped a row wider than itself:\n%s", h.grid())
+	}
+}
+
+// TestANegativeLevelMinWidthIsRefused keeps the option honest: a negative floor
+// is not a narrower box, and normalising it to zero would hide the mistake.
+func TestANegativeLevelMinWidthIsRefused(t *testing.T) {
+	if f := fatalFromWidgetExt(func() {
+		widget.NewMenu(widget.WithLevelMinWidth(-1))
+	}); f == nil {
+		t.Error("a negative minimum width was accepted")
+	}
+	if f := fatalFromWidgetExt(func() {
+		widget.NewMenu(widget.WithLevelMinWidth(0))
+	}); f != nil {
+		t.Errorf("zero should remove the floor, not be refused: %v", f)
+	}
 }
