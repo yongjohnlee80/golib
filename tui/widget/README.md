@@ -118,7 +118,7 @@ root := widget.NewOverlayHost(mainLayout)
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-- `Select` automatically projects its open options list onto the overlay host via an internal bus handshake.
+- `Select` projects its open options list onto the **nearest enclosing** overlay host, resolved from the component tree — so two hosts in one application each serve only the widgets inside them.
 - `Float` attaches via `host.Attach(float)` (and detaches via `host.Detach(float)`) and provides toggleable windows (`Show()` / `Hide()`), focus trapping, background scrimming, and Esc-dismissal. It is the **lower-level** primitive: a positioned, trapping layer around arbitrary content.
 - `Modal` is the **composed dialog** on the same stack — a card with a title, body and role-carrying buttons, plus the lifecycle a dialog needs. Reach for `Modal` when you want a dialog; reach for `Float` when you want a floating layer and intend to supply the behaviour yourself. See [`Modal`](#modal) below.
 

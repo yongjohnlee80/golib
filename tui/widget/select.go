@@ -27,7 +27,7 @@ type SelectItem[T any] struct {
 //     - Closed Phase: Occupies 1 row in the parent layout, displaying the currently
 //     selected item label.
 //     - Open Phase: Projects a modal [selectPopup] onto the root [OverlayHost] via an
-//     internal bus handshake ([overlayOpenEvent] / [overlayCloseEvent]).
+//     nearest enclosing [OverlayHost], resolved from the component tree.
 //  2. Focus Trap & Outside Dismissal:
 //     When opened, focus is transferred to the overlay popup list. Tab traversal is
 //     trapped within the popup. Clicking anywhere outside the popup or pressing Escape
@@ -186,21 +186,34 @@ func (s *Select[T]) Init(ctx *tui.Context) {
 	s.open, s.popup = false, nil
 	ctx.OnUnmount(func() {
 		if s.open && s.popup != nil {
-			s.publish(overlayCloseEvent{layer: s.popup})
+			if host, ok := hostFor[layerHost](s.Context()); ok {
+				host.removeLayer(s.popup)
+			}
 			s.open, s.popup = false, nil
 		}
 	})
 }
 
-// openPopup mounts the option list on the OverlayHost (via the internal Bus
-// handshake) and emits OpenedEvent.
+// openPopup mounts the option list on the NEAREST ENCLOSING OverlayHost and
+// emits OpenedEvent.
+//
+// It used to publish an unaddressed request on the Bus, which every mounted
+// OverlayHost received: with two hosts in one application both tried to mount
+// the same popup component and the runtime panicked — a component value mounts
+// at most once — so opening a dropdown took the application down. The host is
+// now resolved from the tree and called directly, and a Select with no host
+// above it simply does not open rather than publishing into the void.
 func (s *Select[T]) openPopup() {
 	if s.open {
 		return
 	}
+	host, ok := hostFor[layerHost](s.Context())
+	if !ok {
+		return // nothing can hold the popup; opening would be a lie
+	}
 	s.popup = &selectPopup[T]{owner: s}
 	s.open = true
-	s.publish(overlayOpenEvent{layer: s.popup})
+	host.addLayer(s.popup)
 	s.publish(OpenedEvent{Owner: s.NodeID()})
 	s.MarkDirty()
 }
@@ -213,7 +226,9 @@ func (s *Select[T]) closePopup() {
 	}
 	popup := s.popup
 	s.open, s.popup = false, nil
-	s.publish(overlayCloseEvent{layer: popup})
+	if host, ok := hostFor[layerHost](s.Context()); ok {
+		host.removeLayer(popup)
+	}
 	s.publish(ClosedEvent{Owner: s.NodeID()})
 	s.MarkDirty()
 }

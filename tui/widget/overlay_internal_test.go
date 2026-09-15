@@ -1,8 +1,9 @@
 package widget
 
-// The overlay open/close protocol is an UNEXPORTED bus handshake, so these
-// tests live inside the package: a consumer cannot publish these events, which
-// is exactly why nothing outside can prove they are handled safely.
+// The unkeyed overlay operations are UNEXPORTED — the layers they mount are this
+// package's own private types — so these tests live inside the package: nothing
+// outside can call them, which is exactly why nothing outside can prove they are
+// idempotent and safe during teardown.
 
 import (
 	"context"
@@ -74,8 +75,8 @@ func TestADuplicateOverlayOpenIsANoOpRatherThanACrash(t *testing.T) {
 
 	layer := NewText("popup")
 	h.onLoopInternal(func() {
-		host.ctx.Bus().Publish(overlayOpenEvent{layer: layer})
-		host.ctx.Bus().Publish(overlayOpenEvent{layer: layer})
+		host.addLayer(layer)
+		host.addLayer(layer)
 	})
 	h.syncInternal()
 	h.syncInternal()
@@ -86,8 +87,8 @@ func TestADuplicateOverlayOpenIsANoOpRatherThanACrash(t *testing.T) {
 
 	// The mirror: closing twice must also be a no-op.
 	h.onLoopInternal(func() {
-		host.ctx.Bus().Publish(overlayCloseEvent{layer: layer})
-		host.ctx.Bus().Publish(overlayCloseEvent{layer: layer})
+		host.removeLayer(layer)
+		host.removeLayer(layer)
 	})
 	h.syncInternal()
 	h.syncInternal()
@@ -99,7 +100,7 @@ func TestADuplicateOverlayOpenIsANoOpRatherThanACrash(t *testing.T) {
 	// And a close for something that was never open changes nothing.
 	before := host.Stack.Len()
 	h.onLoopInternal(func() {
-		host.ctx.Bus().Publish(overlayCloseEvent{layer: NewText("never opened")})
+		host.removeLayer(NewText("never opened"))
 	})
 	h.syncInternal()
 	h.syncInternal()

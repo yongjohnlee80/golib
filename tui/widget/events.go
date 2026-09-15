@@ -133,12 +133,3 @@ type SplitResizedEvent struct {
 // DismissEvent is emitted by Float when it hides (Esc on a modal, or
 // Float.Hide).
 type DismissEvent struct{ Owner tui.NodeID }
-
-// --- internal overlay protocol (OverlayHost <-> Select) ---
-
-// overlayOpenEvent asks the mounted OverlayHost to mount layer on its
-// overlay Stack. Unexported: the protocol is package plumbing, not API.
-type overlayOpenEvent struct{ layer tui.Component }
-
-// overlayCloseEvent asks the mounted OverlayHost to unmount layer.
-type overlayCloseEvent struct{ layer tui.Component }

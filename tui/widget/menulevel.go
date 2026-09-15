@@ -239,6 +239,36 @@ type anchorHost interface {
 	CloseAnchored(id LayerID, reason DismissReason)
 }
 
+// layerHost is the UNKEYED pair a plain popup needs — a Select's dropdown, which
+// has no id and no anchor.
+//
+// Its methods are unexported, which is a statement rather than an oversight: the
+// layers it mounts are this package's own private types, so only this package's
+// OverlayHost can hold one. A consumer CAN implement anchorHost above and serve
+// a Menu; there is nothing useful they could do with this one.
+type layerHost interface {
+	addLayer(layer tui.Component)
+	removeLayer(layer tui.Component)
+}
+
+// hostFor resolves the nearest enclosing ancestor satisfying T.
+//
+// ONE rule about which host a widget belongs to — nearest enclosing, never a
+// sibling, never a broadcast — shared by every widget that owns a layer, with
+// the interface saying what that widget actually needs from it.
+func hostFor[T any](ctx *tui.Context) (T, bool) {
+	var zero T
+	if ctx == nil {
+		return zero, false
+	}
+	found := ctx.Ancestor(func(c tui.Component) bool {
+		_, ok := c.(T)
+		return ok
+	})
+	h, ok := found.(T)
+	return h, ok
+}
+
 // host resolves the ONE container that will hold this Menu's levels: the
 // nearest enclosing overlay host.
 //
@@ -255,18 +285,7 @@ type anchorHost interface {
 // state, and a Menu can legitimately be re-parented between one open and the
 // next.
 func (m *Menu) host() anchorHost {
-	ctx := m.Context()
-	if ctx == nil {
-		return nil
-	}
-	found := ctx.Ancestor(func(c tui.Component) bool {
-		_, ok := c.(anchorHost)
-		return ok
-	})
-	if found == nil {
-		return nil
-	}
-	h, _ := found.(anchorHost)
+	h, _ := hostFor[anchorHost](m.Context())
 	return h
 }
 
