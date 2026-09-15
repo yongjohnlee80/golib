@@ -57,15 +57,23 @@ func DefaultButtonStyle() *ButtonStyle {
 	normal := style.New().
 		Background(style.TokenSurface).
 		Foreground(style.TokenForeground)
-	focused := style.New().
-		Background(style.TokenPrimary).
-		Foreground(style.TokenTextOnPrimary).
-		Bold(true)
+	// REVERSE, not a second colour pair. Inverting by naming tokens fails
+	// wherever a theme leaves foreground and background as the terminal's own
+	// defaults: both sides resolve to "default" and the emphasis disappears.
+	// Reverse is an attribute the terminal applies to whatever the cell
+	// actually holds, so it inverts under every theme, including none.
+	focused := normal.Reverse(true).Bold(true)
 	return &ButtonStyle{
 		normal:   normal,
 		focused:  focused,
 		disabled: style.New().Background(style.TokenSurface).Foreground(style.TokenTextMuted).Faint(true),
-		armed:    focused.Reverse(true),
+		// ARMED NEEDS ITS OWN CUE. It used to be the focused look reversed, which
+		// worked while focus was an accent fill — reversing that produced
+		// something visibly different. Now that focus IS the reverse, reversing
+		// again is the same style (Reverse is a setter, not a toggle) and a
+		// press would show nothing at all. Underline is the monochrome way to
+		// say "held down" without another colour.
+		armed: focused.Underline(true),
 	}
 }
 

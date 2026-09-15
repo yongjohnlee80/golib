@@ -510,7 +510,7 @@ func (p *selectPopup[T]) Render(s tui.Surface) {
 	surface := style.New().Background(style.TokenBoost)
 	border := style.New().Foreground(style.TokenBorderFocused).Background(style.TokenBoost)
 	optSt := style.New().Foreground(style.TokenForeground).Background(style.TokenBoost)
-	hiSt := style.New().Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary)
+	hiSt := style.New().Reverse(true)
 	filterSt := style.New().Foreground(style.TokenTextMuted).Background(style.TokenBoost)
 
 	s.Fill(tui.Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}, " ", surface)

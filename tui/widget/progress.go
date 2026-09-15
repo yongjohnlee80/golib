@@ -103,7 +103,7 @@ func WithSpinner(frames []string, interval time.Duration) ProgressBarOption {
 }
 
 // WithProgressStyles sets the filled and empty cell styles (defaults:
-// filled style.TokenPrimary foreground, empty style.TokenTextMuted faint).
+// filled style.TokenForeground, empty style.TokenTextMuted faint).
 func WithProgressStyles(filled, empty style.Style) ProgressBarOption {
 	return func(p *ProgressBar) { p.filled, p.empty = filled, empty }
 }
@@ -112,7 +112,7 @@ func WithProgressStyles(filled, empty style.Style) ProgressBarOption {
 func NewProgressBar(opts ...ProgressBarOption) *ProgressBar {
 	p := &ProgressBar{
 		interval: 100 * time.Millisecond,
-		filled:   style.New().Foreground(style.TokenPrimary),
+		filled:   style.New().Foreground(style.TokenForeground),
 		empty:    style.New().Foreground(style.TokenTextMuted).Faint(true),
 	}
 	for _, o := range opts {
