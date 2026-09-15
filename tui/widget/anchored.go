@@ -227,6 +227,17 @@ func (h *OverlayHost) OpenAnchored(id LayerID, layer tui.Component, spec AnchorS
 	if !h.ctx.SubtreeContains(spec.Ref.Owner()) {
 		return fmt.Errorf("%w: its owner is outside this host", ErrAnchorUnusable)
 	}
+	// And the reference must still RESOLVE. A ref carries the generation it was
+	// issued under, so one taken before an invalidation names a region that no
+	// longer exists — the owner may have been re-laid-out, or the row it
+	// described may be gone. Accepting it registered a layer whose only possible
+	// future was the anchor-loss commit dismissing it on the next pass: the
+	// caller was told the open succeeded and then watched the popup vanish, with
+	// nothing naming the stale ref as the cause. Checked BEFORE any mutation,
+	// which is what makes this a transaction rather than a sequence.
+	if _, ok := h.ctx.ResolveAnchor(spec.Ref); !ok {
+		return fmt.Errorf("%w: the anchor no longer resolves", ErrAnchorUnusable)
+	}
 	// The same component cannot be two layers: it would need to be mounted
 	// twice, which the runtime refuses, and the second id could never be closed
 	// independently.
@@ -288,9 +299,16 @@ func (h *OverlayHost) mountLayer(layer tui.Component) (err error) {
 	return nil
 }
 
-// policyOr substitutes the default for a nil or typed-nil policy.
+// policyOr substitutes the default for a nil or TYPED-NIL policy.
+//
+// The typed case is the one that mattered and the one the old == nil check
+// missed: an AnchorPolicyFunc holding no function is a non-nil interface with a
+// live type descriptor, so it was stored and then called — inside a layout pass,
+// several frames after the OpenAnchored call that supplied it, with nothing in
+// the panic naming either. The host stores a policy for LATER, so the boundary
+// that stores it is the only place that can still name what went wrong.
 func policyOr(p AnchorPolicy) AnchorPolicy {
-	if p == nil {
+	if nilLike(p) {
 		return FlipClipPolicy{}
 	}
 	return p

@@ -25,8 +25,8 @@ func TestABarLaysItsRowsAlongOneLineAndDropsAwayFromItsEdge(t *testing.T) {
 		placement widget.BarPlacement
 		wantAbove bool
 	}{
-		{widget.BarTop, false},
-		{widget.BarBottom, true},
+		{widget.BarPlacementTop, false},
+		{widget.BarPlacementBottom, true},
 	} {
 		t.Run(tc.placement.String(), func(t *testing.T) {
 			m := widget.NewMenu()
@@ -178,12 +178,12 @@ func TestANilMenuIsRefusedAtConstruction(t *testing.T) {
 	}
 	// And the placement bound is probed at its edge, not at a far value.
 	if f := fatalFromWidgetExt(func() {
-		widget.NewMenuBar(widget.NewMenu(), widget.WithBarPlacement(widget.BarRight))
+		widget.NewMenuBar(widget.NewMenu(), widget.WithBarPlacement(widget.BarPlacementRight))
 	}); f != nil {
 		t.Errorf("the last valid placement was rejected: %v", f.Rule)
 	}
 	if f := fatalFromWidgetExt(func() {
-		widget.NewMenuBar(widget.NewMenu(), widget.WithBarPlacement(widget.BarRight+1))
+		widget.NewMenuBar(widget.NewMenu(), widget.WithBarPlacement(widget.BarPlacementRight+1))
 	}); f == nil {
 		t.Error("WithBarPlacement accepted the first value past the declared set")
 	}
@@ -235,7 +235,7 @@ func TestACheckItemTogglesBeforeItsCallbackRuns(t *testing.T) {
 	var sawChecked atomic.Bool
 	var item *widget.MenuItem
 	item = widget.NewMenuItem("Wrap",
-		widget.WithItemKind(widget.KindCheck),
+		widget.WithItemKind(widget.ItemKindCheck),
 		widget.WithOnRun(func() { sawChecked.Store(item.Checked()) }))
 	host := widget.NewOverlayHost(item)
 	h := startApp(t, host, 30, 6)
@@ -300,14 +300,14 @@ func TestADisabledItemIsNeitherFocusableNorActivatable(t *testing.T) {
 // neither is a thing a standalone item can be. Refused at construction, where
 // the kind is written in source.
 func TestAStandaloneItemRefusesTheKindsItCannotBe(t *testing.T) {
-	for _, k := range []widget.ItemKind{widget.KindSubmenu, widget.KindSeparator, widget.KindRadio + 1} {
+	for _, k := range []widget.ItemKind{widget.ItemKindSubmenu, widget.ItemKindSeparator, widget.ItemKindRadio + 1} {
 		if f := fatalFromWidgetExt(func() {
 			widget.NewMenuItem("X", widget.WithItemKind(k))
 		}); f == nil {
 			t.Errorf("NewMenuItem accepted kind %v", k)
 		}
 	}
-	for _, k := range []widget.ItemKind{widget.KindCommand, widget.KindCheck, widget.KindRadio} {
+	for _, k := range []widget.ItemKind{widget.ItemKindCommand, widget.ItemKindCheck, widget.ItemKindRadio} {
 		if f := fatalFromWidgetExt(func() {
 			widget.NewMenuItem("X", widget.WithItemKind(k))
 		}); f != nil {

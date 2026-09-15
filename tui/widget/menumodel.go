@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -38,39 +39,39 @@ type ItemID string
 type ItemKind uint8
 
 const (
-	// KindCommand runs its Action and closes the menu. The zero value, so a
+	// ItemKindCommand runs its Action and closes the menu. The zero value, so a
 	// zero MenuItemModel is an inert command rather than something surprising.
-	KindCommand ItemKind = iota
-	// KindSubmenu opens a nested level; it has children and no action.
-	KindSubmenu
-	// KindSeparator is a visual rule. It cannot be selected or activated.
-	KindSeparator
-	// KindCheck toggles its own Checked state, then runs its Action.
-	KindCheck
-	// KindRadio sets itself and clears every other member of its Group, then
+	ItemKindCommand ItemKind = iota
+	// ItemKindSubmenu opens a nested level; it has children and no action.
+	ItemKindSubmenu
+	// ItemKindSeparator is a visual rule. It cannot be selected or activated.
+	ItemKindSeparator
+	// ItemKindCheck toggles its own Checked state, then runs its Action.
+	ItemKindCheck
+	// ItemKindRadio sets itself and clears every other member of its Group, then
 	// runs its Action.
-	KindRadio
+	ItemKindRadio
 )
 
 // String names the kind for traces and test failures.
 func (k ItemKind) String() string {
 	switch k {
-	case KindCommand:
+	case ItemKindCommand:
 		return "command"
-	case KindSubmenu:
+	case ItemKindSubmenu:
 		return "submenu"
-	case KindSeparator:
+	case ItemKindSeparator:
 		return "separator"
-	case KindCheck:
+	case ItemKindCheck:
 		return "check"
-	case KindRadio:
+	case ItemKindRadio:
 		return "radio"
 	}
 	return "unknown"
 }
 
 // Valid reports whether k is one of the declared kinds.
-func (k ItemKind) Valid() bool { return k <= KindRadio }
+func (k ItemKind) Valid() bool { return k <= ItemKindRadio }
 
 // MenuItemModel is one row.
 //
@@ -100,7 +101,7 @@ type MenuItemModel struct {
 	// Visible rows are laid out and painted. An invisible row keeps its state —
 	// visibility is presentation, checkedness is not.
 	Visible bool
-	// Checked applies to KindCheck and KindRadio.
+	// Checked applies to ItemKindCheck and ItemKindRadio.
 	Checked bool
 	// Group names a radio set. Activating one member clears the others.
 	Group string
@@ -115,14 +116,14 @@ type MenuItemModel struct {
 
 // NewCommand builds an enabled, visible command row.
 func NewCommand(id ItemID, label string, action tui.Action) MenuItemModel {
-	return MenuItemModel{ID: id, Kind: KindCommand, Label: label,
+	return MenuItemModel{ID: id, Kind: ItemKindCommand, Label: label,
 		Enabled: true, Visible: true, Action: action}
 }
 
 // NewSubmenu builds an enabled, visible submenu row over a deep copy of
 // children, so the caller's slice and the returned value cannot alias.
 func NewSubmenu(id ItemID, label string, children []MenuItemModel) MenuItemModel {
-	return MenuItemModel{ID: id, Kind: KindSubmenu, Label: label,
+	return MenuItemModel{ID: id, Kind: ItemKindSubmenu, Label: label,
 		Enabled: true, Visible: true, Children: copyItems(children)}
 }
 
@@ -130,19 +131,19 @@ func NewSubmenu(id ItemID, label string, children []MenuItemModel) MenuItemModel
 // a separator is never selectable, and marking it enabled would invite code to
 // treat "enabled" as the only selectability test.
 func NewSeparator(id ItemID) MenuItemModel {
-	return MenuItemModel{ID: id, Kind: KindSeparator, Visible: true}
+	return MenuItemModel{ID: id, Kind: ItemKindSeparator, Visible: true}
 }
 
 // NewCheck builds an enabled, visible, UNCHECKED check row. A caller wanting it
 // checked sets Checked on the returned value.
 func NewCheck(id ItemID, label string, action tui.Action) MenuItemModel {
-	return MenuItemModel{ID: id, Kind: KindCheck, Label: label,
+	return MenuItemModel{ID: id, Kind: ItemKindCheck, Label: label,
 		Enabled: true, Visible: true, Action: action}
 }
 
 // NewRadio builds an enabled, visible, unchecked radio row in group.
 func NewRadio(id ItemID, label, group string, action tui.Action) MenuItemModel {
-	return MenuItemModel{ID: id, Kind: KindRadio, Label: label, Group: group,
+	return MenuItemModel{ID: id, Kind: ItemKindRadio, Label: label, Group: group,
 		Enabled: true, Visible: true, Action: action}
 }
 
@@ -153,7 +154,7 @@ func NewRadio(id ItemID, label, group string, action tui.Action) MenuItemModel {
 // invisible row is not on screen to select. Anywhere that checks only Enabled
 // eventually lands the selection on a separator.
 func (m MenuItemModel) selectable() bool {
-	return m.Visible && m.Enabled && m.Kind != KindSeparator
+	return m.Visible && m.Enabled && m.Kind != ItemKindSeparator
 }
 
 // copyItems deep-copies a model slice, so a caller mutating its own data cannot
@@ -257,7 +258,7 @@ func findItem(items []MenuItemModel, id ItemID) *MenuItemModel {
 func clearGroupExcept(items []MenuItemModel, group string, keep ItemID) {
 	for i := range items {
 		it := &items[i]
-		if it.Kind == KindRadio && it.Group == group && it.ID != keep {
+		if it.Kind == ItemKindRadio && it.Group == group && it.ID != keep {
 			it.Checked = false
 		}
 		clearGroupExcept(it.Children, group, keep)
@@ -291,33 +292,55 @@ func viewOf(m MenuItemModel) RowView {
 	}
 }
 
-// RowState is how a row should currently look.
-type RowState uint8
+// RowState is the four INDEPENDENT facts a renderer needs about one row.
+//
+// Four flags rather than one enum, and that is the whole point of the type. An
+// enum can report only the highest-priority thing true at the moment, so a
+// consumer's renderer could not tell a selected row that owns the open submenu
+// from a selected row that does not, nor a selected row in the Menu that has
+// focus from the same row in a Menu that has lost it. Those are exactly the
+// distinctions a custom row painter exists to draw, and an enum makes them
+// unrepresentable — the renderer would have to reach back into the Menu for
+// state the parameter was supposed to carry.
+//
+// DISABLED IS NOT HERE, deliberately. It is derivable from what the renderer
+// already has: RowView.Enabled, and the kind for a separator. A flag duplicating
+// a value in the same call is a second copy of one fact, and two copies can
+// disagree.
+type RowState struct {
+	// Selected is the row the keyboard would act on in its own level.
+	Selected bool
+	// Armed is pressed and not yet released — a pointer gesture in progress on
+	// this row.
+	Armed bool
+	// Focused reports that the owning Menu contains focus. A selected row in an
+	// unfocused menu is still the selection, and most designs draw it faintly
+	// rather than as the active row.
+	Focused bool
+	// Open reports that this row owns the next open level, which is what a
+	// submenu row's indicator is actually about.
+	Open bool
+}
 
-const (
-	// RowStateNormal: an ordinary enabled row.
-	RowStateNormal RowState = iota
-	// RowStateSelected: the row the keyboard would act on.
-	RowStateSelected
-	// RowStateArmed: pressed and not yet released.
-	RowStateArmed
-	// RowStateDisabled: present but not interactive.
-	RowStateDisabled
-)
-
-// String names the state for traces and test failures.
+// String renders the flags that are set, for traces and test failures.
 func (r RowState) String() string {
-	switch r {
-	case RowStateNormal:
-		return "normal"
-	case RowStateSelected:
-		return "selected"
-	case RowStateArmed:
-		return "armed"
-	case RowStateDisabled:
-		return "disabled"
+	var on []string
+	if r.Selected {
+		on = append(on, "selected")
 	}
-	return "unknown"
+	if r.Armed {
+		on = append(on, "armed")
+	}
+	if r.Focused {
+		on = append(on, "focused")
+	}
+	if r.Open {
+		on = append(on, "open")
+	}
+	if len(on) == 0 {
+		return "normal"
+	}
+	return strings.Join(on, "+")
 }
 
 // RowRenderer paints one row into the rect the Menu laid out for it.

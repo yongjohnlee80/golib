@@ -23,23 +23,23 @@ type MenuBar struct {
 type BarPlacement uint8
 
 const (
-	// BarTop is the default and the conventional place for a menu bar.
-	BarTop BarPlacement = iota
-	BarBottom
-	BarLeft
-	BarRight
+	// BarPlacementTop is the default and the conventional place for a menu bar.
+	BarPlacementTop BarPlacement = iota
+	BarPlacementBottom
+	BarPlacementLeft
+	BarPlacementRight
 )
 
 // String names the placement for traces and test failures.
 func (p BarPlacement) String() string {
 	switch p {
-	case BarTop:
+	case BarPlacementTop:
 		return "top"
-	case BarBottom:
+	case BarPlacementBottom:
 		return "bottom"
-	case BarLeft:
+	case BarPlacementLeft:
 		return "left"
-	case BarRight:
+	case BarPlacementRight:
 		return "right"
 	}
 	return "unknown"
@@ -49,23 +49,23 @@ func (p BarPlacement) String() string {
 // same reason the other Valid methods are: a construction option has to reject
 // an invalid value before storing it, and duplicating the bound is how two
 // checks come to disagree.
-func (p BarPlacement) Valid() bool { return p <= BarRight }
+func (p BarPlacement) Valid() bool { return p <= BarPlacementRight }
 
 // horizontal reports whether this placement lays rows along a line.
-func (p BarPlacement) horizontal() bool { return p == BarTop || p == BarBottom }
+func (p BarPlacement) horizontal() bool { return p == BarPlacementTop || p == BarPlacementBottom }
 
 // dropSide is where a bar's first dropdown opens: AWAY from the bar's own edge,
 // because a dropdown opening back across the bar would cover the row that opened
 // it.
 func (p BarPlacement) dropSide() PlacementSide {
 	switch p {
-	case BarBottom:
+	case BarPlacementBottom:
 		return PlacementAbove
-	case BarLeft:
+	case BarPlacementLeft:
 		return PlacementRight
-	case BarRight:
+	case BarPlacementRight:
 		return PlacementLeft
-	default: // BarTop
+	default: // BarPlacementTop
 		return PlacementBelow
 	}
 }
@@ -86,8 +86,12 @@ func NewMenuBar(m *Menu, opts ...MenuBarOption) *MenuBar {
 			o(b)
 		}
 	}
-	m.horizontal = b.placement.horizontal()
-	m.dropSide = b.placement.dropSide()
+	// The orientation is applied at MOUNT, not here. Writing it into the Menu at
+	// construction made building a bar a mutation of somebody else's widget:
+	// constructing a second bar around the same Menu re-laid-out the first one,
+	// which was already mounted and had nothing to do with the new shell, and a
+	// Menu that had ever been in a bar stayed horizontal when later mounted on
+	// its own. A shell configures the thing it owns for as long as it owns it.
 	return b
 }
 
@@ -118,9 +122,22 @@ func (b *MenuBar) WithPointerPolicy(p tui.PointerPolicy) *MenuBar {
 	return b
 }
 
-// Init mounts the menu.
+// Init applies this bar's layout to the Menu for the bar's lifetime, then
+// mounts it.
+//
+// The orientation is applied BEFORE the mount so the Menu's first layout is
+// already the bar's, and it is UNDONE on unmount so the Menu leaves the bar the
+// way it arrived. A bare Menu stacks its rows; one that had been in a bar and
+// stayed horizontal would render a menu nobody asked for, in a layout that no
+// longer exists.
 func (b *MenuBar) Init(ctx *tui.Context) {
 	b.Base.Init(ctx)
+	prevH, prevSide := b.menu.horizontal, b.menu.dropSide
+	b.menu.horizontal = b.placement.horizontal()
+	b.menu.dropSide = b.placement.dropSide()
+	ctx.OnUnmount(func() {
+		b.menu.horizontal, b.menu.dropSide = prevH, prevSide
+	})
 	ctx.Mount(b.menu)
 }
 

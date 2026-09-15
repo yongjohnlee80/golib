@@ -39,7 +39,7 @@ type MenuItemOption func(*MenuItem)
 func NewMenuItem(label string, opts ...MenuItemOption) *MenuItem {
 	m := &MenuItem{
 		label:         label,
-		kind:          KindCommand,
+		kind:          ItemKindCommand,
 		enabled:       true,
 		pointerPolicy: tui.PointerInherit,
 	}
@@ -48,7 +48,7 @@ func NewMenuItem(label string, opts ...MenuItemOption) *MenuItem {
 			o(m)
 		}
 	}
-	if !m.kind.Valid() || m.kind == KindSubmenu || m.kind == KindSeparator {
+	if !m.kind.Valid() || m.kind == ItemKindSubmenu || m.kind == ItemKindSeparator {
 		panic(tuiFatal("widget: NewMenuItem",
 			"a standalone item is a command, a check or a radio; a submenu needs a Menu and a separator is not a control",
 			int(m.kind)))
@@ -163,9 +163,9 @@ func (m *MenuItem) Activate(tui.ActionOrigin) bool {
 		return false
 	}
 	switch m.kind {
-	case KindCheck:
+	case ItemKindCheck:
 		m.checked = !m.checked
-	case KindRadio:
+	case ItemKindRadio:
 		// A standalone radio has no group to clear: exclusivity belongs to
 		// whatever owns the set, and inventing a package-level registry of
 		// loose radios would be shared mutable state nobody asked for.
@@ -207,22 +207,31 @@ func (m *MenuItem) Init(ctx *tui.Context) {
 // state is the item's current look, using the same vocabulary as a Menu row so
 // an inline item and a menu row in the same state look the same.
 func (m *MenuItem) state() RowState {
-	switch {
-	case !m.enabled:
-		return RowStateDisabled
-	case m.armed:
-		return RowStateArmed
-	case m.focused():
-		return RowStateSelected
+	// A standalone item is its own level: it is "selected" exactly when it holds
+	// focus, it is never Open (it has no children to open), and Focused carries
+	// the same fact as Selected here rather than being about a surrounding Menu.
+	return RowState{
+		Selected: m.focused(),
+		Armed:    m.armed,
+		Focused:  m.focused(),
 	}
-	return RowStateNormal
+}
+
+// view projects this item as a row, so it is styled through the same selector
+// the Menu's own rows are. Two painters deciding independently what a disabled
+// row looks like is how they come to disagree.
+func (m *MenuItem) view() RowView {
+	return RowView{
+		ID: ItemID(m.label), Kind: m.kind, Label: m.label,
+		Accel: m.accel, Enabled: m.enabled, Checked: m.checked,
+	}
 }
 
 // Layout sizes the item to its content: a mark column for a check or radio, the
 // label, a gap, and the accelerator.
 func (m *MenuItem) Layout(cs tui.Constraints) tui.Size {
 	w := m.measure(m.label) + 2
-	if m.kind == KindCheck || m.kind == KindRadio {
+	if m.kind == ItemKindCheck || m.kind == ItemKindRadio {
 		w += 2
 	}
 	if m.accel != "" {
@@ -237,11 +246,11 @@ func (m *MenuItem) Render(s tui.Surface) {
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
-	st := m.st.Row(m.state())
+	st := rowStyle(m.st, m.view(), m.state())
 	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", st)
 
 	x := 1
-	if m.kind == KindCheck || m.kind == KindRadio {
+	if m.kind == ItemKindCheck || m.kind == ItemKindRadio {
 		mark := " "
 		if m.checked {
 			mark = "✓"

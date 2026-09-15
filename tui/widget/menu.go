@@ -108,13 +108,29 @@ func WithMenuStyle(s *MenuStyle) MenuOption {
 // WithAnchorPolicy sets how submenu levels are placed when the preferred side
 // does not fit. nil selects FlipClipPolicy.
 func WithAnchorPolicy(p AnchorPolicy) MenuOption {
-	return func(m *Menu) { m.policy = p }
+	return func(m *Menu) {
+		if nilLike(p) {
+			m.policy = nil // the host substitutes its default
+			return
+		}
+		m.policy = p
+	}
 }
 
 // WithRowRenderer supplies a custom row painter — the declared extension seam
 // for appearances the closed ItemKind does not provide.
+//
+// A nil OR TYPED-NIL renderer is stored as absent, so the built-in painter runs.
+// Normalising here rather than at the paint site means one stored value can be
+// trusted everywhere it is read, instead of every reader repeating the check.
 func WithRowRenderer(r RowRenderer) MenuOption {
-	return func(m *Menu) { m.rows = r }
+	return func(m *Menu) {
+		if nilLike(r) {
+			m.rows = nil
+			return
+		}
+		m.rows = r
+	}
 }
 
 // WithOnSelectionChanged registers a callback for selection movement. It runs
@@ -170,7 +186,7 @@ func (m *Menu) SetModel(items []MenuItemModel) error {
 	// so closeLevel still sees the tree it was opened against.
 	for i := len(m.levels) - 1; i >= 0; i-- {
 		row := findItem(next, m.levels[i].parent)
-		if row == nil || row.Kind != KindSubmenu || !row.Visible || !row.Enabled {
+		if row == nil || row.Kind != ItemKindSubmenu || !row.Visible || !row.Enabled {
 			m.closeLevelsFrom(i)
 			break
 		}
@@ -208,7 +224,7 @@ func (m *Menu) SetVisible(id ItemID, v bool) bool {
 func (m *Menu) SetChecked(id ItemID, v bool) bool {
 	return m.mutate(id, func(it *MenuItemModel) {
 		it.Checked = v
-		if v && it.Kind == KindRadio {
+		if v && it.Kind == ItemKindRadio {
 			clearGroupExcept(m.items, it.Group, it.ID)
 		}
 	})
@@ -236,7 +252,7 @@ func (m *Menu) mutate(id ItemID, fn func(*MenuItemModel)) bool {
 func (m *Menu) closeUnjustifiedLevels() {
 	for i := 0; i < len(m.levels); i++ {
 		row := findItem(m.items, m.levels[i].parent)
-		if row == nil || row.Kind != KindSubmenu || !row.Visible || !row.Enabled {
+		if row == nil || row.Kind != ItemKindSubmenu || !row.Visible || !row.Enabled {
 			m.closeLevelsFrom(i)
 			return
 		}
@@ -311,12 +327,19 @@ func (m *Menu) OpenLevels() int { return len(m.levels) }
 // Typed errors rather than silence: a caller asking for a row that is not a
 // submenu, or is disabled, hidden or absent, has a bug, and returning nil would
 // leave it looking for a popup that was never going to appear.
+//
+// Two further refusals match [ErrAnchorUnusable] rather than
+// [ErrInvalidMenuModel], because the model is fine and the SITUATION is not:
+// there is no [OverlayHost] above this Menu to hold the level, or the row is
+// not currently laid out — it has not been measured yet, or the rect its parent
+// allowed clipped it away, so there is no region to anchor to. Both leave the
+// Menu exactly as it was.
 func (m *Menu) Open(id ItemID) error {
 	it := findItem(m.items, id)
 	switch {
 	case it == nil:
 		return fmt.Errorf("%w: no row %q", ErrInvalidMenuModel, id)
-	case it.Kind != KindSubmenu:
+	case it.Kind != ItemKindSubmenu:
 		return fmt.Errorf("%w: row %q is a %s, not a submenu", ErrInvalidMenuModel, id, it.Kind)
 	case !it.Visible:
 		return fmt.Errorf("%w: row %q is hidden", ErrInvalidMenuModel, id)
@@ -381,5 +404,25 @@ func (m *Menu) Init(ctx *tui.Context) {
 	m.Base.Init(ctx)
 	ctx.SetPointerPolicy(m.pointerPolicy)
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(m.resolve))
+
+	// A level lives on the host, not under this node, so the runtime's unmount
+	// cascade does not reach it: without this hook, removing a Menu left its
+	// popups mounted and its model still counting them.
+	ctx.OnUnmount(m.closeAllOnUnmount)
+
+	// The host can close a level without being asked — an explicit
+	// CloseAnchored by the application, or the anchor-loss commit when the row a
+	// level hangs off stops being laid out. The Menu owns the logical stack, so
+	// it has to hear about it; a level unmounted but still counted makes the
+	// next Open on that row look like a duplicate and do nothing.
+	//
+	// Scoped, so the subscription dies with this node, and filtered by layer id,
+	// so one Menu never reacts to another's dismissal.
+	tui.SubscribeScoped(ctx, func(ev OverlayDismissedEvent) {
+		if ev.Layer != "" {
+			m.dropLevel(ev.Layer)
+		}
+	})
+
 	m.repairSelection()
 }

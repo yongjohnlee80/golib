@@ -255,20 +255,55 @@
 // over them. Both the mouse and the keyboard end at [MenuActivateAction], so
 // they cannot come to mean different things.
 //
-//	bar := widget.NewMenuBar(menu)              // optional: lay it along an edge
+// A Menu's levels are ANCHORED OVERLAY LAYERS, so it must be mounted inside an
+// [OverlayHost] — the NEAREST enclosing one holds them, which is what lets two
+// independent hosts, or a host nested inside another, each serve the menus that
+// live in it. [Menu.Open] returns an error matching [ErrAnchorUnusable] when
+// there is no host above it, rather than silently opening nothing.
+//
+// The executor below is the dispatch seam: a plain function the consumer owns,
+// taking the runtime's own invocation and reporting whether it handled it.
+//
+//	// commands is the application's own dispatch table — any function with
+//	// this shape will do; the package neither supplies nor requires one.
+//	commands := map[tui.ActionID]func() error{
+//		"file.new":  editor.NewFile,
+//		"view.wrap": editor.ToggleWrap,
+//		"app.quit":  app.Quit,
+//	}
+//
 //	menu := widget.NewMenu(
 //		widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
-//			return app.Run(inv)                 // your dispatch; true == handled
+//			run, ok := commands[inv.Action.ActionID()]
+//			if !ok {
+//				return false // unhandled: the menu stays open
+//			}
+//			return run() == nil
 //		}))
 //
-//	err := menu.SetModel([]widget.MenuItemModel{
+//	if err := menu.SetModel([]widget.MenuItemModel{
 //		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
 //			widget.NewCommand("new", "New", NewFileAction{}),
 //			widget.NewSeparator("s1"),
 //			widget.NewCheck("wrap", "Wrap lines", ToggleWrapAction{}),
 //		}),
 //		widget.NewCommand("quit", "Quit", QuitAction{}),
-//	})
+//	}); err != nil {
+//		return err
+//	}
+//
+//	// Optional: lay the menu along an edge. The bar wraps a menu that already
+//	// exists, and the host must enclose whichever of the two is mounted.
+//	bar := widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
+//	root := widget.NewOverlayHost(bar)
+//
+// THE RENDERER SEAM. [RowRenderer] is handed a [RowView] and a [RowState] whose
+// four flags — Selected, Armed, Focused, Open — are INDEPENDENT. That is what
+// lets a custom painter draw a selected row that owns the open submenu
+// differently from one that does not, or draw the selection faintly while the
+// menu has lost focus. Disabled is deliberately absent: it is derivable from
+// [RowView] (Enabled, and the kind for a separator), and a flag duplicating a
+// value in the same call is a second copy of one fact.
 //
 // THE MODEL. [ItemKind] is deliberately CLOSED — Command, Submenu, Separator,
 // Check, Radio — because a new kind needs either a switch edit or a polymorphic
@@ -308,10 +343,21 @@
 // from anywhere in the level. Everything the pointer can do, the keyboard can
 // do.
 //
-// LEVELS are anchored overlay layers, so a Menu must sit inside an
-// [OverlayHost]. Exactly one pair of functions mounts and unmounts one; a level
-// whose row stops being a visible, enabled submenu is closed, and a level whose
-// row stops being laid out at all is dismissed by the host's anchor-loss commit.
+// LEVELS are anchored overlay layers held by the nearest enclosing
+// [OverlayHost], and opening one is a SYNCHRONOUS TRANSACTION against that one
+// host: resolve it, check the anchor, mount, and only then record the level.
+// [Menu.Open] returns the host's error, so a caller is never told a popup
+// appeared when none did. Three things close a level, and the Menu's own record
+// follows all three — a row that stops being a visible, enabled submenu; the
+// host's anchor-loss commit when the row is no longer laid out; and an explicit
+// [OverlayHost.CloseAnchored] by the application. Unmounting the Menu closes
+// every level it owns: the levels are the host's children, so nothing else
+// would.
+//
+// A CLIPPED ROW IS NOT A ROW. A row outside the rect the Menu's parent allowed
+// declares no anchor region and gets no hit rectangle, so it cannot be clicked
+// and cannot be opened — a menu squeezed to one line would otherwise hang a
+// popup off a row nobody can see.
 //
 // MENUBAR is a placement shell over one Menu, not a parallel widget: the model,
 // the selection and the open/close lifecycle all stay on the [Menu], reachable
@@ -319,7 +365,9 @@
 // disagree. It does NOT position itself — a component's parent decides where it
 // goes — so [BarPlacement] means orientation and drop direction, and a bar
 // belongs at the bottom of the screen by being at the bottom of the layout that
-// owns it.
+// owns it. The orientation it applies lasts exactly as long as the bar is
+// MOUNTED: constructing a bar changes nothing, and a Menu taken out of one is a
+// vertical menu again.
 //
 // MENUITEM is the standalone leaf: a mountable, focusable control for ordinary
 // layouts. The distinction from [MenuItemModel] earns the two names —
