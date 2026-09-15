@@ -351,3 +351,118 @@ func TestEscapeIsStagedAndUnhandledAtTheRoot(t *testing.T) {
 		t.Errorf("a level survived the unwind:\n%s", grid)
 	}
 }
+
+// TestADialogIgnoresReleasesChordsAndUnclaimedKeys.
+//
+// The three ways a keystroke must NOT reach a dialog's buttons. A release is
+// the tail of a press already handled; a chord belongs to whatever binds it;
+// and a letter no button answers to is somebody else's. Each would otherwise
+// move focus or press something on a key the user did not aim at the dialog.
+func TestADialogIgnoresReleasesChordsAndUnclaimedKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ev   tui.KeyEvent
+	}{
+		{"a key release", tui.KeyEvent{Kind: tui.KeyRelease, Code: 'n'}},
+		{"a ctrl chord", tui.KeyEvent{Kind: tui.KeyPress, Code: 'n', Mods: tui.ModCtrl}},
+		{"an alt chord", tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: tui.ModAlt}},
+		{"a letter no button claims", tui.KeyEvent{Kind: tui.KeyPress, Code: 'z'}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _, yes, no := dialogFixture(t)
+			defer h.stop()
+			h.inject(tc.ev)
+			h.settle()
+			h.settle()
+			if yes.Load() != 0 || no.Load() != 0 {
+				t.Errorf("%s activated something: yes=%d no=%d", tc.name, yes.Load(), no.Load())
+			}
+			// Focus has not moved either: Enter still means the default button.
+			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+			h.settle()
+			h.settle()
+			if yes.Load() != 1 {
+				t.Errorf("%s moved the focus; Enter gave yes=%d no=%d",
+					tc.name, yes.Load(), no.Load())
+			}
+		})
+	}
+}
+
+// TestVimKeysInADialogAreInertUnlessAsked is the control for the opt-in: with
+// the option off, h/j/k/l are ordinary letters that no button claims.
+func TestVimKeysInADialogAreInertUnlessAsked(t *testing.T) {
+	h, _, yes, no := dialogFixture(t) // no WithModalVimNavigation
+	defer h.stop()
+	for _, r := range []rune{'h', 'j', 'k', 'l'} {
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: r})
+		h.settle()
+	}
+	h.settle()
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	h.settle()
+	h.settle()
+	if yes.Load() != 1 || no.Load() != 0 {
+		t.Errorf("hjkl moved focus with the aliases off: yes=%d no=%d",
+			yes.Load(), no.Load())
+	}
+}
+
+// TestADialogWithNothingToStepToIsQuiet.
+//
+// Two shapes with no destination: a dialog carrying no buttons at all, and one
+// whose only button is disabled. Neither may panic, and neither may leave focus
+// somewhere inert.
+func TestADialogWithNothingToStepToIsQuiet(t *testing.T) {
+	t.Run("no buttons", func(t *testing.T) {
+		md := widget.NewModal(widget.NewText("Just a message"),
+			widget.WithModalTitle("Notice"))
+		host := widget.NewOverlayHost(widget.NewText(""))
+		h := startApp(t, host, 40, 10)
+		defer h.stop()
+		h.onLoop(func() {
+			if err := md.Open(host); err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+		})
+		h.settle()
+		h.settle()
+		for _, k := range []rune{tui.KeyLeft, tui.KeyRight, tui.KeyUp, tui.KeyDown} {
+			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: k})
+			h.settle()
+		}
+		// Still open and still painting: the point is that nothing blew up.
+		h.onLoop(func() {
+			if !md.IsOpen() {
+				t.Error("arrows closed a dialog that has no buttons")
+			}
+		})
+	})
+
+	t.Run("every button disabled", func(t *testing.T) {
+		var fired atomic.Int64
+		b := widget.NewButton("Only", widget.WithMnemonic('o'),
+			widget.WithOnActivate(func() { fired.Add(1) }))
+		md := widget.NewModal(widget.NewText("m"), widget.WithButtons(b))
+		host := widget.NewOverlayHost(widget.NewText(""))
+		h := startApp(t, host, 40, 10)
+		defer h.stop()
+		h.onLoop(func() {
+			b.SetEnabled(false)
+			if err := md.Open(host); err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+		})
+		h.settle()
+		h.settle()
+
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight})
+		h.settle()
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'o'})
+		h.settle()
+		h.settle()
+		if fired.Load() != 0 {
+			t.Errorf("a disabled sole button was reached (%d activations)", fired.Load())
+		}
+	})
+}
