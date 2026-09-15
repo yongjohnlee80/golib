@@ -691,3 +691,241 @@ func TestAButtonReadsAsAControl(t *testing.T) {
 		}
 	})
 }
+
+// TestADropdownNamesTheRowThatOpenedIt.
+//
+// A level that says where it came from stays readable once it is beside a
+// sibling or torn off the bar, and it reads as a window in its own right —
+// which is the shape a floating or detached menu needs. On by default.
+func TestADropdownNamesTheRowThatOpenedIt(t *testing.T) {
+	t.Run("on by default", func(t *testing.T) {
+		m := widget.NewMenu()
+		h, _ := barFixture(t, m, twoCategories(false), 50, 12)
+		defer h.stop()
+		h.onLoop(func() { _ = m.Open("file") })
+		h.settle()
+		h.settle()
+
+		// The title shares its line with the frame's rule, which is what makes
+		// it a title rather than a first row.
+		grid := h.grid()
+		row := rowContaining(grid, "┌")
+		if row < 0 {
+			t.Fatalf("no frame on screen:\n%s", grid)
+		}
+		line := strings.Split(grid, "\n")[row]
+		if !strings.Contains(line, "File") {
+			t.Errorf("the dropdown's frame does not name its category: %q\n%s", line, grid)
+		}
+		// And the rows below are still all there — the title costs no row.
+		for _, want := range []string{"New"} {
+			if !strings.Contains(grid, want) {
+				t.Errorf("row %q went missing:\n%s", want, grid)
+			}
+		}
+	})
+
+	t.Run("wide enough for its own title", func(t *testing.T) {
+		// A level whose opening row is named longer than anything inside it
+		// must still fit the name: sized to the rows alone it would silently
+		// drop the title it reserved nothing for.
+		model := []widget.MenuItemModel{
+			widget.NewSubmenu("long", "Preferences", []widget.MenuItemModel{
+				widget.NewCommand("a", "On", nil),
+			}),
+		}
+		m := widget.NewMenu()
+		h, _ := barFixture(t, m, model, 50, 12)
+		defer h.stop()
+		h.onLoop(func() { _ = m.Open("long") })
+		h.settle()
+		h.settle()
+		grid := h.grid()
+		row := rowContaining(grid, "┌")
+		if row < 0 {
+			t.Fatalf("no frame:\n%s", grid)
+		}
+		if line := strings.Split(grid, "\n")[row]; !strings.Contains(line, "Preferences") {
+			t.Errorf("a title longer than its rows was dropped: %q\n%s", line, grid)
+		}
+	})
+
+	t.Run("removable", func(t *testing.T) {
+		m := widget.NewMenu(widget.WithLevelTitle(false))
+		h, _ := barFixture(t, m, twoCategories(false), 50, 12)
+		defer h.stop()
+		h.onLoop(func() { _ = m.Open("file") })
+		h.settle()
+		h.settle()
+		grid := h.grid()
+		row := rowContaining(grid, "┌")
+		if line := strings.Split(grid, "\n")[row]; strings.Contains(line, "File") {
+			t.Errorf("WithLevelTitle(false) still drew the title: %q", line)
+		}
+	})
+}
+
+// TestTheOpenCategoryStaysHighlighted.
+//
+// Opening a dropdown moves the selection INTO it, so the category that owns the
+// dropdown is no longer the selected row — and went flat the moment it was
+// opened, leaving the bar saying nothing about where the cascade below it came
+// from.
+func TestTheOpenCategoryStaysHighlighted(t *testing.T) {
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, twoCategories(false), 50, 12)
+	defer h.stop()
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
+
+	fx, fy := cellOfLabel(t, h, "File")
+	hx, _ := cellOfLabel(t, h, "Help")
+
+	h.onLoop(func() { _ = m.Open("file") })
+	h.settle()
+	h.settle()
+
+	// The selection really has moved into the level, so this is not just
+	// "File is still selected".
+	var sel widget.ItemID
+	h.onLoop(func() { sel, _ = m.Selected() })
+	if sel == "file" {
+		t.Fatalf("the selection is still on the category; this test cannot tell " +
+			"Open from Selected")
+	}
+	if rowStyleAt(t, h, fx, fy) == rowStyleAt(t, h, hx, fy) {
+		t.Errorf("the open category is painted like an ordinary one; the bar shows "+
+			"nothing about where the dropdown came from\n%s", h.grid())
+	}
+}
+
+// TestTheBarsTwoAxesMeanDifferentThings.
+//
+// Left and Right walk the BAR; Up and Down walk the open dropdown. Keeping them
+// separate is what makes every category reachable: Right used to descend into a
+// submenu whenever the selection was on one, so a category whose only row
+// cascades — Option holding nothing but Keymaps — had no way out to Help.
+//
+// The exception that makes it work is deliberate and tested here too: inside a
+// level, Right still descends, because that is how the keymaps are reached at
+// all. Up is the way back out, which is what leaves Left and Right free.
+func TestTheBarsTwoAxesMeanDifferentThings(t *testing.T) {
+	model := []widget.MenuItemModel{
+		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
+			widget.NewCommand("new", "New", nil),
+			widget.NewCommand("open", "Open", nil),
+		}),
+		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
+			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
+				widget.NewCommand("vim", "Vim", nil),
+			}),
+		}),
+		widget.NewSubmenu("help", "Help", []widget.MenuItemModel{
+			widget.NewCommand("about", "About", nil),
+		}),
+	}
+	newBar := func(t *testing.T) (*harness, *widget.Menu) {
+		t.Helper()
+		m := widget.NewMenu()
+		h, _ := barFixture(t, m, model, 60, 14)
+		h.onLoop(func() { m.Context().RequestFocus() })
+		h.settle()
+		return h, m
+	}
+	selOf := func(t *testing.T, h *harness, m *widget.Menu) widget.ItemID {
+		t.Helper()
+		var id widget.ItemID
+		h.onLoop(func() { id, _ = m.Selected() })
+		return id
+	}
+	press := func(h *harness, code rune) {
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: code})
+		h.settle()
+		h.settle()
+	}
+
+	t.Run("on the bar the horizontal arrows step categories", func(t *testing.T) {
+		h, m := newBar(t)
+		defer h.stop()
+		h.onLoop(func() { m.Select("file") })
+		h.settle()
+		press(h, tui.KeyRight)
+		if got := selOf(t, h, m); got != "option" {
+			t.Errorf("Right on the bar selected %q, want option", got)
+		}
+		press(h, tui.KeyLeft)
+		if got := selOf(t, h, m); got != "file" {
+			t.Errorf("Left on the bar selected %q, want file", got)
+		}
+	})
+
+	t.Run("Option's cascade does not trap the bar", func(t *testing.T) {
+		// The reported case: Option holds only a submenu row, so Right used to
+		// descend and Help was unreachable.
+		h, m := newBar(t)
+		defer h.stop()
+		h.onLoop(func() { _ = m.Open("option") })
+		h.settle()
+		h.settle()
+
+		press(h, tui.KeyUp) // at the level's first row, so this closes it
+		if n := openLevelsOn(t, h, m); n != 0 {
+			t.Fatalf("Up at the top of the level left %d open, want 0", n)
+		}
+		press(h, tui.KeyRight)
+		if got := selOf(t, h, m); got != "help" {
+			t.Errorf("after backing out, Right selected %q, want help", got)
+		}
+	})
+
+	t.Run("inside a level Right still descends", func(t *testing.T) {
+		h, m := newBar(t)
+		defer h.stop()
+		h.onLoop(func() { _ = m.Open("option") })
+		h.settle()
+		h.settle()
+		press(h, tui.KeyRight)
+		if n := openLevelsOn(t, h, m); n != 2 {
+			t.Errorf("Right on a submenu row opened %d levels, want 2 — the keymaps "+
+				"have to stay reachable\n%s", n, h.grid())
+		}
+	})
+
+	t.Run("Up closes rather than wrapping to the bottom", func(t *testing.T) {
+		h, m := newBar(t)
+		defer h.stop()
+		h.onLoop(func() { _ = m.Open("file") })
+		h.settle()
+		h.settle()
+		if got := selOf(t, h, m); got != "new" {
+			t.Fatalf("the level opened on %q, want its first row", got)
+		}
+		press(h, tui.KeyUp)
+		if n := openLevelsOn(t, h, m); n != 0 {
+			t.Errorf("Up at the first row left %d levels open, want it to close", n)
+		}
+		if got := selOf(t, h, m); got == "open" {
+			t.Error("Up wrapped to the bottom of the dropdown instead of closing it")
+		}
+	})
+
+	t.Run("Down still moves within the level", func(t *testing.T) {
+		// The control: making Up close must not stop Down from walking rows.
+		h, m := newBar(t)
+		defer h.stop()
+		h.onLoop(func() { _ = m.Open("file") })
+		h.settle()
+		h.settle()
+		press(h, tui.KeyDown)
+		if got := selOf(t, h, m); got != "open" {
+			t.Errorf("Down selected %q, want the second row", got)
+		}
+		press(h, tui.KeyUp) // not at the top now, so this moves rather than closes
+		if got := selOf(t, h, m); got != "new" {
+			t.Errorf("Up from the second row selected %q, want the first", got)
+		}
+		if n := openLevelsOn(t, h, m); n != 1 {
+			t.Errorf("Up from the second row closed the level (%d open)", n)
+		}
+	})
+}

@@ -45,12 +45,17 @@ func NewMenuStyle(surface, selected style.Style) *MenuStyle {
 
 // DefaultMenuStyle is the look a menu has when its author has said nothing.
 func DefaultMenuStyle() *MenuStyle {
-	surface := style.New().Background(style.TokenPanel).Foreground(style.TokenForeground)
+	// BOLD, which is an attribute rather than a colour and so is free of the
+	// token discipline the rest of this function follows. Menu labels are
+	// chrome: they sit against the document rather than in it, and weight is
+	// what separates the two on a terminal that has no other way to say so.
+	surface := style.New().Background(style.TokenPanel).
+		Foreground(style.TokenForeground).Bold(true)
 	// The selection uses the theme's primary fill and the text token derived to
 	// be readable on it, which is the same pairing List and Select already use —
 	// so a menu's highlight matches the rest of the suite under any theme.
 	selected := style.New().Background(style.TokenPrimary).
-		Foreground(style.TokenTextOnPrimary)
+		Foreground(style.TokenTextOnPrimary).Bold(true)
 	return &MenuStyle{
 		surface:  surface,
 		selected: selected,
@@ -148,7 +153,7 @@ func rowStyle(s *MenuStyle, row RowView, st RowState) style.Style {
 		return s.Disabled()
 	case st.Armed:
 		return s.Armed()
-	case st.Selected && !st.Focused:
+	case (st.Selected || st.Open) && !st.Focused:
 		// A SELECTION THE USER IS NOT DRIVING. The row is still the selection
 		// and the keyboard would still act on it the moment the menu regains
 		// focus, but painting it as the active row is a lie about where the
@@ -156,7 +161,12 @@ func rowStyle(s *MenuStyle, row RowView, st RowState) style.Style {
 		// document leaves no way to tell which surface has the keyboard.
 		// Defaults to the plain surface, so the highlight simply is not there.
 		return s.SelectedBlurred()
-	case st.Selected:
+	case st.Selected, st.Open:
+		// OPEN COUNTS AS SELECTED. While a dropdown is showing, the selection
+		// has moved into it — so the category that owns the dropdown is no
+		// longer the selected row, and without this it goes flat the instant it
+		// is opened. The bar then shows nothing about where the cascade hanging
+		// below it came from.
 		return s.Selected()
 	}
 	return s.Surface()
