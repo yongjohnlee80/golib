@@ -325,15 +325,22 @@ host above it, an error matching `ErrAnchorUnusable` rather than silence. Two
 sibling hosts each serve their own menus, and a host nested inside another serves
 the menus inside it.
 
-Three things close a level and the Menu's record follows all three: a row that
-stops being a visible, enabled submenu; the host's anchor-loss commit when the
-row is no longer laid out; and an explicit `host.CloseAnchored`. Unmounting the
-Menu closes every level it owns — the levels are the host's children, so nothing
-else would.
+**Closing is synchronous too**, whoever causes it. A level *is* a mounted popup,
+so the Menu learns it is gone from that popup's own unmount rather than from a
+bus event delivered later — an application can `CloseAnchored` and reopen the row
+in the same update and get a popup, where a Menu reconciling on the program lane
+would still be counting the level it had just lost and would treat the reopen as
+a duplicate. Three things close a level and one mechanism covers all three: a row
+that stops being a visible, enabled submenu; the host's anchor-loss commit when
+the row is no longer laid out; and an explicit `host.CloseAnchored`.
+`OverlayDismissedEvent` is still published, for observers rather than for this.
+Unmounting the Menu closes every level it owns — the levels are the host's
+children, so nothing else would.
 
-**A clipped row is not a row.** A row outside the rect the Menu's parent allowed
-declares no anchor region and gets no hit rectangle, so it cannot be clicked and
-cannot be opened.
+**A clipped row is not a row**, and that is one set of rows rather than three. A
+row outside the rect the Menu's parent allowed declares no anchor region, gets no
+hit rectangle, and is not painted — so it cannot be clicked, cannot be opened,
+and never reaches a consumer's `RowRenderer`.
 
 **The renderer seam.** `RowRenderer` is handed a `RowView` and a `RowState`
 whose four flags — `Selected`, `Armed`, `Focused`, `Open` — are *independent*.

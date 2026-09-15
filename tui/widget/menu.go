@@ -410,19 +410,5 @@ func (m *Menu) Init(ctx *tui.Context) {
 	// popups mounted and its model still counting them.
 	ctx.OnUnmount(m.closeAllOnUnmount)
 
-	// The host can close a level without being asked — an explicit
-	// CloseAnchored by the application, or the anchor-loss commit when the row a
-	// level hangs off stops being laid out. The Menu owns the logical stack, so
-	// it has to hear about it; a level unmounted but still counted makes the
-	// next Open on that row look like a duplicate and do nothing.
-	//
-	// Scoped, so the subscription dies with this node, and filtered by layer id,
-	// so one Menu never reacts to another's dismissal.
-	tui.SubscribeScoped(ctx, func(ev OverlayDismissedEvent) {
-		if ev.Layer != "" {
-			m.dropLevel(ev.Layer)
-		}
-	})
-
 	m.repairSelection()
 }

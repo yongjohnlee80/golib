@@ -196,12 +196,20 @@ func TestALevelDoesNotOutliveTheMenuThatOpenedIt(t *testing.T) {
 	h.settle()
 	h.wantContains("NewDoc")
 
-	h.onLoop(func() { inner.Remove(menu) })
-	h.settle()
-	if n := openLevelsOn(t, h, menu); n != 0 {
-		t.Errorf("OpenLevels() = %d after the Menu was unmounted, want 0; the level "+
-			"is gone from the screen and must be gone from the model too", n)
+	// SAME TURN. The anchor-loss commit would eventually dismiss a level whose
+	// owner has gone, so asserting after a settle would pass without the Menu
+	// cleaning up after itself at all. The guarantee is that the model is
+	// correct the moment the Menu unmounts, before any further layout.
+	var sameTurn int
+	h.onLoop(func() {
+		inner.Remove(menu)
+		sameTurn = menu.OpenLevels()
+	})
+	if sameTurn != 0 {
+		t.Errorf("OpenLevels() = %d immediately after the Menu was unmounted, want 0; "+
+			"the level is the host's child, so nothing else takes it down", sameTurn)
 	}
+	h.settle()
 	h.wantNotContains("NewDoc")
 
 	// Re-mounted, the same row must open again.
@@ -680,4 +688,108 @@ func TestASelectWithNoHostDoesNotClaimToBeOpen(t *testing.T) {
 	// No option list on screen, and the loop is still alive to be asked.
 	h.wantNotContains("alpha")
 	h.onLoop(func() {})
+}
+
+// TestAHostCloseIsVisibleToTheMenuInTheSameTurn.
+//
+// CloseAnchored unmounts the popup SYNCHRONOUSLY, so by the time it returns the
+// level does not exist. Reconciling through the bus made the Menu's own
+// invariant depend on a Lane-B delivery that has not happened yet: in the same
+// loop closure, OpenLevels() still counted the level, and reopening the row hit
+// the already-deepest early return — returning success and mounting nothing.
+//
+// No settle between the close and the reopen. That is the whole test: the
+// previous version of it settled twice and therefore observed eventual
+// reconciliation rather than the one-lifecycle invariant.
+func TestAHostCloseIsVisibleToTheMenuInTheSameTurn(t *testing.T) {
+	menu := widget.NewMenu()
+	if err := menu.SetModel(fileMenuModel()); err != nil {
+		t.Fatalf("SetModel: %v", err)
+	}
+	host := widget.NewOverlayHost(menu)
+	h := startApp(t, host, 40, 20)
+	h.settle()
+
+	h.onLoop(func() {
+		if err := menu.Open("file"); err != nil {
+			t.Errorf("Open: %v", err)
+		}
+	})
+	h.settle()
+	h.wantContains("NewDoc")
+
+	var layer widget.LayerID
+	h.onLoop(func() {
+		for id := range host.AnchoredLayers() {
+			layer = id
+		}
+	})
+	if layer == "" {
+		t.Fatal("no anchored layer to close")
+	}
+
+	var afterClose int
+	var reopenErr error
+	var afterReopen int
+	h.onLoop(func() {
+		host.CloseAnchored(layer, widget.DismissProgrammatic)
+		afterClose = menu.OpenLevels()
+		reopenErr = menu.Open("file")
+		afterReopen = menu.OpenLevels()
+	})
+	h.settle()
+
+	if afterClose != 0 {
+		t.Errorf("OpenLevels() = %d immediately after CloseAnchored returned, want 0; "+
+			"the popup was already unmounted, so the model was describing a level "+
+			"that no longer existed", afterClose)
+	}
+	if reopenErr != nil {
+		t.Errorf("reopening in the same turn: %v", reopenErr)
+	}
+	if afterReopen != 1 {
+		t.Errorf("OpenLevels() = %d after reopening, want 1", afterReopen)
+	}
+	// And the level really is on screen, not merely counted.
+	h.settle()
+	h.wantContains("NewDoc")
+	var layers int
+	h.onLoop(func() {
+		for range host.AnchoredLayers() {
+			layers++
+		}
+	})
+	if layers != 1 {
+		t.Errorf("the host holds %d anchored layers after the reopen, want 1", layers)
+	}
+}
+
+// TestAClippedBarRowNeverReachesTheRowRenderer.
+//
+// "Not on screen" has to mean one set of rows, not three. Horizontal layout
+// stopped creating rectangles at the edge, but Render went on iterating every
+// visible row in the model and indexing the map — a missing entry reads as the
+// zero rect, and the consumer's RowRenderer was still called with it. A row the
+// package has declared unaddressable was still executing consumer code.
+func TestAClippedBarRowNeverReachesTheRowRenderer(t *testing.T) {
+	rr := &stateRecorder{}
+	menu := widget.NewMenu(widget.WithRowRenderer(rr))
+	if err := menu.SetModel(fileMenuModel()); err != nil {
+		t.Fatalf("SetModel: %v", err)
+	}
+	bar := widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
+	// Six columns: " Quit " fills them, so "File" has no painted cells at all.
+	host := widget.NewOverlayHost(&fixedBox{child: bar, w: 6, hh: 1})
+	h := startApp(t, host, 40, 20)
+	h.settle()
+	h.settle()
+
+	if !rr.sawRow("quit") {
+		t.Fatal("the renderer never saw the row that IS on screen, so its silence " +
+			"about the clipped one would prove nothing")
+	}
+	if rr.sawRow("file") {
+		t.Error("the renderer was invoked for a row with no painted cells; layout, " +
+			"hit-testing and rendering must agree on which rows exist")
+	}
 }

@@ -688,3 +688,11 @@ func TestARendererSeesFourIndependentFlags(t *testing.T) {
 		t.Errorf("state = %+v: losing focus did not close the level, so Open stands", got)
 	}
 }
+
+// sawRow reports whether the renderer was ever handed this row.
+func (r *stateRecorder) sawRow(id widget.ItemID) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.seen[id]
+	return ok
+}
