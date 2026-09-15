@@ -419,7 +419,7 @@ func NewTree(opts ...TreeOption) *Tree {
 	t := &Tree{
 		indent: 2,
 		styles: ListStyles{
-			CursorRow: style.New().Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary),
+			CursorRow: style.New().Reverse(true),
 		},
 	}
 	for _, o := range opts {

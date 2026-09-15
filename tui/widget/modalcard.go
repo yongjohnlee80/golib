@@ -20,6 +20,7 @@ type modalCard struct {
 	buttons []*Button
 	title   string
 	st      *ModalStyle
+	align   ButtonAlign
 }
 
 func newModalCard(body tui.Component) *modalCard {
@@ -122,8 +123,13 @@ func (c *modalCard) childOffset() int {
 	return 0
 }
 
-// Layout stacks the body above a right-aligned button row, inside a one-cell
-// border, and sizes the card to its content.
+// Layout stacks the body above a button row, inside a one-cell border, and
+// sizes the card to its content.
+//
+// THE TITLE COSTS NO CONTENT ROW. It is painted into the top border, the way a
+// framed panel is titled everywhere else, so the body starts on the first line
+// inside the frame instead of one below a banner. It still sets a floor on the
+// card's width, since a title wider than the body must not be clipped.
 func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	ctx := c.Context()
 	if ctx == nil {
@@ -151,48 +157,58 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 		btnW-- // no trailing gap after the last button
 	}
 
-	titleH := 0
-	if c.title != "" {
-		titleH = 1
+	// A BLANK LINE BETWEEN THE MESSAGE AND THE CONTROLS, when there are both.
+	// Without it the buttons sit directly under the last line of prose and read
+	// as part of it, which is how a confirmation ends up looking like a
+	// sentence with two words highlighted.
+	gap := 0
+	if c.body != nil && btnH > 0 {
+		gap = 1
 	}
 
 	bodyH := 0
 	bodyW := 0
 	if c.body != nil {
-		avail := tui.Size{W: inner.W, H: max(inner.H-btnH-titleH, 0)}
+		avail := tui.Size{W: inner.W, H: max(inner.H-btnH-gap, 0)}
 		bs := ctx.LayoutChild(c.body, tui.Loose(avail))
 		bodyW, bodyH = bs.W, bs.H
 	}
 
 	contentW := max(bodyW, max(btnW, c.measure(c.title)))
-	contentH := titleH + bodyH + btnH
+	contentH := bodyH + gap + btnH
 	size := tui.Size{W: contentW + frame, H: contentH + frame}
 	size = cs.Constrain(size)
 
 	// Place children inside the frame, now that the card's own size is fixed.
 	x0, y0 := border+pad, border+pad
-	y := y0 + titleH
+	y := y0
 	if c.body != nil {
 		ctx.PlaceChild(c.body, tui.Rect{X: x0, Y: y, W: min(bodyW, contentW), H: bodyH})
-		y += bodyH
+		y += bodyH + gap
 	}
-	// Buttons sit at the card's bottom-right, the conventional place to look
-	// for them, and are placed right-to-left so the last one hugs the edge.
-	bx := x0 + contentW
-	for i := len(c.buttons) - 1; i >= 0; i-- {
-		b := c.buttons[i]
+	// Where the row of buttons sits within the content width. Centred by
+	// default: a dialog is read down its middle, and a pair of controls hugging
+	// one edge of a card wider than they are looks detached from the question.
+	bx := x0
+	switch c.align {
+	case ButtonsRight:
+		bx = x0 + max(contentW-btnW, 0)
+	case ButtonsCenter:
+		bx = x0 + max(contentW-btnW, 0)/2
+	}
+	for i, b := range c.buttons {
 		if b == nil {
 			continue
 		}
-		bx -= sizes[i].W
 		ctx.PlaceChild(b, tui.Rect{X: bx, Y: y, W: sizes[i].W, H: sizes[i].H})
-		bx--
+		bx += sizes[i].W + 1
 	}
 	return size
 }
 
-// Render paints the border, the background and the title. The body and buttons
-// paint themselves.
+// Render paints the card, its frame, and the title INTO the top border.
+//
+// The body and the buttons are children and paint themselves.
 func (c *modalCard) Render(s tui.Surface) {
 	sz := s.Size()
 	if sz.W <= 0 || sz.H <= 0 {
@@ -205,16 +221,28 @@ func (c *modalCard) Render(s tui.Surface) {
 	if c.title == "" {
 		return
 	}
-	// The title is clipped to the space between the border corners rather than
-	// allowed to overwrite them, so a long title cannot break the frame.
-	x, limit := 2, sz.W-2
+	// ON THE BORDER LINE, with a space either side so the rule does not touch
+	// the text. Clipped to the space between the corners rather than allowed to
+	// overwrite them, so a long title cannot break the frame.
+	// The last WRITABLE cell is sz.W-2: the frame owns column sz.W-1. An
+	// exclusive limit of sz.W-2 is one short and clips the title's trailing
+	// space against the corner, which reads as the text running into the frame.
+	limit := sz.W - 1
+	x := 1
+	if x < limit {
+		s.SetCell(x, 0, " ", c.st.Border())
+		x++
+	}
 	for cluster := range tui.Graphemes(c.title) {
 		w := s.StringWidth(cluster)
 		if x+w > limit {
 			break
 		}
-		s.SetCell(x, 1, cluster, c.st.Title())
+		s.SetCell(x, 0, cluster, c.st.Title())
 		x += w
+	}
+	if x < limit {
+		s.SetCell(x, 0, " ", c.st.Border())
 	}
 }
 

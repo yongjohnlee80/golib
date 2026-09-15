@@ -152,8 +152,8 @@ var _ tui.Focusable = (*List[any])(nil)
 // ListStyles are the row style hooks. Zero fields keep the defaults.
 type ListStyles struct {
 	Row            style.Style // default: theme default
-	CursorRow      style.Style // default: TokenPrimary fill
-	SelectedRow    style.Style // default: TokenSecondary fill
+	CursorRow      style.Style // default: inverted, no accent
+	SelectedRow    style.Style // default: bold, distinct from the cursor without colour
 	CursorSelected style.Style // default: CursorRow merged over SelectedRow
 }
 
@@ -235,8 +235,8 @@ func NewList[T any](opts ...ListOption[T]) *List[T] {
 	l := &List[T]{
 		sel: make(map[int]struct{}),
 		styles: ListStyles{
-			CursorRow:   style.New().Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary),
-			SelectedRow: style.New().Background(style.TokenSecondary).Foreground(style.TokenTextOnSecondary),
+			CursorRow:   style.New().Reverse(true),
+			SelectedRow: style.New().Bold(true),
 		},
 	}
 	l.styles.CursorSelected = l.styles.CursorRow.Inherit(l.styles.SelectedRow).Bold(true)

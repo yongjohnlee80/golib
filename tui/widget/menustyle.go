@@ -14,6 +14,7 @@ import "github.com/yongjohnlee80/golib/tui/style"
 type MenuStyle struct {
 	surface  style.Style // the menu's background and ordinary rows
 	selected style.Style // the row the keyboard would act on
+	blurred  style.Style // ... when the menu does not have focus
 	armed    style.Style // pressed and not yet released
 	disabled style.Style // present but not interactive
 	accel    style.Style // the accelerator text at a row's right edge
@@ -28,6 +29,13 @@ func NewMenuStyle(surface, selected style.Style) *MenuStyle {
 	return &MenuStyle{
 		surface:  surface,
 		selected: selected,
+		// The BLURRED selection defaults to the ordinary surface, so a menu the
+		// user is not driving shows no highlight at all. That is the safe
+		// default: a bar that highlights a category while the focus is in an
+		// editor tells the user they are in the menu when they are not, and
+		// there is no second cue to correct the impression. A design that wants
+		// a faint marker asks for one with WithSelectedBlurred.
+		blurred:  surface,
 		armed:    selected.Reverse(true),
 		disabled: surface.Faint(true),
 		accel:    surface.Faint(true),
@@ -36,19 +44,23 @@ func NewMenuStyle(surface, selected style.Style) *MenuStyle {
 }
 
 // DefaultMenuStyle is the look a menu has when its author has said nothing.
+// colours are.
 func DefaultMenuStyle() *MenuStyle {
-	surface := style.New().Background(style.TokenPanel).Foreground(style.TokenForeground)
-	// The selection uses the theme's primary fill and the text token derived to
-	// be readable on it, which is the same pairing List and Select already use —
-	// so a menu's highlight matches the rest of the suite under any theme.
-	selected := style.New().Background(style.TokenPrimary).
-		Foreground(style.TokenTextOnPrimary)
+	surface := style.New().
+		Background(style.TokenPanel).
+		Foreground(style.TokenForeground).
+		Bold(true)
+	// Reverse rather than a named inversion: it inverts whatever the cell
+	// actually holds, so it works under every palette including none.
+	selected := surface.Reverse(true).Bold(true)
+	muted := style.New().Background(style.TokenPanel).Foreground(style.TokenTextMuted)
 	return &MenuStyle{
 		surface:  surface,
 		selected: selected,
-		armed:    selected.Reverse(true),
-		disabled: surface.Faint(true),
-		accel:    style.New().Background(style.TokenPanel).Foreground(style.TokenTextMuted),
+		blurred:  surface,
+		armed:    selected.Underline(true),
+		disabled: muted,
+		accel:    muted,
 		border:   style.New().Background(style.TokenPanel).Foreground(style.TokenBorder),
 	}
 }
@@ -69,6 +81,15 @@ func (s *MenuStyle) Selected() style.Style {
 		return DefaultMenuStyle().selected
 	}
 	return s.selected
+}
+
+// SelectedBlurred returns the selected row's look while the menu does NOT have
+// focus. Defaults to the plain surface, so no highlight is painted at all.
+func (s *MenuStyle) SelectedBlurred() style.Style {
+	if s == nil {
+		return DefaultMenuStyle().blurred
+	}
+	return s.blurred
 }
 
 // Armed returns the pressed row's look.
@@ -130,7 +151,20 @@ func rowStyle(s *MenuStyle, row RowView, st RowState) style.Style {
 		return s.Disabled()
 	case st.Armed:
 		return s.Armed()
-	case st.Selected:
+	case (st.Selected || st.Open) && !st.Focused:
+		// A SELECTION THE USER IS NOT DRIVING. The row is still the selection
+		// and the keyboard would still act on it the moment the menu regains
+		// focus, but painting it as the active row is a lie about where the
+		// input is going: a bar that highlights File while the caret is in a
+		// document leaves no way to tell which surface has the keyboard.
+		// Defaults to the plain surface, so the highlight simply is not there.
+		return s.SelectedBlurred()
+	case st.Selected, st.Open:
+		// OPEN COUNTS AS SELECTED. While a dropdown is showing, the selection
+		// has moved into it — so the category that owns the dropdown is no
+		// longer the selected row, and without this it goes flat the instant it
+		// is opened. The bar then shows nothing about where the cascade hanging
+		// below it came from.
 		return s.Selected()
 	}
 	return s.Surface()
@@ -148,6 +182,15 @@ func (s *MenuStyle) WithSurface(v style.Style) *MenuStyle {
 func (s *MenuStyle) WithSelected(v style.Style) *MenuStyle {
 	c := s.cloneMenu()
 	c.selected = v
+	return c
+}
+
+// WithSelectedBlurred returns a copy with the unfocused selection's look
+// replaced — for a design that wants a faint marker where the selection will
+// return to, rather than nothing.
+func (s *MenuStyle) WithSelectedBlurred(v style.Style) *MenuStyle {
+	c := s.cloneMenu()
+	c.blurred = v
 	return c
 }
 

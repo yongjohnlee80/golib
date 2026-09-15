@@ -53,6 +53,8 @@ type Modal struct {
 	// chained WithPointerPolicy before mount is applied when the Context
 	// arrives rather than being silently dropped.
 	pointerPolicy tui.PointerPolicy
+	// vimKeys adds h/k and l/j as aliases for the directional keys.
+	vimKeys bool
 	// selected is the index of the focused button, or -1 when focus is on the
 	// Modal node itself — which happens when it owns no enabled button.
 	selected int
@@ -108,6 +110,64 @@ func WithModalTitle(s string) ModalOption {
 // may share one.
 func WithModalStyle(s *ModalStyle) ModalOption {
 	return func(m *Modal) { m.card.st = s }
+}
+
+// ButtonAlign is where a dialog's row of buttons sits within its card.
+//
+// The zero value CENTRES them, which is the conventional look for a
+// confirmation and the one a caller who says nothing should get: a pair of
+// controls hugging one edge of a card wider than they are reads as detached
+// from the question above.
+type ButtonAlign uint8
+
+const (
+	// ButtonsCenter centres the row. The default.
+	ButtonsCenter ButtonAlign = iota
+	// ButtonsLeft packs the row against the leading edge.
+	ButtonsLeft
+	// ButtonsRight packs it against the trailing edge, the placement a form-like
+	// dialog with a wide body usually wants.
+	ButtonsRight
+)
+
+// Valid reports whether a is one of the declared alignments.
+func (a ButtonAlign) Valid() bool { return a <= ButtonsRight }
+
+// String names the alignment for traces and test failures.
+func (a ButtonAlign) String() string {
+	switch a {
+	case ButtonsCenter:
+		return "center"
+	case ButtonsLeft:
+		return "left"
+	case ButtonsRight:
+		return "right"
+	}
+	return "unknown"
+}
+
+// WithModalVimNavigation adds h/k and l/j as aliases for the arrow keys that
+// move between a dialog's buttons. Off by default.
+//
+// OPT-IN, because h and l are ordinary letters: a dialog whose buttons carry
+// mnemonics may legitimately answer to one of them, and a consumer that is not
+// a Vim-shaped application should not have two of its letters quietly taken.
+// An explicit mnemonic still wins over an alias, so enabling this cannot make
+// a declared key unreachable.
+func WithModalVimNavigation(v bool) ModalOption {
+	return func(m *Modal) { m.vimKeys = v }
+}
+
+// WithButtonAlign sets where the button row sits. An invalid value is refused
+// at construction rather than stored, like every other closed set here.
+func WithButtonAlign(a ButtonAlign) ModalOption {
+	return func(m *Modal) {
+		if !a.Valid() {
+			panic(tuiFatal("widget: WithButtonAlign",
+				"value outside the declared ButtonAlign set", int(a)))
+		}
+		m.card.align = a
+	}
 }
 
 // WithPlacement sets where the card sits within the host. Default is centred,
@@ -393,21 +453,102 @@ func (m *Modal) Init(ctx *tui.Context) {
 	// mounts rather than needing a second pass afterwards.
 	ctx.SetPointerPolicy(m.pointerPolicy)
 	ctx.Mount(m.card)
-	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(modalKeys))
+	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(m.keys))
 }
 
 // modalKeys turns Escape into a dismissal action. Enter is deliberately NOT
 // bound here: it belongs to whichever button holds focus, and binding it at the
 // dialog would shadow every button's own activation.
-func modalKeys(ev tui.Event) (tui.Action, bool) {
+func (m *Modal) keys(ev tui.Event) (tui.Action, bool) {
 	k, ok := ev.(tui.KeyEvent)
-	if !ok || k.Kind == tui.KeyRelease || k.Mods != 0 {
+	if !ok || k.Kind == tui.KeyRelease || k.Mods.Chord() != 0 {
 		return nil, false
 	}
 	if k.Code == tui.KeyEscape {
 		return dismissAction{}, true
 	}
+	// MNEMONIC FIRST, ALWAYS. A declared key is specific intent; a direction is
+	// a convenience. Resolving the alias first would make a button whose
+	// mnemonic happens to be 'l' unreachable the moment Vim keys were enabled,
+	// and the author who declared it would have no way to know why.
+	if b := m.mnemonicButton(k.Code); b != nil {
+		return modalActivateAction{target: b}, true
+	}
+	switch k.Code {
+	case tui.KeyLeft, tui.KeyUp:
+		return modalStepAction{delta: -1}, true
+	case tui.KeyRight, tui.KeyDown:
+		return modalStepAction{delta: +1}, true
+	}
+	if m.vimKeys {
+		switch k.Code {
+		case 'h', 'k':
+			return modalStepAction{delta: -1}, true
+		case 'l', 'j':
+			return modalStepAction{delta: +1}, true
+		}
+	}
 	return nil, false
+}
+
+// modalStepAction moves the focus between a dialog's buttons.
+type modalStepAction struct{ delta int }
+
+func (modalStepAction) ActionID() tui.ActionID { return "modal.step" }
+
+// modalActivateAction presses the button a mnemonic names.
+type modalActivateAction struct{ target *Button }
+
+func (modalActivateAction) ActionID() tui.ActionID { return "modal.activate" }
+
+// mnemonicButton is the ENABLED button answering to r, or nil.
+//
+// Enabled only: a greyed control does not answer its key, for the same reason
+// it does not answer Enter. The list is validated against two enabled buttons
+// claiming one key, so the first match is the only match.
+func (m *Modal) mnemonicButton(r rune) *Button {
+	if r == 0 {
+		return nil
+	}
+	for _, b := range m.card.buttons {
+		if b != nil && b.Enabled() && b.Mnemonic() != 0 &&
+			lowerRune(b.Mnemonic()) == lowerRune(r) {
+			return b
+		}
+	}
+	return nil
+}
+
+// stepFocus moves focus to the next enabled button in the given direction,
+// wrapping, and skipping the disabled.
+//
+// Anchored on the button that HAS focus rather than on a remembered index: the
+// user may have arrived by Tab or by clicking, and an index of our own would
+// disagree with the runtime about where they are.
+func (m *Modal) stepFocus(delta int) bool {
+	ctx := m.Context()
+	if ctx == nil || len(m.card.buttons) == 0 {
+		return false
+	}
+	cur := -1
+	for i, b := range m.card.buttons {
+		if b == nil {
+			continue
+		}
+		if bc := b.Context(); bc != nil && bc.Focused() {
+			cur = i
+			break
+		}
+	}
+	n := len(m.card.buttons)
+	for step := 1; step <= n; step++ {
+		j := ((cur+delta*step)%n + n) % n
+		if b := m.card.buttons[j]; b != nil && b.Enabled() {
+			ctx.FocusComponent(b)
+			return true
+		}
+	}
+	return false
 }
 
 // dismissAction is the dialog's own semantic action for "close this".
@@ -423,6 +564,22 @@ func (dismissAction) ActionID() tui.ActionID { return "modal.dismiss" }
 // moment the list is reordered — both are real bugs that role-based resolution
 // cannot have.
 func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
+	switch a := inv.Action.(type) {
+	case modalStepAction:
+		return m.stepFocus(a.delta)
+	case modalActivateAction:
+		// THROUGH THE RUNTIME, never by calling Activate directly. The runtime
+		// is the sole publisher of ControlActivatedEvent, so a direct call
+		// would run the button's own callback and nothing else: a command log,
+		// an undo stack or a test watching the bus would see a keystroke that
+		// activated nothing. ForwardAction carries this invocation's
+		// provenance, so a mnemonic press is recorded as the keyboard event it
+		// was — identical to Enter and to a click.
+		if ctx := m.Context(); ctx != nil {
+			return ctx.ForwardAction(a.target, tui.ActivateAction{})
+		}
+		return false
+	}
 	if _, ok := inv.Action.(dismissAction); !ok {
 		return false
 	}

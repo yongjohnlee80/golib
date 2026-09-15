@@ -79,34 +79,49 @@ func (m *Menu) resolveMouse(e tui.MouseEvent, rects map[ItemID]tui.Rect) (tui.Ac
 // alternative — one fixed mapping — makes a menu bar behave like a list rotated
 // ninety degrees, which every user notices immediately.
 func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
-	if e.Kind == tui.KeyRelease || e.Mods != 0 {
+	if e.Kind == tui.KeyRelease || e.Mods.Chord() != 0 {
 		return nil, false
 	}
-	step, open, back := tui.KeyDown, tui.KeyRight, tui.KeyLeft
-	prev := tui.KeyUp
-	if m.horizontal && len(m.levels) == 0 {
-		step, prev = tui.KeyRight, tui.KeyLeft
-		open, back = tui.KeyDown, tui.KeyUp
-	}
-	switch e.Code {
-	case step:
-		return MenuSelectAction{ItemID: m.neighbour(+1)}, true
-	case prev:
-		return MenuSelectAction{ItemID: m.neighbour(-1)}, true
-	case open:
-		if id, ok := m.Selected(); ok {
-			if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
-				return MenuActivateAction{ItemID: id}, true
+	// A MNEMONIC IS CHECKED BEFORE A VIM ALIAS, and that ordering is the whole
+	// reason the aliases are safe to offer: a row whose hotkey is 'k' must stay
+	// reachable with 'k'. Only a key no visible row answers to becomes a
+	// direction. The arrow keys themselves are unaffected — no row's mnemonic
+	// is an arrow — so this costs nothing when the aliases are off.
+	code := e.Code
+	if m.vimKeys {
+		if _, isMnemonic := m.mnemonic(code); !isMnemonic {
+			if dir, ok := vimDirection(code); ok {
+				code = dir
 			}
 		}
-		return nil, false
-	case back:
+	}
+	e.Code = code
+
+	if m.horizontal {
+		if a, ok := m.resolveBarKey(e); ok {
+			return a, ok
+		}
+	} else if a, ok := m.resolveColumnKey(e); ok {
+		return a, ok
+	}
+	switch e.Code {
+	case tui.KeyEscape:
+		// STAGED, ONE LEVEL PER PRESS, and unhandled once there are none.
+		//
+		// Escape used to close the whole cascade and report itself handled even
+		// with nothing open. Both halves were wrong. Closing everything skips
+		// the intermediate states a user is aiming at — from a nested submenu
+		// the first Escape should return to the dropdown that opened it, not to
+		// the bar. And claiming the key with nothing open swallows it: a menu
+		// may be nested inside something with its own meaning for Escape, and
+		// the consumer is the only one who knows what leaving the root means.
+		//
+		// MenuCloseAction{All: true} remains the programmatic close — DoAction,
+		// hide, unmount — it is simply not what the keyboard does.
 		if len(m.levels) > 0 {
-			return MenuCloseAction{}, true
+			return MenuCloseAction{All: false}, true
 		}
 		return nil, false
-	case tui.KeyEscape:
-		return MenuCloseAction{All: true}, true
 	case tui.KeyEnter, ' ':
 		if id, ok := m.Selected(); ok {
 			return MenuActivateAction{ItemID: id}, true
@@ -120,6 +135,182 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 		return MenuActivateAction{ItemID: id}, true
 	}
 	return nil, false
+}
+
+// vimDirection maps an hjkl key onto the arrow it stands for. Reported rather
+// than applied, so the caller decides whether a mnemonic has first claim.
+func vimDirection(r rune) (rune, bool) {
+	switch r {
+	case 'h':
+		return tui.KeyLeft, true
+	case 'j':
+		return tui.KeyDown, true
+	case 'k':
+		return tui.KeyUp, true
+	case 'l':
+		return tui.KeyRight, true
+	}
+	return 0, false
+}
+
+// resolveBarKey is the arrow vocabulary of a horizontal MENU BAR.
+//
+// THE TWO AXES MEAN DIFFERENT THINGS, and keeping them separate is the whole
+// point. Left and Right walk the BAR — always, whatever is open and whatever
+// kind of row the selection is on. Up and Down walk the open dropdown.
+//
+// Right used to open a submenu when the selection was on one, which made the
+// bar unreachable from inside a category whose first row cascades: in a menu
+// whose Option holds "Keymaps", Right opened Keymaps and there was no way to
+// reach Help at all. One key cannot both walk the bar and descend a cascade;
+// Enter descends, and Up comes back out.
+//
+// Up at the first row CLOSES the level rather than wrapping to the last. A
+// cascade is a stack, and the way out of a stack is back the way you came —
+// wrapping to the bottom of a four-row dropdown when the user is trying to get
+// back to the bar is a small maze.
+func (m *Menu) resolveBarKey(e tui.KeyEvent) (tui.Action, bool) {
+	switch e.Code {
+	case tui.KeyRight:
+		// A SUBMENU ROW STILL DESCENDS. Right is how you reach the keymaps
+		// under Option, and taking that away to free the key for the bar would
+		// trade one unreachable place for another.
+		//
+		// What makes both possible is that Up now closes a level: from a
+		// category whose only row cascades, the way to the next category is Up
+		// and then Right, rather than being stuck inside the cascade with no
+		// exit — which is what it was before.
+		// ONLY INSIDE A LEVEL. On the bar itself every row is a submenu, so a
+		// descend-if-submenu rule there would make Right open the current
+		// category instead of stepping to the next one — which is Down's job
+		// and was briefly Right's too, breaking the bar entirely.
+		if len(m.levels) > 0 {
+			if id, ok := m.Selected(); ok {
+				if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
+					return MenuActivateAction{ItemID: id}, true
+				}
+			}
+		}
+		return m.barStep(+1)
+	case tui.KeyLeft:
+		// Inside a cascade, back out one level — the mirror of Right
+		// descending. At the first level there is nothing to back out of, so
+		// the key walks the bar.
+		if len(m.levels) > 1 {
+			return MenuCloseAction{}, true
+		}
+		return m.barStep(-1)
+	case tui.KeyDown:
+		if len(m.levels) == 0 {
+			// Down opens the category the selection is on, which is the only
+			// way into the cascade from the bar besides Enter.
+			if id, ok := m.Selected(); ok {
+				if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
+					return MenuActivateAction{ItemID: id}, true
+				}
+			}
+			return nil, false
+		}
+		return MenuSelectAction{ItemID: m.neighbour(+1)}, true
+	case tui.KeyUp:
+		if len(m.levels) == 0 {
+			return nil, false // nothing above the bar
+		}
+		if m.atLevelTop() {
+			return MenuCloseAction{}, true
+		}
+		return MenuSelectAction{ItemID: m.neighbour(-1)}, true
+	}
+	return nil, false
+}
+
+// resolveColumnKey is the arrow vocabulary of a VERTICAL menu, which has no bar
+// to walk: Up and Down move, Right descends into a submenu, Left comes back.
+//
+// Unchanged, and deliberately not merged with the bar's. A column has one axis
+// of travel and cascades sideways; a bar has two axes that mean different
+// things. Forcing one table to serve both is what produced a Right key that
+// sometimes walked and sometimes descended.
+func (m *Menu) resolveColumnKey(e tui.KeyEvent) (tui.Action, bool) {
+	switch e.Code {
+	case tui.KeyDown:
+		return MenuSelectAction{ItemID: m.neighbour(+1)}, true
+	case tui.KeyUp:
+		return MenuSelectAction{ItemID: m.neighbour(-1)}, true
+	case tui.KeyRight:
+		if id, ok := m.Selected(); ok {
+			if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
+				return MenuActivateAction{ItemID: id}, true
+			}
+		}
+		return nil, false
+	case tui.KeyLeft:
+		if len(m.levels) > 0 {
+			return MenuCloseAction{}, true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// atLevelTop reports whether the selection is the FIRST selectable row of the
+// level currently on screen — the row where Up stops moving and starts closing.
+func (m *Menu) atLevelTop() bool {
+	for _, it := range m.currentLevelItems() {
+		if it.selectable() {
+			return it.ID == m.selected
+		}
+	}
+	return false
+}
+
+// barStep walks the bar by delta, carrying an open dropdown with it.
+//
+// With a level open the step ACTIVATES the neighbouring category, which both
+// opens its dropdown and — since opening truncates to the row's own depth —
+// closes the one being left. With nothing open it is an ordinary selection
+// move along the bar.
+func (m *Menu) barStep(delta int) (tui.Action, bool) {
+	if len(m.levels) > 0 {
+		if id, ok := m.barNeighbour(delta); ok {
+			return MenuActivateAction{ItemID: id}, true
+		}
+		return nil, false
+	}
+	return MenuSelectAction{ItemID: m.neighbour(delta)}, true
+}
+
+// barNeighbour is the next selectable ROOT row, for a horizontal bar with a
+// level open — the category Left and Right walk to while a dropdown is showing.
+//
+// Only for a bar with something open. A vertical menu has no "along the bar" to
+// walk, and a bar with nothing open already steps its root rows with the same
+// keys through the ordinary neighbour path.
+func (m *Menu) barNeighbour(delta int) (ItemID, bool) {
+	if !m.horizontal || len(m.levels) == 0 {
+		return "", false
+	}
+	// Which root row the open cascade belongs to, regardless of how deep the
+	// selection currently is.
+	root := m.levels[0].parent
+	idx := -1
+	for i := range m.items {
+		if m.items[i].ID == root {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return "", false
+	}
+	n := len(m.items)
+	for stepN := 1; stepN <= n; stepN++ {
+		j := ((idx+delta*stepN)%n + n) % n
+		if m.items[j].selectable() && m.items[j].Kind == ItemKindSubmenu {
+			return m.items[j].ID, true
+		}
+	}
+	return "", false
 }
 
 // neighbour is the next selectable row in the current level, wrapping. Returns
@@ -423,14 +614,25 @@ func (m *Menu) levelOpenFor(id ItemID) bool {
 	return false
 }
 
-// rowWidth is the width one row wants: label, a gap, the accelerator, and room
-// for the submenu marker.
-func (m *Menu) rowWidth(it MenuItemModel) int {
-	w := m.measure(it.Label)
+// rowWidth is the width one row wants: A PAD ON EACH SIDE, the label, a gap,
+// the accelerator, and room for the mark or the submenu marker.
+//
+// THE PADS ARE PART OF THE ROW, not decoration the frame supplies. paintRow
+// starts the label at x+1 and puts the submenu arrow at x+w-2, so a row sized to
+// its bare content is one short at each end: the widest row of a level sets the
+// popup's width, and it then painted its last cell onto the border. A submenu
+// row lost a character of its label too, the arrow landing on top of it.
+//
+// It stayed hidden because only the WIDEST row of a level is affected, and a
+// level whose widest row is a long plain command has slack from its neighbours
+// to absorb the error. MenuItem.Layout — the standalone row — has always used
+// measure(label)+2; this is the model-driven painter agreeing with it.
+func (m *Menu) rowWidth(it MenuItemModel, marker bool) int {
+	w := m.measure(it.Label) + 2
 	if it.Accel != "" {
 		w += 2 + m.measure(it.Accel)
 	}
-	if it.Kind == ItemKindSubmenu {
+	if marker && it.Kind == ItemKindSubmenu {
 		w += 2
 	}
 	if it.Kind == ItemKindCheck || it.Kind == ItemKindRadio {
@@ -444,7 +646,7 @@ func (m *Menu) rowWidth(it MenuItemModel) int {
 // The delegation is total: a RowRenderer that is supplied paints the whole row,
 // because a hook that painted only part of one would have to agree with this
 // function about where the parts are, and the two would drift.
-func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState) {
+func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState, marker bool) {
 	base := rowStyle(m.style, viewOf(it), st)
 	s.Fill(r, " ", base)
 	// A plain != nil is correct HERE because the option normalised a typed nil
@@ -478,7 +680,7 @@ func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState
 			m.paintText(s, it.Accel, ax, r.Y, m.style.Accel())
 		}
 	}
-	if it.Kind == ItemKindSubmenu {
+	if marker && it.Kind == ItemKindSubmenu {
 		s.SetCell(r.X+r.W-2, r.Y, "▸", base)
 	}
 }

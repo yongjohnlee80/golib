@@ -370,6 +370,22 @@ func TestReleasingElsewhereLeavesTheOpenLevelsAlone(t *testing.T) {
 // An involuntary loss is not a decision the user made about the menu. It must
 // clear the half-finished gesture — so a later release cannot activate something
 // the user has stopped pointing at — and leave the levels exactly as they were.
+//
+// HOW THE LOSS IS PRODUCED MATTERS, and this test used to get it wrong. It
+// called CancelGesture on the MENU's context, which is documented to do nothing
+// unless that node is the capture owner — and it never is: a gesture started in
+// a level is captured BY THAT LEVEL, because only the node whose handler runs
+// may take the pointer. So the call was a no-op and the assertions below were
+// measuring a menu that had never been touched.
+//
+// It looked green for a second reason, since fixed: rows were sized without
+// their pads, so the press at the label's first cell missed the row's hit rect
+// entirely and armed nothing. A test asserting "this release activates nothing"
+// passes easily when no gesture was ever started.
+//
+// Moving focus out of the capture owner's scope is a loss the runtime really
+// produces (CaptureLostFocusChange), and it is the one named in the sentence
+// above: the event reaches the level, which forwards it to the Menu.
 func TestLosingTheCaptureClearsTheGestureWithoutClosingAnything(t *testing.T) {
 	var ran atomic.Int64
 	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
@@ -383,7 +399,15 @@ func TestLosingTheCaptureClearsTheGestureWithoutClosingAnything(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	h, _ := menuFixture(t, m, 40, 14)
+	// Something else focusable, so focus has somewhere to go that the capture
+	// owner's scope does not contain.
+	elsewhere := widget.NewButton("Elsewhere")
+	base := tui.NewStack()
+	base.Add(m, elsewhere)
+	host := widget.NewOverlayHost(base)
+	h := startApp(t, host, 40, 14)
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
 	defer h.stop()
 	h.onLoop(func() {
 		if err := m.Open("file"); err != nil {
@@ -398,7 +422,8 @@ func TestLosingTheCaptureClearsTheGestureWithoutClosingAnything(t *testing.T) {
 	h.settle()
 
 	// The runtime takes the capture away, as it does on a scope change.
-	h.onLoop(func() { m.Context().CancelGesture() })
+	h.onLoop(func() { elsewhere.Context().RequestFocus() })
+	h.settle()
 	h.settle()
 
 	if got := openLevelsOn(t, h, m); got != 1 {
@@ -447,8 +472,15 @@ func TestANonPrimaryReleaseDoesNotEndAPrimaryGesture(t *testing.T) {
 	}
 }
 
-// TestEscapeRestoresTheFocusTheMenuTookAndClosesEveryLevel.
-func TestEscapeRestoresTheFocusTheMenuTookAndClosesEveryLevel(t *testing.T) {
+// TestEscapeClosesOneLevelPerPressAndThenBubbles.
+//
+// STAGED, not all-at-once. Escape used to close the whole cascade in one press
+// and report itself handled even with nothing open. Both halves were wrong:
+// from a nested submenu the first press should return to the dropdown that
+// opened it, which is the state the user is aiming at, and claiming the key at
+// the root swallows it from a consumer that may have its own meaning for it —
+// a menu can be nested inside something that does.
+func TestEscapeClosesOneLevelPerPressAndThenBubbles(t *testing.T) {
 	m := widget.NewMenu()
 	if err := m.SetModel([]widget.MenuItemModel{
 		widget.NewSubmenu("a", "A", []widget.MenuItemModel{
@@ -479,19 +511,42 @@ func TestEscapeRestoresTheFocusTheMenuTookAndClosesEveryLevel(t *testing.T) {
 		t.Fatalf("precondition failed: %d levels open, want 2", openLevelsOn(t, h, m))
 	}
 
-	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
-	h.waitFor("every level closed", func() bool { return openLevelsOn(t, h, m) == 0 })
-	h.settle()
+	esc := func() {
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+		h.settle()
+		h.settle()
+	}
+
+	esc()
+	if got := openLevelsOn(t, h, m); got != 1 {
+		t.Fatalf("the first Escape left %d levels open, want 1 — it should close the "+
+			"deepest, not the cascade", got)
+	}
+	if got := h.grid(); strings.Contains(got, "Deep") {
+		t.Errorf("the deepest level survived its own Escape:\n%s", got)
+	}
+
+	esc()
+	if got := openLevelsOn(t, h, m); got != 0 {
+		t.Errorf("the second Escape left %d levels open, want 0", got)
+	}
 
 	// Focus is still on the menu itself, which is where it was before the
-	// cascade opened: the levels never took it.
+	// cascade opened: the levels never took it, and Escape at the root is for
+	// the consumer to interpret rather than for the menu to act on.
 	var focused bool
 	h.onLoop(func() { focused = m.Context().Focused() })
 	if !focused {
 		t.Error("the menu does not hold focus after Escape closed its levels")
 	}
-	if got := h.grid(); strings.Contains(got, "Deep") {
-		t.Errorf("a level survived Escape:\n%s", got)
+
+	// A third Escape is UNHANDLED: the menu has nothing left to close, so the
+	// key belongs to whatever contains it.
+	esc()
+	h.onLoop(func() { focused = m.Context().Focused() })
+	if !focused {
+		t.Error("Escape at the root moved focus; leaving the menu is the consumer's " +
+			"decision, not the widget's")
 	}
 }
 

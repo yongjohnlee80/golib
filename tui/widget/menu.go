@@ -69,6 +69,23 @@ type Menu struct {
 	// instead of down the side. It changes layout and the arrow keys, nothing
 	// else — there is one lifecycle, not two.
 	horizontal bool
+	// barMarkers is whether a submenu row in the ROOT level of a horizontal bar
+	// draws its "▸". Off by default: in a bar every top-level entry opens a
+	// dropdown, so a marker on each one repeats what the bar already is and adds
+	// two cells to every entry. Inside a popup the marker distinguishes the rows
+	// that cascade from the rows that act, so there it is always drawn.
+	barMarkers bool
+	// levelTitles is whether a dropdown names the row that opened it, in its
+	// own top border. On by default: a level that says where it came from
+	// stays readable beside a sibling and reads as a window of its own, which
+	// is what a detached or floating menu needs.
+	levelTitles bool
+	// levelMinWidth is the smallest interior a dropdown may have, in columns.
+	// Keeps a cascade of short categories from looking ragged, one narrow box
+	// per level.
+	levelMinWidth int
+	// vimKeys adds hjkl as aliases for the arrow keys.
+	vimKeys bool
 	// dropSide is where a bar's first level opens, set by MenuBar so a bottom
 	// bar drops upward rather than back across itself. Zero means "the default
 	// for this orientation", which is what a bare Menu wants.
@@ -90,7 +107,7 @@ type MenuOption func(*Menu)
 
 // NewMenu builds an empty menu. Supply a model with SetModel.
 func NewMenu(opts ...MenuOption) *Menu {
-	m := &Menu{pointerPolicy: tui.PointerInherit}
+	m := &Menu{levelTitles: true, levelMinWidth: defaultLevelMinWidth, pointerPolicy: tui.PointerInherit}
 	for _, o := range opts {
 		if o != nil {
 			o(m)
@@ -115,6 +132,67 @@ func WithAnchorPolicy(p AnchorPolicy) MenuOption {
 		}
 		m.policy = p
 	}
+}
+
+// defaultLevelMinWidth is the interior every dropdown gets at least.
+//
+// Chosen rather than derived, because there is nothing to derive it FROM: the
+// widest row of a level says how much space that level needs, not how much it
+// should have. Twelve columns is about four short words, which is where a
+// dropdown stops reading as a box that happens to be wide enough for its
+// longest verb and starts reading as a menu.
+const defaultLevelMinWidth = 12
+
+// WithLevelMinWidth sets the smallest interior a dropdown may have, in columns.
+// Zero removes the floor, sizing every level to its own content.
+//
+// The alternative — one width shared by every level, taken from the widest —
+// is NOT what this does: a single long row in one submenu would then stretch
+// every other dropdown in the menu to match it.
+func WithLevelMinWidth(cols int) MenuOption {
+	return func(m *Menu) {
+		if cols < 0 {
+			panic(fatalOf("widget: WithLevelMinWidth",
+				"a negative width is not a narrower box; zero removes the floor",
+				itoa(cols)))
+		}
+		m.levelMinWidth = cols
+	}
+}
+
+// WithMenuVimNavigation adds h/j/k/l as aliases for the arrow keys, at every
+// level. Off by default.
+//
+// ALIASES FOR THE PHYSICAL DIRECTIONS, resolved before the orientation-aware
+// bindings: h is Left, j is Down, k is Up, l is Right. So they inherit the
+// meaning each direction already has — in a bar h and l walk the bar while j
+// opens and k closes, and in a column they move and cascade — rather than
+// being a second, separate vocabulary that could drift from the first.
+//
+// A DECLARED MNEMONIC ALWAYS WINS. A row whose hotkey is 'k' stays reachable
+// with 'k'; only when the visible level has no row answering to the key does it
+// become navigation. Without that precedence, turning this on would silently
+// make some rows unreachable, and the author who declared the hotkey would have
+// no way to see why.
+func WithMenuVimNavigation(v bool) MenuOption {
+	return func(m *Menu) { m.vimKeys = v }
+}
+
+// WithLevelTitle decides whether a dropdown names the row that opened it in
+// its top border. On by default.
+func WithLevelTitle(v bool) MenuOption {
+	return func(m *Menu) { m.levelTitles = v }
+}
+
+// WithBarSubmenuMarker decides whether a horizontal bar's own rows draw the
+// submenu arrow. Off by default; popup rows always draw it.
+//
+// A bar entry that opens a dropdown is the ordinary case rather than the
+// exceptional one, so marking every entry says nothing and costs two cells
+// each. It is an option rather than a fixed rule because a bar mixing entries
+// that open with entries that act directly does need the distinction.
+func WithBarSubmenuMarker(v bool) MenuOption {
+	return func(m *Menu) { m.barMarkers = v }
 }
 
 // WithRowRenderer supplies a custom row painter — the declared extension seam
@@ -296,8 +374,17 @@ func (m *Menu) setSelected(id ItemID) {
 // the first selectable row of the deepest open level.
 func (m *Menu) repairSelection() {
 	level := m.currentLevelItems()
-	if it := findItem(level, m.selected); it != nil && it.selectable() {
-		return
+	// DIRECT MEMBERSHIP, never findItem. findItem RECURSES into children, so it
+	// answers "is this row anywhere in the model" — and the question here is
+	// "is it on screen". After closing Option → Keymaps it found the Keymaps
+	// row nested inside the root slice, declared the selection healthy and
+	// returned, leaving it on a row nobody can see: no category highlighted,
+	// the arrows starting from somewhere invisible, and the menu still focused
+	// with nothing to show for it.
+	for i := range level {
+		if level[i].ID == m.selected && level[i].selectable() {
+			return
+		}
 	}
 	for i := range level {
 		if level[i].selectable() {
@@ -351,7 +438,21 @@ func (m *Menu) Open(id ItemID) error {
 
 // Close closes every open level and leaves the selection on the root.
 func (m *Menu) Close() {
+	// THE CATEGORY THE CASCADE CAME FROM KEEPS THE SELECTION. Closing Option's
+	// dropdown should leave the user on Option, not deposit them on whichever
+	// row happens to be first — repairSelection's fallback is a floor, not a
+	// destination, and landing on File after closing Option is a jump the user
+	// did not ask for. Read before the levels go, since that is what knows.
+	var owner ItemID
+	if len(m.levels) > 0 {
+		owner = m.levels[0].parent
+	}
 	m.closeLevelsFrom(0)
+	if owner != "" {
+		if it := findItem(m.items, owner); it != nil && it.selectable() {
+			m.setSelected(owner)
+		}
+	}
 	m.repairSelection()
 }
 

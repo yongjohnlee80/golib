@@ -65,6 +65,13 @@ type Button struct {
 	label string
 	role  ButtonRole
 	st    *ButtonStyle
+	deco  decoration
+	// mnemonic is the key that reaches this button directly, or 0. METADATA
+	// ONLY: the button never claims the rune itself. A standalone control that
+	// grabbed an unmodified letter out of the air would break every text field
+	// beside it — it is the CONTAINER, which knows the whole set and which of
+	// them are enabled, that resolves one.
+	mnemonic rune
 
 	enabled  bool
 	armed    bool
@@ -77,17 +84,47 @@ type Button struct {
 }
 
 // ButtonOption configures a Button at construction.
+// decoration is what a button is wrapped in so it reads as a control.
+//
+// A terminal has no raised edge to make a word look pressable, so a bare label
+// in a row of prose is indistinguishable from the prose. Brackets are the
+// convention that has stood in for that edge since curses.
+type decoration struct{ open, close string }
+
+// defaultDecoration is the conventional pair. Replaceable, and removable by
+// passing two empty strings, for a design that supplies its own frame.
+var defaultDecoration = decoration{"[", "]"}
+
 type ButtonOption func(*Button)
 
 // NewButton builds a button with the given label.
 func NewButton(label string, opts ...ButtonOption) *Button {
-	b := &Button{label: label, enabled: true}
+	b := &Button{label: label, enabled: true, deco: defaultDecoration}
 	for _, o := range opts {
 		if o != nil {
 			o(b)
 		}
 	}
 	return b
+}
+
+// WithMnemonic sets the key that reaches this button directly, such as 'y' on
+// a Yes button.
+//
+// The button records it and underlines it in the label; it does NOT bind it.
+// Resolution belongs to the container: a Modal matches a keystroke against its
+// own enabled buttons, so the same metadata can later mean something slightly
+// different in a toolbar or a form without every button in the tree competing
+// for unmodified letters.
+func WithMnemonic(r rune) ButtonOption {
+	return func(b *Button) { b.mnemonic = r }
+}
+
+// WithButtonDecoration replaces the pair a button is wrapped in. Two empty
+// strings remove it, leaving the bare label for a caller framing the control
+// some other way.
+func WithButtonDecoration(open, close string) ButtonOption {
+	return func(b *Button) { b.deco = decoration{open, close} }
 }
 
 // WithRole sets what the button means to its container.
@@ -155,6 +192,10 @@ func (b *Button) WithPointerPolicy(p tui.PointerPolicy) *Button {
 }
 
 // Role reports what the button means to its container.
+// Mnemonic is the key that reaches this button directly, or 0 for none. The
+// button records and underlines it; the CONTAINER resolves it.
+func (b *Button) Mnemonic() rune { return b.mnemonic }
+
 func (b *Button) Role() ButtonRole { return b.role }
 
 // Label reports the button's text.
@@ -295,7 +336,7 @@ func activateKeys(ev tui.Event) (tui.Action, bool) {
 	if !ok || k.Kind == tui.KeyRelease {
 		return nil, false
 	}
-	if k.Mods != 0 {
+	if k.Mods.Chord() != 0 {
 		return nil, false // Ctrl-Enter and friends are somebody else's binding
 	}
 	if k.Code == tui.KeyEnter || k.Code == ' ' {
@@ -312,7 +353,22 @@ func (b *Button) Layout(cs tui.Constraints) tui.Size {
 	// an emoji ZWJ sequence is many runes in one cell. Base.measure asks the
 	// mounted Context for the active width policy, so layout agrees with what
 	// the backend will actually draw.
+	// The DECORATED form, because that is the string Render paints. Measuring
+	// the bare label here would size the button two cells short of its own
+	// brackets and clip the closing one.
+	if d := b.decorated(); d != b.label {
+		return cs.Constrain(tui.Size{W: b.measure(d), H: 1})
+	}
 	return cs.Constrain(tui.Size{W: b.measure(b.label) + 2, H: 1})
+}
+
+// decorated is the label as it is painted: "[ Save ]" by default, or the bare
+// label when the decoration has been cleared.
+func (b *Button) decorated() string {
+	if b.deco.open == "" && b.deco.close == "" {
+		return b.label
+	}
+	return b.deco.open + " " + b.label + " " + b.deco.close
 }
 
 // Render paints the label centred in the button's current look.
@@ -330,7 +386,8 @@ func (b *Button) Render(s tui.Surface) {
 	// Centre using the SURFACE's policy, which is the one that will draw this.
 	// Layout used the Context's; they are the same policy, and taking each from
 	// its own phase is what keeps them so.
-	w := s.StringWidth(b.label)
+	painted := b.decorated()
+	w := s.StringWidth(painted)
 	x := (sz.W - w) / 2
 	if x < 0 {
 		x = 0
@@ -338,7 +395,8 @@ func (b *Button) Render(s tui.Surface) {
 	// Iterate extended grapheme CLUSTERS, not runes. A cluster is the unit the
 	// terminal draws: painting rune by rune puts a zero-width combining mark in
 	// its own cell, where it overwrites the character it belongs to.
-	for cluster := range tui.Graphemes(b.label) {
+	marked := false
+	for cluster := range tui.Graphemes(painted) {
 		cw := s.StringWidth(cluster)
 		// Stop before writing a cluster that does not fit. Half of a
 		// double-width cluster in the final column is a broken cell rather than
@@ -346,7 +404,15 @@ func (b *Button) Render(s tui.Surface) {
 		if x+cw > sz.W {
 			break
 		}
-		s.SetCell(x, 0, cluster, st)
+		cst := st
+		// THE FIRST MATCHING CLUSTER ONLY. A mnemonic names one key, so marking
+		// every "o" in "Choose Folder" would advertise three ways in where
+		// there is one.
+		if !marked && b.mnemonic != 0 && eqFold([]rune(cluster)[0], b.mnemonic) {
+			cst = st.Underline(true)
+			marked = true
+		}
+		s.SetCell(x, 0, cluster, cst)
 		x += cw
 	}
 }
