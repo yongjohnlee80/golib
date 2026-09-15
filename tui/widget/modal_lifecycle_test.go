@@ -1100,3 +1100,35 @@ func TestEveryValidationErrorMatchesBothTheUmbrellaAndItsOwnSentinel(t *testing.
 		})
 	}
 }
+
+// TestOpeningADialogThatIsAlreadyMountedElsewhereIsRefused.
+//
+// A Modal used as ordinary content and then opened would have to be mounted
+// twice. Refused BEFORE the host adds it, because the unwind for a failed add
+// removes the layer — and removing a component mounted elsewhere unmounts it
+// from where it legitimately lives.
+func TestOpeningADialogThatIsAlreadyMountedElsewhereIsRefused(t *testing.T) {
+	inline := widget.NewModal(widget.NewText("inline"), widget.WithModalTitle("Inline"))
+	base := widget.NewButton("base")
+	root := tui.NewFlex(tui.Vertical)
+	root.Add(base, inline) // the dialog is ordinary content here
+	host := widget.NewOverlayHost(root)
+	h := startApp(t, host, 40, 14)
+	defer h.stop()
+	h.settle()
+	before := h.grid()
+
+	var err error
+	h.onLoop(func() { err = inline.Open(host) })
+	h.settle()
+
+	if !errors.Is(err, widget.ErrModalNotMountable) {
+		t.Errorf("Open returned %v, want ErrModalNotMountable", err)
+	}
+	if inline.IsOpen() {
+		t.Error("a refused Open left the dialog marked open")
+	}
+	if got := h.grid(); got != before {
+		t.Errorf("a refused Open changed the screen.\nwant:\n%s\ngot:\n%s", before, got)
+	}
+}

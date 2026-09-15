@@ -120,3 +120,39 @@ func countLayers(h *OverlayHost, c tui.Component) int {
 	}
 	return n
 }
+
+// TestARefusedAnchoredOpenIsReportedRatherThanSwallowed.
+//
+// The internal handshake has no return value: the widget that asked is long gone
+// by the time the host drains the request. Publishing the refusal is what keeps
+// it observable — the alternative is a popup that never appears and nothing
+// anywhere saying why.
+func TestARefusedAnchoredOpenIsReportedRatherThanSwallowed(t *testing.T) {
+	base := NewButton("base")
+	host := NewOverlayHost(base)
+	h := startAppInternal(t, host, 20, 6)
+	defer h.stopInternal()
+
+	var failures []AnchoredOpenFailedEvent
+	unsub := tui.Subscribe(host.ctx.Bus(), func(ev AnchoredOpenFailedEvent) {
+		failures = append(failures, ev)
+	})
+	defer unsub()
+
+	// The zero AnchorRef names no owner, so the host must refuse it.
+	h.onLoopInternal(func() {
+		host.ctx.Bus().Publish(anchoredOpenEvent{id: "p", layer: NewText("x")})
+	})
+	h.syncInternal()
+	h.syncInternal()
+
+	if len(failures) != 1 {
+		t.Fatalf("%d failure events, want exactly 1", len(failures))
+	}
+	if failures[0].Layer != "p" || failures[0].Err == nil {
+		t.Errorf("failure event = %+v, want layer p with an error", failures[0])
+	}
+	if countLayers(host, nil) != 0 && host.Stack.Len() != 1 {
+		t.Errorf("the refused layer was mounted anyway: %d layers", host.Stack.Len())
+	}
+}
