@@ -235,12 +235,13 @@ func (h *OverlayHost) Layout(c tui.Constraints) tui.Size {
 	}
 	viewport := tui.Rect{X: 0, Y: 0, W: size.W, H: size.H}
 	lost := h.placeAnchored(h.ctx, viewport)
-	for _, id := range lost {
-		h.lostAnchors = append(h.lostAnchors, id)
-	}
+	h.lostAnchors = append(h.lostAnchors, lost...)
 	if len(h.lostAnchors) > 0 {
-		// Scheduled onto the loop rather than done here: this is still Layout.
-		h.ctx.App().Update(h.commitAnchorLoss)
+		// The COMMIT phase, not a scheduled update: closing an anchor-lost
+		// overlay is a geometry-derived side effect, which is exactly what
+		// commit exists for. Deferring it to a later turn instead would paint
+		// one frame containing a popup the host has already decided to close.
+		h.ctx.AfterLayout("anchor-loss", h.commitAnchorLoss)
 	}
 	return size
 }

@@ -134,6 +134,10 @@ type App struct {
 	batchDepth  int
 	batchRepair bool
 
+	// commits are the AfterLayout records registered by the layout pass in
+	// progress, drained by the commit phase that follows it. See commit.go.
+	commits []commitRecord
+
 	// pendingRepair records that a focus repair ran while its only candidates
 	// had not been laid out, and must be retried once the frame has run. See
 	// repairFocus's empty-scope branch.
@@ -470,8 +474,9 @@ func (a *App) renderFrame() {
 		a.layoutDirty = true
 	}
 	if a.layoutDirty {
-		a.layoutTree()
-		a.layoutDirty = false
+		// Layout and commit alternate until geometry settles; see commit.go.
+		// The frame must not paint a layout its own commit has invalidated.
+		a.layoutAndCommit()
 		a.renderDirty = true // geometry changed; repaint
 		// Visibility is only knowable once the pass has placed everything, so
 		// this is the earliest honest moment to end a capture whose owner is
