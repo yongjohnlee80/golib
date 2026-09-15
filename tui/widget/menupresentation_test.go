@@ -622,3 +622,72 @@ func TestLeftStillClosesANestedLevel(t *testing.T) {
 			"still step back out before it walks the bar", n)
 	}
 }
+
+// TestAButtonReadsAsAControl.
+//
+// A terminal has no raised edge, so a bare word in a dialog is
+// indistinguishable from the prose above it — "Yes  No" under a question reads
+// as part of the sentence. Brackets are the convention that stands in for the
+// edge, and they are the default for that reason.
+func TestAButtonReadsAsAControl(t *testing.T) {
+	t.Run("bracketed by default", func(t *testing.T) {
+		md := widget.NewModal(widget.NewText("Quit?"),
+			widget.WithButtons(widget.NewButton("Yes"), widget.NewButton("No")))
+		host := widget.NewOverlayHost(widget.NewText(""))
+		h := startApp(t, host, 50, 10)
+		defer h.stop()
+		h.onLoop(func() {
+			if err := md.Open(host); err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+		})
+		h.settle()
+		h.settle()
+
+		grid := h.grid()
+		for _, want := range []string{"[ Yes ]", "[ No ]"} {
+			if !strings.Contains(grid, want) {
+				t.Errorf("%q is not on screen; a button has to look like one\n%s",
+					want, grid)
+			}
+		}
+	})
+
+	t.Run("removable", func(t *testing.T) {
+		// THE CONTROL. Without this, a decoration hard-coded into Render would
+		// pass the case above just as well, and a caller framing controls their
+		// own way would have no way out.
+		b := widget.NewButton("Yes", widget.WithButtonDecoration("", ""))
+		md := widget.NewModal(widget.NewText("Quit?"), widget.WithButtons(b))
+		host := widget.NewOverlayHost(widget.NewText(""))
+		h := startApp(t, host, 50, 10)
+		defer h.stop()
+		h.onLoop(func() {
+			if err := md.Open(host); err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+		})
+		h.settle()
+		h.settle()
+		if grid := h.grid(); strings.Contains(grid, "[") {
+			t.Errorf("the decoration was not removed:\n%s", grid)
+		}
+	})
+
+	t.Run("the button is wide enough for its own brackets", func(t *testing.T) {
+		// The defect a decoration added only at paint time would have: the
+		// button measures the bare label, and the closing bracket is clipped.
+		b := widget.NewButton("Yes")
+		flex := tui.NewFlex(tui.Horizontal)
+		flex.Add(b)
+		h := startApp(t, flex, 40, 1)
+		defer h.stop()
+		h.settle()
+		var got tui.Size
+		h.onLoop(func() { got = b.Layout(tui.Loose(tui.Size{W: 40, H: 1})) })
+		if want := len("[ Yes ]"); got.W != want {
+			t.Errorf("intrinsic width = %d, want %d — the button must measure what "+
+				"it paints", got.W, want)
+		}
+	})
+}

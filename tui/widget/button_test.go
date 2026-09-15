@@ -721,7 +721,11 @@ func TestLabelWidthFollowsGraphemeClustersNotRunes(t *testing.T) {
 		{"mixed", "a確", 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := widget.NewButton(tc.label)
+			// UNDECORATED, because this is about how the LABEL is measured.
+			// The brackets a button wears by default are clusters of their own
+			// and would just be added to every expectation below, testing the
+			// decoration twice and the measurement less clearly.
+			b := widget.NewButton(tc.label, widget.WithButtonDecoration("", ""))
 			flex := tui.NewFlex(tui.Horizontal)
 			flex.Add(b)
 			// A terminal far wider than any label, so what is measured is the
@@ -992,7 +996,10 @@ func TestDisablingMidPressCancelsRatherThanDriftingOut(t *testing.T) {
 // rather than merely being mis-measured, which is why the width test alone does
 // not cover this.
 func TestACombiningMarkIsPaintedWithItsBaseCharacter(t *testing.T) {
-	b := widget.NewButton("éx") // "éx" as base + combining acute
+	// Undecorated for the same reason as the width test above: this counts
+	// PAINTED CELLS, and brackets are painted cells with nothing to do with
+	// combining marks.
+	b := widget.NewButton("éx", widget.WithButtonDecoration("", "")) // "éx" as base + combining acute
 	flex := tui.NewFlex(tui.Horizontal)
 	flex.Add(b)
 	h := startApp(t, flex, 10, 1)
