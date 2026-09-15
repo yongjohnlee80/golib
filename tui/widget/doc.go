@@ -348,17 +348,27 @@
 // [OverlayHost], and opening one is a SYNCHRONOUS TRANSACTION against that one
 // host: resolve it, check the anchor, mount, and only then record the level.
 // [Menu.Open] returns the host's error, so a caller is never told a popup
-// appeared when none did. Three things close a level, and the Menu's own record
-// follows all three — a row that stops being a visible, enabled submenu; the
-// host's anchor-loss commit when the row is no longer laid out; and an explicit
-// [OverlayHost.CloseAnchored] by the application. Unmounting the Menu closes
-// every level it owns: the levels are the host's children, so nothing else
-// would.
+// appeared when none did.
 //
-// A CLIPPED ROW IS NOT A ROW. A row outside the rect the Menu's parent allowed
-// declares no anchor region and gets no hit rectangle, so it cannot be clicked
-// and cannot be opened — a menu squeezed to one line would otherwise hang a
-// popup off a row nobody can see.
+// CLOSING IS SYNCHRONOUS TOO, whoever causes it. A level is exactly a mounted
+// popup, so the Menu learns it is gone from that popup's own unmount — not from
+// a bus event delivered later. That matters within a single turn: an
+// application can call [OverlayHost.CloseAnchored] and reopen the row in the
+// same update and get a popup, where a Menu reconciling on the program lane
+// would still have been counting the level it had just lost and would have
+// treated the reopen as a duplicate. Three things close a level and one
+// mechanism covers all three — a row that stops being a visible, enabled
+// submenu, the host's anchor-loss commit when the row is no longer laid out,
+// and an explicit CloseAnchored. [OverlayDismissedEvent] is still published,
+// for observers rather than for this. Unmounting the Menu closes every level it
+// owns: the levels are the host's children, so nothing else would.
+//
+// A CLIPPED ROW IS NOT A ROW, and that is ONE set of rows rather than three. A
+// row outside the rect the Menu's parent allowed declares no anchor region, gets
+// no hit rectangle, and is not painted — so it cannot be clicked, cannot be
+// opened, and never reaches a consumer's [RowRenderer]. A menu squeezed to one
+// line would otherwise hang a popup off a row nobody can see, and a bar narrower
+// than its rows would run consumer rendering code for a row with no cells.
 //
 // MENUBAR is a placement shell over one Menu, not a parallel widget: the model,
 // the selection and the open/close lifecycle all stay on the [Menu], reachable

@@ -42,6 +42,19 @@ func (p *menuPopup) Init(ctx *tui.Context) {
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(func(ev tui.Event) (tui.Action, bool) {
 		return p.owner.resolveIn(ev, p.rects)
 	}))
+	// THE LEVEL IS GONE WHEN THIS NODE IS GONE, and the owner learns it HERE —
+	// synchronously, on the unmount itself, whoever caused it.
+	//
+	// The Menu used to reconcile through OverlayDismissedEvent instead, which is
+	// published on the program lane: CloseAnchored unmounts the popup and
+	// returns, and until that event drains the Menu still counts a level that no
+	// longer exists. In the same turn, reopening the row then hit the
+	// already-deepest early return and mounted nothing while reporting success.
+	//
+	// An unmount hook covers every path rather than the one the host mediates:
+	// an explicit CloseAnchored, the anchor-loss commit, the host's own
+	// teardown. The bus event stays, for observers rather than for this.
+	ctx.OnUnmount(func() { p.owner.dropLevelFor(p) })
 }
 
 // HandleAction runs the owner's machine, telling it that THIS node is the one
@@ -219,9 +232,20 @@ func (m *Menu) Render(s tui.Surface) {
 	}
 	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", m.style.Surface())
 	if m.horizontal {
+		// ONLY the rows layout actually placed. A row past the bar's edge has no
+		// entry, and indexing the map for it yields the ZERO rect — which paints
+		// nothing, but still called a consumer's RowRenderer with an empty
+		// rectangle. A row this package has declared unaddressable must not
+		// execute consumer rendering code: layout, hit-testing, anchoring and
+		// painting have to agree on which rows exist. Model order is kept, so
+		// the paint order stays deterministic.
 		for _, i := range visibleRows(m.items) {
 			it := m.items[i]
-			m.paintRow(s, it, m.rowRects[it.ID], m.rowStateOf(it))
+			r, ok := m.rowRects[it.ID]
+			if !ok || r.W <= 0 || r.H <= 0 {
+				continue
+			}
+			m.paintRow(s, it, r, m.rowStateOf(it))
 		}
 		return
 	}
@@ -361,19 +385,37 @@ func (m *Menu) openLevel(parent ItemID, children []MenuItemModel) error {
 	return nil
 }
 
-// dropLevel removes the level registered under id from the model WITHOUT asking
-// the host to close it, which is what a host-driven dismissal needs: the layer
-// is already gone, and the model has to catch up.
+// dropLevelFor brings the model into line with a popup that has just been
+// unmounted. The layer is already gone; this is the model catching up.
 //
-// Deeper levels go with it. A level hangs off a row of the one above, so a level
+// Deeper levels go with it: a level hangs off a row of the one above, so a level
 // whose parent has been dismissed is anchored to something that is no longer on
 // screen.
-func (m *Menu) dropLevel(id LayerID) {
-	for i, lv := range m.levels {
-		if lv.layer == id {
-			m.closeLevelsFrom(i)
-			return
+//
+// IDEMPOTENT BY CONSTRUCTION. closeLevelsFrom truncates the model before it
+// closes anything, so a Menu-initiated close reaches this hook with the level
+// already gone and the search below simply finds nothing — which is what lets
+// one path serve both the Menu closing a level and the host closing it
+// underneath.
+//
+// THIS popup is dropped from the model WITHOUT a host call, and that is not an
+// optimisation. Its node is mid-teardown: it is still registered and still
+// reports as mounted — the runtime clears that only after the hooks have run —
+// so asking the host to close it again re-enters the unmount cascade on the very
+// node whose hook list is being consumed, and the second pass reads a hook the
+// first has already taken. Deeper levels DO go through the host: nothing is
+// tearing those down yet.
+func (m *Menu) dropLevelFor(p *menuPopup) {
+	for i := range m.levels {
+		if m.levels[i].popup != p {
+			continue
 		}
+		m.closeLevelsFrom(i + 1)
+		m.levels = m.levels[:i]
+		if ctx := m.Context(); ctx != nil {
+			ctx.MarkDirty()
+		}
+		return
 	}
 }
 
@@ -422,12 +464,22 @@ func (m *Menu) closeLevelsFrom(i int) {
 	closing := append([]menuOpenLevel(nil), m.levels[i:]...)
 	m.levels = m.levels[:i]
 
+	ctx := m.Context()
 	if host := m.host(); host != nil {
 		for j := len(closing) - 1; j >= 0; j-- {
+			// A popup the runtime has ALREADY unmounted is skipped. Two paths
+			// reach here that way: the host's own teardown, where the cascade
+			// takes the layers before it reaches the Menu, and this function
+			// re-entered from a popup's unmount hook. Asking the host to close
+			// it again would unmount a node that is gone — a panic — and during
+			// a cascade it would edit the child list being walked.
+			if ctx != nil && !ctx.MountedComponent(closing[j].popup) {
+				continue
+			}
 			host.CloseAnchored(closing[j].layer, DismissProgrammatic)
 		}
 	}
-	if ctx := m.Context(); ctx != nil {
+	if ctx != nil {
 		ctx.MarkDirty()
 	}
 }
@@ -445,14 +497,7 @@ func (m *Menu) closeLevelsFrom(i int) {
 // torn down its layers have already gone, and asking it to close them again
 // would mutate the child list the cascade is walking.
 func (m *Menu) closeAllOnUnmount() {
-	ctx := m.Context()
-	host := m.host()
-	for j := len(m.levels) - 1; j >= 0; j-- {
-		if host != nil && ctx != nil && ctx.MountedComponent(m.levels[j].popup) {
-			host.CloseAnchored(m.levels[j].layer, DismissProgrammatic)
-		}
-	}
-	m.levels = nil
+	m.closeLevelsFrom(0)
 	m.pressed, m.armed = "", false
 	m.releaseCapture()
 }
