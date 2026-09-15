@@ -29,6 +29,54 @@ dock.Pin(tui.DockBottom, statusBar)
 dock.Add(body)
 ```
 
+The divider is draggable and keyboard-operable out of the box: `Alt`+arrows
+along the split's own axis move it by one cell, and `WithSplitResizeStep` sets a
+different amount or unit. Ask for what you want and read back what you got —
+they differ whenever a minimum or a narrow terminal has had a say:
+
+```go
+body.RequestedRatio() // the last unclamped request — persist THIS
+body.Ratio()          // the effective division actually on screen
+body.Cells()          // the same answer in integers, plus whether it exists yet
+```
+
+Persisting the effective value is the bug this separation prevents: a split
+clamped by a minimum on a narrow terminal would save the clamp, and every
+restore at that width would walk the divider a little further.
+
+## Resizable — making anything resizable
+
+Resizing is a **wrapper**, not something a widget opts into. Any component
+becomes resizable by being wrapped, without being modified and without knowing
+that resizing exists:
+
+```go
+panel := widget.NewResizable(widget.NewBox(tree, widget.WithTitle("Files")),
+    widget.WithMinSize(tui.Size{W: 12, H: 4}),
+    widget.WithMaxSize(tui.Size{W: 60, H: 30}),
+    widget.WithHandles(widget.HandleBottomRight, widget.HandleRight))
+```
+
+`Size()` is what it reached and `RequestedSize()` what was asked for, the same
+split as above. Two things are worth knowing before you reach for it:
+
+- **Wrapping changes Tab order in no way.** Neither the grips nor the wrapper is
+  a tab stop. Keyboard resizing reaches the wrapper by *bubbling* from a focused
+  descendant, so a wrapper around content with nothing focusable in it — or
+  around an `Editor` or `TextArea`, which consume `Shift`+arrows for selection —
+  needs you to drive it from the grips, from `Context.DoAction`, or from a focus
+  owner of your own.
+- **One action vocabulary serves both widgets.** `ResizeBeginAction`,
+  `ResizeUpdateAction`, `ResizeStepAction`, `ResizeSetAction`, `ResizeEndAction`
+  and `ResizeCancelAction` are interpreted by `Resizable` and by `Split` alike,
+  so a key you bind to a resize action works on whichever of the two is in
+  front of the user:
+
+```go
+// Grow whatever is focused, wrapper or split, by one cell.
+ctx.DoAction(widget.ResizeStepAction{DX: 1, Unit: widget.StepCells})
+```
+
 ## Tabs — switching content
 
 ```go

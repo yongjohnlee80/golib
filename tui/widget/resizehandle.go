@@ -11,43 +11,55 @@ import (
 // mouse at all — resizes exactly the same way. The grip is a convenience over
 // the same vocabulary, not a second implementation of it.
 
-// ResizeStepAction grows or shrinks the wrapper by one configured step.
-type ResizeStepAction struct {
-	// DW and DH are the direction on each axis: -1, 0 or +1. The STEP SIZE is
-	// the wrapper's own configuration, not the action's, so a consumer binding
-	// its own key cannot accidentally resize by a different amount than the
-	// grips do.
-	DW, DH int
-}
-
-// ActionID returns the stable published name of this action.
-func (ResizeStepAction) ActionID() tui.ActionID { return "resize.step" }
-
-// ResizeBeginAction starts a pointer drag on one handle.
+// ResizeBeginAction starts a gesture on one handle.
 type ResizeBeginAction struct {
+	// Handle is which edge, corner or divider the gesture is on. An unknown or
+	// unsupported value is refused without mutation.
 	Handle Handle
-	// X and Y are where the press landed, in the wrapper's own coordinates, so
-	// the drag can be measured as a delta from it.
-	X, Y int
+	// At is where the gesture started, in the RECEIVER's coordinates. The
+	// widget measures the drag as a delta from it, so a resolver translating a
+	// pointer event has to put it in the frame the size is measured in.
+	At tui.Point
 }
 
 // ActionID returns the stable published name of this action.
 func (ResizeBeginAction) ActionID() tui.ActionID { return "resize.begin" }
 
-// ResizeDragAction reports the pointer's new position during a drag.
-type ResizeDragAction struct{ X, Y int }
+// ResizeUpdateAction reports the pointer's new position during a gesture.
+type ResizeUpdateAction struct{ At tui.Point }
 
 // ActionID returns the stable published name of this action.
-func (ResizeDragAction) ActionID() tui.ActionID { return "resize.drag" }
+func (ResizeUpdateAction) ActionID() tui.ActionID { return "resize.update" }
 
-// ResizeEndAction finishes a drag at the current size.
+// ResizeStepAction moves by a discrete amount on each axis.
+//
+// The UNIT is part of the action rather than read from the widget, so a
+// consumer binding a key can ask for a percentage step on a widget configured
+// in cells without reconfiguring it. A zero step on both axes is not an action.
+type ResizeStepAction struct {
+	DX, DY int
+	Unit   StepUnit
+}
+
+// ActionID returns the stable published name of this action.
+func (ResizeStepAction) ActionID() tui.ActionID { return "resize.step" }
+
+// ResizeSetAction asks for an exact size, routed through the same request path
+// as the setter — so a programmatic size and a dragged one are clamped by one
+// rule rather than two.
+type ResizeSetAction struct{ Size tui.Size }
+
+// ActionID returns the stable published name of this action.
+func (ResizeSetAction) ActionID() tui.ActionID { return "resize.set" }
+
+// ResizeEndAction finishes a gesture at the current size.
 type ResizeEndAction struct{}
 
 // ActionID returns the stable published name of this action.
 func (ResizeEndAction) ActionID() tui.ActionID { return "resize.end" }
 
-// ResizeCancelAction abandons a drag and restores the size captured at its
-// start. Bound to Escape by default.
+// ResizeCancelAction abandons a gesture and restores the REQUEST in force when
+// it began. Bound to Escape by default.
 type ResizeCancelAction struct{}
 
 // ActionID returns the stable published name of this action.
@@ -58,7 +70,7 @@ func (ResizeCancelAction) ActionID() tui.ActionID { return "resize.cancel" }
 // Shift-arrows rather than bare arrows: a resizable wraps arbitrary content, and
 // bare arrows belong to whatever is inside it. A wrapper that stole them would
 // make every scrollable child unusable.
-func resizeKeys(ev tui.Event) (tui.Action, bool) {
+func (r *Resizable) resizeKeys(ev tui.Event) (tui.Action, bool) {
 	k, ok := ev.(tui.KeyEvent)
 	if !ok || k.Kind == tui.KeyRelease {
 		return nil, false
@@ -69,28 +81,40 @@ func resizeKeys(ev tui.Event) (tui.Action, bool) {
 	if k.Mods != tui.ModShift {
 		return nil, false
 	}
+	// The widget's CONFIGURED unit, not a hardcoded one. Unit travels in the
+	// action so a consumer's own binding can ask for something else — but the
+	// built-in keys have to honour WithResizeStep, or its unit argument is dead
+	// for every application that does not write its own resolver.
 	switch k.Code {
 	case tui.KeyRight:
-		return ResizeStepAction{DW: 1}, true
+		return ResizeStepAction{DX: 1, Unit: r.stepUnit}, true
 	case tui.KeyLeft:
-		return ResizeStepAction{DW: -1}, true
+		return ResizeStepAction{DX: -1, Unit: r.stepUnit}, true
 	case tui.KeyDown:
-		return ResizeStepAction{DH: 1}, true
+		return ResizeStepAction{DY: 1, Unit: r.stepUnit}, true
 	case tui.KeyUp:
-		return ResizeStepAction{DH: -1}, true
+		return ResizeStepAction{DY: -1, Unit: r.stepUnit}, true
 	}
 	return nil, false
 }
 
-// HandleAction interprets the resize vocabulary.
+// HandleAction interprets the shared resize vocabulary.
+//
+// EVERY case validates before it mutates. An action is public input — a
+// consumer's own resolver, a key binding, a DoAction from application code —
+// so a malformed one is an ordinary occurrence rather than a programmer error
+// worth a panic. Refusing without mutation is what keeps a rejected Begin from
+// leaving live gesture state that a later Update would then act on.
 func (r *Resizable) HandleAction(inv tui.ActionInvocation) bool {
 	switch a := inv.Action.(type) {
-	case ResizeStepAction:
-		return r.stepBy(a.DW, a.DH)
 	case ResizeBeginAction:
 		return r.beginDrag(a)
-	case ResizeDragAction:
-		return r.dragTo(a.X, a.Y)
+	case ResizeUpdateAction:
+		return r.dragTo(a.At)
+	case ResizeStepAction:
+		return r.stepBy(a)
+	case ResizeSetAction:
+		return r.setFromAction(a.Size)
 	case ResizeEndAction:
 		return r.endDrag()
 	case ResizeCancelAction:
@@ -99,27 +123,38 @@ func (r *Resizable) HandleAction(inv tui.ActionInvocation) bool {
 	return false
 }
 
-// stepBy resizes by one configured step in the given direction.
+// stepBy resizes by one step in the given direction, in the unit the ACTION
+// asked for rather than the one the widget was configured with.
 //
 // It works from the EFFECTIVE size rather than the request, so stepping from an
 // auto wrapper starts at what is on screen instead of at nothing — and stepping
 // a wrapper the parent has clamped moves from where it actually is.
-func (r *Resizable) stepBy(dw, dh int) bool {
-	if dw == 0 && dh == 0 {
+func (r *Resizable) stepBy(a ResizeStepAction) bool {
+	if !a.Unit.Valid() {
 		return false
 	}
-	base := r.committed
+	if a.DX == 0 && a.DY == 0 {
+		return false // a step of nothing is not a step
+	}
 	if !r.sized {
 		return false // nothing has been laid out; there is no size to step from
 	}
-	sw, sh := r.stepFor(base)
-	r.SetSize(tui.Size{W: base.W + dw*sw, H: base.H + dh*sh})
+	base := r.committed
+	sw, sh := r.stepFor(base, a.Unit)
+	r.SetSize(tui.Size{W: base.W + a.DX*sw, H: base.H + a.DY*sh})
 	return true
 }
 
-// stepFor is how many cells one step moves on each axis.
-func (r *Resizable) stepFor(base tui.Size) (w, h int) {
-	if r.stepUnit == StepPercent {
+// setFromAction routes ResizeSetAction through the ordinary request path, so a
+// size asked for by action and one asked for by setter are clamped by one rule.
+func (r *Resizable) setFromAction(s tui.Size) bool {
+	r.SetSize(s)
+	return true
+}
+
+// stepFor is how many cells one step moves on each axis, in the given unit.
+func (r *Resizable) stepFor(base tui.Size, unit StepUnit) (w, h int) {
+	if unit == StepPercent {
 		// At least one cell: a percentage of a small box rounds to zero, and a
 		// keypress that provably cannot move anything is worse than a slow one.
 		return max(base.W*r.step/100, 1), max(base.H*r.step/100, 1)
@@ -127,19 +162,47 @@ func (r *Resizable) stepFor(base tui.Size) (w, h int) {
 	return r.step, r.step
 }
 
-// beginDrag records the gesture's origin and the size to restore on cancel.
+// beginDrag records the gesture's origin and everything cancel has to put back.
+//
+// VALIDATED FIRST. A handle outside the declared set, or one this receiver
+// cannot draw — a divider belongs to Split, not to a box — is refused with no
+// drag stored, so the Update and End that follow are inert too. Accepting
+// Handle(255) and storing a live drag was the defect: the gesture then had a
+// direction of zero on both axes and swallowed every subsequent action.
 func (r *Resizable) beginDrag(a ResizeBeginAction) bool {
+	if !a.Handle.resizes() || !r.supports(a.Handle) {
+		return false
+	}
 	if !r.sized {
 		return false
 	}
 	r.drag = &resizeDrag{
-		handle:    a.Handle,
-		originX:   a.X,
-		originY:   a.Y,
-		beginSize: r.committed,
-		beginMode: r.mode,
+		handle: a.Handle,
+		origin: a.At,
+		// beginSize is the EFFECTIVE size, which is what a drag delta is
+		// measured from; beginRequested and beginMode are what cancel restores.
+		// They are different values whenever a clamp is in force, and conflating
+		// them made cancelling write the clamped size back as the user's
+		// request — so a cancelled drag silently changed what would be
+		// persisted, which is the opposite of what cancel means.
+		beginSize:      r.committed,
+		beginRequested: r.requested,
+		beginMode:      r.mode,
 	}
 	return true
+}
+
+// supports reports whether this wrapper was configured with the handle. A
+// gesture on a grip it does not have cannot have come from one of its own
+// affordances, and honouring it would resize the box by an edge with nothing
+// on screen to grab.
+func (r *Resizable) supports(h Handle) bool {
+	for _, have := range r.handles {
+		if have == h {
+			return true
+		}
+	}
+	return false
 }
 
 // dragTo resizes to the size the pointer's current position implies.
@@ -147,13 +210,13 @@ func (r *Resizable) beginDrag(a ResizeBeginAction) bool {
 // The delta is measured from the press position, not from the previous motion,
 // so a drag that wanders and returns lands exactly where it started rather than
 // accumulating rounding.
-func (r *Resizable) dragTo(x, y int) bool {
+func (r *Resizable) dragTo(at tui.Point) bool {
 	d := r.drag
 	if d == nil {
 		return false
 	}
-	w := d.beginSize.W + (x-d.originX)*d.handle.dx()
-	h := d.beginSize.H + (y-d.originY)*d.handle.dy()
+	w := d.beginSize.W + (at.X-d.origin.X)*d.handle.dx()
+	h := d.beginSize.H + (at.Y-d.origin.Y)*d.handle.dy()
 	r.SetSize(tui.Size{W: w, H: h})
 	return true
 }
@@ -168,7 +231,12 @@ func (r *Resizable) endDrag() bool {
 	return true
 }
 
-// cancelDrag restores the size and the mode captured at the start.
+// cancelDrag restores the REQUEST and the mode captured at the start.
+//
+// The request, not the effective size: a drag begun on a wrapper asking for
+// 50x10 and clamped to 12x6 must leave the request at 50x10, or cancelling has
+// quietly accepted the clamp as the user's choice — and the next terminal that
+// has room would show 12x6 for a box they never resized.
 //
 // The MODE too: cancelling a drag that switched an auto wrapper to explicit must
 // return it to auto, or the wrapper silently stops tracking its child because
@@ -180,7 +248,7 @@ func (r *Resizable) cancelDrag() bool {
 	}
 	r.drag = nil
 	r.releaseGrip()
-	r.requested, r.mode = d.beginSize, d.beginMode
+	r.requested, r.mode = d.beginRequested, d.beginMode
 	r.RequestLayout()
 	return true
 }
@@ -207,10 +275,15 @@ func (r *Resizable) HandleEvent(ev tui.Event) bool {
 
 // resizeDrag is the state one pointer gesture needs.
 type resizeDrag struct {
-	handle           Handle
-	originX, originY int
-	beginSize        tui.Size
-	beginMode        SizeMode
+	handle Handle
+	origin tui.Point
+	// beginSize is what the drag delta is measured from (effective), while
+	// beginRequested and beginMode are what cancel puts back. Three fields
+	// rather than two because the first two differ whenever a clamp is in
+	// force, and cancel must not confuse them.
+	beginSize      tui.Size
+	beginRequested tui.Size
+	beginMode      SizeMode
 }
 
 // resizeHandle is one grip: a real component, so it is hit-tested, captured,
@@ -249,15 +322,15 @@ func (g *resizeHandle) resolve(ev tui.Event) (tui.Action, bool) {
 	if !ok || (e.Button != tui.MouseLeft && e.Kind != tui.MouseMotion) {
 		return nil, false
 	}
-	x, y := g.toOwner(e.X, e.Y)
+	at := g.toOwner(e.X, e.Y)
 	switch e.Kind {
 	case tui.MousePress:
-		return ResizeBeginAction{Handle: g.handle, X: x, Y: y}, true
+		return ResizeBeginAction{Handle: g.handle, At: at}, true
 	case tui.MouseMotion:
 		if g.owner.drag == nil {
 			return nil, false
 		}
-		return ResizeDragAction{X: x, Y: y}, true
+		return ResizeUpdateAction{At: at}, true
 	case tui.MouseRelease:
 		if g.owner.drag == nil {
 			return nil, false
@@ -268,9 +341,9 @@ func (g *resizeHandle) resolve(ev tui.Event) (tui.Action, bool) {
 }
 
 // toOwner converts grip-local coordinates into the wrapper's frame.
-func (g *resizeHandle) toOwner(x, y int) (int, int) {
-	r := gripRect(g.handle, g.owner.committed)
-	return r.X + x, r.Y + y
+func (g *resizeHandle) toOwner(x, y int) tui.Point {
+	r := g.owner.gripRect(g.handle, g.owner.committed)
+	return tui.Point{X: r.X + x, Y: r.Y + y}
 }
 
 // HandleAction forwards to the wrapper and takes the capture here, because only

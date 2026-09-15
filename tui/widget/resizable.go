@@ -1,7 +1,10 @@
 package widget
 
 import (
+	"fmt"
+
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
 )
 
 // RESIZE IS A WRAPPER, NOT A PER-WIDGET CAPABILITY.
@@ -51,63 +54,97 @@ func (m SizeMode) String() string {
 	return "unknown"
 }
 
-// Handle names a corner or edge grip.
+// Handle names one of the geometry operations a rectangle has: its four edges,
+// its four corners, and the two dividers a two-pane split can carry.
 //
-// The set is closed and geometric: these are the positions a rectangle has.
+// A deliberately CLOSED set. Extensibility comes from composing a widget with
+// [Resizable], not from teaching Resizable arbitrary consumer-defined geometry —
+// a new handle would need a new inset rule, a new grip rect and a new drag
+// direction, none of which a consumer can supply without also owning layout.
+//
+// ONE vocabulary for both widgets. [Split] uses the divider appropriate to its
+// axis and ignores the other, so a consumer binding a key to a resize action
+// does not have to know which of the two widgets will answer it.
 type Handle uint8
 
 const (
-	// HandleBottomRight is the default and the conventional resize corner.
-	HandleBottomRight Handle = iota
-	HandleBottomLeft
-	HandleTopRight
-	HandleTopLeft
+	// HandleLeft drags the left edge: moving leftwards grows the box.
+	HandleLeft Handle = iota
 	HandleRight
+	HandleTop
 	HandleBottom
+	HandleTopLeft
+	HandleTopRight
+	HandleBottomLeft
+	HandleBottomRight
+	// HandleVerticalDivider is the divider of a HORIZONTAL split — the panes
+	// sit side by side, so the line between them runs down the screen.
+	HandleVerticalDivider
+	// HandleHorizontalDivider is the divider of a VERTICAL split.
+	HandleHorizontalDivider
 )
 
 // String names the handle for traces and test failures.
 func (h Handle) String() string {
 	switch h {
-	case HandleBottomRight:
-		return "bottom-right"
-	case HandleBottomLeft:
-		return "bottom-left"
-	case HandleTopRight:
-		return "top-right"
-	case HandleTopLeft:
-		return "top-left"
+	case HandleLeft:
+		return "left"
 	case HandleRight:
 		return "right"
+	case HandleTop:
+		return "top"
 	case HandleBottom:
 		return "bottom"
+	case HandleTopLeft:
+		return "top-left"
+	case HandleTopRight:
+		return "top-right"
+	case HandleBottomLeft:
+		return "bottom-left"
+	case HandleBottomRight:
+		return "bottom-right"
+	case HandleVerticalDivider:
+		return "vertical-divider"
+	case HandleHorizontalDivider:
+		return "horizontal-divider"
 	}
 	return "unknown"
 }
 
 // Valid reports whether h is one of the declared handles.
-func (h Handle) Valid() bool { return h <= HandleBottom }
+func (h Handle) Valid() bool { return h <= HandleHorizontalDivider }
+
+// resizes reports whether this handle sizes a BOX, which is what a [Resizable]
+// grip does. The two dividers redistribute a shared extent instead, and belong
+// to [Split]; a Resizable configured with one has been given a handle it cannot
+// draw or drag.
+func (h Handle) resizes() bool { return h.Valid() && h < HandleVerticalDivider }
 
 // dx and dy are the sign a drag on this handle applies to each axis: dragging
-// the right edge rightwards grows, dragging the left edge rightwards shrinks.
+// the right edge rightwards grows the box, dragging the left edge rightwards
+// shrinks it, and an edge contributes nothing on the axis it does not touch.
+//
+// Written as an exhaustive switch rather than a default: a handle added without
+// a direction would otherwise silently inherit one and drag the wrong way,
+// which is the kind of defect that looks like a sign error for weeks.
 func (h Handle) dx() int {
 	switch h {
-	case HandleBottomLeft, HandleTopLeft:
+	case HandleLeft, HandleTopLeft, HandleBottomLeft:
 		return -1
-	case HandleBottom:
-		return 0
+	case HandleRight, HandleTopRight, HandleBottomRight:
+		return 1
 	}
-	return 1
+	return 0
 }
 
 func (h Handle) dy() int {
 	switch h {
-	case HandleTopRight, HandleTopLeft:
+	case HandleTop, HandleTopLeft, HandleTopRight:
 		return -1
-	case HandleRight:
-		return 0
+	case HandleBottom, HandleBottomLeft, HandleBottomRight:
+		return 1
 	}
-	return 1
+	return 0
 }
 
 // PlacementMode says whether the handle costs the child any cells.
@@ -184,13 +221,18 @@ type Resizable struct {
 	committed tui.Size
 	sized     bool
 
-	min, max  tui.Size
-	handles   []Handle
-	glyph     string
-	placement PlacementMode
-	step      int
-	stepUnit  StepUnit
-	st        *ResizableStyle
+	min, max tui.Size
+	handles  []Handle
+	glyph    string
+	// glyphCells is the DISPLAY WIDTH of glyph, measured once at construction.
+	// Carried rather than recomputed because every grip rect and every reserve
+	// inset depends on it, and a width computed in two places is a width that
+	// can disagree with itself.
+	glyphCells int
+	placement  PlacementMode
+	step       int
+	stepUnit   StepUnit
+	st         *ResizableStyle
 
 	grips []*resizeHandle
 	// drag is the pointer gesture in progress, nil when there is none, and
@@ -216,6 +258,7 @@ func NewResizable(child tui.Component, opts ...ResizableOption) *Resizable {
 		max:           tui.Size{W: tui.Unbounded, H: tui.Unbounded},
 		handles:       []Handle{HandleBottomRight},
 		glyph:         "◢",
+		glyphCells:    1,
 		step:          1,
 		stepUnit:      StepCells,
 		pointerPolicy: tui.PointerInherit,
@@ -272,13 +315,55 @@ func WithMaxSize(s tui.Size) ResizableOption {
 // WithHandles chooses the grips. Empty is INTENTIONAL and supported: a
 // keyboard- and programmatic-only resizable has no visible affordance and still
 // resizes through its actions.
+//
+// A DIVIDER is refused. The two divider handles redistribute a shared extent
+// between two panes, which is [Split]'s operation, not a box's — a Resizable
+// given one could neither draw it nor decide what dragging it should mean, so
+// the mistake is caught where it is written rather than becoming a grip that
+// silently does nothing.
 func WithHandles(h ...Handle) ResizableOption {
-	return func(r *Resizable) { r.handles = append([]Handle(nil), h...) }
+	return func(r *Resizable) {
+		for _, one := range h {
+			if !one.resizes() {
+				panic(fatalOf("widget: WithHandles",
+					"a Resizable takes edge and corner handles; a divider belongs to Split",
+					fmt.Sprintf("%v", one)))
+			}
+		}
+		r.handles = append([]Handle(nil), h...)
+	}
 }
 
 // WithHandleGlyph sets the grip's character.
+//
+// EXACTLY ONE grapheme cluster, of display width one or two. Rejected at
+// construction, loudly, because the alternative is an affordance that is
+// mounted, hit-testable and INVISIBLE: a two-column glyph placed in a one-column
+// rect renders nothing at all, and the user sees a box they cannot resize with
+// no indication why. An empty glyph is the same failure spelled differently.
+//
+// Width two is allowed rather than banned because plenty of natural resize
+// glyphs are wide; what is not allowed is a width the geometry does not know
+// about, so the measured width travels with the glyph into every rect and inset.
 func WithHandleGlyph(g string) ResizableOption {
-	return func(r *Resizable) { r.glyph = g }
+	return func(r *Resizable) {
+		n := 0
+		for range grapheme.Clusters(g) {
+			n++
+		}
+		if n != 1 {
+			panic(fatalOf("widget: WithHandleGlyph",
+				"the grip glyph must be exactly one grapheme cluster",
+				fmt.Sprintf("%q is %d clusters", g, n)))
+		}
+		w := grapheme.StringWidth(g, false)
+		if w < 1 || w > 2 {
+			panic(fatalOf("widget: WithHandleGlyph",
+				"the grip glyph must have a display width of one or two cells",
+				fmt.Sprintf("%q measures %d", g, w)))
+		}
+		r.glyph, r.glyphCells = g, w
+	}
 }
 
 // WithHandlePlacement chooses whether the grip overlays the child or reserves
@@ -401,7 +486,7 @@ func (r *Resizable) SetAuto() {
 func (r *Resizable) Init(ctx *tui.Context) {
 	r.Base.Init(ctx)
 	ctx.SetPointerPolicy(r.pointerPolicy)
-	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(resizeKeys))
+	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(r.resizeKeys))
 	ctx.Mount(r.child)
 	r.grips = r.grips[:0]
 	for _, h := range r.handles {
@@ -411,27 +496,17 @@ func (r *Resizable) Init(ctx *tui.Context) {
 	}
 }
 
-// AcceptsFocus reports that the WRAPPER is a tab stop, so the resize actions
-// are reachable from the keyboard.
+// THE WRAPPER IS NOT A TAB STOP EITHER, and that is the whole of row 15d:
+// wrapping arbitrary content must change Tab order in no way at all.
 //
-// The handles are deliberately not focusable: adding nodes to the tree must not
-// pollute Tab order, and a grip is a pointer affordance rather than a traversal
-// stop.
-func (r *Resizable) AcceptsFocus() bool { return true }
-
-// handleCells is the space a grip occupies on each axis, which is zero unless
-// the placement reserves it.
-func (r *Resizable) handleCells() (w, h int) {
-	if r.placement != PlacementReserve || len(r.handles) == 0 {
-		return 0, 0
-	}
-	for _, g := range r.handles {
-		if g.dx() != 0 {
-			w = 1
-		}
-		if g.dy() != 0 {
-			h = 1
-		}
-	}
-	return w, h
-}
+// The resize actions are still reachable from the keyboard, because resolvers
+// run at every node on the bubble path: an unhandled Shift-arrow from a focused
+// DESCENDANT reaches this node's resolver on the way up.
+//
+// TWO COMPOSITIONS DO NOT GET THAT, and both are ordinary rather than exotic:
+// content with no focusable descendant at all, and content that CONSUMES the
+// keys — an [Editor] or a [TextArea] takes Shift-arrows for selection, so
+// nothing bubbles. Those consumers drive resizing through the grips, through
+// [Context.DoAction] with a resize action, or from a focus owner of their own.
+// That cost is paid by the few compositions that need it, rather than by every
+// Tab press in every application that wraps anything.

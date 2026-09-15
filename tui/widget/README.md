@@ -276,12 +276,19 @@ split.Unzoom()
 ```
 
 The divider runs on a **pointer capture** and a named action vocabulary —
-`SplitDragBeginAction`, `SplitDragAction`, `SplitDragEndAction`,
-`SplitStepAction`, `SplitCancelAction` — so a drag keeps receiving motion and
-its own release once the pointer has left the Split's rect, and the keyboard and
-the mouse reach one implementation. Alt-arrows step along the split's **own
-axis** only: `Alt+Left` on a vertical split is a different gesture, not a
-smaller step, and consuming it would swallow a binding the application may want.
+the **shared** resize vocabulary — `ResizeBeginAction`, `ResizeUpdateAction`,
+`ResizeStepAction`, `ResizeSetAction`, `ResizeEndAction`, `ResizeCancelAction` —
+so a drag keeps receiving motion and its own release once the pointer has left
+the Split's rect, and the keyboard and the mouse reach one implementation. The
+same vocabulary drives `Resizable`: a consumer binding a key to a resize action
+need not know which widget will answer it. A Split picks the divider handle for
+its own axis (`HandleVerticalDivider` for a horizontal split) and ignores the
+other. Alt-arrows step along the split's **own axis** only: `Alt+Left` on a
+vertical split is a different gesture, not a smaller step, and consuming it
+would swallow a binding the application may want. `WithSplitResizeStep` sets how
+far one step moves and in what unit; `WithSplitDividerGlyphs` sets the line
+characters; `WithPointerPolicy` disables the pointer path without touching the
+keyboard one.
 
 **Geometry truth.** What was asked for and what is on screen are different
 questions, and `Split` answers them separately:
@@ -331,17 +338,26 @@ parent, a min or a max had something to say, and a `Resizable` inside a
 fixed-rect `Float` reports the truth rather than being a special case.
 
 Each handle in `WithHandles` is a real component, so the runtime hit-tests,
-styles and captures it. Grips are **not** tab stops — adding nodes to the tree
-must not pollute Tab order. `WithHandlePlacement` chooses whether a grip costs
+styles and captures it. **Neither the grips nor the wrapper are tab stops** —
+wrapping arbitrary content changes Tab order in no way. Keyboard resizing works
+by bubbling: an unhandled `Shift`-arrow from a focused descendant meets the
+wrapper's resolver on its way up. Content with nothing focusable inside it, or
+content that consumes those keys itself (an `Editor` or `TextArea` uses them for
+selection), drives resizing through the grips, through `Context.DoAction`, or
+from a focus owner of its own. `WithHandlePlacement` chooses whether a grip costs
 the child a cell (`PlacementReserve`) or paints over its edge
 (`PlacementOverlay`), and a grip that will not fit is dropped for the frame
 rather than shrinking the child to make room for its own affordance.
 
-Every resize action — `ResizeStepAction`, `ResizeBeginAction`,
-`ResizeDragAction`, `ResizeEndAction`, `ResizeCancelAction` — resolves on the
-**wrapper**, so a `Resizable` with its pointer disabled resizes identically from
-Shift-arrows. `ResizedEvent` follows the same commit-phase timing rules as
-`SplitResizedEvent` above.
+Every resize action resolves on the **wrapper**, so a `Resizable` with its
+pointer disabled resizes identically from the keyboard. Reserve placement is
+**directional**: the band comes off the side each handle is on and the child is
+offset accordingly, so a top-left grip never sits on the child's first cell. A
+grip whose own rectangle will not fit is dropped for the frame, which is why
+`WithHandleGlyph` rejects anything but a single grapheme of display width one or
+two at construction — a wide glyph in a one-column rect renders nothing, and an
+invisible affordance is worse than none. `ResizedEvent` follows the same
+commit-phase timing rules as `SplitResizedEvent` above.
 
 #### `Menu`, `MenuBar` and `MenuItem`
 

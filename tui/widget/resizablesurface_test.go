@@ -76,18 +76,22 @@ func TestTheResizableEnumsNameEveryValue(t *testing.T) {
 	}
 
 	for h, want := range map[widget.Handle]string{
-		widget.HandleBottomRight: "bottom-right",
-		widget.HandleBottomLeft:  "bottom-left",
-		widget.HandleTopRight:    "top-right",
-		widget.HandleTopLeft:     "top-left",
-		widget.HandleRight:       "right",
-		widget.HandleBottom:      "bottom",
+		widget.HandleLeft:              "left",
+		widget.HandleRight:             "right",
+		widget.HandleTop:               "top",
+		widget.HandleBottom:            "bottom",
+		widget.HandleTopLeft:           "top-left",
+		widget.HandleTopRight:          "top-right",
+		widget.HandleBottomLeft:        "bottom-left",
+		widget.HandleBottomRight:       "bottom-right",
+		widget.HandleVerticalDivider:   "vertical-divider",
+		widget.HandleHorizontalDivider: "horizontal-divider",
 	} {
 		if got := h.String(); got != want {
 			t.Errorf("Handle(%d).String() = %q, want %q", h, got, want)
 		}
 	}
-	if got := (widget.HandleBottom + 1).String(); got != "unknown" {
+	if got := (widget.HandleHorizontalDivider + 1).String(); got != "unknown" {
 		t.Errorf("an undeclared Handle rendered as %q", got)
 	}
 
@@ -326,7 +330,7 @@ func TestEveryArrowStepsItsOwnAxisAndOnlyWithShift(t *testing.T) {
 			host := widget.NewOverlayHost(r)
 			h := startApp(t, host, 40, 20)
 			defer h.stop()
-			h.onLoop(func() { r.Context().RequestFocus() })
+			h.onLoop(func() { child.Context().RequestFocus() })
 			h.settle()
 			before := sizeOn(t, h, r)
 

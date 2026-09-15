@@ -234,8 +234,13 @@ func (h *OverlayHost) Layout(c tui.Constraints) tui.Size {
 		return size
 	}
 	viewport := tui.Rect{X: 0, Y: 0, W: size.W, H: size.H}
-	lost := h.placeAnchored(h.ctx, viewport)
-	h.lostAnchors = append(h.lostAnchors, lost...)
+	// REPLACED, never accumulated. A host can be measured more than once in a
+	// single pass — a parent trying two constraints, a commit dirtying layout —
+	// and only the LAST measurement describes the geometry that will be
+	// painted. Appending made an anchor lost at one trial size stay lost even
+	// after a later measurement found it perfectly valid, so the commit closed
+	// a popup that was on screen and correctly placed.
+	h.lostAnchors = h.placeAnchored(h.ctx, viewport)
 	if len(h.lostAnchors) > 0 {
 		// The COMMIT phase, not a scheduled update: closing an anchor-lost
 		// overlay is a geometry-derived side effect, which is exactly what

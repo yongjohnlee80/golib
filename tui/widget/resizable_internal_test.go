@@ -31,13 +31,27 @@ func TestAGripDoesNotImplementFocusable(t *testing.T) {
 	}
 }
 
-// TestTheWrapperDoesImplementFocusable is the positive control for the above: a
-// type-assertion test that could never fail proves nothing, and the wrapper has
-// to be focusable for the keyboard resize vocabulary to be reachable at all.
-func TestTheWrapperDoesImplementFocusable(t *testing.T) {
+// TestTheWRAPPERDoesNotImplementFocusableEither.
+//
+// Wrapping arbitrary content must change Tab order in NO way, so neither the
+// grips nor the wrapper may be a stop. The resize actions stay reachable from
+// the keyboard because resolvers run at every node on the bubble path: an
+// unhandled Shift-arrow from a focused DESCENDANT meets this node's resolver on
+// its way up.
+func TestTheWRAPPERDoesNotImplementFocusableEither(t *testing.T) {
 	var c tui.Component = &Resizable{}
+	if _, ok := c.(tui.Focusable); ok {
+		t.Error("Resizable implements tui.Focusable; wrapping content must not add a " +
+			"tab stop, and the keyboard reaches the wrapper by bubbling instead")
+	}
+}
+
+// TestAControlStillImplementsFocusable is the positive control for both
+// assertions above: a type-assertion test that could never fail proves nothing.
+func TestAControlStillImplementsFocusable(t *testing.T) {
+	var c tui.Component = NewButton("x")
 	if _, ok := c.(tui.Focusable); !ok {
-		t.Error("Resizable does not implement tui.Focusable, so its resize actions " +
-			"cannot be reached from the keyboard")
+		t.Error("Button does not implement tui.Focusable, so the assertions above " +
+			"are not measuring anything")
 	}
 }

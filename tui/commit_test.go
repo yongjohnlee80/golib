@@ -360,3 +360,56 @@ func TestACommitRunsONCEPerRegistration(t *testing.T) {
 			"drain left its records in the queue", commits)
 	}
 }
+
+// TestAfterLayoutRejectsASiblingsRetainedContext.
+//
+// A Context outlives the call it was handed to, so a component can hold a
+// sibling's. Checking only "some Layout is running" let such a holder register
+// a commit record OWNED BY THE SIBLING: the record then lives or dies by the
+// wrong node's lifetime, and if the registrant is unmounted while the named
+// owner survives, a callback nobody can account for still runs against final
+// geometry.
+//
+// The positive control is in the same test: the node's OWN context is accepted
+// from its own Layout, so the rejection below is about identity rather than the
+// check being broken.
+func TestAfterLayoutRejectsASiblingsRetainedContext(t *testing.T) {
+	t.Parallel()
+	var selfOK, siblingRejected bool
+
+	victim := newCommitProbe("victim", "k", func() {})
+	thief := newCommitProbe("thief", "k", nil)
+	thief.perPass = func(p *commitProbe) {
+		if p.ctx == nil || victim.ctx == nil {
+			return
+		}
+		// Its OWN context, from its own Layout: legal.
+		p.ctx.AfterLayout("mine", func() {})
+		selfOK = true
+		// The SIBLING's retained context, from this node's Layout: refused.
+		func() {
+			defer func() {
+				if recover() != nil {
+					siblingRejected = true
+				}
+			}()
+			victim.ctx.AfterLayout("forged", func() {})
+		}()
+	}
+
+	root := NewFlex(Vertical)
+	root.Add(victim, thief)
+	h := startApp(t, root, 8, 8)
+	h.sync()
+
+	var gotSelf, gotSibling bool
+	h.onLoop(func() { gotSelf, gotSibling = selfOK, siblingRejected })
+	if !gotSelf {
+		t.Fatal("a node could not register with its own context from its own Layout, " +
+			"so the rejection below proves nothing")
+	}
+	if !gotSibling {
+		t.Error("registering through a SIBLING's retained context was accepted; a " +
+			"commit record must be owned by the node that registers it")
+	}
+}

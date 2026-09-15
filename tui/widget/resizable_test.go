@@ -31,6 +31,13 @@ type sizedChild struct {
 // sanctioned way. One change must cost one measurement.
 func (c *sizedChild) layouts() int { return c.passes }
 
+// AcceptsFocus makes this a tab stop, which the wrapper is deliberately NOT.
+// Resize keys reach a Resizable by BUBBLING from a focused descendant, so a
+// fixture with nothing focusable inside it cannot drive the keyboard path at
+// all — and a test that focused the wrapper would be testing an arrangement the
+// widget no longer has.
+func (c *sizedChild) AcceptsFocus() bool { return true }
+
 func (c *sizedChild) Layout(cs tui.Constraints) tui.Size {
 	c.sawMinW, c.sawMaxW = cs.MinW, cs.MaxW
 	c.passes++
@@ -337,7 +344,7 @@ func TestCancellingADragRestoresTheSizeAndTheMode(t *testing.T) {
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
-	h.onLoop(func() { r.Context().RequestFocus() })
+	h.onLoop(func() { child.Context().RequestFocus() })
 	h.settle()
 
 	before := sizeOn(t, h, r)
@@ -367,7 +374,7 @@ func TestKeyboardResizingWorksWithThePointerDisabled(t *testing.T) {
 	host := widget.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
-	h.onLoop(func() { r.Context().RequestFocus() })
+	h.onLoop(func() { child.Context().RequestFocus() })
 	h.settle()
 
 	before := sizeOn(t, h, r)
@@ -440,9 +447,11 @@ func TestAWrapperUnderATightParentTellsTheTruth(t *testing.T) {
 // where nothing visibly happens.
 func TestGripsAreNotTabStops(t *testing.T) {
 	// The SAME tree twice, wrapped and unwrapped, with the Tab order recorded
-	// from each. Counting how often focus lands somewhere unexpected cannot see
-	// the defect: a grip that became focusable is still "the wrapper's subtree",
-	// and a count has nothing to compare itself against. Two orders do.
+	// from each — and the two orders must be BYTE-IDENTICAL. Nothing is
+	// subtracted before the comparison this time: the earlier version of this
+	// test stripped the wrapper's own stop out of the wrapped order first,
+	// which quietly conceded the very thing the rule forbids. Wrapping
+	// arbitrary content changes traversal in no way at all.
 	order := func(wrap bool) []string {
 		before := widget.NewButton("before")
 		inner := widget.NewButton("inner")
@@ -460,7 +469,7 @@ func TestGripsAreNotTabStops(t *testing.T) {
 		h.settle()
 
 		var stops []string
-		for range 5 {
+		for range 7 {
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
 			h.settle()
 			h.onLoop(func() {
@@ -471,8 +480,6 @@ func TestGripsAreNotTabStops(t *testing.T) {
 					stops = append(stops, "inner")
 				case after.Context() != nil && after.Context().Focused():
 					stops = append(stops, "after")
-				case wrap && middle.(*widget.Resizable).Context().Focused():
-					stops = append(stops, "wrapper")
 				default:
 					stops = append(stops, "OTHER")
 				}
@@ -481,29 +488,15 @@ func TestGripsAreNotTabStops(t *testing.T) {
 		return stops
 	}
 
-	bare := order(false)
-	wrapped := order(true)
-
-	// The ONLY stop wrapping may add is the wrapper itself, which has to be a
-	// tab stop for the keyboard resize vocabulary to be reachable at all. Strip
-	// it and the two orders must be identical: three grips contributed nothing.
-	var stripped []string
-	for _, s := range wrapped {
-		if s != "wrapper" {
-			stripped = append(stripped, s)
-		}
+	bare := strings.Join(order(false), ",")
+	wrapped := strings.Join(order(true), ",")
+	if wrapped != bare {
+		t.Errorf("Tab order differs:\n  unwrapped: %s\n  wrapped:   %s\n"+
+			"wrapping arbitrary content must not change traversal — neither the "+
+			"grips nor the wrapper may be a stop", bare, wrapped)
 	}
-	if strings.Join(stripped, ",") != strings.Join(bare[:len(stripped)], ",") {
-		t.Errorf("Tab order with the wrapper is %v (minus the wrapper: %v), bare is %v; "+
-			"apart from the wrapper itself, wrapping must change traversal in no way",
-			wrapped, stripped, bare)
-	}
-	for _, s := range wrapped {
-		if s == "OTHER" {
-			t.Errorf("focus landed on none of the three controls or the wrapper: %v — "+
-				"a grip became a tab stop", wrapped)
-			break
-		}
+	if strings.Contains(wrapped, "OTHER") {
+		t.Errorf("focus landed on neither control: %s", wrapped)
 	}
 }
 
@@ -524,7 +517,22 @@ func TestConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 			widget.NewResizable(child, widget.WithInitialSize(tui.Size{W: 0, H: 4}))
 		}},
 		{"an undeclared handle", func() {
-			widget.NewResizable(child, widget.WithHandles(widget.HandleBottom+1))
+			widget.NewResizable(child, widget.WithHandles(widget.HandleHorizontalDivider+1))
+		}},
+		{"a divider handle, which belongs to Split", func() {
+			widget.NewResizable(child, widget.WithHandles(widget.HandleVerticalDivider))
+		}},
+		{"an empty grip glyph", func() {
+			widget.NewResizable(child, widget.WithHandleGlyph(""))
+		}},
+		{"a multi-grapheme grip glyph", func() {
+			widget.NewResizable(child, widget.WithHandleGlyph("ab"))
+		}},
+		{"a zero-width grip glyph", func() {
+			// One cluster, no cells. It would be placed, hit-tested and
+			// invisible — the same failure as a wide glyph in a narrow rect,
+			// reached from the other end.
+			widget.NewResizable(child, widget.WithHandleGlyph("\u200b"))
 		}},
 		{"an undeclared placement mode", func() {
 			widget.NewResizable(child, widget.WithHandlePlacement(widget.PlacementReserve+1))
@@ -545,7 +553,8 @@ func TestConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 	// The controls: the last valid value of each closed set is accepted.
 	if f := fatalFromWidgetExt(func() {
 		widget.NewResizable(child,
-			widget.WithHandles(widget.HandleBottom),
+			widget.WithHandles(widget.HandleBottomRight),
+			widget.WithHandleGlyph("世"), // wide, but declared and measured
 			widget.WithHandlePlacement(widget.PlacementReserve),
 			widget.WithResizeStep(1, widget.StepPercent))
 	}); f != nil {
@@ -553,130 +562,43 @@ func TestConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 	}
 }
 
-// TestAGripThatWillNotFitIsDroppedForTheFrame.
+// TestAGripIsDroppedWhenITSOWNRectangleWillNotFit.
 //
-// The wrapper never renders an affordance it cannot fit, and it never drives the
-// child below its minimum to make room for one. A one-cell box with a grip over
-// its only cell shows nothing at all.
-func TestAGripThatWillNotFitIsDroppedForTheFrame(t *testing.T) {
-	child := &sizedChild{pref: tui.Size{W: 4, H: 4}}
-	r := widget.NewResizable(child, widget.WithHandlePlacement(widget.PlacementReserve))
-	host := widget.NewOverlayHost(r)
-	// A ONE-CELL terminal: the wrapper cannot be larger than its parent, so
-	// after the grip's reserved cell there is nothing left for the child, and a
-	// grip painted over the only cell would show the affordance and no content.
-	h := startApp(t, host, 1, 1)
-	defer h.stop()
-	h.settle()
+// The rule is about the grip's ACTUAL requirements, not a blanket "the box is
+// tiny". A two-column glyph needs two columns: dropping only at one-cell boxes
+// let a wide grip be placed in a one-column rect, where it rendered nothing —
+// an affordance that is mounted, hit-testable and INVISIBLE, which is strictly
+// worse than no affordance at all.
+func TestAGripIsDroppedWhenITSOWNRectangleWillNotFit(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		glyph    string
+		width    int
+		wantGrip bool
+	}{
+		// One column available. A one-cell glyph fits; a two-cell one does not.
+		{"a narrow glyph in one column", "◢", 1, true},
+		{"a wide glyph in one column", "世", 1, false},
+		// Two columns: both fit.
+		{"a wide glyph in two columns", "世", 2, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			child := &sizedChild{pref: tui.Size{W: 4, H: 4}}
+			r := widget.NewResizable(child,
+				widget.WithHandleGlyph(tc.glyph),
+				widget.WithHandlePlacement(widget.PlacementOverlay))
+			host := widget.NewOverlayHost(&fixedBox{child: r, w: tc.width, hh: 2})
+			h := startApp(t, host, 20, 6)
+			defer h.stop()
+			h.settle()
 
-	if got := h.grid(); strings.Contains(got, "◢") {
-		t.Errorf("a grip was painted into a box too small for one:\n%s", got)
+			got := strings.Contains(h.grid(), tc.glyph)
+			if got != tc.wantGrip {
+				t.Errorf("grip painted = %v, want %v — a grip is placed only when the "+
+					"rectangle it needs actually fits:\n%s", got, tc.wantGrip, h.grid())
+			}
+		})
 	}
-	// And the child still got its cell.
-	if got := sizeOn(t, h, r); got.W < 1 || got.H < 1 {
-		t.Errorf("Size() = %+v; the wrapper collapsed making room for a grip", got)
-	}
-}
-
-// looseRow lays two children side by side under LOOSE constraints for the first
-// of them, so a Resizable inside it is free to choose its own size. A Flex would
-// hand it a tight cell and there would be nothing left to observe.
-type looseRow struct {
-	widget.Base
-	a, b tui.Component
-}
-
-func (l *looseRow) Init(ctx *tui.Context) {
-	l.Base.Init(ctx)
-	ctx.Mount(l.a)
-	ctx.Mount(l.b)
-}
-
-func (l *looseRow) Layout(c tui.Constraints) tui.Size {
-	ctx := l.Context()
-	half := c.MaxW / 2
-	sa := ctx.LayoutChild(l.a, tui.Constraints{MaxW: half, MaxH: c.MaxH})
-	ctx.PlaceChild(l.a, tui.Rect{X: 0, Y: 0, W: sa.W, H: sa.H})
-	sb := ctx.LayoutChild(l.b, tui.Tight(tui.Size{W: c.MaxW - half, H: c.MaxH}))
-	ctx.PlaceChild(l.b, tui.Rect{X: half, Y: 0, W: sb.W, H: sb.H})
-	return c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
-}
-
-func (l *looseRow) Render(tui.Surface) {}
-
-// TestARevokedCaptureLeavesTheResizeWhereItIs.
-//
-// A capture the runtime takes away is not a cancellation: the user dragged the
-// wrapper to a size, and silently putting it back would undo work they did and
-// never asked to undo. What the loss must do is END the gesture, so the next
-// stray motion does not resize a box nobody is holding.
-func TestARevokedCaptureLeavesTheResizeWhereItIs(t *testing.T) {
-	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 18, H: 15}))
-	other := &pane{fill: "o"}
-	host := widget.NewOverlayHost(&looseRow{a: r, b: other})
-	h := startApp(t, host, 40, 20)
-	defer h.stop()
-	h.onLoop(func() { r.Context().RequestFocus() })
-	h.settle()
-
-	before := sizeOn(t, h, r)
-	gx, gy := before.W-1, before.H-1
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: gx, Y: gy})
-	h.inject(tui.MouseEvent{Kind: tui.MouseMotion, X: gx + 4, Y: gy + 2})
-	dragged := tui.Size{W: before.W + 4, H: before.H + 2}
-	h.waitFor("the drag resized the wrapper", func() bool { return sizeOn(t, h, r) == dragged })
-
-	// Focus leaves the grip's subtree: the runtime revokes the capture.
-	h.onLoop(func() { other.Context().RequestFocus() })
-	h.settle()
-	h.settle()
-	if got := sizeOn(t, h, r); got != dragged {
-		t.Errorf("Size() = %+v after a revoked capture, want the %+v the user dragged "+
-			"it to", got, dragged)
-	}
-
-	// And the gesture really is over — motion and a release resize nothing.
-	h.inject(tui.MouseEvent{Kind: tui.MouseMotion, X: gx + 9, Y: gy + 5})
-	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: gx + 9, Y: gy + 5})
-	h.settle()
-	h.settle()
-	if got := sizeOn(t, h, r); got != dragged {
-		t.Errorf("Size() = %+v after input following a revoked capture, want %+v",
-			got, dragged)
-	}
-}
-
-// TestAPercentStepAlwaysMovesAtLeastOneCell.
-//
-// A percentage of a small box rounds to zero, and a keypress that provably
-// cannot move anything is worse than a slow one: the user presses it, sees
-// nothing, and concludes the control is broken rather than that their box is
-// small.
-func TestAPercentStepAlwaysMovesAtLeastOneCell(t *testing.T) {
-	// 5% of a 6x3 box is zero cells on both axes under integer division.
-	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child,
-		widget.WithMaxSize(tui.Size{W: 30, H: 15}),
-		widget.WithResizeStep(5, widget.StepPercent))
-	host := widget.NewOverlayHost(r)
-	h := startApp(t, host, 40, 20)
-	defer h.stop()
-	h.onLoop(func() { r.Context().RequestFocus() })
-	h.settle()
-
-	before := sizeOn(t, h, r)
-	if before != (tui.Size{W: 6, H: 3}) {
-		t.Fatalf("Size() = %+v, want the 6x3 that makes a 5%% step round to zero", before)
-	}
-	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: tui.ModShift})
-	h.waitFor("the step moved one cell", func() bool {
-		return sizeOn(t, h, r).W == before.W+1
-	})
-	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown, Mods: tui.ModShift})
-	h.waitFor("the step moved one cell on the other axis too", func() bool {
-		return sizeOn(t, h, r).H == before.H+1
-	})
 }
 
 // TestWrappingMakesAnUnmodifiedWidgetResizable.
@@ -706,21 +628,30 @@ func TestWrappingMakesAnUnmodifiedWidgetResizable(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := widget.NewResizable(tc.build(),
+			wrapped := tc.build()
+			r := widget.NewResizable(wrapped,
 				widget.WithInitialSize(tui.Size{W: 10, H: 4}),
 				widget.WithMaxSize(tui.Size{W: 30, H: 15}))
 			host := widget.NewOverlayHost(r)
 			h := startApp(t, host, 40, 20)
 			defer h.stop()
-			h.onLoop(func() { r.Context().RequestFocus() })
 			h.settle()
 
 			if got := sizeOn(t, h, r); got != (tui.Size{W: 10, H: 4}) {
 				t.Fatalf("Size() = %+v, want the requested 10x4", got)
 			}
-			// And it RESIZES, from the keyboard, with no cooperation from the
-			// child whatsoever.
-			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: tui.ModShift})
+			// And it RESIZES, with no cooperation from the child whatsoever.
+			//
+			// Driven through the wrapper's ACTION rather than a keystroke,
+			// because the keystroke path depends on the child: an Editor and a
+			// TextArea consume Shift-arrows for selection, so nothing bubbles
+			// up to the wrapper. That is a real property of wrapping a text
+			// widget and it is recorded in the doc comment; what this row
+			// claims is that the widget became resizable by being wrapped,
+			// which the action and the grips both demonstrate for every child.
+			h.onLoop(func() {
+				r.Context().DoAction(widget.ResizeStepAction{DX: 1, Unit: widget.StepCells})
+			})
 			h.waitFor("the wrapped widget resized", func() bool {
 				return sizeOn(t, h, r).W == 11
 			})
@@ -822,7 +753,7 @@ func TestAResizableInsideAFloatReportsTheFloatsTruth(t *testing.T) {
 
 			before := sizeOn(t, h, r)
 			resized := record[widget.ResizedEvent](h)
-			h.onLoop(func() { r.Context().RequestFocus() })
+			h.onLoop(func() { child.Context().RequestFocus() })
 			h.settle()
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: tui.ModShift})
 			h.settle()
@@ -968,5 +899,382 @@ func TestTheWrapperNeverReturnsASizeItsParentForbids(t *testing.T) {
 	h.onLoop(func() { sawW = child.sawMaxW })
 	if sawW != 30 {
 		t.Errorf("the child was measured with MaxW=%d, want the configured cap of 30", sawW)
+	}
+}
+
+// TestAnInvalidGestureIsRefusedWithoutMutation.
+//
+// An action is PUBLIC INPUT — a consumer's resolver, a key binding, a DoAction
+// from application code — so a malformed one is an ordinary occurrence rather
+// than a programmer error worth a panic. What matters is that a refusal leaves
+// NOTHING behind: accepting Handle(255) and storing a live drag meant the
+// gesture had a direction of zero on both axes and then swallowed every Update
+// and End that followed, so a later legitimate gesture could not start.
+func TestAnInvalidGestureIsRefusedWithoutMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		begin widget.ResizeBeginAction
+	}{
+		{"a handle outside the declared set",
+			widget.ResizeBeginAction{Handle: widget.HandleHorizontalDivider + 1}},
+		{"a divider, which is Split's and not a box's",
+			widget.ResizeBeginAction{Handle: widget.HandleVerticalDivider}},
+		{"a handle this wrapper was not configured with",
+			widget.ResizeBeginAction{Handle: widget.HandleTopLeft}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
+			r := widget.NewResizable(child,
+				widget.WithHandles(widget.HandleBottomRight),
+				widget.WithMaxSize(tui.Size{W: 30, H: 15}))
+			host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+			h := startApp(t, host, 40, 20)
+			defer h.stop()
+			h.settle()
+			before := sizeOn(t, h, r)
+
+			var begun, updated, ended bool
+			h.onLoop(func() {
+				begun = r.Context().DoAction(tc.begin)
+				// The follow-ups must be inert too: a refused Begin leaves no
+				// gesture, so there is nothing for them to act on.
+				updated = r.Context().DoAction(widget.ResizeUpdateAction{At: tui.Point{X: 99, Y: 99}})
+				ended = r.Context().DoAction(widget.ResizeEndAction{})
+			})
+			h.settle()
+
+			if begun {
+				t.Error("the invalid begin was handled; it must be refused")
+			}
+			if updated || ended {
+				t.Errorf("update=%v end=%v after a refused begin; a refusal must leave "+
+					"no gesture state behind", updated, ended)
+			}
+			if got := sizeOn(t, h, r); got != before {
+				t.Errorf("Size() = %+v, want the untouched %+v", got, before)
+			}
+		})
+	}
+}
+
+// TestAnInvalidStepIsRefused — the same rule on the other action. A step of
+// nothing is not a step, and a unit outside the closed set is not a unit.
+func TestAnInvalidStepIsRefused(t *testing.T) {
+	child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
+	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}))
+	host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+	h := startApp(t, host, 40, 20)
+	defer h.stop()
+	h.settle()
+	before := sizeOn(t, h, r)
+
+	var zero, badUnit, good bool
+	h.onLoop(func() {
+		zero = r.Context().DoAction(widget.ResizeStepAction{Unit: widget.StepCells})
+		badUnit = r.Context().DoAction(widget.ResizeStepAction{DX: 1, Unit: widget.StepPercent + 1})
+		good = r.Context().DoAction(widget.ResizeStepAction{DX: 1, Unit: widget.StepCells})
+	})
+	h.settle()
+
+	if zero {
+		t.Error("a step of zero on both axes was handled")
+	}
+	if badUnit {
+		t.Error("a step with an undeclared unit was handled")
+	}
+	if !good {
+		t.Fatal("the valid step was refused, so the refusals above prove nothing")
+	}
+	if got := sizeOn(t, h, r); got.W != before.W+1 {
+		t.Errorf("Size() = %+v after one valid step, want one cell wider than %+v",
+			got, before)
+	}
+}
+
+// TestCancellingRestoresTheEXACTPriorRequest.
+//
+// The request, not the effective size. A wrapper asking for 50x10 inside a
+// ceiling that clamps it to 12x6 must come out of a cancelled drag still asking
+// for 50x10 — writing the clamp back as the request means a cancelled gesture
+// silently changed what gets persisted, and the next terminal with room would
+// show a box the user never resized.
+func TestCancellingRestoresTheEXACTPriorRequest(t *testing.T) {
+	child := &sizedChild{pref: tui.Size{W: 4, H: 2}}
+	r := widget.NewResizable(child,
+		widget.WithHandles(widget.HandleBottomRight),
+		widget.WithMaxSize(tui.Size{W: 100, H: 100}))
+	// A 12x6 ceiling: the 50x10 request below cannot be reached.
+	host := widget.NewOverlayHost(&looseCeiling{child: r, w: 12, hh: 6})
+	h := startApp(t, host, 40, 20)
+	defer h.stop()
+	h.settle()
+
+	h.onLoop(func() { r.SetSize(tui.Size{W: 50, H: 10}) })
+	h.settle()
+	want, ok := requestedOn(t, h, r)
+	if !ok || want != (tui.Size{W: 50, H: 10}) {
+		t.Fatalf("RequestedSize() = (%+v, %v), want the unclamped 50x10", want, ok)
+	}
+	if eff := sizeOn(t, h, r); eff == want {
+		t.Fatalf("Size() = %+v equals the request, so this fixture is not clamping "+
+			"and the test below would prove nothing", eff)
+	}
+
+	// Drag, then cancel.
+	h.onLoop(func() {
+		r.Context().DoAction(widget.ResizeBeginAction{
+			Handle: widget.HandleBottomRight, At: tui.Point{X: 11, Y: 5}})
+		r.Context().DoAction(widget.ResizeUpdateAction{At: tui.Point{X: 4, Y: 2}})
+	})
+	h.settle()
+	h.onLoop(func() { r.Context().DoAction(widget.ResizeCancelAction{}) })
+	h.settle()
+
+	got, ok := requestedOn(t, h, r)
+	if !ok || got != want {
+		t.Errorf("RequestedSize() = (%+v, %v) after cancelling, want the exact prior "+
+			"request %+v; cancel wrote the clamped effective size back", got, ok, want)
+	}
+	if mode := modeOn(t, h, r); mode != widget.SizeExplicit {
+		t.Errorf("SizeMode() = %v after cancelling an explicit drag, want explicit", mode)
+	}
+}
+
+// TestReserveTakesCellsFromTheSIDEItsHandleIsOn.
+//
+// Reserve means the child does not share cells with a grip. A single
+// width/height bit could not say WHICH side the cells came off, so the child was
+// always placed at (0,0) and a reserved TOP-LEFT grip sat on the child's first
+// cell — reserve behaving exactly like overlay, which is the one thing it exists
+// not to do. Opposing handles must reserve both sides.
+func TestReserveTakesCellsFromTheSIDEItsHandleIsOn(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		handles []widget.Handle
+	}{
+		{"top-left", []widget.Handle{widget.HandleTopLeft}},
+		{"bottom-right", []widget.Handle{widget.HandleBottomRight}},
+		{"left and right", []widget.Handle{widget.HandleLeft, widget.HandleRight}},
+		{"top and bottom", []widget.Handle{widget.HandleTop, widget.HandleBottom}},
+		{"all four corners", []widget.Handle{widget.HandleTopLeft, widget.HandleTopRight,
+			widget.HandleBottomLeft, widget.HandleBottomRight}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			child := &sizedChild{pref: tui.Size{W: 6, H: 4}}
+			r := widget.NewResizable(child,
+				widget.WithHandles(tc.handles...),
+				widget.WithHandlePlacement(widget.PlacementReserve),
+				widget.WithHandleGlyph("#"),
+				widget.WithMaxSize(tui.Size{W: 30, H: 15}))
+			host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+			h := startApp(t, host, 40, 20)
+			defer h.stop()
+			h.settle()
+
+			// The child keeps EVERY cell it was measured for, and a grip
+			// shares none of them. The child fills with "·", so counting those
+			// cells counts exactly the area reserve left it — if a grip were
+			// sitting on the child, one of those cells would be the glyph
+			// instead and the count would come up short.
+			sz := sizeOn(t, h, r)
+			content := 0
+			for y := range sz.H {
+				for _, ch := range h.row(y) {
+					if ch == '·' {
+						content++
+					}
+				}
+			}
+			wantW, wantH := childExtent(tc.handles, sz)
+			if content != wantW*wantH {
+				t.Errorf("%d child cells painted, want %d (%dx%d) inside a %dx%d "+
+					"wrapper; a reserved grip is sharing cells with the child\n%s",
+					content, wantW*wantH, wantW, wantH, sz.W, sz.H, h.grid())
+			}
+		})
+	}
+}
+
+// childExtent is how much of the wrapper the child keeps once each configured
+// handle has taken its band.
+func childExtent(handles []widget.Handle, eff tui.Size) (w, h int) {
+	var left, right, top, bottom int
+	for _, hh := range handles {
+		switch hh {
+		case widget.HandleLeft, widget.HandleTopLeft, widget.HandleBottomLeft:
+			left = 1
+		case widget.HandleRight, widget.HandleTopRight, widget.HandleBottomRight:
+			right = 1
+		}
+		switch hh {
+		case widget.HandleTop, widget.HandleTopLeft, widget.HandleTopRight:
+			top = 1
+		case widget.HandleBottom, widget.HandleBottomLeft, widget.HandleBottomRight:
+			bottom = 1
+		}
+	}
+	return eff.W - left - right, eff.H - top - bottom
+}
+
+// looseRow lays two children side by side under LOOSE constraints for the first
+// of them, so a Resizable inside it is free to choose its own size. A Flex would
+// hand it a tight cell and there would be nothing left to observe.
+type looseRow struct {
+	widget.Base
+	a, b tui.Component
+}
+
+func (l *looseRow) Init(ctx *tui.Context) {
+	l.Base.Init(ctx)
+	ctx.Mount(l.a)
+	ctx.Mount(l.b)
+}
+
+func (l *looseRow) Layout(c tui.Constraints) tui.Size {
+	ctx := l.Context()
+	half := c.MaxW / 2
+	sa := ctx.LayoutChild(l.a, tui.Constraints{MaxW: half, MaxH: c.MaxH})
+	ctx.PlaceChild(l.a, tui.Rect{X: 0, Y: 0, W: sa.W, H: sa.H})
+	sb := ctx.LayoutChild(l.b, tui.Tight(tui.Size{W: c.MaxW - half, H: c.MaxH}))
+	ctx.PlaceChild(l.b, tui.Rect{X: half, Y: 0, W: sb.W, H: sb.H})
+	return c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
+}
+
+func (l *looseRow) Render(tui.Surface) {}
+
+// TestARevokedCaptureLeavesTheResizeWhereItIs.
+//
+// A capture the runtime takes away is not a cancellation: the user dragged the
+// wrapper to a size, and silently putting it back would undo work they did and
+// never asked to undo. What the loss must do is END the gesture, so the next
+// stray motion does not resize a box nobody is holding.
+func TestARevokedCaptureLeavesTheResizeWhereItIs(t *testing.T) {
+	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
+	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 18, H: 15}))
+	other := &pane{fill: "o"}
+	host := widget.NewOverlayHost(&looseRow{a: r, b: other})
+	h := startApp(t, host, 40, 20)
+	defer h.stop()
+	h.onLoop(func() { child.Context().RequestFocus() })
+	h.settle()
+
+	before := sizeOn(t, h, r)
+	gx, gy := before.W-1, before.H-1
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: gx, Y: gy})
+	h.inject(tui.MouseEvent{Kind: tui.MouseMotion, X: gx + 4, Y: gy + 2})
+	dragged := tui.Size{W: before.W + 4, H: before.H + 2}
+	h.waitFor("the drag resized the wrapper", func() bool { return sizeOn(t, h, r) == dragged })
+
+	// Focus leaves the grip's subtree: the runtime revokes the capture.
+	h.onLoop(func() { other.Context().RequestFocus() })
+	h.settle()
+	h.settle()
+	if got := sizeOn(t, h, r); got != dragged {
+		t.Errorf("Size() = %+v after a revoked capture, want the %+v the user dragged "+
+			"it to", got, dragged)
+	}
+
+	// And the gesture really is over — motion and a release resize nothing.
+	h.inject(tui.MouseEvent{Kind: tui.MouseMotion, X: gx + 9, Y: gy + 5})
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: gx + 9, Y: gy + 5})
+	h.settle()
+	h.settle()
+	if got := sizeOn(t, h, r); got != dragged {
+		t.Errorf("Size() = %+v after input following a revoked capture, want %+v",
+			got, dragged)
+	}
+}
+
+// TestAPercentStepAlwaysMovesAtLeastOneCell.
+//
+// A percentage of a small box rounds to zero, and a keypress that provably
+// cannot move anything is worse than a slow one: the user presses it, sees
+// nothing, and concludes the control is broken rather than that their box is
+// small.
+func TestAPercentStepAlwaysMovesAtLeastOneCell(t *testing.T) {
+	// 5% of a 6x3 box is zero cells on both axes under integer division.
+	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
+	r := widget.NewResizable(child,
+		widget.WithMaxSize(tui.Size{W: 30, H: 15}),
+		widget.WithResizeStep(5, widget.StepPercent))
+	host := widget.NewOverlayHost(r)
+	h := startApp(t, host, 40, 20)
+	defer h.stop()
+	h.onLoop(func() { child.Context().RequestFocus() })
+	h.settle()
+
+	before := sizeOn(t, h, r)
+	if before != (tui.Size{W: 6, H: 3}) {
+		t.Fatalf("Size() = %+v, want the 6x3 that makes a 5%% step round to zero", before)
+	}
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: tui.ModShift})
+	h.waitFor("the step moved one cell", func() bool {
+		return sizeOn(t, h, r).W == before.W+1
+	})
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown, Mods: tui.ModShift})
+	h.waitFor("the step moved one cell on the other axis too", func() bool {
+		return sizeOn(t, h, r).H == before.H+1
+	})
+}
+
+// TestReserveKeepsTheOUTERContractTruthful.
+//
+// The configured min and max describe the WRAPPER, not the child. Under reserve
+// the child is measured against those bounds LESS the bands, so the wrapper
+// still owes its parent exactly what it advertised — a wrapper with a 12-cell
+// minimum and a reserved edge is 12 cells wide, of which the child has 11.
+//
+// Subtracting the bands from the maximum only, and leaving the minimum alone,
+// is the easy version of this and it is wrong in the direction nobody notices:
+// the wrapper quietly grows one cell past its own minimum on every reserved
+// side, and a layout built to that minimum is off by one per handle.
+func TestReserveKeepsTheOUTERContractTruthful(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		handles []widget.Handle
+		// bands is how many cells the configured handles reserve on each axis.
+		bandW, bandH int
+	}{
+		{"one corner", []widget.Handle{widget.HandleBottomRight}, 1, 1},
+		{"both vertical edges", []widget.Handle{widget.HandleLeft, widget.HandleRight}, 2, 0},
+		{"both horizontal edges", []widget.Handle{widget.HandleTop, widget.HandleBottom}, 0, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			minSize := tui.Size{W: 12, H: 6}
+			maxSize := tui.Size{W: 20, H: 10}
+			child := &sizedChild{pref: tui.Size{W: 1, H: 1}} // wants far less than the min
+			r := widget.NewResizable(child,
+				widget.WithHandles(tc.handles...),
+				widget.WithHandlePlacement(widget.PlacementReserve),
+				widget.WithMinSize(minSize),
+				widget.WithMaxSize(maxSize))
+			host := widget.NewOverlayHost(&looseCeiling{child: r, w: 40, hh: 20})
+			h := startApp(t, host, 50, 24)
+			defer h.stop()
+			h.settle()
+
+			// The MINIMUM is the wrapper's, bands included.
+			if got := sizeOn(t, h, r); got != minSize {
+				t.Errorf("Size() = %+v with a child that wants 1x1, want the wrapper's "+
+					"configured minimum %+v — the bands come out of the child's share, "+
+					"not out of what the wrapper owes its parent", got, minSize)
+			}
+			// And the child got the minimum less the bands, exactly.
+			var sawMin int
+			h.onLoop(func() { sawMin = child.sawMinW })
+			if sawMin != minSize.W-tc.bandW {
+				t.Errorf("the child's minimum was %d, want %d (%d less the %d reserved)",
+					sawMin, minSize.W-tc.bandW, minSize.W, tc.bandW)
+			}
+
+			// The MAXIMUM is the wrapper's too: ask for more than it and the
+			// wrapper stops there, bands still inside.
+			h.onLoop(func() { r.SetSize(tui.Size{W: 999, H: 999}) })
+			h.settle()
+			if got := sizeOn(t, h, r); got != maxSize {
+				t.Errorf("Size() = %+v after asking for far too much, want the "+
+					"configured maximum %+v", got, maxSize)
+			}
+		})
 	}
 }
