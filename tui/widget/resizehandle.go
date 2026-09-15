@@ -380,10 +380,11 @@ func (g *resizeHandle) Render(s tui.Surface) {
 	if g.owner.drag != nil && g.owner.drag.handle == g.handle {
 		st = g.owner.st.Active()
 	}
-	// An edge grip repeats along its length; a corner grip is one cell.
-	for y := range sz.H {
-		for x := range sz.W {
-			s.SetCell(x, y, g.owner.glyph, st)
-		}
-	}
+	// FILL, not SetCell per column. A two-cell glyph written at every x
+	// overlaps its own previous pair and dissolves it, so a six-cell top edge
+	// kept a single head instead of a repeated affordance. Surface.Fill already
+	// steps by the glyph's measured width and handles the odd tail cell, which
+	// is the same arithmetic every caller would otherwise reimplement slightly
+	// differently.
+	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, g.owner.glyph, st)
 }

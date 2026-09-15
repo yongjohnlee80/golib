@@ -204,6 +204,37 @@ func TestSetSizeAndSetAutoAreIdempotentAndSwitchModes(t *testing.T) {
 		t.Errorf("RequestedSize() = (%+v, %v), want the 12x6 that was asked for", want, ok)
 	}
 
+	// AN IDENTICAL EXPLICIT SET COSTS NOTHING. Counted in child layout passes,
+	// because that is the cost: a drag delivers a SetSize per pointer motion and
+	// most of them land on the size already held, so a redundant request spends
+	// a frame per motion event on geometry that cannot change. Asserting only
+	// the resulting mode and value — which the previous version of this test did
+	// — cannot see it, since both are correct either way.
+	before := child.layouts()
+	h.onLoop(func() { r.SetSize(tui.Size{W: 12, H: 6}) })
+	h.settle()
+	h.settle()
+	if got := child.layouts(); got != before {
+		t.Errorf("the child was measured %d more times for a repeated identical "+
+			"SetSize, want 0", got-before)
+	}
+	// And through the ACTION, which routes to the same request path.
+	h.onLoop(func() {
+		r.Context().DoAction(widget.ResizeSetAction{Size: tui.Size{W: 12, H: 6}})
+	})
+	h.settle()
+	h.settle()
+	if got := child.layouts(); got != before {
+		t.Errorf("the child was measured %d more times for a no-op ResizeSetAction, "+
+			"want 0", got-before)
+	}
+	// The control: a DIFFERENT size does cost a pass, so the zeros above are a
+	// no-op rather than a wrapper that has stopped laying out at all.
+	h.onLoop(func() { r.SetSize(tui.Size{W: 14, H: 6}) })
+	h.waitFor("a real change still re-measures", func() bool {
+		return child.layouts() > before
+	})
+
 	// A NEGATIVE request is clamped to zero rather than rejected: the wrapper
 	// has a minimum and the parent has constraints, so the useful answer is the
 	// smallest legal size, not a panic in a setter a consumer drives from input.

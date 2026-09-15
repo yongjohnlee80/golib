@@ -52,11 +52,11 @@ func TestSplitConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 			widget.NewSplit(widget.Horizontal, a, b,
 				widget.WithSplitDividerGlyphs("ab", "─"))
 		}},
-		{"a wide divider glyph", func() {
-			// The divider is one cell by construction, so a two-column glyph
-			// renders nothing and the split appears to have no divider at all.
+		{"a zero-width divider glyph", func() {
+			// One cluster, no cells: it would be reserved geometry that paints
+			// nothing, which is the invisible-affordance failure again.
 			widget.NewSplit(widget.Horizontal, a, b,
-				widget.WithSplitDividerGlyphs("│", "世"))
+				widget.WithSplitDividerGlyphs("\u200b", "─"))
 		}},
 		{"a pointer policy outside the set", func() {
 			widget.NewSplit(widget.Horizontal, a, b).
@@ -75,7 +75,9 @@ func TestSplitConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 			widget.WithRatio(0.999),
 			widget.WithMinSizes(0, 0),
 			widget.WithSplitResizeStep(1, widget.StepPercent),
-			widget.WithSplitDividerGlyphs("│", "─")).
+			// A WIDE glyph is legal: its width is geometry, and the split
+			// reserves the cells it actually occupies.
+			widget.WithSplitDividerGlyphs("世", "─")).
 			WithPointerPolicy(tui.PointerDisabled)
 	}) {
 		t.Error("a legal configuration was rejected")

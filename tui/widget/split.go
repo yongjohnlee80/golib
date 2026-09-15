@@ -6,7 +6,6 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -189,21 +188,19 @@ func WithDividerStyle(st style.Style) SplitOption {
 // Both, in one option, because a Split has exactly one orientation but a
 // consumer styling an application sets them together — and an option that took
 // only the one for the current axis would silently do nothing on the other.
-// Each must be a single grapheme of width one: the divider occupies one cell by
-// construction, and a wide glyph in it renders nothing.
+//
+// Each must be a single grapheme cluster of one or two cells under every width
+// policy. THE WIDTH IS GEOMETRY, not a constraint: a divider two cells wide
+// takes two cells from the panes. The alternative — insisting on glyphs that
+// measure one cell under both policies — would have forced the defaults to
+// ASCII, because every box-drawing and geometric character is East Asian
+// Ambiguous and therefore two cells wide under WidthPolicyAmbiguousWide. That
+// is a visible downgrade for every application on the default policy in order
+// to serve the legacy one, which is the wrong way round.
 func WithSplitDividerGlyphs(vertical, horizontal string) SplitOption {
 	return func(s *Split) {
-		for _, g := range []string{vertical, horizontal} {
-			n := 0
-			for range grapheme.Clusters(g) {
-				n++
-			}
-			if n != 1 || grapheme.StringWidth(g, false) != 1 {
-				panic(fatalOf("widget: WithSplitDividerGlyphs",
-					"each divider glyph must be one grapheme cluster of display width one",
-					fmt.Sprintf("%q", g)))
-			}
-		}
+		checkGlyph("WithSplitDividerGlyphs", "divider", vertical)
+		checkGlyph("WithSplitDividerGlyphs", "divider", horizontal)
 		s.glyphV, s.glyphH = vertical, horizontal
 	}
 }
@@ -416,7 +413,8 @@ func (s *Split) Layout(c tui.Constraints) tui.Size {
 	if !horiz {
 		main, cross = h, w
 	}
-	avail := max(main-1, 0)
+	div := s.dividerCells()
+	avail := max(main-div, 0)
 	a := int(math.Floor(s.requested*float64(avail) + 0.5))
 	a = min(max(a, s.minA), max(avail-s.minB, 0))
 	a = max(0, min(a, avail))
@@ -430,12 +428,12 @@ func (s *Split) Layout(c tui.Constraints) tui.Size {
 		s.ctx.LayoutChild(s.a, tui.Tight(tui.Size{W: a, H: cross}))
 		s.ctx.PlaceChild(s.a, tui.Rect{X: 0, Y: 0, W: a, H: cross})
 		s.ctx.LayoutChild(s.b, tui.Tight(tui.Size{W: b, H: cross}))
-		s.ctx.PlaceChild(s.b, tui.Rect{X: a + 1, Y: 0, W: b, H: cross})
+		s.ctx.PlaceChild(s.b, tui.Rect{X: a + div, Y: 0, W: b, H: cross})
 	} else {
 		s.ctx.LayoutChild(s.a, tui.Tight(tui.Size{W: cross, H: a}))
 		s.ctx.PlaceChild(s.a, tui.Rect{X: 0, Y: 0, W: cross, H: a})
 		s.ctx.LayoutChild(s.b, tui.Tight(tui.Size{W: cross, H: b}))
-		s.ctx.PlaceChild(s.b, tui.Rect{X: 0, Y: a + 1, W: cross, H: b})
+		s.ctx.PlaceChild(s.b, tui.Rect{X: 0, Y: a + div, W: cross, H: b})
 	}
 	return c.Constrain(tui.Size{W: w, H: h})
 }
@@ -447,7 +445,7 @@ func (s *Split) Render(sur tui.Surface) {
 		return
 	}
 	if s.o == Horizontal {
-		sur.Fill(tui.Rect{X: s.aCells, Y: 0, W: 1, H: sz.H}, s.glyphV, s.divider)
+		sur.Fill(tui.Rect{X: s.aCells, Y: 0, W: s.dividerCells(), H: sz.H}, s.glyphV, s.divider)
 	} else {
 		sur.Fill(tui.Rect{X: 0, Y: s.aCells, W: sz.W, H: 1}, s.glyphH, s.divider)
 	}
@@ -528,6 +526,29 @@ type splitDrag struct {
 	// ratio, because cancelling must put back what the user had asked for
 	// rather than what a clamp had made of it.
 	beginRequested float64
+}
+
+// dividerCells is how many MAIN-AXIS cells the divider occupies.
+//
+// For a horizontal split the divider is a column, so its width is the glyph's
+// — and a glyph two cells wide under the active policy takes two cells from the
+// panes. Reserving one for it put the second half over pane B and misaligned
+// every cell after it in that row, which is the corruption the width rule
+// exists to prevent. For a vertical split the divider is a row: one cell tall
+// whatever the glyph measures, because the glyph repeats along the row and
+// Surface.Fill steps by its width.
+//
+// Measured through the Context, which is where the ACTIVE policy lives. A
+// width cached at construction is locked to the default policy and is simply
+// wrong in an application configured for the other one.
+func (s *Split) dividerCells() int {
+	if s.o != Horizontal {
+		return 1
+	}
+	if ctx := s.Context(); ctx != nil {
+		return max(ctx.StringWidth(s.glyphV), 1)
+	}
+	return 1
 }
 
 // dividerHandle is the handle this split's divider IS: a horizontal split puts
@@ -614,7 +635,10 @@ func (s *Split) resolveMouse(e tui.MouseEvent) (tui.Action, bool) {
 	}
 	switch e.Kind {
 	case tui.MousePress:
-		if pos != s.aCells {
+		// The whole divider is grabbable, not just its first column. A two-cell
+		// divider whose second column did nothing would be an affordance that
+		// works on half the pixels the user can see it occupying.
+		if pos < s.aCells || pos >= s.aCells+s.dividerCells() {
 			return nil, false // not on the divider
 		}
 		return ResizeBeginAction{Handle: s.dividerHandle(), At: at}, true

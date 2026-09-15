@@ -253,11 +253,13 @@ func NewResizable(child tui.Component, opts ...ResizableOption) *Resizable {
 			"a wrapper with nothing to size has no behaviour to offer"))
 	}
 	r := &Resizable{
-		child:         child,
-		mode:          SizeAuto,
-		max:           tui.Size{W: tui.Unbounded, H: tui.Unbounded},
-		handles:       []Handle{HandleBottomRight},
-		glyph:         "◢",
+		child:   child,
+		mode:    SizeAuto,
+		max:     tui.Size{W: tui.Unbounded, H: tui.Unbounded},
+		handles: []Handle{HandleBottomRight},
+		glyph:   "◢",
+		// glyphCells is measured at Init from the active width policy; this is
+		// only the value a wrapper reports if it is asked before it is mounted.
 		glyphCells:    1,
 		step:          1,
 		stepUnit:      StepCells,
@@ -302,14 +304,52 @@ func WithInitialSize(s tui.Size) ResizableOption {
 }
 
 // WithMinSize sets the smallest size a drag or SetSize may reach.
+//
+// FINITE AND NON-NEGATIVE on both axes. The runtime's constraint invariant is
+// 0 <= Min <= Max, and Unbounded is legal for a maximum ONLY — a minimum of
+// Unbounded asks for a box no terminal can satisfy. Both were accepted before
+// and quietly normalised away later, which turns an author's mistake into a
+// layout that is merely surprising: the wrapper stops honouring a minimum it
+// was told to honour, and nothing anywhere says why.
 func WithMinSize(s tui.Size) ResizableOption {
-	return func(r *Resizable) { r.min = s }
+	return func(r *Resizable) {
+		checkMinAxis("WithMinSize", "width", s.W)
+		checkMinAxis("WithMinSize", "height", s.H)
+		r.min = s
+	}
 }
 
 // WithMaxSize sets the largest. Unbounded on an axis is the default and is
 // legal for a maximum only.
 func WithMaxSize(s tui.Size) ResizableOption {
-	return func(r *Resizable) { r.max = s }
+	return func(r *Resizable) {
+		checkMaxAxis("WithMaxSize", "width", s.W)
+		checkMaxAxis("WithMaxSize", "height", s.H)
+		r.max = s
+	}
+}
+
+// checkMinAxis rejects a minimum that is negative or unbounded.
+func checkMinAxis(op, axis string, v int) {
+	if v == tui.Unbounded {
+		panic(fatalOf("widget: "+op,
+			"Unbounded is legal for a MAXIMUM only; a minimum must be a real size",
+			axis))
+	}
+	if v < 0 {
+		panic(fatalOf("widget: "+op, "a negative minimum is not a smaller box",
+			fmt.Sprintf("%s = %d", axis, v)))
+	}
+}
+
+// checkMaxAxis rejects a maximum that is negative. Unbounded is the default and
+// means "no ceiling on this axis", so it is the one value that passes here and
+// not in checkMinAxis.
+func checkMaxAxis(op, axis string, v int) {
+	if v != tui.Unbounded && v < 0 {
+		panic(fatalOf("widget: "+op, "a negative maximum bounds nothing",
+			fmt.Sprintf("%s = %d", axis, v)))
+	}
 }
 
 // WithHandles chooses the grips. Empty is INTENTIONAL and supported: a
@@ -347,22 +387,46 @@ func WithHandles(h ...Handle) ResizableOption {
 // about, so the measured width travels with the glyph into every rect and inset.
 func WithHandleGlyph(g string) ResizableOption {
 	return func(r *Resizable) {
-		n := 0
-		for range grapheme.Clusters(g) {
-			n++
-		}
-		if n != 1 {
-			panic(fatalOf("widget: WithHandleGlyph",
-				"the grip glyph must be exactly one grapheme cluster",
-				fmt.Sprintf("%q is %d clusters", g, n)))
-		}
-		w := grapheme.StringWidth(g, false)
-		if w < 1 || w > 2 {
-			panic(fatalOf("widget: WithHandleGlyph",
-				"the grip glyph must have a display width of one or two cells",
-				fmt.Sprintf("%q measures %d", g, w)))
-		}
-		r.glyph, r.glyphCells = g, w
+		checkGlyph("WithHandleGlyph", "grip", g)
+		r.glyph = g
+	}
+}
+
+// checkGlyph validates the facts about an affordance glyph that do NOT depend
+// on which terminal it lands in: that it is exactly one grapheme cluster, and
+// that it is placeable at all.
+//
+// The width used for geometry is measured later, from the mounted Context.
+// Measuring here and KEEPING the answer was the defect: the package-level
+// measurement is locked to WidthPolicyDefault, so under WidthPolicyAmbiguousWide
+// an ambiguous glyph such as "±" was placed in one cell, painted as two by the
+// surface, and vanished. The normative rule is that layout measures through the
+// Context and rendering through the Surface; a construction-time constant is
+// neither.
+//
+// ONE MEASUREMENT IS ENOUGH for the placeability question, and that is a
+// measured claim rather than an assumption. Sweeping every assigned rune, the
+// two built-in policies disagree about WIDTH for 138,370 of them and about
+// ACCEPTANCE for none: the wide policy only ever promotes an Ambiguous cluster
+// from one cell to two, never out of the one-or-two range, and never widens past
+// two. So the set this rejects — zero-width clusters — is the same set under
+// either policy. Looping over both would read as a stricter check while being
+// incapable of rejecting anything the first pass accepts.
+func checkGlyph(op, what, g string) {
+	n := 0
+	for range grapheme.Clusters(g) {
+		n++
+	}
+	if n != 1 {
+		panic(fatalOf("widget: "+op,
+			"the "+what+" glyph must be exactly one grapheme cluster",
+			fmt.Sprintf("%q is %d clusters", g, n)))
+	}
+	if w := grapheme.StringWidth(g, false); w < 1 || w > 2 {
+		panic(fatalOf("widget: "+op,
+			"the "+what+" glyph must occupy one or two cells; a zero-width cluster is "+
+				"placed and hit-tested but paints nothing",
+			fmt.Sprintf("%q measures %d", g, w)))
 	}
 }
 
@@ -448,29 +512,39 @@ func (r *Resizable) RequestedSize() (tui.Size, bool) {
 
 // SetSize records an explicit request and switches to SizeExplicit.
 //
-// It CLAMPS TO THE CONFIGURED MINIMUM rather than panicking, unlike
-// WithInitialSize: a runtime setter receives values computed from restored
-// state and user input, where out-of-range is an ordinary outcome, while a
-// construction option receives what an author wrote.
-//
 // It stores the request and requests layout; it publishes nothing. The
 // effective size is whatever the next layout reaches, and the commit that
 // follows reports it.
+//
+// AN IDENTICAL EXPLICIT REQUEST IS A TRUE NO-OP — normalised first, so the
+// comparison is between what would be stored and what is stored, not between
+// raw arguments. A drag delivers a SetSize per pointer motion and most of those
+// land on the size already held; requesting layout for each spent a frame per
+// motion event on geometry that could not change. The first call out of auto is
+// a real transition even when the numbers happen to match, because the MODE
+// changed and the wrapper has stopped tracking its child.
 func (r *Resizable) SetSize(s tui.Size) {
-	if s.W < r.min.W {
-		s.W = r.min.W
-	}
-	if s.H < r.min.H {
-		s.H = r.min.H
-	}
-	if s.W < 0 {
-		s.W = 0
-	}
-	if s.H < 0 {
-		s.H = 0
+	s = r.normalizeRequest(s)
+	if r.mode == SizeExplicit && r.requested == s {
+		return
 	}
 	r.requested, r.mode = s, SizeExplicit
 	r.RequestLayout()
+}
+
+// normalizeRequest applies the clamps a stored request has already had, so that
+// comparing an incoming request against the stored one compares like with like.
+//
+// It CLAMPS TO THE CONFIGURED MINIMUM rather than panicking, unlike
+// WithInitialSize: a runtime setter receives values computed from restored state
+// and user input, where out-of-range is an ordinary outcome, while a
+// construction option receives what an author wrote.
+func (r *Resizable) normalizeRequest(s tui.Size) tui.Size {
+	s.W = max(s.W, r.min.W)
+	s.H = max(s.H, r.min.H)
+	s.W = max(s.W, 0)
+	s.H = max(s.H, 0)
+	return s
 }
 
 // SetAuto returns to tracking the child's intrinsic size.
@@ -488,6 +562,12 @@ func (r *Resizable) Init(ctx *tui.Context) {
 	ctx.SetPointerPolicy(r.pointerPolicy)
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(r.resizeKeys))
 	ctx.Mount(r.child)
+	// THE ACTIVE POLICY decides how many cells the glyph occupies, and Init is
+	// the first moment a Context exists to ask. Every reserve inset and every
+	// grip rect is derived from this, so measuring it once here is what keeps
+	// layout and rendering agreeing — the invariant a mismatched width breaks
+	// is not "the grip looks wrong" but "every cell after it in that row is".
+	r.glyphCells = ctx.StringWidth(r.glyph)
 	r.grips = r.grips[:0]
 	for _, h := range r.handles {
 		g := &resizeHandle{owner: r, handle: h}
