@@ -43,8 +43,18 @@ func (r *Resizable) childConstraints(c tui.Constraints) tui.Constraints {
 }
 
 // Layout measures the child once, inside constraints derived from the parent's
-// before measurement, so the returned size is inside them by construction and
-// child + handle cells equals the wrapper exactly.
+// before measurement, so the child is never placed at a size it was not laid
+// out under.
+//
+// THE RETURNED SIZE IS THE PARENT'S TRUTH, and the final Constrain is not
+// belt-and-braces. Child + handle equals the wrapper in the ordinary case, but
+// not when the parent's MINIMUM exceeds the configured MAXIMUM — a wrapper with
+// a 30-cell cap inside a rect tightly fixed at 40. The child must not be forced
+// past its cap, so it is measured at 30; the wrapper must not return a size its
+// parent forbids, so it reports 40 and carries ten cells of slack. An earlier
+// version returned 30 and the runtime flagged the constraint violation, which
+// is the right answer arriving in the wrong place: a component that returns an
+// illegal size has already broken the layout contract by the time anyone checks.
 //
 // It stores NOTHING and publishes NOTHING. The commit record does both — that
 // is what keeps this function pure and the size honest.
@@ -60,7 +70,7 @@ func (r *Resizable) Layout(c tui.Constraints) tui.Size {
 	got := ctx.LayoutChild(r.child, inner)
 
 	hw, hh := r.handleCells()
-	eff := tui.Size{W: got.W + hw, H: got.H + hh}
+	eff := c.Constrain(tui.Size{W: got.W + hw, H: got.H + hh})
 	ctx.PlaceChild(r.child, tui.Rect{X: 0, Y: 0, W: got.W, H: got.H})
 	r.placeGrips(ctx, eff)
 

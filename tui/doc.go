@@ -69,10 +69,11 @@
 //	                     ┌──────────────────────────────┐
 //	                     │      Frame Pipeline Pass     │
 //	                     │    1. Layout (if dirty)      │
-//	                     │    2. Render to Buffer       │
-//	                     │    3. Apply Hardware Cursor  │
-//	                     │    4. Diff against Last Frame│
-//	                     │    5. Backend.Flush(diff)    │
+//	                     │    2. Commit (side effects)  │
+//	                     │    3. Render to Buffer       │
+//	                     │    4. Apply Hardware Cursor  │
+//	                     │    5. Diff against Last Frame│
+//	                     │    6. Backend.Flush(diff)    │
 //	                     └──────────────────────────────┘
 //
 // # Interpretation: what happens to an event at each node
@@ -162,16 +163,25 @@
 //     from the root with tight constraints matching the terminal size. Each container
 //     measures its children via [Context.LayoutChild] and positions them via [Context.PlaceChild].
 //     Absolute coordinates are then computed for hit testing.
-//  2. Focus Invariant Enforcement: Any node holding focus that was hidden or zoomed
+//  2. Commit Phase: The callbacks registered during the pass by
+//     [Context.AfterLayout] run, in registration order, keyed by [CommitKey] so a
+//     component that lays out twice in a frame commits once. This is the ONLY legal
+//     place for a geometry-derived side effect — publishing the ratio a split
+//     actually reached, storing the size a wrapper was clamped to, dismissing an
+//     overlay whose anchor is no longer laid out — which is what keeps Layout pure
+//     and therefore safe for the runtime to run whenever it needs to. A callback
+//     may legitimately dirty layout, so the two alternate until they settle, and a
+//     cycle that will not settle is a fatal rather than a silently dropped frame.
+//  3. Focus Invariant Enforcement: Any node holding focus that was hidden or zoomed
 //     away during layout has its focus automatically repaired to a visible focusable node.
-//  3. Render Pass: Components paint their chrome into their pre-clipped [Surface].
+//  4. Render Pass: Components paint their chrome into their pre-clipped [Surface].
 //     Children are painted depth-first in document order.
-//  4. Real Hardware Cursor Rule: If the focused component implements [CursorReporter]
+//  5. Real Hardware Cursor Rule: If the focused component implements [CursorReporter]
 //     and reports an active insertion point, [App] positions the terminal hardware
 //     cursor at that cell and configures its shape ([CursorShaper]). Otherwise, the
 //     cursor is hidden. This ensures OS IME candidate windows (for CJK input) anchor
 //     at the exact text editing position.
-//  5. Diff & Flush: The frame buffer's current cells are diffed against the previous
+//  6. Diff & Flush: The frame buffer's current cells are diffed against the previous
 //     frame. Only modified cells are formatted into an optimized batch and emitted to
 //     [Backend.Flush] in a single write.
 //

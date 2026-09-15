@@ -262,3 +262,101 @@ func TestAfterLayoutIsRefusedOutsideLayout(t *testing.T) {
 		t.Error("AfterLayout was accepted outside Layout")
 	}
 }
+
+// TestLayoutAndCommitSettleInsideONEFrame.
+//
+// The alternation is a WITHIN-FRAME contract: a commit that changes what the
+// next pass measures must be re-laid-out before anything paints, so the frame
+// on screen is never geometry its own commit has already invalidated.
+//
+// Counting layouts and commits across an app's frames cannot see that — a
+// second frame produces a second pair either way, so the count is the same
+// whether the runtime settled the geometry or merely re-ran later. This drives
+// ONE renderFrame directly, which is the only way to ask "did it settle before
+// it painted?" rather than "did it settle eventually?".
+func TestLayoutAndCommitSettleInsideONEFrame(t *testing.T) {
+	t.Parallel()
+	var layouts, commits int
+	p := newCommitProbe("p", "k", nil)
+	p.perPass = func(*commitProbe) { layouts++ }
+	p.onCommit = func() {
+		commits++
+		if commits == 1 {
+			p.pref = Size{W: 4, H: 2} // a different answer next pass
+			p.ctx.RequestLayout()
+		}
+	}
+	root := NewFlex(Vertical)
+	root.Add(p)
+
+	tb := NewTestBackend(8, 8)
+	app := NewApp(root, WithBackend(tb), WithMinFrameInterval(0))
+	app.rootNode = app.mount(nil, root)
+	app.size = Size{W: 8, H: 8}
+	app.buf = newBuffer(8, 8)
+	app.layoutDirty = true
+
+	app.renderFrame() // exactly one frame
+
+	if layouts != 2 || commits != 2 {
+		t.Errorf("%d layouts and %d commits in ONE frame, want 2 and 2; the commit "+
+			"dirtied layout, so the frame owed another pass before painting",
+			layouts, commits)
+	}
+	if got := app.nodes[p.ctx.node.id].size; got.H != 2 {
+		t.Errorf("the painted size is %+v; the frame rendered geometry its own commit "+
+			"had already invalidated", got)
+	}
+	if !app.layoutDirtyIsClear() {
+		t.Error("the frame ended with layout still dirty, so it did not settle")
+	}
+}
+
+// layoutDirtyIsClear reports whether the frame settled, for the test above. A
+// method rather than a direct field read so the assertion reads as the question
+// it is asking.
+func (a *App) layoutDirtyIsClear() bool { return !a.layoutDirty }
+
+// TestACommitRunsONCEPerRegistration.
+//
+// The drain takes the queue and clears it before running anything. Without that
+// clear, the records would still be there on the next frame and every callback
+// would run again — a split would publish its ratio once per frame for the rest
+// of the application's life, and the event would stop meaning "this changed".
+//
+// The probe registers only on its FIRST layout, so a second frame that
+// re-registers nothing must produce no second call.
+func TestACommitRunsONCEPerRegistration(t *testing.T) {
+	t.Parallel()
+	var commits int
+	p := newCommitProbe("p", "k", func() { commits++ })
+	first := true
+	p.perPass = func(pp *commitProbe) {
+		if !first {
+			pp.onCommit = nil // register nothing from here on
+		}
+		first = false
+	}
+	root := NewFlex(Vertical)
+	root.Add(p)
+
+	tb := NewTestBackend(8, 8)
+	app := NewApp(root, WithBackend(tb), WithMinFrameInterval(0))
+	app.rootNode = app.mount(nil, root)
+	app.size = Size{W: 8, H: 8}
+	app.buf = newBuffer(8, 8)
+
+	app.layoutDirty = true
+	app.renderFrame()
+	if commits != 1 {
+		t.Fatalf("%d commits after the frame that registered one, want 1", commits)
+	}
+
+	// A second frame, registering nothing.
+	app.layoutDirty = true
+	app.renderFrame()
+	if commits != 1 {
+		t.Errorf("%d commits after a frame that registered none, want still 1; the "+
+			"drain left its records in the queue", commits)
+	}
+}

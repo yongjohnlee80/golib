@@ -103,15 +103,32 @@ const (
 //	split.Unzoom()
 type Split struct {
 	Base
-	o          Orientation
-	a, b       tui.Component
-	ratio      float64
+	o    Orientation
+	a, b tui.Component
+	// requested is the last explicit division asked for, unclamped, and
+	// committed is the one the last COMMIT stored — what is actually on screen.
+	// Two fields because they answer different questions: persistence stores
+	// the request, and a reader asking what the split looks like wants the
+	// other. Collapsing them loses the user's choice the first time a min size
+	// or a narrow terminal clamps it.
+	requested  float64
+	committed  float64
+	sized      bool
 	minA, minB int
 
-	avail    int // last main-axis cells available to panes (minus divider)
-	aCells   int // last main-axis cells given to pane a
-	dragging bool
-	zoomed   SplitPane
+	// avail, aCells and bCells are the last COMMITTED geometry: the main-axis
+	// cells available to the panes (the extent less the divider), and how the
+	// commit divided them. Zero avail means there is no divider this frame —
+	// either nothing has been laid out yet, or a pane is zoomed — and that is
+	// the one condition the drag and the step both consult.
+	avail  int
+	aCells int
+	bCells int
+	zoomed SplitPane
+	// drag is the divider gesture in progress, and dragCtx the node that took
+	// the pointer for it — only the node that took a capture may release it.
+	drag    *splitDrag
+	dragCtx *tui.Context
 
 	divider style.Style
 }
@@ -126,7 +143,7 @@ func WithRatio(r float64) SplitOption {
 	if r <= 0 || r >= 1 || math.IsNaN(r) {
 		panic(fmt.Sprintf("widget: WithRatio: ratio %v outside (0, 1)", r))
 	}
-	return func(s *Split) { s.ratio = r }
+	return func(s *Split) { s.requested = r }
 }
 
 // WithMinSizes clamps each pane's main-axis extent during resize.
@@ -153,8 +170,8 @@ func NewSplit(o Orientation, a, b tui.Component, opts ...SplitOption) *Split {
 	}
 	s := &Split{
 		o: o, a: a, b: b,
-		ratio:   0.5,
-		divider: style.New().Foreground(style.TokenBorder),
+		requested: 0.5,
+		divider:   style.New().Foreground(style.TokenBorder),
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -164,22 +181,45 @@ func NewSplit(o Orientation, a, b tui.Component, opts ...SplitOption) *Split {
 	return s
 }
 
-// Ratio returns the current division.
-func (s *Split) Ratio() float64 { return s.ratio }
+// Ratio returns the EFFECTIVE division — what is on screen, as stored by the
+// last commit. Before the first layout it returns the request, because that is
+// the only answer there is and reporting zero would be worse than reporting the
+// intention.
+func (s *Split) Ratio() float64 {
+	if !s.sized {
+		return s.requested
+	}
+	return s.committed
+}
 
-// SetRatio moves the divider programmatically (0 < r < 1; clamped by the
-// min sizes at layout). The exported sibling of the drag/Alt-arrow path.
+// RequestedRatio returns the last explicit request, unclamped.
+//
+// Persistence stores THIS. A split clamped to a min size on a narrow terminal
+// must not persist the clamped value, or every restore on a narrower screen
+// walks the divider a little further each time.
+func (s *Split) RequestedRatio() float64 { return s.requested }
+
+// Cells reports the effective main-axis cells each pane holds, and whether a
+// layout has committed yet. The integer form of Ratio, for a caller that would
+// otherwise re-derive it and disagree by one.
+func (s *Split) Cells() (a, b int, ok bool) { return s.aCells, s.bCells, s.sized }
+
+// SetRatio records a requested division.
+//
+// It CLAMPS NOTHING, requests layout, and publishes NOTHING synchronously. The
+// effective ratio is whatever the next layout reaches against the min sizes and
+// the cells actually available, and the commit that follows reports it — so a
+// caller cannot observe a ratio the screen does not have.
 func (s *Split) SetRatio(r float64) {
 	if r <= 0 || r >= 1 || math.IsNaN(r) {
 		panic(errs.Fatal{Op: "widget: SetRatio", Rule: fmt.Sprintf("ratio %v outside (0, 1)", r)})
 	}
-	if r == s.ratio {
+	if r == s.requested {
 		return
 	}
-	s.ratio = r
+	s.requested = r
 	s.RequestLayout()
 	s.MarkDirty()
-	s.publish(SplitResizedEvent{Owner: s.NodeID(), Ratio: s.ratio})
 }
 
 // SplitPane identifies a Split pane for Zoom.
@@ -220,7 +260,7 @@ func (s *Split) Zoom(p SplitPane) {
 		return
 	}
 	s.zoomed = p
-	s.dragging = false // a divider drag cannot survive the divider vanishing
+	s.endDrag() // a divider drag cannot survive the divider vanishing
 	if ctx := s.Context(); ctx != nil && p != PaneNone {
 		hidden, kept := s.b, s.a
 		if p == PaneB {
@@ -258,7 +298,8 @@ func (s *Split) listChildren() []tui.Component {
 // Init mounts both panes. Re-entrant across remounts.
 func (s *Split) Init(ctx *tui.Context) {
 	s.Base.Init(ctx)
-	s.dragging = false
+	s.drag, s.dragCtx = nil, nil
+	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(s.resolve))
 	ctx.Mount(s.a)
 	ctx.Mount(s.b)
 }
@@ -276,7 +317,11 @@ func (s *Split) Layout(c tui.Constraints) tui.Size {
 		}
 		s.ctx.LayoutChild(full, tui.Tight(tui.Size{W: w, H: h}))
 		s.ctx.PlaceChild(full, tui.Rect{X: 0, Y: 0, W: w, H: h})
-		s.avail = 0 // suppresses the divider (Render) and resize (setCells)
+		// Through the commit, not from here, for the same reason as the division
+		// below: an assignment in Layout is a geometry-derived side effect in a
+		// phase that must not have one. Zero available cells is what suppresses
+		// the divider in Render and refuses the drag.
+		s.ctx.AfterLayout(splitCommitKey, s.commitZoomed)
 		return c.Constrain(tui.Size{W: w, H: h})
 	}
 	horiz := s.o == Horizontal
@@ -285,11 +330,14 @@ func (s *Split) Layout(c tui.Constraints) tui.Size {
 		main, cross = h, w
 	}
 	avail := max(main-1, 0)
-	a := int(math.Floor(s.ratio*float64(avail) + 0.5))
+	a := int(math.Floor(s.requested*float64(avail) + 0.5))
 	a = min(max(a, s.minA), max(avail-s.minB, 0))
 	a = max(0, min(a, avail))
 	b := avail - a
-	s.avail, s.aCells = avail, a
+	// Layout computes; the COMMIT stores and publishes. Keeping the assignment
+	// here would put a geometry-derived side effect in a pure phase, which is
+	// the rule the commit phase exists to make keepable rather than aspirational.
+	s.ctx.AfterLayout(splitCommitKey, func() { s.commit(avail, a, b) })
 
 	if horiz {
 		s.ctx.LayoutChild(s.a, tui.Tight(tui.Size{W: a, H: cross}))
@@ -318,77 +366,271 @@ func (s *Split) Render(sur tui.Surface) {
 	}
 }
 
-// setCells moves the divider to give pane a cells on the main axis,
-// re-deriving the ratio and emitting SplitResizedEvent.
-func (s *Split) setCells(a int) {
-	if s.avail <= 0 {
+// splitCommitKey identifies the Split's commit record.
+const splitCommitKey tui.CommitKey = "widget.split"
+
+// commit stores the effective division and publishes the change.
+//
+// No event on the FIRST layout — there was no previous division to differ from,
+// and a listener counting resizes should not see one for the split appearing —
+// and none when the cells did not move, however far the pointer did.
+func (s *Split) commit(avail, a, b int) {
+	s.avail = avail
+	eff := 0.0
+	if avail > 0 {
+		eff = float64(a) / float64(avail)
+	}
+	if s.sized && s.aCells == a && s.bCells == b {
 		return
 	}
-	a = min(max(a, s.minA), max(s.avail-s.minB, 0))
-	a = max(0, min(a, s.avail))
-	if a == s.aCells {
+	first := !s.sized
+	s.aCells, s.bCells, s.committed, s.sized = a, b, eff, true
+	if first {
 		return
 	}
-	s.ratio = float64(a) / float64(s.avail)
-	s.RequestLayout()
-	s.MarkDirty()
-	s.publish(SplitResizedEvent{Owner: s.NodeID(), Ratio: s.ratio})
+	s.publish(SplitResizedEvent{Owner: s.NodeID(), Ratio: eff, ACells: a, BCells: b})
 }
 
-// HandleEvent implements keyboard resize (Alt+arrows bubbling up from a
-// focused pane) and divider drag (SGR mouse).
-func (s *Split) HandleEvent(ev tui.Event) bool {
+// commitZoomed records that there is no divider this frame.
+//
+// The DIVISION is deliberately left alone: a zoom hides the divider, it does not
+// move it, and unzooming must put the panes back where the user left them. Only
+// the availability changes, and that is what makes the divider inert rather than
+// each of its entry points having to ask about zoom separately.
+func (s *Split) commitZoomed() { s.avail = 0 }
+
+// requestCells asks for a division expressed in main-axis cells.
+//
+// It converts to a ratio and goes through the same request path as SetRatio, so
+// the drag, the keyboard and the programmatic setter cannot reach three
+// different clamping rules.
+func (s *Split) requestCells(a int) bool {
+	if s.avail <= 0 {
+		return false
+	}
+	a = max(0, min(a, s.avail))
+	r := float64(a) / float64(s.avail)
+	// The endpoints are not expressible as a ratio in (0,1); a divider dragged
+	// to the very edge means "as far as it goes", which the min-size clamp in
+	// Layout already expresses.
+	r = math.Max(math.Min(r, 0.999), 0.001)
+	if r == s.requested {
+		return false
+	}
+	s.requested = r
+	s.RequestLayout()
+	s.MarkDirty()
+	return true
+}
+
+// THE DIVIDER RUNS ON CAPTURE AND ACTIONS.
+//
+// It used to read raw mouse events and track a dragging flag, which meant the
+// drag ended wherever the pointer happened to still be over the Split — leave
+// its rect and the motion went elsewhere, so the divider stopped following and
+// the release was never seen. A capture fixes that, and the named actions mean
+// the keyboard and the pointer reach one implementation rather than two.
+//
+// A divider REDISTRIBUTES ONE SHARED EXTENT between two panes; Resizable SIZES
+// ONE BOX. They are different operations, which is why Split keeps its own
+// divider rather than being expressed as a wrapper.
+
+// splitDrag is the state one divider gesture needs.
+type splitDrag struct {
+	// beginRequested is restored on cancel: the REQUEST, not the effective
+	// ratio, because cancelling must put back what the user had asked for
+	// rather than what a clamp had made of it.
+	beginRequested float64
+}
+
+// SplitDragBeginAction starts a divider drag.
+type SplitDragBeginAction struct{}
+
+// ActionID returns the stable published name of this action.
+func (SplitDragBeginAction) ActionID() tui.ActionID { return "split.drag.begin" }
+
+// SplitDragAction moves the divider to a main-axis position during a drag.
+type SplitDragAction struct{ Pos int }
+
+// ActionID returns the stable published name of this action.
+func (SplitDragAction) ActionID() tui.ActionID { return "split.drag" }
+
+// SplitDragEndAction finishes a drag at the current position.
+type SplitDragEndAction struct{ Pos int }
+
+// ActionID returns the stable published name of this action.
+func (SplitDragEndAction) ActionID() tui.ActionID { return "split.drag.end" }
+
+// SplitStepAction nudges the divider by one cell.
+type SplitStepAction struct{ Delta int }
+
+// ActionID returns the stable published name of this action.
+func (SplitStepAction) ActionID() tui.ActionID { return "split.step" }
+
+// SplitCancelAction abandons a drag and restores the division asked for when it
+// began. Bound to Escape by default.
+type SplitCancelAction struct{}
+
+// ActionID returns the stable published name of this action.
+func (SplitCancelAction) ActionID() tui.ActionID { return "split.cancel" }
+
+// resolve maps the divider's input onto its vocabulary.
+func (s *Split) resolve(ev tui.Event) (tui.Action, bool) {
 	if s.zoomed != PaneNone {
-		return false // no divider: resize keys and drag are inert (S4)
+		return nil, false // no divider: resize keys and drag are inert
 	}
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		if e.Kind == tui.KeyRelease || e.Mods&tui.ModAlt == 0 || e.Mods&^(tui.ModAlt) != 0 {
+		return s.resolveKey(e)
+	case tui.MouseEvent:
+		return s.resolveMouse(e)
+	}
+	return nil, false
+}
+
+// resolveKey binds Alt-arrows along the split's own axis, and Escape to cancel.
+//
+// Along the AXIS only: Alt-Left on a vertical split is not a smaller step, it is
+// a different gesture entirely, and consuming it would swallow a binding the
+// application may want.
+func (s *Split) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
+	if e.Kind == tui.KeyRelease {
+		return nil, false
+	}
+	if e.Code == tui.KeyEscape && e.Mods == 0 {
+		return SplitCancelAction{}, true
+	}
+	if e.Mods&tui.ModAlt == 0 || e.Mods&^tui.ModAlt != 0 {
+		return nil, false
+	}
+	horiz := s.o == Horizontal
+	switch e.Code {
+	case tui.KeyLeft:
+		if horiz {
+			return SplitStepAction{Delta: -1}, true
+		}
+	case tui.KeyRight:
+		if horiz {
+			return SplitStepAction{Delta: 1}, true
+		}
+	case tui.KeyUp:
+		if !horiz {
+			return SplitStepAction{Delta: -1}, true
+		}
+	case tui.KeyDown:
+		if !horiz {
+			return SplitStepAction{Delta: 1}, true
+		}
+	}
+	return nil, false
+}
+
+// resolveMouse maps a press on the divider, and everything after it, onto the
+// drag vocabulary.
+func (s *Split) resolveMouse(e tui.MouseEvent) (tui.Action, bool) {
+	if e.Button != tui.MouseLeft && e.Kind != tui.MouseMotion {
+		return nil, false // a non-primary release does not end a primary drag
+	}
+	pos := e.X
+	if s.o == Vertical {
+		pos = e.Y
+	}
+	switch e.Kind {
+	case tui.MousePress:
+		if pos != s.aCells {
+			return nil, false // not on the divider
+		}
+		return SplitDragBeginAction{}, true
+	case tui.MouseMotion:
+		if s.drag == nil {
+			return nil, false
+		}
+		return SplitDragAction{Pos: pos}, true
+	case tui.MouseRelease:
+		if s.drag == nil {
+			return nil, false
+		}
+		return SplitDragEndAction{Pos: pos}, true
+	}
+	return nil, false
+}
+
+// HandleAction interprets the divider vocabulary.
+func (s *Split) HandleAction(inv tui.ActionInvocation) bool {
+	switch a := inv.Action.(type) {
+	case SplitDragBeginAction:
+		return s.beginDrag()
+	case SplitDragAction:
+		if s.drag == nil {
 			return false
 		}
-		horiz := s.o == Horizontal
-		switch e.Code {
-		case tui.KeyLeft:
-			if horiz {
-				s.setCells(s.aCells - 1)
-				return true
-			}
-		case tui.KeyRight:
-			if horiz {
-				s.setCells(s.aCells + 1)
-				return true
-			}
-		case tui.KeyUp:
-			if !horiz {
-				s.setCells(s.aCells - 1)
-				return true
-			}
-		case tui.KeyDown:
-			if !horiz {
-				s.setCells(s.aCells + 1)
-				return true
-			}
+		s.requestCells(a.Pos)
+		return true
+	case SplitDragEndAction:
+		if s.drag == nil {
+			return false
 		}
-		return false
+		s.requestCells(a.Pos)
+		s.endDrag()
+		return true
+	case SplitStepAction:
+		if s.zoomed != PaneNone {
+			return false
+		}
+		return s.requestCells(s.aCells + a.Delta)
+	case SplitCancelAction:
+		return s.cancelDrag()
+	}
+	return false
+}
 
-	case tui.MouseEvent:
-		pos := e.X
-		if s.o == Vertical {
-			pos = e.Y
-		}
-		switch {
-		case e.Kind == tui.MousePress && e.Button == tui.MouseLeft && pos == s.aCells:
-			s.dragging = true
-			return true
-		case e.Kind == tui.MouseMotion && s.dragging:
-			s.setCells(pos)
-			return true
-		case e.Kind == tui.MouseRelease && s.dragging:
-			s.dragging = false
-			s.setCells(pos)
-			return true
-		}
+// beginDrag records the request to restore on cancel and takes the pointer, so
+// motion and the release keep arriving even once the pointer has left the
+// Split's own rect.
+func (s *Split) beginDrag() bool {
+	if s.zoomed != PaneNone || s.avail <= 0 {
 		return false
+	}
+	s.drag = &splitDrag{beginRequested: s.requested}
+	if ctx := s.Context(); ctx != nil {
+		ctx.CapturePointer()
+		s.dragCtx = ctx
+	}
+	return true
+}
+
+// endDrag finishes at the current division and releases the pointer.
+func (s *Split) endDrag() bool {
+	if s.drag == nil {
+		return false
+	}
+	s.drag = nil
+	if s.dragCtx != nil {
+		s.dragCtx.ReleasePointer()
+		s.dragCtx = nil
+	}
+	return true
+}
+
+// cancelDrag restores the division asked for when the drag began.
+func (s *Split) cancelDrag() bool {
+	d := s.drag
+	if d == nil {
+		return false
+	}
+	s.endDrag()
+	s.requested = d.beginRequested
+	s.RequestLayout()
+	s.MarkDirty()
+	return true
+}
+
+// HandleEvent cleans up when the runtime revokes the capture. The division
+// reached so far STANDS: a revoked capture is not a cancellation, and silently
+// reverting the user's drag would be a change they never made.
+func (s *Split) HandleEvent(ev tui.Event) bool {
+	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
+		s.drag, s.dragCtx = nil, nil
 	}
 	return false
 }
