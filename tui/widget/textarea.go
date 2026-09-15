@@ -119,7 +119,7 @@ func NewTextArea(opts ...TextAreaOption) *TextArea {
 		textBuffer: newTextBuffer(),
 		wrap:       WrapNone,
 		styles: TextInputStyles{
-			Selection: style.New().Background(style.TokenSecondary).Foreground(style.TokenTextOnSecondary),
+			Selection: style.New().Reverse(true),
 		},
 	}
 	for _, o := range opts {

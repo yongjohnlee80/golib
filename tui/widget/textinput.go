@@ -108,7 +108,7 @@ var (
 type TextInputStyles struct {
 	Text        style.Style // value text (default: theme foreground)
 	Placeholder style.Style // default: TokenTextMuted
-	Selection   style.Style // default: TokenSecondary fill
+	Selection   style.Style // default: inverted, no accent
 	Error       style.Style // value text in the failed-validation state
 }
 
@@ -184,7 +184,7 @@ func NewTextInput(opts ...TextInputOption) *TextInput {
 		anchor: -1,
 		styles: TextInputStyles{
 			Placeholder: style.New().Foreground(style.TokenTextMuted),
-			Selection:   style.New().Background(style.TokenSecondary).Foreground(style.TokenTextOnSecondary),
+			Selection:   style.New().Reverse(true),
 			Error:       style.New().Foreground(style.TokenError),
 		},
 	}

@@ -32,10 +32,11 @@ func NewModalStyleFull(card, title, border, scrim style.Style) *ModalStyle {
 // DefaultModalStyle is the look a Modal has when its author has said nothing.
 // Token-valued throughout, so it follows the App's theme.
 func DefaultModalStyle() *ModalStyle {
+	card := style.New().Background(style.TokenPanel).Foreground(style.TokenForeground)
 	return &ModalStyle{
-		card:   style.New().Background(style.TokenPanel).Foreground(style.TokenForeground),
-		title:  style.New().Background(style.TokenPanel).Foreground(style.TokenForeground).Bold(true),
-		border: style.New().Background(style.TokenPanel).Foreground(style.TokenBorderFocused),
+		card:   card,
+		title:  card.Bold(true),
+		border: card,
 		scrim:  defaultScrim(),
 	}
 }

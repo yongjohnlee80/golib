@@ -346,7 +346,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 		textBuffer: newTextBuffer(),
 		wrap:       WrapNone,
 		styles: TextInputStyles{
-			Selection: style.New().Background(style.TokenSecondary).Foreground(style.TokenTextOnSecondary),
+			Selection: style.New().Reverse(true),
 		},
 		keymap:       DefaultKeymap(),
 		unbound:      make(map[KeyChord]bool),
