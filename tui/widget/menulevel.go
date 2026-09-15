@@ -126,11 +126,36 @@ func (p *menuPopup) interior(size tui.Size) tui.Rect {
 	return tui.Rect{X: 1, Y: 1, W: max(size.W-2, 0), H: max(size.H-2, 0)}
 }
 
+// depthOfRow is which level a row is DISPLAYED IN: 0 for the menu's own rows,
+// i+1 for a row shown inside the popup of levels[i].
+//
+// Not the same as "how deep in the model", because only the levels actually
+// open are on screen — and it is the screen the cascade has to agree with.
+func (m *Menu) depthOfRow(id ItemID) (int, bool) {
+	for i := range m.items {
+		if m.items[i].ID == id {
+			return 0, true
+		}
+	}
+	for i, lv := range m.levels {
+		it := findItem(m.items, lv.parent)
+		if it == nil {
+			continue
+		}
+		for j := range it.Children {
+			if it.Children[j].ID == id {
+				return i + 1, true
+			}
+		}
+	}
+	return 0, false
+}
+
 // measureRows is the natural size of a list of rows: the widest row, and one
 // line each for the visible ones.
 func (m *Menu) measureRows(rows []MenuItemModel) (w, h int) {
 	for _, i := range visibleRows(rows) {
-		w = max(w, m.rowWidth(rows[i]))
+		w = max(w, m.rowWidth(rows[i], true))
 		h++
 	}
 	return w, h
@@ -173,7 +198,7 @@ func (m *Menu) paintRows(s tui.Surface, rows []MenuItemModel, area tui.Rect) {
 			return
 		}
 		it := rows[i]
-		m.paintRow(s, it, tui.Rect{X: area.X, Y: y, W: area.W, H: 1}, m.rowStateOf(it))
+		m.paintRow(s, it, tui.Rect{X: area.X, Y: y, W: area.W, H: 1}, m.rowStateOf(it), true)
 		y++
 	}
 }
@@ -197,23 +222,66 @@ func (m *Menu) Layout(cs tui.Constraints) tui.Size {
 		// and runs past the edge is TRUNCATED rather than dropped: it has
 		// painted cells, so it is addressable through the cells it has.
 		limit := cs.MaxW // tui.Unbounded means the parent imposed no ceiling
+		place := func(id ItemID, r tui.Rect) {
+			if ctx != nil {
+				ctx.DeclareRegion(tui.RegionID(id), r)
+			}
+			m.rowRects[id] = r
+		}
+
+		// PEGGED ROWS ARE PLACED FIRST, from the right edge inward, so the
+		// leading run knows how much room it actually has. Doing it the other
+		// way round means discovering the overlap only after the left-hand rows
+		// are already placed, and then either moving them or letting Help sit
+		// on top of the row before it.
+		//
+		// Pegging needs a known edge, so with no ceiling there is nothing to peg
+		// TO: those rows join the ordinary run rather than vanishing.
+		right := limit
+		if limit != tui.Unbounded {
+			for _, i := range reverseVisible(m.items) {
+				it := m.items[i]
+				if !it.PegRight {
+					continue
+				}
+				rw := m.rowWidth(it, m.barMarkers) + 2
+				if rw > right {
+					rw = right // it is the only thing that fits; clip it
+				}
+				if rw <= 0 {
+					continue
+				}
+				right -= rw
+				place(it.ID, tui.Rect{X: right, Y: 0, W: rw, H: 1})
+			}
+		}
+
 		x := 0
 		for _, i := range visibleRows(m.items) {
-			rw := m.rowWidth(m.items[i]) + 2
+			it := m.items[i]
+			if it.PegRight && limit != tui.Unbounded {
+				continue // already placed against the right edge
+			}
+			rw := m.rowWidth(it, m.barMarkers) + 2
 			if limit != tui.Unbounded {
-				if x >= limit {
+				// Stop at the pegged block rather than at the screen edge, so a
+				// leading row cannot be painted underneath Help.
+				if x >= right {
 					break
 				}
-				rw = min(rw, limit-x)
+				rw = min(rw, right-x)
 			}
-			r := tui.Rect{X: x, Y: 0, W: rw, H: 1}
-			if ctx != nil {
-				ctx.DeclareRegion(tui.RegionID(m.items[i].ID), r)
-			}
-			m.rowRects[m.items[i].ID] = r
+			place(it.ID, tui.Rect{X: x, Y: 0, W: rw, H: 1})
 			x += rw
 		}
-		return cs.Constrain(tui.Size{W: x, H: 1})
+		// The bar claims the FULL width when something is pegged to its far end:
+		// returning only the used width would leave the right-hand rows outside
+		// the rect the parent placed, where they are clipped away entirely.
+		w := x
+		if limit != tui.Unbounded && right < limit {
+			w = limit
+		}
+		return cs.Constrain(tui.Size{W: w, H: 1})
 	}
 
 	w, h := m.measureRows(m.items)
@@ -245,7 +313,7 @@ func (m *Menu) Render(s tui.Surface) {
 			if !ok || r.W <= 0 || r.H <= 0 {
 				continue
 			}
-			m.paintRow(s, it, r, m.rowStateOf(it))
+			m.paintRow(s, it, r, m.rowStateOf(it), m.barMarkers)
 		}
 		return
 	}
@@ -340,6 +408,22 @@ func (m *Menu) openLevel(parent ItemID, children []MenuItemModel) error {
 			m.closeLevelsFrom(i + 1)
 			return nil
 		}
+	}
+	// A NEW LEVEL REPLACES EVERYTHING BELOW ITS OWN ROW.
+	//
+	// Opening used to simply append, so a level stayed on screen when the user
+	// moved to a row that had nothing to do with it: clicking File and then Help
+	// left File's dropdown open beside Help's, and a third click added a third.
+	// Which rows are on screen then disagrees with which rows the model says are
+	// open, and the arrow keys drive one cascade while the user is looking at
+	// another.
+	//
+	// The row's own depth decides what goes: a root row replaces the whole
+	// cascade, a row inside the first dropdown keeps that dropdown and replaces
+	// anything deeper. A row that is nowhere in the visible cascade closes
+	// nothing, since there is no depth to truncate to.
+	if d, ok := m.depthOfRow(parent); ok {
+		m.closeLevelsFrom(d)
 	}
 	host := m.host()
 	if host == nil {

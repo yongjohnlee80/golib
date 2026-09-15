@@ -705,9 +705,14 @@ func TestModalWithStyleRestylesTheLiveCardAndScrim(t *testing.T) {
 		t.Error("the live scrim kept its old style; a restyle of an open dialog " +
 			"stopped at the card")
 	}
-	x0, y0, x1, y1 := cardBounds(t, h)
-	mid := grid[(y0+y1)/2][(x0+x1)/2]
-	if mid.Attrs.Mask&tui.AttrUnderline == 0 {
+	x0, y0, _, _ := cardBounds(t, h)
+	// SAMPLED ON THE CARD'S OWN FILL, one cell inside the frame. The card's
+	// centre is not a safe probe: a child painting there covers it, and since
+	// the title moved onto the border the body sits on the middle row of a
+	// short card. That would report the card unstyled while the cell simply
+	// belonged to the Text.
+	pad := grid[y0+1][x0+1]
+	if pad.Attrs.Mask&tui.AttrUnderline == 0 {
 		t.Error("the live card kept its old style")
 	}
 }

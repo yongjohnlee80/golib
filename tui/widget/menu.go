@@ -69,6 +69,12 @@ type Menu struct {
 	// instead of down the side. It changes layout and the arrow keys, nothing
 	// else — there is one lifecycle, not two.
 	horizontal bool
+	// barMarkers is whether a submenu row in the ROOT level of a horizontal bar
+	// draws its "▸". Off by default: in a bar every top-level entry opens a
+	// dropdown, so a marker on each one repeats what the bar already is and adds
+	// two cells to every entry. Inside a popup the marker distinguishes the rows
+	// that cascade from the rows that act, so there it is always drawn.
+	barMarkers bool
 	// dropSide is where a bar's first level opens, set by MenuBar so a bottom
 	// bar drops upward rather than back across itself. Zero means "the default
 	// for this orientation", which is what a bare Menu wants.
@@ -115,6 +121,17 @@ func WithAnchorPolicy(p AnchorPolicy) MenuOption {
 		}
 		m.policy = p
 	}
+}
+
+// WithBarSubmenuMarker decides whether a horizontal bar's own rows draw the
+// submenu arrow. Off by default; popup rows always draw it.
+//
+// A bar entry that opens a dropdown is the ordinary case rather than the
+// exceptional one, so marking every entry says nothing and costs two cells
+// each. It is an option rather than a fixed rule because a bar mixing entries
+// that open with entries that act directly does need the distinction.
+func WithBarSubmenuMarker(v bool) MenuOption {
+	return func(m *Menu) { m.barMarkers = v }
 }
 
 // WithRowRenderer supplies a custom row painter — the declared extension seam
