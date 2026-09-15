@@ -80,6 +80,10 @@ type Menu struct {
 	// stays readable beside a sibling and reads as a window of its own, which
 	// is what a detached or floating menu needs.
 	levelTitles bool
+	// levelMinWidth is the smallest interior a dropdown may have, in columns.
+	// Keeps a cascade of short categories from looking ragged, one narrow box
+	// per level.
+	levelMinWidth int
 	// dropSide is where a bar's first level opens, set by MenuBar so a bottom
 	// bar drops upward rather than back across itself. Zero means "the default
 	// for this orientation", which is what a bare Menu wants.
@@ -101,7 +105,7 @@ type MenuOption func(*Menu)
 
 // NewMenu builds an empty menu. Supply a model with SetModel.
 func NewMenu(opts ...MenuOption) *Menu {
-	m := &Menu{levelTitles: true, pointerPolicy: tui.PointerInherit}
+	m := &Menu{levelTitles: true, levelMinWidth: defaultLevelMinWidth, pointerPolicy: tui.PointerInherit}
 	for _, o := range opts {
 		if o != nil {
 			o(m)
@@ -125,6 +129,32 @@ func WithAnchorPolicy(p AnchorPolicy) MenuOption {
 			return
 		}
 		m.policy = p
+	}
+}
+
+// defaultLevelMinWidth is the interior every dropdown gets at least.
+//
+// Chosen rather than derived, because there is nothing to derive it FROM: the
+// widest row of a level says how much space that level needs, not how much it
+// should have. Twelve columns is about four short words, which is where a
+// dropdown stops reading as a box that happens to be wide enough for its
+// longest verb and starts reading as a menu.
+const defaultLevelMinWidth = 12
+
+// WithLevelMinWidth sets the smallest interior a dropdown may have, in columns.
+// Zero removes the floor, sizing every level to its own content.
+//
+// The alternative — one width shared by every level, taken from the widest —
+// is NOT what this does: a single long row in one submenu would then stretch
+// every other dropdown in the menu to match it.
+func WithLevelMinWidth(cols int) MenuOption {
+	return func(m *Menu) {
+		if cols < 0 {
+			panic(fatalOf("widget: WithLevelMinWidth",
+				"a negative width is not a narrower box; zero removes the floor",
+				itoa(cols)))
+		}
+		m.levelMinWidth = cols
 	}
 }
 

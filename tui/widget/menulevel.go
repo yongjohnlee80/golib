@@ -100,6 +100,10 @@ func (p *menuPopup) Layout(cs tui.Constraints) tui.Size {
 	if t := p.titleText(); t != "" {
 		w = max(w, p.owner.measure(t)+2) // a space either side of the name
 	}
+	// A FLOOR, so a cascade of short categories does not read as a row of
+	// differently-sized boxes. It raises a narrow level; it never shrinks a
+	// wide one.
+	w = max(w, p.owner.levelMinWidth)
 	size := cs.Constrain(tui.Size{W: w + 2, H: h + 2}) // +2 for the frame
 	if p.rects == nil {
 		p.rects = make(map[ItemID]tui.Rect)
@@ -154,7 +158,12 @@ func (p *menuPopup) paintTitle(s tui.Surface, sz tui.Size) {
 		if x+w > limit {
 			break
 		}
-		s.SetCell(x, 0, cluster, p.st.Selected())
+		// THE SURFACE LOOK, NOT THE SELECTION. The title names the level; it is
+		// not a row, cannot be moved to and cannot be activated. Painting it
+		// highlighted puts a second lit thing on screen beside the row that
+		// really is selected, and the two compete to mean "here" — with the
+		// category already lit on the bar above, that was three.
+		s.SetCell(x, 0, cluster, p.st.Surface())
 		x += w
 	}
 	if x < limit {
