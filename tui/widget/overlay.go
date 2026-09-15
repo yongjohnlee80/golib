@@ -266,6 +266,14 @@ func (h *OverlayHost) openModal(m *Modal) (err error) {
 	hadScrim := h.scrim
 	h.dropScrim()
 
+	// Same preflight as the anchored path: a Modal already mounted elsewhere
+	// must be refused before the add, because the unwind below removes the
+	// layer, and removing an already-mounted component unmounts it from where
+	// it legitimately lives.
+	if h.ctx != nil && h.ctx.MountedComponent(m) {
+		return fmt.Errorf("%w: the dialog is already mounted elsewhere", ErrModalNotMountable)
+	}
+
 	var scrim *scrimLayer
 	if m.wantScrim {
 		scrim = &scrimLayer{st: m.card.st}

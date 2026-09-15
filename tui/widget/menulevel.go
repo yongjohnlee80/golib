@@ -25,6 +25,41 @@ type menuPopup struct {
 	owner  *Menu
 	parent ItemID
 	st     *MenuStyle
+	// rects is where this level's rows were placed by the last committed
+	// layout, in THIS popup's local coordinates.
+	rects map[ItemID]tui.Rect
+}
+
+// Init installs the owner's resolver against THIS level's rects.
+//
+// A level is a separate node, so the runtime delivers its pointer events here
+// rather than to the Menu — and without a resolver of its own a submenu's rows
+// would simply not be clickable, which is exactly what happened before this
+// existed. The resolver and the handler both delegate to the owner, so there is
+// one state machine for the whole cascade rather than one per level.
+func (p *menuPopup) Init(ctx *tui.Context) {
+	p.Base.Init(ctx)
+	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(func(ev tui.Event) (tui.Action, bool) {
+		return p.owner.resolveIn(ev, p.rects)
+	}))
+}
+
+// HandleAction runs the owner's machine, telling it that THIS node is the one
+// whose handler is executing — which is the node that may take or release the
+// pointer capture.
+func (p *menuPopup) HandleAction(inv tui.ActionInvocation) bool {
+	return p.owner.handleIn(inv, p.Context())
+}
+
+// HandleEvent forwards to the owner, and the capture-loss case is why it must.
+//
+// A gesture started in a level is CAPTURED BY THAT LEVEL — only the node whose
+// handler is running may take the pointer — so the runtime delivers the loss
+// here, not to the Menu. Without this the Menu never learns, its pressed and
+// armed state survives a capture it no longer holds, and the next release
+// activates a row the user stopped pointing at.
+func (p *menuPopup) HandleEvent(ev tui.Event) bool {
+	return p.owner.HandleEvent(ev)
 }
 
 // rowsOf returns the rows this level shows, read from the owner's live model so
@@ -47,8 +82,12 @@ func (p *menuPopup) Layout(cs tui.Constraints) tui.Size {
 	rows := p.rowsOf()
 	w, h := p.owner.measureRows(rows)
 	size := cs.Constrain(tui.Size{W: w + 2, H: h + 2}) // +2 for the frame
+	if p.rects == nil {
+		p.rects = make(map[ItemID]tui.Rect)
+	}
+	clear(p.rects) // per-pass, like the runtime's own declared regions
 	if ctx := p.Context(); ctx != nil {
-		p.owner.declareRows(ctx, rows, tui.Rect{X: 1, Y: 1, W: size.W - 2, H: size.H - 2})
+		p.owner.declareRows(ctx, rows, tui.Rect{X: 1, Y: 1, W: size.W - 2, H: size.H - 2}, p.rects)
 	}
 	return size
 }
@@ -80,15 +119,12 @@ func (m *Menu) measureRows(rows []MenuItemModel) (w, h int) {
 // ONE PASS produces both, which is the point: the region a submenu anchors to
 // and the rect a click is mapped through are the same rectangle, so they cannot
 // disagree about where a row is.
-func (m *Menu) declareRows(ctx *tui.Context, rows []MenuItemModel, area tui.Rect) {
-	if m.rowRects == nil {
-		m.rowRects = make(map[ItemID]tui.Rect)
-	}
+func (m *Menu) declareRows(ctx *tui.Context, rows []MenuItemModel, area tui.Rect, into map[ItemID]tui.Rect) {
 	y := area.Y
 	for _, i := range visibleRows(rows) {
 		r := tui.Rect{X: area.X, Y: y, W: area.W, H: 1}
 		ctx.DeclareRegion(tui.RegionID(rows[i].ID), r)
-		m.rowRects[rows[i].ID] = r
+		into[rows[i].ID] = r
 		y++
 	}
 }
@@ -134,7 +170,7 @@ func (m *Menu) Layout(cs tui.Constraints) tui.Size {
 	w, h := m.measureRows(m.items)
 	size := cs.Constrain(tui.Size{W: w + 2, H: h})
 	if ctx != nil {
-		m.declareRows(ctx, m.items, tui.Rect{X: 0, Y: 0, W: size.W, H: size.H})
+		m.declareRows(ctx, m.items, tui.Rect{X: 0, Y: 0, W: size.W, H: size.H}, m.rowRects)
 	}
 	return size
 }

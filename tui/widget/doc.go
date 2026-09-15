@@ -1,6 +1,6 @@
 // Package widget provides golib/tui's standard widget suite: the [Base] embedding
 // contract, the [Box] titled-panel container, the [OverlayHost] modal/popup layer,
-// and the sixteen production-grade TUI components inventoried below, sufficient to
+// and the nineteen production-grade TUI components inventoried below, sufficient to
 // build sophisticated terminal applications (such as lazygit-, sqlit-, and
 // neovim-shaped tools) out of the box with zero custom widget plumbing.
 //
@@ -20,6 +20,9 @@
 //	Split           Container        no (panes are)  [SplitResizedEvent], [SplitZoomEvent]
 //	Float           Overlay / Modal  children        [DismissEvent]
 //	Modal           Dialog           trap owner      [OverlayDismissedEvent]
+//	Menu            Menu / Command   yes             [MenuActivatedEvent], [MenuSelectionChangedEvent]
+//	MenuBar         Menu / Chrome    no (menu is)    — (delegates to [Menu])
+//	MenuItem        Control          when enabled    [tui.ControlActivatedEvent]
 //	StatusBar       Chrome           no              —
 //	ProgressBar     Feedback         no              —
 //	Text            Static Display   no              —
@@ -237,6 +240,92 @@
 // and focus returns to where it came from when the dialog closes. A dialog with
 // its pointer policy disabled remains fully operable. Nothing depends on the
 // mouse, and no control is reachable only by clicking.
+//
+// # Menu, MenuBar and MenuItem
+//
+// A Menu owns a MODEL and paints it. Its rows are [MenuItemModel] VALUES, not
+// mounted children — a hundred-row menu costs a hundred struct values rather
+// than a hundred nodes, and replacing the whole thing is one assignment.
+//
+// That choice has a consequence worth knowing, because it explains the rest of
+// the design: a row has no node, so the runtime cannot hit-test it, cannot arm
+// it, and cannot tell two rows of one Menu apart. Menu therefore declares an
+// anchor region per visible row during layout — the same rectangle it
+// hit-tests through — and runs its own press-arm / release-activate machine
+// over them. Both the mouse and the keyboard end at [MenuActivateAction], so
+// they cannot come to mean different things.
+//
+//	bar := widget.NewMenuBar(menu)              // optional: lay it along an edge
+//	menu := widget.NewMenu(
+//		widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
+//			return app.Run(inv)                 // your dispatch; true == handled
+//		}))
+//
+//	err := menu.SetModel([]widget.MenuItemModel{
+//		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
+//			widget.NewCommand("new", "New", NewFileAction{}),
+//			widget.NewSeparator("s1"),
+//			widget.NewCheck("wrap", "Wrap lines", ToggleWrapAction{}),
+//		}),
+//		widget.NewCommand("quit", "Quit", QuitAction{}),
+//	})
+//
+// THE MODEL. [ItemKind] is deliberately CLOSED — Command, Submenu, Separator,
+// Check, Radio — because a new kind needs either a switch edit or a polymorphic
+// row seam, and this package provides the seam rather than pretending the set is
+// open: [RowRenderer] supplies appearance and Action supplies behaviour. A zero
+// [MenuItemModel] is inert (a disabled, invisible command), so a row somebody
+// forgot to fill in shows nothing rather than appearing as a blank clickable
+// entry; the constructors above opt a row in.
+//
+// IDs are unique RECURSIVELY, across every level. Every operation here names a
+// row by ID alone, so a repeated ID would make selection and mutation ambiguous,
+// and an ambiguous mutation silently picks one. [Menu.SetModel] returns a typed
+// error matching [ErrInvalidMenuModel] and a specific sentinel, and on error
+// NOTHING changes — not the model, not the open levels, not the selection.
+//
+// The model is a VALUE on both sides: SetModel deep-copies on ingest and
+// [Menu.Model] returns a copy, so a caller mutating its own slice cannot reach
+// inside a mounted widget.
+//
+// ACTIVATION is state, then action, then close. A check toggles before its
+// action runs, so a handler reading its own row sees the change that triggered
+// it; a radio also clears every other member of its Group, at any depth. The
+// menu closes only when the action was HANDLED, because a command that could not
+// run must not look like one that did. [MenuActivatedEvent] is emitted exactly
+// once per activation including when it was not handled, and carries that flag —
+// rows need their own event because [tui.ControlActivatedEvent] identifies a
+// node, and every row of one Menu shares it.
+//
+// Menu copies the trusted incoming invocation and replaces only its Action
+// before calling the executor, so Origin and Source survive end to end and the
+// Menu cannot claim a keypress produced what a click did.
+//
+// KEYS follow the layout. A vertical menu steps with Up/Down and opens to the
+// side; a [MenuBar] steps with Left/Right and opens away from its edge. Escape
+// closes every level, Left closes the deepest and returns the selection to the
+// row that opened it, Enter and Space activate, and a row's Hotkey activates it
+// from anywhere in the level. Everything the pointer can do, the keyboard can
+// do.
+//
+// LEVELS are anchored overlay layers, so a Menu must sit inside an
+// [OverlayHost]. Exactly one pair of functions mounts and unmounts one; a level
+// whose row stops being a visible, enabled submenu is closed, and a level whose
+// row stops being laid out at all is dismissed by the host's anchor-loss commit.
+//
+// MENUBAR is a placement shell over one Menu, not a parallel widget: the model,
+// the selection and the open/close lifecycle all stay on the [Menu], reachable
+// through [MenuBar.Menu], so there is one lifecycle rather than two that can
+// disagree. It does NOT position itself — a component's parent decides where it
+// goes — so [BarPlacement] means orientation and drop direction, and a bar
+// belongs at the bottom of the screen by being at the bottom of the layout that
+// owns it.
+//
+// MENUITEM is the standalone leaf: a mountable, focusable control for ordinary
+// layouts. The distinction from [MenuItemModel] earns the two names —
+// MenuItemModel is inert data a Menu owns, while MenuItem is a node, so the
+// runtime's generic recogniser arms it and it emits [tui.ControlActivatedEvent]
+// because Owner identifies it.
 //
 // # Practical Composition Example
 //

@@ -54,11 +54,16 @@ type Menu struct {
 	// this slice or the mounts it tracks.
 	levels []menuOpenLevel
 
-	// rowRects is where each visible row was placed by the LAST COMMITTED
-	// layout, in this node's local coordinates. The pointer resolver maps
-	// through it, so hit-testing agrees with what is on screen by construction
-	// rather than by a second calculation that could drift.
+	// rowRects is where each ROOT row was placed by the last committed layout,
+	// in the Menu's own local coordinates. Each open level keeps its own map,
+	// because a popup's rows are in the POPUP's frame — one shared map would
+	// mix two coordinate systems and hit-test the wrong row.
 	rowRects map[ItemID]tui.Rect
+
+	// captureCtx is the node that took the pointer for the gesture in progress.
+	// Remembered because a press can land on the root or on any open level, and
+	// only the node that took a capture may release it.
+	captureCtx *tui.Context
 
 	// horizontal is set by MenuBar, which lays the root level along an edge
 	// instead of down the side. It changes layout and the arrow keys, nothing
