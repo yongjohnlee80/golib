@@ -147,7 +147,15 @@ private unnamed extended sequence (or a simple `Query` for a no-arg `Exec`) that
 cleans up its own unnamed objects. `Release` returns a quiescent, transaction-
 closed member to the pool; `Discard` is the unconditional terminal that closes
 the physical connection whenever safe reuse cannot be proven — so a poisoned or
-mid-flight member is never recycled dirty. Because the handle never exposes pgx's
+mid-flight member is never recycled dirty. `Discard` judges reuse from **wire
+mechanics alone**, which is all a driver can see; a consumer that knows the
+*session* is unfit (a reset the server refused, sanitation it could not prove)
+asserts the optional `Destroyer` capability and calls `Destroy()`, which poisons,
+interrupts and barriers behind in-flight I/O, closes the socket and relinquishes
+the lease **unconditionally** — a quiescent, perfectly reusable wire included.
+`Destroyer` is a separate optional interface, like `SimpleQuerier` and
+`ParameterStatusReporter`, so `PinnedConn`'s published method set is unchanged and
+external implementations keep compiling. Because the handle never exposes pgx's
 high-level `Conn`, pgx's statement cache is **structurally unreachable** on a
 pinned member and can never disagree with it.
 

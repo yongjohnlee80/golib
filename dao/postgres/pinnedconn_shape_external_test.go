@@ -31,3 +31,11 @@ var _ postgres.PinnedConn = externalPinned{}
 var _ postgres.ParameterStatusReporter = (*struct {
 	postgres.ParameterStatusReporter
 })(nil)
+
+// So is explicit destruction. externalPinned above declares no Destroy and still
+// satisfies PinnedConn, which is the property that keeps a consumer's own fake — and
+// every other explicit implementation outside this package — compiling across the
+// release that added the capability.
+var _ postgres.Destroyer = (*struct {
+	postgres.Destroyer
+})(nil)

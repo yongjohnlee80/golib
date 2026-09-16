@@ -159,6 +159,20 @@ var ErrReleased = errors.New("postgres: the pinned connection has been released 
 // consumer sent none. The driver does not silently absorb protocol skew.
 var ErrPrematureReadyForQuery = errors.New("postgres: premature ReadyForQuery in Receive — a terminal ReadyForQuery belongs to Sync, and none was sent")
 
+// pooledLease is the acquisition a pinned handle holds. Giving it back is the ONLY
+// thing the handle ever does with it, so that is the whole interface.
+//
+// It is named as an interface rather than written as *pgxpool.Conn because the teardown
+// paths below do nothing at all once the lease is gone, which means a handle built
+// without a pool — every server-free cell in this package drives the state machine over
+// a net.Pipe — can never reach them and never be tested. A one-method seam lets such a
+// cell hold a lease and observe the teardown it is there to prove. Production passes
+// pgxpool's own *Conn and behaves exactly as before.
+type pooledLease interface {
+	// Release returns the member to the pool.
+	Release()
+}
+
 // pinnedConn is the handle: one acquired pool member plus the state machine
 // that serializes every face against every other.
 //
@@ -181,7 +195,7 @@ type pinnedConn struct {
 	netConn  net.Conn
 
 	mu       sync.Mutex
-	acq      *pgxpool.Conn // niled by Discard; the goroutine that nils it owns the release
+	acq      pooledLease // niled by Discard; the goroutine that nils it owns the release
 	out      outboundState
 	in       inboundState
 	poisoned bool
@@ -553,13 +567,29 @@ func (p *pinnedConn) Release(_ context.Context) error {
 // barriers on wireMu so the in-flight op has fully released the connection before the
 // pool destroys it. This avoids the pgconn contract violation of closing a conn under an
 // active operation.
-func (p *pinnedConn) Discard() {
+//
+// It decides reuse from WIRE MECHANICS ALONE, which is all a driver can see. A consumer
+// that knows the SESSION is unfit — a reset the server refused, a sanitation step that
+// could not be proved — must say so with [Destroyer.Destroy] rather than arrange a wire
+// state this predicate happens to reject.
+func (p *pinnedConn) Discard() { p.relinquish(false) }
+
+// relinquish is the ONE teardown path, and forceDestroy is the whole difference between
+// its two entry points: [pinnedConn.Discard] passes false and lets the reuse predicate
+// decide, [pinnedConn.Destroy] passes true and takes the decision away from it.
+//
+// The flag is consumed HERE, in the same critical section that reads the predicate,
+// rather than by a caller that poisons the handle first and then calls Discard. A
+// caller-side arrangement would be two operations with a window between them, and it
+// would still be describing the outcome it wants in terms of what the predicate happens
+// to reject — which is exactly the coupling Destroy exists to remove.
+func (p *pinnedConn) relinquish(forceDestroy bool) {
 	p.mu.Lock()
 	if p.acq == nil {
 		p.mu.Unlock()
 		return
 	}
-	reusable := p.reusableLocked()
+	reusable := !forceDestroy && p.reusableLocked()
 	// The wire holder is inside a SimpleQuery emit callback (possibly THIS goroutine).
 	// No I/O is in flight there, and the holder re-checks poisoned under mu before its
 	// next read, so the barrier below is both unnecessary and — on the same goroutine
@@ -587,11 +617,27 @@ func (p *pinnedConn) Discard() {
 		// Close the physical connection (best-effort Terminate, bounded) so the pool's
 		// Release sees a closed member and destroys it rather than recycling a dirty one.
 		_ = p.netConn.SetDeadline(time.Time{})
-		ctx, cancel := context.WithTimeout(context.Background(), discardTeardownTimeout)
-		_ = p.pgConn.Close(ctx)
-		cancel()
+		p.closePhysical()
 	}
 	acq.Release()
+}
+
+// closePhysical shuts the pinned member's connection, best effort and bounded.
+//
+// Destruction must reach the SOCKET, not merely the driver object: a member the pool
+// can still read from is a member the pool can still hand out. The pgconn path is what
+// production uses (a bounded Terminate, then the close); a handle built without a driver
+// connection — the server-free cells, which drive the state machine over a net.Pipe —
+// still owns a socket, and abandoning it there would make those cells pass while proving
+// nothing about destruction, so the socket is closed directly instead.
+func (p *pinnedConn) closePhysical() {
+	if p.pgConn == nil {
+		_ = p.netConn.Close()
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), discardTeardownTimeout)
+	defer cancel()
+	_ = p.pgConn.Close(ctx)
 }
 
 // discardTeardownTimeout bounds Discard's best-effort Terminate on an unprovable wire.
