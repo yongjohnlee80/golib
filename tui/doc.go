@@ -188,6 +188,40 @@
 //     frame. Only modified cells are formatted into an optimized batch and emitted to
 //     [Backend.Flush] in a single write.
 //
+// # Focus Confinement & Stacked Dialogs
+//
+// A component implementing [FocusScope] with TrapsFocus() == true is an input
+// boundary: Tab traversal, programmatic [Context.RequestFocus], and key, paste
+// and pointer routing are all limited to its subtree. That is what makes a
+// dialog a dialog — nothing behind it can be reached or typed into.
+//
+// Because a trap confines traversal in BOTH directions, Tab can never move from
+// one dialog to another. Two routes exist instead, and a container has to say
+// which applies:
+//
+//   - A NESTED trap — a custom trapping scope mounted inside a dialog's own
+//     content — lies inside the active scope and is entered on ancestry.
+//   - A STACKED trap — a second dialog attached to the same overlay host — is
+//     not inside anything: each layer's trap is mounted within its own
+//     Float, so two dialogs' traps are COUSINS. They are entered because their
+//     common ancestor implements [FocusLayerHost] and declares its children to
+//     be layers, later in front of earlier. Only the topmost layer may be
+//     entered.
+//
+// A dropdown opened inside a dialog is not automatically nested. The shipped
+// widget.Select projects its popup onto the overlay host, so it is a later
+// layer of that host and takes the STACKED route; where a composite mounts its
+// popup decides which route applies, not how the screen looks.
+//
+// Declaration order alone is deliberately not enough. Two trapping panels side
+// by side in a [Flex] are also "one after the other", and letting that grant
+// entry would mean source order decided which unrelated panel could steal the
+// keyboard.
+//
+// Leaving is not Tab either. When a trapping scope unmounts, the runtime
+// restores focus to whatever held it before the trap was entered, so closing the
+// top dialog lands the keyboard back where it was in the one beneath.
+//
 // # Getting Started
 //
 // A complete, runnable application assembling an overlay host, box chrome, and an input
