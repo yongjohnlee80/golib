@@ -166,7 +166,13 @@ func WithModalVimNavigation(v bool) ModalOption {
 	return func(m *Modal) { m.vimKeys = v }
 }
 
-// WithDismissKeys adds plain keys that close the dialog, alongside Escape.
+// WithModalDismissKeys adds plain keys that close the dialog, alongside Escape.
+//
+// A configured key is an ESCAPE EQUIVALENT in full: it resolves through the same
+// path, so a dialog with a Cancel-role button has that button ACTIVATED, and the
+// dismissal is reported as DismissEscape — the reason names the intention, not
+// the key. A key that closed the dialog without running Cancel would be a
+// second, quieter way out with different consequences.
 //
 // A terminal application usually has a second dismiss key — `q` is the common
 // one — and a dialog that traps focus swallows it, so a surface that honoured it
@@ -182,7 +188,7 @@ func WithModalVimNavigation(v bool) ModalOption {
 // activating Cancel, and a dialog containing a text input keeps typing `q`.
 //
 // Modified keys are never dismiss keys — Ctrl-Q is not `q`.
-func WithDismissKeys(keys ...rune) ModalOption {
+func WithModalDismissKeys(keys ...rune) ModalOption {
 	return func(m *Modal) {
 		m.dismissKeys = append(m.dismissKeys, keys...)
 	}
@@ -504,7 +510,7 @@ func (m *Modal) keys(ev tui.Event) (tui.Action, bool) {
 	if b := m.mnemonicButton(k.Code); b != nil {
 		return modalActivateAction{target: b}, true
 	}
-	// A HOST DISMISS KEY, after the mnemonics. See WithDismissKeys for why the
+	// A HOST DISMISS KEY, after the mnemonics. See WithModalDismissKeys for why the
 	// order is load-bearing in both directions.
 	for _, r := range m.dismissKeys {
 		if k.Code == r {
@@ -620,8 +626,12 @@ func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
 	if _, ok := inv.Action.(dismissAction); !ok {
 		return false
 	}
-	// A Cancel-role button, if the dialog has one, is activated so Escape means
-	// exactly what pressing that button means.
+	// A Cancel-role button, if the dialog has one, is activated so a DISMISS
+	// REQUEST means exactly what pressing that button means — whether the
+	// request arrived as Escape or as a host-configured dismiss key. The
+	// resolution is the same for both, deliberately: a `q` that closed the
+	// dialog without running Cancel would be a second, quieter way out with
+	// different consequences.
 	//
 	// Forwarded through the RUNTIME rather than by calling Button.Activate
 	// directly. The runtime is the sole publisher of ControlActivatedEvent, so a
@@ -642,6 +652,9 @@ func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
 			return true
 		}
 	}
+	// No Cancel role: the dialog simply closes. DismissEscape is the reason for
+	// either key, because it names the INTENTION — leaving without choosing —
+	// rather than the physical key that carried it.
 	m.Dismiss(DismissEscape)
 	return true
 }

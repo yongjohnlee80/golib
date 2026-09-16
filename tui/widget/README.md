@@ -507,6 +507,36 @@ closure with a typed `DismissReason`.
 runs, and the event is published after it — which is what makes reopening the
 same dialog from its own callback ordinary rather than a double-mount panic.
 
+**Dismiss keys.** Escape always closes a dialog. A terminal application usually
+has a second dismiss key, and a `Modal` traps focus and swallows it, so declare
+it:
+
+```go
+dlg := widget.NewModal(body,
+    widget.WithModalTitle("Certificate"),
+    widget.WithButtons(ok),
+    widget.WithModalDismissKeys('q'))
+```
+
+**Empty by default**, and host-owned: only the application knows which of its
+dialogs a reader navigates and which take typed input — a `q` that closes the
+dialog is a `q` nobody can type into it. Modified keys are never dismiss keys
+(Ctrl-Q is not `q`).
+
+A configured key is an **escape equivalent in full**: it resolves through the
+same path, so a dialog with a `ButtonRoleCancel` button has that button
+*activated*, and the closure reports `DismissEscape` — the reason names the
+intention, not the physical key.
+
+**Key precedence**, highest first:
+
+| | wins because |
+| --- | --- |
+| a focused control that consumes the key | the runtime offers it there first, so a text input keeps its letter |
+| an enabled button's mnemonic | a declared key is specific intent |
+| a host dismiss key | the application asked for it |
+| a navigation alias (arrows, and `hjkl` under `WithModalVimNavigation`) | a convenience, and the most easily shadowed |
+
 **Focus.** Focus lands on the enabled `ButtonRoleDefault` button, else the first
 enabled button, else the `Modal` node itself — the last case keeps Escape
 reachable when every control is disabled. The preference is honoured on *every*
