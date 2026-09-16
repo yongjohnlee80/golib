@@ -259,11 +259,17 @@ func WithActionExecutor(fn func(tui.ActionInvocation) bool) MenuOption {
 // selection. Failure is returned rather than panicked because model data is
 // frequently externally sourced, and a malformed feed is an ordinary outcome.
 func (m *Menu) SetModel(items []MenuItemModel) error {
-	m.pending = "" // an intent recorded against the old rows means nothing now
 	if err := validateItems(items, map[ItemID]bool{}, "items"); err != nil {
 		return err
 	}
 	next := copyItems(items)
+	// CLEARED ONLY ONCE THE REPLACEMENT IS GOING AHEAD. A queued open is state
+	// like the model, the levels and the selection, and "on error nothing
+	// changes" has to cover it: a refused model leaves the old rows live, so an
+	// open issued against those rows is still a valid request. Clearing first
+	// and validating second dropped it on the failure path alone, which is the
+	// path least likely to be noticed.
+	m.pending = "" // an intent recorded against the old rows means nothing now
 
 	// Close the levels the new model cannot justify, before the model changes,
 	// so closeLevel still sees the tree it was opened against.

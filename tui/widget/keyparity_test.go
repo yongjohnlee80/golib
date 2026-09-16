@@ -10,6 +10,7 @@ package widget_test
 // worse than not having them.
 
 import (
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -631,5 +632,109 @@ func TestAQueuedOpenDoesNotSurviveItsCascade(t *testing.T) {
 	if n := openLevelsOn(t, h, m); n != 0 {
 		t.Errorf("OpenLevels() = %d after closing with an open queued; the queued "+
 			"intent reopened a dismissed cascade\n%s", n, h.grid())
+	}
+}
+
+// TestAClippedNestedRowIsRefusedRatherThanQueuedForever.
+//
+// THE DEFECT IN THE FIRST CUT OF THE QUEUE. "Early" was decided from the row's
+// DEPTH alone — it belongs to a level that exists — but
+// depth says nothing about whether that level has already been laid out. A row
+// clipped out of a popup too short to hold it has the same depth as a row on a
+// popup that has not been measured yet, so Open returned nil and parked an
+// intent no future layout could satisfy: the caller was told the popup was
+// coming, and it never came.
+//
+// Waiting is only honest while a frame can still change the answer. Once the
+// owning level has laid out and left the row out, another frame will leave it
+// out again, and the caller has to be told now.
+func TestAClippedNestedRowIsRefusedRatherThanQueuedForever(t *testing.T) {
+	// Four commands and then a submenu, in a terminal too short for the popup
+	// to show all five rows. "deep" is the one that gets clipped.
+	model := []widget.MenuItemModel{
+		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
+			widget.NewCommand("a", "One", nil),
+			widget.NewCommand("b", "Two", nil),
+			widget.NewCommand("c", "Three", nil),
+			widget.NewCommand("d", "Four", nil),
+			widget.NewSubmenu("deep", "Deeper", []widget.MenuItemModel{
+				widget.NewCommand("x", "Leaf", nil),
+			}),
+		}),
+	}
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, model, 40, 5)
+	defer h.stop()
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
+
+	// SETTLED FIRST, so the level has laid out and made its decision about
+	// which rows fit. That is what separates this from the burst case.
+	h.onLoop(func() { _ = m.Open("file") })
+	h.settle()
+	h.settle()
+	if strings.Contains(h.grid(), "Deeper") {
+		t.Skipf("the fixture is not clipping: Deeper is on screen\n%s", h.grid())
+	}
+
+	var err error
+	h.onLoop(func() { err = m.Open("deep") })
+	h.settle()
+	h.settle()
+
+	if !errors.Is(err, widget.ErrAnchorUnusable) {
+		t.Errorf("Open(deep) = %v for a row clipped out of a level that has "+
+			"already laid out, want ErrAnchorUnusable — no later frame can give "+
+			"it a rect\n%s", err, h.grid())
+	}
+	if n := openLevelsOn(t, h, m); n != 1 {
+		t.Errorf("OpenLevels() = %d after a refused open, want 1", n)
+	}
+}
+
+// TestARejectedSetModelKeepsAQueuedOpen.
+//
+// SetModel documents that a model it refuses changes nothing, and a queued open
+// is part of what "nothing" has to cover: the old model is still the live one,
+// so a valid open issued against it is still valid. Clearing the intent first
+// and validating second threw away a request the caller had every right to
+// expect, and did it only on the failure path — which is the path least likely
+// to be exercised.
+func TestARejectedSetModelKeepsAQueuedOpen(t *testing.T) {
+	model := []widget.MenuItemModel{
+		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
+			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
+				widget.NewCommand("vim", "Vim", nil),
+			}),
+		}),
+	}
+	m := widget.NewMenu()
+	h, _ := barFixture(t, m, model, 50, 14)
+	defer h.stop()
+	h.onLoop(func() { m.Context().RequestFocus() })
+	h.settle()
+
+	// One turn: queue the nested open, then hand SetModel something it must
+	// refuse. Duplicate ids are refused by validateItems.
+	var setErr error
+	h.onLoop(func() {
+		_ = m.Open("option")
+		_ = m.Open("km")
+		setErr = m.SetModel([]widget.MenuItemModel{
+			widget.NewCommand("dup", "One", nil),
+			widget.NewCommand("dup", "Two", nil),
+		})
+	})
+	h.settle()
+	h.settle()
+
+	if setErr == nil {
+		t.Fatal("SetModel accepted duplicate ids; the fixture cannot show what a " +
+			"rejected model leaves behind")
+	}
+	if n := openLevelsOn(t, h, m); n != 2 {
+		t.Errorf("OpenLevels() = %d after a REFUSED SetModel, want 2 — the old "+
+			"model is still live, so the open queued against it is still valid\n%s",
+			n, h.grid())
 	}
 }
