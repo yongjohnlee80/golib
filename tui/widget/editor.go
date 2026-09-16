@@ -156,6 +156,12 @@ type Editor struct {
 	styles  TextInputStyles
 	keymap  Keymap
 	unbound map[KeyChord]bool // explicitly unbound chords (via ActUnbound)
+	// overlay is every host-supplied binding, kept apart from the profile's
+	// base table so a keyset switch can replay it. A host that rebinds a key
+	// means it for the editor, not for one profile of it: without this, the
+	// binding would survive or vanish depending on the order the options ran
+	// in, and would vanish outright on [Editor.SetKeyset].
+	overlay Keymap
 
 	mode EditorMode
 
@@ -252,21 +258,18 @@ func WithEscapeChord(chord string) EditorOption {
 // unknown actions or unsupported mode/action combinations).
 func WithKeymap(overlay Keymap) EditorOption {
 	return func(e *Editor) {
+		// Validate the whole overlay before folding any of it in: a panic
+		// halfway through would otherwise leave half the bindings applied.
 		for kc, act := range overlay {
 			validateKeymapEntry(kc, act)
-			if act == ActUnbound {
-				delete(e.keymap, kc)
-				if e.unbound == nil {
-					e.unbound = make(map[KeyChord]bool)
-				}
-				e.unbound[kc] = true
-			} else {
-				e.keymap[kc] = act
-				if e.unbound != nil {
-					delete(e.unbound, kc)
-				}
-			}
 		}
+		if e.overlay == nil {
+			e.overlay = make(Keymap, len(overlay))
+		}
+		for kc, act := range overlay {
+			e.overlay[kc] = act
+		}
+		e.applyOverlay(overlay)
 	}
 }
 
@@ -292,10 +295,7 @@ func WithEditorReadOnly(ro bool) EditorOption {
 // Also ensures the fast escape chord "jk" is armed by default.
 func WithVimKeymap() EditorOption {
 	return func(e *Editor) {
-		e.keyset = KeysetVim
-		e.modal = true
-		e.keymap = VimKeymap()
-		e.unbound = make(map[KeyChord]bool)
+		e.applyKeyset(KeysetVim)
 		if len(e.chord) == 0 {
 			e.chord = []rune{'j', 'k'}
 			e.chordTimeout = 300 * time.Millisecond
@@ -306,10 +306,7 @@ func WithVimKeymap() EditorOption {
 // WithNanoKeymap configures the non-modal Nano-style editing profile.
 func WithNanoKeymap() EditorOption {
 	return func(e *Editor) {
-		e.keyset = KeysetNano
-		e.modal = false
-		e.keymap = NanoKeymap()
-		e.unbound = make(map[KeyChord]bool)
+		e.applyKeyset(KeysetNano)
 		e.setMode(ModeInsert)
 	}
 }
@@ -317,23 +314,67 @@ func WithNanoKeymap() EditorOption {
 // WithStandardKeymap configures the standard GUI/TextEdit editing profile.
 func WithStandardKeymap() EditorOption {
 	return func(e *Editor) {
-		e.keyset = KeysetStandard
-		e.modal = false
-		e.keymap = StandardKeymap()
-		e.unbound = make(map[KeyChord]bool)
+		e.applyKeyset(KeysetStandard)
 		e.setMode(ModeInsert)
 	}
 }
 
 // WithKeyset selects a predefined keyset and editing profile.
 func WithKeyset(ks Keyset) EditorOption {
-	switch ks {
+	switch normalizeKeyset(ks) {
 	case KeysetNano:
 		return WithNanoKeymap()
 	case KeysetStandard:
 		return WithStandardKeymap()
 	default:
 		return WithVimKeymap()
+	}
+}
+
+// normalizeKeyset maps anything outside the defined profiles onto Vim, which
+// is the editor's default: a Keyset is a closed enum, and an out-of-range one
+// is a caller bug that must not leave the editor with no keymap at all.
+func normalizeKeyset(ks Keyset) Keyset {
+	switch ks {
+	case KeysetNano, KeysetStandard:
+		return ks
+	default:
+		return KeysetVim
+	}
+}
+
+// applyKeyset installs a profile's base tables and replays the host's keymap
+// overlay on top. Mode is NOT decided here: construction and a live switch
+// want different transitions, so each caller sets it.
+func (e *Editor) applyKeyset(ks Keyset) {
+	switch normalizeKeyset(ks) {
+	case KeysetNano:
+		e.keyset, e.modal, e.keymap = KeysetNano, false, NanoKeymap()
+	case KeysetStandard:
+		e.keyset, e.modal, e.keymap = KeysetStandard, false, StandardKeymap()
+	default:
+		e.keyset, e.modal, e.keymap = KeysetVim, true, VimKeymap()
+	}
+	e.unbound = make(map[KeyChord]bool)
+	e.applyOverlay(e.overlay)
+}
+
+// applyOverlay folds host bindings onto the live table. Entries are validated
+// by the caller that first accepted them, so a profile switch cannot panic on
+// an overlay the editor already took: validateKeymapEntry checks the chord's
+// mode and the action, neither of which depends on the keyset.
+func (e *Editor) applyOverlay(ov Keymap) {
+	for kc, act := range ov {
+		if act == ActUnbound {
+			delete(e.keymap, kc)
+			if e.unbound == nil {
+				e.unbound = make(map[KeyChord]bool)
+			}
+			e.unbound[kc] = true
+			continue
+		}
+		e.keymap[kc] = act
+		delete(e.unbound, kc)
 	}
 }
 
@@ -458,6 +499,50 @@ func (e *Editor) CursorShape() tui.CursorShape {
 
 // Keyset reports the active editing & keymap profile.
 func (e *Editor) Keyset() Keyset { return e.keyset }
+
+// SetKeyset switches the editing profile on a LIVE editor, so a host can offer
+// "Vim / TextEdit" as a user preference without rebuilding the widget and
+// losing what the operator is working on.
+//
+// The document survives: text, cursor, viewport, undo/redo history, and the
+// yank register are all untouched, because a preference change is not a reason
+// to lose a buffer.
+//
+// In-flight input does NOT survive, because it was addressed to the profile
+// being left: a pending count or operator prefix, a visual selection, and an
+// open undo group are all discarded, and the next edit starts a fresh group. A
+// half-typed escape chord is an exception — it is the operator's TEXT, so it is
+// committed to the buffer the way any other key would settle it, rather than
+// dropped.
+//
+// Mode follows the new profile: Vim lands in Normal with the cursor clamped
+// onto a grapheme, the modeless profiles land in Insert. Each publishes the
+// usual [ModeChangedEvent], so a status bar updates without a special case.
+//
+// Host bindings from [WithKeymap] are replayed onto the new profile's base
+// table — a rebound key means it for the editor, not for one profile of it.
+// Switching to the profile already active is a no-op, pending input included.
+func (e *Editor) SetKeyset(ks Keyset) {
+	ks = normalizeKeyset(ks)
+	if ks == e.keyset {
+		return
+	}
+	e.settlePendingRune()
+	e.count, e.pendingCount = 0, 0
+	e.pendingAct, e.pendingChord = ActUnbound, KeyChord{}
+	e.groupOpen = false
+	e.anchor, e.vAnchor = nil, taPos{}
+	e.applyKeyset(ks)
+	if e.modal {
+		e.setMode(ModeNormal)
+		e.clampNormal()
+	} else {
+		e.setMode(ModeInsert)
+	}
+	e.desired = -1
+	e.ensureVisible()
+	e.MarkDirty()
+}
 
 // Keymap returns a defensive copy of the editor's active keymap.
 func (e *Editor) Keymap() Keymap {
