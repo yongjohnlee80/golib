@@ -60,6 +60,16 @@ type Stack struct {
 }
 
 var _ Container = (*Stack)(nil)
+var _ FocusLayerHost = (*Stack)(nil)
+
+// HostsFocusLayers implements [FocusLayerHost]: a Stack's children ARE layers,
+// which is the whole of what it is for, so later children are in front of
+// earlier ones for focus exactly as they are for paint and hit-testing.
+//
+// This is what lets a dialog opened over another dialog take the keyboard while
+// two trapping panels sitting side by side in a [Flex] still cannot take it
+// from each other.
+func (s *Stack) HostsFocusLayers() bool { return true }
 
 // NewStack builds an empty Stack.
 func NewStack() *Stack {

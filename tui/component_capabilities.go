@@ -110,14 +110,81 @@ type CursorShaper interface {
 	CursorShape() CursorShape
 }
 
-// FocusScope marks a component subtree as a keyboard traversal boundary.
+// FocusScope marks a component subtree as an input boundary.
 //
 // When TrapsFocus() reports true (e.g. inside a modal dialog or floating popup),
-// Tab and Shift-Tab navigation is strictly confined to the focusable descendants
-// of this scope. When the trapping scope is unmounted, the runtime automatically
-// restores focus to the component that held it prior to entering the trap.
+// the scope confines THREE things, not only traversal:
+//
+//   - Tab and Shift-Tab are limited to the focusable descendants of this scope.
+//     A nested trapping scope is excluded from an enclosing scope's ring, so a
+//     trap confines traversal both in and out.
+//   - Programmatic focus is limited the same way: [Context.RequestFocus] on a
+//     node outside the active scope is refused, or an outside component could
+//     dissolve the confinement that a dialog exists to have.
+//   - Key, paste and pointer routing are ceilinged at the scope, so an event
+//     never reaches a component behind it.
+//
+// TWO WAYS IN, and knowing which one applies is the difference between a dialog
+// that works and a dialog that paints and is inert:
+//
+//   - NESTED — the new scope's node lies inside the active one, as a custom
+//     trapping scope mounted within a dialog's own content does. Allowed on
+//     ancestry.
+//   - STACKED — the new scope is a later layer of a common [FocusLayerHost],
+//     as a second dialog attached to one overlay host is. Allowed because
+//     the host declares its children to be layers; only the TOPMOST layer may be
+//     entered. Two trapping scopes that merely sit beside each other in an
+//     ordinary container are neither, and cannot reach each other at all.
+//
+// A dropdown opened inside a dialog is NOT automatically the nested case, and
+// the shipped one is not: widget.Select projects its popup onto the overlay
+// host, so it is a later LAYER of that host and takes the stacked route. Which
+// route a composite takes is decided by where its popup mounts, not by how the
+// screen looks.
+//
+// Pointer input deliberately does not raise a layer: clicking a dialog behind
+// another does not move focus into it.
+//
+// ON THE WAY OUT, when the trapping scope is unmounted, the runtime restores
+// focus to the component that held it prior to entering the trap. That restore
+// is the only route back to a dialog underneath — Tab cannot reach it, because
+// the trap confines traversal in both directions.
 type FocusScope interface {
 	Component
-	// TrapsFocus reports whether keyboard tab navigation is confined to this subtree.
+	// TrapsFocus reports whether this subtree is an input boundary.
+	//
+	// True confines three things to the subtree, not only traversal: Tab and
+	// Shift-Tab; programmatic focus, so RequestFocus on a node outside it is
+	// refused; and key, paste and pointer routing, which are ceilinged at the
+	// scope so nothing behind it can be reached. A scope may still be entered
+	// from outside by the two documented routes — nested, or a later layer of a
+	// common FocusLayerHost — and focus returns to where it came from when the
+	// scope unmounts.
 	TrapsFocus() bool
+}
+
+// FocusLayerHost marks a component whose immediate children are STACKED LAYERS
+// rather than ordinary siblings — later children are in front of earlier ones,
+// on purpose and as a property of the container.
+//
+// It exists because focus confinement has to tell two arrangements apart that
+// look identical in the tree. Two trapping scopes side by side in a [Flex] are
+// unrelated: neither is "in front", and neither may take the keyboard from the
+// other. Two trapping scopes on a [Stack] are layers: the later one is the
+// dialog the user is looking at, and focus must be able to reach it. Document
+// order alone cannot distinguish those, and treating it as if it could lets
+// declaration order decide which unrelated panel may steal focus.
+//
+// Implement it only where later-is-in-front is genuinely what the container
+// means. [Stack] does, and so does anything embedding it, such as
+// widget.OverlayHost.
+//
+// It governs programmatic focus only. Pointer input deliberately does not raise
+// a layer: clicking a dialog that sits behind another must not pull the keyboard
+// out of the one in front.
+type FocusLayerHost interface {
+	Component
+	// HostsFocusLayers reports whether this component's immediate children are
+	// stacked layers, later in front of earlier.
+	HostsFocusLayers() bool
 }
