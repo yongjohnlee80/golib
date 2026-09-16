@@ -161,6 +161,18 @@
 //     Float when you want a floating layer and intend to supply the behaviour
 //     yourself. See the Modal section below.
 //
+// DISMISS KEYS. Escape always closes a [Modal]. A terminal application usually
+// has a second dismiss key, and a dialog traps focus and swallows it, so
+// [WithModalDismissKeys] lets the host declare one. It is EMPTY BY DEFAULT and
+// host-owned: only the application knows which of its dialogs a reader
+// navigates and which take typed input, and a `q` that closes the dialog is a
+// `q` nobody can type into it. A configured key is an escape equivalent in full
+// — it activates a Cancel-role button if there is one and reports
+// [DismissEscape], because the reason names the intention rather than the key.
+//
+// Precedence, highest first: a focused control that consumes the key, an
+// enabled button's mnemonic, a host dismiss key, then the navigation aliases.
+//
 // # Modal
 //
 // Modal is the composed dialog: a focus trap filling its host, holding a card

@@ -21,7 +21,15 @@ type DismissReason uint8
 const (
 	// DismissProgrammatic: the program called Dismiss.
 	DismissProgrammatic DismissReason = iota
-	// DismissEscape: the user pressed Escape.
+	// DismissEscape: the user asked to leave without choosing — physically
+	// Escape, or a host-configured escape-equivalent key.
+	//
+	// BROADENED RATHER THAN JOINED BY A SIBLING. A Modal may accept extra
+	// dismiss keys (see WithModalDismissKeys), and `q` there means exactly what
+	// Escape means: close this, having decided nothing. A separate reason would
+	// force every listener to learn a second constant for one intention, and
+	// the ones that did not would treat a `q` dismissal as an unrecognised
+	// event. What the operator MEANT is the same; only the key differs.
 	DismissEscape
 	// DismissAccept: an affirmative control was activated.
 	DismissAccept

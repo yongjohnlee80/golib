@@ -13,6 +13,7 @@ package widget_test
 import (
 	"testing"
 
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -20,7 +21,7 @@ func TestModalDismissKeyClosesTheDialog(t *testing.T) {
 	md := widget.NewModal(widget.NewText("read me"),
 		widget.WithModalTitle("notice"),
 		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
-		widget.WithDismissKeys('q'))
+		widget.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
 
@@ -68,7 +69,7 @@ func TestModalDismissKeyLosesToAMnemonic(t *testing.T) {
 	md := widget.NewModal(widget.NewText("really?"),
 		widget.WithModalTitle("quit?"),
 		widget.WithButtons(quit),
-		widget.WithDismissKeys('q'))
+		widget.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
 
@@ -90,7 +91,7 @@ func TestModalDismissKeyDoesNotStealFromATextInput(t *testing.T) {
 	md := widget.NewModal(in,
 		widget.WithModalTitle("name it"),
 		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
-		widget.WithDismissKeys('q'))
+		widget.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
 	h.onLoop(func() { in.Context().RequestFocus() })
@@ -108,5 +109,88 @@ func TestModalDismissKeyDoesNotStealFromATextInput(t *testing.T) {
 	}
 	if !open {
 		t.Error("the dialog closed while a text input had focus")
+	}
+}
+
+// A CONFIGURED KEY IS AN ESCAPE EQUIVALENT IN FULL, and these three cells are
+// about what that costs and what it must not.
+
+// With no Cancel role, `q` closes and reports DismissEscape — exactly one of
+// them. The reason names the INTENTION, leaving without choosing, rather than
+// the physical key that carried it; a separate constant would force every
+// listener to learn a second name for one meaning, and the ones that did not
+// would treat a `q` dismissal as unrecognised.
+func TestModalDismissKeyReportsEscapeExactlyOnce(t *testing.T) {
+	md := widget.NewModal(widget.NewText("read me"),
+		widget.WithModalTitle("notice"),
+		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
+		widget.WithModalDismissKeys('q'))
+	h, host, _ := modalFixture(t, md, 40, 12)
+	rec := record[widget.OverlayDismissedEvent](h)
+	openOn(t, h, md, host)
+
+	h.inject(key('q'))
+	h.settle()
+
+	evs := rec.events()
+	if len(evs) != 1 {
+		t.Fatalf("published %d dismissals, want exactly 1: %+v", len(evs), evs)
+	}
+	if evs[0].Reason != widget.DismissEscape {
+		t.Errorf("reason = %v, want DismissEscape", evs[0].Reason)
+	}
+}
+
+// WITH a Cancel role, `q` activates that button and reports DismissCancel —
+// the same resolution Escape gets. A key that closed the dialog WITHOUT running
+// Cancel would be a second, quieter way out with different consequences.
+func TestModalDismissKeyActivatesCancelAndReportsIt(t *testing.T) {
+	cancelled := false
+	no := widget.NewButton("Cancel",
+		widget.WithRole(widget.ButtonRoleCancel),
+		widget.WithOnActivate(func() { cancelled = true }))
+	md := widget.NewModal(widget.NewText("really?"),
+		widget.WithModalTitle("confirm"),
+		widget.WithButtons(no, widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
+		widget.WithModalDismissKeys('q'))
+	h, host, _ := modalFixture(t, md, 40, 12)
+	rec := record[widget.OverlayDismissedEvent](h)
+	openOn(t, h, md, host)
+
+	h.inject(key('q'))
+	h.settle()
+
+	var ran bool
+	h.onLoop(func() { ran = cancelled })
+	if !ran {
+		t.Error("`q` closed the dialog without activating its Cancel button")
+	}
+	evs := rec.events()
+	if len(evs) != 1 {
+		t.Fatalf("published %d dismissals, want exactly 1: %+v", len(evs), evs)
+	}
+	if evs[0].Reason != widget.DismissCancel {
+		t.Errorf("reason = %v, want DismissCancel — the same resolution Escape gets",
+			evs[0].Reason)
+	}
+}
+
+// A MODIFIED KEY IS NOT THE KEY. Ctrl-Q is not `q`, and a dialog that closed on
+// it would take a chord the application may have bound to something else.
+func TestModalDismissKeyIgnoresAModifiedKey(t *testing.T) {
+	md := widget.NewModal(widget.NewText("read me"),
+		widget.WithModalTitle("notice"),
+		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
+		widget.WithModalDismissKeys('q'))
+	h, host, _ := modalFixture(t, md, 40, 12)
+	openOn(t, h, md, host)
+
+	h.inject(keyMod('q', tui.ModCtrl))
+	h.settle()
+
+	var open bool
+	h.onLoop(func() { open = md.IsOpen() })
+	if !open {
+		t.Error("Ctrl-Q dismissed a dialog whose dismiss key is plain `q`")
 	}
 }
