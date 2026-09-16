@@ -124,8 +124,32 @@ func (p *menuPopup) Layout(cs tui.Constraints) tui.Size {
 // absent from the model — and must stay an error. Retrying those would leave a
 // caller waiting for a frame that is never going to help.
 func (m *Menu) canQueue(parent ItemID) bool {
-	d, ok := m.depthOfRow(parent)
-	return ok && d > 0 && d <= len(m.levels)
+	p, ok := m.levelShowing(parent)
+	// NOT-YET-MEASURED, not merely "deep enough". A popup allocates its rect map
+	// the first time it lays out, so a nil map is the one state in which the
+	// answer can still change: the level is mounted and its rows have not been
+	// placed yet. Once it HAS laid out and left this row out, the row was
+	// clipped by a rect too small to hold it, and every later layout reaches the
+	// same conclusion — waiting on that is waiting forever.
+	//
+	// Depth alone cannot tell those two apart, and deciding on depth is what
+	// made Open return nil for a clipped row and park an intent nothing could
+	// ever satisfy.
+	return ok && p.rects == nil
+}
+
+// levelShowing returns the open level whose OWN rows include id.
+//
+// A row belongs to exactly one level, so this names the popup that has to place
+// it — the only one whose layout state says anything about whether the row is
+// coming.
+func (m *Menu) levelShowing(id ItemID) (*menuPopup, bool) {
+	for _, lv := range m.levels {
+		if rowsContain(lv.popup.rowsOf(), id) {
+			return lv.popup, true
+		}
+	}
+	return nil, false
 }
 
 // drainPending opens a submenu that was asked for before its row had a rect.
