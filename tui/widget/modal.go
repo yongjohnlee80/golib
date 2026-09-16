@@ -55,6 +55,11 @@ type Modal struct {
 	pointerPolicy tui.PointerPolicy
 	// vimKeys adds h/k and l/j as aliases for the directional keys.
 	vimKeys bool
+	// dismissKeys are additional plain keys that mean "close this", alongside
+	// Escape. Empty by default: a dialog that takes text must not lose a
+	// letter to dismissal, and only the host knows which of its dialogs are
+	// read-only or navigational.
+	dismissKeys []rune
 	// selected is the index of the focused button, or -1 when focus is on the
 	// Modal node itself — which happens when it owns no enabled button.
 	selected int
@@ -159,6 +164,28 @@ func (a ButtonAlign) String() string {
 // a declared key unreachable.
 func WithModalVimNavigation(v bool) ModalOption {
 	return func(m *Modal) { m.vimKeys = v }
+}
+
+// WithDismissKeys adds plain keys that close the dialog, alongside Escape.
+//
+// A terminal application usually has a second dismiss key — `q` is the common
+// one — and a dialog that traps focus swallows it, so a surface that honoured it
+// as a Float stops honouring it as a Modal with nothing to say so. The keys
+// belong to the HOST rather than to this widget: only the application knows
+// which of its dialogs a reader navigates and which take typed input, and a `q`
+// that closes the dialog is a `q` the operator cannot type into it.
+//
+// RESOLVED AFTER MNEMONICS AND AFTER THE FOCUSED CONTROL. A declared mnemonic is
+// specific intent and wins; and a dismiss key never reaches this while a control
+// that consumes text has focus, because the runtime offers the key there first.
+// Both orderings matter: a dialog whose Cancel button is mnemonic `q` keeps
+// activating Cancel, and a dialog containing a text input keeps typing `q`.
+//
+// Modified keys are never dismiss keys — Ctrl-Q is not `q`.
+func WithDismissKeys(keys ...rune) ModalOption {
+	return func(m *Modal) {
+		m.dismissKeys = append(m.dismissKeys, keys...)
+	}
 }
 
 // WithButtonAlign sets where the button row sits. An invalid value is refused
@@ -476,6 +503,13 @@ func (m *Modal) keys(ev tui.Event) (tui.Action, bool) {
 	// and the author who declared it would have no way to know why.
 	if b := m.mnemonicButton(k.Code); b != nil {
 		return modalActivateAction{target: b}, true
+	}
+	// A HOST DISMISS KEY, after the mnemonics. See WithDismissKeys for why the
+	// order is load-bearing in both directions.
+	for _, r := range m.dismissKeys {
+		if k.Code == r {
+			return dismissAction{}, true
+		}
 	}
 	switch k.Code {
 	case tui.KeyLeft, tui.KeyUp:
