@@ -104,15 +104,70 @@ type Select[T any] struct {
 	fixedW   int // 0 = greedy
 
 	open  bool
+	armed bool
 	popup *selectPopup[T]
 
+	// placement decides where the open option list sits. See SelectPlacement.
+	placement SelectPlacement
+	// affordance draws the ▾/▴ triangle at the field's right edge. Some hosts
+	// mark the focused row themselves and do not want a second indicator.
+	affordance bool
+
 	loadErr error
+
+	// placeholder is shown, muted, while NOTHING is selected. Empty by
+	// default, which renders a blank field -- indistinguishable from a field
+	// that is still loading, or from one whose selected label happens to be
+	// empty. A host that wants the empty state to say so supplies the words.
+	placeholder string
+
+	// focusedSt is merged over fieldSt while the keyboard is on this select,
+	// or its options are open.
+	//
+	// A CLOSED SELECT IS ONE ROW OF TEXT, and without a focus look it is the
+	// same one row whether the keyboard is in it or not. An operator tabbing
+	// through a form could not see that they had reached it, pressed Enter to
+	// find out, and got a popup they had not asked for.
+	focusedSt style.Style
 
 	fieldSt style.Style
 	errSt   style.Style
 }
 
-var _ tui.Focusable = (*Select[any])(nil)
+var (
+	_ tui.Focusable   = (*Select[any])(nil)
+	_ tui.Activatable = (*Select[any])(nil)
+)
+
+// Activate opens the option list, which is what activation MEANS for a
+// dropdown: there is nothing else it could do.
+//
+// IMPLEMENTING Activatable IS WHAT MAKES A CLICK WORK. The runtime only starts
+// a pointer gesture on a target that implements this interface, so before it
+// existed a click on a Select hit-tested to the field, moved focus to it, and
+// stopped -- the options never opened and the widget looked inert under the
+// mouse while answering Enter, Space and Down from the keyboard. Keyboard and
+// pointer are one path now, resolving to the same method.
+//
+// Returns false when already open, so a second activation is not reported as
+// having done something.
+func (s *Select[T]) Activate(tui.ActionOrigin) bool {
+	if s.open {
+		return false
+	}
+	s.openPopup()
+	return s.open
+}
+
+// SetArmed records the pressed state the recognizer drives between press and
+// release. Held for the look; nothing else reads it.
+func (s *Select[T]) SetArmed(v bool) {
+	if s.armed == v {
+		return
+	}
+	s.armed = v
+	s.MarkDirty()
+}
 
 // SelectOption customizes a Select under construction.
 type SelectOption[T any] func(*Select[T])
@@ -127,6 +182,56 @@ func WithFilter[T any](enabled bool) SelectOption[T] {
 	return func(s *Select[T]) { s.filterOn = enabled }
 }
 
+// SelectPlacement says where the open option list is put.
+type SelectPlacement uint8
+
+const (
+	// SelectPlacementAnchored puts the list directly beneath the field and
+	// aligned to its LEFT edge, flipping above when there is no room below.
+	// It is the default, because a dropdown that is not attached to the
+	// control it belongs to makes the reader find the relationship.
+	SelectPlacementAnchored SelectPlacement = iota
+	// SelectPlacementCentered puts the list in the middle of the overlay
+	// area, which is what this widget did before placement was a choice.
+	SelectPlacementCentered
+)
+
+// WithPopupPlacement chooses where the open option list sits.
+func WithPopupPlacement[T any](p SelectPlacement) SelectOption[T] {
+	return func(s *Select[T]) { s.placement = p }
+}
+
+// WithAffordance draws — or withholds — the ▾/▴ triangle at the field's right
+// edge. Default: drawn.
+//
+// Withholding it is for a host that already marks the focused row itself, where
+// the triangle is a second indicator of the same thing in a different place.
+func WithAffordance[T any](on bool) SelectOption[T] {
+	return func(s *Select[T]) { s.affordance = on }
+}
+
+// WithSelectPlaceholder is the text shown, muted, while nothing is selected.
+//
+// Default empty, which is the behaviour this widget always had: a blank field.
+// Blank cannot be told apart from a field still loading its options, or one
+// whose selection has an empty label, so a host that cares says the words.
+func WithSelectPlaceholder[T any](s string) SelectOption[T] {
+	return func(sel *Select[T]) { sel.placeholder = s }
+}
+
+// WithSelectFocusedStyle is the look merged over the field while this select
+// holds the keyboard or has its options open.
+//
+// Default: reversed. REVERSE RATHER THAN A COLOUR PAIR, for the reason the
+// button styles give -- naming tokens fails wherever a theme leaves foreground
+// and background as the terminal's own defaults, because both sides resolve to
+// "default" and the emphasis disappears. Reverse is an attribute the terminal
+// applies to whatever the cell actually holds, so it inverts under every
+// theme, including none.
+func WithSelectFocusedStyle[T any](st style.Style) SelectOption[T] {
+	return func(s *Select[T]) { s.focusedSt = st }
+}
+
 // WithWidth fixes the closed field width (default: greedy).
 func WithWidth[T any](w int) SelectOption[T] {
 	if w < 1 {
@@ -138,9 +243,11 @@ func WithWidth[T any](w int) SelectOption[T] {
 // NewSelect builds a dropdown with no selection.
 func NewSelect[T any](opts ...SelectOption[T]) *Select[T] {
 	s := &Select[T]{
-		selected: -1,
-		fieldSt:  style.New().Foreground(style.TokenForeground),
-		errSt:    style.New().Foreground(style.TokenError),
+		selected:   -1,
+		affordance: true,
+		focusedSt:  style.New().Reverse(true),
+		fieldSt:    style.New().Foreground(style.TokenForeground),
+		errSt:      style.New().Foreground(style.TokenError),
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -302,14 +409,39 @@ func (s *Select[T]) Render(sur tui.Surface) {
 	if s.selected >= 0 && s.selected < len(s.items) {
 		label = s.items[s.selected].Label
 	} else {
-		st = style.New().Foreground(style.TokenTextMuted).Inherit(st)
+		label = s.placeholder
+		st = style.New().Foreground(style.TokenTextMuted).Faint(true).Inherit(st)
 	}
 	if s.loadErr != nil {
 		st = s.errSt.Inherit(st)
 		label = "error: " + s.loadErr.Error()
 	}
+	// THE FOCUS LOOK GOES ON LAST, so it marks the field whatever it is
+	// currently saying -- a selection, a placeholder, or a load error.
+	//
+	// `|| s.open` keeps it lit while the options are up: focus is inside the
+	// popup then, so the field is not focused by the framework's reckoning,
+	// and letting it go dark would say the operator had left the control they
+	// are in the middle of using.
+	ctx := s.Context()
+	focused := (ctx != nil && ctx.Focused()) || s.open
+	if focused {
+		st = s.focusedSt.Inherit(st)
+	}
+	// THE FOCUS LOOK PAINTS THE FIELD, not merely its text. An empty select
+	// draws no characters at all, so a style carried only by the label reached
+	// no cell and the focused state was invisible in exactly the case that
+	// needed it most -- a field with nothing chosen yet.
+	if focused {
+		for x := range sz.W {
+			sur.SetCell(x, 0, " ", st)
+		}
+	}
 	if sz.W > 2 {
 		drawText(sur, 0, 0, truncate(label, sz.W-2, sur.StringWidth), st)
+	}
+	if !s.affordance {
+		return
 	}
 	arrow := "▾"
 	if s.open {
@@ -405,9 +537,49 @@ func (p *selectPopup[T]) Layout(c tui.Constraints) tui.Size {
 		ph++
 	}
 	ph = min(ph, max(h-2, 3))
-	p.panel = tui.Rect{X: max((w-pw)/2, 0), Y: max((h-ph)/2, 0), W: pw, H: ph}
+	p.panel = p.place(w, h, pw, ph)
 	p.ensureVisible()
 	return c.Constrain(tui.Size{W: w, H: h})
+}
+
+// place decides where the panel sits inside the full-area overlay.
+//
+// ANCHORED IS THE DEFAULT: directly beneath the field and aligned to its LEFT
+// edge, which is where a dropdown belongs -- a list floating in the middle of
+// the screen makes the reader work out which control it came from, and on a
+// form of several selects that is a real question rather than a rhetorical
+// one.
+//
+// It FLIPS ABOVE the field when there is not room below, and slides left when
+// the panel would overhang the right edge, because a list that runs off the
+// screen has hidden the options it exists to show. Falls back to centred when
+// the owner's rect cannot be resolved -- it has no rect before its first
+// layout, and a guess would be worse than the old behaviour.
+func (p *selectPopup[T]) place(w, h, pw, ph int) tui.Rect {
+	centered := tui.Rect{X: max((w-pw)/2, 0), Y: max((h-ph)/2, 0), W: pw, H: ph}
+	if p.owner.placement != SelectPlacementAnchored {
+		return centered
+	}
+	ctx := p.owner.Context()
+	if ctx == nil {
+		return centered
+	}
+	field, ok := ctx.ResolveAnchor(ctx.NodeAnchor())
+	if !ok {
+		return centered
+	}
+	x := min(max(field.X, 0), max(w-pw, 0))
+	y := field.Y + field.H
+	if y+ph > h {
+		// No room below: sit above the field instead, and only fall back to
+		// clamping when it does not fit on either side.
+		if above := field.Y - ph; above >= 0 {
+			y = above
+		} else {
+			y = max(h-ph, 0)
+		}
+	}
+	return tui.Rect{X: x, Y: y, W: pw, H: ph}
 }
 
 // HandleEvent implements the open-state contract: filter typing, cursor
@@ -433,6 +605,23 @@ func (p *selectPopup[T]) HandleEvent(ev tui.Event) bool {
 			p.moveHi(-1)
 			return true
 		case tui.KeyDown:
+			p.moveHi(1)
+			return true
+		case 'k':
+			// VIM MOTION, BUT ONLY WHERE THE LETTER IS FREE. A filtering
+			// select spends every printable character on the query, so j and k
+			// there are the two letters the operator most needs to TYPE --
+			// "jetbrains", "sqlite". The arrows work in both modes and are
+			// what the footer names; this is the convenience on top.
+			if p.owner.filterOn {
+				break
+			}
+			p.moveHi(-1)
+			return true
+		case 'j':
+			if p.owner.filterOn {
+				break
+			}
 			p.moveHi(1)
 			return true
 		case tui.KeyPageUp:

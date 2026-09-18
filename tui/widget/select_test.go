@@ -163,3 +163,108 @@ func TestSelectClickOutsideCloses(t *testing.T) {
 	h.barrier(sh)
 	h.wantNotContains("beta")
 }
+
+// release completes a click. The default recognizer arms on press and
+// activates on the RELEASE inside the target, so a press alone proves nothing.
+func release(x, y int) tui.MouseEvent {
+	return tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y}
+}
+
+// A CLICK OPENS THE OPTIONS, which is the whole of what activating a dropdown
+// can mean.
+//
+// Select answered Enter, Space and Down from the keyboard and was inert under
+// the mouse: the runtime starts a pointer gesture only on a target that
+// implements tui.Activatable, and Select did not. A click hit-tested to the
+// field, moved focus to it, and stopped — reported as "it just focuses".
+func TestSelectOpensOnClick(t *testing.T) {
+	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")))
+	h.wantNotContains("beta") // closed: only the field is on screen
+
+	h.inject(click(0, 0), release(0, 0))
+	h.barrier(sh)
+	h.wantContains("beta")
+}
+
+// A PRESS THAT LEAVES THE FIELD BEFORE RELEASE DOES NOT OPEN IT. Without this
+// the cell above passes for an implementation that opens on any press, which
+// is the behaviour that makes a dropdown impossible to dismiss by changing
+// your mind mid-click.
+func TestSelectClickAbandonedOutsideDoesNotOpen(t *testing.T) {
+	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")))
+	h.inject(click(0, 0), release(0, 9)) // press on the field, release far away
+	h.barrier(sh)
+	h.wantNotContains("beta")
+}
+
+// THE PLACEHOLDER SAYS THE FIELD IS EMPTY. A blank field cannot be told apart
+// from one still loading its options, or one whose selection has an empty
+// label.
+func TestSelectPlaceholderShowsOnlyWhileNothingIsSelected(t *testing.T) {
+	h, _, sh := selectFixture(t,
+		widget.WithOptions(selectItems("alpha", "beta")),
+		widget.WithSelectPlaceholder[string]("empty…"))
+	h.wantContains("empty…")
+
+	// Commit a real choice; the placeholder must give way to it.
+	h.inject(key(tui.KeyEnter), key(tui.KeyDown), key(tui.KeyEnter))
+	h.barrier(sh)
+	h.wantNotContains("empty…")
+	h.wantContains("beta")
+}
+
+// THE AFFORDANCE CAN BE WITHHELD, for a host that already marks the focused
+// row itself and does not want the same thing said twice in two places.
+func TestSelectAffordanceIsDrawnByDefaultAndCanBeWithheld(t *testing.T) {
+	h, _, _ := selectFixture(t, widget.WithOptions(selectItems("alpha")))
+	h.wantContains("▾")
+
+	h2, _, _ := selectFixture(t,
+		widget.WithOptions(selectItems("alpha")),
+		widget.WithAffordance[string](false))
+	h2.wantNotContains("▾")
+}
+
+// j AND k MOVE THE HIGHLIGHT on a select that is not filtering.
+func TestSelectVimMotionWhenNotFiltering(t *testing.T) {
+	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta", "gamma")))
+	h.inject(key(tui.KeyEnter), key('j'), key('j'), key(tui.KeyEnter))
+	h.barrier(sh)
+
+	got, ok := sel.Value()
+	if !ok || got != "GAMMA" {
+		t.Fatalf("j j Enter committed %q (ok=%v), want GAMMA", got, ok)
+	}
+}
+
+// AND ON A FILTERING SELECT THEY ARE TEXT, because j and k are letters the
+// operator most needs to type: "jetbrains", "sqlite".
+func TestSelectFilteringKeepsJAndKAsText(t *testing.T) {
+	h, _, sh := selectFixture(t,
+		widget.WithOptions(selectItems("jetbrains", "kotlin", "alpha")),
+		widget.WithFilter[string](true))
+	h.inject(key(tui.KeyEnter), key('j'))
+	h.barrier(sh)
+
+	// The query narrowed to the one row beginning with j; a j that had moved
+	// the highlight instead would have left every row on screen.
+	h.wantContains("jetbrains")
+	h.wantNotContains("kotlin")
+}
+
+// A FOCUSED SELECT LOOKS FOCUSED. Closed, it is one row of text; without a
+// focus look it is the same row whether the keyboard is in it or not, so an
+// operator tabbing through a form could not tell they had reached it.
+func TestSelectFieldIsMarkedWhileFocused(t *testing.T) {
+	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha")))
+	// The fixture Tabs onto the Select, so it holds the keyboard here.
+	if cellAttrs(h, 0, 0).Mask&tui.AttrReverse == 0 {
+		t.Error("a focused select's field is not marked")
+	}
+
+	h.inject(tab()) // move to the sibling text input
+	h.barrier(sh)
+	if cellAttrs(h, 0, 0).Mask&tui.AttrReverse != 0 {
+		t.Error("the select is still marked after the keyboard left it")
+	}
+}
