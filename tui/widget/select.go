@@ -107,8 +107,6 @@ type Select[T any] struct {
 	armed bool
 	popup *selectPopup[T]
 
-	// placement decides where the open option list sits. See SelectPlacement.
-	placement SelectPlacement
 	// affordance draws the ▾/▴ triangle at the field's right edge. Some hosts
 	// mark the focused row themselves and do not want a second indicator.
 	affordance bool
@@ -182,24 +180,21 @@ func WithFilter[T any](enabled bool) SelectOption[T] {
 	return func(s *Select[T]) { s.filterOn = enabled }
 }
 
-// SelectPlacement says where the open option list is put.
-type SelectPlacement uint8
-
-const (
-	// SelectPlacementAnchored puts the list directly beneath the field and
-	// aligned to its LEFT edge, flipping above when there is no room below.
-	// It is the default, because a dropdown that is not attached to the
-	// control it belongs to makes the reader find the relationship.
-	SelectPlacementAnchored SelectPlacement = iota
-	// SelectPlacementCentered puts the list in the middle of the overlay
-	// area, which is what this widget did before placement was a choice.
-	SelectPlacementCentered
-)
-
-// WithPopupPlacement chooses where the open option list sits.
-func WithPopupPlacement[T any](p SelectPlacement) SelectOption[T] {
-	return func(s *Select[T]) { s.placement = p }
-}
+// THE OPEN LIST IS CENTRED, and anchoring it under its field is NOT done.
+//
+// An anchored placement shipped in v0.5.26 and did not work: it resolved the
+// owner's position with Context.ResolveAnchor, which is CALLER-LOCAL, so the
+// answer was the field's position relative to itself and every dropdown opened
+// at the screen's top-left corner. Two cells passed over it, because both put
+// their field at the top of the screen where the corner is indistinguishable
+// from "below the field".
+//
+// Doing it properly means the route menus already take: build an AnchorSpec and
+// hand the layer to OverlayHost.OpenAnchored, which resolves the anchor against
+// the tree and places the layer itself. selectPopup is a FULL-AREA layer today
+// and its outside-click dismissal depends on that, so the change is a rework of
+// the open state rather than a different call -- which is why it is not being
+// done in the same breath as removing the broken version.
 
 // WithAffordance draws — or withholds — the ▾/▴ triangle at the field's right
 // edge. Default: drawn.
@@ -537,49 +532,9 @@ func (p *selectPopup[T]) Layout(c tui.Constraints) tui.Size {
 		ph++
 	}
 	ph = min(ph, max(h-2, 3))
-	p.panel = p.place(w, h, pw, ph)
+	p.panel = tui.Rect{X: max((w-pw)/2, 0), Y: max((h-ph)/2, 0), W: pw, H: ph}
 	p.ensureVisible()
 	return c.Constrain(tui.Size{W: w, H: h})
-}
-
-// place decides where the panel sits inside the full-area overlay.
-//
-// ANCHORED IS THE DEFAULT: directly beneath the field and aligned to its LEFT
-// edge, which is where a dropdown belongs -- a list floating in the middle of
-// the screen makes the reader work out which control it came from, and on a
-// form of several selects that is a real question rather than a rhetorical
-// one.
-//
-// It FLIPS ABOVE the field when there is not room below, and slides left when
-// the panel would overhang the right edge, because a list that runs off the
-// screen has hidden the options it exists to show. Falls back to centred when
-// the owner's rect cannot be resolved -- it has no rect before its first
-// layout, and a guess would be worse than the old behaviour.
-func (p *selectPopup[T]) place(w, h, pw, ph int) tui.Rect {
-	centered := tui.Rect{X: max((w-pw)/2, 0), Y: max((h-ph)/2, 0), W: pw, H: ph}
-	if p.owner.placement != SelectPlacementAnchored {
-		return centered
-	}
-	ctx := p.owner.Context()
-	if ctx == nil {
-		return centered
-	}
-	field, ok := ctx.ResolveAnchor(ctx.NodeAnchor())
-	if !ok {
-		return centered
-	}
-	x := min(max(field.X, 0), max(w-pw, 0))
-	y := field.Y + field.H
-	if y+ph > h {
-		// No room below: sit above the field instead, and only fall back to
-		// clamping when it does not fit on either side.
-		if above := field.Y - ph; above >= 0 {
-			y = above
-		} else {
-			y = max(h-ph, 0)
-		}
-	}
-	return tui.Rect{X: x, Y: y, W: pw, H: ph}
 }
 
 // HandleEvent implements the open-state contract: filter typing, cursor
