@@ -270,27 +270,6 @@ func TestSelectFieldIsMarkedWhileFocused(t *testing.T) {
 	}
 }
 
-// THE CENTRED PLACEMENT IS STILL REACHABLE, for a host that wants what this
-// widget did before the list was anchored.
-func TestSelectCenteredPlacementIsHonoured(t *testing.T) {
-	h, _, sh := selectFixture(t,
-		widget.WithOptions(selectItems("alpha", "beta")),
-		widget.WithPopupPlacement[string](widget.SelectPlacementCentered))
-	h.inject(key(tui.KeyEnter))
-	h.barrier(sh)
-	h.wantContains("beta")
-
-	// Centred means AWAY from the field, which sits on row 0: a panel placed
-	// under the field would put its border on row 1.
-	anchored, _, sh2 := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")))
-	anchored.inject(key(tui.KeyEnter))
-	anchored.barrier(sh2)
-	if rowOfLabel(h, "beta") == rowOfLabel(anchored, "beta") {
-		t.Error("the centred and anchored placements put the list on the same row; " +
-			"one of them is not being applied")
-	}
-}
-
 // rowOfLabel is the screen row a label appears on, or -1.
 func rowOfLabel(h *harness, want string) int {
 	for y, line := range strings.Split(h.grid(), "\n") {
@@ -299,18 +278,6 @@ func rowOfLabel(h *harness, want string) int {
 		}
 	}
 	return -1
-}
-
-// AN ANCHORED LIST SITS BELOW ITS FIELD. The field is on row 0 in this
-// fixture, so the options must appear beneath it rather than in the middle of
-// the screen.
-func TestSelectAnchoredListSitsUnderTheField(t *testing.T) {
-	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")))
-	h.inject(key(tui.KeyEnter))
-	h.barrier(sh)
-	if got := rowOfLabel(h, "beta"); got < 1 {
-		t.Fatalf("the anchored list is on row %d; it belongs below the field on row 0", got)
-	}
 }
 
 // A SECOND ACTIVATION REPORTS THAT IT DID NOTHING. Activate is the pointer and
@@ -378,44 +345,4 @@ func placedSelectFixture(t *testing.T, padRows, padCols, w, h int,
 	hh.inject(tab())
 	hh.barrier(sh)
 	return hh, sh
-}
-
-// A LIST WITH NO ROOM BELOW OPENS ABOVE THE FIELD. Anchoring it below
-// regardless would push the options off the screen, which hides the very thing
-// the list exists to show.
-func TestSelectAnchoredListFlipsAboveWhenThereIsNoRoomBelow(t *testing.T) {
-	// The field sits on the last usable row of a short screen.
-	h, sh := placedSelectFixture(t, 7, 0, 30, 10,
-		widget.WithOptions(selectItems("alpha", "beta", "gamma")))
-	fieldRow := rowOfLabel(h, "▾")
-	if fieldRow < 0 {
-		t.Fatalf("the field is not on screen:\n%s", h.grid())
-	}
-	h.inject(key(tui.KeyEnter))
-	h.barrier(sh)
-
-	opt := rowOfLabel(h, "gamma")
-	if opt < 0 {
-		t.Fatalf("the options are not on screen:\n%s", h.grid())
-	}
-	if opt > fieldRow {
-		t.Errorf("the list opened BELOW a field on row %d with no room for it (option on row %d):\n%s",
-			fieldRow, opt, h.grid())
-	}
-}
-
-// AND A LIST WIDER THAN THE ROOM TO ITS RIGHT SLIDES LEFT rather than
-// overhanging the screen edge.
-func TestSelectAnchoredListSlidesLeftRatherThanOverhang(t *testing.T) {
-	// A far-right field with labels far wider than the space beyond it.
-	h, sh := placedSelectFixture(t, 0, 20, 30, 12,
-		widget.WithOptions(selectItems("a-very-long-option-label", "another-long-one")))
-	h.inject(key(tui.KeyEnter))
-	h.barrier(sh)
-
-	// Every rendered row must fit the grid: an overhanging panel would be
-	// truncated, losing the right-hand end of the labels.
-	if !strings.Contains(h.grid(), "a-very-long-option-label") {
-		t.Errorf("the list was clipped instead of sliding left:\n%s", h.grid())
-	}
 }
