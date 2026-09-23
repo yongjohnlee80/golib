@@ -285,17 +285,27 @@ func rowOfLabel(h *harness, want string) int {
 // open list would tell the runtime a gesture had an effect it did not have.
 func TestSelectActivateIsNotRepeatable(t *testing.T) {
 	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha")))
-	if !sel.Activate(tui.OriginProgrammatic) {
+
+	// Activate and SetArmed mutate loop-owned state — both reach MarkDirty,
+	// which writes the dirty flag the running loop reads in maybeFrame. Called
+	// straight from the test goroutine they race the loop, and the detector
+	// catches it. onLoop is the sanctioned way for a test to touch this state.
+	var first, second bool
+	h.onLoop(func() { first = sel.Activate(tui.OriginProgrammatic) })
+	if !first {
 		t.Fatal("the first activation did not open the list")
 	}
 	h.barrier(sh)
-	if sel.Activate(tui.OriginProgrammatic) {
+	h.onLoop(func() { second = sel.Activate(tui.OriginProgrammatic) })
+	if second {
 		t.Error("a second activation reported that it opened an already-open list")
 	}
 	// SetArmed is idempotent; the second call must not churn a redraw.
-	sel.SetArmed(true)
-	sel.SetArmed(true)
-	sel.SetArmed(false)
+	h.onLoop(func() {
+		sel.SetArmed(true)
+		sel.SetArmed(true)
+		sel.SetArmed(false)
+	})
 }
 
 // A CUSTOM FOCUS LOOK REPLACES THE REVERSED DEFAULT.
