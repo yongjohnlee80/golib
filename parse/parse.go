@@ -1,7 +1,7 @@
 // Package parse is the shared core for the library's text-format parsers.
 //
-// A format lives in its own file here — SQL in sql.go, and others as they are
-// added. What they share is this file: a position type, an error identity, a
+// A format lives in its own file here — SQL in sql.go, the declarative UI
+// schema in qml.go, and others as they are added. What they share is this file: a position type, an error identity, a
 // scanner, and a single required interface. What they do NOT share is a list of
 // features, because formats differ enormously in what they can offer and a
 // common interface wide enough for all of them would force every format to
