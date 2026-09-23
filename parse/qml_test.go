@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse"
 )
 
-// qml_test.go covers parse.QML — the ADR-0001 P1 deliverable.
+// qml_test.go covers parse.QML.
 //
 // The suite is organised around the claims the ADR makes, not around the
 // parser's functions, because the claims are what a reviewer and a future
@@ -142,16 +142,16 @@ func TestQMLClassifiesValuesLexically(t *testing.T) {
     }`)
 
 	want := map[string]struct {
-		kind parse.ValueKind
+		kind parse.SpecValueKind
 		raw  string
 	}{
-		"s":    {parse.ValueString, "text"},
-		"n":    {parse.ValueNumber, "12.5"},
-		"neg":  {parse.ValueNumber, "-3"},
-		"b":    {parse.ValueBool, "false"},
-		"tok":  {parse.ValueToken, "surface"},
-		"ref":  {parse.ValueRef, "someName"},
-		"call": {parse.ValueCall, "fmtSize"},
+		"s":    {parse.SpecValueString, "text"},
+		"n":    {parse.SpecValueNumber, "12.5"},
+		"neg":  {parse.SpecValueNumber, "-3"},
+		"b":    {parse.SpecValueBool, "false"},
+		"tok":  {parse.SpecValueToken, "surface"},
+		"ref":  {parse.SpecValueRef, "someName"},
+		"call": {parse.SpecValueCall, "fmtSize"},
 	}
 	for _, p := range tree.Root.Props {
 		w, ok := want[p.Name]
@@ -173,28 +173,28 @@ func TestQMLClassifiesValuesLexically(t *testing.T) {
 func TestQMLCallArgumentsAreValues(t *testing.T) {
 	tree := mustParse(t, `N { x: outer(1, inner(@tok), "s") }`)
 	v := tree.Root.Props[0].Value
-	if v.Kind != parse.ValueCall || len(v.Args) != 3 {
+	if v.Kind != parse.SpecValueCall || len(v.Args) != 3 {
 		t.Fatalf("value = %+v, want a call with 3 args", v)
 	}
-	if v.Args[1].Kind != parse.ValueCall || len(v.Args[1].Args) != 1 {
+	if v.Args[1].Kind != parse.SpecValueCall || len(v.Args[1].Args) != 1 {
 		t.Fatalf("nested arg = %+v, want a call with 1 arg", v.Args[1])
 	}
-	if v.Args[1].Args[0].Kind != parse.ValueToken {
+	if v.Args[1].Args[0].Kind != parse.SpecValueToken {
 		t.Errorf("nested call arg kind = %v, want token", v.Args[1].Args[0].Kind)
 	}
 }
 
-// TestQMLDoesNotJudgeValueMEANING is the parser's half of ADR-0001 D8, and it
-// is the cell that stops the rule being re-implemented in the wrong layer.
+// TestQMLDoesNotJudgeValueMEANING pins the layering, and it exists because the
+// tempting mistake is to reject a colour-shaped literal right here.
 //
-// The review that produced D8's correction turned on exactly this input: a
-// colour-shaped string is ORDINARY CONTENT for a text property, and only the
-// adapter registry knows which properties are token-only. A parser that
-// rejected it here would reject legitimate documents.
+// A colour-shaped string is ORDINARY CONTENT for a text property. Only the UI
+// adapter's registry knows which properties accept a style token and which
+// accept arbitrary text, so a parser that rejected "#1e1e2e" would refuse
+// legitimate documents to enforce a rule it cannot evaluate.
 func TestQMLDoesNotJudgeValueMEANING(t *testing.T) {
 	tree := mustParse(t, `Text { text: "#1e1e2e" foreground: @text }`)
 
-	var text, fg parse.Value
+	var text, fg parse.SpecValue
 	for _, p := range tree.Root.Props {
 		switch p.Name {
 		case "text":
@@ -203,11 +203,11 @@ func TestQMLDoesNotJudgeValueMEANING(t *testing.T) {
 			fg = p.Value
 		}
 	}
-	if text.Kind != parse.ValueString || text.Raw != "#1e1e2e" {
+	if text.Kind != parse.SpecValueString || text.Raw != "#1e1e2e" {
 		t.Errorf(`text = {%v %q}, want a plain string "#1e1e2e" — `+
 			`the parser must not second-guess a colour-shaped string`, text.Kind, text.Raw)
 	}
-	if fg.Kind != parse.ValueToken || fg.Raw != "text" {
+	if fg.Kind != parse.SpecValueToken || fg.Raw != "text" {
 		t.Errorf("foreground = {%v %q}, want token %q", fg.Kind, fg.Raw, "text")
 	}
 }
@@ -221,9 +221,9 @@ func TestQMLStringEscapes(t *testing.T) {
 
 // ---------------------------------------------------------------- errors
 
-// TestQMLIncompleteVsWrong is the P1 half of ADR-0001 D7. A reload path holds
-// the last good tree on Incomplete and surfaces the error otherwise, so the two
-// must be distinguishable — and every truncation below is a file caught
+// TestQMLIncompleteVsWrong separates "unfinished" from "wrong". A reload path
+// holds the last good tree on Incomplete and surfaces the error otherwise, so
+// the two must be distinguishable — and every truncation below is a file caught
 // mid-save, not a mistake.
 func TestQMLIncompleteVsWrong(t *testing.T) {
 	incomplete := []string{
@@ -261,6 +261,92 @@ func TestQMLIncompleteVsWrong(t *testing.T) {
 // TestQMLErrorsPointAtTheOpeningConstruct: an unclosed brace reported at EOF
 // sends the writer to the bottom of the file, which is never where the mistake
 // is. sql.go sets this precedent for block comments; QML follows it.
+// TestQMLUnterminatedCommentIsReported covers the case a "skip" function is
+// most likely to lose: a block comment that runs off the end of the file.
+//
+// Skipping is exactly where an unterminated construct can vanish, because the
+// skipper's job is to consume and say nothing. After a COMPLETE root node
+// nothing expects another token, so an error deferred to "whatever reads next"
+// is an error nobody reads — and the file parses as a success. That is the
+// worst outcome available here: a half-written file silently accepted.
+func TestQMLUnterminatedCommentIsReported(t *testing.T) {
+	cases := map[string]string{
+		"leading":  "/* never closed\nN { }",
+		"in body":  "N {\n  /* never closed\n  a: 1\n}",
+		"trailing": "N { }\n/* never closed",
+	}
+	for where, src := range cases {
+		t.Run(where, func(t *testing.T) {
+			_, err := parse.QML{}.Parse([]byte(src))
+			if err == nil {
+				t.Fatalf("Parse(%q) = nil error; an unterminated comment was accepted", src)
+			}
+			var se parse.SyntaxError
+			if !errors.As(err, &se) {
+				t.Fatalf("error %T, want SyntaxError", err)
+			}
+			if !se.Incomplete {
+				t.Error("Incomplete = false; a comment left open is a truncation, not a mistake")
+			}
+			if !errors.Is(err, parse.ErrUnterminated) {
+				t.Errorf("identity = %v, want ErrUnterminated", err)
+			}
+			if !strings.Contains(se.Want, "*/") {
+				t.Errorf("Want = %q, should name the missing */", se.Want)
+			}
+			// Reported at the OPENER, not at end of input.
+			if !strings.HasPrefix(src[se.Pos.Offset:], "/*") {
+				t.Errorf("Pos %d points at %q, want the /* that opened the comment",
+					se.Pos.Offset, src[se.Pos.Offset:])
+			}
+		})
+	}
+
+	// Control: a comment that IS closed, in each position, still parses — so
+	// the rule above is not "reject block comments".
+	for _, src := range []string{
+		"/* ok */ N { }",
+		"N { /* ok */ a: 1 }",
+		"N { }\n/* ok */",
+		"N { } // a line comment needs no terminator",
+	} {
+		if _, err := (parse.QML{}).Parse([]byte(src)); err != nil {
+			t.Errorf("Parse(%q) failed: %v", src, err)
+		}
+	}
+}
+
+// TestQMLDepthBoundsEveryRecursivePath: the budget exists to keep a malformed
+// or half-written file from exhausting the stack, and the stack does not care
+// which function recursed. Nodes were bounded first; a call argument list
+// recurses just as deeply through value().
+func TestQMLDepthBoundsEveryRecursivePath(t *testing.T) {
+	deepCall := "N { x: " + strings.Repeat("f(", 5000) + strings.Repeat(")", 5000) + " }"
+	_, err := parse.QML{}.Parse([]byte(deepCall))
+	if err == nil {
+		t.Fatal("5,000-deep call list parsed without error; value recursion is unbounded")
+	}
+	var se parse.SyntaxError
+	if !errors.As(err, &se) || !strings.Contains(se.Want, "nesting") {
+		t.Errorf("error = %v, want a nesting-limit SyntaxError", err)
+	}
+
+	// Nodes and calls share ONE budget. The pair below differs by a single
+	// enclosing NODE while the call nesting is identical, so the rejection can
+	// only come from node frames and call frames drawing on the same pool —
+	// which is the property, and is not visible from either kind alone.
+	shallow := parse.QML{MaxDepth: 4}
+	const fits = "A { B { x: f(g(1)) } }"       // 2 nodes + 2 calls = 4
+	const over = "A { B { C { x: f(g(1)) } } }" // 3 nodes + 2 calls = 5
+	if _, err := shallow.Parse([]byte(fits)); err != nil {
+		t.Errorf("Parse(%q) with MaxDepth=4 was rejected: %v", fits, err)
+	}
+	if _, err := shallow.Parse([]byte(over)); err == nil {
+		t.Errorf("Parse(%q) with MaxDepth=4 was accepted; one more node must "+
+			"cost the calls their budget", over)
+	}
+}
+
 func TestQMLErrorsPointAtTheOpeningConstruct(t *testing.T) {
 	src := "Column {\n  Button {\n    label: \"x\"\n"
 	se := syntaxErr(t, src)
