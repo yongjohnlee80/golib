@@ -15,9 +15,9 @@ import (
 // package cannot see that registry without importing the adapter — which would
 // invert the dependency and make one text format answerable to one UI toolkit.
 //
-// That boundary is why [Value] carries a Kind and a Position rather than a
+// That boundary is why [SpecValue] carries a Kind and a Position rather than a
 // resolved Go value: the registry validates and converts later, and reports
-// with the Position recorded here (D8). The one rule this costs us is worth
+// with the Position recorded here. The one rule this costs us is worth
 // stating plainly — the parser CANNOT reject `"#1e1e2e"`, because
 // `Text.text` may legitimately contain exactly that string and only the
 // registry knows the difference.
@@ -26,9 +26,9 @@ import (
 //
 //	Root     := Node
 //	Node     := TypeName '{' Body '}'
-//	Body     := ( Property | SpecHandler | Node )*
+//	Body     := ( Property | Handler | Node )*
 //	Property := Ident ':' Value
-//	SpecHandler  := 'on' Ident ':' Ident        // a handler NAME, never a body
+//	Handler  := 'on' Ident ':' Ident        // a handler NAME, never a body
 //	Value    := String | Number | Bool | Token | Ref | Call
 //	Token    := '@' Ident                   // a portable style token
 //	Ref      := Ident
@@ -39,9 +39,9 @@ import (
 // an ECMAScript runtime ends. Growing the grammar should take a specific screen
 // that needs it, not a general appetite for expressiveness.
 //
-// SpecHandler bodies are NAMES for the same reason: the parser emits data, never
-// behaviour, so one schema file is meaningful to any adapter that can resolve
-// the names (D2 rule 2).
+// Handler bodies are NAMES for the same reason: this package emits data, never
+// behaviour, so one schema file stays meaningful to any adapter that can
+// resolve the names against its own host functions.
 //
 // The zero value is usable.
 type QML struct {
@@ -114,7 +114,7 @@ func (k SpecValueKind) String() string {
 	}
 }
 
-// Value is one property value, classified but not interpreted.
+// SpecValue is one property value, classified but not interpreted.
 //
 // Pos is carried on every value because it is what a registry-level type error
 // reports with: the parser judged the syntax, the registry judges the meaning,
