@@ -115,9 +115,9 @@ Column {
 }
 
 func TestQMLPreservesDocumentOrder(t *testing.T) {
-	// D4a makes document order the application order and the handler run
-	// order. A map-backed implementation would pass every other test in this
-	// file and fail this one, which is why it exists.
+	// Document order is the order a consumer applies properties and runs
+	// handlers. A map-backed implementation would pass every other test in
+	// this file and fail this one, which is why it exists.
 	tree := mustParse(t, `Row { c: 1 a: 2 b: 3 }`)
 	var got []string
 	for _, p := range tree.Root.Props {
@@ -380,9 +380,9 @@ func TestQMLPositionsAreRuneColumns(t *testing.T) {
 }
 
 func TestQMLValuePositionsSurvive(t *testing.T) {
-	// D8 moves token-only enforcement to the registry, which reports using the
-	// Position the parser recorded. If Values lose their position, that error
-	// cannot point anywhere useful — so the position is part of P1's contract.
+	// Token-only enforcement belongs to the registry, which reports using the
+	// Position recorded here. If values lose their position that error cannot
+	// point anywhere useful, so carrying it is part of this parser's job.
 	tree := mustParse(t, "Column {\n  label: \"x\"\n  other: @tok\n}")
 	for _, p := range tree.Root.Props {
 		if p.Value.Pos.Line == 0 || p.Value.Pos.Column == 0 {
@@ -398,8 +398,8 @@ func TestQMLValuePositionsSurvive(t *testing.T) {
 }
 
 func TestQMLIDMustBeAStableIdentifier(t *testing.T) {
-	// The id is the reconciliation identity (D5a). One that came from a call
-	// could differ between reloads, and an identity that moves is not one.
+	// The id is the identity a reload matches on. One produced by a call could
+	// differ between reloads, and an identity that moves is not an identity.
 	for _, src := range []string{
 		`N { id: "quoted" }`,
 		`N { id: gen() }`,
@@ -445,9 +445,9 @@ func TestQMLDepthIsBounded(t *testing.T) {
 func TestQMLErrorIdentity(t *testing.T) {
 	// SyntaxError carries one of TWO identities depending on Incomplete
 	// (parse.go: "it selects which of the two identities this error carries").
-	// This is the D7 distinction expressed as error identity rather than as a
-	// bool, and it is the form a reload path should branch on: errors.Is, not
-	// a field read and not string matching.
+	// This is "unfinished" versus "wrong" expressed as error identity rather
+	// than as a bool, and it is the form a reload path should branch on:
+	// errors.Is, not a field read and not string matching.
 	_, incomplete := parse.QML{}.Parse([]byte(`Column {`))
 	if !errors.Is(incomplete, parse.ErrUnterminated) {
 		t.Errorf("truncated input: want ErrUnterminated, got %v", incomplete)
