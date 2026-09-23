@@ -3,6 +3,7 @@ package decl_test
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 
@@ -19,10 +20,11 @@ type recorder struct {
 	createErr  map[string]error
 	applyErr   map[string]error
 	resolveErr map[string]error
-	attachErr  error
 	destroyErr error
 
 	handlers map[string]func() error
+	consume  map[string][]string
+	emitters map[decl.NodeID]map[string]func() error
 }
 
 func newRecorder() *recorder {
@@ -31,23 +33,31 @@ func newRecorder() *recorder {
 		applyErr:   map[string]error{},
 		resolveErr: map[string]error{},
 		handlers:   map[string]func() error{},
+		consume:    map[string][]string{},
+		emitters:   map[decl.NodeID]map[string]func() error{},
 	}
 }
 
-func (r *recorder) Create(n decl.NodeID, typeName string, _ parse.Position) error {
-	r.trace = append(r.trace, fmt.Sprintf("create %d %s", n, typeName))
-	return r.createErr[typeName]
+// consume names the properties this fake claims at construction, per type.
+func (r *recorder) Create(c decl.Construction) ([]string, error) {
+	var sig []string
+	for s := range c.Emitters {
+		sig = append(sig, s)
+	}
+	sort.Strings(sig)
+	r.trace = append(r.trace, fmt.Sprintf("create %d %s children=%v signals=%v",
+		c.Node, c.Type, c.Children, sig))
+	if err := r.createErr[c.Type]; err != nil {
+		return nil, err
+	}
+	r.emitters[c.Node] = c.Emitters
+	return r.consume[c.Type], nil
 }
 
 func (r *recorder) Apply(a decl.Application) error {
 	r.trace = append(r.trace, fmt.Sprintf("apply %d %s=%s(%s) from-%s",
 		a.Node, a.Prop, a.Value.Kind, a.Value.Raw, a.Origin))
 	return r.applyErr[a.Prop]
-}
-
-func (r *recorder) Attach(parent, child decl.NodeID) error {
-	r.trace = append(r.trace, fmt.Sprintf("attach %d->%d", parent, child))
-	return r.attachErr
 }
 
 func (r *recorder) ResolveHandler(n decl.NodeID, signal, name string, _ parse.Position) (func() error, error) {
@@ -77,10 +87,12 @@ func mustSpec(t *testing.T, src string) parse.SpecTree {
 
 // ---------------------------------------------------------------- ordering
 
-// TestMountOrderIsReadableOffTheFile is the contract that makes a declarative
-// file mean anything: create, then properties in DOCUMENT order, then handlers,
-// then each child in turn. A map anywhere in the implementation breaks it, and
-// nothing else in this file would notice.
+// TestMountOrderIsReadableOffTheFile pins the whole build sequence.
+//
+// Construction is POST-ORDER: children are built before the parent, because a
+// constructor may REQUIRE them and offer no way to supply them later. Identity
+// is still allocated in schema order, so a diagnostic's node numbers read the
+// way the file does rather than backwards.
 func TestMountOrderIsReadableOffTheFile(t *testing.T) {
 	r := newRecorder()
 	tr := decl.New(r)
@@ -97,19 +109,129 @@ func TestMountOrderIsReadableOffTheFile(t *testing.T) {
 	}
 
 	want := []string{
-		"create 1 Column",
+		// Handlers resolve before the node is built: a widget may only accept
+		// its callback as a constructor option.
+		"resolve 1 ready->warm",
+		"create 2 Button children=[] signals=[]",
+		"apply 2 label=string(a) from-schema",
+		"create 3 Button children=[] signals=[]",
+		"apply 3 label=string(b) from-schema",
+		// The parent is built LAST, with its children in hand.
+		"create 1 Column children=[2 3] signals=[ready]",
 		"apply 1 spacing=number(2) from-schema",
 		"apply 1 title=string(hello) from-schema",
-		"resolve 1 ready->warm",
-		"create 2 Button",
-		"apply 2 label=string(a) from-schema",
-		"attach 1->2",
-		"create 3 Button",
-		"apply 3 label=string(b) from-schema",
-		"attach 1->3",
 	}
 	if strings.Join(r.trace, "\n") != strings.Join(want, "\n") {
 		t.Errorf("trace:\n%s\n\nwant:\n%s", strings.Join(r.trace, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestChildrenAreBuiltBeforeTheirParent is the reason construction is
+// post-order, stated as its own claim: a real container may take required
+// children positionally and expose no method to add them afterwards.
+func TestChildrenAreBuiltBeforeTheirParent(t *testing.T) {
+	r := newRecorder()
+	tr := decl.New(r)
+	if err := tr.Mount(mustSpec(t, `Split { Left { } Right { } }`)); err != nil {
+		t.Fatalf("Mount: %v", err)
+	}
+	var order []string
+	for _, line := range r.trace {
+		if strings.HasPrefix(line, "create ") {
+			order = append(order, strings.Fields(line)[2])
+		}
+	}
+	if strings.Join(order, ",") != "Left,Right,Split" {
+		t.Errorf("creation order = %v, want children before the parent", order)
+	}
+	// And the parent received them, rather than being expected to collect them.
+	for _, line := range r.trace {
+		if strings.HasPrefix(line, "create 1 Split") && !strings.Contains(line, "children=[2 3]") {
+			t.Errorf("the parent was built without its children: %q", line)
+		}
+	}
+}
+
+// TestConsumedPropertiesAreNotReApplied. A property claimed at construction is
+// NOT streamed again.
+//
+// The tempting shortcut is to re-apply everything and rely on setters being
+// idempotent. They are not, uniformly: some assign and invalidate
+// unconditionally, and some constructor-only properties have no setter at all.
+// So a replay is either a second visible effect or impossible, and the engine
+// has to respect what Create says it took.
+func TestConsumedPropertiesAreNotReApplied(t *testing.T) {
+	r := newRecorder()
+	r.consume["Split"] = []string{"orientation"}
+	tr := decl.New(r)
+	if err := tr.Mount(mustSpec(t, `Split { orientation: vertical gap: 2 }`)); err != nil {
+		t.Fatalf("Mount: %v", err)
+	}
+	for _, line := range r.trace {
+		if strings.Contains(line, "orientation=") {
+			t.Errorf("a constructor-consumed property was applied again: %q", line)
+		}
+	}
+	var sawGap bool
+	for _, line := range r.trace {
+		if strings.Contains(line, "gap=") {
+			sawGap = true
+		}
+	}
+	if !sawGap {
+		t.Error("an unconsumed property was not applied")
+	}
+}
+
+// TestOneEmitterPerSignalNotPerHandler. Three handlers on one signal share ONE
+// emitter, so a single widget event runs the list once. Wiring per handler
+// would run it three times, and each pass would look correct in isolation.
+func TestOneEmitterPerSignalNotPerHandler(t *testing.T) {
+	r := newRecorder()
+	var runs int
+	for _, n := range []string{"a", "b", "c"} {
+		r.handlers[n] = func() error { runs++; return nil }
+	}
+	tr := decl.New(r)
+	if err := tr.Mount(mustSpec(t, `B { onGo: a onGo: b onGo: c onStop: a }`)); err != nil {
+		t.Fatalf("Mount: %v", err)
+	}
+	em := r.emitters[tr.Root()]
+	if len(em) != 2 {
+		t.Fatalf("emitters = %d (%v), want one per distinct signal: go, stop", len(em), em)
+	}
+	if err := em["go"](); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if runs != 3 {
+		t.Errorf("one event ran %d handlers, want 3 — exactly once each", runs)
+	}
+}
+
+// TestEmitterRunsUnderTheEngineRules: the emitter handed to the adapter is not
+// a shortcut around the contract. It is the contract's own entry point, so a
+// cycle through it is still refused.
+func TestEmitterRunsUnderTheEngineRules(t *testing.T) {
+	r := newRecorder()
+	tr := decl.New(r)
+	var inner error
+	var passes int
+	r.handlers["again"] = func() error {
+		passes++
+		inner = r.emitters[tr.Root()]["go"]()
+		return nil
+	}
+	if err := tr.Mount(mustSpec(t, `B { onGo: again }`)); err != nil {
+		t.Fatalf("Mount: %v", err)
+	}
+	if err := r.emitters[tr.Root()]["go"](); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if passes != 1 {
+		t.Errorf("handler ran %d times through the adapter's emitter; the rules were bypassed", passes)
+	}
+	if !errors.Is(inner, decl.ErrSignalCycle) {
+		t.Errorf("re-entry through the emitter = %v, want ErrSignalCycle", inner)
 	}
 }
 
@@ -465,4 +587,166 @@ func TestNilAdapterFailsAtConstruction(t *testing.T) {
 		}
 	}()
 	decl.New(nil)
+}
+
+// ---------------------------------------------------- what the review found
+
+// hostileAdapter re-enters the Tree from a chosen callback. It exists because
+// "can a callback corrupt the tree" has to be asked at EVERY point the adapter
+// gets control, not at one convenient one: the first version of this engine
+// survived a Destroy from the first Create — mounting simply continued and
+// repopulated the map — and fell over when the same call came from a later
+// callback. A single-point test would have reported that as safe.
+type hostileAdapter struct {
+	*recorder
+	tr *decl.Tree
+	at string // "resolve" | "create" | "apply" | "destroy"
+	do func()
+	// fired keeps the re-entry to once, so the test observes one intrusion
+	// rather than a loop.
+	fired bool
+}
+
+func (h *hostileAdapter) maybe(point string) {
+	if h.at == point && !h.fired {
+		h.fired = true
+		h.do()
+	}
+}
+
+func (h *hostileAdapter) ResolveHandler(n decl.NodeID, sig, name string, p parse.Position) (func() error, error) {
+	h.maybe("resolve")
+	return h.recorder.ResolveHandler(n, sig, name, p)
+}
+func (h *hostileAdapter) Create(c decl.Construction) ([]string, error) {
+	h.maybe("create")
+	return h.recorder.Create(c)
+}
+func (h *hostileAdapter) Apply(a decl.Application) error {
+	h.maybe("apply")
+	return h.recorder.Apply(a)
+}
+func (h *hostileAdapter) Destroy(n decl.NodeID) error {
+	h.maybe("destroy")
+	return h.recorder.Destroy(n)
+}
+
+// TestTheTreeCannotBeCorruptedFromAnyAdapterCallback sweeps every point the
+// adapter gets control and every re-entrant call it could make. The assertion
+// is an INVARIANT rather than a specific error: whatever the engine decides to
+// do, it must not end up claiming a root it does not have, or holding nodes
+// under no root.
+func TestTheTreeCannotBeCorruptedFromAnyAdapterCallback(t *testing.T) {
+	points := []string{"resolve", "create", "apply", "destroy"}
+	intrusions := []string{"destroy", "mount", "setprop"}
+
+	for _, point := range points {
+		for _, intrusion := range intrusions {
+			t.Run(point+"/"+intrusion, func(t *testing.T) {
+				h := &hostileAdapter{recorder: newRecorder(), at: point}
+				tr := decl.New(h)
+				h.tr = tr
+				h.do = func() {
+					switch intrusion {
+					case "destroy":
+						_ = tr.Destroy()
+					case "mount":
+						_ = tr.Mount(mustSpec(t, `Intruder { }`))
+					case "setprop":
+						_ = tr.SetProp(1, "x", parse.SpecValue{Kind: parse.SpecValueBool, Raw: "true"})
+					}
+				}
+
+				// Must not panic, whatever happens.
+				err := tr.Mount(mustSpec(t, `A { label: "x" onGo: h B { label: "y" } }`))
+				_ = err
+
+				if tr.Root() != decl.NoNode && tr.Len() == 0 {
+					t.Errorf("tree claims root %d with no nodes — a torn-down tree still reporting a root",
+						tr.Root())
+				}
+				if tr.Root() == decl.NoNode && tr.Len() > 0 {
+					// Legal only while the failure is remembered, so the next
+					// Mount is refused rather than grafting onto the wreckage.
+					if err2 := tr.Mount(mustSpec(t, `Second { }`)); err2 == nil {
+						t.Error("a second Mount was accepted onto a partial tree; the graphs would combine")
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestRemountIsRefusedAfterAFailedMount. The first guard keyed on "is there a
+// root", and a failed mount never sets one — so the check was blind to exactly
+// the state that needs it, and a second Mount grafted a second graph onto the
+// wreckage of the first.
+func TestRemountIsRefusedAfterAFailedMount(t *testing.T) {
+	r := newRecorder()
+	r.applyErr["bad"] = errors.New("no such property")
+	tr := decl.New(r)
+
+	if err := tr.Mount(mustSpec(t, `A { bad: 1 }`)); err == nil {
+		t.Fatal("the fixture mount should have failed")
+	}
+	before := tr.Len()
+
+	err := tr.Mount(mustSpec(t, `Z { }`))
+	if !errors.Is(err, decl.ErrPhase) {
+		t.Fatalf("second Mount = %v, want ErrPhase; two graphs must not combine", err)
+	}
+	if tr.Len() != before {
+		t.Errorf("the refused mount still added nodes: %d -> %d", before, tr.Len())
+	}
+
+	// Destroy is the documented way out, and it must work on a partial tree.
+	if err := tr.Destroy(); err != nil {
+		t.Fatalf("Destroy after a failed mount: %v", err)
+	}
+	if err := tr.Mount(mustSpec(t, `Z { }`)); err != nil {
+		t.Errorf("Mount after Destroy = %v, want success", err)
+	}
+}
+
+// TestCycleErrorNamesBothEmissions. A cycle involves two points in the file:
+// where the signal was already running and where it tried to run again.
+// Reporting one of them leaves the reader to find the other, which on a
+// two-node cycle is the harder half.
+func TestCycleErrorNamesBothEmissions(t *testing.T) {
+	r := newRecorder()
+	tr := decl.New(r)
+
+	var ids []decl.NodeID
+	var inner error
+	// A -> B -> A: a genuine two-node cycle, not self re-entry.
+	r.handlers["toB"] = func() error { return tr.Emit(ids[1], "go") }
+	r.handlers["toA"] = func() error {
+		inner = tr.Emit(ids[0], "go")
+		return nil
+	}
+	if err := tr.Mount(mustSpec(t, "A {\n  onGo: toB\n  B {\n    onGo: toA\n  }\n}")); err != nil {
+		t.Fatalf("Mount: %v", err)
+	}
+	ids = []decl.NodeID{tr.Root(), tr.Children(tr.Root())[0]}
+
+	if err := tr.Emit(ids[0], "go"); err != nil {
+		t.Fatalf("outer Emit: %v", err)
+	}
+	if !errors.Is(inner, decl.ErrSignalCycle) {
+		t.Fatalf("A->B->A gave %v, want ErrSignalCycle", inner)
+	}
+
+	msg := inner.Error()
+	var se decl.SchemaError
+	if !errors.As(inner, &se) {
+		t.Fatalf("error %T, want decl.SchemaError", inner)
+	}
+	// Both ends must be identifiable: the line the emission started at and the
+	// line it re-entered from.
+	if !strings.Contains(msg, "started at") || !strings.Contains(msg, "re-entered from") {
+		t.Errorf("cycle error names only one end: %q", msg)
+	}
+	if se.Pos.Line == 0 {
+		t.Error("the cycle error carries no position at all")
+	}
 }
