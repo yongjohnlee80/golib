@@ -56,6 +56,52 @@ type Application struct {
 	Origin Provenance
 }
 
+// Construction is everything an adapter needs to build one node, handed over in
+// a single immutable value.
+//
+// It exists because real constructors are not uniform. Some widgets take
+// required arguments that have no setter at all — an orientation, a pair of
+// children — so a seam that created a node first and configured it afterwards
+// could not build them in any order. Everything a constructor might need is
+// therefore present before Create is called.
+type Construction struct {
+	// Node is the identity the engine has already assigned.
+	Node NodeID
+	// Type is the schema type name to build.
+	Type string
+	// Pos is where the schema declared this node.
+	Pos parse.Position
+
+	// Props are the declared properties in DOCUMENT ORDER. An adapter may
+	// consume any of them at construction and must say which, by returning
+	// their names from Create.
+	Props []parse.SpecProp
+
+	// Children are this node's children, ALREADY BUILT, in declaration order.
+	// A constructor that requires its children has them here.
+	Children []NodeID
+
+	// Emitters is one function per DISTINCT signal the schema bound on this
+	// node, keyed by signal name.
+	//
+	// One per signal, not one per handler: a node with three handlers on the
+	// same signal has ONE entry, and calling it runs all three under the
+	// engine's rules. Wiring per handler would make a single widget event run
+	// the list once per wire.
+	//
+	// The adapter wires these into the widget — usually at construction, since
+	// that is the only chance some widgets give. Calling an emitter runs the
+	// schema's handlers in order, with the cycle, depth and error rules
+	// applied; the adapter must never call a resolved handler itself, because
+	// doing so bypasses every one of those rules.
+	//
+	// An emitter returns the error that stopped the emission, if any. Toolkit
+	// callbacks are usually shaped func() with nowhere to put an error, so it
+	// is the ADAPTER's job to route it somewhere a person will see. Dropping it
+	// silently is the one handling this design will not defend.
+	Emitters map[string]func() error
+}
+
 // Adapter is the toolkit seam. Everything in its signatures is either a
 // standard type, a parse type, or a decl type — never a widget, a surface or a
 // window — which is what allows a second toolkit to implement it without the
@@ -65,24 +111,27 @@ type Application struct {
 // unresolvable handler as an error. It must not panic on schema content: a
 // schema is input, and input is not a programming mistake.
 type Adapter interface {
-	// Create instantiates the named type. The engine has already assigned the
-	// node its ID and will use that ID in every later call about it.
-	Create(node NodeID, typeName string, pos parse.Position) error
-
-	// Apply sets one property. The adapter owns the setter and every
-	// consequence of calling it.
-	Apply(app Application) error
-
-	// Attach makes child a child of parent, in the order Attach is called.
-	Attach(parent, child NodeID) error
-
 	// ResolveHandler turns a handler NAME from the schema into a function.
 	// Resolution belongs to the adapter because the names refer to the host
-	// program, which the engine cannot see.
+	// program, which the engine cannot see. It is called for every handler
+	// before the node that owns them is constructed.
 	ResolveHandler(node NodeID, signal, name string, pos parse.Position) (func() error, error)
 
-	// Destroy releases a node. The engine calls it in reverse mount order so a
-	// child is always released before its parent.
+	// Create builds the node described by c and returns the names of the
+	// properties it CONSUMED during construction.
+	//
+	// Reporting what was consumed is not bookkeeping. Some properties have no
+	// setter at all, and some setters are not idempotent — one assigns and
+	// invalidates unconditionally — so re-applying a constructor-consumed value
+	// is either impossible or a second, visible effect. The engine applies only
+	// what Create did not claim.
+	Create(c Construction) (consumed []string, err error)
+
+	// Apply sets one property after construction. The adapter owns the setter
+	// and every consequence of calling it.
+	Apply(app Application) error
+
+	// Destroy releases a node. The engine calls it children-before-parents.
 	Destroy(node NodeID) error
 }
 
@@ -119,7 +168,7 @@ var (
 //	if errors.As(err, &se) { … }   // yes
 type SchemaError struct {
 	// Op is the operation that failed, in the words of this API: "mount",
-	// "apply", "emit", "bind", "set".
+	// "create", "apply", "bind", "emit", "set" or "destroy".
 	Op string
 	// Node is the node concerned, or NoNode when the failure is not about one.
 	Node NodeID

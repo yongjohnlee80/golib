@@ -1,7 +1,9 @@
 package decl
 
 import (
+	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -19,6 +21,7 @@ const (
 	phaseIdle phase = iota
 	phaseMounting
 	phaseEmitting
+	phaseDestroying
 )
 
 func (p phase) String() string {
@@ -27,6 +30,8 @@ func (p phase) String() string {
 		return "mounting"
 	case phaseEmitting:
 		return "emitting a signal"
+	case phaseDestroying:
+		return "tearing down"
 	default:
 		return "idle"
 	}
@@ -43,15 +48,17 @@ type Tree struct {
 
 	nextID NodeID
 	nodes  map[NodeID]*node
-	// mounted is mount order. Teardown walks it backwards so a child is always
-	// destroyed before its parent.
-	mounted []NodeID
-	root    NodeID
+	root   NodeID
 
 	ph phase
+	// failed records that a Mount did not complete. A tree in that state holds
+	// a partial graph, so the next Mount must be refused rather than allowed to
+	// graft a second graph onto the wreckage — which is exactly what happens
+	// when the guard keys on "is there a root" and a failed mount never set one.
+	failed bool
 	// active is the stack of signals currently running, innermost last. It is
 	// the cycle detector: a pair already on the stack cannot be entered again.
-	active []signalKey
+	active []activeEmission
 }
 
 type node struct {
@@ -64,6 +71,9 @@ type node struct {
 	pos      parse.Position
 	parent   NodeID
 	children []NodeID
+	// built records that the adapter's Create returned successfully. A node
+	// that never finished construction is not offered to Destroy.
+	built bool
 	// handlers are per signal, in the order the schema declared them, which is
 	// the order they run.
 	handlers map[string][]boundHandler
@@ -78,6 +88,15 @@ type boundHandler struct {
 type signalKey struct {
 	node   NodeID
 	signal string
+}
+
+// activeEmission is one live emission on the stack. It carries the position the
+// emission STARTED at, so a cycle can name both ends: where the signal first
+// ran, and where it tried to run again. One position names only the collision
+// and leaves the reader to find the other half themselves.
+type activeEmission struct {
+	key signalKey
+	pos parse.Position
 }
 
 // Option configures a [Tree].
@@ -174,12 +193,17 @@ func (t *Tree) Mount(spec parse.SpecTree) error {
 	if t.root != NoNode {
 		return SchemaError{Op: "mount", Err: fmt.Errorf("%w: this tree is already mounted", ErrPhase)}
 	}
+	if t.failed {
+		return SchemaError{Op: "mount", Err: fmt.Errorf(
+			"%w: the previous mount failed and left a partial tree; call Destroy first", ErrPhase)}
+	}
 
 	t.ph = phaseMounting
 	defer func() { t.ph = phaseIdle }()
 
 	id, err := t.mountNode(spec.Root, NoNode)
 	if err != nil {
+		t.failed = true
 		return err
 	}
 	t.root = id
@@ -187,6 +211,10 @@ func (t *Tree) Mount(spec parse.SpecTree) error {
 }
 
 func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
+	// The ID is allocated BEFORE the children are built, so identities still
+	// read in schema order even though construction runs bottom-up. A reader
+	// comparing a diagnostic against the file should not have to think in
+	// reverse.
 	t.nextID++
 	id := t.nextID
 
@@ -199,21 +227,9 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 		handlers: make(map[string][]boundHandler),
 	}
 	t.nodes[id] = n
-	t.mounted = append(t.mounted, id)
 
-	if err := t.adapter.Create(id, sn.Type, sn.Pos); err != nil {
-		return id, SchemaError{Op: "create", Node: id, Detail: sn.Type, Pos: sn.Pos,
-			Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
-	}
-
-	for _, p := range sn.Props {
-		app := Application{Node: id, Prop: p.Name, Value: p.Value, Origin: FromSchema}
-		if err := t.adapter.Apply(app); err != nil {
-			return id, SchemaError{Op: "apply", Node: id, Detail: p.Name, Pos: p.Value.Pos,
-				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
-		}
-	}
-
+	// Handlers are resolved before construction, because a widget may only
+	// accept its callback as a constructor option and never expose a setter.
 	for _, h := range sn.Handlers {
 		fn, err := t.adapter.ResolveHandler(id, h.Signal, h.Name, h.Pos)
 		if err != nil {
@@ -227,14 +243,60 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 		n.handlers[h.Signal] = append(n.handlers[h.Signal], boundHandler{name: h.Name, pos: h.Pos, fn: fn})
 	}
 
+	// CHILDREN FIRST. A constructor that requires its children — a split needs
+	// two, and has no method to supply them later — can only be called once
+	// they exist.
 	for _, child := range sn.Children {
 		cid, err := t.mountNode(child, id)
 		if err != nil {
 			return id, err
 		}
 		n.children = append(n.children, cid)
-		if err := t.adapter.Attach(id, cid); err != nil {
-			return id, SchemaError{Op: "attach", Node: cid, Pos: child.Pos,
+	}
+
+	// One emitter per DISTINCT signal. Three handlers on one signal share a
+	// single entry, so one widget event runs the list once.
+	var emitters map[string]func() error
+	if len(n.handlers) > 0 {
+		emitters = make(map[string]func() error, len(n.handlers))
+		for signal := range n.handlers {
+			emitters[signal] = func() error { return t.Emit(id, signal) }
+		}
+	}
+
+	consumed, err := t.adapter.Create(Construction{
+		Node:     id,
+		Type:     sn.Type,
+		Pos:      sn.Pos,
+		Props:    sn.Props,
+		Children: n.children,
+		Emitters: emitters,
+	})
+	if err != nil {
+		return id, SchemaError{Op: "create", Node: id, Detail: sn.Type, Pos: sn.Pos,
+			Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
+	}
+	// Only now is the node considered built, which is what makes teardown of a
+	// partial tree correct: a node whose Create never returned is not offered
+	// to Destroy.
+	n.built = true
+
+	claimed := make(map[string]bool, len(consumed))
+	for _, name := range consumed {
+		claimed[name] = true
+	}
+
+	// Whatever construction did not claim is applied in document order. The
+	// engine does not re-apply a consumed property: some have no setter, and
+	// some setters assign and invalidate unconditionally, so a replay is either
+	// impossible or a second visible effect rather than a free no-op.
+	for _, p := range sn.Props {
+		if claimed[p.Name] {
+			continue
+		}
+		app := Application{Node: id, Prop: p.Name, Value: p.Value, Origin: FromSchema}
+		if err := t.adapter.Apply(app); err != nil {
+			return id, SchemaError{Op: "apply", Node: id, Detail: p.Name, Pos: p.Value.Pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
 		}
 	}
@@ -249,6 +311,10 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 // ordinary case this whole design exists to serve, and refusing it would make
 // the emission contract useless.
 func (t *Tree) SetProp(id NodeID, prop string, v parse.SpecValue) error {
+	if t.ph == phaseMounting || t.ph == phaseDestroying {
+		return SchemaError{Op: "set", Node: id, Detail: prop,
+			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
+	}
 	if _, ok := t.nodes[id]; !ok {
 		return SchemaError{Op: "set", Node: id, Detail: prop, Err: ErrNoSuchNode}
 	}
@@ -286,16 +352,21 @@ func (t *Tree) SetProp(id NodeID, prop string, v parse.SpecValue) error {
 // Emitting a signal nothing is bound to is a no-op and not an error: a schema
 // that simply does not care about a widget's signal is ordinary.
 func (t *Tree) Emit(id NodeID, signal string) error {
+	if t.ph == phaseDestroying {
+		return SchemaError{Op: "emit", Node: id, Detail: signal,
+			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
+	}
 	n, ok := t.nodes[id]
 	if !ok {
 		return SchemaError{Op: "emit", Node: id, Detail: signal, Err: ErrNoSuchNode}
 	}
 
 	key := signalKey{node: id, signal: signal}
-	for _, k := range t.active {
-		if k == key {
+	for _, live := range t.active {
+		if live.key == key {
 			return SchemaError{Op: "emit", Node: id, Detail: signal, Pos: n.pos,
-				Err: fmt.Errorf("%w: %s on node %d is already running", ErrSignalCycle, signal, id)}
+				Err: fmt.Errorf("%w: %s on node %d is already running, started at %s; "+
+					"re-entered from %s", ErrSignalCycle, signal, id, live.pos, n.pos)}
 		}
 	}
 	if len(t.active) >= t.maxDepth {
@@ -310,7 +381,7 @@ func (t *Tree) Emit(id NodeID, signal string) error {
 
 	prev := t.ph
 	t.ph = phaseEmitting
-	t.active = append(t.active, key)
+	t.active = append(t.active, activeEmission{key: key, pos: n.pos})
 	defer func() {
 		t.active = t.active[:len(t.active)-1]
 		t.ph = prev
@@ -340,27 +411,88 @@ func (t *Tree) HandlerNames(id NodeID, signal string) []string {
 	return out
 }
 
-// Destroy tears the tree down, releasing nodes in REVERSE mount order so a
-// child is always released before its parent.
+// Destroy tears the tree down, releasing every node CHILDREN BEFORE PARENTS.
 //
-// Every node is offered to the adapter even if an earlier release failed, and
-// the first error is returned once the walk is complete. Stopping at the first
-// failure would strand every remaining node, which is a worse outcome than
-// reporting one error late.
+// The order is computed from the tree's own topology, not by reversing the
+// order things were created. Those were the same thing while parents were built
+// first; they stopped being the same the moment construction went bottom-up, and
+// reversing creation order now would release every parent before its children —
+// precisely the bug the rule exists to prevent. Topology is the thing that was
+// ever actually meant.
+//
+// Partial trees are handled by the same walk: a node whose construction never
+// completed is skipped, because the adapter never finished building it and has
+// nothing to release.
+//
+// Every node is offered even if an earlier release failed, and the failures are
+// joined into one error. Stopping at the first would strand every remaining
+// node, and reporting only the first would throw away evidence that costs
+// nothing to keep.
 func (t *Tree) Destroy() error {
-	if t.ph == phaseEmitting {
+	switch t.ph {
+	case phaseEmitting, phaseMounting, phaseDestroying:
 		return SchemaError{Op: "destroy", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
-	var first error
-	for i := len(t.mounted) - 1; i >= 0; i-- {
-		id := t.mounted[i]
-		if err := t.adapter.Destroy(id); err != nil && first == nil {
-			first = SchemaError{Op: "destroy", Node: id,
-				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
+
+	prev := t.ph
+	t.ph = phaseDestroying
+	defer func() { t.ph = prev }()
+
+	var errs []error
+	for _, id := range t.teardownOrder() {
+		n := t.nodes[id]
+		if n == nil || !n.built {
+			continue
+		}
+		if err := t.adapter.Destroy(id); err != nil {
+			errs = append(errs, SchemaError{Op: "destroy", Node: id,
+				Err: fmt.Errorf("%w: %w", ErrAdapter, err)})
 		}
 	}
+
 	t.nodes = make(map[NodeID]*node)
-	t.mounted = nil
 	t.root = NoNode
-	return first
+	t.failed = false
+	return errors.Join(errs...)
+}
+
+// teardownOrder returns every live node, deepest first, so a child always
+// precedes its parent. Roots are every node whose parent is absent, which
+// covers a partial tree whose top was never linked to anything.
+func (t *Tree) teardownOrder() []NodeID {
+	parented := make(map[NodeID]bool, len(t.nodes))
+	for _, n := range t.nodes {
+		for _, c := range n.children {
+			parented[c] = true
+		}
+	}
+	roots := make([]NodeID, 0, 1)
+	for id := range t.nodes {
+		if !parented[id] {
+			roots = append(roots, id)
+		}
+	}
+	// Deterministic: IDs are allocated in schema order, so sorting gives the
+	// same walk every run, which is what makes an adapter's trace assertable.
+	sort.Slice(roots, func(i, j int) bool { return roots[i] < roots[j] })
+
+	var out []NodeID
+	var visit func(NodeID)
+	seen := make(map[NodeID]bool, len(t.nodes))
+	visit = func(id NodeID) {
+		if seen[id] {
+			return
+		}
+		seen[id] = true
+		if n := t.nodes[id]; n != nil {
+			for _, c := range n.children {
+				visit(c)
+			}
+		}
+		out = append(out, id) // post-order: children land before their parent
+	}
+	for _, r := range roots {
+		visit(r)
+	}
+	return out
 }
