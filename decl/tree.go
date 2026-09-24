@@ -617,10 +617,12 @@ func (t *Tree) Destroy() error {
 	t.nodes = make(map[NodeID]*node)
 	t.root = NoNode
 	t.failed = false
-	// Bindings go with the tree. Sources do NOT: they are host-declared
-	// capabilities rather than schema artefacts, and Destroy is their lifetime
-	// boundary only in the sense that the Tree itself is done with.
+	// Bindings AND sources go with the tree. ADR-decl-0001b R2 makes Destroy
+	// the lifetime boundary for both, and the alternative is a half-reset
+	// engine: DeclareSource is refused after Mount, so a tree re-mounted with
+	// sources carried over could never have its set corrected.
 	t.bindings = nil
+	t.sources = nil
 	return errors.Join(errs...)
 }
 
