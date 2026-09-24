@@ -110,6 +110,16 @@ func (w *windowNode) Render(tui.Surface) {}
 // The document's own Shortcuts are tried first, so a document can claim any
 // sequence — including one the menu would otherwise take.
 func (w *windowNode) HandleEvent(ev tui.Event) bool {
+	if _, ok := ev.(tui.FocusEvent); ok {
+		// A FocusEvent bubbles up from whichever node lost or gained focus, so
+		// this is where the Window learns the user clicked into the document
+		// while a dropdown was open. Not consumed: other components are
+		// entitled to the same news.
+		for _, m := range w.menus {
+			m.closeOnBlur()
+		}
+		return false
+	}
 	k, ok := ev.(tui.KeyEvent)
 	if !ok || k.Kind != tui.KeyPress {
 		return false
@@ -201,6 +211,21 @@ func (m *menuBarNode) openHotkey(r rune) bool {
 		}
 	}
 	return false
+}
+
+// closeOnBlur closes the cascade once focus has left the menu.
+//
+// APPLICATION POLICY, NOT THE WIDGET'S. golib deliberately keeps a level open
+// across a focus loss — a renderer drawing a cascade must still see it, and an
+// involuntary loss is not a decision the user made about the menu. A document
+// window wants the other rule: clicking into the content means "I am done with
+// the menu", and a dropdown left hanging covers the line the user just aimed
+// at. Losing focus to something that is not the menu is that click.
+func (m *menuBarNode) closeOnBlur() {
+	if m.menu.OpenLevels() == 0 || m.focused() {
+		return
+	}
+	m.close()
 }
 
 func (m *menuBarNode) close() {

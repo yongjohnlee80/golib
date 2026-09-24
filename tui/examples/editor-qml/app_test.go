@@ -362,3 +362,27 @@ func TestEscapeLeavesTheMenuAndReturnsTheKeyboard(t *testing.T) {
 		return strings.Contains(s, "z") && !strings.Contains(s, "Exit")
 	})
 }
+
+// TestClickingIntoTheEditorClosesAnOpenMenu.
+//
+// golib keeps a menu level open across a focus loss on purpose — an involuntary
+// loss is not a decision the user made about the menu. This editor's policy is
+// the other one: clicking into the buffer means "I am done with the menu", and
+// a dropdown left hanging covers the very line the user just aimed at.
+//
+// Found by manual testing: the stray dropdown stayed open.
+func TestClickingIntoTheEditorClosesAnOpenMenu(t *testing.T) {
+	r := start(t, "")
+	r.clickLabel(t, 0, "File")
+	r.waitFor(t, "the File dropdown", func(s string) bool { return strings.Contains(s, "Exit") })
+
+	// Click inside the editor, well clear of the dropdown.
+	r.key(t, click(40, 8)...)
+	r.waitFor(t, "the dropdown to close", func(s string) bool { return !strings.Contains(s, "Exit") })
+
+	// And the click put the keyboard in the editor, so typing works at once.
+	r.key(t, runeKey('i'), runeKey('w'))
+	r.waitFor(t, "typing after the click", func(s string) bool {
+		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "INSERT")
+	})
+}
