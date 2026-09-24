@@ -296,27 +296,68 @@ func TestAnExportMustBeCapitalisedBecauseItNamesAType(t *testing.T) {
 	}
 }
 
-// TestTwoModulesExportingOneNameCannotBothBePlainlyImported.
+// TestTwoModulesCannotExportOneName.
 //
-// QML's ambiguity rule: the document cannot say which `Theme` it means, so it
-// is told to qualify one of them rather than being given whichever import came
-// last.
-func TestTwoModulesExportingOneNameCannotBothBePlainlyImported(t *testing.T) {
+// This used to advise the author to "import one of them with a qualifier", and
+// that advice did not work: a qualifier changes SPELLING, not IDENTITY.
+// `A.Theme.surface` and `B.Theme.surface` both resolved to the single registry
+// entry named Theme.surface, so the document read as though it distinguished
+// two palettes and did not.
+//
+// QML disambiguates because a module OWNS its singletons. Making identity
+// module-owned here would mean a second injection and update API for
+// module-scoped values, which nothing in this product needs — so the
+// combination is REFUSED, at declaration, and the diagnostic asks for the
+// rename that works rather than the qualifier that only looks like it does.
+//
+// A wrong remedy in an error message is worse than no remedy: it sends a
+// reader to make a change that appears to fix the problem.
+func TestTwoModulesCannotExportOneName(t *testing.T) {
 	tr := decl.New(newReactor())
-	for _, m := range []string{"a.theme", "b.theme"} {
-		if err := tr.DeclareModule(decl.Module{Name: m, Version: "1.0", Exports: []string{"Theme"}}); err != nil {
-			t.Fatalf("DeclareModule %s: %v", m, err)
+	if err := tr.DeclareModule(decl.Module{Name: "a.theme", Version: "1.0", Exports: []string{"Theme"}}); err != nil {
+		t.Fatalf("DeclareModule a.theme: %v", err)
+	}
+	err := tr.DeclareModule(decl.Module{Name: "b.theme", Version: "1.0", Exports: []string{"Theme"}})
+	if !errors.Is(err, decl.ErrDuplicateExport) {
+		t.Fatalf("err = %v, want ErrDuplicateExport", err)
+	}
+	for _, want := range []string{"Theme", "a.theme", "rename"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("diagnostic = %q, want it to contain %q", err, want)
 		}
 	}
+	// It must NOT suggest a qualifier, which is the advice that did not work.
+	if strings.Contains(err.Error(), "import one of them with a qualifier") {
+		t.Errorf("diagnostic = %q, still offers a remedy that only changes spelling", err)
+	}
+	// The refusal is at DECLARATION, so the first module is untouched and
+	// still usable.
 	if err := tr.Inject("Theme.surface", decl.SourceValue(sv("#111"))); err != nil {
 		t.Fatalf("inject: %v", err)
 	}
-	err := tr.Mount(qmlDoc(t, "import a.theme 1.0\nimport b.theme 1.0\nText { text: Theme.surface }"))
-	if !errors.Is(err, decl.ErrDuplicateImport) {
-		t.Fatalf("err = %v, want ErrDuplicateImport", err)
+	if err := tr.Mount(qmlDoc(t, "import a.theme 1.0\n"+`Text { text: Theme.surface }`)); err != nil {
+		t.Errorf("the surviving module is unusable after the refusal: %v", err)
 	}
-	if !strings.Contains(err.Error(), "qualifier") {
-		t.Errorf("diagnostic = %q, want it to suggest qualifying one", err)
+}
+
+// TestAModuleExportingADifferentNameIsFine is the control: the refusal above
+// must be about the COLLISION, not about declaring a second module at all.
+func TestAModuleExportingADifferentNameIsFine(t *testing.T) {
+	tr := decl.New(newReactor())
+	if err := tr.DeclareModule(decl.Module{Name: "a.theme", Version: "1.0", Exports: []string{"Theme"}}); err != nil {
+		t.Fatalf("DeclareModule a.theme: %v", err)
+	}
+	if err := tr.DeclareModule(decl.Module{Name: "b.icons", Version: "1.0", Exports: []string{"Icons"}}); err != nil {
+		t.Fatalf("a second module with its own export was refused: %v", err)
+	}
+	for n, v := range map[string]string{"Theme.surface": "#111", "Icons.save": "✓"} {
+		if err := tr.Inject(n, decl.SourceValue(sv(v))); err != nil {
+			t.Fatalf("inject %s: %v", n, err)
+		}
+	}
+	if err := tr.Mount(qmlDoc(t, "import a.theme 1.0\nimport b.icons 1.0\n"+
+		`Flex { Text { id: a text: Theme.surface } Text { id: b text: Icons.save } }`)); err != nil {
+		t.Fatalf("two modules with distinct exports did not mount: %v", err)
 	}
 }
 
