@@ -69,11 +69,12 @@ func (t *Tree) SetSource(name string, v parse.SpecValue) (PropagationResult, err
 
 	var res PropagationResult
 	for _, b := range t.bindingsOf(name) {
-		derived, err := t.evaluate(b.expr, overlay)
+		ev, err := t.evalValue(ctxBinding, b.expr, b.node, overlay)
 		if err != nil {
 			return res, SchemaError{Op: "propagate", Node: b.node, Detail: b.prop, Pos: b.pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
 		}
+		derived := ev.value
 		res.Recomputed++
 
 		if b.cached && sameValue(b.applied, derived) {
