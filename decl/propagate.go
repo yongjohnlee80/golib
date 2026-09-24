@@ -60,6 +60,11 @@ func (t *Tree) SetSource(name string, v qml.SpecValue) (PropagationResult, error
 // Ordering and failure behave exactly as [SetSource] describes, because they
 // are the same code — that is a single-name update with a map of one.
 func (t *Tree) SetSources(values map[string]qml.SpecValue) (PropagationResult, error) {
+	res, err := t.setSources(values)
+	return res, t.settle(err)
+}
+
+func (t *Tree) setSources(values map[string]qml.SpecValue) (PropagationResult, error) {
 	detail := joinSorted(values)
 	if err := t.propagationAllowed("set source", detail); err != nil {
 		return PropagationResult{}, err

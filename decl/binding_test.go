@@ -389,7 +389,7 @@ func TestAFailedApplyLeavesTheSourceUncommittedSoARetryWorks(t *testing.T) {
 
 // ------------------------------------------------------------------- phases
 
-// TestThePropagationPhaseRefusesEveryMutatingEntry — row 26.
+// TestThePropagationPhaseRefusesEveryMutatingEntry.
 //
 // Every arm of the matrix individually, including Mount and Reload, so a
 // missing switch arm cannot survive. And the POSITIVE direction, because a cell
@@ -412,7 +412,9 @@ func TestThePropagationPhaseRefusesEveryMutatingEntry(t *testing.T) {
 		}
 		got["SetSource"] = func() error { _, e := tr.SetSource("x", sv("z")); return e }()
 		got["SetProp"] = tr.SetProp(2, "hint", sv("v"))
-		got["Emit"] = tr.Emit(2, "clicked")
+		// Emit is NOT in this set: a signal raised mid-propagation is deferred
+		// until the fan-out commits, which TestASignalRaisedMidPropagationIsDeferred
+		// asserts. Refusing it lost a signal that had genuinely happened.
 		got["Mount"] = tr.Mount(mustSpec(t, `Flex {}`))
 		got["Reload"] = func() error { _, e := tr.Reload([]byte(`Flex {}`)); return e }()
 		got["Reconcile"] = func() error { _, e := tr.Reconcile(mustSpec(t, `Flex {}`)); return e }()
@@ -425,7 +427,7 @@ func TestThePropagationPhaseRefusesEveryMutatingEntry(t *testing.T) {
 	if _, err := tr.SetSource("x", sv("2")); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 7 {
+	if len(got) != 6 {
 		t.Fatalf("the value function ran %d attempts; this test proves nothing", len(got))
 	}
 	for name, err := range got {
