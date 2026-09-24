@@ -3,6 +3,7 @@ package decl
 import (
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -267,10 +268,12 @@ func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 
 	t.ph = phaseReconciling
 	t.planned = map[*parse.SpecNode]plannedNode{}
+	t.preEval = map[*parse.SpecNode][]parse.SpecProp{}
 	t.mutated = false
 	defer func() {
 		t.ph = phaseIdle
 		t.planned = nil
+		t.preEval = nil
 	}()
 
 	// PLAN. Nothing below this line mutates the tree; the walk only reads it and
@@ -416,9 +419,17 @@ func (t *Tree) planSubtree(sn *parse.SpecNode) error {
 	if err := t.checkBindable(sn.Type, sn.Props, id); err != nil {
 		return err
 	}
-	if _, _, err := t.bindingsFor(id, sn.Props); err != nil {
+	// The evaluation is KEPT for the mount that follows. Discarding it made a
+	// fresh binding invoke its ValueFunc twice per reload — invisible for a
+	// pure function, and not something this seam is entitled to assume.
+	_, effective, err := t.bindingsFor(id, sn.Props)
+	if err != nil {
 		return err
 	}
+	if t.preEval == nil {
+		t.preEval = map[*parse.SpecNode][]parse.SpecProp{}
+	}
+	t.preEval[sn] = effective
 
 	for _, h := range sn.Handlers {
 		fn, err := t.adapter.ResolveHandler(id, h.Signal, h.Name, h.Pos)
@@ -555,7 +566,14 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 
 	// Bindings are evaluated during PLANNING, so a failing value function or an
 	// unknown source leaves the tree untouched and unlatched.
-	bs, effective, err := t.bindingsFor(oldID, sn.Props)
+	//
+	// An UNCHANGED binding is not re-evaluated: a reload is about the file, and
+	// nothing in the file changed for it. Its current value is whatever the last
+	// application left, which SetSource keeps current independently. Evaluating
+	// it anyway would run the host's function once per node per reload for no
+	// reason, and "an unchanged file changes nothing" would be true only of what
+	// reaches the adapter.
+	bs, effective, err := t.rebindChanged(n, oldID, sn.Props, oldProps, newProps)
 	if err != nil {
 		return nil, err
 	}
@@ -648,6 +666,49 @@ func checkKind(k PropertyKind, typeName string, p parse.SpecProp, node NodeID) e
 	}
 }
 
+// rebindChanged evaluates only the bindings whose DECLARATION changed, and
+// carries the rest forward with the value they already hold.
+func (t *Tree) rebindChanged(n *node, id NodeID, props []parse.SpecProp,
+	oldProps, newProps map[string][]parse.SpecValue) ([]*binding, []parse.SpecProp, error) {
+
+	effective := make([]parse.SpecProp, len(props))
+	copy(effective, props)
+	var out []*binding
+
+	for i, p := range props {
+		if !isBinding(p.Value) {
+			continue
+		}
+		if prev, ok := t.bindingFor(id, p.Name); ok &&
+			sameSequence(oldProps[p.Name], newProps[p.Name]) {
+			// Unchanged: keep the registration, and with it the applied-value
+			// cache that keeps the next source tick quiet.
+			out = append(out, prev)
+			if prev.cached {
+				effective[i].Value = prev.applied
+			}
+			continue
+		}
+		v, err := t.evaluate(p.Value, nil)
+		if err != nil {
+			return nil, nil, SchemaError{Op: "bind", Node: id, Detail: p.Name, Pos: p.Value.Pos,
+				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
+		}
+		deps := map[string]bool{}
+		refsOf(p.Value, deps)
+		names := make([]string, 0, len(deps))
+		for d := range deps {
+			names = append(names, d)
+		}
+		sort.Strings(names)
+		out = append(out, &binding{
+			node: id, prop: p.Name, expr: p.Value, pos: p.Value.Pos, deps: names,
+		})
+		effective[i].Value = v
+	}
+	return out, effective, nil
+}
+
 // rebind replaces a node's binding registrations when its declarations changed,
 // and leaves them alone when they did not.
 //
@@ -658,6 +719,9 @@ func (t *Tree) rebind(s *step) error {
 	if sameDeclarations(t.nodes[s.old].declared, s.spec.Props) {
 		return nil
 	}
+	// s.bind carries the unchanged registrations THROUGH, so re-installing the
+	// set does not reset a binding that kept its declaration — and with it, the
+	// cache that keeps the next tick quiet.
 	t.dropBindings(s.old)
 	t.registerBindings(s.bind)
 	return nil
