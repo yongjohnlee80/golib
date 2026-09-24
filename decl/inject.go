@@ -19,7 +19,7 @@ type Kind uint8
 const (
 	// KindUnknown is the zero value and never names an injection.
 	KindUnknown Kind = iota
-	// KindConstant is a value that cannot change: `tui.Horizontal`. Resolved
+	// KindConstant is a value that cannot change: `Tui.Horizontal`. Resolved
 	// once at planning and never tracked, so it costs the reactive graph
 	// nothing.
 	KindConstant
@@ -129,7 +129,7 @@ func Namespace() Injected { return Injected{Kind: KindNamespace} }
 // meant to. What injection does not do is erase types — a handler is still
 // refused where a value belongs, which is [Tree.Resolve]'s business.
 //
-// A dotted name registers a qualified entry: `tui.Horizontal`. Its prefix is
+// A dotted name registers a qualified entry: `Tui.Horizontal`. Its prefix is
 // implicitly a namespace, so `tui` alone resolves and `tui.Nope` does not.
 func (t *Tree) Inject(name string, in Injected) error {
 	_, err := t.inject("inject", name, in)
@@ -222,7 +222,7 @@ func (t *Tree) inject(op, name string, in Injected) ([]string, error) {
 	}
 	if prior, dup := t.injected[name]; dup {
 		// A namespace implied by a dotted name is not a declaration, so
-		// injecting `tui` explicitly after `tui.Horizontal` is not a clash.
+		// injecting `Tui` explicitly after `Tui.Horizontal` is not a clash.
 		if !(prior.Kind == KindNamespace && in.Kind == KindNamespace) {
 			return nil, SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
 				"%w: %q is already injected as a %s", ErrDuplicateDecl, name, prior.Kind)}

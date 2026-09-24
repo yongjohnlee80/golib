@@ -23,9 +23,9 @@ import (
 const screen = `import tui 1.0
 Split {
     id: root
-    orientation: tui.Horizontal
+    orientation: Tui.Horizontal
     Flex {
-        direction: tui.Vertical
+        direction: Tui.Vertical
         Text { text: "left pane" }
         Button {
             label: "Save"
@@ -157,7 +157,7 @@ func TestConstructorOnlyPropertiesAreNotReApplied(t *testing.T) {
 	})
 
 	spec, err := parse.QML{}.Parse([]byte(`import tui 1.0
-Split { orientation: tui.Horizontal Text { } Text { } }`))
+Split { orientation: Tui.Horizontal Text { } Text { } }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -169,7 +169,7 @@ Split { orientation: tui.Horizontal Text { } Text { } }`))
 
 	// The real registry reports it, so the same schema mounts.
 	if _, _ = mount(t, `import tui 1.0
-Split { orientation: tui.Horizontal Text { } Text { } }`,
+Split { orientation: Tui.Horizontal Text { } Text { } }`,
 		tuidecl.HostFuncs{}, func(error) {}); true {
 		// mount fatals on failure; reaching here is the assertion.
 	}

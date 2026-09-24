@@ -30,13 +30,14 @@ import (
 // enum from that module, styling taken from an injected object rather than
 // hardcoded, and a handler that calls a function the host provided.
 const theScreen = `import tui 1.0
+import myapp.theme 1.0
 
 Split {
     id: root
-    orientation: tui.Horizontal
+    orientation: Tui.Horizontal
 
     Flex {
-        direction: tui.Vertical
+        direction: Tui.Vertical
         Text { text: Theme.heading }
         Text { text: Theme.body }
         Button {
@@ -60,6 +61,16 @@ func TestAQMLDocumentConfiguresARealScreen(t *testing.T) {
 		tuidecl.WithErrorSink(func(err error) { t.Errorf("handler error: %v", err) }),
 	)...)
 	tr := decl.New(a)
+
+	// THE QML WAY OF STYLING. A palette is a singleton published by a module,
+	// and a document imports the module and reads its properties. There is no
+	// stylesheet and no sigil — the sigil this grammar used to have was a
+	// second spelling for exactly this.
+	if err := tr.DeclareModule(decl.Module{
+		Name: "myapp.theme", Version: "1.0", Exports: []string{"Theme"},
+	}); err != nil {
+		t.Fatalf("DeclareModule: %v", err)
+	}
 
 	// The host hands over exactly what the document may reach: two styling
 	// values and one effect. Nothing else in the host is nameable from QML,
@@ -152,8 +163,8 @@ func TestTheDocumentIsHELDToQMLRules(t *testing.T) {
 		wantMsg string
 	}{
 		{
-			name:    "a module used without importing it",
-			src:     "Flex {\n  direction: tui.Vertical\n}",
+			name:    "a singleton used without importing its module",
+			src:     "Flex {\n  direction: Tui.Vertical\n}",
 			wantErr: decl.ErrNotImported,
 			wantMsg: "import tui",
 		},

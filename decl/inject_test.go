@@ -26,8 +26,8 @@ func newConstReactor() *constReactor {
 	return &constReactor{
 		reactor: newReactor(),
 		consts: map[string]parse.SpecValue{
-			"tui.Horizontal": {Kind: parse.SpecValueToken, Raw: "horizontal"},
-			"tui.Vertical":   {Kind: parse.SpecValueToken, Raw: "vertical"},
+			"Tui.Horizontal": {Kind: parse.SpecValueString, Raw: "horizontal"},
+			"Tui.Vertical":   {Kind: parse.SpecValueString, Raw: "vertical"},
 		},
 	}
 }
@@ -173,10 +173,10 @@ func TestTheThreeResolutionFailuresAreDistinguishable(t *testing.T) {
 			wantMsg: `"Theme" has no member "nope"`,
 		},
 		{
-			name:    "a known ADAPTER module with an unknown member",
-			value:   ref("tui.Nope"),
+			name:    "a known ADAPTER singleton with an unknown member",
+			value:   ref("Tui.Nope"),
 			wantErr: decl.ErrNotResolvable,
-			wantMsg: `"tui" has no member "Nope"`,
+			wantMsg: `"Tui" has no member "Nope"`,
 		},
 		{
 			name:    "a resolved name in a position it cannot occupy",
@@ -368,7 +368,7 @@ func TestAQualifiedSourceIsTracked(t *testing.T) {
 func TestAnAdapterConstantIsResolvedAndNotTracked(t *testing.T) {
 	rec := newConstReactor()
 	tr := decl.New(rec)
-	if err := mountWith(t, tr, "text", ref("tui.Horizontal")); err != nil {
+	if err := mountWith(t, tr, "text", ref("Tui.Horizontal")); err != nil {
 		t.Fatalf("mount: %v", err)
 	}
 	// The adapter must have received the TERMINAL, not the reference.
@@ -377,7 +377,7 @@ func TestAnAdapterConstantIsResolvedAndNotTracked(t *testing.T) {
 		if strings.Contains(l, "horizontal") {
 			saw = true
 		}
-		if strings.Contains(l, "tui.Horizontal") {
+		if strings.Contains(l, "Tui.Horizontal") {
 			t.Errorf("the adapter received the unresolved reference: %q", l)
 		}
 	}
@@ -410,7 +410,7 @@ func TestInjectionRefusesNamesThatWouldChangeMeaningSilently(t *testing.T) {
 		},
 		{
 			name:    "a name the adapter already defines",
-			inject:  func(tr *decl.Tree) error { return tr.Inject("tui.Horizontal", decl.Constant(sv("x"))) },
+			inject:  func(tr *decl.Tree) error { return tr.Inject("Tui.Horizontal", decl.Constant(sv("x"))) },
 			wantErr: decl.ErrAmbiguousName,
 			wantMsg: "the adapter already defines",
 		},

@@ -145,7 +145,7 @@ func reconcile(t *testing.T, tr *decl.Tree, src string) decl.Result {
 func TestReconcileIdenticalSchemaTouchesNothing(t *testing.T) {
 	const src = `import tui 1.0
 Flex {
-		direction: tui.Vertical
+		direction: Tui.Vertical
 		Text { id: a text: "hello" }
 		Button { id: b label: "go" onClicked: save() }
 	}`
@@ -232,9 +232,9 @@ func TestConsumedPropertyChangeForcesRebuild(t *testing.T) {
 	rec := newSplicer()
 	rec.consume["Split"] = []string{"orientation"}
 	const before = `import tui 1.0
-Split { orientation: tui.Horizontal Text {} Text {} }`
+Split { orientation: Tui.Horizontal Text {} Text {} }`
 	const after = `import tui 1.0
-Split { orientation: tui.Vertical Text {} Text {} }`
+Split { orientation: Tui.Vertical Text {} Text {} }`
 
 	tr := decl.New(rec)
 	if err := tr.Mount(mustSpec(t, before)); err != nil {

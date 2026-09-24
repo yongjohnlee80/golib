@@ -51,7 +51,7 @@ func reactive(t *testing.T, src string, sources map[string]string,
 // sees it" are different claims and only the second one matters.
 func TestASourceChangeReachesTheScreen(t *testing.T) {
 	const src = `import tui 1.0
-Flex { id: root direction: tui.Vertical
+Flex { id: root direction: Tui.Vertical
 	    Text { id: plain text: greeting }
 	    Text { id: nested text: wrap(upper(greeting), "!") } }`
 
@@ -99,14 +99,14 @@ Flex { id: root direction: tui.Vertical
 
 // TestABareIdentifierStillReachesTheAdapter — 0001c rows 1 and 3.
 //
-// The regression nine shipped cells caught. `direction: tui.Vertical` is a bare
+// The regression nine shipped cells caught. `direction: Tui.Vertical` is a bare
 // word and belongs to the adapter; declaring a source of the same spelling must
 // change nothing about it.
 func TestABareIdentifierStillReachesTheAdapter(t *testing.T) {
 	// A source named for the adapter's own enum value.
 	tr, ad := reactive(t,
 		`import tui 1.0
-Flex { id: root direction: tui.Vertical Text { id: a text: msg } }`,
+Flex { id: root direction: Tui.Vertical Text { id: a text: msg } }`,
 		map[string]string{"msg": "shown", "vertical": "SHADOW"}, nil)
 
 	be, _ := startApp(t, mustRoot(t, tr, ad))
@@ -127,7 +127,7 @@ func TestAnUnknownSourceRefusesWithTheTreeUntouched(t *testing.T) {
 
 	bad, err := parse.QML{}.Parse([]byte(
 		`import tui 1.0
-Flex { id: r direction: tui.Vertical Text { id: a text: nope } }`))
+Flex { id: r direction: Tui.Vertical Text { id: a text: nope } }`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ Flex { id: r direction: tui.Vertical Text { id: a text: nope } }`))
 	// Mountable after correction, WITHOUT Destroy — the tree was never partial.
 	ok, _ := parse.QML{}.Parse([]byte(
 		`import tui 1.0
-Flex { id: r direction: tui.Vertical Text { id: a text: "fixed" } }`))
+Flex { id: r direction: Tui.Vertical Text { id: a text: "fixed" } }`))
 	if err := tr.Mount(ok); err != nil {
 		t.Fatalf("the tree was latched by a failure that built nothing: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestTheAdapterNeverSeesAnExpression(t *testing.T) {
 	}
 	spec, _ := parse.QML{}.Parse([]byte(
 		`import tui 1.0
-Flex { id: r direction: tui.Vertical Text { id: a text: f(g) } Text { id: b text: g } }`))
+Flex { id: r direction: Tui.Vertical Text { id: a text: f(g) } Text { id: b text: g } }`))
 	if err := tr.Mount(spec); err != nil {
 		t.Fatal(err)
 	}

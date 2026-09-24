@@ -119,7 +119,7 @@ func (t *Tree) walkValue(ctx context, v parse.SpecValue, at NodeID,
 	overlay map[string]parse.SpecValue, called bool, mode walkMode) (parse.SpecValue, error) {
 
 	switch v.Kind {
-	case parse.SpecValueString, parse.SpecValueNumber, parse.SpecValueBool, parse.SpecValueToken:
+	case parse.SpecValueString, parse.SpecValueNumber, parse.SpecValueBool:
 		if called {
 			return parse.SpecValue{}, t.refuse(at, v, "a literal cannot be called")
 		}
@@ -268,21 +268,28 @@ func (t *Tree) lookupRef(v parse.SpecValue, at NodeID) (Injected, error) {
 	}
 	name := v.Raw
 
-	// The gate is on the NAME THE DOCUMENT WROTE, not on the module behind it.
-	// Keying it on the module made an alias additive: `import tui 1.0 as T`
-	// left `tui.Vertical` resolving, because the module WAS imported — under
-	// another name. QML's alias REPLACES the spelling, and a document that
-	// mounts here but not in a real QML runtime is the worst kind of
-	// compatibility.
+	// The gate is on the NAME THE DOCUMENT WROTE.
+	//
+	// A module is not a name. `import tui 1.0` brings the module's SINGLETONS
+	// into scope under their own names, so the document writes `Tui.Horizontal`
+	// — and a QUALIFIED import reaches them through the qualifier instead,
+	// `T.Tui.Horizontal`, because QML's `as` replaces the plain spelling rather
+	// than adding to it.
 	if len(path) > 1 {
-		if mod, bound := t.imported[path[0]]; bound {
-			// An import binds this name; resolve through the module it names,
-			// which for an unaliased import is the same string.
-			path = append(splitDots(mod), path[1:]...)
+		if mod, qualified := t.imported.byQualifier[path[0]]; qualified {
+			if len(path) < 3 || !t.exportsOf(mod, path[1]) {
+				return Injected{}, t.fail(at, v, ErrNotResolvable, fmt.Sprintf(
+					"%q qualifies the %q module, which exports no %q",
+					path[0], mod, joinDots(path[1:])))
+			}
+			path = path[1:]
 			name = joinDots(path)
-		} else if mod, isModule := t.moduleOf(path); isModule {
+		} else if mod, imported := t.imported.byName[path[0]]; imported {
+			_ = mod
+		} else if mod, exists := t.providerOf(path[0]); exists {
 			return Injected{}, t.fail(at, v, ErrNotImported, fmt.Sprintf(
-				"%q comes from the %q module; add `import %s` to use it", v.Raw, mod, mod))
+				"%q is exported by the %q module; add `import %s` to use it",
+				path[0], mod, mod))
 		}
 	}
 

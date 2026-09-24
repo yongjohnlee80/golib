@@ -88,12 +88,6 @@ const (
 	SpecValueNumber
 	// SpecValueBool is true or false.
 	SpecValueBool
-	// SpecValueToken is a style token reference written @name.
-	//
-	// Raw holds the bare name ("surface"), a PORTABLE SYMBOLIC VALUE rather
-	// than a tui/style.Token — otherwise the same schema stops meaning
-	// anything to a non-terminal adapter, which is the point of the layering.
-	SpecValueToken
 	// SpecValueRef is a name written bare: `greeting`, or a member chain like
 	// `parent.width`.
 	//
@@ -130,8 +124,6 @@ func (k SpecValueKind) String() string {
 		return "number"
 	case SpecValueBool:
 		return "bool"
-	case SpecValueToken:
-		return "token"
 	case SpecValueRef:
 		return "reference"
 	case SpecValueCall:
@@ -825,7 +817,7 @@ func (p *qmlParser) value() (SpecValue, error) {
 	// The budget is seeded from the document's, exactly as a handler body's is:
 	// what has to stay bounded is the recursion, and it does not care which
 	// grammar recursed.
-	x := &exprParser{sc: p.sc, max: p.maxDepth, d: &qmlDialect, depth: p.depth}
+	x := &exprParser{sc: p.sc, max: p.maxDepth, d: &JavaScript, depth: p.depth}
 	e, err := x.expression()
 	if err != nil {
 		return SpecValue{}, err
@@ -833,22 +825,13 @@ func (p *qmlParser) value() (SpecValue, error) {
 	return projectValue(&e), nil
 }
 
-// qmlDialect is JavaScript plus this format's ONE extension: `@name`, a
-// portable symbolic value that an adapter resolves to its own styling
-// vocabulary.
+// QML property values are parsed with the PLAIN JavaScript dialect.
 //
-// It is a DIALECT ENTRY rather than a branch in the value parser, which is what
-// keeps the extension to one line and makes removing or gating it one line as
-// well. A branch would have meant a second parser for values — and the `@` in
-// `f(@tok)` would then have been unreachable, because a call argument is parsed
-// by the expression grammar and not by that branch.
-var qmlDialect = func() ExprDialect {
-	d := JavaScript
-	d.Name = "qml"
-	d.Unary = append(append([]string{}, JavaScript.Unary...), "@")
-	return d
-}()
-
+// This grammar has no extensions of its own any more. It briefly had one —
+// `@name`, a symbolic style value — and it is gone: a style token is a name on
+// an object the host provides, which QML already spells `Theme.surface`, so the
+// sigil was a second way to write something the language already had.
+//
 // projectValue reduces an expression to the terminal shapes this format names,
 // and keeps the tree for everything else.
 //
@@ -866,11 +849,6 @@ func projectValue(e *Expr) SpecValue {
 		return SpecValue{Kind: SpecValueBool, Raw: e.Raw, Pos: e.Pos}
 
 	case ExprUnary:
-		// `@surface` is this format's symbolic value. It reaches here as a
-		// prefix operator because that is how the dialect spells it.
-		if e.Raw == "@" && e.Left != nil && e.Left.Kind == ExprIdent {
-			return SpecValue{Kind: SpecValueToken, Raw: e.Left.Raw, Pos: e.Pos}
-		}
 		// JavaScript has no negative literals: `-3` is unary minus applied to
 		// 3. Folding the sign back onto the literal is what lets a consumer
 		// keep reading `neg: -3` as the number it obviously is.

@@ -73,8 +73,7 @@ type PropagationResult struct {
 // bipartite is that they cannot.
 func isTerminal(v parse.SpecValue) bool {
 	switch v.Kind {
-	case parse.SpecValueString, parse.SpecValueNumber,
-		parse.SpecValueBool, parse.SpecValueToken:
+	case parse.SpecValueString, parse.SpecValueNumber, parse.SpecValueBool:
 		return true
 	default:
 		return false
@@ -85,7 +84,7 @@ func isTerminal(v parse.SpecValue) bool {
 // own vocabulary as qualified names.
 //
 // QML writes an enum as `Qt.Horizontal`; the toolkit equivalent is
-// `tui.Horizontal`. These are CONSTANTS, not bindings: a qualified name is
+// `Tui.Horizontal`. These are CONSTANTS, not bindings: a qualified name is
 // resolved once at planning and never changes, so it creates no dependency and
 // no entry in the graph. That is the whole reason a qualified name can be
 // supported now while a reference to another object's PROPERTY cannot.
@@ -99,7 +98,7 @@ type Constants interface {
 // the adapter can see it.
 //
 // It is deliberately wider than [isBinding]: a qualified name is resolved but
-// NOT tracked. Conflating the two is how `tui.Vertical` once reached a builder
+// NOT tracked. Conflating the two is how `Tui.Vertical` once reached a builder
 // as an unresolved reference — the value was correctly judged "not a binding"
 // and therefore never evaluated at all.
 func needsResolution(v parse.SpecValue) bool {
@@ -107,7 +106,7 @@ func needsResolution(v parse.SpecValue) bool {
 	case parse.SpecValueRef, parse.SpecValueCall, parse.SpecValueExpr:
 		// SpecValueExpr is here so it is REFUSED rather than forwarded. A kind
 		// this list forgets is not rejected — it sails past resolution and
-		// reaches a setter as an un-evaluated tree, which is how `tui.Vertical`
+		// reaches a setter as an un-evaluated tree, which is how `Tui.Vertical`
 		// once arrived at a builder as a bare reference.
 		return true
 	default:
