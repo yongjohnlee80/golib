@@ -429,12 +429,26 @@ func (p *qmlParser) importStatement() (SpecImport, error) {
 		if r, ok := p.sc.PeekAt(2); !ok || !isIdentPart(r) {
 			asAt := p.sc.Pos()
 			p.sc.Take("as")
-			if err := p.skipSpace(); err != nil {
-				return SpecImport{}, err
-			}
+			// The qualifier is on the SAME LINE. An import statement ends at
+			// the end of its line, so skipping arbitrary whitespace here read
+			// the next line's first word as the alias: `import tui 1.0 as`
+			// followed by `Window { }` bound the qualifier "Window" and then
+			// complained that the document had no root.
+			p.skipInlineSpace()
 			alias, ok := p.ident()
 			if !ok {
 				return SpecImport{}, p.wanted(asAt, "a name after as")
+			}
+			// QML's qualifier names a namespace, and a namespace is written
+			// like a type. A lower-case one is refused HERE rather than
+			// resolving to nothing later, when the mistake is three screens
+			// away from the import that caused it.
+			if !isTypeName(alias) {
+				return SpecImport{}, SyntaxError{
+					Format: "qml", Pos: asAt,
+					Want: "an upper-case qualifier after as, because it names a namespace",
+					Got:  quoted(alias),
+				}
 			}
 			imp.Alias = alias
 		}
@@ -513,17 +527,20 @@ func (p *qmlParser) groupedBlock(n *SpecNode, prefix []string, at Position) erro
 	}
 }
 
-// startsUpper reports whether a name begins with an upper-case letter, which is
-// how QML spells a type.
-func startsUpper(name string) bool {
-	if name == "" {
-		return false
-	}
-	return unicode.IsUpper([]rune(name)[0])
-}
-
 // wanted reports a failure, distinguishing end of input — which a writer has
 // simply not finished — from a wrong character.
+// skipInlineSpace consumes spaces and tabs but STOPS AT A NEWLINE, for the
+// constructs that end at the end of their line.
+func (p *qmlParser) skipInlineSpace() {
+	for {
+		r, ok := p.sc.Peek()
+		if !ok || (r != ' ' && r != '\t' && r != '\r') {
+			return
+		}
+		p.sc.Next()
+	}
+}
+
 func (p *qmlParser) wanted(at Position, want string) error {
 	r, ok := p.sc.Peek()
 	if !ok {
@@ -643,7 +660,7 @@ func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) 
 			return nil, err
 		}
 		switch {
-		case p.sc.HasPrefix("{") && len(path) == 1 && startsUpper(name):
+		case p.sc.HasPrefix("{") && len(path) == 1 && isTypeName(name):
 			// QML capitalises TYPES, so `Text {` is a child node and `font {`
 			// is a grouped property. That convention is the only thing
 			// separating them, and it is the language's, not ours.

@@ -261,3 +261,136 @@ func TestAnExpressionValueKeepsEveryNameItReads(t *testing.T) {
 		t.Errorf("identifiers = %q, want %q", got, "Theme,parent,scale")
 	}
 }
+
+// TestTheDiagnosticsForAMalformedImportOrPropertyName.
+//
+// These messages are the whole value of a hand-written parser over a generated
+// one, and nothing asserted any of them: every branch below was reachable and
+// unexercised, so a refactor could have turned any of them into "unexpected
+// token" and no test would have noticed.
+//
+// Each row is checked for the SPECIFIC want text, not merely that an error
+// happened — the wrong reason is its own defect.
+func TestTheDiagnosticsForAMalformedImportOrPropertyName(t *testing.T) {
+	cases := []struct {
+		name       string
+		src        string
+		want       string
+		incomplete bool
+	}{
+		{
+			name: "import with no module",
+			src:  "import 1.0\nN { }",
+			want: "a module name after import",
+		},
+		{
+			name: "import with a trailing dot",
+			src:  "import tui.\nN { }",
+			want: "a name after . in the module name",
+		},
+		{
+			name: "import with as and no name on its line",
+			src:  "import tui 1.0 as\nN { }",
+			want: "a name after as",
+		},
+		{
+			name: "import with as and a number",
+			src:  "import tui 1.0 as 123\nN { }",
+			want: "a name after as",
+		},
+		{
+			name: "import with a lower-case qualifier",
+			src:  "import tui 1.0 as t\nN { }",
+			want: "an upper-case qualifier after as",
+		},
+		{
+			name: "a property name with a trailing dot",
+			src:  "N { font. : 1 }",
+			want: "a name after . in the property name",
+		},
+		{
+			name: "a grouped entry with no colon",
+			src:  "N { font { bold } }",
+			want: ": or { after the property name in the group",
+		},
+		{
+			name: "a grouped entry name with a trailing dot",
+			src:  "N { font { weight. : 1 } }",
+			want: "a name after . in the property name",
+		},
+		{
+			name:       "an import cut off at end of input",
+			src:        "import ",
+			want:       "a module name after import",
+			incomplete: true,
+		},
+		{
+			name:       "a grouped block cut off at end of input",
+			src:        "N { font { bold: true ",
+			want:       "",
+			incomplete: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			se := syntaxErr(t, c.src)
+			if c.want != "" && !strings.Contains(se.Want, c.want) {
+				t.Errorf("Want = %q, want it to contain %q", se.Want, c.want)
+			}
+			if se.Incomplete != c.incomplete {
+				t.Errorf("Incomplete = %v, want %v — truncation and a mistake are "+
+					"different things to a file watcher", se.Incomplete, c.incomplete)
+			}
+			if se.Pos.Line == 0 {
+				t.Error("the error carries no position")
+			}
+		})
+	}
+}
+
+// TestAGroupedBlockAndItsDottedFormMeanTheSameThing.
+//
+// `font { bold: true }` and `font.bold: true` are the same property. The parser
+// records WHICH was written, for a consumer that round-trips and would
+// otherwise rewrite one into the other, but Path and Value must agree.
+func TestAGroupedBlockAndItsDottedFormMeanTheSameThing(t *testing.T) {
+	grouped := mustParse(t, `N { font { bold: true  size: 12 } }`)
+	dotted := mustParse(t, `N { font.bold: true  font.size: 12 }`)
+
+	if len(grouped.Root.Props) != len(dotted.Root.Props) {
+		t.Fatalf("grouped has %d props, dotted has %d",
+			len(grouped.Root.Props), len(dotted.Root.Props))
+	}
+	for i := range grouped.Root.Props {
+		g, d := grouped.Root.Props[i], dotted.Root.Props[i]
+		if strings.Join(g.Path, ".") != strings.Join(d.Path, ".") {
+			t.Errorf("prop %d path: grouped %v, dotted %v", i, g.Path, d.Path)
+		}
+		if g.Value.Kind != d.Value.Kind || g.Value.Raw != d.Value.Raw {
+			t.Errorf("prop %d value: grouped %+v, dotted %+v", i, g.Value, d.Value)
+		}
+		if !g.Grouped {
+			t.Errorf("prop %d: Grouped is false for a property written in a block", i)
+		}
+		if d.Grouped {
+			t.Errorf("prop %d: Grouped is true for a property written with a dot", i)
+		}
+	}
+}
+
+// TestAComputedMemberIsNotAName.
+//
+// `items[0]` is decided when it runs, so it is not a path anything can resolve
+// ahead of time and must not be flattened into one.
+func TestAComputedMemberIsNotAName(t *testing.T) {
+	for _, src := range []string{`N { x: items[0] }`, `N { x: items[0]() }`, `N { x: f()() }`} {
+		tree, err := parse.QML{}.Parse([]byte(src))
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", src, err)
+		}
+		v := tree.Root.Props[0].Value
+		if v.Kind != parse.SpecValueExpr {
+			t.Errorf("%s = %v, want it to keep its tree rather than become a name", src, v.Kind)
+		}
+	}
+}
