@@ -57,6 +57,9 @@ var (
 
 	// ErrDuplicateImport reports the same name bound by two imports.
 	ErrDuplicateImport = errors.New("decl: this import name is already bound")
+
+	// ErrDuplicateExport reports two modules exporting one singleton name.
+	ErrDuplicateExport = errors.New("decl: two modules export this name")
 )
 
 // DeclareModule registers an importable module, before Mount.
@@ -86,6 +89,28 @@ func (t *Tree) DeclareModule(m Module) error {
 	if prior, dup := t.modules[m.Name]; dup {
 		return SchemaError{Op: "declare module", Detail: m.Name, Err: fmt.Errorf(
 			"%w: %q is already declared at version %q", ErrDuplicateDecl, m.Name, prior.Version)}
+	}
+
+	// TWO MODULES MAY NOT EXPORT ONE NAME, and this engine says so at
+	// DECLARATION rather than pretending a qualifier would sort it out.
+	//
+	// A qualifier changes SPELLING, not IDENTITY. `import a.theme as A` and
+	// `import b.theme as B` would give `A.Theme.surface` and `B.Theme.surface`,
+	// and both resolve to the one registry entry named Theme.surface: the
+	// document reads as though it distinguishes them and it does not.
+	//
+	// QML disambiguates because a module OWNS its singletons. Making export
+	// identity module-owned here would mean a second injection and update API
+	// for module-scoped values, which nothing in this product needs — so the
+	// combination is refused, and the diagnostic asks for the rename that
+	// actually works instead of a qualifier that only looks like it does.
+	for _, e := range m.Exports {
+		if owner, exists := t.providerOf(e); exists {
+			return SchemaError{Op: "declare module", Detail: m.Name, Err: fmt.Errorf(
+				"%w: %q is already exported by %q, and a qualifier would change how "+
+					"a document SPELLS them without making them different values; "+
+					"rename one export", ErrDuplicateExport, e, owner)}
+		}
 	}
 	t.modules[m.Name] = m
 	return nil
@@ -140,13 +165,10 @@ func (t *Tree) resolveImports(spec qml.SpecTree) (imports, error) {
 			out.byQualifier[im.Alias] = im.Module
 			continue
 		}
+		// No cross-module clash is possible here: DeclareModule refuses two
+		// modules exporting one name, so the only way a name is bound twice is
+		// the same module imported twice, which is a no-op.
 		for _, name := range m.Exports {
-			if prior, dup := out.byName[name]; dup && prior != im.Module {
-				return imports{}, SchemaError{Op: "import", Detail: name, Pos: im.Pos, Err: fmt.Errorf(
-					"%w: %q is exported by both %q and %q, so this document cannot "+
-						"name it; import one of them with a qualifier",
-					ErrDuplicateImport, name, prior, im.Module)}
-			}
 			out.byName[name] = im.Module
 		}
 	}

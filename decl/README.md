@@ -37,7 +37,7 @@ the adapter used to turn a handler name into a function, which made it a second
 name scope beside the engine's own and flattened `onClicked: save` to `"save"`,
 erasing the difference from `save()` where nothing downstream could recover it.
 A host injects its effects and the engine resolves them through the same typed
-registry as every other name. A fifth capability,
+registry as every other name. A fourth capability,
 `Restructurer`, is **optional**: implement it and a reload can splice a node's
 children in place; leave it out and every structural change degrades to a
 rebuild, which is correct and merely lossy.
