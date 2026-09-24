@@ -722,3 +722,51 @@ func TestAnEmptyHandlerBodyIsRefused(t *testing.T) {
 		t.Errorf("diagnostic = %q, want it to say the handler is empty", err)
 	}
 }
+
+// ----------------------------------------------------------- expression values
+
+// TestAnExpressionValueIsDeclinedAndNeverForwarded.
+//
+// The parser reads every JavaScript expression QML allows; this engine
+// evaluates a subset. The two things that must both be true:
+//
+//   - the refusal says the ENGINE is the limit, not that the document is wrong,
+//     because the document is valid QML and a reader who "fixes" it is fixing
+//     nothing;
+//   - the value never reaches the adapter. A kind that resolution does not know
+//     about is not rejected by default — it sails past and arrives at a setter
+//     as an un-evaluated tree, which is a defect with no diagnostic at all.
+func TestAnExpressionValueIsDeclinedAndNeverForwarded(t *testing.T) {
+	cases := []struct {
+		name    string
+		src     string
+		wantMsg string
+	}{
+		{"arithmetic", `Text { text: a + b }`, `the operator "+"`},
+		{"a comparison", `Text { text: count > 0 }`, `the operator ">"`},
+		{"a conditional", `Text { text: a ? b : c }`, "a conditional"},
+		{"an index", `Text { text: items[0] }`, "member expression"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newRecorder()
+			tr := decl.New(r)
+			err := tr.Mount(qml(t, c.src))
+			if !errors.Is(err, decl.ErrExpressionValue) {
+				t.Fatalf("err = %v, want ErrExpressionValue", err)
+			}
+			if !strings.Contains(err.Error(), c.wantMsg) {
+				t.Errorf("diagnostic = %q, want it to contain %q", err, c.wantMsg)
+			}
+			// It must not read as the author's mistake.
+			if errors.Is(err, decl.ErrNotInjected) || errors.Is(err, decl.ErrWrongKind) {
+				t.Errorf("err = %v, want it to blame this engine's reach, not the document", err)
+			}
+			for _, line := range r.trace {
+				if strings.HasPrefix(line, "apply") {
+					t.Errorf("an un-evaluated expression reached the adapter: %q", line)
+				}
+			}
+		})
+	}
+}

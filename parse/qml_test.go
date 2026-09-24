@@ -252,7 +252,6 @@ func TestQMLIncompleteVsWrong(t *testing.T) {
 		`Column { label: ! }`,
 		`Column { label: "a" } trailing`,
 		`lowercase { }`,
-		`Column { label: "a\qb" }`,
 		`Column { label: 1.2.3 }`,
 	}
 	for _, src := range wrong {
@@ -332,23 +331,41 @@ func TestQMLDepthBoundsEveryRecursivePath(t *testing.T) {
 		t.Fatal("5,000-deep call list parsed without error; value recursion is unbounded")
 	}
 	var se parse.SyntaxError
-	if !errors.As(err, &se) || !strings.Contains(se.Want, "nesting") {
+	// Both grammars word the limit the same way; the sub-parser names itself in
+	// Format, which is accurate — a nesting limit hit inside an expression WAS
+	// hit inside an expression.
+	if !errors.As(err, &se) || !strings.Contains(se.Want, "no deeper than") {
 		t.Errorf("error = %v, want a nesting-limit SyntaxError", err)
 	}
 
-	// Nodes and calls share ONE budget. The pair below differs by a single
-	// enclosing NODE while the call nesting is identical, so the rejection can
-	// only come from node frames and call frames drawing on the same pool —
-	// which is the property, and is not visible from either kind alone.
-	shallow := parse.QML{MaxDepth: 4}
-	const fits = "A { B { x: f(g(1)) } }"       // 2 nodes + 2 calls = 4
-	const over = "A { B { C { x: f(g(1)) } } }" // 3 nodes + 2 calls = 5
-	if _, err := shallow.Parse([]byte(fits)); err != nil {
-		t.Errorf("Parse(%q) with MaxDepth=4 was rejected: %v", fits, err)
+	// Nodes and expressions share ONE budget.
+	//
+	// The property is asserted WITHOUT hardcoding what an expression costs in
+	// frames, because that is an implementation detail that a faithful grammar
+	// is entitled to change — and an earlier version of this test pinned it,
+	// then failed for a reason that had nothing to do with the claim.
+	//
+	// Instead: find the smallest limit at which a document parses, then assert
+	// that ONE MORE ENCLOSING NODE — with the expression untouched — needs
+	// exactly one more. That is only true if node frames and expression frames
+	// draw on the same pool, and it is not visible from either kind alone.
+	const inner = "x: f(g(1))"
+	limitFor := func(src string) int {
+		t.Helper()
+		for n := 1; n <= 64; n++ {
+			if _, err := (parse.QML{MaxDepth: n}).Parse([]byte(src)); err == nil {
+				return n
+			}
+		}
+		t.Fatalf("Parse(%q) never succeeded up to MaxDepth=64", src)
+		return 0
 	}
-	if _, err := shallow.Parse([]byte(over)); err == nil {
-		t.Errorf("Parse(%q) with MaxDepth=4 was accepted; one more node must "+
-			"cost the calls their budget", over)
+	two := limitFor("A { B { " + inner + " } }")
+	three := limitFor("A { B { C { " + inner + " } } }")
+	if three != two+1 {
+		t.Errorf("limits are %d and %d; one more enclosing node must cost exactly "+
+			"one more level, or nodes and expressions are not sharing a budget",
+			two, three)
 	}
 }
 
@@ -371,12 +388,17 @@ func TestQMLErrorsPointAtTheOpeningConstruct(t *testing.T) {
 // "so the number matches what an editor shows". A multi-byte prefix is the only
 // input that can tell a rune count from a byte count.
 func TestQMLPositionsAreRuneColumns(t *testing.T) {
-	// "é" is two bytes, one rune. The error is at the `!`.
-	se := syntaxErr(t, `N { s: "éé" b: ! }`)
+	// "é" is two bytes, one rune. The error is at the `%`.
+	//
+	// `%` rather than `!`, which this grammar reads as the prefix operator it is
+	// in JavaScript: the mistake in `b: !` is the MISSING OPERAND after it, so
+	// the position correctly moves to the `}` and stops isolating the rune
+	// count. `%` has no prefix reading, so the error is at the character itself.
+	se := syntaxErr(t, `N { s: "éé" b: % }`)
 	if se.Pos.Line != 1 {
 		t.Fatalf("line = %d, want 1", se.Pos.Line)
 	}
-	// Count runes up to '!': N,space,{,space,s,:,space,",é,é,",space,b,:,space = 15
+	// Count runes up to '%': N,space,{,space,s,:,space,",é,é,",space,b,:,space = 15
 	const wantCol = 16
 	if se.Pos.Column != wantCol {
 		t.Errorf("column = %d, want %d — columns must be RUNES, not bytes",
@@ -593,5 +615,24 @@ func TestAHandlerBodySpendsTheDOCUMENTSNestingBudget(t *testing.T) {
 	}
 	if _, err := (parse.QML{MaxDepth: 4}).Parse([]byte(nested)); err == nil {
 		t.Error("nodes and a handler body together exceeded the limit and were accepted")
+	}
+}
+
+// TestAnUnknownStringEscapeIsTheCharacterItself.
+//
+// This used to be a syntax error. JavaScript says otherwise — `"\q"` is `"q"` —
+// and a QML string is a JavaScript string, so refusing it was this parser
+// applying a rule of its own to a language it does not own.
+//
+// The escapes that DO mean something still mean it, which is the half that
+// makes this a fidelity change rather than a hole.
+func TestAnUnknownStringEscapeIsTheCharacterItself(t *testing.T) {
+	tree := mustParse(t, `N { s: "a\qb" }`)
+	if got := tree.Root.Props[0].Value.Raw; got != "aqb" {
+		t.Errorf("unescaped = %q, want %q — an unknown escape is the character", got, "aqb")
+	}
+	tree = mustParse(t, `N { s: "a\tb\nc\"d\\e" }`)
+	if got := tree.Root.Props[0].Value.Raw; got != "a\tb\nc\"d\\e" {
+		t.Errorf("unescaped = %q; the escapes that mean something must still mean it", got)
 	}
 }

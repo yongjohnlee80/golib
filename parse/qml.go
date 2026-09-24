@@ -109,6 +109,16 @@ const (
 	// SpecValueCall is a call into the host function registry. Raw holds the
 	// function name and Args holds the arguments, which are themselves Values.
 	SpecValueCall
+	// SpecValueExpr is any other JavaScript expression — `a + b`, `c ? d : e`,
+	// `items[i]`, a template string. Expr holds the parsed tree.
+	//
+	// It exists because QML property values ARE JavaScript, and a parser of QML
+	// reads all of it. The kinds above are not a different grammar: they are the
+	// shapes this format projects to a friendlier terminal because consumers ask
+	// about them constantly. Everything else keeps its tree rather than being
+	// refused, so a consumer that cannot evaluate an expression declines it by
+	// name and position instead of the parser pretending the syntax is invalid.
+	SpecValueExpr
 )
 
 // String renders the kind for diagnostics.
@@ -126,6 +136,8 @@ func (k SpecValueKind) String() string {
 		return "reference"
 	case SpecValueCall:
 		return "call"
+	case SpecValueExpr:
+		return "expression"
 	default:
 		return "invalid"
 	}
@@ -148,6 +160,11 @@ type SpecValue struct {
 	// `parent.width`, and ["greeting"] for a plain name. Empty for every other
 	// kind.
 	Path []string
+	// Expr is the parsed expression of a SpecValueExpr, nil for every other
+	// kind. The projected kinds do NOT also carry it: one representation per
+	// value, so nothing downstream can read two answers to the same question
+	// and no projection can drift from the tree it came from.
+	Expr *Expr
 	Pos  Position
 }
 
@@ -781,50 +798,138 @@ func (p *qmlParser) value() (SpecValue, error) {
 		}
 	}
 
-	switch {
-	case r == '"':
-		return p.stringValue()
+	_ = r
 
-	case r == '@':
-		p.sc.Next()
-		name, ok := p.ident()
+	// A property value is a JavaScript expression, because in QML that is what
+	// a property value IS. ONE parser reads it — an earlier design had a small
+	// hand-written value grammar beside this, which is two parsers of the same
+	// thing and therefore two answers waiting to disagree.
+	//
+	// The budget is seeded from the document's, exactly as a handler body's is:
+	// what has to stay bounded is the recursion, and it does not care which
+	// grammar recursed.
+	x := &exprParser{sc: p.sc, max: p.maxDepth, d: &qmlDialect, depth: p.depth}
+	e, err := x.expression()
+	if err != nil {
+		return SpecValue{}, err
+	}
+	return projectValue(&e), nil
+}
+
+// qmlDialect is JavaScript plus this format's ONE extension: `@name`, a
+// portable symbolic value that an adapter resolves to its own styling
+// vocabulary.
+//
+// It is a DIALECT ENTRY rather than a branch in the value parser, which is what
+// keeps the extension to one line and makes removing or gating it one line as
+// well. A branch would have meant a second parser for values — and the `@` in
+// `f(@tok)` would then have been unreachable, because a call argument is parsed
+// by the expression grammar and not by that branch.
+var qmlDialect = func() ExprDialect {
+	d := JavaScript
+	d.Name = "qml"
+	d.Unary = append(append([]string{}, JavaScript.Unary...), "@")
+	return d
+}()
+
+// projectValue reduces an expression to the terminal shapes this format names,
+// and keeps the tree for everything else.
+//
+// The projection is not a simplification of the grammar; it is a CONVENIENCE
+// for consumers, which ask "is this a string" far more often than they walk a
+// tree. Every shape it does not name survives intact as [SpecValueExpr], so
+// nothing is lost by projecting and nothing downstream has to reparse.
+func projectValue(e *Expr) SpecValue {
+	switch e.Kind {
+	case ExprString:
+		return SpecValue{Kind: SpecValueString, Raw: e.Raw, Pos: e.Pos}
+	case ExprNumber:
+		return SpecValue{Kind: SpecValueNumber, Raw: e.Raw, Pos: e.Pos}
+	case ExprBool:
+		return SpecValue{Kind: SpecValueBool, Raw: e.Raw, Pos: e.Pos}
+
+	case ExprUnary:
+		// `@surface` is this format's symbolic value. It reaches here as a
+		// prefix operator because that is how the dialect spells it.
+		if e.Raw == "@" && e.Left != nil && e.Left.Kind == ExprIdent {
+			return SpecValue{Kind: SpecValueToken, Raw: e.Left.Raw, Pos: e.Pos}
+		}
+		// JavaScript has no negative literals: `-3` is unary minus applied to
+		// 3. Folding the sign back onto the literal is what lets a consumer
+		// keep reading `neg: -3` as the number it obviously is.
+		if (e.Raw == "-" || e.Raw == "+") && e.Left != nil && e.Left.Kind == ExprNumber {
+			raw := e.Left.Raw
+			if e.Raw == "-" {
+				raw = "-" + raw
+			}
+			return SpecValue{Kind: SpecValueNumber, Raw: raw, Pos: e.Pos}
+		}
+
+	case ExprIdent, ExprMember:
+		if path, ok := dottedPath(e); ok {
+			return SpecValue{Kind: SpecValueRef, Raw: joinPath(path), Path: path, Pos: e.Pos}
+		}
+
+	case ExprCall:
+		path, ok := dottedPath(e.Left)
 		if !ok {
-			r2, ok := p.sc.Peek()
-			if !ok {
-				return SpecValue{}, SyntaxError{
-					Format: "qml", Pos: at,
-					Want: "a token name after @", Got: "end of input", Incomplete: true,
-				}
+			break
+		}
+		args := make([]SpecValue, 0, len(e.Args))
+		for i := range e.Args {
+			av := projectValue(&e.Args[i])
+			if av.Kind == SpecValueExpr {
+				// An argument that did not project would leave a Call whose
+				// Args are a different shape from the call itself. The whole
+				// node keeps its tree instead, so a consumer reading Args never
+				// meets a half-projected one.
+				return SpecValue{Kind: SpecValueExpr, Raw: e.Raw, Expr: e, Pos: e.Pos}
 			}
-			return SpecValue{}, SyntaxError{
-				Format: "qml", Pos: at,
-				Want: "a token name after @", Got: quoteRune(r2),
-			}
+			args = append(args, av)
 		}
-		return SpecValue{Kind: SpecValueToken, Raw: name, Pos: at}, nil
-
-	case r == '-' || r == '+' || (r >= '0' && r <= '9'):
-		return p.numberValue()
-
-	case isIdentStart(r):
-		name, _ := p.ident()
-		switch name {
-		case "true", "false":
-			return SpecValue{Kind: SpecValueBool, Raw: name, Pos: at}, nil
-		}
-		// A call is an identifier followed by `(`. No space is permitted
-		// between them, so `foo ()` is a reference followed by a syntax error
-		// rather than a call — one shape per meaning.
-		if p.sc.HasPrefix("(") {
-			return p.callValue(name, at)
-		}
-		return p.refValue(name, at)
+		return SpecValue{Kind: SpecValueCall, Raw: joinPath(path), Path: path,
+			Args: args, Pos: e.Pos}
 	}
 
-	return SpecValue{}, SyntaxError{
-		Format: "qml", Pos: at,
-		Want: "a value", Got: quoteRune(r),
+	return SpecValue{Kind: SpecValueExpr, Raw: e.Raw, Expr: e, Pos: e.Pos}
+}
+
+// dottedPath flattens an identifier or a non-computed member chain to its
+// segments, reporting false for anything else.
+//
+// A COMPUTED member — `items[i]` — is deliberately not a path: which member it
+// reaches is decided when it runs, so it is not a name anything can resolve
+// ahead of time.
+func dottedPath(e *Expr) ([]string, bool) {
+	if e == nil {
+		return nil, false
 	}
+	switch e.Kind {
+	case ExprIdent:
+		return []string{e.Raw}, true
+	case ExprMember:
+		if e.Computed {
+			return nil, false
+		}
+		left, ok := dottedPath(e.Left)
+		if !ok {
+			return nil, false
+		}
+		return append(left, e.Name), true
+	default:
+		return nil, false
+	}
+}
+
+func joinPath(p []string) string {
+	s := ""
+	for i, seg := range p {
+		if i > 0 {
+			s += "."
+		}
+		s += seg
+	}
+	return s
 }
 
 // refValue reads a name and any member chain following it.
