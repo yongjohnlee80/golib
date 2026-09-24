@@ -258,3 +258,121 @@ func waitFor(t *testing.T, cond func() bool) {
 	}
 	t.Fatal("the screen never painted")
 }
+
+// TestAnOmittedSinkIsRefusedRatherThanSilent is the negative control for the
+// error path, and it exists because the first version of this package
+// DOCUMENTED the hole instead of closing it: "without a sink the error is
+// dropped", three lines under a comment calling exactly that indefensible.
+//
+// Documenting a violation does not make it a decision.
+func TestAnOmittedSinkIsRefusedRatherThanSilent(t *testing.T) {
+	spec, err := parse.QML{}.Parse([]byte("Button {\n  onClicked: save\n}"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	// Everything present EXCEPT the sink.
+	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdSetters(),
+		tuidecl.WithHostFuncs(tuidecl.HostFuncs{"save": func() error { return nil }}),
+	)...)
+
+	mountErr := decl.New(a).Mount(spec)
+	if mountErr == nil {
+		t.Fatal("a schema that binds a handler mounted with no error sink; " +
+			"a failing handler would have been silent")
+	}
+	if !strings.Contains(mountErr.Error(), "WithErrorSink") {
+		t.Errorf("the refusal does not name the remedy: %v", mountErr)
+	}
+	if !strings.Contains(mountErr.Error(), "clicked") {
+		t.Errorf("the refusal does not name the bound signal: %v", mountErr)
+	}
+}
+
+// TestASchemaWithNoHandlersNeedsNoSink is the positive half. The rule above
+// must not degrade into "every schema needs a sink", which would make the
+// refusal a tax rather than a guard.
+func TestASchemaWithNoHandlersNeedsNoSink(t *testing.T) {
+	spec, err := parse.QML{}.Parse([]byte(`Text { text: "no handlers here" }`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	a := tuidecl.New(tuidecl.StdRegistry(), tuidecl.StdSetters()...)
+	if err := decl.New(a).Mount(spec); err != nil {
+		t.Errorf("a handler-free schema was refused for want of a sink: %v", err)
+	}
+}
+
+// TestTheLabelArrivesThroughApplyNotConstruction pins WHICH PATH set the value,
+// and it does so against the SHIPPED builder rather than one defined here.
+//
+// The first version of this test registered its own builder and asserted on
+// that. It therefore proved a property of a closure in the test file and would
+// have passed no matter what StdRegistry's buildButton did — which a mutation
+// promptly demonstrated by re-introducing the very bug it was written to catch.
+//
+// A spy setter is what makes it real: if the builder consumed `label` at
+// construction, the engine would never apply it and this setter would never
+// run.
+func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
+	spec, err := parse.QML{}.Parse([]byte(`Button { label: "Save" onClicked: save }`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	var applied []string
+	var labelAtApply string
+	spy := tuidecl.WithSetters("Button", map[string]tuidecl.Setter{
+		"label": func(c tui.Component, v parse.SpecValue) error {
+			btn := c.(*widget.Button)
+			// What the widget held BEFORE this application is the evidence: an
+			// empty label here means construction did not set it.
+			labelAtApply = btn.Label()
+			applied = append(applied, v.Raw)
+			btn.SetLabel(v.Raw)
+			return nil
+		},
+	})
+
+	// StdRegistry: the builder that actually ships.
+	a := tuidecl.New(tuidecl.StdRegistry(), spy,
+		tuidecl.WithHostFuncs(tuidecl.HostFuncs{"save": func() error { return nil }}),
+		tuidecl.WithErrorSink(func(error) {}),
+	)
+	tr := decl.New(a)
+	if err := tr.Mount(spec); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+
+	if len(applied) != 1 {
+		t.Fatalf("label applied %d times, want exactly 1 — the builder consumed it "+
+			"without reporting, or reported it without consuming", len(applied))
+	}
+	if labelAtApply != "" {
+		t.Errorf("the widget already held %q when Apply ran; construction set it too",
+			labelAtApply)
+	}
+	c, _ := a.Component(tr.Root())
+	if got := c.(*widget.Button).Label(); got != "Save" {
+		t.Errorf("label after mount = %q, want Save", got)
+	}
+}
+
+// TestADuplicatedPropertyIsAppliedInDocumentOrder. Two declarations of one
+// property are what exposed the double application, so the resolved behaviour
+// is pinned rather than left to be rediscovered: construction takes nothing,
+// and the applications run in document order, so the LAST one wins.
+func TestADuplicatedPropertyIsAppliedInDocumentOrder(t *testing.T) {
+	spec, err := parse.QML{}.Parse([]byte(`Button { label: "first" label: "second" }`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	a := tuidecl.New(tuidecl.StdRegistry(), tuidecl.StdSetters()...)
+	tr := decl.New(a)
+	if err := tr.Mount(spec); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	c, _ := a.Component(tr.Root())
+	if got := c.(*widget.Button).Label(); got != "second" {
+		t.Errorf("label = %q, want second — applications run in document order", got)
+	}
+}
