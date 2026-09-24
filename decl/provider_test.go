@@ -406,3 +406,43 @@ func TestSubscribingAfterMountIsRefused(t *testing.T) {
 		t.Errorf("err = %v, want ErrPhase", err)
 	}
 }
+
+// TestALaterDeliveryUnderAnUndeclaredNameIsRefusedToo.
+//
+// The snapshot is checked, and so is every delivery after it. Checking only the
+// first would let a provider widen its own surface after subscription: the name
+// is not a declared source, so nothing can bind it, and storing it would create
+// a value the engine can never hand to anyone — silently, since a delivery has
+// no caller to complain to.
+func TestALaterDeliveryUnderAnUndeclaredNameIsRefusedToo(t *testing.T) {
+	p := newPalette()
+	var sunk []error
+	rec := newReactor()
+	tr := decl.New(rec,
+		decl.WithScheduler(immediate()),
+		decl.WithProviderErrorSink(func(err error) { sunk = append(sunk, err) }))
+	if err := tr.Subscribe(p); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	if err := tr.Mount(qml(t, `Text { id: a text: Theme.bg }`)); err != nil {
+		t.Fatalf("Mount: %v", err)
+	}
+	rec.trace = nil
+
+	p.push(7, map[string]string{"Theme.bg": "#ok", "Theme.later": "#nope"})
+
+	if len(sunk) != 1 || !errors.Is(sunk[0], decl.ErrProviderContract) {
+		t.Fatalf("sink got %v, want ErrProviderContract", sunk)
+	}
+	if !strings.Contains(sunk[0].Error(), "Theme.later") {
+		t.Errorf("diagnostic = %q, want it to name the undeclared name", sunk[0])
+	}
+	// And NOTHING from that delivery was applied: a batch is all or none, so
+	// the legitimate half of a contract violation must not land either.
+	if got := applyLines(rec); len(got) != 0 {
+		t.Errorf("applied %v, want the whole delivery rejected", got)
+	}
+	if cur, _ := tr.Source("Theme.bg"); cur.Raw != "#111" {
+		t.Errorf("Theme.bg = %q, want the delivery to have been rejected whole", cur.Raw)
+	}
+}
