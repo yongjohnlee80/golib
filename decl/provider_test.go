@@ -482,3 +482,82 @@ func TestARefusedSubscriptionLeavesNoSourcesBehind(t *testing.T) {
 		t.Errorf("the tree was latched by a refused subscription: %v", err)
 	}
 }
+
+// TestARefusedSubscriptionRemovesTheNAMESPACESItImplied.
+//
+// The half the first rollback missed. Injecting `Good.child` creates TWO keys:
+// the name, and the namespace `Good` that the dotted spelling implies. An undo
+// written against the provider's declared names removes only the first —
+// nobody passed `Good` in, so nobody thinks to take it out, and a refused
+// subscription leaves it resolvable.
+//
+// What to remove therefore comes from the code that did the writing. A caller
+// that reconstructed the list would be a second opinion about what injection
+// creates, and the implicit part is exactly where such a pair first disagrees.
+func TestARefusedSubscriptionRemovesTheNAMESPACESItImplied(t *testing.T) {
+	tr := decl.New(newReactor(), decl.WithScheduler(immediate()))
+	// `Theme` is a constant, so the provider's `Theme.bad` cannot be injected.
+	if err := tr.Inject("Theme", decl.Constant(sv("dark"))); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	p := &palette{
+		names: []string{"Good.child", "Theme.bad"},
+		now:   map[string]string{"Good.child": "ok", "Theme.bad": "bad"},
+	}
+	if err := tr.Subscribe(p); err == nil {
+		t.Fatal("a provider naming a member of a constant was accepted")
+	}
+	if p.cancelled != 1 {
+		t.Errorf("cancelled %d times, want 1", p.cancelled)
+	}
+	for _, name := range []string{"Good.child", "Good"} {
+		if _, ok := tr.Lookup(name); ok {
+			t.Errorf("a refused subscription left %q in the registry", name)
+		}
+	}
+	if _, ok := tr.Source("Good.child"); ok {
+		t.Error("a refused subscription left Good.child as a source")
+	}
+	// The constant that was already there is untouched, and still a constant.
+	if in, ok := tr.Lookup("Theme"); !ok || in.Kind != decl.KindConstant {
+		t.Errorf("Theme = %v, %v; the rollback disturbed an unrelated name", in.Kind, ok)
+	}
+	// And the whole prefix is free, so a corrected provider can claim it.
+	q := &palette{names: []string{"Good.child"}, now: map[string]string{"Good.child": "ok"}}
+	if err := tr.Subscribe(q); err != nil {
+		t.Errorf("the tree was latched by a refused subscription: %v", err)
+	}
+	if err := tr.Mount(qml(t, `Text { id: a text: Good.child }`)); err != nil {
+		t.Errorf("the re-subscribed dotted name does not resolve: %v", err)
+	}
+}
+
+// TestARefusedSubscriptionLeavesAnUnrelatedProvidersNamesAlone.
+//
+// The rollback must undo THIS subscription, not the registry. A provider that
+// subscribed successfully first keeps everything it registered.
+func TestARefusedSubscriptionLeavesAnUnrelatedProvidersNamesAlone(t *testing.T) {
+	tr := decl.New(newReactor(), decl.WithScheduler(immediate()))
+	first := &palette{names: []string{"Good.child"}, now: map[string]string{"Good.child": "ok"}}
+	if err := tr.Subscribe(first); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	// The second provider collides with the first on its second name.
+	second := &palette{
+		names: []string{"Other.one", "Good.child"},
+		now:   map[string]string{"Other.one": "1", "Good.child": "clash"},
+	}
+	if err := tr.Subscribe(second); err == nil {
+		t.Fatal("two providers claimed one name and both were accepted")
+	}
+	for _, name := range []string{"Good.child", "Good"} {
+		if _, ok := tr.Lookup(name); !ok {
+			t.Errorf("the rollback removed %q, which the FIRST provider owns", name)
+		}
+	}
+	for _, name := range []string{"Other.one", "Other"} {
+		if _, ok := tr.Lookup(name); ok {
+			t.Errorf("a refused subscription left %q behind", name)
+		}
+	}
+}
