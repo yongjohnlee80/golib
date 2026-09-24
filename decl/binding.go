@@ -28,6 +28,12 @@ var (
 	// ErrNoSuchFunc reports a Call naming a function that was never declared.
 	ErrNoSuchFunc = errors.New("decl: no such value function")
 
+	// ErrNotResolvable reports a reference this engine cannot resolve — today,
+	// a member chain. It is separate from ErrNoSuchSource because the answer
+	// differs: one is a name that could be declared, the other is a SHAPE this
+	// engine does not evaluate.
+	ErrNotResolvable = errors.New("decl: reference cannot be resolved")
+
 	// ErrNotTerminal reports an expression where a value belongs — a source set
 	// to a Ref, or a function returning one.
 	ErrNotTerminal = errors.New("decl: value is not terminal")
@@ -86,7 +92,7 @@ func isTerminal(v parse.SpecValue) bool {
 // schema's meaning depend on host configuration and let a source silently
 // shadow an adapter's identifier.
 func isBinding(v parse.SpecValue) bool {
-	return v.Kind == parse.SpecValueSource || v.Kind == parse.SpecValueCall
+	return v.Kind == parse.SpecValueRef || v.Kind == parse.SpecValueCall
 }
 
 // refsOf collects the source names a value depends on, DEDUPED, by walking the
@@ -94,8 +100,10 @@ func isBinding(v parse.SpecValue) bool {
 // written in the file, so this static walk is the whole dependency set.
 func refsOf(v parse.SpecValue, into map[string]bool) {
 	switch v.Kind {
-	case parse.SpecValueSource:
-		into[v.Raw] = true
+	case parse.SpecValueRef:
+		if len(v.Path) <= 1 {
+			into[v.Raw] = true
+		}
 	case parse.SpecValueCall:
 		for _, a := range v.Args {
 			refsOf(a, into)
@@ -192,7 +200,12 @@ func (t *Tree) Source(name string) (parse.SpecValue, bool) {
 // committing it — the source is only committed once the whole fan-out succeeds.
 func (t *Tree) evaluate(v parse.SpecValue, overlay map[string]parse.SpecValue) (parse.SpecValue, error) {
 	switch v.Kind {
-	case parse.SpecValueSource:
+	case parse.SpecValueRef:
+		if len(v.Path) > 1 {
+			return parse.SpecValue{}, fmt.Errorf(
+				"%w: %q is a member chain; this engine resolves a single name (at %s)",
+				ErrNotResolvable, v.Raw, v.Pos)
+		}
 		if sv, ok := overlay[v.Raw]; ok {
 			return sv, nil
 		}

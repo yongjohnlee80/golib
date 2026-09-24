@@ -140,7 +140,7 @@ func TestSourceAndFuncDeclarationLifecycle(t *testing.T) {
 		// depend on sources, and the bipartite graph rests on them not.
 		tr := decl.New(newReactor())
 		for _, v := range []parse.SpecValue{
-			{Kind: parse.SpecValueSource, Raw: "other"},
+			{Kind: parse.SpecValueRef, Raw: "other"},
 			{Kind: parse.SpecValueCall, Raw: "f"},
 			{Kind: parse.SpecValueRef, Raw: "bare"},
 		} {
@@ -151,7 +151,7 @@ func TestSourceAndFuncDeclarationLifecycle(t *testing.T) {
 		if err := tr.DeclareSource("ok", sv("v")); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := tr.SetSource("ok", parse.SpecValue{Kind: parse.SpecValueSource, Raw: "x"}); !errors.Is(err, decl.ErrNotTerminal) {
+		if _, err := tr.SetSource("ok", parse.SpecValue{Kind: parse.SpecValueRef, Raw: "x"}); !errors.Is(err, decl.ErrNotTerminal) {
 			t.Errorf("SetSource: err = %v, want ErrNotTerminal", err)
 		}
 	})
@@ -171,8 +171,8 @@ func TestSourceAndFuncDeclarationLifecycle(t *testing.T) {
 			return sv("fine"), nil
 		})
 		for name, src := range map[string]string{
-			"unknown function":      `Flex { Text { id: a text: missing($g) } }`,
-			"non-terminal result":   `Flex { Text { id: a text: bad($g) } }`,
+			"unknown function":      `Flex { Text { id: a text: missing(g) } }`,
+			"non-terminal result":   `Flex { Text { id: a text: bad(g) } }`,
 			"bare word in the call": `Flex { Text { id: a text: good(horizontal) } }`,
 		} {
 			t.Run(name, func(t *testing.T) {
@@ -200,14 +200,14 @@ func TestDependenciesAreExactlyTheSourcesWritten(t *testing.T) {
 	rec := newReactor()
 	calls := 0
 	tr := tree(t, rec,
-		`Flex { Text { id: a text: join($x, "lit", $x) } Text { id: b text: $y } }`,
+		`Flex { Text { id: a text: join(x, "lit", x) } Text { id: b text: y } }`,
 		map[string]string{"x": "1", "y": "2", "unrelated": "3"},
 		map[string]decl.ValueFunc{"join": func(a []parse.SpecValue) (parse.SpecValue, error) {
 			calls++
 			return sv(a[0].Raw + a[1].Raw + a[2].Raw), nil
 		}})
 
-	// A duplicate $x is ONE dependency and ONE recompute.
+	// A duplicate x is ONE dependency and ONE recompute.
 	calls = 0
 	res, err := tr.SetSource("x", sv("9"))
 	if err != nil {
@@ -242,7 +242,7 @@ func TestDependenciesAreExactlyTheSourcesWritten(t *testing.T) {
 func TestAnUnchangedDerivedValueNeverReachesTheSetter(t *testing.T) {
 	rec := newReactor()
 	calls := 0
-	tr := tree(t, rec, `Flex { Text { id: a text: constant($x) } }`,
+	tr := tree(t, rec, `Flex { Text { id: a text: constant(x) } }`,
 		map[string]string{"x": "1"},
 		map[string]decl.ValueFunc{"constant": func([]parse.SpecValue) (parse.SpecValue, error) {
 			calls++
@@ -278,7 +278,7 @@ func TestAnUnchangedDerivedValueNeverReachesTheSetter(t *testing.T) {
 func TestFanOutIsDocumentOrderAndStopsOnFailure(t *testing.T) {
 	rec := newReactor()
 	tr := tree(t, rec,
-		`Flex { Text { id: a text: $x } Text { id: b text: $x } Text { id: c text: $x } }`,
+		`Flex { Text { id: a text: x } Text { id: b text: x } Text { id: c text: x } }`,
 		map[string]string{"x": "0"}, nil)
 
 	// Document order, all three.
@@ -333,7 +333,7 @@ func TestFanOutIsDocumentOrderAndStopsOnFailure(t *testing.T) {
 func TestAFailedApplyLeavesTheSourceUncommittedSoARetryWorks(t *testing.T) {
 	rec := newReactor()
 	tr := tree(t, rec,
-		`Flex { Text { id: a text: $x } Text { id: b text: $x } }`,
+		`Flex { Text { id: a text: x } Text { id: b text: x } }`,
 		map[string]string{"x": "0"}, nil)
 
 	boom := errors.New("this setter refuses")
@@ -382,7 +382,7 @@ func TestAFailedApplyLeavesTheSourceUncommittedSoARetryWorks(t *testing.T) {
 	}
 	// And the tree was never latched.
 	if _, err := tr.Reconcile(mustSpec(t,
-		`Flex { Text { id: a text: $x } Text { id: b text: $x } }`)); err != nil {
+		`Flex { Text { id: a text: x } Text { id: b text: x } }`)); err != nil {
 		t.Fatalf("a propagation failure latched the tree: %v", err)
 	}
 }
@@ -419,7 +419,7 @@ func TestThePropagationPhaseRefusesEveryMutatingEntry(t *testing.T) {
 		got["Destroy"] = tr.Destroy()
 		return sv(a[0].Raw), nil
 	}
-	tr = tree(t, rec, `Flex { Text { id: a text: pass($x) } }`,
+	tr = tree(t, rec, `Flex { Text { id: a text: pass(x) } }`,
 		map[string]string{"x": "1"}, map[string]decl.ValueFunc{"pass": fn})
 
 	if _, err := tr.SetSource("x", sv("2")); err != nil {
@@ -453,7 +453,7 @@ func TestThePropagationPhaseRefusesEveryMutatingEntry(t *testing.T) {
 			_, ok = tr2.TypeOf(tr2.Root())
 			return sv(a[0].Raw + "!"), nil
 		})
-		if err := tr2.Mount(mustSpec(t, `Flex { Text { id: a text: pass($x) } }`)); err != nil {
+		if err := tr2.Mount(mustSpec(t, `Flex { Text { id: a text: pass(x) } }`)); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := tr2.SetSource("x", sv("2")); err != nil {
@@ -484,7 +484,7 @@ func TestSetSourceFromASignalHandlerIsLegal(t *testing.T) {
 		return perr
 	}
 	if err := tr.Mount(mustSpec(t,
-		`Flex { Button { id: b onClicked: bump } Text { id: a text: $x } }`)); err != nil {
+		`Flex { Button { id: b onClicked: bump } Text { id: a text: x } }`)); err != nil {
 		t.Fatal(err)
 	}
 	btn := tr.Children(tr.Root())[0]
@@ -509,7 +509,7 @@ func TestSetSourceFromASignalHandlerIsLegal(t *testing.T) {
 // TestABoundPropertyHasOneWriter — row 11.
 func TestABoundPropertyHasOneWriter(t *testing.T) {
 	rec := newReactor()
-	tr := tree(t, rec, `Flex { Text { id: a text: $x hint: "free" } }`,
+	tr := tree(t, rec, `Flex { Text { id: a text: x hint: "free" } }`,
 		map[string]string{"x": "1"}, nil)
 	text := tr.Children(tr.Root())[0]
 
@@ -536,7 +536,7 @@ func TestABoundPropertyHasOneWriter(t *testing.T) {
 func TestAnIdenticalReloadInvokesNoValueFunction(t *testing.T) {
 	rec := newReactor()
 	calls := 0
-	const src = `Flex { Text { id: a text: f($x) } Text { id: b text: f($x) } }`
+	const src = `Flex { Text { id: a text: f(x) } Text { id: b text: f(x) } }`
 	tr := tree(t, rec, src, map[string]string{"x": "1"},
 		map[string]decl.ValueFunc{"f": func(a []parse.SpecValue) (parse.SpecValue, error) {
 			calls++
@@ -554,7 +554,7 @@ func TestAnIdenticalReloadInvokesNoValueFunction(t *testing.T) {
 
 	// A sibling-only change leaves the survivor's function alone too.
 	calls = 0
-	reconcile(t, tr, `Flex { Text { id: a text: f($x) } Text { id: b text: "lit" } }`)
+	reconcile(t, tr, `Flex { Text { id: a text: f(x) } Text { id: b text: "lit" } }`)
 	if calls != 0 {
 		t.Errorf("a sibling-only change re-evaluated the untouched binding %d time(s)", calls)
 	}
@@ -583,7 +583,7 @@ func TestAChangedBindingEvaluatesExactlyOnce(t *testing.T) {
 		}})
 
 	calls = 0
-	reconcile(t, tr, `Flex { Text { id: a text: f($x) } Text { id: b text: f($x) } }`)
+	reconcile(t, tr, `Flex { Text { id: a text: f(x) } Text { id: b text: f(x) } }`)
 	if calls != 2 {
 		t.Errorf("one changed and one fresh binding evaluated %d times, want 2", calls)
 	}
@@ -600,7 +600,7 @@ func TestAFailedEvaluationDuringReconcileLeavesTheTreeUntouched(t *testing.T) {
 		}})
 	before := tr.Children(tr.Root())
 
-	_, err := tr.Reconcile(mustSpec(t, `Flex { Text { id: a text: f($x) } }`))
+	_, err := tr.Reconcile(mustSpec(t, `Flex { Text { id: a text: f(x) } }`))
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want the function's error", err)
 	}
@@ -625,7 +625,7 @@ func TestAFailedEvaluationDuringReconcileLeavesTheTreeUntouched(t *testing.T) {
 // and a later one that restores it would need the host to redeclare in between.
 func TestAHostSourceOutlivesEverySchemaReference(t *testing.T) {
 	rec := newReactor()
-	tr := tree(t, rec, `Flex { Text { id: a text: $x } }`, map[string]string{"x": "1"}, nil)
+	tr := tree(t, rec, `Flex { Text { id: a text: x } }`, map[string]string{"x": "1"}, nil)
 
 	reconcile(t, tr, `Flex { Text { id: a text: "literal now" } }`)
 	if _, ok := tr.Source("x"); !ok {
@@ -635,7 +635,7 @@ func TestAHostSourceOutlivesEverySchemaReference(t *testing.T) {
 		t.Errorf("the source became unsettable: %v", err)
 	}
 	// And re-adding the binding works with no redeclaration.
-	res := reconcile(t, tr, `Flex { Text { id: a text: $x } }`)
+	res := reconcile(t, tr, `Flex { Text { id: a text: x } }`)
 	if res.Applied != 1 {
 		t.Errorf("re-adding the binding applied %d, want 1", res.Applied)
 	}
@@ -650,11 +650,11 @@ func TestAHostSourceOutlivesEverySchemaReference(t *testing.T) {
 // TestABareIdentifierIsNeverABinding — 0001c rows 1 and 3.
 //
 // This is the regression that nine shipped cells caught: a bare word is the
-// adapter's vocabulary, and `orientation: horizontal` must keep meaning what it
+// adapter's vocabulary, and `orientation: "horizontal"` must keep meaning what it
 // always did — even when a source happens to be called "horizontal".
 func TestABareIdentifierIsNeverABinding(t *testing.T) {
 	rec := newReactor()
-	tr := tree(t, rec, `Flex { direction: vertical Text { id: a text: "x" } }`, nil, nil)
+	tr := tree(t, rec, `Flex { direction: "vertical" Text { id: a text: "x" } }`, nil, nil)
 	if tr.Len() == 0 {
 		t.Fatal("a schema of bare words did not mount")
 	}
@@ -665,7 +665,7 @@ func TestABareIdentifierIsNeverABinding(t *testing.T) {
 	if err := tr2.DeclareSource("vertical", sv("SHADOW")); err != nil {
 		t.Fatal(err)
 	}
-	if err := tr2.Mount(mustSpec(t, `Flex { direction: vertical Text { id: a text: "x" } }`)); err != nil {
+	if err := tr2.Mount(mustSpec(t, `Flex { direction: "vertical" Text { id: a text: "x" } }`)); err != nil {
 		t.Fatalf("a source shadowed an adapter identifier: %v", err)
 	}
 	for _, l := range rec2.trace {
@@ -682,7 +682,7 @@ func TestABareIdentifierIsNeverABinding(t *testing.T) {
 // TestSourcesNestInsideCalls — 0001c row 6.
 func TestSourcesNestInsideCalls(t *testing.T) {
 	rec := newReactor()
-	tr := tree(t, rec, `Flex { Text { id: a text: outer(inner($x), "lit") } }`,
+	tr := tree(t, rec, `Flex { Text { id: a text: outer(inner(x), "lit") } }`,
 		map[string]string{"x": "1"},
 		map[string]decl.ValueFunc{
 			"inner": func(a []parse.SpecValue) (parse.SpecValue, error) { return sv("[" + a[0].Raw + "]"), nil },
@@ -715,7 +715,7 @@ func TestBindingsRequireAClassifier(t *testing.T) {
 	if err := tr.DeclareSource("x", sv("1")); err != nil {
 		t.Fatal(err)
 	}
-	err := tr.Mount(mustSpec(t, `Flex { Text { id: a text: $x } }`))
+	err := tr.Mount(mustSpec(t, `Flex { Text { id: a text: x } }`))
 	if !errors.Is(err, decl.ErrBindingUnsupported) {
 		t.Fatalf("err = %v, want ErrBindingUnsupported", err)
 	}
@@ -736,7 +736,7 @@ func TestABindingOnAConstructorOnlyPropertyIsRefused(t *testing.T) {
 	if err := tr.DeclareSource("dir", sv("vertical")); err != nil {
 		t.Fatal(err)
 	}
-	err := tr.Mount(mustSpec(t, `Flex { direction: $dir Text { id: a text: "x" } }`))
+	err := tr.Mount(mustSpec(t, `Flex { direction: "dir" Text { id: a text: "x" } }`))
 	if err == nil {
 		t.Fatal("a binding on a constructor-only property was accepted")
 	}
@@ -751,9 +751,9 @@ func TestABindingOnAConstructorOnlyPropertyIsRefused(t *testing.T) {
 // TestDuplicateDeclarationsInvolvingABinding — row 24.
 func TestDuplicateDeclarationsInvolvingABinding(t *testing.T) {
 	for name, src := range map[string]string{
-		"binding then literal": `Flex { Text { id: a text: $x text: "fixed" } }`,
-		"literal then binding": `Flex { Text { id: a text: "fixed" text: $x } }`,
-		"binding then binding": `Flex { Text { id: a text: $x text: $y } }`,
+		"binding then literal": `Flex { Text { id: a text: x text: "fixed" } }`,
+		"literal then binding": `Flex { Text { id: a text: "fixed" text: x } }`,
+		"binding then binding": `Flex { Text { id: a text: x text: y } }`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := newReactor()
@@ -799,7 +799,7 @@ func TestACreateConsumedBindingInitialisesItsCache(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := tr.Mount(mustSpec(t, `Flex { Text { id: a text: same($x) } }`)); err != nil {
+	if err := tr.Mount(mustSpec(t, `Flex { Text { id: a text: same(x) } }`)); err != nil {
 		t.Fatal(err)
 	}
 	rec.trace = nil
@@ -828,7 +828,7 @@ func TestACreateConsumedBindingInitialisesItsCache(t *testing.T) {
 // sources carried over could never have that set corrected.
 func TestDestroyDropsSourcesAndBindings(t *testing.T) {
 	rec := newReactor()
-	tr := tree(t, rec, `Flex { Text { id: a text: $x } }`, map[string]string{"x": "1"}, nil)
+	tr := tree(t, rec, `Flex { Text { id: a text: x } }`, map[string]string{"x": "1"}, nil)
 
 	if err := tr.Destroy(); err != nil {
 		t.Fatalf("Destroy: %v", err)
@@ -843,7 +843,7 @@ func TestDestroyDropsSourcesAndBindings(t *testing.T) {
 	if err := tr.DeclareSource("x", sv("fresh")); err != nil {
 		t.Fatalf("redeclaration after Destroy was refused: %v", err)
 	}
-	if err := tr.Mount(mustSpec(t, `Flex { Text { id: a text: $x } }`)); err != nil {
+	if err := tr.Mount(mustSpec(t, `Flex { Text { id: a text: x } }`)); err != nil {
 		t.Fatalf("re-mount after Destroy: %v", err)
 	}
 	r, err := tr.SetSource("x", sv("tracks"))

@@ -29,16 +29,21 @@ import (
 //	Body     := ( Property | Handler | Node )*
 //	Property := Ident ':' Value
 //	Handler  := 'on' Ident ':' Ident        // a handler NAME, never a body
-//	Value    := String | Number | Bool | Token | Source | Ref | Call
+//	Value    := String | Number | Bool | Token | Ref | Call
 //	Token    := '@' Ident                   // a portable style token
-//	Source   := '$' Ident                   // a reactive source, resolved by the engine
-//	Ref      := Ident                       // a bare identifier, resolved by the ADAPTER
+//	Ref      := Ident { '.' Ident }         // a name, or a member chain
 //	Call     := Ident '(' [ Value { ',' Value } ] ')'
 //
-// There is no arithmetic and there are no member chains. `width: parent.width / 2`
-// is where an expression evaluator starts, and an expression evaluator is where
-// an ECMAScript runtime ends. Growing the grammar should take a specific screen
-// that needs it, not a general appetite for expressiveness.
+// There is no ARITHMETIC. `width: parent.width / 2` is where an expression
+// evaluator starts, and an expression evaluator is where an ECMAScript runtime
+// ends. Growing the grammar should take a specific screen that needs it, not a
+// general appetite for expressiveness.
+//
+// Member chains ARE parsed, into [SpecValue.Path], because a schema that reads
+// like QML should not fail to tokenize like QML — a reader who writes
+// `parent.width` deserves an error about what it MEANS, naming the line, rather
+// than a parse error about a stray dot. Whether a consumer can resolve one is
+// its own business; this package only records that a chain was written.
 //
 // Handler bodies are NAMES for the same reason: this package emits data, never
 // behaviour, so one schema file stays meaningful to any adapter that can
@@ -87,26 +92,21 @@ const (
 	// than a tui/style.Token — otherwise the same schema stops meaning
 	// anything to a non-terminal adapter, which is the point of the layering.
 	SpecValueToken
-	// SpecValueRef is a bare identifier: a single reference, resolved by the
-	// adapter. Not a member chain — see the grammar note on the type.
+	// SpecValueRef is a name written bare: `greeting`, or a member chain like
+	// `parent.width`.
+	//
+	// Raw holds it AS WRITTEN, dots and all, and [SpecValue.Path] holds the
+	// segments. A single-segment reference therefore reads exactly as it always
+	// did — Raw is the whole name — so a consumer that never expected a chain
+	// keeps working unchanged.
+	//
+	// Who resolves it is the consumer's business: a UI engine may read a
+	// host-provided value of that name, and an adapter may read its own
+	// vocabulary. This package only records what was written.
 	SpecValueRef
 	// SpecValueCall is a call into the host function registry. Raw holds the
 	// function name and Args holds the arguments, which are themselves Values.
 	SpecValueCall
-	// SpecValueSource is a reactive source reference written $name.
-	//
-	// It is SPELLED DIFFERENTLY FROM A BARE IDENTIFIER on purpose. A bare word
-	// already means "an identifier the adapter resolves" — `orientation:
-	// horizontal` is one — so a schema in which any bare word might instead be
-	// a source would change meaning based on host configuration, and the same
-	// name could not be both. A sigil keeps the two populations apart, and
-	// keeps every schema written before sources existed meaning what it did.
-	//
-	// It is declared LAST so the kinds that existed before it keep their
-	// numeric values: inserting it beside @token shifted Ref from 5 to 6 and
-	// Call from 6 to 7, which is invisible in Go and not invisible to anything
-	// that has ever written one down.
-	SpecValueSource
 )
 
 // String renders the kind for diagnostics.
@@ -118,8 +118,6 @@ func (k SpecValueKind) String() string {
 		return "number"
 	case SpecValueBool:
 		return "bool"
-	case SpecValueSource:
-		return "source"
 	case SpecValueToken:
 		return "token"
 	case SpecValueRef:
@@ -144,6 +142,10 @@ type SpecValue struct {
 	Raw string
 	// Args are the arguments of a SpecValueCall, empty otherwise.
 	Args []SpecValue
+	// Path holds the segments of a SpecValueRef: ["parent", "width"] for
+	// `parent.width`, and ["greeting"] for a plain name. Empty for every other
+	// kind.
+	Path []string
 	Pos  Position
 }
 
@@ -490,24 +492,6 @@ func (p *qmlParser) value() (SpecValue, error) {
 		}
 		return SpecValue{Kind: SpecValueToken, Raw: name, Pos: at}, nil
 
-	case r == '$':
-		p.sc.Next()
-		name, ok := p.ident()
-		if !ok {
-			r2, ok := p.sc.Peek()
-			if !ok {
-				return SpecValue{}, SyntaxError{
-					Format: "qml", Pos: at,
-					Want: "a source name after $", Got: "end of input", Incomplete: true,
-				}
-			}
-			return SpecValue{}, SyntaxError{
-				Format: "qml", Pos: at,
-				Want: "a source name after $", Got: quoteRune(r2),
-			}
-		}
-		return SpecValue{Kind: SpecValueSource, Raw: name, Pos: at}, nil
-
 	case r == '-' || r == '+' || (r >= '0' && r <= '9'):
 		return p.numberValue()
 
@@ -523,13 +507,44 @@ func (p *qmlParser) value() (SpecValue, error) {
 		if p.sc.HasPrefix("(") {
 			return p.callValue(name, at)
 		}
-		return SpecValue{Kind: SpecValueRef, Raw: name, Pos: at}, nil
+		return p.refValue(name, at)
 	}
 
 	return SpecValue{}, SyntaxError{
 		Format: "qml", Pos: at,
 		Want: "a value", Got: quoteRune(r),
 	}
+}
+
+// refValue reads a name and any member chain following it.
+//
+// The dot binds TIGHTLY: `a . b` is a reference followed by a syntax error, not
+// a chain, for the same reason `foo ()` is not a call. One shape per meaning
+// keeps the grammar readable without lookahead rules a person has to remember.
+func (p *qmlParser) refValue(name string, at Position) (SpecValue, error) {
+	path := []string{name}
+	raw := name
+	for p.sc.HasPrefix(".") {
+		dotAt := p.sc.Pos()
+		p.sc.Take(".")
+		seg, ok := p.ident()
+		if !ok {
+			r, more := p.sc.Peek()
+			if !more {
+				return SpecValue{}, SyntaxError{
+					Format: "qml", Pos: dotAt,
+					Want: "a name after .", Got: "end of input", Incomplete: true,
+				}
+			}
+			return SpecValue{}, SyntaxError{
+				Format: "qml", Pos: dotAt,
+				Want: "a name after .", Got: quoteRune(r),
+			}
+		}
+		path = append(path, seg)
+		raw += "." + seg
+	}
+	return SpecValue{Kind: SpecValueRef, Raw: raw, Path: path, Pos: at}, nil
 }
 
 func (p *qmlParser) callValue(name string, at Position) (SpecValue, error) {

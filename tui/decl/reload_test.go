@@ -20,10 +20,10 @@ import (
 // each.
 const listScreen = `Split {
     id: root
-    orientation: horizontal
+    orientation: "horizontal"
     Flex {
         id: list
-        direction: vertical
+        direction: "vertical"
         Text { id: a text: "alpha" }
         Text { id: b text: "bravo" }
         Text { id: c text: "charlie" }
@@ -34,10 +34,10 @@ const listScreen = `Split {
 // reordered moves charlie to the front. Nothing else about the file changes.
 const listReordered = `Split {
     id: root
-    orientation: horizontal
+    orientation: "horizontal"
     Flex {
         id: list
-        direction: vertical
+        direction: "vertical"
         Text { id: c text: "charlie" }
         Text { id: a text: "alpha" }
         Text { id: b text: "bravo" }
@@ -125,10 +125,10 @@ func TestAReloadReordersARealScreenWithoutRebuilding(t *testing.T) {
 func TestAReloadInsertsANewChildInTheMiddle(t *testing.T) {
 	const withDelta = `Split {
     id: root
-    orientation: horizontal
+    orientation: "horizontal"
     Flex {
         id: list
-        direction: vertical
+        direction: "vertical"
         Text { id: a text: "alpha" }
         Text { id: d text: "delta" }
         Text { id: b text: "bravo" }
@@ -186,14 +186,14 @@ func TestAReloadKeepsFocusAndInFlightWork(t *testing.T) {
 
 	const before = `Flex {
     id: list
-    direction: vertical
+    direction: "vertical"
     Button { id: btn label: "Save" enabled: true }
     Tracker { id: work }
     Text { id: tail text: "tail" }
 }`
 	const after = `Flex {
     id: list
-    direction: vertical
+    direction: "vertical"
     Text { id: tail text: "tail" }
     Tracker { id: work }
     Button { id: btn label: "Save" enabled: true }
@@ -283,11 +283,11 @@ func TestAReloadKeepsFocusAndInFlightWork(t *testing.T) {
 func TestASplitIsRebuiltBecauseTheToolkitCannotRestructureIt(t *testing.T) {
 	const swapped = `Split {
     id: root
-    orientation: horizontal
+    orientation: "horizontal"
     Text { id: side text: "right pane" }
     Flex {
         id: list
-        direction: vertical
+        direction: "vertical"
         Text { id: a text: "alpha" }
         Text { id: b text: "bravo" }
         Text { id: c text: "charlie" }
@@ -481,10 +481,10 @@ func equalStrings(a, b []string) bool {
 func TestAReloadRemovesAChildFromARealContainer(t *testing.T) {
 	const withoutBravo = `Split {
     id: root
-    orientation: horizontal
+    orientation: "horizontal"
     Flex {
         id: list
-        direction: vertical
+        direction: "vertical"
         Text { id: a text: "alpha" }
         Text { id: c text: "charlie" }
     }
@@ -618,11 +618,11 @@ func TestAddingAConstructorOnlyPropertyRebuilds(t *testing.T) {
 	cases := []struct{ name, before, after, typ, prop string }{
 		{"Split.orientation",
 			`Split { id: root Text { id: a text: "l" } Text { id: b text: "r" } }`,
-			`Split { id: root orientation: vertical Text { id: a text: "l" } Text { id: b text: "r" } }`,
+			`Split { id: root orientation: "vertical" Text { id: a text: "l" } Text { id: b text: "r" } }`,
 			"Split", "orientation"},
 		{"Flex.direction",
 			`Flex { id: root Text { id: a text: "l" } }`,
-			`Flex { id: root direction: horizontal Text { id: a text: "l" } }`,
+			`Flex { id: root direction: "horizontal" Text { id: a text: "l" } }`,
 			"Flex", "direction"},
 	}
 	for _, c := range cases {
@@ -690,8 +690,8 @@ func TestClassifyPropertyDistinguishesAllThreeKinds(t *testing.T) {
 // heard of. Nothing may be touched: the rebuild cannot help, so it must not
 // happen.
 func TestAnUnknownPropertyLeavesTheTreeUntouched(t *testing.T) {
-	const before = `Flex { id: list direction: vertical Text { id: a text: "one" } }`
-	const typo = `Flex { id: list direction: vertical Text { id: a text: "one" nosuch: "x" } }`
+	const before = `Flex { id: list direction: "vertical" Text { id: a text: "one" } }`
+	const typo = `Flex { id: list direction: "vertical" Text { id: a text: "one" nosuch: "x" } }`
 	tr, a := mount(t, before, tuidecl.HostFuncs{},
 		func(err error) { t.Errorf("unexpected handler error: %v", err) })
 	be, app := startApp(t, mustRoot(t, tr, a))
@@ -741,7 +741,7 @@ func TestAnUnknownPropertyLeavesTheTreeUntouched(t *testing.T) {
 
 	// And the tree is NOT latched: correcting the typo works.
 	onLoop(t, app, func() {
-		res, err = tr.Reload([]byte(`Flex { id: list direction: vertical Text { id: a text: "two" } }`))
+		res, err = tr.Reload([]byte(`Flex { id: list direction: "vertical" Text { id: a text: "two" } }`))
 	})
 	if err != nil {
 		t.Fatalf("the tree was latched by a property typo: %v", err)
@@ -762,13 +762,13 @@ func TestAnUnknownPropertyLeavesTheTreeUntouched(t *testing.T) {
 // here because they reach the mount differently: one through a fresh step, the
 // other through a type-change rebuild.
 func TestATypoInANodeTHATDOESNOTEXISTYETLeavesTheTreeUntouched(t *testing.T) {
-	const before = `Flex { id: list direction: vertical Text { id: a text: "one" } }`
-	const fixed = `Flex { id: list direction: vertical Text { id: a text: "two" } }`
+	const before = `Flex { id: list direction: "vertical" Text { id: a text: "one" } }`
+	const fixed = `Flex { id: list direction: "vertical" Text { id: a text: "two" } }`
 	cases := map[string]string{
-		"retyped":  `Flex { id: list direction: vertical Button { id: a label: "go" nosuch: "x" } }`,
-		"inserted": `Flex { id: list direction: vertical Text { id: a text: "one" } Text { id: b nosuch: "x" } }`,
-		"inserted deeper": `Flex { id: list direction: vertical Text { id: a text: "one" } ` +
-			`Flex { id: sub direction: vertical Text { id: c nosuch: "x" } } }`,
+		"retyped":  `Flex { id: list direction: "vertical" Button { id: a label: "go" nosuch: "x" } }`,
+		"inserted": `Flex { id: list direction: "vertical" Text { id: a text: "one" } Text { id: b nosuch: "x" } }`,
+		"inserted deeper": `Flex { id: list direction: "vertical" Text { id: a text: "one" } ` +
+			`Flex { id: sub direction: "vertical" Text { id: c nosuch: "x" } } }`,
 	}
 	for name, typo := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -840,7 +840,7 @@ func TestATypoInANodeTHATDOESNOTEXISTYETLeavesTheTreeUntouched(t *testing.T) {
 // classification cannot settle.
 //
 // Classification proves a property EXISTS. Only the constructor can say whether
-// it accepts this VALUE, and only by being called — `direction: diagonal` names
+// it accepts this VALUE, and only by being called — `direction: "diagonal"` names
 // a real Flex property and a direction Flex has no meaning for. So the
 // replacement is BUILT FIRST, while the live tree is still standing, and a
 // refusal costs nothing but the half-built replacement.
@@ -849,13 +849,13 @@ func TestATypoInANodeTHATDOESNOTEXISTYETLeavesTheTreeUntouched(t *testing.T) {
 // (which has no parent to splice into), a CHILD whose type changed, and an
 // INSERTED child.
 func TestAConstructorRefusingAValueLeavesTheTreeStanding(t *testing.T) {
-	const before = `Flex { id: root direction: vertical Text { id: a text: "one" } }`
+	const before = `Flex { id: root direction: "vertical" Text { id: a text: "one" } }`
 	cases := map[string]string{
-		"root constructor value": `Flex { id: root direction: diagonal Text { id: a text: "one" } }`,
-		"child of an unknown type": `Flex { id: root direction: vertical ` +
+		"root constructor value": `Flex { id: root direction: "diagonal" Text { id: a text: "one" } }`,
+		"child of an unknown type": `Flex { id: root direction: "vertical" ` +
 			`NoSuchWidget { id: a } }`,
-		"inserted child with a bad value": `Flex { id: root direction: vertical ` +
-			`Text { id: a text: "one" } Flex { id: b direction: sideways } }`,
+		"inserted child with a bad value": `Flex { id: root direction: "vertical" ` +
+			`Text { id: a text: "one" } Flex { id: b direction: "sideways" } }`,
 	}
 	for name, bad := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -921,7 +921,7 @@ func TestAConstructorRefusingAValueLeavesTheTreeStanding(t *testing.T) {
 
 			// And NOT latched: a corrected reload goes through.
 			onLoop(t, app, func() {
-				res, err = tr.Reload([]byte(`Flex { id: root direction: vertical Text { id: a text: "two" } }`))
+				res, err = tr.Reload([]byte(`Flex { id: root direction: "vertical" Text { id: a text: "two" } }`))
 			})
 			if err != nil {
 				t.Fatalf("the tree was latched by a refused constructor: %v", err)
@@ -953,7 +953,7 @@ func TestAFailedSetterStillLatches(t *testing.T) {
 	)
 	ad := tuidecl.New(reg, opts...)
 	tr := decl.New(ad)
-	spec, err := parse.QML{}.Parse([]byte(`Flex { id: root direction: vertical Text { id: a } }`))
+	spec, err := parse.QML{}.Parse([]byte(`Flex { id: root direction: "vertical" Text { id: a } }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -961,11 +961,11 @@ func TestAFailedSetterStillLatches(t *testing.T) {
 		t.Fatalf("mount: %v", err)
 	}
 
-	if _, err := tr.Reload([]byte(`Flex { id: root direction: vertical Text { id: a text: "one" } }`)); err == nil {
+	if _, err := tr.Reload([]byte(`Flex { id: root direction: "vertical" Text { id: a text: "one" } }`)); err == nil {
 		t.Fatal("the setter was supposed to refuse")
 	}
 	// A setter that failed HAS touched the widget, so the tree is partial.
-	if _, err := tr.Reload([]byte(`Flex { id: root direction: vertical Text { id: a } }`)); !errors.Is(err, decl.ErrPhase) {
+	if _, err := tr.Reload([]byte(`Flex { id: root direction: "vertical" Text { id: a } }`)); !errors.Is(err, decl.ErrPhase) {
 		t.Fatalf("a reconcile after a failed setter returned %v, want ErrPhase", err)
 	}
 	if err := tr.Destroy(); err != nil {
@@ -987,12 +987,12 @@ var errTestSetter = errors.New("this setter refuses everything")
 // That is the same false-log defect as reporting a rebuild before it happened,
 // one scope out: fixed for a single node, still live for a batch.
 func TestAnAbortedBatchReportsNothing(t *testing.T) {
-	const before = `Flex { id: root direction: vertical
+	const before = `Flex { id: root direction: "vertical"
 	    Text { id: a text: "one" }
 	    Text { id: b text: "two" } }`
-	const bad = `Flex { id: root direction: vertical
-	    Flex { id: a direction: horizontal }
-	    Flex { id: b direction: diagonal } }`
+	const bad = `Flex { id: root direction: "vertical"
+	    Flex { id: a direction: "horizontal" }
+	    Flex { id: b direction: "diagonal" } }`
 
 	tr, a := mount(t, before, tuidecl.HostFuncs{},
 		func(err error) { t.Errorf("unexpected handler error: %v", err) })
@@ -1056,12 +1056,12 @@ func TestAnAbortedBatchReportsNothing(t *testing.T) {
 // while the documentation promises the opposite is not a limit, it is a bug
 // with a witness.
 func TestTheNoLatchGuaranteeIsPerParentNotWholeTree(t *testing.T) {
-	const before = `Flex { id: root direction: vertical
+	const before = `Flex { id: root direction: "vertical"
 	    Text { id: a text: "one" }
-	    Flex { id: mid direction: vertical Text { id: c text: "three" } } }`
-	const bad = `Flex { id: root direction: vertical
+	    Flex { id: mid direction: "vertical" Text { id: c text: "three" } } }`
+	const bad = `Flex { id: root direction: "vertical"
 	    Text { id: a text: "CHANGED" }
-	    Flex { id: mid direction: vertical Flex { id: c direction: diagonal } } }`
+	    Flex { id: mid direction: "vertical" Flex { id: c direction: "diagonal" } } }`
 
 	tr, a := mount(t, before, tuidecl.HostFuncs{},
 		func(err error) { t.Errorf("unexpected handler error: %v", err) })

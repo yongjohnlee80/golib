@@ -22,9 +22,9 @@ import (
 // path instead of the constructor.
 const screen = `Split {
     id: root
-    orientation: horizontal
+    orientation: "horizontal"
     Flex {
-        direction: vertical
+        direction: "vertical"
         Text { text: "left pane" }
         Button {
             label: "Save"
@@ -153,7 +153,7 @@ func TestConstructorOnlyPropertiesAreNotReApplied(t *testing.T) {
 		return widget.NewText(""), nil, nil
 	})
 
-	spec, err := parse.QML{}.Parse([]byte(`Split { orientation: horizontal Text { } Text { } }`))
+	spec, err := parse.QML{}.Parse([]byte(`Split { orientation: "horizontal" Text { } Text { } }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestConstructorOnlyPropertiesAreNotReApplied(t *testing.T) {
 	}
 
 	// The real registry reports it, so the same schema mounts.
-	if _, _ = mount(t, `Split { orientation: horizontal Text { } Text { } }`,
+	if _, _ = mount(t, `Split { orientation: "horizontal" Text { } Text { } }`,
 		tuidecl.HostFuncs{}, func(error) {}); true {
 		// mount fatals on failure; reaching here is the assertion.
 	}
