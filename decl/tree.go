@@ -74,7 +74,7 @@ type Tree struct {
 	sources map[string]parse.SpecValue
 	// funcs are the host-declared value functions a Call may name.
 	funcs map[string]ValueFunc
-	// consts are the qualified names the adapter defines — `tui.Horizontal`.
+	// consts are the qualified names the adapter defines — `Tui.Horizontal`.
 	// They are collected once from the adapter, because they do not change.
 	consts map[string]parse.SpecValue
 	// injected is the typed registry: every name a schema may reach, paired with
@@ -86,11 +86,11 @@ type Tree struct {
 	// injected namespaces: a module must be IMPORTED before its names resolve,
 	// which is what stops an `import` line from being decoration.
 	modules map[string]Module
-	// imported maps the name a document bound to the module it names — the
-	// alias for `as T`, the module's own name otherwise. It is replaced on every
-	// Mount and Reconcile, because imports belong to the DOCUMENT rather than to
-	// the tree, and a reload that drops an import must stop resolving through it.
-	imported map[string]string
+	// imported is what the document's import lines brought into scope. It is
+	// replaced on every Mount and Reconcile, because imports belong to the
+	// DOCUMENT rather than to the tree, and a reload that drops an import must
+	// stop resolving through it.
+	imported imports
 	// bindings are every bound property in the tree, in DOCUMENT ORDER — the
 	// only order a schema author can see, and therefore the only defensible
 	// fan-out order when a propagation stops part-way.

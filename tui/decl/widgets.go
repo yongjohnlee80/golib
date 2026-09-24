@@ -14,7 +14,7 @@ import (
 // The set is chosen for the shapes it forces, not for coverage:
 //
 // Enum-valued properties are written as QUALIFIED ENUMS — `orientation:
-// tui.Horizontal` — exactly as Qt spells them (`Qt.Horizontal`). The adapter
+// Tui.Horizontal` — exactly as Qt spells them (`Qt.Horizontal`). The adapter
 // publishes those names through Constants, and the engine resolves them to a
 // terminal before a builder is called, so what arrives here is a string.
 //

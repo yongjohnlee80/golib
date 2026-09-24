@@ -19,7 +19,6 @@ func TestReferenceValuesParse(t *testing.T) {
 		{`N { a: greeting }`, parse.SpecValueRef, "greeting", 0, 0},
 		{`N { a: parent.width }`, parse.SpecValueRef, "parent.width", 0, 0},
 		{`N { a: horizontal }`, parse.SpecValueRef, "horizontal", 0, 0},
-		{`N { a: @surface }`, parse.SpecValueToken, "surface", 0, 0},
 		{`N { a: f(g, bare, "s") }`, parse.SpecValueCall, "f", 3, parse.SpecValueRef},
 		{`N { a: f(g(x)) }`, parse.SpecValueCall, "f", 1, parse.SpecValueCall},
 	}
@@ -99,10 +98,14 @@ func TestAnIncompleteChainHoldsTheTree(t *testing.T) {
 
 // TestKindNumbersArePinned.
 //
-// A short-lived SpecValueSource was once declared beside @token and shifted Ref
-// from 5 to 6 and Call from 6 to 7. That is invisible in Go and not invisible to
-// anything that has ever written one of those numbers down, so they are pinned
-// here rather than left to the next person's sense of tidiness.
+// A short-lived SpecValueSource was once INSERTED mid-list and shifted Ref from
+// 5 to 6 and Call from 6 to 7. That is invisible in Go, and this test is what
+// makes it visible.
+//
+// The numbers below changed once, deliberately: retiring the @name token kind
+// removed slot 4 and moved everything after it. That is what an accidental
+// insertion looks like too, which is the point — a change here has to be made
+// on purpose, with the reason written down, rather than drifting.
 func TestKindNumbersArePinned(t *testing.T) {
 	for _, c := range []struct {
 		kind parse.SpecValueKind
@@ -112,9 +115,9 @@ func TestKindNumbersArePinned(t *testing.T) {
 		{parse.SpecValueString, 1},
 		{parse.SpecValueNumber, 2},
 		{parse.SpecValueBool, 3},
-		{parse.SpecValueToken, 4},
-		{parse.SpecValueRef, 5},
-		{parse.SpecValueCall, 6},
+		{parse.SpecValueRef, 4},
+		{parse.SpecValueCall, 5},
+		{parse.SpecValueExpr, 6},
 	} {
 		if uint8(c.kind) != c.n {
 			t.Errorf("%v = %d, want %d", c.kind, uint8(c.kind), c.n)

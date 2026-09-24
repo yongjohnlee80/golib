@@ -141,7 +141,7 @@ func TestQMLClassifiesValuesLexically(t *testing.T) {
         n: 12.5
         neg: -3
         b: false
-        tok: @surface
+        tok: Theme.surface
         ref: someName
         call: fmtSize(2, "u")
     }`)
@@ -154,7 +154,7 @@ func TestQMLClassifiesValuesLexically(t *testing.T) {
 		"n":    {parse.SpecValueNumber, "12.5"},
 		"neg":  {parse.SpecValueNumber, "-3"},
 		"b":    {parse.SpecValueBool, "false"},
-		"tok":  {parse.SpecValueToken, "surface"},
+		"tok":  {parse.SpecValueRef, "Theme.surface"},
 		"ref":  {parse.SpecValueRef, "someName"},
 		"call": {parse.SpecValueCall, "fmtSize"},
 	}
@@ -176,7 +176,7 @@ func TestQMLClassifiesValuesLexically(t *testing.T) {
 }
 
 func TestQMLCallArgumentsAreValues(t *testing.T) {
-	tree := mustParse(t, `N { x: outer(1, inner(@tok), "s") }`)
+	tree := mustParse(t, `N { x: outer(1, inner(Theme.tok), "s") }`)
 	v := tree.Root.Props[0].Value
 	if v.Kind != parse.SpecValueCall || len(v.Args) != 3 {
 		t.Fatalf("value = %+v, want a call with 3 args", v)
@@ -184,7 +184,7 @@ func TestQMLCallArgumentsAreValues(t *testing.T) {
 	if v.Args[1].Kind != parse.SpecValueCall || len(v.Args[1].Args) != 1 {
 		t.Fatalf("nested arg = %+v, want a call with 1 arg", v.Args[1])
 	}
-	if v.Args[1].Args[0].Kind != parse.SpecValueToken {
+	if v.Args[1].Args[0].Kind != parse.SpecValueRef {
 		t.Errorf("nested call arg kind = %v, want token", v.Args[1].Args[0].Kind)
 	}
 }
@@ -197,7 +197,7 @@ func TestQMLCallArgumentsAreValues(t *testing.T) {
 // accept arbitrary text, so a parser that rejected "#1e1e2e" would refuse
 // legitimate documents to enforce a rule it cannot evaluate.
 func TestQMLDoesNotJudgeValueMEANING(t *testing.T) {
-	tree := mustParse(t, `Text { text: "#1e1e2e" foreground: @text }`)
+	tree := mustParse(t, `Text { text: "#1e1e2e" foreground: Theme.text }`)
 
 	var text, fg parse.SpecValue
 	for _, p := range tree.Root.Props {
@@ -212,8 +212,8 @@ func TestQMLDoesNotJudgeValueMEANING(t *testing.T) {
 		t.Errorf(`text = {%v %q}, want a plain string "#1e1e2e" — `+
 			`the parser must not second-guess a colour-shaped string`, text.Kind, text.Raw)
 	}
-	if fg.Kind != parse.SpecValueToken || fg.Raw != "text" {
-		t.Errorf("foreground = {%v %q}, want token %q", fg.Kind, fg.Raw, "text")
+	if fg.Kind != parse.SpecValueRef || fg.Raw != "Theme.text" {
+		t.Errorf("foreground = {%v %q}, want a reference to %q", fg.Kind, fg.Raw, "Theme.text")
 	}
 }
 
@@ -410,7 +410,7 @@ func TestQMLValuePositionsSurvive(t *testing.T) {
 	// Token-only enforcement belongs to the registry, which reports using the
 	// Position recorded here. If values lose their position that error cannot
 	// point anywhere useful, so carrying it is part of this parser's job.
-	tree := mustParse(t, "Column {\n  label: \"x\"\n  other: @tok\n}")
+	tree := mustParse(t, "Column {\n  label: \"x\"\n  other: Theme.tok\n}")
 	for _, p := range tree.Root.Props {
 		if p.Value.Pos.Line == 0 || p.Value.Pos.Column == 0 {
 			t.Errorf("prop %q value has zero Position %+v", p.Name, p.Value.Pos)

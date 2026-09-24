@@ -183,7 +183,6 @@ func TestAPropertyValueIsAJavaScriptExpression(t *testing.T) {
 		{name: "a number projects", src: `12.5`, kind: parse.SpecValueNumber, raw: "12.5"},
 		{name: "a negative number folds its sign", src: `-3`, kind: parse.SpecValueNumber, raw: "-3"},
 		{name: "a bool projects", src: `false`, kind: parse.SpecValueBool, raw: "false"},
-		{name: "a token projects", src: `@surface`, kind: parse.SpecValueToken, raw: "surface"},
 		{name: "a name projects", src: `greeting`, kind: parse.SpecValueRef, raw: "greeting"},
 		{name: "a member chain projects", src: `parent.width`, kind: parse.SpecValueRef, raw: "parent.width"},
 		{name: "a call projects", src: `f(1)`, kind: parse.SpecValueCall, raw: "f"},

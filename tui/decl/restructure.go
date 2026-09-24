@@ -142,7 +142,7 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 // Constants implements decl.Constants: the toolkit's own vocabulary, written
 // the way QML writes an enum.
 //
-// `orientation: tui.Horizontal` rather than a quoted string or a bare word. Qt
+// `orientation: Tui.Horizontal` rather than a quoted string or a bare word. Qt
 // spells these `Qt.Horizontal`; the mechanism is identical, and a qualified
 // name is a CONSTANT — resolved once at planning, never tracked — which is why
 // it costs the reactive graph nothing.
@@ -151,8 +151,8 @@ func (a *Adapter) Constants() map[string]parse.SpecValue {
 		return parse.SpecValue{Kind: parse.SpecValueString, Raw: s}
 	}
 	return map[string]parse.SpecValue{
-		"tui.Horizontal": str("horizontal"),
-		"tui.Vertical":   str("vertical"),
+		"Tui.Horizontal": str("horizontal"),
+		"Tui.Vertical":   str("vertical"),
 	}
 }
 
@@ -165,6 +165,16 @@ const TuiModuleVersion = "1.0"
 // This is what makes `import tui 1.0` mean something. Without it the import
 // line would parse, resolve to nothing, and a document that forgot it would
 // work anyway — which is the difference between a module system and a comment.
+//
+// The module EXPORTS a singleton rather than being a name itself, which is how
+// QML works: `import tui 1.0` brings `Tui` into scope, and the document writes
+// `Tui.Horizontal`. An earlier version bound the module name, producing
+// `Tui.Horizontal` — a spelling no QML runtime accepts, because a singleton is
+// a type and a type is capitalised.
 func (a *Adapter) Modules() []decl.Module {
-	return []decl.Module{{Name: "tui", Version: TuiModuleVersion}}
+	return []decl.Module{{
+		Name:    "tui",
+		Version: TuiModuleVersion,
+		Exports: []string{"Tui"},
+	}}
 }

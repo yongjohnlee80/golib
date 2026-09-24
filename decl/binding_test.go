@@ -650,12 +650,12 @@ func TestAHostSourceOutlivesEverySchemaReference(t *testing.T) {
 // TestABareIdentifierIsNeverABinding — 0001c rows 1 and 3.
 //
 // This is the regression that nine shipped cells caught: a bare word is the
-// adapter's vocabulary, and `orientation: tui.Horizontal` must keep meaning what it
+// adapter's vocabulary, and `orientation: Tui.Horizontal` must keep meaning what it
 // always did — even when a source happens to be called "horizontal".
 func TestABareIdentifierIsNeverABinding(t *testing.T) {
 	rec := newReactor()
 	tr := tree(t, rec, `import tui 1.0
-Flex { direction: tui.Vertical Text { id: a text: "x" } }`, nil, nil)
+Flex { direction: Tui.Vertical Text { id: a text: "x" } }`, nil, nil)
 	if tr.Len() == 0 {
 		t.Fatal("a schema of bare words did not mount")
 	}
@@ -667,7 +667,7 @@ Flex { direction: tui.Vertical Text { id: a text: "x" } }`, nil, nil)
 		t.Fatal(err)
 	}
 	if err := tr2.Mount(mustSpec(t, `import tui 1.0
-Flex { direction: tui.Vertical Text { id: a text: "x" } }`)); err != nil {
+Flex { direction: Tui.Vertical Text { id: a text: "x" } }`)); err != nil {
 		t.Fatalf("a source shadowed an adapter identifier: %v", err)
 	}
 	for _, l := range rec2.trace {

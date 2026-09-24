@@ -21,10 +21,10 @@ import (
 const listScreen = `import tui 1.0
 Split {
     id: root
-    orientation: tui.Horizontal
+    orientation: Tui.Horizontal
     Flex {
         id: list
-        direction: tui.Vertical
+        direction: Tui.Vertical
         Text { id: a text: "alpha" }
         Text { id: b text: "bravo" }
         Text { id: c text: "charlie" }
@@ -36,10 +36,10 @@ Split {
 const listReordered = `import tui 1.0
 Split {
     id: root
-    orientation: tui.Horizontal
+    orientation: Tui.Horizontal
     Flex {
         id: list
-        direction: tui.Vertical
+        direction: Tui.Vertical
         Text { id: c text: "charlie" }
         Text { id: a text: "alpha" }
         Text { id: b text: "bravo" }
@@ -128,10 +128,10 @@ func TestAReloadInsertsANewChildInTheMiddle(t *testing.T) {
 	const withDelta = `import tui 1.0
 Split {
     id: root
-    orientation: tui.Horizontal
+    orientation: Tui.Horizontal
     Flex {
         id: list
-        direction: tui.Vertical
+        direction: Tui.Vertical
         Text { id: a text: "alpha" }
         Text { id: d text: "delta" }
         Text { id: b text: "bravo" }
@@ -189,7 +189,7 @@ func TestAReloadKeepsFocusAndInFlightWork(t *testing.T) {
 	const before = `import tui 1.0
 Flex {
     id: list
-    direction: tui.Vertical
+    direction: Tui.Vertical
     Button { id: btn label: "Save" enabled: true }
     Tracker { id: work }
     Text { id: tail text: "tail" }
@@ -197,7 +197,7 @@ Flex {
 	const after = `import tui 1.0
 Flex {
     id: list
-    direction: tui.Vertical
+    direction: Tui.Vertical
     Text { id: tail text: "tail" }
     Tracker { id: work }
     Button { id: btn label: "Save" enabled: true }
@@ -288,11 +288,11 @@ func TestASplitIsRebuiltBecauseTheToolkitCannotRestructureIt(t *testing.T) {
 	const swapped = `import tui 1.0
 Split {
     id: root
-    orientation: tui.Horizontal
+    orientation: Tui.Horizontal
     Text { id: side text: "right pane" }
     Flex {
         id: list
-        direction: tui.Vertical
+        direction: Tui.Vertical
         Text { id: a text: "alpha" }
         Text { id: b text: "bravo" }
         Text { id: c text: "charlie" }
@@ -487,10 +487,10 @@ func TestAReloadRemovesAChildFromARealContainer(t *testing.T) {
 	const withoutBravo = `import tui 1.0
 Split {
     id: root
-    orientation: tui.Horizontal
+    orientation: Tui.Horizontal
     Flex {
         id: list
-        direction: tui.Vertical
+        direction: Tui.Vertical
         Text { id: a text: "alpha" }
         Text { id: c text: "charlie" }
     }
@@ -625,12 +625,12 @@ func TestAddingAConstructorOnlyPropertyRebuilds(t *testing.T) {
 		{"Split.orientation",
 			`Split { id: root Text { id: a text: "l" } Text { id: b text: "r" } }`,
 			`import tui 1.0
-Split { id: root orientation: tui.Vertical Text { id: a text: "l" } Text { id: b text: "r" } }`,
+Split { id: root orientation: Tui.Vertical Text { id: a text: "l" } Text { id: b text: "r" } }`,
 			"Split", "orientation"},
 		{"Flex.direction",
 			`Flex { id: root Text { id: a text: "l" } }`,
 			`import tui 1.0
-Flex { id: root direction: tui.Horizontal Text { id: a text: "l" } }`,
+Flex { id: root direction: Tui.Horizontal Text { id: a text: "l" } }`,
 			"Flex", "direction"},
 	}
 	for _, c := range cases {
@@ -699,9 +699,9 @@ func TestClassifyPropertyDistinguishesAllThreeKinds(t *testing.T) {
 // happen.
 func TestAnUnknownPropertyLeavesTheTreeUntouched(t *testing.T) {
 	const before = `import tui 1.0
-Flex { id: list direction: tui.Vertical Text { id: a text: "one" } }`
+Flex { id: list direction: Tui.Vertical Text { id: a text: "one" } }`
 	const typo = `import tui 1.0
-Flex { id: list direction: tui.Vertical Text { id: a text: "one" nosuch: "x" } }`
+Flex { id: list direction: Tui.Vertical Text { id: a text: "one" nosuch: "x" } }`
 	tr, a := mount(t, before, tuidecl.HostFuncs{},
 		func(err error) { t.Errorf("unexpected handler error: %v", err) })
 	be, app := startApp(t, mustRoot(t, tr, a))
@@ -752,7 +752,7 @@ Flex { id: list direction: tui.Vertical Text { id: a text: "one" nosuch: "x" } }
 	// And the tree is NOT latched: correcting the typo works.
 	onLoop(t, app, func() {
 		res, err = tr.Reload([]byte(`import tui 1.0
-Flex { id: list direction: tui.Vertical Text { id: a text: "two" } }`))
+Flex { id: list direction: Tui.Vertical Text { id: a text: "two" } }`))
 	})
 	if err != nil {
 		t.Fatalf("the tree was latched by a property typo: %v", err)
@@ -774,17 +774,17 @@ Flex { id: list direction: tui.Vertical Text { id: a text: "two" } }`))
 // other through a type-change rebuild.
 func TestATypoInANodeTHATDOESNOTEXISTYETLeavesTheTreeUntouched(t *testing.T) {
 	const before = `import tui 1.0
-Flex { id: list direction: tui.Vertical Text { id: a text: "one" } }`
+Flex { id: list direction: Tui.Vertical Text { id: a text: "one" } }`
 	const fixed = `import tui 1.0
-Flex { id: list direction: tui.Vertical Text { id: a text: "two" } }`
+Flex { id: list direction: Tui.Vertical Text { id: a text: "two" } }`
 	cases := map[string]string{
 		"retyped": `import tui 1.0
-Flex { id: list direction: tui.Vertical Button { id: a label: "go" nosuch: "x" } }`,
+Flex { id: list direction: Tui.Vertical Button { id: a label: "go" nosuch: "x" } }`,
 		"inserted": `import tui 1.0
-Flex { id: list direction: tui.Vertical Text { id: a text: "one" } Text { id: b nosuch: "x" } }`,
+Flex { id: list direction: Tui.Vertical Text { id: a text: "one" } Text { id: b nosuch: "x" } }`,
 		"inserted deeper": `import tui 1.0
-Flex { id: list direction: tui.Vertical Text { id: a text: "one" } ` +
-			`Flex { id: sub direction: tui.Vertical Text { id: c nosuch: "x" } } }`,
+Flex { id: list direction: Tui.Vertical Text { id: a text: "one" } ` +
+			`Flex { id: sub direction: Tui.Vertical Text { id: c nosuch: "x" } } }`,
 	}
 	for name, typo := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -869,17 +869,17 @@ Flex { id: list direction: tui.Vertical Text { id: a text: "one" } ` +
 // INSERTED child.
 func TestAConstructorRefusingAValueLeavesTheTreeStanding(t *testing.T) {
 	const before = `import tui 1.0
-Flex { id: root direction: tui.Vertical Text { id: a text: "one" } }`
+Flex { id: root direction: Tui.Vertical Text { id: a text: "one" } }`
 	cases := map[string]string{
 		"root constructor value": `import tui 1.0
-Split { id: root orientation: tui.Horizontal Text { id: a text: "one" } }`,
+Split { id: root orientation: Tui.Horizontal Text { id: a text: "one" } }`,
 		"child of an unknown type": `import tui 1.0
-Flex { id: root direction: tui.Vertical ` +
+Flex { id: root direction: Tui.Vertical ` +
 			`NoSuchWidget { id: a } }`,
 		"inserted child with a bad value": `import tui 1.0
-Flex { id: root direction: tui.Vertical ` +
+Flex { id: root direction: Tui.Vertical ` +
 			`import tui 1.0
-Text { id: a text: "one" } Split { id: b orientation: tui.Horizontal Text {} } }`,
+Text { id: a text: "one" } Split { id: b orientation: Tui.Horizontal Text {} } }`,
 	}
 	for name, bad := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -946,7 +946,7 @@ Text { id: a text: "one" } Split { id: b orientation: tui.Horizontal Text {} } }
 			// And NOT latched: a corrected reload goes through.
 			onLoop(t, app, func() {
 				res, err = tr.Reload([]byte(`import tui 1.0
-Flex { id: root direction: tui.Vertical Text { id: a text: "two" } }`))
+Flex { id: root direction: Tui.Vertical Text { id: a text: "two" } }`))
 			})
 			if err != nil {
 				t.Fatalf("the tree was latched by a refused constructor: %v", err)
@@ -978,7 +978,7 @@ func TestAFailedSetterStillLatches(t *testing.T) {
 	ad := tuidecl.New(reg, opts...)
 	tr := decl.New(ad)
 	spec, err := parse.QML{}.Parse([]byte(`import tui 1.0
-Flex { id: root direction: tui.Vertical Text { id: a } }`))
+Flex { id: root direction: Tui.Vertical Text { id: a } }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -987,12 +987,12 @@ Flex { id: root direction: tui.Vertical Text { id: a } }`))
 	}
 
 	if _, err := tr.Reload([]byte(`import tui 1.0
-Flex { id: root direction: tui.Vertical Text { id: a text: "one" } }`)); err == nil {
+Flex { id: root direction: Tui.Vertical Text { id: a text: "one" } }`)); err == nil {
 		t.Fatal("the setter was supposed to refuse")
 	}
 	// A setter that failed HAS touched the widget, so the tree is partial.
 	if _, err := tr.Reload([]byte(`import tui 1.0
-Flex { id: root direction: tui.Vertical Text { id: a } }`)); !errors.Is(err, decl.ErrPhase) {
+Flex { id: root direction: Tui.Vertical Text { id: a } }`)); !errors.Is(err, decl.ErrPhase) {
 		t.Fatalf("a reconcile after a failed setter returned %v, want ErrPhase", err)
 	}
 	if err := tr.Destroy(); err != nil {
@@ -1015,13 +1015,13 @@ var errTestSetter = errors.New("this setter refuses everything")
 // one scope out: fixed for a single node, still live for a batch.
 func TestAnAbortedBatchReportsNothing(t *testing.T) {
 	const before = `import tui 1.0
-Flex { id: root direction: tui.Vertical
+Flex { id: root direction: Tui.Vertical
 	    Text { id: a text: "one" }
 	    Text { id: b text: "two" } }`
 	const bad = `import tui 1.0
-Flex { id: root direction: tui.Vertical
-	    Flex { id: a direction: tui.Horizontal }
-	    Split { id: b orientation: tui.Horizontal Text {} } }`
+Flex { id: root direction: Tui.Vertical
+	    Flex { id: a direction: Tui.Horizontal }
+	    Split { id: b orientation: Tui.Horizontal Text {} } }`
 
 	tr, a := mount(t, before, tuidecl.HostFuncs{},
 		func(err error) { t.Errorf("unexpected handler error: %v", err) })
@@ -1086,13 +1086,13 @@ Flex { id: root direction: tui.Vertical
 // with a witness.
 func TestTheNoLatchGuaranteeIsPerParentNotWholeTree(t *testing.T) {
 	const before = `import tui 1.0
-Flex { id: root direction: tui.Vertical
+Flex { id: root direction: Tui.Vertical
 	    Text { id: a text: "one" }
-	    Flex { id: mid direction: tui.Vertical Text { id: c text: "three" } } }`
+	    Flex { id: mid direction: Tui.Vertical Text { id: c text: "three" } } }`
 	const bad = `import tui 1.0
-Flex { id: root direction: tui.Vertical
+Flex { id: root direction: Tui.Vertical
 	    Text { id: a text: "CHANGED" }
-	    Flex { id: mid direction: tui.Vertical Split { id: c orientation: tui.Horizontal Text {} } } }`
+	    Flex { id: mid direction: Tui.Vertical Split { id: c orientation: Tui.Horizontal Text {} } } }`
 
 	tr, a := mount(t, before, tuidecl.HostFuncs{},
 		func(err error) { t.Errorf("unexpected handler error: %v", err) })

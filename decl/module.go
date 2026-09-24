@@ -22,13 +22,23 @@ type Module struct {
 	// is compared as WRITTEN, because this engine has no version policy and
 	// inventing one would be guessing on the host's behalf.
 	Version string
+	// Exports are the SINGLETON NAMES this module brings into scope, each of
+	// which must begin with an upper-case letter because it names a type.
+	//
+	// A module is not itself a name. `import tui 1.0` does not make `tui`
+	// writable any more than `import QtQuick` makes `QtQuick` writable: it
+	// brings the module's singletons into scope under THEIR names, so a module
+	// exporting Tui gives `Tui.Horizontal`. An earlier version bound the module
+	// name itself, which produced `Tui.Horizontal` — a spelling no QML runtime
+	// accepts, because a singleton is a type and a type is capitalised.
+	Exports []string
 }
 
 // Modules is an OPTIONAL capability an [Adapter] may implement to say which
 // modules a schema may import.
 //
 // It is separate from [Constants] because the two answer different questions.
-// Constants says what `tui.Horizontal` MEANS; this says that `tui` is a module
+// Constants says what `Tui.Horizontal` MEANS; this says that `tui` is a module
 // and therefore has to be imported before anyone writes that.
 type Modules interface {
 	// Modules returns the importable modules this adapter provides.
@@ -61,6 +71,16 @@ func (t *Tree) DeclareModule(m Module) error {
 		return SchemaError{Op: "declare module",
 			Err: fmt.Errorf("%w: a module needs a name", ErrUndefinedModule)}
 	}
+	// An export names a SINGLETON, and a singleton is a type. QML capitalises
+	// types, so a lower-case export is refused here rather than producing a
+	// spelling no QML runtime accepts.
+	for _, e := range m.Exports {
+		if e == "" || !isUpperName(e) {
+			return SchemaError{Op: "declare module", Detail: m.Name, Err: fmt.Errorf(
+				"%w: export %q must begin with an upper-case letter, because it "+
+					"names a singleton and a singleton is a type", ErrUndefinedModule, e)}
+		}
+	}
 	if t.modules == nil {
 		t.modules = map[string]Module{}
 	}
@@ -72,49 +92,89 @@ func (t *Tree) DeclareModule(m Module) error {
 	return nil
 }
 
-// resolveImports checks a schema's imports and returns the names they bind.
+// imports is what a document's import lines brought into scope.
+type imports struct {
+	// byName maps a name a document may write to the module that provides it:
+	// "Tui" -> "tui" after a plain `import tui 1.0`.
+	byName map[string]string
+	// byQualifier maps a qualifier to its module: "T" -> "tui" after
+	// `import tui 1.0 as T`, which makes the exports reachable as `T.Tui`.
+	byQualifier map[string]string
+}
+
+// resolveImports checks a schema's imports and returns what they bind.
 //
 // It runs BEFORE any node is planned, so a document that imports something
 // nonexistent is refused with the tree untouched — the same rule every other
 // check in this engine follows, for the same reason.
-func (t *Tree) resolveImports(spec parse.SpecTree) (map[string]string, error) {
-	bound := map[string]string{}
+func (t *Tree) resolveImports(spec parse.SpecTree) (imports, error) {
+	out := imports{byName: map[string]string{}, byQualifier: map[string]string{}}
 	for _, im := range spec.Imports {
 		if im.Module == "" {
 			// A directory or file import. This engine has no filesystem and
 			// says so, rather than accepting a line it will then ignore.
-			return nil, SchemaError{Op: "import", Pos: im.Pos, Err: fmt.Errorf(
+			return imports{}, SchemaError{Op: "import", Pos: im.Pos, Err: fmt.Errorf(
 				"%w: this engine resolves named modules, not paths", ErrUndefinedModule)}
 		}
 		m, ok := t.modules[im.Module]
 		if !ok {
-			return nil, SchemaError{Op: "import", Detail: im.Module, Pos: im.Pos, Err: fmt.Errorf(
+			return imports{}, SchemaError{Op: "import", Detail: im.Module, Pos: im.Pos, Err: fmt.Errorf(
 				"%w: %q; the host provides %s", ErrUndefinedModule, im.Module, t.moduleList())}
 		}
 		// The version is compared only when the document states one. An import
 		// that names no version takes what it is given, which is what makes
 		// adding a version to a module later a compatible change.
 		if im.Version != "" && m.Version != "" && im.Version != m.Version {
-			return nil, SchemaError{Op: "import", Detail: im.Module, Pos: im.Pos, Err: fmt.Errorf(
+			return imports{}, SchemaError{Op: "import", Detail: im.Module, Pos: im.Pos, Err: fmt.Errorf(
 				"%w: %q is version %q here, and this document asks for %q",
 				ErrUndefinedModule, im.Module, m.Version, im.Version)}
 		}
 
-		// An alias REPLACES the module name rather than adding to it, which is
-		// QML's rule: after `import tui 1.0 as T`, `tui.Horizontal` no longer
-		// resolves. Binding both would let a document compile that a real QML
-		// runtime refuses.
-		name := im.Module
 		if im.Alias != "" {
-			name = im.Alias
+			// A QUALIFIED import reaches the exports through the qualifier and
+			// NOT by their own names, which is QML's rule. Binding both would
+			// let a document compile here that a real QML runtime refuses.
+			if prior, dup := out.byQualifier[im.Alias]; dup {
+				return imports{}, SchemaError{Op: "import", Detail: im.Alias, Pos: im.Pos, Err: fmt.Errorf(
+					"%w: %q already qualifies %q", ErrDuplicateImport, im.Alias, prior)}
+			}
+			out.byQualifier[im.Alias] = im.Module
+			continue
 		}
-		if prior, dup := bound[name]; dup {
-			return nil, SchemaError{Op: "import", Detail: name, Pos: im.Pos, Err: fmt.Errorf(
-				"%w: %q already names %q", ErrDuplicateImport, name, prior)}
+		for _, name := range m.Exports {
+			if prior, dup := out.byName[name]; dup && prior != im.Module {
+				return imports{}, SchemaError{Op: "import", Detail: name, Pos: im.Pos, Err: fmt.Errorf(
+					"%w: %q is exported by both %q and %q, so this document cannot "+
+						"name it; import one of them with a qualifier",
+					ErrDuplicateImport, name, prior, im.Module)}
+			}
+			out.byName[name] = im.Module
 		}
-		bound[name] = im.Module
 	}
-	return bound, nil
+	return out, nil
+}
+
+// exportsOf reports whether a module declares this export.
+func (t *Tree) exportsOf(module, name string) bool {
+	for _, e := range t.modules[module].Exports {
+		if e == name {
+			return true
+		}
+	}
+	return false
+}
+
+// providerOf reports the module that exports a name, for a diagnostic that can
+// tell "you did not import it" from "nobody has it".
+func (t *Tree) providerOf(name string) (string, bool) {
+	for _, m := range t.modules {
+		for _, e := range m.Exports {
+			if e == name {
+				return m.Name, true
+			}
+		}
+	}
+	return "", false
 }
 
 func (t *Tree) moduleList() string {
@@ -130,17 +190,13 @@ func (t *Tree) moduleList() string {
 	return strings.Join(names, ", ")
 }
 
-// moduleOf reports the module a qualified name belongs to, and whether it has
-// one at all. A name with no module is ambient — an injected object, which needs
-// no import.
-func (t *Tree) moduleOf(path []string) (string, bool) {
-	for i := len(path) - 1; i >= 1; i-- {
-		prefix := joinDots(path[:i])
-		if _, ok := t.modules[prefix]; ok {
-			return prefix, true
-		}
+// isUpperName reports whether a name is written the way QML writes a type.
+func isUpperName(s string) bool {
+	if s == "" {
+		return false
 	}
-	return "", false
+	r := []rune(s)[0]
+	return r >= 'A' && r <= 'Z'
 }
 
 func sortStrings(s []string) {
