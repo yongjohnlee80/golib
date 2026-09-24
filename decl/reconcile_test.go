@@ -144,7 +144,7 @@ func reconcile(t *testing.T, tr *decl.Tree, src string) decl.Result {
 // destroyed and rebuilt something.
 func TestReconcileIdenticalSchemaTouchesNothing(t *testing.T) {
 	const src = `Flex {
-		direction: "vertical"
+		direction: tui.Vertical
 		Text { id: a text: "hello" }
 		Button { id: b label: "go" onClicked: save }
 	}`
@@ -230,8 +230,8 @@ func TestReconcileIgnoresAValueThatOnlyMOVED(t *testing.T) {
 func TestConsumedPropertyChangeForcesRebuild(t *testing.T) {
 	rec := newSplicer()
 	rec.consume["Split"] = []string{"orientation"}
-	const before = `Split { orientation: "horizontal" Text {} Text {} }`
-	const after = `Split { orientation: "vertical" Text {} Text {} }`
+	const before = `Split { orientation: tui.Horizontal Text {} Text {} }`
+	const after = `Split { orientation: tui.Vertical Text {} Text {} }`
 
 	tr := decl.New(rec)
 	if err := tr.Mount(mustSpec(t, before)); err != nil {

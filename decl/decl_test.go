@@ -82,6 +82,18 @@ func (r *recorder) Destroy(n decl.NodeID) error {
 	return r.destroyErr
 }
 
+// Constants gives the fake the qualified vocabulary a QML-faithful schema
+// writes: `direction: tui.Vertical` rather than a bare word or a quoted string.
+func (r *recorder) Constants() map[string]parse.SpecValue {
+	str := func(s string) parse.SpecValue {
+		return parse.SpecValue{Kind: parse.SpecValueString, Raw: s}
+	}
+	return map[string]parse.SpecValue{
+		"tui.Horizontal": str("horizontal"),
+		"tui.Vertical":   str("vertical"),
+	}
+}
+
 func mustSpec(t *testing.T, src string) parse.SpecTree {
 	t.Helper()
 	tree, err := parse.QML{}.Parse([]byte(src))
@@ -170,7 +182,7 @@ func TestConsumedPropertiesAreNotReApplied(t *testing.T) {
 	r := newRecorder()
 	r.consume["Split"] = []string{"orientation"}
 	tr := decl.New(r)
-	if err := tr.Mount(mustSpec(t, `Split { orientation: "vertical" gap: 2 }`)); err != nil {
+	if err := tr.Mount(mustSpec(t, `Split { orientation: tui.Vertical gap: 2 }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	for _, line := range r.trace {

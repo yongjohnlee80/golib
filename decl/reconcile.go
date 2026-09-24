@@ -676,10 +676,10 @@ func (t *Tree) rebindChanged(n *node, id NodeID, props []parse.SpecProp,
 	var out []*binding
 
 	for i, p := range props {
-		if !isBinding(p.Value) {
+		if !needsResolution(p.Value) {
 			continue
 		}
-		if prev, ok := t.bindingFor(id, p.Name); ok &&
+		if prev, ok := t.bindingFor(id, p.Name); ok && isBinding(p.Value) &&
 			sameSequence(oldProps[p.Name], newProps[p.Name]) {
 			// Unchanged: keep the registration, and with it the applied-value
 			// cache that keeps the next source tick quiet.
@@ -701,10 +701,13 @@ func (t *Tree) rebindChanged(n *node, id NodeID, props []parse.SpecProp,
 			names = append(names, d)
 		}
 		sort.Strings(names)
+		effective[i].Value = v
+		if !isBinding(p.Value) {
+			continue
+		}
 		out = append(out, &binding{
 			node: id, prop: p.Name, expr: p.Value, pos: p.Value.Pos, deps: names,
 		})
-		effective[i].Value = v
 	}
 	return out, effective, nil
 }
