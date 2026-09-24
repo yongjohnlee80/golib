@@ -403,7 +403,7 @@ func (t *Tree) planSubtree(sn *parse.SpecNode) error {
 	// discovering it after the node it replaces has been destroyed.
 	if classifier, ok := t.adapter.(Classifier); ok {
 		for _, prop := range sn.Props {
-			if t.isBinding(prop.Value) {
+			if isBinding(prop.Value) {
 				continue // checkBindable classifies bindings by its own rules
 			}
 			if err := checkKind(classifier.ClassifyProperty(sn.Type, prop.Name), sn.Type, prop, id); err != nil {

@@ -78,6 +78,11 @@ type Tree struct {
 	// only order a schema author can see, and therefore the only defensible
 	// fan-out order when a propagation stops part-way.
 	bindings []*binding
+	// preEval holds each node's properties with its bindings already evaluated,
+	// computed by a whole-tree pass BEFORE any node is allocated. Without it a
+	// binding failure deep in a schema would leave the nodes above it allocated
+	// and the tree latched, when nothing had been built at all.
+	preEval map[*parse.SpecNode][]parse.SpecProp
 	// failed records that a Mount did not complete. A tree in that state holds
 	// a partial graph, so the next Mount must be refused rather than allowed to
 	// graft a second graph onto the wreckage — which is exactly what happens
@@ -266,6 +271,16 @@ func (t *Tree) Mount(spec parse.SpecTree) error {
 			"%w: the previous mount failed and left a partial tree; call Destroy first", ErrPhase)}
 	}
 
+	// Bindings are validated and evaluated across the WHOLE schema first. A
+	// failure here has allocated nothing, built nothing and latched nothing —
+	// the tree is exactly as it was, and mountable again once the schema is
+	// corrected.
+	t.preEval = map[*parse.SpecNode][]parse.SpecProp{}
+	defer func() { t.preEval = nil }()
+	if err := t.preEvaluate(spec.Root); err != nil {
+		return err
+	}
+
 	t.ph = phaseMounting
 	defer func() { t.ph = phaseIdle }()
 
@@ -314,10 +329,19 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 	// Bindings are validated and evaluated BEFORE anything is built, so a
 	// schema mistake is found while the tree is still intact. The adapter never
 	// sees an expression: Construction and every Application carry terminals.
-	if err := t.checkBindable(sn.Type, sn.Props, id); err != nil {
-		return id, err
+	effective, preEvaluated := t.preEval[sn]
+	if !preEvaluated {
+		// No pre-pass ran (a reconcile mounts subtrees it has already planned
+		// through its own path), so validate and evaluate here.
+		if err := t.checkBindable(sn.Type, sn.Props, id); err != nil {
+			return id, err
+		}
+		var err error
+		if _, effective, err = t.bindingsFor(id, sn.Props); err != nil {
+			return id, err
+		}
 	}
-	bs, effective, err := t.bindingsFor(id, sn.Props)
+	bs, err := t.bindingsOn(id, sn.Props)
 	if err != nil {
 		return id, err
 	}

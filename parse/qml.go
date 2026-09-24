@@ -29,9 +29,10 @@ import (
 //	Body     := ( Property | Handler | Node )*
 //	Property := Ident ':' Value
 //	Handler  := 'on' Ident ':' Ident        // a handler NAME, never a body
-//	Value    := String | Number | Bool | Token | Ref | Call
+//	Value    := String | Number | Bool | Token | Source | Ref | Call
 //	Token    := '@' Ident                   // a portable style token
-//	Ref      := Ident
+//	Source   := '$' Ident                   // a reactive source, resolved by the engine
+//	Ref      := Ident                       // a bare identifier, resolved by the ADAPTER
 //	Call     := Ident '(' [ Value { ',' Value } ] ')'
 //
 // There is no arithmetic and there are no member chains. `width: parent.width / 2`
@@ -86,6 +87,15 @@ const (
 	// than a tui/style.Token — otherwise the same schema stops meaning
 	// anything to a non-terminal adapter, which is the point of the layering.
 	SpecValueToken
+	// SpecValueSource is a reactive source reference written $name.
+	//
+	// It is SPELLED DIFFERENTLY FROM A BARE IDENTIFIER on purpose. A bare word
+	// already means "an identifier the adapter resolves" — `orientation:
+	// horizontal` is one — so a schema in which any bare word might instead be
+	// a source would change meaning based on host configuration, and the same
+	// name could not be both. A sigil keeps the two populations apart, and
+	// keeps every schema written before sources existed meaning what it did.
+	SpecValueSource
 	// SpecValueRef is a bare identifier: a single reference, resolved by the
 	// adapter. Not a member chain — see the grammar note on the type.
 	SpecValueRef
@@ -103,6 +113,8 @@ func (k SpecValueKind) String() string {
 		return "number"
 	case SpecValueBool:
 		return "bool"
+	case SpecValueSource:
+		return "source"
 	case SpecValueToken:
 		return "token"
 	case SpecValueRef:
@@ -472,6 +484,24 @@ func (p *qmlParser) value() (SpecValue, error) {
 			}
 		}
 		return SpecValue{Kind: SpecValueToken, Raw: name, Pos: at}, nil
+
+	case r == '$':
+		p.sc.Next()
+		name, ok := p.ident()
+		if !ok {
+			r2, ok := p.sc.Peek()
+			if !ok {
+				return SpecValue{}, SyntaxError{
+					Format: "qml", Pos: at,
+					Want: "a source name after $", Got: "end of input", Incomplete: true,
+				}
+			}
+			return SpecValue{}, SyntaxError{
+				Format: "qml", Pos: at,
+				Want: "a source name after $", Got: quoteRune(r2),
+			}
+		}
+		return SpecValue{Kind: SpecValueSource, Raw: name, Pos: at}, nil
 
 	case r == '-' || r == '+' || (r >= '0' && r <= '9'):
 		return p.numberValue()

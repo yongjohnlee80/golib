@@ -78,45 +78,27 @@ func isTerminal(v parse.SpecValue) bool {
 
 // isBinding reports whether a declared value has to be evaluated.
 //
-// A REF IS A BINDING ONLY IF IT NAMES A DECLARED SOURCE. That is not a
-// convenience; it is what `SpecValueRef` already means. Its own documentation
-// says "a bare identifier: a single reference, RESOLVED BY THE ADAPTER", and the
-// shipped registry depends on it: `orientation: horizontal` parses as a Ref
-// whose Raw is "horizontal", and the Split builder switches on that to pick an
-// enum. Treating every Ref as a source reference would silently reinterpret
-// every enum-valued property in every existing schema.
-//
-// So the declared-source set is the disambiguator, and it is decidable at
-// planning time precisely because that set is fixed before Mount. A Ref naming
-// no source passes through to the adapter untouched, exactly as today — and the
-// adapter already refuses the ones it does not understand.
-//
-// A Call is unambiguous: `SpecValueCall` is documented as "a call into the host
-// function registry", and nothing else consumes it.
-func (t *Tree) isBinding(v parse.SpecValue) bool {
-	switch v.Kind {
-	case parse.SpecValueRef:
-		_, declared := t.sources[v.Raw]
-		return declared
-	case parse.SpecValueCall:
-		return true
-	default:
-		return false
-	}
+// A BARE IDENTIFIER IS NEVER A BINDING. `SpecValueRef` is documented as "a bare
+// identifier resolved by the ADAPTER", and the shipped registry depends on it:
+// `orientation: horizontal` is a Ref whose Raw is the enum value. Sources are
+// spelled `$name` precisely so the two populations cannot be confused — an
+// earlier version keyed on "is this name declared as a source", which made a
+// schema's meaning depend on host configuration and let a source silently
+// shadow an adapter's identifier.
+func isBinding(v parse.SpecValue) bool {
+	return v.Kind == parse.SpecValueSource || v.Kind == parse.SpecValueCall
 }
 
 // refsOf collects the source names a value depends on, DEDUPED, by walking the
 // expression. A value cannot acquire a dependency at runtime that was not
 // written in the file, so this static walk is the whole dependency set.
-func (t *Tree) refsOf(v parse.SpecValue, into map[string]bool) {
+func refsOf(v parse.SpecValue, into map[string]bool) {
 	switch v.Kind {
-	case parse.SpecValueRef:
-		if _, declared := t.sources[v.Raw]; declared {
-			into[v.Raw] = true
-		}
+	case parse.SpecValueSource:
+		into[v.Raw] = true
 	case parse.SpecValueCall:
 		for _, a := range v.Args {
-			t.refsOf(a, into)
+			refsOf(a, into)
 		}
 	}
 }
@@ -210,16 +192,15 @@ func (t *Tree) Source(name string) (parse.SpecValue, bool) {
 // committing it — the source is only committed once the whole fan-out succeeds.
 func (t *Tree) evaluate(v parse.SpecValue, overlay map[string]parse.SpecValue) (parse.SpecValue, error) {
 	switch v.Kind {
-	case parse.SpecValueRef:
+	case parse.SpecValueSource:
 		if sv, ok := overlay[v.Raw]; ok {
 			return sv, nil
 		}
-		if sv, ok := t.sources[v.Raw]; ok {
-			return sv, nil
+		sv, ok := t.sources[v.Raw]
+		if !ok {
+			return parse.SpecValue{}, fmt.Errorf("%w: %q (at %s)", ErrNoSuchSource, v.Raw, v.Pos)
 		}
-		// Not a source: an adapter-resolved identifier, which is what a bare
-		// word has always been. It passes through untouched.
-		return v, nil
+		return sv, nil
 
 	case parse.SpecValueCall:
 		fn, ok := t.funcs[v.Raw]
@@ -231,6 +212,15 @@ func (t *Tree) evaluate(v parse.SpecValue, overlay map[string]parse.SpecValue) (
 			ev, err := t.evaluate(a, overlay)
 			if err != nil {
 				return parse.SpecValue{}, err
+			}
+			// A ValueFunc receives TERMINALS. A bare identifier is an
+			// adapter-resolved word and means nothing here, so it is refused
+			// rather than handed over as an un-evaluated expression — which is
+			// what an earlier version did, silently violating this very rule.
+			if !isTerminal(ev) {
+				return parse.SpecValue{}, fmt.Errorf(
+					"%w: %q received a %s argument; write a string or a @token for a symbolic value (at %s)",
+					ErrNotTerminal, v.Raw, ev.Kind, a.Pos)
 			}
 			args = append(args, ev)
 		}
@@ -259,7 +249,7 @@ func (t *Tree) evaluate(v parse.SpecValue, overlay map[string]parse.SpecValue) (
 func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeID) error {
 	var bound bool
 	for _, p := range props {
-		if t.isBinding(p.Value) {
+		if isBinding(p.Value) {
 			bound = true
 			break
 		}
@@ -275,7 +265,7 @@ func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeI
 	classifier, ok := t.adapter.(Classifier)
 	if !ok {
 		for _, p := range props {
-			if t.isBinding(p.Value) {
+			if isBinding(p.Value) {
 				return SchemaError{Op: "bind", Node: node, Detail: p.Name, Pos: p.Value.Pos,
 					Err: fmt.Errorf("%w: %q on type %q", ErrBindingUnsupported, p.Name, typeName)}
 			}
@@ -291,7 +281,7 @@ func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeI
 		seen[p.Name]++
 	}
 	for _, p := range props {
-		if seen[p.Name] > 1 && t.isBinding(p.Value) {
+		if seen[p.Name] > 1 && isBinding(p.Value) {
 			return SchemaError{Op: "bind", Node: node, Detail: p.Name, Pos: p.Value.Pos,
 				Err: fmt.Errorf("%w: %q is declared %d times on type %q",
 					ErrDuplicateBinding, p.Name, seen[p.Name], typeName)}
@@ -303,7 +293,7 @@ func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeI
 	// structural work that destroys exactly the scroll offset, focus and
 	// in-flight tasks a reconcile exists to preserve.
 	for _, p := range props {
-		if !t.isBinding(p.Value) {
+		if !isBinding(p.Value) {
 			continue
 		}
 		switch classifier.ClassifyProperty(typeName, p.Name) {
@@ -320,6 +310,51 @@ func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeI
 	return nil
 }
 
+// preEvaluate validates and evaluates every binding in a schema, depth-first,
+// without allocating a single node.
+//
+// It is the Mount-level form of "plan before you mutate": a binding failure at
+// the bottom of a file must leave the tree exactly as it was, not with the
+// nodes above it allocated and the tree latched.
+func (t *Tree) preEvaluate(sn *parse.SpecNode) error {
+	if err := t.checkBindable(sn.Type, sn.Props, NoNode); err != nil {
+		return err
+	}
+	_, effective, err := t.bindingsFor(NoNode, sn.Props)
+	if err != nil {
+		return err
+	}
+	t.preEval[sn] = effective
+	for _, child := range sn.Children {
+		if err := t.preEvaluate(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// bindingsOn builds a node's binding registrations. The values were already
+// evaluated; this records what to re-evaluate later and what it depends on.
+func (t *Tree) bindingsOn(node NodeID, props []parse.SpecProp) ([]*binding, error) {
+	var out []*binding
+	for _, p := range props {
+		if !isBinding(p.Value) {
+			continue
+		}
+		deps := map[string]bool{}
+		refsOf(p.Value, deps)
+		names := make([]string, 0, len(deps))
+		for d := range deps {
+			names = append(names, d)
+		}
+		sort.Strings(names)
+		out = append(out, &binding{
+			node: node, prop: p.Name, expr: p.Value, pos: p.Value.Pos, deps: names,
+		})
+	}
+	return out, nil
+}
+
 // bindingsFor turns a node's declared properties into registrations, evaluating
 // each against the current sources.
 //
@@ -331,7 +366,7 @@ func (t *Tree) bindingsFor(node NodeID, props []parse.SpecProp) ([]*binding, []p
 	copy(effective, props)
 
 	for i, p := range props {
-		if !t.isBinding(p.Value) {
+		if !isBinding(p.Value) {
 			continue
 		}
 		v, err := t.evaluate(p.Value, nil)
@@ -340,7 +375,7 @@ func (t *Tree) bindingsFor(node NodeID, props []parse.SpecProp) ([]*binding, []p
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
 		}
 		deps := map[string]bool{}
-		t.refsOf(p.Value, deps)
+		refsOf(p.Value, deps)
 		names := make([]string, 0, len(deps))
 		for d := range deps {
 			names = append(names, d)
