@@ -190,7 +190,11 @@ func (t *Tree) walkRef(ctx context, v parse.SpecValue, at NodeID,
 		sv.Pos = v.Pos
 		return sv, nil
 	default:
-		return parse.SpecValue{}, t.refuse(at, v, fmt.Sprintf("a %s is not a value", in.Kind))
+		// Unreachable while allowedIn covers every kind, and deliberately worded
+		// so it cannot be mistaken for that gate's refusal: two guards with the
+		// same message let a test pass while the gate it names is switched off.
+		return parse.SpecValue{}, t.refuse(at, v, fmt.Sprintf(
+			"a %s reached value resolution, which the kind gate should have refused", in.Kind))
 	}
 }
 

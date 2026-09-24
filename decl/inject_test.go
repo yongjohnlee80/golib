@@ -111,7 +111,7 @@ func TestAnInjectedKindIsRefusedInAPositionItCannotOccupy(t *testing.T) {
 			inject:  func(tr *decl.Tree) error { return tr.Inject("Theme.surface", decl.SourceValue(sv("#111"))) },
 			value:   ref("Theme"),
 			wantErr: decl.ErrWrongKind,
-			wantMsg: "a namespace is not a value",
+			wantMsg: "name something inside it",
 		},
 	}
 
@@ -171,7 +171,7 @@ func TestTheThreeResolutionFailuresAreDistinguishable(t *testing.T) {
 			name:    "a resolved name in a position it cannot occupy",
 			value:   ref("Theme"),
 			wantErr: decl.ErrWrongKind,
-			wantMsg: "a namespace is not a value",
+			wantMsg: "name something inside it",
 		},
 	}
 
