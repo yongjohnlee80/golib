@@ -104,6 +104,17 @@ consumed only when the schema *declared* it, so a `Split` mounted with no
 constructor argument from a typo. An adapter therefore declares its
 constructor-only properties (`WithConstructorProps`) alongside its setters.
 
+`ClassifyProperty` takes a **schema type name, not a node** — and that is what
+makes it useful. "Can a `Button` take a property called `nosuch`" is a question
+about `Button`s, and the nodes a reload most needs vetted **do not exist yet**:
+one the schema adds, or the replacement for one whose type changed. Planning
+therefore checks every property of every subtree it is about to mount, so a
+misspelling in a *new* node is refused before the node it replaces is destroyed.
+
+`PropertyKind` is a closed set. An adapter returning something else is refused,
+not treated as settable: a permissive default would turn a future fourth kind
+into "apply it and hope".
+
 Everything else is free. Re-pointing an existing signal at a different handler
 costs nothing: the emitter calls back into the engine, which reads the binding
 at call time.

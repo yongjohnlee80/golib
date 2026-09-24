@@ -644,36 +644,37 @@ func TestAddingAConstructorOnlyPropertyRebuilds(t *testing.T) {
 }
 
 // TestClassifyPropertyDistinguishesAllThreeKinds pins the capability to the
-// distinction a boolean could not carry.
+// distinction a boolean could not carry, and to the key that makes it usable.
 //
 // "Unknown" and "constructor-only" are both un-appliable, which is why one
 // boolean looked sufficient. They call for opposite responses: a
 // constructor-only change rebuilds the node, while a property the adapter does
 // not have must leave the tree untouched, because the rebuilt node would refuse
 // it too.
+//
+// It takes a TYPE NAME, and no node needs to exist. That is what lets a reload
+// vet a node it is about to build.
 func TestClassifyPropertyDistinguishesAllThreeKinds(t *testing.T) {
-	tr, a := mount(t, listScreen, tuidecl.HostFuncs{},
+	_, a := mount(t, listScreen, tuidecl.HostFuncs{},
 		func(err error) { t.Errorf("unexpected handler error: %v", err) })
 
-	root := nodeNamed(t, tr, "root") // Split
-	text := nodeNamed(t, tr, "side") // Text
-	list := nodeNamed(t, tr, "list") // Flex
 	cases := []struct {
 		name string
-		node decl.NodeID
+		typ  string
 		prop string
 		want decl.PropertyKind
 	}{
-		{"Text.text has a setter", text, "text", decl.PropRuntime},
-		{"Split.orientation is a constructor argument", root, "orientation", decl.PropConstructorOnly},
-		{"Flex.direction is a constructor argument", list, "direction", decl.PropConstructorOnly},
-		{"a misspelling is not constructor-only", text, "nosuchprop", decl.PropUnknown},
-		{"a property of a DIFFERENT type is unknown here", text, "orientation", decl.PropUnknown},
-		{"an unknown node", decl.NodeID(9999), "text", decl.PropUnknown},
+		{"Text.text has a setter", "Text", "text", decl.PropRuntime},
+		{"Split.orientation is a constructor argument", "Split", "orientation", decl.PropConstructorOnly},
+		{"Flex.direction is a constructor argument", "Flex", "direction", decl.PropConstructorOnly},
+		{"a misspelling is not constructor-only", "Text", "nosuchprop", decl.PropUnknown},
+		{"a property of a DIFFERENT type is unknown here", "Text", "orientation", decl.PropUnknown},
+		{"a type nothing has been mounted as still answers", "Button", "label", decl.PropRuntime},
+		{"an unregistered type", "NoSuchWidget", "text", decl.PropUnknown},
 	}
 	for _, c := range cases {
-		if got := a.ClassifyProperty(c.node, c.prop); got != c.want {
-			t.Errorf("%s: ClassifyProperty = %s, want %s", c.name, got, c.want)
+		if got := a.ClassifyProperty(c.typ, c.prop); got != c.want {
+			t.Errorf("%s: ClassifyProperty(%q, %q) = %s, want %s", c.name, c.typ, c.prop, got, c.want)
 		}
 	}
 }
@@ -748,4 +749,88 @@ func TestAnUnknownPropertyLeavesTheTreeUntouched(t *testing.T) {
 		t.Errorf("Applied = %d, want 1", res.Applied)
 	}
 	waitFor(t, func() bool { return strings.Contains(be.String(), "two") })
+}
+
+// TestATypoInANodeTHATDOESNOTEXISTYETLeavesTheTreeUntouched is the case a
+// node-keyed classifier structurally could not reach.
+//
+// Classification used to be asked about a MOUNTED node. The nodes a reload most
+// needs vetted are the ones that do not exist yet — a node the schema adds, and
+// the replacement for one whose type changed — so the check was unavailable
+// exactly where being wrong destroys a working widget. Both paths are covered
+// here because they reach the mount differently: one through a fresh step, the
+// other through a type-change rebuild.
+func TestATypoInANodeTHATDOESNOTEXISTYETLeavesTheTreeUntouched(t *testing.T) {
+	const before = `Flex { id: list direction: vertical Text { id: a text: "one" } }`
+	const fixed = `Flex { id: list direction: vertical Text { id: a text: "two" } }`
+	cases := map[string]string{
+		"retyped":  `Flex { id: list direction: vertical Button { id: a label: "go" nosuch: "x" } }`,
+		"inserted": `Flex { id: list direction: vertical Text { id: a text: "one" } Text { id: b nosuch: "x" } }`,
+		"inserted deeper": `Flex { id: list direction: vertical Text { id: a text: "one" } ` +
+			`Flex { id: sub direction: vertical Text { id: c nosuch: "x" } } }`,
+	}
+	for name, typo := range cases {
+		t.Run(name, func(t *testing.T) {
+			tr, a := mount(t, before, tuidecl.HostFuncs{},
+				func(err error) { t.Errorf("unexpected handler error: %v", err) })
+			be, app := startApp(t, mustRoot(t, tr, a))
+			waitFor(t, func() bool { return strings.Contains(be.String(), "one") })
+
+			list := nodeNamed(t, tr, "list")
+			was := childComponents(t, tr, a, list)
+			wasIDs := nodeIDsOf(t, was)
+			wasKids := containerKids(t, a, list)
+
+			var res decl.Result
+			var err error
+			onLoop(t, app, func() { res, err = tr.Reload([]byte(typo)) })
+
+			if err == nil {
+				t.Fatal("a property the adapter does not have must be refused")
+			}
+			if !strings.Contains(err.Error(), "nosuch") {
+				t.Errorf("the error does not name the property: %v", err)
+			}
+			if res.Created != 0 || res.Destroyed != 0 || len(res.Rebuilt) != 0 {
+				t.Fatalf("the tree was mutated for a property that can never apply: %+v", res)
+			}
+
+			// Nothing moved structurally either: the container holds exactly
+			// what it held, in order.
+			nowKids := containerKids(t, a, list)
+			if len(nowKids) != len(wasKids) {
+				t.Fatalf("the container's children changed: %d -> %d", len(wasKids), len(nowKids))
+			}
+			for i := range wasKids {
+				if nowKids[i] != wasKids[i] {
+					t.Errorf("container child %d changed", i)
+				}
+			}
+			// Same components, same mounts, still painting.
+			now := childComponents(t, tr, a, list)
+			for i := range was {
+				if now[i] != was[i] {
+					t.Errorf("child %d was replaced", i)
+				}
+			}
+			for i, got := range nodeIDsOf(t, now) {
+				if got != wasIDs[i] {
+					t.Errorf("child %d was remounted: NodeID %d -> %d", i, wasIDs[i], got)
+				}
+			}
+			if !strings.Contains(be.String(), "one") {
+				t.Errorf("the screen lost its content:\n%s", be.String())
+			}
+
+			// Not latched: correcting the typo works.
+			onLoop(t, app, func() { res, err = tr.Reload([]byte(fixed)) })
+			if err != nil {
+				t.Fatalf("the tree was latched by a property typo: %v", err)
+			}
+			if res.Applied != 1 {
+				t.Errorf("Applied = %d, want 1", res.Applied)
+			}
+			waitFor(t, func() bool { return strings.Contains(be.String(), "two") })
+		})
+	}
 }
