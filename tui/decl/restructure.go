@@ -34,22 +34,27 @@ func (a *Adapter) CanRestructure(node decl.NodeID) bool {
 // InsertChild places child among parent's children at index at.
 //
 // tui.Container has no insert-at-index: Add appends. So this appends and then
-// moves, which is correct because Move is an identity-preserving splice — the
-// child never unmounts between the two calls, and a freshly added child has no
-// state to lose in any case.
+// moves, which is safe because Move is an identity-preserving splice — the
+// child never unmounts between the two calls.
+//
+// The index is checked BEFORE anything is attached. Refusing afterwards would
+// leave the child added but unplaced, which is a worse state than either doing
+// the work or declining it. Appending to the end needs no Move at all, and
+// skipping it matters: Move reorders a live container rather than politely
+// noticing there is nothing to do.
 func (a *Adapter) InsertChild(parent, child decl.NodeID, at int) error {
 	c, comp, err := a.containerAndChild("insert", parent, child)
 	if err != nil {
 		return err
 	}
-	c.Add(comp)
 	n := countChildren(c)
-	if at < 0 || at >= n {
-		// Appended already put it last, which is what an out-of-range index
-		// would have meant anyway. Calling Move here would panic instead.
-		return nil
+	if at < 0 || at > n {
+		return fmt.Errorf("insert: index %d is out of range for %d children of node %d", at, n, parent)
 	}
-	c.Move(comp, at)
+	c.Add(comp)
+	if at < n {
+		c.Move(comp, at)
+	}
 	return nil
 }
 

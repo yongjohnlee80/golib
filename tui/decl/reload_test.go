@@ -466,3 +466,140 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// ---------------------------------------------------- removal and the guards
+
+// TestAReloadRemovesAChildFromARealContainer exercises RemoveChild against the
+// actual toolkit, which nothing else here did.
+//
+// The engine's own tests delete nodes through a fake. That proves the engine
+// asks correctly; it says nothing about what tui.Container.Remove does, which
+// is an unmount CASCADE over the child's whole subtree. This is the path where
+// detaching before releasing has to be right against a live container rather
+// than against a recording one.
+func TestAReloadRemovesAChildFromARealContainer(t *testing.T) {
+	const withoutBravo = `Split {
+    id: root
+    orientation: horizontal
+    Flex {
+        id: list
+        direction: vertical
+        Text { id: a text: "alpha" }
+        Text { id: c text: "charlie" }
+    }
+    Text { id: side text: "right pane" }
+}`
+	tr, a := mount(t, listScreen, tuidecl.HostFuncs{},
+		func(err error) { t.Errorf("unexpected handler error: %v", err) })
+	be, app := startApp(t, mustRoot(t, tr, a))
+	waitFor(t, func() bool { return strings.Contains(be.String(), "bravo") })
+
+	list := nodeNamed(t, tr, "list")
+	before := childComponents(t, tr, a, list)
+	gone := before[1]
+
+	var res decl.Result
+	var err error
+	onLoop(t, app, func() { res, err = tr.Reload([]byte(withoutBravo)) })
+	if err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+	if res.Destroyed != 1 || res.Created != 0 || len(res.Rebuilt) != 0 {
+		t.Fatalf("removing one child should destroy exactly one node: %+v", res)
+	}
+
+	after := childComponents(t, tr, a, list)
+	if len(after) != 2 || after[0] != before[0] || after[1] != before[2] {
+		t.Error("the survivors did not keep their identity across the removal")
+	}
+	// The removed widget must be UNMOUNTED, not merely forgotten by the engine.
+	//
+	// Context.Mounted is the instrument, and its own documentation says why a
+	// retained pointer is not: it "answers a different question and answers it
+	// wrongly for every component that has ever been mounted". NodeID is one of
+	// those retained answers — Base never clears its context on unmount, so a
+	// removed widget goes on reporting the id it had.
+	var stillMounted bool
+	onLoop(t, app, func() {
+		if b, ok := gone.(interface{ Context() *tui.Context }); ok && b.Context() != nil {
+			stillMounted = b.Context().Mounted()
+		}
+	})
+	if stillMounted {
+		t.Error("the removed child is still mounted, so the container kept it")
+	}
+	waitFor(t, func() bool { return !strings.Contains(be.String(), "bravo") })
+	if painted := be.String(); !strings.Contains(painted, "alpha") ||
+		!strings.Contains(painted, "charlie") {
+		t.Errorf("removing bravo disturbed its siblings:\n%s", painted)
+	}
+}
+
+// TestTheStructuralGuardsRefuseRatherThanPanic covers the paths that exist
+// because the toolkit is unforgiving.
+//
+// tui.Container.Move PANICS on an out-of-range index (errs.Fatal), and Remove
+// is a SILENT NO-OP for a child it does not hold. Neither is a shape this seam
+// can pass on: a panic takes the process down instead of surfacing as the
+// refusal the engine knows how to report, and silence hides a lost child. These
+// are the guards, asserted directly because no correct reconcile reaches them.
+func TestTheStructuralGuardsRefuseRatherThanPanic(t *testing.T) {
+	tr, a := mount(t, listScreen, tuidecl.HostFuncs{},
+		func(err error) { t.Errorf("unexpected handler error: %v", err) })
+
+	list := nodeNamed(t, tr, "list")
+	side := nodeNamed(t, tr, "side")
+	kids := tr.Children(list)
+	const missing = decl.NodeID(9999)
+
+	cases := []struct {
+		name string
+		call func() error
+		want string
+	}{
+		{"move past the end", func() error { return a.MoveChild(list, kids[0], 99) }, "out of range"},
+		{"move to a negative index", func() error { return a.MoveChild(list, kids[0], -1) }, "out of range"},
+		{"move within a non-container", func() error { return a.MoveChild(side, kids[0], 0) }, "not a container"},
+		{"move an unknown child", func() error { return a.MoveChild(list, missing, 0) }, "has no component"},
+		{"move within an unknown parent", func() error { return a.MoveChild(missing, kids[0], 0) }, "has no component"},
+		{"remove from a non-container", func() error { return a.RemoveChild(side, kids[0]) }, "not a container"},
+		{"remove an unknown child", func() error { return a.RemoveChild(list, missing) }, "has no component"},
+		{"insert into a non-container", func() error { return a.InsertChild(side, kids[0], 0) }, "not a container"},
+		{"insert past the end", func() error { return a.InsertChild(list, kids[0], 99) }, "out of range"},
+		{"insert at a negative index", func() error { return a.InsertChild(list, kids[0], -1) }, "out of range"},
+		{"insert an unknown child", func() error { return a.InsertChild(list, missing, 0) }, "has no component"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.call()
+			if err == nil {
+				t.Fatalf("%s was accepted; it must be refused", c.name)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error %q does not say %q", err, c.want)
+			}
+		})
+	}
+}
+
+func countKids(t *testing.T, a *tuidecl.Adapter, id decl.NodeID) int {
+	t.Helper()
+	return len(containerKids(t, a, id))
+}
+
+func containerKids(t *testing.T, a *tuidecl.Adapter, id decl.NodeID) []tui.Component {
+	t.Helper()
+	c, ok := a.Component(id)
+	if !ok {
+		t.Fatalf("node %d has no component", id)
+	}
+	cont, ok := c.(tui.Container)
+	if !ok {
+		t.Fatalf("%T is not a container", c)
+	}
+	var out []tui.Component
+	for child := range cont.Children() {
+		out = append(out, child)
+	}
+	return out
+}
