@@ -50,16 +50,22 @@ import (
 //	Primary      := Number | String | Template | Bool | Null | Undefined
 //	              | Ident | Array | Object | '(' Expr ')'
 //
-// # What it does NOT parse, and why that is a boundary rather than a gap
+// # What it does NOT parse
 //
-// Statements, declarations, function bodies and assignment. An expression
-// evaluates to a value; a statement changes the world. Keeping the line here is
-// what lets a consumer accept an expression from an untrusted file without
-// accepting a program — and it is where a JavaScript parser would ADD, not
-// where it would have to undo something.
+// Statements, declarations, function bodies, assignment and arrow functions.
+// That line is a SCOPE decision, not a safety one: expressions are the part
+// every other construct contains, so they are what a parser has to get right
+// first, and statements are added on top later. Arrow functions sit on the far
+// side of the line only because their body may be a block.
 //
-// Arrow functions are excluded for the same reason: their body may be a block,
-// which is statements.
+// It confers no safety, and nothing here should be read as saying it does. In
+// JavaScript `a = b` is an expression, `a++` is an expression, and any call or
+// property access can mutate; Qt permits side effects in QML bindings outright.
+// A tree from this parser is a description of what the source SAYS, and whether
+// any of it may run — with what authority, against which objects — is the
+// consumer's evaluator policy. Parsing a call is not granting it. A consumer
+// that needs a restriction has to enforce it over the tree, which [Expr.Walk]
+// exists to make straightforward.
 //
 // # Incomplete input
 //
@@ -150,11 +156,21 @@ var JavaScript = ExprDialect{
 	Conditional: true, Optional: true, Templates: true, Exponent: true,
 }
 
-// C is the C and C++ expression dialect.
+// C is the C and C++ expression dialect, over the SUBSET stated here.
 //
 // It is here to prove the table carries a second language, and because the
 // deltas are exactly the kind that would otherwise become a fork: no `===`, no
 // `??`, no templates, no `**`, and `sizeof` joins the unary operators.
+//
+// Covered: the operator ladder below, `?:`, `sizeof` as a prefix operator, the
+// member/index/call postfix chain, and integer, floating, character and string
+// literals kept undecoded.
+//
+// NOT covered, and refused rather than mis-parsed: casts `(int)x`, `->`, the
+// comma operator, compound literals, `sizeof` applied to a type rather than an
+// expression, and the increment, decrement and assignment operators. A source
+// file using any of them gets a [SyntaxError], never a wrong tree — which is
+// the only promise a declared subset can usefully make.
 var C = ExprDialect{
 	Name: "c",
 	Binary: [][]string{
@@ -175,19 +191,29 @@ var C = ExprDialect{
 	Conditional: true,
 }
 
-// Go is the Go expression dialect: no conditional operator, and `&^`.
+// Go is the Go expression dialect, over the SUBSET stated here: no conditional
+// operator, and `&^`.
+//
+// Go has FIVE binary levels where C has ten, and the difference is not cosmetic:
+// `|` and `^` sit with `+`, and `&`, `&^`, `<<` and `>>` sit with `*`. Giving
+// each of them a level of its own — the C shape — silently reparses `a | b + c`
+// as `a | (b + c)` where Go means `(a | b) + c`.
+//
+// Covered: the five operator levels below, the prefix operators, the
+// member/index/call postfix chain, and `true`, `false` and `nil`.
+//
+// NOT covered, and refused rather than mis-parsed: composite literals `T{…}`,
+// type conversions and assertions `x.(T)`, slice expressions `a[i:j]`, channel
+// receive `<-ch`, variadic `f(xs...)`, and anything statement-shaped. A source
+// file using any of them gets a [SyntaxError], never a wrong tree.
 var Go = ExprDialect{
 	Name: "go",
 	Binary: [][]string{
 		{"||"},
 		{"&&"},
 		{"==", "!=", "<=", ">=", "<", ">"},
-		{"|"},
-		{"^"},
-		{"&^", "&"},
-		{"<<", ">>"},
-		{"+", "-"},
-		{"*", "/", "%"},
+		{"+", "-", "|", "^"},
+		{"*", "/", "%", "<<", ">>", "&^", "&"},
 	},
 	Unary:    []string{"!", "^", "-", "+", "*", "&"},
 	Literals: map[string]ExprKind{"true": ExprBool, "false": ExprBool, "nil": ExprNull},
@@ -205,9 +231,17 @@ const (
 	ExprNumber
 	// ExprString is a string literal. Raw holds the contents, unquoted.
 	ExprString
-	// ExprTemplate is a template literal. Raw holds the text between the
-	// backticks; substitutions are not parsed in this revision and their `${}`
-	// is left in Raw as written.
+	// ExprTemplate is a template literal. Chunks holds its literal text and Args
+	// the parsed substitutions, alternating — Chunks[0], Args[0], Chunks[1] and
+	// so on, always one more chunk than substitution. Raw is empty, because a
+	// template is not one string.
+	//
+	// The substitutions are PARSED rather than kept as text. Left as text they
+	// are invisible: [Expr.Walk] cannot reach them, so a consumer collecting the
+	// identifiers a binding depends on misses every name inside `${}` and
+	// returns a confidently wrong answer; the depth limit does not count them;
+	// and source cut off inside one reports a finished template instead of
+	// Incomplete.
 	ExprTemplate
 	// ExprBool is true or false. Raw holds which.
 	ExprBool
@@ -296,8 +330,14 @@ type Expr struct {
 	Right *Expr
 	// Alt is the conditional alternative.
 	Alt *Expr
-	// Args holds call arguments or array elements.
+	// Args holds call arguments, array elements, or the substitutions of a
+	// template. A template's substitutions live here rather than in a field of
+	// their own so that Walk reaches them structurally — a separate field is a
+	// separate thing to forget, and forgetting it is silent.
 	Args []Expr
+	// Chunks holds the literal text of a template, in order, between and around
+	// its substitutions.
+	Chunks []string
 	// Props holds object-literal entries.
 	Props []ExprProperty
 	// Name is the property name of a non-computed member access.
@@ -347,7 +387,6 @@ func (x Expression) Parse(src []byte) (Expr, error) {
 	if p.max <= 0 {
 		p.max = DefaultExprMaxDepth
 	}
-	_ = p.format()
 	if err := p.space(); err != nil {
 		return Expr{}, err
 	}
@@ -457,8 +496,7 @@ func (p *exprParser) conditional() (Expr, error) {
 	if err := p.space(); err != nil {
 		return Expr{}, err
 	}
-	// `?.` is a member operator, not the start of a conditional.
-	if !p.d.Conditional || !p.sc.HasPrefix("?") || p.sc.HasPrefix("?.") || p.sc.HasPrefix("??") {
+	if !p.d.Conditional || !p.sc.HasPrefix("?") || p.optionalChain() || p.sc.HasPrefix("??") {
 		return cond, nil
 	}
 	qAt := p.sc.Pos()
@@ -549,21 +587,50 @@ func (p *exprParser) takeOperator(ops []string) (string, Position, bool) {
 		}
 		if p.isWord(op) {
 			// `instanceof` and `in` are words: `international` must not match.
-			if r, ok := p.sc.PeekAt(len(op)); ok && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '$') {
+			if r, ok := p.sc.PeekAt(len(op)); ok && isExprIdentPart(r) {
 				continue
 			}
-		} else if op == "&" || op == "|" {
-			// Do not steal the first character of && or ||.
-			if r, ok := p.sc.PeekAt(1); ok && (r == '&' || r == '|') {
-				continue
-			}
-		} else if op == "?" {
+		} else if p.extendedHere(op) {
 			continue
 		}
 		p.sc.Take(op)
 		return op, at, true
 	}
 	return "", at, false
+}
+
+// extendedHere reports whether the source at the cursor spells some OTHER
+// operator of this dialect that op is merely the start of.
+//
+// Levels are entered loosest first but matched tightest first, so the tight `&`
+// level gets its refusal before the loose `&&` level is ever consulted and would
+// otherwise take the first character of `&&`. Deriving that from the dialect's
+// own table rather than naming `&` and `|` in code is what makes a new dialect
+// an entry in [ExprDialect] instead of another arm here — a dialect adding `|>`
+// beside `|` needs no edit to this file.
+func (p *exprParser) extendedHere(op string) bool {
+	for _, level := range p.d.Binary {
+		for _, other := range level {
+			if len(other) > len(op) && strings.HasPrefix(other, op) && p.sc.HasPrefix(other) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// optionalChain reports whether the cursor is at the `?.` member operator.
+//
+// A DIGIT after the dot is not optional chaining: `a?.5:1` is a conditional
+// whose consequent is `.5`, so two characters of lookahead decide the wrong
+// thing. Dialects without optional chaining never see `?.` at all, which is what
+// lets C read `a?.5:1` as the conditional it is.
+func (p *exprParser) optionalChain() bool {
+	if !p.d.Optional || !p.sc.HasPrefix("?.") {
+		return false
+	}
+	r, ok := p.sc.PeekAt(2)
+	return !ok || r < '0' || r > '9'
 }
 
 func (p *exprParser) isWord(op string) bool {
@@ -585,7 +652,7 @@ func (p *exprParser) unary() (Expr, error) {
 			continue
 		}
 		if p.isWord(op) {
-			if r, ok := p.sc.PeekAt(len(op)); ok && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '$') {
+			if r, ok := p.sc.PeekAt(len(op)); ok && isExprIdentPart(r) {
 				continue
 			}
 		}
@@ -593,7 +660,7 @@ func (p *exprParser) unary() (Expr, error) {
 		if err := p.enter(at); err != nil {
 			return Expr{}, err
 		}
-		operand, err := p.operand(at, "an expression after "+op)
+		operand, err := p.unaryOperand(at, "an expression after "+op)
 		p.leave()
 		if err != nil {
 			return Expr{}, err
@@ -601,6 +668,27 @@ func (p *exprParser) unary() (Expr, error) {
 		return Expr{Kind: ExprUnary, Pos: at, Raw: op, Left: &operand}, nil
 	}
 	return p.exponent()
+}
+
+// unaryOperand reads what a prefix operator or `**` applies to.
+//
+// It reads a UNARY, not a whole expression: the grammar binds a prefix operator
+// tighter than every infix one, so `-a * b` is `(-a) * b` and `typeof a === "x"`
+// asks what type a is — not what type the comparison has. Reaching for
+// [exprParser.expression] here instead makes every prefix operator swallow the
+// rest of the line, which still produces a tree of the right node KINDS and so
+// survives any test that only checks those.
+func (p *exprParser) unaryOperand(at Position, want string) (Expr, error) {
+	if err := p.space(); err != nil {
+		return Expr{}, err
+	}
+	if p.sc.Done() {
+		return Expr{}, SyntaxError{
+			Format: p.format(), Pos: at,
+			Want: want, Got: "end of input", Incomplete: true,
+		}
+	}
+	return p.unary()
 }
 
 // exponent is RIGHT associative: 2 ** 3 ** 2 is 2 ** (3 ** 2).
@@ -617,7 +705,18 @@ func (p *exprParser) exponent() (Expr, error) {
 	}
 	at := p.sc.Pos()
 	p.sc.Take("**")
-	rhs, err := p.operand(at, "an expression after **")
+	// The right side is a unary, which re-enters exponent — so the nesting is
+	// what makes `**` right associative, and `2 ** 3 + 1` still adds 1 to the
+	// power rather than raising 2 to the fourth.
+	//
+	// That recursion runs outside conditional, which is where every other path
+	// is charged for its depth, so this one has to charge itself or a file of
+	// `2**2**2**…` reaches the stack limit instead of the nesting limit.
+	if err := p.enter(at); err != nil {
+		return Expr{}, err
+	}
+	rhs, err := p.unaryOperand(at, "an expression after **")
+	p.leave()
 	if err != nil {
 		return Expr{}, err
 	}
@@ -637,7 +736,7 @@ func (p *exprParser) postfix() (Expr, error) {
 			return Expr{}, err
 		}
 		switch {
-		case p.d.Optional && p.sc.HasPrefix("?."):
+		case p.optionalChain():
 			at := p.sc.Pos()
 			p.sc.Take("?.")
 			name, ok := p.ident()
@@ -926,10 +1025,39 @@ func (p *exprParser) stringLiteral(at Position, quote rune) (Expr, error) {
 	}
 }
 
+// template reads a template literal, parsing each `${}` as an expression.
+//
+// A substitution is the only place in this grammar where an expression hides
+// inside a literal, which is exactly why it cannot be kept as text: text is
+// unreachable from Walk, uncounted by the depth limit, and never Incomplete.
+// `\$` consumes both characters, so an escaped dollar can never open one.
 func (p *exprParser) template(at Position) (Expr, error) {
 	p.sc.Next() // opening backtick
+	e := Expr{Kind: ExprTemplate, Pos: at}
 	var b strings.Builder
 	for {
+		if p.sc.HasPrefix("${") {
+			subAt := p.sc.Pos()
+			p.sc.Take("${")
+			e.Chunks = append(e.Chunks, b.String())
+			b.Reset()
+			if err := p.enter(subAt); err != nil {
+				return Expr{}, err
+			}
+			sub, err := p.operand(subAt, "an expression inside ${")
+			p.leave()
+			if err != nil {
+				return Expr{}, err
+			}
+			if err := p.space(); err != nil {
+				return Expr{}, err
+			}
+			if !p.sc.Take("}") {
+				return Expr{}, p.closer(subAt, "} to close the substitution opened here")
+			}
+			e.Args = append(e.Args, sub)
+			continue
+		}
 		r, ok := p.sc.Next()
 		if !ok {
 			return Expr{}, SyntaxError{
@@ -951,7 +1079,8 @@ func (p *exprParser) template(at Position) (Expr, error) {
 			continue
 		}
 		if r == '`' {
-			return Expr{Kind: ExprTemplate, Pos: at, Raw: b.String()}, nil
+			e.Chunks = append(e.Chunks, b.String())
+			return e, nil
 		}
 		b.WriteRune(r)
 	}
@@ -978,7 +1107,11 @@ func unescape(r rune) rune {
 // here would answer that too early.
 func (p *exprParser) number(at Position) (Expr, error) {
 	start := at.Offset
-	seenDot, seenExp := false, false
+	seenDot, seenExp, radix := false, false, false
+	// afterExp is the offset one past the exponent marker. A sign belongs to the
+	// literal only when it sits exactly there: `1e-5` is one number, `1e5-3` is a
+	// subtraction, and only adjacency tells them apart.
+	afterExp := -1
 	for {
 		r, ok := p.sc.Peek()
 		if !ok {
@@ -988,14 +1121,24 @@ func (p *exprParser) number(at Position) (Expr, error) {
 		case r >= '0' && r <= '9':
 		case r == '.' && !seenDot && !seenExp:
 			seenDot = true
-		case (r == 'e' || r == 'E') && !seenExp:
+		case (r == 'e' || r == 'E') && !seenExp && !radix:
+			// In 0x1e the e is a HEX DIGIT, so `0x1e+5` is a sum. Letting the
+			// exponent rule reach a radix literal joins the two into one token
+			// that no later stage can take apart.
 			seenExp = true
-		case (r == '+' || r == '-') && seenExp && p.sc.Pos().Offset > start &&
-			isExpSign(p.sc, start):
-		case r == 'x' || r == 'X' || r == 'b' || r == 'B' || r == 'o' || r == 'O',
-			r >= 'a' && r <= 'f', r >= 'A' && r <= 'F', r == '_':
-			// Hex, binary, octal digits and separators. Validity is the
-			// consumer's business, as with every other literal here.
+			afterExp = p.sc.Pos().Offset + 1
+		case (r == '+' || r == '-') && seenExp && p.sc.Pos().Offset == afterExp:
+		case (r == 'x' || r == 'X' || r == 'b' || r == 'B' || r == 'o' || r == 'O') &&
+			p.sc.Pos().Offset == start+1 && p.sc.Slice(start, start+1)[0] == '0':
+			radix = true
+		case radix && (r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F'):
+			// Hex digits, and only where a radix prefix said to expect them.
+			// Ungated, every letter a to f extends a number: `.b` lexes as a
+			// literal, and the reader of `a?.b` in a dialect without optional
+			// chaining is told the conditional is unfinished instead of being
+			// shown the real problem. Whether the digits are VALID for the radix
+			// stays the consumer's business, as with every other literal here.
+		case r == '_':
 		default:
 			goto done
 		}
@@ -1010,17 +1153,6 @@ done:
 		}
 	}
 	return Expr{Kind: ExprNumber, Pos: at, Raw: raw}, nil
-}
-
-// isExpSign reports whether the character just before the cursor is the
-// exponent marker, so `1e-5` reads as one number and `a-5` does not.
-func isExpSign(sc *Scanner, start int) bool {
-	off := sc.Pos().Offset
-	if off <= start {
-		return false
-	}
-	prev := sc.Slice(off-1, off)
-	return len(prev) == 1 && (prev[0] == 'e' || prev[0] == 'E')
 }
 
 func (p *exprParser) ident() (string, bool) {
