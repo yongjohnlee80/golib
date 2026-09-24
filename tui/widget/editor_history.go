@@ -79,6 +79,9 @@ func (e *Editor) edited() {
 	e.ensureVisible()
 	e.MarkDirty()
 	e.publish(ChangeEvent{Owner: e.NodeID(), Value: e.Value()})
+	if e.onChange != nil {
+		e.onChange()
+	}
 }
 
 // WithUndo configures whether the editor maintains undo/redo history.
