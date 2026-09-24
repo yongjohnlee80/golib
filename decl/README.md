@@ -163,15 +163,20 @@ correct.
   handler name leaves the screen exactly as it was.
 - **An unchanged file changes nothing** — no setter runs, no binding is
   re-resolved, and the adapter is not called at all.
-- **Two things cannot be pre-checked**, and both are partial-mutation points: a
-  **setter**, since the only way to learn it refuses a *value* is to call it —
-  whether the property exists is settled during planning, whether this value is
-  acceptable is not; and
+- **Three things cannot be pre-checked.** A **constructor**, since
+  classification proves a property *exists* and only the builder knows whether
+  it accepts this *value*. A **setter**, for the same reason one step later. And
   a **structural operation** — `CanRestructure` settles whether a node accepts
   child changes at all, but `Insert`, `Remove` and `Move` each fail at the
-  moment they run, after earlier work has landed. Either leaves the tree
-  partially reconciled and **latches** it, as a failed mount does; `Destroy`
-  clears it.
+  moment they run.
+- **The constructor is made harmless, not just reported.** Every replacement is
+  **built before anything it replaces is released**, so `direction: diagonal`
+  costs you the half-built replacement and nothing else — the live screen is
+  still there, and the tree is **not** latched.
+- **The other two latch.** Once a setter has touched a live widget or a child
+  has been detached, the tree is partially reconciled; `Destroy` clears it. A
+  reconcile that fails while still *constructing* has changed nothing and is not
+  latched, and the difference is tracked rather than assumed.
 
 ## What it does not promise
 

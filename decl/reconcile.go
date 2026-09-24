@@ -215,8 +215,13 @@ func (t *Tree) Reload(src []byte) (Result, error) {
 // adapter first. So the ordinary mistakes, a mistyped handler name or a
 // property the widget cannot set, are found while the screen is still intact.
 //
-// TWO THINGS CANNOT BE PRE-CHECKED, and both are partial-mutation points:
+// THREE THINGS CANNOT BE PRE-CHECKED:
 //
+//   - a CONSTRUCTOR, because classification proves a property EXISTS and only
+//     the builder can say whether it accepts this VALUE. This one is made
+//     harmless rather than merely reported: every replacement is BUILT BEFORE
+//     anything it replaces is released, so a refusal discards the half-built
+//     replacement and leaves the live tree standing;
 //   - a SETTER, because the only way to learn that it refuses a VALUE is to
 //     call it. Whether the property exists at all is settled during planning;
 //     whether this particular value is acceptable is not;
@@ -225,10 +230,16 @@ func (t *Tree) Reload(src []byte) (Result, error) {
 //     return an error at the moment they run, after earlier structural work has
 //     already landed.
 //
-// A failure in either leaves the tree PARTIALLY reconciled and latches it,
-// exactly as a failed [Tree.Mount] does: the next Mount or Reconcile is refused
-// until [Tree.Destroy] has cleared it. Pretending otherwise would mean claiming
-// the adapter's setters and its container are reversible, and they are not.
+// The last two are PARTIAL-MUTATION POINTS: a failure there leaves the tree
+// partially reconciled and latches it, exactly as a failed [Tree.Mount] does,
+// and the next Mount or Reconcile is refused until [Tree.Destroy] has cleared
+// it. Pretending otherwise would mean claiming the adapter's setters and its
+// container are reversible, and they are not.
+//
+// A reconcile that fails while still CONSTRUCTING has changed nothing, and is
+// not latched. The difference is tracked rather than assumed: the tree records
+// when it first touches something live, and a failure before that point is
+// reported without declaring the tree partial.
 func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 	if t.ph != phaseIdle {
 		return Result{}, SchemaError{Op: "reconcile", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
@@ -246,6 +257,7 @@ func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 
 	t.ph = phaseReconciling
 	t.planned = map[*parse.SpecNode]plannedNode{}
+	t.mutated = false
 	defer func() {
 		t.ph = phaseIdle
 		t.planned = nil
@@ -262,17 +274,26 @@ func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 	var res Result
 	if plan.rebuild {
 		// The root has no parent to splice it into, so a root rebuild is the
-		// whole tree: release it and mount the new schema from scratch.
+		// whole tree. THE REPLACEMENT IS BUILT FIRST, while the live tree is
+		// still standing: a constructor can refuse a VALUE that classification
+		// already proved to be a real property — "diagonal" is a direction Flex
+		// has no meaning for — and releasing first would take the working
+		// screen down for a typo the new tree never got far enough to display.
+		old := t.root
+		id, err := t.mountNode(spec.Root, NoNode)
+		if err != nil {
+			// The live tree was never touched. Discard the half-built
+			// replacement and leave everything exactly as it was.
+			var discard Result
+			_ = t.releaseSubtree(id, &discard)
+			return Result{}, err
+		}
 		res.Rebuilt = append(res.Rebuilt, plan.rebuildRecord())
 		res.RootReplaced = true
-		if err := t.releaseSubtree(t.root, &res); err != nil {
-			t.failed = true
-			return res, err
-		}
-		t.root = NoNode
-		id, err := t.mountNode(spec.Root, NoNode)
-		res.Created += t.countBuilt(id)
-		if err != nil {
+		res.Created = t.countBuilt(id)
+
+		t.mutated = true
+		if err := t.releaseSubtree(old, &res); err != nil {
 			t.failed = true
 			return res, err
 		}
@@ -281,7 +302,9 @@ func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 	}
 
 	if _, err := t.patch(plan, NoNode, &res); err != nil {
-		t.failed = true
+		// Only a reconcile that actually CHANGED something leaves a partial
+		// tree. One that failed while still constructing has nothing to latch.
+		t.failed = t.mutated
 		return res, err
 	}
 	return res, nil
@@ -681,6 +704,10 @@ func (t *Tree) patch(s *step, parent NodeID, res *Result) (NodeID, error) {
 	}
 	for _, p := range s.apply {
 		app := Application{Node: s.old, Prop: p.Name, Value: p.Value, Origin: FromSchema}
+		// Marked BEFORE the call: a setter that fails part-way has still
+		// changed something, and assuming otherwise is how a partial tree gets
+		// declared clean.
+		t.mutated = true
 		if err := t.adapter.Apply(app); err != nil {
 			return NoNode, SchemaError{Op: "apply", Node: s.old, Detail: p.Name, Pos: p.Value.Pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
@@ -727,7 +754,6 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 	for _, cs := range s.order {
 		if cs.rebuild && cs.old != NoNode {
 			leaving[cs.old] = true
-			res.Rebuilt = append(res.Rebuilt, cs.rebuildRecord())
 		}
 	}
 
@@ -743,6 +769,38 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 	}
 
 	cur := append([]NodeID(nil), n.children...)
+	want := make([]NodeID, len(s.order))
+
+	// 0. CONSTRUCT EVERY REPLACEMENT FIRST, before anything is released.
+	//
+	// Classification proves a property EXISTS; only the constructor can say
+	// whether it accepts this VALUE, and only by being called. Building first
+	// means a refusal costs nothing: the live children are still attached, and
+	// the half-built replacements are discarded.
+	var fresh []NodeID
+	for i, cs := range s.order {
+		if !cs.rebuild {
+			continue
+		}
+		id, err := t.mountNode(cs.spec, s.old)
+		if err != nil {
+			fresh = append(fresh, id)
+			var discard Result
+			for _, f := range fresh {
+				_ = t.releaseSubtree(f, &discard)
+			}
+			return nil, err
+		}
+		fresh = append(fresh, id)
+		res.Created += t.countBuilt(id)
+		want[i] = id
+		if cs.old != NoNode {
+			// Recorded only once the replacement EXISTS. Reporting it up front
+			// would mean a failed reconcile handing back a Result that names a
+			// rebuild which never happened — and Result is what a host logs.
+			res.Rebuilt = append(res.Rebuilt, cs.rebuildRecord())
+		}
+	}
 
 	// 1 and 2, in the tree's own child order so the trace is deterministic.
 	var departed []NodeID
@@ -750,6 +808,7 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 		if !leaving[id] {
 			continue
 		}
+		t.mutated = true
 		if err := r.RemoveChild(s.old, id); err != nil {
 			return nil, SchemaError{Op: "reconcile", Node: id, Pos: s.spec.Pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
@@ -763,16 +822,9 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 		}
 	}
 
-	// 3.
-	want := make([]NodeID, len(s.order))
+	// 3. The children that KEPT their identity, which may have work of their own.
 	for i, cs := range s.order {
 		if cs.rebuild {
-			id, err := t.mountNode(cs.spec, s.old)
-			res.Created += t.countBuilt(id)
-			if err != nil {
-				return nil, err
-			}
-			want[i] = id
 			continue
 		}
 		id, err := t.patch(cs, s.old, res)
@@ -800,6 +852,7 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 		if at > len(cur) {
 			at = len(cur)
 		}
+		t.mutated = true
 		if err := r.InsertChild(s.old, id, at); err != nil {
 			return nil, SchemaError{Op: "reconcile", Node: id, Pos: s.spec.Pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
@@ -820,6 +873,7 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 		if j < 0 {
 			continue
 		}
+		t.mutated = true
 		if err := r.MoveChild(s.old, want[i], i); err != nil {
 			return nil, SchemaError{Op: "reconcile", Node: want[i], Pos: s.spec.Pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}

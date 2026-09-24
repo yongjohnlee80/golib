@@ -60,6 +60,11 @@ type Tree struct {
 	// intact: without it, a typo in a NEW node is only found after the node it
 	// replaces has already been detached and destroyed.
 	planned map[*parse.SpecNode]plannedNode
+	// mutated records that a reconcile has actually CHANGED the live tree, as
+	// opposed to having only constructed replacements that were then discarded.
+	// It is what lets a reconcile that failed while still building report the
+	// failure without latching a tree it never touched.
+	mutated bool
 	// failed records that a Mount did not complete. A tree in that state holds
 	// a partial graph, so the next Mount must be refused rather than allowed to
 	// graft a second graph onto the wreckage — which is exactly what happens

@@ -2,6 +2,7 @@ package decl_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -834,3 +835,145 @@ func TestATypoInANodeTHATDOESNOTEXISTYETLeavesTheTreeUntouched(t *testing.T) {
 		})
 	}
 }
+
+// TestAConstructorRefusingAValueLeavesTheTreeStanding covers the one thing
+// classification cannot settle.
+//
+// Classification proves a property EXISTS. Only the constructor can say whether
+// it accepts this VALUE, and only by being called — `direction: diagonal` names
+// a real Flex property and a direction Flex has no meaning for. So the
+// replacement is BUILT FIRST, while the live tree is still standing, and a
+// refusal costs nothing but the half-built replacement.
+//
+// Three shapes, because they reach the mount by different routes: the ROOT
+// (which has no parent to splice into), a CHILD whose type changed, and an
+// INSERTED child.
+func TestAConstructorRefusingAValueLeavesTheTreeStanding(t *testing.T) {
+	const before = `Flex { id: root direction: vertical Text { id: a text: "one" } }`
+	cases := map[string]string{
+		"root constructor value": `Flex { id: root direction: diagonal Text { id: a text: "one" } }`,
+		"child of an unknown type": `Flex { id: root direction: vertical ` +
+			`NoSuchWidget { id: a } }`,
+		"inserted child with a bad value": `Flex { id: root direction: vertical ` +
+			`Text { id: a text: "one" } Flex { id: b direction: sideways } }`,
+	}
+	for name, bad := range cases {
+		t.Run(name, func(t *testing.T) {
+			tr, a := mount(t, before, tuidecl.HostFuncs{},
+				func(err error) { t.Errorf("unexpected handler error: %v", err) })
+			be, app := startApp(t, mustRoot(t, tr, a))
+			waitFor(t, func() bool { return strings.Contains(be.String(), "one") })
+
+			rootComp := mustRoot(t, tr, a)
+			rootNode := tr.Root()
+			sizeBefore := tr.Len()
+			kids := containerKids(t, a, rootNode)
+			text := componentOf(t, tr, a, "a")
+			textID := nodeIDsOf(t, []tui.Component{text})[0]
+
+			var res decl.Result
+			var err error
+			onLoop(t, app, func() { res, err = tr.Reload([]byte(bad)) })
+
+			if err == nil {
+				t.Fatal("the constructor refused nothing; this case proves nothing")
+			}
+			if res.Created != 0 || res.Destroyed != 0 {
+				t.Fatalf("the live tree was disturbed: %+v", res)
+			}
+			// A rebuild that never happened must not be REPORTED as one:
+			// Result is what a host logs.
+			if len(res.Rebuilt) != 0 {
+				t.Errorf("Result names a rebuild that did not happen: %v", res.Rebuilt)
+			}
+			if res.RootReplaced {
+				t.Error("RootReplaced on a reconcile that built nothing")
+			}
+			// The half-built replacement must be DISCARDED, not merely
+			// abandoned. Nodes left behind are invisible — they are attached to
+			// nothing and painted nowhere — but they hold adapter components and
+			// identities for the life of the tree, and every failed reload adds
+			// more.
+			if got := tr.Len(); got != sizeBefore {
+				t.Errorf("the tree grew from %d to %d nodes: the partial replacement was leaked",
+					sizeBefore, got)
+			}
+
+			// Same root, same children, same mount, still painting.
+			if mustRoot(t, tr, a) != rootComp || tr.Root() != rootNode {
+				t.Error("the root was replaced by a reconcile that failed to build one")
+			}
+			now := containerKids(t, a, rootNode)
+			if len(now) != len(kids) {
+				t.Fatalf("children = %d, want %d", len(now), len(kids))
+			}
+			for i := range kids {
+				if now[i] != kids[i] {
+					t.Errorf("child %d changed", i)
+				}
+			}
+			if got := nodeIDsOf(t, []tui.Component{text})[0]; got != textID {
+				t.Errorf("a surviving child was remounted: NodeID %d -> %d", textID, got)
+			}
+			if !strings.Contains(be.String(), "one") {
+				t.Errorf("the screen lost its content:\n%s", be.String())
+			}
+
+			// And NOT latched: a corrected reload goes through.
+			onLoop(t, app, func() {
+				res, err = tr.Reload([]byte(`Flex { id: root direction: vertical Text { id: a text: "two" } }`))
+			})
+			if err != nil {
+				t.Fatalf("the tree was latched by a refused constructor: %v", err)
+			}
+			waitFor(t, func() bool { return strings.Contains(be.String(), "two") })
+		})
+	}
+}
+
+// TestAFailedSetterStillLatches is the negative control for the test above, and
+// the reason this PR does not claim a reconcile is atomic.
+//
+// Building replacements first removes the CONSTRUCTOR from the destructive
+// paths. It does not remove the setter: once a property has been applied to a
+// live widget, a later failure cannot take it back. The tree latches, and
+// Destroy is the documented way out. Without this case the test above would
+// read as a promise the engine does not make.
+func TestAFailedSetterStillLatches(t *testing.T) {
+	reg := tuidecl.StdRegistry()
+	opts := append(tuidecl.StdProperties(),
+		tuidecl.WithHostFuncs(tuidecl.HostFuncs{}),
+		tuidecl.WithErrorSink(func(error) {}),
+		// A setter that refuses every value, registered over the standard one.
+		tuidecl.WithSetters("Text", map[string]tuidecl.Setter{
+			"text": func(tui.Component, parse.SpecValue) error {
+				return errTestSetter
+			},
+		}),
+	)
+	ad := tuidecl.New(reg, opts...)
+	tr := decl.New(ad)
+	spec, err := parse.QML{}.Parse([]byte(`Flex { id: root direction: vertical Text { id: a } }`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := tr.Mount(spec); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+
+	if _, err := tr.Reload([]byte(`Flex { id: root direction: vertical Text { id: a text: "one" } }`)); err == nil {
+		t.Fatal("the setter was supposed to refuse")
+	}
+	// A setter that failed HAS touched the widget, so the tree is partial.
+	if _, err := tr.Reload([]byte(`Flex { id: root direction: vertical Text { id: a } }`)); !errors.Is(err, decl.ErrPhase) {
+		t.Fatalf("a reconcile after a failed setter returned %v, want ErrPhase", err)
+	}
+	if err := tr.Destroy(); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if err := tr.Mount(spec); err != nil {
+		t.Fatalf("Destroy did not clear the latch: %v", err)
+	}
+}
+
+var errTestSetter = errors.New("this setter refuses everything")
