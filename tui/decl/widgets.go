@@ -13,6 +13,11 @@ import (
 //
 // The set is chosen for the shapes it forces, not for coverage:
 //
+// Enum-valued properties are written as STRINGS — `orientation: "horizontal"` —
+// because a bare identifier is now a binding, as it is in QML. Qt spells these
+// as qualified enums (`Qt.Horizontal`); this grammar has no member chains to
+// resolve, so a string carries the symbol instead.
+//
 //   - Split takes its orientation and BOTH children as required constructor
 //     arguments, and has no setter for either. Nothing can build it after the
 //     fact.
@@ -104,6 +109,10 @@ func buildSplit(b Build) (tui.Component, []string, error) {
 		if p.Name != "orientation" {
 			continue
 		}
+		if p.Value.Kind != parse.SpecValueString {
+			return nil, nil, fmt.Errorf(
+				"orientation must be written as a string, got %s (at %s)", p.Value.Kind, p.Value.Pos)
+		}
 		switch p.Value.Raw {
 		case "horizontal":
 			o = widget.Horizontal
@@ -127,6 +136,10 @@ func buildFlex(b Build) (tui.Component, []string, error) {
 	for _, p := range b.Props {
 		if p.Name != "direction" {
 			continue
+		}
+		if p.Value.Kind != parse.SpecValueString {
+			return nil, nil, fmt.Errorf(
+				"direction must be written as a string, got %s (at %s)", p.Value.Kind, p.Value.Pos)
 		}
 		switch p.Value.Raw {
 		case "horizontal":

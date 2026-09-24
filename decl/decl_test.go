@@ -170,7 +170,7 @@ func TestConsumedPropertiesAreNotReApplied(t *testing.T) {
 	r := newRecorder()
 	r.consume["Split"] = []string{"orientation"}
 	tr := decl.New(r)
-	if err := tr.Mount(mustSpec(t, `Split { orientation: vertical gap: 2 }`)); err != nil {
+	if err := tr.Mount(mustSpec(t, `Split { orientation: "vertical" gap: 2 }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	for _, line := range r.trace {
