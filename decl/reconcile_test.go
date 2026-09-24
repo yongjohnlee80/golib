@@ -976,3 +976,50 @@ func TestTheReportedReasonIsStableWhenSeveralEditsQualify(t *testing.T) {
 		}
 	}
 }
+
+// kindLiar is an adapter that returns a PropertyKind this engine does not know.
+//
+// It exists because the three kinds are a CLOSED set, and the tempting default
+// for an unrecognised one is to treat it as settable and carry on. That turns a
+// future fourth kind into "apply it and hope", discovered in the field. The
+// engine refuses instead, which makes adding one a compile-and-test problem.
+type kindLiar struct {
+	*splicer
+	kind decl.PropertyKind
+}
+
+func (k *kindLiar) ClassifyProperty(string, string) decl.PropertyKind { return k.kind }
+
+func TestAnUnrecognisedPropertyKindIsRefused(t *testing.T) {
+	rec := newSplicer()
+	liar := &kindLiar{splicer: rec, kind: decl.PropertyKind(99)}
+	tr := decl.New(liar)
+	if err := tr.Mount(mustSpec(t, `Flex { Text { id: a text: "one" } }`)); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	rec.trace = nil
+
+	_, err := tr.Reconcile(mustSpec(t, `Flex { Text { id: a text: "two" } }`))
+	if err == nil {
+		t.Fatal("an unrecognised PropertyKind was accepted")
+	}
+	if !errors.Is(err, decl.ErrAdapter) {
+		t.Errorf("err = %v, want it wrapped in ErrAdapter", err)
+	}
+	if !strings.Contains(err.Error(), "does not recognise") {
+		t.Errorf("the error does not say what went wrong: %v", err)
+	}
+	for _, line := range rec.trace {
+		if strings.HasPrefix(line, "apply") {
+			t.Errorf("an unrecognised kind was treated as settable: %q", line)
+		}
+	}
+
+	// The positive control: the same fixture with a kind the engine knows must
+	// go through, or this test would pass against an engine that refused
+	// everything.
+	liar.kind = decl.PropRuntime
+	if _, err := tr.Reconcile(mustSpec(t, `Flex { Text { id: a text: "three" } }`)); err != nil {
+		t.Fatalf("a recognised kind must still apply: %v", err)
+	}
+}

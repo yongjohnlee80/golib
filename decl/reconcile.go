@@ -74,7 +74,7 @@ func (k PropertyKind) String() string {
 }
 
 // Classifier is an OPTIONAL capability an [Adapter] may implement to say how a
-// declared property can reach a node.
+// declared property can reach a node of a given TYPE.
 //
 // The engine cannot work this out. It sees what [Adapter.Create] reported
 // consuming, and that inference has two holes. A builder reports a property
@@ -88,11 +88,19 @@ func (k PropertyKind) String() string {
 // The adapter owns the property tables, so the adapter is the only thing that
 // can answer. An adapter that does not implement this still reconciles; it
 // falls back to the consumed-set inference and keeps both holes.
+//
+// It is keyed by the schema TYPE NAME, not by a mounted node, and that is the
+// whole point. The question "can a Button take a property called nosuch" is
+// about Buttons, not about any particular one — and the nodes a reload most
+// needs it for DO NOT EXIST YET: a node the schema adds, or the replacement for
+// one whose type changed. An earlier version took a NodeID, used it only to
+// look up that node's type, and was therefore unable to answer for exactly the
+// cases where being wrong costs a working widget.
 type Classifier interface {
-	// ClassifyProperty reports how prop can reach this node. It must not have
-	// side effects: it is consulted during planning, before anything is
-	// mutated.
-	ClassifyProperty(node NodeID, prop string) PropertyKind
+	// ClassifyProperty reports how prop can reach a node of this schema type.
+	// It must not have side effects: it is consulted during planning, before
+	// anything is mutated.
+	ClassifyProperty(typeName, prop string) PropertyKind
 }
 
 // ErrIncomplete reports source that stops mid-construct — the normal reading of
@@ -352,6 +360,18 @@ func (t *Tree) planSubtree(sn *parse.SpecNode) error {
 	id := t.nextID
 	p := plannedNode{id: id}
 
+	// Properties are checked here too, against the type the node WILL be. This
+	// is the case the classifier exists for: the node has no instance to ask
+	// about, and discovering a misspelled property during the mount means
+	// discovering it after the node it replaces has been destroyed.
+	if classifier, ok := t.adapter.(Classifier); ok {
+		for _, prop := range sn.Props {
+			if err := checkKind(classifier.ClassifyProperty(sn.Type, prop.Name), sn.Type, prop, id); err != nil {
+				return err
+			}
+		}
+	}
+
 	for _, h := range sn.Handlers {
 		fn, err := t.adapter.ResolveHandler(id, h.Signal, h.Name, h.Pos)
 		if err != nil {
@@ -408,16 +428,7 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 	// capability the engine falls back to what Create reported consuming, which
 	// cannot see a property that was ABSENT at construction and cannot tell a
 	// constructor-only property from a typo.
-	classifier, hasClassifier := t.adapter.(Classifier)
-	classify := func(prop string) PropertyKind {
-		if hasClassifier {
-			return classifier.ClassifyProperty(oldID, prop)
-		}
-		if n.consumed[prop] {
-			return PropConstructorOnly
-		}
-		return PropRuntime
-	}
+	classify := t.classifier(n)
 
 	// UNKNOWN PROPERTIES FIRST, across every changed declaration, because an
 	// error outranks a rebuild: if the schema names a property the adapter does
@@ -427,9 +438,8 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 		if sameSequence(oldProps[p.Name], newProps[p.Name]) {
 			continue
 		}
-		if classify(p.Name) == PropUnknown {
-			return nil, SchemaError{Op: "apply", Node: oldID, Detail: p.Name, Pos: p.Value.Pos,
-				Err: fmt.Errorf("%w: type %q has no property %q", ErrAdapter, n.typeName, p.Name)}
+		if err := checkKind(classify(sn.Type, p.Name), sn.Type, p, oldID); err != nil {
+			return nil, err
 		}
 	}
 	// Then constructor-only changes, which DO call for a rebuild. Document
@@ -439,7 +449,7 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 		if sameSequence(oldProps[p.Name], newProps[p.Name]) {
 			continue
 		}
-		if classify(p.Name) == PropConstructorOnly {
+		if classify(sn.Type, p.Name) == PropConstructorOnly {
 			return t.rebuildStep(s, fmt.Sprintf(
 				"%q is taken at construction and has no setter, so changing it cannot be applied", p.Name))
 		}
@@ -532,6 +542,45 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 		return t.rebuildStep(s, "its children changed and this node cannot be restructured after construction")
 	}
 	return s, nil
+}
+
+// classifier returns how to judge a property, preferring the adapter's own
+// answer and falling back to what Create reported consuming.
+//
+// The fallback is per-node and cannot see a property that was absent at
+// construction, which is why it is a fallback: an adapter that implements
+// [Classifier] answers from its tables instead.
+func (t *Tree) classifier(n *node) func(typeName, prop string) PropertyKind {
+	if c, ok := t.adapter.(Classifier); ok {
+		return c.ClassifyProperty
+	}
+	return func(_, prop string) PropertyKind {
+		if n != nil && n.consumed[prop] {
+			return PropConstructorOnly
+		}
+		return PropRuntime
+	}
+}
+
+// checkKind refuses a property the adapter cannot accept, and refuses a kind
+// the engine does not recognise.
+//
+// An unrecognised numeric kind is rejected rather than allowed to fall through
+// as runtime-settable. A default that treats an unknown answer as permission is
+// how a future fourth kind would silently become "apply it and hope"; refusing
+// makes adding one a compile-and-test problem instead of a field report.
+func checkKind(k PropertyKind, typeName string, p parse.SpecProp, node NodeID) error {
+	switch k {
+	case PropRuntime, PropConstructorOnly:
+		return nil
+	case PropUnknown:
+		return SchemaError{Op: "apply", Node: node, Detail: p.Name, Pos: p.Value.Pos,
+			Err: fmt.Errorf("%w: type %q has no property %q", ErrAdapter, typeName, p.Name)}
+	default:
+		return SchemaError{Op: "apply", Node: node, Detail: p.Name, Pos: p.Value.Pos,
+			Err: fmt.Errorf("%w: the adapter classified %q on type %q as %d, which this engine does not recognise",
+				ErrAdapter, p.Name, typeName, uint8(k))}
+	}
 }
 
 // matchChildren pairs the node's current children with the new schema's, by the

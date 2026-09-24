@@ -118,19 +118,20 @@ func countChildren(c tui.Container) int {
 
 // ClassifyProperty implements decl.Classifier.
 //
-// Three tables, three answers. A property with a setter is runtime-settable; one
+// Two tables, three answers. A property with a setter is runtime-settable; one
 // the type declared as constructor-only is a rebuild; anything else the adapter
 // simply does not have, and saying so is what stops a typo from demolishing a
 // working widget to build one that would refuse it just the same.
-func (a *Adapter) ClassifyProperty(node decl.NodeID, prop string) decl.PropertyKind {
-	b, ok := a.nodes[node]
-	if !ok {
-		return decl.PropUnknown
-	}
-	if _, ok := a.setters[b.typ][prop]; ok {
+//
+// It is keyed by the schema TYPE, not by a mounted node. An earlier version took
+// a NodeID and used it for nothing but looking up that node's type — so it could
+// not answer for a node the schema ADDS, or for the replacement of one whose
+// type changed, which are precisely the nodes a reload is about to build.
+func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
+	if _, ok := a.setters[typeName][prop]; ok {
 		return decl.PropRuntime
 	}
-	if a.ctorProps[b.typ][prop] {
+	if a.ctorProps[typeName][prop] {
 		return decl.PropConstructorOnly
 	}
 	return decl.PropUnknown
