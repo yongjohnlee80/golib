@@ -189,7 +189,12 @@ func (t *Tree) Subscribe(p Provider) error {
 	// subscription failed, and a schema could still bind sources belonging to a
 	// provider that is not attached to anything — sources nothing will ever
 	// update, because the delivery path was torn down.
-	added := make([]string, 0, len(names))
+	//
+	// What to remove comes from inject, which is the code that did the writing.
+	// An undo that walked `names` instead would miss the NAMESPACE PREFIXES a
+	// dotted name implies — nobody passed `Good` in, so nobody thinks to take
+	// it out, and a refused subscription left it resolvable.
+	var added []string
 	undo := func() {
 		for _, n := range added {
 			delete(t.injected, n)
@@ -201,11 +206,12 @@ func (t *Tree) Subscribe(p Provider) error {
 		if !ok {
 			v = parse.SpecValue{Kind: parse.SpecValueString}
 		}
-		if err := t.inject("subscribe", n, SourceValue(v)); err != nil {
+		created, err := t.inject("subscribe", n, SourceValue(v))
+		if err != nil {
 			undo()
 			return fail(err)
 		}
-		added = append(added, n)
+		added = append(added, created...)
 	}
 
 	pr.names, pr.cancel = names, cancel

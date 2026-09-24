@@ -131,30 +131,38 @@ func Namespace() Injected { return Injected{Kind: KindNamespace} }
 //
 // A dotted name registers a qualified entry: `tui.Horizontal`. Its prefix is
 // implicitly a namespace, so `tui` alone resolves and `tui.Nope` does not.
-func (t *Tree) Inject(name string, in Injected) error { return t.inject("inject", name, in) }
+func (t *Tree) Inject(name string, in Injected) error {
+	_, err := t.inject("inject", name, in)
+	return err
+}
 
 // inject is the ONE write path into the typed registry. DeclareSource and
 // DeclareFunc route through it under their own op names, so a name cannot be a
 // source in one registry and a function in another — a disagreement that would
 // make the resolver's answer depend on which map it happened to consult.
-func (t *Tree) inject(op, name string, in Injected) error {
+// It returns EVERY key it wrote, the implied namespace prefixes included. A
+// caller undoing a partial batch needs that list from the code that did the
+// writing: a caller that reconstructed it would be a second opinion about what
+// injection creates, and the first thing such a pair disagrees about is the
+// implicit part, because that is the part nobody passed in.
+func (t *Tree) inject(op, name string, in Injected) ([]string, error) {
 	if t.ph != phaseIdle || t.root != NoNode {
-		return SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
+		return nil, SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
 			"%w: injection happens before Mount, so the set a schema is checked "+
 				"against is fixed when planning begins", ErrPhase)}
 	}
 	if in.Kind == KindUnknown {
-		return SchemaError{Op: op, Detail: name,
+		return nil, SchemaError{Op: op, Detail: name,
 			Err: fmt.Errorf("%w: no kind was declared", ErrWrongKind)}
 	}
 	if name == "" {
-		return SchemaError{Op: op, Detail: name,
+		return nil, SchemaError{Op: op, Detail: name,
 			Err: fmt.Errorf("%w: a name is required", ErrWrongKind)}
 	}
 	segs := strings.Split(name, ".")
 	for _, s := range segs {
 		if s == "" {
-			return SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
+			return nil, SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
 				"%w: %q has an empty segment, which no reference can ever name",
 				ErrWrongKind, name)}
 		}
@@ -162,25 +170,25 @@ func (t *Tree) inject(op, name string, in Injected) error {
 		// otherwise bind a member that shadows nothing today and silently
 		// changes meaning the moment scoping grows a qualified `parent`.
 		if reserved[s] {
-			return SchemaError{Op: op, Detail: name,
+			return nil, SchemaError{Op: op, Detail: name,
 				Err: fmt.Errorf("%w: %q", ErrReservedName, s)}
 		}
 	}
 	switch in.Kind {
 	case KindConstant, KindSource:
 		if !isTerminal(in.Value) {
-			return SchemaError{Op: op, Detail: name, Pos: in.Value.Pos, Err: fmt.Errorf(
+			return nil, SchemaError{Op: op, Detail: name, Pos: in.Value.Pos, Err: fmt.Errorf(
 				"%w: a %s holds a %s, not an expression", ErrNotTerminal, in.Kind, in.Value.Kind)}
 		}
 	case KindPureFunction:
 		if in.Pure == nil {
-			return SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
+			return nil, SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
 				"%w: a function with no implementation is refused here rather than "+
 					"discovered at the first call", ErrWrongKind)}
 		}
 	case KindHandler:
 		if in.Handle == nil {
-			return SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
+			return nil, SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
 				"%w: a handler with no implementation is refused here rather than "+
 					"discovered at the first signal", ErrWrongKind)}
 		}
@@ -190,7 +198,7 @@ func (t *Tree) inject(op, name string, in Injected) error {
 	// the adapter — so a shadowing name would mean one thing before a Destroy
 	// and another after, with no diagnostic either time.
 	if _, clash := t.consts[name]; clash {
-		return SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
+		return nil, SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
 			"%w: the adapter already defines %q, and shadowing it would change what "+
 				"a schema means without saying so", ErrAmbiguousName, name)}
 	}
@@ -203,7 +211,7 @@ func (t *Tree) inject(op, name string, in Injected) error {
 	for i := 1; i < len(segs); i++ {
 		prefix := strings.Join(segs[:i], ".")
 		if prior, exists := t.injected[prefix]; exists && prior.Kind != KindNamespace {
-			return SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
+			return nil, SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
 				"%w: %q is a %s, so %q cannot name something inside it",
 				ErrWrongKind, prefix, prior.Kind, name)}
 		}
@@ -216,12 +224,13 @@ func (t *Tree) inject(op, name string, in Injected) error {
 		// A namespace implied by a dotted name is not a declaration, so
 		// injecting `tui` explicitly after `tui.Horizontal` is not a clash.
 		if !(prior.Kind == KindNamespace && in.Kind == KindNamespace) {
-			return SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
+			return nil, SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
 				"%w: %q is already injected as a %s", ErrDuplicateDecl, name, prior.Kind)}
 		}
-		return nil
+		return nil, nil
 	}
 	t.injected[name] = in
+	created := []string{name}
 
 	// Every prefix of a dotted name is a namespace, so `tui` resolves as one
 	// without the host having to inject it separately — and `tui.Nope` fails as
@@ -231,6 +240,7 @@ func (t *Tree) inject(op, name string, in Injected) error {
 		prefix := strings.Join(segs[:i], ".")
 		if _, exists := t.injected[prefix]; !exists {
 			t.injected[prefix] = Injected{Kind: KindNamespace}
+			created = append(created, prefix)
 		}
 	}
 
@@ -250,7 +260,7 @@ func (t *Tree) inject(op, name string, in Injected) error {
 		}
 		t.funcs[name] = ValueFunc(in.Pure)
 	}
-	return nil
+	return created, nil
 }
 
 // Lookup reports what was injected under a name.

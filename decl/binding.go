@@ -153,7 +153,8 @@ type binding struct {
 // site that only wants a source. Both write the same registry, so a name
 // declared here cannot be injected again as something else.
 func (t *Tree) DeclareSource(name string, v parse.SpecValue) error {
-	return t.inject("declare source", name, SourceValue(v))
+	_, err := t.inject("declare source", name, SourceValue(v))
+	return err
 }
 
 // DeclareFunc registers a value function, before Mount.
@@ -165,7 +166,8 @@ func (t *Tree) DeclareFunc(name string, fn ValueFunc) error {
 		return SchemaError{Op: "declare func", Detail: name, Err: fmt.Errorf(
 			"%w: a nil function is refused here rather than discovered at the first call", ErrAdapter)}
 	}
-	return t.inject("declare func", name, Pure(PureFunc(fn)))
+	_, err := t.inject("declare func", name, Pure(PureFunc(fn)))
+	return err
 }
 
 // Source reports a declared source's current value.
