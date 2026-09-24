@@ -332,7 +332,13 @@ type step struct {
 
 	// apply is the properties to set, in document order. Empty when nothing
 	// changed, which is the common case and the point of reconciling.
+	// Values here are TERMINAL: a binding has already been evaluated.
 	apply []parse.SpecProp
+	// effective is the node's full property list with bindings evaluated, which
+	// is what the node records so the next reload compares like with like.
+	effective []parse.SpecProp
+	// bind are the node's binding registrations after this reconcile.
+	bind []*binding
 	// handlers are already RESOLVED, during planning, so the mutating pass
 	// cannot fail on a name that does not exist in the host. They are only
 	// meaningful when rebind is set.
@@ -397,10 +403,21 @@ func (t *Tree) planSubtree(sn *parse.SpecNode) error {
 	// discovering it after the node it replaces has been destroyed.
 	if classifier, ok := t.adapter.(Classifier); ok {
 		for _, prop := range sn.Props {
+			if t.isBinding(prop.Value) {
+				continue // checkBindable classifies bindings by its own rules
+			}
 			if err := checkKind(classifier.ClassifyProperty(sn.Type, prop.Name), sn.Type, prop, id); err != nil {
 				return err
 			}
 		}
+	}
+	// Bindings are validated and EVALUATED here, before anything is mutated, so
+	// an unknown source or a failing value function leaves the tree intact.
+	if err := t.checkBindable(sn.Type, sn.Props, id); err != nil {
+		return err
+	}
+	if _, _, err := t.bindingsFor(id, sn.Props); err != nil {
+		return err
 	}
 
 	for _, h := range sn.Handlers {
@@ -452,13 +469,19 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 		return t.rebuildStep(s, fmt.Sprintf("the type changed from %s to %s", n.typeName, sn.Type))
 	}
 
-	oldProps := propSequences(n.props)
+	oldProps := propSequences(n.declared)
 	newProps := propSequences(sn.Props)
 
 	// classify says how a changed property can reach this node. Without the
 	// capability the engine falls back to what Create reported consuming, which
 	// cannot see a property that was ABSENT at construction and cannot tell a
 	// constructor-only property from a typo.
+	// A matched node's declarations are validated too: a reload can introduce a
+	// binding, a duplicate, or a binding on a constructor-only property.
+	if err := t.checkBindable(sn.Type, sn.Props, oldID); err != nil {
+		return nil, err
+	}
+
 	classify := t.classifier(n)
 
 	// UNKNOWN PROPERTIES FIRST, across every changed declaration, because an
@@ -489,7 +512,7 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 	// "unset" in the seam, and the engine holds no default to restore.
 	// Iterating the node's own list rather than the map keeps the reported
 	// reason stable across runs.
-	for _, p := range n.props {
+	for _, p := range n.declared {
 		if _, still := newProps[p.Name]; !still {
 			return t.rebuildStep(s, fmt.Sprintf(
 				"%q was removed, and a property cannot be un-applied through a setter", p.Name))
@@ -530,15 +553,26 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 		}
 	}
 
+	// Bindings are evaluated during PLANNING, so a failing value function or an
+	// unknown source leaves the tree untouched and unlatched.
+	bs, effective, err := t.bindingsFor(oldID, sn.Props)
+	if err != nil {
+		return nil, err
+	}
+	s.bind, s.effective = bs, effective
+
 	// Only what actually changed is applied. A value that is the same is not
 	// re-set, because a setter is not required to be idempotent: one of the
 	// library's own assigns and invalidates unconditionally, so a "free" replay
 	// would be a real repaint.
-	for _, p := range sn.Props {
+	//
+	// Comparison is on the DECLARATIONS, so a binding whose expression is
+	// unchanged does not re-fire even though its evaluation ran.
+	for i, p := range sn.Props {
 		if sameSequence(oldProps[p.Name], newProps[p.Name]) {
 			continue
 		}
-		s.apply = append(s.apply, p)
+		s.apply = append(s.apply, effective[i])
 	}
 
 	matched, dropped := t.matchChildren(n, sn)
@@ -612,6 +646,34 @@ func checkKind(k PropertyKind, typeName string, p parse.SpecProp, node NodeID) e
 			Err: fmt.Errorf("%w: the adapter classified %q on type %q as %d, which this engine does not recognise",
 				ErrAdapter, p.Name, typeName, uint8(k))}
 	}
+}
+
+// rebind replaces a node's binding registrations when its declarations changed,
+// and leaves them alone when they did not.
+//
+// Leaving them alone is what makes "an unchanged file changes nothing" true for
+// bindings: a re-registered binding would lose its applied-value cache and the
+// next source tick would reach the setter with a value the widget already has.
+func (t *Tree) rebind(s *step) error {
+	if sameDeclarations(t.nodes[s.old].declared, s.spec.Props) {
+		return nil
+	}
+	t.dropBindings(s.old)
+	t.registerBindings(s.bind)
+	return nil
+}
+
+// sameDeclarations reports whether two property lists were WRITTEN the same.
+func sameDeclarations(a, b []parse.SpecProp) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || !sameValue(a[i].Value, b[i].Value) {
+			return false
+		}
+	}
+	return true
 }
 
 // matchChildren pairs the node's current children with the new schema's, by the
@@ -710,8 +772,19 @@ func (t *Tree) patch(s *step, parent NodeID, res *Result) (NodeID, error) {
 			n.handlers = map[string][]boundHandler{}
 		}
 	}
+	// Changed bindings are re-extracted and evaluated during PLANNING (assess
+	// -> s.apply carries the new declarations), so an evaluation failure has
+	// already been reported with the tree intact. An UNCHANGED binding keeps
+	// its registration and its cache, so a reload does not re-fire it.
+	if err := t.rebind(s); err != nil {
+		return NoNode, err
+	}
 	for _, p := range s.apply {
-		app := Application{Node: s.old, Prop: p.Name, Value: p.Value, Origin: FromSchema}
+		origin := FromSchema
+		if _, bound := t.bindingFor(s.old, p.Name); bound {
+			origin = FromBinding
+		}
+		app := Application{Node: s.old, Prop: p.Name, Value: p.Value, Origin: origin}
 		// Marked BEFORE the call: a setter that fails part-way has still
 		// changed something, and assuming otherwise is how a partial tree gets
 		// declared clean.
@@ -721,8 +794,10 @@ func (t *Tree) patch(s *step, parent NodeID, res *Result) (NodeID, error) {
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
 		}
 		res.Applied++
+		t.noteApplied(s.old, p.Name, p.Value)
 	}
-	n.props = s.spec.Props
+	n.props = s.effective
+	n.declared = s.spec.Props
 	n.pos = s.spec.Pos
 	// The node now reflects the NEW schema, including the name it is known by.
 	// Leaving this stale costs nothing until the NEXT reload, which would look
@@ -933,6 +1008,9 @@ func (t *Tree) releaseSubtree(id NodeID, res *Result) error {
 			}
 			res.Destroyed++
 		}
+		// A node that goes drops its bindings with it; one that keeps its
+		// identity keeps them.
+		t.dropBindings(n)
 		delete(t.nodes, n)
 	}
 	return errors.Join(errs...)
