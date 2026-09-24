@@ -697,3 +697,23 @@ func TestOnlyAHandlerMayBeCalledFromASignalBody(t *testing.T) {
 		})
 	}
 }
+
+// TestAnEmptyHandlerBodyIsRefused.
+//
+// The QML surface cannot produce one — `onClicked:` with nothing after it is a
+// truncated file, which the parser reports as incomplete. A consumer BUILDING a
+// SpecTree can, though, and a handler that binds a signal to nothing would wire
+// a live callback that does nothing rather than report the mistake.
+func TestAnEmptyHandlerBodyIsRefused(t *testing.T) {
+	tr := decl.New(newReactor())
+	err := tr.Mount(parse.SpecTree{Root: &parse.SpecNode{
+		Type:     "Button",
+		Handlers: []parse.SpecHandler{{Signal: "clicked", Pos: parse.Position{Line: 1, Column: 1}}},
+	}})
+	if !errors.Is(err, decl.ErrHandlerBody) {
+		t.Fatalf("err = %v, want ErrHandlerBody", err)
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Errorf("diagnostic = %q, want it to say the handler is empty", err)
+	}
+}
