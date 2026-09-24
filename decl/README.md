@@ -25,7 +25,10 @@ err = tree.Emit(nodeID, "clicked")
 ```
 
 An adapter implements four methods — `ResolveHandler`, `Create`, `Apply`,
-`Destroy` — and nothing in their signatures names a toolkit.
+`Destroy` — and nothing in their signatures names a toolkit. A fifth capability,
+`Restructurer`, is **optional**: implement it and a reload can splice a node's
+children in place; leave it out and every structural change degrades to a
+rebuild, which is correct and merely lossy.
 
 `Create` receives a **`Construction`**: the declared properties, the
 already-built children, and one emitter per signal. It returns the property
@@ -35,9 +38,54 @@ assigns and invalidates unconditionally, so a replay is either impossible or a
 second visible effect.
 
 There is no `Attach`. Children arrive at construction, which is the only thing a
-container requiring them as arguments can work with. Structural insert and
-remove belong to a reconciling consumer and will be added with one, rather than
-guessed at now.
+container requiring them as arguments can work with. Structural insert, remove
+and move arrive separately, through `Restructurer` — with the reconciler that
+needed them, rather than guessed at in advance.
+
+## Reload
+
+```go
+res, err := tree.Reload(src)          // parse, then reconcile
+switch {
+case errors.Is(err, decl.ErrIncomplete):
+    // A save in progress. Hold the current tree and wait; show nobody an error.
+case err != nil:
+    // A real mistake. Show it, and keep the last good tree on screen.
+default:
+    for _, rb := range res.Rebuilt {
+        log.Println(rb)               // what lost its state, and which edit did it
+    }
+    if res.RootReplaced {
+        // The root component is gone; mount the new one in its place.
+    }
+}
+```
+
+A reconcile patches what changed and leaves everything else alone. A node that
+keeps its identity keeps everything the toolkit hung on it — scroll offset,
+focus, half-typed input, in-flight tasks — because it is *moved*, never
+re-created.
+
+**Identity** is the declared `id`, else position among the remaining children.
+A node the author named is never handed to an anonymous newcomer; the reverse is
+allowed, so giving an existing node a name does not reset it. There is no rule
+reading a component's own key: a key belongs to a mounted component, and the new
+side of a reload is text.
+
+**Some edits cannot be patched**, and each one is reported in `res.Rebuilt` with
+the reason:
+
+| edit | why it rebuilds |
+| --- | --- |
+| a node's type changed | it is a different thing |
+| a **consumed** property changed | consuming it is how the adapter said there is no setter |
+| a property was **removed** | there is no "unset", and the engine holds no default |
+| a **new signal** appeared | some widgets take a callback only at construction |
+| children changed on a node that cannot restructure | `widget.Split` has no `Add`, `Remove` or `Move` at all |
+
+Everything else is free. Re-pointing an existing signal at a different handler
+costs nothing: the emitter calls back into the engine, which reads the binding
+at call time.
 
 ## What crosses the seam
 
@@ -74,7 +122,15 @@ correct.
 - **Writes made before that error stay committed.** There is no rollback, and
   pretending otherwise would mean pretending the adapter's setters are
   reversible.
-- **Mounting is refused while a signal is running.**
+- **Mounting is refused while a signal is running**, and emitting is refused
+  while a reconcile is walking the tree.
+- **A reload is planned before it is applied.** Handlers resolve and every
+  restructure is cleared with the adapter while the tree is still untouched, so
+  a typo in a handler name leaves the screen exactly as it was.
+- **An unchanged file changes nothing** — no setter runs, no binding is
+  re-resolved, and the adapter is not called at all.
+- **What cannot be pre-checked is a setter.** A failure there leaves the tree
+  partially reconciled and latches it, exactly as a failed mount does.
 
 ## What it does not promise
 
