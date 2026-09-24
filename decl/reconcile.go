@@ -3,6 +3,7 @@ package decl
 import (
 	"errors"
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -177,7 +178,7 @@ type Result struct {
 // Both failure paths return before anything is mutated, which is what makes
 // "keep the last good tree" true rather than aspirational.
 func (t *Tree) Reload(src []byte) (Result, error) {
-	spec, err := parse.QML{}.Parse(src)
+	spec, err := qml.QML{}.Parse(src)
 	if err != nil {
 		var se parse.SyntaxError
 		if errors.As(err, &se) && se.Incomplete {
@@ -250,7 +251,7 @@ func (t *Tree) Reload(src []byte) (Result, error) {
 // property application to a commit phase across the whole reconcile, which is a
 // different design and not one this engine makes; saying so is the alternative
 // to implying an atomicity it does not have.
-func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
+func (t *Tree) Reconcile(spec qml.SpecTree) (Result, error) {
 	if t.ph != phaseIdle {
 		return Result{}, SchemaError{Op: "reconcile", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
@@ -278,8 +279,8 @@ func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 	t.imported = imported
 
 	t.ph = phaseReconciling
-	t.planned = map[*parse.SpecNode]plannedNode{}
-	t.preEval = map[*parse.SpecNode][]parse.SpecProp{}
+	t.planned = map[*qml.SpecNode]plannedNode{}
+	t.preEval = map[*qml.SpecNode][]qml.SpecProp{}
 	t.mutated = false
 	defer func() {
 		// An untouched tree keeps the imports it was mounted with. Only a
@@ -343,7 +344,7 @@ type step struct {
 	// old is the node this slot currently holds, or NoNode for a fresh subtree.
 	old NodeID
 	// spec is what the new schema says this slot should be.
-	spec *parse.SpecNode
+	spec *qml.SpecNode
 
 	// rebuild marks a slot that cannot be patched.
 	rebuild bool
@@ -353,10 +354,10 @@ type step struct {
 	// apply is the properties to set, in document order. Empty when nothing
 	// changed, which is the common case and the point of reconciling.
 	// Values here are TERMINAL: a binding has already been evaluated.
-	apply []parse.SpecProp
+	apply []qml.SpecProp
 	// effective is the node's full property list with bindings evaluated, which
 	// is what the node records so the next reload compares like with like.
-	effective []parse.SpecProp
+	effective []qml.SpecProp
 	// bind are the node's binding registrations after this reconcile.
 	bind []*binding
 	// handlers are already RESOLVED, during planning, so the mutating pass
@@ -384,7 +385,7 @@ func (s *step) rebuildRecord() Rebuild {
 
 // fresh returns the plan for a slot with nothing in it yet, having first
 // planned the subtree that will fill it.
-func (t *Tree) fresh(sn *parse.SpecNode) (*step, error) {
+func (t *Tree) fresh(sn *qml.SpecNode) (*step, error) {
 	if err := t.planSubtree(sn); err != nil {
 		return nil, err
 	}
@@ -412,7 +413,7 @@ func (t *Tree) rebuildStep(s *step, reason string) (*step, error) {
 // a typo in a NEW handler name tore down the working screen and latched the
 // tree before reporting it. Identity is allocated here too, pre-order, so node
 // numbers still read in schema order.
-func (t *Tree) planSubtree(sn *parse.SpecNode) error {
+func (t *Tree) planSubtree(sn *qml.SpecNode) error {
 	t.nextID++
 	id := t.nextID
 	p := plannedNode{id: id}
@@ -444,7 +445,7 @@ func (t *Tree) planSubtree(sn *parse.SpecNode) error {
 		return err
 	}
 	if t.preEval == nil {
-		t.preEval = map[*parse.SpecNode][]parse.SpecProp{}
+		t.preEval = map[*qml.SpecNode][]qml.SpecProp{}
 	}
 	t.preEval[sn] = effective
 
@@ -481,7 +482,7 @@ func (t *Tree) planSubtree(sn *parse.SpecNode) error {
 // changes what the PARENT needs: swapping a child out is a structural edit, and
 // a parent that cannot restructure must therefore be rebuilt too. Deciding the
 // parent first would mean deciding it on incomplete information.
-func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
+func (t *Tree) assess(oldID NodeID, sn *qml.SpecNode) (*step, error) {
 	n := t.nodes[oldID]
 	if n == nil {
 		return nil, SchemaError{Op: "reconcile", Node: oldID, Pos: sn.Pos, Err: ErrNoSuchNode}
@@ -659,7 +660,7 @@ func (t *Tree) classifier(n *node) func(typeName, prop string) PropertyKind {
 // as runtime-settable. A default that treats an unknown answer as permission is
 // how a future fourth kind would silently become "apply it and hope"; refusing
 // makes adding one a compile-and-test problem instead of a field report.
-func checkKind(k PropertyKind, typeName string, p parse.SpecProp, node NodeID) error {
+func checkKind(k PropertyKind, typeName string, p qml.SpecProp, node NodeID) error {
 	switch k {
 	case PropRuntime, PropConstructorOnly:
 		return nil
@@ -675,10 +676,10 @@ func checkKind(k PropertyKind, typeName string, p parse.SpecProp, node NodeID) e
 
 // rebindChanged evaluates only the bindings whose DECLARATION changed, and
 // carries the rest forward with the value they already hold.
-func (t *Tree) rebindChanged(n *node, id NodeID, props []parse.SpecProp,
-	oldProps, newProps map[string][]parse.SpecValue) ([]*binding, []parse.SpecProp, error) {
+func (t *Tree) rebindChanged(n *node, id NodeID, props []qml.SpecProp,
+	oldProps, newProps map[string][]qml.SpecValue) ([]*binding, []qml.SpecProp, error) {
 
-	effective := make([]parse.SpecProp, len(props))
+	effective := make([]qml.SpecProp, len(props))
 	copy(effective, props)
 	var out []*binding
 
@@ -731,7 +732,7 @@ func (t *Tree) rebind(s *step) error {
 }
 
 // sameDeclarations reports whether two property lists were WRITTEN the same.
-func sameDeclarations(a, b []parse.SpecProp) bool {
+func sameDeclarations(a, b []qml.SpecProp) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -746,7 +747,7 @@ func sameDeclarations(a, b []parse.SpecProp) bool {
 // matchChildren pairs the node's current children with the new schema's, by the
 // precedence in [Tree.Reconcile]. The result is parallel to sn.Children, with
 // NoNode where a new child has no counterpart; dropped holds the leftovers.
-func (t *Tree) matchChildren(n *node, sn *parse.SpecNode) (matched []NodeID, dropped []NodeID) {
+func (t *Tree) matchChildren(n *node, sn *qml.SpecNode) (matched []NodeID, dropped []NodeID) {
 	matched = make([]NodeID, len(sn.Children))
 	used := make(map[NodeID]bool, len(n.children))
 
@@ -1122,8 +1123,8 @@ func (t *Tree) countBuilt(id NodeID) int {
 // because [Tree.Mount] applies every declaration in order. Comparing only the
 // effective value would call a schema unchanged when the number of times a
 // setter runs had changed.
-func propSequences(props []parse.SpecProp) map[string][]parse.SpecValue {
-	out := make(map[string][]parse.SpecValue, len(props))
+func propSequences(props []qml.SpecProp) map[string][]qml.SpecValue {
+	out := make(map[string][]qml.SpecValue, len(props))
 	for _, p := range props {
 		out[p.Name] = append(out[p.Name], p.Value)
 	}
@@ -1133,7 +1134,7 @@ func propSequences(props []parse.SpecProp) map[string][]parse.SpecValue {
 // sameBindings reports whether a node's live bindings already are what the
 // schema asks for: the same signals, carrying the same handler BODIES in the
 // same run order.
-func sameBindings(cur map[string][]boundHandler, want []parse.SpecHandler) bool {
+func sameBindings(cur map[string][]boundHandler, want []qml.SpecHandler) bool {
 	n := 0
 	for _, hs := range cur {
 		n += len(hs)
@@ -1156,7 +1157,7 @@ func sameBindings(cur map[string][]boundHandler, want []parse.SpecHandler) bool 
 	return true
 }
 
-func sameSequence(a, b []parse.SpecValue) bool {
+func sameSequence(a, b []qml.SpecValue) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -1172,7 +1173,7 @@ func sameSequence(a, b []parse.SpecValue) bool {
 // written. Position is deliberately excluded: adding a line above a property
 // moves it, and re-running every setter in a file because of that would make a
 // reload lose state for an edit that changed nothing.
-func sameValue(a, b parse.SpecValue) bool {
+func sameValue(a, b qml.SpecValue) bool {
 	if a.Kind != b.Kind || a.Raw != b.Raw || len(a.Args) != len(b.Args) {
 		return false
 	}

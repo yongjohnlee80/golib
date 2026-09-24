@@ -2,6 +2,7 @@ package decl_test
 
 import (
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
 
@@ -19,47 +20,47 @@ import (
 // the SECOND scope a reference can resolve in.
 type constReactor struct {
 	*reactor
-	consts map[string]parse.SpecValue
+	consts map[string]qml.SpecValue
 }
 
 func newConstReactor() *constReactor {
 	return &constReactor{
 		reactor: newReactor(),
-		consts: map[string]parse.SpecValue{
-			"Tui.Horizontal": {Kind: parse.SpecValueString, Raw: "horizontal"},
-			"Tui.Vertical":   {Kind: parse.SpecValueString, Raw: "vertical"},
+		consts: map[string]qml.SpecValue{
+			"Tui.Horizontal": {Kind: qml.SpecValueString, Raw: "horizontal"},
+			"Tui.Vertical":   {Kind: qml.SpecValueString, Raw: "vertical"},
 		},
 	}
 }
 
-func (c *constReactor) Constants() map[string]parse.SpecValue { return c.consts }
+func (c *constReactor) Constants() map[string]qml.SpecValue { return c.consts }
 
-func num(n string) parse.SpecValue {
-	return parse.SpecValue{Kind: parse.SpecValueNumber, Raw: n}
+func num(n string) qml.SpecValue {
+	return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: n}
 }
 
 // ref builds a reference the way the QML parser does, PATH INCLUDED — a resolver
 // keyed on Raw alone would pass a test that hand-built the path wrong.
-func ref(name string) parse.SpecValue {
-	return parse.SpecValue{Kind: parse.SpecValueRef, Raw: name, Path: strings.Split(name, ".")}
+func ref(name string) qml.SpecValue {
+	return qml.SpecValue{Kind: qml.SpecValueRef, Raw: name, Path: strings.Split(name, ".")}
 }
 
-func call(name string, args ...parse.SpecValue) parse.SpecValue {
-	return parse.SpecValue{Kind: parse.SpecValueCall, Raw: name, Args: args}
+func call(name string, args ...qml.SpecValue) qml.SpecValue {
+	return qml.SpecValue{Kind: qml.SpecValueCall, Raw: name, Args: args}
 }
 
 // mountWith mounts a one-property schema built directly from a SpecValue, which
 // is how a test reaches value shapes the QML surface does not yet spell.
-func mountWith(t *testing.T, tr *decl.Tree, prop string, v parse.SpecValue) error {
+func mountWith(t *testing.T, tr *decl.Tree, prop string, v qml.SpecValue) error {
 	t.Helper()
-	return tr.Mount(parse.SpecTree{
+	return tr.Mount(qml.SpecTree{
 		// The fakes declare a `tui` module, and a module's names resolve only
 		// once a document has imported it — so the import belongs here for the
 		// same reason it belongs at the top of a .qml file.
-		Imports: []parse.SpecImport{{Module: "tui", Path: []string{"tui"}, Version: "1.0"}},
-		Root: &parse.SpecNode{
+		Imports: []qml.SpecImport{{Module: "tui", Path: []string{"tui"}, Version: "1.0"}},
+		Root: &qml.SpecNode{
 			Type:  "Text",
-			Props: []parse.SpecProp{{Name: prop, Value: v}},
+			Props: []qml.SpecProp{{Name: prop, Value: v}},
 		}})
 }
 
@@ -69,7 +70,7 @@ func TestAnInjectedKindIsRefusedInAPositionItCannotOccupy(t *testing.T) {
 	cases := []struct {
 		name    string
 		inject  func(*decl.Tree) error
-		value   parse.SpecValue
+		value   qml.SpecValue
 		wantErr error
 		// wantMsg is a phrase from the diagnostic. It names the ACTUAL problem,
 		// so a refusal that fired for a different reason fails here even though
@@ -79,7 +80,7 @@ func TestAnInjectedKindIsRefusedInAPositionItCannotOccupy(t *testing.T) {
 		{
 			name: "a handler cannot produce a value",
 			inject: func(tr *decl.Tree) error {
-				return tr.Inject("save", decl.Handle(func([]parse.SpecValue) error { return nil }))
+				return tr.Inject("save", decl.Handle(func([]qml.SpecValue) error { return nil }))
 			},
 			value:   call("save"),
 			wantErr: decl.ErrWrongKind,
@@ -88,7 +89,7 @@ func TestAnInjectedKindIsRefusedInAPositionItCannotOccupy(t *testing.T) {
 		{
 			name: "a handler named but not called is still not a value",
 			inject: func(tr *decl.Tree) error {
-				return tr.Inject("save", decl.Handle(func([]parse.SpecValue) error { return nil }))
+				return tr.Inject("save", decl.Handle(func([]qml.SpecValue) error { return nil }))
 			},
 			value:   ref("save"),
 			wantErr: decl.ErrWrongKind,
@@ -97,7 +98,7 @@ func TestAnInjectedKindIsRefusedInAPositionItCannotOccupy(t *testing.T) {
 		{
 			name: "a function must be called",
 			inject: func(tr *decl.Tree) error {
-				return tr.Inject("upper", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) { return sv("X"), nil }))
+				return tr.Inject("upper", decl.Pure(func([]qml.SpecValue) (qml.SpecValue, error) { return sv("X"), nil }))
 			},
 			value:   ref("upper"),
 			wantErr: decl.ErrWrongKind,
@@ -150,7 +151,7 @@ func TestAnInjectedKindIsRefusedInAPositionItCannotOccupy(t *testing.T) {
 func TestTheThreeResolutionFailuresAreDistinguishable(t *testing.T) {
 	cases := []struct {
 		name    string
-		value   parse.SpecValue
+		value   qml.SpecValue
 		wantErr error
 		wantMsg string
 	}{
@@ -214,7 +215,7 @@ func TestTheThreeResolutionFailuresAreDistinguishable(t *testing.T) {
 func TestEveryArgumentIsValidatedBeforeTheFunctionRuns(t *testing.T) {
 	tr := decl.New(newReactor())
 	var ran int
-	if err := tr.Inject("join", decl.Pure(func(args []parse.SpecValue) (parse.SpecValue, error) {
+	if err := tr.Inject("join", decl.Pure(func(args []qml.SpecValue) (qml.SpecValue, error) {
 		ran++
 		return sv("joined"), nil
 	})); err != nil {
@@ -249,13 +250,13 @@ func TestEveryArgumentIsValidatedBeforeTheFunctionRuns(t *testing.T) {
 func TestANESTEDCallIsNotRunBeforeALaterArgumentIsValidated(t *testing.T) {
 	var inner, outer int
 	tr := decl.New(newReactor())
-	if err := tr.Inject("inner", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) {
+	if err := tr.Inject("inner", decl.Pure(func([]qml.SpecValue) (qml.SpecValue, error) {
 		inner++
 		return sv("ok"), nil
 	})); err != nil {
 		t.Fatalf("inject inner: %v", err)
 	}
-	if err := tr.Inject("outer", decl.Pure(func(a []parse.SpecValue) (parse.SpecValue, error) {
+	if err := tr.Inject("outer", decl.Pure(func(a []qml.SpecValue) (qml.SpecValue, error) {
 		outer++
 		return a[0], nil
 	})); err != nil {
@@ -275,13 +276,13 @@ func TestANESTEDCallIsNotRunBeforeALaterArgumentIsValidated(t *testing.T) {
 	// A validation pass that also evaluated would double every call.
 	tr2 := decl.New(newReactor())
 	inner, outer = 0, 0
-	if err := tr2.Inject("inner", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) {
+	if err := tr2.Inject("inner", decl.Pure(func([]qml.SpecValue) (qml.SpecValue, error) {
 		inner++
 		return sv("ok"), nil
 	})); err != nil {
 		t.Fatalf("inject: %v", err)
 	}
-	if err := tr2.Inject("outer", decl.Pure(func(a []parse.SpecValue) (parse.SpecValue, error) {
+	if err := tr2.Inject("outer", decl.Pure(func(a []qml.SpecValue) (qml.SpecValue, error) {
 		outer++
 		return a[0], nil
 	})); err != nil {
@@ -311,7 +312,7 @@ func TestASourceReachedOnlyThroughACallIsStillTracked(t *testing.T) {
 	if err := tr.Inject("name", decl.SourceValue(sv("ada"))); err != nil {
 		t.Fatalf("inject name: %v", err)
 	}
-	if err := tr.Inject("shout", decl.Pure(func(args []parse.SpecValue) (parse.SpecValue, error) {
+	if err := tr.Inject("shout", decl.Pure(func(args []qml.SpecValue) (qml.SpecValue, error) {
 		return sv(strings.ToUpper(args[0].Raw)), nil
 	})); err != nil {
 		t.Fatalf("inject shout: %v", err)
@@ -516,7 +517,7 @@ func TestTheOldDeclarationSurfaceWritesTheSameRegistry(t *testing.T) {
 		t.Errorf("re-injecting a declared source = %v, want ErrDuplicateDecl", err)
 	}
 
-	if err := tr.DeclareFunc("f", func([]parse.SpecValue) (parse.SpecValue, error) { return sv("y"), nil }); err != nil {
+	if err := tr.DeclareFunc("f", func([]qml.SpecValue) (qml.SpecValue, error) { return sv("y"), nil }); err != nil {
 		t.Fatalf("DeclareFunc: %v", err)
 	}
 	if in, ok := tr.Lookup("f"); !ok || in.Kind != decl.KindPureFunction {
@@ -531,8 +532,8 @@ func TestTheOldDeclarationSurfaceWritesTheSameRegistry(t *testing.T) {
 func TestAHostFunctionsOwnErrorIsReportedAsItsOwn(t *testing.T) {
 	boom := errors.New("the database is down")
 	tr := decl.New(newReactor())
-	if err := tr.Inject("load", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) {
-		return parse.SpecValue{}, boom
+	if err := tr.Inject("load", decl.Pure(func([]qml.SpecValue) (qml.SpecValue, error) {
+		return qml.SpecValue{}, boom
 	})); err != nil {
 		t.Fatalf("inject: %v", err)
 	}
@@ -551,7 +552,7 @@ func TestAHostFunctionsOwnErrorIsReportedAsItsOwn(t *testing.T) {
 // author would actually write.
 func mountSrc(t *testing.T, tr *decl.Tree, src string) error {
 	t.Helper()
-	spec, err := parse.QML{}.Parse([]byte(src))
+	spec, err := qml.QML{}.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("fixture does not parse: %v", err)
 	}
@@ -569,7 +570,7 @@ func mountSrc(t *testing.T, tr *decl.Tree, src string) error {
 func TestABareHandlerNameIsRefusedRatherThanInvoked(t *testing.T) {
 	var ran int
 	tr := decl.New(newReactor())
-	if err := tr.Inject("save", decl.Handle(func([]parse.SpecValue) error {
+	if err := tr.Inject("save", decl.Handle(func([]qml.SpecValue) error {
 		ran++
 		return nil
 	})); err != nil {
@@ -590,7 +591,7 @@ func TestABareHandlerNameIsRefusedRatherThanInvoked(t *testing.T) {
 	// The positive half, at the same limit: written as a call, it binds and runs.
 	tr2 := decl.New(newReactor())
 	var ran2 int
-	if err := tr2.Inject("save", decl.Handle(func([]parse.SpecValue) error {
+	if err := tr2.Inject("save", decl.Handle(func([]qml.SpecValue) error {
 		ran2++
 		return nil
 	})); err != nil {
@@ -628,7 +629,7 @@ func TestAHandlerBodyThisEngineCannotRunSaysSoWithoutClaimingASyntaxError(t *tes
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			tr := decl.New(newReactor())
-			if err := tr.Inject("save", decl.Handle(func([]parse.SpecValue) error { return nil })); err != nil {
+			if err := tr.Inject("save", decl.Handle(func([]qml.SpecValue) error { return nil })); err != nil {
 				t.Fatalf("inject: %v", err)
 			}
 			err := mountSrc(t, tr, "Button {\n  onClicked: "+c.body+"\n}")
@@ -648,7 +649,7 @@ func TestAHandlerRunsItsStatementsInOrderAndStopsAtTheFirstFailure(t *testing.T)
 	boom := errors.New("the first one failed")
 	tr := decl.New(newReactor())
 	give := func(name string, err error) {
-		if e := tr.Inject(name, decl.Handle(func([]parse.SpecValue) error {
+		if e := tr.Inject(name, decl.Handle(func([]qml.SpecValue) error {
 			ran = append(ran, name)
 			return err
 		})); e != nil {
@@ -676,12 +677,12 @@ func TestAHandlerRunsItsStatementsInOrderAndStopsAtTheFirstFailure(t *testing.T)
 // Arguments are values wherever a call sits, which is what lets a handler read
 // a source without this engine running JavaScript at all.
 func TestAHandlerArgumentIsResolvedThroughTheSameMatrix(t *testing.T) {
-	var got []parse.SpecValue
+	var got []qml.SpecValue
 	tr := decl.New(newReactor())
 	if err := tr.Inject("count", decl.SourceValue(num("1"))); err != nil {
 		t.Fatalf("inject count: %v", err)
 	}
-	if err := tr.Inject("submit", decl.Handle(func(args []parse.SpecValue) error {
+	if err := tr.Inject("submit", decl.Handle(func(args []qml.SpecValue) error {
 		got = args
 		return nil
 	})); err != nil {
@@ -700,7 +701,7 @@ func TestAHandlerArgumentIsResolvedThroughTheSameMatrix(t *testing.T) {
 	// An argument naming something unbound is refused at MOUNT, not at the
 	// first click — a handler nobody has pressed yet is still a schema mistake.
 	tr2 := decl.New(newReactor())
-	if err := tr2.Inject("submit", decl.Handle(func([]parse.SpecValue) error { return nil })); err != nil {
+	if err := tr2.Inject("submit", decl.Handle(func([]qml.SpecValue) error { return nil })); err != nil {
 		t.Fatalf("inject: %v", err)
 	}
 	if err := mountSrc(t, tr2, "Button {\n  onClicked: submit(nosuch)\n}"); !errors.Is(err, decl.ErrNotInjected) {
@@ -725,7 +726,7 @@ func TestOnlyAHandlerMayBeCalledFromASignalBody(t *testing.T) {
 		{
 			name: "a pure function",
 			inject: func(tr *decl.Tree) error {
-				return tr.Inject("total", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) { return num("1"), nil }))
+				return tr.Inject("total", decl.Pure(func([]qml.SpecValue) (qml.SpecValue, error) { return num("1"), nil }))
 			},
 			body:    "total()",
 			wantMsg: "a function produces a value, and a signal wants an effect",
@@ -774,9 +775,9 @@ func TestOnlyAHandlerMayBeCalledFromASignalBody(t *testing.T) {
 // a live callback that does nothing rather than report the mistake.
 func TestAnEmptyHandlerBodyIsRefused(t *testing.T) {
 	tr := decl.New(newReactor())
-	err := tr.Mount(parse.SpecTree{Root: &parse.SpecNode{
+	err := tr.Mount(qml.SpecTree{Root: &qml.SpecNode{
 		Type:     "Button",
-		Handlers: []parse.SpecHandler{{Signal: "clicked", Pos: parse.Position{Line: 1, Column: 1}}},
+		Handlers: []qml.SpecHandler{{Signal: "clicked", Pos: parse.Position{Line: 1, Column: 1}}},
 	}})
 	if !errors.Is(err, decl.ErrHandlerBody) {
 		t.Fatalf("err = %v, want ErrHandlerBody", err)
@@ -814,7 +815,7 @@ func TestAnExpressionValueIsDeclinedAndNeverForwarded(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			r := newRecorder()
 			tr := decl.New(r)
-			err := tr.Mount(qml(t, c.src))
+			err := tr.Mount(qmlDoc(t, c.src))
 			if !errors.Is(err, decl.ErrExpressionValue) {
 				t.Fatalf("err = %v, want ErrExpressionValue", err)
 			}
@@ -851,7 +852,7 @@ func TestAHandlerArgumentIsEvaluatedWHENTHESIGNALFIRES(t *testing.T) {
 	if err := tr.Inject("count", decl.SourceValue(num("1"))); err != nil {
 		t.Fatalf("inject count: %v", err)
 	}
-	if err := tr.Inject("submit", decl.Handle(func(args []parse.SpecValue) error {
+	if err := tr.Inject("submit", decl.Handle(func(args []qml.SpecValue) error {
 		got = append(got, args[0].Raw)
 		return nil
 	})); err != nil {

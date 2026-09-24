@@ -3,9 +3,8 @@ package decl
 import (
 	"errors"
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
-
-	"github.com/yongjohnlee80/golib/parse"
 )
 
 // Kind is what an injected name IS.
@@ -65,10 +64,10 @@ func (k Kind) String() string {
 }
 
 // PureFunc derives a value from already-evaluated terminal arguments.
-type PureFunc func(args []parse.SpecValue) (parse.SpecValue, error)
+type PureFunc func(args []qml.SpecValue) (qml.SpecValue, error)
 
 // HandlerFunc performs an effect. Its arguments are already evaluated.
-type HandlerFunc func(args []parse.SpecValue) error
+type HandlerFunc func(args []qml.SpecValue) error
 
 // Injected is one named thing the host has handed to the evaluator.
 //
@@ -79,7 +78,7 @@ type Injected struct {
 	Kind Kind
 	// Value carries a KindConstant, or a KindSource's initial value. It must be
 	// terminal.
-	Value parse.SpecValue
+	Value qml.SpecValue
 	// Pure is set for KindPureFunction.
 	Pure PureFunc
 	// Handle is set for KindHandler.
@@ -108,10 +107,10 @@ var (
 var reserved = map[string]bool{"parent": true, "root": true}
 
 // Constant is a convenience for the common injection.
-func Constant(v parse.SpecValue) Injected { return Injected{Kind: KindConstant, Value: v} }
+func Constant(v qml.SpecValue) Injected { return Injected{Kind: KindConstant, Value: v} }
 
 // SourceValue injects a trackable value with its initial contents.
-func SourceValue(v parse.SpecValue) Injected { return Injected{Kind: KindSource, Value: v} }
+func SourceValue(v qml.SpecValue) Injected { return Injected{Kind: KindSource, Value: v} }
 
 // Pure injects a derivation. See [KindPureFunction] for the contract it carries.
 func Pure(fn PureFunc) Injected { return Injected{Kind: KindPureFunction, Pure: fn} }
@@ -251,7 +250,7 @@ func (t *Tree) inject(op, name string, in Injected) ([]string, error) {
 	switch in.Kind {
 	case KindSource:
 		if t.sources == nil {
-			t.sources = map[string]parse.SpecValue{}
+			t.sources = map[string]qml.SpecValue{}
 		}
 		t.sources[name] = in.Value
 	case KindPureFunction:

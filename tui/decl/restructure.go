@@ -2,9 +2,9 @@ package decl
 
 import (
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -146,11 +146,11 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 // spells these `Qt.Horizontal`; the mechanism is identical, and a qualified
 // name is a CONSTANT — resolved once at planning, never tracked — which is why
 // it costs the reactive graph nothing.
-func (a *Adapter) Constants() map[string]parse.SpecValue {
-	str := func(s string) parse.SpecValue {
-		return parse.SpecValue{Kind: parse.SpecValueString, Raw: s}
+func (a *Adapter) Constants() map[string]qml.SpecValue {
+	str := func(s string) qml.SpecValue {
+		return qml.SpecValue{Kind: qml.SpecValueString, Raw: s}
 	}
-	return map[string]parse.SpecValue{
+	return map[string]qml.SpecValue{
 		"Tui.Horizontal": str("horizontal"),
 		"Tui.Vertical":   str("vertical"),
 	}

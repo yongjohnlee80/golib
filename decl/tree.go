@@ -3,6 +3,7 @@ package decl
 import (
 	"errors"
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"sort"
 
 	"github.com/yongjohnlee80/golib/parse"
@@ -62,7 +63,7 @@ type Tree struct {
 	// handler name that does not resolve is discovered while the tree is still
 	// intact: without it, a typo in a NEW node is only found after the node it
 	// replaces has already been detached and destroyed.
-	planned map[*parse.SpecNode]plannedNode
+	planned map[*qml.SpecNode]plannedNode
 	// mutated records that a reconcile has actually CHANGED the live tree, as
 	// opposed to having only constructed replacements that were then discarded.
 	// It is what lets a reconcile that failed while still building report the
@@ -71,12 +72,12 @@ type Tree struct {
 
 	// sources are the host-declared reactive values, by name. They are declared
 	// before Mount so a schema's references can be checked against a known set.
-	sources map[string]parse.SpecValue
+	sources map[string]qml.SpecValue
 	// funcs are the host-declared value functions a Call may name.
 	funcs map[string]ValueFunc
 	// consts are the qualified names the adapter defines — `Tui.Horizontal`.
 	// They are collected once from the adapter, because they do not change.
-	consts map[string]parse.SpecValue
+	consts map[string]qml.SpecValue
 	// injected is the typed registry: every name a schema may reach, paired with
 	// the host's declaration of WHAT IT IS. It is the one scope the resolver
 	// consults, which is what gives "where did this name come from?" exactly one
@@ -99,7 +100,7 @@ type Tree struct {
 	// computed by a whole-tree pass BEFORE any node is allocated. Without it a
 	// binding failure deep in a schema would leave the nodes above it allocated
 	// and the tree latched, when nothing had been built at all.
-	preEval map[*parse.SpecNode][]parse.SpecProp
+	preEval map[*qml.SpecNode][]qml.SpecProp
 	// failed records that a Mount did not complete. A tree in that state holds
 	// a partial graph, so the next Mount must be refused rather than allowed to
 	// graft a second graph onto the wreckage — which is exactly what happens
@@ -147,12 +148,12 @@ type node struct {
 	// document order. A reconcile needs it to answer "what changed", which is a
 	// question about the PREVIOUS schema — and the previous schema is gone by
 	// the time the new one arrives.
-	props []parse.SpecProp
+	props []qml.SpecProp
 	// declared is what the schema WROTE, expressions and all. props holds the
 	// evaluated terminals; a reload compares declarations, because a binding
 	// whose expression is unchanged must not re-fire just because a source
 	// moved underneath it.
-	declared []parse.SpecProp
+	declared []qml.SpecProp
 	// consumed names the properties the adapter took at construction. They are
 	// recorded because a consumed property is, by definition, one the adapter
 	// could not be asked to set later: consuming it is how an adapter says
@@ -299,7 +300,7 @@ func (t *Tree) Children(id NodeID) []NodeID {
 // know which of those are safely undoable. The tree REMEMBERS the failure and
 // refuses a further Mount until [Tree.Destroy] has cleared it, so a second
 // schema cannot be grafted onto a partial one.
-func (t *Tree) Mount(spec parse.SpecTree) error {
+func (t *Tree) Mount(spec qml.SpecTree) error {
 	if t.ph != phaseIdle {
 		return SchemaError{Op: "mount", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
@@ -328,7 +329,7 @@ func (t *Tree) Mount(spec parse.SpecTree) error {
 	// failure here has allocated nothing, built nothing and latched nothing —
 	// the tree is exactly as it was, and mountable again once the schema is
 	// corrected.
-	t.preEval = map[*parse.SpecNode][]parse.SpecProp{}
+	t.preEval = map[*qml.SpecNode][]qml.SpecProp{}
 	defer func() { t.preEval = nil }()
 	if err := t.preEvaluate(spec.Root); err != nil {
 		return err
@@ -346,7 +347,7 @@ func (t *Tree) Mount(spec parse.SpecTree) error {
 	return nil
 }
 
-func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
+func (t *Tree) mountNode(sn *qml.SpecNode, parent NodeID) (NodeID, error) {
 	// The ID is allocated BEFORE the children are built, so identities still
 	// read in schema order even though construction runs bottom-up. A reader
 	// comparing a diagnostic against the file should not have to think in
@@ -498,7 +499,7 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 // It is legal during a signal emission. A handler setting a property is the
 // ordinary case this whole design exists to serve, and refusing it would make
 // the emission contract useless.
-func (t *Tree) SetProp(id NodeID, prop string, v parse.SpecValue) error {
+func (t *Tree) SetProp(id NodeID, prop string, v qml.SpecValue) error {
 	if t.ph == phaseMounting || t.ph == phaseDestroying || t.ph == phaseReconciling ||
 		t.ph == phasePropagating {
 		return SchemaError{Op: "set", Node: id, Detail: prop,

@@ -1,7 +1,8 @@
-package parse_test
+package js_test
 
 import (
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/js"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 // Statements is a [parse.Parser], and saying so here rather than in the file
 // itself keeps the assertion where a change to the interface will break a TEST
 // instead of quietly dropping a capability callers discover by type assertion.
-var _ parse.Parser[[]parse.Stmt] = parse.Statements{}
+var _ parse.Parser[[]js.Stmt] = js.Statements{}
 
 // renderStmt prints a statement tree back as source, with every if PARENTHESISED.
 //
@@ -19,23 +20,23 @@ var _ parse.Parser[[]parse.Stmt] = parse.Statements{}
 // to the wrong if produces a tree with the same node kinds, the same statements
 // and the same identifiers, and prints identically to the correct one unless the
 // nesting is made visible. Asserting on kinds cannot see that defect at all.
-func renderStmt(s *parse.Stmt) string {
+func renderStmt(s *js.Stmt) string {
 	if s == nil {
 		return "<nil>"
 	}
 	switch s.Kind {
-	case parse.StmtEmpty:
+	case js.StmtEmpty:
 		return ";"
-	case parse.StmtBlock:
+	case js.StmtBlock:
 		return "{" + renderProgram(s.Body) + "}"
-	case parse.StmtExpr:
+	case js.StmtExpr:
 		return renderExpr(s.Value)
-	case parse.StmtReturn:
+	case js.StmtReturn:
 		if s.Value == nil {
 			return "return"
 		}
 		return "return " + renderExpr(s.Value)
-	case parse.StmtDeclaration:
+	case js.StmtDeclaration:
 		parts := make([]string, 0, len(s.Decls))
 		for _, d := range s.Decls {
 			if d.Init == nil {
@@ -45,7 +46,7 @@ func renderStmt(s *parse.Stmt) string {
 			parts = append(parts, d.Name+" = "+renderExpr(d.Init))
 		}
 		return s.Raw + " " + strings.Join(parts, ", ")
-	case parse.StmtIf:
+	case js.StmtIf:
 		out := "(if " + renderExpr(s.Cond) + " " + renderStmt(s.Then)
 		if s.Else != nil {
 			out += " else " + renderStmt(s.Else)
@@ -59,7 +60,7 @@ func renderStmt(s *parse.Stmt) string {
 // the empty statement is itself a semicolon and a semicolon separator makes
 // `;;` and `;` print alike — an ambiguity in the instrument, which is the one
 // place a test can least afford one.
-func renderProgram(list []parse.Stmt) string {
+func renderProgram(list []js.Stmt) string {
 	parts := make([]string, 0, len(list))
 	for i := range list {
 		parts = append(parts, renderStmt(&list[i]))
@@ -70,7 +71,7 @@ func renderProgram(list []parse.Stmt) string {
 // stmts asserts that each source parses to its stated program.
 func stmts(t *testing.T, cases map[string]string) {
 	t.Helper()
-	var s parse.Statements
+	var s js.Statements
 	for src, want := range cases {
 		list, err := s.Parse([]byte(src))
 		if err != nil {
@@ -87,7 +88,7 @@ func stmts(t *testing.T, cases map[string]string) {
 // "keep typing" or "this cannot work".
 func stmtRefuses(t *testing.T, incomplete bool, sources ...string) {
 	t.Helper()
-	var s parse.Statements
+	var s js.Statements
 	for _, src := range sources {
 		list, err := s.Parse([]byte(src))
 		if err == nil {
@@ -96,7 +97,7 @@ func stmtRefuses(t *testing.T, incomplete bool, sources ...string) {
 		}
 		var se parse.SyntaxError
 		if !errors.As(err, &se) {
-			t.Errorf("%q: %v is not a SyntaxError", src, err)
+			t.Errorf("%q: %v is not a parse.SyntaxError", src, err)
 			continue
 		}
 		if se.Incomplete != incomplete {
@@ -135,7 +136,7 @@ func TestAnEmptySourceIsAnEmptyProgramRatherThanAnError(t *testing.T) {
 	// parser that reused the expression entry point inherits that refusal and
 	// makes every empty binding look broken.
 	for _, src := range []string{"", "   ", "\n\n", "// just a comment\n", "/* nothing */"} {
-		list, err := parse.Statements{}.Parse([]byte(src))
+		list, err := js.Statements{}.Parse([]byte(src))
 		if err != nil {
 			t.Errorf("%q: %v", src, err)
 			continue
@@ -160,7 +161,7 @@ func TestADeclarationKeepsEveryNameIncludingTheOnesWithNoInitialiser(t *testing.
 		"var x = 1, y = 2, z = 3": "x,y,z",
 		"const k = 1;":            "k",
 	} {
-		list, err := parse.Statements{}.Parse([]byte(src))
+		list, err := js.Statements{}.Parse([]byte(src))
 		if err != nil {
 			t.Errorf("%q: %v", src, err)
 			continue
@@ -175,7 +176,7 @@ func TestADeclarationKeepsEveryNameIncludingTheOnesWithNoInitialiser(t *testing.
 	}
 	// And the initialiser is nil rather than some empty expression, so the two
 	// cases are distinguishable at all.
-	list, _ := parse.Statements{}.Parse([]byte("let a, b = 2;"))
+	list, _ := js.Statements{}.Parse([]byte("let a, b = 2;"))
 	if list[0].Decls[0].Init != nil {
 		t.Error("a declarator with no initialiser carries one anyway")
 	}
@@ -288,13 +289,13 @@ if (ready) {
 }
 return total;
 `
-	list, err := parse.Statements{}.Parse([]byte(src))
+	list, err := js.Statements{}.Parse([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	parse.WalkExprs(list, func(e *parse.Expr) bool {
-		if e.Kind == parse.ExprIdent {
+	js.WalkExprs(list, func(e *js.Expr) bool {
+		if e.Kind == js.ExprIdent {
 			names = append(names, e.Raw)
 		}
 		return true
@@ -304,7 +305,7 @@ return total;
 	}
 
 	var kinds []string
-	parse.WalkStmts(list, func(s *parse.Stmt) bool {
+	js.WalkStmts(list, func(s *js.Stmt) bool {
 		kinds = append(kinds, s.Kind.String())
 		return true
 	})
@@ -317,13 +318,13 @@ func TestWalkReachesAnExpressionBuriedInANestedIfCondition(t *testing.T) {
 	// Sharpened to one claim, because the traversal has one place per field and
 	// the condition is the field most easily left out: the branches are obvious
 	// children, the condition looks like part of the node itself.
-	list, err := parse.Statements{}.Parse([]byte("if (a) { if (deep.name) { g(); } }"))
+	list, err := js.Statements{}.Parse([]byte("if (a) { if (deep.name) { g(); } }"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	parse.WalkExprs(list, func(e *parse.Expr) bool {
-		if e.Kind == parse.ExprIdent {
+	js.WalkExprs(list, func(e *js.Expr) bool {
+		if e.Kind == js.ExprIdent {
 			names = append(names, e.Raw)
 		}
 		return true
@@ -338,13 +339,13 @@ func TestWalkReachesInsideTemplateSubstitutionsAndDeclarationInitialisers(t *tes
 	// re-implementing it, so the parts of an expression that are easy to forget —
 	// a template's substitutions above all — stay reachable. Re-implemented here,
 	// they would be missing again, and again only a wrong answer later would say so.
-	list, err := parse.Statements{}.Parse([]byte("let msg = `hi ${who.name}`;\nif (msg) send(msg);"))
+	list, err := js.Statements{}.Parse([]byte("let msg = `hi ${who.name}`;\nif (msg) send(msg);"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	parse.WalkExprs(list, func(e *parse.Expr) bool {
-		if e.Kind == parse.ExprIdent {
+	js.WalkExprs(list, func(e *js.Expr) bool {
+		if e.Kind == js.ExprIdent {
 			names = append(names, e.Raw)
 		}
 		return true
@@ -359,14 +360,14 @@ func TestReturningFalseFromAStatementWalkPrunesThatSubtree(t *testing.T) {
 	// still visit everything — passing any test that only counts what it reached
 	// — and a consumer relying on pruning to skip a region would silently get the
 	// whole tree.
-	list, err := parse.Statements{}.Parse([]byte("if (a) { f(); g(); } h();"))
+	list, err := js.Statements{}.Parse([]byte("if (a) { f(); g(); } h();"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var seen []string
-	parse.WalkStmts(list, func(s *parse.Stmt) bool {
+	js.WalkStmts(list, func(s *js.Stmt) bool {
 		seen = append(seen, s.Kind.String())
-		return s.Kind != parse.StmtIf
+		return s.Kind != js.StmtIf
 	})
 	if got := strings.Join(seen, ","); got != "if,expression" {
 		t.Errorf("visited %s, want if,expression", got)
@@ -431,10 +432,10 @@ func TestNestedBlocksReachTheNestingLimitRatherThanTheStack(t *testing.T) {
 	// charge that is applied from one that is merely present.
 	const deep = 100000
 	src := strings.Repeat("{", deep) + strings.Repeat("}", deep)
-	_, err := parse.Statements{}.Parse([]byte(src))
+	_, err := js.Statements{}.Parse([]byte(src))
 	var se parse.SyntaxError
 	if !errors.As(err, &se) {
-		t.Fatalf("%v, want a SyntaxError about the nesting limit", err)
+		t.Fatalf("%v, want a parse.SyntaxError about the nesting limit", err)
 	}
 	if !strings.Contains(se.Want, "nested") {
 		t.Errorf("Want = %q, want the nesting-limit message", se.Want)
@@ -447,10 +448,10 @@ func TestNestedIfsReachTheNestingLimitRatherThanTheStack(t *testing.T) {
 	// suite that tested braces only would report the limit as enforced.
 	const deep = 100000
 	src := strings.Repeat("if (a) ", deep) + "f();"
-	_, err := parse.Statements{}.Parse([]byte(src))
+	_, err := js.Statements{}.Parse([]byte(src))
 	var se parse.SyntaxError
 	if !errors.As(err, &se) {
-		t.Fatalf("%v, want a SyntaxError about the nesting limit", err)
+		t.Fatalf("%v, want a parse.SyntaxError about the nesting limit", err)
 	}
 	if !strings.Contains(se.Want, "nested") {
 		t.Errorf("Want = %q, want the nesting-limit message", se.Want)
@@ -462,7 +463,7 @@ func TestTheNestingLimitIsTheOneTheCallerSetAndCountsExpressionsToo(t *testing.T
 	// keeps to itself, and the budget is shared with the expressions inside —
 	// which is what makes it a bound on the RECURSION rather than on one of the
 	// two grammars that take turns driving it.
-	shallow := parse.Statements{MaxDepth: 3}
+	shallow := js.Statements{MaxDepth: 3}
 	if _, err := shallow.Parse([]byte("{{{ f(); }}}")); err == nil {
 		t.Error("three nested blocks parsed under MaxDepth 3, want a refusal")
 	}
@@ -495,10 +496,10 @@ func TestAnUnsupportedConstructIsRefusedByNameRatherThanByItsPunctuation(t *test
 		"continue;":                 "continue",
 		"else f();":                 "else",
 	} {
-		_, err := parse.Statements{}.Parse([]byte(src))
+		_, err := js.Statements{}.Parse([]byte(src))
 		var se parse.SyntaxError
 		if !errors.As(err, &se) {
-			t.Errorf("%q: %v, want a SyntaxError naming the construct", src, err)
+			t.Errorf("%q: %v, want a parse.SyntaxError naming the construct", src, err)
 			continue
 		}
 		if !strings.Contains(se.Want, want) {
@@ -516,10 +517,10 @@ func TestAnUnsupportedConstructIsRefusedWhereverAStatementIsAllowed(t *testing.T
 	// block or an if branch fall through to the expression parser, where the
 	// message is about a parenthesis again.
 	for _, src := range []string{"{ for (;;) f(); }", "if (a) for (;;) f();", "if (a) f(); else while (b) g();"} {
-		_, err := parse.Statements{}.Parse([]byte(src))
+		_, err := js.Statements{}.Parse([]byte(src))
 		var se parse.SyntaxError
 		if !errors.As(err, &se) {
-			t.Errorf("%q: %v, want a SyntaxError", src, err)
+			t.Errorf("%q: %v, want a parse.SyntaxError", src, err)
 			continue
 		}
 		if !strings.Contains(se.Want, "loop") {
@@ -535,10 +536,10 @@ func TestAssignmentAtStatementPositionIsRefusedByNameNotAsAMissingSemicolon(t *t
 	// would not have helped. An `=` cannot reach here as anything else: `==`,
 	// `===` and `<=` are all consumed by the expression parser first.
 	for _, src := range []string{"x = 1;", "a.b = c;", "items[0] = v;", "if (a) x = 1;", "{ x = 1; }"} {
-		_, err := parse.Statements{}.Parse([]byte(src))
+		_, err := js.Statements{}.Parse([]byte(src))
 		var se parse.SyntaxError
 		if !errors.As(err, &se) {
-			t.Errorf("%q: %v, want a SyntaxError naming assignment", src, err)
+			t.Errorf("%q: %v, want a parse.SyntaxError naming assignment", src, err)
 			continue
 		}
 		if !strings.Contains(se.Want, "assignment") {
@@ -564,10 +565,10 @@ func TestADeclarationRefusesToBindAWordTheParserReadsAsAKeyword(t *testing.T) {
 		"let if = 1;", "let return = 1;", "let else = 1;", "let for = 1;",
 		"var class = 1;", "const true = 1;", "let null = 1;", "let a, if = 1;",
 	} {
-		_, err := parse.Statements{}.Parse([]byte(src))
+		_, err := js.Statements{}.Parse([]byte(src))
 		var se parse.SyntaxError
 		if !errors.As(err, &se) {
-			t.Errorf("%q: %v, want a SyntaxError", src, err)
+			t.Errorf("%q: %v, want a parse.SyntaxError", src, err)
 			continue
 		}
 		if !strings.Contains(se.Want, "keyword") {
@@ -608,17 +609,17 @@ func TestTheDialectIsThreadedIntoTheExpressionsStatementsContain(t *testing.T) {
 	// A statement parser that built its own default expression parser would
 	// accept `===` under the C dialect and hand back a tree for source C cannot
 	// express — and FormatName would still read "c-statements".
-	c := parse.Statements{Dialect: &parse.C}
+	c := js.Statements{Dialect: &js.C}
 	if c.FormatName() != "c-statements" {
 		t.Errorf("FormatName = %q, want c-statements", c.FormatName())
 	}
 	if _, err := c.Parse([]byte("f(a === b);")); err == nil {
 		t.Error("the C dialect accepted ===")
 	}
-	if _, err := (parse.Statements{}).Parse([]byte("f(a === b);")); err != nil {
+	if _, err := (js.Statements{}).Parse([]byte("f(a === b);")); err != nil {
 		t.Errorf("the JavaScript dialect refused ===: %v", err)
 	}
-	if got := (parse.Statements{}).FormatName(); got != "js-statements" {
+	if got := (js.Statements{}).FormatName(); got != "js-statements" {
 		t.Errorf("FormatName = %q, want js-statements", got)
 	}
 }

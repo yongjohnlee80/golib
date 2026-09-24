@@ -1,6 +1,8 @@
-package parse
+package js
 
 import (
+	"github.com/yongjohnlee80/golib/parse"
+
 	"bytes"
 	"strings"
 	"unicode"
@@ -70,7 +72,7 @@ import (
 //
 // # Incomplete input
 //
-// Every construct cut off at end of input reports [SyntaxError] with Incomplete
+// Every construct cut off at end of input reports [parse.SyntaxError] with Incomplete
 // set, so a watcher can hold the last good tree instead of blanking a screen
 // between keystrokes. A WRONG character is not incomplete: more typing will not
 // fix it, and a watcher told otherwise holds a stale tree for as long as the
@@ -102,7 +104,7 @@ type Statements struct {
 	MaxDepth int
 }
 
-// FormatName implements [Named].
+// FormatName implements [parse.Named].
 func (s Statements) FormatName() string { return s.dialect().Name + "-statements" }
 
 func (s Statements) dialect() *ExprDialect {
@@ -165,7 +167,7 @@ func (k StmtKind) String() string {
 // without reshaping the node every consumer already switches on.
 type Stmt struct {
 	Kind StmtKind
-	Pos  Position
+	Pos  parse.Position
 	// Raw is the keyword as written — "let", "const", "var" — or the punctuation
 	// that names the form: "{}" for a block, ";" for an empty statement.
 	Raw string
@@ -188,7 +190,7 @@ type Stmt struct {
 type Declarator struct {
 	// Name is the identifier as written.
 	Name string
-	Pos  Position
+	Pos  parse.Position
 	// Init is the initialiser, or nil when the name was declared without one.
 	//
 	// A name with no initialiser is still RECORDED. It binds the name, and a
@@ -257,7 +259,7 @@ func (s *Stmt) walk(onStmt func(*Stmt) bool, onExpr func(*Expr) bool) {
 
 // Parse reads every statement in src.
 func (s Statements) Parse(src []byte) ([]Stmt, error) {
-	sc := NewScanner(src)
+	sc := parse.NewScanner(src)
 	x := &exprParser{sc: sc, max: s.MaxDepth, d: s.dialect()}
 	if x.max <= 0 {
 		x.max = DefaultExprMaxDepth
@@ -284,16 +286,16 @@ func (s Statements) Parse(src []byte) ([]Stmt, error) {
 // expression parser it delegates to, so the two cannot disagree about where the
 // cursor is or how deep the recursion has gone.
 type stmtParser struct {
-	sc *Scanner
+	sc *parse.Scanner
 	x  *exprParser
 }
 
 func (p *stmtParser) format() string { return p.x.d.Name + "-statements" }
 
-func (p *stmtParser) enter(at Position) error {
+func (p *stmtParser) enter(at parse.Position) error {
 	p.x.depth++
 	if p.x.depth > p.x.max {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: "a statement nested no deeper than the limit",
 			Got:  "deeper nesting",
@@ -335,7 +337,7 @@ func (p *stmtParser) statement() (Stmt, error) {
 	at := p.sc.Pos()
 	r, ok := p.sc.Peek()
 	if !ok {
-		return Stmt{}, SyntaxError{
+		return Stmt{}, parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: "a statement", Got: "end of input", Incomplete: true,
 		}
@@ -351,9 +353,9 @@ func (p *stmtParser) statement() (Stmt, error) {
 		// Reached only outside any block, so there is nothing for it to close.
 		// Saying so beats "want a statement": the reader has one brace too many,
 		// not a missing statement.
-		return Stmt{}, SyntaxError{
+		return Stmt{}, parse.SyntaxError{
 			Format: p.format(), Pos: at,
-			Want: "a statement; this } closes nothing", Got: quoteRune(r),
+			Want: "a statement; this } closes nothing", Got: parse.QuoteRune(r),
 		}
 	}
 
@@ -369,7 +371,7 @@ func (p *stmtParser) statement() (Stmt, error) {
 		return p.returnStmt(at)
 	default:
 		if want, ok := unsupportedStmt[kw]; ok {
-			return Stmt{}, SyntaxError{
+			return Stmt{}, parse.SyntaxError{
 				Format: p.format(), Pos: at, Want: want, Got: `"` + kw + `"`,
 			}
 		}
@@ -377,7 +379,7 @@ func (p *stmtParser) statement() (Stmt, error) {
 	return p.exprStmt(at)
 }
 
-func (p *stmtParser) block(at Position) (Stmt, error) {
+func (p *stmtParser) block(at parse.Position) (Stmt, error) {
 	p.sc.Take("{")
 	if err := p.enter(at); err != nil {
 		return Stmt{}, err
@@ -390,7 +392,7 @@ func (p *stmtParser) block(at Position) (Stmt, error) {
 			return Stmt{}, err
 		}
 		if p.sc.Done() {
-			return Stmt{}, SyntaxError{
+			return Stmt{}, parse.SyntaxError{
 				Format: p.format(), Pos: at,
 				Want: "} to close the block opened here", Got: "end of input",
 				Incomplete: true,
@@ -407,7 +409,7 @@ func (p *stmtParser) block(at Position) (Stmt, error) {
 	}
 }
 
-func (p *stmtParser) declaration(at Position, kw string) (Stmt, error) {
+func (p *stmtParser) declaration(at parse.Position, kw string) (Stmt, error) {
 	p.sc.Take(kw)
 	s := Stmt{Kind: StmtDeclaration, Pos: at, Raw: kw}
 	for {
@@ -424,7 +426,7 @@ func (p *stmtParser) declaration(at Position, kw string) (Stmt, error) {
 			// can tell that binding from a real one: a consumer resolving names
 			// reports it, an evaluator looks for it, and the source it came from
 			// is not JavaScript at all.
-			return Stmt{}, SyntaxError{
+			return Stmt{}, parse.SyntaxError{
 				Format: p.format(), Pos: nameAt,
 				Want: "a name after " + kw + ", and " + name + " is a keyword",
 				Got:  `"` + name + `"`,
@@ -464,7 +466,7 @@ func (p *stmtParser) declaration(at Position, kw string) (Stmt, error) {
 // y only when a holds and b does not. Leaving the else for an outer call to
 // claim produces a tree of exactly the same node kinds that runs y in the case
 // the source excludes, and no test that counts nodes can see the difference.
-func (p *stmtParser) ifStmt(at Position) (Stmt, error) {
+func (p *stmtParser) ifStmt(at parse.Position) (Stmt, error) {
 	p.sc.Take("if")
 	if err := p.enter(at); err != nil {
 		return Stmt{}, err
@@ -509,7 +511,7 @@ func (p *stmtParser) ifStmt(at Position) (Stmt, error) {
 	return s, nil
 }
 
-func (p *stmtParser) returnStmt(at Position) (Stmt, error) {
+func (p *stmtParser) returnStmt(at parse.Position) (Stmt, error) {
 	p.sc.Take("return")
 	s := Stmt{Kind: StmtReturn, Pos: at, Raw: "return"}
 
@@ -530,7 +532,7 @@ func (p *stmtParser) returnStmt(at Position) (Stmt, error) {
 	return s, p.terminate(at, "the returned expression")
 }
 
-func (p *stmtParser) exprStmt(at Position) (Stmt, error) {
+func (p *stmtParser) exprStmt(at parse.Position) (Stmt, error) {
 	e, err := p.x.expression()
 	if err != nil {
 		return Stmt{}, err
@@ -542,12 +544,12 @@ func (p *stmtParser) exprStmt(at Position) (Stmt, error) {
 }
 
 // branch reads the single statement an if or an else governs.
-func (p *stmtParser) branch(at Position, want string) (Stmt, error) {
+func (p *stmtParser) branch(at parse.Position, want string) (Stmt, error) {
 	if err := p.x.space(); err != nil {
 		return Stmt{}, err
 	}
 	if p.sc.Done() {
-		return Stmt{}, SyntaxError{
+		return Stmt{}, parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: want, Got: "end of input", Incomplete: true,
 		}
@@ -557,12 +559,12 @@ func (p *stmtParser) branch(at Position, want string) (Stmt, error) {
 
 // expr reads an expression a statement requires, reporting the end of input as
 // INCOMPLETE against the keyword that promised one.
-func (p *stmtParser) expr(at Position, want string) (Expr, error) {
+func (p *stmtParser) expr(at parse.Position, want string) (Expr, error) {
 	if err := p.x.space(); err != nil {
 		return Expr{}, err
 	}
 	if p.sc.Done() {
-		return Expr{}, SyntaxError{
+		return Expr{}, parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: want, Got: "end of input", Incomplete: true,
 		}
@@ -571,7 +573,7 @@ func (p *stmtParser) expr(at Position, want string) (Expr, error) {
 }
 
 // terminate consumes the end of a simple statement, or refuses.
-func (p *stmtParser) terminate(start Position, what string) error {
+func (p *stmtParser) terminate(start parse.Position, what string) error {
 	if err := p.x.space(); err != nil {
 		return err
 	}
@@ -592,15 +594,15 @@ func (p *stmtParser) terminate(start Position, what string) error {
 	// for a missing semicolon they did not omit. `=>` is excluded because the
 	// missing construct there is the arrow function, not the assignment.
 	if p.sc.HasPrefix("=") && !p.sc.HasPrefix("=>") {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: p.format(), Pos: p.sc.Pos(),
 			Want: "a statement; assignment is not implemented", Got: `"="`,
 		}
 	}
 	r, _ := p.sc.Peek()
-	return SyntaxError{
+	return parse.SyntaxError{
 		Format: p.format(), Pos: p.sc.Pos(),
-		Want: "; or a line break after " + what, Got: quoteRune(r),
+		Want: "; or a line break after " + what, Got: parse.QuoteRune(r),
 	}
 }
 
@@ -613,7 +615,7 @@ func (p *stmtParser) terminate(start Position, what string) error {
 // the expression may itself have spanned several lines. Scanning back from the
 // cursor stops at the first character of real source, so the start bound is only
 // a floor, never the answer.
-func (p *stmtParser) brokeLine(start Position) bool {
+func (p *stmtParser) brokeLine(start parse.Position) bool {
 	return breaksLine(p.sc.Slice(start.Offset, p.sc.Pos().Offset))
 }
 
@@ -686,25 +688,25 @@ func (p *stmtParser) peekWord() string {
 
 // here reports a failure at the cursor, wanting what. End of input is
 // INCOMPLETE; a wrong character is not.
-func (p *stmtParser) here(at Position, want string) error {
+func (p *stmtParser) here(at parse.Position, want string) error {
 	if p.sc.Done() {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: want, Got: "end of input", Incomplete: true,
 		}
 	}
 	r, _ := p.sc.Peek()
-	return SyntaxError{Format: p.format(), Pos: p.sc.Pos(), Want: want, Got: quoteRune(r)}
+	return parse.SyntaxError{Format: p.format(), Pos: p.sc.Pos(), Want: want, Got: parse.QuoteRune(r)}
 }
 
 // closer reports a missing closing delimiter, pointing at where it was opened.
-func (p *stmtParser) closer(openAt Position, want string) error {
+func (p *stmtParser) closer(openAt parse.Position, want string) error {
 	if p.sc.Done() {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: p.format(), Pos: openAt,
 			Want: want, Got: "end of input", Incomplete: true,
 		}
 	}
 	r, _ := p.sc.Peek()
-	return SyntaxError{Format: p.format(), Pos: p.sc.Pos(), Want: want, Got: quoteRune(r)}
+	return parse.SyntaxError{Format: p.format(), Pos: p.sc.Pos(), Want: want, Got: parse.QuoteRune(r)}
 }

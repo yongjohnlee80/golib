@@ -1,29 +1,30 @@
-package parse_test
+package qml_test
 
 import (
+	"github.com/yongjohnlee80/golib/parse"
+	"github.com/yongjohnlee80/golib/parse/qml"
+
 	"errors"
 	"testing"
-
-	"github.com/yongjohnlee80/golib/parse"
 )
 
 // TestReferenceValuesParse pins how a name in value position is recorded.
 func TestReferenceValuesParse(t *testing.T) {
 	cases := []struct {
 		src  string
-		kind parse.SpecValueKind
+		kind qml.SpecValueKind
 		raw  string
 		args int
-		arg0 parse.SpecValueKind
+		arg0 qml.SpecValueKind
 	}{
-		{`N { a: greeting }`, parse.SpecValueRef, "greeting", 0, 0},
-		{`N { a: parent.width }`, parse.SpecValueRef, "parent.width", 0, 0},
-		{`N { a: horizontal }`, parse.SpecValueRef, "horizontal", 0, 0},
-		{`N { a: f(g, bare, "s") }`, parse.SpecValueCall, "f", 3, parse.SpecValueRef},
-		{`N { a: f(g(x)) }`, parse.SpecValueCall, "f", 1, parse.SpecValueCall},
+		{`N { a: greeting }`, qml.SpecValueRef, "greeting", 0, 0},
+		{`N { a: parent.width }`, qml.SpecValueRef, "parent.width", 0, 0},
+		{`N { a: horizontal }`, qml.SpecValueRef, "horizontal", 0, 0},
+		{`N { a: f(g, bare, "s") }`, qml.SpecValueCall, "f", 3, qml.SpecValueRef},
+		{`N { a: f(g(x)) }`, qml.SpecValueCall, "f", 1, qml.SpecValueCall},
 	}
 	for _, c := range cases {
-		tree, err := parse.QML{}.Parse([]byte(c.src))
+		tree, err := qml.QML{}.Parse([]byte(c.src))
 		if err != nil {
 			t.Errorf("%s: %v", c.src, err)
 			continue
@@ -54,7 +55,7 @@ func TestMemberChainsParse(t *testing.T) {
 		{`N { a: parent.width }`, "parent.width", []string{"parent", "width"}},
 		{`N { a: a.b.c }`, "a.b.c", []string{"a", "b", "c"}},
 	} {
-		tree, err := parse.QML{}.Parse([]byte(c.src))
+		tree, err := qml.QML{}.Parse([]byte(c.src))
 		if err != nil {
 			t.Errorf("%s: %v", c.src, err)
 			continue
@@ -84,10 +85,10 @@ func TestAnIncompleteChainHoldsTheTree(t *testing.T) {
 		{`N { a: parent.`, true},
 		{`N { a: parent. }`, false},
 	} {
-		_, err := parse.QML{}.Parse([]byte(c.src))
+		_, err := qml.QML{}.Parse([]byte(c.src))
 		var se parse.SyntaxError
 		if !errors.As(err, &se) {
-			t.Errorf("%q: err = %v, want a SyntaxError", c.src, err)
+			t.Errorf("%q: err = %v, want a parse.SyntaxError", c.src, err)
 			continue
 		}
 		if se.Incomplete != c.incomplete || se.Want != "a name after ." {
@@ -108,16 +109,16 @@ func TestAnIncompleteChainHoldsTheTree(t *testing.T) {
 // on purpose, with the reason written down, rather than drifting.
 func TestKindNumbersArePinned(t *testing.T) {
 	for _, c := range []struct {
-		kind parse.SpecValueKind
+		kind qml.SpecValueKind
 		n    uint8
 	}{
-		{parse.SpecValueInvalid, 0},
-		{parse.SpecValueString, 1},
-		{parse.SpecValueNumber, 2},
-		{parse.SpecValueBool, 3},
-		{parse.SpecValueRef, 4},
-		{parse.SpecValueCall, 5},
-		{parse.SpecValueExpr, 6},
+		{qml.SpecValueInvalid, 0},
+		{qml.SpecValueString, 1},
+		{qml.SpecValueNumber, 2},
+		{qml.SpecValueBool, 3},
+		{qml.SpecValueRef, 4},
+		{qml.SpecValueCall, 5},
+		{qml.SpecValueExpr, 6},
 	} {
 		if uint8(c.kind) != c.n {
 			t.Errorf("%v = %d, want %d", c.kind, uint8(c.kind), c.n)

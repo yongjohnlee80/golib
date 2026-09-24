@@ -3,12 +3,12 @@ package decl_test
 import (
 	"context"
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -202,7 +202,7 @@ Flex {
     Tracker { id: work }
     Button { id: btn label: "Save" enabled: true }
 }`
-	spec, perr := parse.QML{}.Parse([]byte(before))
+	spec, perr := qml.QML{}.Parse([]byte(before))
 	if perr != nil {
 		t.Fatalf("schema does not parse: %v", perr)
 	}
@@ -970,14 +970,14 @@ func TestAFailedSetterStillLatches(t *testing.T) {
 		tuidecl.WithErrorSink(func(error) {}),
 		// A setter that refuses every value, registered over the standard one.
 		tuidecl.WithSetters("Text", map[string]tuidecl.Setter{
-			"text": func(tui.Component, parse.SpecValue) error {
+			"text": func(tui.Component, qml.SpecValue) error {
 				return errTestSetter
 			},
 		}),
 	)
 	ad := tuidecl.New(reg, opts...)
 	tr := decl.New(ad)
-	spec, err := parse.QML{}.Parse([]byte(`import tui 1.0
+	spec, err := qml.QML{}.Parse([]byte(`import tui 1.0
 Flex { id: root direction: Tui.Vertical Text { id: a } }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -1118,7 +1118,7 @@ Flex { id: root direction: Tui.Vertical
 	if err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
-	spec, perr := parse.QML{}.Parse([]byte(before))
+	spec, perr := qml.QML{}.Parse([]byte(before))
 	if perr != nil {
 		t.Fatalf("parse: %v", perr)
 	}

@@ -1,6 +1,7 @@
 package decl_test
 
 import (
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
 
@@ -8,12 +9,11 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 )
 
-func text(s string) parse.SpecValue {
-	return parse.SpecValue{Kind: parse.SpecValueString, Raw: s}
+func text(s string) qml.SpecValue {
+	return qml.SpecValue{Kind: qml.SpecValueString, Raw: s}
 }
 
 // reactive mounts src against the real tui adapter with sources and functions
@@ -35,7 +35,7 @@ func reactive(t *testing.T, src string, sources map[string]string,
 			t.Fatalf("DeclareFunc %q: %v", n, err)
 		}
 	}
-	spec, err := parse.QML{}.Parse([]byte(src))
+	spec, err := qml.QML{}.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("schema does not parse: %v", err)
 	}
@@ -57,10 +57,10 @@ Flex { id: root direction: Tui.Vertical
 
 	tr, ad := reactive(t, src, map[string]string{"greeting": "hello"},
 		map[string]decl.ValueFunc{
-			"upper": func(a []parse.SpecValue) (parse.SpecValue, error) {
+			"upper": func(a []qml.SpecValue) (qml.SpecValue, error) {
 				return text(strings.ToUpper(a[0].Raw)), nil
 			},
-			"wrap": func(a []parse.SpecValue) (parse.SpecValue, error) {
+			"wrap": func(a []qml.SpecValue) (qml.SpecValue, error) {
 				return text(a[0].Raw + a[1].Raw), nil
 			},
 		})
@@ -125,7 +125,7 @@ func TestAnUnknownSourceRefusesWithTheTreeUntouched(t *testing.T) {
 	opts := append(tuidecl.StdProperties(), tuidecl.WithErrorSink(func(error) {}))
 	tr := decl.New(tuidecl.New(tuidecl.StdRegistry(), opts...))
 
-	bad, err := parse.QML{}.Parse([]byte(
+	bad, err := qml.QML{}.Parse([]byte(
 		`import tui 1.0
 Flex { id: r direction: Tui.Vertical Text { id: a text: nope } }`))
 	if err != nil {
@@ -138,7 +138,7 @@ Flex { id: r direction: Tui.Vertical Text { id: a text: nope } }`))
 		t.Errorf("Len = %d, want 0: nodes were allocated before the failure", tr.Len())
 	}
 	// Mountable after correction, WITHOUT Destroy — the tree was never partial.
-	ok, _ := parse.QML{}.Parse([]byte(
+	ok, _ := qml.QML{}.Parse([]byte(
 		`import tui 1.0
 Flex { id: r direction: Tui.Vertical Text { id: a text: "fixed" } }`))
 	if err := tr.Mount(ok); err != nil {
@@ -157,7 +157,7 @@ func TestABindingOnAConstructorOnlyPropertyIsRefusedOnTheRealAdapter(t *testing.
 	if err := tr.DeclareSource("o", text("horizontal")); err != nil {
 		t.Fatal(err)
 	}
-	spec, _ := parse.QML{}.Parse([]byte(
+	spec, _ := qml.QML{}.Parse([]byte(
 		`Split { id: r orientation: o Text { id: a text: "l" } Text { id: b text: "r" } }`))
 	err := tr.Mount(spec)
 	if err == nil {
@@ -176,7 +176,7 @@ func TestABindingOnAConstructorOnlyPropertyIsRefusedOnTheRealAdapter(t *testing.
 // The builders and setters shipped in P1-P3 know nothing about bindings, and
 // this is what keeps that true: they are handed terminals, always.
 func TestTheAdapterNeverSeesAnExpression(t *testing.T) {
-	var seen []parse.SpecValueKind
+	var seen []qml.SpecValueKind
 	reg := tuidecl.NewRegistry()
 	tuidecl.Register(reg, "Flex", func(b tuidecl.Build) (tui.Component, []string, error) {
 		for _, p := range b.Props {
@@ -193,7 +193,7 @@ func TestTheAdapterNeverSeesAnExpression(t *testing.T) {
 	opts := []tuidecl.Option{
 		tuidecl.WithConstructorProps("Flex", "direction"),
 		tuidecl.WithSetters("Text", map[string]tuidecl.Setter{
-			"text": func(c tui.Component, v parse.SpecValue) error {
+			"text": func(c tui.Component, v qml.SpecValue) error {
 				seen = append(seen, v.Kind)
 				tx, _ := c.(*widget.Text)
 				tx.SetText(v.Raw)
@@ -206,12 +206,12 @@ func TestTheAdapterNeverSeesAnExpression(t *testing.T) {
 	if err := tr.DeclareSource("g", text("v")); err != nil {
 		t.Fatal(err)
 	}
-	if err := tr.DeclareFunc("f", func(a []parse.SpecValue) (parse.SpecValue, error) {
+	if err := tr.DeclareFunc("f", func(a []qml.SpecValue) (qml.SpecValue, error) {
 		return text("d" + a[0].Raw), nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	spec, _ := parse.QML{}.Parse([]byte(
+	spec, _ := qml.QML{}.Parse([]byte(
 		`import tui 1.0
 Flex { id: r direction: Tui.Vertical Text { id: a text: f(g) } Text { id: b text: g } }`))
 	if err := tr.Mount(spec); err != nil {
@@ -227,7 +227,7 @@ Flex { id: r direction: Tui.Vertical Text { id: a text: f(g) } Text { id: b text
 	// sees one — nor a Call. Every value crossing the seam is terminal, which is
 	// what keeps builders and setters ignorant that bindings exist at all.
 	for _, k := range seen {
-		if k == parse.SpecValueRef || k == parse.SpecValueCall {
+		if k == qml.SpecValueRef || k == qml.SpecValueCall {
 			t.Errorf("the adapter received an unresolved %v; every value must arrive terminal", k)
 		}
 	}

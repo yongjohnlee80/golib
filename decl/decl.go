@@ -3,6 +3,7 @@ package decl
 import (
 	"errors"
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -57,7 +58,7 @@ func (p Provenance) String() string {
 type Application struct {
 	Node   NodeID
 	Prop   string
-	Value  parse.SpecValue
+	Value  qml.SpecValue
 	Origin Provenance
 }
 
@@ -80,7 +81,7 @@ type Construction struct {
 	// Props are the declared properties in DOCUMENT ORDER. An adapter may
 	// consume any of them at construction and must say which, by returning
 	// their names from Create.
-	Props []parse.SpecProp
+	Props []qml.SpecProp
 
 	// Children are this node's children, ALREADY BUILT, in declaration order.
 	// A constructor that requires its children has them here.

@@ -3,6 +3,7 @@ package decl
 import (
 	"errors"
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -16,7 +17,7 @@ import (
 // only thing standing between a host and a nested propagation.
 //
 // The result must be terminal. A function returns a value, not an expression.
-type ValueFunc func(args []parse.SpecValue) (parse.SpecValue, error)
+type ValueFunc func(args []qml.SpecValue) (qml.SpecValue, error)
 
 // Sentinel errors for the reactive layer.
 var (
@@ -71,9 +72,9 @@ type PropagationResult struct {
 // Call are the two that do not, and letting either be a SOURCE value is what
 // would make sources depend on sources — the thing that keeps this graph
 // bipartite is that they cannot.
-func isTerminal(v parse.SpecValue) bool {
+func isTerminal(v qml.SpecValue) bool {
 	switch v.Kind {
-	case parse.SpecValueString, parse.SpecValueNumber, parse.SpecValueBool:
+	case qml.SpecValueString, qml.SpecValueNumber, qml.SpecValueBool:
 		return true
 	default:
 		return false
@@ -91,7 +92,7 @@ func isTerminal(v parse.SpecValue) bool {
 type Constants interface {
 	// Constants returns the qualified names this adapter defines, keyed by the
 	// full dotted spelling, with terminal values.
-	Constants() map[string]parse.SpecValue
+	Constants() map[string]qml.SpecValue
 }
 
 // needsResolution reports whether a declared value has to be resolved before
@@ -101,9 +102,9 @@ type Constants interface {
 // NOT tracked. Conflating the two is how `Tui.Vertical` once reached a builder
 // as an unresolved reference — the value was correctly judged "not a binding"
 // and therefore never evaluated at all.
-func needsResolution(v parse.SpecValue) bool {
+func needsResolution(v qml.SpecValue) bool {
 	switch v.Kind {
-	case parse.SpecValueRef, parse.SpecValueCall, parse.SpecValueExpr:
+	case qml.SpecValueRef, qml.SpecValueCall, qml.SpecValueExpr:
 		// SpecValueExpr is here so it is REFUSED rather than forwarded. A kind
 		// this list forgets is not rejected — it sails past resolution and
 		// reaches a setter as an un-evaluated tree, which is how `Tui.Vertical`
@@ -127,7 +128,7 @@ type binding struct {
 	prop string
 	// expr is the ORIGINAL expression. The evaluated terminal is what gets
 	// applied; this is what gets re-evaluated when a source changes.
-	expr parse.SpecValue
+	expr qml.SpecValue
 	pos  parse.Position
 	// deps are the source names this binding reads, deduped.
 	deps []string
@@ -135,7 +136,7 @@ type binding struct {
 	// one ever did. The engine owns this comparison because the widgets do not
 	// agree about it: Button.SetLabel and Text.SetText self-guard, while
 	// Box.SetTitle and Box.SetStatus assign and invalidate unconditionally.
-	applied parse.SpecValue
+	applied qml.SpecValue
 	cached  bool
 }
 
@@ -151,7 +152,7 @@ type binding struct {
 // It is [Tree.Inject] with [SourceValue], kept because it reads better at a call
 // site that only wants a source. Both write the same registry, so a name
 // declared here cannot be injected again as something else.
-func (t *Tree) DeclareSource(name string, v parse.SpecValue) error {
+func (t *Tree) DeclareSource(name string, v qml.SpecValue) error {
 	_, err := t.inject("declare source", name, SourceValue(v))
 	return err
 }
@@ -170,7 +171,7 @@ func (t *Tree) DeclareFunc(name string, fn ValueFunc) error {
 }
 
 // Source reports a declared source's current value.
-func (t *Tree) Source(name string) (parse.SpecValue, bool) {
+func (t *Tree) Source(name string) (qml.SpecValue, bool) {
 	v, ok := t.sources[name]
 	return v, ok
 }
@@ -179,7 +180,7 @@ func (t *Tree) Source(name string) (parse.SpecValue, bool) {
 //
 // It is called during planning for every node — mounted fresh, rebuilt, or
 // reconciled — so a schema mistake is found while the tree is still intact.
-func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeID) error {
+func (t *Tree) checkBindable(typeName string, props []qml.SpecProp, node NodeID) error {
 	var bound bool
 	for _, p := range props {
 		if t.isBinding(p.Value) {
@@ -249,7 +250,7 @@ func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeI
 // It is the Mount-level form of "plan before you mutate": a binding failure at
 // the bottom of a file must leave the tree exactly as it was, not with the
 // nodes above it allocated and the tree latched.
-func (t *Tree) preEvaluate(sn *parse.SpecNode) error {
+func (t *Tree) preEvaluate(sn *qml.SpecNode) error {
 	if err := t.checkBindable(sn.Type, sn.Props, NoNode); err != nil {
 		return err
 	}
@@ -268,7 +269,7 @@ func (t *Tree) preEvaluate(sn *parse.SpecNode) error {
 
 // bindingsOn builds a node's binding registrations. The values were already
 // evaluated; this records what to re-evaluate later and what it depends on.
-func (t *Tree) bindingsOn(node NodeID, props []parse.SpecProp) ([]*binding, error) {
+func (t *Tree) bindingsOn(node NodeID, props []qml.SpecProp) ([]*binding, error) {
 	var out []*binding
 	for _, p := range props {
 		names := t.sourcesOf(p.Value)
@@ -287,9 +288,9 @@ func (t *Tree) bindingsOn(node NodeID, props []parse.SpecProp) ([]*binding, erro
 //
 // The ORIGINAL expression is kept: the terminal is what gets applied, the
 // expression is what gets re-evaluated when a source changes.
-func (t *Tree) bindingsFor(node NodeID, props []parse.SpecProp) ([]*binding, []parse.SpecProp, error) {
+func (t *Tree) bindingsFor(node NodeID, props []qml.SpecProp) ([]*binding, []qml.SpecProp, error) {
 	var out []*binding
-	effective := make([]parse.SpecProp, len(props))
+	effective := make([]qml.SpecProp, len(props))
 	copy(effective, props)
 
 	for i, p := range props {

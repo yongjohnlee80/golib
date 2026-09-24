@@ -1,6 +1,8 @@
-package parse
+package sql
 
 import (
+	"github.com/yongjohnlee80/golib/parse"
+
 	"bytes"
 	"io"
 	"strings"
@@ -47,7 +49,7 @@ type Statement struct {
 	Text string
 	// Pos is where the statement's first character sits in the original
 	// source, so a caller can report a line number that matches the file.
-	Pos Position
+	Pos parse.Position
 	// Verb is the leading keyword, uppercased — "SELECT", "INSERT", "WITH".
 	// It is empty when the statement does not begin with a word.
 	//
@@ -59,7 +61,7 @@ type Statement struct {
 	Verb string
 }
 
-// FormatName implements [Named].
+// FormatName implements [parse.Named].
 func (SQL) FormatName() string { return "sql" }
 
 // Parse splits src into statements and records each one's position and leading
@@ -131,20 +133,20 @@ func (s SQL) ParseStream(r io.Reader) ([]Statement, error) {
 // span is one statement's extent in the source.
 type span struct {
 	from, to int
-	pos      Position
+	pos      parse.Position
 }
 
 // split walks the source once, tracking the lexical constructs in which a
 // semicolon does NOT end a statement, and records the extent of each statement.
 func (s SQL) split(src []byte) ([]span, error) {
-	sc := NewScanner(src)
+	sc := parse.NewScanner(src)
 	var out []span
 	start := 0
 	startPos := sc.Pos()
 	started := false
 
 	// note where the next statement begins, the first time real text is seen.
-	begin := func(at int, pos Position) {
+	begin := func(at int, pos parse.Position) {
 		if !started {
 			start, startPos, started = at, pos, true
 		}
@@ -229,7 +231,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 
 // skipLineComment consumes through the end of the line. A line comment that
 // runs to the end of the source is closed by the source ending, not an error.
-func (s SQL) skipLineComment(sc *Scanner) {
+func (s SQL) skipLineComment(sc *parse.Scanner) {
 	for {
 		r, ok := sc.Next()
 		if !ok || r == '\n' {
@@ -239,13 +241,13 @@ func (s SQL) skipLineComment(sc *Scanner) {
 }
 
 // skipBlockComment consumes a /* … */ comment, nesting when the dialect does.
-func (s SQL) skipBlockComment(sc *Scanner) error {
+func (s SQL) skipBlockComment(sc *parse.Scanner) error {
 	openedAt := sc.Pos()
 	sc.Take("/*")
 	depth := 1
 	for depth > 0 {
 		if sc.Done() {
-			return SyntaxError{
+			return parse.SyntaxError{
 				Format: "sql", Pos: openedAt,
 				Want: "*/ to close the block comment started here",
 				Got:  "end of input", Incomplete: true,
@@ -277,7 +279,7 @@ func (s SQL) skipBlockComment(sc *Scanner) error {
 // and reading it as an escape would mis-split every statement containing a
 // Windows path or a regular expression that ends in one. It is on only for a
 // string the source marked with an E prefix, which is the engine's own opt-in.
-func (s SQL) skipQuoted(sc *Scanner, quote rune, doubled, backslash bool) error {
+func (s SQL) skipQuoted(sc *parse.Scanner, quote rune, doubled, backslash bool) error {
 	openedAt := sc.Pos()
 	sc.Next()
 	for {
@@ -291,7 +293,7 @@ func (s SQL) skipQuoted(sc *Scanner, quote rune, doubled, backslash bool) error 
 			}
 		}
 		if !ok {
-			return SyntaxError{
+			return parse.SyntaxError{
 				Format: "sql", Pos: openedAt,
 				Want: "a closing " + string(quote) + " for the quoted text started here",
 				Got:  "end of input", Incomplete: true,
@@ -313,7 +315,7 @@ func (s SQL) skipQuoted(sc *Scanner, quote rune, doubled, backslash bool) error 
 // dollarTag reports whether the cursor sits on a dollar-quote opener such as
 // $$ or $body$, returning the full delimiter. Nothing is consumed either way:
 // a lone dollar sign is ordinary text and must stay readable as such.
-func (s SQL) dollarTag(sc *Scanner) (string, bool) {
+func (s SQL) dollarTag(sc *parse.Scanner) (string, bool) {
 	var b strings.Builder
 	b.WriteByte('$')
 	for i := 1; ; i++ {
@@ -333,14 +335,14 @@ func (s SQL) dollarTag(sc *Scanner) (string, bool) {
 }
 
 // skipDollarQuoted consumes a dollar-quoted run up to its matching delimiter.
-func (s SQL) skipDollarQuoted(sc *Scanner, tag string) error {
+func (s SQL) skipDollarQuoted(sc *parse.Scanner, tag string) error {
 	openedAt := sc.Pos()
 	for range tag {
 		sc.Next()
 	}
 	for {
 		if sc.Done() {
-			return SyntaxError{
+			return parse.SyntaxError{
 				Format: "sql", Pos: openedAt,
 				Want: "a closing " + tag + " for the quoted text started here",
 				Got:  "end of input", Incomplete: true,
