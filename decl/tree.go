@@ -77,6 +77,11 @@ type Tree struct {
 	// consts are the qualified names the adapter defines — `tui.Horizontal`.
 	// They are collected once from the adapter, because they do not change.
 	consts map[string]parse.SpecValue
+	// injected is the typed registry: every name a schema may reach, paired with
+	// the host's declaration of WHAT IT IS. It is the one scope the resolver
+	// consults, which is what gives "where did this name come from?" exactly one
+	// answer. See [Tree.Inject].
+	injected map[string]Injected
 	// bindings are every bound property in the tree, in DOCUMENT ORDER — the
 	// only order a schema author can see, and therefore the only defensible
 	// fan-out order when a propagation stops part-way.
@@ -631,6 +636,13 @@ func (t *Tree) Destroy() error {
 	// sources carried over could never have its set corrected.
 	t.bindings = nil
 	t.sources = nil
+	// The typed registry goes with them, and so do the functions it seeded. The
+	// registry is the authority on what a name IS, so a function surviving a
+	// Destroy that forgot its entry would be callable by a schema the resolver
+	// can no longer answer for — two stores disagreeing, which is the exact
+	// failure routing every declaration through Inject exists to prevent.
+	t.injected = nil
+	t.funcs = nil
 	return errors.Join(errs...)
 }
 

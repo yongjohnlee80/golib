@@ -3,7 +3,6 @@ package decl
 import (
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -406,7 +405,7 @@ func (t *Tree) planSubtree(sn *parse.SpecNode) error {
 	// discovering it after the node it replaces has been destroyed.
 	if classifier, ok := t.adapter.(Classifier); ok {
 		for _, prop := range sn.Props {
-			if isBinding(prop.Value) {
+			if t.isBinding(prop.Value) {
 				continue // checkBindable classifies bindings by its own rules
 			}
 			if err := checkKind(classifier.ClassifyProperty(sn.Type, prop.Name), sn.Type, prop, id); err != nil {
@@ -679,7 +678,7 @@ func (t *Tree) rebindChanged(n *node, id NodeID, props []parse.SpecProp,
 		if !needsResolution(p.Value) {
 			continue
 		}
-		if prev, ok := t.bindingFor(id, p.Name); ok && isBinding(p.Value) &&
+		if prev, ok := t.bindingFor(id, p.Name); ok && t.isBinding(p.Value) &&
 			sameSequence(oldProps[p.Name], newProps[p.Name]) {
 			// Unchanged: keep the registration, and with it the applied-value
 			// cache that keeps the next source tick quiet.
@@ -689,24 +688,17 @@ func (t *Tree) rebindChanged(n *node, id NodeID, props []parse.SpecProp,
 			}
 			continue
 		}
-		v, err := t.evaluate(p.Value, nil)
+		res, err := t.evalValue(ctxBinding, p.Value, id, nil)
 		if err != nil {
 			return nil, nil, SchemaError{Op: "bind", Node: id, Detail: p.Name, Pos: p.Value.Pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
 		}
-		deps := map[string]bool{}
-		refsOf(p.Value, deps)
-		names := make([]string, 0, len(deps))
-		for d := range deps {
-			names = append(names, d)
-		}
-		sort.Strings(names)
-		effective[i].Value = v
-		if !isBinding(p.Value) {
+		effective[i].Value = res.value
+		if !res.tracked {
 			continue
 		}
 		out = append(out, &binding{
-			node: id, prop: p.Name, expr: p.Value, pos: p.Value.Pos, deps: names,
+			node: id, prop: p.Name, expr: p.Value, pos: p.Value.Pos, deps: res.deps,
 		})
 	}
 	return out, effective, nil

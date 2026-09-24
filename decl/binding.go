@@ -3,7 +3,6 @@ package decl
 import (
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -107,45 +106,12 @@ func needsResolution(v parse.SpecValue) bool {
 	return v.Kind == parse.SpecValueRef || v.Kind == parse.SpecValueCall
 }
 
-// isBinding reports whether a resolved value must also be TRACKED.
-//
-// A BARE IDENTIFIER IS NEVER A BINDING. `SpecValueRef` is documented as "a bare
-// identifier resolved by the ADAPTER", and the shipped registry depends on it:
-// `orientation: horizontal` is a Ref whose Raw is the enum value. Sources are
-// spelled `$name` precisely so the two populations cannot be confused — an
-// earlier version keyed on "is this name declared as a source", which made a
-// schema's meaning depend on host configuration and let a source silently
-// shadow an adapter's identifier.
-func isBinding(v parse.SpecValue) bool {
-	switch v.Kind {
-	case parse.SpecValueRef:
-		// A SINGLE name is a host context value, which can change — a binding.
-		// A QUALIFIED name is a constant the consumer defined, resolved once.
-		// QML draws the line in the same place: `greeting` tracks, and
-		// `Qt.Horizontal` does not.
-		return len(v.Path) <= 1
-	case parse.SpecValueCall:
-		return true
-	default:
-		return false
-	}
-}
-
-// refsOf collects the source names a value depends on, DEDUPED, by walking the
-// expression. A value cannot acquire a dependency at runtime that was not
-// written in the file, so this static walk is the whole dependency set.
-func refsOf(v parse.SpecValue, into map[string]bool) {
-	switch v.Kind {
-	case parse.SpecValueRef:
-		if len(v.Path) <= 1 {
-			into[v.Raw] = true
-		}
-	case parse.SpecValueCall:
-		for _, a := range v.Args {
-			refsOf(a, into)
-		}
-	}
-}
+// Tracking is decided by [Tree.isBinding] in resolve.go, from the INJECTED KIND
+// rather than the shape of a name. The predicate lived here as a pure function
+// keyed on path length, which made `Theme.surface` permanently un-trackable:
+// qualified names were assumed constant, so a palette source would have updated
+// and repainted nothing. Its replacement shares one recursion with the
+// dependency collector, so the two cannot disagree about what a value reads.
 
 // binding is one bound property: what was written, and what was last applied.
 type binding struct {
@@ -173,127 +139,30 @@ type binding struct {
 // trusted.
 //
 // The value must be terminal: an unrestricted expression is not a runtime value.
+//
+// It is [Tree.Inject] with [SourceValue], kept because it reads better at a call
+// site that only wants a source. Both write the same registry, so a name
+// declared here cannot be injected again as something else.
 func (t *Tree) DeclareSource(name string, v parse.SpecValue) error {
-	if t.ph != phaseIdle {
-		return SchemaError{Op: "declare source", Detail: name,
-			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
-	}
-	if t.root != NoNode {
-		return SchemaError{Op: "declare source", Detail: name, Err: fmt.Errorf(
-			"%w: sources are declared before Mount, so the set a schema is checked against is fixed", ErrPhase)}
-	}
-	if _, dup := t.sources[name]; dup {
-		return SchemaError{Op: "declare source", Detail: name, Err: ErrDuplicateDecl}
-	}
-	if !isTerminal(v) {
-		return SchemaError{Op: "declare source", Detail: name, Pos: v.Pos,
-			Err: fmt.Errorf("%w: a source holds a %s, not an expression", ErrNotTerminal, v.Kind)}
-	}
-	if t.sources == nil {
-		t.sources = map[string]parse.SpecValue{}
-	}
-	t.sources[name] = v
-	return nil
+	return t.inject("declare source", name, SourceValue(v))
 }
 
 // DeclareFunc registers a value function, before Mount.
+//
+// It is [Tree.Inject] with [Pure]; see [KindPureFunction] for the determinism
+// contract a value function carries.
 func (t *Tree) DeclareFunc(name string, fn ValueFunc) error {
-	if t.ph != phaseIdle {
-		return SchemaError{Op: "declare func", Detail: name,
-			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
-	}
-	if t.root != NoNode {
-		return SchemaError{Op: "declare func", Detail: name, Err: fmt.Errorf(
-			"%w: value functions are declared before Mount, so a schema's calls can be checked", ErrPhase)}
-	}
 	if fn == nil {
 		return SchemaError{Op: "declare func", Detail: name, Err: fmt.Errorf(
 			"%w: a nil function is refused here rather than discovered at the first call", ErrAdapter)}
 	}
-	if _, dup := t.funcs[name]; dup {
-		return SchemaError{Op: "declare func", Detail: name, Err: ErrDuplicateDecl}
-	}
-	if t.funcs == nil {
-		t.funcs = map[string]ValueFunc{}
-	}
-	t.funcs[name] = fn
-	return nil
+	return t.inject("declare func", name, Pure(PureFunc(fn)))
 }
 
 // Source reports a declared source's current value.
 func (t *Tree) Source(name string) (parse.SpecValue, bool) {
 	v, ok := t.sources[name]
 	return v, ok
-}
-
-// evaluate reduces an expression to a terminal value.
-//
-// Arguments evaluate LEFT TO RIGHT, depth-first, so a nested call is already a
-// terminal by the time the outer function sees it. That is the only depth in
-// this design: nesting deepens one binding's evaluation, never the graph.
-//
-// overlay lets a propagation evaluate against a TENTATIVE source value without
-// committing it — the source is only committed once the whole fan-out succeeds.
-func (t *Tree) evaluate(v parse.SpecValue, overlay map[string]parse.SpecValue) (parse.SpecValue, error) {
-	switch v.Kind {
-	case parse.SpecValueRef:
-		if len(v.Path) > 1 {
-			if c, ok := t.consts[v.Raw]; ok {
-				c.Pos = v.Pos
-				return c, nil
-			}
-			return parse.SpecValue{}, fmt.Errorf(
-				"%w: %q names no constant this adapter defines, and this engine does not "+
-					"yet read another object's property (at %s)",
-				ErrNotResolvable, v.Raw, v.Pos)
-		}
-		if sv, ok := overlay[v.Raw]; ok {
-			return sv, nil
-		}
-		sv, ok := t.sources[v.Raw]
-		if !ok {
-			return parse.SpecValue{}, fmt.Errorf("%w: %q (at %s)", ErrNoSuchSource, v.Raw, v.Pos)
-		}
-		return sv, nil
-
-	case parse.SpecValueCall:
-		fn, ok := t.funcs[v.Raw]
-		if !ok {
-			return parse.SpecValue{}, fmt.Errorf("%w: %q (at %s)", ErrNoSuchFunc, v.Raw, v.Pos)
-		}
-		args := make([]parse.SpecValue, 0, len(v.Args))
-		for _, a := range v.Args {
-			ev, err := t.evaluate(a, overlay)
-			if err != nil {
-				return parse.SpecValue{}, err
-			}
-			// A ValueFunc receives TERMINALS. A bare identifier is an
-			// adapter-resolved word and means nothing here, so it is refused
-			// rather than handed over as an un-evaluated expression — which is
-			// what an earlier version did, silently violating this very rule.
-			if !isTerminal(ev) {
-				return parse.SpecValue{}, fmt.Errorf(
-					"%w: %q received a %s argument; write a string or a @token for a symbolic value (at %s)",
-					ErrNotTerminal, v.Raw, ev.Kind, a.Pos)
-			}
-			args = append(args, ev)
-		}
-		out, err := fn(args)
-		if err != nil {
-			return parse.SpecValue{}, fmt.Errorf("%q (at %s): %w", v.Raw, v.Pos, err)
-		}
-		if !isTerminal(out) {
-			return parse.SpecValue{}, fmt.Errorf("%w: %q returned a %s (at %s)",
-				ErrNotTerminal, v.Raw, out.Kind, v.Pos)
-		}
-		// The result carries the CALL's position, not the function's idea of
-		// one: a diagnostic should name the line someone wrote.
-		out.Pos = v.Pos
-		return out, nil
-
-	default:
-		return v, nil
-	}
 }
 
 // checkBindable validates a node's declared properties before anything is built.
@@ -303,7 +172,7 @@ func (t *Tree) evaluate(v parse.SpecValue, overlay map[string]parse.SpecValue) (
 func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeID) error {
 	var bound bool
 	for _, p := range props {
-		if isBinding(p.Value) {
+		if t.isBinding(p.Value) {
 			bound = true
 			break
 		}
@@ -319,7 +188,7 @@ func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeI
 	classifier, ok := t.adapter.(Classifier)
 	if !ok {
 		for _, p := range props {
-			if isBinding(p.Value) {
+			if t.isBinding(p.Value) {
 				return SchemaError{Op: "bind", Node: node, Detail: p.Name, Pos: p.Value.Pos,
 					Err: fmt.Errorf("%w: %q on type %q", ErrBindingUnsupported, p.Name, typeName)}
 			}
@@ -335,7 +204,7 @@ func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeI
 		seen[p.Name]++
 	}
 	for _, p := range props {
-		if seen[p.Name] > 1 && isBinding(p.Value) {
+		if seen[p.Name] > 1 && t.isBinding(p.Value) {
 			return SchemaError{Op: "bind", Node: node, Detail: p.Name, Pos: p.Value.Pos,
 				Err: fmt.Errorf("%w: %q is declared %d times on type %q",
 					ErrDuplicateBinding, p.Name, seen[p.Name], typeName)}
@@ -347,7 +216,7 @@ func (t *Tree) checkBindable(typeName string, props []parse.SpecProp, node NodeI
 	// structural work that destroys exactly the scroll offset, focus and
 	// in-flight tasks a reconcile exists to preserve.
 	for _, p := range props {
-		if !isBinding(p.Value) {
+		if !t.isBinding(p.Value) {
 			continue
 		}
 		switch classifier.ClassifyProperty(typeName, p.Name) {
@@ -392,16 +261,10 @@ func (t *Tree) preEvaluate(sn *parse.SpecNode) error {
 func (t *Tree) bindingsOn(node NodeID, props []parse.SpecProp) ([]*binding, error) {
 	var out []*binding
 	for _, p := range props {
-		if !isBinding(p.Value) {
+		names := t.sourcesOf(p.Value)
+		if len(names) == 0 {
 			continue
 		}
-		deps := map[string]bool{}
-		refsOf(p.Value, deps)
-		names := make([]string, 0, len(deps))
-		for d := range deps {
-			names = append(names, d)
-		}
-		sort.Strings(names)
 		out = append(out, &binding{
 			node: node, prop: p.Name, expr: p.Value, pos: p.Value.Pos, deps: names,
 		})
@@ -423,29 +286,20 @@ func (t *Tree) bindingsFor(node NodeID, props []parse.SpecProp) ([]*binding, []p
 		if !needsResolution(p.Value) {
 			continue
 		}
-		v, err := t.evaluate(p.Value, nil)
+		res, err := t.evalValue(ctxBinding, p.Value, node, nil)
 		if err != nil {
 			return nil, nil, SchemaError{Op: "bind", Node: node, Detail: p.Name, Pos: p.Value.Pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
 		}
 		// The adapter receives the TERMINAL, never the expression. That is what
 		// keeps a builder and a setter from needing to know bindings exist.
-		effective[i].Value = v
+		effective[i].Value = res.value
 
-		if !isBinding(p.Value) {
+		if !res.tracked {
 			continue // a constant: resolved once, never tracked
 		}
-		deps := map[string]bool{}
-		refsOf(p.Value, deps)
-		names := make([]string, 0, len(deps))
-		for d := range deps {
-			names = append(names, d)
-		}
-		// Deterministic, so a trace is assertable.
-		sort.Strings(names)
-
 		out = append(out, &binding{
-			node: node, prop: p.Name, expr: p.Value, pos: p.Value.Pos, deps: names,
+			node: node, prop: p.Name, expr: p.Value, pos: p.Value.Pos, deps: res.deps,
 		})
 	}
 	return out, effective, nil
