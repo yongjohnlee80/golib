@@ -561,3 +561,37 @@ func TestQMLOnIsNotAlwaysASignal(t *testing.T) {
 		t.Errorf("handlers = %+v, want only clicked", tree.Root.Handlers)
 	}
 }
+
+// TestAHandlerBodySpendsTheDOCUMENTSNestingBudget.
+//
+// The handler body runs on a second parser, and the tempting implementation
+// gives it a fresh depth counter. That would make the document's limit a
+// fiction: `A { B { … } }` would be bounded and `A { onGo: f(f(f(…))) }` would
+// not, although both are recursion in the same parse of the same file.
+//
+// The two halves are asserted together. A nesting limit that refuses everything
+// is trivially "safe" and useless, so the shallow body must still be accepted at
+// the same limit that refuses the deep one.
+func TestAHandlerBodySpendsTheDOCUMENTSNestingBudget(t *testing.T) {
+	const limit = 6
+	deep := "A { onGo: " + strings.Repeat("f(", limit+2) + "x" + strings.Repeat(")", limit+2) + " }"
+	shallow := "A { onGo: f(f(x)) }"
+
+	if _, err := (parse.QML{MaxDepth: limit}).Parse([]byte(shallow)); err != nil {
+		t.Fatalf("a shallow handler body was refused at MaxDepth=%d: %v", limit, err)
+	}
+	if _, err := (parse.QML{MaxDepth: limit}).Parse([]byte(deep)); err == nil {
+		t.Errorf("a handler body nested past MaxDepth=%d was accepted; "+
+			"the body is parsing its own budget rather than the document's", limit)
+	}
+
+	// And the budget is SHARED, not merely present: nodes already spent bring
+	// the same body over the line.
+	nested := "A { B { C { onGo: f(f(f(x))) } } }"
+	if _, err := (parse.QML{MaxDepth: 12}).Parse([]byte(nested)); err != nil {
+		t.Fatalf("a body under three nodes was refused with budget to spare: %v", err)
+	}
+	if _, err := (parse.QML{MaxDepth: 4}).Parse([]byte(nested)); err == nil {
+		t.Error("nodes and a handler body together exceeded the limit and were accepted")
+	}
+}
