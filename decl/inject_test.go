@@ -72,22 +72,28 @@ func TestAnInjectedKindIsRefusedInAPositionItCannotOccupy(t *testing.T) {
 		wantMsg string
 	}{
 		{
-			name:    "a handler cannot produce a value",
-			inject:  func(tr *decl.Tree) error { return tr.Inject("save", decl.Handle(func([]parse.SpecValue) error { return nil })) },
+			name: "a handler cannot produce a value",
+			inject: func(tr *decl.Tree) error {
+				return tr.Inject("save", decl.Handle(func([]parse.SpecValue) error { return nil }))
+			},
 			value:   call("save"),
 			wantErr: decl.ErrWrongKind,
 			wantMsg: "a handler performs an effect and cannot produce a value",
 		},
 		{
-			name:    "a handler named but not called is still not a value",
-			inject:  func(tr *decl.Tree) error { return tr.Inject("save", decl.Handle(func([]parse.SpecValue) error { return nil })) },
+			name: "a handler named but not called is still not a value",
+			inject: func(tr *decl.Tree) error {
+				return tr.Inject("save", decl.Handle(func([]parse.SpecValue) error { return nil }))
+			},
 			value:   ref("save"),
 			wantErr: decl.ErrWrongKind,
 			wantMsg: "a handler performs an effect and cannot produce a value",
 		},
 		{
-			name:    "a function must be called",
-			inject:  func(tr *decl.Tree) error { return tr.Inject("upper", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) { return sv("X"), nil })) },
+			name: "a function must be called",
+			inject: func(tr *decl.Tree) error {
+				return tr.Inject("upper", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) { return sv("X"), nil }))
+			},
 			value:   ref("upper"),
 			wantErr: decl.ErrWrongKind,
 			wantMsg: "a function must be called to produce a value",

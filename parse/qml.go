@@ -195,14 +195,23 @@ type SpecImport struct {
 	Pos   Position
 }
 
-// SpecHandler is one `onSignal: handlerName` binding.
+// SpecHandler is one `onSignal:` binding and the JavaScript it binds.
 //
 // Signal is the signal name with the `on` prefix removed and the first letter
 // lowercased, so `onClicked` becomes "clicked" — the name the adapter registers
-// slots under. Name is the host function the adapter resolves.
+// slots under.
 type SpecHandler struct {
 	Signal string
-	Name   string
+	// Body is the handler's statements, in order.
+	//
+	// It is ONE AST for both QML spellings: `onClicked: save()` is a single
+	// expression statement and `onClicked: { … }` is that block's contents, so
+	// nothing downstream has to ask which form was written. There is
+	// deliberately no separate "handler name" field — `onClicked: save` is an
+	// identifier expression and NOT a call to save(), and a field that flattened
+	// it to the name "save" would erase that distinction inside the parser,
+	// where nothing can see it any more.
+	Body []Stmt
 	// Path holds the segments of an ATTACHED handler —
 	// `Component.onCompleted` — and one segment for an ordinary one. As with
 	// [SpecProp], the parser records the spelling and does not rule on what it
@@ -666,29 +675,12 @@ func (p *qmlParser) member(n *SpecNode, name string, path []string, at Position)
 	}
 
 	if sig, ok := signalName(path[len(path)-1]); ok {
-		hAt := p.sc.Pos()
-		target, ok := p.ident()
-		if !ok {
-			r, ok := p.sc.Peek()
-			if !ok {
-				return SyntaxError{
-					Format: "qml", Pos: hAt,
-					Want:       "a handler name for " + quoted(name),
-					Got:        "end of input",
-					Incomplete: true,
-				}
-			}
-			// The most likely mistake here is writing a body, so the error
-			// says what this format wants instead of just what it found.
-			return SyntaxError{
-				Format: "qml", Pos: hAt,
-				Want: "a handler NAME for " + quoted(name) +
-					" (this format binds handlers by name; it has no expression syntax)",
-				Got: quoteRune(r),
-			}
+		body, err := p.handlerBody()
+		if err != nil {
+			return err
 		}
 		n.Handlers = append(n.Handlers, SpecHandler{
-			Signal: sig, Name: target, Path: path, Pos: at})
+			Signal: sig, Body: body, Path: path, Pos: at})
 		return nil
 	}
 
@@ -728,6 +720,46 @@ func (p *qmlParser) member(n *SpecNode, name string, path []string, at Position)
 
 	n.Props = append(n.Props, SpecProp{Name: name, Path: path, Value: v, Pos: at})
 	return nil
+}
+
+// handlerBody parses the right-hand side of an `onSignal:` — JavaScript, which
+// is what QML puts there.
+//
+// Both QML forms are the same grammar: `onClicked: save()` is one expression
+// statement and `onClicked: { let x = 1; save(x) }` is a block, so the block
+// form needs no special case. What this DOES NOT do is decide whether a body is
+// something an evaluator can run — a bare `save` parses as the identifier
+// expression it is, and an engine that only invokes named handlers refuses it by
+// name and position. The parser's job is the language, not its consumer's reach.
+//
+// It runs on the QML parser's OWN scanner and depth budget, so a handler body
+// cannot smuggle in recursion the document's limit was meant to bound.
+func (p *qmlParser) handlerBody() ([]Stmt, error) {
+	if err := p.skipSpace(); err != nil {
+		return nil, err
+	}
+	at := p.sc.Pos()
+	if _, ok := p.sc.Peek(); !ok {
+		return nil, SyntaxError{
+			Format: "qml", Pos: at,
+			Want: "a handler body", Got: "end of input", Incomplete: true,
+		}
+	}
+
+	x := &exprParser{sc: p.sc, max: p.maxDepth, d: &JavaScript, depth: p.depth}
+	sp := &stmtParser{sc: p.sc, x: x}
+	st, err := sp.statement()
+	// The depth the body reached is carried back, because the two parsers share
+	// one budget and a body that unwound its own counter would let whatever
+	// follows start from a total the document has not actually paid for.
+	p.depth = x.depth
+	if err != nil {
+		return nil, err
+	}
+	if st.Kind == StmtBlock {
+		return st.Body, nil
+	}
+	return []Stmt{st}, nil
 }
 
 // value parses one property value.

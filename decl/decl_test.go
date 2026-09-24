@@ -66,15 +66,75 @@ func (r *recorder) Apply(a decl.Application) error {
 	return r.applyErr[a.Prop]
 }
 
-func (r *recorder) ResolveHandler(n decl.NodeID, signal, name string, _ parse.Position) (func() error, error) {
-	r.trace = append(r.trace, fmt.Sprintf("resolve %d %s->%s", n, signal, name))
-	if err := r.resolveErr[name]; err != nil {
-		return nil, err
+// injectHandlers gives tr one handler per name the schema CALLS, so these
+// fixtures keep their old convenience — every handler name resolves unless the
+// test says otherwise — under the engine's rule that a name must be injected to
+// be reachable at all.
+//
+// It replaces the fake's ResolveHandler. Handler resolution is no longer the
+// adapter's business: a host injects its effects, and the engine resolves them
+// through the one registry every other name goes through.
+func injectHandlers(t *testing.T, tr *decl.Tree, r *recorder, spec parse.SpecTree) {
+	t.Helper()
+	done := map[string]bool{}
+	give := func(name string) {
+		if done[name] || r.resolveErr[name] != nil {
+			return
+		}
+		done[name] = true
+		fn, ok := r.handlers[name]
+		if !ok {
+			fn = func() error { r.trace = append(r.trace, "run "+name); return nil }
+		}
+		if err := tr.Inject(name, decl.Handle(func([]parse.SpecValue) error { return fn() })); err != nil {
+			t.Fatalf("inject handler %q: %v", name, err)
+		}
 	}
-	if fn, ok := r.handlers[name]; ok {
-		return fn, nil
+	// The fake's whole table, not only what this schema calls: injection is
+	// fixed before Mount, so a RELOAD naming a handler the first schema did not
+	// must still find it. That is the rule, not a workaround for it — the host's
+	// capability set does not grow because a file changed.
+	names := make([]string, 0, len(r.handlers))
+	for n := range r.handlers {
+		names = append(names, n)
 	}
-	return func() error { r.trace = append(r.trace, "run "+name); return nil }, nil
+	sort.Strings(names)
+	for _, n := range names {
+		give(n)
+	}
+
+	var visit func(*parse.SpecNode)
+	visit = func(n *parse.SpecNode) {
+		if n == nil {
+			return
+		}
+		for _, h := range n.Handlers {
+			for i := range h.Body {
+				h.Body[i].WalkExprs(func(e *parse.Expr) bool {
+					if e.Kind != parse.ExprCall || e.Left == nil || e.Left.Kind != parse.ExprIdent {
+						return true
+					}
+					// A name the test marked unresolvable is deliberately NOT
+					// injected: "the host did not hand this over" is what an
+					// unresolvable handler now means.
+					give(e.Left.Raw)
+					return true
+				})
+			}
+		}
+		for _, c := range n.Children {
+			visit(c)
+		}
+	}
+	visit(spec.Root)
+}
+
+// wiredSpec parses src and injects the handlers it calls, ready to Mount.
+func wiredSpec(t *testing.T, tr *decl.Tree, r *recorder, src string) parse.SpecTree {
+	t.Helper()
+	spec := mustSpec(t, src)
+	injectHandlers(t, tr, r, spec)
+	return spec
 }
 
 func (r *recorder) Destroy(n decl.NodeID) error {
@@ -114,11 +174,11 @@ func mustSpec(t *testing.T, src string) parse.SpecTree {
 func TestMountOrderIsReadableOffTheFile(t *testing.T) {
 	r := newRecorder()
 	tr := decl.New(r)
-	spec := mustSpec(t, `Column {
+	spec := wiredSpec(t, tr, r, `Column {
         id: root
         spacing: 2
         title: "hello"
-        onReady: warm
+        onReady: warm()
         Button { label: "a" }
         Button { label: "b" }
     }`)
@@ -127,9 +187,11 @@ func TestMountOrderIsReadableOffTheFile(t *testing.T) {
 	}
 
 	want := []string{
-		// Handlers resolve before the node is built: a widget may only accept
-		// its callback as a constructor option.
-		"resolve 1 ready->warm",
+		// No handler resolution appears in this trace at all. It used to: the
+		// engine asked the adapter to turn "warm" into a function. Handlers are
+		// now compiled by the ENGINE from the injected registry, so the adapter
+		// learns which signals a node has from its Construction — which is why
+		// the create line below still carries signals=[ready].
 		"create 2 Button children=[] signals=[]",
 		"apply 2 label=string(a) from-schema",
 		"create 3 Button children=[] signals=[]",
@@ -211,7 +273,7 @@ func TestOneEmitterPerSignalNotPerHandler(t *testing.T) {
 		r.handlers[n] = func() error { runs++; return nil }
 	}
 	tr := decl.New(r)
-	if err := tr.Mount(mustSpec(t, `B { onGo: a onGo: b onGo: c onStop: a }`)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, r, "B {\n onGo: a()\n onGo: b()\n onGo: c()\n onStop: a()\n}")); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	em := r.emitters[tr.Root()]
@@ -239,7 +301,7 @@ func TestEmitterRunsUnderTheEngineRules(t *testing.T) {
 		inner = r.emitters[tr.Root()]["go"]()
 		return nil
 	}
-	if err := tr.Mount(mustSpec(t, `B { onGo: again }`)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, r, `B { onGo: again() }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	if err := r.emitters[tr.Root()]["go"](); err != nil {
@@ -387,7 +449,7 @@ func TestEmitRunsHandlersInDocumentOrder(t *testing.T) {
 		r.handlers[name] = func() error { ran = append(ran, name); return nil }
 	}
 	tr := decl.New(r)
-	if err := tr.Mount(mustSpec(t, `B { onGo: first onGo: second onGo: third }`)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, r, "B {\n onGo: first()\n onGo: second()\n onGo: third()\n}")); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	if err := tr.Emit(tr.Root(), "go"); err != nil {
@@ -411,7 +473,7 @@ func TestEmitRefusesACycleImmediately(t *testing.T) {
 		emitErr = tr.Emit(tr.Root(), "go")
 		return nil
 	}
-	if err := tr.Mount(mustSpec(t, `B { onGo: again }`)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, r, `B { onGo: again() }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	if err := tr.Emit(tr.Root(), "go"); err != nil {
@@ -444,12 +506,12 @@ func TestEmitDepthCapCatchesALongAcyclicChain(t *testing.T) {
 		}
 		return nil
 	}
-	if err := tr.Mount(mustSpec(t, `A {
-        onGo: chain
-        B { onGo: chain }
-        C { onGo: chain }
-        D { onGo: chain }
-        E { onGo: chain }
+	if err := tr.Mount(wiredSpec(t, tr, r, `A {
+        onGo: chain()
+        B { onGo: chain() }
+        C { onGo: chain() }
+        D { onGo: chain() }
+        E { onGo: chain() }
     }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
@@ -492,7 +554,7 @@ func TestHandlerErrorStopsTheEmissionAndCommitsWhatRan(t *testing.T) {
 	r.handlers["fails"] = func() error { return boom }
 	r.handlers["never"] = func() error { applied = append(applied, "NEVER-RAN"); return nil }
 
-	if err := tr.Mount(mustSpec(t, `B { onGo: writes onGo: fails onGo: never }`)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, r, "B {\n onGo: writes()\n onGo: fails()\n onGo: never()\n}")); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	err := tr.Emit(tr.Root(), "go")
@@ -529,7 +591,7 @@ func TestMountIsRefusedDuringEmission(t *testing.T) {
 		inner = tr.Mount(mustSpec(t, `Other { }`))
 		return nil
 	}
-	if err := tr.Mount(mustSpec(t, `B { onGo: remount }`)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, r, `B { onGo: remount() }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	if err := tr.Emit(tr.Root(), "go"); err != nil {
@@ -555,6 +617,11 @@ func TestMountTwiceIsRefused(t *testing.T) {
 // TestAdapterRefusalsAreTypedAndPositioned: a schema is INPUT. An unknown type
 // or property is the author's mistake to see and fix, so the error has to carry
 // the line, and it must never be a panic.
+//
+// An unresolvable HANDLER used to be a row here. It is not an adapter refusal
+// any more — the adapter never sees handler names — so it moved to
+// [TestAnUnresolvableHandlerIsTheEnginesRefusalAndKeepsItsPosition], which
+// asserts the new sentinel rather than quietly accepting a different one.
 func TestAdapterRefusalsAreTypedAndPositioned(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -568,9 +635,6 @@ func TestAdapterRefusalsAreTypedAndPositioned(t *testing.T) {
 		{"unknown property", "A {\n  bogus: 1\n}", func(r *recorder) {
 			r.applyErr["bogus"] = errors.New("no such property")
 		}, "apply"},
-		{"unresolvable handler", "A {\n  onGo: missing\n}", func(r *recorder) {
-			r.resolveErr["missing"] = errors.New("no such function")
-		}, "bind"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -618,7 +682,7 @@ func TestNilAdapterFailsAtConstruction(t *testing.T) {
 type hostileAdapter struct {
 	*recorder
 	tr *decl.Tree
-	at string // "resolve" | "create" | "apply" | "destroy"
+	at string // "create" | "apply" | "destroy"
 	do func()
 	// fired keeps the re-entry to once, so the test observes one intrusion
 	// rather than a loop.
@@ -632,10 +696,6 @@ func (h *hostileAdapter) maybe(point string) {
 	}
 }
 
-func (h *hostileAdapter) ResolveHandler(n decl.NodeID, sig, name string, p parse.Position) (func() error, error) {
-	h.maybe("resolve")
-	return h.recorder.ResolveHandler(n, sig, name, p)
-}
 func (h *hostileAdapter) Create(c decl.Construction) ([]string, error) {
 	h.maybe("create")
 	return h.recorder.Create(c)
@@ -655,7 +715,10 @@ func (h *hostileAdapter) Destroy(n decl.NodeID) error {
 // do, it must not end up claiming a root it does not have, or holding nodes
 // under no root.
 func TestTheTreeCannotBeCorruptedFromAnyAdapterCallback(t *testing.T) {
-	points := []string{"resolve", "create", "apply", "destroy"}
+	// Handler resolution used to be a fourth point here. It is gone because the
+	// adapter no longer resolves handlers at all — the host injects them and the
+	// engine resolves them itself, so there is no callback left to re-enter from.
+	points := []string{"create", "apply", "destroy"}
 	intrusions := []string{"destroy", "mount", "setprop"}
 
 	for _, point := range points {
@@ -676,7 +739,7 @@ func TestTheTreeCannotBeCorruptedFromAnyAdapterCallback(t *testing.T) {
 				}
 
 				// Must not panic, whatever happens.
-				err := tr.Mount(mustSpec(t, `A { label: "x" onGo: h B { label: "y" } }`))
+				err := tr.Mount(wiredSpec(t, tr, h.recorder, "A {\n label: \"x\"\n onGo: h()\n B { label: \"y\" }\n}"))
 				_ = err
 
 				if tr.Root() != decl.NoNode && tr.Len() == 0 {
@@ -742,7 +805,7 @@ func TestCycleErrorNamesBothEmissions(t *testing.T) {
 		inner = tr.Emit(ids[0], "go")
 		return nil
 	}
-	if err := tr.Mount(mustSpec(t, "A {\n  onGo: toB\n  B {\n    onGo: toA\n  }\n}")); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, r, "A {\n  onGo: toB()\n  B {\n    onGo: toA()\n  }\n}")); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	ids = []decl.NodeID{tr.Root(), tr.Children(tr.Root())[0]}
@@ -766,5 +829,28 @@ func TestCycleErrorNamesBothEmissions(t *testing.T) {
 	}
 	if se.Pos.Line == 0 {
 		t.Error("the cycle error carries no position at all")
+	}
+}
+
+// TestAnUnresolvableHandlerIsTheEnginesRefusalAndKeepsItsPosition.
+//
+// The adapter is no longer asked to resolve handler names, so a name nothing
+// was injected under is the ENGINE's refusal and carries the engine's sentinel.
+// What must not change is the part an author depends on: the line.
+func TestAnUnresolvableHandlerIsTheEnginesRefusalAndKeepsItsPosition(t *testing.T) {
+	tr := decl.New(newRecorder())
+	err := tr.Mount(mustSpec(t, "A {\n  onGo: missing()\n}"))
+	if !errors.Is(err, decl.ErrNotInjected) {
+		t.Fatalf("err = %v, want ErrNotInjected", err)
+	}
+	if errors.Is(err, decl.ErrAdapter) {
+		t.Errorf("err = %v, want it NOT to blame the adapter, which never saw the name", err)
+	}
+	var se decl.SchemaError
+	if !errors.As(err, &se) {
+		t.Fatalf("err %T, want decl.SchemaError", err)
+	}
+	if se.Pos.Line != 2 {
+		t.Errorf("Pos = %s, want line 2 — an author cannot find the handler without it", se.Pos)
 	}
 }

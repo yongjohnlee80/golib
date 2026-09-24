@@ -71,7 +71,7 @@ Column {
     Button {
         label: "Save"
         enabled: true
-        onClicked: saveDocument
+        onClicked: saveDocument()
     }
     /* block comment */
     Text { text: "hello" }
@@ -109,8 +109,13 @@ Column {
 	}
 	// onClicked -> "clicked": the adapter registers slots under the signal
 	// name, not the schema spelling.
-	if btn.Handlers[0].Signal != "clicked" || btn.Handlers[0].Name != "saveDocument" {
-		t.Errorf("handler = %+v, want {clicked saveDocument}", btn.Handlers[0])
+	h := btn.Handlers[0]
+	if h.Signal != "clicked" {
+		t.Errorf("signal = %q, want clicked", h.Signal)
+	}
+	v := h.Body[0].Value
+	if len(h.Body) != 1 || v == nil || v.Kind != parse.ExprCall || v.Left.Raw != "saveDocument" {
+		t.Errorf("body = %+v, want the call to saveDocument", h.Body)
 	}
 }
 
@@ -469,12 +474,79 @@ func TestQMLErrorIdentity(t *testing.T) {
 	}
 }
 
-func TestQMLHandlerRejectsABody(t *testing.T) {
-	// The likeliest thing a QML author tries. The message has to explain the
-	// rule, not just refuse the character.
-	se := syntaxErr(t, `Button { onClicked: { doThing() } }`)
-	if !strings.Contains(se.Want, "handler NAME") {
-		t.Errorf("Want = %q, should explain that handlers bind by name", se.Want)
+// TestQMLHandlerTakesAJavaScriptBody.
+//
+// This test previously asserted the OPPOSITE — that a body is refused and the
+// author is told "this format binds handlers by name". That refusal was the
+// parser shrunk to fit the engine behind it: QML puts JavaScript after
+// `onClicked:`, so a parser of QML reads JavaScript there. An engine that can
+// only invoke named handlers refuses what it cannot run, by name and position,
+// which is a different thing said in a different place.
+func TestQMLHandlerTakesAJavaScriptBody(t *testing.T) {
+	cases := []struct {
+		name  string
+		src   string
+		kinds []parse.StmtKind
+	}{
+		{
+			name:  "a call",
+			src:   `Button { onClicked: doThing() }`,
+			kinds: []parse.StmtKind{parse.StmtExpr},
+		},
+		{
+			name:  "a braced body is the block's CONTENTS, not a block",
+			src:   `Button { onClicked: { doThing() } }`,
+			kinds: []parse.StmtKind{parse.StmtExpr},
+		},
+		{
+			name:  "several statements",
+			src:   "Button { onClicked: { let x = 1\n doThing(x) } }",
+			kinds: []parse.StmtKind{parse.StmtDeclaration, parse.StmtExpr},
+		},
+		{
+			name:  "a bare name is an identifier expression, not a call",
+			src:   `Button { onClicked: doThing }`,
+			kinds: []parse.StmtKind{parse.StmtExpr},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tree := mustParse(t, c.src)
+			if len(tree.Root.Handlers) != 1 {
+				t.Fatalf("handlers = %+v, want 1", tree.Root.Handlers)
+			}
+			body := tree.Root.Handlers[0].Body
+			if len(body) != len(c.kinds) {
+				t.Fatalf("body = %+v, want %d statements", body, len(c.kinds))
+			}
+			for i, k := range c.kinds {
+				if body[i].Kind != k {
+					t.Errorf("statement %d = %s, want %s", i, body[i].Kind, k)
+				}
+			}
+		})
+	}
+}
+
+// TestABareHandlerNameIsNotACall.
+//
+// The distinction the old `Name string` field erased. `onClicked: save` and
+// `onClicked: save()` used to produce the same SpecHandler, so an engine could
+// not tell them apart even if it wanted to — the information was gone inside the
+// parser, where nothing downstream could recover it.
+func TestABareHandlerNameIsNotACall(t *testing.T) {
+	bare := mustParse(t, `Button { onClicked: save }`).Root.Handlers[0].Body
+	called := mustParse(t, `Button { onClicked: save() }`).Root.Handlers[0].Body
+
+	if bare[0].Value == nil || called[0].Value == nil {
+		t.Fatal("both bodies should be expression statements with a value")
+	}
+	if bare[0].Value.Kind == called[0].Value.Kind {
+		t.Fatalf("both parsed as %s; a name and a call must not be the same node",
+			bare[0].Value.Kind)
+	}
+	if called[0].Value.Kind != parse.ExprCall {
+		t.Errorf("save() = %s, want a call", called[0].Value.Kind)
 	}
 }
 

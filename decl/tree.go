@@ -149,6 +149,12 @@ type node struct {
 }
 
 type boundHandler struct {
+	// key is the structural fingerprint of the SOURCE this was compiled from.
+	// A reconcile compares it against the incoming schema to decide whether a
+	// handler changed — a question the compiled function itself cannot answer,
+	// and which an earlier design asked of a handler NAME that a body has no
+	// single one of.
+	key  string
 	name string
 	pos  parse.Position
 	fn   func() error
@@ -370,16 +376,11 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 		if pre != nil {
 			break // already resolved, during planning
 		}
-		fn, err := t.adapter.ResolveHandler(id, h.Signal, h.Name, h.Pos)
+		bh, err := t.compileHandler(id, h)
 		if err != nil {
-			return id, SchemaError{Op: "bind", Node: id, Detail: h.Signal + " -> " + h.Name,
-				Pos: h.Pos, Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
+			return id, err
 		}
-		if fn == nil {
-			return id, SchemaError{Op: "bind", Node: id, Detail: h.Signal + " -> " + h.Name,
-				Pos: h.Pos, Err: fmt.Errorf("%w: resolved to a nil function", ErrAdapter)}
-		}
-		n.handlers[h.Signal] = append(n.handlers[h.Signal], boundHandler{name: h.Name, pos: h.Pos, fn: fn})
+		n.handlers[h.Signal] = append(n.handlers[h.Signal], bh)
 	}
 
 	// CHILDREN FIRST. A constructor that requires its children — a split needs

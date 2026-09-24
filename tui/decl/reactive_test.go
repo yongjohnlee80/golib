@@ -22,7 +22,6 @@ func reactive(t *testing.T, src string, sources map[string]string,
 	funcs map[string]decl.ValueFunc) (*decl.Tree, *tuidecl.Adapter) {
 	t.Helper()
 	opts := append(tuidecl.StdProperties(),
-		tuidecl.WithHostFuncs(tuidecl.HostFuncs{}),
 		tuidecl.WithErrorSink(func(err error) { t.Errorf("unexpected handler error: %v", err) }))
 	ad := tuidecl.New(tuidecl.StdRegistry(), opts...)
 	tr := decl.New(ad)
@@ -121,8 +120,7 @@ func TestABareIdentifierStillReachesTheAdapter(t *testing.T) {
 
 // TestAnUnknownSourceRefusesWithTheTreeUntouched — 0001c row 5, 0001b row 19.
 func TestAnUnknownSourceRefusesWithTheTreeUntouched(t *testing.T) {
-	opts := append(tuidecl.StdProperties(),
-		tuidecl.WithHostFuncs(tuidecl.HostFuncs{}), tuidecl.WithErrorSink(func(error) {}))
+	opts := append(tuidecl.StdProperties(), tuidecl.WithErrorSink(func(error) {}))
 	tr := decl.New(tuidecl.New(tuidecl.StdRegistry(), opts...))
 
 	bad, err := parse.QML{}.Parse([]byte(
@@ -150,8 +148,7 @@ func TestAnUnknownSourceRefusesWithTheTreeUntouched(t *testing.T) {
 // setter, so a bound orientation could only be applied by rebuilding the node
 // on every tick — destroying the state a reconcile exists to preserve.
 func TestABindingOnAConstructorOnlyPropertyIsRefusedOnTheRealAdapter(t *testing.T) {
-	opts := append(tuidecl.StdProperties(),
-		tuidecl.WithHostFuncs(tuidecl.HostFuncs{}), tuidecl.WithErrorSink(func(error) {}))
+	opts := append(tuidecl.StdProperties(), tuidecl.WithErrorSink(func(error) {}))
 	tr := decl.New(tuidecl.New(tuidecl.StdRegistry(), opts...))
 	if err := tr.DeclareSource("o", text("horizontal")); err != nil {
 		t.Fatal(err)
@@ -199,7 +196,6 @@ func TestTheAdapterNeverSeesAnExpression(t *testing.T) {
 				return nil
 			},
 		}),
-		tuidecl.WithHostFuncs(tuidecl.HostFuncs{}),
 		tuidecl.WithErrorSink(func(error) {}),
 	}
 	tr := decl.New(tuidecl.New(reg, opts...))

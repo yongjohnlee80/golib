@@ -431,19 +431,14 @@ func (t *Tree) planSubtree(sn *parse.SpecNode) error {
 	t.preEval[sn] = effective
 
 	for _, h := range sn.Handlers {
-		fn, err := t.adapter.ResolveHandler(id, h.Signal, h.Name, h.Pos)
+		bh, err := t.compileHandler(id, h)
 		if err != nil {
-			return SchemaError{Op: "bind", Node: id, Detail: h.Signal + " -> " + h.Name,
-				Pos: h.Pos, Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
-		}
-		if fn == nil {
-			return SchemaError{Op: "bind", Node: id, Detail: h.Signal + " -> " + h.Name,
-				Pos: h.Pos, Err: fmt.Errorf("%w: resolved to a nil function", ErrAdapter)}
+			return err
 		}
 		if p.handlers == nil {
 			p.handlers = map[string][]boundHandler{}
 		}
-		p.handlers[h.Signal] = append(p.handlers[h.Signal], boundHandler{name: h.Name, pos: h.Pos, fn: fn})
+		p.handlers[h.Signal] = append(p.handlers[h.Signal], bh)
 	}
 	if p.handlers == nil {
 		// A node with no handlers still needs an entry: its presence is what
@@ -550,16 +545,11 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 		s.rebind = true
 		s.handlers = make(map[string][]boundHandler, len(sn.Handlers))
 		for _, h := range sn.Handlers {
-			fn, err := t.adapter.ResolveHandler(oldID, h.Signal, h.Name, h.Pos)
+			bh, err := t.compileHandler(oldID, h)
 			if err != nil {
-				return nil, SchemaError{Op: "bind", Node: oldID, Detail: h.Signal + " -> " + h.Name,
-					Pos: h.Pos, Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
+				return nil, err
 			}
-			if fn == nil {
-				return nil, SchemaError{Op: "bind", Node: oldID, Detail: h.Signal + " -> " + h.Name,
-					Pos: h.Pos, Err: fmt.Errorf("%w: resolved to a nil function", ErrAdapter)}
-			}
-			s.handlers[h.Signal] = append(s.handlers[h.Signal], boundHandler{name: h.Name, pos: h.Pos, fn: fn})
+			s.handlers[h.Signal] = append(s.handlers[h.Signal], bh)
 		}
 	}
 
@@ -1123,7 +1113,7 @@ func propSequences(props []parse.SpecProp) map[string][]parse.SpecValue {
 }
 
 // sameBindings reports whether a node's live bindings already are what the
-// schema asks for: the same signals, carrying the same handler names in the
+// schema asks for: the same signals, carrying the same handler BODIES in the
 // same run order.
 func sameBindings(cur map[string][]boundHandler, want []parse.SpecHandler) bool {
 	n := 0
@@ -1140,7 +1130,7 @@ func sameBindings(cur map[string][]boundHandler, want []parse.SpecHandler) bool 
 	for _, h := range want {
 		hs := cur[h.Signal]
 		i := seen[h.Signal]
-		if i >= len(hs) || hs[i].name != h.Name {
+		if i >= len(hs) || hs[i].key != handlerKey(h) {
 			return false
 		}
 		seen[h.Signal] = i + 1

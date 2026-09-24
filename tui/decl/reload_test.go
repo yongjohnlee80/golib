@@ -178,7 +178,6 @@ func TestAReloadKeepsFocusAndInFlightWork(t *testing.T) {
 	reg := tuidecl.StdRegistry()
 	tuidecl.Register(reg, "Tracker", buildTracker)
 	opts := append(tuidecl.StdProperties(),
-		tuidecl.WithHostFuncs(tuidecl.HostFuncs{}),
 		tuidecl.WithErrorSink(func(err error) { t.Errorf("unexpected handler error: %v", err) }),
 	)
 	ad := tuidecl.New(reg, opts...)
@@ -945,7 +944,6 @@ func TestAConstructorRefusingAValueLeavesTheTreeStanding(t *testing.T) {
 func TestAFailedSetterStillLatches(t *testing.T) {
 	reg := tuidecl.StdRegistry()
 	opts := append(tuidecl.StdProperties(),
-		tuidecl.WithHostFuncs(tuidecl.HostFuncs{}),
 		tuidecl.WithErrorSink(func(error) {}),
 		// A setter that refuses every value, registered over the standard one.
 		tuidecl.WithSetters("Text", map[string]tuidecl.Setter{

@@ -1,0 +1,217 @@
+package decl
+
+import (
+	"fmt"
+
+	"github.com/yongjohnlee80/golib/parse"
+)
+
+// ErrHandlerBody reports a handler body this evaluator does not run.
+//
+// It is NOT a syntax error and deliberately not reported as one: the source is
+// valid QML, the parser read it correctly, and this engine declines to execute
+// it. Saying so precisely is the difference between "you wrote this wrong" and
+// "this engine does not do that yet", and only the second is true.
+var ErrHandlerBody = fmt.Errorf("decl: this engine does not run that handler body")
+
+// compileHandler turns one parsed handler into something that can be invoked.
+//
+// The accepted shape is deliberately narrow: a sequence of CALLS to injected
+// handlers, whose arguments are ordinary values. That is a property of this
+// EVALUATOR, not of the language — the parser reads the whole of QML's
+// JavaScript, and widening what runs here means accepting more statement kinds
+// below, not reparsing anything.
+//
+// Compilation happens during PLANNING, before any node is built. A handler that
+// names something unresolvable is therefore found while the tree is still
+// intact, which is what stopped a typo in a fresh subtree from destroying the
+// working screen it was replacing.
+func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, error) {
+	if len(h.Body) == 0 {
+		return boundHandler{}, SchemaError{Op: "bind", Node: node, Detail: h.Signal, Pos: h.Pos,
+			Err: fmt.Errorf("%w: the handler is empty", ErrHandlerBody)}
+	}
+
+	type invocation struct {
+		fn   HandlerFunc
+		args []parse.SpecValue
+		name string
+	}
+	var calls []invocation
+
+	for _, st := range h.Body {
+		if st.Kind != parse.StmtExpr || st.Value == nil {
+			return boundHandler{}, t.refuseBody(node, h, st.Pos, fmt.Sprintf(
+				"a %s statement; this engine runs calls to injected handlers", st.Kind))
+		}
+		e := st.Value
+		if e.Kind != parse.ExprCall {
+			// The distinction the parser keeps and an earlier design erased:
+			// `onClicked: save` is the IDENTIFIER save, not a call to it. Saying
+			// so is more useful than silently invoking what the author named.
+			if e.Kind == parse.ExprIdent {
+				return boundHandler{}, t.refuseBody(node, h, e.Pos, fmt.Sprintf(
+					"the name %q on its own; a handler is invoked by calling it, so write %s()",
+					e.Raw, e.Raw))
+			}
+			return boundHandler{}, t.refuseBody(node, h, e.Pos, fmt.Sprintf(
+				"a %s expression; this engine runs calls to injected handlers", e.Kind))
+		}
+
+		name, ok := calleeName(e.Left)
+		if !ok {
+			return boundHandler{}, t.refuseBody(node, h, e.Pos,
+				"a call to something that is not a name")
+		}
+		ref := parse.SpecValue{Kind: parse.SpecValueRef, Raw: name,
+			Path: splitDots(name), Pos: e.Pos}
+		in, err := t.lookupRef(ref, node)
+		if err != nil {
+			return boundHandler{}, err
+		}
+		if ok, why := allowedIn(ctxHandler, in.Kind, true); !ok {
+			return boundHandler{}, t.refuse(node, ref, why)
+		}
+
+		// Arguments are VALUES wherever the call sits, so they resolve in the
+		// binding context — which is what lets `submit(count)` read a source
+		// without this evaluator having to run JavaScript at all.
+		args := make([]parse.SpecValue, 0, len(e.Args))
+		for i := range e.Args {
+			av, err := t.argValue(node, h, &e.Args[i])
+			if err != nil {
+				return boundHandler{}, err
+			}
+			args = append(args, av)
+		}
+		calls = append(calls, invocation{fn: in.Handle, args: args, name: name})
+	}
+
+	label := calls[0].name
+	if len(calls) > 1 {
+		label = fmt.Sprintf("%s and %d more", label, len(calls)-1)
+	}
+	return boundHandler{
+		name: label,
+		key:  handlerKey(h),
+		pos:  h.Pos,
+		fn: func() error {
+			// In order, and STOPPING AT THE FIRST FAILURE. Running the rest
+			// would be running the tail of a handler whose head did not happen,
+			// which no author writing two statements in sequence expects.
+			for _, c := range calls {
+				if err := c.fn(c.args); err != nil {
+					return fmt.Errorf("%s: %w", c.name, err)
+				}
+			}
+			return nil
+		},
+	}, nil
+}
+
+// argValue reduces one handler argument to a terminal.
+//
+// It bridges the expression AST to the value walk: the evaluator's value
+// vocabulary is [parse.SpecValue], and an argument the bridge cannot express is
+// refused HERE rather than mistranslated into something that resolves to the
+// wrong thing.
+func (t *Tree) argValue(node NodeID, h parse.SpecHandler, e *parse.Expr) (parse.SpecValue, error) {
+	v, ok := specValueOf(e)
+	if !ok {
+		return parse.SpecValue{}, t.refuseBody(node, h, e.Pos, fmt.Sprintf(
+			"a %s argument; this engine passes literals and injected names", e.Kind))
+	}
+	res, err := t.evalValue(ctxBinding, v, node, nil)
+	if err != nil {
+		return parse.SpecValue{}, err
+	}
+	return res.value, nil
+}
+
+// specValueOf translates an expression node into the evaluator's value
+// vocabulary, reporting false for the shapes it has no equivalent for.
+func specValueOf(e *parse.Expr) (parse.SpecValue, bool) {
+	switch e.Kind {
+	case parse.ExprString:
+		return parse.SpecValue{Kind: parse.SpecValueString, Raw: e.Raw, Pos: e.Pos}, true
+	case parse.ExprNumber:
+		return parse.SpecValue{Kind: parse.SpecValueNumber, Raw: e.Raw, Pos: e.Pos}, true
+	case parse.ExprBool:
+		return parse.SpecValue{Kind: parse.SpecValueBool, Raw: e.Raw, Pos: e.Pos}, true
+	case parse.ExprIdent, parse.ExprMember:
+		name, ok := calleeName(e)
+		if !ok {
+			return parse.SpecValue{}, false
+		}
+		return parse.SpecValue{Kind: parse.SpecValueRef, Raw: name,
+			Path: splitDots(name), Pos: e.Pos}, true
+	default:
+		return parse.SpecValue{}, false
+	}
+}
+
+// calleeName flattens an identifier or a non-computed member chain to its dotted
+// spelling, and reports false for anything else.
+//
+// A COMPUTED member — `handlers[name]` — is deliberately not a name: which
+// member it reaches is decided at run time, and a registry checked during
+// planning cannot answer for it.
+func calleeName(e *parse.Expr) (string, bool) {
+	if e == nil {
+		return "", false
+	}
+	switch e.Kind {
+	case parse.ExprIdent:
+		return e.Raw, true
+	case parse.ExprMember:
+		if e.Computed {
+			return "", false
+		}
+		left, ok := calleeName(e.Left)
+		if !ok {
+			return "", false
+		}
+		return left + "." + e.Name, true
+	default:
+		return "", false
+	}
+}
+
+// handlerKey is a structural fingerprint of a handler's body.
+//
+// It exists because a reconcile has to answer "is this the same handler" BEFORE
+// compiling it, and the answer used to be a comparison of handler NAMES — which
+// a body has no single one of. It is deliberately independent of position and
+// whitespace, so reformatting a file does not re-bind every signal in it, and it
+// covers every statement and expression kind rather than only the ones this
+// evaluator runs: a body that changed from something unrunnable to something
+// else unrunnable must still read as changed.
+func handlerKey(h parse.SpecHandler) string {
+	var b []byte
+	b = append(b, h.Signal...)
+	b = append(b, ':')
+	for i := range h.Body {
+		h.Body[i].Walk(func(s *parse.Stmt) bool {
+			b = append(b, byte('0'+s.Kind))
+			b = append(b, s.Raw...)
+			b = append(b, ';')
+			return true
+		})
+		h.Body[i].WalkExprs(func(e *parse.Expr) bool {
+			b = append(b, byte('0'+e.Kind))
+			b = append(b, e.Raw...)
+			b = append(b, '.')
+			b = append(b, e.Name...)
+			b = append(b, ',')
+			return true
+		})
+	}
+	return string(b)
+}
+
+// refuseBody reports a body shape this evaluator declines to run, naming the
+// signal, the position inside the body, and what was found there.
+func (t *Tree) refuseBody(node NodeID, h parse.SpecHandler, at parse.Position, found string) error {
+	return SchemaError{Op: "bind", Node: node, Detail: h.Signal, Pos: at,
+		Err: fmt.Errorf("%w: found %s", ErrHandlerBody, found)}
+}

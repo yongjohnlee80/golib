@@ -106,7 +106,7 @@ func TestCapitalisationSeparatesAChildNodeFromAGroupedProperty(t *testing.T) {
 // starts with `Component`, not `on` — would classify it as an ordinary
 // property and lose the handler entirely.
 func TestAnAttachedHandlerCarriesItsPath(t *testing.T) {
-	tree, err := parse.QML{}.Parse([]byte(`Item { Component.onCompleted: go }`))
+	tree, err := parse.QML{}.Parse([]byte(`Item { Component.onCompleted: go() }`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,8 +114,12 @@ func TestAnAttachedHandlerCarriesItsPath(t *testing.T) {
 		t.Fatalf("handlers = %v; an attached handler was read as a property", tree.Root.Handlers)
 	}
 	h := tree.Root.Handlers[0]
-	if h.Signal != "completed" || h.Name != "go" {
-		t.Errorf("signal=%q name=%q, want completed/go", h.Signal, h.Name)
+	if h.Signal != "completed" {
+		t.Errorf("signal = %q, want completed", h.Signal)
+	}
+	v := h.Body[0].Value
+	if len(h.Body) != 1 || v == nil || v.Kind != parse.ExprCall || v.Left.Raw != "go" {
+		t.Errorf("body = %+v, want the call to go", h.Body)
 	}
 	if strings.Join(h.Path, ".") != "Component.onCompleted" {
 		t.Errorf("path = %v, want the full attached spelling", h.Path)
