@@ -24,6 +24,9 @@ type recorder struct {
 
 	handlers map[string]func() error
 	consume  map[string][]string
+	// onApply runs inside Apply, which is the only place a test can reach in
+	// while the engine is mid-walk.
+	onApply  func(decl.Application)
 	emitters map[decl.NodeID]map[string]func() error
 }
 
@@ -57,6 +60,9 @@ func (r *recorder) Create(c decl.Construction) ([]string, error) {
 func (r *recorder) Apply(a decl.Application) error {
 	r.trace = append(r.trace, fmt.Sprintf("apply %d %s=%s(%s) from-%s",
 		a.Node, a.Prop, a.Value.Kind, a.Value.Raw, a.Origin))
+	if r.onApply != nil {
+		r.onApply(a)
+	}
 	return r.applyErr[a.Prop]
 }
 
