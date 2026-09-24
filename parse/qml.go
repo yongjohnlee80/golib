@@ -87,6 +87,12 @@ const (
 	// than a tui/style.Token — otherwise the same schema stops meaning
 	// anything to a non-terminal adapter, which is the point of the layering.
 	SpecValueToken
+	// SpecValueRef is a bare identifier: a single reference, resolved by the
+	// adapter. Not a member chain — see the grammar note on the type.
+	SpecValueRef
+	// SpecValueCall is a call into the host function registry. Raw holds the
+	// function name and Args holds the arguments, which are themselves Values.
+	SpecValueCall
 	// SpecValueSource is a reactive source reference written $name.
 	//
 	// It is SPELLED DIFFERENTLY FROM A BARE IDENTIFIER on purpose. A bare word
@@ -95,13 +101,12 @@ const (
 	// a source would change meaning based on host configuration, and the same
 	// name could not be both. A sigil keeps the two populations apart, and
 	// keeps every schema written before sources existed meaning what it did.
+	//
+	// It is declared LAST so the kinds that existed before it keep their
+	// numeric values: inserting it beside @token shifted Ref from 5 to 6 and
+	// Call from 6 to 7, which is invisible in Go and not invisible to anything
+	// that has ever written one down.
 	SpecValueSource
-	// SpecValueRef is a bare identifier: a single reference, resolved by the
-	// adapter. Not a member chain — see the grammar note on the type.
-	SpecValueRef
-	// SpecValueCall is a call into the host function registry. Raw holds the
-	// function name and Args holds the arguments, which are themselves Values.
-	SpecValueCall
 )
 
 // String renders the kind for diagnostics.
