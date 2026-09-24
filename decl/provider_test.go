@@ -446,3 +446,39 @@ func TestALaterDeliveryUnderAnUndeclaredNameIsRefusedToo(t *testing.T) {
 		t.Errorf("Theme.bg = %q, want the delivery to have been rejected whole", cur.Raw)
 	}
 }
+
+// TestARefusedSubscriptionLeavesNoSourcesBehind.
+//
+// The names were injected one at a time and the first refusal returned,
+// leaving the earlier ones behind — so a schema could
+// bind sources belonging to a provider that is NOT attached to anything, and
+// nothing would ever update them, because the delivery path was torn down in
+// the same breath.
+func TestARefusedSubscriptionLeavesNoSourcesBehind(t *testing.T) {
+	tr := decl.New(newReactor(), decl.WithScheduler(immediate()))
+	// `Theme` is a constant, so `Theme.bad` cannot name something inside it.
+	if err := tr.Inject("Theme", decl.Constant(sv("dark"))); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	p := &palette{
+		names: []string{"Good", "Theme.bad"},
+		now:   map[string]string{"Good": "ok", "Theme.bad": "bad"},
+	}
+	if err := tr.Subscribe(p); err == nil {
+		t.Fatal("a provider naming a member of a constant was accepted")
+	}
+	if p.cancelled != 1 {
+		t.Errorf("cancelled %d times, want 1", p.cancelled)
+	}
+	if _, ok := tr.Source("Good"); ok {
+		t.Error("a refused subscription left Good registered as a source")
+	}
+	if _, ok := tr.Lookup("Good"); ok {
+		t.Error("a refused subscription left Good in the registry")
+	}
+	// The name is free, so a corrected provider can claim it.
+	q := &palette{names: []string{"Good"}, now: map[string]string{"Good": "ok"}}
+	if err := tr.Subscribe(q); err != nil {
+		t.Errorf("the tree was latched by a refused subscription: %v", err)
+	}
+}

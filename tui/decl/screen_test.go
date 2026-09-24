@@ -385,3 +385,64 @@ func TestADuplicatedPropertyIsAppliedInDocumentOrder(t *testing.T) {
 		t.Errorf("label = %q, want second — applications run in document order", got)
 	}
 }
+
+// TestABuilderGuardsTheKindItReadsRatherThanTrustingResolution.
+//
+// Split and Flex read `Raw` off an enum property and match it against known
+// symbols. That is only safe while the value is a STRING, and "the engine
+// resolves it first" is a property of the current wiring rather than of the
+// builder's signature: a host may inject a constant of any kind, and a builder
+// that trusted resolution would read Raw off a number, match no case, and blame
+// the author for an orientation they spelled correctly.
+//
+// The guards were added with the qualified-enum work and nothing exercised
+// them; the coverage gate is what surfaced that.
+func TestABuilderGuardsTheKindItReadsRatherThanTrustingResolution(t *testing.T) {
+	cases := []struct {
+		name    string
+		src     string
+		wantMsg string
+	}{
+		{
+			name:    "Split orientation",
+			src:     "Split {\n  orientation: pick()\n  Text { text: \"a\" }\n  Text { text: \"b\" }\n}",
+			wantMsg: "orientation must be written as a string",
+		},
+		{
+			name:    "Flex direction",
+			src:     "Flex {\n  direction: pick()\n  Text { text: \"a\" }\n}",
+			wantMsg: "direction must be written as a string",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			spec, err := parse.QML{}.Parse([]byte(c.src))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
+				tuidecl.WithErrorSink(func(error) {}))...)
+			tr := decl.New(a)
+			// A host constant of the wrong KIND. It resolves — the engine has no
+			// opinion about what a Split wants — and arrives at the builder as a
+			// number.
+			if err := tr.DeclareFunc("pick", func([]parse.SpecValue) (parse.SpecValue, error) {
+				return parse.SpecValue{Kind: parse.SpecValueNumber, Raw: "1"}, nil
+			}); err != nil {
+				t.Fatalf("DeclareFunc: %v", err)
+			}
+
+			err = tr.Mount(spec)
+			if err == nil {
+				t.Fatal("a number reached an enum property and was accepted")
+			}
+			if !strings.Contains(err.Error(), c.wantMsg) {
+				t.Errorf("err = %v, want it to name the kind the builder needs", err)
+			}
+			// And it names the position, so the author can find the line.
+			if !strings.Contains(err.Error(), "2:") {
+				t.Errorf("err = %v, want the line of the offending property", err)
+			}
+		})
+	}
+}
