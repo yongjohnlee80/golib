@@ -294,9 +294,7 @@ func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 		if err != nil {
 			// The live tree was never touched. Discard the half-built
 			// replacement and leave everything exactly as it was.
-			var discard Result
-			_ = t.releaseSubtree(id, &discard)
-			return Result{}, err
+			return Result{}, t.discardReplacements(err, id)
 		}
 		res.Rebuilt = append(res.Rebuilt, plan.rebuildRecord())
 		res.RootReplaced = true
@@ -805,11 +803,7 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 		id, err := t.mountNode(cs.spec, s.old)
 		if err != nil {
 			fresh = append(fresh, id)
-			var discard Result
-			for _, f := range fresh {
-				_ = t.releaseSubtree(f, &discard)
-			}
-			return nil, err
+			return nil, t.discardReplacements(err, fresh...)
 		}
 		fresh = append(fresh, id)
 		batchCreated += t.countBuilt(id)
@@ -901,6 +895,29 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 		res.Moved++
 	}
 	return want, nil
+}
+
+// discardReplacements releases subtrees that were built and then abandoned,
+// and returns cause joined with every cleanup failure.
+//
+// The failures are KEPT rather than dropped. Adapter.Destroy is allowed to
+// fail, and this is the one place where a failure has nowhere else to surface:
+// the node is forgotten immediately afterwards, so no later Destroy can retry
+// it or report it. Discarding the error here would leave a resource the adapter
+// still holds, with no record anywhere that it was never released — which is
+// exactly the silent-loss shape this package refused for handler errors.
+//
+// Every subtree is offered even if an earlier one refuses, because stopping at
+// the first would strand the rest with no record either.
+func (t *Tree) discardReplacements(cause error, ids ...NodeID) error {
+	errs := []error{cause}
+	var sink Result
+	for _, id := range ids {
+		if err := t.releaseSubtree(id, &sink); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // releaseSubtree destroys a node and everything under it, children first, and
