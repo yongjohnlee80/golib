@@ -109,10 +109,10 @@ const (
 	// SpecValueCall is a call into the host function registry. Raw holds the
 	// function name and Args holds the arguments, which are themselves Values.
 	SpecValueCall
-	// SpecValueExpr is any other js.JavaScript expression — `a + b`, `c ? d : e`,
-	// `items[i]`, a template string. js.Expr holds the parsed tree.
+	// SpecValueExpr is any other JavaScript expression — `a + b`, `c ? d : e`,
+	// `items[i]`, a template string. Expr holds the parsed tree.
 	//
-	// It exists because QML property values ARE js.JavaScript, and a parser of QML
+	// It exists because QML property values ARE JavaScript, and a parser of QML
 	// reads all of it. The kinds above are not a different grammar: they are the
 	// shapes this format projects to a friendlier terminal because consumers ask
 	// about them constantly. Everything else keeps its tree rather than being
@@ -210,7 +210,7 @@ type SpecImport struct {
 	Pos   parse.Position
 }
 
-// SpecHandler is one `onSignal:` binding and the js.JavaScript it binds.
+// SpecHandler is one `onSignal:` binding and the JavaScript it binds.
 //
 // Signal is the signal name with the `on` prefix removed and the first letter
 // lowercased, so `onClicked` becomes "clicked" — the name the adapter registers
@@ -519,6 +519,7 @@ func (p *qmlParser) groupedBlock(n *SpecNode, prefix []string, at parse.Position
 		if err != nil {
 			return err
 		}
+		p.takeStatementEnd()
 		n.Props = append(n.Props, SpecProp{
 			Name: strings.Join(full, "."), Path: full, Value: v, Grouped: true, Pos: entryAt,
 		})
@@ -527,6 +528,18 @@ func (p *qmlParser) groupedBlock(n *SpecNode, prefix []string, at parse.Position
 
 // wanted reports a failure, distinguishing end of input — which a writer has
 // simply not finished — from a wrong character.
+// takeStatementEnd consumes the `;` that may end a property binding.
+//
+// A property's right-hand side is a JavaScript statement, and a statement may
+// end with a semicolon — which is why `Rectangle { width: 100; height: 100 }`
+// is ordinary QML. The `;` belongs to the binding it follows; it is NOT a
+// separator the member list accepts on its own, so a stray `;` where a member
+// should begin is still refused.
+func (p *qmlParser) takeStatementEnd() {
+	p.skipInlineSpace()
+	p.sc.Take(";")
+}
+
 // skipInlineSpace consumes spaces and tabs but STOPS AT A NEWLINE, for the
 // constructs that end at the end of their line.
 func (p *qmlParser) skipInlineSpace() {
@@ -720,6 +733,7 @@ func (p *qmlParser) member(n *SpecNode, name string, path []string, at parse.Pos
 	if err != nil {
 		return err
 	}
+	p.takeStatementEnd()
 
 	// `id` addresses the node rather than configuring it, so it is lifted out
 	// of Props. It must be a bare identifier: an id that came from a call or a
@@ -754,7 +768,7 @@ func (p *qmlParser) member(n *SpecNode, name string, path []string, at parse.Pos
 	return nil
 }
 
-// handlerBody parses the right-hand side of an `onSignal:` — js.JavaScript, which
+// handlerBody parses the right-hand side of an `onSignal:` — JavaScript, which
 // is what QML puts there.
 //
 // Both QML forms are the same grammar: `onClicked: save()` is one expression
@@ -814,7 +828,7 @@ func (p *qmlParser) value() (SpecValue, error) {
 
 	_ = r
 
-	// A property value is a js.JavaScript expression, because in QML that is what
+	// A property value is a JavaScript expression, because in QML that is what
 	// a property value IS. ONE parser reads it — an earlier design had a small
 	// hand-written value grammar beside this, which is two parsers of the same
 	// thing and therefore two answers waiting to disagree.
@@ -830,7 +844,7 @@ func (p *qmlParser) value() (SpecValue, error) {
 	return projectValue(&e), nil
 }
 
-// QML property values are parsed with the PLAIN js.JavaScript dialect.
+// QML property values are parsed with the PLAIN JavaScript dialect.
 //
 // This grammar has no extensions of its own any more. It briefly had one —
 // `@name`, a symbolic style value — and it is gone: a style token is a name on
@@ -854,7 +868,7 @@ func projectValue(e *js.Expr) SpecValue {
 		return SpecValue{Kind: SpecValueBool, Raw: e.Raw, Pos: e.Pos}
 
 	case js.ExprUnary:
-		// js.JavaScript has no negative literals: `-3` is unary minus applied to
+		// JavaScript has no negative literals: `-3` is unary minus applied to
 		// 3. Folding the sign back onto the literal is what lets a consumer
 		// keep reading `neg: -3` as the number it obviously is.
 		if (e.Raw == "-" || e.Raw == "+") && e.Left != nil && e.Left.Kind == js.ExprNumber {
@@ -933,7 +947,7 @@ func joinPath(p []string) string {
 }
 
 // The hand-written value grammar that used to live here — refValue, callValue,
-// stringValue and numberValue — is GONE. A property value is a js.JavaScript
+// stringValue and numberValue — is GONE. A property value is a JavaScript
 // expression and one parser reads it; these were the second parser of the same
 // thing, kept alive only by the branch in value() that no longer exists.
 //

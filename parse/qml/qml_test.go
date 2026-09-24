@@ -393,7 +393,7 @@ func TestQMLPositionsAreRuneColumns(t *testing.T) {
 	// "é" is two bytes, one rune. The error is at the `%`.
 	//
 	// `%` rather than `!`, which this grammar reads as the prefix operator it is
-	// in js.JavaScript: the mistake in `b: !` is the MISSING OPERAND after it, so
+	// in JavaScript: the mistake in `b: !` is the MISSING OPERAND after it, so
 	// the position correctly moves to the `}` and stops isolating the rune
 	// count. `%` has no prefix reading, so the error is at the character itself.
 	se := syntaxErr(t, `N { s: "éé" b: % }`)
@@ -502,8 +502,8 @@ func TestQMLErrorIdentity(t *testing.T) {
 //
 // This test previously asserted the OPPOSITE — that a body is refused and the
 // author is told "this format binds handlers by name". That refusal was the
-// parser shrunk to fit the engine behind it: QML puts js.JavaScript after
-// `onClicked:`, so a parser of QML reads js.JavaScript there. An engine that can
+// parser shrunk to fit the engine behind it: QML puts JavaScript after
+// `onClicked:`, so a parser of QML reads JavaScript there. An engine that can
 // only invoke named handlers refuses what it cannot run, by name and position,
 // which is a different thing said in a different place.
 func TestQMLHandlerTakesAJavaScriptBody(t *testing.T) {
@@ -622,8 +622,8 @@ func TestAHandlerBodySpendsTheDOCUMENTSNestingBudget(t *testing.T) {
 
 // TestAnUnknownStringEscapeIsTheCharacterItself.
 //
-// This used to be a syntax error. js.JavaScript says otherwise — `"\q"` is `"q"` —
-// and a QML string is a js.JavaScript string, so refusing it was this parser
+// This used to be a syntax error. JavaScript says otherwise — `"\q"` is `"q"` —
+// and a QML string is a JavaScript string, so refusing it was this parser
 // applying a rule of its own to a language it does not own.
 //
 // The escapes that DO mean something still mean it, which is the half that
