@@ -143,7 +143,8 @@ func reconcile(t *testing.T, tr *decl.Tree, src string) decl.Result {
 // the contract and a count of zero applies would still pass if the engine had
 // destroyed and rebuilt something.
 func TestReconcileIdenticalSchemaTouchesNothing(t *testing.T) {
-	const src = `Flex {
+	const src = `import tui 1.0
+Flex {
 		direction: tui.Vertical
 		Text { id: a text: "hello" }
 		Button { id: b label: "go" onClicked: save() }
@@ -230,8 +231,10 @@ func TestReconcileIgnoresAValueThatOnlyMOVED(t *testing.T) {
 func TestConsumedPropertyChangeForcesRebuild(t *testing.T) {
 	rec := newSplicer()
 	rec.consume["Split"] = []string{"orientation"}
-	const before = `Split { orientation: tui.Horizontal Text {} Text {} }`
-	const after = `Split { orientation: tui.Vertical Text {} Text {} }`
+	const before = `import tui 1.0
+Split { orientation: tui.Horizontal Text {} Text {} }`
+	const after = `import tui 1.0
+Split { orientation: tui.Vertical Text {} Text {} }`
 
 	tr := decl.New(rec)
 	if err := tr.Mount(mustSpec(t, before)); err != nil {

@@ -155,3 +155,16 @@ func (a *Adapter) Constants() map[string]parse.SpecValue {
 		"tui.Vertical":   str("vertical"),
 	}
 }
+
+// TuiModuleVersion is the version `import tui <v>` must ask for, when it asks
+// for one at all.
+const TuiModuleVersion = "1.0"
+
+// Modules implements decl.Modules.
+//
+// This is what makes `import tui 1.0` mean something. Without it the import
+// line would parse, resolve to nothing, and a document that forgot it would
+// work anyway — which is the difference between a module system and a comment.
+func (a *Adapter) Modules() []decl.Module {
+	return []decl.Module{{Name: "tui", Version: TuiModuleVersion}}
+}

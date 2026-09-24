@@ -265,11 +265,29 @@ func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 		return Result{}, SchemaError{Op: "reconcile", Err: ErrNotMounted}
 	}
 
+	// The NEW document's imports, resolved before anything is planned and only
+	// adopted once they are valid. A reload whose import line is wrong must
+	// leave the last good screen exactly as it is, including the import set the
+	// live tree resolved against — which a reload that assigned first and
+	// checked afterwards would already have destroyed.
+	imported, err := t.resolveImports(spec)
+	if err != nil {
+		return Result{}, err
+	}
+	prevImports := t.imported
+	t.imported = imported
+
 	t.ph = phaseReconciling
 	t.planned = map[*parse.SpecNode]plannedNode{}
 	t.preEval = map[*parse.SpecNode][]parse.SpecProp{}
 	t.mutated = false
 	defer func() {
+		// An untouched tree keeps the imports it was mounted with. Only a
+		// reconcile that actually changed the live tree has made the new
+		// document the one on screen.
+		if !t.mutated && t.failed {
+			t.imported = prevImports
+		}
 		t.ph = phaseIdle
 		t.planned = nil
 		t.preEval = nil

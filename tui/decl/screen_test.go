@@ -20,7 +20,8 @@ import (
 // after the fact, the Button's callback has no setter, the Flex takes children
 // only afterwards, and the Text carries a property that must travel the runtime
 // path instead of the constructor.
-const screen = `Split {
+const screen = `import tui 1.0
+Split {
     id: root
     orientation: tui.Horizontal
     Flex {
@@ -155,7 +156,8 @@ func TestConstructorOnlyPropertiesAreNotReApplied(t *testing.T) {
 		return widget.NewText(""), nil, nil
 	})
 
-	spec, err := parse.QML{}.Parse([]byte(`Split { orientation: tui.Horizontal Text { } Text { } }`))
+	spec, err := parse.QML{}.Parse([]byte(`import tui 1.0
+Split { orientation: tui.Horizontal Text { } Text { } }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -166,7 +168,8 @@ func TestConstructorOnlyPropertiesAreNotReApplied(t *testing.T) {
 	}
 
 	// The real registry reports it, so the same schema mounts.
-	if _, _ = mount(t, `Split { orientation: tui.Horizontal Text { } Text { } }`,
+	if _, _ = mount(t, `import tui 1.0
+Split { orientation: tui.Horizontal Text { } Text { } }`,
 		tuidecl.HostFuncs{}, func(error) {}); true {
 		// mount fatals on failure; reaching here is the assertion.
 	}

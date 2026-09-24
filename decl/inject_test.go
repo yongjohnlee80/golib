@@ -52,10 +52,15 @@ func call(name string, args ...parse.SpecValue) parse.SpecValue {
 // is how a test reaches value shapes the QML surface does not yet spell.
 func mountWith(t *testing.T, tr *decl.Tree, prop string, v parse.SpecValue) error {
 	t.Helper()
-	return tr.Mount(parse.SpecTree{Root: &parse.SpecNode{
-		Type:  "Text",
-		Props: []parse.SpecProp{{Name: prop, Value: v}},
-	}})
+	return tr.Mount(parse.SpecTree{
+		// The fakes declare a `tui` module, and a module's names resolve only
+		// once a document has imported it — so the import belongs here for the
+		// same reason it belongs at the top of a .qml file.
+		Imports: []parse.SpecImport{{Module: "tui", Path: []string{"tui"}, Version: "1.0"}},
+		Root: &parse.SpecNode{
+			Type:  "Text",
+			Props: []parse.SpecProp{{Name: prop, Value: v}},
+		}})
 }
 
 // ------------------------------------------------------------- the leaf rule

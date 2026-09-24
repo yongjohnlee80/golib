@@ -201,12 +201,32 @@ func (t *Tree) walkRef(ctx context, v parse.SpecValue, at NodeID,
 // lookupRef resolves a dotted name, reporting the three failures separately
 // because a reader needs a different thing from each.
 func (t *Tree) lookupRef(v parse.SpecValue, at NodeID) (Injected, error) {
-	if in, ok := t.lookupName(v.Raw); ok {
-		return in, nil
-	}
 	path := v.Path
 	if len(path) == 0 {
 		path = splitDots(v.Raw)
+	}
+	name := v.Raw
+
+	// The gate is on the NAME THE DOCUMENT WROTE, not on the module behind it.
+	// Keying it on the module made an alias additive: `import tui 1.0 as T`
+	// left `tui.Vertical` resolving, because the module WAS imported — under
+	// another name. QML's alias REPLACES the spelling, and a document that
+	// mounts here but not in a real QML runtime is the worst kind of
+	// compatibility.
+	if len(path) > 1 {
+		if mod, bound := t.imported[path[0]]; bound {
+			// An import binds this name; resolve through the module it names,
+			// which for an unaliased import is the same string.
+			path = append(splitDots(mod), path[1:]...)
+			name = joinDots(path)
+		} else if mod, isModule := t.moduleOf(path); isModule {
+			return Injected{}, t.fail(at, v, ErrNotImported, fmt.Sprintf(
+				"%q comes from the %q module; add `import %s` to use it", v.Raw, mod, mod))
+		}
+	}
+
+	if in, ok := t.lookupName(name); ok {
+		return in, nil
 	}
 	if len(path) > 1 {
 		// A known namespace with an unknown member is a better diagnostic than
