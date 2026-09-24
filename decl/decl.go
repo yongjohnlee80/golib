@@ -27,6 +27,9 @@ const (
 	FromSchema Provenance = iota
 	// FromHost is a value the host program set through [Tree.SetProp].
 	FromHost
+	// FromBinding is a value derived from a schema binding — a Ref or a Call —
+	// and applied because a source changed.
+	FromBinding
 )
 
 // String renders the provenance for diagnostics.
@@ -36,6 +39,8 @@ func (p Provenance) String() string {
 		return "schema"
 	case FromHost:
 		return "host"
+	case FromBinding:
+		return "binding"
 	default:
 		return "unknown"
 	}

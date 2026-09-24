@@ -23,10 +23,13 @@ const (
 	phaseEmitting
 	phaseDestroying
 	phaseReconciling
+	phasePropagating
 )
 
 func (p phase) String() string {
 	switch p {
+	case phasePropagating:
+		return "propagating a source change"
 	case phaseReconciling:
 		return "reconciling"
 	case phaseMounting:
@@ -65,6 +68,16 @@ type Tree struct {
 	// It is what lets a reconcile that failed while still building report the
 	// failure without latching a tree it never touched.
 	mutated bool
+
+	// sources are the host-declared reactive values, by name. They are declared
+	// before Mount so a schema's references can be checked against a known set.
+	sources map[string]parse.SpecValue
+	// funcs are the host-declared value functions a Call may name.
+	funcs map[string]ValueFunc
+	// bindings are every bound property in the tree, in DOCUMENT ORDER — the
+	// only order a schema author can see, and therefore the only defensible
+	// fan-out order when a propagation stops part-way.
+	bindings []*binding
 	// failed records that a Mount did not complete. A tree in that state holds
 	// a partial graph, so the next Mount must be refused rather than allowed to
 	// graft a second graph onto the wreckage — which is exactly what happens
@@ -104,6 +117,11 @@ type node struct {
 	// question about the PREVIOUS schema — and the previous schema is gone by
 	// the time the new one arrives.
 	props []parse.SpecProp
+	// declared is what the schema WROTE, expressions and all. props holds the
+	// evaluated terminals; a reload compares declarations, because a binding
+	// whose expression is unchanged must not re-fire just because a source
+	// moved underneath it.
+	declared []parse.SpecProp
 	// consumed names the properties the adapter took at construction. They are
 	// recorded because a consumed property is, by definition, one the adapter
 	// could not be asked to set later: consuming it is how an adapter says
@@ -287,10 +305,24 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 		parent:   parent,
 		handlers: make(map[string][]boundHandler),
 		props:    sn.Props,
+		declared: sn.Props,
 		consumed: map[string]bool{},
 		wired:    map[string]bool{},
 	}
 	t.nodes[id] = n
+
+	// Bindings are validated and evaluated BEFORE anything is built, so a
+	// schema mistake is found while the tree is still intact. The adapter never
+	// sees an expression: Construction and every Application carry terminals.
+	if err := t.checkBindable(sn.Type, sn.Props, id); err != nil {
+		return id, err
+	}
+	bs, effective, err := t.bindingsFor(id, sn.Props)
+	if err != nil {
+		return id, err
+	}
+	n.props = effective
+	n.declared = sn.Props
 
 	// Handlers are resolved before construction, because a widget may only
 	// accept its callback as a constructor option and never expose a setter.
@@ -339,7 +371,7 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 		Node:     id,
 		Type:     sn.Type,
 		Pos:      sn.Pos,
-		Props:    sn.Props,
+		Props:    effective,
 		Children: n.children,
 		Emitters: emitters,
 	})
@@ -356,20 +388,33 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 	for _, name := range consumed {
 		claimed[name] = true
 	}
+	// The node is built, so its bindings become live. Registering after Create
+	// means a construction failure leaves none behind.
+	t.registerBindings(bs)
 
 	// Whatever construction did not claim is applied in document order. The
 	// engine does not re-apply a consumed property: some have no setter, and
 	// some setters assign and invalidate unconditionally, so a replay is either
 	// impossible or a second visible effect rather than a free no-op.
-	for _, p := range sn.Props {
+	for _, p := range effective {
 		if claimed[p.Name] {
+			// A builder that claimed a BOUND property leaves no Apply to
+			// succeed, so the terminal it was handed IS the applied value and
+			// seeds the cache here instead. Without this the first tick could
+			// not tell an unchanged value from a new one.
+			t.noteApplied(id, p.Name, p.Value)
 			continue
 		}
-		app := Application{Node: id, Prop: p.Name, Value: p.Value, Origin: FromSchema}
+		origin := FromSchema
+		if _, bound := t.bindingFor(id, p.Name); bound {
+			origin = FromBinding
+		}
+		app := Application{Node: id, Prop: p.Name, Value: p.Value, Origin: origin}
 		if err := t.adapter.Apply(app); err != nil {
 			return id, SchemaError{Op: "apply", Node: id, Detail: p.Name, Pos: p.Value.Pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
 		}
+		t.noteApplied(id, p.Name, p.Value)
 	}
 
 	return id, nil
@@ -382,9 +427,18 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 // ordinary case this whole design exists to serve, and refusing it would make
 // the emission contract useless.
 func (t *Tree) SetProp(id NodeID, prop string, v parse.SpecValue) error {
-	if t.ph == phaseMounting || t.ph == phaseDestroying || t.ph == phaseReconciling {
+	if t.ph == phaseMounting || t.ph == phaseDestroying || t.ph == phaseReconciling ||
+		t.ph == phasePropagating {
 		return SchemaError{Op: "set", Node: id, Detail: prop,
 			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
+	}
+	// A bound property has ONE writer. A host value the next source tick
+	// silently reverts would leave a value whose origin cannot be determined
+	// from the screen, and there is no moment a caller could reason about as
+	// "the binding takes over again".
+	if b, bound := t.bindingFor(id, prop); bound {
+		return SchemaError{Op: "set", Node: id, Detail: prop, Pos: b.pos, Err: fmt.Errorf(
+			"%w: %q is bound by the schema, which is its only writer", ErrPhase, prop)}
 	}
 	if _, ok := t.nodes[id]; !ok {
 		return SchemaError{Op: "set", Node: id, Detail: prop, Err: ErrNoSuchNode}
@@ -423,6 +477,13 @@ func (t *Tree) SetProp(id NodeID, prop string, v parse.SpecValue) error {
 // Emitting a signal nothing is bound to is a no-op and not an error: a schema
 // that simply does not care about a widget's signal is ordinary.
 func (t *Tree) Emit(id NodeID, signal string) error {
+	if t.ph == phasePropagating {
+		// A handler running mid-propagation could mutate the tree BETWEEN two
+		// entries of one fan-out, leaving half of it applied against a tree the
+		// other half no longer describes.
+		return SchemaError{Op: "emit", Node: id, Detail: signal,
+			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
+	}
 	if t.ph == phaseReconciling {
 		// A handler running mid-reconcile would mutate the tree underneath the
 		// walk that is rebuilding it. Widgets do fire during a reconcile — a
@@ -509,7 +570,7 @@ func (t *Tree) HandlerNames(id NodeID, signal string) []string {
 // nothing to keep.
 func (t *Tree) Destroy() error {
 	switch t.ph {
-	case phaseEmitting, phaseMounting, phaseDestroying, phaseReconciling:
+	case phaseEmitting, phaseMounting, phaseDestroying, phaseReconciling, phasePropagating:
 		return SchemaError{Op: "destroy", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
 
@@ -532,6 +593,10 @@ func (t *Tree) Destroy() error {
 	t.nodes = make(map[NodeID]*node)
 	t.root = NoNode
 	t.failed = false
+	// Bindings go with the tree. Sources do NOT: they are host-declared
+	// capabilities rather than schema artefacts, and Destroy is their lifetime
+	// boundary only in the sense that the Tree itself is done with.
+	t.bindings = nil
 	return errors.Join(errs...)
 }
 
