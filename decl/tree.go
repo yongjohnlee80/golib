@@ -227,10 +227,21 @@ func New(a Adapter, opts ...Option) *Tree {
 	if c, ok := a.(Constants); ok {
 		t.consts = c.Constants()
 	}
+	// An adapter's modules go in through the SAME registration as a host's, so
+	// every rule about names and exports applies to both. Copying them straight
+	// into the map let an adapter publish two modules exporting one name, which
+	// nothing downstream could then tell apart.
+	//
+	// It PANICS rather than returning an error because an adapter is code, not
+	// input: a schema is a document a user wrote and its mistakes are reported,
+	// while an adapter exporting one name from two modules is a programming
+	// mistake in the same class as the nil adapter above — and New has no
+	// caller who could do anything useful with an error about it.
 	if m, ok := a.(Modules); ok {
-		t.modules = map[string]Module{}
 		for _, mod := range m.Modules() {
-			t.modules[mod.Name] = mod
+			if err := t.registerModule("adapter modules", mod); err != nil {
+				panic("decl.New: " + err.Error())
+			}
 		}
 	}
 	return t

@@ -494,3 +494,127 @@ func TestAQualifiedSingletonReadsTheCURRENTSourceAtMount(t *testing.T) {
 			"means the qualified name missed the source store", painted)
 	}
 }
+
+// moduleAdapter is a recorder that also PUBLISHES modules, which is the second
+// way a module reaches the registry.
+type moduleAdapter struct {
+	*reactor
+	mods []decl.Module
+}
+
+func (m *moduleAdapter) Modules() []decl.Module { return m.mods }
+
+// TestAnAdapterCannotPublishTwoModulesExportingOneName.
+//
+// There are TWO ways into the module registry — a host calling DeclareModule,
+// and an adapter's Modules() read during New — and the rule was enforced on
+// one of them. The adapter's went straight into the map, so an adapter
+// publishing two modules that export `Theme` produced exactly the ambiguity
+// DeclareModule exists to refuse.
+//
+// It was invisible because the import-time collision check had been REMOVED as
+// unreachable, on an invariant that held for the declared path and not for the
+// adapter's. A rule enforced at one entry point is not enforced, and a guard
+// removed because "that cannot happen" needs the claim to be true of every way
+// in, not of the way that was being looked at.
+func TestAnAdapterCannotPublishTwoModulesExportingOneName(t *testing.T) {
+	a := &moduleAdapter{reactor: newReactor(), mods: []decl.Module{
+		{Name: "a.theme", Version: "1.0", Exports: []string{"Theme"}},
+		{Name: "b.theme", Version: "1.0", Exports: []string{"Theme"}},
+	}}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("an adapter published two modules exporting one name and was accepted")
+		}
+		msg, _ := r.(string)
+		for _, want := range []string{"Theme", "a.theme", "rename"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("panic = %q, want it to contain %q", msg, want)
+			}
+		}
+	}()
+	decl.New(a)
+}
+
+// TestAnAdapterPublishingDistinctExportsIsFine is the control: the refusal
+// above must be about the COLLISION, not about an adapter publishing more than
+// one module.
+func TestAnAdapterPublishingDistinctExportsIsFine(t *testing.T) {
+	a := &moduleAdapter{reactor: newReactor(), mods: []decl.Module{
+		{Name: "a.theme", Version: "1.0", Exports: []string{"Theme"}},
+		{Name: "b.icons", Version: "1.0", Exports: []string{"Icons"}},
+	}}
+	tr := decl.New(a)
+	for n, v := range map[string]string{"Theme.surface": "#111", "Icons.save": "ok"} {
+		if err := tr.Inject(n, decl.SourceValue(sv(v))); err != nil {
+			t.Fatalf("inject %s: %v", n, err)
+		}
+	}
+	if err := tr.Mount(qmlDoc(t, "import a.theme 1.0\nimport b.icons 1.0\n"+
+		`Flex { Text { id: a text: Theme.surface } Text { id: b text: Icons.save } }`)); err != nil {
+		t.Fatalf("two adapter modules with distinct exports did not mount: %v", err)
+	}
+}
+
+// TestAHostCannotCollideWithAnAdaptersExport.
+//
+// The third combination, and the one a split rule would let through in the
+// other direction: the adapter registers first, during New, and the host's
+// DeclareModule must be judged against what is already there.
+func TestAHostCannotCollideWithAnAdaptersExport(t *testing.T) {
+	a := &moduleAdapter{reactor: newReactor(), mods: []decl.Module{
+		{Name: "a.theme", Version: "1.0", Exports: []string{"Theme"}},
+	}}
+	tr := decl.New(a)
+	err := tr.DeclareModule(decl.Module{Name: "mine.theme", Version: "1.0", Exports: []string{"Theme"}})
+	if !errors.Is(err, decl.ErrDuplicateExport) {
+		t.Fatalf("err = %v, want ErrDuplicateExport", err)
+	}
+	if !strings.Contains(err.Error(), "a.theme") {
+		t.Errorf("diagnostic = %q, want it to name the adapter's module as the owner", err)
+	}
+}
+
+// TestAnAdaptersModuleIsHeldToEveryRule: the shared registration means the
+// other rules reach the adapter's modules too, not only the collision one.
+func TestAnAdaptersModuleIsHeldToEveryRule(t *testing.T) {
+	cases := []struct {
+		name string
+		mods []decl.Module
+		want string
+	}{
+		{
+			name: "a lower-case export",
+			mods: []decl.Module{{Name: "a.theme", Version: "1.0", Exports: []string{"theme"}}},
+			want: "upper-case",
+		},
+		{
+			name: "a module with no name",
+			mods: []decl.Module{{Version: "1.0", Exports: []string{"Theme"}}},
+			want: "needs a name",
+		},
+		{
+			name: "the same module twice",
+			mods: []decl.Module{
+				{Name: "a.theme", Version: "1.0", Exports: []string{"Theme"}},
+				{Name: "a.theme", Version: "2.0", Exports: []string{"Other"}},
+			},
+			want: "already declared",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatal("the adapter's module was accepted")
+				}
+				if msg, _ := r.(string); !strings.Contains(msg, c.want) {
+					t.Errorf("panic = %q, want it to contain %q", msg, c.want)
+				}
+			}()
+			decl.New(&moduleAdapter{reactor: newReactor(), mods: c.mods})
+		})
+	}
+}
