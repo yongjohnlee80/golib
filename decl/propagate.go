@@ -43,19 +43,52 @@ import (
 // restructured, and the retry above depends on the host being able to call
 // again.
 func (t *Tree) SetSource(name string, v parse.SpecValue) (PropagationResult, error) {
-	if err := t.propagationAllowed("set source", name); err != nil {
+	return t.SetSources(map[string]parse.SpecValue{name: v})
+}
+
+// SetSources updates SEVERAL sources as ONE propagation.
+//
+// This is not a convenience wrapper around a loop, and doing it as a loop is
+// the bug it exists to prevent. Updating a palette one name at a time paints a
+// MIXED PALETTE: after the first call the screen is half the old theme and half
+// the new one, and every binding that reads two of those names is evaluated
+// against a combination that never existed in the host.
+//
+// One overlay, one fan-out, one commit: every binding sees all the new values
+// or none of them, and a binding reading two changed names recomputes ONCE
+// rather than twice.
+//
+// Ordering and failure behave exactly as [SetSource] describes, because they
+// are the same code — that is a single-name update with a map of one.
+func (t *Tree) SetSources(values map[string]parse.SpecValue) (PropagationResult, error) {
+	detail := joinSorted(values)
+	if err := t.propagationAllowed("set source", detail); err != nil {
 		return PropagationResult{}, err
 	}
-	cur, ok := t.sources[name]
-	if !ok {
-		return PropagationResult{}, SchemaError{Op: "set source", Detail: name,
-			Err: fmt.Errorf("%w: %q was never declared", ErrNoSuchSource, name)}
+
+	// EVERY name is validated before ANY is applied. A batch that checked as it
+	// went would apply the good half of a bad update, which is the mixed state
+	// this call exists to make impossible.
+	overlay := make(map[string]parse.SpecValue, len(values))
+	for name, v := range values {
+		cur, ok := t.sources[name]
+		if !ok {
+			return PropagationResult{}, SchemaError{Op: "set source", Detail: name,
+				Err: fmt.Errorf("%w: %q was never declared", ErrNoSuchSource, name)}
+		}
+		if !isTerminal(v) {
+			return PropagationResult{}, SchemaError{Op: "set source", Detail: name, Pos: v.Pos,
+				Err: fmt.Errorf("%w: a source holds a %s, not an expression", ErrNotTerminal, v.Kind)}
+		}
+		if sameValue(cur, v) {
+			// Unchanged names are dropped from the overlay rather than the
+			// batch: a theme switch where one colour happens to be the same
+			// must still be one propagation.
+			continue
+		}
+		overlay[name] = v
 	}
-	if !isTerminal(v) {
-		return PropagationResult{}, SchemaError{Op: "set source", Detail: name, Pos: v.Pos,
-			Err: fmt.Errorf("%w: a source holds a %s, not an expression", ErrNotTerminal, v.Kind)}
-	}
-	if sameValue(cur, v) {
+	if len(overlay) == 0 {
 		return PropagationResult{}, nil
 	}
 
@@ -63,12 +96,8 @@ func (t *Tree) SetSource(name string, v parse.SpecValue) (PropagationResult, err
 	t.ph = phasePropagating
 	defer func() { t.ph = prev }()
 
-	// Evaluated against a TENTATIVE value: the source is not committed until
-	// the fan-out has fully succeeded.
-	overlay := map[string]parse.SpecValue{name: v}
-
 	var res PropagationResult
-	for _, b := range t.bindingsOf(name) {
+	for _, b := range t.bindingsOfAny(overlay) {
 		ev, err := t.evalValue(ctxBinding, b.expr, b.node, overlay)
 		if err != nil {
 			return res, SchemaError{Op: "propagate", Node: b.node, Detail: b.prop, Pos: b.pos,
@@ -92,8 +121,29 @@ func (t *Tree) SetSource(name string, v parse.SpecValue) (PropagationResult, err
 		res.Applied++
 	}
 
-	t.sources[name] = v
+	// Committed only now, and all together: a partially committed batch would
+	// leave the host's palette split across two propagations with no way back.
+	for name, v := range overlay {
+		t.sources[name] = v
+	}
 	return res, nil
+}
+
+// joinSorted renders a batch's names for a diagnostic, deterministically.
+func joinSorted(values map[string]parse.SpecValue) string {
+	names := make([]string, 0, len(values))
+	for n := range values {
+		names = append(names, n)
+	}
+	sortStrings(names)
+	out := ""
+	for i, n := range names {
+		if i > 0 {
+			out += ", "
+		}
+		out += n
+	}
+	return out
 }
 
 // propagationAllowed enforces the phase matrix.
@@ -119,6 +169,26 @@ func (t *Tree) propagationAllowed(op, detail string) error {
 		// idle, or nested inside an emission — both legal.
 		return nil
 	}
+}
+
+// bindingsOfAny returns every binding reading ANY of these sources, in DOCUMENT
+// ORDER and WITHOUT REPEATS.
+//
+// The de-duplication is the point: a binding reading two names that both
+// changed must recompute once. Running it twice would apply an intermediate
+// value to a real setter — visible on screen as a flicker through a state the
+// host never asked for.
+func (t *Tree) bindingsOfAny(sources map[string]parse.SpecValue) []*binding {
+	var out []*binding
+	for _, b := range t.bindings {
+		for _, d := range b.deps {
+			if _, ok := sources[d]; ok {
+				out = append(out, b)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // bindingsOf returns the bindings reading a source, in DOCUMENT ORDER.

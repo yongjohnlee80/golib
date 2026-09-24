@@ -108,6 +108,15 @@ type Tree struct {
 	// active is the stack of signals currently running, innermost last. It is
 	// the cycle detector: a pair already on the stack cannot be entered again.
 	active []activeEmission
+
+	// sched puts work on the goroutine that owns this tree. Provider callbacks
+	// arrive from wherever the host's data lives, which is not that goroutine.
+	sched func(func())
+	// providers are the live subscriptions, in subscription order.
+	providers []*provider
+	// onProviderError is where a delivery's failure goes. A delivery has no
+	// caller to return an error to.
+	onProviderError func(error)
 }
 
 // plannedNode is one fresh node's pre-allocated identity and pre-resolved
@@ -669,6 +678,11 @@ func (t *Tree) Destroy() error {
 	// failure routing every declaration through Inject exists to prevent.
 	t.injected = nil
 	t.funcs = nil
+	// Subscriptions end with the tree they fed. A provider still delivering
+	// into a destroyed tree would find no sources and no nodes, and its errors
+	// are joined with the adapter's rather than replacing them: a teardown that
+	// reported only the first thing to go wrong hides the rest.
+	errs = append(errs, t.unsubscribeAll())
 	return errors.Join(errs...)
 }
 
