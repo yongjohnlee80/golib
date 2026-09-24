@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse"
@@ -50,9 +51,16 @@ func WithHostFuncs(h HostFuncs) Option {
 // WithErrorSink installs where a handler error goes when it surfaces from a
 // toolkit callback that cannot return one.
 //
-// Without it such an error is DROPPED, and a schema whose handler always fails
-// would be indistinguishable from one that works. Supply a sink in anything
-// that matters; the tests in this package assert errors arrive at one.
+// It is REQUIRED for any schema that binds a handler. Without it, mounting such
+// a schema fails rather than proceeding: a toolkit callback is shaped func()
+// with nowhere to put an error, so an adapter with no sink would make a handler
+// that always fails indistinguishable from one that works.
+//
+// An earlier version documented that absence as "the error is dropped", three
+// lines below a comment calling exactly that the one handling this design will
+// not defend. Documenting a violation does not make it a decision; the rule is
+// now enforced where it can be, and a schema with no handlers still needs no
+// sink.
 func WithErrorSink(fn func(error)) Option {
 	return func(a *Adapter) { a.sink = fn }
 }
@@ -134,6 +142,21 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 			return nil, fmt.Errorf("child node %d was not built before its parent %d", id, c.Node)
 		}
 		children = append(children, child.comp)
+	}
+
+	// A bound emitter with nowhere to send its error is refused at the point
+	// the wiring would happen, rather than becoming silence at the first
+	// failure. A schema that binds nothing needs no sink and is unaffected.
+	if len(c.Emitters) > 0 && a.sink == nil {
+		signals := make([]string, 0, len(c.Emitters))
+		for name := range c.Emitters {
+			signals = append(signals, name)
+		}
+		sort.Strings(signals)
+		return nil, fmt.Errorf(
+			"%q binds %v but this adapter has no error sink, so a failing handler "+
+				"would be silent: pass WithErrorSink (declared at %s)",
+			c.Type, signals, c.Pos)
 	}
 
 	comp, consumed, err := build(Build{

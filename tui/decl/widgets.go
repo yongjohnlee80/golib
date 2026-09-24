@@ -138,20 +138,18 @@ func buildFlex(b Build) (tui.Component, []string, error) {
 // buildButton wires its activation at construction, which is the only chance
 // the widget gives: there is no SetOnActivate.
 //
-// The label is NOT consumed. Button has a setter for it, so leaving it to the
-// runtime path exercises the half of the seam that Split cannot.
+// It builds with an EMPTY label and consumes nothing. Button has a SetLabel, so
+// the label travels the runtime path and exercises the half of the seam that
+// Split cannot.
+//
+// The empty label is the point, not laziness. An earlier version read the label
+// here AND reported nothing consumed, so the engine applied it again: the value
+// was set twice, and SetLabel's equality guard hid that for a single
+// declaration. Two declarations of the same property exposed it — construction
+// took the LAST while the replay ran in DOCUMENT order — which is the general
+// shape of consuming a property without saying so.
 func buildButton(b Build) (tui.Component, []string, error) {
-	label := ""
-	for _, p := range b.Props {
-		if p.Name == "label" {
-			s, err := stringOf(p.Value)
-			if err != nil {
-				return nil, nil, err
-			}
-			label = s
-		}
-	}
-	return widget.NewButton(label, widget.WithOnActivate(b.Emitter("clicked"))), nil, nil
+	return widget.NewButton("", widget.WithOnActivate(b.Emitter("clicked"))), nil, nil
 }
 
 // buildText consumes nothing: every property it has can be set at runtime.

@@ -24,8 +24,20 @@ if err := tree.Mount(spec); err != nil { /* … */ }
 err = tree.Emit(nodeID, "clicked")
 ```
 
-An adapter implements five methods — `Create`, `Apply`, `Attach`,
-`ResolveHandler`, `Destroy` — and nothing in their signatures names a toolkit.
+An adapter implements four methods — `ResolveHandler`, `Create`, `Apply`,
+`Destroy` — and nothing in their signatures names a toolkit.
+
+`Create` receives a **`Construction`**: the declared properties, the
+already-built children, and one emitter per signal. It returns the property
+names it **consumed**, and the engine applies only the rest — because a
+constructor-consumed property may have no setter at all, or a setter that
+assigns and invalidates unconditionally, so a replay is either impossible or a
+second visible effect.
+
+There is no `Attach`. Children arrive at construction, which is the only thing a
+container requiring them as arguments can work with. Structural insert and
+remove belong to a reconciling consumer and will be added with one, rather than
+guessed at now.
 
 ## What crosses the seam
 
@@ -42,11 +54,19 @@ correct.
 
 ## What the engine promises
 
-- **Order is readable off the file.** Create, then properties in document order,
-  then handlers, then children left to right. No map decides any of it.
+- **Order is readable off the file.** Handlers resolve, then children are built
+  left to right, then the node itself, then its unconsumed properties in
+  document order. No map decides any of it.
+- **Construction is bottom-up; identity is top-down.** A parent is built after
+  its children, because it may require them; node IDs are still allocated in
+  schema order so diagnostics read the way the file does.
 - **Node IDs are never reused**, so a callback that outlived its node cannot name
   a different one.
-- **Teardown is reverse mount order**, so a child is released before its parent.
+- **Teardown follows the tree's topology**, children before parents, and skips
+  nodes whose construction never completed. It is *not* reverse creation order —
+  those stopped being the same thing when construction went bottom-up.
+- **A failed mount latches.** Until `Destroy`, a further `Mount` is refused, so
+  two schemas cannot combine into one tree.
 - **Signals run synchronously**, in document order.
 - **A signal that re-enters itself is refused immediately**, by identity — not
   after a depth counter notices. A separate cap catches long *acyclic* chains.

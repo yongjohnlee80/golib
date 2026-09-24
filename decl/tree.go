@@ -170,19 +170,31 @@ func (t *Tree) Children(id NodeID) []NodeID {
 	return out
 }
 
-// Mount instantiates spec, from the root down.
+// Mount instantiates spec.
 //
-// Order is part of the contract, not an implementation detail. For each node
-// the engine creates it, applies its properties in DOCUMENT ORDER, binds its
-// handlers in document order, then mounts its children left to right and
-// attaches each. A consumer can therefore read the order of effects straight
-// off the schema file.
+// Order is part of the contract, not an implementation detail. For each node,
+// in this order:
 //
-// A failure part-way leaves the nodes already created IN PLACE and returns the
+//  1. its handlers are RESOLVED, before anything is built — a widget may accept
+//     its callback only as a constructor argument;
+//  2. its CHILDREN are mounted, left to right, by this same sequence;
+//  3. the node itself is CREATED, receiving its declared properties, its
+//     already-built children, and one emitter per distinct signal;
+//  4. every property the adapter did NOT report consuming is applied, in
+//     document order.
+//
+// So construction runs bottom-up while identity is allocated top-down: node IDs
+// read in schema order even though the building starts at the leaves. Both
+// halves matter — a container may require its children as constructor arguments
+// with no way to add them later, and a diagnostic that numbered nodes backwards
+// would be needlessly hard to match against the file.
+//
+// A failure part-way leaves what was already built IN PLACE and returns the
 // error. There is no rollback, and inventing one would be worse than saying so:
-// the adapter has already run real constructors and real setters, and the
-// engine cannot know which of those are safely undoable. Call [Tree.Destroy] to
-// tear down what exists.
+// the adapter has run real constructors and real setters, and the engine cannot
+// know which of those are safely undoable. The tree REMEMBERS the failure and
+// refuses a further Mount until [Tree.Destroy] has cleared it, so a second
+// schema cannot be grafted onto a partial one.
 func (t *Tree) Mount(spec parse.SpecTree) error {
 	if t.ph != phaseIdle {
 		return SchemaError{Op: "mount", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
