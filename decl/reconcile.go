@@ -252,6 +252,11 @@ func (t *Tree) Reload(src []byte) (Result, error) {
 // different design and not one this engine makes; saying so is the alternative
 // to implying an atomicity it does not have.
 func (t *Tree) Reconcile(spec qml.SpecTree) (Result, error) {
+	res, err := t.reconcile(spec)
+	return res, t.settle(err)
+}
+
+func (t *Tree) reconcile(spec qml.SpecTree) (Result, error) {
 	if t.ph != phaseIdle {
 		return Result{}, SchemaError{Op: "reconcile", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
@@ -271,7 +276,7 @@ func (t *Tree) Reconcile(spec qml.SpecTree) (Result, error) {
 	// leave the last good screen exactly as it is, including the import set the
 	// live tree resolved against — which a reload that assigned first and
 	// checked afterwards would already have destroyed.
-	imported, err := t.resolveImports(spec)
+	imported, err := t.vetDocument(spec)
 	if err != nil {
 		return Result{}, err
 	}

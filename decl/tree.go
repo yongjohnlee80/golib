@@ -109,6 +109,9 @@ type Tree struct {
 	// active is the stack of signals currently running, innermost last. It is
 	// the cycle detector: a pair already on the stack cannot be entered again.
 	active []activeEmission
+	// deferred are the signals raised while the tree was in the middle of an
+	// operation, waiting for it to commit. See Emit.
+	deferred []signalKey
 
 	// sched puts work on the goroutine that owns this tree. Provider callbacks
 	// arrive from wherever the host's data lives, which is not that goroutine.
@@ -275,6 +278,27 @@ func (t *Tree) SchemaID(id NodeID) (string, bool) {
 	return n.schemaID, true
 }
 
+// NodeByID finds the node a document declared with `id: name`.
+//
+// It is how a HOST reaches a widget the schema built — the editor whose mode
+// the status line reports, the dialog an Exit command opens. QML's `id` exists
+// so that things can be referred to; without this a host could only walk the
+// tree comparing SchemaIDs, which is the same lookup done badly in every
+// caller.
+//
+// It reports false for an id no mounted node declares.
+func (t *Tree) NodeByID(schemaID string) (NodeID, bool) {
+	if schemaID == "" {
+		return NoNode, false
+	}
+	for id, n := range t.nodes {
+		if n.schemaID == schemaID {
+			return id, true
+		}
+	}
+	return NoNode, false
+}
+
 // Children reports a node's children in attach order.
 func (t *Tree) Children(id NodeID) []NodeID {
 	n, ok := t.nodes[id]
@@ -312,6 +336,10 @@ func (t *Tree) Children(id NodeID) []NodeID {
 // refuses a further Mount until [Tree.Destroy] has cleared it, so a second
 // schema cannot be grafted onto a partial one.
 func (t *Tree) Mount(spec qml.SpecTree) error {
+	return t.settle(t.mount(spec))
+}
+
+func (t *Tree) mount(spec qml.SpecTree) error {
 	if t.ph != phaseIdle {
 		return SchemaError{Op: "mount", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
@@ -330,7 +358,9 @@ func (t *Tree) Mount(spec qml.SpecTree) error {
 	// document imported, so the import set has to exist before the first name is
 	// looked up — and an import of something no host provides is a better thing
 	// to be told than "unbound name" at each of the twenty places that use it.
-	imported, err := t.resolveImports(spec)
+	// The whole document is judged — imports, ids, attached properties —
+	// before a single node is planned, by the same vetting Reconcile uses.
+	imported, err := t.vetDocument(spec)
 	if err != nil {
 		return err
 	}
@@ -561,21 +591,25 @@ func (t *Tree) SetProp(id NodeID, prop string, v qml.SpecValue) error {
 // Emitting a signal nothing is bound to is a no-op and not an error: a schema
 // that simply does not care about a widget's signal is ordinary.
 func (t *Tree) Emit(id NodeID, signal string) error {
-	if t.ph == phasePropagating {
-		// A handler running mid-propagation could mutate the tree BETWEEN two
-		// entries of one fan-out, leaving half of it applied against a tree the
-		// other half no longer describes.
-		return SchemaError{Op: "emit", Node: id, Detail: signal,
-			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
+	// A signal raised while the tree is in the MIDDLE of an operation is
+	// DEFERRED until that operation has committed, not refused and not run.
+	//
+	// Running it now is what the phase rule exists to prevent: a handler would
+	// mutate the tree between two entries of one fan-out, or underneath the
+	// walk that is rebuilding it. But refusing it — which is what this did —
+	// loses a signal that genuinely happened. Widgets fire during these
+	// operations for real reasons: a setter the engine applies can change a
+	// widget's state and the widget reports it, as an editor does when a bound
+	// keyset switches it out of Normal mode. The status line then has to hear.
+	//
+	// So it is queued and delivered once the tree is consistent again.
+	if t.deferring() {
+		t.deferSignal(signalKey{node: id, signal: signal})
+		return nil
 	}
-	if t.ph == phaseReconciling {
-		// A handler running mid-reconcile would mutate the tree underneath the
-		// walk that is rebuilding it. Widgets do fire during a reconcile — a
-		// container relaying a removal, say — so this is a real path, not a
-		// defensive impossibility.
-		return SchemaError{Op: "emit", Node: id, Detail: signal,
-			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
-	}
+	// A tree being destroyed has nothing left for a handler to act on, and a
+	// signal deferred past the teardown would be delivered to nodes that no
+	// longer exist. Refused.
 	if t.ph == phaseDestroying {
 		return SchemaError{Op: "emit", Node: id, Detail: signal,
 			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}

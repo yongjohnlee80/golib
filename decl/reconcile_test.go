@@ -753,27 +753,38 @@ func TestReconcileRefusesWhenNotMounted(t *testing.T) {
 	}
 }
 
-// TestEmitIsRefusedDuringAReconcile closes a re-entrancy hole.
+// TestASignalRaisedMidReconcileIsDeferredUntilItCommits.
 //
 // A widget can fire while a reconcile is walking the tree — a container
-// relaying a removal, say — and a handler that ran then would mutate the
-// structure underneath the walk rebuilding it.
-func TestEmitIsRefusedDuringAReconcile(t *testing.T) {
+// relaying a removal, or a setter the reconcile applies changing the widget's
+// state. A handler that RAN then would mutate the structure underneath the walk
+// rebuilding it; one that was REFUSED would lose a signal that genuinely
+// happened. So it is neither: it runs once the reconcile has committed.
+func TestASignalRaisedMidReconcileIsDeferredUntilItCommits(t *testing.T) {
 	rec := newSplicer()
 	tr := mounted(t, rec, rec.recorder,
 		`Flex { Button { id: b onClicked: save() } Text { id: a text: "one" } }`)
 	btn := tr.Children(tr.Root())[0]
 
 	var reentry error
-	rec.applyErr["text"] = nil
-	rec.onApply = func(decl.Application) { reentry = tr.Emit(btn, "clicked") }
+	ranDuring := false
+	rec.onApply = func(decl.Application) {
+		reentry = tr.Emit(btn, "clicked")
+		ranDuring = ranDuring || strings.Contains(strings.Join(rec.trace, "\n"), "run save")
+	}
 
 	if _, err := tr.Reconcile(mustSpec(t,
 		`Flex { Button { id: b onClicked: save() } Text { id: a text: "two" } }`)); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
-	if !errors.Is(reentry, decl.ErrPhase) {
-		t.Fatalf("emitting during a reconcile returned %v, want ErrPhase", reentry)
+	if reentry != nil {
+		t.Fatalf("emitting during a reconcile returned %v, want it queued", reentry)
+	}
+	if ranDuring {
+		t.Fatal("the handler ran DURING the reconcile, underneath the walk rebuilding the tree")
+	}
+	if n := strings.Count(strings.Join(rec.trace, "\n"), "run save"); n != 1 {
+		t.Errorf("the deferred handler ran %d times after the reconcile, want 1", n)
 	}
 }
 
