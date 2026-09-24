@@ -977,3 +977,121 @@ func TestAFailedSetterStillLatches(t *testing.T) {
 }
 
 var errTestSetter = errors.New("this setter refuses everything")
+
+// TestAnAbortedBatchReportsNothing covers the accounting, which is the part a
+// host reads and cannot check.
+//
+// Two siblings are replaced; the first constructor succeeds and the second
+// refuses. Every replacement is then discarded — but the earlier success had
+// already been counted, so the Result named a rebuild that was thrown away.
+// That is the same false-log defect as reporting a rebuild before it happened,
+// one scope out: fixed for a single node, still live for a batch.
+func TestAnAbortedBatchReportsNothing(t *testing.T) {
+	const before = `Flex { id: root direction: vertical
+	    Text { id: a text: "one" }
+	    Text { id: b text: "two" } }`
+	const bad = `Flex { id: root direction: vertical
+	    Flex { id: a direction: horizontal }
+	    Flex { id: b direction: diagonal } }`
+
+	tr, a := mount(t, before, tuidecl.HostFuncs{},
+		func(err error) { t.Errorf("unexpected handler error: %v", err) })
+	be, app := startApp(t, mustRoot(t, tr, a))
+	waitFor(t, func() bool { return strings.Contains(be.String(), "one") })
+
+	root := tr.Root()
+	kids := containerKids(t, a, root)
+	size := tr.Len()
+
+	var res decl.Result
+	var err error
+	onLoop(t, app, func() { res, err = tr.Reload([]byte(bad)) })
+
+	if err == nil {
+		t.Fatal("the second constructor was supposed to refuse")
+	}
+	if res.Created != 0 {
+		t.Errorf("Created = %d: the discarded replacements were counted", res.Created)
+	}
+	if len(res.Rebuilt) != 0 {
+		t.Errorf("Rebuilt = %v: names a rebuild that was thrown away", res.Rebuilt)
+	}
+	if res.Destroyed != 0 || res.Moved != 0 || res.Applied != 0 {
+		t.Errorf("Result reports work that never committed: %+v", res)
+	}
+
+	// And the tree really is untouched, so the Result above is not merely
+	// consistent with itself.
+	if tr.Len() != size {
+		t.Errorf("tree size %d -> %d: the discarded batch was leaked", size, tr.Len())
+	}
+	now := containerKids(t, a, root)
+	if len(now) != len(kids) {
+		t.Fatalf("children = %d, want %d", len(now), len(kids))
+	}
+	for i := range kids {
+		if now[i] != kids[i] {
+			t.Errorf("child %d changed", i)
+		}
+	}
+	if !strings.Contains(be.String(), "one") || !strings.Contains(be.String(), "two") {
+		t.Errorf("the screen lost content:\n%s", be.String())
+	}
+	onLoop(t, app, func() { _, err = tr.Reload([]byte(before)) })
+	if err != nil {
+		t.Fatalf("an aborted batch latched the tree: %v", err)
+	}
+}
+
+// TestTheNoLatchGuaranteeIsPerParentNotWholeTree is the honest limit of the
+// prebuild, asserted rather than left in a review thread.
+//
+// Replacements are built before anything is released WITHIN ONE PARENT. But a
+// node's own properties are applied before its children's replacements are
+// constructed, so an Apply on one node followed by a refused constructor DEEPER
+// in the tree leaves the applied value in place and the tree latched.
+//
+// This exists because the public contract said constructor refusal costs
+// nothing, without the condition. A limit that lives only in a review thread
+// while the documentation promises the opposite is not a limit, it is a bug
+// with a witness.
+func TestTheNoLatchGuaranteeIsPerParentNotWholeTree(t *testing.T) {
+	const before = `Flex { id: root direction: vertical
+	    Text { id: a text: "one" }
+	    Flex { id: mid direction: vertical Text { id: c text: "three" } } }`
+	const bad = `Flex { id: root direction: vertical
+	    Text { id: a text: "CHANGED" }
+	    Flex { id: mid direction: vertical Flex { id: c direction: diagonal } } }`
+
+	tr, a := mount(t, before, tuidecl.HostFuncs{},
+		func(err error) { t.Errorf("unexpected handler error: %v", err) })
+	_, app := startApp(t, mustRoot(t, tr, a))
+
+	var res decl.Result
+	var err error
+	onLoop(t, app, func() { res, err = tr.Reload([]byte(bad)) })
+	if err == nil {
+		t.Fatal("the deeper constructor was supposed to refuse")
+	}
+	// The earlier Apply DID land. That is the point of the case.
+	if res.Applied != 1 {
+		t.Fatalf("Applied = %d, want 1 — this case only says something if the "+
+			"property change reached the widget before the deeper refusal", res.Applied)
+	}
+	// So the tree is partial, and latches.
+	if _, e := tr.Reload([]byte(before)); !errors.Is(e, decl.ErrPhase) {
+		t.Fatalf("a mixed apply-then-refuse returned %v, want ErrPhase", e)
+	}
+	// Destroy is the documented way out.
+	onLoop(t, app, func() { err = tr.Destroy() })
+	if err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	spec, perr := parse.QML{}.Parse([]byte(before))
+	if perr != nil {
+		t.Fatalf("parse: %v", perr)
+	}
+	if err := tr.Mount(spec); err != nil {
+		t.Fatalf("Destroy did not clear the latch: %v", err)
+	}
+}
