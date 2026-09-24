@@ -54,6 +54,12 @@ type Tree struct {
 	root   NodeID
 
 	ph phase
+	// planned holds the identities and bindings allocated during a reconcile's
+	// PLANNING pass for subtrees that will be mounted fresh. It exists so a
+	// handler name that does not resolve is discovered while the tree is still
+	// intact: without it, a typo in a NEW node is only found after the node it
+	// replaces has already been detached and destroyed.
+	planned map[*parse.SpecNode]plannedNode
 	// failed records that a Mount did not complete. A tree in that state holds
 	// a partial graph, so the next Mount must be refused rather than allowed to
 	// graft a second graph onto the wreckage — which is exactly what happens
@@ -62,6 +68,13 @@ type Tree struct {
 	// active is the stack of signals currently running, innermost last. It is
 	// the cycle detector: a pair already on the stack cannot be entered again.
 	active []activeEmission
+}
+
+// plannedNode is one fresh node's pre-allocated identity and pre-resolved
+// bindings, carried from the planning pass into the mount that follows.
+type plannedNode struct {
+	id       NodeID
+	handlers map[string][]boundHandler
 }
 
 type node struct {
@@ -247,8 +260,19 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 	// read in schema order even though construction runs bottom-up. A reader
 	// comparing a diagnostic against the file should not have to think in
 	// reverse.
-	t.nextID++
-	id := t.nextID
+	//
+	// A reconcile allocates both the identity and the bindings during its
+	// planning pass and leaves them here, so this mount adopts them rather than
+	// reaching into the adapter again. Mount has no planning pass and falls
+	// through to allocating its own.
+	var id NodeID
+	var pre map[string][]boundHandler
+	if p, ok := t.planned[sn]; ok {
+		id, pre = p.id, p.handlers
+	} else {
+		t.nextID++
+		id = t.nextID
+	}
 
 	n := &node{
 		id:       id,
@@ -265,7 +289,13 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 
 	// Handlers are resolved before construction, because a widget may only
 	// accept its callback as a constructor option and never expose a setter.
+	if pre != nil {
+		n.handlers = pre
+	}
 	for _, h := range sn.Handlers {
+		if pre != nil {
+			break // already resolved, during planning
+		}
 		fn, err := t.adapter.ResolveHandler(id, h.Signal, h.Name, h.Pos)
 		if err != nil {
 			return id, SchemaError{Op: "bind", Node: id, Detail: h.Signal + " -> " + h.Name,

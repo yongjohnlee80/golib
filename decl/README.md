@@ -83,6 +83,12 @@ the reason:
 | a **new signal** appeared | some widgets take a callback only at construction |
 | children changed on a node that cannot restructure | `widget.Split` has no `Add`, `Remove` or `Move` at all |
 
+A property that is **absent and then added** is judged the same way, which needs
+the optional `Settable` capability: a builder reports a property consumed only
+when the schema *declared* it, so mounting a `Split` with no `orientation`
+consumes nothing and adding it later would otherwise look like an ordinary
+runtime property. The adapter owns the setter table, so the adapter answers.
+
 Everything else is free. Re-pointing an existing signal at a different handler
 costs nothing: the emitter calls back into the engine, which reads the binding
 at call time.
@@ -124,13 +130,20 @@ correct.
   reversible.
 - **Mounting is refused while a signal is running**, and emitting is refused
   while a reconcile is walking the tree.
-- **A reload is planned before it is applied.** Handlers resolve and every
-  restructure is cleared with the adapter while the tree is still untouched, so
-  a typo in a handler name leaves the screen exactly as it was.
+- **A reload is planned before it is applied.** Every handler resolves —
+  including those in subtrees the schema *adds*, whose identities are allocated
+  during planning for exactly that reason — and every restructure and changed
+  property is cleared with the adapter while the tree is untouched. A typo in a
+  handler name leaves the screen exactly as it was.
 - **An unchanged file changes nothing** — no setter runs, no binding is
   re-resolved, and the adapter is not called at all.
-- **What cannot be pre-checked is a setter.** A failure there leaves the tree
-  partially reconciled and latches it, exactly as a failed mount does.
+- **Two things cannot be pre-checked**, and both are partial-mutation points: a
+  **setter**, since the only way to learn it refuses a value is to call it; and
+  a **structural operation** — `CanRestructure` settles whether a node accepts
+  child changes at all, but `Insert`, `Remove` and `Move` each fail at the
+  moment they run, after earlier work has landed. Either leaves the tree
+  partially reconciled and **latches** it, as a failed mount does; `Destroy`
+  clears it.
 
 ## What it does not promise
 

@@ -15,7 +15,10 @@ import (
 // constructor arguments and implements no Add, Remove or Move at all. Asking
 // the component rather than assuming is what lets the engine rebuild a Split
 // and splice a Flex in the same reload.
-var _ decl.Restructurer = (*Adapter)(nil)
+var (
+	_ decl.Restructurer = (*Adapter)(nil)
+	_ decl.Settable     = (*Adapter)(nil)
+)
 
 // CanRestructure reports whether the node's component accepts child changes.
 //
@@ -111,4 +114,21 @@ func countChildren(c tui.Container) int {
 		n++
 	}
 	return n
+}
+
+// CanApply implements decl.Settable: it reports whether a property has a
+// runtime setter for this node's type.
+//
+// The engine cannot infer this. A builder reports a property consumed only when
+// the schema DECLARED it, so mounting a Split with no orientation consumes
+// nothing — and a later reload adding `orientation` then looks like an ordinary
+// runtime property right up until Apply refuses it against a widget that has no
+// such setter. The setter table lives here, so the answer lives here.
+func (a *Adapter) CanApply(node decl.NodeID, prop string) bool {
+	b, ok := a.nodes[node]
+	if !ok {
+		return false
+	}
+	_, ok = a.setters[b.typ][prop]
+	return ok
 }

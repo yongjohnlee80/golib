@@ -40,6 +40,27 @@ type Restructurer interface {
 	MoveChild(parent, child NodeID, to int) error
 }
 
+// Settable is an OPTIONAL capability an [Adapter] may implement to say whether
+// a property can be set AFTER construction.
+//
+// Without it the engine can only infer the answer from what [Adapter.Create]
+// reported consuming, and that inference has a hole it cannot see: a builder
+// reports a property consumed only when the schema DECLARED it. Mount a Split
+// with no orientation and the builder takes the default and consumes nothing,
+// so adding `orientation` in a later reload looks like an ordinary runtime
+// property — and the apply fails against a widget that has no such setter.
+//
+// The adapter owns the setter table, so the adapter is the only thing that can
+// answer honestly. An adapter that does not implement this still reconciles;
+// it just cannot distinguish "absent and unsettable" from "absent and
+// settable", and will discover the difference when Apply refuses.
+type Settable interface {
+	// CanApply reports whether prop can be set on this node after
+	// construction. It must not have side effects: it is consulted during
+	// planning, before anything is mutated.
+	CanApply(node NodeID, prop string) bool
+}
+
 // ErrIncomplete reports source that stops mid-construct — the normal reading of
 // a file an editor is part-way through writing.
 //
@@ -145,15 +166,26 @@ func (t *Tree) Reload(src []byte) (Result, error) {
 // identity that survives reordering writes an `id`, and that is the only
 // identity this engine can honestly offer.
 //
-// The work is planned in full BEFORE anything is mutated: every handler is
-// resolved and every restructure is cleared with the adapter first, so the
-// common failures happen while the tree is still untouched. What cannot be
-// pre-checked is the adapter's own setters, since the only way to learn that a
-// setter refuses a value is to call it. A failure there leaves the tree
-// PARTIALLY reconciled and latches it, exactly as a failed [Tree.Mount] does:
-// the next Mount or Reconcile is refused until [Tree.Destroy] has cleared it.
-// Pretending otherwise would mean claiming the adapter's setters are
-// reversible, and they are not.
+// The work is planned in full BEFORE anything is mutated. Every handler is
+// resolved — including those in subtrees the schema ADDS, whose identities are
+// allocated during planning for exactly this reason — and every node's ability
+// to restructure and to accept each changed property is cleared with the
+// adapter first. So the ordinary mistakes, a mistyped handler name or a
+// property the widget cannot set, are found while the screen is still intact.
+//
+// TWO THINGS CANNOT BE PRE-CHECKED, and both are partial-mutation points:
+//
+//   - a SETTER, because the only way to learn that it refuses a value is to
+//     call it;
+//   - a STRUCTURAL operation. [Restructurer.CanRestructure] settles whether a
+//     node accepts child changes at all, but Insert, Remove and Move each
+//     return an error at the moment they run, after earlier structural work has
+//     already landed.
+//
+// A failure in either leaves the tree PARTIALLY reconciled and latches it,
+// exactly as a failed [Tree.Mount] does: the next Mount or Reconcile is refused
+// until [Tree.Destroy] has cleared it. Pretending otherwise would mean claiming
+// the adapter's setters and its container are reversible, and they are not.
 func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 	if t.ph != phaseIdle {
 		return Result{}, SchemaError{Op: "reconcile", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
@@ -170,7 +202,11 @@ func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 	}
 
 	t.ph = phaseReconciling
-	defer func() { t.ph = phaseIdle }()
+	t.planned = map[*parse.SpecNode]plannedNode{}
+	defer func() {
+		t.ph = phaseIdle
+		t.planned = nil
+	}()
 
 	// PLAN. Nothing below this line mutates the tree; the walk only reads it and
 	// asks the adapter questions that have no side effects.
@@ -246,9 +282,70 @@ func (s *step) rebuildRecord() Rebuild {
 	return Rebuild{Type: s.spec.Type, SchemaID: s.spec.ID, Pos: s.spec.Pos, Reason: s.reason}
 }
 
-// fresh returns the plan for a slot with nothing in it yet.
-func fresh(sn *parse.SpecNode) *step {
-	return &step{old: NoNode, spec: sn, rebuild: true, reason: "the schema adds this node"}
+// fresh returns the plan for a slot with nothing in it yet, having first
+// planned the subtree that will fill it.
+func (t *Tree) fresh(sn *parse.SpecNode) (*step, error) {
+	if err := t.planSubtree(sn); err != nil {
+		return nil, err
+	}
+	return &step{old: NoNode, spec: sn, rebuild: true, reason: "the schema adds this node"}, nil
+}
+
+// rebuildStep marks a node for rebuilding, planning the replacement subtree
+// first so the mutating pass has nothing left to discover.
+func (t *Tree) rebuildStep(s *step, reason string) (*step, error) {
+	if err := t.planSubtree(s.spec); err != nil {
+		return nil, err
+	}
+	s.rebuild = true
+	s.reason = reason
+	s.order, s.dropped, s.apply, s.handlers, s.rebind = nil, nil, nil, nil, false
+	return s, nil
+}
+
+// planSubtree allocates identity and resolves every handler for a subtree that
+// is about to be mounted fresh, WITHOUT touching the live tree.
+//
+// This is the half of "plan before you mutate" that a reconcile originally
+// missed. A fresh node used to resolve its handlers inside mountNode, which
+// runs after the node it replaces has already been detached and destroyed — so
+// a typo in a NEW handler name tore down the working screen and latched the
+// tree before reporting it. Identity is allocated here too, pre-order, so node
+// numbers still read in schema order.
+func (t *Tree) planSubtree(sn *parse.SpecNode) error {
+	t.nextID++
+	id := t.nextID
+	p := plannedNode{id: id}
+
+	for _, h := range sn.Handlers {
+		fn, err := t.adapter.ResolveHandler(id, h.Signal, h.Name, h.Pos)
+		if err != nil {
+			return SchemaError{Op: "bind", Node: id, Detail: h.Signal + " -> " + h.Name,
+				Pos: h.Pos, Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
+		}
+		if fn == nil {
+			return SchemaError{Op: "bind", Node: id, Detail: h.Signal + " -> " + h.Name,
+				Pos: h.Pos, Err: fmt.Errorf("%w: resolved to a nil function", ErrAdapter)}
+		}
+		if p.handlers == nil {
+			p.handlers = map[string][]boundHandler{}
+		}
+		p.handlers[h.Signal] = append(p.handlers[h.Signal], boundHandler{name: h.Name, pos: h.Pos, fn: fn})
+	}
+	if p.handlers == nil {
+		// A node with no handlers still needs an entry: its presence is what
+		// tells mountNode to adopt the planned identity rather than allocate a
+		// second one.
+		p.handlers = map[string][]boundHandler{}
+	}
+	t.planned[sn] = p
+
+	for _, child := range sn.Children {
+		if err := t.planSubtree(child); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // assess plans one matched pair, children first. It reads the tree and the
@@ -266,43 +363,54 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 	s := &step{old: oldID, spec: sn}
 
 	if n.typeName != sn.Type {
-		s.rebuild = true
-		s.reason = fmt.Sprintf("the type changed from %s to %s", n.typeName, sn.Type)
-		return s, nil
+		return t.rebuildStep(s, fmt.Sprintf("the type changed from %s to %s", n.typeName, sn.Type))
 	}
 
-	// A property the adapter CONSUMED at construction is one it told us has no
-	// setter. Changing or deleting it has no path through Apply, so the only
-	// honest response is to build the node again.
 	oldProps := propSequences(n.props)
 	newProps := propSequences(sn.Props)
-	for name := range n.consumed {
-		if !sameSequence(oldProps[name], newProps[name]) {
-			s.rebuild = true
-			s.reason = fmt.Sprintf(
-				"%q was taken at construction and has no setter, so changing it cannot be applied", name)
-			return s, nil
+
+	// canApply asks the adapter whether a property has a setter at all. Without
+	// the capability the engine falls back to what Create reported consuming,
+	// which is the best it can infer and is blind to a property that was ABSENT
+	// at construction: nothing was consumed, so nothing recorded that there is
+	// no setter for it.
+	settable, hasSettable := t.adapter.(Settable)
+	canApply := func(prop string) bool {
+		if hasSettable {
+			return settable.CanApply(oldID, prop)
+		}
+		return !n.consumed[prop]
+	}
+
+	// A property whose value changed — or that appeared for the first time —
+	// needs a setter. When there is none, the only honest response is to build
+	// the node again. Document order, so the reason a reader gets is the first
+	// one in the file rather than whichever the map yielded.
+	for _, p := range sn.Props {
+		if sameSequence(oldProps[p.Name], newProps[p.Name]) {
+			continue
+		}
+		if !canApply(p.Name) {
+			return t.rebuildStep(s, fmt.Sprintf(
+				"%q cannot be set after construction, so changing it cannot be applied", p.Name))
 		}
 	}
-	// A property that disappears from the schema cannot be un-applied either:
-	// there is no "unset" in the seam, and the engine holds no default to
-	// restore. Rebuilding is the only way to make the screen match the file.
-	for name := range oldProps {
-		if _, still := newProps[name]; !still {
-			s.rebuild = true
-			s.reason = fmt.Sprintf(
-				"%q was removed, and a property cannot be un-applied through a setter", name)
-			return s, nil
+	// A property that disappears cannot be un-applied either: there is no
+	// "unset" in the seam, and the engine holds no default to restore.
+	// Iterating the node's own list rather than the map keeps the reported
+	// reason stable across runs.
+	for _, p := range n.props {
+		if _, still := newProps[p.Name]; !still {
+			return t.rebuildStep(s, fmt.Sprintf(
+				"%q was removed, and a property cannot be un-applied through a setter", p.Name))
 		}
 	}
 	// A signal that appears for the first time has no emitter on the built
 	// widget, and some widgets accept a callback only as a constructor option.
 	for _, h := range sn.Handlers {
 		if !n.wired[h.Signal] {
-			s.rebuild = true
-			s.reason = fmt.Sprintf(
-				"%q is a new signal, and a built widget cannot always be wired after construction", h.Signal)
-			return s, nil
+			return t.rebuildStep(s, fmt.Sprintf(
+				"%q is a new signal, and a built widget cannot always be wired after construction", h.Signal))
 		}
 	}
 
@@ -337,9 +445,6 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 	// library's own assigns and invalidates unconditionally, so a "free" replay
 	// would be a real repaint.
 	for _, p := range sn.Props {
-		if n.consumed[p.Name] {
-			continue
-		}
 		if sameSequence(oldProps[p.Name], newProps[p.Name]) {
 			continue
 		}
@@ -351,7 +456,11 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 	s.restructure = len(dropped) > 0
 	for i, m := range matched {
 		if m == NoNode {
-			s.order = append(s.order, fresh(sn.Children[i]))
+			f, err := t.fresh(sn.Children[i])
+			if err != nil {
+				return nil, err
+			}
+			s.order = append(s.order, f)
 			s.restructure = true
 			continue
 		}
@@ -371,9 +480,7 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 	}
 
 	if s.restructure && !t.canRestructure(oldID) {
-		s.rebuild = true
-		s.reason = "its children changed and this node cannot be restructured after construction"
-		s.order, s.dropped, s.apply, s.handlers = nil, nil, nil, nil
+		return t.rebuildStep(s, "its children changed and this node cannot be restructured after construction")
 	}
 	return s, nil
 }
