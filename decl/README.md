@@ -15,7 +15,14 @@ import "github.com/yongjohnlee80/golib/decl"
 ```go
 tree := decl.New(myAdapter)
 
-spec, err := parse.QML{}.Parse(src)
+// What the host hands over is what the schema can reach. Injection IS
+// authorisation; there is no second gate asking whether it meant it.
+tree.DeclareModule(decl.Module{Name: "myapp.theme", Version: "1.0",
+    Exports: []string{"Theme"}})
+tree.Inject("Theme.heading", decl.SourceValue(str("Project Atlas")))
+tree.Inject("save", decl.Handle(func([]qml.SpecValue) error { return save() }))
+
+spec, err := qml.QML{}.Parse(src)
 if err != nil { /* a schema is input; show the error and keep the old tree */ }
 
 if err := tree.Mount(spec); err != nil { /* … */ }
@@ -24,8 +31,13 @@ if err := tree.Mount(spec); err != nil { /* … */ }
 err = tree.Emit(nodeID, "clicked")
 ```
 
-An adapter implements four methods — `ResolveHandler`, `Create`, `Apply`,
-`Destroy` — and nothing in their signatures names a toolkit. A fifth capability,
+An adapter implements three methods — `Create`, `Apply`, `Destroy` — and
+nothing in their signatures names a toolkit. Handlers are **not** among them:
+the adapter used to turn a handler name into a function, which made it a second
+name scope beside the engine's own and flattened `onClicked: save` to `"save"`,
+erasing the difference from `save()` where nothing downstream could recover it.
+A host injects its effects and the engine resolves them through the same typed
+registry as every other name. A fifth capability,
 `Restructurer`, is **optional**: implement it and a reload can splice a node's
 children in place; leave it out and every structural change degrades to a
 rebuild, which is correct and merely lossy.

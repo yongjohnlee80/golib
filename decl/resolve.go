@@ -84,8 +84,18 @@ func (t *Tree) collectSources(v qml.SpecValue, into map[string]bool) {
 		// version tracked exactly the single-segment names, which silently made
 		// `Theme.surface` un-trackable: a palette change would have updated the
 		// source and repainted nothing.
-		if in, ok := t.lookupName(v.Raw); ok && in.Kind == KindSource {
-			into[v.Raw] = true
+		//
+		// It resolves through the SAME canonical name evaluation uses. Looking
+		// up what the document wrote instead made a qualified import resolve
+		// and never track: `T.Theme.surface` evaluated as `Theme.surface` and
+		// was classified as `T.Theme.surface`, which is nothing, so the binding
+		// was born with no dependencies and no source tick ever reached it.
+		name := v.Raw
+		if canon, reason := t.canonical(pathOf(v)); reason == nameOK {
+			name = joinDots(canon)
+		}
+		if in, ok := t.lookupName(name); ok && in.Kind == KindSource {
+			into[name] = true
 		}
 	case qml.SpecValueCall:
 		for _, a := range v.Args {
@@ -133,7 +143,7 @@ func (t *Tree) walkValue(ctx context, v qml.SpecValue, at NodeID,
 		// a binding is refused before any argument is touched.
 		callee := qml.SpecValue{Kind: qml.SpecValueRef, Raw: v.Raw,
 			Path: splitDots(v.Raw), Pos: v.Pos}
-		in, err := t.lookupRef(callee, at)
+		in, _, err := t.lookupRef(callee, at)
 		if err != nil {
 			return qml.SpecValue{}, err
 		}
@@ -224,7 +234,7 @@ func describeExpr(e *js.Expr) string {
 func (t *Tree) walkRef(ctx context, v qml.SpecValue, at NodeID,
 	overlay map[string]qml.SpecValue, called bool) (qml.SpecValue, error) {
 
-	in, err := t.lookupRef(v, at)
+	in, name, err := t.lookupRef(v, at)
 	if err != nil {
 		return qml.SpecValue{}, err
 	}
@@ -237,14 +247,14 @@ func (t *Tree) walkRef(ctx context, v qml.SpecValue, at NodeID,
 		c.Pos = v.Pos
 		return c, nil
 	case KindSource:
-		if sv, ok := overlay[v.Raw]; ok {
+		if sv, ok := overlay[name]; ok {
 			sv.Pos = v.Pos
 			return sv, nil
 		}
 		// The LIVE value, not the injected one: propagation moves a source, and
 		// reading the registry here would resolve every binding against the value
 		// the source had at startup.
-		sv, ok := t.sources[v.Raw]
+		sv, ok := t.sources[name]
 		if !ok {
 			sv = in.Value
 		}
@@ -261,40 +271,29 @@ func (t *Tree) walkRef(ctx context, v qml.SpecValue, at NodeID,
 
 // lookupRef resolves a dotted name, reporting the three failures separately
 // because a reader needs a different thing from each.
-func (t *Tree) lookupRef(v qml.SpecValue, at NodeID) (Injected, error) {
+func (t *Tree) lookupRef(v qml.SpecValue, at NodeID) (Injected, string, error) {
 	path := v.Path
 	if len(path) == 0 {
 		path = splitDots(v.Raw)
 	}
 	name := v.Raw
 
-	// The gate is on the NAME THE DOCUMENT WROTE.
-	//
-	// A module is not a name. `import tui 1.0` brings the module's SINGLETONS
-	// into scope under their own names, so the document writes `Tui.Horizontal`
-	// — and a QUALIFIED import reaches them through the qualifier instead,
-	// `T.Tui.Horizontal`, because QML's `as` replaces the plain spelling rather
-	// than adding to it.
-	if len(path) > 1 {
-		if mod, qualified := t.imported.byQualifier[path[0]]; qualified {
-			if len(path) < 3 || !t.exportsOf(mod, path[1]) {
-				return Injected{}, t.fail(at, v, ErrNotResolvable, fmt.Sprintf(
-					"%q qualifies the %q module, which exports no %q",
-					path[0], mod, joinDots(path[1:])))
-			}
-			path = path[1:]
-			name = joinDots(path)
-		} else if mod, imported := t.imported.byName[path[0]]; imported {
-			_ = mod
-		} else if mod, exists := t.providerOf(path[0]); exists {
-			return Injected{}, t.fail(at, v, ErrNotImported, fmt.Sprintf(
-				"%q is exported by the %q module; add `import %s` to use it",
-				path[0], mod, mod))
-		}
+	canon, reason := t.canonical(path)
+	switch reason {
+	case nameQualifierEmpty:
+		return Injected{}, "", t.fail(at, v, ErrNotResolvable, fmt.Sprintf(
+			"%q qualifies the %q module, which exports no %q",
+			path[0], t.imported.byQualifier[path[0]], joinDots(path[1:])))
+	case nameNotImported:
+		mod, _ := t.providerOf(path[0])
+		return Injected{}, "", t.fail(at, v, ErrNotImported, fmt.Sprintf(
+			"%q is exported by the %q module; add `import %s` to use it",
+			path[0], mod, mod))
 	}
+	path, name = canon, joinDots(canon)
 
 	if in, ok := t.lookupName(name); ok {
-		return in, nil
+		return in, name, nil
 	}
 	if len(path) > 1 {
 		// A known namespace with an unknown member is a better diagnostic than
@@ -305,13 +304,13 @@ func (t *Tree) lookupRef(v qml.SpecValue, at NodeID) (Injected, error) {
 			// The module resolved and the MEMBER did not. Distinct from an
 			// unknown module because the reader's next move differs: check the
 			// spelling of the member, not the import.
-			return Injected{}, t.fail(at, v, ErrNotResolvable, fmt.Sprintf(
+			return Injected{}, "", t.fail(at, v, ErrNotResolvable, fmt.Sprintf(
 				"%q has no member %q", prefix, path[len(path)-1]))
 		}
-		return Injected{}, t.fail(at, v, ErrNotInjected, fmt.Sprintf(
+		return Injected{}, "", t.fail(at, v, ErrNotInjected, fmt.Sprintf(
 			"nothing named %q was injected, so no import brings %q into scope", path[0], v.Raw))
 	}
-	return Injected{}, t.fail(at, v, ErrNotInjected, fmt.Sprintf("unbound name %q", v.Raw))
+	return Injected{}, "", t.fail(at, v, ErrNotInjected, fmt.Sprintf("unbound name %q", v.Raw))
 }
 
 // lookupName resolves a name across the two scopes, in precedence order.
@@ -337,6 +336,62 @@ func (t *Tree) lookupName(name string) (Injected, bool) {
 		}
 	}
 	return Injected{}, false
+}
+
+// nameReason says why a name could not be canonicalised, so the ONE caller that
+// reports diagnostics can phrase them and the one that classifies can stay
+// silent.
+type nameReason uint8
+
+const (
+	nameOK nameReason = iota
+	// nameQualifierEmpty: the qualifier is bound, the module does not export
+	// what follows it.
+	nameQualifierEmpty
+	// nameNotImported: some module exports this name and the document did not
+	// import it.
+	nameNotImported
+)
+
+// canonical rewrites a written name to the one the registry is keyed by.
+//
+// A module is not a name. `import tui 1.0` brings the module's SINGLETONS into
+// scope under their own names, so the document writes `Tui.Horizontal` — and a
+// QUALIFIED import reaches them through the qualifier instead,
+// `T.Tui.Horizontal`, because QML's `as` replaces the plain spelling rather
+// than adding to it.
+//
+// EVERY question about a name goes through here: what it resolves to, and
+// whether it is a source. Those used to be asked of two different spellings —
+// evaluation stripped the qualifier and classification did not — so a qualified
+// singleton resolved correctly and was never tracked. A binding born with no
+// dependencies is not wrong when it is built; it is wrong the first time the
+// source moves, which is a long way from the code that caused it.
+func (t *Tree) canonical(path []string) ([]string, nameReason) {
+	if len(path) <= 1 {
+		return path, nameOK
+	}
+	if mod, qualified := t.imported.byQualifier[path[0]]; qualified {
+		if len(path) < 3 || !t.exportsOf(mod, path[1]) {
+			return path, nameQualifierEmpty
+		}
+		return path[1:], nameOK
+	}
+	if _, imported := t.imported.byName[path[0]]; imported {
+		return path, nameOK
+	}
+	if _, exists := t.providerOf(path[0]); exists {
+		return path, nameNotImported
+	}
+	return path, nameOK
+}
+
+// pathOf returns a value's segments, splitting Raw when the parser did not.
+func pathOf(v qml.SpecValue) []string {
+	if len(v.Path) > 0 {
+		return v.Path
+	}
+	return splitDots(v.Raw)
 }
 
 // refuse reports a name used where its KIND cannot appear.
