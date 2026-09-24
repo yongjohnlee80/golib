@@ -115,13 +115,13 @@ type Construction struct {
 // An implementation reports an unknown type, an unknown property or an
 // unresolvable handler as an error. It must not panic on schema content: a
 // schema is input, and input is not a programming mistake.
+// Handlers are NOT part of this interface. They used to be: the adapter turned a
+// handler NAME into a function, which quietly made the adapter a second name
+// scope beside the engine's own, and made `onClicked: save` indistinguishable
+// from `onClicked: save()` because only the name survived the lookup. A host now
+// hands its effects to the tree with [Tree.Inject], and the engine resolves them
+// through the same registry every other name goes through.
 type Adapter interface {
-	// ResolveHandler turns a handler NAME from the schema into a function.
-	// Resolution belongs to the adapter because the names refer to the host
-	// program, which the engine cannot see. It is called for every handler
-	// before the node that owns them is constructed.
-	ResolveHandler(node NodeID, signal, name string, pos parse.Position) (func() error, error)
-
 	// Create builds the node described by c and returns the names of the
 	// properties it CONSUMED during construction.
 	//

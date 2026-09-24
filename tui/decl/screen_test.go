@@ -29,7 +29,7 @@ const screen = `Split {
         Button {
             label: "Save"
             enabled: true
-            onClicked: save
+            onClicked: save()
         }
     }
     Text { text: "right pane" }
@@ -42,11 +42,13 @@ func mount(t *testing.T, src string, hosts tuidecl.HostFuncs, sink func(error)) 
 		t.Fatalf("schema does not parse: %v", err)
 	}
 	opts := append(tuidecl.StdProperties(),
-		tuidecl.WithHostFuncs(hosts),
 		tuidecl.WithErrorSink(sink),
 	)
 	a := tuidecl.New(tuidecl.StdRegistry(), opts...)
 	tr := decl.New(a)
+	if err := tuidecl.InjectHosts(tr, hosts); err != nil {
+		t.Fatalf("InjectHosts: %v", err)
+	}
 	if err := tr.Mount(spec); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
@@ -177,7 +179,7 @@ func TestAnUnregisteredTypeIsAPositionedError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	a := tuidecl.New(tuidecl.StdRegistry(), tuidecl.WithHostFuncs(tuidecl.HostFuncs{}))
+	a := tuidecl.New(tuidecl.StdRegistry())
 	mountErr := decl.New(a).Mount(spec)
 	if mountErr == nil {
 		t.Fatal("an unregistered type mounted")
@@ -266,16 +268,18 @@ func waitFor(t *testing.T, cond func() bool) {
 //
 // Documenting a violation does not make it a decision.
 func TestAnOmittedSinkIsRefusedRatherThanSilent(t *testing.T) {
-	spec, err := parse.QML{}.Parse([]byte("Button {\n  onClicked: save\n}"))
+	spec, err := parse.QML{}.Parse([]byte("Button {\n  onClicked: save()\n}"))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	// Everything present EXCEPT the sink.
-	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
-		tuidecl.WithHostFuncs(tuidecl.HostFuncs{"save": func() error { return nil }}),
-	)...)
+	a := tuidecl.New(tuidecl.StdRegistry(), tuidecl.StdProperties()...)
 
-	mountErr := decl.New(a).Mount(spec)
+	tr := decl.New(a)
+	if err := tuidecl.InjectHosts(tr, tuidecl.HostFuncs{"save": func() error { return nil }}); err != nil {
+		t.Fatalf("InjectHosts: %v", err)
+	}
+	mountErr := tr.Mount(spec)
 	if mountErr == nil {
 		t.Fatal("a schema that binds a handler mounted with no error sink; " +
 			"a failing handler would have been silent")
@@ -314,7 +318,7 @@ func TestASchemaWithNoHandlersNeedsNoSink(t *testing.T) {
 // construction, the engine would never apply it and this setter would never
 // run.
 func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
-	spec, err := parse.QML{}.Parse([]byte(`Button { label: "Save" onClicked: save }`))
+	spec, err := parse.QML{}.Parse([]byte(`Button { label: "Save" onClicked: save() }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -335,10 +339,12 @@ func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
 
 	// StdRegistry: the builder that actually ships.
 	a := tuidecl.New(tuidecl.StdRegistry(), spy,
-		tuidecl.WithHostFuncs(tuidecl.HostFuncs{"save": func() error { return nil }}),
 		tuidecl.WithErrorSink(func(error) {}),
 	)
 	tr := decl.New(a)
+	if err := tuidecl.InjectHosts(tr, tuidecl.HostFuncs{"save": func() error { return nil }}); err != nil {
+		t.Fatalf("InjectHosts: %v", err)
+	}
 	if err := tr.Mount(spec); err != nil {
 		t.Fatalf("mount: %v", err)
 	}

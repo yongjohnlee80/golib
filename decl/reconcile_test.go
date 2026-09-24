@@ -118,7 +118,7 @@ func (s *splicer) order(parent decl.NodeID) []decl.NodeID { return s.kids[parent
 func mounted(t *testing.T, a decl.Adapter, rec *recorder, src string) *decl.Tree {
 	t.Helper()
 	tr := decl.New(a)
-	if err := tr.Mount(mustSpec(t, src)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, rec, src)); err != nil {
 		t.Fatalf("fixture mount failed: %v", err)
 	}
 	rec.trace = nil
@@ -146,7 +146,7 @@ func TestReconcileIdenticalSchemaTouchesNothing(t *testing.T) {
 	const src = `Flex {
 		direction: tui.Vertical
 		Text { id: a text: "hello" }
-		Button { id: b label: "go" onClicked: save }
+		Button { id: b label: "go" onClicked: save() }
 	}`
 	rec := newSplicer()
 	tr := mounted(t, rec, rec.recorder, src)
@@ -288,9 +288,13 @@ func TestRemovedPropertyForcesRebuild(t *testing.T) {
 // schema cannot be attached to the already-built widget.
 func TestNewSignalForcesRebuild(t *testing.T) {
 	rec := newSplicer()
+	// `save` is injected up front although the FIRST schema does not name it:
+	// what a host hands over is fixed before Mount, and a reload does not widen
+	// it. The reload below is a new signal, not a new capability.
+	rec.handlers["save"] = func() error { return nil }
 	tr := mounted(t, rec, rec.recorder, `Flex { Button { id: b } }`)
 
-	res := reconcile(t, tr, `Flex { Button { id: b onClicked: save } }`)
+	res := reconcile(t, tr, `Flex { Button { id: b onClicked: save() } }`)
 
 	if len(res.Rebuilt) != 1 {
 		t.Fatalf("Rebuilt = %v, want the Button", res.Rebuilt)
@@ -308,10 +312,14 @@ func TestNewSignalForcesRebuild(t *testing.T) {
 // time. The widget is never touched, and the node keeps everything it owns.
 func TestChangedHandlerRebindsWithoutRebuilding(t *testing.T) {
 	rec := newSplicer()
-	tr := mounted(t, rec, rec.recorder, `Flex { Button { id: b onClicked: save } }`)
+	rec.handlers["discard"] = func() error {
+		rec.trace = append(rec.trace, "run discard")
+		return nil
+	}
+	tr := mounted(t, rec, rec.recorder, `Flex { Button { id: b onClicked: save() } }`)
 	btn := tr.Children(tr.Root())[0]
 
-	res := reconcile(t, tr, `Flex { Button { id: b onClicked: discard } }`)
+	res := reconcile(t, tr, `Flex { Button { id: b onClicked: discard() } }`)
 
 	if len(res.Rebuilt) != 0 {
 		t.Fatalf("rebinding a signal rebuilt something: %v", res.Rebuilt)
@@ -709,14 +717,14 @@ func TestFailedApplyLatchesTheTree(t *testing.T) {
 func TestPlanningFailsBeforeAnythingIsTouched(t *testing.T) {
 	rec := newSplicer()
 	tr := mounted(t, rec, rec.recorder,
-		`Flex { Text { id: a text: "one" } Button { id: b onClicked: save } }`)
+		`Flex { Text { id: a text: "one" } Button { id: b onClicked: save() } }`)
 	rec.resolveErr["nosuchfunc"] = errors.New("no host function named nosuchfunc")
 
 	// The Text's property edit comes FIRST in document order, so an engine that
 	// applied as it walked would have already changed it by the time it reached
 	// the bad handler.
 	_, err := tr.Reconcile(mustSpec(t,
-		`Flex { Text { id: a text: "two" } Button { id: b onClicked: nosuchfunc } }`))
+		`Flex { Text { id: a text: "two" } Button { id: b onClicked: nosuchfunc() } }`))
 	if err == nil {
 		t.Fatal("expected the unresolvable handler to fail the reconcile")
 	}
@@ -728,7 +736,7 @@ func TestPlanningFailsBeforeAnythingIsTouched(t *testing.T) {
 	}
 	// And because nothing was mutated, the tree is still usable.
 	if _, err := tr.Reconcile(mustSpec(t,
-		`Flex { Text { id: a text: "two" } Button { id: b onClicked: save } }`)); err != nil {
+		`Flex { Text { id: a text: "two" } Button { id: b onClicked: save() } }`)); err != nil {
 		t.Fatalf("the tree should still be usable after a planning failure: %v", err)
 	}
 }
@@ -750,7 +758,7 @@ func TestReconcileRefusesWhenNotMounted(t *testing.T) {
 func TestEmitIsRefusedDuringAReconcile(t *testing.T) {
 	rec := newSplicer()
 	tr := mounted(t, rec, rec.recorder,
-		`Flex { Button { id: b onClicked: save } Text { id: a text: "one" } }`)
+		`Flex { Button { id: b onClicked: save() } Text { id: a text: "one" } }`)
 	btn := tr.Children(tr.Root())[0]
 
 	var reentry error
@@ -758,7 +766,7 @@ func TestEmitIsRefusedDuringAReconcile(t *testing.T) {
 	rec.onApply = func(decl.Application) { reentry = tr.Emit(btn, "clicked") }
 
 	if _, err := tr.Reconcile(mustSpec(t,
-		`Flex { Button { id: b onClicked: save } Text { id: a text: "two" } }`)); err != nil {
+		`Flex { Button { id: b onClicked: save() } Text { id: a text: "two" } }`)); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 	if !errors.Is(reentry, decl.ErrPhase) {
@@ -870,11 +878,11 @@ func equalIDs(a, b []decl.NodeID) bool {
 func TestAFreshNodesHandlerTypoLeavesTheTreeIntact(t *testing.T) {
 	cases := map[string]string{
 		// An INSERTED node: nothing it replaces, but a sibling is still dropped.
-		"inserted": `Flex { Text { id: a text: "one" } Button { id: new onClicked: nosuch } }`,
+		"inserted": `Flex { Text { id: a text: "one" } Button { id: new onClicked: nosuch() } }`,
 		// A RETYPED node: the old one must survive the failed plan.
-		"retyped": `Flex { Button { id: a onClicked: nosuch } }`,
+		"retyped": `Flex { Button { id: a onClicked: nosuch() } }`,
 		// A node under a parent that cannot restructure, so the parent rebuilds.
-		"under a rebuilt parent": `Flex { Flex { id: inner Button { id: new onClicked: nosuch } } }`,
+		"under a rebuilt parent": `Flex { Flex { id: inner Button { id: new onClicked: nosuch() } } }`,
 	}
 	for name, after := range cases {
 		t.Run(name, func(t *testing.T) {

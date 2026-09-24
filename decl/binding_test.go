@@ -66,7 +66,7 @@ func tree(t *testing.T, rec *reactor, src string,
 			t.Fatalf("DeclareFunc %q: %v", n, err)
 		}
 	}
-	if err := tr.Mount(mustSpec(t, src)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, rec.recorder, src)); err != nil {
 		t.Fatalf("fixture mount: %v", err)
 	}
 	rec.trace = nil
@@ -483,8 +483,8 @@ func TestSetSourceFromASignalHandlerIsLegal(t *testing.T) {
 		propagated, perr = tr.SetSource("x", sv("after"))
 		return perr
 	}
-	if err := tr.Mount(mustSpec(t,
-		`Flex { Button { id: b onClicked: bump } Text { id: a text: x } }`)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, rec.recorder,
+		`Flex { Button { id: b onClicked: bump() } Text { id: a text: x } }`)); err != nil {
 		t.Fatal(err)
 	}
 	btn := tr.Children(tr.Root())[0]

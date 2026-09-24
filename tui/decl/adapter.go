@@ -9,12 +9,38 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// HostFuncs maps handler names from a schema to functions in the host program.
+// HostFuncs maps handler names to functions in the host program.
 //
-// The schema says `onClicked: saveDocument`; this is what turns that string
-// into something callable. It is the host's table because the names refer to
-// the host's own behaviour, which neither the engine nor this package can see.
+// It is a convenience for [InjectHosts]: a host that already keeps its effects
+// in a table can hand the table over rather than injecting one name at a time.
 type HostFuncs map[string]func() error
+
+// InjectHosts registers each entry as a handler on tr, before Mount.
+//
+// This replaces the adapter's old ResolveHandler table. The difference is not
+// cosmetic: a handler injected here is TYPED, so the engine can refuse it where
+// a value belongs and tell the author which of the two they wrote — which a map
+// consulted by name could not do, because by the time it was consulted the only
+// thing left of `save()` was "save".
+func InjectHosts(tr *decl.Tree, hosts HostFuncs) error {
+	names := make([]string, 0, len(hosts))
+	for n := range hosts {
+		names = append(names, n)
+	}
+	// Deterministic, so the FIRST failure of a bad table is always the same one
+	// and a test asserting it is not ordered by map iteration.
+	sort.Strings(names)
+	for _, n := range names {
+		fn := hosts[n]
+		if fn == nil {
+			return fmt.Errorf("host function %q is nil", n)
+		}
+		if err := tr.Inject(n, decl.Handle(func([]parse.SpecValue) error { return fn() })); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Adapter satisfies decl.Adapter for golib/tui.
 //
@@ -23,8 +49,7 @@ type HostFuncs map[string]func() error
 // Getting calls onto that goroutine is the caller's job, the same as for any
 // other component state.
 type Adapter struct {
-	reg   *Registry
-	hosts HostFuncs
+	reg *Registry
 
 	// nodes is the adapter's own record of what it built. It is keyed by the
 	// engine's NodeID, which is never reused, so an entry can never be confused
@@ -48,11 +73,6 @@ type Adapter struct {
 
 // Option configures an [Adapter].
 type Option func(*Adapter)
-
-// WithHostFuncs supplies the handler-name table.
-func WithHostFuncs(h HostFuncs) Option {
-	return func(a *Adapter) { a.hosts = h }
-}
 
 // WithErrorSink installs where a handler error goes when it surfaces from a
 // toolkit callback that cannot return one.
@@ -140,15 +160,6 @@ func (a *Adapter) Component(id decl.NodeID) (tui.Component, bool) {
 type built struct {
 	comp tui.Component
 	typ  string
-}
-
-// ResolveHandler implements decl.Adapter.
-func (a *Adapter) ResolveHandler(_ decl.NodeID, signal, name string, pos parse.Position) (func() error, error) {
-	fn, ok := a.hosts[name]
-	if !ok {
-		return nil, fmt.Errorf("no host function named %q for signal %q (declared at %s)", name, signal, pos)
-	}
-	return fn, nil
 }
 
 // Create implements decl.Adapter.
