@@ -24,10 +24,12 @@ import (
 //
 // # The grammar, and why it is this small
 //
-//	Root     := Node
+//	Root     := { Import } Node
+//	Import   := 'import' DottedName [ Version ] [ 'as' Ident ]
 //	Node     := TypeName '{' Body '}'
 //	Body     := ( Property | Handler | Node )*
-//	Property := Ident ':' Value
+//	Property := PropName ':' Value
+//	PropName := Ident { '.' Ident }         // plain, grouped, or attached
 //	Handler  := 'on' Ident ':' Ident        // a handler NAME, never a body
 //	Value    := String | Number | Bool | Token | Ref | Call
 //	Token    := '@' Ident                   // a portable style token
@@ -151,8 +153,45 @@ type SpecValue struct {
 
 // SpecProp is one `name: value` pair.
 type SpecProp struct {
-	Name  string
-	Value SpecValue
+	// Name is the property as written, dots included: "text", "font.bold",
+	// "Layout.fillWidth". A consumer that only ever expected a plain name reads
+	// this exactly as it did before.
+	Name string
+	// Path holds the segments. One for a plain property; more for a GROUPED
+	// property (`font.bold`) or an ATTACHED one (`Layout.fillWidth`).
+	//
+	// QML distinguishes those two by convention — an attached property's first
+	// segment is capitalised, because it names a type rather than a
+	// sub-object — and this package records the spelling without ruling on it.
+	// Which of the two a name means depends on what the consumer has
+	// registered, and that is not something a parser can know.
+	Path []string
+	// Grouped reports that this property was written inside a block —
+	// `font { bold: true }` rather than `font.bold: true`. The two MEAN the
+	// same thing and carry the same Path; this records which was written, for a
+	// consumer that formats or round-trips and would otherwise rewrite one into
+	// the other.
+	Grouped bool
+	Value   SpecValue
+	Pos     Position
+}
+
+// SpecImport is one `import` statement.
+//
+// QML uses imports to bring a module's types into scope. This package records
+// what was imported; resolving it — deciding which types a module provides, or
+// that it does not exist — belongs to whoever consumes the tree.
+type SpecImport struct {
+	// Module is the dotted name as written: "tui.Window", "QtQuick".
+	Module string
+	// Path holds the module name's segments.
+	Path []string
+	// Version is the version as written, empty when none was given. It is left
+	// UNDECODED for the same reason numbers are: a consumer with a version
+	// policy knows how to read it, and this package would be guessing.
+	Version string
+	// Alias is the name after `as`, empty when there is none.
+	Alias string
 	Pos   Position
 }
 
@@ -164,7 +203,12 @@ type SpecProp struct {
 type SpecHandler struct {
 	Signal string
 	Name   string
-	Pos    Position
+	// Path holds the segments of an ATTACHED handler —
+	// `Component.onCompleted` — and one segment for an ordinary one. As with
+	// [SpecProp], the parser records the spelling and does not rule on what it
+	// attaches to.
+	Path []string
+	Pos  Position
 }
 
 // SpecNode is one node of the schema tree: pure data, no behaviour.
@@ -192,7 +236,9 @@ type SpecNode struct {
 
 // SpecTree is a parsed schema.
 type SpecTree struct {
-	Root *SpecNode
+	// Imports are in document order, before the root node.
+	Imports []SpecImport
+	Root    *SpecNode
 }
 
 // Parse implements [Parser]. It returns a [SyntaxError] on malformed input.
@@ -208,6 +254,36 @@ func (q QML) Parse(src []byte) (SpecTree, error) {
 	p := &qmlParser{sc: sc, maxDepth: q.MaxDepth}
 	if p.maxDepth <= 0 {
 		p.maxDepth = DefaultQMLMaxDepth
+	}
+
+	if err := p.skipSpace(); err != nil {
+		return SpecTree{}, err
+	}
+	if p.sc.Done() {
+		return SpecTree{}, SyntaxError{
+			Format: "qml", Pos: p.sc.Pos(),
+			Want: "a root node", Got: "end of input", Incomplete: true,
+		}
+	}
+
+	var imports []SpecImport
+	for {
+		if err := p.skipSpace(); err != nil {
+			return SpecTree{}, err
+		}
+		if !p.sc.HasPrefix("import") {
+			break
+		}
+		// `importer { }` is a node, not an import: the keyword only counts when
+		// a non-identifier character follows it.
+		if r, ok := p.sc.PeekAt(len("import")); ok && isIdentPart(r) {
+			break
+		}
+		imp, err := p.importStatement()
+		if err != nil {
+			return SpecTree{}, err
+		}
+		imports = append(imports, imp)
 	}
 
 	if err := p.skipSpace(); err != nil {
@@ -236,7 +312,7 @@ func (q QML) Parse(src []byte) (SpecTree, error) {
 			Got:  quoteRune(r),
 		}
 	}
-	return SpecTree{Root: root}, nil
+	return SpecTree{Imports: imports, Root: root}, nil
 }
 
 // qmlParser holds the scan state for one Parse call. A parser value is never
@@ -269,6 +345,169 @@ func (p *qmlParser) enter(at Position) error {
 func (p *qmlParser) leave() { p.depth-- }
 
 // node parses `TypeName { ... }`.
+// importStatement reads `import a.b.c 1.0 as Name`.
+//
+// Version and alias are optional and are recorded as written. A parser that
+// validated either would be deciding a policy — which versions exist, which
+// aliases collide — that belongs to whatever resolves the module.
+func (p *qmlParser) importStatement() (SpecImport, error) {
+	at := p.sc.Pos()
+	p.sc.Take("import")
+
+	if err := p.skipSpace(); err != nil {
+		return SpecImport{}, err
+	}
+	name, ok := p.ident()
+	if !ok {
+		return SpecImport{}, p.wanted(at, "a module name after import")
+	}
+	imp := SpecImport{Module: name, Path: []string{name}, Pos: at}
+	for p.sc.HasPrefix(".") {
+		dotAt := p.sc.Pos()
+		p.sc.Take(".")
+		seg, ok := p.ident()
+		if !ok {
+			return SpecImport{}, p.wanted(dotAt, "a name after . in the module name")
+		}
+		imp.Path = append(imp.Path, seg)
+		imp.Module += "." + seg
+	}
+
+	// A version is digits and dots, and it is optional. It must not swallow the
+	// next line's node, so it is only read when a digit follows on this line.
+	if r, ok := p.sc.Peek(); ok && r == ' ' || r == '\t' {
+		for {
+			r, ok := p.sc.Peek()
+			if !ok || (r != ' ' && r != '\t') {
+				break
+			}
+			p.sc.Next()
+		}
+		if r, ok := p.sc.Peek(); ok && r >= '0' && r <= '9' {
+			start := p.sc.Pos().Offset
+			for {
+				r, ok := p.sc.Peek()
+				if !ok || !(r >= '0' && r <= '9' || r == '.') {
+					break
+				}
+				p.sc.Next()
+			}
+			imp.Version = string(p.sc.Slice(start, p.sc.Pos().Offset))
+		}
+	}
+
+	if err := p.skipSpace(); err != nil {
+		return SpecImport{}, err
+	}
+	if p.sc.HasPrefix("as") {
+		if r, ok := p.sc.PeekAt(2); !ok || !isIdentPart(r) {
+			asAt := p.sc.Pos()
+			p.sc.Take("as")
+			if err := p.skipSpace(); err != nil {
+				return SpecImport{}, err
+			}
+			alias, ok := p.ident()
+			if !ok {
+				return SpecImport{}, p.wanted(asAt, "a name after as")
+			}
+			imp.Alias = alias
+		}
+	}
+	return imp, nil
+}
+
+// groupedBlock reads `font { bold: true  size: 14 }`.
+//
+// Each entry becomes a SpecProp whose Path is the block's prefix followed by
+// the entry's own, so `font { bold: true }` and `font.bold: true` produce the
+// same Path — they mean the same thing — while [SpecProp.Grouped] records which
+// spelling was used, for a consumer that formats or round-trips.
+func (p *qmlParser) groupedBlock(n *SpecNode, prefix []string, at Position) error {
+	if err := p.enter(at); err != nil {
+		return err
+	}
+	defer p.leave()
+
+	p.sc.Take("{")
+	for {
+		if err := p.skipSpace(); err != nil {
+			return err
+		}
+		if p.sc.Done() {
+			return SyntaxError{
+				Format: "qml", Pos: at,
+				Want: "} to close the group opened here", Got: "end of input",
+				Incomplete: true,
+			}
+		}
+		if p.sc.Take("}") {
+			return nil
+		}
+		entryAt := p.sc.Pos()
+		leaf, ok := p.ident()
+		if !ok {
+			r, _ := p.sc.Peek()
+			return SyntaxError{
+				Format: "qml", Pos: entryAt,
+				Want: "a property name or } in the group", Got: quoteRune(r),
+			}
+		}
+		full := append(append([]string{}, prefix...), leaf)
+		for p.sc.HasPrefix(".") {
+			dotAt := p.sc.Pos()
+			p.sc.Take(".")
+			seg, ok := p.ident()
+			if !ok {
+				return p.wanted(dotAt, "a name after . in the property name")
+			}
+			full = append(full, seg)
+		}
+		if err := p.skipSpace(); err != nil {
+			return err
+		}
+		// `font { style { weight: 700 } }` — a group inside a group. The prefix
+		// accumulates, so the leaf path is the same one the dotted spelling
+		// would produce.
+		if p.sc.HasPrefix("{") {
+			if err := p.groupedBlock(n, full, entryAt); err != nil {
+				return err
+			}
+			continue
+		}
+		if !p.sc.Take(":") {
+			return p.wanted(entryAt, ": or { after the property name in the group")
+		}
+		v, err := p.value()
+		if err != nil {
+			return err
+		}
+		n.Props = append(n.Props, SpecProp{
+			Name: strings.Join(full, "."), Path: full, Value: v, Grouped: true, Pos: entryAt,
+		})
+	}
+}
+
+// startsUpper reports whether a name begins with an upper-case letter, which is
+// how QML spells a type.
+func startsUpper(name string) bool {
+	if name == "" {
+		return false
+	}
+	return unicode.IsUpper([]rune(name)[0])
+}
+
+// wanted reports a failure, distinguishing end of input — which a writer has
+// simply not finished — from a wrong character.
+func (p *qmlParser) wanted(at Position, want string) error {
+	r, ok := p.sc.Peek()
+	if !ok {
+		return SyntaxError{
+			Format: "qml", Pos: at, Want: want, Got: "end of input", Incomplete: true,
+		}
+	}
+	return SyntaxError{Format: "qml", Pos: p.sc.Pos(), Want: want, Got: quoteRune(r)}
+}
+
 func (p *qmlParser) node() (*SpecNode, error) {
 	startPos := p.sc.Pos()
 	name, ok := p.ident()
@@ -353,6 +592,23 @@ func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) 
 			}
 		}
 
+		// A property name may be DOTTED: `font.bold` groups a sub-object,
+		// `Layout.fillWidth` attaches one. QML tells the two apart by whether
+		// the first segment is capitalised — but only a consumer knows which
+		// names it has registered as which, so this parser records the path and
+		// rules on neither.
+		path := []string{name}
+		for p.sc.HasPrefix(".") {
+			dotAt := p.sc.Pos()
+			p.sc.Take(".")
+			seg, ok := p.ident()
+			if !ok {
+				return nil, p.wanted(dotAt, "a name after . in the property name")
+			}
+			path = append(path, seg)
+			name += "." + seg
+		}
+
 		// A child node is an identifier followed by `{`; a property or handler
 		// is an identifier followed by `:`. One rune of lookahead separates
 		// them, which is the whole reason the grammar spells a child as a
@@ -361,15 +617,27 @@ func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) 
 			return nil, err
 		}
 		switch {
-		case p.sc.HasPrefix("{"):
+		case p.sc.HasPrefix("{") && len(path) == 1 && startsUpper(name):
+			// QML capitalises TYPES, so `Text {` is a child node and `font {`
+			// is a grouped property. That convention is the only thing
+			// separating them, and it is the language's, not ours.
 			child, err := p.nodeBody(name, memberAt)
 			if err != nil {
 				return nil, err
 			}
 			n.Children = append(n.Children, child)
 
+		case p.sc.HasPrefix("{"):
+			// `font { bold: true }` — a grouped BLOCK. Parsed as its own shape
+			// rather than flattened, because flattening would lose the
+			// distinction between a block and the same names written as
+			// separate dotted lines, and a consumer may legitimately care.
+			if err := p.groupedBlock(n, path, memberAt); err != nil {
+				return nil, err
+			}
+
 		case p.sc.Take(":"):
-			if err := p.member(n, name, memberAt); err != nil {
+			if err := p.member(n, name, path, memberAt); err != nil {
 				return nil, err
 			}
 
@@ -392,12 +660,12 @@ func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) 
 
 // member parses the right-hand side of `name:` — a handler when the name is an
 // on-prefixed signal, a property otherwise.
-func (p *qmlParser) member(n *SpecNode, name string, at Position) error {
+func (p *qmlParser) member(n *SpecNode, name string, path []string, at Position) error {
 	if err := p.skipSpace(); err != nil {
 		return err
 	}
 
-	if sig, ok := signalName(name); ok {
+	if sig, ok := signalName(path[len(path)-1]); ok {
 		hAt := p.sc.Pos()
 		target, ok := p.ident()
 		if !ok {
@@ -419,7 +687,8 @@ func (p *qmlParser) member(n *SpecNode, name string, at Position) error {
 				Got: quoteRune(r),
 			}
 		}
-		n.Handlers = append(n.Handlers, SpecHandler{Signal: sig, Name: target, Pos: at})
+		n.Handlers = append(n.Handlers, SpecHandler{
+			Signal: sig, Name: target, Path: path, Pos: at})
 		return nil
 	}
 
@@ -432,8 +701,14 @@ func (p *qmlParser) member(n *SpecNode, name string, at Position) error {
 	// of Props. It must be a bare identifier: an id that came from a call or a
 	// binding could change between reloads, and an identity that moves is not
 	// an identity.
+	if path[0] == "id" && len(path) > 1 {
+		return SyntaxError{
+			Format: "qml", Pos: at,
+			Want: "id written as a plain name", Got: quoted(name),
+		}
+	}
 	if name == "id" {
-		if v.Kind != SpecValueRef {
+		if v.Kind != SpecValueRef || len(v.Path) > 1 {
 			return SyntaxError{
 				Format: "qml", Pos: v.Pos,
 				Want: "a bare identifier for id",
@@ -451,7 +726,7 @@ func (p *qmlParser) member(n *SpecNode, name string, at Position) error {
 		return nil
 	}
 
-	n.Props = append(n.Props, SpecProp{Name: name, Value: v, Pos: at})
+	n.Props = append(n.Props, SpecProp{Name: name, Path: path, Value: v, Pos: at})
 	return nil
 }
 
