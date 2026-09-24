@@ -319,3 +319,95 @@ func TestTwoModulesExportingOneNameCannotBothBePlainlyImported(t *testing.T) {
 		t.Errorf("diagnostic = %q, want it to suggest qualifying one", err)
 	}
 }
+
+// TestAQualifiedSingletonIsTrackedAndRepaints.
+//
+// Evaluation stripped the qualifier and dependency classification did not, so
+// `T.Theme.surface` RESOLVED as `Theme.surface` and was CLASSIFIED as
+// `T.Theme.surface` — which is nothing. The binding was born with no
+// dependencies, mounted correctly, painted correctly, and then never moved
+// again.
+//
+// That is the shape of defect worth a named test: nothing is wrong when it is
+// built, and the symptom arrives the first time a source changes, a long way
+// from the code that caused it.
+//
+// The unqualified spelling is the CONTROL. Without it a fix that broke both
+// forms equally would read as a pass here.
+func TestAQualifiedSingletonIsTrackedAndRepaints(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "through a qualifier",
+			src: "import myapp.theme 1.0 as T\n" +
+				`Text { id: a text: T.Theme.surface }`,
+		},
+		{
+			name: "plainly imported",
+			src: "import myapp.theme 1.0\n" +
+				`Text { id: a text: Theme.surface }`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := newReactor()
+			tr := decl.New(rec)
+			if err := tr.DeclareModule(decl.Module{
+				Name: "myapp.theme", Version: "1.0", Exports: []string{"Theme"},
+			}); err != nil {
+				t.Fatalf("DeclareModule: %v", err)
+			}
+			if err := tr.Inject("Theme.surface", decl.SourceValue(sv("#1e1e2e"))); err != nil {
+				t.Fatalf("inject: %v", err)
+			}
+			if err := tr.Mount(qmlDoc(t, c.src)); err != nil {
+				t.Fatalf("mount: %v", err)
+			}
+			rec.trace = nil
+
+			res, err := tr.SetSource("Theme.surface", sv("#eff1f5"))
+			if err != nil {
+				t.Fatalf("SetSource: %v", err)
+			}
+			if res.Applied != 1 {
+				t.Fatalf("result = %+v, want the new palette value to reach the setter", res)
+			}
+			got := applyLines(rec)
+			if len(got) != 1 || !strings.Contains(got[0], "#eff1f5") {
+				t.Errorf("applied %v, want the NEW value; the old one means the "+
+					"binding re-evaluated against a name the overlay does not use", got)
+			}
+		})
+	}
+}
+
+// TestAQualifiedNameReadsTheSameRegistryEntryAsThePlainOne.
+//
+// The two spellings must resolve to ONE entry, not to two that happen to agree
+// at mount. Reading the source back through the engine after a change is what
+// tells them apart.
+func TestAQualifiedNameReadsTheSameRegistryEntryAsThePlainOne(t *testing.T) {
+	tr := decl.New(newReactor())
+	if err := tr.DeclareModule(decl.Module{
+		Name: "myapp.theme", Version: "1.0", Exports: []string{"Theme"},
+	}); err != nil {
+		t.Fatalf("DeclareModule: %v", err)
+	}
+	if err := tr.Inject("Theme.surface", decl.SourceValue(sv("#111"))); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if err := tr.Mount(qmlDoc(t, "import myapp.theme 1.0 as T\n"+
+		`Flex { Text { id: a text: T.Theme.surface } }`)); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	// The registry is keyed by the canonical name, so that is what a host sets
+	// and reads — a qualifier is a spelling in ONE document, not a second name.
+	if _, ok := tr.Source("T.Theme.surface"); ok {
+		t.Error("a qualifier leaked into the registry as a second source name")
+	}
+	if v, ok := tr.Source("Theme.surface"); !ok || v.Raw != "#111" {
+		t.Errorf("Source(Theme.surface) = %+v, %v; want the canonical entry", v, ok)
+	}
+}

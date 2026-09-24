@@ -25,34 +25,37 @@ import (
 // `Text.text` may legitimately contain exactly that string and only the
 // registry knows the difference.
 //
-// # The grammar, and why it is this small
+// # The grammar
 //
 //	Root     := { Import } Node
-//	Import   := 'import' DottedName [ Version ] [ 'as' Ident ]
+//	Import   := 'import' DottedName [ Version ] [ 'as' Qualifier ]
 //	Node     := TypeName '{' Body '}'
-//	Body     := ( Property | Handler | Node )*
+//	Body     := ( Property | Handler | Group | Node )*
 //	Property := PropName ':' Value
-//	PropName := Ident { '.' Ident }         // plain, grouped, or attached
-//	Handler  := 'on' Ident ':' Ident        // a handler NAME, never a body
-//	Value    := String | Number | Bool | Token | Ref | Call
-//	Token    := '@' Ident                   // a portable style token
-//	Ref      := Ident { '.' Ident }         // a name, or a member chain
-//	Call     := Ident '(' [ Value { ',' Value } ] ')'
+//	Group    := PropName '{' ( Property )* '}'    // font { bold: true }
+//	PropName := Ident { '.' Ident }               // plain, grouped, or attached
+//	Handler  := 'on' Ident ':' JavaScript         // one statement, or a block
+//	Value    := JavaScript                        // an expression
 //
-// There is no ARITHMETIC. `width: parent.width / 2` is where an expression
-// evaluator starts, and an expression evaluator is where an ECMAScript runtime
-// ends. Growing the grammar should take a specific screen that needs it, not a
-// general appetite for expressiveness.
+// A PROPERTY VALUE IS A JAVASCRIPT EXPRESSION and a HANDLER BODY IS JAVASCRIPT
+// STATEMENTS, because in QML that is what they are. Both are read by
+// [github.com/yongjohnlee80/golib/parse/js], on this parser's own scanner and
+// depth budget, so nesting is bounded across the two grammars rather than
+// within each.
 //
-// Member chains ARE parsed, into [SpecValue.Path], because a schema that reads
-// like QML should not fail to tokenize like QML — a reader who writes
-// `parent.width` deserves an error about what it MEANS, naming the line, rather
-// than a parse error about a stray dot. Whether a consumer can resolve one is
-// its own business; this package only records that a chain was written.
+// [SpecValue] PROJECTS the shapes a consumer asks about constantly — string,
+// number, bool, ref, call — and keeps the tree for everything else as
+// [SpecValueExpr]. That is a convenience, not a smaller grammar: `parent.width
+// / 2` parses, and an engine that cannot evaluate it declines it by name and
+// position rather than this package pretending the syntax is wrong.
 //
-// Handler bodies are NAMES for the same reason: this package emits data, never
-// behaviour, so one schema file stays meaningful to any adapter that can
-// resolve the names against its own host functions.
+// There are no extensions. There was briefly one — `@name`, a symbolic style
+// value — and it is gone: QML defines styles with a singleton object reached
+// through an import, so the sigil was a second way to spell something the
+// language already had.
+//
+// A qualifier after `as` is written like a type, because it names a namespace,
+// and an import statement ends at the end of its line.
 //
 // The zero value is usable.
 type QML struct {

@@ -73,7 +73,7 @@ func (t *Tree) compileHandler(node NodeID, h qml.SpecHandler) (boundHandler, err
 		}
 		ref := qml.SpecValue{Kind: qml.SpecValueRef, Raw: name,
 			Path: splitDots(name), Pos: e.Pos}
-		in, err := t.lookupRef(ref, node)
+		in, _, err := t.lookupRef(ref, node)
 		if err != nil {
 			return boundHandler{}, err
 		}
