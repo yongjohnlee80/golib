@@ -236,6 +236,69 @@ func TestEveryArgumentIsValidatedBeforeTheFunctionRuns(t *testing.T) {
 	}
 }
 
+// TestANESTEDCallIsNotRunBeforeALaterArgumentIsValidated.
+//
+// The case the test above does NOT reach, and the one that was wrong: it
+// watches the OUTER function, which a single-pass walk never reaches anyway.
+// The inner call is a CHILD, and evaluating a child call IS running a host
+// function — so in `outer(inner(), absent)` the inner one had already happened
+// by the time the unresolved name was found.
+//
+// "Every child before any call" is only true of a walk that validates without
+// evaluating, which is why there are two passes.
+func TestANESTEDCallIsNotRunBeforeALaterArgumentIsValidated(t *testing.T) {
+	var inner, outer int
+	tr := decl.New(newReactor())
+	if err := tr.Inject("inner", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) {
+		inner++
+		return sv("ok"), nil
+	})); err != nil {
+		t.Fatalf("inject inner: %v", err)
+	}
+	if err := tr.Inject("outer", decl.Pure(func(a []parse.SpecValue) (parse.SpecValue, error) {
+		outer++
+		return a[0], nil
+	})); err != nil {
+		t.Fatalf("inject outer: %v", err)
+	}
+
+	err := mountWith(t, tr, "text", call("outer", call("inner"), ref("absent")))
+	if !errors.Is(err, decl.ErrNotInjected) {
+		t.Fatalf("err = %v, want ErrNotInjected", err)
+	}
+	if inner != 0 || outer != 0 {
+		t.Errorf("inner ran %d and outer ran %d; a schema mistake must be found "+
+			"before ANY host call, nested ones included", inner, outer)
+	}
+
+	// The positive half: with the name bound, both DO run, exactly once each.
+	// A validation pass that also evaluated would double every call.
+	tr2 := decl.New(newReactor())
+	inner, outer = 0, 0
+	if err := tr2.Inject("inner", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) {
+		inner++
+		return sv("ok"), nil
+	})); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if err := tr2.Inject("outer", decl.Pure(func(a []parse.SpecValue) (parse.SpecValue, error) {
+		outer++
+		return a[0], nil
+	})); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if err := tr2.Inject("here", decl.Constant(sv("x"))); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if err := mountWith(t, tr2, "text", call("outer", call("inner"), ref("here"))); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	if inner != 1 || outer != 1 {
+		t.Errorf("inner ran %d and outer ran %d, want 1 each — a validation pass "+
+			"that also evaluated would double every call", inner, outer)
+	}
+}
+
 // TestASourceReachedOnlyThroughACallIsStillTracked.
 //
 // The dependency set comes from the same recursion that evaluates, so a source
