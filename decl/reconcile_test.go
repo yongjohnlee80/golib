@@ -245,7 +245,7 @@ func TestConsumedPropertyChangeForcesRebuild(t *testing.T) {
 		t.Fatalf("Rebuilt = %v, want exactly the Split", res.Rebuilt)
 	}
 	if !strings.Contains(res.Rebuilt[0].Reason, "orientation") ||
-		!strings.Contains(res.Rebuilt[0].Reason, "no setter") {
+		!strings.Contains(res.Rebuilt[0].Reason, "cannot be set after construction") {
 		t.Errorf("the reason does not name the cause: %q", res.Rebuilt[0].Reason)
 	}
 	if !res.RootReplaced {
@@ -856,4 +856,123 @@ func equalIDs(a, b []decl.NodeID) bool {
 		}
 	}
 	return true
+}
+
+// TestAFreshNodesHandlerTypoLeavesTheTreeIntact covers the half of
+// plan-before-mutate that the first version of this reconciler missed.
+//
+// TestPlanningFailsBeforeAnythingIsTouched only ever exercised an EXISTING
+// node's handler, which is resolved during planning. A node the schema ADDS was
+// resolved inside mountNode instead — which runs after the node it replaces has
+// been detached and destroyed. So a typo in a new handler name tore down the
+// working screen and latched the tree, while the documentation promised the
+// opposite.
+func TestAFreshNodesHandlerTypoLeavesTheTreeIntact(t *testing.T) {
+	cases := map[string]string{
+		// An INSERTED node: nothing it replaces, but a sibling is still dropped.
+		"inserted": `Flex { Text { id: a text: "one" } Button { id: new onClicked: nosuch } }`,
+		// A RETYPED node: the old one must survive the failed plan.
+		"retyped": `Flex { Button { id: a onClicked: nosuch } }`,
+		// A node under a parent that cannot restructure, so the parent rebuilds.
+		"under a rebuilt parent": `Flex { Flex { id: inner Button { id: new onClicked: nosuch } } }`,
+	}
+	for name, after := range cases {
+		t.Run(name, func(t *testing.T) {
+			rec := newSplicer()
+			tr := mounted(t, rec, rec.recorder, `Flex { Text { id: a text: "one" } }`)
+			rec.resolveErr["nosuch"] = errors.New("no host function named nosuch")
+			before := tr.Children(tr.Root())
+
+			_, err := tr.Reconcile(mustSpec(t, after))
+			if err == nil {
+				t.Fatal("expected the unresolvable handler to fail the reconcile")
+			}
+			for _, line := range rec.trace {
+				if strings.HasPrefix(line, "destroy") || strings.HasPrefix(line, "remove") ||
+					strings.HasPrefix(line, "create") || strings.HasPrefix(line, "apply") {
+					t.Errorf("the tree was mutated before planning failed: %q", line)
+				}
+			}
+			if got := tr.Children(tr.Root()); !equalIDs(got, before) {
+				t.Errorf("the tree changed: %v -> %v", before, got)
+			}
+			// And it is not latched: the screen keeps working.
+			delete(rec.resolveErr, "nosuch")
+			if _, err := tr.Reconcile(mustSpec(t, `Flex { Text { id: a text: "two" } }`)); err != nil {
+				t.Fatalf("the tree should still be usable after a planning failure: %v", err)
+			}
+		})
+	}
+}
+
+// TestAStructuralRefusalLatchesTheTree states the failure mode the contract
+// originally left out.
+//
+// CanRestructure is a preflight for whether a node accepts child changes at
+// all, but Insert, Remove and Move each return an error at APPLY time, after
+// earlier structural work has already landed. That is a partial-mutation point
+// exactly like a setter, and the documentation used to name only setters.
+func TestAStructuralRefusalLatchesTheTree(t *testing.T) {
+	rec := newSplicer()
+	tr := mounted(t, rec, rec.recorder, `Flex { Text { id: a } Text { id: b } }`)
+	boom := errors.New("the container refused the child")
+	rec.insertErr = boom
+
+	// Drops b and adds c: the removal lands, then the insert is refused.
+	_, err := tr.Reconcile(mustSpec(t, `Flex { Text { id: a } Text { id: c } }`))
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want the container's own error", err)
+	}
+	var se decl.SchemaError
+	if !errors.As(err, &se) || !errors.Is(err, decl.ErrAdapter) {
+		t.Errorf("err = %v, want a SchemaError wrapping ErrAdapter", err)
+	}
+	// Earlier work DID land, which is the point: this is not atomic.
+	if !strings.Contains(strings.Join(rec.trace, "|"), "remove") {
+		t.Errorf("expected the removal to have landed before the refusal:\n%s",
+			strings.Join(rec.trace, "\n"))
+	}
+	// The tree is latched, so a partial graph cannot be built on.
+	if _, err := tr.Reconcile(mustSpec(t, `Flex { Text { id: a } }`)); !errors.Is(err, decl.ErrPhase) {
+		t.Fatalf("a reconcile after a structural refusal returned %v, want ErrPhase", err)
+	}
+	// And Destroy is the documented way out.
+	if err := tr.Destroy(); err != nil {
+		t.Fatalf("Destroy after a structural refusal: %v", err)
+	}
+	if err := tr.Mount(mustSpec(t, `Flex { Text { id: a } }`)); err != nil {
+		t.Fatalf("Destroy did not clear the latch: %v", err)
+	}
+}
+
+// TestTheReportedReasonIsStableWhenSeveralEditsQualify pins diagnostics to
+// document order.
+//
+// Two properties are removed at once, so two reasons are true and the engine
+// must pick one. Scanning a map picks whichever Go's iteration happened to
+// yield, which makes the message a developer sees differ between runs for the
+// same edit — the sort of thing that is dismissed as flakiness rather than read
+// as the defect it is. The node's own property list is in document order.
+func TestTheReportedReasonIsStableWhenSeveralEditsQualify(t *testing.T) {
+	const before = `Flex { Text { id: a alpha: "1" beta: "2" gamma: "3" } }`
+	const after = `Flex { Text { id: a gamma: "3" } }`
+
+	// Checked on EVERY iteration rather than aggregated. An aggregate ("the
+	// reasons were all the same") only fails once Go's map iteration happens to
+	// vary within the sample, so it kills a map-order regression most of the
+	// time and quietly passes the rest — which is a flaky test wearing the
+	// costume of a strict one. Asserting the expected reason each time fails on
+	// the first wrong draw.
+	for i := range 50 {
+		rec := newSplicer()
+		tr := mounted(t, rec, rec.recorder, before)
+		res := reconcile(t, tr, after)
+		if len(res.Rebuilt) != 1 {
+			t.Fatalf("run %d: Rebuilt = %v, want one", i, res.Rebuilt)
+		}
+		if !strings.Contains(res.Rebuilt[0].Reason, `"alpha"`) {
+			t.Fatalf("run %d: reason = %q, want the FIRST removed property in document order (alpha)",
+				i, res.Rebuilt[0].Reason)
+		}
+	}
 }

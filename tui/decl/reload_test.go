@@ -603,3 +603,70 @@ func containerKids(t *testing.T, a *tuidecl.Adapter, id decl.NodeID) []tui.Compo
 	}
 	return out
 }
+
+// TestAddingAConstructorOnlyPropertyRebuilds covers the blind spot in inferring
+// "has no setter" from what a builder reported consuming.
+//
+// A builder reports a property consumed only when the schema DECLARED it. Mount
+// a Split with no orientation and it takes the default and consumes nothing, so
+// adding `orientation` in a later reload looked like an ordinary runtime
+// property — and failed the whole reload against a widget that has no such
+// setter. The adapter owns the setter table and now answers the question
+// directly.
+func TestAddingAConstructorOnlyPropertyRebuilds(t *testing.T) {
+	cases := []struct{ name, before, after, typ, prop string }{
+		{"Split.orientation",
+			`Split { id: root Text { id: a text: "l" } Text { id: b text: "r" } }`,
+			`Split { id: root orientation: vertical Text { id: a text: "l" } Text { id: b text: "r" } }`,
+			"Split", "orientation"},
+		{"Flex.direction",
+			`Flex { id: root Text { id: a text: "l" } }`,
+			`Flex { id: root direction: horizontal Text { id: a text: "l" } }`,
+			"Flex", "direction"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tr, _ := mount(t, c.before, tuidecl.HostFuncs{},
+				func(err error) { t.Errorf("unexpected handler error: %v", err) })
+
+			res, err := tr.Reload([]byte(c.after))
+			if err != nil {
+				t.Fatalf("adding a constructor-only property must rebuild, not fail: %v", err)
+			}
+			if len(res.Rebuilt) != 1 || res.Rebuilt[0].Type != c.typ {
+				t.Fatalf("Rebuilt = %v, want the %s", res.Rebuilt, c.typ)
+			}
+			if !strings.Contains(res.Rebuilt[0].Reason, c.prop) {
+				t.Errorf("the reason does not name %q: %q", c.prop, res.Rebuilt[0].Reason)
+			}
+		})
+	}
+}
+
+// TestCanApplyAnswersFromTheSetterTable pins the capability to what the adapter
+// can actually do, in both directions.
+func TestCanApplyAnswersFromTheSetterTable(t *testing.T) {
+	tr, a := mount(t, listScreen, tuidecl.HostFuncs{},
+		func(err error) { t.Errorf("unexpected handler error: %v", err) })
+
+	root := nodeNamed(t, tr, "root") // Split
+	text := nodeNamed(t, tr, "side") // Text
+	list := nodeNamed(t, tr, "list") // Flex
+	cases := []struct {
+		name string
+		node decl.NodeID
+		prop string
+		want bool
+	}{
+		{"Text.text has a setter", text, "text", true},
+		{"Split.orientation has none", root, "orientation", false},
+		{"Flex.direction has none", list, "direction", false},
+		{"an unknown property", text, "nosuchprop", false},
+		{"an unknown node", decl.NodeID(9999), "text", false},
+	}
+	for _, c := range cases {
+		if got := a.CanApply(c.node, c.prop); got != c.want {
+			t.Errorf("%s: CanApply = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
