@@ -746,13 +746,17 @@ func (p *qmlParser) handlerBody() ([]Stmt, error) {
 		}
 	}
 
+	// The body starts at the depth the DOCUMENT has already spent, and is capped
+	// by the document's own limit. That seeding is the whole mechanism: a body
+	// three nodes down has three levels less to spend than one at the root, so
+	// nesting is bounded across the two grammars rather than within each.
+	//
+	// There is deliberately nothing to carry back. enter/leave are balanced, so
+	// a body that returns has left the counter where it found it — and an
+	// assignment here would be a line that looks load-bearing and is not.
 	x := &exprParser{sc: p.sc, max: p.maxDepth, d: &JavaScript, depth: p.depth}
 	sp := &stmtParser{sc: p.sc, x: x}
 	st, err := sp.statement()
-	// The depth the body reached is carried back, because the two parsers share
-	// one budget and a body that unwound its own counter would let whatever
-	// follows start from a total the document has not actually paid for.
-	p.depth = x.depth
 	if err != nil {
 		return nil, err
 	}

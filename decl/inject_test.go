@@ -639,3 +639,61 @@ func TestAHandlerArgumentIsResolvedThroughTheSameMatrix(t *testing.T) {
 		t.Errorf("err = %v, want the unbound argument refused at mount", err)
 	}
 }
+
+// TestOnlyAHandlerMayBeCalledFromASignalBody.
+//
+// The other half of the matrix's handler column. A source or a pure function is
+// a VALUE — naming one where an effect belongs is a schema mistake, and it has
+// to be caught at the gate rather than at the call: an injected function has no
+// Handle to invoke, so an engine that skipped the check would reach a nil
+// callback on the first click.
+func TestOnlyAHandlerMayBeCalledFromASignalBody(t *testing.T) {
+	cases := []struct {
+		name    string
+		inject  func(*decl.Tree) error
+		body    string
+		wantMsg string
+	}{
+		{
+			name: "a pure function",
+			inject: func(tr *decl.Tree) error {
+				return tr.Inject("total", decl.Pure(func([]parse.SpecValue) (parse.SpecValue, error) { return num("1"), nil }))
+			},
+			body:    "total()",
+			wantMsg: "a function produces a value, and a signal wants an effect",
+		},
+		{
+			name:    "a source",
+			inject:  func(tr *decl.Tree) error { return tr.Inject("count", decl.SourceValue(num("1"))) },
+			body:    "count()",
+			wantMsg: "cannot be called",
+		},
+		{
+			name:    "a constant",
+			inject:  func(tr *decl.Tree) error { return tr.Inject("Greeting", decl.Constant(sv("hi"))) },
+			body:    "Greeting()",
+			wantMsg: "cannot be called",
+		},
+		{
+			name:    "a namespace",
+			inject:  func(tr *decl.Tree) error { return tr.Inject("Theme.surface", decl.SourceValue(sv("#111"))) },
+			body:    "Theme()",
+			wantMsg: "a namespace is not a value",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tr := decl.New(newReactor())
+			if err := c.inject(tr); err != nil {
+				t.Fatalf("inject: %v", err)
+			}
+			err := mountSrc(t, tr, "Button {\n  onClicked: "+c.body+"\n}")
+			if !errors.Is(err, decl.ErrWrongKind) {
+				t.Fatalf("err = %v, want ErrWrongKind", err)
+			}
+			if !strings.Contains(err.Error(), c.wantMsg) {
+				t.Errorf("diagnostic = %q, want it to contain %q", err, c.wantMsg)
+			}
+		})
+	}
+}
