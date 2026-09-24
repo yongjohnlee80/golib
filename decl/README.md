@@ -173,7 +173,10 @@ correct.
   parent's child list*. Every replacement there is **built before anything it
   replaces is released**, so `direction: diagonal` costs you the half-built
   replacement and nothing else: the live screen is still there and the tree is
-  **not** latched.
+  **not** latched. If *discarding* that replacement fails — `Destroy` is allowed
+  to — the failure is **joined onto** the constructor error rather than dropped.
+  It has nowhere else to surface: the nodes are forgotten immediately after, so
+  no later `Destroy` can retry or report them.
 - **That guarantee is per-parent, not whole-tree.** A node's own properties are
   applied before its children's replacements are constructed, so a property
   change on one node followed by a refused constructor *deeper in the tree*

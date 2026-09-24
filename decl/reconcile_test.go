@@ -1023,3 +1023,89 @@ func TestAnUnrecognisedPropertyKindIsRefused(t *testing.T) {
 		t.Fatalf("a recognised kind must still apply: %v", err)
 	}
 }
+
+// TestADiscardedReplacementReportsItsCleanupFailures covers the one place a
+// teardown failure has nowhere else to go.
+//
+// When a constructor refuses, the replacements built so far are discarded — and
+// the nodes are forgotten immediately afterwards, so no later Destroy can retry
+// or report a cleanup that failed. Dropping the error there leaves a resource
+// the adapter still holds with no record anywhere that it was never released.
+// That is the same silent-loss shape this package already refused for handler
+// errors; it was written here twice as `_ =`.
+func TestADiscardedReplacementReportsItsCleanupFailures(t *testing.T) {
+	boom := errors.New("this constructor refuses")
+	cleanup := errors.New("replacement cleanup refused")
+
+	t.Run("root", func(t *testing.T) {
+		rec := newSplicer()
+		tr := mounted(t, rec, rec.recorder, `Flex { Text { id: a text: "one" } }`)
+		rec.createErr["Bad"] = boom
+		rec.destroyErr = cleanup
+
+		// A root type change: the replacement's child builds, then the root
+		// constructor refuses, so the child must be discarded.
+		_, err := tr.Reconcile(mustSpec(t, `Bad { Text { id: c } }`))
+		if !errors.Is(err, boom) {
+			t.Errorf("the construction failure was lost: %v", err)
+		}
+		if !errors.Is(err, cleanup) {
+			t.Errorf("the cleanup failure was swallowed: %v", err)
+		}
+		// The live tree is still intact and unlatched, as before.
+		if _, err := tr.Reconcile(mustSpec(t, `Flex { Text { id: a text: "two" } }`)); err != nil {
+			t.Fatalf("a failed discard must not latch a tree it never touched: %v", err)
+		}
+	})
+
+	t.Run("a batch keeps cleaning after a refusal", func(t *testing.T) {
+		rec := newSplicer()
+		tr := mounted(t, rec, rec.recorder,
+			`Flex { Text { id: a } Text { id: b } Text { id: c } }`)
+		rec.createErr["Bad"] = boom
+		rec.destroyErr = cleanup
+		rec.trace = nil
+
+		// Two siblings retype successfully, the third refuses. All three
+		// prebuilt subtrees must be offered to cleanup even though the FIRST
+		// one refuses — stopping there would strand the rest with no record.
+		_, err := tr.Reconcile(mustSpec(t,
+			`Flex { Flex { id: a } Flex { id: b } Bad { id: c } }`))
+		if !errors.Is(err, boom) || !errors.Is(err, cleanup) {
+			t.Fatalf("err = %v, want the constructor AND the cleanup failures", err)
+		}
+		var destroys int
+		for _, line := range rec.trace {
+			if strings.HasPrefix(line, "destroy ") {
+				destroys++
+			}
+		}
+		if destroys != 2 {
+			t.Errorf("cleanup attempted %d destroys, want 2 — an early refusal stopped later cleanup:\n%s",
+				destroys, strings.Join(rec.trace, "\n"))
+		}
+		// Nothing leaked, and the live tree is untouched.
+		if tr.Len() != 4 {
+			t.Errorf("tree size = %d, want 4: the discarded batch was leaked", tr.Len())
+		}
+		if _, err := tr.Reconcile(mustSpec(t, `Flex { Text { id: a } Text { id: b } Text { id: c } }`)); err != nil {
+			t.Fatalf("a failed discard must not latch: %v", err)
+		}
+	})
+
+	t.Run("a clean discard reports only the construction failure", func(t *testing.T) {
+		// The positive control: without it, "join everything" would pass even
+		// if the engine attached a cleanup error that never happened.
+		rec := newSplicer()
+		tr := mounted(t, rec, rec.recorder, `Flex { Text { id: a text: "one" } }`)
+		rec.createErr["Bad"] = boom
+
+		_, err := tr.Reconcile(mustSpec(t, `Flex { Bad { id: a Text { id: c } } }`))
+		if !errors.Is(err, boom) {
+			t.Fatalf("err = %v, want the constructor failure", err)
+		}
+		if strings.Contains(err.Error(), "destroy") {
+			t.Errorf("a successful discard reported a teardown failure: %v", err)
+		}
+	})
+}
