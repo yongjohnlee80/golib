@@ -34,7 +34,19 @@ type resolution struct {
 func (t *Tree) evalValue(ctx context, v parse.SpecValue, at NodeID,
 	overlay map[string]parse.SpecValue) (resolution, error) {
 
-	out, err := t.walkValue(ctx, v, at, overlay, false)
+	// TWO PASSES over ONE recursion. The first validates and executes nothing;
+	// the second evaluates. A single pass cannot honour "every child is checked
+	// before any host function runs", because evaluating a NESTED call IS
+	// running one: in `outer(inner(), absent)` the inner call had already
+	// happened by the time the unresolved `absent` was reached.
+	//
+	// The passes share an implementation rather than being two walks that could
+	// disagree about what they visit; `mode` is the only difference between
+	// them, and it changes exactly one thing.
+	if _, err := t.walkValue(ctx, v, at, overlay, false, modeValidate); err != nil {
+		return resolution{}, err
+	}
+	out, err := t.walkValue(ctx, v, at, overlay, false, modeEvaluate)
 	if err != nil {
 		return resolution{}, err
 	}
@@ -90,10 +102,21 @@ func (t *Tree) isBinding(v parse.SpecValue) bool {
 	return len(into) > 0
 }
 
+// walkMode selects what a walk DOES, not what it visits.
+type walkMode uint8
+
+const (
+	// modeValidate resolves every name and checks every position, and runs no
+	// host function at all.
+	modeValidate walkMode = iota
+	// modeEvaluate does the same and additionally calls pure functions.
+	modeEvaluate
+)
+
 // walkValue is the recursive half. called reports whether this node sits in
 // callee position, which is what separates `save` from `save()`.
 func (t *Tree) walkValue(ctx context, v parse.SpecValue, at NodeID,
-	overlay map[string]parse.SpecValue, called bool) (parse.SpecValue, error) {
+	overlay map[string]parse.SpecValue, called bool, mode walkMode) (parse.SpecValue, error) {
 
 	switch v.Kind {
 	case parse.SpecValueString, parse.SpecValueNumber, parse.SpecValueBool, parse.SpecValueToken:
@@ -124,7 +147,7 @@ func (t *Tree) walkValue(ctx context, v parse.SpecValue, at NodeID,
 		// `submit(count)` work without a handler evaluator.
 		args := make([]parse.SpecValue, 0, len(v.Args))
 		for _, a := range v.Args {
-			ev, err := t.walkValue(ctxBinding, a, at, overlay, false)
+			ev, err := t.walkValue(ctxBinding, a, at, overlay, false, mode)
 			if err != nil {
 				return parse.SpecValue{}, err
 			}
@@ -139,6 +162,13 @@ func (t *Tree) walkValue(ctx context, v parse.SpecValue, at NodeID,
 			// A handler is COMPILED, not evaluated: the terminal it "produces"
 			// is never used, and the invocation happens when the signal fires.
 			return parse.SpecValue{}, nil
+		}
+		if mode == modeValidate {
+			// Nothing is known about the result yet, and nothing needs to be:
+			// a validating parent is checking SHAPE, and the shape of a
+			// function's result is "a value". Running it to find out would be
+			// the very thing this pass exists to defer.
+			return parse.SpecValue{Kind: parse.SpecValueString, Pos: v.Pos}, nil
 		}
 		res, err := in.Pure(args)
 		if err != nil {
