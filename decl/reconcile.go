@@ -40,25 +40,59 @@ type Restructurer interface {
 	MoveChild(parent, child NodeID, to int) error
 }
 
-// Settable is an OPTIONAL capability an [Adapter] may implement to say whether
-// a property can be set AFTER construction.
+// PropertyKind says how a declared property can reach a node.
 //
-// Without it the engine can only infer the answer from what [Adapter.Create]
-// reported consuming, and that inference has a hole it cannot see: a builder
-// reports a property consumed only when the schema DECLARED it. Mount a Split
-// with no orientation and the builder takes the default and consumes nothing,
-// so adding `orientation` in a later reload looks like an ordinary runtime
-// property — and the apply fails against a widget that has no such setter.
+// The distinction that matters is between a property the type accepts only at
+// construction and one the adapter does not recognise at all. Both are
+// un-appliable, and a single boolean made them look identical — but the right
+// response differs completely: one is rebuilt, and rebuilding the other is a
+// pointless demolition, because a freshly built node would refuse it too.
+type PropertyKind uint8
+
+const (
+	// PropUnknown means the adapter has no such property for this node's type.
+	// It is a mistake in the schema, and a reconcile reports it WITHOUT
+	// touching the tree — there is nothing a rebuild could achieve.
+	PropUnknown PropertyKind = iota
+	// PropRuntime means there is a setter: the value can be applied in place.
+	PropRuntime
+	// PropConstructorOnly means the type takes it at construction and offers no
+	// setter, so changing it means building the node again.
+	PropConstructorOnly
+)
+
+// String renders the kind for diagnostics.
+func (k PropertyKind) String() string {
+	switch k {
+	case PropRuntime:
+		return "runtime"
+	case PropConstructorOnly:
+		return "constructor-only"
+	default:
+		return "unknown"
+	}
+}
+
+// Classifier is an OPTIONAL capability an [Adapter] may implement to say how a
+// declared property can reach a node.
 //
-// The adapter owns the setter table, so the adapter is the only thing that can
-// answer honestly. An adapter that does not implement this still reconciles;
-// it just cannot distinguish "absent and unsettable" from "absent and
-// settable", and will discover the difference when Apply refuses.
-type Settable interface {
-	// CanApply reports whether prop can be set on this node after
-	// construction. It must not have side effects: it is consulted during
-	// planning, before anything is mutated.
-	CanApply(node NodeID, prop string) bool
+// The engine cannot work this out. It sees what [Adapter.Create] reported
+// consuming, and that inference has two holes. A builder reports a property
+// consumed only when the schema DECLARED it, so a Split mounted without
+// `orientation` consumes nothing and a later reload adding it looks ordinary.
+// And nothing in the consumed-set distinguishes a constructor-only property
+// from a typo — so a misspelled property name would demolish a working node to
+// build one that refuses it just the same, while the diagnostic confidently
+// blamed construction.
+//
+// The adapter owns the property tables, so the adapter is the only thing that
+// can answer. An adapter that does not implement this still reconciles; it
+// falls back to the consumed-set inference and keeps both holes.
+type Classifier interface {
+	// ClassifyProperty reports how prop can reach this node. It must not have
+	// side effects: it is consulted during planning, before anything is
+	// mutated.
+	ClassifyProperty(node NodeID, prop string) PropertyKind
 }
 
 // ErrIncomplete reports source that stops mid-construct — the normal reading of
@@ -175,8 +209,9 @@ func (t *Tree) Reload(src []byte) (Result, error) {
 //
 // TWO THINGS CANNOT BE PRE-CHECKED, and both are partial-mutation points:
 //
-//   - a SETTER, because the only way to learn that it refuses a value is to
-//     call it;
+//   - a SETTER, because the only way to learn that it refuses a VALUE is to
+//     call it. Whether the property exists at all is settled during planning;
+//     whether this particular value is acceptable is not;
 //   - a STRUCTURAL operation. [Restructurer.CanRestructure] settles whether a
 //     node accepts child changes at all, but Insert, Remove and Move each
 //     return an error at the moment they run, after earlier structural work has
@@ -369,30 +404,44 @@ func (t *Tree) assess(oldID NodeID, sn *parse.SpecNode) (*step, error) {
 	oldProps := propSequences(n.props)
 	newProps := propSequences(sn.Props)
 
-	// canApply asks the adapter whether a property has a setter at all. Without
-	// the capability the engine falls back to what Create reported consuming,
-	// which is the best it can infer and is blind to a property that was ABSENT
-	// at construction: nothing was consumed, so nothing recorded that there is
-	// no setter for it.
-	settable, hasSettable := t.adapter.(Settable)
-	canApply := func(prop string) bool {
-		if hasSettable {
-			return settable.CanApply(oldID, prop)
+	// classify says how a changed property can reach this node. Without the
+	// capability the engine falls back to what Create reported consuming, which
+	// cannot see a property that was ABSENT at construction and cannot tell a
+	// constructor-only property from a typo.
+	classifier, hasClassifier := t.adapter.(Classifier)
+	classify := func(prop string) PropertyKind {
+		if hasClassifier {
+			return classifier.ClassifyProperty(oldID, prop)
 		}
-		return !n.consumed[prop]
+		if n.consumed[prop] {
+			return PropConstructorOnly
+		}
+		return PropRuntime
 	}
 
-	// A property whose value changed — or that appeared for the first time —
-	// needs a setter. When there is none, the only honest response is to build
-	// the node again. Document order, so the reason a reader gets is the first
-	// one in the file rather than whichever the map yielded.
+	// UNKNOWN PROPERTIES FIRST, across every changed declaration, because an
+	// error outranks a rebuild: if the schema names a property the adapter does
+	// not have, demolishing the node achieves nothing — the replacement would
+	// refuse it too — and the tree must be left exactly as it was.
 	for _, p := range sn.Props {
 		if sameSequence(oldProps[p.Name], newProps[p.Name]) {
 			continue
 		}
-		if !canApply(p.Name) {
+		if classify(p.Name) == PropUnknown {
+			return nil, SchemaError{Op: "apply", Node: oldID, Detail: p.Name, Pos: p.Value.Pos,
+				Err: fmt.Errorf("%w: type %q has no property %q", ErrAdapter, n.typeName, p.Name)}
+		}
+	}
+	// Then constructor-only changes, which DO call for a rebuild. Document
+	// order, so the reason a reader gets is the first one in the file rather
+	// than whichever the map yielded.
+	for _, p := range sn.Props {
+		if sameSequence(oldProps[p.Name], newProps[p.Name]) {
+			continue
+		}
+		if classify(p.Name) == PropConstructorOnly {
 			return t.rebuildStep(s, fmt.Sprintf(
-				"%q cannot be set after construction, so changing it cannot be applied", p.Name))
+				"%q is taken at construction and has no setter, so changing it cannot be applied", p.Name))
 		}
 	}
 	// A property that disappears cannot be un-applied either: there is no

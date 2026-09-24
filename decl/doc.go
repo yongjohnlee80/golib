@@ -33,10 +33,15 @@
 // they were looking at.
 //
 // Identity is the declared id, else position. Some edits cannot be patched —
-// a changed type, a changed constructor-consumed property, a removed property,
-// a new signal, or a child list on a node that cannot restructure — and each is
+// a changed type, a changed constructor-only property, a removed property, a
+// new signal, or a child list on a node that cannot restructure — and each is
 // REPORTED in [Result.Rebuilt] with the edit that caused it, because a rebuild
 // is exactly where a reload loses something.
+//
+// A property the adapter does not recognise at all is a different matter: it is
+// REFUSED during planning and nothing is touched, because rebuilding could not
+// help. Telling the two apart needs the optional [Classifier] capability; see
+// [PropertyKind].
 //
 // Structural edits need the optional [Restructurer] capability. An adapter
 // without it still reconciles properties; its structural changes simply become

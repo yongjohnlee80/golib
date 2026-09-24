@@ -41,7 +41,7 @@ func mount(t *testing.T, src string, hosts tuidecl.HostFuncs, sink func(error)) 
 	if err != nil {
 		t.Fatalf("schema does not parse: %v", err)
 	}
-	opts := append(tuidecl.StdSetters(),
+	opts := append(tuidecl.StdProperties(),
 		tuidecl.WithHostFuncs(hosts),
 		tuidecl.WithErrorSink(sink),
 	)
@@ -157,7 +157,7 @@ func TestConstructorOnlyPropertiesAreNotReApplied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	a := tuidecl.New(forgetful, tuidecl.StdSetters()...)
+	a := tuidecl.New(forgetful, tuidecl.StdProperties()...)
 	if err := decl.New(a).Mount(spec); err == nil {
 		t.Error("a constructor-only property that was not reported as consumed still mounted; " +
 			"it should have been applied and found no setter")
@@ -271,7 +271,7 @@ func TestAnOmittedSinkIsRefusedRatherThanSilent(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 	// Everything present EXCEPT the sink.
-	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdSetters(),
+	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
 		tuidecl.WithHostFuncs(tuidecl.HostFuncs{"save": func() error { return nil }}),
 	)...)
 
@@ -296,7 +296,7 @@ func TestASchemaWithNoHandlersNeedsNoSink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	a := tuidecl.New(tuidecl.StdRegistry(), tuidecl.StdSetters()...)
+	a := tuidecl.New(tuidecl.StdRegistry(), tuidecl.StdProperties()...)
 	if err := decl.New(a).Mount(spec); err != nil {
 		t.Errorf("a handler-free schema was refused for want of a sink: %v", err)
 	}
@@ -366,7 +366,7 @@ func TestADuplicatedPropertyIsAppliedInDocumentOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	a := tuidecl.New(tuidecl.StdRegistry(), tuidecl.StdSetters()...)
+	a := tuidecl.New(tuidecl.StdRegistry(), tuidecl.StdProperties()...)
 	tr := decl.New(a)
 	if err := tr.Mount(spec); err != nil {
 		t.Fatalf("mount: %v", err)
