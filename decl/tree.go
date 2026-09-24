@@ -22,10 +22,13 @@ const (
 	phaseMounting
 	phaseEmitting
 	phaseDestroying
+	phaseReconciling
 )
 
 func (p phase) String() string {
 	switch p {
+	case phaseReconciling:
+		return "reconciling"
 	case phaseMounting:
 		return "mounting"
 	case phaseEmitting:
@@ -77,6 +80,23 @@ type node struct {
 	// handlers are per signal, in the order the schema declared them, which is
 	// the order they run.
 	handlers map[string][]boundHandler
+
+	// props is the declared property set this node currently reflects, in
+	// document order. A reconcile needs it to answer "what changed", which is a
+	// question about the PREVIOUS schema — and the previous schema is gone by
+	// the time the new one arrives.
+	props []parse.SpecProp
+	// consumed names the properties the adapter took at construction. They are
+	// recorded because a consumed property is, by definition, one the adapter
+	// could not be asked to set later: consuming it is how an adapter says
+	// "there is no setter for this". A reconcile that changes one therefore has
+	// no path other than rebuilding the node.
+	consumed map[string]bool
+	// wired is the set of signals that had an emitter at construction. A signal
+	// appearing for the first time in a reloaded schema cannot be attached to an
+	// already-built widget — some accept a callback only as a constructor
+	// option — so it, too, forces a rebuild.
+	wired map[string]bool
 }
 
 type boundHandler struct {
@@ -237,6 +257,9 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 		pos:      sn.Pos,
 		parent:   parent,
 		handlers: make(map[string][]boundHandler),
+		props:    sn.Props,
+		consumed: map[string]bool{},
+		wired:    map[string]bool{},
 	}
 	t.nodes[id] = n
 
@@ -273,6 +296,7 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 		emitters = make(map[string]func() error, len(n.handlers))
 		for signal := range n.handlers {
 			emitters[signal] = func() error { return t.Emit(id, signal) }
+			n.wired[signal] = true
 		}
 	}
 
@@ -293,7 +317,7 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 	// to Destroy.
 	n.built = true
 
-	claimed := make(map[string]bool, len(consumed))
+	claimed := n.consumed
 	for _, name := range consumed {
 		claimed[name] = true
 	}
@@ -323,7 +347,7 @@ func (t *Tree) mountNode(sn *parse.SpecNode, parent NodeID) (NodeID, error) {
 // ordinary case this whole design exists to serve, and refusing it would make
 // the emission contract useless.
 func (t *Tree) SetProp(id NodeID, prop string, v parse.SpecValue) error {
-	if t.ph == phaseMounting || t.ph == phaseDestroying {
+	if t.ph == phaseMounting || t.ph == phaseDestroying || t.ph == phaseReconciling {
 		return SchemaError{Op: "set", Node: id, Detail: prop,
 			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
@@ -364,6 +388,14 @@ func (t *Tree) SetProp(id NodeID, prop string, v parse.SpecValue) error {
 // Emitting a signal nothing is bound to is a no-op and not an error: a schema
 // that simply does not care about a widget's signal is ordinary.
 func (t *Tree) Emit(id NodeID, signal string) error {
+	if t.ph == phaseReconciling {
+		// A handler running mid-reconcile would mutate the tree underneath the
+		// walk that is rebuilding it. Widgets do fire during a reconcile — a
+		// container relaying a removal, say — so this is a real path, not a
+		// defensive impossibility.
+		return SchemaError{Op: "emit", Node: id, Detail: signal,
+			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
+	}
 	if t.ph == phaseDestroying {
 		return SchemaError{Op: "emit", Node: id, Detail: signal,
 			Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
@@ -442,7 +474,7 @@ func (t *Tree) HandlerNames(id NodeID, signal string) []string {
 // nothing to keep.
 func (t *Tree) Destroy() error {
 	switch t.ph {
-	case phaseEmitting, phaseMounting, phaseDestroying:
+	case phaseEmitting, phaseMounting, phaseDestroying, phaseReconciling:
 		return SchemaError{Op: "destroy", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
 
