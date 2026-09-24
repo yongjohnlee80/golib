@@ -10,3 +10,7 @@
 # committing it would break every other clone and CI.
 go.work
 go.work.sum
+
+# Built example binaries. `go build -o tui/examples/<name>/bin/` puts them here
+# for manual testing; a compiled executable is never source.
+tui/examples/*/bin/
