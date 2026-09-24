@@ -24,6 +24,24 @@
 // repairs focus. Handing the adapter the VALUE lets the widget keep that
 // judgement, which is the only place it can be correct.
 //
+// # Reload is a reconcile
+//
+// [Tree.Reload] and [Tree.Reconcile] patch a mounted tree to match a new
+// schema rather than rebuilding it. That distinction is the point: a node that
+// keeps its identity keeps everything the toolkit hung on it, and a developer
+// editing a schema file does not lose the scroll offset and half-typed input
+// they were looking at.
+//
+// Identity is the declared id, else position. Some edits cannot be patched —
+// a changed type, a changed constructor-consumed property, a removed property,
+// a new signal, or a child list on a node that cannot restructure — and each is
+// REPORTED in [Result.Rebuilt] with the edit that caused it, because a rebuild
+// is exactly where a reload loses something.
+//
+// Structural edits need the optional [Restructurer] capability. An adapter
+// without it still reconciles properties; its structural changes simply become
+// rebuilds.
+//
 // # Ownership
 //
 // The engine owns node identity, mount order, property application order, and
