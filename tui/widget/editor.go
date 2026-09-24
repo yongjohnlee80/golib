@@ -144,6 +144,13 @@ import (
 //	}
 type Editor struct {
 	readOnly bool // viewer mode: motions and yank only
+
+	// onModeChange and onChange are the constructor-time listeners for the two
+	// notifications this widget also publishes on the bus. A caller that builds
+	// the widget before it is mounted has no Context to subscribe with, and
+	// these are how it hears — the same shape as Button's WithOnActivate.
+	onModeChange func(EditorMode)
+	onChange     func()
 	Base
 	textBuffer
 
@@ -289,6 +296,26 @@ func WithEditorReadOnly(ro bool) EditorOption {
 	return func(e *Editor) {
 		e.readOnly = ro
 	}
+}
+
+// WithOnModeChange calls fn with the new mode whenever the editor's mode
+// changes — Normal to Insert, Insert to Visual — and not when it is set to the
+// mode it already has.
+//
+// It is the constructor-time twin of the ModeChangedEvent this widget publishes
+// on the bus. A caller that builds the editor before it is mounted — a
+// declarative adapter, say — has no Context to subscribe with yet, and would
+// otherwise have to wrap the widget to find out, which is exactly the kind of
+// embedding that bypasses methods the wrapper thinks it has overridden.
+func WithOnModeChange(fn func(EditorMode)) EditorOption {
+	return func(e *Editor) { e.onModeChange = fn }
+}
+
+// WithOnChange calls fn after every EDIT — the same moment the widget publishes
+// a ChangeEvent. It is not called by SetValue: a program replacing the buffer
+// has made no edit, and reporting one would mark a freshly loaded file dirty.
+func WithOnChange(fn func()) EditorOption {
+	return func(e *Editor) { e.onChange = fn }
 }
 
 // WithVimKeymap configures the modal Vim keymap and editing model.
@@ -628,6 +655,9 @@ func (e *Editor) setMode(m EditorMode) {
 	e.mode = m
 	e.MarkDirty()
 	e.publish(ModeChangedEvent{Owner: e.NodeID(), Mode: m})
+	if e.onModeChange != nil {
+		e.onModeChange(m)
+	}
 }
 
 // normalMax is the max Normal-mode column of line ln (cursor ON a grapheme).
