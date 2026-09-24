@@ -240,6 +240,16 @@ func (t *Tree) Reload(src []byte) (Result, error) {
 // not latched. The difference is tracked rather than assumed: the tree records
 // when it first touches something live, and a failure before that point is
 // reported without declaring the tree partial.
+//
+// THE BOUNDARY IS PER-PARENT, NOT WHOLE-TREE, and the difference is visible.
+// Replacements are built before anything is released within ONE parent's child
+// list, but a node is patched — its own properties applied — before its
+// children's replacements are constructed. So a property change on one node
+// followed by a refused constructor DEEPER IN THE TREE leaves the applied value
+// in place, and the tree does latch. Closing that would mean deferring every
+// property application to a commit phase across the whole reconcile, which is a
+// different design and not one this engine makes; saying so is the alternative
+// to implying an atomicity it does not have.
 func (t *Tree) Reconcile(spec parse.SpecTree) (Result, error) {
 	if t.ph != phaseIdle {
 		return Result{}, SchemaError{Op: "reconcile", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
@@ -777,7 +787,17 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 	// whether it accepts this VALUE, and only by being called. Building first
 	// means a refusal costs nothing: the live children are still attached, and
 	// the half-built replacements are discarded.
+	// Accounting is BATCH-LOCAL until the whole batch stands. Recording each
+	// success into the Result as it happens is accurate right up until a later
+	// sibling refuses, at which point every replacement is discarded and the
+	// Result still names constructions that were thrown away. A Result is a
+	// report of what HAPPENED; a discarded build did not happen.
+	//
+	// An earlier version fixed exactly this for a single node and left it for
+	// the batch, which is the same defect one scope out.
 	var fresh []NodeID
+	var batchCreated int
+	var batchRebuilt []Rebuild
 	for i, cs := range s.order {
 		if !cs.rebuild {
 			continue
@@ -792,15 +812,14 @@ func (t *Tree) patchChildren(s *step, res *Result) ([]NodeID, error) {
 			return nil, err
 		}
 		fresh = append(fresh, id)
-		res.Created += t.countBuilt(id)
+		batchCreated += t.countBuilt(id)
 		want[i] = id
 		if cs.old != NoNode {
-			// Recorded only once the replacement EXISTS. Reporting it up front
-			// would mean a failed reconcile handing back a Result that names a
-			// rebuild which never happened — and Result is what a host logs.
-			res.Rebuilt = append(res.Rebuilt, cs.rebuildRecord())
+			batchRebuilt = append(batchRebuilt, cs.rebuildRecord())
 		}
 	}
+	res.Created += batchCreated
+	res.Rebuilt = append(res.Rebuilt, batchRebuilt...)
 
 	// 1 and 2, in the tree's own child order so the trace is deterministic.
 	var departed []NodeID
