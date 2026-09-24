@@ -69,8 +69,22 @@ func (t *Tree) DeclareModule(m Module) error {
 			"%w: modules are declared before Mount, so an import can be checked "+
 				"against a fixed set", ErrPhase)}
 	}
+	return t.registerModule("declare module", m)
+}
+
+// registerModule is the ONE place a module enters the registry.
+//
+// Both ways in go through it: a host calling [Tree.DeclareModule], and an
+// adapter's [Modules] read during [New]. An earlier version validated only the
+// first and copied the adapter's straight into the map, so an adapter
+// publishing two modules that export one name bypassed every rule below — and
+// the check that would have caught it at import time had been removed as
+// unreachable, on an invariant that held for one of the two paths.
+//
+// A rule enforced at one entry point is not enforced.
+func (t *Tree) registerModule(op string, m Module) error {
 	if m.Name == "" {
-		return SchemaError{Op: "declare module",
+		return SchemaError{Op: op,
 			Err: fmt.Errorf("%w: a module needs a name", ErrUndefinedModule)}
 	}
 	// An export names a SINGLETON, and a singleton is a type. QML capitalises
@@ -78,7 +92,7 @@ func (t *Tree) DeclareModule(m Module) error {
 	// spelling no QML runtime accepts.
 	for _, e := range m.Exports {
 		if e == "" || !isUpperName(e) {
-			return SchemaError{Op: "declare module", Detail: m.Name, Err: fmt.Errorf(
+			return SchemaError{Op: op, Detail: m.Name, Err: fmt.Errorf(
 				"%w: export %q must begin with an upper-case letter, because it "+
 					"names a singleton and a singleton is a type", ErrUndefinedModule, e)}
 		}
@@ -87,12 +101,12 @@ func (t *Tree) DeclareModule(m Module) error {
 		t.modules = map[string]Module{}
 	}
 	if prior, dup := t.modules[m.Name]; dup {
-		return SchemaError{Op: "declare module", Detail: m.Name, Err: fmt.Errorf(
+		return SchemaError{Op: op, Detail: m.Name, Err: fmt.Errorf(
 			"%w: %q is already declared at version %q", ErrDuplicateDecl, m.Name, prior.Version)}
 	}
 
 	// TWO MODULES MAY NOT EXPORT ONE NAME, and this engine says so at
-	// DECLARATION rather than pretending a qualifier would sort it out.
+	// REGISTRATION rather than pretending a qualifier would sort it out.
 	//
 	// A qualifier changes SPELLING, not IDENTITY. `import a.theme as A` and
 	// `import b.theme as B` would give `A.Theme.surface` and `B.Theme.surface`,
@@ -106,7 +120,7 @@ func (t *Tree) DeclareModule(m Module) error {
 	// actually works instead of a qualifier that only looks like it does.
 	for _, e := range m.Exports {
 		if owner, exists := t.providerOf(e); exists {
-			return SchemaError{Op: "declare module", Detail: m.Name, Err: fmt.Errorf(
+			return SchemaError{Op: op, Detail: m.Name, Err: fmt.Errorf(
 				"%w: %q is already exported by %q, and a qualifier would change how "+
 					"a document SPELLS them without making them different values; "+
 					"rename one export", ErrDuplicateExport, e, owner)}
@@ -165,9 +179,12 @@ func (t *Tree) resolveImports(spec qml.SpecTree) (imports, error) {
 			out.byQualifier[im.Alias] = im.Module
 			continue
 		}
-		// No cross-module clash is possible here: DeclareModule refuses two
-		// modules exporting one name, so the only way a name is bound twice is
-		// the same module imported twice, which is a no-op.
+		// No cross-module clash is possible here: registerModule refuses two
+		// modules exporting one name on BOTH registration paths, so the only
+		// way a name is bound twice is the same module imported twice, which is
+		// a no-op. That invariant is asserted by TestAnAdapterCannotPublish
+		// TwoModulesExportingOneName, not merely assumed — assuming it, while
+		// one of the two paths was unguarded, is how it was wrong before.
 		for _, name := range m.Exports {
 			out.byName[name] = im.Module
 		}
