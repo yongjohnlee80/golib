@@ -166,7 +166,7 @@ func TestAnUnclosedGroupIsIncomplete(t *testing.T) {
 
 // TestAPropertyValueIsAJavaScriptExpression.
 //
-// QML property values ARE js.JavaScript, so this parser reads all of it. The kinds
+// QML property values ARE JavaScript, so this parser reads all of it. The kinds
 // this format names — string, number, bool, token, ref, call — are a PROJECTION
 // for consumers that ask about them constantly, not a smaller grammar. Anything
 // the projection does not name keeps its tree instead of being refused, so an
