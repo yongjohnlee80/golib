@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -18,6 +19,7 @@ import (
 var (
 	_ decl.Restructurer = (*Adapter)(nil)
 	_ decl.Classifier   = (*Adapter)(nil)
+	_ decl.Constants    = (*Adapter)(nil)
 )
 
 // CanRestructure reports whether the node's component accepts child changes.
@@ -135,4 +137,21 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 		return decl.PropConstructorOnly
 	}
 	return decl.PropUnknown
+}
+
+// Constants implements decl.Constants: the toolkit's own vocabulary, written
+// the way QML writes an enum.
+//
+// `orientation: tui.Horizontal` rather than a quoted string or a bare word. Qt
+// spells these `Qt.Horizontal`; the mechanism is identical, and a qualified
+// name is a CONSTANT — resolved once at planning, never tracked — which is why
+// it costs the reactive graph nothing.
+func (a *Adapter) Constants() map[string]parse.SpecValue {
+	str := func(s string) parse.SpecValue {
+		return parse.SpecValue{Kind: parse.SpecValueString, Raw: s}
+	}
+	return map[string]parse.SpecValue{
+		"tui.Horizontal": str("horizontal"),
+		"tui.Vertical":   str("vertical"),
+	}
 }

@@ -82,7 +82,32 @@ func isTerminal(v parse.SpecValue) bool {
 	}
 }
 
-// isBinding reports whether a declared value has to be evaluated.
+// Constants is an OPTIONAL capability an [Adapter] may implement to expose its
+// own vocabulary as qualified names.
+//
+// QML writes an enum as `Qt.Horizontal`; the toolkit equivalent is
+// `tui.Horizontal`. These are CONSTANTS, not bindings: a qualified name is
+// resolved once at planning and never changes, so it creates no dependency and
+// no entry in the graph. That is the whole reason a qualified name can be
+// supported now while a reference to another object's PROPERTY cannot.
+type Constants interface {
+	// Constants returns the qualified names this adapter defines, keyed by the
+	// full dotted spelling, with terminal values.
+	Constants() map[string]parse.SpecValue
+}
+
+// needsResolution reports whether a declared value has to be resolved before
+// the adapter can see it.
+//
+// It is deliberately wider than [isBinding]: a qualified name is resolved but
+// NOT tracked. Conflating the two is how `tui.Vertical` once reached a builder
+// as an unresolved reference — the value was correctly judged "not a binding"
+// and therefore never evaluated at all.
+func needsResolution(v parse.SpecValue) bool {
+	return v.Kind == parse.SpecValueRef || v.Kind == parse.SpecValueCall
+}
+
+// isBinding reports whether a resolved value must also be TRACKED.
 //
 // A BARE IDENTIFIER IS NEVER A BINDING. `SpecValueRef` is documented as "a bare
 // identifier resolved by the ADAPTER", and the shipped registry depends on it:
@@ -92,7 +117,18 @@ func isTerminal(v parse.SpecValue) bool {
 // schema's meaning depend on host configuration and let a source silently
 // shadow an adapter's identifier.
 func isBinding(v parse.SpecValue) bool {
-	return v.Kind == parse.SpecValueRef || v.Kind == parse.SpecValueCall
+	switch v.Kind {
+	case parse.SpecValueRef:
+		// A SINGLE name is a host context value, which can change — a binding.
+		// A QUALIFIED name is a constant the consumer defined, resolved once.
+		// QML draws the line in the same place: `greeting` tracks, and
+		// `Qt.Horizontal` does not.
+		return len(v.Path) <= 1
+	case parse.SpecValueCall:
+		return true
+	default:
+		return false
+	}
 }
 
 // refsOf collects the source names a value depends on, DEDUPED, by walking the
@@ -202,8 +238,13 @@ func (t *Tree) evaluate(v parse.SpecValue, overlay map[string]parse.SpecValue) (
 	switch v.Kind {
 	case parse.SpecValueRef:
 		if len(v.Path) > 1 {
+			if c, ok := t.consts[v.Raw]; ok {
+				c.Pos = v.Pos
+				return c, nil
+			}
 			return parse.SpecValue{}, fmt.Errorf(
-				"%w: %q is a member chain; this engine resolves a single name (at %s)",
+				"%w: %q names no constant this adapter defines, and this engine does not "+
+					"yet read another object's property (at %s)",
 				ErrNotResolvable, v.Raw, v.Pos)
 		}
 		if sv, ok := overlay[v.Raw]; ok {
@@ -379,13 +420,20 @@ func (t *Tree) bindingsFor(node NodeID, props []parse.SpecProp) ([]*binding, []p
 	copy(effective, props)
 
 	for i, p := range props {
-		if !isBinding(p.Value) {
+		if !needsResolution(p.Value) {
 			continue
 		}
 		v, err := t.evaluate(p.Value, nil)
 		if err != nil {
 			return nil, nil, SchemaError{Op: "bind", Node: node, Detail: p.Name, Pos: p.Value.Pos,
 				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
+		}
+		// The adapter receives the TERMINAL, never the expression. That is what
+		// keeps a builder and a setter from needing to know bindings exist.
+		effective[i].Value = v
+
+		if !isBinding(p.Value) {
+			continue // a constant: resolved once, never tracked
 		}
 		deps := map[string]bool{}
 		refsOf(p.Value, deps)
@@ -399,9 +447,6 @@ func (t *Tree) bindingsFor(node NodeID, props []parse.SpecProp) ([]*binding, []p
 		out = append(out, &binding{
 			node: node, prop: p.Name, expr: p.Value, pos: p.Value.Pos, deps: names,
 		})
-		// The adapter receives the TERMINAL, never the expression. That is what
-		// keeps a builder and a setter from needing to know bindings exist.
-		effective[i].Value = v
 	}
 	return out, effective, nil
 }

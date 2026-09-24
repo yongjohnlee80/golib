@@ -51,7 +51,7 @@ func reactive(t *testing.T, src string, sources map[string]string,
 // Asserted on what is PAINTED, because "the engine recomputed" and "the user
 // sees it" are different claims and only the second one matters.
 func TestASourceChangeReachesTheScreen(t *testing.T) {
-	const src = `Flex { id: root direction: "vertical"
+	const src = `Flex { id: root direction: tui.Vertical
 	    Text { id: plain text: greeting }
 	    Text { id: nested text: wrap(upper(greeting), "!") } }`
 
@@ -99,13 +99,13 @@ func TestASourceChangeReachesTheScreen(t *testing.T) {
 
 // TestABareIdentifierStillReachesTheAdapter — 0001c rows 1 and 3.
 //
-// The regression nine shipped cells caught. `direction: "vertical"` is a bare
+// The regression nine shipped cells caught. `direction: tui.Vertical` is a bare
 // word and belongs to the adapter; declaring a source of the same spelling must
 // change nothing about it.
 func TestABareIdentifierStillReachesTheAdapter(t *testing.T) {
 	// A source named for the adapter's own enum value.
 	tr, ad := reactive(t,
-		`Flex { id: root direction: "vertical" Text { id: a text: msg } }`,
+		`Flex { id: root direction: tui.Vertical Text { id: a text: msg } }`,
 		map[string]string{"msg": "shown", "vertical": "SHADOW"}, nil)
 
 	be, _ := startApp(t, mustRoot(t, tr, ad))
@@ -126,7 +126,7 @@ func TestAnUnknownSourceRefusesWithTheTreeUntouched(t *testing.T) {
 	tr := decl.New(tuidecl.New(tuidecl.StdRegistry(), opts...))
 
 	bad, err := parse.QML{}.Parse([]byte(
-		`Flex { id: r direction: "vertical" Text { id: a text: nope } }`))
+		`Flex { id: r direction: tui.Vertical Text { id: a text: nope } }`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestAnUnknownSourceRefusesWithTheTreeUntouched(t *testing.T) {
 	}
 	// Mountable after correction, WITHOUT Destroy — the tree was never partial.
 	ok, _ := parse.QML{}.Parse([]byte(
-		`Flex { id: r direction: "vertical" Text { id: a text: "fixed" } }`))
+		`Flex { id: r direction: tui.Vertical Text { id: a text: "fixed" } }`))
 	if err := tr.Mount(ok); err != nil {
 		t.Fatalf("the tree was latched by a failure that built nothing: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestABindingOnAConstructorOnlyPropertyIsRefusedOnTheRealAdapter(t *testing.
 		t.Fatal(err)
 	}
 	spec, _ := parse.QML{}.Parse([]byte(
-		`Split { id: r orientation: "o" Text { id: a text: "l" } Text { id: b text: "r" } }`))
+		`Split { id: r orientation: o Text { id: a text: "l" } Text { id: b text: "r" } }`))
 	err := tr.Mount(spec)
 	if err == nil {
 		t.Fatal("a bound constructor-only property was accepted")
@@ -212,7 +212,7 @@ func TestTheAdapterNeverSeesAnExpression(t *testing.T) {
 		t.Fatal(err)
 	}
 	spec, _ := parse.QML{}.Parse([]byte(
-		`Flex { id: r direction: "vertical" Text { id: a text: f(g) } Text { id: b text: g } }`))
+		`Flex { id: r direction: tui.Vertical Text { id: a text: f(g) } Text { id: b text: g } }`))
 	if err := tr.Mount(spec); err != nil {
 		t.Fatal(err)
 	}

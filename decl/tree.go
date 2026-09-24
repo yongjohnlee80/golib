@@ -74,6 +74,9 @@ type Tree struct {
 	sources map[string]parse.SpecValue
 	// funcs are the host-declared value functions a Call may name.
 	funcs map[string]ValueFunc
+	// consts are the qualified names the adapter defines — `tui.Horizontal`.
+	// They are collected once from the adapter, because they do not change.
+	consts map[string]parse.SpecValue
 	// bindings are every bound property in the tree, in DOCUMENT ORDER — the
 	// only order a schema author can see, and therefore the only defensible
 	// fan-out order when a propagation stops part-way.
@@ -188,6 +191,11 @@ func New(a Adapter, opts ...Option) *Tree {
 	}
 	for _, o := range opts {
 		o(t)
+	}
+	// An adapter's qualified vocabulary is fixed, so it is read once here
+	// rather than consulted on every resolution.
+	if c, ok := a.(Constants); ok {
+		t.consts = c.Constants()
 	}
 	return t
 }

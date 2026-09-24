@@ -650,11 +650,11 @@ func TestAHostSourceOutlivesEverySchemaReference(t *testing.T) {
 // TestABareIdentifierIsNeverABinding — 0001c rows 1 and 3.
 //
 // This is the regression that nine shipped cells caught: a bare word is the
-// adapter's vocabulary, and `orientation: "horizontal"` must keep meaning what it
+// adapter's vocabulary, and `orientation: tui.Horizontal` must keep meaning what it
 // always did — even when a source happens to be called "horizontal".
 func TestABareIdentifierIsNeverABinding(t *testing.T) {
 	rec := newReactor()
-	tr := tree(t, rec, `Flex { direction: "vertical" Text { id: a text: "x" } }`, nil, nil)
+	tr := tree(t, rec, `Flex { direction: tui.Vertical Text { id: a text: "x" } }`, nil, nil)
 	if tr.Len() == 0 {
 		t.Fatal("a schema of bare words did not mount")
 	}
@@ -665,7 +665,7 @@ func TestABareIdentifierIsNeverABinding(t *testing.T) {
 	if err := tr2.DeclareSource("vertical", sv("SHADOW")); err != nil {
 		t.Fatal(err)
 	}
-	if err := tr2.Mount(mustSpec(t, `Flex { direction: "vertical" Text { id: a text: "x" } }`)); err != nil {
+	if err := tr2.Mount(mustSpec(t, `Flex { direction: tui.Vertical Text { id: a text: "x" } }`)); err != nil {
 		t.Fatalf("a source shadowed an adapter identifier: %v", err)
 	}
 	for _, l := range rec2.trace {
@@ -736,7 +736,7 @@ func TestABindingOnAConstructorOnlyPropertyIsRefused(t *testing.T) {
 	if err := tr.DeclareSource("dir", sv("vertical")); err != nil {
 		t.Fatal(err)
 	}
-	err := tr.Mount(mustSpec(t, `Flex { direction: "dir" Text { id: a text: "x" } }`))
+	err := tr.Mount(mustSpec(t, `Flex { direction: dir Text { id: a text: "x" } }`))
 	if err == nil {
 		t.Fatal("a binding on a constructor-only property was accepted")
 	}
