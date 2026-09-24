@@ -1,6 +1,7 @@
 package decl
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -154,8 +155,38 @@ func (t *Tree) walkValue(ctx context, v parse.SpecValue, at NodeID,
 		res.Pos = v.Pos
 		return res, nil
 
+	case parse.SpecValueExpr:
+		// The parser reads every JavaScript expression QML allows; this engine
+		// evaluates the subset above. Saying which is true — the document is
+		// correct and this evaluator is the limit — rather than reporting a
+		// syntax error in source that has none.
+		return parse.SpecValue{}, SchemaError{Op: "resolve", Node: at, Detail: v.Raw, Pos: v.Pos,
+			Err: fmt.Errorf("%w: %s", ErrExpressionValue, describeExpr(v.Expr))}
+
 	default:
 		return parse.SpecValue{}, t.refuse(at, v, fmt.Sprintf("a %s cannot appear here", v.Kind))
+	}
+}
+
+// ErrExpressionValue reports a property value this engine does not evaluate.
+//
+// It is separate from every other refusal because the remedy is different and
+// the author has done nothing wrong: the document is valid QML, and what is
+// missing is evaluator capability. A consumer can tell "rewrite this" from
+// "this is not supported yet" only if the two carry different sentinels.
+var ErrExpressionValue = errors.New("decl: this engine does not evaluate that expression")
+
+func describeExpr(e *parse.Expr) string {
+	if e == nil {
+		return "an expression"
+	}
+	switch e.Kind {
+	case parse.ExprBinary, parse.ExprLogical:
+		return fmt.Sprintf("the operator %q; bind a source or call a function instead", e.Raw)
+	case parse.ExprConditional:
+		return "a conditional; call a function that decides instead"
+	default:
+		return fmt.Sprintf("a %s expression", e.Kind)
 	}
 }
 

@@ -161,3 +161,103 @@ func TestAnUnclosedGroupIsIncomplete(t *testing.T) {
 		t.Errorf("the error does not say what is missing: %q", se.Want)
 	}
 }
+
+// TestAPropertyValueIsAJavaScriptExpression.
+//
+// QML property values ARE JavaScript, so this parser reads all of it. The kinds
+// this format names — string, number, bool, token, ref, call — are a PROJECTION
+// for consumers that ask about them constantly, not a smaller grammar. Anything
+// the projection does not name keeps its tree instead of being refused, so an
+// engine that cannot evaluate an expression declines it by name and position
+// rather than the parser pretending the syntax is wrong.
+func TestAPropertyValueIsAJavaScriptExpression(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		kind parse.SpecValueKind
+		// exprKind is checked only for values that keep their tree.
+		exprKind parse.ExprKind
+		raw      string
+	}{
+		{name: "a string projects", src: `"hi"`, kind: parse.SpecValueString, raw: "hi"},
+		{name: "a number projects", src: `12.5`, kind: parse.SpecValueNumber, raw: "12.5"},
+		{name: "a negative number folds its sign", src: `-3`, kind: parse.SpecValueNumber, raw: "-3"},
+		{name: "a bool projects", src: `false`, kind: parse.SpecValueBool, raw: "false"},
+		{name: "a token projects", src: `@surface`, kind: parse.SpecValueToken, raw: "surface"},
+		{name: "a name projects", src: `greeting`, kind: parse.SpecValueRef, raw: "greeting"},
+		{name: "a member chain projects", src: `parent.width`, kind: parse.SpecValueRef, raw: "parent.width"},
+		{name: "a call projects", src: `f(1)`, kind: parse.SpecValueCall, raw: "f"},
+		{name: "a qualified call projects", src: `math.max(1, 2)`, kind: parse.SpecValueCall, raw: "math.max"},
+
+		{name: "arithmetic keeps its tree", src: `parent.width / 2`,
+			kind: parse.SpecValueExpr, exprKind: parse.ExprBinary},
+		{name: "a comparison keeps its tree", src: `count > 0`,
+			kind: parse.SpecValueExpr, exprKind: parse.ExprBinary},
+		{name: "a conditional keeps its tree", src: `a ? b : c`,
+			kind: parse.SpecValueExpr, exprKind: parse.ExprConditional},
+		{name: "a logical operator keeps its tree", src: `a && b`,
+			kind: parse.SpecValueExpr, exprKind: parse.ExprLogical},
+		{name: "an index keeps its tree", src: `items[0]`,
+			kind: parse.SpecValueExpr, exprKind: parse.ExprMember},
+		{name: "a call with an un-projectable argument keeps its tree", src: `f(a + b)`,
+			kind: parse.SpecValueExpr, exprKind: parse.ExprCall},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tree, err := parse.QML{}.Parse([]byte("N { x: " + c.src + " }"))
+			if err != nil {
+				t.Fatalf("Parse(%q): %v", c.src, err)
+			}
+			v := tree.Root.Props[0].Value
+			if v.Kind != c.kind {
+				t.Fatalf("kind = %v, want %v", v.Kind, c.kind)
+			}
+			if c.kind == parse.SpecValueExpr {
+				if v.Expr == nil {
+					t.Fatal("an expression value carries no tree")
+				}
+				if v.Expr.Kind != c.exprKind {
+					t.Errorf("expr kind = %v, want %v", v.Expr.Kind, c.exprKind)
+				}
+				return
+			}
+			if v.Raw != c.raw {
+				t.Errorf("raw = %q, want %q", v.Raw, c.raw)
+			}
+			// A projected value does NOT also carry a tree: one representation
+			// per value, so nothing downstream can read two answers.
+			if v.Expr != nil {
+				t.Errorf("a projected %v also carries an Expr; that is two "+
+					"representations of one value", v.Kind)
+			}
+		})
+	}
+}
+
+// TestAnExpressionValueKeepsEveryNameItReads.
+//
+// The tree has to be WALKABLE, because a consumer that can evaluate expressions
+// will find its dependencies there. A value that kept only the source text
+// would look complete and be useless.
+func TestAnExpressionValueKeepsEveryNameItReads(t *testing.T) {
+	tree, err := parse.QML{}.Parse([]byte(`N { x: Theme.pad + parent.width / scale }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := tree.Root.Props[0].Value
+	if v.Kind != parse.SpecValueExpr || v.Expr == nil {
+		t.Fatalf("value = %+v, want an expression with a tree", v)
+	}
+	var names []string
+	v.Expr.Walk(func(e *parse.Expr) bool {
+		if e.Kind == parse.ExprIdent {
+			names = append(names, e.Raw)
+		}
+		return true
+	})
+	got := strings.Join(names, ",")
+	if got != "Theme,parent,scale" {
+		t.Errorf("identifiers = %q, want %q", got, "Theme,parent,scale")
+	}
+}

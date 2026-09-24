@@ -103,7 +103,16 @@ type Constants interface {
 // as an unresolved reference — the value was correctly judged "not a binding"
 // and therefore never evaluated at all.
 func needsResolution(v parse.SpecValue) bool {
-	return v.Kind == parse.SpecValueRef || v.Kind == parse.SpecValueCall
+	switch v.Kind {
+	case parse.SpecValueRef, parse.SpecValueCall, parse.SpecValueExpr:
+		// SpecValueExpr is here so it is REFUSED rather than forwarded. A kind
+		// this list forgets is not rejected — it sails past resolution and
+		// reaches a setter as an un-evaluated tree, which is how `tui.Vertical`
+		// once arrived at a builder as a bare reference.
+		return true
+	default:
+		return false
+	}
 }
 
 // Tracking is decided by [Tree.isBinding] in resolve.go, from the INJECTED KIND
