@@ -160,6 +160,11 @@ func (a *Adapter) Component(id decl.NodeID) (tui.Component, bool) {
 type built struct {
 	comp tui.Component
 	typ  string
+	// attached are the attached properties this node carried, kept for its
+	// parent's construction.
+	attached map[string]qml.SpecValue
+	// nominee is the first `focus: true` component in this node's subtree.
+	nominee tui.Component
 }
 
 // Create implements decl.Adapter.
@@ -170,6 +175,8 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	}
 
 	children := make([]tui.Component, 0, len(c.Children))
+	childAttached := make([]map[string]qml.SpecValue, 0, len(c.Children))
+	var childNominee tui.Component
 	for _, id := range c.Children {
 		child, ok := a.nodes[id]
 		if !ok {
@@ -180,6 +187,15 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 			return nil, fmt.Errorf("child node %d was not built before its parent %d", id, c.Node)
 		}
 		children = append(children, child.comp)
+		childAttached = append(childAttached, child.attached)
+		if childNominee == nil {
+			childNominee = child.nominee
+		}
+	}
+	own, attached := a.splitProps(c.Props)
+	own, focus, err := takeFocus(own)
+	if err != nil {
+		return nil, err
 	}
 
 	// A bound emitter with nowhere to send its error is refused at the point
@@ -198,12 +214,15 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	}
 
 	comp, consumed, err := build(Build{
-		Type:     c.Type,
-		Pos:      c.Pos,
-		Props:    c.Props,
-		Children: children,
-		Emitters: c.Emitters,
-		sink:     a.sink,
+		Type:          c.Type,
+		Pos:           c.Pos,
+		Props:         own,
+		Children:      children,
+		ChildAttached: childAttached,
+		SelfAttached:  attached,
+		FocusNominee:  childNominee,
+		Emitters:      c.Emitters,
+		sink:          a.sink,
 	})
 	if err != nil {
 		return nil, err
@@ -211,7 +230,20 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	if comp == nil {
 		return nil, fmt.Errorf("the builder for %q returned no component", c.Type)
 	}
-	a.nodes[c.Node] = built{comp: comp, typ: c.Type}
+	nominee := childNominee
+	if focus {
+		nominee = comp
+	}
+	a.nodes[c.Node] = built{comp: comp, typ: c.Type, attached: attached, nominee: nominee}
+	if focus {
+		consumed = append(consumed, "focus")
+	}
+	// The attached properties are reported consumed: they were read — by the
+	// parent, at its construction — and there is no setter on THIS widget for
+	// the engine to apply them through.
+	for name := range attached {
+		consumed = append(consumed, name)
+	}
 	return consumed, nil
 }
 

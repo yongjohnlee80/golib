@@ -21,6 +21,18 @@ type Build struct {
 	Props []qml.SpecProp
 	// Children are this node's children, already built, in declaration order.
 	Children []tui.Component
+	// ChildAttached holds each child's ATTACHED properties, aligned with
+	// Children: `Dock.edge` written on child i is ChildAttached[i]["Dock.edge"].
+	// Read it through [Build.Attached].
+	ChildAttached []map[string]qml.SpecValue
+	// SelfAttached holds the attached properties THIS node carries. They are
+	// the parent's to act on, but a node may need to read one to face the right
+	// way — a MenuBar docked at the bottom opens its dropdowns upwards.
+	SelfAttached map[string]qml.SpecValue
+	// FocusNominee is the first component in this node's subtree, in document
+	// order, whose declaration says `focus: true` — or nil. A container that
+	// owns a focus scope hands it to the runtime as where the keyboard starts.
+	FocusNominee tui.Component
 	// Emitters is one function per distinct signal declared on this node.
 	// Calling one runs that signal's handlers under the engine's rules. A
 	// builder wires these into the widget — usually at construction, since some
@@ -74,6 +86,10 @@ type Builder func(Build) (tui.Component, []string, error)
 // before the first Mount and it is only read afterwards.
 type Registry struct {
 	builders map[string]Builder
+	// attached are the attaching schemas — `Dock` and its members.
+	attached map[string]attachingSchema
+	// honours says which containers read which attaching schemas.
+	honours map[string]map[string]bool
 }
 
 // NewRegistry returns an empty Registry.

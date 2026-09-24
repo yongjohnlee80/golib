@@ -2,26 +2,16 @@ package decl
 
 import (
 	"fmt"
-	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// StdRegistry returns a registry covering a small, deliberately AWKWARD set of
-// the standard widgets.
+// StdRegistry returns a registry covering the standard widget vocabulary: a
+// small, deliberately AWKWARD core, and the application types an editor-shaped
+// program is made of.
 //
-// The set is chosen for the shapes it forces, not for coverage:
-//
-// Enum-valued properties are written as QUALIFIED ENUMS — `orientation:
-// Tui.Horizontal` — exactly as Qt spells them (`Qt.Horizontal`). The adapter
-// publishes those names through Constants, and the engine resolves them to a
-// terminal before a builder is called, so what arrives here is a string.
-//
-// The guards below check that, because "the engine resolves it first" is a
-// property of the current wiring rather than of this function's signature: a
-// host may inject a constant of any kind, and a builder that trusted the
-// resolution would read Raw off a number and match none of its cases.
+// The core is chosen for the shapes it forces, not for coverage:
 //
 //   - Split takes its orientation and BOTH children as required constructor
 //     arguments, and has no setter for either. Nothing can build it after the
@@ -36,100 +26,81 @@ import (
 // A registry that can build these four can build the easy cases. One that was
 // designed against Text alone would have looked finished and collapsed on the
 // first Split.
+//
+// Enum-valued properties are written as QUALIFIED ENUMS — `orientation:
+// Tui.Horizontal` — exactly as Qt spells them (`Qt.Horizontal`). The engine
+// resolves them to a terminal before a builder runs, and each builder still
+// checks the KIND, because "the engine resolves it first" is a property of the
+// current wiring rather than of a builder's signature: a host may inject a
+// constant of any kind.
 func StdRegistry() *Registry {
 	r := NewRegistry()
-	Register(r, "Split", buildSplit)
-	Register(r, "Flex", buildFlex)
-	Register(r, "Button", buildButton)
-	Register(r, "Text", buildText)
+	registerTypes(r, stdTypes())
+	registerStdAttached(r)
 	return r
 }
 
 // StdProperties returns the complete property contract for [StdRegistry]: the
 // runtime setters AND the declarations of what each type takes only at
-// construction.
+// construction — both derived from the same type table the registry is.
 //
 // Both halves are needed, and the second is the one that is easy to forget.
 // Without it the adapter cannot tell `orientation` — which Split really does
 // take at construction — from a misspelling, so a typo would demolish a working
 // widget and blame the constructor for it.
-func StdProperties() []Option {
-	return []Option{
-		// Split takes its orientation as a constructor argument and has no
-		// SetOrientation; Flex takes its direction the same way.
-		WithConstructorProps("Split", "orientation"),
-		WithConstructorProps("Flex", "direction"),
-		WithSetters("Text", map[string]Setter{
-			"text": func(c tui.Component, v qml.SpecValue) error {
-				t, ok := c.(*widget.Text)
-				if !ok {
-					return fmt.Errorf("not a Text")
-				}
-				s, err := stringOf(v)
-				if err != nil {
-					return err
-				}
-				t.SetText(s)
-				return nil
-			},
-		}),
-		WithSetters("Button", map[string]Setter{
-			"enabled": func(c tui.Component, v qml.SpecValue) error {
-				b, ok := c.(*widget.Button)
-				if !ok {
-					return fmt.Errorf("not a Button")
-				}
-				on, err := boolOf(v)
-				if err != nil {
-					return err
-				}
-				b.SetEnabled(on)
-				return nil
-			},
-			"label": func(c tui.Component, v qml.SpecValue) error {
-				b, ok := c.(*widget.Button)
-				if !ok {
-					return fmt.Errorf("not a Button")
-				}
-				s, err := stringOf(v)
-				if err != nil {
-					return err
-				}
-				b.SetLabel(s)
-				return nil
-			},
-		}),
+func StdProperties() []Option { return typeOptions(stdTypes()) }
+
+// stdTypes is every standard widget type, in one table.
+func stdTypes() []widgetType { return append(coreTypes(), appTypes()...) }
+
+// tuiEnums is every enum the standard vocabulary accepts. The Tui singleton's
+// constants are derived from it, so a new enum is visible to documents by being
+// listed here — and nowhere else.
+var tuiEnums = []enumeration{
+	orientations, directions, dockEdges, keysets, menuAligns,
+}
+
+// ---------------------------------------------------------------- core
+
+var orientations = enum[widget.Orientation]{prop: "orientation", values: map[string]widget.Orientation{
+	"Horizontal": widget.Horizontal,
+	"Vertical":   widget.Vertical,
+}}
+
+var directions = enum[tui.Direction]{prop: "direction", values: map[string]tui.Direction{
+	"Horizontal": tui.Horizontal,
+	"Vertical":   tui.Vertical,
+}}
+
+func coreTypes() []widgetType {
+	return []widgetType{
+		{name: "Split", build: buildSplit, ctor: []string{"orientation"}},
+		{name: "Flex", build: buildFlex, ctor: []string{"direction"}},
+		{name: "Button", build: buildButton, setters: map[string]Setter{
+			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
+			"label":   setter("a Button", stringOf, (*widget.Button).SetLabel),
+		}},
+		{name: "Text", build: buildText, setters: map[string]Setter{
+			"text": setter("a Text", stringOf, (*widget.Text).SetText),
+		}},
 	}
 }
 
 // buildSplit is the shape that broke the first seam: orientation and both
 // children are required arguments with no later path in.
+//
+// The orientation is REPORTED consumed: there is no SetOrientation, so an engine
+// that re-applied it would find no setter and fail the mount.
 func buildSplit(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 2 {
 		return nil, nil, fmt.Errorf("Split needs exactly 2 children, got %d (at %s)", len(b.Children), b.Pos)
 	}
 	o := widget.Horizontal
-	consumed := []string{}
-	for _, p := range b.Props {
-		if p.Name != "orientation" {
-			continue
-		}
-		if p.Value.Kind != qml.SpecValueString {
-			return nil, nil, fmt.Errorf(
-				"orientation must be written as a string, got %s (at %s)", p.Value.Kind, p.Value.Pos)
-		}
-		switch p.Value.Raw {
-		case "horizontal":
-			o = widget.Horizontal
-		case "vertical":
-			o = widget.Vertical
-		default:
-			return nil, nil, fmt.Errorf("orientation must be horizontal or vertical, got %q (at %s)",
-				p.Value.Raw, p.Value.Pos)
-		}
-		// Consumed, and it MUST be reported: there is no SetOrientation, so an
-		// engine that re-applied this would find no setter and fail the mount.
-		consumed = append(consumed, "orientation")
+	consumed, err := readProps(b.Props, map[string]field{
+		"orientation": into(&o, orientations.read),
+	})
+	if err != nil {
+		return nil, nil, err
 	}
 	return widget.NewSplit(o, b.Children[0], b.Children[1]), consumed, nil
 }
@@ -137,25 +108,11 @@ func buildSplit(b Build) (tui.Component, []string, error) {
 // buildFlex takes its direction at construction and its children afterwards.
 func buildFlex(b Build) (tui.Component, []string, error) {
 	dir := tui.Vertical
-	consumed := []string{}
-	for _, p := range b.Props {
-		if p.Name != "direction" {
-			continue
-		}
-		if p.Value.Kind != qml.SpecValueString {
-			return nil, nil, fmt.Errorf(
-				"direction must be written as a string, got %s (at %s)", p.Value.Kind, p.Value.Pos)
-		}
-		switch p.Value.Raw {
-		case "horizontal":
-			dir = tui.Horizontal
-		case "vertical":
-			dir = tui.Vertical
-		default:
-			return nil, nil, fmt.Errorf("direction must be horizontal or vertical, got %q (at %s)",
-				p.Value.Raw, p.Value.Pos)
-		}
-		consumed = append(consumed, "direction")
+	consumed, err := readProps(b.Props, map[string]field{
+		"direction": into(&dir, directions.read),
+	})
+	if err != nil {
+		return nil, nil, err
 	}
 	f := tui.NewFlex(dir)
 	for _, c := range b.Children {
@@ -184,18 +141,4 @@ func buildButton(b Build) (tui.Component, []string, error) {
 // buildText consumes nothing: every property it has can be set at runtime.
 func buildText(b Build) (tui.Component, []string, error) {
 	return widget.NewText(""), nil, nil
-}
-
-func stringOf(v qml.SpecValue) (string, error) {
-	if v.Kind != qml.SpecValueString {
-		return "", fmt.Errorf("want a string, got %s (at %s)", v.Kind, v.Pos)
-	}
-	return v.Raw, nil
-}
-
-func boolOf(v qml.SpecValue) (bool, error) {
-	if v.Kind != qml.SpecValueBool {
-		return false, fmt.Errorf("want a bool, got %s (at %s)", v.Kind, v.Pos)
-	}
-	return v.Raw == "true", nil
 }

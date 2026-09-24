@@ -136,6 +136,17 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 	if a.ctorProps[typeName][prop] {
 		return decl.PropConstructorOnly
 	}
+	// An attached property is read by the PARENT at the parent's construction,
+	// which from this node's side is a constructor-only property: there is no
+	// setter to apply a change through. Whether this parent honours it is a
+	// separate question, answered by CheckAttached during planning.
+	if a.isAttached(prop) {
+		return decl.PropConstructorOnly
+	}
+	// `focus` is the adapter's, for every type — see takeFocus.
+	if prop == "focus" {
+		return decl.PropConstructorOnly
+	}
 	return decl.PropUnknown
 }
 
@@ -147,13 +158,10 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 // name is a CONSTANT — resolved once at planning, never tracked — which is why
 // it costs the reactive graph nothing.
 func (a *Adapter) Constants() map[string]qml.SpecValue {
-	str := func(s string) qml.SpecValue {
-		return qml.SpecValue{Kind: qml.SpecValueString, Raw: s}
-	}
-	return map[string]qml.SpecValue{
-		"Tui.Horizontal": str("horizontal"),
-		"Tui.Vertical":   str("vertical"),
-	}
+	// Derived from the enums the vocabulary accepts, so a document can name
+	// exactly the values a builder takes — no more, and never a spelling the
+	// builder would then refuse.
+	return tuiConstants(tuiEnums)
 }
 
 // TuiModuleVersion is the version `import tui <v>` must ask for, when it asks
