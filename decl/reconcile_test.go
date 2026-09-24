@@ -382,6 +382,62 @@ func TestAdapterWithoutTheCapabilityStillReconciles(t *testing.T) {
 	}
 }
 
+// TestNamingAnAnonymousNodeKeepsIt is the one-sided half of the rule above.
+//
+// Giving an existing node an id is an ordinary edit — usually the first step
+// toward referring to it. The old node claimed no identity, so nothing is
+// contradicted by letting the newly named node adopt it, and rebuilding here
+// would reset state for an edit that changed nothing about what the node IS.
+func TestNamingAnAnonymousNodeKeepsIt(t *testing.T) {
+	rec := newSplicer()
+	tr := mounted(t, rec, rec.recorder, `Flex { Text { text: "one" } }`)
+	root := tr.Root()
+	was := tr.Children(root)
+
+	res := reconcile(t, tr, `Flex { Text { id: named text: "one" } }`)
+
+	if got := tr.Children(root); len(got) != 1 || got[0] != was[0] {
+		t.Errorf("naming a node rebuilt it: %v -> %v", was, got)
+	}
+	if res.Created != 0 || res.Destroyed != 0 || len(res.Rebuilt) != 0 {
+		t.Errorf("naming a node was not free: %+v", res)
+	}
+	if id, ok := tr.SchemaID(was[0]); !ok || id != "named" {
+		t.Errorf("SchemaID = %q/%v, want \"named\"", id, ok)
+	}
+}
+
+// TestANameGivenByOneReloadIsUsableByTheNext checks the consequence rather than
+// the bookkeeping.
+//
+// Asserting SchemaID after a reconcile only proves a field was written. What
+// the field is FOR is the next reload. BOTH nodes start anonymous, so when the
+// second save swaps them by name there is no positional fallback to rescue a
+// stale record: matching has to use the names the previous reload assigned, or
+// the two nodes stay where they were and the screen silently disagrees with
+// the file. An earlier version of this test named one node up front, and the
+// fallback quietly made it pass against a tree that never recorded the names.
+func TestANameGivenByOneReloadIsUsableByTheNext(t *testing.T) {
+	rec := newSplicer()
+	tr := mounted(t, rec, rec.recorder, `Flex { Text { text: "one" } Text { text: "two" } }`)
+	root := tr.Root()
+	was := tr.Children(root)
+
+	reconcile(t, tr, `Flex { Text { id: a text: "one" } Text { id: b text: "two" } }`)
+	res := reconcile(t, tr, `Flex { Text { id: b text: "two" } Text { id: a text: "one" } }`)
+
+	if res.Created != 0 || res.Destroyed != 0 || len(res.Rebuilt) != 0 {
+		t.Fatalf("a reorder by a name given in the previous reload was not free: %+v", res)
+	}
+	want := []decl.NodeID{was[1], was[0]}
+	if got := tr.Children(root); !equalIDs(got, want) {
+		t.Errorf("order = %v, want %v (the names from the first reload were not used)", got, want)
+	}
+	if got := rec.order(root); !equalIDs(got, want) {
+		t.Errorf("adapter order = %v, want %v", got, want)
+	}
+}
+
 // --------------------------------------------------------------- structure
 
 // TestReorderByDeclaredIDMovesAndKeepsIdentity is the acceptance case for the
@@ -426,8 +482,47 @@ func TestReorderByDeclaredIDMovesAndKeepsIdentity(t *testing.T) {
 	if got := rec.order(root); !equalIDs(got, want) {
 		t.Errorf("adapter order = %v, want %v", got, want)
 	}
-	if res.Moved == 0 {
-		t.Error("Moved = 0, so no identity-preserving relocation was reported")
+	// Assert the EXACT moves, not just that the order came out right. An engine
+	// that recomputed indices from the plan instead of tracking them as they
+	// land still converges — every move puts want[i] at i, ascending — but it
+	// issues redundant ones, and Move is not free: it reorders a live
+	// container and invalidates it. Rotating [a b c] to [c a b] needs one move.
+	var moves []string
+	for _, line := range rec.trace {
+		if strings.HasPrefix(line, "move ") {
+			moves = append(moves, line)
+		}
+	}
+	if len(moves) != 1 {
+		t.Errorf("a one-rotation reorder issued %d moves, want 1:\n%s",
+			len(moves), strings.Join(moves, "\n"))
+	}
+	if res.Moved != 1 {
+		t.Errorf("Moved = %d, want 1", res.Moved)
+	}
+}
+
+// TestANamedNodeIsNotHandedToAnAnonymousNewcomer is the other half of the
+// identity rule, and the half with no natural symptom.
+//
+// The author named a node. If the new schema drops the name and leaves an
+// anonymous node in its place, reusing the named widget would carry its state
+// across two things the file says are not the same — silently, and in the
+// direction nobody checks. Both sides of a declared id are excluded from
+// positional matching for this reason.
+func TestANamedNodeIsNotHandedToAnAnonymousNewcomer(t *testing.T) {
+	rec := newSplicer()
+	tr := mounted(t, rec, rec.recorder, `Flex { Text { id: b text: "one" } }`)
+	root := tr.Root()
+	was := tr.Children(root)
+
+	res := reconcile(t, tr, `Flex { Text { text: "one" } }`)
+
+	if got := tr.Children(root); len(got) == 1 && got[0] == was[0] {
+		t.Error("an anonymous node inherited the widget of a node the author had named")
+	}
+	if res.Created != 1 || res.Destroyed != 1 {
+		t.Errorf("want the named node replaced (1 created, 1 destroyed), got %+v", res)
 	}
 }
 
