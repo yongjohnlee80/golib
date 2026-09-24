@@ -406,15 +406,17 @@ func (t *Tree) matchChildren(n *node, sn *parse.SpecNode) (matched []NodeID, dro
 		}
 	}
 
-	// 2. Position among the ANONYMOUS children only, in order.
+	// 2. Position among the remaining children, excluding old nodes that were
+	// NAMED.
 	//
-	// A declared id excludes a node from this pass on BOTH sides, and that is
-	// the rule doing the work. A new node declaring `id: x` must not inherit
-	// the widget that was `id: b` merely because it sits where b sat: the
-	// author named them differently, and silently reusing one as the other
-	// would keep state across two things the schema says are not the same. The
-	// same holds in reverse — a node the author named is not handed to an
-	// unnamed newcomer. Both become a fresh mount, which is the honest answer.
+	// The exclusion is one-sided on purpose, because the two directions are not
+	// the same claim. A node the author named is not handed to whatever happens
+	// to sit in its position now: it already had an identity, and reusing it as
+	// something the file no longer calls by that name would carry state across
+	// two different things. But a NEW node declaring an id may adopt an
+	// anonymous old one — the old node claimed no identity, so nothing is
+	// contradicted, and the alternative would reset a node's state for the
+	// ordinary edit of giving it a name.
 	var rest []NodeID
 	for _, c := range n.children {
 		if used[c] {
@@ -426,8 +428,8 @@ func (t *Tree) matchChildren(n *node, sn *parse.SpecNode) (matched []NodeID, dro
 		rest = append(rest, c)
 	}
 	next := 0
-	for i, child := range sn.Children {
-		if matched[i] != NoNode || child.ID != "" {
+	for i := range sn.Children {
+		if matched[i] != NoNode {
 			continue
 		}
 		if next < len(rest) {
@@ -482,6 +484,11 @@ func (t *Tree) patch(s *step, parent NodeID, res *Result) (NodeID, error) {
 	}
 	n.props = s.spec.Props
 	n.pos = s.spec.Pos
+	// The node now reflects the NEW schema, including the name it is known by.
+	// Leaving this stale costs nothing until the NEXT reload, which would look
+	// for the node under a name the tree no longer records and rebuild
+	// something it was holding perfectly well.
+	n.schemaID = s.spec.ID
 
 	want, err := t.patchChildren(s, res)
 	if err != nil {
