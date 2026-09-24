@@ -2,11 +2,11 @@ package decl_test
 
 import (
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 )
 
 // reactor is a splicer that also classifies properties, which a schema with
@@ -45,8 +45,8 @@ func (r *reactor) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 	return decl.PropUnknown
 }
 
-func sv(s string) parse.SpecValue {
-	return parse.SpecValue{Kind: parse.SpecValueString, Raw: s}
+func sv(s string) qml.SpecValue {
+	return qml.SpecValue{Kind: qml.SpecValueString, Raw: s}
 }
 
 // tree mounts src against a classifying adapter, with the given sources and
@@ -101,7 +101,7 @@ func TestSourceAndFuncDeclarationLifecycle(t *testing.T) {
 	})
 	t.Run("duplicate func", func(t *testing.T) {
 		tr := decl.New(newReactor())
-		f := func([]parse.SpecValue) (parse.SpecValue, error) { return sv(""), nil }
+		f := func([]qml.SpecValue) (qml.SpecValue, error) { return sv(""), nil }
 		if err := tr.DeclareFunc("f", f); err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestSourceAndFuncDeclarationLifecycle(t *testing.T) {
 		if err := tr.DeclareSource("late", sv("v")); !errors.Is(err, decl.ErrPhase) {
 			t.Errorf("source: err = %v, want ErrPhase", err)
 		}
-		if err := tr.DeclareFunc("late", func([]parse.SpecValue) (parse.SpecValue, error) {
+		if err := tr.DeclareFunc("late", func([]qml.SpecValue) (qml.SpecValue, error) {
 			return sv(""), nil
 		}); !errors.Is(err, decl.ErrPhase) {
 			t.Errorf("func: err = %v, want ErrPhase", err)
@@ -139,10 +139,10 @@ func TestSourceAndFuncDeclarationLifecycle(t *testing.T) {
 		// Row 7. A Ref or Call as a SOURCE value is what would make sources
 		// depend on sources, and the bipartite graph rests on them not.
 		tr := decl.New(newReactor())
-		for _, v := range []parse.SpecValue{
-			{Kind: parse.SpecValueRef, Raw: "other"},
-			{Kind: parse.SpecValueCall, Raw: "f"},
-			{Kind: parse.SpecValueRef, Raw: "bare"},
+		for _, v := range []qml.SpecValue{
+			{Kind: qml.SpecValueRef, Raw: "other"},
+			{Kind: qml.SpecValueCall, Raw: "f"},
+			{Kind: qml.SpecValueRef, Raw: "bare"},
 		} {
 			if err := tr.DeclareSource("s"+v.Raw, v); !errors.Is(err, decl.ErrNotTerminal) {
 				t.Errorf("DeclareSource(%s): err = %v, want ErrNotTerminal", v.Kind, err)
@@ -151,7 +151,7 @@ func TestSourceAndFuncDeclarationLifecycle(t *testing.T) {
 		if err := tr.DeclareSource("ok", sv("v")); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := tr.SetSource("ok", parse.SpecValue{Kind: parse.SpecValueRef, Raw: "x"}); !errors.Is(err, decl.ErrNotTerminal) {
+		if _, err := tr.SetSource("ok", qml.SpecValue{Kind: qml.SpecValueRef, Raw: "x"}); !errors.Is(err, decl.ErrNotTerminal) {
 			t.Errorf("SetSource: err = %v, want ErrNotTerminal", err)
 		}
 	})
@@ -160,14 +160,14 @@ func TestSourceAndFuncDeclarationLifecycle(t *testing.T) {
 		rec := newReactor()
 		tr := decl.New(rec)
 		_ = tr.DeclareSource("g", sv("v"))
-		_ = tr.DeclareFunc("bad", func([]parse.SpecValue) (parse.SpecValue, error) {
-			return parse.SpecValue{Kind: parse.SpecValueRef, Raw: "expr"}, nil
+		_ = tr.DeclareFunc("bad", func([]qml.SpecValue) (qml.SpecValue, error) {
+			return qml.SpecValue{Kind: qml.SpecValueRef, Raw: "expr"}, nil
 		})
 		// `good` returns a proper terminal, so when it is used below only the
 		// ARGUMENT check can refuse. An earlier version used `bad` for the
 		// argument case too, and passed because the non-terminal RESULT was
 		// refused — proving the wrong rule.
-		_ = tr.DeclareFunc("good", func([]parse.SpecValue) (parse.SpecValue, error) {
+		_ = tr.DeclareFunc("good", func([]qml.SpecValue) (qml.SpecValue, error) {
 			return sv("fine"), nil
 		})
 		for name, src := range map[string]string{
@@ -202,7 +202,7 @@ func TestDependenciesAreExactlyTheSourcesWritten(t *testing.T) {
 	tr := tree(t, rec,
 		`Flex { Text { id: a text: join(x, "lit", x) } Text { id: b text: y } }`,
 		map[string]string{"x": "1", "y": "2", "unrelated": "3"},
-		map[string]decl.ValueFunc{"join": func(a []parse.SpecValue) (parse.SpecValue, error) {
+		map[string]decl.ValueFunc{"join": func(a []qml.SpecValue) (qml.SpecValue, error) {
 			calls++
 			return sv(a[0].Raw + a[1].Raw + a[2].Raw), nil
 		}})
@@ -244,7 +244,7 @@ func TestAnUnchangedDerivedValueNeverReachesTheSetter(t *testing.T) {
 	calls := 0
 	tr := tree(t, rec, `Flex { Text { id: a text: constant(x) } }`,
 		map[string]string{"x": "1"},
-		map[string]decl.ValueFunc{"constant": func([]parse.SpecValue) (parse.SpecValue, error) {
+		map[string]decl.ValueFunc{"constant": func([]qml.SpecValue) (qml.SpecValue, error) {
 			calls++
 			return sv("always the same"), nil
 		}})
@@ -405,7 +405,7 @@ func TestThePropagationPhaseRefusesEveryMutatingEntry(t *testing.T) {
 	// time the phase was idle again and every one of them was legal. It
 	// reported six failures against correct code, which is the good direction
 	// for that mistake to fail in.
-	fn := func(a []parse.SpecValue) (parse.SpecValue, error) {
+	fn := func(a []qml.SpecValue) (qml.SpecValue, error) {
 		if tr == nil {
 			// The first call happens during Mount, before tree() has returned.
 			return sv(a[0].Raw), nil
@@ -448,7 +448,7 @@ func TestThePropagationPhaseRefusesEveryMutatingEntry(t *testing.T) {
 		rec2 := newReactor()
 		tr2 := decl.New(rec2)
 		_ = tr2.DeclareSource("x", sv("1"))
-		_ = tr2.DeclareFunc("pass", func(a []parse.SpecValue) (parse.SpecValue, error) {
+		_ = tr2.DeclareFunc("pass", func(a []qml.SpecValue) (qml.SpecValue, error) {
 			n = tr2.Len()
 			_, ok = tr2.TypeOf(tr2.Root())
 			return sv(a[0].Raw + "!"), nil
@@ -538,7 +538,7 @@ func TestAnIdenticalReloadInvokesNoValueFunction(t *testing.T) {
 	calls := 0
 	const src = `Flex { Text { id: a text: f(x) } Text { id: b text: f(x) } }`
 	tr := tree(t, rec, src, map[string]string{"x": "1"},
-		map[string]decl.ValueFunc{"f": func(a []parse.SpecValue) (parse.SpecValue, error) {
+		map[string]decl.ValueFunc{"f": func(a []qml.SpecValue) (qml.SpecValue, error) {
 			calls++
 			return sv("d" + a[0].Raw), nil
 		}})
@@ -577,7 +577,7 @@ func TestAChangedBindingEvaluatesExactlyOnce(t *testing.T) {
 	calls := 0
 	tr := tree(t, rec, `Flex { Text { id: a text: "lit" } }`,
 		map[string]string{"x": "1"},
-		map[string]decl.ValueFunc{"f": func(a []parse.SpecValue) (parse.SpecValue, error) {
+		map[string]decl.ValueFunc{"f": func(a []qml.SpecValue) (qml.SpecValue, error) {
 			calls++
 			return sv("d" + a[0].Raw), nil
 		}})
@@ -595,8 +595,8 @@ func TestAFailedEvaluationDuringReconcileLeavesTheTreeUntouched(t *testing.T) {
 	boom := errors.New("the host function refuses")
 	tr := tree(t, rec, `Flex { Text { id: a text: "one" } }`,
 		map[string]string{"x": "1"},
-		map[string]decl.ValueFunc{"f": func([]parse.SpecValue) (parse.SpecValue, error) {
-			return parse.SpecValue{}, boom
+		map[string]decl.ValueFunc{"f": func([]qml.SpecValue) (qml.SpecValue, error) {
+			return qml.SpecValue{}, boom
 		}})
 	before := tr.Children(tr.Root())
 
@@ -687,8 +687,8 @@ func TestSourcesNestInsideCalls(t *testing.T) {
 	tr := tree(t, rec, `Flex { Text { id: a text: outer(inner(x), "lit") } }`,
 		map[string]string{"x": "1"},
 		map[string]decl.ValueFunc{
-			"inner": func(a []parse.SpecValue) (parse.SpecValue, error) { return sv("[" + a[0].Raw + "]"), nil },
-			"outer": func(a []parse.SpecValue) (parse.SpecValue, error) { return sv(a[0].Raw + a[1].Raw), nil },
+			"inner": func(a []qml.SpecValue) (qml.SpecValue, error) { return sv("[" + a[0].Raw + "]"), nil },
+			"outer": func(a []qml.SpecValue) (qml.SpecValue, error) { return sv(a[0].Raw + a[1].Raw), nil },
 		})
 	res, err := tr.SetSource("x", sv("2"))
 	if err != nil {
@@ -796,7 +796,7 @@ func TestACreateConsumedBindingInitialisesItsCache(t *testing.T) {
 	if err := tr.DeclareSource("x", sv("first")); err != nil {
 		t.Fatal(err)
 	}
-	if err := tr.DeclareFunc("same", func([]parse.SpecValue) (parse.SpecValue, error) {
+	if err := tr.DeclareFunc("same", func([]qml.SpecValue) (qml.SpecValue, error) {
 		return sv("always"), nil
 	}); err != nil {
 		t.Fatal(err)

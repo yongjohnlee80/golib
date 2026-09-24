@@ -161,3 +161,46 @@ func moduleImportGraph(t *testing.T, root string) map[string][]string {
 	}
 	return out
 }
+
+// TestParseSubPackagesDependOnlyDownwards.
+//
+// parse/qml, parse/js and parse/sql all depend on parse; parse depends on NONE
+// of them. The direction is what makes parse the place for things every format
+// shares — a Scanner, a Position, a SyntaxError — without the shared layer
+// acquiring an opinion about any particular grammar.
+//
+// It is asserted rather than stated because a split like this reverses by
+// accident: one convenience helper in parse that reaches for a QML type, and
+// the layering is gone with nothing to notice it. The sub-packages may not
+// import each other either, except qml -> js, which is a real dependency: a
+// QML property value IS a JavaScript expression.
+func TestParseSubPackagesDependOnlyDownwards(t *testing.T) {
+	const root = "github.com/yongjohnlee80/golib/parse"
+	cases := []struct {
+		pkg       string
+		forbidden []string
+	}{
+		{"parse", []string{root + "/qml", root + "/js", root + "/sql"}},
+		{"parse/js", []string{root + "/qml", root + "/sql"}},
+		{"parse/sql", []string{root + "/qml", root + "/js"}},
+		{"parse/qml", []string{root + "/sql"}},
+	}
+	for _, c := range cases {
+		t.Run(c.pkg, func(t *testing.T) {
+			graph := moduleImportGraph(t, repoRoot(t))
+			full := "github.com/yongjohnlee80/golib/" + c.pkg
+			imports, ok := graph[full]
+			if !ok {
+				t.Fatalf("no imports collected for %s; the guard is not looking at anything", full)
+			}
+			for _, imp := range imports {
+				for _, bad := range c.forbidden {
+					if imp == bad {
+						t.Errorf("%s imports %s; the parse layering only points downwards",
+							c.pkg, imp)
+					}
+				}
+			}
+		})
+	}
+}

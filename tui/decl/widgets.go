@@ -2,8 +2,8 @@ package decl
 
 import (
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/qml"
 
-	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -60,7 +60,7 @@ func StdProperties() []Option {
 		WithConstructorProps("Split", "orientation"),
 		WithConstructorProps("Flex", "direction"),
 		WithSetters("Text", map[string]Setter{
-			"text": func(c tui.Component, v parse.SpecValue) error {
+			"text": func(c tui.Component, v qml.SpecValue) error {
 				t, ok := c.(*widget.Text)
 				if !ok {
 					return fmt.Errorf("not a Text")
@@ -74,7 +74,7 @@ func StdProperties() []Option {
 			},
 		}),
 		WithSetters("Button", map[string]Setter{
-			"enabled": func(c tui.Component, v parse.SpecValue) error {
+			"enabled": func(c tui.Component, v qml.SpecValue) error {
 				b, ok := c.(*widget.Button)
 				if !ok {
 					return fmt.Errorf("not a Button")
@@ -86,7 +86,7 @@ func StdProperties() []Option {
 				b.SetEnabled(on)
 				return nil
 			},
-			"label": func(c tui.Component, v parse.SpecValue) error {
+			"label": func(c tui.Component, v qml.SpecValue) error {
 				b, ok := c.(*widget.Button)
 				if !ok {
 					return fmt.Errorf("not a Button")
@@ -114,7 +114,7 @@ func buildSplit(b Build) (tui.Component, []string, error) {
 		if p.Name != "orientation" {
 			continue
 		}
-		if p.Value.Kind != parse.SpecValueString {
+		if p.Value.Kind != qml.SpecValueString {
 			return nil, nil, fmt.Errorf(
 				"orientation must be written as a string, got %s (at %s)", p.Value.Kind, p.Value.Pos)
 		}
@@ -142,7 +142,7 @@ func buildFlex(b Build) (tui.Component, []string, error) {
 		if p.Name != "direction" {
 			continue
 		}
-		if p.Value.Kind != parse.SpecValueString {
+		if p.Value.Kind != qml.SpecValueString {
 			return nil, nil, fmt.Errorf(
 				"direction must be written as a string, got %s (at %s)", p.Value.Kind, p.Value.Pos)
 		}
@@ -186,15 +186,15 @@ func buildText(b Build) (tui.Component, []string, error) {
 	return widget.NewText(""), nil, nil
 }
 
-func stringOf(v parse.SpecValue) (string, error) {
-	if v.Kind != parse.SpecValueString {
+func stringOf(v qml.SpecValue) (string, error) {
+	if v.Kind != qml.SpecValueString {
 		return "", fmt.Errorf("want a string, got %s (at %s)", v.Kind, v.Pos)
 	}
 	return v.Raw, nil
 }
 
-func boolOf(v parse.SpecValue) (bool, error) {
-	if v.Kind != parse.SpecValueBool {
+func boolOf(v qml.SpecValue) (bool, error) {
+	if v.Kind != qml.SpecValueBool {
 		return false, fmt.Errorf("want a bool, got %s (at %s)", v.Kind, v.Pos)
 	}
 	return v.Raw == "true", nil

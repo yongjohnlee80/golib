@@ -3,12 +3,13 @@ package decl_test
 import (
 	"errors"
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/js"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 )
 
 // recorder is a test adapter that writes down every call in order. The trace it
@@ -74,7 +75,7 @@ func (r *recorder) Apply(a decl.Application) error {
 // It replaces the fake's ResolveHandler. Handler resolution is no longer the
 // adapter's business: a host injects its effects, and the engine resolves them
 // through the one registry every other name goes through.
-func injectHandlers(t *testing.T, tr *decl.Tree, r *recorder, spec parse.SpecTree) {
+func injectHandlers(t *testing.T, tr *decl.Tree, r *recorder, spec qml.SpecTree) {
 	t.Helper()
 	done := map[string]bool{}
 	give := func(name string) {
@@ -86,7 +87,7 @@ func injectHandlers(t *testing.T, tr *decl.Tree, r *recorder, spec parse.SpecTre
 		if !ok {
 			fn = func() error { r.trace = append(r.trace, "run "+name); return nil }
 		}
-		if err := tr.Inject(name, decl.Handle(func([]parse.SpecValue) error { return fn() })); err != nil {
+		if err := tr.Inject(name, decl.Handle(func([]qml.SpecValue) error { return fn() })); err != nil {
 			t.Fatalf("inject handler %q: %v", name, err)
 		}
 	}
@@ -103,15 +104,15 @@ func injectHandlers(t *testing.T, tr *decl.Tree, r *recorder, spec parse.SpecTre
 		give(n)
 	}
 
-	var visit func(*parse.SpecNode)
-	visit = func(n *parse.SpecNode) {
+	var visit func(*qml.SpecNode)
+	visit = func(n *qml.SpecNode) {
 		if n == nil {
 			return
 		}
 		for _, h := range n.Handlers {
 			for i := range h.Body {
-				h.Body[i].WalkExprs(func(e *parse.Expr) bool {
-					if e.Kind != parse.ExprCall || e.Left == nil || e.Left.Kind != parse.ExprIdent {
+				h.Body[i].WalkExprs(func(e *js.Expr) bool {
+					if e.Kind != js.ExprCall || e.Left == nil || e.Left.Kind != js.ExprIdent {
 						return true
 					}
 					// A name the test marked unresolvable is deliberately NOT
@@ -130,7 +131,7 @@ func injectHandlers(t *testing.T, tr *decl.Tree, r *recorder, spec parse.SpecTre
 }
 
 // wiredSpec parses src and injects the handlers it calls, ready to Mount.
-func wiredSpec(t *testing.T, tr *decl.Tree, r *recorder, src string) parse.SpecTree {
+func wiredSpec(t *testing.T, tr *decl.Tree, r *recorder, src string) qml.SpecTree {
 	t.Helper()
 	spec := mustSpec(t, src)
 	injectHandlers(t, tr, r, spec)
@@ -150,19 +151,19 @@ func (r *recorder) Modules() []decl.Module {
 
 // Constants gives the fake the qualified vocabulary a QML-faithful schema
 // writes: `direction: Tui.Vertical` rather than a bare word or a quoted string.
-func (r *recorder) Constants() map[string]parse.SpecValue {
-	str := func(s string) parse.SpecValue {
-		return parse.SpecValue{Kind: parse.SpecValueString, Raw: s}
+func (r *recorder) Constants() map[string]qml.SpecValue {
+	str := func(s string) qml.SpecValue {
+		return qml.SpecValue{Kind: qml.SpecValueString, Raw: s}
 	}
-	return map[string]parse.SpecValue{
+	return map[string]qml.SpecValue{
 		"Tui.Horizontal": str("horizontal"),
 		"Tui.Vertical":   str("vertical"),
 	}
 }
 
-func mustSpec(t *testing.T, src string) parse.SpecTree {
+func mustSpec(t *testing.T, src string) qml.SpecTree {
 	t.Helper()
-	tree, err := parse.QML{}.Parse([]byte(src))
+	tree, err := qml.QML{}.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("fixture schema does not parse: %v", err)
 	}
@@ -398,7 +399,7 @@ func TestApplicationCarriesTheValueNotAnInstruction(t *testing.T) {
 	if !seen {
 		t.Fatal("no Application reached the adapter")
 	}
-	if got.Prop != "text" || got.Value.Kind != parse.SpecValueString || got.Value.Raw != "hi" {
+	if got.Prop != "text" || got.Value.Kind != qml.SpecValueString || got.Value.Raw != "hi" {
 		t.Errorf("Application = %+v, want text/string/hi", got)
 	}
 	if got.Origin != decl.FromSchema {
@@ -431,7 +432,7 @@ func TestHostSetIsDistinguishableFromSchema(t *testing.T) {
 	if err := tr.Mount(mustSpec(t, `Text { text: "a" }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
-	if err := tr.SetProp(tr.Root(), "text", parse.SpecValue{Kind: parse.SpecValueString, Raw: "b"}); err != nil {
+	if err := tr.SetProp(tr.Root(), "text", qml.SpecValue{Kind: qml.SpecValueString, Raw: "b"}); err != nil {
 		t.Fatalf("SetProp: %v", err)
 	}
 	if len(origins) != 2 || origins[0] != decl.FromSchema || origins[1] != decl.FromHost {
@@ -441,7 +442,7 @@ func TestHostSetIsDistinguishableFromSchema(t *testing.T) {
 
 func TestSetPropOnAnUnknownNode(t *testing.T) {
 	tr := decl.New(newRecorder())
-	err := tr.SetProp(decl.NodeID(99), "x", parse.SpecValue{})
+	err := tr.SetProp(decl.NodeID(99), "x", qml.SpecValue{})
 	if !errors.Is(err, decl.ErrNoSuchNode) {
 		t.Errorf("err = %v, want ErrNoSuchNode", err)
 	}
@@ -556,7 +557,7 @@ func TestHandlerErrorStopsTheEmissionAndCommitsWhatRan(t *testing.T) {
 		onApply: func(a decl.Application) { applied = append(applied, a.Prop) }}
 	tr = decl.New(adapter)
 	r.handlers["writes"] = func() error {
-		return tr.SetProp(tr.Root(), "written", parse.SpecValue{Kind: parse.SpecValueBool, Raw: "true"})
+		return tr.SetProp(tr.Root(), "written", qml.SpecValue{Kind: qml.SpecValueBool, Raw: "true"})
 	}
 	r.handlers["fails"] = func() error { return boom }
 	r.handlers["never"] = func() error { applied = append(applied, "NEVER-RAN"); return nil }
@@ -741,7 +742,7 @@ func TestTheTreeCannotBeCorruptedFromAnyAdapterCallback(t *testing.T) {
 					case "mount":
 						_ = tr.Mount(mustSpec(t, `Intruder { }`))
 					case "setprop":
-						_ = tr.SetProp(1, "x", parse.SpecValue{Kind: parse.SpecValueBool, Raw: "true"})
+						_ = tr.SetProp(1, "x", qml.SpecValue{Kind: qml.SpecValueBool, Raw: "true"})
 					}
 				}
 

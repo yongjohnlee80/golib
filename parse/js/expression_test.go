@@ -1,7 +1,8 @@
-package parse_test
+package js_test
 
 import (
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/js"
 	"strings"
 	"testing"
 
@@ -15,16 +16,16 @@ import (
 // `-(a * b)` still produces a unary wrapping a binary — the right KINDS in the
 // wrong SHAPE. Only the parentheses tell those two trees apart, and that exact
 // defect was live in this file until the rendered form exposed it.
-func renderExpr(e *parse.Expr) string {
+func renderExpr(e *js.Expr) string {
 	if e == nil {
 		return "<nil>"
 	}
 	switch e.Kind {
-	case parse.ExprNumber, parse.ExprBool, parse.ExprNull, parse.ExprUndefined, parse.ExprIdent:
+	case js.ExprNumber, js.ExprBool, js.ExprNull, js.ExprUndefined, js.ExprIdent:
 		return e.Raw
-	case parse.ExprString:
+	case js.ExprString:
 		return `"` + e.Raw + `"`
-	case parse.ExprTemplate:
+	case js.ExprTemplate:
 		var b strings.Builder
 		b.WriteString("`")
 		for i, chunk := range e.Chunks {
@@ -35,13 +36,13 @@ func renderExpr(e *parse.Expr) string {
 		}
 		b.WriteString("`")
 		return b.String()
-	case parse.ExprUnary:
+	case js.ExprUnary:
 		return "(" + e.Raw + " " + renderExpr(e.Left) + ")"
-	case parse.ExprBinary, parse.ExprLogical:
+	case js.ExprBinary, js.ExprLogical:
 		return "(" + renderExpr(e.Left) + " " + e.Raw + " " + renderExpr(e.Right) + ")"
-	case parse.ExprConditional:
+	case js.ExprConditional:
 		return "(" + renderExpr(e.Left) + " ? " + renderExpr(e.Right) + " : " + renderExpr(e.Alt) + ")"
-	case parse.ExprMember:
+	case js.ExprMember:
 		if e.Computed {
 			return renderExpr(e.Left) + "[" + renderExpr(e.Right) + "]"
 		}
@@ -50,11 +51,11 @@ func renderExpr(e *parse.Expr) string {
 			dot = "?."
 		}
 		return renderExpr(e.Left) + dot + e.Name
-	case parse.ExprCall:
+	case js.ExprCall:
 		return renderExpr(e.Left) + "(" + renderExprList(e.Args) + ")"
-	case parse.ExprArray:
+	case js.ExprArray:
 		return "[" + renderExprList(e.Args) + "]"
-	case parse.ExprObject:
+	case js.ExprObject:
 		parts := make([]string, 0, len(e.Props))
 		for i := range e.Props {
 			p := &e.Props[i]
@@ -69,7 +70,7 @@ func renderExpr(e *parse.Expr) string {
 	return "<" + e.Kind.String() + ">"
 }
 
-func renderExprList(args []parse.Expr) string {
+func renderExprList(args []js.Expr) string {
 	parts := make([]string, 0, len(args))
 	for i := range args {
 		parts = append(parts, renderExpr(&args[i]))
@@ -78,11 +79,11 @@ func renderExprList(args []parse.Expr) string {
 }
 
 // shapes asserts that each source renders as its stated tree, under dialect d.
-// A nil dialect is JavaScript, which is also what the zero [parse.Expression]
+// A nil dialect is JavaScript, which is also what the zero [js.Expression]
 // parses.
-func shapes(t *testing.T, d *parse.ExprDialect, cases map[string]string) {
+func shapes(t *testing.T, d *js.ExprDialect, cases map[string]string) {
 	t.Helper()
-	x := parse.Expression{Dialect: d}
+	x := js.Expression{Dialect: d}
 	for src, want := range cases {
 		e, err := x.Parse([]byte(src))
 		if err != nil {
@@ -102,9 +103,9 @@ func shapesJS(t *testing.T, cases map[string]string) {
 
 // refuses asserts that each source is rejected, and WHICH of the two refusals it
 // gets: the "keep typing" one or the "this cannot work" one.
-func refuses(t *testing.T, d *parse.ExprDialect, incomplete bool, sources ...string) {
+func refuses(t *testing.T, d *js.ExprDialect, incomplete bool, sources ...string) {
 	t.Helper()
-	x := parse.Expression{Dialect: d}
+	x := js.Expression{Dialect: d}
 	for _, src := range sources {
 		e, err := x.Parse([]byte(src))
 		if err == nil {
@@ -113,7 +114,7 @@ func refuses(t *testing.T, d *parse.ExprDialect, incomplete bool, sources ...str
 		}
 		var se parse.SyntaxError
 		if !errors.As(err, &se) {
-			t.Errorf("%s: %q: %v is not a SyntaxError", x.FormatName(), src, err)
+			t.Errorf("%s: %q: %v is not a parse.SyntaxError", x.FormatName(), src, err)
 			continue
 		}
 		if se.Incomplete != incomplete {
@@ -404,7 +405,7 @@ func TestStringEscapesAreDecodedAndTheQuotesAreDropped(t *testing.T) {
 	// the first matching quote without honouring the backslash would still
 	// produce a string node, just a truncated one, and the remaining characters
 	// would be blamed on whatever came next.
-	x := parse.Expression{}
+	x := js.Expression{}
 	for src, want := range map[string]string{
 		`'a\nb'`:  "a\nb",
 		`'a\tb'`:  "a\tb",
@@ -423,7 +424,7 @@ func TestStringEscapesAreDecodedAndTheQuotesAreDropped(t *testing.T) {
 			t.Errorf("%q: %v", src, err)
 			continue
 		}
-		if e.Kind != parse.ExprString || e.Raw != want {
+		if e.Kind != js.ExprString || e.Raw != want {
 			t.Errorf("%q: got %v %q, want string %q", src, e.Kind, e.Raw, want)
 		}
 	}
@@ -453,7 +454,7 @@ func TestATemplateAlwaysHasOneMoreChunkThanSubstitution(t *testing.T) {
 	// tail or indexes out of range. An empty leading or trailing chunk still has
 	// to be PRESENT, which is why `${x}` with nothing around it is here.
 	for _, src := range []string{"``", "`a`", "`${x}`", "`a${x}`", "`${x}b`", "`a${x}b${y}c`"} {
-		e, err := parse.Expression{}.Parse([]byte(src))
+		e, err := js.Expression{}.Parse([]byte(src))
 		if err != nil {
 			t.Errorf("%q: %v", src, err)
 			continue
@@ -473,13 +474,13 @@ func TestWalkReachesTheIdentifiersInsideATemplateSubstitution(t *testing.T) {
 	// template held as a single string contributes none, so the binding looks
 	// like it depends on nothing and never updates. The failure has no symptom
 	// at parse time at all — only a wrong answer later — so it has to be a test.
-	e, err := parse.Expression{}.Parse([]byte("`Hello ${greeting.text}, ${count + 1} times`"))
+	e, err := js.Expression{}.Parse([]byte("`Hello ${greeting.text}, ${count + 1} times`"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	e.Walk(func(n *parse.Expr) bool {
-		if n.Kind == parse.ExprIdent {
+	e.Walk(func(n *js.Expr) bool {
+		if n.Kind == js.ExprIdent {
 			names = append(names, n.Raw)
 		}
 		return true
@@ -507,10 +508,10 @@ func TestASubstitutionCountsAgainstTheNestingLimit(t *testing.T) {
 	// otherwise exhaust the stack.
 	const deep = 100000
 	src := strings.Repeat("`${", deep) + "a" + strings.Repeat("}`", deep)
-	_, err := parse.Expression{}.Parse([]byte(src))
+	_, err := js.Expression{}.Parse([]byte(src))
 	var se parse.SyntaxError
 	if !errors.As(err, &se) {
-		t.Fatalf("%v, want a SyntaxError about the nesting limit", err)
+		t.Fatalf("%v, want a parse.SyntaxError about the nesting limit", err)
 	}
 	if !strings.Contains(se.Want, "nested") {
 		t.Errorf("Want = %q, want the nesting-limit message", se.Want)
@@ -525,14 +526,14 @@ func TestParsingACallIsNotGrantingItAuthorityToRun(t *testing.T) {
 	//
 	// Assignment is not parsed at all, so the policy is shown over a call — the
 	// construct that actually reaches a consumer, and the one that can mutate.
-	tree, err := parse.Expression{}.Parse([]byte("ok ? read(id) : remove(id)"))
+	tree, err := js.Expression{}.Parse([]byte("ok ? read(id) : remove(id)"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	refusedBy := func(e *parse.Expr, allowed map[string]bool) []string {
+	refusedBy := func(e *js.Expr, allowed map[string]bool) []string {
 		var bad []string
-		e.Walk(func(n *parse.Expr) bool {
-			if n.Kind == parse.ExprCall && n.Left.Kind == parse.ExprIdent && !allowed[n.Left.Raw] {
+		e.Walk(func(n *js.Expr) bool {
+			if n.Kind == js.ExprCall && n.Left.Kind == js.ExprIdent && !allowed[n.Left.Raw] {
 				bad = append(bad, n.Left.Raw)
 			}
 			return true
@@ -548,7 +549,7 @@ func TestParsingACallIsNotGrantingItAuthorityToRun(t *testing.T) {
 	// And the parser itself refuses nothing of the sort: the tree exists either
 	// way, which is the point — authority is the consumer's decision, not a
 	// property the parse conferred.
-	if _, err := (parse.Expression{}).Parse([]byte("drop(everything)")); err != nil {
+	if _, err := (js.Expression{}).Parse([]byte("drop(everything)")); err != nil {
 		t.Errorf("the parser refused a mutating call: %v — it is not a policy", err)
 	}
 }
@@ -557,16 +558,16 @@ func TestLiteralKeywordsBecomeTheirOwnKindsRatherThanIdentifiers(t *testing.T) {
 	// `nullish` and `trueish` are the discriminating rows: a literal table
 	// consulted by prefix rather than by whole word turns every name that starts
 	// with a keyword into a constant, which no shape test would reveal.
-	x := parse.Expression{}
-	for src, want := range map[string]parse.ExprKind{
-		"true":       parse.ExprBool,
-		"false":      parse.ExprBool,
-		"null":       parse.ExprNull,
-		"undefined":  parse.ExprUndefined,
-		"nullish":    parse.ExprIdent,
-		"trueish":    parse.ExprIdent,
-		"falsey":     parse.ExprIdent,
-		"undefined_": parse.ExprIdent,
+	x := js.Expression{}
+	for src, want := range map[string]js.ExprKind{
+		"true":       js.ExprBool,
+		"false":      js.ExprBool,
+		"null":       js.ExprNull,
+		"undefined":  js.ExprUndefined,
+		"nullish":    js.ExprIdent,
+		"trueish":    js.ExprIdent,
+		"falsey":     js.ExprIdent,
+		"undefined_": js.ExprIdent,
 	} {
 		e, err := x.Parse([]byte(src))
 		if err != nil {
@@ -583,15 +584,15 @@ func TestShortCircuitingOperatorsAreADifferentKindFromArithmeticOnes(t *testing.
 	// An evaluator that treats `&&` as an ordinary binary evaluates both sides,
 	// which is the exact bug `a && a.b` is written to avoid. The kind is the only
 	// place that distinction lives, so the rendered shape cannot check it.
-	x := parse.Expression{}
-	for src, want := range map[string]parse.ExprKind{
-		"a && b": parse.ExprLogical,
-		"a || b": parse.ExprLogical,
-		"a ?? b": parse.ExprLogical,
-		"a & b":  parse.ExprBinary,
-		"a | b":  parse.ExprBinary,
-		"a + b":  parse.ExprBinary,
-		"a ** b": parse.ExprBinary,
+	x := js.Expression{}
+	for src, want := range map[string]js.ExprKind{
+		"a && b": js.ExprLogical,
+		"a || b": js.ExprLogical,
+		"a ?? b": js.ExprLogical,
+		"a & b":  js.ExprBinary,
+		"a | b":  js.ExprBinary,
+		"a + b":  js.ExprBinary,
+		"a ** b": js.ExprBinary,
 	} {
 		e, err := x.Parse([]byte(src))
 		if err != nil {
@@ -639,13 +640,13 @@ func TestObjectShorthandIsRefusedByNamingTheMissingColon(t *testing.T) {
 	// `{a}` is valid JavaScript that this revision does not support, so the
 	// refusal has to say what is missing rather than "unexpected }" — the
 	// difference between a reader typing `: a` and a reader filing a bug.
-	e, err := parse.Expression{}.Parse([]byte("{a}"))
+	e, err := js.Expression{}.Parse([]byte("{a}"))
 	if err == nil {
 		t.Fatalf("parsed as %s, want a refusal", renderExpr(&e))
 	}
 	var se parse.SyntaxError
 	if !errors.As(err, &se) {
-		t.Fatalf("%v is not a SyntaxError", err)
+		t.Fatalf("%v is not a parse.SyntaxError", err)
 	}
 	if !strings.Contains(se.Want, ":") {
 		t.Errorf("Want = %q, which does not name the missing colon", se.Want)
@@ -695,11 +696,11 @@ func TestTheTwoErrorIdentitiesAreSiblingsAndNeverBoth(t *testing.T) {
 	// was merely unfinished, so each identity is asserted BOTH ways: present and
 	// absent. Checking only the positive lets an Unwrap that answered for both
 	// pass, which would collapse the distinction the Incomplete flag exists for.
-	_, err := parse.Expression{}.Parse([]byte("a +"))
+	_, err := js.Expression{}.Parse([]byte("a +"))
 	if !errors.Is(err, parse.ErrUnterminated) || errors.Is(err, parse.ErrSyntax) {
 		t.Errorf("unfinished input: %v should be ErrUnterminated and NOT ErrSyntax", err)
 	}
-	_, err = parse.Expression{}.Parse([]byte("a @ b"))
+	_, err = js.Expression{}.Parse([]byte("a @ b"))
 	if !errors.Is(err, parse.ErrSyntax) || errors.Is(err, parse.ErrUnterminated) {
 		t.Errorf("wrong input: %v should be ErrSyntax and NOT ErrUnterminated", err)
 	}
@@ -715,10 +716,10 @@ func TestErrorPositionsPointAtTheConstructRatherThanTheEndOfInput(t *testing.T) 
 	// An unterminated string reports where the QUOTE is, not where the file ran
 	// out, because that is where the reader has to go. A test that only checked
 	// that an error occurred passes with every position left at 1:1.
-	_, err := parse.Expression{}.Parse([]byte("a + 'unterminated"))
+	_, err := js.Expression{}.Parse([]byte("a + 'unterminated"))
 	var se parse.SyntaxError
 	if !errors.As(err, &se) {
-		t.Fatalf("%v is not a SyntaxError", err)
+		t.Fatalf("%v is not a parse.SyntaxError", err)
 	}
 	if se.Pos.Line != 1 || se.Pos.Column != 5 {
 		t.Errorf("Pos = %s, want the opening quote at 1:5", se.Pos)
@@ -728,7 +729,7 @@ func TestErrorPositionsPointAtTheConstructRatherThanTheEndOfInput(t *testing.T) 
 func TestNodePositionsAreWhereTheirSubtreeStarts(t *testing.T) {
 	// Across a newline, so a position that counted bytes instead of tracking
 	// lines could not accidentally agree.
-	e, err := parse.Expression{}.Parse([]byte("a +\n  b * c"))
+	e, err := js.Expression{}.Parse([]byte("a +\n  b * c"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -762,10 +763,10 @@ func TestNestingDeeperThanTheLimitIsAnErrorRatherThanAStackOverflow(t *testing.T
 		"exponent":    strings.Repeat("2**", deep) + "2",
 		"conditional": strings.Repeat("a?b:", deep) + "c",
 	} {
-		_, err := parse.Expression{}.Parse([]byte(src))
+		_, err := js.Expression{}.Parse([]byte(src))
 		var se parse.SyntaxError
 		if !errors.As(err, &se) {
-			t.Errorf("%s: %v, want a SyntaxError about the nesting limit", name, err)
+			t.Errorf("%s: %v, want a parse.SyntaxError about the nesting limit", name, err)
 			continue
 		}
 		if !strings.Contains(se.Want, "nested") {
@@ -783,19 +784,19 @@ func TestTheDepthLimitIsASharpBoundaryThatTracksNesting(t *testing.T) {
 	// the parser's business and not a promise to a caller.
 	const src = "((((a))))"
 	limit := 0
-	for d := 1; d <= parse.DefaultExprMaxDepth; d++ {
-		if _, err := (parse.Expression{MaxDepth: d}).Parse([]byte(src)); err == nil {
+	for d := 1; d <= js.DefaultExprMaxDepth; d++ {
+		if _, err := (js.Expression{MaxDepth: d}).Parse([]byte(src)); err == nil {
 			limit = d
 			break
 		}
 	}
 	if limit == 0 {
-		t.Fatalf("no MaxDepth up to %d accepts %q", parse.DefaultExprMaxDepth, src)
+		t.Fatalf("no MaxDepth up to %d accepts %q", js.DefaultExprMaxDepth, src)
 	}
-	if _, err := (parse.Expression{MaxDepth: limit - 1}).Parse([]byte(src)); err == nil {
+	if _, err := (js.Expression{MaxDepth: limit - 1}).Parse([]byte(src)); err == nil {
 		t.Errorf("MaxDepth %d accepted %q, but %d was the smallest that worked", limit-1, src, limit)
 	}
-	if _, err := (parse.Expression{MaxDepth: limit}).Parse([]byte("(" + src + ")")); err == nil {
+	if _, err := (js.Expression{MaxDepth: limit}).Parse([]byte("(" + src + ")")); err == nil {
 		t.Errorf("MaxDepth %d accepted a strictly deeper expression too, so the limit does not track nesting", limit)
 	}
 }
@@ -805,10 +806,10 @@ func TestAZeroMaxDepthMeansTheDefaultRatherThanNoNestingAtAll(t *testing.T) {
 	// the first charge already exceeds zero — so this is the difference between
 	// "the zero value works" and "the zero value parses nothing".
 	deep := strings.Repeat("(", 20) + "a" + strings.Repeat(")", 20)
-	if _, err := (parse.Expression{}).Parse([]byte(deep)); err != nil {
+	if _, err := (js.Expression{}).Parse([]byte(deep)); err != nil {
 		t.Errorf("the zero value rejected 20 levels of grouping: %v", err)
 	}
-	if _, err := (parse.Expression{MaxDepth: parse.DefaultExprMaxDepth}).Parse([]byte(deep)); err != nil {
+	if _, err := (js.Expression{MaxDepth: js.DefaultExprMaxDepth}).Parse([]byte(deep)); err != nil {
 		t.Errorf("MaxDepth = DefaultExprMaxDepth rejected the same source: %v", err)
 	}
 }
@@ -818,13 +819,13 @@ func TestWalkVisitsEveryNodeExactlyOnceIncludingObjectKeys(t *testing.T) {
 	// ExprProperty rather than off Expr — a Walk that missed it still looks
 	// complete on every other input. Counting alone would not catch a DOUBLE
 	// visit either, so the visited nodes are collected in order and compared.
-	e, err := parse.Expression{}.Parse([]byte("{a: 1, [k + 1]: f(2, [3])}"))
+	e, err := js.Expression{}.Parse([]byte("{a: 1, [k + 1]: f(2, [3])}"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	seen := map[*parse.Expr]int{}
+	seen := map[*js.Expr]int{}
 	var order []string
-	e.Walk(func(n *parse.Expr) bool {
+	e.Walk(func(n *js.Expr) bool {
 		seen[n]++
 		order = append(order, renderExpr(n))
 		return true
@@ -849,13 +850,13 @@ func TestWalkReachesTheConditionalAlternative(t *testing.T) {
 	// Alt is used by exactly one kind, so a Walk that forgot it passes every
 	// test whose input contains no `?:` — and a consumer collecting identifiers
 	// silently misses the whole else-branch of every binding that has one.
-	e, err := parse.Expression{}.Parse([]byte("a ? b : c"))
+	e, err := js.Expression{}.Parse([]byte("a ? b : c"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	e.Walk(func(n *parse.Expr) bool {
-		if n.Kind == parse.ExprIdent {
+	e.Walk(func(n *js.Expr) bool {
+		if n.Kind == js.ExprIdent {
 			names = append(names, n.Raw)
 		}
 		return true
@@ -869,16 +870,16 @@ func TestWalkStopsDescendingWithoutStoppingTheTraversal(t *testing.T) {
 	// "Stops descending" is not "stops walking": the refused node's SIBLINGS
 	// must still be visited, which a test that only counted the total cannot
 	// distinguish from abandoning the rest of the tree.
-	e, err := parse.Expression{}.Parse([]byte("(a + b) * (c + d)"))
+	e, err := js.Expression{}.Parse([]byte("(a + b) * (c + d)"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	e.Walk(func(n *parse.Expr) bool {
+	e.Walk(func(n *js.Expr) bool {
 		if n.Raw == "+" && n.Left != nil && n.Left.Raw == "a" {
 			return false
 		}
-		if n.Kind == parse.ExprIdent {
+		if n.Kind == js.ExprIdent {
 			names = append(names, n.Raw)
 		}
 		return true
@@ -889,8 +890,8 @@ func TestWalkStopsDescendingWithoutStoppingTheTraversal(t *testing.T) {
 }
 
 func TestWalkOnANilTreeDoesNothing(t *testing.T) {
-	var e *parse.Expr
-	e.Walk(func(*parse.Expr) bool { t.Error("visited a node of a nil tree"); return true })
+	var e *js.Expr
+	e.Walk(func(*js.Expr) bool { t.Error("visited a node of a nil tree"); return true })
 }
 
 func TestMemberAndCallNodesCarryTheirPartsWhereTheDocumentationSaysTheyDo(t *testing.T) {
@@ -898,27 +899,27 @@ func TestMemberAndCallNodesCarryTheirPartsWhereTheDocumentationSaysTheyDo(t *tes
 	// reads the flag rather than the text, so the flags are asserted directly —
 	// and the plain member beside it is asserted NOT to carry them, which is
 	// what a flag set on the wrong node would look like.
-	e, err := parse.Expression{}.Parse([]byte("a.b?.c[d](e)"))
+	e, err := js.Expression{}.Parse([]byte("a.b?.c[d](e)"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Kind != parse.ExprCall || len(e.Args) != 1 || e.Args[0].Raw != "e" {
+	if e.Kind != js.ExprCall || len(e.Args) != 1 || e.Args[0].Raw != "e" {
 		t.Fatalf("outermost node is %v with args (%s), want a call of (e)", e.Kind, renderExprList(e.Args))
 	}
 	index := e.Left
-	if index.Kind != parse.ExprMember || !index.Computed || index.Right.Raw != "d" {
+	if index.Kind != js.ExprMember || !index.Computed || index.Right.Raw != "d" {
 		t.Fatalf("next node is %v computed=%v, want a computed member on d", index.Kind, index.Computed)
 	}
 	optional := index.Left
-	if optional.Kind != parse.ExprMember || !optional.Optional || optional.Name != "c" || optional.Computed {
+	if optional.Kind != js.ExprMember || !optional.Optional || optional.Name != "c" || optional.Computed {
 		t.Fatalf("got %v optional=%v computed=%v name=%q, want an optional member c",
 			optional.Kind, optional.Optional, optional.Computed, optional.Name)
 	}
 	plain := optional.Left
-	if plain.Kind != parse.ExprMember || plain.Optional || plain.Computed || plain.Name != "b" {
+	if plain.Kind != js.ExprMember || plain.Optional || plain.Computed || plain.Name != "b" {
 		t.Errorf("the `.b` member reports optional=%v computed=%v name=%q", plain.Optional, plain.Computed, plain.Name)
 	}
-	if plain.Left.Kind != parse.ExprIdent || plain.Left.Raw != "a" {
+	if plain.Left.Kind != js.ExprIdent || plain.Left.Raw != "a" {
 		t.Errorf("the chain does not bottom out at the identifier a: %v %q", plain.Left.Kind, plain.Left.Raw)
 	}
 }
@@ -927,7 +928,7 @@ func TestParsingIsRepeatableBecauseNothingIsCarriedBetweenCalls(t *testing.T) {
 	// Expression is a value and holds no cursor, so one value must parse twice
 	// identically — including the depth counter, which lives on the per-parse
 	// state and would otherwise leak from the first call into the second.
-	x := parse.Expression{MaxDepth: 8}
+	x := js.Expression{MaxDepth: 8}
 	first, err := x.Parse([]byte("((a + b))"))
 	if err != nil {
 		t.Fatal(err)
@@ -942,23 +943,23 @@ func TestParsingIsRepeatableBecauseNothingIsCarriedBetweenCalls(t *testing.T) {
 }
 
 func TestExprKindStringsAreStableForDiagnostics(t *testing.T) {
-	for k, want := range map[parse.ExprKind]string{
-		parse.ExprInvalid:     "invalid",
-		parse.ExprNumber:      "number",
-		parse.ExprString:      "string",
-		parse.ExprTemplate:    "template",
-		parse.ExprBool:        "bool",
-		parse.ExprNull:        "null",
-		parse.ExprUndefined:   "undefined",
-		parse.ExprIdent:       "identifier",
-		parse.ExprMember:      "member",
-		parse.ExprCall:        "call",
-		parse.ExprUnary:       "unary",
-		parse.ExprBinary:      "binary",
-		parse.ExprLogical:     "logical",
-		parse.ExprConditional: "conditional",
-		parse.ExprArray:       "array",
-		parse.ExprObject:      "object",
+	for k, want := range map[js.ExprKind]string{
+		js.ExprInvalid:     "invalid",
+		js.ExprNumber:      "number",
+		js.ExprString:      "string",
+		js.ExprTemplate:    "template",
+		js.ExprBool:        "bool",
+		js.ExprNull:        "null",
+		js.ExprUndefined:   "undefined",
+		js.ExprIdent:       "identifier",
+		js.ExprMember:      "member",
+		js.ExprCall:        "call",
+		js.ExprUnary:       "unary",
+		js.ExprBinary:      "binary",
+		js.ExprLogical:     "logical",
+		js.ExprConditional: "conditional",
+		js.ExprArray:       "array",
+		js.ExprObject:      "object",
 	} {
 		if got := k.String(); got != want {
 			t.Errorf("ExprKind(%d).String() = %q, want %q", k, got, want)

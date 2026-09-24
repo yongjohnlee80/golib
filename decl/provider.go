@@ -3,8 +3,7 @@ package decl
 import (
 	"errors"
 	"fmt"
-
-	"github.com/yongjohnlee80/golib/parse"
+	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
 // Update is one delivery from a [Provider].
@@ -21,7 +20,7 @@ type Update struct {
 	// either order, and without this the older one would win by arriving last.
 	Version uint64
 	// Values are the names that now hold these values.
-	Values map[string]parse.SpecValue
+	Values map[string]qml.SpecValue
 }
 
 // Provider is a host object that OWNS some sources and says when they change.
@@ -204,7 +203,7 @@ func (t *Tree) Subscribe(p Provider) error {
 	for _, n := range names {
 		v, ok := first.Values[n]
 		if !ok {
-			v = parse.SpecValue{Kind: parse.SpecValueString}
+			v = qml.SpecValue{Kind: qml.SpecValueString}
 		}
 		created, err := t.inject("subscribe", n, SourceValue(v))
 		if err != nil {

@@ -1,23 +1,25 @@
-package parse_test
+package qml_test
 
 import (
+	"github.com/yongjohnlee80/golib/parse"
+	"github.com/yongjohnlee80/golib/parse/js"
+	"github.com/yongjohnlee80/golib/parse/qml"
+
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/yongjohnlee80/golib/parse"
 )
 
-// qml_test.go covers parse.QML.
+// qml_test.go covers qml.QML.
 //
 // The suite is organised around the claims the ADR makes, not around the
 // parser's functions, because the claims are what a reviewer and a future
 // maintainer need held: syntax-only judgment, Incomplete on truncation,
-// document order, and Position surviving into every error.
+// document order, and parse.Position surviving into every error.
 
-func mustParse(t *testing.T, src string) parse.SpecTree {
+func mustParse(t *testing.T, src string) qml.SpecTree {
 	t.Helper()
-	tree, err := parse.QML{}.Parse([]byte(src))
+	tree, err := qml.QML{}.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("Parse(%q) failed: %v", src, err)
 	}
@@ -26,9 +28,9 @@ func mustParse(t *testing.T, src string) parse.SpecTree {
 
 func syntaxErr(t *testing.T, src string) parse.SyntaxError {
 	t.Helper()
-	_, err := parse.QML{}.Parse([]byte(src))
+	_, err := qml.QML{}.Parse([]byte(src))
 	if err == nil {
-		t.Fatalf("Parse(%q) = nil error, want a SyntaxError", src)
+		t.Fatalf("Parse(%q) = nil error, want a parse.SyntaxError", src)
 	}
 	var se parse.SyntaxError
 	if !errors.As(err, &se) {
@@ -43,10 +45,10 @@ func TestQMLImplementsParserAndNamed(t *testing.T) {
 	// The compile-time assertion is the point: Parser[SpecTree] is the whole
 	// required surface (parse.go), and a format that stops satisfying it
 	// should fail to build rather than fail a test.
-	var _ parse.Parser[parse.SpecTree] = parse.QML{}
+	var _ parse.Parser[qml.SpecTree] = qml.QML{}
 
-	if name := parse.FormatNameOf(parse.QML{}); name != "qml" {
-		t.Errorf("FormatNameOf = %q, want %q", name, "qml")
+	if name := parse.FormatNameOf(qml.QML{}); name != "qml" {
+		t.Errorf("parse.FormatNameOf = %q, want %q", name, "qml")
 	}
 }
 
@@ -55,7 +57,7 @@ func TestQMLDoesNotClaimCapabilitiesItLacks(t *testing.T) {
 	// deliberately NOT implemented (parse.go: "leave this out and let callers
 	// do that themselves, visibly"). Asserting the absence keeps a future
 	// "might as well add it" from landing without that argument being had.
-	if _, ok := parse.AsValidator(parse.QML{}); ok {
+	if _, ok := parse.AsValidator(qml.QML{}); ok {
 		t.Error("QML implements Validator; validation is not cheaper than parsing here")
 	}
 }
@@ -114,7 +116,7 @@ Column {
 		t.Errorf("signal = %q, want clicked", h.Signal)
 	}
 	v := h.Body[0].Value
-	if len(h.Body) != 1 || v == nil || v.Kind != parse.ExprCall || v.Left.Raw != "saveDocument" {
+	if len(h.Body) != 1 || v == nil || v.Kind != js.ExprCall || v.Left.Raw != "saveDocument" {
 		t.Errorf("body = %+v, want the call to saveDocument", h.Body)
 	}
 }
@@ -147,16 +149,16 @@ func TestQMLClassifiesValuesLexically(t *testing.T) {
     }`)
 
 	want := map[string]struct {
-		kind parse.SpecValueKind
+		kind qml.SpecValueKind
 		raw  string
 	}{
-		"s":    {parse.SpecValueString, "text"},
-		"n":    {parse.SpecValueNumber, "12.5"},
-		"neg":  {parse.SpecValueNumber, "-3"},
-		"b":    {parse.SpecValueBool, "false"},
-		"tok":  {parse.SpecValueRef, "Theme.surface"},
-		"ref":  {parse.SpecValueRef, "someName"},
-		"call": {parse.SpecValueCall, "fmtSize"},
+		"s":    {qml.SpecValueString, "text"},
+		"n":    {qml.SpecValueNumber, "12.5"},
+		"neg":  {qml.SpecValueNumber, "-3"},
+		"b":    {qml.SpecValueBool, "false"},
+		"tok":  {qml.SpecValueRef, "Theme.surface"},
+		"ref":  {qml.SpecValueRef, "someName"},
+		"call": {qml.SpecValueCall, "fmtSize"},
 	}
 	for _, p := range tree.Root.Props {
 		w, ok := want[p.Name]
@@ -178,13 +180,13 @@ func TestQMLClassifiesValuesLexically(t *testing.T) {
 func TestQMLCallArgumentsAreValues(t *testing.T) {
 	tree := mustParse(t, `N { x: outer(1, inner(Theme.tok), "s") }`)
 	v := tree.Root.Props[0].Value
-	if v.Kind != parse.SpecValueCall || len(v.Args) != 3 {
+	if v.Kind != qml.SpecValueCall || len(v.Args) != 3 {
 		t.Fatalf("value = %+v, want a call with 3 args", v)
 	}
-	if v.Args[1].Kind != parse.SpecValueCall || len(v.Args[1].Args) != 1 {
+	if v.Args[1].Kind != qml.SpecValueCall || len(v.Args[1].Args) != 1 {
 		t.Fatalf("nested arg = %+v, want a call with 1 arg", v.Args[1])
 	}
-	if v.Args[1].Args[0].Kind != parse.SpecValueRef {
+	if v.Args[1].Args[0].Kind != qml.SpecValueRef {
 		t.Errorf("nested call arg kind = %v, want token", v.Args[1].Args[0].Kind)
 	}
 }
@@ -199,7 +201,7 @@ func TestQMLCallArgumentsAreValues(t *testing.T) {
 func TestQMLDoesNotJudgeValueMEANING(t *testing.T) {
 	tree := mustParse(t, `Text { text: "#1e1e2e" foreground: Theme.text }`)
 
-	var text, fg parse.SpecValue
+	var text, fg qml.SpecValue
 	for _, p := range tree.Root.Props {
 		switch p.Name {
 		case "text":
@@ -208,11 +210,11 @@ func TestQMLDoesNotJudgeValueMEANING(t *testing.T) {
 			fg = p.Value
 		}
 	}
-	if text.Kind != parse.SpecValueString || text.Raw != "#1e1e2e" {
+	if text.Kind != qml.SpecValueString || text.Raw != "#1e1e2e" {
 		t.Errorf(`text = {%v %q}, want a plain string "#1e1e2e" — `+
 			`the parser must not second-guess a colour-shaped string`, text.Kind, text.Raw)
 	}
-	if fg.Kind != parse.SpecValueRef || fg.Raw != "Theme.text" {
+	if fg.Kind != qml.SpecValueRef || fg.Raw != "Theme.text" {
 		t.Errorf("foreground = {%v %q}, want a reference to %q", fg.Kind, fg.Raw, "Theme.text")
 	}
 }
@@ -281,13 +283,13 @@ func TestQMLUnterminatedCommentIsReported(t *testing.T) {
 	}
 	for where, src := range cases {
 		t.Run(where, func(t *testing.T) {
-			_, err := parse.QML{}.Parse([]byte(src))
+			_, err := qml.QML{}.Parse([]byte(src))
 			if err == nil {
 				t.Fatalf("Parse(%q) = nil error; an unterminated comment was accepted", src)
 			}
 			var se parse.SyntaxError
 			if !errors.As(err, &se) {
-				t.Fatalf("error %T, want SyntaxError", err)
+				t.Fatalf("error %T, want parse.SyntaxError", err)
 			}
 			if !se.Incomplete {
 				t.Error("Incomplete = false; a comment left open is a truncation, not a mistake")
@@ -314,7 +316,7 @@ func TestQMLUnterminatedCommentIsReported(t *testing.T) {
 		"N { }\n/* ok */",
 		"N { } // a line comment needs no terminator",
 	} {
-		if _, err := (parse.QML{}).Parse([]byte(src)); err != nil {
+		if _, err := (qml.QML{}).Parse([]byte(src)); err != nil {
 			t.Errorf("Parse(%q) failed: %v", src, err)
 		}
 	}
@@ -326,7 +328,7 @@ func TestQMLUnterminatedCommentIsReported(t *testing.T) {
 // recurses just as deeply through value().
 func TestQMLDepthBoundsEveryRecursivePath(t *testing.T) {
 	deepCall := "N { x: " + strings.Repeat("f(", 5000) + strings.Repeat(")", 5000) + " }"
-	_, err := parse.QML{}.Parse([]byte(deepCall))
+	_, err := qml.QML{}.Parse([]byte(deepCall))
 	if err == nil {
 		t.Fatal("5,000-deep call list parsed without error; value recursion is unbounded")
 	}
@@ -335,7 +337,7 @@ func TestQMLDepthBoundsEveryRecursivePath(t *testing.T) {
 	// Format, which is accurate — a nesting limit hit inside an expression WAS
 	// hit inside an expression.
 	if !errors.As(err, &se) || !strings.Contains(se.Want, "no deeper than") {
-		t.Errorf("error = %v, want a nesting-limit SyntaxError", err)
+		t.Errorf("error = %v, want a nesting-limit parse.SyntaxError", err)
 	}
 
 	// Nodes and expressions share ONE budget.
@@ -353,7 +355,7 @@ func TestQMLDepthBoundsEveryRecursivePath(t *testing.T) {
 	limitFor := func(src string) int {
 		t.Helper()
 		for n := 1; n <= 64; n++ {
-			if _, err := (parse.QML{MaxDepth: n}).Parse([]byte(src)); err == nil {
+			if _, err := (qml.QML{MaxDepth: n}).Parse([]byte(src)); err == nil {
 				return n
 			}
 		}
@@ -384,14 +386,14 @@ func TestQMLErrorsPointAtTheOpeningConstruct(t *testing.T) {
 	}
 }
 
-// TestQMLPositionsAreRuneColumns: Position.Column is documented as rune-counted
+// TestQMLPositionsAreRuneColumns: parse.Position.Column is documented as rune-counted
 // "so the number matches what an editor shows". A multi-byte prefix is the only
 // input that can tell a rune count from a byte count.
 func TestQMLPositionsAreRuneColumns(t *testing.T) {
 	// "é" is two bytes, one rune. The error is at the `%`.
 	//
 	// `%` rather than `!`, which this grammar reads as the prefix operator it is
-	// in JavaScript: the mistake in `b: !` is the MISSING OPERAND after it, so
+	// in js.JavaScript: the mistake in `b: !` is the MISSING OPERAND after it, so
 	// the position correctly moves to the `}` and stops isolating the rune
 	// count. `%` has no prefix reading, so the error is at the character itself.
 	se := syntaxErr(t, `N { s: "éé" b: % }`)
@@ -408,12 +410,12 @@ func TestQMLPositionsAreRuneColumns(t *testing.T) {
 
 func TestQMLValuePositionsSurvive(t *testing.T) {
 	// Token-only enforcement belongs to the registry, which reports using the
-	// Position recorded here. If values lose their position that error cannot
+	// parse.Position recorded here. If values lose their position that error cannot
 	// point anywhere useful, so carrying it is part of this parser's job.
 	tree := mustParse(t, "Column {\n  label: \"x\"\n  other: Theme.tok\n}")
 	for _, p := range tree.Root.Props {
 		if p.Value.Pos.Line == 0 || p.Value.Pos.Column == 0 {
-			t.Errorf("prop %q value has zero Position %+v", p.Name, p.Value.Pos)
+			t.Errorf("prop %q value has zero parse.Position %+v", p.Name, p.Value.Pos)
 		}
 	}
 	if got := tree.Root.Props[0].Value.Pos.Line; got != 2 {
@@ -444,16 +446,16 @@ func TestQMLIDMustBeAStableIdentifier(t *testing.T) {
 
 // TestQMLDepthIsBounded: the parser is recursive and the reload path may be
 // handed a file from a watcher mid-write. A stack overflow cannot be recovered;
-// a SyntaxError can be shown.
+// a parse.SyntaxError can be shown.
 func TestQMLDepthIsBounded(t *testing.T) {
 	deep := strings.Repeat("N { ", 5000) + strings.Repeat("}", 5000)
-	_, err := parse.QML{}.Parse([]byte(deep))
+	_, err := qml.QML{}.Parse([]byte(deep))
 	if err == nil {
 		t.Fatal("deeply nested input parsed without error; the depth bound did not engage")
 	}
 	var se parse.SyntaxError
 	if !errors.As(err, &se) {
-		t.Fatalf("error %T, want SyntaxError", err)
+		t.Fatalf("error %T, want parse.SyntaxError", err)
 	}
 	if !strings.Contains(se.Want, "nesting") {
 		t.Errorf("Want = %q, should name the nesting limit", se.Want)
@@ -461,21 +463,21 @@ func TestQMLDepthIsBounded(t *testing.T) {
 
 	// And the bound is configurable, so a legitimately deep schema is not
 	// stuck with the default.
-	if _, err := (parse.QML{MaxDepth: 3}).Parse([]byte("A { B { C { D { } } } }")); err == nil {
+	if _, err := (qml.QML{MaxDepth: 3}).Parse([]byte("A { B { C { D { } } } }")); err == nil {
 		t.Error("MaxDepth=3 accepted 4 levels")
 	}
-	if _, err := (parse.QML{MaxDepth: 8}).Parse([]byte("A { B { C { D { } } } }")); err != nil {
+	if _, err := (qml.QML{MaxDepth: 8}).Parse([]byte("A { B { C { D { } } } }")); err != nil {
 		t.Errorf("MaxDepth=8 rejected 4 levels: %v", err)
 	}
 }
 
 func TestQMLErrorIdentity(t *testing.T) {
-	// SyntaxError carries one of TWO identities depending on Incomplete
+	// parse.SyntaxError carries one of TWO identities depending on Incomplete
 	// (parse.go: "it selects which of the two identities this error carries").
 	// This is "unfinished" versus "wrong" expressed as error identity rather
 	// than as a bool, and it is the form a reload path should branch on:
 	// errors.Is, not a field read and not string matching.
-	_, incomplete := parse.QML{}.Parse([]byte(`Column {`))
+	_, incomplete := qml.QML{}.Parse([]byte(`Column {`))
 	if !errors.Is(incomplete, parse.ErrUnterminated) {
 		t.Errorf("truncated input: want ErrUnterminated, got %v", incomplete)
 	}
@@ -483,7 +485,7 @@ func TestQMLErrorIdentity(t *testing.T) {
 		t.Error("truncated input also matched ErrSyntax; the identities must be distinguishable")
 	}
 
-	_, wrong := parse.QML{}.Parse([]byte(`Column { 1: 2 }`))
+	_, wrong := qml.QML{}.Parse([]byte(`Column { 1: 2 }`))
 	if !errors.Is(wrong, parse.ErrSyntax) {
 		t.Errorf("malformed input: want ErrSyntax, got %v", wrong)
 	}
@@ -500,35 +502,35 @@ func TestQMLErrorIdentity(t *testing.T) {
 //
 // This test previously asserted the OPPOSITE — that a body is refused and the
 // author is told "this format binds handlers by name". That refusal was the
-// parser shrunk to fit the engine behind it: QML puts JavaScript after
-// `onClicked:`, so a parser of QML reads JavaScript there. An engine that can
+// parser shrunk to fit the engine behind it: QML puts js.JavaScript after
+// `onClicked:`, so a parser of QML reads js.JavaScript there. An engine that can
 // only invoke named handlers refuses what it cannot run, by name and position,
 // which is a different thing said in a different place.
 func TestQMLHandlerTakesAJavaScriptBody(t *testing.T) {
 	cases := []struct {
 		name  string
 		src   string
-		kinds []parse.StmtKind
+		kinds []js.StmtKind
 	}{
 		{
 			name:  "a call",
 			src:   `Button { onClicked: doThing() }`,
-			kinds: []parse.StmtKind{parse.StmtExpr},
+			kinds: []js.StmtKind{js.StmtExpr},
 		},
 		{
 			name:  "a braced body is the block's CONTENTS, not a block",
 			src:   `Button { onClicked: { doThing() } }`,
-			kinds: []parse.StmtKind{parse.StmtExpr},
+			kinds: []js.StmtKind{js.StmtExpr},
 		},
 		{
 			name:  "several statements",
 			src:   "Button { onClicked: { let x = 1\n doThing(x) } }",
-			kinds: []parse.StmtKind{parse.StmtDeclaration, parse.StmtExpr},
+			kinds: []js.StmtKind{js.StmtDeclaration, js.StmtExpr},
 		},
 		{
 			name:  "a bare name is an identifier expression, not a call",
 			src:   `Button { onClicked: doThing }`,
-			kinds: []parse.StmtKind{parse.StmtExpr},
+			kinds: []js.StmtKind{js.StmtExpr},
 		},
 	}
 	for _, c := range cases {
@@ -567,7 +569,7 @@ func TestABareHandlerNameIsNotACall(t *testing.T) {
 		t.Fatalf("both parsed as %s; a name and a call must not be the same node",
 			bare[0].Value.Kind)
 	}
-	if called[0].Value.Kind != parse.ExprCall {
+	if called[0].Value.Kind != js.ExprCall {
 		t.Errorf("save() = %s, want a call", called[0].Value.Kind)
 	}
 }
@@ -599,10 +601,10 @@ func TestAHandlerBodySpendsTheDOCUMENTSNestingBudget(t *testing.T) {
 	deep := "A { onGo: " + strings.Repeat("f(", limit+2) + "x" + strings.Repeat(")", limit+2) + " }"
 	shallow := "A { onGo: f(f(x)) }"
 
-	if _, err := (parse.QML{MaxDepth: limit}).Parse([]byte(shallow)); err != nil {
+	if _, err := (qml.QML{MaxDepth: limit}).Parse([]byte(shallow)); err != nil {
 		t.Fatalf("a shallow handler body was refused at MaxDepth=%d: %v", limit, err)
 	}
-	if _, err := (parse.QML{MaxDepth: limit}).Parse([]byte(deep)); err == nil {
+	if _, err := (qml.QML{MaxDepth: limit}).Parse([]byte(deep)); err == nil {
 		t.Errorf("a handler body nested past MaxDepth=%d was accepted; "+
 			"the body is parsing its own budget rather than the document's", limit)
 	}
@@ -610,18 +612,18 @@ func TestAHandlerBodySpendsTheDOCUMENTSNestingBudget(t *testing.T) {
 	// And the budget is SHARED, not merely present: nodes already spent bring
 	// the same body over the line.
 	nested := "A { B { C { onGo: f(f(f(x))) } } }"
-	if _, err := (parse.QML{MaxDepth: 12}).Parse([]byte(nested)); err != nil {
+	if _, err := (qml.QML{MaxDepth: 12}).Parse([]byte(nested)); err != nil {
 		t.Fatalf("a body under three nodes was refused with budget to spare: %v", err)
 	}
-	if _, err := (parse.QML{MaxDepth: 4}).Parse([]byte(nested)); err == nil {
+	if _, err := (qml.QML{MaxDepth: 4}).Parse([]byte(nested)); err == nil {
 		t.Error("nodes and a handler body together exceeded the limit and were accepted")
 	}
 }
 
 // TestAnUnknownStringEscapeIsTheCharacterItself.
 //
-// This used to be a syntax error. JavaScript says otherwise — `"\q"` is `"q"` —
-// and a QML string is a JavaScript string, so refusing it was this parser
+// This used to be a syntax error. js.JavaScript says otherwise — `"\q"` is `"q"` —
+// and a QML string is a js.JavaScript string, so refusing it was this parser
 // applying a rule of its own to a language it does not own.
 //
 // The escapes that DO mean something still mean it, which is the half that

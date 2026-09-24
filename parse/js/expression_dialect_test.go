@@ -1,7 +1,8 @@
-package parse_test
+package js_test
 
 import (
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/js"
 	"strings"
 	"testing"
 
@@ -19,11 +20,11 @@ func TestJavaScriptIsWhatTheZeroValueParses(t *testing.T) {
 	// uses the JS-only operators, so "the zero value means JavaScript" is checked
 	// against behaviour rather than against the nil test in dialect().
 	const src = "a ?? b?.c ** 2 === `t${x}`"
-	zero, err := parse.Expression{}.Parse([]byte(src))
+	zero, err := js.Expression{}.Parse([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
-	named, err := parse.Expression{Dialect: &parse.JavaScript}.Parse([]byte(src))
+	named, err := js.Expression{Dialect: &js.JavaScript}.Parse([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +37,7 @@ func TestCFollowsTheCPrecedenceLadder(t *testing.T) {
 	// One case per adjacent pair, as for JavaScript. C's ladder is the one
 	// JavaScript inherited, so the rows that matter are the ones where a dialect
 	// copied from the wrong neighbour would still look plausible.
-	shapes(t, &parse.C, map[string]string{
+	shapes(t, &js.C, map[string]string{
 		"a || b && c": "(a || (b && c))",
 		"a && b | c":  "(a && (b | c))",
 		"a | b ^ c":   "(a | (b ^ c))",
@@ -51,7 +52,7 @@ func TestCFollowsTheCPrecedenceLadder(t *testing.T) {
 }
 
 func TestCHasSizeofAndTheAddressAndIndirectionOperators(t *testing.T) {
-	shapes(t, &parse.C, map[string]string{
+	shapes(t, &js.C, map[string]string{
 		"sizeof x":  "(sizeof x)",
 		"sizeof(x)": "(sizeof x)",
 		"*p":        "(* p)",
@@ -69,7 +70,7 @@ func TestCDoesNotHaveTheJavaScriptOnlyOperators(t *testing.T) {
 	// Refusals, not silent reinterpretation. `===` is the one worth naming: a
 	// dialect that fell back to `==` would accept the source and compare two
 	// things loosely, which is the failure C programmers would never look for.
-	refuses(t, &parse.C, false, "a === b", "a !== b", "a ?? b", "a?.b", "a >>> b", "`t`")
+	refuses(t, &js.C, false, "a === b", "a !== b", "a ?? b", "a?.b", "a >>> b", "`t`")
 	// `a?.b` is worth its own word: C HAS `?:`, so the refusal has to come from
 	// the conditional finding no `:` rather than from `?.` being unknown. A
 	// dialect that ignored the Optional flag would parse it as a member chain.
@@ -79,7 +80,7 @@ func TestCReadsADoubledStarAsIndirectionRatherThanExponentiation(t *testing.T) {
 	// `2 ** 3` is `2 * (*3)` in C — a multiplication by a dereference. This is
 	// the SAME source parsing differently per dialect, which is the strongest
 	// evidence the dialect table is really consulted and not a decoration.
-	shapes(t, &parse.C, map[string]string{"2 ** 3": "(2 * (* 3))"})
+	shapes(t, &js.C, map[string]string{"2 ** 3": "(2 * (* 3))"})
 	shapes(t, nil, map[string]string{"2 ** 3": "(2 ** 3)"})
 }
 
@@ -90,7 +91,7 @@ func TestCRefusesWhatItsDeclaredSubsetExcludes(t *testing.T) {
 	// tree" — which of the two refusals each gets is not part of it, since `a++`
 	// legitimately looks like an unfinished `a + +…` to a parser with no
 	// increment operator.
-	refusesAnyhow(t, &parse.C,
+	refusesAnyhow(t, &js.C,
 		"(int)x",       // cast
 		"p->q",         // arrow member access
 		"a, b",         // comma operator
@@ -106,11 +107,11 @@ func TestGoHasNoConditionalOperator(t *testing.T) {
 	// Go's grammar has no `?:` at all, so this must be a refusal. A dialect flag
 	// read the wrong way round would accept it and hand back a tree for source
 	// the language cannot express.
-	refuses(t, &parse.Go, false, "a ? b : c", "a ? b : c ? d : e")
+	refuses(t, &js.Go, false, "a ? b : c", "a ? b : c ? d : e")
 }
 
 func TestGoHasAndNot(t *testing.T) {
-	shapes(t, &parse.Go, map[string]string{
+	shapes(t, &js.Go, map[string]string{
 		"a &^ b":      "(a &^ b)",
 		"a &^ b &^ c": "((a &^ b) &^ c)",
 		"a & b":       "(a & b)",
@@ -125,7 +126,7 @@ func TestGoGroupsItsOperatorsIntoFiveLevelsNotTen(t *testing.T) {
 	// and `>>` with `*`. Under the C shape all five of these rows come out
 	// right-leaning, and every one of them still evaluates — to a different
 	// number. Testing only `a + b * c` cannot see any of it.
-	shapes(t, &parse.Go, map[string]string{
+	shapes(t, &js.Go, map[string]string{
 		"a | b + c":   "((a | b) + c)",
 		"a ^ b - c":   "((a ^ b) - c)",
 		"a + b | c":   "((a + b) | c)",
@@ -139,12 +140,12 @@ func TestGoGroupsItsOperatorsIntoFiveLevelsNotTen(t *testing.T) {
 }
 
 func TestGoSpellsTheNullLiteralNil(t *testing.T) {
-	x := parse.Expression{Dialect: &parse.Go}
+	x := js.Expression{Dialect: &js.Go}
 	e, err := x.Parse([]byte("nil"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Kind != parse.ExprNull {
+	if e.Kind != js.ExprNull {
 		t.Errorf("nil parsed as %v, want null", e.Kind)
 	}
 	// And `null` is just a name in Go — a literal table shared between dialects
@@ -153,22 +154,22 @@ func TestGoSpellsTheNullLiteralNil(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Kind != parse.ExprIdent {
+	if e.Kind != js.ExprIdent {
 		t.Errorf("null parsed as %v in Go, want an identifier", e.Kind)
 	}
 }
 
 func TestGoDoesNotHaveTheJavaScriptOnlyOperators(t *testing.T) {
-	refuses(t, &parse.Go, false, "a === b", "a ?? b", "a?.b", "a >>> b", "a instanceof b", "typeof a")
+	refuses(t, &js.Go, false, "a === b", "a ?? b", "a?.b", "a >>> b", "a instanceof b", "typeof a")
 	// `2 ** 3` is NOT among them: Go has no exponent operator but does have a
 	// unary `*`, so the source is a multiplication by a dereference — the same
 	// reading C gives it. Listing it as a refusal would be wrong, and the
 	// dialects that share this reading are worth naming together.
-	shapes(t, &parse.Go, map[string]string{"2 ** 3": "(2 * (* 3))"})
+	shapes(t, &js.Go, map[string]string{"2 ** 3": "(2 * (* 3))"})
 }
 
 func TestGoRefusesWhatItsDeclaredSubsetExcludes(t *testing.T) {
-	refusesAnyhow(t, &parse.Go,
+	refusesAnyhow(t, &js.Go,
 		"T{a: 1}",  // composite literal
 		"a.(int)",  // type assertion
 		"a[i:j]",   // slice expression
@@ -182,13 +183,13 @@ func TestGoRefusesWhatItsDeclaredSubsetExcludes(t *testing.T) {
 func TestEveryDialectRefusesTemplatesUnlessItDeclaresThem(t *testing.T) {
 	// The flag, not the character. A parser that read backticks unconditionally
 	// would accept them in C and Go, where a backtick is not a token at all.
-	for _, d := range []*parse.ExprDialect{&parse.C, &parse.Go} {
+	for _, d := range []*js.ExprDialect{&js.C, &js.Go} {
 		if d.Templates {
 			t.Fatalf("%s declares templates; this test has the wrong dialects", d.Name)
 		}
 	}
-	refuses(t, &parse.C, false, "`t`", "`a${x}`")
-	refuses(t, &parse.Go, false, "`t`", "`a${x}`")
+	refuses(t, &js.C, false, "`t`", "`a${x}`")
+	refuses(t, &js.Go, false, "`t`", "`a${x}`")
 	shapes(t, nil, map[string]string{"`t`": "`t`"})
 }
 
@@ -196,8 +197,8 @@ func TestADialectWithoutOptionalChainingReadsQuestionDotAsAConditional(t *testin
 	// C has `?:` and no `?.`, so `a ?.5 : 1` is an ordinary conditional whose
 	// consequent is `.5`. A `?.` check that did not consult the dialect would
 	// refuse valid C, and the message would blame a construct C does not have.
-	shapes(t, &parse.C, map[string]string{"a ?.5 : 1": "(a ? .5 : 1)"})
-	shapes(t, &parse.C, map[string]string{"a ? .5 : 1": "(a ? .5 : 1)"})
+	shapes(t, &js.C, map[string]string{"a ?.5 : 1": "(a ? .5 : 1)"})
+	shapes(t, &js.C, map[string]string{"a ? .5 : 1": "(a ? .5 : 1)"})
 }
 
 func TestANewDialectIsATableEntryAndNeedsNoParserChange(t *testing.T) {
@@ -208,7 +209,7 @@ func TestANewDialectIsATableEntryAndNeedsNoParserChange(t *testing.T) {
 	// the rule from the table, `a |> b` comes out as `a | (> b)`, or is refused;
 	// none of the three shipped dialects can tell the difference, because none
 	// of them has an operator that extends another across levels this way.
-	pipeline := parse.ExprDialect{
+	pipeline := js.ExprDialect{
 		Name: "pipe",
 		Binary: [][]string{
 			{"|>"},
@@ -216,7 +217,7 @@ func TestANewDialectIsATableEntryAndNeedsNoParserChange(t *testing.T) {
 			{"|"},
 			{"+", "-"},
 		},
-		Literals: map[string]parse.ExprKind{"true": parse.ExprBool},
+		Literals: map[string]js.ExprKind{"true": js.ExprBool},
 	}
 	shapes(t, &pipeline, map[string]string{
 		"a |> b":      "(a |> b)",
@@ -232,7 +233,7 @@ func TestADialectWithNoBinaryOperatorsStillParsesPrimariesAndPostfix(t *testing.
 	// The binary ladder is a loop over a slice, and an empty slice is the case
 	// that reveals whether the recursion's base is the table's length or a
 	// hardcoded floor.
-	bare := parse.ExprDialect{Name: "bare"}
+	bare := js.ExprDialect{Name: "bare"}
 	shapes(t, &bare, map[string]string{
 		"a":       "a",
 		"a.b.c":   "a.b.c",
@@ -249,7 +250,7 @@ func TestADialectWithNoBinaryOperatorsStillParsesPrimariesAndPostfix(t *testing.
 	// the behaviour a dialect gets by declaring nothing rather than a refusal.
 	refuses(t, &bare, false, "a + b", "-a", "a ? b : c", "a?.b", "`t`")
 	shapes(t, &bare, map[string]string{"true": "true"})
-	if strings.Contains(parse.Expression{Dialect: &bare}.FormatName(), "js") {
+	if strings.Contains(js.Expression{Dialect: &bare}.FormatName(), "js") {
 		t.Error("FormatName fell back to the default dialect instead of using the one given")
 	}
 }
@@ -258,13 +259,13 @@ func TestADialectWithNoBinaryOperatorsStillParsesPrimariesAndPostfix(t *testing.
 // of the two refusals it gets.
 //
 // It is for a dialect's declared out-of-scope list, where the promise is "a
-// SyntaxError, never a wrong tree". Insisting on a particular Incomplete value
+// parse.SyntaxError, never a wrong tree". Insisting on a particular Incomplete value
 // there would freeze an incidental diagnosis: `a++` has no increment operator to
 // fail on, so it fails as an unfinished `a + +…`, and that is a fine thing for
 // it to say.
-func refusesAnyhow(t *testing.T, d *parse.ExprDialect, sources ...string) {
+func refusesAnyhow(t *testing.T, d *js.ExprDialect, sources ...string) {
 	t.Helper()
-	x := parse.Expression{Dialect: d}
+	x := js.Expression{Dialect: d}
 	for _, src := range sources {
 		e, err := x.Parse([]byte(src))
 		if err == nil {
@@ -273,7 +274,7 @@ func refusesAnyhow(t *testing.T, d *parse.ExprDialect, sources ...string) {
 		}
 		var se parse.SyntaxError
 		if !errors.As(err, &se) {
-			t.Errorf("%s: %q: %v is not a SyntaxError", x.FormatName(), src, err)
+			t.Errorf("%s: %q: %v is not a parse.SyntaxError", x.FormatName(), src, err)
 		}
 	}
 }

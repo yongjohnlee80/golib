@@ -1,6 +1,9 @@
-package parse
+package qml
 
 import (
+	"github.com/yongjohnlee80/golib/parse"
+	"github.com/yongjohnlee80/golib/parse/js"
+
 	"fmt"
 	"strings"
 	"unicode"
@@ -15,9 +18,9 @@ import (
 // package cannot see that registry without importing the adapter — which would
 // invert the dependency and make one text format answerable to one UI toolkit.
 //
-// That boundary is why [SpecValue] carries a Kind and a Position rather than a
+// That boundary is why [SpecValue] carries a Kind and a parse.Position rather than a
 // resolved Go value: the registry validates and converts later, and reports
-// with the Position recorded here. The one rule this costs us is worth
+// with the parse.Position recorded here. The one rule this costs us is worth
 // stating plainly — the parser CANNOT reject `"#1e1e2e"`, because
 // `Text.text` may legitimately contain exactly that string and only the
 // registry knows the difference.
@@ -59,7 +62,7 @@ type QML struct {
 	// recursive and a reload path may be handed a file that a watcher caught
 	// mid-write or that arrived from somewhere less trusted. A depth bound
 	// turns a stack overflow — which takes the process down and cannot be
-	// recovered — into an ordinary [SyntaxError] the caller can show.
+	// recovered — into an ordinary [parse.SyntaxError] the caller can show.
 	MaxDepth int
 }
 
@@ -68,7 +71,7 @@ type QML struct {
 // the recursion cannot exhaust a goroutine stack.
 const DefaultQMLMaxDepth = 64
 
-// FormatName implements [Named].
+// FormatName implements [parse.Named].
 func (QML) FormatName() string { return "qml" }
 
 // SpecValueKind classifies a property value LEXICALLY — by how it was written, not
@@ -103,10 +106,10 @@ const (
 	// SpecValueCall is a call into the host function registry. Raw holds the
 	// function name and Args holds the arguments, which are themselves Values.
 	SpecValueCall
-	// SpecValueExpr is any other JavaScript expression — `a + b`, `c ? d : e`,
-	// `items[i]`, a template string. Expr holds the parsed tree.
+	// SpecValueExpr is any other js.JavaScript expression — `a + b`, `c ? d : e`,
+	// `items[i]`, a template string. js.Expr holds the parsed tree.
 	//
-	// It exists because QML property values ARE JavaScript, and a parser of QML
+	// It exists because QML property values ARE js.JavaScript, and a parser of QML
 	// reads all of it. The kinds above are not a different grammar: they are the
 	// shapes this format projects to a friendlier terminal because consumers ask
 	// about them constantly. Everything else keeps its tree rather than being
@@ -156,8 +159,8 @@ type SpecValue struct {
 	// kind. The projected kinds do NOT also carry it: one representation per
 	// value, so nothing downstream can read two answers to the same question
 	// and no projection can drift from the tree it came from.
-	Expr *Expr
-	Pos  Position
+	Expr *js.Expr
+	Pos  parse.Position
 }
 
 // SpecProp is one `name: value` pair.
@@ -182,7 +185,7 @@ type SpecProp struct {
 	// the other.
 	Grouped bool
 	Value   SpecValue
-	Pos     Position
+	Pos     parse.Position
 }
 
 // SpecImport is one `import` statement.
@@ -201,10 +204,10 @@ type SpecImport struct {
 	Version string
 	// Alias is the name after `as`, empty when there is none.
 	Alias string
-	Pos   Position
+	Pos   parse.Position
 }
 
-// SpecHandler is one `onSignal:` binding and the JavaScript it binds.
+// SpecHandler is one `onSignal:` binding and the js.JavaScript it binds.
 //
 // Signal is the signal name with the `on` prefix removed and the first letter
 // lowercased, so `onClicked` becomes "clicked" — the name the adapter registers
@@ -220,13 +223,13 @@ type SpecHandler struct {
 	// identifier expression and NOT a call to save(), and a field that flattened
 	// it to the name "save" would erase that distinction inside the parser,
 	// where nothing can see it any more.
-	Body []Stmt
+	Body []js.Stmt
 	// Path holds the segments of an ATTACHED handler —
 	// `Component.onCompleted` — and one segment for an ordinary one. As with
 	// [SpecProp], the parser records the spelling and does not rule on what it
 	// attaches to.
 	Path []string
-	Pos  Position
+	Pos  parse.Position
 }
 
 // SpecNode is one node of the schema tree: pure data, no behaviour.
@@ -249,7 +252,7 @@ type SpecNode struct {
 	Props    []SpecProp
 	Handlers []SpecHandler
 	Children []*SpecNode
-	Pos      Position
+	Pos      parse.Position
 }
 
 // SpecTree is a parsed schema.
@@ -259,7 +262,7 @@ type SpecTree struct {
 	Root    *SpecNode
 }
 
-// Parse implements [Parser]. It returns a [SyntaxError] on malformed input.
+// Parse implements [Parser]. It returns a [parse.SyntaxError] on malformed input.
 //
 // When the source ends in the middle of a construct the error carries
 // Incomplete, and it points at where the construct OPENED rather than at the
@@ -268,7 +271,7 @@ type SpecTree struct {
 // "wrong" and hold the last good tree instead of flashing an error on every
 // save.
 func (q QML) Parse(src []byte) (SpecTree, error) {
-	sc := NewScanner(src)
+	sc := parse.NewScanner(src)
 	p := &qmlParser{sc: sc, maxDepth: q.MaxDepth}
 	if p.maxDepth <= 0 {
 		p.maxDepth = DefaultQMLMaxDepth
@@ -278,7 +281,7 @@ func (q QML) Parse(src []byte) (SpecTree, error) {
 		return SpecTree{}, err
 	}
 	if p.sc.Done() {
-		return SpecTree{}, SyntaxError{
+		return SpecTree{}, parse.SyntaxError{
 			Format: "qml", Pos: p.sc.Pos(),
 			Want: "a root node", Got: "end of input", Incomplete: true,
 		}
@@ -308,7 +311,7 @@ func (q QML) Parse(src []byte) (SpecTree, error) {
 		return SpecTree{}, err
 	}
 	if p.sc.Done() {
-		return SpecTree{}, SyntaxError{
+		return SpecTree{}, parse.SyntaxError{
 			Format: "qml", Pos: p.sc.Pos(),
 			Want: "a root node", Got: "end of input", Incomplete: true,
 		}
@@ -324,10 +327,10 @@ func (q QML) Parse(src []byte) (SpecTree, error) {
 	}
 	if !p.sc.Done() {
 		r, _ := p.sc.Peek()
-		return SpecTree{}, SyntaxError{
+		return SpecTree{}, parse.SyntaxError{
 			Format: "qml", Pos: p.sc.Pos(),
 			Want: "end of input after the root node",
-			Got:  quoteRune(r),
+			Got:  parse.QuoteRune(r),
 		}
 	}
 	return SpecTree{Imports: imports, Root: root}, nil
@@ -336,7 +339,7 @@ func (q QML) Parse(src []byte) (SpecTree, error) {
 // qmlParser holds the scan state for one Parse call. A parser value is never
 // reused, so QML itself stays immutable and safe to share.
 type qmlParser struct {
-	sc       *Scanner
+	sc       *parse.Scanner
 	maxDepth int
 	// depth counts EVERY live recursive frame, node and value alike.
 	//
@@ -348,9 +351,9 @@ type qmlParser struct {
 }
 
 // enter takes one unit of recursion budget, or reports why it cannot.
-func (p *qmlParser) enter(at Position) error {
+func (p *qmlParser) enter(at parse.Position) error {
 	if p.depth >= p.maxDepth {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: "qml", Pos: at,
 			Want: fmt.Sprintf("nesting no deeper than %d", p.maxDepth),
 			Got:  "deeper nesting",
@@ -436,10 +439,10 @@ func (p *qmlParser) importStatement() (SpecImport, error) {
 			// resolving to nothing later, when the mistake is three screens
 			// away from the import that caused it.
 			if !isTypeName(alias) {
-				return SpecImport{}, SyntaxError{
+				return SpecImport{}, parse.SyntaxError{
 					Format: "qml", Pos: asAt,
 					Want: "an upper-case qualifier after as, because it names a namespace",
-					Got:  quoted(alias),
+					Got:  parse.Quoted(alias),
 				}
 			}
 			imp.Alias = alias
@@ -454,7 +457,7 @@ func (p *qmlParser) importStatement() (SpecImport, error) {
 // the entry's own, so `font { bold: true }` and `font.bold: true` produce the
 // same Path — they mean the same thing — while [SpecProp.Grouped] records which
 // spelling was used, for a consumer that formats or round-trips.
-func (p *qmlParser) groupedBlock(n *SpecNode, prefix []string, at Position) error {
+func (p *qmlParser) groupedBlock(n *SpecNode, prefix []string, at parse.Position) error {
 	if err := p.enter(at); err != nil {
 		return err
 	}
@@ -466,7 +469,7 @@ func (p *qmlParser) groupedBlock(n *SpecNode, prefix []string, at Position) erro
 			return err
 		}
 		if p.sc.Done() {
-			return SyntaxError{
+			return parse.SyntaxError{
 				Format: "qml", Pos: at,
 				Want: "} to close the group opened here", Got: "end of input",
 				Incomplete: true,
@@ -479,9 +482,9 @@ func (p *qmlParser) groupedBlock(n *SpecNode, prefix []string, at Position) erro
 		leaf, ok := p.ident()
 		if !ok {
 			r, _ := p.sc.Peek()
-			return SyntaxError{
+			return parse.SyntaxError{
 				Format: "qml", Pos: entryAt,
-				Want: "a property name or } in the group", Got: quoteRune(r),
+				Want: "a property name or } in the group", Got: parse.QuoteRune(r),
 			}
 		}
 		full := append(append([]string{}, prefix...), leaf)
@@ -533,14 +536,14 @@ func (p *qmlParser) skipInlineSpace() {
 	}
 }
 
-func (p *qmlParser) wanted(at Position, want string) error {
+func (p *qmlParser) wanted(at parse.Position, want string) error {
 	r, ok := p.sc.Peek()
 	if !ok {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: "qml", Pos: at, Want: want, Got: "end of input", Incomplete: true,
 		}
 	}
-	return SyntaxError{Format: "qml", Pos: p.sc.Pos(), Want: want, Got: quoteRune(r)}
+	return parse.SyntaxError{Format: "qml", Pos: p.sc.Pos(), Want: want, Got: parse.QuoteRune(r)}
 }
 
 func (p *qmlParser) node() (*SpecNode, error) {
@@ -549,14 +552,14 @@ func (p *qmlParser) node() (*SpecNode, error) {
 	if !ok {
 		r, ok := p.sc.Peek()
 		if !ok {
-			return nil, SyntaxError{
+			return nil, parse.SyntaxError{
 				Format: "qml", Pos: startPos,
 				Want: "a type name", Got: "end of input", Incomplete: true,
 			}
 		}
-		return nil, SyntaxError{
+		return nil, parse.SyntaxError{
 			Format: "qml", Pos: startPos,
-			Want: "a type name", Got: quoteRune(r),
+			Want: "a type name", Got: parse.QuoteRune(r),
 		}
 	}
 	return p.nodeBody(name, startPos)
@@ -566,18 +569,18 @@ func (p *qmlParser) node() (*SpecNode, error) {
 //
 // It exists so the member loop can commit to a child node using the identifier
 // it already consumed. The alternative — rewinding the scanner — would need
-// arbitrary lookahead, and Scanner.Unread is deliberately one token deep.
-func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) {
+// arbitrary lookahead, and parse.Scanner.Unread is deliberately one token deep.
+func (p *qmlParser) nodeBody(name string, startPos parse.Position) (*SpecNode, error) {
 	if err := p.enter(startPos); err != nil {
 		return nil, err
 	}
 	defer p.leave()
 
 	if !isTypeName(name) {
-		return nil, SyntaxError{
+		return nil, parse.SyntaxError{
 			Format: "qml", Pos: startPos,
 			Want: "a type name starting with an upper-case letter",
-			Got:  quoted(name),
+			Got:  parse.Quoted(name),
 		}
 	}
 
@@ -590,14 +593,14 @@ func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) 
 	if !p.sc.Take("{") {
 		r, ok := p.sc.Peek()
 		if !ok {
-			return nil, SyntaxError{
+			return nil, parse.SyntaxError{
 				Format: "qml", Pos: braceAt,
 				Want: "{ to open " + name, Got: "end of input", Incomplete: true,
 			}
 		}
-		return nil, SyntaxError{
+		return nil, parse.SyntaxError{
 			Format: "qml", Pos: braceAt,
-			Want: "{ to open " + name, Got: quoteRune(r),
+			Want: "{ to open " + name, Got: parse.QuoteRune(r),
 		}
 	}
 
@@ -606,7 +609,7 @@ func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) 
 			return nil, err
 		}
 		if p.sc.Done() {
-			return nil, SyntaxError{
+			return nil, parse.SyntaxError{
 				Format: "qml", Pos: braceAt,
 				Want: "} to close " + name + " opened here",
 				Got:  "end of input", Incomplete: true,
@@ -620,10 +623,10 @@ func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) 
 		name, ok := p.ident()
 		if !ok {
 			r, _ := p.sc.Peek()
-			return nil, SyntaxError{
+			return nil, parse.SyntaxError{
 				Format: "qml", Pos: memberAt,
 				Want: "a property, a handler, a child node, or }",
-				Got:  quoteRune(r),
+				Got:  parse.QuoteRune(r),
 			}
 		}
 
@@ -679,15 +682,15 @@ func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) 
 		default:
 			r, ok := p.sc.Peek()
 			if !ok {
-				return nil, SyntaxError{
+				return nil, parse.SyntaxError{
 					Format: "qml", Pos: memberAt,
-					Want: ": or { after " + quoted(name), Got: "end of input",
+					Want: ": or { after " + parse.Quoted(name), Got: "end of input",
 					Incomplete: true,
 				}
 			}
-			return nil, SyntaxError{
+			return nil, parse.SyntaxError{
 				Format: "qml", Pos: memberAt,
-				Want: ": or { after " + quoted(name), Got: quoteRune(r),
+				Want: ": or { after " + parse.Quoted(name), Got: parse.QuoteRune(r),
 			}
 		}
 	}
@@ -695,7 +698,7 @@ func (p *qmlParser) nodeBody(name string, startPos Position) (*SpecNode, error) 
 
 // member parses the right-hand side of `name:` — a handler when the name is an
 // on-prefixed signal, a property otherwise.
-func (p *qmlParser) member(n *SpecNode, name string, path []string, at Position) error {
+func (p *qmlParser) member(n *SpecNode, name string, path []string, at parse.Position) error {
 	if err := p.skipSpace(); err != nil {
 		return err
 	}
@@ -720,21 +723,21 @@ func (p *qmlParser) member(n *SpecNode, name string, path []string, at Position)
 	// binding could change between reloads, and an identity that moves is not
 	// an identity.
 	if path[0] == "id" && len(path) > 1 {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: "qml", Pos: at,
-			Want: "id written as a plain name", Got: quoted(name),
+			Want: "id written as a plain name", Got: parse.Quoted(name),
 		}
 	}
 	if name == "id" {
 		if v.Kind != SpecValueRef || len(v.Path) > 1 {
-			return SyntaxError{
+			return parse.SyntaxError{
 				Format: "qml", Pos: v.Pos,
 				Want: "a bare identifier for id",
 				Got:  v.Kind.String(),
 			}
 		}
 		if n.ID != "" {
-			return SyntaxError{
+			return parse.SyntaxError{
 				Format: "qml", Pos: at,
 				Want: "at most one id per node",
 				Got:  "a second id",
@@ -748,7 +751,7 @@ func (p *qmlParser) member(n *SpecNode, name string, path []string, at Position)
 	return nil
 }
 
-// handlerBody parses the right-hand side of an `onSignal:` — JavaScript, which
+// handlerBody parses the right-hand side of an `onSignal:` — js.JavaScript, which
 // is what QML puts there.
 //
 // Both QML forms are the same grammar: `onClicked: save()` is one expression
@@ -760,13 +763,13 @@ func (p *qmlParser) member(n *SpecNode, name string, path []string, at Position)
 //
 // It runs on the QML parser's OWN scanner and depth budget, so a handler body
 // cannot smuggle in recursion the document's limit was meant to bound.
-func (p *qmlParser) handlerBody() ([]Stmt, error) {
+func (p *qmlParser) handlerBody() ([]js.Stmt, error) {
 	if err := p.skipSpace(); err != nil {
 		return nil, err
 	}
 	at := p.sc.Pos()
 	if _, ok := p.sc.Peek(); !ok {
-		return nil, SyntaxError{
+		return nil, parse.SyntaxError{
 			Format: "qml", Pos: at,
 			Want: "a handler body", Got: "end of input", Incomplete: true,
 		}
@@ -780,16 +783,15 @@ func (p *qmlParser) handlerBody() ([]Stmt, error) {
 	// There is deliberately nothing to carry back. enter/leave are balanced, so
 	// a body that returns has left the counter where it found it — and an
 	// assignment here would be a line that looks load-bearing and is not.
-	x := &exprParser{sc: p.sc, max: p.maxDepth, d: &JavaScript, depth: p.depth}
-	sp := &stmtParser{sc: p.sc, x: x}
-	st, err := sp.statement()
+	dr := js.NewDriver(p.sc, &js.JavaScript, p.maxDepth, p.depth)
+	st, err := dr.Statement()
 	if err != nil {
 		return nil, err
 	}
-	if st.Kind == StmtBlock {
+	if st.Kind == js.StmtBlock {
 		return st.Body, nil
 	}
-	return []Stmt{st}, nil
+	return []js.Stmt{st}, nil
 }
 
 // value parses one property value.
@@ -801,7 +803,7 @@ func (p *qmlParser) value() (SpecValue, error) {
 
 	r, ok := p.sc.Peek()
 	if !ok {
-		return SpecValue{}, SyntaxError{
+		return SpecValue{}, parse.SyntaxError{
 			Format: "qml", Pos: at,
 			Want: "a value", Got: "end of input", Incomplete: true,
 		}
@@ -809,7 +811,7 @@ func (p *qmlParser) value() (SpecValue, error) {
 
 	_ = r
 
-	// A property value is a JavaScript expression, because in QML that is what
+	// A property value is a js.JavaScript expression, because in QML that is what
 	// a property value IS. ONE parser reads it — an earlier design had a small
 	// hand-written value grammar beside this, which is two parsers of the same
 	// thing and therefore two answers waiting to disagree.
@@ -817,15 +819,15 @@ func (p *qmlParser) value() (SpecValue, error) {
 	// The budget is seeded from the document's, exactly as a handler body's is:
 	// what has to stay bounded is the recursion, and it does not care which
 	// grammar recursed.
-	x := &exprParser{sc: p.sc, max: p.maxDepth, d: &JavaScript, depth: p.depth}
-	e, err := x.expression()
+	dr := js.NewDriver(p.sc, &js.JavaScript, p.maxDepth, p.depth)
+	e, err := dr.Expression()
 	if err != nil {
 		return SpecValue{}, err
 	}
 	return projectValue(&e), nil
 }
 
-// QML property values are parsed with the PLAIN JavaScript dialect.
+// QML property values are parsed with the PLAIN js.JavaScript dialect.
 //
 // This grammar has no extensions of its own any more. It briefly had one —
 // `@name`, a symbolic style value — and it is gone: a style token is a name on
@@ -839,20 +841,20 @@ func (p *qmlParser) value() (SpecValue, error) {
 // for consumers, which ask "is this a string" far more often than they walk a
 // tree. Every shape it does not name survives intact as [SpecValueExpr], so
 // nothing is lost by projecting and nothing downstream has to reparse.
-func projectValue(e *Expr) SpecValue {
+func projectValue(e *js.Expr) SpecValue {
 	switch e.Kind {
-	case ExprString:
+	case js.ExprString:
 		return SpecValue{Kind: SpecValueString, Raw: e.Raw, Pos: e.Pos}
-	case ExprNumber:
+	case js.ExprNumber:
 		return SpecValue{Kind: SpecValueNumber, Raw: e.Raw, Pos: e.Pos}
-	case ExprBool:
+	case js.ExprBool:
 		return SpecValue{Kind: SpecValueBool, Raw: e.Raw, Pos: e.Pos}
 
-	case ExprUnary:
-		// JavaScript has no negative literals: `-3` is unary minus applied to
+	case js.ExprUnary:
+		// js.JavaScript has no negative literals: `-3` is unary minus applied to
 		// 3. Folding the sign back onto the literal is what lets a consumer
 		// keep reading `neg: -3` as the number it obviously is.
-		if (e.Raw == "-" || e.Raw == "+") && e.Left != nil && e.Left.Kind == ExprNumber {
+		if (e.Raw == "-" || e.Raw == "+") && e.Left != nil && e.Left.Kind == js.ExprNumber {
 			raw := e.Left.Raw
 			if e.Raw == "-" {
 				raw = "-" + raw
@@ -860,12 +862,12 @@ func projectValue(e *Expr) SpecValue {
 			return SpecValue{Kind: SpecValueNumber, Raw: raw, Pos: e.Pos}
 		}
 
-	case ExprIdent, ExprMember:
+	case js.ExprIdent, js.ExprMember:
 		if path, ok := dottedPath(e); ok {
 			return SpecValue{Kind: SpecValueRef, Raw: joinPath(path), Path: path, Pos: e.Pos}
 		}
 
-	case ExprCall:
+	case js.ExprCall:
 		path, ok := dottedPath(e.Left)
 		if !ok {
 			break
@@ -895,14 +897,14 @@ func projectValue(e *Expr) SpecValue {
 // A COMPUTED member — `items[i]` — is deliberately not a path: which member it
 // reaches is decided when it runs, so it is not a name anything can resolve
 // ahead of time.
-func dottedPath(e *Expr) ([]string, bool) {
+func dottedPath(e *js.Expr) ([]string, bool) {
 	if e == nil {
 		return nil, false
 	}
 	switch e.Kind {
-	case ExprIdent:
+	case js.ExprIdent:
 		return []string{e.Raw}, true
-	case ExprMember:
+	case js.ExprMember:
 		if e.Computed {
 			return nil, false
 		}
@@ -928,7 +930,7 @@ func joinPath(p []string) string {
 }
 
 // The hand-written value grammar that used to live here — refValue, callValue,
-// stringValue and numberValue — is GONE. A property value is a JavaScript
+// stringValue and numberValue — is GONE. A property value is a js.JavaScript
 // expression and one parser reads it; these were the second parser of the same
 // thing, kept alive only by the branch in value() that no longer exists.
 //
@@ -989,7 +991,7 @@ func (p *qmlParser) skipSpace() error {
 			p.sc.Take("/*")
 			for {
 				if p.sc.Done() {
-					return SyntaxError{
+					return parse.SyntaxError{
 						Format: "qml", Pos: openedAt,
 						Want:       "*/ to close the comment opened here",
 						Got:        "end of input",
@@ -1040,7 +1042,3 @@ func signalName(name string) (string, bool) {
 	rest[0] = unicode.ToLower(rest[0])
 	return string(rest), true
 }
-
-func quoteRune(r rune) string { return `"` + string(r) + `"` }
-
-func quoted(s string) string { return `"` + s + `"` }

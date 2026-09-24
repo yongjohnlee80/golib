@@ -2,11 +2,11 @@ package decl_test
 
 import (
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 )
@@ -52,7 +52,7 @@ Split {
 
 // TestAQMLDocumentConfiguresARealScreen is the acceptance cell.
 func TestAQMLDocumentConfiguresARealScreen(t *testing.T) {
-	spec, err := parse.QML{}.Parse([]byte(theScreen))
+	spec, err := qml.QML{}.Parse([]byte(theScreen))
 	if err != nil {
 		t.Fatalf("a correct QML document did not parse: %v", err)
 	}
@@ -80,8 +80,8 @@ func TestAQMLDocumentConfiguresARealScreen(t *testing.T) {
 		"Theme.heading": "Project Atlas",
 		"Theme.body":    "three files changed",
 	} {
-		if err := tr.Inject(name, decl.SourceValue(parse.SpecValue{
-			Kind: parse.SpecValueString, Raw: v,
+		if err := tr.Inject(name, decl.SourceValue(qml.SpecValue{
+			Kind: qml.SpecValueString, Raw: v,
 		})); err != nil {
 			t.Fatalf("inject %s: %v", name, err)
 		}
@@ -126,8 +126,8 @@ func TestAQMLDocumentConfiguresARealScreen(t *testing.T) {
 	//    worth more than a constant substituted once at mount.
 	var res decl.PropagationResult
 	onLoop(t, app, func() {
-		res, err = tr.SetSource("Theme.heading", parse.SpecValue{
-			Kind: parse.SpecValueString, Raw: "Project Borealis",
+		res, err = tr.SetSource("Theme.heading", qml.SpecValue{
+			Kind: qml.SpecValueString, Raw: "Project Borealis",
 		})
 	})
 	if err != nil {
@@ -196,7 +196,7 @@ func TestTheDocumentIsHELDToQMLRules(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			spec, err := parse.QML{}.Parse([]byte(c.src))
+			spec, err := qml.QML{}.Parse([]byte(c.src))
 			if err != nil {
 				t.Fatalf("the fixture must be well-FORMED QML; only its meaning is wrong: %v", err)
 			}

@@ -2,11 +2,11 @@ package decl_test
 
 import (
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 )
 
 // provider_test.go covers the subscription lifecycle.
@@ -47,12 +47,12 @@ func (p *palette) Subscribe(fn func(decl.Update)) ([]string, func() error, error
 	}
 	p.fn = fn
 	if !p.skipSnapshot {
-		vals := map[string]parse.SpecValue{}
+		vals := map[string]qml.SpecValue{}
 		for n, v := range p.now {
-			vals[n] = parse.SpecValue{Kind: parse.SpecValueString, Raw: v}
+			vals[n] = qml.SpecValue{Kind: qml.SpecValueString, Raw: v}
 		}
 		if p.undeclared != "" {
-			vals[p.undeclared] = parse.SpecValue{Kind: parse.SpecValueString, Raw: "x"}
+			vals[p.undeclared] = qml.SpecValue{Kind: qml.SpecValueString, Raw: "x"}
 		}
 		fn(decl.Update{Version: p.ver, Values: vals})
 	}
@@ -64,9 +64,9 @@ func (p *palette) Subscribe(fn func(decl.Update)) ([]string, func() error, error
 
 // push delivers a later update at an explicit version.
 func (p *palette) push(version uint64, kv map[string]string) {
-	vals := map[string]parse.SpecValue{}
+	vals := map[string]qml.SpecValue{}
 	for n, v := range kv {
-		vals[n] = parse.SpecValue{Kind: parse.SpecValueString, Raw: v}
+		vals[n] = qml.SpecValue{Kind: qml.SpecValueString, Raw: v}
 	}
 	p.fn(decl.Update{Version: version, Values: vals})
 }
@@ -82,7 +82,7 @@ func subscribed(t *testing.T, p *palette, src string, opts ...decl.Option) (*dec
 	if err := tr.Subscribe(p); err != nil {
 		t.Fatalf("Subscribe: %v", err)
 	}
-	if err := tr.Mount(qml(t, src)); err != nil {
+	if err := tr.Mount(qmlDoc(t, src)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	rec.trace = nil
@@ -228,13 +228,13 @@ func TestABindingReadingTwoChangedNamesRecomputesOnce(t *testing.T) {
 		t.Fatalf("Subscribe: %v", err)
 	}
 	var calls int
-	if err := tr.DeclareFunc("pair", func(args []parse.SpecValue) (parse.SpecValue, error) {
+	if err := tr.DeclareFunc("pair", func(args []qml.SpecValue) (qml.SpecValue, error) {
 		calls++
 		return sv(args[0].Raw + "/" + args[1].Raw), nil
 	}); err != nil {
 		t.Fatalf("DeclareFunc: %v", err)
 	}
-	if err := tr.Mount(qml(t, `Text { id: a text: pair(Theme.bg, Theme.fg) }`)); err != nil {
+	if err := tr.Mount(qmlDoc(t, `Text { id: a text: pair(Theme.bg, Theme.fg) }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	calls = 0
@@ -302,7 +302,7 @@ func TestAFailedDeliveryDoesNotAdvanceTheVersion(t *testing.T) {
 	if err := tr.Subscribe(p); err != nil {
 		t.Fatalf("Subscribe: %v", err)
 	}
-	if err := tr.Mount(qml(t, `Text { id: a text: Theme.bg }`)); err != nil {
+	if err := tr.Mount(qmlDoc(t, `Text { id: a text: Theme.bg }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	rec.trace = nil
@@ -345,7 +345,7 @@ func TestDestroyUnsubscribesEveryProviderAndJoinsWhatTheyReport(t *testing.T) {
 			t.Fatalf("Subscribe: %v", err)
 		}
 	}
-	if err := tr.Mount(qml(t, `Text { id: a text: Theme.bg }`)); err != nil {
+	if err := tr.Mount(qmlDoc(t, `Text { id: a text: Theme.bg }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 
@@ -375,7 +375,7 @@ func TestADeliveryAlreadyInFlightWhenTheTreeIsDestroyedIsDropped(t *testing.T) {
 	if err := tr.Subscribe(p); err != nil {
 		t.Fatalf("Subscribe: %v", err)
 	}
-	if err := tr.Mount(qml(t, `Text { id: a text: Theme.bg }`)); err != nil {
+	if err := tr.Mount(qmlDoc(t, `Text { id: a text: Theme.bg }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 
@@ -399,7 +399,7 @@ func TestADeliveryAlreadyInFlightWhenTheTreeIsDestroyedIsDropped(t *testing.T) {
 // TestSubscribingAfterMountIsRefused.
 func TestSubscribingAfterMountIsRefused(t *testing.T) {
 	tr := decl.New(newReactor(), decl.WithScheduler(immediate()))
-	if err := tr.Mount(qml(t, `Text { text: "hi" }`)); err != nil {
+	if err := tr.Mount(qmlDoc(t, `Text { text: "hi" }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	if err := tr.Subscribe(newPalette()); !errors.Is(err, decl.ErrPhase) {
@@ -424,7 +424,7 @@ func TestALaterDeliveryUnderAnUndeclaredNameIsRefusedToo(t *testing.T) {
 	if err := tr.Subscribe(p); err != nil {
 		t.Fatalf("Subscribe: %v", err)
 	}
-	if err := tr.Mount(qml(t, `Text { id: a text: Theme.bg }`)); err != nil {
+	if err := tr.Mount(qmlDoc(t, `Text { id: a text: Theme.bg }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	rec.trace = nil
@@ -527,7 +527,7 @@ func TestARefusedSubscriptionRemovesTheNAMESPACESItImplied(t *testing.T) {
 	if err := tr.Subscribe(q); err != nil {
 		t.Errorf("the tree was latched by a refused subscription: %v", err)
 	}
-	if err := tr.Mount(qml(t, `Text { id: a text: Good.child }`)); err != nil {
+	if err := tr.Mount(qmlDoc(t, `Text { id: a text: Good.child }`)); err != nil {
 		t.Errorf("the re-subscribed dotted name does not resolve: %v", err)
 	}
 }

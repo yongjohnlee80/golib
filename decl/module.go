@@ -3,9 +3,8 @@ package decl
 import (
 	"errors"
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
-
-	"github.com/yongjohnlee80/golib/parse"
 )
 
 // Module is one importable namespace a host or adapter offers.
@@ -107,7 +106,7 @@ type imports struct {
 // It runs BEFORE any node is planned, so a document that imports something
 // nonexistent is refused with the tree untouched — the same rule every other
 // check in this engine follows, for the same reason.
-func (t *Tree) resolveImports(spec parse.SpecTree) (imports, error) {
+func (t *Tree) resolveImports(spec qml.SpecTree) (imports, error) {
 	out := imports{byName: map[string]string{}, byQualifier: map[string]string{}}
 	for _, im := range spec.Imports {
 		if im.Module == "" {

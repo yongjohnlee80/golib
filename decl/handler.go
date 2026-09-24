@@ -2,6 +2,8 @@ package decl
 
 import (
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/js"
+	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -26,7 +28,7 @@ var ErrHandlerBody = fmt.Errorf("decl: this engine does not run that handler bod
 // names something unresolvable is therefore found while the tree is still
 // intact, which is what stopped a typo in a fresh subtree from destroying the
 // working screen it was replacing.
-func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, error) {
+func (t *Tree) compileHandler(node NodeID, h qml.SpecHandler) (boundHandler, error) {
 	if len(h.Body) == 0 {
 		return boundHandler{}, SchemaError{Op: "bind", Node: node, Detail: h.Signal, Pos: h.Pos,
 			Err: fmt.Errorf("%w: the handler is empty", ErrHandlerBody)}
@@ -40,22 +42,22 @@ func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, e
 		// PRESSED, and an earlier version baked the mount-time values into the
 		// closure — so `submit(count)` submitted the count the screen had when
 		// it was built, forever.
-		argExprs []parse.SpecValue
+		argExprs []qml.SpecValue
 		name     string
 	}
 	var calls []invocation
 
 	for _, st := range h.Body {
-		if st.Kind != parse.StmtExpr || st.Value == nil {
+		if st.Kind != js.StmtExpr || st.Value == nil {
 			return boundHandler{}, t.refuseBody(node, h, st.Pos, fmt.Sprintf(
 				"a %s statement; this engine runs calls to injected handlers", st.Kind))
 		}
 		e := st.Value
-		if e.Kind != parse.ExprCall {
+		if e.Kind != js.ExprCall {
 			// The distinction the parser keeps and an earlier design erased:
 			// `onClicked: save` is the IDENTIFIER save, not a call to it. Saying
 			// so is more useful than silently invoking what the author named.
-			if e.Kind == parse.ExprIdent {
+			if e.Kind == js.ExprIdent {
 				return boundHandler{}, t.refuseBody(node, h, e.Pos, fmt.Sprintf(
 					"the name %q on its own; a handler is invoked by calling it, so write %s()",
 					e.Raw, e.Raw))
@@ -69,7 +71,7 @@ func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, e
 			return boundHandler{}, t.refuseBody(node, h, e.Pos,
 				"a call to something that is not a name")
 		}
-		ref := parse.SpecValue{Kind: parse.SpecValueRef, Raw: name,
+		ref := qml.SpecValue{Kind: qml.SpecValueRef, Raw: name,
 			Path: splitDots(name), Pos: e.Pos}
 		in, err := t.lookupRef(ref, node)
 		if err != nil {
@@ -87,7 +89,7 @@ func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, e
 		// halves matter: validating now means a typo is found while the tree is
 		// still intact, and evaluating later means the handler sees the value
 		// the source holds at the moment it runs.
-		argExprs := make([]parse.SpecValue, 0, len(e.Args))
+		argExprs := make([]qml.SpecValue, 0, len(e.Args))
 		for i := range e.Args {
 			av, err := t.argExpr(node, h, &e.Args[i])
 			if err != nil {
@@ -114,7 +116,7 @@ func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, e
 			// would be running the tail of a handler whose head did not happen,
 			// which no author writing two statements in sequence expects.
 			for _, c := range calls {
-				args := make([]parse.SpecValue, 0, len(c.argExprs))
+				args := make([]qml.SpecValue, 0, len(c.argExprs))
 				for _, ax := range c.argExprs {
 					// Re-evaluated NOW. This can fail even though it validated
 					// at mount — a host function may refuse at this moment —
@@ -139,15 +141,15 @@ func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, e
 // vocabulary, WITHOUT evaluating it.
 //
 // The separation is the point. The bridge from the expression AST to
-// [parse.SpecValue] is a question about SHAPE and has one answer for the life
+// [qml.SpecValue] is a question about SHAPE and has one answer for the life
 // of the tree, so it is settled once at compile time; what the argument is
 // WORTH is a question about the moment the signal fires, and is asked then.
 // An argument the bridge cannot express is refused here rather than
 // mistranslated into something that resolves to the wrong thing.
-func (t *Tree) argExpr(node NodeID, h parse.SpecHandler, e *parse.Expr) (parse.SpecValue, error) {
+func (t *Tree) argExpr(node NodeID, h qml.SpecHandler, e *js.Expr) (qml.SpecValue, error) {
 	v, ok := specValueOf(e)
 	if !ok {
-		return parse.SpecValue{}, t.refuseBody(node, h, e.Pos, fmt.Sprintf(
+		return qml.SpecValue{}, t.refuseBody(node, h, e.Pos, fmt.Sprintf(
 			"a %s argument; this engine passes literals and injected names", e.Kind))
 	}
 	return v, nil
@@ -155,23 +157,23 @@ func (t *Tree) argExpr(node NodeID, h parse.SpecHandler, e *parse.Expr) (parse.S
 
 // specValueOf translates an expression node into the evaluator's value
 // vocabulary, reporting false for the shapes it has no equivalent for.
-func specValueOf(e *parse.Expr) (parse.SpecValue, bool) {
+func specValueOf(e *js.Expr) (qml.SpecValue, bool) {
 	switch e.Kind {
-	case parse.ExprString:
-		return parse.SpecValue{Kind: parse.SpecValueString, Raw: e.Raw, Pos: e.Pos}, true
-	case parse.ExprNumber:
-		return parse.SpecValue{Kind: parse.SpecValueNumber, Raw: e.Raw, Pos: e.Pos}, true
-	case parse.ExprBool:
-		return parse.SpecValue{Kind: parse.SpecValueBool, Raw: e.Raw, Pos: e.Pos}, true
-	case parse.ExprIdent, parse.ExprMember:
+	case js.ExprString:
+		return qml.SpecValue{Kind: qml.SpecValueString, Raw: e.Raw, Pos: e.Pos}, true
+	case js.ExprNumber:
+		return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: e.Raw, Pos: e.Pos}, true
+	case js.ExprBool:
+		return qml.SpecValue{Kind: qml.SpecValueBool, Raw: e.Raw, Pos: e.Pos}, true
+	case js.ExprIdent, js.ExprMember:
 		name, ok := calleeName(e)
 		if !ok {
-			return parse.SpecValue{}, false
+			return qml.SpecValue{}, false
 		}
-		return parse.SpecValue{Kind: parse.SpecValueRef, Raw: name,
+		return qml.SpecValue{Kind: qml.SpecValueRef, Raw: name,
 			Path: splitDots(name), Pos: e.Pos}, true
 	default:
-		return parse.SpecValue{}, false
+		return qml.SpecValue{}, false
 	}
 }
 
@@ -181,14 +183,14 @@ func specValueOf(e *parse.Expr) (parse.SpecValue, bool) {
 // A COMPUTED member — `handlers[name]` — is deliberately not a name: which
 // member it reaches is decided at run time, and a registry checked during
 // planning cannot answer for it.
-func calleeName(e *parse.Expr) (string, bool) {
+func calleeName(e *js.Expr) (string, bool) {
 	if e == nil {
 		return "", false
 	}
 	switch e.Kind {
-	case parse.ExprIdent:
+	case js.ExprIdent:
 		return e.Raw, true
-	case parse.ExprMember:
+	case js.ExprMember:
 		if e.Computed {
 			return "", false
 		}
@@ -211,18 +213,18 @@ func calleeName(e *parse.Expr) (string, bool) {
 // covers every statement and expression kind rather than only the ones this
 // evaluator runs: a body that changed from something unrunnable to something
 // else unrunnable must still read as changed.
-func handlerKey(h parse.SpecHandler) string {
+func handlerKey(h qml.SpecHandler) string {
 	var b []byte
 	b = append(b, h.Signal...)
 	b = append(b, ':')
 	for i := range h.Body {
-		h.Body[i].Walk(func(s *parse.Stmt) bool {
+		h.Body[i].Walk(func(s *js.Stmt) bool {
 			b = append(b, byte('0'+s.Kind))
 			b = append(b, s.Raw...)
 			b = append(b, ';')
 			return true
 		})
-		h.Body[i].WalkExprs(func(e *parse.Expr) bool {
+		h.Body[i].WalkExprs(func(e *js.Expr) bool {
 			b = append(b, byte('0'+e.Kind))
 			b = append(b, e.Raw...)
 			b = append(b, '.')
@@ -236,7 +238,7 @@ func handlerKey(h parse.SpecHandler) string {
 
 // refuseBody reports a body shape this evaluator declines to run, naming the
 // signal, the position inside the body, and what was found there.
-func (t *Tree) refuseBody(node NodeID, h parse.SpecHandler, at parse.Position, found string) error {
+func (t *Tree) refuseBody(node NodeID, h qml.SpecHandler, at parse.Position, found string) error {
 	return SchemaError{Op: "bind", Node: node, Detail: h.Signal, Pos: at,
 		Err: fmt.Errorf("%w: found %s", ErrHandlerBody, found)}
 }

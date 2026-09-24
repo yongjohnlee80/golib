@@ -1,6 +1,8 @@
-package parse
+package js
 
 import (
+	"github.com/yongjohnlee80/golib/parse"
+
 	"strings"
 	"unicode"
 )
@@ -69,7 +71,7 @@ import (
 //
 // # Incomplete input
 //
-// Source that stops mid-expression reports [SyntaxError] with Incomplete set,
+// Source that stops mid-expression reports [parse.SyntaxError] with Incomplete set,
 // so a caller watching a file being written can hold what it has instead of
 // showing an error for every keystroke.
 //
@@ -91,7 +93,7 @@ type Expression struct {
 // recursion cannot exhaust a stack.
 const DefaultExprMaxDepth = 64
 
-// FormatName implements [Named].
+// FormatName implements [parse.Named].
 func (x Expression) FormatName() string { return x.dialect().Name + "-expression" }
 
 func (x Expression) dialect() *ExprDialect {
@@ -169,7 +171,7 @@ var JavaScript = ExprDialect{
 // NOT covered, and refused rather than mis-parsed: casts `(int)x`, `->`, the
 // comma operator, compound literals, `sizeof` applied to a type rather than an
 // expression, and the increment, decrement and assignment operators. A source
-// file using any of them gets a [SyntaxError], never a wrong tree — which is
+// file using any of them gets a [parse.SyntaxError], never a wrong tree — which is
 // the only promise a declared subset can usefully make.
 var C = ExprDialect{
 	Name: "c",
@@ -205,7 +207,7 @@ var C = ExprDialect{
 // NOT covered, and refused rather than mis-parsed: composite literals `T{…}`,
 // type conversions and assertions `x.(T)`, slice expressions `a[i:j]`, channel
 // receive `<-ch`, variadic `f(xs...)`, and anything statement-shaped. A source
-// file using any of them gets a [SyntaxError], never a wrong tree.
+// file using any of them gets a [parse.SyntaxError], never a wrong tree.
 var Go = ExprDialect{
 	Name: "go",
 	Binary: [][]string{
@@ -319,7 +321,7 @@ func (k ExprKind) String() string {
 // argument without counting.
 type Expr struct {
 	Kind ExprKind
-	Pos  Position
+	Pos  parse.Position
 	// Raw is the literal text, the identifier, or the operator symbol.
 	Raw string
 	// Left is the unary operand, the binary left, the member object, the call
@@ -356,7 +358,7 @@ type ExprProperty struct {
 	Computed bool
 	KeyExpr  *Expr
 	Value    Expr
-	Pos      Position
+	Pos      parse.Position
 }
 
 // Walk calls fn for e and every node beneath it, parents before children.
@@ -383,7 +385,7 @@ func (e *Expr) Walk(fn func(*Expr) bool) {
 
 // Parse reads one expression from src and requires that it be the whole of it.
 func (x Expression) Parse(src []byte) (Expr, error) {
-	p := &exprParser{sc: NewScanner(src), max: x.MaxDepth, d: x.dialect()}
+	p := &exprParser{sc: parse.NewScanner(src), max: x.MaxDepth, d: x.dialect()}
 	if p.max <= 0 {
 		p.max = DefaultExprMaxDepth
 	}
@@ -391,7 +393,7 @@ func (x Expression) Parse(src []byte) (Expr, error) {
 		return Expr{}, err
 	}
 	if p.sc.Done() {
-		return Expr{}, SyntaxError{
+		return Expr{}, parse.SyntaxError{
 			Format: p.format(), Pos: p.sc.Pos(),
 			Want: "an expression", Got: "end of input", Incomplete: true,
 		}
@@ -405,16 +407,16 @@ func (x Expression) Parse(src []byte) (Expr, error) {
 	}
 	if !p.sc.Done() {
 		r, _ := p.sc.Peek()
-		return Expr{}, SyntaxError{
+		return Expr{}, parse.SyntaxError{
 			Format: p.format(), Pos: p.sc.Pos(),
-			Want: "end of the expression", Got: quoteRune(r),
+			Want: "end of the expression", Got: parse.QuoteRune(r),
 		}
 	}
 	return e, nil
 }
 
 type exprParser struct {
-	sc    *Scanner
+	sc    *parse.Scanner
 	d     *ExprDialect
 	max   int
 	depth int
@@ -422,10 +424,10 @@ type exprParser struct {
 
 func (p *exprParser) format() string { return p.d.Name + "-expression" }
 
-func (p *exprParser) enter(at Position) error {
+func (p *exprParser) enter(at parse.Position) error {
 	p.depth++
 	if p.depth > p.max {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: "an expression nested no deeper than the limit",
 			Got:  "deeper nesting",
@@ -461,7 +463,7 @@ func (p *exprParser) space() error {
 			p.sc.Take("/*")
 			for {
 				if p.sc.Done() {
-					return SyntaxError{
+					return parse.SyntaxError{
 						Format: p.format(), Pos: at,
 						Want: "*/ to close the comment opened here", Got: "end of input",
 						Incomplete: true,
@@ -550,12 +552,12 @@ func (p *exprParser) binary(level int) (Expr, error) {
 	}
 }
 
-func (p *exprParser) binaryOperand(level int, opAt Position, op string) (Expr, error) {
+func (p *exprParser) binaryOperand(level int, opAt parse.Position, op string) (Expr, error) {
 	if err := p.space(); err != nil {
 		return Expr{}, err
 	}
 	if p.sc.Done() {
-		return Expr{}, SyntaxError{
+		return Expr{}, parse.SyntaxError{
 			Format: p.format(), Pos: opAt,
 			Want: "an expression after " + op, Got: "end of input", Incomplete: true,
 		}
@@ -563,12 +565,12 @@ func (p *exprParser) binaryOperand(level int, opAt Position, op string) (Expr, e
 	return p.binary(level + 1)
 }
 
-func (p *exprParser) operand(at Position, want string) (Expr, error) {
+func (p *exprParser) operand(at parse.Position, want string) (Expr, error) {
 	if err := p.space(); err != nil {
 		return Expr{}, err
 	}
 	if p.sc.Done() {
-		return Expr{}, SyntaxError{
+		return Expr{}, parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: want, Got: "end of input", Incomplete: true,
 		}
@@ -579,7 +581,7 @@ func (p *exprParser) operand(at Position, want string) (Expr, error) {
 // takeOperator consumes the first of ops that is present, longest spelling
 // first — so `>>>` is never read as `>>` followed by `>`, and `===` is never
 // read as `==` followed by `=`.
-func (p *exprParser) takeOperator(ops []string) (string, Position, bool) {
+func (p *exprParser) takeOperator(ops []string) (string, parse.Position, bool) {
 	at := p.sc.Pos()
 	for _, op := range ops {
 		if !p.sc.HasPrefix(op) {
@@ -678,12 +680,12 @@ func (p *exprParser) unary() (Expr, error) {
 // [exprParser.expression] here instead makes every prefix operator swallow the
 // rest of the line, which still produces a tree of the right node KINDS and so
 // survives any test that only checks those.
-func (p *exprParser) unaryOperand(at Position, want string) (Expr, error) {
+func (p *exprParser) unaryOperand(at parse.Position, want string) (Expr, error) {
 	if err := p.space(); err != nil {
 		return Expr{}, err
 	}
 	if p.sc.Done() {
-		return Expr{}, SyntaxError{
+		return Expr{}, parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: want, Got: "end of input", Incomplete: true,
 		}
@@ -797,7 +799,7 @@ func (p *exprParser) primary() (Expr, error) {
 	at := p.sc.Pos()
 	r, ok := p.sc.Peek()
 	if !ok {
-		return Expr{}, SyntaxError{
+		return Expr{}, parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: "an expression", Got: "end of input", Incomplete: true,
 		}
@@ -854,14 +856,14 @@ func (p *exprParser) primary() (Expr, error) {
 		return Expr{Kind: ExprIdent, Pos: at, Raw: name}, nil
 	}
 
-	return Expr{}, SyntaxError{
+	return Expr{}, parse.SyntaxError{
 		Format: p.format(), Pos: at,
-		Want: "an expression", Got: quoteRune(r),
+		Want: "an expression", Got: parse.QuoteRune(r),
 	}
 }
 
 // list reads a comma-separated sequence up to close.
-func (p *exprParser) list(openAt Position, close, what string) ([]Expr, error) {
+func (p *exprParser) list(openAt parse.Position, close, what string) ([]Expr, error) {
 	var out []Expr
 	if err := p.space(); err != nil {
 		return nil, err
@@ -895,14 +897,14 @@ func (p *exprParser) list(openAt Position, close, what string) ([]Expr, error) {
 			continue
 		}
 		r, _ := p.sc.Peek()
-		return nil, SyntaxError{
+		return nil, parse.SyntaxError{
 			Format: p.format(), Pos: p.sc.Pos(),
-			Want: ", or " + close + " in " + what, Got: quoteRune(r),
+			Want: ", or " + close + " in " + what, Got: parse.QuoteRune(r),
 		}
 	}
 }
 
-func (p *exprParser) object(at Position) (Expr, error) {
+func (p *exprParser) object(at parse.Position) (Expr, error) {
 	p.sc.Take("{")
 	if err := p.enter(at); err != nil {
 		return Expr{}, err
@@ -987,20 +989,20 @@ func (p *exprParser) object(at Position) (Expr, error) {
 			continue
 		}
 		r, _ := p.sc.Peek()
-		return Expr{}, SyntaxError{
+		return Expr{}, parse.SyntaxError{
 			Format: p.format(), Pos: p.sc.Pos(),
-			Want: ", or } in the object", Got: quoteRune(r),
+			Want: ", or } in the object", Got: parse.QuoteRune(r),
 		}
 	}
 }
 
-func (p *exprParser) stringLiteral(at Position, quote rune) (Expr, error) {
+func (p *exprParser) stringLiteral(at parse.Position, quote rune) (Expr, error) {
 	p.sc.Next() // opening quote
 	var b strings.Builder
 	for {
 		r, ok := p.sc.Next()
 		if !ok {
-			return Expr{}, SyntaxError{
+			return Expr{}, parse.SyntaxError{
 				Format: p.format(), Pos: at,
 				Want: "a closing quote for the string opened here", Got: "end of input",
 				Incomplete: true,
@@ -1009,7 +1011,7 @@ func (p *exprParser) stringLiteral(at Position, quote rune) (Expr, error) {
 		if r == '\\' {
 			esc, ok := p.sc.Next()
 			if !ok {
-				return Expr{}, SyntaxError{
+				return Expr{}, parse.SyntaxError{
 					Format: p.format(), Pos: at,
 					Want: "a character after the escape", Got: "end of input",
 					Incomplete: true,
@@ -1031,7 +1033,7 @@ func (p *exprParser) stringLiteral(at Position, quote rune) (Expr, error) {
 // inside a literal, which is exactly why it cannot be kept as text: text is
 // unreachable from Walk, uncounted by the depth limit, and never Incomplete.
 // `\$` consumes both characters, so an escaped dollar can never open one.
-func (p *exprParser) template(at Position) (Expr, error) {
+func (p *exprParser) template(at parse.Position) (Expr, error) {
 	p.sc.Next() // opening backtick
 	e := Expr{Kind: ExprTemplate, Pos: at}
 	var b strings.Builder
@@ -1060,7 +1062,7 @@ func (p *exprParser) template(at Position) (Expr, error) {
 		}
 		r, ok := p.sc.Next()
 		if !ok {
-			return Expr{}, SyntaxError{
+			return Expr{}, parse.SyntaxError{
 				Format: p.format(), Pos: at,
 				Want: "a closing backtick for the template opened here", Got: "end of input",
 				Incomplete: true,
@@ -1069,7 +1071,7 @@ func (p *exprParser) template(at Position) (Expr, error) {
 		if r == '\\' {
 			esc, ok := p.sc.Next()
 			if !ok {
-				return Expr{}, SyntaxError{
+				return Expr{}, parse.SyntaxError{
 					Format: p.format(), Pos: at,
 					Want: "a character after the escape", Got: "end of input",
 					Incomplete: true,
@@ -1105,7 +1107,7 @@ func unescape(r rune) rune {
 // for the same reason the rest of this package leaves values undecoded: the
 // consumer knows whether the target is an int, a float or a ratio, and choosing
 // here would answer that too early.
-func (p *exprParser) number(at Position) (Expr, error) {
+func (p *exprParser) number(at parse.Position) (Expr, error) {
 	start := at.Offset
 	seenDot, seenExp, radix := false, false, false
 	// afterExp is the offset one past the exponent marker. A sign belongs to the
@@ -1147,9 +1149,9 @@ func (p *exprParser) number(at Position) (Expr, error) {
 done:
 	raw := string(p.sc.Slice(start, p.sc.Pos().Offset))
 	if raw == "." || raw == "" {
-		return Expr{}, SyntaxError{
+		return Expr{}, parse.SyntaxError{
 			Format: p.format(), Pos: at,
-			Want: "a number", Got: quoteRune('.'),
+			Want: "a number", Got: parse.QuoteRune('.'),
 		}
 	}
 	return Expr{Kind: ExprNumber, Pos: at, Raw: raw}, nil
@@ -1181,27 +1183,27 @@ func isExprIdentPart(r rune) bool {
 }
 
 // here reports a failure at the cursor, wanting what.
-func (p *exprParser) here(at Position, want string) error {
+func (p *exprParser) here(at parse.Position, want string) error {
 	if p.sc.Done() {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: p.format(), Pos: at,
 			Want: want, Got: "end of input", Incomplete: true,
 		}
 	}
 	r, _ := p.sc.Peek()
-	return SyntaxError{Format: p.format(), Pos: p.sc.Pos(), Want: want, Got: quoteRune(r)}
+	return parse.SyntaxError{Format: p.format(), Pos: p.sc.Pos(), Want: want, Got: parse.QuoteRune(r)}
 }
 
 // closer reports a missing closing delimiter. Running out of input is
 // INCOMPLETE — the writer has not finished — while finding the wrong character
 // is an ordinary error.
-func (p *exprParser) closer(openAt Position, want string) error {
+func (p *exprParser) closer(openAt parse.Position, want string) error {
 	if p.sc.Done() {
-		return SyntaxError{
+		return parse.SyntaxError{
 			Format: p.format(), Pos: openAt,
 			Want: want, Got: "end of input", Incomplete: true,
 		}
 	}
 	r, _ := p.sc.Peek()
-	return SyntaxError{Format: p.format(), Pos: p.sc.Pos(), Want: want, Got: quoteRune(r)}
+	return parse.SyntaxError{Format: p.format(), Pos: p.sc.Pos(), Want: want, Got: parse.QuoteRune(r)}
 }

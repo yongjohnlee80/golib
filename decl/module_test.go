@@ -2,11 +2,11 @@ package decl_test
 
 import (
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 )
 
 // module_test.go covers the import layer.
@@ -16,9 +16,9 @@ import (
 // not a module system — it is a comment with a keyword, and every test here
 // exists to keep that from being true by accident.
 
-func qml(t *testing.T, src string) parse.SpecTree {
+func qmlDoc(t *testing.T, src string) qml.SpecTree {
 	t.Helper()
-	spec, err := parse.QML{}.Parse([]byte(src))
+	spec, err := qml.QML{}.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("fixture does not parse: %v", err)
 	}
@@ -29,7 +29,7 @@ func qml(t *testing.T, src string) parse.SpecTree {
 func TestAModulesNamesAreUnreachableUntilItIsImported(t *testing.T) {
 	// Without the import: refused, and told what to add.
 	tr := decl.New(newReactor())
-	err := tr.Mount(qml(t, `Flex { direction: Tui.Vertical }`))
+	err := tr.Mount(qmlDoc(t, `Flex { direction: Tui.Vertical }`))
 	if !errors.Is(err, decl.ErrNotImported) {
 		t.Fatalf("err = %v, want ErrNotImported", err)
 	}
@@ -45,7 +45,7 @@ func TestAModulesNamesAreUnreachableUntilItIsImported(t *testing.T) {
 
 	// With the import: the same document mounts.
 	tr2 := decl.New(newReactor())
-	if err := tr2.Mount(qml(t, "import tui 1.0\nFlex { direction: Tui.Vertical }")); err != nil {
+	if err := tr2.Mount(qmlDoc(t, "import tui 1.0\nFlex { direction: Tui.Vertical }")); err != nil {
 		t.Fatalf("the imported form was refused: %v", err)
 	}
 }
@@ -56,7 +56,7 @@ func TestAModulesNamesAreUnreachableUntilItIsImported(t *testing.T) {
 // each of the twenty places that use it buries the one line to fix.
 func TestImportingSomethingNoHostProvidesIsRefusedAtTheImport(t *testing.T) {
 	tr := decl.New(newReactor())
-	err := tr.Mount(qml(t, "import QtQuick 2.15\nFlex { }"))
+	err := tr.Mount(qmlDoc(t, "import QtQuick 2.15\nFlex { }"))
 	if !errors.Is(err, decl.ErrUndefinedModule) {
 		t.Fatalf("err = %v, want ErrUndefinedModule", err)
 	}
@@ -81,7 +81,7 @@ func TestImportingSomethingNoHostProvidesIsRefusedAtTheImport(t *testing.T) {
 func TestAnImportIsCheckedBeforeAnythingIsBuilt(t *testing.T) {
 	r := newRecorder()
 	tr := decl.New(r)
-	if err := tr.Mount(qml(t, "import nosuch 1.0\nA { B { } C { } }")); err == nil {
+	if err := tr.Mount(qmlDoc(t, "import nosuch 1.0\nA { B { } C { } }")); err == nil {
 		t.Fatal("an undefined module mounted")
 	}
 	if len(r.trace) != 0 {
@@ -92,7 +92,7 @@ func TestAnImportIsCheckedBeforeAnythingIsBuilt(t *testing.T) {
 		t.Errorf("%d nodes survive a refused import", tr.Len())
 	}
 	// Not latched: the corrected document mounts.
-	if err := tr.Mount(qml(t, "import tui 1.0\nA { }")); err != nil {
+	if err := tr.Mount(qmlDoc(t, "import tui 1.0\nA { }")); err != nil {
 		t.Fatalf("the tree was latched by a bad import: %v", err)
 	}
 }
@@ -107,12 +107,12 @@ func TestAnImportIsCheckedBeforeAnythingIsBuilt(t *testing.T) {
 // `Tui.Vertical` becomes `T.Tui.Vertical` and the plain spelling stops working.
 func TestAnAliasReplacesTheModuleNameRatherThanAddingToIt(t *testing.T) {
 	tr := decl.New(newReactor())
-	if err := tr.Mount(qml(t, "import tui 1.0 as T\nFlex { direction: T.Tui.Vertical }")); err != nil {
+	if err := tr.Mount(qmlDoc(t, "import tui 1.0 as T\nFlex { direction: T.Tui.Vertical }")); err != nil {
 		t.Fatalf("the qualified name was refused: %v", err)
 	}
 
 	tr2 := decl.New(newReactor())
-	err := tr2.Mount(qml(t, "import tui 1.0 as T\nFlex { direction: Tui.Vertical }"))
+	err := tr2.Mount(qmlDoc(t, "import tui 1.0 as T\nFlex { direction: Tui.Vertical }"))
 	if !errors.Is(err, decl.ErrNotImported) {
 		t.Fatalf("err = %v, want the plain spelling to stop resolving under a qualifier", err)
 	}
@@ -132,7 +132,7 @@ func TestImportVersionsAreComparedOnlyWhenStated(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := decl.New(newReactor()).Mount(qml(t, c.src))
+			err := decl.New(newReactor()).Mount(qmlDoc(t, c.src))
 			if c.wantOK && err != nil {
 				t.Fatalf("mount: %v", err)
 			}
@@ -154,7 +154,7 @@ func TestTwoImportsCannotBindTheSameName(t *testing.T) {
 	if err := tr.DeclareModule(decl.Module{Name: "other", Version: "1.0"}); err != nil {
 		t.Fatalf("DeclareModule: %v", err)
 	}
-	err := tr.Mount(qml(t, "import tui 1.0 as T\nimport other 1.0 as T\nFlex { }"))
+	err := tr.Mount(qmlDoc(t, "import tui 1.0 as T\nimport other 1.0 as T\nFlex { }"))
 	if !errors.Is(err, decl.ErrDuplicateImport) {
 		t.Fatalf("err = %v, want ErrDuplicateImport", err)
 	}
@@ -170,7 +170,7 @@ func TestAnInjectedObjectNeedsNoImport(t *testing.T) {
 	if err := tr.Inject("Theme.surface", decl.SourceValue(sv("#111"))); err != nil {
 		t.Fatalf("inject: %v", err)
 	}
-	if err := tr.Mount(qml(t, `Text { text: Theme.surface }`)); err != nil {
+	if err := tr.Mount(qmlDoc(t, `Text { text: Theme.surface }`)); err != nil {
 		t.Errorf("an injected object was made to require an import: %v", err)
 	}
 }
@@ -180,7 +180,7 @@ func TestAReloadWhoseImportIsWrongKeepsTheLastGoodDocument(t *testing.T) {
 	rec := newSplicer()
 	tr := mounted(t, rec, rec.recorder, "import tui 1.0\nFlex { direction: Tui.Vertical Text { id: a text: \"one\" } }")
 
-	if _, err := tr.Reconcile(qml(t, "import nosuch 1.0\nFlex { Text { id: a text: \"two\" } }")); !errors.Is(err, decl.ErrUndefinedModule) {
+	if _, err := tr.Reconcile(qmlDoc(t, "import nosuch 1.0\nFlex { Text { id: a text: \"two\" } }")); !errors.Is(err, decl.ErrUndefinedModule) {
 		t.Fatalf("err = %v, want ErrUndefinedModule", err)
 	}
 	if len(rec.trace) != 0 {
@@ -188,7 +188,7 @@ func TestAReloadWhoseImportIsWrongKeepsTheLastGoodDocument(t *testing.T) {
 	}
 	// And the live tree still resolves through the imports it MOUNTED with, so
 	// the next good reload does not have to re-state them to keep working.
-	if _, err := tr.Reconcile(qml(t, "import tui 1.0\nFlex { direction: Tui.Vertical Text { id: a text: \"two\" } }")); err != nil {
+	if _, err := tr.Reconcile(qmlDoc(t, "import tui 1.0\nFlex { direction: Tui.Vertical Text { id: a text: \"two\" } }")); err != nil {
 		t.Fatalf("the tree was latched by a bad import: %v", err)
 	}
 }
@@ -196,7 +196,7 @@ func TestAReloadWhoseImportIsWrongKeepsTheLastGoodDocument(t *testing.T) {
 // TestDeclareModuleIsRefusedOncePlanningHasBegun.
 func TestDeclareModuleIsRefusedOncePlanningHasBegun(t *testing.T) {
 	tr := decl.New(newReactor())
-	if err := tr.Mount(qml(t, `Text { text: "hi" }`)); err != nil {
+	if err := tr.Mount(qmlDoc(t, `Text { text: "hi" }`)); err != nil {
 		t.Fatalf("mount: %v", err)
 	}
 	if err := tr.DeclareModule(decl.Module{Name: "late"}); !errors.Is(err, decl.ErrPhase) {
@@ -236,14 +236,14 @@ func TestATHEMEISASINGLETONREACHEDTHROUGHANIMPORT(t *testing.T) {
 
 	const src = "import myapp.theme 1.0\n" +
 		`Flex { Text { id: a text: Theme.surface } Text { id: b text: Theme.text } }`
-	if err := tr.Mount(qml(t, src)); err != nil {
+	if err := tr.Mount(qmlDoc(t, src)); err != nil {
 		t.Fatalf("the themed document did not mount: %v", err)
 	}
 	rec.trace = nil
 
 	// A whole palette moves as ONE propagation, so no binding ever sees half of
 	// the old theme and half of the new one.
-	res, err := tr.SetSources(map[string]parse.SpecValue{
+	res, err := tr.SetSources(map[string]qml.SpecValue{
 		"Theme.surface": sv("#eff1f5"),
 		"Theme.text":    sv("#4c4f69"),
 	})
@@ -275,7 +275,7 @@ func TestAThemesNamesNeedItsImport(t *testing.T) {
 		t.Fatalf("inject: %v", err)
 	}
 
-	err := tr.Mount(qml(t, `Text { text: Theme.surface }`))
+	err := tr.Mount(qmlDoc(t, `Text { text: Theme.surface }`))
 	if !errors.Is(err, decl.ErrNotImported) {
 		t.Fatalf("err = %v, want ErrNotImported", err)
 	}
@@ -311,7 +311,7 @@ func TestTwoModulesExportingOneNameCannotBothBePlainlyImported(t *testing.T) {
 	if err := tr.Inject("Theme.surface", decl.SourceValue(sv("#111"))); err != nil {
 		t.Fatalf("inject: %v", err)
 	}
-	err := tr.Mount(qml(t, "import a.theme 1.0\nimport b.theme 1.0\nText { text: Theme.surface }"))
+	err := tr.Mount(qmlDoc(t, "import a.theme 1.0\nimport b.theme 1.0\nText { text: Theme.surface }"))
 	if !errors.Is(err, decl.ErrDuplicateImport) {
 		t.Fatalf("err = %v, want ErrDuplicateImport", err)
 	}

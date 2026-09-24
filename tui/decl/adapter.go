@@ -2,10 +2,10 @@ package decl
 
 import (
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"sort"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -35,7 +35,7 @@ func InjectHosts(tr *decl.Tree, hosts HostFuncs) error {
 		if fn == nil {
 			return fmt.Errorf("host function %q is nil", n)
 		}
-		if err := tr.Inject(n, decl.Handle(func([]parse.SpecValue) error { return fn() })); err != nil {
+		if err := tr.Inject(n, decl.Handle(func([]qml.SpecValue) error { return fn() })); err != nil {
 			return err
 		}
 	}

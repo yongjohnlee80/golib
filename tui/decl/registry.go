@@ -3,6 +3,7 @@ package decl
 import (
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -17,7 +18,7 @@ type Build struct {
 	// Pos is where the schema declared this node.
 	Pos parse.Position
 	// Props are the declared properties in document order.
-	Props []parse.SpecProp
+	Props []qml.SpecProp
 	// Children are this node's children, already built, in declaration order.
 	Children []tui.Component
 	// Emitters is one function per distinct signal declared on this node.
@@ -96,6 +97,6 @@ func Register(r *Registry, typeName string, b Builder) {
 // Setter applies one property to a widget of a known type. It is the runtime
 // half: everything a builder did not consume at construction flows through
 // here.
-type Setter func(c tui.Component, v parse.SpecValue) error
+type Setter func(c tui.Component, v qml.SpecValue) error
 
 var _ decl.Adapter = (*Adapter)(nil)

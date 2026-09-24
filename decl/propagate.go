@@ -2,8 +2,7 @@ package decl
 
 import (
 	"fmt"
-
-	"github.com/yongjohnlee80/golib/parse"
+	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
 // SetSource updates a declared source and propagates the change.
@@ -42,8 +41,8 @@ import (
 // The tree is not latched by a failure here. Nothing was created, destroyed or
 // restructured, and the retry above depends on the host being able to call
 // again.
-func (t *Tree) SetSource(name string, v parse.SpecValue) (PropagationResult, error) {
-	return t.SetSources(map[string]parse.SpecValue{name: v})
+func (t *Tree) SetSource(name string, v qml.SpecValue) (PropagationResult, error) {
+	return t.SetSources(map[string]qml.SpecValue{name: v})
 }
 
 // SetSources updates SEVERAL sources as ONE propagation.
@@ -60,7 +59,7 @@ func (t *Tree) SetSource(name string, v parse.SpecValue) (PropagationResult, err
 //
 // Ordering and failure behave exactly as [SetSource] describes, because they
 // are the same code — that is a single-name update with a map of one.
-func (t *Tree) SetSources(values map[string]parse.SpecValue) (PropagationResult, error) {
+func (t *Tree) SetSources(values map[string]qml.SpecValue) (PropagationResult, error) {
 	detail := joinSorted(values)
 	if err := t.propagationAllowed("set source", detail); err != nil {
 		return PropagationResult{}, err
@@ -69,7 +68,7 @@ func (t *Tree) SetSources(values map[string]parse.SpecValue) (PropagationResult,
 	// EVERY name is validated before ANY is applied. A batch that checked as it
 	// went would apply the good half of a bad update, which is the mixed state
 	// this call exists to make impossible.
-	overlay := make(map[string]parse.SpecValue, len(values))
+	overlay := make(map[string]qml.SpecValue, len(values))
 	for name, v := range values {
 		cur, ok := t.sources[name]
 		if !ok {
@@ -130,7 +129,7 @@ func (t *Tree) SetSources(values map[string]parse.SpecValue) (PropagationResult,
 }
 
 // joinSorted renders a batch's names for a diagnostic, deterministically.
-func joinSorted(values map[string]parse.SpecValue) string {
+func joinSorted(values map[string]qml.SpecValue) string {
 	names := make([]string, 0, len(values))
 	for n := range values {
 		names = append(names, n)
@@ -178,7 +177,7 @@ func (t *Tree) propagationAllowed(op, detail string) error {
 // changed must recompute once. Running it twice would apply an intermediate
 // value to a real setter — visible on screen as a flicker through a state the
 // host never asked for.
-func (t *Tree) bindingsOfAny(sources map[string]parse.SpecValue) []*binding {
+func (t *Tree) bindingsOfAny(sources map[string]qml.SpecValue) []*binding {
 	var out []*binding
 	for _, b := range t.bindings {
 		for _, d := range b.deps {
@@ -245,7 +244,7 @@ func (t *Tree) bindingFor(node NodeID, prop string) (*binding, bool) {
 // Create-consumed properties come through here too: a builder that claimed a
 // bound property leaves no Apply to succeed, so the terminal handed to
 // Construction IS the applied value and seeds the cache there instead.
-func (t *Tree) noteApplied(node NodeID, prop string, v parse.SpecValue) {
+func (t *Tree) noteApplied(node NodeID, prop string, v qml.SpecValue) {
 	if b, ok := t.bindingFor(node, prop); ok {
 		b.applied, b.cached = v, true
 	}

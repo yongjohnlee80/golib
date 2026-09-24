@@ -1,11 +1,13 @@
-package parse_test
+package qml_test
 
 import (
+	"github.com/yongjohnlee80/golib/parse"
+	"github.com/yongjohnlee80/golib/parse/js"
+	"github.com/yongjohnlee80/golib/parse/qml"
+
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/yongjohnlee80/golib/parse"
 )
 
 // TestADottedPropertyNameCarriesItsPath — ADR-parse-0002 ledger, grouped and
@@ -26,7 +28,7 @@ func TestADottedPropertyNameCarriesItsPath(t *testing.T) {
 		{`Button { Layout.fillWidth: true }`, "Layout.fillWidth", []string{"Layout", "fillWidth"}},
 		{`Text { a.b.c: 1 }`, "a.b.c", []string{"a", "b", "c"}},
 	} {
-		tree, err := parse.QML{}.Parse([]byte(c.src))
+		tree, err := qml.QML{}.Parse([]byte(c.src))
 		if err != nil {
 			t.Errorf("%s: %v", c.src, err)
 			continue
@@ -47,11 +49,11 @@ func TestADottedPropertyNameCarriesItsPath(t *testing.T) {
 // they mean the same thing. Grouped records which was written — a consumer that
 // formats or round-trips would otherwise rewrite one into the other, silently.
 func TestAGroupedBlockMeansTheSameAsTheDottedSpelling(t *testing.T) {
-	block, err := parse.QML{}.Parse([]byte(`Text { font { bold: true } }`))
+	block, err := qml.QML{}.Parse([]byte(`Text { font { bold: true } }`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	dotted, err := parse.QML{}.Parse([]byte(`Text { font.bold: true }`))
+	dotted, err := qml.QML{}.Parse([]byte(`Text { font.bold: true }`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +68,7 @@ func TestAGroupedBlockMeansTheSameAsTheDottedSpelling(t *testing.T) {
 
 // TestNestedGroupsAccumulateTheirPrefix.
 func TestNestedGroupsAccumulateTheirPrefix(t *testing.T) {
-	tree, err := parse.QML{}.Parse([]byte(`Text { font { style { weight: 700 } bold: true } }`))
+	tree, err := qml.QML{}.Parse([]byte(`Text { font { style { weight: 700 } bold: true } }`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +89,7 @@ func TestNestedGroupsAccumulateTheirPrefix(t *testing.T) {
 // parser that dispatched on the brace alone would read every grouped block as a
 // node with a lower-case type name — which is the error this pins.
 func TestCapitalisationSeparatesAChildNodeFromAGroupedProperty(t *testing.T) {
-	tree, err := parse.QML{}.Parse([]byte(`Flex { Text { text: "x" } font { bold: true } }`))
+	tree, err := qml.QML{}.Parse([]byte(`Flex { Text { text: "x" } font { bold: true } }`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +108,7 @@ func TestCapitalisationSeparatesAChildNodeFromAGroupedProperty(t *testing.T) {
 // starts with `Component`, not `on` — would classify it as an ordinary
 // property and lose the handler entirely.
 func TestAnAttachedHandlerCarriesItsPath(t *testing.T) {
-	tree, err := parse.QML{}.Parse([]byte(`Item { Component.onCompleted: go() }`))
+	tree, err := qml.QML{}.Parse([]byte(`Item { Component.onCompleted: go() }`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +120,7 @@ func TestAnAttachedHandlerCarriesItsPath(t *testing.T) {
 		t.Errorf("signal = %q, want completed", h.Signal)
 	}
 	v := h.Body[0].Value
-	if len(h.Body) != 1 || v == nil || v.Kind != parse.ExprCall || v.Left.Raw != "go" {
+	if len(h.Body) != 1 || v == nil || v.Kind != js.ExprCall || v.Left.Raw != "go" {
 		t.Errorf("body = %+v, want the call to go", h.Body)
 	}
 	if strings.Join(h.Path, ".") != "Component.onCompleted" {
@@ -132,7 +134,7 @@ func TestAnAttachedHandlerCarriesItsPath(t *testing.T) {
 // value is a chain could change between reloads — an identity that moves is not
 // an identity.
 func TestIdMustBeAPlainNameAndAPlainValue(t *testing.T) {
-	q := parse.QML{}
+	q := qml.QML{}
 	for _, src := range []string{`Text { id.x: y }`, `Text { id: a.b }`} {
 		if _, err := q.Parse([]byte(src)); err == nil {
 			t.Errorf("%s was accepted", src)
@@ -149,10 +151,10 @@ func TestIdMustBeAPlainNameAndAPlainValue(t *testing.T) {
 // than blank the screen, and that depends on every new construct reporting
 // Incomplete rather than a generic error.
 func TestAnUnclosedGroupIsIncomplete(t *testing.T) {
-	_, err := parse.QML{}.Parse([]byte(`Text { font { bold: true`))
+	_, err := qml.QML{}.Parse([]byte(`Text { font { bold: true`))
 	var se parse.SyntaxError
 	if !errors.As(err, &se) {
-		t.Fatalf("err = %v, want a SyntaxError", err)
+		t.Fatalf("err = %v, want a parse.SyntaxError", err)
 	}
 	if !se.Incomplete {
 		t.Errorf("an unclosed group is not Incomplete: want=%q", se.Want)
@@ -164,7 +166,7 @@ func TestAnUnclosedGroupIsIncomplete(t *testing.T) {
 
 // TestAPropertyValueIsAJavaScriptExpression.
 //
-// QML property values ARE JavaScript, so this parser reads all of it. The kinds
+// QML property values ARE js.JavaScript, so this parser reads all of it. The kinds
 // this format names — string, number, bool, token, ref, call — are a PROJECTION
 // for consumers that ask about them constantly, not a smaller grammar. Anything
 // the projection does not name keeps its tree instead of being refused, so an
@@ -174,37 +176,37 @@ func TestAPropertyValueIsAJavaScriptExpression(t *testing.T) {
 	cases := []struct {
 		name string
 		src  string
-		kind parse.SpecValueKind
+		kind qml.SpecValueKind
 		// exprKind is checked only for values that keep their tree.
-		exprKind parse.ExprKind
+		exprKind js.ExprKind
 		raw      string
 	}{
-		{name: "a string projects", src: `"hi"`, kind: parse.SpecValueString, raw: "hi"},
-		{name: "a number projects", src: `12.5`, kind: parse.SpecValueNumber, raw: "12.5"},
-		{name: "a negative number folds its sign", src: `-3`, kind: parse.SpecValueNumber, raw: "-3"},
-		{name: "a bool projects", src: `false`, kind: parse.SpecValueBool, raw: "false"},
-		{name: "a name projects", src: `greeting`, kind: parse.SpecValueRef, raw: "greeting"},
-		{name: "a member chain projects", src: `parent.width`, kind: parse.SpecValueRef, raw: "parent.width"},
-		{name: "a call projects", src: `f(1)`, kind: parse.SpecValueCall, raw: "f"},
-		{name: "a qualified call projects", src: `math.max(1, 2)`, kind: parse.SpecValueCall, raw: "math.max"},
+		{name: "a string projects", src: `"hi"`, kind: qml.SpecValueString, raw: "hi"},
+		{name: "a number projects", src: `12.5`, kind: qml.SpecValueNumber, raw: "12.5"},
+		{name: "a negative number folds its sign", src: `-3`, kind: qml.SpecValueNumber, raw: "-3"},
+		{name: "a bool projects", src: `false`, kind: qml.SpecValueBool, raw: "false"},
+		{name: "a name projects", src: `greeting`, kind: qml.SpecValueRef, raw: "greeting"},
+		{name: "a member chain projects", src: `parent.width`, kind: qml.SpecValueRef, raw: "parent.width"},
+		{name: "a call projects", src: `f(1)`, kind: qml.SpecValueCall, raw: "f"},
+		{name: "a qualified call projects", src: `math.max(1, 2)`, kind: qml.SpecValueCall, raw: "math.max"},
 
 		{name: "arithmetic keeps its tree", src: `parent.width / 2`,
-			kind: parse.SpecValueExpr, exprKind: parse.ExprBinary},
+			kind: qml.SpecValueExpr, exprKind: js.ExprBinary},
 		{name: "a comparison keeps its tree", src: `count > 0`,
-			kind: parse.SpecValueExpr, exprKind: parse.ExprBinary},
+			kind: qml.SpecValueExpr, exprKind: js.ExprBinary},
 		{name: "a conditional keeps its tree", src: `a ? b : c`,
-			kind: parse.SpecValueExpr, exprKind: parse.ExprConditional},
+			kind: qml.SpecValueExpr, exprKind: js.ExprConditional},
 		{name: "a logical operator keeps its tree", src: `a && b`,
-			kind: parse.SpecValueExpr, exprKind: parse.ExprLogical},
+			kind: qml.SpecValueExpr, exprKind: js.ExprLogical},
 		{name: "an index keeps its tree", src: `items[0]`,
-			kind: parse.SpecValueExpr, exprKind: parse.ExprMember},
+			kind: qml.SpecValueExpr, exprKind: js.ExprMember},
 		{name: "a call with an un-projectable argument keeps its tree", src: `f(a + b)`,
-			kind: parse.SpecValueExpr, exprKind: parse.ExprCall},
+			kind: qml.SpecValueExpr, exprKind: js.ExprCall},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tree, err := parse.QML{}.Parse([]byte("N { x: " + c.src + " }"))
+			tree, err := qml.QML{}.Parse([]byte("N { x: " + c.src + " }"))
 			if err != nil {
 				t.Fatalf("Parse(%q): %v", c.src, err)
 			}
@@ -212,7 +214,7 @@ func TestAPropertyValueIsAJavaScriptExpression(t *testing.T) {
 			if v.Kind != c.kind {
 				t.Fatalf("kind = %v, want %v", v.Kind, c.kind)
 			}
-			if c.kind == parse.SpecValueExpr {
+			if c.kind == qml.SpecValueExpr {
 				if v.Expr == nil {
 					t.Fatal("an expression value carries no tree")
 				}
@@ -227,7 +229,7 @@ func TestAPropertyValueIsAJavaScriptExpression(t *testing.T) {
 			// A projected value does NOT also carry a tree: one representation
 			// per value, so nothing downstream can read two answers.
 			if v.Expr != nil {
-				t.Errorf("a projected %v also carries an Expr; that is two "+
+				t.Errorf("a projected %v also carries an js.Expr; that is two "+
 					"representations of one value", v.Kind)
 			}
 		})
@@ -240,17 +242,17 @@ func TestAPropertyValueIsAJavaScriptExpression(t *testing.T) {
 // will find its dependencies there. A value that kept only the source text
 // would look complete and be useless.
 func TestAnExpressionValueKeepsEveryNameItReads(t *testing.T) {
-	tree, err := parse.QML{}.Parse([]byte(`N { x: Theme.pad + parent.width / scale }`))
+	tree, err := qml.QML{}.Parse([]byte(`N { x: Theme.pad + parent.width / scale }`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	v := tree.Root.Props[0].Value
-	if v.Kind != parse.SpecValueExpr || v.Expr == nil {
+	if v.Kind != qml.SpecValueExpr || v.Expr == nil {
 		t.Fatalf("value = %+v, want an expression with a tree", v)
 	}
 	var names []string
-	v.Expr.Walk(func(e *parse.Expr) bool {
-		if e.Kind == parse.ExprIdent {
+	v.Expr.Walk(func(e *js.Expr) bool {
+		if e.Kind == js.ExprIdent {
 			names = append(names, e.Raw)
 		}
 		return true
@@ -383,12 +385,12 @@ func TestAGroupedBlockAndItsDottedFormMeanTheSameThing(t *testing.T) {
 // ahead of time and must not be flattened into one.
 func TestAComputedMemberIsNotAName(t *testing.T) {
 	for _, src := range []string{`N { x: items[0] }`, `N { x: items[0]() }`, `N { x: f()() }`} {
-		tree, err := parse.QML{}.Parse([]byte(src))
+		tree, err := qml.QML{}.Parse([]byte(src))
 		if err != nil {
 			t.Fatalf("Parse(%q): %v", src, err)
 		}
 		v := tree.Root.Props[0].Value
-		if v.Kind != parse.SpecValueExpr {
+		if v.Kind != qml.SpecValueExpr {
 			t.Errorf("%s = %v, want it to keep its tree rather than become a name", src, v.Kind)
 		}
 	}

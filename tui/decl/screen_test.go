@@ -3,12 +3,12 @@ package decl_test
 import (
 	"context"
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -38,7 +38,7 @@ Split {
 
 func mount(t *testing.T, src string, hosts tuidecl.HostFuncs, sink func(error)) (*decl.Tree, *tuidecl.Adapter) {
 	t.Helper()
-	spec, err := parse.QML{}.Parse([]byte(src))
+	spec, err := qml.QML{}.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("schema does not parse: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestConstructorOnlyPropertiesAreNotReApplied(t *testing.T) {
 		return widget.NewText(""), nil, nil
 	})
 
-	spec, err := parse.QML{}.Parse([]byte(`import tui 1.0
+	spec, err := qml.QML{}.Parse([]byte(`import tui 1.0
 Split { orientation: Tui.Horizontal Text { } Text { } }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -178,7 +178,7 @@ Split { orientation: Tui.Horizontal Text { } Text { } }`,
 // TestAnUnregisteredTypeIsAPositionedError: a schema is input, so naming a type
 // nobody registered is the author's mistake to see, with the line.
 func TestAnUnregisteredTypeIsAPositionedError(t *testing.T) {
-	spec, err := parse.QML{}.Parse([]byte("Split {\n  Nope { }\n  Text { }\n}"))
+	spec, err := qml.QML{}.Parse([]byte("Split {\n  Nope { }\n  Text { }\n}"))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -271,7 +271,7 @@ func waitFor(t *testing.T, cond func() bool) {
 //
 // Documenting a violation does not make it a decision.
 func TestAnOmittedSinkIsRefusedRatherThanSilent(t *testing.T) {
-	spec, err := parse.QML{}.Parse([]byte("Button {\n  onClicked: save()\n}"))
+	spec, err := qml.QML{}.Parse([]byte("Button {\n  onClicked: save()\n}"))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestAnOmittedSinkIsRefusedRatherThanSilent(t *testing.T) {
 // must not degrade into "every schema needs a sink", which would make the
 // refusal a tax rather than a guard.
 func TestASchemaWithNoHandlersNeedsNoSink(t *testing.T) {
-	spec, err := parse.QML{}.Parse([]byte(`Text { text: "no handlers here" }`))
+	spec, err := qml.QML{}.Parse([]byte(`Text { text: "no handlers here" }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestASchemaWithNoHandlersNeedsNoSink(t *testing.T) {
 // construction, the engine would never apply it and this setter would never
 // run.
 func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
-	spec, err := parse.QML{}.Parse([]byte(`Button { label: "Save" onClicked: save() }`))
+	spec, err := qml.QML{}.Parse([]byte(`Button { label: "Save" onClicked: save() }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
 	var applied []string
 	var labelAtApply string
 	spy := tuidecl.WithSetters("Button", map[string]tuidecl.Setter{
-		"label": func(c tui.Component, v parse.SpecValue) error {
+		"label": func(c tui.Component, v qml.SpecValue) error {
 			btn := c.(*widget.Button)
 			// What the widget held BEFORE this application is the evidence: an
 			// empty label here means construction did not set it.
@@ -371,7 +371,7 @@ func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
 // is pinned rather than left to be rediscovered: construction takes nothing,
 // and the applications run in document order, so the LAST one wins.
 func TestADuplicatedPropertyIsAppliedInDocumentOrder(t *testing.T) {
-	spec, err := parse.QML{}.Parse([]byte(`Button { label: "first" label: "second" }`))
+	spec, err := qml.QML{}.Parse([]byte(`Button { label: "first" label: "second" }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -416,7 +416,7 @@ func TestABuilderGuardsTheKindItReadsRatherThanTrustingResolution(t *testing.T) 
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			spec, err := parse.QML{}.Parse([]byte(c.src))
+			spec, err := qml.QML{}.Parse([]byte(c.src))
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
@@ -426,8 +426,8 @@ func TestABuilderGuardsTheKindItReadsRatherThanTrustingResolution(t *testing.T) 
 			// A host constant of the wrong KIND. It resolves — the engine has no
 			// opinion about what a Split wants — and arrives at the builder as a
 			// number.
-			if err := tr.DeclareFunc("pick", func([]parse.SpecValue) (parse.SpecValue, error) {
-				return parse.SpecValue{Kind: parse.SpecValueNumber, Raw: "1"}, nil
+			if err := tr.DeclareFunc("pick", func([]qml.SpecValue) (qml.SpecValue, error) {
+				return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "1"}, nil
 			}); err != nil {
 				t.Fatalf("DeclareFunc: %v", err)
 			}

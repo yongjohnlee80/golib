@@ -1,7 +1,8 @@
-package parse_test
+package sql_test
 
 import (
 	"errors"
+	"github.com/yongjohnlee80/golib/parse/sql"
 	"strings"
 	"testing"
 
@@ -12,10 +13,10 @@ import (
 // SQL must satisfy the one required interface. This is a compile-time
 // assertion: if the interface or the type drifts, the build fails here rather
 // than at a call site in another package.
-var _ parse.Parser[[]parse.Statement] = parse.SQL{}
+var _ parse.Parser[[]sql.Statement] = sql.SQL{}
 
 // texts is a helper so the table below can compare against plain strings.
-func texts(t *testing.T, s parse.SQL, src string) []string {
+func texts(t *testing.T, s sql.SQL, src string) []string {
 	t.Helper()
 	stmts, err := s.Parse([]byte(src))
 	if err != nil {
@@ -34,7 +35,7 @@ func texts(t *testing.T, s parse.SQL, src string) []string {
 func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 	cases := []struct {
 		name string
-		sql  parse.SQL
+		sql  sql.SQL
 		src  string
 		want []string
 	}{
@@ -88,25 +89,25 @@ func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 		},
 		{
 			name: "backticks quote when enabled",
-			sql:  parse.SQL{Backticks: true},
+			sql:  sql.SQL{Backticks: true},
 			src:  "SELECT `a;b`; SELECT 2",
 			want: []string{"SELECT `a;b`", "SELECT 2"},
 		},
 		{
 			name: "dollar-quoted body when enabled",
-			sql:  parse.SQL{DollarQuotes: true},
+			sql:  sql.SQL{DollarQuotes: true},
 			src:  "CREATE FUNCTION f() AS $$ BEGIN a; b; END $$; SELECT 2",
 			want: []string{"CREATE FUNCTION f() AS $$ BEGIN a; b; END $$", "SELECT 2"},
 		},
 		{
 			name: "tagged dollar quote when enabled",
-			sql:  parse.SQL{DollarQuotes: true},
+			sql:  sql.SQL{DollarQuotes: true},
 			src:  "SELECT $body$ a; b $body$; SELECT 2",
 			want: []string{"SELECT $body$ a; b $body$", "SELECT 2"},
 		},
 		{
 			name: "a lone dollar sign stays ordinary text",
-			sql:  parse.SQL{DollarQuotes: true},
+			sql:  sql.SQL{DollarQuotes: true},
 			src:  "SELECT $1; SELECT 2",
 			want: []string{"SELECT $1", "SELECT 2"},
 		},
@@ -114,7 +115,7 @@ func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 			// Valid PostgreSQL: the E prefix is the engine's opt-in to backslash
 			// escapes, so the quote after the backslash does NOT close the run.
 			name: "E-string backslash escape when the dialect enables it",
-			sql:  parse.SQL{EStringEscapes: true},
+			sql:  sql.SQL{EStringEscapes: true},
 			src:  `SELECT E'a\'b'; SELECT 2`,
 			want: []string{`SELECT E'a\'b'`, "SELECT 2"},
 		},
@@ -123,20 +124,20 @@ func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 			// keeps the standard reading even with E-strings enabled, so a path
 			// ending in a backslash still closes where it should.
 			name: "an ordinary string keeps standard backslash handling",
-			sql:  parse.SQL{EStringEscapes: true},
+			sql:  sql.SQL{EStringEscapes: true},
 			src:  `SELECT 'C:\'; SELECT 2`,
 			want: []string{`SELECT 'C:\'`, "SELECT 2"},
 		},
 		{
 			// A trailing e on an identifier is not a string prefix.
 			name: "a word ending in e does not make the next string an E-string",
-			sql:  parse.SQL{EStringEscapes: true},
+			sql:  sql.SQL{EStringEscapes: true},
 			src:  `SELECT value'a\'; SELECT 2`,
 			want: []string{`SELECT value'a\'`, "SELECT 2"},
 		},
 		{
 			name: "nested block comment when the dialect nests",
-			sql:  parse.SQL{NestedBlockComments: true},
+			sql:  sql.SQL{NestedBlockComments: true},
 			src:  "SELECT /* a /* b; */ c */ 1; SELECT 2",
 			want: []string{"SELECT /* a /* b; */ c */ 1", "SELECT 2"},
 		},
@@ -172,7 +173,7 @@ func TestSQL_UnterminatedIsNotTheSameConditionAsBadSyntax(t *testing.T) {
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := parse.SQL{}.Parse([]byte(src))
+			_, err := sql.SQL{}.Parse([]byte(src))
 			if err == nil {
 				t.Fatal("want an error, got nil")
 			}
@@ -197,17 +198,17 @@ func TestSQL_UnterminatedIsNotTheSameConditionAsBadSyntax(t *testing.T) {
 func TestSyntaxError_TheOtherDirectionOfSiblingIsolation(t *testing.T) {
 	err := error(parse.SyntaxError{Format: "sql", Want: "FROM", Got: `"WERE"`})
 	if !errors.Is(err, parse.ErrSyntax) {
-		t.Error("a non-Incomplete SyntaxError must satisfy ErrSyntax")
+		t.Error("a non-Incomplete parse.SyntaxError must satisfy ErrSyntax")
 	}
 	if errors.Is(err, parse.ErrUnterminated) {
-		t.Error("a non-Incomplete SyntaxError must NOT satisfy ErrUnterminated")
+		t.Error("a non-Incomplete parse.SyntaxError must NOT satisfy ErrUnterminated")
 	}
 }
 
-// The fields must survive wrapping, which is the whole reason SyntaxError is a
+// The fields must survive wrapping, which is the whole reason parse.SyntaxError is a
 // type rather than a sentinel — and the target must be spelled as a VALUE.
 func TestSyntaxError_AsRecoversPositionThroughWrapping(t *testing.T) {
-	_, err := parse.SQL{}.Parse([]byte("SELECT 1;\nSELECT 'oops"))
+	_, err := sql.SQL{}.Parse([]byte("SELECT 1;\nSELECT 'oops"))
 	if err == nil {
 		t.Fatal("want an error")
 	}
@@ -215,7 +216,7 @@ func TestSyntaxError_AsRecoversPositionThroughWrapping(t *testing.T) {
 
 	var se parse.SyntaxError
 	if !errors.As(wrapped, &se) {
-		t.Fatal("errors.As with a VALUE target must recover the SyntaxError")
+		t.Fatal("errors.As with a VALUE target must recover the parse.SyntaxError")
 	}
 	if se.Pos.Line != 2 {
 		t.Errorf("Pos.Line = %d, want 2 — the position must point at the line "+
@@ -229,7 +230,7 @@ func TestSyntaxError_AsRecoversPositionThroughWrapping(t *testing.T) {
 	// value semantics is caught here rather than in a consumer.
 	var ptr *parse.SyntaxError
 	if errors.As(wrapped, &ptr) {
-		t.Error("a POINTER target now matches; the doc comment on SyntaxError " +
+		t.Error("a POINTER target now matches; the doc comment on parse.SyntaxError " +
 			"says it cannot and must be corrected")
 	}
 }
@@ -251,14 +252,14 @@ func TestSyntaxError_MessageIsUsableProse(t *testing.T) {
 	}
 	// The zero value must be prose, not a crash and not an empty string.
 	if z := (parse.SyntaxError{}).Error(); z == "" || !strings.Contains(z, "parse:") {
-		t.Errorf("the zero SyntaxError must still render usefully, got %q", z)
+		t.Errorf("the zero parse.SyntaxError must still render usefully, got %q", z)
 	}
 }
 
 // The verb is a routing hint taken only from the first token, so a keyword
 // inside a string or an identifier must never become one.
 func TestSQL_VerbComesOnlyFromTheFirstToken(t *testing.T) {
-	stmts, err := parse.SQL{}.Parse([]byte(
+	stmts, err := sql.SQL{}.Parse([]byte(
 		"SELECT 'DELETE FROM t';\n" +
 			"  -- a comment first\n  INSERT INTO t VALUES (1);\n" +
 			"/* block */ WITH x AS (SELECT 1) SELECT * FROM x;\n" +
@@ -281,7 +282,7 @@ func TestSQL_VerbComesOnlyFromTheFirstToken(t *testing.T) {
 // Positions must point into the ORIGINAL source, so a caller can report a line
 // number that matches the file the user is looking at.
 func TestSQL_PositionsPointAtTheOriginalSource(t *testing.T) {
-	stmts, err := parse.SQL{}.Parse([]byte("SELECT 1;\n\n   SELECT 2;\nSELECT 3"))
+	stmts, err := sql.SQL{}.Parse([]byte("SELECT 1;\n\n   SELECT 2;\nSELECT 3"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -304,7 +305,7 @@ func TestSQL_PositionsPointAtTheOriginalSource(t *testing.T) {
 // A capability is discovered by asking, and the answer must come from the
 // implementation rather than from anything the type declares about itself.
 func TestCapabilityDiscovery(t *testing.T) {
-	var p any = parse.SQL{}
+	var p any = sql.SQL{}
 
 	if v, ok := parse.AsValidator(p); !ok {
 		t.Error("SQL implements Validate and must be discoverable as a Validator")
@@ -315,11 +316,11 @@ func TestCapabilityDiscovery(t *testing.T) {
 	if _, ok := parse.AsSplitter(p); !ok {
 		t.Error("SQL implements Split and must be discoverable as a Splitter")
 	}
-	if _, ok := parse.AsStreamParser[[]parse.Statement](p); !ok {
+	if _, ok := parse.AsStreamParser[[]sql.Statement](p); !ok {
 		t.Error("SQL implements ParseStream and must be discoverable")
 	}
 	if name := parse.FormatNameOf(p); name != "sql" {
-		t.Errorf("FormatNameOf = %q, want %q", name, "sql")
+		t.Errorf("parse.FormatNameOf = %q, want %q", name, "sql")
 	}
 
 	// A type that implements only the required method must be discoverable as
