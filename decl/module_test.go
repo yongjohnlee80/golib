@@ -411,3 +411,45 @@ func TestAQualifiedNameReadsTheSameRegistryEntryAsThePlainOne(t *testing.T) {
 		t.Errorf("Source(Theme.surface) = %+v, %v; want the canonical entry", v, ok)
 	}
 }
+
+// TestAQualifiedSingletonReadsTheCURRENTSourceAtMount.
+//
+// The half a propagation test cannot reach. During a fan-out the new value is
+// in the overlay, so a lookup keyed by the wrong name still finds it there and
+// the mistake stays hidden. At MOUNT there is no overlay: a wrong key falls
+// through to the value the source was INJECTED with, which is right until
+// something moved the source before the document was mounted.
+//
+// Then a screen paints the startup palette and looks entirely correct.
+func TestAQualifiedSingletonReadsTheCURRENTSourceAtMount(t *testing.T) {
+	rec := newReactor()
+	tr := decl.New(rec)
+	if err := tr.DeclareModule(decl.Module{
+		Name: "myapp.theme", Version: "1.0", Exports: []string{"Theme"},
+	}); err != nil {
+		t.Fatalf("DeclareModule: %v", err)
+	}
+	if err := tr.Inject("Theme.surface", decl.SourceValue(sv("#injected"))); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	// The host moves the source BEFORE the document is mounted — a theme read
+	// from disk after the tree was built, say.
+	if _, err := tr.SetSource("Theme.surface", sv("#current")); err != nil {
+		t.Fatalf("SetSource: %v", err)
+	}
+
+	if err := tr.Mount(qmlDoc(t, "import myapp.theme 1.0 as T\n"+
+		`Text { id: a text: T.Theme.surface }`)); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	var painted []string
+	for _, l := range rec.trace {
+		if strings.HasPrefix(l, "apply") {
+			painted = append(painted, l)
+		}
+	}
+	if len(painted) != 1 || !strings.Contains(painted[0], "#current") {
+		t.Errorf("applied %v, want the CURRENT source value; the injected one "+
+			"means the qualified name missed the source store", painted)
+	}
+}
