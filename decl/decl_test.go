@@ -142,6 +142,12 @@ func (r *recorder) Destroy(n decl.NodeID) error {
 	return r.destroyErr
 }
 
+// Modules makes `tui` importable, which is what lets these fixtures write the
+// `import tui 1.0` a QML document needs before naming anything inside it.
+func (r *recorder) Modules() []decl.Module {
+	return []decl.Module{{Name: "tui", Version: "1.0"}}
+}
+
 // Constants gives the fake the qualified vocabulary a QML-faithful schema
 // writes: `direction: tui.Vertical` rather than a bare word or a quoted string.
 func (r *recorder) Constants() map[string]parse.SpecValue {
@@ -244,7 +250,8 @@ func TestConsumedPropertiesAreNotReApplied(t *testing.T) {
 	r := newRecorder()
 	r.consume["Split"] = []string{"orientation"}
 	tr := decl.New(r)
-	if err := tr.Mount(mustSpec(t, `Split { orientation: tui.Vertical gap: 2 }`)); err != nil {
+	if err := tr.Mount(mustSpec(t, `import tui 1.0
+Split { orientation: tui.Vertical gap: 2 }`)); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	for _, line := range r.trace {

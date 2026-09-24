@@ -82,6 +82,15 @@ type Tree struct {
 	// consults, which is what gives "where did this name come from?" exactly one
 	// answer. See [Tree.Inject].
 	injected map[string]Injected
+	// modules are the importable namespaces, by name. They are distinct from
+	// injected namespaces: a module must be IMPORTED before its names resolve,
+	// which is what stops an `import` line from being decoration.
+	modules map[string]Module
+	// imported maps the name a document bound to the module it names — the
+	// alias for `as T`, the module's own name otherwise. It is replaced on every
+	// Mount and Reconcile, because imports belong to the DOCUMENT rather than to
+	// the tree, and a reload that drops an import must stop resolving through it.
+	imported map[string]string
 	// bindings are every bound property in the tree, in DOCUMENT ORDER — the
 	// only order a schema author can see, and therefore the only defensible
 	// fan-out order when a propagation stops part-way.
@@ -208,6 +217,12 @@ func New(a Adapter, opts ...Option) *Tree {
 	if c, ok := a.(Constants); ok {
 		t.consts = c.Constants()
 	}
+	if m, ok := a.(Modules); ok {
+		t.modules = map[string]Module{}
+		for _, mod := range m.Modules() {
+			t.modules[mod.Name] = mod
+		}
+	}
 	return t
 }
 
@@ -289,6 +304,16 @@ func (t *Tree) Mount(spec parse.SpecTree) error {
 		return SchemaError{Op: "mount", Err: fmt.Errorf(
 			"%w: the previous mount failed and left a partial tree; call Destroy first", ErrPhase)}
 	}
+
+	// IMPORTS FIRST. Every qualified name below is resolved against what this
+	// document imported, so the import set has to exist before the first name is
+	// looked up — and an import of something no host provides is a better thing
+	// to be told than "unbound name" at each of the twenty places that use it.
+	imported, err := t.resolveImports(spec)
+	if err != nil {
+		return err
+	}
+	t.imported = imported
 
 	// Bindings are validated and evaluated across the WHOLE schema first. A
 	// failure here has allocated nothing, built nothing and latched nothing —
