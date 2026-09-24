@@ -184,14 +184,28 @@ func (t *Tree) Subscribe(p Provider) error {
 				ErrProviderContract, n)})
 		}
 	}
+	// The names go in ALL OR NONE. Injecting them one at a time and returning
+	// on the first refusal left the earlier ones behind: the caller was told the
+	// subscription failed, and a schema could still bind sources belonging to a
+	// provider that is not attached to anything — sources nothing will ever
+	// update, because the delivery path was torn down.
+	added := make([]string, 0, len(names))
+	undo := func() {
+		for _, n := range added {
+			delete(t.injected, n)
+			delete(t.sources, n)
+		}
+	}
 	for _, n := range names {
 		v, ok := first.Values[n]
 		if !ok {
 			v = parse.SpecValue{Kind: parse.SpecValueString}
 		}
 		if err := t.inject("subscribe", n, SourceValue(v)); err != nil {
+			undo()
 			return fail(err)
 		}
+		added = append(added, n)
 	}
 
 	pr.names, pr.cancel = names, cancel

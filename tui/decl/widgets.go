@@ -13,10 +13,15 @@ import (
 //
 // The set is chosen for the shapes it forces, not for coverage:
 //
-// Enum-valued properties are written as STRINGS — `orientation: "horizontal"` —
-// because a bare identifier is now a binding, as it is in QML. Qt spells these
-// as qualified enums (`Qt.Horizontal`); this grammar has no member chains to
-// resolve, so a string carries the symbol instead.
+// Enum-valued properties are written as QUALIFIED ENUMS — `orientation:
+// tui.Horizontal` — exactly as Qt spells them (`Qt.Horizontal`). The adapter
+// publishes those names through Constants, and the engine resolves them to a
+// terminal before a builder is called, so what arrives here is a string.
+//
+// The guards below check that, because "the engine resolves it first" is a
+// property of the current wiring rather than of this function's signature: a
+// host may inject a constant of any kind, and a builder that trusted the
+// resolution would read Raw off a number and match none of its cases.
 //
 //   - Split takes its orientation and BOTH children as required constructor
 //     arguments, and has no setter for either. Nothing can build it after the

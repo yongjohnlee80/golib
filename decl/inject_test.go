@@ -770,3 +770,70 @@ func TestAnExpressionValueIsDeclinedAndNeverForwarded(t *testing.T) {
 		})
 	}
 }
+
+// ------------------------------------------------ partial state and timing
+
+// TestAHandlerArgumentIsEvaluatedWHENTHESIGNALFIRES.
+//
+// The first version validated AND evaluated arguments at compile time and baked
+// the results into the closure, so `submit(count)` submitted the count the
+// screen had when it was BUILT — forever, however many times the source moved.
+//
+// The doc comment claimed the opposite, which is what made it survive a
+// mutation pass: nothing asserted the timing, and the prose asserting it was
+// not a mechanism.
+func TestAHandlerArgumentIsEvaluatedWHENTHESIGNALFIRES(t *testing.T) {
+	var got []string
+	tr := decl.New(newReactor())
+	if err := tr.Inject("count", decl.SourceValue(num("1"))); err != nil {
+		t.Fatalf("inject count: %v", err)
+	}
+	if err := tr.Inject("submit", decl.Handle(func(args []parse.SpecValue) error {
+		got = append(got, args[0].Raw)
+		return nil
+	})); err != nil {
+		t.Fatalf("inject submit: %v", err)
+	}
+	if err := mountSrc(t, tr, "Button {\n  onClicked: submit(count)\n}"); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+
+	if err := tr.Emit(tr.Root(), "clicked"); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	if _, err := tr.SetSource("count", num("2")); err != nil {
+		t.Fatalf("SetSource: %v", err)
+	}
+	if err := tr.Emit(tr.Root(), "clicked"); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	if strings.Join(got, ",") != "1,2" {
+		t.Errorf("handler saw %v, want [1 2] — the second press must read the "+
+			"value the source holds THEN, not the one it held at mount", got)
+	}
+}
+
+// TestARefusedInjectionLeavesNothingBehind.
+//
+// The name was written into the registry BEFORE its prefixes were validated, so
+// a refused injection left its own name resolvable: the caller was told no, and
+// a schema could still reach what it had been told did not exist.
+func TestARefusedInjectionLeavesNothingBehind(t *testing.T) {
+	tr := decl.New(newReactor())
+	if err := tr.Inject("Theme", decl.Constant(sv("dark"))); err != nil {
+		t.Fatalf("inject Theme: %v", err)
+	}
+	if err := tr.Inject("Theme.surface", decl.SourceValue(sv("#111"))); err == nil {
+		t.Fatal("injecting a member of a constant was accepted")
+	}
+	if _, ok := tr.Lookup("Theme.surface"); ok {
+		t.Error("a refused injection left its name in the registry")
+	}
+	if _, ok := tr.Source("Theme.surface"); ok {
+		t.Error("a refused injection left a source behind")
+	}
+	// And the name that WAS there is untouched.
+	if in, ok := tr.Lookup("Theme"); !ok || in.Kind != decl.KindConstant {
+		t.Errorf("Theme = %v, %v; the refusal disturbed an unrelated name", in.Kind, ok)
+	}
+}

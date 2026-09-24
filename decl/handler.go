@@ -33,9 +33,15 @@ func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, e
 	}
 
 	type invocation struct {
-		fn   HandlerFunc
-		args []parse.SpecValue
-		name string
+		fn HandlerFunc
+		// argExprs are the arguments AS WRITTEN, re-evaluated every time the
+		// signal fires. They are not the values they had at mount: a handler
+		// reading a source must see what the source holds WHEN THE BUTTON IS
+		// PRESSED, and an earlier version baked the mount-time values into the
+		// closure — so `submit(count)` submitted the count the screen had when
+		// it was built, forever.
+		argExprs []parse.SpecValue
+		name     string
 	}
 	var calls []invocation
 
@@ -76,15 +82,23 @@ func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, e
 		// Arguments are VALUES wherever the call sits, so they resolve in the
 		// binding context — which is what lets `submit(count)` read a source
 		// without this evaluator having to run JavaScript at all.
-		args := make([]parse.SpecValue, 0, len(e.Args))
+		//
+		// They are VALIDATED here and EVALUATED when the signal fires. Both
+		// halves matter: validating now means a typo is found while the tree is
+		// still intact, and evaluating later means the handler sees the value
+		// the source holds at the moment it runs.
+		argExprs := make([]parse.SpecValue, 0, len(e.Args))
 		for i := range e.Args {
-			av, err := t.argValue(node, h, &e.Args[i])
+			av, err := t.argExpr(node, h, &e.Args[i])
 			if err != nil {
 				return boundHandler{}, err
 			}
-			args = append(args, av)
+			if _, err := t.evalValue(ctxBinding, av, node, nil); err != nil {
+				return boundHandler{}, err
+			}
+			argExprs = append(argExprs, av)
 		}
-		calls = append(calls, invocation{fn: in.Handle, args: args, name: name})
+		calls = append(calls, invocation{fn: in.Handle, argExprs: argExprs, name: name})
 	}
 
 	label := calls[0].name
@@ -100,7 +114,19 @@ func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, e
 			// would be running the tail of a handler whose head did not happen,
 			// which no author writing two statements in sequence expects.
 			for _, c := range calls {
-				if err := c.fn(c.args); err != nil {
+				args := make([]parse.SpecValue, 0, len(c.argExprs))
+				for _, ax := range c.argExprs {
+					// Re-evaluated NOW. This can fail even though it validated
+					// at mount — a host function may refuse at this moment —
+					// and the handler stops rather than passing a value it
+					// could not compute.
+					res, err := t.evalValue(ctxBinding, ax, node, nil)
+					if err != nil {
+						return fmt.Errorf("%s: %w", c.name, err)
+					}
+					args = append(args, res.value)
+				}
+				if err := c.fn(args); err != nil {
 					return fmt.Errorf("%s: %w", c.name, err)
 				}
 			}
@@ -109,23 +135,22 @@ func (t *Tree) compileHandler(node NodeID, h parse.SpecHandler) (boundHandler, e
 	}, nil
 }
 
-// argValue reduces one handler argument to a terminal.
+// argExpr translates one handler argument into the evaluator's value
+// vocabulary, WITHOUT evaluating it.
 //
-// It bridges the expression AST to the value walk: the evaluator's value
-// vocabulary is [parse.SpecValue], and an argument the bridge cannot express is
-// refused HERE rather than mistranslated into something that resolves to the
-// wrong thing.
-func (t *Tree) argValue(node NodeID, h parse.SpecHandler, e *parse.Expr) (parse.SpecValue, error) {
+// The separation is the point. The bridge from the expression AST to
+// [parse.SpecValue] is a question about SHAPE and has one answer for the life
+// of the tree, so it is settled once at compile time; what the argument is
+// WORTH is a question about the moment the signal fires, and is asked then.
+// An argument the bridge cannot express is refused here rather than
+// mistranslated into something that resolves to the wrong thing.
+func (t *Tree) argExpr(node NodeID, h parse.SpecHandler, e *parse.Expr) (parse.SpecValue, error) {
 	v, ok := specValueOf(e)
 	if !ok {
 		return parse.SpecValue{}, t.refuseBody(node, h, e.Pos, fmt.Sprintf(
 			"a %s argument; this engine passes literals and injected names", e.Kind))
 	}
-	res, err := t.evalValue(ctxBinding, v, node, nil)
-	if err != nil {
-		return parse.SpecValue{}, err
-	}
-	return res.value, nil
+	return v, nil
 }
 
 // specValueOf translates an expression node into the evaluator's value

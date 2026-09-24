@@ -194,6 +194,21 @@ func (t *Tree) inject(op, name string, in Injected) error {
 			"%w: the adapter already defines %q, and shadowing it would change what "+
 				"a schema means without saying so", ErrAmbiguousName, name)}
 	}
+	// EVERY prefix is checked BEFORE anything is written. An earlier version
+	// registered the name first and validated the prefixes afterwards, so a
+	// refused injection left its own name visible in the registry: the caller
+	// was told no, and a schema could still resolve what it had been told did
+	// not exist.
+	segs = strings.Split(name, ".")
+	for i := 1; i < len(segs); i++ {
+		prefix := strings.Join(segs[:i], ".")
+		if prior, exists := t.injected[prefix]; exists && prior.Kind != KindNamespace {
+			return SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
+				"%w: %q is a %s, so %q cannot name something inside it",
+				ErrWrongKind, prefix, prior.Kind, name)}
+		}
+	}
+
 	if t.injected == nil {
 		t.injected = map[string]Injected{}
 	}
@@ -214,15 +229,9 @@ func (t *Tree) inject(op, name string, in Injected) error {
 	// which is a better thing to be told.
 	for i := 1; i < len(segs); i++ {
 		prefix := strings.Join(segs[:i], ".")
-		if prior, exists := t.injected[prefix]; exists {
-			if prior.Kind != KindNamespace {
-				return SchemaError{Op: op, Detail: name, Err: fmt.Errorf(
-					"%w: %q is a %s, so %q cannot name something inside it",
-					ErrWrongKind, prefix, prior.Kind, name)}
-			}
-			continue
+		if _, exists := t.injected[prefix]; !exists {
+			t.injected[prefix] = Injected{Kind: KindNamespace}
 		}
-		t.injected[prefix] = Injected{Kind: KindNamespace}
 	}
 
 	// The live stores are seeded from the same call, because the CURRENT value
