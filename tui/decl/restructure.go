@@ -17,7 +17,7 @@ import (
 // and splice a Flex in the same reload.
 var (
 	_ decl.Restructurer = (*Adapter)(nil)
-	_ decl.Settable     = (*Adapter)(nil)
+	_ decl.Classifier   = (*Adapter)(nil)
 )
 
 // CanRestructure reports whether the node's component accepts child changes.
@@ -116,19 +116,22 @@ func countChildren(c tui.Container) int {
 	return n
 }
 
-// CanApply implements decl.Settable: it reports whether a property has a
-// runtime setter for this node's type.
+// ClassifyProperty implements decl.Classifier.
 //
-// The engine cannot infer this. A builder reports a property consumed only when
-// the schema DECLARED it, so mounting a Split with no orientation consumes
-// nothing — and a later reload adding `orientation` then looks like an ordinary
-// runtime property right up until Apply refuses it against a widget that has no
-// such setter. The setter table lives here, so the answer lives here.
-func (a *Adapter) CanApply(node decl.NodeID, prop string) bool {
+// Three tables, three answers. A property with a setter is runtime-settable; one
+// the type declared as constructor-only is a rebuild; anything else the adapter
+// simply does not have, and saying so is what stops a typo from demolishing a
+// working widget to build one that would refuse it just the same.
+func (a *Adapter) ClassifyProperty(node decl.NodeID, prop string) decl.PropertyKind {
 	b, ok := a.nodes[node]
 	if !ok {
-		return false
+		return decl.PropUnknown
 	}
-	_, ok = a.setters[b.typ][prop]
-	return ok
+	if _, ok := a.setters[b.typ][prop]; ok {
+		return decl.PropRuntime
+	}
+	if a.ctorProps[b.typ][prop] {
+		return decl.PropConstructorOnly
+	}
+	return decl.PropUnknown
 }

@@ -176,7 +176,7 @@ func TestAReloadInsertsANewChildInTheMiddle(t *testing.T) {
 func TestAReloadKeepsFocusAndInFlightWork(t *testing.T) {
 	reg := tuidecl.StdRegistry()
 	tuidecl.Register(reg, "Tracker", buildTracker)
-	opts := append(tuidecl.StdSetters(),
+	opts := append(tuidecl.StdProperties(),
 		tuidecl.WithHostFuncs(tuidecl.HostFuncs{}),
 		tuidecl.WithErrorSink(func(err error) { t.Errorf("unexpected handler error: %v", err) }),
 	)
@@ -643,9 +643,15 @@ func TestAddingAConstructorOnlyPropertyRebuilds(t *testing.T) {
 	}
 }
 
-// TestCanApplyAnswersFromTheSetterTable pins the capability to what the adapter
-// can actually do, in both directions.
-func TestCanApplyAnswersFromTheSetterTable(t *testing.T) {
+// TestClassifyPropertyDistinguishesAllThreeKinds pins the capability to the
+// distinction a boolean could not carry.
+//
+// "Unknown" and "constructor-only" are both un-appliable, which is why one
+// boolean looked sufficient. They call for opposite responses: a
+// constructor-only change rebuilds the node, while a property the adapter does
+// not have must leave the tree untouched, because the rebuilt node would refuse
+// it too.
+func TestClassifyPropertyDistinguishesAllThreeKinds(t *testing.T) {
 	tr, a := mount(t, listScreen, tuidecl.HostFuncs{},
 		func(err error) { t.Errorf("unexpected handler error: %v", err) })
 
@@ -656,17 +662,90 @@ func TestCanApplyAnswersFromTheSetterTable(t *testing.T) {
 		name string
 		node decl.NodeID
 		prop string
-		want bool
+		want decl.PropertyKind
 	}{
-		{"Text.text has a setter", text, "text", true},
-		{"Split.orientation has none", root, "orientation", false},
-		{"Flex.direction has none", list, "direction", false},
-		{"an unknown property", text, "nosuchprop", false},
-		{"an unknown node", decl.NodeID(9999), "text", false},
+		{"Text.text has a setter", text, "text", decl.PropRuntime},
+		{"Split.orientation is a constructor argument", root, "orientation", decl.PropConstructorOnly},
+		{"Flex.direction is a constructor argument", list, "direction", decl.PropConstructorOnly},
+		{"a misspelling is not constructor-only", text, "nosuchprop", decl.PropUnknown},
+		{"a property of a DIFFERENT type is unknown here", text, "orientation", decl.PropUnknown},
+		{"an unknown node", decl.NodeID(9999), "text", decl.PropUnknown},
 	}
 	for _, c := range cases {
-		if got := a.CanApply(c.node, c.prop); got != c.want {
-			t.Errorf("%s: CanApply = %v, want %v", c.name, got, c.want)
+		if got := a.ClassifyProperty(c.node, c.prop); got != c.want {
+			t.Errorf("%s: ClassifyProperty = %s, want %s", c.name, got, c.want)
 		}
 	}
+}
+
+// TestAnUnknownPropertyLeavesTheTreeUntouched is the case a boolean capability
+// could not express.
+//
+// A misspelled property is not a constructor-only property. Both are
+// un-appliable, so one flag answered "false" to each — and the reconciler then
+// demolished a working widget to build one that refused the same property, while
+// the diagnostic blamed construction for a name the adapter had simply never
+// heard of. Nothing may be touched: the rebuild cannot help, so it must not
+// happen.
+func TestAnUnknownPropertyLeavesTheTreeUntouched(t *testing.T) {
+	const before = `Flex { id: list direction: vertical Text { id: a text: "one" } }`
+	const typo = `Flex { id: list direction: vertical Text { id: a text: "one" nosuch: "x" } }`
+	tr, a := mount(t, before, tuidecl.HostFuncs{},
+		func(err error) { t.Errorf("unexpected handler error: %v", err) })
+	be, app := startApp(t, mustRoot(t, tr, a))
+	waitFor(t, func() bool { return strings.Contains(be.String(), "one") })
+
+	list := nodeNamed(t, tr, "list")
+	was := childComponents(t, tr, a, list)
+	wasIDs := nodeIDsOf(t, was)
+
+	var res decl.Result
+	var err error
+	onLoop(t, app, func() { res, err = tr.Reload([]byte(typo)) })
+
+	if err == nil {
+		t.Fatal("a property the adapter does not have must be refused")
+	}
+	if !strings.Contains(err.Error(), "nosuch") {
+		t.Errorf("the error does not name the property: %v", err)
+	}
+	// It must NOT be reported as a constructor-only problem: that was the
+	// misdiagnosis, and it is the half a reader would act on.
+	if strings.Contains(err.Error(), "construction") {
+		t.Errorf("an unknown property was blamed on construction: %v", err)
+	}
+	if res.Created != 0 || res.Destroyed != 0 || len(res.Rebuilt) != 0 {
+		t.Fatalf("the tree was mutated for a property that can never apply: %+v", res)
+	}
+
+	// Same widgets, same mounts, still painting.
+	now := childComponents(t, tr, a, list)
+	if len(now) != len(was) {
+		t.Fatalf("children = %d, want %d", len(now), len(was))
+	}
+	for i := range was {
+		if now[i] != was[i] {
+			t.Errorf("child %d was replaced", i)
+		}
+	}
+	for i, got := range nodeIDsOf(t, now) {
+		if got != wasIDs[i] {
+			t.Errorf("child %d was remounted: NodeID %d -> %d", i, wasIDs[i], got)
+		}
+	}
+	if !strings.Contains(be.String(), "one") {
+		t.Errorf("the screen lost its content:\n%s", be.String())
+	}
+
+	// And the tree is NOT latched: correcting the typo works.
+	onLoop(t, app, func() {
+		res, err = tr.Reload([]byte(`Flex { id: list direction: vertical Text { id: a text: "two" } }`))
+	})
+	if err != nil {
+		t.Fatalf("the tree was latched by a property typo: %v", err)
+	}
+	if res.Applied != 1 {
+		t.Errorf("Applied = %d, want 1", res.Applied)
+	}
+	waitFor(t, func() bool { return strings.Contains(be.String(), "two") })
 }

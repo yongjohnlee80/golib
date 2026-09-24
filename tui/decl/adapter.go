@@ -37,7 +37,13 @@ type Adapter struct {
 	nodes map[decl.NodeID]built
 
 	setters map[string]map[string]Setter
-	sink    func(error)
+	// ctorProps names the properties a type accepts ONLY at construction. It is
+	// DECLARED rather than inferred, because what a builder consumed tells you
+	// only about the schemas it has seen: a Split mounted without an
+	// orientation consumed nothing, and nothing in that record says the widget
+	// has no SetOrientation.
+	ctorProps map[string]map[string]bool
+	sink      func(error)
 }
 
 // Option configures an [Adapter].
@@ -78,15 +84,36 @@ func WithSetters(typeName string, setters map[string]Setter) Option {
 	}
 }
 
+// WithConstructorProps declares the properties a type accepts ONLY at
+// construction — the ones a builder takes as arguments and offers no setter
+// for.
+//
+// It exists so the adapter can tell a constructor-only property apart from one
+// it does not have at all. Both are un-appliable, and the right response to
+// each is opposite: change a constructor-only property and the node is rebuilt;
+// name a property that does not exist and nothing should be touched, because
+// the rebuilt node would refuse it too.
+func WithConstructorProps(typeName string, props ...string) Option {
+	return func(a *Adapter) {
+		if a.ctorProps[typeName] == nil {
+			a.ctorProps[typeName] = map[string]bool{}
+		}
+		for _, p := range props {
+			a.ctorProps[typeName][p] = true
+		}
+	}
+}
+
 // New returns an Adapter driving reg, which must not be nil.
 func New(reg *Registry, opts ...Option) *Adapter {
 	if reg == nil {
 		panic("tui/decl.New: registry is nil")
 	}
 	a := &Adapter{
-		reg:     reg,
-		nodes:   map[decl.NodeID]built{},
-		setters: map[string]map[string]Setter{},
+		reg:       reg,
+		nodes:     map[decl.NodeID]built{},
+		setters:   map[string]map[string]Setter{},
+		ctorProps: map[string]map[string]bool{},
 	}
 	for _, o := range opts {
 		o(a)

@@ -83,11 +83,26 @@ the reason:
 | a **new signal** appeared | some widgets take a callback only at construction |
 | children changed on a node that cannot restructure | `widget.Split` has no `Add`, `Remove` or `Move` at all |
 
-A property that is **absent and then added** is judged the same way, which needs
-the optional `Settable` capability: a builder reports a property consumed only
-when the schema *declared* it, so mounting a `Split` with no `orientation`
-consumes nothing and adding it later would otherwise look like an ordinary
-runtime property. The adapter owns the setter table, so the adapter answers.
+A property is judged by the optional `Classifier` capability, which answers with
+one of **three** kinds — and the third is the one a boolean could not carry:
+
+| kind | meaning | response |
+| --- | --- | --- |
+| `PropRuntime` | there is a setter | applied in place |
+| `PropConstructorOnly` | taken at construction, no setter | **rebuild** |
+| `PropUnknown` | the adapter has no such property | **refused during planning; nothing is touched** |
+
+"Unknown" and "constructor-only" are both un-appliable, which is exactly why one
+flag looked sufficient. Their correct responses are opposite: rebuilding for a
+*misspelled* property demolishes a working widget to construct one that refuses
+it just the same — and the diagnostic blames the constructor for a name the
+adapter never had.
+
+The engine cannot work this out for itself. A builder reports a property
+consumed only when the schema *declared* it, so a `Split` mounted with no
+`orientation` consumes nothing; and nothing in the consumed set distinguishes a
+constructor argument from a typo. An adapter therefore declares its
+constructor-only properties (`WithConstructorProps`) alongside its setters.
 
 Everything else is free. Re-pointing an existing signal at a different handler
 costs nothing: the emitter calls back into the engine, which reads the binding
@@ -138,7 +153,9 @@ correct.
 - **An unchanged file changes nothing** — no setter runs, no binding is
   re-resolved, and the adapter is not called at all.
 - **Two things cannot be pre-checked**, and both are partial-mutation points: a
-  **setter**, since the only way to learn it refuses a value is to call it; and
+  **setter**, since the only way to learn it refuses a *value* is to call it —
+  whether the property exists is settled during planning, whether this value is
+  acceptable is not; and
   a **structural operation** — `CanRestructure` settles whether a node accepts
   child changes at all, but `Insert`, `Remove` and `Move` each fail at the
   moment they run, after earlier work has landed. Either leaves the tree

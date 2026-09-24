@@ -245,7 +245,7 @@ func TestConsumedPropertyChangeForcesRebuild(t *testing.T) {
 		t.Fatalf("Rebuilt = %v, want exactly the Split", res.Rebuilt)
 	}
 	if !strings.Contains(res.Rebuilt[0].Reason, "orientation") ||
-		!strings.Contains(res.Rebuilt[0].Reason, "cannot be set after construction") {
+		!strings.Contains(res.Rebuilt[0].Reason, "taken at construction") {
 		t.Errorf("the reason does not name the cause: %q", res.Rebuilt[0].Reason)
 	}
 	if !res.RootReplaced {

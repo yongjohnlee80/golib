@@ -35,9 +35,20 @@ func StdRegistry() *Registry {
 	return r
 }
 
-// StdSetters returns the runtime property setters matching [StdRegistry].
-func StdSetters() []Option {
+// StdProperties returns the complete property contract for [StdRegistry]: the
+// runtime setters AND the declarations of what each type takes only at
+// construction.
+//
+// Both halves are needed, and the second is the one that is easy to forget.
+// Without it the adapter cannot tell `orientation` — which Split really does
+// take at construction — from a misspelling, so a typo would demolish a working
+// widget and blame the constructor for it.
+func StdProperties() []Option {
 	return []Option{
+		// Split takes its orientation as a constructor argument and has no
+		// SetOrientation; Flex takes its direction the same way.
+		WithConstructorProps("Split", "orientation"),
+		WithConstructorProps("Flex", "direction"),
 		WithSetters("Text", map[string]Setter{
 			"text": func(c tui.Component, v parse.SpecValue) error {
 				t, ok := c.(*widget.Text)
