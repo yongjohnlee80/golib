@@ -476,3 +476,166 @@ func TestAHostFunctionsOwnErrorIsReportedAsItsOwn(t *testing.T) {
 		t.Errorf("err = %v, want it NOT to claim the name was misused", err)
 	}
 }
+
+// ------------------------------------------------------------ handler bodies
+
+// mountSrc parses QML and mounts it, so a handler test reads as the schema an
+// author would actually write.
+func mountSrc(t *testing.T, tr *decl.Tree, src string) error {
+	t.Helper()
+	spec, err := parse.QML{}.Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("fixture does not parse: %v", err)
+	}
+	return tr.Mount(spec)
+}
+
+// TestABareHandlerNameIsRefusedRatherThanInvoked.
+//
+// `onClicked: save` is the IDENTIFIER save. It is NOT a call to it, and an
+// engine that invokes it anyway is guessing at the author's meaning in the one
+// place guessing costs the most: the difference is invisible in the source, and
+// the wrong guess runs an effect nobody asked for.
+//
+// The parser keeps the distinction; this is where it is acted on.
+func TestABareHandlerNameIsRefusedRatherThanInvoked(t *testing.T) {
+	var ran int
+	tr := decl.New(newReactor())
+	if err := tr.Inject("save", decl.Handle(func([]parse.SpecValue) error {
+		ran++
+		return nil
+	})); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+
+	err := mountSrc(t, tr, "Button {\n  onClicked: save\n}")
+	if !errors.Is(err, decl.ErrHandlerBody) {
+		t.Fatalf("err = %v, want ErrHandlerBody", err)
+	}
+	if !strings.Contains(err.Error(), "save()") {
+		t.Errorf("diagnostic = %q, want it to show the author the call form", err)
+	}
+	if ran != 0 {
+		t.Errorf("the handler ran %d times; naming a handler must not invoke it", ran)
+	}
+
+	// The positive half, at the same limit: written as a call, it binds and runs.
+	tr2 := decl.New(newReactor())
+	var ran2 int
+	if err := tr2.Inject("save", decl.Handle(func([]parse.SpecValue) error {
+		ran2++
+		return nil
+	})); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if err := mountSrc(t, tr2, "Button {\n  onClicked: save()\n}"); err != nil {
+		t.Fatalf("a called handler was refused: %v", err)
+	}
+	if err := tr2.Emit(tr2.Root(), "clicked"); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	if ran2 != 1 {
+		t.Errorf("the handler ran %d times, want 1", ran2)
+	}
+}
+
+// TestAHandlerBodyThisEngineCannotRunSaysSoWithoutClaimingASyntaxError.
+//
+// The source is valid QML in every row. What is true is that THIS ENGINE does
+// not run it, and saying that is a different statement from "you wrote this
+// wrong" — only one of which is honest, and only one of which tells a reader
+// that the next release might accept it.
+func TestAHandlerBodyThisEngineCannotRunSaysSoWithoutClaimingASyntaxError(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		wantMsg string
+	}{
+		{"a declaration", "{ let x = 1\n save() }", "declaration statement"},
+		{"a conditional", "{ if (a) save() }", "if statement"},
+		{"a return", "{ return save() }", "return statement"},
+		{"an operator", "a + b", "binary expression"},
+		{"a call on a computed member", "handlers[k]()", "not a name"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tr := decl.New(newReactor())
+			if err := tr.Inject("save", decl.Handle(func([]parse.SpecValue) error { return nil })); err != nil {
+				t.Fatalf("inject: %v", err)
+			}
+			err := mountSrc(t, tr, "Button {\n  onClicked: "+c.body+"\n}")
+			if !errors.Is(err, decl.ErrHandlerBody) {
+				t.Fatalf("err = %v, want ErrHandlerBody", err)
+			}
+			if !strings.Contains(err.Error(), c.wantMsg) {
+				t.Errorf("diagnostic = %q, want it to name %q", err, c.wantMsg)
+			}
+		})
+	}
+}
+
+// TestAHandlerRunsItsStatementsInOrderAndStopsAtTheFirstFailure.
+func TestAHandlerRunsItsStatementsInOrderAndStopsAtTheFirstFailure(t *testing.T) {
+	var ran []string
+	boom := errors.New("the first one failed")
+	tr := decl.New(newReactor())
+	give := func(name string, err error) {
+		if e := tr.Inject(name, decl.Handle(func([]parse.SpecValue) error {
+			ran = append(ran, name)
+			return err
+		})); e != nil {
+			t.Fatalf("inject %q: %v", name, e)
+		}
+	}
+	give("first", nil)
+	give("second", boom)
+	give("third", nil)
+
+	if err := mountSrc(t, tr, "Button {\n  onClicked: { first()\n second()\n third() }\n}"); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	err := tr.Emit(tr.Root(), "clicked")
+	if !errors.Is(err, boom) {
+		t.Fatalf("Emit = %v, want the failing statement's error", err)
+	}
+	if strings.Join(ran, ",") != "first,second" {
+		t.Errorf("ran %v, want the tail of a failed handler NOT to run", ran)
+	}
+}
+
+// TestAHandlerArgumentIsResolvedThroughTheSameMatrix.
+//
+// Arguments are values wherever a call sits, which is what lets a handler read
+// a source without this engine running JavaScript at all.
+func TestAHandlerArgumentIsResolvedThroughTheSameMatrix(t *testing.T) {
+	var got []parse.SpecValue
+	tr := decl.New(newReactor())
+	if err := tr.Inject("count", decl.SourceValue(num("1"))); err != nil {
+		t.Fatalf("inject count: %v", err)
+	}
+	if err := tr.Inject("submit", decl.Handle(func(args []parse.SpecValue) error {
+		got = args
+		return nil
+	})); err != nil {
+		t.Fatalf("inject submit: %v", err)
+	}
+	if err := mountSrc(t, tr, "Button {\n  onClicked: submit(count, \"now\")\n}"); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	if err := tr.Emit(tr.Root(), "clicked"); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	if len(got) != 2 || got[0].Raw != "1" || got[1].Raw != "now" {
+		t.Fatalf("args = %+v, want the source's value and the literal", got)
+	}
+
+	// An argument naming something unbound is refused at MOUNT, not at the
+	// first click — a handler nobody has pressed yet is still a schema mistake.
+	tr2 := decl.New(newReactor())
+	if err := tr2.Inject("submit", decl.Handle(func([]parse.SpecValue) error { return nil })); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if err := mountSrc(t, tr2, "Button {\n  onClicked: submit(nosuch)\n}"); !errors.Is(err, decl.ErrNotInjected) {
+		t.Errorf("err = %v, want the unbound argument refused at mount", err)
+	}
+}
