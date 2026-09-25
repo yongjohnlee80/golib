@@ -12,7 +12,7 @@ import (
 
 // THE WIDGET CONTRACT, AND THE PRIMITIVES EVERY TYPE IS BUILT FROM.
 //
-// A type's whole contract lives in ONE widgetType value: its name, its builder,
+// A type's whole contract lives in ONE Type value: its name, its builder,
 // which properties it takes only at construction, and a setter for each it can
 // take at runtime. Registration and the adapter's property tables are DERIVED
 // from those values, so adding a type is one new value in a table — nothing
@@ -23,45 +23,59 @@ import (
 // value, read it into a builder's local, apply it through a setter — written
 // once. A new property is a line that names which shape it is.
 
-// widgetType is one widget type's complete contract.
-type widgetType struct {
-	name  string
-	build Builder
-	// ctor are the properties the builder consumes and no setter can change.
-	ctor []string
-	// setters are the properties that can change after construction.
-	setters map[string]Setter
-	// methods are what a handler can call on a node of this type by its id:
-	// `quitDialog.open()`.
-	methods map[string]Method
-	// signals names each signal's parameters, in the order it is raised with
-	// them: `accepted(selectedFile)`.
-	signals map[string][]string
+// Type is one widget type's complete contract: everything QML can do with it,
+// in ONE value. The standard vocabulary is a table of these, and a consumer's
+// own widget is one more — added with [WithTypes], through the same code, so a
+// custom widget binds, reloads and signals exactly as a built-in one does.
+type Type struct {
+	// Name is what a document writes: `Gauge { }`. Upper-case, as QML types are.
+	Name string
+	// Build constructs the widget from a declaration.
+	Build Builder
+	// Ctor are the properties Build consumes and no setter can change. A
+	// reload that changes one rebuilds the node.
+	Ctor []string
+	// Setters are the properties that can change after construction — the ones
+	// a document can bind to a source.
+	Setters map[string]Setter
+	// Methods are what a handler can call on a node of this type by its id:
+	// `gauge.reset()`.
+	Methods map[string]Method
+	// Signals names each signal's parameters, in the order it is raised with
+	// them: `accepted(selectedFile)`. A signal with none need not be listed.
+	Signals map[string][]string
+	// Destroyed runs when a node of this type is destroyed, with the widget
+	// Build made: a reload dropped it, or the tree was torn down. For a widget
+	// holding something to release — a process, a timer, a subscription.
+	Destroyed func(tui.Component)
 }
 
 // registerTypes adds each type's builder to the registry.
-func registerTypes(r *Registry, types []widgetType) {
+func registerTypes(r *Registry, types []Type) {
 	for _, w := range types {
-		Register(r, w.name, w.build)
+		Register(r, w.Name, w.Build)
 	}
 }
 
 // typeOptions derives the adapter's property contract from the same values the
 // registry was built from.
-func typeOptions(types []widgetType) []Option {
+func typeOptions(types []Type) []Option {
 	var opts []Option
 	for _, w := range types {
-		if len(w.ctor) > 0 {
-			opts = append(opts, WithConstructorProps(w.name, w.ctor...))
+		if len(w.Ctor) > 0 {
+			opts = append(opts, WithConstructorProps(w.Name, w.Ctor...))
 		}
-		if len(w.setters) > 0 {
-			opts = append(opts, WithSetters(w.name, w.setters))
+		if len(w.Setters) > 0 {
+			opts = append(opts, WithSetters(w.Name, w.Setters))
 		}
-		if len(w.methods) > 0 {
-			opts = append(opts, WithMethods(w.name, w.methods))
+		if len(w.Methods) > 0 {
+			opts = append(opts, WithMethods(w.Name, w.Methods))
 		}
-		if len(w.signals) > 0 {
-			opts = append(opts, WithSignalParams(w.name, w.signals))
+		if len(w.Signals) > 0 {
+			opts = append(opts, WithSignalParams(w.Name, w.Signals))
+		}
+		if w.Destroyed != nil {
+			opts = append(opts, WithDestroyHook(w.Name, w.Destroyed))
 		}
 	}
 	return opts
@@ -131,8 +145,12 @@ func method[W any](what string, run func(W) error) Method {
 
 // ---------------------------------------------------------------- builders
 
-// field reads one constructor property into a builder's local.
-type field func(qml.SpecValue) error
+// Field reads one constructor property into a builder's local. [ReadProps]
+// takes a table of them; StringField and its siblings make one.
+type Field func(qml.SpecValue) error
+
+// field is the package's own spelling of Field.
+type field = Field
 
 // into makes a field that stores what read produces in dst.
 func into[V any](dst *V, read reader[V]) field {
