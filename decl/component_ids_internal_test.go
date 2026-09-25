@@ -24,7 +24,7 @@ func TestScopeIDsRewritesEveryReferenceForm(t *testing.T) {
 		t.Fatal(err)
 	}
 	orig := spec.Root.Props[0].Value.Raw
-	out := scopeIDs(spec.Root, 7, "")
+	out := scopeIDs(spec.Root, "7", "")
 	var b strings.Builder
 	var dump func(sn *qml.SpecNode)
 	dump = func(sn *qml.SpecNode) {
@@ -64,7 +64,7 @@ func TestScopeIDsRewritesEveryReferenceForm(t *testing.T) {
 		t.Errorf("statements not rewritten: then %q, else %q, let %q", then, els, decl)
 	}
 	// The root takes the use site's name when it has one.
-	if named := scopeIDs(spec.Root, 8, "dialog"); named.ID != "dialog" || named.Children[0].ID != "field@8" {
+	if named := scopeIDs(spec.Root, "8", "dialog"); named.ID != "dialog" || named.Children[0].ID != "field@8" {
 		t.Errorf("named use: root %q, child %q", named.ID, named.Children[0].ID)
 	}
 }
