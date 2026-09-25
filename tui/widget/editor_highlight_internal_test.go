@@ -205,11 +205,25 @@ func waitCells(t *testing.T, tb *tui.TestBackend, cond func([][]tui.Cell) bool) 
 	}
 }
 
+// frameWork runs one frame's highlighting walk as Render does, on the loop,
+// and reports how many lines it examined — checked against the cache or
+// highlighted afresh.
+func frameWork(e *Editor, rows int) (examined int, provisional bool) {
+	before := e.hlExamined
+	f := e.beginHighlightFrame()
+	for ln := e.top; ln < min(e.top+rows, len(e.lines)); ln++ {
+		e.highlighted(ln, f)
+	}
+	return e.hlExamined - before, f.provisional
+}
+
 // TestADeepJumpHighlightsInBoundedFrames: `G` on a long file needs every line
 // above the screen, for the state it carries down — here, a comment opened on
-// the first line and never closed. A frame does at most hlFrameBudget of them
-// and asks for another, so no one frame freezes on the whole file; and the
-// screen still ends in the right colours, carried from line 0.
+// the first line and never closed. A frame EXAMINES at most hlFrameBudget of
+// them and asks for another, so no one frame freezes on the file's length;
+// once caught up, a redraw looks at the screen and nothing else; an edit near
+// the top costs a bounded frame again. And the screen ends in the colours
+// carried from line 0.
 func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 	const n, rows = 20001, 5
 	hl := &wordHighlighter{}
@@ -225,24 +239,21 @@ func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 	t.Cleanup(ih.stopInternal)
 	ih.syncInternal()
 
-	// One frame's highlighting, measured as Render does it, right after the
-	// jump.
-	var work int32
+	// Bounded by the budget, and — whatever the budget is set to — by a
+	// fraction of the file: the whole file in one frame is the defect.
+	bound := min(hlFrameBudget+rows, n/4)
+	var work int
+	var calls int32
 	ih.onLoopInternal(func() {
 		e.goToLine(false, 1, true) // G
 		e.ensureVisible()
 		before := hl.calls.Load()
-		f := e.beginHighlightFrame()
-		for ln := e.top; ln < min(e.top+rows, len(e.lines)); ln++ {
-			e.highlighted(ln, f)
-		}
-		work = hl.calls.Load() - before
+		work, _ = frameWork(e, rows)
+		calls = hl.calls.Load() - before
 	})
-	// Bounded by the budget, and — whatever the budget is set to — by a
-	// fraction of the file: the whole file in one frame is the defect.
-	if work > hlFrameBudget+rows || work > n/4 {
-		t.Fatalf("one frame highlighted %d lines of %d after the jump, want at most %d",
-			work, n, min(hlFrameBudget+rows, n/4))
+	if work > bound || int(calls) > bound {
+		t.Fatalf("one frame after the jump examined %d lines and highlighted %d of %d, want at most %d",
+			work, calls, n, bound)
 	}
 	// The frames that follow finish the catch-up on their own, and the last
 	// line wears the comment colour carried from the first.
@@ -254,4 +265,104 @@ func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 		}
 		return false
 	})
+	// Caught up: a redraw examines the screen, not the 20,000 lines above it.
+	var redraw int
+	var prov bool
+	ih.onLoopInternal(func() { redraw, prov = frameWork(e, rows) })
+	if redraw > rows || prov {
+		t.Errorf("a redraw at depth examined %d lines (provisional %v), want at most the %d on screen", redraw, prov, rows)
+	}
+	// An edit near the top invalidates from there: bounded again, and caught
+	// up again after.
+	ih.onLoopInternal(func() {
+		e.lines[1] = "changed"
+		e.touch(1)
+		work, _ = frameWork(e, rows)
+	})
+	if work > bound {
+		t.Errorf("the frame after an edit at the top examined %d lines, want at most %d", work, bound)
+	}
+}
+
+// TestTheCacheAgreesWithAFreshHighlightAfterAnyEdit: whatever the edit — typed
+// text, deleted and pasted lines, opened lines, a visual-line change, undo and
+// redo — the colours on screen are those a highlight from line 0 would give.
+// A change that forgot to say which line it touched shows up here.
+func TestTheCacheAgreesWithAFreshHighlightAfterAnyEdit(t *testing.T) {
+	const rows = 6
+	e := NewEditor(WithHighlighter(&wordHighlighter{}), WithSyntaxStyles(syntaxRedGreen()))
+	var lines []string
+	for i := range 60 {
+		lines = append(lines, []string{"kw a", "x /* open", "b */ kw", "plain"}[i%4])
+	}
+	e.SetValue(strings.Join(lines, "\n"))
+	ih := startAppInternal(t, e, 30, rows)
+	t.Cleanup(ih.stopInternal)
+	ih.syncInternal()
+
+	key := func(s string) []tui.Event {
+		var out []tui.Event
+		for _, r := range s {
+			switch r {
+			case '\x1b':
+				out = append(out, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+			case '\x12': // Ctrl-r
+				out = append(out, tui.KeyEvent{Kind: tui.KeyPress, Code: 'r', Mods: tui.ModCtrl})
+			default:
+				out = append(out, tui.KeyEvent{Kind: tui.KeyPress, Code: r, Text: string(r)})
+			}
+		}
+		return out
+	}
+	steps := []string{
+		"G", "gg", "10j", "o\x1b", "kO\x1b", "x", "dd", "p", "P", "o/* new\x1b", "Okw\x1b", "i*/ \x1b",
+		"u", "u", "\x12", "5j", "Vjd", "yyp", "3dd", "u", "Vxyz\x1b", "Gdd", "gg", "ikw /*\x1b", "20j",
+	}
+	fresh := func() [][]highlight.Style {
+		var out [][]highlight.Style
+		st := highlight.State(0)
+		for ln := range e.lines {
+			entry := e.highlightLine(ln, st)
+			st = entry.out
+			if ln >= e.top && ln < e.top+rows {
+				out = append(out, entry.styles)
+			}
+		}
+		return out
+	}
+	for _, step := range steps {
+		ih.onLoopInternal(func() {
+			for _, ev := range key(step) {
+				e.HandleEvent(ev)
+			}
+		})
+		var got, want [][]highlight.Style
+		ih.onLoopInternal(func() {
+			for {
+				f := e.beginHighlightFrame()
+				if f.provisional {
+					continue
+				}
+				got = nil
+				for ln := e.top; ln < min(e.top+rows, len(e.lines)); ln++ {
+					got = append(got, e.highlighted(ln, f))
+				}
+				break
+			}
+			want = fresh()
+		})
+		if len(got) != len(want) {
+			t.Fatalf("after %q: %d lines on screen, want %d", step, len(got), len(want))
+		}
+		for i := range want {
+			if len(got[i]) != len(want[i]) {
+				t.Fatalf("after %q: line %d has %d styles, want %d", step, i, len(got[i]), len(want[i]))
+			}
+			for c := range want[i] {
+				if got[i][c] != want[i][c] {
+					t.Fatalf("after %q: line %d col %d is %v, a fresh highlight says %v", step, i, c, got[i][c], want[i][c])
+				}
+			}
+		}
+	}
 }
