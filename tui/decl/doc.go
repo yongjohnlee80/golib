@@ -65,12 +65,15 @@
 //
 // # Dialogs and Button Roles
 //
-// [Dialog] and [FileDialog] manage their own modal lifecycles and input traps. Dialog actions
-// are declared via [DialogButtonBox] or standard buttons bitmasks:
+// [Dialog] and [FileDialog] manage their own modal lifecycles and input traps. Initial focus lands
+// on the first control in Tab order that takes focus (the body's first field, else the first enabled
+// button, else the dialog node itself). Dialog actions are declared via [DialogButtonBox] or standard
+// buttons bitmasks:
 //   - Buttons carry Qt button roles ([widget.ButtonRoleAccept], [widget.ButtonRoleReject],
 //     [widget.ButtonRoleDestructive]).
-//   - Enter activates the dialog's default button; Space activates the focused button;
-//     Escape or RejectRole buttons emit `rejected` and dismiss the dialog.
+//   - Enter that the focused control leaves unclaimed answers only the button explicitly named by
+//     `defaultButton` (no standard button is a default implicitly, and a [DialogButtonBox] declares none).
+//   - Space activates the focused button; Escape or RejectRole buttons emit `rejected` and dismiss the dialog.
 //   - DestructiveRole buttons dismiss the dialog cleanly without firing `accepted` or `rejected`.
 //
 // # Palette Roles and Theming
