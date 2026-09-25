@@ -81,6 +81,7 @@ type Adapter struct {
 	// highlighters are the syntax definitions a SyntaxHighlighter may name.
 	highlighters *highlight.Repository
 	destroyed    map[string]func(tui.Component)
+	adopters     map[string]adopter
 	sink         func(error)
 
 	// pal is the palette tree, and restylers each type's way of wearing an
@@ -246,6 +247,7 @@ func New(reg *Registry, opts ...Option) *Adapter {
 		getters:      map[string]map[string]Getter{},
 		signals:      map[string]map[string][]string{},
 		destroyed:    map[string]func(tui.Component){},
+		adopters:     map[string]adopter{},
 		pal:          map[decl.NodeID]*palNode{},
 		restylers:    map[string]restyler{},
 		kids:         map[decl.NodeID][]decl.NodeID{},

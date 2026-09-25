@@ -64,6 +64,9 @@ func NewFlex(dir Direction) *Flex {
 	return f
 }
 
+// Direction is the Flex's main axis.
+func (f *Flex) Direction() Direction { return f.dir }
+
 // AddWeighted appends a weighted child (weight >= 1).
 func (f *Flex) AddWeighted(child Component, weight int) {
 	if weight < 1 {
