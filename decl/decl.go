@@ -77,6 +77,13 @@ type Construction struct {
 	Type string
 	// Pos is where the schema declared this node.
 	Pos parse.Position
+	// ID is the node's `id:` as the engine holds it — a component's and a
+	// delegate row's scoped to their use (`item@row["a"]`), a delegate row
+	// without one given `row@…` — or "" for an anonymous node. It is the
+	// identity a reconcile matches the node by, so it is stable while the node
+	// lives: an adapter keying something of its own by the node (a menu row's
+	// ItemID) keys it by this.
+	ID string
 
 	// Props are the declared properties in DOCUMENT ORDER. An adapter may
 	// consume any of them at construction and must say which, by returning

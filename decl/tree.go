@@ -535,6 +535,7 @@ func (t *Tree) mountNode(sn *qml.SpecNode, parent NodeID) (NodeID, error) {
 		Node:     id,
 		Type:     sn.Type,
 		Pos:      sn.Pos,
+		ID:       sn.ID,
 		Props:    effective,
 		Children: n.children,
 		Emitters: emitters,
@@ -745,11 +746,13 @@ func (t *Tree) HandlerNames(id NodeID, signal string) []string {
 func (t *Tree) Failed() bool { return t.failed }
 
 func (t *Tree) Destroy() error {
-	t.dropRepeaters()
 	switch t.ph {
 	case phaseEmitting, phaseMounting, phaseDestroying, phaseReconciling, phasePropagating:
 		return SchemaError{Op: "destroy", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
+	// After the phase check: a refused Destroy leaves the tree as it was,
+	// still following its models.
+	t.dropRepeaters()
 
 	prev := t.ph
 	t.ph = phaseDestroying

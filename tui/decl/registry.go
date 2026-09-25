@@ -19,6 +19,9 @@ type Build struct {
 	Type string
 	// Pos is where the schema declared this node.
 	Pos parse.Position
+	// ID is the node's stable identity, "" for an anonymous one; see
+	// [decl.Construction.ID].
+	ID string
 	// Props are the declared properties in document order.
 	Props []qml.SpecProp
 	// Children are this node's children, already built, in declaration order.

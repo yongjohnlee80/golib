@@ -190,3 +190,113 @@ func TestARepeaterFollowsItsSourceToANewModel(t *testing.T) {
 		t.Errorf("subscribers old %d, new %d; want 0, 1", subsA, subsB)
 	}
 }
+
+// A delegate's ids — its root's and those inside it — are its row's: two rows
+// of the same delegate are two scopes, each handler reading its OWN row's node.
+func TestADelegatesIDsAreItsRows(t *testing.T) {
+	items := func(p string) *tuidecl.ListModel {
+		m := tuidecl.NewListModel("key", "label")
+		m.Reset([]tuidecl.Row{{"key": "0", "label": p + "0"}, {"key": "1", "label": p + "1"}})
+		return m
+	}
+	m := tuidecl.NewListModel("key", "label", "items")
+	m.Reset([]tuidecl.Row{{"key": "a", "label": "alpha", "items": items("a")}, {"key": "b", "label": "beta", "items": items("b")}})
+	for _, delegate := range []string{
+		// the root's own id
+		"ListView { id: lv; model: model.items; textRole: \"label\"; onActivated: App.run(model.label, lv.currentIndex) }",
+		// a root id and one inside it
+		"Flex { id: item; direction: Tui.Vertical\n" +
+			"ListView { id: lv; model: model.items; textRole: \"label\"; onActivated: App.run(model.label, lv.currentIndex) } }",
+	} {
+		rec := &recorder{}
+		s := runRepeater(t, "Split { orientation: Tui.Horizontal\n Repeater { model: App.rows\n  "+delegate+" } }", m, rec)
+		s.WaitForText(t, "b1")
+		tab := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}
+		down := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown}
+		enter := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
+		s.Keys(t, tab, tab, down, enter) // beta's list, its second item
+		s.WaitFor(t, "an activation", func(string) bool { return len(rec.all()) == 2 })
+		if got := rec.all(); got[0].Raw != "beta" || got[1].Raw != "1" {
+			t.Errorf("%s\n ran (%q, %q), want beta's own list at 1", delegate, got[0].Raw, got[1].Raw)
+		}
+	}
+}
+
+// An open submenu whose row the model keeps stays open through rows inserted
+// and removed before it — each row keeps its identity, so the menu is
+// re-projected, not rebuilt — and closes when its own row goes.
+func TestAnOpenSubmenuSurvivesAModelChangeThatKeepsItsRow(t *testing.T) {
+	subs := tuidecl.NewListModel("key", "label", "item")
+	subs.Reset([]tuidecl.Row{{"key": "zoom", "label": "Zoom", "item": "Zoom in"}})
+	rec := &recorder{}
+	s := decltest.Run(t, 60, 12,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			" MenuBar { Dock.edge: Tui.Top\n  Menu { title: \"&View\"\n   Instantiator { model: App.subs\n"+
+			"    Menu { title: model.label\n     MenuItem { text: model.item; onTriggered: App.run(model.key) } } } } }\n"+
+			" Text { text: \"body\" } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.subs": subs}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.run": rec.handler}))
+	s.WaitForText(t, "View")
+	s.Keys(t, decltest.Alt('v'))
+	s.WaitForText(t, "Zoom")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight})
+	s.WaitForText(t, "Zoom in")
+
+	onScreenLoop(t, s, func() { subs.Insert(0, tuidecl.Row{"key": "aaa", "label": "Aaa", "item": "Aaa in"}) })
+	s.WaitForText(t, "Aaa")
+	if !strings.Contains(s.String(), "Zoom in") {
+		t.Fatalf("a row inserted before the open submenu closed it:\n%s", s.String())
+	}
+	onScreenLoop(t, s, func() { subs.Remove(0, 1) })
+	s.WaitFor(t, "the inserted row gone", func(sc string) bool { return !strings.Contains(sc, "Aaa") })
+	if !strings.Contains(s.String(), "Zoom in") {
+		t.Fatalf("a row removed before the open submenu closed it:\n%s", s.String())
+	}
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	s.WaitFor(t, "triggered", func(string) bool { return len(rec.all()) == 1 })
+	if got := rec.all()[0].Raw; got != "zoom" {
+		t.Errorf("the surviving submenu's row triggered %q, want zoom", got)
+	}
+
+	s.Keys(t, decltest.Alt('v'))
+	s.WaitForText(t, "Zoom")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight})
+	s.WaitForText(t, "Zoom in")
+	onScreenLoop(t, s, func() { subs.Remove(0, 1) })
+	s.WaitFor(t, "the submenu closed with its row", func(sc string) bool { return !strings.Contains(sc, "Zoom") })
+}
+
+// A re-projection keeps the state the live menu holds: a check the user
+// toggled is still toggled after the model inserts a row.
+func TestAReprojectedMenuKeepsItsLiveState(t *testing.T) {
+	subs := tuidecl.NewListModel("key", "label")
+	subs.Reset([]tuidecl.Row{{"key": "b", "label": "Bbb"}})
+	s := decltest.Run(t, 60, 12,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			" MenuBar { Dock.edge: Tui.Top\n  Menu { title: \"&View\"\n   MenuItem { text: \"&Wrap\"; checkable: true }\n"+
+			"   Instantiator { model: App.subs\n    MenuItem { text: model.label } } } }\n"+
+			" Text { text: \"body\" } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.subs": subs}))
+	line := func(text string) string {
+		for _, l := range strings.Split(s.String(), "\n") {
+			if strings.Contains(l, text) {
+				return l
+			}
+		}
+		return ""
+	}
+	s.Keys(t, decltest.Alt('v'))
+	s.WaitForText(t, "Wrap")
+	unchecked := line("Wrap")
+	s.Keys(t, decltest.Rune('w')) // toggles Wrap
+	s.Keys(t, decltest.Alt('v'))
+	s.WaitFor(t, "Wrap checked", func(string) bool { return line("Wrap") != "" && line("Wrap") != unchecked })
+	checked := line("Wrap")
+	onScreenLoop(t, s, func() { subs.Insert(0, tuidecl.Row{"key": "a", "label": "Aaa"}) })
+	s.WaitForText(t, "Aaa")
+	if got := line("Wrap"); got != checked {
+		t.Errorf("the toggled check was lost to the re-projection:\n was %q\n now %q", checked, got)
+	}
+}
