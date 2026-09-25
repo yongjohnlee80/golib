@@ -201,7 +201,9 @@ type dialogSpec struct {
 	align       widget.ButtonAlign
 	// buttons are laid out in this order.
 	buttons []standardButton
-	hooks   dialogHooks
+	// shortcuts are the dialog's own keys, live while it is open.
+	shortcuts []*shortcutNode
+	hooks     dialogHooks
 }
 
 // newDialog is the ONE construction of a dialog: its buttons and what each
@@ -248,16 +250,28 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	if s.help != "" {
 		opts = append(opts, widget.WithModalFooter(s.help))
 	}
+	if len(s.shortcuts) > 0 {
+		shortcuts := s.shortcuts
+		opts = append(opts, widget.WithModalKeys(func(k tui.KeyEvent) bool {
+			for _, sc := range shortcuts {
+				if sc.seq.matches(k) {
+					sc.trigger()
+					return true
+				}
+			}
+			return false
+		}))
+	}
 	d.modal = widget.NewModal(s.body, opts...)
 	return d
 }
 
 func buildDialog(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 1 {
-		return nil, nil, fmt.Errorf("Dialog needs exactly 1 child, its content, got %d (at %s)",
-			len(b.Children), b.Pos)
+	body, shortcuts, err := dialogChildren(b)
+	if err != nil {
+		return nil, nil, err
 	}
-	s := dialogSpec{body: b.Children[0], dim: true, align: widget.ButtonsCenter}
+	s := dialogSpec{body: body, dim: true, align: widget.ButtonsCenter, shortcuts: shortcuts}
 	var flags int64
 	consumed, err := readProps(b.Props, map[string]field{
 		"title":           into(&s.title, stringOf),
@@ -287,4 +301,26 @@ func cellsOf(v qml.SpecValue) (int, error) {
 		return 0, fmt.Errorf("want a whole number of cells, got %s (at %s)", v.Raw, v.Pos)
 	}
 	return int(n), nil
+}
+
+// dialogChildren takes a Dialog's children: exactly one CONTENT item, and any
+// number of Shortcuts — Qt's non-visual children, here keys that are live while
+// the dialog is open and the controls in it leave them.
+func dialogChildren(b Build) (tui.Component, []*shortcutNode, error) {
+	var body tui.Component
+	var shortcuts []*shortcutNode
+	n := 0
+	for _, c := range b.Children {
+		if sc, ok := c.(*shortcutNode); ok {
+			shortcuts = append(shortcuts, sc)
+			continue
+		}
+		body = c
+		n++
+	}
+	if n != 1 {
+		return nil, nil, fmt.Errorf("Dialog needs exactly 1 child, its content, got %d, besides its Shortcuts (at %s)",
+			n, b.Pos)
+	}
+	return body, shortcuts, nil
 }

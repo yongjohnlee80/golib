@@ -5,10 +5,13 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/decl/controls"
+	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 )
 
 // dialog_test.go covers what the Dialog vocabulary REFUSES. How a dialog
@@ -149,5 +152,60 @@ func TestADialogWidthIsAWholeNumberOfCells(t *testing.T) {
 	}
 	if _, err := mountDoc(t, "Window {\n Text { }\n Dialog { width: 40\n  Text { } }\n}"); err != nil {
 		t.Errorf("width: 40 was refused: %v", err)
+	}
+}
+
+// TestADialogsShortcutsAreLiveWhileItIsOpen: a Shortcut declared in a Dialog is
+// that dialog's key — it fires while the dialog is open, not after, and a
+// letter typed into a field inside it is the field's.
+func TestADialogsShortcutsAreLiveWhileItIsOpen(t *testing.T) {
+	var fired int
+	s := decltest.Run(t, 40, 10,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n Text { text: \"under\" }\n"+
+			" Dialog { id: d; title: \"V\"\n  Text { text: \"body\" }\n  Shortcut { sequence: \"y\"; onActivated: App.copy() } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.copy": func([]qml.SpecValue) error { fired++; return nil }}))
+	s.WaitForText(t, "under")
+	s.Keys(t, decltest.Rune('y'))
+	// Keys and posted work travel different lanes: give the key time to land.
+	time.Sleep(50 * time.Millisecond)
+	onScreenLoop(t, s, func() {})
+	if fired != 0 {
+		t.Fatal("a dialog's shortcut fired while the dialog was closed")
+	}
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "┌ V ")
+	s.Keys(t, decltest.Rune('y'))
+	time.Sleep(50 * time.Millisecond)
+	onScreenLoop(t, s, func() {})
+	if fired != 1 {
+		t.Fatalf("the dialog's shortcut fired %d times while open, want 1", fired)
+	}
+}
+
+// A letter typed into a field inside the dialog is the field's, not a Shortcut's.
+func TestAFieldInADialogKeepsTheLettersTypedIntoIt(t *testing.T) {
+	var fired int
+	s := decltest.Run(t, 40, 10,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n Text { text: \"under\" }\n"+
+			" Dialog { id: d; title: \"F\"\n  TextField { }\n  Shortcut { sequence: \"y\"; onActivated: App.copy() } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Types(controls.Types()...),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.copy": func([]qml.SpecValue) error { fired++; return nil }}))
+	s.WaitForText(t, "under")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "┌ F ")
+	s.Keys(t, decltest.Rune('y'))
+	s.WaitFor(t, "y in the field", func(sc string) bool { return strings.Contains(sc, "│ y") })
+	if fired != 0 {
+		t.Errorf("the shortcut took a letter typed into the dialog's field")
 	}
 }
