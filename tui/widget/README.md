@@ -37,6 +37,10 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `StatusBar`   | Chrome          | no             | —                                                      |
 | `ProgressBar` | Feedback        | no             | —                                                      |
 | `Text`        | Static Display  | no             | —                                                      |
+| `FileList`    | File Browsing   | yes (its list) | — (callbacks: `WithOnCursor`, `WithOnFile`)            |
+| `FilePreview` | File Viewing    | yes (scroll)   | —                                                      |
+| `FileOpenView`| Dialog Body     | its parts      | — (a `FileChooser`)                                    |
+| `FileSaveView`| Dialog Body     | its parts      | — (a `FileChooser`)                                    |
 
 Every bus event carries `Owner tui.NodeID` as its first field so subscribers can filter by source. Publication is enqueue-only onto the application loop.
 
@@ -194,6 +198,12 @@ list := widget.NewList(
     widget.WithEmptyText("No users found"),
 )
 ```
+
+The cursor row is a full-width bar, whether its look is a colour or a
+reversal. With two lists on screen, set `ListStyles.CursorBlurred`: the cursor
+of the list WITHOUT the keyboard takes it, so one bar is bright and the other
+dim. Unset, the cursor looks the same either way — which a list whose focus
+rests on a delegating wrapper needs, since it cannot see that focus.
 
 #### `Table[T]`
 
@@ -476,6 +486,16 @@ is a vertical menu again.
 ordinary layouts. `MenuItemModel` is inert data a `Menu` owns; `MenuItem` is a
 node, so the runtime arms it and it emits `tui.ControlActivatedEvent`.
 
+**Hotkey look.** A row's mnemonic is underlined by default. `MenuStyle.WithHotkey`
+gives it a look of its own — the red access keys of a 1990s IDE — merged over
+the row's, so a coloured hotkey keeps the selected row's background:
+
+```go
+st := widget.NewMenuStyle(surface, selected).
+    WithHotkey(style.New().Foreground(style.RGB(0xaa, 0, 0)).Underline(true))
+menu := widget.NewMenu(widget.WithMenuStyle(st))
+```
+
 #### `Modal`
 
 The composed dialog. `Modal` fills its host, traps focus, and places a card
@@ -495,6 +515,13 @@ dlg := widget.NewModal(widget.NewText("Save your changes?"),
 
 if err := dlg.Open(host); err != nil { /* … */ } // loop goroutine
 ```
+
+**Structure.** `WithModalRule(true)` draws a line across the card between the
+message and the buttons, joined to the frame. `WithModalFooter(text)` puts a
+faded help line under the buttons, and `SetFooter` changes it — for a dialog
+whose keys depend on where the keyboard is inside it. The buttons stay the
+card's, so their mnemonics keep working; `WithButtonAlign(widget.ButtonsRight)`
+moves them to the right.
 
 **Lifecycle.** `Open` mounts the dialog on top and moves focus into it *before
 returning*, so no input reaches the covered UI in between. Reopening an open
@@ -582,6 +609,43 @@ host.Attach(modal)
 // Display modal:
 modal.Show() // Esc dismisses and restores previous focus
 ```
+
+### File widgets
+
+Composed, not written once per dialog, and PLATFORM-INDEPENDENT — they reach
+files only through `io/fs`:
+
+| widget | is |
+| --- | --- |
+| `FileList` | the base: a folder, `..` first, then folders, then files; Enter goes into a folder |
+| `FilePreview` | a file's text, framed and read-only — a tab stop the keyboard scrolls through |
+| `FileOpenView` | a `FileList`, with a `FilePreview` beside it unless `WithFileViewPreview(false)` |
+| `FileSaveView` | a name field over a `FileOpenView` — the same listing, not a second one |
+
+```go
+view := widget.NewFileOpenView(
+    widget.WithFileViewSource(widget.LocalFiles()),       // or any fs.FS
+    widget.WithFileViewDir("/home/me/notes"),
+    widget.WithOnChoose(func() { open(view.Selected()) }),
+)
+```
+
+Both views are a `FileChooser` — `Confirm`, `Selected`, `Dir`/`SetDir`,
+`Select`, `FocusInitial`, `Hint` — which is all a dialog needs of either.
+`Confirm` is the one decision: a folder is not a choice, and confirming one
+goes into it.
+
+A **`FileSource`** is an `fs.FS` and the root its paths are written under: `"/"`
+for `LocalFiles()`, `"sftp://host/"` for a remote store. Every path the widgets
+report or accept is in that rooted form, so a local view hands a host an
+ordinary absolute path. `FilePaneStyles` dresses every pane alike: the surface,
+the list cursor bright (`Cursor`) and dim (`CursorBlurred`), the frame without and
+with the keyboard, and the `Gap` between panes, which takes the colour of what
+holds them.
+
+Styled after autodb's workspace modal: each pane framed and padded, its title
+elided from the LEFT (the end of a path tells folders apart), and the frame lit
+while the keyboard is inside it.
 
 ### Application Chrome & Indicators
 

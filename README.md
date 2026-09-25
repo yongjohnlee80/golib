@@ -46,6 +46,12 @@ go get github.com/yongjohnlee80/golib
 | [`server/ws`](server/ws/README.md) | WebSocket transport — endpoints as ordinary routes on the HTTP core | [README](server/ws/README.md) |
 | [`server/rpc`](server/rpc/README.md) | RPC transport core over a pluggable wire codec: bounded dispatch, gate hook, polite drain | [README](server/rpc/README.md) |
 | [`server/rpc/msgpackrpc`](server/rpc/msgpackrpc/README.md) | msgpack-RPC wire codec — the framing Neovim's `sockconnect` speaks natively | [README](server/rpc/msgpackrpc/README.md) |
+| [`parse`](parse/README.md) | A streaming lexer core, plus the scanner and positions golib's hand-written parsers share | [README](parse/README.md) |
+| [`parse/js`](parse/js/README.md) | The C-family expression and statement grammar, dialects as data, embeddable | [README](parse/js/README.md) |
+| [`parse/qml`](parse/qml/README.md) | A faithful QML parser into a plain data tree | [README](parse/qml/README.md) |
+| [`parse/sql`](parse/sql/README.md) | SQL dialects as values, over the streaming lexer | [README](parse/sql/README.md) |
+| [`decl`](decl/README.md) | Instantiate a declarative (QML) UI through an adapter — identity, reloads, bindings, modules, signals | [README](decl/README.md) |
+| [`tui/decl`](tui/decl/README.md) | golib/tui screens written in QML: the vocabulary, themes, dialogs, your own widgets, `NewProgram` | [README](tui/decl/README.md) · [USAGE](tui/decl/USAGE.md) |
 | [`tui`](tui/README.md) | Cell-buffer terminal UI: component tree, constraint layout, focus routing, async tasks, and a widget set (vim Editor, lazy Tree, Table, Split, Float…) | [README](tui/README.md) · [TUTORIAL](tui/tutorial/README.md) |
 
 ### tui
@@ -73,6 +79,16 @@ with the mistake that cost an afternoon. Design records live in
 [scored incident register](docs/tui/incident-register-2026-08-autodb-m6.md)
 of every defect a real consumer hit and how each was fixed.
 → [tui/README.md](tui/README.md)
+
+### tui/decl — QML screens
+
+Write a golib/tui screen in QML and keep the Go for behaviour. `NewProgram`
+builds the whole app in one call; a theme is a QML file the layout imports, so
+switching theme is one line; dialogs, file dialogs (over any `fs.FS`, remote
+included) and component files are QML; your own Go widgets join the vocabulary
+as one `tuidecl.Type` each. The [editor-qml example](tui/examples/editor-qml/README.md)
+is a complete text editor built this way.
+→ [tui/decl/README.md](tui/decl/README.md) · [USAGE.md](tui/decl/USAGE.md)
 
 ### threadsafe
 
