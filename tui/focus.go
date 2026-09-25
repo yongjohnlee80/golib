@@ -101,6 +101,7 @@ func (a *App) setFocus(id NodeID) {
 	}
 	old := a.focused
 	a.focused = id
+	a.pendingFocusInto = 0 // focus moved: a deferred FocusInto is answered, or overtaken
 	a.trace(TraceEvent{Kind: TraceFocus, Node: id, Prev: old})
 	if on := a.nodes[old]; on != nil {
 		a.bubble(on, FocusEvent{Gained: false})
@@ -589,6 +590,15 @@ func (a *App) FocusInto(comp Component) bool {
 	}
 	target := a.focusTargetIn(n)
 	if target == nil {
+		// Shown in this very turn — its pane made visible a moment ago —
+		// and not laid out yet: focus it once it is, as Qt's
+		// forceActiveFocus takes an item that is being shown. A hidden
+		// subtree is not deferred; it takes none.
+		if a.unplacedTargetIn(n) {
+			a.pendingFocusInto = n.id
+			a.layoutDirty = true
+			a.queue.wakeUp()
+		}
 		return false
 	}
 	a.requestFocus(target)
@@ -611,6 +621,33 @@ func (a *App) FocusWithin(comp Component) bool {
 		}
 	}
 	return false
+}
+
+// unplacedTargetIn reports whether n's subtree holds a component that takes
+// focus now and is kept from it only by not having been laid out yet: mounted,
+// accepting, and under no hidden ancestor.
+func (a *App) unplacedTargetIn(n *node) bool {
+	for p := n; p != nil; p = p.parent {
+		if hidden(p.comp) {
+			return false
+		}
+	}
+	var walk func(n *node) bool
+	walk = func(n *node) bool {
+		if hidden(n.comp) {
+			return false
+		}
+		if f, ok := n.comp.(Focusable); ok && f.AcceptsFocus() && n.mounted {
+			return true
+		}
+		for _, ch := range n.children {
+			if walk(ch) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(n)
 }
 
 // HoldsFocusable is Context.HoldsFocusable for a caller holding the App. It
