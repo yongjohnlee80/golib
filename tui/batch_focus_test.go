@@ -319,6 +319,10 @@ func TestForwardActionCarriesRuntimeProvenanceAndRefusesOutsideAHandler(t *testi
 	if child.activations.Load() != 1 {
 		t.Fatalf("child activated %d times, want 1", child.activations.Load())
 	}
+	// The bus handler appends on the loop goroutine, so the events are read
+	// there too — a copy taken on the loop, as the harness does for any
+	// loop-owned state. Reading the slice from this goroutine was a data race.
+	h.onLoop(func() { events = append([]ControlActivatedEvent(nil), events...) })
 	if len(events) != 1 {
 		t.Fatalf("%d ControlActivatedEvent, want exactly 1; a direct Activate call "+
 			"runs the callback but publishes nothing", len(events))
