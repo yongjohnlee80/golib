@@ -29,6 +29,16 @@ Theme {
         base: "#0000aa"; text: "#ffff55"
         highlight: "#00aaaa"; highlightedText: "#000000"
     }
+    // Syntax colours — KSyntaxHighlighting's styles, bound by the editor's
+    // SyntaxHighlighter. On the document's CGA blue.
+    syntax {
+        keyword: "#ffffff"; controlFlow: "#ffffff"
+        dataType: "#55ff55"; attribute: "#55ffff"; function: "#ffff55"
+        string: "#ff55ff"; specialChar: "#ff5555"
+        decVal: "#55ffff"; float: "#55ffff"; baseN: "#55ffff"; constant: "#55ffff"
+        comment: "#aaaaaa"; alert: "#ff5555"
+        import: "#55ff55"; operator: "#aaaaaa"
+    }
     status {
         window: "#aaaaaa"; windowText: "#000000"
     }

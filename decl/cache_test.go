@@ -265,3 +265,54 @@ func TestARestoredModuleKeepsItsSourcesWhereTheyMoved(t *testing.T) {
 		t.Fatalf("after the restore Status.line = %+v (%v), want moved", v, ok)
 	}
 }
+
+// TestSwitchingAnImportForAnotherIsAReload: the document swaps one offered
+// module for another that exports the same name — one theme for another. The
+// old one is dropped, so the new one's exports do not collide with it, and a
+// line written the same now reads the new value.
+func TestSwitchingAnImportForAnotherIsAReload(t *testing.T) {
+	dark := &themeFile{values: map[string]string{"title": "dark"}}
+	light := &themeFile{values: map[string]string{"title": "light"}}
+	rec := newReactor()
+	tr := decl.New(rec)
+	_ = tr.OfferModule("theme.dark", "", dark.loader())
+	_ = tr.OfferModule("theme.light", "", light.loader())
+	doc := func(theme string) string { return "import " + theme + "\nText { id: a; text: Theme.title }" }
+	if err := tr.Mount(mustSpec(t, doc("theme.dark"))); err != nil {
+		t.Fatal(err)
+	}
+	rec.trace = nil
+	if _, err := tr.Reconcile(mustSpec(t, doc("theme.light"))); err != nil {
+		t.Fatalf("switching the theme import: %v", err)
+	}
+	a, _ := tr.NodeByID("a")
+	if got := strings.Join(rec.trace, "\n"); got != fmt.Sprintf("apply %d text=string(light) from-schema", a) {
+		t.Fatalf("after the switch:\n%s", got)
+	}
+	// And back: the dropped module loads again.
+	rec.trace = nil
+	if _, err := tr.Reconcile(mustSpec(t, doc("theme.dark"))); err != nil || !strings.Contains(strings.Join(rec.trace, "\n"), "text=string(dark)") {
+		t.Fatalf("switching back: %v\n%s", err, strings.Join(rec.trace, "\n"))
+	}
+}
+
+// TestARefusedSwitchPutsTheDroppedModuleBack: the new document is refused
+// after the old module was dropped; the live tree must still resolve it.
+func TestARefusedSwitchPutsTheDroppedModuleBack(t *testing.T) {
+	f := &themeFile{values: map[string]string{"title": "T"}}
+	other := &themeFile{values: map[string]string{}} // lacks Theme.title
+	rec := newReactor()
+	tr := decl.New(rec)
+	_ = tr.OfferModule("theme", "", f.loader())
+	_ = tr.OfferModule("theme.other", "", other.loader())
+	_ = tr.DeclareSource("s", sv("1"))
+	_ = tr.DeclareFunc("join", func(a []qml.SpecValue) (qml.SpecValue, error) { return sv(a[0].Raw + a[1].Raw), nil })
+	if err := tr.Mount(mustSpec(t, liveDoc)); err != nil {
+		t.Fatal(err)
+	}
+	refused := strings.Replace(liveDoc, "import theme\n", "import theme.other\n", 1)
+	if _, err := tr.Reconcile(mustSpec(t, refused)); err == nil {
+		t.Fatal("a theme without Theme.title was accepted")
+	}
+	resolvesTheme(t, tr, rec, "2", "2T")
+}

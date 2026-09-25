@@ -28,6 +28,7 @@ func appTypes() []Type {
 	return []Type{
 		{Name: "Window", Build: buildWindow},
 		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame},
+		{Name: "SyntaxHighlighter", Build: buildSyntaxHighlighter, Setters: syntaxSetters()},
 		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
@@ -132,6 +133,10 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	highlighters, err := editorChildren(b)
+	if err != nil {
+		return nil, nil, err
+	}
 	modeChanged := b.Emitter("modeChanged")
 	opts := []widget.EditorOption{
 		widget.WithOnModeChange(func(widget.EditorMode) { modeChanged() }),
@@ -141,7 +146,11 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 	if wrap {
 		opts = append(opts, widget.WithEditorWrap(widget.WrapSoft))
 	}
-	return widget.NewEditor(opts...), consumed, nil
+	e := widget.NewEditor(opts...)
+	for _, h := range highlighters {
+		h.attach(e)
+	}
+	return e, consumed, nil
 }
 
 // ---------------------------------------------------------------- StatusBar

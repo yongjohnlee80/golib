@@ -16,6 +16,7 @@ below is a trimmed piece of it.
 5. [File dialogs, local or remote](#5-file-dialogs-local-or-remote)
 6. [Your own Go widgets in QML](#6-your-own-go-widgets-in-qml)
 7. [A QML screen inside a Go program](#7-a-qml-screen-inside-a-go-program)
+   - [7b. Syntax highlighting](#7b-syntax-highlighting)
 8. [Reloading](#8-reloading)
 9. [Using both safely — the rules](#9-using-both-safely--the-rules)
 10. [Best practice](#10-best-practice)
@@ -442,6 +443,34 @@ closes on its buttons, letters and Escape, and hands the keyboard back to the Go
 widget that had it — the runtime restores the focus a modal took. A document may
 be nothing but dialogs; they are opened, never laid out. Under a QML `Window`,
 dialogs open on the Window's own host whatever the adapter was given.
+
+## 7b. Syntax highlighting
+
+Put a `SyntaxHighlighter` in the Editor, name a definition, and bind the
+styles you colour to the theme:
+
+```qml
+Editor {
+    SyntaxHighlighter {
+        definition: App.syntax
+        theme.keyword: Theme.syntax.keyword
+        theme.string: Theme.syntax.string
+        theme.comment: Theme.syntax.comment
+    }
+}
+```
+
+- **The host decides the definition.** `App.syntax` from the file's extension
+  — QML for `.qml`, `""` otherwise; the document cannot say "if".
+- **A new language is a registration, nothing else**: implement
+  `highlight.Highlighter` and pass `Highlighters(map[string]highlight.Highlighter{"SQL": sql})`.
+  A highlighter colours one line at a time and must never refuse (package
+  `highlight`); from a tree-sitter tree, `highlight.StyleForCapture` maps its
+  captures.
+- **Only what is seen is highlighted**: the Editor highlights down to the last
+  visible line, and again only a line whose text or starting state changed.
+- A style left unset paints as the Editor's text; set the ones your theme
+  distinguishes.
 
 ## 8. Reloading
 

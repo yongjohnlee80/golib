@@ -27,6 +27,17 @@ Theme {
         base: "default"; text: "default"
         highlight: "white"; highlightedText: "black"
     }
+    // Syntax colours — KSyntaxHighlighting's styles, bound by the editor's
+    // SyntaxHighlighter. Black and white has two colours, so the syntax is
+    // carried by brightness: comments dimmed, keywords bright.
+    syntax {
+        keyword: "brightwhite"; controlFlow: "brightwhite"
+        dataType: "default"; attribute: "default"; function: "default"
+        string: "default"; specialChar: "brightwhite"
+        decVal: "default"; float: "default"; baseN: "default"; constant: "brightwhite"
+        comment: "brightblack"; alert: "brightwhite"
+        import: "default"; operator: "default"
+    }
     status {
         window: "white"; windowText: "black"
     }

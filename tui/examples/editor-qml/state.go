@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -22,7 +23,8 @@ func (h *Host) state(path string) map[string]any {
 		// Where the file dialogs open: the current file's folder.
 		"App.folder": folderOf(path),
 		// The file being edited, absolute, "" for none: where Save As starts.
-		"App.path": absPath(path),
+		"App.path":   absPath(path),
+		"App.syntax": syntaxFor(path),
 		// The quit dialog's question. A source, so the dialog says when there
 		// is something to lose without the host reaching into it.
 		"App.quitQuestion": quitQuestion(false),
@@ -90,6 +92,20 @@ func (h *Host) setPath(path string) error {
 	return h.p.SetMany(map[string]any{
 		"App.folder": folderOf(path),
 		"App.path":   absPath(path),
+		"App.syntax": syntaxFor(path),
 		"App.status": displayPath(path),
 	})
+}
+
+// syntaxFor is the highlighter a file's extension calls for: the vocabulary's
+// QML definition for a .qml or .js file, none for anything else. The host
+// decides it — the document cannot say "if".
+func syntaxFor(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".qml":
+		return "QML"
+	case ".js", ".mjs":
+		return "JavaScript"
+	}
+	return ""
 }

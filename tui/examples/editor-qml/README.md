@@ -22,6 +22,7 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
 - **Help > About.**
 - **A command prompt** — `Ctrl+P` or File > Command: `w`, `q`, `wq`,
   `e <file>`, as vim's `:` line.
+- **Syntax highlighting** for `.qml` and `.js` files, in the theme's colours.
 - A status line: the mode, the file or the last message, and a clock.
 - Keys: `Ctrl+S` save, `Ctrl+Shift+S` save as (where the terminal can report
   it), `Ctrl+P` the prompt, `Ctrl+Q` quit, `F10` or `Alt`+underlined letter
@@ -71,6 +72,9 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
 - **One options function builds everything.** `Host.options` is the whole
   program; `main` builds from it (`New`), `decltest.Check` lints it, and every
   test runs it (`decltest.RunWith`). A program assembled twice is two programs.
+- **Highlighting is Go's; choosing and colouring it is QML's.** The Editor holds
+  a `SyntaxHighlighter { definition: App.syntax … }`; the host sets `App.syntax`
+  from the file's extension; each theme has a `syntax` group.
 - **Develop with `-dev`.** The QML is read from disk and followed: save
   `editor.qml`, a theme or a dialog and the running editor shows it, keeping
   what is typed. A refused edit shows in the status line and the screen stays.

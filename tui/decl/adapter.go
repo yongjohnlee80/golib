@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"sort"
 	"strings"
@@ -74,8 +75,10 @@ type Adapter struct {
 	signals   map[string]map[string][]string
 	files     widget.FileSource
 	overlay   *widget.OverlayHost
-	destroyed map[string]func(tui.Component)
-	sink      func(error)
+	// highlighters are the syntax definitions a SyntaxHighlighter may name.
+	highlighters map[string]highlight.Highlighter
+	destroyed    map[string]func(tui.Component)
+	sink         func(error)
 
 	// pal is the palette tree, and restylers each type's way of wearing an
 	// effective palette. See propagate.go.
@@ -189,16 +192,17 @@ func New(reg *Registry, opts ...Option) *Adapter {
 		panic("tui/decl.New: registry is nil")
 	}
 	a := &Adapter{
-		reg:       reg,
-		nodes:     map[decl.NodeID]built{},
-		setters:   map[string]map[string]Setter{},
-		ctorProps: map[string]map[string]bool{},
-		methods:   map[string]map[string]Method{},
-		signals:   map[string]map[string][]string{},
-		destroyed: map[string]func(tui.Component){},
-		pal:       map[decl.NodeID]*palNode{},
-		restylers: map[string]restyler{},
-		kids:      map[decl.NodeID][]decl.NodeID{},
+		reg:          reg,
+		nodes:        map[decl.NodeID]built{},
+		setters:      map[string]map[string]Setter{},
+		ctorProps:    map[string]map[string]bool{},
+		methods:      map[string]map[string]Method{},
+		signals:      map[string]map[string][]string{},
+		destroyed:    map[string]func(tui.Component){},
+		pal:          map[decl.NodeID]*palNode{},
+		restylers:    map[string]restyler{},
+		kids:         map[decl.NodeID][]decl.NodeID{},
+		highlighters: stdHighlighters(),
 	}
 	for _, o := range opts {
 		o(a)
@@ -240,6 +244,14 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	}
 
 	children := make([]tui.Component, 0, len(c.Children))
+	if c.Type != "Editor" {
+		for _, id := range c.Children {
+			if _, ok := a.nodes[id].comp.(*syntaxNode); ok {
+				return nil, fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and %s is not one (at %s)",
+					c.Type, c.Pos)
+			}
+		}
+	}
 	childAttached := make([]map[string]qml.SpecValue, 0, len(c.Children))
 	var childNominee tui.Component
 	for _, id := range c.Children {
@@ -297,6 +309,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		Files:         a.files,
 		sink:          a.sink,
 		Overlay:       a.overlay,
+		highlighters:  a.highlighters,
 		asked:         asked,
 	})
 	if err != nil {
