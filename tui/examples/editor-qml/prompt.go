@@ -6,7 +6,7 @@ import (
 
 // THE COMMAND PROMPT — what `onAccepted: App.runCommand(text)` runs.
 //
-// The document owns the prompt: a Popup holding a TextField, opened by Ctrl+P
+// The document owns the prompt: a Dialog holding a TextField, opened by Ctrl+P
 // or File > Command. The host owns what a command DOES — the same commands the
 // menu and the keys reach, so a command is one more way in, not a second
 // implementation:
@@ -16,10 +16,14 @@ import (
 //	wq         save, then quit once the file is written
 //	e <file>   open a file (refused over unsaved changes)
 //
-// The prompt closes when a command has run; one it does not know is reported
-// in the status line.
+// The prompt closes BEFORE the command runs: a command may open a dialog of
+// its own — the quit question, Save As — and closing the prompt after would
+// hand the keyboard back past it. One it does not know is reported in the
+// status line.
 func (h *Host) runCommand(line string) error {
-	defer func() { _ = h.p.Call("prompt", "close") }()
+	if err := h.p.Call("prompt", "close"); err != nil {
+		return err
+	}
 	cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
 	arg = strings.TrimSpace(arg)
 	switch {

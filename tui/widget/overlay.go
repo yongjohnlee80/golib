@@ -445,10 +445,11 @@ func (h *OverlayHost) TopModal() *Modal {
 // tie-break: a dialog's affirmative action is where a user expects to land, and
 // choosing it only when nothing else qualified would make the preference depend
 // on button order. Failing that, the first enabled button; failing that, the
-// Modal itself, which is the target of last resort that keeps Escape reachable.
+// body's first focusable control; failing that, the Modal itself, which is the
+// target of last resort that keeps Escape reachable.
 func (m *Modal) focusInitial() {
-	// InitialFocus always nominates — a button, or failing that the Modal node
-	// itself — so there is no "no nomination" case to handle here. Guarding for
+	// InitialFocus always nominates — a button, a control, or failing those
+	// the Modal node itself — so there is no "no nomination" case to handle here. Guarding for
 	// one would be a branch nothing can reach.
 	target, _ := m.InitialFocus()
 	if ctx := m.Context(); ctx != nil {

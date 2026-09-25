@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// prompt_test.go runs the command prompt — a Popup holding a TextField, from
+// prompt_test.go runs the command prompt — a Dialog holding a TextField, from
 // golib's tui/decl/controls — the way a user does: Ctrl+P, a command, Enter.
 
 // command opens the prompt, types line and runs it.
@@ -61,11 +61,50 @@ func TestThePromptReportsWhatItDoesNotKnowAndStartsEmpty(t *testing.T) {
 	r := start(t, "")
 	r.command(t, "frob")
 	r.waitFor(t, "the refusal", func(s string) bool { return strings.Contains(s, "not a command: frob") })
-	// The placeholder shows only while the field is empty.
 	r.key(t, ctrl('p'))
-	r.waitFor(t, "an empty prompt", func(s string) bool {
-		return strings.Contains(s, "┌ Command ") && strings.Contains(s, "w  q  wq  e <file>")
-	})
+	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ Command ") })
+	x, y := r.field(t)
+	if got := strings.TrimRight(string([]rune(r.rows()[y])[x:x+10]), " "); got != "" {
+		t.Errorf("the reopened prompt holds %q, want it empty", got)
+	}
+}
+
+// field is where the prompt's field starts: inside the card's border and
+// padding, on its first row.
+func (r *running) field(t *testing.T) (x, y int) {
+	t.Helper()
+	top := rowOf(r.rows(), "┌ Command ")
+	if top < 0 {
+		t.Fatalf("no prompt on screen:\n%s", strings.Join(r.rows(), "\n"))
+	}
+	return r.labelAt(t, top, "┌ Command ") + 2, top + 2
+}
+
+// TestThePromptIsANarrowCardWithItsHelpUnderARule: the prompt is as wide as
+// its `width` says, not the screen, and its help line sits under a rule, as
+// the About dialog's does.
+func TestThePromptIsANarrowCardWithItsHelpUnderARule(t *testing.T) {
+	r := startSized(t, "", 100, 30)
+	r.key(t, ctrl('p'))
+	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ Command ") })
+	rows := r.rows()
+	top := rowOf(rows, "┌ Command ")
+	row := []rune(rows[top])
+	left := r.labelAt(t, top, "┌ Command ")
+	right := left
+	for right < len(row) && row[right] != '┐' {
+		right++
+	}
+	if w := right - left + 1; w != 48 {
+		t.Errorf("the prompt is %d wide, want its width, 48:\n%s", w, strings.Join(rows, "\n"))
+	}
+	help := rowOf(rows, "Enter runs")
+	if help < 0 || help-2 < 0 || !strings.Contains(rows[help-2], "├") {
+		t.Errorf("the help line is not under a rule:\n%s", strings.Join(rows, "\n"))
+	}
+	if _, y := r.field(t); y >= help-2 {
+		t.Errorf("the field (row %d) is not above the rule (row %d)", y, help-2)
+	}
 }
 
 // TestThePromptWearsTheInheritedPalette: the prompt names no colour. Its
@@ -75,8 +114,7 @@ func TestThePromptWearsTheInheritedPalette(t *testing.T) {
 	r := start(t, "")
 	r.key(t, ctrl('p'))
 	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ Command ") })
-	y := rowOf(r.rows(), "w  q  wq")
-	x := r.labelAt(t, y, "w  q  wq")
+	x, y := r.field(t)
 	if bg := r.cell(t, x, y).BG; bg != cgaBlue {
 		t.Errorf("the prompt's field: bg %+v, want the inherited base %+v", bg, cgaBlue)
 	}

@@ -138,3 +138,16 @@ func TestAttachedAndFocusPropertiesRebuildWhenTheyChange(t *testing.T) {
 		t.Fatalf("moving the bar's edge did not rebuild it (node %d → %d, rebuilt %v)", before, after, res.Rebuilt)
 	}
 }
+
+// TestADialogWidthIsAWholeNumberOfCells: Qt's Popup.width, in cells.
+func TestADialogWidthIsAWholeNumberOfCells(t *testing.T) {
+	for _, v := range []string{`-1`, `2.5`, `"wide"`} {
+		_, err := mountDoc(t, "Window {\n Text { }\n Dialog { width: "+v+"\n  Text { } }\n}")
+		if err == nil {
+			t.Errorf("width: %s was accepted", v)
+		}
+	}
+	if _, err := mountDoc(t, "Window {\n Text { }\n Dialog { width: 40\n  Text { } }\n}"); err != nil {
+		t.Errorf("width: 40 was refused: %v", err)
+	}
+}

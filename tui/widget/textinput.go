@@ -509,6 +509,9 @@ func (t *TextInput) Render(s tui.Surface) {
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
+	// The field paints its whole box, as a Qt field does, not only the cells
+	// its text covers: an empty field on a card is still a field.
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", t.styles.Text)
 	if len(t.cs) == 0 {
 		if t.placeholder != "" {
 			drawText(s, 0, 0, truncate(t.placeholder, sz.W, s.StringWidth), t.styles.Placeholder)
