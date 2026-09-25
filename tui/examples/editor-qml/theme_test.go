@@ -147,7 +147,7 @@ func TestSwitchingToMonoIsTheImportLineAlone(t *testing.T) {
 // ambiguity, and it is reported rather than resolved by whichever came last.
 func TestImportingBothThemesIsRefused(t *testing.T) {
 	src := withImport(t, retroImport+"\nimport editor.theme.mono 1.0")
-	_, _, err := New(Options{Schedule: func(func()) {}, Layout: src})
+	_, err := New(Options{Layout: src})
 	if !errors.Is(err, decl.ErrDuplicateExport) {
 		t.Fatalf("err = %v, want ErrDuplicateExport", err)
 	}

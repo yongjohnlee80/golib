@@ -23,13 +23,6 @@ type clock struct {
 	stop    chan struct{}
 }
 
-// startClock subscribes the tree to the clock. Its ticks come from its own
-// goroutine and reach the tree through the scheduler the tree was built with.
-func (h *Host) startClock(now func() time.Time, tick time.Duration) error {
-	h.clock = newClock(now, tick)
-	return h.tree.Subscribe(h.clock)
-}
-
 func newClock(now func() time.Time, tick time.Duration) *clock {
 	if now == nil {
 		now = time.Now
@@ -41,7 +34,7 @@ func newClock(now func() time.Time, tick time.Duration) *clock {
 }
 
 func (c *clock) value() map[string]qml.SpecValue {
-	return map[string]qml.SpecValue{"App.clock": str(c.now().Format("15:04:05"))}
+	return map[string]qml.SpecValue{"App.clock": {Kind: qml.SpecValueString, Raw: c.now().Format("15:04:05")}}
 }
 
 func (c *clock) next() uint64 {

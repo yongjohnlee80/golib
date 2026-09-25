@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,7 +23,7 @@ var fixedNow = func() time.Time { return time.Date(2026, 9, 25, 8, 3, 0, 0, time
 type running struct {
 	host *Host
 	be   *tui.TestBackend
-	app  *tui.App
+	// quit is closed when Run returns.
 	quit chan struct{}
 }
 
@@ -47,36 +47,41 @@ func startSized(t *testing.T, path string, w, h int) *running {
 
 func startWith(t *testing.T, path string, src []byte, w, h int) *running {
 	t.Helper()
-	r := &running{quit: make(chan struct{})}
-	var app atomic.Pointer[tui.App]
-	host, root, err := New(Options{
-		Path:     path,
-		Schedule: scheduleOn(&app),
-		Sink:     func(err error) { t.Errorf("handler error: %v", err) },
-		Quit:     func() { close(r.quit) },
-		Now:      fixedNow,
-		Tick:     time.Hour, // no tick during a test unless one asks for it
-		Layout:   src,
-	})
+	return startOpts(t, Options{Path: path, Layout: src, Now: fixedNow, Tick: time.Hour}, w, h)
+}
+
+// startOpts runs the editor as main does — one Program, Run until it quits —
+// on a test backend of the given size. The clock does not tick during a test
+// unless its Options ask it to.
+func startOpts(t *testing.T, opt Options, w, h int) *running {
+	t.Helper()
+	r := &running{quit: make(chan struct{}), be: tui.NewTestBackend(w, h)}
+	opt.Sink = func(err error) { t.Errorf("handler error: %v", err) }
+	opt.App = []tui.AppOption{tui.WithBackend(r.be), tui.WithMinFrameInterval(0)}
+	host, err := New(opt)
 	if err != nil {
 		t.Fatalf("editor.qml did not mount: %v", err)
 	}
 	r.host = host
-	r.be = tui.NewTestBackend(w, h)
-	a := tui.NewApp(root, tui.WithBackend(r.be), tui.WithMinFrameInterval(0))
-	app.Store(a)
-	r.app = a
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- a.Run(ctx) }()
+	go func() {
+		// QUITTING IS RUN RETURNING: App.quit ends the Program, and nothing
+		// else in the test ends it before the cleanup does.
+		err := host.Run(ctx)
+		close(r.quit)
+		done <- err
+	}()
 	t.Cleanup(func() {
 		cancel()
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				t.Errorf("Run: %v", err)
+			}
 		case <-time.After(3 * time.Second):
 			t.Error("the app did not stop")
 		}
-		_ = host.Close()
 	})
 	r.waitFor(t, "the first frame", func(s string) bool { return strings.Contains(s, "NORMAL") })
 	return r
@@ -182,7 +187,6 @@ func TestTheModeReachesTheStatusLine(t *testing.T) {
 // The assertion is on a time that is NOT the one the first frame showed, so a
 // clock that never ticked cannot pass it.
 func TestTheClockTicksThroughTheProvider(t *testing.T) {
-	var app atomic.Pointer[tui.App]
 	var mu sync.Mutex
 	calls := 0
 	now := func() time.Time {
@@ -191,39 +195,10 @@ func TestTheClockTicksThroughTheProvider(t *testing.T) {
 		calls++
 		return fixedNow().Add(time.Duration(calls-1) * time.Minute)
 	}
-	host, root, err := New(Options{
-		Schedule: scheduleOn(&app),
-		Sink:     func(err error) { t.Errorf("handler error: %v", err) },
-		Quit:     func() {},
-		Now:      now,
-		Tick:     10 * time.Millisecond,
-	})
-	if err != nil {
-		t.Fatalf("mount: %v", err)
-	}
-	be := tui.NewTestBackend(80, 14)
-	a := tui.NewApp(root, tui.WithBackend(be), tui.WithMinFrameInterval(0))
-	app.Store(a)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- a.Run(ctx) }()
-	defer func() { cancel(); <-done; _ = host.Close() }()
-
-	r := &running{host: host, be: be, app: a}
+	r := startOpts(t, Options{Now: now, Tick: 10 * time.Millisecond}, 80, 14)
 	r.waitFor(t, "a tick past the first frame", func(s string) bool {
 		return strings.Contains(s, "08:04:00") || strings.Contains(s, "08:05:00")
 	})
-}
-
-// scheduleOn schedules onto an App that may not exist yet. A tick that arrives
-// before it does is dropped — the next one carries a newer value anyway — rather
-// than dereferencing a nil App from the ticker's goroutine.
-func scheduleOn(app *atomic.Pointer[tui.App]) func(func()) {
-	return func(fn func()) {
-		if a := app.Load(); a != nil {
-			a.Update(fn)
-		}
-	}
 }
 
 func lastNonEmpty(rows []string) string {

@@ -1,12 +1,10 @@
 package main
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"time"
 
-	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -28,28 +26,20 @@ import (
 //	files.go     reading and writing the buffer's file
 //	clock.go     the provider behind App.clock
 type Host struct {
-	tree    *decl.Tree
-	adapter *tuidecl.Adapter
-	editor  *widget.Editor
+	p      *tuidecl.Program
+	editor *widget.Editor
 
 	path  string
 	dirty bool
-	quit  func()
-
-	clock *clock
 }
 
 // Options are what New needs from the program around it.
 type Options struct {
 	// Path is the file to open, or "" for an unnamed buffer.
 	Path string
-	// Schedule puts work on the goroutine that owns the UI — tui.App.Update.
-	// The clock ticks from its own goroutine and must not touch the tree there.
-	Schedule func(func())
 	// Sink receives errors from handlers, which have no caller to return to.
+	// Nil keeps them, and Run returns them when it ends.
 	Sink func(error)
-	// Quit ends the program.
-	Quit func()
 	// Now is the clock's source of time; nil means time.Now. A test fixes it.
 	Now func() time.Time
 	// Tick is how often the clock advances; zero means a second.
@@ -57,60 +47,46 @@ type Options struct {
 	// Layout replaces editor.qml; nil means the embedded one. A test uses it to
 	// run the same screen under the other theme's import line.
 	Layout []byte
+	// App are options for the tui.App: the backend, above all.
+	App []tui.AppOption
 }
 
-// New mounts editor.qml and returns the host and the component to run.
+// New mounts editor.qml. Nothing runs until Run.
 //
-// Everything the document may reach is registered BEFORE the mount — modules,
-// state, the clock, commands — because the engine checks a document against a
-// fixed set of names, and refuses one that names anything missing.
-func New(opt Options) (*Host, tui.Component, error) {
-	h := &Host{path: opt.Path, quit: opt.Quit}
-	h.adapter = tuidecl.New(tuidecl.StdRegistry(),
-		append(tuidecl.StdProperties(), tuidecl.WithErrorSink(opt.Sink))...)
-	h.tree = decl.New(h.adapter,
-		decl.WithScheduler(opt.Schedule),
-		decl.WithProviderErrorSink(opt.Sink))
-
-	for _, step := range []func() error{
-		h.declareModules,
-		func() error { return h.injectState(opt.Path) },
-		func() error { return h.startClock(opt.Now, opt.Tick) },
-		h.injectCommands,
-		func() error { return h.mount(opt.Layout) },
-		func() error { return h.load(opt.Path) },
-	} {
-		if err := step(); err != nil {
-			return nil, nil, err
-		}
-	}
-	root, _ := h.adapter.Component(h.tree.Root())
-	return h, root, nil
-}
-
-// Close stops the clock and releases the tree.
-func (h *Host) Close() error { return h.tree.Destroy() }
-
-// mount parses the layout, mounts it, and finds the one widget the host
-// reaches into: the editor, by the id the document gave it.
-func (h *Host) mount(src []byte) error {
+// The whole program is one tuidecl.NewProgram: the modules the document may
+// import, the state it reads, the commands it invokes, the clock, the layout.
+func New(opt Options) (*Host, error) {
+	h := &Host{path: opt.Path}
+	src := opt.Layout
 	if src == nil {
 		src = layout
 	}
-	spec, err := qml.QML{File: "editor.qml"}.Parse(src)
+	opts := append(h.modules(),
+		tuidecl.LayoutSource("editor.qml", src),
+		tuidecl.Sources(h.state(opt.Path)),
+		tuidecl.Handlers(h.commands()),
+		tuidecl.Providers(newClock(opt.Now, opt.Tick)),
+		tuidecl.AppOptions(opt.App...),
+	)
+	if opt.Sink != nil {
+		opts = append(opts, tuidecl.ErrorSink(opt.Sink))
+	}
+	p, err := tuidecl.NewProgram(opts...)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := h.tree.Mount(spec); err != nil {
-		return err
+	h.p = p
+	// The one widget the host reaches into: the editor, by the id the
+	// document gave it.
+	var ok bool
+	if h.editor, ok = tuidecl.FindAs[*widget.Editor](p, "editor"); !ok {
+		return nil, errors.New("editor.qml declares no Editor with id: editor")
 	}
-	id, ok := h.tree.NodeByID("editor")
-	if !ok {
-		return errors.New("editor.qml declares no node with id: editor")
+	if err := h.load(opt.Path); err != nil {
+		return nil, err
 	}
-	comp, _ := h.adapter.Component(id)
-	if h.editor, ok = tuidecl.EditorOf(comp); !ok {
-		return fmt.Errorf("editor.qml: id editor is not an Editor")
-	}
-	return nil
+	return h, nil
 }
+
+// Run runs the editor until it quits or ctx ends, and releases it.
+func (h *Host) Run(ctx context.Context) error { return h.p.Run(ctx) }
