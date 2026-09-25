@@ -63,6 +63,15 @@ var WaitTimeout = 3 * time.Second
 // cancellation that ended it.
 func Run(t testing.TB, width, height int, opts ...tuidecl.ProgramOption) *Screen {
 	t.Helper()
+	return RunWith(t, width, height, nil, opts...)
+}
+
+// RunWith is Run with a setup step between building the program and running
+// it — where a program's own main binds its host to the Program (finds the
+// widgets it reaches into, loads a file) before the first frame. Setup runs
+// before Run, so it may touch widgets directly; its error fails the test.
+func RunWith(t testing.TB, width, height int, setup func(*tuidecl.Program) error, opts ...tuidecl.ProgramOption) *Screen {
+	t.Helper()
 	s := &Screen{Backend: tui.NewTestBackend(width, height), quit: make(chan struct{})}
 	all := append([]tuidecl.ProgramOption{
 		tuidecl.ErrorSink(func(err error) { t.Errorf("handler error: %v", err) }),
@@ -73,6 +82,11 @@ func Run(t testing.TB, width, height int, opts ...tuidecl.ProgramOption) *Screen
 		t.Fatalf("the program did not mount: %v", err)
 	}
 	s.Program = p
+	if setup != nil {
+		if err := setup(p); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {

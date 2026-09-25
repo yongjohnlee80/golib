@@ -8,12 +8,6 @@ Dialog {
     title: "About"
     standardButtons: Dialog.Ok
     helpText: "Enter or Esc to close"
-    palette.window: Theme.dialog.window
-    palette.windowText: Theme.dialog.windowText
-    palette.button: Theme.dialog.button
-    palette.buttonText: Theme.dialog.buttonText
-    palette.highlight: Theme.dialog.highlight
-    palette.highlightedText: Theme.dialog.highlightedText
 
     // On the card's colours, which it inherits — no palette of its own.
     Text {

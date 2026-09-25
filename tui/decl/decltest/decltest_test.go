@@ -2,6 +2,7 @@ package decltest_test
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -160,4 +161,46 @@ func TestQuitClosesWhenTheProgramStops(t *testing.T) {
 	case <-time.After(decltest.WaitTimeout):
 		t.Fatal("the program did not stop")
 	}
+}
+
+// TestRunWithSetsUpBeforeTheFirstFrame: setup runs after the program is built
+// and before it runs, so the first frame already shows what it did.
+func TestRunWithSetsUpBeforeTheFirstFrame(t *testing.T) {
+	var frames []string
+	s := decltest.RunWith(t, 40, 5, func(p *tuidecl.Program) error {
+		return p.Set("App.greeting", "set up")
+	}, options(files, nil)...)
+	s.WaitFor(t, "the first frame", func(sc string) bool {
+		frames = append(frames, sc)
+		return strings.TrimSpace(sc) != ""
+	})
+	if strings.Contains(frames[len(frames)-1], "waiting") {
+		t.Fatalf("the first frame was painted before setup:\n%s", frames[len(frames)-1])
+	}
+	s.WaitForText(t, "set up")
+}
+
+func TestRunWithFailsTheTestOnASetupError(t *testing.T) {
+	r := &fatalRecorder{T: t}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		decltest.RunWith(r, 40, 5, func(*tuidecl.Program) error { return fmt.Errorf("no editor") }, options(files, nil)...)
+	}()
+	<-done
+	if !strings.Contains(r.fatal, "setup: no editor") {
+		t.Fatalf("fatal = %q", r.fatal)
+	}
+}
+
+// fatalRecorder keeps a Fatalf and stops the goroutine that called it, as a
+// real test's Fatalf would.
+type fatalRecorder struct {
+	*testing.T
+	fatal string
+}
+
+func (r *fatalRecorder) Fatalf(format string, args ...any) {
+	r.fatal = fmt.Sprintf(format, args...)
+	runtime.Goexit()
 }

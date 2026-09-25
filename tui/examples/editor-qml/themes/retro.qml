@@ -32,7 +32,9 @@ Theme {
     status {
         window: "#aaaaaa"; windowText: "#000000"
     }
-    dialog {
+    // The APPLICATION palette: the Window sets it, and every surface that does
+    // not set its own inherits it — the dialogs, their panes, the prompt.
+    app {
         window: "#aaaaaa"; windowText: "#000000"
         button: "#00aa00"; buttonText: "#000000"
         highlight: "#00aa00"; highlightedText: "#ffffff"   // the focused button, and list row

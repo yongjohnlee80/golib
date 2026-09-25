@@ -27,6 +27,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -45,6 +46,7 @@ var EchoMode = tuidecl.Enum{Scope: "TextInput", Values: []string{"Normal", "Pass
 //	text             the value; set it, bind it — typing does not write back
 //	placeholderText  shown while the value is empty
 //	echoMode         TextInput.Normal or TextInput.Password
+//	clear()          empty it
 //	accepted(text)   Enter
 //	textEdited(text) every edit the user makes
 //
@@ -60,10 +62,20 @@ var TextField = tuidecl.Type{
 	Setters: map[string]tuidecl.Setter{
 		"text": tuidecl.StringSetter((*widget.TextInput).SetValue),
 	},
+	Methods: map[string]tuidecl.Method{
+		// Qt's TextField.clear(): empty the field — a prompt starting over.
+		"clear": tuidecl.NoArgMethod(func(t *widget.TextInput) error { t.SetValue(""); return nil }),
+	},
 	Signals: map[string][]string{"accepted": {"text"}, "textEdited": {"text"}},
 	Enums:   []tuidecl.Enum{EchoMode},
 	Restyle: func(c tui.Component, p tuidecl.Palette) {
+		// The placeholder sits on the field's base too, as in Qt; its own
+		// muted foreground stays golib's.
+		base, _ := p.Color(tuidecl.RoleBase)
 		st := widget.TextInputStyles{Text: p.Look(tuidecl.RoleBase, tuidecl.RoleText)}
+		if _, ok := p.Color(tuidecl.RoleBase); ok {
+			st.Placeholder = style.New().Background(base)
+		}
 		if _, ok := p.Color(tuidecl.RoleHighlight); ok {
 			st.Selection = p.Look(tuidecl.RoleHighlight, tuidecl.RoleHighlightedText).Reverse(false)
 		}

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +9,8 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
+	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 )
 
 // app_test.go runs editor.qml on a real backend. Every assertion is about what
@@ -20,11 +20,16 @@ import (
 
 var fixedNow = func() time.Time { return time.Date(2026, 9, 25, 8, 3, 0, 0, time.UTC) }
 
+// running is the editor under test: its host, and the decltest Screen it runs
+// on. The helpers below are the example's own vocabulary — "key", "waitFor",
+// "rows" — over decltest's.
 type running struct {
-	host *Host
-	be   *tui.TestBackend
-	// quit is closed when Run returns.
-	quit chan struct{}
+	host   *Host
+	s      *decltest.Screen
+	be     *tui.TestBackend
+	quit   <-chan struct{}
+	width  int
+	height int
 }
 
 func start(t *testing.T, path string) *running {
@@ -50,70 +55,37 @@ func startWith(t *testing.T, path string, src []byte, w, h int) *running {
 	return startOpts(t, Options{Path: path, Layout: src, Now: fixedNow, Tick: time.Hour}, w, h)
 }
 
-// startOpts runs the editor as main does — one Program, Run until it quits —
-// on a test backend of the given size. The clock does not tick during a test
-// unless its Options ask it to.
+// startOpts runs the editor from the SAME options main builds it from —
+// Host.options — through decltest.RunWith, which runs it on a test backend,
+// fails the test on a handler error, and stops it when the test ends. The
+// clock does not tick during a test unless its Options ask it to.
 func startOpts(t *testing.T, opt Options, w, h int) *running {
 	t.Helper()
-	r := &running{quit: make(chan struct{}), be: tui.NewTestBackend(w, h)}
-	if opt.Sink == nil {
-		opt.Sink = func(err error) { t.Errorf("handler error: %v", err) }
-	}
-	opt.App = []tui.AppOption{tui.WithBackend(r.be), tui.WithMinFrameInterval(0)}
-	host, err := New(opt)
-	if err != nil {
-		t.Fatalf("editor.qml did not mount: %v", err)
-	}
-	r.host = host
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		// QUITTING IS RUN RETURNING: App.quit ends the Program, and nothing
-		// else in the test ends it before the cleanup does.
-		err := host.Run(ctx)
-		close(r.quit)
-		done <- err
-	}()
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case err := <-done:
-			if err != nil && !errors.Is(err, context.Canceled) {
-				t.Errorf("Run: %v", err)
-			}
-		case <-time.After(3 * time.Second):
-			t.Error("the app did not stop")
-		}
-	})
-	r.waitFor(t, "the first frame", func(s string) bool { return strings.Contains(s, "NORMAL") })
+	host := newHost(opt)
+	// As main does: build, attach the host (find the editor, load the file),
+	// THEN run — so the first frame is the loaded one.
+	s := decltest.RunWith(t, w, h, func(p *tuidecl.Program) error { return host.attach(p, opt.Path) },
+		host.options(opt)...)
+	r := &running{host: host, s: s, be: s.Backend, quit: s.Quit(), width: w, height: h}
+	r.waitFor(t, "the first frame", func(sc string) bool { return strings.Contains(sc, "NORMAL") })
 	return r
 }
 
-func (r *running) screen() string { return r.be.String() }
+func (r *running) screen() string { return r.s.String() }
 
 func (r *running) rows() []string { return strings.Split(r.screen(), "\n") }
 
 func (r *running) waitFor(t *testing.T, what string, cond func(string) bool) {
 	t.Helper()
-	for range 300 {
-		if cond(r.screen()) {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatalf("%s never appeared:\n%s", what, r.screen())
+	r.s.WaitFor(t, what, cond)
 }
 
 func (r *running) key(t *testing.T, evs ...tui.Event) {
 	t.Helper()
-	if err := r.be.Inject(evs...); err != nil {
-		t.Fatalf("inject: %v", err)
-	}
+	r.s.Keys(t, evs...)
 }
 
-func runeKey(ch rune) tui.KeyEvent {
-	return tui.KeyEvent{Kind: tui.KeyPress, Code: ch, Base: ch, Text: string(ch)}
-}
+func runeKey(ch rune) tui.KeyEvent { return decltest.Rune(ch) }
 
 // TestTheLayoutMatchesTheEditor is the screenshot, asserted: the menu bar on
 // the top row with Help at the far end, the frame in the middle, and the three
@@ -299,8 +271,8 @@ func rowOf(rows []string, label string) int {
 	return -1
 }
 
-func ctrl(ch rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code: ch, Mods: tui.ModCtrl} }
-func alt(ch rune) tui.KeyEvent  { return tui.KeyEvent{Kind: tui.KeyPress, Code: ch, Mods: tui.ModAlt} }
+func ctrl(ch rune) tui.KeyEvent { return decltest.Ctrl(ch) }
+func alt(ch rune) tui.KeyEvent  { return decltest.Alt(ch) }
 
 // TestCtrlQAsksBeforeQuitting — the Shortcut opens the quit dialog, and only
 // its answer quits.

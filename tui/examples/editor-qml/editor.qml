@@ -6,6 +6,13 @@
 // the widgets here bind their palette roles to whichever one is imported.
 // Switching theme is the third import line and nothing else.
 //
+// A palette is set ONCE, where it starts. Roles propagate from parent to
+// child, as Qt's do: the Window carries the application palette, a surface
+// that is a distinct part of the design (the menu bar, the document, the
+// status line) overrides only its own roles, and everything else — every
+// dialog, its panes and buttons, the command prompt — inherits and names no
+// colour at all.
+//
 // It mirrors github.com/yongjohnlee80/editor, which builds the same screen in
 // Go: a menu bar, a boxed vim-style editor, and a three-part status line.
 
@@ -15,6 +22,20 @@ import editor.theme.retro 1.0   // the Theme singleton — or editor.theme.mono
 import editor.dialogs 1.0       // QuitDialog, AboutDialog, OpenDialog, SaveDialog
 
 Window {
+    // ---- the application palette ----------------------------------------
+    palette.window: Theme.app.window
+    palette.windowText: Theme.app.windowText
+    palette.button: Theme.app.button
+    palette.buttonText: Theme.app.buttonText
+    palette.highlight: Theme.app.highlight
+    palette.highlightedText: Theme.app.highlightedText
+    palette.base: Theme.app.base
+    palette.text: Theme.app.text
+    palette.inactive.highlight: Theme.app.inactive.highlight
+    palette.inactive.highlightedText: Theme.app.inactive.highlightedText
+    palette.mid: Theme.app.mid
+    palette.light: Theme.app.light
+
     // ---- keys -----------------------------------------------------------
     //
     // Qt's own Shortcut type. They fire whichever widget holds focus, because
@@ -26,12 +47,17 @@ Window {
     // Where the terminal can report Shift with Ctrl — the kitty keyboard
     // protocol. Elsewhere it arrives as Ctrl+S, and the menu is the way in.
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: saveDialog.open() }
+    // The command prompt, as vim's `:` is — on a key the editor does not
+    // type, since a Shortcut fires whatever mode the editor is in.
+    Shortcut { sequence: "Ctrl+P"; onActivated: prompt.open() }
 
     // ---- the menu bar ---------------------------------------------------
     //
     // `Dock.edge` is an ATTACHED property: written here, read by the Window
     // that docks this bar. Change Tui.Top to Tui.Bottom and the bar moves and
     // its dropdowns open upwards; nothing else in the file changes.
+    //
+    // It overrides the roles it wears: a menu bar is its own strip of colour.
     MenuBar {
         Dock.edge: Tui.Top
         vimNavigation: true
@@ -50,6 +76,7 @@ Window {
             MenuItem { text: "&Save"; onTriggered: App.saveFile() }
             // Save As ALWAYS asks, so the document opens the dialog itself.
             MenuItem { text: "Save &As…"; onTriggered: saveDialog.open() }
+            MenuItem { text: "&Command…"; onTriggered: prompt.open() }
             MenuItem { text: "E&xit"; onTriggered: quitDialog.open() }
         }
 
@@ -84,7 +111,9 @@ Window {
 
     // ---- the document ---------------------------------------------------
     //
-    // No Dock.edge, so it fills whatever the bars leave.
+    // No Dock.edge, so it fills whatever the bars leave. The frame and the
+    // text inside it are the document's colours, not the application's, so
+    // both say so.
     Frame {
         palette.window: Theme.frame.window
         palette.windowText: Theme.frame.windowText
@@ -115,11 +144,32 @@ Window {
         right: App.clock
     }
 
+    // ---- the command prompt ---------------------------------------------
+    //
+    // Qt Quick Controls' Popup and TextField (golib's tui/decl/controls): a
+    // modal Popup takes the keyboard while open and gives it back when
+    // closed; Escape closes it. It names no colour — the frame wears the
+    // application palette, the field its panes' base, both inherited.
+    Popup {
+        id: prompt
+        modal: true
+        onOpened: command.clear()
+        Frame {
+            title: "Command"
+            TextField {
+                id: command
+                placeholderText: "w  q  wq  e <file>"
+                onAccepted: App.runCommand(text)
+            }
+        }
+    }
+
     // ---- dialogs --------------------------------------------------------
     //
     // Each is its own file under dialogs/, a type named for the file, brought
     // in by `import editor.dialogs`. They open by id from a handler —
-    // quitDialog.open() — and close themselves.
+    // quitDialog.open() — and close themselves. None names a colour: each
+    // inherits the Window's application palette.
     QuitDialog { id: quitDialog }
     AboutDialog { id: aboutDialog }
     OpenDialog { id: openDialog }

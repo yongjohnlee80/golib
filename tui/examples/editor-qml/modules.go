@@ -5,6 +5,7 @@ import (
 	"io/fs"
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/decl/controls"
 )
 
 // THE QML THIS PROGRAM SHIPS, and the modules a document imports it through.
@@ -53,5 +54,8 @@ func (h *Host) modulesFrom(themes, dialogs fs.FS) []tuidecl.ProgramOption {
 		tuidecl.Singleton("editor", moduleVersion, "App"),
 		tuidecl.Themes(themes, "themes", "editor.theme", moduleVersion),
 		tuidecl.Components(dialogs, "dialogs", "editor.dialogs", moduleVersion),
+		// TextField and Popup, for the command prompt: Qt Quick Controls'
+		// types, from golib — added the way any program adds widgets of its own.
+		tuidecl.Types(controls.Types()...),
 	}
 }
