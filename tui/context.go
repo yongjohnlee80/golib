@@ -104,21 +104,7 @@ func (c *Context) FocusComponent(comp Component) bool {
 // whatever its focusable part is. A hidden subtree, or one a focus trap keeps
 // out, takes none. Returns whether focus is now within comp. Loop goroutine
 // only.
-func (c *Context) FocusInto(comp Component) bool {
-	if comp == nil {
-		return false
-	}
-	n := c.app.byComp[comp]
-	if n == nil {
-		return false // not mounted
-	}
-	target := c.app.focusTargetIn(n)
-	if target == nil {
-		return false
-	}
-	c.app.requestFocus(target)
-	return c.FocusWithin(comp)
-}
+func (c *Context) FocusInto(comp Component) bool { return c.app.FocusInto(comp) }
 
 // HoldsFocusable reports whether comp, or anything under it, takes focus BY
 // DESIGN — implements Focusable — whatever it accepts right now. It is the
@@ -127,8 +113,8 @@ func (c *Context) FocusInto(comp Component) bool {
 // focus one is an error, where a disabled button or a hidden pane is only not
 // focusable NOW. False when comp is not mounted.
 func (c *Context) HoldsFocusable(comp Component) bool {
-	n := c.app.byComp[comp]
-	return n != nil && holdsFocusable(n)
+	holds, _ := c.app.HoldsFocusable(comp)
+	return holds
 }
 
 // Focused reports whether this node currently holds focus.

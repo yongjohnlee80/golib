@@ -207,7 +207,10 @@ func (sl *SearchableList[T]) FocusTarget() tui.Component { return sl.list }
    focus trap keeps out takes none. Ask `ctx.HoldsFocusable(comp)` first when
    "nothing here takes focus" is a mistake rather than a state: it reports
    whether anything under comp implements `tui.Focusable` at all — by design,
-   not whether it accepts focus now.
+   not whether it accepts focus now. A caller holding the App rather than a
+   mounted Context (a declarative layer over the tree) has the same two as
+   `App.FocusInto` and `App.HoldsFocusable`; the latter also says whether
+   comp is mounted.
 
 ### B. Event Forwarding vs Bubbling
 

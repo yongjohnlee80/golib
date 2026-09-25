@@ -589,6 +589,41 @@ func (a *App) nominatedFocus(scope *node) (target *node, retryAfterLayout bool) 
 	return n, false
 }
 
+// FocusInto is Context.FocusInto for a caller holding the App rather than a
+// mounted component's Context — a declarative layer over the tree, say. Loop
+// goroutine only.
+func (a *App) FocusInto(comp Component) bool {
+	if comp == nil {
+		return false
+	}
+	n := a.byComp[comp]
+	if n == nil {
+		return false // not mounted
+	}
+	target := a.focusTargetIn(n)
+	if target == nil {
+		return false
+	}
+	a.requestFocus(target)
+	for p := a.nodes[a.focused]; p != nil; p = p.parent {
+		if p == n {
+			return true
+		}
+	}
+	return false
+}
+
+// HoldsFocusable is Context.HoldsFocusable for a caller holding the App. It
+// also reports whether comp is mounted: "holds none" is only an answer about
+// a component that is. Loop goroutine only.
+func (a *App) HoldsFocusable(comp Component) (holds, mounted bool) {
+	n := a.byComp[comp]
+	if n == nil {
+		return false, false
+	}
+	return holdsFocusable(n), true
+}
+
 // holdsFocusable reports whether n or a descendant implements Focusable.
 func holdsFocusable(n *node) bool {
 	if _, ok := n.comp.(Focusable); ok {

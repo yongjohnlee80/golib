@@ -57,6 +57,7 @@ type menuNode struct {
 
 func (*menuNode) Init(*tui.Context)               {}
 func (*menuNode) Layout(tui.Constraints) tui.Size { return tui.Size{} }
+func (*menuNode) declarationOnly()                {}
 func (*menuNode) Render(tui.Surface)              {}
 func (*menuNode) HandleEvent(tui.Event) bool      { return false }
 

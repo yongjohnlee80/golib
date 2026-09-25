@@ -159,10 +159,15 @@ Instantiator {
 `Item.forceActiveFocus()`: focus moves INTO it — the item itself when it takes
 focus, else its first focusable part — so a pane is focused by naming it:
 `explorer.forceActiveFocus()` in a handler, or `Program.Call("explorer",
-"forceActiveFocus")` from Go. An item that is **not focusable by design** —
-nothing in it takes focus at all: a `Text`, a `StatusBar`, a menu row — is
-refused as the document's mistake. One that could take focus but cannot now
-(hidden, disabled, behind an open dialog) is left as it is, as in Qt.
+"forceActiveFocus")` from Go. It reaches any component, a custom one
+included, through the program's own focus owner. A `Dialog` is focused as it
+is on screen: its modal, while it is open. An item that is **not focusable by
+design** is refused as the document's mistake: a declaration with nothing on
+screen (a menu row, a `Shortcut`, a `TableViewColumn`), or a mounted item
+nothing in which takes focus at all (a `Text`, a `StatusBar`). One that could
+take focus but cannot now is left as it is, as in Qt: hidden, disabled,
+behind an open dialog, or not on screen at the moment (a closed dialog's
+content).
 
 **Every element that takes a place on screen has `visible`** — Qt's
 `Item.visible`, a runtime property: hidden, it takes no space, is not painted

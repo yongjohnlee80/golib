@@ -277,6 +277,7 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 	}
 	p.cfg = c
 	app := tui.NewApp(p.root, c.appOpts...)
+	p.adapter.useApp(app)
 	// UNDER THE LOCK, all of it. A provider's goroutine is already running —
 	// it started during the mount — and reads p.app in schedule, so the
 	// assignment is a write it can race. And work scheduled before the App
