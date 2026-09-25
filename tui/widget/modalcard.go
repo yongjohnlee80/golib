@@ -205,16 +205,17 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	}
 	decoration := func() int { return padTop + padBottom + blankAbove + ruleRow + blankBelow + footBlank }
 
-	// THE MESSAGE BEFORE THE AIR AROUND IT. A card taller than the host gives
-	// up its blank rows — the padding, then the rule's margins, then the
-	// footer's — before any of the message: the message is what the dialog is
-	// for, and a squeezed card that kept its padding and lost the question
-	// asked nothing. The rule line, the buttons and the help line stay.
+	// THE QUESTION AND ITS ANSWERS BEFORE ANYTHING ELSE. A card taller than
+	// the host gives up rows before any of the message: its blank rows — the
+	// padding, then the rule's margins, then the footer's — then the rule line,
+	// then the help line. The message is what the dialog is for and the
+	// buttons are how it is answered; a squeezed card that kept its decoration
+	// and lost the question asked nothing.
 	bodyNat := 0
 	if c.body != nil {
 		bodyNat = ctx.LayoutChild(c.body, tui.Loose(tui.Size{W: inner.W, H: inner.H})).H
 	}
-	for _, row := range []*int{&padBottom, &padTop, &blankBelow, &blankAbove, &footBlank} {
+	for _, row := range []*int{&padBottom, &padTop, &blankBelow, &blankAbove, &footBlank, &ruleRow, &footLine} {
 		if bodyNat+btnH+footLine+decoration() <= inner.H {
 			break
 		}

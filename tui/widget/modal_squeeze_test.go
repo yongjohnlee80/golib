@@ -70,7 +70,10 @@ func TestACardWithRoomKeepsItsAir(t *testing.T) {
 // A squeezed card with a help line keeps its message, its buttons and its help
 // line, drawn on the row the layout gave it.
 func TestASqueezedCardKeepsItsHelpLine(t *testing.T) {
-	for _, h := range []int{9, 8, 7} {
+	// Down to 5 rows: there, room is left for one of the rule and the help line
+	// beside the message and the button, and the help line — information —
+	// outlasts the rule, which is decoration.
+	for _, h := range []int{9, 8, 7, 6, 5} {
 		yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
 		md := widget.NewModal(widget.NewText("Leave now?"), widget.WithModalTitle("quit?"),
 			widget.WithModalRule(true), widget.WithButtons(yes), widget.WithModalFooter("Esc closes"))
@@ -104,6 +107,33 @@ func TestASqueezedCardKeepsItsHelpLine(t *testing.T) {
 			if foot < 0 || foot != bottom-1 {
 				t.Errorf("h=%d: the help line is on row %d, the bottom border on %d; want it right above:\n%s", h, foot, bottom, scr)
 			}
+		}
+		hh.stop()
+	}
+}
+
+// At the very least — the border, one line of message, one row of buttons —
+// the rule and the help line give way too: decoration and help before the
+// question and its answers.
+func TestACardAtItsSmallestKeepsTheQuestionAndItsAnswers(t *testing.T) {
+	for _, footer := range []string{"", "Esc closes"} {
+		yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
+		opts := []widget.ModalOption{widget.WithModalRule(true), widget.WithButtons(yes)}
+		if footer != "" {
+			opts = append(opts, widget.WithModalFooter(footer))
+		}
+		md := widget.NewModal(widget.NewText("Leave now?"), opts...)
+		host := widget.NewOverlayHost(widget.NewText(""))
+		hh := startApp(t, host, 40, 4)
+		hh.onLoop(func() {
+			if err := md.Open(host); err != nil {
+				t.Fatal(err)
+			}
+		})
+		hh.settle()
+		scr := hh.grid()
+		if !strings.Contains(scr, "Leave now?") || !strings.Contains(scr, "Yes") {
+			t.Errorf("footer=%q, 4 rows: the message or the button was squeezed out:\n%s", footer, scr)
 		}
 		hh.stop()
 	}
