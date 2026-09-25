@@ -115,6 +115,11 @@ func TestW2ATextFieldIsTheTextInputOnBothPaths(t *testing.T) {
 	if got := rec.got("run")[0]; got != accepted()[0] || got != "hello" {
 		t.Errorf("accepted: QML %q, native %q, want hello", got, accepted()[0])
 	}
+	// The accept runs inside the key's handler, BEFORE the frame that paints
+	// the last keystroke: compare the rows once both screens show the text.
+	waitFor(t, "both screens painted", func() bool {
+		return strings.Contains(firstRow(s.String()), "hello") && strings.Contains(firstRow(be.String()), "hello")
+	})
 	if firstRow(s.String()) != firstRow(be.String()) {
 		t.Errorf("the rows differ:\nQML    %q\nnative %q", firstRow(s.String()), firstRow(be.String()))
 	}
