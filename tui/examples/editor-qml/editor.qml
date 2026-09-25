@@ -2,14 +2,16 @@
 //
 // This file describes structure only: what is on the screen, where it is
 // docked, and what each control does when used. It names no colour. How the
-// editor LOOKS is a separate concern, in its own importable module, so the
-// structure here and the theme can change independently.
+// editor LOOKS is a theme module — themes/mono.qml or themes/retro.qml — and
+// the widgets here bind their palette roles to whichever one is imported.
+// Switching theme is the third import line and nothing else.
 //
 // It mirrors github.com/yongjohnlee80/editor, which builds the same screen in
 // Go: a menu bar, a boxed vim-style editor, and a three-part status line.
 
 import tui 1.0      // the widget vocabulary, and the Tui singleton's enums
 import editor 1.0   // the App singleton: this program's state and commands
+import editor.theme.retro 1.0   // the Theme singleton — or editor.theme.mono
 
 Window {
     // ---- keys -----------------------------------------------------------
@@ -29,6 +31,11 @@ Window {
     MenuBar {
         Dock.edge: Tui.Top
         vimNavigation: true
+        palette.window: Theme.menu.window
+        palette.windowText: Theme.menu.windowText
+        palette.highlight: Theme.menu.highlight
+        palette.highlightedText: Theme.menu.highlightedText
+        palette.accent: Theme.menu.accent       // the access-key letter
 
         // `&` marks a mnemonic, exactly as in Qt: "&File" is the label File
         // with F as its hotkey, and "E&xit" underlines the x.
@@ -73,9 +80,17 @@ Window {
     //
     // No Dock.edge, so it fills whatever the bars leave.
     Frame {
+        palette.window: Theme.frame.window
+        palette.windowText: Theme.frame.windowText
+        palette.highlight: Theme.frame.highlight  // the border while focused
+
         Editor {
             id: editor
             focus: true
+            palette.base: Theme.editor.base
+            palette.text: Theme.editor.text
+            palette.highlight: Theme.editor.highlight
+            palette.highlightedText: Theme.editor.highlightedText
             // BOUND to a source: choosing a keymap in the menu changes
             // App.keyset, and the editor follows without the host reaching in.
             keyset: App.keyset
@@ -87,6 +102,8 @@ Window {
     // ---- the status line ------------------------------------------------
     StatusBar {
         Dock.edge: Tui.Bottom
+        palette.window: Theme.status.window
+        palette.windowText: Theme.status.windowText
         left: App.mode
         center: App.status
         right: App.clock
