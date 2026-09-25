@@ -39,8 +39,10 @@ const (
 //     remainders `(R * w_i) mod W_sum` (ties broken deterministically by lowest child index).
 //     This guarantees zero gaps and exact total sizing: `sum(assigned) == R` across
 //     all platforms and resolutions.
-//  3. Cross-Axis Stretch: All children receive the flex's cross-axis dimension as
-//     a tight constraint.
+//  3. Cross-Axis Stretch: when the flex's own cross axis is FIXED (a tight
+//     constraint — the screen, a split's pane, a frame), every child is stretched
+//     across it. When it is only bounded, the flex is as wide (or tall) as its
+//     widest child, as Qt's layouts are: a row of buttons in a column is one row.
 //
 // Weights live in an internal side table keyed by the Component value; unweighted
 // children have no entry. Remove cleans up the side table entry alongside the child.
@@ -48,6 +50,9 @@ type Flex struct {
 	MultiChild // order, mount mirror, Move/Children/Init
 	dir        Direction
 	weights    map[Component]int
+	// stretch is that the cross axis of the layout in progress is fixed, so
+	// children are stretched across it (Layout).
+	stretch bool
 }
 
 var _ Container = (*Flex)(nil)
@@ -86,9 +91,16 @@ func (f *Flex) Remove(child Component) {
 func (f *Flex) Layout(c Constraints) Size {
 	horiz := f.dir == Horizontal
 	mainMax, crossMax := c.MaxW, c.MaxH
+	crossTight := c.MinH == c.MaxH
 	if !horiz {
 		mainMax, crossMax = c.MaxH, c.MaxW
+		crossTight = c.MinW == c.MaxW
 	}
+	// STRETCH ONLY WHEN THE CROSS AXIS IS FIXED, as Qt's layouts do: a row
+	// offered "up to ten rows high" is as high as its tallest child, not ten.
+	// A parent that fixes the extent — the screen, a split's pane, a frame —
+	// still stretches its children across it.
+	f.stretch = crossTight && crossMax != Unbounded
 
 	sizes := make([]Size, f.Len())
 
@@ -178,7 +190,7 @@ func (f *Flex) Layout(c Constraints) Size {
 		mainSize = mainMax
 	}
 	crossSize := crossMax
-	if crossMax == Unbounded {
+	if !f.stretch {
 		crossSize = cross
 	}
 	if horiz {
@@ -189,15 +201,15 @@ func (f *Flex) Layout(c Constraints) Size {
 
 // childConstraints builds a child's constraints: main axis loose up to
 // avail (or tight when tightMain), cross axis tight to the flex's extent
-// (stretch) unless unbounded.
+// when that extent is fixed (stretch), else loose up to it.
 func (f *Flex) childConstraints(avail int, tightMain bool, crossMax int) Constraints {
 	mainMin := 0
 	if tightMain {
 		mainMin = avail
 	}
 	crossMin := 0
-	if crossMax != Unbounded {
-		crossMin = crossMax // tight cross: stretch
+	if f.stretch {
+		crossMin = crossMax // a fixed cross axis: stretch
 	}
 	if f.dir == Horizontal {
 		return Constraints{MinW: mainMin, MaxW: avail, MinH: crossMin, MaxH: crossMax}

@@ -110,6 +110,22 @@ case is its Shift, as in Qt: `"c"` or `"C"` is the key c, and `"Shift+C"` is the
 capital, whether a terminal delivers it as `C` or as Shift and c. With Ctrl or
 Alt, case is not relied on (`Ctrl+Q` matches however it arrives).
 
+**`Flex`** — Qt's `ColumnLayout` / `RowLayout`. Each child takes its own size,
+in order; a child marked `Layout.fillHeight: true` (in a column) or
+`Layout.fillWidth: true` (in a row) shares what the others leave. A view — a
+`ListView`, `TableView` or `TreeView` — is as tall as its content where nothing
+bounds it (a dialog sizes to a table's rows, squeezed to the screen), and fills
+what it is given otherwise, so a table followed by a row of buttons is written:
+
+```qml
+Flex { direction: Tui.Vertical
+    TableView { model: App.rows; Layout.fillHeight: true }
+    Flex { direction: Tui.Horizontal; Button { text: "&Add" } } }
+```
+
+A row or column is as wide across as its widest child unless its parent fixes
+that extent, when it stretches its children across it.
+
 **Models** — Qt's model/view. A host sets a `tuidecl.ListModel` (or its own
 `tuidecl.ItemModel`) as a source; `model: App.people` binds a view to it, and
 the view follows the model's changes itself — insert, remove, reset — with

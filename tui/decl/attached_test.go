@@ -52,8 +52,13 @@ func TestAnAttachedPropertyIsJudgedAgainstItsParentBeforeAnythingIsBuilt(t *test
 		},
 		{
 			name:    "a schema nobody declared",
+			src:     "import tui 1.0\nWindow {\n  Text { Grid.column: 1 }\n}",
+			wantMsg: `no attaching schema named "Grid"`,
+		},
+		{
+			name:    "Layout.* outside a Flex",
 			src:     "import tui 1.0\nWindow {\n  Text { Layout.fillWidth: true }\n}",
-			wantMsg: `no attaching schema named "Layout"`,
+			wantMsg: "does not read Layout.*",
 		},
 	}
 	for _, c := range cases {

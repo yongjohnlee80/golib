@@ -88,6 +88,10 @@ func registerStdAttached(r *Registry) {
 	// `DialogButtonBox.buttonRole` is written on a Button and read by its box.
 	RegisterAttached(r, "DialogButtonBox", "buttonRole")
 	Honour(r, "DialogButtonBox", "DialogButtonBox")
+	// `Layout.fillHeight` / `Layout.fillWidth` are written on a Flex's child —
+	// Qt's ColumnLayout / RowLayout — and read by the Flex.
+	RegisterAttached(r, "Layout", "fillHeight", "fillWidth")
+	Honour(r, "Flex", "Layout")
 }
 
 var dockEdges = enum[tui.DockEdge]{values: map[string]tui.DockEdge{
