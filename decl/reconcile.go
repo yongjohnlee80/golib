@@ -8,6 +8,22 @@ import (
 	"github.com/yongjohnlee80/golib/parse"
 )
 
+// Resetter is an OPTIONAL capability: Qt's RESET. A Q_PROPERTY may declare a
+// reset function, which returns the property to the value it has when nobody
+// set it — for a palette role, the one inherited from the parent. An adapter
+// implementing this is asked, when a reload REMOVES a property, whether it can
+// reset it; if so the node is patched in place and keeps its identity and
+// state, instead of being rebuilt because a setter cannot un-apply a value.
+//
+// A binding on the removed property is dropped as usual; Reset runs after that
+// and before the node's other changed properties are applied.
+type Resetter interface {
+	// Resettable reports whether a property of the type can be reset.
+	Resettable(typeName, prop string) bool
+	// Reset returns the node's property to its unset value.
+	Reset(node NodeID, prop string) error
+}
+
 // Restructurer is an OPTIONAL capability an [Adapter] may implement to let a
 // reconcile change a node's children after construction.
 //
@@ -154,6 +170,9 @@ type Result struct {
 	Moved int
 	// Applied counts property applications.
 	Applied int
+	// Reset counts properties a reload removed and the adapter reset in place
+	// ([Resetter]) instead of rebuilding their node.
+	Reset int
 	// Rebuilt lists every node that could not be patched in place.
 	Rebuilt []Rebuild
 	// RootReplaced reports that the root node itself was rebuilt, so the
@@ -377,6 +396,9 @@ type step struct {
 	// changed, which is the common case and the point of reconciling.
 	// Values here are TERMINAL: a binding has already been evaluated.
 	apply []qml.SpecProp
+	// reset are properties the new schema no longer declares, which the
+	// adapter resets instead of the node being rebuilt.
+	reset []string
 	// effective is the node's full property list with bindings evaluated, which
 	// is what the node records so the next reload compares like with like.
 	effective []qml.SpecProp
@@ -423,6 +445,7 @@ func (t *Tree) rebuildStep(s *step, reason string) (*step, error) {
 	s.rebuild = true
 	s.reason = reason
 	s.order, s.dropped, s.apply, s.handlers, s.rebind = nil, nil, nil, nil, false
+	s.reset = nil
 	return s, nil
 }
 
@@ -554,15 +577,21 @@ func (t *Tree) assess(oldID NodeID, sn *qml.SpecNode) (*step, error) {
 				"%q is taken at construction and has no setter, so changing it cannot be applied", p.Name))
 		}
 	}
-	// A property that disappears cannot be un-applied either: there is no
-	// "unset" in the seam, and the engine holds no default to restore.
-	// Iterating the node's own list rather than the map keeps the reported
-	// reason stable across runs.
+	// A property that disappears cannot be un-applied through a setter: the
+	// engine holds no default to restore. Unless the adapter can RESET it — Qt's
+	// RESET — the node is rebuilt. Iterating the node's own list rather than the
+	// map keeps the reported reason, and the reset order, stable across runs.
+	resetter, canReset := t.adapter.(Resetter)
 	for _, p := range n.declared {
-		if _, still := newProps[p.Name]; !still {
-			return t.rebuildStep(s, fmt.Sprintf(
-				"%q was removed, and a property cannot be un-applied through a setter", p.Name))
+		if _, still := newProps[p.Name]; still {
+			continue
 		}
+		if canReset && resetter.Resettable(sn.Type, p.Name) {
+			s.reset = append(s.reset, p.Name)
+			continue
+		}
+		return t.rebuildStep(s, fmt.Sprintf(
+			"%q was removed, and a property cannot be un-applied through a setter", p.Name))
 	}
 	// A signal that appears for the first time has no emitter on the built
 	// widget, and some widgets accept a callback only as a constructor option.
@@ -868,6 +897,17 @@ func (t *Tree) patch(s *step, parent NodeID, res *Result) (NodeID, error) {
 	// its registration and its cache, so a reload does not re-fire it.
 	if err := t.rebind(s); err != nil {
 		return NoNode, err
+	}
+	// Resets first: a removed property and a changed one are independent, and
+	// a reset that ran AFTER an application could undo what the adapter
+	// derives from both (a palette role inherited again, say).
+	for _, name := range s.reset {
+		t.mutated = true
+		if err := t.adapter.(Resetter).Reset(s.old, name); err != nil {
+			return NoNode, SchemaError{Op: "reset", Node: s.old, Detail: name, Pos: s.spec.Pos,
+				Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
+		}
+		res.Reset++
 	}
 	for _, p := range s.apply {
 		origin := FromSchema
