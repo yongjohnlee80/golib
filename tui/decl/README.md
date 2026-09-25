@@ -85,7 +85,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Dialog` | `dim`, `width`, `standardButtons`, `defaultButton`, palette | `title`, `helpText` | — | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
 | `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
 | `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
-| `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model` | `currentIndex`, `currentValue` | `activated(index)` | — |
+| `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
 | `TableView` | — | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `TableViewColumn` | `role`, `title`, `width` | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)` — an `Index` | `toggleExpanded(index)` |

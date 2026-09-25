@@ -94,6 +94,40 @@ func TestAComboBoxsCurrentValueIsReadByAHandler(t *testing.T) {
 	}
 }
 
+// A ComboBox's currentIndex is writable, as Qt's is: bound to a host source,
+// it chooses that row, and -1 — or a row the model does not have — chooses
+// none. A host sets it when the choices are filled after the ComboBox exists,
+// where Qt, too, leaves nothing chosen.
+func TestAComboBoxsCurrentIndexIsSetByItsBinding(t *testing.T) {
+	m, rec := people(), &recorder{}
+	s := decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			` ComboBox { id: who; model: App.people; textRole: "name"; valueRole: "id"; currentIndex: App.pick }`+"\n"+
+			` Shortcut { sequence: "Ctrl+G"; onActivated: App.use(who.currentValue) } }`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.people": m, "App.pick": 1}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.use": rec.handler}))
+	s.WaitForText(t, "bob")
+	read := func(n int) string {
+		s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: 'g', Mods: tui.ModCtrl})
+		s.WaitFor(t, "the read", func(string) bool { return len(rec.all()) == n })
+		return rec.all()[n-1].Raw
+	}
+	if got := read(1); got != "2" {
+		t.Errorf("currentIndex: 1 chose currentValue %q, want 2 (bob's id)", got)
+	}
+	for i, pick := range []int{-1, 7} {
+		onScreenLoop(t, s, func() {
+			if err := s.Program.Set("App.pick", pick); err != nil {
+				t.Error(err)
+			}
+		})
+		if got := read(2 + i); got != "" {
+			t.Errorf("currentIndex: %d chose currentValue %q, want none", pick, got)
+		}
+	}
+}
+
 // A model a view no longer shows has no subscriber left: replaced by a reload
 // that removes the view, or by another model.
 func TestAViewLeavesNoSubscriptionBehind(t *testing.T) {
