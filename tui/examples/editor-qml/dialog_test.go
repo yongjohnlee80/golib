@@ -180,6 +180,18 @@ func TestRetroDressesTheDialog(t *testing.T) {
 	})
 }
 
+// TestTheAboutTextWearsTheCardsColours: the About text names no colour; it
+// inherits the card's, as a Qt Item inherits its parent's palette.
+func TestTheAboutTextWearsTheCardsColours(t *testing.T) {
+	r := start(t, "")
+	r.key(t, alt('h'))
+	r.waitFor(t, "the Help dropdown", func(s string) bool { return strings.Contains(s, "About") })
+	r.clickLabel(t, rowOf(r.rows(), "About"), "About")
+	r.waitFor(t, "the About dialog", func(s string) bool { return strings.Contains(s, "┌ About ") })
+	row := rowOf(r.rows(), "A text editor")
+	r.expect(t, []look{{"the About text", r.labelAt(t, row, "A text") + 1, row, cgaBlack, cgaGrey}})
+}
+
 // TestTheLayoutsThemeImportDressesTheDialogFiles: the dialogs are separate
 // files that import nothing, so the ONE theme line in editor.qml reaches them.
 func TestTheLayoutsThemeImportDressesTheDialogFiles(t *testing.T) {

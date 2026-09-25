@@ -148,3 +148,17 @@ func TestTypeIsOneKeyPerRune(t *testing.T) {
 		t.Fatal("Alt and Ctrl are the same modifier")
 	}
 }
+
+// TestQuitClosesWhenTheProgramStops: App.quit ends the program, and the test
+// can wait for it.
+func TestQuitClosesWhenTheProgramStops(t *testing.T) {
+	var s *decltest.Screen
+	s = decltest.Run(t, 40, 5, options(files, func() error { s.Program.Quit(); return nil })...)
+	s.WaitForText(t, "waiting")
+	s.Keys(t, decltest.Ctrl('g'))
+	select {
+	case <-s.Quit():
+	case <-time.After(decltest.WaitTimeout):
+		t.Fatal("the program did not stop")
+	}
+}

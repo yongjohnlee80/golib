@@ -43,23 +43,28 @@ func TestAWrongColourIsRefusedAndSaysWhatIsAccepted(t *testing.T) {
 	}
 }
 
-// TestARoleAWidgetDoesNotTakeIsRefused: an accent on a status bar would be a
-// colour silently dropped, so it is refused rather than accepted and ignored.
-func TestARoleAWidgetDoesNotTakeIsRefused(t *testing.T) {
+// TestARoleIsAcceptedOnEveryTypeAndAMisspeltOneRefused: `palette` is on every
+// Qt Item, and a role a widget does not wear still reaches its children — an
+// accent on a Flex dresses the menus inside it (ADR-tui-0014 D2). What IS
+// refused is a role that does not exist, by name.
+func TestARoleIsAcceptedOnEveryTypeAndAMisspeltOneRefused(t *testing.T) {
 	for _, src := range []string{
 		`StatusBar { palette.accent: "red" }`,
-		`StatusBar { palette.base: "blue" }`,
+		"Flex { palette.window: \"blue\"\n Text { } }",
 		"Frame { palette.text: \"red\"\n Text { } }",
-		`Editor { palette.window: "blue" }`,
-		`StatusBar { palette.windw: "blue" }`,
 	} {
+		if _, err := mountDoc(t, src); err != nil {
+			t.Errorf("refused %s: %v", src, err)
+		}
+	}
+	for _, src := range []string{`StatusBar { palette.windw: "blue" }`, `Text { palette.inactive.window: "red" }`} {
 		_, err := mountDoc(t, src)
-		if err == nil {
-			t.Errorf("accepted: %s", src)
-			continue
+		if err == nil || !strings.Contains(err.Error(), "is not a palette role") {
+			t.Errorf("%s: err = %v, want the role refused by name", src, err)
 		}
-		if !strings.Contains(err.Error(), "palette.") {
-			t.Errorf("%s: refused for another reason: %v", src, err)
-		}
+	}
+	if _, err := mountDoc(t, `Text { palette.window: "nope" }`); err == nil ||
+		!strings.Contains(err.Error(), "palette.window") {
+		t.Errorf("a bad colour: err = %v", err)
 	}
 }

@@ -60,6 +60,7 @@ func (a *Adapter) InsertChild(parent, child decl.NodeID, at int) error {
 	if at < n {
 		c.Move(comp, at)
 	}
+	a.paletteAdopt(parent, child)
 	return nil
 }
 
@@ -70,6 +71,7 @@ func (a *Adapter) RemoveChild(parent, child decl.NodeID) error {
 		return err
 	}
 	c.Remove(comp)
+	a.paletteRelease(child)
 	return nil
 }
 
@@ -131,6 +133,9 @@ func countChildren(c tui.Container) int {
 // type changed, which are precisely the nodes a reload is about to build.
 func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 	if _, ok := a.setters[typeName][prop]; ok {
+		return decl.PropRuntime
+	}
+	if _, ok := paletteRoles[prop]; ok {
 		return decl.PropRuntime
 	}
 	if a.ctorProps[typeName][prop] {

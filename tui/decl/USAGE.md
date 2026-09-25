@@ -442,10 +442,10 @@ can share a screen; making them match is the program's job.
 - **Bind, don't push.** `left: App.mode` beats the host calling
   `statusBar.SetLeft` — the binding survives a reload, the call does not.
 - **A decision that needs "if" belongs to the host** (§4).
-- **Text on a coloured surface takes that surface's colours.** golib has no
-  transparent cell, so a `Text` inside a coloured `Dialog` binds
-  `palette.window` / `palette.windowText` too, or it sits in a strip of the
-  terminal's colour.
+- **Set a palette once, where it starts.** Roles propagate to children, so a
+  `Dialog`'s roles dress everything in its card; repeat a role on a child only
+  to make it differ. (golib has no transparent cell, so a `Text` paints its own
+  background — which is why it must inherit the card's, and now does.)
 - **`#rrggbb` for a theme that must look the same everywhere**; ANSI slot names
   for one that should follow the user's terminal palette.
 - **Offer, don't declare, what a document may not import** — forty dialogs cost

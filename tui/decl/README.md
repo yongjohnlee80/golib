@@ -151,8 +151,15 @@ MenuBar { palette.window: Theme.menu.window; palette.accent: Theme.menu.accent }
 | `inactive.highlight`, `inactive.highlightedText` | the selected row of a pane not in use | FileDialog |
 | `mid`, `light` | a pane's frame, without and with the keyboard | FileDialog |
 
-A role a type does not take is **refused**, not ignored. A declaration that
-sets no role keeps golib's own token-based look.
+**Roles propagate**, as Qt's do ("Items propagate explicit palette properties
+from parents to children"): a node wears its own roles over its parent's, nearest
+winning, so a `Text` in a coloured `Dialog` wears the card's colours without
+naming any. `palette` is on **every** type — a `Flex` can colour a subtree it
+paints nothing of — and each type wears the roles in its column above. A
+misspelt role is refused by name. Propagation is live: a role that changes (a
+binding, a reload) restyles what it reaches without rebuilding it, and a role a
+reload removes is reset, so the node inherits its parent's again. A document
+that sets no role keeps golib's own token-based look.
 
 Colours are ANSI slot names (`"blue"`, `"brightyellow"`, `"gray"`), `"#rrggbb"`,
 or `"default"` for the terminal's own. Slot names follow the user's terminal
