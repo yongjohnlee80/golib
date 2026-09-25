@@ -55,7 +55,15 @@ func sv(s string) qml.SpecValue {
 func tree(t *testing.T, rec *reactor, src string,
 	sources map[string]string, funcs map[string]decl.ValueFunc) *decl.Tree {
 	t.Helper()
-	tr := decl.New(rec)
+	return treeWith(t, rec, rec.recorder, src, sources, funcs)
+}
+
+// treeWith is tree for an adapter that wraps a reactor — one with an optional
+// capability added.
+func treeWith(t *testing.T, a decl.Adapter, rec *recorder, src string,
+	sources map[string]string, funcs map[string]decl.ValueFunc) *decl.Tree {
+	t.Helper()
+	tr := decl.New(a)
 	for n, v := range sources {
 		if err := tr.DeclareSource(n, sv(v)); err != nil {
 			t.Fatalf("DeclareSource %q: %v", n, err)
@@ -66,7 +74,7 @@ func tree(t *testing.T, rec *reactor, src string,
 			t.Fatalf("DeclareFunc %q: %v", n, err)
 		}
 	}
-	if err := tr.Mount(wiredSpec(t, tr, rec.recorder, src)); err != nil {
+	if err := tr.Mount(wiredSpec(t, tr, rec, src)); err != nil {
 		t.Fatalf("fixture mount: %v", err)
 	}
 	rec.trace = nil
