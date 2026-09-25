@@ -292,3 +292,36 @@ func TestOfferedAndDeclaredModulesShareOneNamespace(t *testing.T) {
 		t.Errorf("offering after Mount: err = %v, want ErrPhase", err)
 	}
 }
+
+// bareAdapter builds anything and offers no modules of its own.
+type bareAdapter struct{}
+
+func (bareAdapter) Create(decl.Construction) ([]string, error) { return nil, nil }
+func (bareAdapter) Apply(decl.Application) error                { return nil }
+func (bareAdapter) Destroy(decl.NodeID) error                   { return nil }
+
+// TestAnUnknownImportNamesWhatIsImportable: the diagnostic lists offered
+// modules as importable, whether loaded or not, and each once.
+func TestAnUnknownImportNamesWhatIsImportable(t *testing.T) {
+	tr := decl.New(bareAdapter{})
+	err := tr.Mount(qmlDoc(t, "import nosuch\nX { }"))
+	if !errors.Is(err, decl.ErrUndefinedModule) || !strings.Contains(err.Error(), "no modules at all") {
+		t.Fatalf("with nothing importable: err = %v, want it said", err)
+	}
+
+	tr, _, _, _ = themed(t)
+	err = tr.Mount(qmlDoc(t, "import nosuch\nText { }"))
+	for _, want := range []string{"theme.mono", "theme.retro", "tui"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want the importable %q named", err, want)
+		}
+	}
+	// Loaded, retro is a module AND an offer: named once, not twice.
+	if err := tr.Mount(qmlDoc(t, "import theme.retro 1.0\nText { text: Theme.menu.accent }")); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	_, err = tr.Reconcile(qmlDoc(t, "import theme.retro 1.0\nimport nosuch\nText { text: Theme.menu.accent }"))
+	if err == nil || strings.Count(err.Error(), "theme.retro") != 1 {
+		t.Fatalf("err = %v, want theme.retro named exactly once", err)
+	}
+}
