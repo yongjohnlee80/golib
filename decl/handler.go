@@ -73,12 +73,21 @@ func (t *Tree) compileHandler(node NodeID, h qml.SpecHandler) (boundHandler, err
 		}
 		ref := qml.SpecValue{Kind: qml.SpecValueRef, Raw: name,
 			Path: splitDots(name), Pos: e.Pos}
-		in, _, err := t.lookupRef(ref, node)
+		// A call through a document id — `quitDialog.open()` — is a METHOD of
+		// that node, not an injected handler.
+		fn, isMethod, err := t.methodCall(node, name, ref)
 		if err != nil {
 			return boundHandler{}, err
 		}
-		if ok, why := allowedIn(ctxHandler, in.Kind, true); !ok {
-			return boundHandler{}, t.refuse(node, ref, why)
+		if !isMethod {
+			in, _, err := t.lookupRef(ref, node)
+			if err != nil {
+				return boundHandler{}, err
+			}
+			if ok, why := allowedIn(ctxHandler, in.Kind, true); !ok {
+				return boundHandler{}, t.refuse(node, ref, why)
+			}
+			fn = in.Handle
 		}
 
 		// Arguments are VALUES wherever the call sits, so they resolve in the
@@ -100,7 +109,7 @@ func (t *Tree) compileHandler(node NodeID, h qml.SpecHandler) (boundHandler, err
 			}
 			argExprs = append(argExprs, av)
 		}
-		calls = append(calls, invocation{fn: in.Handle, argExprs: argExprs, name: name})
+		calls = append(calls, invocation{fn: fn, argExprs: argExprs, name: name})
 	}
 
 	label := calls[0].name

@@ -143,6 +143,10 @@ type imports struct {
 	// byQualifier maps a qualifier to its module: "T" -> "tui" after
 	// `import tui 1.0 as T`, which makes the exports reachable as `T.Tui`.
 	byQualifier map[string]string
+	// ids maps each id the document declares to its node's type, so a handler
+	// can call `quitDialog.open()`. They are in scope with the imports because
+	// they are names the document brought into scope, resolved the same way.
+	ids map[string]string
 }
 
 // resolveImports checks a schema's imports and returns what they bind.

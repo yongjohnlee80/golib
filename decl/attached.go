@@ -97,6 +97,14 @@ func (t *Tree) checkIDs(root *qml.SpecNode) error {
 			return SchemaError{Op: "id", Detail: sn.ID, Pos: sn.Pos, Err: fmt.Errorf(
 				"%w: %q is already the id of the %s at %s", ErrDuplicateID, sn.ID, first.Type, first.Pos)}
 		}
+		// An id is a name a handler can call through, so one spelling an
+		// injected or imported name would make `x.open()` mean whichever the
+		// resolver happened to try first.
+		if t.nameTaken(sn.ID) {
+			return SchemaError{Op: "id", Detail: sn.ID, Pos: sn.Pos, Err: fmt.Errorf(
+				"%w: the id %q is already a name the document can reach; rename the id",
+				ErrAmbiguousName, sn.ID)}
+		}
 		seen[sn.ID] = sn
 		return nil
 	})
@@ -159,5 +167,6 @@ func (t *Tree) vetDocument(spec qml.SpecTree) (imports, error) {
 			return imports{}, err
 		}
 	}
+	imported.ids = documentIDs(spec.Root)
 	return imported, nil
 }

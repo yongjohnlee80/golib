@@ -101,6 +101,13 @@ func (t *Tree) collectSources(v qml.SpecValue, into map[string]bool) {
 		for _, a := range v.Args {
 			t.collectSources(a, into)
 		}
+	case qml.SpecValueExpr:
+		// The operators the evaluator runs read their operands, so a source in
+		// an operand makes the whole value a binding.
+		if l, r, ok := bitOr(v); ok {
+			t.collectSources(l, into)
+			t.collectSources(r, into)
+		}
 	}
 }
 
@@ -196,6 +203,9 @@ func (t *Tree) walkValue(ctx context, v qml.SpecValue, at NodeID,
 		return res, nil
 
 	case qml.SpecValueExpr:
+		if l, r, ok := bitOr(v); ok {
+			return t.walkBitOr(ctx, v, l, r, at, overlay, called, mode)
+		}
 		// The parser reads every JavaScript expression QML allows; this engine
 		// evaluates the subset above. Saying which is true — the document is
 		// correct and this evaluator is the limit — rather than reporting a
