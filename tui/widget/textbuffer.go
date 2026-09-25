@@ -47,7 +47,12 @@ type textBuffer struct {
 const noChange = int(^uint(0) >> 1)
 
 // touch records that line ln, and possibly every line after it, changed.
-func (b *textBuffer) touch(ln int) { b.changedFrom = min(b.changedFrom, max(ln, 0)) }
+func (b *textBuffer) touch(ln int) { touchFrom(&b.changedFrom, ln) }
+
+// touchFrom lowers a changed-from mark to ln. A function, not a method, so
+// the buffer's own changes record themselves without a call on the receiver
+// that an embedder's override would not see.
+func touchFrom(mark *int, ln int) { *mark = min(*mark, max(ln, 0)) }
 
 // takeChanged returns the first line changed since the last call, noChange
 // for none, and forgets it.
@@ -69,7 +74,7 @@ func (b *textBuffer) value() string { return strings.Join(b.lines, "\n") }
 func (b *textBuffer) setValue(s string) {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
 	b.lines = strings.Split(s, "\n")
-	b.touch(0)
+	touchFrom(&b.changedFrom, 0)
 	b.ln = len(b.lines) - 1
 	b.col = len(clusters(b.lines[b.ln]))
 	b.anchor = nil
@@ -121,7 +126,7 @@ func (b *textBuffer) deleteRegion(lo, hi taPos) {
 	first := b.lineClusters(lo.ln)[:lo.col]
 	last := b.lineClusters(hi.ln)[hi.col:]
 	joined := strings.Join(first, "") + strings.Join(last, "")
-	b.touch(lo.ln)
+	touchFrom(&b.changedFrom, lo.ln)
 	b.lines = append(b.lines[:lo.ln], append([]string{joined}, b.lines[hi.ln+1:]...)...)
 	b.ln, b.col = lo.ln, lo.col
 	b.anchor = nil
@@ -153,7 +158,7 @@ func (b *textBuffer) insertText(text string) {
 	}
 	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
 	parts := strings.Split(text, "\n")
-	b.touch(b.ln)
+	touchFrom(&b.changedFrom, b.ln)
 	cs := b.lineClusters(b.ln)
 	head := strings.Join(cs[:b.col], "")
 	tail := strings.Join(cs[b.col:], "")
