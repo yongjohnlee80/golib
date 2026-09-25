@@ -93,10 +93,10 @@ func TestEscapeRejects(t *testing.T) {
 	}
 }
 
-// No implicit answer: Save listed FIRST, and a stray Enter or Space on
-// opening answers nothing — focus is on no button; a choice — a step to a
-// button, or Tab — then presses the chosen one.
-func TestNoKeyAnswersBeforeAButtonIsChosen(t *testing.T) {
+// No default: Enter answers nothing WHICHEVER BUTTON HAS FOCUS — on opening,
+// on Save listed first, and after the user has moved to another — while Space
+// presses the focused button. The box's buttons are not auto-default.
+func TestEnterAnswersNothingWithoutADefault(t *testing.T) {
 	saveFirst := strings.Replace(unsavedDoc, `  DialogButtonBox {
    Button { text: "S&tay";    DialogButtonBox.buttonRole: DialogButtonBox.RejectRole; onClicked: App.log("stay") }
    Button { text: "&Discard"; DialogButtonBox.buttonRole: DialogButtonBox.DestructiveRole; onClicked: App.log("discard") }
@@ -112,33 +112,43 @@ func TestNoKeyAnswersBeforeAButtonIsChosen(t *testing.T) {
 	enter := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
 	space := tui.KeyEvent{Kind: tui.KeyPress, Code: ' '}
 	right := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight}
-	left := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft}
 	tab := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}
 	for _, c := range []struct {
-		name   string
-		choose []tui.Event
-		want   string
+		name  string
+		move  []tui.Event
+		space string // what Space then answers, on the button focus is on
 	}{
-		{"a step right, to the first: Save", []tui.Event{right}, "save,accepted"},
-		{"two steps right, to Discard", []tui.Event{right, right}, "discard"},
-		{"a step left, to the last: Stay", []tui.Event{left}, "stay,rejected"},
-		{"Tab, to the first: Save", []tui.Event{tab}, "save,accepted"},
+		{"on opening, on Save", nil, "save,accepted"},
+		{"after a step right, on Discard", []tui.Event{right}, "discard"},
+		{"after Tab, on Discard", []tui.Event{tab}, "discard"},
 	} {
 		s, rec := runUnsavedDoc(t, saveFirst)
 		// The mark is the barrier: keys are handled in order, so once it is
-		// logged Enter and Space have been handled too — and answered nothing.
-		s.Keys(t, enter, space, decltest.Ctrl('k'))
+		// logged the Enter before it has been handled too — and answered nothing.
+		s.Keys(t, append(c.move, enter, decltest.Ctrl('k'))...)
 		s.WaitFor(t, "the mark", func(string) bool { return len(rec.all()) > 0 })
 		if got := logged(rec); got != "mark" || !strings.Contains(s.String(), "┌ unsaved ") {
-			t.Fatalf("%s: Enter and Space on opening answered — logged %q, want the mark alone", c.name, got)
+			t.Fatalf("%s: Enter answered — logged %q, want the mark alone", c.name, got)
 		}
-		s.Keys(t, append(c.choose, enter)...)
+		s.Keys(t, space)
 		// Every answer here closes the dialog, after its handlers have run.
 		s.WaitFor(t, "the dialog answered and closed", func(sc string) bool { return !strings.Contains(sc, "┌ unsaved ") })
-		if got := strings.TrimPrefix(logged(rec), "mark,"); got != c.want {
-			t.Errorf("%s, then Enter: logged %q, want %q", c.name, got, c.want)
+		if got := strings.TrimPrefix(logged(rec), "mark,"); got != c.space {
+			t.Errorf("%s, then Space: logged %q, want %q", c.name, got, c.space)
 		}
 	}
+}
+
+// A button outside a box keeps Enter: auto-default is the usual button.
+func TestAButtonOutsideABoxTakesEnter(t *testing.T) {
+	rec := &recorder{}
+	s := decltest.Run(t, 30, 3,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nButton { text: \"Go\"; onClicked: App.log(\"go\") }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}))
+	s.WaitForText(t, "Go")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	s.WaitFor(t, "Enter pressed it", func(string) bool { return logged(rec) == "go" })
 }
 
 func TestWhatADialogButtonBoxRefuses(t *testing.T) {
@@ -167,18 +177,5 @@ func TestAButtonsAmpersandMarksItsMnemonic(t *testing.T) {
 	s.WaitFor(t, "closed", func(sc string) bool { return !strings.Contains(sc, "┌ unsaved ") })
 	if got := logged(rec); got != "stay,rejected" {
 		t.Errorf("t logged %q, want Stay's stay,rejected", got)
-	}
-}
-
-// Shift+Tab from the first button returns focus to the dialog — the
-// unanswered state — where Enter again answers nothing.
-func TestShiftTabReturnsToTheUnansweredState(t *testing.T) {
-	s, rec := runUnsaved(t)
-	tab := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}
-	backTab := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab, Mods: tui.ModShift}
-	s.Keys(t, tab, backTab, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}, decltest.Ctrl('k'))
-	s.WaitFor(t, "the mark", func(string) bool { return len(rec.all()) > 0 })
-	if got := logged(rec); got != "mark" {
-		t.Errorf("Enter after Tab, Shift+Tab logged %q, want the mark alone", got)
 	}
 }
