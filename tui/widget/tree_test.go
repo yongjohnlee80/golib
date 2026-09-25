@@ -648,3 +648,81 @@ func TestTreeRejectedSetRootsLeavesPairingIntact(t *testing.T) {
 			"pairing state; a failed call had a side effect", n)
 	}
 }
+
+// Enter activates a branch as it activates a leaf — Qt's item views emit
+// activated on Enter for any row — and leaves its expansion alone: the host
+// decides whether the row is a folder to open or a thing to use.
+func TestTreeEnterActivatesABranchWithoutExpanding(t *testing.T) {
+	ws := widget.NewTreeNode("ws", "workspace")
+	tbl := widget.NewTreeNode("tbl", "a_table") // a BRANCH: children are columns
+	tbl.SetChildren(0, []*widget.TreeNode{widget.NewTreeNode("col", "id", widget.WithLeaf())})
+	ws.SetChildren(0, []*widget.TreeNode{tbl})
+
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+	acts := record[widget.ActivateEvent](h)
+	h.onLoop(func() { tr.ExpandPath("ws", "tbl") }) // the cursor on the table, closed
+	h.barrier(sh)
+	var before int
+	h.onLoop(func() { before = len(tr.VisibleRows()) })
+
+	h.inject(key(tui.KeyEnter))
+	h.barrier(sh)
+	var after int
+	h.onLoop(func() { after = len(tr.VisibleRows()) })
+	if acts.count() != 1 {
+		t.Errorf("activations = %d, want 1 — Enter activates a branch", acts.count())
+	}
+	if after != before {
+		t.Errorf("visible rows %d → %d: Enter expanded the branch; opening is l, or the host's toggleExpanded", before, after)
+	}
+}
+
+// ToggleExpanded opens a closed branch and closes an open one, and leaves a
+// leaf alone.
+func TestTreeToggleExpandedOpensAndClosesABranch(t *testing.T) {
+	ws := widget.NewTreeNode("ws", "workspace")
+	leaf := widget.NewTreeNode("col", "id", widget.WithLeaf())
+	ws.SetChildren(0, []*widget.TreeNode{leaf})
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+
+	rows := func() int {
+		var n int
+		h.onLoop(func() { n = len(tr.VisibleRows()) })
+		return n
+	}
+	h.onLoop(func() { tr.ToggleExpanded(ws) })
+	h.barrier(sh)
+	if n := rows(); n != 2 {
+		t.Fatalf("after one toggle %d rows are shown, want 2 (the branch opened)", n)
+	}
+	h.onLoop(func() { tr.ToggleExpanded(leaf) })
+	h.barrier(sh)
+	if n := rows(); n != 2 {
+		t.Errorf("toggling a leaf changed the rows shown to %d", n)
+	}
+	h.onLoop(func() { tr.ToggleExpanded(ws) })
+	h.barrier(sh)
+	if n := rows(); n != 1 {
+		t.Errorf("after a second toggle %d rows are shown, want 1 (the branch closed)", n)
+	}
+}
+
+// ToggleExpanded on a node of another tree, or on nil, changes nothing here.
+func TestTreeToggleExpandedIgnoresANodeItDoesNotHold(t *testing.T) {
+	ws := widget.NewTreeNode("ws", "workspace")
+	ws.SetChildren(0, []*widget.TreeNode{widget.NewTreeNode("col", "id", widget.WithLeaf())})
+	other := widget.NewTreeNode("other", "elsewhere")
+	other.SetChildren(0, []*widget.TreeNode{widget.NewTreeNode("x", "x", widget.WithLeaf())})
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+	h.onLoop(func() {
+		tr.ToggleExpanded(other)
+		tr.ToggleExpanded(nil)
+	})
+	h.barrier(sh)
+	var n int
+	h.onLoop(func() { n = len(tr.VisibleRows()) })
+	if n != 1 {
+		t.Errorf("%d rows shown after toggling nodes the tree does not hold, want 1", n)
+	}
+}
+

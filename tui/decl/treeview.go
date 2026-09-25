@@ -237,6 +237,37 @@ var treeViewType = Type{
 	Setters: map[string]Setter{
 		"model": setter("a TreeView", treeModelOf, func(n *treeViewNode, m TreeModel) { n.setModel(m) }),
 	},
+	Methods: map[string]Method{
+		"toggleExpanded": func(c tui.Component, args []qml.SpecValue) error {
+			n, ok := c.(*treeViewNode)
+			if !ok {
+				return fmt.Errorf("not a TreeView")
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("toggleExpanded takes a row's index, and was given %d arguments", len(args))
+			}
+			ix, ok := args[0].Obj.(Index)
+			if !ok {
+				return fmt.Errorf("toggleExpanded takes a row's index (a signal's index), not %s", args[0].Raw)
+			}
+			return n.toggleExpanded(ix)
+		},
+	},
 	Signals:   map[string][]string{"activated": {"index"}, "expanded": {"index"}},
 	Destroyed: func(c tui.Component) { c.(*treeViewNode).release() },
+}
+
+// toggleExpanded opens or closes the row at ix — Qt's TreeView.toggleExpanded,
+// by the row's Index. A row the view does not show (under a closed parent, or
+// gone) is refused, so a stale Index from an old tree cannot open another row.
+func (n *treeViewNode) toggleExpanded(ix Index) error {
+	if n.model == nil {
+		return fmt.Errorf("toggleExpanded: the TreeView has no model")
+	}
+	node, ok := n.byPath[n.pathOf(ix)]
+	if !ok {
+		return fmt.Errorf("toggleExpanded: no row at that index is shown")
+	}
+	n.tree.ToggleExpanded(node)
+	return nil
 }

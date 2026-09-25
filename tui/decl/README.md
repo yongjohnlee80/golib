@@ -88,7 +88,7 @@ change at runtime, which is what makes it bindable to a source.
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model` | `currentIndex`, `currentValue` | `activated(index)` | — |
 | `TableView` | — | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `TableViewColumn` | `role`, `title`, `width` | — | — | — | — |
-| `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)` — an `Index` | — |
+| `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)` — an `Index` | `toggleExpanded(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
@@ -118,7 +118,11 @@ columns it has, redrawn on the same view when they change — unless it declares
 or a `TreeModel` of the host's): a row opens and, the first time, the view asks
 the model to load its children (`OnFetch`), which the host sets with
 `SetChildren`. Its signals carry the row's `tuidecl.Index`, which the handler
-passes back to the host.
+passes back to the host. Enter activates any row, a branch as well as a leaf,
+as Qt's item views do; `l`/Right opens a row and `h`/Left closes it. A host
+that decides an activated row is a folder opens it with the view's
+`toggleExpanded(index)` — `Program.Call(id, "toggleExpanded", index)` — and
+uses any other row as it means.
 
 **`Repeater` and `Instantiator`** — Qt's delegate per model row. The one
 child is instantiated once per row of `model:`, in the Repeater's place in its

@@ -218,7 +218,9 @@ func TestATreeViewLoadsChildrenWhenAskedAndPassesTheIndex(t *testing.T) {
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.use": used.handler, "App.opened": opened.handler}))
 	s.WaitFor(t, "the top rows", func(sc string) bool { return strings.Contains(sc, "database") && strings.Contains(sc, "leafrow") })
 	enter := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
-	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, enter) // open "database"
+	open := tui.KeyEvent{Kind: tui.KeyPress, Code: 'l'}
+	shut := tui.KeyEvent{Kind: tui.KeyPress, Code: 'h'}
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, open) // open "database"
 	s.WaitFor(t, "expanded", func(string) bool { return len(opened.all()) == 1 })
 	var nFetch int
 	onScreenLoop(t, s, func() {
@@ -241,11 +243,62 @@ func TestATreeViewLoadsChildrenWhenAskedAndPassesTheIndex(t *testing.T) {
 		t.Errorf("activated(index) carried %+v, want users' Index: row 0 under row 0", used.all()[0])
 	}
 	// Closed and opened again: its children are loaded, so no second fetch.
-	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyUp}, enter, enter)
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyUp}, shut, open)
 	s.WaitFor(t, "opened again", func(string) bool { return len(opened.all()) >= 2 })
 	onScreenLoop(t, s, func() { nFetch = len(fetches) })
 	if nFetch != 1 {
 		t.Errorf("reopening fetched again: %d fetches", nFetch)
+	}
+}
+
+// A host that decides a row is a folder opens it with the view's
+// toggleExpanded, given the Index the row's activated carried — Enter opens a
+// connection's schemas where it scaffolds a query on a table.
+func TestATreeViewOpensARowItsHostSaysIsAFolder(t *testing.T) {
+	m := tuidecl.NewTreeListModel("key", "label")
+	m.SetChildren(nil, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "conn", "label": "prod"}, HasChildren: true}})
+	m.OnFetch = func(ix tuidecl.Index) {
+		m.SetChildren(&ix, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "s", "label": "public"}}})
+	}
+	var s *decltest.Screen
+	s = decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
+			`TreeView { id: tree; model: App.tree; textRole: "label"; onActivated: App.use(index) }`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.tree": m}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.use": func(args []qml.SpecValue) error {
+			return s.Program.Call("tree", "toggleExpanded", args[0].Obj)
+		}}))
+	s.WaitForText(t, "prod")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	s.WaitFor(t, "the folder opened", func(sc string) bool { return rowOfText(s, "public") == rowOfText(s, "prod")+1 })
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	s.WaitFor(t, "the folder closed", func(sc string) bool { return !strings.Contains(sc, "public") })
+}
+
+// toggleExpanded takes one row's Index, and a row the view shows: no argument,
+// a value that is not an Index, and an Index no row answers to are each
+// refused, so a stale Index from an old tree cannot open another row.
+func TestATreeViewsToggleExpandedRefusesWhatIsNotAShownRow(t *testing.T) {
+	m := tuidecl.NewTreeListModel("key", "label")
+	m.SetChildren(nil, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "conn", "label": "prod"}, HasChildren: true}})
+	s := decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
+			`TreeView { id: tree; model: App.tree; textRole: "label" }`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.tree": m}))
+	s.WaitForText(t, "prod")
+	for name, args := range map[string][]any{
+		"no argument":   nil,
+		"not an Index":  {"conn"},
+		"no row shown":  {tuidecl.Index{Row: 5}},
+		"two arguments": {tuidecl.Index{Row: 0}, tuidecl.Index{Row: 0}},
+	} {
+		var err error
+		onScreenLoop(t, s, func() { err = s.Program.Call("tree", "toggleExpanded", args...) })
+		if err == nil || !strings.Contains(err.Error(), "toggleExpanded") {
+			t.Errorf("%s: err = %v, want toggleExpanded to refuse it", name, err)
+		}
 	}
 }
 
@@ -323,15 +376,15 @@ func TestTreeKeysWithTheSeparatorDoNotCollide(t *testing.T) {
 		tuidecl.Sources(map[string]any{"App.tree": m}))
 	s.WaitForText(t, "rootAB")
 	key := func(c rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code: c} }
-	enter, down := key(tui.KeyEnter), key(tui.KeyDown)
-	s.Keys(t, key(tui.KeyTab), enter) // open rootA
+	open, down := key('l'), key(tui.KeyDown)
+	s.Keys(t, key(tui.KeyTab), open) // open rootA
 	s.WaitFor(t, "asked for rootA's", func(string) bool { var n int; onScreenLoop(t, s, func() { n = len(fetches) }); return n == 1 })
 	onScreenLoop(t, s, func() {
 		m.SetChildren(&fetches[0], []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "b", "label": "childB"}, HasChildren: true}})
 	})
 	s.WaitForText(t, "childB")
-	s.Keys(t, down, enter) // open childB: its path is a, then b
-	s.Keys(t, down, enter) // open rootAB: its path is the one key a/b
+	s.Keys(t, down, open) // open childB: its path is a, then b
+	s.Keys(t, down, open) // open rootAB: its path is the one key a/b
 	s.WaitFor(t, "asked for both", func(string) bool { var n int; onScreenLoop(t, s, func() { n = len(fetches) }); return n == 3 })
 	onScreenLoop(t, s, func() {
 		m.SetChildren(&fetches[2], []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "x", "label": "underAB"}}})

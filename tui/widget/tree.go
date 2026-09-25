@@ -339,7 +339,8 @@ type CollapseEvent struct {
 //   - 'k' / Up Arrow:   Move cursor to the previous visible row.
 //   - 'l' / Right Arrow: If on a collapsed branch, expands it. If already expanded, moves cursor to its first child.
 //   - 'h' / Left Arrow:  If on an expanded branch, collapses it. If on a collapsed branch or leaf, jumps to parent.
-//   - Enter: Toggles expansion on branch nodes; emits [ActivateEvent] on leaf nodes.
+//   - Enter: Emits [ActivateEvent] on any row, branch or leaf, as Qt's item views emit
+//     activated; expansion is 'l'/'h'.
 //   - Mouse: Single-click moves selection; double-click toggles expansion or activates leaf.
 //
 // # Architectural Invariants
@@ -628,6 +629,34 @@ func (t *Tree) flatten() []treeRow {
 
 // expandNode opens a node: loaded → show children; unloaded → fire ONE
 // ExpandRequestEvent with a fresh generation and show the spinner badge.
+// ToggleExpanded opens n when it is closed and closes it when it is open — Qt's
+// TreeView.toggleExpanded. A leaf, or a node not in this tree, is left as it
+// is. It is how a host that decides a row's activation opens a folder: Enter
+// raises ActivateEvent on every row, and the host knows which rows are
+// folders. Loop goroutine only.
+func (t *Tree) ToggleExpanded(n *TreeNode) {
+	if n == nil || n.leaf || !t.contains(n) {
+		return
+	}
+	if n.expanded || n.loading {
+		t.collapseNode(n)
+		return
+	}
+	t.expandNode(n)
+}
+
+// contains reports whether n is one of this tree's nodes.
+func (t *Tree) contains(n *TreeNode) bool {
+	for p := n; p != nil; p = p.parent {
+		for _, r := range t.roots {
+			if r == p {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (t *Tree) expandNode(n *TreeNode) {
 	if n.leaf {
 		return
@@ -732,15 +761,12 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 		t.expandNode(cur.node)
 		return true
 	case tui.KeyEnter:
-		if cur.node.leaf {
-			t.publish(ActivateEvent{Owner: t.NodeID(), Index: t.cursor})
-			return true
-		}
-		if cur.node.expanded {
-			t.collapseNode(cur.node)
-		} else {
-			t.expandNode(cur.node)
-		}
+		// ANY row, branch or leaf, as Qt's item views emit activated on Enter
+		// and a double-click here already does: the Tree cannot know whether
+		// a branch is activatable (a table whose children are its columns
+		// is), so it reports and the host decides. Expansion is l/Right and
+		// h/Left.
+		t.publish(ActivateEvent{Owner: t.NodeID(), Index: t.cursor})
 		return true
 	case 'h', tui.KeyLeft:
 		if cur.node.expanded || cur.node.loading {

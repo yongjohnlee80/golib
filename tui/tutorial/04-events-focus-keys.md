@@ -174,7 +174,7 @@ capability the type does not provide.
 
 Unconsumed keys still bubble from the child up through the panel, so
 panel-level bindings keep working. Only intercept *before* the child when
-you must override its own binding (Enter on a tree node, say) — that is
+you must override its own binding (a key the child already uses) — that is
 the one reason to hold focus in the wrapper, and then the child's cursor
 must be one that paints unfocused (`List` and `Tree` both do).
 

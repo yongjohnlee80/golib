@@ -240,6 +240,11 @@ tui.Subscribe(bus, func(ev widget.ExpandRequestEvent) {
 })
 ```
 
+Enter raises `ActivateEvent` on any row, a branch as well as a leaf, as Qt's
+item views emit `activated`; `l`/Right opens a branch and `h`/Left closes it.
+A host that decides an activated branch is a folder opens it with
+`tree.ToggleExpanded(node)`.
+
 ### Editors & Streaming Viewers
 
 #### `Editor`
