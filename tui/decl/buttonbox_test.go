@@ -64,17 +64,14 @@ func TestAnAcceptRoleButtonAccepts(t *testing.T) {
 }
 
 // DestructiveRole: its button's clicked only — no accepted, no rejected — and
-// the dialog stays for a handler to close.
+// the dialog closes without an answer.
 func TestADestructiveRoleButtonIsItsClickedOnly(t *testing.T) {
 	s, rec := runUnsaved(t)
 	s.Keys(t, decltest.Rune('d'))
-	s.WaitFor(t, "clicked", func(string) bool { return len(rec.all()) == 1 })
+	s.WaitFor(t, "closed", func(sc string) bool { return !strings.Contains(sc, "┌ unsaved ") })
 	onScreenLoop(t, s, func() {})
 	if got := logged(rec); got != "discard" {
 		t.Errorf("logged %q, want discard alone", got)
-	}
-	if !strings.Contains(s.String(), "┌ unsaved ") {
-		t.Error("a destructive answer closed the dialog on its own")
 	}
 }
 
