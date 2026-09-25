@@ -225,6 +225,7 @@ type menuBarNode struct {
 	// action — both as the last projection left them (see project).
 	rows     []*menuNode
 	triggers map[tui.ActionID]func()
+	byID     map[widget.ItemID]*menuNode
 }
 
 // menuCategory is one top-level Menu's access key.

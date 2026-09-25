@@ -92,6 +92,10 @@ func numberValue(i int) qml.SpecValue {
 	return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(i)}
 }
 
+func boolValue(b bool) qml.SpecValue {
+	return qml.SpecValue{Kind: qml.SpecValueBool, Raw: strconv.FormatBool(b)}
+}
+
 // ---------------------------------------------------------------- ListView
 
 type listViewNode struct {

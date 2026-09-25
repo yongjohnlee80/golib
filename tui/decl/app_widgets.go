@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -48,6 +49,11 @@ func appTypes() []Type {
 			Setters: map[string]Setter{
 				"checked": setter("a menu row", boolOf, (*menuNode).setChecked),
 				"enabled": setter("a menu row", boolOf, (*menuNode).setEnabled),
+			},
+			Getters: map[string]Getter{
+				"checked": func(c tui.Component) (qml.SpecValue, error) {
+					return boolValue(c.(*menuNode).model.Checked), nil
+				},
 			}},
 		{Name: "MenuSeparator", Build: buildMenuSeparator},
 		{Name: "Shortcut", Build: buildShortcut, Ctor: []string{"sequence"}},
