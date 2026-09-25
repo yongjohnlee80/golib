@@ -725,4 +725,3 @@ func TestTreeToggleExpandedIgnoresANodeItDoesNotHold(t *testing.T) {
 		t.Errorf("%d rows shown after toggling nodes the tree does not hold, want 1", n)
 	}
 }
-

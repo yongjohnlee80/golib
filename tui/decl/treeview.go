@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -258,14 +259,19 @@ var treeViewType = Type{
 }
 
 // toggleExpanded opens or closes the row at ix — Qt's TreeView.toggleExpanded,
-// by the row's Index. A row the view does not show (under a closed parent, or
-// gone) is refused, so a stale Index from an old tree cannot open another row.
+// by the row's Index. A row the view does not show — under a closed parent, or
+// gone — is refused.
+//
+// An Index is a POSITION, as Qt's QModelIndex is: it names whatever row is at
+// that place when it is used. Use it as a signal gives it — a handler passing
+// its `index` on — not after the model has changed; a host that keeps rows
+// across changes keeps their keys.
 func (n *treeViewNode) toggleExpanded(ix Index) error {
 	if n.model == nil {
 		return fmt.Errorf("toggleExpanded: the TreeView has no model")
 	}
 	node, ok := n.byPath[n.pathOf(ix)]
-	if !ok {
+	if !ok || !slices.Contains(n.tree.VisibleRows(), node) {
 		return fmt.Errorf("toggleExpanded: no row at that index is shown")
 	}
 	n.tree.ToggleExpanded(node)

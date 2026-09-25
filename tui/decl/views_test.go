@@ -302,6 +302,32 @@ func TestATreeViewsToggleExpandedRefusesWhatIsNotAShownRow(t *testing.T) {
 	}
 }
 
+// toggleExpanded refuses a row the view knows but does not show: a child whose
+// parent was opened, loaded, and closed again.
+func TestATreeViewsToggleExpandedRefusesAHiddenChild(t *testing.T) {
+	m := tuidecl.NewTreeListModel("key", "label")
+	m.SetChildren(nil, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "conn", "label": "prod"}, HasChildren: true}})
+	m.OnFetch = func(ix tuidecl.Index) {
+		m.SetChildren(&ix, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "s", "label": "public"}, HasChildren: true}})
+	}
+	s := decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
+			`TreeView { id: tree; model: App.tree; textRole: "label" }`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.tree": m}))
+	s.WaitForText(t, "prod")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: 'l'})
+	s.WaitForText(t, "public")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: 'h'})
+	s.WaitFor(t, "closed", func(sc string) bool { return !strings.Contains(sc, "public") })
+	child := tuidecl.Index{Row: 0, Parent: &tuidecl.Index{Row: 0}}
+	var err error
+	onScreenLoop(t, s, func() { err = s.Program.Call("tree", "toggleExpanded", child) })
+	if err == nil || !strings.Contains(err.Error(), "no row at that index is shown") {
+		t.Errorf("toggling a child hidden under a closed parent: err = %v, want it refused", err)
+	}
+}
+
 // A TreeView wants a tree model; a flat one is refused by name.
 func TestATreeViewRefusesAFlatModel(t *testing.T) {
 	err := tuidecl.Check(
