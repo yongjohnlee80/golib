@@ -142,3 +142,28 @@ func TestAWindowReorderedInPlaceKeepsItsChildren(t *testing.T) {
 		}
 	})
 }
+
+// TestAWindowRefusesAStructuralEditOutOfRange: the engine asks for an index
+// in range; one that is not is refused, not clamped into a silent misplace.
+func TestAWindowRefusesAStructuralEditOutOfRange(t *testing.T) {
+	tr, a := mount(t, "import tui 1.0\nWindow {\n Text { id: one; text: \"a\" }\n Text { id: two; text: \"b\" }\n}", nil, nil)
+	win := tr.Root()
+	one, _ := tr.NodeByID("one")
+	two, _ := tr.NodeByID("two")
+	if err := a.InsertChild(win, one, 9); err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Errorf("insert at 9: %v", err)
+	}
+	if err := a.MoveChild(win, one, 9); err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Errorf("move to 9: %v", err)
+	}
+	// Removing what is not a child leaves the children as they were.
+	if err := a.RemoveChild(one, two); err == nil {
+		t.Error("removing a child from a Text succeeded")
+	}
+	if err := a.RemoveChild(win, win); err != nil {
+		t.Errorf("removing a node that is not a child: %v", err)
+	}
+	if err := a.MoveChild(win, two, 0); err != nil {
+		t.Errorf("a valid move after the refusals: %v", err)
+	}
+}
