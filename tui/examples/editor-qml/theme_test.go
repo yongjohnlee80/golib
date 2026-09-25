@@ -31,6 +31,20 @@ func withImport(t *testing.T, line string) []byte {
 
 func ansi(n uint8) tui.CellColor { return tui.CellColor{Kind: tui.CellColorANSI, Index: n} }
 
+func rgb(r, g, b uint8) tui.CellColor { return tui.CellColor{Kind: tui.CellColorRGB, R: r, G: g, B: b} }
+
+// The CGA colours retro is written in.
+var (
+	cgaBlack  = rgb(0, 0, 0)
+	cgaBlue   = rgb(0, 0, 0xaa)
+	cgaGreen  = rgb(0, 0xaa, 0)
+	cgaCyan   = rgb(0, 0xaa, 0xaa)
+	cgaRed    = rgb(0xaa, 0, 0)
+	cgaGrey   = rgb(0xaa, 0xaa, 0xaa)
+	cgaYellow = rgb(0xff, 0xff, 0x55)
+	cgaWhite  = rgb(0xff, 0xff, 0xff)
+)
+
 var terminalDefault = tui.CellColor{}
 
 // cell is one screen cell's colours and attributes.
@@ -79,8 +93,8 @@ func (r *running) expect(t *testing.T, looks []look) {
 	}
 }
 
-// TestRetroIsTheShippedTheme: black on white chrome, red access keys, and the
-// document on blue.
+// TestRetroIsTheShippedTheme: black on grey chrome, red access keys, and the
+// document on dark blue — CGA colours, not palette slots.
 func TestRetroIsTheShippedTheme(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "hello.txt")
 	if err := os.WriteFile(path, []byte("hello\n"), 0o600); err != nil {
@@ -95,15 +109,15 @@ func TestRetroIsTheShippedTheme(t *testing.T) {
 		last--
 	}
 	r.expect(t, []look{
-		{"the File access key", f, 0, ansi(1), ansi(7)},
-		{"the rest of File", f + 1, 0, ansi(0), ansi(7)},
-		{"the document's text", tx, ty, ansi(11), ansi(4)},
-		{"the frame border", tx - 1, ty, ansi(15), ansi(4)}, // focused: the editor has the keyboard
-		{"the status line", 0, last, ansi(0), ansi(7)},
+		{"the File access key", f, 0, cgaRed, cgaGrey},
+		{"the rest of File", f + 1, 0, cgaBlack, cgaGrey},
+		{"the document's text", tx, ty, cgaYellow, cgaBlue},
+		{"the frame border", tx - 1, ty, cgaWhite, cgaBlue}, // focused: the editor has the keyboard
+		{"the status line", 0, last, cgaBlack, cgaGrey},
 	})
 	// Past the text: the fill, which carries only a background.
-	if got := r.cell(t, tx+20, ty+2).BG; got != ansi(4) {
-		t.Errorf("the empty document area: bg %+v, want blue", got)
+	if got := r.cell(t, tx+20, ty+2).BG; got != cgaBlue {
+		t.Errorf("the empty document area: bg %+v, want dark blue", got)
 	}
 	if r.cell(t, f, 0).Mask&tui.AttrUnderline == 0 {
 		t.Error("the access key lost its underline")
@@ -163,9 +177,9 @@ func TestRetroHighlightsTheSelectedRowInGreen(t *testing.T) {
 	x := r.labelAt(t, y, "New")
 	s := r.labelAt(t, rowOf(r.rows(), "Save"), "Save")
 	r.expect(t, []look{
-		{"the selected row's access key", x, y, ansi(1), ansi(2)},
-		{"the selected row's text", x + 1, y, ansi(0), ansi(2)},
-		{"an unselected row", s + 1, rowOf(r.rows(), "Save"), ansi(0), ansi(7)},
+		{"the selected row's access key", x, y, cgaRed, cgaGreen},
+		{"the selected row's text", x + 1, y, cgaBlack, cgaGreen},
+		{"an unselected row", s + 1, rowOf(r.rows(), "Save"), cgaBlack, cgaGrey},
 	})
 }
 
@@ -182,7 +196,7 @@ func TestRetroSelectsTextInCyan(t *testing.T) {
 	y := rowOf(r.rows(), "hello")
 	x := r.labelAt(t, y, "hello")
 	r.expect(t, []look{
-		{"a selected letter", x + 1, y, ansi(0), ansi(6)},
-		{"an unselected letter", x + 3, y, ansi(11), ansi(4)},
+		{"a selected letter", x + 1, y, cgaBlack, cgaCyan},
+		{"an unselected letter", x + 3, y, cgaYellow, cgaBlue},
 	})
 }

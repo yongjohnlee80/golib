@@ -1,7 +1,7 @@
 // retro.qml — a 1990s Borland IDE.
 //
-// Black on white for the menu bar and the status line, each menu's access key
-// in red, the selected row on green, and the document on blue — the
+// Black on grey for the menu bar and the status line, each menu's access key
+// in red, the selected row on green, and the document on dark blue — the
 // Turbo C++ look.
 //
 // A theme is a module of constants. The layout binds palette roles to these —
@@ -10,25 +10,26 @@
 //
 //     import editor.theme.retro 1.0
 //
-// Colours are ANSI slots ("blue", "brightyellow"), "#rrggbb", or "default" for
-// the terminal's own. ANSI slots follow the user's terminal palette, which is
-// what the original text-mode colours did too.
+// The colours are the CGA palette Turbo C++ drew with, written as #rrggbb so
+// they look the same in every terminal. An ANSI slot name ("blue") would take
+// whatever the user's terminal palette maps it to, and modern palettes map
+// blue to something far lighter than the original.
 
 Theme {
     menu {
-        window: "white"; windowText: "black"
-        highlight: "green"; highlightedText: "black"
-        accent: "red"
+        window: "#aaaaaa"; windowText: "#000000"
+        highlight: "#00aa00"; highlightedText: "#000000"
+        accent: "#aa0000"
     }
     frame {
-        window: "blue"; windowText: "white"
-        highlight: "brightwhite"
+        window: "#0000aa"; windowText: "#aaaaaa"
+        highlight: "#ffffff"
     }
     editor {
-        base: "blue"; text: "brightyellow"
-        highlight: "cyan"; highlightedText: "black"
+        base: "#0000aa"; text: "#ffff55"
+        highlight: "#00aaaa"; highlightedText: "#000000"
     }
     status {
-        window: "white"; windowText: "black"
+        window: "#aaaaaa"; windowText: "#000000"
     }
 }
