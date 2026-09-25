@@ -397,9 +397,20 @@ func (s *Split) Init(ctx *tui.Context) {
 func (s *Split) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, c.MinW)
 	h := boundedMax(c.MaxH, c.MinH)
-	if s.zoomed != PaneNone {
+	// A HIDDEN pane gives its space to the other, as zoom does — no blank
+	// area, no divider — and the ratio is kept for when it is shown again.
+	shown := s.zoomed
+	if shown == PaneNone {
+		switch {
+		case !visible(s.a):
+			shown = PaneB
+		case !visible(s.b):
+			shown = PaneA
+		}
+	}
+	if shown != PaneNone {
 		full := s.a
-		if s.zoomed == PaneB {
+		if shown == PaneB {
 			full = s.b
 		}
 		s.ctx.LayoutChild(full, tui.Tight(tui.Size{W: w, H: h}))
@@ -797,4 +808,10 @@ func (s *Split) HandleEvent(ev tui.Event) bool {
 		s.drag, s.dragCtx = nil, nil
 	}
 	return false
+}
+
+// visible reports whether c is shown (tui.Hideable).
+func visible(c tui.Component) bool {
+	h, ok := c.(tui.Hideable)
+	return !ok || h.Visible()
 }

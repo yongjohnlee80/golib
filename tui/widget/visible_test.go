@@ -95,3 +95,35 @@ func TestAHiddenSplitPaneIsNeitherPaintedNorFocused(t *testing.T) {
 			strings.Contains(h.grid(), "LEFTPANE"), focused, h.grid())
 	}
 }
+
+// TestAHiddenSplitPaneGivesItsSpaceToTheOther: no blank area and no divider —
+// the other pane takes the whole split — and showing it again restores the
+// division it had.
+func TestAHiddenSplitPaneGivesItsSpaceToTheOther(t *testing.T) {
+	left := widget.NewText("LEFT")
+	right := widget.NewText("RIGHT")
+	split := widget.NewSplit(widget.Horizontal, left, right)
+	h := startApp(t, split, 40, 3)
+	defer h.stop()
+	h.settle()
+	col := func(label string) int { return strings.Index(h.row(0), label) }
+	before := col("RIGHT")
+	if before < 10 {
+		t.Fatalf("precondition: RIGHT at column %d:\n%s", before, h.grid())
+	}
+	h.onLoop(func() { left.SetVisible(false) })
+	h.settle()
+	if c := col("RIGHT"); c != 0 {
+		t.Errorf("with LEFT hidden, RIGHT starts at column %d, want 0 — the pane kept its space:\n%s", c, h.grid())
+	}
+	h.onLoop(func() { left.SetVisible(true); right.SetVisible(false) })
+	h.settle()
+	if strings.Contains(h.grid(), "RIGHT") || strings.ContainsAny(h.row(0), "│") {
+		t.Errorf("with RIGHT hidden, it or the divider is still painted:\n%s", h.grid())
+	}
+	h.onLoop(func() { right.SetVisible(true) })
+	h.settle()
+	if c := col("RIGHT"); c != before {
+		t.Errorf("shown again, RIGHT at column %d, want %d as before:\n%s", c, before, h.grid())
+	}
+}
