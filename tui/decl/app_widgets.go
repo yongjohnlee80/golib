@@ -68,7 +68,7 @@ func appTypes() []Type {
 			Signals:   map[string][]string{"accepted": {"selectedFile"}},
 			Destroyed: releaseDialog},
 		{Name: "Dialog", Build: buildDialog,
-			Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons"},
+			Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons", "defaultButton"},
 			restyle: restyleDialog,
 			Setters: map[string]Setter{
 				"title":    setter("a Dialog", stringOf, (*dialogNode).setTitle),

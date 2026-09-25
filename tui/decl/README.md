@@ -82,7 +82,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Button` | — | `text`, `enabled` | — | `clicked` | — |
 | `Split` | `orientation` | `ratio` | — | — | — |
 | `Flex` | `direction` | — | — | — | — |
-| `Dialog` | `dim`, `width`, `standardButtons`, palette | `title`, `helpText` | — | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
+| `Dialog` | `dim`, `width`, `standardButtons`, `defaultButton`, palette | `title`, `helpText` | — | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
 | `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
 | `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model` | `currentIndex`, `currentValue` | `activated(index)` | — |
@@ -231,6 +231,25 @@ standardButtons: Dialog.Yes | Dialog.No
 
 The underlined letter presses the button. `|` is the only operator the engine
 evaluates, and only over integer flags.
+
+**Enter answers the default, and only a named one.** `defaultButton` names the
+one standard button Enter presses, as `QMessageBox::setDefaultButton` does; a
+dialog that names none answers Enter with nothing, and a `DialogButtonBox`
+never has a default. It must be one of the dialog's own `standardButtons`, and
+one only — anything else is refused when the document is built. A destructive
+question names the safe answer, or none:
+
+```qml
+Dialog { standardButtons: Dialog.Ok | Dialog.Cancel; defaultButton: Dialog.Ok }   // a login
+Dialog { standardButtons: Dialog.Yes | Dialog.No;    defaultButton: Dialog.No }   // "delete it?"
+```
+
+Enter reaches the dialog only when the focused control leaves it: a
+`TextField` submits (`accepted`) and lets Enter go on, as `QLineEdit` does, so a
+form answers from its last field; a value its validator refuses holds Enter. A
+`ComboBox`, a list or a table keeps Enter — it opens, chooses or activates.
+Focus starts on the first control in Tab order: an input dialog's first field,
+a message's first button.
 
 ### Palette roles
 

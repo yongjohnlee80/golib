@@ -67,7 +67,9 @@ func TestTextInputKeysConsumedVsBubbled(t *testing.T) {
 		{"alt-right-word", keyMod(tui.KeyRight, tui.ModAlt), true},
 		{"home", key(tui.KeyHome), true},
 		{"end", key(tui.KeyEnd), true},
-		{"enter", key(tui.KeyEnter), true},
+		// Enter submits and goes on, as QLineEdit's Return does, so a dialog
+		// around the field answers it.
+		{"enter-bubbles-after-submit", key(tui.KeyEnter), false},
 		{"ctrl-a", keyMod('a', tui.ModCtrl), true},
 		{"ctrl-e", keyMod('e', tui.ModCtrl), true},
 		{"ctrl-u", keyMod('u', tui.ModCtrl), true},
@@ -364,6 +366,40 @@ func TestTextInputOnSubmitDoesNotReplaceTheEvent(t *testing.T) {
 // A FAILING VALIDATION REACHES NEITHER. Enter that does not submit must not
 // advance a form, or the operator is moved off the field carrying the error
 // they have to fix.
+// TestTextInputARefusedValueHoldsEnter: a value the validator refuses keeps
+// Enter, so a dialog around the field cannot close over its error; a valid one
+// lets Enter go on.
+func TestTextInputARefusedValueHoldsEnter(t *testing.T) {
+	validate := func(s string) error {
+		if len(s) < 3 {
+			return errors.New("too short")
+		}
+		return nil
+	}
+	h, _, sh := focusedInput(t, widget.WithValidate(validate))
+	bubbledEnters := func() int {
+		n := 0
+		for _, k := range sh.bubbledKeys() {
+			if k.Code == tui.KeyEnter {
+				n++
+			}
+		}
+		return n
+	}
+	h.inject(typeString("ab")...)
+	h.inject(key(tui.KeyEnter))
+	h.barrier(sh)
+	if n := bubbledEnters(); n != 0 {
+		t.Fatalf("a refused value let Enter go on (%d bubbled)", n)
+	}
+	h.inject(typeString("c")...)
+	h.inject(key(tui.KeyEnter))
+	h.barrier(sh)
+	if n := bubbledEnters(); n != 1 {
+		t.Fatalf("a valid value's Enter bubbled %d times, want 1", n)
+	}
+}
+
 func TestTextInputOnSubmitSkippedWhenValidationFails(t *testing.T) {
 	var hookCalls int
 	h, _, sh := focusedInput(t,

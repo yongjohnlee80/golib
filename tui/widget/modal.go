@@ -388,8 +388,8 @@ func (m *Modal) SetButtons(b ...*Button) error {
 		ctx.RequestLayout()
 		// Focusability across the whole scope has changed: buttons appeared or
 		// vanished, so the Modal node itself may have just started or stopped
-		// being the fallback focus target, and the dialog's Default-role
-		// preference may now name a different control.
+		// being the fallback focus target, and focus on a removed button must
+		// move — by the dialog's Tab-order nomination.
 		ctx.InvalidateFocusability()
 	}
 	// Selection is recomputed from where focus ACTUALLY is, after every repair

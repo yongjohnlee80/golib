@@ -205,8 +205,10 @@ type dialogSpec struct {
 	dim         bool
 	width       int
 	align       widget.ButtonAlign
-	// buttons are laid out in this order.
-	buttons []standardButton
+	// buttons are laid out in this order; the one at defaultAt is the one
+	// Enter answers with, -1 for none (a Dialog's defaultButton).
+	buttons   []standardButton
+	defaultAt int
 	// shortcuts are the dialog's own keys, live while it is open.
 	shortcuts []*shortcutNode
 	// box is its DialogButtonBox, nil for standardButtons.
@@ -228,18 +230,20 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 		rejected: b.Emitter("rejected"),
 		closed:   b.Emitter("closed"),
 	}
-	// DECLARATIONS ONLY: each button says what it means — Qt's roles, and the
-	// affirmative standard button is the default, as a message box's is — and
-	// the Modal answers for it (widget ANSWERS). A box's buttons carry their
-	// roles and no default.
+	// DECLARATIONS ONLY: each button says what it means — Qt's roles — and the
+	// Modal answers for it (widget ANSWERS). The default, which Enter answers
+	// with, is the one `defaultButton` names, as QMessageBox::setDefaultButton
+	// does, and nothing else: a dialog that names none answers Enter with
+	// nothing. A box's buttons carry their roles and no default.
 	buttons := make([]*widget.Button, 0, len(s.buttons))
-	for _, sb := range s.buttons {
+	for i, sb := range s.buttons {
 		label, key, _ := mnemonic(sb.label)
-		opts := []widget.ButtonOption{widget.WithRole(widget.ButtonRoleReject), widget.WithMnemonic(key)}
+		role := widget.ButtonRoleReject
 		if sb.accept {
-			opts = []widget.ButtonOption{widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
-				widget.WithMnemonic(key)}
+			role = widget.ButtonRoleAccept
 		}
+		opts := []widget.ButtonOption{widget.WithRole(role), widget.WithMnemonic(key),
+			widget.WithDefault(i == s.defaultAt)}
 		buttons = append(buttons, widget.NewButton(label, opts...))
 	}
 	if s.box != nil {
@@ -281,20 +285,30 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	s := dialogSpec{body: body, dim: true, align: widget.ButtonsCenter, shortcuts: shortcuts, box: box}
-	var flags int64
+	s := dialogSpec{body: body, dim: true, align: widget.ButtonsCenter, shortcuts: shortcuts, box: box, defaultAt: -1}
+	var flags, defaultFlag int64
 	consumed, err := readProps(b.Props, map[string]field{
 		"title":           into(&s.title, stringOf),
 		"helpText":        into(&s.help, stringOf),
 		"dim":             into(&s.dim, boolOf),
 		"width":           into(&s.width, cellsOf),
 		"standardButtons": into(&flags, dialogButtons.read),
+		"defaultButton":   into(&defaultFlag, dialogButtons.read),
 	})
 	if err != nil {
 		return nil, nil, err
 	}
+	// ONE button, and one of this dialog's: Enter's answer is stated, never
+	// inferred, so a name that is not there — or two — is refused rather than
+	// read as "none" or "the first".
+	if defaultFlag != 0 && (defaultFlag&(defaultFlag-1) != 0 || flags&defaultFlag == 0) {
+		return nil, nil, fmt.Errorf("defaultButton names one of the Dialog's standardButtons (at %s)", b.Pos)
+	}
 	for _, sb := range dialogStandardButtons {
 		if flags&sb.bit != 0 {
+			if sb.bit == defaultFlag {
+				s.defaultAt = len(s.buttons)
+			}
 			s.buttons = append(s.buttons, sb)
 		}
 	}

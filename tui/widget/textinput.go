@@ -54,7 +54,12 @@ import (
 //     Paste operations generate exactly one [ChangeEvent] and never trigger a [SubmitEvent].
 //  3. Validation Preflight on Enter:
 //     Failing validation ([WithValidate]) sets the internal error state, visually styles the
-//     text with [TextInputStyles.Error], and suppresses both [WithOnSubmit] and [SubmitEvent].
+//     text with [TextInputStyles.Error], suppresses both [WithOnSubmit] and [SubmitEvent],
+//     and consumes Enter.
+//  4. Enter Goes On After a Submit:
+//     A valid Enter runs [WithOnSubmit], publishes [SubmitEvent], and is NOT consumed, as
+//     QLineEdit ignores Return after emitting accepted: in a dialog, the dialog then answers
+//     with its default button.
 //
 // # Concurrency & Goroutine Ownership
 //
@@ -404,7 +409,12 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 			t.onSubmit(t.Value())
 		}
 		t.publish(SubmitEvent{Owner: t.NodeID(), Value: t.Value()})
-		return true
+		// NOT CONSUMED, as QLineEdit ignores Return after emitting accepted:
+		// Enter goes on to the parent, so a field in a dialog lets the dialog
+		// answer with its default button. A value the validator refuses (above)
+		// does hold Enter — a dialog must not close over a field showing its
+		// error.
+		return false
 	case tui.KeyBackspace:
 		switch lo, hi, ok := t.selection(); {
 		case ok:

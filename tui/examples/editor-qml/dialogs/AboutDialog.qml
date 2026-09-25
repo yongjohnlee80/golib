@@ -7,6 +7,7 @@
 Dialog {
     title: "About"
     standardButtons: Dialog.Ok
+    defaultButton: Dialog.Ok               // Enter closes it
     helpText: "Enter or Esc to close"
 
     // On the card's colours, which it inherits — no palette of its own.

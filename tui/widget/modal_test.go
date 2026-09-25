@@ -105,6 +105,80 @@ func TestAnInputDialogStartsInItsFirstField(t *testing.T) {
 	}
 }
 
+// TestEnterInAFieldAnswersTheDialog: the field submits and Enter goes on, so
+// the dialog answers with its default button — a login form signs in from its
+// last field, as a Qt dialog does.
+func TestEnterInAFieldAnswersTheDialog(t *testing.T) {
+	user := widget.NewTextInput()
+	submitted := ""
+	pass := widget.NewTextInput(widget.WithOnSubmit(func(v string) { submitted = v }))
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	body := tui.NewFlex(tui.Vertical)
+	for _, c := range []tui.Component{user, pass} {
+		body.Add(c)
+	}
+	var reasons []widget.DismissReason
+	m := widget.NewModal(body, widget.WithButtons(ok),
+		widget.WithOnDismiss(func(r widget.DismissReason) { reasons = append(reasons, r) }))
+
+	h, host, _ := modalFixture(t, m, 40, 14)
+	defer h.stop()
+	openOn(t, h, m, host)
+	h.onLoop(func() { pass.Context().RequestFocus() })
+	h.settle()
+	h.inject(typeString("secret")...)
+	h.inject(key(tui.KeyEnter))
+	h.settle()
+
+	var open bool
+	var got []widget.DismissReason
+	var sawSubmit string
+	h.onLoop(func() {
+		open, got, sawSubmit = m.IsOpen(), append([]widget.DismissReason(nil), reasons...), submitted
+	})
+	if sawSubmit != "secret" {
+		t.Errorf("the field's submit hook saw %q, want it to run first", sawSubmit)
+	}
+	if open || len(got) != 1 || got[0] != widget.DismissAccept {
+		t.Errorf("Enter in the field left the dialog open=%v, dismissed %v; want accepted", open, got)
+	}
+}
+
+// TestASelectInADialogKeepsEnter: Enter opens the dropdown and then chooses
+// from it — a control that uses Enter keeps it — so a dialog whose default is
+// OK answers nothing while its Select has focus.
+func TestASelectInADialogKeepsEnter(t *testing.T) {
+	sel := widget.NewSelect(widget.WithOptions([]widget.SelectItem[string]{
+		{Label: "sqlite", Value: "sqlite"}, {Label: "postgres", Value: "postgres"},
+	}))
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	var reasons []widget.DismissReason
+	m := widget.NewModal(sel, widget.WithButtons(ok),
+		widget.WithOnDismiss(func(r widget.DismissReason) { reasons = append(reasons, r) }))
+
+	h, host, _ := modalFixture(t, m, 40, 14)
+	defer h.stop()
+	openOn(t, h, m, host)
+	h.inject(key(tui.KeyEnter)) // opens the dropdown
+	h.settle()
+	h.inject(key(tui.KeyDown), key(tui.KeyEnter)) // chooses postgres
+	h.settle()
+
+	var open bool
+	var got []widget.DismissReason
+	var v string
+	h.onLoop(func() {
+		open, got = m.IsOpen(), append([]widget.DismissReason(nil), reasons...)
+		v, _ = sel.Value()
+	})
+	if !open || len(got) != 0 {
+		t.Fatalf("Enter on the Select answered the dialog (open=%v, dismissed %v)", open, got)
+	}
+	if v != "postgres" {
+		t.Errorf("the Select holds %q, want postgres — Enter did not choose", v)
+	}
+}
+
 // TestOpeningATwiceOpenedDialogChangesNothing. Two code paths opening the same
 // dialog would otherwise mount it twice and leave one copy unreachable.
 func TestOpeningATwiceOpenedDialogChangesNothing(t *testing.T) {

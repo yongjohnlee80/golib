@@ -215,14 +215,16 @@
 // than a double-mount panic.
 //
 // FOCUS. The dialog traps focus, so Tab cannot reach the controls underneath.
-// It nominates where focus lands through [tui.InitialFocusProvider]: the enabled
-// default button ([WithDefault]), else the first enabled button, else the
-// Modal node itself. The last case is what keeps Escape reachable when every
-// control is disabled — the ring inside a trap must never be empty. The
-// preference applies on EVERY focus repair, not only at open, so a button
-// enabled or added later still takes focus if it is the default.
-// [Modal.SelectedButton] reports the focused button's index, or -1 when the
-// Modal node itself holds focus.
+// It nominates where focus lands through [tui.InitialFocusProvider]: the first
+// control in Tab order that takes focus — the body's first field, else the
+// first enabled button — else the Modal node itself. An input dialog starts in
+// its first field, a message on its first button; the default button
+// ([WithDefault]) answers Enter wherever focus is. The last case is what keeps
+// Escape reachable when every control is disabled — the ring inside a trap must
+// never be empty. The nomination applies when focus has to move (the focused
+// control disabled or removed); while the focused control can still hold
+// focus, it stays. [Modal.SelectedButton] reports the focused button's index,
+// or -1 when the Modal node itself holds focus.
 //
 // ESCAPE resolves the REJECT ROLE, never a label or a position: matching
 // "Cancel" breaks under translation and matching the last button breaks under
