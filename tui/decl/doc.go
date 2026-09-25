@@ -1,37 +1,91 @@
-// Package decl adapts golib/decl onto golib/tui: it turns a parsed schema into
-// real widgets and satisfies decl.Adapter.
+// Package decl adapts golib/decl onto golib/tui: it turns a parsed declarative
+// schema into a live tree of real widgets and satisfies [decl.Adapter].
 //
-// The engine owns identity, ordering and the signal contract and knows nothing
-// about widgets. This package owns the other half — which type name builds which
-// widget, which property calls which setter, and how a widget's event reaches
-// the engine's emitter — and it is where every golib/tui import lives.
+// # Architectural Separation
 //
-// # The registry is an explicit table
+// The core declarative engine ([github.com/yongjohnlee80/golib/decl]) owns identity,
+// traversal ordering, reactive propagation, and signal/handler dispatch contracts;
+// it knows nothing about terminal cells, widgets, or surfaces.
 //
-// There is no name-to-constructor magic, and there cannot be: several widgets
-// are generic (NewList[T], NewSelect[T]) and cannot be instantiated from a
-// string without reflection, which the library forbids in core paths. So a host
-// program registers each type it wants a schema to reach, by hand:
+// This package owns the terminal-specific translation layer:
+//   - Mapping QML type names (e.g. "Button", "Editor", "Split", "Dialog") to concrete widgets.
+//   - Mapping declarative property assignments to concrete widget methods and setters.
+//   - Wiring widget events, user keystrokes, and activations to the engine's emitters.
+//   - Managing layout docking ([tui.Dock]), overlay presentation, and dialog lifecycles.
 //
-//	reg := tuidecl.NewRegistry()
-//	tuidecl.Register(reg, "Button", buildButton)   // a builder func
+//	┌────────────────────────────────────────────────────────┐
+//	│ QML Layout (*.qml)                                     │
+//	│ Window { MenuBar { ... } Editor { ... } Dialog { ... } }│
+//	└───────────────────────────┬────────────────────────────┘
+//	                            │ parse/qml & decl.Tree
+//	                            ▼
+//	┌────────────────────────────────────────────────────────┐
+//	│ tui/decl.Adapter (implements decl.Adapter)             │
+//	│  ├─ Registry & Builders: StdRegistry()                 │
+//	│  ├─ Model/View Adapters: ListModel, TreeListModel      │
+//	│  ├─ Dialog Lifecycles: Modal, DialogButtonBox          │
+//	│  └─ Palette Roles: Propagation & Restyling             │
+//	└───────────────────────────┬────────────────────────────┘
+//	                            │ mounts & mutates
+//	                            ▼
+//	┌────────────────────────────────────────────────────────┐
+//	│ golib/tui Widget Tree (tui.App event loop)             │
+//	│  *widget.Box, *widget.Editor, *widget.Modal, etc.      │
+//	└────────────────────────────────────────────────────────┘
 //
-// A type a schema names but nobody registered is a positioned error, not a
-// panic: a schema is input.
+// # The Builder Pattern: Why Not Reflection or Post-Configuration?
 //
-// # Why a builder rather than a constructor plus setters
+// Real widget constructors in a terminal toolkit are heterogeneous by design:
+//   - Containers like [widget.Split] require their orientation and BOTH child widgets
+//     at construction time, providing no zero-argument constructor or deferred attachment.
+//   - Interactive widgets like [widget.Button] take their activation callback option
+//     primarily at construction.
+//   - Generic widgets (such as list and select controls) cannot be safely instantiated
+//     via string reflection without violating the library's zero-reflection policy.
 //
-// Real constructors are not uniform, and the differences are load-bearing. A
-// Split takes its orientation and BOTH children as required arguments and offers
-// no way to add them later. A Button takes its activation callback only as a
-// construction option. A Text takes its string either way. A registry that
-// created a bare widget and configured it afterwards could build none of the
-// first two.
+// To resolve this, [Registry] maps type names to pure [Builder] functions. A builder
+// receives a [Build] context containing:
+//   1. All declared properties in document order.
+//   2. All child components already constructed (bottom-up construction).
+//   3. Signal emitters wired to the engine's dispatch graph.
 //
-// So a builder receives everything at once — the declared properties, the
-// already-built children, and one emitter per signal — and returns the widget
-// plus the property names it consumed. The engine applies only what the builder
-// did not take, because re-applying a consumed property is either impossible
-// (there is no setter) or a second visible effect (the setter is not
-// idempotent).
+// The builder consumes whichever properties it requires for initialization and returns
+// their names. The engine only applies the remaining unconsumed properties via runtime
+// setters, avoiding redundant or non-idempotent setter invocations.
+//
+// # Model/View Architecture
+//
+// [tui/decl] provides Qt-style model/view decoupling:
+//   - Data models ([ItemModel], [TreeModel]) are implemented in Go and supplied as reactive sources.
+//   - Declarative views ([ListView], [ComboBox], [TableView], [TreeView]) bind to models via `model:`.
+//   - Views subscribe to model mutations ([decl.Reset], [decl.Inserted], [decl.Removed], [decl.Changed])
+//     and update terminal layouts incrementally without re-parsing or rebinding QML.
+//   - Row selection tracking uses stable keys ([ItemModel.Key]), ensuring that the user's active
+//     selection is preserved even when surrounding rows are inserted or deleted.
+//
+// # Dialogs and Button Roles
+//
+// [Dialog] and [FileDialog] manage their own modal lifecycles and input traps. Dialog actions
+// are declared via [DialogButtonBox] or standard buttons bitmasks:
+//   - Buttons carry Qt button roles ([widget.ButtonRoleAccept], [widget.ButtonRoleReject],
+//     [widget.ButtonRoleDestructive]).
+//   - Enter activates the dialog's default button; Space activates the focused button;
+//     Escape or RejectRole buttons emit `rejected` and dismiss the dialog.
+//   - DestructiveRole buttons dismiss the dialog cleanly without firing `accepted` or `rejected`.
+//
+// # Palette Roles and Theming
+//
+// Colours are specified using standard QPalette role conventions (`palette.window`,
+// `palette.base`, `palette.highlight`, `palette.accent`, `palette.text`). Palette roles
+// automatically propagate down the component hierarchy from parents to children, allowing
+// entire dialogs or subtrees to adopt contextual themes without per-widget styling code.
+//
+// # Hot Reloading and Testing
+//
+// Applications can be run via [Program] with file-watching hot reload enabled ([HotReload]).
+// When QML source files change on disk, [Program.Reload] parses the new layout and performs an
+// in-place reconciliation, retaining widget focus, text cursor positions, and scroll offsets.
+//
+// For test suites, [Check] and the companion package [github.com/yongjohnlee80/golib/tui/decl/decltest]
+// provide static validation ("qmllint") and headless virtual terminal testing.
 package decl
