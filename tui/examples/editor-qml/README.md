@@ -19,8 +19,12 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
   changes).
 - **Option > Keymaps** — Vim (modal) or Nano (modeless), a radio pair bound to
   the editor.
+- **Option > Theme** — Retro or Mono, switched live: the host rewrites the
+  layout's theme import line and reloads it, keeping the buffer. Under `-dev`
+  the file on disk stays the authority; its next save brings back its own
+  import.
 - **Help > About.**
-- **A command prompt** — `Ctrl+P` or File > Command: `w`, `q`, `wq`,
+- **A command prompt** — `Space` in Normal mode, `Ctrl+P`, or File > Command: `w`, `q`, `wq`,
   `e <file>`, as vim's `:` line.
 - **Syntax highlighting** for `.qml` and `.js` files, in the theme's colours.
 - A status line: the mode, the file or the last message, and a clock.
@@ -40,6 +44,7 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
 | `state.go` | what the document reads: `App.mode`, `App.status`, `App.path`… |
 | `commands.go` | what the document invokes: `App.saveFile()`, `App.openFile(path)`… |
 | `prompt.go` | what a prompt command does: the same commands, one more way in |
+| `theme.go` | Option > Theme: the theme import line, rewritten and reloaded |
 | `files.go` | reading and writing the buffer's file |
 | `clock.go` | a provider: `App.clock`, ticking on its own goroutine |
 | `main.go` | opens the terminal and runs the Program |

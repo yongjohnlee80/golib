@@ -112,3 +112,34 @@ var blue = style.RGB(0, 0, 170)
 func isBlue(c tui.Cell) bool {
 	return c.Attrs.BG.R == 0 && c.Attrs.BG.G == 0 && c.Attrs.BG.B == 170 && c.Attrs.BG.Kind != 0
 }
+
+// cardWidth is the width of the card whose top border holds title.
+func cardWidth(t *testing.T, h *harness, title string) int {
+	t.Helper()
+	y := h.rowWith(title)
+	row := []rune(h.row(y))
+	left := 0
+	for left < len(row) && row[left] != '┌' {
+		left++
+	}
+	right := left
+	for right < len(row) && row[right] != '┐' {
+		right++
+	}
+	return right - left + 1
+}
+
+// TestAModalWidthNeverClipsTheHelpLine: a width is a width, not a clip — the
+// help line still fits, as it does on a card sized to its content.
+func TestAModalWidthNeverClipsTheHelpLine(t *testing.T) {
+	help := "Enter runs the command, Esc closes"
+	m := widget.NewModal(widget.NewTextInput(), widget.WithModalWidth(20),
+		widget.WithModalTitle("Command"), widget.WithModalFooter(help))
+	h, host, _ := modalFixture(t, m, 80, 12)
+	defer h.stop()
+	openOn(t, h, m, host)
+	if w := cardWidth(t, h, "┌ Command "); w != len(help)+4 {
+		t.Fatalf("the card is %d wide, want the help line's %d:\n%s", w, len(help)+4, h.grid())
+	}
+	h.wantContains(help)
+}

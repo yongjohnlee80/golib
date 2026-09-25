@@ -208,3 +208,77 @@ func TestRetroSelectsTextInCyan(t *testing.T) {
 		{"an unselected letter", x + 3, y, cgaYellow, cgaBlue},
 	})
 }
+
+// pickTheme chooses Option > Theme > name with the mouse, as a user does.
+func (r *running) pickTheme(t *testing.T, name string) {
+	t.Helper()
+	r.clickLabel(t, 0, "Option")
+	r.waitFor(t, "the Option dropdown", func(s string) bool { return strings.Contains(s, "Theme") })
+	r.clickLabel(t, rowOf(r.rows(), "Theme"), "Theme")
+	r.waitFor(t, "the Theme submenu", func(s string) bool { return strings.Contains(s, name) })
+	r.clickLabel(t, rowOf(r.rows(), name), name)
+	r.waitFor(t, "the switch reported", func(s string) bool {
+		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "theme: "+strings.ToLower(name))
+	})
+}
+
+// TestTheThemeMenuSwitchesThemeAndKeepsTheBuffer: Option > Theme > Mono is
+// the import line rewritten and reloaded — mono's colours, the text typed so
+// far still there, and back again.
+func TestTheThemeMenuSwitchesThemeAndKeepsTheBuffer(t *testing.T) {
+	r := start(t, "")
+	r.key(t, runeKey('i'), runeKey('k'), runeKey('e'), runeKey('p'), runeKey('t'), escape)
+	r.waitFor(t, "the text", func(s string) bool { return strings.Contains(s, "kept") })
+
+	r.pickTheme(t, "Mono")
+	f := r.labelAt(t, 0, "File")
+	r.expect(t, []look{{"mono's File access key", f, 0, ansi(0), ansi(7)}})
+	if !strings.Contains(r.screen(), "kept") {
+		t.Fatalf("the buffer was lost switching theme:\n%s", r.screen())
+	}
+
+	r.pickTheme(t, "Retro")
+	r.expect(t, []look{{"retro's File access key", f, 0, cgaRed, cgaGrey}})
+	if !strings.Contains(r.screen(), "kept") {
+		t.Fatalf("the buffer was lost switching back:\n%s", r.screen())
+	}
+}
+
+// TestTheThemeMenuChecksTheImportedTheme: the mark is bound to what the
+// layout imports, not written on one row.
+func TestTheThemeMenuChecksTheImportedTheme(t *testing.T) {
+	for _, c := range []struct {
+		layout      []byte
+		retro, mono bool
+	}{
+		{layout, true, false},
+		{withImport(t, "import editor.theme.mono 1.0"), false, true},
+	} {
+		h := newHost(Options{})
+		st := h.state("", themeOf(c.layout))
+		if st["App.themeRetro"] != c.retro || st["App.themeMono"] != c.mono {
+			t.Errorf("%s: retro %v mono %v", themeOf(c.layout), st["App.themeRetro"], st["App.themeMono"])
+		}
+	}
+}
+
+// TestAThemeTheProgramDoesNotShipIsRefused: the screen stays as it was.
+func TestAThemeTheProgramDoesNotShipIsRefused(t *testing.T) {
+	r := start(t, "")
+	// A handler's call, on the UI loop, as the menu's would be.
+	r.host.p.Post(func() { _ = r.host.useTheme("neon") })
+	r.waitFor(t, "the refusal", func(s string) bool { return strings.Contains(s, `no theme "neon"`) })
+}
+
+// TestTheThemeMarkFollowsTheSwitch: after Mono is chosen, reopening the menu
+// shows Mono checked and Retro not.
+func TestTheThemeMarkFollowsTheSwitch(t *testing.T) {
+	r := start(t, "")
+	r.pickTheme(t, "Mono")
+	r.clickLabel(t, 0, "Option")
+	r.waitFor(t, "the Option dropdown", func(s string) bool { return strings.Contains(s, "Theme") })
+	r.clickLabel(t, rowOf(r.rows(), "Theme"), "Theme")
+	r.waitFor(t, "Mono checked", func(s string) bool {
+		return strings.Contains(s, "✓ Mono") && !strings.Contains(s, "✓ Retro")
+	})
+}

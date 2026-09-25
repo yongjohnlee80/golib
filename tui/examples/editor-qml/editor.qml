@@ -50,6 +50,11 @@ Window {
     // The command prompt, as vim's `:` is — on a key the editor does not
     // type, since a Shortcut fires whatever mode the editor is in.
     Shortcut { sequence: "Ctrl+P"; onActivated: prompt.open() }
+    // And on Space, vim's leader: a Shortcut sees only the keys the focused
+    // widget leaves, and the Editor types Space in Insert mode and leaves it
+    // in Normal mode — so this fires in Normal mode alone, with no condition
+    // written here.
+    Shortcut { sequence: "Space"; onActivated: prompt.open() }
 
     // ---- the menu bar ---------------------------------------------------
     //
@@ -96,6 +101,24 @@ Window {
                     text: "&2. Nano (modeless)"
                     group: "keyset"
                     onTriggered: App.useNano()
+                }
+            }
+            // The theme is the import line above; choosing one here has the
+            // host rewrite that line and reload. `checked` is bound, so the
+            // mark follows the theme the layout imports, whichever it is.
+            Menu {
+                title: "&Theme"
+                MenuItem {
+                    text: "&Retro"
+                    group: "theme"
+                    checked: App.themeRetro
+                    onTriggered: App.useTheme("retro")
+                }
+                MenuItem {
+                    text: "&Mono"
+                    group: "theme"
+                    checked: App.themeMono
+                    onTriggered: App.useTheme("mono")
                 }
             }
         }

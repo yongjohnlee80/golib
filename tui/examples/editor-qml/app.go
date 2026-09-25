@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -26,6 +27,7 @@ import (
 //	commands.go  the App singleton's commands: what the document invokes
 //	files.go     reading and writing the buffer's file
 //	clock.go     the provider behind App.clock
+//	theme.go     Option > Theme: switching the theme import at runtime
 type Host struct {
 	p      *tuidecl.Program
 	editor *widget.Editor
@@ -36,6 +38,11 @@ type Host struct {
 	// for one, and the quit waits for the file to be written. Cancelling the
 	// dialog or a failed write clears it.
 	quitAfterSave bool
+
+	// layoutSrc is the layout as last loaded, and dev the -dev directory
+	// ("" for none): what Option > Theme rewrites (theme.go).
+	layoutSrc []byte
+	dev       string
 }
 
 // Options are what New needs from the program around it.
@@ -81,7 +88,7 @@ func New(opt Options) (*Host, error) {
 
 // newHost is the host before its program exists: options needs it, to hand
 // the document its commands.
-func newHost(opt Options) *Host { return &Host{path: opt.Path} }
+func newHost(opt Options) *Host { return &Host{path: opt.Path, dev: opt.Dev} }
 
 // attach binds the host to the program built from its options — by New, or
 // by a test running the same options through decltest.Run — finds the one
@@ -102,7 +109,9 @@ func (h *Host) attach(p *tuidecl.Program, path string) error {
 // (decltest.Run). A program assembled twice is two programs.
 func (h *Host) options(opt Options) []tuidecl.ProgramOption {
 	var opts []tuidecl.ProgramOption
+	var src []byte
 	if opt.Dev != "" {
+		src, _ = os.ReadFile(filepath.Join(opt.Dev, "editor.qml"))
 		files := os.DirFS(opt.Dev)
 		opts = append(h.modulesFrom(files, files),
 			tuidecl.Layout(files, "editor.qml"),
@@ -110,14 +119,15 @@ func (h *Host) options(opt Options) []tuidecl.ProgramOption {
 			// screen stays as it was until the next good save.
 			tuidecl.HotReload(tuidecl.OnReloadError(func(err error) { _ = h.message(err.Error()) })))
 	} else {
-		src := opt.Layout
+		src = opt.Layout
 		if src == nil {
 			src = layout
 		}
+		h.layoutSrc = src
 		opts = append(h.modules(), tuidecl.LayoutSource("editor.qml", src))
 	}
 	opts = append(opts,
-		tuidecl.Sources(h.state(opt.Path)),
+		tuidecl.Sources(h.state(opt.Path, themeOf(src))),
 		tuidecl.Handlers(h.commands()),
 		tuidecl.Providers(newClock(opt.Now, opt.Tick)),
 		tuidecl.AppOptions(opt.App...),
