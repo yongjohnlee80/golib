@@ -138,3 +138,34 @@ func TestACardAtItsSmallestKeepsTheQuestionAndItsAnswers(t *testing.T) {
 		hh.stop()
 	}
 }
+
+// A body that FILLS what it is offered — a list — needs only a row. A roomy
+// dialog around one keeps its rule and help line; squeezed, it keeps a row of
+// the list and its button.
+func TestACardAroundAFillingBodySqueezesOnlyWhenItMust(t *testing.T) {
+	for _, c := range []struct {
+		h        int
+		wantRule bool
+	}{{16, true}, {5, false}} {
+		list := widget.NewList(widget.WithItems([]string{"alpha", "beta", "gamma"}, func(s string) string { return s }))
+		yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
+		md := widget.NewModal(list, widget.WithModalRule(true), widget.WithButtons(yes),
+			widget.WithModalFooter("Esc closes"))
+		host := widget.NewOverlayHost(widget.NewText(""))
+		hh := startApp(t, host, 40, c.h)
+		hh.onLoop(func() {
+			if err := md.Open(host); err != nil {
+				t.Fatal(err)
+			}
+		})
+		hh.settle()
+		scr := hh.grid()
+		if !strings.Contains(scr, "alpha") || !strings.Contains(scr, "Yes") {
+			t.Errorf("h=%d: the list or the button was squeezed out:\n%s", c.h, scr)
+		}
+		if got := strings.Contains(scr, "├") && strings.Contains(scr, "Esc closes"); got != c.wantRule {
+			t.Errorf("h=%d: rule and help line shown=%v, want %v:\n%s", c.h, got, c.wantRule, scr)
+		}
+		hh.stop()
+	}
+}
