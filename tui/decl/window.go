@@ -31,11 +31,13 @@ type windowNode struct {
 	host *widget.OverlayHost
 	dock *tui.Dock
 
-	// focus is the document's `focus: true` target, or nil.
-	focus     tui.Component
-	shortcuts []*shortcutNode
-	menus     []*menuBarNode
-	overlaid  []Overlaid
+	// focus is the document's `focus: true` target, or nil; focusPending is
+	// that it waits for the first layout to be applied.
+	focus        tui.Component
+	focusPending bool
+	shortcuts    []*shortcutNode
+	menus        []*menuBarNode
+	overlaid     []Overlaid
 }
 
 func buildWindow(b Build) (tui.Component, []string, error) {
@@ -142,7 +144,9 @@ func (w *windowNode) Init(ctx *tui.Context) {
 			w.restoreFocus()
 		}
 	})
-	w.restoreFocus()
+	// The document's `focus: true` is applied once the screen is laid out:
+	// focus moves INTO the nominee, and that needs its parts placed.
+	w.focusPending = true
 }
 
 func (w *windowNode) restoreFocus() {
@@ -153,15 +157,27 @@ func (w *windowNode) restoreFocus() {
 		return
 	}
 	if w.focus != nil && w.ctx != nil {
-		w.ctx.FocusComponent(w.focus)
+		// INTO the nominee, not onto it: `focus: true` on a ListView names a
+		// view whose focusable part is the list inside it — as a Qt Item with
+		// focus is given it within its scope. FocusComponent takes only a
+		// component that is focusable itself, and did nothing for one that is
+		// not.
+		w.ctx.FocusInto(w.focus)
 	}
 }
 
 func (w *windowNode) Layout(c tui.Constraints) tui.Size {
 	sz := w.ctx.LayoutChild(w.host, c)
 	w.ctx.PlaceChild(w.host, tui.Rect{W: sz.W, H: sz.H})
+	if w.focusPending {
+		w.focusPending = false
+		w.ctx.AfterLayout(windowFocusKey, w.restoreFocus)
+	}
 	return sz
 }
+
+// windowFocusKey is the Window's one commit: the start-up focus.
+const windowFocusKey tui.CommitKey = "window.focus"
 
 func (w *windowNode) Render(tui.Surface) {}
 
