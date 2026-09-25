@@ -65,8 +65,6 @@ type Modal struct {
 	selected int
 	// ownKeys are the dialog's own keys (WithModalKeys); nil for none.
 	ownKeys func(tui.KeyEvent) bool
-	// noImplicit lands focus on no button (WithModalNoImplicitAnswer).
-	noImplicit bool
 }
 
 // ModalOption configures a Modal at construction.
@@ -130,19 +128,6 @@ func WithModalRule(v bool) ModalOption {
 // took it — a viewer's `y` copying, say.
 func WithModalKeys(fn func(tui.KeyEvent) bool) ModalOption {
 	return func(m *Modal) { m.ownKeys = fn }
-}
-
-// WithModalNoImplicitAnswer gives the dialog NO IMPLICIT ANSWER: focus lands
-// on no button — on the body's first control that takes focus, else on the
-// dialog itself — so Enter and Space press nothing until the user has CHOSEN a
-// button: stepped to it (the arrows, Tab), or pressed its mnemonic, or clicked
-// it. For a dialog with no Default-role button whose answers may be
-// irreversible, so that no answer depends on the order they are listed in: a
-// stray Enter on opening "Save / Discard / Stay" answers nothing.
-//
-// Escape still resolves as it always does (see HandleAction).
-func WithModalNoImplicitAnswer() ModalOption {
-	return func(m *Modal) { m.noImplicit = true }
 }
 
 // WithModalWidth sets the card's width in cells, frame included, where it
@@ -364,16 +349,7 @@ func (m *Modal) SetButtons(b ...*Button) error {
 //
 // The Modal node itself is the last resort, which is what keeps the ring inside
 // the trap non-empty and Escape reachable when every control is disabled.
-//
-// With no implicit answer (WithModalNoImplicitAnswer) no button is nominated,
-// on any repair: a button that has focus is one the user moved it to.
 func (m *Modal) InitialFocus() (tui.Component, bool) {
-	if m.noImplicit {
-		if f := firstFocusable(m.card.body); f != nil {
-			return f, true
-		}
-		return m, true
-	}
 	for _, b := range m.card.buttons {
 		if b != nil && b.Enabled() && b.Role() == ButtonRoleDefault {
 			return b, true
@@ -566,15 +542,7 @@ func (m *Modal) TrapsFocus() bool { return true }
 // would be inert and uncloseable by keyboard. So the Modal steps in as the
 // target of last resort, and steps out again as soon as a real control is
 // available.
-//
-// With no implicit answer (WithModalNoImplicitAnswer) the node is also where
-// focus rests while no button is chosen — when the body has no control to take
-// it — so it takes focus whatever the buttons: Tab leaves it for the first
-// button, and Shift+Tab from that button returns to it, the unanswered state.
 func (m *Modal) AcceptsFocus() bool {
-	if m.noImplicit {
-		return firstFocusable(m.card.body) == nil
-	}
 	return m.enabledButtonCount() == 0 && firstFocusable(m.card.body) == nil
 }
 
@@ -693,9 +661,6 @@ func (m *Modal) stepFocus(delta int) bool {
 		}
 	}
 	n := len(m.card.buttons)
-	if cur < 0 && delta < 0 {
-		cur = n // from no button, a step back lands on the last
-	}
 	for step := 1; step <= n; step++ {
 		j := ((cur+delta*step)%n + n) % n
 		if b := m.card.buttons[j]; b != nil && b.Enabled() {

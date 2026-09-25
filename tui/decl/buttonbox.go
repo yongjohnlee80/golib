@@ -26,11 +26,13 @@ import (
 // only, and the dialog closes without an answer — `closed`, neither accepted
 // nor rejected.
 //
-// NO DEFAULT, NO IMPLICIT ANSWER: focus lands on the first button, but Enter
-// and Space press nothing until the user has CHOSEN a button — stepped to it
-// (the arrows, Tab), or pressed its mnemonic, or clicked it
-// (widget.WithModalNoImplicitAnswer). An irreversible answer is never one stray
-// Enter away, whatever order the answers are listed in.
+// NO DEFAULT: Enter answers nothing, whichever button has focus — the box's
+// buttons are not auto-default (Qt's QPushButton.autoDefault; Qt Quick
+// Controls' buttons take Space, not Enter), so Enter is left to the dialog, and
+// a dialog with no default declared has no answer for it. A button answers by
+// Space while it has focus, by its mnemonic, or by a click. An irreversible
+// answer is never one stray Enter away, whatever order the answers are listed
+// in.
 
 var buttonRoles = Enum{Scope: "DialogButtonBox", Values: []string{"AcceptRole", "RejectRole", "DestructiveRole"}}
 
@@ -71,6 +73,7 @@ func buildButtonBox(b Build) (tui.Component, []string, error) {
 // answer gives each of the box's buttons its role's answer, after its own.
 func (n *buttonBoxNode) answer(d *dialogNode) []*widget.Button {
 	for i, btn := range n.buttons {
+		btn.SetAutoDefault(false) // Enter is the dialog's, and it has no default
 		own := btn.OnActivate()
 		then := func() {}
 		switch n.roles[i] {

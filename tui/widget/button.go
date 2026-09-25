@@ -76,6 +76,9 @@ type Button struct {
 	enabled  bool
 	armed    bool
 	onAction func()
+	// manualOnly is Qt's autoDefault, inverted so the zero value is the usual
+	// button: when set, Enter is not this button's key (see WithAutoDefault).
+	manualOnly bool
 
 	// pointerPolicy is the policy the author asked for, remembered so that a
 	// chained WithPointerPolicy before mount is applied when the Context
@@ -107,6 +110,24 @@ func NewButton(label string, opts ...ButtonOption) *Button {
 	}
 	return b
 }
+
+// WithAutoDefault is Qt's QPushButton.autoDefault: whether Enter presses the
+// button while it has focus. True by default. Space always presses a focused
+// button, since Space is the button's own key.
+//
+// Enter is a container's key as much as a button's — a dialog's "answer" — so
+// a button that is not auto-default leaves Enter unclaimed, and it bubbles to
+// the container. A dialog's button box takes this for its buttons: with no
+// default declared, Enter answers nothing, whichever button has focus.
+func WithAutoDefault(v bool) ButtonOption {
+	return func(b *Button) { b.manualOnly = !v }
+}
+
+// SetAutoDefault changes WithAutoDefault after construction.
+func (b *Button) SetAutoDefault(v bool) { b.manualOnly = !v }
+
+// AutoDefault reports whether Enter presses the button while it has focus.
+func (b *Button) AutoDefault() bool { return !b.manualOnly }
 
 // WithMnemonic sets the key that reaches this button directly, such as 'y' on
 // a Yes button.
@@ -340,16 +361,26 @@ func (b *Button) State() WidgetState {
 // Init installs the button's own key bindings as its DEFAULT resolver layer, so
 // a consumer can add bindings without having to re-supply these.
 //
-// Enter and Space are resolved into the same ActivateAction the pointer gesture
-// produces, which is what makes keyboard and mouse a single path: the button
-// implements activation once and does not care which arrived.
+// Space, and Enter when the button is auto-default, are resolved into the same
+// ActivateAction the pointer gesture produces, which is what makes keyboard and
+// mouse a single path: the button implements activation once and does not care
+// which arrived.
 func (b *Button) Init(ctx *tui.Context) {
 	b.Base.Init(ctx)
-	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(activateKeys))
+	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(b.keys))
 	// Apply a policy requested before there was a Context to apply it to.
 	if b.pointerPolicy != tui.PointerInherit {
 		ctx.SetPointerPolicy(b.pointerPolicy)
 	}
+}
+
+// keys claims the button's activation keys: Space, and Enter only when it is
+// auto-default. A key it does not claim bubbles to the container.
+func (b *Button) keys(ev tui.Event) (tui.Action, bool) {
+	if k, ok := ev.(tui.KeyEvent); ok && k.Code == tui.KeyEnter && b.manualOnly {
+		return nil, false
+	}
+	return activateKeys(ev)
 }
 
 // activateKeys turns the two conventional activation keys into the runtime's
