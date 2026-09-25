@@ -51,7 +51,7 @@ func WithSyntaxStyles(st SyntaxStyles) EditorOption {
 // off. Every line is highlighted afresh.
 func (e *Editor) SetHighlighter(h highlight.Highlighter) {
 	e.hl = h
-	e.hlCache = nil
+	e.hlCache, e.hlValid = nil, 0
 	e.MarkDirty()
 }
 
@@ -62,11 +62,12 @@ func (e *Editor) WithSyntaxStyles(st SyntaxStyles) *Editor {
 	return e
 }
 
-// hlFrameBudget is how many lines ABOVE the screen a frame may highlight to
-// catch up. A deep jump — `G` in a long file — needs every line above the
-// screen, for the state it hands down; doing them all in one frame freezes
-// the UI for a large file. So a frame does this many, paints the screen from
-// a provisional state, and asks for another frame; input is handled between.
+// hlFrameBudget is how many lines a frame may EXAMINE to catch up — check
+// against the cache or highlight afresh — on its way to the screen. A jump
+// deep into a long file needs every line above the screen, for the state it
+// hands down; doing them all in one frame freezes the UI for a large file. So
+// a frame does this many, paints the screen from a provisional state, and asks
+// for another frame; input is handled between.
 const hlFrameBudget = 2000
 
 // hlFrame is one Render's highlighting walk.
@@ -83,29 +84,51 @@ type hlFrame struct {
 	localNext   int
 }
 
-// catchUp confirms the cache for the lines above the screen, re-highlighting
-// at most hlFrameBudget of them, and reports whether it reached the screen.
-func (e *Editor) catchUp(f *hlFrame) bool {
+// hlValid is how many leading lines of the cache are VERIFIED: each entry's
+// text is its line's, and its starting state the one before it hands down.
+// The walk starts there, not at line 0, so a frame's work is what changed and
+// what is on screen — never the file's length. A change to the text pulls it
+// back to the first line changed (textBuffer.touch); a new highlighter clears
+// it.
+func (e *Editor) verifiedFrom() int {
+	if ch := e.takeChanged(); ch < e.hlValid {
+		e.hlValid = ch
+	}
 	if len(e.hlCache) > len(e.lines) {
 		e.hlCache = e.hlCache[:len(e.lines)]
 	}
-	done := 0
-	for i := 0; i < e.top && i < len(e.lines); i++ {
-		in := highlight.State(0)
-		if i > 0 {
-			in = e.hlCache[i-1].out
-		}
-		if i < len(e.hlCache) && e.hlCache[i].text == e.lines[i] && e.hlCache[i].in == in {
-			continue
-		}
-		if done == hlFrameBudget {
-			f.checked = i
+	e.hlValid = min(e.hlValid, len(e.hlCache))
+	return e.hlValid
+}
+
+// confirm makes line i's cache entry right — kept, when its text and starting
+// state are unchanged, or highlighted afresh — and advances the verified
+// prefix over it when it is next.
+func (e *Editor) confirm(i int) {
+	e.hlExamined++
+	in := highlight.State(0)
+	if i > 0 {
+		in = e.hlCache[i-1].out
+	}
+	if !(i < len(e.hlCache) && e.hlCache[i].text == e.lines[i] && e.hlCache[i].in == in) {
+		e.store(i, e.highlightLine(i, in))
+	}
+	if i == e.hlValid {
+		e.hlValid++
+	}
+}
+
+// catchUp confirms the cache for the lines above the screen, examining at
+// most hlFrameBudget of them, and reports whether it reached the screen.
+func (e *Editor) catchUp(f *hlFrame) bool {
+	from, to := e.verifiedFrom(), min(e.top, len(e.lines))
+	for i := from; i < to; i++ {
+		if i-from == hlFrameBudget {
 			return false
 		}
-		e.store(i, e.highlightLine(i, in))
-		done++
+		e.confirm(i)
 	}
-	f.checked = min(e.top, len(e.lines))
+	f.checked = max(to, from)
 	return true
 }
 
@@ -134,14 +157,7 @@ func (e *Editor) highlighted(ln int, f *hlFrame) []highlight.Style {
 		return f.local[ln]
 	}
 	for i := f.checked; i <= ln && i < len(e.lines); i++ {
-		in := highlight.State(0)
-		if i > 0 {
-			in = e.hlCache[i-1].out
-		}
-		if i < len(e.hlCache) && e.hlCache[i].text == e.lines[i] && e.hlCache[i].in == in {
-			continue // unchanged text, unchanged starting state: unchanged colours
-		}
-		e.store(i, e.highlightLine(i, in))
+		e.confirm(i)
 	}
 	f.checked = max(f.checked, ln+1)
 	if ln < len(e.hlCache) {

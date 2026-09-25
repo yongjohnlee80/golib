@@ -148,10 +148,14 @@ type Editor struct {
 
 	// hl colours the buffer (editor_highlight.go); syntax is what each
 	// highlight style looks like; hlCache remembers each line's colours and
-	// what they were computed from.
-	hl      highlight.Highlighter
-	syntax  SyntaxStyles
-	hlCache []hlLine
+	// what they were computed from, and hlValid how much of it is verified.
+	// hlExamined counts the lines the walk has looked at, for a test to hold
+	// a frame's work to what it promises.
+	hl         highlight.Highlighter
+	syntax     SyntaxStyles
+	hlCache    []hlLine
+	hlValid    int
+	hlExamined int
 
 	// onModeChange and onChange are the constructor-time listeners for the two
 	// notifications this widget also publishes on the bus. A caller that builds
@@ -781,6 +785,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 	case ActOpenBelow:
 		e.beginGroup()
 		e.lines = append(e.lines[:e.ln+1], append([]string{""}, e.lines[e.ln+1:]...)...)
+		e.touch(e.ln + 1)
 		e.ln, e.col = e.ln+1, 0
 		e.enterInsert()
 		e.groupOpen = true // the open-line already began this group
@@ -789,6 +794,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 	case ActOpenAbove:
 		e.beginGroup()
 		e.lines = append(e.lines[:e.ln], append([]string{""}, e.lines[e.ln:]...)...)
+		e.touch(e.ln)
 		e.col = 0
 		e.enterInsert()
 		e.groupOpen = true
@@ -967,6 +973,7 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 			e.setMode(ModeNormal)
 			e.anchor = nil
 			e.lines = append(e.lines[:lo], append([]string{""}, e.lines[hi+1:]...)...)
+			e.touch(lo)
 			e.ln, e.col = lo, 0
 			e.insertText(t.Text)
 			e.clampNormal()

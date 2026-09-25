@@ -64,6 +64,7 @@ func (e *Editor) doRedo() {
 // restore resets the buffer content and cursor coordinates from a snapshot.
 func (e *Editor) restore(s editorSnap) {
 	e.lines = s.lines
+	e.touch(0)
 	e.ln = max(0, min(s.ln, len(e.lines)-1))
 	e.col = s.col
 	e.anchor = nil

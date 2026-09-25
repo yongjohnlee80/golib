@@ -103,6 +103,7 @@ func (e *Editor) deleteLines(lo, hi int) {
 		rest = []string{""}
 	}
 	e.lines = rest
+	e.touch(lo)
 	e.ln = min(lo, len(e.lines)-1)
 	e.col = 0
 	e.anchor = nil
@@ -122,6 +123,7 @@ func (e *Editor) pasteRegister(after bool) {
 		}
 		newLines := strings.Split(e.regText, "\n")
 		e.lines = append(e.lines[:at], append(append([]string{}, newLines...), e.lines[at:]...)...)
+		e.touch(at)
 		e.ln, e.col = at, 0
 	} else {
 		col := e.col

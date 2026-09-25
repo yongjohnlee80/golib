@@ -36,6 +36,25 @@ type textBuffer struct {
 	ln, col int // cursor line + cluster column
 	desired int // sticky column (cells) for vertical moves; -1 unset
 	anchor  *taPos
+	// changedFrom is the first line any change has touched since the owner
+	// last took it (takeChanged): what a line-by-line consumer — the
+	// Editor's highlighter cache — must look at again. Every change to
+	// lines calls touch.
+	changedFrom int
+}
+
+// noChange is changedFrom when nothing has changed.
+const noChange = int(^uint(0) >> 1)
+
+// touch records that line ln, and possibly every line after it, changed.
+func (b *textBuffer) touch(ln int) { b.changedFrom = min(b.changedFrom, max(ln, 0)) }
+
+// takeChanged returns the first line changed since the last call, noChange
+// for none, and forgets it.
+func (b *textBuffer) takeChanged() int {
+	ln := b.changedFrom
+	b.changedFrom = noChange
+	return ln
 }
 
 func newTextBuffer() textBuffer {
@@ -50,6 +69,7 @@ func (b *textBuffer) value() string { return strings.Join(b.lines, "\n") }
 func (b *textBuffer) setValue(s string) {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
 	b.lines = strings.Split(s, "\n")
+	b.touch(0)
 	b.ln = len(b.lines) - 1
 	b.col = len(clusters(b.lines[b.ln]))
 	b.anchor = nil
@@ -101,6 +121,7 @@ func (b *textBuffer) deleteRegion(lo, hi taPos) {
 	first := b.lineClusters(lo.ln)[:lo.col]
 	last := b.lineClusters(hi.ln)[hi.col:]
 	joined := strings.Join(first, "") + strings.Join(last, "")
+	b.touch(lo.ln)
 	b.lines = append(b.lines[:lo.ln], append([]string{joined}, b.lines[hi.ln+1:]...)...)
 	b.ln, b.col = lo.ln, lo.col
 	b.anchor = nil
@@ -132,6 +153,7 @@ func (b *textBuffer) insertText(text string) {
 	}
 	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
 	parts := strings.Split(text, "\n")
+	b.touch(b.ln)
 	cs := b.lineClusters(b.ln)
 	head := strings.Join(cs[:b.col], "")
 	tail := strings.Join(cs[b.col:], "")
