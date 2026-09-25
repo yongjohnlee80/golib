@@ -91,7 +91,8 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	}
 	chooser := mode.view(opts...)
 	s.body = chooser
-	s.buttons = []standardButton{{name: "Cancel", label: "&Cancel"}, mode.choose}
+	// Open (or Save) is the default, as QFileDialog's is: Enter chooses.
+	s.buttons, s.defaultAt = []standardButton{{name: "Cancel", label: "&Cancel"}, mode.choose}, 1
 	s.hooks = dialogHooks{
 		gate: chooser.Confirm,
 		opened: func() {

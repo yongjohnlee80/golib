@@ -3,12 +3,14 @@ package decl_test
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
+	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
@@ -207,5 +209,82 @@ func TestAFieldInADialogKeepsTheLettersTypedIntoIt(t *testing.T) {
 	s.WaitFor(t, "y in the field", func(sc string) bool { return strings.Contains(sc, "│ y") })
 	if fired != 0 {
 		t.Errorf("the shortcut took a letter typed into the dialog's field")
+	}
+}
+
+// TestEnterAnswersOnlyTheNamedDefault: a dialog answers Enter with the button
+// its defaultButton names — from a field too, since a field lets Enter go on
+// after it submits — and with nothing when it names none.
+func TestEnterAnswersOnlyTheNamedDefault(t *testing.T) {
+	for _, c := range []struct {
+		name, buttons, def, body, want string
+	}{
+		{"none named", "Dialog.Ok | Dialog.Cancel", "", "TextField { }", "open"},
+		{"Ok named, from a field", "Dialog.Ok | Dialog.Cancel", "Dialog.Ok", "TextField { }", "accepted"},
+		{"No named", "Dialog.Yes | Dialog.No", "Dialog.No", `Text { text: "delete it?" }`, "rejected"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var answers []string
+			record := func(what string) decl.HandlerFunc {
+				return func([]qml.SpecValue) error {
+					mu.Lock()
+					defer mu.Unlock()
+					answers = append(answers, what)
+					return nil
+				}
+			}
+			got := func() []string {
+				mu.Lock()
+				defer mu.Unlock()
+				return append([]string(nil), answers...)
+			}
+			def := ""
+			if c.def != "" {
+				def = "; defaultButton: " + c.def
+			}
+			s := decltest.Run(t, 40, 12,
+				tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n Text { text: \"under\" }\n"+
+					" Dialog { id: d; title: \"Q\"; standardButtons: "+c.buttons+def+"\n"+
+					"  onAccepted: App.accepted()\n  onRejected: App.rejected()\n  "+c.body+" } }")),
+				tuidecl.Singleton("demo", "1.0", "App"),
+				tuidecl.Types(controls.Types()...),
+				tuidecl.Handlers(map[string]decl.HandlerFunc{"App.accepted": record("accepted"), "App.rejected": record("rejected")}))
+			s.WaitForText(t, "under")
+			onScreenLoop(t, s, func() {
+				if err := s.Program.Call("d", "open"); err != nil {
+					t.Error(err)
+				}
+			})
+			s.WaitForText(t, "┌ Q ")
+			s.Keys(t, decltest.Rune('x'), tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+			if c.want == "open" {
+				time.Sleep(50 * time.Millisecond) // an answer would have closed it by now
+				if sc := s.String(); !strings.Contains(sc, "┌ Q ") || len(got()) != 0 {
+					t.Fatalf("a dialog naming no default answered Enter (%v):\n%s", got(), sc)
+				}
+				return
+			}
+			s.WaitFor(t, c.want, func(string) bool { return len(got()) == 1 })
+			if a := got()[0]; a != c.want {
+				t.Errorf("Enter answered %q, want %q", a, c.want)
+			}
+		})
+	}
+}
+
+// TestDefaultButtonNamesOneOfTheDialogsButtons: Enter's answer is stated, so a
+// name the dialog does not have, or two names, is refused — never read as
+// "none" or "the first".
+func TestDefaultButtonNamesOneOfTheDialogsButtons(t *testing.T) {
+	for _, def := range []string{"Dialog.Save", "Dialog.Ok | Dialog.Cancel"} {
+		_, err := mountDoc(t, "import tui 1.0\nWindow {\n Text { }\n Dialog { standardButtons: Dialog.Ok | Dialog.Cancel; defaultButton: "+
+			def+"\n  Text { } }\n}")
+		if err == nil || !strings.Contains(err.Error(), "defaultButton names one of the Dialog's standardButtons") {
+			t.Errorf("defaultButton: %s: err = %v, want it refused", def, err)
+		}
+	}
+	if _, err := mountDoc(t, "import tui 1.0\nWindow {\n Text { }\n Dialog { standardButtons: Dialog.Ok | Dialog.Cancel; defaultButton: Dialog.Cancel\n  Text { } }\n}"); err != nil {
+		t.Errorf("defaultButton: Dialog.Cancel was refused: %v", err)
 	}
 }
