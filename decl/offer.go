@@ -66,6 +66,9 @@ type offer struct {
 type loaded struct {
 	keys       []string
 	components []string
+	// contents are what the load produced, kept so a reload that is refused
+	// can put the previous version back (ClearComponentCache).
+	contents ModuleContents
 }
 
 // OfferModule makes a module importable without loading it, before Mount.
@@ -115,14 +118,32 @@ func (t *Tree) nameFree(op, name string) error {
 // on any failure that built nothing.
 func (t *Tree) loadImported(spec qml.SpecTree) (undo func(), err error) {
 	var done []string
+	var restores []func()
 	undo = func() {
 		for _, name := range done {
 			t.unload(name)
 		}
+		for i := len(restores) - 1; i >= 0; i-- {
+			restores[i]()
+		}
 	}
 	for _, im := range spec.Imports {
 		o, ok := t.offered[im.Module]
-		if !ok || t.isLoaded(im.Module) {
+		if !ok {
+			continue
+		}
+		if t.isLoaded(im.Module) {
+			if !t.stale[im.Module] {
+				continue
+			}
+			// ClearComponentCache marked it: load the new version, and keep
+			// the old one to put back if this document is refused.
+			restore, err := t.reload(im, o)
+			if err != nil {
+				undo()
+				return nil, err
+			}
+			restores = append(restores, restore)
 			continue
 		}
 		// A version the document cannot have is refused before the loader
@@ -139,6 +160,48 @@ func (t *Tree) loadImported(spec qml.SpecTree) (undo func(), err error) {
 		done = append(done, im.Module)
 	}
 	return undo, nil
+}
+
+// reload replaces a stale loaded module with a fresh load, and returns how to
+// put the previous version back.
+func (t *Tree) reload(im qml.SpecImport, o offer) (restore func(), err error) {
+	prev := t.loads[im.Module]
+	back := func() {
+		t.unload(im.Module)
+		// It loaded before, from these very contents, so it loads again.
+		_ = t.load(im, offer{version: o.version, load: func() (ModuleContents, error) { return prev.contents, nil }})
+		t.stale[im.Module] = true
+	}
+	t.unload(im.Module)
+	if err := t.load(im, o); err != nil {
+		back()
+		return nil, err
+	}
+	delete(t.stale, im.Module)
+	return back, nil
+}
+
+// ClearComponentCache is Qt's QQmlEngine::clearComponentCache — "useful … to
+// load a new version of a previously loaded component". Every loaded offered
+// module is marked stale: the next Reconcile whose document imports one runs
+// its loader again, reading its files afresh, and that reconcile compares the
+// VALUES declarations evaluate to, so a line written the same under an edited
+// theme is re-applied. A reconcile that is refused puts every previous version
+// back. Nothing is unloaded until then: the live tree keeps resolving.
+//
+// Not legal inside an operation; call it between reconciles.
+func (t *Tree) ClearComponentCache() error {
+	if t.ph != phaseIdle {
+		return SchemaError{Op: "clear component cache", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
+	}
+	if t.stale == nil {
+		t.stale = map[string]bool{}
+	}
+	for name := range t.loads {
+		t.stale[name] = true
+	}
+	t.refreshing = true
+	return nil
 }
 
 // load runs one offered module's loader and registers what it produced.
@@ -164,7 +227,7 @@ func (t *Tree) load(im qml.SpecImport, o offer) error {
 	if t.loads == nil {
 		t.loads = map[string]*loaded{}
 	}
-	rec := &loaded{}
+	rec := &loaded{contents: c}
 	t.loads[im.Module] = rec
 	// Sorted, so a module that fails part-way fails on the same key every run.
 	keys := make([]string, 0, len(c.Values))
@@ -218,6 +281,7 @@ func (t *Tree) unloadAll() {
 	for name := range t.loads {
 		t.unload(name)
 	}
+	t.stale, t.refreshing = nil, false
 }
 
 // underExport reports whether a value key sits under one of the exports.
