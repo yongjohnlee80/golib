@@ -93,6 +93,7 @@
 // adapter and toolkit. Callers must marshal model mutations directly to the tree's owner
 // goroutine, as change subscribers execute synchronously on the mutating goroutine.
 //
-// When repeaters re-expand, the engine uses the scheduler supplied via [WithScheduler] to schedule
-// the subsequent reconciliation pass onto the owner goroutine.
+// When repeaters re-expand, the engine uses the scheduler supplied via [WithScheduler] (when one
+// is configured) to schedule the subsequent reconciliation pass onto the owner goroutine, or runs
+// it immediately when no scheduler is installed.
 package decl
