@@ -101,3 +101,40 @@ func TestAComponentMayNotReplaceAVocabularyType(t *testing.T) {
 		t.Fatalf("err = %v, want the component refused", err)
 	}
 }
+
+// TestAttachedAndFocusPropertiesRebuildWhenTheyChange: a parent reads
+// Dock.edge, and the adapter reads focus, when a node is BUILT — neither has a
+// setter, so a reload that changes one rebuilds the node rather than failing
+// to apply it. Asked of the adapter directly, and through a real reload.
+func TestAttachedAndFocusPropertiesRebuildWhenTheyChange(t *testing.T) {
+	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
+		tuidecl.WithErrorSink(func(error) {}))...)
+	for _, prop := range []string{"Dock.edge", "focus"} {
+		if k := a.ClassifyProperty("StatusBar", prop); k != decl.PropConstructorOnly {
+			t.Errorf("%s classifies as %v, want PropConstructorOnly", prop, k)
+		}
+	}
+	tr := decl.New(a)
+	parse := func(src string) qml.SpecTree {
+		spec, err := qml.QML{}.Parse([]byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return spec
+	}
+	doc := func(edge string) string {
+		return "import tui 1.0\nWindow {\n Text { }\n StatusBar { id: bar; Dock.edge: Tui." + edge + " }\n}"
+	}
+	if err := tr.Mount(parse(doc("Bottom"))); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	before, _ := tr.NodeByID("bar")
+	res, err := tr.Reconcile(parse(doc("Top")))
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	after, _ := tr.NodeByID("bar")
+	if after == before || len(res.Rebuilt) == 0 {
+		t.Fatalf("moving the bar's edge did not rebuild it (node %d → %d, rebuilt %v)", before, after, res.Rebuilt)
+	}
+}
