@@ -35,6 +35,9 @@ Theme {
     dialog {
         window: "#aaaaaa"; windowText: "#000000"
         button: "#00aa00"; buttonText: "#000000"
-        highlight: "#00aa00"; highlightedText: "#ffffff"   // the focused button
+        highlight: "#00aa00"; highlightedText: "#ffffff"   // the focused button, and list row
+        base: "#00aaaa"; text: "#000000"                   // a file dialog's panes
+        inactive { highlight: "#555555"; highlightedText: "#55ffff" }  // a row not in use
+        mid: "#555555"; light: "#ffffff"                   // a pane's frame, idle and in use
     }
 }

@@ -35,6 +35,18 @@ func start(t *testing.T, path string) *running {
 // startLayout runs a replacement for editor.qml; nil runs the real one.
 func startLayout(t *testing.T, path string, src []byte) *running {
 	t.Helper()
+	return startWith(t, path, src, 80, 14)
+}
+
+// startSized runs editor.qml on a screen of the given size — a file dialog
+// wants the rows an ordinary terminal has.
+func startSized(t *testing.T, path string, w, h int) *running {
+	t.Helper()
+	return startWith(t, path, nil, w, h)
+}
+
+func startWith(t *testing.T, path string, src []byte, w, h int) *running {
+	t.Helper()
 	r := &running{quit: make(chan struct{})}
 	var app atomic.Pointer[tui.App]
 	host, root, err := New(Options{
@@ -50,7 +62,7 @@ func startLayout(t *testing.T, path string, src []byte) *running {
 		t.Fatalf("editor.qml did not mount: %v", err)
 	}
 	r.host = host
-	r.be = tui.NewTestBackend(80, 14)
+	r.be = tui.NewTestBackend(w, h)
 	a := tui.NewApp(root, tui.WithBackend(r.be), tui.WithMinFrameInterval(0))
 	app.Store(a)
 	r.app = a

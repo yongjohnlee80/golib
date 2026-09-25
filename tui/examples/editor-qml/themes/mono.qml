@@ -33,6 +33,9 @@ Theme {
     dialog {
         window: "white"; windowText: "black"
         button: "white"; buttonText: "black"
-        highlight: "black"; highlightedText: "white"       // the focused button
+        highlight: "black"; highlightedText: "white"       // the focused button, and list row
+        base: "white"; text: "black"                       // a file dialog's panes
+        inactive { highlight: "brightblack"; highlightedText: "white" }  // a row not in use
+        mid: "brightblack"; light: "black"                 // a pane's frame, idle and in use
     }
 }

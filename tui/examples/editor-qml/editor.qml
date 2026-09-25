@@ -12,7 +12,7 @@
 import tui 1.0      // the widget vocabulary, and the Tui singleton's enums
 import editor 1.0   // the App singleton: this program's state and commands
 import editor.theme.retro 1.0   // the Theme singleton — or editor.theme.mono
-import editor.dialogs 1.0       // QuitDialog and AboutDialog, one file each
+import editor.dialogs 1.0       // QuitDialog, AboutDialog, OpenDialog, SaveDialog
 
 Window {
     // ---- keys -----------------------------------------------------------
@@ -43,7 +43,7 @@ Window {
         Menu {
             title: "&File"
             MenuItem { text: "&New";  onTriggered: App.newFile() }
-            MenuItem { text: "&Open"; onTriggered: App.openFile() }
+            MenuItem { text: "&Open"; onTriggered: openDialog.open() }
             MenuItem { text: "&Save"; onTriggered: App.saveFile() }
             MenuItem { text: "E&xit"; onTriggered: quitDialog.open() }
         }
@@ -117,4 +117,8 @@ Window {
     // quitDialog.open() — and close themselves.
     QuitDialog { id: quitDialog }
     AboutDialog { id: aboutDialog }
+    OpenDialog { id: openDialog }
+    // Opened by the HOST, not by a handler: Save asks for a name only when the
+    // buffer has none, and whether it has one is the host's to know.
+    SaveDialog { id: saveDialog }
 }

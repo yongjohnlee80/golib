@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -18,6 +21,8 @@ func (h *Host) injectState(path string) error {
 		"App.mode":   widget.ModeNormal.String(),
 		"App.status": displayPath(path),
 		"App.keyset": "vim",
+		// Where the file dialogs open: the current file's folder.
+		"App.folder": folderOf(path),
 		// The quit dialog's question. A source, so the dialog says when there
 		// is something to lose without the host reaching into it.
 		"App.quitQuestion": quitQuestion(false),
@@ -60,6 +65,30 @@ func quitQuestion(dirty bool) string {
 		return "Are you sure to quit?\nUnsaved changes will be lost."
 	}
 	return "Are you sure to quit?"
+}
+
+// folderOf is the folder a path is in, or the working directory for none.
+func folderOf(path string) string {
+	if path == "" {
+		wd, _ := os.Getwd()
+		return wd
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Dir(path)
+	}
+	return filepath.Dir(abs)
+}
+
+// setPath makes path the buffer's file, and moves the file dialogs' folder and
+// the status line's name with it.
+func (h *Host) setPath(path string) error {
+	h.path = path
+	_, err := h.tree.SetSources(map[string]qml.SpecValue{
+		"App.folder": str(folderOf(path)),
+		"App.status": str(displayPath(path)),
+	})
+	return err
 }
 
 func str(s string) qml.SpecValue { return qml.SpecValue{Kind: qml.SpecValueString, Raw: s} }
