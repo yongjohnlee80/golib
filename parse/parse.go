@@ -45,11 +45,18 @@ type Position struct {
 	// Column is the column within the line, starting at 1, counted in RUNES
 	// rather than bytes so the number matches what an editor shows.
 	Column int
+	// File names the source, empty when the caller gave it no name. It is what
+	// tells one document's line 3 from another's once several files make up a
+	// screen.
+	File string
 }
 
 // String renders the position as line:column, the form editors and compilers
 // use. Offset is omitted because it is for slicing, not for reading.
 func (p Position) String() string {
+	if p.File != "" {
+		return fmt.Sprintf("%s:%d:%d", p.File, p.Line, p.Column)
+	}
 	return fmt.Sprintf("%d:%d", p.Line, p.Column)
 }
 
