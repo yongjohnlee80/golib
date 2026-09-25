@@ -2,6 +2,7 @@ package widget
 
 import (
 	"fmt"
+	"github.com/yongjohnlee80/golib/highlight"
 	"sort"
 	"strings"
 	"time"
@@ -144,6 +145,13 @@ import (
 //	}
 type Editor struct {
 	readOnly bool // viewer mode: motions and yank only
+
+	// hl colours the buffer (editor_highlight.go); syntax is what each
+	// highlight style looks like; hlCache remembers each line's colours and
+	// what they were computed from.
+	hl      highlight.Highlighter
+	syntax  SyntaxStyles
+	hlCache []hlLine
 
 	// onModeChange and onChange are the constructor-time listeners for the two
 	// notifications this widget also publishes on the bus. A caller that builds
@@ -1507,8 +1515,19 @@ func (e *Editor) Render(s tui.Surface) {
 		return
 	}
 	w := e.wrapWidth()
+	checked := 0
+	var lineStyles []highlight.Style
+	styledLn := -1
 	paintCluster := func(x, y int, cl string, ln, col int) {
 		st := e.styles.Text
+		if ln != styledLn {
+			lineStyles, styledLn = e.highlighted(ln, &checked), ln
+		}
+		if col < len(lineStyles) {
+			if sst, ok := e.syntaxStyle(lineStyles[col]); ok {
+				st = sst.Inherit(st)
+			}
+		}
 		if e.focused() && e.inVisual(ln, col) {
 			st = e.styles.Selection.Inherit(st)
 		}
