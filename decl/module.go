@@ -147,6 +147,9 @@ type imports struct {
 	// can call `quitDialog.open()`. They are in scope with the imports because
 	// they are names the document brought into scope, resolved the same way.
 	ids map[string]string
+	// modules are the modules imported WITHOUT a qualifier, whose component
+	// types are in scope by their own names.
+	modules []string
 }
 
 // resolveImports checks a schema's imports and returns what they bind.
@@ -192,6 +195,7 @@ func (t *Tree) resolveImports(spec qml.SpecTree) (imports, error) {
 		for _, name := range m.Exports {
 			out.byName[name] = im.Module
 		}
+		out.modules = append(out.modules, im.Module)
 	}
 	return out, nil
 }

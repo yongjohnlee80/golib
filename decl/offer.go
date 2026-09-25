@@ -41,6 +41,9 @@ type ModuleContents struct {
 	// unqualified import: "Theme.menu.window". Every key must sit under one of
 	// Exports — a module brings ITS singletons into scope, not arbitrary globals.
 	Values map[string]Injected
+	// Components are the module's component types, by type name: a QML file
+	// each, usually, loaded by [ComponentFiles]. See component.go.
+	Components map[string]*qml.SpecNode
 }
 
 // ModuleLoader produces an offered module's contents. It runs at most once per
@@ -61,7 +64,8 @@ type offer struct {
 // loaded is one offered module the engine did load, and every registry key the
 // load wrote — what undoing it must remove.
 type loaded struct {
-	keys []string
+	keys       []string
+	components []string
 }
 
 // OfferModule makes a module importable without loading it, before Mount.
@@ -176,6 +180,12 @@ func (t *Tree) load(im qml.SpecImport, o offer) error {
 			return fail(fmt.Errorf("%w: %v", ErrModuleLoad, err))
 		}
 	}
+	names, err := t.loadComponents(im.Module, c.Components)
+	if err != nil {
+		t.unload(im.Module)
+		return fail(err)
+	}
+	rec.components = names
 	return nil
 }
 
@@ -194,6 +204,9 @@ func (t *Tree) unload(name string) {
 	for _, k := range rec.keys {
 		delete(t.injected, k)
 		delete(t.sources, k)
+	}
+	for _, n := range rec.components {
+		delete(t.components, n)
 	}
 	delete(t.modules, name)
 	delete(t.loads, name)

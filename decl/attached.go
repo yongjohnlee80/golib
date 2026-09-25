@@ -146,17 +146,25 @@ var documentChecks = []documentCheck{
 	(*Tree).checkAttached,
 }
 
-// vetDocument resolves a document's imports and runs every document check,
-// returning the imports only if all of it passed.
+// vetDocument resolves a document's imports, expands its components and runs
+// every document check, returning the imports and the EXPANDED document only
+// if all of it passed. The caller builds the expanded one.
 //
 // It changes nothing: the caller adopts the imports once it has decided to go
 // ahead, so a refused document leaves the tree resolving through the imports
 // it had before.
-func (t *Tree) vetDocument(spec qml.SpecTree) (imports, error) {
+func (t *Tree) vetDocument(spec qml.SpecTree) (imports, qml.SpecTree, error) {
 	imported, err := t.resolveImports(spec)
 	if err != nil {
-		return imports{}, err
+		return imports{}, qml.SpecTree{}, err
 	}
+	// COMPONENTS FIRST: every check below judges the document as it will be
+	// built, which is with each component use expanded.
+	root, err := expand(spec.Root, t.componentTypes(imported))
+	if err != nil {
+		return imports{}, qml.SpecTree{}, SchemaError{Op: "component", Err: err}
+	}
+	spec.Root = root
 	// The checks resolve names, so they run against the NEW document's
 	// imports, with the old set restored whatever they decide.
 	prev := t.imported
@@ -164,9 +172,9 @@ func (t *Tree) vetDocument(spec qml.SpecTree) (imports, error) {
 	defer func() { t.imported = prev }()
 	for _, check := range documentChecks {
 		if err := check(t, spec.Root); err != nil {
-			return imports{}, err
+			return imports{}, qml.SpecTree{}, err
 		}
 	}
 	imported.ids = documentIDs(spec.Root)
-	return imported, nil
+	return imported, spec, nil
 }

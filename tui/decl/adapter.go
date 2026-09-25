@@ -314,3 +314,16 @@ func (a *Adapter) Destroy(id decl.NodeID) error {
 	delete(a.nodes, id)
 	return nil
 }
+
+// TypeNames implements [decl.Vocabulary]: a component named like a type this
+// adapter builds is refused, not allowed to replace it.
+func (a *Adapter) TypeNames() []string {
+	names := make([]string, 0, len(a.reg.builders))
+	for n := range a.reg.builders {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+var _ decl.Vocabulary = (*Adapter)(nil)
