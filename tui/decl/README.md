@@ -155,6 +155,12 @@ Instantiator {
 }
 ```
 
+**`focus: true` says where the keyboard starts** — Qt's `Item.focus`. The
+Window gives it the first `focus: true` item when the screen is first laid
+out, and again after a menu action. Focus moves INTO that item, so
+`ListView { focus: true }` gives the keyboard to the list inside the view, as
+it does for an `Editor` or a `TextField`.
+
 **Every element that takes a place on screen has `forceActiveFocus()`** — Qt's
 `Item.forceActiveFocus()`: focus moves INTO it — the item itself when it takes
 focus, else its first focusable part — so a pane is focused by naming it:
