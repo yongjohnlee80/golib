@@ -520,10 +520,12 @@ func (m *Menu) activate(id ItemID, inv tui.ActionInvocation) bool {
 		// listener filter submenus back out.
 		return m.openLevel(id, it.Children) == nil
 	case ItemKindCheck:
-		it.Checked = !it.Checked
+		m.report(m.check(it, !it.Checked), true)
 	case ItemKindRadio:
-		it.Checked = true
-		clearGroupExcept(m.items, it.Group, it.ID)
+		m.report(m.check(it, true), true)
+	}
+	if it = findItem(m.items, id); it == nil {
+		return false // an owner told of the toggle removed the row
 	}
 
 	handled := m.runRowAction(it, inv)

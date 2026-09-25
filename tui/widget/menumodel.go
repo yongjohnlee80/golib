@@ -260,18 +260,21 @@ func findItem(items []MenuItemModel, id ItemID) *MenuItemModel {
 	return nil
 }
 
-// clearGroupExcept unchecks every radio row in group other than keep, at every
-// depth. Radio exclusivity is a property of the whole model rather than of one
-// level: a group split across a submenu is unusual but expressible, and honoring
-// it only within a level would leave two members checked.
-func clearGroupExcept(items []MenuItemModel, group string, keep ItemID) {
+// uncheckGroupExcept unchecks every checked radio row in group other than keep,
+// at every depth, appending each to changed. Radio exclusivity is a property of
+// the whole model rather than of one level: a group split across a submenu is
+// unusual but expressible, and honoring it only within a level would leave two
+// members checked.
+func uncheckGroupExcept(items []MenuItemModel, group string, keep ItemID, changed []toggle) []toggle {
 	for i := range items {
 		it := &items[i]
-		if it.Kind == ItemKindRadio && it.Group == group && it.ID != keep {
+		if it.Kind == ItemKindRadio && it.Group == group && it.ID != keep && it.Checked {
 			it.Checked = false
+			changed = append(changed, toggle{it.ID, false})
 		}
-		clearGroupExcept(it.Children, group, keep)
+		changed = uncheckGroupExcept(it.Children, group, keep, changed)
 	}
+	return changed
 }
 
 // RowView is an IMMUTABLE projection of one row, handed to a RowRenderer.

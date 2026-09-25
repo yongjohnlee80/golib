@@ -32,12 +32,13 @@ import (
 type Menu struct {
 	Base
 
-	items    []MenuItemModel
-	style    *MenuStyle
-	rows     RowRenderer
-	exec     func(tui.ActionInvocation) bool
-	onSelect func(ItemID)
-	policy   AnchorPolicy
+	items     []MenuItemModel
+	style     *MenuStyle
+	rows      RowRenderer
+	exec      func(tui.ActionInvocation) bool
+	onToggled func(id ItemID, checked, byUser bool)
+	onSelect  func(ItemID)
+	policy    AnchorPolicy
 
 	// selected is the highlighted row, empty when nothing is.
 	selected ItemID
@@ -237,6 +238,19 @@ func WithActionExecutor(fn func(tui.ActionInvocation) bool) MenuOption {
 	return func(m *Menu) { m.exec = fn }
 }
 
+// WithMenuOnToggled reports every change to a row's checked state, as a
+// QAction raises toggled: from the user's toggle (byUser) or from SetChecked,
+// and for each row the change touched — a radio's group cleared as well as the
+// radio checked, the cleared rows first. It runs after the state has changed,
+// so Checked answers the new state, and before the row's action.
+//
+// It is how an OWNER of the rows — application data, or a declarative layer
+// over the menu — keeps them current without a second toggle rule: the rule is
+// the Menu's, and the owner records what it reports.
+func WithMenuOnToggled(fn func(id ItemID, checked, byUser bool)) MenuOption {
+	return func(m *Menu) { m.onToggled = fn }
+}
+
 // SetModel replaces the whole model, atomically.
 //
 // ONE TRANSITION, in this exact order, with no intermediate state any render can
@@ -309,14 +323,53 @@ func (m *Menu) SetVisible(id ItemID, v bool) bool {
 }
 
 // SetChecked sets a check or radio row and reports whether the row exists.
-// Setting a radio clears the rest of its group, at every depth.
+// Setting a radio clears the rest of its group, at every depth. Each change is
+// reported (WithMenuOnToggled), not by the user.
 func (m *Menu) SetChecked(id ItemID, v bool) bool {
-	return m.mutate(id, func(it *MenuItemModel) {
+	var changed []toggle
+	ok := m.mutate(id, func(it *MenuItemModel) { changed = m.check(it, v) })
+	m.report(changed, false)
+	return ok
+}
+
+// Checked reports a row's checked state, and whether the row exists.
+func (m *Menu) Checked(id ItemID) (checked, ok bool) {
+	it := findItem(m.items, id)
+	if it == nil {
+		return false, false
+	}
+	return it.Checked, true
+}
+
+// toggle is one row's checked state changing.
+type toggle struct {
+	id      ItemID
+	checked bool
+}
+
+// check is the ONE rule for a row's checked state: the row takes v, and a radio
+// checked clears the rest of its group, at every depth. It returns every row it
+// changed, the cleared rows first.
+func (m *Menu) check(it *MenuItemModel, v bool) []toggle {
+	var changed []toggle
+	if v && it.Kind == ItemKindRadio {
+		changed = uncheckGroupExcept(m.items, it.Group, it.ID, changed)
+	}
+	if it.Checked != v {
 		it.Checked = v
-		if v && it.Kind == ItemKindRadio {
-			clearGroupExcept(m.items, it.Group, it.ID)
-		}
-	})
+		changed = append(changed, toggle{it.ID, v})
+	}
+	return changed
+}
+
+// report hands each change to WithMenuOnToggled's function.
+func (m *Menu) report(changed []toggle, byUser bool) {
+	if m.onToggled == nil {
+		return
+	}
+	for _, c := range changed {
+		m.onToggled(c.id, c.checked, byUser)
+	}
 }
 
 // mutate applies fn to one row and repairs everything the change can invalidate.

@@ -39,12 +39,16 @@ type menuNode struct {
 	id       string // the node's engine identity, "" when anonymous; see rowID
 	model    widget.MenuItemModel
 	trigger  func()
+	toggled  func() // the row's `toggled`, nil when the document bound none
 	children []*menuNode
 
-	// owner is the menu that adopted this row, nil until then. The engine
-	// applies a row's runtime properties right after building it — which is
-	// BEFORE its MenuBar exists, since children are built first — so a setter
-	// writes the model until adoption and the live menu afterwards.
+	// owner is the menu that adopted this row, nil until then. The row's model
+	// is its state, and the menu the one rule that changes it: a document's
+	// write goes through the menu once there is one (the engine applies a
+	// row's properties right after building it, BEFORE its MenuBar exists,
+	// since children are built first), and every change the menu makes comes
+	// back through its report (WithMenuOnToggled) — as it would to any owner of
+	// menu rows.
 	owner *widget.Menu
 	// bar is the MenuBar that adopted this row: a Menu whose rows change —
 	// an Instantiator's model moved — asks it to project the menu again.
@@ -85,6 +89,8 @@ func menuRows(children []tui.Component, refusal string) ([]*menuNode, error) {
 	return rows, nil
 }
 
+// setChecked is the row's `checked`. Once the menu owns the rule its report
+// records the change — this row's and a radio group's.
 func (n *menuNode) setChecked(on bool) {
 	if n.owner != nil {
 		n.owner.SetChecked(n.model.ID, on)
@@ -94,21 +100,19 @@ func (n *menuNode) setChecked(on bool) {
 }
 
 func (n *menuNode) setEnabled(on bool) {
+	n.model.Enabled = on
 	if n.owner != nil {
 		n.owner.SetEnabled(n.model.ID, on)
-		return
 	}
-	n.model.Enabled = on
 }
 
 // SetVisible is the row's `visible` — Qt's MenuItem.visible: a hidden row
 // takes no row in its menu, and keeps its state.
 func (n *menuNode) SetVisible(on bool) {
+	n.model.Visible = on
 	if n.owner != nil {
 		n.owner.SetVisible(n.model.ID, on)
-		return
 	}
-	n.model.Visible = on
 }
 
 // mnemonic splits `&`-marked text into the label, the hotkey and its index.
@@ -185,6 +189,9 @@ func buildMenuItem(b Build) (tui.Component, []string, error) {
 	if _, bound := b.Emitters["triggered"]; bound {
 		n.trigger = b.Emitter("triggered")
 	}
+	if _, bound := b.Emitters["toggled"]; bound {
+		n.toggled = b.Emitter("toggled")
+	}
 	return n, consumed, nil
 }
 
@@ -250,6 +257,18 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
 	bar := &menuBarNode{rows: top, triggers: map[tui.ActionID]func(){}}
+	// The menu's report is the rows' state: each change recorded on its row,
+	// and a user's raised as that row's `toggled`, after the state has changed.
+	menuOpts = append(menuOpts, widget.WithMenuOnToggled(func(id widget.ItemID, checked, byUser bool) {
+		n := bar.byID[id]
+		if n == nil {
+			return
+		}
+		n.model.Checked = checked
+		if byUser && n.toggled != nil {
+			n.toggled()
+		}
+	}))
 	menuOpts = append(menuOpts, widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
 		if inv.Action == nil {
 			return false
@@ -286,31 +305,16 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 // lives, so the menu keeps an open submenu whose row survived and closes one
 // whose row went, as widget.Menu.SetModel defines.
 //
-// A row the bar already adopted keeps the state it has in the LIVE menu — a
-// check the user toggled, an enabled a binding set — because the live menu,
-// not the row's first model, is where that state has been kept since. A row
-// new to the bar (built, or rebuilt, since) brings its own.
+// Each row's model is its current state — every change the menu made came
+// back through its report — so the projection is built from the rows alone.
 func (m *menuBarNode) project() error {
-	live := map[widget.ItemID]widget.MenuItemModel{}
-	var index func([]widget.MenuItemModel)
-	index = func(items []widget.MenuItemModel) {
-		for _, it := range items {
-			live[it.ID] = it
-			index(it.Children)
-		}
-	}
-	index(m.menu.Model())
-
 	triggers := map[tui.ActionID]func(){}
+	byID := map[widget.ItemID]*menuNode{}
 	var nodes []*menuNode
 	var adopt func(n *menuNode, id widget.ItemID) widget.MenuItemModel
 	adopt = func(n *menuNode, id widget.ItemID) widget.MenuItemModel {
-		if n.owner != nil {
-			if was, ok := live[n.model.ID]; ok {
-				n.model.Checked, n.model.Enabled, n.model.Visible = was.Checked, was.Enabled, was.Visible
-			}
-		}
 		n.model.ID = id
+		byID[id] = n
 		nodes = append(nodes, n)
 		if n.kind == "MenuItem" && n.trigger != nil {
 			act := tui.ActionID(id)
@@ -343,7 +347,7 @@ func (m *menuBarNode) project() error {
 	for _, n := range nodes {
 		n.owner, n.bar = m.menu, m
 	}
-	m.triggers, m.categories = triggers, categories
+	m.triggers, m.categories, m.byID = triggers, categories, byID
 	return nil
 }
 
