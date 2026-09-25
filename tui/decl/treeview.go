@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -83,13 +84,29 @@ func (n *treeViewNode) release() {
 	}
 }
 
-// pathOf is an Index's path of keys: its identity in the tree.
+// pathOf is an Index's path of keys: its identity in the tree. Each key is
+// written with its length first — `3:a/b/1:c` — so a key holding the separator
+// cannot make two paths one.
 func (n *treeViewNode) pathOf(ix Index) string {
 	var keys []string
 	for p := &ix; p != nil; p = p.Parent {
-		keys = append([]string{n.model.Key(*p)}, keys...)
+		k := n.model.Key(*p)
+		keys = append([]string{strconv.Itoa(len(k)) + ":" + k}, keys...)
 	}
 	return strings.Join(keys, "/")
+}
+
+// forget drops what the view knew of every row under path — its children are
+// being replaced, so they are no longer shown.
+func (n *treeViewNode) forget(path string) {
+	prefix := path + "/"
+	for p, node := range n.byPath {
+		if strings.HasPrefix(p, prefix) {
+			delete(n.byPath, p)
+			delete(n.at, node)
+			delete(n.pending, p)
+		}
+	}
 }
 
 // nodes are the tree nodes for the rows under parent.
@@ -137,6 +154,7 @@ func (n *treeViewNode) follow(c Change) {
 	if !ok {
 		return // a row this view is not showing
 	}
+	n.forget(path) // the rows being replaced
 	if gen, waiting := n.pending[path]; waiting {
 		delete(n.pending, path)
 		node.SetChildren(gen, n.nodes(c.Parent))

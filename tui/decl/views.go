@@ -34,23 +34,24 @@ type modelView struct {
 	shown []string
 }
 
-// keyAt is the key of the row the view showed at i, "" for none.
-func (v *modelView) keyAt(i int) string {
+// keyAt is the key of the row the view showed at i; ok is false when no row
+// was there. An empty key is a key like any other.
+func (v *modelView) keyAt(i int) (key string, ok bool) {
 	if i < 0 || i >= len(v.shown) {
-		return ""
+		return "", false
 	}
-	return v.shown[i]
+	return v.shown[i], true
 }
 
 // reshow records the model's rows as now shown, and returns the row the key
-// is at now, -1 when it is gone.
-func (v *modelView) reshow(key string) int {
+// is at now — -1 when it is gone, or when there was none (had false).
+func (v *modelView) reshow(key string, had bool) int {
 	v.shown = v.shown[:0]
 	at := -1
 	for i := range v.rows() {
 		k := v.model.Key(Index{Row: i})
 		v.shown = append(v.shown, k)
-		if key != "" && k == key && at < 0 {
+		if had && k == key && at < 0 {
 			at = i
 		}
 	}
@@ -118,11 +119,11 @@ func buildListView(b Build) (tui.Component, []string, error) {
 	}
 	n.list = widget.NewList(widget.WithSource[int](modelSource{&n.modelView}, n.text))
 	n.changed = func(Change) {
-		key := n.keyAt(n.currentIndex())
+		key, had := n.keyAt(n.currentIndex())
 		n.list.RefreshSource()
 		// The record the cursor was on stays under it; one that is gone
 		// leaves the cursor where the list clamps it.
-		if at := n.reshow(key); at >= 0 {
+		if at := n.reshow(key, had); at >= 0 {
 			n.list.SetCursor(at)
 		}
 	}
@@ -207,11 +208,11 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 	}
 	n.sel = widget.NewSelect(opts...)
 	n.changed = func(Change) {
-		key := n.keyAt(n.currentIndex())
+		key, had := n.keyAt(n.currentIndex())
 		n.refill()
 		// The record chosen stays chosen wherever it moved; one that is gone
 		// is no longer chosen — currentValue reads "", not another record.
-		n.sel.SetSelectedIndex(n.reshow(key))
+		n.sel.SetSelectedIndex(n.reshow(key, had))
 	}
 	return n, consumed, nil
 }
@@ -379,9 +380,9 @@ func (n *tableViewNode) columns() []widget.TableColumn[int] {
 // follow applies a model change: new columns when the model's changed and
 // none are declared, and the rows every time.
 func (n *tableViewNode) follow(c Change) {
-	key := n.keyAt(n.currentIndex())
+	key, had := n.keyAt(n.currentIndex())
 	defer func() {
-		if at := n.reshow(key); at >= 0 {
+		if at := n.reshow(key, had); at >= 0 {
 			n.table.List().SetCursor(at)
 		}
 	}()
