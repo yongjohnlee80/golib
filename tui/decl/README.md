@@ -327,11 +327,10 @@ is one of Qt's two answers, raised before `closed`:
 | a `DestructiveRole` button (Discard) | `closed` only |
 | `close()` from a handler | `closed` only |
 
-**Enter is the dialog's.** It presses the dialog's default button, whichever
-control has focus, or nothing when there is none. `standardButtons`' affirmative
-button (Ok, Save, Yes) is the default, as a message box's is. A
-`DialogButtonBox` declares none, so no irreversible answer is one stray Enter
-away. Space presses the focused button:
+**Enter the focused control leaves is the dialog's.** It presses the button
+`defaultButton` names, or nothing when the dialog names none — no standard
+button is a default by being one. A `DialogButtonBox` declares none, so no
+irreversible answer is one stray Enter away. Space presses the focused button:
 
 ```qml
 Dialog {

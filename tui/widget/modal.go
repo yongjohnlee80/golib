@@ -408,8 +408,8 @@ func (m *Modal) SetButtons(b ...*Button) error {
 //
 // TAB ORDER, NOT THE DEFAULT ROLE. A dialog with fields that started on its
 // affirmative button pressed it with the first Space typed into what the user
-// took for the first field. The default button still answers Enter wherever
-// focus is (the dialog owns Enter), so starting in the body loses nothing.
+// took for the first field. The default button still answers the Enter
+// a focused control leaves unclaimed, so starting in the body loses nothing.
 //
 // This is consulted on EVERY repair, not only when the dialog opens. A dialog
 // that only reached for focus at open time lost its preference the first time
