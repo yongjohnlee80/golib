@@ -288,3 +288,34 @@ func TestDefaultButtonNamesOneOfTheDialogsButtons(t *testing.T) {
 		t.Errorf("defaultButton: Dialog.Cancel was refused: %v", err)
 	}
 }
+
+// A dialog starts on its first control in Tab order even when that control
+// sits inside a composite the widget does not list — a ComboBox's select,
+// mounted by its adapter — as Tab reaches it: typing goes to the field only
+// after Tab.
+func TestADialogStartsOnAComboBoxThatComesFirst(t *testing.T) {
+	m := tuidecl.NewListModel("key", "name", "id")
+	m.Reset([]tuidecl.Row{{"key": "a", "name": "ann", "id": 1}})
+	s := decltest.Run(t, 40, 12,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n Text { text: \"under\" }\n"+
+			" Dialog { id: d; title: \"Q\"; standardButtons: Dialog.Ok\n"+
+			"  Flex { direction: Tui.Vertical\n   ComboBox { model: App.people; textRole: \"name\"; valueRole: \"id\" }\n   TextField { } } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Types(controls.Types()...),
+		tuidecl.Sources(map[string]any{"App.people": m}))
+	s.WaitForText(t, "under")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "┌ Q ")
+	// x while the ComboBox has the keyboard, then Tab, then y: keys are
+	// handled in order, so once y shows, x has been handled too — and it did
+	// not go into the field.
+	s.Keys(t, decltest.Rune('x'), tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, decltest.Rune('y'))
+	s.WaitFor(t, "a letter in the field", func(sc string) bool { return strings.Contains(sc, "│ y") || strings.Contains(sc, "│ x") })
+	if !strings.Contains(s.String(), "│ y ") {
+		t.Fatalf("a letter typed as the dialog opened went into the field, not the ComboBox:\n%s", s.String())
+	}
+}

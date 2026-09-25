@@ -12,7 +12,6 @@ import "github.com/yongjohnlee80/golib/tui"
 // composite widgets within package widget coordinate focus seeding and child enumeration
 // through internal capability contracts defined here:
 //
-//   - [selfFocuser]: Promoted via [Base], allows a widget to request focus using its outer [tui.Context].
 //   - [childLister]: Implemented by composite widgets that manage children without implementing
 //     the public [tui.Container] interface (e.g. [Split], [Tabs]).
 //
@@ -27,21 +26,21 @@ import "github.com/yongjohnlee80/golib/tui"
 //	              │
 //	              ▼
 //	Is root [tui.Focusable] && AcceptsFocus()?
-//	├── YES: Does it satisfy [selfFocuser]?
-//	│        └── YES: sf.focusSelf() -> SUCCESS (focus landed)
+//	├── YES: tui.Context.FocusComponent(root) -> SUCCESS (focus landed)
 //	└── NO:
+//	    ├── Does root implement [childLister]?
+//	    │   └── YES: iterate ct.listChildren() -> recurse
 //	    ├── Does root implement [tui.Container]?
-//	    │   └── YES: iterate ct.Children() -> recurse focusFirst(child)
-//	    └── Does root implement [childLister]?
-//	        └── YES: iterate ct.listChildren() -> recurse focusFirst(child)
+//	    │   └── YES: iterate ct.Children() -> recurse
+//	    └── Otherwise: its mounted children (tui.Context.Children) -> recurse
 //
 // # Architectural Invariants
 //
 //  1. Zoom and Active-State Respect: [childLister] implementations ([Split], [Tabs]) must only
 //     return children that are currently visible and active (e.g. honoring Split zoom or active tab),
 //     preventing focus from landing in hidden panes.
-//  2. Promoted Focus Dispatch: Any widget embedding [Base] automatically satisfies [selfFocuser]
-//     via method promotion on [Base.focusSelf].
+//  2. One Focus Path: the first focusable found is focused through the runtime
+//     (tui.Context.FocusComponent), whatever type it is.
 //  3. Document Order Determinism: [focusFirst] evaluates children strictly in visual/document order,
 //     ensuring consistent initial keyboard focus without arbitrary jumpiness.
 //
@@ -50,11 +49,6 @@ import "github.com/yongjohnlee80/golib/tui"
 //   - Ownership: loop-goroutine-owned. Capability queries and focus delegation must run
 //     on the application event loop goroutine.
 
-// selfFocuser is satisfied (by promotion) by every widget embedding Base.
-type selfFocuser interface {
-	focusSelf() bool
-}
-
 // childLister lets non-Container widgets expose their children to
 // focusFirst's walk (Split, Tabs).
 type childLister interface {
@@ -62,51 +56,49 @@ type childLister interface {
 }
 
 // firstFocusable is the first component of c's subtree, in document order,
-// that is Focusable and accepts focus; nil for none, and for a nil c.
-func firstFocusable(c tui.Component) tui.Component {
+// that is Focusable and accepts focus; nil for none, and for a nil c. ctx is
+// any mounted widget's context: a composite that is neither a Container nor a
+// childLister is walked through its mounted children (Context.Children), so a
+// control inside an adapter's node — a ComboBox's select — is found where Tab
+// finds it.
+func firstFocusable(ctx *tui.Context, c tui.Component) tui.Component {
+	if c == nil {
+		return nil
+	}
 	if f, ok := c.(tui.Focusable); ok && f.AcceptsFocus() {
 		return c
 	}
-	switch ct := c.(type) {
-	case tui.Container:
-		for ch := range ct.Children() {
-			if f := firstFocusable(ch); f != nil {
-				return f
-			}
-		}
-	case childLister:
-		for _, ch := range ct.listChildren() {
-			if f := firstFocusable(ch); f != nil {
-				return f
-			}
+	for _, ch := range childrenOf(ctx, c) {
+		if f := firstFocusable(ctx, ch); f != nil {
+			return f
 		}
 	}
 	return nil
 }
 
-// focusFirst walks c's subtree in document order and focuses the first
-// package widget that is Focusable and accepts focus. Used by Float to seed
-// focus into a freshly shown modal, and by Split to restore focus after zoom changes.
-// Returns whether focus landed.
-func focusFirst(c tui.Component) bool {
-	if f, ok := c.(tui.Focusable); ok && f.AcceptsFocus() {
-		if sf, ok := c.(selfFocuser); ok && sf.focusSelf() {
-			return true
-		}
-	}
+// childrenOf is c's children for the focus walk: a childLister's own list
+// (which honours zoom and the active tab), a Container's, else the tree's.
+func childrenOf(ctx *tui.Context, c tui.Component) []tui.Component {
 	switch ct := c.(type) {
-	case tui.Container:
-		for ch := range ct.Children() {
-			if focusFirst(ch) {
-				return true
-			}
-		}
 	case childLister:
-		for _, ch := range ct.listChildren() {
-			if focusFirst(ch) {
-				return true
-			}
+		return ct.listChildren()
+	case tui.Container:
+		var out []tui.Component
+		for ch := range ct.Children() {
+			out = append(out, ch)
 		}
+		return out
 	}
-	return false
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Children(c)
+}
+
+// focusFirst walks c's subtree in document order and focuses the first
+// component that accepts focus, reporting whether one did. ctx is as for
+// firstFocusable.
+func focusFirst(ctx *tui.Context, c tui.Component) bool {
+	f := firstFocusable(ctx, c)
+	return f != nil && ctx != nil && ctx.FocusComponent(f)
 }
