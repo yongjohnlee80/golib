@@ -175,6 +175,9 @@ func WithMinSizes(a, b int) SplitOption {
 	return func(s *Split) { s.minA, s.minB = a, b }
 }
 
+// defaultDividerStyle is a Split's divider before any option.
+func defaultDividerStyle() style.Style { return style.New().Foreground(style.TokenBorder) }
+
 // WithDividerStyle replaces the divider line style (default
 // style.TokenBorder foreground).
 func WithDividerStyle(st style.Style) SplitOption {
@@ -231,7 +234,7 @@ func NewSplit(o Orientation, a, b tui.Component, opts ...SplitOption) *Split {
 	s := &Split{
 		o: o, a: a, b: b,
 		requested: 0.5,
-		divider:   style.New().Foreground(style.TokenBorder),
+		divider:   defaultDividerStyle(),
 		glyphV:    "│",
 		glyphH:    "─",
 		step:      1,

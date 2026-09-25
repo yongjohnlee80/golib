@@ -179,14 +179,19 @@ func WithTextInputStyles(st TextInputStyles) TextInputOption {
 }
 
 // NewTextInput builds an empty single-line editor.
+// defaultTextInputStyles are a TextInput's looks before any option.
+func defaultTextInputStyles() TextInputStyles {
+	return TextInputStyles{
+		Placeholder: style.New().Foreground(style.TokenTextMuted),
+		Selection:   style.New().Reverse(true),
+		Error:       style.New().Foreground(style.TokenError),
+	}
+}
+
 func NewTextInput(opts ...TextInputOption) *TextInput {
 	t := &TextInput{
 		anchor: -1,
-		styles: TextInputStyles{
-			Placeholder: style.New().Foreground(style.TokenTextMuted),
-			Selection:   style.New().Reverse(true),
-			Error:       style.New().Foreground(style.TokenError),
-		},
+		styles: defaultTextInputStyles(),
 	}
 	for _, o := range opts {
 		if o != nil {

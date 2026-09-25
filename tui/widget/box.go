@@ -99,6 +99,10 @@ type Box struct {
 
 	base      style.Style // border + padding + colors; geometry source
 	focusedSt style.Style // merged over base while focus is within
+	// border and borderSet are WithBorder's, kept so a runtime restyle
+	// derives the base as the constructor did.
+	border    style.BorderStyle
+	borderSet bool
 	titleSt   style.Style
 	statusSt  style.Style
 
@@ -182,29 +186,38 @@ func NewBox(child tui.Component, opts ...BoxOption) *Box {
 			o(&cfg)
 		}
 	}
-	base := cfg.st
-	if cfg.borderSet {
-		base = base.Border(cfg.border)
-	}
-	base = base.Inherit(style.New().
-		Border(style.BorderNormal).
-		BorderForeground(style.TokenBorder))
-	focused := cfg.focusedSt
-	if !cfg.focusedSet {
-		focused = style.New().BorderForeground(style.TokenBorderFocused)
-	}
 	return &Box{
 		child:       child,
 		title:       cfg.title,
 		titleAlign:  cfg.titleAlign,
 		status:      cfg.status,
 		statusAlign: cfg.statusAlign,
-		base:        base,
-		focusedSt:   focused,
+		base:        boxBase(cfg.st, cfg.border, cfg.borderSet),
+		focusedSt:   boxFocused(cfg.focusedSt, cfg.focusedSet),
+		border:      cfg.border,
+		borderSet:   cfg.borderSet,
 		titleSt:     style.New().Foreground(style.TokenForeground).Bold(true),
 		statusSt:    style.New().Foreground(style.TokenTextMuted),
 		focusable:   cfg.focusable,
 	}
+}
+
+// boxBase is a Box's base style: the given look, WithBorder's border, and
+// golib's normal border in the border token under both.
+func boxBase(st style.Style, border style.BorderStyle, borderSet bool) style.Style {
+	if borderSet {
+		st = st.Border(border)
+	}
+	return st.Inherit(style.New().Border(style.BorderNormal).BorderForeground(style.TokenBorder))
+}
+
+// boxFocused is the style merged over the base while focus is inside: the
+// given one, or the focused-border token.
+func boxFocused(st style.Style, set bool) style.Style {
+	if !set {
+		return style.New().BorderForeground(style.TokenBorderFocused)
+	}
+	return st
 }
 
 // SetTitle replaces the title. Repaint only: the title lives in the border

@@ -209,6 +209,11 @@ var (
 // EditorOption customizes an Editor under construction.
 type EditorOption func(*Editor)
 
+// defaultEditorStyles are an Editor's looks before any option.
+func defaultEditorStyles() TextInputStyles {
+	return TextInputStyles{Selection: style.New().Reverse(true)}
+}
+
 // WithEditorStyles overrides the style hooks (TextInput slots).
 func WithEditorStyles(st TextInputStyles) EditorOption {
 	return func(e *Editor) {
@@ -411,11 +416,9 @@ func (e *Editor) applyOverlay(ov Keymap) {
 // or customize capabilities and styles.
 func NewEditor(opts ...EditorOption) *Editor {
 	e := &Editor{
-		textBuffer: newTextBuffer(),
-		wrap:       WrapNone,
-		styles: TextInputStyles{
-			Selection: style.New().Reverse(true),
-		},
+		textBuffer:   newTextBuffer(),
+		wrap:         WrapNone,
+		styles:       defaultEditorStyles(),
 		keymap:       DefaultKeymap(),
 		unbound:      make(map[KeyChord]bool),
 		chord:        []rune{'j', 'k'},
