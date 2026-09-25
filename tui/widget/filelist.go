@@ -221,17 +221,17 @@ func stylePane(b *Box, st FilePaneStyles, styled bool) {
 	base := style.New().Padding(0, 1)
 	focused := style.Style{}
 	if styled {
-		base = st.Surface.Padding(0, 1).BorderForeground(foregroundOf(st.Border))
-		focused = style.New().BorderForeground(foregroundOf(st.FocusedBorder))
+		// A look that names no colour leaves golib's border token in place.
+		base = st.Surface.Padding(0, 1)
+		if c, ok := st.Border.GetForeground(); ok {
+			base = base.BorderForeground(c)
+		}
+		if c, ok := st.FocusedBorder.GetForeground(); ok {
+			focused = style.New().BorderForeground(c)
+		}
 	}
 	b.WithStyle(base)
 	b.WithFocusedStyle(focused)
-}
-
-// foregroundOf is a look's foreground, which is what a border is drawn in.
-func foregroundOf(st style.Style) style.Color {
-	c, _ := st.GetForeground()
-	return c
 }
 
 // Init mounts the list and follows its cursor.

@@ -277,3 +277,24 @@ func TestTheAppWidgetsRefuseWhatTheyCannotBuild(t *testing.T) {
 		t.Error("EditorOf found an editor in nil")
 	}
 }
+
+// TestAFileDialogWearsAnInheritedHighlightAlone: the Window sets only the
+// highlight pair, and the file dialog's selected row wears it — the cursor is
+// drawn from exactly those roles. (It used to need base or a pane role beside
+// them before the browser was dressed at all.)
+func TestAFileDialogWearsAnInheritedHighlightAlone(t *testing.T) {
+	files := widget.FileSource{FS: fstest.MapFS{"foo.txt": {Data: []byte("x")}}, Root: "mem://"}
+	s := decltest.Run(t, 60, 20, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow { palette.highlight: \"red\"; palette.highlightedText: \"white\"\n"+
+		" Text { text: \"body\" }\n FileDialog { id: fd; preview: false } }")), tuidecl.Files(files))
+	s.WaitForText(t, "body")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("fd", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "foo.txt")
+	s.WaitFor(t, "the selected row in the inherited highlight", func(string) bool {
+		c := cellOf(t, s, "foo.txt")
+		return c.Attrs.BG == ansi(red) && c.Attrs.FG == ansi(white) && c.Attrs.Mask&tui.AttrReverse == 0
+	})
+}
