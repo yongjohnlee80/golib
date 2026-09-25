@@ -200,7 +200,10 @@ var (
 // highlight while the list has the keyboard and on the inactive highlight once
 // it has not, and each pane framed in mid, or light while it is in use.
 func (p palette) browserStyles() (widget.FilePaneStyles, bool) {
-	if !p.has(roleBase, roleText, roleInactiveHighlight, roleInactiveHighlightText, roleMid, roleLight) {
+	// Every role the looks below read: a palette setting any of them — by
+	// inheritance, say, only the Window's highlight — dresses the browser.
+	if !p.has(roleBase, roleText, roleHighlight, roleHighlightedText, roleInactiveHighlight,
+		roleInactiveHighlightText, roleMid, roleLight, roleWindow, roleWindowText) {
 		return widget.FilePaneStyles{}, false
 	}
 	return widget.FilePaneStyles{
