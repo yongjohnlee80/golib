@@ -1,7 +1,7 @@
 package main
 
 import (
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -23,6 +23,18 @@ import (
 //
 //go:embed editor.qml
 var layout []byte
+
+// themes are OFFERED, not declared: each is importable, and only the one the
+// layout's import line names is ever parsed. A new theme is a file here and a
+// row in this table.
+//
+//go:embed themes
+var themeFiles embed.FS
+
+var themes = map[string]string{
+	"editor.theme.mono":  "themes/mono.qml",
+	"editor.theme.retro": "themes/retro.qml",
+}
 
 // Host is the program behind editor.qml.
 //
@@ -60,6 +72,9 @@ type Options struct {
 	Now func() time.Time
 	// Tick is how often the clock advances; zero means a second.
 	Tick time.Duration
+	// Layout replaces editor.qml; nil means the embedded one. A test uses it to
+	// run the same screen under the other theme's import line.
+	Layout []byte
 }
 
 func str(s string) qml.SpecValue { return qml.SpecValue{Kind: qml.SpecValueString, Raw: s} }
@@ -81,6 +96,12 @@ func New(opt Options) (*Host, tui.Component, error) {
 		Name: "editor", Version: "1.0", Exports: []string{"App"},
 	}); err != nil {
 		return nil, nil, err
+	}
+
+	for module, file := range themes {
+		if err := h.tree.OfferModule(module, "1.0", themeLoader(file)); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// State the document reads. Each is a SOURCE, so changing it repaints
@@ -120,7 +141,11 @@ func New(opt Options) (*Host, tui.Component, error) {
 		}
 	}
 
-	spec, err := qml.QML{}.Parse(layout)
+	src := layout
+	if opt.Layout != nil {
+		src = opt.Layout
+	}
+	spec, err := qml.QML{}.Parse(src)
 	if err != nil {
 		return nil, nil, fmt.Errorf("editor.qml: %w", err)
 	}
@@ -299,4 +324,15 @@ func (c *clock) Subscribe(fn func(decl.Update)) ([]string, func() error, error) 
 		return nil
 	}
 	return []string{"App.clock"}, cancel, nil
+}
+
+// themeLoader reads a theme file when its module is imported, and not before.
+func themeLoader(file string) decl.ModuleLoader {
+	return func() (decl.ModuleContents, error) {
+		src, err := themeFiles.ReadFile(file)
+		if err != nil {
+			return decl.ModuleContents{}, err
+		}
+		return decl.ValueModule(src)()
+	}
 }

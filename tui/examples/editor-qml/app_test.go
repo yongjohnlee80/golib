@@ -29,6 +29,12 @@ type running struct {
 
 func start(t *testing.T, path string) *running {
 	t.Helper()
+	return startLayout(t, path, nil)
+}
+
+// startLayout runs a replacement for editor.qml; nil runs the real one.
+func startLayout(t *testing.T, path string, src []byte) *running {
+	t.Helper()
 	r := &running{quit: make(chan struct{})}
 	var app atomic.Pointer[tui.App]
 	host, root, err := New(Options{
@@ -38,6 +44,7 @@ func start(t *testing.T, path string) *running {
 		Quit:     func() { close(r.quit) },
 		Now:      fixedNow,
 		Tick:     time.Hour, // no tick during a test unless one asks for it
+		Layout:   src,
 	})
 	if err != nil {
 		t.Fatalf("editor.qml did not mount: %v", err)
