@@ -76,6 +76,10 @@ func isTerminal(v qml.SpecValue) bool {
 	switch v.Kind {
 	case qml.SpecValueString, qml.SpecValueNumber, qml.SpecValueBool:
 		return true
+	case qml.SpecValueObject:
+		// A host object — a model — is a value, not an expression: it is
+		// passed on as it is, and compared by identity (sameValue).
+		return true
 	default:
 		return false
 	}
