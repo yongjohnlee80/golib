@@ -178,3 +178,16 @@ func TestTheBodysControlIsFoundWhereverItSits(t *testing.T) {
 		t.Error("a dialog with no control and no button left its trap without a stop")
 	}
 }
+
+// A dialog with no body at all still has a stop in its trap: the Modal node.
+func TestABodilessDialogIsItsOwnStop(t *testing.T) {
+	m := widget.NewModal(nil, widget.WithModalFooter("help"))
+	h, host, _ := modalFixture(t, m, 40, 8)
+	defer h.stop()
+	openOn(t, h, m, host)
+	var accepts bool
+	h.onLoop(func() { accepts = m.AcceptsFocus() })
+	if !accepts {
+		t.Error("a bodiless dialog with no buttons offers no stop")
+	}
+}
