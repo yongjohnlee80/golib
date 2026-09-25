@@ -23,7 +23,8 @@ import (
 // and then its ROLE's answer, as Qt defines them: AcceptRole accepts
 // (`accepted`, and the dialog closes); RejectRole rejects (`rejected`, and it
 // closes — and Escape presses it); DestructiveRole is its button's `clicked`
-// only, and the dialog stays until a handler closes it.
+// only, and the dialog closes without an answer — `closed`, neither accepted
+// nor rejected.
 //
 // NO DEFAULT: Enter answers only through the button that has the keyboard,
 // which is the first — so an irreversible choice is never one stray Enter away
@@ -79,6 +80,7 @@ func (n *buttonBoxNode) answer(d *dialogNode) []*widget.Button {
 			then = func() { d.modal.Dismiss(widget.DismissCancel) }
 		case "DestructiveRole":
 			btn.SetRole(widget.ButtonRoleNormal)
+			then = func() { _ = d.close() }
 		}
 		btn.SetOnActivate(func() {
 			if own != nil {

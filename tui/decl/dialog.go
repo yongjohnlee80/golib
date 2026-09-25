@@ -31,6 +31,7 @@ import (
 //
 //	an accepting button (Ok, Save, Yes)      accepted, then closed
 //	a rejecting button, or Escape            rejected, then closed
+//	a DestructiveRole button (Discard)       closed only — nobody answered
 //	close() from a handler                   closed only — nobody answered
 //
 // Opening raises `opened`, as Qt's Popup does: a prompt clearing its field.
