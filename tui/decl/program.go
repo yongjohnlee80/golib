@@ -565,8 +565,11 @@ func Value(v any) (qml.SpecValue, error) {
 	case ItemModel:
 		// An OBJECT: a model a view shows (model.go).
 		return qml.SpecValue{Kind: qml.SpecValueObject, Obj: x}, nil
+	case Index:
+		// A row, as a view's signal carries it — passed back to the view.
+		return indexValue(x), nil
 	}
-	return qml.SpecValue{}, fmt.Errorf("a %T is not a value a document can hold: want a string, bool, number or a model", v)
+	return qml.SpecValue{}, fmt.Errorf("a %T is not a value a document can hold: want a string, bool, number, a model or a row's Index", v)
 }
 
 // Arg reads a handler's argument i as a string — a path, a name — or says why
