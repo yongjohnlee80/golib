@@ -67,6 +67,10 @@ type QML struct {
 	// turns a stack overflow — which takes the process down and cannot be
 	// recovered — into an ordinary [parse.SyntaxError] the caller can show.
 	MaxDepth int
+	// File names the source for diagnostics, and is carried by every position
+	// in the tree: "QuitDialog.qml:3:5" rather than a bare 3:5 once a screen
+	// is made of several files.
+	File string
 }
 
 // DefaultQMLMaxDepth is the nesting limit QML applies when MaxDepth is zero.
@@ -274,7 +278,7 @@ type SpecTree struct {
 // "wrong" and hold the last good tree instead of flashing an error on every
 // save.
 func (q QML) Parse(src []byte) (SpecTree, error) {
-	sc := parse.NewScanner(src)
+	sc := parse.NewFileScanner(q.File, src)
 	p := &qmlParser{sc: sc, maxDepth: q.MaxDepth}
 	if p.maxDepth <= 0 {
 		p.maxDepth = DefaultQMLMaxDepth
@@ -578,6 +582,17 @@ func (p *qmlParser) node() (*SpecNode, error) {
 			Want: "a type name", Got: parse.QuoteRune(r),
 		}
 	}
+	// A qualified type — `T.Window` after `import tui 1.0 as T` — at the root
+	// as anywhere else.
+	for p.sc.HasPrefix(".") {
+		dotAt := p.sc.Pos()
+		p.sc.Take(".")
+		seg, ok := p.ident()
+		if !ok || !isTypeName(seg) {
+			return nil, p.wanted(dotAt, "a type name after . in a qualified type")
+		}
+		name += "." + seg
+	}
 	return p.nodeBody(name, startPos)
 }
 
@@ -671,10 +686,12 @@ func (p *qmlParser) nodeBody(name string, startPos parse.Position) (*SpecNode, e
 			return nil, err
 		}
 		switch {
-		case p.sc.HasPrefix("{") && len(path) == 1 && isTypeName(name):
+		case p.sc.HasPrefix("{") && isTypeName(path[len(path)-1]):
 			// QML capitalises TYPES, so `Text {` is a child node and `font {`
 			// is a grouped property. That convention is the only thing
-			// separating them, and it is the language's, not ours.
+			// separating them, and it is the language's, not ours. It is the
+			// LAST segment that decides: `T.Rectangle {` is a type reached
+			// through a qualified import, `anchors {` a group.
 			child, err := p.nodeBody(name, memberAt)
 			if err != nil {
 				return nil, err

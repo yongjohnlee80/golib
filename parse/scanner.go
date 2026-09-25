@@ -20,8 +20,12 @@ type Scanner struct {
 }
 
 // NewScanner returns a Scanner positioned at the first rune of src.
-func NewScanner(src []byte) *Scanner {
-	start := Position{Offset: 0, Line: 1, Column: 1}
+func NewScanner(src []byte) *Scanner { return NewFileScanner("", src) }
+
+// NewFileScanner is NewScanner for a named source: every position it reports
+// carries the name, and so does every position a parser builds from them.
+func NewFileScanner(file string, src []byte) *Scanner {
+	start := Position{Offset: 0, Line: 1, Column: 1, File: file}
 	return &Scanner{src: src, pos: start, prev: start}
 }
 
