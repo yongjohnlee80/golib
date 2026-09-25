@@ -11,8 +11,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 )
 
-// syntax_test.go holds SyntaxHighlighter to ADR-tui-0015's S5–S8, on the
-// screen: the colour of the cell a word is painted in.
+// syntax_test.go holds SyntaxHighlighter to what it promises, on the screen:
+// the colour of the cell a word is painted in.
 
 func fgOf(t *testing.T, s *decltest.Screen, text string) tui.CellColor {
 	t.Helper()
@@ -62,9 +62,9 @@ func runSyntax(t *testing.T, src string, extra ...tuidecl.ProgramOption) *declte
 	}, extra...)...)
 }
 
-// S5 — a QML buffer is coloured by the theme's syntax roles, and switching the
+// A QML buffer is coloured by the theme's syntax roles, and switching the
 // theme import re-colours it.
-func TestS5AQMLBufferWearsTheThemesSyntaxColours(t *testing.T) {
+func TestAQMLBufferWearsTheThemesSyntaxColours(t *testing.T) {
 	s := runSyntax(t, syntaxDoc("dark", `"QML"`))
 	waitFG(t, s, "import", ansi(red))
 	waitFG(t, s, `"hi"`, ansi(green))
@@ -76,8 +76,8 @@ func TestS5AQMLBufferWearsTheThemesSyntaxColours(t *testing.T) {
 	waitFG(t, s, `"hi"`, ansi(3))
 }
 
-// S6 — what is refused, by name.
-func TestS6WhatASyntaxHighlighterRefuses(t *testing.T) {
+// What is refused, by name.
+func TestWhatASyntaxHighlighterRefuses(t *testing.T) {
 	for doc, want := range map[string]string{
 		`Editor { SyntaxHighlighter { definition: "Cobol" } }`:     `"Cobol" is not a registered highlighter; registered: JavaScript, QML`,
 		`Flex { SyntaxHighlighter { definition: "QML" } }`:         "the Editor it is declared in, and Flex is not one",
@@ -95,8 +95,8 @@ func TestS6WhatASyntaxHighlighterRefuses(t *testing.T) {
 	}
 }
 
-// S7 — `definition` bound to a source switches language live; "" is off.
-func TestS7TheDefinitionFollowsItsSource(t *testing.T) {
+// `definition` bound to a source switches language live; "" is off.
+func TestTheDefinitionFollowsItsSource(t *testing.T) {
 	s := runSyntax(t, syntaxDoc("dark", "App.syntax"))
 	waitFG(t, s, "import", ansi(red))
 	onScreenLoop(t, s, func() {
@@ -113,8 +113,8 @@ func TestS7TheDefinitionFollowsItsSource(t *testing.T) {
 	waitFG(t, s, "import", ansi(red))
 }
 
-// S8 — a program's own highlighter, registered by name, and nothing else.
-func TestS8AProgramsOwnHighlighterNeedsOnlyARegistration(t *testing.T) {
+// A program's own highlighter, registered by name, and nothing else.
+func TestAProgramsOwnHighlighterNeedsOnlyARegistration(t *testing.T) {
 	shout := highlight.HighlighterFunc(func(line string, prev highlight.State) ([]highlight.Span, highlight.State) {
 		if i := strings.Index(line, "LOUD"); i >= 0 {
 			return []highlight.Span{{Start: i, End: i + 4, Style: highlight.Keyword}}, prev
@@ -130,8 +130,8 @@ func TestS8AProgramsOwnHighlighterNeedsOnlyARegistration(t *testing.T) {
 	}
 }
 
-// syntax.normal colours the text no span covers, and a style left unset —
-// ADR-tui-0015 H2: an unset style paints as Normal.
+// syntax.normal colours the text no span covers, and a style left unset: an
+// unset style paints as Normal.
 func TestSyntaxNormalPaintsWhatNoOtherStyleDoes(t *testing.T) {
 	s := decltest.Run(t, 30, 3, tuidecl.LayoutSource("main.qml", []byte(
 		"import tui 1.0\nEditor { syntax.normal: \"cyan\"; syntax.keyword: \"red\"; text: \"import X 1.0\\n\\\"s\\\"\"\n"+

@@ -11,9 +11,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// editor_highlight_internal_test.go holds the Editor's highlighter hook to
-// ADR-tui-0015's S1/S2: styles paint in order, and lines are highlighted only
-// when, and only as far as, they need to be.
+// editor_highlight_internal_test.go holds the Editor's highlighter hook to its
+// promises: styles paint in order, and lines are highlighted only when, and
+// only as far as, they need to be.
 
 // wordHighlighter styles the word "kw" as Keyword, and "/*" … "*/" as a
 // comment that carries across lines. It counts its calls.
