@@ -1515,16 +1515,20 @@ func (e *Editor) Render(s tui.Surface) {
 		return
 	}
 	w := e.wrapWidth()
-	checked := 0
+	hlf := e.beginHighlightFrame()
 	var lineStyles []highlight.Style
 	styledLn := -1
 	paintCluster := func(x, y int, cl string, ln, col int) {
 		st := e.styles.Text
 		if ln != styledLn {
-			lineStyles, styledLn = e.highlighted(ln, &checked), ln
+			lineStyles, styledLn = e.highlighted(ln, hlf), ln
 		}
-		if col < len(lineStyles) {
-			if sst, ok := e.syntaxStyle(lineStyles[col]); ok {
+		if e.hl != nil {
+			k := highlight.Normal
+			if col < len(lineStyles) {
+				k = lineStyles[col]
+			}
+			if sst, ok := e.syntaxStyle(k); ok {
 				st = sst.Inherit(st)
 			}
 		}

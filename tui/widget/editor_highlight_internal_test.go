@@ -204,3 +204,54 @@ func waitCells(t *testing.T, tb *tui.TestBackend, cond func([][]tui.Cell) bool) 
 		}
 	}
 }
+
+// TestADeepJumpHighlightsInBoundedFrames: `G` on a long file needs every line
+// above the screen, for the state it carries down — here, a comment opened on
+// the first line and never closed. A frame does at most hlFrameBudget of them
+// and asks for another, so no one frame freezes on the whole file; and the
+// screen still ends in the right colours, carried from line 0.
+func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
+	const n, rows = 20001, 5
+	hl := &wordHighlighter{}
+	e := NewEditor(WithHighlighter(hl), WithSyntaxStyles(syntaxRedGreen()))
+	lines := make([]string, n)
+	lines[0] = "/* never closed"
+	for i := 1; i < n; i++ {
+		lines[i] = "inside"
+	}
+	lines[n-1] = "last"
+	e.SetValue(strings.Join(lines, "\n"))
+	ih := startAppInternal(t, e, 20, rows)
+	t.Cleanup(ih.stopInternal)
+	ih.syncInternal()
+
+	// One frame's highlighting, measured as Render does it, right after the
+	// jump.
+	var work int32
+	ih.onLoopInternal(func() {
+		e.goToLine(false, 1, true) // G
+		e.ensureVisible()
+		before := hl.calls.Load()
+		f := e.beginHighlightFrame()
+		for ln := e.top; ln < min(e.top+rows, len(e.lines)); ln++ {
+			e.highlighted(ln, f)
+		}
+		work = hl.calls.Load() - before
+	})
+	// Bounded by the budget, and — whatever the budget is set to — by a
+	// fraction of the file: the whole file in one frame is the defect.
+	if work > hlFrameBudget+rows || work > n/4 {
+		t.Fatalf("one frame highlighted %d lines of %d after the jump, want at most %d",
+			work, n, min(hlFrameBudget+rows, n/4))
+	}
+	// The frames that follow finish the catch-up on their own, and the last
+	// line wears the comment colour carried from the first.
+	waitCells(t, ih.tb, func(g [][]tui.Cell) bool {
+		for _, row := range g {
+			if row[0].Content == "l" && row[1].Content == "a" && row[0].Attrs.FG == ansiCell(2) {
+				return true
+			}
+		}
+		return false
+	})
+}
