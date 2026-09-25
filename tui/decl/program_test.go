@@ -194,11 +194,13 @@ func TestValueHoldsOnlyWhatADocumentCan(t *testing.T) {
 // burst makes it deliver from its own goroutine as fast as it can until then.
 type countingProvider struct {
 	burst    bool
+	subs     atomic.Int32
 	cancels  atomic.Int32
 	stopping chan struct{}
 }
 
 func (c *countingProvider) Subscribe(fn func(decl.Update)) ([]string, func() error, error) {
+	c.subs.Add(1)
 	v := qml.SpecValue{Kind: qml.SpecValueString, Raw: "t"}
 	fn(decl.Update{Version: 1, Values: map[string]qml.SpecValue{"Clock.now": v}})
 	c.stopping = make(chan struct{})
@@ -221,20 +223,27 @@ func (c *countingProvider) Subscribe(fn func(decl.Update)) ([]string, func() err
 	}, nil
 }
 
-// TestAFailedProgramReleasesItsProviders: a parse failure and a mount failure
-// both come after the provider subscribed, and both must end it.
+// TestAFailedProgramReleasesItsProviders: whatever fails, every subscription
+// the construction started is ended. A parse failure comes before any provider
+// subscribes; a mount failure comes after, and must end the one it started.
 func TestAFailedProgramReleasesItsProviders(t *testing.T) {
-	for name, src := range map[string]string{
-		"parse": "Text {",
-		"mount": "Text { nosuch: 1 }",
+	for name, tc := range map[string]struct {
+		src  string
+		subs int32
+	}{
+		"parse": {"Text {", 0},
+		"mount": {"Text { nosuch: 1 }", 1},
 	} {
 		c := &countingProvider{}
-		_, err := tuidecl.NewProgram(tuidecl.LayoutSource(name+".qml", []byte(src)), tuidecl.Providers(c))
+		_, err := tuidecl.NewProgram(tuidecl.LayoutSource(name+".qml", []byte(tc.src)), tuidecl.Providers(c))
 		if err == nil {
 			t.Fatalf("%s: NewProgram succeeded", name)
 		}
-		if got := c.cancels.Load(); got != 1 {
-			t.Errorf("%s failure: the provider was cancelled %d times, want 1", name, got)
+		if got := c.subs.Load(); got != tc.subs {
+			t.Errorf("%s failure: the provider subscribed %d times, want %d", name, got, tc.subs)
+		}
+		if got := c.cancels.Load(); got != c.subs.Load() {
+			t.Errorf("%s failure: %d subscriptions, %d cancelled", name, c.subs.Load(), got)
 		}
 	}
 }

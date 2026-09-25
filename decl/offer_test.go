@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -267,6 +268,33 @@ func TestAValueModuleHoldsLiteralsOnly(t *testing.T) {
 	if len(c.Exports) != 1 || c.Exports[0] != "Theme" || len(c.Values) != 3 ||
 		c.Values["Theme.menu.window"].Value.Raw != "white" {
 		t.Fatalf("contents = %+v", c)
+	}
+}
+
+// TestAValueFileNamesItselfInItsDiagnostics: a theme is a file, and a broken
+// one is reported in it — as a component file is — not at a bare line number.
+func TestAValueFileNamesItselfInItsDiagnostics(t *testing.T) {
+	fsys := fstest.MapFS{
+		"themes/mono.qml":   {Data: []byte("Theme {\n accent: Other.red\n}")},
+		"themes/broken.qml": {Data: []byte("Theme {")},
+		"themes/good.qml":   {Data: []byte(`Theme { accent: "red" }`)},
+	}
+	for file, want := range map[string]string{
+		"themes/mono.qml":   "themes/mono.qml:2:",
+		"themes/broken.qml": "themes/broken.qml:1:",
+		"themes/gone.qml":   "gone.qml",
+	} {
+		_, err := decl.ValueFile(fsys, file)()
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want it placed at %s", file, err, want)
+		}
+	}
+	c, err := decl.ValueFile(fsys, "themes/good.qml")()
+	if err != nil || c.Values["Theme.accent"].Value.Raw != "red" {
+		t.Fatalf("good.qml: %+v, %v", c, err)
+	}
+	if pos := c.Values["Theme.accent"].Value.Pos.String(); !strings.HasPrefix(pos, "themes/good.qml:") {
+		t.Errorf("a constant's position is %q, want it in its file", pos)
 	}
 }
 

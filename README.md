@@ -52,6 +52,7 @@ go get github.com/yongjohnlee80/golib
 | [`parse/sql`](parse/sql/README.md) | SQL dialects as values, over the streaming lexer | [README](parse/sql/README.md) |
 | [`decl`](decl/README.md) | Instantiate a declarative (QML) UI through an adapter — identity, reloads, bindings, modules, signals | [README](decl/README.md) |
 | [`tui/decl`](tui/decl/README.md) | golib/tui screens written in QML: the vocabulary, themes, dialogs, your own widgets, `NewProgram` | [README](tui/decl/README.md) · [USAGE](tui/decl/USAGE.md) |
+| [`tui/decl/decltest`](tui/decl/decltest/README.md) | Test a QML program in `go test`: `Check` every file it can load, `Run` it on a test backend | [README](tui/decl/decltest/README.md) |
 | [`tui`](tui/README.md) | Cell-buffer terminal UI: component tree, constraint layout, focus routing, async tasks, and a widget set (vim Editor, lazy Tree, Table, Split, Float…) | [README](tui/README.md) · [TUTORIAL](tui/tutorial/README.md) |
 
 ### tui

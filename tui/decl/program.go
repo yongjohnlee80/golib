@@ -179,13 +179,7 @@ func Themes(fsys fs.FS, dir, prefix, version string) ProgramOption {
 			c.offers = append(c.offers, offered{
 				name:    prefix + "." + strings.TrimSuffix(e.Name(), ".qml"),
 				version: version,
-				load: func() (decl.ModuleContents, error) {
-					src, err := fs.ReadFile(fsys, file)
-					if err != nil {
-						return decl.ModuleContents{}, err
-					}
-					return decl.ValueModule(src)()
-				},
+				load:    decl.ValueFile(fsys, file),
 			})
 		}
 	}
@@ -248,6 +242,37 @@ func WithRegistry(r *Registry) ProgramOption {
 
 // NewProgram builds and mounts the program. Nothing runs until [Program.Run].
 func NewProgram(opts ...ProgramOption) (*Program, error) {
+	c, err := configure(opts)
+	if err != nil {
+		return nil, err
+	}
+	spec, err := qml.QML{File: c.layoutFile}.Parse(c.layout)
+	if err != nil {
+		return nil, err
+	}
+	p, err := mount(c, spec)
+	if err != nil {
+		return nil, err
+	}
+	app := tui.NewApp(p.root, c.appOpts...)
+	// UNDER THE LOCK, all of it. A provider's goroutine is already running —
+	// it started during the mount — and reads p.app in schedule, so the
+	// assignment is a write it can race. And work scheduled before the App
+	// existed must reach it BEFORE anything scheduled after: flushing outside
+	// the lock would let a delivery arriving in between jump the queue.
+	// App.Update never blocks, so posting while holding the lock is safe.
+	p.mu.Lock()
+	for _, fn := range p.pending {
+		app.Update(fn)
+	}
+	p.pending = nil
+	p.app = app
+	p.mu.Unlock()
+	return p, nil
+}
+
+// configure applies the options and refuses a configuration that cannot run.
+func configure(opts []ProgramOption) (programConfig, error) {
 	var c programConfig
 	for _, o := range opts {
 		if o != nil {
@@ -255,11 +280,18 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 		}
 	}
 	if len(c.errs) > 0 {
-		return nil, errors.Join(c.errs...)
+		return c, errors.Join(c.errs...)
 	}
 	if c.layout == nil {
-		return nil, errors.New("tui/decl.NewProgram: no layout; give one with Layout or LayoutSource")
+		return c, errors.New("tui/decl.NewProgram: no layout; give one with Layout or LayoutSource")
 	}
+	return c, nil
+}
+
+// mount builds the adapter and the tree, registers everything the document
+// may reach, and mounts spec. Everything but the App: [Check] mounts the same
+// way and never runs one.
+func mount(c programConfig, spec qml.SpecTree) (*Program, error) {
 	p := &Program{file: c.layoutFile}
 
 	sink := c.sink
@@ -285,28 +317,10 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 	if err := p.register(c); err != nil {
 		return fail(err)
 	}
-	spec, err := qml.QML{File: c.layoutFile}.Parse(c.layout)
-	if err != nil {
-		return fail(err)
-	}
 	if err := p.tree.Mount(spec); err != nil {
 		return fail(err)
 	}
 	p.root, _ = p.adapter.Component(p.tree.Root())
-	app := tui.NewApp(p.root, c.appOpts...)
-	// UNDER THE LOCK, all of it. A provider's goroutine is already running —
-	// it started during the mount — and reads p.app in schedule, so the
-	// assignment is a write it can race. And work scheduled before the App
-	// existed must reach it BEFORE anything scheduled after: flushing outside
-	// the lock would let a delivery arriving in between jump the queue.
-	// App.Update never blocks, so posting while holding the lock is safe.
-	p.mu.Lock()
-	for _, fn := range p.pending {
-		app.Update(fn)
-	}
-	p.pending = nil
-	p.app = app
-	p.mu.Unlock()
 	return p, nil
 }
 
