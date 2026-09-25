@@ -24,6 +24,21 @@ type Focusable interface {
 	AcceptsFocus() bool
 }
 
+// FocusDesigner is a Focusable whose focusability is chosen PER INSTANCE, at
+// construction — a Box built WithFocusable, say — so implementing Focusable
+// does not by itself say the instance was designed to take focus.
+//
+// "Focusable by design" is what a component IS, as against AcceptsFocus, which
+// is what it accepts NOW: a disabled button is focusable by design and accepts
+// no focus. A type that is never focusable does not implement Focusable at all
+// — absence of the capability says so. A type that always may implements
+// Focusable alone. Only a type where it is a per-instance choice needs this.
+type FocusDesigner interface {
+	Focusable
+	// FocusableByDesign reports whether this instance was built to take focus.
+	FocusableByDesign() bool
+}
+
 // InitialFocusProvider lets a component nominate where focus should land inside
 // its own subtree, instead of accepting the runtime's document-order choice.
 //

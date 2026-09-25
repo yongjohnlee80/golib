@@ -73,8 +73,8 @@ func (p *FilePreview) Layout(c tui.Constraints) tui.Size {
 func (p *FilePreview) Render(tui.Surface)         {}
 func (p *FilePreview) HandleEvent(tui.Event) bool { return false }
 
-// AcceptsFocus reports that the frame is not a tab stop; the text is.
-func (p *FilePreview) AcceptsFocus() bool { return false }
+// NOT FOCUSABLE BY DESIGN — no tui.Focusable: the frame is not a tab stop; the
+// text is. Absence of the capability says so (tutorial ch. 9).
 
 // Show previews an fs path of src; folder says it is a folder and has no text
 // to show. Any fs.FS will do — the preview reads a remote file as it reads a

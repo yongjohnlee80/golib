@@ -111,8 +111,9 @@ type Box struct {
 }
 
 var (
-	_ tui.Container = (*Box)(nil)
-	_ tui.Focusable = (*Box)(nil)
+	_ tui.Container     = (*Box)(nil)
+	_ tui.Focusable     = (*Box)(nil)
+	_ tui.FocusDesigner = (*Box)(nil)
 )
 
 // boxConfig is the option-set state of NewBox.
@@ -244,6 +245,11 @@ func (x *Box) Init(ctx *tui.Context) {
 
 // AcceptsFocus implements tui.Focusable per WithFocusable.
 func (x *Box) AcceptsFocus() bool { return x.focusable }
+
+// FocusableByDesign implements tui.FocusDesigner: a Box is focusable only when
+// it was built WithFocusable(true) — a choice made at construction, not a
+// state — so a pane Box is not focusable by design, whatever it holds.
+func (x *Box) FocusableByDesign() bool { return x.focusable }
 
 // Add sets the single child (Container contract). A Box wraps exactly one
 // child; adding to an occupied Box panics.

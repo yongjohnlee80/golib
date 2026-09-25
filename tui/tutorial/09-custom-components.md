@@ -195,6 +195,12 @@ func (sl *SearchableList[T]) FocusTarget() tui.Component { return sl.list }
 1. **Transparent containers omit `tui.Focusable`**: Do not add an
    `AcceptsFocus() bool { return false }` method merely to say the wrapper is not
    a stop; absence of the optional capability already says that structurally.
+   It is also what makes a component **not focusable by design**, which
+   `App.HoldsFocusable` reads: `AcceptsFocus` answers what a component accepts
+   *now* (a disabled button, false), and a constant false claims the
+   capability while denying it. A type whose focusability is a per-instance
+   choice made at construction (a `Box` built `WithFocusable`) implements
+   `tui.FocusDesigner` as well, and answers `FocusableByDesign()`.
 2. **Delegate to the child with a cursor**: If a child draws a terminal cursor (like `Editor` or `TextInput`), that child **must hold actual focus**. If the wrapper steals focus, the runtime cursor reporter cannot find the inner widget, and the cursor disappears.
 3. Provide a `FocusTarget() tui.Component` method so parent controllers can easily focus the active child:
    ```go

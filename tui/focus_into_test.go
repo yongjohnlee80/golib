@@ -161,3 +161,35 @@ func TestHoldsFocusableIsByDesign(t *testing.T) {
 		t.Error("a label was judged focusable")
 	}
 }
+
+// designProbe is a container whose focusability is a per-instance choice.
+type designProbe struct {
+	focusProbe
+	designed bool
+}
+
+func (d *designProbe) FocusableByDesign() bool { return d.designed }
+
+// A FocusDesigner answers for itself: built not to take focus, it is not
+// focusable by design even though it implements Focusable; built to, it is.
+func TestHoldsFocusableAsksAFocusDesigner(t *testing.T) {
+	t.Parallel()
+	off := &designProbe{focusProbe: *newFocusProbe("off", Size{W: 2, H: 1})}
+	off.accepts.Store(false)
+	on := &designProbe{focusProbe: *newFocusProbe("on", Size{W: 2, H: 1}), designed: true}
+	on.accepts.Store(false) // designed to take focus, and not accepting it now
+	root := NewFlex(Vertical)
+	root.Add(off, on)
+	h := startApp(t, root, 8, 8)
+	var offHolds, onHolds bool
+	h.onLoop(func() {
+		offHolds, _ = h.app.HoldsFocusable(off)
+		onHolds, _ = h.app.HoldsFocusable(on)
+	})
+	if offHolds {
+		t.Error("a FocusDesigner built not to take focus was judged focusable by design")
+	}
+	if !onHolds {
+		t.Error("a FocusDesigner built to take focus, refusing it NOW, was judged not focusable by design")
+	}
+}

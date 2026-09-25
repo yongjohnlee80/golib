@@ -265,8 +265,9 @@ func (l *FileList) Layout(c tui.Constraints) tui.Size {
 func (l *FileList) Render(tui.Surface)         {}
 func (l *FileList) HandleEvent(tui.Event) bool { return false }
 
-// AcceptsFocus reports that the frame is not a tab stop; its list is.
-func (l *FileList) AcceptsFocus() bool { return false }
+// NOT FOCUSABLE BY DESIGN — no tui.Focusable: the frame is not a tab stop; its
+// list is. Absence of the capability says so (tutorial ch. 9), which is what
+// tui.App.HoldsFocusable reads.
 
 // Focus gives the list the keyboard.
 func (l *FileList) Focus() {

@@ -141,10 +141,9 @@ func (b *MenuBar) Init(ctx *tui.Context) {
 	ctx.Mount(b.menu)
 }
 
-// AcceptsFocus reports that the bar is not a tab stop: the Menu inside it is,
-// and a focusable shell would insert a stop that does nothing between the
-// application and its menu.
-func (b *MenuBar) AcceptsFocus() bool { return false }
+// NOT FOCUSABLE BY DESIGN — no tui.Focusable: the bar is not a tab stop; the
+// Menu inside it is, and a focusable shell would insert a stop that does
+// nothing between the application and its menu.
 
 // Layout takes one line across for a horizontal bar, or one column down for a
 // vertical one, and fills it with the menu.

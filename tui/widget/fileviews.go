@@ -236,7 +236,8 @@ func (v *FileOpenView) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
-func (v *FileOpenView) AcceptsFocus() bool { return false }
+// NOT FOCUSABLE BY DESIGN — no tui.Focusable: the view is not a tab stop; its
+// list, preview and field are. Absence of the capability says so.
 
 // Confirm chooses the file under the cursor, or goes into the folder there.
 func (v *FileOpenView) Confirm() bool { return v.list.Enter() }
@@ -360,7 +361,7 @@ func (v *FileSaveView) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
-func (v *FileSaveView) AcceptsFocus() bool { return false }
+// NOT FOCUSABLE BY DESIGN — no tui.Focusable, as FileOpenView.
 
 // Confirm chooses the named file — unless the name is a folder, which it goes
 // into, clearing the name, rather than writing over.

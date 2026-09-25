@@ -84,10 +84,9 @@ func (p *menuPopup) rowsOf() []MenuItemModel {
 	return nil
 }
 
-// AcceptsFocus reports that a level is not a tab stop. The Menu owns the
-// selection and the keys for the whole cascade; a focusable popup would insert a
-// stop that steals the arrow keys from the widget driving them.
-func (p *menuPopup) AcceptsFocus() bool { return false }
+// NOT FOCUSABLE BY DESIGN — no tui.Focusable: a level is not a tab stop. The
+// Menu owns the selection and the keys for the whole cascade; a focusable popup
+// would insert a stop that steals the arrow keys from the widget driving them.
 
 // Layout sizes the level to its rows and declares a region per row, so a deeper
 // level can anchor to one of them.
