@@ -231,3 +231,37 @@ func TestTheRefreshEndsWithTheReconcileThatSucceeds(t *testing.T) {
 		t.Fatalf("an unchanged reload after the refresh evaluated the binding %d times", *calls)
 	}
 }
+
+// TestARestoredModuleKeepsItsSourcesWhereTheyMoved: a module may bring a
+// source, and the host may have moved it. A refused reload puts the module
+// back — with the source where the host left it, not where the file began.
+func TestARestoredModuleKeepsItsSourcesWhereTheyMoved(t *testing.T) {
+	broken := false
+	load := func() (decl.ModuleContents, error) {
+		c := decl.ModuleContents{Exports: []string{"Status"}, Values: map[string]decl.Injected{
+			"Status.line": decl.SourceValue(sv("start")),
+		}}
+		if broken {
+			c.Values = map[string]decl.Injected{}
+		}
+		return c, nil
+	}
+	rec := newReactor()
+	tr := decl.New(rec)
+	_ = tr.OfferModule("status", "", load)
+	const src = "import status\nText { text: Status.line }"
+	if err := tr.Mount(mustSpec(t, src)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tr.SetSource("Status.line", sv("moved")); err != nil {
+		t.Fatal(err)
+	}
+	broken = true
+	_ = tr.ClearComponentCache()
+	if _, err := tr.Reconcile(mustSpec(t, src)); err == nil {
+		t.Fatal("a module without Status.line was accepted")
+	}
+	if v, ok := tr.Source("Status.line"); !ok || v.Raw != "moved" {
+		t.Fatalf("after the restore Status.line = %+v (%v), want moved", v, ok)
+	}
+}
