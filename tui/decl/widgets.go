@@ -51,7 +51,7 @@ func StdRegistry() *Registry {
 func StdProperties() []Option { return typeOptions(stdTypes()) }
 
 // stdTypes is every standard widget type, in one table.
-func stdTypes() []widgetType { return append(coreTypes(), appTypes()...) }
+func stdTypes() []Type { return append(coreTypes(), appTypes()...) }
 
 // tuiEnums is every enum the standard vocabulary accepts. The Tui singleton's
 // constants are derived from it, so a new enum is visible to documents by being
@@ -76,15 +76,15 @@ var directions = enum[tui.Direction]{prop: "direction", values: map[string]tui.D
 	"Vertical":   tui.Vertical,
 }}
 
-func coreTypes() []widgetType {
-	return []widgetType{
-		{name: "Split", build: buildSplit, ctor: []string{"orientation"}},
-		{name: "Flex", build: buildFlex, ctor: []string{"direction"}},
-		{name: "Button", build: buildButton, setters: map[string]Setter{
+func coreTypes() []Type {
+	return []Type{
+		{Name: "Split", Build: buildSplit, Ctor: []string{"orientation"}},
+		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}},
+		{Name: "Button", Build: buildButton, Setters: map[string]Setter{
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
 			"label":   setter("a Button", stringOf, (*widget.Button).SetLabel),
 		}},
-		{name: "Text", build: buildText, ctor: append([]string{"wrapMode"}, paletteProps(textRoles)...), setters: map[string]Setter{
+		{Name: "Text", Build: buildText, Ctor: append([]string{"wrapMode"}, paletteProps(textRoles)...), Setters: map[string]Setter{
 			"text": setter("a Text", stringOf, (*widget.Text).SetText),
 		}},
 	}

@@ -24,39 +24,39 @@ import (
 // module the document imports — so a document's structure and its theme change
 // independently, and the theme by its import line alone.
 
-func appTypes() []widgetType {
-	return []widgetType{
-		{name: "Window", build: buildWindow},
-		{name: "Frame", build: buildFrame, ctor: append([]string{"title"}, paletteProps(frameRoles)...)},
-		{name: "Editor", build: buildEditor, ctor: append([]string{"text", "wrap"}, paletteProps(editorRoles)...), setters: map[string]Setter{
+func appTypes() []Type {
+	return []Type{
+		{Name: "Window", Build: buildWindow},
+		{Name: "Frame", Build: buildFrame, Ctor: append([]string{"title"}, paletteProps(frameRoles)...)},
+		{Name: "Editor", Build: buildEditor, Ctor: append([]string{"text", "wrap"}, paletteProps(editorRoles)...), Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
 		}},
-		{name: "StatusBar", build: buildStatusBar, ctor: paletteProps(statusRoles), setters: map[string]Setter{
+		{Name: "StatusBar", Build: buildStatusBar, Ctor: paletteProps(statusRoles), Setters: map[string]Setter{
 			"left":   setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetLeft)),
 			"center": setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetCenter)),
 			"right":  setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetRight)),
 		}},
-		{name: "MenuBar", build: buildMenuBar, ctor: append([]string{"vimNavigation"}, paletteProps(menuRoles)...)},
-		{name: "Menu", build: buildMenu, ctor: []string{"title", "align"}},
-		{name: "MenuItem", build: buildMenuItem, ctor: []string{"text", "checkable", "group", "shortcut"},
-			setters: map[string]Setter{
+		{Name: "MenuBar", Build: buildMenuBar, Ctor: append([]string{"vimNavigation"}, paletteProps(menuRoles)...)},
+		{Name: "Menu", Build: buildMenu, Ctor: []string{"title", "align"}},
+		{Name: "MenuItem", Build: buildMenuItem, Ctor: []string{"text", "checkable", "group", "shortcut"},
+			Setters: map[string]Setter{
 				"checked": setter("a menu row", boolOf, (*menuNode).setChecked),
 				"enabled": setter("a menu row", boolOf, (*menuNode).setEnabled),
 			}},
-		{name: "MenuSeparator", build: buildMenuSeparator},
-		{name: "Shortcut", build: buildShortcut, ctor: []string{"sequence"}},
-		{name: "FileDialog", build: buildFileDialog,
-			ctor: append([]string{"title", "helpText", "dim", "fileMode", "preview"}, paletteProps(fileDialogRoles)...),
-			setters: map[string]Setter{
+		{Name: "MenuSeparator", Build: buildMenuSeparator},
+		{Name: "Shortcut", Build: buildShortcut, Ctor: []string{"sequence"}},
+		{Name: "FileDialog", Build: buildFileDialog,
+			Ctor: append([]string{"title", "helpText", "dim", "fileMode", "preview"}, paletteProps(fileDialogRoles)...),
+			Setters: map[string]Setter{
 				"currentFolder": setter("a FileDialog", stringOf, (*dialogNode).setFolder),
 				"selectedFile":  setter("a FileDialog", stringOf, (*dialogNode).setSelected),
 			},
-			methods: dialogMethods,
-			signals: map[string][]string{"accepted": {"selectedFile"}}},
-		{name: "Dialog", build: buildDialog,
-			ctor:    append([]string{"title", "helpText", "dim", "standardButtons"}, paletteProps(dialogRoles)...),
-			methods: dialogMethods},
+			Methods: dialogMethods,
+			Signals: map[string][]string{"accepted": {"selectedFile"}}},
+		{Name: "Dialog", Build: buildDialog,
+			Ctor:    append([]string{"title", "helpText", "dim", "standardButtons"}, paletteProps(dialogRoles)...),
+			Methods: dialogMethods},
 	}
 }
 

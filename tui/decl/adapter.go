@@ -72,6 +72,7 @@ type Adapter struct {
 	methods   map[string]map[string]Method
 	signals   map[string]map[string][]string
 	files     widget.FileSource
+	destroyed map[string]func(tui.Component)
 	sink      func(error)
 }
 
@@ -181,6 +182,7 @@ func New(reg *Registry, opts ...Option) *Adapter {
 		ctorProps: map[string]map[string]bool{},
 		methods:   map[string]map[string]Method{},
 		signals:   map[string]map[string][]string{},
+		destroyed: map[string]func(tui.Component){},
 	}
 	for _, o := range opts {
 		o(a)
@@ -316,8 +318,18 @@ func (a *Adapter) Apply(app decl.Application) error {
 // own the App's lifecycle, and tearing down a component the App still holds
 // would be reaching past its own boundary.
 func (a *Adapter) Destroy(id decl.NodeID) error {
+	b, ok := a.nodes[id]
 	delete(a.nodes, id)
+	if hook := a.destroyed[b.typ]; ok && hook != nil {
+		hook(b.comp)
+	}
 	return nil
+}
+
+// WithDestroyHook sets what runs when a node of a type is destroyed — by a
+// reload that drops it, or by the tree's teardown — with the widget it built.
+func WithDestroyHook(typeName string, fn func(tui.Component)) Option {
+	return func(a *Adapter) { a.destroyed[typeName] = fn }
 }
 
 // TypeNames implements [decl.Vocabulary]: a component named like a type this
