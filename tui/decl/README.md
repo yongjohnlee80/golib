@@ -104,6 +104,12 @@ engine's, expanded before anything is built, so they have no widget.
 `toggled` is raised for each change the user's toggle makes to it, a radio
 cleared by its group included, before its `triggered`.
 
+**`Shortcut`** — Qt's key sequence: modifiers joined by `+` (`Ctrl`, `Alt`,
+`Shift`) and a key name (`Esc`, `F10`, `Space`…) or one character. A letter's
+case is its Shift, as in Qt: `"c"` or `"C"` is the key c, and `"Shift+C"` is the
+capital, whether a terminal delivers it as `C` or as Shift and c. With Ctrl or
+Alt, case is not relied on (`Ctrl+Q` matches however it arrives).
+
 **Models** — Qt's model/view. A host sets a `tuidecl.ListModel` (or its own
 `tuidecl.ItemModel`) as a source; `model: App.people` binds a view to it, and
 the view follows the model's changes itself — insert, remove, reset — with

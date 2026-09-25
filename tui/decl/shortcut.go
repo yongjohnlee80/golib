@@ -90,11 +90,27 @@ func parseSequence(s string) (keySequence, error) {
 }
 
 // matches reports whether a key event is this sequence.
+//
+// A LETTER'S CASE IS ITS SHIFT, as in Qt, where "C" is the key and "Shift+C"
+// the capital. A terminal sends a capital as the character itself, with no
+// Shift, so a capital letter with neither Ctrl nor Alt is read as Shift and the
+// letter: "C" matches c, and "Shift+C" matches C. With Ctrl or Alt a terminal
+// cannot be relied on to report case, and the letter matches either way.
 func (k keySequence) matches(ev tui.KeyEvent) bool {
 	if ev.Kind != tui.KeyPress {
 		return false
 	}
-	return unicode.ToLower(ev.Code) == k.code && ev.Mods&shortcutMods == k.mods
+	code, mods := ev.Code, ev.Mods&shortcutMods
+	if unicode.IsUpper(code) {
+		if mods&(tui.ModCtrl|tui.ModAlt) == 0 {
+			mods |= tui.ModShift
+		}
+		code = unicode.ToLower(code)
+	}
+	if mods&(tui.ModCtrl|tui.ModAlt) != 0 && k.mods&tui.ModShift == 0 {
+		mods &^= tui.ModShift // Ctrl+C and Ctrl+Shift+C are one to a terminal
+	}
+	return code == k.code && mods == k.mods
 }
 
 // shortcutNode is a declared Shortcut, before a Window adopts it.
