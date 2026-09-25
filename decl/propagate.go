@@ -95,6 +95,13 @@ func (t *Tree) setSources(values map[string]qml.SpecValue) (PropagationResult, e
 	if len(overlay) == 0 {
 		return PropagationResult{}, nil
 	}
+	// A Repeater reading a changed source re-expands (repeater.go).
+	for name := range overlay {
+		if t.repSources[name] {
+			defer t.repeatersChanged()
+			break
+		}
+	}
 
 	prev := t.ph
 	t.ph = phasePropagating

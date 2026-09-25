@@ -136,6 +136,17 @@ type Tree struct {
 	// onProviderError is where a delivery's failure goes. A delivery has no
 	// caller to return an error to.
 	onProviderError func(error)
+
+	// Repeaters (repeater.go). written is the document as written — before
+	// expansion — last mounted or reconciled; repNext is what the expansion
+	// under way read, repSubs the models followed and repSources the sources
+	// read, and repPending a re-expansion already scheduled.
+	written    *qml.SpecTree
+	repNext    repeaterScope
+	repSubs    map[Model]func()
+	repSources map[string]bool
+	repPending bool
+	repErr     func(error)
 }
 
 // plannedNode is one fresh node's pre-allocated identity and pre-resolved
@@ -351,7 +362,11 @@ func (t *Tree) Children(id NodeID) []NodeID {
 // refuses a further Mount until [Tree.Destroy] has cleared it, so a second
 // schema cannot be grafted onto a partial one.
 func (t *Tree) Mount(spec qml.SpecTree) error {
-	return t.settle(t.mount(spec))
+	err := t.settle(t.mount(spec))
+	if err == nil {
+		t.followRepeaters(spec, t.repNext)
+	}
+	return err
 }
 
 func (t *Tree) mount(spec qml.SpecTree) (err error) {
@@ -730,6 +745,7 @@ func (t *Tree) HandlerNames(id NodeID, signal string) []string {
 func (t *Tree) Failed() bool { return t.failed }
 
 func (t *Tree) Destroy() error {
+	t.dropRepeaters()
 	switch t.ph {
 	case phaseEmitting, phaseMounting, phaseDestroying, phaseReconciling, phasePropagating:
 		return SchemaError{Op: "destroy", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}

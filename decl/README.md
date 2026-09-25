@@ -171,6 +171,11 @@ its **component types**.
   Qt's component scope: one set per use, unreachable from the document, and
   shadowing the document's; its root's id names the instance from inside. One
   that contains itself is refused, with the cycle spelled out.
+- **`Repeater` / `Instantiator`** are expanded after components: one copy of
+  the delegate per row of a host `Model`, `model.<role>` and `index` written in
+  from the row, each copy keyed by the row's key. The tree follows the models
+  and sources it read and, on a change, re-expands the document as written and
+  reconciles it — on the scheduler, never inside an emission.
 - **Reading an object's property by id in a handler** — `App.login(user.text)`
   — reads the live object when the handler runs, through the optional
   `PropertyReader` capability. Only in a handler: a binding over another

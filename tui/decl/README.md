@@ -71,7 +71,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Window` | — | — | — | — |
 | `MenuBar` | `vimNavigation`, palette | — | — | — |
 | `Menu` | `title`, `align` | — | — | — |
-| `MenuItem` | `text`, `checkable`, `group`, `shortcut` | `checked`, `enabled` | `triggered` | — |
+| `MenuItem` | `text`, `checkable`, `group`, `shortcut` | `checked`, `enabled`, `visible` | `triggered` | — |
 | `MenuSeparator` | — | — | — | — |
 | `Shortcut` | `sequence` | — | `activated` | — |
 | `Frame` | palette | `title` | — | — |
@@ -104,6 +104,15 @@ or a `TreeModel` of the host's): a row opens and, the first time, the view asks
 the model to load its children (`OnFetch`), which the host sets with
 `SetChildren`. Its signals carry the row's `tuidecl.Index`, which the handler
 passes back to the host.
+
+**`Repeater` and `Instantiator`** — Qt's delegate per model row. The one
+child is instantiated once per row of `model:`, in the Repeater's place in its
+parent — a `Repeater` in a `Flex`, an `Instantiator` in a `Menu` or `MenuBar`
+(where Qt needs `onObjectAdded`, the parent here takes the items itself). In
+the delegate, `model.<role>` is the row's value, typed, and `index` its row; a
+nested `model: model.rows` reads the outer row. Each copy is identified by its
+row's key, so a model change re-expands and patches as a reload does: what a
+kept row holds survives rows inserted around it.
 
 **Every element that takes a place on screen has `visible`** — Qt's
 `Item.visible`, a runtime property: hidden, it takes no space, is not painted
