@@ -262,6 +262,9 @@ var comboBoxType = Type{
 	Ctor:  []string{"textRole", "valueRole", "placeholderText"},
 	Setters: map[string]Setter{
 		"model": setter("a ComboBox", modelOf, func(n *comboBoxNode, m ItemModel) { n.mv.setModel(m) }),
+		// Qt's writable currentIndex: the row chosen, -1 for none. A row the
+		// model does not have chooses none.
+		"currentIndex": setter("a ComboBox", numberOf, func(n *comboBoxNode, v float64) { n.sel.SetSelectedIndex(int(v)) }),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": func(c tui.Component) (qml.SpecValue, error) {
