@@ -339,6 +339,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	comp, consumed, err := build(Build{
 		Type:          c.Type,
 		Pos:           c.Pos,
+		ID:            c.ID,
 		Props:         own,
 		Children:      children,
 		ChildAttached: childAttached,

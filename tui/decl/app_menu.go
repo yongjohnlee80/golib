@@ -1,10 +1,12 @@
 package decl
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"unicode"
 
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -34,6 +36,7 @@ import (
 // menuNode is one declared row, before a MenuBar adopts it.
 type menuNode struct {
 	kind     string // "Menu", "MenuItem" or "MenuSeparator" — for diagnostics
+	id       string // the node's engine identity, "" when anonymous; see rowID
 	model    widget.MenuItemModel
 	trigger  func()
 	children []*menuNode
@@ -43,12 +46,44 @@ type menuNode struct {
 	// BEFORE its MenuBar exists, since children are built first — so a setter
 	// writes the model until adoption and the live menu afterwards.
 	owner *widget.Menu
+	// bar is the MenuBar that adopted this row: a Menu whose rows change —
+	// an Instantiator's model moved — asks it to project the menu again.
+	bar *menuBarNode
 }
 
 func (*menuNode) Init(*tui.Context)               {}
 func (*menuNode) Layout(tui.Constraints) tui.Size { return tui.Size{} }
 func (*menuNode) Render(tui.Surface)              {}
 func (*menuNode) HandleEvent(tui.Event) bool      { return false }
+
+// arrange takes a Menu's rows as they now are, and has its bar project them.
+func (n *menuNode) arrange(children []tui.Component, _ []map[string]qml.SpecValue, _ tui.Component) error {
+	if n.kind != "Menu" {
+		return fmt.Errorf("a %s takes no rows", n.kind)
+	}
+	rows, err := menuRows(children, "a Menu holds MenuItem, MenuSeparator and Menu rows only")
+	if err != nil {
+		return err
+	}
+	n.children = rows
+	if n.bar == nil {
+		return nil
+	}
+	return n.bar.project()
+}
+
+// menuRows reads a menu's children as its rows.
+func menuRows(children []tui.Component, refusal string) ([]*menuNode, error) {
+	rows := make([]*menuNode, 0, len(children))
+	for _, c := range children {
+		n, ok := c.(*menuNode)
+		if !ok {
+			return nil, errors.New(refusal)
+		}
+		rows = append(rows, n)
+	}
+	return rows, nil
+}
 
 func (n *menuNode) setChecked(on bool) {
 	if n.owner != nil {
@@ -142,7 +177,7 @@ func buildMenuItem(b Build) (tui.Component, []string, error) {
 	}
 	m = withMnemonic(m, text)
 	m.Accel = shortcut
-	n := &menuNode{kind: "MenuItem", model: m}
+	n := &menuNode{kind: "MenuItem", id: b.ID, model: m}
 	// Only a row the document BOUND gets a trigger. Build.Emitter hands back a
 	// no-op for an unbound signal, which is right for a widget callback and
 	// wrong here: every row would then report its activation as handled, and
@@ -157,7 +192,7 @@ func buildMenuSeparator(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 || len(b.Props) != 0 {
 		return nil, nil, fmt.Errorf("MenuSeparator takes no properties or children (at %s)", b.Pos)
 	}
-	return &menuNode{kind: "MenuSeparator", model: widget.NewSeparator("")}, nil, nil
+	return &menuNode{kind: "MenuSeparator", id: b.ID, model: widget.NewSeparator("")}, nil, nil
 }
 
 // menuAligns is where a top-level Menu sits on its bar.
@@ -179,14 +214,11 @@ func buildMenu(b Build) (tui.Component, []string, error) {
 	if title == "" {
 		return nil, nil, fmt.Errorf("Menu needs a title (at %s)", b.Pos)
 	}
-	n := &menuNode{kind: "Menu"}
-	for _, c := range b.Children {
-		child, ok := c.(*menuNode)
-		if !ok {
-			return nil, nil, fmt.Errorf("a Menu holds MenuItem, MenuSeparator and Menu rows only (at %s)", b.Pos)
-		}
-		n.children = append(n.children, child)
+	rows, err := menuRows(b.Children, "a Menu holds MenuItem, MenuSeparator and Menu rows only")
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
+	n := &menuNode{kind: "Menu", id: b.ID, children: rows}
 	n.model = withMnemonic(widget.NewSubmenu("", "", nil), title)
 	n.model.PegRight = right
 	return n, consumed, nil
@@ -213,56 +245,16 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 	}
 	menuOpts := []widget.MenuOption{widget.WithMenuVimNavigation(vim)}
 
-	triggers := map[tui.ActionID]func(){}
-	var nodes []*menuNode
-	next := 0
-	var adopt func(n *menuNode) (widget.MenuItemModel, error)
-	adopt = func(n *menuNode) (widget.MenuItemModel, error) {
-		next++
-		id := widget.ItemID("m" + strconv.Itoa(next))
-		n.model.ID = id
-		nodes = append(nodes, n)
-		if n.kind == "MenuItem" && n.trigger != nil {
-			act := tui.ActionID(id)
-			n.model.Action = menuCommand{act}
-			triggers[act] = n.trigger
-		}
-		if n.kind == "Menu" {
-			n.model.Children = nil
-			for _, c := range n.children {
-				cm, err := adopt(c)
-				if err != nil {
-					return widget.MenuItemModel{}, err
-				}
-				n.model.Children = append(n.model.Children, cm)
-			}
-		}
-		return n.model, nil
+	top, err := barRows(b.Children)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
-
-	var model []widget.MenuItemModel
-	var categories []menuCategory
-	for _, c := range b.Children {
-		n, ok := c.(*menuNode)
-		if !ok || n.kind != "Menu" {
-			return nil, nil, fmt.Errorf("a MenuBar holds Menu rows only (at %s)", b.Pos)
-		}
-		m, err := adopt(n)
-		if err != nil {
-			return nil, nil, err
-		}
-		model = append(model, m)
-		// A top-level Menu's mnemonic is its ACCESS KEY: Alt+F opens File.
-		if m.Hotkey != 0 {
-			categories = append(categories, menuCategory{hotkey: m.Hotkey, id: m.ID})
-		}
-	}
-
+	bar := &menuBarNode{rows: top, triggers: map[tui.ActionID]func(){}}
 	menuOpts = append(menuOpts, widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
 		if inv.Action == nil {
 			return false
 		}
-		fn, ok := triggers[inv.Action.ActionID()]
+		fn, ok := bar.triggers[inv.Action.ActionID()]
 		if !ok {
 			// Not ours — a row with no onTriggered. Reporting "not handled"
 			// keeps that visible rather than swallowing it.
@@ -271,12 +263,9 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 		fn()
 		return true
 	}))
-	menu := widget.NewMenu(menuOpts...)
-	if err := menu.SetModel(model); err != nil {
-		return nil, nil, fmt.Errorf("the menu is malformed: %w (at %s)", err, b.Pos)
-	}
-	for _, n := range nodes {
-		n.owner = menu
+	bar.menu = widget.NewMenu(menuOpts...)
+	if err := bar.project(); err != nil {
+		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
 
 	var barOpts []widget.MenuBarOption
@@ -287,11 +276,116 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 		}
 		barOpts = append(barOpts, widget.WithBarPlacement(barPlacements[edge]))
 	}
-	return &menuBarNode{
-		bar:        widget.NewMenuBar(menu, barOpts...),
-		menu:       menu,
-		categories: categories,
-	}, consumed, nil
+	bar.bar = widget.NewMenuBar(bar.menu, barOpts...)
+	return bar, consumed, nil
+}
+
+// project builds the menu's model from the bar's rows as they now are, and
+// hands it to the live menu — at construction, and whenever a Menu's rows
+// change (an Instantiator's model moved). Every row keeps its ItemID while it
+// lives, so the menu keeps an open submenu whose row survived and closes one
+// whose row went, as widget.Menu.SetModel defines.
+//
+// A row the bar already adopted keeps the state it has in the LIVE menu — a
+// check the user toggled, an enabled a binding set — because the live menu,
+// not the row's first model, is where that state has been kept since. A row
+// new to the bar (built, or rebuilt, since) brings its own.
+func (m *menuBarNode) project() error {
+	live := map[widget.ItemID]widget.MenuItemModel{}
+	var index func([]widget.MenuItemModel)
+	index = func(items []widget.MenuItemModel) {
+		for _, it := range items {
+			live[it.ID] = it
+			index(it.Children)
+		}
+	}
+	index(m.menu.Model())
+
+	triggers := map[tui.ActionID]func(){}
+	var nodes []*menuNode
+	var adopt func(n *menuNode, id widget.ItemID) widget.MenuItemModel
+	adopt = func(n *menuNode, id widget.ItemID) widget.MenuItemModel {
+		if n.owner != nil {
+			if was, ok := live[n.model.ID]; ok {
+				n.model.Checked, n.model.Enabled, n.model.Visible = was.Checked, was.Enabled, was.Visible
+			}
+		}
+		n.model.ID = id
+		nodes = append(nodes, n)
+		if n.kind == "MenuItem" && n.trigger != nil {
+			act := tui.ActionID(id)
+			n.model.Action = menuCommand{act}
+			triggers[act] = n.trigger
+		}
+		if n.kind == "Menu" {
+			n.model.Children = nil
+			anon := 0
+			for _, c := range n.children {
+				n.model.Children = append(n.model.Children, adopt(c, rowID(id, c, &anon)))
+			}
+		}
+		return n.model
+	}
+	var model []widget.MenuItemModel
+	var categories []menuCategory
+	anon := 0
+	for _, n := range m.rows {
+		row := adopt(n, rowID("", n, &anon))
+		model = append(model, row)
+		// A top-level Menu's mnemonic is its ACCESS KEY: Alt+F opens File.
+		if row.Hotkey != 0 {
+			categories = append(categories, menuCategory{hotkey: row.Hotkey, id: row.ID})
+		}
+	}
+	if err := m.menu.SetModel(model); err != nil {
+		return fmt.Errorf("the menu is malformed: %w", err)
+	}
+	for _, n := range nodes {
+		n.owner, n.bar = m.menu, m
+	}
+	m.triggers, m.categories = triggers, categories
+	return nil
+}
+
+// rowID is a row's ItemID: its engine identity when it has one — every
+// delegate instance does, keyed by its model row — so the id follows the row
+// wherever the model moves it; otherwise its place among its menu's anonymous
+// rows, under its menu's id. The first form is quoted, which keeps the two
+// apart: a quoted id never ends in a digit.
+func rowID(parent widget.ItemID, n *menuNode, anon *int) widget.ItemID {
+	if n.id != "" {
+		return widget.ItemID("mk:" + strconv.Quote(n.id))
+	}
+	*anon++
+	if parent == "" {
+		return widget.ItemID("mk:#" + strconv.Itoa(*anon))
+	}
+	return widget.ItemID(string(parent) + "/#" + strconv.Itoa(*anon))
+}
+
+// arrange takes the bar's Menus as they now are and projects them.
+func (m *menuBarNode) arrange(children []tui.Component, _ []map[string]qml.SpecValue, _ tui.Component) error {
+	rows, err := barRows(children)
+	if err != nil {
+		return err
+	}
+	m.rows = rows
+	return m.project()
+}
+
+// barRows reads a MenuBar's children: Menus, and nothing else.
+func barRows(children []tui.Component) ([]*menuNode, error) {
+	const refusal = "a MenuBar holds Menu rows only"
+	rows, err := menuRows(children, refusal)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range rows {
+		if n.kind != "Menu" {
+			return nil, errors.New(refusal)
+		}
+	}
+	return rows, nil
 }
 
 // barPlacements orients a bar to the edge it is docked on, so dropdowns open

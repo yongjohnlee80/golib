@@ -221,6 +221,10 @@ type menuBarNode struct {
 	bar        *widget.MenuBar
 	menu       *widget.Menu
 	categories []menuCategory
+	// rows are the bar's Menus, and triggers each row's onTriggered by its
+	// action — both as the last projection left them (see project).
+	rows     []*menuNode
+	triggers map[tui.ActionID]func()
 }
 
 // menuCategory is one top-level Menu's access key.

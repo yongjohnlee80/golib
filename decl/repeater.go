@@ -122,10 +122,13 @@ func (t *Tree) instantiate(sn *qml.SpecNode, key string, sc *repeaterScope,
 		ix := Index{Row: r}
 		rowKey := key + "[" + strconv.Quote(model.Key(ix)) + "]" // quoted: a key cannot close the bracket
 		copied := bindRow(delegate, model, ix)
+		// Every id in the delegate is its row's — the root's too, since each row
+		// is its own copy of it. A root with none gets one: a stable identity
+		// for the reconcile.
+		copied = scopeIDs(copied, rowKey, "")
 		if copied.ID == "" {
-			copied.ID = "row@" + rowKey // a stable identity for the reconcile
+			copied.ID = "row@" + rowKey
 		}
-		copied = scopeIDs(copied, rowKey, copied.ID)
 		kids, err := walk(copied, rowKey)
 		if err != nil {
 			return nil, err
