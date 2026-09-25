@@ -897,3 +897,33 @@ func TestADialogWithoutARuleKeepsItsBlankLine(t *testing.T) {
 		}
 	}
 }
+
+// TestAModalStylesFooterAndRule: the footer is the card faded unless set; a
+// set footer is kept, on a copy, and a nil style yields a complete one; the
+// rule is the border, so it joins the frame in the frame's colour.
+func TestAModalStylesFooterAndRule(t *testing.T) {
+	var none *widget.ModalStyle
+	if f, set := none.Footer().GetFaint(); !f || !set {
+		t.Error("a nil style's footer is not the card faded")
+	}
+	card := style.New().Background(style.ANSI(7))
+	base := widget.NewModalStyle(card, card.Bold(true))
+	if bg, _ := base.Footer().GetBackground(); bg != style.ANSI(7) {
+		t.Errorf("the derived footer lost the card's background: %v", bg)
+	}
+	red := style.New().Foreground(style.ANSI(1))
+	withFoot := base.WithFooter(red)
+	if fg, _ := withFoot.Footer().GetForeground(); fg != style.ANSI(1) {
+		t.Errorf("WithFooter's look was not kept: %v", fg)
+	}
+	if fg, set := base.Footer().GetForeground(); set && fg == style.ANSI(1) {
+		t.Error("WithFooter changed the style it was called on, not a copy")
+	}
+	fromNil := none.WithFooter(red)
+	if fromNil == nil || fromNil.Card() != widget.DefaultModalStyle().Card() {
+		t.Error("WithFooter on a nil style did not yield a complete default style")
+	}
+	if base.Rule() != base.Border() {
+		t.Error("the rule is not drawn in the border's look")
+	}
+}
