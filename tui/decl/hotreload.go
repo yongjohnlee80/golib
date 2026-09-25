@@ -107,12 +107,14 @@ func (a snapshot) equal(b snapshot) bool {
 
 // snapshot reads every followed file. A file that cannot be read now — being
 // replaced, say — is recorded as missing, which is a change like any other.
-func (p *Program) snapshot() snapshot {
+func (p *Program) snapshot() snapshot { return snapshotOf(p.cfg) }
+
+func snapshotOf(c programConfig) snapshot {
 	out := snapshot{}
-	if src, err := fs.ReadFile(p.cfg.layoutFS, p.cfg.layoutFile); err == nil {
-		out["layout:"+p.cfg.layoutFile] = sha256.Sum256(src)
+	if src, err := fs.ReadFile(c.layoutFS, c.layoutFile); err == nil {
+		out["layout:"+c.layoutFile] = sha256.Sum256(src)
 	}
-	for i, w := range p.cfg.watched {
+	for i, w := range c.watched {
 		entries, err := fs.ReadDir(w.fsys, w.dir)
 		if err != nil {
 			continue
@@ -132,8 +134,12 @@ func (p *Program) snapshot() snapshot {
 
 // follow polls until ctx ends. A snapshot that differs from the last one
 // applied is acted on once it has held for one interval.
+//
+// The first "applied" is the files AS MOUNTED, not as they are when polling
+// starts: Run starts this after the screen is up, and a save made in between
+// would otherwise be the baseline — never seen as a change, never shown.
 func (p *Program) follow(ctx context.Context) {
-	f := follower{applied: p.snapshot()}
+	f := follower{applied: p.mounted}
 	tick := time.NewTicker(p.cfg.hot.interval)
 	defer tick.Stop()
 	for {
