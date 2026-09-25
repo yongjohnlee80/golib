@@ -72,18 +72,21 @@ type Change struct {
 // # Thread Affinity and Invariants
 //
 // Model methods (RowCount, Data, Key) and Subscribe callbacks share thread affinity with
-// the tree's owner goroutine. The core engine is single-threaded; when background workers
-// produce updates, model changes should be marshalled to the owner goroutine (or scheduled
-// via [WithScheduler]). Model change subscriptions notify the engine synchronously, which
-// then schedules repeater re-expansion and reconciliation on the engine's scheduler.
+// the tree's owner goroutine. The core engine is single-threaded; callers must marshal
+// model mutations directly to the owner goroutine. Model change subscriptions notify the
+// engine synchronously on the mutating goroutine (reading and writing tree state before any
+// scheduler hook); [WithScheduler] schedules the later repeater re-expansion and reconciliation,
+// not the synchronous subscriber callback itself.
 //
 // # Key Stability
 //
 // An explicit, stable key (such as an entity ID or unique name) is the mechanism that
 // allows Repeaters and views to preserve node identity, widget state, and focus across
 // insertions, deletions, and moves. If a model lacks explicit keys and falls back to
-// positional indices (e.g. row numbers), inserting or removing items shifts subsequent keys,
-// meaning following nodes are rebuilt as new items rather than matched in place.
+// positional indices (e.g. row numbers), inserting or removing items causes subsequent keys
+// to shift. The same numeric keys continue to match positions after an insertion, so existing
+// nodes may be reused for different records and retain ordinal state or focus, rather than
+// tracking the original record through the shift (leaving selection clamped at the ordinal position).
 type Model interface {
 	// RowCount returns the number of child rows located immediately under parent (nil for top-level).
 	RowCount(parent *Index) int
