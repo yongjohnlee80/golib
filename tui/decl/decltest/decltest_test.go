@@ -106,13 +106,12 @@ func TestRunFailsTheTestOnAHandlerError(t *testing.T) {
 	s := decltest.Run(r, 40, 5, options(files, func() error { return fmt.Errorf("greeting failed") })...)
 	s.WaitForText(t, "waiting")
 	s.Keys(t, decltest.Ctrl('g'))
-	for range 600 {
+	for deadline := time.Now().Add(decltest.WaitTimeout); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
 		for _, e := range r.got() {
 			if strings.Contains(e, "greeting failed") {
 				return
 			}
 		}
-		s.WaitFor(t, "a frame", func(string) bool { return true })
 	}
 	t.Fatalf("the handler's error never failed the test: %q", r.got())
 }

@@ -714,6 +714,11 @@ func (t *Tree) HandlerNames(id NodeID, signal string) []string {
 // joined into one error. Stopping at the first would strand every remaining
 // node, and reporting only the first would throw away evidence that costs
 // nothing to keep.
+// Failed reports whether an operation failed PART-WAY and left a partial tree,
+// so that only Destroy is legal. A reconcile refused before it changed
+// anything leaves the tree as it was, and does not set it.
+func (t *Tree) Failed() bool { return t.failed }
+
 func (t *Tree) Destroy() error {
 	switch t.ph {
 	case phaseEmitting, phaseMounting, phaseDestroying, phaseReconciling, phasePropagating:

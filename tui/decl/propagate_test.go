@@ -232,3 +232,48 @@ func TestARoleIsRefusedAtRuntimeAsAtMount(t *testing.T) {
 		t.Error("Resettable answers for the wrong properties")
 	}
 }
+
+// TestARoleAWidgetDoesNotWearLeavesItsLookAlone: a button colour set on the
+// Window reaches the editor, the menu bar and a file dialog, none of which
+// wear it — each keeps golib's own look, and nothing is painted in it.
+func TestARoleAWidgetDoesNotWearLeavesItsLookAlone(t *testing.T) {
+	s := runDoc(t, "import tui 1.0\nWindow { palette.button: \"red\"\n"+
+		" MenuBar { Dock.edge: Tui.Top; Menu { title: \"&File\" } }\n"+
+		" Editor { text: \"body\" }\n"+
+		" FileDialog { id: fd } }")
+	waitBG(t, s, "body", terminalDefault)
+	if bg := cellOf(t, s, "File").Attrs.BG; bg == ansi(red) {
+		t.Error("the menu bar wore a role it does not take")
+	}
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("fd", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "Cancel")
+}
+
+// TestTheAppWidgetsRefuseWhatTheyCannotBuild: shape and property refusals.
+func TestTheAppWidgetsRefuseWhatTheyCannotBuild(t *testing.T) {
+	for src, want := range map[string]string{
+		"Frame { }":                      "exactly 1 child",
+		"Frame { colour: 1\n Text { } }": "colour",
+		"Editor { wrap: \"yes\" }":       "wrap: want a bool",
+		"StatusBar { Text { } }":         "takes no children",
+		"StatusBar { colour: \"red\" }":  "colour",
+	} {
+		_, err := mountDoc(t, "import tui 1.0\n"+src)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want %q", src, err, want)
+		}
+	}
+	tr, a := mount(t, "import tui 1.0\nEditor { id: e }", nil, nil)
+	id, _ := tr.NodeByID("e")
+	c, _ := a.Component(id)
+	if _, ok := tuidecl.EditorOf(c); !ok {
+		t.Error("EditorOf did not find the editor")
+	}
+	if _, ok := tuidecl.EditorOf(nil); ok {
+		t.Error("EditorOf found an editor in nil")
+	}
+}

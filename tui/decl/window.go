@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -28,6 +29,7 @@ import (
 type windowNode struct {
 	ctx  *tui.Context
 	host *widget.OverlayHost
+	dock *tui.Dock
 
 	// focus is the document's `focus: true` target, or nil.
 	focus     tui.Component
@@ -40,51 +42,95 @@ func buildWindow(b Build) (tui.Component, []string, error) {
 	if len(b.Children) == 0 {
 		return nil, nil, fmt.Errorf("Window needs at least one child (at %s)", b.Pos)
 	}
-	w := &windowNode{focus: b.FocusNominee}
-	dock := tui.NewDock()
-	for i, child := range b.Children {
-		switch c := child.(type) {
-		case *menuNode:
-			return nil, nil, fmt.Errorf("a %s belongs inside a MenuBar, not directly in a Window (at %s)",
-				c.kind, b.Pos)
-		case *shortcutNode:
-			// Keys, not layout: a Shortcut takes no place on the screen.
-			w.shortcuts = append(w.shortcuts, c)
-			continue
-		case *dialogNode:
-			// Not layout either: a Dialog opens over the Window when asked.
-			w.dialogs = append(w.dialogs, c)
-			continue
-		case *menuBarNode:
-			w.menus = append(w.menus, c)
-		}
-		v, pinned := b.Attached(i, "Dock.edge")
-		if !pinned {
-			dock.Add(child)
-			continue
-		}
-		edge, err := dockEdges.read(v)
-		if err != nil {
-			return nil, nil, err
-		}
-		dock.Pin(edge, child)
-	}
-	w.host = widget.NewOverlayHost(dock)
-	for _, d := range w.dialogs {
-		d.host, d.afterClose = w.host, w.restoreFocus
+	w := &windowNode{}
+	if err := w.arrange(b.Children, b.ChildAttached, b.FocusNominee); err != nil {
+		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
 	return w, nil, nil
 }
 
-// Init mounts the host, listens for finished menu actions, and gives the
-// keyboard to the document's `focus: true` target.
+// arrange sorts the Window's children into what each is: keys, menus,
+// dialogs, and the widgets its dock lays out.
 //
-// Initial focus is set the way golib/tui expects: one ctx.FocusComponent call
-// at mount. It is NOT an InitialFocusProvider, which is a focus scope's
-// standing preference that the runtime re-asserts on every repair — right for
-// a dialog, wrong for an application screen, where it would pull the keyboard
-// back to the editor every time the user moved to the menu. Dialogs keep their
-// own trapping scopes; nothing here competes with them.
+// It runs at construction and again whenever a reload changes the children
+// (the adapter restructures a Window through it), and the second time it
+// DIFFS the dock rather than rebuilding it: a child that is still there keeps
+// its mount — its state, its subscriptions, the keyboard — and only what came
+// or went is mounted or unmounted. That is what lets an edit to one menu leave
+// the editor beside it untouched.
+func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml.SpecValue, nominee tui.Component) error {
+	type docked struct {
+		comp tui.Component
+		edge tui.DockEdge
+	}
+	var shortcuts []*shortcutNode
+	var menus []*menuBarNode
+	var dialogs []*dialogNode
+	var items []docked
+	for i, child := range children {
+		switch c := child.(type) {
+		case *menuNode:
+			return fmt.Errorf("a %s belongs inside a MenuBar, not directly in a Window", c.kind)
+		case *shortcutNode:
+			// Keys, not layout: a Shortcut takes no place on the screen.
+			shortcuts = append(shortcuts, c)
+			continue
+		case *dialogNode:
+			// Not layout either: a Dialog opens over the Window when asked.
+			dialogs = append(dialogs, c)
+			continue
+		case *menuBarNode:
+			menus = append(menus, c)
+		}
+		edge := tui.DockCenter
+		if i < len(attached) {
+			if v, pinned := attached[i]["Dock.edge"]; pinned {
+				e, err := dockEdges.read(v)
+				if err != nil {
+					return fmt.Errorf("Dock.edge: %w", err)
+				}
+				edge = e
+			}
+		}
+		items = append(items, docked{child, edge})
+	}
+
+	if w.dock == nil {
+		w.dock = tui.NewDock()
+		for _, it := range items {
+			w.dock.Pin(it.edge, it.comp)
+		}
+		w.host = widget.NewOverlayHost(w.dock)
+	} else {
+		keep := map[tui.Component]bool{}
+		for _, it := range items {
+			keep[it.comp] = true
+		}
+		for _, c := range w.dock.Items() {
+			if !keep[c] {
+				w.dock.Remove(c)
+			}
+		}
+		present := map[tui.Component]bool{}
+		for _, c := range w.dock.Items() {
+			present[c] = true
+		}
+		for _, it := range items {
+			if !present[it.comp] {
+				w.dock.Pin(it.edge, it.comp)
+			}
+		}
+		for i, it := range items {
+			w.dock.Move(it.comp, i)
+		}
+	}
+	w.shortcuts, w.menus, w.dialogs, w.focus = shortcuts, menus, dialogs, nominee
+	for _, d := range w.dialogs {
+		d.host, d.afterClose = w.host, w.restoreFocus
+	}
+	return nil
+}
+
 func (w *windowNode) Init(ctx *tui.Context) {
 	w.ctx = ctx
 	ctx.Mount(w.host)

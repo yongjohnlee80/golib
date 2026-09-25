@@ -79,6 +79,9 @@ type Adapter struct {
 	// effective palette. See propagate.go.
 	pal       map[decl.NodeID]*palNode
 	restylers map[string]restyler
+	// kids are each node's children, in order, as construction and every
+	// restructure left them.
+	kids map[decl.NodeID][]decl.NodeID
 }
 
 // Option configures an [Adapter].
@@ -190,6 +193,7 @@ func New(reg *Registry, opts ...Option) *Adapter {
 		destroyed: map[string]func(tui.Component){},
 		pal:       map[decl.NodeID]*palNode{},
 		restylers: map[string]restyler{},
+		kids:      map[decl.NodeID][]decl.NodeID{},
 	}
 	for _, o := range opts {
 		o(a)
@@ -298,6 +302,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		nominee = comp
 	}
 	a.nodes[c.Node] = built{comp: comp, typ: c.Type, attached: attached, nominee: nominee}
+	a.kids[c.Node] = append([]decl.NodeID(nil), c.Children...)
 	a.paletteBuilt(c.Node, ownPalette, c.Children)
 	consumed = append(consumed, paletteNames...)
 	if focus {
@@ -337,8 +342,12 @@ func (a *Adapter) Apply(app decl.Application) error {
 // would be reaching past its own boundary.
 func (a *Adapter) Destroy(id decl.NodeID) error {
 	b, ok := a.nodes[id]
+	if pn := a.pal[id]; pn != nil && pn.hasParent {
+		a.kids[pn.parent] = removeKid(a.kids[pn.parent], id)
+	}
 	a.paletteRelease(id)
 	delete(a.pal, id)
+	delete(a.kids, id)
 	delete(a.nodes, id)
 	if hook := a.destroyed[b.typ]; ok && hook != nil {
 		hook(b.comp)

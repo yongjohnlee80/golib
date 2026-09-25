@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -49,6 +50,11 @@ type Options struct {
 	Layout []byte
 	// App are options for the tui.App: the backend, above all.
 	App []tui.AppOption
+	// Dev is a directory holding editor.qml, themes/ and dialogs/ — this
+	// example's own, say. Set, the program reads its QML from there instead
+	// of the copy built into the binary, and follows the files as they are
+	// edited: a saved change is on screen a moment later.
+	Dev string
 }
 
 // New mounts editor.qml. Nothing runs until Run.
@@ -78,12 +84,22 @@ func New(opt Options) (*Host, error) {
 // the state it reads, the commands it invokes, the clock, the layout. New
 // builds from them, and so does the test that checks every QML file.
 func (h *Host) options(opt Options) []tuidecl.ProgramOption {
-	src := opt.Layout
-	if src == nil {
-		src = layout
+	var opts []tuidecl.ProgramOption
+	if opt.Dev != "" {
+		files := os.DirFS(opt.Dev)
+		opts = append(h.modulesFrom(files, files),
+			tuidecl.Layout(files, "editor.qml"),
+			// A refused edit is reported where the user is looking; the
+			// screen stays as it was until the next good save.
+			tuidecl.HotReload(tuidecl.OnReloadError(func(err error) { _ = h.message(err.Error()) })))
+	} else {
+		src := opt.Layout
+		if src == nil {
+			src = layout
+		}
+		opts = append(h.modules(), tuidecl.LayoutSource("editor.qml", src))
 	}
-	opts := append(h.modules(),
-		tuidecl.LayoutSource("editor.qml", src),
+	opts = append(opts,
 		tuidecl.Sources(h.state(opt.Path)),
 		tuidecl.Handlers(h.commands()),
 		tuidecl.Providers(newClock(opt.Now, opt.Tick)),

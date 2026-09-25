@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -48,6 +49,8 @@ type Program struct {
 	app     *tui.App
 	root    tui.Component
 	file    string
+	// cfg is what the Program was built from, for a hot-reload remount.
+	cfg programConfig
 
 	mu      sync.Mutex
 	cancel  context.CancelFunc
@@ -61,7 +64,12 @@ type ProgramOption func(*programConfig)
 type programConfig struct {
 	layout     []byte
 	layoutFile string
-	errs       []error
+	// layoutFS is where Layout read the document, and watched the directories
+	// Themes and Components read — the files HotReload follows.
+	layoutFS fs.FS
+	watched  []watchedDir
+	hot      *hotReload
+	errs     []error
 
 	registry    *Registry
 	adapterOpts []Option
@@ -89,7 +97,7 @@ func Layout(fsys fs.FS, file string) ProgramOption {
 		if err != nil {
 			c.errs = append(c.errs, fmt.Errorf("layout: %w", err))
 		}
-		c.layout, c.layoutFile = src, file
+		c.layout, c.layoutFile, c.layoutFS = src, file, fsys
 	}
 }
 
@@ -166,6 +174,7 @@ func Providers(ps ...decl.Provider) ProgramOption {
 // document imports is read.
 func Themes(fsys fs.FS, dir, prefix, version string) ProgramOption {
 	return func(c *programConfig) {
+		c.watched = append(c.watched, watchedDir{fsys, dir})
 		entries, err := fs.ReadDir(fsys, dir)
 		if err != nil {
 			c.errs = append(c.errs, fmt.Errorf("themes: %w", err))
@@ -189,6 +198,7 @@ func Themes(fsys fs.FS, dir, prefix, version string) ProgramOption {
 // dialogs/QuitDialog.qml as the type QuitDialog, after `import <module>`.
 func Components(fsys fs.FS, dir, module, version string) ProgramOption {
 	return func(c *programConfig) {
+		c.watched = append(c.watched, watchedDir{fsys, dir})
 		c.offers = append(c.offers, offered{name: module, version: version, load: decl.ComponentFiles(fsys, dir)})
 	}
 }
@@ -250,10 +260,15 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
+	if c.hot != nil && c.layoutFS == nil {
+		return nil, errors.New("tui/decl.HotReload follows files: give the layout with Layout(fs, file), " +
+			"not LayoutSource")
+	}
 	p, err := mount(c, spec)
 	if err != nil {
 		return nil, err
 	}
+	p.cfg = c
 	app := tui.NewApp(p.root, c.appOpts...)
 	// UNDER THE LOCK, all of it. A provider's goroutine is already running —
 	// it started during the mount — and reads p.app in schedule, so the
@@ -386,7 +401,15 @@ func (p *Program) Run(ctx context.Context) error {
 	p.cancel = cancel
 	p.mu.Unlock()
 	defer cancel()
+	polled := make(chan struct{})
+	if p.cfg.hot != nil {
+		go func() { defer close(polled); p.follow(ctx) }()
+	} else {
+		close(polled)
+	}
 	runErr := p.app.Run(ctx)
+	cancel()
+	<-polled
 	destroyErr := p.tree.Destroy()
 	p.mu.Lock()
 	handled := p.handled
@@ -475,11 +498,33 @@ func (p *Program) Call(id, method string, args ...any) error {
 // Reload replaces the document with src, patching what changed. On the UI
 // loop. A refused reload leaves the screen as it was.
 func (p *Program) Reload(src []byte) (decl.Result, error) {
-	spec, err := qml.QML{File: p.file}.Parse(src)
+	spec, err := parseReload(p.file, src)
 	if err != nil {
 		return decl.Result{}, err
 	}
-	return p.tree.Reconcile(spec)
+	res, err := p.tree.Reconcile(spec)
+	if err == nil && res.RootReplaced {
+		p.showRoot()
+	}
+	return res, err
+}
+
+// parseReload parses a reloaded document as [decl.Tree.Reload] does: a
+// document that stops mid-construct is [decl.ErrIncomplete] — a save caught
+// part-way, a reason to wait rather than an error to show.
+func parseReload(file string, src []byte) (qml.SpecTree, error) {
+	spec, err := qml.QML{File: file}.Parse(src)
+	if err != nil && errors.Is(err, parse.ErrUnterminated) {
+		return spec, fmt.Errorf("%w: %w", decl.ErrIncomplete, err)
+	}
+	return spec, err
+}
+
+// showRoot puts the tree's root on screen after a reload replaced it: a new
+// widget, which the App must be told to show.
+func (p *Program) showRoot() {
+	p.root, _ = p.adapter.Component(p.tree.Root())
+	p.app.SetRoot(p.root)
 }
 
 // Tree, Adapter, App and Root hand back what the Program built, for anything

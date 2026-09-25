@@ -284,6 +284,33 @@ func (a *App) SetTheme(th *style.Theme) {
 	})
 }
 
+// SetRoot schedules replacing the root component on the loop goroutine: the
+// old tree is unmounted — its node contexts cancelled, its tasks drained — and
+// c is mounted in its place, laid out and painted on the next frame, with
+// focus repaired as after any unmount. A declarative screen whose reload
+// rebuilt its root is the case: the App outlives the tree it shows.
+//
+// Safe from any goroutine; like Update it always enqueues and returns. Before
+// Run it replaces what Run will mount. A nil component panics before anything
+// is queued.
+func (a *App) SetRoot(c Component) {
+	if c == nil {
+		panic(errs.Fatal{Op: "tui: App.SetRoot", Rule: "nil component"})
+	}
+	a.Update(func() {
+		if c == a.root && a.rootNode != nil {
+			return
+		}
+		if a.rootNode != nil {
+			a.unmountTree(a.rootNode)
+		}
+		a.root = c
+		if a.runCtx != nil {
+			a.mount(nil, c) // mounting marks layout, which repaints
+		}
+	})
+}
+
 // Run starts the backend synchronously (raw mode, alternate screen,
 // capability probe; errors return before the event loop and intake pump start,
 // mirroring the scaffold's synchronous bind at server/scaffold.go:144-147),

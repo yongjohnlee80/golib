@@ -33,7 +33,47 @@ func (a *Adapter) CanRestructure(node decl.NodeID) bool {
 		return false
 	}
 	_, isContainer := b.comp.(tui.Container)
-	return isContainer
+	_, arranges := b.comp.(rearranger)
+	return isContainer || arranges
+}
+
+// rearranger is a node whose children are not a Container's but can still
+// change in place: the Window, which sorts them into keys, menus, dialogs and
+// what its dock lays out. It is handed the whole new child list, in order,
+// each time one changes.
+type rearranger interface {
+	arrange(children []tui.Component, attached []map[string]qml.SpecValue, nominee tui.Component) error
+}
+
+// rearrange hands a rearranger its children as the adapter now records them.
+func (a *Adapter) rearrange(parent decl.NodeID, r rearranger) error {
+	kids := a.kids[parent]
+	comps := make([]tui.Component, 0, len(kids))
+	attached := make([]map[string]qml.SpecValue, 0, len(kids))
+	var nominee tui.Component
+	for _, k := range kids {
+		b := a.nodes[k]
+		comps = append(comps, b.comp)
+		attached = append(attached, b.attached)
+		if nominee == nil {
+			nominee = b.nominee
+		}
+	}
+	return r.arrange(comps, attached, nominee)
+}
+
+// arrangerAndChild resolves a structural operation on a rearranger.
+func (a *Adapter) arrangerAndChild(parent, child decl.NodeID) (rearranger, bool) {
+	pb, ok := a.nodes[parent]
+	if !ok {
+		return nil, false
+	}
+	r, ok := pb.comp.(rearranger)
+	if !ok {
+		return nil, false
+	}
+	_, ok = a.nodes[child]
+	return r, ok
 }
 
 // InsertChild places child among parent's children at index at.
@@ -48,6 +88,14 @@ func (a *Adapter) CanRestructure(node decl.NodeID) bool {
 // skipping it matters: Move reorders a live container rather than politely
 // noticing there is nothing to do.
 func (a *Adapter) InsertChild(parent, child decl.NodeID, at int) error {
+	if r, ok := a.arrangerAndChild(parent, child); ok {
+		if at < 0 || at > len(a.kids[parent]) {
+			return fmt.Errorf("insert: index %d is out of range for %d children of node %d", at, len(a.kids[parent]), parent)
+		}
+		a.kids[parent] = insertKid(a.kids[parent], at, child)
+		a.paletteAdopt(parent, child)
+		return a.rearrange(parent, r)
+	}
 	c, comp, err := a.containerAndChild("insert", parent, child)
 	if err != nil {
 		return err
@@ -60,17 +108,24 @@ func (a *Adapter) InsertChild(parent, child decl.NodeID, at int) error {
 	if at < n {
 		c.Move(comp, at)
 	}
+	a.kids[parent] = insertKid(a.kids[parent], at, child)
 	a.paletteAdopt(parent, child)
 	return nil
 }
 
 // RemoveChild detaches child from parent, unmounting its subtree.
 func (a *Adapter) RemoveChild(parent, child decl.NodeID) error {
+	if r, ok := a.arrangerAndChild(parent, child); ok {
+		a.kids[parent] = removeKid(a.kids[parent], child)
+		a.paletteRelease(child)
+		return a.rearrange(parent, r)
+	}
 	c, comp, err := a.containerAndChild("remove", parent, child)
 	if err != nil {
 		return err
 	}
 	c.Remove(comp)
+	a.kids[parent] = removeKid(a.kids[parent], child)
 	a.paletteRelease(child)
 	return nil
 }
@@ -83,6 +138,13 @@ func (a *Adapter) RemoveChild(parent, child decl.NodeID) error {
 // engine bug would otherwise take the whole program down instead of surfacing
 // as the refusal this seam is shaped to carry.
 func (a *Adapter) MoveChild(parent, child decl.NodeID, to int) error {
+	if r, ok := a.arrangerAndChild(parent, child); ok {
+		if n := len(a.kids[parent]); to < 0 || to >= n {
+			return fmt.Errorf("move: index %d is out of range for %d children of node %d", to, n, parent)
+		}
+		a.kids[parent] = insertKid(removeKid(a.kids[parent], child), to, child)
+		return a.rearrange(parent, r)
+	}
 	c, comp, err := a.containerAndChild("move", parent, child)
 	if err != nil {
 		return err
@@ -91,7 +153,28 @@ func (a *Adapter) MoveChild(parent, child decl.NodeID, to int) error {
 		return fmt.Errorf("move: index %d is out of range for %d children of node %d", to, n, parent)
 	}
 	c.Move(comp, to)
+	a.kids[parent] = insertKid(removeKid(a.kids[parent], child), to, child)
 	return nil
+}
+
+func insertKid(kids []decl.NodeID, at int, id decl.NodeID) []decl.NodeID {
+	if at > len(kids) {
+		at = len(kids)
+	}
+	out := make([]decl.NodeID, 0, len(kids)+1)
+	out = append(out, kids[:at]...)
+	out = append(out, id)
+	return append(out, kids[at:]...)
+}
+
+func removeKid(kids []decl.NodeID, id decl.NodeID) []decl.NodeID {
+	out := kids[:0:0]
+	for _, k := range kids {
+		if k != id {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // containerAndChild resolves both ends of a structural operation, or says

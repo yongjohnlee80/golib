@@ -151,7 +151,7 @@ func buildMenuSeparator(b Build) (tui.Component, []string, error) {
 }
 
 // menuAligns is where a top-level Menu sits on its bar.
-var menuAligns = enum[bool]{prop: "align", values: map[string]bool{
+var menuAligns = enum[bool]{values: map[string]bool{
 	"Left":  false,
 	"Right": true,
 }}
@@ -273,7 +273,7 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 	if v, ok := b.SelfAttached["Dock.edge"]; ok {
 		edge, err := dockEdges.read(v)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("Dock.edge: %w", err)
 		}
 		barOpts = append(barOpts, widget.WithBarPlacement(barPlacements[edge]))
 	}
