@@ -157,10 +157,8 @@ func (a *Adapter) MoveChild(parent, child decl.NodeID, to int) error {
 	return nil
 }
 
+// insertKid places id at index at, which the caller has checked is in range.
 func insertKid(kids []decl.NodeID, at int, id decl.NodeID) []decl.NodeID {
-	if at > len(kids) {
-		at = len(kids)
-	}
 	out := make([]decl.NodeID, 0, len(kids)+1)
 	out = append(out, kids[:at]...)
 	out = append(out, id)

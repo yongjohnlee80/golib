@@ -14,3 +14,7 @@ go.work.sum
 # Built example binaries. `go build -o tui/examples/<name>/bin/` puts them here
 # for manual testing; a compiled executable is never source.
 tui/examples/*/bin/
+
+# Test binaries `go test -c` or a profiling run (-cpuprofile) leaves in the
+# package directory.
+*.test
