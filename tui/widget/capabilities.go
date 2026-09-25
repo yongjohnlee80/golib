@@ -62,11 +62,8 @@ type childLister interface {
 }
 
 // firstFocusable is the first component of c's subtree, in document order,
-// that is Focusable and accepts focus; nil for none.
+// that is Focusable and accepts focus; nil for none, and for a nil c.
 func firstFocusable(c tui.Component) tui.Component {
-	if c == nil {
-		return nil
-	}
 	if f, ok := c.(tui.Focusable); ok && f.AcceptsFocus() {
 		return c
 	}
