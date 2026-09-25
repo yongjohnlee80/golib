@@ -20,6 +20,7 @@ import (
 type internalHarness struct {
 	t   *testing.T
 	app *tui.App
+	tb  *tui.TestBackend
 	res chan error
 	cxl context.CancelFunc
 }
@@ -29,7 +30,7 @@ func startAppInternal(t *testing.T, root tui.Component, w, h int) *internalHarne
 	tb := tui.NewTestBackend(w, h)
 	app := tui.NewApp(root, tui.WithBackend(tb), tui.WithMinFrameInterval(0))
 	ctx, cancel := context.WithCancel(context.Background())
-	ih := &internalHarness{t: t, app: app, res: make(chan error, 1), cxl: cancel}
+	ih := &internalHarness{t: t, app: app, tb: tb, res: make(chan error, 1), cxl: cancel}
 	go func() { ih.res <- app.Run(ctx) }()
 	ih.syncInternal()
 	return ih
