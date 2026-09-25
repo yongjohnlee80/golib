@@ -104,13 +104,26 @@ func (a *Adapter) InsertChild(parent, child decl.NodeID, at int) error {
 	if at < 0 || at > n {
 		return fmt.Errorf("insert: index %d is out of range for %d children of node %d", at, n, parent)
 	}
-	c.Add(comp)
+	if adopt := a.adopters[a.nodes[parent].typ]; adopt != nil {
+		// The child is placed as its attached properties say, as it would
+		// have been had the parent been built with it.
+		if err := adopt(c, comp, a.nodes[child].attached); err != nil {
+			return fmt.Errorf("insert: %w", err)
+		}
+	} else {
+		c.Add(comp)
+	}
 	if at < n {
 		c.Move(comp, at)
 	}
 	a.kids[parent] = insertKid(a.kids[parent], at, child)
 	a.paletteAdopt(parent, child)
 	return nil
+}
+
+// withAdopt sets how a built-in container takes a child inserted by a reload.
+func withAdopt(typeName string, fn adopter) Option {
+	return func(a *Adapter) { a.adopters[typeName] = fn }
 }
 
 // RemoveChild detaches child from parent, unmounting its subtree.

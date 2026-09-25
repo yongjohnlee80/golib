@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -83,7 +84,7 @@ func coreTypes() []Type {
 		{Name: "Split", Build: buildSplit, Ctor: []string{"orientation"}, Setters: map[string]Setter{
 			"ratio": setter("a Split", numberOf, (*widget.Split).SetRatio),
 		}},
-		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}},
+		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}, adopt: adoptFlexChild},
 		{Name: "Button", Build: buildButton, Setters: map[string]Setter{
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
 			// Qt's AbstractButton.text: `&` marks the mnemonic, "&Save".
@@ -123,29 +124,39 @@ func buildFlex(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	// A child that fills along the Flex's axis — Layout.fillHeight in a
-	// column, Layout.fillWidth in a row — shares what the others leave, as in
-	// Qt's layouts; every other child takes its own size, in order.
-	fill := "Layout.fillHeight"
-	if dir == tui.Horizontal {
-		fill = "Layout.fillWidth"
-	}
 	f := tui.NewFlex(dir)
 	for i, c := range b.Children {
-		fills := false
-		if v, ok := b.ChildAttached[i][fill]; ok {
-			var err error
-			if fills, err = boolOf(v); err != nil {
-				return nil, nil, fmt.Errorf("%s: %w", fill, err)
-			}
-		}
-		if fills {
-			f.AddWeighted(c, 1)
-		} else {
-			f.Add(c)
+		if err := adoptFlexChild(f, c, b.ChildAttached[i]); err != nil {
+			return nil, nil, err
 		}
 	}
 	return f, consumed, nil
+}
+
+// adoptFlexChild adds one child to a Flex. A child that fills along the Flex's
+// axis — Layout.fillHeight in a column, Layout.fillWidth in a row — shares what
+// the others leave, as in Qt's layouts; every other child takes its own size,
+// in order. Construction and a reload's insertion both come through here, so an
+// inserted child is weighted exactly as a built one.
+func adoptFlexChild(parent, child tui.Component, attached map[string]qml.SpecValue) error {
+	f := parent.(*tui.Flex)
+	fill := "Layout.fillHeight"
+	if f.Direction() == tui.Horizontal {
+		fill = "Layout.fillWidth"
+	}
+	fills := false
+	if v, ok := attached[fill]; ok {
+		var err error
+		if fills, err = boolOf(v); err != nil {
+			return fmt.Errorf("%s: %w", fill, err)
+		}
+	}
+	if fills {
+		f.AddWeighted(child, 1)
+	} else {
+		f.Add(child)
+	}
+	return nil
 }
 
 // buildButton wires its activation at construction, which is the only chance
