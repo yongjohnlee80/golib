@@ -180,10 +180,13 @@ type Enum struct {
 }
 
 // read takes a resolved constant back to the value's name, refusing anything
-// that is not one of this enum's.
+// that is not one of this enum's. A builder receives a constant's VALUE, not
+// where it was written, so a string spelling the qualified name —
+// `"TextInput.Password"` — is accepted as the constant would be; an
+// unqualified one, `"Password"`, is not.
 func (e Enum) read(v qml.SpecValue) (string, error) {
 	if v.Kind != qml.SpecValueString {
-		return "", fmt.Errorf("must be written as %s.<value>, got %s (at %s)", e.Scope, v.Kind, v.Pos)
+		return "", fmt.Errorf("must be one of %s, got %s (at %s)", e.spelling(), v.Kind, v.Pos)
 	}
 	for _, n := range e.Values {
 		if enumConstant(e.Scope, n) == v.Raw {
