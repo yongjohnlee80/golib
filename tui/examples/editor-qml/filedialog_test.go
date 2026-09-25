@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -271,4 +272,66 @@ func TestSaveAsStartsFromTheFileEachTime(t *testing.T) {
 	if row := r.rows()[nameRow]; !strings.Contains(row, "keep.txt") || strings.Contains(row, "keep.txtZ") {
 		t.Fatalf("Save As did not start from the file again: %q", row)
 	}
+}
+
+// TestNewRefusesToDiscardUnsavedChanges — as Open does; the text survives.
+func TestNewRefusesToDiscardUnsavedChanges(t *testing.T) {
+	folderWith(t, nil)
+	r := startSized(t, "", 80, 24)
+	r.key(t, runeKey('i'))
+	for _, c := range "keepme" {
+		r.key(t, runeKey(c))
+	}
+	r.key(t, escape)
+	r.key(t, alt('f'))
+	r.shows(t, "New")
+	r.clickLabel(t, rowOf(r.rows(), "New"), "New")
+	r.shows(t, "unsaved changes")
+	if !strings.Contains(r.screen(), "keepme") {
+		t.Fatalf("New discarded an unsaved buffer:\n%s", r.screen())
+	}
+}
+
+// TestAFailedSaveAsKeepsTheBuffersFile: the write fails, the handler says so,
+// and the buffer is still the file it was — the next Save goes there, not to
+// the path that was never written.
+func TestAFailedSaveAsKeepsTheBuffersFile(t *testing.T) {
+	dir := t.TempDir()
+	orig := filepath.Join(dir, "orig.txt")
+	if err := os.WriteFile(orig, []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var sunk []error
+	var mu sync.Mutex
+	r := startOpts(t, Options{Path: orig, Now: fixedNow, Tick: time.Hour, Sink: func(err error) {
+		mu.Lock()
+		sunk = append(sunk, err)
+		mu.Unlock()
+	}}, 80, 24)
+	r.key(t, runeKey('i'), runeKey('a'), escape)
+	// Save As, naming a file in a folder that does not exist.
+	r.key(t, alt('f'))
+	r.shows(t, "Save As")
+	r.clickLabel(t, rowOf(r.rows(), "Save As"), "Save As")
+	r.shows(t, "┌ Save ")
+	for range len("orig.txt") {
+		r.key(t, backspace)
+	}
+	for _, c := range "missing/new.txt" {
+		r.key(t, runeKey(c))
+	}
+	r.key(t, enter)
+	r.shows(t, "write failed")
+	mu.Lock()
+	n := len(sunk)
+	mu.Unlock()
+	if n != 1 {
+		t.Fatalf("the failed write reached the sink %d times, want once: %v", n, sunk)
+	}
+	if last := lastNonEmpty(r.rows()); strings.Contains(last, "new.txt") && !strings.Contains(last, "write failed") {
+		t.Fatalf("the status line adopted the unwritten file: %q", last)
+	}
+	// The buffer is still orig.txt: Save writes THERE.
+	r.key(t, ctrl('s'))
+	fileHas(t, orig, "ax\n")
 }

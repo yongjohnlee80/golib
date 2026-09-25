@@ -276,27 +276,37 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 		decl.WithProviderErrorSink(sink),
 	}, c.treeOpts...)...)
 
+	// EVERY failure from here destroys the tree. register subscribes
+	// providers, and a provider's lifetime — a ticker goroutine, say — ends
+	// only with Destroy; returning without it left one running, scheduling
+	// into a Program nobody holds. The cleanup's own error is joined, not
+	// dropped.
+	fail := func(err error) (*Program, error) { return nil, errors.Join(err, p.tree.Destroy()) }
 	if err := p.register(c); err != nil {
-		return nil, err
+		return fail(err)
 	}
 	spec, err := qml.QML{File: c.layoutFile}.Parse(c.layout)
 	if err != nil {
-		return nil, err
+		return fail(err)
 	}
 	if err := p.tree.Mount(spec); err != nil {
-		return nil, err
+		return fail(err)
 	}
 	p.root, _ = p.adapter.Component(p.tree.Root())
-	p.app = tui.NewApp(p.root, c.appOpts...)
-	// Work scheduled before the App existed — a provider ticking during the
-	// mount — goes to it now, in the order it arrived.
+	app := tui.NewApp(p.root, c.appOpts...)
+	// UNDER THE LOCK, all of it. A provider's goroutine is already running —
+	// it started during the mount — and reads p.app in schedule, so the
+	// assignment is a write it can race. And work scheduled before the App
+	// existed must reach it BEFORE anything scheduled after: flushing outside
+	// the lock would let a delivery arriving in between jump the queue.
+	// App.Update never blocks, so posting while holding the lock is safe.
 	p.mu.Lock()
-	pending := p.pending
-	p.pending = nil
-	p.mu.Unlock()
-	for _, fn := range pending {
-		p.app.Update(fn)
+	for _, fn := range p.pending {
+		app.Update(fn)
 	}
+	p.pending = nil
+	p.app = app
+	p.mu.Unlock()
 	return p, nil
 }
 
@@ -334,17 +344,17 @@ func (p *Program) register(c programConfig) error {
 	return nil
 }
 
-// schedule is the tree's scheduler: the App's loop, once there is an App.
+// schedule is the tree's scheduler: the App's loop, once there is an App,
+// and a queue until then. The post happens under the lock so that nothing
+// scheduled later can overtake what is still queued.
 func (p *Program) schedule(fn func()) {
 	p.mu.Lock()
-	app := p.app
-	if app == nil {
+	defer p.mu.Unlock()
+	if p.app == nil {
 		p.pending = append(p.pending, fn)
+		return
 	}
-	p.mu.Unlock()
-	if app != nil {
-		app.Update(fn)
-	}
+	p.app.Update(fn)
 }
 
 func (p *Program) keep(err error) {
@@ -382,7 +392,7 @@ func (p *Program) Quit() {
 
 // Post runs fn on the UI loop. Safe from any goroutine: it is how work done
 // elsewhere changes what the screen shows.
-func (p *Program) Post(fn func()) { p.app.Update(fn) }
+func (p *Program) Post(fn func()) { p.schedule(fn) }
 
 // Set moves one source. ON THE UI LOOP — from a handler, or inside Post.
 func (p *Program) Set(name string, v any) error {
