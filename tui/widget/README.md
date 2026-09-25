@@ -579,7 +579,8 @@ intention, not the physical key.
 body's first field, else the first enabled button, else the `Modal` node itself
 — the last case keeps Escape reachable when every control is disabled. So an
 input dialog starts in its first field, and a message on its first button; the
-default button answers Enter wherever focus is. When focus has to move (the
+default button answers Enter the focused control leaves unclaimed (a field
+after it submits; never a Select or a list, which use Enter). When focus has to move (the
 focused control is disabled or removed) it goes by the same rule; while the
 focused control can still hold it, it stays. `SelectedButton()` reports the
 focused button's index, or `-1` when the dialog itself holds focus.

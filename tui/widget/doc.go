@@ -219,7 +219,7 @@
 // control in Tab order that takes focus — the body's first field, else the
 // first enabled button — else the Modal node itself. An input dialog starts in
 // its first field, a message on its first button; the default button
-// ([WithDefault]) answers Enter wherever focus is. The last case is what keeps
+// ([WithDefault]) answers Enter the focused control leaves unclaimed. The last case is what keeps
 // Escape reachable when every control is disabled — the ring inside a trap must
 // never be empty. The nomination applies when focus has to move (the focused
 // control disabled or removed); while the focused control can still hold
