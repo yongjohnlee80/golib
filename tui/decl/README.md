@@ -66,28 +66,43 @@ contract, handed to `New`. A **ctor** property is read when the widget is
 built — changing it on a reload rebuilds that node. A **setter** property can
 change at runtime, which is what makes it bindable to a source.
 
-| Type | ctor properties | setters | signals | methods |
-| --- | --- | --- | --- | --- |
-| `Window` | — | — | — | — |
-| `MenuBar` | `vimNavigation`, palette | — | — | — |
-| `Menu` | `title`, `align` | — | — | — |
-| `MenuItem` | `text`, `checkable`, `group`, `shortcut` | `checked`, `enabled`, `visible` | `triggered` | — |
-| `MenuSeparator` | — | — | — | — |
-| `Shortcut` | `sequence` | — | `activated` | — |
-| `Frame` | palette | `title` | — | — |
-| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly` | `modeChanged`, `textChanged` | — |
-| `StatusBar` | palette | `left`, `center`, `right` | — | — |
-| `Text` | `wrapMode`, palette | `text` | — | — |
-| `Button` | — | `text`, `enabled` | `clicked` | — |
-| `Split` | `orientation` | `ratio` | — | — |
-| `Flex` | `direction` | — | — | — |
-| `Dialog` | `dim`, `width`, `standardButtons`, palette | `title`, `helpText` | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
-| `ListView` | `textRole` | `model`, `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
-| `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model` | `activated(index)` | — |
-| `TableView` | — | `model`, `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
-| `TableViewColumn` | `role`, `title`, `width` | — | — | — |
-| `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | `activated(index)`, `expanded(index)` — an `Index` | — |
-| `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
+| Type | ctor properties | setters | read in a handler | signals | methods |
+| --- | --- | --- | --- | --- | --- |
+| `Window` | — | — | — | — | — |
+| `MenuBar` | `vimNavigation`, palette | — | — | — | — |
+| `Menu` | `title`, `align` | — | — | — | — |
+| `MenuItem` | `text`, `checkable`, `group`, `shortcut` | `checked`, `enabled`, `visible` | `checked` | `triggered`, `toggled` | — |
+| `MenuSeparator` | — | — | — | — | — |
+| `Shortcut` | `sequence` | — | — | `activated` | — |
+| `Frame` | palette | `title` | — | — | — |
+| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly` | — | `modeChanged`, `textChanged` | — |
+| `SyntaxHighlighter` | `definition` | — | — | — | — |
+| `StatusBar` | palette | `left`, `center`, `right` | — | — | — |
+| `Text` | `wrapMode`, palette | `text` | — | — | — |
+| `Button` | — | `text`, `enabled` | — | `clicked` | — |
+| `Split` | `orientation` | `ratio` | — | — | — |
+| `Flex` | `direction` | — | — | — | — |
+| `Dialog` | `dim`, `width`, `standardButtons`, palette | `title`, `helpText` | — | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
+| `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
+| `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
+| `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model` | `currentIndex`, `currentValue` | `activated(index)` | — |
+| `TableView` | — | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
+| `TableViewColumn` | `role`, `title`, `width` | — | — | — | — |
+| `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)` — an `Index` | — |
+| `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
+| `Repeater`, `Instantiator` | `model` | — | — | — | — |
+| `DelegateChooser` | `role` | — | — | — | — |
+| `DelegateChoice` | `roleValue` | — | — | — | — |
+
+`Repeater`, `Instantiator`, `DelegateChooser` and `DelegateChoice` are the
+engine's, expanded before anything is built, so they have no widget.
+`TextField` and `Popup` are Qt Quick Controls types in the
+[`controls`](controls/) package, which a program adds with
+`tuidecl.Types(controls.Types()...)`: `TextField` (`placeholderText`,
+`echoMode`; setter and readable `text`; `accepted(text)`, `textEdited(text)`;
+`clear()`) and `Popup` (`modal`, `dim`; `open()`, `close()`). A `MenuItem`'s
+`toggled` is raised for each change the user's toggle makes to it, a radio
+cleared by its group included, before its `triggered`.
 
 **Models** — Qt's model/view. A host sets a `tuidecl.ListModel` (or its own
 `tuidecl.ItemModel`) as a source; `model: App.people` binds a view to it, and
@@ -140,14 +155,17 @@ again.
 
 **Every element except `Window`, `Frame`, `Split`, `Flex` and `Dialog` is
 childless or holds only its own kind** — `MenuBar` holds `Menu`s, a `Menu`
-holds `MenuItem`s, `Menu`s and `MenuSeparator`s. `Frame` and `Dialog` hold
-exactly one child; `Split` exactly two.
+holds `MenuItem`s, `Menu`s and `MenuSeparator`s. `Frame` holds exactly one child, and
+`Split` exactly two. A `Dialog` holds exactly one content child, plus its own
+`Shortcut`s and at most one `DialogButtonBox` (which it may not combine with
+`standardButtons`).
 
 ### Attached properties
 
 | written on | read by | property | values |
 | --- | --- | --- | --- |
 | any child of a `Window` | `Window` | `Dock.edge` | `Tui.Top`, `Tui.Bottom`, `Tui.Left`, `Tui.Right` |
+| a `Button` in a `DialogButtonBox` | `DialogButtonBox` | `DialogButtonBox.buttonRole` | `DialogButtonBox.AcceptRole`, `DialogButtonBox.RejectRole`, `DialogButtonBox.DestructiveRole` |
 
 A child of a `Window` with no `Dock.edge` fills what the docked ones leave.
 
@@ -257,9 +275,31 @@ is one of Qt's two answers, raised before `closed`:
 
 | way out | signals |
 | --- | --- |
-| an accepting button (Ok, Save, Yes, Open) | `accepted`, then `closed` |
-| a rejecting button, or Escape | `rejected`, then `closed` |
+| an accepting button (Ok, Save, Yes, Open; `AcceptRole`) | `accepted`, then `closed` |
+| a rejecting button (`RejectRole`), or Escape | `rejected`, then `closed` |
+| a `DestructiveRole` button (Discard) | `closed` only |
 | `close()` from a handler | `closed` only |
+
+**Enter is the dialog's.** It presses the dialog's default button, whichever
+control has focus, or nothing when there is none. `standardButtons`' affirmative
+button (Ok, Save, Yes) is the default, as a message box's is. A
+`DialogButtonBox` declares none, so no irreversible answer is one stray Enter
+away. Space presses the focused button:
+
+```qml
+Dialog {
+    Text { text: App.question }
+    DialogButtonBox {
+        Button { text: "S&tay";    DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
+        Button { text: "&Discard"; DialogButtonBox.buttonRole: DialogButtonBox.DestructiveRole; onClicked: App.discard() }
+        Button { text: "&Save";    DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
+    }
+    onAccepted: App.save()
+}
+```
+
+Each button runs its own `onClicked`, then the dialog answers for its role.
+These are the widget's rules (`widget.Modal`), the same for a dialog built in Go.
 
 A `FileDialog`'s body is a [file view](../widget/README.md#file-widgets): a
 folder listing with an optional preview (`fileMode: Tui.OpenFile`) or a name
