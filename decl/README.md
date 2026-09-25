@@ -167,8 +167,14 @@ its **component types**.
   for its file. A use is EXPANDED before the document is judged: the use site's
   properties replace the component's, handlers from both run, the use site's
   children follow, the use site gives the id. A component resolves names in the
-  document that uses it, and so imports nothing and declares no ids. One that
-  contains itself is refused, with the cycle spelled out.
+  document that uses it, and so imports nothing. Ids it declares are its own —
+  Qt's component scope: one set per use, unreachable from the document, and
+  shadowing the document's; its root's id names the instance from inside. One
+  that contains itself is refused, with the cycle spelled out.
+- **Reading an object's property by id in a handler** — `App.login(user.text)`
+  — reads the live object when the handler runs, through the optional
+  `PropertyReader` capability. Only in a handler: a binding over another
+  object's property would need its change signal.
 
 Loading goes through the same registration a declared module does, so every
 rule holds — two loaded modules still may not export one name, and a document

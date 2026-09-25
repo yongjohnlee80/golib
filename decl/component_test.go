@@ -127,7 +127,6 @@ func TestAComponentResolvesNamesInTheDocumentUsingIt(t *testing.T) {
 func TestAComponentFileIsRefusedForWhatItMayNotContain(t *testing.T) {
 	for name, c := range map[string]struct{ src, want string }{
 		"an import": {"import tui 1.0\nBox { }", "imports nothing"},
-		"an id":     {"Box {\n Text { id: label }\n}", "declares no ids"},
 		"bad QML":   {"Box {", "ui/Bad.qml:"},
 	} {
 		t.Run(name, func(t *testing.T) {

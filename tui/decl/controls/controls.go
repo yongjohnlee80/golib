@@ -66,6 +66,10 @@ var TextField = tuidecl.Type{
 		// Qt's TextField.clear(): empty the field — a prompt starting over.
 		"clear": tuidecl.NoArgMethod(func(t *widget.TextInput) error { t.SetValue(""); return nil }),
 	},
+	// What a handler reads by id when it runs: `App.login(user.text)`.
+	Getters: map[string]tuidecl.Getter{
+		"text": tuidecl.StringGetter((*widget.TextInput).Value),
+	},
 	Signals: map[string][]string{"accepted": {"text"}, "textEdited": {"text"}},
 	Enums:   []tuidecl.Enum{EchoMode},
 	Restyle: func(c tui.Component, p tuidecl.Palette) {

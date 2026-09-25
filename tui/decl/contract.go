@@ -41,6 +41,9 @@ type Type struct {
 	// Methods are what a handler can call on a node of this type by its id:
 	// `gauge.reset()`.
 	Methods map[string]Method
+	// Getters are the properties a handler can read from a node of this type
+	// by its id, when it runs: `App.login(user.text)`.
+	Getters map[string]Getter
 	// Signals names each signal's parameters, in the order it is raised with
 	// them: `accepted(selectedFile)`. A signal with none need not be listed.
 	Signals map[string][]string
@@ -83,6 +86,9 @@ func typeOptions(types []Type) []Option {
 		}
 		if len(w.Methods) > 0 {
 			opts = append(opts, WithMethods(w.Name, w.Methods))
+		}
+		if len(w.Getters) > 0 {
+			opts = append(opts, WithGetters(w.Name, w.Getters))
 		}
 		if len(w.Signals) > 0 {
 			opts = append(opts, WithSignalParams(w.Name, w.Signals))
@@ -150,6 +156,9 @@ func setter[W any, V any](what string, read reader[V], apply func(W, V)) Setter 
 
 // Method runs one method a handler called on a node: `quitDialog.open()`.
 type Method func(c tui.Component, args []qml.SpecValue) error
+
+// Getter reads a property from a live widget, for a handler reading it by id.
+type Getter func(c tui.Component) (qml.SpecValue, error)
 
 // method is the one shape of a method that takes no arguments: find the
 // widget, refuse arguments it would ignore, run it.

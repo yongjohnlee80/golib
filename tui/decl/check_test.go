@@ -112,7 +112,7 @@ func TestCheckResolvesAnUnusedComponentsNamesInTheLayoutsImports(t *testing.T) {
 // TestCheckLoadsAModuleNothingImports: demo.extra is imported by no document
 // and replaces nothing; its own rules must still hold.
 func TestCheckLoadsAModuleNothingImports(t *testing.T) {
-	checkFinds(t, "extra/Other.qml", `Text { id: mine }`,
+	checkFinds(t, "extra/Other.qml", "import tui 1.0\nText { }",
 		"module demo.extra", "extra/Other.qml")
 }
 

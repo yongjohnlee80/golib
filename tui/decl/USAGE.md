@@ -206,8 +206,21 @@ A use is expanded with Qt's rules: the use site's properties replace the
 component's, handlers from both run, the use site's children follow, and the use
 site gives the id. **A component file imports nothing** — its names resolve in
 the document that uses it, as an inline component's do — which is what lets one
-theme line in the layout dress every file. **It declares no ids**, since one
-would be declared once per use.
+theme line in the layout dress every file. **Its ids are its own**, one set
+per use, as in Qt: a form names its fields and reads them in its handler —
+
+```qml
+// dialogs/Login.qml
+Dialog {
+    standardButtons: Dialog.Ok | Dialog.Cancel
+    TextField { id: user }
+    onAccepted: App.login(user.text)   // THIS instance's field, read when Ok is pressed
+}
+```
+
+— and the document using `Login { id: login }` names the instance and cannot
+reach `user`. A type lists what a handler may read in `Type.Getters`
+(TextField has `text`).
 
 ## 4. Dialogs
 
