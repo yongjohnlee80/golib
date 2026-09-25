@@ -53,6 +53,12 @@ func (d *hotDir) write(file, src string) {
 
 func (d *hotDir) run(extra ...tuidecl.ProgramOption) *decltest.Screen {
 	d.t.Helper()
+	return d.runWith(nil, extra...)
+}
+
+// runWith is run with setup called between building the Program and running it.
+func (d *hotDir) runWith(setup func(*tuidecl.Program) error, extra ...tuidecl.ProgramOption) *decltest.Screen {
+	d.t.Helper()
 	fsys := os.DirFS(d.root)
 	opts := append([]tuidecl.ProgramOption{
 		tuidecl.Layout(fsys, "main.qml"),
@@ -66,7 +72,7 @@ func (d *hotDir) run(extra ...tuidecl.ProgramOption) *decltest.Screen {
 			tuidecl.OnReloadError(func(err error) { d.mu.Lock(); d.refusals = append(d.refusals, err); d.mu.Unlock() }),
 		),
 	}, extra...)
-	return decltest.Run(d.t, 40, 6, opts...)
+	return decltest.RunWith(d.t, 40, 6, setup, opts...)
 }
 
 func (d *hotDir) counts() (int, int) {
@@ -170,6 +176,18 @@ func TestR5AReloadThatReplacesTheRootReachesTheScreen(t *testing.T) {
 	if len(d.reloads) == 0 || !d.reloads[len(d.reloads)-1].RootReplaced {
 		t.Errorf("the root was not replaced: %+v", d.reloads)
 	}
+}
+
+// A save made after the files were read for the mount but before polling
+// starts — while the screen is still coming up — is a change like any later
+// one: the watcher starts from the files as mounted, not as it first finds them.
+func TestASaveBeforeThePollingStartsIsReloaded(t *testing.T) {
+	d := newHotDir(t, hotLayout(`Text { text: "mounted" }`))
+	s := d.runWith(func(*tuidecl.Program) error {
+		d.write("main.qml", hotLayout(`Text { text: "saved early" }`))
+		return nil
+	})
+	s.WaitForText(t, "saved early")
 }
 
 // R6 — a patched editor keeps what was typed, and the keyboard.

@@ -2,6 +2,7 @@ package decl
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -52,6 +53,9 @@ type Program struct {
 	file    string
 	// cfg is what the Program was built from, for a hot-reload remount.
 	cfg programConfig
+	// mounted is the followed files as the mount read them: what hot reload
+	// compares each poll against first. See snapshotOf.
+	mounted snapshot
 
 	mu      sync.Mutex
 	cancel  context.CancelFunc
@@ -271,11 +275,19 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 		return nil, errors.New("tui/decl.HotReload follows files: give the layout with Layout(fs, file), " +
 			"not LayoutSource")
 	}
+	// The files as mounted, taken BEFORE the mount reads the modules and with
+	// the layout as Layout read it: a save landing after those reads — while
+	// the screen is still being built — is then a change the first poll sees.
+	var mounted snapshot
+	if c.hot != nil {
+		mounted = snapshotOf(c)
+		mounted["layout:"+c.layoutFile] = sha256.Sum256(c.layout)
+	}
 	p, err := mount(c, spec)
 	if err != nil {
 		return nil, err
 	}
-	p.cfg = c
+	p.cfg, p.mounted = c, mounted
 	app := tui.NewApp(p.root, c.appOpts...)
 	p.adapter.useApp(app)
 	// UNDER THE LOCK, all of it. A provider's goroutine is already running —
