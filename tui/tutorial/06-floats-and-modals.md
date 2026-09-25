@@ -9,7 +9,8 @@
 > [widget/README.md](../widget/README.md#modal).
 
 `Modal` owns dialog semantics rather than only drawing a floating rectangle:
-button roles determine initial focus and default/cancel behaviour, dismissal is
+focus starts on the first control in Tab order (an input dialog's first field,
+a message's first button), button roles decide default/cancel behaviour, dismissal is
 typed, nested dialogs close in LIFO order, and the active modal is a trapping
 `FocusScope`. Enter/Space, clicks, and programmatic activation converge on the
 same button activation path. Pointer events outside the active trap do not

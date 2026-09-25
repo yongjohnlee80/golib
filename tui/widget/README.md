@@ -575,11 +575,14 @@ intention, not the physical key.
 | a host dismiss key | the application asked for it |
 | a navigation alias (arrows, and `hjkl` under `WithModalVimNavigation`) | a convenience, and the most easily shadowed |
 
-**Focus.** Focus lands on the enabled default button, else the first
-enabled button, else the `Modal` node itself — the last case keeps Escape
-reachable when every control is disabled. The preference is honoured on *every*
-focus repair, not only at open. `SelectedButton()` reports the focused button's
-index, or `-1` when the dialog itself holds focus.
+**Focus.** Focus starts on the first control in Tab order that takes it: the
+body's first field, else the first enabled button, else the `Modal` node itself
+— the last case keeps Escape reachable when every control is disabled. So an
+input dialog starts in its first field, and a message on its first button; the
+default button answers Enter wherever focus is. When focus has to move (the
+focused control is disabled or removed) it goes by the same rule; while the
+focused control can still hold it, it stays. `SelectedButton()` reports the
+focused button's index, or `-1` when the dialog itself holds focus.
 
 **Escape** resolves the **Reject role**, never a label or a position. With a
 Reject-role button it activates it through the runtime — publishing the same

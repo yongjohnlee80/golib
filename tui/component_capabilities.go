@@ -67,13 +67,16 @@ type FocusDesigner interface {
 // InitialFocusProvider lets a component nominate where focus should land inside
 // its own subtree, instead of accepting the runtime's document-order choice.
 //
-// The runtime's own repair rule is "the first focusable in document order". That
-// is the right default and it knows nothing about meaning: a dialog's
-// affirmative control is where a user expects to land, and which button that is
-// cannot be derived from position. Without this seam a dialog could only get its
-// preference honoured at the moment it opened, by reaching for focus itself —
-// and would lose it again on the next repair, because every later repair falls
-// back to document order.
+// The runtime's own repair rule is "the first focusable in document order", and
+// it knows nothing about the component: a dialog's first stop is its body's
+// first field, then its buttons, whatever order the card mounts them in.
+// Without this seam a dialog could only get its choice honoured at the moment
+// it opened, by reaching for focus itself — and would lose it again on the next
+// repair, because every later repair falls back to document order.
+//
+// A nomination says where focus STARTS and where it goes when it has to move.
+// It never takes the keyboard off a control that can still hold it: while the
+// focused node is legal, a repair leaves it where it is.
 //
 // A nominee is VALIDATED before use, never trusted: it must be mounted,
 // currently accept focus, and lie inside BOTH the provider's own subtree and the

@@ -517,24 +517,11 @@ func (a *App) revalidateFocus() {
 	// the scope unrepaired while reporting that it had been checked.
 	scope := a.currentScope()
 	if n := a.nodes[a.focused]; n != nil && withinScope(n, scope) && a.acceptsFocus(n) {
-		// Still legal, but possibly not what the scope's owner would choose. A
-		// provider's preference applies on EVERY repair, not only when focus
-		// died: SetButtons that adds a Default-role button while a plain one
-		// holds focus leaves focus legal and wrong, and an early return here is
-		// what made that state reachable.
-		nom, retryNom := a.nominatedFocus(scope)
-		if nom != nil && nom.id != a.focused {
-			a.trace(TraceEvent{Kind: TraceFocusRepair, Node: nom.id, Prev: a.focused,
-				Detail: "moved to the scope owner's nominated target"})
-			a.setFocus(nom.id)
-		}
-		if retryNom {
-			// The nominee exists but is not laid out yet, so it cannot legally
-			// take focus in this turn. Focus is currently VALID, so nothing here
-			// forces a retry on its own — and without one the dialog's
-			// preference is silently lost for a control that appears next frame.
-			a.pendingRepair = true
-		}
+		// Still legal: focus stays where the user put it, as Qt's does. A
+		// scope owner's nomination says where focus STARTS and where it goes
+		// when it has to move; it never takes the keyboard off a control that
+		// can still hold it — a list replaced under the cursor, a button added
+		// beside the focused one.
 		return
 	}
 	a.repairFocus()
