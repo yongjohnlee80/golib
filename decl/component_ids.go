@@ -1,7 +1,6 @@
 package decl
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/js"
@@ -22,22 +21,24 @@ import (
 // inside shadow any of the document's with the same spelling.
 //
 // A use is expanded into a copy of the component, so each copy's ids are given
-// a name of their own — `user@3`, a spelling QML cannot write, so it can never
-// collide with an id a document declares — and every reference to them in
-// that copy is rewritten to match. The component's ROOT is the instance: its
+// a name of their own — `user@login`, from the use site's id, or its place
+// under its nearest named ancestor when it has none; a spelling QML cannot
+// write, so it can never collide with an id a document declares — and every
+// reference to them in that copy is rewritten to match. The component's ROOT is the instance: its
 // own id, if it has one, becomes the use site's (or a private one when the use
 // site gives none), so `leader.close()` inside Leader.qml closes this Leader.
 //
 // Only the component's OWN file is renamed. A component used inside it is
 // expanded afterwards, with its own ids renamed for itself.
 
-// scopeIDs returns a copy of a component's root with its ids renamed for use
-// number n. rootID is the use site's id, "" for none.
-func scopeIDs(def *qml.SpecNode, n int, rootID string) *qml.SpecNode {
+// scopeIDs returns a copy of a component's root with its ids renamed for the
+// use keyed key (expand's stable key for the use site). rootID is the use
+// site's id, "" for none.
+func scopeIDs(def *qml.SpecNode, key string, rootID string) *qml.SpecNode {
 	rename := map[string]string{}
 	_ = walkSpec(def, func(_ string, sn *qml.SpecNode) error {
 		if sn.ID != "" {
-			rename[sn.ID] = sn.ID + "@" + strconv.Itoa(n)
+			rename[sn.ID] = sn.ID + "@" + key
 		}
 		return nil
 	})

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -182,9 +183,31 @@ func (t *Tree) componentTypes(im imports) map[string]*qml.SpecNode {
 // expansion. It builds a new tree and leaves the one it was given alone: the
 // caller's document is the caller's.
 func expand(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, error) {
-	uses := 0 // numbers each use, so each has ids of its own
-	var walk func(sn *qml.SpecNode, using []string) (*qml.SpecNode, error)
-	walk = func(sn *qml.SpecNode, using []string) (*qml.SpecNode, error) {
+	// Every node walked has a KEY, which names a component use for the ids
+	// inside it (component_ids.go): a node's own id when it has one, else its
+	// parent's key and its place among the siblings of its type. It is stable
+	// under edits that do not touch the path to the node — a use added before
+	// a named instance leaves that instance's inner ids alone, so a reload
+	// patches its fields rather than rebuilding them.
+	var walk func(sn *qml.SpecNode, using []string, key string) (*qml.SpecNode, error)
+	children := func(kids []*qml.SpecNode, using []string, key string, tag string) ([]*qml.SpecNode, error) {
+		out := make([]*qml.SpecNode, len(kids))
+		seen := map[string]int{}
+		for i, c := range kids {
+			ck := c.ID
+			if ck == "" {
+				ck = key + "/" + tag + c.Type + "#" + strconv.Itoa(seen[c.Type])
+				seen[c.Type]++
+			}
+			ec, err := walk(c, using, ck)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = ec
+		}
+		return out, nil
+	}
+	walk = func(sn *qml.SpecNode, using []string, key string) (*qml.SpecNode, error) {
 		out := *sn
 		if def, ok := types[sn.Type]; ok {
 			for _, u := range using {
@@ -197,33 +220,29 @@ func expand(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, 
 				return nil, fmt.Errorf("%w: components nest more than %d deep (at %s)",
 					ErrComponent, maxComponentDepth, sn.Pos)
 			}
-			uses++
-			inner, err := walk(scopeIDs(def, uses, sn.ID), append(using, sn.Type))
+			inner, err := walk(scopeIDs(def, key, sn.ID), append(using, sn.Type), key)
 			if err != nil {
 				return nil, err
 			}
 			out = merge(*inner, sn)
-			// The use site's children were not expanded by the walk above.
-			for i, c := range out.Children[len(inner.Children):] {
-				ec, err := walk(c, using)
-				if err != nil {
-					return nil, err
-				}
-				out.Children[len(inner.Children)+i] = ec
-			}
-			return &out, nil
-		}
-		out.Children = make([]*qml.SpecNode, len(sn.Children))
-		for i, c := range sn.Children {
-			ec, err := walk(c, using)
+			// The use site's children were not expanded by the walk above;
+			// they are keyed apart from the component's own ("+").
+			n := len(inner.Children)
+			extra, err := children(out.Children[n:], using, key, "+")
 			if err != nil {
 				return nil, err
 			}
-			out.Children[i] = ec
+			copy(out.Children[n:], extra)
+			return &out, nil
 		}
+		kids, err := children(sn.Children, using, key, "")
+		if err != nil {
+			return nil, err
+		}
+		out.Children = kids
 		return &out, nil
 	}
-	return walk(root, nil)
+	return walk(root, nil, "")
 }
 
 // merge lays a use site over an expanded component, by Qt's rules.
