@@ -10,20 +10,34 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// TreeView is Qt 6's TreeView over a TreeModel:
+// TreeView presents a hierarchical, collapsible tree structure driven by a [TreeModel],
+// mirroring Qt Quick Controls' TreeView.
 //
 //	TreeView {
-//	    model: App.explorer          // a TreeModel
-//	    textRole: "label"
-//	    badgeRole: "badge"
-//	    onActivated: App.open(index)     // index: the row's Index
-//	    onExpanded: App.opened(index)
+//	    model: App.explorer              // a TreeModel reactive source
+//	    textRole: "label"                // node display text
+//	    badgeRole: "badge"               // optional numeric or string badge
+//	    onActivated: App.open(index)     // fired on Enter or activation
+//	    onExpanded: App.opened(index)    // fired when a branch expands
 //	}
 //
-// A row the model says has children opens; the first time, the view asks the
-// model for them (CanFetchMore, FetchMore) and shows them when the model sets
-// them. `index` in a signal is the row's Index — an object, which the handler
-// passes back to the host that owns the model.
+// # Lazy Fetching and Asynchronous Expansion
+//
+// TreeView integrates with the [TreeModel] lazy loading lifecycle:
+//   - When a node is expanded for the first time and the model indicates unloaded children
+//     ([TreeModel.CanFetchMore] is true), the view calls [TreeModel.FetchMore].
+//   - Once the host populates children via [TreeListModel.SetChildren], the view reconstructs
+//     the sub-hierarchy dynamically.
+//   - An in-flight request tracker (`pending`) prevents duplicate concurrent fetches for the
+//     same branch.
+//
+// # Signal Signatures and Parameter Types
+//
+// Handlers receive the targeted node's address as an [Index] object passed to the `index` parameter:
+//   - `activated(index)`: Emitted when the user activates an item (Enter key, double-click).
+//   - `expanded(index)`: Emitted when a branch transitions from collapsed to expanded.
+//   - The Index is passed directly back to host handlers and model methods to uniquely address
+//     the target node in the model hierarchy.
 type treeViewNode struct {
 	widget.Base
 	model     TreeModel
