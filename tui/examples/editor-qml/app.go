@@ -32,6 +32,10 @@ type Host struct {
 
 	path  string
 	dirty bool
+	// quitAfterSave is `wq` on a buffer with no name: the Save dialog asks
+	// for one, and the quit waits for the file to be written. Cancelling the
+	// dialog or a failed write clears it.
+	quitAfterSave bool
 }
 
 // Options are what New needs from the program around it.
@@ -67,7 +71,12 @@ func New(opt Options) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	return h, h.attach(p, opt.Path)
+	if err := h.attach(p, opt.Path); err != nil {
+		// The program is built — its clock already ticking — and will never
+		// run; release it rather than leave the provider subscribed.
+		return nil, errors.Join(err, p.Tree().Destroy())
+	}
+	return h, nil
 }
 
 // newHost is the host before its program exists: options needs it, to hand

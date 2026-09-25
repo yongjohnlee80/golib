@@ -64,10 +64,25 @@ func (h *Host) saveFile() error {
 // the buffer's file — ONLY if the write succeeded. A failed Save As leaves the
 // buffer's file, and its unsaved state, as they were.
 func (h *Host) saveAs(path string) error {
+	quit := h.quitAfterSave
+	h.quitAfterSave = false
 	if err := h.write(path); err != nil {
+		return err // a failed write does not quit: the buffer is not saved
+	}
+	if err := h.setPath(path); err != nil {
 		return err
 	}
-	return h.setPath(path)
+	if quit {
+		h.p.Quit()
+	}
+	return nil
+}
+
+// saveCancelled is the Save dialog closed without a name: a pending `wq`
+// does not quit.
+func (h *Host) saveCancelled() error {
+	h.quitAfterSave = false
+	return nil
 }
 
 func (h *Host) write(path string) error {
