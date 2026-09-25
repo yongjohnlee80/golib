@@ -206,6 +206,8 @@ func (p palette) browserStyles() (widget.FilePaneStyles, bool) {
 		CursorBlurred: p.look(roleInactiveHighlight, roleInactiveHighlightText),
 		Border:        p.look(roleBase, roleMid),
 		FocusedBorder: p.look(roleBase, roleLight),
+		// The gap between the panes is the CARD's, so it takes the window.
+		Gap: p.look(roleWindow, roleWindowText),
 	}, true
 }
 

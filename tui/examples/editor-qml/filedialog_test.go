@@ -167,3 +167,40 @@ func TestRetroLightsThePaneInUse(t *testing.T) {
 		t.Errorf("the dimmed cursor is %+v, want cyan on grey", c)
 	}
 }
+
+// TestRetroFileDialogsWearTheEditorsBlueOnTheCard: the panes are the editor's
+// dark blue; the column between them is the CARD's grey, not the terminal's;
+// and the editor behind stays undimmed.
+func TestRetroFileDialogsWearTheEditorsBlueOnTheCard(t *testing.T) {
+	folderWith(t, map[string]string{"a.txt": "A"})
+	r := startSized(t, "", 100, 24)
+	// Behind the dialog: the status bar's first cell, taken before it opens.
+	statusY := len(r.rows()) - 1
+	for statusY > 0 && strings.TrimSpace(r.rows()[statusY]) == "" {
+		statusY--
+	}
+	r.openOpen(t)
+	y := rowOf(r.rows(), "../")
+	row := []rune(r.rows()[y])
+	// The gap is the first `│ │` AFTER the listing's `..` — the frame of the
+	// card and its padding make the same pattern at the left edge.
+	gap := -1
+	for i := r.labelAt(t, y, "../") + 1; i+1 < len(row); i++ {
+		if row[i-1] == '│' && row[i] == ' ' && row[i+1] == '│' {
+			gap = i
+			break
+		}
+	}
+	if gap < 0 {
+		t.Fatalf("no gap between the panes on row %d: %q", y, string(row))
+	}
+	if c := r.cell(t, gap, y); c.BG != cgaGrey {
+		t.Errorf("the gap between the panes is %+v, want the card's grey", c)
+	}
+	if c := r.cell(t, gap+2, y); c.BG != cgaBlue {
+		t.Errorf("the preview pane is %+v, want the editor's blue", c)
+	}
+	if c := r.cell(t, 0, statusY); c.BG != cgaGrey || c.Mask&tui.AttrFaint != 0 {
+		t.Errorf("behind the Open dialog the status bar is %+v, want it undimmed", c)
+	}
+}

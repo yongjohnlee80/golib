@@ -87,9 +87,11 @@ func (s FileSource) isDir(p string) bool {
 // FilePaneStyles are the looks the file views paint. Surface is every pane's
 // interior. Cursor is the list's row while the list has the keyboard,
 // CursorBlurred the same row once the keyboard has moved elsewhere. Border and
-// FocusedBorder frame each pane, without and with the keyboard.
+// FocusedBorder frame each pane, without and with the keyboard. Gap is the
+// space between two panes, which belongs to whatever holds them — a dialog's
+// card — and so is painted in its colour, not left as the terminal's.
 type FilePaneStyles struct {
-	Surface, Cursor, CursorBlurred, Border, FocusedBorder style.Style
+	Surface, Cursor, CursorBlurred, Border, FocusedBorder, Gap style.Style
 }
 
 // FileListOption configures a FileList under construction.

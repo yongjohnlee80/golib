@@ -12,6 +12,7 @@ FileDialog {
     title: "Save"
     fileMode: Tui.SaveFile
     currentFolder: App.folder
+    dim: false          // the editor stays in view behind it, as behind Quit
     palette.window: Theme.dialog.window
     palette.windowText: Theme.dialog.windowText
     palette.button: Theme.dialog.button
