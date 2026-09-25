@@ -73,8 +73,8 @@ func TestADialogOutsideAWindowSaysSoWhenOpened(t *testing.T) {
 
 func TestAMethodADialogLacksIsRefusedAtMount(t *testing.T) {
 	_, err := mountDoc(t, "Window {\n Button { onClicked: d.shake() }\n Dialog { id: d; Text { } }\n}")
-	if !errors.Is(err, decl.ErrNoMethod) || !strings.Contains(err.Error(), "close, open") {
-		t.Fatalf("err = %v, want ErrNoMethod listing close, open", err)
+	if !errors.Is(err, decl.ErrNoMethod) || !strings.Contains(err.Error(), "close, forceActiveFocus, open") {
+		t.Fatalf("err = %v, want ErrNoMethod listing close, forceActiveFocus, open", err)
 	}
 }
 

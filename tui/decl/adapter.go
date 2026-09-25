@@ -178,9 +178,12 @@ var _ decl.PropertyReader = (*Adapter)(nil)
 
 // MethodsOf implements [decl.Methods].
 func (a *Adapter) MethodsOf(typeName string) []string {
-	names := make([]string, 0, len(a.methods[typeName]))
+	names := make([]string, 0, len(a.methods[typeName])+1)
 	for n := range a.methods[typeName] {
 		names = append(names, n)
+	}
+	if _, own := a.methods[typeName][forceActiveFocus]; !own {
+		names = append(names, forceActiveFocus) // every item's (focus.go)
 	}
 	sort.Strings(names)
 	return names
@@ -193,6 +196,9 @@ func (a *Adapter) Invoke(node decl.NodeID, method string, args []qml.SpecValue) 
 		return fmt.Errorf("%s: node %d was not built by this adapter", method, node)
 	}
 	fn, ok := a.methods[b.typ][method]
+	if !ok && method == forceActiveFocus {
+		fn, ok = focusInto, true
+	}
 	if !ok {
 		return fmt.Errorf("a %s has no method %s", b.typ, method)
 	}

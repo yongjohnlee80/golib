@@ -147,7 +147,7 @@ func TestACustomWidgetIsRefusedLikeABuiltIn(t *testing.T) {
 	for src, want := range map[string]string{
 		`Gauge { start: "high" }`:                                      "want a number",
 		`Gauge { colour: "red" }`:                                      "colour",
-		"Flex {\n Gauge { id: g }\n Button { onClicked: g.spin() }\n}": "the methods reset",
+		"Flex {\n Gauge { id: g }\n Button { onClicked: g.spin() }\n}": "the methods forceActiveFocus, reset",
 	} {
 		_, _, err, _ := extended(t, src)
 		if err == nil || !strings.Contains(err.Error(), want) {

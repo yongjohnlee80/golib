@@ -96,6 +96,41 @@ func (c *Context) FocusComponent(comp Component) bool {
 	return false
 }
 
+// FocusInto moves focus INTO comp — Qt's forceActiveFocus(): comp itself when
+// it takes focus, else its focus child. The focus child is the one comp names as
+// an InitialFocusProvider, validated as a focus repair validates it (inside
+// comp, live), else the first component in comp's subtree, in document order,
+// that takes focus now — so a pane, a frame or a form is focused by naming it,
+// whatever its focusable part is. A hidden subtree, or one a focus trap keeps
+// out, takes none. Returns whether focus is now within comp. Loop goroutine
+// only.
+func (c *Context) FocusInto(comp Component) bool {
+	if comp == nil {
+		return false
+	}
+	n := c.app.byComp[comp]
+	if n == nil {
+		return false // not mounted
+	}
+	target := c.app.focusTargetIn(n)
+	if target == nil {
+		return false
+	}
+	c.app.requestFocus(target)
+	return c.FocusWithin(comp)
+}
+
+// HoldsFocusable reports whether comp, or anything under it, takes focus BY
+// DESIGN — implements Focusable — whatever it accepts right now. It is the
+// question to ask before FocusInto when the answer "no" means a mistake: a
+// Text, a status line or a gauge is not focusable by design, and asking to
+// focus one is an error, where a disabled button or a hidden pane is only not
+// focusable NOW. False when comp is not mounted.
+func (c *Context) HoldsFocusable(comp Component) bool {
+	n := c.app.byComp[comp]
+	return n != nil && holdsFocusable(n)
+}
+
 // Focused reports whether this node currently holds focus.
 func (c *Context) Focused() bool { return c.app.focused == c.node.id }
 
