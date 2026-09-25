@@ -105,7 +105,11 @@ type Construction struct {
 	// callbacks are usually shaped func() with nowhere to put an error, so it
 	// is the ADAPTER's job to route it somewhere a person will see. Dropping it
 	// silently is the one handling this design will not defend.
-	Emitters map[string]func() error
+	//
+	// An emitter takes the signal's PARAMETERS, in the order the adapter
+	// declared them through [SignalParameters]: `accepted(selectedFile)` is
+	// raised as emit(path). A signal with none is raised with none.
+	Emitters map[string]func(args ...qml.SpecValue) error
 }
 
 // Adapter is the toolkit seam. Everything in its signatures is either a

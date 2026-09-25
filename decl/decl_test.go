@@ -28,7 +28,7 @@ type recorder struct {
 	// onApply runs inside Apply, which is the only place a test can reach in
 	// while the engine is mid-walk.
 	onApply  func(decl.Application)
-	emitters map[decl.NodeID]map[string]func() error
+	emitters map[decl.NodeID]map[string]func(...qml.SpecValue) error
 }
 
 func newRecorder() *recorder {
@@ -38,7 +38,7 @@ func newRecorder() *recorder {
 		resolveErr: map[string]error{},
 		handlers:   map[string]func() error{},
 		consume:    map[string][]string{},
-		emitters:   map[decl.NodeID]map[string]func() error{},
+		emitters:   map[decl.NodeID]map[string]func(...qml.SpecValue) error{},
 	}
 }
 

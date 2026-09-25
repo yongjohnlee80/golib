@@ -472,7 +472,7 @@ func (t *Tree) planSubtree(sn *qml.SpecNode) error {
 	t.preEval[sn] = effective
 
 	for _, h := range sn.Handlers {
-		bh, err := t.compileHandler(id, h)
+		bh, err := t.compileHandler(id, sn.Type, h)
 		if err != nil {
 			return err
 		}
@@ -586,7 +586,7 @@ func (t *Tree) assess(oldID NodeID, sn *qml.SpecNode) (*step, error) {
 		s.rebind = true
 		s.handlers = make(map[string][]boundHandler, len(sn.Handlers))
 		for _, h := range sn.Handlers {
-			bh, err := t.compileHandler(oldID, h)
+			bh, err := t.compileHandler(oldID, sn.Type, h)
 			if err != nil {
 				return nil, err
 			}

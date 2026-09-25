@@ -1,6 +1,10 @@
 package decl
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/yongjohnlee80/golib/parse/qml"
+)
 
 // DEFERRED SIGNALS.
 //
@@ -19,19 +23,27 @@ func (t *Tree) deferring() bool {
 	return false
 }
 
+// deferredSignal is one queued signal and the parameters it was raised with.
+type deferredSignal struct {
+	key  signalKey
+	args []qml.SpecValue
+}
+
 // deferSignal queues a signal, COALESCING a repeat of one already waiting.
 //
 // A handler reads the tree's state when it runs, not the state at the moment
 // the signal was raised, so two raises of one signal during one operation are
 // one delivery: running the handler twice would repeat an effect against the
-// same state.
-func (t *Tree) deferSignal(k signalKey) {
-	for _, q := range t.deferred {
-		if q == k {
+// same state. The delivery carries the LATEST parameters, for the same reason:
+// they describe the state the handler will find.
+func (t *Tree) deferSignal(k signalKey, args []qml.SpecValue) {
+	for i, q := range t.deferred {
+		if q.key == k {
+			t.deferred[i].args = args
 			return
 		}
 	}
-	t.deferred = append(t.deferred, k)
+	t.deferred = append(t.deferred, deferredSignal{key: k, args: args})
 }
 
 // settle delivers the signals deferred during an operation, once that
@@ -53,14 +65,14 @@ func (t *Tree) settle(opErr error) error {
 	}
 	var errs []error
 	for len(t.deferred) > 0 {
-		k := t.deferred[0]
+		d := t.deferred[0]
 		t.deferred = t.deferred[1:]
 		// The node that raised it may be gone — removed by the very reconcile
 		// that caused the raise. Its signal is then moot rather than an error.
-		if _, live := t.nodes[k.node]; !live {
+		if _, live := t.nodes[d.key.node]; !live {
 			continue
 		}
-		if err := t.Emit(k.node, k.signal); err != nil {
+		if err := t.Emit(d.key.node, d.key.signal, d.args...); err != nil {
 			errs = append(errs, err)
 		}
 	}
