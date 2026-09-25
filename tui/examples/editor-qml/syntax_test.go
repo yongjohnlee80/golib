@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // syntax_test.go: the editor highlights a QML file with its own highlighter
@@ -89,5 +91,42 @@ func TestSyntaxForPicksByExtension(t *testing.T) {
 		if got := syntaxFor(path); got != want {
 			t.Errorf("syntaxFor(%q) = %q, want %q", path, got, want)
 		}
+	}
+}
+
+// TestThePaneTitlesAndPreviewReadInBothThemes: the Open dialog's pane titles
+// wear their pane's text on its base, and under mono the preview's plain text
+// and keywords keep the document's colours — nothing is the colour of what it
+// is painted on.
+func TestThePaneTitlesAndPreviewReadInBothThemes(t *testing.T) {
+	for _, c := range []struct {
+		theme    string
+		fg, bg   tui.CellColor
+		keywordF tui.CellColor
+	}{
+		{"retro", cgaWhite, cgaBlue, rgb(0xff, 0xff, 0xff)},
+		{"mono", terminalDefault, terminalDefault, ansi(15)},
+	} {
+		t.Run(c.theme, func(t *testing.T) {
+			folderWith(t, map[string]string{"view.qml": qmlFile})
+			r := startOpts(t, Options{Layout: withImport(t, "import editor.theme."+c.theme+" 1.0"),
+				Now: fixedNow, Tick: time.Hour}, 100, 24)
+			r.openOpen(t)
+			r.key(t, down)
+			r.shows(t, "import QtQuick")
+			py := rowOf(r.rows(), "┌ Preview ")
+			r.expect(t, []look{
+				{"the preview's title", r.labelAt(t, py, "Preview"), py, c.fg, c.bg},
+				{"the folder pane's title", r.labelAt(t, py, "┌ ") + 2, py, c.fg, c.bg},
+			})
+			y := rowOf(r.rows(), "import QtQuick")
+			r.waitFor(t, "the keyword in its colour", func(string) bool {
+				return r.cell(t, r.labelAt(t, y, "import"), y).FG == c.keywordF
+			})
+			ry := rowOf(r.rows(), "Rectangle")
+			if cell := r.cell(t, r.labelAt(t, ry, "width"), ry); cell.FG == cell.BG && cell.BG != terminalDefault {
+				t.Errorf("a property name is painted in its own background: %+v", cell)
+			}
+		})
 	}
 }
