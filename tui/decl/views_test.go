@@ -288,3 +288,60 @@ func TestAListViewCursorFollowsItsRecord(t *testing.T) {
 		t.Errorf("activated row %q, want 2 — bob's row after the insert", got)
 	}
 }
+
+// A key holding the path separator cannot make two rows one: children set for
+// the root "a/b" land under it, not under the child "b" of "a".
+func TestTreeKeysWithTheSeparatorDoNotCollide(t *testing.T) {
+	m := tuidecl.NewTreeListModel("key", "label")
+	m.SetChildren(nil, []tuidecl.TreeRow{
+		{Row: tuidecl.Row{"key": "a", "label": "rootA"}, HasChildren: true},
+		{Row: tuidecl.Row{"key": "a/b", "label": "rootAB"}, HasChildren: true},
+	})
+	var fetches []tuidecl.Index
+	m.OnFetch = func(ix tuidecl.Index) { fetches = append(fetches, ix) }
+	s := decltest.Run(t, 30, 8,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
+			`TreeView { model: App.tree; textRole: "label" }`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.tree": m}))
+	s.WaitForText(t, "rootAB")
+	key := func(c rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code: c} }
+	enter, down := key(tui.KeyEnter), key(tui.KeyDown)
+	s.Keys(t, key(tui.KeyTab), enter) // open rootA
+	s.WaitFor(t, "asked for rootA's", func(string) bool { var n int; onScreenLoop(t, s, func() { n = len(fetches) }); return n == 1 })
+	onScreenLoop(t, s, func() {
+		m.SetChildren(&fetches[0], []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "b", "label": "childB"}, HasChildren: true}})
+	})
+	s.WaitForText(t, "childB")
+	s.Keys(t, down, enter) // open childB: its path is a, then b
+	s.Keys(t, down, enter) // open rootAB: its path is the one key a/b
+	s.WaitFor(t, "asked for both", func(string) bool { var n int; onScreenLoop(t, s, func() { n = len(fetches) }); return n == 3 })
+	onScreenLoop(t, s, func() {
+		m.SetChildren(&fetches[2], []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "x", "label": "underAB"}}})
+	})
+	s.WaitFor(t, "rootAB's child under rootAB", func(string) bool {
+		return rowOfText(s, "underAB") == rowOfText(s, "rootAB")+1
+	})
+}
+
+// An empty key is a key: the record chosen under it stays chosen as rows are
+// inserted before it.
+func TestAnEmptyKeyIsAKeyLikeAnyOther(t *testing.T) {
+	m, rec := tuidecl.NewListModel("key", "name", "id"), &recorder{}
+	m.Reset([]tuidecl.Row{{"key": "", "name": "ann", "id": 1}, {"key": "b", "name": "bob", "id": 2}})
+	s := runModelDoc(t, "Window {\n"+
+		` ComboBox { id: who; model: App.people; textRole: "name"; valueRole: "id"; placeholderText: "pick" }`+"\n"+
+		` Shortcut { sequence: "Ctrl+G"; onActivated: App.use(who.currentValue) } }`, m, rec)
+	s.WaitForText(t, "pick")
+	enter := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, enter)
+	s.WaitForText(t, "bob")
+	s.Keys(t, enter)
+	s.WaitFor(t, "ann chosen", func(sc string) bool { return strings.Contains(sc, "ann") && !strings.Contains(sc, "bob") })
+	onScreenLoop(t, s, func() { m.Insert(0, tuidecl.Row{"key": "z", "name": "zed", "id": 9}) })
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: 'g', Mods: tui.ModCtrl})
+	s.WaitFor(t, "a read", func(string) bool { return len(rec.all()) == 1 })
+	if got := rec.all()[0].Raw; got != "1" {
+		t.Errorf("currentValue = %q, want ann's 1", got)
+	}
+}

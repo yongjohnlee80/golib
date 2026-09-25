@@ -120,7 +120,7 @@ func (t *Tree) instantiate(sn *qml.SpecNode, key string, sc *repeaterScope,
 	var out []*qml.SpecNode
 	for r := range model.RowCount(nil) {
 		ix := Index{Row: r}
-		rowKey := key + "[" + model.Key(ix) + "]"
+		rowKey := key + "[" + strconv.Quote(model.Key(ix)) + "]" // quoted: a key cannot close the bracket
 		copied := bindRow(delegate, model, ix)
 		if copied.ID == "" {
 			copied.ID = "row@" + rowKey // a stable identity for the reconcile
