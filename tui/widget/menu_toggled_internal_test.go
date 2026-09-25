@@ -53,3 +53,44 @@ func TestSetCheckedIsReportedByTheSameRule(t *testing.T) {
 		t.Errorf("reported %q", g)
 	}
 }
+
+// A REENTRANT owner: told a was cleared, it checks a again — inside the
+// report. The owner must still end holding what the menu holds, row by row,
+// and hear only real changes: never a stale value from before its own write.
+func TestAReentrantOwnerEndsHoldingTheMenusState(t *testing.T) {
+	var m *Menu
+	owner := map[ItemID]bool{"a": true}
+	var heard []string
+	depth := 0
+	m = NewMenu(WithMenuOnToggled(func(id ItemID, checked, byUser bool) {
+		// NEVER RE-ENTERED: a change the owner makes inside a report is
+		// reported after this call returns, not inside it.
+		depth++
+		defer func() { depth-- }()
+		if depth > 1 {
+			t.Errorf("the owner was re-entered with %s=%v", id, checked)
+		}
+		heard = append(heard, fmt.Sprintf("%s=%v", id, checked))
+		owner[id] = checked
+		if id == "a" && !checked {
+			m.SetChecked("a", true) // the owner insists on a
+		}
+	}))
+	a := NewRadio("a", "A", "g", nil)
+	a.Checked = true
+	if err := m.SetModel([]MenuItemModel{NewSubmenu("v", "V", []MenuItemModel{a, NewRadio("b", "B", "g", nil)})}); err != nil {
+		t.Fatal(err)
+	}
+	m.activate("b", tui.ActionInvocation{}) // the user chooses b
+	for _, id := range []ItemID{"a", "b"} {
+		if c, _ := m.Checked(id); owner[id] != c {
+			t.Errorf("owner holds %s=%v, the menu %v (heard %v)", id, owner[id], c, heard)
+		}
+	}
+	// The net story, each a real change from what the owner last heard: a
+	// cleared, then a again. b's true, undone before it could be told, is a
+	// value the owner never needs.
+	if g := strings.Join(heard, " "); g != "a=false a=true" {
+		t.Errorf("heard %q, want %q", g, "a=false a=true")
+	}
+}

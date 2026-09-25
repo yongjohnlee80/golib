@@ -270,7 +270,7 @@ func uncheckGroupExcept(items []MenuItemModel, group string, keep ItemID, change
 		it := &items[i]
 		if it.Kind == ItemKindRadio && it.Group == group && it.ID != keep && it.Checked {
 			it.Checked = false
-			changed = append(changed, toggle{it.ID, false})
+			changed = append(changed, toggle{it.ID, true, false})
 		}
 		changed = uncheckGroupExcept(it.Children, group, keep, changed)
 	}

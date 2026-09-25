@@ -37,6 +37,10 @@ type Menu struct {
 	rows      RowRenderer
 	exec      func(tui.ActionInvocation) bool
 	onToggled func(id ItemID, checked, byUser bool)
+	// reporting, queue and told are the report in progress (see report).
+	reporting bool
+	queue     []queuedToggle
+	told      map[ItemID]bool
 	onSelect  func(ItemID)
 	policy    AnchorPolicy
 
@@ -246,7 +250,10 @@ func WithActionExecutor(fn func(tui.ActionInvocation) bool) MenuOption {
 //
 // It is how an OWNER of the rows — application data, or a declarative layer
 // over the menu — keeps them current without a second toggle rule: the rule is
-// the Menu's, and the owner records what it reports.
+// the Menu's, and the owner records what it reports. The owner may change the
+// menu from inside fn: it is NEVER RE-ENTERED — that change is reported after
+// fn returns — and it hears only real changes, never a stale value, so it ends
+// holding exactly what the menu holds (see report).
 func WithMenuOnToggled(fn func(id ItemID, checked, byUser bool)) MenuOption {
 	return func(m *Menu) { m.onToggled = fn }
 }
@@ -341,10 +348,16 @@ func (m *Menu) Checked(id ItemID) (checked, ok bool) {
 	return it.Checked, true
 }
 
-// toggle is one row's checked state changing.
+// toggle is one row's checked state changing, from was.
 type toggle struct {
-	id      ItemID
-	checked bool
+	id           ItemID
+	was, checked bool
+}
+
+// queuedToggle is a row whose change is still to be reported.
+type queuedToggle struct {
+	id     ItemID
+	byUser bool
 }
 
 // check is the ONE rule for a row's checked state: the row takes v, and a radio
@@ -356,19 +369,50 @@ func (m *Menu) check(it *MenuItemModel, v bool) []toggle {
 		changed = uncheckGroupExcept(m.items, it.Group, it.ID, changed)
 	}
 	if it.Checked != v {
+		changed = append(changed, toggle{it.ID, it.Checked, v})
 		it.Checked = v
-		changed = append(changed, toggle{it.ID, v})
 	}
 	return changed
 }
 
-// report hands each change to WithMenuOnToggled's function.
+// report hands each change to WithMenuOnToggled's function, so that the owner
+// ends holding exactly what the menu holds.
+//
+// The owner may change the menu from inside a report — told a radio was
+// cleared, it checks it again — which changes rows still waiting to be
+// reported. So a report is a QUEUE, drained by the outermost call alone: a
+// change made while it drains joins the queue rather than interleaving, each
+// row's value is read when it is reported, never when it was queued, and a row
+// is reported only when that value differs from what the owner was last told
+// (told: what the owner held before this drain, then what each report said).
+// The owner therefore hears only real changes, in order, and no stale one.
 func (m *Menu) report(changed []toggle, byUser bool) {
-	if m.onToggled == nil {
+	if m.onToggled == nil || len(changed) == 0 {
 		return
 	}
+	if m.told == nil {
+		m.told = map[ItemID]bool{}
+	}
 	for _, c := range changed {
-		m.onToggled(c.id, c.checked, byUser)
+		if _, ok := m.told[c.id]; !ok {
+			m.told[c.id] = c.was
+		}
+		m.queue = append(m.queue, queuedToggle{c.id, byUser})
+	}
+	if m.reporting {
+		return // the drain in progress reports it
+	}
+	m.reporting = true
+	defer func() { m.reporting, m.queue, m.told = false, nil, nil }()
+	for len(m.queue) > 0 {
+		q := m.queue[0]
+		m.queue = m.queue[1:]
+		now, ok := m.Checked(q.id)
+		if !ok || now == m.told[q.id] {
+			continue // gone, or no change from what the owner holds
+		}
+		m.told[q.id] = now
+		m.onToggled(q.id, now, q.byUser)
 	}
 }
 

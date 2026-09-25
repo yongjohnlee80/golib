@@ -94,16 +94,16 @@ func NewModal(body tui.Component, opts ...ModalOption) *Modal {
 		}
 	}
 	checkButtonList("widget: NewModal", m.card.buttons, m.card)
+	// The FINAL list, validated, is the one the dialog takes: an option may
+	// replace an earlier one's, and a list refused above takes no button.
+	m.adopt(nil, m.card.buttons)
 	return m
 }
 
 // WithButtons supplies the dialog's buttons. The list is validated at
 // construction; see [NewModal] for what is refused.
 func WithButtons(b ...*Button) ModalOption {
-	return func(m *Modal) {
-		m.card.buttons = append([]*Button(nil), b...)
-		m.adopt(nil, m.card.buttons)
-	}
+	return func(m *Modal) { m.card.buttons = append([]*Button(nil), b...) }
 }
 
 // WithAcceptGate says whether an Accept answer may accept NOW: a file dialog

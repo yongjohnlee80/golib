@@ -165,3 +165,53 @@ func TestAButtonRemovedFromADialogAnswersNothing(t *testing.T) {
 		t.Errorf("a removed Accept button logged %q, open=%v; want save alone, still open", got, f.open())
 	}
 }
+
+// Only the FINAL, validated list is the dialog's: a button an earlier
+// WithButtons named and a later one replaced stays a plain button — its role
+// answers nothing and Enter is its own — and a refused list takes no button.
+func TestOnlyTheValidatedFinalButtonListIsTheDialogs(t *testing.T) {
+	var ran []string
+	first := widget.NewButton("First", widget.WithRole(widget.ButtonRoleAccept),
+		widget.WithOnActivate(func() { ran = append(ran, "first") }))
+	second := widget.NewButton("Second", widget.WithRole(widget.ButtonRoleReject))
+	md := widget.NewModal(widget.NewText("body"), widget.WithButtons(first), widget.WithButtons(second))
+	if got := md.Buttons(); len(got) != 1 || got[0] != second {
+		t.Fatalf("buttons = %v, want the second list", got)
+	}
+	host := widget.NewOverlayHost(first) // first, standalone, has the keyboard
+	h := startApp(t, host, 40, 8)
+	defer h.stop()
+	h.onLoop(func() {
+		if err := md.Open(host); err != nil {
+			t.Fatal(err)
+		}
+		first.Activate(tui.OriginProgrammatic)
+	})
+	var open bool
+	h.onLoop(func() { open = md.IsOpen() })
+	if strings.Join(ran, ",") != "first" || !open {
+		t.Errorf("the superseded button ran %v and left the dialog open=%v; want its callback only, still open", ran, open)
+	}
+
+	// A refused list takes no button: the panic comes before any is adopted,
+	// so this one, standalone, keeps Enter.
+	var lonely []string
+	lone := widget.NewButton("Lone", widget.WithRole(widget.ButtonRoleAccept),
+		widget.WithOnActivate(func() { lonely = append(lonely, "lone") }))
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("a list with a nil entry was accepted")
+			}
+		}()
+		widget.NewModal(widget.NewText("body"), widget.WithButtons(lone, nil))
+	}()
+	h2 := startApp(t, lone, 20, 3)
+	defer h2.stop()
+	h2.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	h2.waitFor("Enter pressed the standalone button", func() bool {
+		var n int
+		h2.onLoop(func() { n = len(lonely) })
+		return n == 1
+	})
+}
