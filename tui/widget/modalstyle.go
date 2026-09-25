@@ -2,7 +2,7 @@ package widget
 
 import "github.com/yongjohnlee80/golib/tui/style"
 
-// ModalStyle carries the four surfaces a dialog paints. It follows ButtonStyle
+// ModalStyle carries the surfaces a dialog paints. It follows ButtonStyle
 // exactly — immutable, nil-safe, token-valued — so a consumer who has learned
 // one styling type has learned them all, and one style value can safely dress
 // every dialog in an application.
@@ -11,6 +11,9 @@ type ModalStyle struct {
 	title  style.Style
 	border style.Style
 	scrim  style.Style
+	// footer is the help line under the buttons; zero means "derive it".
+	footer    style.Style
+	footerSet bool
 }
 
 // NewModalStyle builds a style from the card and title looks, deriving the
@@ -75,6 +78,28 @@ func (s *ModalStyle) Border() style.Style {
 		return DefaultModalStyle().border
 	}
 	return s.border
+}
+
+// Rule returns the look of the line between a dialog's body and its buttons.
+// It IS the border's: the rule joins the frame at both ends, so a rule in any
+// other colour would break the frame where it meets it.
+func (s *ModalStyle) Rule() style.Style { return s.Border() }
+
+// Footer returns the look of the help line under the buttons. Unless set, it is
+// the card faded, so the keys read as chrome rather than as one more line of
+// the message.
+func (s *ModalStyle) Footer() style.Style {
+	if s == nil || !s.footerSet {
+		return s.Card().Faint(true)
+	}
+	return s.footer
+}
+
+// WithFooter returns a copy with the help line's look replaced.
+func (s *ModalStyle) WithFooter(v style.Style) *ModalStyle {
+	c := s.cloneModal()
+	c.footer, c.footerSet = v, true
+	return c
 }
 
 // Scrim returns the look of the dimming painted behind the topmost dialog.
