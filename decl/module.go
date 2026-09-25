@@ -69,6 +69,11 @@ func (t *Tree) DeclareModule(m Module) error {
 			"%w: modules are declared before Mount, so an import can be checked "+
 				"against a fixed set", ErrPhase)}
 	}
+	// Kept off an offered name here rather than in registerModule, because a
+	// loading offered module registers under its OWN offered name.
+	if err := t.nameFree("declare module", m.Name); err != nil {
+		return err
+	}
 	return t.registerModule("declare module", m)
 }
 
@@ -159,13 +164,8 @@ func (t *Tree) resolveImports(spec qml.SpecTree) (imports, error) {
 			return imports{}, SchemaError{Op: "import", Detail: im.Module, Pos: im.Pos, Err: fmt.Errorf(
 				"%w: %q; the host provides %s", ErrUndefinedModule, im.Module, t.moduleList())}
 		}
-		// The version is compared only when the document states one. An import
-		// that names no version takes what it is given, which is what makes
-		// adding a version to a module later a compatible change.
-		if im.Version != "" && m.Version != "" && im.Version != m.Version {
-			return imports{}, SchemaError{Op: "import", Detail: im.Module, Pos: im.Pos, Err: fmt.Errorf(
-				"%w: %q is version %q here, and this document asks for %q",
-				ErrUndefinedModule, im.Module, m.Version, im.Version)}
+		if err := checkVersion(im, m.Version); err != nil {
+			return imports{}, err
 		}
 
 		if im.Alias != "" {
@@ -216,12 +216,21 @@ func (t *Tree) providerOf(name string) (string, bool) {
 }
 
 func (t *Tree) moduleList() string {
-	if len(t.modules) == 0 {
-		return "no modules at all"
-	}
-	names := make([]string, 0, len(t.modules))
+	// Offered modules are listed whether loaded or not: to a document they are
+	// all equally importable.
+	seen := map[string]bool{}
+	var names []string
 	for n := range t.modules {
+		seen[n] = true
 		names = append(names, n)
+	}
+	for n := range t.offered {
+		if !seen[n] {
+			names = append(names, n)
+		}
+	}
+	if len(names) == 0 {
+		return "no modules at all"
 	}
 	// Deterministic, so a diagnostic is the same sentence on every run.
 	sortStrings(names)
