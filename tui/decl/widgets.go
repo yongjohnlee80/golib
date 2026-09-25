@@ -52,7 +52,7 @@ func StdProperties() []Option { return typeOptions(stdTypes()) }
 
 // stdTypes is every standard widget type, in one table.
 func stdTypes() []Type {
-	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType)
+	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType)
 }
 
 // tuiEnums is every enum the standard vocabulary accepts. The Tui singleton's
@@ -86,7 +86,8 @@ func coreTypes() []Type {
 		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}},
 		{Name: "Button", Build: buildButton, Setters: map[string]Setter{
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
-			"text":    setter("a Button", stringOf, (*widget.Button).SetLabel), // Qt's AbstractButton.text
+			// Qt's AbstractButton.text: `&` marks the mnemonic, "&Save".
+			"text": setter("a Button", stringOf, setButtonText),
 		}},
 		{Name: "Text", Build: buildText, Ctor: []string{"wrapMode"}, restyle: restyleText, Setters: map[string]Setter{
 			"text": setter("a Text", stringOf, (*widget.Text).SetText),
@@ -169,4 +170,11 @@ func buildText(b Build) (tui.Component, []string, error) {
 		return nil, nil, err
 	}
 	return widget.NewText("", widget.WithWrapMode(mode)), consumed, nil
+}
+
+// setButtonText sets a Button's text, `&` marking its mnemonic as Qt's does.
+func setButtonText(b *widget.Button, text string) {
+	label, key, _ := mnemonic(text)
+	b.SetLabel(label)
+	b.SetMnemonic(key)
 }

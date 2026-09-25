@@ -79,6 +79,9 @@ func registerStdAttached(r *Registry) {
 	// `Dock.edge` is written on a child and read by the Window that docks it.
 	RegisterAttached(r, "Dock", "edge")
 	Honour(r, "Window", "Dock")
+	// `DialogButtonBox.buttonRole` is written on a Button and read by its box.
+	RegisterAttached(r, "DialogButtonBox", "buttonRole")
+	Honour(r, "DialogButtonBox", "DialogButtonBox")
 }
 
 var dockEdges = enum[tui.DockEdge]{values: map[string]tui.DockEdge{

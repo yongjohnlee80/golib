@@ -201,6 +201,26 @@ func (b *Button) Mnemonic() rune { return b.mnemonic }
 // Role reports what the button means to its container.
 func (b *Button) Role() ButtonRole { return b.role }
 
+// SetRole changes what the button means to its container — for a container
+// giving the buttons it adopts their answers (a dialog's button box).
+func (b *Button) SetRole(r ButtonRole) { b.role = r }
+
+// SetMnemonic changes the key that reaches the button directly; 0 for none.
+func (b *Button) SetMnemonic(r rune) {
+	if b.mnemonic == r {
+		return
+	}
+	b.mnemonic = r
+	b.MarkDirty()
+}
+
+// OnActivate is what the button runs when activated, nil for nothing.
+func (b *Button) OnActivate() func() { return b.onAction }
+
+// SetOnActivate replaces what the button runs when activated — for a
+// container that adds its own step after the button's own (a dialog's answer).
+func (b *Button) SetOnActivate(fn func()) { b.onAction = fn }
+
 // Label reports the button's text.
 func (b *Button) Label() string { return b.label }
 
