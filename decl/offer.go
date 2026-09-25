@@ -127,6 +127,32 @@ func (t *Tree) loadImported(spec qml.SpecTree) (undo func(), err error) {
 			restores[i]()
 		}
 	}
+	// A module the new document no longer imports is dropped FIRST: an
+	// offered module is loaded because a document imports it, and switching
+	// one import for another — one theme for another — is exactly the edit
+	// that must work. Leaving the old one loaded made the new one's exports
+	// collide with it. Dropped, not destroyed: a refused document puts it back.
+	imported := map[string]bool{}
+	for _, im := range spec.Imports {
+		imported[im.Module] = true
+	}
+	dropped := make([]string, 0)
+	for name := range t.loads {
+		if _, offered := t.offered[name]; offered && !imported[name] {
+			dropped = append(dropped, name)
+		}
+	}
+	sortStrings(dropped)
+	for _, name := range dropped {
+		restores = append(restores, t.putBack(qml.SpecImport{Module: name}, t.offered[name]))
+		wasStale := t.stale[name]
+		t.unload(name)
+		delete(t.stale, name)
+		if wasStale {
+			restores = append(restores, func() { t.stale[name] = true })
+		}
+	}
+
 	for _, im := range spec.Imports {
 		o, ok := t.offered[im.Module]
 		if !ok {
@@ -158,6 +184,12 @@ func (t *Tree) loadImported(spec qml.SpecTree) (undo func(), err error) {
 			return nil, err
 		}
 		done = append(done, im.Module)
+		if t.root != NoNode {
+			// A module the LIVE tree newly reads — another theme in place of
+			// the one it had: a line written the same can now mean something
+			// else (`Theme.syntax.keyword`), so this reconcile compares values.
+			t.refreshing = true
+		}
 	}
 	return undo, nil
 }
@@ -165,22 +197,9 @@ func (t *Tree) loadImported(spec qml.SpecTree) (undo func(), err error) {
 // reload replaces a stale loaded module with a fresh load, and returns how to
 // put the previous version back.
 func (t *Tree) reload(im qml.SpecImport, o offer) (restore func(), err error) {
-	prev := t.loads[im.Module]
-	// A source the module brought may have moved since it loaded; putting the
-	// module back must put back where it moved TO, not where it started.
-	current := map[string]qml.SpecValue{}
-	for _, k := range prev.keys {
-		if v, ok := t.sources[k]; ok {
-			current[k] = v
-		}
-	}
+	putBack := t.putBack(im, o)
 	back := func() {
-		t.unload(im.Module)
-		// It loaded before, from these very contents, so it loads again.
-		_ = t.load(im, offer{version: o.version, load: func() (ModuleContents, error) { return prev.contents, nil }})
-		for k, v := range current {
-			t.sources[k] = v
-		}
+		putBack()
 		t.stale[im.Module] = true
 	}
 	t.unload(im.Module)
@@ -190,6 +209,27 @@ func (t *Tree) reload(im qml.SpecImport, o offer) (restore func(), err error) {
 	}
 	delete(t.stale, im.Module)
 	return back, nil
+}
+
+// putBack captures a loaded module as it stands — its contents, and where its
+// sources have MOVED to, not where they started — and returns what restores
+// it exactly, whatever happens to it in between.
+func (t *Tree) putBack(im qml.SpecImport, o offer) func() {
+	prev := t.loads[im.Module]
+	current := map[string]qml.SpecValue{}
+	for _, k := range prev.keys {
+		if v, ok := t.sources[k]; ok {
+			current[k] = v
+		}
+	}
+	return func() {
+		t.unload(im.Module)
+		// It loaded before, from these very contents, so it loads again.
+		_ = t.load(im, offer{version: o.version, load: func() (ModuleContents, error) { return prev.contents, nil }})
+		for k, v := range current {
+			t.sources[k] = v
+		}
+	}
 }
 
 // ClearComponentCache is Qt's QQmlEngine::clearComponentCache — "useful … to

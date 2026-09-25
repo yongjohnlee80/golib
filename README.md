@@ -50,6 +50,7 @@ go get github.com/yongjohnlee80/golib
 | [`parse/js`](parse/js/README.md) | The C-family expression and statement grammar, dialects as data, embeddable | [README](parse/js/README.md) |
 | [`parse/qml`](parse/qml/README.md) | A faithful QML parser into a plain data tree | [README](parse/qml/README.md) |
 | [`parse/sql`](parse/sql/README.md) | SQL dialects as values, over the streaming lexer | [README](parse/sql/README.md) |
+| [`highlight`](highlight/README.md) | Syntax highlighting's contract: `Highlighter` (Qt's QSyntaxHighlighter, line + carried state), KSyntaxHighlighting's 31 styles, tree-sitter capture mapping | [README](highlight/README.md) |
 | [`decl`](decl/README.md) | Instantiate a declarative (QML) UI through an adapter — identity, reloads, bindings, modules, signals | [README](decl/README.md) |
 | [`tui/decl`](tui/decl/README.md) | golib/tui screens written in QML: the vocabulary, themes, dialogs, your own widgets, `NewProgram` | [README](tui/decl/README.md) · [USAGE](tui/decl/USAGE.md) |
 | [`tui/decl/controls`](tui/decl/controls/README.md) | Qt Quick Controls' `TextField` and `Popup` for QML screens — written with the public widget contract alone | [README](tui/decl/controls/README.md) |

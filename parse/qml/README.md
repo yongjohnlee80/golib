@@ -83,3 +83,12 @@ file must fail with an error, not a stack overflow that cannot be recovered.
 ## Licence
 
 See the repository's [LICENSE](../../LICENSE).
+
+## Highlighting
+
+`qml.Highlighter()` colours QML and the JavaScript in its bindings one line at
+a time, for an editor — a `highlight.Highlighter` (see
+[highlight](../../highlight/README.md)). It is beside the parser, not through
+it: the parser refuses invalid input, and a highlighter must colour text being
+typed. A block comment or template string left open is carried to the next
+line; anything unrecognised is plain.

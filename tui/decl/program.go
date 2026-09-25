@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -208,6 +209,12 @@ func Offer(module, version string, load decl.ModuleLoader) ProgramOption {
 	return func(c *programConfig) {
 		c.offers = append(c.offers, offered{name: module, version: version, load: load})
 	}
+}
+
+// Highlighters registers syntax highlighters by the name a SyntaxHighlighter's
+// `definition:` gives them. See [WithHighlighters].
+func Highlighters(hs map[string]highlight.Highlighter) ProgramOption {
+	return func(c *programConfig) { c.adapterOpts = append(c.adapterOpts, WithHighlighters(hs)) }
 }
 
 // Types adds your own widget types to the vocabulary. See [Type].

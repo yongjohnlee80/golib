@@ -131,6 +131,28 @@ Window {
             keyset: App.keyset
             onModeChanged: App.syncStatus()
             onTextChanged: App.markDirty()
+
+            // KDE KSyntaxHighlighting's type: Go highlights, the document
+            // names the definition, the theme colours it. The host says which
+            // definition fits the file — QML for a .qml file, none otherwise.
+            SyntaxHighlighter {
+                definition: App.syntax
+                theme.keyword: Theme.syntax.keyword
+                theme.controlFlow: Theme.syntax.controlFlow
+                theme.dataType: Theme.syntax.dataType
+                theme.attribute: Theme.syntax.attribute
+                theme.function: Theme.syntax.function
+                theme.string: Theme.syntax.string
+                theme.specialChar: Theme.syntax.specialChar
+                theme.decVal: Theme.syntax.decVal
+                theme.float: Theme.syntax.float
+                theme.baseN: Theme.syntax.baseN
+                theme.constant: Theme.syntax.constant
+                theme.comment: Theme.syntax.comment
+                theme.alert: Theme.syntax.alert
+                theme.import: Theme.syntax.import
+                theme.operator: Theme.syntax.operator
+            }
         }
     }
 

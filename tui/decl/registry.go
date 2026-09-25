@@ -2,6 +2,7 @@ package decl
 
 import (
 	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -54,6 +55,8 @@ type Build struct {
 	// over the screen ([Overlaid]) goes when no Window gives it one. Nil when
 	// the adapter was given none.
 	Overlay *widget.OverlayHost
+	// highlighters are the adapter's syntax definitions, for SyntaxHighlighter.
+	highlighters map[string]highlight.Highlighter
 
 	// asked records every signal the builder asked for an emitter of. A
 	// signal the document binds and the builder never asks for is one the
