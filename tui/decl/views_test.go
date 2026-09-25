@@ -128,6 +128,39 @@ func TestAComboBoxsCurrentIndexIsSetByItsBinding(t *testing.T) {
 	}
 }
 
+// The motivating order: the ComboBox exists before its choices — mounted over
+// an empty model, filled later — so nothing is chosen, as in Qt; the host then
+// sets currentIndex, and that row is chosen.
+func TestAComboBoxFilledAfterItExistsIsChosenByItsHost(t *testing.T) {
+	m, rec := tuidecl.NewListModel("key", "name", "id"), &recorder{}
+	s := decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			` ComboBox { id: who; model: App.people; textRole: "name"; valueRole: "id"; currentIndex: App.pick }`+"\n"+
+			` Shortcut { sequence: "Ctrl+G"; onActivated: App.use(who.currentValue) } }`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.people": m, "App.pick": -1}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.use": rec.handler}))
+	read := func(n int) string {
+		s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: 'g', Mods: tui.ModCtrl})
+		s.WaitFor(t, "the read", func(string) bool { return len(rec.all()) == n })
+		return rec.all()[n-1].Raw
+	}
+	onScreenLoop(t, s, func() {
+		m.Reset([]tuidecl.Row{{"key": "a", "name": "ann", "id": 1}, {"key": "b", "name": "bob", "id": 2}})
+	})
+	if got := read(1); got != "" {
+		t.Errorf("rows arriving after the ComboBox chose %q; Qt chooses nothing then", got)
+	}
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.pick", 1); err != nil {
+			t.Error(err)
+		}
+	})
+	if got := read(2); got != "2" {
+		t.Errorf("the host's currentIndex: 1 chose %q, want 2 (bob's id)", got)
+	}
+}
+
 // A model a view no longer shows has no subscriber left: replaced by a reload
 // that removes the view, or by another model.
 func TestAViewLeavesNoSubscriptionBehind(t *testing.T) {
