@@ -18,22 +18,12 @@ func (h *Host) commands() map[string]decl.HandlerFunc {
 		"App.openFile":   onePath("App.openFile", h.openFile),
 		"App.saveFile":   none(h.saveFile),
 		"App.saveAs":     onePath("App.saveAs", h.saveAs),
-		"App.quit":       none(func() error { h.quit(); return nil }),
+		"App.quit":       none(func() error { h.p.Quit(); return nil }),
 		"App.useVim":     none(func() error { return h.useKeyset("vim", "switched keymap to Vim (modal)") }),
 		"App.useNano":    none(func() error { return h.useKeyset("nano", "switched keymap to Nano (modeless)") }),
 		"App.syncStatus": none(h.syncStatus),
 		"App.markDirty":  none(func() error { return h.setDirty(true) }),
 	}
-}
-
-// injectCommands publishes the command table as handlers.
-func (h *Host) injectCommands() error {
-	for name, fn := range h.commands() {
-		if err := h.tree.Inject(name, decl.Handle(fn)); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // none is a command that takes no arguments, and refuses any it is given.
@@ -58,10 +48,7 @@ func onePath(name string, fn func(string) error) decl.HandlerFunc {
 
 // useKeyset switches the editor's keymap through its bound App.keyset.
 func (h *Host) useKeyset(ks, msg string) error {
-	if _, err := h.tree.SetSources(map[string]qml.SpecValue{
-		"App.keyset": str(ks),
-		"App.status": str(msg),
-	}); err != nil {
+	if err := h.p.SetMany(map[string]any{"App.keyset": ks, "App.status": msg}); err != nil {
 		return err
 	}
 	// A keyset switch can change the mode — Nano has no Normal mode — so the

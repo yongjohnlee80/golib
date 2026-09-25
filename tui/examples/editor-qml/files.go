@@ -73,13 +73,7 @@ func (h *Host) write(path string) error {
 
 // openDialog opens a dialog the layout declared, by its id — what a handler
 // does with `saveDialog.open()`, done from Go.
-func (h *Host) openDialog(id string) error {
-	node, ok := h.tree.NodeByID(id)
-	if !ok {
-		return fmt.Errorf("editor.qml declares no dialog with id: %s", id)
-	}
-	return h.adapter.Invoke(node, "open", nil)
-}
+func (h *Host) openDialog(id string) error { return h.p.Call(id, "open") }
 
 // load reads the file, if there is one.
 //

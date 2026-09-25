@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -15,9 +13,9 @@ import (
 // and nothing else. The host changes them only through the setters below, so
 // what the screen says and what the host knows cannot drift apart.
 
-// injectState publishes App's state with its starting values.
-func (h *Host) injectState(path string) error {
-	for name, v := range map[string]string{
+// state is App's state with its starting values.
+func (h *Host) state(path string) map[string]any {
+	return map[string]any{
 		"App.mode":   widget.ModeNormal.String(),
 		"App.status": displayPath(path),
 		"App.keyset": "vim",
@@ -28,24 +26,17 @@ func (h *Host) injectState(path string) error {
 		// The quit dialog's question. A source, so the dialog says when there
 		// is something to lose without the host reaching into it.
 		"App.quitQuestion": quitQuestion(false),
-	} {
-		if err := h.tree.Inject(name, decl.SourceValue(str(v))); err != nil {
-			return err
-		}
 	}
-	return nil
 }
 
 // message puts a line in the status bar's centre.
 func (h *Host) message(s string) error {
-	_, err := h.tree.SetSource("App.status", str(s))
-	return err
+	return h.p.Set("App.status", s)
 }
 
 // syncStatus brings the status bar's mode up to date with the editor's.
 func (h *Host) syncStatus() error {
-	_, err := h.tree.SetSource("App.mode", str(h.editor.Mode().String()))
-	return err
+	return h.p.Set("App.mode", h.editor.Mode().String())
 }
 
 // setDirty records whether the buffer has unsaved changes, and keeps the quit
@@ -57,8 +48,7 @@ func (h *Host) setDirty(v bool) error {
 		return nil
 	}
 	h.dirty = v
-	_, err := h.tree.SetSource("App.quitQuestion", str(quitQuestion(v)))
-	return err
+	return h.p.Set("App.quitQuestion", quitQuestion(v))
 }
 
 // quitQuestion is what the quit dialog asks.
@@ -97,12 +87,9 @@ func absPath(path string) string {
 // the status line's name with it.
 func (h *Host) setPath(path string) error {
 	h.path = path
-	_, err := h.tree.SetSources(map[string]qml.SpecValue{
-		"App.folder": str(folderOf(path)),
-		"App.path":   str(absPath(path)),
-		"App.status": str(displayPath(path)),
+	return h.p.SetMany(map[string]any{
+		"App.folder": folderOf(path),
+		"App.path":   absPath(path),
+		"App.status": displayPath(path),
 	})
-	return err
 }
-
-func str(s string) qml.SpecValue { return qml.SpecValue{Kind: qml.SpecValueString, Raw: s} }
