@@ -23,6 +23,9 @@ Window {
     // category's underlined letter opens it — Alt+F for File.
     Shortcut { sequence: "Ctrl+Q"; onActivated: quitDialog.open() }
     Shortcut { sequence: "Ctrl+S"; onActivated: App.saveFile() }
+    // Where the terminal can report Shift with Ctrl — the kitty keyboard
+    // protocol. Elsewhere it arrives as Ctrl+S, and the menu is the way in.
+    Shortcut { sequence: "Ctrl+Shift+S"; onActivated: saveDialog.open() }
 
     // ---- the menu bar ---------------------------------------------------
     //
@@ -45,6 +48,8 @@ Window {
             MenuItem { text: "&New";  onTriggered: App.newFile() }
             MenuItem { text: "&Open"; onTriggered: openDialog.open() }
             MenuItem { text: "&Save"; onTriggered: App.saveFile() }
+            // Save As ALWAYS asks, so the document opens the dialog itself.
+            MenuItem { text: "Save &As…"; onTriggered: saveDialog.open() }
             MenuItem { text: "E&xit"; onTriggered: quitDialog.open() }
         }
 
@@ -118,7 +123,7 @@ Window {
     QuitDialog { id: quitDialog }
     AboutDialog { id: aboutDialog }
     OpenDialog { id: openDialog }
-    // Opened by the HOST, not by a handler: Save asks for a name only when the
-    // buffer has none, and whether it has one is the host's to know.
+    // Opened by File > Save As, and by the HOST when Save finds the buffer has
+    // no name — whether it has one is the host's to know.
     SaveDialog { id: saveDialog }
 }

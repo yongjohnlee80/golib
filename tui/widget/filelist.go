@@ -308,6 +308,20 @@ func (l *FileList) Current() (path string, folder, ok bool) {
 	return l.pathOf(e), e.dir || e.up, true
 }
 
+// SetCurrent puts the cursor on the entry named name in the folder listed,
+// and reports whether there is one.
+func (l *FileList) SetCurrent(name string) bool {
+	for i, e := range l.entries {
+		if !e.up && e.name == name {
+			l.list.SetCursor(i)
+			// SetCursor publishes nothing when the cursor is already there.
+			l.cursorOn(i)
+			return true
+		}
+	}
+	return false
+}
+
 // Enter is Enter on the current row: a folder is gone into and reports false;
 // a file reports true and is left to the caller.
 func (l *FileList) Enter() bool {

@@ -204,3 +204,71 @@ func TestRetroFileDialogsWearTheEditorsBlueOnTheCard(t *testing.T) {
 		t.Errorf("behind the Open dialog the status bar is %+v, want it undimmed", c)
 	}
 }
+
+var backspace = tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyBackspace}
+
+// TestSaveAsWritesACopyUnderANewName: it starts from the file being edited —
+// its folder, its name — writes the buffer to the name given, leaves the
+// original alone, and the buffer is the new file from then on.
+func TestSaveAsWritesACopyUnderANewName(t *testing.T) {
+	dir := t.TempDir()
+	orig := filepath.Join(dir, "orig.txt")
+	if err := os.WriteFile(orig, []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := startSized(t, orig, 80, 24)
+	r.key(t, runeKey('i'), runeKey('a'), escape)
+	r.key(t, alt('f'))
+	r.shows(t, "Save As")
+	r.clickLabel(t, rowOf(r.rows(), "Save As"), "Save As")
+	r.shows(t, "┌ Save ")
+	// Prefilled from the file being edited.
+	nameRow := rowOf(r.rows(), "┌ File name ") + 1
+	if !strings.Contains(r.rows()[nameRow], "orig.txt") {
+		t.Fatalf("the name field does not start from the file being edited:\n%s", r.screen())
+	}
+	for range len("orig.txt") {
+		r.key(t, backspace)
+	}
+	for _, c := range "copy.txt" {
+		r.key(t, runeKey(c))
+	}
+	r.key(t, enter)
+	fileHas(t, filepath.Join(dir, "copy.txt"), "ax\n")
+	fileHas(t, orig, "x\n")
+	r.waitFor(t, "the dialog closing", func(s string) bool { return !strings.Contains(s, "┌ Save ") })
+	if last := lastNonEmpty(r.rows()); !strings.Contains(last, "copy.txt") {
+		t.Errorf("the status line does not name the new file: %q", last)
+	}
+	// The buffer is copy.txt now: Save writes there, without asking.
+	r.key(t, runeKey('A'), runeKey('!'), escape)
+	r.key(t, ctrl('s'))
+	fileHas(t, filepath.Join(dir, "copy.txt"), "ax!\n")
+	fileHas(t, orig, "x\n")
+}
+
+// TestSaveAsStartsFromTheFileEachTime: a name typed and cancelled is not what
+// the next Save As starts from.
+func TestSaveAsStartsFromTheFileEachTime(t *testing.T) {
+	dir := t.TempDir()
+	orig := filepath.Join(dir, "keep.txt")
+	if err := os.WriteFile(orig, []byte("k\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := startSized(t, orig, 80, 24)
+	openSaveAs := func() {
+		r.key(t, alt('f'))
+		r.shows(t, "Save As")
+		r.clickLabel(t, rowOf(r.rows(), "Save As"), "Save As")
+		r.shows(t, "┌ Save ")
+	}
+	openSaveAs()
+	r.key(t, runeKey('Z'))
+	r.key(t, escape)
+	r.waitFor(t, "the dialog closing", func(s string) bool { return !strings.Contains(s, "┌ Save ") })
+	openSaveAs()
+	nameRow := rowOf(r.rows(), "┌ File name ") + 1
+	if row := r.rows()[nameRow]; !strings.Contains(row, "keep.txt") || strings.Contains(row, "keep.txtZ") {
+		t.Fatalf("Save As did not start from the file again: %q", row)
+	}
+}

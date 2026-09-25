@@ -18,6 +18,7 @@ import (
 //	    title: "Open"
 //	    fileMode: Tui.OpenFile            // or Tui.SaveFile
 //	    currentFolder: App.folder
+//	    selectedFile: App.path            // where "Save As" starts
 //	    preview: false                    // on by default when opening
 //	    onAccepted: App.openFile(selectedFile)
 //	}
@@ -92,8 +93,14 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 		gate: chooser.Confirm,
 		opened: func() {
 			// The folder is listed AFRESH each time: files come and go
-			// between one opening and the next.
-			chooser.SetDir(chooser.Dir())
+			// between one opening and the next. A selectedFile the document
+			// bound is placed again, so the dialog starts from it every time
+			// rather than from whatever was typed and cancelled last.
+			if d.selected != "" {
+				chooser.Select(d.selected)
+			} else {
+				chooser.SetDir(chooser.Dir())
+			}
 			chooser.FocusInitial()
 			if !fixedHelp {
 				d.modal.SetFooter(chooser.Hint())
@@ -104,6 +111,15 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	d = newDialog(b, s)
 	d.chooser = chooser
 	return d, consumed, nil
+}
+
+// setSelected is selectedFile's setter: Qt 6's writable selectedFile, the
+// file the dialog starts from. "" leaves it starting from its folder.
+func (d *dialogNode) setSelected(file string) {
+	d.selected = file
+	if d.chooser != nil && file != "" {
+		d.chooser.Select(file)
+	}
 }
 
 // setFolder is currentFolder's setter.

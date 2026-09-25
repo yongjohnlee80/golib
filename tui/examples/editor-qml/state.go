@@ -23,6 +23,8 @@ func (h *Host) injectState(path string) error {
 		"App.keyset": "vim",
 		// Where the file dialogs open: the current file's folder.
 		"App.folder": folderOf(path),
+		// The file being edited, absolute, "" for none: where Save As starts.
+		"App.path": absPath(path),
 		// The quit dialog's question. A source, so the dialog says when there
 		// is something to lose without the host reaching into it.
 		"App.quitQuestion": quitQuestion(false),
@@ -80,12 +82,24 @@ func folderOf(path string) string {
 	return filepath.Dir(abs)
 }
 
+// absPath is a path made absolute, "" for none.
+func absPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return path
+}
+
 // setPath makes path the buffer's file, and moves the file dialogs' folder and
 // the status line's name with it.
 func (h *Host) setPath(path string) error {
 	h.path = path
 	_, err := h.tree.SetSources(map[string]qml.SpecValue{
 		"App.folder": str(folderOf(path)),
+		"App.path":   str(absPath(path)),
 		"App.status": str(displayPath(path)),
 	})
 	return err
