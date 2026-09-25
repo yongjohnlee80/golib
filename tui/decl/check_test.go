@@ -171,7 +171,7 @@ func TestCheckReleasesWhatItMounts(t *testing.T) {
 
 // TestCheckMountsTheComponentsOfAModuleNothingImports: a module no document
 // imports yet is still a module the program can load, and its components are
-// judged — not only parsed. (Lector, PR #96 r0.)
+// judged — not only parsed.
 func TestCheckMountsTheComponentsOfAModuleNothingImports(t *testing.T) {
 	checkFinds(t, "extra/Other.qml", `Text { txt: "invalid" }`,
 		"component Other of demo.extra, which main.qml does not use", "txt")
@@ -179,7 +179,7 @@ func TestCheckMountsTheComponentsOfAModuleNothingImports(t *testing.T) {
 
 // TestCheckHostsAnUnusedComponentInANeutralRoot: the layout's root has
 // construction rules of its own — a Split takes exactly two children — and an
-// unused component must not be judged by them. (Lector, PR #96 r0.)
+// unused component must not be judged by them.
 func TestCheckHostsAnUnusedComponentInANeutralRoot(t *testing.T) {
 	files := fstest.MapFS{
 		"main.qml":      {Data: []byte("import tui 1.0\nimport demo.ui 1.0\nSplit {\n Text { text: \"a\" }\n Text { text: \"b\" }\n}")},

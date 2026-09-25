@@ -50,8 +50,8 @@ type Type struct {
 	Destroyed func(tui.Component)
 
 	// restyle is how a built-in type wears an effective palette. Unexported:
-	// a consumer's type does not take palette roles yet (ADR-tui-0014 D2,
-	// recorded for D5); its subtree still inherits through it.
+	// a consumer's type does not take palette roles yet; its subtree still
+	// inherits through it.
 	restyle restyler
 }
 

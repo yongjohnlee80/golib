@@ -13,8 +13,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// propagate_test.go holds palette propagation to ADR-tui-0014 D2's acceptance
-// rows, P1–P9, on what reaches the SCREEN: the background of the cell a text
+// propagate_test.go holds palette propagation to its promises, P1–P9, on what
+// reaches the SCREEN: the background of the cell a text
 // is painted in. A palette the adapter computed and never painted passes every
 // structural test.
 
@@ -175,7 +175,7 @@ func TestP7ADocumentWithNoPaletteKeepsGolibsLook(t *testing.T) {
 }
 
 // P9 — a child's own role removed by a reload: it inherits the parent's live
-// role again, and is the same widget. (Lector, PR #96 step-1 review.)
+// role again, and is the same widget.
 func TestP9RemovingAnOwnRoleInheritsTheParentsAgain(t *testing.T) {
 	head := "import tui 1.0\nimport demo 1.0\nWindow { palette.window: App.bg\n Text { id: t; text: \"child\""
 	s := runDoc(t, head+"; palette.window: \"red\" } }",
