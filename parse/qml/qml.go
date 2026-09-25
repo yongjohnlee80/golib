@@ -908,6 +908,11 @@ func projectValue(e *js.Expr) SpecValue {
 	return SpecValue{Kind: SpecValueExpr, Raw: e.Raw, Expr: e, Pos: e.Pos}
 }
 
+// ProjectValue is the projection a property value gets, for a consumer
+// holding a subexpression of one: the operands of `Dialog.Yes | Dialog.No` are
+// themselves values, projected exactly as a whole property's would be.
+func ProjectValue(e *js.Expr) SpecValue { return projectValue(e) }
+
 // dottedPath flattens an identifier or a non-computed member chain to its
 // segments, reporting false for anything else.
 //
