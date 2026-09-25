@@ -343,3 +343,39 @@ func TestADialogClosesBackToWhereFocusWas(t *testing.T) {
 		t.Errorf("the dialog closed back to the document's focus: true, not to the second field:\n%s", s.String())
 	}
 }
+
+// An ActionRole button acts on what the dialog shows and leaves it open, as
+// Qt's does; its mnemonic presses it like any dialog button's.
+func TestAnActionRoleButtonLeavesTheDialogOpen(t *testing.T) {
+	var mu sync.Mutex
+	var got []string
+	rec := func(what string) decl.HandlerFunc {
+		return func([]qml.SpecValue) error { mu.Lock(); got = append(got, what); mu.Unlock(); return nil }
+	}
+	s := decltest.Run(t, 50, 12,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n Text { text: \"under\" }\n"+
+			" Dialog { id: d; title: \"Q\"; onRejected: App.done()\n  Text { text: \"rows\" }\n"+
+			"  DialogButtonBox {\n   Button { text: \"&Add\"; DialogButtonBox.buttonRole: DialogButtonBox.ActionRole; onClicked: App.add() }\n"+
+			"   Button { text: \"&Close\"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole } } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.add": rec("add"), "App.done": rec("done")}))
+	s.WaitForText(t, "under")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "┌ Q ")
+	s.Keys(t, decltest.Rune('a'), decltest.Rune('a'))
+	s.WaitFor(t, "two adds", func(string) bool { mu.Lock(); defer mu.Unlock(); return len(got) == 2 })
+	if sc := s.String(); !strings.Contains(sc, "┌ Q ") {
+		t.Fatalf("an ActionRole button closed the dialog:\n%s", sc)
+	}
+	s.Keys(t, decltest.Rune('c'))
+	s.WaitFor(t, "closed", func(sc string) bool { return !strings.Contains(sc, "┌ Q ") })
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 3 || got[0] != "add" || got[1] != "add" || got[2] != "done" {
+		t.Errorf("answers %v, want add, add, done", got)
+	}
+}

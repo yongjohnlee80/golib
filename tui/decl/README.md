@@ -219,7 +219,7 @@ holds `MenuItem`s, `Menu`s and `MenuSeparator`s. `Frame` holds exactly one child
 | written on | read by | property | values |
 | --- | --- | --- | --- |
 | any child of a `Window` | `Window` | `Dock.edge` | `Tui.Top`, `Tui.Bottom`, `Tui.Left`, `Tui.Right` |
-| a `Button` in a `DialogButtonBox` | `DialogButtonBox` | `DialogButtonBox.buttonRole` | `DialogButtonBox.AcceptRole`, `DialogButtonBox.RejectRole`, `DialogButtonBox.DestructiveRole` |
+| a `Button` in a `DialogButtonBox` | `DialogButtonBox` | `DialogButtonBox.buttonRole` | `DialogButtonBox.AcceptRole`, `DialogButtonBox.RejectRole`, `DialogButtonBox.DestructiveRole`, `DialogButtonBox.ActionRole` |
 
 A child of a `Window` with no `Dock.edge` fills what the docked ones leave.
 
@@ -353,6 +353,7 @@ is one of Qt's two answers, raised before `closed`:
 | an accepting button (Ok, Save, Yes, Open; `AcceptRole`) | `accepted`, then `closed` |
 | a rejecting button (`RejectRole`), or Escape | `rejected`, then `closed` |
 | a `DestructiveRole` button (Discard) | `closed` only |
+| an `ActionRole` button (a manager's Add, Edit) | its own `clicked` only; the dialog stays open |
 | `close()` from a handler | `closed` only |
 
 **Enter the focused control leaves is the dialog's.** It presses the button
