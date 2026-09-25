@@ -203,7 +203,9 @@ type dialogSpec struct {
 	buttons []standardButton
 	// shortcuts are the dialog's own keys, live while it is open.
 	shortcuts []*shortcutNode
-	hooks     dialogHooks
+	// box is its DialogButtonBox, nil for standardButtons.
+	box   *buttonBoxNode
+	hooks dialogHooks
 }
 
 // newDialog is the ONE construction of a dialog: its buttons and what each
@@ -238,6 +240,9 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 		}
 		buttons = append(buttons, widget.NewButton(label, opts...))
 	}
+	if s.box != nil {
+		buttons = append(buttons, s.box.answer(d)...)
+	}
 	opts := []widget.ModalOption{
 		widget.WithModalTitle(s.title),
 		widget.WithButtons(buttons...),
@@ -267,11 +272,11 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 }
 
 func buildDialog(b Build) (tui.Component, []string, error) {
-	body, shortcuts, err := dialogChildren(b)
+	body, shortcuts, box, err := dialogChildren(b)
 	if err != nil {
 		return nil, nil, err
 	}
-	s := dialogSpec{body: body, dim: true, align: widget.ButtonsCenter, shortcuts: shortcuts}
+	s := dialogSpec{body: body, dim: true, align: widget.ButtonsCenter, shortcuts: shortcuts, box: box}
 	var flags int64
 	consumed, err := readProps(b.Props, map[string]field{
 		"title":           into(&s.title, stringOf),
@@ -287,6 +292,9 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 		if flags&sb.bit != 0 {
 			s.buttons = append(s.buttons, sb)
 		}
+	}
+	if s.box != nil && len(s.buttons) > 0 {
+		return nil, nil, fmt.Errorf("a Dialog answers with standardButtons or a DialogButtonBox, not both (at %s)", b.Pos)
 	}
 	return newDialog(b, s), consumed, nil
 }
@@ -306,21 +314,29 @@ func cellsOf(v qml.SpecValue) (int, error) {
 // dialogChildren takes a Dialog's children: exactly one CONTENT item, and any
 // number of Shortcuts — Qt's non-visual children, here keys that are live while
 // the dialog is open and the controls in it leave them.
-func dialogChildren(b Build) (tui.Component, []*shortcutNode, error) {
+func dialogChildren(b Build) (tui.Component, []*shortcutNode, *buttonBoxNode, error) {
 	var body tui.Component
 	var shortcuts []*shortcutNode
+	var box *buttonBoxNode
 	n := 0
 	for _, c := range b.Children {
 		if sc, ok := c.(*shortcutNode); ok {
 			shortcuts = append(shortcuts, sc)
 			continue
 		}
+		if bb, ok := c.(*buttonBoxNode); ok {
+			if box != nil {
+				return nil, nil, nil, fmt.Errorf("a Dialog holds one DialogButtonBox (at %s)", b.Pos)
+			}
+			box = bb
+			continue
+		}
 		body = c
 		n++
 	}
 	if n != 1 {
-		return nil, nil, fmt.Errorf("Dialog needs exactly 1 child, its content, got %d, besides its Shortcuts (at %s)",
-			n, b.Pos)
+		return nil, nil, nil, fmt.Errorf("Dialog needs exactly 1 child, its content, got %d, besides its Shortcuts "+
+			"and DialogButtonBox (at %s)", n, b.Pos)
 	}
-	return body, shortcuts, nil
+	return body, shortcuts, box, nil
 }
