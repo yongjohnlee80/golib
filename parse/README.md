@@ -138,6 +138,23 @@ No single rule is right for both, so the core cannot own this one. Under
 `MoreInput` both defer with `ErrNeedMore`; input that already decides itself
 gives the same answer under either boundary.
 
+## A cursor for hand-written grammars
+
+Beside the streaming lexer, `parse` has the small pieces golib's hand-written
+scanners share — [`parse/qml`](qml/README.md), [`parse/js`](js/README.md)
+(which runs on the QML parser's own cursor) and the statement splitter in
+[`parse/sql`](sql/README.md):
+
+- **`Scanner`** — a rune cursor over a source, one rune of undo, with `Peek`,
+  `HasPrefix`, `Take` and `Slice`.
+- **`Position`** — `Offset` to slice with, `Line` and `Column` (in runes) to show
+  a person, and an optional **`File`**. `NewFileScanner(name, src)` stamps the
+  file on every position it reports, and so on every position a parser builds
+  from them: `"dialogs/QuitDialog.qml:14:5"` rather than a bare `14:5` once a
+  program is made of several files.
+- **`SyntaxError`** — a position, what was wanted and what was found, and
+  `Incomplete` for a source that ended mid-construct.
+
 ## Forms must be pure
 
 A `Form` is called again from the same offset with more input, so anything

@@ -144,6 +144,84 @@ value changes the widget's intrinsic size, another repaints only, another also
 repairs focus. Handing over the **value** leaves that judgement where it can be
 correct.
 
+## Modules — declared, offered, and component files
+
+A module is imported before its names resolve, as in QML. A host **declares** a
+module every document may use, or **offers** one it may not: an offered module's
+loader runs the first time a document imports it — at Mount or at a Reconcile —
+and never otherwise.
+
+```go
+tree.DeclareModule(decl.Module{Name: "editor", Version: "1.0", Exports: []string{"App"}})
+tree.OfferModule("editor.theme.retro", "1.0", decl.ValueModule(retroQML))
+tree.OfferModule("editor.dialogs", "1.0", decl.ComponentFiles(dialogFS, "dialogs"))
+```
+
+A loader returns `ModuleContents`: the singletons it exports, their values, and
+its **component types**.
+
+- **`ValueModule(src)`** is a module written as a QML document of literals —
+  `Theme { menu { window: "white" } }` — whose root type is the export and whose
+  properties are constants under it. A theme is one.
+- **`ComponentFiles(fs, dir)`** is a directory of `.qml` files, each a type named
+  for its file. A use is EXPANDED before the document is judged: the use site's
+  properties replace the component's, handlers from both run, the use site's
+  children follow, the use site gives the id. A component resolves names in the
+  document that uses it, and so imports nothing and declares no ids. One that
+  contains itself is refused, with the cycle spelled out.
+
+Loading goes through the same registration a declared module does, so every
+rule holds — two loaded modules still may not export one name, and a document
+importing two themes that both export `Theme` is refused. A load is undone when
+the operation that caused it fails without building anything, and `Destroy`
+unloads every loaded module with the registry its values lived in. An optional
+`Vocabulary` capability lists the adapter's type names, so a component named
+like one is refused rather than replacing it.
+
+## Handlers: methods by id, and signal parameters
+
+A handler may call a **method on a node the document declared**, by its id:
+
+```qml
+MenuItem { onTriggered: quitDialog.open() }
+```
+
+An adapter offers methods through the optional `Methods` capability
+(`MethodsOf`, `Invoke`). The engine checks the call when the handler is
+compiled, so a method the type lacks is refused at mount, naming the ones it has.
+It resolves the id when the signal FIRES, so a reload that rebuilds the node
+under the same id is followed. An id that spells an injected or imported name
+is refused as ambiguous.
+
+A handler may pass on **what its signal was raised with**:
+
+```qml
+FileDialog { onAccepted: App.openFile(selectedFile) }
+```
+
+An adapter names each signal's parameters through the optional
+`SignalParameters` capability; an emitter takes them —
+`emit(args ...qml.SpecValue)` — and `Tree.Emit` carries them. A parameter
+shadows an injected name of the same spelling, as a handler's innermost scope.
+
+## Values: the one operator
+
+The evaluator runs names, calls and ONE operator: `|` over integers, which is
+how Qt combines flags (`Dialog.Yes | Dialog.No`). A source in an operand makes
+the value a binding. Every other operator is refused with `ErrExpressionValue`
+— the document is valid QML, and what is missing is evaluator capability, which
+the sentinel says.
+
+## Signals raised mid-operation
+
+A widget may raise a signal while the tree is mounting, reconciling or fanning
+out a source change — an editor reports its mode when a bound keyset switches
+it. Such a signal is **deferred**, not refused: queued, coalesced (one delivery
+per node and signal, carrying the latest parameters), and delivered once the
+outermost operation has committed. A handler that starts an operation of its own
+drains the queue at that operation's end, while its own emission is still
+running, so a feedback loop is caught by the ordinary cycle detector.
+
 ## What the engine promises
 
 - **Order is readable off the file.** Handlers resolve, then children are built
@@ -166,8 +244,8 @@ correct.
 - **Writes made before that error stay committed.** There is no rollback, and
   pretending otherwise would mean pretending the adapter's setters are
   reversible.
-- **Mounting is refused while a signal is running**, and emitting is refused
-  while a reconcile is walking the tree.
+- **Mounting is refused while a signal is running.** A signal raised while a
+  reconcile or a propagation is walking the tree is deferred until it commits.
 - **A reload is planned before it is applied.** Every handler resolves —
   including those in subtrees the schema *adds*, whose identities are allocated
   during planning for exactly that reason — and every restructure and changed
