@@ -90,9 +90,9 @@
 //
 // A [Tree] is single-threaded and NOT safe for concurrent use across multiple goroutines.
 // It is designed to reside entirely on the UI/event-loop goroutine demanded by the underlying
-// adapter and toolkit.
+// adapter and toolkit. Callers must marshal model mutations directly to the tree's owner
+// goroutine, as change subscribers execute synchronously on the mutating goroutine.
 //
-// For asynchronous source providers or worker goroutines, hosts must supply a scheduler via
-// [WithScheduler]. The engine uses this scheduler to marshal background updates onto the
-// authoritative event-loop goroutine before modifying reactive state or bindings.
+// When repeaters re-expand, the engine uses the scheduler supplied via [WithScheduler] to schedule
+// the subsequent reconciliation pass onto the owner goroutine.
 package decl

@@ -37,10 +37,11 @@ import (
 //
 // # Enter and Focus Semantics
 //
-// Unlike standard message boxes with an implicit affirmative default button, DialogButtonBox
-// deliberately designates NO default button:
+// A DialogButtonBox declares no default button:
 //   - Enter answers nothing, regardless of which button currently holds focus: in a Dialog, Enter
-//     is reserved exclusively for the dialog's default button, and a DialogButtonBox declares none.
+//     reaches the dialog only when the focused control leaves it unclaimed, and answers only the
+//     button explicitly named by `defaultButton`. No standard button is a default by being one, and
+//     a DialogButtonBox declares none.
 //   - Buttons answer by Space while holding focus, by their mnemonic shortcut, or by click.
 //   - An irreversible or destructive answer is never one stray Enter away, whichever order
 //     answers are listed in.
