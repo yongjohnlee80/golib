@@ -57,21 +57,7 @@ type Options struct {
 // import, the state it reads, the commands it invokes, the clock, the layout.
 func New(opt Options) (*Host, error) {
 	h := &Host{path: opt.Path}
-	src := opt.Layout
-	if src == nil {
-		src = layout
-	}
-	opts := append(h.modules(),
-		tuidecl.LayoutSource("editor.qml", src),
-		tuidecl.Sources(h.state(opt.Path)),
-		tuidecl.Handlers(h.commands()),
-		tuidecl.Providers(newClock(opt.Now, opt.Tick)),
-		tuidecl.AppOptions(opt.App...),
-	)
-	if opt.Sink != nil {
-		opts = append(opts, tuidecl.ErrorSink(opt.Sink))
-	}
-	p, err := tuidecl.NewProgram(opts...)
+	p, err := tuidecl.NewProgram(h.options(opt)...)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +72,27 @@ func New(opt Options) (*Host, error) {
 		return nil, err
 	}
 	return h, nil
+}
+
+// options are everything the program is: the modules the document may import,
+// the state it reads, the commands it invokes, the clock, the layout. New
+// builds from them, and so does the test that checks every QML file.
+func (h *Host) options(opt Options) []tuidecl.ProgramOption {
+	src := opt.Layout
+	if src == nil {
+		src = layout
+	}
+	opts := append(h.modules(),
+		tuidecl.LayoutSource("editor.qml", src),
+		tuidecl.Sources(h.state(opt.Path)),
+		tuidecl.Handlers(h.commands()),
+		tuidecl.Providers(newClock(opt.Now, opt.Tick)),
+		tuidecl.AppOptions(opt.App...),
+	)
+	if opt.Sink != nil {
+		opts = append(opts, tuidecl.ErrorSink(opt.Sink))
+	}
+	return opts
 }
 
 // Run runs the editor until it quits or ctx ends, and releases it.

@@ -453,9 +453,54 @@ can share a screen; making them match is the program's job.
 
 ## 11. Testing a QML screen
 
-Run the document on `tui.NewTestBackend(w, h)` through a real `tui.App` and read
-what reached the screen — "the tree was built" is not the claim a user cares
-about.
+A QML mistake is a runtime error unless a test finds it first. Package
+[`decltest`](decltest/) holds the two tests every program should have, and both
+take the options `NewProgram` takes — so give your program one function that
+returns them, and build from it both in `main` and in the tests:
+
+```go
+func TestTheQMLIsSound(t *testing.T) {
+    decltest.Check(t, programOptions()...)
+}
+
+func TestSaveAsksForAName(t *testing.T) {
+    s := decltest.Run(t, 80, 24, programOptions()...)
+    s.Keys(t, decltest.Ctrl('s'))
+    s.WaitForText(t, "Save As")
+}
+```
+
+**`decltest.Check` is qmllint for the program.** `NewProgram` reads only what
+the layout imports, so a test that just builds the program never sees the theme
+you are not using, or a dialog no screen uses yet — those break the day someone
+switches to them. `Check` mounts:
+
+| what | how |
+| --- | --- |
+| the layout | as written |
+| each alternative | the layout with one import replaced by an offered module that brings the same name into scope — `editor.theme.mono` in place of `editor.theme.retro` |
+| each unused component | inside the layout's root type, under the layout's imports — where its names resolve once it is used |
+
+and loads every other offered module. Each problem is its own test failure,
+labelled with what was mounted and placed at its file and line:
+
+```
+editor.qml with import editor.theme.mono in place of editor.theme.retro:
+  … resolve Theme.menu.accent at editor.qml:42:25: "Theme.menu" has no member "accent"
+```
+
+It runs nothing: providers subscribe and are released, and no App is built.
+What it cannot know is a component's use-site properties — an unused component
+is mounted as `Name {}`, the way the first use without overrides would be.
+
+**`decltest.Run` runs the program** on a `tui.NewTestBackend(w, h)` and stops it
+when the test ends. A handler error fails the test unless the options give an
+`ErrorSink` of their own. `Screen.WaitFor`, `WaitForText`, `Keys`, and the key
+constructors `Rune`, `Type`, `Ctrl` and `Alt` cover the rest.
+
+If a program wraps `NewProgram` in a host of its own, as the example's `New`
+does, the same rules hold by hand: read what reached the screen — "the tree was
+built" is not the claim a user cares about.
 
 - **Wait for the screen, don't settle once.** A change travels through the event
   bus and lands a frame or two later; poll the grid for what you expect.
@@ -468,5 +513,5 @@ about.
 - **Break the code to check the test.** Remove the fix and the test must go red;
   a test that stays green is reading the wrong cell.
 
-The example's `app_test.go`, `dialog_test.go`, `theme_test.go` and
-`filedialog_test.go` do all of this.
+The example's `check_test.go` runs `decltest.Check`; its `app_test.go`,
+`dialog_test.go`, `theme_test.go` and `filedialog_test.go` do the rest by hand.
