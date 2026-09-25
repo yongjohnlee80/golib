@@ -34,6 +34,8 @@ import (
 //     signal, and dismisses the dialog with `closed`. The Escape key is wired to activate this role.
 //   - DestructiveRole: Emits the Button's own `clicked` signal and immediately dismisses the dialog
 //     with `closed` (neither `accepted` nor `rejected` is emitted).
+//   - ActionRole: Emits the Button's own `clicked` signal only; the dialog stays open, as Qt's
+//     ActionRole — an action on what the dialog shows (a manager's Add, Edit, Delete).
 //
 // # Enter and Focus Semantics
 //
@@ -46,13 +48,14 @@ import (
 //   - An irreversible or destructive answer is never one stray Enter away, whichever order
 //     answers are listed in.
 
-var buttonRoles = Enum{Scope: "DialogButtonBox", Values: []string{"AcceptRole", "RejectRole", "DestructiveRole"}}
+var buttonRoles = Enum{Scope: "DialogButtonBox", Values: []string{"AcceptRole", "RejectRole", "DestructiveRole", "ActionRole"}}
 
 // boxRoles are Qt's roles, as the widget has them: the Modal answers for each.
 var boxRoles = map[string]widget.ButtonRole{
 	"AcceptRole":      widget.ButtonRoleAccept,
 	"RejectRole":      widget.ButtonRoleReject,
 	"DestructiveRole": widget.ButtonRoleDestructive,
+	"ActionRole":      widget.ButtonRoleAction,
 }
 
 // buttonBoxNode is a declared DialogButtonBox, before its Dialog takes it: its
