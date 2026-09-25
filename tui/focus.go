@@ -600,6 +600,19 @@ func (a *App) FocusInto(comp Component) bool {
 	return false
 }
 
+// FocusWithin is Context.FocusWithin for a caller holding the App rather than
+// a mounted component's Context — a declarative host asking which of its panes
+// holds the keyboard. False when nothing is focused or comp is not mounted.
+// Loop goroutine only.
+func (a *App) FocusWithin(comp Component) bool {
+	for n := a.nodes[a.focused]; n != nil; n = n.parent {
+		if n.comp == comp {
+			return true
+		}
+	}
+	return false
+}
+
 // HoldsFocusable is Context.HoldsFocusable for a caller holding the App. It
 // also reports whether comp is mounted: "holds none" is only an answer about
 // a component that is. Loop goroutine only.

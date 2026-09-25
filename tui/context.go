@@ -62,15 +62,7 @@ func (c *Context) RequestFocus() { c.app.requestFocus(c.node) }
 // comp's descendants — what a container asks before it hides a subtree, so
 // focus can be moved out rather than stranded somewhere invisible. False when
 // nothing is focused or comp is not mounted.
-func (c *Context) FocusWithin(comp Component) bool {
-	n := c.app.nodes[c.app.focused]
-	for ; n != nil; n = n.parent {
-		if n.comp == comp {
-			return true
-		}
-	}
-	return false
-}
+func (c *Context) FocusWithin(comp Component) bool { return c.app.FocusWithin(comp) }
 
 // FocusComponent moves focus to another already-mounted component — the
 // cross-node analogue of RequestFocus, which can only focus the calling node.
