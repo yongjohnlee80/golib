@@ -127,8 +127,11 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 		}
 	}
 	w.shortcuts, w.menus, w.overlaid, w.focus = shortcuts, menus, overlaid, nominee
+	for _, m := range w.menus {
+		m.leave = w.restoreFocus
+	}
 	for _, o := range w.overlaid {
-		o.SetOverlay(w.host, w.restoreFocus)
+		o.SetOverlay(w.host, w.afterOverlay)
 	}
 	return nil
 }
@@ -147,6 +150,18 @@ func (w *windowNode) Init(ctx *tui.Context) {
 	// The document's `focus: true` is applied once the screen is laid out:
 	// focus moves INTO the nominee, and that needs its parts placed.
 	w.focusPending = true
+}
+
+// afterOverlay runs when a dialog or popup the Window hosts has closed. The
+// runtime has already given focus back to where it was when the dialog opened
+// — Qt's rule, and the one the user relies on: About opened from the explorer
+// closes back into the explorer. Only a close that left nothing focused (the
+// control that had it is gone) falls back to the document's `focus: true`.
+func (w *windowNode) afterOverlay() {
+	if w.ctx != nil && w.ctx.FocusWithin(w) {
+		return
+	}
+	w.restoreFocus()
 }
 
 func (w *windowNode) restoreFocus() {
@@ -242,6 +257,9 @@ type menuBarNode struct {
 	rows     []*menuNode
 	triggers map[tui.ActionID]func()
 	byID     map[widget.ItemID]*menuNode
+	// leave gives the keyboard back before a row's onTriggered runs; the
+	// Window that adopts the bar sets it.
+	leave func()
 }
 
 // menuCategory is one top-level Menu's access key.

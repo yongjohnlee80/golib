@@ -280,6 +280,12 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 			// keeps that visible rather than swallowing it.
 			return false
 		}
+		// The keyboard leaves the bar BEFORE the row runs, as Qt's menu bar
+		// hands focus back before a triggered action: a dialog the row opens
+		// then records the pane as where to return, not the bar.
+		if bar.leave != nil {
+			bar.leave()
+		}
 		fn()
 		return true
 	}))
