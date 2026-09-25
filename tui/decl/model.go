@@ -40,9 +40,11 @@ type (
 //   - Thread Affinity: All ItemModel methods and subscription notifications execute on the
 //     application UI loop goroutine. Background worker goroutines must marshal modifications
 //     onto the loop via [Program.Post].
-//   - Key Persistence: Key(ix) must return a persistent, unique identifier for each row.
-//     Views track user selection by row key rather than ordinal index, ensuring that active
-//     selections remain attached to the same record across additions, deletions, and sorts.
+//   - Key Persistence: Key(ix) returns an identifier for the row. Providing an explicit,
+//     stable key (e.g. via the "key" role in ListModel) allows views to preserve user selection
+//     and component identity across insertions, deletions, and moves. If a model falls back
+//     to positional row numbers, inserting or removing items causes subsequent keys to shift,
+//     leaving selection clamped at the ordinal position rather than tracking the original record.
 type ItemModel interface {
 	// RowCount returns the number of rows located under parent (nil for top-level rows).
 	RowCount(parent *Index) int
@@ -61,7 +63,8 @@ type ItemModel interface {
 	// Roles lists all valid role names provided by this model (similar to Qt's roleNames).
 	Roles() []string
 
-	// Key returns a stable, unique identifier for the row at ix.
+	// Key returns an identifier for the row at ix. Explicit unique keys preserve selection across
+	// row additions and removals; positional fallbacks (e.g. row numbers) shift when rows change.
 	Key(ix Index) string
 
 	// Subscribe registers fn to receive model change notifications on the application loop.
