@@ -37,8 +37,6 @@ import (
 // lists its children, InsertChild and RemoveChild move them, Destroy drops
 // them. Children are built before their parents, so a subtree first paints its
 // own roles and is pushed its parent's when the parent is built.
-//
-// ADR-tui-0014 D2.
 
 // palNode is one node's place in the palette tree.
 type palNode struct {

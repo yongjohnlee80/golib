@@ -45,7 +45,7 @@ func TestAWrongColourIsRefusedAndSaysWhatIsAccepted(t *testing.T) {
 
 // TestARoleIsAcceptedOnEveryTypeAndAMisspeltOneRefused: `palette` is on every
 // Qt Item, and a role a widget does not wear still reaches its children — an
-// accent on a Flex dresses the menus inside it (ADR-tui-0014 D2). What IS
+// accent on a Flex dresses the menus inside it. What IS
 // refused is a role that does not exist, by name.
 func TestARoleIsAcceptedOnEveryTypeAndAMisspeltOneRefused(t *testing.T) {
 	for _, src := range []string{
