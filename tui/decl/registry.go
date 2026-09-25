@@ -5,6 +5,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // Build is everything a builder is handed to make one widget.
@@ -38,7 +39,10 @@ type Build struct {
 	// builder wires these into the widget — usually at construction, since some
 	// widgets accept a callback no other way — and must never invent its own
 	// path from a widget event to a handler.
-	Emitters map[string]func() error
+	Emitters map[string]func(args ...qml.SpecValue) error
+	// Files is the filesystem file widgets list: the adapter's, set with
+	// [WithFileSource]; the local disk when unset.
+	Files widget.FileSource
 
 	// sink is where [Build.Emitter] sends a handler error. It belongs to the
 	// Adapter that made this Build rather than to the package, because two
@@ -64,6 +68,22 @@ func (b Build) Emitter(signal string) func() {
 		// one handling this design will not defend: a handler that failed
 		// would otherwise look exactly like one that did nothing.
 		if err := fn(); err != nil && sink != nil {
+			sink(err)
+		}
+	}
+}
+
+// EmitterWith is Emitter for a signal with parameters: `accepted(selectedFile)`
+// is raised as emit(path). The values are passed in the order the type
+// declared its parameters.
+func (b Build) EmitterWith(signal string) func(args ...qml.SpecValue) {
+	fn := b.Emitters[signal]
+	if fn == nil {
+		return func(...qml.SpecValue) {}
+	}
+	sink := b.sink
+	return func(args ...qml.SpecValue) {
+		if err := fn(args...); err != nil && sink != nil {
 			sink(err)
 		}
 	}

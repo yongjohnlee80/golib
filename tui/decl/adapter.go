@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // HostFuncs maps handler names to functions in the host program.
@@ -69,6 +70,8 @@ type Adapter struct {
 	// has no SetOrientation.
 	ctorProps map[string]map[string]bool
 	methods   map[string]map[string]Method
+	signals   map[string]map[string][]string
+	files     widget.FileSource
 	sink      func(error)
 }
 
@@ -177,6 +180,7 @@ func New(reg *Registry, opts ...Option) *Adapter {
 		setters:   map[string]map[string]Setter{},
 		ctorProps: map[string]map[string]bool{},
 		methods:   map[string]map[string]Method{},
+		signals:   map[string]map[string][]string{},
 	}
 	for _, o := range opts {
 		o(a)
@@ -265,6 +269,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		SelfAttached:  attached,
 		FocusNominee:  childNominee,
 		Emitters:      c.Emitters,
+		Files:         a.files,
 		sink:          a.sink,
 	})
 	if err != nil {
@@ -327,3 +332,29 @@ func (a *Adapter) TypeNames() []string {
 }
 
 var _ decl.Vocabulary = (*Adapter)(nil)
+
+// WithSignalParams names the parameters of a type's signals.
+func WithSignalParams(typeName string, signals map[string][]string) Option {
+	return func(a *Adapter) {
+		if a.signals[typeName] == nil {
+			a.signals[typeName] = map[string][]string{}
+		}
+		for sig, params := range signals {
+			a.signals[typeName][sig] = params
+		}
+	}
+}
+
+// SignalParams implements [decl.SignalParameters].
+func (a *Adapter) SignalParams(typeName, signal string) []string {
+	return a.signals[typeName][signal]
+}
+
+var _ decl.SignalParameters = (*Adapter)(nil)
+
+// WithFileSource sets the filesystem the file dialogs list: any fs.FS, a
+// remote one included, with the root its paths are written under. Unset, they
+// list the local disk.
+func WithFileSource(src widget.FileSource) Option {
+	return func(a *Adapter) { a.files = src }
+}

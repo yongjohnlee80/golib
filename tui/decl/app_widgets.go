@@ -46,12 +46,16 @@ func appTypes() []widgetType {
 			}},
 		{name: "MenuSeparator", build: buildMenuSeparator},
 		{name: "Shortcut", build: buildShortcut, ctor: []string{"sequence"}},
+		{name: "FileDialog", build: buildFileDialog,
+			ctor: append([]string{"title", "helpText", "dim", "fileMode", "preview"}, paletteProps(fileDialogRoles)...),
+			setters: map[string]Setter{
+				"currentFolder": setter("a FileDialog", stringOf, (*dialogNode).setFolder),
+			},
+			methods: dialogMethods,
+			signals: map[string][]string{"accepted": {"selectedFile"}}},
 		{name: "Dialog", build: buildDialog,
-			ctor: append([]string{"title", "helpText", "dim", "standardButtons"}, paletteProps(dialogRoles)...),
-			methods: map[string]Method{
-				"open":  method("a Dialog", (*dialogNode).open),
-				"close": method("a Dialog", (*dialogNode).close),
-			}},
+			ctor:    append([]string{"title", "helpText", "dim", "standardButtons"}, paletteProps(dialogRoles)...),
+			methods: dialogMethods},
 	}
 }
 
@@ -163,4 +167,10 @@ func buildStatusBar(b Build) (tui.Component, []string, error) {
 // colours every segment.
 func statusSegment(set func(*widget.StatusBar, string, ...style.Style)) func(*widget.StatusBar, string) {
 	return func(sb *widget.StatusBar, text string) { set(sb, text) }
+}
+
+// dialogMethods are what a handler can call on any dialog by its id.
+var dialogMethods = map[string]Method{
+	"open":  method("a dialog", (*dialogNode).open),
+	"close": method("a dialog", (*dialogNode).close),
 }

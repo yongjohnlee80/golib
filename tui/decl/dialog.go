@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -64,16 +65,34 @@ var dialogButtons = func() flagSet {
 	return f
 }()
 
-// dialogNode is the component a Dialog declaration builds. It takes no place in
-// the layout: its Window gives it the overlay host, and it opens there.
+// dialogNode is the component a Dialog or FileDialog declaration builds. It
+// takes no place in the layout: its Window gives it the overlay host, and it
+// opens there.
 type dialogNode struct {
 	modal *widget.Modal
 	host  *widget.OverlayHost
 	// afterClose is the Window's, run once the dialog has gone: the keyboard
 	// goes back to where the document says it lives.
 	afterClose func()
+	hooks      dialogHooks
+	// chooser is a FileDialog's body, nil for a Dialog.
+	chooser widget.FileChooser
 
-	accepted, rejected, closed func()
+	accepted         func(args ...qml.SpecValue)
+	rejected, closed func()
+}
+
+// dialogHooks are what a KIND of dialog adds to the one lifecycle every dialog
+// shares. Each is optional; a plain Dialog uses none.
+type dialogHooks struct {
+	// gate says whether an accepting button may accept NOW. A file dialog's
+	// Open on a folder opens the folder instead, and stays.
+	gate func() bool
+	// opened runs once the dialog is up — to put the keyboard in the right
+	// place inside it, say.
+	opened func()
+	// acceptArgs are the parameters `accepted` is raised with.
+	acceptArgs func() []qml.SpecValue
 }
 
 func (*dialogNode) Init(*tui.Context)               {}
@@ -92,7 +111,13 @@ func (d *dialogNode) open() error {
 	if d.modal.IsOpen() {
 		return nil
 	}
-	return d.modal.Open(d.host)
+	if err := d.modal.Open(d.host); err != nil {
+		return err
+	}
+	if d.hooks.opened != nil {
+		d.hooks.opened()
+	}
+	return nil
 }
 
 // close hides the dialog without answering it.
@@ -101,12 +126,19 @@ func (d *dialogNode) close() error {
 	return nil
 }
 
+// accept closes the dialog with the affirmative answer.
+func (d *dialogNode) accept() { d.modal.Dismiss(widget.DismissAccept) }
+
 // dismissed is the ONE place a way out becomes an answer. Buttons dismiss with
 // their answer, Escape arrives here on its own, and close() with neither.
 func (d *dialogNode) dismissed(reason widget.DismissReason) {
 	switch reason {
 	case widget.DismissAccept:
-		d.accepted()
+		var args []qml.SpecValue
+		if d.hooks.acceptArgs != nil {
+			args = d.hooks.acceptArgs()
+		}
+		d.accepted(args...)
 	case widget.DismissCancel, widget.DismissEscape:
 		d.rejected()
 	}
@@ -116,44 +148,44 @@ func (d *dialogNode) dismissed(reason widget.DismissReason) {
 	}
 }
 
-func buildDialog(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 1 {
-		return nil, nil, fmt.Errorf("Dialog needs exactly 1 child, its content, got %d (at %s)",
-			len(b.Children), b.Pos)
-	}
-	var title, help string
-	var flags int64
-	dim := true
-	p := palette{}
-	consumed, err := readProps(b.Props, withPalette(map[string]field{
-		"title":           into(&title, stringOf),
-		"helpText":        into(&help, stringOf),
-		"dim":             into(&dim, boolOf),
-		"standardButtons": into(&flags, dialogButtons.read),
-	}, p, dialogRoles))
-	if err != nil {
-		return nil, nil, err
-	}
+// dialogSpec is everything one dialog is built from, whatever kind it is.
+type dialogSpec struct {
+	body        tui.Component
+	title, help string
+	dim         bool
+	align       widget.ButtonAlign
+	// buttons are laid out in this order.
+	buttons []standardButton
+	p       palette
+	hooks   dialogHooks
+}
+
+// newDialog is the ONE construction of a dialog: its buttons and what each
+// does, its card, and its lifecycle. Dialog and FileDialog differ only in the
+// spec they hand it, so a way out cannot behave differently in one of them.
+func newDialog(b Build, s dialogSpec) *dialogNode {
 	d := &dialogNode{
-		accepted: b.Emitter("accepted"),
+		hooks:    s.hooks,
+		accepted: b.EmitterWith("accepted"),
 		rejected: b.Emitter("rejected"),
 		closed:   b.Emitter("closed"),
 	}
-	cardStyle, buttonStyle := p.dialogStyles()
-	var buttons []*widget.Button
-	for _, sb := range dialogStandardButtons {
-		if flags&sb.bit == 0 {
-			continue
-		}
+	cardStyle, buttonStyle := s.p.dialogStyles()
+	buttons := make([]*widget.Button, 0, len(s.buttons))
+	for _, sb := range s.buttons {
 		label, key, _ := mnemonic(sb.label)
-		role, reason := widget.ButtonRoleCancel, widget.DismissCancel
+		role, press := widget.ButtonRoleCancel, func() { d.modal.Dismiss(widget.DismissCancel) }
 		if sb.accept {
-			role, reason = widget.ButtonRoleDefault, widget.DismissAccept
+			role, press = widget.ButtonRoleDefault, func() {
+				if d.hooks.gate == nil || d.hooks.gate() {
+					d.accept()
+				}
+			}
 		}
 		opts := []widget.ButtonOption{
 			widget.WithRole(role),
 			widget.WithMnemonic(key),
-			widget.WithOnActivate(func() { d.modal.Dismiss(reason) }),
+			widget.WithOnActivate(press),
 		}
 		if buttonStyle != nil {
 			opts = append(opts, widget.WithButtonStyle(buttonStyle))
@@ -161,18 +193,43 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 		buttons = append(buttons, widget.NewButton(label, opts...))
 	}
 	opts := []widget.ModalOption{
-		widget.WithModalTitle(title),
+		widget.WithModalTitle(s.title),
 		widget.WithButtons(buttons...),
 		widget.WithModalRule(len(buttons) > 0),
-		widget.WithScrim(dim),
+		widget.WithScrim(s.dim),
+		widget.WithButtonAlign(s.align),
 		widget.WithOnDismiss(d.dismissed),
 	}
-	if help != "" {
-		opts = append(opts, widget.WithModalFooter(help))
+	if s.help != "" {
+		opts = append(opts, widget.WithModalFooter(s.help))
 	}
 	if cardStyle != nil {
 		opts = append(opts, widget.WithModalStyle(cardStyle))
 	}
-	d.modal = widget.NewModal(b.Children[0], opts...)
-	return d, consumed, nil
+	d.modal = widget.NewModal(s.body, opts...)
+	return d
+}
+
+func buildDialog(b Build) (tui.Component, []string, error) {
+	if len(b.Children) != 1 {
+		return nil, nil, fmt.Errorf("Dialog needs exactly 1 child, its content, got %d (at %s)",
+			len(b.Children), b.Pos)
+	}
+	s := dialogSpec{body: b.Children[0], dim: true, align: widget.ButtonsCenter, p: palette{}}
+	var flags int64
+	consumed, err := readProps(b.Props, withPalette(map[string]field{
+		"title":           into(&s.title, stringOf),
+		"helpText":        into(&s.help, stringOf),
+		"dim":             into(&s.dim, boolOf),
+		"standardButtons": into(&flags, dialogButtons.read),
+	}, s.p, dialogRoles))
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, sb := range dialogStandardButtons {
+		if flags&sb.bit != 0 {
+			s.buttons = append(s.buttons, sb)
+		}
+	}
+	return newDialog(b, s), consumed, nil
 }

@@ -32,6 +32,8 @@ import (
 //	highlight, highlightedText   the selected row, or the frame that has focus
 //	accent                       the menu's access-key letter
 //	button, buttonText           a button nobody is on
+//	inactive.highlight, …Text    the selected row of a pane not in use
+//	mid, light                   a pane's frame, without and with the keyboard
 //
 // A widget type states WHICH roles it takes; the reading, the colour syntax and
 // the looks they combine into are written once, below.
@@ -49,6 +51,13 @@ const (
 	roleAccent          role = "accent"
 	roleButton          role = "button"
 	roleButtonText      role = "buttonText"
+	// The INACTIVE group: Qt's colours for a part without the keyboard. Here,
+	// the cursor row of a list whose pane is not the one in use.
+	roleInactiveHighlight     role = "inactive.highlight"
+	roleInactiveHighlightText role = "inactive.highlightedText"
+	// mid and light frame a pane: mid without the keyboard, light with it.
+	roleMid   role = "mid"
+	roleLight role = "light"
 )
 
 // palette is the roles one declaration set.
@@ -180,7 +189,25 @@ var (
 	textRoles   = []role{roleWindow, roleWindowText}
 	dialogRoles = []role{roleWindow, roleWindowText, roleButton, roleButtonText,
 		roleHighlight, roleHighlightedText}
+	fileDialogRoles = append(append([]role(nil), dialogRoles...),
+		roleBase, roleText, roleInactiveHighlight, roleInactiveHighlightText, roleMid, roleLight)
 )
+
+// browserStyles dress a FileDialog's browser: its panes on base, the cursor on
+// highlight while the list has the keyboard and on the inactive highlight once
+// it has not, and each pane framed in mid, or light while it is in use.
+func (p palette) browserStyles() (widget.FilePaneStyles, bool) {
+	if !p.has(roleBase, roleText, roleInactiveHighlight, roleInactiveHighlightText, roleMid, roleLight) {
+		return widget.FilePaneStyles{}, false
+	}
+	return widget.FilePaneStyles{
+		Surface:       p.look(roleBase, roleText),
+		Cursor:        p.look(roleHighlight, roleHighlightedText),
+		CursorBlurred: p.look(roleInactiveHighlight, roleInactiveHighlightText),
+		Border:        p.look(roleBase, roleMid),
+		FocusedBorder: p.look(roleBase, roleLight),
+	}, true
+}
 
 // dialogStyles dress a Dialog: the card on window, its buttons on button, and
 // the focused one on highlight. Either is nil when its roles were not set.
