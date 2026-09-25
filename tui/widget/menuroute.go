@@ -685,7 +685,8 @@ func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState
 	}
 }
 
-// paintLabel draws the label, underlining the mnemonic's grapheme cluster.
+// paintLabel draws the label, marking the mnemonic's grapheme cluster with the
+// style's hotkey look.
 //
 // Cluster-indexed rather than byte- or rune-indexed, because that is the unit a
 // reader sees: an accented letter is one cluster and may be several runes, and
@@ -695,7 +696,7 @@ func (m *Menu) paintLabel(s tui.Surface, it MenuItemModel, x, y int, base style.
 	for cluster := range tui.Graphemes(it.Label) {
 		st := base
 		if it.Hotkey != 0 && i == it.HotkeyIdx {
-			st = base.Underline(true)
+			st = m.style.Hotkey().Inherit(base)
 		}
 		s.SetCell(x, y, cluster, st)
 		x += s.StringWidth(cluster)
