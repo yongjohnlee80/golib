@@ -111,9 +111,11 @@ func NewButton(label string, opts ...ButtonOption) *Button {
 	return b
 }
 
-// WithAutoDefault is Qt's QPushButton.autoDefault: whether Enter presses the
-// button while it has focus. True by default. Space always presses a focused
-// button, since Space is the button's own key.
+// WithAutoDefault sets whether Enter presses the button while it has focus.
+// True by default. The name comes from Qt Widgets' QPushButton.autoDefault;
+// the false case matches Qt Quick Controls, whose AbstractButton has no such
+// property and activates on Space only. Space always presses a focused button,
+// since Space is the button's own key.
 //
 // Enter is a container's key as much as a button's — a dialog's "answer" — so
 // a button that is not auto-default leaves Enter unclaimed, and it bubbles to
