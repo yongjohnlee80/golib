@@ -253,7 +253,9 @@ Enter reaches the dialog only when the focused control leaves it: a
 form answers from its last field; a value its validator refuses holds Enter. A
 `ComboBox`, a list or a table keeps Enter — it opens, chooses or activates.
 Focus starts on the first control in Tab order: an input dialog's first field,
-a message's first button.
+a message's first button. When the dialog closes, the keyboard goes back to
+where it was when it opened, as Qt's does; only a close that left nothing
+focused falls back to the Window's `focus: true` item.
 
 ### Palette roles
 

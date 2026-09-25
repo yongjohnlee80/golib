@@ -319,3 +319,27 @@ func TestADialogStartsOnAComboBoxThatComesFirst(t *testing.T) {
 		t.Fatalf("a letter typed as the dialog opened went into the field, not the ComboBox:\n%s", s.String())
 	}
 }
+
+// A dialog closes back to where the keyboard was when it opened, not to the
+// document's `focus: true`: opened from the second field, Esc leaves the
+// keyboard in the second field.
+func TestADialogClosesBackToWhereFocusWas(t *testing.T) {
+	s := decltest.Run(t, 40, 14,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			" Flex { direction: Tui.Vertical\n  TextField { id: first; focus: true }\n  TextField { id: second } }\n"+
+			" Shortcut { sequence: \"Ctrl+O\"; onActivated: d.open() }\n"+
+			" Dialog { id: d; title: \"Q\"; standardButtons: Dialog.Ok; Text { text: \"hello\" } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Types(controls.Types()...))
+	s.Keys(t, decltest.Rune('a'), tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, decltest.Rune('b')) // a in first, b in second
+	s.WaitFor(t, "typed into both", func(sc string) bool { return strings.Contains(sc, "a") && strings.Contains(sc, "b") })
+	s.Keys(t, decltest.Ctrl('o'))
+	s.WaitForText(t, "┌ Q ")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	s.WaitFor(t, "closed", func(sc string) bool { return !strings.Contains(sc, "┌ Q ") })
+	s.Keys(t, decltest.Rune('c'))
+	s.WaitFor(t, "c typed after the close", func(sc string) bool { return strings.Contains(sc, "bc") || strings.Contains(sc, "ac") })
+	if !strings.Contains(s.String(), "bc") {
+		t.Errorf("the dialog closed back to the document's focus: true, not to the second field:\n%s", s.String())
+	}
+}
