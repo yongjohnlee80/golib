@@ -60,8 +60,8 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
   `quitDialog.open()` opens one; its buttons, letters and Escape close it; the
   file says only what an answer does.
 - **Widgets come from a vocabulary, including golib's own additions.** The
-  prompt is Qt Quick Controls' `Popup` and `TextField`, from
-  `tui/decl/controls`, added with `tuidecl.Types(controls.Types()...)` — the
+  prompt is a `Dialog` — like About: the field, a rule, the help line — holding
+  Qt Quick Controls' `TextField`, from `tui/decl/controls`, added with `tuidecl.Types(controls.Types()...)` — the
   way a program adds widgets of its own.
 - **The host decides what a document cannot.** Save opens the Save dialog only
   when the buffer has no name — `h.p.Call("saveDialog", "open")` — because QML

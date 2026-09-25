@@ -121,6 +121,13 @@ func WithModalRule(v bool) ModalOption {
 	return func(m *Modal) { m.card.rule = v }
 }
 
+// WithModalWidth sets the card's width in cells, frame included, where it
+// would otherwise take its content's: a prompt whose field would fill the
+// screen. Clamped to the host; 0 is the content's width.
+func WithModalWidth(w int) ModalOption {
+	return func(m *Modal) { m.card.width = max(w, 0) }
+}
+
 // WithModalFooter sets a line of help text under the buttons — the keys the
 // dialog answers to, say. It belongs to the CARD, not the body, so the buttons
 // stay the card's and keep their mnemonics: a body cannot resolve a bare
@@ -295,7 +302,9 @@ func (m *Modal) SetButtons(b ...*Button) error {
 }
 
 // InitialFocus nominates where focus belongs inside this dialog: the enabled
-// Default-role button, else the first enabled button, else the Modal node.
+// Default-role button, else the first enabled button, else the first control
+// in the body that takes focus — a prompt's field, as a Qt Dialog's content
+// takes it — else the Modal node.
 //
 // The DEFAULT ROLE IS PREFERRED UNCONDITIONALLY, not as a tie-break. A dialog's
 // affirmative action is where a user expects to land, and choosing it only when
@@ -319,6 +328,9 @@ func (m *Modal) InitialFocus() (tui.Component, bool) {
 		if b != nil && b.Enabled() {
 			return b, true
 		}
+	}
+	if f := firstFocusable(m.card.body); f != nil {
+		return f, true
 	}
 	return m, true
 }
@@ -492,13 +504,16 @@ func (m *Modal) TrapsFocus() bool { return true }
 
 // AcceptsFocus reports whether the Modal NODE itself is a focus target.
 //
-// True exactly when the dialog owns no enabled button. The ring inside a trap
-// must never be empty: with every button disabled and the Modal refusing focus
-// too, there would be nothing focusable inside the trap and Escape would become
-// unreachable — the dialog would be inert and uncloseable by keyboard. So the
-// Modal steps in as the target of last resort, and steps out again as soon as a
-// real control is available.
-func (m *Modal) AcceptsFocus() bool { return m.enabledButtonCount() == 0 }
+// True exactly when the dialog owns no enabled button and its body no control
+// that takes focus. The ring inside a trap must never be empty: with every
+// button disabled and the Modal refusing focus too, there would be nothing
+// focusable inside the trap and Escape would become unreachable — the dialog
+// would be inert and uncloseable by keyboard. So the Modal steps in as the
+// target of last resort, and steps out again as soon as a real control is
+// available.
+func (m *Modal) AcceptsFocus() bool {
+	return m.enabledButtonCount() == 0 && firstFocusable(m.card.body) == nil
+}
 
 // enabledButtonCount counts the buttons that can currently be activated.
 func (m *Modal) enabledButtonCount() int {

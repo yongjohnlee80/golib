@@ -25,6 +25,9 @@ type modalCard struct {
 	// beneath the buttons.
 	rule   bool
 	footer string
+	// width is the card's own width, frame included; 0 sizes it to its
+	// content.
+	width int
 	// ruleY is the row the rule was laid out on, for Render; -1 for none.
 	ruleY int
 }
@@ -145,6 +148,11 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	frame := 2 * (border + pad)
 
 	inner := tui.Size{W: max(cs.MaxW-frame, 0), H: max(cs.MaxH-frame, 0)}
+	if c.width > 0 {
+		// A set width is the room the body is offered — a field fills it —
+		// and never more than the host has.
+		inner.W = min(max(c.width-frame, 0), inner.W)
+	}
 
 	// Buttons first: they are the floor the body has to fit above, so measuring
 	// them second would let a tall body squeeze them out of the card entirely.
@@ -163,7 +171,8 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 		btnW-- // no trailing gap after the last button
 	}
 
-	// A BLANK LINE BETWEEN THE MESSAGE AND THE CONTROLS, when there are both.
+	// A BLANK LINE BETWEEN THE MESSAGE AND WHAT FOLLOWS IT — the controls, or,
+	// with none, the help line — when there are both.
 	// Without it the buttons sit directly under the last line of prose and read
 	// as part of it, which is how a confirmation ends up looking like a
 	// sentence with two words highlighted.
@@ -171,7 +180,7 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	// A RULE takes the blank line's place and a row either side of it: the
 	// line is the separation, and prose touching it would read as underlined.
 	gap := 0
-	if c.body != nil && btnH > 0 {
+	if c.body != nil && (btnH > 0 || c.footer != "") {
 		gap = 1
 		if c.rule {
 			gap = 3
@@ -196,6 +205,9 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	}
 
 	contentW := max(bodyW, btnW, footW, c.measure(c.title))
+	if c.width > 0 {
+		contentW = inner.W
+	}
 	contentH := bodyH + gap + btnH + footH
 	size := tui.Size{W: contentW + frame, H: contentH + frame}
 	size = cs.Constrain(size)

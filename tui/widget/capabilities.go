@@ -61,6 +61,32 @@ type childLister interface {
 	listChildren() []tui.Component
 }
 
+// firstFocusable is the first component of c's subtree, in document order,
+// that is Focusable and accepts focus; nil for none.
+func firstFocusable(c tui.Component) tui.Component {
+	if c == nil {
+		return nil
+	}
+	if f, ok := c.(tui.Focusable); ok && f.AcceptsFocus() {
+		return c
+	}
+	switch ct := c.(type) {
+	case tui.Container:
+		for ch := range ct.Children() {
+			if f := firstFocusable(ch); f != nil {
+				return f
+			}
+		}
+	case childLister:
+		for _, ch := range ct.listChildren() {
+			if f := firstFocusable(ch); f != nil {
+				return f
+			}
+		}
+	}
+	return nil
+}
+
 // focusFirst walks c's subtree in document order and focuses the first
 // package widget that is Focusable and accepts focus. Used by Float to seed
 // focus into a freshly shown modal, and by Split to restore focus after zoom changes.

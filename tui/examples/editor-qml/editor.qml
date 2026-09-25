@@ -168,21 +168,20 @@ Window {
 
     // ---- the command prompt ---------------------------------------------
     //
-    // Qt Quick Controls' Popup and TextField (golib's tui/decl/controls): a
-    // modal Popup takes the keyboard while open and gives it back when
-    // closed; Escape closes it. It names no colour — the frame wears the
-    // application palette, the field its panes' base, both inherited.
-    Popup {
+    // A Dialog, like About: the field, a rule, and the help line under it.
+    // With no buttons, Enter is the field's and Escape the dialog's; the host
+    // closes it once a command has run. `width` keeps it a prompt — a
+    // TextField fills whatever it is given. It names no colour: the card wears
+    // the application palette, the field its panes' base, both inherited.
+    Dialog {
         id: prompt
-        modal: true
+        title: "Command"
+        width: 48
+        helpText: "w  q  wq  e <file>      Enter runs, Esc closes"
         onOpened: command.clear()
-        Frame {
-            title: "Command"
-            TextField {
-                id: command
-                placeholderText: "w  q  wq  e <file>"
-                onAccepted: App.runCommand(text)
-            }
+        TextField {
+            id: command
+            onAccepted: App.runCommand(text)
         }
     }
 

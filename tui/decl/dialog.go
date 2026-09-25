@@ -32,9 +32,14 @@ import (
 //	a rejecting button, or Escape            rejected, then closed
 //	close() from a handler                   closed only — nobody answered
 //
+// Opening raises `opened`, as Qt's Popup does: a prompt clearing its field.
+//
 // Its look is the card golib draws — the title in the frame, the message, a
 // rule, the buttons, and an optional `helpText` under them — coloured through
-// the palette roles like every other widget.
+// the palette roles like every other widget. With no buttons, the rule
+// separates the message from the help line. It is as wide as its content,
+// unless `width` — Qt's Popup.width, in cells — says otherwise: a dialog
+// holding a TextField, which fills whatever it is given.
 
 // standardButton is one of Qt's standard buttons: its flag, its label with the
 // mnemonic Qt gives it, and whether choosing it accepts.
@@ -80,8 +85,8 @@ type dialogNode struct {
 	chooser  widget.FileChooser
 	selected string
 
-	accepted         func(args ...qml.SpecValue)
-	rejected, closed func()
+	accepted                 func(args ...qml.SpecValue)
+	opened, rejected, closed func()
 }
 
 // dialogHooks are what a KIND of dialog adds to the one lifecycle every dialog
@@ -139,6 +144,7 @@ func (d *dialogNode) open() error {
 	if d.hooks.opened != nil {
 		d.hooks.opened()
 	}
+	d.opened()
 	return nil
 }
 
@@ -175,6 +181,7 @@ type dialogSpec struct {
 	body        tui.Component
 	title, help string
 	dim         bool
+	width       int
 	align       widget.ButtonAlign
 	// buttons are laid out in this order.
 	buttons []standardButton
@@ -191,6 +198,7 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 		host:     b.Overlay,
 		hooks:    s.hooks,
 		accepted: b.EmitterWith("accepted"),
+		opened:   b.Emitter("opened"),
 		rejected: b.Emitter("rejected"),
 		closed:   b.Emitter("closed"),
 	}
@@ -215,7 +223,8 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	opts := []widget.ModalOption{
 		widget.WithModalTitle(s.title),
 		widget.WithButtons(buttons...),
-		widget.WithModalRule(len(buttons) > 0),
+		widget.WithModalRule(len(buttons) > 0 || s.help != ""),
+		widget.WithModalWidth(s.width),
 		widget.WithScrim(s.dim),
 		widget.WithButtonAlign(s.align),
 		widget.WithOnDismiss(d.dismissed),
@@ -238,6 +247,7 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 		"title":           into(&s.title, stringOf),
 		"helpText":        into(&s.help, stringOf),
 		"dim":             into(&s.dim, boolOf),
+		"width":           into(&s.width, cellsOf),
 		"standardButtons": into(&flags, dialogButtons.read),
 	})
 	if err != nil {
@@ -249,4 +259,16 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 		}
 	}
 	return newDialog(b, s), consumed, nil
+}
+
+// cellsOf reads a size in cells: a whole number, not negative.
+func cellsOf(v qml.SpecValue) (int, error) {
+	n, err := numberOf(v)
+	if err != nil {
+		return 0, err
+	}
+	if n < 0 || n != float64(int(n)) {
+		return 0, fmt.Errorf("want a whole number of cells, got %s (at %s)", v.Raw, v.Pos)
+	}
+	return int(n), nil
 }
