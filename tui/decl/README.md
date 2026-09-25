@@ -82,7 +82,17 @@ change at runtime, which is what makes it bindable to a source.
 | `Split` | `orientation` | `ratio` | — | — |
 | `Flex` | `direction` | — | — | — |
 | `Dialog` | `dim`, `width`, `standardButtons`, palette | `title`, `helpText` | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
+| `ListView` | `textRole` | `model`, `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
+| `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model` | `activated(index)` | — |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
+
+**Models** — Qt's model/view. A host sets a `tuidecl.ListModel` (or its own
+`tuidecl.ItemModel`) as a source; `model: App.people` binds a view to it, and
+the view follows the model's changes itself — insert, remove, reset — with
+nothing rebound. Roles are typed (a string, bool or number). A handler reads a
+view by its id when it runs: `listView.currentIndex`, `combo.currentValue`
+(the chosen row's `valueRole`). A view drops its subscription when the model
+is replaced and when the view is destroyed.
 
 **Every element that takes a place on screen has `visible`** — Qt's
 `Item.visible`, a runtime property: hidden, it takes no space, is not painted

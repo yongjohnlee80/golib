@@ -51,7 +51,9 @@ func StdRegistry() *Registry {
 func StdProperties() []Option { return typeOptions(stdTypes()) }
 
 // stdTypes is every standard widget type, in one table.
-func stdTypes() []Type { return append(coreTypes(), appTypes()...) }
+func stdTypes() []Type {
+	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType)
+}
 
 // tuiEnums is every enum the standard vocabulary accepts. The Tui singleton's
 // constants are derived from it, so a new enum is visible to documents by being

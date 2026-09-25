@@ -123,6 +123,12 @@ const (
 	// refused, so a consumer that cannot evaluate an expression declines it by
 	// name and position instead of the parser pretending the syntax is invalid.
 	SpecValueExpr
+	// SpecValueObject is a HOST object carried as a value — a data model a
+	// view shows, the index of a row a view raised a signal for. The parser
+	// never produces one: a document cannot write an object, only name one a
+	// host provides. Obj holds it; two object values are the same value
+	// exactly when they hold the same object.
+	SpecValueObject
 )
 
 // String renders the kind for diagnostics.
@@ -140,6 +146,8 @@ func (k SpecValueKind) String() string {
 		return "call"
 	case SpecValueExpr:
 		return "expression"
+	case SpecValueObject:
+		return "object"
 	default:
 		return "invalid"
 	}
@@ -167,7 +175,9 @@ type SpecValue struct {
 	// value, so nothing downstream can read two answers to the same question
 	// and no projection can drift from the tree it came from.
 	Expr *js.Expr
-	Pos  parse.Position
+	// Obj is the host object of a SpecValueObject, nil for every other kind.
+	Obj any
+	Pos parse.Position
 }
 
 // SpecProp is one `name: value` pair.

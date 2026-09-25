@@ -1285,6 +1285,9 @@ func sameSequence(a, b []qml.SpecValue) bool {
 // moves it, and re-running every setter in a file because of that would make a
 // reload lose state for an edit that changed nothing.
 func sameValue(a, b qml.SpecValue) bool {
+	if a.Kind == qml.SpecValueObject || b.Kind == qml.SpecValueObject {
+		return a.Kind == b.Kind && sameObject(a.Obj, b.Obj)
+	}
 	if a.Kind != b.Kind || a.Raw != b.Raw || len(a.Args) != len(b.Args) {
 		return false
 	}
@@ -1329,4 +1332,16 @@ func indexOfID(ids []NodeID, id NodeID) int {
 		}
 	}
 	return -1
+}
+
+// sameObject is object identity: the same dynamic type holding the same
+// object. A type that cannot be compared is never the same — it is not an
+// object anyone could hold twice.
+func sameObject(a, b any) (same bool) {
+	defer func() {
+		if recover() != nil {
+			same = false
+		}
+	}()
+	return a == b
 }
