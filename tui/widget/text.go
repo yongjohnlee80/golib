@@ -146,12 +146,16 @@ func (t *Text) Layout(c tui.Constraints) tui.Size {
 		}
 		return c.Constrain(tui.Size{W: w, H: 1})
 	}
-	w := c.MaxW
-	if w == tui.Unbounded {
-		w = 0
-		for _, ln := range t.lines() {
-			w = max(w, t.measure(ln))
-		}
+	// The widest line, capped at the offered width. A wrapped Text that
+	// reported MaxW whatever it held claimed columns it never draws in, so
+	// anything sized to its content — a dialog's card — grew to the width of
+	// the screen around three short lines.
+	w := 0
+	for _, ln := range t.lines() {
+		w = max(w, t.measure(ln))
+	}
+	if c.MaxW != tui.Unbounded {
+		w = min(w, c.MaxW)
 	}
 	h := 0
 	for _, ln := range t.lines() {

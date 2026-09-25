@@ -114,6 +114,22 @@ func WithModalTitle(s string) ModalOption {
 	return func(m *Modal) { m.card.title = s }
 }
 
+// WithModalRule draws a line across the card between the body and the buttons,
+// joined to the frame at both ends: the message above it, the decision below.
+// Without it the two are separated by a blank line.
+func WithModalRule(v bool) ModalOption {
+	return func(m *Modal) { m.card.rule = v }
+}
+
+// WithModalFooter sets a line of help text under the buttons — the keys the
+// dialog answers to, say. It belongs to the CARD, not the body, so the buttons
+// stay the card's and keep their mnemonics: a body cannot resolve a bare
+// letter, which is what moving the buttons into one to get a footer below
+// them used to cost.
+func WithModalFooter(text string) ModalOption {
+	return func(m *Modal) { m.card.footer = text }
+}
+
 // WithModalStyle associates a style. The Modal does not own it; several dialogs
 // may share one.
 func WithModalStyle(s *ModalStyle) ModalOption {

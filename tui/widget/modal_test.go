@@ -825,3 +825,75 @@ func TestTabTraversalStaysAmongTheDialogsButtons(t *testing.T) {
 			"dialog is not cycling", seen["A"], seen["B"])
 	}
 }
+
+// TestARuledDialogSeparatesItsMessageFromItsDecision: the rule joins the frame,
+// sits between the body and the buttons with a row either side, and the footer
+// is the last row inside the card, faded, one blank row under the buttons.
+func TestARuledDialogSeparatesItsMessageFromItsDecision(t *testing.T) {
+	yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleDefault), widget.WithMnemonic('y'))
+	var pressed atomic.Bool
+	no := widget.NewButton("No", widget.WithRole(widget.ButtonRoleCancel), widget.WithMnemonic('n'),
+		widget.WithOnActivate(func() { pressed.Store(true) }))
+	m := widget.NewModal(widget.NewText("Are you sure to quit?"),
+		widget.WithModalTitle("Quit"), widget.WithButtons(yes, no),
+		widget.WithModalRule(true), widget.WithModalFooter("y/n to choose"))
+	h, host, _ := modalFixture(t, m, 50, 16)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	rows := strings.Split(h.tb.String(), "\n")
+	find := func(sub string) int {
+		for i, r := range rows {
+			if strings.Contains(r, sub) {
+				return i
+			}
+		}
+		t.Fatalf("%q is not on screen:\n%s", sub, h.tb.String())
+		return -1
+	}
+	msg, rule, btns, foot := find("Are you sure"), find("├"), find("Yes"), find("y/n to choose")
+	if rule != msg+2 || btns != rule+2 || foot != btns+2 {
+		t.Fatalf("rows: message %d, rule %d, buttons %d, footer %d; want each two below the last:\n%s",
+			msg, rule, btns, foot, h.tb.String())
+	}
+	line := strings.TrimSpace(rows[rule])
+	if !strings.HasPrefix(line, "├") || !strings.HasSuffix(line, "┤") ||
+		strings.Trim(line, "├─┤") != "" {
+		t.Errorf("the rule is %q, want a line joined to the frame at both ends", line)
+	}
+	inside := strings.TrimSpace(strings.Trim(strings.TrimSpace(rows[foot+1]), "│"))
+	if !strings.Contains(rows[foot+2], "└") || inside != "" {
+		t.Errorf("the footer is not the last content row above the bottom padding:\n%s", h.tb.String())
+	}
+	x := strings.Index(rows[foot], "y/n")
+	x = len([]rune(rows[foot][:x]))
+	if a := h.tb.Snapshot()[foot][x].Attrs; a.Mask&tui.AttrFaint == 0 {
+		t.Errorf("the footer is not faded: %+v", a)
+	}
+
+	// The buttons are still the CARD's: a bare `n` presses No.
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'n'})
+	h.settle()
+	if !pressed.Load() {
+		t.Error("a bare n did not reach the No button's mnemonic")
+	}
+}
+
+// TestADialogWithoutARuleKeepsItsBlankLine: the option is additive.
+func TestADialogWithoutARuleKeepsItsBlankLine(t *testing.T) {
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
+	h, host, _ := modalFixture(t, m, 40, 12)
+	defer h.stop()
+	openOn(t, h, m, host)
+	s := h.tb.String()
+	if strings.Contains(s, "├") {
+		t.Errorf("a dialog that asked for no rule drew one:\n%s", s)
+	}
+	rows := strings.Split(s, "\n")
+	for i, r := range rows {
+		if strings.Contains(r, "Body") && !strings.Contains(rows[i+2], "OK") {
+			t.Errorf("the buttons are not one blank row under the body:\n%s", s)
+		}
+	}
+}

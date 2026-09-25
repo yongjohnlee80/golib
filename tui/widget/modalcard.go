@@ -7,7 +7,7 @@ import (
 )
 
 // modalCard is the visible panel of a dialog: border, optional title, the
-// caller's body, and a row of buttons.
+// caller's body, an optional rule, a row of buttons, and an optional footer.
 //
 // It is NOT focusable and never will be. Focus belongs to the buttons inside it
 // or, when there are none to take it, to the Modal itself; a focusable card
@@ -21,10 +21,16 @@ type modalCard struct {
 	title   string
 	st      *ModalStyle
 	align   ButtonAlign
+	// rule draws a line between the body and the buttons; footer is a help line
+	// beneath the buttons.
+	rule   bool
+	footer string
+	// ruleY is the row the rule was laid out on, for Render; -1 for none.
+	ruleY int
 }
 
 func newModalCard(body tui.Component) *modalCard {
-	return &modalCard{body: body}
+	return &modalCard{body: body, ruleY: -1}
 }
 
 // Init mounts the body and the buttons. Mounting them here rather than in Modal
@@ -161,29 +167,48 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	// Without it the buttons sit directly under the last line of prose and read
 	// as part of it, which is how a confirmation ends up looking like a
 	// sentence with two words highlighted.
+	//
+	// A RULE takes the blank line's place and a row either side of it: the
+	// line is the separation, and prose touching it would read as underlined.
 	gap := 0
 	if c.body != nil && btnH > 0 {
 		gap = 1
+		if c.rule {
+			gap = 3
+		}
+	}
+	// The footer sits one blank row under the buttons, so it reads as the
+	// footer of the whole card rather than a caption on the button row.
+	footH, footW := 0, 0
+	if c.footer != "" {
+		footH, footW = 2, c.measure(c.footer)
+		if btnH == 0 {
+			footH = 1
+		}
 	}
 
 	bodyH := 0
 	bodyW := 0
 	if c.body != nil {
-		avail := tui.Size{W: inner.W, H: max(inner.H-btnH-gap, 0)}
+		avail := tui.Size{W: inner.W, H: max(inner.H-btnH-gap-footH, 0)}
 		bs := ctx.LayoutChild(c.body, tui.Loose(avail))
 		bodyW, bodyH = bs.W, bs.H
 	}
 
-	contentW := max(bodyW, max(btnW, c.measure(c.title)))
-	contentH := bodyH + gap + btnH
+	contentW := max(bodyW, btnW, footW, c.measure(c.title))
+	contentH := bodyH + gap + btnH + footH
 	size := tui.Size{W: contentW + frame, H: contentH + frame}
 	size = cs.Constrain(size)
 
 	// Place children inside the frame, now that the card's own size is fixed.
 	x0, y0 := border+pad, border+pad
 	y := y0
+	c.ruleY = -1
 	if c.body != nil {
 		ctx.PlaceChild(c.body, tui.Rect{X: x0, Y: y, W: min(bodyW, contentW), H: bodyH})
+		if c.rule && gap == 3 {
+			c.ruleY = y + bodyH + 1
+		}
 		y += bodyH + gap
 	}
 	// Where the row of buttons sits within the content width. Centred by
@@ -217,6 +242,8 @@ func (c *modalCard) Render(s tui.Surface) {
 	card := c.st.Card()
 	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", card)
 	drawBorder(s, sz, c.st.Border())
+	c.renderRule(s, sz)
+	c.renderFooter(s, sz)
 
 	if c.title == "" {
 		return
@@ -243,6 +270,39 @@ func (c *modalCard) Render(s tui.Surface) {
 	}
 	if x < limit {
 		s.SetCell(x, 0, " ", c.st.Border())
+	}
+}
+
+// renderRule draws the rule across the card, joined to the frame with tees.
+func (c *modalCard) renderRule(s tui.Surface, sz tui.Size) {
+	if c.ruleY <= 0 || c.ruleY >= sz.H-1 || sz.W < 2 {
+		return
+	}
+	st := c.st.Rule()
+	s.SetCell(0, c.ruleY, "├", st)
+	for x := 1; x < sz.W-1; x++ {
+		s.SetCell(x, c.ruleY, "─", st)
+	}
+	s.SetCell(sz.W-1, c.ruleY, "┤", st)
+}
+
+// renderFooter draws the help line on the last row inside the frame, clipped to
+// the space inside the padding.
+func (c *modalCard) renderFooter(s tui.Surface, sz tui.Size) {
+	const inset = 2       // border and padding
+	y := sz.H - 1 - inset // the last content row, above the bottom padding
+	if c.footer == "" || y <= 0 {
+		return
+	}
+	x, limit := inset, sz.W-inset
+	st := c.st.Footer()
+	for cluster := range tui.Graphemes(c.footer) {
+		w := s.StringWidth(cluster)
+		if x+w > limit {
+			break
+		}
+		s.SetCell(x, y, cluster, st)
+		x += w
 	}
 }
 
