@@ -20,8 +20,10 @@ import (
 // pointer capture in the runtime, keyboard activation through a resolved
 // action, and the look in a ButtonStyle it does not own.
 
-// ButtonRole says what a button MEANS to the container holding it, which is how
-// a Modal can find its default and cancel actions without reading labels.
+// ButtonRole says what a button MEANS to the dialog holding it — Qt's
+// QDialogButtonBox::ButtonRole — which is how a Modal answers for it without
+// reading labels. Whether Enter presses it is a separate property, the
+// button's default (WithDefault), as QPushButton keeps it apart from the role.
 //
 // Matching on label text — "OK", "Cancel", "No" — breaks the moment an app is
 // translated, and matching on position breaks the moment the buttons are
@@ -29,23 +31,29 @@ import (
 type ButtonRole uint8
 
 const (
-	// ButtonRoleNormal: no special meaning. The default.
-	ButtonRoleNormal ButtonRole = iota
-	// ButtonRoleDefault: the affirmative action, preferred on initial focus.
-	ButtonRoleDefault
-	// ButtonRoleCancel: the dismissive action, resolved by Escape.
-	ButtonRoleCancel
+	// ButtonRoleAction: no answer — the button's own callback only, and the
+	// dialog stays. The zero value.
+	ButtonRoleAction ButtonRole = iota
+	// ButtonRoleAccept: accepts the dialog (Ok, Save, Yes).
+	ButtonRoleAccept
+	// ButtonRoleReject: rejects it (Cancel, No, Close) — and Escape presses it.
+	ButtonRoleReject
+	// ButtonRoleDestructive: a destructive answer (Discard); the dialog closes
+	// with neither accepting nor rejecting.
+	ButtonRoleDestructive
 )
 
 // String names the role for traces and test failures.
 func (r ButtonRole) String() string {
 	switch r {
-	case ButtonRoleNormal:
-		return "normal"
-	case ButtonRoleDefault:
-		return "default"
-	case ButtonRoleCancel:
-		return "cancel"
+	case ButtonRoleAction:
+		return "action"
+	case ButtonRoleAccept:
+		return "accept"
+	case ButtonRoleReject:
+		return "reject"
+	case ButtonRoleDestructive:
+		return "destructive"
 	}
 	return "unknown"
 }
@@ -76,9 +84,13 @@ type Button struct {
 	enabled  bool
 	armed    bool
 	onAction func()
-	// manualOnly is Qt's autoDefault, inverted so the zero value is the usual
-	// button: when set, Enter is not this button's key (see WithAutoDefault).
-	manualOnly bool
+	// isDefault is QPushButton.default: its dialog's Enter target.
+	isDefault bool
+	// answer is the dialog's answer for this button's role, run after its own
+	// callback; nil outside a dialog. Set by the Modal that holds the button,
+	// and so is inDialog: a dialog's buttons leave Enter to the dialog.
+	answer   func()
+	inDialog bool
 
 	// pointerPolicy is the policy the author asked for, remembered so that a
 	// chained WithPointerPolicy before mount is applied when the Context
@@ -111,25 +123,15 @@ func NewButton(label string, opts ...ButtonOption) *Button {
 	return b
 }
 
-// WithAutoDefault sets whether Enter presses the button while it has focus.
-// True by default. The name comes from Qt Widgets' QPushButton.autoDefault;
-// the false case matches Qt Quick Controls, whose AbstractButton has no such
-// property and activates on Space only. Space always presses a focused button,
-// since Space is the button's own key.
-//
-// Enter is a container's key as much as a button's — a dialog's "answer" — so
-// a button that is not auto-default leaves Enter unclaimed, and it bubbles to
-// the container. A dialog's button box takes this for its buttons: with no
-// default declared, Enter answers nothing, whichever button has focus.
-func WithAutoDefault(v bool) ButtonOption {
-	return func(b *Button) { b.manualOnly = !v }
+// WithDefault makes the button its dialog's DEFAULT — QPushButton.default:
+// the one Enter presses, whichever control has focus. At most one per dialog.
+// A dialog with none gives Enter no answer.
+func WithDefault(v bool) ButtonOption {
+	return func(b *Button) { b.isDefault = v }
 }
 
-// SetAutoDefault changes WithAutoDefault after construction.
-func (b *Button) SetAutoDefault(v bool) { b.manualOnly = !v }
-
-// AutoDefault reports whether Enter presses the button while it has focus.
-func (b *Button) AutoDefault() bool { return !b.manualOnly }
+// IsDefault reports whether the button is its dialog's default.
+func (b *Button) IsDefault() bool { return b.isDefault }
 
 // WithMnemonic sets the key that reaches this button directly, such as 'y' on
 // a Yes button.
@@ -237,13 +239,6 @@ func (b *Button) SetMnemonic(r rune) {
 	b.MarkDirty()
 }
 
-// OnActivate is what the button runs when activated, nil for nothing.
-func (b *Button) OnActivate() func() { return b.onAction }
-
-// SetOnActivate replaces what the button runs when activated — for a
-// container that adds its own step after the button's own (a dialog's answer).
-func (b *Button) SetOnActivate(fn func()) { b.onAction = fn }
-
 // Label reports the button's text.
 func (b *Button) Label() string { return b.label }
 
@@ -312,6 +307,9 @@ func (b *Button) Activate(origin tui.ActionOrigin) bool {
 	if b.onAction != nil {
 		b.onAction()
 	}
+	if b.answer != nil {
+		b.answer() // its dialog's answer for its role, after its own callback
+	}
 	return true
 }
 
@@ -363,7 +361,7 @@ func (b *Button) State() WidgetState {
 // Init installs the button's own key bindings as its DEFAULT resolver layer, so
 // a consumer can add bindings without having to re-supply these.
 //
-// Space, and Enter when the button is auto-default, are resolved into the same
+// Space, and Enter outside a dialog, are resolved into the same
 // ActivateAction the pointer gesture produces, which is what makes keyboard and
 // mouse a single path: the button implements activation once and does not care
 // which arrived.
@@ -376,10 +374,10 @@ func (b *Button) Init(ctx *tui.Context) {
 	}
 }
 
-// keys claims the button's activation keys: Space, and Enter only when it is
-// auto-default. A key it does not claim bubbles to the container.
+// keys claims the button's activation keys: Space, and Enter — except in a
+// dialog, where Enter is the dialog's (its default button's) and bubbles to it.
 func (b *Button) keys(ev tui.Event) (tui.Action, bool) {
-	if k, ok := ev.(tui.KeyEvent); ok && k.Code == tui.KeyEnter && b.manualOnly {
+	if k, ok := ev.(tui.KeyEvent); ok && k.Code == tui.KeyEnter && b.inDialog {
 		return nil, false
 	}
 	return activateKeys(ev)

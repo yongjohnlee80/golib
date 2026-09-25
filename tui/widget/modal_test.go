@@ -47,8 +47,8 @@ func openOn(t *testing.T, h *harness, m *widget.Modal, host *widget.OverlayHost)
 // only when nothing else qualified would make the landing spot depend on the
 // order the buttons were listed in.
 func TestOpeningADialogTrapsFocusAndPrefersTheDefaultButton(t *testing.T) {
-	cancel := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleCancel))
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	cancel := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleReject))
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	// Cancel is listed FIRST, so "the first enabled button" would pick it.
 	m := widget.NewModal(widget.NewText("Sure?"), widget.WithButtons(cancel, ok))
 
@@ -218,7 +218,7 @@ func TestEscapeResolvesTheCancelRoleRatherThanALabel(t *testing.T) {
 	// Deliberately misleading: the CANCEL role is on the button labelled "Nope",
 	// and a button labelled "Cancel" carries no role at all.
 	decoy := widget.NewButton("Cancel")
-	real := widget.NewButton("Nope", widget.WithRole(widget.ButtonRoleCancel),
+	real := widget.NewButton("Nope", widget.WithRole(widget.ButtonRoleReject),
 		widget.WithOnActivate(func() { cancelled.Add(1) }))
 	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(decoy, real))
 
@@ -250,7 +250,7 @@ func TestEscapeResolvesTheCancelRoleRatherThanALabel(t *testing.T) {
 // TestEscapeWithoutACancelRoleStillCloses.
 func TestEscapeWithoutACancelRoleStillCloses(t *testing.T) {
 	m := widget.NewModal(widget.NewText("Body"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))))
+		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -331,7 +331,7 @@ func TestTheDialogItselfTakesFocusOnlyWhenNoButtonCan(t *testing.T) {
 
 // TestSetButtonsRejectsADuplicateRoleWithoutChangingAnything.
 func TestSetButtonsRejectsADuplicateRoleWithoutChangingAnything(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
@@ -340,14 +340,14 @@ func TestSetButtonsRejectsADuplicateRoleWithoutChangingAnything(t *testing.T) {
 	var err error
 	h.onLoop(func() {
 		err = m.SetButtons(
-			widget.NewButton("A", widget.WithRole(widget.ButtonRoleDefault)),
-			widget.NewButton("B", widget.WithRole(widget.ButtonRoleDefault)),
+			widget.NewButton("A", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
+			widget.NewButton("B", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
 		)
 	})
 	h.settle()
 
-	if !errors.Is(err, widget.ErrDuplicateButtonRole) {
-		t.Fatalf("SetButtons returned %v, want ErrDuplicateButtonRole", err)
+	if !errors.Is(err, widget.ErrDuplicateDefault) {
+		t.Fatalf("SetButtons returned %v, want ErrDuplicateDefault", err)
 	}
 	// ATOMIC: the original list survives a rejected call.
 	got := m.Buttons()
@@ -365,8 +365,8 @@ func TestSetButtonsReplacesAValidList(t *testing.T) {
 	defer h.stop()
 	openOn(t, h, m, host)
 
-	a := widget.NewButton("A", widget.WithRole(widget.ButtonRoleDefault))
-	b := widget.NewButton("B", widget.WithRole(widget.ButtonRoleCancel))
+	a := widget.NewButton("A", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	b := widget.NewButton("B", widget.WithRole(widget.ButtonRoleReject))
 	var err error
 	h.onLoop(func() { err = m.SetButtons(a, b) })
 	h.settle()
@@ -385,8 +385,8 @@ func TestSetButtonsReplacesAValidList(t *testing.T) {
 func TestConstructingWithADuplicateRolePanics(t *testing.T) {
 	fatal := fatalFromWidgetExt(func() {
 		widget.NewModal(widget.NewText("Body"), widget.WithButtons(
-			widget.NewButton("A", widget.WithRole(widget.ButtonRoleCancel)),
-			widget.NewButton("B", widget.WithRole(widget.ButtonRoleCancel)),
+			widget.NewButton("A", widget.WithRole(widget.ButtonRoleReject)),
+			widget.NewButton("B", widget.WithRole(widget.ButtonRoleReject)),
 		))
 	})
 	if fatal == nil {
@@ -397,8 +397,8 @@ func TestConstructingWithADuplicateRolePanics(t *testing.T) {
 	// duplicate rather than about roles in general.
 	if f := fatalFromWidgetExt(func() {
 		widget.NewModal(widget.NewText("Body"), widget.WithButtons(
-			widget.NewButton("A", widget.WithRole(widget.ButtonRoleCancel)),
-			widget.NewButton("B", widget.WithRole(widget.ButtonRoleDefault)),
+			widget.NewButton("A", widget.WithRole(widget.ButtonRoleReject)),
+			widget.NewButton("B", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
 		))
 	}); f != nil {
 		t.Errorf("NewModal rejected a legal list (%v)", f.Rule)
@@ -830,9 +830,9 @@ func TestTabTraversalStaysAmongTheDialogsButtons(t *testing.T) {
 // sits between the body and the buttons with a row either side, and the footer
 // is the last row inside the card, faded, one blank row under the buttons.
 func TestARuledDialogSeparatesItsMessageFromItsDecision(t *testing.T) {
-	yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleDefault), widget.WithMnemonic('y'))
+	yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true), widget.WithMnemonic('y'))
 	var pressed atomic.Bool
-	no := widget.NewButton("No", widget.WithRole(widget.ButtonRoleCancel), widget.WithMnemonic('n'),
+	no := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject), widget.WithMnemonic('n'),
 		widget.WithOnActivate(func() { pressed.Store(true) }))
 	m := widget.NewModal(widget.NewText("Are you sure to quit?"),
 		widget.WithModalTitle("Quit"), widget.WithButtons(yes, no),
@@ -881,7 +881,7 @@ func TestARuledDialogSeparatesItsMessageFromItsDecision(t *testing.T) {
 
 // TestADialogWithoutARuleKeepsItsBlankLine: the option is additive.
 func TestADialogWithoutARuleKeepsItsBlankLine(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()

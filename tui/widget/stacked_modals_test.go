@@ -34,9 +34,9 @@ import (
 // so neither trap is an ancestor of the other and ancestry alone could only
 // ever refuse the second.
 func TestASecondDialogOpenedOverTheFirstTakesTheKeyboard(t *testing.T) {
-	firstOK := widget.NewButton("first-ok", widget.WithRole(widget.ButtonRoleDefault))
+	firstOK := widget.NewButton("first-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	first := widget.NewModal(widget.NewText("first"), widget.WithButtons(firstOK))
-	secondOK := widget.NewButton("second-ok", widget.WithRole(widget.ButtonRoleDefault))
+	secondOK := widget.NewButton("second-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	second := widget.NewModal(widget.NewText("second"), widget.WithButtons(secondOK))
 
 	h, host, base := modalFixture(t, first, 40, 12)
@@ -74,9 +74,9 @@ func TestASecondDialogOpenedOverTheFirstTakesTheKeyboard(t *testing.T) {
 // exactly where it was in the lower one, via the scope stack's restore — not
 // on the base, and not nowhere.
 func TestClosingTheTopDialogPutsTheKeyboardBackInTheOneBeneath(t *testing.T) {
-	firstOK := widget.NewButton("first-ok", widget.WithRole(widget.ButtonRoleDefault))
+	firstOK := widget.NewButton("first-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	first := widget.NewModal(widget.NewText("first"), widget.WithButtons(firstOK))
-	secondOK := widget.NewButton("second-ok", widget.WithRole(widget.ButtonRoleDefault))
+	secondOK := widget.NewButton("second-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	second := widget.NewModal(widget.NewText("second"), widget.WithButtons(secondOK))
 
 	h, host, base := modalFixture(t, first, 40, 12)
@@ -127,7 +127,7 @@ func TestADropdownInsideADialogStillOpens(t *testing.T) {
 		{Label: "alpha", Value: "alpha"},
 		{Label: "beta", Value: "beta"},
 	}))
-	ok := widget.NewButton("ok", widget.WithRole(widget.ButtonRoleDefault))
+	ok := widget.NewButton("ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	m := widget.NewModal(sel, widget.WithButtons(ok))
 
 	h, host, _ := modalFixture(t, m, 40, 12)

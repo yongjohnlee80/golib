@@ -351,9 +351,10 @@ func TestStyleSelectorMapsEveryStateAndFallsBack(t *testing.T) {
 // the default arms catch a value added later without a name.
 func TestClosedEnumsNameEveryValue(t *testing.T) {
 	for v, want := range map[widget.ButtonRole]string{
-		widget.ButtonRoleNormal:  "normal",
-		widget.ButtonRoleDefault: "default",
-		widget.ButtonRoleCancel:  "cancel",
+		widget.ButtonRoleAction:      "action",
+		widget.ButtonRoleAccept:      "accept",
+		widget.ButtonRoleReject:      "reject",
+		widget.ButtonRoleDestructive: "destructive",
 	} {
 		if got := v.String(); got != want {
 			t.Errorf("widget.ButtonRole(%d).String() = %q, want %q", v, got, want)
@@ -383,8 +384,8 @@ func TestClosedEnumsNameEveryValue(t *testing.T) {
 func TestAZeroConfiguredButtonIsInertButUsable(t *testing.T) {
 	b := widget.NewButton("Hi")
 
-	if b.Role() != widget.ButtonRoleNormal {
-		t.Errorf("role = %v, want %v", b.Role(), widget.ButtonRoleNormal)
+	if b.Role() != widget.ButtonRoleAction {
+		t.Errorf("role = %v, want %v", b.Role(), widget.ButtonRoleAction)
 	}
 	if !b.Enabled() {
 		t.Error("a new button is disabled")

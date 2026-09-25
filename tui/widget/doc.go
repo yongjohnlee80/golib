@@ -190,9 +190,9 @@
 //
 //	host := widget.NewOverlayHost(appRoot)   // once, wrapping the whole UI
 //
-//	ok := widget.NewButton("Save", widget.WithRole(widget.ButtonRoleDefault),
+//	ok := widget.NewButton("Save", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
 //		widget.WithOnActivate(func() { save() }))
-//	no := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleCancel))
+//	no := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleReject))
 //
 //	dlg := widget.NewModal(widget.NewText("Save your changes?"),
 //		widget.WithModalTitle("Unsaved work"),
@@ -216,7 +216,7 @@
 //
 // FOCUS. The dialog traps focus, so Tab cannot reach the controls underneath.
 // It nominates where focus lands through [tui.InitialFocusProvider]: the enabled
-// button carrying [ButtonRoleDefault], else the first enabled button, else the
+// default button ([WithDefault]), else the first enabled button, else the
 // Modal node itself. The last case is what keeps Escape reachable when every
 // control is disabled — the ring inside a trap must never be empty. The
 // preference applies on EVERY focus repair, not only at open, so a button
@@ -224,9 +224,9 @@
 // [Modal.SelectedButton] reports the focused button's index, or -1 when the
 // Modal node itself holds focus.
 //
-// ESCAPE resolves the CANCEL ROLE, never a label or a position: matching
+// ESCAPE resolves the REJECT ROLE, never a label or a position: matching
 // "Cancel" breaks under translation and matching the last button breaks under
-// reordering. When a cancel-role button exists Escape activates it through the
+// reordering. When a Reject-role button exists Escape activates it through the
 // runtime — publishing the same [tui.ControlActivatedEvent] a click would, with
 // keyboard provenance — and then dismisses with [DismissCancel]. With no such
 // button it dismisses with [DismissEscape].
@@ -250,7 +250,8 @@
 //
 // ACCESSIBILITY AND KEYBOARD PARITY. Everything a pointer can do here, a
 // keyboard can do: Tab and Shift-Tab cycle the dialog's buttons and stop at its
-// edges, Enter activates the focused button, Escape resolves the cancel role,
+// edges, Space activates the focused button, Enter the default one, Escape
+// resolves the Reject role,
 // and focus returns to where it came from when the dialog closes. A dialog with
 // its pointer policy disabled remains fully operable. Nothing depends on the
 // mouse, and no control is reachable only by clicking.

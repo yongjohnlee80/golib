@@ -27,7 +27,8 @@ import (
 // about how the dialog goes away, because that is the same in every dialog and
 // a consumer writing it is a consumer who can get it wrong.
 //
-// Every way out resolves to one of Qt's two answers, in one place (dismissed):
+// The Modal answers for every button by its role (widget ANSWERS); here each
+// way out becomes Qt's signals, in one place (dismissed):
 //
 //	an accepting button (Ok, Save, Yes)      accepted, then closed
 //	a rejecting button, or Escape            rejected, then closed
@@ -174,8 +175,9 @@ func (d *dialogNode) close() error {
 // accept closes the dialog with the affirmative answer.
 func (d *dialogNode) accept() { d.modal.Dismiss(widget.DismissAccept) }
 
-// dismissed is the ONE place a way out becomes an answer. Buttons dismiss with
-// their answer, Escape arrives here on its own, and close() with neither.
+// dismissed is the ONE place a way out becomes a signal. The Modal dismissed
+// with its answer — a button's role, or Escape — and close() with none; a
+// Destructive answer (DismissDiscard) is closed only, as close() is.
 func (d *dialogNode) dismissed(reason widget.DismissReason) {
 	switch reason {
 	case widget.DismissAccept:
@@ -223,26 +225,22 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 		rejected: b.Emitter("rejected"),
 		closed:   b.Emitter("closed"),
 	}
+	// DECLARATIONS ONLY: each button says what it means — Qt's roles, and the
+	// affirmative standard button is the default, as a message box's is — and
+	// the Modal answers for it (widget ANSWERS). A box's buttons carry their
+	// roles and no default.
 	buttons := make([]*widget.Button, 0, len(s.buttons))
 	for _, sb := range s.buttons {
 		label, key, _ := mnemonic(sb.label)
-		role, press := widget.ButtonRoleCancel, func() { d.modal.Dismiss(widget.DismissCancel) }
+		opts := []widget.ButtonOption{widget.WithRole(widget.ButtonRoleReject), widget.WithMnemonic(key)}
 		if sb.accept {
-			role, press = widget.ButtonRoleDefault, func() {
-				if d.hooks.gate == nil || d.hooks.gate() {
-					d.accept()
-				}
-			}
-		}
-		opts := []widget.ButtonOption{
-			widget.WithRole(role),
-			widget.WithMnemonic(key),
-			widget.WithOnActivate(press),
+			opts = []widget.ButtonOption{widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
+				widget.WithMnemonic(key)}
 		}
 		buttons = append(buttons, widget.NewButton(label, opts...))
 	}
 	if s.box != nil {
-		buttons = append(buttons, s.box.answer(d)...)
+		buttons = append(buttons, s.box.buttons...)
 	}
 	opts := []widget.ModalOption{
 		widget.WithModalTitle(s.title),
@@ -255,6 +253,9 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	}
 	if s.help != "" {
 		opts = append(opts, widget.WithModalFooter(s.help))
+	}
+	if s.hooks.gate != nil {
+		opts = append(opts, widget.WithAcceptGate(s.hooks.gate))
 	}
 	if len(s.shortcuts) > 0 {
 		shortcuts := s.shortcuts

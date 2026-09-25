@@ -28,8 +28,13 @@ import (
 // know the list was bad writes one comparison.
 var ErrInvalidButtonList = errors.New("widget: invalid button list")
 
-// ErrDuplicateButtonRole reports a list carrying two Defaults or two Cancels.
+// ErrDuplicateButtonRole reports a list carrying two Reject-role buttons —
+// Escape presses the one.
 var ErrDuplicateButtonRole = errors.New("widget: duplicate button role")
+
+// ErrDuplicateDefault reports a list carrying two default buttons — Enter
+// presses the one.
+var ErrDuplicateDefault = errors.New("widget: duplicate default button")
 
 // ErrNilButton reports a nil entry in a button list.
 var ErrNilButton = errors.New("widget: nil button")
@@ -93,6 +98,9 @@ func (f listFault) describe() string {
 		return "at most one Button with role " + f.role.String() +
 			" per container; index " + itoa(f.first) + " and index " + itoa(f.dup) +
 			" both carry it"
+	case ErrDuplicateDefault:
+		return "at most one default Button per dialog — Enter presses the one; index " +
+			itoa(f.first) + " and index " + itoa(f.dup) + " are both default"
 	case ErrNilButton:
 		return "index " + itoa(f.dup) + " is nil; a button list states the controls " +
 			"a dialog has, and a hole in it is not one of them"
@@ -131,6 +139,7 @@ func (f listFault) err() error {
 // Unknown roles are ignored, so an application-defined role stays additive.
 func validateButtonList(buttons []*Button, owner tui.Component) *listFault {
 	seen := map[ButtonRole]int{}
+	defaultAt := -1
 	at := map[*Button]int{}
 	seenKeys := map[rune]int{}
 	for i, b := range buttons {
@@ -173,12 +182,17 @@ func validateButtonList(buttons []*Button, owner tui.Component) *listFault {
 			}
 			seenKeys[lowerRune(b.mnemonic)] = i
 		}
-		switch b.role {
-		case ButtonRoleDefault, ButtonRoleCancel:
+		if b.role == ButtonRoleReject {
 			if first, dup := seen[b.role]; dup {
 				return &listFault{kind: ErrDuplicateButtonRole, role: b.role, first: first, dup: i}
 			}
 			seen[b.role] = i
+		}
+		if b.isDefault {
+			if first, dup := defaultAt, defaultAt >= 0; dup {
+				return &listFault{kind: ErrDuplicateDefault, first: first, dup: i}
+			}
+			defaultAt = i
 		}
 	}
 	return nil

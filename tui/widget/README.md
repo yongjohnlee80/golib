@@ -504,9 +504,9 @@ carrying a title, your body content and a row of buttons:
 ```go
 host := widget.NewOverlayHost(appRoot) // once, wrapping the whole UI
 
-ok := widget.NewButton("Save", widget.WithRole(widget.ButtonRoleDefault),
-    widget.WithOnActivate(func() { save() }))
-no := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleCancel))
+ok := widget.NewButton("Save", widget.WithRole(widget.ButtonRoleAccept),
+    widget.WithDefault(true), widget.WithOnActivate(func() { save() }))
+no := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleReject))
 
 dlg := widget.NewModal(widget.NewText("Save your changes?"),
     widget.WithModalTitle("Unsaved work"),
@@ -515,6 +515,17 @@ dlg := widget.NewModal(widget.NewText("Save your changes?"),
 
 if err := dlg.Open(host); err != nil { /* … */ } // loop goroutine
 ```
+
+**Answers.** A button declares what it MEANS, Qt's `QDialogButtonBox` roles, and
+the dialog answers for it after the button's own callback:
+`ButtonRoleAccept` dismisses with `DismissAccept` (through `WithAcceptGate`, when
+there is one), `ButtonRoleReject` with `DismissCancel`, and
+`ButtonRoleDestructive` with `DismissDiscard`. `ButtonRoleAction`, the zero value,
+answers nothing, and the dialog stays. **Enter is the dialog's:** its buttons
+leave Enter unclaimed, and the dialog presses its default button
+(`WithDefault`, at most one), or nothing when it has none, so an irreversible
+answer is never one stray Enter away. Space presses the focused button. The QML
+layer declares these same roles and defaults; it adds no rule of its own.
 
 **Structure.** `WithModalRule(true)` draws a line across the card between the
 message and the buttons, joined to the frame. `WithModalFooter(text)` puts a
@@ -551,7 +562,7 @@ dialog is a `q` nobody can type into it. Modified keys are never dismiss keys
 (Ctrl-Q is not `q`).
 
 A configured key is an **escape equivalent in full**: it resolves through the
-same path, so a dialog with a `ButtonRoleCancel` button has that button
+same path, so a dialog with a `ButtonRoleReject` button has that button
 *activated*, and the closure reports `DismissEscape` — the reason names the
 intention, not the physical key.
 
@@ -564,14 +575,14 @@ intention, not the physical key.
 | a host dismiss key | the application asked for it |
 | a navigation alias (arrows, and `hjkl` under `WithModalVimNavigation`) | a convenience, and the most easily shadowed |
 
-**Focus.** Focus lands on the enabled `ButtonRoleDefault` button, else the first
+**Focus.** Focus lands on the enabled default button, else the first
 enabled button, else the `Modal` node itself — the last case keeps Escape
 reachable when every control is disabled. The preference is honoured on *every*
 focus repair, not only at open. `SelectedButton()` reports the focused button's
 index, or `-1` when the dialog itself holds focus.
 
-**Escape** resolves the **cancel role**, never a label or a position. With a
-cancel-role button it activates it through the runtime — publishing the same
+**Escape** resolves the **Reject role**, never a label or a position. With a
+Reject-role button it activates it through the runtime — publishing the same
 `tui.ControlActivatedEvent` a click would, with keyboard provenance — then
 dismisses with `DismissCancel`; otherwise `DismissEscape`.
 
@@ -582,14 +593,15 @@ one.
 
 **At runtime,** `SetButtons` validates the whole list before changing anything —
 no nil entries, no repeated `*Button`, nothing mounted elsewhere, at most one
-Default and one Cancel — and returns an error matching both
+default and one Reject — and returns an error matching both
 `ErrInvalidButtonList` and the specific sentinel. Accepted, it reconciles in one
 batch and *moves* retained buttons rather than remounting them, so identity and
 focus survive a reorder. `WithPointerPolicy` covers the whole dialog subtree;
 `WithStyle` restyles the live card and its backdrop together.
 
 **Keyboard parity.** Tab and Shift-Tab cycle the dialog's buttons and stop at
-its edges, Enter activates the focused one, Escape resolves the cancel role, and
+its edges, Space activates the focused one, Enter the default, Escape resolves
+the Reject role, and
 focus returns where it came from on close. A dialog with the pointer disabled
 stays fully operable; no control is reachable only by clicking.
 
