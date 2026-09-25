@@ -12,6 +12,31 @@ import "iter"
 // Components that do not implement Focusable are transparent to keyboard focus
 // and are skipped during Tab/Shift-Tab navigation.
 //
+// TWO QUESTIONS, TWO ANSWERS — do not answer the first with the second:
+//
+//   - Is this component FOCUSABLE BY DESIGN — is it a control at all? That is
+//     answered by IMPLEMENTING Focusable. A component that is never a focus
+//     stop — a frame, a view that only arranges its parts, decoration — does
+//     not implement it; its absence says so. (App.HoldsFocusable reads this:
+//     forceActiveFocus on a subtree with nothing focusable by design is the
+//     caller's mistake, and is refused.)
+//   - Does it accept focus NOW? That is AcceptsFocus. It may change: a disabled
+//     button is focusable by design and accepts no focus until enabled again.
+//
+// So the three legitimate shapes are:
+//
+//	no AcceptsFocus at all             never a stop (Frame, a panel's shell)
+//	AcceptsFocus() bool { return true }  always a stop (Editor, TextInput)
+//	AcceptsFocus() bool { return x }     a stop when x is (Button.enabled)
+//
+// and one shape is wrong: `AcceptsFocus() bool { return false }`, a constant
+// false. It claims the capability and denies it forever, so the component
+// reads as a control that is merely unavailable — and a tool asking "is
+// anything in here focusable?" is told yes. The audit in internal/audit
+// refuses it. When whether an INSTANCE is a control is a choice made at
+// construction (a Box built WithFocusable, a Float WithModal), implement
+// FocusDesigner as well, and answer that choice with FocusableByDesign.
+//
 // Event-Driven Focus Notifications:
 // Focus transitions are delivered exclusively as FocusEvents through HandleEvent
 // (with FocusEvent.Gained set to true or false). There are no synchronous Focus()

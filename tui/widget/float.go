@@ -280,8 +280,9 @@ type floatLayer struct {
 }
 
 var (
-	_ tui.Focusable  = (*floatLayer)(nil)
-	_ tui.FocusScope = (*floatLayer)(nil)
+	_ tui.Focusable     = (*floatLayer)(nil)
+	_ tui.FocusDesigner = (*floatLayer)(nil)
+	_ tui.FocusScope    = (*floatLayer)(nil)
 )
 
 // Init mounts the user child under the layer.
@@ -297,6 +298,12 @@ func (l *floatLayer) TrapsFocus() bool { return l.owner.modal }
 // the fallback stop of a modal whose content has no focusable — otherwise
 // it would pollute the trap's Tab cycle.
 func (l *floatLayer) AcceptsFocus() bool { return l.owner.modal && l.fallback }
+
+// FocusableByDesign implements tui.FocusDesigner. Only a MODAL float's layer
+// was built to take focus — as that fallback stop; a non-modal one never
+// does, so it is not focusable by design. modal is chosen at construction
+// (WithModal); fallback is what it is now.
+func (l *floatLayer) FocusableByDesign() bool { return l.owner.modal }
 
 // Layout places the child per the owner's anchor.
 func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
