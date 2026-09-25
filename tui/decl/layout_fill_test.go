@@ -37,9 +37,10 @@ func TestATableThatFillsLeavesRoomForTheButtonsAfterIt(t *testing.T) {
 	}
 }
 
-// A dialog around a table sizes to the table's rows — a view's implicit height
-// is its content — and a longer one is squeezed to the screen.
-func TestADialogAroundATableSizesToItsRows(t *testing.T) {
+// A dialog around a filling table shows its rows, its own button and its Close
+// — short or long, the table squeezed to the screen. (It does not size the card
+// to the rows: a weighted table fills what the dialog offers.)
+func TestADialogAroundAFillingTableShowsItsRowsAndButtons(t *testing.T) {
 	for _, c := range []struct {
 		rows int
 		want string

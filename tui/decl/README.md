@@ -114,8 +114,8 @@ Alt, case is not relied on (`Ctrl+Q` matches however it arrives).
 in order; a child marked `Layout.fillHeight: true` (in a column) or
 `Layout.fillWidth: true` (in a row) shares what the others leave. A view — a
 `ListView`, `TableView` or `TreeView` — is as tall as its content where nothing
-bounds it (a dialog sizes to a table's rows, squeezed to the screen), and fills
-what it is given otherwise, so a table followed by a row of buttons is written:
+bounds it, and fills what it is given otherwise, so a table followed by a row of
+buttons is written:
 
 ```qml
 Flex { direction: Tui.Vertical
