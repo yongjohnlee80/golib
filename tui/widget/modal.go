@@ -130,6 +130,21 @@ func WithModalFooter(text string) ModalOption {
 	return func(m *Modal) { m.card.footer = text }
 }
 
+// SetFooter replaces the help line under the buttons — for a dialog whose keys
+// depend on where the keyboard is inside it. "" removes it.
+func (m *Modal) SetFooter(text string) {
+	if m.card.footer == text {
+		return
+	}
+	m.card.footer = text
+	if ctx := m.card.Context(); ctx != nil {
+		ctx.RequestLayout()
+	}
+}
+
+// Footer returns the help line under the buttons.
+func (m *Modal) Footer() string { return m.card.footer }
+
 // WithModalStyle associates a style. The Modal does not own it; several dialogs
 // may share one.
 func WithModalStyle(s *ModalStyle) ModalOption {

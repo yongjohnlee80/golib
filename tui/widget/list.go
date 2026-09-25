@@ -155,6 +155,12 @@ type ListStyles struct {
 	CursorRow      style.Style // default: inverted, no accent
 	SelectedRow    style.Style // default: bold, distinct from the cursor without colour
 	CursorSelected style.Style // default: CursorRow merged over SelectedRow
+	// CursorBlurred is the cursor row while the list does NOT have focus: dim,
+	// so a screen with two panes shows which one the keyboard is in, and still
+	// shows where this one's cursor waits. Unset, the cursor looks the same
+	// either way — which is what a list whose focus rests on a delegating
+	// wrapper needs, since it cannot see that focus.
+	CursorBlurred style.Style
 }
 
 // ListOption customizes a List under construction.
@@ -200,6 +206,7 @@ func WithListStyles[T any](st ListStyles) ListOption[T] {
 			CursorRow:      st.CursorRow.Inherit(l.styles.CursorRow),
 			SelectedRow:    st.SelectedRow.Inherit(l.styles.SelectedRow),
 			CursorSelected: st.CursorSelected.Inherit(l.styles.CursorSelected),
+			CursorBlurred:  st.CursorBlurred.Inherit(l.styles.CursorBlurred),
 		}
 	}
 }
@@ -213,6 +220,7 @@ func (l *List[T]) SetStyles(st ListStyles) {
 		CursorRow:      st.CursorRow.Inherit(l.styles.CursorRow),
 		SelectedRow:    st.SelectedRow.Inherit(l.styles.SelectedRow),
 		CursorSelected: st.CursorSelected.Inherit(l.styles.CursorSelected),
+		CursorBlurred:  st.CursorBlurred.Inherit(l.styles.CursorBlurred),
 	}
 	l.MarkDirty()
 }
@@ -365,9 +373,20 @@ func (l *List[T]) activate() {
 	l.publish(ActivateEvent{Owner: l.NodeID(), Index: l.cursor})
 }
 
+// hasFocus reports whether the list itself holds the keyboard.
+func (l *List[T]) hasFocus() bool {
+	ctx := l.Context()
+	return ctx != nil && ctx.Focused()
+}
+
 // HandleEvent implements the key/mouse contract.
 func (l *List[T]) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
+	case tui.FocusEvent:
+		// The cursor row's look depends on focus when CursorBlurred is set.
+		// Not consumed: focus news belongs to everyone above too.
+		l.MarkDirty()
+		return false
 	case tui.KeyEvent:
 		if e.Kind == tui.KeyRelease {
 			return false
@@ -484,6 +503,8 @@ func (l *List[T]) rowStyle(i int) style.Style {
 	switch {
 	case i == l.cursor && selected && l.multi:
 		return l.styles.CursorSelected
+	case i == l.cursor && !l.hasFocus() && l.styles.CursorBlurred != (style.Style{}):
+		return l.styles.CursorBlurred
 	case i == l.cursor:
 		return l.styles.CursorRow
 	case selected:
@@ -518,7 +539,11 @@ func (l *List[T]) Render(s tui.Surface) {
 	for r := 0; r < rows; r++ {
 		i := l.top + r
 		st := l.rowStyle(i)
-		if _, bg := st.GetBackground(); bg {
+		// A row that is MARKED fills its width, whether the mark is a colour or
+		// a reversal: a reversed cursor that covered only its letters read as a
+		// highlighted word, not as the row the cursor is on.
+		_, bg := st.GetBackground()
+		if reversed, _ := st.GetReverse(); bg || reversed {
 			s.Fill(tui.Rect{X: 0, Y: r, W: contentW, H: 1}, " ", st)
 		}
 		text := truncate(l.render(l.src.Item(i)), contentW, s.StringWidth)
