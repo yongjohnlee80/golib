@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/yongjohnlee80/golib/parse/js"
 	"github.com/yongjohnlee80/golib/parse/qml"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -28,7 +29,7 @@ var ErrHandlerBody = fmt.Errorf("decl: this engine does not run that handler bod
 // names something unresolvable is therefore found while the tree is still
 // intact, which is what stopped a typo in a fresh subtree from destroying the
 // working screen it was replacing.
-func (t *Tree) compileHandler(node NodeID, h qml.SpecHandler) (boundHandler, error) {
+func (t *Tree) compileHandler(node NodeID, typeName string, h qml.SpecHandler) (boundHandler, error) {
 	if len(h.Body) == 0 {
 		return boundHandler{}, SchemaError{Op: "bind", Node: node, Detail: h.Signal, Pos: h.Pos,
 			Err: fmt.Errorf("%w: the handler is empty", ErrHandlerBody)}
@@ -43,9 +44,13 @@ func (t *Tree) compileHandler(node NodeID, h qml.SpecHandler) (boundHandler, err
 		// closure — so `submit(count)` submitted the count the screen had when
 		// it was built, forever.
 		argExprs []qml.SpecValue
-		name     string
+		// params maps an argument's position to the signal parameter it
+		// passes: `App.openFile(selectedFile)`.
+		params map[int]int
+		name   string
 	}
 	var calls []invocation
+	params := t.signalParams(typeName, h.Signal)
 
 	for _, st := range h.Body {
 		if st.Kind != js.StmtExpr || st.Value == nil {
@@ -99,17 +104,29 @@ func (t *Tree) compileHandler(node NodeID, h qml.SpecHandler) (boundHandler, err
 		// still intact, and evaluating later means the handler sees the value
 		// the source holds at the moment it runs.
 		argExprs := make([]qml.SpecValue, 0, len(e.Args))
+		var passed map[int]int
 		for i := range e.Args {
 			av, err := t.argExpr(node, h, &e.Args[i])
 			if err != nil {
 				return boundHandler{}, err
+			}
+			// A SIGNAL PARAMETER, named as the signal declares it. It shadows
+			// an injected name of the same spelling, as a parameter does in
+			// QML: the handler is the innermost scope.
+			if at, ok := paramIndex(params, av); ok {
+				if passed == nil {
+					passed = map[int]int{}
+				}
+				passed[i] = at
+				argExprs = append(argExprs, av)
+				continue
 			}
 			if _, err := t.evalValue(ctxBinding, av, node, nil); err != nil {
 				return boundHandler{}, err
 			}
 			argExprs = append(argExprs, av)
 		}
-		calls = append(calls, invocation{fn: fn, argExprs: argExprs, name: name})
+		calls = append(calls, invocation{fn: fn, argExprs: argExprs, params: passed, name: name})
 	}
 
 	label := calls[0].name
@@ -120,13 +137,21 @@ func (t *Tree) compileHandler(node NodeID, h qml.SpecHandler) (boundHandler, err
 		name: label,
 		key:  handlerKey(h),
 		pos:  h.Pos,
-		fn: func() error {
+		fn: func(signalArgs []qml.SpecValue) error {
 			// In order, and STOPPING AT THE FIRST FAILURE. Running the rest
 			// would be running the tail of a handler whose head did not happen,
 			// which no author writing two statements in sequence expects.
 			for _, c := range calls {
 				args := make([]qml.SpecValue, 0, len(c.argExprs))
-				for _, ax := range c.argExprs {
+				for i, ax := range c.argExprs {
+					if at, ok := c.params[i]; ok {
+						if at >= len(signalArgs) {
+							return fmt.Errorf("%s: the signal was raised without its parameter %q",
+								c.name, params[at])
+						}
+						args = append(args, signalArgs[at])
+						continue
+					}
 					// Re-evaluated NOW. This can fail even though it validated
 					// at mount — a host function may refuse at this moment —
 					// and the handler stops rather than passing a value it
@@ -250,4 +275,37 @@ func handlerKey(h qml.SpecHandler) string {
 func (t *Tree) refuseBody(node NodeID, h qml.SpecHandler, at parse.Position, found string) error {
 	return SchemaError{Op: "bind", Node: node, Detail: h.Signal, Pos: at,
 		Err: fmt.Errorf("%w: found %s", ErrHandlerBody, found)}
+}
+
+// signalParams are the parameter names an adapter declared for a type's signal.
+func (t *Tree) signalParams(typeName, signal string) []string {
+	sp, ok := t.adapter.(SignalParameters)
+	if !ok {
+		return nil
+	}
+	return sp.SignalParams(typeName, signal)
+}
+
+// paramIndex reports which declared parameter a bare-name argument passes.
+func paramIndex(params []string, v qml.SpecValue) (int, bool) {
+	if v.Kind != qml.SpecValueRef || strings.Contains(v.Raw, ".") {
+		return 0, false
+	}
+	for i, p := range params {
+		if p == v.Raw {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// SignalParameters is an OPTIONAL capability an [Adapter] may implement to name
+// the parameters its signals are raised with, so a handler can pass one on:
+//
+//	FileDialog { onAccepted: App.openFile(selectedFile) }
+//
+// The names are the handler's innermost scope, as a signal's parameters are in
+// QML, and the values are the ones the adapter raised the signal with.
+type SignalParameters interface {
+	SignalParams(typeName, signal string) []string
 }

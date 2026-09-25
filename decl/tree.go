@@ -117,7 +117,7 @@ type Tree struct {
 	active []activeEmission
 	// deferred are the signals raised while the tree was in the middle of an
 	// operation, waiting for it to commit. See Emit.
-	deferred []signalKey
+	deferred []deferredSignal
 
 	// sched puts work on the goroutine that owns this tree. Provider callbacks
 	// arrive from wherever the host's data lives, which is not that goroutine.
@@ -185,7 +185,7 @@ type boundHandler struct {
 	key  string
 	name string
 	pos  parse.Position
-	fn   func() error
+	fn   func(args []qml.SpecValue) error
 }
 
 type signalKey struct {
@@ -472,7 +472,7 @@ func (t *Tree) mountNode(sn *qml.SpecNode, parent NodeID) (NodeID, error) {
 		if pre != nil {
 			break // already resolved, during planning
 		}
-		bh, err := t.compileHandler(id, h)
+		bh, err := t.compileHandler(id, sn.Type, h)
 		if err != nil {
 			return id, err
 		}
@@ -492,11 +492,11 @@ func (t *Tree) mountNode(sn *qml.SpecNode, parent NodeID) (NodeID, error) {
 
 	// One emitter per DISTINCT signal. Three handlers on one signal share a
 	// single entry, so one widget event runs the list once.
-	var emitters map[string]func() error
+	var emitters map[string]func(args ...qml.SpecValue) error
 	if len(n.handlers) > 0 {
-		emitters = make(map[string]func() error, len(n.handlers))
+		emitters = make(map[string]func(args ...qml.SpecValue) error, len(n.handlers))
 		for signal := range n.handlers {
-			emitters[signal] = func() error { return t.Emit(id, signal) }
+			emitters[signal] = func(args ...qml.SpecValue) error { return t.Emit(id, signal, args...) }
 			n.wired[signal] = true
 		}
 	}
@@ -610,7 +610,10 @@ func (t *Tree) SetProp(id NodeID, prop string, v qml.SpecValue) error {
 //
 // Emitting a signal nothing is bound to is a no-op and not an error: a schema
 // that simply does not care about a widget's signal is ordinary.
-func (t *Tree) Emit(id NodeID, signal string) error {
+//
+// args are the signal's parameters, in the order the adapter declared them;
+// a handler reaches them by name, as QML's do.
+func (t *Tree) Emit(id NodeID, signal string, args ...qml.SpecValue) error {
 	// A signal raised while the tree is in the MIDDLE of an operation is
 	// DEFERRED until that operation has committed, not refused and not run.
 	//
@@ -624,7 +627,7 @@ func (t *Tree) Emit(id NodeID, signal string) error {
 	//
 	// So it is queued and delivered once the tree is consistent again.
 	if t.deferring() {
-		t.deferSignal(signalKey{node: id, signal: signal})
+		t.deferSignal(signalKey{node: id, signal: signal}, args)
 		return nil
 	}
 	// A tree being destroyed has nothing left for a handler to act on, and a
@@ -666,7 +669,7 @@ func (t *Tree) Emit(id NodeID, signal string) error {
 	}()
 
 	for _, h := range handlers {
-		if err := h.fn(); err != nil {
+		if err := h.fn(args); err != nil {
 			return SchemaError{Op: "emit", Node: id, Detail: signal + " -> " + h.name,
 				Pos: h.pos, Err: err}
 		}
