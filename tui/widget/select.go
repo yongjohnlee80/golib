@@ -275,6 +275,19 @@ func (s *Select[T]) SetOptions(items []SelectItem[T]) {
 	s.MarkDirty()
 }
 
+// SetSelectedIndex chooses option i, or none for i < 0 or out of range —
+// for a view keeping the same record chosen as the options around it change.
+func (s *Select[T]) SetSelectedIndex(i int) {
+	if i < 0 || i >= len(s.items) {
+		i = -1
+	}
+	if s.selected == i {
+		return
+	}
+	s.selected = i
+	s.MarkDirty()
+}
+
 // Err returns the load-error state (set by a failed addressed TaskResult).
 func (s *Select[T]) Err() error { return s.loadErr }
 

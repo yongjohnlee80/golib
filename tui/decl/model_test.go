@@ -57,3 +57,38 @@ func TestAListModelReportsEveryChangeAndKeepsItsKeys(t *testing.T) {
 		t.Errorf("a cancelled subscription still hears changes (%d) or is counted (%d)", len(changes), m.Subscribers())
 	}
 }
+
+func TestATreeListModelFetchesOnceAndIgnoresAGoneParent(t *testing.T) {
+	m := tuidecl.NewTreeListModel("key", "label")
+	m.SetChildren(nil, []tuidecl.TreeRow{{Row: tuidecl.Row{"label": "a"}, HasChildren: true}})
+	top := tuidecl.Index{Row: 0}
+	var asked int
+	m.OnFetch = func(tuidecl.Index) { asked++ }
+	if !m.HasChildren(top) || !m.CanFetchMore(top) {
+		t.Fatal("a row with children to load does not say so")
+	}
+	m.FetchMore(top)
+	m.FetchMore(top) // in flight: not asked again
+	if asked != 1 || m.CanFetchMore(top) {
+		t.Fatalf("asked %d times; CanFetchMore while loading %v", asked, m.CanFetchMore(top))
+	}
+	m.SetChildren(&top, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "k", "label": "child"}}})
+	child := tuidecl.Index{Row: 0, Parent: &top}
+	if m.RowCount(&top) != 1 || m.Data(child, "label").Raw != "child" || m.Key(child) != "k" || m.Key(top) != "0" {
+		t.Error("the children are not where they were put")
+	}
+	if m.CanFetchMore(top) || m.HasChildren(child) {
+		t.Error("a loaded row asks again, or a leaf has children")
+	}
+	gone := tuidecl.Index{Row: 5}
+	m.SetChildren(&gone, []tuidecl.TreeRow{{Row: tuidecl.Row{"label": "x"}}})
+	if m.RowCount(&gone) != 0 || m.Data(gone, "label").Kind != qml.SpecValueInvalid || m.HeaderData(0) != "" ||
+		m.ColumnCount(nil) != 1 || len(m.Roles()) != 2 {
+		t.Error("a gone parent took children, or the tree's shape is wrong")
+	}
+	cancel := m.Subscribe(func(tuidecl.Change) {})
+	if m.Subscribers() != 1 {
+		t.Error("a subscription was not counted")
+	}
+	cancel()
+}

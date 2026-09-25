@@ -84,6 +84,9 @@ change at runtime, which is what makes it bindable to a source.
 | `Dialog` | `dim`, `width`, `standardButtons`, palette | `title`, `helpText` | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
 | `ListView` | `textRole` | `model`, `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model` | `activated(index)` | — |
+| `TableView` | — | `model`, `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
+| `TableViewColumn` | `role`, `title`, `width` | — | — | — |
+| `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | `activated(index)`, `expanded(index)` — an `Index` | — |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
 
 **Models** — Qt's model/view. A host sets a `tuidecl.ListModel` (or its own
@@ -93,6 +96,14 @@ nothing rebound. Roles are typed (a string, bool or number). A handler reads a
 view by its id when it runs: `listView.currentIndex`, `combo.currentValue`
 (the chosen row's `valueRole`). A view drops its subscription when the model
 is replaced and when the view is destroyed.
+
+A `TableView` shows the model's own columns — a query's result, whatever
+columns it has, redrawn on the same view when they change — unless it declares
+`TableViewColumn`s. A `TreeView` shows a tree model (`tuidecl.TreeListModel`,
+or a `TreeModel` of the host's): a row opens and, the first time, the view asks
+the model to load its children (`OnFetch`), which the host sets with
+`SetChildren`. Its signals carry the row's `tuidecl.Index`, which the handler
+passes back to the host.
 
 **Every element that takes a place on screen has `visible`** — Qt's
 `Item.visible`, a runtime property: hidden, it takes no space, is not painted
