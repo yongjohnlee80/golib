@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
 // offer_test.go covers OFFERED modules: importable without being loaded, and
@@ -297,8 +298,8 @@ func TestOfferedAndDeclaredModulesShareOneNamespace(t *testing.T) {
 type bareAdapter struct{}
 
 func (bareAdapter) Create(decl.Construction) ([]string, error) { return nil, nil }
-func (bareAdapter) Apply(decl.Application) error                { return nil }
-func (bareAdapter) Destroy(decl.NodeID) error                   { return nil }
+func (bareAdapter) Apply(decl.Application) error               { return nil }
+func (bareAdapter) Destroy(decl.NodeID) error                  { return nil }
 
 // TestAnUnknownImportNamesWhatIsImportable: the diagnostic lists offered
 // modules as importable, whether loaded or not, and each once.
@@ -323,5 +324,32 @@ func TestAnUnknownImportNamesWhatIsImportable(t *testing.T) {
 	_, err = tr.Reconcile(qmlDoc(t, "import theme.retro 1.0\nimport nosuch\nText { text: Theme.menu.accent }"))
 	if err == nil || strings.Count(err.Error(), "theme.retro") != 1 {
 		t.Fatalf("err = %v, want theme.retro named exactly once", err)
+	}
+}
+
+// TestImportsTheEngineRefusesSayWhy: a path import, a qualified name the
+// module does not export, and a component whose name is not a type.
+func TestImportsTheEngineRefusesSayWhy(t *testing.T) {
+	// The QML parser refuses a path import itself; the engine takes trees from
+	// ANY producer, so its own guard is reached with one built by hand.
+	tr := decl.New(newReactor())
+	pathImport := qml.SpecTree{Imports: []qml.SpecImport{{Module: ""}}, Root: &qml.SpecNode{Type: "Text"}}
+	if err := tr.Mount(pathImport); !errors.Is(err, decl.ErrUndefinedModule) ||
+		!strings.Contains(err.Error(), "not paths") {
+		t.Errorf("a path import: err = %v, want it refused as a path", err)
+	}
+	tr = decl.New(newReactor())
+	if err := tr.Mount(qmlDoc(t, "import tui 1.0 as T\nText { text: T.Nope.x }")); err == nil ||
+		!strings.Contains(err.Error(), "exports no") {
+		t.Errorf("a name the qualified module does not export: err = %v", err)
+	}
+	tr = decl.New(newReactor())
+	if err := tr.OfferModule("ui", "", func() (decl.ModuleContents, error) {
+		return decl.ModuleContents{Components: map[string]*qml.SpecNode{"": {Type: "Text"}}}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Mount(qmlDoc(t, "import ui\nText { }")); !errors.Is(err, decl.ErrComponent) {
+		t.Errorf("a component with no name: err = %v, want ErrComponent", err)
 	}
 }
