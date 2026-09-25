@@ -35,7 +35,7 @@ type windowNode struct {
 	focus     tui.Component
 	shortcuts []*shortcutNode
 	menus     []*menuBarNode
-	dialogs   []*dialogNode
+	overlaid  []Overlaid
 }
 
 func buildWindow(b Build) (tui.Component, []string, error) {
@@ -65,7 +65,7 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 	}
 	var shortcuts []*shortcutNode
 	var menus []*menuBarNode
-	var dialogs []*dialogNode
+	var overlaid []Overlaid
 	var items []docked
 	for i, child := range children {
 		switch c := child.(type) {
@@ -75,9 +75,9 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 			// Keys, not layout: a Shortcut takes no place on the screen.
 			shortcuts = append(shortcuts, c)
 			continue
-		case *dialogNode:
-			// Not layout either: a Dialog opens over the Window when asked.
-			dialogs = append(dialogs, c)
+		case Overlaid:
+			// Not layout either: a Dialog, a Popup, opens over the Window.
+			overlaid = append(overlaid, c)
 			continue
 		case *menuBarNode:
 			menus = append(menus, c)
@@ -124,9 +124,9 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 			w.dock.Move(it.comp, i)
 		}
 	}
-	w.shortcuts, w.menus, w.dialogs, w.focus = shortcuts, menus, dialogs, nominee
-	for _, d := range w.dialogs {
-		d.host, d.afterClose = w.host, w.restoreFocus
+	w.shortcuts, w.menus, w.overlaid, w.focus = shortcuts, menus, overlaid, nominee
+	for _, o := range w.overlaid {
+		o.SetOverlay(w.host, w.restoreFocus)
 	}
 	return nil
 }

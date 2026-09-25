@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"sort"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
@@ -83,6 +84,9 @@ type Adapter struct {
 	// kids are each node's children, in order, as construction and every
 	// restructure left them.
 	kids map[decl.NodeID][]decl.NodeID
+	// enums are the enumerations the types declared, published as constants
+	// under their scopes.
+	enums []Enum
 }
 
 // Option configures an [Adapter].
@@ -280,6 +284,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 			c.Type, signals, c.Pos)
 	}
 
+	asked := map[string]bool{}
 	comp, consumed, err := build(Build{
 		Type:          c.Type,
 		Pos:           c.Pos,
@@ -291,13 +296,22 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		Emitters:      c.Emitters,
 		Files:         a.files,
 		sink:          a.sink,
-		overlay:       a.overlay,
+		Overlay:       a.overlay,
+		asked:         asked,
 	})
 	if err != nil {
 		return nil, err
 	}
 	if comp == nil {
 		return nil, fmt.Errorf("the builder for %q returned no component", c.Type)
+	}
+	// Qt refuses a handler for a signal the type does not have. A builder
+	// wires every signal its widget raises at construction, so one it never
+	// asked for is not a signal of this type — and a handler bound to it would
+	// never run.
+	if unknown := unaskedSignals(c.Emitters, asked); len(unknown) > 0 {
+		return nil, fmt.Errorf("%s has no signal %s: on%s is bound to nothing (declared at %s)",
+			c.Type, strings.Join(unknown, ", "), capitalize(unknown[0]), c.Pos)
 	}
 	nominee := childNominee
 	if focus {
@@ -395,6 +409,32 @@ func (a *Adapter) SignalParams(typeName, signal string) []string {
 
 var _ decl.SignalParameters = (*Adapter)(nil)
 
+// withEnums publishes a type's enumerations. A scope that is already a
+// singleton of the module — Tui, Dialog, another type's — panics, as a second
+// registration of one name does: which constant a document meant would depend
+// on registration order.
+func withEnums(enums ...Enum) Option {
+	return func(a *Adapter) {
+		for _, e := range enums {
+			for _, taken := range a.exports() {
+				if taken == e.Scope {
+					panic("tui/decl: enum scope " + e.Scope + " is already a singleton of the tui module")
+				}
+			}
+			a.enums = append(a.enums, e)
+		}
+	}
+}
+
+// exports are the tui module's singletons: Tui, each flag set's, each enum's.
+func (a *Adapter) exports() []string {
+	out := tuiExports()
+	for _, e := range a.enums {
+		out = append(out, e.Scope)
+	}
+	return out
+}
+
 // WithOverlay is the overlay a Dialog or FileDialog opens on when no Window
 // gave it one — a Go program's own OverlayHost, the layer its Go modals use.
 // Qt opens a Popup in the overlay of the window it is shown in, whether that
@@ -413,4 +453,23 @@ func WithOverlay(host *widget.OverlayHost) Option {
 // list the local disk.
 func WithFileSource(src widget.FileSource) Option {
 	return func(a *Adapter) { a.files = src }
+}
+
+// unaskedSignals are the bound signals a builder never asked for, sorted.
+func unaskedSignals(bound map[string]func(args ...qml.SpecValue) error, asked map[string]bool) []string {
+	var out []string
+	for name := range bound {
+		if !asked[name] {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

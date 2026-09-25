@@ -382,3 +382,22 @@ func TestTextInputOnSubmitSkippedWhenValidationFails(t *testing.T) {
 		t.Error("a failing validation published a SubmitEvent")
 	}
 }
+
+// TestWithOnEditReportsEditsNotSetValue: the hook fires per user edit, with
+// the value — and not when the program replaces the value.
+func TestWithOnEditReportsEditsNotSetValue(t *testing.T) {
+	var got []string
+	h, in, _ := focusedInput(t, widget.WithOnEdit(func(v string) { got = append(got, v) }))
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'a', Text: "a"}, tui.KeyEvent{Kind: tui.KeyPress, Code: 'b', Text: "b"})
+	h.waitFor("two edits", func() bool {
+		var n int
+		h.onLoop(func() { n = len(got) })
+		return n == 2
+	})
+	h.onLoop(func() { in.SetValue("replaced") })
+	h.onLoop(func() {
+		if len(got) != 2 || got[0] != "a" || got[1] != "ab" {
+			t.Errorf("reported %q, want [a ab] and nothing for SetValue", got)
+		}
+	})
+}

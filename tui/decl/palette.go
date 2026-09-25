@@ -39,36 +39,69 @@ import (
 // and each type takes the ones it has a look for; the reading, the colour
 // syntax and the looks they combine into are written once, below.
 
-// role is one QPalette colour role, spelled as a document writes it.
-type role string
+// Role is one QPalette colour role, spelled as a document writes it after
+// `palette.`: "window", "inactive.highlight".
+type Role string
+
+// The roles, for a [Type] whose [Type.Restyle] wears a palette.
+const (
+	RoleWindow                  = roleWindow
+	RoleWindowText              = roleWindowText
+	RoleBase                    = roleBase
+	RoleText                    = roleText
+	RoleHighlight               = roleHighlight
+	RoleHighlightedText         = roleHighlightedText
+	RoleAccent                  = roleAccent
+	RoleButton                  = roleButton
+	RoleButtonText              = roleButtonText
+	RoleInactiveHighlight       = roleInactiveHighlight
+	RoleInactiveHighlightedText = roleInactiveHighlightText
+	RoleMid                     = roleMid
+	RoleLight                   = roleLight
+)
+
+// Palette is the effective palette a node wears — its own roles over its
+// parent's — as a [Type.Restyle] receives it. Read-only.
+type Palette struct{ p palette }
+
+// Color is the colour of a role, and whether any node on the way set it.
+func (p Palette) Color(r Role) (style.Color, bool) {
+	c, ok := p.p[r]
+	return c, ok
+}
+
+// Look is a background role and a foreground role as one style, each left
+// unset when no node set it — so a style merged under it shows through, and
+// an empty palette is golib's own look.
+func (p Palette) Look(bg, fg Role) style.Style { return p.p.look(bg, fg) }
 
 const (
-	roleWindow          role = "window"
-	roleWindowText      role = "windowText"
-	roleBase            role = "base"
-	roleText            role = "text"
-	roleHighlight       role = "highlight"
-	roleHighlightedText role = "highlightedText"
-	roleAccent          role = "accent"
-	roleButton          role = "button"
-	roleButtonText      role = "buttonText"
+	roleWindow          Role = "window"
+	roleWindowText      Role = "windowText"
+	roleBase            Role = "base"
+	roleText            Role = "text"
+	roleHighlight       Role = "highlight"
+	roleHighlightedText Role = "highlightedText"
+	roleAccent          Role = "accent"
+	roleButton          Role = "button"
+	roleButtonText      Role = "buttonText"
 	// The INACTIVE group: Qt's colours for a part without the keyboard. Here,
 	// the cursor row of a list whose pane is not the one in use.
-	roleInactiveHighlight     role = "inactive.highlight"
-	roleInactiveHighlightText role = "inactive.highlightedText"
+	roleInactiveHighlight     Role = "inactive.highlight"
+	roleInactiveHighlightText Role = "inactive.highlightedText"
 	// mid and light frame a pane: mid without the keyboard, light with it.
-	roleMid   role = "mid"
-	roleLight role = "light"
+	roleMid   Role = "mid"
+	roleLight Role = "light"
 )
 
 // palette is the roles one declaration set.
-type palette map[role]style.Color
+type palette map[Role]style.Color
 
 // prop is the property a document writes for a role: `palette.window`.
-func (r role) prop() string { return "palette." + string(r) }
+func (r Role) prop() string { return "palette." + string(r) }
 
 // has reports whether any of the roles was set.
-func (p palette) has(roles ...role) bool {
+func (p palette) has(roles ...Role) bool {
 	for _, r := range roles {
 		if _, ok := p[r]; ok {
 			return true
@@ -80,7 +113,7 @@ func (p palette) has(roles ...role) bool {
 // look is a background role and a foreground role as one style. A role left
 // unset is left unset in the style, so whatever the look is merged over shows
 // through.
-func (p palette) look(bg, fg role) style.Style {
+func (p palette) look(bg, fg Role) style.Style {
 	st := style.New()
 	if c, ok := p[bg]; ok {
 		st = st.Background(c)
@@ -158,9 +191,9 @@ func colourList() string {
 // look exactly — tokens and all — rather than a palette of unset colours.
 
 var (
-	menuRoles   = []role{roleWindow, roleWindowText, roleHighlight, roleHighlightedText, roleAccent}
-	editorRoles = []role{roleBase, roleText, roleHighlight, roleHighlightedText}
-	statusRoles = []role{roleWindow, roleWindowText}
+	menuRoles   = []Role{roleWindow, roleWindowText, roleHighlight, roleHighlightedText, roleAccent}
+	editorRoles = []Role{roleBase, roleText, roleHighlight, roleHighlightedText}
+	statusRoles = []Role{roleWindow, roleWindowText}
 )
 
 // browserStyles dress a FileDialog's browser: its panes on base, the cursor on

@@ -50,9 +50,15 @@ type Build struct {
 	// package-level hook would be exactly the hidden global state this library
 	// refuses.
 	sink func(error)
-	// overlay is the adapter's WithOverlay: where a dialog outside any Window
-	// opens.
-	overlay *widget.OverlayHost
+	// Overlay is the adapter's WithOverlay host: where a component that opens
+	// over the screen ([Overlaid]) goes when no Window gives it one. Nil when
+	// the adapter was given none.
+	Overlay *widget.OverlayHost
+
+	// asked records every signal the builder asked for an emitter of. A
+	// signal the document binds and the builder never asks for is one the
+	// widget does not have, and is refused rather than left never to fire.
+	asked map[string]bool
 }
 
 // Emitter returns the emitter for a signal, or a harmless no-op when the schema
@@ -60,6 +66,7 @@ type Build struct {
 // therefore does not have to nil-check first, and a widget whose signal the
 // schema ignored simply does nothing when fired.
 func (b Build) Emitter(signal string) func() {
+	b.ask(signal)
 	fn := b.Emitters[signal]
 	if fn == nil {
 		return func() {}
@@ -80,6 +87,7 @@ func (b Build) Emitter(signal string) func() {
 // is raised as emit(path). The values are passed in the order the type
 // declared its parameters.
 func (b Build) EmitterWith(signal string) func(args ...qml.SpecValue) {
+	b.ask(signal)
 	fn := b.Emitters[signal]
 	if fn == nil {
 		return func(...qml.SpecValue) {}
@@ -89,6 +97,12 @@ func (b Build) EmitterWith(signal string) func(args ...qml.SpecValue) {
 		if err := fn(args...); err != nil && sink != nil {
 			sink(err)
 		}
+	}
+}
+
+func (b Build) ask(signal string) {
+	if b.asked != nil {
+		b.asked[signal] = true
 	}
 }
 

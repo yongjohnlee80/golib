@@ -2,6 +2,7 @@ package decl_test
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -211,4 +213,50 @@ func TestWithTypesRefusesAClashingName(t *testing.T) {
 	clash := gaugeType
 	clash.Name = "Editor"
 	tuidecl.New(tuidecl.StdRegistry(), tuidecl.WithTypes(clash))
+}
+
+// TestAHandlerForASignalTheTypeLacksIsRefused: Qt refuses `onFoo` on a type
+// with no foo signal; so does the adapter — a handler that could never run.
+func TestAHandlerForASignalTheTypeLacksIsRefused(t *testing.T) {
+	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(), tuidecl.WithErrorSink(func(error) {}))...)
+	tr := decl.New(a)
+	if err := tuidecl.InjectHosts(tr, tuidecl.HostFuncs{"go": func() error { return nil }}); err != nil {
+		t.Fatal(err)
+	}
+	spec, _ := qml.QML{File: "m.qml"}.Parse([]byte("import tui 1.0\nFlex { Text { onFoo: go(); onBar: go() }\n Button { onClicked: go() } }"))
+	err := tr.Mount(spec)
+	if err == nil || !strings.Contains(err.Error(), "Text has no signal bar, foo") || !strings.Contains(err.Error(), "m.qml:2") {
+		t.Fatalf("err = %v, want Text's missing signals named and placed", err)
+	}
+}
+
+// TestAnEnumIsPublishedUnderItsScopeAndReadAtRuntime: a consumer type's
+// enumeration, written as Qt writes one, through both readers.
+func TestAnEnumIsPublishedUnderItsScopeAndReadAtRuntime(t *testing.T) {
+	mode := tuidecl.Enum{Scope: "Gauge", Values: []string{"Bar", "Dial"}}
+	gauge := tuidecl.Type{
+		Name:  "Gauge",
+		Enums: []tuidecl.Enum{mode},
+		Build: func(tuidecl.Build) (tui.Component, []string, error) { return widget.NewText(""), nil, nil },
+		Setters: map[string]tuidecl.Setter{
+			"style": tuidecl.EnumSetter(mode, func(x *widget.Text, v string) { x.SetText(v) }),
+		},
+	}
+	s := decltest.Run(t, 20, 2,
+		tuidecl.LayoutSource("m.qml", []byte("import tui 1.0\nimport demo 1.0\nGauge { style: App.mode }")),
+		tuidecl.Types(gauge), tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.mode": "Gauge.Dial"}))
+	s.WaitForText(t, "Dial")
+	if _, err := tuidecl.NewProgram(tuidecl.LayoutSource("m.qml", []byte("import tui 1.0\nGauge { style: \"Dial\" }")),
+		tuidecl.Types(gauge), tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(1, 1)))); err == nil ||
+		!strings.Contains(err.Error(), "Gauge.Bar, Gauge.Dial") {
+		t.Fatalf("a bare string: err = %v", err)
+	}
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "already a singleton") {
+			t.Fatalf("a scope clashing with Tui: recovered %v", r)
+		}
+	}()
+	tuidecl.New(tuidecl.StdRegistry(), tuidecl.WithTypes(tuidecl.Type{Name: "Clash", Enums: []tuidecl.Enum{{Scope: "Tui", Values: []string{"X"}}},
+		Build: gauge.Build}))
 }

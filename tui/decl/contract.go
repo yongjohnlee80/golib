@@ -48,10 +48,18 @@ type Type struct {
 	// Build made: a reload dropped it, or the tree was torn down. For a widget
 	// holding something to release — a process, a timer, a subscription.
 	Destroyed func(tui.Component)
+	// Enums are the enumerations this type's properties take, each published
+	// under its Scope: `TextInput.Password`. See [Enum].
+	Enums []Enum
 
-	// restyle is how a built-in type wears an effective palette. Unexported:
-	// a consumer's type does not take palette roles yet; its subtree still
-	// inherits through it.
+	// Restyle is how the type WEARS a palette: called with the node's widget
+	// and effective palette whenever that palette changes — its own roles or
+	// a parent's (see palette propagation). An empty Palette must leave the
+	// widget as golib draws it. Nil, the type wears nothing, and its subtree
+	// still inherits through it.
+	Restyle func(c tui.Component, p Palette)
+
+	// restyle is a built-in type's, reading the palette directly.
 	restyle restyler
 }
 
@@ -82,8 +90,15 @@ func typeOptions(types []Type) []Option {
 		if w.Destroyed != nil {
 			opts = append(opts, WithDestroyHook(w.Name, w.Destroyed))
 		}
-		if w.restyle != nil {
+		switch {
+		case w.restyle != nil:
 			opts = append(opts, withRestyle(w.Name, w.restyle))
+		case w.Restyle != nil:
+			wear := w.Restyle
+			opts = append(opts, withRestyle(w.Name, func(c tui.Component, p palette) { wear(c, Palette{p}) }))
+		}
+		if len(w.Enums) > 0 {
+			opts = append(opts, withEnums(w.Enums...))
 		}
 	}
 	return opts

@@ -329,10 +329,48 @@ What each field is for:
 | `Methods` | what a handler may call by id | checked when the document mounts, not when the button is pressed |
 | `Signals` | parameter names, in raise order | a handler names them; `b.EmitterWith(sig)(values…)` raises them |
 | `Destroyed` | releasing what the widget holds | runs when a reload drops the node, or the tree is torn down |
+| `Enums` | the enumerations its properties take | published as Qt spells them — `Gauge.Dial` — and read with `EnumField` / `EnumSetter` |
+| `Restyle` | how it wears a palette | called with the effective `Palette` whenever it changes — its own roles or a parent's |
 
 A signal with no parameters needs no `Signals` entry: `b.Emitter("clicked")`
 returns a `func()` to hand the widget as its callback, and a no-op when the
-document bound nothing to it.
+document bound nothing to it. **A builder asks for every signal its widget
+raises, at construction** — a handler the document binds to a signal the
+builder never asked for is refused, as Qt refuses `onFoo` on a type with no
+`foo`, rather than left never to fire.
+
+**Enumerations.** Qt writes an enum as the type that defines it, a dot, the
+value. Declare one and read it:
+
+```go
+var mode = tuidecl.Enum{Scope: "Gauge", Values: []string{"Bar", "Dial"}}
+tuidecl.Type{Name: "Gauge", Enums: []tuidecl.Enum{mode},
+    Setters: map[string]tuidecl.Setter{"style": tuidecl.EnumSetter(mode, (*Gauge).SetStyle)}, …}
+```
+
+```qml
+Gauge { style: Gauge.Dial }
+```
+
+A scope that is already a singleton — `Tui`, `Dialog`, another type's — panics
+at `New`.
+
+**Palettes.** A type's subtree inherits palette roles through it whatever it
+does; to WEAR them, give it `Restyle`. It receives the node's effective
+palette — `p.Look(tuidecl.RoleBase, tuidecl.RoleText)`, `p.Color(role)` — and an
+empty one must leave the widget as golib draws it.
+
+**Widgets that open over the screen** — a popup, a prompt — implement
+`Overlaid` (`SetOverlay(host, afterClose)`). A Window does not lay them out; it
+hands each its overlay when it arranges its children. Outside a Window,
+`Build.Overlay` is the adapter's `WithOverlay` host. A child that should be
+focused when a modal surface opens is found through `tui.Container`, so a
+wrapper around content is one (build on `tui.MultiChild`, never by embedding a
+concrete container: its methods call their own receiver, and Go has no virtual
+dispatch).
+
+Package [`controls`](controls/) is written this way, with nothing but this
+contract: `TextField` and `Popup`, from Qt Quick Controls.
 
 **A widget the host already built** — wired to a process, a socket, a running
 model — is placed with `Instance`:
