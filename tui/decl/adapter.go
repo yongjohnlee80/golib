@@ -72,6 +72,7 @@ type Adapter struct {
 	methods   map[string]map[string]Method
 	signals   map[string]map[string][]string
 	files     widget.FileSource
+	overlay   *widget.OverlayHost
 	destroyed map[string]func(tui.Component)
 	sink      func(error)
 
@@ -290,6 +291,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		Emitters:      c.Emitters,
 		Files:         a.files,
 		sink:          a.sink,
+		overlay:       a.overlay,
 	})
 	if err != nil {
 		return nil, err
@@ -392,6 +394,19 @@ func (a *Adapter) SignalParams(typeName, signal string) []string {
 }
 
 var _ decl.SignalParameters = (*Adapter)(nil)
+
+// WithOverlay is the overlay a Dialog or FileDialog opens on when no Window
+// gave it one — a Go program's own OverlayHost, the layer its Go modals use.
+// Qt opens a Popup in the overlay of the window it is shown in, whether that
+// window was written in QML or built in C++; this says which window that is
+// when it is Go. A Window's dialogs still open on the Window's own host.
+//
+// When a dialog closes, the keyboard goes back to whatever had it when the
+// dialog opened: a dialog is a focus-trapping modal, and the runtime restores
+// the focus a trap took.
+func WithOverlay(host *widget.OverlayHost) Option {
+	return func(a *Adapter) { a.overlay = host }
+}
 
 // WithFileSource sets the filesystem the file dialogs list: any fs.FS, a
 // remote one included, with the root its paths are written under. Unset, they

@@ -384,6 +384,27 @@ The document owns that widget's structure; the host may call its methods. If the
 document is reloaded, the node can be rebuilt — look it up again rather than
 keeping the pointer across a reload.
 
+**A QML dialog over a Go screen.** A `Dialog` opens on its Window's overlay —
+and a Go program has no QML Window. Give the adapter the program's own
+`OverlayHost`, the one its Go modals already open on:
+
+```go
+host := widget.NewOverlayHost(screen)                  // the Go program's layer
+adapter := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
+    tuidecl.WithErrorSink(sink), tuidecl.WithOverlay(host))...)
+// … mount quit.qml, whose root is a Dialog …
+app = tui.NewApp(host, tui.WithBackend(backend))
+
+id, _ := tree.NodeByID("quitDialog")
+adapter.Invoke(id, "open", nil)                        // from a Go key binding
+```
+
+The dialog answers `accepted`/`rejected` into the handlers the host injected,
+closes on its buttons, letters and Escape, and hands the keyboard back to the Go
+widget that had it — the runtime restores the focus a modal took. A document may
+be nothing but dialogs; they are opened, never laid out. Under a QML `Window`,
+dialogs open on the Window's own host whatever the adapter was given.
+
 ## 8. Reloading
 
 **While developing, let the program follow its files.** Read the QML from disk

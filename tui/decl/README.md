@@ -245,6 +245,7 @@ For building the adapter by hand — a QML screen that is part of a Go program.
 | `WithMethods(type, map)` | methods a handler may call by id: `x.open()` |
 | `WithSignalParams(type, map)` | a signal's parameter names: `accepted(selectedFile)` |
 | `WithFileSource(src)` | the filesystem every `FileDialog` lists |
+| `WithOverlay(host)` | where a dialog outside any `Window` opens — a Go program's own `OverlayHost` (USAGE §7) |
 | `WithTypes(t…)` | your own widget types |
 | `WithDestroyHook(type, fn)` | what runs when a node of a type is destroyed |
 

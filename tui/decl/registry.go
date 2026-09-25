@@ -50,6 +50,9 @@ type Build struct {
 	// package-level hook would be exactly the hidden global state this library
 	// refuses.
 	sink func(error)
+	// overlay is the adapter's WithOverlay: where a dialog outside any Window
+	// opens.
+	overlay *widget.OverlayHost
 }
 
 // Emitter returns the emitter for a signal, or a harmless no-op when the schema
