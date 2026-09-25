@@ -47,7 +47,7 @@ var fileModeTable = map[string]fileMode{
 		func(o ...widget.FileViewOption) widget.FileChooser { return widget.NewFileSaveView(o...) }},
 }
 
-var fileModes = enum[fileMode]{prop: "fileMode", values: fileModeTable}
+var fileModes = enum[fileMode]{values: fileModeTable}
 
 func buildFileDialog(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {

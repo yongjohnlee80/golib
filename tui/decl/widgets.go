@@ -66,12 +66,12 @@ var tuiFlags = []flagSet{dialogButtons}
 
 // ---------------------------------------------------------------- core
 
-var orientations = enum[widget.Orientation]{prop: "orientation", values: map[string]widget.Orientation{
+var orientations = enum[widget.Orientation]{values: map[string]widget.Orientation{
 	"Horizontal": widget.Horizontal,
 	"Vertical":   widget.Vertical,
 }}
 
-var directions = enum[tui.Direction]{prop: "direction", values: map[string]tui.Direction{
+var directions = enum[tui.Direction]{values: map[string]tui.Direction{
 	"Horizontal": tui.Horizontal,
 	"Vertical":   tui.Vertical,
 }}
@@ -147,7 +147,7 @@ func buildButton(b Build) (tui.Component, []string, error) {
 // NoWrap is golib's Truncate: one line, newlines flattened, an ellipsis at the
 // edge. WordWrap keeps the author's newlines and soft-wraps at the width it is
 // given — what any multi-line message, a dialog's say, has to be.
-var wrapModes = enum[widget.WrapMode]{prop: "wrapMode", values: map[string]widget.WrapMode{
+var wrapModes = enum[widget.WrapMode]{values: map[string]widget.WrapMode{
 	"NoWrap":   widget.Truncate,
 	"WordWrap": widget.Wrap,
 }}

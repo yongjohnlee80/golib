@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"io/fs"
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 )
@@ -39,12 +40,18 @@ const moduleVersion = "1.0"
 
 // modules are every module a document may import.
 func (h *Host) modules() []tuidecl.ProgramOption {
+	return h.modulesFrom(themeFiles, dialogFiles)
+}
+
+// modulesFrom are the modules with their QML read from the given file
+// systems: the embedded copies, or a directory on disk under -dev.
+func (h *Host) modulesFrom(themes, dialogs fs.FS) []tuidecl.ProgramOption {
 	return []tuidecl.ProgramOption{
 		// The `editor` module exports ONE singleton, App. Everything the
 		// document can reach of this program is under that name — and nothing
 		// else of it is reachable at all.
 		tuidecl.Singleton("editor", moduleVersion, "App"),
-		tuidecl.Themes(themeFiles, "themes", "editor.theme", moduleVersion),
-		tuidecl.Components(dialogFiles, "dialogs", "editor.dialogs", moduleVersion),
+		tuidecl.Themes(themes, "themes", "editor.theme", moduleVersion),
+		tuidecl.Components(dialogs, "dialogs", "editor.dialogs", moduleVersion),
 	}
 }

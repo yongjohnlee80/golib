@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -1124,5 +1125,23 @@ Flex { id: root direction: Tui.Vertical
 	}
 	if err := tr.Mount(spec); err != nil {
 		t.Fatalf("Destroy did not clear the latch: %v", err)
+	}
+}
+
+// TestProgramReloadSaysIncompleteAsTheTreeDoes: a save caught half-written is
+// decl.ErrIncomplete from Program.Reload too — the check the docs teach.
+func TestProgramReloadSaysIncompleteAsTheTreeDoes(t *testing.T) {
+	s := decltest.Run(t, 20, 3, tuidecl.LayoutSource("m.qml", []byte("import tui 1.0\nText { text: \"x\" }")))
+	s.WaitForText(t, "x")
+	var incomplete, broken error
+	onScreenLoop(t, s, func() {
+		_, incomplete = s.Program.Reload([]byte("import tui 1.0\nText { text: \"y\""))
+		_, broken = s.Program.Reload([]byte("import tui 1.0\nText { text: \"y\" }}"))
+	})
+	if !errors.Is(incomplete, decl.ErrIncomplete) {
+		t.Errorf("a half-written document: %v, want decl.ErrIncomplete", incomplete)
+	}
+	if broken == nil || errors.Is(broken, decl.ErrIncomplete) {
+		t.Errorf("a wrong document: %v, want an error that is not ErrIncomplete", broken)
 	}
 }

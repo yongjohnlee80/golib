@@ -406,12 +406,12 @@ func TestABuilderGuardsTheKindItReadsRatherThanTrustingResolution(t *testing.T) 
 		{
 			name:    "Split orientation",
 			src:     "Split {\n  orientation: pick()\n  Text { text: \"a\" }\n  Text { text: \"b\" }\n}",
-			wantMsg: "orientation must be written as a string",
+			wantMsg: "orientation: must be written as a string",
 		},
 		{
 			name:    "Flex direction",
 			src:     "Flex {\n  direction: pick()\n  Text { text: \"a\" }\n}",
-			wantMsg: "direction must be written as a string",
+			wantMsg: "direction: must be written as a string",
 		},
 	}
 	for _, c := range cases {

@@ -217,6 +217,7 @@ read values as the built-ins do: `StringSetter`, `BoolSetter`, `NumberSetter`,
 | `Offer(module, version, loader)` | any offered module |
 | `Types(t…)` / `Files(src)` | your widgets; the file dialogs' filesystem |
 | `ErrorSink(fn)` | handler errors as they happen (default: kept, returned by Run) |
+| `HotReload(opts…)` | follow the files while running: `ReloadInterval`, `OnReload`, `OnReloadError` — see [USAGE.md §8](USAGE.md#8-reloading) |
 | `AppOptions`, `AdapterOptions`, `TreeOptions`, `WithRegistry` | pass-throughs |
 
 Methods: `Run`, `Quit`, `Post` (any goroutine), `Set`, `SetMany`, `Find`,

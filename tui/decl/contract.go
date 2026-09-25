@@ -187,7 +187,9 @@ func readProps(props []qml.SpecProp, fields map[string]field) ([]string, error) 
 			continue
 		}
 		if err := f(p.Value); err != nil {
-			return nil, err
+			// The reader knows the value, not the property it was written
+			// for — "want a bool, got string" alone does not say which.
+			return nil, fmt.Errorf("%s: %w", p.Name, err)
 		}
 		consumed = append(consumed, p.Name)
 	}
@@ -203,8 +205,6 @@ func readProps(props []qml.SpecProp, fields map[string]field) ([]string, error) 
 // the spelling a document writes and the value a builder accepts come from the
 // same entry and cannot drift apart. Adding a value is one entry.
 type enum[T any] struct {
-	// prop names the property, for diagnostics.
-	prop   string
 	values map[string]T
 }
 
@@ -216,14 +216,14 @@ func constantValue(name string) string { return strings.ToLower(name) }
 func (e enum[T]) read(v qml.SpecValue) (T, error) {
 	var zero T
 	if v.Kind != qml.SpecValueString {
-		return zero, fmt.Errorf("%s must be written as a string, got %s (at %s)", e.prop, v.Kind, v.Pos)
+		return zero, fmt.Errorf("must be written as a string, got %s (at %s)", v.Kind, v.Pos)
 	}
 	for name, val := range e.values {
 		if constantValue(name) == v.Raw {
 			return val, nil
 		}
 	}
-	return zero, fmt.Errorf("%s must be %s, got %q (at %s)", e.prop, e.spelling(), v.Raw, v.Pos)
+	return zero, fmt.Errorf("must be %s, got %q (at %s)", e.spelling(), v.Raw, v.Pos)
 }
 
 func (e enum[T]) names() []string {
@@ -278,9 +278,7 @@ func tuiConstants(enums []enumeration, sets []flagSet) map[string]qml.SpecValue 
 type flagSet struct {
 	// singleton is what a document writes before the dot: "Dialog".
 	singleton string
-	// prop names the property, for diagnostics.
-	prop   string
-	values map[string]int64
+	values    map[string]int64
 }
 
 // read returns the flags a value names, in the set's order, and refuses a bit
@@ -288,18 +286,18 @@ type flagSet struct {
 // not a set of buttons to guess at.
 func (f flagSet) read(v qml.SpecValue) (int64, error) {
 	if v.Kind != qml.SpecValueNumber {
-		return 0, fmt.Errorf("%s must be %s flags, got %s (at %s)", f.prop, f.singleton, v.Kind, v.Pos)
+		return 0, fmt.Errorf("must be %s flags, got %s (at %s)", f.singleton, v.Kind, v.Pos)
 	}
 	n, err := strconv.ParseInt(v.Raw, 0, 64)
 	if err != nil {
-		return 0, fmt.Errorf("%s must be %s flags, got %s (at %s)", f.prop, f.singleton, v.Raw, v.Pos)
+		return 0, fmt.Errorf("must be %s flags, got %s (at %s)", f.singleton, v.Raw, v.Pos)
 	}
 	var known int64
 	for _, bit := range f.values {
 		known |= bit
 	}
 	if extra := n &^ known; extra != 0 {
-		return 0, fmt.Errorf("%s: %#x is not a %s flag (at %s)", f.prop, extra, f.singleton, v.Pos)
+		return 0, fmt.Errorf("%#x is not a %s flag (at %s)", extra, f.singleton, v.Pos)
 	}
 	return n, nil
 }

@@ -58,7 +58,7 @@ var dialogStandardButtons = []standardButton{
 
 // dialogButtons is the flag set a document combines: `Dialog.Yes | Dialog.No`.
 var dialogButtons = func() flagSet {
-	f := flagSet{singleton: "Dialog", prop: "standardButtons", values: map[string]int64{}}
+	f := flagSet{singleton: "Dialog", values: map[string]int64{}}
 	for _, b := range dialogStandardButtons {
 		f.values[b.name] = b.bit
 	}

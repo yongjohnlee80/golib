@@ -70,14 +70,14 @@ func registerStdAttached(r *Registry) {
 	Honour(r, "Window", "Dock")
 }
 
-var dockEdges = enum[tui.DockEdge]{prop: "Dock.edge", values: map[string]tui.DockEdge{
+var dockEdges = enum[tui.DockEdge]{values: map[string]tui.DockEdge{
 	"Top":    tui.DockTop,
 	"Bottom": tui.DockBottom,
 	"Left":   tui.DockLeft,
 	"Right":  tui.DockRight,
 }}
 
-var keysets = enum[widget.Keyset]{prop: "keyset", values: map[string]widget.Keyset{
+var keysets = enum[widget.Keyset]{values: map[string]widget.Keyset{
 	"Vim":      widget.KeysetVim,
 	"Nano":     widget.KeysetNano,
 	"Standard": widget.KeysetStandard,

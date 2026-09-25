@@ -386,6 +386,40 @@ keeping the pointer across a reload.
 
 ## 8. Reloading
 
+**While developing, let the program follow its files.** Read the QML from disk
+and add `HotReload`: every file read through `Layout`, `Themes` and `Components`
+is polled, and a saved change is on screen a moment later.
+
+```go
+files := os.DirFS("ui")                       // not the embed.FS
+p, err := tuidecl.NewProgram(
+    tuidecl.Layout(files, "editor.qml"),
+    tuidecl.Themes(files, "themes", "editor.theme", "1.0"),
+    tuidecl.Components(files, "dialogs", "editor.dialogs", "1.0"),
+    tuidecl.HotReload(tuidecl.OnReloadError(showInStatusLine)),
+    …)
+```
+
+- A change is acted on once the files **hold still** for one interval
+  (`ReloadInterval`, 250ms): an editor saving in two writes is one reload.
+- The engine's component cache is cleared first (Qt's
+  `clearComponentCache`), so an edited **theme or dialog** file is read again —
+  and a line written the same under an edited theme is re-applied.
+- A save caught **half-written** is waited out in silence. Any other refusal
+  goes to `OnReloadError` and **the screen stays as it was**. A reload that
+  failed part-way is recovered by the next good save, which builds the screen
+  afresh and keeps the host's current source values.
+- **What survives:** a node that keeps its identity — its `id`, else its
+  position — keeps its focus, scroll and typed text, and so do its unchanged
+  siblings, the Window's included. A node that must be rebuilt starts fresh;
+  `OnReload`'s `Result.Rebuilt` says which and why.
+- **Go is the boundary.** Handlers, functions and the host's code are
+  compiled; changing them is a rebuild and restart.
+- Without `HotReload` nothing is polled: ship the embedded files as before. The
+  example's `-dev dir` flag is this, switched on.
+
+By hand, `Program.Reload(src)` is the same reconcile:
+
 ```go
 res, err := p.Reload(src)          // or tree.Reload(src)
 switch {
@@ -396,11 +430,11 @@ default:
 }
 ```
 
-A reload patches what changed. A node that keeps its identity — its `id`, else
-its position — keeps its focus, scroll and half-typed input. A module a reload
-is the first to import is loaded then; a reload refused before it touched the
-tree unloads it again. Only the QML-built parts reload; Go widgets around them
-are untouched.
+A module a reload is the first to import is loaded then; a reload refused
+before it touched the tree unloads it again. Call `Tree().ClearComponentCache()`
+first to have imported modules read again. A reload that replaces the root is
+put on screen with `App.SetRoot`. Only the QML-built parts reload; Go widgets
+around them are untouched.
 
 ## 9. Using both safely — the rules
 

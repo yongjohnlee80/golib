@@ -43,7 +43,6 @@ type palNode struct {
 	own, eff  palette
 	parent    decl.NodeID
 	hasParent bool
-	kids      []decl.NodeID
 }
 
 // restyler dresses a built widget in an effective palette. An empty palette
@@ -111,7 +110,7 @@ func takePalette(props []qml.SpecProp) (palette, []qml.SpecProp, []string, error
 // paletteBuilt records a node the adapter just built, adopts its children, and
 // paints the subtree.
 func (a *Adapter) paletteBuilt(id decl.NodeID, own palette, kids []decl.NodeID) {
-	pn := &palNode{own: own, kids: append([]decl.NodeID(nil), kids...)}
+	pn := &palNode{own: own}
 	a.pal[id] = pn
 	a.refresh(id)
 	for _, k := range kids {
@@ -151,7 +150,7 @@ func (a *Adapter) refresh(id decl.NodeID) {
 			fn(b.comp, eff)
 		}
 	}
-	for _, k := range pn.kids {
+	for _, k := range a.kids[id] {
 		a.refresh(k)
 	}
 }
@@ -213,11 +212,10 @@ var _ decl.Resetter = (*Adapter)(nil)
 
 // paletteAdopt places a child under a parent a reload spliced it into.
 func (a *Adapter) paletteAdopt(parent, child decl.NodeID) {
-	pn, cn := a.pal[parent], a.pal[child]
-	if pn == nil || cn == nil {
+	cn := a.pal[child]
+	if a.pal[parent] == nil || cn == nil {
 		return
 	}
-	pn.kids = append(pn.kids, child)
 	cn.parent, cn.hasParent = parent, true
 	a.refresh(child)
 }
@@ -225,19 +223,9 @@ func (a *Adapter) paletteAdopt(parent, child decl.NodeID) {
 // paletteRelease takes a child from its parent: a reload removed it, or it is
 // being destroyed.
 func (a *Adapter) paletteRelease(child decl.NodeID) {
-	cn := a.pal[child]
-	if cn == nil || !cn.hasParent {
-		return
+	if cn := a.pal[child]; cn != nil {
+		cn.hasParent = false
 	}
-	if pn := a.pal[cn.parent]; pn != nil {
-		for i, k := range pn.kids {
-			if k == child {
-				pn.kids = append(pn.kids[:i], pn.kids[i+1:]...)
-				break
-			}
-		}
-	}
-	cn.hasParent = false
 }
 
 // ---------------------------------------------------------------- restylers
