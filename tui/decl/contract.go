@@ -34,6 +34,9 @@ type widgetType struct {
 	// methods are what a handler can call on a node of this type by its id:
 	// `quitDialog.open()`.
 	methods map[string]Method
+	// signals names each signal's parameters, in the order it is raised with
+	// them: `accepted(selectedFile)`.
+	signals map[string][]string
 }
 
 // registerTypes adds each type's builder to the registry.
@@ -56,6 +59,9 @@ func typeOptions(types []widgetType) []Option {
 		}
 		if len(w.methods) > 0 {
 			opts = append(opts, WithMethods(w.name, w.methods))
+		}
+		if len(w.signals) > 0 {
+			opts = append(opts, WithSignalParams(w.name, w.signals))
 		}
 	}
 	return opts
