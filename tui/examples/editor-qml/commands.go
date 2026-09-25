@@ -15,14 +15,15 @@ import (
 func (h *Host) commands() map[string]decl.HandlerFunc {
 	return map[string]decl.HandlerFunc{
 		"App.newFile":    none(h.newFile),
-		"App.openFile":   onePath("App.openFile", h.openFile),
+		"App.openFile":   oneString("App.openFile", "a path", h.openFile),
 		"App.saveFile":   none(h.saveFile),
-		"App.saveAs":     onePath("App.saveAs", h.saveAs),
+		"App.saveAs":     oneString("App.saveAs", "a path", h.saveAs),
 		"App.quit":       none(func() error { h.p.Quit(); return nil }),
 		"App.useVim":     none(func() error { return h.useKeyset("vim", "switched keymap to Vim (modal)") }),
 		"App.useNano":    none(func() error { return h.useKeyset("nano", "switched keymap to Nano (modeless)") }),
 		"App.syncStatus": none(h.syncStatus),
 		"App.markDirty":  none(func() error { return h.setDirty(true) }),
+		"App.runCommand": oneString("App.runCommand", "a command line", h.runCommand),
 	}
 }
 
@@ -37,10 +38,10 @@ func none(fn func() error) decl.HandlerFunc {
 }
 
 // onePath is a command that takes one path.
-func onePath(name string, fn func(string) error) decl.HandlerFunc {
+func oneString(name, what string, fn func(string) error) decl.HandlerFunc {
 	return func(args []qml.SpecValue) error {
 		if len(args) != 1 || args[0].Kind != qml.SpecValueString {
-			return fmt.Errorf("%s takes one path", name)
+			return fmt.Errorf("%s takes %s", name, what)
 		}
 		return fn(args[0].Raw)
 	}

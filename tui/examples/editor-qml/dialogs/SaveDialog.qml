@@ -6,8 +6,9 @@
 // the parts, and the footer says what the keys do in the one in use.
 // Opening a folder is not a choice: Enter on one goes into it.
 //
-// A COMPONENT, like the other dialogs: it imports nothing, so the layout's
-// theme dresses it.
+// A COMPONENT, like the other dialogs: it imports nothing and names no
+// colour — the card, its panes and its buttons all inherit the Window's
+// application palette, so the layout's theme import dresses it.
 
 FileDialog {
     title: "Save"
@@ -17,17 +18,5 @@ FileDialog {
     // edited — its folder listed, its name in the field, ready to change.
     selectedFile: App.path
     dim: false          // the editor stays in view behind it, as behind Quit
-    palette.window: Theme.dialog.window
-    palette.windowText: Theme.dialog.windowText
-    palette.button: Theme.dialog.button
-    palette.buttonText: Theme.dialog.buttonText
-    palette.highlight: Theme.dialog.highlight
-    palette.highlightedText: Theme.dialog.highlightedText
-    palette.base: Theme.dialog.base
-    palette.text: Theme.dialog.text
-    palette.inactive.highlight: Theme.dialog.inactive.highlight
-    palette.inactive.highlightedText: Theme.dialog.inactive.highlightedText
-    palette.mid: Theme.dialog.mid
-    palette.light: Theme.dialog.light
     onAccepted: App.saveAs(selectedFile)
 }

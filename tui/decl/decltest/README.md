@@ -23,6 +23,7 @@ func TestSaveAsksForAName(t *testing.T) {
 | --- | --- |
 | `Check(t, opts…)` | fails t once per problem `tuidecl.Check` finds |
 | `Run(t, w, h, opts…) *Screen` | runs the program; a handler error fails t unless the options give an `ErrorSink` |
+| `RunWith(t, w, h, setup, opts…)` | the same, with `setup(program)` between building and running — where a program's main binds its host (finds widgets, loads a file) before the first frame |
 | `Screen.WaitFor(t, what, cond)` / `WaitForText(t, text)` | poll the screen until it shows what you expect |
 | `Screen.Keys(t, evs…)` | deliver key events |
 | `Screen.Quit()` | closed when the program stops |

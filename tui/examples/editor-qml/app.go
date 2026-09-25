@@ -59,30 +59,38 @@ type Options struct {
 
 // New mounts editor.qml. Nothing runs until Run.
 //
-// The whole program is one tuidecl.NewProgram: the modules the document may
-// import, the state it reads, the commands it invokes, the clock, the layout.
+// The whole program is one tuidecl.NewProgram over Host.options, then the host
+// attached to it.
 func New(opt Options) (*Host, error) {
-	h := &Host{path: opt.Path}
+	h := newHost(opt)
 	p, err := tuidecl.NewProgram(h.options(opt)...)
 	if err != nil {
 		return nil, err
 	}
+	return h, h.attach(p, opt.Path)
+}
+
+// newHost is the host before its program exists: options needs it, to hand
+// the document its commands.
+func newHost(opt Options) *Host { return &Host{path: opt.Path} }
+
+// attach binds the host to the program built from its options — by New, or
+// by a test running the same options through decltest.Run — finds the one
+// widget it reaches into, and loads the file.
+func (h *Host) attach(p *tuidecl.Program, path string) error {
 	h.p = p
-	// The one widget the host reaches into: the editor, by the id the
-	// document gave it.
 	var ok bool
 	if h.editor, ok = tuidecl.FindAs[*widget.Editor](p, "editor"); !ok {
-		return nil, errors.New("editor.qml declares no Editor with id: editor")
+		return errors.New("editor.qml declares no Editor with id: editor")
 	}
-	if err := h.load(opt.Path); err != nil {
-		return nil, err
-	}
-	return h, nil
+	return h.load(path)
 }
 
 // options are everything the program is: the modules the document may import,
-// the state it reads, the commands it invokes, the clock, the layout. New
-// builds from them, and so does the test that checks every QML file.
+// the state it reads, the commands it invokes, the clock, the layout. ONE
+// function, and everything builds from it: New, the test that checks every
+// QML file (decltest.Check), and every test that runs the editor
+// (decltest.Run). A program assembled twice is two programs.
 func (h *Host) options(opt Options) []tuidecl.ProgramOption {
 	var opts []tuidecl.ProgramOption
 	if opt.Dev != "" {

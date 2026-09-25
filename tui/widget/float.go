@@ -246,6 +246,13 @@ func (f *Float) Init(ctx *tui.Context) {
 	f.Base.Init(ctx)
 	f.shown = false
 	f.layer = nil
+	// Unmounted — an App's teardown takes the whole tree — the layer went
+	// with it. Forget it, so a Hide or Detach from an owner released later
+	// is a no-op rather than an Unmount of something no longer mounted.
+	ctx.OnUnmount(func() {
+		f.shown = false
+		f.layer = nil
+	})
 }
 
 // Layout: zero cells while hidden; the full overlay area while shown (the

@@ -15,12 +15,6 @@ Dialog {
     // The editor stays in view behind the question, undimmed: the user is
     // deciding whether to leave THAT, so it should be what they see.
     dim: false
-    palette.window: Theme.dialog.window
-    palette.windowText: Theme.dialog.windowText
-    palette.button: Theme.dialog.button
-    palette.buttonText: Theme.dialog.buttonText
-    palette.highlight: Theme.dialog.highlight
-    palette.highlightedText: Theme.dialog.highlightedText
     onAccepted: App.quit()
 
     // Bound: it mentions unsaved changes when there are some. It names no
