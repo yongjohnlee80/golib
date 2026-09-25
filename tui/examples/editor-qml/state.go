@@ -14,9 +14,10 @@ import (
 // and nothing else. The host changes them only through the setters below, so
 // what the screen says and what the host knows cannot drift apart.
 
-// state is App's state with its starting values.
-func (h *Host) state(path string) map[string]any {
-	return map[string]any{
+// state is App's state with its starting values; theme is the one the layout
+// imports.
+func (h *Host) state(path, theme string) map[string]any {
+	st := map[string]any{
 		"App.mode":   widget.ModeNormal.String(),
 		"App.status": displayPath(path),
 		"App.keyset": "vim",
@@ -29,6 +30,11 @@ func (h *Host) state(path string) map[string]any {
 		// is something to lose without the host reaching into it.
 		"App.quitQuestion": quitQuestion(false),
 	}
+	// Which theme the menu shows checked: the one the layout imports.
+	for k, v := range themeState(theme) {
+		st[k] = v
+	}
+	return st
 }
 
 // message puts a line in the status bar's centre.

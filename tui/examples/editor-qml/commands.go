@@ -25,6 +25,7 @@ func (h *Host) commands() map[string]decl.HandlerFunc {
 		"App.markDirty":     none(func() error { return h.setDirty(true) }),
 		"App.saveCancelled": none(h.saveCancelled),
 		"App.runCommand":    oneString("App.runCommand", "a command line", h.runCommand),
+		"App.useTheme":      oneString("App.useTheme", "a theme's name", h.useTheme),
 	}
 }
 

@@ -95,8 +95,13 @@ func TestThePromptIsANarrowCardWithItsHelpUnderARule(t *testing.T) {
 	for right < len(row) && row[right] != '┐' {
 		right++
 	}
-	if w := right - left + 1; w != 48 {
-		t.Errorf("the prompt is %d wide, want its width, 48:\n%s", w, strings.Join(rows, "\n"))
+	// Its width, 48 — or the help line's, which it never clips.
+	const helpText = "w  q  wq  e <file>      Enter runs, Esc closes"
+	if w := right - left + 1; w != max(48, len(helpText)+4) {
+		t.Errorf("the prompt is %d wide, want %d:\n%s", w, max(48, len(helpText)+4), strings.Join(rows, "\n"))
+	}
+	if !strings.Contains(strings.Join(rows, "\n"), helpText) {
+		t.Errorf("the help line is clipped:\n%s", strings.Join(rows, "\n"))
 	}
 	help := rowOf(rows, "Enter runs")
 	if help < 0 || help-2 < 0 || !strings.Contains(rows[help-2], "├") {
@@ -177,4 +182,20 @@ func TestWqDoesNotQuitWhenTheSaveIsCancelledOrFails(t *testing.T) {
 		t.Errorf("the handler error: %v", err)
 	}
 	r2.notQuit(t)
+}
+
+// TestSpaceInNormalModeOpensThePrompt: vim's leader. In Insert mode Space is
+// typed, and the prompt stays shut.
+func TestSpaceInNormalModeOpensThePrompt(t *testing.T) {
+	r := start(t, "")
+	r.key(t, runeKey(' '))
+	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ Command ") })
+	r.key(t, escape)
+	r.waitFor(t, "the prompt closing", func(s string) bool { return !strings.Contains(s, "┌ Command ") })
+
+	r.key(t, runeKey('i'), runeKey('a'), runeKey(' '), runeKey('b'))
+	r.waitFor(t, "the space typed", func(s string) bool { return strings.Contains(s, "a b") })
+	if strings.Contains(r.screen(), "┌ Command ") {
+		t.Fatal("Space in Insert mode opened the prompt")
+	}
 }

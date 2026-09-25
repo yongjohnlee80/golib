@@ -150,8 +150,11 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	inner := tui.Size{W: max(cs.MaxW-frame, 0), H: max(cs.MaxH-frame, 0)}
 	if c.width > 0 {
 		// A set width is the room the body is offered — a field fills it —
-		// and never more than the host has.
-		inner.W = min(max(c.width-frame, 0), inner.W)
+		// and never more than the host has. It is a width, not a clip: the
+		// help line and the title still fit, as they do on a card sized to
+		// its content.
+		want := max(c.width-frame, c.measure(c.footer), c.measure(c.title))
+		inner.W = min(want, inner.W)
 	}
 
 	// Buttons first: they are the floor the body has to fit above, so measuring
