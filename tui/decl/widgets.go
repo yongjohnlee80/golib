@@ -57,8 +57,12 @@ func stdTypes() []widgetType { return append(coreTypes(), appTypes()...) }
 // constants are derived from it, so a new enum is visible to documents by being
 // listed here — and nowhere else.
 var tuiEnums = []enumeration{
-	orientations, directions, dockEdges, keysets, menuAligns,
+	orientations, directions, dockEdges, keysets, menuAligns, wrapModes,
 }
+
+// tuiFlags is every flag set, each under its own singleton. Listed here and
+// nowhere else: the constants AND the module's exports derive from it.
+var tuiFlags = []flagSet{dialogButtons}
 
 // ---------------------------------------------------------------- core
 
@@ -80,7 +84,7 @@ func coreTypes() []widgetType {
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
 			"label":   setter("a Button", stringOf, (*widget.Button).SetLabel),
 		}},
-		{name: "Text", build: buildText, setters: map[string]Setter{
+		{name: "Text", build: buildText, ctor: append([]string{"wrapMode"}, paletteProps(textRoles)...), setters: map[string]Setter{
 			"text": setter("a Text", stringOf, (*widget.Text).SetText),
 		}},
 	}
@@ -138,7 +142,32 @@ func buildButton(b Build) (tui.Component, []string, error) {
 	return widget.NewButton("", widget.WithOnActivate(b.Emitter("clicked"))), nil, nil
 }
 
-// buildText consumes nothing: every property it has can be set at runtime.
+// wrapModes are Qt's Text.wrapMode values this toolkit has.
+//
+// NoWrap is golib's Truncate: one line, newlines flattened, an ellipsis at the
+// edge. WordWrap keeps the author's newlines and soft-wraps at the width it is
+// given — what any multi-line message, a dialog's say, has to be.
+var wrapModes = enum[widget.WrapMode]{prop: "wrapMode", values: map[string]widget.WrapMode{
+	"NoWrap":   widget.Truncate,
+	"WordWrap": widget.Wrap,
+}}
+
+// buildText consumes its wrap mode and its colours, which golib takes at
+// construction; the text itself can be set at runtime.
+//
+// A Text paints its own background. golib has no transparent cell — a style
+// that names no background paints the terminal's — so text on a coloured card
+// is given that card's colours, or it sits in a strip of the terminal's.
 func buildText(b Build) (tui.Component, []string, error) {
-	return widget.NewText(""), nil, nil
+	mode := widget.Truncate
+	p := palette{}
+	consumed, err := readProps(b.Props, withPalette(map[string]field{"wrapMode": into(&mode, wrapModes.read)}, p, textRoles))
+	if err != nil {
+		return nil, nil, err
+	}
+	opts := []widget.TextOption{widget.WithWrapMode(mode)}
+	if p.has(textRoles...) {
+		opts = append(opts, widget.WithTextStyle(p.look(roleWindow, roleWindowText)))
+	}
+	return widget.NewText("", opts...), consumed, nil
 }

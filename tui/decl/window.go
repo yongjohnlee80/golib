@@ -33,6 +33,7 @@ type windowNode struct {
 	focus     tui.Component
 	shortcuts []*shortcutNode
 	menus     []*menuBarNode
+	dialogs   []*dialogNode
 }
 
 func buildWindow(b Build) (tui.Component, []string, error) {
@@ -50,6 +51,10 @@ func buildWindow(b Build) (tui.Component, []string, error) {
 			// Keys, not layout: a Shortcut takes no place on the screen.
 			w.shortcuts = append(w.shortcuts, c)
 			continue
+		case *dialogNode:
+			// Not layout either: a Dialog opens over the Window when asked.
+			w.dialogs = append(w.dialogs, c)
+			continue
 		case *menuBarNode:
 			w.menus = append(w.menus, c)
 		}
@@ -65,6 +70,9 @@ func buildWindow(b Build) (tui.Component, []string, error) {
 		dock.Pin(edge, child)
 	}
 	w.host = widget.NewOverlayHost(dock)
+	for _, d := range w.dialogs {
+		d.host, d.afterClose = w.host, w.restoreFocus
+	}
 	return w, nil, nil
 }
 
@@ -92,6 +100,12 @@ func (w *windowNode) Init(ctx *tui.Context) {
 }
 
 func (w *windowNode) restoreFocus() {
+	// NOT WHILE A DIALOG IS UP. A menu row that opened one finishes after it
+	// has, and taking the keyboard back to the editor then would leave the
+	// dialog on screen with nothing able to answer it.
+	if w.host.TopModal() != nil {
+		return
+	}
 	if w.focus != nil && w.ctx != nil {
 		w.ctx.FocusComponent(w.focus)
 	}

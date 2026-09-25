@@ -20,7 +20,7 @@ Window {
     // the Window sees every key the focused widget does not consume. The menu
     // is reachable from the keyboard too: F10 goes to the bar and Alt plus a
     // category's underlined letter opens it — Alt+F for File.
-    Shortcut { sequence: "Ctrl+Q"; onActivated: App.exit() }
+    Shortcut { sequence: "Ctrl+Q"; onActivated: quitDialog.open() }
     Shortcut { sequence: "Ctrl+S"; onActivated: App.saveFile() }
 
     // ---- the menu bar ---------------------------------------------------
@@ -44,7 +44,7 @@ Window {
             MenuItem { text: "&New";  onTriggered: App.newFile() }
             MenuItem { text: "&Open"; onTriggered: App.openFile() }
             MenuItem { text: "&Save"; onTriggered: App.saveFile() }
-            MenuItem { text: "E&xit"; onTriggered: App.exit() }
+            MenuItem { text: "E&xit"; onTriggered: quitDialog.open() }
         }
 
         Menu {
@@ -72,7 +72,7 @@ Window {
         Menu {
             title: "&Help"
             align: Tui.Right
-            MenuItem { text: "&About"; onTriggered: App.about() }
+            MenuItem { text: "&About"; onTriggered: aboutDialog.open() }
         }
     }
 
@@ -107,5 +107,52 @@ Window {
         left: App.mode
         center: App.status
         right: App.clock
+    }
+
+    // ---- dialogs --------------------------------------------------------
+    //
+    // Qt's Dialog. Nothing here says how a dialog CLOSES: its buttons, their
+    // underlined letters and Escape all close it, and each way out is one of
+    // two answers — accepted or rejected. A document says only what an answer
+    // does. They open by id, from a handler: quitDialog.open().
+    Dialog {
+        id: quitDialog
+        title: "Quit"
+        standardButtons: Dialog.Yes | Dialog.No    // y and n answer it
+        palette.window: Theme.dialog.window
+        palette.windowText: Theme.dialog.windowText
+        palette.button: Theme.dialog.button
+        palette.buttonText: Theme.dialog.buttonText
+        palette.highlight: Theme.dialog.highlight
+        palette.highlightedText: Theme.dialog.highlightedText
+        onAccepted: App.quit()
+
+        // Bound: it mentions unsaved changes when there are some.
+        Text {
+            text: App.quitQuestion
+            wrapMode: Tui.WordWrap
+            palette.window: Theme.dialog.window
+            palette.windowText: Theme.dialog.windowText
+        }
+    }
+
+    Dialog {
+        id: aboutDialog
+        title: "About"
+        standardButtons: Dialog.Ok
+        helpText: "Enter or Esc to close"
+        palette.window: Theme.dialog.window
+        palette.windowText: Theme.dialog.windowText
+        palette.button: Theme.dialog.button
+        palette.buttonText: Theme.dialog.buttonText
+        palette.highlight: Theme.dialog.highlight
+        palette.highlightedText: Theme.dialog.highlightedText
+
+        Text {
+            wrapMode: Tui.WordWrap
+            palette.window: Theme.dialog.window
+            palette.windowText: Theme.dialog.windowText
+            text: "editor-qml\n\nA text editor whose screen is written in QML,\nrunning on golib/tui."
+        }
     }
 }

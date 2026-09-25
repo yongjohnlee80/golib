@@ -68,6 +68,7 @@ type Adapter struct {
 	// orientation consumed nothing, and nothing in that record says the widget
 	// has no SetOrientation.
 	ctorProps map[string]map[string]bool
+	methods   map[string]map[string]Method
 	sink      func(error)
 }
 
@@ -104,6 +105,47 @@ func WithSetters(typeName string, setters map[string]Setter) Option {
 	}
 }
 
+// WithMethods registers the methods a handler can call on a node of a type by
+// its id.
+func WithMethods(typeName string, methods map[string]Method) Option {
+	return func(a *Adapter) {
+		if a.methods[typeName] == nil {
+			a.methods[typeName] = map[string]Method{}
+		}
+		for name, fn := range methods {
+			a.methods[typeName][name] = fn
+		}
+	}
+}
+
+// MethodsOf implements [decl.Methods].
+func (a *Adapter) MethodsOf(typeName string) []string {
+	names := make([]string, 0, len(a.methods[typeName]))
+	for n := range a.methods[typeName] {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// Invoke implements [decl.Methods].
+func (a *Adapter) Invoke(node decl.NodeID, method string, args []qml.SpecValue) error {
+	b, ok := a.nodes[node]
+	if !ok {
+		return fmt.Errorf("%s: node %d was not built by this adapter", method, node)
+	}
+	fn, ok := a.methods[b.typ][method]
+	if !ok {
+		return fmt.Errorf("a %s has no method %s", b.typ, method)
+	}
+	if err := fn(b.comp, args); err != nil {
+		return fmt.Errorf("%s.%s: %w", b.typ, method, err)
+	}
+	return nil
+}
+
+var _ decl.Methods = (*Adapter)(nil)
+
 // WithConstructorProps declares the properties a type accepts ONLY at
 // construction — the ones a builder takes as arguments and offers no setter
 // for.
@@ -134,6 +176,7 @@ func New(reg *Registry, opts ...Option) *Adapter {
 		nodes:     map[decl.NodeID]built{},
 		setters:   map[string]map[string]Setter{},
 		ctorProps: map[string]map[string]bool{},
+		methods:   map[string]map[string]Method{},
 	}
 	for _, o := range opts {
 		o(a)

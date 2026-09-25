@@ -313,17 +313,15 @@ func rowOf(rows []string, label string) int {
 func ctrl(ch rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code: ch, Mods: tui.ModCtrl} }
 func alt(ch rune) tui.KeyEvent  { return tui.KeyEvent{Kind: tui.KeyPress, Code: ch, Mods: tui.ModAlt} }
 
-// TestCtrlQQuits — the way out that works in a terminal with no mouse. Without
-// it the only exit was a menu reached by clicking, and Ctrl+C arrives as an
-// ordinary key rather than a signal.
-func TestCtrlQQuits(t *testing.T) {
+// TestCtrlQAsksBeforeQuitting — the Shortcut opens the quit dialog, and only
+// its answer quits.
+func TestCtrlQAsksBeforeQuitting(t *testing.T) {
 	r := start(t, "")
 	r.key(t, ctrl('q'))
-	select {
-	case <-r.quit:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Ctrl+Q did not quit")
-	}
+	r.waitFor(t, "the quit dialog", func(s string) bool { return strings.Contains(s, "Are you sure to quit?") })
+	r.notQuit(t)
+	r.key(t, runeKey('y'))
+	r.quits(t, "y in the quit dialog")
 }
 
 // TestAltFOpensTheFileMenu — the menu is reachable from the keyboard, by the
@@ -343,11 +341,11 @@ func TestAltFOpensTheFileMenu(t *testing.T) {
 // to the document's `focus: true` target.
 func TestTypingWorksAfterAMenuAction(t *testing.T) {
 	r := start(t, "")
-	r.key(t, alt('h'))
-	r.waitFor(t, "the Help dropdown", func(s string) bool { return strings.Contains(s, "About") })
-	r.clickLabel(t, rowOf(r.rows(), "About"), "About")
-	r.waitFor(t, "the About message", func(s string) bool {
-		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "editor-qml")
+	r.key(t, alt('f'))
+	r.waitFor(t, "the File dropdown", func(s string) bool { return strings.Contains(s, "New") })
+	r.clickLabel(t, rowOf(r.rows(), "New"), "New")
+	r.waitFor(t, "the New message", func(s string) bool {
+		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "new buffer")
 	})
 
 	r.key(t, runeKey('i'))

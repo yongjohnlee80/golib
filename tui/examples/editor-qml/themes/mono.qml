@@ -30,4 +30,9 @@ Theme {
     status {
         window: "white"; windowText: "black"
     }
+    dialog {
+        window: "white"; windowText: "black"
+        button: "white"; buttonText: "black"
+        highlight: "black"; highlightedText: "white"       // the focused button
+    }
 }
