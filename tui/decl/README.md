@@ -132,9 +132,13 @@ kept row holds survives rows inserted around it.
 **`DelegateChooser`** — Qt's delegate chosen per row. As a Repeater's or an
 Instantiator's one delegate, it holds `DelegateChoice { roleValue: …; <delegate> }`
 entries and a `role:`. Each row is built as the FIRST choice whose `roleValue`
-matches the row's value of that role, by Qt's rule: equal as values (numbers
-by value), else equal as integers, else equal as strings. So `roleValue: 1`
-matches a row's `"1"`. A choice with no `roleValue` matches every row, and a
+matches the row's value of that role, by Qt's rule
+(`QQmlDelegateChoice::match`): equal as values (numbers by value), else equal
+as integers, else equal as strings, each tried when the one before fails. The
+conversions are QVariant's: a number becomes an integer by rounding half away
+from zero, so `roleValue: 1.1` matches a row's `1`; a bool is 1 or 0; a string
+is an integer when it reads as a whole one. So `roleValue: 1` matches a row's
+`"1"`, and `"01"` matches `"1"`. A choice with no `roleValue` matches every row, and a
 row no choice matches has no delegate. Every choice is held to the rules
 whether or not a row selects it today.
 A menu whose rows are items and submenus, in the model's order:

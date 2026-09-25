@@ -178,7 +178,8 @@ its **component types**.
   reconciles it — on the scheduler, never inside an emission. A delegate that
   is a `DelegateChooser` is resolved per row first: the first `DelegateChoice`
   whose `roleValue` matches the row's `role` value by Qt's rule (as values,
-  else as integers, else as strings; one without a roleValue matches all), and
+  else as integers — a number rounded half away from zero, as QVariant does —
+  else as strings; one without a roleValue matches all), and
   a row with no match has no copy. Every delegate template, including a choice
   no row selects and the delegate of an empty model, is checked for the
   placement rules whatever the rows are.

@@ -172,7 +172,12 @@ func TestARoleValueMatchesAsQtsDoes(t *testing.T) {
 		{"true and 1, as integers", "true", 1, true},
 		{"a string and the bool it spells", `"true"`, true, true},
 		{"different numbers", "1", 2, false},
-		{"a fraction is no integer", "1.5", 1, false},
+		{"a fraction rounds to its integer (qRound)", "1.1", 1, true},
+		{"half rounds away from zero", "1.5", 2, true},
+		{"half rounds away from zero, below zero", "-1.5", -2, true},
+		{"a fraction that rounds elsewhere", "1.5", 1, false},
+		{"two strings equal as integers", `"01"`, "1", true},
+		{"two different numbers that round apart", "1.4", 2, false},
 		{"a word and a number", `"one"`, 1, false},
 		{"false and 1", "false", 1, false},
 	} {
