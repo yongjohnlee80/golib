@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// DIALOG BUTTON BOX — Qt's DialogButtonBox: a dialog's own answers.
+// DIALOG BUTTON BOX — Qt's DialogButtonBox: declarative button containers for dialogs.
 //
 //	Dialog {
 //	    Text { text: App.question }
@@ -19,18 +19,32 @@ import (
 //	    }
 //	}
 //
-// A DECLARATION: its Buttons become the dialog's, in order, each carrying its
-// role, and the widget's Modal answers for them (widget ANSWERS) exactly as it
-// does for a native dialog — each button's own onClicked, then its role's
-// answer: AcceptRole accepts (`accepted`, and the dialog closes); RejectRole
-// rejects (`rejected`, and it closes — and Escape presses it); DestructiveRole
-// closes without an answer (`closed`, neither accepted nor rejected).
+// # Architectural Role in Dialogs
 //
-// NO DEFAULT: a box declares none, and in a dialog Enter is the dialog's — its
-// default button's — so Enter answers nothing, whichever button has focus. A
-// button answers by Space while it has focus, by its mnemonic, or by a click.
-// An irreversible answer is never one stray Enter away, whatever order the
-// answers are listed in.
+// A DialogButtonBox serves as a declaration-only node within a [Dialog]. When the parent
+// Dialog constructs its underlying [widget.Modal], it extracts the child Buttons from the
+// DialogButtonBox, assigns each button its declared role, and installs them into the modal card.
+//
+// # Button Roles and Lifecycle Signals
+//
+// Each button's attached property `DialogButtonBox.buttonRole` determines its dismissal behavior:
+//   - AcceptRole: Emits the Button's own `clicked` signal, followed by the Dialog's `accepted`
+//     signal, and finally dismisses the dialog with `closed`.
+//   - RejectRole: Emits the Button's own `clicked` signal, followed by the Dialog's `rejected`
+//     signal, and dismisses the dialog with `closed`. The Escape key is wired to activate this role.
+//   - DestructiveRole: Emits the Button's own `clicked` signal and immediately dismisses the dialog
+//     with `closed` (neither `accepted` nor `rejected` is emitted).
+//
+// # Enter and Focus Semantics
+//
+// Unlike standard message boxes with an implicit affirmative default button, DialogButtonBox
+// deliberately designates NO default button:
+//   - Pressing Enter within the dialog does not trigger any button unless a button explicitly holds
+//     focus and activates.
+//   - This design prevents destructive or irreversible dialog actions from firing accidentally
+//     if a user presses Enter while navigating.
+//   - Buttons are activated via Space when focused, via their underlined letter mnemonic (e.g. '&S' for 's'),
+//     or via mouse click.
 
 var buttonRoles = Enum{Scope: "DialogButtonBox", Values: []string{"AcceptRole", "RejectRole", "DestructiveRole"}}
 

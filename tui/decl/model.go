@@ -30,23 +30,42 @@ type (
 	ChangeKind = decl.ChangeKind
 )
 
-// ItemModel is a model a view can show — Qt's QAbstractItemModel.
+// ItemModel defines the contract for data models displayed by declarative terminal views
+// (ListView, ComboBox, TableView). It corresponds conceptually to Qt's QAbstractItemModel,
+// streamlined for terminal UI layout: tabular or list rows, typed data roles, column headers,
+// and change subscriptions.
+//
+// # Architectural Invariants
+//
+//   - Thread Affinity: All ItemModel methods and subscription notifications execute on the
+//     application UI loop goroutine. Background worker goroutines must marshal modifications
+//     onto the loop via [Program.Post].
+//   - Key Persistence: Key(ix) must return a persistent, unique identifier for each row.
+//     Views track user selection by row key rather than ordinal index, ensuring that active
+//     selections remain attached to the same record across additions, deletions, and sorts.
 type ItemModel interface {
-	// RowCount is the number of rows under parent (nil: the top level).
+	// RowCount returns the number of rows located under parent (nil for top-level rows).
 	RowCount(parent *Index) int
-	// ColumnCount is the number of columns: 1 for a list.
+
+	// ColumnCount returns the number of columns present under parent (1 for linear lists).
 	ColumnCount(parent *Index) int
-	// Data is one role of one cell, typed; the zero value for a role the
-	// model does not have.
+
+	// Data returns the typed value of role for the cell addressed by ix.
+	// If role is empty (""), tabular views expect the role assigned to column ix.Column.
+	// Returns a zero [qml.SpecValue] if the cell or role does not exist.
 	Data(ix Index, role string) qml.SpecValue
-	// HeaderData is a table column's title.
+
+	// HeaderData returns the display title for the specified column index.
 	HeaderData(column int) string
-	// Roles are the role names the model answers — Qt's roleNames.
+
+	// Roles lists all valid role names provided by this model (similar to Qt's roleNames).
 	Roles() []string
-	// Key is a row's stable identity: the same row keeps its key as rows are
-	// inserted and removed around it — Qt's persistent index.
+
+	// Key returns a stable, unique identifier for the row at ix.
 	Key(ix Index) string
-	// Subscribe delivers every change, on the loop, until cancel.
+
+	// Subscribe registers fn to receive model change notifications on the application loop.
+	// The returned cancel function stops further deliveries and unregisters the subscriber.
 	Subscribe(fn func(Change)) (cancel func())
 }
 
@@ -59,16 +78,22 @@ const (
 	ColumnsReset = decl.ColumnsReset
 )
 
-// Row is one row of a ListModel: a value per role. Values are strings, bools
-// and numbers.
+// Row represents a single record within a [ListModel], mapping role names to typed values
+// (strings, booleans, integers, or floats).
 type Row map[string]any
 
-// ListModel is golib's model — Qt's QML ListModel: rows of named roles, held
-// in memory. `key` is the role a row's identity is read from; a row without it
-// is keyed by position. Columns, when set, make it a table: each column shows
-// one role, under its title.
+// ListModel is an in-memory, flat tabular data model for declarative views (ListView, ComboBox, TableView).
+// It models Qt Quick's ListModel.
 //
-// Loop-owned: change it on the UI loop, where views read it.
+// # Key Selection and Row Identity
+//
+// If a row contains a "key" role, its value is used as the row's persistent identity.
+// If the "key" role is omitted, the row falls back to its positional string index ("0", "1", ...).
+// When configured with columns via [ListModel.SetColumns], the model functions as a multi-column table.
+//
+// # Concurrency
+//
+// ListModel is loop-owned and must be mutated only on the UI goroutine.
 type ListModel struct {
 	roles   []string
 	columns []Column
@@ -77,35 +102,39 @@ type ListModel struct {
 	next    int
 }
 
-// Column is one table column of a ListModel: the role it shows, and its title.
+// Column defines a single column in a tabular [ListModel], pairing a model role with a header title.
 type Column struct {
-	Role, Title string
+	// Role is the role name whose value is presented in this column.
+	Role string
+	// Title is the column header text displayed by TableView.
+	Title string
 }
 
-// NewListModel is an empty model with the given roles.
+// NewListModel constructs an empty [ListModel] registered with the provided role names.
 func NewListModel(roles ...string) *ListModel {
 	return &ListModel{roles: append([]string(nil), roles...), subs: map[int]func(Change){}}
 }
 
-// SetColumns makes the model a table of these columns, and tells the views.
+// SetColumns configures the model as a table with the specified columns and emits ColumnsReset to all views.
 func (m *ListModel) SetColumns(cols ...Column) {
 	m.columns = append([]Column(nil), cols...)
 	m.notify(Change{Kind: ColumnsReset})
 }
 
-// Reset replaces every row.
+// Reset replaces all rows in the model with rows and emits a Reset change notification.
 func (m *ListModel) Reset(rows []Row) {
 	m.rows = append([]Row(nil), rows...)
 	m.notify(Change{Kind: Reset})
 }
 
-// Set replaces row i.
+// Set updates row i with the contents of r and emits a Changed notification for that row.
 func (m *ListModel) Set(i int, r Row) {
 	m.rows[i] = r
 	m.notify(Change{Kind: Changed, First: i, Last: i})
 }
 
-// Insert puts rows before row i (i == Len appends).
+// Insert inserts rows immediately before row index i (if i == Len(), rows are appended).
+// Emits an Inserted change notification covering the new row range.
 func (m *ListModel) Insert(i int, rows ...Row) {
 	if len(rows) == 0 {
 		return
@@ -115,7 +144,7 @@ func (m *ListModel) Insert(i int, rows ...Row) {
 	m.notify(Change{Kind: Inserted, First: i, Last: i + len(rows) - 1})
 }
 
-// Remove drops n rows from row i.
+// Remove deletes n rows starting at row index i and emits a Removed change notification.
 func (m *ListModel) Remove(i, n int) {
 	if n <= 0 {
 		return
@@ -124,10 +153,10 @@ func (m *ListModel) Remove(i, n int) {
 	m.notify(Change{Kind: Removed, First: i, Last: i + n - 1})
 }
 
-// Len is the number of rows.
+// Len returns the current number of rows in the model.
 func (m *ListModel) Len() int { return len(m.rows) }
 
-// At is row i.
+// At returns the row record located at index i.
 func (m *ListModel) At(i int) Row { return m.rows[i] }
 
 // RowCount implements ItemModel: a ListModel is flat.

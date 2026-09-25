@@ -19,33 +19,53 @@ import (
 // say "still to load", which is what CanFetchMore already says; a third method
 // could only disagree with the two.
 
-// TreeModel is an ItemModel whose rows have children.
+// TreeModel extends [ItemModel] for hierarchical tree structures, supporting on-demand
+// (lazy) asynchronous fetching of child nodes as branches expand.
+//
+// It mirrors Qt 6's QAbstractItemModel tree semantics:
+//   - A node is considered expandable if it currently has children (RowCount > 0) OR if it
+//     can load more children on demand (CanFetchMore is true).
+//   - When a user expands a collapsed node in [TreeView], the view queries CanFetchMore; if true,
+//     it calls FetchMore(ix) to request the child hierarchy.
+//   - The host application loads the children asynchronously or synchronously and calls
+//     [TreeListModel.SetChildren] to populate the branch and notify the view.
 type TreeModel interface {
 	ItemModel
-	// CanFetchMore reports whether a row has children still to load: true
-	// until they have arrived — including while a load is in flight, as Qt's
-	// canFetchMore is.
+
+	// CanFetchMore reports whether the item at ix has unloaded children pending retrieval.
+	// Must remain true until children are delivered or confirmed non-existent.
 	CanFetchMore(ix Index) bool
-	// FetchMore asks for a row's children. A request while one is in flight
-	// is the model's to ignore.
+
+	// FetchMore initiates the retrieval of child items for the node at ix.
+	// If a fetch operation is already in-flight for this node, subsequent calls should be ignored.
 	FetchMore(ix Index)
 }
 
-// TreeRow is a row of a TreeListModel, and whether it has children to load.
+// TreeRow defines a single tree node's data roles and its child availability.
 type TreeRow struct {
+	// Row contains the role-to-value mappings for this node (e.g. "label", "badge", "key").
 	Row
+	// HasChildren indicates whether this node has child rows to fetch or display.
 	HasChildren bool
 }
 
-// TreeListModel is golib's tree model: rows of named roles in memory, each
-// with children the host sets when asked. OnFetch is how it asks — the view
-// expanded a row whose children are not loaded — and SetChildren is the
-// answer. Loop-owned.
+// TreeListModel is an in-memory, hierarchical tree data model that supports on-demand loading.
+//
+// # Usage and Lifecycle
+//
+// When a tree node with HasChildren=true is expanded, the view invokes [TreeModel.FetchMore],
+// which triggers the OnFetch callback. The host populates the branch by calling [TreeListModel.SetChildren].
+//
+// # Thread Safety
+//
+// TreeListModel is single-threaded and loop-owned. Mutations and child updates must be executed
+// on the UI event-loop goroutine.
 type TreeListModel struct {
 	roles   []string
 	top     []*treeNode
 	subs    map[int]func(Change)
 	next    int
+	// OnFetch is invoked when a view expands a node whose children have not yet been loaded.
 	OnFetch func(Index)
 }
 
@@ -57,7 +77,7 @@ type treeNode struct {
 	kids     []*treeNode
 }
 
-// NewTreeListModel is an empty tree with the given roles.
+// NewTreeListModel constructs an empty [TreeListModel] with the specified role names.
 func NewTreeListModel(roles ...string) *TreeListModel {
 	return &TreeListModel{roles: append([]string(nil), roles...), subs: map[int]func(Change){}}
 }
