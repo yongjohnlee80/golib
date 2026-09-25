@@ -204,8 +204,9 @@ func (e Enum) spelling() string {
 	return strings.Join(names, ", ")
 }
 
-// enumConstant is what `Scope.Value` resolves to. Qualified, so a string a
-// document writes by hand cannot pass for one.
+// enumConstant is what `Scope.Value` resolves to: the qualified name, so an
+// unqualified string ("Password") is not one of the enum's values. A string
+// spelling the qualified name is — see Enum.read.
 func enumConstant(scope, value string) string { return scope + "." + value }
 
 // EnumField reads an enum property into dst: the value's name.
