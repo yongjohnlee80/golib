@@ -604,7 +604,7 @@ func (a *App) retryDeferredFocusRepair() {
 	if id := a.pendingFocusInto; id != 0 {
 		a.pendingFocusInto = 0 // one layout buys one attempt
 		if n := a.nodes[id]; n != nil {
-			a.FocusInto(n.comp)
+			a.focusInto(n.comp, false) // never defers again
 		}
 	}
 	if !a.pendingRepair {

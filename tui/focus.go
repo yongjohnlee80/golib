@@ -580,7 +580,11 @@ func (a *App) nominatedFocus(scope *node) (target *node, retryAfterLayout bool) 
 // FocusInto is Context.FocusInto for a caller holding the App rather than a
 // mounted component's Context — a declarative layer over the tree, say. Loop
 // goroutine only.
-func (a *App) FocusInto(comp Component) bool {
+func (a *App) FocusInto(comp Component) bool { return a.focusInto(comp, true) }
+
+// focusInto is FocusInto; mayDefer is false for the post-layout attempt, which
+// is the one attempt a deferral buys and never schedules another.
+func (a *App) focusInto(comp Component, mayDefer bool) bool {
 	if comp == nil {
 		return false
 	}
@@ -594,7 +598,7 @@ func (a *App) FocusInto(comp Component) bool {
 		// and not laid out yet: focus it once it is, as Qt's
 		// forceActiveFocus takes an item that is being shown. A hidden
 		// subtree is not deferred; it takes none.
-		if a.unplacedTargetIn(n) {
+		if mayDefer && a.unplacedTargetIn(n) {
 			a.pendingFocusInto = n.id
 			a.layoutDirty = true
 			a.queue.wakeUp()
@@ -625,7 +629,9 @@ func (a *App) FocusWithin(comp Component) bool {
 
 // unplacedTargetIn reports whether n's subtree holds a component that takes
 // focus now and is kept from it only by not having been laid out yet: mounted,
-// accepting, and under no hidden ancestor.
+// accepting, under no hidden ancestor, and not measured by the last layout. A
+// node the last layout measured and left with no cells — a pane clipped to
+// nothing — is not waiting for a layout; another would leave it the same.
 func (a *App) unplacedTargetIn(n *node) bool {
 	for p := n; p != nil; p = p.parent {
 		if hidden(p.comp) {
@@ -637,7 +643,7 @@ func (a *App) unplacedTargetIn(n *node) bool {
 		if hidden(n.comp) {
 			return false
 		}
-		if f, ok := n.comp.(Focusable); ok && f.AcceptsFocus() && n.mounted {
+		if f, ok := n.comp.(Focusable); ok && f.AcceptsFocus() && n.mounted && !n.measured {
 			return true
 		}
 		for _, ch := range n.children {
