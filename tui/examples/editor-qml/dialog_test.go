@@ -132,8 +132,10 @@ func TestTheQuitQuestionMentionsUnsavedChanges(t *testing.T) {
 	}
 	r.key(t, ctrl('q'))
 	r.waitFor(t, "the quit dialog", func(s string) bool { return strings.Contains(s, quitQ) })
-	if strings.Contains(r.screen(), "Unsaved") {
-		t.Errorf("the question still warns after a save:\n%s", r.screen())
+	// The whole sentence, not a word of it: the status bar shows the saved
+	// file's temp path, which carries this test's name — and "Unsaved" in it.
+	if s := r.screen(); strings.Contains(s, "Unsaved changes will be lost.") {
+		t.Errorf("the question still warns after a save:\n%s", s)
 	}
 }
 
@@ -189,4 +191,38 @@ func TestTheLayoutsThemeImportDressesTheDialogFiles(t *testing.T) {
 		{"mono's focused Yes", yes + 1, btn, ansi(7), ansi(0)},
 		{"mono's No", r.labelAt(t, btn, "No") + 1, btn, ansi(0), ansi(7)},
 	})
+}
+
+// TestQuitLeavesTheEditorInViewAndAboutDimsIt: the quit dialog is asked over
+// the editor as it stands; About dims the screen behind it.
+func TestQuitLeavesTheEditorInViewAndAboutDimsIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hello.txt")
+	if err := os.WriteFile(path, []byte("hello\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := start(t, path)
+	// Where the text is, taken BEFORE a dialog covers anything: About's scrim
+	// is over the row, and the row's position does not change.
+	y := rowOf(r.rows(), "hello")
+	x := r.labelAt(t, y, "hello")
+	behind := func() (tui.CellAttrs, tui.CellAttrs) { return r.cell(t, x, y), r.cell(t, 0, y) }
+
+	r.openQuit(t)
+	text, border := behind()
+	if text.FG != cgaYellow || text.BG != cgaBlue || text.Mask&tui.AttrFaint != 0 ||
+		border.BG != cgaBlue || border.Mask&tui.AttrFaint != 0 {
+		t.Errorf("behind the quit dialog the editor is %+v / %+v, want it as it was: "+
+			"yellow on blue, not faint", text, border)
+	}
+
+	r.key(t, runeKey('n'))
+	r.waitFor(t, "the quit dialog closing", func(s string) bool { return !strings.Contains(s, quitQ) })
+	r.key(t, alt('h'))
+	r.waitFor(t, "the Help dropdown", func(s string) bool { return strings.Contains(s, "About") })
+	r.clickLabel(t, rowOf(r.rows(), "About"), "About")
+	r.waitFor(t, "the About dialog", func(s string) bool { return strings.Contains(s, "┌ About ") })
+	text, _ = behind()
+	if text.Mask&tui.AttrFaint == 0 || text.BG == cgaBlue {
+		t.Errorf("behind About the editor is %+v, want it dimmed", text)
+	}
 }

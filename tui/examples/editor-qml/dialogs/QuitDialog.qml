@@ -12,6 +12,9 @@
 Dialog {
     title: "Quit"
     standardButtons: Dialog.Yes | Dialog.No    // y and n answer it
+    // The editor stays in view behind the question, undimmed: the user is
+    // deciding whether to leave THAT, so it should be what they see.
+    dim: false
     palette.window: Theme.dialog.window
     palette.windowText: Theme.dialog.windowText
     palette.button: Theme.dialog.button
