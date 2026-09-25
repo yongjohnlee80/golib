@@ -102,7 +102,8 @@ func (*dialogNode) Layout(tui.Constraints) tui.Size { return tui.Size{} }
 func (*dialogNode) Render(tui.Surface)              {}
 func (*dialogNode) HandleEvent(tui.Event) bool      { return false }
 
-var errDialogOutsideWindow = errors.New("a Dialog opens over a Window, and this one is not in one")
+var errDialogOutsideWindow = errors.New("a Dialog opens over a Window, and this one is not in one; " +
+	"inside a Go program, give the adapter WithOverlay(host)")
 
 // open shows the dialog. Opening an open dialog is not an error: a menu row
 // pressed twice asked the same question twice.
@@ -166,6 +167,9 @@ type dialogSpec struct {
 // spec they hand it, so a way out cannot behave differently in one of them.
 func newDialog(b Build, s dialogSpec) *dialogNode {
 	d := &dialogNode{
+		// A Window hands its dialogs its own host when it arranges them;
+		// until then — and outside any Window — the adapter's, if it has one.
+		host:     b.overlay,
 		hooks:    s.hooks,
 		accepted: b.EmitterWith("accepted"),
 		rejected: b.Emitter("rejected"),
