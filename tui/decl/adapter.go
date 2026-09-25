@@ -309,7 +309,15 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	// wires every signal its widget raises at construction, so one it never
 	// asked for is not a signal of this type — and a handler bound to it would
 	// never run.
+	//
+	// Refused AFTER the builder ran, so what it built is released as a
+	// destroyed node's would be: a builder may already hold resources — a
+	// Popup's layer on the overlay host — and the node is never recorded,
+	// so no Destroy would reach them.
 	if unknown := unaskedSignals(c.Emitters, asked); len(unknown) > 0 {
+		if hook := a.destroyed[c.Type]; hook != nil {
+			hook(comp)
+		}
 		return nil, fmt.Errorf("%s has no signal %s: on%s is bound to nothing (declared at %s)",
 			c.Type, strings.Join(unknown, ", "), capitalize(unknown[0]), c.Pos)
 	}

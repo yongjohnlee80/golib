@@ -287,3 +287,32 @@ func TestTheControlsWearTheirParentsPalette(t *testing.T) {
 		return row[0].Attrs.BG == tui.CellColor{Kind: tui.CellColorANSI, Index: 4}
 	})
 }
+
+// TestARefusedPopupLeavesNoLayerOnTheOverlay: the Popup attaches its layer
+// while it is being built; a declaration refused after that (a signal it
+// does not raise) must release it, or every refused mount or reload leaves
+// one more layer on the host.
+func TestARefusedPopupLeavesNoLayerOnTheOverlay(t *testing.T) {
+	host := widget.NewOverlayHost(widget.NewText("base"))
+	layers := func() int {
+		n := 0
+		for range host.All() {
+			n++
+		}
+		return n
+	}
+	before := layers()
+	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
+		tuidecl.WithErrorSink(func(error) {}), tuidecl.WithOverlay(host), tuidecl.WithTypes(controls.Types()...))...)
+	tr := decl.New(a)
+	if err := tuidecl.InjectHosts(tr, tuidecl.HostFuncs{"go": func() error { return nil }}); err != nil {
+		t.Fatal(err)
+	}
+	spec, _ := qml.QML{}.Parse([]byte("import tui 1.0\nPopup { onFoo: go(); Text { text: \"x\" } }"))
+	if err := tr.Mount(spec); err == nil || !strings.Contains(err.Error(), "has no signal foo") {
+		t.Fatalf("mount: %v", err)
+	}
+	if got := layers(); got != before {
+		t.Fatalf("the overlay has %d layers after a refused Popup, want %d", got, before)
+	}
+}
