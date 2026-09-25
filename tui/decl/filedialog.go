@@ -53,16 +53,16 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, fmt.Errorf("FileDialog takes no children; its content is the file view (at %s)", b.Pos)
 	}
-	s := dialogSpec{dim: true, align: widget.ButtonsRight, p: palette{}}
+	s := dialogSpec{dim: true, align: widget.ButtonsRight}
 	mode := fileModeTable["OpenFile"]
 	var preview bool
-	consumed, err := readProps(b.Props, withPalette(map[string]field{
+	consumed, err := readProps(b.Props, map[string]field{
 		"title":    into(&s.title, stringOf),
 		"helpText": into(&s.help, stringOf),
 		"dim":      into(&s.dim, boolOf),
 		"fileMode": into(&mode, fileModes.read),
 		"preview":  into(&preview, boolOf),
-	}, s.p, fileDialogRoles))
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -79,9 +79,6 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 		if name == "preview" {
 			opts = append(opts, widget.WithFileViewPreview(preview))
 		}
-	}
-	if st, ok := s.p.browserStyles(); ok {
-		opts = append(opts, widget.WithFileViewStyles(st))
 	}
 	if !fixedHelp {
 		opts = append(opts, widget.WithOnHint(func(h string) { d.modal.SetFooter(h) }))

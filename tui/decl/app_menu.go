@@ -197,15 +197,11 @@ func (c menuCommand) ActionID() tui.ActionID { return c.id }
 // the engine's emission rules — the menu never calls a handler itself.
 func buildMenuBar(b Build) (tui.Component, []string, error) {
 	var vim bool
-	p := palette{}
-	consumed, err := readProps(b.Props, withPalette(map[string]field{"vimNavigation": into(&vim, boolOf)}, p, menuRoles))
+	consumed, err := readProps(b.Props, map[string]field{"vimNavigation": into(&vim, boolOf)})
 	if err != nil {
 		return nil, nil, err
 	}
 	menuOpts := []widget.MenuOption{widget.WithMenuVimNavigation(vim)}
-	if st, ok := p.menuStyle(); ok {
-		menuOpts = append(menuOpts, widget.WithMenuStyle(st))
-	}
 
 	triggers := map[tui.ActionID]func(){}
 	var nodes []*menuNode

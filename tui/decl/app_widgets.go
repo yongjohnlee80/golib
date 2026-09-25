@@ -27,17 +27,17 @@ import (
 func appTypes() []Type {
 	return []Type{
 		{Name: "Window", Build: buildWindow},
-		{Name: "Frame", Build: buildFrame, Ctor: append([]string{"title"}, paletteProps(frameRoles)...)},
-		{Name: "Editor", Build: buildEditor, Ctor: append([]string{"text", "wrap"}, paletteProps(editorRoles)...), Setters: map[string]Setter{
+		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame},
+		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
 		}},
-		{Name: "StatusBar", Build: buildStatusBar, Ctor: paletteProps(statusRoles), Setters: map[string]Setter{
+		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, Setters: map[string]Setter{
 			"left":   setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetLeft)),
 			"center": setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetCenter)),
 			"right":  setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetRight)),
 		}},
-		{Name: "MenuBar", Build: buildMenuBar, Ctor: append([]string{"vimNavigation"}, paletteProps(menuRoles)...)},
+		{Name: "MenuBar", Build: buildMenuBar, Ctor: []string{"vimNavigation"}, restyle: restyleMenuBar},
 		{Name: "Menu", Build: buildMenu, Ctor: []string{"title", "align"}},
 		{Name: "MenuItem", Build: buildMenuItem, Ctor: []string{"text", "checkable", "group", "shortcut"},
 			Setters: map[string]Setter{
@@ -47,7 +47,8 @@ func appTypes() []Type {
 		{Name: "MenuSeparator", Build: buildMenuSeparator},
 		{Name: "Shortcut", Build: buildShortcut, Ctor: []string{"sequence"}},
 		{Name: "FileDialog", Build: buildFileDialog,
-			Ctor: append([]string{"title", "helpText", "dim", "fileMode", "preview"}, paletteProps(fileDialogRoles)...),
+			Ctor:    []string{"title", "helpText", "dim", "fileMode", "preview"},
+			restyle: restyleDialog,
 			Setters: map[string]Setter{
 				"currentFolder": setter("a FileDialog", stringOf, (*dialogNode).setFolder),
 				"selectedFile":  setter("a FileDialog", stringOf, (*dialogNode).setSelected),
@@ -55,7 +56,8 @@ func appTypes() []Type {
 			Methods: dialogMethods,
 			Signals: map[string][]string{"accepted": {"selectedFile"}}},
 		{Name: "Dialog", Build: buildDialog,
-			Ctor:    append([]string{"title", "helpText", "dim", "standardButtons"}, paletteProps(dialogRoles)...),
+			Ctor:    []string{"title", "helpText", "dim", "standardButtons"},
+			restyle: restyleDialog,
 			Methods: dialogMethods},
 	}
 }
@@ -89,12 +91,11 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("Frame needs exactly 1 child, got %d (at %s)", len(b.Children), b.Pos)
 	}
 	var title string
-	p := palette{}
-	consumed, err := readProps(b.Props, withPalette(map[string]field{"title": into(&title, stringOf)}, p, frameRoles))
+	consumed, err := readProps(b.Props, map[string]field{"title": into(&title, stringOf)})
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := p.frameOptions()
+	var opts []widget.BoxOption
 	if title != "" {
 		opts = append(opts, widget.WithTitle(title))
 	}
@@ -122,11 +123,10 @@ func EditorOf(c tui.Component) (*widget.Editor, bool) {
 func buildEditor(b Build) (tui.Component, []string, error) {
 	var text string
 	var wrap bool
-	p := palette{}
-	consumed, err := readProps(b.Props, withPalette(map[string]field{
+	consumed, err := readProps(b.Props, map[string]field{
 		"text": into(&text, stringOf),
 		"wrap": into(&wrap, boolOf),
-	}, p, editorRoles))
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -139,9 +139,6 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 	if wrap {
 		opts = append(opts, widget.WithEditorWrap(widget.WrapSoft))
 	}
-	if st, ok := p.editorStyles(); ok {
-		opts = append(opts, widget.WithEditorStyles(st))
-	}
 	return widget.NewEditor(opts...), consumed, nil
 }
 
@@ -151,16 +148,11 @@ func buildStatusBar(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, fmt.Errorf("StatusBar takes no children (at %s)", b.Pos)
 	}
-	p := palette{}
-	consumed, err := readProps(b.Props, withPalette(map[string]field{}, p, statusRoles))
+	consumed, err := readProps(b.Props, map[string]field{})
 	if err != nil {
 		return nil, nil, err
 	}
-	var opts []widget.StatusBarOption
-	if st, ok := p.barStyle(); ok {
-		opts = append(opts, widget.WithBarStyle(st))
-	}
-	return widget.NewStatusBar(opts...), consumed, nil
+	return widget.NewStatusBar(), consumed, nil
 }
 
 // statusSegment adapts one of the StatusBar's segment setters, which take an

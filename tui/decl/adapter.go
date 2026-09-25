@@ -74,6 +74,11 @@ type Adapter struct {
 	files     widget.FileSource
 	destroyed map[string]func(tui.Component)
 	sink      func(error)
+
+	// pal is the palette tree, and restylers each type's way of wearing an
+	// effective palette. See propagate.go.
+	pal       map[decl.NodeID]*palNode
+	restylers map[string]restyler
 }
 
 // Option configures an [Adapter].
@@ -183,6 +188,8 @@ func New(reg *Registry, opts ...Option) *Adapter {
 		methods:   map[string]map[string]Method{},
 		signals:   map[string]map[string][]string{},
 		destroyed: map[string]func(tui.Component){},
+		pal:       map[decl.NodeID]*palNode{},
+		restylers: map[string]restyler{},
 	}
 	for _, o := range opts {
 		o(a)
@@ -246,6 +253,12 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Palette roles are the adapter's, on every type: they propagate to the
+	// children whether or not this type wears them. See propagate.go.
+	ownPalette, own, paletteNames, err := takePalette(own)
+	if err != nil {
+		return nil, err
+	}
 
 	// A bound emitter with nowhere to send its error is refused at the point
 	// the wiring would happen, rather than becoming silence at the first
@@ -285,6 +298,8 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		nominee = comp
 	}
 	a.nodes[c.Node] = built{comp: comp, typ: c.Type, attached: attached, nominee: nominee}
+	a.paletteBuilt(c.Node, ownPalette, c.Children)
+	consumed = append(consumed, paletteNames...)
 	if focus {
 		consumed = append(consumed, "focus")
 	}
@@ -303,6 +318,9 @@ func (a *Adapter) Apply(app decl.Application) error {
 	if !ok {
 		return fmt.Errorf("node %d has no component", app.Node)
 	}
+	if isPaletteProp(app.Prop) {
+		return a.setRole(app.Node, app.Prop, app.Value)
+	}
 	set, ok := a.setters[b.typ][app.Prop]
 	if !ok {
 		return fmt.Errorf("type %q has no runtime property %q (declared at %s)",
@@ -319,6 +337,8 @@ func (a *Adapter) Apply(app decl.Application) error {
 // would be reaching past its own boundary.
 func (a *Adapter) Destroy(id decl.NodeID) error {
 	b, ok := a.nodes[id]
+	a.paletteRelease(id)
+	delete(a.pal, id)
 	delete(a.nodes, id)
 	if hook := a.destroyed[b.typ]; ok && hook != nil {
 		hook(b.comp)

@@ -15,10 +15,9 @@ Dialog {
     palette.highlight: Theme.dialog.highlight
     palette.highlightedText: Theme.dialog.highlightedText
 
+    // On the card's colours, which it inherits — no palette of its own.
     Text {
         wrapMode: Tui.WordWrap
-        palette.window: Theme.dialog.window
-        palette.windowText: Theme.dialog.windowText
         text: "editor-qml\n\nA text editor whose screen is written in QML,\nrunning on golib/tui."
     }
 }

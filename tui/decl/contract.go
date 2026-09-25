@@ -48,6 +48,11 @@ type Type struct {
 	// Build made: a reload dropped it, or the tree was torn down. For a widget
 	// holding something to release — a process, a timer, a subscription.
 	Destroyed func(tui.Component)
+
+	// restyle is how a built-in type wears an effective palette. Unexported:
+	// a consumer's type does not take palette roles yet (ADR-tui-0014 D2,
+	// recorded for D5); its subtree still inherits through it.
+	restyle restyler
 }
 
 // registerTypes adds each type's builder to the registry.
@@ -76,6 +81,9 @@ func typeOptions(types []Type) []Option {
 		}
 		if w.Destroyed != nil {
 			opts = append(opts, WithDestroyHook(w.Name, w.Destroyed))
+		}
+		if w.restyle != nil {
+			opts = append(opts, withRestyle(w.Name, w.restyle))
 		}
 	}
 	return opts

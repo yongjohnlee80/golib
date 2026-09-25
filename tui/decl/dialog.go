@@ -158,7 +158,6 @@ type dialogSpec struct {
 	align       widget.ButtonAlign
 	// buttons are laid out in this order.
 	buttons []standardButton
-	p       palette
 	hooks   dialogHooks
 }
 
@@ -172,7 +171,6 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 		rejected: b.Emitter("rejected"),
 		closed:   b.Emitter("closed"),
 	}
-	cardStyle, buttonStyle := s.p.dialogStyles()
 	buttons := make([]*widget.Button, 0, len(s.buttons))
 	for _, sb := range s.buttons {
 		label, key, _ := mnemonic(sb.label)
@@ -189,9 +187,6 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 			widget.WithMnemonic(key),
 			widget.WithOnActivate(press),
 		}
-		if buttonStyle != nil {
-			opts = append(opts, widget.WithButtonStyle(buttonStyle))
-		}
 		buttons = append(buttons, widget.NewButton(label, opts...))
 	}
 	opts := []widget.ModalOption{
@@ -205,9 +200,6 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	if s.help != "" {
 		opts = append(opts, widget.WithModalFooter(s.help))
 	}
-	if cardStyle != nil {
-		opts = append(opts, widget.WithModalStyle(cardStyle))
-	}
 	d.modal = widget.NewModal(s.body, opts...)
 	return d
 }
@@ -217,14 +209,14 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("Dialog needs exactly 1 child, its content, got %d (at %s)",
 			len(b.Children), b.Pos)
 	}
-	s := dialogSpec{body: b.Children[0], dim: true, align: widget.ButtonsCenter, p: palette{}}
+	s := dialogSpec{body: b.Children[0], dim: true, align: widget.ButtonsCenter}
 	var flags int64
-	consumed, err := readProps(b.Props, withPalette(map[string]field{
+	consumed, err := readProps(b.Props, map[string]field{
 		"title":           into(&s.title, stringOf),
 		"helpText":        into(&s.help, stringOf),
 		"dim":             into(&s.dim, boolOf),
 		"standardButtons": into(&flags, dialogButtons.read),
-	}, s.p, dialogRoles))
+	})
 	if err != nil {
 		return nil, nil, err
 	}

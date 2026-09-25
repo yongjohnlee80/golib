@@ -23,11 +23,10 @@ Dialog {
     palette.highlightedText: Theme.dialog.highlightedText
     onAccepted: App.quit()
 
-    // Bound: it mentions unsaved changes when there are some.
+    // Bound: it mentions unsaved changes when there are some. It names no
+    // colour: a palette propagates, so the question wears the card's.
     Text {
         text: App.quitQuestion
         wrapMode: Tui.WordWrap
-        palette.window: Theme.dialog.window
-        palette.windowText: Theme.dialog.windowText
     }
 }

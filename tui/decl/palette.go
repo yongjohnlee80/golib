@@ -35,8 +35,9 @@ import (
 //	inactive.highlight, …Text    the selected row of a pane not in use
 //	mid, light                   a pane's frame, without and with the keyboard
 //
-// A widget type states WHICH roles it takes; the reading, the colour syntax and
-// the looks they combine into are written once, below.
+// Roles PROPAGATE — a node wears its own over its parent's (propagate.go) —
+// and each type takes the ones it has a look for; the reading, the colour
+// syntax and the looks they combine into are written once, below.
 
 // role is one QPalette colour role, spelled as a document writes it.
 type role string
@@ -65,31 +66,6 @@ type palette map[role]style.Color
 
 // prop is the property a document writes for a role: `palette.window`.
 func (r role) prop() string { return "palette." + string(r) }
-
-// paletteProps names a type's palette properties, for its constructor list.
-func paletteProps(roles []role) []string {
-	out := make([]string, len(roles))
-	for i, r := range roles {
-		out[i] = r.prop()
-	}
-	return out
-}
-
-// withPalette adds a type's palette roles to its builder's fields, so the one
-// readProps call reads both and reports both consumed.
-func withPalette(fields map[string]field, p palette, roles []role) map[string]field {
-	for _, r := range roles {
-		fields[r.prop()] = func(v qml.SpecValue) error {
-			c, err := colorOf(v)
-			if err != nil {
-				return fmt.Errorf("%s: %w", r.prop(), err)
-			}
-			p[r] = c
-			return nil
-		}
-	}
-	return fields
-}
 
 // has reports whether any of the roles was set.
 func (p palette) has(roles ...role) bool {
@@ -183,14 +159,8 @@ func colourList() string {
 
 var (
 	menuRoles   = []role{roleWindow, roleWindowText, roleHighlight, roleHighlightedText, roleAccent}
-	frameRoles  = []role{roleWindow, roleWindowText, roleHighlight}
 	editorRoles = []role{roleBase, roleText, roleHighlight, roleHighlightedText}
 	statusRoles = []role{roleWindow, roleWindowText}
-	textRoles   = []role{roleWindow, roleWindowText}
-	dialogRoles = []role{roleWindow, roleWindowText, roleButton, roleButtonText,
-		roleHighlight, roleHighlightedText}
-	fileDialogRoles = append(append([]role(nil), dialogRoles...),
-		roleBase, roleText, roleInactiveHighlight, roleInactiveHighlightText, roleMid, roleLight)
 )
 
 // browserStyles dress a FileDialog's browser: its panes on base, the cursor on
@@ -254,26 +224,6 @@ func (p palette) menuStyle() (*widget.MenuStyle, bool) {
 		st = st.WithHotkey(style.New().Foreground(c).Underline(true))
 	}
 	return st, true
-}
-
-// frameOptions colour a Frame: its interior and border on window, the border
-// line in windowText, and in highlight while focus is inside it.
-func (p palette) frameOptions() []widget.BoxOption {
-	var opts []widget.BoxOption
-	if p.has(roleWindow, roleWindowText) {
-		st := style.New()
-		if c, ok := p[roleWindow]; ok {
-			st = st.Background(c)
-		}
-		if c, ok := p[roleWindowText]; ok {
-			st = st.BorderForeground(c)
-		}
-		opts = append(opts, widget.WithStyle(st))
-	}
-	if c, ok := p[roleHighlight]; ok {
-		opts = append(opts, widget.WithFocusedStyle(style.New().BorderForeground(c)))
-	}
-	return opts
 }
 
 // editorStyles colour an Editor's text on base, and its selection.

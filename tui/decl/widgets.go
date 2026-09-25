@@ -84,7 +84,7 @@ func coreTypes() []Type {
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
 			"label":   setter("a Button", stringOf, (*widget.Button).SetLabel),
 		}},
-		{Name: "Text", Build: buildText, Ctor: append([]string{"wrapMode"}, paletteProps(textRoles)...), Setters: map[string]Setter{
+		{Name: "Text", Build: buildText, Ctor: []string{"wrapMode"}, restyle: restyleText, Setters: map[string]Setter{
 			"text": setter("a Text", stringOf, (*widget.Text).SetText),
 		}},
 	}
@@ -160,14 +160,9 @@ var wrapModes = enum[widget.WrapMode]{prop: "wrapMode", values: map[string]widge
 // is given that card's colours, or it sits in a strip of the terminal's.
 func buildText(b Build) (tui.Component, []string, error) {
 	mode := widget.Truncate
-	p := palette{}
-	consumed, err := readProps(b.Props, withPalette(map[string]field{"wrapMode": into(&mode, wrapModes.read)}, p, textRoles))
+	consumed, err := readProps(b.Props, map[string]field{"wrapMode": into(&mode, wrapModes.read)})
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := []widget.TextOption{widget.WithWrapMode(mode)}
-	if p.has(textRoles...) {
-		opts = append(opts, widget.WithTextStyle(p.look(roleWindow, roleWindowText)))
-	}
-	return widget.NewText("", opts...), consumed, nil
+	return widget.NewText("", widget.WithWrapMode(mode)), consumed, nil
 }
