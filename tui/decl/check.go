@@ -26,18 +26,27 @@ import (
 // parsed — and break the day someone switches to them.
 //
 // Qt's qmllint checks each file in the context of its imports. Check does the
-// same for a program, with the options [NewProgram] takes, and mounts:
+// same for a program, with the options [NewProgram] takes. Each offered module
+// has a CONTEXT — the imports a document using it would have:
+//
+//	imported      the layout's own imports
+//	not imported  the layout's imports, with every offered import it clashes
+//	              with replaced by it — or, clashing with none, added to them
+//
+// Two modules that bring one name into scope can never be imported together —
+// the engine refuses the second — so a module sharing a name with an imported
+// one can only ever be used INSTEAD of it. That makes it an alternative, and
+// switching to it is exactly that edit of the import lines. Check then mounts:
 //
 //	the layout          as written
-//	each alternative    the layout with one import replaced by an offered
-//	                    module that brings the same name into scope — the
-//	                    other theme, say: switching is one import line, and
-//	                    this is that line switched
-//	each unused         a component no document of the program uses yet,
-//	component           inside the layout's root type, under the layout's
-//	                    imports — where its names would resolve once used
+//	each alternative    the layout under the alternative's context: the other
+//	                    theme, in place of the imported one
+//	each component      every component the layout does not use, under its
+//	nothing uses        module's context: alone, and inside a Window — sound
+//	                    if either accepts it, since nothing says yet where it
+//	                    will be used
 //
-// and loads every other offered module, so its own rules still hold. Nothing
+// Every other offered module is loaded, so its own rules still hold. Nothing
 // runs: providers subscribe and are released, and no App is built.
 //
 // Every problem is reported, each labelled with what was mounted.
@@ -58,10 +67,6 @@ func Check(opts ...ProgramOption) error {
 	}
 	report(c.layoutFile, mountAndRelease(c, spec))
 
-	imported := map[string]bool{}
-	for _, im := range spec.Imports {
-		imported[im.Module] = true
-	}
 	offers := make(map[string]decl.ModuleContents, len(c.offers))
 	for _, o := range c.offers {
 		contents, err := o.load()
@@ -78,22 +83,21 @@ func Check(opts ...ProgramOption) error {
 		if !ok {
 			continue
 		}
-		if !imported[o.name] {
-			for _, alt := range alternativesTo(o.name, contents, spec, offers) {
-				variant := spec
-				variant.Imports = append([]qml.SpecImport(nil), spec.Imports...)
-				variant.Imports[alt].Module = o.name
-				report(fmt.Sprintf("%s with import %s in place of %s", c.layoutFile, o.name,
-					spec.Imports[alt].Module), mountAndRelease(c, variant))
-			}
-			continue
+		imports, replaced := contextFor(o, spec.Imports, offers)
+		if len(replaced) > 0 {
+			variant := spec
+			variant.Imports = imports
+			report(fmt.Sprintf("%s with import %s in place of %s", c.layoutFile, o.name,
+				strings.Join(replaced, ", ")), mountAndRelease(c, variant))
 		}
 		for _, name := range sortedKeys(contents.Components) {
-			if used[name] {
+			// A component the layout uses was judged by the layout's mount —
+			// or, for an alternative, by the variant's just above.
+			if used[name] && (isImported(o.name, spec.Imports) || len(replaced) > 0) {
 				continue
 			}
 			report(fmt.Sprintf("component %s of %s, which %s does not use", name, o.name, c.layoutFile),
-				mountAndRelease(c, hosting(spec, name)))
+				mountAnywhere(c, hostings(c, spec, imports, name)))
 		}
 	}
 	return errors.Join(errs...)
@@ -108,25 +112,52 @@ func mountAndRelease(c programConfig, spec qml.SpecTree) error {
 	return p.tree.Destroy()
 }
 
-// alternativesTo is the imports of spec that module could replace: offered
-// modules the document imports that bring one of the same names into scope.
-func alternativesTo(module string, contents decl.ModuleContents, spec qml.SpecTree,
-	offers map[string]decl.ModuleContents) []int {
-	names := scopeNames(contents)
-	var out []int
-	for i, im := range spec.Imports {
-		other, ok := offers[im.Module]
-		if !ok || im.Module == module {
+// contextFor is the imports a document using o would have, and the imports o
+// replaced to get there. See [Check].
+func contextFor(o offered, imports []qml.SpecImport, offers map[string]decl.ModuleContents) ([]qml.SpecImport, []string) {
+	if isImported(o.name, imports) {
+		return imports, nil
+	}
+	names := scopeNames(offers[o.name])
+	own := qml.SpecImport{Module: o.name, Path: strings.Split(o.name, "."), Version: o.version}
+	var out []qml.SpecImport
+	var replaced []string
+	for _, im := range imports {
+		other, isOffer := offers[im.Module]
+		if isOffer && shares(names, scopeNames(other)) {
+			if len(replaced) == 0 {
+				// In the replaced import's place, under its qualifier: a layout
+				// writing `T.Theme` still reaches the alternative's Theme.
+				own.Alias, own.Pos = im.Alias, im.Pos
+				out = append(out, own)
+			}
+			replaced = append(replaced, im.Module)
 			continue
 		}
-		for n := range scopeNames(other) {
-			if names[n] {
-				out = append(out, i)
-				break
-			}
+		out = append(out, im)
+	}
+	if len(replaced) == 0 {
+		out = append(out, own)
+	}
+	return out, replaced
+}
+
+func isImported(module string, imports []qml.SpecImport) bool {
+	for _, im := range imports {
+		if im.Module == module {
+			return true
 		}
 	}
-	return out
+	return false
+}
+
+func shares(a, b map[string]bool) bool {
+	for n := range b {
+		if a[n] {
+			return true
+		}
+	}
+	return false
 }
 
 // scopeNames is every name a module brings into scope: its singletons and its
@@ -164,20 +195,50 @@ func usedTypes(root *qml.SpecNode) map[string]bool {
 	return out
 }
 
-// hosting is a document that uses one component and nothing else: the
-// layout's imports, and its root type holding the component. The root type
-// matters — a Dialog opens on its Window — and the root's own properties do
-// not, so they are left out.
-func hosting(layout qml.SpecTree, component string) qml.SpecTree {
+// hostType is the root an unused component is also tried in: a Window, where
+// a docked bar or a Dialog lives.
+const hostType = "Window"
+
+// placement is one document an unused component is tried in.
+type placement struct {
+	label string
+	spec  qml.SpecTree
+}
+
+// hostings are the documents an unused component is tried in, under the given
+// imports: ALONE, as the root, and — when the vocabulary has one — inside a
+// Window. Nothing says where a component will be used, and no one host fits
+// every component: `Dock.edge` needs a parent to read it, and a Menu belongs in
+// a MenuBar, never directly in a Window. The layout's own root is not reused:
+// its construction rules — a Split's two children — are the layout's.
+func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, component string) []placement {
 	pos := layout.Root.Pos
-	return qml.SpecTree{
-		Imports: layout.Imports,
-		Root: &qml.SpecNode{
-			Type:     layout.Root.Type,
-			Pos:      pos,
-			Children: []*qml.SpecNode{{Type: component, Pos: pos}},
-		},
+	node := func() *qml.SpecNode { return &qml.SpecNode{Type: component, Pos: pos} }
+	out := []placement{{"alone", qml.SpecTree{Imports: imports, Root: node()}}}
+	reg := c.registry
+	if reg == nil {
+		reg = StdRegistry()
 	}
+	if _, ok := reg.builders[hostType]; ok {
+		out = append(out, placement{"in a " + hostType, qml.SpecTree{Imports: imports,
+			Root: &qml.SpecNode{Type: hostType, Pos: pos, Children: []*qml.SpecNode{node()}}}})
+	}
+	return out
+}
+
+// mountAnywhere judges a component sound when ANY placement accepts it. When
+// none does, every placement's refusal is reported: which one is the
+// component's fault is for its author to see, not for Check to guess.
+func mountAnywhere(c programConfig, places []placement) error {
+	var errs []error
+	for _, pl := range places {
+		err := mountAndRelease(c, pl.spec)
+		if err == nil {
+			return nil
+		}
+		errs = append(errs, fmt.Errorf("%s: %w", pl.label, err))
+	}
+	return errors.Join(errs...)
 }
 
 func sortedKeys[V any](m map[string]V) []string {

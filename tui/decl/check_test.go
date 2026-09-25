@@ -2,12 +2,15 @@ package decl_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"testing/fstest"
 
+	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // check_test.go holds Check to its promise: every document a program can load
@@ -156,11 +159,131 @@ func TestCheckReleasesWhatItMounts(t *testing.T) {
 	if err := tuidecl.Check(opts...); err != nil {
 		t.Fatal(err)
 	}
-	// The layout, the light theme in place of the dark, and Farewell alone.
-	if got := c.subs.Load(); got != 3 {
-		t.Errorf("Check mounted %d times, want 3", got)
+	// The layout, the light theme in place of the dark, Farewell alone, and
+	// demo.extra's Other alone.
+	if got := c.subs.Load(); got != 4 {
+		t.Errorf("Check mounted %d times, want 4", got)
 	}
 	if c.subs.Load() != c.cancels.Load() {
 		t.Errorf("%d subscriptions, %d released", c.subs.Load(), c.cancels.Load())
+	}
+}
+
+// TestCheckMountsTheComponentsOfAModuleNothingImports: a module no document
+// imports yet is still a module the program can load, and its components are
+// judged — not only parsed. (Lector, PR #96 r0.)
+func TestCheckMountsTheComponentsOfAModuleNothingImports(t *testing.T) {
+	checkFinds(t, "extra/Other.qml", `Text { txt: "invalid" }`,
+		"component Other of demo.extra, which main.qml does not use", "txt")
+}
+
+// TestCheckHostsAnUnusedComponentInANeutralRoot: the layout's root has
+// construction rules of its own — a Split takes exactly two children — and an
+// unused component must not be judged by them. (Lector, PR #96 r0.)
+func TestCheckHostsAnUnusedComponentInANeutralRoot(t *testing.T) {
+	files := fstest.MapFS{
+		"main.qml":      {Data: []byte("import tui 1.0\nimport demo.ui 1.0\nSplit {\n Text { text: \"a\" }\n Text { text: \"b\" }\n}")},
+		"ui/Unused.qml": {Data: []byte(`Text { text: "u" }`)},
+	}
+	opts := []tuidecl.ProgramOption{tuidecl.Layout(files, "main.qml"), tuidecl.Components(files, "ui", "demo.ui", "1.0")}
+	if err := tuidecl.Check(opts...); err != nil {
+		t.Fatalf("Check refused a sound Split layout: %v", err)
+	}
+	files["ui/Unused.qml"] = &fstest.MapFile{Data: []byte(`Text { txt: "u" }`)}
+	if err := tuidecl.Check(opts...); err == nil || !strings.Contains(err.Error(), "component Unused") {
+		t.Fatalf("a broken unused component under a Split layout: %v", err)
+	}
+	// A bar docked to an edge needs a parent to read Dock.edge — and a Split
+	// layout has none to lend it.
+	files["ui/Unused.qml"] = &fstest.MapFile{Data: []byte(`StatusBar { Dock.edge: Tui.Bottom }`)}
+	if err := tuidecl.Check(opts...); err != nil {
+		t.Fatalf("Check refused a sound docked bar: %v", err)
+	}
+	// And a Menu belongs in a MenuBar, never directly in a Window: alone, it is
+	// sound.
+	files["ui/Unused.qml"] = &fstest.MapFile{Data: []byte(`Menu { title: "&File" }`)}
+	if err := tuidecl.Check(opts...); err != nil {
+		t.Fatalf("Check refused a sound Menu component: %v", err)
+	}
+	// Refused everywhere, both refusals are reported.
+	files["ui/Unused.qml"] = &fstest.MapFile{Data: []byte(`StatusBar { Dock.edge: Tui.Bottom; txt: "x" }`)}
+	err := tuidecl.Check(opts...)
+	if err == nil || !strings.Contains(err.Error(), "alone:") || !strings.Contains(err.Error(), "in a Window:") {
+		t.Fatalf("a component refused in every placement: %v", err)
+	}
+}
+
+// TestCheckReplacesEveryImportAnAlternativeClashesWith: a module can take the
+// place of two imports at once. Swapping only one would leave the other beside
+// it, exporting a name they share — refused by the engine, for Check's reasons.
+func TestCheckReplacesEveryImportAnAlternativeClashesWith(t *testing.T) {
+	files := fstest.MapFS{
+		"main.qml": {Data: []byte("import tui 1.0\nimport demo.colours 1.0\nimport demo.shapes 1.0\n" +
+			"Window { Text { text: Shapes.name; palette.window: Colours.bg } }")},
+		"colours.qml": {Data: []byte(`Colours { bg: "black" }`)},
+		"shapes.qml":  {Data: []byte(`Shapes { name: "square" }`)},
+		"both.qml":    {Data: []byte("Colours { bg: \"white\" }")},
+	}
+	both := func() (decl.ModuleContents, error) {
+		cols, err := decl.ValueFile(files, "both.qml")()
+		if err != nil {
+			return cols, err
+		}
+		shapes, err := decl.ValueFile(files, "shapes.qml")()
+		if err != nil {
+			return cols, err
+		}
+		for k, v := range shapes.Values {
+			cols.Values[k] = v
+		}
+		cols.Exports = append(cols.Exports, shapes.Exports...)
+		return cols, nil
+	}
+	err := tuidecl.Check(
+		tuidecl.Layout(files, "main.qml"),
+		tuidecl.Offer("demo.colours", "1.0", decl.ValueFile(files, "colours.qml")),
+		tuidecl.Offer("demo.shapes", "1.0", decl.ValueFile(files, "shapes.qml")),
+		tuidecl.Offer("demo.both", "1.0", both),
+	)
+	if err != nil {
+		t.Fatalf("an alternative to both imports was judged beside one of them: %v", err)
+	}
+}
+
+// TestCheckKeepsTheQualifierOfTheImportItReplaces: a layout writing
+// `T.Theme.bg` reaches the alternative through the same qualifier.
+func TestCheckKeepsTheQualifierOfTheImportItReplaces(t *testing.T) {
+	files := checkFiles()
+	files["main.qml"] = &fstest.MapFile{Data: []byte("import tui 1.0\nimport demo 1.0\nimport demo.theme.dark 1.0 as T\n" +
+		"Window { Text { text: App.status; palette.window: T.Theme.bg } }")}
+	if err := tuidecl.Check(checkOptions(files)...); err != nil {
+		t.Fatalf("the alternative lost the qualifier: %v", err)
+	}
+	files["themes/light.qml"] = &fstest.MapFile{Data: []byte(`Theme { fg: "black" }`)}
+	if err := tuidecl.Check(checkOptions(files)...); err == nil || !strings.Contains(err.Error(), "T.Theme.bg") {
+		t.Fatalf("a light theme without bg, reached as T.Theme.bg: %v", err)
+	}
+}
+
+// TestCheckMountsAComponentAloneWithoutAWindowType: a vocabulary of its own
+// (WithRegistry) may have no Window; the component is then the root.
+func TestCheckMountsAComponentAloneWithoutAWindowType(t *testing.T) {
+	files := fstest.MapFS{
+		"main.qml":      {Data: []byte("import tui 1.0\nimport demo.ui 1.0\nText { text: \"a\" }")},
+		"ui/Unused.qml": {Data: []byte(`Text { txt: "u" }`)},
+	}
+	reg := tuidecl.NewRegistry()
+	tuidecl.Register(reg, "Text", func(b tuidecl.Build) (tui.Component, []string, error) {
+		for _, p := range b.Props {
+			if p.Name != "text" {
+				return nil, nil, fmt.Errorf("no property %s", p.Name)
+			}
+		}
+		return widget.NewText("x"), []string{"text"}, nil
+	})
+	err := tuidecl.Check(tuidecl.WithRegistry(reg), tuidecl.Layout(files, "main.qml"),
+		tuidecl.Components(files, "ui", "demo.ui", "1.0"))
+	if err == nil || !strings.Contains(err.Error(), "no property txt") {
+		t.Fatalf("Check under a registry without Window: %v", err)
 	}
 }

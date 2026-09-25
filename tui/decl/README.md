@@ -220,8 +220,8 @@ converts a Go value; `Arg(args, i)` reads a handler argument.
 
 `Check(opts…)` is qmllint for a program: it takes `NewProgram`'s options and
 mounts the layout, the layout under each alternative module (the theme it does
-not import), and each component no document uses yet, and reports every
-problem. Package [`decltest`](decltest/) wraps it for `go test` —
+not import), and each component no document uses yet — imported module or not —
+and reports every problem. Package [`decltest`](decltest/) wraps it for `go test` —
 `decltest.Check(t, opts…)` — and runs a program on a test backend:
 `decltest.Run(t, w, h, opts…)`. See [USAGE.md §11](USAGE.md#11-testing-a-qml-screen).
 
