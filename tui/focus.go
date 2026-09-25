@@ -589,10 +589,53 @@ func (a *App) nominatedFocus(scope *node) (target *node, retryAfterLayout bool) 
 	return n, false
 }
 
+// holdsFocusable reports whether n or a descendant implements Focusable.
+func holdsFocusable(n *node) bool {
+	if _, ok := n.comp.(Focusable); ok {
+		return true
+	}
+	for _, ch := range n.children {
+		if holdsFocusable(ch) {
+			return true
+		}
+	}
+	return false
+}
+
+// focusTargetIn is what FocusInto focuses for n: n itself when it takes focus,
+// else its validated nominee, else the first descendant, in document order,
+// that has a target of its own. Nil when nothing in n takes focus now.
+func (a *App) focusTargetIn(n *node) *node {
+	if a.acceptsFocus(n) {
+		return n
+	}
+	if t, _ := a.nominatedFocus(n); t != nil {
+		return t
+	}
+	for _, ch := range n.children {
+		if t := a.focusTargetIn(ch); t != nil {
+			return t
+		}
+	}
+	return nil
+}
+
 // acceptsFocus reports whether n is a live focus candidate right now.
+//
+// A node under a HIDDEN ANCESTOR is not one, whatever its own placement says.
+// Hiding reaches everything under the hidden node at once, but the placement a
+// node carries is only corrected by the next layout — so between a hide and
+// that layout (the same handler hiding a pane and moving focus, say), the
+// pane's children still look placed, and focus could be put where nothing is
+// drawn.
 func (a *App) acceptsFocus(n *node) bool {
 	if n == nil || !n.mounted || !n.visible() {
 		return false
+	}
+	for p := n.parent; p != nil; p = p.parent {
+		if hidden(p.comp) {
+			return false
+		}
 	}
 	f, ok := n.comp.(Focusable)
 	return ok && f.AcceptsFocus()

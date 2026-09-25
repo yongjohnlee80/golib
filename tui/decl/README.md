@@ -155,6 +155,15 @@ Instantiator {
 }
 ```
 
+**Every element that takes a place on screen has `forceActiveFocus()`** — Qt's
+`Item.forceActiveFocus()`: focus moves INTO it — the item itself when it takes
+focus, else its first focusable part — so a pane is focused by naming it:
+`explorer.forceActiveFocus()` in a handler, or `Program.Call("explorer",
+"forceActiveFocus")` from Go. An item that is **not focusable by design** —
+nothing in it takes focus at all: a `Text`, a `StatusBar`, a menu row — is
+refused as the document's mistake. One that could take focus but cannot now
+(hidden, disabled, behind an open dialog) is left as it is, as in Qt.
+
 **Every element that takes a place on screen has `visible`** — Qt's
 `Item.visible`, a runtime property: hidden, it takes no space, is not painted
 or a tab stop, and hides what is under it; removed by a reload, it is shown

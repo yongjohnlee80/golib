@@ -200,6 +200,14 @@ func (sl *SearchableList[T]) FocusTarget() tui.Component { return sl.list }
    ```go
    ctx.FocusComponent(customWidget.FocusTarget())
    ```
+4. **Or focus the wrapper itself with `ctx.FocusInto(wrapper)`** — Qt's
+   `forceActiveFocus()`: the wrapper when it takes focus, else its
+   `tui.InitialFocusProvider` nominee, else its first focusable descendant in
+   document order. A hidden wrapper, one under a hidden ancestor, or one a
+   focus trap keeps out takes none. Ask `ctx.HoldsFocusable(comp)` first when
+   "nothing here takes focus" is a mistake rather than a state: it reports
+   whether anything under comp implements `tui.Focusable` at all — by design,
+   not whether it accepts focus now.
 
 ### B. Event Forwarding vs Bubbling
 
