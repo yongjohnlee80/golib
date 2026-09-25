@@ -166,10 +166,21 @@ func (t *Tree) loadImported(spec qml.SpecTree) (undo func(), err error) {
 // put the previous version back.
 func (t *Tree) reload(im qml.SpecImport, o offer) (restore func(), err error) {
 	prev := t.loads[im.Module]
+	// A source the module brought may have moved since it loaded; putting the
+	// module back must put back where it moved TO, not where it started.
+	current := map[string]qml.SpecValue{}
+	for _, k := range prev.keys {
+		if v, ok := t.sources[k]; ok {
+			current[k] = v
+		}
+	}
 	back := func() {
 		t.unload(im.Module)
 		// It loaded before, from these very contents, so it loads again.
 		_ = t.load(im, offer{version: o.version, load: func() (ModuleContents, error) { return prev.contents, nil }})
+		for k, v := range current {
+			t.sources[k] = v
+		}
 		t.stale[im.Module] = true
 	}
 	t.unload(im.Module)
