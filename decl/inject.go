@@ -150,6 +150,15 @@ func (t *Tree) inject(op, name string, in Injected) ([]string, error) {
 			"%w: injection happens before Mount, so the set a schema is checked "+
 				"against is fixed when planning begins", ErrPhase)}
 	}
+	return t.register(op, name, in)
+}
+
+// register validates one typed name and writes it, with no phase rule of its
+// own. The host's injections reach it through inject, which allows them only
+// before Mount; an imported module's values reach it through loadImported,
+// which runs before the document that imports them is planned — the same
+// guarantee, stated for a document rather than for the tree.
+func (t *Tree) register(op, name string, in Injected) ([]string, error) {
 	if in.Kind == KindUnknown {
 		return nil, SchemaError{Op: op, Detail: name,
 			Err: fmt.Errorf("%w: no kind was declared", ErrWrongKind)}

@@ -256,7 +256,7 @@ func (t *Tree) Reconcile(spec qml.SpecTree) (Result, error) {
 	return res, t.settle(err)
 }
 
-func (t *Tree) reconcile(spec qml.SpecTree) (Result, error) {
+func (t *Tree) reconcile(spec qml.SpecTree) (_ Result, err error) {
 	if t.ph != phaseIdle {
 		return Result{}, SchemaError{Op: "reconcile", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
@@ -270,6 +270,23 @@ func (t *Tree) reconcile(spec qml.SpecTree) (Result, error) {
 	if t.root == NoNode {
 		return Result{}, SchemaError{Op: "reconcile", Err: ErrNotMounted}
 	}
+
+	// A module the new document is the first to import loads here, as it would
+	// at Mount — which is what lets a large application bring in a dialog's
+	// module when the document that needs it first appears. A reload that is
+	// refused without touching the live tree unloads it again.
+	// mutated is reset FIRST: the undo below reads it, and a refusal before
+	// planning must not see the last reconcile's answer.
+	t.mutated = false
+	undo, err := t.loadImported(spec)
+	if err != nil {
+		return Result{}, err
+	}
+	defer func() {
+		if err != nil && !t.mutated {
+			undo()
+		}
+	}()
 
 	// The NEW document's imports, resolved before anything is planned and only
 	// adopted once they are valid. A reload whose import line is wrong must

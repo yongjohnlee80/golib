@@ -87,6 +87,10 @@ type Tree struct {
 	// injected namespaces: a module must be IMPORTED before its names resolve,
 	// which is what stops an `import` line from being decoration.
 	modules map[string]Module
+	// offered are modules the host made importable without loading; loads are
+	// the ones a document's import has loaded, with what each load wrote.
+	offered map[string]offer
+	loads   map[string]*loaded
 	// imported is what the document's import lines brought into scope. It is
 	// replaced on every Mount and Reconcile, because imports belong to the
 	// DOCUMENT rather than to the tree, and a reload that drops an import must
@@ -339,7 +343,7 @@ func (t *Tree) Mount(spec qml.SpecTree) error {
 	return t.settle(t.mount(spec))
 }
 
-func (t *Tree) mount(spec qml.SpecTree) error {
+func (t *Tree) mount(spec qml.SpecTree) (err error) {
 	if t.ph != phaseIdle {
 		return SchemaError{Op: "mount", Err: fmt.Errorf("%w: %s", ErrPhase, t.ph)}
 	}
@@ -353,6 +357,20 @@ func (t *Tree) mount(spec qml.SpecTree) error {
 		return SchemaError{Op: "mount", Err: fmt.Errorf(
 			"%w: the previous mount failed and left a partial tree; call Destroy first", ErrPhase)}
 	}
+
+	// OFFERED MODULES the document imports are loaded before it is vetted,
+	// since vetting resolves imports against loaded modules. A mount refused
+	// before anything was built unloads them again: the tree is left exactly as
+	// it was, and a corrected document can be mounted over it.
+	undo, err := t.loadImported(spec)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil && !t.failed {
+			undo()
+		}
+	}()
 
 	// IMPORTS FIRST. Every qualified name below is resolved against what this
 	// document imported, so the import set has to exist before the first name is
@@ -722,6 +740,7 @@ func (t *Tree) Destroy() error {
 	// Destroy that forgot its entry would be callable by a schema the resolver
 	// can no longer answer for — two stores disagreeing, which is the exact
 	// failure routing every declaration through Inject exists to prevent.
+	t.unloadAll()
 	t.injected = nil
 	t.funcs = nil
 	// Subscriptions end with the tree they fed. A provider still delivering
