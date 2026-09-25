@@ -168,8 +168,11 @@ func newFileOpenView(cfg fileViewConfig) *FileOpenView {
 	if v.preview != nil {
 		// A BLANK DIVIDER: the two panes are framed, and a drawn line between
 		// two frames reads as a third.
-		v.root = NewSplit(Horizontal, v.list, v.preview,
-			WithRatio(0.45), WithSplitDividerGlyphs(" ", " "))
+		splitOpts := []SplitOption{WithRatio(0.45), WithSplitDividerGlyphs(" ", " ")}
+		if cfg.styled {
+			splitOpts = append(splitOpts, WithDividerStyle(cfg.st.Gap))
+		}
+		v.root = NewSplit(Horizontal, v.list, v.preview, splitOpts...)
 	}
 	return v
 }
