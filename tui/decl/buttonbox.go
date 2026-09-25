@@ -27,8 +27,9 @@ import (
 // nor rejected.
 //
 // NO DEFAULT: Enter answers nothing, whichever button has focus — the box's
-// buttons are not auto-default (Qt's QPushButton.autoDefault; Qt Quick
-// Controls' buttons take Space, not Enter), so Enter is left to the dialog, and
+// buttons are not auto-default (widget.WithAutoDefault, named after Qt
+// Widgets' QPushButton.autoDefault), which is Qt Quick Controls' behaviour:
+// AbstractButton activates on Space. So Enter is left to the dialog, and
 // a dialog with no default declared has no answer for it. A button answers by
 // Space while it has focus, by its mnemonic, or by a click. An irreversible
 // answer is never one stray Enter away, whatever order the answers are listed
