@@ -473,15 +473,20 @@ func TestSaveAsksForAName(t *testing.T) {
 **`decltest.Check` is qmllint for the program.** `NewProgram` reads only what
 the layout imports, so a test that just builds the program never sees the theme
 you are not using, or a dialog no screen uses yet — those break the day someone
-switches to them. `Check` mounts:
+switches to them. Each offered module has a **context** — the imports a
+document using it would have: the layout's own if the layout imports it;
+otherwise the layout's with every import it clashes with replaced by it, or with
+it added. (Two modules that bring one name into scope can never be imported
+together, so one sharing a name with an imported module can only ever be used
+*instead* of it.) `Check` mounts:
 
 | what | how |
 | --- | --- |
 | the layout | as written |
-| each alternative | the layout with one import replaced by an offered module that brings the same name into scope — `editor.theme.mono` in place of `editor.theme.retro` |
-| each unused component | inside the layout's root type, under the layout's imports — where its names resolve once it is used |
+| each alternative | the layout under the alternative's context — `editor.theme.mono` in place of `editor.theme.retro` |
+| each unused component | under its module's context, alone and inside a Window — sound if either placement accepts it, since nothing says yet where it will be used |
 
-and loads every other offered module. Each problem is its own test failure,
+and loads every value module. Each problem is its own test failure,
 labelled with what was mounted and placed at its file and line:
 
 ```
