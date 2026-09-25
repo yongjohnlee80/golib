@@ -301,7 +301,11 @@ func (t *Tree) Reconcile(spec qml.SpecTree) (Result, error) {
 	if err == nil {
 		t.refreshing = false
 	}
-	return res, t.settle(err)
+	err = t.settle(err)
+	if err == nil {
+		t.followRepeaters(spec, t.repNext)
+	}
+	return res, err
 }
 
 func (t *Tree) reconcile(spec qml.SpecTree) (_ Result, err error) {

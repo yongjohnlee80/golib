@@ -164,6 +164,12 @@ func (t *Tree) vetDocument(spec qml.SpecTree) (imports, qml.SpecTree, error) {
 	if err != nil {
 		return imports{}, qml.SpecTree{}, SchemaError{Op: "component", Err: err}
 	}
+	// REPEATERS NEXT: each becomes its delegate once per row of its model.
+	root, sc, err := t.expandRepeaters(root)
+	if err != nil {
+		return imports{}, qml.SpecTree{}, err
+	}
+	t.repNext = sc
 	spec.Root = root
 	// The checks resolve names, so they run against the NEW document's
 	// imports, with the old set restored whatever they decide.

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/yongjohnlee80/golib/decl"
+
 	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
@@ -20,11 +22,13 @@ import (
 // A model is loop-owned, like everything a document reads: a host changing it
 // from a worker posts the change (Program.Post).
 
-// Index addresses one cell: its row and column under Parent (nil at the top).
-type Index struct {
-	Row, Column int
-	Parent      *Index
-}
+// Index, Change and ChangeKind are the engine's (decl): a Repeater reads the
+// same models the views show.
+type (
+	Index      = decl.Index
+	Change     = decl.Change
+	ChangeKind = decl.ChangeKind
+)
 
 // ItemModel is a model a view can show — Qt's QAbstractItemModel.
 type ItemModel interface {
@@ -46,29 +50,14 @@ type ItemModel interface {
 	Subscribe(fn func(Change)) (cancel func())
 }
 
-// ChangeKind is what a Change says happened.
-type ChangeKind uint8
-
+// The change kinds, as the engine names them.
 const (
-	// Reset: everything may have changed.
-	Reset ChangeKind = iota
-	// Changed: rows First..Last changed in place.
-	Changed
-	// Inserted: rows First..Last are new.
-	Inserted
-	// Removed: rows First..Last are gone.
-	Removed
-	// ColumnsReset: the columns and their titles changed — a new query's
-	// result, say — and so did every row.
-	ColumnsReset
+	Reset        = decl.Reset
+	Changed      = decl.Changed
+	Inserted     = decl.Inserted
+	Removed      = decl.Removed
+	ColumnsReset = decl.ColumnsReset
 )
-
-// Change is one change to a model, under Parent (nil: the top level).
-type Change struct {
-	Kind        ChangeKind
-	Parent      *Index
-	First, Last int
-}
 
 // Row is one row of a ListModel: a value per role. Values are strings, bools
 // and numbers.
@@ -216,7 +205,10 @@ func (m *ListModel) notify(c Change) {
 // leaked.
 func (m *ListModel) Subscribers() int { return len(m.subs) }
 
-var _ ItemModel = (*ListModel)(nil)
+var (
+	_ ItemModel  = (*ListModel)(nil)
+	_ decl.Model = (*ListModel)(nil)
+)
 
 // modelOf reads a model a document bound: `model: App.connections`.
 func modelOf(v qml.SpecValue) (ItemModel, error) {

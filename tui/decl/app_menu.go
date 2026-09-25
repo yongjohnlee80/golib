@@ -66,6 +66,16 @@ func (n *menuNode) setEnabled(on bool) {
 	n.model.Enabled = on
 }
 
+// SetVisible is the row's `visible` — Qt's MenuItem.visible: a hidden row
+// takes no row in its menu, and keeps its state.
+func (n *menuNode) SetVisible(on bool) {
+	if n.owner != nil {
+		n.owner.SetVisible(n.model.ID, on)
+		return
+	}
+	n.model.Visible = on
+}
+
 // mnemonic splits `&`-marked text into the label, the hotkey and its index.
 func mnemonic(text string) (label string, hotkey rune, idx int) {
 	idx = -1
