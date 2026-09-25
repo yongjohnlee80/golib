@@ -36,6 +36,27 @@ Window {
     palette.mid: Theme.app.mid
     palette.light: Theme.app.light
 
+    // ---- the syntax colours -----------------------------------------------
+    //
+    // KSyntaxHighlighting's styles, set once here like the palette and
+    // inherited the same way: by the Editor's SyntaxHighlighter, and by the
+    // Open dialog's preview, which highlights each file by its name.
+    syntax.keyword: Theme.syntax.keyword
+    syntax.controlFlow: Theme.syntax.controlFlow
+    syntax.dataType: Theme.syntax.dataType
+    syntax.attribute: Theme.syntax.attribute
+    syntax.function: Theme.syntax.function
+    syntax.string: Theme.syntax.string
+    syntax.specialChar: Theme.syntax.specialChar
+    syntax.decVal: Theme.syntax.decVal
+    syntax.float: Theme.syntax.float
+    syntax.baseN: Theme.syntax.baseN
+    syntax.constant: Theme.syntax.constant
+    syntax.comment: Theme.syntax.comment
+    syntax.alert: Theme.syntax.alert
+    syntax.import: Theme.syntax.import
+    syntax.operator: Theme.syntax.operator
+
     // ---- keys -----------------------------------------------------------
     //
     // Qt's own Shortcut type. They fire whichever widget holds focus, because
@@ -156,26 +177,10 @@ Window {
             onTextChanged: App.markDirty()
 
             // KDE KSyntaxHighlighting's type: Go highlights, the document
-            // names the definition, the theme colours it. The host says which
-            // definition fits the file — QML for a .qml file, none otherwise.
-            SyntaxHighlighter {
-                definition: App.syntax
-                theme.keyword: Theme.syntax.keyword
-                theme.controlFlow: Theme.syntax.controlFlow
-                theme.dataType: Theme.syntax.dataType
-                theme.attribute: Theme.syntax.attribute
-                theme.function: Theme.syntax.function
-                theme.string: Theme.syntax.string
-                theme.specialChar: Theme.syntax.specialChar
-                theme.decVal: Theme.syntax.decVal
-                theme.float: Theme.syntax.float
-                theme.baseN: Theme.syntax.baseN
-                theme.constant: Theme.syntax.constant
-                theme.comment: Theme.syntax.comment
-                theme.alert: Theme.syntax.alert
-                theme.import: Theme.syntax.import
-                theme.operator: Theme.syntax.operator
-            }
+            // names the definition, the Window's syntax roles colour it. The
+            // host says which definition fits the file — QML for a .qml file,
+            // none otherwise.
+            SyntaxHighlighter { definition: App.syntax }
         }
     }
 

@@ -76,7 +76,7 @@ type Adapter struct {
 	files     widget.FileSource
 	overlay   *widget.OverlayHost
 	// highlighters are the syntax definitions a SyntaxHighlighter may name.
-	highlighters map[string]highlight.Highlighter
+	highlighters *highlight.Repository
 	destroyed    map[string]func(tui.Component)
 	sink         func(error)
 

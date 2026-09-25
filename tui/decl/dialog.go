@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -84,6 +85,9 @@ type dialogNode struct {
 	// starts from, as its selectedFile says.
 	chooser  widget.FileChooser
 	selected string
+	// highlighters are the adapter's definitions: a FileDialog's preview
+	// highlights a file by its name with them.
+	highlighters *highlight.Repository
 
 	accepted                 func(args ...qml.SpecValue)
 	opened, rejected, closed func()

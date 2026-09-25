@@ -81,3 +81,20 @@ func TestDevModeShowsARefusedEditInTheStatusLine(t *testing.T) {
 		t.Errorf("a refused edit lost the screen:\n%s", r.screen())
 	}
 }
+
+// TestTheThemeMenuUnderDevLeavesTheFileAlone: -dev switches theme from the
+// file as it stands, in memory; editor.qml on disk keeps its own import.
+func TestTheThemeMenuUnderDevLeavesTheFileAlone(t *testing.T) {
+	dir := devCopy(t)
+	r := startOpts(t, Options{Dev: dir, Now: fixedNow, Tick: time.Hour}, 80, 14)
+	r.pickTheme(t, "Mono")
+	f := r.labelAt(t, 0, "File")
+	r.expect(t, []look{{"mono's File access key", f, 0, ansi(0), ansi(7)}})
+	src, err := os.ReadFile(filepath.Join(dir, "editor.qml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if themeOf(src) != "retro" {
+		t.Errorf("the menu rewrote editor.qml on disk: it imports %q", themeOf(src))
+	}
+}

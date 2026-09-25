@@ -446,31 +446,39 @@ dialogs open on the Window's own host whatever the adapter was given.
 
 ## 7b. Syntax highlighting
 
-Put a `SyntaxHighlighter` in the Editor, name a definition, and bind the
-styles you colour to the theme:
+Put a `SyntaxHighlighter` in the Editor and name a definition; bind the
+styles you colour, once, on the Window:
 
 ```qml
-Editor {
-    SyntaxHighlighter {
-        definition: App.syntax
-        theme.keyword: Theme.syntax.keyword
-        theme.string: Theme.syntax.string
-        theme.comment: Theme.syntax.comment
+Window {
+    syntax.keyword: Theme.syntax.keyword
+    syntax.string: Theme.syntax.string
+    syntax.comment: Theme.syntax.comment
+
+    Editor {
+        SyntaxHighlighter { definition: App.syntax }
     }
 }
 ```
 
+- **The colours are inherited**, as palette roles are: every highlighter under
+  the Window wears them, a FileDialog's preview as well as the Editor's.
+
 - **The host decides the definition.** `App.syntax` from the file's extension
   — QML for `.qml`, `""` otherwise; the document cannot say "if".
 - **A new language is a registration, nothing else**: implement
-  `highlight.Highlighter` and pass `Highlighters(map[string]highlight.Highlighter{"SQL": sql})`.
+  `highlight.Highlighter` and pass
+  `Highlighters(highlight.Definition{Name: "SQL", Extensions: []string{"*.sql"}, Highlighter: sql})`
+  — the extensions are what a FileDialog's preview picks it by.
   A highlighter colours one line at a time and must never refuse (package
   `highlight`); from a tree-sitter tree, `highlight.StyleForCapture` maps its
   captures.
 - **Only what is seen is highlighted**: the Editor highlights down to the last
-  visible line, and again only a line whose text or starting state changed.
-- A style left unset paints as the Editor's text; set the ones your theme
-  distinguishes.
+  visible line, and again only a line whose text or starting state changed. A
+  jump deep into a long file catches up over a few frames, a bounded number of
+  lines each, rather than freezing one.
+- A style left unset paints as `syntax.normal`, and that unset as the Editor's
+  text; set the ones your theme distinguishes.
 
 ## 8. Reloading
 

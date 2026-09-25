@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"unicode/utf8"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -26,11 +27,17 @@ import (
 // ordinary text file, and never enough to stall on a large one.
 const maxPreview = 1 << 20
 
-// FilePreview shows one file's text.
+// FilePreview shows one file's text — highlighted, when it is given a way to
+// pick a highlighter by file name ([FilePreview.SetHighlighting]).
 type FilePreview struct {
 	Base
 	view *Editor
 	box  *Box
+
+	// forFile picks the highlighter for a file by its name, nil for none;
+	// shown is the file on show, "" for a message rather than a file's text.
+	forFile func(name string) highlight.Highlighter
+	shown   string
 }
 
 // NewFilePreview builds an empty preview, dressed like the panes beside it.
@@ -73,7 +80,31 @@ func (p *FilePreview) AcceptsFocus() bool { return false }
 // to show. Any fs.FS will do — the preview reads a remote file as it reads a
 // local one.
 func (p *FilePreview) Show(src FileSource, path string, folder bool) {
-	p.view.SetValue(previewOf(src.or().FS, path, folder))
+	text, ok := previewOf(src.or().FS, path, folder)
+	p.shown = ""
+	if ok {
+		p.shown = path
+	}
+	p.view.SetValue(text)
+	p.highlight()
+}
+
+// SetHighlighting highlights what the preview shows: forFile picks the
+// highlighter for a file by its name — KSyntaxHighlighting's
+// definitionForFileName — and styles colour it. A nil forFile is none. A
+// message — a folder, a binary file — is never highlighted.
+func (p *FilePreview) SetHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
+	p.forFile = forFile
+	p.view.WithSyntaxStyles(styles)
+	p.highlight()
+}
+
+func (p *FilePreview) highlight() {
+	var h highlight.Highlighter
+	if p.forFile != nil && p.shown != "" {
+		h = p.forFile(p.shown)
+	}
+	p.view.SetHighlighter(h)
 }
 
 // Text is what the preview holds.
@@ -88,29 +119,30 @@ func (p *FilePreview) Focused() bool {
 // Hint is the keys the preview answers to, for a footer.
 func (p *FilePreview) Hint() string { return "j/k:scroll  gg/G:top/end" }
 
-// previewOf is what a preview shows for a path.
-func previewOf(fsys fs.FS, path string, folder bool) string {
+// previewOf is what a preview shows for a path, and whether it is the file's
+// text rather than a message about it.
+func previewOf(fsys fs.FS, path string, folder bool) (string, bool) {
 	if folder {
-		return "(folder)"
+		return "(folder)", false
 	}
 	f, err := fsys.Open(path)
 	if err != nil {
-		return "(cannot read: " + err.Error() + ")"
+		return "(cannot read: " + err.Error() + ")", false
 	}
 	defer f.Close()
 	buf := make([]byte, maxPreview)
 	n, err := io.ReadFull(f, buf)
 	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
-		return "(cannot read: " + err.Error() + ")"
+		return "(cannot read: " + err.Error() + ")", false
 	}
 	buf = buf[:n]
 	if bytes.IndexByte(buf, 0) >= 0 || !utf8.Valid(trimPartialRune(buf)) {
-		return "(binary file — no preview)"
+		return "(binary file — no preview)", false
 	}
 	if n == 0 {
-		return "(empty file)"
+		return "(empty file)", false
 	}
-	return string(buf)
+	return string(buf), true
 }
 
 // trimPartialRune drops a rune cut in half by the read limit, so a text file

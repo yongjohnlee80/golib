@@ -28,7 +28,7 @@ func appTypes() []Type {
 	return []Type{
 		{Name: "Window", Build: buildWindow},
 		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame},
-		{Name: "SyntaxHighlighter", Build: buildSyntaxHighlighter, Setters: syntaxSetters()},
+		{Name: "SyntaxHighlighter", Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()},
 		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),

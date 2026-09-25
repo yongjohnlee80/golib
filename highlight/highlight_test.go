@@ -64,3 +64,31 @@ func TestHighlighterFuncIsAHighlighter(t *testing.T) {
 		t.Fatalf("%+v %d", spans, next)
 	}
 }
+
+func TestTheRepositoryFindsADefinitionByFileName(t *testing.T) {
+	none := highlight.HighlighterFunc(func(string, highlight.State) ([]highlight.Span, highlight.State) { return nil, 0 })
+	r := highlight.NewRepository(
+		highlight.Definition{Name: "QML", Extensions: []string{"*.qml"}, Highlighter: none},
+		highlight.Definition{Name: "JavaScript", Extensions: []string{"*.js", "*.mjs"}, Highlighter: none},
+		highlight.Definition{Name: "Also", Extensions: []string{"*.js"}, Highlighter: none},
+	)
+	for file, want := range map[string]string{
+		"/a/b/view.qml": "QML",
+		"lib.mjs":       "JavaScript",
+		"x.js":          "Also", // two claim it: the first by name
+		"notes.txt":     "",
+		"qml":           "",
+	} {
+		d, ok := r.DefinitionForFileName(file)
+		if d.Name != want || ok != (want != "") {
+			t.Errorf("%s: %q %v, want %q", file, d.Name, ok, want)
+		}
+	}
+	if got := r.Names(); len(got) != 3 || got[0] != "Also" {
+		t.Errorf("Names() = %v", got)
+	}
+	r.Add(highlight.Definition{Name: "QML"})
+	if d, _ := r.Definition("QML"); d.Extensions != nil {
+		t.Error("Add did not replace the definition of the same name")
+	}
+}
