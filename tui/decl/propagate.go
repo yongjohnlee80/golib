@@ -300,7 +300,8 @@ func (p palette) frameStyles() (style.Style, style.Style) {
 		st = st.Background(c)
 	}
 	if c, ok := p[roleWindowText]; ok {
-		st = st.BorderForeground(c)
+		// The border line, and the title written into it.
+		st = st.BorderForeground(c).Foreground(c)
 	}
 	if c, ok := p[roleHighlight]; ok {
 		focused = style.New().BorderForeground(c)

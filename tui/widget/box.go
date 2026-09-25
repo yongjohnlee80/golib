@@ -399,12 +399,21 @@ func (x *Box) Render(s tui.Surface) {
 
 	// Title (top border row) and status (bottom border row) truncate with
 	// ellipsis when narrow; they sit between the corner cells.
+	//
+	// The title wears the box's own text colour when its style sets one — a
+	// pane on a light surface titles in its dark text, as Qt's GroupBox takes
+	// its title from the palette — and the terminal's foreground otherwise.
+	// The status stays muted: it is a hint, not a heading.
 	availW := bw - 2
+	titleSt, statusSt := x.titleSt, x.statusSt
+	if fg, ok := st.GetForeground(); ok {
+		titleSt = titleSt.Foreground(fg)
+	}
 	if bt == 1 && x.title != "" && availW > 0 {
-		x.renderBorderText(s, " "+x.title+" ", x.titleAlign, x.titleSt.Inherit(fill), bx+1, by, availW)
+		x.renderBorderText(s, " "+x.title+" ", x.titleAlign, titleSt.Inherit(fill), bx+1, by, availW)
 	}
 	if bb == 1 && x.status != "" && availW > 0 {
-		x.renderBorderText(s, " "+x.status+" ", x.statusAlign, x.statusSt.Inherit(fill), bx+1, by+bh-1, availW)
+		x.renderBorderText(s, " "+x.status+" ", x.statusAlign, statusSt.Inherit(fill), bx+1, by+bh-1, availW)
 	}
 }
 

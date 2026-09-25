@@ -123,3 +123,28 @@ func TestBoxStyleOverrides(t *testing.T) {
 		t.Fatalf("WithBorder(BorderDouble) not honored: %q", h.row(0))
 	}
 }
+
+// TestABoxTitleWearsTheBoxsTextColour: a pane whose style sets a foreground
+// titles in it — dark text on a light pane — and one that sets none keeps the
+// terminal's foreground.
+func TestABoxTitleWearsTheBoxsTextColour(t *testing.T) {
+	dark := style.RGB(0x10, 0x10, 0x10)
+	b := widget.NewBox(widget.NewText("x"), widget.WithTitle("Pane"),
+		widget.WithStyle(style.New().Background(style.RGB(0xee, 0xee, 0xee)).Foreground(dark)))
+	h := startApp(t, b, 20, 4)
+	defer h.stop()
+	h.settle()
+	row := h.tb.Snapshot()[0]
+	var found bool
+	for x, c := range row {
+		if c.Content == "P" && x+1 < len(row) && row[x+1].Content == "a" {
+			found = true
+			if fg := c.Attrs.FG; fg.R != 0x10 || fg.G != 0x10 || fg.B != 0x10 {
+				t.Errorf("the title: fg %+v, want the box's text colour", fg)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("no title on the top row:\n%s", h.grid())
+	}
+}
