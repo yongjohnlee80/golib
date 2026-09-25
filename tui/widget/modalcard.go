@@ -212,18 +212,16 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	// buttons are how it is answered; a squeezed card that kept its decoration
 	// and lost the question asked nothing.
 	//
-	// What the body NEEDS is its natural height when it has one: a message of
-	// two lines needs two. A body that FILLS whatever it is offered — a file
-	// view, a list — has none, and needs only a row: squeezing on its behalf
-	// would strip a roomy dialog of its rule and help line for a body that is
-	// content with less. It is told apart by asking it at one row less.
+	// What the body NEEDS is its INTRINSIC height: what it answers when offered
+	// an unbounded height, which the layout contract defines as its preferred
+	// content size and never the offer itself (tui.Unbounded). A message of six
+	// lines needs six; a view that fills whatever it is given — a list, an
+	// editor — answers its own minimum, so a roomy dialog around one keeps its
+	// rule and help line. Nothing is inferred from how a body reacts to a
+	// constraint: a long message clipped by one looks exactly like a filler.
 	bodyNeed := 0
 	if c.body != nil {
-		at := func(h int) int { return ctx.LayoutChild(c.body, tui.Loose(tui.Size{W: inner.W, H: h})).H }
-		bodyNeed = at(inner.H)
-		if inner.H > 1 && bodyNeed == inner.H && at(inner.H-1) == inner.H-1 {
-			bodyNeed = 1 // it fills what it is given
-		}
+		bodyNeed = ctx.LayoutChild(c.body, tui.Constraints{MaxW: inner.W, MaxH: tui.Unbounded}).H
 	}
 	for _, row := range []*int{&padBottom, &padTop, &blankBelow, &blankAbove, &footBlank, &ruleRow, &footLine} {
 		if bodyNeed+btnH+footLine+decoration() <= inner.H {
@@ -240,7 +238,14 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 		bodyW, bodyH = bs.W, bs.H
 	}
 
-	contentW := max(bodyW, btnW, footW, c.measure(c.title))
+	// The help line's width counts only while it is shown, and the content is
+	// never wider than the room inside the frame: the buttons are centred
+	// within it, and a width wider than the card would place them outside it —
+	// a long help line or title that the card clips anyway.
+	if footLine == 0 {
+		footW = 0
+	}
+	contentW := min(max(bodyW, btnW, footW, c.measure(c.title)), inner.W)
 	if c.width > 0 {
 		contentW = inner.W
 	}

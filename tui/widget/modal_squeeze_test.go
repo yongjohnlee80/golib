@@ -169,3 +169,91 @@ func TestACardAroundAFillingBodySqueezesOnlyWhenItMust(t *testing.T) {
 		hh.stop()
 	}
 }
+
+// A message longer than the room is content, not a filler: squeezed, it keeps
+// as many of its lines as the card can hold once the decoration has yielded.
+func TestASqueezedCardKeepsAsMuchOfALongMessageAsFits(t *testing.T) {
+	yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
+	md := widget.NewModal(widget.NewText("one\ntwo\nthree\nfour\nfive\nsix", widget.WithWrapMode(widget.Wrap)),
+		widget.WithModalRule(true), widget.WithButtons(yes))
+	host := widget.NewOverlayHost(widget.NewText(""))
+	hh := startApp(t, host, 40, 8)
+	defer hh.stop()
+	hh.onLoop(func() {
+		if err := md.Open(host); err != nil {
+			t.Fatal(err)
+		}
+	})
+	hh.settle()
+	scr := hh.grid()
+	for _, want := range []string{"one", "two", "three", "four", "five", "Yes"} {
+		if !strings.Contains(scr, want) {
+			t.Errorf("8 rows: %q is not shown — the border and a button leave five rows for the message:\n%s", want, scr)
+		}
+	}
+}
+
+func openSmallCard(t *testing.T, title, footer string) *harness {
+	t.Helper()
+	yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
+	no := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject))
+	opts := []widget.ModalOption{widget.WithModalTitle(title), widget.WithButtons(yes, no)}
+	if footer != "" {
+		opts = append(opts, widget.WithModalFooter(footer))
+	}
+	md := widget.NewModal(widget.NewText("Leave now?"), opts...)
+	host := widget.NewOverlayHost(widget.NewText(""))
+	hh := startApp(t, host, 40, 4)
+	hh.onLoop(func() {
+		if err := md.Open(host); err != nil {
+			t.Fatal(err)
+		}
+	})
+	hh.settle()
+	return hh
+}
+
+// buttonRow returns the card's button row and where its border is.
+func buttonRow(t *testing.T, hh *harness) (row string, left, right int) {
+	t.Helper()
+	for _, r := range strings.Split(hh.grid(), "\n") {
+		if strings.Contains(r, "Yes") {
+			return r, strings.Index(r, "│"), strings.LastIndex(r, "│")
+		}
+	}
+	t.Fatalf("no button row:\n%s", hh.grid())
+	return "", -1, -1
+}
+
+// Neither a title nor a help line wider than the card sets the width its
+// buttons are centred in: they stay inside the card's border.
+func TestASqueezedCardCentresItsButtonsInsideItself(t *testing.T) {
+	long := strings.Repeat("a long line ", 8)
+	for _, c := range []struct{ name, title, footer string }{
+		{"title", long, ""},
+		{"help line", "quit?", long},
+	} {
+		hh := openSmallCard(t, c.title, c.footer)
+		r, left, right := buttonRow(t, hh)
+		if yes, no := strings.Index(r, "Yes"), strings.Index(r, "No"); left < 0 || right <= left || yes < left || no > right {
+			t.Errorf("%s: the buttons are outside the card: %q\n%s", c.name, r, hh.grid())
+		}
+		hh.stop()
+	}
+}
+
+// A help line the squeeze took away no longer widens the card.
+func TestASqueezedOutHelpLineDoesNotWidenTheCard(t *testing.T) {
+	plain := openSmallCard(t, "quit?", "")
+	_, pl, pr := buttonRow(t, plain)
+	plain.stop()
+	helped := openSmallCard(t, "quit?", "Esc closes; Enter answers yes")
+	if strings.Contains(helped.grid(), "Esc closes") {
+		t.Fatalf("the help line was expected to be squeezed out at 4 rows:\n%s", helped.grid())
+	}
+	_, hl, hr := buttonRow(t, helped)
+	if hr-hl != pr-pl {
+		t.Errorf("the card is %d wide with its help line squeezed out, %d without one:\n%s", hr-hl, pr-pl, helped.grid())
+	}
+	helped.stop()
+}
