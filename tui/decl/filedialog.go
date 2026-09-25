@@ -135,9 +135,6 @@ func (d *dialogNode) setFolder(dir string) {
 // highlighterFor is the highlighter a previewed file's name calls for, nil for
 // none.
 func (d *dialogNode) highlighterFor(name string) highlight.Highlighter {
-	if d.highlighters == nil {
-		return nil
-	}
 	if def, ok := d.highlighters.DefinitionForFileName(name); ok {
 		return def.Highlighter
 	}
