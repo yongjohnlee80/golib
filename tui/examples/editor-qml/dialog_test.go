@@ -177,3 +177,16 @@ func TestRetroDressesTheDialog(t *testing.T) {
 		{"No, unfocused", no + 1, btn, cgaBlack, cgaGreen},
 	})
 }
+
+// TestTheLayoutsThemeImportDressesTheDialogFiles: the dialogs are separate
+// files that import nothing, so the ONE theme line in editor.qml reaches them.
+func TestTheLayoutsThemeImportDressesTheDialogFiles(t *testing.T) {
+	r := startLayout(t, "", withImport(t, "import editor.theme.mono 1.0"))
+	r.openQuit(t)
+	btn := rowOf(r.rows(), "[ Yes ]")
+	yes := r.labelAt(t, btn, "Yes")
+	r.expect(t, []look{
+		{"mono's focused Yes", yes + 1, btn, ansi(7), ansi(0)},
+		{"mono's No", r.labelAt(t, btn, "No") + 1, btn, ansi(0), ansi(7)},
+	})
+}

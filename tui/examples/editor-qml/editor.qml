@@ -12,6 +12,7 @@
 import tui 1.0      // the widget vocabulary, and the Tui singleton's enums
 import editor 1.0   // the App singleton: this program's state and commands
 import editor.theme.retro 1.0   // the Theme singleton — or editor.theme.mono
+import editor.dialogs 1.0       // QuitDialog and AboutDialog, one file each
 
 Window {
     // ---- keys -----------------------------------------------------------
@@ -111,48 +112,9 @@ Window {
 
     // ---- dialogs --------------------------------------------------------
     //
-    // Qt's Dialog. Nothing here says how a dialog CLOSES: its buttons, their
-    // underlined letters and Escape all close it, and each way out is one of
-    // two answers — accepted or rejected. A document says only what an answer
-    // does. They open by id, from a handler: quitDialog.open().
-    Dialog {
-        id: quitDialog
-        title: "Quit"
-        standardButtons: Dialog.Yes | Dialog.No    // y and n answer it
-        palette.window: Theme.dialog.window
-        palette.windowText: Theme.dialog.windowText
-        palette.button: Theme.dialog.button
-        palette.buttonText: Theme.dialog.buttonText
-        palette.highlight: Theme.dialog.highlight
-        palette.highlightedText: Theme.dialog.highlightedText
-        onAccepted: App.quit()
-
-        // Bound: it mentions unsaved changes when there are some.
-        Text {
-            text: App.quitQuestion
-            wrapMode: Tui.WordWrap
-            palette.window: Theme.dialog.window
-            palette.windowText: Theme.dialog.windowText
-        }
-    }
-
-    Dialog {
-        id: aboutDialog
-        title: "About"
-        standardButtons: Dialog.Ok
-        helpText: "Enter or Esc to close"
-        palette.window: Theme.dialog.window
-        palette.windowText: Theme.dialog.windowText
-        palette.button: Theme.dialog.button
-        palette.buttonText: Theme.dialog.buttonText
-        palette.highlight: Theme.dialog.highlight
-        palette.highlightedText: Theme.dialog.highlightedText
-
-        Text {
-            wrapMode: Tui.WordWrap
-            palette.window: Theme.dialog.window
-            palette.windowText: Theme.dialog.windowText
-            text: "editor-qml\n\nA text editor whose screen is written in QML,\nrunning on golib/tui."
-        }
-    }
+    // Each is its own file under dialogs/, a type named for the file, brought
+    // in by `import editor.dialogs`. They open by id from a handler —
+    // quitDialog.open() — and close themselves.
+    QuitDialog { id: quitDialog }
+    AboutDialog { id: aboutDialog }
 }

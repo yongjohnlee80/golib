@@ -31,6 +31,12 @@ var layout []byte
 //go:embed themes
 var themeFiles embed.FS
 
+// dialogFiles are the dialogs, one component file each. Offered as ONE module,
+// editor.dialogs, and read only when the layout imports it.
+//
+//go:embed dialogs
+var dialogFiles embed.FS
+
 var themes = map[string]string{
 	"editor.theme.mono":  "themes/mono.qml",
 	"editor.theme.retro": "themes/retro.qml",
@@ -99,6 +105,9 @@ func New(opt Options) (*Host, tui.Component, error) {
 		if err := h.tree.OfferModule(module, "1.0", themeLoader(file)); err != nil {
 			return nil, nil, err
 		}
+	}
+	if err := h.tree.OfferModule("editor.dialogs", "1.0", decl.ComponentFiles(dialogFiles, "dialogs")); err != nil {
+		return nil, nil, err
 	}
 
 	// State the document reads. Each is a SOURCE, so changing it repaints

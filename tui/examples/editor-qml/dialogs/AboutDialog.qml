@@ -1,0 +1,24 @@
+// AboutDialog.qml — what this program is.
+//
+// A COMPONENT, like QuitDialog.qml: the type AboutDialog, used by editor.qml,
+// importing nothing of its own. Enter or Escape closes it, as its help line
+// says.
+
+Dialog {
+    title: "About"
+    standardButtons: Dialog.Ok
+    helpText: "Enter or Esc to close"
+    palette.window: Theme.dialog.window
+    palette.windowText: Theme.dialog.windowText
+    palette.button: Theme.dialog.button
+    palette.buttonText: Theme.dialog.buttonText
+    palette.highlight: Theme.dialog.highlight
+    palette.highlightedText: Theme.dialog.highlightedText
+
+    Text {
+        wrapMode: Tui.WordWrap
+        palette.window: Theme.dialog.window
+        palette.windowText: Theme.dialog.windowText
+        text: "editor-qml\n\nA text editor whose screen is written in QML,\nrunning on golib/tui."
+    }
+}
