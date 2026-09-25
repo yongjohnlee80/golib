@@ -47,7 +47,10 @@ func (t *Tree) compileHandler(node NodeID, typeName string, h qml.SpecHandler) (
 		// params maps an argument's position to the signal parameter it
 		// passes: `App.openFile(selectedFile)`.
 		params map[int]int
-		name   string
+		// reads maps an argument's position to a read of an object's
+		// property by id: `App.login(user.text)` (property_read.go).
+		reads map[int]func() (qml.SpecValue, error)
+		name  string
 	}
 	var calls []invocation
 	params := t.signalParams(typeName, h.Signal)
@@ -105,6 +108,7 @@ func (t *Tree) compileHandler(node NodeID, typeName string, h qml.SpecHandler) (
 		// the source holds at the moment it runs.
 		argExprs := make([]qml.SpecValue, 0, len(e.Args))
 		var passed map[int]int
+		var reads map[int]func() (qml.SpecValue, error)
 		for i := range e.Args {
 			av, err := t.argExpr(node, h, &e.Args[i])
 			if err != nil {
@@ -121,12 +125,25 @@ func (t *Tree) compileHandler(node NodeID, typeName string, h qml.SpecHandler) (
 				argExprs = append(argExprs, av)
 				continue
 			}
+			// An object's property, by its id: read when the handler runs.
+			read, isRead, err := t.objectRead(node, av)
+			if err != nil {
+				return boundHandler{}, err
+			}
+			if isRead {
+				if reads == nil {
+					reads = map[int]func() (qml.SpecValue, error){}
+				}
+				reads[i] = read
+				argExprs = append(argExprs, av)
+				continue
+			}
 			if _, err := t.evalValue(ctxBinding, av, node, nil); err != nil {
 				return boundHandler{}, err
 			}
 			argExprs = append(argExprs, av)
 		}
-		calls = append(calls, invocation{fn: fn, argExprs: argExprs, params: passed, name: name})
+		calls = append(calls, invocation{fn: fn, argExprs: argExprs, params: passed, reads: reads, name: name})
 	}
 
 	label := calls[0].name
@@ -150,6 +167,14 @@ func (t *Tree) compileHandler(node NodeID, typeName string, h qml.SpecHandler) (
 								c.name, params[at])
 						}
 						args = append(args, signalArgs[at])
+						continue
+					}
+					if read, ok := c.reads[i]; ok {
+						v, err := read()
+						if err != nil {
+							return fmt.Errorf("%s: %w", c.name, err)
+						}
+						args = append(args, v)
 						continue
 					}
 					// Re-evaluated NOW. This can fail even though it validated

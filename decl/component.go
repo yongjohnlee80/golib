@@ -36,7 +36,8 @@ import (
 //	properties   the use site's replace the component's of the same name
 //	handlers     both run, the component's first
 //	children     the use site's follow the component's
-//	id           the use site's; a component has none of its own
+//	id           the use site's names the instance; ids inside are the
+//	             component's own, one set per use (component_ids.go)
 //
 // NAMES RESOLVE IN THE USING DOCUMENT, as they do in one of Qt's inline
 // components, so a component file imports nothing. That is not a shortcut: a
@@ -108,16 +109,9 @@ func parseComponent(file string, src []byte) (*qml.SpecNode, error) {
 		return nil, fmt.Errorf("%s: a component imports nothing — its names resolve in the "+
 			"document that uses it (at %s)", file, spec.Imports[0].Pos)
 	}
-	// Ids are the using document's to give. One inside a component would be
-	// declared once per USE, and two dialogs would then claim the same id.
-	err = walkSpec(spec.Root, func(_ string, sn *qml.SpecNode) error {
-		if sn.ID != "" {
-			return fmt.Errorf("%s: a component declares no ids; the document using it "+
-				"names the instance (id %q at %s)", file, sn.ID, sn.Pos)
-		}
-		return nil
-	})
-	return spec.Root, err
+	// Ids inside are the component's own, renamed for each use when it is
+	// expanded (component_ids.go).
+	return spec.Root, nil
 }
 
 // loadComponents registers a module's component types as it loads, and
@@ -188,6 +182,7 @@ func (t *Tree) componentTypes(im imports) map[string]*qml.SpecNode {
 // expansion. It builds a new tree and leaves the one it was given alone: the
 // caller's document is the caller's.
 func expand(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, error) {
+	uses := 0 // numbers each use, so each has ids of its own
 	var walk func(sn *qml.SpecNode, using []string) (*qml.SpecNode, error)
 	walk = func(sn *qml.SpecNode, using []string) (*qml.SpecNode, error) {
 		out := *sn
@@ -202,7 +197,8 @@ func expand(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, 
 				return nil, fmt.Errorf("%w: components nest more than %d deep (at %s)",
 					ErrComponent, maxComponentDepth, sn.Pos)
 			}
-			inner, err := walk(def, append(using, sn.Type))
+			uses++
+			inner, err := walk(scopeIDs(def, uses, sn.ID), append(using, sn.Type))
 			if err != nil {
 				return nil, err
 			}
@@ -233,7 +229,12 @@ func expand(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, 
 // merge lays a use site over an expanded component, by Qt's rules.
 func merge(comp qml.SpecNode, use *qml.SpecNode) qml.SpecNode {
 	out := comp
-	out.ID = use.ID
+	// The use site names the instance. With no name of its own, the root keeps
+	// the private one scopeIDs gave its own id, so the component can still
+	// reach itself (`me.close()`).
+	if use.ID != "" {
+		out.ID = use.ID
+	}
 	overridden := map[string]bool{}
 	for _, p := range use.Props {
 		overridden[p.Name] = true

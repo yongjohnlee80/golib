@@ -74,6 +74,17 @@ func ColorSetter[W any](apply func(W, style.Color)) Setter {
 	return setter(widgetName[W](), colorOf, apply)
 }
 
+// StringGetter is a readable property holding a string.
+func StringGetter[W any](read func(W) string) Getter {
+	return func(c tui.Component) (qml.SpecValue, error) {
+		w, ok := any(c).(W)
+		if !ok {
+			return qml.SpecValue{}, fmt.Errorf("not %s", widgetName[W]())
+		}
+		return qml.SpecValue{Kind: qml.SpecValueString, Raw: read(w)}, nil
+	}
+}
+
 // NoArgMethod is a method a handler calls with no arguments: `gauge.reset()`.
 func NoArgMethod[W any](run func(W) error) Method {
 	return method(widgetName[W](), run)

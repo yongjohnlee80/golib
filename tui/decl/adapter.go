@@ -72,6 +72,7 @@ type Adapter struct {
 	// has no SetOrientation.
 	ctorProps map[string]map[string]bool
 	methods   map[string]map[string]Method
+	getters   map[string]map[string]Getter
 	signals   map[string]map[string][]string
 	files     widget.FileSource
 	overlay   *widget.OverlayHost
@@ -138,6 +139,43 @@ func WithMethods(typeName string, methods map[string]Method) Option {
 	}
 }
 
+// WithGetters sets what a handler can read from a node of a type by its id.
+func WithGetters(typeName string, getters map[string]Getter) Option {
+	return func(a *Adapter) {
+		if a.getters[typeName] == nil {
+			a.getters[typeName] = map[string]Getter{}
+		}
+		for name, fn := range getters {
+			a.getters[typeName][name] = fn
+		}
+	}
+}
+
+// ReadablesOf implements [decl.PropertyReader].
+func (a *Adapter) ReadablesOf(typeName string) []string {
+	names := make([]string, 0, len(a.getters[typeName]))
+	for n := range a.getters[typeName] {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ReadProperty implements [decl.PropertyReader].
+func (a *Adapter) ReadProperty(node decl.NodeID, prop string) (qml.SpecValue, error) {
+	b, ok := a.nodes[node]
+	if !ok {
+		return qml.SpecValue{}, fmt.Errorf("%s: node %d was not built by this adapter", prop, node)
+	}
+	fn, ok := a.getters[b.typ][prop]
+	if !ok {
+		return qml.SpecValue{}, fmt.Errorf("a %s has no readable property %s", b.typ, prop)
+	}
+	return fn(b.comp)
+}
+
+var _ decl.PropertyReader = (*Adapter)(nil)
+
 // MethodsOf implements [decl.Methods].
 func (a *Adapter) MethodsOf(typeName string) []string {
 	names := make([]string, 0, len(a.methods[typeName]))
@@ -197,6 +235,7 @@ func New(reg *Registry, opts ...Option) *Adapter {
 		setters:      map[string]map[string]Setter{},
 		ctorProps:    map[string]map[string]bool{},
 		methods:      map[string]map[string]Method{},
+		getters:      map[string]map[string]Getter{},
 		signals:      map[string]map[string][]string{},
 		destroyed:    map[string]func(tui.Component){},
 		pal:          map[decl.NodeID]*palNode{},
