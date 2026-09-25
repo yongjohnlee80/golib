@@ -50,3 +50,34 @@ func TestAPaneBoxAroundAListHoldsItsList(t *testing.T) {
 		t.Errorf("a pane Box around a List: holds=%v, focus moved in=%v; want both", holds, moved)
 	}
 }
+
+// A float's layer takes focus only as a MODAL float's fallback stop. So a
+// shown, non-modal Float holding a Text holds nothing focusable by design —
+// and FocusInto cannot focus it, agreeing — while a modal one, whose layer is
+// that stop, does.
+func TestAFloatsLayerIsFocusableByDesignOnlyWhenModal(t *testing.T) {
+	for _, modal := range []bool{false, true} {
+		f := widget.NewFloat(widget.NewText("hello"), widget.WithModal(modal))
+		host := widget.NewOverlayHost(widget.NewText("behind"))
+		sh := newShell(host)
+		h := startApp(t, sh, 40, 10)
+		h.onLoop(func() {
+			host.Attach(f)
+			f.Show()
+		})
+		h.barrier(sh)
+		h.settle()
+		var holds, mounted, moved bool
+		h.onLoop(func() {
+			holds, mounted = h.app.HoldsFocusable(f)
+			moved = h.app.FocusInto(f)
+		})
+		if !mounted {
+			t.Fatalf("modal=%v: the shown Float is not mounted", modal)
+		}
+		if holds != modal || moved != modal {
+			t.Errorf("modal=%v: HoldsFocusable=%v, FocusInto=%v; want both %v", modal, holds, moved, modal)
+		}
+		h.stop()
+	}
+}

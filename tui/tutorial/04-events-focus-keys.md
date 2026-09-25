@@ -155,6 +155,19 @@ func (p *panel) FocusTarget() tui.Component { return p.current }
 // host: ctx.FocusComponent(panel.FocusTarget())
 ```
 
+**Focusable by design versus focusable now.** Implementing `Focusable` says a
+component is a control at all; `AcceptsFocus()` says whether it takes focus
+*now*. A disabled `Button` is focusable by design and accepts no focus until
+enabled again. So there are three legitimate shapes: no `AcceptsFocus` at all
+(never a stop: a frame, a view that only arranges its parts), a constant
+`true` (always a stop: `Editor`, `TextInput`), and a value that changes
+(`Button`'s `enabled`). A constant `false` is wrong: it claims the capability
+and denies it forever, and `App.HoldsFocusable`, which `forceActiveFocus`
+relies on, would count it as focusable. The repo's audit refuses it. Where
+being a control is a per-instance choice made at construction (a `Box` built
+`WithFocusable`, a `Float` `WithModal`), implement `tui.FocusDesigner` and
+answer it with `FocusableByDesign()`.
+
 A transparent wrapper should simply omit `Focusable`; implementing
 `AcceptsFocus() == false` has the same current runtime result but advertises a
 capability the type does not provide.
