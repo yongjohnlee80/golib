@@ -8,30 +8,34 @@
 // it knows nothing about terminal cells, widgets, or surfaces.
 //
 // This package owns the terminal-specific translation layer:
+//
 //   - Mapping QML type names (e.g. "Button", "Editor", "Split", "Dialog") to concrete widgets.
+//
 //   - Mapping declarative property assignments to concrete widget methods and setters.
+//
 //   - Wiring widget events, user keystrokes, and activations to the engine's emitters.
+//
 //   - Managing layout docking ([tui.Dock]), overlay presentation, and dialog lifecycles.
 //
-//	┌────────────────────────────────────────────────────────┐
-//	│ QML Layout (*.qml)                                     │
-//	│ Window { MenuBar { ... } Editor { ... } Dialog { ... } }│
-//	└───────────────────────────┬────────────────────────────┘
-//	                            │ parse/qml & decl.Tree
-//	                            ▼
-//	┌────────────────────────────────────────────────────────┐
-//	│ tui/decl.Adapter (implements decl.Adapter)             │
-//	│  ├─ Registry & Builders: StdRegistry()                 │
-//	│  ├─ Model/View Adapters: ListModel, TreeListModel      │
-//	│  ├─ Dialog Lifecycles: Modal, DialogButtonBox          │
-//	│  └─ Palette Roles: Propagation & Restyling             │
-//	└───────────────────────────┬────────────────────────────┘
-//	                            │ mounts & mutates
-//	                            ▼
-//	┌────────────────────────────────────────────────────────┐
-//	│ golib/tui Widget Tree (tui.App event loop)             │
-//	│  *widget.Box, *widget.Editor, *widget.Modal, etc.      │
-//	└────────────────────────────────────────────────────────┘
+//     ┌────────────────────────────────────────────────────────┐
+//     │ QML Layout (*.qml)                                     │
+//     │ Window { MenuBar { ... } Editor { ... } Dialog { ... } }│
+//     └───────────────────────────┬────────────────────────────┘
+//     │ parse/qml & decl.Tree
+//     ▼
+//     ┌────────────────────────────────────────────────────────┐
+//     │ tui/decl.Adapter (implements decl.Adapter)             │
+//     │  ├─ Registry & Builders: StdRegistry()                 │
+//     │  ├─ Model/View Adapters: ListModel, TreeListModel      │
+//     │  ├─ Dialog Lifecycles: Modal, DialogButtonBox          │
+//     │  └─ Palette Roles: Propagation & Restyling             │
+//     └───────────────────────────┬────────────────────────────┘
+//     │ mounts & mutates
+//     ▼
+//     ┌────────────────────────────────────────────────────────┐
+//     │ golib/tui Widget Tree (tui.App event loop)             │
+//     │  *widget.Box, *widget.Editor, *widget.Modal, etc.      │
+//     └────────────────────────────────────────────────────────┘
 //
 // # The Builder Pattern: Why Not Reflection or Post-Configuration?
 //
@@ -45,9 +49,9 @@
 //
 // To resolve this, [Registry] maps type names to pure [Builder] functions. A builder
 // receives a [Build] context containing:
-//   1. All declared properties in document order.
-//   2. All child components already constructed (bottom-up construction).
-//   3. Signal emitters wired to the engine's dispatch graph.
+//  1. All declared properties in document order.
+//  2. All child components already constructed (bottom-up construction).
+//  3. Signal emitters wired to the engine's dispatch graph.
 //
 // The builder consumes whichever properties it requires for initialization and returns
 // their names. The engine only applies the remaining unconsumed properties via runtime
