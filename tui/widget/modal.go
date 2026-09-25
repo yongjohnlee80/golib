@@ -419,7 +419,7 @@ func (m *Modal) SetButtons(b ...*Button) error {
 // The Modal node itself is the last resort, which is what keeps the ring inside
 // the trap non-empty and Escape reachable when every control is disabled.
 func (m *Modal) InitialFocus() (tui.Component, bool) {
-	if f := firstFocusable(m.card.body); f != nil {
+	if f := firstFocusable(m.Context(), m.card.body); f != nil {
 		return f, true
 	}
 	for _, b := range m.card.buttons {
@@ -607,7 +607,7 @@ func (m *Modal) TrapsFocus() bool { return true }
 // target of last resort, and steps out again as soon as a real control is
 // available.
 func (m *Modal) AcceptsFocus() bool {
-	return m.enabledButtonCount() == 0 && firstFocusable(m.card.body) == nil
+	return m.enabledButtonCount() == 0 && firstFocusable(m.Context(), m.card.body) == nil
 }
 
 // enabledButtonCount counts the buttons that can currently be activated.

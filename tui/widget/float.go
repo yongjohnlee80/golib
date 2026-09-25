@@ -216,7 +216,7 @@ func (f *Float) Show() {
 	f.shown = true
 	f.RequestLayout()
 	if f.modal {
-		if focusFirst(f.child) {
+		if focusFirst(f.layer.Context(), f.child) {
 			f.layer.fallback = false
 		} else {
 			// No focusable content: the layer itself becomes the trap's

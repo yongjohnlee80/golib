@@ -223,6 +223,24 @@ func (c *Context) Ancestor(match func(Component) bool) Component {
 	return nil
 }
 
+// Children returns comp's mounted children, in document order — the order Tab
+// walks them. nil for a comp that is not mounted or has none. It is how a
+// walk over components reaches the children of a composite that mounts them
+// itself without listing them (a declarative adapter's node, say): the tree
+// is where they are, whatever the composite exposes. Live tree state; ask
+// again rather than retaining it.
+func (c *Context) Children(comp Component) []Component {
+	n := c.app.byComp[comp]
+	if n == nil || !n.mounted {
+		return nil
+	}
+	out := make([]Component, 0, len(n.children))
+	for _, ch := range n.children {
+		out = append(out, ch.comp)
+	}
+	return out
+}
+
 // Move repositions child — a mounted direct child of this node — to
 // index to in document order WITHOUT unmounting it: NodeID, context,
 // in-flight tasks, hooks, and focus survive; Init does not re-run (see

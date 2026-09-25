@@ -360,7 +360,7 @@ func (s *Split) Zoom(p SplitPane) {
 			// pass re-homes trap-aware via repairInvisibleFocus against
 			// FRESH visibility — repairing here against the stale ring
 			// could land focus straight back on the hidden pane.
-			_ = focusFirst(kept)
+			_ = focusFirst(s.Context(), kept)
 		}
 	}
 	s.RequestLayout()
