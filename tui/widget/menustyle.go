@@ -18,6 +18,7 @@ type MenuStyle struct {
 	armed    style.Style // pressed and not yet released
 	disabled style.Style // present but not interactive
 	accel    style.Style // the accelerator text at a row's right edge
+	hotkey   style.Style // the mnemonic letter, merged over its row's look
 	border   style.Style // the popup frame
 }
 
@@ -39,6 +40,7 @@ func NewMenuStyle(surface, selected style.Style) *MenuStyle {
 		armed:    selected.Reverse(true),
 		disabled: surface.Faint(true),
 		accel:    surface.Faint(true),
+		hotkey:   defaultHotkey,
 		border:   surface,
 	}
 }
@@ -61,9 +63,14 @@ func DefaultMenuStyle() *MenuStyle {
 		armed:    selected.Underline(true),
 		disabled: muted,
 		accel:    muted,
+		hotkey:   defaultHotkey,
 		border:   style.New().Background(style.TokenPanel).Foreground(style.TokenBorder),
 	}
 }
+
+// defaultHotkey marks the mnemonic by underlining it and nothing else, so it
+// reads on every row look and under every palette, including none.
+var defaultHotkey = style.New().Underline(true)
 
 // Surface returns the menu's background look. Nil-safe, like every accessor
 // here: a menu with no style asks a nil style for values on every paint, and the
@@ -114,6 +121,16 @@ func (s *MenuStyle) Accel() style.Style {
 		return DefaultMenuStyle().accel
 	}
 	return s.accel
+}
+
+// Hotkey returns the mnemonic letter's look. It is merged OVER the row's own
+// look rather than replacing it, so a hotkey coloured red keeps the selected
+// row's background when the selection is on it.
+func (s *MenuStyle) Hotkey() style.Style {
+	if s == nil {
+		return DefaultMenuStyle().hotkey
+	}
+	return s.hotkey
 }
 
 // Border returns the popup frame's look.
@@ -212,6 +229,15 @@ func (s *MenuStyle) WithDisabled(v style.Style) *MenuStyle {
 func (s *MenuStyle) WithAccel(v style.Style) *MenuStyle {
 	c := s.cloneMenu()
 	c.accel = v
+	return c
+}
+
+// WithHotkey returns a copy with the mnemonic letter's look replaced — a colour
+// for the accent-key look of a 1990s IDE, say. What it does not set comes from
+// the row, so a replacement that sets only a foreground drops the underline.
+func (s *MenuStyle) WithHotkey(v style.Style) *MenuStyle {
+	c := s.cloneMenu()
+	c.hotkey = v
 	return c
 }
 

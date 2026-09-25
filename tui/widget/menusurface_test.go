@@ -696,3 +696,62 @@ func (r *stateRecorder) sawRow(id widget.ItemID) bool {
 	_, ok := r.seen[id]
 	return ok
 }
+
+// TestTheHotkeyTakesTheStylesHotkeyLookOverItsRow.
+//
+// The accent-key look of a 1990s IDE: the mnemonic in its own colour, on the
+// row's own background. Checked on the letter AND on its neighbour, since a
+// hotkey look that leaked onto the whole label would pass a check of the letter
+// alone — and with the selection on the row, since merging over the row is the
+// half a replacing implementation gets wrong.
+func TestTheHotkeyTakesTheStylesHotkeyLookOverItsRow(t *testing.T) {
+	surface := style.New().Background(style.ANSI(7)).Foreground(style.ANSI(0))
+	selected := style.New().Background(style.ANSI(2)).Foreground(style.ANSI(0))
+	st := widget.NewMenuStyle(surface, selected).WithHotkey(style.New().Foreground(style.ANSI(1)))
+	m := widget.NewMenu(widget.WithMenuStyle(st))
+	row := func(id widget.ItemID, label string) widget.MenuItemModel {
+		it := widget.NewCommand(id, label, nil)
+		it.Hotkey, it.HotkeyIdx = rune(label[0]+'a'-'A'), 0
+		return it
+	}
+	if err := m.SetModel([]widget.MenuItemModel{row("one", "One"), row("two", "Two")}); err != nil {
+		t.Fatalf("SetModel: %v", err)
+	}
+	h, _ := menuFixture(t, m, 30, 10)
+	defer h.stop()
+
+	ansi := func(n uint8) tui.CellColor { return tui.CellColor{Kind: tui.CellColorANSI, Index: n} }
+	for _, c := range []struct {
+		label  string
+		bg     uint8
+		reason string
+	}{
+		{"One", 2, "the selected row"},
+		{"Two", 7, "an ordinary row"},
+	} {
+		x, y := cellOfLabel(t, h, c.label)
+		key, next := rowStyleAt(t, h, x, y), rowStyleAt(t, h, x+1, y)
+		if key.FG != ansi(1) || key.BG != ansi(c.bg) {
+			t.Errorf("%s: hotkey cell = %+v, want red on the row's background %d", c.reason, key, c.bg)
+		}
+		if key.Mask&tui.AttrUnderline != 0 {
+			t.Errorf("%s: a hotkey look that sets only a colour kept the default underline", c.reason)
+		}
+		if next.FG != ansi(0) {
+			t.Errorf("%s: the letter after the hotkey = %+v, want the row's black", c.reason, next)
+		}
+	}
+}
+
+// TestTheDefaultHotkeyIsAnUnderline: the look every existing menu has, kept.
+func TestTheDefaultHotkeyIsAnUnderline(t *testing.T) {
+	for name, st := range map[string]*widget.MenuStyle{
+		"default": widget.DefaultMenuStyle(),
+		"built":   widget.NewMenuStyle(style.New(), style.New()),
+		"nil":     nil,
+	} {
+		if u, set := st.Hotkey().GetUnderline(); !u || !set {
+			t.Errorf("%s: the hotkey look is not underlined", name)
+		}
+	}
+}
