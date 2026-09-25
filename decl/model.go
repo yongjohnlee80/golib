@@ -34,7 +34,7 @@ const (
 	Reset ChangeKind = iota
 
 	// Changed indicates that existing rows from First to Last (inclusive) were modified in place.
-	// Their identities and keys remain intact, but role data values have updated.
+	// Role data values (and keys if replacement rows are assigned) have updated.
 	Changed
 
 	// Inserted indicates that new rows from First to Last (inclusive) have been added to the model.
@@ -47,24 +47,6 @@ const (
 	// necessitating a full view layout and header refresh across every row.
 	ColumnsReset
 )
-
-// String returns a human-readable representation of the change kind.
-func (k ChangeKind) String() string {
-	switch k {
-	case Reset:
-		return "Reset"
-	case Changed:
-		return "Changed"
-	case Inserted:
-		return "Inserted"
-	case Removed:
-		return "Removed"
-	case ColumnsReset:
-		return "ColumnsReset"
-	default:
-		return "UnknownChange"
-	}
-}
 
 // Change describes an atomic structural or data mutation emitted by a [Model].
 //
@@ -87,18 +69,21 @@ type Change struct {
 // Model represents the minimal reactive data source contract required by the
 // declarative engine for dynamic expansion (Repeater, Instantiator).
 //
-// # Thread Ownership and Invariants
+// # Thread Affinity and Invariants
 //
-// All Model methods (RowCount, Data, Key, and Subscribe deliveries) execute on the
-// application loop goroutine. If background workers or goroutines produce data updates,
-// mutations must be marshalled through the application scheduler (e.g. Program.Post).
+// Model methods (RowCount, Data, Key) and Subscribe callbacks share thread affinity with
+// the tree's owner goroutine. The core engine is single-threaded; when background workers
+// produce updates, model changes should be marshalled to the owner goroutine (or scheduled
+// via [WithScheduler]). Model change subscriptions notify the engine synchronously, which
+// then schedules repeater re-expansion and reconciliation on the engine's scheduler.
 //
 // # Key Stability
 //
-// Key must return a non-empty, unique, and persistent identifier for the row at Index.
-// As rows are inserted, deleted, or reordered around it, a row's Key MUST remain stable.
-// The engine's reconciler relies on Key to preserve widget state, focus, and identity
-// across model mutations without triggering unnecessary teardown and reconstruction.
+// An explicit, stable key (such as an entity ID or unique name) is the mechanism that
+// allows Repeaters and views to preserve node identity, widget state, and focus across
+// insertions, deletions, and moves. If a model lacks explicit keys and falls back to
+// positional indices (e.g. row numbers), inserting or removing items shifts subsequent keys,
+// meaning following nodes are rebuilt as new items rather than matched in place.
 type Model interface {
 	// RowCount returns the number of child rows located immediately under parent (nil for top-level).
 	RowCount(parent *Index) int
@@ -107,12 +92,11 @@ type Model interface {
 	// If the role is unrecognised or unset, it returns a zero [qml.SpecValue].
 	Data(ix Index, role string) qml.SpecValue
 
-	// Key returns a stable, unique string identity for the row at ix.
-	// Used by Repeaters and Instantiators to match nodes during reconciliation.
+	// Key returns a stable identifier for the row at ix. Explicit keys preserve node identity
+	// across insertions and deletions; positional fallbacks shift when earlier rows change.
 	Key(ix Index) string
 
 	// Subscribe registers fn to receive change notifications emitted by the model.
 	// It returns a cancel function that unsubscribes the caller.
-	// The model MUST execute fn synchronously on the UI event-loop goroutine.
 	Subscribe(fn func(Change)) (cancel func())
 }

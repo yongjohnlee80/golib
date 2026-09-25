@@ -39,12 +39,11 @@ import (
 //
 // Unlike standard message boxes with an implicit affirmative default button, DialogButtonBox
 // deliberately designates NO default button:
-//   - Pressing Enter within the dialog does not trigger any button unless a button explicitly holds
-//     focus and activates.
-//   - This design prevents destructive or irreversible dialog actions from firing accidentally
-//     if a user presses Enter while navigating.
-//   - Buttons are activated via Space when focused, via their underlined letter mnemonic (e.g. '&S' for 's'),
-//     or via mouse click.
+//   - Enter answers nothing, regardless of which button currently holds focus: in a Dialog, Enter
+//     is reserved exclusively for the dialog's default button, and a DialogButtonBox declares none.
+//   - Buttons answer by Space while holding focus, by their mnemonic shortcut, or by click.
+//   - An irreversible or destructive answer is never one stray Enter away, whichever order
+//     answers are listed in.
 
 var buttonRoles = Enum{Scope: "DialogButtonBox", Values: []string{"AcceptRole", "RejectRole", "DestructiveRole"}}
 
