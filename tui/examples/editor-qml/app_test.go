@@ -56,7 +56,9 @@ func startWith(t *testing.T, path string, src []byte, w, h int) *running {
 func startOpts(t *testing.T, opt Options, w, h int) *running {
 	t.Helper()
 	r := &running{quit: make(chan struct{}), be: tui.NewTestBackend(w, h)}
-	opt.Sink = func(err error) { t.Errorf("handler error: %v", err) }
+	if opt.Sink == nil {
+		opt.Sink = func(err error) { t.Errorf("handler error: %v", err) }
+	}
 	opt.App = []tui.AppOption{tui.WithBackend(r.be), tui.WithMinFrameInterval(0)}
 	host, err := New(opt)
 	if err != nil {

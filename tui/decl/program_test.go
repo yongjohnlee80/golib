@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
 
+	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
@@ -184,5 +187,77 @@ func TestValueHoldsOnlyWhatADocumentCan(t *testing.T) {
 	}
 	if v, _ := tuidecl.Value(qml.SpecValue{Kind: qml.SpecValueBool, Raw: "true"}); v.Kind != qml.SpecValueBool {
 		t.Error("a SpecValue was not passed through")
+	}
+}
+
+// countingProvider delivers "Clock.now" and counts how often it was cancelled.
+// burst makes it deliver from its own goroutine as fast as it can until then.
+type countingProvider struct {
+	burst    bool
+	cancels  atomic.Int32
+	stopping chan struct{}
+}
+
+func (c *countingProvider) Subscribe(fn func(decl.Update)) ([]string, func() error, error) {
+	v := qml.SpecValue{Kind: qml.SpecValueString, Raw: "t"}
+	fn(decl.Update{Version: 1, Values: map[string]qml.SpecValue{"Clock.now": v}})
+	c.stopping = make(chan struct{})
+	if c.burst {
+		go func(stop chan struct{}) {
+			for ver := uint64(2); ; ver++ {
+				select {
+				case <-stop:
+					return
+				default:
+					fn(decl.Update{Version: ver, Values: map[string]qml.SpecValue{"Clock.now": v}})
+				}
+			}
+		}(c.stopping)
+	}
+	var once sync.Once
+	return []string{"Clock.now"}, func() error {
+		once.Do(func() { c.cancels.Add(1); close(c.stopping) })
+		return nil
+	}, nil
+}
+
+// TestAFailedProgramReleasesItsProviders: a parse failure and a mount failure
+// both come after the provider subscribed, and both must end it.
+func TestAFailedProgramReleasesItsProviders(t *testing.T) {
+	for name, src := range map[string]string{
+		"parse": "Text {",
+		"mount": "Text { nosuch: 1 }",
+	} {
+		c := &countingProvider{}
+		_, err := tuidecl.NewProgram(tuidecl.LayoutSource(name+".qml", []byte(src)), tuidecl.Providers(c))
+		if err == nil {
+			t.Fatalf("%s: NewProgram succeeded", name)
+		}
+		if got := c.cancels.Load(); got != 1 {
+			t.Errorf("%s failure: the provider was cancelled %d times, want 1", name, got)
+		}
+	}
+}
+
+// TestAProgramIsBuiltSafelyUnderAProvidersTicks: a provider delivering from
+// its own goroutine the whole time the Program is constructed. Run with -race;
+// the Program also still starts and stops.
+func TestAProgramIsBuiltSafelyUnderAProvidersTicks(t *testing.T) {
+	for range 5 {
+		c := &countingProvider{burst: true}
+		p, err := tuidecl.NewProgram(
+			tuidecl.LayoutSource("tick.qml", []byte("Text { text: Clock.now }")),
+			tuidecl.Providers(c),
+			tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(10, 1)), tui.WithMinFrameInterval(0)),
+		)
+		if err != nil {
+			t.Fatalf("NewProgram: %v", err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		_ = p.Run(ctx)
+		cancel()
+		if c.cancels.Load() != 1 {
+			t.Fatalf("Run's teardown cancelled the provider %d times, want 1", c.cancels.Load())
+		}
 	}
 }
