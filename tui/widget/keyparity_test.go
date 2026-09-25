@@ -140,9 +140,9 @@ func TestVimAliasesMoveOnlyWhereNoMnemonicAnswers(t *testing.T) {
 func dialogFixture(t *testing.T, opts ...widget.ModalOption) (*harness, *widget.Modal, *atomic.Int64, *atomic.Int64) {
 	t.Helper()
 	var yes, no atomic.Int64
-	yb := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleDefault),
+	yb := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
 		widget.WithMnemonic('y'), widget.WithOnActivate(func() { yes.Add(1) }))
-	nb := widget.NewButton("No", widget.WithRole(widget.ButtonRoleCancel),
+	nb := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject),
 		widget.WithMnemonic('n'), widget.WithOnActivate(func() { no.Add(1) }))
 	base := []widget.ModalOption{widget.WithModalTitle("Confirm"), widget.WithButtons(yb, nb)}
 	md := widget.NewModal(widget.NewText("Sure?"), append(base, opts...)...)
@@ -163,16 +163,18 @@ func dialogFixture(t *testing.T, opts ...widget.ModalOption) (*harness, *widget.
 // Tab alone is not how a two-button confirmation is used. Arrows are
 // conventional and are the default; the mnemonics are what the original had.
 func TestADialogIsNavigableWithTheArrowsAndItsMnemonics(t *testing.T) {
+	// Space is the focused button's key; Enter is the dialog's, and presses its
+	// default wherever focus is.
 	t.Run("arrows move between the buttons", func(t *testing.T) {
 		h, _, yes, no := dialogFixture(t)
 		defer h.stop()
-		// Default role takes initial focus, so Enter here means Yes.
+		// The default takes initial focus; Right moves to No.
 		pressOn(h, tui.KeyRight)
-		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: ' '})
 		h.settle()
 		h.settle()
 		if no.Load() != 1 || yes.Load() != 0 {
-			t.Errorf("after Right, Enter gave yes=%d no=%d; want the second button",
+			t.Errorf("after Right, Space gave yes=%d no=%d; want the second button",
 				yes.Load(), no.Load())
 		}
 	})
@@ -182,12 +184,24 @@ func TestADialogIsNavigableWithTheArrowsAndItsMnemonics(t *testing.T) {
 		defer h.stop()
 		pressOn(h, tui.KeyRight)
 		pressOn(h, tui.KeyLeft)
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: ' '})
+		h.settle()
+		h.settle()
+		if yes.Load() != 1 || no.Load() != 0 {
+			t.Errorf("after Right then Left, Space gave yes=%d no=%d; want the first",
+				yes.Load(), no.Load())
+		}
+	})
+
+	t.Run("Enter presses the default wherever focus is", func(t *testing.T) {
+		h, _, yes, no := dialogFixture(t)
+		defer h.stop()
+		pressOn(h, tui.KeyRight) // focus on No
 		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 		h.settle()
 		h.settle()
 		if yes.Load() != 1 || no.Load() != 0 {
-			t.Errorf("after Right then Left, Enter gave yes=%d no=%d; want the first",
-				yes.Load(), no.Load())
+			t.Errorf("Enter on No gave yes=%d no=%d; want the default, Yes", yes.Load(), no.Load())
 		}
 	})
 
@@ -207,11 +221,11 @@ func TestADialogIsNavigableWithTheArrowsAndItsMnemonics(t *testing.T) {
 		h, _, yes, no := dialogFixture(t, widget.WithModalVimNavigation(true))
 		defer h.stop()
 		pressOn(h, 'j')
-		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: ' '})
 		h.settle()
 		h.settle()
 		if no.Load() != 1 {
-			t.Errorf("j then Enter gave yes=%d no=%d; want the second button",
+			t.Errorf("j then Space gave yes=%d no=%d; want the second button",
 				yes.Load(), no.Load())
 		}
 	})
@@ -239,9 +253,9 @@ func TestADialogIsNavigableWithTheArrowsAndItsMnemonics(t *testing.T) {
 // a greyed control answering a key is worse than one that is simply absent.
 func TestADisabledButtonDoesNotAnswerItsMnemonic(t *testing.T) {
 	var yes, no atomic.Int64
-	yb := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleDefault),
+	yb := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
 		widget.WithMnemonic('y'), widget.WithOnActivate(func() { yes.Add(1) }))
-	nb := widget.NewButton("No", widget.WithRole(widget.ButtonRoleCancel),
+	nb := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject),
 		widget.WithMnemonic('n'), widget.WithOnActivate(func() { no.Add(1) }))
 	md := widget.NewModal(widget.NewText("Sure?"), widget.WithButtons(yb, nb))
 	host := widget.NewOverlayHost(widget.NewText(""))

@@ -65,6 +65,8 @@ type Modal struct {
 	selected int
 	// ownKeys are the dialog's own keys (WithModalKeys); nil for none.
 	ownKeys func(tui.KeyEvent) bool
+	// acceptGate says whether an Accept answer may accept now (WithAcceptGate).
+	acceptGate func() bool
 }
 
 // ModalOption configures a Modal at construction.
@@ -98,7 +100,72 @@ func NewModal(body tui.Component, opts ...ModalOption) *Modal {
 // WithButtons supplies the dialog's buttons. The list is validated at
 // construction; see [NewModal] for what is refused.
 func WithButtons(b ...*Button) ModalOption {
-	return func(m *Modal) { m.card.buttons = append([]*Button(nil), b...) }
+	return func(m *Modal) {
+		m.card.buttons = append([]*Button(nil), b...)
+		m.adopt(nil, m.card.buttons)
+	}
+}
+
+// WithAcceptGate says whether an Accept answer may accept NOW: a file dialog
+// with nothing chosen yet. A refused accept leaves the dialog open. The button's
+// own callback has run either way.
+func WithAcceptGate(fn func() bool) ModalOption {
+	return func(m *Modal) { m.acceptGate = fn }
+}
+
+// ANSWERS — Qt's QDialogButtonBox roles, answered by the dialog itself, so a
+// button declares what it means and never how the dialog closes:
+//
+//	ButtonRoleAccept       its callback, then accepted (DismissAccept) — through
+//	                       WithAcceptGate when there is one
+//	ButtonRoleReject       its callback, then rejected (DismissCancel); Escape
+//	                       presses it
+//	ButtonRoleDestructive  its callback, then closed with no answer (DismissDiscard)
+//	ButtonRoleAction       its callback only; the dialog stays
+//
+// ENTER IS THE DIALOG'S: a dialog's buttons leave it unclaimed, and the dialog
+// presses its default button (WithDefault) — or nothing, when none is declared,
+// so an irreversible answer is never one stray Enter away. Space presses the
+// focused button.
+
+// adopt makes buttons the dialog's — each answers by its role, and leaves
+// Enter to the dialog — and releases those in was that are no longer held.
+func (m *Modal) adopt(was, now []*Button) {
+	held := map[*Button]bool{}
+	for _, b := range now {
+		held[b] = true
+		b.inDialog = true
+		b.answer = func() { m.answerFor(b) }
+	}
+	for _, b := range was {
+		if b != nil && !held[b] {
+			b.inDialog, b.answer = false, nil
+		}
+	}
+}
+
+// answerFor is the dialog's answer for b's role, as ANSWERS lays out.
+func (m *Modal) answerFor(b *Button) {
+	switch b.Role() {
+	case ButtonRoleAccept:
+		if m.acceptGate == nil || m.acceptGate() {
+			m.Dismiss(DismissAccept)
+		}
+	case ButtonRoleReject:
+		m.Dismiss(DismissCancel)
+	case ButtonRoleDestructive:
+		m.Dismiss(DismissDiscard)
+	}
+}
+
+// defaultButton is the dialog's enabled default button, or nil.
+func (m *Modal) defaultButton() *Button {
+	for _, b := range m.card.buttons {
+		if b != nil && b.IsDefault() && b.Enabled() {
+			return b
+		}
+	}
+	return nil
 }
 
 // WithOnDismiss sets the callback run when the dialog closes. It runs before
@@ -314,7 +381,9 @@ func (m *Modal) SetButtons(b ...*Button) error {
 	// The card owns the children, so it does the reconcile: the list and the
 	// mounted tree are two views of the same thing and must move together. It
 	// batches, so the focus repair below is the only one that runs.
+	was := m.card.buttons
 	m.card.setButtons(b)
+	m.adopt(was, m.card.buttons)
 	if ctx := m.Context(); ctx != nil {
 		ctx.RequestLayout()
 		// Focusability across the whole scope has changed: buttons appeared or
@@ -350,10 +419,8 @@ func (m *Modal) SetButtons(b ...*Button) error {
 // The Modal node itself is the last resort, which is what keeps the ring inside
 // the trap non-empty and Escape reachable when every control is disabled.
 func (m *Modal) InitialFocus() (tui.Component, bool) {
-	for _, b := range m.card.buttons {
-		if b != nil && b.Enabled() && b.Role() == ButtonRoleDefault {
-			return b, true
-		}
+	if b := m.defaultButton(); b != nil {
+		return b, true
 	}
 	for _, b := range m.card.buttons {
 		if b != nil && b.Enabled() {
@@ -580,6 +647,14 @@ func (m *Modal) keys(ev tui.Event) (tui.Action, bool) {
 	if k.Code == tui.KeyEscape {
 		return dismissAction{}, true
 	}
+	// ENTER, unclaimed by the control that has focus: the default button's,
+	// through the runtime as a mnemonic is. None declared, no answer.
+	if k.Code == tui.KeyEnter {
+		if b := m.defaultButton(); b != nil {
+			return modalActivateAction{target: b}, true
+		}
+		return nil, false
+	}
 	// MNEMONIC FIRST, ALWAYS. A declared key is specific intent; a direction is
 	// a convenience. Resolving the alias first would make a button whose
 	// mnemonic happens to be 'l' unreachable the moment Vim keys were enabled,
@@ -703,7 +778,7 @@ func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
 	if _, ok := inv.Action.(dismissAction); !ok {
 		return false
 	}
-	// A Cancel-role button, if the dialog has one, is activated so a DISMISS
+	// A Reject-role button, if the dialog has one, is activated so a DISMISS
 	// REQUEST means exactly what pressing that button means — whether the
 	// request arrived as Escape or as a host-configured dismiss key. The
 	// resolution is the same for both, deliberately: a `q` that closed the
@@ -718,7 +793,7 @@ func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
 	// claims was not one the code kept. ForwardAction carries this invocation's
 	// provenance, so the activation is recorded as the keyboard event it was.
 	for _, b := range m.card.buttons {
-		if b != nil && b.Role() == ButtonRoleCancel && b.Enabled() {
+		if b != nil && b.Role() == ButtonRoleReject && b.Enabled() {
 			if ctx := m.Context(); ctx != nil {
 				ctx.ForwardAction(b, tui.ActivateAction{})
 			}
@@ -729,7 +804,7 @@ func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
 			return true
 		}
 	}
-	// No Cancel role: the dialog simply closes. DismissEscape is the reason for
+	// No Reject role: the dialog simply closes. DismissEscape is the reason for
 	// either key, because it names the INTENTION — leaving without choosing —
 	// rather than the physical key that carried it.
 	m.Dismiss(DismissEscape)

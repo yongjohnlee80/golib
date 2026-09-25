@@ -20,7 +20,7 @@ import (
 func TestModalDismissKeyClosesTheDialog(t *testing.T) {
 	md := widget.NewModal(widget.NewText("read me"),
 		widget.WithModalTitle("notice"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
+		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
 		widget.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
@@ -44,7 +44,7 @@ func TestModalDismissKeyClosesTheDialog(t *testing.T) {
 func TestModalWithoutDismissKeysIgnoresQ(t *testing.T) {
 	md := widget.NewModal(widget.NewText("read me"),
 		widget.WithModalTitle("notice"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))))
+		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
 
@@ -64,7 +64,7 @@ func TestModalDismissKeyLosesToAMnemonic(t *testing.T) {
 	activated := false
 	quit := widget.NewButton("Quit",
 		widget.WithMnemonic('q'),
-		widget.WithRole(widget.ButtonRoleDefault),
+		widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
 		widget.WithOnActivate(func() { activated = true }))
 	md := widget.NewModal(widget.NewText("really?"),
 		widget.WithModalTitle("quit?"),
@@ -90,7 +90,7 @@ func TestModalDismissKeyDoesNotStealFromATextInput(t *testing.T) {
 	in := widget.NewTextInput()
 	md := widget.NewModal(in,
 		widget.WithModalTitle("name it"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
+		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
 		widget.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
@@ -123,7 +123,7 @@ func TestModalDismissKeyDoesNotStealFromATextInput(t *testing.T) {
 func TestModalDismissKeyReportsEscapeExactlyOnce(t *testing.T) {
 	md := widget.NewModal(widget.NewText("read me"),
 		widget.WithModalTitle("notice"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
+		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
 		widget.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	rec := record[widget.OverlayDismissedEvent](h)
@@ -147,11 +147,11 @@ func TestModalDismissKeyReportsEscapeExactlyOnce(t *testing.T) {
 func TestModalDismissKeyActivatesCancelAndReportsIt(t *testing.T) {
 	cancelled := false
 	no := widget.NewButton("Cancel",
-		widget.WithRole(widget.ButtonRoleCancel),
+		widget.WithRole(widget.ButtonRoleReject),
 		widget.WithOnActivate(func() { cancelled = true }))
 	md := widget.NewModal(widget.NewText("really?"),
 		widget.WithModalTitle("confirm"),
-		widget.WithButtons(no, widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
+		widget.WithButtons(no, widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
 		widget.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	rec := record[widget.OverlayDismissedEvent](h)
@@ -180,7 +180,7 @@ func TestModalDismissKeyActivatesCancelAndReportsIt(t *testing.T) {
 func TestModalDismissKeyIgnoresAModifiedKey(t *testing.T) {
 	md := widget.NewModal(widget.NewText("read me"),
 		widget.WithModalTitle("notice"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))),
+		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
 		widget.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)

@@ -39,6 +39,9 @@ const (
 	DismissAnchorLost
 	// DismissReplaced: another overlay took this one's place.
 	DismissReplaced
+	// DismissDiscard: a destructive control was activated (Discard) — the
+	// dialog closed with neither accepting nor rejecting.
+	DismissDiscard
 )
 
 // String names the reason for traces, events and test failures.
@@ -56,6 +59,8 @@ func (r DismissReason) String() string {
 		return "anchor-lost"
 	case DismissReplaced:
 		return "replaced"
+	case DismissDiscard:
+		return "discard"
 	}
 	return "unknown"
 }

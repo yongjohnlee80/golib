@@ -82,7 +82,7 @@ func TestSetButtonsHonoursTheDefaultRoleOnEveryRepair(t *testing.T) {
 	// Opened with no buttons at all, so the Modal node itself holds focus and
 	// there is no incumbent to bias the choice.
 	normal := widget.NewButton("Normal")
-	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 
 	var err error
 	// Listed FIRST is the plain button, so "the first enabled button" and "the
@@ -160,7 +160,7 @@ func TestAddingADefaultButtonMovesFocusToItEvenWhenTheCurrentOneIsStillValid(t *
 		t.Fatal("precondition failed: the only button never took focus")
 	}
 
-	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	var err error
 	h.onLoop(func() { err = m.SetButtons(plain, def) })
 	if err != nil {
@@ -210,13 +210,13 @@ func TestSetButtonsRejectsAnUnusableListWithoutChangingAnything(t *testing.T) {
 			},
 		},
 		{
-			name: "two buttons carrying the Default role",
-			want: widget.ErrDuplicateButtonRole,
+			name: "two default buttons",
+			want: widget.ErrDuplicateDefault,
 			list: func(_ *widget.OverlayHost, _ *widget.Button, keep *widget.Button) []*widget.Button {
 				return []*widget.Button{
 					keep,
-					widget.NewButton("X", widget.WithRole(widget.ButtonRoleDefault)),
-					widget.NewButton("Y", widget.WithRole(widget.ButtonRoleDefault)),
+					widget.NewButton("X", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
+					widget.NewButton("Y", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
 				}
 			},
 		},
@@ -484,7 +484,7 @@ func TestAnOnDismissCallbackMayReopenTheDialog(t *testing.T) {
 // scheduled step created that window for no benefit — direct RequestFocus is
 // legal before layout.
 func TestOpenMovesFocusBeforeItReturns(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
 	h, host, base := modalFixture(t, m, 40, 12)
 	defer h.stop()
@@ -572,7 +572,7 @@ func TestOpenRollsBackWhenTheDialogCannotMount(t *testing.T) {
 func TestEscapeActivatesTheCancelButtonThroughTheRuntime(t *testing.T) {
 	var ran atomic.Int64
 	cancel := widget.NewButton("Nope",
-		widget.WithRole(widget.ButtonRoleCancel),
+		widget.WithRole(widget.ButtonRoleReject),
 		widget.WithOnActivate(func() { ran.Add(1) }))
 	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(cancel))
 
@@ -646,7 +646,7 @@ func TestModalPointerPolicyReachesTheWholeSubtree(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var acts atomic.Int64
 			ok := widget.NewButton("OK",
-				widget.WithRole(widget.ButtonRoleDefault),
+				widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
 				widget.WithOnActivate(func() { acts.Add(1) }))
 			m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
 			if tc.preMount {
@@ -922,7 +922,7 @@ func TestACallbackDismissingADialogTheUnwindWillReachClosesItOnce(t *testing.T) 
 // a degenerate one. The card lays out and paints around an absent body rather
 // than requiring callers to pass an empty placeholder.
 func TestADialogWithNoBodyIsStillUsable(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	m := widget.NewModal(nil, widget.WithModalTitle("Sure?"), widget.WithButtons(ok))
 	h, host, _ := modalFixture(t, m, 30, 10)
 	defer h.stop()
@@ -968,7 +968,7 @@ func TestADialogWithNoBodyIsStillUsable(t *testing.T) {
 // validator built on the retained pointer reads a perfectly reusable button as
 // belonging to someone else.
 func TestAReopenedDialogMayKeepItsButtons(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	m := widget.NewModal(widget.NewText("Again?"), widget.WithButtons(ok))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
@@ -1002,7 +1002,7 @@ func TestADismissCallbackMayReopenADialogThatHasButtons(t *testing.T) {
 	var reopens atomic.Int64
 	var reopenErr error
 
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleDefault))
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	m = widget.NewModal(widget.NewText("Body"),
 		widget.WithButtons(ok),
 		widget.WithOnDismiss(func(widget.DismissReason) {
@@ -1076,8 +1076,8 @@ func TestEveryValidationErrorMatchesBothTheUmbrellaAndItsOwnSentinel(t *testing.
 		{"duplicate role", widget.ErrDuplicateButtonRole,
 			func(_, keep *widget.Button) []*widget.Button {
 				return []*widget.Button{
-					widget.NewButton("X", widget.WithRole(widget.ButtonRoleCancel)),
-					widget.NewButton("Y", widget.WithRole(widget.ButtonRoleCancel)),
+					widget.NewButton("X", widget.WithRole(widget.ButtonRoleReject)),
+					widget.NewButton("Y", widget.WithRole(widget.ButtonRoleReject)),
 				}
 			}},
 	} {

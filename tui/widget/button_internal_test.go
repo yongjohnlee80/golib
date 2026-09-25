@@ -48,37 +48,40 @@ func TestAnUnknownRoleIsRetainedNotRejected(t *testing.T) {
 	checkButtonList("test", []*Button{b, NewButton("A", WithRole(appRole))}, nil)
 }
 
-// TestASecondDefaultOrCancelIsRefusedAtConstruction.
+// TestASecondDefaultOrRejectIsRefusedAtConstruction.
 //
 // A panic rather than a silent precedence rule: with two defaults, Enter picks
-// one by an ordering the author never stated, and the dialog does the wrong
-// thing in a way that reads as a toolkit bug rather than a mistake in the list.
-func TestASecondDefaultOrCancelIsRefusedAtConstruction(t *testing.T) {
+// one by an ordering the author never stated — with two Rejects, Escape does —
+// and the dialog does the wrong thing in a way that reads as a toolkit bug
+// rather than a mistake in the list.
+func TestASecondDefaultOrRejectIsRefusedAtConstruction(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		role ButtonRole
+		opt  ButtonOption
 	}{
-		{"two defaults", ButtonRoleDefault},
-		{"two cancels", ButtonRoleCancel},
+		{"two defaults", WithDefault(true)},
+		{"two rejects", WithRole(ButtonRoleReject)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fatal := fatalFromWidget(func() {
 				checkButtonList("test", []*Button{
-					NewButton("A", WithRole(tc.role)),
-					NewButton("B", WithRole(tc.role)),
+					NewButton("A", tc.opt),
+					NewButton("B", tc.opt),
 				}, nil)
 			})
 			if fatal == nil {
-				t.Fatalf("a second %v was accepted", tc.role)
+				t.Fatalf("%s were accepted", tc.name)
 			}
 		})
 	}
 
-	// The control: one of each, plus normals, is fine.
+	// The control: one default, one Reject, and any number of Accepts and
+	// Actions, is fine — Yes and Ok may both accept.
 	fatal := fatalFromWidget(func() {
 		checkButtonList("test", []*Button{
-			NewButton("OK", WithRole(ButtonRoleDefault)),
-			NewButton("Cancel", WithRole(ButtonRoleCancel)),
+			NewButton("OK", WithRole(ButtonRoleAccept), WithDefault(true)),
+			NewButton("Yes", WithRole(ButtonRoleAccept)),
+			NewButton("Cancel", WithRole(ButtonRoleReject)),
 			NewButton("Other"),
 			NewButton("Another"),
 		}, nil)
