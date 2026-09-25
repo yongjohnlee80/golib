@@ -297,6 +297,13 @@ type ExpandRequestEvent struct {
 	Gen   uint64
 }
 
+// ExpandEvent fires every time a node opens — loaded or not; an unloaded one
+// also fires its ExpandRequestEvent, first.
+type ExpandEvent struct {
+	Owner tui.NodeID
+	Node  *TreeNode
+}
+
 // CollapseEvent fires when a node collapses.
 type CollapseEvent struct {
 	Owner tui.NodeID
@@ -628,6 +635,7 @@ func (t *Tree) expandNode(n *TreeNode) {
 	if n.loaded {
 		n.expanded = true
 		t.MarkDirty()
+		t.publish(ExpandEvent{Owner: t.NodeID(), Node: n})
 		return
 	}
 	if n.loading {
@@ -640,6 +648,7 @@ func (t *Tree) expandNode(n *TreeNode) {
 	n.expanded = true // renders the spinner badge until the result settles
 	t.MarkDirty()
 	t.publish(ExpandRequestEvent{Owner: t.NodeID(), Node: n, Gen: n.gen})
+	t.publish(ExpandEvent{Owner: t.NodeID(), Node: n})
 }
 
 // collapseNode closes a node; collapsing a loading node invalidates its

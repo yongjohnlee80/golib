@@ -142,6 +142,21 @@ func NewTable[T any](cols []TableColumn[T], opts ...ListOption[T]) *Table[T] {
 // List exposes the inner row list (focus target, Selected, SetItems…).
 func (t *Table[T]) List() *List[T] { return t.list }
 
+// SetColumns replaces the columns — a new query's result, say — keeping the
+// rows' source and the view; the header and every row are drawn to the new
+// columns on the next frame. At least one column is required.
+func (t *Table[T]) SetColumns(cols []TableColumn[T]) {
+	if len(cols) == 0 {
+		panic("widget: Table.SetColumns requires at least one column")
+	}
+	t.cols = append([]TableColumn[T](nil), cols...)
+	t.widths = make([]int, len(t.cols))
+	if ctx := t.Context(); ctx != nil {
+		ctx.RequestLayout()
+	}
+	t.list.RefreshSource()
+}
+
 // SetItems replaces the rows.
 func (t *Table[T]) SetItems(items []T) { t.list.SetItems(items) }
 

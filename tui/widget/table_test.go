@@ -334,3 +334,29 @@ func TestTableDoesNotSwallowAncestorDrag(t *testing.T) {
 			"reached the Split, so it is still dragging", afterRelease, got)
 	}
 }
+
+// TestSetColumnsRedrawsTheHeaderAndRows: the same table, new columns — the
+// header and the rows follow, with the rows' source kept.
+func TestSetColumnsRedrawsTheHeaderAndRows(t *testing.T) {
+	type row struct{ a, b string }
+	tbl := widget.NewTable([]widget.TableColumn[row]{
+		{Title: "FIRST", Width: 8, Cell: func(r row) string { return r.a }},
+	}, widget.WithItems([]row{{"one", "uno"}}, func(r row) string { return r.a }))
+	h := startApp(t, tbl, 30, 4)
+	defer h.stop()
+	h.settle()
+	h.wantContains("FIRST")
+	h.wantContains("one")
+	h.onLoop(func() {
+		tbl.SetColumns([]widget.TableColumn[row]{
+			{Title: "SECOND", Width: 8, Cell: func(r row) string { return r.b }},
+			{Title: "THIRD", Width: 0, Cell: func(r row) string { return r.a + "!" }},
+		})
+	})
+	h.settle()
+	h.wantContains("SECOND")
+	h.wantContains("THIRD")
+	h.wantContains("uno")
+	h.wantContains("one!")
+	h.wantNotContains("FIRST")
+}
