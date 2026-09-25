@@ -177,8 +177,11 @@ its **component types**.
   and sources it read and, on a change, re-expands the document as written and
   reconciles it — on the scheduler, never inside an emission. A delegate that
   is a `DelegateChooser` is resolved per row first: the first `DelegateChoice`
-  whose `roleValue` equals the row's `role` value (one without a roleValue
-  matches all), and a row with no match has no copy.
+  whose `roleValue` matches the row's `role` value by Qt's rule (as values,
+  else as integers, else as strings; one without a roleValue matches all), and
+  a row with no match has no copy. Every delegate template, including a choice
+  no row selects and the delegate of an empty model, is checked for the
+  placement rules whatever the rows are.
 - **Reading an object's property by id in a handler** — `App.login(user.text)`
   — reads the live object when the handler runs, through the optional
   `PropertyReader` capability. Only in a handler: a binding over another

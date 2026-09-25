@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/js"
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -128,6 +129,39 @@ func readChooser(sn *qml.SpecNode, fail func(string, ...any) error) (*delegateCh
 	return c, nil
 }
 
+// vetTemplate checks a delegate template's placement rules — every
+// DelegateChooser and DelegateChoice in it is a Repeater's or an Instantiator's
+// delegate, and every chooser is sound — whatever rows the model has NOW. A
+// choice no row selects today, or the delegate of an empty model, is still
+// the document: accepting it until a row reaches it would turn a model change
+// into a failure the document had all along.
+func vetTemplate(sn *qml.SpecNode, fail func(string, ...any) error) error {
+	if isChooser(sn.Type) {
+		return fail("a %s is a Repeater's or an Instantiator's delegate, and only that (at %s)", sn.Type, sn.Pos)
+	}
+	if isRepeater(sn.Type) && len(sn.Children) != 1 {
+		return fail("a %s holds exactly one delegate, got %d (at %s)", sn.Type, len(sn.Children), sn.Pos)
+	}
+	for _, c := range sn.Children {
+		if isRepeater(sn.Type) && c.Type == "DelegateChooser" {
+			ch, err := readChooser(c, fail)
+			if err != nil {
+				return err
+			}
+			for _, choice := range ch.choices {
+				if err := vetTemplate(choice.delegate, fail); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if err := vetTemplate(c, fail); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // choose is the delegate for row ix, nil when no choice matches.
 func (c *delegateChooser) choose(m Model, ix Index) *qml.SpecNode {
 	have := m.Data(ix, c.role)
@@ -139,18 +173,74 @@ func (c *delegateChooser) choose(m Model, ix Index) *qml.SpecNode {
 	return nil
 }
 
-// sameRoleValue is Qt's equality for a roleValue and a row's value: the same
-// kind and the same value — a number by its value, so 1 and 1.0 are one.
+// sameRoleValue is Qt's QQmlDelegateChoice::match for a roleValue and a row's
+// value: equal as values (a number by its value); else both converted to an
+// integer and equal; else both converted to a string and equal. So a
+// roleValue of 1 matches a row's "1", and "true" a row's true — as they do in
+// Qt. The conversions are QVariant's for these kinds: a bool is 1 or 0 as an
+// integer and "true" or "false" as a string; a number is an integer only when
+// it is whole, and its string is its shortest form (1.0 is "1"); a string is an
+// integer when it reads as one.
 func sameRoleValue(want, have qml.SpecValue) bool {
-	if want.Kind != have.Kind {
-		return false
+	if want.Kind == have.Kind {
+		if want.Kind == qml.SpecValueNumber {
+			a, okA := numberOf(want)
+			b, okB := numberOf(have)
+			return okA && okB && a == b
+		}
+		if want.Raw == have.Raw {
+			return true
+		}
 	}
-	if want.Kind == qml.SpecValueNumber {
-		a, errA := strconv.ParseFloat(want.Raw, 64)
-		b, errB := strconv.ParseFloat(have.Raw, 64)
-		return errA == nil && errB == nil && a == b
+	if a, okA := intOf(want); okA {
+		if b, okB := intOf(have); okB && a == b {
+			return true
+		}
 	}
-	return want.Raw == have.Raw
+	a, okA := stringOf(want)
+	b, okB := stringOf(have)
+	return okA && okB && a == b
+}
+
+func numberOf(v qml.SpecValue) (float64, bool) {
+	f, err := strconv.ParseFloat(v.Raw, 64)
+	return f, err == nil
+}
+
+// intOf is QVariant::toInt for the kinds a roleValue takes.
+func intOf(v qml.SpecValue) (int64, bool) {
+	switch v.Kind {
+	case qml.SpecValueBool:
+		if v.Raw == "true" {
+			return 1, true
+		}
+		return 0, true
+	case qml.SpecValueNumber:
+		f, ok := numberOf(v)
+		if !ok || f != float64(int64(f)) {
+			return 0, false
+		}
+		return int64(f), true
+	case qml.SpecValueString:
+		n, err := strconv.ParseInt(strings.TrimSpace(v.Raw), 10, 64)
+		return n, err == nil
+	}
+	return 0, false
+}
+
+// stringOf is QVariant::toString for the kinds a roleValue takes.
+func stringOf(v qml.SpecValue) (string, bool) {
+	switch v.Kind {
+	case qml.SpecValueString, qml.SpecValueBool:
+		return v.Raw, true
+	case qml.SpecValueNumber:
+		f, ok := numberOf(v)
+		if !ok {
+			return "", false
+		}
+		return strconv.FormatFloat(f, 'g', -1, 64), true
+	}
+	return "", false
 }
 
 // repeaterScope is one expansion's bookkeeping: the models it read and the
@@ -237,6 +327,13 @@ func (t *Tree) instantiate(sn *qml.SpecNode, key string, sc *repeaterScope,
 			return nil, err
 		}
 		chooser = c
+		for _, choice := range c.choices {
+			if err := vetTemplate(choice.delegate, fail); err != nil {
+				return nil, err
+			}
+		}
+	} else if err := vetTemplate(delegate, fail); err != nil {
+		return nil, err
 	}
 	var out []*qml.SpecNode
 	for r := range model.RowCount(nil) {

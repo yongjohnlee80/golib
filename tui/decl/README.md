@@ -132,8 +132,11 @@ kept row holds survives rows inserted around it.
 **`DelegateChooser`** — Qt's delegate chosen per row. As a Repeater's or an
 Instantiator's one delegate, it holds `DelegateChoice { roleValue: …; <delegate> }`
 entries and a `role:`. Each row is built as the FIRST choice whose `roleValue`
-equals the row's value of that role (numbers compare by value). A choice with
-no `roleValue` matches every row, and a row no choice matches has no delegate.
+matches the row's value of that role, by Qt's rule: equal as values (numbers
+by value), else equal as integers, else equal as strings. So `roleValue: 1`
+matches a row's `"1"`. A choice with no `roleValue` matches every row, and a
+row no choice matches has no delegate. Every choice is held to the rules
+whether or not a row selects it today.
 A menu whose rows are items and submenus, in the model's order:
 
 ```qml
@@ -153,7 +156,8 @@ Instantiator {
 or a tab stop, and hides what is under it; removed by a reload, it is shown
 again.
 
-**Every element except `Window`, `Frame`, `Split`, `Flex` and `Dialog` is
+**Every element except `Window`, `Frame`, `Split`, `Flex`, `Dialog` and the
+engine's `Repeater`, `Instantiator`, `DelegateChooser` and `DelegateChoice` is
 childless or holds only its own kind** — `MenuBar` holds `Menu`s, a `Menu`
 holds `MenuItem`s, `Menu`s and `MenuSeparator`s. `Frame` holds exactly one child, and
 `Split` exactly two. A `Dialog` holds exactly one content child, plus its own

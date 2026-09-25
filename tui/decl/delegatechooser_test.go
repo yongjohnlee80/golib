@@ -153,3 +153,69 @@ func TestWhatADelegateChooserRefuses(t *testing.T) {
 		}
 	}
 }
+
+// Qt's QQmlDelegateChoice::match: equal as values; else both as integers;
+// else both as strings — so a roleValue matches across kinds as it does in Qt.
+func TestARoleValueMatchesAsQtsDoes(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		value string // the roleValue, as written
+		row   any    // the row's role value
+		match bool
+	}{
+		{"a number and the same number", "1", 1, true},
+		{"1.0 and 1, by value", "1.0", 1, true},
+		{"a number and its string, as integers", "1", "1", true},
+		{"a string and the number it reads as", `"2"`, 2, true},
+		{"a string with the number's digits, as integers", "2", "02", true},
+		{"a fraction and its string, as strings", "1.5", "1.5", true},
+		{"true and 1, as integers", "true", 1, true},
+		{"a string and the bool it spells", `"true"`, true, true},
+		{"different numbers", "1", 2, false},
+		{"a fraction is no integer", "1.5", 1, false},
+		{"a word and a number", `"one"`, 1, false},
+		{"false and 1", "false", 1, false},
+	} {
+		m := tuidecl.NewListModel("key", "v")
+		m.Reset([]tuidecl.Row{{"key": "a", "v": c.row}})
+		s := runRepeater(t, "Flex { direction: Tui.Vertical\n Text { text: \"head\" }\n Repeater { model: App.rows\n"+
+			"  DelegateChooser { role: \"v\"\n   DelegateChoice { roleValue: "+c.value+"; Text { text: \"matched\" } } } } }", m, &recorder{})
+		s.WaitForText(t, "head")
+		if got := strings.Contains(s.String(), "matched"); got != c.match {
+			t.Errorf("%s: roleValue %s against a row's %#v matched=%v, want %v", c.name, c.value, c.row, got, c.match)
+		}
+	}
+}
+
+// Every template is the document, whatever rows the model has now: a choice no
+// row selects, and the delegate of an empty model, are held to the rules too.
+func TestADormantTemplateIsHeldToTheRules(t *testing.T) {
+	rows := tuidecl.NewListModel("key", "kind")
+	rows.Reset([]tuidecl.Row{{"key": "a", "kind": "item"}})
+	empty := tuidecl.NewListModel("key", "kind")
+	for doc, want := range map[string]string{
+		// a choice no row selects, holding a misplaced chooser
+		"Flex { Repeater { model: App.rows\n DelegateChooser { role: \"kind\"\n" +
+			"  DelegateChoice { roleValue: \"item\"; Text { } }\n" +
+			"  DelegateChoice { roleValue: \"never\"; Flex { DelegateChooser { role: \"k\"; DelegateChoice { Text { } } } } } } } }": "a Repeater's or an Instantiator's delegate",
+		// the delegate of an empty model
+		"Flex { Repeater { model: App.empty\n Flex { DelegateChoice { Text { } } } } }": "a Repeater's or an Instantiator's delegate",
+		// a chooser inside a dormant template, its choice holding a misplaced one
+		"Flex { Repeater { model: App.empty\n Flex { Repeater { model: App.rows\n DelegateChooser { role: \"kind\"\n" +
+			"  DelegateChoice { Flex { DelegateChoice { Text { } } } } } } } } }": "a Repeater's or an Instantiator's delegate",
+		// a dormant nested Repeater with two delegates
+		"Flex { Repeater { model: App.empty\n Flex { Repeater { model: App.rows\n Text { }\n Text { } } } } }": "exactly one delegate, got 2",
+		// a dormant chooser that is itself unsound
+		"Flex { Repeater { model: App.rows\n DelegateChooser { role: \"kind\"\n" +
+			"  DelegateChoice { roleValue: \"item\"; Text { } }\n" +
+			"  DelegateChoice { roleValue: \"never\"; Flex { Repeater { model: App.rows\n DelegateChooser { } } } } } } }": "needs a role",
+	} {
+		err := tuidecl.Check(
+			tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+doc)),
+			tuidecl.Singleton("demo", "1.0", "App"),
+			tuidecl.Sources(map[string]any{"App.rows": rows, "App.empty": empty}))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s\n err = %v\nwant %q", doc, err, want)
+		}
+	}
+}
