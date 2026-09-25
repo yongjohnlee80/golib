@@ -45,6 +45,114 @@ import (
 // isRepeater reports whether a type is one of the two.
 func isRepeater(typeName string) bool { return typeName == "Repeater" || typeName == "Instantiator" }
 
+// DELEGATE CHOOSER — Qt's DelegateChooser: a delegate per row chosen by a role.
+//
+//	Instantiator {
+//	    model: App.menu                        // rows of kind "item" or "submenu"
+//	    DelegateChooser {
+//	        role: "kind"
+//	        DelegateChoice { roleValue: "item";    MenuItem { text: model.label } }
+//	        DelegateChoice { roleValue: "submenu"; Menu { title: model.label; … } }
+//	    }
+//	}
+//
+// As Qt defines it: the DelegateChooser is a Repeater's or an Instantiator's one
+// delegate, and holds DelegateChoices, each with one delegate. For each row, the
+// FIRST choice whose roleValue equals the row's `role` is instantiated — a
+// choice with no roleValue matches every row — and a row no choice matches has
+// no delegate. The rows keep their keys, so a row whose value changes is built
+// again as its new choice, and its neighbours are untouched.
+
+// isChooser reports whether a type is one of the chooser's two.
+func isChooser(typeName string) bool {
+	return typeName == "DelegateChooser" || typeName == "DelegateChoice"
+}
+
+// delegateChooser is a DelegateChooser, read: the role, and its choices.
+type delegateChooser struct {
+	role    string
+	choices []delegateChoice
+}
+
+type delegateChoice struct {
+	value    *qml.SpecValue // nil: matches every row
+	delegate *qml.SpecNode
+}
+
+// readChooser reads a DelegateChooser, refusing what Qt's would not take.
+func readChooser(sn *qml.SpecNode, fail func(string, ...any) error) (*delegateChooser, error) {
+	if len(sn.Handlers) > 0 {
+		return nil, fail("a DelegateChooser raises no signals (at %s)", sn.Handlers[0].Pos)
+	}
+	c := &delegateChooser{}
+	for _, p := range sn.Props {
+		if p.Name != "role" {
+			return nil, fail("a DelegateChooser takes only a role; %q is not one of its properties (at %s)", p.Name, p.Pos)
+		}
+		if p.Value.Kind != qml.SpecValueString || p.Value.Raw == "" {
+			return nil, fail("a DelegateChooser's role is the name of a model role, a string (at %s)", p.Value.Pos)
+		}
+		c.role = p.Value.Raw
+	}
+	if c.role == "" {
+		return nil, fail("a DelegateChooser needs a role (at %s)", sn.Pos)
+	}
+	for _, ch := range sn.Children {
+		if ch.Type != "DelegateChoice" {
+			return nil, fail("a DelegateChooser holds DelegateChoices only, not a %s (at %s)", ch.Type, ch.Pos)
+		}
+		if len(ch.Handlers) > 0 {
+			return nil, fail("a DelegateChoice raises no signals (at %s)", ch.Handlers[0].Pos)
+		}
+		if len(ch.Children) != 1 {
+			return nil, fail("a DelegateChoice holds exactly one delegate, got %d (at %s)", len(ch.Children), ch.Pos)
+		}
+		choice := delegateChoice{delegate: ch.Children[0]}
+		for _, p := range ch.Props {
+			if p.Name != "roleValue" {
+				return nil, fail("a DelegateChoice takes only a roleValue; %q is not one of its properties (at %s)", p.Name, p.Pos)
+			}
+			switch p.Value.Kind {
+			case qml.SpecValueString, qml.SpecValueNumber, qml.SpecValueBool:
+			default:
+				return nil, fail("a DelegateChoice's roleValue is a string, number or bool (at %s)", p.Value.Pos)
+			}
+			v := p.Value
+			choice.value = &v
+		}
+		c.choices = append(c.choices, choice)
+	}
+	if len(c.choices) == 0 {
+		return nil, fail("a DelegateChooser needs at least one DelegateChoice (at %s)", sn.Pos)
+	}
+	return c, nil
+}
+
+// choose is the delegate for row ix, nil when no choice matches.
+func (c *delegateChooser) choose(m Model, ix Index) *qml.SpecNode {
+	have := m.Data(ix, c.role)
+	for _, ch := range c.choices {
+		if ch.value == nil || sameRoleValue(*ch.value, have) {
+			return ch.delegate
+		}
+	}
+	return nil
+}
+
+// sameRoleValue is Qt's equality for a roleValue and a row's value: the same
+// kind and the same value — a number by its value, so 1 and 1.0 are one.
+func sameRoleValue(want, have qml.SpecValue) bool {
+	if want.Kind != have.Kind {
+		return false
+	}
+	if want.Kind == qml.SpecValueNumber {
+		a, errA := strconv.ParseFloat(want.Raw, 64)
+		b, errB := strconv.ParseFloat(have.Raw, 64)
+		return errA == nil && errB == nil && a == b
+	}
+	return want.Raw == have.Raw
+}
+
 // repeaterScope is one expansion's bookkeeping: the models it read and the
 // sources those came from, for the tree to follow.
 type repeaterScope struct {
@@ -60,6 +168,11 @@ func (t *Tree) expandRepeaters(root *qml.SpecNode) (*qml.SpecNode, repeaterScope
 	walk = func(sn *qml.SpecNode, key string) ([]*qml.SpecNode, error) {
 		if isRepeater(sn.Type) {
 			return t.instantiate(sn, key, &sc, walk)
+		}
+		if isChooser(sn.Type) {
+			return nil, SchemaError{Op: "repeater", Pos: sn.Pos, Err: fmt.Errorf(
+				"%w: a %s is a Repeater's or an Instantiator's delegate, and only that (at %s)",
+				ErrComponent, sn.Type, sn.Pos)}
 		}
 		out := *sn
 		out.Children = nil
@@ -117,11 +230,25 @@ func (t *Tree) instantiate(sn *qml.SpecNode, key string, sc *repeaterScope,
 	}
 	sc.models = append(sc.models, model)
 	delegate := sn.Children[0]
+	var chooser *delegateChooser
+	if delegate.Type == "DelegateChooser" {
+		c, err := readChooser(delegate, fail)
+		if err != nil {
+			return nil, err
+		}
+		chooser = c
+	}
 	var out []*qml.SpecNode
 	for r := range model.RowCount(nil) {
 		ix := Index{Row: r}
 		rowKey := key + "[" + strconv.Quote(model.Key(ix)) + "]" // quoted: a key cannot close the bracket
-		copied := bindRow(delegate, model, ix)
+		d := delegate
+		if chooser != nil {
+			if d = chooser.choose(model, ix); d == nil {
+				continue // no choice for this row: it has no delegate
+			}
+		}
+		copied := bindRow(d, model, ix)
 		// Every id in the delegate is its row's — the root's too, since each row
 		// is its own copy of it. A root with none gets one: a stable identity
 		// for the reconcile.

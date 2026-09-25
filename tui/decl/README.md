@@ -114,6 +114,25 @@ nested `model: model.rows` reads the outer row. Each copy is identified by its
 row's key, so a model change re-expands and patches as a reload does: what a
 kept row holds survives rows inserted around it.
 
+**`DelegateChooser`** — Qt's delegate chosen per row. As a Repeater's or an
+Instantiator's one delegate, it holds `DelegateChoice { roleValue: …; <delegate> }`
+entries and a `role:`. Each row is built as the FIRST choice whose `roleValue`
+equals the row's value of that role (numbers compare by value). A choice with
+no `roleValue` matches every row, and a row no choice matches has no delegate.
+A menu whose rows are items and submenus, in the model's order:
+
+```qml
+Instantiator {
+    model: App.menu
+    DelegateChooser {
+        role: "kind"
+        DelegateChoice { roleValue: "item";    MenuItem { text: model.label; onTriggered: App.run(model.id) } }
+        DelegateChoice { roleValue: "submenu"; Menu { title: model.label
+            Instantiator { model: model.rows; MenuItem { text: model.label } } } }
+    }
+}
+```
+
 **Every element that takes a place on screen has `visible`** — Qt's
 `Item.visible`, a runtime property: hidden, it takes no space, is not painted
 or a tab stop, and hides what is under it; removed by a reload, it is shown
