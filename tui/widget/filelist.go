@@ -183,17 +183,24 @@ func NewFileList(opts ...FileListOption) *FileList {
 		WithEmptyText[fileEntry]("(empty)"),
 	}
 	if l.styled {
-		cursor := l.st.Cursor.Reverse(false)
-		ls := ListStyles{Row: l.st.Surface, CursorRow: cursor, SelectedRow: l.st.Surface, CursorSelected: cursor}
-		if l.st.CursorBlurred != (style.Style{}) {
-			ls.CursorBlurred = l.st.CursorBlurred.Reverse(false)
-		}
-		listOpts = append(listOpts, WithListStyles[fileEntry](ls))
+		listOpts = append(listOpts, WithListStyles[fileEntry](fileListStyles(l.st)))
 	}
 	l.list = NewList(listOpts...)
 	l.box = newFilePane(l.list, l.src.Rooted(l.dir), l.st, l.styled)
 	l.load(l.dir)
 	return l
+}
+
+// fileListStyles are a file list's rows in the view's looks: the cursor on
+// Cursor while the list has the keyboard, on CursorBlurred once it has not.
+// Not reversed: the looks were chosen as pairs.
+func fileListStyles(st FilePaneStyles) ListStyles {
+	cursor := st.Cursor.Reverse(false)
+	ls := ListStyles{Row: st.Surface, CursorRow: cursor, SelectedRow: st.Surface, CursorSelected: cursor}
+	if st.CursorBlurred != (style.Style{}) {
+		ls.CursorBlurred = st.CursorBlurred.Reverse(false)
+	}
+	return ls
 }
 
 // newFilePane frames one part of a file view, titled. Every pane of every file
@@ -203,13 +210,22 @@ func NewFileList(opts ...FileListOption) *FileList {
 // The frame carries the focus — Box lights its border while the keyboard is
 // inside — so the pane in use is named by its own border.
 func newFilePane(child tui.Component, title string, st FilePaneStyles, styled bool) *Box {
+	b := NewBox(child, WithTitle(title))
+	stylePane(b, st, styled)
+	return b
+}
+
+// stylePane dresses a pane's frame: its interior on Surface, the border in
+// Border's colour, and in FocusedBorder's while the keyboard is inside.
+func stylePane(b *Box, st FilePaneStyles, styled bool) {
 	base := style.New().Padding(0, 1)
-	opts := []BoxOption{WithTitle(title)}
+	focused := style.Style{}
 	if styled {
 		base = st.Surface.Padding(0, 1).BorderForeground(foregroundOf(st.Border))
-		opts = append(opts, WithFocusedStyle(style.New().BorderForeground(foregroundOf(st.FocusedBorder))))
+		focused = style.New().BorderForeground(foregroundOf(st.FocusedBorder))
 	}
-	return NewBox(child, append(opts, WithStyle(base))...)
+	b.WithStyle(base)
+	b.WithFocusedStyle(focused)
 }
 
 // foregroundOf is a look's foreground, which is what a border is drawn in.

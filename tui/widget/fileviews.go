@@ -287,10 +287,11 @@ func (v *FileOpenView) Hint() string {
 // FileSaveView names a file to write: a name field over a FileOpenView.
 type FileSaveView struct {
 	Base
-	cfg     fileViewConfig
-	name    *TextInput
-	listing *FileOpenView
-	root    tui.Component
+	cfg      fileViewConfig
+	name     *TextInput
+	namePane *Box
+	listing  *FileOpenView
+	root     tui.Component
 }
 
 // NewFileSaveView builds a Save view. Its listing has no preview unless asked.
@@ -318,7 +319,8 @@ func NewFileSaveView(opts ...FileViewOption) *FileSaveView {
 	}
 	v.name = NewTextInput(inputOpts...)
 	col := tui.NewFlex(tui.Vertical)
-	col.Add(newFilePane(v.name, "File name", cfg.st, cfg.styled))
+	v.namePane = newFilePane(v.name, "File name", cfg.st, cfg.styled)
+	col.Add(v.namePane)
 	col.AddWeighted(v.listing, 1)
 	v.root = col
 	return v

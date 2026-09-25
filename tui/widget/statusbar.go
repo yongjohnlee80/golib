@@ -77,9 +77,14 @@ func WithBarStyle(st style.Style) StatusBarOption {
 	return func(s *StatusBar) { s.bar = st }
 }
 
+// defaultBarStyle is a StatusBar's look before any option.
+func defaultBarStyle() style.Style {
+	return style.New().Background(style.TokenPanel).Foreground(style.TokenForeground)
+}
+
 // NewStatusBar builds an empty status bar.
 func NewStatusBar(opts ...StatusBarOption) *StatusBar {
-	s := &StatusBar{bar: style.New().Background(style.TokenPanel).Foreground(style.TokenForeground)}
+	s := &StatusBar{bar: defaultBarStyle()}
 	for _, o := range opts {
 		if o != nil {
 			o(s)

@@ -211,6 +211,17 @@ func WithListStyles[T any](st ListStyles) ListOption[T] {
 	}
 }
 
+// defaultListStyles are a List's looks before any option: the cursor row
+// reversed, a selected row bold.
+func defaultListStyles() ListStyles {
+	st := ListStyles{
+		CursorRow:   style.New().Reverse(true),
+		SelectedRow: style.New().Bold(true),
+	}
+	st.CursorSelected = st.CursorRow.Inherit(st.SelectedRow).Bold(true)
+	return st
+}
+
 // SetStyles replaces the row styles at runtime; zero fields keep their
 // current values. Hosts use this for focus-dependent styling — the
 // widget cannot see focus that rests on a delegating wrapper.
@@ -241,13 +252,9 @@ const noPress = -1
 
 func NewList[T any](opts ...ListOption[T]) *List[T] {
 	l := &List[T]{
-		sel: make(map[int]struct{}),
-		styles: ListStyles{
-			CursorRow:   style.New().Reverse(true),
-			SelectedRow: style.New().Bold(true),
-		},
+		sel:    make(map[int]struct{}),
+		styles: defaultListStyles(),
 	}
-	l.styles.CursorSelected = l.styles.CursorRow.Inherit(l.styles.SelectedRow).Bold(true)
 	for _, o := range opts {
 		if o != nil {
 			o(l)
