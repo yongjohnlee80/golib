@@ -9,20 +9,25 @@ import (
 // TREE MODELS — Qt's QAbstractItemModel with children, loaded when asked.
 //
 // A row may have children the model has not loaded yet. The view asks —
-// CanFetchMore, then FetchMore, once per expand — and the host loads them
-// under its own generation and applies them with SetChildren, only if they
-// still answer the question it is asking.
+// CanFetchMore, then FetchMore, on an expand — and the host loads them under
+// its own generation and applies them with SetChildren, only if they still
+// answer the question it is asking.
+//
+// A row can be opened when it has children (RowCount) or has them still to
+// load (CanFetchMore) — the one answer, from the two facts that make it. Qt's
+// hasChildren is that same answer by default, and a model overrides it only to
+// say "still to load", which is what CanFetchMore already says; a third method
+// could only disagree with the two.
 
 // TreeModel is an ItemModel whose rows have children.
 type TreeModel interface {
 	ItemModel
-	// HasChildren reports whether a row has, or may have, children — true
-	// before they are loaded, so the view can offer to open it.
-	HasChildren(ix Index) bool
-	// CanFetchMore reports whether a row's children are still to be loaded:
-	// false once loaded, and while a load is in flight.
+	// CanFetchMore reports whether a row has children still to load: true
+	// until they have arrived — including while a load is in flight, as Qt's
+	// canFetchMore is.
 	CanFetchMore(ix Index) bool
-	// FetchMore asks the host to load a row's children.
+	// FetchMore asks for a row's children. A request while one is in flight
+	// is the model's to ignore.
 	FetchMore(ix Index)
 }
 
@@ -139,23 +144,17 @@ func (m *TreeListModel) Key(ix Index) string {
 	return fmt.Sprint(ix.Row)
 }
 
-// HasChildren implements TreeModel.
-func (m *TreeListModel) HasChildren(ix Index) bool {
-	n := m.node(ix)
-	return n != nil && (n.has || len(n.kids) > 0)
-}
-
 // CanFetchMore implements TreeModel.
 func (m *TreeListModel) CanFetchMore(ix Index) bool {
 	n := m.node(ix)
-	return n != nil && n.has && !n.loaded && !n.fetching
+	return n != nil && n.has && !n.loaded
 }
 
 // FetchMore implements TreeModel: it asks OnFetch, once.
 func (m *TreeListModel) FetchMore(ix Index) {
 	n := m.node(ix)
-	if n == nil || !m.CanFetchMore(ix) {
-		return
+	if n == nil || !m.CanFetchMore(ix) || n.fetching {
+		return // nothing to load, or its load is in flight
 	}
 	n.fetching = true
 	if m.OnFetch != nil {

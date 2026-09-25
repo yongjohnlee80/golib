@@ -64,20 +64,22 @@ func TestATreeListModelFetchesOnceAndIgnoresAGoneParent(t *testing.T) {
 	top := tuidecl.Index{Row: 0}
 	var asked int
 	m.OnFetch = func(tuidecl.Index) { asked++ }
-	if !m.HasChildren(top) || !m.CanFetchMore(top) {
+	if !m.CanFetchMore(top) {
 		t.Fatal("a row with children to load does not say so")
 	}
 	m.FetchMore(top)
 	m.FetchMore(top) // in flight: not asked again
-	if asked != 1 || m.CanFetchMore(top) {
-		t.Fatalf("asked %d times; CanFetchMore while loading %v", asked, m.CanFetchMore(top))
+	// Still to load until they arrive, as Qt's canFetchMore — the row stays
+	// openable while its load is in flight.
+	if asked != 1 || !m.CanFetchMore(top) {
+		t.Fatalf("asked %d times; CanFetchMore while loading %v, want true", asked, m.CanFetchMore(top))
 	}
 	m.SetChildren(&top, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "k", "label": "child"}}})
 	child := tuidecl.Index{Row: 0, Parent: &top}
 	if m.RowCount(&top) != 1 || m.Data(child, "label").Raw != "child" || m.Key(child) != "k" || m.Key(top) != "0" {
 		t.Error("the children are not where they were put")
 	}
-	if m.CanFetchMore(top) || m.HasChildren(child) {
+	if m.CanFetchMore(top) || m.CanFetchMore(child) || m.RowCount(&child) != 0 {
 		t.Error("a loaded row asks again, or a leaf has children")
 	}
 	gone := tuidecl.Index{Row: 5}

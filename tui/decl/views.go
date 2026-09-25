@@ -100,7 +100,7 @@ func boolValue(b bool) qml.SpecValue {
 
 type listViewNode struct {
 	widget.Base
-	modelView
+	mv        modelView // composed, not embedded: its methods call each other
 	list      *widget.List[int]
 	activated func(args ...qml.SpecValue)
 	moved     func(args ...qml.SpecValue)
@@ -117,17 +117,17 @@ func buildListView(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("a ListView takes no children; its rows are its model's (at %s)", b.Pos)
 	}
 	n := &listViewNode{activated: b.EmitterWith("activated"), moved: b.EmitterWith("currentIndexChanged")}
-	consumed, err := readProps(b.Props, map[string]field{"textRole": into(&n.textRole, stringOf)})
+	consumed, err := readProps(b.Props, map[string]field{"textRole": into(&n.mv.textRole, stringOf)})
 	if err != nil {
 		return nil, nil, err
 	}
-	n.list = widget.NewList(widget.WithSource[int](modelSource{&n.modelView}, n.text))
-	n.changed = func(Change) {
-		key, had := n.keyAt(n.currentIndex())
+	n.list = widget.NewList(widget.WithSource[int](modelSource{&n.mv}, n.mv.text))
+	n.mv.changed = func(Change) {
+		key, had := n.mv.keyAt(n.currentIndex())
 		n.list.RefreshSource()
 		// The record the cursor was on stays under it; one that is gone
 		// leaves the cursor where the list clamps it.
-		if at := n.reshow(key, had); at >= 0 {
+		if at := n.mv.reshow(key, had); at >= 0 {
 			n.list.SetCursor(at)
 		}
 	}
@@ -170,7 +170,7 @@ var listViewType = Type{
 	Build: buildListView,
 	Ctor:  []string{"textRole"},
 	Setters: map[string]Setter{
-		"model":        setter("a ListView", modelOf, func(n *listViewNode, m ItemModel) { n.setModel(m) }),
+		"model":        setter("a ListView", modelOf, func(n *listViewNode, m ItemModel) { n.mv.setModel(m) }),
 		"currentIndex": setter("a ListView", numberOf, func(n *listViewNode, v float64) { n.list.SetCursor(int(v)) }),
 	},
 	Getters: map[string]Getter{
@@ -179,14 +179,14 @@ var listViewType = Type{
 		},
 	},
 	Signals:   map[string][]string{"activated": {"index"}, "currentIndexChanged": {"index"}},
-	Destroyed: func(c tui.Component) { c.(*listViewNode).release() },
+	Destroyed: func(c tui.Component) { c.(*listViewNode).mv.release() },
 }
 
 // ---------------------------------------------------------------- ComboBox
 
 type comboBoxNode struct {
 	widget.Base
-	modelView
+	mv        modelView // composed, not embedded: its methods call each other
 	valueRole string
 	sel       *widget.Select[int]
 	activated func(args ...qml.SpecValue)
@@ -199,7 +199,7 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 	n := &comboBoxNode{activated: b.EmitterWith("activated")}
 	var placeholder string
 	consumed, err := readProps(b.Props, map[string]field{
-		"textRole":        into(&n.textRole, stringOf),
+		"textRole":        into(&n.mv.textRole, stringOf),
 		"valueRole":       into(&n.valueRole, stringOf),
 		"placeholderText": into(&placeholder, stringOf),
 	})
@@ -211,21 +211,21 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 		opts = append(opts, widget.WithSelectPlaceholder[int](placeholder))
 	}
 	n.sel = widget.NewSelect(opts...)
-	n.changed = func(Change) {
-		key, had := n.keyAt(n.currentIndex())
+	n.mv.changed = func(Change) {
+		key, had := n.mv.keyAt(n.currentIndex())
 		n.refill()
 		// The record chosen stays chosen wherever it moved; one that is gone
 		// is no longer chosen — currentValue reads "", not another record.
-		n.sel.SetSelectedIndex(n.reshow(key, had))
+		n.sel.SetSelectedIndex(n.mv.reshow(key, had))
 	}
 	return n, consumed, nil
 }
 
 // refill gives the select its model's rows as choices.
 func (n *comboBoxNode) refill() {
-	items := make([]widget.SelectItem[int], n.rows())
+	items := make([]widget.SelectItem[int], n.mv.rows())
 	for i := range items {
-		items[i] = widget.SelectItem[int]{Label: n.text(i), Value: i}
+		items[i] = widget.SelectItem[int]{Label: n.mv.text(i), Value: i}
 	}
 	n.sel.SetOptions(items)
 }
@@ -261,7 +261,7 @@ var comboBoxType = Type{
 	Build: buildComboBox,
 	Ctor:  []string{"textRole", "valueRole", "placeholderText"},
 	Setters: map[string]Setter{
-		"model": setter("a ComboBox", modelOf, func(n *comboBoxNode, m ItemModel) { n.setModel(m) }),
+		"model": setter("a ComboBox", modelOf, func(n *comboBoxNode, m ItemModel) { n.mv.setModel(m) }),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": func(c tui.Component) (qml.SpecValue, error) {
@@ -272,10 +272,10 @@ var comboBoxType = Type{
 		"currentValue": func(c tui.Component) (qml.SpecValue, error) {
 			n := c.(*comboBoxNode)
 			i := n.currentIndex()
-			if i < 0 || n.model == nil {
+			if i < 0 || n.mv.model == nil {
 				return qml.SpecValue{Kind: qml.SpecValueString}, nil
 			}
-			v := n.model.Data(Index{Row: i}, n.valueRole)
+			v := n.mv.model.Data(Index{Row: i}, n.valueRole)
 			if v.Kind == qml.SpecValueInvalid {
 				return qml.SpecValue{Kind: qml.SpecValueString}, nil
 			}
@@ -283,7 +283,7 @@ var comboBoxType = Type{
 		},
 	},
 	Signals:   map[string][]string{"activated": {"index"}},
-	Destroyed: func(c tui.Component) { c.(*comboBoxNode).release() },
+	Destroyed: func(c tui.Component) { c.(*comboBoxNode).mv.release() },
 }
 
 // ---------------------------------------------------------------- TableView
@@ -301,7 +301,7 @@ var comboBoxType = Type{
 //	}
 type tableViewNode struct {
 	widget.Base
-	modelView
+	mv        modelView // composed, not embedded: its methods call each other
 	declared  []*tableColumnNode
 	table     *widget.Table[int]
 	activated func(args ...qml.SpecValue)
@@ -346,8 +346,8 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 		}
 		n.declared = append(n.declared, col)
 	}
-	n.table = widget.NewTable(n.columns(), widget.WithSource[int](modelSource{&n.modelView}, func(int) string { return "" }))
-	n.changed = n.follow
+	n.table = widget.NewTable(n.columns(), widget.WithSource[int](modelSource{&n.mv}, func(int) string { return "" }))
+	n.mv.changed = n.follow
 	return n, nil, nil
 }
 
@@ -355,10 +355,10 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 func (n *tableViewNode) columns() []widget.TableColumn[int] {
 	cell := func(role string, col int) func(int) string {
 		return func(row int) string {
-			if n.model == nil {
+			if n.mv.model == nil {
 				return ""
 			}
-			return n.model.Data(Index{Row: row, Column: col}, role).Raw
+			return n.mv.model.Data(Index{Row: row, Column: col}, role).Raw
 		}
 	}
 	var cols []widget.TableColumn[int]
@@ -369,14 +369,11 @@ func (n *tableViewNode) columns() []widget.TableColumn[int] {
 		return cols
 	}
 	count := 0
-	if n.model != nil {
-		count = n.model.ColumnCount(nil)
+	if n.mv.model != nil {
+		count = n.mv.model.ColumnCount(nil)
 	}
 	for c := 0; c < count; c++ {
-		cols = append(cols, widget.TableColumn[int]{Title: n.model.HeaderData(c), Cell: cell("", c)})
-	}
-	if len(cols) == 0 {
-		cols = []widget.TableColumn[int]{{Title: "", Cell: func(int) string { return "" }}}
+		cols = append(cols, widget.TableColumn[int]{Title: n.mv.model.HeaderData(c), Cell: cell("", c)})
 	}
 	return cols
 }
@@ -384,9 +381,9 @@ func (n *tableViewNode) columns() []widget.TableColumn[int] {
 // follow applies a model change: new columns when the model's changed and
 // none are declared, and the rows every time.
 func (n *tableViewNode) follow(c Change) {
-	key, had := n.keyAt(n.currentIndex())
+	key, had := n.mv.keyAt(n.currentIndex())
 	defer func() {
-		if at := n.reshow(key, had); at >= 0 {
+		if at := n.mv.reshow(key, had); at >= 0 {
 			n.table.List().SetCursor(at)
 		}
 	}()
@@ -433,7 +430,7 @@ var tableViewType = Type{
 	Name:  "TableView",
 	Build: buildTableView,
 	Setters: map[string]Setter{
-		"model":        setter("a TableView", modelOf, func(n *tableViewNode, m ItemModel) { n.setModel(m) }),
+		"model":        setter("a TableView", modelOf, func(n *tableViewNode, m ItemModel) { n.mv.setModel(m) }),
 		"currentIndex": setter("a TableView", numberOf, func(n *tableViewNode, v float64) { n.table.List().SetCursor(int(v)) }),
 	},
 	Getters: map[string]Getter{
@@ -442,7 +439,7 @@ var tableViewType = Type{
 		},
 	},
 	Signals:   map[string][]string{"activated": {"index"}, "currentIndexChanged": {"index"}},
-	Destroyed: func(c tui.Component) { c.(*tableViewNode).release() },
+	Destroyed: func(c tui.Component) { c.(*tableViewNode).mv.release() },
 }
 
 var tableViewColumnType = Type{

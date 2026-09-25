@@ -161,6 +161,23 @@ func TestATableViewShowsTheModelsColumnsAsTheyChange(t *testing.T) {
 	}
 }
 
+// A result with NO columns — a statement that returns none — is a table with
+// none: the view shows an empty header, and takes columns again after.
+func TestATableViewShowsAResultWithNoColumns(t *testing.T) {
+	m := tuidecl.NewListModel("id", "name")
+	m.SetColumns(tuidecl.Column{Role: "name", Title: "NAME"})
+	m.Reset([]tuidecl.Row{{"id": 1, "name": "prod"}})
+	s := runModelDoc(t, `TableView { model: App.people }`, m, &recorder{})
+	s.WaitForText(t, "NAME")
+	onScreenLoop(t, s, func() { m.SetColumns(); m.Reset(nil) })
+	s.WaitFor(t, "no columns", func(sc string) bool { return !strings.Contains(sc, "NAME") && !strings.Contains(sc, "prod") })
+	onScreenLoop(t, s, func() {
+		m.SetColumns(tuidecl.Column{Role: "name", Title: "NAME"})
+		m.Reset([]tuidecl.Row{{"id": 2, "name": "staging"}})
+	})
+	s.WaitForText(t, "staging")
+}
+
 // Declared TableViewColumns show fixed roles under fixed titles, whatever
 // columns the model has.
 func TestDeclaredTableViewColumnsOverrideTheModels(t *testing.T) {
