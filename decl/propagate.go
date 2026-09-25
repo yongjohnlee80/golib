@@ -216,14 +216,21 @@ func (t *Tree) bindingsOf(source string) []*binding {
 // the whole tree.
 func (t *Tree) registerBindings(bs []*binding) {
 	t.bindings = append(t.bindings, bs...)
+	if t.bindingsByNode == nil {
+		t.bindingsByNode = map[NodeID][]*binding{}
+	}
+	for _, b := range bs {
+		t.bindingsByNode[b.node] = append(t.bindingsByNode[b.node], b)
+	}
 }
 
 // dropBindings forgets every binding belonging to a node. A node that is
 // rebuilt drops its bindings with it; one that keeps its identity keeps them.
 func (t *Tree) dropBindings(node NodeID) {
-	if len(t.bindings) == 0 {
+	if len(t.bindingsByNode[node]) == 0 {
 		return
 	}
+	delete(t.bindingsByNode, node)
 	out := t.bindings[:0]
 	for _, b := range t.bindings {
 		if b.node != node {
@@ -235,8 +242,8 @@ func (t *Tree) dropBindings(node NodeID) {
 
 // bindingFor returns a node's binding for a property, if it has one.
 func (t *Tree) bindingFor(node NodeID, prop string) (*binding, bool) {
-	for _, b := range t.bindings {
-		if b.node == node && b.prop == prop {
+	for _, b := range t.bindingsByNode[node] {
+		if b.prop == prop {
 			return b, true
 		}
 	}
