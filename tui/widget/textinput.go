@@ -93,6 +93,7 @@ type TextInput struct {
 	mask        rune
 	validate    func(string) error
 	onSubmit    func(string)
+	onEdit      func(string)
 	verr        error
 
 	styles TextInputStyles
@@ -156,6 +157,13 @@ func WithValidate(fn func(string) error) TextInputOption {
 // everything else.
 func WithOnSubmit(fn func(string)) TextInputOption {
 	return func(t *TextInput) { t.onSubmit = fn }
+}
+
+// WithOnEdit calls fn with the value after every EDIT — the moment the widget
+// publishes a ChangeEvent, synchronously, inside the key handler. It is not
+// called by SetValue: a program replacing the value has made no edit.
+func WithOnEdit(fn func(string)) TextInputOption {
+	return func(t *TextInput) { t.onEdit = fn }
 }
 
 // WithInitialValue sets the starting value (cursor at the end).
@@ -312,6 +320,9 @@ func (t *TextInput) edited() {
 	t.ensureVisible()
 	t.MarkDirty()
 	t.publish(ChangeEvent{Owner: t.NodeID(), Value: t.Value()})
+	if t.onEdit != nil {
+		t.onEdit(t.Value())
+	}
 }
 
 // moveTo moves the cursor, extending the selection when extend is set and

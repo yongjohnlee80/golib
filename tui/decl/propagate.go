@@ -54,9 +54,9 @@ func withRestyle(typeName string, fn restyler) Option {
 }
 
 // paletteRoles is every role a document may write, by its property name.
-var paletteRoles = func() map[string]role {
-	out := map[string]role{}
-	for _, r := range []role{roleWindow, roleWindowText, roleBase, roleText, roleHighlight,
+var paletteRoles = func() map[string]Role {
+	out := map[string]Role{}
+	for _, r := range []Role{roleWindow, roleWindowText, roleBase, roleText, roleHighlight,
 		roleHighlightedText, roleAccent, roleButton, roleButtonText, roleInactiveHighlight,
 		roleInactiveHighlightText, roleMid, roleLight} {
 		out[r.prop()] = r
@@ -69,7 +69,7 @@ var paletteRoles = func() map[string]role {
 // rather than reported as a property the type lacks.
 func isPaletteProp(name string) bool { return strings.HasPrefix(name, "palette.") }
 
-func roleOf(name string, pos fmt.Stringer) (role, error) {
+func roleOf(name string, pos fmt.Stringer) (Role, error) {
 	r, ok := paletteRoles[name]
 	if !ok {
 		names := make([]string, 0, len(paletteRoles))

@@ -3,10 +3,12 @@ package decl
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // EXTENDING THE VOCABULARY — a consumer's own Go widgets, usable from QML.
@@ -158,4 +160,69 @@ func Instance(name string, c tui.Component) Type {
 		},
 		Destroyed: func(tui.Component) { placed = false },
 	}
+}
+
+// ---------------------------------------------------------------- enums
+
+// Enum is a closed set of names a property takes, written as Qt writes an
+// enum: the type that defines it, a dot, the value — `TextInput.Password`.
+//
+// A [Type] lists the enums its properties take in [Type.Enums]. Each Scope
+// becomes a singleton of the tui module and each value a constant under it,
+// so `echoMode: TextInput.Password` resolves before the builder runs, and a
+// misspelt value is refused by name. Read one with [EnumField] or [EnumSetter],
+// which hand the builder the value's name: "Password".
+type Enum struct {
+	// Scope is the name before the dot: the type that defines the enum in Qt.
+	Scope string
+	// Values are the names after it.
+	Values []string
+}
+
+// read takes a resolved constant back to the value's name, refusing anything
+// that is not one of this enum's.
+func (e Enum) read(v qml.SpecValue) (string, error) {
+	if v.Kind != qml.SpecValueString {
+		return "", fmt.Errorf("must be written as %s.<value>, got %s (at %s)", e.Scope, v.Kind, v.Pos)
+	}
+	for _, n := range e.Values {
+		if enumConstant(e.Scope, n) == v.Raw {
+			return n, nil
+		}
+	}
+	return "", fmt.Errorf("must be one of %s, got %q (at %s)", e.spelling(), v.Raw, v.Pos)
+}
+
+func (e Enum) spelling() string {
+	names := make([]string, len(e.Values))
+	for i, n := range e.Values {
+		names[i] = e.Scope + "." + n
+	}
+	return strings.Join(names, ", ")
+}
+
+// enumConstant is what `Scope.Value` resolves to. Qualified, so a string a
+// document writes by hand cannot pass for one.
+func enumConstant(scope, value string) string { return scope + "." + value }
+
+// EnumField reads an enum property into dst: the value's name.
+func EnumField(dst *string, e Enum) Field { return into(dst, e.read) }
+
+// EnumSetter is a runtime property holding one of an enum's values.
+func EnumSetter[W any](e Enum, apply func(W, string)) Setter {
+	return setter(widgetName[W](), e.read, apply)
+}
+
+// ---------------------------------------------------------------- overlays
+
+// Overlaid is a component that opens OVER the screen rather than taking a
+// place in it — Qt's Popup, and every type built on one: a Dialog, a
+// FileDialog, a command prompt. A Window does not lay it out; when it arranges
+// its children it hands each one its overlay and what to run once it has
+// closed (the keyboard back to the document's `focus: true` node). Outside a
+// Window the builder has [Build.Overlay] — the adapter's WithOverlay host — to
+// start from.
+type Overlaid interface {
+	tui.Component
+	SetOverlay(host *widget.OverlayHost, afterClose func())
 }

@@ -105,6 +105,14 @@ func (*dialogNode) HandleEvent(tui.Event) bool      { return false }
 var errDialogOutsideWindow = errors.New("a Dialog opens over a Window, and this one is not in one; " +
 	"inside a Go program, give the adapter WithOverlay(host)")
 
+// SetOverlay implements [Overlaid]: the Window's host, and what the Window
+// runs once the dialog has closed.
+func (d *dialogNode) SetOverlay(host *widget.OverlayHost, afterClose func()) {
+	d.host, d.afterClose = host, afterClose
+}
+
+var _ Overlaid = (*dialogNode)(nil)
+
 // open shows the dialog. Opening an open dialog is not an error: a menu row
 // pressed twice asked the same question twice.
 func (d *dialogNode) open() error {
@@ -169,7 +177,7 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	d := &dialogNode{
 		// A Window hands its dialogs its own host when it arranges them;
 		// until then — and outside any Window — the adapter's, if it has one.
-		host:     b.overlay,
+		host:     b.Overlay,
 		hooks:    s.hooks,
 		accepted: b.EmitterWith("accepted"),
 		rejected: b.Emitter("rejected"),

@@ -200,8 +200,12 @@ setters, methods, signal parameters and a destroy hook — the same value the
 standard vocabulary is a table of. `WithTypes` (or `Types` for a Program) adds
 it; `Instance(name, widget)` places a widget the host already built. Helpers
 read values as the built-ins do: `StringSetter`, `BoolSetter`, `NumberSetter`,
-`ColorSetter`, `NoArgMethod`, and `ReadProps` with `StringField`, `BoolField`,
-`NumberField`, `ColorField`. See [USAGE.md §6](USAGE.md#6-your-own-go-widgets-in-qml).
+`ColorSetter`, `EnumSetter`, `NoArgMethod`, and `ReadProps` with `StringField`,
+`BoolField`, `NumberField`, `ColorField`, `EnumField`. A type can declare Qt-style
+enums (`Enums`), wear palette roles (`Restyle`, reading a `Palette`), and open
+over the screen (`Overlaid`). A handler bound to a signal a type does not raise
+is refused. Package [`controls`](controls/) — `TextField`, `Popup` — is written
+with this contract alone. See [USAGE.md §6](USAGE.md#6-your-own-go-widgets-in-qml).
 
 ## Program
 

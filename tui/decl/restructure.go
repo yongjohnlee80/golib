@@ -249,7 +249,13 @@ func (a *Adapter) Constants() map[string]qml.SpecValue {
 	// Derived from the enums the vocabulary accepts, so a document can name
 	// exactly the values a builder takes — no more, and never a spelling the
 	// builder would then refuse.
-	return tuiConstants(tuiEnums, tuiFlags)
+	out := tuiConstants(tuiEnums, tuiFlags)
+	for _, e := range a.enums {
+		for _, n := range e.Values {
+			out[e.Scope+"."+n] = strValue(enumConstant(e.Scope, n))
+		}
+	}
+	return out
 }
 
 // TuiModuleVersion is the version `import tui <v>` must ask for, when it asks
@@ -271,7 +277,7 @@ func (a *Adapter) Modules() []decl.Module {
 	return []decl.Module{{
 		Name:    "tui",
 		Version: TuiModuleVersion,
-		Exports: tuiExports(),
+		Exports: a.exports(),
 	}}
 }
 
