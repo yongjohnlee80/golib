@@ -175,7 +175,10 @@ its **component types**.
   the delegate per row of a host `Model`, `model.<role>` and `index` written in
   from the row, each copy keyed by the row's key. The tree follows the models
   and sources it read and, on a change, re-expands the document as written and
-  reconciles it — on the scheduler, never inside an emission.
+  reconciles it — on the scheduler, never inside an emission. A delegate that
+  is a `DelegateChooser` is resolved per row first: the first `DelegateChoice`
+  whose `roleValue` equals the row's `role` value (one without a roleValue
+  matches all), and a row with no match has no copy.
 - **Reading an object's property by id in a handler** — `App.login(user.text)`
   — reads the live object when the handler runs, through the optional
   `PropertyReader` capability. Only in a handler: a binding over another
