@@ -102,10 +102,6 @@ func (m *MultiChild) Move(child Component, to int) {
 	}
 }
 
-// Context is the container's mount context, nil while unmounted — as
-// widget.Base's is, so any golib component can be asked for one.
-func (m *MultiChild) Context() *Context { return m.ctx }
-
 // Children enumerates in document order == focus order == paint order.
 func (m *MultiChild) Children() iter.Seq[Component] {
 	return func(yield func(Component) bool) {

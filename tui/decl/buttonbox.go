@@ -49,6 +49,7 @@ type buttonBoxNode struct {
 }
 
 func (*buttonBoxNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
+func (*buttonBoxNode) declarationOnly()                  {}
 func (*buttonBoxNode) Render(tui.Surface)                {}
 
 func buildButtonBox(b Build) (tui.Component, []string, error) {

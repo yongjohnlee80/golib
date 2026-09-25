@@ -316,6 +316,7 @@ type tableColumnNode struct {
 }
 
 func (*tableColumnNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
+func (*tableColumnNode) declarationOnly()                  {}
 func (*tableColumnNode) Render(tui.Surface)                {}
 
 func buildTableViewColumn(b Build) (tui.Component, []string, error) {

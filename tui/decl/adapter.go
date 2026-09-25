@@ -53,6 +53,8 @@ func InjectHosts(tr *decl.Tree, hosts HostFuncs) error {
 // other component state.
 type Adapter struct {
 	reg *Registry
+	// app is the App the program runs on, once there is one (focus.go).
+	app *tui.App
 
 	// nodes is the adapter's own record of what it built. It is keyed by the
 	// engine's NodeID, which is never reused, so an entry can never be confused
@@ -197,7 +199,7 @@ func (a *Adapter) Invoke(node decl.NodeID, method string, args []qml.SpecValue) 
 	}
 	fn, ok := a.methods[b.typ][method]
 	if !ok && method == forceActiveFocus {
-		fn, ok = focusInto, true
+		return a.forceActiveFocus(b, args)
 	}
 	if !ok {
 		return fmt.Errorf("a %s has no method %s", b.typ, method)
