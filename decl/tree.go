@@ -414,6 +414,12 @@ func (t *Tree) mount(spec qml.SpecTree) (err error) {
 		return err
 	}
 	t.root = id
+	if err := t.vetRoot(id); err != nil {
+		// Built, and refused as the root: a partial tree like any other, for
+		// Destroy to release.
+		t.failed = true
+		return err
+	}
 	return nil
 }
 

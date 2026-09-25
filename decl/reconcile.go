@@ -24,6 +24,32 @@ type Resetter interface {
 	Reset(node NodeID, prop string) error
 }
 
+// RootVetter is an OPTIONAL capability an [Adapter] may implement to refuse a
+// node as the document's ROOT: a type that means something only inside
+// another — a companion of its parent, as a syntax highlighter is of its
+// editor. Such a type is refused where its parent is built, and a root has no
+// parent to refuse it; this is where it is.
+//
+// The engine asks once the root is built and before it becomes the tree's
+// root: at Mount, and when a reload replaces the root. A root refused at
+// Mount leaves a partial tree, as any constructor's refusal does; one refused
+// by a reload is discarded, and the live tree stays as it was.
+type RootVetter interface {
+	VetRoot(node NodeID) error
+}
+
+// vetRoot asks the adapter, if it vets roots, whether node may be the root.
+func (t *Tree) vetRoot(node NodeID) error {
+	v, ok := t.adapter.(RootVetter)
+	if !ok {
+		return nil
+	}
+	if err := v.VetRoot(node); err != nil {
+		return SchemaError{Op: "mount", Node: node, Err: fmt.Errorf("%w: %w", ErrAdapter, err)}
+	}
+	return nil
+}
+
 // Restructurer is an OPTIONAL capability an [Adapter] may implement to let a
 // reconcile change a node's children after construction.
 //
@@ -356,6 +382,9 @@ func (t *Tree) reconcile(spec qml.SpecTree) (_ Result, err error) {
 		// screen down for a typo the new tree never got far enough to display.
 		old := t.root
 		id, err := t.mountNode(spec.Root, NoNode)
+		if err == nil {
+			err = t.vetRoot(id)
+		}
 		if err != nil {
 			// The live tree was never touched. Discard the half-built
 			// replacement and leave everything exactly as it was.
