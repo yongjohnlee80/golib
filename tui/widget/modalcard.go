@@ -51,8 +51,8 @@ func (c *modalCard) Init(ctx *tui.Context) {
 	}
 }
 
-// AcceptsFocus reports that the card is not a tab stop. See the type comment.
-func (c *modalCard) AcceptsFocus() bool { return false }
+// NOT FOCUSABLE BY DESIGN — no tui.Focusable: the card is not a tab stop. See
+// the type comment.
 
 // setButtons swaps the button list AND reconciles the mounted children, as one
 // tree mutation.
@@ -357,9 +357,8 @@ func (s *scrimLayer) Layout(cs tui.Constraints) tui.Size {
 	return cs.Constrain(tui.Size{W: cs.MaxW, H: cs.MaxH})
 }
 
-// AcceptsFocus reports that the scrim is not a tab stop: it is decoration, and
-// the dialog above it owns the focus.
-func (s *scrimLayer) AcceptsFocus() bool { return false }
+// NOT FOCUSABLE BY DESIGN — no tui.Focusable: the scrim is decoration, and the
+// dialog above it owns the focus.
 
 func (s *scrimLayer) Render(su tui.Surface) {
 	sz := su.Size()

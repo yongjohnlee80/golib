@@ -624,9 +624,20 @@ func (a *App) HoldsFocusable(comp Component) (holds, mounted bool) {
 	return holdsFocusable(n), true
 }
 
-// holdsFocusable reports whether n or a descendant implements Focusable.
+// focusableByDesign reports whether comp is focusable by design: it implements
+// Focusable, and — when its focusability is a per-instance choice — was built
+// to take focus (FocusDesigner). Not what it accepts now.
+func focusableByDesign(comp Component) bool {
+	if d, ok := comp.(FocusDesigner); ok {
+		return d.FocusableByDesign()
+	}
+	_, ok := comp.(Focusable)
+	return ok
+}
+
+// holdsFocusable reports whether n or a descendant is focusable by design.
 func holdsFocusable(n *node) bool {
-	if _, ok := n.comp.(Focusable); ok {
+	if focusableByDesign(n.comp) {
 		return true
 	}
 	for _, ch := range n.children {
