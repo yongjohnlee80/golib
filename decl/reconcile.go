@@ -293,7 +293,7 @@ func (t *Tree) reconcile(spec qml.SpecTree) (_ Result, err error) {
 	// leave the last good screen exactly as it is, including the import set the
 	// live tree resolved against — which a reload that assigned first and
 	// checked afterwards would already have destroyed.
-	imported, err := t.vetDocument(spec)
+	imported, spec, err := t.vetDocument(spec)
 	if err != nil {
 		return Result{}, err
 	}

@@ -91,6 +91,8 @@ type Tree struct {
 	// the ones a document's import has loaded, with what each load wrote.
 	offered map[string]offer
 	loads   map[string]*loaded
+	// components are the component types loaded modules brought, by name.
+	components map[string]component
 	// imported is what the document's import lines brought into scope. It is
 	// replaced on every Mount and Reconcile, because imports belong to the
 	// DOCUMENT rather than to the tree, and a reload that drops an import must
@@ -378,7 +380,7 @@ func (t *Tree) mount(spec qml.SpecTree) (err error) {
 	// to be told than "unbound name" at each of the twenty places that use it.
 	// The whole document is judged — imports, ids, attached properties —
 	// before a single node is planned, by the same vetting Reconcile uses.
-	imported, err := t.vetDocument(spec)
+	imported, spec, err := t.vetDocument(spec)
 	if err != nil {
 		return err
 	}

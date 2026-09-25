@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -81,5 +82,22 @@ func TestWrapModeIsATextEnum(t *testing.T) {
 	if _, err := mountDoc(t, "import tui 1.0\nText { wrapMode: Tui.Top }"); err == nil ||
 		!strings.Contains(err.Error(), "Tui.NoWrap or Tui.WordWrap") {
 		t.Errorf("Tui.Top as a wrap mode: err = %v", err)
+	}
+}
+
+// TestAComponentMayNotReplaceAVocabularyType: a file named Dialog.qml would
+// otherwise take the place of the Dialog every other file means.
+func TestAComponentMayNotReplaceAVocabularyType(t *testing.T) {
+	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
+		tuidecl.WithErrorSink(func(error) {}))...)
+	tr := decl.New(a)
+	fsys := fstest.MapFS{"ui/Dialog.qml": &fstest.MapFile{Data: []byte("Text { }")}}
+	if err := tr.OfferModule("app.ui", "", decl.ComponentFiles(fsys, "ui")); err != nil {
+		t.Fatal(err)
+	}
+	spec, _ := qml.QML{}.Parse([]byte("import app.ui\nWindow {\n Text { }\n}"))
+	err := tr.Mount(spec)
+	if !errors.Is(err, decl.ErrComponent) || !strings.Contains(err.Error(), "already a type of the vocabulary") {
+		t.Fatalf("err = %v, want the component refused", err)
 	}
 }
