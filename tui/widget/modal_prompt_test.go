@@ -143,3 +143,38 @@ func TestAModalWidthNeverClipsTheHelpLine(t *testing.T) {
 	}
 	h.wantContains(help)
 }
+
+// TestTheBodysControlIsFoundWhereverItSits: inside a Box, inside a Split, and
+// — with no control at all — the Modal node is the stop.
+func TestTheBodysControlIsFoundWhereverItSits(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		body func(field *widget.TextInput) tui.Component
+	}{
+		{"in a box", func(f *widget.TextInput) tui.Component { return widget.NewBox(f) }},
+		{"in a split", func(f *widget.TextInput) tui.Component {
+			return widget.NewSplit(widget.Horizontal, widget.NewText("label"), f)
+		}},
+	} {
+		field := widget.NewTextInput()
+		m := widget.NewModal(c.body(field), widget.WithModalFooter("help"))
+		h, host, _ := modalFixture(t, m, 60, 12)
+		openOn(t, h, m, host)
+		var inField, onModal bool
+		h.onLoop(func() { inField, onModal = field.Context().Focused(), m.AcceptsFocus() })
+		if !inField || onModal {
+			t.Errorf("%s: focus in the field %v, the Modal a stop %v", c.name, inField, onModal)
+		}
+		h.stop()
+	}
+
+	m := widget.NewModal(widget.NewText("nothing to type in"), widget.WithModalFooter("help"))
+	h, host, _ := modalFixture(t, m, 60, 12)
+	defer h.stop()
+	openOn(t, h, m, host)
+	var accepts bool
+	h.onLoop(func() { accepts = m.AcceptsFocus() })
+	if !accepts {
+		t.Error("a dialog with no control and no button left its trap without a stop")
+	}
+}
