@@ -869,9 +869,11 @@ func (t *Tree) ensureVisible() {
 // --- layout & render -----------------------------------------------------------
 
 // Layout is greedy on both axes.
+// Layout fills the height it is given. Offered an unbounded one, it asks for
+// its visible rows — its content, as a Qt view's implicit height is.
 func (t *Tree) Layout(c tui.Constraints) tui.Size {
 	t.w = boundedMax(c.MaxW, max(c.MinW, 1))
-	t.h = boundedMax(c.MaxH, max(c.MinH, 1))
+	t.h = boundedMax(c.MaxH, max(c.MinH, len(t.flatten()), 1))
 	t.ensureVisible()
 	return c.Constrain(tui.Size{W: t.w, H: t.h})
 }

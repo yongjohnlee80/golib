@@ -493,9 +493,11 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 
 // Layout is greedy on both axes. It uses the cached count — Len() is read
 // once per render pass, not here.
+// Layout fills the height it is given. Offered an unbounded one, it asks for
+// its rows — its content, as a Qt view's implicit height is — at least one.
 func (l *List[T]) Layout(c tui.Constraints) tui.Size {
 	l.w = boundedMax(c.MaxW, max(c.MinW, 1))
-	l.h = boundedMax(c.MaxH, max(c.MinH, 1))
+	l.h = boundedMax(c.MaxH, max(c.MinH, l.count, 1))
 	l.ensureVisible()
 	l.clamp()
 	return c.Constrain(tui.Size{W: l.w, H: l.h})

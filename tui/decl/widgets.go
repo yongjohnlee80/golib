@@ -123,9 +123,27 @@ func buildFlex(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// A child that fills along the Flex's axis — Layout.fillHeight in a
+	// column, Layout.fillWidth in a row — shares what the others leave, as in
+	// Qt's layouts; every other child takes its own size, in order.
+	fill := "Layout.fillHeight"
+	if dir == tui.Horizontal {
+		fill = "Layout.fillWidth"
+	}
 	f := tui.NewFlex(dir)
-	for _, c := range b.Children {
-		f.Add(c)
+	for i, c := range b.Children {
+		fills := false
+		if v, ok := b.ChildAttached[i][fill]; ok {
+			var err error
+			if fills, err = boolOf(v); err != nil {
+				return nil, nil, fmt.Errorf("%s: %w", fill, err)
+			}
+		}
+		if fills {
+			f.AddWeighted(c, 1)
+		} else {
+			f.Add(c)
+		}
 	}
 	return f, consumed, nil
 }
