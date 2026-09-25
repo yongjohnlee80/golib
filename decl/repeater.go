@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -177,18 +178,21 @@ func (c *delegateChooser) choose(m Model, ix Index) *qml.SpecNode {
 // value: equal as values (a number by its value); else both converted to an
 // integer and equal; else both converted to a string and equal. So a
 // roleValue of 1 matches a row's "1", and "true" a row's true — as they do in
-// Qt. The conversions are QVariant's for these kinds: a bool is 1 or 0 as an
-// integer and "true" or "false" as a string; a number is an integer only when
-// it is whole, and its string is its shortest form (1.0 is "1"); a string is an
-// integer when it reads as one.
+// Qt. Each step is tried when the one before fails, whatever the kinds — so
+// two strings "01" and "1" match as integers, as in Qt. The conversions are
+// QVariant's for these kinds: a bool is 1 or 0 as an integer and "true" or
+// "false" as a string; a number is ROUNDED to an integer, half away from zero
+// (qRound: 1.1 is 1, 1.5 is 2), and its string is its shortest form (1.0 is
+// "1"); a string is an integer when it reads as a whole one.
 func sameRoleValue(want, have qml.SpecValue) bool {
 	if want.Kind == have.Kind {
 		if want.Kind == qml.SpecValueNumber {
 			a, okA := numberOf(want)
 			b, okB := numberOf(have)
-			return okA && okB && a == b
-		}
-		if want.Raw == have.Raw {
+			if okA && okB && a == b {
+				return true
+			}
+		} else if want.Raw == have.Raw {
 			return true
 		}
 	}
@@ -217,10 +221,10 @@ func intOf(v qml.SpecValue) (int64, bool) {
 		return 0, true
 	case qml.SpecValueNumber:
 		f, ok := numberOf(v)
-		if !ok || f != float64(int64(f)) {
+		if !ok || math.IsNaN(f) || math.IsInf(f, 0) {
 			return 0, false
 		}
-		return int64(f), true
+		return int64(math.Round(f)), true // qRound: half away from zero
 	case qml.SpecValueString:
 		n, err := strconv.ParseInt(strings.TrimSpace(v.Raw), 10, 64)
 		return n, err == nil
