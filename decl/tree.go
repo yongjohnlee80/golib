@@ -91,6 +91,11 @@ type Tree struct {
 	// the ones a document's import has loaded, with what each load wrote.
 	offered map[string]offer
 	loads   map[string]*loaded
+	// stale are loaded modules ClearComponentCache marked: the next document
+	// that imports one loads it afresh. refreshing makes that reconcile compare
+	// values rather than declarations, until one succeeds.
+	stale      map[string]bool
+	refreshing bool
 	// components are the component types loaded modules brought, by name.
 	components map[string]component
 	// imported is what the document's import lines brought into scope. It is

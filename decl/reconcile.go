@@ -272,6 +272,9 @@ func (t *Tree) Reload(src []byte) (Result, error) {
 // to implying an atomicity it does not have.
 func (t *Tree) Reconcile(spec qml.SpecTree) (Result, error) {
 	res, err := t.reconcile(spec)
+	if err == nil {
+		t.refreshing = false
+	}
 	return res, t.settle(err)
 }
 
@@ -638,6 +641,21 @@ func (t *Tree) assess(oldID NodeID, sn *qml.SpecNode) (*step, error) {
 	}
 	s.bind, s.effective = bs, effective
 
+	// After ClearComponentCache a declaration written the same may MEAN
+	// something else — `palette.window: Theme.dialog.window` under an edited
+	// theme — so this reconcile compares the values the declarations evaluate
+	// to. A constructor-only one whose value moved can only be rebuilt.
+	oldValues, newValues := propSequences(n.props), propSequences(effective)
+	valueMoved := func(name string) bool {
+		return t.refreshing && !sameSequence(oldValues[name], newValues[name])
+	}
+	for _, p := range sn.Props {
+		if valueMoved(p.Name) && classify(sn.Type, p.Name) == PropConstructorOnly {
+			return t.rebuildStep(s, fmt.Sprintf(
+				"%q is taken at construction, and what it reads changed since the last load", p.Name))
+		}
+	}
+
 	// Only what actually changed is applied. A value that is the same is not
 	// re-set, because a setter is not required to be idempotent: one of the
 	// library's own assigns and invalidates unconditionally, so a "free" replay
@@ -646,7 +664,7 @@ func (t *Tree) assess(oldID NodeID, sn *qml.SpecNode) (*step, error) {
 	// Comparison is on the DECLARATIONS, so a binding whose expression is
 	// unchanged does not re-fire even though its evaluation ran.
 	for i, p := range sn.Props {
-		if sameSequence(oldProps[p.Name], newProps[p.Name]) {
+		if sameSequence(oldProps[p.Name], newProps[p.Name]) && !valueMoved(p.Name) {
 			continue
 		}
 		s.apply = append(s.apply, effective[i])
@@ -738,7 +756,9 @@ func (t *Tree) rebindChanged(n *node, id NodeID, props []qml.SpecProp,
 		if !needsResolution(p.Value) {
 			continue
 		}
-		if prev, ok := t.bindingFor(id, p.Name); ok && t.isBinding(p.Value) &&
+		// After a cache clear nothing is taken on trust: a binding written the
+		// same may read a constant whose value was reloaded.
+		if prev, ok := t.bindingFor(id, p.Name); ok && t.isBinding(p.Value) && !t.refreshing &&
 			sameSequence(oldProps[p.Name], newProps[p.Name]) {
 			// Unchanged: keep the registration, and with it the applied-value
 			// cache that keeps the next source tick quiet.
