@@ -50,9 +50,6 @@ type Host struct {
 	path  string
 	dirty bool
 	quit  func()
-	// exitArmed records that Exit was pressed once over unsaved changes, so the
-	// second press means it.
-	exitArmed bool
 
 	clock *clock
 }
@@ -110,6 +107,9 @@ func New(opt Options) (*Host, tui.Component, error) {
 		"App.mode":   widget.ModeNormal.String(),
 		"App.status": displayPath(opt.Path),
 		"App.keyset": "vim",
+		// The quit dialog's question. A source, so the dialog says when there
+		// is something to lose without the host reaching into it.
+		"App.quitQuestion": quitQuestion(false),
 	} {
 		if err := h.tree.Inject(name, decl.SourceValue(str(v))); err != nil {
 			return nil, nil, err
@@ -128,10 +128,9 @@ func New(opt Options) (*Host, tui.Component, error) {
 		"App.newFile":    h.newFile,
 		"App.openFile":   h.openFile,
 		"App.saveFile":   h.saveFile,
-		"App.exit":       h.exit,
+		"App.quit":       func() error { h.quit(); return nil },
 		"App.useVim":     func() error { return h.useKeyset("vim", "switched keymap to Vim (modal)") },
 		"App.useNano":    func() error { return h.useKeyset("nano", "switched keymap to Nano (modeless)") },
-		"App.about":      func() error { return h.message("editor-qml — golib/tui configured in QML") },
 		"App.syncStatus": h.syncStatus,
 		"App.markDirty":  h.markDirty,
 	} {
@@ -178,7 +177,10 @@ func (h *Host) Close() error { return h.tree.Destroy() }
 
 func (h *Host) newFile() error {
 	h.editor.SetValue("")
-	h.path, h.dirty = "", false
+	h.path = ""
+	if err := h.setDirty(false); err != nil {
+		return err
+	}
 	return h.message("new buffer")
 }
 
@@ -192,19 +194,10 @@ func (h *Host) saveFile() error {
 	if err := os.WriteFile(h.path, []byte(h.editor.Value()), 0o644); err != nil {
 		return h.message("write failed: " + err.Error())
 	}
-	h.dirty = false
-	return h.message(fmt.Sprintf("%q written", h.path))
-}
-
-// exit quits, unless there are unsaved changes: then the first press warns and
-// the second means it.
-func (h *Host) exit() error {
-	if h.dirty && !h.exitArmed {
-		h.exitArmed = true
-		return h.message("unsaved changes — Exit again to discard, or Save")
+	if err := h.setDirty(false); err != nil {
+		return err
 	}
-	h.quit()
-	return nil
+	return h.message(fmt.Sprintf("%q written", h.path))
 }
 
 func (h *Host) useKeyset(ks, msg string) error {
@@ -224,9 +217,27 @@ func (h *Host) syncStatus() error {
 	return err
 }
 
-func (h *Host) markDirty() error {
-	h.dirty, h.exitArmed = true, false
-	return nil
+func (h *Host) markDirty() error { return h.setDirty(true) }
+
+// setDirty records whether the buffer has unsaved changes, and keeps the quit
+// dialog's question saying so. Only a CHANGE is published: markDirty runs on
+// every keystroke, and republishing an unchanged question would reevaluate its
+// binding for nothing.
+func (h *Host) setDirty(v bool) error {
+	if h.dirty == v {
+		return nil
+	}
+	h.dirty = v
+	_, err := h.tree.SetSource("App.quitQuestion", str(quitQuestion(v)))
+	return err
+}
+
+// quitQuestion is what the quit dialog asks.
+func quitQuestion(dirty bool) string {
+	if dirty {
+		return "Are you sure to quit?\nUnsaved changes will be lost."
+	}
+	return "Are you sure to quit?"
 }
 
 func (h *Host) message(s string) error {

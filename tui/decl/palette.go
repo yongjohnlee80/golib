@@ -31,6 +31,7 @@ import (
 //	base, text                   an editing area and the text in it
 //	highlight, highlightedText   the selected row, or the frame that has focus
 //	accent                       the menu's access-key letter
+//	button, buttonText           a button nobody is on
 //
 // A widget type states WHICH roles it takes; the reading, the colour syntax and
 // the looks they combine into are written once, below.
@@ -46,6 +47,8 @@ const (
 	roleHighlight       role = "highlight"
 	roleHighlightedText role = "highlightedText"
 	roleAccent          role = "accent"
+	roleButton          role = "button"
+	roleButtonText      role = "buttonText"
 )
 
 // palette is the roles one declaration set.
@@ -174,7 +177,29 @@ var (
 	frameRoles  = []role{roleWindow, roleWindowText, roleHighlight}
 	editorRoles = []role{roleBase, roleText, roleHighlight, roleHighlightedText}
 	statusRoles = []role{roleWindow, roleWindowText}
+	textRoles   = []role{roleWindow, roleWindowText}
+	dialogRoles = []role{roleWindow, roleWindowText, roleButton, roleButtonText,
+		roleHighlight, roleHighlightedText}
 )
+
+// dialogStyles dress a Dialog: the card on window, its buttons on button, and
+// the focused one on highlight. Either is nil when its roles were not set.
+func (p palette) dialogStyles() (*widget.ModalStyle, *widget.ButtonStyle) {
+	var card *widget.ModalStyle
+	if p.has(roleWindow, roleWindowText) {
+		look := p.look(roleWindow, roleWindowText)
+		card = widget.NewModalStyle(look, look.Bold(true))
+	}
+	var buttons *widget.ButtonStyle
+	if p.has(roleButton, roleButtonText, roleHighlight, roleHighlightedText) {
+		// Not reversed, for the reason the menu's selection is not: the theme
+		// chose both pairs.
+		buttons = widget.NewButtonStyle(
+			p.look(roleButton, roleButtonText).Reverse(false),
+			p.look(roleHighlight, roleHighlightedText).Reverse(false).Bold(true))
+	}
+	return card, buttons
+}
 
 // menuStyle dresses a menu bar and every dropdown under it. golib derives the
 // looks nobody named — disabled, armed, the popup border — from the two given.

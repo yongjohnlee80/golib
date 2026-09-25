@@ -32,4 +32,9 @@ Theme {
     status {
         window: "#aaaaaa"; windowText: "#000000"
     }
+    dialog {
+        window: "#aaaaaa"; windowText: "#000000"
+        button: "#00aa00"; buttonText: "#000000"
+        highlight: "#00aa00"; highlightedText: "#ffffff"   // the focused button
+    }
 }

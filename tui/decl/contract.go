@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -30,6 +31,9 @@ type widgetType struct {
 	ctor []string
 	// setters are the properties that can change after construction.
 	setters map[string]Setter
+	// methods are what a handler can call on a node of this type by its id:
+	// `quitDialog.open()`.
+	methods map[string]Method
 }
 
 // registerTypes adds each type's builder to the registry.
@@ -49,6 +53,9 @@ func typeOptions(types []widgetType) []Option {
 		}
 		if len(w.setters) > 0 {
 			opts = append(opts, WithSetters(w.name, w.setters))
+		}
+		if len(w.methods) > 0 {
+			opts = append(opts, WithMethods(w.name, w.methods))
 		}
 	}
 	return opts
@@ -93,6 +100,26 @@ func setter[W any, V any](what string, read reader[V], apply func(W, V)) Setter 
 		}
 		apply(w, val)
 		return nil
+	}
+}
+
+// ---------------------------------------------------------------- methods
+
+// Method runs one method a handler called on a node: `quitDialog.open()`.
+type Method func(c tui.Component, args []qml.SpecValue) error
+
+// method is the one shape of a method that takes no arguments: find the
+// widget, refuse arguments it would ignore, run it.
+func method[W any](what string, run func(W) error) Method {
+	return func(c tui.Component, args []qml.SpecValue) error {
+		w, ok := any(c).(W)
+		if !ok {
+			return fmt.Errorf("not %s", what)
+		}
+		if len(args) > 0 {
+			return fmt.Errorf("takes no arguments, and was given %d", len(args))
+		}
+		return run(w)
 	}
 }
 
@@ -194,13 +221,53 @@ func (e enum[T]) spelling() string {
 // value type.
 type enumeration interface{ names() []string }
 
-// tuiConstants derives the Tui singleton's qualified names from every enum.
-func tuiConstants(enums []enumeration) map[string]qml.SpecValue {
+// tuiConstants derives the Tui singleton's qualified names from every enum,
+// and each flag set's under its own singleton.
+func tuiConstants(enums []enumeration, sets []flagSet) map[string]qml.SpecValue {
 	out := map[string]qml.SpecValue{}
 	for _, e := range enums {
 		for _, n := range e.names() {
 			out["Tui."+n] = strValue(constantValue(n))
 		}
 	}
+	for _, f := range sets {
+		for n, bit := range f.values {
+			out[f.singleton+"."+n] = qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.FormatInt(bit, 10)}
+		}
+	}
 	return out
+}
+
+// ---------------------------------------------------------------- flags
+
+// flagSet is a set of values a property combines with `|`, the way Qt writes
+// them: `standardButtons: Dialog.Yes | Dialog.No`. They are qualified by their
+// OWN singleton — the type they belong to, as in Qt — not by Tui.
+type flagSet struct {
+	// singleton is what a document writes before the dot: "Dialog".
+	singleton string
+	// prop names the property, for diagnostics.
+	prop   string
+	values map[string]int64
+}
+
+// read returns the flags a value names, in the set's order, and refuses a bit
+// the set does not have — a number from somewhere else is a mistake to name,
+// not a set of buttons to guess at.
+func (f flagSet) read(v qml.SpecValue) (int64, error) {
+	if v.Kind != qml.SpecValueNumber {
+		return 0, fmt.Errorf("%s must be %s flags, got %s (at %s)", f.prop, f.singleton, v.Kind, v.Pos)
+	}
+	n, err := strconv.ParseInt(v.Raw, 0, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be %s flags, got %s (at %s)", f.prop, f.singleton, v.Raw, v.Pos)
+	}
+	var known int64
+	for _, bit := range f.values {
+		known |= bit
+	}
+	if extra := n &^ known; extra != 0 {
+		return 0, fmt.Errorf("%s: %#x is not a %s flag (at %s)", f.prop, extra, f.singleton, v.Pos)
+	}
+	return n, nil
 }

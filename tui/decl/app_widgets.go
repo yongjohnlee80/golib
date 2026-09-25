@@ -46,6 +46,12 @@ func appTypes() []widgetType {
 			}},
 		{name: "MenuSeparator", build: buildMenuSeparator},
 		{name: "Shortcut", build: buildShortcut, ctor: []string{"sequence"}},
+		{name: "Dialog", build: buildDialog,
+			ctor: append([]string{"title", "helpText", "dim", "standardButtons"}, paletteProps(dialogRoles)...),
+			methods: map[string]Method{
+				"open":  method("a Dialog", (*dialogNode).open),
+				"close": method("a Dialog", (*dialogNode).close),
+			}},
 	}
 }
 
