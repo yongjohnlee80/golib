@@ -211,10 +211,10 @@ func Offer(module, version string, load decl.ModuleLoader) ProgramOption {
 	}
 }
 
-// Highlighters registers syntax highlighters by the name a SyntaxHighlighter's
+// Highlighters registers syntax definitions by the name a SyntaxHighlighter's
 // `definition:` gives them. See [WithHighlighters].
-func Highlighters(hs map[string]highlight.Highlighter) ProgramOption {
-	return func(c *programConfig) { c.adapterOpts = append(c.adapterOpts, WithHighlighters(hs)) }
+func Highlighters(defs ...highlight.Definition) ProgramOption {
+	return func(c *programConfig) { c.adapterOpts = append(c.adapterOpts, WithHighlighters(defs...)) }
 }
 
 // Types adds your own widget types to the vocabulary. See [Type].

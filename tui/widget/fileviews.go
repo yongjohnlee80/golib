@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -262,6 +263,14 @@ func (v *FileOpenView) Select(rooted string) {
 func (v *FileOpenView) Dir() string          { return v.list.Source().Rooted(v.list.Dir()) }
 func (v *FileOpenView) SetDir(rooted string) { v.list.SetDir(rooted) }
 func (v *FileOpenView) FocusInitial()        { v.list.Focus() }
+
+// SetPreviewHighlighting highlights the preview: see
+// [FilePreview.SetHighlighting]. A view with no preview ignores it.
+func (v *FileOpenView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
+	if v.preview != nil {
+		v.preview.SetHighlighting(forFile, styles)
+	}
+}
 
 // PreviewText is what the preview holds, "" without one.
 func (v *FileOpenView) PreviewText() string {

@@ -26,6 +26,7 @@ const (
 	blue  = 4
 	red   = 1
 	green = 2
+	cyan  = 6
 	white = 7
 )
 

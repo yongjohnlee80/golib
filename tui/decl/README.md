@@ -170,23 +170,30 @@ palette; `#rrggbb` looks the same everywhere.
 ## Syntax highlighting
 
 ```qml
-Editor {
-    SyntaxHighlighter {
-        definition: App.syntax                 // "QML", "JavaScript", or "" for none
-        theme.keyword: Theme.syntax.keyword
-        theme.comment: Theme.syntax.comment
+Window {
+    syntax.keyword: Theme.syntax.keyword       // set once, inherited below
+    syntax.comment: Theme.syntax.comment
+
+    Editor {
+        SyntaxHighlighter { definition: App.syntax }   // "QML", "JavaScript", or "" for none
     }
 }
 ```
 
 KDE KSyntaxHighlighting's type: Go highlights, the document names a
-definition, the theme colours it. It highlights the Editor it is declared in
-(anywhere else is refused). `definition` is a runtime property naming a
-registered highlighter — the vocabulary has `QML` and `JavaScript`; add your own
-with `Highlighters(map)` (Program) or `WithHighlighters` (adapter); an unknown
-one is refused naming the registered. `theme.<style>` colours one of
-KSyntaxHighlighting's 31 styles (package [highlight](../../highlight/README.md));
-bound to a theme's `syntax` group, switching theme stays the import line.
+definition, the `syntax.*` roles colour it. It highlights the Editor it is
+declared in (anywhere else, the root included, is refused). `definition` is a
+runtime property naming a registered definition — the vocabulary has `QML`
+(`*.qml`) and `JavaScript` (`*.js`, `*.mjs`); add your own with
+`Highlighters(highlight.Definition{…})` (Program) or `WithHighlighters`
+(adapter); an unknown one is refused naming the registered.
+
+`syntax.<style>` colours one of KSyntaxHighlighting's 31 styles (package
+[highlight](../../highlight/README.md)). They are palette roles: written on the
+Window, every highlighter under it wears them — the Editor's, and a
+FileDialog's preview, which highlights each file by the definition its name
+calls for. Bound to a theme's `syntax` group, switching theme stays the import
+line. A style left unset paints as `syntax.normal`, and that unset as the text.
 
 ## Dialogs
 

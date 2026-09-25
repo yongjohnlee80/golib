@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -34,6 +35,17 @@ import (
 //	button, buttonText           a button nobody is on
 //	inactive.highlight, …Text    the selected row of a pane not in use
 //	mid, light                   a pane's frame, without and with the keyboard
+//
+// SYNTAX ROLES are the same kind of thing for source text: one per
+// highlight.Style — KSyntaxHighlighting's — written `syntax.keyword`,
+// `syntax.comment`. Qt has no such group; it is golib's, and it is a palette
+// group so that it is set ONCE, where a theme is applied, and every
+// highlighter under it — an Editor's, a FileDialog's preview — wears it.
+//
+//	Window {
+//	    syntax.keyword: Theme.syntax.keyword
+//	    syntax.comment: Theme.syntax.comment
+//	}
 //
 // Roles PROPAGATE — a node wears its own over its parent's (propagate.go) —
 // and each type takes the ones it has a look for; the reading, the colour
@@ -94,11 +106,34 @@ const (
 	roleLight Role = "light"
 )
 
+// SyntaxRole is the role that colours one highlight style: `syntax.keyword`.
+func SyntaxRole(s highlight.Style) Role { return Role(syntaxPrefix + s.String()) }
+
+const syntaxPrefix = "syntax."
+
 // palette is the roles one declaration set.
 type palette map[Role]style.Color
 
-// prop is the property a document writes for a role: `palette.window`.
-func (r Role) prop() string { return "palette." + string(r) }
+// prop is the property a document writes for a role: `palette.window`, or a
+// syntax role as it is spelt, `syntax.keyword`.
+func (r Role) prop() string {
+	if strings.HasPrefix(string(r), syntaxPrefix) {
+		return string(r)
+	}
+	return "palette." + string(r)
+}
+
+// syntaxStyles are the syntax roles as the looks a highlighter paints: each
+// one set, a foreground; each unset, zero — the text's own.
+func (p palette) syntaxStyles() widget.SyntaxStyles {
+	var st widget.SyntaxStyles
+	for i := range highlight.Styles {
+		if c, ok := p[SyntaxRole(highlight.Style(i))]; ok {
+			st[i] = style.New().Foreground(c)
+		}
+	}
+	return st
+}
 
 // has reports whether any of the roles was set.
 func (p palette) has(roles ...Role) bool {

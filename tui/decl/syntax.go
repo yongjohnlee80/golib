@@ -2,13 +2,12 @@ package decl
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -16,53 +15,56 @@ import (
 //
 //	import editor.theme.retro 1.0
 //
-//	Editor {
-//	    SyntaxHighlighter {
-//	        definition: App.syntax              // "QML", or "" for none
-//	        theme.keyword: Theme.syntax.keyword
-//	        theme.string: Theme.syntax.string
-//	        theme.comment: Theme.syntax.comment
+//	Window {
+//	    syntax.keyword: Theme.syntax.keyword    // set once, where the theme is
+//	    syntax.string: Theme.syntax.string
+//	    syntax.comment: Theme.syntax.comment
+//
+//	    Editor {
+//	        SyntaxHighlighter { definition: App.syntax }   // "QML", or "" for none
 //	    }
 //	}
 //
-// QML selects and configures; Go highlights. KDE's SyntaxHighlighter takes
-// its editor by reference (`textEdit: editor`); this evaluator passes no
+// QML selects; Go highlights; the palette colours. KDE's SyntaxHighlighter
+// takes its editor by reference (`textEdit: editor`); this evaluator passes no
 // object references, so it highlights the Editor it is declared in, and
 // anywhere else is refused.
 //
-// `definition` names a registered highlighter — the standard vocabulary has
-// QML (with its JavaScript); a program adds its own with [WithHighlighters] or
-// the Program option [Highlighters] — and an unknown one is refused, naming
-// the registered ones. It is a runtime property: bound to a source, the
-// language follows it. "" turns highlighting off.
+// `definition` names a registered definition — the standard vocabulary has
+// QML and JavaScript; a program adds its own with [WithHighlighters] or the
+// Program option [Highlighters] — and an unknown one is refused, naming the
+// registered ones. It is a runtime property: bound to a source, the language
+// follows it. "" turns highlighting off.
 //
-// `theme.<style>` colours one of KSyntaxHighlighting's styles — `keyword`,
-// `controlFlow`, `dataType`, `string`, `comment`, … (package highlight lists
-// all 31) — in the palette's colour syntax. Bound to a theme module's `syntax`
-// group, switching theme stays the import line alone. A style left unset
-// paints as the editor's text.
+// The colours are the `syntax.<style>` roles — `keyword`, `controlFlow`,
+// `dataType`, `string`, `comment`, … (package highlight lists all 31) — which
+// PROPAGATE like palette roles (palette.go): written on the Window, every
+// highlighter under it wears them, a FileDialog's preview as well as an
+// Editor's. A style left unset paints as `syntax.normal`, and that unset as
+// the text.
 
-// stdHighlighters are the definitions the standard vocabulary registers.
-func stdHighlighters() map[string]highlight.Highlighter {
+// stdHighlighters are the definitions the standard vocabulary registers, with
+// the files each is for — what a FileDialog's preview picks by.
+func stdHighlighters() *highlight.Repository {
 	q := qml.Highlighter()
-	return map[string]highlight.Highlighter{"QML": q, "JavaScript": q}
+	return highlight.NewRepository(
+		highlight.Definition{Name: "QML", Extensions: []string{"*.qml"}, Highlighter: q},
+		highlight.Definition{Name: "JavaScript", Extensions: []string{"*.js", "*.mjs"}, Highlighter: q},
+	)
 }
 
-// WithHighlighters registers syntax highlighters by the name a document's
-// `definition:` gives them. A name the vocabulary already has is replaced.
-func WithHighlighters(hs map[string]highlight.Highlighter) Option {
-	return func(a *Adapter) {
-		for name, h := range hs {
-			a.highlighters[name] = h
-		}
-	}
+// WithHighlighters registers syntax definitions by the name a document's
+// `definition:` gives them, and the file names a preview picks them by. A
+// name the vocabulary already has is replaced.
+func WithHighlighters(defs ...highlight.Definition) Option {
+	return func(a *Adapter) { a.highlighters.Add(defs...) }
 }
 
-// syntaxNode is a SyntaxHighlighter: the definition it names, its colours,
-// and the Editor it is in, once that Editor is built.
+// syntaxNode is a SyntaxHighlighter: the definition it names, the colours it
+// inherits, and the Editor it is in, once that Editor is built.
 type syntaxNode struct {
 	widget.Base
-	registry   map[string]highlight.Highlighter
+	registry   *highlight.Repository
 	definition string
 	styles     widget.SyntaxStyles
 	editor     *widget.Editor
@@ -87,8 +89,8 @@ func (n *syntaxNode) apply() {
 	}
 	n.editor.WithSyntaxStyles(n.styles)
 	var h highlight.Highlighter
-	if n.definition != "" {
-		h = n.registry[n.definition]
+	if d, ok := n.registry.Definition(n.definition); ok && n.definition != "" {
+		h = d.Highlighter
 	}
 	n.editor.SetHighlighter(h)
 }
@@ -98,52 +100,32 @@ func (n *syntaxNode) setDefinition(v qml.SpecValue) error {
 	if err != nil {
 		return fmt.Errorf("definition: %w", err)
 	}
-	if _, ok := n.registry[name]; name != "" && !ok {
-		names := make([]string, 0, len(n.registry))
-		for k := range n.registry {
-			names = append(names, k)
-		}
-		sort.Strings(names)
+	if _, ok := n.registry.Definition(name); name != "" && !ok {
 		return fmt.Errorf("definition: %q is not a registered highlighter; registered: %s (at %s)",
-			name, strings.Join(names, ", "), v.Pos)
+			name, strings.Join(n.registry.Names(), ", "), v.Pos)
 	}
 	n.definition = name
 	n.apply()
 	return nil
 }
 
-// themeSetters are one colour property per highlight style: `theme.keyword`.
-func themeSetters() map[string]Setter {
-	out := map[string]Setter{}
-	for i := range highlight.Styles {
-		st := highlight.Style(i)
-		out["theme."+st.String()] = func(c tui.Component, v qml.SpecValue) error {
-			n, ok := c.(*syntaxNode)
-			if !ok {
-				return fmt.Errorf("theme.%s is a SyntaxHighlighter's", st)
-			}
-			col, err := colorOf(v)
-			if err != nil {
-				return fmt.Errorf("theme.%s: %w", st, err)
-			}
-			n.styles[st] = style.New().Foreground(col)
-			n.apply()
-			return nil
-		}
-	}
-	return out
+// restyleSyntax dresses a highlighter in the syntax roles it inherits.
+func restyleSyntax(c tui.Component, p palette) {
+	n := c.(*syntaxNode)
+	n.styles = p.syntaxStyles()
+	n.apply()
 }
 
 func syntaxSetters() map[string]Setter {
-	out := themeSetters()
-	out["definition"] = func(c tui.Component, v qml.SpecValue) error {
-		n, ok := c.(*syntaxNode)
-		if !ok {
-			return fmt.Errorf("definition is a SyntaxHighlighter's")
-		}
-		return n.setDefinition(v)
+	return map[string]Setter{
+		"definition": func(c tui.Component, v qml.SpecValue) error {
+			n, ok := c.(*syntaxNode)
+			if !ok {
+				return fmt.Errorf("definition is a SyntaxHighlighter's")
+			}
+			return n.setDefinition(v)
+		},
 	}
-	return out
 }
 
 // A SyntaxHighlighter takes no place in the layout.
@@ -166,3 +148,15 @@ func editorChildren(b Build) ([]*syntaxNode, error) {
 	}
 	return out, nil
 }
+
+// VetRoot implements [decl.RootVetter]: a SyntaxHighlighter is refused where
+// its parent is built unless that parent is an Editor, and a root has no
+// parent — so it is refused here, not left mounted highlighting nothing.
+func (a *Adapter) VetRoot(id decl.NodeID) error {
+	if b, ok := a.nodes[id]; ok && b.typ == "SyntaxHighlighter" {
+		return fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and the root is in none")
+	}
+	return nil
+}
+
+var _ decl.RootVetter = (*Adapter)(nil)

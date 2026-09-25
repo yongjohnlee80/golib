@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -61,24 +62,36 @@ var paletteRoles = func() map[string]Role {
 		roleInactiveHighlightText, roleMid, roleLight} {
 		out[r.prop()] = r
 	}
+	for i := range highlight.Styles {
+		r := SyntaxRole(highlight.Style(i))
+		out[r.prop()] = r
+	}
 	return out
 }()
 
 // isPaletteProp reports whether a property names a palette role — any
 // `palette.` property, known or not, so a misspelt role is refused by name
 // rather than reported as a property the type lacks.
-func isPaletteProp(name string) bool { return strings.HasPrefix(name, "palette.") }
+func isPaletteProp(name string) bool {
+	return strings.HasPrefix(name, "palette.") || strings.HasPrefix(name, syntaxPrefix)
+}
 
 func roleOf(name string, pos fmt.Stringer) (Role, error) {
 	r, ok := paletteRoles[name]
 	if !ok {
-		names := make([]string, 0, len(paletteRoles))
+		group, what := "palette.", "a palette role"
+		if strings.HasPrefix(name, syntaxPrefix) {
+			group, what = syntaxPrefix, "a syntax style"
+		}
+		var names []string
 		for n := range paletteRoles {
-			names = append(names, strings.TrimPrefix(n, "palette."))
+			if strings.HasPrefix(n, group) {
+				names = append(names, strings.TrimPrefix(n, group))
+			}
 		}
 		sort.Strings(names)
-		return "", fmt.Errorf("%s is not a palette role; want one of %s (at %s)",
-			name, strings.Join(names, ", "), pos)
+		return "", fmt.Errorf("%s is not %s; want one of %s (at %s)",
+			name, what, strings.Join(names, ", "), pos)
 	}
 	return r, nil
 }
@@ -272,6 +285,7 @@ func restyleDialog(c tui.Component, p palette) {
 	switch v := d.chooser.(type) {
 	case *widget.FileOpenView:
 		v.WithStyles(st)
+		v.SetPreviewHighlighting(d.highlighterFor, p.syntaxStyles())
 	case *widget.FileSaveView:
 		v.WithStyles(st)
 	}

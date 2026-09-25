@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -28,6 +29,11 @@ import (
 // carries the file chosen, as Qt's selectedFile. Opening a folder is not a
 // choice: Enter or the Open button on a folder goes into it and the dialog
 // stays, which the browser decides and the button asks it.
+//
+// The preview is HIGHLIGHTED: each file by the definition its name calls for
+// (the registered definitions' extensions — KSyntaxHighlighting's
+// definitionForFileName), in the `syntax.*` roles the dialog inherits. A
+// theme that sets none leaves it plain.
 //
 // The footer follows the keyboard, unless a helpText is given: what Enter does
 // in the listing is not what it does in the preview, and a footer listing
@@ -106,7 +112,7 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 		acceptArgs: func() []qml.SpecValue { return []qml.SpecValue{strValue(chooser.Selected())} },
 	}
 	d = newDialog(b, s)
-	d.chooser = chooser
+	d.chooser, d.highlighters = chooser, b.highlighters
 	return d, consumed, nil
 }
 
@@ -124,4 +130,16 @@ func (d *dialogNode) setFolder(dir string) {
 	if d.chooser != nil && dir != "" {
 		d.chooser.SetDir(dir)
 	}
+}
+
+// highlighterFor is the highlighter a previewed file's name calls for, nil for
+// none.
+func (d *dialogNode) highlighterFor(name string) highlight.Highlighter {
+	if d.highlighters == nil {
+		return nil
+	}
+	if def, ok := d.highlighters.DefinitionForFileName(name); ok {
+		return def.Highlighter
+	}
+	return nil
 }

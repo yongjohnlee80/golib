@@ -27,6 +27,11 @@ the time.
 implements `Highlighter` from its tree: each node's byte range is a `Span`,
 `StyleForCapture` gives its style, and the capture name is kept in `Span.Name`.
 
+**Definitions.** A `Definition` is a highlighter by name with the file-name
+patterns it claims (`*.qml`) — KSyntaxHighlighting's Definition — and a
+`Repository` holds them: `Definition(name)`, and `DefinitionForFileName(file)`
+for a view that shows whatever file it is given, a file dialog's preview.
+
 Implementations: `parse/qml.Highlighter()` (QML and its JavaScript). Painters:
 `tui/widget.Editor` (`WithHighlighter`), and `SyntaxHighlighter` in
 [tui/decl](../tui/decl/README.md).
