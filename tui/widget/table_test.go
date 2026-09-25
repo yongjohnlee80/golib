@@ -360,3 +360,24 @@ func TestSetColumnsRedrawsTheHeaderAndRows(t *testing.T) {
 	h.wantContains("one!")
 	h.wantNotContains("FIRST")
 }
+
+// No columns is a table too, as a Qt model with none is: it builds, draws an
+// empty header and blank rows, and takes columns later — and gives them up.
+func TestATableWithNoColumns(t *testing.T) {
+	tab := widget.NewTable[crewRow](nil)
+	sh := newShell(tab)
+	h := startApp(t, sh, 48, 6)
+	h.onLoop(func() { tab.SetItems([]crewRow{{"ada", "eng", "first"}}) })
+	h.barrier(sh)
+	h.wantNotContains("ada")
+
+	h.onLoop(func() { tab.SetColumns(crewColumns()) })
+	h.barrier(sh)
+	h.wantContains("Name")
+	h.wantContains("ada")
+
+	h.onLoop(func() { tab.SetColumns(nil) })
+	h.barrier(sh)
+	h.wantNotContains("Name")
+	h.wantNotContains("ada")
+}

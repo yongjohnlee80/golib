@@ -117,12 +117,10 @@ type Table[T any] struct {
 	headSt style.Style
 }
 
-// NewTable builds a table from column definitions. At least one column is
-// required.
+// NewTable builds a table from column definitions. NO COLUMNS is a table too,
+// as a Qt model with none is: an empty header and blank rows — a query that
+// returned no columns, or columns not known yet.
 func NewTable[T any](cols []TableColumn[T], opts ...ListOption[T]) *Table[T] {
-	if len(cols) == 0 {
-		panic("widget: NewTable requires at least one column")
-	}
 	t := &Table[T]{
 		cols:   cols,
 		headSt: style.New().Foreground(style.TokenTextMuted).Bold(true).Underline(true),
@@ -144,11 +142,8 @@ func (t *Table[T]) List() *List[T] { return t.list }
 
 // SetColumns replaces the columns — a new query's result, say — keeping the
 // rows' source and the view; the header and every row are drawn to the new
-// columns on the next frame. At least one column is required.
+// columns on the next frame. None is a table too (see NewTable).
 func (t *Table[T]) SetColumns(cols []TableColumn[T]) {
-	if len(cols) == 0 {
-		panic("widget: Table.SetColumns requires at least one column")
-	}
 	t.cols = append([]TableColumn[T](nil), cols...)
 	t.widths = make([]int, len(t.cols))
 	if ctx := t.Context(); ctx != nil {

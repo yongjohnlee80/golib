@@ -116,8 +116,8 @@ func (n *treeViewNode) nodes(parent *Index) []*widget.TreeNode {
 	for r := 0; r < count; r++ {
 		ix := Index{Row: r, Parent: parent}
 		var opts []widget.NodeOption
-		if !n.model.HasChildren(ix) {
-			opts = append(opts, widget.WithLeaf())
+		if n.model.RowCount(&ix) == 0 && !n.model.CanFetchMore(ix) {
+			opts = append(opts, widget.WithLeaf()) // nothing to open, now or to load
 		}
 		if n.badgeRole != "" {
 			if b := n.model.Data(ix, n.badgeRole).Raw; b != "" {
@@ -181,7 +181,7 @@ func (n *treeViewNode) Init(ctx *tui.Context) {
 		} else {
 			n.pending[n.pathOf(ix)] = ev.Gen
 			if n.model.CanFetchMore(ix) {
-				n.model.FetchMore(ix)
+				n.model.FetchMore(ix) // the model ignores a repeat while one is in flight
 			}
 		}
 	})
