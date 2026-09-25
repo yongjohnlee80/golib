@@ -167,3 +167,28 @@ func TestAWindowRefusesAStructuralEditOutOfRange(t *testing.T) {
 		t.Errorf("a valid move after the refusals: %v", err)
 	}
 }
+
+// TestAReloadRemovingAnOpenDialogClosesIt: the dialog's modal lives on the
+// Window's overlay, not in its node. A reload dropping the node while the
+// dialog is open must close it — or it stays on screen, trapping the
+// keyboard, with no id left to close it by.
+func TestAReloadRemovingAnOpenDialogClosesIt(t *testing.T) {
+	with := "import tui 1.0\nWindow {\n Editor { id: ed; focus: true }\n Dialog { id: dlg; title: \"Ask\"; Text { text: \"orphan?\" } }\n}"
+	without := "import tui 1.0\nWindow {\n Editor { id: ed; focus: true }\n}"
+	s := decltest.Run(t, 40, 10, tuidecl.LayoutSource("main.qml", []byte(with)))
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("dlg", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "orphan?")
+	onScreenLoop(t, s, func() {
+		if _, err := s.Program.Reload([]byte(without)); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "the dialog gone", func(sc string) bool { return !strings.Contains(sc, "orphan?") })
+	// And the keyboard is free again: typing reaches the editor.
+	s.Keys(t, decltest.Type("ifree")...)
+	s.WaitForText(t, "free")
+}

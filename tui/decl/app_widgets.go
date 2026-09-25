@@ -53,12 +53,14 @@ func appTypes() []Type {
 				"currentFolder": setter("a FileDialog", stringOf, (*dialogNode).setFolder),
 				"selectedFile":  setter("a FileDialog", stringOf, (*dialogNode).setSelected),
 			},
-			Methods: dialogMethods,
-			Signals: map[string][]string{"accepted": {"selectedFile"}}},
+			Methods:   dialogMethods,
+			Signals:   map[string][]string{"accepted": {"selectedFile"}},
+			Destroyed: releaseDialog},
 		{Name: "Dialog", Build: buildDialog,
-			Ctor:    []string{"title", "helpText", "dim", "standardButtons"},
-			restyle: restyleDialog,
-			Methods: dialogMethods},
+			Ctor:      []string{"title", "helpText", "dim", "standardButtons"},
+			restyle:   restyleDialog,
+			Methods:   dialogMethods,
+			Destroyed: releaseDialog},
 	}
 }
 
