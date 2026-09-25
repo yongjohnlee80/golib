@@ -156,7 +156,15 @@ func TestImportingBothThemesIsRefused(t *testing.T) {
 // TestTheLayoutNamesNoColour: the claim the theme split rests on, checked on
 // the file rather than taken on trust.
 func TestTheLayoutNamesNoColour(t *testing.T) {
-	for _, line := range strings.Split(string(layout), "\n") {
+	src := string(layout)
+	for _, f := range []string{"dialogs/QuitDialog.qml", "dialogs/AboutDialog.qml"} {
+		b, err := dialogFiles.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src += "\n" + string(b)
+	}
+	for _, line := range strings.Split(src, "\n") {
 		code, _, _ := strings.Cut(line, "//")
 		if !strings.Contains(code, "palette.") {
 			continue

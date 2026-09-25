@@ -1,0 +1,30 @@
+// QuitDialog.qml — asks before the editor ends.
+//
+// A COMPONENT: this file defines the type QuitDialog, which editor.qml uses as
+// `QuitDialog { id: quitDialog }` once it imports editor.dialogs. It imports
+// nothing itself. Its names — App, Theme, Dialog, Tui — resolve in the document
+// that uses it, which is why switching the layout's theme import re-dresses
+// this dialog too.
+//
+// Nothing here says how the dialog closes. Yes, No, their underlined letters
+// and Escape all close it; the file says only what an answer does.
+
+Dialog {
+    title: "Quit"
+    standardButtons: Dialog.Yes | Dialog.No    // y and n answer it
+    palette.window: Theme.dialog.window
+    palette.windowText: Theme.dialog.windowText
+    palette.button: Theme.dialog.button
+    palette.buttonText: Theme.dialog.buttonText
+    palette.highlight: Theme.dialog.highlight
+    palette.highlightedText: Theme.dialog.highlightedText
+    onAccepted: App.quit()
+
+    // Bound: it mentions unsaved changes when there are some.
+    Text {
+        text: App.quitQuestion
+        wrapMode: Tui.WordWrap
+        palette.window: Theme.dialog.window
+        palette.windowText: Theme.dialog.windowText
+    }
+}
