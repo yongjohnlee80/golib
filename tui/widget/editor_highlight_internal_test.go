@@ -115,7 +115,9 @@ func TestTheSelectionWinsOverASpan(t *testing.T) {
 	ih := startAppInternal(t, e, 20, 2)
 	t.Cleanup(ih.stopInternal)
 	ih.onLoopInternal(func() { e.Context().RequestFocus() })
-	key := func(ch rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code: ch, Base: ch, Text: string(ch)} }
+	key := func(ch rune) tui.KeyEvent {
+		return tui.KeyEvent{Kind: tui.KeyPress, Code: ch, Base: ch, Text: string(ch)}
+	}
 	if err := ih.tb.Inject(key('0'), key('w'), key('v')); err != nil {
 		t.Fatal(err)
 	}
