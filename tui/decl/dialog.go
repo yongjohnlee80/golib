@@ -256,6 +256,11 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	if s.help != "" {
 		opts = append(opts, widget.WithModalFooter(s.help))
 	}
+	if s.box != nil {
+		// No default: a box's answers may be irreversible, so no key answers
+		// for the user before they have chosen a button.
+		opts = append(opts, widget.WithModalNoImplicitAnswer())
+	}
 	if len(s.shortcuts) > 0 {
 		shortcuts := s.shortcuts
 		opts = append(opts, widget.WithModalKeys(func(k tui.KeyEvent) bool {

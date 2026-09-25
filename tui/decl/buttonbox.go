@@ -26,9 +26,11 @@ import (
 // only, and the dialog closes without an answer — `closed`, neither accepted
 // nor rejected.
 //
-// NO DEFAULT: Enter answers only through the button that has the keyboard,
-// which is the first — so an irreversible choice is never one stray Enter away
-// when the safe answer is listed first.
+// NO DEFAULT, NO IMPLICIT ANSWER: focus lands on the first button, but Enter
+// and Space press nothing until the user has CHOSEN a button — stepped to it
+// (the arrows, Tab), or pressed its mnemonic, or clicked it
+// (widget.WithModalNoImplicitAnswer). An irreversible answer is never one stray
+// Enter away, whatever order the answers are listed in.
 
 var buttonRoles = Enum{Scope: "DialogButtonBox", Values: []string{"AcceptRole", "RejectRole", "DestructiveRole"}}
 
