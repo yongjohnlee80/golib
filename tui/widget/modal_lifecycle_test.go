@@ -66,41 +66,31 @@ func cellOfLabel(t *testing.T, h *harness, label string) (x, y int) {
 
 // ─── the focus provider ──────────────────────────────────────────────────────
 
-// TestSetButtonsHonoursTheDefaultRoleOnEveryRepair.
-//
-// A dialog's affirmative control is where a user expects to land, and that
-// preference has to survive changes to the button list — not merely be applied
-// once when the dialog opens. The runtime's own repair picks the first focusable
-// in DOCUMENT order and knows nothing about roles, so without a provider seam
-// the Default-role button is preferred exactly once and never again.
-func TestSetButtonsHonoursTheDefaultRoleOnEveryRepair(t *testing.T) {
+// TestButtonsAddedToAnEmptyDialogTakeFocusInTabOrder. Opened with no buttons,
+// the Modal node itself holds focus; once buttons arrive it is no longer the
+// fallback, and focus moves to the first of them.
+func TestButtonsAddedToAnEmptyDialogTakeFocusInTabOrder(t *testing.T) {
 	m := widget.NewModal(widget.NewText("Body"))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
 
-	// Opened with no buttons at all, so the Modal node itself holds focus and
-	// there is no incumbent to bias the choice.
 	normal := widget.NewButton("Normal")
 	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-
 	var err error
-	// Listed FIRST is the plain button, so "the first enabled button" and "the
-	// first in document order" both pick the wrong one.
 	h.onLoop(func() { err = m.SetButtons(normal, def) })
 	if err != nil {
 		t.Fatalf("SetButtons: %v", err)
 	}
 	h.settle()
 
-	if !focusedOn(t, h, def) {
-		t.Error("focus did not land on the Default-role button after SetButtons; " +
-			"the dialog's preference applied only at open")
+	if !focusedOn(t, h, normal) {
+		t.Error("focus did not move to the first button once the dialog had buttons")
 	}
 	var sel int
 	h.onLoop(func() { sel = m.SelectedButton() })
-	if sel != 1 {
-		t.Errorf("SelectedButton() = %d, want 1 (the Default button's index)", sel)
+	if sel != 0 {
+		t.Errorf("SelectedButton() = %d, want 0 (the first button)", sel)
 	}
 }
 
@@ -143,14 +133,11 @@ func TestSetButtonsKeepsSelectionForAStillFocusedButton(t *testing.T) {
 	}
 }
 
-// TestAddingADefaultButtonMovesFocusToItEvenWhenTheCurrentOneIsStillValid.
-//
-// The other half of "the preference applies on every repair". Here the focused
-// button remains perfectly focusable and in scope, so the runtime has no reason
-// to repair at all — and an implementation that only consults the dialog when
-// focus DIED leaves focus legal and wrong: the affirmative control has just
-// appeared and nothing moves to it.
-func TestAddingADefaultButtonMovesFocusToItEvenWhenTheCurrentOneIsStillValid(t *testing.T) {
+// TestAddingAButtonLeavesTheFocusedOneFocused. A button added AHEAD of the
+// focused one is first in Tab order now, and focus stays where it is: the
+// dialog's nomination says where focus starts, and where it goes when it has
+// to move — never off a control that can still hold it.
+func TestAddingAButtonLeavesTheFocusedOneFocused(t *testing.T) {
 	plain := widget.NewButton("Plain")
 	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(plain))
 	h, host, _ := modalFixture(t, m, 40, 12)
@@ -162,15 +149,14 @@ func TestAddingADefaultButtonMovesFocusToItEvenWhenTheCurrentOneIsStillValid(t *
 
 	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	var err error
-	h.onLoop(func() { err = m.SetButtons(plain, def) })
+	h.onLoop(func() { err = m.SetButtons(def, plain) })
 	if err != nil {
 		t.Fatalf("SetButtons: %v", err)
 	}
 	h.settle()
 
-	if !focusedOn(t, h, def) {
-		t.Error("focus stayed on the plain button after a Default-role button was " +
-			"added; the dialog is consulted only when focus dies")
+	if !focusedOn(t, h, plain) {
+		t.Error("focus moved off the focused button when a button was added ahead of it")
 	}
 }
 
@@ -948,10 +934,11 @@ func TestADialogWithNoBodyIsStillUsable(t *testing.T) {
 	if got := h.grid(); !strings.Contains(got, "More") {
 		t.Errorf("the reconciled button is not on screen:\n%s", got)
 	}
+	// Focus stays on OK, which is still focusable, now second.
 	var sel int
 	h.onLoop(func() { sel = m.SelectedButton() })
 	if sel != 1 {
-		t.Errorf("SelectedButton() = %d, want 1 (the Default button after the reorder)", sel)
+		t.Errorf("SelectedButton() = %d, want 1 (OK, still focused, after the reorder)", sel)
 	}
 }
 

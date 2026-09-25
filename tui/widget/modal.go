@@ -401,34 +401,31 @@ func (m *Modal) SetButtons(b ...*Button) error {
 	return nil
 }
 
-// InitialFocus nominates where focus belongs inside this dialog: the enabled
-// Default-role button, else the first enabled button, else the first control
-// in the body that takes focus — a prompt's field, as a Qt Dialog's content
-// takes it — else the Modal node.
+// InitialFocus nominates where focus belongs inside this dialog: the first
+// control in Tab order that takes focus — the body's, then the buttons' — else
+// the Modal node. An input dialog starts in its first field; a message, whose
+// body takes no focus, starts on its first enabled button.
 //
-// The DEFAULT ROLE IS PREFERRED UNCONDITIONALLY, not as a tie-break. A dialog's
-// affirmative action is where a user expects to land, and choosing it only when
-// nothing else qualified would make the landing spot depend on the order the
-// buttons happened to be listed in.
+// TAB ORDER, NOT THE DEFAULT ROLE. A dialog with fields that started on its
+// affirmative button pressed it with the first Space typed into what the user
+// took for the first field. The default button still answers Enter wherever
+// focus is (the dialog owns Enter), so starting in the body loses nothing.
 //
 // This is consulted on EVERY repair, not only when the dialog opens. A dialog
 // that only reached for focus at open time lost its preference the first time
-// anything changed underneath it — enabling a button, replacing the list — because
-// the runtime's fallback is document order and knows nothing about roles.
+// anything changed underneath it — enabling a button, replacing the list —
+// because the runtime's fallback knows nothing about the dialog.
 //
 // The Modal node itself is the last resort, which is what keeps the ring inside
 // the trap non-empty and Escape reachable when every control is disabled.
 func (m *Modal) InitialFocus() (tui.Component, bool) {
-	if b := m.defaultButton(); b != nil {
-		return b, true
+	if f := firstFocusable(m.card.body); f != nil {
+		return f, true
 	}
 	for _, b := range m.card.buttons {
 		if b != nil && b.Enabled() {
 			return b, true
 		}
-	}
-	if f := firstFocusable(m.card.body); f != nil {
-		return f, true
 	}
 	return m, true
 }

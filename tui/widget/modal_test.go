@@ -40,16 +40,12 @@ func openOn(t *testing.T, h *harness, m *widget.Modal, host *widget.OverlayHost)
 	h.settle()
 }
 
-// TestOpeningADialogTrapsFocusAndPrefersTheDefaultButton.
-//
-// The default-role button is preferred UNCONDITIONALLY, not as a tie-break: a
-// dialog's affirmative action is where a user expects to land, and choosing it
-// only when nothing else qualified would make the landing spot depend on the
-// order the buttons were listed in.
-func TestOpeningADialogTrapsFocusAndPrefersTheDefaultButton(t *testing.T) {
+// TestOpeningADialogTrapsFocusOnItsFirstButton. A message's body takes no
+// focus, so the dialog starts on its first button in Tab order — whichever
+// button is the default; Enter answers the default from anywhere.
+func TestOpeningADialogTrapsFocusOnItsFirstButton(t *testing.T) {
 	cancel := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleReject))
 	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	// Cancel is listed FIRST, so "the first enabled button" would pick it.
 	m := widget.NewModal(widget.NewText("Sure?"), widget.WithButtons(cancel, ok))
 
 	h, host, base := modalFixture(t, m, 40, 12)
@@ -63,24 +59,49 @@ func TestOpeningADialogTrapsFocusAndPrefersTheDefaultButton(t *testing.T) {
 
 	openOn(t, h, m, host)
 
-	var okFocused, baseFocused bool
+	var baseFocused bool
 	var sel int
 	h.onLoop(func() {
-		okFocused = ok.Context() != nil && ok.Context().Focused()
 		baseFocused = base.Context().Focused()
 		sel = m.SelectedButton()
 	})
 	if baseFocused {
 		t.Error("focus stayed outside the dialog; opening one must move focus into it")
 	}
-	if !okFocused {
-		t.Error("focus did not land on the Default-role button, although it was listed second")
+	if !focusedOn(t, h, cancel) {
+		t.Error("focus did not land on the first button in Tab order")
 	}
-	if sel != 1 {
-		t.Errorf("SelectedButton() = %d, want 1 (the Default button's index)", sel)
+	if sel != 0 {
+		t.Errorf("SelectedButton() = %d, want 0 (the first button)", sel)
 	}
 	if !m.IsOpen() {
 		t.Error("IsOpen() is false after a successful Open")
+	}
+}
+
+// TestAnInputDialogStartsInItsFirstField. The body comes before the buttons in
+// Tab order, so a form starts in its first field — not on OK, where the first
+// Space typed into what the user took for the field would press it.
+func TestAnInputDialogStartsInItsFirstField(t *testing.T) {
+	user, pass := widget.NewTextInput(), widget.NewTextInput()
+	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	body := tui.NewFlex(tui.Vertical)
+	for _, c := range []tui.Component{widget.NewText("user"), user, widget.NewText("passphrase"), pass} {
+		body.Add(c)
+	}
+	m := widget.NewModal(body, widget.WithButtons(ok))
+
+	h, host, _ := modalFixture(t, m, 40, 14)
+	defer h.stop()
+	openOn(t, h, m, host)
+
+	var onUser, onOK bool
+	h.onLoop(func() {
+		onUser = user.Context() != nil && user.Context().Focused()
+		onOK = ok.Context() != nil && ok.Context().Focused()
+	})
+	if !onUser {
+		t.Errorf("focus did not start in the first field (on OK: %v)", onOK)
 	}
 }
 
