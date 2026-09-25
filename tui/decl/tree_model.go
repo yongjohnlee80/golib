@@ -61,10 +61,10 @@ type TreeRow struct {
 // TreeListModel is single-threaded and loop-owned. Mutations and child updates must be executed
 // on the UI event-loop goroutine.
 type TreeListModel struct {
-	roles   []string
-	top     []*treeNode
-	subs    map[int]func(Change)
-	next    int
+	roles []string
+	top   []*treeNode
+	subs  map[int]func(Change)
+	next  int
 	// OnFetch is invoked when a view expands a node whose children have not yet been loaded.
 	OnFetch func(Index)
 }
