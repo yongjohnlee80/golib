@@ -50,6 +50,7 @@ func appTypes() []widgetType {
 			ctor: append([]string{"title", "helpText", "dim", "fileMode", "preview"}, paletteProps(fileDialogRoles)...),
 			setters: map[string]Setter{
 				"currentFolder": setter("a FileDialog", stringOf, (*dialogNode).setFolder),
+				"selectedFile":  setter("a FileDialog", stringOf, (*dialogNode).setSelected),
 			},
 			methods: dialogMethods,
 			signals: map[string][]string{"accepted": {"selectedFile"}}},

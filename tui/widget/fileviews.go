@@ -42,6 +42,10 @@ type FileChooser interface {
 	// same one read afresh.
 	Dir() string
 	SetDir(rooted string)
+	// Select places a selection, given rooted: its folder is listed and the
+	// file made the one chosen now — the cursor on it, or the name field
+	// holding its name — so "Save As" can start from the file being edited.
+	Select(rooted string)
 	// FocusInitial gives the keyboard to where a user starts.
 	FocusInitial()
 	// Hint is the keys the part with the keyboard answers to.
@@ -245,6 +249,16 @@ func (v *FileOpenView) Selected() string {
 	return v.list.Source().Rooted(p)
 }
 
+// Select lists the file's folder with the cursor on it.
+func (v *FileOpenView) Select(rooted string) {
+	p, ok := v.cfg.src.fsPath(rooted)
+	if !ok {
+		return
+	}
+	v.list.load(path.Dir(p))
+	v.list.SetCurrent(path.Base(p))
+}
+
 func (v *FileOpenView) Dir() string          { return v.list.Source().Rooted(v.list.Dir()) }
 func (v *FileOpenView) SetDir(rooted string) { v.list.SetDir(rooted) }
 func (v *FileOpenView) FocusInitial()        { v.list.Focus() }
@@ -375,6 +389,15 @@ func (v *FileSaveView) Selected() string {
 		return ""
 	}
 	return v.listing.list.Source().Rooted(p)
+}
+
+// Select lists the file's folder and names the file — whether it exists yet
+// or not, which is the point of a name field.
+func (v *FileSaveView) Select(rooted string) {
+	v.listing.Select(rooted)
+	if p, ok := v.listing.cfg.src.fsPath(rooted); ok && p != "." {
+		v.name.SetValue(path.Base(p))
+	}
 }
 
 func (v *FileSaveView) Dir() string          { return v.listing.Dir() }

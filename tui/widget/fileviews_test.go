@@ -314,3 +314,29 @@ func TestAViewListsAnyFilesystem(t *testing.T) {
 		t.Fatalf("the root offers a way up:\n%s", h.grid())
 	}
 }
+
+// TestSelectPlacesTheSelection: the Open view lists the file's folder with the
+// cursor on it; the Save view names it, existing or not.
+func TestSelectPlacesTheSelection(t *testing.T) {
+	root := tree(t, map[string]string{"sub/b.txt": "bee body", "a.txt": "a"})
+	open := widget.NewFileOpenView(widget.WithFileViewDir(root))
+	h := startBrowser(t, open)
+	h.onLoop(func() { open.Select(filepath.Join(root, "sub", "b.txt")) })
+	h.shows("bee body")
+	var sel string
+	h.onLoop(func() { sel = open.Selected() })
+	if sel != filepath.Join(root, "sub", "b.txt") {
+		t.Fatalf("Open Selected = %q after Select", sel)
+	}
+	h.stop()
+
+	save := widget.NewFileSaveView(widget.WithFileViewDir(root))
+	h = startBrowser(t, save)
+	defer h.stop()
+	h.onLoop(func() { save.Select(filepath.Join(root, "sub", "new.md")) })
+	h.settle()
+	h.onLoop(func() { sel = save.Selected() })
+	if sel != filepath.Join(root, "sub", "new.md") {
+		t.Fatalf("Save Selected = %q after selecting a file that does not exist yet", sel)
+	}
+}

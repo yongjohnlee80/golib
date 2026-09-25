@@ -75,8 +75,10 @@ type dialogNode struct {
 	// goes back to where the document says it lives.
 	afterClose func()
 	hooks      dialogHooks
-	// chooser is a FileDialog's body, nil for a Dialog.
-	chooser widget.FileChooser
+	// chooser is a FileDialog's body, nil for a Dialog; selected is the file it
+	// starts from, as its selectedFile says.
+	chooser  widget.FileChooser
+	selected string
 
 	accepted         func(args ...qml.SpecValue)
 	rejected, closed func()
