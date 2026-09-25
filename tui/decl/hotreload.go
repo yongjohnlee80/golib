@@ -245,12 +245,16 @@ func (p *Program) remount(spec qml.SpecTree) (decl.Result, error) {
 
 // redirect hands a Program built for a remount over to the one that runs it:
 // work it had queued goes to the running Program's loop.
+//
+// UNDER THE LOCK, as NewProgram does it: a provider of the fresh tree may be
+// delivering from its own goroutine, and one that reached schedule between
+// publishing the App and flushing the queue would overtake work queued before
+// it. App.Update never blocks, so posting while holding the lock is safe.
 func (p *Program) redirect(to *Program) {
 	p.mu.Lock()
-	pending := p.pending
-	p.pending, p.app = nil, to.app
-	p.mu.Unlock()
-	for _, fn := range pending {
-		to.schedule(fn)
+	defer p.mu.Unlock()
+	for _, fn := range p.pending {
+		to.app.Update(fn)
 	}
+	p.pending, p.app = nil, to.app
 }

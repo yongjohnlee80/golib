@@ -113,6 +113,17 @@ func (d *dialogNode) SetOverlay(host *widget.OverlayHost, afterClose func()) {
 
 var _ Overlaid = (*dialogNode)(nil)
 
+// releaseDialog closes a dialog whose node is going away — a reload dropped
+// it while it was open. Its modal lives on the overlay host, not in the node,
+// so forgetting the node alone left it on screen, trapping the keyboard, with
+// no id left to close it by. Closed programmatically: the document removed
+// the question, and nobody answered it.
+func releaseDialog(c tui.Component) {
+	if d, ok := c.(*dialogNode); ok && d.modal.IsOpen() {
+		d.modal.Dismiss(widget.DismissProgrammatic)
+	}
+}
+
 // open shows the dialog. Opening an open dialog is not an error: a menu row
 // pressed twice asked the same question twice.
 func (d *dialogNode) open() error {
