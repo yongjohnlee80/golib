@@ -63,6 +63,8 @@ type Modal struct {
 	// selected is the index of the focused button, or -1 when focus is on the
 	// Modal node itself — which happens when it owns no enabled button.
 	selected int
+	// ownKeys are the dialog's own keys (WithModalKeys); nil for none.
+	ownKeys func(tui.KeyEvent) bool
 }
 
 // ModalOption configures a Modal at construction.
@@ -119,6 +121,13 @@ func WithModalTitle(s string) ModalOption {
 // Without it the two are separated by a blank line.
 func WithModalRule(v bool) ModalOption {
 	return func(m *Modal) { m.card.rule = v }
+}
+
+// WithModalKeys gives the dialog keys of its own: fn sees every key press the
+// controls inside it leave unconsumed, while it is open, and reports whether it
+// took it — a viewer's `y` copying, say.
+func WithModalKeys(fn func(tui.KeyEvent) bool) ModalOption {
+	return func(m *Modal) { m.ownKeys = fn }
 }
 
 // WithModalWidth sets the card's width in cells, frame included, where it
@@ -776,6 +785,9 @@ func (m *Modal) Render(tui.Surface) {}
 func (m *Modal) HandleEvent(ev tui.Event) bool {
 	if _, ok := ev.(tui.FocusEvent); ok {
 		m.refreshSelection()
+	}
+	if k, ok := ev.(tui.KeyEvent); ok && m.ownKeys != nil && k.Kind == tui.KeyPress {
+		return m.ownKeys(k)
 	}
 	return false
 }
