@@ -24,9 +24,17 @@ import (
 // uses the promoted methods as-is. The label prefixes panic messages so
 // they name the concrete container.
 type MultiChild struct {
+	Visibility
 	items []Component
 	label string
 	ctx   *Context // non-nil exactly while mounted
+}
+
+// SetVisible shows or hides the container and everything in it (visibility.go).
+func (m *MultiChild) SetVisible(v bool) {
+	if m.Show(v) && m.ctx != nil {
+		m.ctx.RequestLayout()
+	}
 }
 
 // Label sets the container name used in panic messages (constructors

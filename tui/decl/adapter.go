@@ -363,6 +363,9 @@ func (a *Adapter) Apply(app decl.Application) error {
 	if isPaletteProp(app.Prop) {
 		return a.setRole(app.Node, app.Prop, app.Value)
 	}
+	if app.Prop == visibleProp {
+		return setVisible(b.typ, b.comp, app.Value)
+	}
 	set, ok := a.setters[b.typ][app.Prop]
 	if !ok {
 		return fmt.Errorf("type %q has no runtime property %q (declared at %s)",

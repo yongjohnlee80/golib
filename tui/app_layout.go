@@ -71,6 +71,14 @@ func (a *App) layoutTree() {
 // (via tb.ConstraintViolations() and tb.FailOnViolations()), while production runs
 // log them via WithLogger.
 func (a *App) layoutComponent(n *node, cc Constraints) Size {
+	if hidden(n.comp) {
+		// A hidden component takes the least its constraints allow — none,
+		// under loose ones — and its subtree is not laid out, so nothing in
+		// it is visible this frame (visibility.go).
+		n.size = cc.Constrain(Size{})
+		n.measured = true
+		return n.size
+	}
 	prev := a.layingOut
 	a.layingOut = n
 	got := n.comp.Layout(cc)

@@ -191,7 +191,7 @@ func TestAReloadKeepsFocusAndInFlightWork(t *testing.T) {
 Flex {
     id: list
     direction: Tui.Vertical
-    Button { id: btn label: "Save" enabled: true }
+    Button { id: btn text: "Save" enabled: true }
     Tracker { id: work }
     Text { id: tail text: "tail" }
 }`
@@ -201,7 +201,7 @@ Flex {
     direction: Tui.Vertical
     Text { id: tail text: "tail" }
     Tracker { id: work }
-    Button { id: btn label: "Save" enabled: true }
+    Button { id: btn text: "Save" enabled: true }
 }`
 	spec, perr := qml.QML{}.Parse([]byte(before))
 	if perr != nil {
@@ -679,7 +679,7 @@ func TestClassifyPropertyDistinguishesAllThreeKinds(t *testing.T) {
 		{"Flex.direction is a constructor argument", "Flex", "direction", decl.PropConstructorOnly},
 		{"a misspelling is not constructor-only", "Text", "nosuchprop", decl.PropUnknown},
 		{"a property of a DIFFERENT type is unknown here", "Text", "orientation", decl.PropUnknown},
-		{"a type nothing has been mounted as still answers", "Button", "label", decl.PropRuntime},
+		{"a type nothing has been mounted as still answers", "Button", "text", decl.PropRuntime},
 		{"an unregistered type", "NoSuchWidget", "text", decl.PropUnknown},
 	}
 	for _, c := range cases {
@@ -780,7 +780,7 @@ Flex { id: list direction: Tui.Vertical Text { id: a text: "one" } }`
 Flex { id: list direction: Tui.Vertical Text { id: a text: "two" } }`
 	cases := map[string]string{
 		"retyped": `import tui 1.0
-Flex { id: list direction: Tui.Vertical Button { id: a label: "go" nosuch: "x" } }`,
+Flex { id: list direction: Tui.Vertical Button { id: a text: "go" nosuch: "x" } }`,
 		"inserted": `import tui 1.0
 Flex { id: list direction: Tui.Vertical Text { id: a text: "one" } Text { id: b nosuch: "x" } }`,
 		"inserted deeper": `import tui 1.0

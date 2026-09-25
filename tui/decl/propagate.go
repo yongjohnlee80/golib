@@ -203,11 +203,20 @@ func (a *Adapter) setRole(id decl.NodeID, prop string, v qml.SpecValue) error {
 // the node then inherits its parent's.
 func (a *Adapter) Resettable(_, prop string) bool {
 	_, ok := paletteRoles[prop]
-	return ok
+	return ok || prop == visibleProp
 }
 
 // Reset implements [decl.Resetter].
 func (a *Adapter) Reset(id decl.NodeID, prop string) error {
+	if prop == visibleProp {
+		// Removed from the document: shown again, as an item with no
+		// `visible` is.
+		b, ok := a.nodes[id]
+		if !ok {
+			return fmt.Errorf("visible: node %d has no component", id)
+		}
+		return setVisible(b.typ, b.comp, qml.SpecValue{Kind: qml.SpecValueBool, Raw: "true"})
+	}
 	r, ok := paletteRoles[prop]
 	if !ok {
 		return fmt.Errorf("%s cannot be reset", prop)

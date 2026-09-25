@@ -152,6 +152,18 @@ func (d *dialogNode) open() error {
 	return nil
 }
 
+// setTitle is Dialog.title's setter.
+func (d *dialogNode) setTitle(s string) { d.modal.SetTitle(s) }
+
+// setHelp is Dialog.helpText's setter: the help line under the body, with the
+// rule that separates them when the dialog has no buttons to.
+func (d *dialogNode) setHelp(s string) {
+	d.modal.SetFooter(s)
+	if len(d.modal.Buttons()) == 0 {
+		d.modal.SetRule(s != "")
+	}
+}
+
 // close hides the dialog without answering it.
 func (d *dialogNode) close() error {
 	d.modal.Dismiss(widget.DismissProgrammatic)

@@ -222,6 +222,10 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 	if _, ok := paletteRoles[prop]; ok {
 		return decl.PropRuntime
 	}
+	// `visible` is every type's, as Qt's Item.visible is — see setVisible.
+	if prop == visibleProp {
+		return decl.PropRuntime
+	}
 	if a.ctorProps[typeName][prop] {
 		return decl.PropConstructorOnly
 	}

@@ -28,7 +28,7 @@ Split {
         direction: Tui.Vertical
         Text { text: "left pane" }
         Button {
-            label: "Save"
+            text: "Save"
             enabled: true
             onClicked: save()
         }
@@ -321,7 +321,7 @@ func TestASchemaWithNoHandlersNeedsNoSink(t *testing.T) {
 // construction, the engine would never apply it and this setter would never
 // run.
 func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
-	spec, err := qml.QML{}.Parse([]byte(`Button { label: "Save" onClicked: save() }`))
+	spec, err := qml.QML{}.Parse([]byte(`Button { text: "Save" onClicked: save() }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
 	var applied []string
 	var labelAtApply string
 	spy := tuidecl.WithSetters("Button", map[string]tuidecl.Setter{
-		"label": func(c tui.Component, v qml.SpecValue) error {
+		"text": func(c tui.Component, v qml.SpecValue) error {
 			btn := c.(*widget.Button)
 			// What the widget held BEFORE this application is the evidence: an
 			// empty label here means construction did not set it.
@@ -371,7 +371,7 @@ func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
 // is pinned rather than left to be rediscovered: construction takes nothing,
 // and the applications run in document order, so the LAST one wins.
 func TestADuplicatedPropertyIsAppliedInDocumentOrder(t *testing.T) {
-	spec, err := qml.QML{}.Parse([]byte(`Button { label: "first" label: "second" }`))
+	spec, err := qml.QML{}.Parse([]byte(`Button { text: "first" text: "second" }`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

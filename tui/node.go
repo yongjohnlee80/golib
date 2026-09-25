@@ -50,4 +50,6 @@ type node struct {
 
 // visible reports whether n was laid out in the current frame with a
 // non-empty Rect — the render/hit-test/tab-stop condition.
-func (n *node) visible() bool { return n.measured && n.placed && !n.rect.Empty() }
+func (n *node) visible() bool {
+	return n.measured && n.placed && !n.rect.Empty() && !hidden(n.comp)
+}

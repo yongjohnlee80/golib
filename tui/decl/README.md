@@ -74,15 +74,20 @@ change at runtime, which is what makes it bindable to a source.
 | `MenuItem` | `text`, `checkable`, `group`, `shortcut` | `checked`, `enabled` | `triggered` | — |
 | `MenuSeparator` | — | — | — | — |
 | `Shortcut` | `sequence` | — | `activated` | — |
-| `Frame` | `title`, palette | — | — | — |
-| `Editor` | `text`, `wrap`, palette | `keyset`, `readOnly` | `modeChanged`, `textChanged` | — |
+| `Frame` | palette | `title` | — | — |
+| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly` | `modeChanged`, `textChanged` | — |
 | `StatusBar` | palette | `left`, `center`, `right` | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — |
-| `Button` | — | `label`, `enabled` | `clicked` | — |
-| `Split` | `orientation` | — | — | — |
+| `Button` | — | `text`, `enabled` | `clicked` | — |
+| `Split` | `orientation` | `ratio` | — | — |
 | `Flex` | `direction` | — | — | — |
-| `Dialog` | `title`, `helpText`, `dim`, `standardButtons`, palette | — | `accepted`, `rejected`, `closed` | `open()`, `close()` |
+| `Dialog` | `dim`, `width`, `standardButtons`, palette | `title`, `helpText` | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
+
+**Every element that takes a place on screen has `visible`** — Qt's
+`Item.visible`, a runtime property: hidden, it takes no space, is not painted
+or a tab stop, and hides what is under it; removed by a reload, it is shown
+again.
 
 **Every element except `Window`, `Frame`, `Split`, `Flex` and `Dialog` is
 childless or holds only its own kind** — `MenuBar` holds `Menu`s, a `Menu`
