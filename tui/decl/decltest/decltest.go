@@ -84,7 +84,9 @@ func RunWith(t testing.TB, width, height int, setup func(*tuidecl.Program) error
 	s.Program = p
 	if setup != nil {
 		if err := setup(p); err != nil {
-			t.Fatalf("setup: %v", err)
+			// Built but never to run: its providers are already subscribed,
+			// so release the tree before failing, or they outlive the test.
+			t.Fatalf("setup: %v", errors.Join(err, p.Tree().Destroy()))
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())

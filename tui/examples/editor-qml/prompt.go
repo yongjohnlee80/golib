@@ -29,7 +29,11 @@ func (h *Host) runCommand(line string) error {
 		return h.quitAsking()
 	case cmd == "wq" && arg == "":
 		if h.path == "" {
-			return h.saveFile() // the Save dialog; quitting waits for a name
+			// The Save dialog asks for a name; the quit waits for the file
+			// to be written (saveAs), and is dropped if the dialog is
+			// cancelled (saveCancelled) or the write fails.
+			h.quitAfterSave = true
+			return h.saveFile()
 		}
 		if err := h.write(h.path); err != nil {
 			return err

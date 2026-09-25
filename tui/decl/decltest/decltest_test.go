@@ -5,10 +5,13 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
 
+	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 )
@@ -203,4 +206,30 @@ type fatalRecorder struct {
 func (r *fatalRecorder) Fatalf(format string, args ...any) {
 	r.fatal = fmt.Sprintf(format, args...)
 	runtime.Goexit()
+}
+
+// ticker is a provider that counts its subscriptions and their cancels.
+type ticker struct{ subs, cancels atomic.Int32 }
+
+func (p *ticker) Subscribe(fn func(decl.Update)) ([]string, func() error, error) {
+	p.subs.Add(1)
+	fn(decl.Update{Version: 1, Values: map[string]qml.SpecValue{"Clock.now": {Kind: qml.SpecValueString, Raw: "t"}}})
+	return []string{"Clock.now"}, func() error { p.cancels.Add(1); return nil }, nil
+}
+
+// TestRunWithReleasesTheProgramWhenSetupFails: the program is built — its
+// providers subscribed — and will never run; failing setup must release it.
+func TestRunWithReleasesTheProgramWhenSetupFails(t *testing.T) {
+	p := &ticker{}
+	r := &fatalRecorder{T: t}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		decltest.RunWith(r, 40, 5, func(*tuidecl.Program) error { return fmt.Errorf("no editor") },
+			append(options(files, nil), tuidecl.Providers(p))...)
+	}()
+	<-done
+	if p.subs.Load() != 1 || p.cancels.Load() != 1 {
+		t.Fatalf("subscribed %d, cancelled %d: want the one subscription released", p.subs.Load(), p.cancels.Load())
+	}
 }

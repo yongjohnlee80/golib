@@ -352,3 +352,13 @@ func TestClickingIntoTheEditorClosesAnOpenMenu(t *testing.T) {
 		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "INSERT")
 	})
 }
+
+// TestNewReturnsNoHostWhenItCannotAttach: a layout with no editor builds, but
+// the host cannot attach to it — New says so, and hands back nothing.
+func TestNewReturnsNoHostWhenItCannotAttach(t *testing.T) {
+	h, err := New(Options{Layout: []byte("import tui 1.0\nWindow { Text { text: \"no editor\" } }"),
+		App: []tui.AppOption{tui.WithBackend(tui.NewTestBackend(20, 4))}})
+	if err == nil || h != nil || !strings.Contains(err.Error(), "no Editor") {
+		t.Fatalf("New = %v, %v", h, err)
+	}
+}

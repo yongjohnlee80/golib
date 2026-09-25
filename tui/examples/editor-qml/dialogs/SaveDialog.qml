@@ -19,4 +19,5 @@ FileDialog {
     selectedFile: App.path
     dim: false          // the editor stays in view behind it, as behind Quit
     onAccepted: App.saveAs(selectedFile)
+    onRejected: App.saveCancelled()
 }

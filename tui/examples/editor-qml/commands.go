@@ -14,16 +14,17 @@ import (
 // says what it takes: nothing, or a path — `App.openFile(selectedFile)`.
 func (h *Host) commands() map[string]decl.HandlerFunc {
 	return map[string]decl.HandlerFunc{
-		"App.newFile":    none(h.newFile),
-		"App.openFile":   oneString("App.openFile", "a path", h.openFile),
-		"App.saveFile":   none(h.saveFile),
-		"App.saveAs":     oneString("App.saveAs", "a path", h.saveAs),
-		"App.quit":       none(func() error { h.p.Quit(); return nil }),
-		"App.useVim":     none(func() error { return h.useKeyset("vim", "switched keymap to Vim (modal)") }),
-		"App.useNano":    none(func() error { return h.useKeyset("nano", "switched keymap to Nano (modeless)") }),
-		"App.syncStatus": none(h.syncStatus),
-		"App.markDirty":  none(func() error { return h.setDirty(true) }),
-		"App.runCommand": oneString("App.runCommand", "a command line", h.runCommand),
+		"App.newFile":       none(h.newFile),
+		"App.openFile":      oneString("App.openFile", "a path", h.openFile),
+		"App.saveFile":      none(h.saveFile),
+		"App.saveAs":        oneString("App.saveAs", "a path", h.saveAs),
+		"App.quit":          none(func() error { h.p.Quit(); return nil }),
+		"App.useVim":        none(func() error { return h.useKeyset("vim", "switched keymap to Vim (modal)") }),
+		"App.useNano":       none(func() error { return h.useKeyset("nano", "switched keymap to Nano (modeless)") }),
+		"App.syncStatus":    none(h.syncStatus),
+		"App.markDirty":     none(func() error { return h.setDirty(true) }),
+		"App.saveCancelled": none(h.saveCancelled),
+		"App.runCommand":    oneString("App.runCommand", "a command line", h.runCommand),
 	}
 }
 
