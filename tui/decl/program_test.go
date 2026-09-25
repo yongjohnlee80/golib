@@ -25,7 +25,7 @@ var programFiles = fstest.MapFS{
 	"main.qml": {Data: []byte("import tui 1.0\nimport demo 1.0\nimport demo.theme.dark 1.0\n" +
 		"Flex {\n direction: Tui.Vertical\n" +
 		" Text { id: status; text: App.status; palette.window: Theme.bg; palette.windowText: Theme.fg }\n" +
-		" Button { id: go; label: \"go\"; onClicked: App.go() }\n" +
+		" Button { id: go; text: \"go\"; onClicked: App.go() }\n" +
 		" Greeting { }\n}")},
 	"themes/dark.qml":  {Data: []byte(`Theme { bg: "black"; fg: "white" }`)},
 	"themes/light.qml": {Data: []byte(`Theme { bg: "white"; fg: "black"`)}, // broken: never read
@@ -112,7 +112,7 @@ func TestAProgramReadsOnlyTheImportedTheme(t *testing.T) {
 // every handler error when it ends.
 func TestAProgramNeverDropsAHandlerError(t *testing.T) {
 	boom := errors.New("the save failed")
-	src := []byte("import demo 1.0\nButton { id: go; label: \"go\"; onClicked: App.fail() }")
+	src := []byte("import demo 1.0\nButton { id: go; text: \"go\"; onClicked: App.fail() }")
 	p, err := tuidecl.NewProgram(
 		tuidecl.LayoutSource("fail.qml", src),
 		tuidecl.Singleton("demo", "1.0", "App"),
@@ -153,7 +153,7 @@ func TestAProgramRefusesWhatItCannotRun(t *testing.T) {
 }
 
 func TestCommandsRefuseArgumentsTheyDoNotTake(t *testing.T) {
-	src := []byte("import demo 1.0\nButton { id: go; label: \"go\"; onClicked: App.noArgs(\"x\") }")
+	src := []byte("import demo 1.0\nButton { id: go; text: \"go\"; onClicked: App.noArgs(\"x\") }")
 	var sunk []error
 	p, err := tuidecl.NewProgram(
 		tuidecl.LayoutSource("args.qml", src),

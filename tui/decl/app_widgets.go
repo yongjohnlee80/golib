@@ -27,11 +27,15 @@ import (
 func appTypes() []Type {
 	return []Type{
 		{Name: "Window", Build: buildWindow},
-		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame},
+		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
+			"title": setter("a Frame", stringOf, (*widget.Box).SetTitle),
+		}},
 		{Name: "SyntaxHighlighter", Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()},
 		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
+			// Qt's TextEdit.text: setting it replaces the buffer, as a load does.
+			"text": setter("an Editor", stringOf, (*widget.Editor).SetValue),
 		}},
 		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, Setters: map[string]Setter{
 			"left":   setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetLeft)),
@@ -58,8 +62,12 @@ func appTypes() []Type {
 			Signals:   map[string][]string{"accepted": {"selectedFile"}},
 			Destroyed: releaseDialog},
 		{Name: "Dialog", Build: buildDialog,
-			Ctor:      []string{"title", "helpText", "dim", "width", "standardButtons"},
-			restyle:   restyleDialog,
+			Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons"},
+			restyle: restyleDialog,
+			Setters: map[string]Setter{
+				"title":    setter("a Dialog", stringOf, (*dialogNode).setTitle),
+				"helpText": setter("a Dialog", stringOf, (*dialogNode).setHelp),
+			},
 			Methods:   dialogMethods,
 			Destroyed: releaseDialog},
 	}

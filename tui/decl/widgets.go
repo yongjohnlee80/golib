@@ -78,11 +78,13 @@ var directions = enum[tui.Direction]{values: map[string]tui.Direction{
 
 func coreTypes() []Type {
 	return []Type{
-		{Name: "Split", Build: buildSplit, Ctor: []string{"orientation"}},
+		{Name: "Split", Build: buildSplit, Ctor: []string{"orientation"}, Setters: map[string]Setter{
+			"ratio": setter("a Split", numberOf, (*widget.Split).SetRatio),
+		}},
 		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}},
 		{Name: "Button", Build: buildButton, Setters: map[string]Setter{
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
-			"label":   setter("a Button", stringOf, (*widget.Button).SetLabel),
+			"text":    setter("a Button", stringOf, (*widget.Button).SetLabel), // Qt's AbstractButton.text
 		}},
 		{Name: "Text", Build: buildText, Ctor: []string{"wrapMode"}, restyle: restyleText, Setters: map[string]Setter{
 			"text": setter("a Text", stringOf, (*widget.Text).SetText),

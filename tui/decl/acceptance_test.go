@@ -41,7 +41,7 @@ Split {
         Text { text: Theme.heading }
         Text { text: Theme.body }
         Button {
-            label: "Save"
+            text: "Save"
             enabled: true
             onClicked: save()
         }

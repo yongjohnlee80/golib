@@ -96,7 +96,7 @@ func extended(t *testing.T, src string, extra ...tuidecl.Type) (*decl.Tree, *tui
 func TestACustomWidgetBindsAndIsCalledByID(t *testing.T) {
 	src := "import tui 1.0\nFlex {\n direction: Tui.Vertical\n" +
 		" Gauge { id: cpu; start: 1; label: \"CPU\"; value: cpu_ }\n" +
-		" Button { id: go; label: \"reset\"; onClicked: cpu.reset() }\n}"
+		" Button { id: go; text: \"reset\"; onClicked: cpu.reset() }\n}"
 	src = strings.Replace(src, "cpu_", "cpu", 1) // the source named cpu, the node cpu
 	_, _, err, _ := extended(t, src)
 	// The id `cpu` spells the source `cpu`: ambiguous, and refused.

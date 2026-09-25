@@ -137,6 +137,28 @@ func WithModalFooter(text string) ModalOption {
 	return func(m *Modal) { m.card.footer = text }
 }
 
+// SetTitle replaces the title in the card's top border.
+func (m *Modal) SetTitle(s string) {
+	if m.card.title == s {
+		return
+	}
+	m.card.title = s
+	if ctx := m.card.Context(); ctx != nil {
+		ctx.RequestLayout() // the title sets a floor on the card's width
+	}
+}
+
+// SetRule turns the rule under the body on or off.
+func (m *Modal) SetRule(v bool) {
+	if m.card.rule == v {
+		return
+	}
+	m.card.rule = v
+	if ctx := m.card.Context(); ctx != nil {
+		ctx.RequestLayout()
+	}
+}
+
 // SetFooter replaces the help line under the buttons — for a dialog whose keys
 // depend on where the keyboard is inside it. "" removes it.
 func (m *Modal) SetFooter(text string) {

@@ -108,7 +108,17 @@ import "github.com/yongjohnlee80/golib/tui"
 //		w.MarkDirty() // Safe both before and after mount
 //	}
 type Base struct {
+	tui.Visibility
 	ctx *tui.Context // set by Init; carries NodeID, App handles, unmount context
+}
+
+// SetVisible shows or hides the widget and everything under it — Qt's
+// Item.visible (tui/visibility.go). Legal before mount; a mounted widget is
+// laid out again.
+func (b *Base) SetVisible(v bool) {
+	if b.Show(v) && b.ctx != nil {
+		b.ctx.RequestLayout()
+	}
 }
 
 // Init stores the mount context. Widgets overriding Init must chain to it
