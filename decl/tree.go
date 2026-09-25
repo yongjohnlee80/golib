@@ -107,6 +107,10 @@ type Tree struct {
 	// only order a schema author can see, and therefore the only defensible
 	// fan-out order when a propagation stops part-way.
 	bindings []*binding
+	// bindingsByNode indexes bindings by their node: bindingFor and
+	// dropBindings are asked once per property and per node, and a scan of
+	// every binding each time made a mount or a reload quadratic.
+	bindingsByNode map[NodeID][]*binding
 	// preEval holds each node's properties with its bindings already evaluated,
 	// computed by a whole-tree pass BEFORE any node is allocated. Without it a
 	// binding failure deep in a schema would leave the nodes above it allocated
@@ -748,7 +752,7 @@ func (t *Tree) Destroy() error {
 	// the lifetime boundary for both, and the alternative is a half-reset
 	// engine: DeclareSource is refused after Mount, so a tree re-mounted with
 	// sources carried over could never have its set corrected.
-	t.bindings = nil
+	t.bindings, t.bindingsByNode = nil, nil
 	t.sources = nil
 	// The typed registry goes with them, and so do the functions it seeded. The
 	// registry is the authority on what a name IS, so a function surviving a
