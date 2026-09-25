@@ -143,6 +143,11 @@ type App struct {
 	// repairFocus's empty-scope branch.
 	pendingRepair bool
 
+	// pendingFocusInto is a FocusInto whose target had not been laid out yet
+	// — a pane shown in the same turn — to apply after the next layout; 0 for
+	// none. A focus change before then cancels it. See FocusInto.
+	pendingFocusInto NodeID
+
 	// Pointer capture. captureOwner is 0 when nobody holds the pointer.
 	// captureFocus is the focused node sampled at acquisition, which is what
 	// "focus left the owner's subtree" is measured against — the owner itself
@@ -596,6 +601,12 @@ func (a *App) repairInvisibleFocus() {
 // becomes visible, produces no repaint and therefore no further frame to retry
 // in. The flag is cleared before the retry, so one layout buys one attempt.
 func (a *App) retryDeferredFocusRepair() {
+	if id := a.pendingFocusInto; id != 0 {
+		a.pendingFocusInto = 0 // one layout buys one attempt
+		if n := a.nodes[id]; n != nil {
+			a.FocusInto(n.comp)
+		}
+	}
 	if !a.pendingRepair {
 		return
 	}

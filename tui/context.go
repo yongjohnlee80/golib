@@ -94,8 +94,10 @@ func (c *Context) FocusComponent(comp Component) bool {
 // comp, live), else the first component in comp's subtree, in document order,
 // that takes focus now — so a pane, a frame or a form is focused by naming it,
 // whatever its focusable part is. A hidden subtree, or one a focus trap keeps
-// out, takes none. Returns whether focus is now within comp. Loop goroutine
-// only.
+// out, takes none. A subtree shown in this same turn, not laid out yet, takes
+// it after the next layout — unless focus moves elsewhere first — as Qt's
+// forceActiveFocus takes an item being shown. Returns whether focus is now
+// within comp. Loop goroutine only.
 func (c *Context) FocusInto(comp Component) bool { return c.app.FocusInto(comp) }
 
 // HoldsFocusable reports whether comp, or anything under it, takes focus BY
