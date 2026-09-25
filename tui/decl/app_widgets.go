@@ -20,24 +20,24 @@ import (
 //	    StatusBar { Dock.edge: Tui.Bottom }
 //	}
 //
-// LAYOUT ONLY. Nothing here takes a colour: how these things look is a separate
-// concern with its own module, so a document's structure and its theme can
-// change independently.
+// Colours come in through `palette.<role>` (see palette.go), bound to a theme
+// module the document imports — so a document's structure and its theme change
+// independently, and the theme by its import line alone.
 
 func appTypes() []widgetType {
 	return []widgetType{
 		{name: "Window", build: buildWindow},
-		{name: "Frame", build: buildFrame, ctor: []string{"title"}},
-		{name: "Editor", build: buildEditor, ctor: []string{"text", "wrap"}, setters: map[string]Setter{
+		{name: "Frame", build: buildFrame, ctor: append([]string{"title"}, paletteProps(frameRoles)...)},
+		{name: "Editor", build: buildEditor, ctor: append([]string{"text", "wrap"}, paletteProps(editorRoles)...), setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
 		}},
-		{name: "StatusBar", build: buildStatusBar, setters: map[string]Setter{
+		{name: "StatusBar", build: buildStatusBar, ctor: paletteProps(statusRoles), setters: map[string]Setter{
 			"left":   setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetLeft)),
 			"center": setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetCenter)),
 			"right":  setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetRight)),
 		}},
-		{name: "MenuBar", build: buildMenuBar, ctor: []string{"vimNavigation"}},
+		{name: "MenuBar", build: buildMenuBar, ctor: append([]string{"vimNavigation"}, paletteProps(menuRoles)...)},
 		{name: "Menu", build: buildMenu, ctor: []string{"title", "align"}},
 		{name: "MenuItem", build: buildMenuItem, ctor: []string{"text", "checkable", "group", "shortcut"},
 			setters: map[string]Setter{
@@ -78,11 +78,12 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("Frame needs exactly 1 child, got %d (at %s)", len(b.Children), b.Pos)
 	}
 	var title string
-	consumed, err := readProps(b.Props, map[string]field{"title": into(&title, stringOf)})
+	p := palette{}
+	consumed, err := readProps(b.Props, withPalette(map[string]field{"title": into(&title, stringOf)}, p, frameRoles))
 	if err != nil {
 		return nil, nil, err
 	}
-	var opts []widget.BoxOption
+	opts := p.frameOptions()
 	if title != "" {
 		opts = append(opts, widget.WithTitle(title))
 	}
@@ -110,10 +111,11 @@ func EditorOf(c tui.Component) (*widget.Editor, bool) {
 func buildEditor(b Build) (tui.Component, []string, error) {
 	var text string
 	var wrap bool
-	consumed, err := readProps(b.Props, map[string]field{
+	p := palette{}
+	consumed, err := readProps(b.Props, withPalette(map[string]field{
 		"text": into(&text, stringOf),
 		"wrap": into(&wrap, boolOf),
-	})
+	}, p, editorRoles))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -126,6 +128,9 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 	if wrap {
 		opts = append(opts, widget.WithEditorWrap(widget.WrapSoft))
 	}
+	if st, ok := p.editorStyles(); ok {
+		opts = append(opts, widget.WithEditorStyles(st))
+	}
 	return widget.NewEditor(opts...), consumed, nil
 }
 
@@ -135,12 +140,21 @@ func buildStatusBar(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, fmt.Errorf("StatusBar takes no children (at %s)", b.Pos)
 	}
-	return widget.NewStatusBar(), nil, nil
+	p := palette{}
+	consumed, err := readProps(b.Props, withPalette(map[string]field{}, p, statusRoles))
+	if err != nil {
+		return nil, nil, err
+	}
+	var opts []widget.StatusBarOption
+	if st, ok := p.barStyle(); ok {
+		opts = append(opts, widget.WithBarStyle(st))
+	}
+	return widget.NewStatusBar(opts...), consumed, nil
 }
 
 // statusSegment adapts one of the StatusBar's segment setters, which take an
-// optional style this vocabulary does not set: how the bar looks is the
-// theme's concern, not the layout's.
+// optional per-segment style this vocabulary does not set: the bar's palette
+// colours every segment.
 func statusSegment(set func(*widget.StatusBar, string, ...style.Style)) func(*widget.StatusBar, string) {
 	return func(sb *widget.StatusBar, text string) { set(sb, text) }
 }
