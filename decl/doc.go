@@ -1,63 +1,98 @@
 // Package decl instantiates a declarative UI schema and owns the rules that
 // make that instantiation predictable. It knows nothing about any UI toolkit.
 //
-// # What this package is for
+// # Architectural Overview
 //
-// A parsed schema is data: a tree of typed nodes with properties, handler names
-// and children. Turning that into a live interface needs three things that have
-// nothing to do with which toolkit renders it — identity for every node, a
-// deterministic order in which properties are applied, and a contract for what
-// happens when a handler fires. Those live here. Creating a widget and setting a
-// property live in an [Adapter].
+// A parsed schema is purely data: a tree of typed nodes with properties, handler
+// names, signal subscriptions, and child definitions. Turning that static declaration
+// into a live, interactive UI requires three responsibilities that are independent of
+// any UI toolkit:
 //
-// # The seam, and why it is an application rather than a notification
+//  1. Stable identity management for every node across reloads and model updates.
+//  2. Deterministic, document-order property application and dependency resolution.
+//  3. A robust, re-entrant, and cycle-detecting signal/handler dispatch contract.
 //
-// The engine's output is an [Application]: node N's property P now has value V.
-// It is NOT a "something changed, please repaint" notification.
+// These three responsibilities live entirely within this package. Creating widgets,
+// applying concrete properties, invoking layout passes, and invalidating surfaces live
+// in an [Adapter] implementation (such as golib/tui/decl).
 //
-// That distinction is the whole reason the seam is portable. A notification
-// leaves the adapter to work out what to do, which means encoding toolkit
-// knowledge somewhere; worse, it invites the adapter to invalidate on the
-// engine's behalf. Real widgets already decide that for themselves, and they
-// decide differently: one setter schedules a relayout because the value changes
-// the widget's intrinsic size, another repaints only, another additionally
-// repairs focus. Handing the adapter the VALUE lets the widget keep that
-// judgement, which is the only place it can be correct.
+//	┌────────────────────────────────────────────────────────┐
+//	│ QML Schema / Source (*.qml)                            │
+//	└───────────────────────────┬────────────────────────────┘
+//	                            │ parse/qml + parse/js
+//	                            ▼
+//	┌────────────────────────────────────────────────────────┐
+//	│ qml.SpecTree (typed AST, SpecNode, SpecProp, Handlers) │
+//	└───────────────────────────┬────────────────────────────┘
+//	                            │ Mount / Reconcile
+//	                            ▼
+//	┌────────────────────────────────────────────────────────┐
+//	│ decl.Tree (engine: identities, binding graph, cycles)  │
+//	│  ├─ Expands Modules, Components, Repeaters/Models      │
+//	│  ├─ Compiles Handlers (methods, params, property reads)│
+//	│  └─ Reconciles structural edits via Restructurer       │
+//	└───────────────────────────┬────────────────────────────┘
+//	                            │ decl.Adapter Seam
+//	                            │ (Create, Apply, Destroy)
+//	                            ▼
+//	┌────────────────────────────────────────────────────────┐
+//	│ Concrete Toolkit (e.g. tui/decl -> golib/tui widgets)  │
+//	└────────────────────────────────────────────────────────┘
 //
-// # Reload is a reconcile
+// # The Seam: Values over Invalidation Notifications
 //
-// [Tree.Reload] and [Tree.Reconcile] patch a mounted tree to match a new
-// schema rather than rebuilding it. That distinction is the point: a node that
-// keeps its identity keeps everything the toolkit hung on it, and a developer
-// editing a schema file does not lose the scroll offset and half-typed input
-// they were looking at.
+// The engine's output across the [Adapter] seam is an [Application]: "node N's property P
+// now has value V". It is deliberately NOT a "something changed, please repaint" notification.
 //
-// Identity is the declared id, else position. Some edits cannot be patched —
-// a changed type, a changed constructor-only property, a removed property, a
-// new signal, or a child list on a node that cannot restructure — and each is
-// REPORTED in [Result.Rebuilt] with the edit that caused it, because a rebuild
-// is exactly where a reload loses something.
+// That distinction is what makes the seam truly portable:
+//   - A generic invalidation notification forces the adapter to guess what changed and
+//     re-inspect state, leading to redundant queries or toolkit-specific invalidation logic.
+//   - Real widgets already know best how to respond to property mutations: one property setter
+//     might trigger an intrinsic size recalculation and layout invalidation, another might
+//     only require a cell repaint, and a third might update focus ring geometry.
+//   - Handing the adapter the typed [qml.SpecValue] allows individual widget setters to make
+//     that judgement locally and idempotently.
 //
-// A property the adapter does not recognise at all is a different matter: it is
-// REFUSED during planning and nothing is touched, because rebuilding could not
-// help. Telling the two apart needs the optional [Classifier] capability; see
-// [PropertyKind].
+// # Reload is a Reconcile
 //
-// Structural edits need the optional [Restructurer] capability. An adapter
-// without it still reconciles properties; its structural changes simply become
-// rebuilds.
+// [Tree.Reload] and [Tree.Reconcile] patch a mounted tree in-place to match a new schema rather
+// than destroying and rebuilding the hierarchy.
 //
-// # Ownership
+// In-place reconciliation preserves runtime toolkit state:
+//   - A node that keeps its identity retains everything the underlying toolkit attached to it,
+//     such as scroll offsets, active selection, half-typed form inputs, focused widgets,
+//     and in-flight asynchronous tasks.
+//   - Identity is determined primarily by the declared `id:`, and secondarily by positional
+//     index among remaining sibling nodes.
+//   - Non-patchable edits (type changes, constructor-only property modifications, removed
+//     properties without reset capability, new signals on static widgets, or child changes on
+//     nodes lacking restructuring capability) trigger isolated subtree rebuilds, which are
+//     explicitly catalogued and reported in [Result.Rebuilt] alongside their causes.
 //
-// The engine owns node identity, mount order, property application order, and
-// signal emission. The adapter owns widget construction, property setters,
-// handler resolution, and every consequence of a set — including whatever
-// redraw the toolkit needs.
+// # Optional Adapter Capabilities
 //
-// # Concurrency
+// While [Adapter] defines the minimal lifecycle seam ([Adapter.Create], [Adapter.Apply],
+// [Adapter.Destroy]), adapters can implement optional capability interfaces discovered via
+// runtime type assertion:
 //
-// A [Tree] is not safe for concurrent use and does not try to be. It is expected
-// to live on whatever goroutine its adapter's toolkit requires, and an adapter
-// whose toolkit owns state on a single goroutine is responsible for ensuring
-// calls arrive there.
+//	Capability          Method(s)                          Purpose
+//	──────────────────  ─────────────────────────────────  ──────────────────────────────────────────
+//	[Classifier]        ClassifyProperty(type, prop)       Distinguishes runtime vs ctor-only props.
+//	[Restructurer]      CanRestructure, Insert, Remove, Move Enables in-place child splicing.
+//	[Resetter]          Resettable, Reset                  Restores removed properties to defaults.
+//	[RootVetter]        VetRoot                            Validates if a node type can be root.
+//	[Vocabulary]        TypeNames                          Prevents component name collisions.
+//	[Methods]           MethodsOf, Invoke                  Allows handlers to call node methods by id.
+//	[SignalParameters]  SignalParametersOf                 Names arguments carried by emitted signals.
+//	[PropertyReader]    ReadablesOf, ReadProperty          Allows handlers to read node props by id.
+//
+// # Concurrency Model and Thread Ownership
+//
+// A [Tree] is single-threaded and NOT safe for concurrent use across multiple goroutines.
+// It is designed to reside entirely on the UI/event-loop goroutine demanded by the underlying
+// adapter and toolkit.
+//
+// For asynchronous source providers or worker goroutines, hosts must supply a scheduler via
+// [WithScheduler]. The engine uses this scheduler to marshal background updates onto the
+// authoritative event-loop goroutine before modifying reactive state or bindings.
 package decl
