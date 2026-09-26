@@ -231,10 +231,10 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 		closed:   b.Emitter("closed"),
 	}
 	// DECLARATIONS ONLY: each button says what it means — Qt's roles — and the
-	// Modal answers for it (widget ANSWERS). The default, which Enter answers
-	// with, is the one `defaultButton` names, as QMessageBox::setDefaultButton
-	// does, and nothing else: a dialog that names none answers Enter with
-	// nothing. A box's buttons carry their roles and no default.
+	// Modal answers for it (widget ANSWERS). A focused button answers Enter
+	// itself; when another control leaves Enter unclaimed, the dialog answers
+	// with only the button `defaultButton` names. A box's buttons carry their
+	// roles and no implicit default.
 	buttons := make([]*widget.Button, 0, len(s.buttons))
 	for i, sb := range s.buttons {
 		label, key, _ := mnemonic(sb.label)

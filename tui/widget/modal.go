@@ -123,23 +123,21 @@ func WithAcceptGate(fn func() bool) ModalOption {
 //	ButtonRoleDestructive  its callback, then closed with no answer (DismissDiscard)
 //	ButtonRoleAction       its callback only; the dialog stays
 //
-// ENTER IS THE DIALOG'S: a dialog's buttons leave it unclaimed, and the dialog
-// presses its default button (WithDefault) — or nothing, when none is declared,
-// so an irreversible answer is never one stray Enter away. Space presses the
-// focused button.
+// A focused button answers Enter and Space itself. When another focused
+// control leaves Enter unclaimed, the dialog presses its explicit default
+// button (WithDefault), or does nothing when none is declared.
 
-// adopt makes buttons the dialog's — each answers by its role, and leaves
-// Enter to the dialog — and releases those in was that are no longer held.
+// adopt makes buttons the dialog's — each answers by its role — and releases
+// those in was that are no longer held.
 func (m *Modal) adopt(was, now []*Button) {
 	held := map[*Button]bool{}
 	for _, b := range now {
 		held[b] = true
-		b.inDialog = true
 		b.answer = func() { m.answerFor(b) }
 	}
 	for _, b := range was {
 		if b != nil && !held[b] {
-			b.inDialog, b.answer = false, nil
+			b.answer = nil
 		}
 	}
 }
@@ -633,9 +631,8 @@ func (m *Modal) Init(ctx *tui.Context) {
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(m.keys))
 }
 
-// modalKeys turns Escape into a dismissal action. Enter is deliberately NOT
-// bound here: it belongs to whichever button holds focus, and binding it at the
-// dialog would shadow every button's own activation.
+// keys handles Escape and the dialog's fallback Enter. Routing starts at the
+// focused control, so a focused button claims Enter before it reaches here.
 func (m *Modal) keys(ev tui.Event) (tui.Action, bool) {
 	k, ok := ev.(tui.KeyEvent)
 	if !ok || k.Kind == tui.KeyRelease || k.Mods.Chord() != 0 {

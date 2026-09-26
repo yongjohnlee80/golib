@@ -9,7 +9,8 @@ import (
 )
 
 // modal_answers_test.go: a dialog answers by its buttons' roles — Qt's
-// QDialogButtonBox roles — and Enter is the dialog's, its default button's.
+// QDialogButtonBox roles — and Enter belongs to the focused button before
+// falling back to the dialog's default button.
 // The ONE rule, for a native Modal and for the declarative layer over it.
 
 type answersFixture struct {
@@ -100,30 +101,40 @@ func TestAnActionRoleButtonLeavesTheDialogOpen(t *testing.T) {
 	}
 }
 
-// NO DEFAULT: Enter answers nothing, whichever button has focus — Save,
-// listed first and focused, included.
-func TestEnterAnswersNothingInADialogWithNoDefault(t *testing.T) {
-	f := newAnswers(t, false)
-	defer f.h.stop()
-	for _, move := range []rune{0, tui.KeyRight, tui.KeyTab} {
-		if move != 0 {
-			f.h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: move})
-		}
-		f.h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
-		f.mark(t)
-	}
-	if got := f.read(); got != "mark,mark,mark" || !f.open() {
-		t.Errorf("Enter answered: logged %q, open=%v; want only the marks", got, f.open())
+// NO DEFAULT: Enter still activates the focused button, by the same path as
+// Space. It is not a silent key in a dialog.
+func TestEnterPressesTheFocusedButtonWithoutADefault(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		move rune
+		want string
+	}{
+		{"on Save", 0, "save,dismiss:accept"},
+		{"on Discard", tui.KeyRight, "discard,dismiss:discard"},
+		{"on Discard via Tab", tui.KeyTab, "discard,dismiss:discard"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newAnswers(t, false)
+			defer f.h.stop()
+			if c.move != 0 {
+				f.h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: c.move})
+			}
+			f.h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+			f.h.waitFor("the answer", func() bool { return strings.Contains(f.read(), "dismiss:") })
+			if got := f.read(); got != c.want {
+				t.Errorf("Enter answered %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 
-// A DEFAULT: Enter presses it wherever focus is; Space presses the focused one.
-func TestEnterPressesTheDefaultAndSpaceTheFocused(t *testing.T) {
+// A DEFAULT: a focused button still gets Enter before the dialog default.
+func TestEnterAndSpacePressTheFocusedButtonBeforeTheDefault(t *testing.T) {
 	f := newAnswers(t, true)
 	f.h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 	f.h.waitFor("the answer", func() bool { return strings.Contains(f.read(), "dismiss:") })
-	if got := f.read(); got != "save,dismiss:accept" {
-		t.Errorf("Enter with focus on Discard answered %q, want the default's save,dismiss:accept", got)
+	if got := f.read(); got != "discard,dismiss:discard" {
+		t.Errorf("Enter with focus on Discard answered %q, want discard,dismiss:discard", got)
 	}
 	f.h.stop()
 

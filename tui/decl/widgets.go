@@ -81,7 +81,7 @@ var directions = enum[tui.Direction]{values: map[string]tui.Direction{
 
 func coreTypes() []Type {
 	return []Type{
-		{Name: "Split", Build: buildSplit, Ctor: []string{"orientation"}, Setters: map[string]Setter{
+		{Name: "Split", Build: buildSplit, Ctor: []string{"orientation"}, restyle: restyleSplit, Setters: map[string]Setter{
 			"ratio": setter("a Split", numberOf, (*widget.Split).SetRatio),
 		}},
 		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}, adopt: adoptFlexChild},

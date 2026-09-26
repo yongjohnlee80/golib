@@ -93,10 +93,9 @@ func TestEscapeRejects(t *testing.T) {
 	}
 }
 
-// No default: Enter answers nothing WHICHEVER BUTTON HAS FOCUS — on opening,
-// on Save listed first, and after the user has moved to another — while Space
-// presses the focused button. The box's buttons are not auto-default.
-func TestEnterAnswersNothingWithoutADefault(t *testing.T) {
+// No default: Enter still presses the focused button, just like Space. A
+// DialogButtonBox's buttons are not auto-defaults for other focused controls.
+func TestEnterPressesFocusedButtonWithoutADefault(t *testing.T) {
 	saveFirst := strings.Replace(unsavedDoc, `  DialogButtonBox {
    Button { text: "S&tay";    DialogButtonBox.buttonRole: DialogButtonBox.RejectRole; onClicked: App.log("stay") }
    Button { text: "&Discard"; DialogButtonBox.buttonRole: DialogButtonBox.DestructiveRole; onClicked: App.log("discard") }
@@ -110,31 +109,22 @@ func TestEnterAnswersNothingWithoutADefault(t *testing.T) {
 		t.Fatal("fixture: the Save-first reorder did not apply")
 	}
 	enter := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
-	space := tui.KeyEvent{Kind: tui.KeyPress, Code: ' '}
 	right := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight}
 	tab := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}
 	for _, c := range []struct {
-		name  string
-		move  []tui.Event
-		space string // what Space then answers, on the button focus is on
+		name string
+		move []tui.Event
+		want string // what Enter answers on the focused button
 	}{
 		{"on opening, on Save", nil, "save,accepted"},
 		{"after a step right, on Discard", []tui.Event{right}, "discard"},
 		{"after Tab, on Discard", []tui.Event{tab}, "discard"},
 	} {
 		s, rec := runUnsavedDoc(t, saveFirst)
-		// The mark is the barrier: keys are handled in order, so once it is
-		// logged the Enter before it has been handled too — and answered nothing.
-		s.Keys(t, append(c.move, enter, decltest.Ctrl('k'))...)
-		s.WaitFor(t, "the mark", func(string) bool { return len(rec.all()) > 0 })
-		if got := logged(rec); got != "mark" || !strings.Contains(s.String(), "┌ unsaved ") {
-			t.Fatalf("%s: Enter answered — logged %q, want the mark alone", c.name, got)
-		}
-		s.Keys(t, space)
-		// Every answer here closes the dialog, after its handlers have run.
+		s.Keys(t, append(c.move, enter)...)
 		s.WaitFor(t, "the dialog answered and closed", func(sc string) bool { return !strings.Contains(sc, "┌ unsaved ") })
-		if got := strings.TrimPrefix(logged(rec), "mark,"); got != c.space {
-			t.Errorf("%s, then Space: logged %q, want %q", c.name, got, c.space)
+		if got := logged(rec); got != c.want {
+			t.Errorf("%s, Enter: logged %q, want %q", c.name, got, c.want)
 		}
 	}
 }

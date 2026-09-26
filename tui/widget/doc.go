@@ -252,8 +252,8 @@
 //
 // ACCESSIBILITY AND KEYBOARD PARITY. Everything a pointer can do here, a
 // keyboard can do: Tab and Shift-Tab cycle the dialog's buttons and stop at its
-// edges, Space activates the focused button, Enter the default one, Escape
-// resolves the Reject role,
+// edges, Space and Enter activate the focused button; an unclaimed Enter
+// activates the explicit default, and Escape resolves the Reject role,
 // and focus returns to where it came from when the dialog closes. A dialog with
 // its pointer policy disabled remains fully operable. Nothing depends on the
 // mouse, and no control is reachable only by clicking.

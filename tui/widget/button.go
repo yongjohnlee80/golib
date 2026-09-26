@@ -22,8 +22,9 @@ import (
 
 // ButtonRole says what a button MEANS to the dialog holding it — Qt's
 // QDialogButtonBox::ButtonRole — which is how a Modal answers for it without
-// reading labels. Whether Enter presses it is a separate property, the
-// button's default (WithDefault), as QPushButton keeps it apart from the role.
+// reading labels. A focused button answers Enter regardless of its role;
+// WithDefault separately chooses the fallback when another control leaves
+// Enter unclaimed.
 //
 // Matching on label text — "OK", "Cancel", "No" — breaks the moment an app is
 // translated, and matching on position breaks the moment the buttons are
@@ -87,10 +88,8 @@ type Button struct {
 	// isDefault is QPushButton.default: its dialog's Enter target.
 	isDefault bool
 	// answer is the dialog's answer for this button's role, run after its own
-	// callback; nil outside a dialog. Set by the Modal that holds the button,
-	// and so is inDialog: a dialog's buttons leave Enter to the dialog.
-	answer   func()
-	inDialog bool
+	// callback; nil outside a dialog. Set by the Modal that holds the button.
+	answer func()
 
 	// pointerPolicy is the policy the author asked for, remembered so that a
 	// chained WithPointerPolicy before mount is applied when the Context
@@ -124,8 +123,8 @@ func NewButton(label string, opts ...ButtonOption) *Button {
 }
 
 // WithDefault makes the button its dialog's DEFAULT — QPushButton.default:
-// the one Enter presses, whichever control has focus. At most one per dialog.
-// A dialog with none gives Enter no answer.
+// the one Enter presses when the focused control leaves it unclaimed. A
+// focused button still answers Enter itself. At most one default per dialog.
 func WithDefault(v bool) ButtonOption {
 	return func(b *Button) { b.isDefault = v }
 }
@@ -361,7 +360,7 @@ func (b *Button) State() WidgetState {
 // Init installs the button's own key bindings as its DEFAULT resolver layer, so
 // a consumer can add bindings without having to re-supply these.
 //
-// Space, and Enter outside a dialog, are resolved into the same
+// Space and Enter are resolved into the same
 // ActivateAction the pointer gesture produces, which is what makes keyboard and
 // mouse a single path: the button implements activation once and does not care
 // which arrived.
@@ -374,12 +373,10 @@ func (b *Button) Init(ctx *tui.Context) {
 	}
 }
 
-// keys claims the button's activation keys: Space, and Enter — except in a
-// dialog, where Enter is the dialog's (its default button's) and bubbles to it.
+// keys claims the button's activation keys. A focused dialog button gets Enter
+// before the dialog's default resolver; controls that leave Enter unclaimed
+// still allow the dialog to answer with its explicit default.
 func (b *Button) keys(ev tui.Event) (tui.Action, bool) {
-	if k, ok := ev.(tui.KeyEvent); ok && k.Code == tui.KeyEnter && b.inDialog {
-		return nil, false
-	}
 	return activateKeys(ev)
 }
 
