@@ -128,7 +128,7 @@ func (b *textBuffer) deleteRegion(lo, hi taPos) {
 	joined := strings.Join(first, "") + strings.Join(last, "")
 	touchFrom(&b.changedFrom, lo.ln)
 	b.lines = append(b.lines[:lo.ln], append([]string{joined}, b.lines[hi.ln+1:]...)...)
-	b.ln, b.col = lo.ln, lo.col
+	b.ln, b.col = lo.ln, min(lo.col, len(clusters(joined)))
 	b.anchor = nil
 }
 
@@ -164,7 +164,11 @@ func (b *textBuffer) insertText(text string) {
 	tail := strings.Join(cs[b.col:], "")
 	if len(parts) == 1 {
 		b.lines[b.ln] = head + parts[0] + tail
-		b.col += len(clusters(parts[0]))
+		// The inserted text may COMBINE with the cluster before the cursor.
+		// Counting its clusters in isolation creates a phantom column (e +
+		// a combining accent is one grapheme, not two), then the next typed
+		// rune slices past cs and panics. Count the recomposed prefix instead.
+		b.col = min(len(clusters(head+parts[0])), len(clusters(b.lines[b.ln])))
 	} else {
 		newLines := make([]string, 0, len(parts))
 		newLines = append(newLines, head+parts[0])
@@ -173,7 +177,7 @@ func (b *textBuffer) insertText(text string) {
 		newLines = append(newLines, lastPart+tail)
 		b.lines = append(b.lines[:b.ln], append(newLines, b.lines[b.ln+1:]...)...)
 		b.ln += len(parts) - 1
-		b.col = len(clusters(lastPart))
+		b.col = min(len(clusters(lastPart)), len(clusters(b.lines[b.ln])))
 	}
 	b.anchor = nil
 	b.desired = -1
