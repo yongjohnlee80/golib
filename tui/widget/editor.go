@@ -738,6 +738,32 @@ func (e *Editor) settlePendingRune() {
 	e.edited()
 }
 
+// menuAction starts a semantic editor command independent of the active keyset.
+// A menu can take focus midway through a chord or counted operator: keep a
+// held insert rune as text, but never complete a half-entered prefix or carry
+// its count into a later keystroke. Keep the visual selection for the action.
+func (e *Editor) menuAction(act Action) {
+	e.settlePendingRune()
+	e.groupOpen = false
+	e.count, e.pendingCount = 0, 0
+	e.pendingAct, e.pendingChord = ActUnbound, KeyChord{}
+	e.execAction(act, 1)
+}
+
+// Copy yanks the selected text, or the current line without a selection, to
+// the unnamed register and attempts to export it to the system clipboard.
+// When yanking is disabled it changes neither destination.
+func (e *Editor) Copy() { e.menuAction(ActCopy) }
+
+// Cut deletes the selection, or the current line without a selection, into
+// the unnamed register. As with keyboard deletes, it does NOT export to the
+// system clipboard; a read-only editor refuses the mutation.
+func (e *Editor) Cut() { e.menuAction(ActCut) }
+
+// Paste inserts the unnamed editor register at the cursor, not the system
+// clipboard. A read-only editor refuses the mutation.
+func (e *Editor) Paste() { e.menuAction(ActPaste) }
+
 // mutatingActions are refused in read-only mode (motions, visual entry,
 // and yank stay available — a viewer still navigates and copies).
 func mutatingAction(act Action) bool {
