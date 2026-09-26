@@ -113,3 +113,52 @@ Window { Flex { direction: Tui.Vertical
 		return s.Backend.Flushes() > flushes && viewCell(t, s, "alpha") == before
 	})
 }
+
+func TestPartialPalettesComposeCursorOverRowInBothViews(t *testing.T) {
+	for _, tc := range []struct {
+		name, roles      string
+		activeBG, blurBG tui.CellColor
+		reversed         bool
+	}{
+		{"backgrounds without cursor text", `palette.highlight: "#333344"; palette.inactive.highlight: "#555566"`,
+			tui.CellColor{Kind: tui.CellColorRGB, R: 0x33, G: 0x33, B: 0x44},
+			tui.CellColor{Kind: tui.CellColorRGB, R: 0x55, G: 0x55, B: 0x66}, false},
+		{"base and text without cursor colors", ``,
+			tui.CellColor{Kind: tui.CellColorRGB, R: 0x10, G: 0x10, B: 0x20},
+			tui.CellColor{Kind: tui.CellColorRGB, R: 0x10, G: 0x10, B: 0x20}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tree := tuidecl.NewTreeListModel("key", "label")
+			tree.SetChildren(nil, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "a", "label": "alpha"}}})
+			flat := tuidecl.NewListModel("name")
+			flat.Reset([]tuidecl.Row{{"name": "charlie"}})
+			s := decltest.Run(t, 35, 10,
+				tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+import demo 1.0
+Window {
+ palette.base: "#101020"; palette.text: "#eeeeee"
+ `+tc.roles+`
+ Flex { direction: Tui.Vertical
+  TreeView { id: tree; model: App.tree; textRole: "label"; focus: true; Layout.fillHeight: true }
+  ListView { id: list; model: App.list; textRole: "name"; Layout.fillHeight: true }
+ }
+}`)),
+				tuidecl.Singleton("demo", "1.0", "App"),
+				tuidecl.Sources(map[string]any{"App.tree": tree, "App.list": flat}))
+			fg := tui.CellColor{Kind: tui.CellColorRGB, R: 0xee, G: 0xee, B: 0xee}
+			matches := func(c tui.CellAttrs, bg tui.CellColor) bool {
+				return c.FG == fg && c.BG == bg && (c.Mask&tui.AttrReverse != 0) == tc.reversed
+			}
+			s.WaitFor(t, "both focused and blurred partial cursor styles", func(sc string) bool {
+				if !strings.Contains(sc, "alpha") || !strings.Contains(sc, "charlie") {
+					return false
+				}
+				return matches(viewCell(t, s, "alpha"), tc.activeBG) && matches(viewCell(t, s, "charlie"), tc.blurBG)
+			})
+			s.Program.Post(func() { _ = s.Program.Call("list", "forceActiveFocus") })
+			s.WaitFor(t, "both partial cursor styles after focus exchange", func(string) bool {
+				return matches(viewCell(t, s, "alpha"), tc.blurBG) && matches(viewCell(t, s, "charlie"), tc.activeBG)
+			})
+		})
+	}
+}
