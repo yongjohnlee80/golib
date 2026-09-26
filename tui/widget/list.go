@@ -528,13 +528,13 @@ func (l *List[T]) rowStyle(i int) style.Style {
 	}
 	switch {
 	case i == l.cursor && selected && l.multi:
-		return l.styles.CursorSelected
+		return l.styles.CursorSelected.Inherit(l.styles.SelectedRow).Inherit(l.styles.Row)
 	case i == l.cursor && !l.hasFocus() && l.styles.CursorBlurred != (style.Style{}):
-		return l.styles.CursorBlurred
+		return l.styles.CursorBlurred.Inherit(l.styles.Row)
 	case i == l.cursor:
-		return l.styles.CursorRow
+		return l.styles.CursorRow.Inherit(l.styles.Row)
 	case selected:
-		return l.styles.SelectedRow
+		return l.styles.SelectedRow.Inherit(l.styles.Row)
 	default:
 		return l.styles.Row
 	}
