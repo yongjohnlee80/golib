@@ -410,6 +410,7 @@ func WithTreeStyles(st ListStyles) TreeOption {
 			CursorRow:      st.CursorRow.Inherit(t.styles.CursorRow),
 			SelectedRow:    st.SelectedRow.Inherit(t.styles.SelectedRow),
 			CursorSelected: st.CursorSelected.Inherit(t.styles.CursorSelected),
+			CursorBlurred:  st.CursorBlurred.Inherit(t.styles.CursorBlurred),
 		}
 	}
 }
@@ -486,6 +487,21 @@ func (t *Tree) SetStyles(st ListStyles) {
 		CursorRow:      st.CursorRow.Inherit(t.styles.CursorRow),
 		SelectedRow:    st.SelectedRow.Inherit(t.styles.SelectedRow),
 		CursorSelected: st.CursorSelected.Inherit(t.styles.CursorSelected),
+		CursorBlurred:  st.CursorBlurred.Inherit(t.styles.CursorBlurred),
+	}
+	t.MarkDirty()
+}
+
+// ResetStyles replaces the Tree's looks from its defaults, so a removed QML
+// palette role does not leave the previously resolved color on a live view.
+func (t *Tree) ResetStyles(st ListStyles) {
+	base := ListStyles{CursorRow: style.New().Reverse(true)}
+	t.styles = ListStyles{
+		Row:            st.Row,
+		CursorRow:      st.CursorRow.Inherit(base.CursorRow),
+		SelectedRow:    st.SelectedRow,
+		CursorSelected: st.CursorSelected,
+		CursorBlurred:  st.CursorBlurred,
 	}
 	t.MarkDirty()
 }
@@ -698,6 +714,8 @@ func (t *Tree) collapseNode(n *TreeNode) {
 // HandleEvent implements the navigation contract.
 func (t *Tree) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
+	case tui.FocusEvent:
+		t.MarkDirty() // a configured blurred cursor repaints on focus changes
 	case tui.KeyEvent:
 		return t.handleKey(e)
 	case tui.MouseEvent:
@@ -903,12 +921,15 @@ func (t *Tree) Render(s tui.Surface) {
 		if r.node.hasSt {
 			st = r.node.st.Inherit(st)
 		}
-		// The cursor row paints regardless of focus — same contract as
-		// List, reusing the List viewport arithmetic.
-		// Composites routinely hold focus in a wrapper and forward keys,
-		// and a cursor that vanishes with focus reads as "no cursor".
+		// The cursor remains visible without focus. A caller that names a
+		// blurred look can distinguish panes; otherwise the original cursor
+		// look stays, including under a delegating wrapper.
 		if idx == t.cursor {
-			st = t.styles.CursorRow.Inherit(st)
+			cursor := t.styles.CursorRow
+			if t.styles.CursorBlurred != (style.Style{}) && (t.Context() == nil || !t.Context().Focused()) {
+				cursor = t.styles.CursorBlurred
+			}
+			st = cursor.Inherit(st)
 			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", st)
 		}
 		line := t.rowText(r)

@@ -170,7 +170,10 @@ func (n *listViewNode) currentIndex() int {
 var listViewType = Type{
 	Name:  "ListView",
 	Build: buildListView,
-	Ctor:  []string{"textRole"},
+	restyle: func(c tui.Component, p palette) {
+		c.(*listViewNode).list.ResetStyles(p.viewStyles())
+	},
+	Ctor: []string{"textRole"},
 	Setters: map[string]Setter{
 		"model":        setter("a ListView", modelOf, func(n *listViewNode, m ItemModel) { n.mv.setModel(m) }),
 		"currentIndex": setter("a ListView", numberOf, func(n *listViewNode, v float64) { n.list.SetCursor(int(v)) }),

@@ -234,7 +234,10 @@ func (*treeViewNode) HandleEvent(tui.Event) bool { return false }
 var treeViewType = Type{
 	Name:  "TreeView",
 	Build: buildTreeView,
-	Ctor:  []string{"textRole", "badgeRole"},
+	restyle: func(c tui.Component, p palette) {
+		c.(*treeViewNode).tree.ResetStyles(p.viewStyles())
+	},
+	Ctor: []string{"textRole", "badgeRole"},
 	Setters: map[string]Setter{
 		"model": setter("a TreeView", treeModelOf, func(n *treeViewNode, m TreeModel) { n.setModel(m) }),
 	},

@@ -234,6 +234,24 @@ var (
 	statusRoles = []Role{roleWindow, roleWindowText}
 )
 
+// viewStyles dresses model-backed list/tree rows from their effective palette.
+// Explicit Reverse(false) keeps the default inverted cursor from overriding a
+// pair of named highlight colors; missing roles retain the widget defaults.
+func (p palette) viewStyles() widget.ListStyles {
+	var st widget.ListStyles
+	if p.has(roleBase, roleText) {
+		st.Row = p.look(roleBase, roleText)
+	}
+	if p.has(roleHighlight, roleHighlightedText) {
+		st.CursorRow = p.look(roleHighlight, roleHighlightedText).Reverse(false)
+		st.CursorSelected = st.CursorRow
+	}
+	if p.has(roleInactiveHighlight, roleInactiveHighlightText) {
+		st.CursorBlurred = p.look(roleInactiveHighlight, roleInactiveHighlightText).Reverse(false)
+	}
+	return st
+}
+
 // browserStyles dress a FileDialog's browser: its panes on base, the cursor on
 // highlight while the list has the keyboard and on the inactive highlight once
 // it has not, and each pane framed in mid, or light while it is in use.
