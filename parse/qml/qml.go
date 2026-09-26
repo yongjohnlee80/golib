@@ -35,7 +35,7 @@ import (
 //	Group    := PropName '{' ( Property )* '}'    // font { bold: true }
 //	PropName := Ident { '.' Ident }               // plain, grouped, or attached
 //	Handler  := 'on' Ident ':' JavaScript         // one statement, or a block
-//	Value    := JavaScript                        // an expression
+//	Value    := JavaScript | Node                // expression or object property
 //
 // A PROPERTY VALUE IS A JAVASCRIPT EXPRESSION and a HANDLER BODY IS JAVASCRIPT
 // STATEMENTS, because in QML that is what they are. Both are read by
@@ -129,6 +129,11 @@ const (
 	// host provides. Obj holds it; two object values are the same value
 	// exactly when they hold the same object.
 	SpecValueObject
+	// SpecValueTemplate is an object-valued QML property such as
+	// `delegate: Text { text: model.display }`. The parser records the
+	// complete node; the engine owns its scope and the adapter judges which
+	// properties accept which template type. It is never a host data object.
+	SpecValueTemplate
 )
 
 // String renders the kind for diagnostics.
@@ -148,6 +153,8 @@ func (k SpecValueKind) String() string {
 		return "expression"
 	case SpecValueObject:
 		return "object"
+	case SpecValueTemplate:
+		return "object template"
 	default:
 		return "invalid"
 	}
@@ -177,7 +184,10 @@ type SpecValue struct {
 	Expr *js.Expr
 	// Obj is the host object of a SpecValueObject, nil for every other kind.
 	Obj any
-	Pos parse.Position
+	// Template is a QML object bound to a property (not a screen child).
+	// It is non-nil only for SpecValueTemplate.
+	Template *SpecNode
+	Pos      parse.Position
 }
 
 // SpecProp is one `name: value` pair.
@@ -853,7 +863,31 @@ func (p *qmlParser) value() (SpecValue, error) {
 		}
 	}
 
-	_ = r
+	// The Qt object-binding spelling is `property: Type { ... }`. Probe on a
+	// COPY of the scanner so a normal reference (Theme.foo) is still handed
+	// intact to the one JavaScript expression parser below. No toolkit name is
+	// recognised here: the same syntax works for every QML object property.
+	if isTypeName(string(r)) {
+		probe := *p.sc
+		look := &qmlParser{sc: &probe, maxDepth: p.maxDepth, depth: p.depth}
+		look.ident()
+		for probe.HasPrefix(".") {
+			probe.Take(".")
+			if _, ok := look.ident(); !ok {
+				break
+			}
+		}
+		if err := look.skipSpace(); err != nil {
+			return SpecValue{}, err
+		}
+		if probe.HasPrefix("{") {
+			n, err := p.node()
+			if err != nil {
+				return SpecValue{}, err
+			}
+			return SpecValue{Kind: SpecValueTemplate, Template: n, Pos: at}, nil
+		}
+	}
 
 	// A property value is a JavaScript expression, because in QML that is what
 	// a property value IS. ONE parser reads it — an earlier design had a small

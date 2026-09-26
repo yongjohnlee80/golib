@@ -342,6 +342,7 @@ func mount(c programConfig, spec qml.SpecTree) (*Program, error) {
 		decl.WithScheduler(p.schedule),
 		decl.WithProviderErrorSink(sink),
 	}, c.treeOpts...)...)
+	p.adapter.tree = p.tree
 
 	// EVERY failure from here destroys the tree. register subscribes
 	// providers, and a provider's lifetime — a ticker goroutine, say — ends

@@ -808,7 +808,7 @@ func TestAnExpressionValueIsDeclinedAndNeverForwarded(t *testing.T) {
 	}{
 		{"arithmetic", `Text { text: a + b }`, `the operator "+"`},
 		{"a comparison", `Text { text: count > 0 }`, `the operator ">"`},
-		{"a conditional", `Text { text: a ? b : c }`, "a conditional"},
+		{"unsupported equality", `Text { text: a !== b }`, `the operator "!=="`},
 		{"an index", `Text { text: items[0] }`, "member expression"},
 	}
 	for _, c := range cases {

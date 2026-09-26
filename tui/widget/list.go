@@ -127,7 +127,10 @@ type List[T any] struct {
 	Base
 	src    ListSource[T]
 	render func(T) string
-	multi  bool
+	// paint is an optional styled-row renderer. Navigation, clipping bounds,
+	// viewport selection and focus still belong to List.
+	paint func(tui.Surface, int, int, T, style.Style, bool)
+	multi bool
 
 	cursor int
 	sel    map[int]struct{} // multi-select set
@@ -555,8 +558,14 @@ func (l *List[T]) Render(s tui.Surface) {
 		if reversed, _ := st.GetReverse(); bg || reversed {
 			s.Fill(tui.Rect{X: 0, Y: r, W: contentW, H: 1}, " ", st)
 		}
-		text := truncate(l.render(l.src.Item(i)), contentW, s.StringWidth)
-		drawText(s, 0, r, text, st)
+		item := l.src.Item(i)
+		if l.paint != nil {
+			_, selected := l.sel[i]
+			l.paint(s, r, contentW, item, st, i == l.cursor || selected)
+		} else {
+			text := truncate(l.render(item), contentW, s.StringWidth)
+			drawText(s, 0, r, text, st)
+		}
 	}
 	if scrollable {
 		paintScrollIndicator(s, sz.W-1, sz.H, l.top, max(l.count-sz.H, 1)+1)

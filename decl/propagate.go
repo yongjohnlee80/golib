@@ -5,6 +5,11 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
+// SourceObserver is an optional adapter hook after a successful source commit.
+// Presentation templates may depend on sources without being ordinary node
+// property bindings. Both host Set and provider delivery use this one boundary.
+type SourceObserver interface{ SourcesChanged(names []string) }
+
 // SetSource updates a declared source and propagates the change.
 //
 // The value must be terminal. Updating an undeclared name is refused: the
@@ -136,6 +141,14 @@ func (t *Tree) setSources(values map[string]qml.SpecValue) (PropagationResult, e
 	// leave the host's palette split across two propagations with no way back.
 	for name, v := range overlay {
 		t.sources[name] = v
+	}
+	if watcher, ok := t.adapter.(SourceObserver); ok {
+		names := make([]string, 0, len(overlay))
+		for name := range overlay {
+			names = append(names, name)
+		}
+		sortStrings(names)
+		watcher.SourcesChanged(names)
 	}
 	return res, nil
 }

@@ -52,7 +52,8 @@ func InjectHosts(tr *decl.Tree, hosts HostFuncs) error {
 // Getting calls onto that goroutine is the caller's job, the same as for any
 // other component state.
 type Adapter struct {
-	reg *Registry
+	reg  *Registry
+	tree *decl.Tree
 	// app is the App the program runs on, once there is one (focus.go).
 	app *tui.App
 
@@ -95,6 +96,21 @@ type Adapter struct {
 	// under their scopes.
 	enums []Enum
 }
+
+// refreshTemplates invalidates visible cell paint on a source change. The
+// engine resolves template sources at paint time, while the native List still
+// owns viewport and focus. No model subscription is added by this path.
+func (a *Adapter) refreshTemplates() {
+	for _, built := range a.nodes {
+		if n, ok := built.comp.(*tableViewNode); ok && n.template != nil {
+			n.table.List().MarkDirty()
+		}
+	}
+}
+
+// SourcesChanged follows both Program.Set and provider delivery at the same
+// committed-source boundary. Destroyed views have left a.nodes already.
+func (a *Adapter) SourcesChanged([]string) { a.refreshTemplates() }
 
 // Option configures an [Adapter].
 type Option func(*Adapter)
@@ -347,10 +363,16 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 
 	asked := map[string]bool{}
 	comp, consumed, err := build(Build{
-		Type:          c.Type,
-		Pos:           c.Pos,
-		ID:            c.ID,
-		Props:         own,
+		Type:  c.Type,
+		Pos:   c.Pos,
+		ID:    c.ID,
+		Props: own,
+		Eval: func(v qml.SpecValue, locals map[string]qml.SpecValue) (qml.SpecValue, error) {
+			if a.tree == nil {
+				return qml.SpecValue{}, fmt.Errorf("no tree evaluates a TableView delegate")
+			}
+			return a.tree.EvaluateWith(v, locals)
+		},
 		Children:      children,
 		ChildAttached: childAttached,
 		SelfAttached:  attached,

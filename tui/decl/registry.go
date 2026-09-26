@@ -24,6 +24,9 @@ type Build struct {
 	ID string
 	// Props are the declared properties in document order.
 	Props []qml.SpecProp
+	// Evaluate a stateless object-property template against the current tree
+	// plus values local to one visible model cell.
+	Eval func(qml.SpecValue, map[string]qml.SpecValue) (qml.SpecValue, error)
 	// Children are this node's children, already built, in declaration order.
 	Children []tui.Component
 	// ChildAttached holds each child's ATTACHED properties, aligned with
