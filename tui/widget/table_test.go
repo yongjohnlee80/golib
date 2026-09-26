@@ -89,6 +89,38 @@ func TestStyledTableClearsInheritedReverseOnlyOnUnmarkedCells(t *testing.T) {
 	if raised.Attrs.Mask&tui.AttrReverse != 0 || raised.Attrs.FG.Kind != tui.CellColorANSI || raised.Attrs.FG.Index != 1 {
 		t.Fatalf("inherited Reverse overrode the unselected semantic cell: %+v", raised.Attrs)
 	}
+	h.onLoop(func() { tab.SetCellPresenter(nil) })
+	h.barrier(sh)
+	if !strings.Contains(h.grid(), "raised") {
+		t.Fatal("disabling the cell presenter lost the native table row")
+	}
+	for _, row := range h.tb.Snapshot() {
+		for _, c := range row {
+			if c.Content == "r" && c.Attrs.Mask&tui.AttrReverse == 0 {
+				t.Fatal("the no-delegate path did not restore the native row style")
+			}
+		}
+	}
+}
+
+func TestStyledTableClipsCellsAtItsViewportBoundary(t *testing.T) {
+	tab := widget.NewTable[string]([]widget.TableColumn[string]{
+		{Title: "A", Width: 10, Cell: func(s string) string { return s }},
+		{Title: "B", Width: 10, Cell: func(string) string { return "hidden" }},
+	})
+	tab.SetCellPresenter(func(_ string, col int) widget.StyledCell {
+		if col == 0 {
+			return widget.StyledCell{Text: "abcdefghijk"}
+		}
+		return widget.StyledCell{Text: "hidden"}
+	})
+	sh := newShell(tab)
+	h := startApp(t, sh, 8, 3)
+	h.onLoop(func() { tab.SetItems([]string{"row"}) })
+	h.barrier(sh)
+	if sc := h.grid(); strings.Contains(sc, "hidden") || !strings.Contains(sc, "abc") {
+		t.Fatalf("styled cell crossed its clipped viewport: %q", sc)
+	}
 }
 
 func TestTableEmptyText(t *testing.T) {
