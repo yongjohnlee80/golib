@@ -94,6 +94,37 @@ func reloadScreen(t *testing.T, s *decltest.Screen, src string) {
 	}
 }
 
+func TestSplitDividerUsesInheritedWindowPaletteAndRestylesOnReload(t *testing.T) {
+	build := func(bg string) string {
+		palette := ""
+		if bg != "" {
+			palette = `palette.window: "` + bg + `"; palette.mid: "white";`
+		}
+		return "import tui 1.0\nWindow { " + palette +
+			" Split { orientation: Tui.Horizontal\n Text { text: \"left\" }\n Text { text: \"right\" } } }"
+	}
+	s := runDoc(t, build("blue"))
+	divider := func() tui.Cell {
+		for _, row := range s.Backend.Snapshot() {
+			for _, c := range row {
+				if c.Content == "│" {
+					return c
+				}
+			}
+		}
+		t.Fatal("split divider not rendered")
+		return tui.Cell{}
+	}
+	s.WaitForText(t, "left")
+	if got := divider().Attrs.BG; got != ansi(blue) {
+		t.Fatalf("blue split divider background = %+v", got)
+	}
+	reloadScreen(t, s, build("red"))
+	s.WaitFor(t, "red split divider", func(string) bool { return divider().Attrs.BG == ansi(red) })
+	reloadScreen(t, s, build(""))
+	s.WaitFor(t, "native split divider", func(string) bool { return divider().Attrs.BG == terminalDefault })
+}
+
 // P1 — a child with no palette paints in its parent's.
 func TestP1AChildPaintsInItsParentsPalette(t *testing.T) {
 	s := runDoc(t, "import tui 1.0\nWindow { palette.window: \"blue\"\n Text { text: \"hello\" } }")

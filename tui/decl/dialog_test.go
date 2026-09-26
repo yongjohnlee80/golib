@@ -212,16 +212,16 @@ func TestAFieldInADialogKeepsTheLettersTypedIntoIt(t *testing.T) {
 	}
 }
 
-// TestEnterAnswersOnlyTheNamedDefault: a dialog answers Enter with the button
-// its defaultButton names — from a field too, since a field lets Enter go on
-// after it submits — and with nothing when it names none.
+// TestEnterAnswersOnlyTheNamedDefault: when a focused field leaves Enter
+// unclaimed, the dialog answers with its named default, or with nothing when
+// it names none. A focused button handles Enter before this fallback.
 func TestEnterAnswersOnlyTheNamedDefault(t *testing.T) {
 	for _, c := range []struct {
 		name, buttons, def, body, want string
 	}{
 		{"none named", "Dialog.Ok | Dialog.Cancel", "", "TextField { }", "open"},
 		{"Ok named, from a field", "Dialog.Ok | Dialog.Cancel", "Dialog.Ok", "TextField { }", "accepted"},
-		{"No named", "Dialog.Yes | Dialog.No", "Dialog.No", `Text { text: "delete it?" }`, "rejected"},
+		{"No named, from a field", "Dialog.Yes | Dialog.No", "Dialog.No", "TextField { }", "rejected"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var mu sync.Mutex

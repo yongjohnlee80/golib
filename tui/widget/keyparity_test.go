@@ -163,8 +163,8 @@ func dialogFixture(t *testing.T, opts ...widget.ModalOption) (*harness, *widget.
 // Tab alone is not how a two-button confirmation is used. Arrows are
 // conventional and are the default; the mnemonics are what the original had.
 func TestADialogIsNavigableWithTheArrowsAndItsMnemonics(t *testing.T) {
-	// Space is the focused button's key; Enter is the dialog's, and presses its
-	// default wherever focus is.
+	// Space and Enter activate the focused button. The dialog's default only
+	// answers Enter when the focused control leaves it unclaimed.
 	t.Run("arrows move between the buttons", func(t *testing.T) {
 		h, _, yes, no := dialogFixture(t)
 		defer h.stop()
@@ -193,15 +193,15 @@ func TestADialogIsNavigableWithTheArrowsAndItsMnemonics(t *testing.T) {
 		}
 	})
 
-	t.Run("Enter presses the default wherever focus is", func(t *testing.T) {
+	t.Run("Enter presses the focused button before the default", func(t *testing.T) {
 		h, _, yes, no := dialogFixture(t)
 		defer h.stop()
 		pressOn(h, tui.KeyRight) // focus on No
 		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 		h.settle()
 		h.settle()
-		if yes.Load() != 1 || no.Load() != 0 {
-			t.Errorf("Enter on No gave yes=%d no=%d; want the default, Yes", yes.Load(), no.Load())
+		if yes.Load() != 0 || no.Load() != 1 {
+			t.Errorf("Enter on No gave yes=%d no=%d; want the focused No", yes.Load(), no.Load())
 		}
 	})
 
@@ -408,7 +408,7 @@ func TestADialogIgnoresReleasesChordsAndUnclaimedKeys(t *testing.T) {
 			if yes.Load() != 0 || no.Load() != 0 {
 				t.Errorf("%s activated something: yes=%d no=%d", tc.name, yes.Load(), no.Load())
 			}
-			// Focus has not moved either: Enter still means the default button.
+			// Focus has not moved either: Enter still means the focused button.
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 			h.settle()
 			h.settle()

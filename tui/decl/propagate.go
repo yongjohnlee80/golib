@@ -260,6 +260,20 @@ func restyleText(c tui.Component, p palette) {
 	c.(*widget.Text).WithStyle(p.look(roleWindow, roleWindowText))
 }
 
+func restyleSplit(c tui.Component, p palette) {
+	// The divider occupies its own cells, outside both panes. Give those cells
+	// the surrounding window background; preserve the native border token when
+	// a document does not declare a mid colour.
+	st := style.New().Foreground(style.TokenBorder)
+	if bg, ok := p[roleWindow]; ok {
+		st = st.Background(bg)
+	}
+	if fg, ok := p[roleMid]; ok {
+		st = st.Foreground(fg)
+	}
+	c.(*widget.Split).WithDividerStyle(st)
+}
+
 func restyleFrame(c tui.Component, p palette) {
 	st, focused := p.frameStyles()
 	c.(*widget.Box).WithStyle(st).WithFocusedStyle(focused)

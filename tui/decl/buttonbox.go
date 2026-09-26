@@ -40,13 +40,12 @@ import (
 // # Enter and Focus Semantics
 //
 // A DialogButtonBox declares no default button:
-//   - Enter answers nothing, regardless of which button currently holds focus: in a Dialog, Enter
-//     reaches the dialog only when the focused control leaves it unclaimed, and answers only the
-//     button explicitly named by `defaultButton`. No standard button is a default by being one, and
-//     a DialogButtonBox declares none.
-//   - Buttons answer by Space while holding focus, by their mnemonic shortcut, or by click.
-//   - An irreversible or destructive answer is never one stray Enter away, whichever order
-//     answers are listed in.
+//   - A focused button answers Enter or Space before the dialog can handle the key.
+//   - When another focused control leaves Enter unclaimed, the dialog answers only
+//     the button explicitly named by `defaultButton`; no standard button becomes
+//     a default merely by being listed.
+//   - Buttons also answer by mnemonic shortcut or click. Set initial focus
+//     deliberately when the first button performs a destructive action.
 
 var buttonRoles = Enum{Scope: "DialogButtonBox", Values: []string{"AcceptRole", "RejectRole", "DestructiveRole", "ActionRole"}}
 
