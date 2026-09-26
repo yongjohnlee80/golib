@@ -547,6 +547,13 @@ func (l *List[T]) Render(s tui.Surface) {
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
+	// A themed view owns its entire viewport, not only the rows its model
+	// currently has. This also paints the space below a short table on the
+	// same base color as its cells, without imposing a background on unthemed
+	// lists that intentionally inherit their parent's surface.
+	if _, hasBG := l.styles.Row.GetBackground(); hasBG {
+		s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", l.styles.Row)
+	}
 	l.count = l.src.Len() // the one Len() read of this pass
 	l.clamp()
 	if l.count == 0 {

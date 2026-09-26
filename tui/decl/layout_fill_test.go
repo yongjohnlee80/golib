@@ -37,6 +37,32 @@ func TestATableThatFillsLeavesRoomForTheButtonsAfterIt(t *testing.T) {
 	}
 }
 
+// A hidden weighted sibling must not reserve half the remaining height.
+// This is the table/JSON switch used by consumers: exactly one view is
+// visible, and each must take every row beneath the summary.
+func TestHiddenFillingSiblingGivesItsWholeHeightToTheVisibleView(t *testing.T) {
+	s := decltest.Run(t, 40, 22,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
+			"Flex { direction: Tui.Vertical\n Text { text: \"summary\" }\n"+
+			" TableView { visible: App.tableShown; model: App.rows; Layout.fillHeight: true; TableViewColumn { role: \"name\"; title: \"TABLE\" } }\n"+
+			" TableView { visible: App.jsonShown; model: App.rows; Layout.fillHeight: true; TableViewColumn { role: \"name\"; title: \"JSON\" } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.tableShown": true, "App.jsonShown": false, "App.rows": tableRows(30)}))
+	s.WaitForText(t, "TABLE")
+	if sc := s.String(); !strings.Contains(sc, "row16") || strings.Contains(sc, "JSON") {
+		t.Fatalf("the visible table did not fill beneath the summary:\n%s", sc)
+	}
+	onScreenLoop(t, s, func() {
+		if err := s.Program.SetMany(map[string]any{"App.tableShown": false, "App.jsonShown": true}); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "JSON")
+	if sc := s.String(); !strings.Contains(sc, "row16") || strings.Contains(sc, "TABLE") {
+		t.Fatalf("the replacement view did not fill beneath the summary:\n%s", sc)
+	}
+}
+
 // A dialog around a filling table shows its rows, its own button and its Close
 // — short or long, the table squeezed to the screen. (It does not size the card
 // to the rows: a weighted table fills what the dialog offers.)

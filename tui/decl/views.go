@@ -595,7 +595,12 @@ var tableViewType = Type{
 		if text, ok := p[roleText]; ok {
 			n.normal = text
 		}
-		n.table.List().MarkDirty()
+		n.table.List().ResetStyles(p.viewStyles())
+		if p.has(roleBase, roleText) {
+			n.table.SetHeaderStyle(p.look(roleBase, roleText).Bold(true).Underline(true))
+		} else {
+			n.table.SetHeaderStyle(style.Style{})
+		}
 	},
 	Setters: map[string]Setter{
 		"model": func(c tui.Component, v qml.SpecValue) error {

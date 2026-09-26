@@ -118,6 +118,20 @@ type Table[T any] struct {
 	present func(T, int) StyledCell
 }
 
+func defaultTableHeaderStyle() style.Style {
+	return style.New().Foreground(style.TokenTextMuted).Bold(true).Underline(true)
+}
+
+// SetHeaderStyle dresses the header at runtime. A zero style restores the
+// native look, so removing a declarative palette does not leave stale colors.
+func (t *Table[T]) SetHeaderStyle(st style.Style) {
+	if st == (style.Style{}) {
+		st = defaultTableHeaderStyle()
+	}
+	t.headSt = st
+	t.MarkDirty()
+}
+
 // StyledCell is the stateless display template's answer for one visible cell.
 // The table still owns column geometry; the list still owns cursor/focus.
 type StyledCell struct {
@@ -171,7 +185,7 @@ func (t *Table[T]) paintRow(s tui.Surface, y, width int, item T, rowStyle style.
 func NewTable[T any](cols []TableColumn[T], opts ...ListOption[T]) *Table[T] {
 	t := &Table[T]{
 		cols:   cols,
-		headSt: style.New().Foreground(style.TokenTextMuted).Bold(true).Underline(true),
+		headSt: defaultTableHeaderStyle(),
 	}
 	all := append([]ListOption[T]{WithItems[T](nil, t.renderRow)}, opts...)
 	t.list = NewList(all...)
@@ -289,6 +303,9 @@ func (t *Table[T]) Render(s tui.Surface) {
 	sz := s.Size()
 	if sz.W <= 0 || sz.H <= 0 {
 		return
+	}
+	if _, hasBG := t.headSt.GetBackground(); hasBG {
+		s.Fill(tui.Rect{W: sz.W, H: 1}, " ", t.headSt)
 	}
 	x := 0
 	for i, c := range t.cols {

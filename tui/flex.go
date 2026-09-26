@@ -112,6 +112,9 @@ func (f *Flex) Layout(c Constraints) Size {
 	used := 0
 	wsum := 0
 	for i, it := range f.All() {
+		if hidden(it) {
+			continue // a hidden child neither measures nor reserves a share
+		}
 		w := f.weights[it]
 		if w > 0 {
 			wsum += w
@@ -137,7 +140,7 @@ func (f *Flex) Layout(c Constraints) Size {
 		assigned := 0
 		for i, it := range f.All() {
 			w := f.weights[it]
-			if w == 0 {
+			if w == 0 || hidden(it) {
 				continue
 			}
 			shares[i] = r * w / wsum
@@ -154,7 +157,7 @@ func (f *Flex) Layout(c Constraints) Size {
 			shares[rems[i].idx]++
 		}
 		for i, it := range f.All() {
-			if f.weights[it] == 0 {
+			if f.weights[it] == 0 || hidden(it) {
 				continue
 			}
 			sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(shares[i], true, crossMax))
@@ -163,7 +166,7 @@ func (f *Flex) Layout(c Constraints) Size {
 		// Unbounded main axis: there is no remainder to split — weighted
 		// children size to content like fixed ones.
 		for i, it := range f.All() {
-			if f.weights[it] == 0 {
+			if f.weights[it] == 0 || hidden(it) {
 				continue
 			}
 			sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(Unbounded, false, crossMax))

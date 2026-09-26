@@ -6,8 +6,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/parse/js"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -46,6 +48,10 @@ type treeViewNode struct {
 	textRole  string
 	badgeRole string
 	tree      *widget.Tree
+	template  *qml.SpecNode
+	eval      func(qml.SpecValue, map[string]qml.SpecValue) (qml.SpecValue, error)
+	normal    style.Color
+	sink      func(error)
 	// at is each shown node's Index; byPath each node by its path of keys;
 	// pending the expand requests the model is still answering, by path.
 	at        map[*widget.TreeNode]Index
@@ -59,7 +65,8 @@ func buildTreeView(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, fmt.Errorf("a TreeView takes no children; its rows are its model's (at %s)", b.Pos)
 	}
-	n := &treeViewNode{activated: b.EmitterWith("activated"), expanded: b.EmitterWith("expanded")}
+	n := &treeViewNode{activated: b.EmitterWith("activated"), expanded: b.EmitterWith("expanded"),
+		eval: b.Eval, normal: style.Default(), sink: b.sink}
 	consumed, err := readProps(b.Props, map[string]field{
 		"textRole":  into(&n.textRole, stringOf),
 		"badgeRole": into(&n.badgeRole, stringOf),
@@ -67,8 +74,91 @@ func buildTreeView(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	for _, prop := range b.Props {
+		if prop.Name != "delegate" {
+			continue
+		}
+		if prop.Value.Kind != qml.SpecValueTemplate || prop.Value.Template == nil {
+			return nil, nil, fmt.Errorf("TreeView.delegate takes a Text object template (at %s)", prop.Pos)
+		}
+		n.template = prop.Value.Template
+		if n.template.Type != "Text" || n.template.ID != "" || len(n.template.Children) != 0 || len(n.template.Handlers) != 0 {
+			return nil, nil, fmt.Errorf("TreeView.delegate supports stateless Text only, without ids, handlers or children (at %s)", n.template.Pos)
+		}
+		seen := map[string]bool{}
+		for _, p := range n.template.Props {
+			if (p.Name != "text" && p.Name != "color") || seen[p.Name] {
+				return nil, nil, fmt.Errorf("TreeView.delegate Text accepts one text and optional color, not %q (at %s)", p.Name, p.Pos)
+			}
+			seen[p.Name] = true
+		}
+		if !seen["text"] {
+			return nil, nil, fmt.Errorf("TreeView.delegate Text needs text (at %s)", n.template.Pos)
+		}
+		consumed = append(consumed, "delegate")
+	}
 	n.tree = widget.NewTree()
+	if err := n.checkTemplate(nil); err != nil {
+		return nil, nil, err
+	}
 	return n, consumed, nil
+}
+
+// checkTemplate validates row-role references even when the current model has
+// no rows. Presentation is stateless: the model supplies facts and the QML
+// template supplies the look.
+func (n *treeViewNode) checkTemplate(m TreeModel) error {
+	if n.template == nil {
+		return nil
+	}
+	locals := map[string]qml.SpecValue{
+		"palette.text": {Kind: qml.SpecValueObject, Obj: n.normal},
+	}
+	known := map[string]bool{}
+	if m != nil {
+		for _, role := range m.Roles() {
+			known[role] = true
+		}
+	}
+	for _, p := range n.template.Props {
+		register := func(role string) error {
+			if m != nil && !known[role] {
+				return fmt.Errorf("TreeView.delegate: unknown model role %q (at %s)", role, p.Pos)
+			}
+			locals["model."+role] = qml.SpecValue{Kind: qml.SpecValueString, Raw: "normal"}
+			return nil
+		}
+		if p.Value.Kind == qml.SpecValueRef && len(p.Value.Path) == 2 && p.Value.Path[0] == "model" {
+			if err := register(p.Value.Path[1]); err != nil {
+				return err
+			}
+		}
+		if p.Value.Expr != nil {
+			var refErr error
+			p.Value.Expr.Walk(func(e *js.Expr) bool {
+				if e.Kind == js.ExprMember && e.Left != nil && e.Left.Kind == js.ExprIdent && e.Left.Raw == "model" {
+					if err := register(e.Name); err != nil {
+						refErr = err
+						return false
+					}
+				}
+				return true
+			})
+			if refErr != nil {
+				return refErr
+			}
+		}
+		v, err := n.eval(p.Value, locals)
+		if err != nil {
+			return fmt.Errorf("TreeView.delegate %s (at %s): %w", p.Name, p.Pos, err)
+		}
+		if p.Name == "color" {
+			if _, err := colorOf(v); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func treeModelOf(v qml.SpecValue) (TreeModel, error) {
@@ -90,6 +180,47 @@ func (n *treeViewNode) setModel(m TreeModel) {
 		n.cancel = m.Subscribe(n.follow)
 	}
 	n.rebuild()
+}
+
+func (n *treeViewNode) present(ix Index) (string, style.Style) {
+	label := n.model.Data(ix, n.textRole).Raw
+	if n.template == nil {
+		return label, style.Style{}
+	}
+	locals := map[string]qml.SpecValue{
+		"palette.text": {Kind: qml.SpecValueObject, Obj: n.normal},
+	}
+	for _, role := range n.model.Roles() {
+		v := n.model.Data(ix, role)
+		if v.Kind == qml.SpecValueInvalid {
+			v = qml.SpecValue{Kind: qml.SpecValueString}
+		}
+		locals["model."+role] = v
+	}
+	var st style.Style
+	for _, prop := range n.template.Props {
+		v, err := n.eval(prop.Value, locals)
+		if err != nil {
+			if n.sink != nil {
+				n.sink(err)
+			}
+			continue
+		}
+		switch prop.Name {
+		case "text":
+			label = v.Raw
+		case "color":
+			color, err := colorOf(v)
+			if err != nil {
+				if n.sink != nil {
+					n.sink(err)
+				}
+				continue
+			}
+			st = st.Foreground(color)
+		}
+	}
+	return label, st
 }
 
 func (n *treeViewNode) release() {
@@ -139,7 +270,11 @@ func (n *treeViewNode) nodes(parent *Index) []*widget.TreeNode {
 				opts = append(opts, widget.WithBadge(b))
 			}
 		}
-		node := widget.NewTreeNode(n.model.Key(ix), n.model.Data(ix, n.textRole).Raw, opts...)
+		label, st := n.present(ix)
+		if st != (style.Style{}) {
+			opts = append(opts, widget.WithNodeStyle(st))
+		}
+		node := widget.NewTreeNode(n.model.Key(ix), label, opts...)
 		n.at[node] = ix
 		n.byPath[n.pathOf(ix)] = node
 		out[r] = node
@@ -235,11 +370,32 @@ var treeViewType = Type{
 	Name:  "TreeView",
 	Build: buildTreeView,
 	restyle: func(c tui.Component, p palette) {
-		c.(*treeViewNode).tree.ResetStyles(p.viewStyles())
+		n := c.(*treeViewNode)
+		n.tree.ResetStyles(p.viewStyles())
+		n.normal = style.Default()
+		if text, ok := p[roleText]; ok {
+			n.normal = text
+		}
+		for node, ix := range n.at {
+			label, st := n.present(ix)
+			node.SetLabel(label)
+			node.SetStyle(st)
+		}
 	},
-	Ctor: []string{"textRole", "badgeRole"},
+	Ctor: []string{"textRole", "badgeRole", "delegate"},
 	Setters: map[string]Setter{
-		"model": setter("a TreeView", treeModelOf, func(n *treeViewNode, m TreeModel) { n.setModel(m) }),
+		"model": func(c tui.Component, v qml.SpecValue) error {
+			m, err := treeModelOf(v)
+			if err != nil {
+				return err
+			}
+			n := c.(*treeViewNode)
+			if err := n.checkTemplate(m); err != nil {
+				return err
+			}
+			n.setModel(m)
+			return nil
+		},
 	},
 	Methods: map[string]Method{
 		"toggleExpanded": func(c tui.Component, args []qml.SpecValue) error {

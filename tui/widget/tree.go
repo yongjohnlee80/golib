@@ -124,6 +124,14 @@ func (n *TreeNode) SetBadge(b string) {
 	n.dirty()
 }
 
+// SetStyle changes the node's label look without replacing the node, so a
+// theme change preserves its expansion and the tree's selection. Zero clears
+// the override and restores the tree's ordinary row style.
+func (n *TreeNode) SetStyle(st style.Style) {
+	n.st, n.hasSt = st, st != (style.Style{})
+	n.dirty()
+}
+
 func (n *TreeNode) dirty() {
 	if n.owner != nil {
 		n.owner.MarkDirty()
