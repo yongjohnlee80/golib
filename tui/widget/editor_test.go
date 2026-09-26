@@ -974,6 +974,16 @@ func TestEditorPressWideGraphemeAndScroll(t *testing.T) {
 	}
 }
 
+func TestEditorTypingACombiningMarkDoesNotCrashTheNextKey(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 20, 3)
+	h.inject(key('i'), key('e'), key('\u0301'), key('c'), key(tui.KeyEscape))
+	h.barrier(sh)
+	value, _, row, col := edState(h, ed)
+	if value != "e\u0301c" || row != 0 || col != 1 {
+		t.Fatalf("composed input = %q cursor (%d,%d); want Normal-mode cursor on c at cluster 1", value, row, col)
+	}
+}
+
 func TestEditorPressClamps(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 8)
 	h.onLoop(func() { ed.SetValue("ab\nlonger line") })
