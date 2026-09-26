@@ -289,6 +289,13 @@ func TestATableDelegateRefusesIDsAndUnknownRolesOnEmptyModels(t *testing.T) {
 		`TableView { model: App.people; delegate: Text { text: model.absent } }`,
 		`TableView { model: App.people; delegate: Button { text: "unsupported" } }`,
 		`TableView { model: App.people; delegate: Text { text: model.display; onClicked: App.use() } }`,
+		`TableView { model: App.people; delegate: "not an object" }`,
+		`TableView { model: App.people; delegate: Text { color: "red" } }`,
+		`TableView { model: App.people; delegate: Text { text: "x"; text: "y" } }`,
+		`TableView { model: App.people; delegate: Text { text: "x"; wrapMode: Tui.WordWrap } }`,
+		`TableView { model: App.people; delegate: Text { text: "x"; Text { text: "nested" } } }`,
+		`TableView { model: App.people; delegate: Text { text: "x"; color: "not-a-color" } }`,
+		`TableView { model: App.people; delegate: Text { text: missing } }`,
 	} {
 		err := tuidecl.Check(
 			tuidecl.LayoutSource("bad.qml", []byte("import tui 1.0\nimport demo 1.0\n"+src)),
@@ -298,6 +305,45 @@ func TestATableDelegateRefusesIDsAndUnknownRolesOnEmptyModels(t *testing.T) {
 			t.Errorf("%s: missing positioned refusal: %v", src, err)
 		}
 	}
+}
+
+func TestATableDelegateFollowsDynamicColumnsAndEmptyCells(t *testing.T) {
+	m := tuidecl.NewListModel("first", "second")
+	m.SetColumns(tuidecl.Column{Role: "first", Title: "FIRST"})
+	m.Reset([]tuidecl.Row{{"first": "before"}})
+	s := runModelDoc(t, `TableView { model: App.people; delegate: Text { text: model.display } }`, m, &recorder{})
+	s.WaitForText(t, "before")
+	onScreenLoop(t, s, func() {
+		m.SetColumns(tuidecl.Column{Role: "second", Title: "SECOND"})
+		m.Reset([]tuidecl.Row{{"second": "after"}, {}})
+	})
+	s.WaitFor(t, "dynamic model column", func(sc string) bool {
+		return strings.Contains(sc, "SECOND") && strings.Contains(sc, "after") && !strings.Contains(sc, "before")
+	})
+}
+
+func TestATableDelegateInheritsALiveParentPalette(t *testing.T) {
+	m := tuidecl.NewListModel("value")
+	m.SetColumns(tuidecl.Column{Role: "value", Title: "VALUE"})
+	m.Reset([]tuidecl.Row{{"value": "first"}, {"value": "second"}})
+	s := decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+import demo 1.0
+Window { palette.text: App.color
+    TableView { model: App.people; delegate: Text { text: model.display; color: palette.text } }
+}`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.people": m, "App.color": "red"}))
+	s.WaitForText(t, "second")
+	before := s.Backend.Snapshot()[2][0].Attrs.FG
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.color", "green"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "palette from parent repainted a visible cell", func(string) bool {
+		return s.Backend.Snapshot()[2][0].Attrs.FG != before
+	})
 }
 
 func TestATableDelegateRepaintsOnASourceOnlyColorChange(t *testing.T) {

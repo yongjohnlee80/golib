@@ -167,6 +167,9 @@ func (t *Tree) walkValue(ctx context, v qml.SpecValue, at NodeID,
 		// a binding is refused before any argument is touched.
 		callee := qml.SpecValue{Kind: qml.SpecValueRef, Raw: v.Raw,
 			Path: splitDots(v.Raw), Pos: v.Pos}
+		if _, local := overlay[callee.Raw]; local {
+			return t.walkRef(ctx, callee, at, overlay, true)
+		}
 		in, _, err := t.lookupRef(callee, at)
 		if err != nil {
 			return qml.SpecValue{}, err
