@@ -20,6 +20,17 @@ type resolution struct {
 	tracked bool
 }
 
+// EvaluateWith evaluates a stateless presentation-template property against
+// the injected registry plus terminal values scoped to one visible item.
+// Locals are never registered as global sources and never survive this call.
+// It runs the same validation/evaluation walk as an ordinary binding.
+func (t *Tree) EvaluateWith(v qml.SpecValue, locals map[string]qml.SpecValue) (qml.SpecValue, error) {
+	if _, err := t.walkValue(ctxBinding, v, NoNode, locals, false, modeValidate); err != nil {
+		return qml.SpecValue{}, err
+	}
+	return t.walkValue(ctxBinding, v, NoNode, locals, false, modeEvaluate)
+}
+
 // evalValue walks a declared value, validating every node and collecting every
 // dependency, and returns the terminal it evaluates to.
 //
@@ -107,6 +118,12 @@ func (t *Tree) collectSources(v qml.SpecValue, into map[string]bool) {
 		if l, r, ok := bitOr(v); ok {
 			t.collectSources(l, into)
 			t.collectSources(r, into)
+		} else if e := v.Expr; e != nil && ((e.Kind == js.ExprBinary && e.Raw == "===") || e.Kind == js.ExprConditional) {
+			for _, child := range []*js.Expr{e.Left, e.Right, e.Alt} {
+				if child != nil {
+					t.collectSources(qml.ProjectValue(child), into)
+				}
+			}
 		}
 	}
 }
@@ -206,6 +223,51 @@ func (t *Tree) walkValue(ctx context, v qml.SpecValue, at NodeID,
 		if l, r, ok := bitOr(v); ok {
 			return t.walkBitOr(ctx, v, l, r, at, overlay, called, mode)
 		}
+		if e := v.Expr; e != nil && e.Kind == js.ExprBinary && e.Raw == "===" {
+			left, err := t.walkValue(ctx, qml.ProjectValue(e.Left), at, overlay, false, mode)
+			if err != nil {
+				return qml.SpecValue{}, err
+			}
+			right, err := t.walkValue(ctx, qml.ProjectValue(e.Right), at, overlay, false, mode)
+			if err != nil {
+				return qml.SpecValue{}, err
+			}
+			if left.Kind != qml.SpecValueString || right.Kind != qml.SpecValueString {
+				return qml.SpecValue{}, t.refuse(at, v, "strict equality here requires two strings")
+			}
+			return qml.SpecValue{Kind: qml.SpecValueBool, Raw: fmt.Sprint(left.Raw == right.Raw), Pos: v.Pos}, nil
+		}
+		if e := v.Expr; e != nil && e.Kind == js.ExprConditional {
+			test, err := t.walkValue(ctx, qml.ProjectValue(e.Left), at, overlay, false, modeValidate)
+			if err != nil {
+				return qml.SpecValue{}, err
+			}
+			_, err = t.walkValue(ctx, qml.ProjectValue(e.Right), at, overlay, false, modeValidate)
+			if err != nil {
+				return qml.SpecValue{}, err
+			}
+			_, err = t.walkValue(ctx, qml.ProjectValue(e.Alt), at, overlay, false, modeValidate)
+			if err != nil {
+				return qml.SpecValue{}, err
+			}
+			if test.Kind != qml.SpecValueBool {
+				return qml.SpecValue{}, t.refuse(at, v, "conditional requires a boolean condition")
+			}
+			if mode == modeValidate {
+				return qml.SpecValue{Kind: qml.SpecValueString, Pos: v.Pos}, nil
+			}
+			test, err = t.walkValue(ctx, qml.ProjectValue(e.Left), at, overlay, false, modeEvaluate)
+			if err != nil {
+				return qml.SpecValue{}, err
+			}
+			branch := e.Alt
+			if test.Raw == "true" {
+				branch = e.Right
+			}
+			out, err := t.walkValue(ctx, qml.ProjectValue(branch), at, overlay, false, modeEvaluate)
+			out.Pos = v.Pos
+			return out, err
+		}
 		// The parser reads every JavaScript expression QML allows; this engine
 		// evaluates the subset above. Saying which is true — the document is
 		// correct and this evaluator is the limit — rather than reporting a
@@ -243,6 +305,13 @@ func describeExpr(e *js.Expr) string {
 // walkRef resolves a name or a member chain to an injected leaf.
 func (t *Tree) walkRef(ctx context, v qml.SpecValue, at NodeID,
 	overlay map[string]qml.SpecValue, called bool) (qml.SpecValue, error) {
+	if local, ok := overlay[v.Raw]; ok {
+		if called || !isTerminal(local) {
+			return qml.SpecValue{}, t.refuse(at, v, "a local template value cannot be called")
+		}
+		local.Pos = v.Pos
+		return local, nil
+	}
 
 	in, name, err := t.lookupRef(v, at)
 	if err != nil {

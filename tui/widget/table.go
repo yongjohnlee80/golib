@@ -111,10 +111,58 @@ const (
 //	table.SetItems(runningProcesses)
 type Table[T any] struct {
 	Base
-	cols   []TableColumn[T]
-	list   *List[T]
-	widths []int // resolved at Layout for the current width
-	headSt style.Style
+	cols    []TableColumn[T]
+	list    *List[T]
+	widths  []int // resolved at Layout for the current width
+	headSt  style.Style
+	present func(T, int) StyledCell
+}
+
+// StyledCell is the stateless display template's answer for one visible cell.
+// The table still owns column geometry; the list still owns cursor/focus.
+type StyledCell struct {
+	Text  string
+	Style style.Style
+}
+
+// SetCellPresenter opts into per-cell presentation. Nil restores the exact
+// original whole-row renderer. Presentation is queried only for visible rows.
+func (t *Table[T]) SetCellPresenter(fn func(T, int) StyledCell) {
+	t.present = fn
+	if fn == nil {
+		t.list.paint = nil
+	} else {
+		t.list.paint = t.paintRow
+	}
+	t.list.MarkDirty()
+}
+
+func (t *Table[T]) paintRow(s tui.Surface, y, width int, item T, rowStyle style.Style, marked bool) {
+	x := 0
+	for col := range t.cols {
+		if col > 0 {
+			if x < width {
+				drawText(s, x, y, truncate("  ", width-x, s.StringWidth), rowStyle)
+			}
+			x += tableGap
+		}
+		if x >= width {
+			break
+		}
+		cell := t.present(item, col)
+		st := cell.Style.Inherit(rowStyle)
+		if marked {
+			st = rowStyle // cursor/selection takes precedence over semantic colors
+		} else if _, specified := cell.Style.GetReverse(); !specified {
+			// A row may inherit reverse from its old default or a theme. A
+			// semantic cell that did not itself ask for reversal explicitly
+			// disables it, instead of inverting its alert foreground.
+			st = st.Reverse(false)
+		}
+		text := pad(cell.Text, t.widths[col])
+		drawText(s, x, y, truncate(text, min(t.widths[col], width-x), s.StringWidth), st)
+		x += t.widths[col]
+	}
 }
 
 // NewTable builds a table from column definitions. NO COLUMNS is a table too,

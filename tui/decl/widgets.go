@@ -91,7 +91,8 @@ func coreTypes() []Type {
 			"text": setter("a Button", stringOf, setButtonText),
 		}},
 		{Name: "Text", Build: buildText, Ctor: []string{"wrapMode"}, restyle: restyleText, Setters: map[string]Setter{
-			"text": setter("a Text", stringOf, (*widget.Text).SetText),
+			"text":  setter("a Text", stringOf, (*widget.Text).SetText),
+			"color": setter("a Text", colorOf, (*widget.Text).SetColor),
 		}},
 	}
 }

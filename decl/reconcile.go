@@ -3,6 +3,7 @@ package decl
 import (
 	"errors"
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/js"
 	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/parse"
@@ -1292,11 +1293,74 @@ func sameValue(a, b qml.SpecValue) bool {
 	if a.Kind == qml.SpecValueObject || b.Kind == qml.SpecValueObject {
 		return a.Kind == b.Kind && sameObject(a.Obj, b.Obj)
 	}
+	if a.Kind == qml.SpecValueTemplate || b.Kind == qml.SpecValueTemplate {
+		return a.Kind == b.Kind && sameTemplate(a.Template, b.Template)
+	}
 	if a.Kind != b.Kind || a.Raw != b.Raw || len(a.Args) != len(b.Args) {
+		return false
+	}
+	if a.Kind == qml.SpecValueExpr && !sameExpr(a.Expr, b.Expr) {
 		return false
 	}
 	for i := range a.Args {
 		if !sameValue(a.Args[i], b.Args[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// A template is a QML object PROPERTY rather than a mounted child. Its
+// declaration must be compared structurally during reload, with positions
+// excluded just as for ordinary node properties.
+func sameTemplate(a, b *qml.SpecNode) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.Type != b.Type || a.ID != b.ID || len(a.Props) != len(b.Props) ||
+		len(a.Handlers) != len(b.Handlers) || len(a.Children) != len(b.Children) {
+		return false
+	}
+	for i, p := range a.Props {
+		if p.Name != b.Props[i].Name || p.Grouped != b.Props[i].Grouped || !sameValue(p.Value, b.Props[i].Value) {
+			return false
+		}
+	}
+	for i, h := range a.Handlers {
+		if handlerKey(h) != handlerKey(b.Handlers[i]) {
+			return false
+		}
+	}
+	for i := range a.Children {
+		if !sameTemplate(a.Children[i], b.Children[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameExpr(a, b *js.Expr) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.Kind != b.Kind || a.Raw != b.Raw || a.Name != b.Name || a.Computed != b.Computed ||
+		a.Optional != b.Optional || len(a.Args) != len(b.Args) || len(a.Chunks) != len(b.Chunks) ||
+		len(a.Props) != len(b.Props) || !sameExpr(a.Left, b.Left) || !sameExpr(a.Right, b.Right) || !sameExpr(a.Alt, b.Alt) {
+		return false
+	}
+	for i := range a.Args {
+		if !sameExpr(&a.Args[i], &b.Args[i]) {
+			return false
+		}
+	}
+	for i := range a.Chunks {
+		if a.Chunks[i] != b.Chunks[i] {
+			return false
+		}
+	}
+	for i, p := range a.Props {
+		q := b.Props[i]
+		if p.Key != q.Key || p.Computed != q.Computed || !sameExpr(p.KeyExpr, q.KeyExpr) || !sameExpr(&p.Value, &q.Value) {
 			return false
 		}
 	}

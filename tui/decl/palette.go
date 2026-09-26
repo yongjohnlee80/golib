@@ -178,6 +178,9 @@ var colourNames = map[string]int{
 //
 // Case-insensitive, as Qt's colour names are.
 func colorOf(v qml.SpecValue) (style.Color, error) {
+	if c, ok := v.Obj.(style.Color); v.Kind == qml.SpecValueObject && ok {
+		return c, nil
+	}
 	s, err := stringOf(v)
 	if err != nil {
 		return style.Color{}, err

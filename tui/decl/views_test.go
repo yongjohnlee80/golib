@@ -228,6 +228,176 @@ func TestATableViewShowsTheModelsColumnsAsTheyChange(t *testing.T) {
 	}
 }
 
+func TestATableViewCellTemplateFollowsModelState(t *testing.T) {
+	m := tuidecl.NewListModel("value", "state")
+	m.SetColumns(tuidecl.Column{Role: "value", Title: "VALUE"})
+	m.Reset([]tuidecl.Row{{"value": "quiet", "state": "normal"}, {"value": "full", "state": "raised"}})
+	s := runModelDoc(t, `TableView {
+    model: App.people
+    TableViewColumn { role: "value"; title: "VALUE"; width: 20 }
+    delegate: Text {
+        text: model.display
+        color: model.state === "raised" ? "red" : palette.text
+    }
+}`, m, &recorder{})
+	s.WaitFor(t, "the styled model cells", func(sc string) bool {
+		return strings.Contains(sc, "quiet") && strings.Contains(sc, "full")
+	})
+	cellFor := func(label string) tui.Cell {
+		t.Helper()
+		grid := s.Backend.Snapshot()
+		for _, row := range grid {
+			for _, cell := range row {
+				if cell.Content == string([]rune(label)[0]) {
+					return cell
+				}
+			}
+		}
+		t.Fatalf("no painted cell for %q", label)
+		return tui.Cell{}
+	}
+	quiet := cellFor("quiet") // cursor row: native focus colors win
+	full := cellFor("full")   // unselected alert: delegate supplies red
+	if full.Attrs.FG.Kind != tui.CellColorANSI || full.Attrs.FG.Index != 1 {
+		t.Fatalf("raised cell did not take its semantic foreground: %+v", full.Attrs)
+	}
+	onScreenLoop(t, s, func() { m.Set(0, tuidecl.Row{"value": "alert", "state": "raised"}) })
+	s.WaitForText(t, "alert")
+	alert := cellFor("alert")
+	if alert.Attrs != quiet.Attrs {
+		t.Fatalf("alert color overrode the selected cursor style: before %+v, after %+v", quiet.Attrs, alert.Attrs)
+	}
+}
+
+func TestATableDelegateUsesColumnDisplayRatherThanANamedDisplayRole(t *testing.T) {
+	m := tuidecl.NewListModel("value", "display")
+	m.SetColumns(tuidecl.Column{Role: "value", Title: "VALUE"})
+	m.Reset([]tuidecl.Row{{"value": "correct", "display": "wrong"}})
+	s := runModelDoc(t, `TableView {
+    model: App.people
+    delegate: Text { text: model.display }
+}`, m, &recorder{})
+	s.WaitFor(t, "the column display", func(sc string) bool {
+		return strings.Contains(sc, "correct") && !strings.Contains(sc, "wrong")
+	})
+}
+
+func TestATableDelegateRefusesIDsAndUnknownRolesOnEmptyModels(t *testing.T) {
+	m := tuidecl.NewListModel("value", "state")
+	for _, src := range []string{
+		`TableView { model: App.people; delegate: Text { id: row; text: model.display } }`,
+		`TableView { model: App.people; delegate: Text { text: model.absent } }`,
+		`TableView { model: App.people; delegate: Button { text: "unsupported" } }`,
+		`TableView { model: App.people; delegate: Text { text: model.display; onClicked: App.use() } }`,
+	} {
+		err := tuidecl.Check(
+			tuidecl.LayoutSource("bad.qml", []byte("import tui 1.0\nimport demo 1.0\n"+src)),
+			tuidecl.Singleton("demo", "1.0", "App"),
+			tuidecl.Sources(map[string]any{"App.people": m}))
+		if err == nil || !strings.Contains(err.Error(), "bad.qml:") {
+			t.Errorf("%s: missing positioned refusal: %v", src, err)
+		}
+	}
+}
+
+func TestATableDelegateRepaintsOnASourceOnlyColorChange(t *testing.T) {
+	m := tuidecl.NewListModel("value", "state")
+	m.SetColumns(tuidecl.Column{Role: "value", Title: "VALUE"})
+	m.Reset([]tuidecl.Row{{"value": "quiet", "state": "normal"}, {"value": "signal", "state": "raised"}})
+	s := decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+import demo 1.0
+TableView { model: App.people
+    delegate: Text { text: model.display; color: model.state === "raised" ? App.alert : palette.text }
+}`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.people": m, "App.alert": "red"}))
+	s.WaitForText(t, "signal")
+	first := s.Backend.Snapshot()[2][0].Attrs.FG
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.alert", "green"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "green semantic color without a model change", func(string) bool {
+		return s.Backend.Snapshot()[2][0].Attrs.FG != first
+	})
+}
+
+type cellColorProvider struct {
+	push      func(decl.Update)
+	cancelled int
+}
+
+func (p *cellColorProvider) Subscribe(fn func(decl.Update)) ([]string, func() error, error) {
+	p.push = fn
+	fn(decl.Update{Version: 1, Values: map[string]qml.SpecValue{
+		"App.alert": {Kind: qml.SpecValueString, Raw: "red"},
+	}})
+	return []string{"App.alert"}, func() error { p.cancelled++; return nil }, nil
+}
+
+func TestATableDelegateFollowsAProviderOnlyColorSource(t *testing.T) {
+	m := tuidecl.NewListModel("value", "state")
+	m.SetColumns(tuidecl.Column{Role: "value", Title: "VALUE"})
+	m.Reset([]tuidecl.Row{{"value": "quiet", "state": "normal"}, {"value": "signal", "state": "raised"}})
+	provider := &cellColorProvider{}
+	s := decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+import demo 1.0
+TableView { model: App.people
+    delegate: Text { text: model.display; color: model.state === "raised" ? App.alert : palette.text }
+}`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.people": m}),
+		tuidecl.Providers(provider))
+	s.WaitForText(t, "signal")
+	before := s.Backend.Snapshot()[2][0].Attrs.FG
+	provider.push(decl.Update{Version: 2, Values: map[string]qml.SpecValue{
+		"App.alert": {Kind: qml.SpecValueString, Raw: "green"},
+	}})
+	s.WaitFor(t, "provider color without any other binding", func(string) bool {
+		return s.Backend.Snapshot()[2][0].Attrs.FG != before
+	})
+}
+
+func TestNestedTableDelegateReloadsAndRejectsAnInvalidReplacement(t *testing.T) {
+	m := tuidecl.NewListModel("value", "state")
+	m.SetColumns(tuidecl.Column{Role: "value", Title: "VALUE"})
+	m.Reset([]tuidecl.Row{{"value": "quiet", "state": "normal"}, {"value": "signal", "state": "raised"}})
+	doc := func(color string) string {
+		return `import tui 1.0
+import demo 1.0
+Frame { TableView { model: App.people
+    delegate: Text { text: model.display; color: "` + color + `" }
+} }`
+	}
+	s := decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte(doc("red"))),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.people": m}))
+	s.WaitForText(t, "signal")
+	before := s.Backend.Snapshot()[3][1].Attrs.FG
+	var changedErr error
+	onScreenLoop(t, s, func() { _, changedErr = s.Program.Reload([]byte(doc("green"))) })
+	if changedErr != nil {
+		t.Fatal(changedErr)
+	}
+	s.WaitFor(t, "changed nested template color", func(string) bool {
+		return s.Backend.Snapshot()[3][1].Attrs.FG != before
+	})
+	good := s.Backend.Snapshot()[3][1].Attrs.FG
+	bad := strings.Replace(doc("green"), `color: "green"`, `id: invalid; color: "green"`, 1)
+	var rejected error
+	onScreenLoop(t, s, func() { _, rejected = s.Program.Reload([]byte(bad)) })
+	if rejected == nil || !strings.Contains(rejected.Error(), "stateless Text") {
+		t.Fatalf("bad delegate reload did not fail by name: %v", rejected)
+	}
+	if got := s.Backend.Snapshot()[3][1].Attrs.FG; got != good {
+		t.Fatalf("bad reload lost the last good cell style: %+v to %+v", good, got)
+	}
+}
+
 // A result with NO columns — a statement that returns none — is a table with
 // none: the view shows an empty header, and takes columns again after.
 func TestATableViewShowsAResultWithNoColumns(t *testing.T) {

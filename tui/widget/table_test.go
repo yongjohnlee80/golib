@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -56,6 +57,37 @@ func TestTableHeaderAndRows(t *testing.T) {
 	}
 	if strings.Index(lines[hdr], "Role") != strings.Index(lines[row], "eng") {
 		t.Errorf("Role column misaligned:\n%q\n%q", lines[hdr], lines[row])
+	}
+}
+
+func TestStyledTableClearsInheritedReverseOnlyOnUnmarkedCells(t *testing.T) {
+	tab := widget.NewTable([]widget.TableColumn[string]{{Title: "VALUE", Width: 12, Cell: func(v string) string { return v }}},
+		widget.WithListStyles[string](widget.ListStyles{
+			Row: style.New().Reverse(true), CursorRow: style.New().Reverse(true),
+		}))
+	tab.SetCellPresenter(func(v string, _ int) widget.StyledCell {
+		return widget.StyledCell{Text: v, Style: style.New().Foreground(style.ANSI(1))}
+	})
+	sh := newShell(tab)
+	h := startApp(t, sh, 24, 5)
+	h.onLoop(func() { tab.SetItems([]string{"cursor", "raised"}) })
+	h.barrier(sh)
+	var cursor, raised tui.Cell
+	for _, row := range h.tb.Snapshot() {
+		for _, c := range row {
+			if c.Content == "c" {
+				cursor = c
+			}
+			if c.Content == "r" {
+				raised = c
+			}
+		}
+	}
+	if cursor.Attrs.Mask&tui.AttrReverse == 0 {
+		t.Fatalf("the native cursor lost its reversal: %+v", cursor.Attrs)
+	}
+	if raised.Attrs.Mask&tui.AttrReverse != 0 || raised.Attrs.FG.Kind != tui.CellColorANSI || raised.Attrs.FG.Index != 1 {
+		t.Fatalf("inherited Reverse overrode the unselected semantic cell: %+v", raised.Attrs)
 	}
 }
 

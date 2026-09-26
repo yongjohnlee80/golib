@@ -84,9 +84,11 @@ const (
 //	)
 type Text struct {
 	Base
-	text string
-	st   style.Style
-	mode WrapMode
+	text    string
+	st      style.Style
+	color   style.Color
+	colored bool
+	mode    WrapMode
 }
 
 var _ tui.Component = (*Text)(nil)
@@ -124,6 +126,16 @@ func (t *Text) SetText(s string) {
 	}
 	t.text = s
 	t.RequestLayout()
+	t.MarkDirty()
+}
+
+// SetColor is Qt Text.color: it overrides the inherited palette foreground
+// without replacing the rest of the widget style.
+func (t *Text) SetColor(c style.Color) {
+	if t.colored && t.color == c {
+		return
+	}
+	t.color, t.colored = c, true
 	t.MarkDirty()
 }
 
@@ -170,8 +182,12 @@ func (t *Text) Render(s tui.Surface) {
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
+	st := t.st
+	if t.colored {
+		st = st.Foreground(t.color)
+	}
 	if t.mode == Truncate {
-		drawText(s, 0, 0, truncate(t.lines()[0], sz.W, s.StringWidth), t.st)
+		drawText(s, 0, 0, truncate(t.lines()[0], sz.W, s.StringWidth), st)
 		return
 	}
 	y := 0
@@ -180,7 +196,7 @@ func (t *Text) Render(s tui.Surface) {
 			if y >= sz.H {
 				return
 			}
-			drawText(s, 0, y, row, t.st)
+			drawText(s, 0, y, row, st)
 			y++
 		}
 	}
