@@ -239,6 +239,20 @@ func (l *List[T]) SetStyles(st ListStyles) {
 	l.MarkDirty()
 }
 
+// ResetStyles replaces the List's looks from its defaults. Unlike SetStyles,
+// absent fields drop previously supplied roles (as when QML removes a palette).
+func (l *List[T]) ResetStyles(st ListStyles) {
+	base := defaultListStyles()
+	l.styles = ListStyles{
+		Row:            st.Row,
+		CursorRow:      st.CursorRow.Inherit(base.CursorRow),
+		SelectedRow:    st.SelectedRow.Inherit(base.SelectedRow),
+		CursorSelected: st.CursorSelected.Inherit(base.CursorSelected),
+		CursorBlurred:  st.CursorBlurred,
+	}
+	l.MarkDirty()
+}
+
 // SetCursor moves the cursor to i (clamped), scrolling it into view.
 // The programmatic sibling of the j/k/arrow motions — hosts drive it for
 // search, restore-selection, and reveal.
