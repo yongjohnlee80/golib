@@ -311,9 +311,12 @@ func (p palette) menuStyle() (*widget.MenuStyle, bool) {
 	}
 	st := widget.NewMenuStyle(surface, selected)
 	if c, ok := p[roleAccent]; ok {
-		// The colour is added to golib's underline, not swapped for it: the
-		// underline is the cue that survives a palette with one colour in it.
-		st = st.WithHotkey(style.New().Foreground(c).Underline(true))
+		// A default accent leaves the mnemonic's foreground inherited from its
+		// row. That keeps it legible on both sides of an inverted mono selection.
+		// Explicit accent colours still override the foreground as before.
+		if !c.IsDefault() {
+			st = st.WithHotkey(style.New().Foreground(c).Underline(true))
+		}
 	}
 	return st, true
 }

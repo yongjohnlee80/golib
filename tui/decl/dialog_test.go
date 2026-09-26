@@ -273,6 +273,49 @@ func TestEnterAnswersOnlyTheNamedDefault(t *testing.T) {
 	}
 }
 
+// A focused button owns Enter even when the dialog names a different default.
+// This must be tested through real Tab focus and key routing: otherwise the
+// screen can highlight No while Enter silently accepts Yes.
+func TestFocusedDialogButtonWinsEnterOverDifferentDefault(t *testing.T) {
+	var mu sync.Mutex
+	var answers []string
+	record := func(what string) decl.HandlerFunc {
+		return func([]qml.SpecValue) error {
+			mu.Lock()
+			defer mu.Unlock()
+			answers = append(answers, what)
+			return nil
+		}
+	}
+	s := decltest.Run(t, 40, 12,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n Text { text: \"under\" }\n"+
+			" Dialog { id: d; title: \"Q\"; standardButtons: Dialog.Yes | Dialog.No; defaultButton: Dialog.Yes\n"+
+			"  onAccepted: App.accepted()\n  onRejected: App.rejected()\n  Text { text: \"choose\" } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Types(controls.Types()...),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.accepted": record("accepted"), "App.rejected": record("rejected")}))
+	s.WaitForText(t, "under")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "┌ Q ")
+	// The first button (Yes) starts focused. Tab focuses No; the default
+	// remains Yes. Enter must reject, not activate the fallback default.
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	s.WaitFor(t, "focused No answered Enter", func(string) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(answers) > 0
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if len(answers) != 1 || answers[0] != "rejected" {
+		t.Fatalf("Tab focused No but Enter answered %v, want only rejected", answers)
+	}
+}
+
 // TestDefaultButtonNamesOneOfTheDialogsButtons: Enter's answer is stated, so a
 // name the dialog does not have, or two names, is refused — never read as
 // "none" or "the first".

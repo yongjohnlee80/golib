@@ -168,11 +168,37 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 		}
 		sz := ctx.LayoutChild(b, tui.Loose(inner))
 		sizes[i] = sz
-		btnW += sz.W + 1 // one cell of breathing room between buttons
-		btnH = max(btnH, sz.H)
 	}
-	if btnW > 0 {
-		btnW-- // no trailing gap after the last button
+	// Keep every action reachable when the dialog is width-capped or the
+	// terminal is narrow. Buttons share a row when they fit and wrap only
+	// when the next button would cross the inner edge.
+	type buttonRow struct{ first, end, width, height int }
+	var buttonRows []buttonRow
+	row := buttonRow{first: 0}
+	for i, b := range c.buttons {
+		if b == nil {
+			continue
+		}
+		sz := sizes[i]
+		gap := 0
+		if row.end > row.first {
+			gap = 1
+		}
+		if gap > 0 && row.width+gap+sz.W > inner.W {
+			buttonRows = append(buttonRows, row)
+			row = buttonRow{first: i}
+			gap = 0
+		}
+		row.width += gap + sz.W
+		row.height = max(row.height, sz.H)
+		row.end = i + 1
+	}
+	if row.end > row.first {
+		buttonRows = append(buttonRows, row)
+	}
+	for _, r := range buttonRows {
+		btnW = max(btnW, r.width)
+		btnH += r.height
 	}
 
 	// THE ROWS DOWN THE CARD. Padding inside the frame, top and bottom.
@@ -266,22 +292,29 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	if footLine == 1 {
 		c.footerY = size.H - 1 - border - padBottom
 	}
-	// Where the row of buttons sits within the content width. Centred by
-	// default: a dialog is read down its middle, and a pair of controls hugging
-	// one edge of a card wider than they are looks detached from the question.
-	bx := x0
-	switch c.align {
-	case ButtonsRight:
-		bx = x0 + max(contentW-btnW, 0)
-	case ButtonsCenter:
-		bx = x0 + max(contentW-btnW, 0)/2
-	}
-	for i, b := range c.buttons {
-		if b == nil {
-			continue
+	// Each wrapped row is independently aligned so a short final line is
+	// still centered (or right-aligned), not stranded at the left edge.
+	for _, r := range buttonRows {
+		bx := x0
+		switch c.align {
+		case ButtonsRight:
+			bx = x0 + max(contentW-r.width, 0)
+		case ButtonsCenter:
+			bx = x0 + max(contentW-r.width, 0)/2
 		}
-		ctx.PlaceChild(b, tui.Rect{X: bx, Y: y, W: sizes[i].W, H: sizes[i].H})
-		bx += sizes[i].W + 1
+		first := true
+		for i := r.first; i < r.end; i++ {
+			if c.buttons[i] == nil {
+				continue
+			}
+			if !first {
+				bx++
+			}
+			ctx.PlaceChild(c.buttons[i], tui.Rect{X: bx, Y: y, W: sizes[i].W, H: sizes[i].H})
+			bx += sizes[i].W
+			first = false
+		}
+		y += r.height
 	}
 	return size
 }

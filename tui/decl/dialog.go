@@ -61,7 +61,7 @@ var dialogStandardButtons = []standardButton{
 	{"Yes", 0x00004000, "&Yes", true},
 	{"No", 0x00010000, "&No", false},
 	{"Cancel", 0x00400000, "&Cancel", false},
-	{"Close", 0x00200000, "C&lose", false},
+	{"Close", 0x00200000, "Close(&q)", false},
 }
 
 // dialogButtons is the flag set a document combines: `Dialog.Yes | Dialog.No`.
@@ -200,11 +200,13 @@ func (d *dialogNode) dismissed(reason widget.DismissReason) {
 
 // dialogSpec is everything one dialog is built from, whatever kind it is.
 type dialogSpec struct {
-	body        tui.Component
-	title, help string
-	dim         bool
-	width       int
-	align       widget.ButtonAlign
+	body                              tui.Component
+	title, help                       string
+	dim                               bool
+	closeOnQ                          bool
+	width                             int
+	maxWidthPercent, maxHeightPercent int
+	align                             widget.ButtonAlign
 	// buttons are laid out in this order; the one at defaultAt is the one
 	// Enter answers with, -1 for none (a Dialog's defaultButton).
 	buttons   []standardButton
@@ -254,9 +256,13 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 		widget.WithButtons(buttons...),
 		widget.WithModalRule(len(buttons) > 0 || s.help != ""),
 		widget.WithModalWidth(s.width),
+		widget.WithModalMaxSizePercent(s.maxWidthPercent, s.maxHeightPercent),
 		widget.WithScrim(s.dim),
 		widget.WithButtonAlign(s.align),
 		widget.WithOnDismiss(d.dismissed),
+	}
+	if s.closeOnQ {
+		opts = append(opts, widget.WithModalDismissKeys('q'))
 	}
 	if s.help != "" {
 		opts = append(opts, widget.WithModalFooter(s.help))
@@ -288,15 +294,21 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 	s := dialogSpec{body: body, dim: true, align: widget.ButtonsCenter, shortcuts: shortcuts, box: box, defaultAt: -1}
 	var flags, defaultFlag int64
 	consumed, err := readProps(b.Props, map[string]field{
-		"title":           into(&s.title, stringOf),
-		"helpText":        into(&s.help, stringOf),
-		"dim":             into(&s.dim, boolOf),
-		"width":           into(&s.width, cellsOf),
-		"standardButtons": into(&flags, dialogButtons.read),
-		"defaultButton":   into(&defaultFlag, dialogButtons.read),
+		"title":            into(&s.title, stringOf),
+		"helpText":         into(&s.help, stringOf),
+		"dim":              into(&s.dim, boolOf),
+		"closeOnQ":         into(&s.closeOnQ, boolOf),
+		"width":            into(&s.width, cellsOf),
+		"maxWidthPercent":  into(&s.maxWidthPercent, cellsOf),
+		"maxHeightPercent": into(&s.maxHeightPercent, cellsOf),
+		"standardButtons":  into(&flags, dialogButtons.read),
+		"defaultButton":    into(&defaultFlag, dialogButtons.read),
 	})
 	if err != nil {
 		return nil, nil, err
+	}
+	if s.maxWidthPercent > 100 || s.maxHeightPercent > 100 {
+		return nil, nil, fmt.Errorf("Dialog maxWidthPercent and maxHeightPercent must be at most 100 (at %s)", b.Pos)
 	}
 	// ONE button, and one of this dialog's: Enter's answer is stated, never
 	// inferred, so a name that is not there — or two — is refused rather than

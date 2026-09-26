@@ -3,8 +3,27 @@ package widget_test
 import (
 	"testing"
 
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
+
+func TestVisualModesKeepTheNormalBlockCursor(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 40, 10, widget.WithInitialText("hello world"))
+	for _, step := range []struct {
+		key  rune
+		mode widget.EditorMode
+	}{
+		{'v', widget.ModeVisual},
+		{'v', widget.ModeNormal},
+		{'V', widget.ModeVisualLine},
+	} {
+		h.inject(key(step.key))
+		h.barrier(sh)
+		if ed.Mode() != step.mode || ed.CursorShape() != tui.CursorShapeBlock {
+			t.Errorf("after %q: mode=%v, cursor=%v; want %v and block", step.key, ed.Mode(), ed.CursorShape(), step.mode)
+		}
+	}
+}
 
 func TestEditorClipboardRegisters(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 10, widget.WithInitialText("line 1\nline 2"))

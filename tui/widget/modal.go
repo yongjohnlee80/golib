@@ -43,9 +43,10 @@ type Modal struct {
 
 	card *modalCard
 
-	placement ModalPlacement
-	wantScrim bool
-	onDismiss func(DismissReason)
+	placement                         ModalPlacement
+	wantScrim                         bool
+	onDismiss                         func(DismissReason)
+	maxWidthPercent, maxHeightPercent int
 
 	host *OverlayHost
 	open bool
@@ -200,6 +201,16 @@ func WithModalKeys(fn func(tui.KeyEvent) bool) ModalOption {
 // screen. Clamped to the host; 0 is the content's width.
 func WithModalWidth(w int) ModalOption {
 	return func(m *Modal) { m.card.width = max(w, 0) }
+}
+
+// WithModalMaxSizePercent caps the card's available width and height as a
+// percentage of the host. Zero on either axis leaves that axis uncapped.
+// The card remains centered and can still shrink with the terminal.
+func WithModalMaxSizePercent(width, height int) ModalOption {
+	return func(m *Modal) {
+		m.maxWidthPercent = min(max(width, 0), 100)
+		m.maxHeightPercent = min(max(height, 0), 100)
+	}
 }
 
 // WithModalFooter sets a line of help text under the buttons — the keys the
@@ -813,7 +824,14 @@ func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
 func (m *Modal) Layout(cs tui.Constraints) tui.Size {
 	full := tui.Size{W: cs.MaxW, H: cs.MaxH}
 	if ctx := m.Context(); ctx != nil {
-		cardSize := ctx.LayoutChild(m.card, tui.Loose(full))
+		offer := full
+		if m.maxWidthPercent > 0 {
+			offer.W = max(1, full.W*m.maxWidthPercent/100)
+		}
+		if m.maxHeightPercent > 0 {
+			offer.H = max(1, full.H*m.maxHeightPercent/100)
+		}
+		cardSize := ctx.LayoutChild(m.card, tui.Loose(offer))
 		ctx.PlaceChild(m.card, placeCard(m.placement, full, cardSize))
 	}
 	return cs.Constrain(full)

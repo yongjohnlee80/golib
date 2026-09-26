@@ -88,6 +88,33 @@ Window {
 	})
 }
 
+func TestTableViewPaintsHeaderAndRowsOnTheDocumentBase(t *testing.T) {
+	m := tuidecl.NewListModel("name")
+	m.SetColumns(tuidecl.Column{Role: "name", Title: "NAME"})
+	m.Reset([]tuidecl.Row{{"name": "alpha"}, {"name": "bravo"}})
+	layout := []byte(`import tui 1.0
+import demo 1.0
+Window {
+ palette.base: "#0000aa"; palette.text: "#ffff55"
+ palette.highlight: "#ffffff"; palette.highlightedText: "#000000"
+ TableView { model: App.rows }
+}`)
+	s := decltest.Run(t, 40, 8,
+		tuidecl.LayoutSource("main.qml", layout),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.rows": m}))
+	s.WaitForText(t, "bravo")
+	blue := tui.CellColor{Kind: tui.CellColorRGB, B: 0xaa}
+	for _, label := range []string{"NAME", "bravo"} {
+		if got := viewCell(t, s, label).BG; got != blue {
+			t.Errorf("%s background = %+v, want blue document base", label, got)
+		}
+	}
+	if got := viewCell(t, s, "alpha").BG; got != (tui.CellColor{Kind: tui.CellColorRGB, R: 0xff, G: 0xff, B: 0xff}) {
+		t.Errorf("selected row lost its highlight background: %+v", got)
+	}
+}
+
 func TestUnstyledTreeKeepsItsCursorWhenFocusLeaves(t *testing.T) {
 	tree := tuidecl.NewTreeListModel("key", "label")
 	tree.SetChildren(nil, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "a", "label": "alpha"}}})

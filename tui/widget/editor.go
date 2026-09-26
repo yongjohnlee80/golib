@@ -93,7 +93,8 @@ import (
 //
 //  6. Hardware Cursor Reporting and Shaping:
 //     Editor implements [tui.CursorReporter] and [tui.CursorShaper]. In Normal mode,
-//     the terminal cursor is configured as a block; in Insert mode, as a vertical beam.
+//     the terminal cursor is a block in Normal and Visual modes; in Insert mode,
+//     a vertical beam.
 //
 //  7. Configurable Capabilities:
 //     Editor capabilities can be fine-tuned or restricted:
@@ -525,14 +526,12 @@ func (e *Editor) Lines() []string { return append([]string(nil), e.lines...) }
 // AcceptsFocus implements tui.Focusable.
 func (e *Editor) AcceptsFocus() bool { return true }
 
-// CursorShape implements tui.CursorShaper: block/underline/bar for
-// Normal/Visual/Insert.
+// CursorShape implements tui.CursorShaper: block for Normal and Visual,
+// bar for Insert. Visual mode is already shown in the status line and selection.
 func (e *Editor) CursorShape() tui.CursorShape {
 	switch e.mode {
 	case ModeInsert:
 		return tui.CursorShapeBar
-	case ModeVisual, ModeVisualLine:
-		return tui.CursorShapeUnderline
 	}
 	return tui.CursorShapeBlock
 }
