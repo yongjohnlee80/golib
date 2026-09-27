@@ -195,7 +195,7 @@ func TestTheAboutTextWearsTheCardsColours(t *testing.T) {
 // TestTheLayoutsThemeImportDressesTheDialogFiles: the dialogs are separate
 // files that import nothing, so the ONE theme line in editor.qml reaches them.
 func TestTheLayoutsThemeImportDressesTheDialogFiles(t *testing.T) {
-	r := startLayout(t, "", withImport(t, "import editor.theme.mono 1.0"))
+	r := startLayout(t, "", withImport(t, "import tui.theme.mono 1.0"))
 	r.openQuit(t)
 	btn := rowOf(r.rows(), "[ Yes ]")
 	yes := r.labelAt(t, btn, "Yes")

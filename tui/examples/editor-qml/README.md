@@ -37,7 +37,6 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
 | file | what it is |
 | --- | --- |
 | `editor.qml` | the screen: menus, the editor, the status line, the prompt, the dialogs — no colours |
-| `themes/retro.qml`, `themes/mono.qml` | the themes; the layout's import line picks one |
 | `dialogs/*.qml` | one component file per dialog: Quit, About, Open, Save |
 | `app.go` | the Host: `options` (everything the program is), and `New` — `NewProgram(options…)` then `attach` |
 | `modules.go` | the QML the program embeds, and the modules it offers |
@@ -57,9 +56,10 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
   their own roles; every dialog, its panes and buttons, and the command prompt
   inherit and name no colour at all. Roles propagate parent to child, as Qt's
   do, and a theme change reaches everything live.
-- **Switching theme is one line.** Change `import editor.theme.retro 1.0` to
-  `…mono 1.0`. Only the imported theme is read; a new theme is a file under
-  `themes/` and nothing else.
+- **Switching theme is one line.** Change `import tui.theme.retro 1.0` to
+  `…dark`, `…light` or `…mono`. The themes are the toolkit's
+  ([`tui/decl/themes`](../../decl/themes)), offered with `themes.Offer()`;
+  only the imported one is read, and this program keeps no colours of its own.
 - **One file per dialog, each a type.** `dialogs/QuitDialog.qml` is
   `QuitDialog { id: quitDialog }` in the layout. Dialogs close themselves:
   `quitDialog.open()` opens one; its buttons, letters and Escape close it; the
@@ -90,7 +90,7 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
 - `check_test.go` — `decltest.Check`: every QML file the program can load,
   the theme it does not import included, is mounted and judged.
 - The rest run the whole program through `decltest.RunWith` on a test backend
-  and read the screen: layout, menus, every dialog, the prompt, both themes'
+  and read the screen: layout, menus, every dialog, the prompt, every theme's
   colours (including what the dialogs inherit), the files written to disk, and
   hot reload in `-dev` mode.
 

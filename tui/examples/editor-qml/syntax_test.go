@@ -48,7 +48,7 @@ func TestAPlainFileIsNotHighlighted(t *testing.T) {
 
 // TestTheSyntaxColoursFollowTheThemeImport: under mono the keyword is bright.
 func TestTheSyntaxColoursFollowTheThemeImport(t *testing.T) {
-	r := startOpts(t, Options{Path: writeFile(t, "view.qml", qmlFile), Layout: withImport(t, "import editor.theme.mono 1.0"),
+	r := startOpts(t, Options{Path: writeFile(t, "view.qml", qmlFile), Layout: withImport(t, "import tui.theme.mono 1.0"),
 		Now: fixedNow, Tick: time.Hour}, 80, 14)
 	y := rowOf(r.rows(), "import QtQuick")
 	r.waitFor(t, "the keyword bright", func(string) bool {
@@ -109,7 +109,7 @@ func TestThePaneTitlesAndPreviewReadInBothThemes(t *testing.T) {
 	} {
 		t.Run(c.theme, func(t *testing.T) {
 			folderWith(t, map[string]string{"view.qml": qmlFile})
-			r := startOpts(t, Options{Layout: withImport(t, "import editor.theme."+c.theme+" 1.0"),
+			r := startOpts(t, Options{Layout: withImport(t, "import tui.theme."+c.theme+" 1.0"),
 				Now: fixedNow, Tick: time.Hour}, 100, 24)
 			r.openOpen(t)
 			r.key(t, down)

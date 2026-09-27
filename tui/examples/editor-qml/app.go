@@ -113,7 +113,7 @@ func (h *Host) options(opt Options) []tuidecl.ProgramOption {
 	if opt.Dev != "" {
 		src, _ = os.ReadFile(filepath.Join(opt.Dev, "editor.qml"))
 		files := os.DirFS(opt.Dev)
-		opts = append(h.modulesFrom(files, files),
+		opts = append(h.modulesFrom(files),
 			tuidecl.Layout(files, "editor.qml"),
 			// A refused edit is reported where the user is looking; the
 			// screen stays as it was until the next good save.

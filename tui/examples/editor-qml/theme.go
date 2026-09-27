@@ -2,18 +2,19 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path"
 	"regexp"
-	"strings"
+	"slices"
+
+	"github.com/yongjohnlee80/golib/tui/decl/themes"
 )
 
 // SWITCHING THEME FROM THE MENU — Option > Theme.
 //
 // A theme is chosen by one line of editor.qml, its import:
 //
-//	import editor.theme.retro 1.0
+//	import tui.theme.retro 1.0
 //
 // so switching theme at runtime is that line, rewritten, and the layout
 // reloaded — the path a hot reload takes. Nothing is rebuilt that the theme
@@ -24,8 +25,8 @@ import (
 // import.
 
 // themeImport is a theme import line; its group is the theme's name.
-var themeImport = regexp.MustCompile(`(?m)^import editor\.theme\.([a-z][a-z0-9]*) ` +
-	regexp.QuoteMeta(moduleVersion))
+var themeImport = regexp.MustCompile(`(?m)^import tui\.theme\.([a-z][a-z0-9]*) ` +
+	regexp.QuoteMeta(themes.Version))
 
 // themeOf is the theme a layout imports, "" for none.
 func themeOf(src []byte) string {
@@ -38,8 +39,10 @@ func themeOf(src []byte) string {
 // themeState is what the menu reads: which theme is checked.
 func themeState(theme string) map[string]any {
 	return map[string]any{
-		"App.themeRetro": theme == "retro",
+		"App.themeDark":  theme == "dark",
+		"App.themeLight": theme == "light",
 		"App.themeMono":  theme == "mono",
+		"App.themeRetro": theme == "retro",
 	}
 }
 
@@ -57,7 +60,7 @@ func (h *Host) useTheme(name string) error {
 	if themeOf(src) == "" {
 		return h.message("editor.qml imports no theme to switch")
 	}
-	next := themeImport.ReplaceAll(src, []byte("import editor.theme."+name+" "+moduleVersion))
+	next := themeImport.ReplaceAll(src, []byte("import tui.theme."+name+" "+themes.Version))
 	// AFTER the handler: a menu row's signal is still being emitted, and the
 	// engine reconciles only between emissions, not inside one.
 	h.p.Post(func() {
@@ -84,12 +87,5 @@ func (h *Host) layoutSource() ([]byte, error) {
 	return h.layoutSrc, nil
 }
 
-// hasTheme reports whether the program ships the named theme.
-func (h *Host) hasTheme(name string) bool {
-	var themes fs.FS = themeFiles
-	if h.dev != "" {
-		themes = os.DirFS(h.dev)
-	}
-	_, err := fs.Stat(themes, "themes/"+name+".qml")
-	return err == nil && !strings.ContainsAny(name, "/.")
-}
+// hasTheme reports whether the toolkit ships the named theme.
+func (h *Host) hasTheme(name string) bool { return slices.Contains(themes.Names(), name) }

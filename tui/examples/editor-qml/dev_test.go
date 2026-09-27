@@ -20,7 +20,7 @@ func devCopy(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(dir, "editor.qml"), layout, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, src := range []fs.FS{themeFiles, dialogFiles} {
+	for _, src := range []fs.FS{dialogFiles} {
 		err := fs.WalkDir(src, ".", func(p string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				if d != nil && d.IsDir() && p != "." {
