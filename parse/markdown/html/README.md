@@ -20,8 +20,8 @@ compare exactly:
 - Blocks end with a newline; a tight list's paragraphs are written without `<p>`.
 - Text escapes `&`, `<`, `>` and `"`; an invalid UTF-8 sequence becomes U+FFFD, so the output is
   valid UTF-8.
-- A destination is percent-encoded where it is not URL-safe (an existing `%XX` is kept), then escaped;
-  `'` is written `&#x27;`, as cmark writes it.
+- A destination is percent-encoded where it is not URL-safe, then escaped. `%` is kept as written,
+  and `'` is written `&#x27;`, both as cmark writes them.
 - An image's `alt` is the plain text of its content.
 - A fenced code block's info string gives `class="language-<first word>"`.
 - Definitions and frontmatter render as nothing.

@@ -253,6 +253,7 @@ var casesInline = []specCase{
 	{"6.5/autolink-references-decode", true, "<http://a/&#42;&amp;>\n", "<p><a href=\"http://a/*&amp;\">http://a/*&amp;</a></p>\n"},
 	{"6.5/autolink-references-decode", false, "<http://a/&nosuch;>\n", "<p><a href=\"http://a/&amp;nosuch;\">http://a/&amp;nosuch;</a></p>\n"},
 	{"6.3/inline-link", true, "[a](/u'v)\n", "<p><a href=\"/u&#x27;v\">a</a></p>\n"},
+	{"6.3/inline-link", true, "[a](/%41%zz%)\n", "<p><a href=\"/%41%zz%\">a</a></p>\n"},
 	{"6.6/raw-html", true, "a <!-- b --> c </b>\n", "<p>a <!-- b --> c </b></p>\n"},
 	{"6.6/raw-html", false, "a <!-- b\n", "<p>a &lt;!-- b</p>\n"},
 	{"6.7/hard-break", true, "*a  \nb*\n", "<p><em>a<br />\nb</em></p>\n"},

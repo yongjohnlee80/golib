@@ -276,18 +276,6 @@ func (p *blockParser) lastLineLengthClose(b *Node) {
 	p.finalize(b, p.ln.end)
 }
 
-// lineEndBefore is where the previous line ended.
-func (p *blockParser) lineEndBefore() int {
-	e := p.ln.start
-	if e > 0 && p.src[e-1] == '\n' {
-		e--
-	}
-	if e > 0 && p.src[e-1] == '\r' {
-		e--
-	}
-	return e
-}
-
 type continueResult int
 
 const (

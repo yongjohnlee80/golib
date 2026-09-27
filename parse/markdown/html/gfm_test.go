@@ -103,6 +103,7 @@ var casesGFM = []specCase{
 	{"gfm6.9/www", true, "www.a.b/c?d\n", "<p><a href=\"http://www.a.b/c?d\">www.a.b/c?d</a></p>\n"},
 	{"gfm6.9/www", false, "www. a.b\n", "<p>www. a.b</p>\n"},
 	{"gfm6.9/valid-domain", true, "www.a_b.c-d.e\n", "<p><a href=\"http://www.a_b.c-d.e\">www.a_b.c-d.e</a></p>\n"},
+	{"gfm6.9/valid-domain", true, "www.bücher.de\n", "<p><a href=\"http://www.b%C3%BCcher.de\">www.bücher.de</a></p>\n"},
 	{"gfm6.9/valid-domain", false, "www.a.b_c www.a_b.c www.com\n", "<p>www.a.b_c www.a_b.c www.com</p>\n"},
 	{"gfm6.9/boundary", true, "(www.a.b) *www.c.d*\n", "<p>(<a href=\"http://www.a.b\">www.a.b</a>) <em><a href=\"http://www.c.d\">www.c.d</a></em></p>\n"},
 	{"gfm6.9/boundary", false, "xwww.a.b x.www.c.d x!e@f.g\n", "<p>xwww.a.b x.www.c.d x!e@f.g</p>\n"},
