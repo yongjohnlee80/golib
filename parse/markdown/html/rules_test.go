@@ -59,6 +59,7 @@ var rules = []rule{
 	{ID: "4.7/first-definition-wins", Statement: "when a label is defined twice, the first definition is used", NoNegative: "a second definition has no observable effect to miss"},
 	{ID: "4.7x4.3/definitions-then-underline", Statement: "an underline below a paragraph of only definitions is paragraph text, not a heading or a break (cmark's reading; the spec pins only the '===' form)"},
 	{ID: "4.8/paragraph-lines", Statement: "consecutive non-blank lines form a paragraph, with leading whitespace stripped", NoNegative: "every non-blank text line joins a paragraph"},
+	{ID: "4.8/leading-whitespace-stripped", Statement: "each line of a paragraph loses its leading spaces and tabs, including the first line left after definitions are taken out (commonmark.js reads it so; cmark 0.31.1 keeps that line's tab)", NoNegative: "leading whitespace is always stripped"},
 	{ID: "4.9/blank-lines-separate", Statement: "blank lines between blocks are ignored except for list tightness", NoNegative: "blank lines have no near miss"},
 
 	{ID: "5.1/block-quote", Statement: "lines starting with '>' form a block quote"},
@@ -101,6 +102,7 @@ var rules = []rule{
 	{ID: "6.3/full-reference-adjacent", Statement: "a full reference's label follows the link text directly, with no whitespace between"},
 	{ID: "6.4/image", Statement: "![alt](destination) is an image whose alt text is the plain text of its content"},
 	{ID: "6.5/autolink", Statement: "<scheme:...> (scheme 2–32 characters) or <email> without spaces"},
+	{ID: "6.5/autolink-references-decode", Statement: "entity references decode in an autolink's destination and text; anything else after '&' is text"},
 	{ID: "6.5/scheme-length", Statement: "an autolink's scheme is 2 to 32 characters"},
 	{ID: "6.6/raw-html", Statement: "a complete tag, comment, processing instruction, declaration or CDATA; tag names start with a letter"},
 	{ID: "6.7/hard-break", Statement: "two or more spaces or a backslash before a line ending, not at the end of a block"},
