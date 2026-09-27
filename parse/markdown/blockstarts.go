@@ -314,20 +314,6 @@ func listMatches(a, b ListData) bool {
 	return a.Type == b.Type && a.Delimiter == b.Delimiter && a.Bullet == b.Bullet
 }
 
-// paragraphHasContent reports whether the paragraph would still have content once its leading link
-// reference definitions are taken out; a setext underline cannot make a heading of definitions.
-func (p *blockParser) paragraphHasContent(para *Node) bool {
-	rest := para.blk.content
-	for {
-		n, _, _, _, ok := parseLinkRefDef(rest)
-		if !ok {
-			break
-		}
-		rest = rest[n:]
-	}
-	return len(bytes.TrimSpace(rest)) > 0
-}
-
 var htmlBlockTags = map[string]bool{
 	"address": true, "article": true, "aside": true, "base": true, "basefont": true,
 	"blockquote": true, "body": true, "caption": true, "center": true, "col": true,

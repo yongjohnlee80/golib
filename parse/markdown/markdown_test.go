@@ -230,3 +230,14 @@ func TestLinearTime(t *testing.T) {
 		check(name+"+gfm+obs", gen)
 	}
 }
+
+func TestKindNames(t *testing.T) {
+	for k, want := range map[markdown.Kind]string{
+		markdown.KindParagraph: "paragraph", markdown.KindHardBreak: "linebreak", markdown.KindTable: "table",
+		markdown.KindWikilink: "wikilink", markdown.KindCalloutTitle: "callout_title", markdown.Kind(999): "kind(999)",
+	} {
+		if got := k.String(); got != want {
+			t.Errorf("Kind(%d).String() = %q, want %q", k, got, want)
+		}
+	}
+}

@@ -390,15 +390,12 @@ func (r *renderer) escape(b []byte) {
 }
 
 // escapeHref percent-encodes a destination for an href or src, keeping the characters that are safe
-// in a URL and any percent-escape already present.
+// in a URL. '%' is kept as written, escape or not, as the reference implementation (cmark) keeps it.
 func escapeHref(dest []byte) []byte {
 	var out []byte
 	for i := 0; i < len(dest); i++ {
 		c := dest[i]
 		switch {
-		case c == '%' && i+2 < len(dest) && isHex(dest[i+1]) && isHex(dest[i+2]):
-			out = append(out, dest[i:i+3]...)
-			i += 2
 		case urlSafe(c):
 			out = append(out, c)
 		default:
@@ -409,16 +406,12 @@ func escapeHref(dest []byte) []byte {
 	return out
 }
 
-func isHex(c byte) bool {
-	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-}
-
 func urlSafe(c byte) bool {
 	if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
 		return true
 	}
 	switch c {
-	case '-', '_', '.', '!', '~', '*', '\'', '(', ')', ';', '/', '?', ':', '@', '&', '=', '+', '$', ',', '#':
+	case '-', '_', '.', '!', '~', '*', '\'', '(', ')', ';', '/', '?', ':', '@', '&', '=', '+', '$', ',', '#', '%':
 		return true
 	}
 	return false
