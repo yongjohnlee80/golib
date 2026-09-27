@@ -92,3 +92,22 @@ func TestTheRepositoryFindsADefinitionByFileName(t *testing.T) {
 		t.Error("Add did not replace the definition of the same name")
 	}
 }
+
+// Where two definitions claim a file, the higher Priority wins, whatever their
+// names — KSyntaxHighlighting's rule — and equals fall back to name order.
+func TestTheHigherPriorityClaimsAFileBothMatch(t *testing.T) {
+	none := highlight.HighlighterFunc(func(string, highlight.State) ([]highlight.Span, highlight.State) { return nil, 0 })
+	r := highlight.NewRepository(
+		highlight.Definition{Name: "A wide", Extensions: []string{"*.sql"}, Highlighter: none},
+		highlight.Definition{Name: "Z narrow", Extensions: []string{"*.lite.sql"}, Priority: 1, Highlighter: none},
+		highlight.Definition{Name: "M tie", Extensions: []string{"*.lite.sql"}, Priority: 1, Highlighter: none},
+	)
+	for file, want := range map[string]string{
+		"q.sql":      "A wide",
+		"q.lite.sql": "M tie", // Z and M both at 1: the first by name
+	} {
+		if d, _ := r.DefinitionForFileName(file); d.Name != want {
+			t.Errorf("%s: %q, want %q", file, d.Name, want)
+		}
+	}
+}
