@@ -133,7 +133,8 @@ func delimiterRow(rest []byte) ([]Align, bool) {
 }
 
 // splitRow returns the trimmed ranges of a table row's cells: pipes separate them, a leading and a
-// trailing pipe are optional, and a backslash before a pipe keeps it in the cell.
+// trailing pipe are optional, and an escaped pipe stays in its cell. A pipe is escaped when an odd
+// run of backslashes precedes it: in "\\|" the backslash is the one escaped, and the pipe separates.
 func splitRow(line []byte) [][2]int {
 	i, end := 0, len(line)
 	for i < end && isSpaceOrTab(line[i]) {
@@ -145,13 +146,13 @@ func splitRow(line []byte) [][2]int {
 	if i < end && line[i] == '|' {
 		i++
 	}
-	if end > i && line[end-1] == '|' && line[end-2] != '\\' {
+	if end > i && line[end-1] == '|' && !escapedPipe(line, end-1) {
 		end--
 	}
 	var cells [][2]int
 	start := i
 	for j := i; j <= end; j++ {
-		if j < end && (line[j] != '|' || line[j-1] == '\\') {
+		if j < end && (line[j] != '|' || escapedPipe(line, j)) {
 			continue
 		}
 		s, e := start, j
@@ -165,6 +166,15 @@ func splitRow(line []byte) [][2]int {
 		start = j + 1
 	}
 	return cells
+}
+
+// escapedPipe reports whether the pipe at line[j] follows an odd run of backslashes.
+func escapedPipe(line []byte, j int) bool {
+	n := 0
+	for j-n-1 >= 0 && line[j-n-1] == '\\' {
+		n++
+	}
+	return n%2 == 1
 }
 
 // finalizeTable turns the table's lines into rows: the header, then the body rows, each with as
@@ -190,15 +200,15 @@ func finalizeTable(t *Node) {
 	}
 }
 
-// tableCell gives a cell its content and span: the cell's bytes, with the backslash of each '\|'
-// dropped, so that the pipe is text wherever it is, even in a code span.
+// tableCell gives a cell its content and span: the cell's bytes, with the backslash that escapes
+// each escaped pipe dropped, so that the pipe is text wherever it is, even in a code span.
 func tableCell(cell *Node, line []byte, r [2]int, s seg) {
 	src := func(off int) int { return s.src + max(0, off-s.pad) }
 	cell.Span = Span{src(r[0]), src(r[1])}
 	b := cell.blk
 	from := r[0]
 	for j := r[0]; j <= r[1]; j++ {
-		if j < r[1] && !(line[j] == '\\' && j+1 < r[1] && line[j+1] == '|') {
+		if j < r[1] && !(line[j] == '\\' && j+1 < r[1] && line[j+1] == '|' && escapedPipe(line, j+1)) {
 			continue
 		}
 		if j > from {

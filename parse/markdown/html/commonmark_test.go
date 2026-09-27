@@ -94,6 +94,7 @@ var casesLeaf = []specCase{
 	{"4.5/closing-fence", true, "````\na\n`````\n", "<pre><code>a\n</code></pre>\n"},
 	{"4.5/closing-fence", false, "````\na\n```\n", "<pre><code>a\n```\n</code></pre>\n"},
 	{"4.6/html-block-type1", true, "<pre>\n\n*c*\n</pre>\n", "<pre>\n\n*c*\n</pre>\n"},
+	{"4.6/html-block-type1", true, "<script>\n</style>\n*a*\n", "<script>\n</style>\n<p><em>a</em></p>\n"},
 	{"4.6/html-block-type1", false, "<pref>\n\n*c*\n", "<pref>\n<p><em>c</em></p>\n"},
 	{"4.6/html-block-type2", true, "<!-- c -->\n", "<!-- c -->\n"},
 	{"4.6/html-block-type2", false, "<!- x ->\n", "<p>&lt;!- x -&gt;</p>\n"},
