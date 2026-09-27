@@ -12,7 +12,7 @@ import (
 )
 
 doc := markdown.Parse(src, markdown.GFM(), markdown.Obsidian())
-err := html.Render(w, doc) // raw HTML escaped; html.Unsafe() passes it through
+err := html.Render(w, doc) // safe: raw HTML escaped, script URLs dropped; html.Unsafe() writes both
 ```
 
 `Parse` takes any bytes and never fails — any sequence of characters is a CommonMark document — and

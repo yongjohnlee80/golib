@@ -9,8 +9,16 @@ err := html.Render(w, doc)                // raw HTML escaped: safe for an untru
 err = html.Render(w, doc, html.Unsafe())  // raw HTML passed through, as CommonMark specifies
 ```
 
-**The default escapes raw HTML** (HTML blocks and inline HTML), so a note from someone else renders as
-text rather than as markup. `Unsafe()` passes it through; it is the form the conformance cases compare.
+**The default is safe for an untrusted author.** Raw HTML (HTML blocks and inline HTML) is escaped, so it
+renders as text rather than as markup, and a link or image URL is written only when it has no scheme
+(a path, a query, a fragment) or an allowed one: `http`, `https`, `mailto`, `ftp`, `tel`, and `data:`
+for PNG, GIF, JPEG and WebP images. Any other URL (`javascript:`, `vbscript:`, `file:`, other `data:`)
+is written as an empty attribute. The check reads the URL the browser would receive, after entity
+references are decoded and whitespace is percent-encoded, so neither can hide or split a scheme. It
+covers every link: inline, reference, autolinks, GFM's extended autolinks, wikilinks and embeds.
+
+`Unsafe()` passes raw HTML through and writes every URL, as CommonMark specifies; it is the form the
+conformance cases compare.
 
 ## The form
 

@@ -17,8 +17,10 @@ type Option func(*config)
 
 type config struct{ unsafe bool }
 
-// Unsafe passes raw HTML (HTML blocks and inline HTML) through as written. By default it is escaped,
-// so a document from an untrusted author renders as text rather than as markup.
+// Unsafe passes raw HTML (HTML blocks and inline HTML) through as written, and writes every link and
+// image URL. By default raw HTML is escaped, and a URL whose scheme is not on the allowlist (http,
+// https, mailto, ftp, tel; data: only for raster images) is written empty, so a document from an
+// untrusted author renders as text rather than as markup and cannot link to script.
 func Unsafe() Option { return func(c *config) { c.unsafe = true } }
 
 // Render writes doc as HTML.
@@ -389,6 +391,58 @@ func (r *renderer) escape(b []byte) {
 	}
 }
 
+// safeSchemes are the URL schemes the default renderer writes; a reference without a scheme
+// (a path, a query, a fragment) is always written.
+var safeSchemes = []string{"http", "https", "mailto", "ftp", "tel"}
+
+// safeImageData are the only data: URLs written by default: raster images, which cannot run script.
+var safeImageData = []string{"image/png", "image/gif", "image/jpeg", "image/webp"}
+
+// safeURL decides on the percent-encoded URL, the form the browser receives: whitespace and control
+// characters are already escapes there, so none can split a scheme ("java\tscript:") or hide one
+// behind leading space, and entity references were decoded by the parser.
+func safeURL(u []byte) bool {
+	scheme, rest, ok := urlScheme(u)
+	if !ok {
+		return true
+	}
+	s := string(bytes.ToLower(scheme))
+	for _, safe := range safeSchemes {
+		if s == safe {
+			return true
+		}
+	}
+	if s == "data" {
+		media := bytes.ToLower(rest)
+		for _, img := range safeImageData {
+			if bytes.HasPrefix(media, []byte(img)) && len(media) > len(img) && (media[len(img)] == ';' || media[len(img)] == ',') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// urlScheme splits "scheme:rest" as a URL parser reads a scheme: a letter, then letters, digits,
+// '+', '-' or '.', then ':'. Anything else before the first ':' means the URL has no scheme.
+func urlScheme(u []byte) (scheme, rest []byte, ok bool) {
+	if len(u) == 0 || !isASCIIAlpha(u[0]) {
+		return nil, nil, false
+	}
+	for i := 1; i < len(u); i++ {
+		switch c := u[i]; {
+		case c == ':':
+			return u[:i], u[i+1:], true
+		case isASCIIAlpha(c) || (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.':
+		default:
+			return nil, nil, false
+		}
+	}
+	return nil, nil, false
+}
+
+func isASCIIAlpha(c byte) bool { return (c|0x20) >= 'a' && (c|0x20) <= 'z' }
+
 // escapeHref percent-encodes a destination for an href or src, keeping the characters that are safe
 // in a URL. '%' is kept as written, escape or not, as the reference implementation (cmark) keeps it.
 func escapeHref(dest []byte) []byte {
@@ -419,8 +473,14 @@ func urlSafe(c byte) bool {
 
 // href writes a destination as an attribute value: percent-encoded, then escaped, with an apostrophe
 // written as a reference too, as the reference implementation (cmark) writes it.
+//
+// By default a URL whose scheme is not on the allowlist is written empty, so a note from an
+// untrusted author cannot link to javascript: or the like. Unsafe writes every URL.
 func (r *renderer) href(dest []byte) {
 	b := escapeHref(dest)
+	if !r.cfg.unsafe && !safeURL(b) {
+		return
+	}
 	for {
 		i := bytes.IndexByte(b, '\'')
 		if i < 0 {
