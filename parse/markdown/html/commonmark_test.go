@@ -263,6 +263,7 @@ var casesInline = []specCase{
 	{"6.8/line-end-whitespace-stripped", true, "a  \t\nb\n", "<p>a\nb</p>\n"},
 	{"4.8/leading-whitespace-stripped", true, "  a\n   b\n", "<p>a\nb</p>\n"},
 	{"4.8/leading-whitespace-stripped", true, "[a]: /u\n\tb\n", "<p>b</p>\n"},
+	{"4.8/leading-whitespace-stripped", true, "> a `b\n  c`\n", "<blockquote>\n<p>a <code>b c</code></p>\n</blockquote>\n"},
 	{"6.2/underscore-after-punctuation", true, "a-_(b)_\n", "<p>a-<em>(b)</em></p>\n"},
 	{"6.2/underscore-after-punctuation", false, "a_(b)_\n", "<p>a_(b)_</p>\n"},
 	{"6.2/minimal-nesting", true, "****a****\n", "<p><strong><strong>a</strong></strong></p>\n"},

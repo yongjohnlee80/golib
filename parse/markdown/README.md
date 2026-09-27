@@ -97,8 +97,10 @@ reading is pinned by a rule and its cases. The ones a user may notice:
 
 - **CommonMark.** Escapes and entity references decode in one pass, so an escaped `&` starts no
   reference (`\&amp;` is `&amp;` as text), in info strings and destinations too — as commonmark.js
-  reads it; cmark 0.31.1 decodes references first. Unescaped parentheses in a link destination nest
-  at most 32 deep, cmark's limit (the specification permits one).
+  reads it; cmark 0.31.1 decodes references first. Every paragraph line loses its leading
+  whitespace, a lazy continuation line's too (cmark keeps it there, which shows inside a code span).
+  Unescaped parentheses in a link destination nest at most 32 deep, cmark's limit (the specification
+  permits one).
 - **GFM.** The specification's text is followed, which in places is stricter than GitHub's renderer:
   strikethrough takes exactly two tildes (cmark-gfm also accepts one); the domain after `www.` needs a
   period of its own (`www.com` is text); a URL's domain needs a period (`http://localhost` is text); an

@@ -59,7 +59,7 @@ var rules = []rule{
 	{ID: "4.7/first-definition-wins", Statement: "when a label is defined twice, the first definition is used", NoNegative: "a second definition has no observable effect to miss"},
 	{ID: "4.7x4.3/definitions-then-underline", Statement: "an underline below a paragraph of only definitions is paragraph text, not a heading or a break (cmark's reading; the spec pins only the '===' form)"},
 	{ID: "4.8/paragraph-lines", Statement: "consecutive non-blank lines form a paragraph, with leading whitespace stripped", NoNegative: "every non-blank text line joins a paragraph"},
-	{ID: "4.8/leading-whitespace-stripped", Statement: "each line of a paragraph loses its leading spaces and tabs, including the first line left after definitions are taken out (commonmark.js reads it so; cmark 0.31.1 keeps that line's tab)", NoNegative: "leading whitespace is always stripped"},
+	{ID: "4.8/leading-whitespace-stripped", Statement: "each line of a paragraph loses its leading spaces and tabs, a lazy continuation line and the first line left after definitions are taken out included (commonmark.js reads it so; cmark 0.31.1 keeps them there, which shows inside a code span)", NoNegative: "leading whitespace is always stripped"},
 	{ID: "4.9/blank-lines-separate", Statement: "blank lines between blocks are ignored except for list tightness", NoNegative: "blank lines have no near miss"},
 
 	{ID: "5.1/block-quote", Statement: "lines starting with '>' form a block quote"},
