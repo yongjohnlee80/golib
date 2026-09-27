@@ -188,15 +188,20 @@ func (p *blockParser) incorporate(ln line) {
 	}
 	p.allClosed = container == p.oldtip
 	p.lastMatchedContainer = container
-	// a matched container spans this line when it holds content here, or shows its marker ('>')
+	// A matched block quote spans this line, since its '>' is here. Every other block gains the line
+	// only when content lands in it (addLine, or a leaf finalized on the line): a list, or a
+	// paragraph that a heading or a break then interrupts, matches without keeping the line.
 	for c := container; c != nil && c != p.root; c = c.Parent {
-		if !p.blank || c.Kind == KindBlockQuote {
-			c.Span.End = max(c.Span.End, p.ln.end)
+		if c.Kind == KindBlockQuote {
+			p.extendTo(c, p.ln.end)
+			break
 		}
 	}
 
 	// 2. new block starts, unless the matched block takes raw lines
 	matchedLeaf := container.Kind != KindParagraph && acceptsLines(container)
+	var opened *Node // the deepest container this line opened, which spans its marker
+	markerEnd := 0
 	for !matchedLeaf {
 		p.findNextNonspace()
 		if !p.indented && !mayStartBlock(p.peek(p.nextNonspace)) {
@@ -209,12 +214,20 @@ func (p *blockParser) incorporate(ln line) {
 			break
 		}
 		container = nc
+		if res == startContainer {
+			opened, markerEnd = nc, p.ln.start+p.offset
+		}
 		if res == startLeaf {
 			break
 		}
 		if acceptsLines(container) {
 			break
 		}
+	}
+
+	// one walk for all the containers opened here, rather than one per marker
+	if opened != nil && opened.blk.open {
+		p.extendTo(opened, markerEnd)
 	}
 
 	// 3. the rest of the line
@@ -384,6 +397,19 @@ func (p *blockParser) addChild(k Kind, off int) *Node {
 	return n
 }
 
+// extendTo stretches n and its ancestors to end at least at end.
+// An ancestor already ending there stops the walk: a parent never ends before its children, so
+// deep nesting costs nothing per line.
+func (p *blockParser) extendTo(n *Node, end int) {
+	if n == p.root {
+		return
+	}
+	n.Span.End = max(n.Span.End, end)
+	for a := n.Parent; a != nil && a != p.root && a.Span.End < end; a = a.Parent {
+		a.Span.End = end
+	}
+}
+
 func canContain(parent, child Kind) bool {
 	switch parent {
 	case KindDocument, KindBlockQuote, KindItem:
@@ -403,14 +429,20 @@ func (p *blockParser) addLine() {
 		pad = 4 - p.column%4
 	}
 	s := seg{at: len(b.content), pad: pad, src: p.ln.start + p.offset, n: len(p.text) - p.offset}
+	if len(b.segs) == 0 && p.tip.Kind == KindParagraph {
+		// a paragraph starts at its first line of text, including one whose definitions were taken out
+		p.tip.Span.Start = s.src
+	}
 	for i := 0; i < pad; i++ {
 		b.content = append(b.content, ' ')
 	}
 	b.content = append(b.content, p.text[p.offset:]...)
 	b.content = append(b.content, '\n')
 	b.segs = append(b.segs, s)
-	for n := p.tip; n != nil && n != p.root; n = n.Parent {
-		n.Span.End = max(n.Span.End, p.ln.end)
+	// blank lines at the end of an indented code block are not part of it, so they extend nothing
+	// until a later line with content does
+	if !p.blank || p.tip.Kind != KindCodeBlock || p.tip.Fence != 0 {
+		p.extendTo(p.tip, p.ln.end)
 	}
 }
 
@@ -421,9 +453,7 @@ func (p *blockParser) finalize(b *Node, end int) {
 	parent := b.Parent
 	b.blk.open = false
 	if end >= 0 {
-		for n := b; n != nil && n != p.root; n = n.Parent {
-			n.Span.End = max(n.Span.End, end)
-		}
+		p.extendTo(b, end)
 	}
 	switch b.Kind {
 	case KindParagraph:

@@ -50,7 +50,7 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 				cb.blk.fenceLen = n
 				cb.blk.fenceOffset = p.indent
 				cb.Info = decodeInline(info)
-				cb.Span.End = p.ln.end
+				p.extendTo(cb, p.ln.end)
 				p.lineConsumed = true
 				return startLeaf, cb
 			}
@@ -94,7 +94,7 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 		}
 	}
 
-	if !p.indented || container.Kind == KindList {
+	if !p.indented {
 		if data, ok := p.listMarker(container); ok {
 			p.closeUnmatched()
 			if p.tip.Kind != KindList || !listMatches(p.tip.List, data) {
