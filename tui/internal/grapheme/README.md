@@ -210,3 +210,10 @@ go run ./gen -unicode 15.0.0 -download
 ```
 
 The generated file records the SHA-256 hashes of all input files at the top of `tables.go` for auditing.
+
+## Licence
+
+The UCD files in `gen/testdata/` are © Unicode, Inc. and keep their original
+headers. They, and the tables generated from them, are distributed under the
+[Unicode License Agreement](gen/testdata/UNICODE-LICENSE.txt), not golib's
+Apache-2.0 licence. See the repository's [NOTICE](../../../NOTICE).
