@@ -269,7 +269,7 @@ func TestSymlinkEscape(t *testing.T) {
 	}
 }
 
-// TestSymlinkPolicy: entries are reported themselves, never followed (ADR §4.1).
+// TestSymlinkPolicy: entries are reported themselves, never followed.
 func TestSymlinkPolicy(t *testing.T) {
 	f, dir := newLocal(t)
 	mustWrite(t, f, "f.md", "target")
