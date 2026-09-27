@@ -281,6 +281,27 @@ err = artists.DAO().Set(ArtistName, "X").Set(ArtistURI, "x").Upsert()
 err = artists.DAO().With(ArtistID, id).Delete()
 ```
 
+### 4.1 Compare-and-set: `dao.UpdateAffected`
+
+`Update` can't tell you whether its WHERE matched anything. When that's the
+point, as in a state transition only one writer may win, write the condition
+as predicates and read the count:
+
+```go
+n, err := dao.UpdateAffected(jobs.On(tx).
+    With(JobID, id).With(JobState, "open"). // the condition
+    Set(JobState, "claimed"))               // the transition
+switch {
+case err != nil: // Update's errors; ErrUnsupported if the driver can't count
+case n == 0:     // the condition did not hold — read the row to see why
+}
+```
+
+Make the `Set` move the condition's column to a new value. Then "0" means
+the same on every driver. MySQL counts only rows it CHANGED (unless the DSN sets
+`clientFoundRows=true`), so an update that leaves the row as it was reports 0
+there.
+
 ## 5. Bulk import (auto-chunked; COPY on Postgres)
 
 ```go

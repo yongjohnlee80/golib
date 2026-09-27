@@ -572,35 +572,56 @@ func affectedOf(res Result) int64 {
 }
 
 func (d *queryDAO[R, C, K, ID]) Update() error {
+	_, err := d.update()
+	return err
+}
+
+// UpdateAffected is Update, reporting how many rows it changed. See
+// [AffectedUpdater].
+func (d *queryDAO[R, C, K, ID]) UpdateAffected() (int64, error) {
+	n, err := d.update()
+	if err != nil {
+		return 0, err
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("%w: rows affected (the driver did not report them)", ErrUnsupported)
+	}
+	return n, nil
+}
+
+// update is Update's body, returning the driver's affected-row count: -1 when
+// the driver cannot say, 0 for an empty value set (nothing was sent).
+func (d *queryDAO[R, C, K, ID]) update() (int64, error) {
 	if d.err != nil {
-		return d.err
+		return 0, d.err
 	}
 	pl, perr := d.begin(OpUpdate, true)
 	if perr != nil {
-		return perr
+		return 0, perr
 	}
 	if len(d.q.where) == 0 {
-		return ErrNoConditions
+		return 0, ErrNoConditions
 	}
 	set, serr := d.stagedSet()
 	if serr != nil {
-		return serr
+		return 0, serr
 	}
 	if set.empty() {
-		return nil
+		return 0, nil
 	}
 	b := d.newBuilder()
 	q := b.buildUpdate(d.schema.table, d.schema.idColumn, set, d.collectJoins(nil), d.q.where)
 	args := b.args
 	if err := pl.beforeExec(&q, &args); err != nil {
-		return err
+		return 0, err
 	}
 	h, herr := d.handle()
 	if herr != nil {
-		return herr
+		return 0, herr
 	}
 	res, err := h.ExecContext(d.ctx(), q, args...)
-	return pl.finish(0, affectedOf(res), d.schema.translate(err))
+	n := affectedOf(res)
+	return n, pl.finish(0, n, d.schema.translate(err))
 }
 
 func (d *queryDAO[R, C, K, ID]) Upsert() error {

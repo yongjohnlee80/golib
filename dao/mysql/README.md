@@ -23,6 +23,11 @@ go get github.com/yongjohnlee80/golib
   `ListColumns` over `information_schema`.
 - **Result column names** (ADR-0012): `*sql.Rows` satisfies `dao.RowsColumns`
   natively.
+- **Affected rows** (`dao.UpdateAffected`): MySQL reports rows CHANGED, not
+  rows MATCHED, unless the DSN sets `clientFoundRows=true`. An update that
+  sets a row to the values it already has reports 0 here, and 1 on PostgreSQL
+  and SQLite. A compare-and-set whose `Set` moves the condition's column is
+  unaffected.
 - **Transaction options** (ADR-0017): implements `dao.TxBeginner`. `READ ONLY`
   and the full isolation domain (including `READ UNCOMMITTED`, which MySQL
   implements literally) are honored. Explicit `READ WRITE` is **refused** —

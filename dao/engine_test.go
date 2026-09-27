@@ -21,6 +21,7 @@ type fakeConn struct {
 	rows      *fakeRows
 	queryErr  error
 	execErr   error
+	result    Result // what ExecContext returns; nil is a fakeResult (0 rows)
 }
 
 func (c *fakeConn) QueryContext(_ context.Context, q string, args ...any) (Rows, error) {
@@ -38,6 +39,9 @@ func (c *fakeConn) ExecContext(_ context.Context, q string, args ...any) (Result
 	c.lastExec, c.lastEArgs = q, args
 	if c.execErr != nil {
 		return nil, c.execErr
+	}
+	if c.result != nil {
+		return c.result, nil
 	}
 	return fakeResult{}, nil
 }
