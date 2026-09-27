@@ -2,6 +2,7 @@ package html_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/parse/markdown"
@@ -52,9 +53,14 @@ var casesPreliminaries = []specCase{
 	{"2.5/entity-reference", true, "&#x22;\n", "<p>&quot;</p>\n"},
 	{"2.5/entity-reference", false, "&nosuch; &copy\n", "<p>&amp;nosuch; &amp;copy</p>\n"},
 	{"2.5/entity-reference", false, "&#12345678;\n", "<p>&amp;#12345678;</p>\n"},
+	{"2.5/numeric-reference-range", true, "&#1234567; &#xD800; &#x10FFFF;\n", "<p>\uFFFD \uFFFD \U0010FFFF</p>\n"},
+	{"2.5/numeric-reference-range", false, "&#x1000000; &#x;\n", "<p>&amp;#x1000000; &amp;#x;</p>\n"},
 	{"2.4/backslash-escape", true, "\\!\\\"\\#\n", "<p>!&quot;#</p>\n"},
 	{"2.4/escape-in-destinations", true, "[a](/\\*b)\n", "<p><a href=\"/*b\">a</a></p>\n"},
 	{"2.4/escape-in-destinations", false, "<http://a\\b>\n", "<p><a href=\"http://a%5Cb\">http://a\\b</a></p>\n"},
+	{"2.4/escaped-ampersand-starts-no-reference", true, "``` \\&amp;\n```\n", "<pre><code class=\"language-&amp;amp;\"></code></pre>\n"},
+	{"2.4/escaped-ampersand-starts-no-reference", true, "[a](/\\&#42;)\n", "<p><a href=\"/&amp;#42;\">a</a></p>\n"},
+	{"2.4/escaped-ampersand-starts-no-reference", false, "``` &amp;\n```\n", "<pre><code class=\"language-&amp;\"></code></pre>\n"},
 	{"2.5/entity-in-destination", true, "[a](/f&ouml;)\n", "<p><a href=\"/f%C3%B6\">a</a></p>\n"},
 	{"2.5/entity-in-destination", false, "`&ouml;`\n", "<p><code>&amp;ouml;</code></p>\n"},
 	{"2.5/entity-is-not-markup", true, "&#42;foo&#42;\n", "<p>*foo*</p>\n"},
@@ -157,6 +163,7 @@ var casesContainer = []specCase{
 	{"5.2/list-marker", true, "3. a\n", "<ol start=\"3\">\n<li>a</li>\n</ol>\n"},
 	{"5.2/list-marker", false, "1234567890. a\n", "<p>1234567890. a</p>\n"},
 	{"5.2/list-marker", false, "-a\n", "<p>-a</p>\n"},
+	{"5.2/list-marker", false, "*\n\n    - x\n", "<ul>\n<li></li>\n</ul>\n<pre><code>- x\n</code></pre>\n"},
 	{"5.2/item-content-indent", true, "-   a\n\n    b\n", "<ul>\n<li>\n<p>a</p>\n<p>b</p>\n</li>\n</ul>\n"},
 	{"5.2/item-content-indent", true, "-     a\n", "<ul>\n<li>\n<pre><code>a\n</code></pre>\n</li>\n</ul>\n"},
 	{"5.2/item-content-indent", false, "- a\n\n b\n", "<ul>\n<li>a</li>\n</ul>\n<p>b</p>\n"},
@@ -174,6 +181,12 @@ var casesContainer = []specCase{
 	{"5.2/item-starts-blank", false, "-\n\n  a\n", "<ul>\n<li></li>\n</ul>\n<p>a</p>\n"},
 	{"5.2/sublist", true, "- a\n  - b\n", "<ul>\n<li>a\n<ul>\n<li>b</li>\n</ul>\n</li>\n</ul>\n"},
 	{"5.2/sublist", false, "- a\n - b\n", "<ul>\n<li>a</li>\n<li>b</li>\n</ul>\n"},
+	{"5.2/content-column-counts-marker-indent", true, " -  a\n\n    b\n", "<ul>\n<li>\n<p>a</p>\n<p>b</p>\n</li>\n</ul>\n"},
+	{"5.2/content-column-counts-marker-indent", false, " -  a\n\n   b\n", "<ul>\n<li>a</li>\n</ul>\n<p>b</p>\n"},
+	{"5.2/tab-after-marker", true, "-\ta\n", "<ul>\n<li>a</li>\n</ul>\n"},
+	{"5.2/tab-after-marker", true, "-\t\ta\n", "<ul>\n<li>\n<pre><code>  a\n</code></pre>\n</li>\n</ul>\n"},
+	{"5.2/tab-after-marker", false, "\t-\ta\n", "<pre><code>-\ta\n</code></pre>\n"},
+	{"5.3/start-from-first-item", true, "2. a\n1. b\n", "<ol start=\"2\">\n<li>a</li>\n<li>b</li>\n</ol>\n"},
 	{"5.3/list-continuity", true, "2. a\n5. b\n", "<ol start=\"2\">\n<li>a</li>\n<li>b</li>\n</ol>\n"},
 	{"5.3/list-continuity", false, "1. a\n2) b\n", "<ol>\n<li>a</li>\n</ol>\n<ol start=\"2\">\n<li>b</li>\n</ol>\n"},
 	{"5.3/loose-tight", true, "- a\n\n\n- b\n", "<ul>\n<li>\n<p>a</p>\n</li>\n<li>\n<p>b</p>\n</li>\n</ul>\n"},
@@ -227,6 +240,10 @@ var casesInline = []specCase{
 	{"6.3/inline-link", true, "[*a*](/u)\n", "<p><a href=\"/u\"><em>a</em></a></p>\n"},
 	{"6.3/destination-parens", true, "[a](/u(b))\n", "<p><a href=\"/u(b)\">a</a></p>\n"},
 	{"6.3/destination-parens", false, "[a](/u(b)\n", "<p>[a](/u(b)</p>\n"},
+	{"6.3/destination-paren-nesting-limit", true, "[a](" + strings.Repeat("(", 32) + strings.Repeat(")", 32) + ")\n",
+		"<p><a href=\"" + strings.Repeat("(", 32) + strings.Repeat(")", 32) + "\">a</a></p>\n"},
+	{"6.3/destination-paren-nesting-limit", false, "[a](" + strings.Repeat("(", 33) + strings.Repeat(")", 33) + ")\n",
+		"<p>[a](" + strings.Repeat("(", 33) + strings.Repeat(")", 33) + ")</p>\n"},
 	{"6.3/link-title", true, "[a](/u 't') [b](/v (t))\n", "<p><a href=\"/u\" title=\"t\">a</a> <a href=\"/v\" title=\"t\">b</a></p>\n"},
 	{"6.3/link-title", false, "[a](/u\"t\")\n", "<p><a href=\"/u%22t%22\">a</a></p>\n"},
 	{"6.3/link-before-emphasis", true, "*[a*](/u)\n", "<p>*<a href=\"/u\">a*</a></p>\n"},
@@ -240,6 +257,26 @@ var casesInline = []specCase{
 	{"6.7/hard-break", true, "a\t  \nb\n", "<p>a<br />\nb</p>\n"},
 	{"6.8/line-end-whitespace-stripped", true, "a \t\nb\n", "<p>a\nb</p>\n"},
 	{"6.8/line-end-whitespace-stripped", true, "a  \t\nb\n", "<p>a\nb</p>\n"},
+	{"6.2/underscore-after-punctuation", true, "a-_(b)_\n", "<p>a-<em>(b)</em></p>\n"},
+	{"6.2/underscore-after-punctuation", false, "a_(b)_\n", "<p>a_(b)_</p>\n"},
+	{"6.2/minimal-nesting", true, "****a****\n", "<p><strong><strong>a</strong></strong></p>\n"},
+	{"6.2/minimal-nesting", false, "*_a_*\n", "<p><em><em>a</em></em></p>\n"},
+	{"6.2/first-closer-wins", true, "*a _b* c_\n", "<p><em>a _b</em> c_</p>\n"},
+	{"6.2/first-closer-wins", false, "*a _b_ c*\n", "<p><em>a <em>b</em> c</em></p>\n"},
+	{"6.2/shorter-span-wins", true, "**a **b c**\n", "<p>**a <strong>b c</strong></p>\n"},
+	{"6.2/shorter-span-wins", false, "**a b c**\n", "<p><strong>a b c</strong></p>\n"},
+	{"6.2/code-and-html-bind-tighter", true, "*a `*`*\n", "<p><em>a <code>*</code></em></p>\n"},
+	{"6.2/code-and-html-bind-tighter", true, "*a <b title=\"*\">*\n", "<p><em>a <b title=\"*\"></em></p>\n"},
+	{"6.2/code-and-html-bind-tighter", false, "*a `b*`\n", "<p>*a <code>b*</code></p>\n"},
+	{"6.3/link-text-brackets", true, "[a [b] c](/u)\n", "<p><a href=\"/u\">a [b] c</a></p>\n"},
+	{"6.3/link-text-brackets", false, "[a ]b](/u)\n", "<p>[a ]b](/u)</p>\n"},
+	{"6.3/inline-before-reference", true, "[a](/i)\n\n[a]: /r\n", "<p><a href=\"/i\">a</a></p>\n"},
+	{"6.3/inline-before-reference", false, "[a] (/i)\n\n[a]: /r\n", "<p><a href=\"/r\">a</a> (/i)</p>\n"},
+	{"6.3/full-reference-adjacent", true, "[a][b]\n\n[b]: /u\n", "<p><a href=\"/u\">a</a></p>\n"},
+	{"6.3/full-reference-adjacent", false, "[a] [b]\n\n[b]: /u\n", "<p>[a] <a href=\"/u\">b</a></p>\n"},
+	{"6.5/scheme-length", true, "<ab:c> <" + strings.Repeat("a", 32) + ":c>\n",
+		"<p><a href=\"ab:c\">ab:c</a> <a href=\"" + strings.Repeat("a", 32) + ":c\">" + strings.Repeat("a", 32) + ":c</a></p>\n"},
+	{"6.5/scheme-length", false, "<" + strings.Repeat("a", 33) + ":c>\n", "<p>&lt;" + strings.Repeat("a", 33) + ":c&gt;</p>\n"},
 }
 
 func TestCommonMark(t *testing.T) {

@@ -619,15 +619,33 @@ func (p *inlineParser) mergeText(parent *Node) {
 		if c.FirstChild != nil {
 			p.mergeText(c)
 		}
-		for c.Kind == KindText && c.Next != nil && c.Next.Kind == KindText && c.Span.End == c.Next.Span.Start {
-			n := c.Next
-			joined := append(append([]byte(nil), c.Text(p.src)...), n.Text(p.src)...)
-			c.Span.End = n.Span.End
-			c.Literal = joined
-			if bytes.Equal(joined, p.src[c.Span.Start:c.Span.End]) {
-				c.Literal = nil
+		if c.Kind != KindText {
+			continue
+		}
+		// find the run first and join it once: joining pairwise would recopy the run per node
+		last, verbatim := c, c.Literal == nil
+		for n := c.Next; n != nil && n.Kind == KindText && n.Span.Start == last.Span.End; n = n.Next {
+			last, verbatim = n, verbatim && n.Literal == nil
+		}
+		if last == c {
+			continue
+		}
+		var joined []byte
+		if !verbatim {
+			for n := c; ; n = n.Next {
+				joined = append(joined, n.Text(p.src)...)
+				if n == last {
+					break
+				}
 			}
-			n.Unlink()
+		}
+		c.Span.End = last.Span.End
+		c.Literal = joined
+		if verbatim || bytes.Equal(joined, p.src[c.Span.Start:c.Span.End]) {
+			c.Literal = nil
+		}
+		for stop := last.Next; c.Next != stop; {
+			c.Next.Unlink()
 		}
 	}
 }

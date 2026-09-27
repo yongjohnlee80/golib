@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"bytes"
+	"sort"
 
 	"golang.org/x/text/cases"
 )
@@ -26,28 +27,34 @@ func (p *blockParser) finalizeParagraph(para *Node) {
 	}
 }
 
-// extractLinkRefs consumes definitions from the start of para's content, one per iteration.
+// extractLinkRefs consumes definitions from the start of para's content. The content is cut once,
+// after the last one, so a paragraph of many definitions costs one pass.
 func (p *blockParser) extractLinkRefs(para *Node) {
 	b := para.blk
+	used := 0
 	for {
-		n, label, dest, title, ok := parseLinkRefDef(b.content)
+		n, label, dest, title, ok := parseLinkRefDef(b.content[used:])
 		if !ok {
-			return
+			break
 		}
 		key := normalizeLabel(label)
 		if _, dup := p.doc.Refs[key]; !dup {
 			p.doc.Refs[key] = LinkRef{Dest: dest, Title: title}
 		}
-		start := mapOffset(b.segs, 0)
-		end := mapOffset(b.segs, n)
+		start := mapOffset(b.segs, used)
+		end := mapOffset(b.segs, used+n)
 		def := &Node{Kind: KindLinkRefDef, Span: Span{start, max(start, trimEnd(p.src, end))},
 			Label: label, Dest: dest, Title: title, blk: &blockState{}} // a closed block, like any other
 		para.InsertBefore(def)
-		b.content = b.content[n:]
-		b.segs = shiftSegs(b.segs, n)
-		if len(b.segs) > 0 {
-			para.Span.Start = mapOffset(b.segs, 0)
-		}
+		used += n
+	}
+	if used == 0 {
+		return
+	}
+	b.content = b.content[used:]
+	b.segs = shiftSegs(b.segs, used)
+	if len(b.segs) > 0 {
+		para.Span.Start = mapOffset(b.segs, 0)
 	}
 }
 
@@ -59,22 +66,23 @@ func trimEnd(src []byte, end int) int {
 	return end
 }
 
-// mapOffset turns an offset into assembled content back into a source offset.
+// mapOffset turns an offset into assembled content back into a source offset. It binary-searches,
+// since the inline phase maps every node it makes and a paragraph may have many lines.
 func mapOffset(segs []seg, off int) int {
-	for i, s := range segs {
-		lineEnd := s.at + s.pad + s.n // the '\n' that stands for the line's end
-		if off <= lineEnd || i == len(segs)-1 {
-			rel := off - s.at - s.pad
-			if rel < 0 {
-				rel = 0
-			}
-			if rel > s.n {
-				rel = s.n
-			}
-			return s.src + rel
-		}
+	if len(segs) == 0 {
+		return 0
 	}
-	return 0
+	// the first line whose end (the '\n' that stands for it) is at or after off, else the last line
+	i := sort.Search(len(segs), func(i int) bool { s := segs[i]; return off <= s.at+s.pad+s.n })
+	s := segs[min(i, len(segs)-1)]
+	rel := off - s.at - s.pad
+	if rel < 0 {
+		rel = 0
+	}
+	if rel > s.n {
+		rel = s.n
+	}
+	return s.src + rel
 }
 
 // shiftSegs drops the first n bytes of content from the segment list.
@@ -201,10 +209,13 @@ func scanLinkLabel(b []byte, i int) ([]byte, int, bool) {
 }
 
 // scanLinkDest scans a link destination at i: "<...>" with no line ending or unescaped '<' or '>', or
-// a nonempty run with no control characters or spaces and only balanced unescaped parentheses.
+// a nonempty run with no control characters or spaces and only balanced unescaped parentheses,
+// nested at most maxDestParens deep. The spec lets implementations limit the nesting; without a
+// limit every unclosed "[a](" on a line would rescan the rest of it.
 //
 // https://spec.commonmark.org/0.31.2/#link-destination
 func scanLinkDest(b []byte, i int) ([]byte, int, bool) {
+	const maxDestParens = 32 // the reference implementation's limit
 	if i < len(b) && b[i] == '<' {
 		for j := i + 1; j < len(b); j++ {
 			switch b[j] {
@@ -229,7 +240,9 @@ func scanLinkDest(b []byte, i int) ([]byte, int, bool) {
 			j += 2
 			continue
 		case c == '(':
-			depth++
+			if depth++; depth > maxDestParens {
+				return nil, 0, false
+			}
 		case c == ')':
 			if depth == 0 {
 				return b[i:j], j, j > i
