@@ -39,6 +39,13 @@ func TestCloseEndsWatch(t *testing.T) {
 			if err := fsys.Close(); err != nil {
 				t.Fatal(err)
 			}
+			// Counted BEFORE reading anything: a read would unblock a stalled send and hide the defect.
+			for end := time.Now().Add(5 * time.Second); runtime.NumGoroutine() > before; {
+				if time.Now().After(end) {
+					t.Fatalf("goroutines: %d before, %d after Close with nobody reading", before, runtime.NumGoroutine())
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
 			deadline := time.After(5 * time.Second)
 			for open := true; open; {
 				select {
@@ -46,12 +53,6 @@ func TestCloseEndsWatch(t *testing.T) {
 				case <-deadline:
 					t.Fatal("the event channel did not close after Close")
 				}
-			}
-			for end := time.Now().Add(5 * time.Second); runtime.NumGoroutine() > before; {
-				if time.Now().After(end) {
-					t.Fatalf("goroutines: %d before, %d after Close", before, runtime.NumGoroutine())
-				}
-				time.Sleep(10 * time.Millisecond)
 			}
 		})
 	}

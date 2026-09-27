@@ -336,8 +336,10 @@ func TestWatchMovedBeforeItsWatch(t *testing.T) {
 	_ = f.MkdirAll(bg, "w")
 	injectFault(t, "addwatch", "w/tmp", unix.ENOENT) // as if it moved away first
 	events, _ := startWatch(t, f, "w")
+	// Nothing is read until both are done: the reader stalls on its first send, so the move's
+	// IN_MOVED_FROM and IN_MOVED_TO reach it in one read and pair — the case under test. (Split across
+	// reads they would not pair, and the unpaired path adopts anyway.)
 	_ = f.MkdirAll(bg, "w/tmp")
-	await(t, events, "w/tmp", vfs.OpCreate)
 	if err := os.Rename(filepath.Join(dir, "w", "tmp"), filepath.Join(dir, "w", "final")); err != nil {
 		t.Fatal(err)
 	}
