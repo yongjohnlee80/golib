@@ -222,6 +222,11 @@ Error identity, wrapping and comparison are covered separately in
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE). Releases up to and
-including `v0.5.41` were published under the MIT License, and those tags keep
-it.
+golib's own code is licensed under the [Apache License, Version 2.0](LICENSE).
+Releases up to and including `v0.5.41` were published under the MIT License,
+and those tags keep it.
+
+The Unicode Character Database files in `tui/internal/grapheme/gen/testdata/`,
+and the tables generated from them, remain under
+[Unicode's license](tui/internal/grapheme/gen/testdata/UNICODE-LICENSE.txt).
+See [NOTICE](NOTICE).

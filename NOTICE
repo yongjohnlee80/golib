@@ -1,2 +1,10 @@
 golib
 Copyright 2026 Yong Sung John Lee
+
+This product includes data files from the Unicode Character Database,
+version 15.0.0 (tui/internal/grapheme/gen/testdata/), and lookup tables
+generated from them (tui/internal/grapheme/tables.go).
+Copyright © 1991-2022 Unicode, Inc.
+They are distributed under the Unicode, Inc. License Agreement - Data Files
+and Software, not under the Apache License. See
+tui/internal/grapheme/gen/testdata/UNICODE-LICENSE.txt.
