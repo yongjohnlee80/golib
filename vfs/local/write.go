@@ -6,10 +6,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
 	"strings"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/vfs"
@@ -128,7 +131,7 @@ func (f *FS) write(ctx context.Context, name string, r io.Reader, c cond, opts [
 		err = p.rename(tmp, p, base)
 	}
 	if err != nil {
-		return vfs.FileInfo{}, f.commitFailed("write", name, err, c.exclusive)
+		return vfs.FileInfo{}, f.commitFailed("write", name, err, c.exclusive, p)
 	}
 	committed = true
 
@@ -151,9 +154,11 @@ func fill(ctx context.Context, t *os.File, r io.Reader, perm fs.FileMode) error 
 }
 
 // commitFailed maps a failed commit rename. Only a no-replace commit gives EEXIST and the flag errnos
-// their meaning — an existing target is a conflict, a filesystem without the flag is unsupported; a
-// plain rename's errors are returned as they are.
-func (f *FS) commitFailed(op, name string, err error, noReplace bool) error {
+// their meaning — an existing target is a conflict, a filesystem without the flag is unsupported. An
+// EINVAL is unsupported only when a probe in dst shows the flag is refused there; otherwise it is the
+// kernel's path error (a directory moved into itself through a symlink alias). A plain rename's errors
+// are returned as they are.
+func (f *FS) commitFailed(op, name string, err error, noReplace bool, dst *parent) error {
 	switch {
 	case noReplace && isExist(err):
 		cur := vfs.FileInfo{}
@@ -161,7 +166,7 @@ func (f *FS) commitFailed(op, name string, err error, noReplace bool) error {
 			cur = info(name, fi)
 		}
 		return &vfs.ConflictError{Path: name, Current: cur}
-	case noReplace && isNoReplaceUnsupported(err):
+	case noReplace && (isNoReplaceUnsupported(err) || errors.Is(err, unix.EINVAL) && !dst.supportsNoReplace()):
 		return &fs.PathError{Op: op, Path: name, Err: errs.WrapCause(errs.ErrUnsupported, err,
 			"the filesystem under %s has no atomic no-replace rename", name)}
 	}
@@ -204,8 +209,8 @@ func (f *FS) rename(ctx context.Context, from, to string, noReplace bool) error 
 		return err
 	}
 	defer f.leave()
-	// Refused here, not left to the kernel: its EINVAL for this case is indistinguishable from the
-	// EINVAL a filesystem without RENAME_NOREPLACE returns.
+	// Refused here for a clear error. A move into itself through a symlink alias still reaches the
+	// kernel; commitFailed tells its EINVAL from an unsupported flag with a probe.
 	if strings.HasPrefix(to, from+"/") {
 		return &fs.PathError{Op: "rename", Path: to,
 			Err: errs.Wrap(errs.ErrInvalidArgument, "cannot move %q into itself", from)}
@@ -236,7 +241,7 @@ func (f *FS) rename(ctx context.Context, from, to string, noReplace bool) error 
 		err = src.rename(fromBase, dst, toBase)
 	}
 	if err != nil {
-		return f.commitFailed("rename", to, err, noReplace)
+		return f.commitFailed("rename", to, err, noReplace, dst)
 	}
 	parents := []*parent{src}
 	if dst != src {

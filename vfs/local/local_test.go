@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/vfs"
 	"github.com/yongjohnlee80/golib/vfs/vfstest"
@@ -204,12 +206,15 @@ func TestCommitPoint(t *testing.T) {
 		}
 		return nil
 	}
-	for name, run := range map[string]func() error{
-		"WriteFile":       func() error { _, e := f.WriteFile(bg, "a.md", strings.NewReader("new")); return e },
-		"CreateExclusive": func() error { _, e := f.CreateExclusive(bg, "b.md", strings.NewReader("new")); return e },
-		"Rename":          func() error { return f.Rename(bg, "b.md", "c.md") },
+	for _, c := range []struct { // ordered: Rename moves the file CreateExclusive made
+		name string
+		run  func() error
+	}{
+		{"WriteFile", func() error { _, e := f.WriteFile(bg, "a.md", strings.NewReader("new")); return e }},
+		{"CreateExclusive", func() error { _, e := f.CreateExclusive(bg, "b.md", strings.NewReader("new")); return e }},
+		{"Rename", func() error { return f.Rename(bg, "b.md", "c.md") }},
 	} {
-		err := run()
+		name, err := c.name, c.run()
 		var ce *vfs.CommitError
 		if !errors.As(err, &ce) || !errors.Is(err, vfs.ErrCommitted) || !errors.Is(err, boom) {
 			t.Fatalf("%s postcommit failure: err = %v, want *CommitError wrapping ErrCommitted and the cause", name, err)
@@ -402,6 +407,30 @@ func TestRenameIntoItself(t *testing.T) {
 		if err := run(); !errors.Is(err, errs.ErrInvalidArgument) || errors.Is(err, errs.ErrUnsupported) {
 			t.Fatalf("move into itself: err = %v, want ErrInvalidArgument (not ErrUnsupported)", err)
 		}
+	}
+}
+
+// TestRenameIntoItselfThroughLink: a move into itself the lexical check cannot see (through an in-root
+// symlink alias) fails as the kernel's EINVAL, not as an unsupported no-replace flag, and the probe that
+// decided it leaves no file behind.
+func TestRenameIntoItselfThroughLink(t *testing.T) {
+	f, dir := newLocal(t)
+	_ = f.MkdirAll(bg, "d")
+	_ = os.Symlink("d", filepath.Join(dir, "link"))
+	for name, run := range map[string]func() error{
+		"Rename":          func() error { return f.Rename(bg, "d", "link/sub") },
+		"RenameNoReplace": func() error { return f.RenameNoReplace(bg, "d", "link/sub") },
+	} {
+		err := run()
+		if !errors.Is(err, unix.EINVAL) || errors.Is(err, errs.ErrUnsupported) {
+			t.Fatalf("%s through an alias: err = %v, want EINVAL and not ErrUnsupported", name, err)
+		}
+	}
+	if st, err := f.Stat(bg, "d"); err != nil || !st.IsDir() {
+		t.Fatalf("d after the refused moves: %+v, %v", st, err)
+	}
+	if tt := temps(t, dir); len(tt) != 0 {
+		t.Fatalf("the probe left files behind: %v", tt)
 	}
 }
 

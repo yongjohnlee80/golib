@@ -13,7 +13,8 @@ func (p *parent) renameNoReplace(from string, dst *parent, to string) error {
 	return unix.RenameatxNp(p.fd, from, dst.fd, to, unix.RENAME_EXCL)
 }
 
-// isNoReplaceUnsupported: the filesystem lacks the flag.
+// isNoReplaceUnsupported: errnos that only mean the filesystem lacks the flag. EINVAL is not among
+// them — it also means "a directory moved into itself" — so commitFailed probes it.
 func isNoReplaceUnsupported(err error) bool {
-	return errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EINVAL)
+	return errors.Is(err, unix.ENOTSUP)
 }
