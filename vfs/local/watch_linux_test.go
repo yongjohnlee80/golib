@@ -4,13 +4,17 @@ package local
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/yongjohnlee80/golib/vfs"
 )
@@ -241,4 +245,103 @@ func TestPollLocal(t *testing.T) {
 	time.Sleep(30 * time.Millisecond)
 	mustWrite(t, f, "p/a.md", "22")
 	await(t, events, "p/a.md", vfs.OpWrite)
+}
+
+// injectFault makes the watch step op fail with err for rel, until the test ends.
+func injectFault(t *testing.T, op, rel string, err error) {
+	t.Helper()
+	h := func(o, r string) error {
+		if o == op && r == rel {
+			return err
+		}
+		return nil
+	}
+	watchFault.Store(&h)
+	t.Cleanup(func() { watchFault.Store(nil) })
+}
+
+// TestWatchSetupFailsLoudly: a subtree that cannot be watched at setup fails Watch — no silent gap —
+// and releases everything the half-built watch opened.
+func TestWatchSetupFailsLoudly(t *testing.T) {
+	for _, c := range []struct {
+		op, rel string
+		err     error
+	}{
+		{"readdir", "w/a", unix.EACCES},
+		{"addwatch", "w/a/b", unix.EMFILE},
+		{"addwatch", "w/a", unix.ENOSPC},
+	} {
+		t.Run(c.op+" "+c.rel, func(t *testing.T) {
+			f, _ := newLocal(t)
+			_ = f.MkdirAll(bg, "w/a/b")
+			before := watchFDs(t)
+			injectFault(t, c.op, c.rel, c.err)
+			ev, err := f.Watch(bg, "w", vfs.Recursive())
+			if !errors.Is(err, c.err) {
+				t.Fatalf("Watch = %v, %v; want an error wrapping %v", ev, err, c.err)
+			}
+			if after := watchFDs(t); after != before {
+				t.Fatalf("a failed Watch leaked fds: %d before, %d after", before, after)
+			}
+		})
+	}
+}
+
+// TestWatchSetupPermissionDenied: the same through a real unreadable directory.
+func TestWatchSetupPermissionDenied(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every directory")
+	}
+	f, dir := newLocal(t)
+	_ = f.MkdirAll(bg, "w/locked/in")
+	locked := filepath.Join(dir, "w", "locked")
+	_ = os.Chmod(locked, 0)
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	if _, err := f.Watch(bg, "w", vfs.Recursive()); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("Watch over an unreadable subtree: err = %v, want permission denied", err)
+	}
+}
+
+// TestWatchAdoptFailureEndsWatch: a directory that appears later and cannot be watched ends the watch
+// with OpOverflow{""} instead of staying silently unwatched.
+func TestWatchAdoptFailureEndsWatch(t *testing.T) {
+	for _, c := range []struct {
+		name, op string
+		appear   func(t *testing.T, f *FS, dir string)
+	}{
+		{"created", "addwatch", func(t *testing.T, f *FS, dir string) { _ = f.MkdirAll(bg, "w/new") }},
+		{"moved in", "readdir", func(t *testing.T, f *FS, dir string) {
+			_ = os.MkdirAll(filepath.Join(dir, "staging", "deep"), 0o755)
+			_ = os.Rename(filepath.Join(dir, "staging"), filepath.Join(dir, "w", "new"))
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, dir := newLocal(t)
+			_ = f.MkdirAll(bg, "w")
+			injectFault(t, c.op, "w/new", unix.EMFILE)
+			events, _ := startWatch(t, f, "w")
+			c.appear(t, f, dir)
+			seen := drainClosed(t, events)
+			if len(seen) == 0 || seen[len(seen)-1] != (vfs.Event{Path: "", Op: vfs.OpOverflow}) {
+				t.Fatalf("events = %v, want a final OpOverflow{\"\"} and the close", seen)
+			}
+		})
+	}
+}
+
+// TestWatchMovedBeforeItsWatch: a directory that vanishes from under its first watch attempt — moved
+// within the tree before the watch landed — is adopted at its new name.
+func TestWatchMovedBeforeItsWatch(t *testing.T) {
+	f, dir := newLocal(t)
+	_ = f.MkdirAll(bg, "w")
+	injectFault(t, "addwatch", "w/tmp", unix.ENOENT) // as if it moved away first
+	events, _ := startWatch(t, f, "w")
+	_ = f.MkdirAll(bg, "w/tmp")
+	await(t, events, "w/tmp", vfs.OpCreate)
+	if err := os.Rename(filepath.Join(dir, "w", "tmp"), filepath.Join(dir, "w", "final")); err != nil {
+		t.Fatal(err)
+	}
+	await(t, events, "w/final", vfs.OpOverflow)
+	mustWrite(t, f, "w/final/x.md", "x")
+	await(t, events, "w/final/x.md", vfs.OpCreate)
 }

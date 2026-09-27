@@ -49,3 +49,21 @@ func (p *parent) sync() error { return p.d.Sync() }
 func (p *parent) close() error { return p.d.Close() }
 
 func isExist(err error) bool { return errors.Is(err, unix.EEXIST) }
+
+// supportsNoReplace probes whether p's filesystem accepts the no-replace flag, by creating a temp and
+// no-replace-renaming it to a fresh temp name. It decides what an EINVAL from a no-replace commit meant.
+// A probe that cannot run claims nothing: it reports true, so the EINVAL is returned as it is.
+func (p *parent) supportsNoReplace() bool {
+	from, to := tempName("probe"), tempName("probe")
+	t, err := p.createTemp(from, 0o600)
+	if err != nil {
+		return true
+	}
+	t.Close()
+	if err := p.renameNoReplace(from, p, to); err != nil {
+		_ = p.unlink(from)
+		return !errors.Is(err, unix.EINVAL) && !isNoReplaceUnsupported(err)
+	}
+	_ = p.unlink(to)
+	return true
+}

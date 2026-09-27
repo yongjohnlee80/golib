@@ -18,6 +18,9 @@ type watcher struct {
 	cond    *sync.Cond
 	queue   []vfs.Event
 	stopped bool
+
+	done     chan struct{} // closed by stop; ends a blocked send and the ctx goroutine
+	stopOnce sync.Once
 }
 
 // Watch streams events under dir until ctx ends or the filesystem is closed.
@@ -35,18 +38,21 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 		return nil, pathErr("watch", dir, errNotDir)
 	}
 	cfg := vfs.ResolveWatch(opts)
-	w := &watcher{dir: dir, recursive: cfg.Recursive, out: make(chan vfs.Event, 64)}
+	w := &watcher{dir: dir, recursive: cfg.Recursive, out: make(chan vfs.Event, 64), done: make(chan struct{})}
 	w.cond = sync.NewCond(&w.mu)
 	f.watchers[w] = struct{}{}
 	f.mu.Unlock()
 
 	go w.run(ctx)
 	go func() {
-		<-ctx.Done()
-		f.mu.Lock()
-		delete(f.watchers, w)
-		f.mu.Unlock()
-		w.stop()
+		select {
+		case <-ctx.Done():
+			f.mu.Lock()
+			delete(f.watchers, w)
+			f.mu.Unlock()
+			w.stop()
+		case <-w.done: // Close stopped it and already dropped it from f.watchers
+		}
 	}()
 	return w.out, nil
 }
@@ -76,11 +82,15 @@ func (w *watcher) push(ev vfs.Event) {
 	w.mu.Unlock()
 }
 
+// stop ends the watch: run closes out even if it is blocked on a stalled consumer. Idempotent.
 func (w *watcher) stop() {
-	w.mu.Lock()
-	w.stopped = true
-	w.cond.Broadcast()
-	w.mu.Unlock()
+	w.stopOnce.Do(func() {
+		w.mu.Lock()
+		w.stopped = true
+		w.cond.Broadcast()
+		w.mu.Unlock()
+		close(w.done)
+	})
 }
 
 // run drains the queue into out, in order, until stopped; then closes out.
@@ -101,6 +111,8 @@ func (w *watcher) run(ctx context.Context) {
 		select {
 		case w.out <- ev:
 		case <-ctx.Done():
+			return
+		case <-w.done:
 			return
 		}
 	}

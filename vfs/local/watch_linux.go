@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/sys/unix"
 
@@ -29,8 +30,13 @@ const watchMask = unix.IN_CREATE | unix.IN_CLOSE_WRITE | unix.IN_DELETE | unix.I
 // Watch streams change events under dir with inotify until ctx ends or the FS closes; the channel
 // then closes. With [vfs.Recursive] every subdirectory is watched, including ones created or moved in
 // later — each of those also yields an OpOverflow for its subtree, since entries made before its watch
-// landed are unknowable. A kernel queue overflow or an exhausted watch limit yields OpOverflow rather
-// than a silent gap. If dir itself is deleted or moved, a final OpOverflow{Path: ""} precedes the close.
+// landed are unknowable. A kernel queue overflow yields an OpOverflow.
+//
+// The watch never holds a gap it has not reported. A subdirectory that cannot be watched at setup
+// (permissions, the watch or descriptor limit) fails Watch with that error; one that appears later and
+// cannot be watched ends the watch, as does dir itself being deleted or moved: a final
+// OpOverflow{Path: ""} precedes the close, and the consumer rescans and watches again or falls back to
+// [vfs.Poll]. A directory that vanished before its watch landed is not a gap — its parent reports it.
 //
 // Watches attach to the directory the root resolved (opened through os.Root, then watched via its fd's
 // /proc/self/fd link), so no pathname is re-traversed after the jail checked it. The consumer must keep
@@ -67,7 +73,10 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 		return nil, &fs.PathError{Op: "watch", Path: dir, Err: err}
 	}
 	if cfg.Recursive {
-		w.addChildren(dir)
+		if err := w.addChildren(dir); err != nil {
+			w.release()
+			return nil, err
+		}
 	}
 	w.wg.Add(1)
 	go w.waker(ctx)
@@ -94,9 +103,29 @@ type watch struct {
 	wg   sync.WaitGroup
 }
 
+// watchFault, when set by this package's tests, is consulted before each "addwatch" and "readdir" of a
+// watch; a non-nil return is that step's error. Production code never sets it.
+var watchFault atomic.Pointer[func(op, rel string) error]
+
+func fault(op, rel string) error {
+	if h := watchFault.Load(); h != nil {
+		return (*h)(op, rel)
+	}
+	return nil
+}
+
+// gone reports an error that means the directory vanished or stopped being one before its watch
+// landed: not a gap, since the parent's watch reports what happened to it.
+func gone(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, unix.ENOTDIR) || errors.Is(err, errNotDir)
+}
+
 // addDir attaches a watch to the directory the jail resolves for rel. The fd only has to live across
 // the add: the watch is on the inode.
 func (w *watch) addDir(rel string) (int, error) {
+	if err := fault("addwatch", rel); err != nil {
+		return -1, err
+	}
 	d, err := w.f.root.Open(rel)
 	if err != nil {
 		return -1, err
@@ -121,17 +150,15 @@ func (w *watch) addDir(rel string) (int, error) {
 	return wd, nil
 }
 
-// addChildren watches every real subdirectory under rel (symlinks are not entered). An exhausted watch
-// limit queues an OpOverflow for the subtree it could not cover; entries that vanished are skipped.
-func (w *watch) addChildren(rel string) {
-	d, err := w.f.root.Open(rel)
+// addChildren watches every real subdirectory under rel (symlinks are not entered). Directories that
+// vanished meanwhile are skipped; any other failure is returned — it would be an unreported gap.
+func (w *watch) addChildren(rel string) error {
+	entries, err := w.list(rel)
 	if err != nil {
-		return
-	}
-	entries, err := d.ReadDir(-1)
-	d.Close()
-	if err != nil {
-		return
+		if gone(err) {
+			return nil
+		}
+		return &fs.PathError{Op: "watch", Path: rel, Err: err}
 	}
 	for _, e := range entries {
 		if !e.IsDir() || vfs.IsTemp(e.Name()) { // DirEntry.IsDir is false for a symlink
@@ -139,13 +166,28 @@ func (w *watch) addChildren(rel string) {
 		}
 		sub := vfs.Join(rel, e.Name())
 		if _, err := w.addDir(sub); err != nil {
-			if errors.Is(err, unix.ENOSPC) {
-				w.queue = append(w.queue, vfs.Event{Path: sub, Op: vfs.OpOverflow})
+			if gone(err) {
+				continue
 			}
-			continue
+			return &fs.PathError{Op: "watch", Path: sub, Err: err}
 		}
-		w.addChildren(sub)
+		if err := w.addChildren(sub); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+func (w *watch) list(rel string) ([]fs.DirEntry, error) {
+	if err := fault("readdir", rel); err != nil {
+		return nil, err
+	}
+	d, err := w.f.root.Open(rel)
+	if err != nil {
+		return nil, err
+	}
+	defer d.Close()
+	return d.ReadDir(-1)
 }
 
 // dropTree removes the watches for rel and everything under it.
@@ -271,7 +313,7 @@ func (w *watch) handle(wd int, mask, cookie uint32, name string) bool {
 	case mask&unix.IN_CREATE != 0:
 		w.queue = append(w.queue, vfs.Event{Path: p, Op: vfs.OpCreate})
 		if isDir && w.recursive {
-			w.adopt(p)
+			return w.adopt(p)
 		}
 	case mask&unix.IN_MOVED_FROM != 0:
 		w.queue = append(w.queue, vfs.Event{Path: p, Op: vfs.OpRemove})
@@ -280,11 +322,14 @@ func (w *watch) handle(wd int, mask, cookie uint32, name string) bool {
 		}
 	case mask&unix.IN_MOVED_TO != 0:
 		w.queue = append(w.queue, vfs.Event{Path: p, Op: vfs.OpCreate})
-		if old, ok := w.moved[cookie]; ok {
-			delete(w.moved, cookie)
+		old, paired := w.moved[cookie]
+		delete(w.moved, cookie)
+		_, watched := w.wds[old]
+		switch {
+		case paired && watched:
 			w.moveTree(old, p) // same inodes, same watches, new paths
-		} else if isDir && w.recursive {
-			w.adopt(p) // moved in from outside, possibly populated
+		case isDir && w.recursive:
+			return w.adopt(p) // moved in from outside, or moved before its own watch landed
 		}
 	case mask&unix.IN_DELETE != 0:
 		w.queue = append(w.queue, vfs.Event{Path: p, Op: vfs.OpRemove})
@@ -295,12 +340,21 @@ func (w *watch) handle(wd int, mask, cookie uint32, name string) bool {
 }
 
 // adopt watches a directory that appeared under the watch, then reports its subtree as overflowed:
-// whatever was created in it before the watches landed cannot be known.
-func (w *watch) adopt(p string) {
-	if _, err := w.addDir(p); err == nil {
-		w.addChildren(p)
+// whatever was created in it before the watches landed cannot be known. It returns false — end the
+// watch — when the subtree cannot be watched, since that gap could not be reported any other way.
+func (w *watch) adopt(p string) bool {
+	_, err := w.addDir(p)
+	if err == nil {
+		err = w.addChildren(p)
+	} else if gone(err) {
+		err = nil
+	}
+	if err != nil {
+		logger.Error(w.f.log, err, logger.Fields{"op": "vfs/local: watch adopt", "dir": p})
+		return false
 	}
 	w.queue = append(w.queue, vfs.Event{Path: p, Op: vfs.OpOverflow})
+	return true
 }
 
 // flush sends the queued events; it returns false once ctx ends or the FS closes.

@@ -23,7 +23,9 @@ split the temp file from its commit or move either outside the root.
    `renameatx_np(RENAME_EXCL)` on macOS for `CreateExclusive` and `RenameNoReplace`;
 4. `fsync` the parent. A failure from here on is a `*vfs.CommitError`.
 
-A filesystem that refuses the no-replace flag makes those calls return `errs.ErrUnsupported`.
+A filesystem that refuses the no-replace flag makes those calls return `errs.ErrUnsupported`. The
+kernel's EINVAL is ambiguous (it also means "a directory moved into itself", e.g. through a symlink
+alias), so on EINVAL a probe in the destination directory decides which it was.
 Temp files are hidden from `ReadDir`, `Walk` and `Watch`, and are invalid names for callers.
 
 Conditions are **not** exact against other processes: a write by another program that lands between
@@ -46,8 +48,12 @@ attaches to the directory the root resolved (opened through `os.Root`, watched v
 - `vfs.Recursive()` watches subdirectories created or moved in later; each also yields an
   `OpOverflow` for its subtree, since what was inside before its watch landed is unknowable.
 - A move inside the watch is `OpRemove(old)` + `OpCreate(new)`, and later events use the new path.
-- A kernel queue overflow, or an exhausted `max_user_watches`, is an `OpOverflow` — never a silent gap.
-- The watched directory itself deleted or moved: a final `OpOverflow{Path: ""}`, then the channel closes.
+- A kernel queue overflow is an `OpOverflow`.
+- **No silent gaps.** A subdirectory that cannot be watched at setup (permissions, `max_user_watches`,
+  the descriptor limit) makes `Watch` return that error — fall back to `vfs.Poll`. One that appears
+  later and cannot be watched ends the watch. So does the watched directory itself being deleted or
+  moved: a final `OpOverflow{Path: ""}`, then the channel closes. A directory that vanished before its
+  watch landed is not a gap; its parent reports it.
 - Keep reading: a stalled consumer stalls the reader, and the kernel queue then overflows.
 
 On macOS `*local.FS` does not implement `vfs.Watcher`; use `vfs.Poll`.
