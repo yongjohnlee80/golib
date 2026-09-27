@@ -68,4 +68,4 @@ TEST_MYSQL_DSN='root:secret@tcp(localhost:3306)/example?parseTime=true' go test 
 
 ## License
 
-[MIT](../../LICENSE)
+[Apache-2.0](../../LICENSE)

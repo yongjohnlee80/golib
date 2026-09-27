@@ -119,4 +119,4 @@ operator names inside `OPERATOR(...)`.
 
 ## License
 
-MIT, with the rest of golib — see [LICENSE](../../LICENSE).
+Apache-2.0, with the rest of golib — see [LICENSE](../../LICENSE).
