@@ -9,8 +9,12 @@ import (
 // KSyntaxHighlighting's Definition: its name() and its extensions(), the
 // file-name patterns ("*.qml") it claims.
 type Definition struct {
-	Name        string
-	Extensions  []string
+	Name       string
+	Extensions []string
+	// Priority settles a file two definitions claim, as KSyntaxHighlighting's
+	// priority does: the higher wins. A definition for a narrower pattern —
+	// "*.sqlite.sql" beside "*.sql" — takes a higher one. Zero by default.
+	Priority    int
 	Highlighter Highlighter
 }
 
@@ -51,17 +55,24 @@ func (r *Repository) Names() []string {
 }
 
 // DefinitionForFileName is the definition whose extensions match the file's
-// base name — KSyntaxHighlighting's definitionForFileName. Where two claim it,
-// the one first by name wins, so the answer never depends on map order.
+// base name — KSyntaxHighlighting's definitionForFileName. Where several claim
+// it, the highest Priority wins, and among equals the one first by name, so
+// the answer never depends on map order.
 func (r *Repository) DefinitionForFileName(file string) (Definition, bool) {
 	base := path.Base(file)
+	var match Definition
+	found := false
 	for _, n := range r.Names() {
 		d := r.defs[n]
+		if found && d.Priority <= match.Priority {
+			continue
+		}
 		for _, pat := range d.Extensions {
 			if ok, _ := path.Match(pat, base); ok {
-				return d, true
+				match, found = d, true
+				break
 			}
 		}
 	}
-	return Definition{}, false
+	return match, found
 }

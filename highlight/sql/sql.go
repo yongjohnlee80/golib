@@ -52,13 +52,15 @@ const (
 )
 
 // Definitions are the three dialects as syntax definitions, named as
-// KSyntaxHighlighting names them. The first takes *.sql: a file does not say
-// its dialect, and PostgreSQL's reading is the widest.
+// KSyntaxHighlighting names them. PostgreSQL takes *.sql: a file does not say
+// its dialect, and PostgreSQL's reading is the widest. SQLite and MySQL claim
+// *.sqlite.sql and *.mysql.sql at a higher Priority, so those names reach them
+// rather than the wider pattern.
 func Definitions() []highlight.Definition {
 	return []highlight.Definition{
 		{Name: "SQL (PostgreSQL)", Extensions: []string{"*.sql", "*.pgsql"}, Highlighter: Highlighter(PostgreSQL)},
-		{Name: "SQL (SQLite)", Extensions: []string{"*.sqlite.sql"}, Highlighter: Highlighter(SQLite)},
-		{Name: "SQL (MySQL)", Extensions: []string{"*.mysql.sql"}, Highlighter: Highlighter(MySQL)},
+		{Name: "SQL (SQLite)", Extensions: []string{"*.sqlite.sql"}, Priority: 1, Highlighter: Highlighter(SQLite)},
+		{Name: "SQL (MySQL)", Extensions: []string{"*.mysql.sql"}, Priority: 1, Highlighter: Highlighter(MySQL)},
 	}
 }
 

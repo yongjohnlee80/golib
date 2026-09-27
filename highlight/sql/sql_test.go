@@ -228,3 +228,22 @@ func TestTheDefinitionsNameTheDialects(t *testing.T) {
 		}
 	}
 }
+
+// Each dialect's file name reaches its own definition through a repository,
+// which is how a file dialog's preview picks one: the SQLite and MySQL names
+// are narrower than *.sql and must not fall to PostgreSQL.
+func TestAFileNameReachesItsDialect(t *testing.T) {
+	r := highlight.NewRepository(sql.Definitions()...)
+	for file, want := range map[string]string{
+		"schema.sql":       "SQL (PostgreSQL)",
+		"fn.pgsql":         "SQL (PostgreSQL)",
+		"dir/a.sqlite.sql": "SQL (SQLite)",
+		"000001.mysql.sql": "SQL (MySQL)",
+		"notes.sqlite":     "",
+	} {
+		d, ok := r.DefinitionForFileName(file)
+		if d.Name != want || ok != (want != "") {
+			t.Errorf("%s: %q %v, want %q", file, d.Name, ok, want)
+		}
+	}
+}
