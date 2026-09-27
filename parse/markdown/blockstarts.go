@@ -55,7 +55,9 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 				return startLeaf, cb
 			}
 		case '<':
-			if kind := htmlBlockStart(rest, container.Kind == KindParagraph); kind != 0 {
+			// type 7 cannot interrupt a paragraph, including one this line would continue lazily
+			inParagraph := container.Kind == KindParagraph || (!p.allClosed && p.tip.Kind == KindParagraph)
+			if kind := htmlBlockStart(rest, inParagraph); kind != 0 {
 				p.closeUnmatched()
 				hb := p.addChild(KindHTMLBlock, 0)
 				hb.HTML = kind
@@ -66,9 +68,14 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 		}
 		// a setext underline turns the paragraph above it into a heading
 		if container.Kind == KindParagraph && (c == '=' || c == '-') {
-			if level, ok := setextUnderline(rest); ok && p.paragraphHasContent(container) {
+			if level, ok := setextUnderline(rest); ok {
 				p.closeUnmatched()
 				p.extractLinkRefs(container) // definitions above the underline are not heading text
+				if len(bytes.TrimSpace(container.blk.content)) == 0 {
+					// only definitions were above it: no heading, and the underline is paragraph
+					// text, not a thematic break (as the reference implementation, cmark, reads it)
+					return startNone, nil
+				}
 				container.Kind = KindHeading
 				container.Level = level
 				container.Span.End = p.ln.end
