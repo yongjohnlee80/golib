@@ -42,6 +42,11 @@ jobs:
       - name: vet
         run: go vet ./...
 
+      # The runner is Linux, so darwin-only files (vfs/local's no-replace syscall and Stat_t fields)
+      # are never compiled or covered here; this at least builds and vets them.
+      - name: vet (darwin)
+        run: GOOS=darwin go vet ./...
+
       # -count=2 on purpose: a suite run once is a suite whose flakes are
       # someone else's problem later. Two runs in one job is the cheapest
       # pressure that catches the common ordering races.

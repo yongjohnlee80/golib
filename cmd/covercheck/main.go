@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"io"
@@ -142,6 +143,9 @@ func execute(ctx context.Context, cfg config) (covercheck.Result, error) {
 	if err := annotateExecutability(root, changes); err != nil {
 		return covercheck.Result{}, err
 	}
+	if err := annotateBuild(root, changes, build.Default); err != nil {
+		return covercheck.Result{}, err
+	}
 	report, err := covercheck.Analyze(base, head, changes)
 	if err != nil {
 		return covercheck.Result{}, err
@@ -237,6 +241,27 @@ func annotateExecutability(root string, changes []covercheck.FileChange) error {
 			}
 			return change.Executability != covercheck.ExecutabilityPresent
 		})
+	}
+	return nil
+}
+
+// annotateBuild marks the changed files that ctxt's build constraints (file name suffixes and
+// //go:build lines) exclude. covercheck runs where the head profile was produced, so build.Default —
+// GOOS/GOARCH from the environment — is that platform, and an excluded file cannot be in the profile.
+func annotateBuild(root string, changes []covercheck.FileChange, ctxt build.Context) error {
+	for index := range changes {
+		change := &changes[index]
+		if change.Kind == covercheck.ChangeDeleted || change.NewPath == "" {
+			continue
+		}
+		dir, name := filepath.Split(filepath.Join(root, filepath.FromSlash(change.NewPath)))
+		match, err := ctxt.MatchFile(dir, name)
+		if err != nil {
+			return fmt.Errorf("evaluating build constraints of %s: %w", change.NewPath, err)
+		}
+		if !match {
+			change.ExcludedOn = ctxt.GOOS + "/" + ctxt.GOARCH
+		}
 	}
 	return nil
 }
