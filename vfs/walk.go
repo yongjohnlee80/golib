@@ -12,8 +12,12 @@ var errWalkNotDir = errs.Sentinel(errs.ErrInvalidArgument, "vfs: walk start is n
 
 // Walk yields every entry under dir (not dir itself), depth-first, each directory before its contents,
 // siblings in ReadDir order. It is built from ReadDir alone and descends an entry only when its IsDir
-// reports true, so a symlink to a directory is yielded but never entered. A read error is yielded once, with the FileInfo of the directory
-// that failed (Path set), and the walk stops; so does ctx ending. Stopping the loop early is fine.
+// reports true, so a symlink to a directory is yielded but never entered.
+//
+// A directory that cannot be read is yielded once as an error, with FileInfo.Path naming it, and the
+// walk goes on with its siblings — as filepath.WalkDir lets its callback continue — so one unreadable
+// subtree hides only itself. Break out of the loop to stop at the first error instead. ctx ending stops
+// the walk, with ctx's error yielded last.
 //
 // dir itself is checked the same way: if its entry is not a directory — a file, or a symlink even to a
 // directory — Walk yields one error wrapping errs.ErrInvalidArgument and nothing else.
@@ -32,7 +36,7 @@ func Walk(ctx context.Context, fsys FS, dir string) iter.Seq2[FileInfo, error] {
 	}
 }
 
-// walk returns false once the caller stopped or an error was yielded.
+// walk returns false once the caller stopped or ctx ended.
 func walk(ctx context.Context, fsys FS, dir string, yield func(FileInfo, error) bool) bool {
 	if err := ctx.Err(); err != nil {
 		yield(FileInfo{Path: dir}, err)
@@ -40,8 +44,7 @@ func walk(ctx context.Context, fsys FS, dir string, yield func(FileInfo, error) 
 	}
 	entries, err := fsys.ReadDir(ctx, dir)
 	if err != nil {
-		yield(FileInfo{Path: dir}, err)
-		return false
+		return yield(FileInfo{Path: dir}, err) // this subtree only: the siblings are still walked
 	}
 	for _, e := range entries {
 		if !yield(e, nil) {
