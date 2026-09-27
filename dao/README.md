@@ -250,6 +250,21 @@ field's `ClearValue` — SQL `NULL` by default, or a declared NOT-NULL sentinel.
 `Insert`/`Upsert` with nothing staged return `ErrNothingToInsert`; an empty
 `Update` is a silent no-op.
 
+`Update` returns nil whether it changed one row or none. A **compare-and-set**
+needs to know which, so `dao.UpdateAffected` runs the same UPDATE and returns
+the driver's affected-row count:
+
+```go
+n, err := dao.UpdateAffected(jobs.On(tx).
+    With(JobID, id).With(JobState, "open").Set(JobState, "claimed"))
+// n == 0: the job was no longer open — someone else claimed it first
+```
+
+It's an optional capability (`dao.AffectedUpdater`), so existing DAO
+implementations stay valid. It answers `ErrUnsupported` rather than 0 when the
+count can't be known. PostgreSQL and SQLite count MATCHED rows; MySQL counts
+CHANGED rows unless the DSN sets `clientFoundRows=true` (see the MySQL README).
+
 ## Column targeting & predicates
 
 `With`/`Excluding` are sugar over `Eq`/`In`/`NotIn` keyed by the field enum;
