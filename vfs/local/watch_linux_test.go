@@ -18,11 +18,16 @@ import (
 func startWatch(t *testing.T, f *FS, dir string) (<-chan vfs.Event, context.CancelFunc) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(bg)
-	t.Cleanup(cancel)
 	ev, err := f.Watch(ctx, dir, vfs.Recursive())
 	if err != nil {
+		cancel()
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { // the watch is fully released before the next test starts
+		cancel()
+		for range ev {
+		}
+	})
 	return ev, cancel
 }
 
@@ -145,28 +150,39 @@ func TestWatchSymlinkSwap(t *testing.T) {
 	}
 }
 
-func fdCount(t *testing.T) int {
+// watchFDs counts this process's inotify instances and pipes — the fds a watch opens.
+func watchFDs(t *testing.T) int {
 	t.Helper()
 	e, err := os.ReadDir("/proc/self/fd")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return len(e)
+	n := 0
+	for _, d := range e {
+		l, err := os.Readlink(filepath.Join("/proc/self/fd", d.Name()))
+		if err == nil && (l == "anon_inode:inotify" || strings.HasPrefix(l, "pipe:")) {
+			n++
+		}
+	}
+	return n
 }
 
 // TestWatchCancelReleases: cancel closes the channel and every fd the watch opened.
 func TestWatchCancelReleases(t *testing.T) {
 	f, _ := newLocal(t)
 	_ = f.MkdirAll(bg, "w/a/b/c")
-	before := fdCount(t)
+	before := watchFDs(t)
 	for range 5 {
 		events, cancel := startWatch(t, f, "w")
+		if during := watchFDs(t); during != before+3 {
+			t.Fatalf("a live watch holds %d inotify/pipe fds, want 3", during-before)
+		}
 		mustWrite(t, f, "w/a/x.md", "x")
 		await(t, events, "w/a/x.md", vfs.OpCreate)
 		cancel()
 		drainClosed(t, events)
 	}
-	if after := fdCount(t); after != before {
+	if after := watchFDs(t); after != before {
 		t.Fatalf("fds: %d before, %d after five watches", before, after)
 	}
 }
