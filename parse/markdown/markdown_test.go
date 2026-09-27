@@ -111,12 +111,15 @@ func FuzzParse(f *testing.F) {
 		"*\n\n    - x\n", "> > >\n", ">\n> a\n", "- \n  a\n", "[a]: /u\n[b]: /v\n===\n", ">~~~",
 		// GFM shapes
 		"p\n| a | b |\n| - | - |\n| `c\\|` | d |\n", "> a\n> -:\n> b\n", "- [x] a\n  - [ ]\n", "~~a *b~~ c*",
-		"(www.a.b/(c))) x@y.z. http://a.b?", "[x www.a.b](/u) a@b.c", "|\n-\n", "a|b\n-|-\n\tc"} {
+		"(www.a.b/(c))) x@y.z. http://a.b?", "[x www.a.b](/u) a@b.c", "|\n-\n", "a|b\n-|-\n\tc",
+		// Obsidian shapes
+		"---\na: 1\n---\n#t [[P#H|a]] ![[i.png]]", "---\r\n---", "> [!x]- T\n> [[a\n> b]]", "[x [[P]]](/u)",
+		"| [[a\\|b]] |\n| - |", "#1 #a1 [[[[b]] ]]", "> [!note]\n>> [!q]"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
 		src := []byte(in)
-		for _, opts := range [][]markdown.Option{nil, {markdown.GFM()}} {
+		for _, opts := range [][]markdown.Option{nil, {markdown.GFM()}, {markdown.Obsidian()}, {markdown.GFM(), markdown.Obsidian()}} {
 			d := markdown.Parse(src, opts...)
 			checkTree(t, src, d.Root)
 			var b bytes.Buffer
@@ -176,6 +179,16 @@ func TestLinearTime(t *testing.T) {
 		"gfm-task-items":       func(n int) string { return strings.Repeat("- [x] a\n", n/8) },
 		"gfm-unclosed-bracket": func(n int) string { return "[" + strings.Repeat("www.a.b ", n/8) },
 	}
+	obsidianFamilies := map[string]func(n int) string{
+		"obs-unclosed-wikilinks": func(n int) string { return strings.Repeat("[[a", n/3) },
+		"obs-nested-openers":     func(n int) string { return strings.Repeat("[[a", n/6) + strings.Repeat("]]", n/6) },
+		"obs-wikilinks":          func(n int) string { return strings.Repeat("[[P#H|a]] ", n/10) },
+		"obs-embeds-in-brackets": func(n int) string { return strings.Repeat("[x ![[i]] ", n/10) },
+		"obs-tags":               func(n int) string { return strings.Repeat("#t/a-b ", n/7) },
+		"obs-digit-tags":         func(n int) string { return strings.Repeat("#123 ", n/5) },
+		"obs-callouts":           func(n int) string { return strings.Repeat("> [!note]- T\n> a\n\n", n/18) },
+		"obs-unclosed-front":     func(n int) string { return "---\n" + strings.Repeat("a: b\n", n/5) },
+	}
 	var opts []markdown.Option
 	measure := func(src []byte) time.Duration {
 		best := time.Duration(1<<63 - 1)
@@ -208,5 +221,12 @@ func TestLinearTime(t *testing.T) {
 	}
 	for name, gen := range families { // the CommonMark families stay linear with GFM on
 		check(name+"+gfm", gen)
+	}
+	opts = []markdown.Option{markdown.GFM(), markdown.Obsidian()}
+	for name, gen := range obsidianFamilies {
+		check(name, gen)
+	}
+	for name, gen := range families {
+		check(name+"+gfm+obs", gen)
 	}
 }

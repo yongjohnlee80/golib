@@ -28,7 +28,13 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 				p.advanceOffset(1, true)
 			}
 			p.closeUnmatched()
-			return startContainer, p.addChild(KindBlockQuote, ns)
+			bq := p.addChild(KindBlockQuote, ns)
+			if p.cfg.obsidian {
+				if res, n, ok := p.calloutStart(bq); ok {
+					return res, n
+				}
+			}
+			return startContainer, bq
 		case '#':
 			if level, content, ok := atxHeading(rest); ok {
 				p.advanceNextNonspace()

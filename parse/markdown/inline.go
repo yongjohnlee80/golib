@@ -10,7 +10,7 @@ func parseInlines(d *Document, cfg *config) {
 		for c := n.FirstChild; c != nil; {
 			next := c.Next
 			switch c.Kind {
-			case KindParagraph, KindHeading, KindTableCell:
+			case KindParagraph, KindHeading, KindTableCell, KindCalloutTitle:
 				if c.blk != nil {
 					text, segs := leafContent(c)
 					ip := &inlineParser{doc: d, cfg: cfg, src: d.Source, text: text, segs: segs, parent: c}
@@ -66,6 +66,8 @@ type inlineParser struct {
 
 	ticks   map[int][]int // backtick runs by length: their start offsets, ascending
 	tickIdx map[int]int   // per length, the first run not yet behind the scan
+
+	wikiClose, wikiLine, wikiOpen nextIndex // Obsidian: the next "]]", line ending and "[["
 }
 
 func (p *inlineParser) srcAt(off int) int { return mapOffset(p.segs, off) }
@@ -74,6 +76,9 @@ func (p *inlineParser) parse() {
 	for p.pos < len(p.text) {
 		c := p.text[p.pos]
 		if p.cfg.gfm && (c == '~' || c == '.' || c == ':') && p.gfmInline(c) {
+			continue
+		}
+		if p.cfg.obsidian && (c == '[' || c == '!' || c == '#') && p.obsidianInline(c) {
 			continue
 		}
 		switch c {

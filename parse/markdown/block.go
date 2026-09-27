@@ -57,7 +57,11 @@ func newBlockParser(d *Document, cfg *config) *blockParser {
 
 func (p *blockParser) run() {
 	src := p.src
-	for start := 0; start < len(src); {
+	start := 0
+	if p.cfg.obsidian {
+		start = p.frontmatter()
+	}
+	for start < len(src) {
 		end := start
 		for end < len(src) && !isLineEnd(src[end]) {
 			end++
