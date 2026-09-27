@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/decl"
@@ -281,5 +283,30 @@ func TestTheThemeMarkFollowsTheSwitch(t *testing.T) {
 	r.clickLabel(t, rowOf(r.rows(), "Theme"), "Theme")
 	r.waitFor(t, "Mono checked", func(s string) bool {
 		return strings.Contains(s, "✓ Mono") && !strings.Contains(s, "✓ Retro")
+	})
+}
+
+// A theme switch needs a layout to rewrite, and says so when it has none: a
+// layout that imports no theme leaves the screen as it was, and under -dev a
+// layout file that cannot be read is the switch's error, not a silent no-op.
+func TestAThemeSwitchWithNothingToRewriteSaysWhy(t *testing.T) {
+	t.Run("no theme import", func(t *testing.T) {
+		r := startLayout(t, "", layout)
+		// The host reads the layout it loaded; take its import line away.
+		r.host.p.Post(func() { r.host.layoutSrc = bytes.Replace(r.host.layoutSrc, []byte(retroImport), nil, 1) })
+		r.host.p.Post(func() { _ = r.host.useTheme("dark") })
+		r.waitFor(t, "the refusal", func(s string) bool { return strings.Contains(s, "editor.qml imports no theme to switch") })
+	})
+	t.Run("an unreadable layout under -dev", func(t *testing.T) {
+		dir := devCopy(t)
+		r := startOpts(t, Options{Dev: dir, Now: fixedNow, Tick: time.Hour}, 80, 14)
+		if err := os.Remove(filepath.Join(dir, "editor.qml")); err != nil {
+			t.Fatal(err)
+		}
+		got := make(chan error, 1)
+		r.host.p.Post(func() { got <- r.host.useTheme("dark") })
+		if err := <-got; !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("useTheme with the layout gone: %v, want the file's not-exist error", err)
+		}
 	})
 }
