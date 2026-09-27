@@ -99,3 +99,51 @@ func TestLargeRealNote(t *testing.T) {
 	t.Logf("%d bytes in, %d bytes of HTML out, %d headings, %d code spans", note.Len(), out.Len(),
 		counts[markdown.KindHeading], counts[markdown.KindCodeSpan])
 }
+
+// TestSafeDefaultURLs: by default a URL is written only if it has no scheme or an allowed one, so
+// no document can link to script. Every path that writes an href or src is covered, and so are the
+// ways a scheme can be spelled to slip past a naive check. Unsafe writes every URL.
+func TestSafeDefaultURLs(t *testing.T) {
+	for _, c := range []struct{ in, safe, unsafe string }{
+		{"[a](javascript:alert(1))\n", `<p><a href="">a</a></p>` + "\n", `<p><a href="javascript:alert(1)">a</a></p>` + "\n"},
+		{"[a](JaVaScRiPt:x) [b](vbscript:x) [c](file:///etc/passwd)\n",
+			`<p><a href="">a</a> <a href="">b</a> <a href="">c</a></p>` + "\n",
+			`<p><a href="JaVaScRiPt:x">a</a> <a href="vbscript:x">b</a> <a href="file:///etc/passwd">c</a></p>` + "\n"},
+		// an entity reference or a backslash escape is decoded before the check, not after it
+		{"[a](&#106;avascript:x) [b](javascript&colon;x) [c](java\\script:x)\n",
+			`<p><a href="">a</a> <a href="">b</a> <a href="java%5Cscript:x">c</a></p>` + "\n",
+			`<p><a href="javascript:x">a</a> <a href="javascript:x">b</a> <a href="java%5Cscript:x">c</a></p>` + "\n"},
+		// whitespace is percent-encoded first, so it cannot split or precede a scheme
+		{"[a](java&#9;script:x) [b](<\tjavascript:x>) [c](javascript%3Ax)\n",
+			`<p><a href="java%09script:x">a</a> <a href="%09javascript:x">b</a> <a href="javascript%3Ax">c</a></p>` + "\n",
+			`<p><a href="java%09script:x">a</a> <a href="%09javascript:x">b</a> <a href="javascript%3Ax">c</a></p>` + "\n"},
+		{"<javascript:alert(1)>\n", `<p><a href="">javascript:alert(1)</a></p>` + "\n", `<p><a href="javascript:alert(1)">javascript:alert(1)</a></p>` + "\n"},
+		{"![a](data:text/html,x) ![b](data:image/svg+xml,x) ![c](data:image/png;base64,AA) ![d](DATA:IMAGE/GIF,AA)\n",
+			`<p><img src="" alt="a" /> <img src="" alt="b" /> <img src="data:image/png;base64,AA" alt="c" /> <img src="DATA:IMAGE/GIF,AA" alt="d" /></p>` + "\n",
+			`<p><img src="data:text/html,x" alt="a" /> <img src="data:image/svg+xml,x" alt="b" /> <img src="data:image/png;base64,AA" alt="c" /> <img src="DATA:IMAGE/GIF,AA" alt="d" /></p>` + "\n"},
+		{"![a](data:image/pngx,AA)\n", `<p><img src="" alt="a" /></p>` + "\n", `<p><img src="data:image/pngx,AA" alt="a" /></p>` + "\n"},
+		{"[a](/p) [b](#f) [c](?q) [d](https://x.y) [e](mailto:a@b.c) [f](tel:1) [g](ftp://x.y) [h](a/b:c)\n",
+			`<p><a href="/p">a</a> <a href="#f">b</a> <a href="?q">c</a> <a href="https://x.y">d</a> <a href="mailto:a@b.c">e</a> <a href="tel:1">f</a> <a href="ftp://x.y">g</a> <a href="a/b:c">h</a></p>` + "\n",
+			`<p><a href="/p">a</a> <a href="#f">b</a> <a href="?q">c</a> <a href="https://x.y">d</a> <a href="mailto:a@b.c">e</a> <a href="tel:1">f</a> <a href="ftp://x.y">g</a> <a href="a/b:c">h</a></p>` + "\n"},
+		{"[a]\n\n[a]: javascript:x\n", `<p><a href="">a</a></p>` + "\n", `<p><a href="javascript:x">a</a></p>` + "\n"},
+	} {
+		if got := renderWith(t, c.in); got != c.safe {
+			t.Errorf("default Render(%q) =\n%q, want\n%q", c.in, got, c.safe)
+		}
+		if got := renderWith(t, c.in, html.Unsafe()); got != c.unsafe {
+			t.Errorf("Unsafe Render(%q) =\n%q, want\n%q", c.in, got, c.unsafe)
+		}
+	}
+	// the extensions' links go through the same writer
+	for _, c := range []struct{ in, safe string }{
+		{"[[javascript:alert(1)]] ![[javascript:x]]\n", `<p><a class="wikilink" href="">javascript:alert(1)</a> <span class="embed" data-href="">javascript:x</span></p>` + "\n"},
+	} {
+		var b bytes.Buffer
+		if err := html.Render(&b, markdown.Parse([]byte(c.in), markdown.GFM(), markdown.Obsidian())); err != nil {
+			t.Fatal(err)
+		}
+		if b.String() != c.safe {
+			t.Errorf("default Render(%q) =\n%q, want\n%q", c.in, b.String(), c.safe)
+		}
+	}
+}
