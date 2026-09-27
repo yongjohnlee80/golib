@@ -13,6 +13,13 @@
 // Errors are [*io/fs.PathError] values wrapping this package's sentinels or the driver's own error, as
 // the standard library does.
 //
+// # Entries, not targets
+//
+// A [FileInfo] describes the directory entry itself: a symlink is reported with fs.ModeSymlink, never as
+// its target. Stat, ReadDir and [Walk] all report entries this way, so the Version they return is the
+// one conditional mutations compare, Remove and Rename act on the link itself, and Walk never enters a
+// link. Path resolution follows links that stay inside the root.
+//
 // # Atomic writes and the commit point
 //
 // [FS.WriteFile] replaces a file atomically: a reader sees the old content or the new, never a mix. An
