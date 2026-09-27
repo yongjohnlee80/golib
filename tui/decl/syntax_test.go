@@ -76,6 +76,23 @@ func TestAQMLBufferWearsTheThemesSyntaxColours(t *testing.T) {
 	waitFG(t, s, `"hi"`, ansi(3))
 }
 
+// SQL is in the standard vocabulary, one definition per dialect: a query is
+// coloured by the same theme roles a QML buffer is.
+func TestASQLBufferWearsTheThemesSyntaxColours(t *testing.T) {
+	for _, def := range []string{"SQL (PostgreSQL)", "SQL (SQLite)", "SQL (MySQL)"} {
+		src := "import tui 1.0\nimport demo 1.0\nimport demo.theme.dark 1.0\n" +
+			"Flex { syntax.keyword: Theme.syntax.keyword; syntax.string: Theme.syntax.string\n" +
+			" Editor { text: \"select id from t where name = 'ann'\"\n SyntaxHighlighter { definition: \"" + def + "\" } } }"
+		s := runSyntax(t, src)
+		waitFG(t, s, "select", ansi(red))
+		waitFG(t, s, "where", ansi(red))
+		waitFG(t, s, "'ann'", ansi(green))
+		if fg := fgOf(t, s, "id"); fg == ansi(red) || fg == ansi(green) {
+			t.Errorf("%s: a column name took a keyword or string colour: %+v", def, fg)
+		}
+	}
+}
+
 // What is refused, by name.
 func TestWhatASyntaxHighlighterRefuses(t *testing.T) {
 	for doc, want := range map[string]string{

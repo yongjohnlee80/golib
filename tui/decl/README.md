@@ -322,7 +322,7 @@ Window {
     syntax.comment: Theme.syntax.comment
 
     Editor {
-        SyntaxHighlighter { definition: App.syntax }   // "QML", "JavaScript", or "" for none
+        SyntaxHighlighter { definition: App.syntax }   // "QML", "SQL (PostgreSQL)", …, or "" for none
     }
 }
 ```
@@ -331,7 +331,9 @@ KDE KSyntaxHighlighting's type: Go highlights, the document names a
 definition, the `syntax.*` roles colour it. It highlights the Editor it is
 declared in (anywhere else, the root included, is refused). `definition` is a
 runtime property naming a registered definition — the vocabulary has `QML`
-(`*.qml`) and `JavaScript` (`*.js`, `*.mjs`); add your own with
+(`*.qml`), `JavaScript` (`*.js`, `*.mjs`), and SQL per dialect:
+`SQL (PostgreSQL)` (`*.sql`, `*.pgsql`), `SQL (SQLite)` (`*.sqlite.sql`) and
+`SQL (MySQL)` (`*.mysql.sql`); add your own with
 `Highlighters(highlight.Definition{…})` (Program) or `WithHighlighters`
 (adapter); an unknown one is refused naming the registered.
 
