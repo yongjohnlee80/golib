@@ -417,8 +417,13 @@ func (p *inlineParser) inlineLinkTail(i int) ([]byte, []byte, int, bool) {
 func (p *inlineParser) angle() {
 	rest := p.text[p.pos:]
 	if n, dest := autolink(rest); n > 0 {
-		node := &Node{Kind: KindAutolink, Dest: dest, Span: Span{p.srcAt(p.pos), p.srcAt(p.pos + n)}}
-		node.AppendChild(&Node{Kind: KindText, Span: Span{p.srcAt(p.pos + 1), p.srcAt(p.pos + n - 1)}})
+		// entity references decode in an autolink, as in any URL; backslash escapes do not
+		node := &Node{Kind: KindAutolink, Dest: decodeEntities(dest), Span: Span{p.srcAt(p.pos), p.srcAt(p.pos + n)}}
+		text := &Node{Kind: KindText, Span: Span{p.srcAt(p.pos + 1), p.srcAt(p.pos + n - 1)}}
+		if lit := decodeEntities(rest[1 : n-1]); !bytes.Equal(lit, rest[1:n-1]) {
+			text.Literal = lit
+		}
+		node.AppendChild(text)
 		p.parent.AppendChild(node)
 		p.pos += n
 		return

@@ -174,7 +174,7 @@ func (r *renderer) inline(n *markdown.Node) {
 		r.out.WriteString("</strong>")
 	case markdown.KindLink, markdown.KindAutolink:
 		r.out.WriteString(`<a href="`)
-		r.escape(escapeHref(n.Dest))
+		r.href(n.Dest)
 		r.out.WriteString(`"`)
 		if len(n.Title) > 0 {
 			r.out.WriteString(` title="`)
@@ -186,7 +186,7 @@ func (r *renderer) inline(n *markdown.Node) {
 		r.out.WriteString("</a>")
 	case markdown.KindImage:
 		r.out.WriteString(`<img src="`)
-		r.escape(escapeHref(n.Dest))
+		r.href(n.Dest)
 		r.out.WriteString(`" alt="`)
 		var alt bytes.Buffer
 		plainText(&alt, n, r.src)
@@ -292,4 +292,20 @@ func urlSafe(c byte) bool {
 		return true
 	}
 	return false
+}
+
+// href writes a destination as an attribute value: percent-encoded, then escaped, with an apostrophe
+// written as a reference too, as the reference implementation (cmark) writes it.
+func (r *renderer) href(dest []byte) {
+	b := escapeHref(dest)
+	for {
+		i := bytes.IndexByte(b, '\'')
+		if i < 0 {
+			r.escape(b)
+			return
+		}
+		r.escape(b[:i])
+		r.out.WriteString("&#x27;")
+		b = b[i+1:]
+	}
 }

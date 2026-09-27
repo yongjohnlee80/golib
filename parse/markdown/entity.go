@@ -85,3 +85,19 @@ func unescapeAll(b []byte) []byte {
 }
 
 func decodeInline(b []byte) []byte { return unescapeAll(b) }
+
+// decodeEntities decodes entity references only, for autolinks, where a backslash is not an escape.
+func decodeEntities(b []byte) []byte {
+	var out []byte
+	for i := 0; i < len(b); i++ {
+		if b[i] == '&' {
+			if v, n, ok := entityAt(b, i); ok {
+				out = append(out, v...)
+				i += n - 1
+				continue
+			}
+		}
+		out = append(out, b[i])
+	}
+	return out
+}
