@@ -46,7 +46,7 @@ var rules = []rule{
 	{ID: "4.5/closing-fence", Statement: "the closing fence must use the same character and be at least as long"},
 	{ID: "4.5/fence-indentation", Statement: "content lines lose up to as much indentation as the opening fence had", NoNegative: "removal is capped by the fence indent; both directions are positive cases"},
 	{ID: "4.5/interrupts-paragraph", Statement: "a code fence may interrupt a paragraph"},
-	{ID: "4.6/html-block-type1", Statement: "<pre, <script, <style or <textarea open a block that ends at an end tag of any of them, across blank lines"},
+	{ID: "4.6/html-block-type1", Statement: "<pre, <script, <style or <textarea open a block that ends at an end tag of any of them (it need not match the start tag), across blank lines"},
 	{ID: "4.6/html-block-type2", Statement: "'<!--' opens a block ending at '-->'"},
 	{ID: "4.6/html-block-type3", Statement: "'<?' opens a block ending at '?>', across blank lines"},
 	{ID: "4.6/html-block-type4", Statement: "'<!' then an ASCII letter opens a block ending at '>'"},
