@@ -44,8 +44,8 @@ func walk(ctx context.Context, fsys FS, dir string, yield func(FileInfo, error) 
 	}
 	entries, err := fsys.ReadDir(ctx, dir)
 	if err != nil {
-		if ctx.Err() != nil { // the walk is over, not just this subtree: ctx's error is the last one
-			yield(FileInfo{Path: dir}, err)
+		if cerr := ctx.Err(); cerr != nil { // the walk is over, not just this subtree
+			yield(FileInfo{Path: dir}, cerr) // ctx's error, whatever the listing itself reported
 			return false
 		}
 		return yield(FileInfo{Path: dir}, err) // this subtree only: the siblings are still walked

@@ -100,11 +100,15 @@ type cancelOnList struct {
 	vfs.FS
 	dir    string
 	cancel context.CancelFunc
+	err    error // what the listing reports; nil means ctx's own error
 }
 
 func (f cancelOnList) ReadDir(ctx context.Context, name string) ([]vfs.FileInfo, error) {
 	if name == f.dir {
 		f.cancel()
+		if f.err != nil {
+			return nil, f.err
+		}
 		return nil, ctx.Err()
 	}
 	return f.FS.ReadDir(ctx, name)
@@ -113,6 +117,14 @@ func (f cancelOnList) ReadDir(ctx context.Context, name string) ([]vfs.FileInfo,
 // TestWalkStopsWhenCtxEnds: a listing that fails because ctx ended stops the whole walk — ctx's error is
 // yielded once, last, and no later sibling (file or directory) is yielded.
 func TestWalkStopsWhenCtxEnds(t *testing.T) {
+	// the listing reports ctx's error, or an unrelated one: either way ctx ended, and ctx's error is last
+	for _, listErr := range []error{nil, errs.Wrap(errs.ErrUnsupported, "unrelated")} {
+		walkStopsWhenCtxEnds(t, listErr)
+	}
+}
+
+func walkStopsWhenCtxEnds(t *testing.T, listErr error) {
+	t.Helper()
 	mem := memfs.New()
 	bg := context.Background()
 	_ = mem.MkdirAll(bg, "a")
@@ -122,7 +134,7 @@ func TestWalkStopsWhenCtxEnds(t *testing.T) {
 	defer cancel()
 	var got []string
 	var errsSeen []error
-	for fi, err := range vfs.Walk(ctx, cancelOnList{FS: mem, dir: "a", cancel: cancel}, ".") {
+	for fi, err := range vfs.Walk(ctx, cancelOnList{FS: mem, dir: "a", cancel: cancel, err: listErr}, ".") {
 		if err != nil {
 			errsSeen = append(errsSeen, err)
 			continue // a consumer that keeps going must still see the walk end
