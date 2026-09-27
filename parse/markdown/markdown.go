@@ -44,6 +44,8 @@ var kindNames = map[Kind]string{
 	KindEmph: "emph", KindStrong: "strong", KindLink: "link", KindImage: "image",
 	KindAutolink: "autolink", KindRawHTML: "html_inline",
 	KindTable: "table", KindTableRow: "table_row", KindTableCell: "table_cell", KindStrikethrough: "strikethrough",
+	KindFrontmatter: "frontmatter", KindWikilink: "wikilink", KindEmbed: "embed", KindTag: "tag",
+	KindCalloutTitle: "callout_title",
 }
 
 func (k Kind) String() string {
@@ -94,11 +96,13 @@ type Node struct {
 	List  ListData // KindList and KindItem
 	Dest  []byte   // link or image destination, decoded
 	Title []byte   // link or image title, decoded
-	Label []byte   // KindLinkRefDef: the label as written
+	Label []byte   // KindLinkRefDef: the label as written; KindTag: the tag without its '#'
 	HTML  int      // KindHTMLBlock: which of the seven start conditions opened it
 
-	Checked *bool   // a GFM task list item: whether it is checked; nil on any other item
-	Align   []Align // KindTable: each column's alignment
+	Checked *bool    // a GFM task list item: whether it is checked; nil on any other item
+	Align   []Align  // KindTable: each column's alignment
+	Target  *Target  // KindWikilink and KindEmbed: where it points
+	Callout *Callout // a KindBlockQuote that is an Obsidian callout; nil on any other
 
 	blk *blockState // parse-time state of an open block; nil once the parse is done
 }

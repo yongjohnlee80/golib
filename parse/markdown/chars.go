@@ -9,8 +9,9 @@ import (
 type Option func(*config)
 
 type config struct {
-	gfm     bool
-	special [256]bool // the bytes that end a run of plain text in the inline phase
+	gfm      bool
+	obsidian bool
+	special  [256]bool // the bytes that end a run of plain text in the inline phase
 }
 
 // init completes a config once its options have run.
@@ -22,6 +23,9 @@ func (c *config) init() {
 		for _, b := range []byte("~.:") {
 			c.special[b] = true
 		}
+	}
+	if c.obsidian {
+		c.special['#'] = true
 	}
 }
 

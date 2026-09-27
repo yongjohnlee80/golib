@@ -87,6 +87,10 @@ func (r *renderer) block(n *markdown.Node) {
 		r.out.WriteString("<hr />")
 		r.cr()
 	case markdown.KindBlockQuote:
+		if n.Callout != nil {
+			r.callout(n)
+			return
+		}
 		r.cr()
 		r.out.WriteString("<blockquote>")
 		r.cr()
@@ -142,11 +146,60 @@ func (r *renderer) block(n *markdown.Node) {
 		r.cr()
 	case markdown.KindTable:
 		r.table(n)
+	case markdown.KindFrontmatter:
+		// metadata: the frontmatter renders as nothing
 	case markdown.KindLinkRefDef:
 		// provenance only: a definition renders as nothing
 	default:
 		r.inline(n)
 	}
+}
+
+// wikiHref is a wikilink's or an embed's target as a relative URL: the page, then "#heading" or
+// "#^block". Which document the page names is the consumer's to resolve.
+func wikiHref(t *markdown.Target) []byte {
+	out := append([]byte(nil), t.Page...)
+	if len(t.Heading) > 0 {
+		out = append(append(out, '#'), t.Heading...)
+	}
+	if len(t.Block) > 0 {
+		out = append(append(out, '#', '^'), t.Block...)
+	}
+	return out
+}
+
+// callout writes an Obsidian callout: its type (lowercased, as types compare case-insensitively)
+// and fold state as attributes, its title (the type, capitalized, when it has none), then its body.
+func (r *renderer) callout(bq *markdown.Node) {
+	r.cr()
+	typ := bytes.ToLower(bq.Callout.Type)
+	r.out.WriteString(`<div class="callout" data-callout="`)
+	r.escape(typ)
+	r.out.WriteString(`"`)
+	if bq.Callout.Fold != 0 {
+		r.out.WriteString(` data-callout-fold="` + string(bq.Callout.Fold) + `"`)
+	}
+	r.out.WriteString(">\n<div class=\"callout-title\">")
+	body := bq.FirstChild
+	if body != nil && body.Kind == markdown.KindCalloutTitle {
+		if body.FirstChild != nil {
+			r.inlines(body)
+		} else {
+			r.escape(append(bytes.ToUpper(typ[:1]), typ[1:]...))
+		}
+		body = body.Next
+	}
+	r.out.WriteString("</div>\n")
+	if body != nil {
+		r.out.WriteString(`<div class="callout-content">`)
+		r.cr()
+		for c := body; c != nil; c = c.Next {
+			r.block(c)
+		}
+		r.cr()
+		r.out.WriteString("</div>\n")
+	}
+	r.out.WriteString("</div>\n")
 }
 
 // table writes a GFM table: the first row as the head, the rest (if any) as the body, and each
@@ -257,6 +310,26 @@ func (r *renderer) inline(n *markdown.Node) {
 		r.out.WriteString(" />")
 	case markdown.KindRawHTML:
 		r.raw(n.Literal)
+	case markdown.KindWikilink:
+		r.out.WriteString(`<a class="wikilink" href="`)
+		r.href(wikiHref(n.Target))
+		r.out.WriteString(`">`)
+		r.inlines(n)
+		r.out.WriteString("</a>")
+	case markdown.KindEmbed:
+		// an embed is content drawn from elsewhere, not a link: it may sit inside link text, and
+		// what it shows (a note, an image) is the consumer's to resolve
+		r.out.WriteString(`<span class="embed" data-href="`)
+		r.href(wikiHref(n.Target))
+		r.out.WriteString(`">`)
+		r.inlines(n)
+		r.out.WriteString("</span>")
+	case markdown.KindTag:
+		r.out.WriteString(`<a class="tag" href="`)
+		r.href(append([]byte("#"), n.Label...))
+		r.out.WriteString(`">`)
+		r.inlines(n)
+		r.out.WriteString("</a>")
 	default:
 		r.inlines(n)
 	}
