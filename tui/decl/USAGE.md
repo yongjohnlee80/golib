@@ -169,13 +169,25 @@ tuidecl.Components(files, "dialogs", "editor.dialogs", "1.0")    // dialogs/Quit
 tuidecl.Offer("editor.extras", "1.0", myLoader)                  // any decl.ModuleLoader
 ```
 
-**A theme is a QML file of constants**, loaded with `decl.ValueModule`:
+**Start from the toolkit's themes.** `themes.Offer()` (package
+`tui/decl/themes`) offers `tui.theme.dark`, `light`, `mono` and `retro` — each a
+`Theme` in five groups, `app`, `menu`, `document`, `status`, `syntax`, every key
+in every theme — so a program with no colours of its own needs no theme files:
+
+```go
+tuidecl.NewProgram(themes.Offer(), …)          // import tui.theme.retro 1.0
+```
+
+**A theme of your own is a QML file of constants**, loaded with
+`decl.ValueModule` — copy one from `themes.FS()` when you need a colour the
+toolkit's do not have:
 
 ```qml
 // themes/retro.qml
 Theme {
-    menu   { window: "#aaaaaa"; windowText: "#000000"; accent: "#aa0000" }
-    editor { base: "#0000aa"; text: "#ffff55" }
+    menu     { window: "#aaaaaa"; windowText: "#000000"; accent: "#aa0000" }
+    document { base: "#0000aa"; text: "#ffff55" }
+    gauge    { raised: "#ff5555" }        // a colour only this program needs
 }
 ```
 
@@ -478,10 +490,12 @@ Window {
   the Window wears them, a FileDialog's preview as well as the Editor's.
 
 - **The host decides the definition.** `App.syntax` from the file's extension
-  — QML for `.qml`, `""` otherwise; the document cannot say "if".
+  — QML for `.qml`, `SQL (PostgreSQL)` for `.sql`, `""` otherwise; the document
+  cannot say "if". A database tool names the dialect of the connection a query
+  runs on: `SQL (PostgreSQL)`, `SQL (SQLite)` or `SQL (MySQL)`.
 - **A new language is a registration, nothing else**: implement
   `highlight.Highlighter` and pass
-  `Highlighters(highlight.Definition{Name: "SQL", Extensions: []string{"*.sql"}, Highlighter: sql})`
+  `Highlighters(highlight.Definition{Name: "INI", Extensions: []string{"*.ini"}, Highlighter: ini})`
   — the extensions are what a FileDialog's preview picks it by.
   A highlighter colours one line at a time and must never refuse (package
   `highlight`); from a tree-sitter tree, `highlight.StyleForCapture` maps its
@@ -593,6 +607,35 @@ can share a screen; making them match is the program's job.
   for one that should follow the user's terminal palette.
 - **Offer, don't declare, what a document may not import** — forty dialogs cost
   nothing until one is imported.
+
+What AutoDB's screen settled on, the conventions to copy:
+
+- **A column is Qt's ColumnLayout.** Each child takes its own size; the ONE view
+  that should take the rest says `Layout.fillHeight: true`. A table followed by
+  a row of buttons is a Flex column with the table filling — never a fixed
+  height, which is wrong on the next screen size.
+- **A view is as tall as its content where nothing bounds it**, so a dialog
+  around a short list is short. A view that must fill a dialog is weighted.
+- **A manager's actions are the dialog's buttons**: `DialogButtonBox` with
+  `ActionRole` for Add, Edit, Delete — they run and the dialog stays, with the
+  dialog's mnemonics — and one `RejectRole` Close. Buttons in the body get no
+  mnemonics.
+- **An Enter default is named, never implied**: `defaultButton: Dialog.Ok` on a
+  prompt; none on a question whose answer is destructive. A field's Enter
+  answers the dialog only through a named default.
+- **A dialog's first control has the keyboard** when it opens — the first field
+  of a form, else its first button — and closing returns the keyboard to where
+  it was.
+- **Opening a card after one closes is the host's, Posted**: a handler runs
+  while its dialog is still up, so a login opened from an "unsaved changes?"
+  answer is `p.Post`ed, or it closes with its parent.
+- **A form is filled by the host, then opened**: set the fields' sources, then
+  `open()`. A value that must be re-applied even when unchanged (a ComboBox's
+  `currentIndex` back to the same row) goes through a different value first.
+- **Ids the host calls live in the document**, not a component file:
+  `explorerTree`, `editor`, `results` — a component's ids are its own per use.
+- **Letters: a capital is its Shift.** `Shortcut { sequence: "Shift+C" }` for C;
+  `"C"` is c.
 
 ## 11. Testing a QML screen
 
