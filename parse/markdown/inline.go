@@ -140,19 +140,19 @@ func replaceNUL(b []byte) []byte {
 	return bytes.ReplaceAll(b, []byte{0}, []byte("�"))
 }
 
-// lineEnd turns a line ending into a hard break (after two or more spaces) or a soft break, dropping
-// the spaces at the end of this line and the start of the next.
+// lineEnd turns a line ending into a hard break (two or more spaces directly before it) or a soft
+// break, dropping the spaces and tabs at the end of this line and the start of the next.
 //
 // https://spec.commonmark.org/0.31.2/#hard-line-breaks
 func (p *inlineParser) lineEnd() {
 	spaces := 0
 	if last := p.parent.LastChild; last != nil && last.Kind == KindText {
 		t := last.Text(p.src)
-		trimmed := bytes.TrimRight(t, " ")
-		spaces = len(t) - len(trimmed)
-		if spaces > 0 {
+		spaces = len(t) - len(bytes.TrimRight(t, " "))
+		trimmed := bytes.TrimRight(t, " \t")
+		if cut := len(t) - len(trimmed); cut > 0 {
 			last.Literal = append([]byte(nil), trimmed...)
-			last.Span.End -= min(spaces, last.Span.End-last.Span.Start)
+			last.Span.End -= min(cut, last.Span.End-last.Span.Start)
 			if bytes.Equal(last.Literal, p.src[last.Span.Start:last.Span.End]) {
 				last.Literal = nil
 			}
