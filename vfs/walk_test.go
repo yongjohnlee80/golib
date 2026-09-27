@@ -93,3 +93,74 @@ func TestWalkContinuesPastAnUnreadableDirectory(t *testing.T) {
 		t.Fatalf("breaking on the first error yielded %d items, want 2", n)
 	}
 }
+
+// cancelOnList wraps an FS so that listing one directory cancels the walk's ctx, as a deadline or a
+// shutdown would mid-walk, and fails with ctx's error.
+type cancelOnList struct {
+	vfs.FS
+	dir    string
+	cancel context.CancelFunc
+}
+
+func (f cancelOnList) ReadDir(ctx context.Context, name string) ([]vfs.FileInfo, error) {
+	if name == f.dir {
+		f.cancel()
+		return nil, ctx.Err()
+	}
+	return f.FS.ReadDir(ctx, name)
+}
+
+// TestWalkStopsWhenCtxEnds: a listing that fails because ctx ended stops the whole walk — ctx's error is
+// yielded once, last, and no later sibling (file or directory) is yielded.
+func TestWalkStopsWhenCtxEnds(t *testing.T) {
+	mem := memfs.New()
+	bg := context.Background()
+	_ = mem.MkdirAll(bg, "a")
+	_ = mem.MkdirAll(bg, "c")
+	_, _ = mem.WriteFile(bg, "b.md", strings.NewReader("b"))
+	ctx, cancel := context.WithCancel(bg)
+	defer cancel()
+	var got []string
+	var errsSeen []error
+	for fi, err := range vfs.Walk(ctx, cancelOnList{FS: mem, dir: "a", cancel: cancel}, ".") {
+		if err != nil {
+			errsSeen = append(errsSeen, err)
+			continue // a consumer that keeps going must still see the walk end
+		}
+		if len(errsSeen) > 0 {
+			t.Fatalf("an entry after ctx's error: %s", fi.Path)
+		}
+		got = append(got, fi.Path)
+	}
+	if len(errsSeen) != 1 || !errors.Is(errsSeen[0], context.Canceled) {
+		t.Fatalf("errors = %v, want exactly one context.Canceled", errsSeen)
+	}
+	if strings.Join(got, ",") != "a" {
+		t.Fatalf("walked %v, want only a (b.md and c come after the cancelled listing)", got)
+	}
+}
+
+// TestWalkStopsWhenTheConsumerCancels: ctx cancelled between two entries of one directory ends the walk
+// before the next entry — ctx is checked per entry, not only per directory.
+func TestWalkStopsWhenTheConsumerCancels(t *testing.T) {
+	mem := memfs.New()
+	bg := context.Background()
+	for _, n := range []string{"x1.md", "x2.md", "x3.md"} {
+		_, _ = mem.WriteFile(bg, n, strings.NewReader(n))
+	}
+	ctx, cancel := context.WithCancel(bg)
+	defer cancel()
+	var got []string
+	var errsSeen []error
+	for fi, err := range vfs.Walk(ctx, mem, ".") {
+		if err != nil {
+			errsSeen = append(errsSeen, err)
+			continue
+		}
+		got = append(got, fi.Path)
+		cancel() // after the first entry
+	}
+	if strings.Join(got, ",") != "x1.md" || len(errsSeen) != 1 || !errors.Is(errsSeen[0], context.Canceled) {
+		t.Fatalf("walked %v, errors %v; want only x1.md, then one context.Canceled", got, errsSeen)
+	}
+}
