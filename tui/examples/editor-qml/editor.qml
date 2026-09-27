@@ -2,9 +2,10 @@
 //
 // This file describes structure only: what is on the screen, where it is
 // docked, and what each control does when used. It names no colour. How the
-// editor LOOKS is a theme module — themes/mono.qml or themes/retro.qml — and
-// the widgets here bind their palette roles to whichever one is imported.
-// Switching theme is the third import line and nothing else.
+// editor LOOKS is a theme module — one of the toolkit's four, tui.theme.dark,
+// light, mono or retro — and the widgets here bind their palette roles to
+// whichever one is imported. Switching theme is the third import line and
+// nothing else.
 //
 // A palette is set ONCE, where it starts. Roles propagate from parent to
 // child, as Qt's do: the Window carries the application palette, a surface
@@ -18,7 +19,7 @@
 
 import tui 1.0      // the widget vocabulary, and the Tui singleton's enums
 import editor 1.0   // the App singleton: this program's state and commands
-import editor.theme.retro 1.0   // the Theme singleton — or editor.theme.mono
+import tui.theme.retro 1.0      // the Theme singleton — or tui.theme.dark, light, mono
 import editor.dialogs 1.0       // QuitDialog, AboutDialog, OpenDialog, SaveDialog
 
 Window {
@@ -130,16 +131,28 @@ Window {
             Menu {
                 title: "&Theme"
                 MenuItem {
-                    text: "&Retro"
+                    text: "&Dark"
                     group: "theme"
-                    checked: App.themeRetro
-                    onTriggered: App.useTheme("retro")
+                    checked: App.themeDark
+                    onTriggered: App.useTheme("dark")
+                }
+                MenuItem {
+                    text: "&Light"
+                    group: "theme"
+                    checked: App.themeLight
+                    onTriggered: App.useTheme("light")
                 }
                 MenuItem {
                     text: "&Mono"
                     group: "theme"
                     checked: App.themeMono
                     onTriggered: App.useTheme("mono")
+                }
+                MenuItem {
+                    text: "&Retro"
+                    group: "theme"
+                    checked: App.themeRetro
+                    onTriggered: App.useTheme("retro")
                 }
             }
         }
@@ -156,20 +169,23 @@ Window {
     // ---- the document ---------------------------------------------------
     //
     // No Dock.edge, so it fills whatever the bars leave. The frame and the
-    // text inside it are the document's colours, not the application's, so
-    // both say so.
+    // text inside it are the DOCUMENT's colours, not the application's: set
+    // once here, where the document starts, and the Editor inherits them.
+    // highlight is the frame's border while focused; the Editor's own
+    // highlight is its text selection, the theme's document.selection.
     Frame {
-        palette.window: Theme.frame.window
-        palette.windowText: Theme.frame.windowText
-        palette.highlight: Theme.frame.highlight  // the border while focused
+        palette.window: Theme.document.window
+        palette.windowText: Theme.document.windowText
+        palette.highlight: Theme.document.highlight
+        palette.highlightedText: Theme.document.highlightedText
+        palette.base: Theme.document.base
+        palette.text: Theme.document.text
 
         Editor {
             id: editor
             focus: true
-            palette.base: Theme.editor.base
-            palette.text: Theme.editor.text
-            palette.highlight: Theme.editor.highlight
-            palette.highlightedText: Theme.editor.highlightedText
+            palette.highlight: Theme.document.selection
+            palette.highlightedText: Theme.document.selectedText
             // BOUND to a source: choosing a keymap in the menu changes
             // App.keyset, and the editor follows without the host reaching in.
             keyset: App.keyset

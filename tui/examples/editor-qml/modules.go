@@ -6,12 +6,13 @@ import (
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
+	"github.com/yongjohnlee80/golib/tui/decl/themes"
 )
 
 // THE QML THIS PROGRAM SHIPS, and the modules a document imports it through.
 //
 //	import editor 1.0               the App singleton          (declared)
-//	import editor.theme.retro 1.0   a Theme singleton          (offered)
+//	import tui.theme.retro 1.0      a Theme singleton, golib's (offered)
 //	import editor.dialogs 1.0       QuitDialog, AboutDialog…   (offered)
 //
 // App is DECLARED: it is this program, and every document needs it. The
@@ -25,12 +26,6 @@ import (
 //go:embed editor.qml
 var layout []byte
 
-// themeFiles are the themes, one file each: themes/retro.qml is the module
-// editor.theme.retro. A new theme is a file here and nothing else.
-//
-//go:embed themes
-var themeFiles embed.FS
-
 // dialogFiles are the dialogs, one component file each.
 //
 //go:embed dialogs
@@ -41,18 +36,20 @@ const moduleVersion = "1.0"
 
 // modules are every module a document may import.
 func (h *Host) modules() []tuidecl.ProgramOption {
-	return h.modulesFrom(themeFiles, dialogFiles)
+	return h.modulesFrom(dialogFiles)
 }
 
-// modulesFrom are the modules with their QML read from the given file
-// systems: the embedded copies, or a directory on disk under -dev.
-func (h *Host) modulesFrom(themes, dialogs fs.FS) []tuidecl.ProgramOption {
+// modulesFrom are the modules with the dialogs' QML read from the given file
+// system: the embedded copies, or a directory on disk under -dev.
+func (h *Host) modulesFrom(dialogs fs.FS) []tuidecl.ProgramOption {
 	return []tuidecl.ProgramOption{
 		// The `editor` module exports ONE singleton, App. Everything the
 		// document can reach of this program is under that name — and nothing
 		// else of it is reachable at all.
 		tuidecl.Singleton("editor", moduleVersion, "App"),
-		tuidecl.Themes(themes, "themes", "editor.theme", moduleVersion),
+		// The toolkit's four themes, as tui.theme.<name>: this program keeps
+		// no colours of its own.
+		themes.Offer(),
 		tuidecl.Components(dialogs, "dialogs", "editor.dialogs", moduleVersion),
 		// TextField and Popup, for the command prompt: Qt Quick Controls'
 		// types, from golib — added the way any program adds widgets of its own.

@@ -17,7 +17,7 @@ import (
 // colour, the import line picks the theme, and the colours that reach the
 // cells are that theme's.
 
-const retroImport = "import editor.theme.retro 1.0"
+const retroImport = "import tui.theme.retro 1.0"
 
 // withImport is editor.qml with its theme import line replaced — the ONLY edit
 // switching theme is supposed to need.
@@ -126,7 +126,7 @@ func TestRetroIsTheShippedTheme(t *testing.T) {
 
 // TestSwitchingToMonoIsTheImportLineAlone: the same layout, one line changed.
 func TestSwitchingToMonoIsTheImportLineAlone(t *testing.T) {
-	r := startLayout(t, "", withImport(t, "import editor.theme.mono 1.0"))
+	r := startLayout(t, "", withImport(t, "import tui.theme.mono 1.0"))
 	f := r.labelAt(t, 0, "File")
 	last := len(r.rows()) - 1
 	for last > 0 && strings.TrimSpace(r.rows()[last]) == "" {
@@ -146,7 +146,7 @@ func TestSwitchingToMonoIsTheImportLineAlone(t *testing.T) {
 // TestImportingBothThemesIsRefused: two modules exporting Theme is an
 // ambiguity, and it is reported rather than resolved by whichever came last.
 func TestImportingBothThemesIsRefused(t *testing.T) {
-	src := withImport(t, retroImport+"\nimport editor.theme.mono 1.0")
+	src := withImport(t, retroImport+"\nimport tui.theme.mono 1.0")
 	_, err := New(Options{Layout: src})
 	if !errors.Is(err, decl.ErrDuplicateExport) {
 		t.Fatalf("err = %v, want ErrDuplicateExport", err)
@@ -247,17 +247,18 @@ func TestTheThemeMenuSwitchesThemeAndKeepsTheBuffer(t *testing.T) {
 // TestTheThemeMenuChecksTheImportedTheme: the mark is bound to what the
 // layout imports, not written on one row.
 func TestTheThemeMenuChecksTheImportedTheme(t *testing.T) {
-	for _, c := range []struct {
-		layout      []byte
-		retro, mono bool
-	}{
-		{layout, true, false},
-		{withImport(t, "import editor.theme.mono 1.0"), false, true},
-	} {
+	marks := map[string]string{"dark": "App.themeDark", "light": "App.themeLight", "mono": "App.themeMono", "retro": "App.themeRetro"}
+	for imported := range marks {
+		src := layout
+		if imported != "retro" {
+			src = withImport(t, "import tui.theme."+imported+" 1.0")
+		}
 		h := newHost(Options{})
-		st := h.state("", themeOf(c.layout))
-		if st["App.themeRetro"] != c.retro || st["App.themeMono"] != c.mono {
-			t.Errorf("%s: retro %v mono %v", themeOf(c.layout), st["App.themeRetro"], st["App.themeMono"])
+		st := h.state("", themeOf(src))
+		for theme, mark := range marks {
+			if want := theme == imported; st[mark] != want {
+				t.Errorf("importing %s: %s is %v, want %v", imported, mark, st[mark], want)
+			}
 		}
 	}
 }
