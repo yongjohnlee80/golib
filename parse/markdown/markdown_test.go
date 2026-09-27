@@ -108,16 +108,21 @@ func FuzzParse(f *testing.F) {
 		"a  \nb\\\nc", "***a**b*", "![x [y](/z)](/w)", "\t- \ta", "1. a\n\n\n2) b", "<a href='x'>y</a>",
 		// shapes whose spans once overlapped: a block matched by a line that another block then took
 		"a\n***\n", "a\n# h\n", "a\n```\nb\n", "a\n<div>\n", "- a\n\n[d]: /v\n", "    a\n    \nb\n",
-		"*\n\n    - x\n", "> > >\n", ">\n> a\n", "- \n  a\n", "[a]: /u\n[b]: /v\n===\n", ">~~~"} {
+		"*\n\n    - x\n", "> > >\n", ">\n> a\n", "- \n  a\n", "[a]: /u\n[b]: /v\n===\n", ">~~~",
+		// GFM shapes
+		"p\n| a | b |\n| - | - |\n| `c\\|` | d |\n", "> a\n> -:\n> b\n", "- [x] a\n  - [ ]\n", "~~a *b~~ c*",
+		"(www.a.b/(c))) x@y.z. http://a.b?", "[x www.a.b](/u) a@b.c", "|\n-\n", "a|b\n-|-\n\tc"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
 		src := []byte(in)
-		d := markdown.Parse(src)
-		checkTree(t, src, d.Root)
-		var b bytes.Buffer
-		if err := html.Render(&b, d); err != nil {
-			t.Fatal(err)
+		for _, opts := range [][]markdown.Option{nil, {markdown.GFM()}} {
+			d := markdown.Parse(src, opts...)
+			checkTree(t, src, d.Root)
+			var b bytes.Buffer
+			if err := html.Render(&b, d); err != nil {
+				t.Fatal(err)
+			}
 		}
 	})
 }
@@ -157,12 +162,27 @@ func TestLinearTime(t *testing.T) {
 		"interrupted-paragraphs": func(n int) string { return strings.Repeat("a\n***\n", n/6) },
 		"long-paragraph-lines":   func(n int) string { return strings.Repeat("word ", n/10) + "\n" + strings.Repeat("x\n", n/4) },
 	}
+	gfmFamilies := map[string]func(n int) string{
+		"gfm-tilde-runs":      func(n int) string { return strings.Repeat("~~a", n/3) },
+		"gfm-trailing-parens": func(n int) string { return "www.a.b/" + strings.Repeat(")", n) },
+		"gfm-www-runs":        func(n int) string { return strings.Repeat("(www.a.b", n/8) },
+		"gfm-at-signs":        func(n int) string { return strings.Repeat("a.b@", n/4) },
+		"gfm-emails":          func(n int) string { return strings.Repeat("a@b.c ", n/6) },
+		"gfm-table-rows":      func(n int) string { return "| a | b |\n| - | - |\n" + strings.Repeat("| c | `d\\|` |\n", n/14) },
+		"gfm-wide-table": func(n int) string {
+			h := strings.Repeat("a|", n/4)
+			return h + "\n" + strings.Repeat("-|", n/4) + "\n" + h + "\n"
+		},
+		"gfm-task-items":       func(n int) string { return strings.Repeat("- [x] a\n", n/8) },
+		"gfm-unclosed-bracket": func(n int) string { return "[" + strings.Repeat("www.a.b ", n/8) },
+	}
+	var opts []markdown.Option
 	measure := func(src []byte) time.Duration {
 		best := time.Duration(1<<63 - 1)
 		for i := 0; i < 3; i++ {
 			runtime.GC() // collect the previous run's garbage outside the timing
 			start := time.Now()
-			markdown.Parse(src)
+			markdown.Parse(src, opts...)
 			if d := time.Since(start); d < best {
 				best = d
 			}
@@ -170,7 +190,7 @@ func TestLinearTime(t *testing.T) {
 		return best
 	}
 	const n = 50000
-	for name, gen := range families {
+	check := func(name string, gen func(int) string) {
 		small, large := []byte(gen(n)), []byte(gen(10*n))
 		ts, tl := measure(small), measure(large)
 		ratio := float64(tl) / float64(max(ts, time.Microsecond))
@@ -178,5 +198,15 @@ func TestLinearTime(t *testing.T) {
 		if ratio > 30 {
 			t.Errorf("%s: 10x the input took %.1fx the time — not linear", name, ratio)
 		}
+	}
+	for name, gen := range families {
+		check(name, gen)
+	}
+	opts = []markdown.Option{markdown.GFM()}
+	for name, gen := range gfmFamilies {
+		check(name, gen)
+	}
+	for name, gen := range families { // the CommonMark families stay linear with GFM on
+		check(name+"+gfm", gen)
 	}
 }
