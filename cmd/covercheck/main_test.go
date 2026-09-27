@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"go/build"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,41 @@ func TestRunExitContract(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			if got := run(context.Background(), test.args, &stdout, &stderr); got != test.want {
 				t.Fatalf("exit = %d, want %d; stdout=%q stderr=%q", got, test.want, stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
+// TestRunRequireChangedFilesIsBuildAware: a changed file the running platform cannot build is reported,
+// not a missing-file violation; a buildable file absent from the profile still is.
+func TestRunRequireChangedFilesIsBuildAware(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, "a.go", "package fixture\nfunc value() int { return 1 }\n")
+	writeFixture(t, root, "sys_plan9.go", "package fixture\nfunc sys() int { return 2 }\n")
+	writeFixture(t, root, "b.go", "package fixture\nfunc other() int { return 3 }\n")
+	base := writeFixture(t, root, "base.out", "mode: set\nexample.com/p/a.go:1.1,2.2 1 1\n")
+	head := writeFixture(t, root, "head.out", "mode: set\nexample.com/p/a.go:1.1,2.2 1 1\n")
+	plan9 := "diff --git a/sys_plan9.go b/sys_plan9.go\nnew file mode 100644\n--- /dev/null\n+++ b/sys_plan9.go\n@@ -0,0 +1,2 @@\n+package fixture\n+func sys() int { return 2 }\n"
+	other := "diff --git a/b.go b/b.go\nnew file mode 100644\n--- /dev/null\n+++ b/b.go\n@@ -0,0 +1,2 @@\n+package fixture\n+func other() int { return 3 }\n"
+	for name, c := range map[string]struct {
+		diff string
+		want int
+	}{
+		"excluded file passes":         {plan9, exitPass},
+		"buildable missing file fails": {plan9 + other, exitPolicy},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			diff := writeFixture(t, t.TempDir(), "change.diff", c.diff)
+			var stdout, stderr bytes.Buffer
+			got := run(context.Background(), []string{"--module", "example.com/p", "--root", root, "--base-profile", base,
+				"--head-profile", head, "--diff", diff, "--require-changed-files"}, &stdout, &stderr)
+			if got != c.want {
+				t.Fatalf("exit = %d, want %d; stdout=%q stderr=%q", got, c.want, stdout.String(), stderr.String())
+			}
+			if !strings.Contains(stdout.String(), "sys_plan9.go") || !strings.Contains(stdout.String(), "not built on") {
+				t.Fatalf("the excluded file is not reported:\n%s", stdout.String())
 			}
 		})
 	}
@@ -87,6 +123,44 @@ func TestAnnotateExecutability(t *testing.T) {
 	}
 	if changes[1].Executability != covercheck.ExecutabilityPresent {
 		t.Fatalf("run.go = %q, want present", changes[1].Executability)
+	}
+}
+
+func TestAnnotateBuild(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, "all.go", "package fixture\nfunc all() { println(1) }\n")
+	writeFixture(t, root, "only_darwin.go", "package fixture\nfunc d() { println(1) }\n")
+	writeFixture(t, root, "tagged.go", "//go:build darwin\n\npackage fixture\nfunc t() { println(1) }\n")
+	writeFixture(t, root, "unix.go", "//go:build unix\n\npackage fixture\nfunc u() { println(1) }\n")
+	changes := []covercheck.FileChange{
+		{NewPath: "all.go", Kind: covercheck.ChangeAdded},
+		{NewPath: "only_darwin.go", Kind: covercheck.ChangeAdded},
+		{NewPath: "tagged.go", Kind: covercheck.ChangeModified},
+		{NewPath: "unix.go", Kind: covercheck.ChangeAdded},
+		{OldPath: "gone_darwin.go", Kind: covercheck.ChangeDeleted},
+	}
+	ctxt := build.Default
+	ctxt.GOOS, ctxt.GOARCH = "linux", "amd64"
+	if err := annotateBuild(root, changes, ctxt); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"", "linux/amd64", "linux/amd64", "", ""} {
+		if changes[i].ExcludedOn != want {
+			t.Errorf("%s%s: ExcludedOn = %q, want %q", changes[i].NewPath, changes[i].OldPath, changes[i].ExcludedOn, want)
+		}
+	}
+	ctxt.GOOS = "darwin"
+	for i := range changes {
+		changes[i].ExcludedOn = ""
+	}
+	if err := annotateBuild(root, changes, ctxt); err != nil {
+		t.Fatal(err)
+	}
+	for i := range changes {
+		if changes[i].ExcludedOn != "" {
+			t.Errorf("on darwin %s: ExcludedOn = %q, want built", changes[i].NewPath, changes[i].ExcludedOn)
+		}
 	}
 }
 

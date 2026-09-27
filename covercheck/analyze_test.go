@@ -68,6 +68,42 @@ func TestAnalyzeDoesNotMarkDeclarationOnlyFileMissing(t *testing.T) {
 	}
 }
 
+func TestAnalyzeDoesNotMarkBuildExcludedFileMissing(t *testing.T) {
+	t.Parallel()
+	base := mustProfileWithMode(t, "set")
+	head := mustProfileWithMode(t, "set")
+	changes := []FileChange{
+		{NewPath: "pkg/sys_darwin.go", Kind: ChangeAdded, Executability: ExecutabilityPresent, ExcludedOn: "linux/amd64"},
+		{NewPath: "pkg/sys_linux.go", Kind: ChangeAdded, Executability: ExecutabilityPresent},
+	}
+	report, err := Analyze(base, head, changes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	darwin, linux := report.Files[0], report.Files[1]
+	if darwin.MissingAtHead || darwin.ExcludedOn != "linux/amd64" {
+		t.Fatalf("build-excluded file = %#v, want not missing, ExcludedOn linux/amd64", darwin)
+	}
+	if !linux.MissingAtHead {
+		t.Fatalf("a buildable file absent from the profile must still be missing: %#v", linux)
+	}
+	violations, err := Evaluate(report, WithRequiredChangedFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 || violations[0].Path != "pkg/sys_linux.go" {
+		t.Fatalf("violations = %#v, want only the buildable file", violations)
+	}
+	result := NewResult(report, violations)
+	var md strings.Builder
+	if err := WriteMarkdown(&md, result); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(md.String(), "| `pkg/sys_darwin.go` |") || !strings.Contains(md.String(), "not built on linux/amd64") {
+		t.Fatalf("markdown does not report the excluded file:\n%s", md.String())
+	}
+}
+
 func TestAnalyzeRejectsDifferentModes(t *testing.T) {
 	t.Parallel()
 	base := mustProfileWithMode(t, "set")

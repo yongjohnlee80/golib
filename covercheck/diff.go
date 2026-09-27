@@ -58,6 +58,9 @@ type FileChange struct {
 	Kind          ChangeKind    `json:"kind"`
 	Ranges        []LineRange   `json:"ranges,omitempty"`
 	Executability Executability `json:"executability,omitempty"`
+	// ExcludedOn names the platform ("linux/amd64") whose build constraints exclude the head file, so a
+	// profile produced there cannot contain it. Empty when the file builds there or was not inspected.
+	ExcludedOn string `json:"excluded_on,omitempty"`
 }
 
 // DiffError describes one malformed unified-diff line.

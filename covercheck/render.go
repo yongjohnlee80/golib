@@ -35,6 +35,9 @@ func WriteText(w io.Writer, result Result) error {
 		if file.MissingAtHead {
 			state += ",missing"
 		}
+		if file.ExcludedOn != "" {
+			state += ",not built on " + file.ExcludedOn
+		}
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", file.Path, formatStats(file.Coverage.Base), formatStats(file.Coverage.Head), formatDelta(file.Coverage.Delta), formatStats(file.ChangedBlocks), state); err != nil {
 			return err
 		}
@@ -61,6 +64,9 @@ func WriteMarkdown(w io.Writer, result Result) error {
 		state := string(file.Kind)
 		if file.MissingAtHead {
 			state += ", missing"
+		}
+		if file.ExcludedOn != "" {
+			state += ", not built on " + file.ExcludedOn
 		}
 		if _, err := fmt.Fprintf(w, "| `%s` | %s | %s | %s | %s | %s |\n", escapeMarkdown(file.Path), formatStats(file.Coverage.Base), formatStats(file.Coverage.Head), formatDelta(file.Coverage.Delta), formatStats(file.ChangedBlocks), state); err != nil {
 			return err

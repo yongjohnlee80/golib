@@ -55,6 +55,7 @@ type FileReport struct {
 	Coverage      Comparison `json:"coverage"`
 	ChangedBlocks Stats      `json:"changed_blocks"`
 	MissingAtHead bool       `json:"missing_at_head"`
+	ExcludedOn    string     `json:"excluded_on,omitempty"` // see FileChange.ExcludedOn
 }
 
 // PackageReport is the comparison for one Go package directory.
@@ -121,7 +122,8 @@ func analyzeFile(change FileChange, base, head *Profile, baseFiles, headFiles ma
 		OldPath:       change.OldPath,
 		Kind:          change.Kind,
 		Coverage:      compareStats(baseStats, headStats, baseOK, headOK),
-		MissingAtHead: change.Kind != ChangeDeleted && isProductionGo(newPath) && change.Executability != ExecutabilityAbsent && !headOK,
+		MissingAtHead: change.Kind != ChangeDeleted && isProductionGo(newPath) && change.Executability != ExecutabilityAbsent && change.ExcludedOn == "" && !headOK,
+		ExcludedOn:    change.ExcludedOn,
 	}
 	if change.Kind != ChangeDeleted {
 		file.ChangedBlocks = intersectStats(head.Files[newPath], change.Ranges)
