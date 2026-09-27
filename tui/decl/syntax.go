@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/highlight"
+	sqlhighlight "github.com/yongjohnlee80/golib/highlight/sql"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -31,7 +32,8 @@ import (
 // anywhere else is refused.
 //
 // `definition` names a registered definition — the standard vocabulary has
-// QML and JavaScript; a program adds its own with [WithHighlighters] or the
+// QML, JavaScript, and SQL as "SQL (PostgreSQL)", "SQL (SQLite)" and
+// "SQL (MySQL)" (package highlight/sql); a program adds its own with [WithHighlighters] or the
 // Program option [Highlighters] — and an unknown one is refused, naming the
 // registered ones. It is a runtime property: bound to a source, the language
 // follows it. "" turns highlighting off.
@@ -47,10 +49,11 @@ import (
 // the files each is for — what a FileDialog's preview picks by.
 func stdHighlighters() *highlight.Repository {
 	q := qml.Highlighter()
-	return highlight.NewRepository(
-		highlight.Definition{Name: "QML", Extensions: []string{"*.qml"}, Highlighter: q},
-		highlight.Definition{Name: "JavaScript", Extensions: []string{"*.js", "*.mjs"}, Highlighter: q},
-	)
+	defs := []highlight.Definition{
+		{Name: "QML", Extensions: []string{"*.qml"}, Highlighter: q},
+		{Name: "JavaScript", Extensions: []string{"*.js", "*.mjs"}, Highlighter: q},
+	}
+	return highlight.NewRepository(append(defs, sqlhighlight.Definitions()...)...)
 }
 
 // WithHighlighters registers syntax definitions by the name a document's

@@ -32,7 +32,9 @@ patterns it claims (`*.qml`) — KSyntaxHighlighting's Definition — and a
 `Repository` holds them: `Definition(name)`, and `DefinitionForFileName(file)`
 for a view that shows whatever file it is given, a file dialog's preview.
 
-Implementations: `parse/qml.Highlighter()` (QML and its JavaScript). Painters:
+Implementations: `parse/qml.Highlighter()` (QML and its JavaScript) and
+`highlight/sql.Highlighter(dialect)` (PostgreSQL, SQLite, MySQL; its
+`Definitions()` names them as KSyntaxHighlighting does). Painters:
 `tui/widget.Editor` (`WithHighlighter`), and `SyntaxHighlighter` in
 [tui/decl](../tui/decl/README.md).
 
