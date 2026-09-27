@@ -8,7 +8,22 @@ import (
 // Option configures Parse.
 type Option func(*config)
 
-type config struct{}
+type config struct {
+	gfm     bool
+	special [256]bool // the bytes that end a run of plain text in the inline phase
+}
+
+// init completes a config once its options have run.
+func (c *config) init() {
+	for _, b := range []byte("\n\\`*_[!]<&") {
+		c.special[b] = true
+	}
+	if c.gfm {
+		for _, b := range []byte("~.:") {
+			c.special[b] = true
+		}
+	}
+}
 
 func utf8Len(b []byte) int {
 	_, size := utf8.DecodeRune(b)
@@ -44,6 +59,8 @@ func isUnicodeWhitespace(r rune) bool {
 	}
 	return unicode.Is(unicode.Zs, r)
 }
+
+func isUnicodeLetterOrDigit(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
 
 // isUnicodePunct is CommonMark's Unicode punctuation: ASCII punctuation, or the P and S categories.
 //

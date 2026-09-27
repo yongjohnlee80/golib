@@ -43,6 +43,7 @@ var kindNames = map[Kind]string{
 	KindText: "text", KindSoftBreak: "softbreak", KindHardBreak: "linebreak", KindCodeSpan: "code",
 	KindEmph: "emph", KindStrong: "strong", KindLink: "link", KindImage: "image",
 	KindAutolink: "autolink", KindRawHTML: "html_inline",
+	KindTable: "table", KindTableRow: "table_row", KindTableCell: "table_cell", KindStrikethrough: "strikethrough",
 }
 
 func (k Kind) String() string {
@@ -95,7 +96,9 @@ type Node struct {
 	Title []byte   // link or image title, decoded
 	Label []byte   // KindLinkRefDef: the label as written
 	HTML  int      // KindHTMLBlock: which of the seven start conditions opened it
-	Ext   any      // extension data (for example a table's column alignment)
+
+	Checked *bool   // a GFM task list item: whether it is checked; nil on any other item
+	Align   []Align // KindTable: each column's alignment
 
 	blk *blockState // parse-time state of an open block; nil once the parse is done
 }
@@ -192,6 +195,7 @@ func Parse(src []byte, opts ...Option) *Document {
 			o(&cfg)
 		}
 	}
+	cfg.init()
 	d := &Document{Source: src, Refs: map[string]LinkRef{}, lines: lineStarts(src)}
 	p := newBlockParser(d, &cfg)
 	p.run()

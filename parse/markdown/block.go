@@ -199,12 +199,16 @@ func (p *blockParser) incorporate(ln line) {
 	}
 
 	// 2. new block starts, unless the matched block takes raw lines
-	matchedLeaf := container.Kind != KindParagraph && acceptsLines(container)
+	// a paragraph or a table takes the line only if no block starts on it
+	matchedLeaf := container.Kind != KindParagraph && container.Kind != KindTable && acceptsLines(container)
 	var opened *Node // the deepest container this line opened, which spans its marker
 	markerEnd := 0
 	for !matchedLeaf {
 		p.findNextNonspace()
-		if !p.indented && !mayStartBlock(p.peek(p.nextNonspace)) {
+		c := p.peek(p.nextNonspace)
+		// a GFM delimiter row may also begin with '|' or ':', under a paragraph
+		gfmRow := p.cfg.gfm && container.Kind == KindParagraph && (c == '|' || c == ':')
+		if !p.indented && !mayStartBlock(c) && !gfmRow {
 			p.advanceNextNonspace()
 			break
 		}
@@ -343,7 +347,7 @@ func (p *blockParser) continues(b *Node) continueResult {
 			return continueFailed
 		}
 		return continueMatched
-	case KindParagraph:
+	case KindParagraph, KindTable:
 		if p.blank {
 			return continueFailed
 		}
@@ -357,7 +361,7 @@ func (p *blockParser) continues(b *Node) continueResult {
 // acceptsLines reports the blocks whose content is added line by line rather than parsed further.
 func acceptsLines(b *Node) bool {
 	switch b.Kind {
-	case KindParagraph, KindCodeBlock, KindHTMLBlock:
+	case KindParagraph, KindCodeBlock, KindHTMLBlock, KindTable:
 		return true
 	}
 	return false
@@ -467,6 +471,8 @@ func (p *blockParser) finalize(b *Node, end int) {
 		}
 	case KindList:
 		finalizeList(b)
+	case KindTable:
+		finalizeTable(b)
 	}
 	p.tip = parent
 }

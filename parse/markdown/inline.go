@@ -10,7 +10,7 @@ func parseInlines(d *Document, cfg *config) {
 		for c := n.FirstChild; c != nil; {
 			next := c.Next
 			switch c.Kind {
-			case KindParagraph, KindHeading:
+			case KindParagraph, KindHeading, KindTableCell:
 				if c.blk != nil {
 					text, segs := leafContent(c)
 					ip := &inlineParser{doc: d, cfg: cfg, src: d.Source, text: text, segs: segs, parent: c}
@@ -72,7 +72,11 @@ func (p *inlineParser) srcAt(off int) int { return mapOffset(p.segs, off) }
 
 func (p *inlineParser) parse() {
 	for p.pos < len(p.text) {
-		switch c := p.text[p.pos]; c {
+		c := p.text[p.pos]
+		if p.cfg.gfm && (c == '~' || c == '.' || c == ':') && p.gfmInline(c) {
+			continue
+		}
+		switch c {
 		case '\n':
 			p.lineEnd()
 		case '\\':
@@ -97,7 +101,7 @@ func (p *inlineParser) parse() {
 			p.entity()
 		default:
 			end := p.pos + 1
-			for end < len(p.text) && !isInlineSpecial(p.text[end]) {
+			for end < len(p.text) && !p.cfg.special[p.text[end]] {
 				end++
 			}
 			p.textRun(p.pos, end)
@@ -105,14 +109,9 @@ func (p *inlineParser) parse() {
 	}
 	p.processEmphasis(nil)
 	p.mergeText(p.parent)
-}
-
-func isInlineSpecial(c byte) bool {
-	switch c {
-	case '\n', '\\', '`', '*', '_', '[', '!', ']', '<', '&':
-		return true
+	if p.cfg.gfm {
+		p.emailAutolinks(p.parent)
 	}
-	return false
 }
 
 // textRun appends content[from:to] as text and moves past it.
@@ -283,6 +282,9 @@ func (p *inlineParser) delimRun(c byte) {
 		canClose = right && (!left || afterP)
 	}
 	node := p.textRun(start, end)
+	if c == '~' && end-start != 2 {
+		return // strikethrough takes exactly two tildes; any other run is text
+	}
 	if canOpen || canClose {
 		d := &delim{node: node, char: c, num: end - start, origNum: end - start,
 			canOpen: canOpen, canClose: canClose, prev: p.delims}
@@ -497,12 +499,15 @@ func autolink(b []byte) (int, []byte) {
 //
 // https://spec.commonmark.org/0.31.2/#phase-2-inline-structure
 func (p *inlineParser) processEmphasis(bottom *delim) {
-	var openersBottom [2][2][3]*delim
-	var set [2][2][3]bool
+	var openersBottom [3][2][3]*delim
+	var set [3][2][3]bool
 	slot := func(d *delim) (int, int, int) {
 		c := 0
-		if d.char == '_' {
+		switch d.char {
+		case '_':
 			c = 1
+		case '~':
+			c = 2
 		}
 		o := 0
 		if d.canOpen {
@@ -529,7 +534,7 @@ func (p *inlineParser) processEmphasis(bottom *delim) {
 		found := false
 		for opener != nil && opener != bottom && opener != limit {
 			if opener.char == closer.char && opener.canOpen {
-				odd := (closer.canOpen || opener.canClose) && closer.origNum%3 != 0 &&
+				odd := closer.char != '~' && (closer.canOpen || opener.canClose) && closer.origNum%3 != 0 &&
 					(opener.origNum+closer.origNum)%3 == 0
 				if !odd {
 					found = true
@@ -552,7 +557,10 @@ func (p *inlineParser) processEmphasis(bottom *delim) {
 			use = 2
 		}
 		kind := KindEmph
-		if use == 2 {
+		switch {
+		case closer.char == '~':
+			kind = KindStrikethrough
+		case use == 2:
 			kind = KindStrong
 		}
 		on, cn := opener.node, closer.node

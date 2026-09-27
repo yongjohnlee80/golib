@@ -113,6 +113,14 @@ func (r *renderer) block(n *markdown.Node) {
 	case markdown.KindItem:
 		r.cr()
 		r.out.WriteString("<li>")
+		if n.Checked != nil {
+			// a GFM task list item: the checkbox, then the item's content
+			if *n.Checked {
+				r.out.WriteString(`<input checked="" disabled="" type="checkbox"> `)
+			} else {
+				r.out.WriteString(`<input disabled="" type="checkbox"> `)
+			}
+		}
 		r.children(n)
 		r.out.WriteString("</li>")
 		r.cr()
@@ -132,11 +140,56 @@ func (r *renderer) block(n *markdown.Node) {
 		r.cr()
 		r.raw(n.Literal)
 		r.cr()
+	case markdown.KindTable:
+		r.table(n)
 	case markdown.KindLinkRefDef:
 		// provenance only: a definition renders as nothing
 	default:
 		r.inline(n)
 	}
+}
+
+// table writes a GFM table: the first row as the head, the rest (if any) as the body, and each
+// cell's column alignment as an align attribute.
+func (r *renderer) table(t *markdown.Node) {
+	r.cr()
+	r.out.WriteString("<table>\n<thead>\n")
+	for row := t.FirstChild; row != nil; row = row.Next {
+		if row == t.FirstChild.Next {
+			r.out.WriteString("<tbody>\n")
+		}
+		tag := "td"
+		if row == t.FirstChild {
+			tag = "th"
+		}
+		r.out.WriteString("<tr>\n")
+		col := 0
+		for cell := row.FirstChild; cell != nil; cell = cell.Next {
+			r.out.WriteString("<" + tag)
+			if col < len(t.Align) {
+				switch t.Align[col] {
+				case markdown.AlignLeft:
+					r.out.WriteString(` align="left"`)
+				case markdown.AlignCenter:
+					r.out.WriteString(` align="center"`)
+				case markdown.AlignRight:
+					r.out.WriteString(` align="right"`)
+				}
+			}
+			r.out.WriteString(">")
+			r.inlines(cell)
+			r.out.WriteString("</" + tag + ">\n")
+			col++
+		}
+		r.out.WriteString("</tr>\n")
+		if row == t.FirstChild {
+			r.out.WriteString("</thead>\n")
+		}
+	}
+	if t.FirstChild != nil && t.FirstChild.Next != nil {
+		r.out.WriteString("</tbody>\n")
+	}
+	r.out.WriteString("</table>\n")
 }
 
 func firstWord(info []byte) []byte {
@@ -172,6 +225,10 @@ func (r *renderer) inline(n *markdown.Node) {
 		r.out.WriteString("<strong>")
 		r.inlines(n)
 		r.out.WriteString("</strong>")
+	case markdown.KindStrikethrough:
+		r.out.WriteString("<del>")
+		r.inlines(n)
+		r.out.WriteString("</del>")
 	case markdown.KindLink, markdown.KindAutolink:
 		r.out.WriteString(`<a href="`)
 		r.href(n.Dest)

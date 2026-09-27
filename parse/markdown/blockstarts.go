@@ -104,6 +104,11 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 			}
 			item := p.addChild(KindItem, ns)
 			item.List = data
+			if p.cfg.gfm {
+				if res, n, ok := p.taskMarker(item); ok {
+					return res, n
+				}
+			}
 			return startContainer, item
 		}
 	}
@@ -113,6 +118,10 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 		p.closeUnmatched()
 		cb := p.addChild(KindCodeBlock, p.offset)
 		return startLeaf, cb
+	}
+
+	if p.cfg.gfm && !p.indented && container.Kind == KindParagraph {
+		return p.tableStart(container)
 	}
 	return startNone, nil
 }
