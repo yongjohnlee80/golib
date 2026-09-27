@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 )
 
 // theme_test.go holds the theme claim to the screen: the layout names no
@@ -78,20 +80,36 @@ type look struct {
 	fg, bg tui.CellColor
 }
 
+// It polls, as decltest.WaitFor does: a key reaches the screen a frame or more
+// after it is injected, so a look read once can be the frame before the last key.
 func (r *running) expect(t *testing.T, looks []look) {
 	t.Helper()
-	for _, l := range looks {
-		got := r.cell(t, l.x, l.y)
-		if got.FG != l.fg || got.BG != l.bg {
-			t.Errorf("%s at (%d,%d): fg %+v bg %+v, want fg %+v bg %+v",
-				l.what, l.x, l.y, got.FG, got.BG, l.fg, l.bg)
+	deadline := time.Now().Add(decltest.WaitTimeout)
+	for {
+		var bad []string
+		for _, l := range looks {
+			got := r.cell(t, l.x, l.y)
+			if got.FG != l.fg || got.BG != l.bg {
+				bad = append(bad, fmt.Sprintf("%s at (%d,%d): fg %+v bg %+v, want fg %+v bg %+v",
+					l.what, l.x, l.y, got.FG, got.BG, l.fg, l.bg))
+			}
+			// REVERSE is an attribute, not a swap: a reversed cell reports the
+			// colours it was given and shows the opposite pair.
+			if got.Mask&tui.AttrReverse != 0 {
+				bad = append(bad, fmt.Sprintf("%s at (%d,%d) is reversed, so it shows fg %+v on bg %+v",
+					l.what, l.x, l.y, got.BG, got.FG))
+			}
 		}
-		// REVERSE is an attribute, not a swap: a reversed cell reports the
-		// colours it was given and shows the opposite pair.
-		if got.Mask&tui.AttrReverse != 0 {
-			t.Errorf("%s at (%d,%d) is reversed, so it shows fg %+v on bg %+v",
-				l.what, l.x, l.y, got.BG, got.FG)
+		if len(bad) == 0 {
+			return
 		}
+		if time.Now().After(deadline) {
+			for _, b := range bad {
+				t.Error(b)
+			}
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
