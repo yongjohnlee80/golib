@@ -222,4 +222,6 @@ Error identity, wrapping and comparison are covered separately in
 
 ## License
 
-See [LICENSE](LICENSE).
+Licensed under the [Apache License, Version 2.0](LICENSE). Releases up to and
+including `v0.5.41` were published under the MIT License, and those tags keep
+it.

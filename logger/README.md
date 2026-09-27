@@ -153,4 +153,4 @@ its signatures don't grow an extra type parameter.
 
 ## License
 
-[MIT](../LICENSE)
+[Apache-2.0](../LICENSE)

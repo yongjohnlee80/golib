@@ -172,4 +172,4 @@ reports ok per Color); `Theme.Color` and `Theme.Dark`. No mutation surface.
 
 ## License
 
-[MIT](../../LICENSE)
+[Apache-2.0](../../LICENSE)

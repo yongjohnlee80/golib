@@ -151,4 +151,4 @@ cell rendering still work through VT processing (floor: Windows 10 1809+,
 
 ## License
 
-[MIT](../../LICENSE)
+[Apache-2.0](../../LICENSE)
