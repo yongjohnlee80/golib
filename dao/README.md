@@ -5,8 +5,10 @@ entity **once** (its fields, columns, scan targets, joins, sort, and search
 config) and that single declaration drives column-aware reads, scanning, query
 building, batch writes, transactions, and query-time hooks.
 
-It is deliberately **not an ORM**: no struct-tag magic, no migrations, no lazy
-relationship graphs. Explicit columns, explicit joins, column-aware reads.
+It is deliberately **not an ORM**: no struct-tag magic, no migrations in the
+core, no lazy relationship graphs. Explicit columns, explicit joins,
+column-aware reads. A product's schema is SQL scripts, applied by
+[`dao/deploy`](#schema-scripts-daodeploy).
 
 - **Core (`dao`) and `logger` have zero external dependencies** — the engine
   builds SQL with a small internal builder and executes through stdlib
@@ -195,6 +197,7 @@ and safe to hold for the process lifetime; acquiring a `DAO` from it is cheap.
 | `OptionalJoinExpr(key, expr)` | the same, from `dao.LeftJoin`/`dao.InnerJoin`, resolved per dialect (later option wins across both forms) |
 | `JoinForSort(sortKey, join)` | a sort key that triggers a join |
 | `SortMap(map[K]string)` | sort key → ORDER BY expression |
+| `SortExpr(key, expr)` | one sort key whose ORDER BY is an `Expr`, resolved per dialect (e.g. `dao.Rank`); wins over a `SortMap` entry |
 | `Search(ops…)` | declared search operators (see below) |
 | `Conflict(cols…)` | ON CONFLICT target for `Upsert` |
 | `DefaultValues(map[C]any)` | values applied to every write before per-call `Set` |
@@ -228,7 +231,14 @@ if err := it.Err(); err != nil { /* ... */ }
 
 n, err := artists.DAO().With(ArtistPublic, true).Count() // ignores Limit/Offset
 ok, err := artists.DAO().With(ArtistURI, "x").Exists()
+
+names, err := dao.SelectDistinct(artists.DAO().With(ArtistPublic, true), ArtistName) // SELECT DISTINCT
+k, err := dao.CountDistinct(artists.DAO(), ArtistLabelGroup)                          // COUNT(DISTINCT …), NULLs not counted
 ```
+
+`SelectDistinct` and `CountDistinct` are optional capabilities
+(`dao.DistinctSelector`, `dao.DistinctCounter`), like `UpdateAffected` below:
+a DAO without them answers `ErrUnsupported`.
 
 ## Writes
 
@@ -265,6 +275,26 @@ implementations stay valid. It answers `ErrUnsupported` rather than 0 when the
 count can't be known. PostgreSQL and SQLite count MATCHED rows; MySQL counts
 CHANGED rows unless the DSN sets `clientFoundRows=true` (see the MySQL README).
 
+An **increment** is a staged value, so every DAO takes it through `Set`. The
+engine adds to what the row holds, so concurrent increments all land:
+
+```go
+err = jobs.On(tx).With(JobPath, p).Set(JobAttempts, dao.Incr(1)).Update()
+// UPDATE "job" SET "attempts" = "attempts" + $1 WHERE "path" = $2
+```
+
+`Insert`, `Upsert` and batches refuse an `Incr` (`errs.ErrInvalidArgument`):
+a new row has nothing to add to.
+
+A **selective upsert** updates only some staged fields when the row exists
+(`dao.SelectiveUpserter`); the rest are written by the insert alone:
+
+```go
+err = dao.UpsertOnly(jobs.On(tx).Set(JobPath, p).Set(JobSeq, seq).Set(JobEnqueued, now), JobSeq)
+// … ON CONFLICT ("path") DO UPDATE SET "seq" = EXCLUDED."seq"   (enqueued_at kept)
+err = dao.UpsertOnly(jobs.On(tx).Set(JobPath, p).Set(JobSeq, seq)) // no fields: DO NOTHING
+```
+
 ## Column targeting & predicates
 
 `With`/`Excluding` are sugar over `Eq`/`In`/`NotIn` keyed by the field enum;
@@ -276,6 +306,7 @@ dao.IsNull(col)  dao.IsNotNull(col)
 dao.Gt/Gte/Lt/Lte(col, v)   dao.Between(col, lo, hi)
 dao.Like(col, pattern)      dao.EscapeLike(userInput) // escape %,_,\ for a literal match
 dao.And(p…)  dao.Or(p…)  dao.Raw("expr = ? AND x > ?", a, b) // ? renumbered per dialect
+dao.Cmp(dao.T("chunk", "gen_from"), dao.OpLte, dao.T("document", "active_gen")) // two columns, nothing bound
 ```
 
 An unknown field key fails fast with `ErrUnknownField`. `Like` takes a raw
@@ -286,8 +317,10 @@ substring match.
 > `With`/`Excluding` are the ones that resolve through the schema's declared
 > column, so they quote correctly for free. If you reach for `dao.Eq`/`Between`/…
 > on a column needing quotes (a reserved word, mixed case), write the quoted
-> form yourself: ``dao.Between(`"user"."order"`, lo, hi)``. Expression helpers are
-> deliberately not wired into predicate position (ADR-0016 §2.7).
+> form yourself: ``dao.Between(`"user"."order"`, lo, hi)``. The one predicate
+> built from expression helpers is `dao.Cmp`, which compares two of them
+> (`dao.T`, `dao.C`, `dao.Int`, `dao.Coalesce`), quoted per dialect and binding
+> nothing, so a condition between two columns needs no `Raw`.
 
 ### Search operators
 
@@ -562,6 +595,66 @@ appending zero bytes to a nil destination returns nil, so every empty column
 becomes NULL in the copy. Use `bytes.Clone`, which is correct in both
 directions.
 
+## Full-text search
+
+`dao.FullTexter` is an optional dialect capability that renders the pieces of a
+full-text query and runs nothing. The query is an ordinary DAO query, in
+whatever transaction you hold, and the index's upkeep (SQLite triggers, a
+Postgres generated column) stays in your schema scripts:
+
+```go
+var ChunkFTS = dao.FullTextIndex{Name: "chunk_fts", Table: "chunk", Key: "id",
+    Columns: []string{"title", "breadcrumb", "tags", "body", "workspace_id"}}
+
+chunks := dao.New(conn, …,
+    dao.OptionalJoinExpr[…](JoinFTS, dao.FullTextJoin(ChunkFTS)),
+    dao.SortExpr[…](ByRank, dao.Rank(ChunkFTS, 10, 5, 5, 1, 0)),
+    // a ReadOnly field: Expr: dao.Snippet(ChunkFTS, "body", dao.SnippetMarks{Open: "[", Close: "]", Ellipsis: "…", Tokens: 16})
+)
+hits, err := chunks.On(tx).Join(JoinFTS).
+    WithPredicate(dao.Match(ChunkFTS, q)). // q bound
+    With(ChunkWorkspace, ws).              // same WHERE: filters before rank and LIMIT
+    OrderBy(dao.Asc(ByRank)).Limit(20).Select(ChunkID, ChunkSnippet)
+```
+
+`dao.SupportsFullText(d)` says whether an engine has it (SQLite does, through
+FTS5). A `Match` on one without it fails with `ErrUnsupported`; declaring
+`FullTextJoin`, `Rank` or `Snippet` for one panics at `New`, as other
+declaration errors do.
+
+## Schema scripts (`dao/deploy`)
+
+A product's schema is numbered SQL scripts, one directory per engine, named
+for the dialect, embedded in the binary:
+
+```
+sqlite/000001_update_initialize_tables.sql   the baseline: no revert
+sqlite/000002_update_<slug>.sql              a change …
+sqlite/000002_revert_<slug>.sql              … and its undo
+```
+
+```go
+//go:embed sqlite/*.sql
+var scripts embed.FS
+
+r := deploy.New(scripts)                // ledger table: schema_version
+st, err := r.Apply(ctx, conn)           // pending updates + ledger rows, ONE transaction
+st, err = r.Pending(ctx, conn)          // dry run: changes nothing
+name, err := r.Revert(ctx, conn, 3)     // the latest applied script only; never the baseline
+```
+
+- Each script splits with `parse/sql` under its engine's rules (SQLite trigger
+  bodies, Postgres dollar quotes), and a failure names the script and line.
+- The ledger records each script with its digest. A database recording a
+  script the binary lacks is refused (`deploy.ErrDowngrade`); a released script
+  whose digest changed is a warning in `Status.Warnings`, never re-run.
+- The engine must run DDL in a transaction (`TransactionalDDL`: SQLite,
+  Postgres). MySQL commits DDL as it runs, so it's refused with `ErrUnsupported`.
+  Postgres takes an advisory lock first (`DeployLock`), so two processes
+  applying at once take turns.
+- The runner runs statements inside a dao transaction through an internal hook
+  (`dao/internal/txexec`), never an exported method, so products still can't.
+
 ## Optional logging — SQL + args
 
 Logging is opt-in and toggleable, and logs the **statement's final SQL and bind
@@ -638,8 +731,9 @@ Set the capability predicates honestly: `SupportsReturning`, `CopySupported`,
 - **Declarative column expressions are implemented** (ADR-0016): `Field.Expr`
   plus `dao.T`/`C`/`Str`/`Int`/`SQL`/`Coalesce`/`LeftJoin`/`InnerJoin` and
   `OptionalJoinExpr`, resolved once per schema at `dao.New`. Purely additive —
-  `Column` is unchanged and migration is per field. Predicate position is
-  deliberately not covered.
+  `Column` is unchanged and migration is per field. In predicate position,
+  `dao.Cmp` compares two expressions (added for a caller that must not use
+  `Raw`); the rest stays `Raw`'s.
 - **No `Registry` helper** — use a plain struct of `*Schema`.
 - **No whole-row custom `Scanner` option** — the per-field `Scan` path is the
   route.
