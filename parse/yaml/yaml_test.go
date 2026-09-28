@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -181,6 +182,12 @@ func TestErrorsHavePositions(t *testing.T) {
 	var ye *yaml.Error
 	if !errors.As(err, &ye) || ye.Pos.Line < 2 || ye.Msg == "" {
 		t.Fatalf("an unclosed flow sequence: %v", err)
+	}
+	if msg := err.Error(); !strings.HasPrefix(msg, "yaml: "+strconv.Itoa(ye.Pos.Line)+":") {
+		t.Errorf("the message %q does not lead with the position", msg)
+	}
+	if yaml.KindMapping.String() != "mapping" || yaml.KindAlias.String() != "alias" {
+		t.Error("Kind names")
 	}
 }
 
