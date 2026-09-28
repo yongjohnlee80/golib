@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yongjohnlee80/golib/parse/markdown"
 	pyaml "github.com/yongjohnlee80/golib/parse/yaml"
@@ -218,6 +219,39 @@ func TestBillionLaughs(t *testing.T) {
 	}
 	if _, err := yaml.Evaluate(doc(t, small), yaml.Core, yaml.MaxNodes(16)); err != nil {
 		t.Errorf("16 nodes under MaxNodes(16): %v", err)
+	}
+}
+
+// TestBillionLaughsInAKey: key equality must not expand aliases either. A key whose aliases double
+// at each level is compared in time linear in the document as written, and the bound still stops
+// the construction.
+func TestBillionLaughsInAKey(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("? [&a0 x")
+	for i := 1; i <= 60; i++ {
+		b.WriteString(", &a" + strconv.Itoa(i) + " [*a" + strconv.Itoa(i-1) + ", *a" + strconv.Itoa(i-1) + "]")
+	}
+	b.WriteString("]\n: v\nk: w\n")
+	d := doc(t, b.String())
+	done := make(chan error, 1)
+	go func() {
+		_, err := yaml.Evaluate(d, yaml.Core, yaml.MaxNodes(5))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		var ye *yaml.Error
+		if !errors.As(err, &ye) || !strings.Contains(ye.Msg, "more than") {
+			t.Errorf("2^60 expansions in a key: %v, want the MaxNodes error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("comparing a key that aliases double in did not finish: equality expands aliases")
+	}
+	// equal keys built from shared aliases are still found equal
+	dup := "x: &s [a, b]\n? [*s, *s]\n: 1\n? [[a, b], [a, b]]\n: 2\n"
+	var ye *yaml.Error
+	if _, err := yaml.Evaluate(doc(t, dup), yaml.Core); !errors.As(err, &ye) || ye.Other == nil {
+		t.Errorf("a key built from aliases and its written-out twin: %v, want the duplicate error", err)
 	}
 }
 
