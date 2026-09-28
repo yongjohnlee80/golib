@@ -134,3 +134,13 @@ func (PostgresDialect) QuoteString(s string) (string, error) {
 	}
 	return quoteLiteral(s), nil
 }
+
+// TransactionalDDL reports that PostgreSQL runs DDL inside a transaction and
+// rolls it back with the rest, which dao/deploy requires of an engine.
+func (PostgresDialect) TransactionalDDL() bool { return true }
+
+// DeployLock is the statement dao/deploy runs first in its transaction, so two
+// processes applying scripts to one database take turns: a transaction-level
+// advisory lock, released at commit or rollback. The key is fixed, the same
+// for every golib runner.
+func (PostgresDialect) DeployLock() string { return "SELECT pg_advisory_xact_lock(7234985120937465)" }

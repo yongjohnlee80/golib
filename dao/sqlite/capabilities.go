@@ -17,3 +17,7 @@ func (SqliteDialect) ReturningClause(quotedIDCol string) string {
 func (d SqliteDialect) BuildUpsertSuffix(conflictCols, updateCols []string) string {
 	return dao.StandardUpsertSuffix(d, conflictCols, updateCols)
 }
+
+// TransactionalDDL reports that SQLite runs DDL inside a transaction and rolls
+// it back with the rest, which dao/deploy requires of an engine.
+func (SqliteDialect) TransactionalDDL() bool { return true }
