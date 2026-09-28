@@ -177,6 +177,31 @@ func TestAliases(t *testing.T) {
 	}
 }
 
+// TestBlockScalarReadings pins two readings the yaml-test-suite settles and a 1.1-era parser does
+// not share: a root block scalar may be indented zero (FP8R, "Zero indented block scalar"), and the
+// end of the input ends the last content line as a line break would (L24T/01, "Trailing line of
+// spaces", which has no final line break and keeps one).
+func TestBlockScalarReadings(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"--- |\nfoo\nbar\n", "foo\nbar\n"},
+		{"--- >\nfoo\nbar\n", "foo bar\n"},
+		{"--- |\n\tfoo\n", "\tfoo\n"},
+		{"a: |\n  hi", "hi\n"},
+		{"a: >\n  hi", "hi\n"},
+		{"a: |+\n  hi", "hi\n"},
+		{"a: |-\n  hi", "hi"},
+	} {
+		st := mustParse(t, c.in)
+		n := st.Docs[0].Root
+		if n.Kind == yaml.KindMapping {
+			n = n.Pairs[0].Value
+		}
+		if string(n.Value) != c.want {
+			t.Errorf("%q = %q, want %q", c.in, n.Value, c.want)
+		}
+	}
+}
+
 func TestErrorsHavePositions(t *testing.T) {
 	_, err := yaml.Parse([]byte("a: 1\nb: [1, 2\n"))
 	var ye *yaml.Error
