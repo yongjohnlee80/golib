@@ -36,7 +36,8 @@ func Evaluate(doc *pyaml.Document, schema Schema, opts ...Option) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := evaluator{doc: doc, schema: schema, tags: tags, cfg: cfg, done: map[*pyaml.Node]built{}, building: map[*pyaml.Node]bool{}}
+	e := evaluator{doc: doc, schema: schema, tags: tags, cfg: cfg, done: map[*pyaml.Node]built{}, building: map[*pyaml.Node]bool{},
+		ids: map[*pyaml.Node]int{}, interned: map[string]int{}}
 	b, err := e.build(doc.Root)
 	if err != nil {
 		return nil, err
@@ -57,6 +58,8 @@ type evaluator struct {
 	count    int
 	done     map[*pyaml.Node]built
 	building map[*pyaml.Node]bool
+	ids      map[*pyaml.Node]int // canon's memo: each node's structural id
+	interned map[string]int      // canon's structures, by the ids of their parts
 }
 
 func (e *evaluator) fail(n *pyaml.Node, msg string) error {
@@ -123,7 +126,7 @@ func (e *evaluator) build(n *pyaml.Node) (built, error) {
 		}
 		m := make(Map, 0, len(n.Pairs))
 		b.size = 1
-		seen := map[string]*pyaml.Node{}
+		seen := map[int]*pyaml.Node{}
 		for _, p := range n.Pairs {
 			key, err := e.canon(p.Key, map[*pyaml.Node]bool{})
 			if err != nil {
@@ -236,15 +239,20 @@ func parseFloat(s string) float64 {
 	return v
 }
 
-// canon is a node's canonical form for key equality (spec 3.2.1.3): its tag and canonical content,
-// a sequence's items in order, a mapping's entries as a set. Two keys are equal nodes exactly when
-// their canonical forms are the same string.
-func (e *evaluator) canon(n *pyaml.Node, visiting map[*pyaml.Node]bool) (string, error) {
+// canon is a node's identity for key equality (spec 3.2.1.3): two nodes get the same id exactly
+// when they have the same tag and canonical content, a sequence's items being equal in order and a
+// mapping's entries equal as a set. Ids are interned by structure and memoized per node, so an
+// alias reuses its target's id: comparing keys costs time linear in the document as written, never
+// in its expansion, and equality stays exact.
+func (e *evaluator) canon(n *pyaml.Node, visiting map[*pyaml.Node]bool) (int, error) {
 	if n.Kind == pyaml.KindAlias {
 		n = n.Target
 	}
+	if id, ok := e.ids[n]; ok {
+		return id, nil
+	}
 	if visiting[n] {
-		return "", e.fail(n, "a key contains itself through an alias: its equality is not defined")
+		return 0, e.fail(n, "a key contains itself through an alias: its equality is not defined")
 	}
 	visiting[n] = true
 	defer delete(visiting, n)
@@ -254,9 +262,10 @@ func (e *evaluator) canon(n *pyaml.Node, visiting map[*pyaml.Node]bool) (string,
 	part(tag)
 	switch n.Kind {
 	case pyaml.KindScalar:
+		b.WriteByte('s')
 		v, err := e.scalar(n, tag)
 		if err != nil {
-			return "", err
+			return 0, err
 		}
 		switch x := v.(type) {
 		case nil:
@@ -282,30 +291,42 @@ func (e *evaluator) canon(n *pyaml.Node, visiting map[*pyaml.Node]bool) (string,
 	case pyaml.KindSequence:
 		b.WriteByte('[')
 		for _, c := range n.Items {
-			s, err := e.canon(c, visiting)
+			id, err := e.canon(c, visiting)
 			if err != nil {
-				return "", err
+				return 0, err
 			}
-			part(s)
+			part(itoa(id))
 		}
 	case pyaml.KindMapping:
 		b.WriteByte('{')
-		entries := make([]string, 0, len(n.Pairs))
+		entries := make([][2]int, 0, len(n.Pairs))
 		for _, p := range n.Pairs {
 			k, err := e.canon(p.Key, visiting)
 			if err != nil {
-				return "", err
+				return 0, err
 			}
 			v, err := e.canon(p.Value, visiting)
 			if err != nil {
-				return "", err
+				return 0, err
 			}
-			entries = append(entries, itoa(len(k))+":"+k+itoa(len(v))+":"+v)
+			entries = append(entries, [2]int{k, v})
 		}
-		sort.Strings(entries)
+		sort.Slice(entries, func(i, j int) bool {
+			if entries[i][0] != entries[j][0] {
+				return entries[i][0] < entries[j][0]
+			}
+			return entries[i][1] < entries[j][1]
+		})
 		for _, en := range entries {
-			part(en)
+			part(itoa(en[0]) + "=" + itoa(en[1]))
 		}
 	}
-	return b.String(), nil
+	key := b.String()
+	id, ok := e.interned[key]
+	if !ok {
+		id = len(e.interned) + 1
+		e.interned[key] = id
+	}
+	e.ids[n] = id
+	return id, nil
 }
