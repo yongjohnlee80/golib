@@ -94,3 +94,43 @@ func TestCmp_AFullTextPieceOnAnEngineWithoutItIsUnsupported(t *testing.T) {
 		}
 	}
 }
+
+// ftDialect has full-text search, rendered as plain markers so a test can
+// read what each piece became.
+type ftDialect struct{ returningDialect }
+
+func (ftDialect) FullTextJoin(ix FullTextIndex) string { return "JOIN " + ix.Name }
+func (ftDialect) FullTextMatch(ix FullTextIndex, ph string) string {
+	return ix.Name + " MATCH " + ph
+}
+func (ftDialect) FullTextRank(ix FullTextIndex, _ []float64) string { return "rank(" + ix.Name + ")" }
+func (ftDialect) FullTextSnippet(ix FullTextIndex, col int, m SnippetMarks) (string, error) {
+	if m.Tokens == 0 {
+		return "", errs.Wrap(errs.ErrInvalidArgument, "no tokens")
+	}
+	return "snip(" + ix.Name + ")", nil
+}
+
+// On an engine that has it, a full-text piece composes: inside Coalesce,
+// inside Cmp, next to a bound Match, with the numbering running on.
+func TestCmp_AFullTextPieceComposesOnAnEngineWithIt(t *testing.T) {
+	t.Parallel()
+	conn := &fakeConn{d: ftDialect{}}
+	_, err := buildSchema(conn).DAO().
+		WithPredicate(Match(testIX, "q")).
+		WithPredicate(Cmp(Coalesce(Snippet(testIX, "body", SnippetMarks{Tokens: 8}), C("b")), OpNe, C("a"))).
+		With(aName, "n").
+		Select(aID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `SELECT artist.id FROM "artist" WHERE chunk_fts MATCH $1 AND COALESCE(snip(chunk_fts), "b") <> "a" AND artist.name = $2`
+	if conn.lastQuery != want {
+		t.Errorf("sql = %q\nwant  %q", conn.lastQuery, want)
+	}
+	// a snippet the engine refuses (here: no tokens) is refused before it renders
+	conn = &fakeConn{d: ftDialect{}}
+	if _, err := buildSchema(conn).DAO().WithPredicate(Cmp(Snippet(testIX, "body", SnippetMarks{}), OpEq, C("a"))).Select(aID); !errors.Is(err, errs.ErrInvalidArgument) {
+		t.Errorf("a snippet the engine cannot render: %v, want its error", err)
+	}
+}
