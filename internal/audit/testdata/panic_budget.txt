@@ -39,6 +39,12 @@ auth/sshkey/sshkey.go	New	7f17541336eb5d45	1	construction	sshkey.New: a Namespac
 auth/sshkey/sshkey.go	New	4d5f726301e8aca7	1	construction	sshkey.New: a Verifier is required. Reached while the value is built, from an argument written at the call site, with no recover above it
 auth/sshkey/sshkey.go	New	bc5ed94243307511	1	construction	sshkey.New: a ChallengeStore is required. Reached while the value is built, from an argument written at the call site, with no recover above it
 dao/batch.go	batchWriter.AddRow	587b1fa9a81dca0a	1	invariant	AddRow on a BatchWriter built without a row extractor is programmer error; no data input reaches it
+dao/fulltext.go	Snippet	6c97024b27ae9940	1	construction	dao.Snippet: a column not in the index — the column names a declaration constant, checked while the Schema's fields are built
+dao/fulltext.go	Snippet.func$1	4900e2f0aec04cc1	1	construction	dao.Snippet: the engine could not render the markers — a snippet renders only while dao.New resolves the field; Cmp checks the markers (needs) before any query-time render
+dao/fulltext.go	fullTexter	a400feb327d1e70a	1	construction	full-text piece declared on an engine without FullTexter — reached from dao.New resolving a field, join or sort; at query time Cmp refuses the engine with ErrUnsupported (Expr needs) before rendering
+dao/fulltext.go	Rank	adc917bac7184e00	1	construction	dao.Rank: weight count is neither zero nor one per column — the weights are a declaration's, checked while the Schema's options are built
+dao/fulltext.go	Rank	3cad06c3a475cdf5	1	construction	dao.Rank: a weight that is not finite — the weights are a declaration's, checked while the Schema's options are built
+dao/query.go	Cmp	b7dedd63dae06591	1	invariant	dao.Cmp: an operator outside the OpEq..OpGte constants — CmpOp is a typed constant set; only a caller converting an arbitrary string reaches this, which is programmer error, not data
 dao/expr.go	Expr.mustSet	e3e0dd74d6446050	1	invariant	mustSet rejects a ZERO Expr — a caller passing Expr{} is programmer error, not data. Fingerprint changed when the hint dropped dao.Str, which no longer exists; the rejection itself is unchanged.
 dao/schema.go	New	83bd0006c349d7de	1	construction	dao.New: nil DataConn — validated before the Schema exists; nothing is running yet
 dao/schema.go	New	9abdc415ab30493a	1	construction	dao.New: Table is required — construction-time validation
