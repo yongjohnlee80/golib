@@ -3,6 +3,9 @@ package dao
 import (
 	"errors"
 	"math"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/errs"
@@ -132,5 +135,53 @@ func TestCmp_AFullTextPieceComposesOnAnEngineWithIt(t *testing.T) {
 	conn = &fakeConn{d: ftDialect{}}
 	if _, err := buildSchema(conn).DAO().WithPredicate(Cmp(Snippet(testIX, "body", SnippetMarks{}), OpEq, C("a"))).Select(aID); !errors.Is(err, errs.ErrInvalidArgument) {
 		t.Errorf("a snippet the engine cannot render: %v, want its error", err)
+	}
+}
+
+// Search is an entry point too: a search operator that builds a Match (the
+// RawOp route) on an engine without full-text search fails with
+// ErrUnsupported, the same as WithPredicate, and never renders as "1 = 0".
+func TestSearch_AMatchOperatorOnAnEngineWithoutFullTextIsUnsupported(t *testing.T) {
+	t.Parallel()
+	text := Search[*artist, artistField, artistSort, string](RawOp("text", func(q string) Predicate { return Match(testIX, q) }))
+	conn := newConn()
+	if _, err := buildSchema(conn, text).DAO().Search("text:plover").Select(aID); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("Search(text:plover) = %v, want ErrUnsupported", err)
+	}
+	if conn.lastQuery != "" {
+		t.Errorf("the query reached the database: %q", conn.lastQuery)
+	}
+	// and on an engine that has it, the same operator is the bound Match
+	conn = &fakeConn{d: ftDialect{}}
+	if _, err := buildSchema(conn, text).DAO().Search("text:plover").With(aName, "n").Select(aID); err != nil ||
+		conn.lastQuery != `SELECT artist.id FROM "artist" WHERE chunk_fts MATCH $1 AND artist.name = $2` {
+		t.Errorf("on a full-text engine: %v, %q", err, conn.lastQuery)
+	}
+}
+
+// Every predicate enters a query through addWhere, which is what makes the
+// capability check hold for every entry point: an append anywhere else would
+// be a way around it.
+func TestEveryPredicateEntersThroughAddWhere(t *testing.T) {
+	t.Parallel()
+	src, err := os.ReadFile("query_dao.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(src), "q.where = append("); n != 1 {
+		t.Errorf("query_dao.go appends to q.where in %d places; only addWhere may", n)
+	}
+	files, _ := filepath.Glob("*.go")
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") || f == "query_dao.go" {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "q.where = append(") {
+			t.Errorf("%s appends to a query's predicates; only addWhere may", f)
+		}
 	}
 }

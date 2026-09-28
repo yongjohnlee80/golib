@@ -111,13 +111,9 @@ func (s *stagerFor[R, C, K, ID]) Where(p Predicate) {
 		}
 		return
 	}
-	if err := checkPredicate(p, s.d.schema.dialect); err != nil {
-		if s.err == nil {
-			s.err = err
-		}
-		return
+	if err := s.d.addWhere(p); err != nil && s.err == nil {
+		s.err = err
 	}
-	s.d.q.where = append(s.d.q.where, p)
 }
 
 func (s *stagerFor[R, C, K, ID]) OrderBy(sorts ...Sort) {
@@ -202,9 +198,9 @@ func (d *queryDAO[R, C, K, ID]) With(field C, values ...any) DAO[R, C, ID] {
 	case 0:
 		// "filter by nothing" is intentionally ignored.
 	case 1:
-		d.q.where = append(d.q.where, Eq(col, values[0]))
+		d.where(Eq(col, values[0]))
 	default:
-		d.q.where = append(d.q.where, In(col, values))
+		d.where(In(col, values))
 	}
 	return d
 }
@@ -218,23 +214,38 @@ func (d *queryDAO[R, C, K, ID]) Excluding(field C, values ...any) DAO[R, C, ID] 
 		d.fail(fmt.Errorf("%w: %v", ErrUnknownField, any(field)))
 		return d
 	}
-	d.q.where = append(d.q.where, NotIn(col, values))
+	d.where(NotIn(col, values))
 	return d
 }
 
 func (d *queryDAO[R, C, K, ID]) WithPredicate(p Predicate) DAO[R, C, ID] {
+	d.where(p)
+	return d
+}
+
+// addWhere is the one way a predicate enters the query, whoever adds it
+// (With, Excluding, WithPredicate, Search, a hook): it refuses a predicate
+// this engine cannot render (a full-text Match without the capability) with
+// that reason, instead of letting it render as something else.
+func (d *queryDAO[R, C, K, ID]) addWhere(p Predicate) error {
 	if err := checkPredicate(p, d.schema.dialect); err != nil {
-		d.fail(err)
-		return d
+		return err
 	}
 	d.q.where = append(d.q.where, p)
-	return d
+	return nil
+}
+
+// where is addWhere for the chaining methods: a refusal fails the DAO.
+func (d *queryDAO[R, C, K, ID]) where(p Predicate) {
+	if err := d.addWhere(p); err != nil {
+		d.fail(err)
+	}
 }
 
 func (d *queryDAO[R, C, K, ID]) Search(query string) DAO[R, C, ID] {
 	for _, term := range parseSearchQuery(query) {
 		if op, ok := d.schema.search[term.token]; ok {
-			d.q.where = append(d.q.where, op.Predicate(term.value))
+			d.where(op.Predicate(term.value))
 		}
 	}
 	return d
