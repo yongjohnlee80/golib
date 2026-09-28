@@ -52,6 +52,10 @@ Capability predicates: `SupportsReturning`, `CopySupported`, and
 `TwoPhaseSupported` all report `true`; `SupportsTransactions`/`SupportsUpsert`
 inherited `true`; `SupportsLastInsertID` `false` (RETURNING is preferred).
 
+For `dao/deploy`: `TransactionalDDL` (DDL rolls back with the transaction) and
+`DeployLock`, a transaction-level advisory lock the runner takes first, so two
+processes applying schema scripts at once take turns.
+
 ## Transactions
 
 Single-DB and multi-DB **ordered** transactions work via `dao.RunTx` /

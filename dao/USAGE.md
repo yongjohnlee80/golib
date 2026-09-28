@@ -228,11 +228,18 @@ dao.Between(`"user"."order"`, lo, hi)  // correct — quote it yourself
 ```
 
 Prefer `With`/`Excluding` when the predicate is a plain equality/IN on a
-declared field: they cannot get this wrong. The expression helpers
-(`dao.T`/`dao.C`) are deliberately **not** wired into predicate position
-(ADR-0016 §2.7), so a hand-written quoted string is the tool here. This is a
-narrow edge — every identifier in the surveyed consumers is lower-case
-`snake_case`, where nothing needs quoting.
+declared field: they cannot get this wrong. A value predicate on a quoted
+column takes a hand-written quoted string; this is a narrow edge, since every
+identifier in the surveyed consumers is lower-case `snake_case`, where nothing
+needs quoting.
+
+A condition between **two columns** takes `dao.Cmp`, which quotes both sides
+per dialect and binds nothing:
+
+```go
+dao.Cmp(dao.T("chunk", "gen_from"), dao.OpLte, dao.T("document", "active_gen"))
+// "chunk"."gen_from" <= "document"."active_gen"
+```
 
 ### Filtering on a joined column
 

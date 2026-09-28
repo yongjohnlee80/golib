@@ -59,6 +59,16 @@ Inherited from `GenericDialect`: double-quoted identifiers, `RETURNING` (modern
 SQLite 3.35+, which modernc bundles), and `ON CONFLICT` upserts. There is **no
 COPY fast-path**, so batches always use the chunked multi-row INSERT path.
 
+Two further capabilities:
+
+- **Full-text search** (`dao.FullTexter`) through FTS5: `dao.FullTextJoin`
+  joins an external-content table on its content table's rowid, `dao.Match`
+  renders `"<index>" MATCH ?`, `dao.Rank` is `bm25` with column weights
+  (ascending is best first), and `dao.Snippet` is `snippet(…)` with quoted
+  markers, 1 to 64 tokens. The index's upkeep is the product's triggers.
+- **`TransactionalDDL`**: SQLite runs DDL inside a transaction, so
+  `dao/deploy` applies schema scripts here.
+
 It claims **no ADR-0017 capability**: SQLite's transaction semantics come from
 the `BEGIN` keyword itself (`DEFERRED`/`IMMEDIATE`/`EXCLUSIVE`), which
 `database/sql`'s `TxOptions` cannot reach, so implementing `dao.TxBeginner`
