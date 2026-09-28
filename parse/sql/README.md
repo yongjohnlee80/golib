@@ -78,6 +78,30 @@ whole.
 The ordinary `/* … */` sits behind that form, still `Comment`, still validating
 its own closer, and still not nesting.
 
+## Splitting a script into statements
+
+`sql.SQL` splits a script at its semicolons, skipping the ones inside strings,
+quoted identifiers and comments. The zero value reads the syntax the major
+engines share; each field adds one engine's construct:
+
+| field | engine | a `;` inside it does not end the statement |
+|---|---|---|
+| `Backticks` | MySQL | `` `a;b` `` |
+| `DollarQuotes` | PostgreSQL | `$$ … $$`, `$tag$ … $tag$` |
+| `NestedBlockComments` | PostgreSQL | `/* … /* … */ … */` |
+| `EStringEscapes` | PostgreSQL | `E'a\';b'` |
+| `TriggerBodies` | SQLite | `CREATE [TEMP] TRIGGER … BEGIN a; b; END` |
+
+`TriggerBodies` is the one place the splitter reads words, because SQLite does:
+it decides whether a `CREATE TRIGGER` is complete by `CREATE`, `TEMP`/`TEMPORARY`,
+`TRIGGER`, `END` and `EXPLAIN`, and the splitter follows `sqlite3_complete`'s
+state table for exactly those. A body a `;` has opened and no `END;` has closed is
+unterminated, like an unclosed string.
+
+```go
+stmts, err := sql.SQL{TriggerBodies: true}.Parse(script) // each with its line
+```
+
 ## Numbers are a Form, not a Run
 
 A run's membership predicate is position-aware but not content-aware — it is

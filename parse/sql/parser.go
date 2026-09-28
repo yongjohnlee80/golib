@@ -18,6 +18,11 @@ import (
 // what a statement DOES is better served reading the text than trusting a
 // half-grammar to have understood it.
 //
+// One opt-in reads words, because the engine itself does: TriggerBodies, where
+// SQLite decides whether a CREATE TRIGGER is complete by five keywords and
+// nothing else (sqlite3_complete). The splitter reads those five, exactly as
+// SQLite reads them, and no others.
+//
 // The zero value is usable and handles the lexical syntax common to the major
 // engines. Set the fields for the extensions a particular engine adds.
 type SQL struct {
@@ -64,7 +69,7 @@ type Statement struct {
 	// Verb is the leading keyword, uppercased — "SELECT", "INSERT", "WITH".
 	// It is empty when the statement does not begin with a word.
 	//
-	// This is the ONE piece of meaning taken from the text, and it is taken
+	// This is the one piece of meaning a Statement carries, and it is taken
 	// only from the first token of an already-split statement, so a keyword
 	// appearing inside a string or an identifier cannot produce it. It is a
 	// routing hint, not a classification: a caller deciding anything that
