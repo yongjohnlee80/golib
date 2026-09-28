@@ -94,8 +94,8 @@ engines share; each field adds one engine's construct:
 
 `TriggerBodies` is the one place the splitter reads words, because SQLite does:
 it decides whether a `CREATE TRIGGER` is complete by `CREATE`, `TEMP`/`TEMPORARY`,
-`TRIGGER`, `END` and `EXPLAIN`, and the splitter follows `sqlite3_complete`'s
-state table for exactly those. A body a `;` has opened and no `END;` has closed is
+`TRIGGER`, `END` and `EXPLAIN`, compared ignoring ASCII case only, and the
+splitter follows `sqlite3_complete`'s state table for exactly those. A body a `;` has opened and no `END;` has closed is
 unterminated, like an unclosed string.
 
 ```go
