@@ -163,6 +163,15 @@ type exprCmp struct {
 	b  Expr
 }
 
+// checkDialect refuses an engine one side cannot render on (a full-text piece
+// on an engine without full-text search), before anything renders.
+func (p *exprCmp) checkDialect(d Dialect) error {
+	if err := p.a.check(d); err != nil {
+		return err
+	}
+	return p.b.check(d)
+}
+
 func (p *exprCmp) ToSQL(d Dialect, _ *int) (string, []any) {
 	return p.a.render(d) + " " + string(p.op) + " " + p.b.render(d), nil
 }

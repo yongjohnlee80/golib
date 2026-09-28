@@ -61,3 +61,36 @@ func TestFullText_DeclarationRefusals(t *testing.T) {
 		t.Error("Rank with no weights is equal weights, not a refusal")
 	}
 }
+
+// A full-text piece inside Cmp renders at query time, so an engine without
+// the capability is refused with ErrUnsupported there, never a panic.
+func TestCmp_AFullTextPieceOnAnEngineWithoutItIsUnsupported(t *testing.T) {
+	t.Parallel()
+	for name, p := range map[string]Predicate{
+		"Rank on the left":         Cmp(Rank(testIX), OpLt, Int(0)),
+		"inside a Coalesce":        Cmp(C("a"), OpEq, Coalesce(Snippet(testIX, "body", SnippetMarks{Tokens: 8}), C("b"))),
+		"in a group":               Or(Cmp(Int(1), OpEq, Rank(testIX))),
+		"plain columns still pass": nil,
+	} {
+		conn := newConn()
+		if p == nil {
+			if _, err := buildSchema(conn).DAO().WithPredicate(Cmp(C("a"), OpLte, C("b"))).Select(aID); err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+			continue
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("%s: panicked (%v); want ErrUnsupported", name, r)
+				}
+			}()
+			if _, err := buildSchema(conn).DAO().WithPredicate(p).Select(aID); !errors.Is(err, ErrUnsupported) {
+				t.Errorf("%s: %v, want ErrUnsupported", name, err)
+			}
+		}()
+		if conn.lastQuery != "" {
+			t.Errorf("%s: the query reached the database: %q", name, conn.lastQuery)
+		}
+	}
+}
