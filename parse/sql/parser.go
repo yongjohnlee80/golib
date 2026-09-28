@@ -40,6 +40,17 @@ type SQL struct {
 	// path or a regular expression ending in one still closes where it should.
 	// Turning this on changes only strings that asked for it by carrying the E.
 	EStringEscapes bool
+	// TriggerBodies reads CREATE [TEMP] TRIGGER … BEGIN … END as one
+	// statement, as SQLite does: the semicolons that end the statements of a
+	// trigger's body do not end the CREATE TRIGGER. Without it such a trigger
+	// is split into pieces no engine accepts.
+	//
+	// The reading is sqlite3_complete()'s, token for token (SQLite's
+	// complete.c): after CREATE, an optional TEMP or TEMPORARY, and TRIGGER,
+	// a semicolon ends the statement only when END is the token before it and
+	// a semicolon came before that END. Words match without regard to case;
+	// a string, a quoted identifier or a comment is never one of these words.
+	TriggerBodies bool
 }
 
 // Statement is one statement from a script, with its source position.
@@ -152,6 +163,16 @@ func (s SQL) split(src []byte) ([]span, error) {
 		}
 	}
 
+	// trig is where the statement stands in sqlite3_complete's reading, for
+	// TriggerBodies; inBody says a semicolon inside a trigger's body was seen,
+	// so the statement is open until its END;.
+	trig, inBody := trigStart, false
+	feed := func(tok trigToken) {
+		if s.TriggerBodies {
+			trig = trigNext[trig][tok]
+		}
+	}
+
 	for !sc.Done() {
 		at := sc.Pos().Offset
 		pos := sc.Pos()
@@ -175,24 +196,28 @@ func (s SQL) split(src []byte) ([]span, error) {
 		switch {
 		case r == '\'':
 			begin(at, pos)
+			feed(trigOther)
 			if err := s.skipQuoted(sc, '\'', true, false); err != nil {
 				return nil, err
 			}
 			continue
 		case r == '"':
 			begin(at, pos)
+			feed(trigOther)
 			if err := s.skipQuoted(sc, '"', true, false); err != nil {
 				return nil, err
 			}
 			continue
 		case r == '`' && s.Backticks:
 			begin(at, pos)
+			feed(trigOther)
 			if err := s.skipQuoted(sc, '`', false, false); err != nil {
 				return nil, err
 			}
 			continue
 		case (r == 'E' || r == 'e') && s.EStringEscapes && s.startsEString(src, at):
 			begin(at, pos)
+			feed(trigOther)
 			sc.Next()
 			if err := s.skipQuoted(sc, '\'', true, true); err != nil {
 				return nil, err
@@ -201,6 +226,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 		case r == '$' && s.DollarQuotes:
 			if tag, isTag := s.dollarTag(sc); isTag {
 				begin(at, pos)
+				feed(trigOther)
 				if err := s.skipDollarQuoted(sc, tag); err != nil {
 					return nil, err
 				}
@@ -208,25 +234,117 @@ func (s SQL) split(src []byte) ([]span, error) {
 			}
 		case r == ';':
 			sc.Next()
+			if s.TriggerBodies && trigNext[trig][trigSemi] == trigBodySemi {
+				// a statement of the trigger's body ended, not the trigger
+				trig, inBody = trigBodySemi, true
+				continue
+			}
 			if started {
 				out = append(out, span{from: start, to: at, pos: startPos})
 			} else {
 				out = append(out, span{from: at, to: at, pos: pos})
 			}
 			started = false
+			trig, inBody = trigStart, false
+			continue
+		case s.TriggerBodies && isSQLiteIDRune(r):
+			begin(at, pos)
+			var w strings.Builder
+			for !sc.Done() {
+				c, _ := sc.Peek()
+				if !isSQLiteIDRune(c) {
+					break
+				}
+				w.WriteRune(c)
+				sc.Next()
+			}
+			feed(trigWord(w.String()))
 			continue
 		}
 
 		if !isSpace(r) {
 			begin(at, pos)
+			feed(trigOther)
 		}
 		sc.Next()
 	}
 
+	if s.TriggerBodies && inBody && trig != trigEnd {
+		return nil, parse.SyntaxError{
+			Format: "sql", Pos: startPos,
+			Want: "END; to close the body of the trigger created here",
+			Got:  "end of input", Incomplete: true,
+		}
+	}
 	if started {
 		out = append(out, span{from: start, to: len(src), pos: startPos})
 	}
 	return out, nil
+}
+
+// The states and tokens of sqlite3_complete (SQLite's complete.c), for
+// TriggerBodies. The table is that file's, row for row; whitespace and
+// comments are its WS token, which changes no state here and so is not fed.
+type trigState uint8
+
+const (
+	trigInvalid trigState = iota
+	trigStart
+	trigNormal
+	trigExplain
+	trigCreate
+	trigTrigger
+	trigBodySemi
+	trigEnd
+)
+
+type trigToken uint8
+
+const (
+	trigSemi trigToken = iota
+	trigWS
+	trigOther
+	trigExplainTok
+	trigCreateTok
+	trigTempTok
+	trigTriggerTok
+	trigEndTok
+)
+
+var trigNext = [8][8]trigState{
+	//                  SEMI          WS            OTHER        EXPLAIN      CREATE       TEMP         TRIGGER      END
+	trigInvalid:  {trigStart, trigInvalid, trigNormal, trigExplain, trigCreate, trigNormal, trigNormal, trigNormal},
+	trigStart:    {trigStart, trigStart, trigNormal, trigExplain, trigCreate, trigNormal, trigNormal, trigNormal},
+	trigNormal:   {trigStart, trigNormal, trigNormal, trigNormal, trigNormal, trigNormal, trigNormal, trigNormal},
+	trigExplain:  {trigStart, trigExplain, trigExplain, trigNormal, trigCreate, trigNormal, trigNormal, trigNormal},
+	trigCreate:   {trigStart, trigCreate, trigNormal, trigNormal, trigNormal, trigCreate, trigTrigger, trigNormal},
+	trigTrigger:  {trigBodySemi, trigTrigger, trigTrigger, trigTrigger, trigTrigger, trigTrigger, trigTrigger, trigTrigger},
+	trigBodySemi: {trigBodySemi, trigBodySemi, trigTrigger, trigTrigger, trigTrigger, trigTrigger, trigTrigger, trigEnd},
+	trigEnd:      {trigStart, trigEnd, trigTrigger, trigTrigger, trigTrigger, trigTrigger, trigTrigger, trigTrigger},
+}
+
+// trigWord is the token a word is.
+func trigWord(w string) trigToken {
+	switch strings.ToUpper(w) {
+	case "EXPLAIN":
+		return trigExplainTok
+	case "CREATE":
+		return trigCreateTok
+	case "TEMP", "TEMPORARY":
+		return trigTempTok
+	case "TRIGGER":
+		return trigTriggerTok
+	case "END":
+		return trigEndTok
+	}
+	return trigOther
+}
+
+// isSQLiteIDRune is SQLite's IdChar: a letter, a digit, '_', '$', or any
+// rune past ASCII.
+func isSQLiteIDRune(r rune) bool {
+	return r == '_' || r == '$' || r >= 0x80 ||
+		('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9')
 }
 
 // skipLineComment consumes through the end of the line. A line comment that

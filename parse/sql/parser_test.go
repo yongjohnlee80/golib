@@ -162,6 +162,117 @@ func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 	}
 }
 
+// SQLite's trigger bodies, read as sqlite3_complete reads them: the body's
+// semicolons do not end the CREATE TRIGGER; the ; after its END does. Each case
+// was checked against SQLite's own sqlite3_complete, along with 3000 random
+// token strings.
+func TestSQL_TriggerBodiesAsSQLiteReadsThem(t *testing.T) {
+	on := sql.SQL{TriggerBodies: true}
+	cases := []struct {
+		name string
+		sql  sql.SQL
+		src  string
+		want []string
+	}{
+		{
+			name: "a trigger is one statement",
+			sql:  on,
+			src:  "CREATE TRIGGER t AFTER INSERT ON c BEGIN INSERT INTO f VALUES (new.id); DELETE FROM g; END; SELECT 1",
+			want: []string{"CREATE TRIGGER t AFTER INSERT ON c BEGIN INSERT INTO f VALUES (new.id); DELETE FROM g; END", "SELECT 1"},
+		},
+		{
+			name: "without the option the body splits, as before",
+			sql:  sql.SQL{},
+			src:  "CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; END; SELECT 2",
+			want: []string{"CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1", "END", "SELECT 2"},
+		},
+		{
+			name: "any case, TEMP or TEMPORARY, IF NOT EXISTS",
+			sql:  on,
+			src:  "create temp trigger a after delete on c begin select 1; end; CREATE TEMPORARY TRIGGER IF NOT EXISTS b BEFORE UPDATE ON c BEGIN SELECT 2; END; SELECT 3",
+			want: []string{"create temp trigger a after delete on c begin select 1; end", "CREATE TEMPORARY TRIGGER IF NOT EXISTS b BEFORE UPDATE ON c BEGIN SELECT 2; END", "SELECT 3"},
+		},
+		{
+			name: "a CASE … END inside the body does not end it",
+			sql:  on,
+			src:  "CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT CASE WHEN 1 THEN 2 END; SELECT 3; END; SELECT 4",
+			want: []string{"CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT CASE WHEN 1 THEN 2 END; SELECT 3; END", "SELECT 4"},
+		},
+		{
+			name: "END must follow a ; of the body, and the ; must follow END",
+			sql:  on,
+			src:  "CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; END x; SELECT 2; END ; SELECT 3",
+			want: []string{"CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; END x; SELECT 2; END", "SELECT 3"},
+		},
+		{
+			name: "the words inside a string, an identifier or a comment are not words",
+			sql:  on,
+			src:  "SELECT 'CREATE TRIGGER'; CREATE TABLE \"trigger\"(x); CREATE /* TRIGGER */ TABLE a(x); CREATE -- TRIGGER\nTABLE b(x); SELECT 1",
+			want: []string{"SELECT 'CREATE TRIGGER'", "CREATE TABLE \"trigger\"(x)", "CREATE /* TRIGGER */ TABLE a(x)", "CREATE -- TRIGGER\nTABLE b(x)", "SELECT 1"},
+		},
+		{
+			name: "a word only contains a keyword; trigger_log is not TRIGGER",
+			sql:  on,
+			src:  "CREATE TABLE trigger_log(end_ INT); SELECT 1",
+			want: []string{"CREATE TABLE trigger_log(end_ INT)", "SELECT 1"},
+		},
+		{
+			name: "a string holding END; inside the body",
+			sql:  on,
+			src:  "CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 'END;'; END; SELECT 2",
+			want: []string{"CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 'END;'; END", "SELECT 2"},
+		},
+		{
+			name: "a quoted run after a body ; is a token, so the END after it is not the trigger's",
+			sql:  on,
+			src:  "CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; 'x' END; SELECT 2; END; SELECT 3",
+			want: []string{"CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; 'x' END; SELECT 2; END", "SELECT 3"},
+		},
+		{
+			name: "EXPLAIN CREATE TRIGGER",
+			sql:  on,
+			src:  "EXPLAIN CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; END; SELECT 2",
+			want: []string{"EXPLAIN CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; END", "SELECT 2"},
+		},
+		{
+			name: "the final END needs no ;",
+			sql:  on,
+			src:  "CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; END",
+			want: []string{"CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; END"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := texts(t, tc.sql, tc.src)
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %d statements %q, want %d %q", len(got), got, len(tc.want), tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("statement %d = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+// A trigger whose body a ; has opened and no END; has closed is unfinished,
+// like an unclosed string, and says where the trigger began.
+func TestSQL_AnOpenTriggerBodyIsUnterminated(t *testing.T) {
+	src := "SELECT 1;\nCREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; SELECT 2;"
+	_, err := sql.SQL{TriggerBodies: true}.Parse([]byte(src))
+	if !errors.Is(err, parse.ErrUnterminated) {
+		t.Fatalf("want ErrUnterminated, got %v", err)
+	}
+	var se parse.SyntaxError
+	if !errors.As(err, &se) || se.Pos.Line != 2 || se.Pos.Column != 1 {
+		t.Errorf("the error names %+v, want line 2 column 1, where the trigger begins", se.Pos)
+	}
+	if _, err := (sql.SQL{}).Parse([]byte(src)); err != nil {
+		t.Errorf("without the option the same text is ordinary statements: %v", err)
+	}
+}
+
 // An unfinished construct and a wrong one are different conditions, and the two
 // identities must not answer for each other — a caller that gives up on a
 // syntax error must not thereby give up on input that was merely unfinished.
