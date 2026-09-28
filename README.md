@@ -49,6 +49,8 @@ go get github.com/yongjohnlee80/golib
 | [`parse`](parse/README.md) | A streaming lexer core, plus the scanner and positions golib's hand-written parsers share | [README](parse/README.md) |
 | [`parse/js`](parse/js/README.md) | The C-family expression and statement grammar, dialects as data, embeddable | [README](parse/js/README.md) |
 | [`parse/qml`](parse/qml/README.md) | A faithful QML parser into a plain data tree | [README](parse/qml/README.md) |
+| [`parse/yaml`](parse/yaml/README.md) | YAML 1.2 parsed into events and a byte-spanned tree, resolving nothing; the whole yaml-test-suite passes | [README](parse/yaml/README.md) |
+| [`yaml`](yaml/README.md) | Evaluate a `parse/yaml` tree under the Failsafe, JSON or Core schema into Go values, with bounded aliases | [README](yaml/README.md) |
 | [`parse/markdown`](parse/markdown/README.md) | CommonMark 0.31.2 into a byte-spanned tree, GFM and Obsidian as extensions; `html` renders it | [README](parse/markdown/README.md) · [html](parse/markdown/html/README.md) |
 | [`parse/sql`](parse/sql/README.md) | SQL dialects as values, over the streaming lexer | [README](parse/sql/README.md) |
 | [`highlight`](highlight/README.md) | Syntax highlighting's contract: `Highlighter` (Qt's QSyntaxHighlighter, line + carried state), KSyntaxHighlighting's 31 styles, tree-sitter capture mapping | [README](highlight/README.md) |
@@ -230,4 +232,7 @@ and those tags keep it.
 The Unicode Character Database files in `tui/internal/grapheme/gen/testdata/`,
 and the tables generated from them, remain under
 [Unicode's license](tui/internal/grapheme/gen/testdata/UNICODE-LICENSE.txt).
+The yaml-test-suite in `parse/yaml/testdata/yaml-test-suite/`, vendored as test
+data, remains under its
+[MIT License](parse/yaml/testdata/yaml-test-suite/License).
 See [NOTICE](NOTICE).

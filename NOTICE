@@ -8,3 +8,9 @@ Copyright © 1991-2022 Unicode, Inc.
 They are distributed under the Unicode, Inc. License Agreement - Data Files
 and Software, not under the Apache License. See
 tui/internal/grapheme/gen/testdata/UNICODE-LICENSE.txt.
+
+This product includes the yaml-test-suite, data tag data-2022-01-17
+(parse/yaml/testdata/yaml-test-suite/), unmodified, as test data.
+Copyright (c) 2016-2020 Ingy döt Net.
+It is distributed under the MIT License, not under the Apache License. See
+parse/yaml/testdata/yaml-test-suite/License.
