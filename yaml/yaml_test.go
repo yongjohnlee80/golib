@@ -406,3 +406,27 @@ func sameAsJSON(got, want any) bool {
 	}
 	return false
 }
+
+// FuzzEvaluate: whatever parses, Resolve and Evaluate never panic, under any schema.
+func FuzzEvaluate(f *testing.F) {
+	suite := filepath.Join("..", "parse", "yaml", "testdata", "yaml-test-suite")
+	dirs, _ := filepath.Glob(filepath.Join(suite, "*", "in.yaml"))
+	subs, _ := filepath.Glob(filepath.Join(suite, "*", "*", "in.yaml"))
+	for _, p := range append(dirs, subs...) {
+		if b, err := os.ReadFile(p); err == nil {
+			f.Add(b)
+		}
+	}
+	f.Fuzz(func(t *testing.T, in []byte) {
+		st, err := pyaml.Parse(in)
+		if err != nil {
+			return
+		}
+		for _, d := range st.Docs {
+			for _, s := range []yaml.Schema{yaml.Failsafe, yaml.JSON, yaml.Core} {
+				_, _ = yaml.Resolve(d, s)
+				_, _ = yaml.Evaluate(d, s, yaml.MaxNodes(10_000))
+			}
+		}
+	})
+}
