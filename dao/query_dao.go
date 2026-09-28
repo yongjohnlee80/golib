@@ -51,7 +51,9 @@ func (d *queryDAO[R, C, K, ID]) ctx() context.Context {
 	return context.Background()
 }
 
-func (d *queryDAO[R, C, K, ID]) newBuilder() *builder { return &builder{dialect: d.schema.dialect} }
+func (d *queryDAO[R, C, K, ID]) newBuilder() *builder {
+	return &builder{dialect: d.schema.dialect, distinct: d.q.distinct}
+}
 
 // handle resolves the statement executor: the transaction's TxConn when bound
 // (issuing BEGIN on first touch), else the pool connection. A tx-bound DAO thus
@@ -499,6 +501,48 @@ func (d *queryDAO[R, C, K, ID]) Count() (uint64, error) {
 	return n, pl.finish(1, -1, nil)
 }
 
+// CountDistinct implements [DistinctCounter].
+func (d *queryDAO[R, C, K, ID]) CountDistinct(field C) (uint64, error) {
+	if d.err != nil {
+		return 0, d.err
+	}
+	pl, perr := d.begin(OpCount, true)
+	if perr != nil {
+		return 0, perr
+	}
+	sqlCols, joins, _, err := d.schema.resolve([]C{field})
+	if err != nil {
+		return 0, err
+	}
+	b := d.newBuilder()
+	q := b.buildCountDistinct(d.schema.table, sqlCols[0], d.collectJoins(joins), d.q.where)
+	args := b.args
+	if err := pl.beforeExec(&q, &args); err != nil {
+		return 0, err
+	}
+	h, herr := d.handle()
+	if herr != nil {
+		return 0, herr
+	}
+	rows, err := h.QueryContext(d.ctx(), q, args...)
+	if err != nil {
+		return 0, pl.finish(0, -1, d.schema.translate(err))
+	}
+	var n uint64
+	if serr := scanScalar(rows, &n); serr != nil {
+		return 0, pl.finish(0, -1, d.schema.translate(serr))
+	}
+	return n, pl.finish(1, -1, nil)
+}
+
+// refuseIncrement is Insert's and Upsert's check: an [Incr] has no row to add to.
+func refuseIncrement(set orderedSet, verb string) error {
+	if c, ok := set.hasIncrement(); ok {
+		return errs.Wrap(errs.ErrInvalidArgument, "dao: %s cannot write Incr(%s): a new row has no value to add to; Incr is for Update", verb, c)
+	}
+	return nil
+}
+
 func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	var zero ID
 	if d.err != nil {
@@ -514,6 +558,9 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	}
 	if set.empty() {
 		return zero, ErrNothingToInsert
+	}
+	if err := refuseIncrement(set, "Insert"); err != nil {
+		return zero, err
 	}
 	// RETURNING is used when the dialect implements Returner — the engine can
 	// hand the generated id back from the INSERT itself — and there is an id
@@ -624,6 +671,33 @@ func (d *queryDAO[R, C, K, ID]) update() (int64, error) {
 	return n, pl.finish(0, n, d.schema.translate(err))
 }
 
+// UpsertOnly implements [SelectiveUpserter]: Upsert, updating only fields on
+// a conflict.
+func (d *queryDAO[R, C, K, ID]) UpsertOnly(fields ...C) error {
+	if d.err != nil {
+		return d.err
+	}
+	cols := make([]string, 0, len(fields))
+	for _, field := range fields {
+		f, ok := d.schema.fields[field]
+		if !ok {
+			return fmt.Errorf("%w: %v", ErrUnknownField, any(field))
+		}
+		if f.ReadOnly {
+			return fmt.Errorf("%w: %v", ErrReadOnlyField, any(field))
+		}
+		cols = append(cols, f.writeCol())
+	}
+	d.w.updateOnly = cols
+	return d.Upsert()
+}
+
+// SelectDistinct implements [DistinctSelector]: Select, each distinct row once.
+func (d *queryDAO[R, C, K, ID]) SelectDistinct(cols ...C) ([]R, error) {
+	d.q.distinct = true
+	return d.Select(cols...)
+}
+
 func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	if d.err != nil {
 		return d.err
@@ -645,7 +719,18 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	if len(d.schema.conflict) == 0 {
 		return errs.Wrap(errs.ErrInvalidArgument, "dao: Upsert requires a conflict target; use dao.Conflict")
 	}
+	if err := refuseIncrement(set, "Upsert"); err != nil {
+		return err
+	}
 	update := subtract(set.sortedKeys(), d.schema.conflict)
+	if d.w.updateOnly != nil {
+		for _, c := range d.w.updateOnly {
+			if _, staged := set.m[c]; !staged {
+				return errs.Wrap(errs.ErrInvalidArgument, "dao: UpdateOnly(%s): the field is not staged, so a conflict has no value to update it to", c)
+			}
+		}
+		update = subtract(d.w.updateOnly, d.schema.conflict)
+	}
 	b := d.newBuilder()
 	q := b.buildUpsert(d.schema.table, set, d.schema.idColumn, false, d.schema.conflict, update)
 	args := b.args

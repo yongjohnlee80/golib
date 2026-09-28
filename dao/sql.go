@@ -7,10 +7,11 @@ import "strings"
 // implements the batch-insert path; the SELECT/UPDATE/DELETE builders
 // are added by.
 type builder struct {
-	dialect Dialect
-	sb      strings.Builder
-	args    []any
-	n       int // next placeholder index (1-based for $n dialects)
+	dialect  Dialect
+	distinct bool // SELECT DISTINCT, for buildSelect
+	sb       strings.Builder
+	args     []any
+	n        int // next placeholder index (1-based for $n dialects)
 }
 
 // quoteTable quotes a table-position identifier: dialects implementing the
@@ -64,6 +65,9 @@ func (b *builder) fromAndJoins(table string, joins []joinClause) {
 func (b *builder) buildSelect(table string, cols []string, joins []joinClause,
 	where []Predicate, order []orderClause, limit, offset *uint64) string {
 	b.sb.WriteString("SELECT ")
+	if b.distinct {
+		b.sb.WriteString("DISTINCT ")
+	}
 	if len(cols) == 0 {
 		b.sb.WriteByte('*')
 	} else {
@@ -99,6 +103,17 @@ func (b *builder) buildSelect(table string, cols []string, joins []joinClause,
 // buildCount renders SELECT COUNT(*) FROM <table> <joins> [WHERE].
 func (b *builder) buildCount(table string, joins []joinClause, where []Predicate) string {
 	b.sb.WriteString("SELECT COUNT(*)")
+	b.fromAndJoins(table, joins)
+	b.where(where)
+	return b.sb.String()
+}
+
+// buildCountDistinct renders SELECT COUNT(DISTINCT <col>) FROM <table> <joins>
+// [WHERE]. col is an already-resolved SQL expression.
+func (b *builder) buildCountDistinct(table, col string, joins []joinClause, where []Predicate) string {
+	b.sb.WriteString("SELECT COUNT(DISTINCT ")
+	b.sb.WriteString(col)
+	b.sb.WriteByte(')')
 	b.fromAndJoins(table, joins)
 	b.where(where)
 	return b.sb.String()
@@ -196,8 +211,15 @@ func (b *builder) buildUpdate(table, idCol string, set orderedSet, joins []joinC
 		if i > 0 {
 			b.sb.WriteString(", ")
 		}
-		b.sb.WriteString(b.dialect.QuoteIdent(c))
+		qc := b.dialect.QuoteIdent(c)
+		b.sb.WriteString(qc)
 		b.sb.WriteString(" = ")
+		if inc, ok := set.m[c].(Increment); ok {
+			b.sb.WriteString(qc)
+			b.sb.WriteString(" + ")
+			b.sb.WriteString(b.ph(inc.n))
+			continue
+		}
 		b.sb.WriteString(b.ph(set.m[c]))
 	}
 	b.whereOrSubselect(table, idCol, joins, where)
