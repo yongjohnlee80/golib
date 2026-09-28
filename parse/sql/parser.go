@@ -53,8 +53,9 @@ type SQL struct {
 	// The reading is sqlite3_complete()'s, token for token (SQLite's
 	// complete.c): after CREATE, an optional TEMP or TEMPORARY, and TRIGGER,
 	// a semicolon ends the statement only when END is the token before it and
-	// a semicolon came before that END. Words match without regard to case;
-	// a string, a quoted identifier or a comment is never one of these words.
+	// a semicolon came before that END. Words match without regard to ASCII
+	// case, as SQLite compares keywords (TRıGGER is not TRIGGER); a string, a
+	// quoted identifier or a comment is never one of these words.
 	TriggerBodies bool
 }
 
@@ -328,9 +329,11 @@ var trigNext = [8][8]trigState{
 	trigEnd:      {trigStart, trigEnd, trigTrigger, trigTrigger, trigTrigger, trigTrigger, trigTrigger, trigTrigger},
 }
 
-// trigWord is the token a word is.
+// trigWord is the token a word is. The fold is ASCII only, as SQLite's
+// keyword comparison is: strings.ToUpper would read TRıGGER (dotless ı) and
+// TEMſ (long s) as keywords, which SQLite does not.
 func trigWord(w string) trigToken {
-	switch strings.ToUpper(w) {
+	switch asciiUpper(w) {
 	case "EXPLAIN":
 		return trigExplainTok
 	case "CREATE":
@@ -343,6 +346,18 @@ func trigWord(w string) trigToken {
 		return trigEndTok
 	}
 	return trigOther
+}
+
+// asciiUpper upper-cases the ASCII letters of w and leaves every other rune as
+// it is.
+func asciiUpper(w string) string {
+	b := []byte(w)
+	for i, c := range b {
+		if 'a' <= c && c <= 'z' {
+			b[i] = c - 'a' + 'A'
+		}
+	}
+	return string(b)
 }
 
 // isSQLiteIDRune is SQLite's IdChar: a letter, a digit, '_', '$', or any

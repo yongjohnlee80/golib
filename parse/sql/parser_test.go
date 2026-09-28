@@ -229,6 +229,15 @@ func TestSQL_TriggerBodiesAsSQLiteReadsThem(t *testing.T) {
 			want: []string{"CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; 'x' END; SELECT 2; END", "SELECT 3"},
 		},
 		{
+			// SQLite folds keywords as ASCII: a non-ASCII letter that Unicode
+			// upper-cases to an ASCII one (dotless ı to I, long ſ to S) makes
+			// a different word, as sqlite3_complete reads it.
+			name: "only ASCII letters fold: TRıGGER and TEMſ are not keywords",
+			sql:  on,
+			src:  "CREATE TRıGGER t AFTER INSERT ON x BEGIN SELECT 1; CREATE TEMſ TRIGGER t AFTER INSERT ON x BEGIN SELECT 2; SELECT 3",
+			want: []string{"CREATE TRıGGER t AFTER INSERT ON x BEGIN SELECT 1", "CREATE TEMſ TRIGGER t AFTER INSERT ON x BEGIN SELECT 2", "SELECT 3"},
+		},
+		{
 			name: "EXPLAIN CREATE TRIGGER",
 			sql:  on,
 			src:  "EXPLAIN CREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; END; SELECT 2",
