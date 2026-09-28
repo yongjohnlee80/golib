@@ -111,6 +111,12 @@ func (s *stagerFor[R, C, K, ID]) Where(p Predicate) {
 		}
 		return
 	}
+	if err := checkPredicate(p, s.d.schema.dialect); err != nil {
+		if s.err == nil {
+			s.err = err
+		}
+		return
+	}
 	s.d.q.where = append(s.d.q.where, p)
 }
 
@@ -217,6 +223,10 @@ func (d *queryDAO[R, C, K, ID]) Excluding(field C, values ...any) DAO[R, C, ID] 
 }
 
 func (d *queryDAO[R, C, K, ID]) WithPredicate(p Predicate) DAO[R, C, ID] {
+	if err := checkPredicate(p, d.schema.dialect); err != nil {
+		d.fail(err)
+		return d
+	}
 	d.q.where = append(d.q.where, p)
 	return d
 }

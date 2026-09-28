@@ -80,6 +80,21 @@ func JoinForSort[R any, C ~string, K ~string, ID any](sortKey K, join JoinKey) O
 //
 // Note: names this option Sort; it is SortMap here because Sort is the
 // ORDER BY term type and a package can't have both.
+// SortExpr declares one sort key whose ORDER BY expression is an [Expr],
+// resolved against the connection's dialect at [New]: the [Expr] sibling of
+// [SortMap], for an order only the engine can spell, such as [Rank]. For one key
+// it wins over a SortMap entry.
+func SortExpr[R any, C ~string, K ~string, ID any](key K, e Expr) Option[R, C, K, ID] {
+	e.mustSet("SortExpr")
+	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] {
+		if c.sortMapEx == nil {
+			c.sortMapEx = map[K]Expr{}
+		}
+		c.sortMapEx[key] = e
+		return c
+	}
+}
+
 func SortMap[R any, C ~string, K ~string, ID any](m map[K]string) Option[R, C, K, ID] {
 	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] { c.sortMap = m; return c }
 }

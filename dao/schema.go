@@ -19,6 +19,7 @@ type config[R any, C ~string, K ~string, ID any] struct {
 	optionalJoins  map[JoinKey]string
 	optionalJoinEx map[JoinKey]Expr
 	sortMap        map[K]string
+	sortMapEx      map[K]Expr
 	sortJoins      map[K]JoinKey
 	search         []SearchOp
 	conflictFields []C
@@ -157,6 +158,9 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 	// sort maps -> stringified runtime lookups
 	for k, expr := range cfg.sortMap {
 		s.sortExpr[fmt.Sprint(k)] = expr
+	}
+	for k, e := range cfg.sortMapEx {
+		s.sortExpr[fmt.Sprint(k)] = e.render(conn.Dialect())
 	}
 	for k, j := range cfg.sortJoins {
 		s.sortJoin[fmt.Sprint(k)] = j

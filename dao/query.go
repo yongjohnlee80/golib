@@ -230,6 +230,28 @@ func (p *raw) ToSQL(d Dialect, next *int) (string, []any) {
 	return sb.String(), append([]any(nil), p.args...)
 }
 
+// dialectChecker is a predicate that only some engines can render (such as
+// [Match]): it says why d cannot, so the query fails with that reason instead
+// of rendering something else.
+type dialectChecker interface {
+	checkDialect(d Dialect) error
+}
+
+// checkPredicate is p's answer for d, looking inside And and Or groups.
+func checkPredicate(p Predicate, d Dialect) error {
+	switch c := p.(type) {
+	case dialectChecker:
+		return c.checkDialect(d)
+	case *group:
+		for _, m := range c.ps {
+			if err := checkPredicate(m, d); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // And groups predicates with AND. With no members it renders "1 = 1" (true).
 func And(ps ...Predicate) Predicate { return &group{or: false, ps: ps} }
 
