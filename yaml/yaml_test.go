@@ -174,6 +174,9 @@ func TestDuplicateKeys(t *testing.T) {
 		if isDup != c.dup {
 			t.Errorf("%q: %v; want duplicate %v", c.in, err, c.dup)
 		}
+		if isDup && !strings.Contains(ye.Error(), "(and at "+strconv.Itoa(ye.Other.Line)+":") {
+			t.Errorf("%q: the message %q does not name the other key", c.in, ye.Error())
+		}
 		if isDup && (ye.Pos.Line == ye.Other.Line) {
 			t.Errorf("%q: the duplicate names %d:%d and %d:%d, want both keys' lines", c.in, ye.Pos.Line, ye.Pos.Column, ye.Other.Line, ye.Other.Column)
 		}
