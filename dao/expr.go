@@ -25,6 +25,41 @@ type Expr struct {
 	// set it; every composition leaves it empty, because an expression has no
 	// write identity and inventing one would be worse than having none.
 	write string
+
+	// needs is what the expression requires of an engine, or nil for nothing:
+	// a full-text piece needs the capability. A composition carries its parts'
+	// needs, so a query that renders it (Cmp) can refuse an engine before
+	// rendering rather than panic while rendering.
+	needs func(Dialect) error
+}
+
+// check is whether e can render on d.
+func (e Expr) check(d Dialect) error {
+	if e.needs == nil {
+		return nil
+	}
+	return e.needs(d)
+}
+
+// needsOf combines the needs of parts.
+func needsOf(parts ...Expr) func(Dialect) error {
+	var fs []func(Dialect) error
+	for _, p := range parts {
+		if p.needs != nil {
+			fs = append(fs, p.needs)
+		}
+	}
+	if len(fs) == 0 {
+		return nil
+	}
+	return func(d Dialect) error {
+		for _, f := range fs {
+			if err := f(d); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }
 
 // isSet reports whether e was built by a helper (a zero Expr has no renderer).
@@ -159,7 +194,7 @@ func Coalesce(e, alt Expr) Expr {
 	alt.mustSet("Coalesce")
 	return Expr{render: func(d Dialect) string {
 		return "COALESCE(" + e.render(d) + ", " + alt.render(d) + ")"
-	}}
+	}, needs: needsOf(e, alt)}
 }
 
 // LeftJoin renders a LEFT JOIN clause for [OptionalJoinExpr]:
@@ -194,7 +229,7 @@ func joinClauseExpr(kind, table string, left, right Expr) Expr {
 		b.WriteString(" = ")
 		b.WriteString(right.render(d))
 		return b.String()
-	}}
+	}, needs: needsOf(left, right)}
 }
 
 // plainIdent reports whether s is usable as a bare write column: no whitespace,

@@ -53,8 +53,18 @@ type SnippetMarks struct {
 	Tokens int
 }
 
+// needsFullText is a full-text piece's need of an engine.
+func needsFullText(d Dialect) error {
+	if !SupportsFullText(d) {
+		return fmt.Errorf("%w: full-text search on %s", ErrUnsupported, d.Name())
+	}
+	return nil
+}
+
 // fullTexter is d's capability, or the panic a declaration gets for an engine
-// without one: declaring full-text search on it is a mistake in the code.
+// without one: declaring full-text search on it is a mistake in the code. A
+// query reaches it only after the expression's needs passed (see Cmp), so it
+// panics only while New resolves a declaration.
 func fullTexter(d Dialect, who string) FullTexter {
 	ft, ok := d.(FullTexter)
 	if !ok {
@@ -68,7 +78,7 @@ func fullTexter(d Dialect, who string) FullTexter {
 //	dao.OptionalJoinExpr[…](JoinFTS, dao.FullTextJoin(ChunkFTS))
 //	// SQLite: INNER JOIN "chunk_fts" ON "chunk_fts"."rowid" = "chunk"."id"
 func FullTextJoin(ix FullTextIndex) Expr {
-	return Expr{render: func(d Dialect) string { return fullTexter(d, "FullTextJoin").FullTextJoin(ix) }}
+	return Expr{render: func(d Dialect) string { return fullTexter(d, "FullTextJoin").FullTextJoin(ix) }, needs: needsFullText}
 }
 
 // Rank orders matches best first (ascending), weighting the columns: one weight
@@ -89,7 +99,7 @@ func Rank(ix FullTextIndex, weights ...float64) Expr {
 		}
 	}
 	ws := append([]float64(nil), weights...)
-	return Expr{render: func(d Dialect) string { return fullTexter(d, "Rank").FullTextRank(ix, ws) }}
+	return Expr{render: func(d Dialect) string { return fullTexter(d, "Rank").FullTextRank(ix, ws) }, needs: needsFullText}
 }
 
 // Snippet is an excerpt of column around the matches, for a ReadOnly field:
@@ -116,6 +126,12 @@ func Snippet(ix FullTextIndex, column string, m SnippetMarks) Expr {
 			panic(errs.Fatal{Op: "dao.Snippet", Rule: "the engine could not render the snippet", Detail: err.Error()})
 		}
 		return sql
+	}, needs: func(d Dialect) error {
+		if err := needsFullText(d); err != nil {
+			return err
+		}
+		_, err := d.(FullTexter).FullTextSnippet(ix, col, m)
+		return err
 	}}
 }
 
@@ -135,12 +151,7 @@ type match struct {
 	q  string
 }
 
-func (p *match) checkDialect(d Dialect) error {
-	if !SupportsFullText(d) {
-		return fmt.Errorf("%w: full-text search on %s", ErrUnsupported, d.Name())
-	}
-	return nil
-}
+func (p *match) checkDialect(d Dialect) error { return needsFullText(d) }
 
 func (p *match) ToSQL(d Dialect, next *int) (string, []any) {
 	*next++
