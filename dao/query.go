@@ -3,6 +3,8 @@ package dao
 import (
 	"fmt"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Predicate is a renderable WHERE fragment. Implementations are provided for the
@@ -119,6 +121,50 @@ type cmp struct {
 func (p *cmp) ToSQL(d Dialect, next *int) (string, []any) {
 	*next++
 	return p.col + " " + p.op + " " + d.Placeholder(*next), []any{p.v}
+}
+
+// CmpOp is the comparison [Cmp] renders between two expressions.
+type CmpOp string
+
+// The operators [Cmp] accepts.
+const (
+	OpEq  CmpOp = "="
+	OpNe  CmpOp = "<>"
+	OpLt  CmpOp = "<"
+	OpLte CmpOp = "<="
+	OpGt  CmpOp = ">"
+	OpGte CmpOp = ">="
+)
+
+// Cmp compares two expressions, typically two columns of joined tables:
+//
+//	dao.Cmp(dao.T("chunk", "gen_from"), dao.OpLte, dao.T("document", "active_gen"))
+//	// "chunk"."gen_from" <= "document"."active_gen"
+//
+// It binds nothing. Both sides are declarations ([T], [C], [Int], [Coalesce]),
+// quoted by the dialect when the query renders, so a condition between two
+// columns needs no [Raw]. A value belongs in [Eq], [Gt] and the rest, where it
+// is bound.
+//
+// An operator other than the Op constants, or a zero Expr, panics at the call:
+// it is a mistake in the code, not in data.
+func Cmp(a Expr, op CmpOp, b Expr) Predicate {
+	switch op {
+	case OpEq, OpNe, OpLt, OpLte, OpGt, OpGte:
+	default:
+		panic(errs.Fatal{Op: "dao.Cmp", Rule: "the operator must be one of OpEq, OpNe, OpLt, OpLte, OpGt, OpGte", Detail: string(op)})
+	}
+	return &exprCmp{a: a.mustSet("Cmp"), op: op, b: b.mustSet("Cmp")}
+}
+
+type exprCmp struct {
+	a  Expr
+	op CmpOp
+	b  Expr
+}
+
+func (p *exprCmp) ToSQL(d Dialect, _ *int) (string, []any) {
+	return p.a.render(d) + " " + string(p.op) + " " + p.b.render(d), nil
 }
 
 // Between renders "col BETWEEN ? AND ?".

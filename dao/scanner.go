@@ -15,6 +15,7 @@ type queryState struct {
 	limit       *uint64
 	offset      *uint64
 	forcedJoins []JoinKey
+	distinct    bool
 }
 
 // orderClause is a resolved ORDER BY term (SQL expression + direction).
@@ -27,6 +28,19 @@ type orderClause struct {
 type writeState struct {
 	set   orderedSet
 	rules map[string]resolvedRule // writeCol → resolved SetRules disposition
+	// updateOnly is UpsertOnly's columns: nil for a plain Upsert, empty for
+	// UpsertOnly with none.
+	updateOnly []string
+}
+
+// hasIncrement reports whether any staged value is an [Incr].
+func (s orderedSet) hasIncrement() (string, bool) {
+	for _, c := range s.sortedKeys() {
+		if _, ok := s.m[c].(Increment); ok {
+			return c, true
+		}
+	}
+	return "", false
 }
 
 // orderedSet is a column->value map with deterministic (sorted-key) iteration, so

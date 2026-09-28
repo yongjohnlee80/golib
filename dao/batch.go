@@ -171,6 +171,15 @@ func (b *batchWriter[R, C]) Flush() error {
 	if len(b.rows) == 0 {
 		return nil
 	}
+	// A batch writes new rows (or replaces conflicting ones with its values),
+	// so an Incr has nothing to add to.
+	for _, row := range b.rows {
+		for c, v := range row {
+			if _, ok := v.(Increment); ok {
+				return errs.Wrap(errs.ErrInvalidArgument, "dao: a batch cannot write Incr(%v): a new row has no value to add to; Incr is for Update", any(c))
+			}
+		}
+	}
 	// Capability gates. An explicit ForceCopy on a dialect
 	// that cannot COPY is ErrUnsupported, and this capability gate wins over the
 	// combination check below. Conflict handling on a no-upsert dialect is
