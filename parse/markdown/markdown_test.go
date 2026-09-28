@@ -136,8 +136,8 @@ func FuzzParse(f *testing.F) {
 // smaller input is large enough to leave the cache: below that, a linear parse still shows ratios
 // near the bound, because the smaller run is the one that fits.
 func TestLinearTime(t *testing.T) {
-	if testing.Short() {
-		t.Skip("timing measurement")
+	if testing.Short() || raceEnabled {
+		t.Skip("timing measurement: not under -short, nor under -race's instrumentation")
 	}
 	families := map[string]func(n int) string{
 		"nested-open-brackets":  func(n int) string { return strings.Repeat("[", n) + "a" },
