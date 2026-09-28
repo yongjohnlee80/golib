@@ -652,6 +652,12 @@ name, err := r.Revert(ctx, conn, 3)     // the latest applied script only; never
   Postgres). MySQL commits DDL as it runs, so it's refused with `ErrUnsupported`.
   Postgres takes an advisory lock first (`DeployLock`), so two processes
   applying at once take turns.
+- **Products sharing one database keep distinct ledgers.** The ledger holds
+  one product's script names, so a second product with its own scripts names
+  its own table (`deploy.New(fsys, deploy.Ledger("otherapp_schema_version"))`);
+  sharing one would read the other's scripts as a newer schema and refuse
+  (`ErrDowngrade`). The Postgres lock key is the same for every runner, so two
+  products applying at once simply take turns.
 - The runner runs statements inside a dao transaction through an internal hook
   (`dao/internal/txexec`), never an exported method, so products still can't.
 
