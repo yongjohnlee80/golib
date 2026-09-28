@@ -154,6 +154,30 @@ func TestRevert_OnlyTheLatestAndNeverTheBaseline(t *testing.T) {
 	}
 }
 
+// With three applied, the middle one cannot be reverted: 000003 may depend
+// on it, and the ledger would record a schema no binary had.
+func TestRevert_RefusesAScriptThatIsNotTheLatest(t *testing.T) {
+	ctx := context.Background()
+	c := openSQLite(t)
+	three := map[string]string{
+		"000003_update_add_c.sql": "CREATE TABLE c (z INTEGER);",
+		"000003_revert_add_c.sql": "DROP TABLE c;",
+	}
+	for k, v := range two {
+		three[k] = v
+	}
+	r := deploy.New(scripts("sqlite", three))
+	if _, err := r.Apply(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Revert(ctx, c, 2); !errors.Is(err, deploy.ErrNotLatest) {
+		t.Errorf("reverting 000002 under 000003 = %v, want ErrNotLatest", err)
+	}
+	if got := tables(t, c); got != "[a b c schema_version]" {
+		t.Errorf("a refused revert changed the database: %s", got)
+	}
+}
+
 func TestLoad_OrderAndRefusals(t *testing.T) {
 	all, err := deploy.Load(scripts("sqlite", two), "sqlite")
 	if err != nil {
