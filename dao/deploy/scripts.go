@@ -29,6 +29,7 @@ import (
 	"strconv"
 
 	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/errs"
 	gsql "github.com/yongjohnlee80/golib/parse/sql"
 )
 
@@ -62,9 +63,15 @@ type Statement struct {
 var nameRE = regexp.MustCompile(`^(\d{6})_(update|revert)_([a-z0-9_]+)\.sql$`)
 
 // Load reads the scripts for engine (a dialect name, and so a directory of
-// fsys), updates and reverts, by number then kind (update first). A file not
-// named NNNNNN_(update|revert)_<slug>.sql is an error: a script the runner
-// could not place would silently never run.
+// fsys), updates and reverts, by number then kind (update first), and refuses
+// a set the runner could not apply in the order it was written:
+//
+//   - a file not named NNNNNN_(update|revert)_<slug>.sql, which would never run;
+//   - update numbers that are not dense from 000001, or two updates under one
+//     number: a script shipped later into a gap would run after the ones above
+//     it, and the ledger would record an order no release applied;
+//   - a revert with no update of the same number and slug, a second revert of
+//     one number, or a revert of the baseline, which would drop everything.
 func Load(fsys fs.FS, engine string) ([]Script, error) {
 	if _, err := lexer(engine); err != nil {
 		return nil, err
@@ -94,7 +101,43 @@ func Load(fsys fs.FS, engine string) ([]Script, error) {
 		}
 		return out[i].Kind == Update && out[j].Kind == Revert
 	})
+	if err := validate(engine, out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// validate is Load's check of the whole set, before any of it can run.
+func validate(engine string, all []Script) error {
+	updates := map[int]Script{}
+	reverts := map[int]Script{}
+	for _, s := range all {
+		m := updates
+		if s.Kind == Revert {
+			m = reverts
+		}
+		if prev, dup := m[s.Number]; dup {
+			return errs.Wrap(errs.ErrInvalidArgument, "deploy: %s/%s and %s are both %s script %06d", engine, prev.Name, s.Name, s.Kind, s.Number)
+		}
+		m[s.Number] = s
+	}
+	for n := 1; n <= len(updates); n++ {
+		if _, ok := updates[n]; !ok {
+			return errs.Wrap(errs.ErrInvalidArgument, "deploy: %s has %d update scripts but none numbered %06d: numbers are dense from 000001", engine, len(updates), n)
+		}
+	}
+	for n, r := range reverts {
+		u, ok := updates[n]
+		switch {
+		case n == 1:
+			return errs.Wrap(errs.ErrInvalidArgument, "deploy: %s/%s reverts the baseline, which would drop the schema; the baseline has no revert", engine, r.Name)
+		case !ok:
+			return errs.Wrap(errs.ErrInvalidArgument, "deploy: %s/%s has no update script numbered %06d", engine, r.Name, n)
+		case u.Slug != r.Slug:
+			return errs.Wrap(errs.ErrInvalidArgument, "deploy: %s/%s does not revert %s: the slugs differ", engine, r.Name, u.Name)
+		}
+	}
+	return nil
 }
 
 // Statements splits the script into statements with its engine's lexical

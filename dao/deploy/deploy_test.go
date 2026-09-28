@@ -178,6 +178,61 @@ func TestRevert_RefusesAScriptThatIsNotTheLatest(t *testing.T) {
 	}
 }
 
+// A set the runner could not apply in the order it was written is refused
+// before anything runs: Apply and Pending included, the database untouched.
+func TestLoad_RefusesASetOutOfOrder(t *testing.T) {
+	base := two["000001_update_initialize_tables.sql"]
+	for name, files := range map[string]map[string]string{
+		"a gap (000001, 000003)": {
+			"000001_update_initialize_tables.sql": base,
+			"000003_update_add_c.sql":             "CREATE TABLE c (z INTEGER);",
+			"000003_revert_add_c.sql":             "DROP TABLE c;",
+		},
+		"two updates numbered 000002": {
+			"000001_update_initialize_tables.sql": base,
+			"000002_update_add_b.sql":             "CREATE TABLE b (y INTEGER);",
+			"000002_update_add_c.sql":             "CREATE TABLE c (z INTEGER);",
+		},
+		"two reverts numbered 000002": {
+			"000001_update_initialize_tables.sql": base,
+			"000002_update_add_b.sql":             "CREATE TABLE b (y INTEGER);",
+			"000002_revert_add_b.sql":             "DROP TABLE b;",
+			"000002_revert_add_bb.sql":            "DROP TABLE b;",
+		},
+		"a revert without its update": {
+			"000001_update_initialize_tables.sql": base,
+			"000002_revert_add_b.sql":             "DROP TABLE b;",
+		},
+		"a revert of another slug": {
+			"000001_update_initialize_tables.sql": base,
+			"000002_update_add_b.sql":             "CREATE TABLE b (y INTEGER);",
+			"000002_revert_add_c.sql":             "DROP TABLE c;",
+		},
+		"a revert of the baseline": {
+			"000001_update_initialize_tables.sql": base,
+			"000001_revert_initialize_tables.sql": "DROP TABLE a;",
+		},
+		"no baseline": {
+			"000002_update_add_b.sql": "CREATE TABLE b (y INTEGER);",
+			"000002_revert_add_b.sql": "DROP TABLE b;",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fsys := scripts("sqlite", files)
+			if _, err := deploy.Load(fsys, "sqlite"); !errors.Is(err, errs.ErrInvalidArgument) {
+				t.Fatalf("Load = %v, want ErrInvalidArgument", err)
+			}
+			c := openSQLite(t)
+			if _, err := deploy.New(fsys).Apply(context.Background(), c); !errors.Is(err, errs.ErrInvalidArgument) {
+				t.Errorf("Apply = %v, want the same refusal", err)
+			}
+			if got := tables(t, c); got != "[]" {
+				t.Errorf("a refused set changed the database: %s", got)
+			}
+		})
+	}
+}
+
 func TestLoad_OrderAndRefusals(t *testing.T) {
 	all, err := deploy.Load(scripts("sqlite", two), "sqlite")
 	if err != nil {
