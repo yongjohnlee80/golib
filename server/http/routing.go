@@ -20,6 +20,34 @@ func URLParam(r *http.Request, name string) string {
 	return ""
 }
 
+// Routes is the route-registration surface a Server, a Group and a
+// MockServer's Routes() share. An application registers its routes once, on a
+// Routes, and hands it the real server in main and the mock in tests:
+//
+//	func Register(r httpserver.Routes, svc Service) {
+//		r.Get("/users/{id}", getUser(svc))
+//		r.Post("/users", createUser(svc))
+//	}
+//
+//	Register(srv, svc)          // *Server (or srv.Group("/api"))
+//	Register(mock.Routes(), svc) // *MockServer
+type Routes interface {
+	Handle(pattern string, h http.Handler)
+	HandleFunc(pattern string, h http.HandlerFunc)
+	Get(pattern string, h http.HandlerFunc)
+	Post(pattern string, h http.HandlerFunc)
+	Put(pattern string, h http.HandlerFunc)
+	Patch(pattern string, h http.HandlerFunc)
+	Delete(pattern string, h http.HandlerFunc)
+	Head(pattern string, h http.HandlerFunc)
+	Options(pattern string, h http.HandlerFunc)
+}
+
+var (
+	_ Routes = (*Server)(nil)
+	_ Routes = (*Group)(nil)
+)
+
 // stdMethods is the set Mount forwards to a sub-handler.
 var stdMethods = []string{
 	http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch,

@@ -102,6 +102,37 @@ func (m *MockServer) Delete(pattern string, h http.HandlerFunc) *MockServer {
 	return m.register(http.MethodDelete, pattern, h)
 }
 
+// Routes returns the mock as a Routes, so code that registers routes on a
+// Server or a Group registers them on the mock too. Registration through it is
+// the same mutex-guarded path as the chainable methods above.
+func (m *MockServer) Routes() Routes { return mockRoutes{m} }
+
+// mockRoutes adapts a MockServer to Routes: the same registrations, without
+// the chaining return value Routes does not have.
+type mockRoutes struct{ m *MockServer }
+
+var _ Routes = mockRoutes{}
+
+func (r mockRoutes) Handle(pattern string, h http.Handler)         { r.m.Handle(pattern, h) }
+func (r mockRoutes) HandleFunc(pattern string, h http.HandlerFunc) { r.m.Handle(pattern, h) }
+func (r mockRoutes) Get(pattern string, h http.HandlerFunc)        { r.m.register(http.MethodGet, pattern, h) }
+func (r mockRoutes) Post(pattern string, h http.HandlerFunc) {
+	r.m.register(http.MethodPost, pattern, h)
+}
+func (r mockRoutes) Put(pattern string, h http.HandlerFunc) { r.m.register(http.MethodPut, pattern, h) }
+func (r mockRoutes) Patch(pattern string, h http.HandlerFunc) {
+	r.m.register(http.MethodPatch, pattern, h)
+}
+func (r mockRoutes) Delete(pattern string, h http.HandlerFunc) {
+	r.m.register(http.MethodDelete, pattern, h)
+}
+func (r mockRoutes) Head(pattern string, h http.HandlerFunc) {
+	r.m.register(http.MethodHead, pattern, h)
+}
+func (r mockRoutes) Options(pattern string, h http.HandlerFunc) {
+	r.m.register(http.MethodOptions, pattern, h)
+}
+
 // Stub registers a canned JSON response (status + body) for a method+pattern.
 // Chainable: mock.Stub("GET", "/u/{id}", 200, user).Stub(...).
 func (m *MockServer) Stub(method, pattern string, status int, body any) *MockServer {
