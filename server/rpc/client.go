@@ -262,17 +262,43 @@ func (c *Client) Call(ctx context.Context, method string, params ...any) (any, e
 	if err := c.send(ctx, &Message{Kind: KindRequest, ID: id, Method: method, Params: params}); err != nil {
 		return nil, err
 	}
-	select {
-	case r := <-ch:
+	return c.await(ctx, ch)
+}
+
+// await is Call's wait: the response, ctx, or the client's terminal state.
+// A response that ARRIVED is the answer, even when the end came too before
+// the wait looked: a server that replies and then closes (sys.shutdown) sends
+// the reply, then EOF, and the reader delivers the one before it reports the
+// other — a select choosing at random among them would lose the reply.
+func (c *Client) await(ctx context.Context, ch chan clientResp) (any, error) {
+	answer := func(r clientResp) (any, error) {
 		if r.errVal != nil {
 			return nil, wireErrToError(r.errVal)
 		}
 		return r.result, nil
+	}
+	arrived := func() (clientResp, bool) {
+		select {
+		case r := <-ch:
+			return r, true
+		default:
+			return clientResp{}, false
+		}
+	}
+	select {
+	case r := <-ch:
+		return answer(r)
 	case <-ctx.Done():
+		if r, ok := arrived(); ok {
+			return answer(r)
+		}
 		// Abandons the WAIT, not the request: the id is never reused, and
 		// a late response to it is dropped by the reader.
 		return nil, ctx.Err()
 	case <-c.done:
+		if r, ok := arrived(); ok {
+			return answer(r)
+		}
 		return nil, c.Err()
 	}
 }
