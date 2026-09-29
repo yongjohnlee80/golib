@@ -294,3 +294,35 @@ func TestATreeViewsRevealGivesUpWhenTheRowDisappears(t *testing.T) {
 		}
 	}
 }
+
+// TestNewChildrenUnderAnOpenRowKeepItOpen: the host replacing the children of
+// an open row — a table added to a schema — leaves the row open, the rows open
+// below it open, and the cursor on its row; the new row shows.
+func TestNewChildrenUnderAnOpenRowKeepItOpen(t *testing.T) {
+	m := deepTree()
+	used := &recorder{}
+	s := runTree(t, m, &recorder{}, used)
+	s.WaitForText(t, "database")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}) // the tree takes the keyboard
+	s.Keys(t, decltest.Rune('l'), decltest.Rune('j'), decltest.Rune('l'), decltest.Rune('j'), decltest.Rune('l'), decltest.Rune('j'))
+	s.WaitForText(t, "email") // database › public › users › email, the cursor on email
+	db := tuidecl.Index{Row: 0}
+	schema := tuidecl.Index{Row: 0, Parent: &db}
+	users := tuidecl.Index{Row: 0, Parent: &schema}
+	onScreenLoop(t, s, func() {
+		m.SetChildren(&schema, []tuidecl.TreeRow{
+			{Row: tuidecl.Row{"key": "t1", "label": "users"}, HasChildren: true},
+			{Row: tuidecl.Row{"key": "t3", "label": "invoices"}},
+			{Row: tuidecl.Row{"key": "t2", "label": "orders"}},
+		})
+		m.SetChildren(&users, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "c", "label": "email"}}})
+	})
+	s.WaitFor(t, "the new table, the open rows still open", func(sc string) bool {
+		return strings.Contains(sc, "invoices") && strings.Contains(sc, "email")
+	})
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}) // the cursor is still on email
+	s.WaitFor(t, "activated", func(string) bool { return len(used.all()) > 0 })
+	if got, want := lastIndex(t, used), (tuidecl.Index{Row: 0, Parent: &users}); !sameIndex(got, want) {
+		t.Fatalf("Enter activated %+v, want email (%+v): the cursor left its row", got, want)
+	}
+}
