@@ -43,7 +43,8 @@ func appTypes() []Type {
 			"center": setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetCenter)),
 			"right":  setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetRight)),
 		}},
-		{Name: "MenuBar", Build: buildMenuBar, Ctor: []string{"vimNavigation"}, restyle: restyleMenuBar},
+		{Name: "MenuBar", Build: buildMenuBar, Ctor: []string{"vimNavigation"}, restyle: restyleMenuBar,
+			Setters: map[string]Setter{"autoHide": setter("a MenuBar", boolOf, (*menuBarNode).setAutoHide)}},
 		{Name: "Menu", Build: buildMenu, Ctor: []string{"title", "align"}},
 		{Name: "MenuItem", Build: buildMenuItem, Ctor: []string{"text", "checkable", "group", "shortcut"},
 			Setters: map[string]Setter{
