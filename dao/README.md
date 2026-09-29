@@ -113,6 +113,7 @@ query-time cost.
 | `dao.Str("n/a")` · `dao.Int(0)` | `'n/a'` · `0` |
 | `dao.SQL("NOW()")` | `NOW()` — verbatim, unquoted |
 | `dao.LeftJoin(t, dao.T(…), dao.T(…))` | `LEFT JOIN "t" ON … = …` (also `InnerJoin`) |
+| `dao.LeftJoinOn(t, dao.On(…, …), dao.On(…, …))` | `LEFT JOIN "t" ON … = … AND … = …`: a composite key (also `InnerJoinOn`) |
 
 Both are generic over `~string`, so a typed field enum and an untyped table
 constant both pass without conversion. `dao.T` renders the table part in table
@@ -735,7 +736,8 @@ Set the capability predicates honestly: `SupportsReturning`, `CopySupported`,
   additive — `DataConn`, `TxConn`, `Rows` and the whole `RunTx`/2PC coordinator
   are byte-identical.
 - **Declarative column expressions are implemented** (ADR-0016): `Field.Expr`
-  plus `dao.T`/`C`/`Str`/`Int`/`SQL`/`Coalesce`/`LeftJoin`/`InnerJoin` and
+  plus `dao.T`/`C`/`Str`/`Int`/`SQL`/`Coalesce`/`LeftJoin`/`InnerJoin` (and
+  `LeftJoinOn`/`InnerJoinOn` with `On`, for a join on a composite key) and
   `OptionalJoinExpr`, resolved once per schema at `dao.New`. Purely additive —
   `Column` is unchanged and migration is per field. In predicate position,
   `dao.Cmp` compares two expressions (added for a caller that must not use

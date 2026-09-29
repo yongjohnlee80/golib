@@ -250,6 +250,10 @@ func TestExpr_ZeroExprPanicsAtDeclaration(t *testing.T) {
 			_ = LeftJoin("t", T("t", "c"), Expr{})
 		},
 		"InnerJoin": func() { _ = InnerJoin("t", Expr{}, Expr{}) },
+		"InnerJoinOn, a later equality": func() {
+			_ = InnerJoinOn("t", On(T("t", "a"), T("u", "a")), On(T("t", "b"), Expr{}))
+		},
+		"LeftJoinOn": func() { _ = LeftJoinOn("t", On(Expr{}, T("u", "a"))) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			defer func() {
@@ -275,6 +279,13 @@ func TestExpr_JoinHelpers(t *testing.T) {
 	if got, want := InnerJoin("lg", C("a"), C("b")).render(GenericDialect{}),
 		`INNER JOIN "lg" ON "a" = "b"`; got != want {
 		t.Errorf("InnerJoin\n got %s\nwant %s", got, want)
+	}
+	if got, want := InnerJoinOn("d", On(T("d", "ws"), T("c", "ws")), On(T("d", "id"), T("c", "doc"))).render(GenericDialect{}),
+		`INNER JOIN "d" ON "d"."ws" = "c"."ws" AND "d"."id" = "c"."doc"`; got != want {
+		t.Errorf("InnerJoinOn\n got %s\nwant %s", got, want)
+	}
+	if got, want := LeftJoinOn("d", On(C("a"), C("b"))).render(GenericDialect{}), `LEFT JOIN "d" ON "a" = "b"`; got != want {
+		t.Errorf("LeftJoinOn, one equality\n got %s\nwant %s", got, want)
 	}
 	// Table position: a TableQuoter dialect splits, a non-implementer does not.
 	q := LeftJoin("app.lg", C("a"), C("b"))

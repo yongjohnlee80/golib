@@ -2,7 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -252,5 +254,64 @@ func TestExpr_BatchWritesThroughExprColumns(t *testing.T) {
 	}
 	if strings.Join(got, ",") != "a,b,c" {
 		t.Errorf("batch rows = %v", got)
+	}
+}
+
+// A join on a composite key, executed: two tenants hold a vector under the same
+// hash, and an item joins only its own tenant's. The first equality alone (the
+// shared hash) would join both, so the second is what the rows show.
+func TestExpr_JoinOnACompositeKey(t *testing.T) {
+	t.Parallel()
+	conn := exprConn(t)
+	ctx := context.Background()
+	if _, err := conn.ExecContext(ctx, `CREATE TABLE vec (tenant integer NOT NULL, hash text NOT NULL, bits text NOT NULL, PRIMARY KEY (tenant, hash));
+		CREATE TABLE item (id integer PRIMARY KEY, tenant integer NOT NULL, hash text NOT NULL);
+		INSERT INTO vec VALUES (1, 'h', 'one'), (2, 'h', 'two');
+		INSERT INTO item VALUES (10, 1, 'h'), (20, 2, 'h');`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	type irow struct {
+		ID   int64
+		Bits string
+	}
+	type ifield string
+	type isort string
+	for _, c := range []struct {
+		name string
+		join dao.Expr
+		want map[int64][]string
+	}{
+		{"hash alone", dao.InnerJoin("vec", dao.T("vec", "hash"), dao.T("item", "hash")),
+			map[int64][]string{10: {"one", "two"}, 20: {"one", "two"}}},
+		{"tenant and hash", dao.InnerJoinOn("vec",
+			dao.On(dao.T("vec", "tenant"), dao.T("item", "tenant")), dao.On(dao.T("vec", "hash"), dao.T("item", "hash"))),
+			map[int64][]string{10: {"one"}, 20: {"two"}}},
+		{"left, tenant and hash", dao.LeftJoinOn("vec",
+			dao.On(dao.T("vec", "tenant"), dao.T("item", "tenant")), dao.On(dao.T("vec", "hash"), dao.T("item", "hash"))),
+			map[int64][]string{10: {"one"}, 20: {"two"}}},
+	} {
+		s := dao.New(conn,
+			dao.Table[*irow, ifield, isort, int64]("item"),
+			dao.ID[*irow, ifield, isort, int64]("id"),
+			dao.Fields[*irow, ifield, isort, int64](map[ifield]dao.Field[*irow]{
+				"id":   {Expr: dao.T("item", "id"), Scan: func(r *irow) any { return &r.ID }},
+				"bits": {Expr: dao.T("vec", "bits"), Join: "vec", ReadOnly: true, Scan: func(r *irow) any { return &r.Bits }},
+			}),
+			dao.OptionalJoinExpr[*irow, ifield, isort, int64]("vec", c.join),
+		)
+		rows, err := s.DAO().Select("id", "bits")
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		got := map[int64][]string{}
+		for _, r := range rows {
+			got[r.ID] = append(got[r.ID], r.Bits)
+		}
+		for id := range got {
+			sort.Strings(got[id])
+		}
+		if fmt.Sprint(got) != fmt.Sprint(c.want) {
+			t.Errorf("%s: joined %v, want %v", c.name, got, c.want)
+		}
 	}
 }
