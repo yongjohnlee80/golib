@@ -1575,6 +1575,10 @@ func (e *Editor) Render(s tui.Surface) {
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
+	// The whole area wears the text's look first, as a TextInput's does (Qt's
+	// base behind a TextEdit): the cells past each line's text match the
+	// cells under it, whatever the editor sits on.
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", e.styles.Text)
 	w := e.wrapWidth()
 	hlf := e.beginHighlightFrame()
 	var lineStyles []highlight.Style
