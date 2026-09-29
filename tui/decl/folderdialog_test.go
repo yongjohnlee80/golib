@@ -27,13 +27,22 @@ var notesFS = fstest.MapFS{
 
 func runFolderDialog(t *testing.T, rec *recorder) *decltest.Screen {
 	t.Helper()
+	return runFolderDialogWith(t, rec, "", "")
+}
+
+// runFolderDialogWith is runFolderDialog with more of the Window's properties (window) and of
+// the dialog's (dialog), each a line of QML.
+func runFolderDialogWith(t *testing.T, rec *recorder, window, dialog string) *decltest.Screen {
+	t.Helper()
 	s := decltest.Run(t, 90, 22,
 		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+`Window {
+    `+window+`
     Text { text: "behind" }
     FolderDialog {
         id: fd
         title: "add a workspace"
         currentFolder: "/notes"
+        `+dialog+`
         Frame { title: "title"; TextField { id: wsName; text: "untitled" } }
         onAccepted: App.use(wsName.text, selectedFolder)
     }
@@ -121,4 +130,47 @@ func (r *recorder) args() []qml.SpecValue {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]qml.SpecValue(nil), r.got...)
+}
+
+// TestAFolderDialogStartsAtItsSelectedFolder: selectedFolder, set, is where the dialog opens,
+// not its currentFolder; preview: false leaves the listing the whole right of the left column.
+func TestAFolderDialogStartsAtItsSelectedFolder(t *testing.T) {
+	s := runFolderDialogWith(t, &recorder{}, "", `selectedFolder: "/notes/deep"
+        preview: false`)
+	s.WaitFor(t, "deep listed", func(sc string) bool { return strings.Contains(sc, "b.md") && strings.Contains(sc, "/notes/deep") })
+	if strings.Contains(s.String(), "Preview") {
+		t.Fatalf("preview: false, and a preview is on screen:\n%s", s)
+	}
+}
+
+// TestAFolderDialogWearsTheWindowsPalette: the path field and the listing are dressed in the
+// palette the dialog inherits, as a FileDialog's view is.
+func TestAFolderDialogWearsTheWindowsPalette(t *testing.T) {
+	s := runFolderDialogWith(t, &recorder{}, `palette.base: "blue"; palette.text: "white"`, "")
+	s.WaitForText(t, "a.md")
+	waitBG(t, s, "/notes", ansi(blue))
+}
+
+// TestAFolderDialogsShortcutIsItsKey: a Shortcut among the dialog's children fires while it is
+// open, as a Dialog's does.
+func TestAFolderDialogsShortcutIsItsKey(t *testing.T) {
+	rec := &recorder{}
+	s := runFolderDialogWith(t, rec, "", `Shortcut { sequence: "Ctrl+T"; onActivated: App.use("shortcut", "") }`)
+	s.WaitForText(t, "untitled")
+	s.Keys(t, decltest.Ctrl('t'))
+	s.WaitFor(t, "the shortcut", func(string) bool { got := rec.args(); return len(got) > 0 && got[0].Raw == "shortcut" })
+}
+
+// TestAFolderDialogRefusesWhatItCannotTake: its buttons are its own, and its properties are typed.
+func TestAFolderDialogRefusesWhatItCannotTake(t *testing.T) {
+	for name, c := range map[string]struct{ src, want string }{
+		"a button box":             {`FolderDialog { DialogButtonBox { Button { text: "x"; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole } } }`, "buttons are its own"},
+		"a dim that is not a bool": {`FolderDialog { dim: "yes" }`, "dim"},
+		"a FileDialog's children":  {`FileDialog { Text { text: "x" } }`, "takes no children"},
+		"a FileDialog's bad mode":  {`FileDialog { fileMode: FileDialog.Nope }`, "fileMode"},
+	} {
+		if _, err := mountDoc(t, "import tui 1.0\nWindow { "+c.src+" }"); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want an error naming %q", name, err, c.want)
+		}
+	}
 }

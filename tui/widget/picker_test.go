@@ -147,3 +147,81 @@ func TestCtrlHJKLMoveAmongTheParts(t *testing.T) {
 	step(ctrl('l'), "scroll")
 	step(ctrl('h'), "Enter:go to folder") // back to the path, where it was
 }
+
+// TestCtrlHLWithoutAPreviewStayAndFromATabbedPreviewReturn: with no preview, Ctrl+l and Ctrl+h
+// leave the keyboard on the list; in a preview entered by Tab, Ctrl+h goes back to the list.
+func TestCtrlHLWithoutAPreviewStayAndFromATabbedPreviewReturn(t *testing.T) {
+	root := tree(t, map[string]string{"n.md": "n"})
+	bare := widget.NewFileOpenView(widget.WithFileViewDir(root), widget.WithFileViewPreview(false))
+	h := startBrowser(t, bare)
+	for _, k := range []tui.KeyEvent{ctrl('l'), ctrl('h')} {
+		h.inject(k)
+		h.settle()
+		var hint string
+		h.onLoop(func() { hint = bare.Hint() })
+		if !strings.Contains(hint, "or open file") {
+			t.Fatalf("with no preview, Ctrl+%c moved the keyboard off the list: %q", k.Code, hint)
+		}
+	}
+	h.stop()
+
+	b := widget.NewFileOpenView(widget.WithFileViewDir(root))
+	h = startBrowser(t, b)
+	defer h.stop()
+	hint := func() string {
+		var s string
+		h.onLoop(func() { s = b.Hint() })
+		return s
+	}
+	h.inject(ctrl('h')) // on the list, not in the preview: nothing to go back from
+	h.settle()
+	if got := hint(); !strings.Contains(got, "or open file") {
+		t.Fatalf("Ctrl+h on the list moved the keyboard: %q", got)
+	}
+	h.inject(tab())
+	h.waitFor("the preview", func() bool { return strings.Contains(hint(), "scroll") })
+	h.inject(ctrl('h'))
+	h.waitFor("back on the list", func() bool { return strings.Contains(hint(), "or open file") })
+}
+
+// TestAFolderTypedRelativeIsUnderTheListing: a path typed without a leading / is a folder under
+// the one listed.
+func TestAFolderTypedRelativeIsUnderTheListing(t *testing.T) {
+	root := tree(t, map[string]string{"deep/note.md": "# n", "top.md": "t"})
+	b := widget.NewFileFolderView(widget.WithFileViewDir(root))
+	h := startBrowser(t, b)
+	defer h.stop()
+	h.inject(ctrl('k'))
+	h.settle()
+	h.inject(ctrl('u'), key('d'), key('e'), key('e'), key('p'), key(tui.KeyEnter))
+	h.shows("note.md")
+	var sel string
+	h.onLoop(func() { sel = b.Selected() })
+	if want := filepath.Join(root, "deep"); sel != want {
+		t.Fatalf("Selected %q after typing deep, want %q", sel, want)
+	}
+}
+
+// TestASaveViewsNameIsTheFileNamed: no name is no choice; a name written from the root is that
+// file, wherever the listing is.
+func TestASaveViewsNameIsTheFileNamed(t *testing.T) {
+	root := tree(t, map[string]string{"sub/": "", "a.txt": "a"})
+	b := widget.NewFileSaveView(widget.WithFileViewDir(root))
+	h := startBrowser(t, b)
+	defer h.stop()
+	var ok bool
+	var sel string
+	h.onLoop(func() { ok, sel = b.Confirm(), b.Selected() })
+	if ok || sel != "" {
+		t.Fatalf("no name: Confirm %v, Selected %q; want neither", ok, sel)
+	}
+	want := filepath.Join(root, "sub", "new.txt")
+	for _, r := range want {
+		h.inject(key(r))
+	}
+	h.settle()
+	h.onLoop(func() { ok, sel = b.Confirm(), b.Selected() })
+	if !ok || sel != want {
+		t.Fatalf("named %s: Confirm %v, Selected %q", want, ok, sel)
+	}
+}
