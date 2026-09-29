@@ -96,7 +96,7 @@ func TestASQLBufferWearsTheThemesSyntaxColours(t *testing.T) {
 // What is refused, by name.
 func TestWhatASyntaxHighlighterRefuses(t *testing.T) {
 	for doc, want := range map[string]string{
-		`Editor { SyntaxHighlighter { definition: "Cobol" } }`:     `"Cobol" is not a registered highlighter; registered: JavaScript, QML`,
+		`Editor { SyntaxHighlighter { definition: "Cobol" } }`:     `"Cobol" is not a registered highlighter; registered: JavaScript, Markdown, QML`,
 		`Flex { SyntaxHighlighter { definition: "QML" } }`:         "the Editor it is declared in, and Flex is not one",
 		`SyntaxHighlighter { definition: "QML" }`:                  "the Editor it is declared in, and the root is in none",
 		`Editor { Text { } }`:                                      "an Editor holds only a SyntaxHighlighter",
