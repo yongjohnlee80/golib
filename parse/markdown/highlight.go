@@ -17,20 +17,21 @@ import (
 // heading's underline, a paragraph's lazy continuation) is not seen; a line
 // is highlighted as it stands.
 //
-//	a heading                      Keyword
+//	a heading                       Keyword
 //	**strong**, *emphasis*          DataType, Attribute
 //	~~strikethrough~~               Comment
-//	`code`, a fenced block          VerbatimString (its fences Preprocessor)
-//	[link](url), ![image](src)      String; <autolink> Import
+//	`code`, a fenced block          String (its fences Comment)
+//	[link](url), ![image](src)      Import, as <autolink> and [label]: url
 //	[[wikilink]], ![[embed]]        Function
 //	#tag                            Constant
-//	a list marker, a task box, >    Operator
-//	> [!note] a callout's title     Information ([!warning] and kin: Warning)
-//	---, ***                        RegionMarker
-//	[label]: url                    Import
-//	frontmatter                     Documentation, its keys Attribute
+//	a list marker, a task box, >    Operator, as a rule (---, ***)
+//	> [!note] a callout             ControlFlow ([!warning] and kin: Alert)
+//	frontmatter                     Comment, its keys Attribute
 //	<!-- comment -->                Comment
-//	inline HTML, an HTML block      Preprocessor
+//	inline HTML, an HTML block      SpecialChar
+//
+// THE STYLES ARE THE THEMED ONES: the fifteen golib's stock themes colour
+// (keyword … operator). A style no theme colours would paint as the text.
 func Highlighter() highlight.Highlighter {
 	return highlight.HighlighterFunc(highlightMarkdown)
 }
@@ -99,10 +100,10 @@ func highlightMarkdown(text string, previous highlight.State) ([]highlight.Span,
 	switch {
 	case previous == stateFrontmatter:
 		if trimmed == "---" || trimmed == "..." {
-			l.paint(0, len(text), highlight.RegionMarker)
+			l.paint(0, len(text), highlight.Comment)
 			return l.spans(), stateBody
 		}
-		l.paint(0, len(text), highlight.Documentation)
+		l.paint(0, len(text), highlight.Comment)
 		if k := strings.IndexByte(text, ':'); k > 0 && !strings.HasPrefix(strings.TrimLeft(text, " "), "-") {
 			l.paint(0, k, highlight.Attribute)
 		}
@@ -110,10 +111,10 @@ func highlightMarkdown(text string, previous highlight.State) ([]highlight.Span,
 	case previous >= stateFence:
 		ch, n := fenceOf(previous)
 		if fenceCloses(text, ch, n) {
-			l.paint(0, len(text), highlight.Preprocessor)
+			l.paint(0, len(text), highlight.Comment)
 			return l.spans(), stateBody
 		}
-		l.paint(0, len(text), highlight.VerbatimString)
+		l.paint(0, len(text), highlight.String)
 		return l.spans(), previous
 	case previous == stateComment:
 		end := strings.Index(text, "-->")
@@ -124,11 +125,11 @@ func highlightMarkdown(text string, previous highlight.State) ([]highlight.Span,
 		l.paint(0, end+3, highlight.Comment)
 		return l.rest(text[end+3:], end+3)
 	case previous == stateStart && trimmed == "---":
-		l.paint(0, len(text), highlight.RegionMarker)
+		l.paint(0, len(text), highlight.Comment)
 		return l.spans(), stateFrontmatter
 	}
 	if ch, n, ok := fenceOpens(text); ok {
-		l.paint(0, len(text), highlight.Preprocessor)
+		l.paint(0, len(text), highlight.Comment)
 		return l.spans(), fenceState(ch, n)
 	}
 	return l.rest(text, 0)
@@ -155,7 +156,7 @@ func (l *mdLine) inline(text string, off int) {
 	// "---" alone is a rule in the body; to the Obsidian extension, a document
 	// that starts with it opens frontmatter.
 	if t := strings.TrimSpace(text); t == "---" || t == "***" || t == "___" {
-		l.paint(off, off+len(text), highlight.RegionMarker)
+		l.paint(off, off+len(text), highlight.Operator)
 		return
 	}
 	doc := Parse([]byte(text), GFM(), Obsidian())
@@ -176,9 +177,9 @@ func (l *mdLine) walk(n *Node, off int) {
 	case KindStrikethrough:
 		l.paint(start, end, highlight.Comment)
 	case KindCodeSpan, KindCodeBlock:
-		l.paint(start, end, highlight.VerbatimString)
-	case KindLink, KindImage:
 		l.paint(start, end, highlight.String)
+	case KindLink, KindImage:
+		l.paint(start, end, highlight.Import)
 	case KindAutolink:
 		l.paint(start, end, highlight.Import)
 	case KindWikilink, KindEmbed:
@@ -186,11 +187,11 @@ func (l *mdLine) walk(n *Node, off int) {
 	case KindTag:
 		l.paint(start, end, highlight.Constant)
 	case KindThematicBreak:
-		l.paint(start, end, highlight.RegionMarker)
+		l.paint(start, end, highlight.Operator)
 	case KindLinkRefDef:
 		l.paint(start, end, highlight.Import)
 	case KindRawHTML, KindHTMLBlock:
-		l.paint(start, end, highlight.Preprocessor)
+		l.paint(start, end, highlight.SpecialChar)
 	case KindItem:
 		// the marker, a task box included: from the item's start to its content
 		if c := n.FirstChild; c != nil && c.Span.Start > n.Span.Start {
@@ -223,13 +224,13 @@ func (l *mdLine) walk(n *Node, off int) {
 	}
 }
 
-// calloutStyle is a callout's colour: Warning for the kinds Obsidian draws as
-// one, Information for the rest.
+// calloutStyle is a callout's colour: Alert for the kinds Obsidian draws as a
+// warning, ControlFlow for the rest.
 func calloutStyle(quote *Node) highlight.Style {
 	if quote != nil && quote.Callout != nil && warningCallout(string(quote.Callout.Type)) {
-		return highlight.Warning
+		return highlight.Alert
 	}
-	return highlight.Information
+	return highlight.ControlFlow
 }
 
 // warningCallout is a callout type Obsidian draws as a warning.
