@@ -724,3 +724,38 @@ func TestAnEmptyKeyIsAKeyLikeAnyOther(t *testing.T) {
 		t.Errorf("currentValue = %q, want ann's 1", got)
 	}
 }
+
+// TableViewColumn.elideMode is Qt's: a path too long for its column keeps its
+// file name with Tui.ElideLeft, and loses it with the default, ElideRight.
+// A value that is not one of the modes is refused.
+func TestTableViewColumnElideMode(t *testing.T) {
+	paths := func() *tuidecl.ListModel {
+		m := tuidecl.NewListModel("key", "path")
+		m.Reset([]tuidecl.Row{{"key": "a", "path": "shared/adrs/0206-autodoc-store-dao-and-workspaces.md"}})
+		return m
+	}
+	left := runModelDoc(t, `TableView { model: App.people
+    TableViewColumn { role: "path"; title: "NOTE"; width: 0; elideMode: Tui.ElideLeft } }`, paths(), &recorder{})
+	left.WaitFor(t, "the path's end", func(sc string) bool { return strings.Contains(sc, "-workspaces.md") })
+	if sc := left.String(); strings.Contains(sc, "shared/") || !strings.Contains(sc, "…") {
+		t.Fatalf("ElideLeft kept the path's start, or drew no ellipsis:\n%s", sc)
+	}
+	// the same through a delegate, which the table paints cell by cell
+	cells := runModelDoc(t, `TableView { model: App.people
+    TableViewColumn { role: "path"; title: "NOTE"; width: 0; elideMode: Tui.ElideLeft }
+    delegate: Text { text: model.display } }`, paths(), &recorder{})
+	cells.WaitFor(t, "the path's end, through the delegate", func(sc string) bool { return strings.Contains(sc, "-workspaces.md") })
+	if sc := cells.String(); strings.Contains(sc, "shared/") {
+		t.Fatalf("ElideLeft through a delegate kept the path's start:\n%s", sc)
+	}
+	right := runModelDoc(t, `TableView { model: App.people
+    TableViewColumn { role: "path"; title: "NOTE"; width: 0 } }`, paths(), &recorder{})
+	right.WaitFor(t, "the path's start", func(sc string) bool { return strings.Contains(sc, "shared/adrs/") })
+	if sc := right.String(); strings.Contains(sc, "workspaces.md") {
+		t.Fatalf("the default kept the path's end:\n%s", sc)
+	}
+	if _, err := mountDoc(t, "import tui 1.0\n"+`TableView { TableViewColumn { role: "path"; elideMode: Tui.Horizontal } }`); err == nil ||
+		!strings.Contains(err.Error(), "Tui.ElideLeft") {
+		t.Fatalf("elideMode: Tui.Horizontal = %v, want refused naming the modes", err)
+	}
+}

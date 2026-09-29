@@ -60,7 +60,7 @@ func stdTypes() []Type {
 // constants are derived from it, so a new enum is visible to documents by being
 // listed here — and nowhere else.
 var tuiEnums = []enumeration{
-	orientations, directions, dockEdges, keysets, menuAligns, wrapModes, fileModes,
+	orientations, directions, dockEdges, keysets, menuAligns, wrapModes, fileModes, elideModes,
 }
 
 // tuiFlags is every flag set, each under its own singleton. Listed here and

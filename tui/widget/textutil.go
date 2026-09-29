@@ -86,6 +86,65 @@ func truncate(s string, w int, measure func(string) int) string {
 	return sb.String()
 }
 
+// Elide is where a text too wide for its cell loses what does not fit, as Qt's
+// Qt::TextElideMode: the end (ElideRight, the zero value), the start
+// (ElideLeft: a path keeps its file name), the middle, or nowhere (ElideNone:
+// cut at the edge, no ellipsis).
+type Elide int
+
+const (
+	ElideRight Elide = iota
+	ElideLeft
+	ElideMiddle
+	ElideNone
+)
+
+// elide fits s into w cells, dropping what does not fit where mode says.
+func elide(s string, w int, mode Elide, measure func(string) int) string {
+	if w <= 0 {
+		return ""
+	}
+	if measure(s) <= w {
+		return s
+	}
+	var gs []string
+	for c := range tui.Graphemes(s) {
+		gs = append(gs, c)
+	}
+	// head takes graphemes from the start while they fit in room; tail, from the end
+	head := func(room int) string {
+		var sb strings.Builder
+		used := 0
+		for _, c := range gs {
+			if used+measure(c) > room {
+				break
+			}
+			sb.WriteString(c)
+			used += measure(c)
+		}
+		return sb.String()
+	}
+	tail := func(room int) string {
+		used, i := 0, len(gs)
+		for i > 0 && used+measure(gs[i-1]) <= room {
+			i--
+			used += measure(gs[i])
+		}
+		return strings.Join(gs[i:], "")
+	}
+	switch mode {
+	case ElideNone:
+		return head(w)
+	case ElideLeft:
+		return ellipsis + tail(w-1)
+	case ElideMiddle:
+		back := (w - 1) / 2
+		return head(w-1-back) + ellipsis + tail(back)
+	default:
+		return truncate(s, w, measure)
+	}
+}
+
 // wrapLine soft-wraps one line (no newlines) into rows of at most w cells,
 // breaking at spaces when possible and mid-word otherwise. A "" line yields
 // one empty row.
