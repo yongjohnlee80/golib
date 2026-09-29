@@ -330,12 +330,14 @@ type tableColumnNode struct {
 
 // elideModes are Qt's TableViewColumn.elideMode values (Qt::TextElideMode):
 // where a cell too wide for its column loses text. ElideRight is Qt's default;
-// ElideLeft keeps the end of a path, its file name.
+// ElideLeft keeps the end of a path, its file name. ElidePath is golib's: the
+// start of a path, cut at a "/" so no name is cut.
 var elideModes = enum[widget.Elide]{values: map[string]widget.Elide{
 	"ElideLeft":   widget.ElideLeft,
 	"ElideRight":  widget.ElideRight,
 	"ElideMiddle": widget.ElideMiddle,
 	"ElideNone":   widget.ElideNone,
+	"ElidePath":   widget.ElidePath,
 }}
 
 func (*tableColumnNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
