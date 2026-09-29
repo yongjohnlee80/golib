@@ -402,7 +402,16 @@ type Tree struct {
 	// fires when the node under the cursor changes, not when its row number
 	// does (an expand above it moves the row, not the choice).
 	selected *TreeNode
+	// selectionDue is a structural change whose effect on the selection is
+	// published from the commit phase: reconcile can run inside another
+	// node's Layout or Render (TreeNode.Reset from a delegate), where
+	// publishing is forbidden.
+	selectionDue bool
 }
+
+// treeSelectionKey is the commit record under which a Tree publishes a
+// selection change a structural reconcile caused.
+const treeSelectionKey tui.CommitKey = "widget.tree.selection"
 
 var _ tui.Focusable = (*Tree)(nil)
 
@@ -747,7 +756,12 @@ func (t *Tree) HandleEvent(ev tui.Event) bool {
 // noteSelection publishes SelectionChangedEvent when the node under the
 // cursor is not the one last reported, as List does on cursor movement. Index
 // is the node's row among VisibleRows. A tree with no rows reports nothing.
+//
+// It is called from input handling and from the Tree's own setters, never
+// from Layout or Render. A structural change, which can arrive during either,
+// goes through selectionChangedLater instead.
 func (t *Tree) noteSelection() {
+	t.selectionDue = false
 	node, ok := t.Selected()
 	if !ok {
 		t.selected = nil
@@ -899,7 +913,15 @@ func (t *Tree) reconcile() {
 	rows := t.flatten()
 	t.cursor = max(0, min(t.cursor, len(rows)-1))
 	t.ensureVisible()
-	t.noteSelection()
+	t.selectionChangedLater()
+}
+
+// selectionChangedLater defers the selection check to the commit phase: it
+// asks for a layout pass, in which Layout registers the check with
+// Context.AfterLayout. Safe from any phase; it publishes nothing itself.
+func (t *Tree) selectionChangedLater() {
+	t.selectionDue = true
+	t.RequestLayout()
 }
 
 func (t *Tree) moveCursor(delta, total int) {
@@ -930,6 +952,9 @@ func (t *Tree) Layout(c tui.Constraints) tui.Size {
 	t.w = boundedMax(c.MaxW, max(c.MinW, 1))
 	t.h = boundedMax(c.MaxH, max(c.MinH, len(t.flatten()), 1))
 	t.ensureVisible()
+	if t.selectionDue && t.ctx != nil {
+		t.ctx.AfterLayout(treeSelectionKey, t.noteSelection)
+	}
 	return c.Constrain(tui.Size{W: t.w, H: t.h})
 }
 
