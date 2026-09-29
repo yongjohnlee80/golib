@@ -78,3 +78,26 @@ func TestADrawersEdgeIsOneOfTheFour(t *testing.T) {
 		t.Fatal("Drawer { edge: Tui.Vertical } was not refused")
 	}
 }
+
+// TestANonModalDrawerLetsTheKeyboardGo: open and not modal, focus can go to the page under it and
+// the drawer stays open.
+func TestANonModalDrawerLetsTheKeyboardGo(t *testing.T) {
+	s := decltest.Run(t, 60, 10,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			" Editor { id: page; focus: true }\n"+
+			" Drawer { id: d; modal: false; edge: Tui.Right; Frame { title: \"explorer\"; ListView { id: list; model: App.rows; textRole: \"name\" } } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.rows": people()}))
+	onScreenLoop(t, s, func() { _ = s.Program.Call("d", "open") })
+	s.WaitForText(t, "explorer")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("page", "forceActiveFocus"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.Keys(t, decltest.Rune('i'))
+	s.Keys(t, decltest.Type("typed")...)
+	s.WaitFor(t, "typing reached the page, the drawer open", func(sc string) bool {
+		return strings.Contains(sc, "typed") && strings.Contains(sc, "explorer")
+	})
+}

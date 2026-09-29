@@ -20,7 +20,8 @@ import (
 //	}
 //
 // It holds the keyboard while open, as Qt's modal Drawer does, and gives it back where it was
-// when it closes; Escape closes it. edge and size are settable while the program runs: a
+// when it closes; Escape closes it. modal: false (Qt's too) lets the keyboard go back to the page
+// while it stays open, a panel beside the work rather than a question over it. edge and size are settable while the program runs: a
 // preference can move it. open(), close() and toggle() (golib's: open when closed, else close),
 // and opened() and closed().
 
@@ -45,16 +46,21 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 1 {
 		return nil, nil, errors.New("a Drawer holds exactly one child, its content")
 	}
+	modal := true
+	consumed, err := readProps(b.Props, map[string]field{"modal": into(&modal, boolOf)})
+	if err != nil {
+		return nil, nil, err
+	}
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, opened: b.Emitter("opened"), closed: b.Emitter("closed")}
 	n.frame = &drawerFrame{owner: n}
 	n.frame.Label("Drawer")
 	n.frame.Add(b.Children[0])
-	n.float = widget.NewFloat(n.frame, widget.WithModal(true))
+	n.float = widget.NewFloat(n.frame, widget.WithModal(modal))
 	n.place()
 	if b.Overlay != nil {
 		n.SetOverlay(b.Overlay, nil)
 	}
-	return n, nil, nil
+	return n, consumed, nil
 }
 
 // place anchors the Float at the edge, the size across it and the Window's whole length along it.
@@ -177,6 +183,7 @@ func (f *drawerFrame) HandleEvent(ev tui.Event) bool {
 var drawerType = Type{
 	Name:  "Drawer",
 	Build: buildDrawer,
+	Ctor:  []string{"modal"},
 	Setters: map[string]Setter{
 		"edge": setter("a Drawer", dockEdges.read, (*drawerNode).setEdge),
 		"size": setter("a Drawer", func(v qml.SpecValue) (int, error) {

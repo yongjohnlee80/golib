@@ -90,7 +90,7 @@ change at runtime, which is what makes it bindable to a source.
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
-| `Drawer` | — ; one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`), `size` (a percentage across the edge) | — | `opened`, `closed` | `open()`, `close()`, `toggle()` |
+| `Drawer` | `modal` (default true); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`), `size` (a percentage across the edge) | — | `opened`, `closed` | `open()`, `close()`, `toggle()` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
