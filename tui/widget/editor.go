@@ -152,7 +152,9 @@ type Editor struct {
 	// what they were computed from, and hlValid how much of it is verified.
 	// hlExamined counts the lines the walk has looked at, for a test to hold
 	// a frame's work to what it promises.
-	hl         highlight.Highlighter
+	hl highlight.Highlighter
+	// ruler is the column a vertical guide marks, 1-based; 0 for none (WithRuler).
+	ruler      int
 	syntax     SyntaxStyles
 	hlCache    []hlLine
 	hlValid    int
@@ -228,6 +230,17 @@ func defaultEditorStyles() TextInputStyles {
 }
 
 // WithEditorStyles overrides the style hooks (TextInput slots).
+// WithRuler marks column col (1-based: 120 marks the 120th) with a vertical guide, where text is
+// meant to wrap: vim's colorcolumn, as a line. It is drawn in the empty cells past each line's
+// text, in the placeholder's muted look, so a line that crosses it stays readable. 0 draws none.
+func WithRuler(col int) EditorOption { return func(e *Editor) { e.ruler = max(col, 0) } }
+
+// SetRuler moves the guide to column col; 0 removes it.
+func (e *Editor) SetRuler(col int) {
+	e.ruler = max(col, 0)
+	e.MarkDirty()
+}
+
 func WithEditorStyles(st TextInputStyles) EditorOption {
 	return func(e *Editor) {
 		e.styles = TextInputStyles{
@@ -1592,6 +1605,8 @@ func (e *Editor) Render(s tui.Surface) {
 			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", e.styles.Selection.Inherit(e.styles.Text))
 		}
 	}
+	// ends is where each screen row's text ends, for the ruler
+	ends := make([]int, sz.H)
 	y := 0
 	for ln := e.top; ln < len(e.lines) && y < sz.H; ln++ {
 		cs := e.lineClusters(ln)
@@ -1608,6 +1623,7 @@ func (e *Editor) Render(s tui.Surface) {
 				}
 				x += cw
 			}
+			ends[y] = x
 			y++
 			continue
 		}
@@ -1621,7 +1637,22 @@ func (e *Editor) Render(s tui.Surface) {
 				paintCluster(x, y, cs[col], ln, col)
 				x += s.StringWidth(cs[col])
 			}
+			ends[y] = x
 			y++
+		}
+	}
+	if e.ruler > 0 {
+		x := e.ruler - 1
+		if e.wrap == WrapNone {
+			x -= e.left
+		}
+		if x >= 0 && x < w {
+			st := e.styles.Placeholder.Inherit(e.styles.Text)
+			for row := 0; row < sz.H; row++ {
+				if ends[row] <= x {
+					s.SetCell(x, row, "│", st)
+				}
+			}
 		}
 	}
 	if e.scrollable() {
