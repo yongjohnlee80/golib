@@ -200,6 +200,18 @@ func NewFloat(child tui.Component, opts ...FloatOption) *Float {
 // Shown reports whether the float is currently visible.
 func (f *Float) Shown() bool { return f.shown }
 
+// SetAnchor moves the float's content to another anchor: a drawer that opens from another edge.
+func (f *Float) SetAnchor(a Anchor) {
+	f.anchor = a
+	f.RequestLayout()
+}
+
+// SetSizeFraction sizes the float anew, as WithSizeFraction does.
+func (f *Float) SetSizeFraction(wPct, hPct int) {
+	f.wPct, f.hPct = clampPct(wPct), clampPct(hPct)
+	f.RequestLayout()
+}
+
 // Show mounts the float's layer onto its Stack position (loop goroutine).
 // A modal Show seeds focus into the first focusable widget of the child
 // subtree; hiding restores the previous focus via the runtime's scope
