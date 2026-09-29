@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
@@ -168,6 +169,128 @@ func TestATreeViewsSetCurrentIndexRefusesWhatItCannotReach(t *testing.T) {
 		onScreenLoop(t, s, func() { err = s.Program.Call("tree", "setCurrentIndex", args...) })
 		if err == nil || !strings.Contains(err.Error(), "setCurrentIndex") {
 			t.Errorf("%s: err = %v, want setCurrentIndex to refuse it", name, err)
+		}
+	}
+}
+
+// interleaveTree is deepTree plus three more top rows whose children load only
+// when asked; the host answers those fetches when the test says.
+func interleaveTree() (*tuidecl.TreeListModel, *[]tuidecl.Index) {
+	m := deepTree()
+	top := []tuidecl.TreeRow{
+		{Row: tuidecl.Row{"key": "db", "label": "database"}, HasChildren: true},
+		{Row: tuidecl.Row{"key": "other", "label": "otherdb"}},
+	}
+	for _, k := range []string{"o1", "o2", "o3"} {
+		top = append(top, tuidecl.TreeRow{Row: tuidecl.Row{"key": k, "label": "lazy-" + k}, HasChildren: true})
+	}
+	// Replacing the top level keeps db's loaded subtree only if it is set
+	// again, so rebuild the loaded levels under the new top.
+	m.SetChildren(nil, top)
+	db := tuidecl.Index{Row: 0}
+	m.SetChildren(&db, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "s", "label": "public"}, HasChildren: true}})
+	schema := tuidecl.Index{Row: 0, Parent: &db}
+	m.SetChildren(&schema, []tuidecl.TreeRow{
+		{Row: tuidecl.Row{"key": "t1", "label": "users"}, HasChildren: true},
+		{Row: tuidecl.Row{"key": "t2", "label": "orders"}},
+	})
+	var fetches []tuidecl.Index
+	m.OnFetch = func(ix tuidecl.Index) { fetches = append(fetches, ix) }
+	return m, &fetches
+}
+
+func runTreeWithSink(t *testing.T, m *tuidecl.TreeListModel, moved, used *recorder, sunk *recorder) *decltest.Screen {
+	t.Helper()
+	return decltest.Run(t, 30, 10,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
+			`TreeView { id: tree; model: App.tree; textRole: "label"; `+
+			`onCurrentIndexChanged: App.moved(index); onActivated: App.use(index) }`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.tree": m}),
+		tuidecl.ErrorSink(func(err error) {
+			_ = sunk.handler([]qml.SpecValue{{Kind: qml.SpecValueString, Raw: err.Error()}})
+		}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.moved": moved.handler, "App.use": used.handler}))
+}
+
+// Unrelated branches finishing their loads while a reveal is still opening
+// its row's ancestors neither end the reveal nor move the cursor: only
+// changes on the row's own path count against it.
+func TestATreeViewsRevealIgnoresUnrelatedBranchesLoading(t *testing.T) {
+	m, fetches := interleaveTree()
+	moved, used, sunk := &recorder{}, &recorder{}, &recorder{}
+	s := runTreeWithSink(t, m, moved, used, sunk)
+	s.WaitForText(t, "lazy-o3")
+	// Open the three lazy rows, so each waits on the host for its children.
+	tab := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}
+	down := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown}
+	open := tui.KeyEvent{Kind: tui.KeyPress, Code: 'l'}
+	s.Keys(t, tab, down, down, open, down, open, down, open)
+	var n int
+	s.WaitFor(t, "three fetches asked", func(string) bool {
+		onScreenLoop(t, s, func() { n = len(*fetches) })
+		return n == 3
+	})
+	db := tuidecl.Index{Row: 0}
+	schema := tuidecl.Index{Row: 0, Parent: &db}
+	users := tuidecl.Index{Row: 0, Parent: &schema}
+	var err error
+	onScreenLoop(t, s, func() {
+		// The reveal starts, and before its ancestors can open, the three
+		// unrelated loads land.
+		err = s.Program.Call("tree", "setCurrentIndex", users)
+		for _, ix := range *fetches {
+			ix := ix
+			m.SetChildren(&ix, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "x", "label": "child-" + m.Key(ix)}}})
+		}
+	})
+	if err != nil {
+		t.Fatalf("setCurrentIndex: %v", err)
+	}
+	s.WaitFor(t, "currentIndexChanged named users", func(string) bool {
+		all := moved.all()
+		if len(all) == 0 {
+			return false
+		}
+		ix, _ := all[len(all)-1].Obj.(tuidecl.Index)
+		return sameIndex(ix, users)
+	})
+	if got := sunk.all(); len(got) != 0 {
+		t.Fatalf("the reveal gave up: %v", got)
+	}
+}
+
+// A row that disappears from the model while its reveal is opening the
+// ancestors ends the reveal with an error, and the cursor is not put on a
+// row that took its place.
+func TestATreeViewsRevealGivesUpWhenTheRowDisappears(t *testing.T) {
+	m, _ := interleaveTree()
+	moved, used, sunk := &recorder{}, &recorder{}, &recorder{}
+	s := runTreeWithSink(t, m, moved, used, sunk)
+	s.WaitForText(t, "database")
+	db := tuidecl.Index{Row: 0}
+	schema := tuidecl.Index{Row: 0, Parent: &db}
+	users := tuidecl.Index{Row: 0, Parent: &schema}
+	var err error
+	onScreenLoop(t, s, func() {
+		err = s.Program.Call("tree", "setCurrentIndex", users)
+		// users goes; orders moves up into row 0, the position users had.
+		m.SetChildren(&schema, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "t2", "label": "orders"}}})
+	})
+	if err != nil {
+		t.Fatalf("setCurrentIndex: %v", err)
+	}
+	s.WaitFor(t, "the reveal gave up", func(string) bool {
+		for _, v := range sunk.all() {
+			if strings.Contains(v.Raw, "setCurrentIndex") {
+				return true
+			}
+		}
+		return false
+	})
+	for _, v := range moved.all() {
+		if ix, _ := v.Obj.(tuidecl.Index); sameIndex(ix, users) {
+			t.Fatalf("the cursor was put on row %+v, where users used to be", ix)
 		}
 	}
 }
