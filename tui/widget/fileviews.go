@@ -531,10 +531,6 @@ type FileFolderView struct {
 	path     *TextInput
 	pathPane *Box
 	listing  *FileOpenView
-	// focusField is FocusInitial asked for the first field before it was
-	// mounted — a dialog opening in this very turn — so the next layout gives
-	// it the keyboard.
-	focusField bool
 }
 
 // NewFileFolderView builds a folder view. Its listing previews unless asked
@@ -599,16 +595,8 @@ func (v *FileFolderView) Init(ctx *tui.Context) {
 }
 
 func (v *FileFolderView) Layout(c tui.Constraints) tui.Size {
-	ctx := v.Context()
-	sz := layoutFileView(ctx, v.listing, c)
-	if v.focusField {
-		v.focusField = false
-		ctx.AfterLayout(folderFocusKey, func() { ctx.FocusInto(v.cfg.fields[0]) })
-	}
-	return sz
+	return layoutFileView(v.Context(), v.listing, c)
 }
-
-const folderFocusKey tui.CommitKey = "folder.focus-field"
 
 func (v *FileFolderView) Render(tui.Surface) {}
 
@@ -648,20 +636,20 @@ func (v *FileFolderView) Dir() string          { return v.listing.Dir() }
 func (v *FileFolderView) SetDir(rooted string) { v.listing.SetDir(rooted) }
 
 // FocusInitial gives the keyboard to the first field: the host's own, when it
-// gave one (a name to type), else the listing.
+// gave one (a name to type), else the listing. A dialog opening in this very
+// turn has not mounted the field yet; its card then gives the keyboard to the
+// first thing in it that takes it, which is the same field — so the listing
+// must not take it here.
 func (v *FileFolderView) FocusInitial() {
 	ctx := v.Context()
 	if ctx == nil {
 		return
 	}
-	if len(v.cfg.fields) > 0 && !ctx.FocusInto(v.cfg.fields[0]) {
-		v.focusField = true // not mounted yet: the next layout focuses it
-		ctx.RequestLayout()
+	if len(v.cfg.fields) > 0 {
+		ctx.FocusInto(v.cfg.fields[0])
 		return
 	}
-	if len(v.cfg.fields) == 0 {
-		v.listing.list.Focus()
-	}
+	v.listing.list.Focus()
 }
 
 // Path is what the path field holds.
