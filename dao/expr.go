@@ -205,31 +205,68 @@ func Coalesce(e, alt Expr) Expr {
 //
 // becomes LEFT JOIN "label_group" ON "label_group"."id" = "artist"."label_group_id".
 // The table is rendered in table position, so a schema-qualified constant
-// splits on a [TableQuoter] dialect.
+// splits on a [TableQuoter] dialect. A join on a composite key is [LeftJoinOn].
 func LeftJoin[Tbl ~string](table Tbl, left, right Expr) Expr {
-	return joinClauseExpr("LEFT JOIN", string(table), left, right)
+	return joinClauseExpr("LEFT JOIN", string(table), []JoinOn{On(left, right)})
 }
 
 // InnerJoin renders an INNER JOIN clause; see [LeftJoin].
 func InnerJoin[Tbl ~string](table Tbl, left, right Expr) Expr {
-	return joinClauseExpr("INNER JOIN", string(table), left, right)
+	return joinClauseExpr("INNER JOIN", string(table), []JoinOn{On(left, right)})
 }
 
-// joinClauseExpr builds "<kind> <table> ON <left> = <right>".
-func joinClauseExpr(kind, table string, left, right Expr) Expr {
-	left.mustSet(strings.ReplaceAll(kind, " ", ""))
-	right.mustSet(strings.ReplaceAll(kind, " ", ""))
+// JoinOn is one equality of a join's ON clause, left = right: see [On].
+type JoinOn struct{ left, right Expr }
+
+// On is the equality left = right in a join's ON clause, for [LeftJoinOn] and
+// [InnerJoinOn].
+func On(left, right Expr) JoinOn { return JoinOn{left: left, right: right} }
+
+// LeftJoinOn renders a LEFT JOIN whose ON clause is every equality given, in
+// order, ANDed: the join on a composite key.
+//
+//	LeftJoinOn(TableDocument,
+//	    On(T(TableDocument, DocWorkspace), T(TableChunk, ChunkWorkspace)),
+//	    On(T(TableDocument, DocID), T(TableChunk, ChunkDoc)))
+//
+// becomes LEFT JOIN "document" ON "document"."workspace_id" = "chunk"."workspace_id"
+// AND "document"."id" = "chunk"."doc_id". A condition that is not a key's
+// equality belongs in the statement's predicate.
+func LeftJoinOn[Tbl ~string](table Tbl, on JoinOn, more ...JoinOn) Expr {
+	return joinClauseExpr("LEFT JOIN", string(table), append([]JoinOn{on}, more...))
+}
+
+// InnerJoinOn renders an INNER JOIN on every equality given; see [LeftJoinOn].
+func InnerJoinOn[Tbl ~string](table Tbl, on JoinOn, more ...JoinOn) Expr {
+	return joinClauseExpr("INNER JOIN", string(table), append([]JoinOn{on}, more...))
+}
+
+// joinClauseExpr builds "<kind> <table> ON <left> = <right> [AND …]".
+func joinClauseExpr(kind, table string, on []JoinOn) Expr {
+	var sides []Expr
+	for _, eq := range on {
+		sides = append(sides, eq.left, eq.right)
+	}
+	for _, e := range sides {
+		e.mustSet(strings.ReplaceAll(kind, " ", ""))
+	}
 	return Expr{render: func(d Dialect) string {
 		var b strings.Builder
 		b.WriteString(kind)
 		b.WriteByte(' ')
 		b.WriteString(quoteTable(d, table))
-		b.WriteString(" ON ")
-		b.WriteString(left.render(d))
-		b.WriteString(" = ")
-		b.WriteString(right.render(d))
+		for i, eq := range on {
+			if i == 0 {
+				b.WriteString(" ON ")
+			} else {
+				b.WriteString(" AND ")
+			}
+			b.WriteString(eq.left.render(d))
+			b.WriteString(" = ")
+			b.WriteString(eq.right.render(d))
+		}
 		return b.String()
-	}, needs: needsOf(left, right)}
+	}, needs: needsOf(sides...)}
 }
 
 // plainIdent reports whether s is usable as a bare write column: no whitespace,
