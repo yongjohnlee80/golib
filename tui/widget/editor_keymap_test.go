@@ -278,3 +278,25 @@ func TestInsertKeymapHandleEventDispatch(t *testing.T) {
 		t.Errorf("ActionForChord for unbound chord: got (%v, %v), want (ActUnbound, false)", act, ok)
 	}
 }
+
+// TestSetCursorPositionCountsAsQtDoes: characters from the start, a line break
+// one, a wide character one; past the end is the end. Modeless, the cursor
+// may sit after a line's last character; in Vim's Normal mode it rests on it.
+func TestSetCursorPositionCountsAsQtDoes(t *testing.T) {
+	ed := NewEditor()
+	ed.SetKeyset(KeysetStandard)
+	ed.SetValue("ab\ncdé本\nx")
+	for _, c := range []struct{ pos, row, col int }{
+		{0, 0, 0}, {2, 0, 2}, {3, 1, 0}, {6, 1, 3}, {7, 1, 4}, {8, 2, 0}, {9, 2, 1}, {100, 2, 1}, {-3, 0, 0},
+	} {
+		ed.SetCursorPosition(c.pos)
+		if row, col := ed.Line(); row != c.row || col != c.col {
+			t.Errorf("modeless: cursorPosition %d = line %d col %d, want line %d col %d", c.pos, row, col, c.row, c.col)
+		}
+	}
+	ed.SetKeyset(KeysetVim)
+	ed.SetCursorPosition(7) // the end of "cdé本": Normal mode rests on 本
+	if row, col := ed.Line(); row != 1 || col != 3 {
+		t.Errorf("Normal mode: cursorPosition 7 = line %d col %d, want line 1 col 3", row, col)
+	}
+}
