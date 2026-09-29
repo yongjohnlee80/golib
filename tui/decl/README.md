@@ -87,7 +87,7 @@ change at runtime, which is what makes it bindable to a source.
 | `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
 | `TableView` | — | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
-| `TableViewColumn` | `role`, `title`, `width` | — | — | — | — |
+| `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)` — an `Index` | `toggleExpanded(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
@@ -236,6 +236,7 @@ they are `Tui.Horizontal`.
 | `align` (Menu) | `Tui.Left`, `Tui.Right` |
 | `wrapMode` (Text) | `Tui.NoWrap` (one line, default), `Tui.WordWrap` |
 | `fileMode` (FileDialog) | `Tui.OpenFile`, `Tui.SaveFile` |
+| `elideMode` (TableViewColumn) | `Tui.ElideRight` (default), `Tui.ElideLeft` (a path keeps its file name), `Tui.ElideMiddle`, `Tui.ElideNone` |
 
 ### Flags — the `Dialog` singleton
 

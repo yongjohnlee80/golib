@@ -2,6 +2,7 @@ package widget
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -26,6 +27,10 @@ type TableColumn[T any] struct {
 
 	// Cell extracts the display string for this column from an item of type T.
 	Cell func(T) string
+
+	// Elide is where a cell too wide for the column loses text: the end by
+	// default; ElideLeft keeps a path's file name.
+	Elide Elide
 }
 
 const (
@@ -173,8 +178,15 @@ func (t *Table[T]) paintRow(s tui.Surface, y, width int, item T, rowStyle style.
 			// disables it, instead of inverting its alert foreground.
 			st = st.Reverse(false)
 		}
-		text := pad(cell.Text, t.widths[col])
-		drawText(s, x, y, truncate(text, min(t.widths[col], width-x), s.StringWidth), st)
+		fit := min(t.widths[col], width-x)
+		var text string
+		if mode := t.cols[col].Elide; mode == ElideRight {
+			text = truncate(pad(cell.Text, t.widths[col]), fit, s.StringWidth)
+		} else {
+			text = elide(cell.Text, fit, mode, s.StringWidth)
+			text += strings.Repeat(" ", max(0, fit-s.StringWidth(text)))
+		}
+		drawText(s, x, y, text, st)
 		x += t.widths[col]
 	}
 }
@@ -263,7 +275,12 @@ func (t *Table[T]) renderRow(item T) string {
 		if i > 0 {
 			row += "  "
 		}
-		row += pad(c.Cell(item), t.widths[i])
+		if c.Elide == ElideRight {
+			row += pad(c.Cell(item), t.widths[i])
+			continue
+		}
+		cell := elide(c.Cell(item), t.widths[i], c.Elide, t.measure)
+		row += cell + strings.Repeat(" ", max(0, t.widths[i]-t.measure(cell)))
 	}
 	return row
 }

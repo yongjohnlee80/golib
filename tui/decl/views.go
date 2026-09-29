@@ -325,7 +325,18 @@ type tableColumnNode struct {
 	widget.Base
 	role, title string
 	width       int
+	elide       widget.Elide
 }
+
+// elideModes are Qt's TableViewColumn.elideMode values (Qt::TextElideMode):
+// where a cell too wide for its column loses text. ElideRight is Qt's default;
+// ElideLeft keeps the end of a path, its file name.
+var elideModes = enum[widget.Elide]{values: map[string]widget.Elide{
+	"ElideLeft":   widget.ElideLeft,
+	"ElideRight":  widget.ElideRight,
+	"ElideMiddle": widget.ElideMiddle,
+	"ElideNone":   widget.ElideNone,
+}}
 
 func (*tableColumnNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
 func (*tableColumnNode) declarationOnly()                  {}
@@ -337,9 +348,10 @@ func buildTableViewColumn(b Build) (tui.Component, []string, error) {
 	}
 	n := &tableColumnNode{}
 	consumed, err := readProps(b.Props, map[string]field{
-		"role":  into(&n.role, stringOf),
-		"title": into(&n.title, stringOf),
-		"width": into(&n.width, cellsOf),
+		"role":      into(&n.role, stringOf),
+		"title":     into(&n.title, stringOf),
+		"width":     into(&n.width, cellsOf),
+		"elideMode": into(&n.elide, elideModes.read),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -523,7 +535,7 @@ func (n *tableViewNode) columns() []widget.TableColumn[int] {
 	var cols []widget.TableColumn[int]
 	if len(n.declared) > 0 {
 		for _, d := range n.declared {
-			cols = append(cols, widget.TableColumn[int]{Title: d.title, Width: d.width, Cell: cell(d.role, 0)})
+			cols = append(cols, widget.TableColumn[int]{Title: d.title, Width: d.width, Cell: cell(d.role, 0), Elide: d.elide})
 		}
 		return cols
 	}
@@ -629,5 +641,5 @@ var tableViewType = Type{
 var tableViewColumnType = Type{
 	Name:  "TableViewColumn",
 	Build: buildTableViewColumn,
-	Ctor:  []string{"role", "title", "width"},
+	Ctor:  []string{"role", "title", "width", "elideMode"},
 }
