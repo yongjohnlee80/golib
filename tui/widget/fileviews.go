@@ -501,6 +501,12 @@ func (v *FileSaveView) FocusInitial() {
 // Name is what the name field holds.
 func (v *FileSaveView) Name() string { return v.name.Value() }
 
+// SetPreviewHighlighting highlights the preview, when it has one: see
+// [FileOpenView].
+func (v *FileSaveView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
+	v.listing.SetPreviewHighlighting(forFile, styles)
+}
+
 // Hint is the keys the part with the keyboard answers to.
 func (v *FileSaveView) Hint() string {
 	if ctx := v.name.Context(); ctx != nil && ctx.Focused() {
@@ -525,6 +531,10 @@ type FileFolderView struct {
 	path     *TextInput
 	pathPane *Box
 	listing  *FileOpenView
+	// focusField is FocusInitial asked for the first field before it was
+	// mounted — a dialog opening in this very turn — so the next layout gives
+	// it the keyboard.
+	focusField bool
 }
 
 // NewFileFolderView builds a folder view. Its listing previews unless asked
@@ -589,8 +599,16 @@ func (v *FileFolderView) Init(ctx *tui.Context) {
 }
 
 func (v *FileFolderView) Layout(c tui.Constraints) tui.Size {
-	return layoutFileView(v.Context(), v.listing, c)
+	ctx := v.Context()
+	sz := layoutFileView(ctx, v.listing, c)
+	if v.focusField {
+		v.focusField = false
+		ctx.AfterLayout(folderFocusKey, func() { ctx.FocusInto(v.cfg.fields[0]) })
+	}
+	return sz
 }
+
+const folderFocusKey tui.CommitKey = "folder.focus-field"
 
 func (v *FileFolderView) Render(tui.Surface) {}
 
@@ -636,10 +654,14 @@ func (v *FileFolderView) FocusInitial() {
 	if ctx == nil {
 		return
 	}
-	if len(v.cfg.fields) > 0 && ctx.FocusInto(v.cfg.fields[0]) {
+	if len(v.cfg.fields) > 0 && !ctx.FocusInto(v.cfg.fields[0]) {
+		v.focusField = true // not mounted yet: the next layout focuses it
+		ctx.RequestLayout()
 		return
 	}
-	v.listing.list.Focus()
+	if len(v.cfg.fields) == 0 {
+		v.listing.list.Focus()
+	}
 }
 
 // Path is what the path field holds.

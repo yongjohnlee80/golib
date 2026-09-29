@@ -126,6 +126,21 @@ func (v *FileSaveView) WithStyles(st FilePaneStyles) *FileSaveView {
 	return v
 }
 
+// WithStyles restyles a folder view: its path field and its listing, as a
+// Save view's name field and listing. A host's own fields dress themselves.
+func (v *FileFolderView) WithStyles(st FilePaneStyles) *FileFolderView {
+	styled := st != (FilePaneStyles{})
+	v.cfg.st, v.cfg.styled = st, styled
+	text := TextInputStyles{}
+	if styled {
+		text.Text = st.Surface
+	}
+	v.path.WithStyles(text)
+	stylePane(v.pathPane, st, styled)
+	v.listing.WithStyles(st)
+	return v
+}
+
 // withStyles restyles the list's rows and its frame, as NewFileList styles
 // them.
 func (l *FileList) withStyles(st FilePaneStyles, styled bool) {

@@ -60,7 +60,7 @@ func TestOpenChoosesAFileWithAPreviewAndLoadsIt(t *testing.T) {
 	folderWith(t, map[string]string{"notes.md": "# groceries\nmilk\n"})
 	r := startSized(t, "", 80, 24)
 	r.openOpen(t)
-	for _, want := range []string{"┌ Preview ", "../", "notes.md", "[ Cancel ]", "[ Open ]"} {
+	for _, want := range []string{"┌ Preview ", "../", "notes.md", "[ Close (q) ]", "[ Open ]"} {
 		r.shows(t, want)
 	}
 	r.key(t, down) // notes.md

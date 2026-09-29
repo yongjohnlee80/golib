@@ -282,7 +282,7 @@ func TestARoleAWidgetDoesNotWearLeavesItsLookAlone(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	s.WaitForText(t, "Cancel")
+	s.WaitForText(t, "Close (q)")
 }
 
 // TestTheAppWidgetsRefuseWhatTheyCannotBuild: shape and property refusals.

@@ -91,8 +91,10 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	}
 	chooser := mode.view(opts...)
 	s.body = chooser
-	// Open (or Save) is the default, as QFileDialog's is: Enter chooses.
-	s.buttons, s.defaultAt = []standardButton{{name: "Cancel", label: "&Cancel"}, mode.choose}, 1
+	// Open (or Save) is the default, as QFileDialog's is: Enter chooses. Close
+	// is a picker's way out, and q presses it where no field takes the letter.
+	s.buttons, s.defaultAt = []standardButton{closeButton, mode.choose}, 1
+	s.closeOnQ = true
 	s.hooks = dialogHooks{
 		gate: chooser.Confirm,
 		opened: func() {
@@ -100,6 +102,83 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 			// between one opening and the next. A selectedFile the document
 			// bound is placed again, so the dialog starts from it every time
 			// rather than from whatever was typed and cancelled last.
+			if d.selected != "" {
+				chooser.Select(d.selected)
+			} else {
+				chooser.SetDir(chooser.Dir())
+			}
+			chooser.FocusInitial()
+			if !fixedHelp {
+				d.modal.SetFooter(chooser.Hint())
+			}
+		},
+		acceptArgs: func() []qml.SpecValue { return []qml.SpecValue{strValue(chooser.Selected())} },
+	}
+	d = newDialog(b, s)
+	d.chooser, d.highlighters = chooser, b.highlighters
+	return d, consumed, nil
+}
+
+// closeButton is every picker's way out: Close, which q also presses outside a
+// field.
+var closeButton = standardButton{name: "Close", label: "Close (&q)"}
+
+// FOLDER DIALOGS — Qt 6's FolderDialog, over widget.FileFolderView: a path
+// field that follows the listing, the listing and its preview, and Select.
+//
+//	FolderDialog {
+//	    title: "add a workspace"
+//	    currentFolder: App.home
+//	    Frame { title: "title"; TextField { id: wsName; text: "untitled" } }
+//	    onAccepted: App.addWorkspace(wsName.text, selectedFolder)
+//	}
+//
+// Its CHILDREN are fields at the top of the left column, above the path — a
+// vocabulary extension: Qt's FolderDialog takes none, and a program asking
+// for a folder often needs a word about it too. Shortcuts among them are the
+// dialog's keys, as a Dialog's are.
+func buildFolderDialog(b Build) (tui.Component, []string, error) {
+	s := dialogSpec{dim: true, align: widget.ButtonsRight, closeOnQ: true}
+	var preview bool
+	consumed, err := readProps(b.Props, map[string]field{
+		"title":    into(&s.title, stringOf),
+		"helpText": into(&s.help, stringOf),
+		"dim":      into(&s.dim, boolOf),
+		"preview":  into(&preview, boolOf),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	var fields []tui.Component
+	for _, c := range b.Children {
+		switch c := c.(type) {
+		case *shortcutNode:
+			s.shortcuts = append(s.shortcuts, c)
+		case *buttonBoxNode:
+			return nil, nil, fmt.Errorf("a FolderDialog's buttons are its own, Select and Close (at %s)", b.Pos)
+		default:
+			fields = append(fields, c)
+		}
+	}
+	fixedHelp := s.help != ""
+	var d *dialogNode
+	opts := []widget.FileViewOption{widget.WithFileViewSource(b.Files), widget.WithFileViewFields(fields...)}
+	for _, name := range consumed {
+		if name == "preview" {
+			opts = append(opts, widget.WithFileViewPreview(preview))
+		}
+	}
+	if !fixedHelp {
+		opts = append(opts, widget.WithOnHint(func(h string) { d.modal.SetFooter(h) }))
+	}
+	chooser := widget.NewFileFolderView(opts...)
+	s.body = chooser
+	// Select is the default: Enter in a field that leaves it unclaimed (a
+	// name typed) chooses the folder the path holds.
+	s.buttons, s.defaultAt = []standardButton{closeButton, {name: "Select", label: "&Select", accept: true}}, 1
+	s.hooks = dialogHooks{
+		gate: chooser.Confirm,
+		opened: func() {
 			if d.selected != "" {
 				chooser.Select(d.selected)
 			} else {
