@@ -235,6 +235,13 @@ func WithWidth[T any](w int) SelectOption[T] {
 	return func(s *Select[T]) { s.fixedW = w }
 }
 
+// SetFieldStyle restyles the closed field — its row and its label — as a
+// palette change does at runtime; the focus look still goes on over it.
+func (s *Select[T]) SetFieldStyle(st style.Style) {
+	s.fieldSt = st
+	s.MarkDirty()
+}
+
 // NewSelect builds a dropdown with no selection.
 func NewSelect[T any](opts ...SelectOption[T]) *Select[T] {
 	s := &Select[T]{
@@ -436,14 +443,12 @@ func (s *Select[T]) Render(sur tui.Surface) {
 	if focused {
 		st = s.focusedSt.Inherit(st)
 	}
-	// THE FOCUS LOOK PAINTS THE FIELD, not merely its text. An empty select
-	// draws no characters at all, so a style carried only by the label reached
-	// no cell and the focused state was invisible in exactly the case that
-	// needed it most -- a field with nothing chosen yet.
-	if focused {
-		for x := range sz.W {
-			sur.SetCell(x, 0, " ", st)
-		}
+	// THE LOOK PAINTS THE FIELD, not merely its text, focused or not: a look
+	// carried only by the label reached no other cell, so an empty select
+	// showed no focus, and an unfocused one was its text on a box of its look
+	// over whatever it sat on.
+	for x := range sz.W {
+		sur.SetCell(x, 0, " ", st)
 	}
 	if sz.W > 2 {
 		drawText(sur, 0, 0, truncate(label, sz.W-2, sur.StringWidth), st)
