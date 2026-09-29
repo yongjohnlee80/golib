@@ -13,7 +13,7 @@
 //	Select[T]       Form Input       yes             [SelectionChangedEvent], [OpenedEvent], [ClosedEvent]
 //	List[T]         Collection       yes             [SelectionChangedEvent], [ActivateEvent]
 //	Table[T]        Collection       yes (via List)  [SelectionChangedEvent], [ActivateEvent]
-//	Tree            Navigation       yes             [ExpandRequestEvent], [CollapseEvent], [ActivateEvent]
+//	Tree            Navigation       yes             [ExpandRequestEvent], [CollapseEvent], [ActivateEvent], [SelectionChangedEvent]
 //	Editor          Modal Text       yes             [ModeChangedEvent], [YankEvent]
 //	BufferView      Stream / Pager   yes (scroll)    [FollowTailChangedEvent]
 //	Tabs            Navigation       yes (bar)       [TabChangedEvent]

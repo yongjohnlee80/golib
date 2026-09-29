@@ -22,6 +22,7 @@ import (
 //	    badgeRole: "badge"               // optional numeric or string badge
 //	    onActivated: App.open(index)     // fired on Enter or activation
 //	    onExpanded: App.opened(index)    // fired when a branch expands
+//	    onCurrentIndexChanged: App.moved(index) // the row under the cursor
 //	}
 //
 // # Lazy Fetching and Asynchronous Expansion
@@ -39,6 +40,16 @@ import (
 // Handlers receive the targeted node's address as an [Index] object passed to the `index` parameter:
 //   - `activated(index)`: Emitted when the user activates an item (Enter key, double-click).
 //   - `expanded(index)`: Emitted when a branch transitions from collapsed to expanded.
+//   - `currentIndexChanged(index)`: Emitted when a different row comes under the
+//     cursor, by the keyboard, the mouse or setCurrentIndex, as ListView's.
+//
+// # Methods
+//
+//   - `toggleExpanded(index)`: opens or closes a shown row, Qt's toggleExpanded.
+//   - `setCurrentIndex(index)`: puts the cursor on a row, opening its closed
+//     ancestors first, as QAbstractItemView.setCurrentIndex with Qt's
+//     expandToIndex. The ancestors' children must already be loaded in the
+//     model; the view does not fetch to reach a row. See setCurrentIndex.
 //   - The Index is passed directly back to host handlers and model methods to uniquely address
 //     the target node in the model hierarchy.
 type treeViewNode struct {
@@ -59,14 +70,31 @@ type treeViewNode struct {
 	pending   map[string]uint64
 	activated func(args ...qml.SpecValue)
 	expanded  func(args ...qml.SpecValue)
+	moved     func(args ...qml.SpecValue)
+	// reveal is a setCurrentIndex still opening its row's ancestors: the
+	// row's keys from the top, and how many more settled expansions it waits
+	// for before giving up. Nil when none is in flight.
+	reveal *treeReveal
+	// lastMoved is the path of the row currentIndexChanged last named, so a
+	// queued selection event that names the same row is not sent twice.
+	lastMoved string
 }
+
+type treeReveal struct {
+	keys   []string
+	parts  []string // each key in pathOf's length-prefixed form
+	rounds int
+}
+
+// path is the reveal's first depth+1 levels in pathOf's form.
+func (r *treeReveal) path(depth int) string { return strings.Join(r.parts[:depth+1], "/") }
 
 func buildTreeView(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, fmt.Errorf("a TreeView takes no children; its rows are its model's (at %s)", b.Pos)
 	}
 	n := &treeViewNode{activated: b.EmitterWith("activated"), expanded: b.EmitterWith("expanded"),
-		eval: b.Eval, normal: style.Default(), sink: b.sink}
+		moved: b.EmitterWith("currentIndexChanged"), eval: b.Eval, normal: style.Default(), sink: b.sink}
 	consumed, err := readProps(b.Props, map[string]field{
 		"textRole":  into(&n.textRole, stringOf),
 		"badgeRole": into(&n.badgeRole, stringOf),
@@ -308,6 +336,7 @@ func (n *treeViewNode) follow(c Change) {
 	if gen, waiting := n.pending[path]; waiting {
 		delete(n.pending, path)
 		node.SetChildren(gen, n.nodes(c.Parent))
+		n.continueReveal(path)
 		return
 	}
 	// Children changed under a row already open: it closes and reloads on
@@ -328,6 +357,7 @@ func (n *treeViewNode) Init(ctx *tui.Context) {
 		}
 		if n.model.RowCount(&ix) > 0 && !n.model.CanFetchMore(ix) {
 			ev.Node.SetChildren(ev.Gen, n.nodes(&ix))
+			n.continueReveal(n.pathOf(ix))
 		} else {
 			n.pending[n.pathOf(ix)] = ev.Gen
 			if n.model.CanFetchMore(ix) {
@@ -341,6 +371,25 @@ func (n *treeViewNode) Init(ctx *tui.Context) {
 		}
 		if ix, ok := n.at[ev.Node]; ok {
 			n.expanded(indexValue(ix))
+		}
+	})
+	tui.SubscribeScoped(ctx, func(ev widget.SelectionChangedEvent) {
+		if ev.Owner != n.tree.NodeID() || n.model == nil {
+			return
+		}
+		// The row under the cursor NOW: the event was queued, and the tree
+		// may have moved since. A repeat of the last row sends nothing.
+		node, ok := n.tree.Selected()
+		if !ok {
+			return
+		}
+		ix, ok := n.at[node]
+		if !ok {
+			return
+		}
+		if path := n.pathOf(ix); path != n.lastMoved {
+			n.lastMoved = path
+			n.moved(indexValue(ix))
 		}
 	})
 	tui.SubscribeScoped(ctx, func(ev widget.ActivateEvent) {
@@ -412,8 +461,22 @@ var treeViewType = Type{
 			}
 			return n.toggleExpanded(ix)
 		},
+		"setCurrentIndex": func(c tui.Component, args []qml.SpecValue) error {
+			n, ok := c.(*treeViewNode)
+			if !ok {
+				return fmt.Errorf("not a TreeView")
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("setCurrentIndex takes a row's index, and was given %d arguments", len(args))
+			}
+			ix, ok := args[0].Obj.(Index)
+			if !ok {
+				return fmt.Errorf("setCurrentIndex takes a row's index, not %s", args[0].Raw)
+			}
+			return n.setCurrentIndex(ix)
+		},
 	},
-	Signals:   map[string][]string{"activated": {"index"}, "expanded": {"index"}},
+	Signals:   map[string][]string{"activated": {"index"}, "expanded": {"index"}, "currentIndexChanged": {"index"}},
 	Destroyed: func(c tui.Component) { c.(*treeViewNode).release() },
 }
 
@@ -435,4 +498,116 @@ func (n *treeViewNode) toggleExpanded(ix Index) error {
 	}
 	n.tree.ToggleExpanded(node)
 	return nil
+}
+
+// setCurrentIndex puts the cursor on the row at ix, opening its closed
+// ancestors first: QAbstractItemView.setCurrentIndex together with Qt's
+// TreeView.expandToIndex. The row itself is not opened.
+//
+// Every ancestor's children must already be loaded in the model (RowCount > 0
+// and nothing more to fetch); the view does not fetch to reach a row, so a
+// host that wants a deeper row loads it first. A row that is not in the model
+// is refused.
+//
+// Opening an ancestor the view has not shown before settles on a later turn of
+// the loop, so a deep row is reached one level per turn, and the cursor passes
+// through the ancestors on the way (each move emits currentIndexChanged). The
+// reveal gives up, reporting through the error sink, if the rows change so that
+// the row is no longer reachable. A later setCurrentIndex replaces one in
+// flight.
+func (n *treeViewNode) setCurrentIndex(ix Index) error {
+	if n.model == nil {
+		return fmt.Errorf("setCurrentIndex: the TreeView has no model")
+	}
+	var chain []Index
+	for p := &ix; p != nil; p = p.Parent {
+		chain = append([]Index{*p}, chain...)
+	}
+	keys := make([]string, len(chain))
+	for i, at := range chain {
+		var parent *Index
+		if i > 0 {
+			parent = &chain[i-1]
+			if n.model.CanFetchMore(*parent) {
+				return fmt.Errorf("setCurrentIndex: a parent of that row has children still to load")
+			}
+		}
+		if at.Row < 0 || at.Row >= n.model.RowCount(parent) {
+			return fmt.Errorf("setCurrentIndex: no row at that index")
+		}
+		keys[i] = n.model.Key(at)
+	}
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = strconv.Itoa(len(k)) + ":" + k
+	}
+	n.reveal = &treeReveal{parts: parts, keys: keys, rounds: len(keys)}
+	n.continueReveal("")
+	return nil
+}
+
+// continueReveal takes a setCurrentIndex in flight one step. It opens the
+// row's ancestors as far as they are shown; when the row itself is shown it
+// moves the cursor there and finishes.
+//
+// changed is the path whose children were just set ("" for the first step).
+// Only a change on the row's own path advances the reveal or spends one of its
+// rounds, so an unrelated branch loading later cannot move the cursor. A level
+// whose rows are shown but do not include the next key ends the reveal at
+// once: the row is gone.
+func (n *treeViewNode) continueReveal(changed string) {
+	r := n.reveal
+	if r == nil {
+		return
+	}
+	last := len(r.keys) - 1
+	if changed != "" && changed != r.path(last) && !strings.HasPrefix(r.path(last), changed+"/") {
+		return
+	}
+	if last > 0 {
+		n.tree.ExpandPath(r.keys[:last]...) // opens only the ancestors
+	}
+	for depth := 0; depth <= last; depth++ {
+		node, shown := n.byPath[r.path(depth)]
+		if !shown {
+			if depth == 0 || n.childrenShown(r.path(depth-1)) {
+				n.giveUpReveal()
+			}
+			break // an ancestor is still opening
+		}
+		if depth < last {
+			continue
+		}
+		for i, row := range n.tree.VisibleRows() {
+			if row == node {
+				n.reveal = nil
+				n.tree.SetCursor(i)
+				return
+			}
+		}
+	}
+	if n.reveal == nil {
+		return
+	}
+	if r.rounds--; r.rounds < 0 {
+		n.giveUpReveal()
+	}
+}
+
+// childrenShown reports whether the view holds any row under path.
+func (n *treeViewNode) childrenShown(path string) bool {
+	prefix := path + "/"
+	for p := range n.byPath {
+		if strings.HasPrefix(p, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (n *treeViewNode) giveUpReveal() {
+	n.reveal = nil
+	if n.sink != nil {
+		n.sink(fmt.Errorf("TreeView.setCurrentIndex: the row is no longer reachable"))
+	}
 }

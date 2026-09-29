@@ -88,8 +88,9 @@ type ChangeEvent struct {
 	Value string
 }
 
-// SelectionChangedEvent is emitted by Select on commit and by List on
-// cursor movement in single-select mode.
+// SelectionChangedEvent is emitted by Select on commit, by List on cursor
+// movement in single-select mode, and by Tree when the node under its cursor
+// changes (Index is then the row among the Tree's VisibleRows).
 type SelectionChangedEvent struct {
 	Owner tui.NodeID
 	Index int
