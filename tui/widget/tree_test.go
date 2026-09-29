@@ -725,3 +725,52 @@ func TestTreeToggleExpandedIgnoresANodeItDoesNotHold(t *testing.T) {
 		t.Errorf("%d rows shown after toggling nodes the tree does not hold, want 1", n)
 	}
 }
+
+// TestTreeReloadReopensWhatWasOpen: a Reload of an open node, its children
+// loaded lazily, opens again the descendants that were open — each asked for
+// as its parent's fresh children arrive — and puts the cursor back on its
+// node; a node gone from the fresh children is not asked for.
+func TestTreeReloadReopensWhatWasOpen(t *testing.T) {
+	ws := widget.NewTreeNode("ws", "workspace")
+	h, tr, sh := focusedTree(t, 40, 12, widget.WithRoots(ws))
+	reqs := record[widget.ExpandRequestEvent](h)
+	answer := func(want string, kids ...*widget.TreeNode) {
+		t.Helper()
+		ev, ok := reqs.last()
+		if !ok || ev.Node.ID() != want {
+			t.Fatalf("the last request is for %v, want %s", ev.Node, want)
+		}
+		h.onLoop(func() { ev.Node.SetChildren(ev.Gen, kids) })
+		h.barrier(sh)
+	}
+	leaf := func(id string) *widget.TreeNode { return widget.NewTreeNode(id, id, widget.WithLeaf()) }
+	h.inject(key('l')) // ws
+	h.barrier(sh)
+	answer("ws", widget.NewTreeNode("dir", "dir"), widget.NewTreeNode("old", "old"), leaf("a"))
+	h.inject(key('j'), key('l')) // dir
+	h.barrier(sh)
+	answer("dir", leaf("b"), leaf("c"))
+	h.inject(key('j'), key('j')) // onto c
+	h.barrier(sh)
+	h.inject(key('j'), key('l')) // old, open
+	h.barrier(sh)
+	answer("old", leaf("x"))
+	h.inject(key('k')) // back onto c
+	h.barrier(sh)
+	if got := selectedID(h, tr); got != "c" {
+		t.Fatalf("fixture: the cursor is on %q, want c", got)
+	}
+	n := reqs.count()
+	h.onLoop(func() { tr.Reload("ws") })
+	h.barrier(sh)
+	answer("ws", widget.NewTreeNode("dir", "dir"), leaf("new"), leaf("a")) // old is gone
+	answer("dir", leaf("b"), leaf("c"))                                    // asked for, as it was open
+	if got := reqs.count() - n; got != 2 {
+		t.Fatalf("%d requests after the reload, want 2 (ws, then dir; not the vanished old)", got)
+	}
+	h.wantContains("new")
+	h.wantContains("c")
+	if got := selectedID(h, tr); got != "c" {
+		t.Fatalf("after the reload the cursor is on %q, want c", got)
+	}
+}

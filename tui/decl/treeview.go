@@ -339,9 +339,10 @@ func (n *treeViewNode) follow(c Change) {
 		n.continueReveal(path)
 		return
 	}
-	// Children changed under a row already open: it closes and reloads on
-	// the next open.
-	node.Reset()
+	// Children changed under a row: an open one takes them now, what was open
+	// below it opening again and the cursor staying on its row (Tree.Reload);
+	// a closed one drops what it cached and loads on the next open.
+	n.tree.ReloadNode(node)
 }
 
 func (n *treeViewNode) Init(ctx *tui.Context) {

@@ -192,6 +192,9 @@ func (n *TreeNode) SetChildren(gen uint64, kids []*TreeNode) {
 	n.loadErr = ""
 	n.gen = 0
 	n.structureChanged()
+	if n.owner != nil {
+		n.owner.childrenArrived(n)
+	}
 }
 
 // SetLoadError settles a pending load into an error badge: the node
@@ -206,6 +209,12 @@ func (n *TreeNode) SetLoadError(gen uint64, msg string) {
 	n.expanded = false
 	n.loadErr = msg
 	n.gen = 0
+	if t := n.owner; t.reopen != nil {
+		delete(t.reopen, n) // nothing arrives to reopen
+		if len(t.reopen) == 0 {
+			t.anchor = nil
+		}
+	}
 	n.structureChanged()
 }
 
@@ -407,6 +416,87 @@ type Tree struct {
 	// node's Layout or Render (TreeNode.Reset from a delegate), where
 	// publishing is forbidden.
 	selectionDue bool
+	// reopen is, by a node a Reload discarded (or a descendant of one), what was open under it:
+	// its fresh children open again as they arrive. anchor is the node the cursor stays on while
+	// they do, each arrival moving the rows under it.
+	reopen map[*TreeNode]*reopenPlan
+	anchor *TreeNode
+}
+
+// reopenPlan is what was open under a reloaded node, by child ID — a path from the reloaded
+// node, not a tree-wide ID, since a host may show one ID under two parents: which children were
+// open, and which was under the cursor.
+type reopenPlan struct {
+	open, cursor bool
+	kids         map[string]*reopenPlan
+}
+
+// planUnder records what is open under n, and where sel (the cursor's node) is below it; nil when
+// nothing is.
+func planUnder(n, sel *TreeNode) map[string]*reopenPlan {
+	kids := map[string]*reopenPlan{}
+	for _, c := range n.children {
+		cp := &reopenPlan{open: c.expanded && c.loaded, cursor: c == sel}
+		if cp.open {
+			cp.kids = planUnder(c, sel)
+		}
+		if cp.open || cp.cursor || len(cp.kids) > 0 {
+			kids[c.id] = cp
+		}
+	}
+	if len(kids) == 0 {
+		return nil
+	}
+	return kids
+}
+
+// childrenArrived opens again, among n's fresh children, those a Reload found open, and puts the
+// cursor back on the one it was on.
+func (t *Tree) childrenArrived(n *TreeNode) {
+	plan, ok := t.reopen[n]
+	if !ok {
+		return
+	}
+	delete(t.reopen, n)
+	for _, c := range n.children {
+		cp := plan.kids[c.id]
+		if cp == nil {
+			continue
+		}
+		if cp.cursor {
+			t.anchor = c
+		}
+		if cp.open && !c.leaf {
+			if len(cp.kids) > 0 {
+				t.reopen[c] = &reopenPlan{kids: cp.kids}
+			}
+			t.expandNode(c)
+			if c.loaded {
+				t.childrenArrived(c) // its children were already there: no request, no arrival
+			}
+		}
+	}
+	t.placeAnchor()
+}
+
+// placeAnchor moves the cursor to the anchor's row, and lets the anchor go once nothing is left
+// to reopen.
+func (t *Tree) placeAnchor() {
+	if t.anchor == nil {
+		return
+	}
+	for i, r := range t.flatten() {
+		if r.node == t.anchor {
+			t.cursor = i
+			t.ensureVisible()
+			t.selectionChangedLater()
+			t.MarkDirty()
+			break
+		}
+	}
+	if len(t.reopen) == 0 {
+		t.anchor = nil
+	}
 }
 
 // treeSelectionKey is the commit record under which a Tree publishes a
@@ -482,6 +572,7 @@ func (t *Tree) adopt(n *TreeNode) {
 // generation on the old roots is invalidated by the release.
 func (t *Tree) SetRoots(roots ...*TreeNode) {
 	preflightForest(roots, nil)
+	t.reopen, t.anchor = nil, nil // what a Reload was reopening is gone with the old roots
 	// AFTER preflight, so a rejected call leaves the Tree untouched.
 	// Not a correctness fix in itself — lastPressNode keeps its node alive, so Go
 	// cannot allocate a different node at that address and a replacement pointer
@@ -532,9 +623,14 @@ func (t *Tree) ResetStyles(st ListStyles) {
 // Reload discards a node's loaded children and — when that node is
 // currently expanded — immediately requests a fresh load under a NEW
 // generation, so any in-flight result for the previous load is inert.
-// The cursor does not move. Hosts call it when the data behind a
-// subtree changed (a file added, a row deleted); it reports false when
-// no such node exists or it is a leaf.
+// Hosts call it when the data behind a subtree changed (a file added, a row
+// deleted); it reports false when no such node exists or it is a leaf.
+//
+// WHAT WAS OPEN STAYS OPEN. The descendants open under it open again as their
+// fresh children arrive, matched by ID along the path from the reloaded node,
+// and the cursor goes back to the node it was on (or, when that node is gone,
+// stays where the reload left it). A key or a click in the meantime lets the
+// cursor go.
 func (t *Tree) Reload(id string) bool {
 	var found *TreeNode
 	var walk func(n *TreeNode)
@@ -553,16 +649,46 @@ func (t *Tree) Reload(id string) bool {
 	for _, r := range t.roots {
 		walk(r)
 	}
-	if found == nil || found.leaf {
+	return t.ReloadNode(found)
+}
+
+// ReloadNode is Reload for a node the host holds: the one, when a host shows
+// one ID under two parents.
+func (t *Tree) ReloadNode(found *TreeNode) bool {
+	if found == nil || found.leaf || found.owner != t {
 		return false
 	}
 	wasExpanded := found.expanded
+	sel, _ := t.Selected()
+	selBelow := sel != nil && t.below(sel, found) // before the Reset cuts the ancestry
+	plan := planUnder(found, sel)
 	found.Reset()
 	if wasExpanded {
+		if plan != nil {
+			if t.reopen == nil {
+				t.reopen = map[*TreeNode]*reopenPlan{}
+			}
+			t.reopen[found] = &reopenPlan{kids: plan}
+			if selBelow {
+				// the cursor waits on the reloaded node until its own node comes back
+				t.anchor = found
+				t.placeAnchor()
+			}
+		}
 		t.expandNode(found)
 	}
 	t.MarkDirty()
 	return true
+}
+
+// below reports whether n is a descendant of a.
+func (t *Tree) below(n, a *TreeNode) bool {
+	for p := n.parent; p != nil; p = p.parent {
+		if p == a {
+			return true
+		}
+	}
+	return false
 }
 
 // VisibleRows returns the currently visible nodes in flattened display
@@ -742,11 +868,17 @@ func (t *Tree) HandleEvent(ev tui.Event) bool {
 	case tui.FocusEvent:
 		t.MarkDirty() // a configured blurred cursor repaints on focus changes
 	case tui.KeyEvent:
+		if e.Kind == tui.KeyPress {
+			t.anchor = nil // the user moves the cursor now, not a Reload settling
+		}
 		handled := t.handleKey(e)
 		t.noteSelection()
 		return handled
 	case tui.MouseEvent:
 		handled := t.handleMouse(e)
+		if handled {
+			t.anchor = nil
+		}
 		t.noteSelection()
 		return handled
 	}
