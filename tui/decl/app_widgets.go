@@ -37,6 +37,11 @@ func appTypes() []Type {
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
 			// Qt's TextEdit.text: setting it replaces the buffer, as a load does.
 			"text": setter("an Editor", stringOf, (*widget.Editor).SetValue),
+			// golib's: a vertical guide at this column (1-based), where text is meant to wrap; 0 for none
+			"ruler": setter("an Editor", func(v qml.SpecValue) (int, error) {
+				n, err := numberOf(v)
+				return int(n), err
+			}, (*widget.Editor).SetRuler),
 			// Qt's TextEdit.cursorPosition: characters from the start, a line
 			// break one; the cursor goes there and into view.
 			"cursorPosition": setter("an Editor", func(v qml.SpecValue) (int, error) {
