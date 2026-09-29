@@ -398,6 +398,10 @@ type Tree struct {
 	indent        int
 	styles        ListStyles
 	genSeq        uint64
+	// selected is the node the last SelectionChangedEvent named: the event
+	// fires when the node under the cursor changes, not when its row number
+	// does (an expand above it moves the row, not the choice).
+	selected *TreeNode
 }
 
 var _ tui.Focusable = (*Tree)(nil)
@@ -484,7 +488,9 @@ func (t *Tree) SetRoots(roots ...*TreeNode) {
 		t.adopt(r)
 	}
 	t.cursor, t.top = 0, 0
+	t.selected = nil // the old nodes are gone; row 0 is a new choice
 	t.MarkDirty()
+	t.noteSelection()
 }
 
 // SetStyles replaces the row styles at runtime; zero fields keep their
@@ -575,6 +581,7 @@ func (t *Tree) SetCursor(i int) {
 	t.cursor = max(0, min(i, len(rows)-1))
 	t.ensureVisible()
 	t.MarkDirty()
+	t.noteSelection()
 }
 
 // Selected returns the node under the cursor.
@@ -623,6 +630,7 @@ func (t *Tree) ExpandPath(ids ...string) {
 	}
 	t.ensureVisible()
 	t.MarkDirty()
+	t.noteSelection()
 }
 
 // --- flattened view ---------------------------------------------------------
@@ -725,11 +733,31 @@ func (t *Tree) HandleEvent(ev tui.Event) bool {
 	case tui.FocusEvent:
 		t.MarkDirty() // a configured blurred cursor repaints on focus changes
 	case tui.KeyEvent:
-		return t.handleKey(e)
+		handled := t.handleKey(e)
+		t.noteSelection()
+		return handled
 	case tui.MouseEvent:
-		return t.handleMouse(e)
+		handled := t.handleMouse(e)
+		t.noteSelection()
+		return handled
 	}
 	return false
+}
+
+// noteSelection publishes SelectionChangedEvent when the node under the
+// cursor is not the one last reported, as List does on cursor movement. Index
+// is the node's row among VisibleRows. A tree with no rows reports nothing.
+func (t *Tree) noteSelection() {
+	node, ok := t.Selected()
+	if !ok {
+		t.selected = nil
+		return
+	}
+	if node == t.selected {
+		return
+	}
+	t.selected = node
+	t.publish(SelectionChangedEvent{Owner: t.NodeID(), Index: t.cursor, Label: node.label})
 }
 
 func (t *Tree) handleKey(e tui.KeyEvent) bool {
@@ -871,6 +899,7 @@ func (t *Tree) reconcile() {
 	rows := t.flatten()
 	t.cursor = max(0, min(t.cursor, len(rows)-1))
 	t.ensureVisible()
+	t.noteSelection()
 }
 
 func (t *Tree) moveCursor(delta, total int) {

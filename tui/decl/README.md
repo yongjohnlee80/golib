@@ -88,7 +88,7 @@ change at runtime, which is what makes it bindable to a source.
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText` | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
 | `TableView` | — | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
-| `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)` — an `Index` | `toggleExpanded(index)` |
+| `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
@@ -144,7 +144,10 @@ passes back to the host. Enter activates any row, a branch as well as a leaf,
 as Qt's item views do; `l`/Right opens a row and `h`/Left closes it. A host
 that decides an activated row is a folder opens it with the view's
 `toggleExpanded(index)` — `Program.Call(id, "toggleExpanded", index)` — and
-uses any other row as it means.
+uses any other row as it means. `currentIndexChanged(index)` names the row that came under the
+cursor, and `setCurrentIndex(index)` puts the cursor on a row the host chose (a
+search hit, say), opening its closed ancestors first. Those ancestors' children
+must already be loaded in the model: the view does not fetch to reach a row.
 
 **`Repeater` and `Instantiator`** — Qt's delegate per model row. The one
 child is instantiated once per row of `model:`, in the Repeater's place in its
