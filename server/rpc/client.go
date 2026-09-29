@@ -38,6 +38,7 @@ type clientConfig struct {
 	network      string
 	logger       logger.Logger
 	dialer       *net.Dialer
+	connDialer   func(ctx context.Context, network, addr string) (net.Conn, error)
 	maxMsgBytes  int64
 	writeTimeout time.Duration
 	notifBuffer  int
@@ -65,6 +66,21 @@ func ClientNetwork(network string) ClientOption {
 func WithDialer(d *net.Dialer) ClientOption {
 	return func(c *clientConfig) { c.dialer = d }
 }
+
+// WithConnDialer makes Dial obtain its connection from fn instead of a
+// [net.Dialer]: fn receives Dial's ctx, the [ClientNetwork] network and the
+// addr, and returns the connection the client then owns (Close closes it).
+// Use it when the byte stream is not a plain socket, for example a channel
+// inside an authenticated tunnel. When set, it takes precedence over
+// [WithDialer]. A nil fn restores the default. fn returning a nil connection
+// with a nil error is reported as an error, never dereferenced.
+func WithConnDialer(fn func(ctx context.Context, network, addr string) (net.Conn, error)) ClientOption {
+	return func(c *clientConfig) { c.connDialer = fn }
+}
+
+// errNilConn is what Dial reports when a WithConnDialer function returns
+// neither a connection nor an error.
+var errNilConn = errs.Wrap(errs.ErrPrecondition, "rpc.Dial: conn dialer returned a nil connection and no error")
 
 // ClientMaxMessageBytes bounds a single message in BOTH directions
 // (default 16 MiB): the inbound read window AND the staged outbound frame.
@@ -164,7 +180,16 @@ func Dial(ctx context.Context, addr string, codec Codec, opts ...ClientOption) (
 	if cfg.network == "" {
 		cfg.network = "tcp"
 	}
-	conn, err := cfg.dialer.DialContext(ctx, cfg.network, addr)
+	var conn net.Conn
+	var err error
+	if cfg.connDialer != nil {
+		conn, err = cfg.connDialer(ctx, cfg.network, addr)
+		if err == nil && conn == nil {
+			err = errNilConn
+		}
+	} else {
+		conn, err = cfg.dialer.DialContext(ctx, cfg.network, addr)
+	}
 	if err != nil {
 		return nil, err
 	}

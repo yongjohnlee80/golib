@@ -27,6 +27,7 @@ type config struct {
 	maxMessageBytes int64
 	maxConcurrent   int
 	gate            Gate
+	attach          func(nc net.Conn) any
 }
 
 // Option configures a Server.
@@ -41,6 +42,22 @@ func Addr(addr string) Option {
 // overrides Addr.
 func WithListener(ln net.Listener) Option {
 	return func(c *config) { c.listener = ln }
+}
+
+// WithSessionAttach sets fn to run once for every accepted connection,
+// before the connection's first read. Its result becomes that connection's
+// [Session.Attachment], which the [Gate] and every [Handler] can read.
+//
+// Use it for facts the transport proved before RPC began, that a request
+// must not be able to set: which listener accepted the connection, or an
+// identity a wrapping transport authenticated. fn typically inspects nc's
+// concrete type, a net.Conn implementation that carries those facts. With
+// [WithTLSConfig], nc is the *tls.Conn. A nil fn (the default) leaves every
+// attachment nil.
+//
+// fn runs on the accept path, so it must not block.
+func WithSessionAttach(fn func(nc net.Conn) any) Option {
+	return func(c *config) { c.attach = fn }
 }
 
 // WithTLSConfig wraps the listener in TLS.

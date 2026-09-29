@@ -36,7 +36,7 @@ func (stringCodec) Write(w *bufio.Writer, m *Message) error {
 // the reply encodes, not after it has fully accumulated — staging memory
 // stays near the cap even when the handler's value is vastly larger.
 func TestConnWriteRefusesOversizeDuringEncoding(t *testing.T) {
-	c := newConn(nopConn{})
+	c := newConn(nopConn{}, nil)
 	huge := strings.Repeat("x", 8<<20)                                              // 8 MiB value...
 	err := c.write(stringCodec{}, &Message{Kind: KindResponse, Result: huge}, 1024) // ...1 KiB bound
 	if !errors.Is(err, errEncode) {
@@ -58,7 +58,7 @@ func TestConnWriteRefusesOversizeDuringEncoding(t *testing.T) {
 
 // An exactly-at-bound frame passes; one byte over is refused.
 func TestConnWriteBoundBoundary(t *testing.T) {
-	c := newConn(nopConn{})
+	c := newConn(nopConn{}, nil)
 	at := strings.Repeat("a", 512)
 	if err := c.write(stringCodec{}, &Message{Kind: KindResponse, Result: at}, 512); err != nil {
 		t.Fatalf("at-bound: %v", err)
