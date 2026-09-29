@@ -128,7 +128,7 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 	}
 	w.shortcuts, w.menus, w.overlaid, w.focus = shortcuts, menus, overlaid, nominee
 	for _, m := range w.menus {
-		m.leave = w.restoreFocus
+		m.leave = func() { w.restoreFocus(); m.endVisit() }
 	}
 	for _, o := range w.overlaid {
 		o.SetOverlay(w.host, w.afterOverlay)
@@ -227,6 +227,7 @@ func (w *windowNode) HandleEvent(ev tui.Event) bool {
 			if m.focused() {
 				m.close()
 				w.restoreFocus()
+				m.endVisit()
 			} else {
 				m.activate()
 			}
@@ -239,6 +240,7 @@ func (w *windowNode) HandleEvent(ev tui.Event) bool {
 			// Escape that the menu did not consume leaves the menu entirely.
 			m.close()
 			w.restoreFocus()
+			m.endVisit()
 			return true
 		}
 	}
@@ -260,6 +262,13 @@ type menuBarNode struct {
 	// leave gives the keyboard back before a row's onTriggered runs; the
 	// Window that adopts the bar sets it.
 	leave func()
+	// autoHide is golib's MenuBar.autoHide: the bar takes no row until F10 or
+	// an Alt+letter brings it up, and it goes again once the keyboard has left
+	// it. shown is whether it is up now.
+	autoHide, shown bool
+	// pendingOpen is the category an Alt+letter asked for while the bar was
+	// hidden: it opens once the bar is laid out again, and has a place.
+	pendingOpen widget.ItemID
 }
 
 // menuCategory is one top-level Menu's access key.
@@ -271,9 +280,56 @@ type menuCategory struct {
 func (m *menuBarNode) Init(ctx *tui.Context) { m.ctx = ctx; ctx.Mount(m.bar) }
 
 func (m *menuBarNode) Layout(c tui.Constraints) tui.Size {
+	if m.autoHide && !m.shown {
+		m.ctx.LayoutChild(m.bar, tui.Tight(tui.Size{}))
+		m.ctx.PlaceChild(m.bar, tui.Rect{})
+		return c.Constrain(tui.Size{})
+	}
 	sz := m.ctx.LayoutChild(m.bar, c)
 	m.ctx.PlaceChild(m.bar, tui.Rect{W: sz.W, H: sz.H})
+	if id := m.pendingOpen; id != "" {
+		m.pendingOpen = ""
+		m.ctx.AfterLayout(menuOpenKey, func() { _ = m.menu.Open(id) })
+	}
 	return sz
+}
+
+const menuOpenKey tui.CommitKey = "menubar.open"
+
+// setAutoHide is MenuBar.autoHide's setter: a preference can hide the bar,
+// or bring it back, while the program runs.
+func (m *menuBarNode) setAutoHide(v bool) {
+	m.autoHide = v
+	if !v {
+		m.shown = false
+	}
+	if m.ctx != nil {
+		m.ctx.RequestLayout()
+	}
+}
+
+// show brings a hidden bar up for a visit; hide puts it away once the visit
+// is over. Neither does anything to a bar that is not auto-hidden.
+func (m *menuBarNode) show() {
+	if m.autoHide && !m.shown {
+		m.shown = true
+		m.ctx.RequestLayout()
+	}
+}
+
+func (m *menuBarNode) hide() {
+	if !m.focused() && m.menu.OpenLevels() == 0 {
+		m.endVisit()
+	}
+}
+
+// endVisit puts an auto-hidden bar away: the user said they were done with it
+// (Escape, F10 again, a row that ran), wherever the keyboard went.
+func (m *menuBarNode) endVisit() {
+	if m.autoHide && m.shown {
+		m.shown = false
+		m.ctx.RequestLayout()
+	}
 }
 
 func (m *menuBarNode) Render(tui.Surface)         {}
@@ -291,6 +347,7 @@ func (m *menuBarNode) activate() {
 	if ctx == nil {
 		return
 	}
+	m.show()
 	if len(m.categories) > 0 {
 		m.menu.Select(m.categories[0].id)
 	}
@@ -302,7 +359,12 @@ func (m *menuBarNode) activate() {
 func (m *menuBarNode) openHotkey(r rune) bool {
 	for _, c := range m.categories {
 		if c.hotkey == r {
+			wasHidden := m.autoHide && !m.shown
 			m.activate()
+			if wasHidden {
+				m.pendingOpen = c.id // it has no place until it is laid out
+				return true
+			}
 			// Opening the level hands the selection to its first row, which is
 			// what puts the highlight on "New" when File drops down.
 			_ = m.menu.Open(c.id)
@@ -321,10 +383,13 @@ func (m *menuBarNode) openHotkey(r rune) bool {
 // the menu", and a dropdown left hanging covers the line the user just aimed
 // at. Losing focus to something that is not the menu is that click.
 func (m *menuBarNode) closeOnBlur() {
-	if m.menu.OpenLevels() == 0 || m.focused() {
+	if m.focused() {
 		return
 	}
-	m.close()
+	if m.menu.OpenLevels() > 0 {
+		m.close()
+	}
+	m.hide()
 }
 
 func (m *menuBarNode) close() {

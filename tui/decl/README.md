@@ -69,7 +69,7 @@ change at runtime, which is what makes it bindable to a source.
 | Type | ctor properties | setters | read in a handler | signals | methods |
 | --- | --- | --- | --- | --- | --- |
 | `Window` | — | — | — | — | — |
-| `MenuBar` | `vimNavigation`, palette | — | — | — | — |
+| `MenuBar` | `vimNavigation`, palette | `autoHide` (golib's: no row until F10 or an Alt+letter brings it up; it goes once the visit ends) | — | — | — |
 | `Menu` | `title`, `align` | — | — | — | — |
 | `MenuItem` | `text`, `checkable`, `group`, `shortcut` | `checked`, `enabled`, `visible` | `checked` | `triggered`, `toggled` | — |
 | `MenuSeparator` | — | — | — | — | — |
