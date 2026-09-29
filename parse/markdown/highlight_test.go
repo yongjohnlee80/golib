@@ -25,27 +25,27 @@ func TestTheHighlighterColoursADocument(t *testing.T) {
 	h := markdown.Highlighter()
 	st := highlight.State(0)
 	for _, c := range []struct{ line, want string }{
-		{"---", "---=regionMarker"},
-		{"title: Notes", "title=attribute | : Notes=documentation"},
-		{"  - one", "  - one=documentation"}, // a list in YAML: no key
-		{"---", "---=regionMarker"},
-		{"# Heading `code`", "# Heading =keyword | `code`=verbatimString"},
+		{"---", "---=comment"},
+		{"title: Notes", "title=attribute | : Notes=comment"},
+		{"  - one", "  - one=comment"}, // a list in YAML: no key
+		{"---", "---=comment"},
+		{"# Heading `code`", "# Heading =keyword | `code`=string"},
 		{"Some **bold** and *em* and ~~gone~~.", "**bold**=dataType | *em*=attribute | ~~gone~~=comment"},
-		{"See [link](http://x), <http://y>, [[wiki]] and ![[pic.png]].", "[link](http://x)=string | <http://y>=import | [[wiki]]=function | ![[pic.png]]=function"},
+		{"See [link](http://x), <http://y>, [[wiki]] and ![[pic.png]].", "[link](http://x)=import | <http://y>=import | [[wiki]]=function | ![[pic.png]]=function"},
 		{"Tagged #idea here", "#idea=constant"},
 		{"- [ ] a task", "- [ ] =operator"},
 		{"12. an item", "12. =operator"},
-		{"> [!warning] Careful", "> =operator | [!warning] Careful=warning"},
-		{"> [!note] Aside", "> =operator | [!note] Aside=information"},
+		{"> [!warning] Careful", "> =operator | [!warning] Careful=alert"},
+		{"> [!note] Aside", "> =operator | [!note] Aside=controlFlow"},
 		{"> quoted **text**", "> =operator | **text**=dataType"},
-		{"~~~~ go", "~~~~ go=preprocessor"},
-		{"# not a heading in code", "# not a heading in code=verbatimString"},
-		{"~~~", "~~~=verbatimString"}, // shorter than the fence: still inside
-		{"~~~~", "~~~~=preprocessor"},
+		{"~~~~ go", "~~~~ go=comment"},
+		{"# not a heading in code", "# not a heading in code=string"},
+		{"~~~", "~~~=string"}, // shorter than the fence: still inside
+		{"~~~~", "~~~~=comment"},
 		{"text <!-- a comment", "<!-- a comment=comment"},
 		{"*still* the comment", "*still* the comment=comment"},
 		{"--> and *after*", "-->=comment | *after*=attribute"},
-		{"---", "---=regionMarker"}, // a rule in the body, not frontmatter
+		{"---", "---=operator"}, // a rule in the body, not frontmatter
 		{"[ref]: http://z", "[ref]: http://z=import"},
 		{"plain words", ""},
 	} {
