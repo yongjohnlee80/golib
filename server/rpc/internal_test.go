@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"math"
 	"net"
@@ -87,5 +88,35 @@ func TestClientMsgIDExhaustionPoisons(t *testing.T) {
 	}
 	if !errors.Is(c.Err(), ErrMsgIDExhausted) {
 		t.Fatalf("Err = %v", c.Err())
+	}
+}
+
+// TestAReplyThatArrivedIsTheAnswer: a response already delivered wins over the
+// client's end and over ctx, both ready too when the wait looks — as when a
+// server replies and then closes. A select choosing at random among the three
+// would fail about half the rounds; 200 rounds leave that no hiding place.
+func TestAReplyThatArrivedIsTheAnswer(t *testing.T) {
+	for i := range 200 {
+		c := &Client{done: make(chan struct{}), termErr: errors.New("rpc: read: EOF")}
+		close(c.done)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		ch := make(chan clientResp, 1)
+		ch <- clientResp{result: "stopped"}
+		got, err := c.await(ctx, ch)
+		if err != nil || got != "stopped" {
+			t.Fatalf("round %d: %v, %v; want the reply that arrived", i, got, err)
+		}
+	}
+	// no reply: the end is the answer, and ctx's when it is the only one
+	c := &Client{done: make(chan struct{}), termErr: errors.New("rpc: read: EOF")}
+	close(c.done)
+	if _, err := c.await(context.Background(), make(chan clientResp, 1)); err == nil || err.Error() != "rpc: read: EOF" {
+		t.Fatalf("no reply, the client ended: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := (&Client{done: make(chan struct{})}).await(ctx, make(chan clientResp, 1)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("no reply, ctx done: %v", err)
 	}
 }
