@@ -82,8 +82,12 @@ func TestTextUtilElide(t *testing.T) {
 		{path, 25, ElideLeft, path},
 		{path, 1, ElideLeft, "…"},
 		{path, 0, ElideLeft, ""},
-		{"notes/日本語.md", 8, ElideLeft, "…本語.md"}, // 8 cells: 日 as well would make 10
-		{"日本語メモ", 6, ElideMiddle, "日…モ"},         // 5 cells: 本 or メ would make 7
+		{"notes/日本語.md", 8, ElideLeft, "…本語.md"},                        // 8 cells: 日 as well would make 10
+		{"shared/adrs/0206-store.md", 17, ElidePath, "…/0206-store.md"}, // "…/adrs/0206-store.md" is 20
+		{"shared/adrs/0206-store.md", 21, ElidePath, "…/adrs/0206-store.md"},
+		{"shared/adrs/0206-store.md", 12, ElidePath, "…06-store.md"}, // not even the name fits: as ElideLeft
+		{"shared/adrs/0206-store.md", 25, ElidePath, path},
+		{"日本語メモ", 6, ElideMiddle, "日…モ"}, // 5 cells: 本 or メ would make 7
 	} {
 		if got := elide(c.s, c.w, c.mode, cells); got != c.want {
 			t.Errorf("elide(%q, %d, %d) = %q, want %q", c.s, c.w, c.mode, got, c.want)
