@@ -449,6 +449,14 @@ func (c *Client) send(ctx context.Context, m *Message) error {
 		// treat the stream as unrecoverable.
 		c.poison(errs.Wrap(errs.ErrFatal, "rpc: short write: %d of %d bytes", n, frameLen))
 		return c.Err()
+	case c.Err() != nil:
+		// The whole frame was written, and the client ended meanwhile: the
+		// peer answered and closed (sys.shutdown), the reader poisoned on
+		// EOF and closed the connection, so the deadline wake or reset below
+		// failed on it. The request was SENT; whether its answer came is the
+		// wait's to say — reporting the end here would lose a reply already
+		// delivered.
+		return nil
 	case wakeErr != nil:
 		// The cancellation wake could not be applied: deadline control is
 		// broken, so the bounded-write guarantee is gone.
