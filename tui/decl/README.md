@@ -75,7 +75,7 @@ change at runtime, which is what makes it bindable to a source.
 | `MenuSeparator` | — | — | — | — | — |
 | `Shortcut` | `sequence` | — | — | `activated` | — |
 | `Frame` | palette | `title` | — | — | — |
-| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly` | — | `modeChanged`, `textChanged` | — |
+| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition` | — | `modeChanged`, `textChanged` | — |
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |

@@ -37,6 +37,12 @@ func appTypes() []Type {
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
 			// Qt's TextEdit.text: setting it replaces the buffer, as a load does.
 			"text": setter("an Editor", stringOf, (*widget.Editor).SetValue),
+			// Qt's TextEdit.cursorPosition: characters from the start, a line
+			// break one; the cursor goes there and into view.
+			"cursorPosition": setter("an Editor", func(v qml.SpecValue) (int, error) {
+				n, err := numberOf(v)
+				return int(n), err
+			}, (*widget.Editor).SetCursorPosition),
 		}},
 		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, Setters: map[string]Setter{
 			"left":   setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetLeft)),

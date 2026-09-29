@@ -519,6 +519,22 @@ func (e *Editor) SetLine(row, col int) {
 	e.MarkDirty()
 }
 
+// SetCursorPosition moves the cursor to a position in the document, counted
+// as Qt's TextEdit.cursorPosition counts it — characters (grapheme clusters),
+// a line break one — and scrolls it into view, as SetLine does. A position
+// past the end is the end.
+func (e *Editor) SetCursorPosition(pos int) {
+	pos = max(pos, 0)
+	for row, line := range e.lines {
+		n := len(clusters(line))
+		if pos <= n || row == len(e.lines)-1 {
+			e.SetLine(row, min(pos, n))
+			return
+		}
+		pos -= n + 1
+	}
+}
+
 // Lines returns a snapshot of the document's lines — what a host needs to
 // search without re-splitting Value().
 func (e *Editor) Lines() []string { return append([]string(nil), e.lines...) }
