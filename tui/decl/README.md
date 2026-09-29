@@ -90,6 +90,7 @@ change at runtime, which is what makes it bindable to a source.
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
+| `FolderDialog` | `title`, `helpText`, `dim`, `preview`, palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
 | `DelegateChoice` | `roleValue` | — | — | — | — |
@@ -239,7 +240,7 @@ they are `Tui.Horizontal`.
 | `align` (Menu) | `Tui.Left`, `Tui.Right` |
 | `wrapMode` (Text) | `Tui.NoWrap` (one line, default), `Tui.WordWrap` |
 | `fileMode` (FileDialog) | `Tui.OpenFile`, `Tui.SaveFile` |
-| `elideMode` (TableViewColumn) | `Tui.ElideRight` (default), `Tui.ElideLeft` (a path keeps its file name), `Tui.ElideMiddle`, `Tui.ElideNone` |
+| `elideMode` (TableViewColumn) | `Tui.ElideRight` (default), `Tui.ElideLeft`, `Tui.ElideMiddle`, `Tui.ElideNone`, and golib's `Tui.ElidePath` (a path cut at a `/`: `…/dao/name.go`) |
 
 ### Flags — the `Dialog` singleton
 
@@ -382,12 +383,28 @@ Dialog {
 Each button runs its own `onClicked`, then the dialog answers for its role.
 These are the widget's rules (`widget.Modal`), the same for a dialog built in Go.
 
-A `FileDialog`'s body is a [file view](../widget/README.md#file-widgets): a
-folder listing with an optional preview (`fileMode: Tui.OpenFile`) or a name
-field over one (`Tui.SaveFile`). `accepted` carries the chosen file:
+A `FileDialog`'s body is a [file view](../widget/README.md#file-widgets), laid
+out as every picker is: the fields over the listing in the left column, the
+preview on the right (`preview`, on by default when opening), and the buttons
+beneath: the choice (Open, Save, Select), then Close, which `q` also presses
+outside a field. `Tui.OpenFile` has no field; `Tui.SaveFile` has the name.
+Ctrl+h/j/k/l move between the parts. `accepted` carries the chosen file:
 
 ```qml
 FileDialog { fileMode: Tui.OpenFile; onAccepted: App.openFile(selectedFile) }
+```
+
+A `FolderDialog` (Qt 6's) chooses a folder. Its path field follows the
+listing, and a path typed there lists that folder; Select takes the field's
+folder, and refuses a path that is not one. Its children are fields placed
+above the path, a vocabulary extension (Qt's takes none):
+
+```qml
+FolderDialog {
+    title: "add a workspace"
+    Frame { title: "title"; TextField { id: wsName; text: "untitled" } }
+    onAccepted: App.addWorkspace(wsName.text, selectedFolder)
+}
 ```
 
 It lists the local disk unless the host hands the adapter another filesystem

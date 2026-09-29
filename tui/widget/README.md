@@ -37,10 +37,11 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `StatusBar`   | Chrome          | no             | —                                                      |
 | `ProgressBar` | Feedback        | no             | —                                                      |
 | `Text`        | Static Display  | no             | —                                                      |
-| `FileList`    | File Browsing   | yes (its list) | — (callbacks: `WithOnCursor`, `WithOnFile`)            |
+| `FileList`    | File Browsing   | yes (its list) | — (callbacks: `WithOnCursor`, `WithOnFile`, `WithOnDir`) |
 | `FilePreview` | File Viewing    | yes (scroll)   | —                                                      |
 | `FileOpenView`| Dialog Body     | its parts      | — (a `FileChooser`)                                    |
 | `FileSaveView`| Dialog Body     | its parts      | — (a `FileChooser`)                                    |
+| `FileFolderView`| Dialog Body   | its parts      | — (a `FileChooser`)                                    |
 
 Every bus event carries `Owner tui.NodeID` as its first field so subscribers can filter by source. Publication is enqueue-only onto the application loop.
 
@@ -640,8 +641,9 @@ files only through `io/fs`:
 | --- | --- |
 | `FileList` | the base: a folder, `..` first, then folders, then files; Enter goes into a folder |
 | `FilePreview` | a file's text, framed and read-only — a tab stop the keyboard scrolls through |
-| `FileOpenView` | a `FileList`, with a `FilePreview` beside it unless `WithFileViewPreview(false)` |
-| `FileSaveView` | a name field over a `FileOpenView` — the same listing, not a second one |
+| `FileOpenView` | the picker's layout: the fields (`WithFileViewFields`) over a `FileList` in the left column, a `FilePreview` on the right unless `WithFileViewPreview(false)`; Ctrl+h/j/k/l move between the parts |
+| `FileSaveView` | a `FileOpenView` with a name field at the top of its left column — the same listing, not a second one |
+| `FileFolderView` | a `FileOpenView` with a path field at the top of its left column: it follows the listing, a path typed in it lists that folder, and the folder chosen is the field's |
 
 ```go
 view := widget.NewFileOpenView(
@@ -651,7 +653,7 @@ view := widget.NewFileOpenView(
 )
 ```
 
-Both views are a `FileChooser` — `Confirm`, `Selected`, `Dir`/`SetDir`,
+Every view is a `FileChooser` — `Confirm`, `Selected`, `Dir`/`SetDir`,
 `Select`, `FocusInitial`, `Hint` — which is all a dialog needs of either.
 `Confirm` is the one decision: a folder is not a choice, and confirming one
 goes into it.
