@@ -108,6 +108,18 @@ type Box struct {
 
 	focusable   bool
 	focusWithin bool
+
+	// maxW caps the box's width, border included; 0 for none (SetMaximumWidth). inL and inR are
+	// the columns the last layout left either side of the capped box, so it is centred.
+	maxW, inL, inR int
+}
+
+// SetMaximumWidth caps the box at w columns, border included, centred in what it is given — CSS's
+// max-width with auto margins: a page of text as wide as reading wants, however wide the screen.
+// 0 removes the cap.
+func (x *Box) SetMaximumWidth(w int) {
+	x.maxW = max(w, 0)
+	x.RequestLayout()
 }
 
 var (
@@ -343,6 +355,17 @@ func (x *Box) Layout(c tui.Constraints) tui.Size {
 		h := boundedMax(c.MaxH, max(c.MinH, fv))
 		return c.Constrain(tui.Size{W: w, H: h})
 	}
+	x.inL, x.inR = 0, 0
+	if x.maxW > 0 && c.MaxW != tui.Unbounded && c.MaxW > x.maxW {
+		// capped: the box is maxW wide, centred; it keeps what it was given, so nothing beside it moves
+		extra := c.MaxW - x.maxW
+		x.inL, x.inR = extra/2, extra-extra/2
+		cc := tui.Constraints{MinW: x.maxW - fh, MaxW: x.maxW - fh, MinH: max(c.MinH-fv, 0), MaxH: subFrame(c.MaxH, fv)}
+		sz := x.ctx.LayoutChild(x.child, cc)
+		ft, _, _, fl := x.frame()
+		x.ctx.PlaceChild(x.child, tui.Rect{X: x.inL + fl, Y: ft, W: sz.W, H: sz.H})
+		return c.Constrain(tui.Size{W: c.MaxW, H: sz.H + fv})
+	}
 	cc := tui.Constraints{
 		MinW: max(c.MinW-fh, 0), MaxW: subFrame(c.MaxW, fh),
 		MinH: max(c.MinH-fv, 0), MaxH: subFrame(c.MaxH, fv),
@@ -381,6 +404,7 @@ func (x *Box) Render(s tui.Surface) {
 	sz := s.Size()
 	st := x.paintStyle()
 	mt, mr, mb, ml := x.base.GetMargin()
+	ml, mr = ml+x.inL, mr+x.inR // a capped box's centring
 	bx, by := ml, mt
 	bw, bh := sz.W-ml-mr, sz.H-mt-mb
 	if bw <= 0 || bh <= 0 {
