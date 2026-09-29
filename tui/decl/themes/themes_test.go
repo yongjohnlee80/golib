@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
@@ -80,4 +82,28 @@ func TestAThemeColoursTheScreen(t *testing.T) {
 		}
 	}
 	t.Fatal("no cell holds the text")
+}
+
+// TestTheMarkdownHighlighterPaintsOnlyThemedStyles: every style the Markdown
+// highlighter gives a span is one the themes colour; any other would paint as
+// the text, and the construct it marks would not show.
+func TestTheMarkdownHighlighterPaintsOnlyThemedStyles(t *testing.T) {
+	themed := map[string]bool{}
+	for _, k := range vocabulary["syntax"] {
+		themed[k] = true
+	}
+	doc := []string{"---", "title: t", "---", "# H `c`", "**b** *e* ~~s~~ [l](u) <http://a> [[w]] ![[e]] #t <b>x</b>",
+		"- [ ] task", "1. item", "> [!note] n", "> [!warning] w", "> q", "```", "code", "```", "<!-- c", "c -->", "---", "[r]: u",
+		"<div>", "~~~ x", "y", "~~~", "* * *"}
+	h := markdown.Highlighter()
+	st := highlight.State(0)
+	for _, line := range doc {
+		spans, next := h.HighlightBlock(line, st)
+		for _, s := range spans {
+			if !themed[s.Style.String()] {
+				t.Errorf("%q: %q is %s, which no theme colours", line, line[s.Start:s.End], s.Style)
+			}
+		}
+		st = next
+	}
 }
