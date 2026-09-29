@@ -71,6 +71,7 @@ type fileViewConfig struct {
 	previewSet bool
 	onChoose   func()
 	onHint     func(string)
+	fields     []tui.Component
 }
 
 func fileViewConfigOf(opts []FileViewOption) fileViewConfig {
@@ -113,6 +114,13 @@ func WithOnChoose(fn func()) FileViewOption {
 	return func(c *fileViewConfig) { c.onChoose = fn }
 }
 
+// WithFileViewFields puts fields at the top of a view's left column, above
+// its own: a folder picker's name for what the folder becomes, say. Each is
+// a part the keyboard moves to, as the view's own are.
+func WithFileViewFields(fields ...tui.Component) FileViewOption {
+	return func(c *fileViewConfig) { c.fields = append(c.fields, fields...) }
+}
+
 // WithOnHint sets what runs when the keyboard moves to another part of the
 // dialog the view is in, with the keys that part answers to: a footer that
 // says what Enter does HERE.
@@ -139,6 +147,11 @@ type FileOpenView struct {
 	list    *FileList
 	preview *FilePreview // nil when turned off
 	root    tui.Component
+	// column is the left column's parts, top to bottom: the fields, then the
+	// list. Ctrl+j/k move down and up it; Ctrl+l goes to the preview, and
+	// Ctrl+h back to the part of the column last in use.
+	column []tui.Component
+	last   tui.Component
 }
 
 // NewFileOpenView builds an Open view.
@@ -150,7 +163,7 @@ func NewFileOpenView(opts ...FileViewOption) *FileOpenView {
 	return newFileOpenView(cfg)
 }
 
-func newFileOpenView(cfg fileViewConfig) *FileOpenView {
+func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenView {
 	// The source is settled HERE, before the list exists: the list reports its
 	// first row while it is being built, and the preview reads that row from
 	// the source.
@@ -168,8 +181,20 @@ func newFileOpenView(cfg fileViewConfig) *FileOpenView {
 	if cfg.styled {
 		listOpts = append(listOpts, WithFileListStyles(cfg.st))
 	}
-	v.list = NewFileList(listOpts...)
-	v.root = v.list
+	v.list = NewFileList(append(listOpts, dirOpts...)...)
+	// The picker's layout: the fields over the list in the left column, the
+	// preview on the right.
+	v.column = append(append([]tui.Component(nil), cfg.fields...), v.list)
+	var left tui.Component = v.list
+	if len(cfg.fields) > 0 {
+		col := tui.NewFlex(tui.Vertical)
+		for _, f := range cfg.fields {
+			col.Add(f)
+		}
+		col.AddWeighted(v.list, 1)
+		left = col
+	}
+	v.root = left
 	if v.preview != nil {
 		// A BLANK DIVIDER: the two panes are framed, and a drawn line between
 		// two frames reads as a third.
@@ -177,9 +202,57 @@ func newFileOpenView(cfg fileViewConfig) *FileOpenView {
 		if cfg.styled {
 			splitOpts = append(splitOpts, WithDividerStyle(cfg.st.Gap))
 		}
-		v.root = NewSplit(Horizontal, v.list, v.preview, splitOpts...)
+		v.root = NewSplit(Horizontal, left, v.preview, splitOpts...)
 	}
 	return v
+}
+
+// movePart is Ctrl+h/j/k/l among the view's parts: down and up the left
+// column, across to the preview and back. Reports whether it moved.
+func (v *FileOpenView) movePart(k tui.KeyEvent) bool {
+	if k.Mods != tui.ModCtrl {
+		return false
+	}
+	ctx := v.Context()
+	if ctx == nil {
+		return false
+	}
+	at := -1
+	for i, p := range v.column {
+		if ctx.FocusWithin(p) {
+			at = i
+		}
+	}
+	switch k.Code {
+	case 'j', 'k':
+		if at < 0 {
+			return false
+		}
+		next := at + 1
+		if k.Code == 'k' {
+			next = at - 1
+		}
+		if next < 0 || next >= len(v.column) {
+			return true // the column's end: nothing below, or above
+		}
+		return ctx.FocusInto(v.column[next]) || true
+	case 'l':
+		if at < 0 || v.preview == nil {
+			return false
+		}
+		v.last = v.column[at]
+		return ctx.FocusInto(v.preview) || true
+	case 'h':
+		if at >= 0 || v.preview == nil || !ctx.FocusWithin(v.preview) {
+			return false
+		}
+		back := v.last
+		if back == nil {
+			back = v.list
+		}
+		return ctx.FocusInto(back) || true
+	}
+	return false
 }
 
 // show previews a row, when there is a preview.
@@ -232,6 +305,9 @@ func (v *FileOpenView) Render(tui.Surface) {}
 func (v *FileOpenView) HandleEvent(ev tui.Event) bool {
 	if _, ok := ev.(tui.FocusEvent); ok && v.cfg.onHint != nil {
 		v.cfg.onHint(v.Hint())
+	}
+	if k, ok := ev.(tui.KeyEvent); ok {
+		return v.movePart(k)
 	}
 	return false
 }
@@ -294,7 +370,8 @@ func (v *FileOpenView) Hint() string {
 
 // ---------------------------------------------------------------- Save
 
-// FileSaveView names a file to write: a name field over a FileOpenView.
+// FileSaveView names a file to write: a FileOpenView with a name field at the
+// top of its left column.
 type FileSaveView struct {
 	Base
 	cfg      fileViewConfig
@@ -309,8 +386,16 @@ func NewFileSaveView(opts ...FileViewOption) *FileSaveView {
 	cfg := fileViewConfigOf(opts)
 	v := &FileSaveView{cfg: cfg}
 
+	inputOpts := []TextInputOption{WithOnSubmit(func(string) { v.confirm() })}
+	if cfg.styled {
+		inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
+	}
+	v.name = NewTextInput(inputOpts...)
+	v.namePane = newFilePane(v.name, "File name", cfg.st, cfg.styled)
+
 	inner := cfg
 	inner.onHint = nil // the Save view reports the footer for all its parts
+	inner.fields = append(append([]tui.Component(nil), cfg.fields...), v.namePane)
 	// A file chosen in the listing is NAMED, then the name is confirmed — the
 	// one path a save takes, whether the name was typed or picked.
 	inner.onChoose = func() { v.name.SetValue(path.Base(v.listing.Selected())); v.confirm() }
@@ -322,17 +407,7 @@ func NewFileSaveView(opts ...FileViewOption) *FileSaveView {
 			v.name.SetValue(path.Base(p))
 		}
 	}
-
-	inputOpts := []TextInputOption{WithOnSubmit(func(string) { v.confirm() })}
-	if cfg.styled {
-		inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
-	}
-	v.name = NewTextInput(inputOpts...)
-	col := tui.NewFlex(tui.Vertical)
-	v.namePane = newFilePane(v.name, "File name", cfg.st, cfg.styled)
-	col.Add(v.namePane)
-	col.AddWeighted(v.listing, 1)
-	v.root = col
+	v.root = v.listing
 	return v
 }
 
@@ -436,3 +511,154 @@ func (v *FileSaveView) Hint() string {
 	}
 	return v.listing.Hint()
 }
+
+// ---------------------------------------------------------------- Folder
+
+// FileFolderView chooses a folder: a FileOpenView with a path field at the
+// top of its left column. The field FOLLOWS the listing — moving into a folder
+// writes it there — and a path typed in it, then Enter, lists that folder. The
+// folder chosen is the field's. Files are listed too, and previewed, so a
+// folder is seen for what is in it.
+type FileFolderView struct {
+	Base
+	cfg      fileViewConfig
+	path     *TextInput
+	pathPane *Box
+	listing  *FileOpenView
+}
+
+// NewFileFolderView builds a folder view. Its listing previews unless asked
+// not to.
+func NewFileFolderView(opts ...FileViewOption) *FileFolderView {
+	cfg := fileViewConfigOf(opts)
+	if !cfg.previewSet {
+		cfg.preview = true
+	}
+	v := &FileFolderView{cfg: cfg}
+	inputOpts := []TextInputOption{WithOnSubmit(func(s string) { v.goTo(s) })}
+	if cfg.styled {
+		inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
+	}
+	v.path = NewTextInput(inputOpts...)
+	v.pathPane = newFilePane(v.path, folderTitle, cfg.st, cfg.styled)
+
+	inner := cfg
+	inner.onHint = nil // the folder view reports the footer for all its parts
+	inner.onChoose = nil
+	inner.fields = append(append([]tui.Component(nil), cfg.fields...), v.pathPane)
+	v.listing = newFileOpenView(inner, WithOnDir(func(dir string) {
+		v.path.SetValue(dir)
+		v.pathPane.SetTitle(folderTitle)
+	}))
+	return v
+}
+
+const folderTitle = "Folder"
+
+// goTo lists the folder typed in the path field; a path that is not one says
+// so in the field's title, and the listing stays.
+func (v *FileFolderView) goTo(typed string) {
+	if p, ok := v.folder(typed); ok {
+		v.listing.list.load(p)
+		return
+	}
+	v.pathPane.SetTitle(folderTitle + " — not a folder")
+}
+
+// folder is typed as an fs path of the source, when it is a folder there.
+func (v *FileFolderView) folder(typed string) (string, bool) {
+	typed = strings.TrimSpace(typed)
+	if typed == "" {
+		return "", false
+	}
+	src := v.listing.list.Source()
+	var p string
+	var ok bool
+	if strings.HasPrefix(typed, src.Root) || strings.HasPrefix(typed, "/") {
+		p, ok = src.fsPath(typed)
+	} else {
+		p = path.Clean(path.Join(v.listing.list.Dir(), typed))
+		ok = fs.ValidPath(p)
+	}
+	return p, ok && src.isDir(p)
+}
+
+func (v *FileFolderView) Init(ctx *tui.Context) {
+	v.Base.Init(ctx)
+	ctx.Mount(v.listing)
+}
+
+func (v *FileFolderView) Layout(c tui.Constraints) tui.Size {
+	return layoutFileView(v.Context(), v.listing, c)
+}
+
+func (v *FileFolderView) Render(tui.Surface) {}
+
+// HandleEvent follows the keyboard for the footer, as FileOpenView's does.
+func (v *FileFolderView) HandleEvent(ev tui.Event) bool {
+	if _, ok := ev.(tui.FocusEvent); ok && v.cfg.onHint != nil {
+		v.cfg.onHint(v.Hint())
+	}
+	return false
+}
+
+// NOT FOCUSABLE BY DESIGN — no tui.Focusable, as FileOpenView.
+
+// Confirm chooses the folder in the path field, when it is one. A path that
+// is not says so, and nothing is chosen.
+func (v *FileFolderView) Confirm() bool {
+	if _, ok := v.folder(v.path.Value()); ok {
+		return true
+	}
+	v.pathPane.SetTitle(folderTitle + " — not a folder")
+	return false
+}
+
+// Selected is the folder in the path field, rooted, or "" when it is not one.
+func (v *FileFolderView) Selected() string {
+	p, ok := v.folder(v.path.Value())
+	if !ok {
+		return ""
+	}
+	return v.listing.list.Source().Rooted(p)
+}
+
+// Select lists a folder, which the path field then holds.
+func (v *FileFolderView) Select(rooted string) { v.listing.SetDir(rooted) }
+
+func (v *FileFolderView) Dir() string          { return v.listing.Dir() }
+func (v *FileFolderView) SetDir(rooted string) { v.listing.SetDir(rooted) }
+
+// FocusInitial gives the keyboard to the first field: the host's own, when it
+// gave one (a name to type), else the listing.
+func (v *FileFolderView) FocusInitial() {
+	ctx := v.Context()
+	if ctx == nil {
+		return
+	}
+	if len(v.cfg.fields) > 0 && ctx.FocusInto(v.cfg.fields[0]) {
+		return
+	}
+	v.listing.list.Focus()
+}
+
+// Path is what the path field holds.
+func (v *FileFolderView) Path() string { return v.path.Value() }
+
+// SetPreviewHighlighting highlights the preview: see [FileOpenView].
+func (v *FileFolderView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
+	v.listing.SetPreviewHighlighting(forFile, styles)
+}
+
+// Hint is the keys the part with the keyboard answers to.
+func (v *FileFolderView) Hint() string {
+	if ctx := v.path.Context(); ctx != nil && ctx.Focused() {
+		return hintFor("Enter:go to folder")
+	}
+	if v.listing.list.Focused() {
+		return hintFor(v.listing.list.Hint())
+	}
+	return v.listing.Hint()
+}
+
+var _ FileChooser = (*FileFolderView)(nil)

@@ -84,9 +84,10 @@ func TestAnOpenBrowserListsFoldersThenFilesUnderDotDot(t *testing.T) {
 			t.Fatalf("order is not .., folders, files (rows %v):\n%s", rows, h.grid())
 		}
 	}
-	// Titled with its folder, elided from the LEFT: the tail is what differs.
-	if title := h.row(rows[0] - 1); !strings.Contains(title, "…") || !strings.Contains(title, root[len(root)-12:]) {
-		t.Errorf("the listing's title is %q, want the folder's tail", title)
+	// Titled with its folder, elided from the LEFT at a "/": the tail is what
+	// differs, and no name is cut.
+	if title := h.row(rows[0] - 1); !strings.Contains(title, "…/"+filepath.Base(root)+" ") {
+		t.Errorf("the listing's title is %q, want …/%s", title, filepath.Base(root))
 	}
 }
 

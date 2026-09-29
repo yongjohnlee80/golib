@@ -126,6 +126,12 @@ func WithOnFile(fn func(path string)) FileListOption {
 	return func(l *FileList) { l.onFile = fn }
 }
 
+// WithOnDir sets what runs each time the list shows a folder, the first
+// included, with the folder as a rooted path: a path field that follows it.
+func WithOnDir(fn func(rooted string)) FileListOption {
+	return func(l *FileList) { l.onDir = fn }
+}
+
 // fileEntry is one row of the listing.
 type fileEntry struct {
 	name string
@@ -158,6 +164,7 @@ type FileList struct {
 	styled   bool
 	onCursor func(string, bool)
 	onFile   func(string)
+	onDir    func(string)
 
 	list *List[fileEntry]
 	box  *Box
@@ -413,12 +420,15 @@ func (l *FileList) load(dir string) {
 	l.list.SetItems(l.entries)
 	l.list.SetCursor(0)
 	l.fitTitle()
+	if l.onDir != nil {
+		l.onDir(l.src.Rooted(dir))
+	}
 	// SetCursor(0) publishes nothing when the cursor was already on row 0, so
 	// whoever follows the cursor is told here.
 	l.cursorOn(0)
 }
 
-// fitTitle elides the folder from the LEFT to fit the pane.
+// fitTitle elides the folder from the LEFT, at a "/", to fit the pane.
 func (l *FileList) fitTitle() {
 	title := l.title
 	// The border's two corners, and a space either side of the title.
@@ -427,12 +437,8 @@ func (l *FileList) fitTitle() {
 	if ctx := l.Context(); ctx != nil {
 		measure = ctx.StringWidth
 	}
-	if l.width > 0 && room > 1 && measure(title) > room {
-		rs := []rune(title)
-		for len(rs) > 0 && measure("…"+string(rs)) > room {
-			rs = rs[1:]
-		}
-		title = "…" + string(rs)
+	if l.width > 0 && room > 1 {
+		title = elide(title, room, ElidePath, measure)
 	}
 	l.box.SetTitle(title)
 }

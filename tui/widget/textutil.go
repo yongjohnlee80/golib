@@ -88,8 +88,10 @@ func truncate(s string, w int, measure func(string) int) string {
 
 // Elide is where a text too wide for its cell loses what does not fit, as Qt's
 // Qt::TextElideMode: the end (ElideRight, the zero value), the start
-// (ElideLeft: a path keeps its file name), the middle, or nowhere (ElideNone:
-// cut at the edge, no ellipsis).
+// (ElideLeft), the middle, or nowhere (ElideNone: cut at the edge, no
+// ellipsis). ElidePath is golib's, for a path: the start, at a "/" so the
+// cut never falls inside a name (…/dao/name.go), and as ElideLeft when even
+// the last name does not fit.
 type Elide int
 
 const (
@@ -97,6 +99,7 @@ const (
 	ElideLeft
 	ElideMiddle
 	ElideNone
+	ElidePath
 )
 
 // elide fits s into w cells, dropping what does not fit where mode says.
@@ -133,6 +136,16 @@ func elide(s string, w int, mode Elide, measure func(string) int) string {
 		return strings.Join(gs[i:], "")
 	}
 	switch mode {
+	case ElidePath:
+		// the longest tail that starts at a "/" and fits after the ellipsis
+		for i := 1; i < len(gs); i++ {
+			if gs[i] == "/" {
+				if t := strings.Join(gs[i:], ""); measure(t) <= w-1 {
+					return ellipsis + t
+				}
+			}
+		}
+		return ellipsis + tail(w-1)
 	case ElideNone:
 		return head(w)
 	case ElideLeft:
