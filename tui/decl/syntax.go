@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"github.com/yongjohnlee80/golib/parse/markdown"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/decl"
@@ -52,6 +53,7 @@ func stdHighlighters() *highlight.Repository {
 	defs := []highlight.Definition{
 		{Name: "QML", Extensions: []string{"*.qml"}, Highlighter: q},
 		{Name: "JavaScript", Extensions: []string{"*.js", "*.mjs"}, Highlighter: q},
+		{Name: "Markdown", Extensions: []string{"*.md", "*.markdown"}, Highlighter: markdown.Highlighter()},
 	}
 	return highlight.NewRepository(append(defs, sqlhighlight.Definitions()...)...)
 }
