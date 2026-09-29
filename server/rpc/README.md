@@ -79,6 +79,14 @@ err := srv.Run(ctx) // serves until ctx cancels, then drains politely
   from the gate is the public rejection; any other gate error is logged and
   answered with a stable generic "access denied". Gated notifications drop
   with a log line (no reply channel exists).
+- **Session attachment.** `WithSessionAttach(fn)` runs `fn(nc)` once per
+  accepted connection, before its first read. The result is
+  `Session.Attachment()`, visible to the gate and every handler from the
+  first request on. Unlike `Session.Value` it is fixed for the connection's
+  life, so it is the place for facts the transport proved before RPC began
+  (which listener accepted it, the identity a wrapping transport
+  authenticated). A typical `fn` switches on `nc`'s concrete type. Without
+  the option every attachment is nil.
 - **Protocol hygiene (R7).** Unknown methods answer `CodeMethodNotFound`
   and the connection survives. A frame that fails to decode, violates the
   codec's shape rules, or overruns `MaxMessageBytes` (default 16 MiB)
@@ -100,6 +108,13 @@ consumer); and server-push notifications served in arrival order on a
 bounded queue where callback reentrancy is supported and overflow or a
 callback panic poisons the client. Writes are staged and capped exactly
 like the server's; `ClientMaxMessageBytes` bounds both directions.
+
+`Dial` opens its connection with a `net.Dialer` (`WithDialer`,
+`ClientNetwork`) unless `WithConnDialer(fn)` is set. Then `fn(ctx, network,
+addr)` supplies the connection, for a byte stream that is not a plain
+socket, such as a channel inside an authenticated tunnel. `WithConnDialer`
+takes precedence over `WithDialer`, and the client owns and closes what `fn`
+returns.
 
 ## Not in v1
 

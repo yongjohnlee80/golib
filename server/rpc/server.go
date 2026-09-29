@@ -89,7 +89,7 @@ func New(codec Codec, opts ...Option) *Server {
 		server.ScaffoldBaseContext(cfg.baseCtx),
 		server.DrainTimeout(cfg.drainTimeout),
 		server.ScaffoldSessionFactory(func(_ context.Context, nc net.Conn) server.Session {
-			return newConn(nc)
+			return newConn(nc, cfg.attach)
 		}),
 	)
 	return s

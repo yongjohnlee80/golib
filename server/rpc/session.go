@@ -13,10 +13,14 @@ import (
 )
 
 // Session is the per-connection state shared by the gate and handlers: the
-// peer address plus a small key/value store for handshake products (identity,
-// negotiated flags). Safe for concurrent use.
+// peer address, the transport's attachment (see [WithSessionAttach]), and a
+// small key/value store for handshake products (identity, negotiated flags).
+// Safe for concurrent use.
 type Session struct {
 	peer net.Addr
+	// attachment is set once in newConn, before the connection's first
+	// read, and never written again; that is why reading it needs no lock.
+	attachment any
 
 	mu   sync.Mutex
 	vals map[string]any
@@ -24,6 +28,13 @@ type Session struct {
 
 // Peer returns the remote address.
 func (s *Session) Peer() net.Addr { return s.peer }
+
+// Attachment returns what the [WithSessionAttach] function returned for this
+// connection, or nil when none was configured. It is fixed before the first
+// request is read and cannot be changed afterwards, unlike [Session.Value],
+// so a gate can trust it as a fact about the transport rather than something
+// a handler (and so, indirectly, a request) wrote.
+func (s *Session) Attachment() any { return s.attachment }
 
 // Value returns the stored value for key, or nil.
 func (s *Session) Value(key string) any {
@@ -88,13 +99,17 @@ var (
 	_ server.Drainer = (*conn)(nil)
 )
 
-func newConn(nc net.Conn) *conn {
+func newConn(nc net.Conn, attach func(net.Conn) any) *conn {
 	lim := &windowReader{src: nc}
+	sess := &Session{peer: nc.RemoteAddr()}
+	if attach != nil {
+		sess.attachment = attach(nc)
+	}
 	c := &conn{
 		raw:      nc,
 		lim:      lim,
 		br:       bufio.NewReader(lim),
-		sess:     &Session{peer: nc.RemoteAddr()},
+		sess:     sess,
 		workDone: make(chan struct{}),
 	}
 	c.capw.buf = &c.scratch
