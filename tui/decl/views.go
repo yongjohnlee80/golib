@@ -264,7 +264,16 @@ func (n *comboBoxNode) currentIndex() int {
 var comboBoxType = Type{
 	Name:  "ComboBox",
 	Build: buildComboBox,
-	Ctor:  []string{"textRole", "valueRole", "placeholderText"},
+	// The field wears the Button role, as Qt Quick Controls' non-editable
+	// ComboBox does; with none set, golib's own look.
+	restyle: func(c tui.Component, p palette) {
+		st := style.New().Foreground(style.TokenForeground)
+		if p.has(roleButton, roleButtonText) {
+			st = p.look(roleButton, roleButtonText)
+		}
+		c.(*comboBoxNode).sel.SetFieldStyle(st)
+	},
+	Ctor: []string{"textRole", "valueRole", "placeholderText"},
 	Setters: map[string]Setter{
 		"model": setter("a ComboBox", modelOf, func(n *comboBoxNode, m ItemModel) { n.mv.setModel(m) }),
 		// Qt's writable currentIndex: the row chosen, -1 for none. A row the

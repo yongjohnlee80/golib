@@ -1096,6 +1096,10 @@ func (t *Tree) Render(s tui.Surface) {
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
+	// The whole area wears the rows' look first, as a List does and Qt's views
+	// fill with Base: the cells past each row's text, and the rows past the
+	// last, match the text instead of showing what the tree sits on.
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", t.styles.Row)
 	rows := t.flatten()
 	if t.cursor >= len(rows) {
 		t.cursor = max(0, len(rows)-1)
