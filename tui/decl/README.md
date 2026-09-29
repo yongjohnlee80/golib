@@ -74,7 +74,7 @@ change at runtime, which is what makes it bindable to a source.
 | `MenuItem` | `text`, `checkable`, `group`, `shortcut` | `checked`, `enabled`, `visible` | `checked` | `triggered`, `toggled` | — |
 | `MenuSeparator` | — | — | — | — | — |
 | `Shortcut` | `sequence` | — | — | `activated` | — |
-| `Frame` | palette | `title` | — | — | — |
+| `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
 | `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `ruler` (golib's: a guide at that column, where text wraps) | — | `modeChanged`, `textChanged` | — |
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette | `left`, `center`, `right` | — | — | — |

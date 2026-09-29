@@ -30,6 +30,11 @@ func appTypes() []Type {
 		{Name: "Window", Build: buildWindow},
 		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
 			"title": setter("a Frame", stringOf, (*widget.Box).SetTitle),
+			// golib's: at most this many columns, border included, centred — a page, not the screen
+			"maximumWidth": setter("a Frame", func(v qml.SpecValue) (int, error) {
+				n, err := numberOf(v)
+				return int(n), err
+			}, (*widget.Box).SetMaximumWidth),
 		}},
 		{Name: "SyntaxHighlighter", Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()},
 		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
