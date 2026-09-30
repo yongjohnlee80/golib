@@ -195,8 +195,10 @@ func TestTheLayoutNamesNoColour(t *testing.T) {
 	}
 }
 
-// TestRetroHighlightsTheSelectedRowInGreen: the dropdown's selected row, with
-// its access key still red on it — the hotkey look merged over the row's.
+// TestRetroHighlightsTheSelectedRowInGreen: the dropdown's selected row in green.
+// Its access key keeps the row's colours, underlined, as Qt draws a mnemonic: an
+// accent picked for the menu's surface can vanish on the highlight. An unselected
+// row keeps the accent.
 func TestRetroHighlightsTheSelectedRowInGreen(t *testing.T) {
 	r := start(t, "")
 	r.key(t, alt('f'))
@@ -205,9 +207,10 @@ func TestRetroHighlightsTheSelectedRowInGreen(t *testing.T) {
 	x := r.labelAt(t, y, "New")
 	s := r.labelAt(t, rowOf(r.rows(), "Save"), "Save")
 	r.expect(t, []look{
-		{"the selected row's access key", x, y, cgaRed, cgaGreen},
+		{"the selected row's access key", x, y, cgaBlack, cgaGreen},
 		{"the selected row's text", x + 1, y, cgaBlack, cgaGreen},
 		{"an unselected row", s + 1, rowOf(r.rows(), "Save"), cgaBlack, cgaGrey},
+		{"an unselected row's access key", s, rowOf(r.rows(), "Save"), cgaRed, cgaGrey},
 	})
 }
 
