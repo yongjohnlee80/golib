@@ -40,6 +40,16 @@ func appTypes() []Type {
 		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
+			// Qt's TextEdit.wrapMode, as a bool: true wraps long lines at the editor's width
+			"wrap": setter("an Editor", boolOf, func(e *widget.Editor, v bool) {
+				if v {
+					e.SetWrap(widget.WrapSoft)
+				} else {
+					e.SetWrap(widget.WrapNone)
+				}
+			}),
+			// golib's: each line's number in a gutter at the left
+			"lineNumbers": setter("an Editor", boolOf, (*widget.Editor).SetLineNumbers),
 			// Qt's TextEdit.text: setting it replaces the buffer, as a load does.
 			"text": setter("an Editor", stringOf, (*widget.Editor).SetValue),
 			// golib's: a vertical guide at this column (1-based), where text is meant to wrap; 0 for none
