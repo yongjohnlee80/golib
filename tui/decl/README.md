@@ -77,7 +77,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
 | `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `ruler` (golib's: a guide at that column, where text wraps) | — | `modeChanged`, `textChanged` | — |
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
-| `StatusBar` | palette | `left`, `center`, `right` | — | — | — |
+| `StatusBar` | palette; its children are its permanent widgets (Qt's `QStatusBar.addPermanentWidget`), each at its own width at the right end, the segments sharing the rest | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |
 | `Button` | — | `text`, `enabled` | — | `clicked` | — |
 | `Split` | `orientation` | `ratio` | — | — | — |
@@ -90,7 +90,7 @@ change at runtime, which is what makes it bindable to a source.
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
-| `Drawer` | `modal` (default true); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`), `size` (a percentage across the edge) | — | `opened`, `closed` | `open()`, `close()`, `toggle()` |
+| `Drawer` | `modal` (default true); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100) | — | `opened`, `closed` | `open()`, `close()`, `toggle()` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
