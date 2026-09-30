@@ -114,3 +114,44 @@ func TestStatusBarAddRefusesNil(t *testing.T) {
 	}()
 	widget.NewStatusBar().Add(nil)
 }
+
+// TestStatusBarNormalWidgets: AddWidget's widgets sit at the left end in order, a column apart,
+// before the left segment; Children and Move keep one order across both kinds; a normal widget
+// wider than what the permanent ones left is truncated to it.
+func TestStatusBarNormalWidgets(t *testing.T) {
+	bar := widget.NewStatusBar()
+	n1, n2, p := widget.NewText("N1"), widget.NewText("N2"), widget.NewText("P")
+	h := startApp(t, bar, 20, 1)
+	h.onLoop(func() {
+		bar.SetLeft("L")
+		bar.SetRight("R")
+		bar.AddWidget(n1)
+		bar.Add(p)
+		bar.AddWidget(n2)
+	})
+	h.waitFor("both ends", func() bool {
+		row := h.row(0)
+		return strings.HasPrefix(row, "N1 N2 L") && strings.HasSuffix(row, "R P")
+	})
+	var kids []tui.Component
+	h.onLoop(func() {
+		for c := range bar.Children() {
+			kids = append(kids, c)
+		}
+	})
+	if len(kids) != 3 || kids[0] != n1 || kids[1] != p || kids[2] != n2 {
+		t.Fatalf("Children in the order added: %v", kids)
+	}
+	h.onLoop(func() { bar.Move(n2, 0) })
+	h.waitFor("moved", func() bool { return strings.HasPrefix(h.row(0), "N2 N1 L") })
+	wide := widget.NewText(strings.Repeat("W", 30))
+	h.onLoop(func() {
+		bar.Remove(n1)
+		bar.Remove(n2)
+		bar.AddWidget(wide)
+	})
+	h.waitFor("the wide one truncated to what is left", func() bool {
+		row := h.row(0)
+		return strings.HasPrefix(row, "WWW") && strings.HasSuffix(row, "… P") && !strings.Contains(row, "L")
+	})
+}

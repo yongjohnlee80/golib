@@ -77,7 +77,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
 | `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `ruler` (golib's: a guide at that column, where text wraps) | — | `modeChanged`, `textChanged` | — |
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
-| `StatusBar` | palette; its children are its permanent widgets (Qt's `QStatusBar.addPermanentWidget`), each at its own width at the right end, the segments sharing the rest | `left`, `center`, `right` | — | — | — |
+| `StatusBar` | palette; its children are its widgets, each at its own width: permanent (Qt's `QStatusBar.addPermanentWidget`) at the right end, or, with `StatusBar.permanent: false` on the child, normal (`addWidget`) at the left end; the segments share the rest | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |
 | `Button` | — | `text`, `enabled` | — | `clicked` | — |
 | `Split` | `orientation` | `ratio` | — | — | — |
@@ -225,6 +225,7 @@ holds `MenuItem`s, `Menu`s and `MenuSeparator`s. `Frame` holds exactly one child
 | --- | --- | --- | --- |
 | any child of a `Window` | `Window` | `Dock.edge` | `Tui.Top`, `Tui.Bottom`, `Tui.Left`, `Tui.Right` |
 | a `Button` in a `DialogButtonBox` | `DialogButtonBox` | `DialogButtonBox.buttonRole` | `DialogButtonBox.AcceptRole`, `DialogButtonBox.RejectRole`, `DialogButtonBox.DestructiveRole`, `DialogButtonBox.ActionRole` |
+| a child of a `StatusBar` | `StatusBar` | `StatusBar.permanent` | `true` (the default: at the right end, Qt's `addPermanentWidget`), `false` (at the left end, `addWidget`) |
 
 A child of a `Window` with no `Dock.edge` fills what the docked ones leave.
 

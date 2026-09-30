@@ -61,10 +61,19 @@ type StatusBar struct {
 	Base
 	bar                 style.Style
 	left, center, right segment
-	// permanent are the bar's child widgets, Qt's QStatusBar permanent widgets: each at its own
-	// width, in order, at the bar's right end, so the segments share what is left of the row.
-	permanent []tui.Component
-	placed    int // the columns the permanent widgets took at the last layout, gaps included
+	// items are the bar's child widgets, in order: Qt's QStatusBar permanent widgets
+	// (addPermanentWidget), each at its own width at the bar's right end, and its normal widgets
+	// (addWidget), at its left end. The segments share what is left of the row between them.
+	items []barItem
+	// the columns the widgets took at the last layout, gaps included: the normal ones' at the
+	// left, the permanent ones' at the right
+	leading, placed int
+}
+
+// barItem is one of a StatusBar's widgets, and which end it sits at.
+type barItem struct {
+	c      tui.Component
+	normal bool // Qt's addWidget: at the left end; else addPermanentWidget, at the right
 }
 
 var _ tui.Component = (*StatusBar)(nil)
@@ -129,22 +138,28 @@ func (s *StatusBar) SetRight(text string, st ...style.Style) {
 	s.MarkDirty()
 }
 
-// Init mounts the permanent widgets. Re-entrant across remounts.
+// Init mounts the widgets. Re-entrant across remounts.
 func (s *StatusBar) Init(ctx *tui.Context) {
 	s.Base.Init(ctx)
-	for _, c := range s.permanent {
-		ctx.Mount(c)
+	for _, it := range s.items {
+		ctx.Mount(it.c)
 	}
 }
 
 // Add appends permanent widgets (Container contract): Qt's QStatusBar.addPermanentWidget. Each
 // is laid out one row high at the width it asks for, at the bar's right end in the order added.
-func (s *StatusBar) Add(children ...tui.Component) {
+func (s *StatusBar) Add(children ...tui.Component) { s.add(false, children) }
+
+// AddWidget appends normal widgets: Qt's QStatusBar.addWidget. Each is laid out one row high at
+// the width it asks for, at the bar's left end in the order added, before the left segment.
+func (s *StatusBar) AddWidget(children ...tui.Component) { s.add(true, children) }
+
+func (s *StatusBar) add(normal bool, children []tui.Component) {
 	for _, c := range children {
 		if c == nil {
 			panic("widget: StatusBar.Add: nil child")
 		}
-		s.permanent = append(s.permanent, c)
+		s.items = append(s.items, barItem{c: c, normal: normal})
 		if s.ctx != nil {
 			s.ctx.Mount(c)
 			s.RequestLayout()
@@ -152,44 +167,62 @@ func (s *StatusBar) Add(children ...tui.Component) {
 	}
 }
 
-// Remove unmounts a permanent widget and forgets it.
+func (s *StatusBar) indexOf(child tui.Component) int {
+	return slices.IndexFunc(s.items, func(it barItem) bool { return it.c == child })
+}
+
+// Remove unmounts a widget and forgets it.
 func (s *StatusBar) Remove(child tui.Component) {
-	i := slices.Index(s.permanent, child)
+	i := s.indexOf(child)
 	if child == nil || i < 0 {
 		return
 	}
-	s.permanent = slices.Delete(s.permanent, i, i+1)
+	s.items = slices.Delete(s.items, i, i+1)
 	if s.ctx != nil {
 		s.ctx.Unmount(child)
 		s.RequestLayout()
 	}
 }
 
-// Move reorders a permanent widget without unmounting it (Container contract).
+// Move reorders a widget among all of the bar's, without unmounting it (Container contract); it
+// keeps its end.
 func (s *StatusBar) Move(child tui.Component, to int) {
-	i := slices.Index(s.permanent, child)
+	i := s.indexOf(child)
 	if child == nil || i < 0 {
 		return
 	}
-	if to < 0 || to >= len(s.permanent) {
-		panic(errs.Fatal{Op: "widget: StatusBar.Move", Rule: fmt.Sprintf("index %d outside the %d permanent widgets", to, len(s.permanent))})
+	if to < 0 || to >= len(s.items) {
+		panic(errs.Fatal{Op: "widget: StatusBar.Move", Rule: fmt.Sprintf("index %d outside the %d widgets", to, len(s.items))})
 	}
-	s.permanent = slices.Insert(slices.Delete(s.permanent, i, i+1), to, child)
+	it := s.items[i]
+	s.items = slices.Insert(slices.Delete(s.items, i, i+1), to, it)
 	s.RequestLayout()
 }
 
-// Children enumerates the permanent widgets.
-func (s *StatusBar) Children() iter.Seq[tui.Component] { return slices.Values(s.permanent) }
+// Children enumerates the widgets, normal and permanent, in the order added.
+func (s *StatusBar) Children() iter.Seq[tui.Component] {
+	return func(yield func(tui.Component) bool) {
+		for _, it := range s.items {
+			if !yield(it.c) {
+				return
+			}
+		}
+	}
+}
 
 // Layout is height 1, width greedy. The permanent widgets are laid out from the right end, a
 // column apart, each offered the columns still free and taking the width it asks for within them
-// (a Text truncates); one offered none is given none.
+// (a Text truncates); one offered none is given none. The normal widgets are laid out the same
+// way from the left end, in what the permanent ones left.
 func (s *StatusBar) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, c.MinW), H: 1})
 	// right to left: the last added sits at the end
 	x := sz.W
-	for i := len(s.permanent) - 1; i >= 0; i-- {
-		child := s.permanent[i]
+	for i := len(s.items) - 1; i >= 0; i-- {
+		if s.items[i].normal {
+			continue
+		}
+		child := s.items[i].c
 		var w int
 		if x > 0 {
 			w = s.ctx.LayoutChild(child, tui.Constraints{MaxW: x, MaxH: 1}).W
@@ -204,6 +237,25 @@ func (s *StatusBar) Layout(c tui.Constraints) tui.Size {
 		s.ctx.PlaceChild(child, tui.Rect{X: max(x, 0)})
 	}
 	s.placed = sz.W - max(x, 0)
+	// left to right, in what is left: the first added sits at the start
+	lx, end := 0, max(x, 0)
+	for _, it := range s.items {
+		if !it.normal {
+			continue
+		}
+		var w int
+		if free := end - lx; free > 0 {
+			w = s.ctx.LayoutChild(it.c, tui.Constraints{MaxW: free, MaxH: 1}).W
+		}
+		if w > 0 && lx+w <= end {
+			s.ctx.PlaceChild(it.c, tui.Rect{X: lx, W: w, H: 1})
+			lx += w + 1 // a column after it
+			continue
+		}
+		s.ctx.LayoutChild(it.c, tui.Tight(tui.Size{}))
+		s.ctx.PlaceChild(it.c, tui.Rect{X: min(lx, end)})
+	}
+	s.leading = min(lx, end)
 	return sz
 }
 
@@ -223,8 +275,9 @@ func (s *StatusBar) Render(sur tui.Surface) {
 		return
 	}
 	sur.Fill(tui.Rect{X: 0, Y: 0, W: full, H: 1}, " ", s.bar)
-	// the segments share the row left of the permanent widgets
-	w := full - s.placed
+	// the segments share the row between the normal widgets and the permanent ones
+	sur = sur.Sub(tui.Rect{X: s.leading, W: max(full-s.placed-s.leading, 0), H: 1})
+	w := sur.Size().W
 	if w <= 0 {
 		return
 	}
