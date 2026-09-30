@@ -284,6 +284,11 @@ func (e *Editor) SetWrap(m WrapMode) {
 	e.MarkDirty()
 }
 
+// GutterWidth is the columns the line numbers take for the text as it is now, the column after
+// them included; 0 while they are hidden. A host sizing the editor to hold a width of text adds
+// it: the gutter's columns come out of the editor's width.
+func (e *Editor) GutterWidth() int { return e.gutterWidth() }
+
 // gutterWidth is the columns the line numbers take: the widest number, four digits at least so the
 // gutter keeps its width as a note grows, and a column after it; 0 without numbers.
 func (e *Editor) gutterWidth() int {

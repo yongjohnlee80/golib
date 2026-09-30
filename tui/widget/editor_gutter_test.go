@@ -25,6 +25,11 @@ func TestTheEditorsLineNumbers(t *testing.T) {
 	if c := h.tb.Snapshot()[0][3]; c.Content != "1" || c.Attrs.Mask&tui.AttrFaint == 0 {
 		t.Fatalf("line 1's number %q is not faint: %+v", c.Content, c.Attrs)
 	}
+	var gw int
+	h.onLoop(func() { gw = ed.GutterWidth() })
+	if gw != 5 {
+		t.Fatalf("GutterWidth %d, want 5 (four digits and a column)", gw)
+	}
 	var cx int
 	h.onLoop(func() { cx, _, _ = ed.Cursor() })
 	if cx != 5 {
@@ -42,6 +47,10 @@ func TestTheEditorsLineNumbers(t *testing.T) {
 	h.waitFor("unwrapped", func() bool { return strings.TrimRight(h.row(2), " ") == "   3 golf" })
 	h.onLoop(func() { ed.SetLineNumbers(false) })
 	h.waitFor("no gutter", func() bool { return strings.HasPrefix(h.row(0), "alpha") })
+	h.onLoop(func() { gw = ed.GutterWidth() })
+	if gw != 0 {
+		t.Fatalf("GutterWidth %d with the numbers hidden, want 0", gw)
+	}
 	h.onLoop(func() { cx, _, _ = ed.Cursor() })
 	if cx != 2 {
 		t.Fatalf("without the gutter the cursor is at column %d, want 2", cx)
@@ -55,6 +64,10 @@ func TestTheEditorsLineNumbers(t *testing.T) {
 	h.inject(key('G'), key('o'))
 	h.barrier(sh)
 	h.waitFor("five digits after the edit", func() bool { return strings.Contains(h.grid(), "\n10000 ") })
+	h.onLoop(func() { gw = ed.GutterWidth() })
+	if gw != 6 {
+		t.Fatalf("GutterWidth %d at 10,000 lines, want 6", gw)
+	}
 	if !strings.Contains(h.grid(), " 9999 last") {
 		t.Fatalf("the line above, in the wider gutter:\n%s", h.grid())
 	}
