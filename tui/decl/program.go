@@ -555,6 +555,17 @@ func (p *Program) Adapter() *Adapter   { return p.adapter }
 func (p *Program) App() *tui.App       { return p.app }
 func (p *Program) Root() tui.Component { return p.root }
 
+// Overlay is the root Window's OverlayHost: where a Go program attaches a layer the document does
+// not declare, a native widget over the page (widget.Toasts, say). False when the root is not a
+// Window, or it is not mounted yet.
+func (p *Program) Overlay() (*widget.OverlayHost, bool) {
+	w, ok := p.root.(*windowNode)
+	if !ok || w.host == nil {
+		return nil, false
+	}
+	return w.host, true
+}
+
 // ---------------------------------------------------------------- values
 
 // Value is a Go value as the engine holds it: a string, bool, integer or

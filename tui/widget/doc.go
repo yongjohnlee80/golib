@@ -25,6 +25,7 @@
 //	MenuBar         Menu / Chrome    no (menu is)    — (delegates to [Menu])
 //	MenuItem        Control          when enabled    [tui.ControlActivatedEvent]
 //	StatusBar       Chrome           no              —
+//	Toasts          Overlay / Notice no              —
 //	ProgressBar     Feedback         no              —
 //	Text            Static Display   no              —
 //
