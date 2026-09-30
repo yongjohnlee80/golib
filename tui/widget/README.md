@@ -696,6 +696,8 @@ toasts.Post(widget.Toast{ID: "embed", Text: "embedding 612/1000", Ongoing: true}
 toasts.Done("embed") // lingers, then goes
 ```
 
+A toast only tells, and the pointer passes through it to what is beneath. One with `OnClick` takes a click on its card and runs it (AutoDoc opens its notification history): `toasts.Post(widget.Toast{Text: "saved", OnClick: openHistory})`. This is hit-testing's containment, Qt's `QQuickItem::contains`: a component that is a `tui.PointerContainer` says which of its points it holds (`ContainsPointer`), and the pointer goes on beneath the rest. A `Float`, and a non-modal float's layer, hold none, so an always-shown overlay never takes the clicks meant for the application under it; a modal float's layer holds them all, as the backdrop.
+
 #### `ProgressBar`
 
 Determinate progress bar (with sub-cell 1/8th block precision), sweeping indeterminate block, or single-cell spinner. Employs zero-wakeup idle timers:

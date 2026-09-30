@@ -164,14 +164,19 @@ type CursorColorer interface {
 	CursorColor() (c style.Color, ok bool)
 }
 
-// PointerTransparent is a component the pointer passes through: hit-testing never makes it the
-// target itself, and where none of its children is under the pointer the search goes on to what
-// lies beneath it. A layer that fills the screen only to place a small piece of content (a
-// non-modal float) is one; without it, it takes every click meant for the application beneath.
-type PointerTransparent interface {
+// PointerContainer is a component that says which of its points it holds for the pointer: Qt's
+// QQuickItem::contains (and containmentMask). Hit-testing asks it after its children. At a point
+// it does not contain, it is not the target, and the search goes on to what lies beneath it, so
+// the pointer passes through. A component that is not one contains its whole rect.
+//
+// A layer that fills the screen only to place some content contains none of it; a toast stack
+// contains only the toasts that do something when clicked. Without it, such a layer takes every
+// click meant for the application beneath: AutoDoc's always-shown toasts took the menu bar's.
+type PointerContainer interface {
 	Component
-	// PointerTransparent reports whether the component lets the pointer through right now.
-	PointerTransparent() bool
+	// ContainsPointer reports whether the component holds the point (x, y), in its own
+	// coordinates, for the pointer.
+	ContainsPointer(x, y int) bool
 }
 
 // FocusScope marks a component subtree as an input boundary.
