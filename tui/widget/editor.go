@@ -284,13 +284,13 @@ func (e *Editor) SetWrap(m WrapMode) {
 	e.MarkDirty()
 }
 
-// gutterWidth is the columns the line numbers take: the widest number (three digits at least)
-// and a column after it; 0 without numbers.
+// gutterWidth is the columns the line numbers take: the widest number, four digits at least so the
+// gutter keeps its width as a note grows, and a column after it; 0 without numbers.
 func (e *Editor) gutterWidth() int {
 	if !e.numbers {
 		return 0
 	}
-	return max(len(fmt.Sprint(len(e.lines))), 3) + 1
+	return max(len(fmt.Sprint(len(e.lines))), 4) + 1
 }
 
 // WithEditorWrap selects WrapNone (default) or WrapSoft.
