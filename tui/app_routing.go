@@ -596,8 +596,8 @@ func (a *App) hitTest(x, y int) *node {
 }
 
 // hitTestNode recursively inspects n and its visible children for containment. A node whose
-// component is PointerTransparent is never the target itself: where none of its children is under
-// the pointer, the search goes on to what lies beneath it.
+// component is a PointerContainer is the target only at the points it contains: elsewhere, where
+// none of its children is under the pointer, the search goes on to what lies beneath it.
 func hitTestNode(n *node, x, y int) *node {
 	if !n.visible() || !n.absRect.Contains(x, y) {
 		return nil
@@ -607,7 +607,7 @@ func hitTestNode(n *node, x, y int) *node {
 			return t
 		}
 	}
-	if pt, ok := n.comp.(PointerTransparent); ok && pt.PointerTransparent() {
+	if pc, ok := n.comp.(PointerContainer); ok && !pc.ContainsPointer(x-n.absRect.X, y-n.absRect.Y) {
 		return nil
 	}
 	return n

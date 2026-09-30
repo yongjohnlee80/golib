@@ -283,10 +283,11 @@ func (f *Float) Layout(c tui.Constraints) tui.Size {
 // Render paints nothing; the layer and child do.
 func (f *Float) Render(tui.Surface) {}
 
-// PointerTransparent implements tui.PointerTransparent: a Float is only the frame its layer fills,
-// never a pointer's target. The layer decides: a modal one catches the pointer as the backdrop, a
-// non-modal one lets it through to the application wherever its content is not.
-func (f *Float) PointerTransparent() bool { return true }
+// ContainsPointer implements tui.PointerContainer: a Float is only the frame its layer fills, and
+// contains no point of its own. The layer decides: a modal one contains every point, as the
+// backdrop, and a non-modal one none, so the pointer reaches its content, or the application
+// beneath wherever its content is not.
+func (f *Float) ContainsPointer(x, y int) bool { return false }
 
 // floatLayer is the full-area overlay layer: FocusScope trap (modal),
 // backdrop scrim, Esc-dismiss, and anchor placement of the content.
@@ -308,11 +309,12 @@ func (l *floatLayer) Init(ctx *tui.Context) {
 	ctx.Mount(l.owner.child)
 }
 
-// PointerTransparent implements tui.PointerTransparent: a non-modal layer fills the area only to
-// place its content, so the pointer passes through it wherever the content is not — to the
-// application beneath. A modal layer is the backdrop, and catches it (HandleEvent). An always-shown
-// non-modal float (the toasts) once took every click on the screen, the menu bar's among them.
-func (l *floatLayer) PointerTransparent() bool { return !l.owner.modal }
+// ContainsPointer implements tui.PointerContainer. A modal layer is the backdrop and contains every
+// point (HandleEvent catches what lands on it). A non-modal layer fills the area only to place its
+// content, and contains none: the pointer reaches the content, which contains its own, or the
+// application beneath. An always-shown non-modal float (the toasts) once took every click on the
+// screen, the menu bar's among them.
+func (l *floatLayer) ContainsPointer(x, y int) bool { return l.owner.modal }
 
 // TrapsFocus implements tui.FocusScope: modal floats confine Tab.
 func (l *floatLayer) TrapsFocus() bool { return l.owner.modal }

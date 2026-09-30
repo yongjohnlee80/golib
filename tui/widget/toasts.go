@@ -57,7 +57,9 @@ type Toasts struct {
 	now     func() time.Time
 	st      style.Style
 	muted   style.Style
-	stop    func() // the tick, while anything is showing or waiting
+	stop    func()     // the tick, while anything is showing or waiting
+	laid    tui.Size   // the size last laid out, where the cards are placed
+	pressed *toastItem // the card a primary press landed on, activated by the release over it
 }
 
 var _ tui.Component = (*Toasts)(nil)
@@ -73,6 +75,10 @@ type Toast struct {
 	At time.Time
 	// Ongoing keeps it showing until it is posted again without it, or Done: a task's progress.
 	Ongoing bool
+	// OnClick, when set, runs on a click on its card, on the loop; a program opens its
+	// notifications' history, say. A toast without one passes the pointer through to what is
+	// beneath it.
+	OnClick func()
 }
 
 type toastItem struct {
@@ -150,7 +156,7 @@ func (t *Toasts) Post(n Toast) {
 		n.At = now
 	}
 	if it := t.find(n.ID); it != nil {
-		it.Text, it.Ongoing = n.Text, n.Ongoing
+		it.Text, it.Ongoing, it.OnClick = n.Text, n.Ongoing, n.OnClick
 		if !n.Ongoing && !it.finishedT {
 			t.finish(it, now)
 		}
@@ -262,14 +268,49 @@ func (t *Toasts) Init(ctx *tui.Context) {
 	}
 }
 
-// HandleEvent is the clock: each tick ages the toasts and lets the lingering go.
+// HandleEvent is the clock, and a click: each tick ages the toasts and lets the lingering go; a
+// primary press and release over a card with OnClick runs it. The pointer reaches only such a card
+// (ContainsPointer).
 func (t *Toasts) HandleEvent(ev tui.Event) bool {
-	if _, ok := ev.(tui.TickEvent); ok {
+	switch e := ev.(type) {
+	case tui.TickEvent:
 		t.expire()
 		t.MarkDirty()
 		return true
+	case tui.MouseEvent:
+		if e.Button != tui.MouseLeft {
+			return false
+		}
+		it := t.cardAt(e.X, e.Y)
+		switch e.Kind {
+		case tui.MousePress:
+			t.pressed = it
+			return it != nil
+		case tui.MouseRelease:
+			pressed := t.pressed
+			t.pressed = nil
+			if it != nil && it == pressed {
+				it.OnClick()
+				return true
+			}
+		}
 	}
 	return false
+}
+
+// ContainsPointer implements tui.PointerContainer: the stack holds the pointer only on the card of
+// a toast that does something when clicked (OnClick); anywhere else, over a card that only tells,
+// the pointer passes through to what is beneath.
+func (t *Toasts) ContainsPointer(x, y int) bool { return t.cardAt(x, y) != nil }
+
+// cardAt is the toast with OnClick whose card holds (x, y), nil for none.
+func (t *Toasts) cardAt(x, y int) *toastItem {
+	for _, b := range t.place(t.laid) {
+		if b.it.OnClick != nil && b.rect.Contains(x, y) {
+			return b.it
+		}
+	}
+	return nil
 }
 
 // age is how long ago a toast came, as it says it.
@@ -309,42 +350,52 @@ func (t *Toasts) Layout(c tui.Constraints) tui.Size {
 		bw, lines := t.box(it, maxW)
 		w, h = max(w, bw), h+len(lines)+2
 	}
-	return c.Constrain(tui.Size{W: w, H: h})
+	t.laid = c.Constrain(tui.Size{W: w, H: h})
+	return t.laid
 }
 
-// Render paints the toasts, the newest nearest the corner, each at the corner's side of the stack;
-// the margin rows are left unpainted.
-func (t *Toasts) Render(s tui.Surface) {
-	sz := s.Size()
+// placedToast is one toast where it is drawn in a stack of a size: its card and its lines.
+type placedToast struct {
+	it    *toastItem
+	rect  tui.Rect
+	lines []string
+}
+
+// place lays the showing toasts out in a stack of size sz, the newest nearest the corner, each at
+// the corner's side of the stack, the margin rows left clear: what Render paints and a click finds.
+func (t *Toasts) place(sz tui.Size) []placedToast {
 	if sz.W <= 0 || len(t.showing) == 0 {
-		return
+		return nil
 	}
 	bottom := t.corner == BottomLeft || t.corner == BottomRight || t.corner == Bottom
 	right := t.corner == TopRight || t.corner == BottomRight || t.corner == Right
-	type placed struct {
-		it    *toastItem
-		w     int
-		lines []string
-	}
-	var boxes []placed
+	var out []placedToast
 	for _, it := range t.showing {
 		w, lines := t.box(it, sz.W)
-		boxes = append(boxes, placed{it, w, lines})
+		out = append(out, placedToast{it: it, rect: tui.Rect{W: w, H: len(lines) + 2}, lines: lines})
 	}
 	if !bottom {
-		slices.Reverse(boxes) // at the top, the newest is first
+		slices.Reverse(out) // at the top, the newest is first
 	}
 	y := 0
 	if !bottom {
 		y = t.margin
 	}
-	for _, b := range boxes {
-		x := 0
+	for i := range out {
 		if right {
-			x = sz.W - b.w
+			out[i].rect.X = sz.W - out[i].rect.W
 		}
-		t.paint(s, x, y, b.w, b.lines, age(t.now().Sub(b.it.At)))
-		y += len(b.lines) + 2
+		out[i].rect.Y = y
+		y += out[i].rect.H
+	}
+	return out
+}
+
+// Render paints the toasts, the newest nearest the corner, each at the corner's side of the stack;
+// the margin rows are left unpainted.
+func (t *Toasts) Render(s tui.Surface) {
+	for _, b := range t.place(s.Size()) {
+		t.paint(s, b.rect.X, b.rect.Y, b.rect.W, b.lines, age(t.now().Sub(b.it.At)))
 	}
 }
 
