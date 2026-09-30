@@ -203,15 +203,17 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 
 // ---------------------------------------------------------------- StatusBar
 
+// buildStatusBar makes the bar; its children are its permanent widgets (Qt's QStatusBar
+// addPermanentWidget; Quick Controls 1's StatusBar held its items as children too): each at its
+// own width at the bar's right end, in order, the segments sharing the rest of the row.
 func buildStatusBar(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("StatusBar takes no children (at %s)", b.Pos)
-	}
 	consumed, err := readProps(b.Props, map[string]field{})
 	if err != nil {
 		return nil, nil, err
 	}
-	return widget.NewStatusBar(), consumed, nil
+	sb := widget.NewStatusBar()
+	sb.Add(b.Children...)
+	return sb, consumed, nil
 }
 
 // statusSegment adapts one of the StatusBar's segment setters, which take an
