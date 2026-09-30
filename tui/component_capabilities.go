@@ -164,6 +164,16 @@ type CursorColorer interface {
 	CursorColor() (c style.Color, ok bool)
 }
 
+// PointerTransparent is a component the pointer passes through: hit-testing never makes it the
+// target itself, and where none of its children is under the pointer the search goes on to what
+// lies beneath it. A layer that fills the screen only to place a small piece of content (a
+// non-modal float) is one; without it, it takes every click meant for the application beneath.
+type PointerTransparent interface {
+	Component
+	// PointerTransparent reports whether the component lets the pointer through right now.
+	PointerTransparent() bool
+}
+
 // FocusScope marks a component subtree as an input boundary.
 //
 // When TrapsFocus() reports true (e.g. inside a modal dialog or floating popup),
