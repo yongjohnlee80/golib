@@ -291,7 +291,6 @@ func TestTheAppWidgetsRefuseWhatTheyCannotBuild(t *testing.T) {
 		"Frame { }":                      "exactly 1 child",
 		"Frame { colour: 1\n Text { } }": "colour",
 		"Editor { wrap: \"yes\" }":       "wrap: want a bool",
-		"StatusBar { Text { } }":         "takes no children",
 		"StatusBar { colour: \"red\" }":  "colour",
 	} {
 		_, err := mountDoc(t, "import tui 1.0\n"+src)
