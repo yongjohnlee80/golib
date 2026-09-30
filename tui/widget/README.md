@@ -35,6 +35,7 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `MenuBar`     | Menu / Chrome   | no (menu is)   | — (delegates to `Menu`)                                |
 | `MenuItem`    | Control         | when enabled   | `tui.ControlActivatedEvent`                            |
 | `StatusBar`   | Chrome          | no             | —                                                      |
+| `Toasts`      | Overlay / Notice | no            | —                                                      |
 | `ProgressBar` | Feedback        | no             | —                                                      |
 | `Text`        | Static Display  | no             | —                                                      |
 | `FileList`    | File Browsing   | yes (its list) | — (callbacks: `WithOnCursor`, `WithOnFile`, `WithOnDir`) |
@@ -681,6 +682,18 @@ bar := widget.NewStatusBar()
 bar.SetLeft("NORMAL")
 bar.SetCenter("main.go")
 bar.SetRight("utf-8 | 12:45 | ?: help")
+```
+
+#### `Toasts`
+
+Notifications stacked in a corner over the page, each a box with its message and its age ("now", "15s ago"). Up to three show (WithToastMax); the rest wait and show in order, their age counted from when they were posted. A finished toast lingers (WithToastLinger, default 3s); an ongoing one (a task's progress) stays until it is posted finished or Done, and a post with the same ID updates it in place. WithToastMargin keeps a status line under the stack clear. It is a Float's content: attach its Float to the OverlayHost (a decl program's is `Program.Overlay()`):
+
+```go
+toasts := widget.NewToasts(widget.WithToastMargin(1)) // bottom right, over the status line
+host.Attach(toasts.Float())
+toasts.Post(widget.Toast{Text: "saved notes/plan.md"})
+toasts.Post(widget.Toast{ID: "embed", Text: "embedding 612/1000", Ongoing: true})
+toasts.Done("embed") // lingers, then goes
 ```
 
 #### `ProgressBar`
