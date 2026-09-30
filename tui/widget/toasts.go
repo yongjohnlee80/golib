@@ -133,6 +133,12 @@ func (t *Toasts) SetCorner(a Anchor) {
 	t.RequestLayout()
 }
 
+// SetMargin changes the rows kept clear at the corner's edge: a status line shown or hidden.
+func (t *Toasts) SetMargin(rows int) {
+	t.margin = max(rows, 0)
+	t.RequestLayout()
+}
+
 // SetLinger changes how long a finished toast stays, from the next one finished on.
 func (t *Toasts) SetLinger(d time.Duration) { t.linger = max(d, time.Second) }
 
@@ -264,9 +270,6 @@ func (t *Toasts) HandleEvent(ev tui.Event) bool {
 	}
 	return false
 }
-
-// AcceptsFocus is false: a toast never takes the keyboard.
-func (t *Toasts) AcceptsFocus() bool { return false }
 
 // age is how long ago a toast came, as it says it.
 func age(d time.Duration) string {
