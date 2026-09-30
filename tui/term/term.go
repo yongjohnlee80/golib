@@ -67,6 +67,8 @@ type Backend struct {
 
 	termVisible bool // terminal-side cursor visibility
 	termShape   tui.CursorShape
+	termColor   tui.CellColor // the cursor colour the terminal was last given
+	termColored bool          // it was given one (OSC 12), to give back at teardown
 	penX, penY  int
 	penKnown    bool
 	attrsKnown  bool
@@ -84,6 +86,9 @@ type cursorState struct {
 	x, y    int
 	posSet  bool
 	shape   tui.CursorShape
+	// color is the cursor's colour (OSC 12) while colored; not colored, the terminal's own
+	color   tui.CellColor
+	colored bool
 }
 
 var _ tui.Backend = (*Backend)(nil)
@@ -266,6 +271,9 @@ func (b *Backend) teardown() error {
 		}
 		if b.pasteOn {
 			buf.WriteString("\x1b[?2004l")
+		}
+		if b.termColored {
+			buf.WriteString("\x1b]112\x07") // the cursor's own colour back (OSC 112)
 		}
 		buf.WriteString("\x1b[0 q\x1b[?25h\x1b[m")
 		if b.altEntered {

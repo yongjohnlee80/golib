@@ -374,3 +374,55 @@ func TestFlushAfterStopErrClosed(t *testing.T) {
 		t.Fatalf("Size after Stop = %v, want ErrClosed", err)
 	}
 }
+
+// TestTheCursorColour: a colour latched is sent as OSC 12 in the frame's one write; the same
+// colour again sends nothing; a palette index is not sent, the terminal's own colour given back
+// (OSC 112); and a Stop after a colour gives the cursor its own back.
+func TestTheCursorColour(t *testing.T) {
+	b, w := flushBackend(tui.Capabilities{})
+	orange := tui.CellColor{Kind: tui.CellColorRGB, R: 0xd2, G: 0x69, B: 0x1e}
+	b.SetCursorColor(orange, true)
+	if err := b.Flush(nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.String(); !strings.Contains(got, "\x1b]12;#d2691e\x07") || w.Writes() != 1 { // with the first frame's cursor state
+		t.Fatalf("the colour's flush wrote %q in %d writes, want OSC 12 in one", got, w.Writes())
+	}
+	w.Reset()
+	b.SetCursorColor(orange, true)
+	if err := b.Flush(nil); err != nil {
+		t.Fatal(err)
+	}
+	if w.Writes() != 0 {
+		t.Fatalf("the same colour again wrote %q", w.String())
+	}
+	b.SetCursorColor(tui.CellColor{Kind: tui.CellColorANSI, Index: 3}, true)
+	if err := b.Flush(nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.String(); got != "\x1b]112\x07" {
+		t.Fatalf("a palette index wrote %q, want the terminal's own colour back (OSC 112)", got)
+	}
+}
+
+// TestStopGivesTheCursorItsColourBack: a Stop after a cursor colour was sent resets it (OSC 112),
+// in the final write, before the cursor is shown.
+func TestStopGivesTheCursorItsColourBack(t *testing.T) {
+	s := newScript(t)
+	s.respond(fullModernReplies)
+	if err := s.start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	s.b.SetCursorColor(tui.CellColor{Kind: tui.CellColorRGB, R: 1, G: 2, B: 3}, true)
+	if err := s.b.Flush(nil); err != nil {
+		t.Fatal(err)
+	}
+	s.w.Reset()
+	if err := s.b.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	out := s.w.String()
+	if i, j := strings.Index(out, "\x1b]112\x07"), strings.Index(out, "\x1b[?25h"); i < 0 || j < i {
+		t.Fatalf("teardown %q: want OSC 112 before the cursor is shown", out)
+	}
+}

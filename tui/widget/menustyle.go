@@ -162,6 +162,15 @@ func (s *MenuStyle) Border() style.Style {
 //
 // Armed above Selected IS reachable — a press arms the row the selection is
 // already on — and a press that did not visibly arm reads as a dropped click.
+// rowLit is a row wearing the highlight: armed, or the selection (or the open row) while the menu
+// has the keyboard — the rows rowStyle paints Armed or Selected.
+func rowLit(row RowView, st RowState) bool {
+	if !row.Enabled || row.Kind == ItemKindSeparator {
+		return false
+	}
+	return st.Armed || ((st.Selected || st.Open) && st.Focused)
+}
+
 func rowStyle(s *MenuStyle, row RowView, st RowState) style.Style {
 	switch {
 	case !row.Enabled || row.Kind == ItemKindSeparator:

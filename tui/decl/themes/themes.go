@@ -27,8 +27,9 @@
 //	          highlightedText, accent (a menu's access key)
 //	document  what shows a document — an editor, a table, a tree — and its
 //	          frame: window, windowText, highlight, highlightedText, base,
-//	          text; and selection, selectedText for a text selection, which an
-//	          Editor wears as its own palette.highlight / highlightedText
+//	          text; selection, selectedText for a text selection, which an
+//	          Editor wears as its own palette.highlight / highlightedText; and
+//	          cursor, lineNumber for an Editor's cursorColor and lineNumberColor
 //	status    the status line: window, windowText
 //	syntax    KSyntaxHighlighting's styles, for the syntax.* roles: keyword,
 //	          controlFlow, dataType, attribute, function, string, specialChar,

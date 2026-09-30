@@ -29,6 +29,7 @@ Theme {
         highlight: "brightwhite"; highlightedText: "black"
         base: "default"; text: "default"
         selection: "white"; selectedText: "black"
+        cursor: "brightwhite"; lineNumber: "brightblack"
     }
     status {
         window: "white"; windowText: "black"

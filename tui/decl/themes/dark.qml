@@ -25,6 +25,7 @@ Theme {
         highlight: "#87afd7"; highlightedText: "#000000"
         base: "#1c1c1c"; text: "#d0d0d0"
         selection: "#005f87"; selectedText: "#ffffff"
+        cursor: "#ffaf00"; lineNumber: "#5f5f5f"
     }
     status {
         window: "#303030"; windowText: "#bcbcbc"

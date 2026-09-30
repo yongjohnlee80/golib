@@ -4,6 +4,7 @@ package tui
 // frames, constraint-violation clamping, relayout economy, the cursor rule.
 
 import (
+	"github.com/yongjohnlee80/golib/tui/style"
 	"math/rand"
 	"testing"
 )
@@ -292,4 +293,37 @@ func TestCursorRule(t *testing.T) {
 		_, _, visible := h.tb.CursorPos()
 		return !visible
 	})
+}
+
+// colorProbe is a CursorReporter whose cursor wears a colour (CursorColorer).
+type colorProbe struct {
+	cursorProbe
+	color style.Color
+}
+
+func (c *colorProbe) CursorColor() (style.Color, bool) { return c.color, true }
+
+// TestTheCursorWearsTheFocusedComponentsColour: a focused CursorColorer's colour reaches the
+// backend, resolved; focus on a reporter without one gives the cursor its own colour back.
+func TestTheCursorWearsTheFocusedComponentsColour(t *testing.T) {
+	t.Parallel()
+	colored := &colorProbe{color: style.RGB(0xd2, 0x69, 0x1e)}
+	colored.name = "colored"
+	colored.accepts.Store(true)
+	colored.report.Store(true)
+	plain := &cursorProbe{}
+	plain.name = "plain"
+	plain.accepts.Store(true)
+	plain.report.Store(true)
+	flex := NewFlex(Horizontal)
+	flex.AddWeighted(colored, 1)
+	flex.AddWeighted(plain, 1)
+	h := startApp(t, flex, 10, 2)
+	h.onLoop(func() { colored.ctx.RequestFocus() })
+	waitFor(t, "the cursor coloured", func() bool {
+		c, ok := h.tb.CursorColor()
+		return ok && c == CellColor{Kind: CellColorRGB, R: 0xd2, G: 0x69, B: 0x1e}
+	})
+	h.onLoop(func() { plain.ctx.RequestFocus() })
+	waitFor(t, "the cursor's own colour back", func() bool { _, ok := h.tb.CursorColor(); return !ok })
 }

@@ -699,11 +699,12 @@ func (r *stateRecorder) sawRow(id widget.ItemID) bool {
 
 // TestTheHotkeyTakesTheStylesHotkeyLookOverItsRow.
 //
-// The accent-key look of a 1990s IDE: the mnemonic in its own colour, on the
-// row's own background. Checked on the letter AND on its neighbour, since a
-// hotkey look that leaked onto the whole label would pass a check of the letter
-// alone — and with the selection on the row, since merging over the row is the
-// half a replacing implementation gets wrong.
+// The accent-key look of a 1990s IDE: on an ordinary row, the mnemonic in its own
+// colour, on the row's own background. On the lit row (the highlight) it keeps
+// the row's colours and is underlined, as Qt draws a mnemonic: an accent picked for
+// the menu's surface can vanish on the highlight (red on blue; mono's one colour on
+// itself). Checked on the letter AND on its neighbour, since a hotkey look that
+// leaked onto the whole label would pass a check of the letter alone.
 func TestTheHotkeyTakesTheStylesHotkeyLookOverItsRow(t *testing.T) {
 	surface := style.New().Background(style.ANSI(7)).Foreground(style.ANSI(0))
 	selected := style.New().Background(style.ANSI(2)).Foreground(style.ANSI(0))
@@ -722,23 +723,24 @@ func TestTheHotkeyTakesTheStylesHotkeyLookOverItsRow(t *testing.T) {
 
 	ansi := func(n uint8) tui.CellColor { return tui.CellColor{Kind: tui.CellColorANSI, Index: n} }
 	for _, c := range []struct {
-		label  string
-		bg     uint8
-		reason string
+		label     string
+		fg, bg    uint8
+		underline bool
+		reason    string
 	}{
-		{"One", 2, "the selected row"},
-		{"Two", 7, "an ordinary row"},
+		{"One", 0, 2, true, "the selected row: the row's colours, underlined"},
+		{"Two", 1, 7, false, "an ordinary row: the hotkey's red, no underline"},
 	} {
 		x, y := cellOfLabel(t, h, c.label)
 		key, next := rowStyleAt(t, h, x, y), rowStyleAt(t, h, x+1, y)
-		if key.FG != ansi(1) || key.BG != ansi(c.bg) {
-			t.Errorf("%s: hotkey cell = %+v, want red on the row's background %d", c.reason, key, c.bg)
+		if key.FG != ansi(c.fg) || key.BG != ansi(c.bg) {
+			t.Errorf("%s: hotkey cell = %+v, want %d on %d", c.reason, key, c.fg, c.bg)
 		}
-		if key.Mask&tui.AttrUnderline != 0 {
-			t.Errorf("%s: a hotkey look that sets only a colour kept the default underline", c.reason)
+		if got := key.Mask&tui.AttrUnderline != 0; got != c.underline {
+			t.Errorf("%s: underlined %v", c.reason, got)
 		}
-		if next.FG != ansi(0) {
-			t.Errorf("%s: the letter after the hotkey = %+v, want the row's black", c.reason, next)
+		if next.FG != ansi(0) || next.Mask&tui.AttrUnderline != 0 {
+			t.Errorf("%s: the letter after the hotkey = %+v, want the row's black, plain", c.reason, next)
 		}
 	}
 }

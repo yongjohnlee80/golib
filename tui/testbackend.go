@@ -49,10 +49,14 @@ type TestBackend struct {
 	latchX, latchY int
 	latchVisible   bool
 	latchShape     CursorShape
+	latchColor     CellColor
+	latchColored   bool
 	// …and the applied state the last Flush emitted.
 	curX, curY int
 	curVisible bool
 	curShape   CursorShape
+	curColor   CellColor
+	curColored bool
 
 	flushes int
 
@@ -280,6 +284,20 @@ func (b *TestBackend) SetCursorShape(s CursorShape) {
 	b.latchShape = s
 }
 
+// SetCursorColor implements CursorColorSetter: latches the cursor's colour.
+func (b *TestBackend) SetCursorColor(c CellColor, set bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.latchColor, b.latchColored = c, set
+}
+
+// CursorColor reports the cursor colour the last Flush applied; ok false is the terminal's own.
+func (b *TestBackend) CursorColor() (c CellColor, ok bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.curColor, b.curColored
+}
+
 // Flush implements Backend: applies the diff to the grid structurally (byte
 // economy is a term-emitter concern), records the latched cursor state as
 // applied, and increments the flush counter. A width-2 head update covers
@@ -304,6 +322,7 @@ func (b *TestBackend) Flush(diff []CellUpdate) error {
 	b.curX, b.curY = b.latchX, b.latchY
 	b.curVisible = b.latchVisible
 	b.curShape = b.latchShape
+	b.curColor, b.curColored = b.latchColor, b.latchColored
 	b.flushes++
 	return nil
 }

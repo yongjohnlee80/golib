@@ -1,6 +1,7 @@
 package term
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -59,6 +60,18 @@ func (b *Backend) SetCursorShape(s tui.CursorShape) {
 	b.cmu.Lock()
 	if b.want.shape != s {
 		b.want.shape = s
+		b.cursorDirty = true
+	}
+	b.cmu.Unlock()
+}
+
+// SetCursorColor latches the cursor's colour (OSC 12), or the terminal's own (OSC 112); the next
+// Flush emits it. Only an RGB colour is sent; a palette index leaves the terminal's own.
+func (b *Backend) SetCursorColor(c tui.CellColor, set bool) {
+	set = set && c.Kind == tui.CellColorRGB
+	b.cmu.Lock()
+	if b.want.colored != set || (set && b.want.color != c) {
+		b.want.color, b.want.colored = c, set
 		b.cursorDirty = true
 	}
 	b.cmu.Unlock()
@@ -136,6 +149,14 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	if want.shape != b.termShape {
 		b.writeShape(want.shape)
 		b.termShape = want.shape
+	}
+	if want.colored != b.termColored || (want.colored && want.color != b.termColor) {
+		if want.colored {
+			fmt.Fprintf(buf, "\x1b]12;#%02x%02x%02x\x07", want.color.R, want.color.G, want.color.B)
+		} else {
+			buf.WriteString("\x1b]112\x07")
+		}
+		b.termColor, b.termColored = want.color, want.colored
 	}
 	if want.visible != b.termVisible {
 		if want.visible {

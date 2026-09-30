@@ -13,38 +13,41 @@ import (
 // columns. Hidden, the text takes the whole width again. A count that gains a digit widens the
 // gutter.
 func TestTheEditorsLineNumbers(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 21, 6, widget.WithInitialText("alpha\nbravo charlie delta echo\ngolf"),
+	h, ed, sh := focusedEditor(t, 22, 6, widget.WithInitialText("alpha\nbravo charlie delta echo\ngolf"),
 		widget.WithEditorLineNumbers(true), widget.WithEditorWrap(widget.WrapSoft))
 	h.settle()
-	for y, want := range []string{"   1 alpha", "   2 bravo charlie", "     delta echo", "   3 golf"} {
+	for y, want := range []string{"   1  alpha", "   2  bravo charlie", "      delta echo", "   3  golf"} {
 		if got := strings.TrimRight(h.row(y), " "); got != want {
 			t.Fatalf("row %d %q, want %q:\n%s", y, got, want, h.grid())
 		}
 	}
-	// dimmed, the cursor's line too: faint, in the muted colour
-	if c := h.tb.Snapshot()[0][3]; c.Content != "1" || c.Attrs.Mask&tui.AttrFaint == 0 {
-		t.Fatalf("line 1's number %q is not faint: %+v", c.Content, c.Attrs)
+	// the others dimmed (faint, muted); the cursor's line (1) in the text's look, as Vim's CursorLineNr
+	if c := h.tb.Snapshot()[0][3]; c.Content != "1" || c.Attrs.Mask&tui.AttrFaint != 0 {
+		t.Fatalf("the cursor's line number %q is dimmed: %+v", c.Content, c.Attrs)
+	}
+	if c := h.tb.Snapshot()[1][3]; c.Content != "2" || c.Attrs.Mask&tui.AttrFaint == 0 {
+		t.Fatalf("line 2's number %q is not dimmed: %+v", c.Content, c.Attrs)
 	}
 	var gw int
 	h.onLoop(func() { gw = ed.GutterWidth() })
-	if gw != 5 {
-		t.Fatalf("GutterWidth %d, want 5 (four digits and a column)", gw)
+	if gw != 6 {
+		t.Fatalf("GutterWidth %d, want 6 (four digits and a two-column gap)", gw)
 	}
 	var cx int
 	h.onLoop(func() { cx, _, _ = ed.Cursor() })
-	if cx != 5 {
-		t.Fatalf("the cursor at column %d, want 5 (after the gutter)", cx)
+	if cx != 6 {
+		t.Fatalf("the cursor at column %d, want 6 (after the gutter)", cx)
 	}
 	// a click on "golf"'s l: its text column, not the screen's
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 7, Y: 3},
-		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 7, Y: 3})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 8, Y: 3},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 8, Y: 3})
 	h.barrier(sh)
 	if _, _, ln, col := edState(h, ed); ln != 2 || col != 2 {
 		t.Fatalf("the click put the cursor at %d:%d, want 2:2", ln, col)
 	}
 	// unwrapped: one row a line, the long one cut at the width
 	h.onLoop(func() { ed.SetWrap(widget.WrapNone) })
-	h.waitFor("unwrapped", func() bool { return strings.TrimRight(h.row(2), " ") == "   3 golf" })
+	h.waitFor("unwrapped", func() bool { return strings.TrimRight(h.row(2), " ") == "   3  golf" })
 	h.onLoop(func() { ed.SetLineNumbers(false) })
 	h.waitFor("no gutter", func() bool { return strings.HasPrefix(h.row(0), "alpha") })
 	h.onLoop(func() { gw = ed.GutterWidth() })
@@ -60,15 +63,15 @@ func TestTheEditorsLineNumbers(t *testing.T) {
 		ed.SetLineNumbers(true)
 		ed.SetValue(strings.Repeat("x\n", 9998) + "last")
 	})
-	h.waitFor("four digits", func() bool { return strings.HasPrefix(h.row(0), "   1 x") })
+	h.waitFor("four digits", func() bool { return strings.HasPrefix(h.row(0), "   1  x") })
 	h.inject(key('G'), key('o'))
 	h.barrier(sh)
-	h.waitFor("five digits after the edit", func() bool { return strings.Contains(h.grid(), "\n10000 ") })
+	h.waitFor("five digits after the edit", func() bool { return strings.Contains(h.grid(), "\n10000  ") })
 	h.onLoop(func() { gw = ed.GutterWidth() })
-	if gw != 6 {
-		t.Fatalf("GutterWidth %d at 10,000 lines, want 6", gw)
+	if gw != 7 {
+		t.Fatalf("GutterWidth %d at 10,000 lines, want 7", gw)
 	}
-	if !strings.Contains(h.grid(), " 9999 last") {
+	if !strings.Contains(h.grid(), " 9999  last") {
 		t.Fatalf("the line above, in the wider gutter:\n%s", h.grid())
 	}
 }
