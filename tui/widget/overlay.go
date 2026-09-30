@@ -106,6 +106,9 @@ type OverlayHost struct {
 	ctx *tui.Context
 	// lostAnchors are the ids noticed during layout and closed just after it.
 	lostAnchors []LayerID
+	// topmost are the floats kept above every other layer (AttachTopmost), in the order attached:
+	// each layer added after them is moved beneath them.
+	topmost []*Float
 }
 
 var _ tui.Container = (*OverlayHost)(nil)
@@ -130,6 +133,27 @@ func (h *OverlayHost) Attach(f *Float) {
 		return // already attached: attaching twice is one layer, not two
 	}
 	h.Stack.Add(f)
+	h.raiseTopmost()
+}
+
+// AttachTopmost attaches a Float that stays above every other layer, the dialogs opened after it
+// included: a notification over whatever is open (Qt's WindowStaysOnTopHint). It never takes the
+// keyboard from a dialog under it, since only a modal Float traps focus.
+func (h *OverlayHost) AttachTopmost(f *Float) {
+	h.Attach(f)
+	if !slices.Contains(h.topmost, f) {
+		h.topmost = append(h.topmost, f)
+	}
+	h.raiseTopmost()
+}
+
+// raiseTopmost moves the topmost floats back above the layers added since, keeping their order.
+func (h *OverlayHost) raiseTopmost() {
+	for _, f := range h.topmost {
+		if l := h.Stack.Len(); h.hasLayer(f) && l > 0 {
+			h.Stack.Move(f, l-1)
+		}
+	}
 }
 
 // Detach removes a previously attached Float.
@@ -154,6 +178,7 @@ func (h *OverlayHost) Detach(f *Float) {
 	// a Float that could be detached once and never used again.
 	f.Hide()
 	h.Stack.Remove(f)
+	h.topmost = slices.DeleteFunc(h.topmost, func(t *Float) bool { return t == f })
 }
 
 // hasLayer reports whether c is currently one of the host's layers. It reads the
@@ -195,6 +220,7 @@ func (h *OverlayHost) addLayer(layer tui.Component) {
 		return
 	}
 	h.Stack.Add(layer)
+	h.raiseTopmost()
 }
 
 // removeLayer unmounts a popup layer, restoring focus through the runtime's
@@ -329,6 +355,7 @@ func (h *OverlayHost) openModal(m *Modal) (err error) {
 	}()
 	h.Stack.Add(m)
 	h.modals = append(h.modals, m)
+	h.raiseTopmost()
 	return nil
 }
 
@@ -403,10 +430,14 @@ func (h *OverlayHost) restoreScrimForTop() {
 	scrim := &scrimLayer{st: top.card.st}
 	h.Stack.Add(scrim)
 	h.scrim = scrim
-	// Added on top, then moved to the slot directly below the surviving dialog.
-	// Len()-2 is that slot: the scrim and the dialog are the last two layers.
-	if l := h.Stack.Len(); l >= 2 {
-		h.Stack.Move(scrim, l-2)
+	// Added on top, then moved to the slot directly below the surviving dialog: the dialog's own
+	// index, which the move pushes it one above. The topmost floats may sit above the dialog, so
+	// the dialog is not always the last layer.
+	for i, layer := range h.Stack.All() {
+		if layer == top {
+			h.Stack.Move(scrim, i)
+			break
+		}
 	}
 }
 

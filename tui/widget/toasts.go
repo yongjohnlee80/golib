@@ -34,8 +34,9 @@ import (
 //
 // # Placement
 //
-// It is a Float's content, attached to an OverlayHost (Attach), so it draws over the page without
-// taking a place in the layout; the Float is shown on the first post. It never takes the keyboard.
+// It is a Float's content, attached to an OverlayHost with AttachTopmost, so it draws over the page
+// and over any dialog opened after it, without taking a place in the layout; the Float is shown on
+// the first post. It never takes the keyboard.
 // The corner is WithToastCorner (default BottomRight); the newest toast is nearest it. WithToastMargin
 // keeps rows clear at that edge, so a status line under the stack stays readable: those rows are
 // not painted, and what is under them shows.
@@ -123,7 +124,7 @@ func NewToasts(opts ...ToastsOption) *Toasts {
 	return t
 }
 
-// Float is the layer the toasts show in, for OverlayHost.Attach.
+// Float is the layer the toasts show in, for OverlayHost.AttachTopmost.
 func (t *Toasts) Float() *Float { return t.float }
 
 // SetCorner moves the stack to another corner.

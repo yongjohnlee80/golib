@@ -1,6 +1,7 @@
 package widget_test
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -199,4 +200,62 @@ func (h *harness) screen() string {
 		rows = append(rows, h.row(y))
 	}
 	return strings.Join(rows, "\n")
+}
+
+// TestToastsStayAboveTheDialogs: toasts attached topmost stay above a dialog opened after them,
+// the dialog keeping the keyboard. Two dialogs, the top one closed: the one beneath gets its
+// scrim back beneath it, and the toasts are still on top of both.
+func TestToastsStayAboveTheDialogs(t *testing.T) {
+	firstOK := widget.NewButton("first-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	first := widget.NewModal(widget.NewText("first"), widget.WithButtons(firstOK), widget.WithScrim(true))
+	secondOK := widget.NewButton("second-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	second := widget.NewModal(widget.NewText("second"), widget.WithButtons(secondOK), widget.WithScrim(true))
+	h, host, _ := modalFixture(t, first, 40, 12)
+	defer h.stop()
+	toasts := widget.NewToasts(widget.WithToastWidth(20))
+	h.onLoop(func() {
+		host.AttachTopmost(toasts.Float())
+		toasts.Post(widget.Toast{Text: "hello", Ongoing: true})
+	})
+	h.waitFor("the toast", func() bool { return strings.Contains(h.grid(), "hello") })
+	last := func() tui.Component {
+		var top tui.Component
+		h.onLoop(func() {
+			for _, l := range host.Stack.All() {
+				top = l
+			}
+		})
+		return top
+	}
+	openOn(t, h, first, host)
+	openOn(t, h, second, host)
+	if last() != toasts.Float() {
+		t.Fatal("a dialog opened after the toasts went above them")
+	}
+	if !strings.Contains(h.grid(), "hello") {
+		t.Fatalf("the toast is hidden under the dialogs:\n%s", h.grid())
+	}
+	var focused bool
+	h.onLoop(func() { focused = secondOK.Context() != nil && secondOK.Context().Focused() })
+	if !focused {
+		t.Fatal("the dialog under the toasts lost the keyboard")
+	}
+	h.onLoop(func() { second.Dismiss(widget.DismissProgrammatic) })
+	h.settle()
+	var order []string
+	h.onLoop(func() {
+		for _, l := range host.Stack.All() {
+			switch {
+			case l == toasts.Float():
+				order = append(order, "toasts")
+			case l == first:
+				order = append(order, "first")
+			default:
+				order = append(order, fmt.Sprintf("%T", l))
+			}
+		}
+	})
+	if n := len(order); n < 3 || order[n-1] != "toasts" || order[n-2] != "first" || !strings.Contains(order[n-3], "scrim") {
+		t.Fatalf("after the top dialog closed the layers are %v, want …, scrim, first, toasts", order)
+	}
 }
