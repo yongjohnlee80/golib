@@ -425,7 +425,7 @@ func (s *Select[T]) Render(sur tui.Surface) {
 		label = s.items[s.selected].Label
 	} else {
 		label = s.placeholder
-		st = style.New().Foreground(style.TokenTextMuted).Faint(true).Inherit(st)
+		st = mutedPlaceholder().Inherit(st)
 	}
 	if s.loadErr != nil {
 		st = s.errSt.Inherit(st)

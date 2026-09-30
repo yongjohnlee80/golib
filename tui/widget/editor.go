@@ -238,7 +238,7 @@ type EditorOption func(*Editor)
 
 // defaultEditorStyles are an Editor's looks before any option.
 func defaultEditorStyles() TextInputStyles {
-	return TextInputStyles{Selection: style.New().Reverse(true)}
+	return TextInputStyles{Placeholder: mutedPlaceholder(), Selection: style.New().Reverse(true)}
 }
 
 // WithEditorStyles overrides the style hooks (TextInput slots).
