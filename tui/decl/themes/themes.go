@@ -75,8 +75,10 @@ func FS() fs.FS { return files }
 // a program handing the theme to something outside its layout, a plugin
 // drawing in its own window, say; [style.ParseColor] reads each value. An
 // unknown theme, or a file that is not a Theme of strings, is an error.
-func Values(name string) (map[string]string, error) {
-	src, err := fs.ReadFile(files, name+".qml")
+func Values(name string) (map[string]string, error) { return values(files, name) }
+
+func values(fsys fs.FS, name string) (map[string]string, error) {
+	src, err := fs.ReadFile(fsys, name+".qml")
 	if err != nil {
 		return nil, fmt.Errorf("themes: no theme %q (want one of %s)", name, strings.Join(Names(), ", "))
 	}
