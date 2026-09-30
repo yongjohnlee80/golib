@@ -113,7 +113,7 @@ var (
 // fields inherit the defaults.
 type TextInputStyles struct {
 	Text        style.Style // value text (default: theme foreground)
-	Placeholder style.Style // default: TokenTextMuted
+	Placeholder style.Style // default: mutedPlaceholder, TokenTextMuted and faint
 	Selection   style.Style // default: inverted, no accent
 	Error       style.Style // value text in the failed-validation state
 }
@@ -192,10 +192,17 @@ func WithTextInputStyles(st TextInputStyles) TextInputOption {
 }
 
 // NewTextInput builds an empty single-line editor.
+// mutedPlaceholder is how a field's placeholder looks, and anything else drawn "muted": the muted
+// text colour AND faint, as the style package defines muted text (TokenTextMuted is the colour
+// only, and by default it is the foreground's). The colour alone drew a placeholder as bright as
+// typed text, so it read as a prefilled value. TextInput, TextArea, Editor (its ruler) and Select
+// all use it.
+func mutedPlaceholder() style.Style { return style.New().Foreground(style.TokenTextMuted).Faint(true) }
+
 // defaultTextInputStyles are a TextInput's looks before any option.
 func defaultTextInputStyles() TextInputStyles {
 	return TextInputStyles{
-		Placeholder: style.New().Foreground(style.TokenTextMuted),
+		Placeholder: mutedPlaceholder(),
 		Selection:   style.New().Reverse(true),
 		Error:       style.New().Foreground(style.TokenError),
 	}
