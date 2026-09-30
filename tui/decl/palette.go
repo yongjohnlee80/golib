@@ -2,7 +2,6 @@ package decl
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/highlight"
@@ -161,22 +160,9 @@ func (p palette) look(bg, fg Role) style.Style {
 
 // ---------------------------------------------------------------- colours
 
-// colourNames are the eight ANSI colours, by slot. They name SLOTS, not RGB:
-// "blue" is whatever the user's terminal palette says blue is, which is what a
-// 1990s text-mode look is made of. "bright" before a name is the slot eight
-// above it.
-var colourNames = map[string]int{
-	"black": 0, "red": 1, "green": 2, "yellow": 3,
-	"blue": 4, "magenta": 5, "cyan": 6, "white": 7,
-}
-
-// colorOf reads a colour as a theme writes it:
-//
-//	"blue"          an ANSI slot           "brightwhite"  the bright slot
-//	"gray"/"grey"   bright black           "#1e90ff"      truecolor
-//	"default"       the terminal's own foreground or background
-//
-// Case-insensitive, as Qt's colour names are.
+// colorOf reads a colour as a theme writes it: [style.ParseColor]'s
+// vocabulary ("blue", "brightwhite", "gray", "#1e90ff", "default"), or a
+// colour object a binding produced. The diagnostic adds where it was written.
 func colorOf(v qml.SpecValue) (style.Color, error) {
 	if c, ok := v.Obj.(style.Color); v.Kind == qml.SpecValueObject && ok {
 		return c, nil
@@ -185,41 +171,11 @@ func colorOf(v qml.SpecValue) (style.Color, error) {
 	if err != nil {
 		return style.Color{}, err
 	}
-	name := strings.ToLower(strings.TrimSpace(s))
-	switch name {
-	case "default":
-		return style.Default(), nil
-	case "gray", "grey":
-		return style.ANSI(8), nil
+	c, err := style.ParseColor(s)
+	if err != nil {
+		return style.Color{}, fmt.Errorf("%w (at %s)", err, v.Pos)
 	}
-	if strings.HasPrefix(name, "#") {
-		return hexColour(name, v)
-	}
-	bright := strings.HasPrefix(name, "bright")
-	if n, ok := colourNames[strings.TrimPrefix(name, "bright")]; ok {
-		if bright {
-			n += 8
-		}
-		return style.ANSI(n), nil
-	}
-	return style.Color{}, fmt.Errorf("%q is not a colour: want one of %s, bright<name>, gray, "+
-		"#rrggbb or default (at %s)", s, colourList(), v.Pos)
-}
-
-func hexColour(s string, v qml.SpecValue) (style.Color, error) {
-	n, err := strconv.ParseUint(strings.TrimPrefix(s, "#"), 16, 32)
-	if len(s) != 7 || err != nil {
-		return style.Color{}, fmt.Errorf("%q is not a #rrggbb colour (at %s)", s, v.Pos)
-	}
-	return style.RGB(uint8(n>>16), uint8(n>>8), uint8(n)), nil
-}
-
-func colourList() string {
-	names := make([]string, 8)
-	for n, i := range colourNames {
-		names[i] = n
-	}
-	return strings.Join(names, ", ")
+	return c, nil
 }
 
 // ---------------------------------------------------------------- per widget
