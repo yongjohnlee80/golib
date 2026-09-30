@@ -296,6 +296,7 @@ func (h *OverlayHost) mountLayer(layer tui.Component) (err error) {
 		}
 	}()
 	h.Stack.Add(layer)
+	h.raiseTopmost()
 	return nil
 }
 
