@@ -49,3 +49,68 @@ func TestStatusBarOptions(t *testing.T) {
 	}()
 	s.SetLeft("x", red, red)
 }
+
+// TestStatusBarPermanentWidgets: children added after mount sit at the right end in order, the
+// right segment a column before them; Move reorders them, Remove drops one; one wider than the row
+// is truncated to what is free, and one offered no columns takes none.
+func TestStatusBarPermanentWidgets(t *testing.T) {
+	bar := widget.NewStatusBar()
+	a, b := widget.NewText("AA"), widget.NewText("BBB")
+	h := startApp(t, bar, 20, 1)
+	h.onLoop(func() {
+		bar.SetLeft("L")
+		bar.SetRight("R")
+		bar.Add(a, b)
+	})
+	h.waitFor("added after mount", func() bool { return strings.HasSuffix(h.row(0), "R AA BBB") })
+	var kids []tui.Component
+	h.onLoop(func() {
+		for c := range bar.Children() {
+			kids = append(kids, c)
+		}
+	})
+	if len(kids) != 2 || kids[0] != a || kids[1] != b {
+		t.Fatalf("Children: %v", kids)
+	}
+	h.onLoop(func() { bar.Move(b, 0) })
+	h.waitFor("moved", func() bool { return strings.HasSuffix(h.row(0), "R BBB AA") })
+	h.onLoop(func() {
+		bar.Move(widget.NewText("stranger"), 0) // not its own: nothing happens
+		bar.Remove(b)
+		bar.Remove(nil)
+	})
+	h.waitFor("removed", func() bool { return strings.HasSuffix(h.row(0), "R AA") && !strings.Contains(h.row(0), "BBB") })
+	// too wide for the row: the last added keeps the end, truncated to the columns free, and the
+	// one before it, offered none, takes none
+	wide := widget.NewText(strings.Repeat("W", 30))
+	h.onLoop(func() { bar.Add(wide) })
+	h.waitFor("the wide one truncated, AA left out", func() bool {
+		return h.row(0) == strings.Repeat("W", 19)+"…"
+	})
+	h.onLoop(func() { bar.Remove(wide) })
+	h.waitFor("the row back", func() bool { return strings.HasPrefix(h.row(0), "L") && strings.HasSuffix(h.row(0), "R AA") })
+}
+
+// TestStatusBarMoveRefusesAnIndexOutside: a move past the permanent widgets is the caller's
+// structure gone wrong.
+func TestStatusBarMoveRefusesAnIndexOutside(t *testing.T) {
+	bar := widget.NewStatusBar()
+	a := widget.NewText("A")
+	bar.Add(a, widget.NewText("B"))
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "outside") {
+			t.Fatalf("recovered %v", r)
+		}
+	}()
+	bar.Move(a, 2)
+}
+
+// TestStatusBarAddRefusesNil: a nil permanent widget is a construction error.
+func TestStatusBarAddRefusesNil(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "nil child") {
+			t.Fatalf("recovered %v", r)
+		}
+	}()
+	widget.NewStatusBar().Add(nil)
+}

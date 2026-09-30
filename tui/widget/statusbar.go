@@ -181,27 +181,27 @@ func (s *StatusBar) Move(child tui.Component, to int) {
 // Children enumerates the permanent widgets.
 func (s *StatusBar) Children() iter.Seq[tui.Component] { return slices.Values(s.permanent) }
 
-// Layout is height 1, width greedy. The permanent widgets are laid out at the width each asks
-// for, a column apart, from the right end; one that does not fit whole is given no columns.
+// Layout is height 1, width greedy. The permanent widgets are laid out from the right end, a
+// column apart, each offered the columns still free and taking the width it asks for within them
+// (a Text truncates); one offered none is given none.
 func (s *StatusBar) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, c.MinW), H: 1})
-	widths := make([]int, len(s.permanent))
-	for i, child := range s.permanent {
-		widths[i] = s.ctx.LayoutChild(child, tui.Constraints{MaxW: sz.W, MaxH: 1}).W
-	}
 	// right to left: the last added sits at the end
-	x, fits := sz.W, true
+	x := sz.W
 	for i := len(s.permanent) - 1; i >= 0; i-- {
-		w := widths[i]
-		if fits && w > 0 && x-w >= 0 {
+		child := s.permanent[i]
+		var w int
+		if x > 0 {
+			w = s.ctx.LayoutChild(child, tui.Constraints{MaxW: x, MaxH: 1}).W
+		}
+		if w > 0 && x-w >= 0 {
 			x -= w
-			s.ctx.PlaceChild(s.permanent[i], tui.Rect{X: x, W: w, H: 1})
+			s.ctx.PlaceChild(child, tui.Rect{X: x, W: w, H: 1})
 			x-- // a column before the next
 			continue
 		}
-		fits = fits && w == 0
-		s.ctx.LayoutChild(s.permanent[i], tui.Tight(tui.Size{}))
-		s.ctx.PlaceChild(s.permanent[i], tui.Rect{X: max(x, 0)})
+		s.ctx.LayoutChild(child, tui.Tight(tui.Size{}))
+		s.ctx.PlaceChild(child, tui.Rect{X: max(x, 0)})
 	}
 	s.placed = sz.W - max(x, 0)
 	return sz
