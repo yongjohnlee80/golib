@@ -72,6 +72,47 @@ func TestADrawerOpensOverThePageWithoutMovingIt(t *testing.T) {
 	s.WaitFor(t, "Escape closed it", func(sc string) bool { return !strings.Contains(sc, "explorer") })
 }
 
+// TestADrawersLengthIsCentredAlongItsEdge: length: 50 on a 20-row Window, from the left, takes
+// the middle 10 rows, the rows above and below showing the page; from the top, the middle 30 of
+// 60 columns.
+func TestADrawersLengthIsCentredAlongItsEdge(t *testing.T) {
+	page := strings.Repeat("page ", 12)
+	s := decltest.Run(t, 60, 20,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			" Flex { direction: Tui.Vertical\n"+strings.Repeat(" Text { text: \""+page+"\" }\n", 20)+" }\n"+
+			" Drawer { id: d; edge: App.edge; size: 30; length: 50\n  Frame { title: \"explorer\"; Text { text: \"x\" } } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.edge": "left"}))
+	s.WaitForText(t, "page")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "explorer")
+	var top, bottom = -1, -1
+	for y := range 20 {
+		if strings.HasPrefix(row(s, y), "┌ explorer") {
+			top = y
+		}
+		if strings.HasPrefix(row(s, y), "└") {
+			bottom = y
+		}
+	}
+	if top != 5 || bottom != 14 || !strings.HasPrefix(row(s, 4), "page") || !strings.HasPrefix(row(s, 15), "page") {
+		t.Fatalf("the drawer spans rows %d to %d, want 5 to 14, the page above and below:\n%s", top, bottom, s)
+	}
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.edge", "top"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "the drawer on the top", func(string) bool { return col(row(s, 0), "┌ explorer") == 15 })
+	if r := []rune(row(s, 0)); r[44] != '┐' || r[45] == '─' {
+		t.Fatalf("from the top, the drawer does not end at column 44:\n%s", s)
+	}
+}
+
 // TestADrawersEdgeIsOneOfTheFour: Tui.Left, Right, Top or Bottom, and nothing else.
 func TestADrawersEdgeIsOneOfTheFour(t *testing.T) {
 	if _, err := mountDoc(t, "import tui 1.0\nWindow { Drawer { edge: Tui.Vertical; Text { } } }"); err == nil {

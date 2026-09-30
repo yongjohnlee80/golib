@@ -16,12 +16,13 @@ import (
 //	    id: explorer
 //	    edge: Tui.Left      // Tui.Right, Tui.Top, Tui.Bottom; Qt spells it Qt.LeftEdge
 //	    size: 30            // a percentage of the Window across the edge
+//	    length: 85          // golib's: a percentage along it, centred (100, the default: all of it)
 //	    Frame { title: "explorer"; TreeView { … } }
 //	}
 //
 // It holds the keyboard while open, as Qt's modal Drawer does, and gives it back where it was
 // when it closes; Escape closes it. modal: false (Qt's too) lets the keyboard go back to the page
-// while it stays open, a panel beside the work rather than a question over it. edge and size are settable while the program runs: a
+// while it stays open, a panel beside the work rather than a question over it. edge, size and length are settable while the program runs: a
 // preference can move it. open(), close() and toggle() (golib's: open when closed, else close),
 // and opened() and closed().
 
@@ -33,6 +34,7 @@ type drawerNode struct {
 	host   *widget.OverlayHost
 	edge   tui.DockEdge
 	size   int
+	length int
 	opened func()
 	closed func()
 }
@@ -51,7 +53,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, opened: b.Emitter("opened"), closed: b.Emitter("closed")}
+	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed")}
 	n.frame = &drawerFrame{owner: n}
 	n.frame.Label("Drawer")
 	n.frame.Add(b.Children[0])
@@ -63,21 +65,21 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	return n, consumed, nil
 }
 
-// place anchors the Float at the edge, the size across it and the Window's whole length along it.
+// place anchors the Float at the edge, the size across it and the length along it, centred.
 func (n *drawerNode) place() {
 	switch n.edge {
 	case tui.DockRight:
 		n.float.SetAnchor(widget.Right)
-		n.float.SetSizeFraction(n.size, 100)
+		n.float.SetSizeFraction(n.size, n.length)
 	case tui.DockTop:
 		n.float.SetAnchor(widget.Top)
-		n.float.SetSizeFraction(100, n.size)
+		n.float.SetSizeFraction(n.length, n.size)
 	case tui.DockBottom:
 		n.float.SetAnchor(widget.Bottom)
-		n.float.SetSizeFraction(100, n.size)
+		n.float.SetSizeFraction(n.length, n.size)
 	default:
 		n.float.SetAnchor(widget.Left)
-		n.float.SetSizeFraction(n.size, 100)
+		n.float.SetSizeFraction(n.size, n.length)
 	}
 }
 
@@ -90,6 +92,14 @@ func (n *drawerNode) setEdge(e tui.DockEdge) {
 // setSize is Drawer.size's setter: a percentage, 10 to 90.
 func (n *drawerNode) setSize(pct int) {
 	n.size = min(max(pct, 10), 90)
+	n.place()
+}
+
+// setLength is Drawer.length's setter: a percentage of the Window along the edge, 10 to 100,
+// centred there. Qt sizes a Drawer along its edge by its height (or width) and places it by y (or
+// x); golib's panels are sized as fractions of the Window, so this is the one number.
+func (n *drawerNode) setLength(pct int) {
+	n.length = min(max(pct, 10), 100)
 	n.place()
 }
 
@@ -190,6 +200,10 @@ var drawerType = Type{
 			f, err := numberOf(v)
 			return int(f), err
 		}, (*drawerNode).setSize),
+		"length": setter("a Drawer", func(v qml.SpecValue) (int, error) {
+			f, err := numberOf(v)
+			return int(f), err
+		}, (*drawerNode).setLength),
 	},
 	Methods: map[string]Method{
 		"open":   NoArgMethod((*drawerNode).open),
