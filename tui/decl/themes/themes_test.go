@@ -12,6 +12,7 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/decl/themes"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // vocabulary is every key a theme promises, by group: what the package doc
@@ -105,5 +106,36 @@ func TestTheMarkdownHighlighterPaintsOnlyThemedStyles(t *testing.T) {
 			}
 		}
 		st = next
+	}
+}
+
+// Values: every theme's dotted names are the whole vocabulary, each a colour
+// style.ParseColor reads; a nested group keeps its path; an unknown theme is
+// refused, naming the ones there are.
+func TestValuesAreEveryThemesColoursByName(t *testing.T) {
+	for _, name := range themes.Names() {
+		v, err := themes.Values(name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		for group, keys := range vocabulary {
+			for _, key := range keys {
+				s, ok := v[group+"."+key]
+				if !ok {
+					t.Errorf("%s: no %s.%s", name, group, key)
+					continue
+				}
+				if _, err := style.ParseColor(s); err != nil {
+					t.Errorf("%s: %s.%s = %q: %v", name, group, key, s, err)
+				}
+			}
+		}
+	}
+	mono, _ := themes.Values("mono")
+	if got := mono["app.inactive.highlight"]; got != "brightblack" {
+		t.Errorf(`mono app.inactive.highlight = %q, want "brightblack"`, got)
+	}
+	if _, err := themes.Values("sepia"); err == nil || !strings.Contains(err.Error(), "dark, light, mono, retro") {
+		t.Errorf(`Values("sepia") error = %v, want the themes named`, err)
 	}
 }

@@ -453,7 +453,9 @@ with this contract alone. See [USAGE.md §6](USAGE.md#6-your-own-go-widgets-in-q
 editor, a table, a tree), `status`, and `syntax` (the `syntax.*` roles). Every
 theme defines every key, so a layout bound to one runs under any. They are
 AutoDB's themes and vocabulary; a program that needs a colour of its own starts
-from `themes.FS()` and offers its copies with `Themes` under its own name.
+from `themes.FS()` and offers its copies with `Themes` under its own name. `themes.Values(name)` is a theme's
+colours by dotted name (`"app.inactive.highlight"` → `"brightblack"`), for a
+program handing the theme to something outside its layout.
 
 Methods: `Run`, `Quit`, `Post` (any goroutine), `Set`, `SetMany`, `Find`,
 `FindAs[W]`, `Call`, `Reload`, and `Tree`, `Adapter`, `App`, `Root`. `Value(v)`

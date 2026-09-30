@@ -70,6 +70,11 @@ style.RGB(0x87, 0x5f, 0xff)   // truecolor
 style.Adaptive(light, dark)   // picked by background darkness at resolve time
 ```
 
+`style.ParseColor(s)` reads a colour as a theme writes it — `"blue"`,
+`"brightwhite"`, `"gray"`, `"#1e90ff"`, `"default"`, case aside — and is the
+one reader of that vocabulary: QML palette roles, theme values and a program's
+own colour strings all go through it.
+
 `Adaptive` **rejects token and adaptive leaves** (panics at construction):
 resolution stays single-pass over flat values. Themes that want adaptive
 tokens put the `Adaptive(...)` color in the Theme slot instead.
