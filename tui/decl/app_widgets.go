@@ -54,7 +54,7 @@ func appTypes() []Type {
 				return int(n), err
 			}, (*widget.Editor).SetCursorPosition),
 		}},
-		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, Setters: map[string]Setter{
+		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, adopt: adoptStatusBarChild, Setters: map[string]Setter{
 			"left":   setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetLeft)),
 			"center": setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetCenter)),
 			"right":  setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetRight)),
@@ -119,6 +119,10 @@ func registerStdAttached(r *Registry) {
 	// Qt's ColumnLayout / RowLayout — and read by the Flex.
 	RegisterAttached(r, "Layout", "fillHeight", "fillWidth")
 	Honour(r, "Flex", "Layout")
+	// `StatusBar.permanent` is written on a StatusBar's child and read by the bar: false puts it
+	// at the left end (Qt's addWidget), true (the default) at the right (addPermanentWidget).
+	RegisterAttached(r, "StatusBar", "permanent")
+	Honour(r, "StatusBar", "StatusBar")
 }
 
 var dockEdges = enum[tui.DockEdge]{values: map[string]tui.DockEdge{
@@ -203,17 +207,41 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 
 // ---------------------------------------------------------------- StatusBar
 
-// buildStatusBar makes the bar; its children are its permanent widgets (Qt's QStatusBar
-// addPermanentWidget; Quick Controls 1's StatusBar held its items as children too): each at its
-// own width at the bar's right end, in order, the segments sharing the rest of the row.
+// buildStatusBar makes the bar; its children are its widgets (Quick Controls 1's StatusBar held
+// its items as children): each at its own width, in order, the segments sharing the rest of the
+// row. A child is a permanent widget (Qt's QStatusBar.addPermanentWidget), at the bar's right end,
+// unless it says StatusBar.permanent: false: then it is a normal widget (addWidget), at the left end.
 func buildStatusBar(b Build) (tui.Component, []string, error) {
 	consumed, err := readProps(b.Props, map[string]field{})
 	if err != nil {
 		return nil, nil, err
 	}
 	sb := widget.NewStatusBar()
-	sb.Add(b.Children...)
+	for i, c := range b.Children {
+		if err := adoptStatusBarChild(sb, c, b.ChildAttached[i]); err != nil {
+			return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
+		}
+	}
 	return sb, consumed, nil
+}
+
+// adoptStatusBarChild adds one child to a StatusBar: permanent, at the right end, unless its
+// StatusBar.permanent is false.
+func adoptStatusBarChild(parent, child tui.Component, attached map[string]qml.SpecValue) error {
+	sb := parent.(*widget.StatusBar)
+	permanent := true
+	if v, ok := attached["StatusBar.permanent"]; ok {
+		var err error
+		if permanent, err = boolOf(v); err != nil {
+			return fmt.Errorf("StatusBar.permanent: %w", err)
+		}
+	}
+	if permanent {
+		sb.Add(child)
+	} else {
+		sb.AddWidget(child)
+	}
+	return nil
 }
 
 // statusSegment adapts one of the StatusBar's segment setters, which take an
