@@ -155,3 +155,46 @@ func TestStatusBarNormalWidgets(t *testing.T) {
 		return strings.HasPrefix(row, "WWW") && strings.HasSuffix(row, "… P") && !strings.Contains(row, "L")
 	})
 }
+
+// narrowSurface is a surface with no columns, counting what is drawn on it.
+type narrowSurface struct{ drawn int }
+
+func (s *narrowSurface) SetCell(int, int, string, style.Style) { s.drawn++ }
+func (s *narrowSurface) Fill(tui.Rect, string, style.Style)    { s.drawn++ }
+func (s *narrowSurface) Sub(tui.Rect) tui.Surface              { return s }
+func (s *narrowSurface) Size() tui.Size                        { return tui.Size{W: 0, H: 1} }
+func (s *narrowSurface) StringWidth(v string) int              { return len(v) }
+func (s *narrowSurface) Theme() *style.Theme                   { return nil }
+func (s *narrowSurface) Caps() tui.Capabilities                { return tui.Capabilities{} }
+
+// TestStatusBarEdges: a bar with no columns draws nothing; a normal widget offered no columns (the
+// permanent ones took the row) takes none; Children stops when asked.
+func TestStatusBarEdges(t *testing.T) {
+	bar := widget.NewStatusBar()
+	sur := &narrowSurface{}
+	bar.Render(sur)
+	if sur.drawn != 0 {
+		t.Fatalf("a bar with no columns drew %d times", sur.drawn)
+	}
+	normal, wide := widget.NewText("N"), widget.NewText(strings.Repeat("P", 40))
+	h := startApp(t, bar, 20, 1)
+	h.onLoop(func() {
+		bar.SetLeft("L")
+		bar.AddWidget(normal)
+		bar.Add(wide)
+	})
+	h.waitFor("the permanent one across the row, the normal one left out", func() bool {
+		row := h.row(0)
+		return strings.HasPrefix(row, "PPP") && strings.HasSuffix(row, "…") && !strings.Contains(row, "N")
+	})
+	n := 0
+	h.onLoop(func() {
+		for range bar.Children() {
+			n++
+			break
+		}
+	})
+	if n != 1 {
+		t.Fatalf("Children went on after a break: %d", n)
+	}
+}
