@@ -61,7 +61,7 @@ Window {
 		_ = s.Program.Set("App.numbers", true)
 	})
 	s.WaitFor(t, "wrapped and numbered", func(sc string) bool {
-		return strings.HasPrefix(sc, "   1 one two") && strings.Contains(sc, "five")
+		return strings.HasPrefix(sc, "   1  one two") && strings.Contains(sc, "five")
 	})
 	s.Program.Post(func() { _ = s.Program.Set("App.wrap", false) })
 	s.WaitFor(t, "unwrapped again", func(sc string) bool { return !strings.Contains(sc, "five") })

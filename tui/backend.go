@@ -76,6 +76,13 @@ type CellUpdate struct {
 	Cell Cell
 }
 
+// CursorColorSetter is a Backend that can colour the hardware cursor (a terminal's OSC 12). set
+// false gives the cursor back its own colour (OSC 112). A backend without it leaves the cursor as
+// the terminal draws it.
+type CursorColorSetter interface {
+	SetCursorColor(c CellColor, set bool)
+}
+
 // CursorShape selects the hardware cursor glyph (DECSCUSR).
 type CursorShape uint8
 

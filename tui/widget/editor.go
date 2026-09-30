@@ -180,6 +180,13 @@ type Editor struct {
 	numbers bool
 	gutter  int
 
+	// cursorColor is the hardware cursor's colour while cursorColored (tui.CursorColorer)
+	cursorColor   style.Color
+	cursorColored bool
+	// numberColor is the line numbers' colour while numberColored; muted and faint otherwise
+	numberColor   style.Color
+	numberColored bool
+
 	styles  TextInputStyles
 	keymap  Keymap
 	unbound map[KeyChord]bool // explicitly unbound chords (via ActUnbound)
@@ -257,6 +264,23 @@ func WithEditorStyles(st TextInputStyles) EditorOption {
 	}
 }
 
+// SetCursorColor gives the hardware cursor a colour of its own over the text, a theme's accent,
+// so it is seen on any page; the terminal's own colour otherwise.
+func (e *Editor) SetCursorColor(c style.Color) {
+	e.cursorColor, e.cursorColored = c, true
+	e.MarkDirty()
+}
+
+// SetLineNumberColor gives the line numbers a colour of their own, a theme's dim tone, so they
+// stay out of the text's way; muted and faint otherwise.
+func (e *Editor) SetLineNumberColor(c style.Color) {
+	e.numberColor, e.numberColored = c, true
+	e.MarkDirty()
+}
+
+// CursorColor implements tui.CursorColorer.
+func (e *Editor) CursorColor() (style.Color, bool) { return e.cursorColor, e.cursorColored }
+
 // WithEditorLineNumbers shows each line's number in a gutter at the left.
 func WithEditorLineNumbers(v bool) EditorOption { return func(e *Editor) { e.numbers = v } }
 
@@ -284,18 +308,21 @@ func (e *Editor) SetWrap(m WrapMode) {
 	e.MarkDirty()
 }
 
-// GutterWidth is the columns the line numbers take for the text as it is now, the column after
-// them included; 0 while they are hidden. A host sizing the editor to hold a width of text adds
+// GutterWidth is the columns the line numbers take for the text as it is now, the gap after them
+// included; 0 while they are hidden. A host sizing the editor to hold a width of text adds
 // it: the gutter's columns come out of the editor's width.
 func (e *Editor) GutterWidth() int { return e.gutterWidth() }
 
+// gutterGap is the blank columns between the line numbers and the text.
+const gutterGap = 2
+
 // gutterWidth is the columns the line numbers take: the widest number, four digits at least so the
-// gutter keeps its width as a note grows, and a column after it; 0 without numbers.
+// gutter keeps its width as a note grows, and the gap after it; 0 without numbers.
 func (e *Editor) gutterWidth() int {
 	if !e.numbers {
 		return 0
 	}
-	return max(len(fmt.Sprint(len(e.lines))), 4) + 1
+	return max(len(fmt.Sprint(len(e.lines))), 4) + gutterGap
 }
 
 // WithEditorWrap selects WrapNone (default) or WrapSoft.
@@ -1631,16 +1658,24 @@ func (e *Editor) Render(s tui.Surface) {
 	e.renderText(s)
 }
 
-// renderGutter paints the line numbers, each line's on its first screen row, right-aligned and
-// dimmed, so they stay out of the text's way.
+// renderGutter paints the line numbers, each line's on its first screen row, right-aligned: dimmed,
+// so they stay out of the text's way, in their own colour (SetLineNumberColor) or muted and faint;
+// the cursor's line in the text's colour, as Vim's CursorLineNr, so it shows where you are.
 func (e *Editor) renderGutter(s tui.Surface) {
 	h := s.Size().H
 	dim := e.styles.Text.Foreground(style.TokenTextMuted).Faint(true)
+	if e.numberColored {
+		dim = e.styles.Text.Foreground(e.numberColor)
+	}
 	s.Fill(tui.Rect{W: e.gutter, H: h}, " ", e.styles.Text)
 	y := 0
 	for ln := e.top; ln < len(e.lines) && y < h; ln++ {
 		num := fmt.Sprint(ln + 1)
-		drawText(s, e.gutter-1-len(num), y, num, dim)
+		st := dim
+		if ln == e.ln {
+			st = e.styles.Text
+		}
+		drawText(s, e.gutter-gutterGap-len(num), y, num, st)
 		y += max(e.rowsOfLine(ln), 1)
 	}
 }

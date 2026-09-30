@@ -33,6 +33,7 @@ Theme {
         highlight: "#ffffff"; highlightedText: "#000000"
         base: "#0000aa"; text: "#ffff55"
         selection: "#00aaaa"; selectedText: "#000000"
+        cursor: "#ffff55"; lineNumber: "#5555aa"
     }
     status {
         window: "#aaaaaa"; windowText: "#000000"

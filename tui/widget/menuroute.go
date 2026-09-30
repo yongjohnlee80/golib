@@ -675,7 +675,7 @@ func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState
 		s.SetCell(x, r.Y, mark, base)
 		x += 2
 	}
-	x = m.paintLabel(s, it, x, r.Y, base)
+	x = m.paintLabel(s, it, x, r.Y, base, rowLit(viewOf(it), st))
 	if it.Accel != "" {
 		ax := r.X + r.W - 1 - m.measure(it.Accel)
 		if ax > x {
@@ -688,17 +688,24 @@ func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState
 }
 
 // paintLabel draws the label, marking the mnemonic's grapheme cluster with the
-// style's hotkey look.
+// style's hotkey look. On a lit row (the highlight) the mnemonic keeps the row's
+// colours and is underlined, as Qt draws it: an accent colour picked for the menu's
+// surface can vanish on the highlight (a red on blue, or mono's one colour on
+// itself).
 //
 // Cluster-indexed rather than byte- or rune-indexed, because that is the unit a
 // reader sees: an accented letter is one cluster and may be several runes, and
 // underlining "the third rune" of such a label marks the wrong character.
-func (m *Menu) paintLabel(s tui.Surface, it MenuItemModel, x, y int, base style.Style) int {
+func (m *Menu) paintLabel(s tui.Surface, it MenuItemModel, x, y int, base style.Style, lit bool) int {
 	i := 0
 	for cluster := range tui.Graphemes(it.Label) {
 		st := base
 		if it.Hotkey != 0 && i == it.HotkeyIdx {
-			st = m.style.Hotkey().Inherit(base)
+			if lit {
+				st = base.Underline(true)
+			} else {
+				st = m.style.Hotkey().Inherit(base)
+			}
 		}
 		s.SetCell(x, y, cluster, st)
 		x += s.StringWidth(cluster)

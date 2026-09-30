@@ -50,6 +50,10 @@ func appTypes() []Type {
 			}),
 			// golib's: each line's number in a gutter at the left
 			"lineNumbers": setter("an Editor", boolOf, (*widget.Editor).SetLineNumbers),
+			// golib's: the text cursor's colour, a theme's accent; the terminal's own otherwise
+			"cursorColor": setter("an Editor", colorOf, (*widget.Editor).SetCursorColor),
+			// golib's: the line numbers' colour, a theme's dim tone; muted and faint otherwise
+			"lineNumberColor": setter("an Editor", colorOf, (*widget.Editor).SetLineNumberColor),
 			// Qt's TextEdit.text: setting it replaces the buffer, as a load does.
 			"text": setter("an Editor", stringOf, (*widget.Editor).SetValue),
 			// golib's: a vertical guide at this column (1-based), where text is meant to wrap; 0 for none

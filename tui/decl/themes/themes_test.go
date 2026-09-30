@@ -20,7 +20,7 @@ var vocabulary = map[string][]string{
 	"app": {"window", "windowText", "button", "buttonText", "highlight", "highlightedText",
 		"base", "text", "mid", "light", "inactive.highlight", "inactive.highlightedText"},
 	"menu":     {"window", "windowText", "highlight", "highlightedText", "accent"},
-	"document": {"window", "windowText", "highlight", "highlightedText", "base", "text", "selection", "selectedText"},
+	"document": {"window", "windowText", "highlight", "highlightedText", "base", "text", "selection", "selectedText", "cursor", "lineNumber"},
 	"status":   {"window", "windowText"},
 	"syntax": {"keyword", "controlFlow", "dataType", "attribute", "function", "string", "specialChar",
 		"decVal", "float", "baseN", "constant", "comment", "alert", "import", "operator"},

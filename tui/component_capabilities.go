@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/yongjohnlee80/golib/tui/style"
+
 import "iter"
 
 // This file holds the structural component capabilities. Input interpretation
@@ -151,6 +153,15 @@ type CursorReporter interface {
 // on every other frame path, cursor shape is restored to the terminal default.
 type CursorShaper interface {
 	CursorShape() CursorShape
+}
+
+// CursorColorer is an optional capability of a CursorReporter whose hardware cursor wears a colour
+// of its own: a theme's accent, where the terminal's cursor would be lost on the page (a pale cursor
+// on a paper-white editor). ok=false leaves the terminal's own colour. Consulted as CursorShaper is,
+// for the focused component whose Cursor is active; on a backend that can colour the cursor
+// (CursorColorSetter).
+type CursorColorer interface {
+	CursorColor() (c style.Color, ok bool)
 }
 
 // FocusScope marks a component subtree as an input boundary.

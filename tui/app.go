@@ -625,6 +625,22 @@ func (a *App) retryDeferredFocusRepair() {
 // If no focused node reports an active cursor, the hardware cursor is hidden.
 // This hardware cursor anchoring is required so operating system IME composition
 // windows anchor properly above or below the active text input cell.
+// applyCursorColor gives the hardware cursor the focused component's colour (CursorColorer),
+// resolved through the theme, or back its own, on a backend that can colour it.
+func (a *App) applyCursorColor(comp Component) {
+	setter, ok := a.backend.(CursorColorSetter)
+	if !ok || a.rctx == nil {
+		return
+	}
+	if cc, ok := comp.(CursorColorer); ok {
+		if c, ok := cc.CursorColor(); ok {
+			setter.SetCursorColor(a.rctx.resolve(style.New().Foreground(c)).FG, true)
+			return
+		}
+	}
+	setter.SetCursorColor(CellColor{}, false)
+}
+
 func (a *App) applyCursor() {
 	if n := a.nodes[a.focused]; n != nil && n.visible() {
 		if cr, ok := n.comp.(CursorReporter); ok {
@@ -635,6 +651,7 @@ func (a *App) applyCursor() {
 				} else {
 					a.backend.SetCursorShape(CursorShapeDefault)
 				}
+				a.applyCursorColor(n.comp)
 				a.backend.ShowCursor()
 				return
 			}
