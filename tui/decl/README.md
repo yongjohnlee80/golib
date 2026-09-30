@@ -75,7 +75,7 @@ change at runtime, which is what makes it bindable to a source.
 | `MenuSeparator` | — | — | — | — | — |
 | `Shortcut` | `sequence` | — | — | `activated` | — |
 | `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
-| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `ruler` (golib's: a guide at that column, where text wraps) | — | `modeChanged`, `textChanged` | — |
+| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `wrap` (live: soft-wrap long lines, or scroll them), `lineNumbers` (golib's: each line's number in a gutter at the left), `ruler` (golib's: a guide at that column, where text wraps) | — | `modeChanged`, `textChanged` | — |
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette; its children are its widgets, each at its own width: permanent (Qt's `QStatusBar.addPermanentWidget`) at the right end, or, with `StatusBar.permanent: false` on the child, normal (`addWidget`) at the left end; the segments share the rest | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |

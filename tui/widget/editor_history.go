@@ -76,6 +76,9 @@ func (e *Editor) restore(s editorSnap) {
 
 // edited finalizes any buffer mutation: viewport, dirt, change event.
 func (e *Editor) edited() {
+	if e.numbers && e.gutterWidth() != e.gutter {
+		e.RequestLayout() // the lines' count has another number of digits: the gutter's width moves
+	}
 	e.desired = -1
 	e.ensureVisible()
 	e.MarkDirty()

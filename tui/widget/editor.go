@@ -173,7 +173,12 @@ type Editor struct {
 	wrap WrapMode
 	top  int
 	left int
-	w, h int
+	w, h int // the text's area: the gutter's columns are not in w
+
+	// numbers shows each line's number in a gutter at the left; gutter is the columns it took at
+	// the last layout (0 without numbers)
+	numbers bool
+	gutter  int
 
 	styles  TextInputStyles
 	keymap  Keymap
@@ -250,6 +255,42 @@ func WithEditorStyles(st TextInputStyles) EditorOption {
 			Error:       st.Error.Inherit(e.styles.Error),
 		}
 	}
+}
+
+// WithEditorLineNumbers shows each line's number in a gutter at the left.
+func WithEditorLineNumbers(v bool) EditorOption { return func(e *Editor) { e.numbers = v } }
+
+// SetLineNumbers shows or hides the gutter of line numbers.
+func (e *Editor) SetLineNumbers(v bool) {
+	if e.numbers == v {
+		return
+	}
+	e.numbers = v
+	e.RequestLayout()
+	e.MarkDirty()
+}
+
+// SetWrap selects WrapNone or WrapSoft while the editor runs, as WithEditorWrap does at
+// construction; the cursor stays where it is.
+func (e *Editor) SetWrap(m WrapMode) {
+	if m != WrapNone && m != WrapSoft {
+		panic(fmt.Sprintf("widget: Editor.SetWrap: mode %d is not WrapNone or WrapSoft", m))
+	}
+	if e.wrap == m {
+		return
+	}
+	e.wrap, e.left = m, 0
+	e.RequestLayout()
+	e.MarkDirty()
+}
+
+// gutterWidth is the columns the line numbers take: the widest number (three digits at least)
+// and a column after it; 0 without numbers.
+func (e *Editor) gutterWidth() int {
+	if !e.numbers {
+		return 0
+	}
+	return max(len(fmt.Sprint(len(e.lines))), 3) + 1
 }
 
 // WithEditorWrap selects WrapNone (default) or WrapSoft.
@@ -1390,12 +1431,15 @@ func (e *Editor) ensureVisible() {
 	}
 }
 
-// Layout is greedy on both axes.
+// Layout is greedy on both axes. The gutter, when the numbers show, takes its columns from the
+// text's area, never all of it.
 func (e *Editor) Layout(c tui.Constraints) tui.Size {
-	e.w = boundedMax(c.MaxW, max(c.MinW, 1))
+	total := boundedMax(c.MaxW, max(c.MinW, 1))
+	e.gutter = min(e.gutterWidth(), total-1)
+	e.w = total - e.gutter
 	e.h = boundedMax(c.MaxH, max(c.MinH, 1))
 	e.ensureVisible()
-	return c.Constrain(tui.Size{W: e.w, H: e.h})
+	return c.Constrain(tui.Size{W: total, H: e.h})
 }
 
 // Cursor implements tui.CursorReporter.
@@ -1409,7 +1453,7 @@ func (e *Editor) Cursor() (int, int, bool) {
 		if y >= e.h && e.h > 0 {
 			return 0, 0, false
 		}
-		return max(x, 0), max(y, 0), true
+		return e.gutter + max(x, 0), max(y, 0), true
 	}
 	y := 0
 	for i := e.top; i < e.ln; i++ {
@@ -1420,7 +1464,7 @@ func (e *Editor) Cursor() (int, int, bool) {
 	if e.h > 0 && y >= e.h {
 		return 0, 0, false
 	}
-	return x, y, true
+	return e.gutter + x, y, true
 }
 
 // handleMouse implements the pointer contract.
@@ -1436,7 +1480,7 @@ func (e *Editor) handleMouse(m tui.MouseEvent) bool {
 	case m.Kind == tui.MouseWheel && m.Button == tui.WheelDown:
 		return e.scrollLines(1)
 	case m.Kind == tui.MousePress && m.Button == tui.MouseLeft:
-		return e.pressAt(m.X, m.Y)
+		return e.pressAt(max(m.X-e.gutter, 0), m.Y) // a press in the gutter is at the line's start
 	}
 	return false
 }
@@ -1571,6 +1615,33 @@ func (e *Editor) wrapPos(ln, col int) (row, x int) {
 
 // Render paints the viewport with the visual-selection fill.
 func (e *Editor) Render(s tui.Surface) {
+	sz := s.Size()
+	if sz.W <= 0 || sz.H <= 0 {
+		return
+	}
+	if e.gutter > 0 {
+		e.renderGutter(s)
+		s = s.Sub(tui.Rect{X: e.gutter, W: sz.W - e.gutter, H: sz.H})
+	}
+	e.renderText(s)
+}
+
+// renderGutter paints the line numbers, each line's on its first screen row, right-aligned and
+// dimmed, so they stay out of the text's way.
+func (e *Editor) renderGutter(s tui.Surface) {
+	h := s.Size().H
+	dim := e.styles.Text.Foreground(style.TokenTextMuted).Faint(true)
+	s.Fill(tui.Rect{W: e.gutter, H: h}, " ", e.styles.Text)
+	y := 0
+	for ln := e.top; ln < len(e.lines) && y < h; ln++ {
+		num := fmt.Sprint(ln + 1)
+		drawText(s, e.gutter-1-len(num), y, num, dim)
+		y += max(e.rowsOfLine(ln), 1)
+	}
+}
+
+// renderText paints the text's area.
+func (e *Editor) renderText(s tui.Surface) {
 	sz := s.Size()
 	if sz.W <= 0 || sz.H <= 0 {
 		return

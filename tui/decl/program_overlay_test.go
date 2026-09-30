@@ -43,3 +43,24 @@ Window {
 		}
 	})
 }
+
+// TestAnEditorsWrapAndLineNumbersAreLive: wrap and lineNumbers, bound, change the editor as the
+// program runs.
+func TestAnEditorsWrapAndLineNumbersAreLive(t *testing.T) {
+	s := decltest.Run(t, 20, 4, tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+import demo 1.0
+Window {
+    Editor { text: "one two three four five"; wrap: App.wrap; lineNumbers: App.numbers }
+}`)), tuidecl.Singleton("demo", "1.0", "App"), tuidecl.Sources(map[string]any{"App.wrap": false, "App.numbers": false}))
+	s.WaitForText(t, "one two")
+	if strings.Contains(s.String(), "five") {
+		t.Fatalf("unwrapped, the line's end shows:\n%s", s)
+	}
+	s.Program.Post(func() {
+		_ = s.Program.Set("App.wrap", true)
+		_ = s.Program.Set("App.numbers", true)
+	})
+	s.WaitFor(t, "wrapped and numbered", func(sc string) bool {
+		return strings.HasPrefix(sc, "  1 one two") && strings.Contains(sc, "five")
+	})
+}
