@@ -283,6 +283,11 @@ func (f *Float) Layout(c tui.Constraints) tui.Size {
 // Render paints nothing; the layer and child do.
 func (f *Float) Render(tui.Surface) {}
 
+// PointerTransparent implements tui.PointerTransparent: a Float is only the frame its layer fills,
+// never a pointer's target. The layer decides: a modal one catches the pointer as the backdrop, a
+// non-modal one lets it through to the application wherever its content is not.
+func (f *Float) PointerTransparent() bool { return true }
+
 // floatLayer is the full-area overlay layer: FocusScope trap (modal),
 // backdrop scrim, Esc-dismiss, and anchor placement of the content.
 type floatLayer struct {
@@ -302,6 +307,12 @@ func (l *floatLayer) Init(ctx *tui.Context) {
 	l.Base.Init(ctx)
 	ctx.Mount(l.owner.child)
 }
+
+// PointerTransparent implements tui.PointerTransparent: a non-modal layer fills the area only to
+// place its content, so the pointer passes through it wherever the content is not — to the
+// application beneath. A modal layer is the backdrop, and catches it (HandleEvent). An always-shown
+// non-modal float (the toasts) once took every click on the screen, the menu bar's among them.
+func (l *floatLayer) PointerTransparent() bool { return !l.owner.modal }
 
 // TrapsFocus implements tui.FocusScope: modal floats confine Tab.
 func (l *floatLayer) TrapsFocus() bool { return l.owner.modal }
