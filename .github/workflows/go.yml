@@ -69,7 +69,7 @@ jobs:
       - name: build and vet (cgo)
         run: CGO_ENABLED=1 go vet ./vfs/...
 
-      - name: vet and test (no cgo: no watch, the poll fallback)
+      - name: "vet and test without cgo (no watch: the poll fallback)"
         run: CGO_ENABLED=0 go vet ./vfs/... && CGO_ENABLED=0 go test -count=1 ./vfs/...
 
       - name: test vfs (FSEvents)
