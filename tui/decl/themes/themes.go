@@ -21,8 +21,10 @@
 //
 //	app       the application palette the Window sets and everything inherits:
 //	          window, windowText, button, buttonText, highlight,
-//	          highlightedText, base, text, mid, light, and an inactive group
-//	          (highlight, highlightedText) for a view without focus
+//	          highlightedText, base, text, mid, light, an inactive group
+//	          (highlight, highlightedText) for a view without focus, and
+//	          backdrop, a dimmed tone of the document's base for a Window's
+//	          color — the screen around a page narrower than it
 //	menu      the menu bar and its menus: window, windowText, highlight,
 //	          highlightedText, accent (a menu's access key)
 //	document  what shows a document — an editor, a table, a tree — and its

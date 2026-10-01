@@ -18,6 +18,7 @@ Theme {
         base: "default"; text: "default"
         inactive { highlight: "brightblack"; highlightedText: "white" }
         mid: "brightblack"; light: "black"
+        backdrop: "default"
     }
     menu {
         window: "white"; windowText: "black"

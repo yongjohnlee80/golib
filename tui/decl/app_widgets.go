@@ -27,7 +27,10 @@ import (
 
 func appTypes() []Type {
 	return []Type{
-		{Name: "Window", Build: buildWindow},
+		{Name: "Window", Build: buildWindow, Setters: map[string]Setter{
+			// Qt's Window.color: the background under everything, where no widget paints
+			"color": setter("a Window", colorOf, (*windowNode).setColor),
+		}},
 		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
 			"title": setter("a Frame", stringOf, (*widget.Box).SetTitle),
 			// golib's: at most this many columns, border included, centred — a page, not the screen

@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -39,6 +40,11 @@ type windowNode struct {
 	shortcuts    []*shortcutNode
 	menus        []*menuBarNode
 	overlaid     []Overlaid
+
+	// color is Qt's Window.color, painted under everything; unset leaves the
+	// terminal's own background wherever no widget paints.
+	color   style.Color
+	colored bool
 }
 
 func buildWindow(b Build) (tui.Component, []string, error) {
@@ -195,7 +201,27 @@ func (w *windowNode) Layout(c tui.Constraints) tui.Size {
 // windowFocusKey is the Window's one commit: the start-up focus.
 const windowFocusKey tui.CommitKey = "window.focus"
 
-func (w *windowNode) Render(tui.Surface) {}
+// Render paints the Window's color, when it has one, over its whole surface:
+// what no widget covers — the screen either side of a Frame narrower than it,
+// say — then shows the theme's colour rather than the terminal's.
+func (w *windowNode) Render(s tui.Surface) {
+	if !w.colored {
+		return
+	}
+	sz := s.Size()
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.New().Background(w.color))
+}
+
+// setColor sets Qt's Window.color.
+func (w *windowNode) setColor(c style.Color) {
+	if w.colored && w.color == c {
+		return
+	}
+	w.color, w.colored = c, true
+	if w.ctx != nil {
+		w.ctx.MarkDirty()
+	}
+}
 
 // HandleEvent sees every key the focused widget did not consume.
 //

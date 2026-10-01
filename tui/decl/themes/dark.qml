@@ -14,6 +14,7 @@ Theme {
         base: "#1c1c1c"; text: "#d0d0d0"
         inactive { highlight: "#444444"; highlightedText: "#87afd7" }
         mid: "#585858"; light: "#87afd7"
+        backdrop: "#121212"
     }
     menu {
         window: "#303030"; windowText: "#dadada"

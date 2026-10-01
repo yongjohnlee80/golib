@@ -19,7 +19,7 @@ import (
 // lists, and what a layout may bind to whichever theme it imports.
 var vocabulary = map[string][]string{
 	"app": {"window", "windowText", "button", "buttonText", "highlight", "highlightedText",
-		"base", "text", "mid", "light", "inactive.highlight", "inactive.highlightedText"},
+		"base", "text", "mid", "light", "inactive.highlight", "inactive.highlightedText", "backdrop"},
 	"menu":     {"window", "windowText", "highlight", "highlightedText", "accent"},
 	"document": {"window", "windowText", "highlight", "highlightedText", "base", "text", "selection", "selectedText", "cursor", "lineNumber"},
 	"status":   {"window", "windowText"},
