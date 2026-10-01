@@ -55,5 +55,27 @@ attaches to the directory the root resolved (opened through `os.Root`, watched v
   moved: a final `OpOverflow{Path: ""}`, then the channel closes. A directory that vanished before its
   watch landed is not a gap; its parent reports it.
 - Keep reading: a stalled consumer stalls the reader, and the kernel queue then overflows.
+- `vfs.SkipDirs(pred)`: a skipped directory gets no watch, nor does anything under it — which also
+  keeps `node_modules` from spending `max_user_watches`. Its own appearance is an `OpCreate`, never an
+  `OpOverflow`.
 
-On macOS `*local.FS` does not implement `vfs.Watcher`; use `vfs.Poll`.
+## Watching (macOS)
+
+Built with cgo, `Watch` uses one FSEvents stream per call (ADR golib-vfs-0002): file-level events,
+a private serial dispatch queue, 50 ms coalescing. One stream covers the whole tree, so there is no
+descriptor per directory and no ceiling on how many a root holds.
+
+- The stream watches the directory's canonical path, taken with `F_GETPATH` from the directory the
+  root opened (`/private/var`, not `/var`); events are mapped back to root-relative paths.
+- FSEvents' flags accumulate per path, so presence is decided by an `lstat` when the event is
+  handled: a vanished path is `OpRemove`, a present one `OpCreate` or `OpWrite`. A write to a recently
+  created file may arrive as `OpCreate` (treat it like `OpWrite`, as everywhere).
+- A directory that appears is `OpCreate` + `OpOverflow` for its subtree (a populated directory moved in
+  reports only itself), except one `vfs.SkipDirs` names: `OpCreate` alone, and nothing inside it.
+- FSEvents' own dropped-events report, or a consumer more than 16 384 records behind, is an
+  `OpOverflow`; the watched directory deleted or moved is a final `OpOverflow{Path: ""}`, then the
+  channel closes. A stream that cannot start makes `Watch` return the error.
+- Not seen: changes another machine makes to a network volume.
+
+A macOS build **without cgo** (`CGO_ENABLED=0`) has no `Watch`: `*local.FS` does not implement
+`vfs.Watcher` there, and callers take `vfs.Poll`.

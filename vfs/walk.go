@@ -21,7 +21,10 @@ var errWalkNotDir = errs.Sentinel(errs.ErrInvalidArgument, "vfs: walk start is n
 //
 // dir itself is checked the same way: if its entry is not a directory — a file, or a symlink even to a
 // directory — Walk yields one error wrapping errs.ErrInvalidArgument and nothing else.
-func Walk(ctx context.Context, fsys FS, dir string) iter.Seq2[FileInfo, error] {
+//
+// With [WalkSkipDirs], a directory its predicate names is yielded but not descended.
+func Walk(ctx context.Context, fsys FS, dir string, opts ...WalkOption) iter.Seq2[FileInfo, error] {
+	skip := ResolveWalk(opts).Skip
 	return func(yield func(FileInfo, error) bool) {
 		start, err := fsys.Stat(ctx, dir)
 		if err != nil {
@@ -32,12 +35,12 @@ func Walk(ctx context.Context, fsys FS, dir string) iter.Seq2[FileInfo, error] {
 			yield(start, &fs.PathError{Op: "walk", Path: dir, Err: errWalkNotDir})
 			return
 		}
-		walk(ctx, fsys, dir, yield)
+		walk(ctx, fsys, dir, skip, yield)
 	}
 }
 
 // walk returns false once the caller stopped or ctx ended.
-func walk(ctx context.Context, fsys FS, dir string, yield func(FileInfo, error) bool) bool {
+func walk(ctx context.Context, fsys FS, dir string, skip func(string) bool, yield func(FileInfo, error) bool) bool {
 	if err := ctx.Err(); err != nil {
 		yield(FileInfo{Path: dir}, err)
 		return false
@@ -58,7 +61,7 @@ func walk(ctx context.Context, fsys FS, dir string, yield func(FileInfo, error) 
 		if !yield(e, nil) {
 			return false
 		}
-		if e.IsDir() && !walk(ctx, fsys, e.Path, yield) {
+		if e.IsDir() && (skip == nil || !skip(e.Path)) && !walk(ctx, fsys, e.Path, skip, yield) {
 			return false
 		}
 	}

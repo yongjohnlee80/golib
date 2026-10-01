@@ -21,14 +21,15 @@ var (
 	errClosed    = errs.Sentinel(errs.ErrClosed, "local: closed")
 	errIsDir     = errs.Sentinel(errs.ErrInvalidArgument, "local: is a directory")
 	errIsSymlink = errs.Sentinel(errs.ErrUnsupported, "local: writing through a symlink")
+	errNotDir    = errs.Sentinel(errs.ErrInvalidArgument, "local: not a directory")
 )
 
 // FS is a [vfs.FS] over one directory on local disk. Every name is resolved through [os.Root], so no
 // name — "..", absolute, or a symlink pointing outside — reaches outside the root. It is safe for
 // concurrent use.
 //
-// It implements [vfs.ConditionalWriter], [vfs.ExclusiveCreator] and [vfs.NoReplaceRenamer], and on
-// Linux [vfs.Watcher]. Conditions are exact among callers of one FS; a write by another process that
+// It implements [vfs.ConditionalWriter], [vfs.ExclusiveCreator] and [vfs.NoReplaceRenamer], and
+// [vfs.Watcher] on Linux (inotify) and on macOS built with cgo (FSEvents). Conditions are exact among callers of one FS; a write by another process that
 // lands between the check and the commit is overwritten.
 type FS struct {
 	root    *os.Root
