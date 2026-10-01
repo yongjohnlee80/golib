@@ -1,6 +1,6 @@
-// light.qml — a light workspace, in paper tones: documents on a soft, unbleached paper a shade
-// below the chrome (gentle on the eyes, not white), dark warm-brown text, parchment chrome, one
-// muted blue accent for what is selected, and a burnt-orange cursor that is seen without glaring.
+// light.qml — a light workspace, in paper tones: warm off-white documents with dark warm-brown
+// text, parchment chrome, one muted blue accent for what is selected, and a burnt-orange cursor
+// that is seen without glaring.
 //
 // Written as #rrggbb so it looks the same in every terminal, a dark one
 // included. Selecting it is one import line:
@@ -12,10 +12,10 @@ Theme {
         window: "#ebe6d9"; windowText: "#2b2620"
         button: "#ddd6c6"; buttonText: "#2b2620"
         highlight: "#2f5f8f"; highlightedText: "#fbf8f1"
-        base: "#ddd6c5"; text: "#2e2a24"
-        inactive { highlight: "#c4b99f"; highlightedText: "#2f5f8f" }
+        base: "#f6f2e7"; text: "#2e2a24"
+        inactive { highlight: "#d8d0bd"; highlightedText: "#2f5f8f" }
         mid: "#b3aa96"; light: "#2f5f8f"
-        backdrop: "#cfc8b6"
+        backdrop: "#e0dbcd"
     }
     menu {
         window: "#e4ddcc"; windowText: "#2b2620"
@@ -23,11 +23,11 @@ Theme {
         accent: "#a23a1f"
     }
     document {
-        window: "#ddd6c5"; windowText: "#7a7163"
+        window: "#f6f2e7"; windowText: "#7a7163"
         highlight: "#2f5f8f"; highlightedText: "#fbf8f1"
-        base: "#ddd6c5"; text: "#2e2a24"
-        selection: "#c8b47e"; selectedText: "#1f1b16"
-        cursor: "#d2691e"; lineNumber: "#998e78"
+        base: "#f6f2e7"; text: "#2e2a24"
+        selection: "#e8d9ae"; selectedText: "#1f1b16"
+        cursor: "#d2691e"; lineNumber: "#aba08a"
     }
     status {
         window: "#e4ddcc"; windowText: "#3a342b"
@@ -37,7 +37,7 @@ Theme {
         dataType: "#1f6363"; attribute: "#6a3d9a"; function: "#7a5200"
         string: "#9c2f1f"; specialChar: "#b8401f"
         decVal: "#1f5a8c"; float: "#1f5a8c"; baseN: "#1f5a8c"; constant: "#1f5a8c"
-        comment: "#6f6553"; alert: "#c0392b"
+        comment: "#8a806e"; alert: "#c0392b"
         import: "#1f6363"; operator: "#4a443a"
     }
 }
