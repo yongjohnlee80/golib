@@ -498,9 +498,10 @@ func (b *Backend) decodeLoop(readCh <-chan []byte) {
 	}
 
 	d := &decoder{
-		emit:      b.emitEvent,
-		probe:     b.probeReply,
-		onFocusIn: func() { checkSize(false) }, // focus-in re-check
+		emit:       b.emitEvent,
+		probe:      b.probeReply,
+		onFocusIn:  func() { checkSize(false) }, // focus-in re-check
+		optionFold: b.cfg.optionFold,
 	}
 
 	var escTimer *time.Timer
