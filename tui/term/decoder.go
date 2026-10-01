@@ -49,6 +49,10 @@ type decoder struct {
 
 	ss3 bool // ESC O seen; next byte is the SS3 final
 
+	// optionFold turns the characters Option+letter types on a US Mac keyboard back into
+	// Alt+letter (WithOptionFold).
+	optionFold bool
+
 	// Bracketed-paste capture. While pasting, bytes bypass
 	// the parser entirely and are captured literally until the exact
 	// ESC [ 2 0 1 ~ terminator — a CSI 200~ opener inside an unterminated
@@ -160,7 +164,7 @@ func (d *decoder) handle(a *action) {
 			mods = tui.ModAlt
 			text = ""
 		}
-		d.emit(tui.KeyEvent{Code: a.r, Mods: mods, Text: text})
+		d.key(tui.KeyEvent{Code: a.r, Mods: mods, Text: text})
 	case actExecute:
 		d.ss3 = false
 		if ev, ok := ctrlKey(a.b); ok {
@@ -407,7 +411,7 @@ func (d *decoder) kittyKey(a *action) {
 			}
 		}
 	}
-	d.emit(tui.KeyEvent{
+	d.key(tui.KeyEvent{
 		Kind:    kind,
 		Code:    rune(code),
 		Base:    rune(base),
@@ -415,6 +419,14 @@ func (d *decoder) kittyKey(a *action) {
 		Mods:    mods,
 		Text:    text.String(),
 	})
+}
+
+// key emits a key that may carry typed text, folding an Option-composed character when asked.
+func (d *decoder) key(ev tui.KeyEvent) {
+	if d.optionFold {
+		ev = foldOption(ev)
+	}
+	d.emit(ev)
 }
 
 // mouse decodes an SGR mouse report: CSI < b ; x ; y M/m with button bits per

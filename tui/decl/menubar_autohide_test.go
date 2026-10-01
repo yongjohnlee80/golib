@@ -82,3 +82,13 @@ func TestAutoHideIsAPreference(t *testing.T) {
 	})
 	hidden(t, s, "once the preference is on again")
 }
+
+// TestAMnemonicOpensInEitherCase: a legacy terminal sends Alt+Shift+V as ESC V
+// — 'V' with Alt alone — and that opens &View as Alt+v does.
+func TestAMnemonicOpensInEitherCase(t *testing.T) {
+	s, _ := runAutoHideDoc(t)
+	hidden(t, s, "at the start")
+	s.Keys(t, decltest.Alt('V'))
+	s.WaitForText(t, "Wrap")
+	up(t, s, "with its menu open")
+}

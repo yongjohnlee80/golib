@@ -28,6 +28,8 @@
 // normalized to \n), focus in/out, and mode-2048 resize reports all map onto
 // the core tui event set. A lone ESC is disambiguated by a short hold
 // (WithEscTimeout, default 35ms) only when kitty mode is inactive.
+// WithOptionFold reads what a US Mac keyboard types for Option+letter ("ƒ")
+// as Alt+letter, for Mac terminals whose Option key does not send Meta.
 //
 // Mouse input is normalized to press, motion, release and wheel events; the
 // driver does not hit-test or capture. The App owns those semantics. Focus-out

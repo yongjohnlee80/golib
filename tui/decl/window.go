@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"unicode"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -354,9 +355,11 @@ func (m *menuBarNode) activate() {
 	ctx.RequestFocus()
 }
 
-// openHotkey opens the category whose mnemonic is r, and reports whether one
-// had it.
+// openHotkey opens the category whose mnemonic is r, in either case, and
+// reports whether one had it. Mnemonics are stored lowercased, while a legacy
+// terminal sends Alt+Shift+F as ESC F — 'F' with Alt alone.
 func (m *menuBarNode) openHotkey(r rune) bool {
+	r = unicode.ToLower(r)
 	for _, c := range m.categories {
 		if c.hotkey == r {
 			wasHidden := m.autoHide && !m.shown

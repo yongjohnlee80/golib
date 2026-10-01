@@ -39,6 +39,7 @@ construct the backend and hand it over.
 term.WithTTY(in, out)          // default os.Stdin, os.Stdout
 term.WithProbeTimeout(250*time.Millisecond) // clamped [50ms, 1s]
 term.WithEscTimeout(35*time.Millisecond)    // legacy ESC disambiguation hold
+term.WithOptionFold()          // macOS: Option+letter's character ("ƒ") read as Alt+letter
 term.WithoutAltScreen()        // inline mode: never enter ?1049
 term.WithoutMouse()            // never enable ?1002/?1006
 term.WithEnv(lookup)           // env seam for the capability pre-seed

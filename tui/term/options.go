@@ -46,6 +46,7 @@ type config struct {
 	escTimeout   time.Duration
 	altScreen    bool
 	mouse        bool
+	optionFold   bool
 	env          func(string) (string, bool)
 
 	// sizeFn overrides the fd size query — the harness seam for pty-less
@@ -98,6 +99,19 @@ func WithProbeTimeout(d time.Duration) Option {
 // ESC before its continuation arrives; raising this timeout is the remedy.
 func WithEscTimeout(d time.Duration) Option {
 	return func(c *config) { c.escTimeout = d }
+}
+
+// WithOptionFold reads the characters a US-layout Mac keyboard types with Option held — "ƒ" for
+// Option+F, "ø" for Option+O — as Alt+letter, so Alt shortcuts work in a Mac terminal whose Option
+// key is not set to send Meta (iTerm2 "Esc+", Terminal.app "Use Option as Meta key", Ghostty
+// macos-option-as-alt, kitty macos_option_as_alt). Off by default: a program turns it on where it
+// wants it, typically on macOS only.
+//
+// The cost is that those characters can no longer be typed; a paste still carries them. Option+E,
+// I, N, U and ` are dead keys on that layout and send nothing to fold. Other layouts compose other
+// characters, which pass through unchanged.
+func WithOptionFold() Option {
+	return func(c *config) { c.optionFold = true }
 }
 
 // WithoutAltScreen selects inline mode: the alternate screen (?1049) is never
