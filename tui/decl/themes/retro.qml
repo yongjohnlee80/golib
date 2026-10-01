@@ -21,6 +21,7 @@ Theme {
         base: "#0000aa"; text: "#ffffff"
         inactive { highlight: "#555555"; highlightedText: "#55ffff" }
         mid: "#555555"; light: "#ffffff"
+        backdrop: "#000080"
     }
     menu {
         window: "#aaaaaa"; windowText: "#000000"
