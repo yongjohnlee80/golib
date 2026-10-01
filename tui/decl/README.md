@@ -439,7 +439,7 @@ with this contract alone. See [USAGE.md §6](USAGE.md#6-your-own-go-widgets-in-q
 | `Commands(map)` / `Handlers(map)` | handlers without / with arguments |
 | `Providers(p…)` | values on their own clock |
 | `Themes(fs, dir, prefix, version)` | each `dir/*.qml` offered as `prefix.<name>` |
-| `themes.Offer()` (package `tui/decl/themes`) | the toolkit's four themes — `dark`, `light`, `mono`, `retro` — as `tui.theme.<name>` |
+| `themes.Offer()` (package `tui/decl/themes`) | the toolkit's five themes — `dark`, `light`, `mono`, `retro`, `sepia` — as `tui.theme.<name>` |
 | `Components(fs, dir, module, version)` | `dir/*.qml` offered as component types |
 | `Offer(module, version, loader)` | any offered module |
 | `Types(t…)` / `Files(src)` | your widgets; the file dialogs' filesystem |
@@ -448,7 +448,7 @@ with this contract alone. See [USAGE.md §6](USAGE.md#6-your-own-go-widgets-in-q
 | `AppOptions`, `AdapterOptions`, `TreeOptions`, `WithRegistry` | pass-throughs |
 
 **The toolkit's themes.** `import tui.theme.dark 1.0` (or `light`, `mono`,
-`retro`) after `themes.Offer()` gives a `Theme` singleton in five groups — `app`
+`retro`, `sepia`) after `themes.Offer()` gives a `Theme` singleton in five groups — `app`
 (the palette the Window sets and everything inherits), `menu`, `document` (an
 editor, a table, a tree), `status`, and `syntax` (the `syntax.*` roles). Every
 theme defines every key, so a layout bound to one runs under any. They are
