@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -42,6 +43,8 @@ func TestFS(t *testing.T, newFS func(t *testing.T) vfs.FS) {
 		{"RemoveAll", testRemoveAll},
 		{"Rename", testRename},
 		{"Walk", testWalk},
+		{"WalkSkipDirs", testWalkSkipDirs},
+		{"PollSkipDirs", testPollSkipDirs},
 		{"Close", testClose},
 		{"ConditionalWriter/WriteFileIf", as(testWriteFileIf)},
 		{"ConditionalWriter/RemoveIf", as(testRemoveIf)},
@@ -50,6 +53,7 @@ func TestFS(t *testing.T, newFS func(t *testing.T) vfs.FS) {
 		{"ExclusiveCreator", as(testCreateExclusive)},
 		{"NoReplaceRenamer", as(testRenameNoReplace)},
 		{"Watcher", as(testWatch)},
+		{"Watcher/SkipDirs", as(testWatchSkipDirs)},
 		{"Copier", as(testCopy)},
 	}
 	for _, c := range cells {
@@ -344,6 +348,114 @@ func testWalk(t *testing.T, fsys vfs.FS) {
 	for fi, err := range vfs.Walk(bg, fsys, "z.md") {
 		if !errors.Is(err, errs.ErrInvalidArgument) {
 			t.Fatalf("Walk from a file yielded %+v, %v; want one ErrInvalidArgument", fi, err)
+		}
+	}
+}
+
+// skipNodeModules is the SkipDirs predicate the skip cells use.
+func skipNodeModules(dir string) bool { return path.Base(dir) == "node_modules" }
+
+// testWalkSkipDirs: Walk yields a skipped directory but none of its contents.
+func testWalkSkipDirs(t *testing.T, fsys vfs.FS) {
+	mustMkdir(t, fsys, "a/node_modules/pkg")
+	write(t, fsys, "a/node_modules/pkg/README.md", "r")
+	write(t, fsys, "a/x.md", "x")
+	var got []string
+	for fi, err := range vfs.Walk(bg, fsys, ".", vfs.WalkSkipDirs(skipNodeModules)) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, fi.Path)
+	}
+	if want := []string{"a", "a/node_modules", "a/x.md"}; !slices.Equal(got, want) {
+		t.Fatalf("Walk with WalkSkipDirs = %v, want %v", got, want)
+	}
+}
+
+// testPollSkipDirs: Poll reports nothing inside a skipped directory, but does report the directory
+// itself appearing — and never an OpOverflow for it.
+func testPollSkipDirs(t *testing.T, fsys vfs.FS) {
+	ctx, cancel := context.WithCancel(bg)
+	defer cancel()
+	mustMkdir(t, fsys, "w")
+	events, err := vfs.Poll(ctx, fsys, "w", 20*time.Millisecond, vfs.Recursive(), vfs.SkipDirs(skipNodeModules))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustMkdir(t, fsys, "w/node_modules/pkg")
+	write(t, fsys, "w/node_modules/pkg/README.md", "r")
+	write(t, fsys, "w/after.md", "a")
+	assertSkipped(t, events, "w/node_modules", "w/after.md")
+}
+
+// testWatchSkipDirs: a Watcher with SkipDirs reports a skipped directory appearing as OpCreate and
+// nothing else for it — no OpOverflow, nothing inside it — while the rest of the tree is reported.
+func testWatchSkipDirs(t *testing.T, fsys vfs.FS, w vfs.Watcher) {
+	ctx, cancel := context.WithCancel(bg)
+	defer cancel()
+	mustMkdir(t, fsys, "w")
+	events, err := w.Watch(ctx, "w", vfs.Recursive(), vfs.SkipDirs(skipNodeModules))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustMkdir(t, fsys, "w/node_modules")
+	write(t, fsys, "w/node_modules/inside.md", "i")
+	mustMkdir(t, fsys, "w/node_modules/pkg")
+	write(t, fsys, "w/node_modules/pkg/README.md", "r")
+	write(t, fsys, "w/after.md", "a")
+	assertSkipped(t, events, "w/node_modules", "w/after.md")
+}
+
+// assertSkipped reads events until one for sentinel arrives, then fails if any of them was inside
+// skipped, an OpOverflow for it (or for everything), or if skipped's own OpCreate never came.
+func assertSkipped(t *testing.T, events <-chan vfs.Event, skipped, sentinel string) {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	var seen []vfs.Event
+	created := false
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				t.Fatalf("event channel closed; saw %v", seen)
+			}
+			seen = append(seen, ev)
+			switch {
+			case strings.HasPrefix(ev.Path, skipped+"/"):
+				t.Fatalf("an event inside the skipped %s: %v (all: %v)", skipped, ev, seen)
+			case ev.Op == vfs.OpOverflow && (ev.Path == skipped || ev.Path == ""):
+				t.Fatalf("an OpOverflow for the skipped %s: %v (all: %v)", skipped, ev, seen)
+			case ev.Path == skipped && ev.Op == vfs.OpCreate:
+				created = true
+			}
+			if ev.Path == sentinel {
+				// drain briefly: a late event inside the skipped dir must not follow either
+				settle := time.After(300 * time.Millisecond)
+				for {
+					select {
+					case ev, ok := <-events:
+						if !ok {
+							goto done
+						}
+						seen = append(seen, ev)
+						if strings.HasPrefix(ev.Path, skipped+"/") || (ev.Op == vfs.OpOverflow && (ev.Path == skipped || ev.Path == "")) {
+							t.Fatalf("a late event for the skipped %s: %v (all: %v)", skipped, ev, seen)
+						}
+						if ev.Path == skipped && ev.Op == vfs.OpCreate {
+							created = true
+						}
+					case <-settle:
+						goto done
+					}
+				}
+			done:
+				if !created {
+					t.Fatalf("no OpCreate for the skipped directory %s itself; saw %v", skipped, seen)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatalf("no event for %s within 5s; saw %v", sentinel, seen)
 		}
 	}
 }

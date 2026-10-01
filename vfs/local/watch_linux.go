@@ -14,14 +14,11 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/vfs"
 )
 
 var _ vfs.Watcher = (*FS)(nil)
-
-var errNotDir = errs.Sentinel(errs.ErrInvalidArgument, "local: not a directory")
 
 const watchMask = unix.IN_CREATE | unix.IN_CLOSE_WRITE | unix.IN_DELETE | unix.IN_MOVED_FROM |
 	unix.IN_MOVED_TO | unix.IN_DELETE_SELF | unix.IN_MOVE_SELF | unix.IN_ATTRIB | unix.IN_ONLYDIR |
@@ -37,6 +34,9 @@ const watchMask = unix.IN_CREATE | unix.IN_CLOSE_WRITE | unix.IN_DELETE | unix.I
 // cannot be watched ends the watch, as does dir itself being deleted or moved: a final
 // OpOverflow{Path: ""} precedes the close, and the consumer rescans and watches again or falls back to
 // [vfs.Poll]. A directory that vanished before its watch landed is not a gap — its parent reports it.
+//
+// With [vfs.SkipDirs] a skipped directory gets no watch, nor does anything under it: its own
+// appearance is reported (OpCreate) but never adopted or overflowed, and nothing inside it is seen.
 //
 // Watches attach to the directory the root resolved (opened through os.Root, then watched via its fd's
 // /proc/self/fd link), so no pathname is re-traversed after the jail checked it. The consumer must keep
@@ -64,7 +64,7 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 		return nil, &fs.PathError{Op: "watch", Path: dir, Err: err}
 	}
 	w := &watch{
-		f: f, in: in, wakeR: pipe[0], wakeW: pipe[1], dir: dir, recursive: cfg.Recursive,
+		f: f, in: in, wakeR: pipe[0], wakeW: pipe[1], dir: dir, recursive: cfg.Recursive, skip: cfg.Skip,
 		paths: map[int]string{}, wds: map[string]int{}, moved: map[uint32]string{},
 		out: make(chan vfs.Event), stop: make(chan struct{}),
 	}
@@ -92,6 +92,7 @@ type watch struct {
 	wakeR, wakeW int // a pipe the waker writes to end run's poll
 	dir          string
 	recursive    bool
+	skip         func(dir string) bool // SkipDirs; nil skips nothing
 
 	paths map[int]string    // wd → root-relative directory
 	wds   map[string]int    // directory → wd
@@ -150,8 +151,12 @@ func (w *watch) addDir(rel string) (int, error) {
 	return wd, nil
 }
 
-// addChildren watches every real subdirectory under rel (symlinks are not entered). Directories that
-// vanished meanwhile are skipped; any other failure is returned — it would be an unreported gap.
+// skipped reports a directory SkipDirs leaves out.
+func (w *watch) skipped(p string) bool { return w.skip != nil && w.skip(p) }
+
+// addChildren watches every real subdirectory under rel (symlinks are not entered), but none SkipDirs
+// names. Directories that vanished meanwhile are passed over; any other failure is returned — it
+// would be an unreported gap.
 func (w *watch) addChildren(rel string) error {
 	entries, err := w.list(rel)
 	if err != nil {
@@ -165,6 +170,9 @@ func (w *watch) addChildren(rel string) error {
 			continue
 		}
 		sub := vfs.Join(rel, e.Name())
+		if w.skipped(sub) {
+			continue
+		}
 		if _, err := w.addDir(sub); err != nil {
 			if gone(err) {
 				continue
@@ -312,7 +320,7 @@ func (w *watch) handle(wd int, mask, cookie uint32, name string) bool {
 	switch {
 	case mask&unix.IN_CREATE != 0:
 		w.queue = append(w.queue, vfs.Event{Path: p, Op: vfs.OpCreate})
-		if isDir && w.recursive {
+		if isDir && w.recursive && !w.skipped(p) {
 			return w.adopt(p)
 		}
 	case mask&unix.IN_MOVED_FROM != 0:
@@ -326,9 +334,11 @@ func (w *watch) handle(wd int, mask, cookie uint32, name string) bool {
 		delete(w.moved, cookie)
 		_, watched := w.wds[old]
 		switch {
+		case paired && watched && w.skipped(p):
+			w.dropTree(old) // renamed to a name SkipDirs leaves out: its watches go
 		case paired && watched:
 			w.moveTree(old, p) // same inodes, same watches, new paths
-		case isDir && w.recursive:
+		case isDir && w.recursive && !w.skipped(p):
 			return w.adopt(p) // moved in from outside, or moved before its own watch landed
 		}
 	case mask&unix.IN_DELETE != 0:

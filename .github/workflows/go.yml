@@ -53,6 +53,28 @@ jobs:
       - name: test
         run: go test -race -count=2 -timeout 20m ./...
 
+  # vfs/local watches with FSEvents on macOS, through cgo (ADR golib-vfs-0002): the Linux runner above
+  # can only vet the cgo-less darwin build, so the watch itself is built and tested here, on a Mac.
+  macos:
+    name: macOS (cgo, vfs)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: build and vet (cgo)
+        run: CGO_ENABLED=1 go vet ./vfs/...
+
+      - name: vet and test (no cgo: no watch, the poll fallback)
+        run: CGO_ENABLED=0 go vet ./vfs/... && CGO_ENABLED=0 go test -count=1 ./vfs/...
+
+      - name: test vfs (FSEvents)
+        run: CGO_ENABLED=1 go test -race -count=2 -timeout 10m ./vfs/...
+
   coverage:
     name: coverage policy
     if: github.event_name == 'pull_request'

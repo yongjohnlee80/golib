@@ -9,8 +9,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,61 +20,6 @@ import (
 
 	"github.com/yongjohnlee80/golib/vfs"
 )
-
-func startWatch(t *testing.T, f *FS, dir string) (<-chan vfs.Event, context.CancelFunc) {
-	t.Helper()
-	ctx, cancel := context.WithCancel(bg)
-	ev, err := f.Watch(ctx, dir, vfs.Recursive())
-	if err != nil {
-		cancel()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { // the watch is fully released before the next test starts
-		cancel()
-		for range ev {
-		}
-	})
-	return ev, cancel
-}
-
-// await reads until an event matching (p, op) arrives; it returns everything seen on the way.
-func await(t *testing.T, events <-chan vfs.Event, p string, op vfs.Op) []vfs.Event {
-	t.Helper()
-	var seen []vfs.Event
-	deadline := time.After(5 * time.Second)
-	for {
-		select {
-		case ev, ok := <-events:
-			if !ok {
-				t.Fatalf("channel closed waiting for %v %s; saw %v", op, p, seen)
-			}
-			seen = append(seen, ev)
-			if ev.Path == p && ev.Op == op {
-				return seen
-			}
-		case <-deadline:
-			t.Fatalf("no %v %s within 5s; saw %v", op, p, seen)
-		}
-	}
-}
-
-// drainClosed waits for the channel to close and returns what arrived.
-func drainClosed(t *testing.T, events <-chan vfs.Event) []vfs.Event {
-	t.Helper()
-	var seen []vfs.Event
-	deadline := time.After(5 * time.Second)
-	for {
-		select {
-		case ev, ok := <-events:
-			if !ok {
-				return seen
-			}
-			seen = append(seen, ev)
-		case <-deadline:
-			t.Fatalf("the event channel did not close; saw %v", seen)
-		}
-	}
-}
 
 // TestWatchMoveInPopulated: a populated directory moved in is watched and reported as overflowed, and
 // later changes inside it arrive.
@@ -346,4 +293,54 @@ func TestWatchMovedBeforeItsWatch(t *testing.T) {
 	await(t, events, "w/final", vfs.OpOverflow)
 	mustWrite(t, f, "w/final/x.md", "x")
 	await(t, events, "w/final/x.md", vfs.OpCreate)
+}
+
+// TestWatchSkipDirsAddsNoWatch: SkipDirs keeps inotify off a skipped directory and everything under it
+// — at setup, when one is created later, and when a populated one is moved in — and a skipped
+// directory appearing is OpCreate alone, never OpOverflow.
+func TestWatchSkipDirsAddsNoWatch(t *testing.T) {
+	f, dir := newLocal(t)
+	_ = f.MkdirAll(bg, "w/old/node_modules/pkg")
+	var touched []string
+	var mu sync.Mutex
+	h := func(op, rel string) error {
+		if op == "addwatch" && strings.Contains(rel, "node_modules") {
+			mu.Lock()
+			touched = append(touched, rel)
+			mu.Unlock()
+		}
+		return nil
+	}
+	watchFault.Store(&h)
+	t.Cleanup(func() { watchFault.Store(nil) })
+	skip := func(d string) bool { return filepath.Base(d) == "node_modules" }
+	ctx, cancel := context.WithCancel(bg)
+	defer cancel()
+	events, err := f.Watch(ctx, "w", vfs.Recursive(), vfs.SkipDirs(skip))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = f.MkdirAll(bg, "w/node_modules/later")
+	_ = os.MkdirAll(filepath.Join(dir, "staging", "node_modules", "deep"), 0o755)
+	_ = os.Rename(filepath.Join(dir, "staging", "node_modules"), filepath.Join(dir, "w", "moved"))
+	_ = os.MkdirAll(filepath.Join(dir, "staging2", "node_modules", "deep"), 0o755)
+	_ = os.Rename(filepath.Join(dir, "staging2", "node_modules"), filepath.Join(dir, "w", "moved", "node_modules")) // populated, moved in under a skipped name
+	mustWrite(t, f, "w/after.md", "a")
+	seen := await(t, events, "w/after.md", vfs.OpCreate)
+	for _, ev := range seen {
+		if ev.Op == vfs.OpOverflow && (ev.Path == "w/node_modules" || ev.Path == "") {
+			t.Fatalf("a skipped directory was overflowed: %v (all: %v)", ev, seen)
+		}
+		if strings.HasPrefix(ev.Path, "w/node_modules/") {
+			t.Fatalf("an event inside a skipped directory: %v (all: %v)", ev, seen)
+		}
+	}
+	if !slices.Contains(seen, vfs.Event{Path: "w/node_modules", Op: vfs.OpCreate}) {
+		t.Fatalf("no OpCreate for the skipped directory itself: %v", seen)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(touched) != 0 {
+		t.Fatalf("inotify watches were added on or under a skipped directory: %v", touched)
+	}
 }

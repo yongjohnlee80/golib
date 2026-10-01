@@ -12,6 +12,7 @@ import (
 type watcher struct {
 	dir       string
 	recursive bool
+	cfg       vfs.WatchConfig // for SkipDirs
 	out       chan vfs.Event
 
 	mu      sync.Mutex
@@ -23,7 +24,8 @@ type watcher struct {
 	stopOnce sync.Once
 }
 
-// Watch streams events under dir until ctx ends or the filesystem is closed.
+// Watch streams events under dir until ctx ends or the filesystem is closed. With [vfs.SkipDirs],
+// nothing under a skipped directory is reported; the directory's own events still are.
 func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-chan vfs.Event, error) {
 	if err := f.begin(ctx, "watch", dir, false); err != nil {
 		return nil, err
@@ -38,7 +40,7 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 		return nil, pathErr("watch", dir, errNotDir)
 	}
 	cfg := vfs.ResolveWatch(opts)
-	w := &watcher{dir: dir, recursive: cfg.Recursive, out: make(chan vfs.Event, 64), done: make(chan struct{})}
+	w := &watcher{dir: dir, recursive: cfg.Recursive, cfg: cfg, out: make(chan vfs.Event, 64), done: make(chan struct{})}
 	w.cond = sync.NewCond(&w.mu)
 	f.watchers[w] = struct{}{}
 	f.mu.Unlock()
@@ -68,7 +70,8 @@ func (f *FS) emit(p string, op vfs.Op) {
 
 func (w *watcher) matches(p string) bool {
 	if w.recursive {
-		return w.dir == "." || (p != w.dir && under(p, w.dir))
+		in := w.dir == "." || (p != w.dir && under(p, w.dir))
+		return in && !w.cfg.Skipped(w.dir, p, false) // false: the skipped directory itself is reported
 	}
 	return p != "." && parentOf(p) == w.dir
 }

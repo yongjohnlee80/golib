@@ -18,13 +18,13 @@ import (
 // OpOverflow for dir and the next successful listing becomes the new baseline.
 //
 // The goroutine ends and the channel closes when ctx ends. Cost: one ReadDir (or Walk, with
-// [Recursive]) per interval.
+// [Recursive]) per interval; [SkipDirs] prunes that walk, so a skipped subtree costs nothing.
 func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts ...WatchOption) (<-chan Event, error) {
 	if interval <= 0 {
 		return nil, errs.Wrap(errs.ErrInvalidArgument, "vfs.Poll: interval must be positive, got %v", interval)
 	}
 	cfg := ResolveWatch(opts)
-	base, err := snapshot(ctx, fsys, dir, cfg.Recursive)
+	base, err := snapshot(ctx, fsys, dir, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts
 				return
 			case <-t.C:
 			}
-			next, err := snapshot(ctx, fsys, dir, cfg.Recursive)
+			next, err := snapshot(ctx, fsys, dir, cfg)
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return
@@ -86,10 +86,11 @@ func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts
 	return out, nil
 }
 
-// snapshot maps every entry under dir to its Version.
-func snapshot(ctx context.Context, fsys FS, dir string, recursive bool) (map[string]Version, error) {
+// snapshot maps every entry under dir to its Version. A skipped directory is listed as an entry —
+// its appearance and removal are reported — but never descended.
+func snapshot(ctx context.Context, fsys FS, dir string, cfg WatchConfig) (map[string]Version, error) {
 	m := make(map[string]Version)
-	if !recursive {
+	if !cfg.Recursive {
 		entries, err := fsys.ReadDir(ctx, dir)
 		if err != nil {
 			return nil, err
@@ -99,7 +100,7 @@ func snapshot(ctx context.Context, fsys FS, dir string, recursive bool) (map[str
 		}
 		return m, nil
 	}
-	for e, err := range Walk(ctx, fsys, dir) {
+	for e, err := range Walk(ctx, fsys, dir, WalkSkipDirs(cfg.Skip)) {
 		if err != nil {
 			return nil, err
 		}

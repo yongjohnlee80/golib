@@ -10,6 +10,7 @@
 // flag.
 //
 // Versions are a metadata heuristic (device, inode, size, mtime and ctime of the entry's lstat).
-// Conditions are exact among callers of one FS, not against other processes. On Linux the FS also
-// implements [github.com/yongjohnlee80/golib/vfs.Watcher] with inotify.
+// Conditions are exact among callers of one FS, not against other processes. The FS also implements
+// [github.com/yongjohnlee80/golib/vfs.Watcher]: with inotify on Linux, and with FSEvents on macOS when
+// built with cgo (a cgo-less macOS build polls).
 package local
