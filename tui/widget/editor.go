@@ -1771,7 +1771,7 @@ func (e *Editor) renderText(s tui.Surface) {
 		}
 	}
 	if e.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, e.top, len(e.lines))
+		paintScrollIndicator(s, sz.W-1, sz.H, e.top, wrapMaxTop(e.lines, e.view()))
 	}
 }
 

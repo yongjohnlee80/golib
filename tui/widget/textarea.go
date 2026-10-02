@@ -465,7 +465,7 @@ func (t *TextArea) Render(s tui.Surface) {
 		}
 	}
 	if t.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, t.top, len(t.lines))
+		paintScrollIndicator(s, sz.W-1, sz.H, t.top, wrapMaxTop(t.lines, t.view()))
 	}
 }
 

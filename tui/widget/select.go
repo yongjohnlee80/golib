@@ -711,6 +711,6 @@ func (p *selectPopup[T]) Render(s tui.Surface) {
 	}
 	if len(p.matches) > rows {
 		sub := s.Sub(tui.Rect{X: r.X + r.W - 1, Y: y, W: 1, H: rows})
-		paintScrollIndicator(sub, 0, rows, p.top, max(len(p.matches)-rows, 1)+1)
+		paintScrollIndicator(sub, 0, rows, p.top, len(p.matches)-rows)
 	}
 }

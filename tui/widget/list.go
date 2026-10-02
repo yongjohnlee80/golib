@@ -589,6 +589,6 @@ func (l *List[T]) Render(s tui.Surface) {
 		}
 	}
 	if scrollable {
-		paintScrollIndicator(s, sz.W-1, sz.H, l.top, max(l.count-sz.H, 1)+1)
+		paintScrollIndicator(s, sz.W-1, sz.H, l.top, l.count-sz.H)
 	}
 }
