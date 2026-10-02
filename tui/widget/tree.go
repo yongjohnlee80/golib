@@ -1135,7 +1135,7 @@ func (t *Tree) Render(s tui.Surface) {
 		drawText(s, 0, y, truncate(line, w, s.StringWidth), st)
 	}
 	if scrollable {
-		paintScrollIndicator(s, sz.W-1, sz.H, t.top, len(rows))
+		paintScrollIndicator(s, sz.W-1, sz.H, t.top, len(rows)-sz.H)
 	}
 }
 

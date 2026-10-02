@@ -284,6 +284,28 @@ func wrapScrollable(lines []string, v wrapView) bool {
 	return false
 }
 
+// wrapMaxTop is the scroll range: the greatest top line at which the last
+// line still ends on screen. Unwrapped, it is the lines past one screenful;
+// wrapped, it counts each line's rows up from the bottom until they overflow
+// the viewport. A last line taller than the viewport is its own top.
+func wrapMaxTop(lines []string, v wrapView) int {
+	if v.h <= 0 || len(lines) == 0 {
+		return 0
+	}
+	if v.wrap == WrapNone {
+		return max(len(lines)-v.h, 0)
+	}
+	w := wrapUsableWidth(lines, v)
+	rows := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		rows += len(wrapRanges(clusters(lines[i]), w, v.measure))
+		if rows > v.h {
+			return min(i+1, len(lines)-1)
+		}
+	}
+	return 0
+}
+
 // wrapUsableWidth is the width text actually wraps to: the viewport minus the
 // scrollbar column when one is showing, and never less than one cell.
 func wrapUsableWidth(lines []string, v wrapView) int {

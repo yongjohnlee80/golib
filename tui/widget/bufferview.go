@@ -470,7 +470,7 @@ func (v *BufferView) Render(s tui.Surface) {
 		}
 	}
 	if v.totalRows > sz.H {
-		paintScrollIndicator(s, sz.W-1, sz.H, start, max(v.totalRows-sz.H, 1)+1)
+		paintScrollIndicator(s, sz.W-1, sz.H, start, v.totalRows-sz.H)
 	}
 }
 

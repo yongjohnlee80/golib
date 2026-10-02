@@ -261,16 +261,22 @@ func drawText(sur tui.Surface, x, y int, s string, st style.Style) int {
 }
 
 // paintScrollIndicator paints the minimal per-widget scroll indicator
-// column (chrome, not a widget): a proportional thumb at
-// column x over h rows, for a viewport whose first visible unit is top out
-// of total.
-func paintScrollIndicator(s tui.Surface, x, h, top, total int) {
-	if h <= 0 || total <= 0 {
+// column (chrome, not a widget): a proportional thumb at column x over h rows,
+// for a viewport whose first visible unit is top, of the tops from 0 to maxTop
+// it can take.
+//
+// maxTop is the SCROLL RANGE, Qt's QScrollBar::maximum: the top at which the
+// last unit is on screen, not the unit count. The thumb is on the top row at
+// top 0 and on the bottom row at maxTop, so a view scrolled to its end shows
+// the thumb at the end. A top past maxTop (a wheel scrolling past the last
+// line) keeps it there.
+func paintScrollIndicator(s tui.Surface, x, h, top, maxTop int) {
+	if h <= 0 || maxTop < 0 {
 		return
 	}
 	track := style.New().Foreground(style.TokenTextMuted).Faint(true)
 	s.Fill(tui.Rect{X: x, Y: 0, W: 1, H: h}, "│", track)
-	denom := max(total-1, 1)
-	ty := min(top, denom) * (h - 1) / denom
+	denom := max(maxTop, 1)
+	ty := min(max(top, 0), denom) * (h - 1) / denom
 	s.SetCell(x, ty, "█", style.New().Foreground(style.TokenBorder))
 }
