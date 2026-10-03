@@ -71,6 +71,8 @@ func RasterizeSVG(ctx context.Context, svg []byte, width int) ([]byte, error) {
 // RasterizeHTML renders html in a headless browser at width × height pixels and returns the
 // viewport as a PNG. The page cannot reach the network: every host resolves nowhere and every
 // request goes to a proxy that is not there. A page that needs the network renders without it.
+// The browser's own sandbox always stays on: where it cannot run (a system that forbids user
+// namespaces), the browser refuses, the error says so, and the host shows its fallback.
 func RasterizeHTML(ctx context.Context, html []byte, width, height int) ([]byte, error) {
 	tool, ok := HTMLRasterizer()
 	if !ok {
