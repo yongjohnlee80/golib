@@ -62,3 +62,47 @@ func TestOnChangeHearsEditsButNotSetValue(t *testing.T) {
 		t.Errorf("two typed characters reported %d edits, want 2", afterTyping)
 	}
 }
+
+// TestOnCursorPositionChangeHearsMovesNotStillKeys: the listener fires when the cursor lands on
+// another line or column — a motion, typing, or the program moving it — and not for a key that
+// leaves it where it was (a refused motion at the buffer's edge).
+func TestOnCursorPositionChangeHearsMovesNotStillKeys(t *testing.T) {
+	moves := 0
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithOnCursorPositionChange(func() { moves++ }))
+	count := func() int {
+		h.barrier(sh)
+		var n int
+		h.onLoop(func() { n = moves })
+		return n
+	}
+
+	h.onLoop(func() { ed.SetValue("one\ntwo\nthree") })
+	if n := count(); n != 0 {
+		t.Fatalf("SetValue on an editor already at 1:1 reported %d moves", n)
+	}
+	h.inject(key('j')) // down a line
+	if n := count(); n != 1 {
+		t.Fatalf("j reported %d moves, want 1", n)
+	}
+	h.inject(key('k'), key('k')) // up, then a refused up at the first line
+	if n := count(); n != 2 {
+		t.Fatalf("k k (the second at the top) reported %d moves in all, want 2", n)
+	}
+	h.onLoop(func() { ed.SetLine(2, 1) })
+	if n := count(); n != 3 {
+		t.Fatalf("SetLine reported %d moves in all, want 3", n)
+	}
+	h.onLoop(func() { ed.SetLine(2, 1) }) // where it already is
+	if n := count(); n != 3 {
+		t.Fatalf("SetLine to the same place reported a move (%d)", n)
+	}
+	h.onLoop(func() { ed.SetValue("fresh") }) // the cursor returns to 1:1
+	if n := count(); n != 4 {
+		t.Fatalf("SetValue moving the cursor home reported %d moves in all, want 4", n)
+	}
+	h.inject(key('i'))
+	h.inject(typeString("ab")...)
+	if n := count(); n != 6 {
+		t.Fatalf("typing two characters reported %d moves in all, want 6", n)
+	}
+}
