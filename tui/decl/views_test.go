@@ -94,6 +94,15 @@ func TestAComboBoxsCurrentValueIsReadByAHandler(t *testing.T) {
 	}
 }
 
+func TestAComboBoxMaxWidthKeepsItsArrowBesideTheOptions(t *testing.T) {
+	s := runModelDoc(t, `ComboBox { model: App.people; textRole: "name"; currentIndex: 0; maxWidth: 6 }`, people(), &recorder{})
+	s.WaitForText(t, "ann")
+	row := strings.Split(s.String(), "\n")[0]
+	if got := strings.Index(row, "▾"); got != 5 {
+		t.Fatalf("ComboBox arrow at %d, want 5: %q", got, row)
+	}
+}
+
 // A ComboBox's currentIndex is writable, as Qt's is: bound to a host source,
 // it chooses that row, and -1 — or a row the model does not have — chooses
 // none. A host sets it when the choices are filled after the ComboBox exists,

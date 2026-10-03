@@ -65,9 +65,8 @@ func TestEveryTextViewWearsItsBaseOverItsWholeArea(t *testing.T) {
 	}
 }
 
-// TestEveryFieldWearsItsLookAcrossItsRow: a one-row field — a combo box, a
-// text field — wears its look across its whole row, focused or not, not a box
-// around its text.
+// TestEveryFieldWearsItsLookAcrossItsRow: text fields fill the row; combo
+// boxes wear their look only across the compact control, including its arrow.
 func TestEveryFieldWearsItsLookAcrossItsRow(t *testing.T) {
 	for name, c := range map[string]struct {
 		qml, text string
@@ -95,10 +94,17 @@ func TestEveryFieldWearsItsLookAcrossItsRow(t *testing.T) {
 			}
 			row := s.Backend.Snapshot()[y]
 			want := c.role
-			for x, c := range row[:len(row)-1] { // the last cell is a combo box's arrow
+			fieldWidth := len(row)
+			if name == "ComboBox" {
+				fieldWidth = 8
+			}
+			for x, c := range row[:fieldWidth] {
 				if c.Attrs.BG != want {
 					t.Fatalf("%s's row: cell %d wears %+v, its text %+v:\n%s", name, x, c.Attrs.BG, want, s)
 				}
+			}
+			if name == "ComboBox" && row[fieldWidth].Attrs.BG == want {
+				t.Fatalf("ComboBox background extends beyond the compact field:\n%s", s)
 			}
 		})
 	}

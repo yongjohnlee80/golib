@@ -226,6 +226,49 @@ func TestSelectAffordanceIsDrawnByDefaultAndCanBeWithheld(t *testing.T) {
 	h2.wantNotContains("▾")
 }
 
+func TestSelectUsesCompactWidthAndResizesWithOptions(t *testing.T) {
+	h, sel, sh := placedSelectFixture(t, 0, 0, 50, 10,
+		widget.WithOptions(selectItems("alpha")))
+	if got := strings.Index(h.row(0), "▾"); got != 7 {
+		t.Fatalf("arrow column = %d, want 7 for alpha: %q", got, h.row(0))
+	}
+	h.inject(click(20, 0), release(20, 0))
+	h.barrier(sh)
+	h.wantNotContains("┌")
+
+	h.inject(click(2, 0), release(2, 0))
+	h.barrier(sh)
+	h.wantContains("alpha")
+	h.inject(key(tui.KeyEscape))
+	h.barrier(sh)
+	h.onLoop(func() { sel.SetOptions(selectItems("longer option")) })
+	h.waitFor("resized select", func() bool { return strings.Index(h.row(0), "▾") == 15 })
+}
+
+func TestSelectCapsWideOptions(t *testing.T) {
+	h, _, _ := placedSelectFixture(t, 0, 0, 60, 10,
+		widget.WithOptions(selectItems(strings.Repeat("a", 55))))
+	if got := strings.Index(h.row(0), "▾"); got != 39 {
+		t.Fatalf("arrow column = %d, want 39: %q", got, h.row(0))
+	}
+	h2, _, _ := placedSelectFixture(t, 0, 0, 60, 10,
+		widget.WithOptions(selectItems(strings.Repeat("a", 55))), widget.WithSelectMaxWidth[string](12))
+	if got := strings.Index(h2.row(0), "▾"); got != 11 {
+		t.Fatalf("custom cap arrow column = %d, want 11: %q", got, h2.row(0))
+	}
+}
+
+func TestSelectTightLayoutKeepsVisualAndPointerBoundsCompact(t *testing.T) {
+	selectField := widget.NewSelect(widget.WithOptions(selectItems("alpha", "beta")))
+	size := selectField.Layout(tui.Constraints{MinW: 80, MaxW: 80, MinH: 1, MaxH: 1})
+	if size.W != 80 {
+		t.Fatalf("allocated width = %d, want 80", size.W)
+	}
+	if !selectField.ContainsPointer(7, 0) || selectField.ContainsPointer(8, 0) || selectField.ContainsPointer(70, 0) {
+		t.Fatal("pointer target does not end at the eight-cell field")
+	}
+}
+
 // j AND k MOVE THE HIGHLIGHT on a select that is not filtering.
 func TestSelectVimMotionWhenNotFiltering(t *testing.T) {
 	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta", "gamma")))
@@ -337,7 +380,7 @@ func TestSelectFilteringKeepsKAsText(t *testing.T) {
 // placedSelectFixture puts the Select at a given offset inside the screen, so
 // the anchored placement's edge cases have an edge to meet.
 func placedSelectFixture(t *testing.T, padRows, padCols, w, h int,
-	opts ...widget.SelectOption[string]) (*harness, *shell) {
+	opts ...widget.SelectOption[string]) (*harness, *widget.Select[string], *shell) {
 	t.Helper()
 	sel := widget.NewSelect[string](opts...)
 	col := tui.NewFlex(tui.Vertical)
@@ -354,5 +397,5 @@ func placedSelectFixture(t *testing.T, padRows, padCols, w, h int,
 	hh := startApp(t, sh, w, h)
 	hh.inject(tab())
 	hh.barrier(sh)
-	return hh, sh
+	return hh, sel, sh
 }
