@@ -16,9 +16,10 @@ import (
 // to the cells, keeping nothing of its own aspect, so a host renders it at the cells' aspect.
 type Image struct {
 	Base
-	id      uint32
-	png     []byte
-	version uint64
+	id         uint32
+	png        []byte
+	version    uint64
+	cols, rows int // the cells the last paint had
 }
 
 // NewImage returns an empty Image.
@@ -49,9 +50,14 @@ func (m *Image) Layout(c tui.Constraints) tui.Size {
 	return c.Constrain(tui.Size{W: w, H: h})
 }
 
+// Cells are the columns and rows the Image last painted: the size a host renders its PNG for, so
+// the terminal does not stretch it. 0, 0 before its first paint.
+func (m *Image) Cells() (cols, rows int) { return m.cols, m.rows }
+
 // Render paints the cells blank: the image is placed over them.
 func (m *Image) Render(s tui.Surface) {
 	sz := s.Size()
+	m.cols, m.rows = sz.W, sz.H
 	for y := 0; y < sz.H; y++ {
 		for x := 0; x < sz.W; x++ {
 			s.SetCell(x, y, " ", style.New())
