@@ -399,3 +399,45 @@ func placedSelectFixture(t *testing.T, padRows, padCols, w, h int,
 	hh.barrier(sh)
 	return hh, sel, sh
 }
+
+// fieldBox is the open popup's box on screen: its left and right border columns on the row of its
+// top border.
+func popupBox(rows []string) (top, left, right int) {
+	for y, r := range rows {
+		if l := strings.Index(r, "┌"); l >= 0 {
+			return y, len([]rune(r[:l])), len([]rune(r[:strings.Index(r, "┐")]))
+		}
+	}
+	return -1, -1, -1
+}
+
+// The popup is never narrower than the field (ADR 0212 §9): a field the placeholder made wider than
+// every option opens a popup at least as wide, and the popup wears the field's background, so the
+// two read as one control.
+func TestSelectPopupIsAtLeastTheFieldsWidthInItsPalette(t *testing.T) {
+	placeholder := "choose a provider, please"
+	h, sel, sh := placedSelectFixture(t, 0, 0, 60, 12,
+		widget.WithOptions(selectItems("a", "b")), widget.WithSelectPlaceholder[string](placeholder))
+	field := strings.Index(h.row(0), "▾") + 1
+	if field < len(placeholder) {
+		t.Fatalf("precondition: the field (%d) is as wide as its placeholder (%d)", field, len(placeholder))
+	}
+	bg := style.RGB(10, 40, 80)
+	h.onLoop(func() { sel.SetFieldStyle(style.New().Background(bg)) })
+	h.inject(click(2, 0), release(2, 0))
+	h.barrier(sh)
+	var rows []string
+	for y := range 12 {
+		rows = append(rows, h.row(y))
+	}
+	top, left, right := popupBox(rows)
+	if top < 0 {
+		t.Fatalf("no popup:\n%s", strings.Join(rows, "\n"))
+	}
+	if width := right - left + 1; width < field {
+		t.Fatalf("popup %d cells wide, narrower than the %d-cell field", width, field)
+	}
+	if cell := h.tb.Snapshot()[top+1][left+1]; cell.Attrs.BG != (tui.CellColor{Kind: tui.CellColorRGB, R: 10, G: 40, B: 80}) {
+		t.Fatalf("the popup's surface is %+v, not the field's background", cell.Attrs.BG)
+	}
+}
