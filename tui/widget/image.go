@@ -33,7 +33,11 @@ func (m *Image) SetPNG(png []byte) {
 }
 
 // Clear shows no image.
-func (m *Image) Clear() { m.SetPNG(nil) }
+func (m *Image) Clear() {
+	m.png = nil
+	m.version++
+	m.MarkDirty()
+}
 
 // HasImage reports whether a PNG is set.
 func (m *Image) HasImage() bool { return len(m.png) > 0 }

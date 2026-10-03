@@ -411,7 +411,7 @@ func popupBox(rows []string) (top, left, right int) {
 	return -1, -1, -1
 }
 
-// The popup is never narrower than the field (ADR 0212 §9): a field the placeholder made wider than
+// The popup is never narrower than the field: a field the placeholder made wider than
 // every option opens a popup at least as wide, and the popup wears the field's background, so the
 // two read as one control.
 func TestSelectPopupIsAtLeastTheFieldsWidthInItsPalette(t *testing.T) {
