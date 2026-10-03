@@ -86,3 +86,30 @@ func TestAnEditorSaysItsCursorMoved(t *testing.T) {
 	})
 	s.WaitFor(t, "SetLine reported", func(string) bool { return moves.Load() == 2 })
 }
+
+// TestAnImageMountsFromTheDocument: QML's Image is a widget.Image the host reaches by id, filling
+// what it is given, and it refuses a property it does not have.
+func TestAnImageMountsFromTheDocument(t *testing.T) {
+	s := decltest.Run(t, 20, 6,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow {\n Image { id: pic } }")))
+	var cols, rows int
+	var found bool
+	for range 100 {
+		onScreenLoop(t, s, func() {
+			img, ok := tuidecl.FindAs[*widget.Image](s.Program, "pic")
+			found = ok
+			if ok {
+				cols, rows = img.Cells()
+			}
+		})
+		if found && cols > 0 {
+			break
+		}
+	}
+	if !found || cols != 20 || rows != 6 {
+		t.Fatalf("Image found=%v cells %dx%d, want the window's 20x6", found, cols, rows)
+	}
+	if _, err := mountDoc(t, "import tui 1.0\nWindow { Image { source: \"x.png\" } }"); err == nil {
+		t.Fatal("an Image took a source")
+	}
+}
