@@ -40,6 +40,12 @@ func appTypes() []Type {
 			}, (*widget.Box).SetMaximumWidth),
 		}},
 		{Name: "SyntaxHighlighter", Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()},
+		// Qt Quick's Image, without its source: the host gives it a PNG (widget.Image.SetPNG), and
+		// it shows on a terminal that draws images (tui.Capabilities.KittyGraphics)
+		{Name: "Image", Build: func(b Build) (tui.Component, []string, error) {
+			consumed, err := readProps(b.Props, map[string]field{})
+			return widget.NewImage(), consumed, err
+		}},
 		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),

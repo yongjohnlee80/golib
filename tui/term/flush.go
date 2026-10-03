@@ -90,12 +90,14 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	want := b.want
 	dirty := b.cursorDirty
 	b.cursorDirty = false
+	images := b.imageOps
+	b.imageOps = nil
 	b.cmu.Unlock()
 
 	b.wmu.Lock()
 	defer b.wmu.Unlock()
 
-	if len(diff) == 0 && !dirty {
+	if len(diff) == 0 && !dirty && len(images) == 0 {
 		return nil // zero bytes
 	}
 
@@ -140,6 +142,9 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 			b.forceAnchor = true
 		}
 	}
+
+	// Images, over the cells just written, within the same Write (graphics.go).
+	b.writeImages(images)
 
 	// Latched cursor state, applied within the same Write.
 	if want.posSet {

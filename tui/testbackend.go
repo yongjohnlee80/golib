@@ -58,6 +58,10 @@ type TestBackend struct {
 	curColor   CellColor
 	curColored bool
 
+	// images: the latched placements and deletes, and what the last Flush left on the screen
+	imageOps []imageOp
+	shown    map[uint32]ImagePlacement
+
 	flushes int
 
 	clipboard []byte // last WriteClipboard payload (tui.ClipboardWriter)
@@ -291,6 +295,36 @@ func (b *TestBackend) SetCursorColor(c CellColor, set bool) {
 	b.latchColor, b.latchColored = c, set
 }
 
+type imageOp struct {
+	place  *ImagePlacement
+	delete uint32
+}
+
+// PlaceImage implements GraphicsBackend: latches a placement for the next Flush.
+func (b *TestBackend) PlaceImage(p ImagePlacement) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.imageOps = append(b.imageOps, imageOp{place: &p})
+}
+
+// DeleteImage implements GraphicsBackend: latches a delete for the next Flush.
+func (b *TestBackend) DeleteImage(id uint32) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.imageOps = append(b.imageOps, imageOp{delete: id})
+}
+
+// Images are the images the last Flush left on the screen, by id.
+func (b *TestBackend) Images() map[uint32]ImagePlacement {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make(map[uint32]ImagePlacement, len(b.shown))
+	for id, p := range b.shown {
+		out[id] = p
+	}
+	return out
+}
+
 // CursorColor reports the cursor colour the last Flush applied; ok false is the terminal's own.
 func (b *TestBackend) CursorColor() (c CellColor, ok bool) {
 	b.mu.Lock()
@@ -306,6 +340,17 @@ func (b *TestBackend) CursorColor() (c CellColor, ok bool) {
 func (b *TestBackend) Flush(diff []CellUpdate) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.shown == nil {
+		b.shown = map[uint32]ImagePlacement{}
+	}
+	for _, op := range b.imageOps {
+		if op.place != nil {
+			b.shown[op.place.ID] = *op.place
+		} else {
+			delete(b.shown, op.delete)
+		}
+	}
+	b.imageOps = nil
 	for _, u := range diff {
 		if u.X < 0 || u.Y < 0 || u.X >= b.w || u.Y >= b.h {
 			panic(errs.Fatal{Op: "tui: TestBackend.Flush", Rule: fmt.Sprintf("update outside the %dx%d grid at (%d, %d)", b.w, b.h, u.X, u.Y)})

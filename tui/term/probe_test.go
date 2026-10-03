@@ -115,6 +115,7 @@ func TestProbeFullModern(t *testing.T) {
 		BracketedPaste: true,
 		Mouse:          tui.TriYes,
 		Undercurl:      true,
+		KittyGraphics:  tui.TriNo, // the fence came first: no graphics reply
 		DarkBackground: true,
 		DefaultFG:      tui.ProbedColor{R: 255, G: 255, B: 255, Known: true},
 		DefaultBG:      tui.ProbedColor{R: 0x1e, G: 0x1e, B: 0x1e, Known: true},
@@ -150,6 +151,7 @@ func TestProbeDA1Only(t *testing.T) {
 	want := tui.Capabilities{
 		ColorProfile:   tui.ProfileANSI16,
 		Mouse:          tui.TriUnknown,
+		KittyGraphics:  tui.TriNo,
 		DarkBackground: true,
 	}
 	if caps != want {
@@ -306,5 +308,46 @@ func TestProbeCtxCancel(t *testing.T) {
 	}
 	if err := s.b.Err(); err != nil {
 		t.Fatalf("Err() after cancelled Start = %v, want nil", err)
+	}
+}
+
+// Kitty graphics is probed by its own query: an OK reply is TriYes, an error reply TriNo, and the
+// keyboard protocol's reply says nothing of it. Behind tmux the query is passed through, and the
+// fence (tmux's own answer) leaves it TriUnknown.
+func TestProbeKittyGraphics(t *testing.T) {
+	for _, c := range []struct {
+		name, replies string
+		env           map[string]string
+		want          tui.Tri
+	}{
+		{"ok", "\x1b_Gi=31;OK\x1b\\\x1b[?62c", nil, tui.TriYes},
+		{"error", "\x1b_Gi=31;EINVAL:bad\x1b\\\x1b[?62c", nil, tui.TriNo},
+		{"keyboard only", "\x1b[?0u\x1b[?62c", nil, tui.TriNo},
+		{"another id's reply", "\x1b_Gi=7;OK\x1b\\\x1b[?62c", nil, tui.TriNo},
+		{"tmux silent", "\x1b[?62c", map[string]string{"TMUX": "/tmp/tmux-1/default,1,0"}, tui.TriUnknown},
+		{"tmux ok", "\x1b_Gi=31;OK\x1b\\\x1b[?62c", map[string]string{"TMUX": "/tmp/tmux-1/default,1,0"}, tui.TriYes},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			env := func(k string) (string, bool) { v, ok := c.env[k]; return v, ok }
+			s := newScript(t, WithEnv(env), WithProbeTimeout(time.Second))
+			s.respond(c.replies)
+			if err := s.start(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if got := s.b.Capabilities().KittyGraphics; got != c.want {
+				t.Fatalf("KittyGraphics = %v, want %v", got, c.want)
+			}
+			out := s.w.String()
+			wantQuery := graphicsQuery
+			if c.env != nil {
+				wantQuery = "\x1bPtmux;\x1b\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\x1b\\\x1b\\"
+			}
+			if !strings.Contains(out, wantQuery) {
+				t.Fatalf("the query %q is not in the probe's write %q", wantQuery, out)
+			}
+			if strings.Index(out, wantQuery) > strings.Index(out, "\x1b[c") {
+				t.Fatal("the graphics query comes after the DA1 fence")
+			}
+		})
 	}
 }

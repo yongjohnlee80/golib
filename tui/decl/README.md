@@ -76,6 +76,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Shortcut` | `sequence` | — | — | `activated` | — |
 | `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
 | `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `wrap` (live: soft-wrap long lines, or scroll them), `lineNumbers` (golib's: each line's number in a gutter at the left), `lineNumberColor` (golib's: the numbers' colour), `cursorColor` (golib's: the text cursor's colour, sent to the terminal), `ruler` (golib's: a guide at that column, where text wraps) | — | `modeChanged`, `textChanged`, `cursorPositionChanged` (Qt's TextEdit signal: the cursor moved to another line or column, by a key, a click, an edit or the program) | — |
+| `Image` | — | — | — | — | — |
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette; its children are its widgets, each at its own width: permanent (Qt's `QStatusBar.addPermanentWidget`) at the right end, or, with `StatusBar.permanent: false` on the child, normal (`addWidget`) at the left end; the segments share the rest | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |
@@ -218,6 +219,15 @@ holds `MenuItem`s, `Menu`s and `MenuSeparator`s. `Frame` holds exactly one child
 `Split` exactly two. A `Dialog` holds exactly one content child, plus its own
 `Shortcut`s and at most one `DialogButtonBox` (which it may not combine with
 `standardButtons`).
+
+**`Image`** is Qt Quick's `Image` without a `source`: the host gives it a PNG by id
+(`tuidecl.FindAs[*widget.Image](p, "preview").SetPNG(png)`), and it shows it over its cells on a
+terminal that draws images (kitty's graphics protocol, `tui.Capabilities.KittyGraphics`). It
+reserves its cells blank; the runtime places the image, places it again when the cells move or the
+PNG changes, and deletes it when the `Image` is hidden or goes. On a terminal without images the
+cells stay blank, so a host shows its fallback there instead. `widget.RasterizeSVG` and
+`widget.RasterizeHTML` make a PNG with optional tools found at runtime (`rsvg-convert`, a headless
+Chromium or Chrome), offline and bounded.
 
 ### Attached properties
 

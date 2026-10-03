@@ -28,6 +28,8 @@ func renderAction(a *action) string {
 	case actDCS:
 		return fmt.Sprintf("dcs:priv=%q params=%s inter=%q final=%q data=%q",
 			privString(a.priv), renderParams(a.params), a.inter, string(rune(a.final)), string(a.data))
+	case actAPC:
+		return fmt.Sprintf("apc:%q", string(a.data))
 	}
 	return "?"
 }
@@ -114,8 +116,12 @@ var parserCorpus = []struct {
 		[]string{`osc:"11;abc"`, `csi:priv="" params=[] inter="" final="A"`}},
 	{"esc esc delivers first", "\x1b\x1ba",
 		[]string{`exec:1B`, `esc:inter="" final="a"`}},
-	{"sos pm apc swallowed", "\x1b_hidden\x1b\\x",
-		[]string{`esc:inter="" final="\\"`, `print:"x"`}},
+	// an APC is dispatched with its string (the decoder reads kitty graphics replies from it and
+	// drops the rest); SOS and PM are swallowed
+	{"apc dispatched with its string", "\x1b_hidden\x1b\\x",
+		[]string{`apc:"hidden"`, `esc:inter="" final="\\"`, `print:"x"`}},
+	{"sos pm swallowed", "\x1bXhidden\x1b\\\x1b^also\x1b\\x",
+		[]string{`esc:inter="" final="\\"`, `esc:inter="" final="\\"`, `print:"x"`}},
 	{"csi ignore on bad private marker", "\x1b[1;?5m x",
 		[]string{`print:" "`, `print:"x"`}},
 	{"c0 inside csi executes", "\x1b[1\x0d;2H",

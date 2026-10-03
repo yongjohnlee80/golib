@@ -40,6 +40,11 @@ type App struct {
 	root    Component
 	backend Backend
 
+	// frameImages are the images visible reporters asked for in this frame's paint, and placed what
+	// the backend was last told to show, by id (graphics.go)
+	frameImages []ImagePlacement
+	placed      map[uint32]ImagePlacement
+
 	ran    atomic.Bool
 	quit   chan struct{} // closed when Run exits; stops the intake pump
 	runCtx context.Context
@@ -558,6 +563,7 @@ func (a *App) renderFrame() {
 	a.renderTree()
 	a.renderDirty = false
 
+	a.applyImages()
 	a.applyCursor()
 	if err := a.backend.Flush(a.buf.diff()); err != nil {
 		logger.Error(a.cfg.logger, err, map[string]any{"tui": "backend flush failed"})

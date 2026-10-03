@@ -178,6 +178,7 @@ func (a *App) renderTree() {
 //     neighboring sibling or parent cells.
 func (a *App) renderNode(n *node, s Surface) {
 	n.comp.Render(s)
+	a.noteImage(n)
 	for _, ch := range n.children {
 		if ch.visible() {
 			a.renderNode(ch, s.Sub(ch.rect))
