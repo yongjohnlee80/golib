@@ -79,6 +79,10 @@ type Backend struct {
 	cmu         sync.Mutex
 	want        cursorState
 	cursorDirty bool
+	// Latched image placements and deletes (graphics.go), guarded by cmu; placed is the ids this
+	// program has on the screen, guarded by wmu, to delete at teardown
+	imageOps []imageOp
+	placed   map[uint32]bool
 }
 
 type cursorState struct {
@@ -275,6 +279,12 @@ func (b *Backend) teardown() error {
 		if b.termColored {
 			buf.WriteString("\x1b]112\x07") // the cursor's own colour back (OSC 112)
 		}
+		b.wmu.Lock()
+		for id := range b.placed {
+			b.writeImageDelete(&buf, id) // only this program's images, by id
+		}
+		b.placed = nil
+		b.wmu.Unlock()
 		buf.WriteString("\x1b[0 q\x1b[?25h\x1b[m")
 		if b.altEntered {
 			buf.WriteString("\x1b[?1049l")

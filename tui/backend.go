@@ -132,6 +132,11 @@ type Capabilities struct {
 	BracketedPaste bool         // mode 2004
 	Mouse          Tri          // SGR mouse — TriYes only on a verifiable DECRQM ?1006 answer
 	Undercurl      bool         // XTGETTCAP "Smulx" (styled underlines)
+	// KittyGraphics is kitty's graphics protocol, probed by its own query (a=q): TriYes only on
+	// an OK reply, TriNo on an error reply or a DA1 fence that came first from the terminal
+	// itself, TriUnknown otherwise (a multiplexer answers DA1 itself, so behind one the fence
+	// proves nothing). Kitty KEYBOARD support is no evidence of it.
+	KittyGraphics Tri
 
 	// DarkBackground derives from the OSC 11 reply (relative luminance of
 	// DefaultBG < 0.5). The unknown-fallback is DOCUMENTED AND FIXED: when

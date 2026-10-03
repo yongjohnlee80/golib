@@ -25,6 +25,7 @@ const (
 	prKitty                     // kitty query reply: CSI ? flags u
 	prOSCColor                  // OSC 10/11 default color report
 	prTermcap                   // XTGETTCAP reply (RGB / Smulx)
+	prGraphics                  // kitty graphics reply to the probe's query (i=31): OK or an error
 )
 
 type probeReply struct {
@@ -33,6 +34,7 @@ type probeReply struct {
 	osc         int // prOSCColor: 10 or 11
 	color       tui.ProbedColor
 	rgb, smulx  bool // prTermcap
+	graphicsOK  bool // prGraphics
 }
 
 // decoder turns a byte stream into tui events. It is synchronous and
@@ -178,6 +180,29 @@ func (d *decoder) handle(a *action) {
 		d.oscDispatch(a)
 	case actDCS:
 		d.dcsDispatch(a)
+	case actAPC:
+		d.apcDispatch(a)
+	}
+}
+
+// graphicsProbeID is the image id of the probe's kitty graphics query.
+const graphicsProbeID = "31"
+
+// apcDispatch reads a kitty graphics reply to the probe's query: APC G i=31 ; OK ST, or an error
+// message in place of OK. Any other APC is not a key and is dropped.
+func (d *decoder) apcDispatch(a *action) {
+	if d.probe == nil || len(a.data) == 0 || a.data[0] != 'G' {
+		return
+	}
+	ctrl, msg, ok := strings.Cut(string(a.data[1:]), ";")
+	if !ok {
+		return
+	}
+	for kv := range strings.SplitSeq(ctrl, ",") {
+		if kv == "i="+graphicsProbeID {
+			d.probe(probeReply{kind: prGraphics, graphicsOK: msg == "OK"})
+			return
+		}
 	}
 }
 

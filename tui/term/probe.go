@@ -17,7 +17,8 @@ import (
 // multiplexers that never answer DA1.
 //
 // Batch order: DECRQM 2004, 2026, 2027, 2048, 1006; XTGETTCAP "RGB;Smulx"
-// (hex 524742;536D756C78); OSC 10; OSC 11; kitty query CSI ? u; DA1 fence.
+// (hex 524742;536D756C78); OSC 10; OSC 11; kitty query CSI ? u; the kitty
+// graphics query (graphicsQuery); DA1 fence.
 const probeBatch = "\x1b[?2004$p" +
 	"\x1b[?2026$p" +
 	"\x1b[?2027$p" +
@@ -26,8 +27,35 @@ const probeBatch = "\x1b[?2004$p" +
 	"\x1bP+q524742;536D756C78\x1b\\" +
 	"\x1b]10;?\x1b\\" +
 	"\x1b]11;?\x1b\\" +
-	"\x1b[?u" +
-	"\x1b[c"
+	"\x1b[?u"
+
+// graphicsQuery asks whether kitty's graphics protocol is spoken: a 1×1 RGB image, queried (a=q)
+// and never stored or shown. Inside tmux it is passed through to the terminal outside.
+const graphicsQuery = "\x1b_Gi=" + graphicsProbeID + ",s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"
+
+// da1Fence is the probe's last query: every terminal answers DA1, in order.
+const da1Fence = "\x1b[c"
+
+// probeQueries is the whole batch, the graphics query passed through tmux when inside it.
+func probeQueries(tmux bool) string {
+	return probeBatch + passthrough(graphicsQuery, tmux) + da1Fence
+}
+
+// passthrough wraps an escape sequence so tmux hands it to the terminal outside it (DCS tmux; …
+// ST, every ESC inside doubled); with tmux false it is the sequence. tmux forwards it only when its
+// allow-passthrough option is on.
+func passthrough(seq string, tmux bool) string {
+	if !tmux {
+		return seq
+	}
+	return "\x1bPtmux;" + strings.ReplaceAll(seq, "\x1b", "\x1b\x1b") + "\x1b\\"
+}
+
+// inTmux reports whether the program runs inside tmux.
+func inTmux(lookup func(string) (string, bool)) bool {
+	v, ok := lookup("TMUX")
+	return ok && v != ""
+}
 
 // preseedProfile derives the ColorProfile pre-seed from the environment
 // (no I/O). Pre-seeds are only ever upgraded by probe replies,
@@ -72,7 +100,8 @@ func (b *Backend) runProbe(ctx context.Context) (tui.Capabilities, error) {
 	b.probing.Store(true)
 	defer b.probing.Store(false)
 
-	if err := b.write([]byte(probeBatch)); err != nil {
+	tmux := inTmux(b.cfg.env)
+	if err := b.write([]byte(probeQueries(tmux))); err != nil {
 		return caps, err
 	}
 
@@ -82,6 +111,7 @@ func (b *Backend) runProbe(ctx context.Context) (tui.Capabilities, error) {
 	modes := make(map[int]int)
 	var fg, bg tui.ProbedColor
 	var kitty, rgb, smulx bool
+	graphics := tui.TriUnknown
 
 collect:
 	for {
@@ -101,7 +131,17 @@ collect:
 			case prTermcap:
 				rgb = rgb || r.rgb
 				smulx = smulx || r.smulx
+			case prGraphics:
+				graphics = tui.TriNo
+				if r.graphicsOK {
+					graphics = tui.TriYes
+				}
 			case prDA1:
+				if graphics == tui.TriUnknown && !tmux {
+					// the terminal answered in order and said nothing of graphics; behind tmux the
+					// fence is tmux's own answer, which proves nothing of the terminal outside
+					graphics = tui.TriNo
+				}
 				break collect // the fence: everything unanswered is unsupported
 			}
 		case <-timer.C:
@@ -135,6 +175,7 @@ collect:
 	}
 
 	caps.KittyKeyboard = kitty
+	caps.KittyGraphics = graphics
 	caps.Undercurl = smulx
 	if rgb {
 		caps.ColorProfile = tui.ProfileTrueColor // upgrade only, never downgrade

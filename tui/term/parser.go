@@ -46,6 +46,7 @@ const (
 	actCSI                       // priv, params, inter, final
 	actOSC                       // data
 	actDCS                       // priv, params, inter, final, data
+	actAPC                       // data: an application program command's string (kitty graphics replies)
 )
 
 // action is one parser output. The data slice aliases parser-owned storage
@@ -100,6 +101,7 @@ const (
 	sDCSPass
 	sDCSIgnore
 	sSOSPMAPC
+	sAPC
 	sUTF8
 )
 
@@ -153,6 +155,8 @@ func (p *parser) feed(b byte, emit func(*action)) {
 			p.dispatchOSC(emit)
 		case sDCSPass:
 			p.dispatchDCS(emit)
+		case sAPC:
+			emit(&action{kind: actAPC, data: p.data})
 		case sEscape:
 			// ESC ESC: the pending ESC was a real Escape key; deliver it.
 			emit(&action{kind: actExecute, b: 0x1B})
@@ -190,6 +194,10 @@ func (p *parser) feed(b byte, emit func(*action)) {
 		p.dcsPass(b)
 	case sDCSIgnore, sSOSPMAPC:
 		// Consumed without effect until ESC / CAN / SUB (handled above).
+	case sAPC:
+		if b != 0x7F && len(p.data) < maxStringData {
+			p.data = append(p.data, b)
+		}
 	}
 }
 
@@ -260,8 +268,11 @@ func (p *parser) escape(b byte, emit func(*action)) {
 		p.state = sEscInter
 	case b == 'P':
 		p.enterDCS()
-	case b == 'X', b == '^', b == '_':
+	case b == 'X', b == '^':
 		p.state = sSOSPMAPC
+	case b == '_':
+		p.data = p.data[:0]
+		p.state = sAPC
 	case b == '[':
 		p.enterCSI()
 	case b == ']':
