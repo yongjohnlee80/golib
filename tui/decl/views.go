@@ -203,10 +203,12 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 	}
 	n := &comboBoxNode{activated: b.EmitterWith("activated")}
 	var placeholder string
+	var maxWidth int
 	consumed, err := readProps(b.Props, map[string]field{
 		"textRole":        into(&n.mv.textRole, stringOf),
 		"valueRole":       into(&n.valueRole, stringOf),
 		"placeholderText": into(&placeholder, stringOf),
+		"maxWidth":        into(&maxWidth, cellsOf),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -214,6 +216,12 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 	var opts []widget.SelectOption[int]
 	if placeholder != "" {
 		opts = append(opts, widget.WithSelectPlaceholder[int](placeholder))
+	}
+	if maxWidth != 0 {
+		if maxWidth < 3 {
+			return nil, nil, fmt.Errorf("a ComboBox maxWidth must be at least 3 (at %s)", b.Pos)
+		}
+		opts = append(opts, widget.WithSelectMaxWidth[int](maxWidth))
 	}
 	n.sel = widget.NewSelect(opts...)
 	n.mv.changed = func(Change) {
@@ -246,9 +254,11 @@ func (n *comboBoxNode) Init(ctx *tui.Context) {
 }
 
 func (n *comboBoxNode) Layout(c tui.Constraints) tui.Size {
-	sz := n.Context().LayoutChild(n.sel, c)
+	fieldConstraints := c
+	fieldConstraints.MinW = 0
+	sz := n.Context().LayoutChild(n.sel, fieldConstraints)
 	n.Context().PlaceChild(n.sel, tui.Rect{W: sz.W, H: sz.H})
-	return sz
+	return c.Constrain(sz)
 }
 
 func (*comboBoxNode) Render(tui.Surface)         {}
@@ -273,7 +283,7 @@ var comboBoxType = Type{
 		}
 		c.(*comboBoxNode).sel.SetFieldStyle(st)
 	},
-	Ctor: []string{"textRole", "valueRole", "placeholderText"},
+	Ctor: []string{"textRole", "valueRole", "placeholderText", "maxWidth"},
 	Setters: map[string]Setter{
 		"model": setter("a ComboBox", modelOf, func(n *comboBoxNode, m ItemModel) { n.mv.setModel(m) }),
 		// Qt's writable currentIndex: the row chosen, -1 for none. A row the

@@ -101,7 +101,9 @@ type Select[T any] struct {
 	items    []SelectItem[T]
 	selected int // -1 = none
 	filterOn bool
-	fixedW   int // 0 = greedy
+	fixedW   int // 0 = content-sized
+	maxW     int
+	fieldW   int
 
 	open  bool
 	armed bool
@@ -133,9 +135,14 @@ type Select[T any] struct {
 }
 
 var (
-	_ tui.Focusable   = (*Select[any])(nil)
-	_ tui.Activatable = (*Select[any])(nil)
+	_ tui.Focusable        = (*Select[any])(nil)
+	_ tui.Activatable      = (*Select[any])(nil)
+	_ tui.PointerContainer = (*Select[any])(nil)
 )
+
+func (s *Select[T]) ContainsPointer(x, y int) bool {
+	return x >= 0 && x < s.fieldW && y == 0
+}
 
 // Activate opens the option list, which is what activation MEANS for a
 // dropdown: there is nothing else it could do.
@@ -227,12 +234,18 @@ func WithSelectFocusedStyle[T any](st style.Style) SelectOption[T] {
 	return func(s *Select[T]) { s.focusedSt = st }
 }
 
-// WithWidth fixes the closed field width (default: greedy).
+// WithWidth fixes the closed field width (default: content-sized).
 func WithWidth[T any](w int) SelectOption[T] {
 	if w < 1 {
 		panic("widget: WithWidth: width must be >= 1")
 	}
 	return func(s *Select[T]) { s.fixedW = w }
+}
+
+// WithSelectMaxWidth caps the content-sized field; the default is 40 cells.
+// WithWidth, when supplied, remains an explicit fixed-width override.
+func WithSelectMaxWidth[T any](w int) SelectOption[T] {
+	return func(s *Select[T]) { s.maxW = max(w, 3) }
 }
 
 // SetFieldStyle restyles the closed field — its row and its label — as a
@@ -246,6 +259,7 @@ func (s *Select[T]) SetFieldStyle(st style.Style) {
 func NewSelect[T any](opts ...SelectOption[T]) *Select[T] {
 	s := &Select[T]{
 		selected:   -1,
+		maxW:       40,
 		affordance: true,
 		focusedSt:  style.New().Reverse(true),
 		fieldSt:    style.New().Foreground(style.TokenForeground),
@@ -279,7 +293,7 @@ func (s *Select[T]) SetOptions(items []SelectItem[T]) {
 	if s.open && s.popup != nil {
 		s.popup.refilter()
 	}
-	s.MarkDirty()
+	s.RequestLayout()
 }
 
 // SetSelectedIndex chooses option i, or none for i < 0 or out of range —
@@ -395,13 +409,15 @@ func (s *Select[T]) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
-// Layout: closed = height 1, width greedy or WithWidth.
+// Layout: closed = height 1, capped content width or WithWidth.
 func (s *Select[T]) Layout(c tui.Constraints) tui.Size {
 	w := s.fixedW
 	if w == 0 {
-		w = boundedMax(c.MaxW, max(c.MinW, s.longestLabel()+2))
+		w = min(max(max(s.longestLabel(), s.measure(s.placeholder))+3, 6), s.maxW)
 	}
-	return c.Constrain(tui.Size{W: w, H: 1})
+	sz := c.Constrain(tui.Size{W: w, H: 1})
+	s.fieldW = min(w, sz.W)
+	return sz
 }
 
 func (s *Select[T]) longestLabel() int {
@@ -447,11 +463,11 @@ func (s *Select[T]) Render(sur tui.Surface) {
 	// carried only by the label reached no other cell, so an empty select
 	// showed no focus, and an unfocused one was its text on a box of its look
 	// over whatever it sat on.
-	for x := range sz.W {
+	for x := range s.fieldW {
 		sur.SetCell(x, 0, " ", st)
 	}
-	if sz.W > 2 {
-		drawText(sur, 0, 0, truncate(label, sz.W-2, sur.StringWidth), st)
+	if s.fieldW > 2 {
+		drawText(sur, 0, 0, truncate(label, s.fieldW-2, sur.StringWidth), st)
 	}
 	if !s.affordance {
 		return
@@ -460,7 +476,7 @@ func (s *Select[T]) Render(sur tui.Surface) {
 	if s.open {
 		arrow = "▴"
 	}
-	sur.SetCell(sz.W-1, 0, arrow, s.fieldSt)
+	sur.SetCell(s.fieldW-1, 0, arrow, st.Bold(true))
 }
 
 // selectPopup is the open-state overlay layer: full-area (so outside clicks
@@ -510,7 +526,7 @@ func (p *selectPopup[T]) refilter() {
 	}
 	p.hi = max(0, min(p.hi, len(p.matches)-1))
 	p.top = 0
-	p.MarkDirty()
+	p.RequestLayout()
 }
 
 // rows is the option-row capacity of the current panel.
@@ -543,7 +559,7 @@ func (p *selectPopup[T]) Layout(c tui.Constraints) tui.Size {
 	if p.owner.filterOn {
 		labelW = max(labelW, p.owner.measure(p.filter)+2)
 	}
-	pw := min(labelW+2, max(w-2, 3))
+	pw := min(max(labelW+2, p.owner.fieldW), w)
 	rows := max(len(p.matches), 1)
 	ph := rows + 2
 	if p.owner.filterOn {
@@ -669,11 +685,14 @@ func (p *selectPopup[T]) Render(s tui.Surface) {
 	if r.Empty() {
 		return
 	}
-	surface := style.New().Background(style.TokenBoost)
-	border := style.New().Foreground(style.TokenBorderFocused).Background(style.TokenBoost)
-	optSt := style.New().Foreground(style.TokenForeground).Background(style.TokenBoost)
-	hiSt := style.New().Reverse(true)
-	filterSt := style.New().Foreground(style.TokenTextMuted).Background(style.TokenBoost)
+	surface := style.New().Inherit(p.owner.fieldSt)
+	if _, ok := surface.GetBackground(); !ok {
+		surface = surface.Background(style.TokenSurface)
+	}
+	border := style.New().Foreground(style.TokenBorder).Inherit(surface)
+	optSt := style.New().Inherit(surface)
+	hiSt := style.New().Reverse(true).Inherit(optSt)
+	filterSt := style.New().Foreground(style.TokenTextMuted).Inherit(surface)
 
 	s.Fill(tui.Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}, " ", surface)
 	bs := style.BorderNormal
