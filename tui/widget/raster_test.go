@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -64,6 +65,11 @@ func TestRasterizeHTMLOffline(t *testing.T) {
 	defer srv.Close()
 	html := fmt.Sprintf(`<!doctype html><body style="background:#fff"><h1>offline</h1><img src="%s/x.png"><script src="%s/s.js"></script></body>`, srv.URL, srv.URL)
 	png, err := RasterizeHTML(context.Background(), []byte(html), 320, 200)
+	if err != nil && strings.Contains(err.Error(), "No usable sandbox") {
+		// the browser refuses to run without its sandbox (a CI runner whose AppArmor forbids user
+		// namespaces), and RasterizeHTML never turns the sandbox off: a host falls back
+		t.Skip("the installed browser has no usable sandbox here")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,7 @@ package tui
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // imaged is a probe that reports an image while show is set.
@@ -14,10 +15,11 @@ type imaged struct {
 
 func (c *imaged) Image() (Image, bool) { return c.img, c.show }
 
-// waitImages waits for the backend's images to be want.
+// waitImages waits, up to five seconds, for the backend's images to be want: a resize reaches the
+// loop as input, on its own schedule, so a count of round trips is no bound on a slow machine.
 func (h *harness) waitImages(want map[uint32]ImagePlacement) {
 	h.t.Helper()
-	for range 200 {
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(2 * time.Millisecond) {
 		h.sync()
 		if got := h.tb.Images(); reflect.DeepEqual(got, want) {
 			return
