@@ -8,9 +8,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // pngWidth is a PNG's width from its IHDR, or -1 for something that is not a PNG.
@@ -104,5 +110,89 @@ func TestImageWidgetReportsItsPNG(t *testing.T) {
 	m.Clear()
 	if _, ok := m.Image(); ok {
 		t.Fatal("a cleared Image reported an image")
+	}
+}
+
+// fakeTool installs an executable script as the only tool a rasterizer finds.
+func fakeTool(t *testing.T, tools *[]string, script string) {
+	t.Helper()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "tool")
+	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := *tools
+	*tools = []string{p}
+	t.Cleanup(func() { *tools = old })
+}
+
+// The rasterizers' contract against tools that behave, fail and overflow: what a tool writes is
+// the PNG, a failing tool's words reach the error, and an oversized input never reaches the tool.
+func TestRasterizersAgainstFakeTools(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell scripts as tools")
+	}
+	fakeTool(t, &svgTools, `cat >/dev/null; printf 'svg-png'`)
+	if b, err := RasterizeSVG(context.Background(), []byte("<svg/>"), 10); err != nil || string(b) != "svg-png" {
+		t.Fatalf("RasterizeSVG = %q, %v", b, err)
+	}
+	fakeTool(t, &svgTools, `echo "bad svg" >&2; exit 3`)
+	if _, err := RasterizeSVG(context.Background(), []byte("<svg/>"), 10); err == nil || !strings.Contains(err.Error(), "bad svg") {
+		t.Fatalf("a failing tool: %v", err)
+	}
+
+	// the browser writes its screenshot to the --screenshot= path
+	fakeTool(t, &htmlTools, `for a in "$@"; do case "$a" in --screenshot=*) printf 'html-png' > "${a#--screenshot=}";; esac; done`)
+	if b, err := RasterizeHTML(context.Background(), []byte("<p>x</p>"), 10, 10); err != nil || string(b) != "html-png" {
+		t.Fatalf("RasterizeHTML = %q, %v", b, err)
+	}
+	fakeTool(t, &htmlTools, `exit 0`) // ran, wrote nothing
+	if _, err := RasterizeHTML(context.Background(), []byte("<p>x</p>"), 10, 10); err == nil || !strings.Contains(err.Error(), "no screenshot") {
+		t.Fatalf("no screenshot: %v", err)
+	}
+	fakeTool(t, &htmlTools, `echo "crashed" >&2; exit 1`)
+	if _, err := RasterizeHTML(context.Background(), []byte("<p>x</p>"), 10, 10); err == nil || !strings.Contains(err.Error(), "crashed") {
+		t.Fatalf("a crashing browser: %v", err)
+	}
+	if _, err := RasterizeHTML(context.Background(), make([]byte, MaxRasterInput+1), 10, 10); err == nil {
+		t.Fatal("an oversized page was handed to the browser")
+	}
+	if p, ok := HTMLRasterizer(); !ok || !strings.HasSuffix(p, "tool") {
+		t.Fatalf("HTMLRasterizer = %q, %v", p, ok)
+	}
+	if clampPixels(0) != 1 || clampPixels(1<<20) != maxRasterPixels {
+		t.Fatal("clampPixels")
+	}
+}
+
+// An Image fills what it is offered, takes its minimum where the offer is unbounded, and paints
+// its cells blank so nothing beneath shows through.
+func TestImageLayoutAndPaint(t *testing.T) {
+	m := NewImage()
+	if sz := m.Layout(tui.Constraints{MaxW: 30, MaxH: 8}); sz.W != 30 || sz.H != 8 {
+		t.Fatalf("bounded layout = %+v", sz)
+	}
+	if sz := m.Layout(tui.Constraints{MinW: 4, MinH: 2, MaxW: tui.Unbounded, MaxH: tui.Unbounded}); sz.W != 4 || sz.H != 2 {
+		t.Fatalf("unbounded layout = %+v", sz)
+	}
+	tb := tui.NewTestBackend(6, 3)
+	app := tui.NewApp(m, tui.WithBackend(tb), tui.WithMinFrameInterval(0))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- app.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		cols, rows := m.Cells()
+		if cols == 6 && rows == 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("cells = %dx%d, want 6x3", cols, rows)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if strings.TrimSpace(tb.String()) != "" {
+		t.Fatalf("the Image painted something: %q", tb.String())
 	}
 }
