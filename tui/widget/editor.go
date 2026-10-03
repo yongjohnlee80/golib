@@ -166,6 +166,8 @@ type Editor struct {
 	// these are how it hears — the same shape as Button's WithOnActivate.
 	onModeChange func(EditorMode)
 	onChange     func()
+	// onCursorMove is told the cursor moved to another line or column (WithOnCursorPositionChange)
+	onCursorMove func()
 	Base
 	textBuffer
 
@@ -422,6 +424,20 @@ func WithOnChange(fn func()) EditorOption {
 	return func(e *Editor) { e.onChange = fn }
 }
 
+// WithOnCursorPositionChange calls fn whenever the cursor moves to another line or column: by a
+// key, a click, an edit, or the program (SetValue, SetLine, SetCursorPosition), as Qt's
+// TextEdit.cursorPositionChanged fires. It is told once per event, after the event is handled.
+func WithOnCursorPositionChange(fn func()) EditorOption {
+	return func(e *Editor) { e.onCursorMove = fn }
+}
+
+// cursorMoved tells onCursorMove when the cursor is no longer at (ln, col).
+func (e *Editor) cursorMoved(ln, col int) {
+	if e.onCursorMove != nil && (e.ln != ln || e.col != col) {
+		e.onCursorMove()
+	}
+}
+
 // WithVimKeymap configures the modal Vim keymap and editing model.
 // Also ensures the fast escape chord "jk" is armed by default.
 func WithVimKeymap() EditorOption {
@@ -547,6 +563,8 @@ func (e *Editor) Value() string { return e.value() }
 // cursor and command state reset, content is replaced, and undo/redo history
 // is CLEARED. The register is preserved.
 func (e *Editor) SetValue(s string) {
+	ln, col := e.ln, e.col
+	defer e.cursorMoved(ln, col)
 	e.settlePendingRune()
 	e.count, e.pendingAct = 0, ActUnbound
 	e.groupOpen = false
@@ -595,6 +613,8 @@ func (e *Editor) Line() (row, col int) { return e.ln, e.col }
 // hosts driving search, jump-to-error, and reveal. Pending input settles
 // first; the mode is left alone.
 func (e *Editor) SetLine(row, col int) {
+	ln, was := e.ln, e.col
+	defer e.cursorMoved(ln, was)
 	e.settlePendingRune()
 	e.ln = max(0, min(row, len(e.lines)-1))
 	e.col = max(0, col)
@@ -1077,6 +1097,13 @@ func (e *Editor) execAction(act Action, count int) bool {
 // HandleEvent handles mouse, bracketed paste, focus, chord timer ticks, and keyboard events
 // across modal and modeless editing profiles.
 func (e *Editor) HandleEvent(ev tui.Event) bool {
+	ln, col := e.ln, e.col
+	handled := e.handleEvent(ev)
+	e.cursorMoved(ln, col)
+	return handled
+}
+
+func (e *Editor) handleEvent(ev tui.Event) bool {
 	switch t := ev.(type) {
 	case tui.MouseEvent:
 		return e.handleMouse(t)

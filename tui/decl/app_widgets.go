@@ -183,8 +183,8 @@ func EditorOf(c tui.Component) (*widget.Editor, bool) {
 	return e, ok
 }
 
-// buildEditor builds a widget.Editor and connects its two notifications to the
-// document's signals, `modeChanged` and `textChanged`.
+// buildEditor builds a widget.Editor and connects its notifications to the
+// document's signals, `modeChanged`, `textChanged` and `cursorPositionChanged`.
 //
 // The widget reports both itself, through constructor options. An earlier cut
 // WRAPPED the editor in a type that compared its state around every event —
@@ -210,6 +210,7 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 	opts := []widget.EditorOption{
 		widget.WithOnModeChange(func(widget.EditorMode) { modeChanged() }),
 		widget.WithOnChange(b.Emitter("textChanged")),
+		widget.WithOnCursorPositionChange(b.Emitter("cursorPositionChanged")),
 		widget.WithInitialText(text),
 	}
 	if wrap {

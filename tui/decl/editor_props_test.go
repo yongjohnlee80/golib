@@ -2,6 +2,7 @@ package decl_test
 
 import (
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
@@ -61,4 +62,27 @@ func TestAnEditorRefusesARulerOrPositionThatIsNotANumber(t *testing.T) {
 			t.Errorf("%s was taken", src)
 		}
 	}
+}
+
+// TestAnEditorSaysItsCursorMoved: onCursorPositionChanged runs when the cursor moves, by a key or
+// by the program, as Qt's TextEdit.cursorPositionChanged does.
+func TestAnEditorSaysItsCursorMoved(t *testing.T) {
+	var moves atomic.Int32
+	s := decltest.Run(t, 30, 5,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			` Editor { id: ed; focus: true; text: "ab\ncd"; onCursorPositionChanged: App.moved() } }`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Commands(map[string]func() error{"App.moved": func() error { moves.Add(1); return nil }}))
+	s.WaitForText(t, "cd")
+	s.Keys(t, decltest.Rune('j'))
+	s.WaitFor(t, "j reported", func(string) bool { return moves.Load() == 1 })
+	onScreenLoop(t, s, func() {
+		e, ok := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+		if !ok {
+			t.Error("no editor ed")
+			return
+		}
+		e.SetLine(0, 1)
+	})
+	s.WaitFor(t, "SetLine reported", func(string) bool { return moves.Load() == 2 })
 }
