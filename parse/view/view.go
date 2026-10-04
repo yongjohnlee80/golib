@@ -239,6 +239,11 @@ const maxOpenBlocks = 16
 // it stopped at the end of the input, so the question is asked of the text directly, and answered
 // yes only by a completion that parses. A body broken in a way no such completion repairs, such as
 // an {{end}} with nothing to end or an {{if}} with no condition, stays wrong where it stands.
+//
+// NOTE: the completions are bounded, so recall is too: a body cut inside parentheses nested two deep,
+// or with more than maxOpenBlocks blocks open, is reported wrong rather than unfinished. Both are
+// beyond what a body is written with by hand, and the error is still reported, only one keystroke
+// early.
 func bodyIncomplete(body string) bool {
 	blocks := min(strings.Count(body, "{{"), maxOpenBlocks)
 	for _, closer := range bodyClosers {

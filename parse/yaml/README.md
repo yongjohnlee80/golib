@@ -80,10 +80,15 @@ answers `parse.ErrUnterminated`: more text appended could make it valid, so an e
 can wait for it. Otherwise the error answers `parse.ErrSyntax`. Never both. Incomplete is reported
 only where the parser can tell the input ran out:
 - the grammar wanted more and got the end of the stream (`b: [2`, `a: {x: 1`);
-- the scanner ran out inside a construct (`'quoted`, a cut escape);
+- the scanner ran out inside a construct: a quoted scalar not closed, an escape, URI escape or
+  verbatim tag cut short, an alias or tag handle with its name still to come, a key waiting for its
+  `:`, a `:` whose meaning the next character decides, a directive whose parts are still being typed;
 - a character was cut off part way through its UTF-8 encoding.
+
+An error merely found at the end of the input is not enough. `a: "\uD800` fails there too, but it
+names no character, and no text appended repairs it.
 
 So it is certain where it is reported, but it does not catch every truncation. A stream cut where
 its last characters read as a different construct (a `-` of what would have been `---`, an alias
 name cut short) is reported as wrong, one keystroke early, rather than leaving a caller waiting on a
-real error. Over every failing prefix of the yaml-test-suite's valid streams it catches 95.5%.
+real error. Over every failing prefix of the yaml-test-suite's valid streams it catches 95.7%.

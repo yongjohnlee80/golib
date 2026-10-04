@@ -64,6 +64,7 @@ func TestIncomplete_FailingPrefixesOfValidStreams(t *testing.T) {
 }
 
 // minIncompleteShare is the share of truncations reported Incomplete when the rule was written:
-// 5353 of 5608 failing prefixes of the 308 valid suite streams (95.5%). The suite is fixed test data,
-// so the share is exact and repeatable; a rule change that loses any of them fails here.
-const minIncompleteShare = 5353.0 / 5608.0
+// 5368 of 5608 failing prefixes of the 308 valid suite streams (95.7%), with every Incomplete site
+// identified by its own check that the input ran out. The suite is fixed test data, so the share is
+// exact and repeatable; a rule change that loses any of them fails here.
+const minIncompleteShare = 5368.0 / 5608.0

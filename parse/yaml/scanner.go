@@ -136,11 +136,29 @@ func (s *scanner) skipBreak() {
 	s.col = 0
 }
 
-// errorf reports a lexical error found at m. The error is Incomplete when the scanner's cursor has
-// reached the end of the input: the scanner was still inside a construct (a quoted scalar, a
-// pending key, an escape) when the characters ran out, so more input could have finished it.
+// errorf reports a lexical error found at m: the text is wrong where it stands.
+//
+// NOTE: an error raised with the cursor at the end of the input is not thereby Incomplete. A
+// complete escape naming no character, "\uD800", fails there too, and no text appended repairs it.
+// The sites that fail because the characters ran out say so with incompletef.
 func (s *scanner) errorf(m mark, msg string) error {
-	return &Error{Pos: position(s.src, lineStarts(s.src), m.off), Msg: msg, Incomplete: s.eof(0)}
+	return &Error{Pos: position(s.src, lineStarts(s.src), m.off), Msg: msg}
+}
+
+// incompletef reports a lexical error found at m because the input ended inside a construct that
+// more text could finish: a quoted scalar not closed, an escape or a tag cut short, a key waiting
+// for its ':'.
+func (s *scanner) incompletef(m mark, msg string) error {
+	return &Error{Pos: position(s.src, lineStarts(s.src), m.off), Msg: msg, Incomplete: true}
+}
+
+// lexf reports a lexical error at m, Incomplete exactly when ranOut: the condition the site checked
+// was the end of the input rather than a wrong character.
+func (s *scanner) lexf(ranOut bool, m mark, msg string) error {
+	if ranOut {
+		return s.incompletef(m, msg)
+	}
+	return s.errorf(m, msg)
 }
 
 // token returns the next token, scanning as far ahead as a pending simple key requires.
@@ -403,7 +421,9 @@ func (s *scanner) saveSimpleKey() error {
 func (s *scanner) removeSimpleKey() error {
 	k := &s.simpleKeys[len(s.simpleKeys)-1]
 	if k.possible && k.required {
-		return s.errorf(k.mark, "could not find the expected ':' of an implicit key")
+		// At the end of the input the key's ':' may still come; anywhere else a token arrived
+		// where it should have been.
+		return s.lexf(s.eof(0), k.mark, "could not find the expected ':' of an implicit key")
 	}
 	k.possible = false
 	return nil
@@ -588,7 +608,9 @@ func (s *scanner) fetchValue() error {
 	} else {
 		if s.flowLevel == 0 {
 			if !s.simpleKeyAllowed {
-				return s.errorf(s.mark(), "a mapping value is not allowed here")
+				// A ':' that ends the input may still be the start of a plain scalar's ":x"; the
+				// character after it decides, and it has not arrived.
+				return s.lexf(s.eof(1), s.mark(), "a mapping value is not allowed here")
 			}
 			s.rollIndent(s.col, -1, tBlockMappingStart, s.mark())
 		}
@@ -613,7 +635,7 @@ func (s *scanner) fetchAnchor(kind tokenKind) error {
 		s.advance()
 	}
 	if s.i == from {
-		return s.errorf(start, "an anchor or alias needs a name")
+		return s.lexf(s.eof(0), start, "an anchor or alias needs a name")
 	}
 	s.push(token{kind: kind, start: start, end: s.mark(), value: s.src[from:s.i:s.i]})
 	return nil
@@ -648,7 +670,7 @@ func (s *scanner) fetchTag() error {
 			return err
 		}
 		if s.at(0) != '>' || len(suffix) == 0 {
-			return s.errorf(s.mark(), "a verbatim tag must end with '>'")
+			return s.lexf(s.eof(0), s.mark(), "a verbatim tag must end with '>'")
 		}
 		s.advance()
 	} else {
@@ -672,7 +694,7 @@ func (s *scanner) fetchTag() error {
 		}
 		if len(suffix) == 0 {
 			if string(handle) != "!" {
-				return s.errorf(start, "a tag handle needs a suffix")
+				return s.lexf(s.eof(0), start, "a tag handle needs a suffix")
 			}
 			handle, suffix = nil, []byte("!") // the non-specific tag
 		}
@@ -692,7 +714,8 @@ func (s *scanner) scanURI(tagChars bool) ([]byte, error) {
 		c := s.at(0)
 		if c == '%' {
 			if !isHexDigit(s.at(1)) || !isHexDigit(s.at(2)) {
-				return nil, s.errorf(s.mark(), "a URI escape needs two hex digits")
+				ranOut := s.eof(1) || (isHexDigit(s.at(1)) && s.eof(2))
+				return nil, s.lexf(ranOut, s.mark(), "a URI escape needs two hex digits")
 			}
 			v, _ := strconv.ParseUint(string(s.src[s.i+1:s.i+3]), 16, 8)
 			out = append(out, byte(v))
@@ -754,12 +777,16 @@ func (s *scanner) fetchDirective() error {
 	switch string(name) {
 	case "YAML":
 		if len(params) != 1 || !validVersion(params[0]) {
-			return s.errorf(start, "a %YAML directive takes one version, major.minor")
+			ranOut := s.eof(0) && (len(params) == 0 || (len(params) == 1 && versionPrefix(params[0])))
+			return s.lexf(ranOut, start, "a %YAML directive takes one version, major.minor")
 		}
 		t.kind = tVersionDirective
 	case "TAG":
 		if len(params) != 2 || !validHandle(params[0]) || !validTagPrefix(params[1]) {
-			return s.errorf(start, "a %TAG directive takes a handle and a prefix")
+			ranOut := s.eof(0) && (len(params) == 0 ||
+				(len(params) == 1 && handlePrefix(params[0])) ||
+				(len(params) == 2 && validHandle(params[0]) && tagPrefixPrefix(params[1])))
+			return s.lexf(ranOut, start, "a %TAG directive takes a handle and a prefix")
 		}
 		t.kind = tTagDirective
 		t.handle = []byte(params[0])
@@ -780,6 +807,43 @@ func validVersion(v string) bool {
 		}
 	}
 	return true
+}
+
+// versionPrefix reports whether more digits could make v a valid version: digits, then at most one
+// '.' that is not first, then digits.
+func versionPrefix(v string) bool {
+	dots := 0
+	for i := 0; i < len(v); i++ {
+		switch {
+		case v[i] == '.' && i > 0:
+			dots++
+		case v[i] < '0' || v[i] > '9':
+			return false
+		}
+	}
+	return dots <= 1
+}
+
+// handlePrefix reports whether more text could make h a valid tag handle.
+func handlePrefix(h string) bool {
+	if validHandle(h) {
+		return true
+	}
+	if h == "" || h[0] != '!' {
+		return false
+	}
+	for i := 1; i < len(h); i++ {
+		if !isWordChar(h[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// tagPrefixPrefix reports whether more text could make p a valid tag prefix: it already is one, or
+// it ends in a %-escape cut short.
+func tagPrefixPrefix(p string) bool {
+	return validTagPrefix(p) || validTagPrefix(p+"0") || validTagPrefix(p+"00")
 }
 
 func validHandle(h string) bool {
@@ -941,7 +1005,7 @@ func (s *scanner) fetchFlowScalar(single bool) error {
 			return s.errorf(s.mark(), "a document marker cannot appear inside a quoted scalar")
 		}
 		if s.eof(0) {
-			return s.errorf(start, "a quoted scalar is not closed")
+			return s.incompletef(start, "a quoted scalar is not closed")
 		}
 		for !s.blankz(0) {
 			c := s.at(0)
@@ -993,7 +1057,7 @@ func (s *scanner) fetchFlowScalar(single bool) error {
 			}
 		}
 		if s.eof(0) {
-			return s.errorf(start, "a quoted scalar is not closed")
+			return s.incompletef(start, "a quoted scalar is not closed")
 		}
 	}
 	f.flush()
@@ -1045,14 +1109,15 @@ func (s *scanner) escape(out *[]byte) error {
 	}
 	width := map[byte]int{'x': 2, 'u': 4, 'U': 8}[c]
 	if width == 0 {
-		return s.errorf(start, "an unknown escape sequence")
+		// A backslash that ends the input has not been given its escape yet.
+		return s.lexf(s.eof(0), start, "an unknown escape sequence")
 	}
 	s.advance()
 	var v rune
 	for k := 0; k < width; k++ {
 		d := s.at(0)
 		if !isHexDigit(d) {
-			return s.errorf(start, "an escape needs "+itoa(width)+" hex digits")
+			return s.lexf(s.eof(0), start, "an escape needs "+itoa(width)+" hex digits")
 		}
 		n, _ := strconv.ParseUint(string(d), 16, 8)
 		v = v<<4 | rune(n)
