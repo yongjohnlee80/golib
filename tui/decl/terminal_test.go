@@ -102,3 +102,38 @@ func TestADrawersEdgeTakesCenter(t *testing.T) {
 		t.Fatalf("Drawer { edge: Tui.Center } refused: %v", err)
 	}
 }
+
+// A Terminal's construction properties and its runtime setters and stop() reach the widget; a
+// property of the wrong kind is refused.
+func TestATerminalsPropertiesAndStopReachTheWidget(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "pwd.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\npwd\nread x\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exited := &recorder{}
+	s := decltest.Run(t, 200, 8,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
+			"Terminal { id: term; command: App.cmd; dir: \""+dir+"\"; scrollback: 10; onExited: App.exited(code) }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.cmd": "/nonexistent/first"}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.exited": exited.handler}))
+	// The command and the folder change before the start, through the setters.
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.cmd", script); err != nil {
+			t.Error(err)
+		}
+		if err := s.Program.Call("term", "start"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, dir[max(0, len(dir)-20):])
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("term", "stop"); err != nil {
+			t.Error(err)
+		}
+	})
+	if _, err := mountDoc(t, "import tui 1.0\nTerminal { scrollback: \"many\" }"); err == nil {
+		t.Error("Terminal { scrollback: \"many\" } was not refused")
+	}
+}
