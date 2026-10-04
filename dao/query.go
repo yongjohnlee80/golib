@@ -301,6 +301,23 @@ func (g *group) ToSQL(d Dialect, next *int) (string, []any) {
 type Sort struct {
 	Key  string
 	Desc bool
+
+	// bound holds the values a bound sort key takes ([AscBy], [DescBy]); nil
+	// for a plain key. It is a pointer so Sort stays comparable with ==, and
+	// Asc("k") is still Sort{Key: "k"}.
+	bound *sortValues
+}
+
+// sortValues are a bound sort term's values, in the order its expression
+// binds them.
+type sortValues struct{ args []any }
+
+// values are the values s binds: none for a plain key.
+func (s Sort) values() []any {
+	if s.bound == nil {
+		return nil
+	}
+	return s.bound.args
 }
 
 // Asc returns an ascending Sort for the given sort-enum key.
@@ -308,6 +325,24 @@ func Asc(key any) Sort { return Sort{Key: fmt.Sprint(key)} }
 
 // Desc returns a descending Sort for the given sort-enum key.
 func Desc(key any) Sort { return Sort{Key: fmt.Sprint(key), Desc: true} }
+
+// AscBy returns an ascending Sort for a key declared with [SortParam], with the
+// values its expression binds — the query vector of a [Distance], the query
+// text of a [RankQuery]:
+//
+//	OrderBy(dao.AscBy(ByDistance, queryVector))
+//
+// The values travel as bind parameters, numbered after the WHERE's and before
+// LIMIT's. A count other than the key's declared one fails the query with
+// [errs.ErrInvalidArgument].
+func AscBy(key any, args ...any) Sort {
+	return Sort{Key: fmt.Sprint(key), bound: &sortValues{args: append([]any(nil), args...)}}
+}
+
+// DescBy is the descending [AscBy].
+func DescBy(key any, args ...any) Sort {
+	return Sort{Key: fmt.Sprint(key), Desc: true, bound: &sortValues{args: append([]any(nil), args...)}}
+}
 
 // ParseSorts decodes HTTP-style sort specs into Sorts: a leading "-" means
 // descending, an optional leading "+" (or no prefix) means ascending. Empty

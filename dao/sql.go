@@ -81,7 +81,11 @@ func (b *builder) buildSelect(table string, cols []string, joins []joinClause,
 			if i > 0 {
 				b.sb.WriteString(", ")
 			}
-			b.sb.WriteString(o.expr)
+			if o.bound != nil {
+				b.sb.WriteString(o.bound(b.ph))
+			} else {
+				b.sb.WriteString(o.expr)
+			}
 			if o.desc {
 				b.sb.WriteString(" DESC")
 			} else {
