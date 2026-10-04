@@ -44,8 +44,10 @@
 // -update brackets when the terminal supports them. Cursor operations are
 // latched, not immediate, so they land in the same write as the cell diff.
 //
-// This is the ONLY golib package that imports golang.org/x/term and
-// golang.org/x/sys; the tui core, style, and widget packages
-// are stdlib-only, and tests of those packages use tui.TestBackend instead
+// This and tui/pty (golib-tui-0018) are the only tui packages that import
+// golang.org/x/sys, and this is the only one that imports golang.org/x/term;
+// the tui core, style, and widget packages
+// import neither directly (widget.Terminal reaches x/sys only through
+// tui/pty), and tests of those packages use tui.TestBackend instead
 // of this driver.
 package term

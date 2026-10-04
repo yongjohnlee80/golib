@@ -75,6 +75,10 @@ jobs:
       - name: test vfs (FSEvents)
         run: CGO_ENABLED=1 go test -race -count=2 -timeout 10m ./vfs/...
 
+      # tui/pty's macOS open path (TIOCPTYGRANT/UNLK/GNAME) only runs here.
+      - name: test tui/pty
+        run: go test -race -count=2 -timeout 10m ./tui/pty/...
+
   coverage:
     name: coverage policy
     if: github.event_name == 'pull_request'
