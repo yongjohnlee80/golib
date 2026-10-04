@@ -10,6 +10,13 @@ import (
 	"testing"
 )
 
+// The transcripts' screen size: what the recorder ran each program at, and
+// what the replay builds.
+const (
+	recRows = 24
+	recCols = 80
+)
+
 // TestTranscripts replays each recorded program step by step and compares
 // the screen and cursor with what tmux showed for the same bytes (see
 // record_test.go).

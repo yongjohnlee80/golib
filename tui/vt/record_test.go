@@ -31,11 +31,6 @@ import (
 // then tmux replays every prefix in a detached 80 x 24 session and its
 // capture-pane text and cursor become the expected screen.
 
-const (
-	recRows = 24
-	recCols = 80
-)
-
 // step is keys to type, then how long to wait for the output to settle.
 type step struct {
 	keys string
