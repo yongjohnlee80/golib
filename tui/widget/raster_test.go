@@ -221,7 +221,7 @@ func TestAScrollableImage(t *testing.T) {
 	m := NewImage()
 	m.SetScrollable(true)
 	m.SetPNG(tallPNG(t, 300, 1000))
-	m.cols, m.rows = 10, 5 // as its paint leaves them
+	m.view.cols, m.view.rows = 10, 5 // as its paint leaves them
 	clip := func() tui.Rect { img, _ := m.Image(); return img.Clip }
 	if c := clip(); c != (tui.Rect{W: 100, H: 100}) {
 		t.Fatalf("the first view is %+v, want the top left 100×100", c)
@@ -271,7 +271,7 @@ func TestAScrollableImage(t *testing.T) {
 
 	still := NewImage()
 	still.SetPNG(tallPNG(t, 100, 1000))
-	still.cols, still.rows = 10, 5
+	still.view.cols, still.view.rows = 10, 5
 	if img, _ := still.Image(); !img.Clip.Empty() || still.AcceptsFocus() || still.HandleEvent(key(tui.KeyDown)) {
 		t.Errorf("an Image that does not scroll clipped %+v, or took focus or keys", img.Clip)
 	}
