@@ -1,0 +1,25 @@
+2 18
+user@host:~/work$ printf '\e[31mred\e[0m plain \e[1;4mbold-under\e[0m\n'
+red plain bold-under
+user@host:~/work$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
