@@ -185,7 +185,7 @@ func TestParserSplitBoundaries(t *testing.T) {
 }
 
 func TestParserParamOverflowStillConsumes(t *testing.T) {
-	// 32 params x 4 subparams, saturating — excess ignored,
+	// 32 params x 8 subparams, saturating — excess ignored,
 	// sequence still consumed.
 	var sb strings.Builder
 	sb.WriteString("\x1b[")
@@ -204,9 +204,9 @@ func TestParserParamOverflowStillConsumes(t *testing.T) {
 		t.Fatalf("expected 32 params max, got %v", got)
 	}
 
-	// Sub-param overflow: 6 subparams collapse to 4, rest ignored.
-	got = parse("\x1b[1:2:3:4:5:6m")
-	want := []string{`csi:priv="" params=[1:2:3:4] inter="" final="m"`}
+	// Sub-param overflow: 10 subparams collapse to 8, rest ignored.
+	got = parse("\x1b[1:2:3:4:5:6:7:8:9:10m")
+	want := []string{`csi:priv="" params=[1:2:3:4:5:6:7:8] inter="" final="m"`}
 	if !equalStrings(got, want) {
 		t.Fatalf("subparam overflow: got %v want %v", got, want)
 	}

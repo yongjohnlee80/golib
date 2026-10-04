@@ -39,12 +39,13 @@ import "unicode/utf8"
 //     their 7-bit equivalents ESC + (r - 0x40): U+009B starts a CSI,
 //     U+009D an OSC, and so on.
 
-// Parser limits: parameter storage allows 32 params x 4
+// Parser limits: parameter storage allows 32 params x 8
 // sub-params, saturating — excess is ignored but the sequence is still
-// consumed. String payloads (OSC/DCS) are capped to bound memory.
+// consumed. Eight holds SGR's longest colon form, 38:2:cs:r:g:b, with room
+// for its optional tolerance fields. String payloads (OSC/DCS) are capped to bound memory.
 const (
 	maxParams     = 32
-	maxSubparams  = 4
+	maxSubparams  = 8
 	maxParamValue = 65535
 	maxStringData = 4096
 )
