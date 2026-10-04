@@ -2,6 +2,8 @@ package decl
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -49,6 +51,24 @@ func appTypes() []Type {
 			// golib's: shown at its width and scrolled by the keys and the wheel (widget.Image)
 			"scrollable": setter("an Image", boolOf, (*widget.Image).SetScrollable),
 		}},
+		{Name: "Terminal", Build: buildTerminal, Ctor: []string{"command", "dir", "scrollback"},
+			Setters: map[string]Setter{
+				"vimKeys":     setter("a Terminal", boolOf, (*widget.Terminal).SetVimKeys),
+				"themeColors": setter("a Terminal", boolOf, (*widget.Terminal).SetThemeColors),
+			},
+			Methods: map[string]Method{
+				"start": NoArgMethod((*widget.Terminal).Start),
+				"stop":  NoArgMethod(func(t *widget.Terminal) error { t.Stop(); return nil }),
+				"focus": NoArgMethod(func(t *widget.Terminal) error {
+					if ctx := t.Context(); ctx != nil {
+						ctx.RequestFocus()
+					}
+					return nil
+				}),
+			},
+			Signals:   map[string][]string{"exited": {"code"}, "titleChanged": {"title"}, "modeChanged": {"mode"}},
+			Destroyed: func(c tui.Component) { c.(*widget.Terminal).Stop() },
+		},
 		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
@@ -158,6 +178,15 @@ var dockEdges = enum[tui.DockEdge]{values: map[string]tui.DockEdge{
 	"Right":  tui.DockRight,
 }}
 
+// drawerEdges are where a Drawer opens: an edge, or golib's Center.
+var drawerEdges = enum[tui.DockEdge]{values: map[string]tui.DockEdge{
+	"Top":    tui.DockTop,
+	"Bottom": tui.DockBottom,
+	"Left":   tui.DockLeft,
+	"Right":  tui.DockRight,
+	"Center": tui.DockCenter,
+}}
+
 var keysets = enum[widget.Keyset]{values: map[string]widget.Keyset{
 	"Vim":      widget.KeysetVim,
 	"Nano":     widget.KeysetNano,
@@ -230,6 +259,46 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 		h.attach(e)
 	}
 	return e, consumed, nil
+}
+
+// buildTerminal makes a Terminal. command is the program (the user's $SHELL
+// when empty), dir its working directory, scrollback its history's length;
+// vimKeys and themeColors are settable while it runs. start() runs the
+// program, stop() hangs it up, focus() gives it the keyboard.
+func buildTerminal(b Build) (tui.Component, []string, error) {
+	var command, dir string
+	scrollback := -1.0
+	vimKeys, themeColors := false, true
+	consumed, err := readProps(b.Props, map[string]field{
+		"command":     into(&command, stringOf),
+		"dir":         into(&dir, stringOf),
+		"scrollback":  into(&scrollback, numberOf),
+		"vimKeys":     into(&vimKeys, boolOf),
+		"themeColors": into(&themeColors, boolOf),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	exited, titled, moded := b.EmitterWith("exited"), b.EmitterWith("titleChanged"), b.EmitterWith("modeChanged")
+	opts := []widget.TerminalOption{
+		widget.WithVimKeys(vimKeys),
+		widget.WithThemeColors(themeColors),
+		widget.WithOnExit(func(code int) {
+			exited(qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(code)})
+		}),
+		widget.WithOnTitle(func(title string) { titled(strValue(title)) }),
+		widget.WithOnMode(func(m widget.TerminalMode) { moded(strValue(strings.ToLower(m.String()))) }),
+	}
+	if command != "" {
+		opts = append(opts, widget.WithCommand(command))
+	}
+	if dir != "" {
+		opts = append(opts, widget.WithDir(dir))
+	}
+	if scrollback >= 0 {
+		opts = append(opts, widget.WithScrollback(int(scrollback)))
+	}
+	return widget.NewTerminal(opts...), consumed, nil
 }
 
 // ---------------------------------------------------------------- StatusBar

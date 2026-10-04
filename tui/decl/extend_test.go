@@ -159,7 +159,7 @@ func TestACustomWidgetIsRefusedLikeABuiltIn(t *testing.T) {
 // TestAnInstanceIsTheHostsWidgetPlacedOnce.
 func TestAnInstanceIsTheHostsWidgetPlacedOnce(t *testing.T) {
 	mine := widget.NewText("host-built")
-	tr, a, err, _ := extended(t, "Flex {\n Terminal { }\n}", tuidecl.Instance("Terminal", mine))
+	tr, a, err, _ := extended(t, "Flex {\n Preview { }\n}", tuidecl.Instance("Preview", mine))
 	if err != nil {
 		t.Fatalf("mount: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestAnInstanceIsTheHostsWidgetPlacedOnce(t *testing.T) {
 	if err := tr.Destroy(); err != nil {
 		t.Fatalf("destroy: %v", err)
 	}
-	spec, _ := qml.QML{}.Parse([]byte("Flex {\n Terminal { }\n}"))
+	spec, _ := qml.QML{}.Parse([]byte("Flex {\n Preview { }\n}"))
 	if err := tr.Mount(spec); err != nil {
 		t.Fatalf("remounting the released Instance: %v", err)
 	}

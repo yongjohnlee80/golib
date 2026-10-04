@@ -190,6 +190,15 @@ func (t *Terminal) AcceptsFocus() bool { return true }
 // Mode is where keys go.
 func (t *Terminal) Mode() TerminalMode { return t.mode }
 
+// SetVimKeys turns WithVimKeys' Esc on or off while the Terminal runs.
+func (t *Terminal) SetVimKeys(on bool) { t.cfg.vimKeys = on }
+
+// SetThemeColors turns WithThemeColors on or off while the Terminal runs.
+func (t *Terminal) SetThemeColors(on bool) {
+	t.cfg.themeColors = on
+	t.MarkDirty()
+}
+
 // Running reports whether the program is running.
 func (t *Terminal) Running() bool { return t.running }
 
