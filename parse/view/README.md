@@ -103,6 +103,8 @@ The file is incomplete when:
 - its frontmatter has no closing line yet;
 - its body's actions, comments, strings or blocks are still open. The body counts as unfinished
   when closing them (`}}`, `*/}}`, a quote, a parenthesis, the missing `{{end}}`s) makes it parse.
+  The check closes one level of parenthesis and at most 16 open blocks. A body cut deeper than that
+  is reported wrong, one keystroke early.
 
 A YAML error inside a closed frontmatter is wrong where it stands, since nothing appended to the
 file reaches it. The wrapped `*yaml.Error` says the same.
