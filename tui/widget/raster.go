@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"io"
 	"os"
@@ -87,13 +88,17 @@ const (
 )
 
 // Page is how RasterizeHTMLPage renders: Width pixels wide (with Wide, as wide as the page's
-// content, at least Width, at most MaxPageWidth), as tall as the page and at least MinHeight, at
-// Scale — a browser's zoom: 2 draws everything twice the size, the page laid out half as wide; 0
-// is 1.
+// content, at least Width, at most MaxPageWidth), as tall as the page, at least MinHeight and at
+// most MaxHeight (0: MaxPageHeight), at Scale — a browser's zoom: 2 draws everything twice the
+// size, the page laid out half as wide; 0 is 1. The browser's time grows with the window's area,
+// so a Wide page that is never long (a diagram) does well to bound its height. Background is the
+// page's own colour, "#rrggbb": what is cut below and beside the content. Without it the
+// bottom-right pixel is taken for it, which is wrong for content that reaches that corner.
 type Page struct {
-	Width, MinHeight int
-	Scale            float64
-	Wide             bool
+	Width, MinHeight, MaxHeight int
+	Scale                       float64
+	Wide                        bool
+	Background                  string
 }
 
 // RasterizeHTMLPage renders the whole of html as a PNG, for an Image that scrolls (see Page). The
@@ -110,22 +115,31 @@ func RasterizeHTMLPage(ctx context.Context, html []byte, p Page) ([]byte, error)
 	if p.Wide {
 		window = MaxPageWidth
 	}
-	b, err := rasterizeHTML(ctx, html, int(float64(window)/scale), int(MaxPageHeight/scale), scale)
+	height := MaxPageHeight
+	if p.MaxHeight > 0 {
+		height = min(p.MaxHeight, MaxPageHeight)
+	}
+	b, err := rasterizeHTML(ctx, html, int(float64(window)/scale), int(float64(height)/scale), scale)
 	if err != nil {
 		return nil, err
 	}
-	return trimBlank(b, width, max(1, min(p.MinHeight, MaxPageHeight)))
+	return trimBlank(b, width, max(1, min(p.MinHeight, height)), p.Background)
 }
 
-// trimBlank cuts the rows at the bottom and the columns at the right of a PNG that are all of its
-// bottom-right pixel's colour, keeping at least minW × minH.
-func trimBlank(b []byte, minW, minH int) ([]byte, error) {
+// trimBlank cuts the rows at the bottom and the columns at the right of a PNG that are all of the
+// background — background, "#rrggbb", or else the bottom-right pixel's colour — keeping at least
+// minW × minH.
+func trimBlank(b []byte, minW, minH int, background string) ([]byte, error) {
 	img, err := png.Decode(bytes.NewReader(b))
 	if err != nil {
 		return nil, fmt.Errorf("widget: the browser's screenshot: %w", err)
 	}
 	r := img.Bounds()
 	br, bg, bb, ba := img.At(r.Max.X-1, r.Max.Y-1).RGBA()
+	var rgb [3]uint8
+	if n, _ := fmt.Sscanf(background, "#%02x%02x%02x", &rgb[0], &rgb[1], &rgb[2]); n == 3 {
+		br, bg, bb, ba = color.RGBA{rgb[0], rgb[1], rgb[2], 0xff}.RGBA()
+	}
 	blank := func(x, y int) bool {
 		cr, cg, cb, ca := img.At(x, y).RGBA()
 		return cr == br && cg == bg && cb == bb && ca == ba
