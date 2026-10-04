@@ -58,7 +58,15 @@ func (inv Invocation) Query(ctx context.Context, conn dao.DataConn) (*Rows, erro
 	if err != nil {
 		return nil, fmt.Errorf("view %s: %w", v.name, err)
 	}
-	if cols, err := dao.Columns(rows); err == nil && len(cols) != 1 {
+	cols, err := dao.Columns(rows)
+	switch {
+	case errors.Is(err, dao.ErrUnsupported):
+		// The driver cannot name its result columns; a result of other than one column then fails
+		// at the first row's Scan instead.
+	case err != nil:
+		_ = rows.Close()
+		return nil, fmt.Errorf("view %s: result columns: %w", v.name, err)
+	case len(cols) != 1:
 		_ = rows.Close()
 		return nil, fmt.Errorf("%w: %s returns %d columns %v", ErrRow, v.name, len(cols), cols)
 	}
