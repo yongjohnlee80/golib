@@ -326,6 +326,10 @@ func TestRasterizeHTMLPage(t *testing.T) {
 	if _, h, _ := page(`<div style="height:600px;background:#000"></div>`, Page{Width: 400, MinHeight: 100, Background: "#ffffff"}); h != 600 {
 		t.Errorf("a 600px page on white is %d tall", h)
 	}
+	// longer than the first window tried: rendered again, whole
+	if _, h, _ := page(`<div style="height:6000px;background:#000"></div>`, Page{Width: 200, MinHeight: 100, Background: "#ffffff"}); h != 6000 {
+		t.Errorf("a 6000px page is %d tall: cut at the first window", h)
+	}
 	// a script that draws after 300ms has drawn by the time of the screenshot
 	_, h, _ := page(`<div id="d"></div><script>setTimeout(function(){document.getElementById("d").style.cssText="height:2000px;background:#000"},300)</script>`,
 		Page{Width: 400, MinHeight: 100})
