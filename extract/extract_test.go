@@ -139,16 +139,6 @@ func TestSet_TextLimit(t *testing.T) {
 	}
 }
 
-// A destination that fails is the extractor's error, and the text limit does not mask it.
-func TestSet_WriterErrorAtTheLimitIsReturned(t *testing.T) {
-	t.Parallel()
-	failed := errors.New("disk full")
-	lw := &limitWriter{w: failingWriter{failed}, max: 2}
-	if _, err := lw.Write([]byte("abc")); !errors.Is(err, failed) {
-		t.Errorf("err = %v, want the writer's", err)
-	}
-}
-
 type failingWriter struct{ err error }
 
 func (f failingWriter) Write([]byte) (int, error) { return 0, f.err }
@@ -226,4 +216,60 @@ func TestSet_ConcurrentExtractions(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+// A destination that fails is reported through the Set, whether or not the text limit was also
+// crossed, and even when the extractor ignored the failed write.
+func TestSet_DestinationFailureIsReported(t *testing.T) {
+	t.Parallel()
+	diskFull := errors.New("disk full")
+	for name, tc := range map[string]struct {
+		e       *fixed
+		max     int64
+		limited bool
+	}{
+		"at the limit":                  {&fixed{text: "abc"}, 2, true},
+		"at the limit, error ignored":   {&fixed{text: "abc", ignore: true}, 2, true},
+		"under no limit":                {&fixed{text: "abc"}, 0, false},
+		"under no limit, error ignored": {&fixed{text: "abc", ignore: true}, 0, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := New(Register(tc.e, ".pdf"), MaxText(tc.max))
+			_, err := s.Extract(context.Background(), "a.pdf", strings.NewReader(""), 0, failingWriter{diskFull})
+			if !errors.Is(err, diskFull) {
+				t.Errorf("err = %v, want the destination's failure", err)
+			}
+			if strings.Contains(err.Error(), "%!") {
+				t.Errorf("err = %q, a message with a formatting fault", err)
+			}
+			if errors.Is(err, ErrTextTooLarge) != tc.limited {
+				t.Errorf("err = %v, want ErrTextTooLarge %v", err, tc.limited)
+			}
+		})
+	}
+}
+
+// A Func that is nil is refused where it is registered, not when a file arrives.
+func TestNew_RefusesANilFunc(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if recover() == nil {
+			t.Error("New accepted a nil Func")
+		}
+	}()
+	var f Func
+	New(Register(f, ".x"))
+}
+
+// An extractor that ignores a failed write and then fails for a reason of its own: both errors reach
+// the caller.
+func TestSet_DestinationFailureAndExtractorError(t *testing.T) {
+	t.Parallel()
+	diskFull, parse := errors.New("disk full"), errors.New("bad xref table")
+	s := New(Register(&fixed{text: "abc", ignore: true, err: parse}, ".pdf"))
+	_, err := s.Extract(context.Background(), "a.pdf", strings.NewReader(""), 0, failingWriter{diskFull})
+	if !errors.Is(err, diskFull) || !errors.Is(err, parse) {
+		t.Errorf("err = %v, want both the destination's and the extractor's errors", err)
+	}
 }

@@ -70,14 +70,17 @@ images and fonts and may hold 1 MiB of text, while 16 MiB of Markdown is million
 what an index and an embedding model pay for. The text limit holds even for an extractor that
 ignores the failed write.
 
-`New` registers nothing of its own, and a misconfiguration (a nil extractor, a missing or empty
-extension, a negative limit) panics at `New`, where the wiring is written.
+`New` registers nothing of its own, and a misconfiguration (a nil extractor or nil `Func`, a missing
+or empty extension, a negative limit) panics at `New`, where the wiring is written. A nil pointer of
+another type is accepted, since its methods may be written to work on a nil receiver.
 
 ## Text
 
 `extract.Text{}` handles containers that are already text: Markdown, plain text, logs. Plain text is
 valid Markdown, so it copies the file to `w` as it is, 64 KiB at a time, holding one chunk however
-large the file. It neither checks nor converts the encoding.
+large the file. It neither checks nor converts the encoding. A source that ends before `size` bytes
+is an error wrapping `io.ErrUnexpectedEOF`, so a file that shrank after `Stat` is not indexed as if
+complete. A destination that accepts fewer bytes than it was given is `io.ErrShortWrite`.
 
 ## Errors
 
@@ -86,6 +89,7 @@ large the file. It neither checks nor converts the encoding.
 | `ErrUnsupported` | no extractor for the extension. Before anything is read; also `errs.ErrUnsupported` |
 | `ErrContainerTooLarge` | the file is over `MaxContainer`. Before anything is read; also `errs.ErrInvalidArgument` |
 | `ErrTextTooLarge` | the Markdown passed `MaxText`. The text up to the limit stays written; also `errs.ErrInvalidArgument` |
+| the destination's own error | `w` failed, such as a full disk. Always returned, even if the extractor ignored it, and alongside `ErrTextTooLarge` when the limit was crossed in the same write |
 | anything else | the extractor's error, wrapped with the file name |
 
 ## License
