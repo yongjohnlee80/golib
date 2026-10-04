@@ -123,17 +123,20 @@ func RasterizeHTMLPage(ctx context.Context, html []byte, p Page) ([]byte, error)
 	}
 	// most pages are short, and the browser's time grows with the window: a first window of
 	// firstPageHeight, and the whole height only for a page that reaches its bottom
-	for _, h := range []int{min(firstPageHeight, height), height} {
+	render := func(h int) ([]byte, bool, error) {
 		b, err := rasterizeHTML(ctx, html, int(float64(window)/scale), int(float64(h)/scale), scale)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		out, cut, err := trimBlank(b, width, max(1, min(p.MinHeight, h)), p.Background)
-		if err != nil || cut || h == height {
-			return out, err
-		}
+		return trimBlank(b, width, max(1, min(p.MinHeight, h)), p.Background)
 	}
-	panic("unreachable")
+	first := min(firstPageHeight, height)
+	out, ended, err := render(first)
+	if err != nil || ended || first == height {
+		return out, err
+	}
+	out, _, err = render(height)
+	return out, err
 }
 
 // trimBlank cuts the rows at the bottom and the columns at the right of a PNG that are all of the
