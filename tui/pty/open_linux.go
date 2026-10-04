@@ -28,12 +28,13 @@ func open() (*os.File, string, error) {
 
 // awaitExit blocks until pid has exited, without reaping it (WNOWAIT): the
 // zombie keeps the pid, and the group id, from reuse until Wait reaps it.
-func awaitExit(pid int) {
+// It reports whether it waited.
+func awaitExit(pid int) bool {
 	var info unix.Siginfo
 	for {
 		err := unix.Waitid(unix.P_PID, pid, &info, unix.WEXITED|unix.WNOWAIT, nil)
 		if err != unix.EINTR {
-			return
+			return err == nil
 		}
 	}
 }

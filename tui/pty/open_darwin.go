@@ -43,8 +43,8 @@ func ioctl(fd int, req uint, arg uintptr) error {
 	return nil
 }
 
-// awaitExit returns at once: macOS has no waitid(WNOWAIT) in x/sys, so the
-// child is marked exited as Wait reaps it. Between the reap and the mark a
-// Signal could reach a reused pid only if a new process took the pid and
-// made it a group id in that instant.
-func awaitExit(int) {}
+// awaitExit cannot wait without reaping on macOS (x/sys has no waitid), so
+// it reports false and the child is marked exited once Wait reaps it.
+// Between the reap and the mark a Signal could reach a reused pid only if a
+// new process took the pid and made it a group id in that instant.
+func awaitExit(int) bool { return false }
