@@ -209,9 +209,10 @@ func TestModeMatrix(t *testing.T) {
 		want{used: ModeLexical, state: StateSwitching, lex: true, calls: 1},
 		want{err: ErrSwitching, calls: 1},
 		want{used: ModeLexical, state: StateReady, lex: true})
+	// the query embedded, but the snapshot says the index is between models: by words all the same
 	add("switching: from the view", withState(StateSwitching, nil),
-		want{used: ModeHybrid, state: StateSwitching, lex: true, sem: true, calls: 1},
-		want{used: ModeSemantic, state: StateSwitching, sem: true, calls: 1},
+		want{used: ModeLexical, state: StateSwitching, lex: true, calls: 1},
+		want{err: ErrSwitching, calls: 1},
 		want{used: ModeLexical, state: StateSwitching, lex: true})
 	add("error", withState(StateReady, errors.New("provider down")),
 		want{used: ModeLexical, state: StateError, lex: true, calls: 1},
@@ -499,9 +500,26 @@ func TestFacetsFromTheQuery(t *testing.T) {
 	if _, err := NewEngine[key, semView](semStore{s}).Search(ctx, Query{Text: "type:adr", Fields: fieldsOf{"type"}}); !errors.Is(err, ErrNoLister) {
 		t.Errorf("filters alone without a Lister: %v", err)
 	}
-	res, err = eng.Search(ctx, Query{Text: "  !!  "})
-	if err != nil || len(res.Hits) != 0 || res.ModeUsed != ModeLexical {
-		t.Errorf("no words and no filters: %+v, %v", res, err)
+	// every kind of filter alone lists; a path list holding "" or "." is no filter
+	for name, f := range map[string]Filter{
+		"a tag":  {Tags: []string{"keep"}},
+		"a path": {Paths: []string{"guides"}},
+	} {
+		s.filters = nil
+		res, err := eng.Search(ctx, Query{Text: "  ", Filter: f})
+		if err != nil || res.ModeUsed != ModeFacet || len(res.Hits) != 2 || !reflect.DeepEqual(s.filters[0], f) {
+			t.Errorf("%s alone: %+v, %v (listed with %+v)", name, res, err, s.filters)
+		}
+	}
+	for name, q := range map[string]Query{
+		"no words and no filters":    {Text: "  !!  "},
+		"a root path is no filter":   {Text: "", Filter: Filter{Paths: []string{"guides", "."}}},
+		"an empty path is no filter": {Text: "", Filter: Filter{Paths: []string{""}}},
+	} {
+		res, err := eng.Search(ctx, q)
+		if err != nil || len(res.Hits) != 0 || res.ModeUsed != ModeLexical {
+			t.Errorf("%s: %+v, %v", name, res, err)
+		}
 	}
 }
 
