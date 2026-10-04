@@ -194,8 +194,8 @@ type App struct {
 
 	bus *Bus
 
-	// Task pool: sem bounds RUNNING tasks (the exporter's
-	// bounded-background-work pattern, the sem field in exporter/writer.go).
+	// Task pool: sem bounds how many tasks run at once, so a burst of
+	// submissions cannot start an unbounded number of goroutines.
 	sem        chan struct{}
 	nextTaskID atomic.Uint64
 	async      asyncState

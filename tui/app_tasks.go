@@ -260,13 +260,13 @@ func (a *App) Go(owner NodeID, task Task, opts ...TaskOption) TaskID {
 	return id
 }
 
-// runTask is the per-task goroutine: acquire the pool semaphore INSIDE the
-// goroutine (the deliberate inversion of the exporter's caller-blocking
-// acquire, the acquire-or-fallback select in writer.commit in
-// exporter/writer.go — a UI thread must never block, so Go bounds
-// RUNNING tasks, not calls), run recover-protected (the scaffold's
-// per-connection isolation, server/scaffold.go:205-212), and post the
-// addressed TaskResult.
+// runTask is the per-task goroutine. It acquires the pool semaphore inside
+// the goroutine, not in Go: a batch writer may block its caller until a slot
+// frees, as backpressure, but the UI thread that calls Go must never block,
+// so the pool bounds running tasks rather than calls. A task cancelled while
+// it waits for a slot never runs. The task runs recover-protected, so one
+// task's panic cannot take down the app, and its result is posted to its
+// owner as a TaskResult.
 func (a *App) runTask(tctx context.Context, cancel context.CancelFunc, owner NodeID, id TaskID, group string, task Task) {
 	defer a.async.wg.Done()
 	defer a.async.inflight.Add(-1)
