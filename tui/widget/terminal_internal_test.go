@@ -217,3 +217,68 @@ func TestEncodeMouse(t *testing.T) {
 		}
 	}
 }
+
+// floodProc writes output as fast as it is read, until it is closed: with no
+// loop draining the bridge, its reader soon blocks on the bridge's budget.
+type floodProc struct {
+	mu     sync.Mutex
+	closed bool
+	done   chan struct{}
+}
+
+func newFloodProc() *floodProc { return &floodProc{done: make(chan struct{})} }
+
+func (p *floodProc) Read(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return 0, io.EOF
+	}
+	for i := range b {
+		b[i] = 'x'
+	}
+	return len(b), nil
+}
+func (p *floodProc) Write(b []byte) (int, error) { return len(b), nil }
+func (p *floodProc) Resize(int, int) error       { return nil }
+func (p *floodProc) Wait() (int, error)          { <-p.done; return 0, nil }
+func (p *floodProc) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.closed {
+		p.closed = true
+		close(p.done)
+	}
+	return nil
+}
+
+// The App's end releases the input queue's goroutine, which waits for keys
+// no loop will send again.
+func TestTerminalInputWriterEndsWithTheApp(t *testing.T) {
+	p := newSlowProc()
+	close(p.release)
+	term, _, stop := mountTerminal(t, p)
+	var in *inputQueue
+	stop()
+	in = term.in // the loop has ended; its fields are settled
+	select {
+	case <-in.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the input queue's goroutine outlived the App")
+	}
+}
+
+// The App's end releases a reader blocked on the output bridge's budget,
+// which no loop will drain again.
+func TestTerminalBlockedReaderEndsWithTheApp(t *testing.T) {
+	p := newFloodProc()
+	term, h, stop := mountTerminal(t, p)
+	h.onLoopInternal(func() {
+		term.wr.mu.Lock()
+		term.wr.budget = 1 // the first chunk fills it
+		term.wr.mu.Unlock()
+	})
+	time.Sleep(50 * time.Millisecond) // let output flow through a turn or two
+	stop()
+	pumpsGone(t, term)
+}
