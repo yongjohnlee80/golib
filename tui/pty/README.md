@@ -4,6 +4,12 @@
 `golang.org/x/sys` only. It is the process layer of golib's terminal widget, and it stands alone:
 anything that needs to drive an interactive program can use it.
 
+## Install
+
+```bash
+go get github.com/yongjohnlee80/golib/tui/pty
+```
+
 ## Features
 
 - `Start` opens a terminal pair (`/dev/ptmx`) and starts the program as a session leader with the
