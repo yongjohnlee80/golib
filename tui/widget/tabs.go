@@ -136,13 +136,17 @@ func WithTabsStyles(bar, tab, active style.Style) TabsOption {
 	}
 }
 
+// defaultTabsStyles are the bar, tab and active-tab styles a Tabs has unless it is given others.
+func defaultTabsStyles() (bar, tab, active style.Style) {
+	return style.New().Background(style.TokenPanel).Foreground(style.TokenTextMuted),
+		style.New().Background(style.TokenPanel).Foreground(style.TokenTextMuted),
+		style.New().Background(style.TokenSurface).Foreground(style.TokenForeground).Bold(true)
+}
+
 // NewTabs builds a tab switcher. At least one tab is required.
 func NewTabs(opts ...TabsOption) *Tabs {
-	t := &Tabs{
-		barSt:    style.New().Background(style.TokenPanel).Foreground(style.TokenTextMuted),
-		tabSt:    style.New().Background(style.TokenPanel).Foreground(style.TokenTextMuted),
-		activeSt: style.New().Background(style.TokenSurface).Foreground(style.TokenForeground).Bold(true),
-	}
+	t := &Tabs{}
+	t.barSt, t.tabSt, t.activeSt = defaultTabsStyles()
 	for _, o := range opts {
 		if o != nil {
 			o(t)
@@ -152,6 +156,15 @@ func NewTabs(opts ...TabsOption) *Tabs {
 		panic("widget: NewTabs requires at least one WithTab")
 	}
 	return t
+}
+
+// SetStyles gives the bar, the tabs and the active tab these styles over the defaults, as
+// [WithTabsStyles] does at construction: what a style leaves unset is the default's, so zero
+// styles restore the defaults.
+func (t *Tabs) SetStyles(bar, tab, active style.Style) {
+	t.barSt, t.tabSt, t.activeSt = defaultTabsStyles()
+	t.barSt, t.tabSt, t.activeSt = bar.Inherit(t.barSt), tab.Inherit(t.tabSt), active.Inherit(t.activeSt)
+	t.MarkDirty()
 }
 
 // Add appends a tab at runtime; its content mounts lazily on first select.

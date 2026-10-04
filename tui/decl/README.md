@@ -89,6 +89,8 @@ change at runtime, which is what makes it bindable to a source.
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText`, `maxWidth` (default 40 cells) | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
 | `TableView` | — | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
+| `TabView` | palette (the bar: `window`/`windowText` behind the titles, `button`/`buttonText` for each, `highlight`/`highlightedText` for the current one) | `currentIndex` | `currentIndex`, `count` | `currentIndexChanged(index)` | — |
+| `Tab` | `title`; one child, its content | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
 | `Drawer` | `modal` (default true); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100) | — | `opened`, `closed` | `open()`, `close()`, `toggle()` |
@@ -112,6 +114,19 @@ cleared by its group included, before its `triggered`.
 case is its Shift, as in Qt: `"c"` or `"C"` is the key c, and `"Shift+C"` is the
 capital, whether a terminal delivers it as `C` or as Shift and c. With Ctrl or
 Alt, case is not relied on (`Ctrl+Q` matches however it arrives).
+
+**`TabView`** — Qt Quick Controls 1's: a bar of its `Tab`s' titles over the
+current one's content. A Tab's content is made when it is first current and
+kept, so what was typed in a tab is still there when a handler reads it from
+another; a Tab that is not current is not laid out, painted or focused.
+Ctrl+PageUp and Ctrl+PageDown change tabs from inside the view; with the bar
+focused, ←/→ and `[` `]` do, and so does a click on a title.
+
+```qml
+TabView { id: settings
+    Tab { title: "Edit"; Flex { direction: Tui.Vertical; TextField { id: name } } }
+    Tab { title: "Advanced"; Flex { direction: Tui.Vertical; Text { text: "…" } } } }
+```
 
 **`Flex`** — Qt's `ColumnLayout` / `RowLayout`. Each child takes its own size,
 in order; a child marked `Layout.fillHeight: true` (in a column) or
