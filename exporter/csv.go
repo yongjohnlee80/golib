@@ -1,4 +1,4 @@
-package ingestor
+package exporter
 
 import (
 	"context"
@@ -23,7 +23,7 @@ type CSV[T any] struct {
 	writer[T]
 }
 
-// NewCSV creates and returns a new CSV ingestor with the given description.
+// NewCSV creates and returns a new CSV exporter with the given description.
 // Options configure the batch size (WithBatchSize, default DefaultCSVBatchSize),
 // where batch files are written (WithDir, WithOpener), and the background-write
 // cap (WithMaxWriters).
@@ -63,8 +63,8 @@ func (ml *CSV[T]) Flush(ctx context.Context) ([]T, error) {
 // Close drains and writes any remaining buffered data, discarding the rows.
 func (ml *CSV[T]) Close() error { return ml.writer.close() }
 
-// compile-time: *CSV satisfies Ingestor.
-var _ Ingestor[int] = (*CSV[int])(nil)
+// compile-time: *CSV satisfies Exporter.
+var _ Exporter[int] = (*CSV[int])(nil)
 
 // CSVHeaderRow generates a CSV header row from the provided struct or struct
 // pointer sample. A `csv:"name"` tag overrides the column name and `csv:"-"`
@@ -74,13 +74,13 @@ func CSVHeaderRow[T any](sample T) ([]string, error) {
 	val := reflect.ValueOf(sample)
 	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
-			return nil, errs.Wrap(errs.ErrInvalidArgument, "ingestor: CSV expects a non-nil struct pointer, got nil")
+			return nil, errs.Wrap(errs.ErrInvalidArgument, "exporter: CSV expects a non-nil struct pointer, got nil")
 		}
 		val = val.Elem()
 	}
 
 	if val.Kind() != reflect.Struct {
-		return nil, errs.Wrap(errs.ErrInvalidArgument, "ingestor: CSV expects a struct or a pointer to struct, got %v", val.Kind())
+		return nil, errs.Wrap(errs.ErrInvalidArgument, "exporter: CSV expects a struct or a pointer to struct, got %v", val.Kind())
 	}
 
 	typ := val.Type()

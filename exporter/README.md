@@ -1,24 +1,24 @@
-# ingestor
+# exporter
 
-Generic, thread-safe data-ingestion pipelines: buffer items in memory and flush
+Generic, thread-safe data-export pipelines: buffer items in memory and flush
 them in batches to CSV or JSON files (or any `io.Writer` backend you supply).
 Background writes are bounded and drain-aware; write errors are aggregated and
 returned on flush. Its only dependency is golib's own `threadsafe`.
 
 ```bash
-go get github.com/yongjohnlee80/golib/ingestor
+go get github.com/yongjohnlee80/golib/exporter
 ```
 
 ```go
-import "github.com/yongjohnlee80/golib/ingestor"
+import "github.com/yongjohnlee80/golib/exporter"
 ```
 
-## The `Ingestor` interface
+## The `Exporter` interface
 
-Every ingestor implements one contract:
+Every exporter implements one contract:
 
 ```go
-type Ingestor[T any] interface {
+type Exporter[T any] interface {
     Commit(ctx context.Context, items ...T) error // buffer items
     Flush(ctx context.Context) ([]T, error)        // drain + write + wait; returns the drained rows
     Total() uint64                                  // cumulative committed count
@@ -32,7 +32,7 @@ state change.
 ## Basic usage
 
 ```go
-csv := ingestor.NewCSV[Record]("export") // writes ./export-<unix>-NNN.csv
+csv := exporter.NewCSV[Record]("export") // writes ./export-<unix>-NNN.csv
 
 for _, r := range records {
     if err := csv.Commit(ctx, r); err != nil {
@@ -46,7 +46,7 @@ rows, err := csv.Flush(ctx) // writes any remainder, waits for background writes
 When you don't need the flushed rows back, use `Close` as a terminal `defer`:
 
 ```go
-j := ingestor.NewJSON[Record]("export")
+j := exporter.NewJSON[Record]("export")
 defer j.Close() // flush + wait, discard rows
 for _, r := range records {
     _ = j.Commit(ctx, r)
@@ -65,7 +65,7 @@ remainder is written by `Flush`/`Close`, which also wait for all background
 writes to finish and return any accumulated errors as `*BatchErrors`.
 
 ```go
-var be *ingestor.BatchErrors
+var be *exporter.BatchErrors
 if _, err := csv.Flush(ctx); errors.As(err, &be) {
     for _, e := range be.Errors { // errors.Is/As also walk these via Unwrap() []error
         log.Println("batch write failed:", e)
@@ -88,10 +88,10 @@ counter is zero-padded; `/`, `\`, and spaces in the description become `-`).
 | `WithMaxWriters(n)` | `4` | cap on concurrent background writes. `Commit` blocks once the cap is reached — backpressure, not unbounded goroutine growth. |
 
 ```go
-csv := ingestor.NewCSV[Record]("orders",
-    ingestor.WithBatchSize(500_000),
-    ingestor.WithDir("/data/exports"),
-    ingestor.WithMaxWriters(2),
+csv := exporter.NewCSV[Record]("orders",
+    exporter.WithBatchSize(500_000),
+    exporter.WithDir("/data/exports"),
+    exporter.WithMaxWriters(2),
 )
 ```
 
@@ -99,7 +99,7 @@ csv := ingestor.NewCSV[Record]("orders",
 
 ```go
 var buf bytes.Buffer
-csv := ingestor.NewCSV[Record]("test", ingestor.WithOpener(
+csv := exporter.NewCSV[Record]("test", exporter.WithOpener(
     func(name string) (io.WriteCloser, error) {
         return nopCloser{&buf}, nil // capture output instead of touching disk
     }))
@@ -131,12 +131,12 @@ buffer primitives: `Commit`, `Flush`, `Shift(n)` (remove and return the first
 
 ```go
 type Kafka[T any] struct {
-    *ingestor.MemoryLoader[T]
+    *exporter.MemoryLoader[T]
     topic string
 }
 
 func NewKafka[T any](topic string) *Kafka[T] {
-    return &Kafka[T]{MemoryLoader: ingestor.NewMemoryLoader[T](topic), topic: topic}
+    return &Kafka[T]{MemoryLoader: exporter.NewMemoryLoader[T](topic), topic: topic}
 }
 
 func (k *Kafka[T]) Commit(ctx context.Context, items ...T) error {
@@ -169,7 +169,7 @@ func (k *Kafka[T]) Commit(ctx context.Context, items ...T) error {
 
 | File | Contents |
 |---|---|
-| `ingestor.go` | `Ingestor[T]` interface |
+| `exporter.go` | `Exporter[T]` interface |
 | `memory.go` | `MemoryLoader[T]` base buffer |
 | `csv.go` | `CSV[T]`, `CSVHeaderRow`, `DefaultCSVBatchSize` |
 | `json.go` | `JSON[T]`, `DefaultJSONBatchSize` |

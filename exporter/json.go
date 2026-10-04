@@ -1,4 +1,4 @@
-package ingestor
+package exporter
 
 import (
 	"context"
@@ -19,7 +19,7 @@ type JSON[T any] struct {
 	writer[T]
 }
 
-// NewJSON creates and returns a new JSON ingestor with the given description.
+// NewJSON creates and returns a new JSON exporter with the given description.
 // Options configure the batch size (WithBatchSize, default DefaultJSONBatchSize),
 // where batch files are written (WithDir, WithOpener), and the background-write
 // cap (WithMaxWriters).
@@ -59,8 +59,8 @@ func (ml *JSON[T]) Flush(ctx context.Context) ([]T, error) {
 // Close drains and writes any remaining buffered data, discarding the rows.
 func (ml *JSON[T]) Close() error { return ml.writer.close() }
 
-// compile-time: *JSON satisfies Ingestor.
-var _ Ingestor[int] = (*JSON[int])(nil)
+// compile-time: *JSON satisfies Exporter.
+var _ Exporter[int] = (*JSON[int])(nil)
 
 // writeJSON encodes rows as an indented JSON array into w's target.
 func writeJSON[T any](wr *writer[T], name string, rows []T) error {

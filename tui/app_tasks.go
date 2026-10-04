@@ -261,9 +261,9 @@ func (a *App) Go(owner NodeID, task Task, opts ...TaskOption) TaskID {
 }
 
 // runTask is the per-task goroutine: acquire the pool semaphore INSIDE the
-// goroutine (the deliberate inversion of the ingestor's caller-blocking
-// acquire, ingestor/writer.go:54-56 vs its acquire-or-fallback select at
-// ingestor/writer.go:66-75 — a UI thread must never block, so Go bounds
+// goroutine (the deliberate inversion of the exporter's caller-blocking
+// acquire, the acquire-or-fallback select in writer.commit in
+// exporter/writer.go — a UI thread must never block, so Go bounds
 // RUNNING tasks, not calls), run recover-protected (the scaffold's
 // per-connection isolation, server/scaffold.go:205-212), and post the
 // addressed TaskResult.

@@ -80,9 +80,9 @@ shape (`server/scaffold.go:144-168`), its panic-isolated worker goroutines
 (`server/scaffold.go:201-214`), the registry's close-and-replace wake broadcast
 (`server/registry.go:46-49`) and deadline-bounded drain (`server/registry.go:155-198`),
 the ws package's one-reader contract and `sync.Once`/`done chan struct{}` teardown
-(`server/ws/ws.go:36-48`, `server/ws/ws.go:97-117`), and the ingestor's
+(`server/ws/ws.go:36-48`, `server/ws/ws.go:97-117`), and the exporter's
 semaphore-bounded background work with a synchronous `ctx.Done` fallback
-(`ingestor/writer.go:28`, `ingestor/writer.go:62-83`).
+(`exporter/writer.go:28`, `exporter/writer.go:62-83`).
 
 ### 1.1 Goals
 
@@ -98,14 +98,14 @@ semaphore-bounded background work with a synchronous `ctx.Done` fallback
   unmount-scoped subscriptions.
 - **G5** — Idle apps schedule nothing: no ticker, no timer, no wakeups — zero bytes and
   zero CPU at rest (with ADR-0003's render-on-dirty this completes ADR-0001 G5).
-- **G6** — Bounded async execution: a semaphore-capped pool (the `ingestor` pattern), so
+- **G6** — Bounded async execution: a semaphore-capped pool (the `exporter` pattern), so
   a burst of `Go` calls cannot spawn unbounded concurrent work.
 
 ### 1.2 Non-goals
 
 - **N1** — Parallel component updates or actor mailboxes (ADR-0001 N5; §4.1).
 - **N2** — A general job system (retries, priorities, persistence). `App.Go` is UI
-  async glue; real pipelines belong to application code or `ingestor`-like packages.
+  async glue; real pipelines belong to application code or `exporter`-like packages.
 - **N3** — Frame pacing and diff/flush mechanics — ADR-0003 owns them; this ADR only
   wakes the frame scheduler.
 - **N4** — Backend event *production* (parser, capability probe, input goroutine
@@ -555,12 +555,12 @@ func TaskInfo(ctx context.Context) (owner NodeID, id TaskID, ok bool)
 never-reused `NodeID`s, ADR-0004 §2.4, the pair is globally unambiguous for the App's
 lifetime), derives the task context, applies `Exclusive` preemption, and spawns the
 goroutine. The goroutine **first acquires the pool semaphore** — `sem chan struct{}`
-sized by `WithTaskPoolSize`, the ingestor's bounded-background-writes pattern
-(`ingestor/writer.go:28`) — in a select against `ctx.Done()`, mirroring the ingestor's
-acquire-or-fallback select (`ingestor/writer.go:66-75`): a task cancelled while queued
+sized by `WithTaskPoolSize`, the exporter's bounded-background-writes pattern
+(`exporter/writer.go:28`) — in a select against `ctx.Done()`, mirroring the exporter's
+acquire-or-fallback select (`exporter/writer.go:66-75`): a task cancelled while queued
 never runs, and completes immediately with `ctx.Err()`. Acquiring *inside* the goroutine
-(rather than in `Go`, where the ingestor blocks its caller for backpressure,
-`ingestor/writer.go:54-56`) is the deliberate inversion: the ingestor *wants* commit
+(rather than in `Go`, where the exporter blocks its caller for backpressure,
+`exporter/writer.go:54-56`) is the deliberate inversion: the exporter *wants* commit
 backpressure; a UI thread must never block, so `Go` bounds *running* tasks, not calls.
 
 **2.8.2 Completion, panic isolation, staleness.** The goroutine runs

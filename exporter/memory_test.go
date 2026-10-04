@@ -1,4 +1,4 @@
-package ingestor
+package exporter
 
 import (
 	"sync"
@@ -132,5 +132,5 @@ func TestMemoryLoader_ConcurrentCommit(t *testing.T) {
 }
 
 func TestMemoryLoader_InterfaceSatisfaction(t *testing.T) {
-	var _ Ingestor[int] = NewMemoryLoader[int]("")
+	var _ Exporter[int] = NewMemoryLoader[int]("")
 }
