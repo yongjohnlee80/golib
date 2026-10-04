@@ -48,17 +48,19 @@ func Start(c Cmd) (*PTY, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pty: open: %w", err)
 	}
-	rows, cols := c.size()
-	if err := setSize(master, rows, cols); err != nil {
-		master.Close()
-		return nil, err
-	}
 	slave, err := os.OpenFile(slaveName, os.O_RDWR|syscall.O_NOCTTY, 0)
 	if err != nil {
 		master.Close()
 		return nil, fmt.Errorf("pty: open %s: %w", slaveName, err)
 	}
 	defer slave.Close() // the child has its own copies
+	// The starting size goes on the slave: macOS refuses TIOCSWINSZ on a
+	// master whose slave has not been opened yet.
+	rows, cols := c.size()
+	if err := setSize(slave, rows, cols); err != nil {
+		master.Close()
+		return nil, err
+	}
 
 	cmd := exec.Command(c.Path, c.Args...)
 	cmd.Env = c.Env
@@ -182,8 +184,8 @@ func (p *PTY) Close() error {
 	return p.closeErr
 }
 
-// setSize applies TIOCSWINSZ through the descriptor without taking it out
-// of the runtime poller (File.Fd would make it blocking, and a blocked Read
+// setSize applies TIOCSWINSZ to either side of the pair, through the
+// descriptor without taking it out of the runtime poller (File.Fd would make it blocking, and a blocked Read
 // would then outlive Close).
 func setSize(f *os.File, rows, cols int) error {
 	rc, err := f.SyscallConn()

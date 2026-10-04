@@ -1,4 +1,4 @@
-// Package pty starts a program on a pseudo-terminal (ADR golib-tui-0018).
+// Package pty starts a program on a pseudo-terminal.
 //
 // Start opens a terminal pair, makes the child a session leader with the
 // terminal as its controlling tty, and returns the master side as a *PTY:
