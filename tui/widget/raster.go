@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"io"
 	"os"
@@ -94,8 +95,8 @@ const (
 // most MaxHeight (0: MaxPageHeight), at Scale — a browser's zoom: 2 draws everything twice the
 // size, the page laid out half as wide; 0 is 1. The browser's time grows with the window's area,
 // so a Wide page that is never long (a diagram) does well to bound its height. Background is the
-// page's own colour, "#rrggbb": what is cut below and beside the content. Without it the
-// bottom-right pixel is taken for it, which is wrong for content that reaches that corner.
+// page's own colour, "#rrggbb": what is cut beside the content and fills a short page. Without it
+// the bottom-right pixel is taken for it, which is wrong for content that reaches that corner.
 type Page struct {
 	Width, MinHeight, MaxHeight int
 	Scale                       float64
@@ -103,10 +104,17 @@ type Page struct {
 	Background                  string
 }
 
-// RasterizeHTMLPage renders the whole of html as a PNG, for an Image that scrolls (see Page). The
-// page is laid out in a window as tall as MaxPageHeight allows — as wide as MaxPageWidth allows,
-// when Wide — and the rows below its content and the columns to its right, all of the colour of
-// the bottom-right pixel, are cut. A page sized to the window (100vh) fills it.
+// RasterizeHTMLPage renders the whole of html as a PNG, for an Image that scrolls (see Page).
+//
+// Where the page ends is marked, not guessed: an end marker — a bar of a reserved colour, after
+// everything in the page's flow — is added before </body>, and the page is cut just above it. A
+// blank stretch of the page is no evidence of its end (content may follow it). The page is laid
+// out first in a window firstPageHeight rows tall, and again in the whole height only when the
+// marker is not in that first window. A page whose policy keeps the marker unstyled, so that it
+// never shows, is cut where the whole-height window shows nothing more: its rows of the background
+// at the bottom. To the right, a Wide page is cut where the window shows nothing more. A page
+// sized to the window (100vh) fills it. One shorter than MinHeight is filled to it with its
+// background.
 func RasterizeHTMLPage(ctx context.Context, html []byte, p Page) ([]byte, error) {
 	scale := p.Scale
 	if scale <= 0 {
@@ -121,56 +129,101 @@ func RasterizeHTMLPage(ctx context.Context, html []byte, p Page) ([]byte, error)
 	if p.MaxHeight > 0 {
 		height = min(p.MaxHeight, MaxPageHeight)
 	}
-	// most pages are short, and the browser's time grows with the window: a first window of
-	// firstPageHeight, and the whole height only for a page that reaches its bottom
-	render := func(h int) ([]byte, bool, error) {
+	html = withEndMarker(html)
+	minH := max(1, min(p.MinHeight, height))
+	render := func(h int) (image.Image, error) {
 		b, err := rasterizeHTML(ctx, html, int(float64(window)/scale), int(float64(h)/scale), scale)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
-		return trimBlank(b, width, max(1, min(p.MinHeight, h)), p.Background)
+		img, err := png.Decode(bytes.NewReader(b))
+		if err != nil {
+			return nil, fmt.Errorf("widget: the browser's screenshot: %w", err)
+		}
+		return img, nil
 	}
+	// most pages are short, and the browser's time grows with the window
 	first := min(firstPageHeight, height)
-	out, ended, err := render(first)
-	if err != nil || ended || first == height {
-		return out, err
+	img, err := render(first)
+	if err != nil {
+		return nil, err
 	}
-	out, _, err = render(height)
-	return out, err
+	end, found := endMarkerRow(img)
+	if !found && first < height {
+		if img, err = render(height); err != nil {
+			return nil, err
+		}
+		end, found = endMarkerRow(img)
+	}
+	return cutPage(img, width, minH, end, found, p.Background)
 }
 
-// trimBlank cuts the rows at the bottom and the columns at the right of a PNG that are all of the
-// background — background, "#rrggbb", or else the bottom-right pixel's colour — keeping at least
-// minW × minH, and reports whether its last row was blank: whether the page ended in the window.
-func trimBlank(b []byte, minW, minH int, background string) ([]byte, bool, error) {
-	img, err := png.Decode(bytes.NewReader(b))
-	if err != nil {
-		return nil, false, fmt.Errorf("widget: the browser's screenshot: %w", err)
+// endMarker is the bar withEndMarker adds: its colour is reserved, and it is tall enough to show
+// at the smallest zoom.
+const endMarker = `<div style="display:block;clear:both;height:6px;margin:0;padding:0;border:0;background:#fe01fd"></div>`
+
+// withEndMarker adds the end marker before the page's last </body>, or at its end.
+func withEndMarker(html []byte) []byte {
+	i := bytes.LastIndex(bytes.ToLower(html), []byte("</body>"))
+	if i < 0 {
+		return append(append([]byte(nil), html...), endMarker...)
 	}
+	out := make([]byte, 0, len(html)+len(endMarker))
+	out = append(out, html[:i]...)
+	out = append(out, endMarker...)
+	return append(out, html[i:]...)
+}
+
+// endMarkerRow is the first row of img holding a run of the end marker's colour, and whether any
+// does.
+func endMarkerRow(img image.Image) (int, bool) {
 	r := img.Bounds()
-	br, bg, bb, ba := img.At(r.Max.X-1, r.Max.Y-1).RGBA()
+	marker := func(x, y int) bool {
+		cr, cg, cb, _ := img.At(x, y).RGBA()
+		near := func(v uint32, want uint32) bool { return v>>8+3 >= want && v>>8 <= want+3 }
+		return near(cr, 0xfe) && near(cg, 0x01) && near(cb, 0xfd)
+	}
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		run := 0
+		for x := r.Min.X; x < r.Max.X; x++ {
+			if !marker(x, y) {
+				run = 0
+				continue
+			}
+			if run++; run >= 6 {
+				return y, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// cutPage cuts img at the page's end — just above the end marker's row when found, else where its
+// rows of the background at the bottom begin — and to the right where its columns of the
+// background begin (never narrower than minW), and fills it to minH with the background.
+// background is "#rrggbb", or else the bottom-right pixel's colour.
+func cutPage(img image.Image, minW, minH, end int, found bool, background string) ([]byte, error) {
+	r := img.Bounds()
+	bg := color.RGBAModel.Convert(img.At(r.Max.X-1, r.Max.Y-1)).(color.RGBA)
 	var rgb [3]uint8
 	if n, _ := fmt.Sscanf(background, "#%02x%02x%02x", &rgb[0], &rgb[1], &rgb[2]); n == 3 {
-		br, bg, bb, ba = color.RGBA{rgb[0], rgb[1], rgb[2], 0xff}.RGBA()
+		bg = color.RGBA{rgb[0], rgb[1], rgb[2], 0xff}
 	}
-	blank := func(x, y int) bool {
-		cr, cg, cb, ca := img.At(x, y).RGBA()
-		return cr == br && cg == bg && cb == bb && ca == ba
-	}
+	blank := func(x, y int) bool { return color.RGBAModel.Convert(img.At(x, y)).(color.RGBA) == bg }
 	bottom := r.Max.Y
-	ended := true
-	for x := r.Min.X; x < r.Max.X && ended; x++ {
-		ended = blank(x, r.Max.Y-1)
-	}
-	for bottom > r.Min.Y+minH {
-		all := true
-		for x := r.Min.X; x < r.Max.X && all; x++ {
-			all = blank(x, bottom-1)
+	if found {
+		bottom = end
+	} else {
+		for bottom > r.Min.Y {
+			all := true
+			for x := r.Min.X; x < r.Max.X && all; x++ {
+				all = blank(x, bottom-1)
+			}
+			if !all {
+				break
+			}
+			bottom--
 		}
-		if !all {
-			break
-		}
-		bottom--
 	}
 	right := r.Max.X
 	for right > r.Min.X+minW {
@@ -183,20 +236,14 @@ func trimBlank(b []byte, minW, minH int, background string) ([]byte, bool, error
 		}
 		right--
 	}
-	if bottom == r.Max.Y && right == r.Max.X {
-		return b, ended, nil
+	out := image.NewRGBA(image.Rect(0, 0, right-r.Min.X, max(bottom-r.Min.Y, minH)))
+	draw.Draw(out, out.Bounds(), image.NewUniform(bg), image.Point{}, draw.Src)
+	draw.Draw(out, image.Rect(0, 0, right-r.Min.X, bottom-r.Min.Y), img, r.Min, draw.Src)
+	var b bytes.Buffer
+	if err := png.Encode(&b, out); err != nil {
+		return nil, err
 	}
-	sub, ok := img.(interface {
-		SubImage(image.Rectangle) image.Image
-	})
-	if !ok {
-		return b, ended, nil
-	}
-	var out bytes.Buffer
-	if err := png.Encode(&out, sub.SubImage(image.Rect(r.Min.X, r.Min.Y, right, bottom))); err != nil {
-		return nil, false, err
-	}
-	return out.Bytes(), ended, nil
+	return b.Bytes(), nil
 }
 
 // rasterizeHTML renders html in a window width × height (the browser's own pixels) at scale.

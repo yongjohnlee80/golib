@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -326,6 +328,26 @@ func TestRasterizeHTMLPage(t *testing.T) {
 	if _, h, _ := page(`<div style="height:600px;background:#000"></div>`, Page{Width: 400, MinHeight: 100, Background: "#ffffff"}); h != 600 {
 		t.Errorf("a 600px page on white is %d tall", h)
 	}
+	// a long blank gap inside the page is not its end: what follows it is kept
+	gap := `<div style="height:100px;background:#000"></div><div style="height:5000px"></div><div style="height:100px;background:#000"></div>`
+	if _, h, _ := page(gap, Page{Width: 200, MinHeight: 100, Background: "#ffffff"}); h != 5200 {
+		t.Errorf("a page with a 5000px gap is %d tall, want 5200", h)
+	}
+	if _, h, _ := page(gap, Page{Width: 200, MinHeight: 100}); h != 5200 {
+		t.Errorf("without a named background, a page with a 5000px gap is %d tall, want 5200", h)
+	}
+	// the end marker is never in the picture, a short page filled to its minimum included
+	for _, body := range []string{`<p>short</p>`, gap} {
+		_, _, b := page(body, Page{Width: 200, MinHeight: 300, Scale: 0.5, Background: "#ffffff"})
+		if hasMarker(t, b) {
+			t.Errorf("the end marker shows in the picture of %.20q", body)
+		}
+	}
+	// a page whose policy keeps the marker unstyled: cut where nothing more shows
+	strict := `<meta http-equiv="Content-Security-Policy" content="style-src 'none'">` + tall
+	if _, h, _ := page(strict, Page{Width: 400, MinHeight: 100, Background: "#ffffff"}); h != 1500 {
+		t.Errorf("a page refusing inline styles is %d tall, want 1500", h)
+	}
 	// longer than the first window tried: rendered again, whole
 	if _, h, _ := page(`<div style="height:6000px;background:#000"></div>`, Page{Width: 200, MinHeight: 100, Background: "#ffffff"}); h != 6000 {
 		t.Errorf("a 6000px page is %d tall: cut at the first window", h)
@@ -335,5 +357,206 @@ func TestRasterizeHTMLPage(t *testing.T) {
 		Page{Width: 400, MinHeight: 100})
 	if h != 2000 {
 		t.Errorf("the script's drawing is %d tall, want 2000: the screenshot did not wait for it", h)
+	}
+}
+
+// hasMarker reports whether a PNG holds any pixel of the end marker's colour.
+func hasMarker(t *testing.T, b []byte) bool {
+	t.Helper()
+	img, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := img.Bounds()
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			if cr, cg, cb, _ := img.At(x, y).RGBA(); cr>>8 == 0xfe && cg>>8 == 0x01 && cb>>8 == 0xfd {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// band is a PNG w×h of white with rows painted: each [from, to) row range in its colour.
+func band(t *testing.T, w, h int, rows ...struct {
+	from, to int
+	c        color.RGBA
+}) string {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{255, 255, 255, 255}), image.Point{}, draw.Src)
+	for _, r := range rows {
+		draw.Draw(img, image.Rect(0, r.from, w, r.to), image.NewUniform(r.c), image.Point{}, draw.Src)
+	}
+	var b bytes.Buffer
+	if err := png.Encode(&b, img); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "shot.png")
+	if err := os.WriteFile(p, b.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+type rows = struct {
+	from, to int
+	c        color.RGBA
+}
+
+var (
+	black  = color.RGBA{0, 0, 0, 255}
+	marker = color.RGBA{0xfe, 0x01, 0xfd, 255}
+)
+
+// A browser that answers each run with the next screenshot of shots, and logs its arguments.
+func fakeBrowser(t *testing.T, shots ...string) (calls func() []string) {
+	t.Helper()
+	dir := t.TempDir()
+	log, n := filepath.Join(dir, "log"), filepath.Join(dir, "n")
+	script := `n=$(cat "` + n + `" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "` + n + `"; echo "$*" >> "` + log + `"
+for a in "$@"; do case "$a" in --screenshot=*) out="${a#--screenshot=}";; esac; done
+case $n in`
+	for i, s := range shots {
+		script += fmt.Sprintf(" %d) cp %q \"$out\";;", i+1, s)
+	}
+	script += " esac\n"
+	fakeTool(t, &htmlTools, script)
+	return func() []string {
+		b, _ := os.ReadFile(log)
+		return strings.Split(strings.TrimSpace(string(b)), "\n")
+	}
+}
+
+func pngAt(t *testing.T, b []byte, x, y int) color.RGBA {
+	t.Helper()
+	img, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
+}
+
+// RasterizeHTMLPage's passes and cuts, against a browser that answers with prepared screenshots: a
+// page whose end marker is in the first window is cut above it after one run; one whose marker is
+// not is run again in the whole height, a blank stretch in the first window no evidence of its
+// end; one with no marker at all is cut where nothing more shows, and filled to its minimum.
+func TestRasterizeHTMLPagePassesWithoutABrowser(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell scripts as tools")
+	}
+	ctx := context.Background()
+	// one run: the marker at row 50
+	calls := fakeBrowser(t, band(t, 40, 120, rows{0, 10, black}, rows{50, 56, marker}))
+	b, err := RasterizeHTMLPage(ctx, []byte("<body><p>x</p></body>"), Page{Width: 40, MinHeight: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h := pngSize(t, b); w != 40 || h != 50 || len(calls()) != 1 || !strings.Contains(calls()[0], "--window-size=40,4096") {
+		t.Errorf("one window: %d×%d after %q", w, h, calls())
+	}
+
+	// the first window all content and blank, no marker: run again whole, and cut at its marker
+	calls = fakeBrowser(t, band(t, 40, 120, rows{0, 10, black}),
+		band(t, 40, 300, rows{0, 10, black}, rows{150, 160, black}, rows{200, 206, marker}))
+	if b, err = RasterizeHTMLPage(ctx, []byte("<p>x</p>"), Page{Width: 40, MinHeight: 20, Scale: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if w, h := pngSize(t, b); w != 40 || h != 200 || len(calls()) != 2 || !strings.Contains(calls()[1], fmt.Sprintf("--window-size=20,%d", MaxPageHeight/2)) {
+		t.Errorf("two windows: %d×%d after %q", w, h, calls())
+	}
+
+	// no marker anywhere (a page that keeps it unstyled): cut where nothing more shows, filled
+	fakeBrowser(t, band(t, 40, 120, rows{0, 10, black}), band(t, 40, 120, rows{0, 10, black}))
+	if b, err = RasterizeHTMLPage(ctx, []byte("<p>x</p>"), Page{Width: 40, MinHeight: 30, Background: "#ffffff"}); err != nil {
+		t.Fatal(err)
+	}
+	if w, h := pngSize(t, b); w != 40 || h != 30 || pngAt(t, b, 0, 29) != (color.RGBA{255, 255, 255, 255}) || pngAt(t, b, 0, 5) != black {
+		t.Errorf("no marker: %d×%d", w, h)
+	}
+
+	// Wide: as wide as what shows, never narrower than Width; MaxHeight bounds the one window
+	wide := image.NewRGBA(image.Rect(0, 0, 100, 50))
+	draw.Draw(wide, wide.Bounds(), image.NewUniform(color.RGBA{255, 255, 255, 255}), image.Point{}, draw.Src)
+	draw.Draw(wide, image.Rect(0, 0, 70, 10), image.NewUniform(black), image.Point{}, draw.Src)
+	draw.Draw(wide, image.Rect(0, 30, 100, 36), image.NewUniform(marker), image.Point{}, draw.Src)
+	var wb bytes.Buffer
+	_ = png.Encode(&wb, wide)
+	wp := filepath.Join(t.TempDir(), "wide.png")
+	_ = os.WriteFile(wp, wb.Bytes(), 0o600)
+	calls = fakeBrowser(t, wp)
+	if b, err = RasterizeHTMLPage(ctx, []byte("<p>x</p>"), Page{Width: 40, MinHeight: 10, MaxHeight: 1000, Wide: true}); err != nil {
+		t.Fatal(err)
+	}
+	if w, h := pngSize(t, b); w != 70 || h != 30 || !strings.Contains(calls()[0], fmt.Sprintf("--window-size=%d,1000", MaxPageWidth)) {
+		t.Errorf("wide: %d×%d after %q", w, h, calls())
+	}
+
+	// a browser that fails, and one whose screenshot is not a PNG
+	fakeTool(t, &htmlTools, `echo "crashed" >&2; exit 1`)
+	if _, err := RasterizeHTMLPage(ctx, []byte("x"), Page{Width: 40}); err == nil || !strings.Contains(err.Error(), "crashed") {
+		t.Errorf("a crashing browser: %v", err)
+	}
+	fakeTool(t, &htmlTools, `for a in "$@"; do case "$a" in --screenshot=*) printf 'not a png' > "${a#--screenshot=}";; esac; done`)
+	if _, err := RasterizeHTMLPage(ctx, []byte("x"), Page{Width: 40}); err == nil || !strings.Contains(err.Error(), "screenshot") {
+		t.Errorf("a screenshot that is not a PNG: %v", err)
+	}
+	fakeBrowser(t, band(t, 40, 120, rows{0, 10, black}))
+	if _, err := RasterizeHTMLPage(ctx, []byte("x"), Page{Width: 40}); err == nil {
+		t.Error("a second run that writes nothing went unnoticed")
+	}
+}
+
+// The end marker goes before the page's last </body>, whatever its case, or at the end of a page
+// without one.
+func TestWithEndMarker(t *testing.T) {
+	for in, want := range map[string]string{
+		"<body><p>a</p></BODY></html>": "<body><p>a</p>" + endMarker + "</BODY></html>",
+		"<p>a</p>":                     "<p>a</p>" + endMarker,
+		"<body>1</body><body>2</body>": "<body>1</body><body>2" + endMarker + "</body>",
+	} {
+		if got := string(withEndMarker([]byte(in))); got != want {
+			t.Errorf("withEndMarker(%q) = %q", in, got)
+		}
+	}
+}
+
+// ScrollTo and Scroll set and read the corner, within the PNG; what is not a scroll key or the
+// wheel is left to others.
+func TestAScrollableImageCornerAndOtherEvents(t *testing.T) {
+	m := NewImage()
+	m.SetScrollable(true)
+	m.SetPNG(tallPNG(t, 300, 1000))
+	m.view.cols, m.view.rows = 10, 5
+	m.ScrollTo(150, 400)
+	if shown, w, h := m.Scroll(); shown != (tui.Rect{X: 150, Y: 400, W: 100, H: 100}) || w != 300 || h != 1000 {
+		t.Errorf("Scroll = %+v, %d×%d", shown, w, h)
+	}
+	m.ScrollTo(-5, 5000)
+	if shown, _, _ := m.Scroll(); shown.X != 0 || shown.Y != 900 {
+		t.Errorf("ScrollTo past the edges: %+v", shown)
+	}
+	for name, ev := range map[string]tui.Event{
+		"a release":        tui.KeyEvent{Kind: tui.KeyRelease, Code: tui.KeyDown},
+		"a chord":          tui.KeyEvent{Kind: tui.KeyPress, Code: 'j', Mods: tui.ModCtrl},
+		"another key":      tui.KeyEvent{Kind: tui.KeyPress, Code: 'x'},
+		"a click":          tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft},
+		"another resizing": tui.ResizeEvent{},
+	} {
+		if m.HandleEvent(ev) {
+			t.Errorf("%s was taken", name)
+		}
+	}
+	m.ScrollTo(100, 0)
+	if !m.HandleEvent(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelLeft}) {
+		t.Fatal("the wheel sideways was not taken")
+	}
+	if shown, _, _ := m.Scroll(); shown.X != 70 {
+		t.Errorf("the wheel left moved to %+v", shown)
+	}
+	m.SetPNG(nil)
+	if _, ok := m.Image(); ok || m.HasImage() {
+		t.Error("a cleared PNG still shows")
 	}
 }
