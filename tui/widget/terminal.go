@@ -311,6 +311,16 @@ func (t *Terminal) Stop() { t.stop() }
 // endWithApp hangs the program up once the App has ended (the loop is
 // gone, so this runs on the watcher's goroutine).
 func (t *Terminal) endWithApp() {
+	// The loop has ended, so the fields it owned are settled. No loop will
+	// take keys off the input queue or output off the bridge again: release
+	// the queue's writer and a reader blocked on the bridge's budget, then
+	// hang the program up.
+	if t.in != nil {
+		t.in.close()
+	}
+	if t.wr != nil {
+		t.wr.close()
+	}
 	if proc := t.takeLive(); proc != nil {
 		proc.Close()
 	}
