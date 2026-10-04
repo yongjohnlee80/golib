@@ -37,7 +37,7 @@ go get github.com/yongjohnlee80/golib
 | [`collections`](collections/README.md) | Generic `Set[T]` and stdlib-shaped `Map`/`Filter`/`Reduce` slice ops | [README](collections/README.md) |
 | [`logger`](logger/README.md) | Small level-based logging seam; `Fields`/`Entry`, `Adapt`, and both `slog` bridges | [README](logger/README.md) |
 | [`request`](request/README.md) | HTTP client: typed error decoding, functional options, multipart, history | [README](request/README.md) |
-| [`ingestor`](ingestor/README.md) | Thread-safe buffer-and-flush pipelines to CSV/JSON with bounded background writes | [README](ingestor/README.md) |
+| [`exporter`](exporter/README.md) | Thread-safe buffer-and-flush pipelines to CSV/JSON with bounded background writes | [README](exporter/README.md) |
 | [`dao`](dao/README.md) | Generic, driver-agnostic data-access layer — declare an entity once | [README](dao/README.md) · [USAGE](dao/USAGE.md) |
 | [`partial`](partial/README.md) | Three-state (value/absent/null) PATCH payloads, projecting onto `dao` updates | [README](partial/README.md) |
 | [`msgpack`](msgpack/README.md) | Zero-dependency MessagePack value codec with hardened decode limits | [README](msgpack/README.md) |
@@ -130,13 +130,13 @@ typed success/error, `FormWriter` builds multipart, `Histories` keeps a debug
 trail.
 → [request/README.md](request/README.md)
 
-### ingestor
+### exporter
 
 Buffer items in memory and flush them in batches to CSV/JSON files (or any
 `io.Writer` you supply) with bounded, drain-aware background writes.
-`Ingestor[T]` is context-first; embed `MemoryLoader[T]` to build a custom
+`Exporter[T]` is context-first; embed `MemoryLoader[T]` to build a custom
 backend.
-→ [ingestor/README.md](ingestor/README.md)
+→ [exporter/README.md](exporter/README.md)
 
 ### dao
 

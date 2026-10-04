@@ -194,8 +194,8 @@ type App struct {
 
 	bus *Bus
 
-	// Task pool: sem bounds RUNNING tasks (the ingestor's
-	// bounded-background-work pattern, ingestor/writer.go:28).
+	// Task pool: sem bounds RUNNING tasks (the exporter's
+	// bounded-background-work pattern, the sem field in exporter/writer.go).
 	sem        chan struct{}
 	nextTaskID atomic.Uint64
 	async      asyncState

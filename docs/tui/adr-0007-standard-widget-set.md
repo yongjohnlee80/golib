@@ -362,7 +362,7 @@ var ErrClosed = errors.New("widget: buffer view closed")
 // Writer returns a concurrent io.Writer handle feeding this view. The HANDLE is the
 // cross-goroutine surface; the BufferView value itself remains loop-owned like every
 // other widget. Contract: safe from any goroutine; bounded pending bytes (writes
-// block, mirroring ingestor/writer.go's semaphore model, when the loop lags — never
+// block, mirroring exporter/writer.go's semaphore model, when the loop lags — never
 // unbounded buffering); ordered delivery (bytes reach the interpreter in write
 // order); returns ErrClosed after the view unmounts. Bytes are handed to the loop
 // via App.Post (ADR-0005); parsing and cell conversion happen on the loop goroutine.
@@ -635,7 +635,7 @@ walkthrough surfaces no missing widget for either target app.
 - `BufferView.Writer()` is the framework's one sanctioned any-goroutine write surface
   (rev 1: a separate handle, so the widget itself stays loop-owned). Its internal
   chunking/backpressure (bounded pending-bytes with blocking writes, mirroring
-  `ingestor/writer.go`'s semaphore model; delivery via Post; `ErrClosed` after
+  `exporter/writer.go`'s semaphore model; delivery via Post; `ErrClosed` after
   unmount) must be implemented and race-tested exactly as specified in §2.4.
 
 **Evolution**

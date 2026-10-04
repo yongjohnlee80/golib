@@ -1,4 +1,4 @@
-package ingestor
+package exporter
 
 import (
 	"context"
@@ -16,7 +16,7 @@ type memState[T any] struct {
 }
 
 // MemoryLoader temporarily stores and manages a buffered set of data in memory.
-// It is the base implementation embedded by CSV and JSON ingestors.
+// It is the base implementation embedded by CSV and JSON exporters.
 type MemoryLoader[T any] struct {
 	desc  string
 	wg    sync.WaitGroup
@@ -93,7 +93,7 @@ func (ml *MemoryLoader[T]) Flush(ctx context.Context) ([]T, error) {
 }
 
 // Close drains any remaining buffered data, discarding it. It exists to
-// satisfy [Ingestor]; for a MemoryLoader the data has nowhere to go, so
+// satisfy [Exporter]; for a MemoryLoader the data has nowhere to go, so
 // prefer Flush when the buffered items matter.
 func (ml *MemoryLoader[T]) Close() error {
 	_, err := ml.Flush(context.Background())

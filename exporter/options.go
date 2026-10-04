@@ -1,4 +1,4 @@
-package ingestor
+package exporter
 
 import (
 	"io"
@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// config holds the file-writer settings shared by the CSV and JSON ingestors.
+// config holds the file-writer settings shared by the CSV and JSON exporters.
 type config struct {
 	dir        string
 	opener     func(name string) (io.WriteCloser, error)
@@ -15,7 +15,7 @@ type config struct {
 	maxWriters int
 }
 
-// Option configures a file-writing ingestor (CSV, JSON).
+// Option configures a file-writing exporter (CSV, JSON).
 type Option func(*config)
 
 // WithDir sets the directory batch files are written into. The default is the
@@ -24,7 +24,7 @@ func WithDir(dir string) Option {
 	return func(c *config) { c.dir = dir }
 }
 
-// WithOpener replaces the file-creation function entirely — the ingestor
+// WithOpener replaces the file-creation function entirely — the exporter
 // writes each batch to the io.WriteCloser returned for the batch's file name.
 // Use it to redirect output to in-memory buffers (tests), sockets, or object
 // storage. When set, WithDir is ignored.
@@ -33,7 +33,7 @@ func WithOpener(fn func(name string) (io.WriteCloser, error)) Option {
 }
 
 // WithBatchSize sets how many buffered items trigger a background batch file.
-// 0 keeps the ingestor's default (DefaultCSVBatchSize / DefaultJSONBatchSize).
+// 0 keeps the exporter's default (DefaultCSVBatchSize / DefaultJSONBatchSize).
 func WithBatchSize(n uint64) Option {
 	return func(c *config) { c.batchSize = n }
 }

@@ -1,4 +1,4 @@
-package ingestor
+package exporter
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 )
 
-// writer is the shared batching engine behind the CSV and JSON ingestors:
+// writer is the shared batching engine behind the CSV and JSON exporters:
 // it drains full batches off the embedded MemoryLoader, writes each batch to
 // its own file on a background goroutine, and aggregates write errors until
 // the next flush.
