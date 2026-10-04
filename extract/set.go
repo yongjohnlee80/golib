@@ -101,8 +101,9 @@ func (s *Set) Supports(name string) bool {
 // name chooses the extractor by its extension and supplies the title when the extractor finds none;
 // it is never opened.
 //
-// It returns [ErrUnsupported] for an extension with no extractor and [ErrContainerTooLarge] for a
-// file over the container limit, both before reading anything. [ErrTextTooLarge] is returned when the
+// It returns [ErrUnsupported] for an extension with no extractor, an error wrapping
+// errs.ErrInvalidArgument for a negative size, and [ErrContainerTooLarge] for a file over the
+// container limit, all before reading anything. [ErrTextTooLarge] is returned when the
 // text passes the text limit, even if the extractor ignored the failed write. A failure of w itself,
 // such as a full disk, is always returned, even if the extractor ignored it, and alongside
 // ErrTextTooLarge when both happened. Any other error is the extractor's, wrapped with name.
@@ -114,6 +115,9 @@ func (s *Set) Extract(ctx context.Context, name string, r io.ReaderAt, size int6
 	e, ok := s.byExt[normalize(ext)]
 	if !ok {
 		return Info{}, errs.Wrap(ErrUnsupported, "extract %s", name)
+	}
+	if size < 0 {
+		return Info{}, errs.Wrap(errs.ErrInvalidArgument, "extract %s: negative size %d", name, size)
 	}
 	if s.maxContainer > 0 && size > s.maxContainer {
 		return Info{}, errs.Wrap(ErrContainerTooLarge, "extract %s: %d bytes, limit %d", name, size, s.maxContainer)
