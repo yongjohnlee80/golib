@@ -114,3 +114,34 @@ func TestResetKeepsOutput(t *testing.T) {
 		t.Fatalf("DEL after Reset emitted %v", got)
 	}
 }
+
+func TestOutputC1STEndsStrings(t *testing.T) {
+	for _, c := range []struct {
+		name, input string
+		want        []string
+	}{
+		{"osc", "\x1b]0;title\u009cafter", []string{`osc:"0;title"`, `print:"a"`, `print:"f"`, `print:"t"`, `print:"e"`, `print:"r"`}},
+		{"dcs", "\x1bP+q54\u009cx", []string{`dcs:priv="" params=[] inter="+" final="q" data="54"`, `print:"x"`}},
+		{"apc", "\x1b_Gi=1\u009cx", []string{`apc:"Gi=1"`, `print:"x"`}},
+		{"pm ignored", "\x1b^secret\u009cx", []string{`print:"x"`}},
+		{"other C2 runes stay data", "\x1b]0;caf\u00e9\u00a0\x07", []string{"osc:\"0;caf\u00e9\\u00a0\""}},
+		{"C2 before ESC stays data", "\x1b]0;a\xc2\x1b\\", []string{`osc:"0;a\xc2"`, `esc:inter="" final="\\"`}},
+		{"C2 then CAN drops", "\x1b]0;a\xc2\x18x", []string{`exec:18`, `print:"x"`}},
+	} {
+		if got := parseOutput(c.input); !equalStrings(got, c.want) {
+			t.Errorf("%s: %q\n got: %v\nwant: %v", c.name, c.input, got, c.want)
+		}
+	}
+	// Input keeps U+009C as string data: the key decoder's strings are replies.
+	if got := parse("\x1b]0;a\u009cb\x07"); !equalStrings(got, []string{`osc:"0;a\u009cb"`}) {
+		t.Errorf("input: %v", got)
+	}
+}
+
+func TestOutputHoldsEightSubparams(t *testing.T) {
+	got := parseOutput("\x1b[1:2:3:4:5:6:7:8:9:10m")
+	want := []string{`csi:priv="" params=[1:2:3:4:5:6:7:8] inter="" final="m"`}
+	if !equalStrings(got, want) {
+		t.Errorf("output overflow: got %v want %v", got, want)
+	}
+}
