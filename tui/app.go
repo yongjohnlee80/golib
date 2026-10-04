@@ -194,8 +194,8 @@ type App struct {
 
 	bus *Bus
 
-	// Task pool: sem bounds how many tasks run at once, so a burst of
-	// submissions cannot start an unbounded number of goroutines.
+	// Task pool: sem bounds how many tasks run at once. Each submission still
+	// starts a goroutine, which waits for a slot before its task runs.
 	sem        chan struct{}
 	nextTaskID atomic.Uint64
 	async      asyncState
