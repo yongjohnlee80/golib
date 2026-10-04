@@ -32,6 +32,11 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// holdOpen keeps a helper alive until its terminal is hung up, so what it
+// printed is read before it exits: macOS hangs up a session leader's terminal
+// as it exits, which can drop output the master has not read yet.
+func holdOpen() { bufio.NewReader(os.Stdin).ReadString('\n') }
+
 func helper(mode string) {
 	switch {
 	case mode == "leader":
@@ -39,6 +44,7 @@ func helper(mode string) {
 		sid, _ := unix.Getsid(0)
 		fg, _ := unix.IoctlGetInt(0, unix.TIOCGPGRP)
 		fmt.Printf("pid=%d sid=%d fg=%d\n", pid, sid, fg)
+		holdOpen()
 	case strings.HasPrefix(mode, "exit="):
 		n, _ := strconv.Atoi(strings.TrimPrefix(mode, "exit="))
 		os.Exit(n)
@@ -104,7 +110,9 @@ func (r *reader) await(t *testing.T, want string) string {
 }
 
 func TestEchoRoundTrips(t *testing.T) {
-	p, err := Start(Cmd{Path: "/bin/sh", Args: []string{"-c", `read x; echo "got:$x"`}})
+	// Every program here waits for a last line before exiting, so its output
+	// is read first (see holdOpen).
+	p, err := Start(Cmd{Path: "/bin/sh", Args: []string{"-c", `read x; echo "got:$x"; read y`}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +124,7 @@ func TestEchoRoundTrips(t *testing.T) {
 	if l := r.await(t, "got:"); l != "got:abc" {
 		t.Fatalf("line = %q", l)
 	}
+	p.Write([]byte("\n"))
 	if code, err := p.Wait(); code != 0 || err != nil {
 		t.Fatalf("Wait = %d, %v", code, err)
 	}
@@ -123,7 +132,7 @@ func TestEchoRoundTrips(t *testing.T) {
 
 func TestSizeAndResize(t *testing.T) {
 	p, err := Start(Cmd{
-		Path: "/bin/sh", Args: []string{"-c", `stty size; read x; stty size`},
+		Path: "/bin/sh", Args: []string{"-c", `stty size; read x; stty size; read y`},
 		Rows: 33, Cols: 101,
 	})
 	if err != nil {
@@ -143,7 +152,7 @@ func TestSizeAndResize(t *testing.T) {
 }
 
 func TestDefaultSize(t *testing.T) {
-	p, err := Start(Cmd{Path: "stty", Args: []string{"size"}})
+	p, err := Start(Cmd{Path: "/bin/sh", Args: []string{"-c", `stty size; read x`}})
 	if err != nil {
 		t.Fatal(err)
 	}
