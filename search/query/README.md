@@ -16,6 +16,7 @@ import "github.com/yongjohnlee80/golib/search/query"
 terms, words := query.Terms(`storage OR "x" stor*`)
 // terms: storage, OR, "x", stor (prefix); words (for tag boosts): storage, or, "x", stor
 match := query.FTS5(terms) // "storage" "OR" """x""" "stor"*
+ts, err := query.TSQuery(terms) // 'storage' & 'OR' & '"x"' & 'stor':*   (PostgreSQL; no terms: ErrNoTerms)
 
 rest, facets, err := query.Facets("type:adr re:x storage", nil, schema)
 // with type declared: rest "re:x storage", facets {type: [adr]}

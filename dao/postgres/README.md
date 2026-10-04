@@ -56,6 +56,18 @@ For `dao/deploy`: `TransactionalDDL` (DDL rolls back with the transaction) and
 `DeployLock`, a transaction-level advisory lock the runner takes first, so two
 processes applying schema scripts at once take turns.
 
+**Full text** (`dao.FullTextMatcher`, `dao.FullTextQueryRanker`): the index is a
+tsvector column on the content table, matched with
+`@@ to_tsquery('<config>'::regconfig, $n)` and ranked with a negated `ts_rank_cd`,
+weights placed by each column's class. It does not implement `dao.FullTexter`
+(rank and snippet would need the query bound again); cut snippets in Go with
+`search/chunk.Highlight`.
+
+**Vectors** (`dao.VectorDistancer`): pgvector's `<=>`, `<->` and `<#>` against
+`$n::vector`. `Vector` (`[]float32`) binds and scans pgvector's text form, so no
+pgvector module is needed; it refuses NaN and infinities, and nil is NULL. COPY's
+binary rows do not carry it: write vectors with INSERT or an upsert.
+
 ## Transactions
 
 Single-DB and multi-DB **ordered** transactions work via `dao.RunTx` /

@@ -199,6 +199,7 @@ and safe to hold for the process lifetime; acquiring a `DAO` from it is cheap.
 | `JoinForSort(sortKey, join)` | a sort key that triggers a join |
 | `SortMap(map[K]string)` | sort key → ORDER BY expression |
 | `SortExpr(key, expr)` | one sort key whose ORDER BY is an `Expr`, resolved per dialect (e.g. `dao.Rank`); wins over a `SortMap` entry |
+| `SortParam(key, pexpr)` | one sort key whose ORDER BY binds values (`dao.Distance`, `dao.RankQuery`), ordered by with `dao.AscBy(key, v…)` / `dao.DescBy`; wins over `SortMap` and `SortExpr` |
 | `Search(ops…)` | declared search operators (see below) |
 | `Conflict(cols…)` | ON CONFLICT target for `Upsert` |
 | `DefaultValues(map[C]any)` | values applied to every write before per-call `Set` |
@@ -305,14 +306,20 @@ everything else is a `Predicate` via `WithPredicate`:
 dao.Eq(col, v)   dao.In(col, vs)   dao.NotIn(col, vs)
 dao.IsNull(col)  dao.IsNotNull(col)
 dao.Gt/Gte/Lt/Lte(col, v)   dao.Between(col, lo, hi)
-dao.Like(col, pattern)      dao.EscapeLike(userInput) // escape %,_,\ for a literal match
+dao.Like(col, pattern)      // a raw pattern: wildcards live, no ESCAPE clause
+dao.HasPrefix(col, prefix)  // col starts with prefix, literally (%, _, \, ! all match themselves)
 dao.And(p…)  dao.Or(p…)  dao.Raw("expr = ? AND x > ?", a, b) // ? renumbered per dialect
 dao.Cmp(dao.T("chunk", "gen_from"), dao.OpLte, dao.T("document", "active_gen")) // two columns, nothing bound
 ```
 
 An unknown field key fails fast with `ErrUnknownField`. `Like` takes a raw
-pattern (wildcards live); wrap user input with `EscapeLike` for a literal
-substring match.
+pattern (wildcards live) and adds no `ESCAPE` clause, so a backslash reads as the
+engine's default does. `HasPrefix` is the literal prefix match: it renders
+`col LIKE ? ESCAPE '!'` and escapes the prefix itself, with `!` rather than a
+backslash because MySQL reads a backslash in a literal according to
+`NO_BACKSLASH_ESCAPES`. It runs on PostgreSQL, SQLite and MySQL; elsewhere the
+query fails with `ErrUnsupported`. `EscapeLike` escapes with a backslash, for
+`StringOp`'s `ESCAPE '\'`.
 
 > **Predicate constructors take a raw column string**, emitted verbatim —
 > `With`/`Excluding` are the ones that resolve through the schema's declared
@@ -619,9 +626,50 @@ hits, err := chunks.On(tx).Join(JoinFTS).
 ```
 
 `dao.SupportsFullText(d)` says whether an engine has it (SQLite does, through
-FTS5). A `Match` on one without it fails with `ErrUnsupported`; declaring
-`FullTextJoin`, `Rank` or `Snippet` for one panics at `New`, as other
-declaration errors do.
+FTS5). Declaring `FullTextJoin`, `Rank` or `Snippet` for one without it panics at
+`New`, as other declaration errors do.
+
+**`Match` needs only `dao.FullTextMatcher`**, the match condition, which every
+`FullTexter` has and PostgreSQL has without `FullTexter` (its rank needs the query
+bound again, so it cannot implement `FullTexter`'s rank or snippet). A `Match` on
+an engine without a matcher fails with `ErrUnsupported`.
+
+**Ranking that works on both engines** is `dao.RankQuery`, a bound sort term: on
+an engine with `dao.FullTextQueryRanker` (PostgreSQL) it binds the query again,
+and on one with only `FullTexter` (SQLite) it renders the plain rank and binds
+nothing.
+
+```go
+var ChunkTSV = dao.FullTextIndex{Name: "tsv", Table: "chunk",
+    Columns: []string{"breadcrumb", "body"}, Classes: []byte("AD"), Config: "simple"}
+
+chunks := dao.New(conn, …, dao.SortParam[…](ByRank, dao.RankQuery(ChunkTSV, 1.0, 0.1)))
+q, _ := query.TSQuery(terms) // the tsquery text, bound
+hits, err := chunks.On(tx).WithPredicate(dao.Match(ChunkTSV, q)).
+    OrderBy(dao.AscBy(ByRank, q)).Limit(20).Select(ChunkID)
+// PostgreSQL: WHERE "chunk"."tsv" @@ to_tsquery('simple'::regconfig, $1)
+//             ORDER BY -ts_rank_cd('{0.1, 0.2, 0.4, 1.0}', "chunk"."tsv", to_tsquery('simple'::regconfig, $2))
+```
+
+`Config` is the text-search configuration (an identifier; `simple` when empty).
+`Classes` give each column's tsvector weight class, which PostgreSQL needs for a
+ranking with weights: weight *i* goes to `Classes[i]`'s slot. SQLite ignores
+both. `FullTextIndex.Validate` checks them; an invalid index panics in a
+declaration at `New`, and fails a `Match` query with `ErrInvalidArgument` before
+anything is sent (call `Validate` at start-up to fail fast).
+
+## Vector distance
+
+`dao.Distance(col, metric)` is a bound sort term ordering nearest first to a
+query vector, on an engine with `dao.VectorDistancer` (PostgreSQL, with pgvector:
+`<=>` cosine, `<->` L2, `<#>` inner product). The extension, the column's type and
+dimensions, and any index are your migrations' DDL. On PostgreSQL, bind and scan
+vectors as `postgres.Vector`.
+
+```go
+chunks := dao.New(conn, …, dao.SortParam[…](ByNearest, dao.Distance(dao.T("embedding", "vec"), dao.Cosine)))
+near, err := chunks.DAO().OrderBy(dao.AscBy(ByNearest, postgres.Vector(q))).Limit(10).Select(…)
+```
 
 ## Schema scripts (`dao/deploy`)
 

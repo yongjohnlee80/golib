@@ -29,6 +29,9 @@ The functions take a document already parsed, so a caller that also reads its li
 `search.Chunkers` registry. `Version` changes whenever the same document would be cut differently.
 
 `Snippet` is the start of a chunk's text, cut at a rune boundary: a semantic hit's snippet.
+`Highlight(body, terms, n)` is a lexical hit's: about n words around the first match, the matched
+words between `search.HighlightStart` and `search.HighlightEnd`, matched as `search/query`'s literal
+terms are.
 
 ## License
 
