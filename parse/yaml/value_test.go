@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/yaml"
 )
@@ -35,5 +36,30 @@ func TestYAML_ParsesAsTheFunctionDoes(t *testing.T) {
 	}
 	if yaml.New().FormatName() != "yaml" {
 		t.Error("FormatName")
+	}
+}
+
+// A YAML syntax error also answers as golib/parse's shared syntax error, with the same position,
+// and keeps its own type and message.
+func TestError_IsAParseSyntaxError(t *testing.T) {
+	t.Parallel()
+	_, err := yaml.Parse([]byte("a: 1\nb: [2\n"))
+	var se parse.SyntaxError
+	if !errors.As(err, &se) {
+		t.Fatalf("err = %v, not a parse.SyntaxError", err)
+	}
+	var ye *yaml.Error
+	if !errors.As(err, &ye) {
+		t.Fatalf("err = %v, no longer a *yaml.Error", err)
+	}
+	if se.Format != "yaml" || se.Pos != ye.Pos || se.Pos.Line == 0 {
+		t.Errorf("SyntaxError %+v, want format yaml at %v", se, ye.Pos)
+	}
+	if !errors.Is(err, parse.ErrSyntax) || !errors.Is(err, errs.ErrInvalidArgument) || errors.Is(err, parse.ErrUnterminated) {
+		t.Errorf("err = %v: identities wrong", err)
+	}
+	var notSyntax *parse.SyntaxError // a pointer target never matches, as for parse.SyntaxError itself
+	if errors.As(err, &notSyntax) {
+		t.Error("a *parse.SyntaxError target matched")
 	}
 }

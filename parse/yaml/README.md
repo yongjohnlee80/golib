@@ -62,3 +62,15 @@ rule that a block scalar's leading empty lines hold no more spaces than its firs
 
 `FuzzParse` checks that no input panics, spans nest, and the composed tree says exactly what the
 events say. `TestParserResolvesNothing` pins the split: this package imports no schema code.
+
+## As a `parse.Parser`
+
+`yaml.New(opts...)` returns a `YAML`, a parser value that satisfies golib/parse's `Parser[*Stream]`
+and `Named`, for code that holds parsers of several formats behind those interfaces:
+
+```go
+var p parse.Parser[*Stream] = yaml.New(yaml.MaxDepth(64))
+```
+
+A syntax error also answers as golib/parse's shared `parse.SyntaxError`, with the format and the
+position; use a `parse.SyntaxError` value as the `errors.As` target. Its `*Error` and message stay.

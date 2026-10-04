@@ -1,6 +1,7 @@
 package view_test
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -31,5 +32,35 @@ func TestView_ParsesAsTheFunctionDoes(t *testing.T) {
 	}
 	if view.New().FormatName() != "view" {
 		t.Error("FormatName")
+	}
+}
+
+// Every way a .view file fails answers as golib/parse's shared syntax error, positioned in the file.
+func TestError_IsAParseSyntaxError(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		src  string
+		line int
+	}{
+		"no opening line": {"name: v\n", 1},
+		"bad frontmatter": {"---\nname: v\nargs: [a\n---\n", 4},
+		"bad template":    {"---\nname: v\n---\n{{if .x}}\n", 4},
+	} {
+		_, err := view.Parse([]byte(tc.src), view.WithName("v.view"))
+		var se parse.SyntaxError
+		if !errors.As(err, &se) {
+			t.Errorf("%s: err = %v, not a parse.SyntaxError", name, err)
+			continue
+		}
+		if se.Format != "view" || se.Pos.Line != tc.line || se.Pos.File != "v.view" {
+			t.Errorf("%s: SyntaxError %+v, want format view at v.view line %d", name, se, tc.line)
+		}
+		if !errors.Is(err, parse.ErrSyntax) {
+			t.Errorf("%s: err = %v, not parse.ErrSyntax", name, err)
+		}
+		var ve *view.Error
+		if !errors.As(err, &ve) {
+			t.Errorf("%s: err = %v, no longer a *view.Error", name, err)
+		}
 	}
 }

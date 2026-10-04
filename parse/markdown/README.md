@@ -128,3 +128,12 @@ Obsidian's block ids (`^id` at a line's end), footnotes, `%%comments%%`, `==high
   quotes and lists, unclosed link destinations and wikilinks, trailing parentheses after an autolink,
   and more) are timed at n and 10n and must scale by about 10×, not 100×. Only the families measured are
   claimed to be linear.
+
+## As a `parse.Parser`
+
+`markdown.New(opts...)` returns a `Markdown`, a parser value that satisfies golib/parse's `Parser[*Document]`
+and `Named`, for code that holds parsers of several formats behind those interfaces:
+
+```go
+var p parse.Parser[*Document] = markdown.New(markdown.GFM())
+```

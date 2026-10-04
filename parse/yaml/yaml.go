@@ -1,6 +1,7 @@
 package yaml
 
 import (
+	"errors"
 	"iter"
 	"sort"
 
@@ -138,6 +139,26 @@ type Error struct {
 func (e *Error) Error() string {
 	return "yaml: " + itoa(e.Pos.Line) + ":" + itoa(e.Pos.Column) + ": " + e.Msg
 }
+
+// As also answers for golib/parse's shared syntax error, so a caller handling several formats reads
+// where any of them failed the same way, with a parse.SyntaxError VALUE as the target:
+//
+//	var se parse.SyntaxError
+//	if errors.As(err, &se) { … se.Pos … }
+//
+// The parse.SyntaxError carries the format and the position; the message stays on Error.
+func (e *Error) As(target any) bool {
+	se, ok := target.(*parse.SyntaxError)
+	if ok {
+		*se = e.syntax()
+	}
+	return ok
+}
+
+// Is reports a syntax error's identities, parse.ErrSyntax and through it errs.ErrInvalidArgument.
+func (e *Error) Is(target error) bool { return errors.Is(e.syntax(), target) }
+
+func (e *Error) syntax() parse.SyntaxError { return parse.SyntaxError{Format: "yaml", Pos: e.Pos} }
 
 // Option configures Parse and Events.
 type Option func(*config)
