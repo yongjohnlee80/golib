@@ -24,7 +24,8 @@ import (
 // SQLite reads them, and no others.
 //
 // The zero value is usable and handles the lexical syntax common to the major
-// engines. Set the fields for the extensions a particular engine adds.
+// engines. Build one with [New] and the options for the extensions a
+// particular engine adds; the fields below are the older way to set them.
 type SQL struct {
 	// Backticks treats `like this` as a quoted identifier, as MySQL does.
 	// Engines that instead read a backtick as ordinary text leave it off.

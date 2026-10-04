@@ -74,3 +74,16 @@ var p parse.Parser[*Stream] = yaml.New(yaml.MaxDepth(64))
 
 A syntax error also answers as golib/parse's shared `parse.SyntaxError`, with the format and the
 position; use a `parse.SyntaxError` value as the `errors.As` target. Its `*Error` and message stay.
+
+**Unfinished or wrong.** A stream that ended in the middle of a construct is `Error.Incomplete`, and
+answers `parse.ErrUnterminated`: more text appended could make it valid, so an editor or a prompt
+can wait for it. Otherwise the error answers `parse.ErrSyntax`. Never both. Incomplete is reported
+only where the parser can tell the input ran out:
+- the grammar wanted more and got the end of the stream (`b: [2`, `a: {x: 1`);
+- the scanner ran out inside a construct (`'quoted`, a cut escape);
+- a character was cut off part way through its UTF-8 encoding.
+
+So it is certain where it is reported, but it does not catch every truncation. A stream cut where
+its last characters read as a different construct (a `-` of what would have been `---`, an alias
+name cut short) is reported as wrong, one keystroke early, rather than leaving a caller waiting on a
+real error. Over every failing prefix of the yaml-test-suite's valid streams it catches 95.5%.

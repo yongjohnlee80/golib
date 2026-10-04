@@ -1,5 +1,7 @@
 package yaml
 
+import "unicode/utf8"
+
 type pstate uint8
 
 const (
@@ -53,7 +55,9 @@ func newParser(src []byte, cfg config) (*parser, error) {
 	p.enc = enc
 	if bad >= 0 {
 		p.src = src[:0]
-		return p, &Error{Pos: position(src, lineStarts(src), bad), Msg: "the input is not valid in its encoding"}
+		// A UTF-8 sequence cut off at the very end is a truncated character, not a wrong one.
+		cut := enc == UTF8 && !utf8.FullRune(src[bad:])
+		return p, &Error{Pos: position(src, lineStarts(src), bad), Msg: "the input is not valid in its encoding", Incomplete: cut}
 	}
 	p.src = utf
 	if bad := firstUnprintable(utf); bad >= 0 {
@@ -67,7 +71,23 @@ func (p *parser) stream() *Stream { return &Stream{Source: p.src, Encoding: p.en
 
 func (p *parser) peek() (*token, error) { return p.s.token() }
 
-func (p *parser) errorAt(m mark, msg string) error { return p.s.errorf(m, msg) }
+// errorAt reports a grammar error at m that more input cannot fix, such as nesting past the bound.
+func (p *parser) errorAt(m mark, msg string) error {
+	return &Error{Pos: position(p.s.src, lineStarts(p.s.src), m.off), Msg: msg}
+}
+
+// rejectAt reports a grammar error at the token t the parser could not accept. It is Incomplete
+// exactly when t is the end of the stream: the grammar wanted more (a node, a ']' or '}', a key's
+// value) and the input ended instead, so appending the rest could make the stream valid.
+//
+// NOTE: a token that merely runs to the end of the input is not taken as a sign of truncation. "y"
+// in "a: 'x' y" does, and no text appended to it makes that stream valid. So a stream cut where its
+// last characters read as a different construct (a "-" of what would have been "---", an alias name
+// cut short) is reported as wrong, not incomplete: a caller is told one keystroke early rather than
+// left waiting on a real error.
+func (p *parser) rejectAt(t *token, msg string) error {
+	return &Error{Pos: position(p.s.src, lineStarts(p.s.src), t.start.off), Msg: msg, Incomplete: t.kind == tStreamEnd}
+}
 
 func (p *parser) push(st pstate) { p.states = append(p.states, st) }
 
@@ -176,7 +196,7 @@ func (p *parser) documentStart(implicitAllowed bool) (Event, error) {
 		return Event{Kind: EventStreamEnd, Span: span(t.start, t.end)}, nil
 	case tVersionDirective, tTagDirective, tReservedDirective, tDocumentStart:
 		if t.kind != tDocumentStart && !implicitAllowed {
-			return Event{}, p.errorAt(t.start, "directives must follow a document end marker (\"...\")")
+			return Event{}, p.rejectAt(t, "directives must follow a document end marker (\"...\")")
 		}
 		start := t.start
 		if err := p.processDirectives(); err != nil {
@@ -187,7 +207,7 @@ func (p *parser) documentStart(implicitAllowed bool) (Event, error) {
 			return Event{}, err
 		}
 		if t.kind != tDocumentStart {
-			return Event{}, p.errorAt(t.start, "directives must be followed by \"---\"")
+			return Event{}, p.rejectAt(t, "directives must be followed by \"---\"")
 		}
 		end := t.end
 		p.s.consume()
@@ -196,7 +216,7 @@ func (p *parser) documentStart(implicitAllowed bool) (Event, error) {
 		return Event{Kind: EventDocumentStart, Explicit: true, Directives: p.directives, Span: span(start, end)}, nil
 	}
 	if !implicitAllowed {
-		return Event{}, p.errorAt(t.start, "a document after one not ended by \"...\" must start with \"---\"")
+		return Event{}, p.rejectAt(t, "a document after one not ended by \"...\" must start with \"---\"")
 	}
 	p.push(psDocumentEnd)
 	p.state = psBlockNode
@@ -213,16 +233,16 @@ func (p *parser) processDirectives() error {
 		switch t.kind {
 		case tVersionDirective:
 			if p.yamlDirective {
-				return p.errorAt(t.start, "a document may have one %YAML directive")
+				return p.rejectAt(t, "a document may have one %YAML directive")
 			}
 			p.yamlDirective = true
 			if t.params[0][0] != '1' || t.params[0][1] != '.' {
-				return p.errorAt(t.start, "this parser reads YAML 1.x")
+				return p.rejectAt(t, "this parser reads YAML 1.x")
 			}
 		case tTagDirective:
 			h := string(t.handle)
 			if _, dup := p.tags[h]; dup && p.declared(h) {
-				return p.errorAt(t.start, "a %TAG directive repeats a handle")
+				return p.rejectAt(t, "a %TAG directive repeats a handle")
 			}
 			p.tags[h] = string(t.prefix)
 		case tReservedDirective:
@@ -258,7 +278,7 @@ func (p *parser) documentEnd() (Event, error) {
 		p.endedExplicitly = true
 		p.s.consume()
 	} else if t.kind != tDocumentStart && t.kind != tStreamEnd {
-		return Event{}, p.errorAt(t.start, "a document has one root node: expected the document's end")
+		return Event{}, p.rejectAt(t, "a document has one root node: expected the document's end")
 	}
 	p.state = psDocumentStart
 	return ev, nil
@@ -273,7 +293,7 @@ func (p *parser) node(block, indentlessSequence bool) (Event, error) {
 	if t.kind == tAlias {
 		name := string(t.value)
 		if !p.anchors[name] {
-			return Event{}, p.errorAt(t.start, "an alias names an anchor not defined before it (\""+name+"\")")
+			return Event{}, p.rejectAt(t, "an alias names an anchor not defined before it (\""+name+"\")")
 		}
 		p.pop()
 		p.s.consume()
@@ -285,12 +305,12 @@ func (p *parser) node(block, indentlessSequence bool) (Event, error) {
 		switch t.kind {
 		case tAnchor:
 			if anchor != "" {
-				return Event{}, p.errorAt(t.start, "a node may have one anchor")
+				return Event{}, p.rejectAt(t, "a node may have one anchor")
 			}
 			anchor = string(t.value)
 		case tTag:
 			if tag != "" {
-				return Event{}, p.errorAt(t.start, "a node may have one tag")
+				return Event{}, p.rejectAt(t, "a node may have one tag")
 			}
 			if tag, err = p.resolveTag(t); err != nil {
 				return Event{}, err
@@ -305,7 +325,7 @@ func (p *parser) node(block, indentlessSequence bool) (Event, error) {
 		}
 	}
 	if (t.kind == tAnchor && anchor != "") || (t.kind == tTag && tag != "") {
-		return Event{}, p.errorAt(t.start, "a node may have one anchor and one tag")
+		return Event{}, p.rejectAt(t, "a node may have one anchor and one tag")
 	}
 	if anchor != "" {
 		p.anchors[anchor] = true
@@ -313,7 +333,7 @@ func (p *parser) node(block, indentlessSequence bool) (Event, error) {
 	ev := Event{Anchor: anchor, Tag: tag, Span: span(start, t.end)}
 	switch {
 	case t.kind == tAlias:
-		return Event{}, p.errorAt(t.start, "an alias cannot have properties")
+		return Event{}, p.rejectAt(t, "an alias cannot have properties")
 	case indentlessSequence && t.kind == tBlockEntry:
 		p.state = psIndentlessSequenceEntry
 		ev.Kind, ev.Style = EventSequenceStart, StyleBlock
@@ -346,7 +366,7 @@ func (p *parser) node(block, indentlessSequence bool) (Event, error) {
 		ev.Span = span(start, t.start)
 		return ev, nil
 	}
-	return Event{}, p.errorAt(t.start, "did not find the expected node content")
+	return Event{}, p.rejectAt(t, "did not find the expected node content")
 }
 
 func (p *parser) deeper(m mark) error {
@@ -364,7 +384,7 @@ func (p *parser) resolveTag(t *token) (string, error) {
 	}
 	prefix, ok := p.tags[string(t.handle)]
 	if !ok {
-		return "", p.errorAt(t.start, "the tag handle "+string(t.handle)+" is not defined")
+		return "", p.rejectAt(t, "the tag handle "+string(t.handle)+" is not defined")
 	}
 	return prefix + string(t.suffix), nil
 }
@@ -396,7 +416,7 @@ func (p *parser) blockSequenceEntry(first bool) (Event, error) {
 		p.depth--
 		return Event{Kind: EventSequenceEnd, Span: span(t.start, t.end)}, nil
 	}
-	return Event{}, p.errorAt(t.start, "did not find the expected '-' of a block sequence entry")
+	return Event{}, p.rejectAt(t, "did not find the expected '-' of a block sequence entry")
 }
 
 func (p *parser) indentlessSequenceEntry() (Event, error) {
@@ -454,7 +474,7 @@ func (p *parser) blockMappingKey(first bool) (Event, error) {
 		p.depth--
 		return Event{Kind: EventMappingEnd, Span: span(t.start, t.end)}, nil
 	}
-	return Event{}, p.errorAt(t.start, "did not find the expected key of a block mapping")
+	return Event{}, p.rejectAt(t, "did not find the expected key of a block mapping")
 }
 
 func (p *parser) blockMappingValue() (Event, error) {
@@ -491,7 +511,7 @@ func (p *parser) flowSequenceEntry(first bool) (Event, error) {
 	if t.kind != tFlowSequenceEnd {
 		if !first {
 			if t.kind != tFlowEntry {
-				return Event{}, p.errorAt(t.start, "did not find the expected ',' or ']' of a flow sequence")
+				return Event{}, p.rejectAt(t, "did not find the expected ',' or ']' of a flow sequence")
 			}
 			p.s.consume()
 			if t, err = p.peek(); err != nil {
@@ -567,7 +587,7 @@ func (p *parser) flowMappingKey(first bool) (Event, error) {
 	if t.kind != tFlowMappingEnd {
 		if !first {
 			if t.kind != tFlowEntry {
-				return Event{}, p.errorAt(t.start, "did not find the expected ',' or '}' of a flow mapping")
+				return Event{}, p.rejectAt(t, "did not find the expected ',' or '}' of a flow mapping")
 			}
 			p.s.consume()
 			if t, err = p.peek(); err != nil {

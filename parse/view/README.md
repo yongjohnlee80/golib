@@ -96,6 +96,17 @@ var p parse.Parser[*File] = view.New(view.WithName("track.view"))
 A syntax error also answers as golib/parse's shared `parse.SyntaxError`, with the format and the
 position; use a `parse.SyntaxError` value as the `errors.As` target. Its `*Error` and message stay.
 
+**Unfinished or wrong.** `Error.Incomplete`, answering `parse.ErrUnterminated`, means more text
+appended to the file could make it valid. Otherwise the error answers `parse.ErrSyntax`. Never both.
+The file is incomplete when:
+- it is so far only part of the opening `---`;
+- its frontmatter has no closing line yet;
+- its body's actions, comments, strings or blocks are still open. The body counts as unfinished
+  when closing them (`}}`, `*/}}`, a quote, a parenthesis, the missing `{{end}}`s) makes it parse.
+
+A YAML error inside a closed frontmatter is wrong where it stands, since nothing appended to the
+file reaches it. The wrapped `*yaml.Error` says the same.
+
 ## License
 
 See [LICENSE](../../LICENSE).
