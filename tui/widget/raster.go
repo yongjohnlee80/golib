@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"os"
 	"os/exec"
@@ -69,11 +71,105 @@ func RasterizeSVG(ctx context.Context, svg []byte, width int) ([]byte, error) {
 }
 
 // RasterizeHTML renders html in a headless browser at width × height pixels and returns the
-// viewport as a PNG. The page cannot reach the network: every host resolves nowhere and every
+// viewport as a PNG, once the page's scripts have settled (a diagram drawn by a script is drawn). The page cannot reach the network: every host resolves nowhere and every
 // request goes to a proxy that is not there. A page that needs the network renders without it.
 // The browser's own sandbox always stays on: where it cannot run (a system that forbids user
 // namespaces), the browser refuses, the error says so, and the host shows its fallback.
 func RasterizeHTML(ctx context.Context, html []byte, width, height int) ([]byte, error) {
+	return rasterizeHTML(ctx, html, clampPixels(width), clampPixels(height), 1)
+}
+
+// MaxPageHeight is the tallest, and MaxPageWidth the widest, a page RasterizeHTMLPage renders, in
+// pixels: a larger one is cut.
+const (
+	MaxPageHeight = 16384
+	MaxPageWidth  = 4096
+)
+
+// Page is how RasterizeHTMLPage renders: Width pixels wide (with Wide, as wide as the page's
+// content, at least Width, at most MaxPageWidth), as tall as the page and at least MinHeight, at
+// Scale — a browser's zoom: 2 draws everything twice the size, the page laid out half as wide; 0
+// is 1.
+type Page struct {
+	Width, MinHeight int
+	Scale            float64
+	Wide             bool
+}
+
+// RasterizeHTMLPage renders the whole of html as a PNG, for an Image that scrolls (see Page). The
+// page is laid out in a window as tall as MaxPageHeight allows — as wide as MaxPageWidth allows,
+// when Wide — and the rows below its content and the columns to its right, all of the colour of
+// the bottom-right pixel, are cut. A page sized to the window (100vh) fills it.
+func RasterizeHTMLPage(ctx context.Context, html []byte, p Page) ([]byte, error) {
+	scale := p.Scale
+	if scale <= 0 {
+		scale = 1
+	}
+	width := clampPixels(p.Width)
+	window := width
+	if p.Wide {
+		window = MaxPageWidth
+	}
+	b, err := rasterizeHTML(ctx, html, int(float64(window)/scale), int(MaxPageHeight/scale), scale)
+	if err != nil {
+		return nil, err
+	}
+	return trimBlank(b, width, max(1, min(p.MinHeight, MaxPageHeight)))
+}
+
+// trimBlank cuts the rows at the bottom and the columns at the right of a PNG that are all of its
+// bottom-right pixel's colour, keeping at least minW × minH.
+func trimBlank(b []byte, minW, minH int) ([]byte, error) {
+	img, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, fmt.Errorf("widget: the browser's screenshot: %w", err)
+	}
+	r := img.Bounds()
+	br, bg, bb, ba := img.At(r.Max.X-1, r.Max.Y-1).RGBA()
+	blank := func(x, y int) bool {
+		cr, cg, cb, ca := img.At(x, y).RGBA()
+		return cr == br && cg == bg && cb == bb && ca == ba
+	}
+	bottom := r.Max.Y
+	for bottom > r.Min.Y+minH {
+		all := true
+		for x := r.Min.X; x < r.Max.X && all; x++ {
+			all = blank(x, bottom-1)
+		}
+		if !all {
+			break
+		}
+		bottom--
+	}
+	right := r.Max.X
+	for right > r.Min.X+minW {
+		all := true
+		for y := r.Min.Y; y < bottom && all; y++ {
+			all = blank(right-1, y)
+		}
+		if !all {
+			break
+		}
+		right--
+	}
+	if bottom == r.Max.Y && right == r.Max.X {
+		return b, nil
+	}
+	sub, ok := img.(interface {
+		SubImage(image.Rectangle) image.Image
+	})
+	if !ok {
+		return b, nil
+	}
+	var out bytes.Buffer
+	if err := png.Encode(&out, sub.SubImage(image.Rect(r.Min.X, r.Min.Y, right, bottom))); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+// rasterizeHTML renders html in a window width × height (the browser's own pixels) at scale.
+func rasterizeHTML(ctx context.Context, html []byte, width, height int, scale float64) ([]byte, error) {
 	tool, ok := HTMLRasterizer()
 	if !ok {
 		return nil, fmt.Errorf("%w: chromium or google-chrome", ErrNoRasterizer)
@@ -97,7 +193,10 @@ func RasterizeHTML(ctx context.Context, html []byte, width, height int) ([]byte,
 		"--disable-extensions", "--disable-background-networking", "--disable-sync", "--disable-default-apps",
 		"--proxy-server=127.0.0.1:9", "--proxy-bypass-list=<-loopback>", "--host-resolver-rules=MAP * ~NOTFOUND",
 		"--user-data-dir="+filepath.Join(dir, "profile"),
-		"--window-size="+strconv.Itoa(clampPixels(width))+","+strconv.Itoa(clampPixels(height)),
+		// virtual time runs on until the page is idle (its scripts done) or the budget is spent
+		"--virtual-time-budget=10000",
+		"--force-device-scale-factor="+strconv.FormatFloat(scale, 'f', -1, 64),
+		"--window-size="+strconv.Itoa(width)+","+strconv.Itoa(height),
 		"--screenshot="+out, "file://"+page)
 	if _, err := runBounded(cmd); err != nil {
 		return nil, err

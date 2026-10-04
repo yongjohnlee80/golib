@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -200,5 +202,127 @@ func TestImageLayoutAndPaint(t *testing.T) {
 	}
 	if strings.TrimSpace(tb.String()) != "" {
 		t.Fatalf("the Image painted something: %q", tb.String())
+	}
+}
+
+func tallPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := png.Encode(&b, image.NewGray(image.Rect(0, 0, w, h))); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+// A scrollable Image shows one cell to CellPixelsW × CellPixelsH of its PNG — 10×5 cells are a
+// 100×100 window on a 300×1000 PNG, a row 20 pixels, a step sideways 40 — and moves it by the keys
+// and the wheel, never past an edge. One that does not scroll shows the whole PNG and takes no keys.
+func TestAScrollableImage(t *testing.T) {
+	m := NewImage()
+	m.SetScrollable(true)
+	m.SetPNG(tallPNG(t, 300, 1000))
+	m.cols, m.rows = 10, 5 // as its paint leaves them
+	clip := func() tui.Rect { img, _ := m.Image(); return img.Clip }
+	if c := clip(); c != (tui.Rect{W: 100, H: 100}) {
+		t.Fatalf("the first view is %+v, want the top left 100×100", c)
+	}
+	if !m.AcceptsFocus() {
+		t.Error("a scrollable Image takes no focus")
+	}
+	key := func(c rune) tui.Event { return tui.KeyEvent{Kind: tui.KeyPress, Code: c} }
+	wheel := func(b tui.MouseButton) tui.Event { return tui.MouseEvent{Kind: tui.MouseWheel, Button: b} }
+	for _, step := range []struct {
+		ev        tui.Event
+		left, top int
+		name      string
+	}{
+		{key(tui.KeyDown), 0, 20, "↓ a row"},
+		{key('j'), 0, 40, "j a row"},
+		{key('k'), 0, 20, "k back a row"},
+		{key('l'), 40, 20, "l four columns"},
+		{key(tui.KeyRight), 80, 20, "→"},
+		{wheel(tui.WheelRight), 110, 20, "the wheel sideways"},
+		{key('l'), 150, 20, "l"},
+		{key('l'), 190, 20, "l"},
+		{key('l'), 200, 20, "never past the right edge"},
+		{key('h'), 160, 20, "h"},
+		{key(']'), 160, 100, "] the cells less a row"},
+		{key(tui.KeyPageDown), 160, 180, "Page Down"},
+		{wheel(tui.WheelDown), 160, 240, "the wheel, three rows"},
+		{key(tui.KeyEnd), 160, 900, "End: the bottom"},
+		{key('j'), 160, 900, "never past the bottom"},
+		{key('['), 160, 820, "["},
+		{wheel(tui.WheelUp), 160, 760, "the wheel up"},
+		{key(tui.KeyHome), 160, 0, "Home: the top"},
+		{key(tui.KeyUp), 160, 0, "never past the top"},
+	} {
+		if !m.HandleEvent(step.ev) {
+			t.Errorf("%s: not handled", step.name)
+		}
+		if c := clip(); c != (tui.Rect{X: step.left, Y: step.top, W: 100, H: 100}) {
+			t.Errorf("%s: view %+v, want from %d,%d", step.name, c, step.left, step.top)
+		}
+	}
+	m.HandleEvent(key(tui.KeyEnd))
+	m.SetPNG(tallPNG(t, 300, 300)) // a shorter page keeps as much of the corner as it reaches
+	if c := clip(); c.Y != 200 || c.X != 160 {
+		t.Errorf("a shorter PNG left the view at %+v", c)
+	}
+
+	still := NewImage()
+	still.SetPNG(tallPNG(t, 100, 1000))
+	still.cols, still.rows = 10, 5
+	if img, _ := still.Image(); !img.Clip.Empty() || still.AcceptsFocus() || still.HandleEvent(key(tui.KeyDown)) {
+		t.Errorf("an Image that does not scroll clipped %+v, or took focus or keys", img.Clip)
+	}
+}
+
+func pngSize(t *testing.T, b []byte) (int, int) {
+	t.Helper()
+	cfg, err := png.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg.Width, cfg.Height
+}
+
+// A whole page: as tall as its content and no taller, at the width asked; twice as tall at a zoom
+// of 2, laid out half as wide; as wide as its content when Wide; and what a script drew after a
+// delay is drawn.
+func TestRasterizeHTMLPage(t *testing.T) {
+	if _, ok := HTMLRasterizer(); !ok {
+		t.Skip("no headless chromium or chrome is installed")
+	}
+	page := func(body string, p Page) (int, int, []byte) {
+		t.Helper()
+		html := `<!doctype html><html style="background:#fff"><body style="margin:0">` + body + `</body></html>`
+		b, err := RasterizeHTMLPage(context.Background(), []byte(html), p)
+		if err != nil && strings.Contains(err.Error(), "No usable sandbox") {
+			t.Skip("the installed browser has no usable sandbox here")
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		w, h := pngSize(t, b)
+		return w, h, b
+	}
+	tall := `<div style="height:1500px;background:#000"></div>`
+	if w, h, _ := page(tall, Page{Width: 400, MinHeight: 300}); w != 400 || h != 1500 {
+		t.Errorf("a 1500px page is %d×%d, want 400×1500", w, h)
+	}
+	if w, h, _ := page(`<div style="height:100px;background:#000"></div>`, Page{Width: 400, MinHeight: 300}); w != 400 || h != 300 {
+		t.Errorf("a short page is %d×%d, want its minimum, 400×300", w, h)
+	}
+	if w, h, _ := page(tall, Page{Width: 400, MinHeight: 300, Scale: 2}); w != 400 || h != 3000 {
+		t.Errorf("at a zoom of 2 the page is %d×%d, want 400×3000", w, h)
+	}
+	if w, _, _ := page(`<div style="width:900px;height:50px;background:#000"></div>`, Page{Width: 400, MinHeight: 100, Wide: true}); w != 900 {
+		t.Errorf("a wide page is %d wide, want its content's 900", w)
+	}
+	// a script that draws after 300ms has drawn by the time of the screenshot
+	_, h, _ := page(`<div id="d"></div><script>setTimeout(function(){document.getElementById("d").style.cssText="height:2000px;background:#000"},300)</script>`,
+		Page{Width: 400, MinHeight: 100})
+	if h != 2000 {
+		t.Errorf("the script's drawing is %d tall, want 2000: the screenshot did not wait for it", h)
 	}
 }
