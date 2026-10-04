@@ -181,9 +181,15 @@ func TestImageLayoutAndPaint(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- app.Run(ctx) }()
 	defer func() { cancel(); <-done }()
+	cells := func() (int, int) { // loop-owned: read where the paint writes it
+		ch := make(chan [2]int, 1)
+		app.Update(func() { c, r := m.Cells(); ch <- [2]int{c, r} })
+		v := <-ch
+		return v[0], v[1]
+	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		cols, rows := m.Cells()
+		cols, rows := cells()
 		if cols == 6 && rows == 3 {
 			break
 		}
