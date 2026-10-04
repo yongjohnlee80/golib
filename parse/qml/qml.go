@@ -66,10 +66,16 @@ type QML struct {
 	// mid-write or that arrived from somewhere less trusted. A depth bound
 	// turns a stack overflow — which takes the process down and cannot be
 	// recovered — into an ordinary [parse.SyntaxError] the caller can show.
+	//
+	// Deprecated: configure with [MaxDepth] and [New]. The field remains for existing callers,
+	// which are moving to the options.
 	MaxDepth int
 	// File names the source for diagnostics, and is carried by every position
 	// in the tree: "QuitDialog.qml:3:5" rather than a bare 3:5 once a screen
 	// is made of several files.
+	//
+	// Deprecated: configure with [WithName] and [New]. The field remains for existing callers,
+	// which are moving to the options.
 	File string
 }
 
