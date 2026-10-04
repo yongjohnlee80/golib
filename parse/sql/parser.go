@@ -28,14 +28,23 @@ import (
 type SQL struct {
 	// Backticks treats `like this` as a quoted identifier, as MySQL does.
 	// Engines that instead read a backtick as ordinary text leave it off.
+	//
+	// Deprecated: configure with [Backticks] and [New]. The field remains for existing
+	// callers, which are moving to the options.
 	Backticks bool
 	// DollarQuotes treats $$…$$ and $tag$…$tag$ as string literals, as
 	// PostgreSQL does for function bodies. Without it a dollar sign is
 	// ordinary text, and a function body full of semicolons would be split
 	// into pieces.
+	//
+	// Deprecated: configure with [DollarQuotes] and [New]. The field remains for existing
+	// callers, which are moving to the options.
 	DollarQuotes bool
 	// NestedBlockComments allows /* … /* … */ … */ to nest, as PostgreSQL
 	// does. Without it the first */ closes the comment.
+	//
+	// Deprecated: configure with [NestedBlockComments] and [New]. The field remains for
+	// existing callers, which are moving to the options.
 	NestedBlockComments bool
 	// EStringEscapes treats a string written E'…' as one in which a backslash
 	// escapes the next character, as PostgreSQL does.
@@ -44,6 +53,9 @@ type SQL struct {
 	// standard reading in which a backslash is just a character, so a Windows
 	// path or a regular expression ending in one still closes where it should.
 	// Turning this on changes only strings that asked for it by carrying the E.
+	//
+	// Deprecated: configure with [EStringEscapes] and [New]. The field remains for existing
+	// callers, which are moving to the options.
 	EStringEscapes bool
 	// TriggerBodies reads CREATE [TEMP] TRIGGER … BEGIN … END as one
 	// statement, as SQLite does: the semicolons that end the statements of a
@@ -56,6 +68,9 @@ type SQL struct {
 	// a semicolon came before that END. Words match without regard to ASCII
 	// case, as SQLite compares keywords (TRıGGER is not TRIGGER); a string, a
 	// quoted identifier or a comment is never one of these words.
+	//
+	// Deprecated: configure with [TriggerBodies] and [New]. The field remains for existing
+	// callers, which are moving to the options.
 	TriggerBodies bool
 }
 

@@ -93,6 +93,9 @@ type Statements struct {
 	// The statement grammar itself is not dialect-driven: `let` and `if` are
 	// spelled the same in every C-family language that has them, and the parts
 	// that genuinely differ are the ones this revision does not implement.
+	//
+	// Deprecated: configure with [WithDialect] and [NewExpression] or [NewStatements]. The
+	// field remains for existing callers, which are moving to the options.
 	Dialect *ExprDialect
 
 	// MaxDepth bounds nesting. Zero means [DefaultExprMaxDepth].
@@ -101,6 +104,9 @@ type Statements struct {
 	// what has to stay bounded is the recursion, and the recursion alternates
 	// between the two. An `else if` chain nests structurally, so a chain longer
 	// than the limit is refused like any other deep nesting.
+	//
+	// Deprecated: configure with [MaxDepth] and [NewExpression] or [NewStatements]. The field
+	// remains for existing callers, which are moving to the options.
 	MaxDepth int
 }
 

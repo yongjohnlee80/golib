@@ -78,6 +78,9 @@ import (
 // The zero value parses [JavaScript].
 type Expression struct {
 	// Dialect selects the language. The zero value means [JavaScript].
+	//
+	// Deprecated: configure with [WithDialect] and [NewExpression] or [NewStatements]. The
+	// field remains for existing callers, which are moving to the options.
 	Dialect *ExprDialect
 
 	// MaxDepth bounds nesting. Zero means [DefaultExprMaxDepth].
@@ -85,6 +88,9 @@ type Expression struct {
 	// The parser is recursive and an expression can nest without limit, so a
 	// file from a watcher — or from anywhere less trusted — could otherwise
 	// exhaust the goroutine stack, which cannot be recovered.
+	//
+	// Deprecated: configure with [MaxDepth] and [NewExpression] or [NewStatements]. The field
+	// remains for existing callers, which are moving to the options.
 	MaxDepth int
 }
 
