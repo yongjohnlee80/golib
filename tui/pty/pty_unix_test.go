@@ -281,8 +281,10 @@ func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 	}()
 	// The job is a sleep with an argument no other process has, so "still
 	// running" means a process with exactly those arguments: a pid reused by
-	// a stranger cannot pass for it, and nothing but it is ever killed. Its
-	// ids go to a file, so no echoed command line can be mistaken for them.
+	// a stranger cannot pass for it. The fallback kill comes just after that
+	// check, by pid, so it narrows the reuse window rather than closing it.
+	// The ids go to a file, so no echoed command line can be mistaken for
+	// them.
 	marker := fmt.Sprintf("1000.%d", time.Now().UnixNano()%1000000)
 	ids := filepath.Join(t.TempDir(), "job")
 	fmt.Fprintf(p, "set -m; sleep %s & echo $! $(ps -o pgid= -p $!) > %s\n", marker, ids)
@@ -318,7 +320,7 @@ func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 	for ours() && !zombie(job) {
 		if time.Now().After(deadline) {
 			diag := jobState(job)
-			unix.Kill(job, syscall.SIGKILL) // ours: its arguments were just checked
+			unix.Kill(job, syscall.SIGKILL) // its arguments were checked an instant ago
 			outMu.Lock()
 			defer outMu.Unlock()
 			t.Fatalf("job %d (sleep %s) still running 10s after bash took the hang-up:\n%s\nthe terminal showed %q",
