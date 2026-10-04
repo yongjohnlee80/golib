@@ -360,7 +360,7 @@ func TestRasterizeHTMLPage(t *testing.T) {
 	}
 }
 
-// hasMarker reports whether a PNG holds any pixel of the end marker's colour.
+// hasMarker reports whether a PNG holds any pixel of the end marker's colours.
 func hasMarker(t *testing.T, b []byte) bool {
 	t.Helper()
 	img, err := png.Decode(bytes.NewReader(b))
@@ -370,8 +370,11 @@ func hasMarker(t *testing.T, b []byte) bool {
 	r := img.Bounds()
 	for y := r.Min.Y; y < r.Max.Y; y++ {
 		for x := r.Min.X; x < r.Max.X; x++ {
-			if cr, cg, cb, _ := img.At(x, y).RGBA(); cr>>8 == 0xfe && cg>>8 == 0x01 && cb>>8 == 0xfd {
-				return true
+			cr, cg, cb, _ := img.At(x, y).RGBA()
+			for _, c := range markerBands {
+				if cr>>8 == c[0] && cg>>8 == c[1] && cb>>8 == c[2] {
+					return true
+				}
 			}
 		}
 	}
@@ -407,8 +410,15 @@ type rows = struct {
 
 var (
 	black  = color.RGBA{0, 0, 0, 255}
-	marker = color.RGBA{0xfe, 0x01, 0xfd, 255}
+	marker = color.RGBA{0xfe, 0x01, 0xfd, 255} // the end marker's first band
+	band2  = color.RGBA{0x01, 0xfe, 0x02, 255}
+	band3  = color.RGBA{0x02, 0x01, 0xfe, 255}
 )
+
+// signature is the end marker's three bands, from row at.
+func signature(at int) []rows {
+	return []rows{{at, at + 2, marker}, {at + 2, at + 4, band2}, {at + 4, at + 6, band3}}
+}
 
 // A browser that answers each run with the next screenshot of shots, and logs its arguments.
 func fakeBrowser(t *testing.T, shots ...string) (calls func() []string) {
@@ -448,7 +458,7 @@ func TestRasterizeHTMLPagePassesWithoutABrowser(t *testing.T) {
 	}
 	ctx := context.Background()
 	// one run: the marker at row 50
-	calls := fakeBrowser(t, band(t, 40, 120, rows{0, 10, black}, rows{50, 56, marker}))
+	calls := fakeBrowser(t, band(t, 40, 120, append([]rows{{0, 10, black}}, signature(50)...)...))
 	b, err := RasterizeHTMLPage(ctx, []byte("<body><p>x</p></body>"), Page{Width: 40, MinHeight: 20})
 	if err != nil {
 		t.Fatal(err)
@@ -459,7 +469,7 @@ func TestRasterizeHTMLPagePassesWithoutABrowser(t *testing.T) {
 
 	// the first window all content and blank, no marker: run again whole, and cut at its marker
 	calls = fakeBrowser(t, band(t, 40, 120, rows{0, 10, black}),
-		band(t, 40, 300, rows{0, 10, black}, rows{150, 160, black}, rows{200, 206, marker}))
+		band(t, 40, 300, append([]rows{{0, 10, black}, {150, 160, black}}, signature(200)...)...))
 	if b, err = RasterizeHTMLPage(ctx, []byte("<p>x</p>"), Page{Width: 40, MinHeight: 20, Scale: 2}); err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +490,9 @@ func TestRasterizeHTMLPagePassesWithoutABrowser(t *testing.T) {
 	wide := image.NewRGBA(image.Rect(0, 0, 100, 50))
 	draw.Draw(wide, wide.Bounds(), image.NewUniform(color.RGBA{255, 255, 255, 255}), image.Point{}, draw.Src)
 	draw.Draw(wide, image.Rect(0, 0, 70, 10), image.NewUniform(black), image.Point{}, draw.Src)
-	draw.Draw(wide, image.Rect(0, 30, 100, 36), image.NewUniform(marker), image.Point{}, draw.Src)
+	for _, b := range signature(30) {
+		draw.Draw(wide, image.Rect(0, b.from, 100, b.to), image.NewUniform(b.c), image.Point{}, draw.Src)
+	}
 	var wb bytes.Buffer
 	_ = png.Encode(&wb, wide)
 	wp := filepath.Join(t.TempDir(), "wide.png")
@@ -491,6 +503,26 @@ func TestRasterizeHTMLPagePassesWithoutABrowser(t *testing.T) {
 	}
 	if w, h := pngSize(t, b); w != 70 || h != 30 || !strings.Contains(calls()[0], fmt.Sprintf("--window-size=%d,1000", MaxPageWidth)) {
 		t.Errorf("wide: %d×%d after %q", w, h, calls())
+	}
+
+	// content of the marker's colours is not the marker: a stretch of the
+	// first band's colour, and even the three bands in order, above the real marker; the page ends
+	// at the last marker, the one the flow ends with
+	fakeBrowser(t, band(t, 40, 200, append(append([]rows{{20, 26, marker}, {80, 90, black}}, signature(40)...), signature(100)...)...))
+	if b, err = RasterizeHTMLPage(ctx, []byte("<p>x</p>"), Page{Width: 40, MinHeight: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if _, h := pngSize(t, b); h != 100 {
+		t.Errorf("a page with marker-coloured content above its end is %d tall, want 100", h)
+	}
+	// a band alone, or two in order, is not a marker: the first window has none, the whole height does
+	fakeBrowser(t, band(t, 40, 120, rows{0, 10, black}, rows{30, 32, marker}, rows{32, 34, band2}),
+		band(t, 40, 300, append([]rows{{0, 10, black}, {30, 32, marker}, {32, 34, band2}}, signature(250)...)...))
+	if b, err = RasterizeHTMLPage(ctx, []byte("<p>x</p>"), Page{Width: 40, MinHeight: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if _, h := pngSize(t, b); h != 250 {
+		t.Errorf("two bands of three were taken for the marker: %d tall, want 250", h)
 	}
 
 	// a browser that fails, and one whose screenshot is not a PNG
