@@ -46,7 +46,8 @@ type Signaler[D comparable] interface {
 	Signals(ctx context.Context, docs []D) (map[D]Signals, error)
 }
 
-// Lister is a View that lists documents by filters alone: those f admits, in path order, each as
+// Lister is a View that lists documents by filters alone (a query with no words and a tag, path or
+// facet filter): those f admits, in path order, each as
 // its first chunk (ordinal 0) with the start of its text as the snippet, at most n.
 type Lister[D comparable] interface {
 	List(ctx context.Context, f Filter, n int) ([]Candidate[D], error)

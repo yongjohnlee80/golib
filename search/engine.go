@@ -145,7 +145,7 @@ func (e *Engine[D, V]) Search(ctx context.Context, q Query) (Result, error) {
 	f.Facets = facets
 	terms, words := query.Terms(text)
 	if len(terms) == 0 {
-		if len(facets) > 0 {
+		if filtered(f) {
 			return e.list(ctx, res, f, limit)
 		}
 		return res, nil
@@ -193,6 +193,13 @@ func (e *Engine[D, V]) searchIn(ctx context.Context, res Result, mode Mode, useS
 				return err
 			}
 			res.Semantic = st
+			if st == StateSwitching && useSemantic {
+				// the index is between models: by words, as when the embedder says so
+				if mode == ModeSemantic {
+					return ErrSwitching
+				}
+				useSemantic = false
+			}
 		}
 		var lexical, semantic []Candidate[D]
 		var err error
@@ -251,6 +258,15 @@ func (e *Engine[D, V]) searchIn(ctx context.Context, res Result, mode Mode, useS
 		return Result{}, err
 	}
 	return res, nil
+}
+
+// filtered reports whether f narrows the documents: a tag, a facet, or a path filter ("" or "."
+// among the paths means none).
+func filtered(f Filter) bool {
+	if len(f.Tags) > 0 || len(f.Facets) > 0 {
+		return true
+	}
+	return len(f.Paths) > 0 && !slices.ContainsFunc(f.Paths, func(p string) bool { return p == "" || p == "." })
 }
 
 // list answers a query of filters alone.

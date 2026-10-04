@@ -116,7 +116,8 @@ A pgvector store answers `Semantic` with `ORDER BY embedding <=> $1 LIMIT n` ins
 contract is that of the doc comments on `Store`, `View`, `Semantic`, `Signaler` and `Lister`:
 
 - filters apply before each retriever's rank and limit;
-- equal ranks are ordered by path, then ordinal;
+- equal ranks are ordered by path: lexically, then the backend's own stable order; semantically, then
+  ordinal;
 - every candidate's text, path and generation come from the view's snapshot;
 - a semantic view answers only from alive chunks of documents ready under the active model.
 
