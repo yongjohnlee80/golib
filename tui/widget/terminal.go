@@ -201,9 +201,7 @@ func (t *Terminal) Init(ctx *tui.Context) {
 	}
 	if t.pending {
 		t.pending = false
-		if err := t.Start(); err != nil {
-			t.report(err)
-		}
+		_ = t.Start() // a failure shows on the screen, and Enter retries
 	}
 }
 
@@ -243,7 +241,9 @@ func (t *Terminal) Screen() *vt.Screen { return t.scr }
 
 // Start runs the program, unless it is running. Before the mount it runs
 // once the Terminal is mounted. After an exit it starts a new one, below
-// what the last one left on the screen.
+// what the last one left on the screen. A start that fails says so on the
+// screen and returns the error; Enter or i in the Terminal, or another
+// Start, tries again.
 func (t *Terminal) Start() error {
 	if t.running {
 		return nil
@@ -260,7 +260,12 @@ func (t *Terminal) Start() error {
 		Rows: t.rows, Cols: t.cols,
 	})
 	if err != nil {
-		return fmt.Errorf("terminal: %w", err)
+		// A failed start ends like an exit: it says so on the screen, and
+		// Enter or i tries again, whoever asked for this start.
+		err = fmt.Errorf("terminal: %w", err)
+		t.exited = true
+		t.report(err)
+		return err
 	}
 	t.gen++
 	gen := t.gen
@@ -495,11 +500,9 @@ func isCtrl(k tui.KeyEvent, r rune) bool {
 // inputKey handles a key in input mode.
 func (t *Terminal) inputKey(k tui.KeyEvent) bool {
 	if !t.running {
-		// After an exit, Enter or i starts a new program.
+		// After an exit or a failed start, Enter or i starts a program.
 		if t.exited && (k.Code == tui.KeyEnter || (k.Text == "i" && k.Mods.Chord() == 0)) {
-			if err := t.Start(); err != nil {
-				t.report(err)
-			}
+			_ = t.Start() // a failure shows on the screen again
 			return true
 		}
 		return false
