@@ -8,8 +8,8 @@ it knows that.
 ```go
 import "github.com/yongjohnlee80/golib/parse/js"
 
-expr, err := js.Expression{}.Parse([]byte(`a.b(c) + d ? "x" : 'y'`))
-body, err := js.Statements{}.Parse([]byte(`if (dirty) { save(); } close()`))
+expr, err := js.NewExpression().Parse([]byte(`a.b(c) + d ? "x" : 'y'`))
+body, err := js.NewStatements().Parse([]byte(`if (dirty) { save(); } close()`))
 ```
 
 ## Dialects are data
@@ -27,7 +27,7 @@ conditional. So a dialect is an `ExprDialect` value, not a branch:
 | `js.Go` | none of `?:`, `?.`, templates or `**`; `nil` |
 
 ```go
-expr, err := js.Expression{Dialect: &js.Go}.Parse(src)
+expr, err := js.NewExpression(js.WithDialect(&js.Go)).Parse(src)
 ```
 
 Adding a language is an entry in a table. Its precedence levels go loosest

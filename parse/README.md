@@ -155,6 +155,32 @@ scanners share — [`parse/qml`](qml/README.md), [`parse/js`](js/README.md)
 - **`SyntaxError`** — a position, what was wanted and what was found, and
   `Incomplete` for a source that ended mid-construct.
 
+## The parser contract
+
+A format's parser is a value that satisfies `Parser[T]`:
+
+```go
+type Parser[T any] interface {
+    Parse(src []byte) (T, error)
+}
+```
+
+It may also implement the capabilities its format genuinely has: `Validator` (cheaper than parsing),
+`Splitter` (units that parse on their own), `StreamParser[T]` (from a reader) and `Named` (its name
+in diagnostics). Probe for them with `AsValidator`, `AsSplitter` and `AsStreamParser`.
+
+Every format follows the same shape:
+
+| | |
+| --- | --- |
+| A parser value built with options | `sql.New(sql.DollarQuotes())`, `qml.New(qml.WithName(f))`, `markdown.New(markdown.GFM())`, `yaml.New()`, `view.New()`, `js.NewExpression()`, `js.NewStatements()` |
+| `Parser[T]` and `Named` | all of the above |
+| A syntax error answers as `parse.SyntaxError` | `sql`, `js`, `qml` directly; `yaml` and `view` through their own `*Error`, which keeps its message. Markdown has no syntax errors |
+
+`markdown`, `yaml` and `view` also keep a package function, `Parse(src, opts...)`, as the direct way
+to parse. The exported configuration fields of `sql.SQL`, `js.Expression`, `js.Statements` and
+`qml.QML` are deprecated in favour of the options; they keep working while their callers move over.
+
 ## Forms must be pure
 
 A `Form` is called again from the same offset with more input, so anything

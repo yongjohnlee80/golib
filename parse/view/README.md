@@ -84,6 +84,18 @@ Each is an `*Error` with a position; `errors.Unwrap` gives the YAML or template 
 
 `MaxDepth(n)` bounds the frontmatter's nesting, as `parse/yaml`'s option of the same name does.
 
+## As a `parse.Parser`
+
+`view.New(opts...)` returns a `View`, a parser value that satisfies golib/parse's `Parser[*File]`
+and `Named`, for code that holds parsers of several formats behind those interfaces:
+
+```go
+var p parse.Parser[*File] = view.New(view.WithName("track.view"))
+```
+
+A syntax error also answers as golib/parse's shared `parse.SyntaxError`, with the format and the
+position; use a `parse.SyntaxError` value as the `errors.As` target. Its `*Error` and message stay.
+
 ## License
 
 See [LICENSE](../../LICENSE).

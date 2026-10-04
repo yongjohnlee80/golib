@@ -99,7 +99,7 @@ splitter follows `sqlite3_complete`'s state table for exactly those. A body a `;
 unterminated, like an unclosed string.
 
 ```go
-stmts, err := sql.SQL{TriggerBodies: true}.Parse(script) // each with its line
+stmts, err := sql.New(sql.TriggerBodies()).Parse(script) // each with its line
 ```
 
 ## Numbers are a Form, not a Run

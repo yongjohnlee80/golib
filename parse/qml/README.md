@@ -8,7 +8,7 @@ golib.
 ```go
 import "github.com/yongjohnlee80/golib/parse/qml"
 
-spec, err := qml.QML{File: "editor.qml"}.Parse(src)
+spec, err := qml.New(qml.WithName("editor.qml")).Parse(src)
 ```
 
 ## What it reads

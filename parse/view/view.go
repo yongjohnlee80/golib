@@ -58,6 +58,23 @@ func (e *Error) Error() string { return "view: " + e.Pos.String() + ": " + e.Msg
 // Unwrap returns the YAML or template error the file failed with, or nil.
 func (e *Error) Unwrap() error { return e.Err }
 
+// As also answers for golib/parse's shared syntax error, with the position in the .view file, so a
+// caller handling several formats reads where any of them failed the same way, with a
+// parse.SyntaxError VALUE as the target. The message stays on Error.
+func (e *Error) As(target any) bool {
+	se, ok := target.(*parse.SyntaxError)
+	if ok {
+		*se = e.syntax()
+	}
+	return ok
+}
+
+// Is reports a syntax error's identities, parse.ErrSyntax and through it errs.ErrInvalidArgument,
+// besides whatever the wrapped YAML or template error answers.
+func (e *Error) Is(target error) bool { return errors.Is(e.syntax(), target) }
+
+func (e *Error) syntax() parse.SyntaxError { return parse.SyntaxError{Format: "view", Pos: e.Pos} }
+
 // Option configures [Parse].
 type Option func(*config)
 
