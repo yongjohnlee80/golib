@@ -3,6 +3,7 @@ package yaml
 import (
 	"bytes"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -809,20 +810,14 @@ func validVersion(v string) bool {
 	return true
 }
 
-// versionPrefix reports whether more digits could make v a valid version: digits, then at most one
-// '.' that is not first, then digits.
-func versionPrefix(v string) bool {
-	dots := 0
-	for i := 0; i < len(v); i++ {
-		switch {
-		case v[i] == '.' && i > 0:
-			dots++
-		case v[i] < '0' || v[i] > '9':
-			return false
-		}
-	}
-	return dots <= 1
-}
+// yamlMajor begins every %YAML version this parser reads. The parser refuses any other, and
+// versionPrefix completes only toward it, so the two cannot disagree.
+const yamlMajor = "1."
+
+// versionPrefix reports whether more text could make v a version this parser reads. It is asked
+// only of a version that is not already valid, so the one way left is that v is still part of "1.":
+// "", "1" or "1." itself. "2" or "12" can never become one, whatever follows.
+func versionPrefix(v string) bool { return strings.HasPrefix(yamlMajor, v) }
 
 // handlePrefix reports whether more text could make h a valid tag handle.
 func handlePrefix(h string) bool {

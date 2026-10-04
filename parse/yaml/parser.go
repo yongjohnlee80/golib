@@ -1,6 +1,9 @@
 package yaml
 
-import "unicode/utf8"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 type pstate uint8
 
@@ -236,7 +239,7 @@ func (p *parser) processDirectives() error {
 				return p.rejectAt(t, "a document may have one %YAML directive")
 			}
 			p.yamlDirective = true
-			if t.params[0][0] != '1' || t.params[0][1] != '.' {
+			if !strings.HasPrefix(t.params[0], yamlMajor) {
 				return p.rejectAt(t, "this parser reads YAML 1.x")
 			}
 		case tTagDirective:

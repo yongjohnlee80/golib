@@ -60,15 +60,20 @@ func TestError_IsAParseSyntaxError(t *testing.T) {
 		{"a: \xff b", false},    // a byte not valid in UTF-8, with text after it
 		{"a: \xe2\x82", true},   // a character cut off part way through its encoding
 		// Wrong where they stand, though the error is found at the end of the input.
-		{`a: "\uD800`, false},     // a complete escape naming a surrogate, not a character
-		{`a: "\U00110000`, false}, // past the last Unicode scalar
-		{`a: "\q`, false},         // an escape letter YAML does not have
-		{`a: "\x4g`, false},       // a digit that is not hex
-		{"%TAG x\n", false},       // a handle that cannot start with x
-		{"%TAG x", false},         // the same at the end of the input
-		{"%YAML 1.2.3", false},    // a second '.' no more digits remove
-		{"a: * x", false},         // an alias with no name, before more text
-		{"a: !<tag%zz> b", false}, // a URI escape with digits that are not hex
+		{`a: "\uD800`, false},             // a complete escape naming a surrogate, not a character
+		{`a: "\U00110000`, false},         // past the last Unicode scalar
+		{`a: "\q`, false},                 // an escape letter YAML does not have
+		{`a: "\x4g`, false},               // a digit that is not hex
+		{"%TAG x\n", false},               // a handle that cannot start with x
+		{"%TAG x", false},                 // the same at the end of the input
+		{"%YAML 1.2.3", false},            // a second '.' no more digits remove
+		{"%YAML 2.0\n---\na: b\n", false}, // a whole document in a YAML version this parser does not read
+		{"%YAML 2", false},                // a major version this parser does not read
+		{"%YAML 12", false},               // "1" followed by a digit, never "1."
+		{"%YAML 1..", false},              // a dot no digits follow
+		{"%YAML .1", false},               // a version cannot start with a dot
+		{"a: * x", false},                 // an alias with no name, before more text
+		{"a: !<tag%zz> b", false},         // a URI escape with digits that are not hex
 		// Cut short: more text finishes each.
 		{`a: "\`, true},          // a backslash waiting for its escape
 		{"a: !<tag:x", true},     // a verbatim tag waiting for '>'
@@ -77,6 +82,9 @@ func TestError_IsAParseSyntaxError(t *testing.T) {
 		{"%TAG !e", true},        // a handle being typed
 		{"%TAG !e! tag%4", true}, // a URI escape cut short
 		{"%YAML 1.", true},       // a version being typed
+		{"%YAML", true},          // the version still to come
+		{"%YAML 1", true},        // "1" waiting for its "."
+		{"%YAML 1.2", true},      // a whole directive waiting for "---"
 		{"a: b:", true},          // a ':' the next character decides
 	} {
 		_, err := yaml.Parse([]byte(tc.src))
