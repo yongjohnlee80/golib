@@ -38,7 +38,7 @@ var outputCorpus = []struct {
 	{"nbsp prints", "\u00a0", []string{`print:"\u00a0"`}},
 	{"can aborts csi", "\x1b[1\x18A", []string{`exec:18`, `print:"A"`}},
 	{"sgr truecolor colon", "\x1b[38:2::1:2:3m",
-		[]string{`csi:priv="" params=[38:2:-1:1] inter="" final="m"`}},
+		[]string{`csi:priv="" params=[38:2:-1:1:2:3] inter="" final="m"`}},
 }
 
 func TestOutputCorpus(t *testing.T) {
