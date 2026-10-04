@@ -177,3 +177,45 @@ func TestATabViewIsMadeOfTabs(t *testing.T) {
 		}
 	}
 }
+
+// A tab chosen while the view is off screen — its dialog closed — is the one shown when the dialog
+// opens again, and choosing it there is no fault: a view unmounted with its dialog takes the index
+// and mounts that tab when it is mounted next.
+func TestATabChosenWhileItsDialogIsClosed(t *testing.T) {
+	rec, moved := &recorder{}, &recorder{}
+	s := runTabs(t, `Window {
+ Text { text: "page" }
+ Dialog { id: dlg; title: "settings"
+  TabView { currentIndex: App.tab
+   Tab { title: "one"; Text { text: "first" } }
+   Tab { title: "two"; Text { text: "second" } } } } }`, map[string]any{"App.tab": 1}, rec, moved)
+	s.WaitForText(t, "page")
+	call := func(method string) {
+		t.Helper()
+		var err error
+		onScreenLoop(t, s, func() { err = s.Program.Call("dlg", method) })
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	set := func(i int) {
+		t.Helper()
+		var err error
+		onScreenLoop(t, s, func() { err = s.Program.Set("App.tab", i) })
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	call("open")
+	s.WaitForText(t, "second")
+	call("close")
+	s.WaitFor(t, "the dialog closed", func(sc string) bool { return !strings.Contains(sc, "settings") })
+	set(0) // the view is unmounted with its dialog
+	call("open")
+	s.WaitFor(t, "the first tab", func(sc string) bool { return strings.Contains(sc, "first") && !strings.Contains(sc, "second") })
+	call("close")
+	s.WaitFor(t, "the dialog closed again", func(sc string) bool { return !strings.Contains(sc, "settings") })
+	set(1)
+	call("open")
+	s.WaitFor(t, "the second tab", func(sc string) bool { return strings.Contains(sc, "second") && !strings.Contains(sc, "first") })
+}
