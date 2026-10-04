@@ -6,6 +6,8 @@ import "context"
 // consumer owns the tables, the SQL and the write path; the Engine reads only through the View it
 // is given, so every hit's text, path and generation come from one snapshot.
 //
+// View returns fn's error as it is, or wrapped with %w, so the Engine recognizes its own.
+//
 // D is the store's document key, compared only for equality. V is the store's view type, and its
 // static method set decides what the Engine asks of it (see NewEngine).
 type Store[D comparable, V View[D]] interface {
