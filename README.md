@@ -53,6 +53,8 @@ go get github.com/yongjohnlee80/golib
 | [`yaml`](yaml/README.md) | Evaluate a `parse/yaml` tree under the Failsafe, JSON or Core schema into Go values, with bounded aliases | [README](yaml/README.md) |
 | [`parse/markdown`](parse/markdown/README.md) | CommonMark 0.31.2 into a byte-spanned tree, GFM and Obsidian as extensions; `html` renders it | [README](parse/markdown/README.md) · [html](parse/markdown/html/README.md) |
 | [`parse/sql`](parse/sql/README.md) | SQL dialects as values, over the streaming lexer | [README](parse/sql/README.md) |
+| [`parse/view`](parse/view/README.md) | A `.view` file parsed into its YAML frontmatter and its body template tree, resolving nothing, with every position the file's own | [README](parse/view/README.md) |
+| [`view`](view/README.md) | Documents materialized from a database by a `.view` file: a query returning JSON rows, a body template escaped for its format, export to a `vfs.FS` | [README](view/README.md) |
 | [`highlight`](highlight/README.md) | Syntax highlighting's contract: `Highlighter` (Qt's QSyntaxHighlighter, line + carried state), KSyntaxHighlighting's 31 styles, tree-sitter capture mapping | [README](highlight/README.md) |
 | [`decl`](decl/README.md) | Instantiate a declarative (QML) UI through an adapter — identity, reloads, bindings, modules, signals | [README](decl/README.md) |
 | [`tui/decl`](tui/decl/README.md) | golib/tui screens written in QML: the vocabulary, themes, dialogs, your own widgets, `NewProgram` | [README](tui/decl/README.md) · [USAGE](tui/decl/USAGE.md) |
