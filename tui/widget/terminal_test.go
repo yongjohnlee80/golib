@@ -611,3 +611,50 @@ func TestTerminalOutlivesItsMount(t *testing.T) {
 	f.h.stop()
 	f.h.waitFor("hang-up at the App's end", f.proc().isClosed)
 }
+
+// A start that fails says so and can be retried: by Enter in the Terminal,
+// and by another Start, both after a direct Start and after one deferred to
+// the mount.
+func TestTerminalFailedStartCanBeRetried(t *testing.T) {
+	for _, deferred := range []bool{false, true} {
+		t.Run(fmt.Sprintf("deferred=%v", deferred), func(t *testing.T) {
+			var mu sync.Mutex
+			attempts := 0
+			term := widget.NewTerminal(widget.WithStarter(func(pty.Cmd) (widget.TerminalProcess, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				attempts++
+				if attempts == 1 {
+					return nil, io.ErrClosedPipe
+				}
+				return newFakeProc(), nil
+			}))
+			if deferred {
+				term.Start() // before the mount: runs at the mount
+			}
+			sh := newShell(term)
+			h := startApp(t, sh, 40, 3)
+			defer h.stop()
+			h.onLoop(func() {
+				term.Context().RequestFocus()
+				if !deferred {
+					if err := term.Start(); err == nil {
+						t.Error("the failing start returned nil")
+					}
+				}
+			})
+			h.waitFor("the failure on the screen", func() bool { return strings.Contains(h.grid(), "closed pipe") })
+			h.inject(key(tui.KeyEnter))
+			h.waitFor("a retry by Enter", func() bool {
+				var running bool
+				h.onLoop(func() { running = term.Running() })
+				return running
+			})
+			mu.Lock()
+			defer mu.Unlock()
+			if attempts != 2 {
+				t.Errorf("%d start attempts, want 2", attempts)
+			}
+		})
+	}
+}
