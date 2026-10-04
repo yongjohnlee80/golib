@@ -137,8 +137,8 @@ func numberOf(v qml.SpecValue) (float64, error) {
 // Instance is a type whose one widget the HOST already built: a document
 // places it by name, and gets that widget rather than a new one.
 //
-//	tuidecl.WithTypes(tuidecl.Instance("Terminal", myTerminal))
-//	Split { Editor { }  Terminal { } }                     // in QML
+//	tuidecl.WithTypes(tuidecl.Instance("Preview", myPreview))
+//	Split { Editor { }  Preview { } }                      // in QML
 //
 // For a widget whose construction the host owns — one wired to a process, a
 // socket, a model already running. A widget can be in the tree once, so a

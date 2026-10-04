@@ -14,11 +14,13 @@ import (
 //
 //	Drawer {
 //	    id: explorer
-//	    edge: Tui.Left      // Tui.Right, Tui.Top, Tui.Bottom; Qt spells it Qt.LeftEdge
+//	    edge: Tui.Left      // Tui.Right, Tui.Top, Tui.Bottom, Tui.Center; Qt spells it Qt.LeftEdge
 //	    size: 30            // a percentage of the Window across the edge
 //	    length: 85          // golib's: a percentage along it, centred (100, the default: all of it)
 //	    Frame { title: "explorer"; TreeView { … } }
 //	}
+//
+// Tui.Center is golib's: the panel floats in the middle of the Window, length wide and size high.
 //
 // It holds the keyboard while open, as Qt's modal Drawer does, and gives it back where it was
 // when it closes; Escape closes it. modal: false (Qt's too) lets the keyboard go back to the page
@@ -76,6 +78,9 @@ func (n *drawerNode) place() {
 		n.float.SetSizeFraction(n.length, n.size)
 	case tui.DockBottom:
 		n.float.SetAnchor(widget.Bottom)
+		n.float.SetSizeFraction(n.length, n.size)
+	case tui.DockCenter:
+		n.float.SetAnchor(widget.Center)
 		n.float.SetSizeFraction(n.length, n.size)
 	default:
 		n.float.SetAnchor(widget.Left)
@@ -195,7 +200,7 @@ var drawerType = Type{
 	Build: buildDrawer,
 	Ctor:  []string{"modal"},
 	Setters: map[string]Setter{
-		"edge": setter("a Drawer", dockEdges.read, (*drawerNode).setEdge),
+		"edge": setter("a Drawer", drawerEdges.read, (*drawerNode).setEdge),
 		"size": setter("a Drawer", func(v qml.SpecValue) (int, error) {
 			f, err := numberOf(v)
 			return int(f), err

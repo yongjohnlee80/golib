@@ -402,14 +402,14 @@ contract: `TextField` and `Popup`, from Qt Quick Controls.
 model — is placed with `Instance`:
 
 ```go
-tuidecl.Types(tuidecl.Instance("Terminal", myTerminal))
+tuidecl.Types(tuidecl.Instance("Preview", myPreview))
 ```
 
 ```qml
-Split { Editor { }  Terminal { } }
+Split { Editor { }  Preview { } }
 ```
 
-A widget can be in the tree once: a second `Terminal { }` is refused by name and
+A widget can be in the tree once: a second `Preview { }` is refused by name and
 position. Place an Instance where its node is stable — a reload that would give
 it a new node (moving it to another parent) builds the replacement before
 releasing the old one, and is refused rather than putting one widget in two

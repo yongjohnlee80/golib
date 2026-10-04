@@ -80,6 +80,7 @@ change at runtime, which is what makes it bindable to a source.
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette; its children are its widgets, each at its own width: permanent (Qt's `QStatusBar.addPermanentWidget`) at the right end, or, with `StatusBar.permanent: false` on the child, normal (`addWidget`) at the left end; the segments share the rest | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |
+| `Terminal` (golib's) | `command` (the program; the user's `$SHELL` when empty), `dir`, `scrollback` | `vimKeys` (Esc leaves input mode, except on the alternate screen), `themeColors` (default true: the program's default colours are the theme's) | — | `exited(code)`, `titleChanged(title)`, `modeChanged(mode)` — `"terminal"` or `"normal"` | `start()`, `stop()`, `focus()` |
 | `Button` | — | `text`, `enabled` | — | `clicked` | — |
 | `Split` | `orientation` | `ratio` | — | — | — |
 | `Flex` | `direction` | — | — | — | — |
@@ -93,7 +94,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Tab` | `title`; one child, its content | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
-| `Drawer` | `modal` (default true); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100) | — | `opened`, `closed` | `open()`, `close()`, `toggle()` |
+| `Drawer` | `modal` (default true); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100) | — | `opened`, `closed` | `open()`, `close()`, `toggle()` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
