@@ -1,6 +1,9 @@
 package dao
 
-import "github.com/yongjohnlee80/golib/logger"
+import (
+	"github.com/yongjohnlee80/golib/errs"
+	"github.com/yongjohnlee80/golib/logger"
+)
 
 // Table sets the entity's table/relation name (required).
 func Table[R any, C ~string, K ~string, ID any](name string) Option[R, C, K, ID] {
@@ -91,6 +94,28 @@ func SortExpr[R any, C ~string, K ~string, ID any](key K, e Expr) Option[R, C, K
 			c.sortMapEx = map[K]Expr{}
 		}
 		c.sortMapEx[key] = e
+		return c
+	}
+}
+
+// SortParam declares one sort key whose ORDER BY expression binds values when
+// the query renders, such as [Distance] or [RankQuery]. A query orders by it
+// with [AscBy] or [DescBy], giving the values. For one key it wins over a
+// [SortMap] or [SortExpr] entry.
+//
+// The expression's needs are resolved at [New]: a declaration that cannot be
+// right on any engine (an invalid text-search configuration, say) panics there;
+// an engine without the capability leaves the key declared, and a query
+// ordering by it fails with [ErrUnsupported] rather than panicking.
+func SortParam[R any, C ~string, K ~string, ID any](key K, e ParamExpr) Option[R, C, K, ID] {
+	if !e.isSet() {
+		panic(errs.Fatal{Op: "dao.SortParam", Rule: "zero ParamExpr (build it with dao.Distance or dao.RankQuery)"})
+	}
+	return func(c *config[R, C, K, ID]) *config[R, C, K, ID] {
+		if c.sortParam == nil {
+			c.sortParam = map[K]ParamExpr{}
+		}
+		c.sortParam[key] = e
 		return c
 	}
 }

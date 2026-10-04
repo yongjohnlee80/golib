@@ -20,6 +20,7 @@ type config[R any, C ~string, K ~string, ID any] struct {
 	optionalJoinEx map[JoinKey]Expr
 	sortMap        map[K]string
 	sortMapEx      map[K]Expr
+	sortParam      map[K]ParamExpr
 	sortJoins      map[K]JoinKey
 	search         []SearchOp
 	conflictFields []C
@@ -48,7 +49,8 @@ type Schema[R any, C ~string, K ~string, ID any] struct {
 	fields        map[C]Field[R]
 	defaults      []C
 	optionalJoins map[JoinKey]joinClause
-	sortExpr      map[string]string  // stringified sort key -> ORDER BY expression
+	sortExpr      map[string]string // stringified sort key -> ORDER BY expression
+	sortParam     map[string]boundSort
 	sortJoin      map[string]JoinKey // stringified sort key -> triggered join
 	search        map[string]SearchOp
 	conflict      []string // resolved conflict columns
@@ -102,6 +104,7 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 		fields:        cfg.fields,
 		optionalJoins: map[JoinKey]joinClause{},
 		sortExpr:      map[string]string{},
+		sortParam:     map[string]boundSort{},
 		sortJoin:      map[string]JoinKey{},
 		search:        map[string]SearchOp{},
 		errorMap:      cfg.errorMap,
@@ -161,6 +164,11 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 	}
 	for k, e := range cfg.sortMapEx {
 		s.sortExpr[fmt.Sprint(k)] = e.render(conn.Dialect())
+	}
+	for k, e := range cfg.sortParam {
+		key := fmt.Sprint(k)
+		s.sortParam[key] = resolveSortParam(conn.Dialect(), key, e)
+		delete(s.sortExpr, key)
 	}
 	for k, j := range cfg.sortJoins {
 		s.sortJoin[fmt.Sprint(k)] = j

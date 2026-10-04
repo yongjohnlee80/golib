@@ -22,6 +22,11 @@ type queryState struct {
 type orderClause struct {
 	expr string
 	desc bool
+
+	// bound renders a term that binds values, given the builder's placeholder
+	// function, so its placeholders follow the WHERE's and precede LIMIT's.
+	// Nil for a term that binds nothing, which is expr.
+	bound func(ph func(any) string) string
 }
 
 // writeState is the mutable staged-value intent for INSERT/UPDATE/UPSERT.

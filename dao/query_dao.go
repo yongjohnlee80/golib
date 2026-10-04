@@ -307,9 +307,25 @@ func (d *queryDAO[R, C, K, ID]) SetRules(rules map[C]Rule) DAO[R, C, ID] {
 
 func (d *queryDAO[R, C, K, ID]) OrderBy(sorts ...Sort) DAO[R, C, ID] {
 	for _, srt := range sorts {
+		if bs, ok := d.schema.sortParam[srt.Key]; ok {
+			o, err := bs.order(d.schema.dialect, srt)
+			if err != nil {
+				d.fail(err)
+				continue
+			}
+			d.q.order = append(d.q.order, o)
+			if j, ok := d.schema.sortJoin[srt.Key]; ok && j != "" {
+				d.q.forcedJoins = append(d.q.forcedJoins, j)
+			}
+			continue
+		}
 		expr, ok := d.schema.sortExpr[srt.Key]
 		if !ok {
 			d.fail(fmt.Errorf("%w: sort key %q", ErrUnknownField, srt.Key))
+			continue
+		}
+		if len(srt.values()) > 0 {
+			d.fail(errs.Wrap(errs.ErrInvalidArgument, "dao: sort key %q binds no values; order by it with Asc or Desc", srt.Key))
 			continue
 		}
 		d.q.order = append(d.q.order, orderClause{expr: expr, desc: srt.Desc})
