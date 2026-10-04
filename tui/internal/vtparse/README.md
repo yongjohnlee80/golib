@@ -5,6 +5,16 @@
 internal to `golib/tui`: `tui/term` decodes keyboard input with it, and `tui/vt` decodes what a
 program writes.
 
+## Install
+
+`vtparse` is internal to `golib/tui` and cannot be imported from outside it. It comes with golib:
+
+```bash
+go get github.com/yongjohnlee80/golib
+```
+
+`tui/term` (keyboard input) and `tui/vt` (a program's output) are its importers.
+
 ## Features
 
 - Every state of the vt100.net model: ground, escape, escape-intermediate, the four CSI states,

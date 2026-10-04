@@ -46,7 +46,7 @@ import "unicode/utf8"
 // saturating — excess is ignored but the sequence is still consumed. Input
 // keeps 4 sub-params (the key decoder's widest form needs 3, and kitty's
 // associated text must not grow); output takes all 8, for SGR's
-// 38:2:cs:r:g:b. String payloads (OSC/DCS) are capped to bound memory. String payloads (OSC/DCS) are capped to bound memory.
+// 38:2:cs:r:g:b. String payloads (OSC/DCS) are capped to bound memory.
 const (
 	maxParams      = 32
 	maxSubparams   = 8

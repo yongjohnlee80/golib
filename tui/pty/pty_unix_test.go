@@ -279,10 +279,13 @@ func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 			}
 		}
 	}()
-	// The ids go to a file, so no echoed command line can be mistaken for
-	// the answer.
+	// The job is a sleep with an argument no other process has, so "still
+	// running" means a process with exactly those arguments: a pid reused by
+	// a stranger cannot pass for it, and nothing but it is ever killed. Its
+	// ids go to a file, so no echoed command line can be mistaken for them.
+	marker := fmt.Sprintf("1000.%d", time.Now().UnixNano()%1000000)
 	ids := filepath.Join(t.TempDir(), "job")
-	fmt.Fprintf(p, "set -m; sleep 1000 & echo $! $(ps -o pgid= -p $!) > %s\n", ids)
+	fmt.Fprintf(p, "set -m; sleep %s & echo $! $(ps -o pgid= -p $!) > %s\n", marker, ids)
 	var job, pgid int
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -297,6 +300,10 @@ func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	ours := func() bool { return psField(job, "args") == "sleep "+marker }
+	if !ours() {
+		t.Fatalf("job %d is not the sleep started (args %q)", job, psField(job, "args"))
+	}
 	if pgid == p.Pid() {
 		t.Fatalf("job %d shares bash's group %d; the cell needs job control", job, pgid)
 	}
@@ -308,16 +315,41 @@ func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 			code, took, 128+int(syscall.SIGHUP))
 	}
 	deadline = time.Now().Add(10 * time.Second)
-	for unix.Kill(job, 0) == nil {
-		if zombie(job) {
-			break // ended, awaiting its new parent's reap
-		}
+	for ours() && !zombie(job) {
 		if time.Now().After(deadline) {
-			unix.Kill(job, syscall.SIGKILL)
-			t.Fatalf("job %d still running after the hang-up", job)
+			diag := jobState(job)
+			unix.Kill(job, syscall.SIGKILL) // ours: its arguments were just checked
+			outMu.Lock()
+			defer outMu.Unlock()
+			t.Fatalf("job %d (sleep %s) still running 10s after bash took the hang-up:\n%s\nthe terminal showed %q",
+				job, marker, diag, out.String())
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// psField is one ps column for pid, "" when there is no such process.
+func psField(pid int, field string) string {
+	out, err := exec.Command("ps", "-o", field+"=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// jobState describes a process for a failure: its ids and state, and on
+// Linux its signal masks (a SIGHUP it ignores would explain surviving one).
+func jobState(pid int) string {
+	out, _ := exec.Command("ps", "-o", "pid,ppid,pgid,sess,stat,args", "-p", strconv.Itoa(pid)).CombinedOutput()
+	s := string(out)
+	if b, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid)); err == nil {
+		for _, l := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(l, "Sig") || strings.HasPrefix(l, "State") {
+				s += l + "\n"
+			}
+		}
+	}
+	return s
 }
 
 // zombie reports whether pid has exited but not been reaped.
