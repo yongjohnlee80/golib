@@ -51,6 +51,12 @@ type Error struct {
 	Pos parse.Position
 	Msg string
 	Err error // the YAML or template error behind Msg, when there is one
+	// Incomplete says the file ended in the middle of a construct, so more text appended to it could
+	// make it valid: an opening "---" not yet typed in full, a frontmatter with no closing line yet,
+	// or a body whose actions, comments, strings or blocks are still open. Otherwise the file is
+	// wrong where it stands. It selects which of golib/parse's two identities the error answers:
+	// ErrUnterminated or ErrSyntax.
+	Incomplete bool
 }
 
 func (e *Error) Error() string { return "view: " + e.Pos.String() + ": " + e.Msg }
@@ -69,11 +75,14 @@ func (e *Error) As(target any) bool {
 	return ok
 }
 
-// Is reports a syntax error's identities, parse.ErrSyntax and through it errs.ErrInvalidArgument,
-// besides whatever the wrapped YAML or template error answers.
+// Is reports a syntax error's identities: parse.ErrUnterminated for an Incomplete file, otherwise
+// parse.ErrSyntax, and through either errs.ErrInvalidArgument. Never both: a wrapped YAML error is
+// classified for the file, not for the frontmatter on its own (see [Parse]).
 func (e *Error) Is(target error) bool { return errors.Is(e.syntax(), target) }
 
-func (e *Error) syntax() parse.SyntaxError { return parse.SyntaxError{Format: "view", Pos: e.Pos} }
+func (e *Error) syntax() parse.SyntaxError {
+	return parse.SyntaxError{Format: "view", Pos: e.Pos, Incomplete: e.Incomplete}
+}
 
 // Option configures [Parse].
 type Option func(*config)
@@ -112,7 +121,9 @@ func Parse(src []byte, opts ...Option) (*File, error) {
 
 	open, ok := delimiter(src, 0)
 	if !ok {
-		return nil, f.errorAt(0, "the first line must be \"---\", opening the frontmatter", nil)
+		// A source that is so far only part of "---" is an opening not yet typed in full.
+		cut := bytes.IndexByte(src, '\n') < 0 && strings.HasPrefix("---", string(src))
+		return nil, f.errorAt(0, "the first line must be \"---\", opening the frontmatter", nil, cut)
 	}
 	f.Open = open
 	end, found := Span{}, false
@@ -121,7 +132,7 @@ func Parse(src []byte, opts ...Option) (*File, error) {
 		off = next(src, end.End)
 	}
 	if !found {
-		return nil, f.errorAt(len(src), "the frontmatter has no closing \"---\" line", nil)
+		return nil, f.errorAt(len(src), "the frontmatter has no closing \"---\" line", nil, true)
 	}
 	f.Close = end
 	f.Front = Span{next(src, open.End), end.Start}
@@ -158,18 +169,24 @@ func (f *File) parseMeta(cfg config) error {
 	front := f.Source[f.Front.Start:f.Front.End]
 	st, err := yaml.Parse(front, yaml.MaxDepth(cfg.maxDepth))
 	if err != nil {
+		// The frontmatter is closed by the time it is parsed, so text appended to the FILE cannot
+		// finish a construct the YAML left open: for the file, the error is where it stands. The
+		// wrapped YAML error says the same, or errors.Is would find ErrUnterminated through it
+		// beside this error's ErrSyntax.
 		var ye *yaml.Error
 		if errors.As(err, &ye) {
-			return f.errorAt(f.Front.Start+ye.Pos.Offset, ye.Msg, err)
+			inFile := *ye
+			inFile.Incomplete = false
+			return f.errorAt(f.Front.Start+ye.Pos.Offset, ye.Msg, &inFile, false)
 		}
-		return f.errorAt(f.Front.Start, err.Error(), err)
+		return f.errorAt(f.Front.Start, err.Error(), err, false)
 	}
 	switch len(st.Docs) {
 	case 0:
 	case 1:
 		f.Meta = st.Docs[0]
 	default:
-		return f.errorAt(f.Front.Start+st.Docs[1].Span.Start, "the frontmatter holds more than one YAML document", nil)
+		return f.errorAt(f.Front.Start+st.Docs[1].Span.Start, "the frontmatter holds more than one YAML document", nil, false)
 	}
 	return nil
 }
@@ -185,8 +202,9 @@ func (f *File) parseBody() error {
 	t := tparse.New(BodyTemplate)
 	t.Mode = tparse.SkipFuncCheck
 	trees := map[string]*tparse.Tree{}
-	if _, err := t.Parse(padding+string(f.Source[f.Body.Start:f.Body.End]), "", "", trees); err != nil {
-		return f.errorAt(f.Body.Start, err.Error(), err)
+	body := string(f.Source[f.Body.Start:f.Body.End])
+	if _, err := t.Parse(padding+body, "", "", trees); err != nil {
+		return f.errorAt(f.Body.Start, err.Error(), err, bodyIncomplete(body))
 	}
 	if body := trees[BodyTemplate]; body != nil && body.Root != nil && len(body.Root.Nodes) > 0 {
 		// A "{{-" opening the body trims the padding with the rest of the leading space, so the
@@ -203,8 +221,39 @@ func (f *File) parseBody() error {
 	return nil
 }
 
-func (f *File) errorAt(off int, msg string, err error) *Error {
-	return &Error{Pos: f.Position(off), Msg: msg, Err: err}
+func (f *File) errorAt(off int, msg string, err error, incomplete bool) *Error {
+	return &Error{Pos: f.Position(off), Msg: msg, Err: err, Incomplete: incomplete}
+}
+
+// bodyClosers end what a body may have left open at the end of the file: nothing, an action, an
+// action inside a parenthesis, a string in either quoting, a character literal, a comment.
+var bodyClosers = []string{"", "}}", ")}}", "\"}}", "\")}}", "`}}", "'}}", "*/}}"}
+
+// maxOpenBlocks bounds how many {{end}}s bodyIncomplete appends: deeper than a body is written by
+// hand, and small enough that the check stays cheap on the error path.
+const maxOpenBlocks = 16
+
+// bodyIncomplete reports whether a body that failed to parse is the beginning of one that would:
+// whether closing what it left open (one of bodyClosers, then up to maxOpenBlocks {{end}}s for its
+// open if, range, with, define and block) makes it parse. The template parser does not say whether
+// it stopped at the end of the input, so the question is asked of the text directly, and answered
+// yes only by a completion that parses. A body broken in a way no such completion repairs, such as
+// an {{end}} with nothing to end or an {{if}} with no condition, stays wrong where it stands.
+func bodyIncomplete(body string) bool {
+	blocks := min(strings.Count(body, "{{"), maxOpenBlocks)
+	for _, closer := range bodyClosers {
+		for k := 0; k <= blocks; k++ {
+			if closer == "" && k == 0 {
+				continue
+			}
+			t := tparse.New("completion")
+			t.Mode = tparse.SkipFuncCheck
+			if _, err := t.Parse(body+closer+strings.Repeat("{{end}}", k), "", "", map[string]*tparse.Tree{}); err == nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // delimiter reports whether the line starting at off is a frontmatter delimiter, and its span.

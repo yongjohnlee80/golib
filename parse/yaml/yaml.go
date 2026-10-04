@@ -134,6 +134,12 @@ type Pair struct{ Key, Value *Node }
 type Error struct {
 	Pos parse.Position
 	Msg string
+	// Incomplete says the stream ended in the middle of a construct, so more text appended to it
+	// could make it valid: a quoted scalar or a flow collection still open, a key with no value yet,
+	// or a character cut off part way through its encoding. Otherwise the text is wrong where it
+	// stands. It selects which of golib/parse's two identities the error answers: ErrUnterminated or
+	// ErrSyntax.
+	Incomplete bool
 }
 
 func (e *Error) Error() string {
@@ -155,10 +161,13 @@ func (e *Error) As(target any) bool {
 	return ok
 }
 
-// Is reports a syntax error's identities, parse.ErrSyntax and through it errs.ErrInvalidArgument.
+// Is reports a syntax error's identities: parse.ErrUnterminated for an Incomplete stream, otherwise
+// parse.ErrSyntax, and through either errs.ErrInvalidArgument. Never both.
 func (e *Error) Is(target error) bool { return errors.Is(e.syntax(), target) }
 
-func (e *Error) syntax() parse.SyntaxError { return parse.SyntaxError{Format: "yaml", Pos: e.Pos} }
+func (e *Error) syntax() parse.SyntaxError {
+	return parse.SyntaxError{Format: "yaml", Pos: e.Pos, Incomplete: e.Incomplete}
+}
 
 // Option configures Parse and Events.
 type Option func(*config)

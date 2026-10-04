@@ -136,8 +136,11 @@ func (s *scanner) skipBreak() {
 	s.col = 0
 }
 
+// errorf reports a lexical error found at m. The error is Incomplete when the scanner's cursor has
+// reached the end of the input: the scanner was still inside a construct (a quoted scalar, a
+// pending key, an escape) when the characters ran out, so more input could have finished it.
 func (s *scanner) errorf(m mark, msg string) error {
-	return &Error{Pos: position(s.src, lineStarts(s.src), m.off), Msg: msg}
+	return &Error{Pos: position(s.src, lineStarts(s.src), m.off), Msg: msg, Incomplete: s.eof(0)}
 }
 
 // token returns the next token, scanning as far ahead as a pending simple key requires.

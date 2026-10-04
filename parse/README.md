@@ -176,6 +176,7 @@ Every format follows the same shape:
 | A parser value built with options | `sql.New(sql.DollarQuotes())`, `qml.New(qml.WithName(f))`, `markdown.New(markdown.GFM())`, `yaml.New()`, `view.New()`, `js.NewExpression()`, `js.NewStatements()` |
 | `Parser[T]` and `Named` | all of the above |
 | A syntax error answers as `parse.SyntaxError` | `sql`, `js`, `qml` directly; `yaml` and `view` through their own `*Error`, which keeps its message. Markdown has no syntax errors |
+| Unfinished input is `ErrUnterminated`, wrong input `ErrSyntax`, never both | every format with syntax errors; see each format's README for how it tells the two apart |
 
 `markdown`, `yaml` and `view` also keep a package function, `Parse(src, opts...)`, as the direct way
 to parse. The exported configuration fields of `sql.SQL`, `js.Expression`, `js.Statements` and
