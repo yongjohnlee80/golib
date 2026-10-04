@@ -120,6 +120,7 @@ func TestNew_Rejects(t *testing.T) {
 		"unknown function":    {"---\n" + ok + "---\nline 7\n  {{.x | nosuch}}\n", `8:10: function "nosuch" is not defined`},
 		"unknown in a branch": {"---\n" + ok + "---\n{{if nosuch}}x{{end}}", `function "nosuch" is not defined`},
 		"unknown in a define": {"---\n" + ok + "---\n{{define \"r\"}}{{nosuch}}{{end}}", `function "nosuch" is not defined`},
+		"ambiguous html":      {"---\n" + ok + "format: html\n---\n<a {{if .x}}href=\"{{else}}title=\"{{end}}{{.y}}\">", `branches end in different contexts`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -230,3 +230,27 @@ func TestView_IsSafeForConcurrentUse(t *testing.T) {
 		}
 	}
 }
+
+// A body in html format is escaped for the context each value lands in, not only as character
+// data: a URL attribute refuses an active scheme, and an unquoted attribute cannot gain a second
+// attribute from the value.
+func TestFormat_HTMLIsEscapedForItsContext(t *testing.T) {
+	t.Parallel()
+	v := viewOf(t, FormatHTML, `<a href="{{.url}}">go</a><div data-x={{.attr}}>{{.text}}</div><script>var t = {{.text}};</script>`)
+	got := render(t, v, `{"url":"javascript:alert(1)","attr":"x onmouseover=alert(1)","text":"</script><b>"}`)
+	for _, active := range []string{`href="javascript:`, `onmouseover=alert`, `</script><b>`, `<b>`} {
+		if strings.Contains(got, active) {
+			t.Errorf("rendered %q, which holds %q", got, active)
+		}
+	}
+}
+
+// raw is the author's explicit choice, and in html format it marks trusted markup.
+func TestFormat_HTMLRawAndEmptyValues(t *testing.T) {
+	t.Parallel()
+	v := viewOf(t, FormatHTML, `<p>{{raw .b}}</p><p>{{.missing}}</p><p>{{.null}}</p><p>{{toJson .o}}</p>`)
+	got := render(t, v, `{"b":"<i>x</i>","null":null,"o":{"k":"<v>"}}`)
+	if want := `<p><i>x</i></p><p></p><p></p><p>{&#34;k&#34;:&#34;&lt;v&gt;&#34;}</p>`; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

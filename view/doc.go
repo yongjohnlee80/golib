@@ -35,7 +35,9 @@
 //
 // The query is never a template. Arguments are bound parameters, so a value from a search hit or a
 // request cannot change the SQL. Every value the body prints is escaped for the view's output
-// format: JSON string content for json, character data for xml and html. A lyric holding a quote
-// cannot break a JSON document. A NULL or missing value prints as nothing. An export name that would
-// leave the destination is refused by the filesystem.
+// format: JSON string content for json, character data for xml, and for html, html/template's
+// escaping for the context each value lands in (text, attribute, URL, script, style). A lyric
+// holding a quote cannot break a JSON document, and a value cannot become an attribute or a
+// javascript: link in an HTML one. A NULL or missing value prints as nothing. An export name that
+// would leave the destination is refused by the filesystem.
 package view
