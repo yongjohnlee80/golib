@@ -44,6 +44,12 @@ dao/fulltext.go	Snippet.func$1	4900e2f0aec04cc1	1	construction	dao.Snippet: the 
 dao/fulltext.go	fullTexter	a400feb327d1e70a	1	construction	full-text piece declared on an engine without FullTexter — reached from dao.New resolving a field, join or sort; at query time Cmp refuses the engine with ErrUnsupported (Expr needs) before rendering
 dao/fulltext.go	Rank	adc917bac7184e00	1	construction	dao.Rank: weight count is neither zero nor one per column — the weights are a declaration's, checked while the Schema's options are built
 dao/fulltext.go	Rank	3cad06c3a475cdf5	1	construction	dao.Rank: a weight that is not finite — the weights are a declaration's, checked while the Schema's options are built
+dao/fulltext.go	RankQuery	bb6d79cc291468ed	1	construction	dao.RankQuery: weight count is neither zero nor one per column — the weights are a declaration's, checked while the Schema's options are built
+dao/fulltext.go	RankQuery	a11b5d1d51212d68	1	construction	dao.RankQuery: a weight that is not finite — the weights are a declaration's, checked while the Schema's options are built
+dao/fulltext.go	mustValidIndex	9acd083c5b593806	1	construction	an invalid FullTextIndex (Config, Classes) in a declaration — rendered only while dao.New resolves a field, join or sort; at query time Cmp checks the same needs (needsIndex) first and Match keeps the error for admission
+dao/options.go	SortParam	bb44b9e6e706c118	1	construction	dao.SortParam: a zero ParamExpr — the option is built while declaring the Schema
+dao/paramexpr.go	resolveSortParam	83f95180674c144f	1	construction	a bound sort key whose declaration is wrong on every engine (an invalid index) — reached only from dao.New; an engine merely lacking the capability is kept as the key's ErrUnsupported instead
+dao/vector.go	Distance	b56eb44fc9a847f1	1	construction	dao.Distance: a metric other than the constants — the metric is a declaration's, checked while the Schema's options are built
 dao/query.go	Cmp	b7dedd63dae06591	1	invariant	dao.Cmp: an operator outside the OpEq..OpGte constants — CmpOp is a typed constant set; only a caller converting an arbitrary string reaches this, which is programmer error, not data
 dao/expr.go	Expr.mustSet	e3e0dd74d6446050	1	invariant	mustSet rejects a ZERO Expr — a caller passing Expr{} is programmer error, not data. Fingerprint changed when the hint dropped dao.Str, which no longer exists; the rejection itself is unchanged.
 dao/schema.go	New	83bd0006c349d7de	1	construction	dao.New: nil DataConn — validated before the Schema exists; nothing is running yet
