@@ -2,6 +2,7 @@ package extract
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -43,10 +44,15 @@ type Option func(*Set)
 // Register makes e the extractor for each of exts. An extension is written with or without its
 // leading dot and is matched without regard to case: ".PDF", "pdf" and ".pdf" are one extension. A
 // later registration of an extension replaces an earlier one, so a caller can override a default.
+// A nil Extractor or a nil [Func] is refused. A nil pointer of another type is accepted, since its
+// methods may be written to work on a nil receiver.
 func Register(e Extractor, exts ...string) Option {
 	return func(s *Set) {
 		if e == nil {
 			panic("extract: Register: nil Extractor")
+		}
+		if f, ok := e.(Func); ok && f == nil {
+			panic("extract: Register: nil Func")
 		}
 		if len(exts) == 0 {
 			panic("extract: Register: no extensions")
@@ -97,8 +103,9 @@ func (s *Set) Supports(name string) bool {
 //
 // It returns [ErrUnsupported] for an extension with no extractor and [ErrContainerTooLarge] for a
 // file over the container limit, both before reading anything. [ErrTextTooLarge] is returned when the
-// text passes the text limit, even if the extractor ignored the failed write. Any other error is the
-// extractor's, wrapped with name.
+// text passes the text limit, even if the extractor ignored the failed write. A failure of w itself,
+// such as a full disk, is always returned, even if the extractor ignored it, and alongside
+// ErrTextTooLarge when both happened. Any other error is the extractor's, wrapped with name.
 func (s *Set) Extract(ctx context.Context, name string, r io.ReaderAt, size int64, w io.Writer) (Info, error) {
 	if err := ctx.Err(); err != nil {
 		return Info{}, err
@@ -114,10 +121,14 @@ func (s *Set) Extract(ctx context.Context, name string, r io.ReaderAt, size int6
 
 	lw := &limitWriter{w: w, max: s.maxText}
 	info, err := e.Extract(ctx, r, size, lw)
-	if lw.exceeded {
-		return info, errs.Wrap(ErrTextTooLarge, "extract %s: limit %d", name, s.maxText)
-	}
-	if err != nil {
+	switch {
+	case lw.exceeded:
+		return info, errs.WrapCause(ErrTextTooLarge, lw.err, "extract %s: limit %d", name, s.maxText)
+	case lw.err != nil && err == nil:
+		return info, fmt.Errorf("extract %s: write: %w", name, lw.err)
+	case lw.err != nil && !errors.Is(err, lw.err):
+		return info, fmt.Errorf("extract %s: %w (write: %w)", name, err, lw.err)
+	case err != nil:
 		return info, fmt.Errorf("extract %s: %w", name, err)
 	}
 	if info.Title == "" {
@@ -136,29 +147,33 @@ func normalize(ext string) string {
 }
 
 // limitWriter passes writes through until max bytes have been written; max 0 sets no limit. A write
-// that would pass the limit writes the part that fits and fails, and exceeded records it, so the
-// limit holds even for an extractor that ignores the error.
+// that would pass the limit writes the part that fits and fails. exceeded records the breach and err
+// the destination's first failure, so both reach the caller even from an extractor that ignored the
+// error it was given.
 type limitWriter struct {
 	w        io.Writer
 	max      int64
 	n        int64
 	exceeded bool
+	err      error
 }
 
 func (l *limitWriter) Write(p []byte) (int, error) {
-	if l.max == 0 {
-		return l.w.Write(p)
-	}
-	if room := l.max - l.n; int64(len(p)) > room {
-		l.exceeded = true
-		n, err := l.w.Write(p[:room])
-		l.n += int64(n)
-		if err != nil {
-			return n, err
-		}
-		return n, ErrTextTooLarge
+	over := false
+	if room := l.max - l.n; l.max > 0 && int64(len(p)) > room {
+		l.exceeded, over = true, true
+		p = p[:room]
 	}
 	n, err := l.w.Write(p)
 	l.n += int64(n)
-	return n, err
+	if err != nil {
+		if l.err == nil {
+			l.err = err
+		}
+		return n, err
+	}
+	if over {
+		return n, ErrTextTooLarge
+	}
+	return n, nil
 }

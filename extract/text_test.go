@@ -86,3 +86,27 @@ func TestText_MemoryIsOneChunk(t *testing.T) {
 		t.Errorf("allocated %d bytes to copy %d; want no more than about one %d-byte chunk", got, len(src), textChunk)
 	}
 }
+
+// A source that ends before its declared size is an error: a file that shrank after its size was
+// read must not be indexed as if it were complete.
+func TestText_SourceShorterThanSize(t *testing.T) {
+	t.Parallel()
+	s := New(Register(Text{}, ".md"))
+	_, err := s.Extract(context.Background(), "a.md", strings.NewReader("abc"), 5, io.Discard)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("err = %v, want io.ErrUnexpectedEOF", err)
+	}
+}
+
+// A destination that accepts fewer bytes than it was given, without an error, is a short write.
+func TestText_ShortWrite(t *testing.T) {
+	t.Parallel()
+	_, err := Text{}.Extract(context.Background(), strings.NewReader("abcdef"), 6, shortWriter{})
+	if !errors.Is(err, io.ErrShortWrite) {
+		t.Errorf("err = %v, want io.ErrShortWrite", err)
+	}
+}
+
+type shortWriter struct{}
+
+func (shortWriter) Write(p []byte) (int, error) { return len(p) / 2, nil }
