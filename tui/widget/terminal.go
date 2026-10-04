@@ -111,6 +111,10 @@ func WithStarter(fn func(pty.Cmd) (TerminalProcess, error)) TerminalOption {
 // input mode the keys go to the program; in normal mode they move over the
 // scrollback, select and yank, and the host's own keys work.
 //
+// The program outlives the Terminal's mounts: a drawer that hides it
+// unmounts it, and the program keeps running and its screen keeps taking
+// output. It ends with Stop, with its own exit, or with the App (App.Done).
+//
 // Ways out of input mode: Ctrl-\ Ctrl-n always goes to normal mode, and
 // Ctrl-\ Ctrl-\ sends one Ctrl-\. After Ctrl-\ the next event decides, with
 // no timeout, and the prefix never eats a key: any other key, or a paste,
@@ -126,7 +130,9 @@ type Terminal struct {
 	w, h       int // the size layout gave
 
 	proc     TerminalProcess
-	gen      int // the program's generation: output and exits of older ones are dropped
+	procMu   sync.Mutex      // guards live, which the App's end reads off the loop
+	live     TerminalProcess // the process not yet closed
+	gen      int             // the program's generation: output and exits of older ones are dropped
 	wr       *bufWriter
 	in       *inputQueue
 	pumps    sync.WaitGroup
@@ -134,7 +140,8 @@ type Terminal struct {
 	exited   bool
 	exitCode int
 	pending  bool // Start was asked before the mount
-	alive    bool
+	alive    bool // mounted
+	watching bool // a goroutine ends the program with the App
 
 	mode   TerminalMode
 	prefix bool // Ctrl-\ is pending
@@ -175,13 +182,23 @@ func (t *Terminal) newScreen() *vt.Screen {
 }
 
 // Init mounts the Terminal; a Start asked before the mount runs now.
+// Unmounting leaves the program running (a hidden drawer unmounts its
+// content); only a pending Ctrl-\ is sent.
 func (t *Terminal) Init(ctx *tui.Context) {
 	t.Base.Init(ctx)
 	t.alive = true
 	ctx.OnUnmount(func() {
-		t.stop()
+		t.flushPrefix()
 		t.alive = false
 	})
+	if !t.watching {
+		t.watching = true
+		app := ctx.App()
+		go func() {
+			<-app.Done()
+			t.endWithApp()
+		}()
+	}
 	if t.pending {
 		t.pending = false
 		if err := t.Start(); err != nil {
@@ -248,10 +265,13 @@ func (t *Terminal) Start() error {
 	t.gen++
 	gen := t.gen
 	t.proc = proc
+	t.procMu.Lock()
+	t.live = proc
+	t.procMu.Unlock()
 	t.running, t.exited = true, false
 	t.in = newInputQueue(proc)
 	t.wr = newBufWriter(func(b []byte) {
-		if t.alive && gen == t.gen {
+		if gen == t.gen { // hidden or not: the screen keeps taking output
 			t.ingest(b)
 		}
 	})
@@ -275,7 +295,7 @@ func (t *Terminal) Start() error {
 		}
 		code, _ := proc.Wait()
 		app.Update(func() {
-			if gen == t.gen && t.alive {
+			if gen == t.gen {
 				t.exitWith(code)
 			}
 		})
@@ -288,6 +308,24 @@ func (t *Terminal) Start() error {
 // period run off the UI loop.
 func (t *Terminal) Stop() { t.stop() }
 
+// endWithApp hangs the program up once the App has ended (the loop is
+// gone, so this runs on the watcher's goroutine).
+func (t *Terminal) endWithApp() {
+	if proc := t.takeLive(); proc != nil {
+		proc.Close()
+	}
+}
+
+// takeLive takes the process not yet closed, leaving none: whoever takes it
+// closes it, once.
+func (t *Terminal) takeLive() TerminalProcess {
+	t.procMu.Lock()
+	defer t.procMu.Unlock()
+	proc := t.live
+	t.live = nil
+	return proc
+}
+
 func (t *Terminal) stop() {
 	t.flushPrefix()
 	if !t.running {
@@ -299,14 +337,15 @@ func (t *Terminal) stop() {
 	// Keys already queued (a flushed Ctrl-\ among them) reach the program
 	// before the hang-up, unless it has stopped reading.
 	drained := t.in.finish()
-	proc := t.proc
-	go func() {
-		select {
-		case <-drained:
-		case <-time.After(time.Second):
-		}
-		proc.Close()
-	}()
+	if proc := t.takeLive(); proc != nil {
+		go func() {
+			select {
+			case <-drained:
+			case <-time.After(time.Second):
+			}
+			proc.Close()
+		}()
+	}
 	t.MarkDirty()
 }
 
@@ -314,6 +353,9 @@ func (t *Terminal) exitWith(code int) {
 	t.running, t.exited, t.exitCode = false, true, code
 	t.wr.close()
 	t.in.close()
+	if proc := t.takeLive(); proc != nil {
+		go proc.Close() // the program is gone; this releases its terminal
+	}
 	t.prefix = false
 	t.scr.Write(fmt.Appendf(nil, "\r\n[process exited %d]", code))
 	if t.cfg.onExit != nil {

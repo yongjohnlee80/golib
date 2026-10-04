@@ -47,6 +47,7 @@ type App struct {
 
 	ran    atomic.Bool
 	quit   chan struct{} // closed when Run exits; stops the intake pump
+	done   chan struct{} // closed once Run has returned, its teardown finished (Done)
 	runCtx context.Context
 
 	// TWO LANES, and they are separate to provide queue isolation between
@@ -228,6 +229,7 @@ func NewApp(root Component, opts ...AppOption) *App {
 		root:    root,
 		backend: cfg.backend,
 		quit:    make(chan struct{}),
+		done:    make(chan struct{}),
 		input:   make(chan Event),
 		nodes:   make(map[NodeID]*node),
 		byComp:  make(map[Component]*node),
@@ -321,6 +323,12 @@ func (a *App) SetRoot(c Component) {
 	})
 }
 
+// Done is closed once Run has returned, its teardown finished: what a
+// component holding something beyond the tree's lifetime (a child process,
+// say) waits on, since unmounting alone does not say the App is ending — a
+// drawer that closes unmounts its content too. Any goroutine.
+func (a *App) Done() <-chan struct{} { return a.done }
+
 // Run starts the backend synchronously (raw mode, alternate screen,
 // capability probe; errors return before the event loop and intake pump start,
 // mirroring the scaffold's synchronous bind at server/scaffold.go:144-147),
@@ -342,6 +350,7 @@ func (a *App) Run(ctx context.Context) (err error) {
 	if !a.ran.CompareAndSwap(false, true) {
 		return fmt.Errorf("tui: App.Run called more than once (%w)", errs.ErrPrecondition)
 	}
+	defer close(a.done)                          // registered first, so it runs last: after the teardown
 	if err := a.backend.Start(ctx); err != nil { // synchronous acquisition
 		return err
 	}
