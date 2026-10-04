@@ -3,8 +3,10 @@ package view
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
+	htmltemplate "html/template"
 	"io"
 	"strings"
 	"text/template"
@@ -23,7 +25,7 @@ const escapeFunc = "_view_escape"
 
 // funcs are the helpers every body and export template may call.
 func funcs(format string) template.FuncMap {
-	return template.FuncMap{
+	fm := template.FuncMap{
 		escapeFunc: func(v any) (string, error) { return escape(format, v) },
 		"toJson": func(v any) (Raw, error) {
 			b, err := marshal(v)
@@ -46,6 +48,28 @@ func funcs(format string) template.FuncMap {
 			return v
 		},
 	}
+	if format == FormatHTML {
+		// html/template escapes each value for the context it lands in. The appended call only
+		// turns a value into its printed text, so a NULL is empty and an object is JSON here as in
+		// every other format, and raw marks the author's markup as trusted HTML.
+		fm[escapeFunc] = htmlValue
+		fm["raw"] = func(v any) htmltemplate.HTML { return htmltemplate.HTML(text(v)) }
+	}
+	return fm
+}
+
+// htmlValue is the printed text of a value for html/template to escape; trusted HTML from raw passes
+// through as HTML. A Raw from toJson or quote is text like any other value.
+func htmlValue(v any) any {
+	if h, ok := v.(htmltemplate.HTML); ok {
+		return h
+	}
+	return text(v)
+}
+
+// executor is a compiled body: text/template's, or html/template's for the html format.
+type executor interface {
+	Execute(w io.Writer, data any) error
 }
 
 // compile parses a template given as text, the export file name, and protects what it prints; see
@@ -69,11 +93,10 @@ func compile(name, src, format string) (*template.Template, error) {
 // be able to forget it, and one that forgot it would produce invalid JSON only for the rows whose
 // text happens to hold a quote. html/template protects its output the same way, by appending
 // escapers to each action's pipeline.
-func compileBody(f *pview.File, format string) (*template.Template, error) {
+func compileBody(f *pview.File, format string) (executor, error) {
 	fm := funcs(format)
-	t := template.New(pview.BodyTemplate).Funcs(fm)
 	known := map[string]bool{}
-	for name, tree := range f.Templates {
+	for _, tree := range f.Templates {
 		var bad *parse.IdentifierNode
 		calls(tree.Root, func(id *parse.IdentifierNode) {
 			if bad == nil && !defined(fm, known, id.Ident) {
@@ -84,11 +107,41 @@ func compileBody(f *pview.File, format string) (*template.Template, error) {
 			return nil, fmt.Errorf("%w: %s: function %q is not defined", ErrInvalid, f.TemplatePosition(bad.Pos), bad.Ident)
 		}
 		guard(tree, tree.Root)
+	}
+	if format == FormatHTML {
+		return compileHTML(f, fm)
+	}
+	t := template.New(pview.BodyTemplate).Funcs(fm)
+	for name, tree := range f.Templates {
 		if _, err := t.AddParseTree(name, tree); err != nil {
 			return nil, fmt.Errorf("%w: %s: %w", ErrInvalid, f.Position(f.Body.Start), err)
 		}
 	}
 	return t.Lookup(pview.BodyTemplate), nil
+}
+
+// compileHTML hands the body to html/template, which escapes every value for the context it lands
+// in: text, a quoted or unquoted attribute, a URL, a script or a style. A URL with an active scheme
+// such as javascript: is replaced by "#ZgotmplZ". Escaping as character data alone, as the xml
+// format does, would let a value printed into an unquoted attribute add an attribute of its own, or
+// a value printed into href run as a script in the browser.
+//
+// html/template works out those contexts when the template first runs. Running it once here, on no
+// data, makes a body whose context is ambiguous fail at load like every other definition error. That
+// run's other errors come from the absent data, and are ignored.
+func compileHTML(f *pview.File, fm template.FuncMap) (executor, error) {
+	t := htmltemplate.New(pview.BodyTemplate).Funcs(htmltemplate.FuncMap(fm))
+	for name, tree := range f.Templates {
+		if _, err := t.AddParseTree(name, tree); err != nil {
+			return nil, fmt.Errorf("%w: %s: %w", ErrInvalid, f.Position(f.Body.Start), err)
+		}
+	}
+	body := t.Lookup(pview.BodyTemplate)
+	var herr *htmltemplate.Error
+	if err := body.Execute(io.Discard, nil); errors.As(err, &herr) {
+		return nil, fmt.Errorf("%w: %s: %w", ErrInvalid, f.Position(f.Body.Start), err)
+	}
+	return body, nil
 }
 
 // defined reports whether a template may call the function name: one of fm's or one text/template
@@ -190,7 +243,7 @@ func escape(format string, v any) (string, error) {
 			return "", err
 		}
 		return string(b[1 : len(b)-1]), nil
-	case FormatXML, FormatHTML:
+	case FormatXML:
 		return html.EscapeString(s), nil
 	}
 	return s, nil

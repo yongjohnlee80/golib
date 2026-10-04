@@ -121,17 +121,25 @@ The body is a Go `text/template`. A row's fields are `{{.field}}`, with `if`, `r
 
 | helper | |
 | --- | --- |
-| `toJson` | the value as JSON (object keys sorted), printed without escaping |
-| `quote` | the value as a JSON string, quotes included, printed without escaping; also valid YAML |
-| `raw` | the value printed without the format's escaping |
+| `toJson` | the value as JSON (object keys sorted), printed without escaping (in `html`, escaped like any value) |
+| `quote` | the value as a JSON string, quotes included, printed without escaping (in `html`, escaped like any value); also valid YAML |
+| `raw` | the value printed without the format's escaping; in `html`, the value is trusted markup |
 | `trim`, `upper`, `lower` | the obvious string operations |
 | `default` | `{{.genre \| default "unknown"}}`: the fallback when the value is missing, null, or an empty string, list or object |
 
-**Every printed value is escaped for the format.** In `json`, a value is escaped as the content of
-a JSON string, so a lyric holding a quote or a newline cannot break the document. In `xml` and
-`html`, a value is escaped as character data. `text` and `markdown` print values as they are. The
-escaping is added to every action by the package, not left to each author. A value from `toJson`,
-`quote` or `raw` is printed as it is.
+**Every printed value is escaped for the format.** The escaping is added to every action by the
+package, not left to each author.
+
+| format | escaping |
+| --- | --- |
+| `json` | the content of a JSON string, so a lyric holding a quote or a newline cannot break the document |
+| `xml` | character data: `& < > ' "`. Attribute values must be quoted, as XML requires |
+| `html` | `html/template`'s, for the context each value lands in: text, a quoted or unquoted attribute, a URL, a script or a style. A URL with an active scheme such as `javascript:` becomes `#ZgotmplZ`. A body whose context is ambiguous is refused at load |
+| `text`, `markdown` | none: values print as they are |
+
+Use `html`, not `xml`, for a document a browser renders: character data escaping alone does not
+stop a value from adding an attribute or becoming a `javascript:` link. Outside `html`, a value from
+`toJson`, `quote` or `raw` is printed as it is; in `html`, only `raw` is.
 
 **A NULL or missing value prints as nothing**, never as `<no value>`. Numbers keep the digits the
 database sent. A nested list or object prints as compact JSON.

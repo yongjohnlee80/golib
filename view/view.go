@@ -43,7 +43,7 @@ type View struct {
 	destination string
 	format      string
 
-	body     *template.Template
+	body     executor
 	exportTo *template.Template // nil when the view declares no export
 }
 
@@ -138,10 +138,14 @@ func (v *View) Destination() string { return v.destination }
 //
 //	text, markdown  printed as is
 //	json            escaped as the content of a JSON string: quotes, backslashes and control characters
-//	xml, html       escaped as character data: & < > ' "
+//	xml             escaped as character data: & < > ' "; attribute values are quoted, as XML requires
+//	html            escaped by html/template for the context the value lands in: text, attribute, URL,
+//	                script or style; a URL with an active scheme such as javascript: is replaced
 //
-// The escaping assumes json values are printed inside a JSON string's quotes; a number or boolean
-// printed bare is unchanged by it. A value produced by toJson, quote or raw is printed as is.
+// The json escaping assumes values are printed inside a JSON string's quotes; a number or boolean
+// printed bare is unchanged by it. In text, markdown, json and xml, a value produced by toJson,
+// quote or raw is printed as is. In html, raw marks trusted markup and is printed as is; toJson and
+// quote are escaped like any other value. Use html, not xml, for a document a browser renders.
 func (v *View) Format() string { return v.format }
 
 // fields evaluates the frontmatter under the YAML Core schema and checks each field's presence and
