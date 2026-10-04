@@ -10,10 +10,12 @@ import (
 
 // Images by kitty's graphics protocol (https://sw.kovidgoyal.net/kitty/graphics-protocol/): a PNG
 // is transmitted and placed in one command (a=T, f=100), over the cells it is given (c, r), the
-// cursor left where it was (C=1), replies suppressed (q=2), in base64 chunks of at most 4096 bytes
-// (m=1 on every chunk but the last). Placing an id again replaces the image; a delete (a=d, d=I)
-// frees the image and its data. Inside tmux each command is passed through to the terminal
-// outside (tmux's allow-passthrough option must be on).
+// part of it shown its clip (x, y, w, h, in its pixels), the cursor left where it was (C=1),
+// replies suppressed (q=2), in base64 chunks of at most 4096 bytes (m=1 on every chunk but the
+// last). The same version placed again — a new clip, new cells — deletes only the old placement
+// (a=d, d=i) and places the bytes the terminal holds (a=p): a scroll sends no image. A new version,
+// and a delete, free the image and its data (a=d, d=I). Inside tmux each command is passed through
+// to the terminal outside (tmux's allow-passthrough option must be on).
 
 const graphicsChunk = 4096
 
@@ -42,25 +44,48 @@ func (b *Backend) writeImages(ops []imageOp) {
 		return
 	}
 	if b.placed == nil {
-		b.placed = map[uint32]bool{}
+		b.placed, b.sent = map[uint32]bool{}, map[uint32]uint64{}
 	}
 	for _, op := range ops {
 		if op.place == nil {
 			b.writeImageDelete(&b.buf, op.delete)
 			delete(b.placed, op.delete)
+			delete(b.sent, op.delete)
 			continue
 		}
 		p := op.place
-		b.writeImageDelete(&b.buf, p.ID) // the old placement goes, wherever it was
-		b.writeCUP(p.X, p.Y)
-		b.writeImagePNG(&b.buf, p)
+		held, ok := b.sent[p.ID]
+		if ok && held == p.Version {
+			b.writePlacementDelete(&b.buf, p.ID) // the old placement goes; the bytes stay
+			b.writeCUP(p.X, p.Y)
+			b.writeAPC(&b.buf, "a=p,C=1,q=2,i="+strconv.FormatUint(uint64(p.ID), 10)+placementKeys(p), "")
+		} else {
+			b.writeImageDelete(&b.buf, p.ID) // the old image goes, wherever it was
+			b.writeCUP(p.X, p.Y)
+			b.writeImagePNG(&b.buf, p)
+			b.sent[p.ID] = p.Version
+		}
 		b.penKnown = false // the next cell anchors absolutely
 		b.placed[p.ID] = true
 	}
 }
 
+// placementKeys are a placement's cells, and its clip when it has one.
+func placementKeys(p *tui.ImagePlacement) string {
+	keys := ",c=" + strconv.Itoa(p.Cols) + ",r=" + strconv.Itoa(p.Rows)
+	if c := p.Clip; !c.Empty() {
+		keys += ",x=" + strconv.Itoa(c.X) + ",y=" + strconv.Itoa(c.Y) + ",w=" + strconv.Itoa(c.W) + ",h=" + strconv.Itoa(c.H)
+	}
+	return keys
+}
+
 func (b *Backend) writeImageDelete(buf *bytes.Buffer, id uint32) {
 	b.writeAPC(buf, "a=d,d=I,q=2,i="+strconv.FormatUint(uint64(id), 10), "")
+}
+
+// writePlacementDelete deletes an image's placements and keeps its data.
+func (b *Backend) writePlacementDelete(buf *bytes.Buffer, id uint32) {
+	b.writeAPC(buf, "a=d,d=i,q=2,i="+strconv.FormatUint(uint64(id), 10), "")
 }
 
 func (b *Backend) writeImagePNG(buf *bytes.Buffer, p *tui.ImagePlacement) {
@@ -76,8 +101,7 @@ func (b *Backend) writeImagePNG(buf *bytes.Buffer, p *tui.ImagePlacement) {
 		}
 		ctrl := "m=" + more
 		if first {
-			ctrl = "a=T,f=100,t=d,C=1,q=2,i=" + strconv.FormatUint(uint64(p.ID), 10) +
-				",c=" + strconv.Itoa(p.Cols) + ",r=" + strconv.Itoa(p.Rows) + "," + ctrl
+			ctrl = "a=T,f=100,t=d,C=1,q=2,i=" + strconv.FormatUint(uint64(p.ID), 10) + placementKeys(p) + "," + ctrl
 			first = false
 		}
 		b.writeAPC(buf, ctrl, chunk)

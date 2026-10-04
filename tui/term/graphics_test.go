@@ -98,3 +98,41 @@ func head(s string) string {
 	}
 	return s
 }
+
+// An image placed again at the same version — scrolled to another clip — sends no bytes: the old
+// placement goes (d=i, the data kept) and the held image is placed with its clip. A new version is
+// sent whole, its clip with it; after a delete the next placement sends the bytes again.
+func TestAClipChangeSendsNoBytes(t *testing.T) {
+	s := started(t)
+	png := []byte("png-bytes")
+	data := base64.StdEncoding.EncodeToString(png)
+	place := func(version uint64, clip tui.Rect) string {
+		t.Helper()
+		mark := len(s.w.String())
+		s.b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 21, PNG: png, Version: version, Clip: clip}, X: 0, Y: 0, Cols: 8, Rows: 4})
+		if err := s.b.Flush(nil); err != nil {
+			t.Fatal(err)
+		}
+		return s.w.String()[mark:]
+	}
+	if out := place(1, tui.Rect{}); !strings.Contains(out, "a=T,f=100,t=d,C=1,q=2,i=21,c=8,r=4,m=0;"+data) {
+		t.Fatalf("the first placement is not sent whole: %q", out)
+	}
+	out := place(1, tui.Rect{X: 0, Y: 300, W: 800, H: 400})
+	if strings.Contains(out, data) || strings.Contains(out, "d=I") {
+		t.Fatalf("a scroll sent the image or freed it: %q", out)
+	}
+	if !strings.Contains(out, "\x1b_Ga=d,d=i,q=2,i=21\x1b\\") || !strings.Contains(out, "\x1b_Ga=p,C=1,q=2,i=21,c=8,r=4,x=0,y=300,w=800,h=400\x1b\\") {
+		t.Fatalf("the scroll is not a placement of the held image with its clip: %q", out)
+	}
+	if out := place(2, tui.Rect{X: 0, Y: 0, W: 800, H: 400}); !strings.Contains(out, "a=T,f=100,t=d,C=1,q=2,i=21,c=8,r=4,x=0,y=0,w=800,h=400,m=0;"+data) {
+		t.Fatalf("a new version is not sent whole with its clip: %q", out)
+	}
+	s.b.DeleteImage(21)
+	if err := s.b.Flush(nil); err != nil {
+		t.Fatal(err)
+	}
+	if out := place(2, tui.Rect{}); !strings.Contains(out, "a=T,") {
+		t.Fatalf("after a delete the bytes are not sent again: %q", out)
+	}
+}
