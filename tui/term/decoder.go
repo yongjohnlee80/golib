@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/internal/vtparse"
 )
 
 // This file maps parser actions onto the core tui event set: legacy CSI/SS3
@@ -41,7 +42,7 @@ type probeReply struct {
 // goroutine-free: feedBytes drives the parser and invokes the callbacks
 // inline, which keeps the whole decode path table-testable.
 type decoder struct {
-	p     parser
+	p     vtparse.Parser
 	emit  func(tui.Event)
 	probe func(probeReply)
 
@@ -74,7 +75,7 @@ func (d *decoder) feedBytes(p []byte) {
 			d.pasteByte(p[i])
 			continue
 		}
-		d.p.feed(p[i], d.handle)
+		d.p.Feed(p[i], d.handle)
 	}
 }
 
@@ -95,7 +96,7 @@ func (d *decoder) finish() {
 // awaitingEsc reports whether the stream ends in an ambiguous ESC that the
 // legacy disambiguation timeout should resolve.
 func (d *decoder) awaitingEsc() bool {
-	return d.ss3 || d.p.state == sEscape
+	return d.ss3 || d.p.InEscape()
 }
 
 // resolveEsc resolves a pending lone ESC (or lone ESC O) as key input. It is
@@ -107,8 +108,8 @@ func (d *decoder) resolveEsc() {
 		d.emit(tui.KeyEvent{Code: 'O', Mods: tui.ModAlt})
 		return
 	}
-	if d.p.state == sEscape {
-		d.p.reset()
+	if d.p.InEscape() {
+		d.p.Reset()
 		d.emit(tui.KeyEvent{Code: tui.KeyEscape})
 	}
 }
@@ -148,39 +149,39 @@ func (d *decoder) finishPaste() {
 
 // --- action dispatch ---
 
-func (d *decoder) handle(a *action) {
-	switch a.kind {
-	case actPrint:
+func (d *decoder) handle(a *vtparse.Action) {
+	switch a.Kind {
+	case vtparse.Print:
 		if d.ss3 {
 			d.ss3 = false
-			if a.r <= 0x7F {
-				if ev, ok := ss3Key(byte(a.r)); ok {
+			if a.Rune <= 0x7F {
+				if ev, ok := ss3Key(byte(a.Rune)); ok {
 					d.emit(ev)
 				}
 			}
 			return
 		}
 		mods := tui.Mods(0)
-		text := string(a.r)
-		if a.alt {
+		text := string(a.Rune)
+		if a.Alt {
 			mods = tui.ModAlt
 			text = ""
 		}
-		d.key(tui.KeyEvent{Code: a.r, Mods: mods, Text: text})
-	case actExecute:
+		d.key(tui.KeyEvent{Code: a.Rune, Mods: mods, Text: text})
+	case vtparse.Execute:
 		d.ss3 = false
-		if ev, ok := ctrlKey(a.b); ok {
+		if ev, ok := ctrlKey(a.Byte); ok {
 			d.emit(ev)
 		}
-	case actEsc:
+	case vtparse.Esc:
 		d.escDispatch(a)
-	case actCSI:
+	case vtparse.CSI:
 		d.csiDispatch(a)
-	case actOSC:
+	case vtparse.OSC:
 		d.oscDispatch(a)
-	case actDCS:
+	case vtparse.DCS:
 		d.dcsDispatch(a)
-	case actAPC:
+	case vtparse.APC:
 		d.apcDispatch(a)
 	}
 }
@@ -190,11 +191,11 @@ const graphicsProbeID = "31"
 
 // apcDispatch reads a kitty graphics reply to the probe's query: APC G i=31 ; OK ST, or an error
 // message in place of OK. Any other APC is not a key and is dropped.
-func (d *decoder) apcDispatch(a *action) {
-	if d.probe == nil || len(a.data) == 0 || a.data[0] != 'G' {
+func (d *decoder) apcDispatch(a *vtparse.Action) {
+	if d.probe == nil || len(a.Data) == 0 || a.Data[0] != 'G' {
 		return
 	}
-	ctrl, msg, ok := strings.Cut(string(a.data[1:]), ";")
+	ctrl, msg, ok := strings.Cut(string(a.Data[1:]), ";")
 	if !ok {
 		return
 	}
@@ -232,18 +233,18 @@ func ctrlKey(b byte) (tui.KeyEvent, bool) {
 	return tui.KeyEvent{}, false
 }
 
-func (d *decoder) escDispatch(a *action) {
-	if a.inter != "" {
+func (d *decoder) escDispatch(a *vtparse.Action) {
+	if a.Inter != "" {
 		return // charset designations etc. — not input
 	}
-	switch a.final {
+	switch a.Final {
 	case 'O':
 		d.ss3 = true // SS3: the next byte is the key final
 	case '\\':
 		// ST tail after an OSC/DCS dispatch — not input.
 	default:
 		// Meta-sends-escape: ESC <char> is Alt+<char>.
-		d.emit(tui.KeyEvent{Code: rune(a.final), Mods: tui.ModAlt})
+		d.emit(tui.KeyEvent{Code: rune(a.Final), Mods: tui.ModAlt})
 	}
 }
 
@@ -282,14 +283,14 @@ func ss3Key(final byte) (tui.KeyEvent, bool) {
 // m = 1 + bitmask(shift=1, alt=2, ctrl=4, super=8, ...), identical bit
 // positions to tui.Mods — plus kitty's event-type sub-parameter
 // (1 press, 2 repeat, 3 release).
-func modsEvent(a *action, idx int) (tui.Mods, tui.KeyKind) {
-	m := a.param(idx, 1)
+func modsEvent(a *vtparse.Action, idx int) (tui.Mods, tui.KeyKind) {
+	m := a.Param(idx, 1)
 	if m < 1 {
 		m = 1
 	}
 	mods := tui.Mods(m - 1)
 	kind := tui.KeyPress
-	switch a.sub(idx, 1, 1) {
+	switch a.Sub(idx, 1, 1) {
 	case 2:
 		kind = tui.KeyRepeat
 	case 3:
@@ -298,13 +299,13 @@ func modsEvent(a *action, idx int) (tui.Mods, tui.KeyKind) {
 	return mods, kind
 }
 
-func (d *decoder) csiDispatch(a *action) {
-	switch a.priv {
+func (d *decoder) csiDispatch(a *vtparse.Action) {
+	switch a.Priv {
 	case '?':
 		d.privReply(a)
 		return
 	case '<':
-		if a.final == 'M' || a.final == 'm' {
+		if a.Final == 'M' || a.Final == 'm' {
 			d.mouse(a)
 		}
 		return
@@ -313,19 +314,19 @@ func (d *decoder) csiDispatch(a *action) {
 	default:
 		return // '>' / '=' prefixed — not input we decode
 	}
-	if a.inter != "" {
+	if a.Inter != "" {
 		return
 	}
-	switch a.final {
+	switch a.Final {
 	case 'A', 'B', 'C', 'D', 'H', 'F':
 		mods, kind := modsEvent(a, 1)
-		d.emit(tui.KeyEvent{Kind: kind, Code: navKey(a.final), Mods: mods})
+		d.emit(tui.KeyEvent{Kind: kind, Code: navKey(a.Final), Mods: mods})
 	case 'P', 'Q', 'R', 'S':
 		// Modified F1–F4: CSI 1 ; m {P,Q,R,S}. A bare final (no params)
 		// is not key input (CSI R is also the CPR report shape).
-		if a.param(0, 0) == 1 && len(a.params) >= 2 {
+		if a.Param(0, 0) == 1 && len(a.Params) >= 2 {
 			mods, kind := modsEvent(a, 1)
-			d.emit(tui.KeyEvent{Kind: kind, Code: tui.KeyF1 + rune(a.final-'P'), Mods: mods})
+			d.emit(tui.KeyEvent{Kind: kind, Code: tui.KeyF1 + rune(a.Final-'P'), Mods: mods})
 		}
 	case 'Z': // back-tab
 		mods, kind := modsEvent(a, 1)
@@ -336,8 +337,8 @@ func (d *decoder) csiDispatch(a *action) {
 		d.kittyKey(a)
 	case 't':
 		// Mode 2048 in-band resize report: CSI 48 ; rows ; cols ; hpx ; wpx t
-		if a.param(0, 0) == 48 {
-			rows, cols := a.param(1, 0), a.param(2, 0)
+		if a.Param(0, 0) == 48 {
+			rows, cols := a.Param(1, 0), a.Param(2, 0)
 			if rows > 0 && cols > 0 {
 				d.emit(tui.ResizeEvent{W: cols, H: rows})
 			}
@@ -397,8 +398,8 @@ var tildeKeys = map[int]rune{
 	24: tui.KeyF12,
 }
 
-func (d *decoder) tildeKey(a *action) {
-	code := a.param(0, 0)
+func (d *decoder) tildeKey(a *vtparse.Action) {
+	code := a.Param(0, 0)
 	switch code {
 	case 200: // bracketed paste opener: capture until ESC [ 2 0 1 ~
 		d.pasting = true
@@ -420,18 +421,18 @@ func (d *decoder) tildeKey(a *action) {
 // (https://sw.kovidgoyal.net/kitty/keyboard-protocol/). Functional keys use
 // the kitty PUA assignments, which tui/keys.go adopts verbatim — the decode
 // is identity.
-func (d *decoder) kittyKey(a *action) {
-	code := a.param(0, -1)
+func (d *decoder) kittyKey(a *vtparse.Action) {
+	code := a.Param(0, -1)
 	if code < 0 {
 		return
 	}
-	shifted := a.sub(0, 1, 0)
-	base := a.sub(0, 2, 0)
+	shifted := a.Sub(0, 1, 0)
+	base := a.Sub(0, 2, 0)
 	mods, kind := modsEvent(a, 1)
 	var text strings.Builder
-	if len(a.params) >= 3 {
-		for j := range a.params[2].parts {
-			if v := a.sub(2, j, 0); v > 0 {
+	if len(a.Params) >= 3 {
+		for j := range a.Params[2].Parts {
+			if v := a.Sub(2, j, 0); v > 0 {
 				text.WriteRune(rune(v))
 			}
 		}
@@ -457,10 +458,10 @@ func (d *decoder) key(ev tui.KeyEvent) {
 // mouse decodes an SGR mouse report: CSI < b ; x ; y M/m with button bits per
 // xterm — 0–2 button, +4 shift, +8 meta, +16 ctrl, +32 motion, +64 wheel.
 // Coordinates arrive 1-based and are emitted 0-based.
-func (d *decoder) mouse(a *action) {
-	b0 := a.param(0, 0)
-	x := a.param(1, 1) - 1
-	y := a.param(2, 1) - 1
+func (d *decoder) mouse(a *vtparse.Action) {
+	b0 := a.Param(0, 0)
+	x := a.Param(1, 1) - 1
+	y := a.Param(2, 1) - 1
 	var mods tui.Mods
 	if b0&4 != 0 {
 		mods |= tui.ModShift
@@ -473,7 +474,7 @@ func (d *decoder) mouse(a *action) {
 	}
 	switch {
 	case b0&64 != 0:
-		if a.final != 'M' {
+		if a.Final != 'M' {
 			return // wheel has no release
 		}
 		d.emit(tui.MouseEvent{
@@ -489,7 +490,7 @@ func (d *decoder) mouse(a *action) {
 		})
 	default:
 		kind := tui.MousePress
-		if a.final == 'm' {
+		if a.Final == 'm' {
 			kind = tui.MouseRelease
 		}
 		d.emit(tui.MouseEvent{
@@ -515,36 +516,36 @@ func mouseButton(b int) tui.MouseButton {
 
 // --- probe replies ---
 
-func (d *decoder) privReply(a *action) {
+func (d *decoder) privReply(a *vtparse.Action) {
 	if d.probe == nil {
 		return
 	}
 	switch {
-	case a.final == 'c' && a.inter == "":
+	case a.Final == 'c' && a.Inter == "":
 		d.probe(probeReply{kind: prDA1})
-	case a.final == 'u' && a.inter == "":
+	case a.Final == 'u' && a.Inter == "":
 		d.probe(probeReply{kind: prKitty})
-	case a.final == 'y' && a.inter == "$":
-		mode := a.param(0, -1)
+	case a.Final == 'y' && a.Inter == "$":
+		mode := a.Param(0, -1)
 		if mode >= 0 {
-			d.probe(probeReply{kind: prDECRPM, mode: mode, value: a.param(1, 0)})
+			d.probe(probeReply{kind: prDECRPM, mode: mode, value: a.Param(1, 0)})
 		}
 	}
 }
 
-func (d *decoder) oscDispatch(a *action) {
+func (d *decoder) oscDispatch(a *vtparse.Action) {
 	if d.probe == nil {
 		return
 	}
-	i := bytes.IndexByte(a.data, ';')
+	i := bytes.IndexByte(a.Data, ';')
 	if i < 0 {
 		return
 	}
-	ps, err := strconv.Atoi(string(a.data[:i]))
+	ps, err := strconv.Atoi(string(a.Data[:i]))
 	if err != nil || (ps != 10 && ps != 11) {
 		return
 	}
-	c, ok := parseOSCColor(string(a.data[i+1:]))
+	c, ok := parseOSCColor(string(a.Data[i+1:]))
 	if !ok {
 		return
 	}
@@ -589,18 +590,18 @@ func parseOSCColor(s string) (tui.ProbedColor, bool) {
 	return tui.ProbedColor{R: comp[0], G: comp[1], B: comp[2], Known: true}, true
 }
 
-func (d *decoder) dcsDispatch(a *action) {
+func (d *decoder) dcsDispatch(a *vtparse.Action) {
 	if d.probe == nil {
 		return
 	}
 	// XTGETTCAP reply: DCS 1 + r key=value [; key=value] ST (keys hex-coded);
 	// DCS 0 + r ST reports failure.
-	if a.final != 'r' || a.inter != "+" || a.param(0, 0) != 1 {
+	if a.Final != 'r' || a.Inter != "+" || a.Param(0, 0) != 1 {
 		return
 	}
 	var r probeReply
 	r.kind = prTermcap
-	for kv := range strings.SplitSeq(string(a.data), ";") {
+	for kv := range strings.SplitSeq(string(a.Data), ";") {
 		name := kv
 		if i := strings.IndexByte(kv, '='); i >= 0 {
 			name = kv[:i]
