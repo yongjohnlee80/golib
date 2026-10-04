@@ -16,11 +16,14 @@ import "sync/atomic"
 // Only the images this program placed are ever deleted: each placement is by its own id.
 
 // Image is a raster image a component shows over its cells: PNG bytes, the id the component keeps
-// for it (NewImageID), and a version that changes whenever the bytes do.
+// for it (NewImageID), and a version that changes whenever the bytes do. Clip is the part of the
+// PNG shown, in its pixels (Qt's Image.sourceClipRect): empty, the whole of it. A change of Clip
+// alone places the image again without sending its bytes, so scrolling a large image is cheap.
 type Image struct {
 	ID      uint32
 	PNG     []byte
 	Version uint64
+	Clip    Rect
 }
 
 // ImageReporter is a component that shows an Image over its whole rect. ok=false shows none.
@@ -84,7 +87,7 @@ func (a *App) applyImages() {
 	for _, p := range want {
 		seen[p.ID] = true
 		old, had := a.placed[p.ID]
-		if had && old.Version == p.Version && old.X == p.X && old.Y == p.Y && old.Cols == p.Cols && old.Rows == p.Rows {
+		if had && old.Version == p.Version && old.Clip == p.Clip && old.X == p.X && old.Y == p.Y && old.Cols == p.Cols && old.Rows == p.Rows {
 			continue
 		}
 		g.PlaceImage(p)

@@ -83,6 +83,9 @@ type Backend struct {
 	// program has on the screen, guarded by wmu, to delete at teardown
 	imageOps []imageOp
 	placed   map[uint32]bool
+	// sent is the version of each image whose bytes the terminal holds: placing that version again
+	// (a new clip, new cells) sends no bytes
+	sent map[uint32]uint64
 }
 
 type cursorState struct {

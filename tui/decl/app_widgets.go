@@ -45,6 +45,9 @@ func appTypes() []Type {
 		{Name: "Image", Build: func(b Build) (tui.Component, []string, error) {
 			consumed, err := readProps(b.Props, map[string]field{})
 			return widget.NewImage(), consumed, err
+		}, Setters: map[string]Setter{
+			// golib's: shown at its width and scrolled by the keys and the wheel (widget.Image)
+			"scrollable": setter("an Image", boolOf, (*widget.Image).SetScrollable),
 		}},
 		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
