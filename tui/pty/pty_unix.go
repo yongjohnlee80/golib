@@ -83,14 +83,15 @@ func Start(c Cmd) (*PTY, error) {
 	return p, nil
 }
 
-// reap waits for the child. It marks the child exited before reaping it, so
-// a concurrent Signal never targets a pid the kernel may have reused.
+// reap waits for the child. Where the platform can wait without reaping, it
+// marks the child exited before reaping it, so a concurrent Signal never
+// targets a pid the kernel may have reused; elsewhere it marks it after.
 func (p *PTY) reap() {
-	awaitExit(p.pid)
-	p.mu.Lock()
-	p.exited = true
-	p.mu.Unlock()
+	if awaitExit(p.pid) {
+		p.markExited()
+	}
 	err := p.cmd.Wait()
+	p.markExited()
 	var ee *exec.ExitError
 	switch {
 	case err == nil:
@@ -101,6 +102,12 @@ func (p *PTY) reap() {
 		p.code, p.waitErr = -1, err
 	}
 	close(p.done)
+}
+
+func (p *PTY) markExited() {
+	p.mu.Lock()
+	p.exited = true
+	p.mu.Unlock()
 }
 
 // exitCode is the child's exit status as a shell reports it: the code, or
@@ -164,19 +171,26 @@ func (p *PTY) Wait() (exit int, err error) {
 	return p.code, p.waitErr
 }
 
-// Close hangs up: SIGHUP and SIGCONT to the child's group, then the master
-// closes. A child still running after the grace period has its group
-// killed. Close returns once the child is reaped, and is idempotent.
+// Close hangs up: SIGHUP and SIGCONT to the child's group. The master closes
+// once the child has exited, or after the grace period, when the child's
+// group is killed. Close returns once the child is reaped, and is
+// idempotent.
+//
+// The master stays open while the child handles the hang-up because closing
+// it hangs the terminal up again: a shell would get a second SIGHUP while
+// still forwarding the first to its jobs, and bash, signalled again then,
+// dies at once and leaves those jobs running.
 func (p *PTY) Close() error {
 	p.closeOnce.Do(func() {
 		p.Signal(syscall.SIGHUP)
 		p.Signal(syscall.SIGCONT)
-		p.closeErr = p.master.Close()
 		t := time.NewTimer(p.grace)
 		defer t.Stop()
 		select {
 		case <-p.done:
+			p.closeErr = p.master.Close()
 		case <-t.C:
+			p.closeErr = p.master.Close()
 			p.Signal(syscall.SIGKILL)
 			<-p.done
 		}

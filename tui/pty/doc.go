@@ -7,12 +7,12 @@
 // process group, and Wait reports how the child ended.
 //
 // Close behaves like closing a terminal window: it hangs up. It sends SIGHUP
-// (and SIGCONT, so a stopped job sees it) to the child's process group and
-// closes the master, so the kernel hangs up the session's foreground group
-// too. An interactive shell forwards the hang-up to the jobs it started in
-// other process groups. A child still running after a grace period (two
-// seconds) has its group killed, and Close returns once it is reaped — so
-// Close can block for the grace period, and a UI calls it off its loop.
+// (and SIGCONT, so a stopped job sees it) to the child's process group, and
+// an interactive shell forwards the hang-up to the jobs it started in other
+// process groups. The master closes once the child has exited; a child
+// still running after a grace period (two seconds) loses its terminal and
+// has its group killed. Close returns once the child is reaped — so it can
+// block for the grace period, and a UI calls it off its loop.
 // A program that detached itself (setsid, nohup, disown, a daemon) keeps
 // running, as it would after any terminal closed.
 //

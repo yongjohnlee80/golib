@@ -11,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -251,19 +253,42 @@ func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 		t.Skip("no bash")
 	}
 	p, err := Start(Cmd{Path: bash, Args: []string{"--norc", "--noprofile", "-i"},
-		Env: append(os.Environ(), "PS1=$ ")})
+		Env: append(os.Environ(), "PS1=$ ", "TERM=xterm-256color")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p.Close()
-	r := readLines(p)
-	p.Write([]byte("set -m; sleep 1000 & echo JOB=$!:$(ps -o pgid= -p $!)\n"))
-	var job, pgid int
-	for job == 0 {
-		l := r.await(t, "JOB=")
-		if _, err := fmt.Sscanf(l[strings.Index(l, "JOB="):], "JOB=%d:%d", &job, &pgid); err != nil {
-			job = 0 // the echoed command line, not its output
+	var out bytes.Buffer
+	var outMu sync.Mutex
+	go func() {
+		b := make([]byte, 1024)
+		for {
+			n, err := p.Read(b)
+			outMu.Lock()
+			out.Write(b[:n])
+			outMu.Unlock()
+			if err != nil {
+				return
+			}
 		}
+	}()
+	// The ids go to a file, so no echoed command line can be mistaken for
+	// the answer.
+	ids := filepath.Join(t.TempDir(), "job")
+	fmt.Fprintf(p, "set -m; sleep 1000 & echo $! $(ps -o pgid= -p $!) > %s\n", ids)
+	var job, pgid int
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		b, _ := os.ReadFile(ids)
+		if _, err := fmt.Sscan(string(b), &job, &pgid); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			outMu.Lock()
+			defer outMu.Unlock()
+			t.Fatalf("no job ids within 10s; the terminal showed %q", out.String())
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	if pgid == p.Pid() {
 		t.Fatalf("job %d shares bash's group %d; the cell needs job control", job, pgid)
@@ -272,7 +297,7 @@ func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 	if code, _ := p.Wait(); code == 0 {
 		t.Fatalf("bash exited 0 after the hang-up")
 	}
-	deadline := time.Now().Add(10 * time.Second)
+	deadline = time.Now().Add(10 * time.Second)
 	for unix.Kill(job, 0) == nil {
 		if zombie(job) {
 			break // ended, awaiting its new parent's reap
