@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/search/query"
 )
 
 // searchSchema makes a fresh schema with pgvector available, and drops it
@@ -328,5 +329,51 @@ func TestFullTextPG_ConfigurationsDiffer(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("simple: 'runs' must not match 'running', got %v", docIDs(got))
+	}
+}
+
+// Query text from search/query.TSQuery matches literally: a prefix, and terms
+// holding a quote, a backslash, & and :, each find only their document, and a
+// term built to look like tsquery syntax matches nothing. Inside a term the
+// configuration's parser still splits on punctuation, so "c\d" is the phrase
+// c <-> d, as SQLite's tokenizer would read it: the characters are words'
+// separators, never operators. Each document's words are its own, so a term
+// can only find the one it was written for.
+func TestFullTextPG_TSQueryMatchesLiterally(t *testing.T) {
+	conn, schema := searchSchema(t)
+	table := schema + ".doc"
+	docTable(t, conn, table)
+	mustExec(t, conn, "INSERT INTO "+table+` (id, ws, crumb, body) VALUES
+		(1, 'a', 'x', 'rock & roll forever'),
+		(2, 'a', 'x', 'o''brien wrote it'),
+		(3, 'a', 'x', 'the path c\d here'),
+		(4, 'a', 'x', 'an e:f ratio'),
+		(5, 'a', 'x', 'only y here')`)
+	ix := dao.FullTextIndex{Name: "tsv", Table: table, Columns: []string{"crumb", "body"}}
+	s := docSchema(conn, table, dao.RankQuery(ix))
+	for _, tc := range []struct {
+		terms []query.Term
+		want  []int64
+	}{
+		{[]query.Term{{Text: "rock&roll"}}, []int64{1}},
+		{[]query.Term{{Text: "o'brien"}}, []int64{2}},
+		{[]query.Term{{Text: `c\d`}}, []int64{3}},
+		{[]query.Term{{Text: "e:f"}}, []int64{4}},
+		{[]query.Term{{Text: "wro", Prefix: true}}, []int64{2}},
+		{[]query.Term{{Text: `x' | 'y`}}, nil},
+		{[]query.Term{{Text: "only"}, {Text: "y"}}, []int64{5}},
+	} {
+		q, err := query.TSQuery(tc.terms)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.DAO().WithPredicate(dao.Match(ix, q)).OrderBy(dao.AscBy(dByRank, q)).Select(dID)
+		if err != nil {
+			t.Errorf("%q: %v", q, err)
+			continue
+		}
+		if ids := docIDs(got); !reflect.DeepEqual(ids, tc.want) && !(len(ids) == 0 && len(tc.want) == 0) {
+			t.Errorf("%q matched %v, want %v", q, ids, tc.want)
+		}
 	}
 }
