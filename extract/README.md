@@ -87,6 +87,7 @@ complete. A destination that accepts fewer bytes than it was given is `io.ErrSho
 | error | when |
 | --- | --- |
 | `ErrUnsupported` | no extractor for the extension. Before anything is read; also `errs.ErrUnsupported` |
+| `errs.ErrInvalidArgument` | a negative `size`. Before anything is read |
 | `ErrContainerTooLarge` | the file is over `MaxContainer`. Before anything is read; also `errs.ErrInvalidArgument` |
 | `ErrTextTooLarge` | the Markdown passed `MaxText`. The text up to the limit stays written; also `errs.ErrInvalidArgument` |
 | the destination's own error | `w` failed, such as a full disk. Always returned, even if the extractor ignored it, and alongside `ErrTextTooLarge` when the limit was crossed in the same write |

@@ -238,7 +238,7 @@ func TestSet_DestinationFailureIsReported(t *testing.T) {
 			s := New(Register(tc.e, ".pdf"), MaxText(tc.max))
 			_, err := s.Extract(context.Background(), "a.pdf", strings.NewReader(""), 0, failingWriter{diskFull})
 			if !errors.Is(err, diskFull) {
-				t.Errorf("err = %v, want the destination's failure", err)
+				t.Fatalf("err = %v, want the destination's failure", err)
 			}
 			if strings.Contains(err.Error(), "%!") {
 				t.Errorf("err = %q, a message with a formatting fault", err)
@@ -271,5 +271,18 @@ func TestSet_DestinationFailureAndExtractorError(t *testing.T) {
 	_, err := s.Extract(context.Background(), "a.pdf", strings.NewReader(""), 0, failingWriter{diskFull})
 	if !errors.Is(err, diskFull) || !errors.Is(err, parse) {
 		t.Errorf("err = %v, want both the destination's and the extractor's errors", err)
+	}
+}
+
+// A negative size is a caller's mistake, not an empty file: refused before anything is read.
+func TestSet_NegativeSize(t *testing.T) {
+	t.Parallel()
+	e := &fixed{text: "x"}
+	s := New(Register(e, ".pdf"))
+	if _, err := s.Extract(context.Background(), "a.pdf", strings.NewReader(""), -1, io.Discard); !errors.Is(err, errs.ErrInvalidArgument) {
+		t.Errorf("err = %v, want errs.ErrInvalidArgument", err)
+	}
+	if e.calls != 0 {
+		t.Error("the extractor ran for a negative size")
 	}
 }
