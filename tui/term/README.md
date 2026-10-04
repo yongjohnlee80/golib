@@ -143,8 +143,7 @@ cell rendering still work through VT processing (floor: Windows 10 1809+,
 |---|---|
 | `term.go` | `Backend`, `Open`, `Start`/`Stop`, reader goroutines, teardown |
 | `options.go` | `Option` set, sentinels, tunables |
-| `parser.go` | the DEC ANSI state machine (pure, I/O-free) |
-| `decoder.go` | actions → tui events; kitty/legacy keys, mouse, paste, probe replies |
+| `decoder.go` | `tui/internal/vtparse` actions → tui events; kitty/legacy keys, mouse, paste, probe replies |
 | `probe.go` | the DA1-fenced capability probe + env pre-seed |
 | `flush.go` | the frame emitter (R1–R4) + latched cursor ops |
 | `tty_unix.go` / `tty_windows.go` | raw mode, VT modes, size query, read unblock |

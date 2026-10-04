@@ -37,17 +37,22 @@ import "unicode/utf8"
 //     dropped (there is no Alt+<rune> on an output stream).
 //   - In ground, the C1 controls U+0080–U+009F (UTF-8 encoded) act as
 //     their 7-bit equivalents ESC + (r - 0x40): U+009B starts a CSI,
-//     U+009D an OSC, and so on.
+//     U+009D an OSC, and so on. Inside an OSC, DCS or APC string, U+009C
+//     (ST) ends it, as ESC \ does.
+//   - A CSI or DCS parameter holds up to 8 sub-parameters rather than 4, so
+//     SGR's longest colon form, 38:2:cs:r:g:b, keeps its colour.
 
-// Parser limits: parameter storage allows 32 params x 8
-// sub-params, saturating — excess is ignored but the sequence is still
-// consumed. Eight holds SGR's longest colon form, 38:2:cs:r:g:b, with room
-// for its optional tolerance fields. String payloads (OSC/DCS) are capped to bound memory.
+// Parser limits: parameter storage allows 32 params x 8 sub-params,
+// saturating — excess is ignored but the sequence is still consumed. Input
+// keeps 4 sub-params (the key decoder's widest form needs 3, and kitty's
+// associated text must not grow); output takes all 8, for SGR's
+// 38:2:cs:r:g:b. String payloads (OSC/DCS) are capped to bound memory. String payloads (OSC/DCS) are capped to bound memory.
 const (
-	maxParams     = 32
-	maxSubparams  = 8
-	maxParamValue = 65535
-	maxStringData = 4096
+	maxParams      = 32
+	maxSubparams   = 8
+	inputSubparams = 4
+	maxParamValue  = 65535
+	maxStringData  = 4096
 )
 
 // Kind says which fields of an Action are meaningful.
@@ -147,12 +152,17 @@ type Parser struct {
 	u8n    int
 	u8need int
 	u8alt  bool
+
+	// c2 holds a 0xC2 met inside a string on output, until the next byte
+	// says whether it began U+009C (ST).
+	c2 bool
 }
 
 // Reset returns the parser to ground, dropping any in-flight sequence.
 func (p *Parser) Reset() {
 	p.state = sGround
 	p.u8n = 0
+	p.c2 = false
 }
 
 // InEscape reports whether the last byte fed left a bare ESC pending: the
@@ -170,9 +180,14 @@ func (p *Parser) Feed(b byte, emit func(*Action)) {
 		// still keys on an input stream (Ctrl+X / Ctrl+Z).
 		p.state = sGround
 		p.u8n = 0
+		p.c2 = false
 		emit(&Action{Kind: Execute, Byte: b})
 		return
 	case 0x1B:
+		if p.c2 {
+			p.c2 = false
+			p.stringByte(0xC2, emit) // it was data, not the start of ST
+		}
 		switch p.state {
 		case sOSC:
 			// xterm practice: OSC is dispatched when the ESC of its ESC \
@@ -192,6 +207,21 @@ func (p *Parser) Feed(b byte, emit func(*Action)) {
 		}
 		p.enterEscape()
 		return
+	}
+
+	if p.Output && p.inString() {
+		if p.c2 {
+			p.c2 = false
+			if b == 0x9C {
+				p.endString(emit)
+				return
+			}
+			p.stringByte(0xC2, emit)
+		}
+		if b == 0xC2 {
+			p.c2 = true
+			return
+		}
 	}
 
 	switch p.state {
@@ -228,6 +258,42 @@ func (p *Parser) Feed(b byte, emit func(*Action)) {
 			p.data = append(p.data, b)
 		}
 	}
+}
+
+// inString reports whether the parser is collecting a string's payload.
+func (p *Parser) inString() bool {
+	switch p.state {
+	case sOSC, sDCSPass, sAPC, sDCSIgnore, sSOSPMAPC:
+		return true
+	}
+	return false
+}
+
+// stringByte is one payload byte of the string being collected.
+func (p *Parser) stringByte(b byte, emit func(*Action)) {
+	switch p.state {
+	case sOSC:
+		p.osc(b, emit)
+	case sDCSPass:
+		p.dcsPass(b)
+	case sAPC:
+		if len(p.data) < maxStringData {
+			p.data = append(p.data, b)
+		}
+	}
+}
+
+// endString ends the string being collected at an ST, dispatching it.
+func (p *Parser) endString(emit func(*Action)) {
+	switch p.state {
+	case sOSC:
+		p.dispatchOSC(emit)
+	case sDCSPass:
+		p.dispatchDCS(emit)
+	case sAPC:
+		emit(&Action{Kind: APC, Data: p.data})
+	}
+	p.state = sGround
 }
 
 func (p *Parser) ground(b byte, emit func(*Action)) {
@@ -451,7 +517,11 @@ func (p *Parser) paramSub() {
 	if p.pDiscard || p.sDiscard {
 		return
 	}
-	if p.iSub+1 >= maxSubparams {
+	limit := inputSubparams
+	if p.Output {
+		limit = maxSubparams
+	}
+	if p.iSub+1 >= limit {
 		p.sDiscard = true
 		return
 	}
