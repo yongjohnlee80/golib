@@ -246,12 +246,18 @@ func TestCloseKillsAChildIgnoringHangup(t *testing.T) {
 }
 
 // An interactive bash puts a background job in its own process group; the
-// hang-up reaches that job through bash's forwarding.
+// hang-up reaches that job through bash's forwarding. The grace is long here:
+// the cell is about the forwarding, and a loaded runner (the coverage job runs
+// every package instrumented at once) must not turn it into a race with the
+// SIGKILL, which ends bash without forwarding anything.
 func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("no bash")
 	}
+	old := hangupGrace
+	hangupGrace = 20 * time.Second
+	defer func() { hangupGrace = old }()
 	// +H: no history expansion, which macOS's bash 3.2 applies to the $! below.
 	p, err := Start(Cmd{Path: bash, Args: []string{"--norc", "--noprofile", "+H", "-i"},
 		Env: append(os.Environ(), "PS1=$ ", "TERM=xterm-256color")})
@@ -294,9 +300,12 @@ func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 	if pgid == p.Pid() {
 		t.Fatalf("job %d shares bash's group %d; the cell needs job control", job, pgid)
 	}
+	start := time.Now()
 	p.Close()
-	if code, _ := p.Wait(); code == 0 {
-		t.Fatalf("bash exited 0 after the hang-up")
+	took := time.Since(start)
+	if code, _ := p.Wait(); code != 128+int(syscall.SIGHUP) {
+		t.Fatalf("bash ended with %d after %v, want SIGHUP's %d (137 is the grace's SIGKILL: bash never took the hang-up)",
+			code, took, 128+int(syscall.SIGHUP))
 	}
 	deadline = time.Now().Add(10 * time.Second)
 	for unix.Kill(job, 0) == nil {
