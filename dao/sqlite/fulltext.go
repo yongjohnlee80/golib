@@ -56,3 +56,5 @@ func (d SqliteDialect) FullTextSnippet(ix dao.FullTextIndex, column int, m dao.S
 }
 
 var _ dao.FullTexter = SqliteDialect{}
+
+var _ dao.FullTextMatcher = SqliteDialect{}
