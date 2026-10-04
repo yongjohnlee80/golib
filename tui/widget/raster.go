@@ -81,10 +81,12 @@ func RasterizeHTML(ctx context.Context, html []byte, width, height int) ([]byte,
 }
 
 // MaxPageHeight is the tallest, and MaxPageWidth the widest, a page RasterizeHTMLPage renders, in
-// pixels: a larger one is cut.
+// pixels: a larger one is cut. firstPageHeight is the window it tries first.
 const (
 	MaxPageHeight = 16384
 	MaxPageWidth  = 4096
+
+	firstPageHeight = 4096
 )
 
 // Page is how RasterizeHTMLPage renders: Width pixels wide (with Wide, as wide as the page's
@@ -119,20 +121,28 @@ func RasterizeHTMLPage(ctx context.Context, html []byte, p Page) ([]byte, error)
 	if p.MaxHeight > 0 {
 		height = min(p.MaxHeight, MaxPageHeight)
 	}
-	b, err := rasterizeHTML(ctx, html, int(float64(window)/scale), int(float64(height)/scale), scale)
-	if err != nil {
-		return nil, err
+	// most pages are short, and the browser's time grows with the window: a first window of
+	// firstPageHeight, and the whole height only for a page that reaches its bottom
+	for _, h := range []int{min(firstPageHeight, height), height} {
+		b, err := rasterizeHTML(ctx, html, int(float64(window)/scale), int(float64(h)/scale), scale)
+		if err != nil {
+			return nil, err
+		}
+		out, cut, err := trimBlank(b, width, max(1, min(p.MinHeight, h)), p.Background)
+		if err != nil || cut || h == height {
+			return out, err
+		}
 	}
-	return trimBlank(b, width, max(1, min(p.MinHeight, height)), p.Background)
+	panic("unreachable")
 }
 
 // trimBlank cuts the rows at the bottom and the columns at the right of a PNG that are all of the
 // background — background, "#rrggbb", or else the bottom-right pixel's colour — keeping at least
-// minW × minH.
-func trimBlank(b []byte, minW, minH int, background string) ([]byte, error) {
+// minW × minH, and reports whether its last row was blank: whether the page ended in the window.
+func trimBlank(b []byte, minW, minH int, background string) ([]byte, bool, error) {
 	img, err := png.Decode(bytes.NewReader(b))
 	if err != nil {
-		return nil, fmt.Errorf("widget: the browser's screenshot: %w", err)
+		return nil, false, fmt.Errorf("widget: the browser's screenshot: %w", err)
 	}
 	r := img.Bounds()
 	br, bg, bb, ba := img.At(r.Max.X-1, r.Max.Y-1).RGBA()
@@ -145,6 +155,10 @@ func trimBlank(b []byte, minW, minH int, background string) ([]byte, error) {
 		return cr == br && cg == bg && cb == bb && ca == ba
 	}
 	bottom := r.Max.Y
+	ended := true
+	for x := r.Min.X; x < r.Max.X && ended; x++ {
+		ended = blank(x, r.Max.Y-1)
+	}
 	for bottom > r.Min.Y+minH {
 		all := true
 		for x := r.Min.X; x < r.Max.X && all; x++ {
@@ -167,19 +181,19 @@ func trimBlank(b []byte, minW, minH int, background string) ([]byte, error) {
 		right--
 	}
 	if bottom == r.Max.Y && right == r.Max.X {
-		return b, nil
+		return b, ended, nil
 	}
 	sub, ok := img.(interface {
 		SubImage(image.Rectangle) image.Image
 	})
 	if !ok {
-		return b, nil
+		return b, ended, nil
 	}
 	var out bytes.Buffer
 	if err := png.Encode(&out, sub.SubImage(image.Rect(r.Min.X, r.Min.Y, right, bottom))); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return out.Bytes(), nil
+	return out.Bytes(), ended, nil
 }
 
 // rasterizeHTML renders html in a window width × height (the browser's own pixels) at scale.
