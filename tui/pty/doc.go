@@ -16,6 +16,11 @@
 // A program that detached itself (setsid, nohup, disown, a daemon) keeps
 // running, as it would after any terminal closed.
 //
+// On macOS the kernel hangs up a session leader's terminal as the leader
+// exits, which can drop output the master has not read yet: a program that
+// prints and exits at once may lose its last output. A shell, which outlives
+// the commands it runs, does not.
+//
 // Linux and macOS are supported, through the standard library and
 // golang.org/x/sys only. Elsewhere Start returns an error matching
 // errs.ErrUnsupported.

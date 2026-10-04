@@ -24,6 +24,10 @@ go get github.com/yongjohnlee80/golib/tui/pty
   off its loop.
 - Elsewhere (Windows), `Start` returns an error matching `errs.ErrUnsupported`.
 
+On macOS the kernel hangs up a session leader's terminal as the leader exits, which can drop output
+not read yet: a program that prints and exits at once may lose its last output there. A shell, which
+outlives the commands it runs, does not.
+
 What `Close` does not promise: a program that detached itself (`setsid`, `nohup`, `disown`, a
 daemon) keeps running, as it would after any terminal closed.
 
