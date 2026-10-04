@@ -346,17 +346,7 @@ func (t *TextArea) ensureVisible() {
 	if t.ln < t.top {
 		t.top = t.ln
 	}
-	// Walk down until the cursor line's rows fit in the viewport.
-	for t.top < t.ln {
-		rows := 0
-		for i := t.top; i <= t.ln && rows <= t.h; i++ {
-			rows += t.rowsOfLine(i)
-		}
-		if rows <= t.h {
-			break
-		}
-		t.top++
-	}
+	t.top = lowestTop(t.lines, t.top, t.ln, t.h, t.view())
 	t.top = max(0, min(t.top, len(t.lines)-1))
 	if t.wrap == WrapNone {
 		cx := t.cellsAt(t.ln, t.col)
@@ -395,10 +385,11 @@ func (t *TextArea) Cursor() (int, int, bool) {
 		return max(x, 0), max(y, 0), true
 	}
 	y := 0
+	v := t.view().settled(t.lines)
 	for i := t.top; i < t.ln; i++ {
-		y += t.rowsOfLine(i)
+		y += wrapRowsOfLine(t.lines, i, v)
 	}
-	row, x := t.wrapPos(t.ln, t.col)
+	row, x := wrapPosOf(t.lines, t.ln, t.col, v)
 	y += row
 	if t.h > 0 && y >= t.h {
 		return 0, 0, false

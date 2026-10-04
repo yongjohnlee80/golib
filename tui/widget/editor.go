@@ -1464,16 +1464,7 @@ func (e *Editor) ensureVisible() {
 	if e.ln < e.top {
 		e.top = e.ln
 	}
-	for e.top < e.ln {
-		rows := 0
-		for i := e.top; i <= e.ln && rows <= e.h; i++ {
-			rows += e.rowsOfLine(i)
-		}
-		if rows <= e.h {
-			break
-		}
-		e.top++
-	}
+	e.top = lowestTop(e.lines, e.top, e.ln, e.h, e.view())
 	e.top = max(0, min(e.top, len(e.lines)-1))
 	if e.wrap == WrapNone {
 		cx := e.cellsAt(e.ln, e.col, e.measure)
@@ -1515,10 +1506,11 @@ func (e *Editor) Cursor() (int, int, bool) {
 		return e.gutter + max(x, 0), max(y, 0), true
 	}
 	y := 0
+	v := e.view().settled(e.lines)
 	for i := e.top; i < e.ln; i++ {
-		y += e.rowsOfLine(i)
+		y += wrapRowsOfLine(e.lines, i, v)
 	}
-	row, x := e.wrapPos(e.ln, e.col)
+	row, x := wrapPosOf(e.lines, e.ln, e.col, v)
 	y += row
 	if e.h > 0 && y >= e.h {
 		return 0, 0, false
@@ -1634,11 +1626,12 @@ func (e *Editor) posAt(x, y int) (ln, col int) {
 	// WrapSoft: walk the same wrap computation the renderer used, rather than
 	// dividing by width — one logical line spans several visual rows.
 	remaining := max(y, 0)
+	v := e.view().settled(e.lines)
 	for i := e.top; i <= lastLn; i++ {
-		rows := e.rowsOfLine(i)
+		rows := wrapRowsOfLine(e.lines, i, v)
 		if remaining < rows || i == lastLn {
 			cs := e.lineClusters(i)
-			ranges := wrapRanges(cs, e.wrapWidth(), e.measure)
+			ranges := wrapRanges(cs, v.usable, e.measure)
 			r := ranges[min(remaining, len(ranges)-1)]
 			// Bounded to THIS row: wrapRanges is [start,end), and a word-wrapped
 			// row can be shorter than the viewport, so an unbounded scan would run
@@ -1696,6 +1689,7 @@ func (e *Editor) renderGutter(s tui.Surface) {
 	}
 	s.Fill(tui.Rect{W: e.gutter, H: h}, " ", e.styles.Text)
 	y := 0
+	v := e.view().settled(e.lines)
 	for ln := e.top; ln < len(e.lines) && y < h; ln++ {
 		num := fmt.Sprint(ln + 1)
 		st := dim
@@ -1703,7 +1697,7 @@ func (e *Editor) renderGutter(s tui.Surface) {
 			st = e.styles.Text
 		}
 		drawText(s, e.gutter-gutterGap-len(num), y, num, st)
-		y += max(e.rowsOfLine(ln), 1)
+		y += max(wrapRowsOfLine(e.lines, ln, v), 1)
 	}
 }
 

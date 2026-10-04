@@ -252,6 +252,28 @@ type wrapView struct {
 	w, h    int
 	wrap    WrapMode
 	measure func(string) int
+	// usable is the width text wraps to, once worked out (settled): it
+	// depends on whether the whole text overflows the viewport, so finding
+	// it wraps a screenful of lines, and a caller wrapping many lines at one
+	// size must not pay that again for every line.
+	usable int
+}
+
+// settled is v with its usable width worked out once, for a caller about to
+// wrap several lines of the same text at the same size.
+func (v wrapView) settled(lines []string) wrapView {
+	if v.wrap != WrapNone && v.usable == 0 {
+		v.usable = wrapUsableWidth(lines, v)
+	}
+	return v
+}
+
+// usableWidth is the settled width, or works it out.
+func (v wrapView) usableWidth(lines []string) int {
+	if v.usable > 0 {
+		return v.usable
+	}
+	return wrapUsableWidth(lines, v)
 }
 
 // The four functions below are the soft-wrap geometry Editor and TextArea both
@@ -316,19 +338,40 @@ func wrapUsableWidth(lines []string, v wrapView) int {
 	return max(w, 1)
 }
 
+// lowestTop is the top line that keeps line ln on screen: top itself when
+// ln's rows and those above it down to top fit in h, else the lowest line
+// from which they do (ln itself when ln alone is taller than h). It walks up
+// from ln once, at one settled width, so a cursor move costs a screenful of
+// wrapping rather than a screenful for every candidate top.
+func lowestTop(lines []string, top, ln, h int, v wrapView) int {
+	if top >= ln {
+		return top
+	}
+	v = v.settled(lines)
+	rows, lowest := 0, ln
+	for i := ln; i >= top; i-- {
+		rows += wrapRowsOfLine(lines, i, v)
+		if rows > h {
+			break
+		}
+		lowest = i
+	}
+	return lowest
+}
+
 // wrapRowsOfLine is how many screen rows logical line i occupies.
 func wrapRowsOfLine(lines []string, i int, v wrapView) int {
 	if v.wrap == WrapNone {
 		return 1
 	}
-	return len(wrapRanges(clusters(lines[i]), wrapUsableWidth(lines, v), v.measure))
+	return len(wrapRanges(clusters(lines[i]), v.usableWidth(lines), v.measure))
 }
 
 // wrapPosOf maps a logical (line, column) to the screen row within that line
 // and the cell offset across it.
 func wrapPosOf(lines []string, ln, col int, v wrapView) (row, x int) {
 	cs := clusters(lines[ln])
-	rows := wrapRanges(cs, wrapUsableWidth(lines, v), v.measure)
+	rows := wrapRanges(cs, v.usableWidth(lines), v.measure)
 	for i, r := range rows {
 		if col < r[0] {
 			return i, 0 // col is a wrap-consumed break space
