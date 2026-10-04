@@ -65,3 +65,23 @@ func TestASettledViewKeepsItsWidth(t *testing.T) {
 		t.Errorf("unwrapped: usable %d, rows %d", none.usable, wrapRowsOfLine(lines, 0, none))
 	}
 }
+
+// A soft-wrapped TextArea puts its cursor below the rows of every line above
+// it, and hides it once it is below the viewport.
+func TestATextAreaCursorCountsWrappedRowsAbove(t *testing.T) {
+	ta := NewTextArea(WithWrap(WrapSoft))
+	ta.SetValue("one two three four five six\nseven\neight nine ten eleven twelve")
+	ta.Layout(tui.Constraints{MaxW: 10, MaxH: 6})
+	ta.ln, ta.col, ta.top = 1, 2, 0
+	v := ta.view().settled(ta.lines)
+	_, y, ok := ta.Cursor()
+	if want := wrapRowsOfLine(ta.lines, 0, v); !ok || y != want {
+		t.Fatalf("cursor on line 1 at y=%d ok=%v, want y=%d (the first line's rows)", y, ok, want)
+	}
+	// The third line's last character sits below the first two lines' rows
+	// plus its own wrapped rows: past the 6-row viewport.
+	ta.ln, ta.col = 2, len(clusters(ta.lines[2]))
+	if _, y, ok := ta.Cursor(); ok {
+		t.Errorf("a cursor below a 6-row viewport is shown at y=%d", y)
+	}
+}
