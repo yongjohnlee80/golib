@@ -203,14 +203,16 @@ func (t *Tabs) Init(ctx *tui.Context) {
 
 // Select activates tab i (out-of-range is ignored), mounting its content
 // lazily and unmounting the previous one unless WithKeepMounted. Emits
-// TabChangedEvent.
+// TabChangedEvent. On a Tabs not mounted — before its first mount, or after it
+// was unmounted with its parent — only the active index moves: Init mounts
+// that tab's content when the Tabs is mounted again.
 func (t *Tabs) Select(i int) {
 	if i < 0 || i >= len(t.tabs) || i == t.active {
 		return
 	}
 	prev := t.active
 	t.active = i
-	if t.ctx != nil {
+	if t.ctx != nil && t.ctx.Mounted() {
 		if !t.keep && t.tabs[prev].mounted {
 			t.ctx.Unmount(t.tabs[prev].comp)
 			t.tabs[prev].mounted = false
