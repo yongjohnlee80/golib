@@ -80,7 +80,7 @@ change at runtime, which is what makes it bindable to a source.
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette; its children are its widgets, each at its own width: permanent (Qt's `QStatusBar.addPermanentWidget`) at the right end, or, with `StatusBar.permanent: false` on the child, normal (`addWidget`) at the left end; the segments share the rest | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |
-| `Terminal` (golib's) | `command` (the program; the user's `$SHELL` when empty), `dir`, `scrollback` | `vimKeys` (Esc leaves input mode, except on the alternate screen), `themeColors` (default true: the program's default colours are the theme's) | — | `exited(code)`, `titleChanged(title)`, `modeChanged(mode)` — `"terminal"` or `"normal"` | `start()`, `stop()`, `focus()` |
+| `Terminal` (golib's) | `command` (the program; the user's `$SHELL` when empty), `dir`, `scrollback` | `command`, `dir` (both at the next `start()`), `vimKeys` (Esc leaves input mode, except on the alternate screen), `themeColors` (default true: the program's default colours are the theme's) | — | `exited(code)`, `titleChanged(title)`, `modeChanged(mode)` — `"terminal"` or `"normal"` | `start()`, `stop()`, `focus()` |
 | `Button` | — | `text`, `enabled` | — | `clicked` | — |
 | `Split` | `orientation` | `ratio` | — | — | — |
 | `Flex` | `direction` | — | — | — | — |

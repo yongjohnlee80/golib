@@ -555,3 +555,25 @@ func TestTerminalNormalModeFollowsDroppedLines(t *testing.T) {
 		return y2 == y && strings.HasPrefix(f.h.row(y2), "line 4")
 	})
 }
+
+func TestTerminalCommandAndDirApplyAtTheNextStart(t *testing.T) {
+	f := startTerm(t, 20, 3, widget.WithCommand("/bin/first"), widget.WithDir("/one"))
+	f.h.onLoop(func() {
+		f.term.SetCommand("/bin/second", "-l")
+		f.term.SetDir("/two")
+	})
+	if c := f.cmds[0]; c.Path != "/bin/first" || c.Dir != "/one" {
+		t.Errorf("first start: %+v", c)
+	}
+	f.proc().exit(0)
+	f.h.waitFor("exit", func() bool { return strings.Contains(f.h.grid(), "[process exited 0]") })
+	f.h.inject(key(tui.KeyEnter))
+	f.h.waitFor("restart", func() bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return len(f.cmds) == 2
+	})
+	if c := f.cmds[1]; c.Path != "/bin/second" || strings.Join(c.Args, " ") != "-l" || c.Dir != "/two" {
+		t.Errorf("second start: %+v", c)
+	}
+}

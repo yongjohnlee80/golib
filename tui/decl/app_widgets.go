@@ -53,6 +53,10 @@ func appTypes() []Type {
 		}},
 		{Name: "Terminal", Build: buildTerminal, Ctor: []string{"command", "dir", "scrollback"},
 			Setters: map[string]Setter{
+				// command and dir take effect at the next start(): a host learns where to start
+				// the program after building it, and moves it when the user changes workspace.
+				"command":     setter("a Terminal", stringOf, func(t *widget.Terminal, p string) { t.SetCommand(p) }),
+				"dir":         setter("a Terminal", stringOf, (*widget.Terminal).SetDir),
 				"vimKeys":     setter("a Terminal", boolOf, (*widget.Terminal).SetVimKeys),
 				"themeColors": setter("a Terminal", boolOf, (*widget.Terminal).SetThemeColors),
 			},
