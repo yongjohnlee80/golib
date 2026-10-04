@@ -250,3 +250,29 @@ func TestRegionBelowTheTopKeepsNoScrollback(t *testing.T) {
 		t.Errorf("a region at the top fed %d lines, want 1", s.Scrollback())
 	}
 }
+
+func TestLineWrappedAndDropped(t *testing.T) {
+	s := New(2, 3, WithScrollback(3))
+	feed(s, "abcdef\r\nx\r\ny\r\n")
+	// History: "abc" (wrapped into "def"), "def", "x".
+	if !s.LineWrapped(0) || s.LineWrapped(1) || s.LineWrapped(-1) || s.LineWrapped(3) {
+		t.Errorf("wrapped = %v %v", s.LineWrapped(0), s.LineWrapped(1))
+	}
+	if s.Dropped() != 0 {
+		t.Errorf("dropped %d before the cap", s.Dropped())
+	}
+	feed(s, "z\r\n") // y enters, abc leaves
+	if s.Dropped() != 1 || rowText(s.Line(0)) != "def" {
+		t.Errorf("dropped %d, first line %q", s.Dropped(), rowText(s.Line(0)))
+	}
+	feed(s, "\x1b[3J")
+	if s.Dropped() != 4 {
+		t.Errorf("dropped after ED 3 = %d, want 4", s.Dropped())
+	}
+	s = feed(New(3, 4, WithScrollback(2)), "1\r\n2\r\n3\r\n4\r\n5")
+	before := s.Dropped()
+	s.Resize(1, 4) // only two of the four rows above the cursor fit the scrollback
+	if s.Dropped() != before+2 {
+		t.Errorf("Dropped %d -> %d, want +2", before, s.Dropped())
+	}
+}

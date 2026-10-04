@@ -65,11 +65,12 @@ const (
 	writerChunk  = 32 << 10
 )
 
-// bufWriter is the separate any-goroutine handle behind BufferView.Writer.
-// writeMu serializes whole Write calls (order = acquisition order); mu guards
-// the byte budget and closed flag.
+// bufWriter is the separate any-goroutine handle behind BufferView.Writer,
+// and behind the Terminal's program output. writeMu serializes whole Write
+// calls (order = acquisition order); mu guards the byte budget and closed
+// flag.
 type bufWriter struct {
-	view *BufferView // touched only inside app.Update closures (loop)
+	sink func([]byte) // runs only inside app.Update closures (loop)
 
 	writeMu sync.Mutex
 
@@ -92,8 +93,10 @@ type bufWriter struct {
 	budget int
 }
 
-func newBufWriter(v *BufferView) *bufWriter {
-	w := &bufWriter{view: v, closed: true, budget: writerBudget}
+// newBufWriter returns a closed handle that, once bound, delivers each chunk
+// to sink on the loop goroutine.
+func newBufWriter(sink func([]byte)) *bufWriter {
+	w := &bufWriter{sink: sink, closed: true, budget: writerBudget}
 	w.cond = sync.NewCond(&w.mu)
 	return w
 }
@@ -146,12 +149,9 @@ func (w *bufWriter) Write(p []byte) (int, error) {
 		app := w.app
 		w.mu.Unlock()
 
-		view := w.view
 		app.Update(func() {
 			w.release(len(chunk))
-			if view.alive {
-				view.ingest(chunk)
-			}
+			w.sink(chunk)
 		})
 		total += n
 		p = p[n:]
