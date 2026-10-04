@@ -150,18 +150,24 @@ func NewTerminal(opts ...TerminalOption) *Terminal {
 	for _, o := range opts {
 		o(&cfg)
 	}
-	if cfg.path == "" {
-		cfg.path = os.Getenv("SHELL")
-		if cfg.path == "" {
-			cfg.path = "/bin/sh"
-		}
-	}
+	cfg.path = defaultShell(cfg.path)
 	if cfg.start == nil {
 		cfg.start = func(c pty.Cmd) (TerminalProcess, error) { return pty.Start(c) }
 	}
 	t := &Terminal{cfg: cfg, rows: 24, cols: 80}
 	t.scr = t.newScreen()
 	return t
+}
+
+// defaultShell is path, or the user's $SHELL, or /bin/sh.
+func defaultShell(path string) string {
+	if path == "" {
+		path = os.Getenv("SHELL")
+	}
+	if path == "" {
+		path = "/bin/sh"
+	}
+	return path
 }
 
 func (t *Terminal) newScreen() *vt.Screen {
@@ -189,6 +195,15 @@ func (t *Terminal) AcceptsFocus() bool { return true }
 
 // Mode is where keys go.
 func (t *Terminal) Mode() TerminalMode { return t.mode }
+
+// SetCommand changes the program; it takes effect at the next Start. An
+// empty path is the user's $SHELL, else /bin/sh.
+func (t *Terminal) SetCommand(path string, args ...string) {
+	t.cfg.path, t.cfg.args = defaultShell(path), args
+}
+
+// SetDir changes the working directory; it takes effect at the next Start.
+func (t *Terminal) SetDir(dir string) { t.cfg.dir = dir }
 
 // SetVimKeys turns WithVimKeys' Esc on or off while the Terminal runs.
 func (t *Terminal) SetVimKeys(on bool) { t.cfg.vimKeys = on }
