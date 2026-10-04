@@ -194,14 +194,16 @@ func (p *between) ToSQL(d Dialect, next *int) (string, []any) {
 
 // Like renders "col LIKE ?". The pattern is bound, never interpolated, so it
 // cannot inject SQL — but it IS a raw LIKE pattern: % and _ keep their wildcard
-// meaning. When embedding user input in a pattern, escape it with EscapeLike
-// first (StringOp search does this automatically).
+// meaning, and Like adds no ESCAPE clause, so how a backslash reads is the
+// engine's default (PostgreSQL and MySQL treat it as the escape, SQLite has
+// none). To match a prefix literally use [HasPrefix]; a substring search is
+// [StringOp].
 func Like(col string, pattern string) Predicate { return &like{col, pattern} }
 
 // EscapeLike escapes the LIKE/ILIKE metacharacters (%, _ and the escape
-// character itself) in s so it matches literally inside a pattern. Predicates
-// built by this package pair the result with an explicit "ESCAPE '\'" clause,
-// which works across the shipped dialects regardless of their default.
+// character itself) in s with a backslash, so it matches literally inside a
+// pattern that says ESCAPE '\'. [StringOp] pairs it with that clause; [Like]
+// takes a raw pattern and adds none, and [HasPrefix] escapes with '!' instead.
 func EscapeLike(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return r.Replace(s)
@@ -214,6 +216,37 @@ type like struct {
 func (p *like) ToSQL(d Dialect, next *int) (string, []any) {
 	*next++
 	return p.col + " LIKE " + d.Placeholder(*next), []any{p.pattern}
+}
+
+// HasPrefix is the condition that col starts with prefix, matched literally:
+// col LIKE ? ESCAPE '!', bound to prefix with '!', '%' and '_' each preceded by
+// '!', then "%". A path such as "notes/50%_off/" matches only itself and what
+// is under it.
+//
+// The escape character is '!', not a backslash, because MySQL reads a
+// backslash inside a string literal as an escape unless the session sets
+// NO_BACKSLASH_ESCAPES, which a declaration cannot know; '!' means nothing
+// special in any SQL mode or ASCII-compatible charset. It is supported on
+// PostgreSQL, SQLite and MySQL, the engines its cells run on; on any other the
+// query fails with [ErrUnsupported] before anything is sent.
+func HasPrefix(col, prefix string) Predicate { return &hasPrefix{col: col, prefix: prefix} }
+
+type hasPrefix struct{ col, prefix string }
+
+// prefixEscaper escapes for the '!' escape character.
+var prefixEscaper = strings.NewReplacer("!", "!!", "%", "!%", "_", "!_")
+
+func (p *hasPrefix) checkDialect(d Dialect) error {
+	switch d.Name() {
+	case DialectPostgres, DialectSQLite, DialectMySQL:
+		return nil
+	}
+	return fmt.Errorf("%w: a literal prefix match on %s", ErrUnsupported, d.Name())
+}
+
+func (p *hasPrefix) ToSQL(d Dialect, next *int) (string, []any) {
+	*next++
+	return p.col + " LIKE " + d.Placeholder(*next) + " ESCAPE '!'", []any{prefixEscaper.Replace(p.prefix) + "%"}
 }
 
 // Raw is an escape hatch for bespoke SQL. Write each bind parameter as a "?"; the
