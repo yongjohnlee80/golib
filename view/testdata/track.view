@@ -1,0 +1,41 @@
+---
+version: 1
+name: track_view
+source: postgres
+args:
+  - entity_ids
+process: |
+  SELECT jsonb_build_object(
+    'entity_id',    t.id,
+    'track',        t.title,
+    'isrc',         t.isrc,
+    'bpm',          t.bpm,
+    'music_key',    t.music_key,
+    'label_title',  l.title,
+    'release_date', t.release_date,
+    'lyric',        t.lyric
+  )
+  FROM track t
+  JOIN label l ON l.id = t.label_id
+  WHERE t.id = ANY($1)
+export: track_{{.entity_id}}.md
+---
+---
+type: track
+id: {{quote .entity_id}}
+isrc: {{quote .isrc}}
+label: {{quote .label_title}}
+release_date: {{quote .release_date}}
+---
+
+# {{.track}}
+
+Label: {{.label_title}} | BPM: {{.bpm}} | Key: {{.music_key | default "unknown"}}
+{{- if .genre}} | Genre: {{.genre}}{{end}}
+
+{{if .lyric -}}
+## Lyrics
+{{.lyric}}
+{{- else -}}
+*(Instrumental)*
+{{- end}}
