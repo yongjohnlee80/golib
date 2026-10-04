@@ -38,6 +38,7 @@ go get github.com/yongjohnlee80/golib
 | [`logger`](logger/README.md) | Small level-based logging seam; `Fields`/`Entry`, `Adapt`, and both `slog` bridges | [README](logger/README.md) |
 | [`request`](request/README.md) | HTTP client: typed error decoding, functional options, multipart, history | [README](request/README.md) |
 | [`exporter`](exporter/README.md) | Thread-safe buffer-and-flush pipelines to CSV/JSON with bounded background writes | [README](exporter/README.md) |
+| [`extract`](extract/README.md) | Document containers (PDF, DOCX, text) to Markdown, streaming over `io.ReaderAt`: the `Extractor` interface, a `Set` choosing by extension with separate container and text limits, and `Text`; formats needing a third-party parser are registered by the consumer | [README](extract/README.md) |
 | [`dao`](dao/README.md) | Generic, driver-agnostic data-access layer — declare an entity once | [README](dao/README.md) · [USAGE](dao/USAGE.md) |
 | [`partial`](partial/README.md) | Three-state (value/absent/null) PATCH payloads, projecting onto `dao` updates | [README](partial/README.md) |
 | [`msgpack`](msgpack/README.md) | Zero-dependency MessagePack value codec with hardened decode limits | [README](msgpack/README.md) |
