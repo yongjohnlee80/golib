@@ -15,6 +15,7 @@ type fakeConn struct {
 	dialect  string
 	rows     []any // each row's single value: []byte, string, nil, or an error Scan returns
 	cols     []string
+	colsErr  error // returned by Columns instead of cols
 	queryErr error
 	iterErr  error // returned by Err once the rows run out
 	closeErr error
@@ -96,7 +97,12 @@ func (r *fakeRows) Err() error {
 
 type fakeColumnRows struct{ *fakeRows }
 
-func (r *fakeColumnRows) Columns() ([]string, error) { return r.fakeRows.conn.cols, nil }
+func (r *fakeColumnRows) Columns() ([]string, error) {
+	if err := r.fakeRows.conn.colsErr; err != nil {
+		return nil, err
+	}
+	return r.fakeRows.conn.cols, nil
+}
 
 const sqliteView = "---\nversion: 1\nname: v\nsource: sqlite\nargs: [a, b]\nprocess: SELECT x FROM t WHERE a = ? AND b = ?\nexport: \"{{.id}}.md\"\n---\n# {{.t}}\n"
 
@@ -292,5 +298,28 @@ func TestRows_All(t *testing.T) {
 	}
 	if n != 2 || errs != 1 {
 		t.Errorf("yielded %d values, %d errors; want 2 and 1, the error last", n, errs)
+	}
+}
+
+// A driver that has column metadata but fails to report it is an error, and the cursor is
+// released; only a driver without the capability skips the one-column check.
+func TestQuery_ColumnMetadataErrors(t *testing.T) {
+	t.Parallel()
+	v := mustNew(t, sqliteView)
+	conn := &fakeConn{dialect: "sqlite", cols: []string{"doc"}, colsErr: errors.New("metadata lost"), rows: []any{`{}`}}
+	if _, err := v.WithArgs(1, 2).Query(context.Background(), conn); err == nil || !strings.Contains(err.Error(), "metadata lost") {
+		t.Errorf("err = %v, want the metadata error", err)
+	}
+	if conn.opened.closed != 1 {
+		t.Errorf("cursor closed %d times, want 1", conn.opened.closed)
+	}
+
+	conn = &fakeConn{dialect: "sqlite", cols: []string{"doc"}, colsErr: dao.ErrUnsupported, rows: []any{`{}`}}
+	rows, err := v.WithArgs(1, 2).Query(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("a driver without column names: %v", err)
+	}
+	if x, err := rows.Next(); err != nil || string(x) != "{}" {
+		t.Errorf("row = %s, %v", x, err)
 	}
 }
