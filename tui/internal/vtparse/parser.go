@@ -1,4 +1,4 @@
-package term
+package vtparse
 
 import "unicode/utf8"
 
@@ -8,7 +8,7 @@ import "unicode/utf8"
 // escape-intermediate, the four CSI states, osc-string, the five DCS states,
 // and sos-pm-apc-string — with byte-class transitions, ESC-from-anywhere
 // restart, and CAN/SUB abort. It is a pure state machine with no I/O:
-// feed(b, emit) consumes one byte and emits zero or more actions, so
+// Feed(b, emit) consumes one byte and emits zero or more actions, so
 // sequences split across arbitrary read boundaries decode identically to
 // contiguous input.
 //
@@ -26,6 +26,18 @@ import "unicode/utf8"
 //     the key decoder.
 //   - CAN/SUB abort the in-flight sequence AND emit an execute action:
 //     0x18/0x1A are Ctrl+X / Ctrl+Z on an input stream.
+//
+// The deviations above serve the key decoder (an input stream). A parser
+// with Output set reads what a program writes to a terminal instead, and
+// keeps vt100.net's behaviour where the two differ:
+//
+//   - DEL in ground is ignored.
+//   - ESC ESC restarts the escape sequence without emitting anything.
+//   - A byte >= 0x80 in the escape state abandons the sequence and is
+//     dropped (there is no Alt+<rune> on an output stream).
+//   - In ground, the C1 controls U+0080–U+009F (UTF-8 encoded) act as
+//     their 7-bit equivalents ESC + (r - 0x40): U+009B starts a CSI,
+//     U+009D an OSC, and so on.
 
 // Parser limits: parameter storage allows 32 params x 4
 // sub-params, saturating — excess is ignored but the sequence is still
@@ -37,51 +49,52 @@ const (
 	maxStringData = 4096
 )
 
-type actionKind uint8
+// Kind says which fields of an Action are meaningful.
+type Kind uint8
 
 const (
-	actPrint   actionKind = iota // r (alt = ESC-prefixed rune)
-	actExecute                   // b: C0 control byte (plus DEL, see above)
-	actEsc                       // inter, final
-	actCSI                       // priv, params, inter, final
-	actOSC                       // data
-	actDCS                       // priv, params, inter, final, data
-	actAPC                       // data: an application program command's string (kitty graphics replies)
+	Print   Kind = iota // Rune (Alt = ESC-prefixed rune)
+	Execute             // Byte: C0 control byte (plus DEL, see above)
+	Esc                 // Inter, Final
+	CSI                 // Priv, Params, Inter, Final
+	OSC                 // Data
+	DCS                 // Priv, Params, Inter, Final, Data
+	APC                 // Data: an application program command's string (kitty graphics replies)
 )
 
-// action is one parser output. The data slice aliases parser-owned storage
+// Action is one parser output. The Data slice aliases parser-owned storage
 // and is valid only for the duration of the emit call; consumers that retain
 // it must copy.
-type action struct {
-	kind   actionKind
-	r      rune
-	alt    bool
-	b      byte
-	priv   byte
-	final  byte
-	inter  string
-	params []csiParam
-	data   []byte
+type Action struct {
+	Kind   Kind
+	Rune   rune
+	Alt    bool
+	Byte   byte
+	Priv   byte
+	Final  byte
+	Inter  string
+	Params []Param
+	Data   []byte
 }
 
-// csiParam is one CSI/DCS parameter with its ':'-separated sub-parameters.
+// Param is one CSI/DCS parameter with its ':'-separated sub-parameters.
 // A part of -1 marks an empty (defaulted) position.
-type csiParam struct{ parts []int }
+type Param struct{ Parts []int }
 
-// param returns parameter i's primary value, or def when absent/empty.
-func (a *action) param(i, def int) int {
-	if i >= len(a.params) || len(a.params[i].parts) == 0 || a.params[i].parts[0] < 0 {
+// Param returns parameter i's primary value, or def when absent/empty.
+func (a *Action) Param(i, def int) int {
+	if i >= len(a.Params) || len(a.Params[i].Parts) == 0 || a.Params[i].Parts[0] < 0 {
 		return def
 	}
-	return a.params[i].parts[0]
+	return a.Params[i].Parts[0]
 }
 
-// sub returns sub-parameter j of parameter i, or def when absent/empty.
-func (a *action) sub(i, j, def int) int {
-	if i >= len(a.params) || j >= len(a.params[i].parts) || a.params[i].parts[j] < 0 {
+// Sub returns sub-parameter j of parameter i, or def when absent/empty.
+func (a *Action) Sub(i, j, def int) int {
+	if i >= len(a.Params) || j >= len(a.Params[i].Parts) || a.Params[i].Parts[j] < 0 {
 		return def
 	}
-	return a.params[i].parts[j]
+	return a.Params[i].Parts[j]
 }
 
 type pState uint8
@@ -105,7 +118,13 @@ const (
 	sUTF8
 )
 
-type parser struct {
+// Parser is the state machine. The zero value is an input-stream parser
+// in the ground state.
+type Parser struct {
+	// Output selects output-stream behaviour (see the package comment).
+	// Reset keeps it.
+	Output bool
+
 	state pState
 
 	inter []byte
@@ -129,14 +148,20 @@ type parser struct {
 	u8alt  bool
 }
 
-// reset returns the parser to ground, dropping any in-flight sequence.
-func (p *parser) reset() {
+// Reset returns the parser to ground, dropping any in-flight sequence.
+func (p *Parser) Reset() {
 	p.state = sGround
 	p.u8n = 0
 }
 
-// feed consumes one byte, emitting zero or more actions.
-func (p *parser) feed(b byte, emit func(*action)) {
+// InEscape reports whether the last byte fed left a bare ESC pending: the
+// stream so far ends in ESC, which on input may be the Escape key itself.
+func (p *Parser) InEscape() bool {
+	return p.state == sEscape
+}
+
+// Feed consumes one byte, emitting zero or more actions.
+func (p *Parser) Feed(b byte, emit func(*Action)) {
 	// "Anywhere" transitions (vt100.net): CAN/SUB abort, ESC restarts.
 	switch b {
 	case 0x18, 0x1A:
@@ -144,22 +169,25 @@ func (p *parser) feed(b byte, emit func(*action)) {
 		// still keys on an input stream (Ctrl+X / Ctrl+Z).
 		p.state = sGround
 		p.u8n = 0
-		emit(&action{kind: actExecute, b: b})
+		emit(&Action{Kind: Execute, Byte: b})
 		return
 	case 0x1B:
 		switch p.state {
 		case sOSC:
 			// xterm practice: OSC is dispatched when the ESC of its ESC \
 			// terminator arrives (the trailing '\' dispatches as a harmless
-			// actEsc the decoder ignores).
+			// Esc the decoder ignores).
 			p.dispatchOSC(emit)
 		case sDCSPass:
 			p.dispatchDCS(emit)
 		case sAPC:
-			emit(&action{kind: actAPC, data: p.data})
+			emit(&Action{Kind: APC, Data: p.data})
 		case sEscape:
-			// ESC ESC: the pending ESC was a real Escape key; deliver it.
-			emit(&action{kind: actExecute, b: 0x1B})
+			// ESC ESC on input: the pending ESC was a real Escape key;
+			// deliver it. On output the first ESC is simply abandoned.
+			if !p.Output {
+				emit(&Action{Kind: Execute, Byte: 0x1B})
+			}
 		}
 		p.enterEscape()
 		return
@@ -177,7 +205,7 @@ func (p *parser) feed(b byte, emit func(*action)) {
 	case sCSIEntry:
 		p.csiEntry(b, emit)
 	case sCSIParam:
-		p.csiParam(b, emit)
+		p.csiParamState(b, emit)
 	case sCSIInter:
 		p.csiInter(b, emit)
 	case sCSIIgnore:
@@ -201,21 +229,23 @@ func (p *parser) feed(b byte, emit func(*action)) {
 	}
 }
 
-func (p *parser) ground(b byte, emit func(*action)) {
+func (p *Parser) ground(b byte, emit func(*Action)) {
 	switch {
 	case b <= 0x1F:
-		emit(&action{kind: actExecute, b: b})
+		emit(&Action{Kind: Execute, Byte: b})
 	case b <= 0x7E:
-		emit(&action{kind: actPrint, r: rune(b)})
+		emit(&Action{Kind: Print, Rune: rune(b)})
 	case b == 0x7F:
 		// Deviation from vt100.net (which ignores DEL): Backspace key.
-		emit(&action{kind: actExecute, b: b})
+		if !p.Output {
+			emit(&Action{Kind: Execute, Byte: b})
+		}
 	default:
 		p.startUTF8(b, false)
 	}
 }
 
-func (p *parser) startUTF8(b byte, alt bool) {
+func (p *Parser) startUTF8(b byte, alt bool) {
 	var need int
 	switch {
 	case b&0xE0 == 0xC0:
@@ -234,12 +264,12 @@ func (p *parser) startUTF8(b byte, alt bool) {
 	p.state = sUTF8
 }
 
-func (p *parser) utf8Byte(b byte, emit func(*action)) {
+func (p *Parser) utf8Byte(b byte, emit func(*Action)) {
 	if b&0xC0 != 0x80 {
 		// Invalid continuation: drop the partial rune, reprocess b in ground.
 		p.state = sGround
 		p.u8n = 0
-		p.feed(b, emit)
+		p.Feed(b, emit)
 		return
 	}
 	p.u8[p.u8n] = b
@@ -250,19 +280,25 @@ func (p *parser) utf8Byte(b byte, emit func(*action)) {
 	r, _ := utf8.DecodeRune(p.u8[:p.u8n])
 	p.state = sGround
 	p.u8n = 0
-	emit(&action{kind: actPrint, r: r, alt: p.u8alt})
+	if p.Output && r >= 0x80 && r <= 0x9F {
+		// A C1 control: the same as its 7-bit ESC form.
+		p.enterEscape()
+		p.escape(byte(r-0x40), emit)
+		return
+	}
+	emit(&Action{Kind: Print, Rune: r, Alt: p.u8alt})
 }
 
-func (p *parser) enterEscape() {
+func (p *Parser) enterEscape() {
 	p.state = sEscape
 	p.inter = p.inter[:0]
 	p.u8n = 0
 }
 
-func (p *parser) escape(b byte, emit func(*action)) {
+func (p *Parser) escape(b byte, emit func(*Action)) {
 	switch {
 	case b <= 0x1F:
-		emit(&action{kind: actExecute, b: b})
+		emit(&Action{Kind: Execute, Byte: b})
 	case b <= 0x2F:
 		p.inter = append(p.inter, b)
 		p.state = sEscInter
@@ -279,30 +315,32 @@ func (p *parser) escape(b byte, emit func(*action)) {
 		p.enterOSC()
 	case b <= 0x7E:
 		p.state = sGround
-		emit(&action{kind: actEsc, final: b, inter: string(p.inter)})
+		emit(&Action{Kind: Esc, Final: b, Inter: string(p.inter)})
 	case b == 0x7F:
 		// ignore
+	case p.Output:
+		p.state = sGround
 	default:
 		// Extension: meta-sends-escape with a multibyte char (Alt+<rune>).
 		p.startUTF8(b, true)
 	}
 }
 
-func (p *parser) escInter(b byte, emit func(*action)) {
+func (p *Parser) escInter(b byte, emit func(*Action)) {
 	switch {
 	case b <= 0x1F:
-		emit(&action{kind: actExecute, b: b})
+		emit(&Action{Kind: Execute, Byte: b})
 	case b <= 0x2F:
 		p.inter = append(p.inter, b)
 	case b <= 0x7E:
 		p.state = sGround
-		emit(&action{kind: actEsc, final: b, inter: string(p.inter)})
+		emit(&Action{Kind: Esc, Final: b, Inter: string(p.inter)})
 	default:
 		// 0x7F and >= 0x80: ignore
 	}
 }
 
-func (p *parser) clearSeq() {
+func (p *Parser) clearSeq() {
 	p.inter = p.inter[:0]
 	p.priv = 0
 	p.params = [maxParams][maxSubparams]int{}
@@ -315,15 +353,15 @@ func (p *parser) clearSeq() {
 	p.sDiscard = false
 }
 
-func (p *parser) enterCSI() {
+func (p *Parser) enterCSI() {
 	p.clearSeq()
 	p.state = sCSIEntry
 }
 
-func (p *parser) csiEntry(b byte, emit func(*action)) {
+func (p *Parser) csiEntry(b byte, emit func(*Action)) {
 	switch {
 	case b <= 0x1F:
-		emit(&action{kind: actExecute, b: b})
+		emit(&Action{Kind: Execute, Byte: b})
 	case b <= 0x2F:
 		p.inter = append(p.inter, b)
 		p.state = sCSIInter
@@ -346,10 +384,10 @@ func (p *parser) csiEntry(b byte, emit func(*action)) {
 	}
 }
 
-func (p *parser) csiParam(b byte, emit func(*action)) {
+func (p *Parser) csiParamState(b byte, emit func(*Action)) {
 	switch {
 	case b <= 0x1F:
-		emit(&action{kind: actExecute, b: b})
+		emit(&Action{Kind: Execute, Byte: b})
 	case b <= 0x2F:
 		p.inter = append(p.inter, b)
 		p.state = sCSIInter
@@ -368,10 +406,10 @@ func (p *parser) csiParam(b byte, emit func(*action)) {
 	}
 }
 
-func (p *parser) csiInter(b byte, emit func(*action)) {
+func (p *Parser) csiInter(b byte, emit func(*Action)) {
 	switch {
 	case b <= 0x1F:
-		emit(&action{kind: actExecute, b: b})
+		emit(&Action{Kind: Execute, Byte: b})
 	case b <= 0x2F:
 		p.inter = append(p.inter, b)
 	case b <= 0x3F:
@@ -383,10 +421,10 @@ func (p *parser) csiInter(b byte, emit func(*action)) {
 	}
 }
 
-func (p *parser) csiIgnore(b byte, emit func(*action)) {
+func (p *Parser) csiIgnore(b byte, emit func(*Action)) {
 	switch {
 	case b <= 0x1F:
-		emit(&action{kind: actExecute, b: b})
+		emit(&Action{Kind: Execute, Byte: b})
 	case b >= 0x40 && b <= 0x7E:
 		p.state = sGround // consumed, no dispatch
 	default:
@@ -394,7 +432,7 @@ func (p *parser) csiIgnore(b byte, emit func(*action)) {
 	}
 }
 
-func (p *parser) paramDigit(b byte) {
+func (p *Parser) paramDigit(b byte) {
 	p.sawParam = true
 	if p.pDiscard || p.sDiscard {
 		return
@@ -407,7 +445,7 @@ func (p *parser) paramDigit(b byte) {
 	p.hasVal[p.iParam][p.iSub] = true
 }
 
-func (p *parser) paramSub() {
+func (p *Parser) paramSub() {
 	p.sawParam = true
 	if p.pDiscard || p.sDiscard {
 		return
@@ -419,7 +457,7 @@ func (p *parser) paramSub() {
 	p.iSub++
 }
 
-func (p *parser) paramSep() {
+func (p *Parser) paramSep() {
 	p.sawParam = true
 	if p.pDiscard {
 		return
@@ -434,7 +472,7 @@ func (p *parser) paramSep() {
 	p.iSub = 0
 }
 
-func (p *parser) buildParams() []csiParam {
+func (p *Parser) buildParams() []Param {
 	if !p.sawParam {
 		return nil
 	}
@@ -442,7 +480,7 @@ func (p *parser) buildParams() []csiParam {
 		p.subN[p.iParam] = uint8(p.iSub + 1)
 	}
 	n := p.iParam + 1
-	out := make([]csiParam, n)
+	out := make([]Param, n)
 	for i := range n {
 		m := int(p.subN[i])
 		if m == 0 {
@@ -456,28 +494,28 @@ func (p *parser) buildParams() []csiParam {
 				parts[j] = -1
 			}
 		}
-		out[i] = csiParam{parts: parts}
+		out[i] = Param{Parts: parts}
 	}
 	return out
 }
 
-func (p *parser) dispatchCSI(final byte, emit func(*action)) {
+func (p *Parser) dispatchCSI(final byte, emit func(*Action)) {
 	p.state = sGround
-	emit(&action{
-		kind:   actCSI,
-		priv:   p.priv,
-		inter:  string(p.inter),
-		params: p.buildParams(),
-		final:  final,
+	emit(&Action{
+		Kind:   CSI,
+		Priv:   p.priv,
+		Inter:  string(p.inter),
+		Params: p.buildParams(),
+		Final:  final,
 	})
 }
 
-func (p *parser) enterOSC() {
+func (p *Parser) enterOSC() {
 	p.data = p.data[:0]
 	p.state = sOSC
 }
 
-func (p *parser) osc(b byte, emit func(*action)) {
+func (p *Parser) osc(b byte, emit func(*Action)) {
 	switch {
 	case b == 0x07: // BEL terminator (xterm extension)
 		p.dispatchOSC(emit)
@@ -491,18 +529,18 @@ func (p *parser) osc(b byte, emit func(*action)) {
 	}
 }
 
-func (p *parser) dispatchOSC(emit func(*action)) {
-	emit(&action{kind: actOSC, data: p.data})
+func (p *Parser) dispatchOSC(emit func(*Action)) {
+	emit(&Action{Kind: OSC, Data: p.data})
 }
 
-func (p *parser) enterDCS() {
+func (p *Parser) enterDCS() {
 	p.clearSeq()
 	p.data = p.data[:0]
 	p.final = 0
 	p.state = sDCSEntry
 }
 
-func (p *parser) dcsEntry(b byte) {
+func (p *Parser) dcsEntry(b byte) {
 	switch {
 	case b <= 0x1F:
 		// ignore
@@ -528,7 +566,7 @@ func (p *parser) dcsEntry(b byte) {
 	}
 }
 
-func (p *parser) dcsParam(b byte) {
+func (p *Parser) dcsParam(b byte) {
 	switch {
 	case b <= 0x1F:
 		// ignore
@@ -550,7 +588,7 @@ func (p *parser) dcsParam(b byte) {
 	}
 }
 
-func (p *parser) dcsInter(b byte) {
+func (p *Parser) dcsInter(b byte) {
 	switch {
 	case b <= 0x1F:
 		// ignore
@@ -565,13 +603,13 @@ func (p *parser) dcsInter(b byte) {
 	}
 }
 
-func (p *parser) dcsHook(final byte) {
+func (p *Parser) dcsHook(final byte) {
 	p.final = final
 	p.data = p.data[:0]
 	p.state = sDCSPass
 }
 
-func (p *parser) dcsPass(b byte) {
+func (p *Parser) dcsPass(b byte) {
 	if b == 0x7F {
 		return
 	}
@@ -580,13 +618,13 @@ func (p *parser) dcsPass(b byte) {
 	}
 }
 
-func (p *parser) dispatchDCS(emit func(*action)) {
-	emit(&action{
-		kind:   actDCS,
-		priv:   p.priv,
-		inter:  string(p.inter),
-		params: p.buildParams(),
-		final:  p.final,
-		data:   p.data,
+func (p *Parser) dispatchDCS(emit func(*Action)) {
+	emit(&Action{
+		Kind:   DCS,
+		Priv:   p.priv,
+		Inter:  string(p.inter),
+		Params: p.buildParams(),
+		Final:  p.final,
+		Data:   p.data,
 	})
 }

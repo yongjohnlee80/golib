@@ -1,4 +1,4 @@
-package term
+package vtparse
 
 import (
 	"fmt"
@@ -8,28 +8,28 @@ import (
 )
 
 // renderAction snapshots an action as a readable string. Copies everything —
-// action.data aliases parser storage and is only valid during emit.
-func renderAction(a *action) string {
-	switch a.kind {
-	case actPrint:
-		if a.alt {
-			return fmt.Sprintf("print+alt:%q", string(a.r))
+// Action.Data aliases parser storage and is only valid during emit.
+func renderAction(a *Action) string {
+	switch a.Kind {
+	case Print:
+		if a.Alt {
+			return fmt.Sprintf("print+alt:%q", string(a.Rune))
 		}
-		return fmt.Sprintf("print:%q", string(a.r))
-	case actExecute:
-		return fmt.Sprintf("exec:%02X", a.b)
-	case actEsc:
-		return fmt.Sprintf("esc:inter=%q final=%q", a.inter, string(rune(a.final)))
-	case actCSI:
+		return fmt.Sprintf("print:%q", string(a.Rune))
+	case Execute:
+		return fmt.Sprintf("exec:%02X", a.Byte)
+	case Esc:
+		return fmt.Sprintf("esc:inter=%q final=%q", a.Inter, string(rune(a.Final)))
+	case CSI:
 		return fmt.Sprintf("csi:priv=%q params=%s inter=%q final=%q",
-			privString(a.priv), renderParams(a.params), a.inter, string(rune(a.final)))
-	case actOSC:
-		return fmt.Sprintf("osc:%q", string(a.data))
-	case actDCS:
+			privString(a.Priv), renderParams(a.Params), a.Inter, string(rune(a.Final)))
+	case OSC:
+		return fmt.Sprintf("osc:%q", string(a.Data))
+	case DCS:
 		return fmt.Sprintf("dcs:priv=%q params=%s inter=%q final=%q data=%q",
-			privString(a.priv), renderParams(a.params), a.inter, string(rune(a.final)), string(a.data))
-	case actAPC:
-		return fmt.Sprintf("apc:%q", string(a.data))
+			privString(a.Priv), renderParams(a.Params), a.Inter, string(rune(a.Final)), string(a.Data))
+	case APC:
+		return fmt.Sprintf("apc:%q", string(a.Data))
 	}
 	return "?"
 }
@@ -41,14 +41,14 @@ func privString(p byte) string {
 	return string(rune(p))
 }
 
-func renderParams(ps []csiParam) string {
+func renderParams(ps []Param) string {
 	var sb strings.Builder
 	sb.WriteByte('[')
 	for i, p := range ps {
 		if i > 0 {
 			sb.WriteByte(' ')
 		}
-		for j, v := range p.parts {
+		for j, v := range p.Parts {
 			if j > 0 {
 				sb.WriteByte(':')
 			}
@@ -61,10 +61,10 @@ func renderParams(ps []csiParam) string {
 
 // parse feeds input as one contiguous chunk and returns rendered actions.
 func parse(input string) []string {
-	var p parser
+	var p Parser
 	var out []string
 	for i := 0; i < len(input); i++ {
-		p.feed(input[i], func(a *action) { out = append(out, renderAction(a)) })
+		p.Feed(input[i], func(a *Action) { out = append(out, renderAction(a)) })
 	}
 	return out
 }
@@ -154,10 +154,10 @@ func TestParserSplitBoundaries(t *testing.T) {
 			whole := parse(tc.input)
 
 			// Byte-at-a-time via a single persistent parser.
-			var p parser
+			var p Parser
 			var oneByOne []string
 			for i := 0; i < len(tc.input); i++ {
-				p.feed(tc.input[i], func(a *action) { oneByOne = append(oneByOne, renderAction(a)) })
+				p.Feed(tc.input[i], func(a *Action) { oneByOne = append(oneByOne, renderAction(a)) })
 			}
 			if !equalStrings(oneByOne, whole) {
 				t.Fatalf("byte-at-a-time diverged\n got: %v\nwant: %v", oneByOne, whole)
@@ -165,14 +165,14 @@ func TestParserSplitBoundaries(t *testing.T) {
 
 			// Random split points, many trials.
 			for trial := 0; trial < 20; trial++ {
-				var p2 parser
+				var p2 Parser
 				var got []string
-				emit := func(a *action) { got = append(got, renderAction(a)) }
+				emit := func(a *Action) { got = append(got, renderAction(a)) }
 				rest := tc.input
 				for len(rest) > 0 {
 					n := 1 + rng.Intn(len(rest))
 					for i := 0; i < n; i++ {
-						p2.feed(rest[i], emit)
+						p2.Feed(rest[i], emit)
 					}
 					rest = rest[n:]
 				}
@@ -235,21 +235,21 @@ func FuzzParserSplit(f *testing.F) {
 		}
 		split = ((split % len(data)) + len(data)) % len(data)
 
-		var pw parser
+		var pw Parser
 		var whole []string
-		emitW := func(a *action) { whole = append(whole, renderAction(a)) }
+		emitW := func(a *Action) { whole = append(whole, renderAction(a)) }
 		for i := 0; i < len(data); i++ {
-			pw.feed(data[i], emitW)
+			pw.Feed(data[i], emitW)
 		}
 
-		var ps parser
+		var ps Parser
 		var parts []string
-		emitP := func(a *action) { parts = append(parts, renderAction(a)) }
+		emitP := func(a *Action) { parts = append(parts, renderAction(a)) }
 		for i := 0; i < split; i++ {
-			ps.feed(data[i], emitP)
+			ps.Feed(data[i], emitP)
 		}
 		for i := split; i < len(data); i++ {
-			ps.feed(data[i], emitP)
+			ps.Feed(data[i], emitP)
 		}
 		if !equalStrings(whole, parts) {
 			t.Fatalf("split at %d diverged\nwhole: %v\nsplit: %v", split, whole, parts)
