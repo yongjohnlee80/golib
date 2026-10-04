@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // textChunk is how much of the container Text copies at a time, and so the memory it holds; it is
@@ -15,13 +17,17 @@ const textChunk = 64 << 10
 // is valid Markdown, so Text copies the container to w as it is, a chunk at a time, holding no more
 // than one chunk however large the file. It neither checks nor converts the encoding.
 //
-// A source that ends before size bytes is an error wrapping io.ErrUnexpectedEOF, so a file that
+// A negative size is an error wrapping errs.ErrInvalidArgument, as it is through a [Set]. A source
+// that ends before size bytes is an error wrapping io.ErrUnexpectedEOF, so a file that
 // shrank after its size was read is not taken as complete. A destination that accepts fewer bytes
 // than it was given is io.ErrShortWrite.
 type Text struct{}
 
 // Extract copies the container to w.
 func (Text) Extract(ctx context.Context, r io.ReaderAt, size int64, w io.Writer) (Info, error) {
+	if size < 0 {
+		return Info{}, errs.Wrap(errs.ErrInvalidArgument, "extract: negative size %d", size)
+	}
 	src := io.NewSectionReader(r, 0, size)
 	buf := make([]byte, min(int64(textChunk), max(size, 1)))
 	var copied int64

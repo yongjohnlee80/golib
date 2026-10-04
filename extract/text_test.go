@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 func TestText_CopiesAsIs(t *testing.T) {
@@ -110,3 +112,11 @@ func TestText_ShortWrite(t *testing.T) {
 type shortWriter struct{}
 
 func (shortWriter) Write(p []byte) (int, error) { return len(p) / 2, nil }
+
+// Called directly, Text refuses a negative size as a Set does.
+func TestText_NegativeSize(t *testing.T) {
+	t.Parallel()
+	if _, err := (Text{}).Extract(context.Background(), strings.NewReader("abc"), -1, io.Discard); !errors.Is(err, errs.ErrInvalidArgument) {
+		t.Errorf("err = %v, want errs.ErrInvalidArgument", err)
+	}
+}
