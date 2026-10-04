@@ -106,9 +106,12 @@ type Page struct {
 
 // RasterizeHTMLPage renders the whole of html as a PNG, for an Image that scrolls (see Page).
 //
-// Where the page ends is marked, not guessed: an end marker — a bar of a reserved colour, after
-// everything in the page's flow — is added before </body>, and the page is cut just above it. A
-// blank stretch of the page is no evidence of its end (content may follow it). The page is laid
+// Where the page ends is marked, not guessed: an end marker — three bands of reserved colours, in
+// order, after everything in the page's flow — is added before </body>, and the page is cut just
+// above it. A blank stretch of the page is no evidence of its end (content may follow it), and
+// content of a marker colour is not a marker: only the three bands in order are, and of those, the
+// last, since the marker is the last thing in the flow. The flow is the limit: content positioned
+// fixed or absolute below the marker is cut. The page is laid
 // out first in a window firstPageHeight rows tall, and again in the whole height only when the
 // marker is not in that first window. A page whose policy keeps the marker unstyled, so that it
 // never shows, is cut where the whole-height window shows nothing more: its rows of the background
@@ -158,9 +161,15 @@ func RasterizeHTMLPage(ctx context.Context, html []byte, p Page) ([]byte, error)
 	return cutPage(img, width, minH, end, found, p.Background)
 }
 
-// endMarker is the bar withEndMarker adds: its colour is reserved, and it is tall enough to show
-// at the smallest zoom.
-const endMarker = `<div style="display:block;clear:both;height:6px;margin:0;padding:0;border:0;background:#fe01fd"></div>`
+// endMarker is what withEndMarker adds: three bands, each of a reserved colour and tall enough to
+// keep a row of its own at the smallest zoom.
+const endMarker = `<div style="display:block;clear:both;margin:0;padding:0;border:0">` +
+	`<div style="height:4px;background:#fe01fd"></div>` +
+	`<div style="height:4px;background:#01fe02"></div>` +
+	`<div style="height:4px;background:#0201fe"></div></div>`
+
+// markerBands are the end marker's colours, top to bottom.
+var markerBands = [3][3]uint32{{0xfe, 0x01, 0xfd}, {0x01, 0xfe, 0x02}, {0x02, 0x01, 0xfe}}
 
 // withEndMarker adds the end marker before the page's last </body>, or at its end.
 func withEndMarker(html []byte) []byte {
@@ -174,24 +183,45 @@ func withEndMarker(html []byte) []byte {
 	return append(out, html[i:]...)
 }
 
-// endMarkerRow is the first row of img holding a run of the end marker's colour, and whether any
-// does.
+// endMarkerRow is the row where img's last end marker begins, and whether it has one. A row holds
+// a band when six pixels in a row are of its colour; a marker is the first band's row followed, each
+// within bandGap rows, by a row of the second and then of the third.
 func endMarkerRow(img image.Image) (int, bool) {
+	const bandGap = 16
 	r := img.Bounds()
-	marker := func(x, y int) bool {
-		cr, cg, cb, _ := img.At(x, y).RGBA()
-		near := func(v uint32, want uint32) bool { return v>>8+3 >= want && v>>8 <= want+3 }
-		return near(cr, 0xfe) && near(cg, 0x01) && near(cb, 0xfd)
-	}
-	for y := r.Min.Y; y < r.Max.Y; y++ {
-		run := 0
+	h := r.Dy()
+	has := [3][]bool{make([]bool, h), make([]bool, h), make([]bool, h)}
+	for y := 0; y < h; y++ {
+		var run [3]int
 		for x := r.Min.X; x < r.Max.X; x++ {
-			if !marker(x, y) {
-				run = 0
-				continue
+			cr, cg, cb, _ := img.At(x, r.Min.Y+y).RGBA()
+			for i, c := range markerBands {
+				near := func(v, want uint32) bool { return v>>8+3 >= want && v>>8 <= want+3 }
+				if near(cr, c[0]) && near(cg, c[1]) && near(cb, c[2]) {
+					if run[i]++; run[i] >= 6 {
+						has[i][y] = true
+					}
+				} else {
+					run[i] = 0
+				}
 			}
-			if run++; run >= 6 {
+		}
+	}
+	next := func(band, from int) (int, bool) {
+		for y := from + 1; y < min(h, from+1+bandGap); y++ {
+			if has[band][y] {
 				return y, true
+			}
+		}
+		return 0, false
+	}
+	for y := h - 1; y >= 0; y-- {
+		if !has[0][y] || (y > 0 && has[0][y-1]) {
+			continue // not where a first band begins
+		}
+		if y2, ok := next(1, y); ok {
+			if _, ok := next(2, y2); ok {
+				return r.Min.Y + y, true
 			}
 		}
 	}
