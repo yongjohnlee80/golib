@@ -191,6 +191,21 @@ func (s *Screen) Line(i int) []Cell {
 	return s.hist.at(i).cells
 }
 
+// LineWrapped reports whether scrollback line i continues on the next line
+// (the next scrollback line, or the screen's first row), because autowrap
+// broke it.
+func (s *Screen) LineWrapped(i int) bool {
+	if i < 0 || i >= s.hist.len() {
+		return false
+	}
+	return s.hist.at(i).wrapped
+}
+
+// Dropped is how many lines have left the top of a full scrollback since
+// the screen was made: a reader holding a scrollback index shifts it by the
+// change. Clearing the scrollback (ED 3) counts every line it held.
+func (s *Screen) Dropped() int { return s.hist.dropped }
+
 // Cursor is the cursor's position on the visible grid, whether the program
 // shows it, and its shape.
 func (s *Screen) Cursor() (row, col int, visible bool, shape CursorShape) {
@@ -530,10 +545,11 @@ func (s *Screen) reply1(b []byte) {
 
 // history is the scrollback: a ring of at most max lines.
 type history struct {
-	lines []line
-	start int
-	n     int
-	max   int
+	lines   []line
+	start   int
+	n       int
+	max     int
+	dropped int // lines that have left the top, ever
 }
 
 func (h *history) len() int { return h.n }
@@ -559,6 +575,7 @@ func (h *history) push(l line) {
 	}
 	h.lines[h.start] = l
 	h.start = (h.start + 1) % len(h.lines)
+	h.dropped++
 }
 
 // all returns the scrollback oldest first, as a fresh slice.
@@ -573,10 +590,14 @@ func (h *history) all() []line {
 // set replaces the scrollback with ls, keeping the newest max.
 func (h *history) set(ls []line) {
 	if len(ls) > h.max {
+		h.dropped += len(ls) - h.max
 		ls = ls[len(ls)-h.max:]
 	}
 	h.lines = append([]line(nil), ls...)
 	h.start, h.n = 0, len(ls)
 }
 
-func (h *history) clear() { h.lines, h.start, h.n = nil, 0, 0 }
+func (h *history) clear() {
+	h.dropped += h.n
+	h.lines, h.start, h.n = nil, 0, 0
+}

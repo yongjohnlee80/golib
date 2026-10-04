@@ -148,7 +148,11 @@ func NewBufferView(opts ...BufferViewOption) *BufferView {
 		}
 	}
 	v.interp.passthrough = v.passthrough
-	v.wr = newBufWriter(v)
+	v.wr = newBufWriter(func(b []byte) {
+		if v.alive {
+			v.ingest(b)
+		}
+	})
 	return v
 }
 
