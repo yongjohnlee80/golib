@@ -319,6 +319,13 @@ func TestRasterizeHTMLPage(t *testing.T) {
 	if w, _, _ := page(`<div style="width:900px;height:50px;background:#000"></div>`, Page{Width: 400, MinHeight: 100, Wide: true}); w != 900 {
 		t.Errorf("a wide page is %d wide, want its content's 900", w)
 	}
+	// content that reaches the window's corner is not taken for its background, once the page names it
+	if _, h, _ := page(tall, Page{Width: 400, MinHeight: 100, MaxHeight: 1000, Background: "#ffffff"}); h != 1000 {
+		t.Errorf("a page bounded at 1000 rows, black to its last, is %d tall", h)
+	}
+	if _, h, _ := page(`<div style="height:600px;background:#000"></div>`, Page{Width: 400, MinHeight: 100, Background: "#ffffff"}); h != 600 {
+		t.Errorf("a 600px page on white is %d tall", h)
+	}
 	// a script that draws after 300ms has drawn by the time of the screenshot
 	_, h, _ := page(`<div id="d"></div><script>setTimeout(function(){document.getElementById("d").style.cssText="height:2000px;background:#000"},300)</script>`,
 		Page{Width: 400, MinHeight: 100})
