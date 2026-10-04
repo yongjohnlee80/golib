@@ -260,9 +260,9 @@ func TestTerminalPrefixWaysOut(t *testing.T) {
 		f.h.inject(ctrl('\\'))
 		f.h.settle()
 		f.h.onLoop(f.sh.unmountChild)
-		f.h.waitFor("hang-up", f.proc().isClosed)
-		if got := f.proc().sent(); got != "\x1c" {
-			t.Errorf("sent %q before the hang-up, want one 0x1c", got)
+		f.waitSent("\x1c")
+		if f.proc().isClosed() {
+			t.Error("unmounting hung the program up")
 		}
 	})
 }
@@ -352,6 +352,7 @@ func TestTerminalExitAndRestart(t *testing.T) {
 	f := startTerm(t, 30, 4, widget.WithOnExit(func(c int) { codes = append(codes, c) }))
 	f.proc().exit(3)
 	f.h.waitFor("exit shown", func() bool { return strings.Contains(f.h.grid(), "[process exited 3]") })
+	f.h.waitFor("the exited program's terminal released", f.proc().isClosed)
 	var running bool
 	f.h.onLoop(func() { running = f.term.Running() })
 	if running || len(codes) != 1 || codes[0] != 3 {
@@ -576,4 +577,37 @@ func TestTerminalCommandAndDirApplyAtTheNextStart(t *testing.T) {
 	if c := f.cmds[1]; c.Path != "/bin/second" || strings.Join(c.Args, " ") != "-l" || c.Dir != "/two" {
 		t.Errorf("second start: %+v", c)
 	}
+}
+
+// A drawer that hides the Terminal unmounts it: the program keeps running,
+// its output keeps reaching the screen, a remount shows it, and the App's
+// end hangs it up.
+func TestTerminalOutlivesItsMount(t *testing.T) {
+	f := startTerm(t, 20, 4)
+	f.output("before\r\n")
+	f.h.onLoop(f.sh.unmountChild)
+	f.h.settle()
+	f.proc().outW.Write([]byte("while hidden\r\n"))
+	f.h.waitFor("hidden output taken", func() bool {
+		var s string
+		f.h.onLoop(func() {
+			scr := f.term.Screen()
+			for r := 0; r < 4; r++ {
+				for c := 0; c < 20; c++ {
+					s += scr.Cell(r, c).Content
+				}
+			}
+		})
+		return strings.Contains(s, "while hidden")
+	})
+	if f.proc().isClosed() {
+		t.Fatal("hiding hung the program up")
+	}
+	var running bool
+	f.h.onLoop(func() { running = f.term.Running() })
+	if !running {
+		t.Fatal("not running while hidden")
+	}
+	f.h.stop()
+	f.h.waitFor("hang-up at the App's end", f.proc().isClosed)
 }
