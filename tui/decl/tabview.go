@@ -29,6 +29,23 @@ type tabViewNode struct {
 	tabs    *widget.Tabs
 	pages   []*tabNode
 	changed func(args ...qml.SpecValue)
+	// set is whether currentIndex has been given its value at construction: every later setting is
+	// a change from its source
+	set bool
+}
+
+// setIndex is currentIndex set by the document. currentIndexChanged is raised once for a change:
+// while the view is mounted the widget's TabChangedEvent raises it (Init); while it is not (its
+// dialog closed) the event has no listener, so the view raises it here. The value given at
+// construction raises nothing, as in Qt.
+func (n *tabViewNode) setIndex(i int) {
+	was := n.tabs.Active()
+	n.tabs.Select(i)
+	first := !n.set
+	n.set = true
+	if ctx := n.Context(); !first && (ctx == nil || !ctx.Mounted()) && n.tabs.Active() != was {
+		n.changed(numberValue(n.tabs.Active()))
+	}
 }
 
 // tabNode is a declared Tab: a title and the one item under it.
@@ -111,7 +128,7 @@ var tabViewType = Type{
 	restyle: restyleTabView,
 	Setters: map[string]Setter{
 		// Qt's: the index of the current tab; one out of range is ignored
-		"currentIndex": setter("a TabView", numberOf, func(n *tabViewNode, v float64) { n.tabs.Select(int(v)) }),
+		"currentIndex": setter("a TabView", numberOf, func(n *tabViewNode, v float64) { n.setIndex(int(v)) }),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": func(c tui.Component) (qml.SpecValue, error) {

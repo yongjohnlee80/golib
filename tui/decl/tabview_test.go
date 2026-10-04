@@ -186,7 +186,7 @@ func TestATabChosenWhileItsDialogIsClosed(t *testing.T) {
 	s := runTabs(t, `Window {
  Text { text: "page" }
  Dialog { id: dlg; title: "settings"
-  TabView { currentIndex: App.tab
+  TabView { currentIndex: App.tab; onCurrentIndexChanged: App.moved(index)
    Tab { title: "one"; Text { text: "first" } }
    Tab { title: "two"; Text { text: "second" } } } } }`, map[string]any{"App.tab": 1}, rec, moved)
 	s.WaitForText(t, "page")
@@ -211,6 +211,11 @@ func TestATabChosenWhileItsDialogIsClosed(t *testing.T) {
 	call("close")
 	s.WaitFor(t, "the dialog closed", func(sc string) bool { return !strings.Contains(sc, "settings") })
 	set(0) // the view is unmounted with its dialog
+	onScreenLoop(t, s, func() {})
+	if got := logged(moved); got != "0" {
+		t.Errorf("a change while the dialog was closed raised currentIndexChanged %q, want once, 0 (and nothing for the value given at construction)", got)
+	}
+	set(0) // no change, no signal
 	call("open")
 	s.WaitFor(t, "the first tab", func(sc string) bool { return strings.Contains(sc, "first") && !strings.Contains(sc, "second") })
 	call("close")
@@ -218,4 +223,10 @@ func TestATabChosenWhileItsDialogIsClosed(t *testing.T) {
 	set(1)
 	call("open")
 	s.WaitFor(t, "the second tab", func(sc string) bool { return strings.Contains(sc, "second") && !strings.Contains(sc, "first") })
+	set(0) // and open, the widget raises it, once
+	s.WaitFor(t, "the first tab, open", func(sc string) bool { return strings.Contains(sc, "first") })
+	onScreenLoop(t, s, func() {})
+	if got := logged(moved); got != "0,1,0" {
+		t.Errorf("currentIndexChanged raised %q, want 0,1,0: once for each change, open or closed", got)
+	}
 }
