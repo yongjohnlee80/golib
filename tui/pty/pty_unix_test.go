@@ -252,7 +252,8 @@ func TestCloseEndsInteractiveBashAndItsJob(t *testing.T) {
 	if err != nil {
 		t.Skip("no bash")
 	}
-	p, err := Start(Cmd{Path: bash, Args: []string{"--norc", "--noprofile", "-i"},
+	// +H: no history expansion, which macOS's bash 3.2 applies to the $! below.
+	p, err := Start(Cmd{Path: bash, Args: []string{"--norc", "--noprofile", "+H", "-i"},
 		Env: append(os.Environ(), "PS1=$ ", "TERM=xterm-256color")})
 	if err != nil {
 		t.Fatal(err)
