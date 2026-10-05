@@ -244,6 +244,11 @@ PNG changes, and deletes it when the `Image` is hidden or goes. On a terminal wi
 cells stay blank, so a host shows its fallback there instead. `widget.RasterizeSVG` and
 `widget.RasterizeHTML` make a PNG with optional tools found at runtime (`rsvg-convert`, a headless
 Chromium or Chrome), offline and bounded.
+A terminal refuses an image wider or taller than `widget.MaxImagePixels` (10000, kitty's and
+Ghostty's limit), and shows nothing. A scrollable `Image` shows a taller PNG, such as a long page from
+`widget.RasterizeHTMLPage`, as strips: `widget.SplitPNG` cuts them off the UI thread, and
+`SetStrips` sets them. Only the strip holding the part shown is placed. `SetPNG` cuts a PNG that
+large itself, on the caller's thread.
 
 ### Attached properties
 

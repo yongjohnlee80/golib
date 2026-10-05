@@ -2,6 +2,8 @@ package widget
 
 import (
 	"bytes"
+	"fmt"
+	"image"
 	"image/png"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -25,6 +27,14 @@ import (
 // and the top, and the wheel by three rows (or columns, sideways). Only the part shown is placed
 // (tui.Image.Clip), and a scroll places it again without sending the PNG. A host renders a PNG to
 // scroll at least as large as the cells at that scale, so it is never stretched.
+//
+// TALL (golib's): a terminal refuses an image wider or taller than MaxImagePixels, and says so only
+// in a reply the placement asks it to keep to itself, so a page longer than that would show
+// nothing. A scrollable Image shows such a PNG as Strips: MaxImagePixels-tall cuts of it,
+// overlapping by half, so the part the cells show lies whole in one, and the one it lies in is the
+// one placed. Scrolling within it places it again without sending it; scrolling into another
+// sends that one. SplitPNG cuts them (a second or so for a long page, off the UI thread); SetPNG
+// cuts a PNG too large itself, on the caller's thread.
 type Image struct {
 	Base
 	id         uint32
@@ -32,6 +42,68 @@ type Image struct {
 	version    uint64
 	scrollable bool
 	view       imageView
+	strips     []Strip // a PNG too large to place whole, cut; nil when png is placed whole
+	strip      int     // the strip placed
+}
+
+// MaxImagePixels is the widest and tallest image a terminal takes: kitty's and Ghostty's limit
+// (Ghostty: "max_dimension = 10000", an error the placement's q=2 keeps quiet).
+const MaxImagePixels = 10000
+
+// Strip is a horizontal cut of a PNG too tall for a terminal: its PNG, and its first row's place
+// in the whole.
+type Strip struct {
+	PNG []byte
+	Top int
+}
+
+// Strips are a PNG cut for a scrollable Image (SetStrips): the whole's size, and its cuts.
+type Strips struct {
+	Width, Height int
+	Cuts          []Strip
+}
+
+// SplitPNG cuts b into Strips: MaxImagePixels tall, a new one every half of that, the last ending
+// at the bottom, so any part up to half of MaxImagePixels tall lies whole in one. A PNG that fits
+// is one strip, itself. It decodes and encodes the image, so a host calls it off the UI thread. A
+// PNG wider than MaxImagePixels is refused: nothing cuts it to fit.
+func SplitPNG(b []byte) (Strips, error) {
+	cfg, err := png.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		return Strips{}, fmt.Errorf("widget: the PNG to split: %w", err)
+	}
+	if cfg.Width > MaxImagePixels {
+		return Strips{}, fmt.Errorf("widget: a PNG %d pixels wide is wider than a terminal shows (%d)", cfg.Width, MaxImagePixels)
+	}
+	s := Strips{Width: cfg.Width, Height: cfg.Height}
+	if cfg.Height <= MaxImagePixels {
+		s.Cuts = []Strip{{PNG: b}}
+		return s, nil
+	}
+	img, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		return Strips{}, fmt.Errorf("widget: the PNG to split: %w", err)
+	}
+	sub, ok := img.(interface {
+		SubImage(image.Rectangle) image.Image
+	})
+	if !ok {
+		return Strips{}, fmt.Errorf("widget: a %T cannot be cut", img)
+	}
+	b0 := img.Bounds()
+	enc := png.Encoder{CompressionLevel: png.BestSpeed}
+	for top := 0; ; top += MaxImagePixels / 2 {
+		top = min(top, cfg.Height-MaxImagePixels)
+		var buf bytes.Buffer
+		r := image.Rect(b0.Min.X, b0.Min.Y+top, b0.Max.X, b0.Min.Y+top+MaxImagePixels)
+		if err := enc.Encode(&buf, sub.SubImage(r)); err != nil {
+			return Strips{}, fmt.Errorf("widget: a strip of the PNG: %w", err)
+		}
+		s.Cuts = append(s.Cuts, Strip{PNG: buf.Bytes(), Top: top})
+		if top+MaxImagePixels >= cfg.Height {
+			return s, nil
+		}
+	}
 }
 
 // The pixels of a scrollable Image's PNG one cell shows: the size a host renders a PNG for.
@@ -112,9 +184,16 @@ func scrollStep(ev tui.Event, rows, height int) (dx, dy int, ok bool) {
 func NewImage() *Image { return &Image{id: tui.NewImageID()} }
 
 // SetPNG shows png; nil or empty clears the image. A scrollable Image keeps its corner, as far as
-// the new PNG reaches.
+// the new PNG reaches. One taller than MaxImagePixels is cut here, on the caller's thread (see
+// SplitPNG, and TALL); one that cannot be cut is shown as it is.
 func (m *Image) SetPNG(b []byte) {
-	m.png = b
+	if cfg, err := png.DecodeConfig(bytes.NewReader(b)); err == nil && m.scrollable && cfg.Height > MaxImagePixels {
+		if s, err := SplitPNG(b); err == nil {
+			m.SetStrips(s)
+			return
+		}
+	}
+	m.png, m.strips = b, nil
 	m.view.width, m.view.height = 0, 0
 	if cfg, err := png.DecodeConfig(bytes.NewReader(b)); err == nil {
 		m.view.width, m.view.height = cfg.Width, cfg.Height
@@ -124,9 +203,65 @@ func (m *Image) SetPNG(b []byte) {
 	m.MarkDirty()
 }
 
+// SetStrips shows a PNG SplitPNG cut, as SetPNG shows a whole one: a scrollable Image places the
+// strip the part it shows lies in. One strip is the PNG itself.
+func (m *Image) SetStrips(s Strips) {
+	if len(s.Cuts) == 0 {
+		m.Clear()
+		return
+	}
+	if len(s.Cuts) == 1 {
+		m.strips = nil
+		m.SetPNG(s.Cuts[0].PNG)
+		return
+	}
+	m.png, m.strips, m.strip = s.Cuts[0].PNG, s.Cuts, 0
+	m.view.width, m.view.height = s.Width, s.Height
+	m.version++
+	m.view.to(m.view.left, m.view.top)
+	m.pickStrip()
+	m.MarkDirty()
+}
+
+// pickStrip places the strip the part shown lies in, keeping the one placed while it still holds
+// it: a scroll within a strip sends nothing. A part taller than the overlap is shown from the
+// strip it starts in.
+func (m *Image) pickStrip() {
+	if len(m.strips) == 0 {
+		return
+	}
+	v := m.view.shown()
+	holds := func(i int) bool {
+		top := m.strips[i].Top
+		return v.Y >= top && v.Y+v.H <= top+MaxImagePixels
+	}
+	if holds(m.strip) {
+		return
+	}
+	pick := -1
+	for i := range m.strips {
+		if holds(i) {
+			pick = i
+			break
+		}
+	}
+	if pick < 0 { // taller than the overlap: the last strip starting at or above it
+		pick = 0
+		for i := range m.strips {
+			if m.strips[i].Top <= v.Y {
+				pick = i
+			}
+		}
+	}
+	if pick != m.strip {
+		m.strip, m.png = pick, m.strips[pick].PNG
+		m.version++
+	}
+}
+
 // Clear shows no image.
 func (m *Image) Clear() {
-	m.png = nil
+	m.png, m.strips = nil, nil
 	m.version++
 	m.MarkDirty()
 }
@@ -138,6 +273,9 @@ func (m *Image) HasImage() bool { return len(m.png) > 0 }
 func (m *Image) SetScrollable(on bool) {
 	m.scrollable = on
 	m.view.to(0, 0)
+	if on && len(m.strips) == 0 && m.view.height > MaxImagePixels {
+		m.SetPNG(m.png) // too tall to place whole: cut it now it scrolls
+	}
 	m.MarkDirty()
 }
 
@@ -149,6 +287,7 @@ func (m *Image) Scroll() (shown tui.Rect, width, height int) {
 // ScrollTo puts the PNG's pixel x, y at the top left, as far as the PNG reaches.
 func (m *Image) ScrollTo(x, y int) {
 	m.view.to(x, y)
+	m.pickStrip()
 	m.MarkDirty()
 }
 
@@ -162,6 +301,7 @@ func (m *Image) HandleEvent(ev tui.Event) bool {
 	}
 	dx, dy, ok := scrollStep(ev, m.view.rows, m.view.height)
 	if ok && m.view.to(m.view.left+dx, m.view.top+dy) {
+		m.pickStrip()
 		m.MarkDirty()
 	}
 	return ok
@@ -188,6 +328,7 @@ func (m *Image) Render(s tui.Surface) {
 	sz := s.Size()
 	m.view.cols, m.view.rows = sz.W, sz.H
 	m.view.to(m.view.left, m.view.top) // the cells may hold more now
+	m.pickStrip()
 	for y := 0; y < sz.H; y++ {
 		for x := 0; x < sz.W; x++ {
 			s.SetCell(x, y, " ", style.New())
@@ -203,6 +344,11 @@ func (m *Image) Image() (tui.Image, bool) {
 	img := tui.Image{ID: m.id, PNG: m.png, Version: m.version}
 	if m.scrollable && m.view.cols > 0 && m.view.width > 0 {
 		img.Clip = m.view.shown()
+		if len(m.strips) > 0 { // the strip's own pixels: the whole's, less where it starts
+			top := m.strips[m.strip].Top
+			img.Clip.Y -= top
+			img.Clip.H = min(img.Clip.H, MaxImagePixels-img.Clip.Y)
+		}
 	}
 	return img, true
 }
