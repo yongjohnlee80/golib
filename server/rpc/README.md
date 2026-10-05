@@ -109,6 +109,14 @@ bounded queue where callback reentrancy is supported and overflow or a
 callback panic poisons the client. Writes are staged and capped exactly
 like the server's; `ClientMaxMessageBytes` bounds both directions.
 
+`NotificationBackpressure()` makes a full queue hold the reader until the
+dispatcher makes room, instead of poisoning the client, so a burst larger
+than the queue arrives whole however the goroutines are scheduled. Without
+it, on a busy or single CPU, the reader can outrun the dispatcher, overflow
+the queue and poison the client. It is opt-in: a callback that `Call`s this
+client would deadlock against a full queue, so use it only when the
+callback never waits on the client.
+
 `Dial` opens its connection with a `net.Dialer` (`WithDialer`,
 `ClientNetwork`) unless `WithConnDialer(fn)` is set. Then `fn(ctx, network,
 addr)` supplies the connection, for a byte stream that is not a plain

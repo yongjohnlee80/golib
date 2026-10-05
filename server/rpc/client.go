@@ -25,7 +25,8 @@ var (
 	ErrMsgIDExhausted = errors.New("rpc: msgid space exhausted; reconnect")
 	// ErrNotificationOverflow poisons the client when the bounded
 	// notification queue overflows (the alternative is unbounded memory or
-	// a deadlocked reader).
+	// a deadlocked reader), unless [NotificationBackpressure] makes the
+	// reader wait for room instead.
 	ErrNotificationOverflow = errors.New("rpc: notification queue overflow")
 )
 
@@ -43,6 +44,9 @@ type clientConfig struct {
 	writeTimeout time.Duration
 	notifBuffer  int
 	onNotif      func(method string, params []any)
+	// backpressure: a full notification queue holds the reader until the
+	// dispatcher makes room, instead of poisoning the client
+	backpressure bool
 }
 
 // ClientLogger sets the client's logger (default Nop).
@@ -96,6 +100,23 @@ func ClientWriteTimeout(d time.Duration) ClientOption {
 // NotificationBuffer sizes the bounded notification queue (default 128).
 func NotificationBuffer(n int) ClientOption {
 	return func(c *clientConfig) { c.notifBuffer = n }
+}
+
+// NotificationBackpressure makes a full notification queue hold the reader
+// until the dispatcher makes room, instead of poisoning the client with
+// [ErrNotificationOverflow]. The peer's writes then slow to the pace the
+// callback takes them (its own write timeout bounds a wait that is too
+// long), so a burst larger than the queue arrives whole, in order, however
+// the reader and the dispatcher are scheduled: without it, a burst the reader
+// takes faster than the dispatcher overflows the queue, which on one busy CPU
+// can be any burst larger than it.
+//
+// It suits a callback that never waits on this client. A callback that Calls
+// would deadlock against a full queue, its response read only after the
+// queue has room, so the reader never blocking on the callback is the
+// default's contract, and the reason backpressure is opt-in.
+func NotificationBackpressure() ClientOption {
+	return func(c *clientConfig) { c.backpressure = true }
 }
 
 // OnNotification installs the server-push callback, served by ONE dispatch
@@ -504,8 +525,17 @@ func (c *Client) readLoop() {
 			}
 			ch <- clientResp{errVal: m.Err, result: m.Result}
 		case KindNotification:
+			n := clientNotif{method: m.Method, params: m.Params}
+			if c.cfg.backpressure {
+				select {
+				case c.notifCh <- n:
+				case <-c.done:
+					return // terminal while waiting for room: the dispatcher has stopped
+				}
+				continue
+			}
 			select {
-			case c.notifCh <- clientNotif{method: m.Method, params: m.Params}:
+			case c.notifCh <- n:
 			default:
 				c.poison(ErrNotificationOverflow)
 				return
