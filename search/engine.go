@@ -125,9 +125,6 @@ func (e *Engine[D, V]) Search(ctx context.Context, q Query) (Result, error) {
 		return Result{}, fmt.Errorf("%w: %q", ErrUnknownMode, q.Mode)
 	}
 	canSemantic := e.semantic && e.embed != nil
-	if mode == ModeSemantic && !canSemantic {
-		return Result{}, ErrNoProvider
-	}
 	limit := q.Limit
 	if limit <= 0 {
 		limit = e.limit
@@ -144,11 +141,16 @@ func (e *Engine[D, V]) Search(ctx context.Context, q Query) (Result, error) {
 	f := q.Filter
 	f.Facets = facets
 	terms, words := query.Terms(text)
+	// a query with no words embeds nothing, so it needs no embedder: filters list their documents
+	// (ModeFacet) and no filters answer nothing, in every mode
 	if len(terms) == 0 {
 		if filtered(f) {
 			return e.list(ctx, res, f, limit)
 		}
 		return res, nil
+	}
+	if mode == ModeSemantic && !canSemantic {
+		return Result{}, ErrNoProvider
 	}
 	useSemantic := canSemantic && mode != ModeLexical
 	for attempt := 0; ; attempt++ {

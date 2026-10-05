@@ -56,6 +56,10 @@ says which it was:
 | error (the query could not be embedded) | lexical | `ErrEmbedFailed` | lexical |
 | ready | hybrid | semantic | lexical |
 
+A query with no words embeds nothing, so the table does not apply to it: in every mode, with an
+embedder or without, its filters list their documents (`ModeFacet`), and without filters it
+answers no hits.
+
 ## Implementing a store
 
 A store is `View(ctx, fn)`: it opens one consistent snapshot, such as a read transaction, and hands
@@ -159,7 +163,7 @@ Hold a `search.Searcher`, not an `*Engine`, and any engine that answers `Search(
 | error | when |
 | --- | --- |
 | `ErrUnknownMode` | a mode that is not `auto`, `lexical` or `semantic` |
-| `ErrNoProvider` | `semantic` asked of an engine without an embedder, or over a store without vectors |
+| `ErrNoProvider` | `semantic` asked of an engine without an embedder, or over a store without vectors, for a query with words |
 | `ErrNoLister` | a query of filters alone, over a store that cannot list |
 | `ErrSwitching` | `semantic` while a new model fills (and what a query embedder answers then) |
 | `ErrEmbedFailed` | `semantic` when the query could not be embedded |
