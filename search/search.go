@@ -137,7 +137,8 @@ var (
 	// ErrUnknownMode is a mode that is none of ModeAuto, ModeLexical and ModeSemantic.
 	ErrUnknownMode = errs.Sentinel(errs.ErrInvalidArgument, "search: unknown search mode")
 	// ErrNoProvider is ModeSemantic asked of an engine that cannot search by meaning: it has no query
-	// embedder, or its store has no vectors.
+	// embedder, or its store has no vectors. A query with no words, which embeds nothing, is never
+	// refused for it.
 	ErrNoProvider = errs.Sentinel(errs.ErrUnsupported, "search: semantic search: no embedding provider in use")
 	// ErrNoLister is a query of filters alone asked of a store that cannot list documents by them.
 	ErrNoLister = errs.Sentinel(errs.ErrUnsupported, "search: the store cannot list documents by filters alone")

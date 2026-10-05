@@ -486,11 +486,7 @@ func TestFacetsFromTheQuery(t *testing.T) {
 	}
 
 	s.listed = []Candidate[key]{cand("a", 0), cand("b", 0)}
-	res, err := eng.Search(ctx, Query{Text: "type:adr", Fields: fieldsOf{"type"}, Mode: ModeSemantic})
-	if !errors.Is(err, ErrNoProvider) {
-		t.Errorf("semantic mode without an embedder is refused before anything: %v", err)
-	}
-	res, err = eng.Search(ctx, Query{Text: "type:adr", Fields: fieldsOf{"type"}})
+	res, err := eng.Search(ctx, Query{Text: "type:adr", Fields: fieldsOf{"type"}})
 	if err != nil || res.ModeUsed != ModeFacet || res.Semantic != StateOff || len(res.Hits) != 2 {
 		t.Fatalf("filters alone: %+v, %v", res, err)
 	}
@@ -520,6 +516,31 @@ func TestFacetsFromTheQuery(t *testing.T) {
 		if err != nil || len(res.Hits) != 0 || res.ModeUsed != ModeLexical {
 			t.Errorf("%s: %+v, %v", name, res, err)
 		}
+	}
+}
+
+// TestAWordlessQueryNeedsNoEmbedder: a query with no words embeds nothing, so semantic mode without
+// an embedder still lists by its filters, or answers nothing without them; a query with words is
+// refused, as before.
+func TestAWordlessQueryNeedsNoEmbedder(t *testing.T) {
+	ctx := context.Background()
+	s := corpus()
+	s.listed = []Candidate[key]{cand("a", 0), cand("b", 0)}
+	eng := NewEngine[key, fullView](fullStore{s})
+	for name, q := range map[string]Query{
+		"a facet in the query": {Text: "type:adr", Fields: fieldsOf{"type"}, Mode: ModeSemantic},
+		"a tag alone":          {Text: "  ", Filter: Filter{Tags: []string{"keep"}}, Mode: ModeSemantic},
+	} {
+		res, err := eng.Search(ctx, q)
+		if err != nil || res.ModeUsed != ModeFacet || res.Semantic != StateOff || len(res.Hits) != 2 {
+			t.Errorf("%s, semantic mode, no embedder: %+v, %v; want the two listed", name, res, err)
+		}
+	}
+	if res, err := eng.Search(ctx, Query{Text: "", Mode: ModeSemantic}); err != nil || len(res.Hits) != 0 || res.ModeUsed != ModeSemantic {
+		t.Errorf("no words and no filters, semantic mode, no embedder: %+v, %v; want no hits", res, err)
+	}
+	if _, err := eng.Search(ctx, Query{Text: "type:adr storage", Fields: fieldsOf{"type"}, Mode: ModeSemantic}); !errors.Is(err, ErrNoProvider) {
+		t.Errorf("a word beside the facet, semantic mode, no embedder: %v, want ErrNoProvider", err)
 	}
 }
 
