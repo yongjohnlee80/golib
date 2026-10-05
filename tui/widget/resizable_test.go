@@ -1336,3 +1336,57 @@ func TestReserveKeepsTheOUTERContractTruthful(t *testing.T) {
 		})
 	}
 }
+
+// TestADragsEndIsHeardOnce: WithResizeEnd hears a drag that ends, once, with the size it asked
+// for last, and Dragging is true only while it lasts; a drag cancelled with Escape is not heard.
+func TestADragsEndIsHeardOnce(t *testing.T) {
+	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
+	var ends []tui.Size
+	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}),
+		widget.WithResizeEnd(func(s tui.Size) { ends = append(ends, s) }))
+	host := widget.NewOverlayHost(r)
+	h := startApp(t, host, 40, 20)
+	defer h.stop()
+	h.settle()
+	h.onLoop(func() { child.Context().RequestFocus() })
+	h.settle()
+	dragging := func() bool {
+		var v bool
+		h.onLoop(func() { v = r.Dragging() })
+		return v
+	}
+	heard := func() []tui.Size {
+		var v []tui.Size
+		h.onLoop(func() { v = append(v, ends...) })
+		return v
+	}
+
+	before := sizeOn(t, h, r)
+	gx, gy := before.W-1, before.H-1
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: gx, Y: gy})
+	h.inject(tui.MouseEvent{Kind: tui.MouseMotion, X: gx + 4, Y: gy + 2})
+	h.waitFor("the drag in progress", func() bool { return dragging() })
+	if len(heard()) != 0 {
+		t.Fatal("the end was heard before the release")
+	}
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: gx + 4, Y: gy + 2})
+	h.waitFor("the end heard", func() bool { return len(heard()) == 1 })
+	if got := heard()[0]; got != (tui.Size{W: before.W + 4, H: before.H + 2}) {
+		t.Errorf("the end was heard at %+v, want %+v", got, tui.Size{W: before.W + 4, H: before.H + 2})
+	}
+	if dragging() {
+		t.Error("still dragging after the release")
+	}
+
+	now := sizeOn(t, h, r)
+	gx, gy = now.W-1, now.H-1
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: gx, Y: gy})
+	h.inject(tui.MouseEvent{Kind: tui.MouseMotion, X: gx + 3, Y: gy + 1})
+	h.waitFor("the second drag in progress", func() bool { return dragging() })
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	h.waitFor("the second drag cancelled", func() bool { return !dragging() })
+	h.settle()
+	if got := heard(); len(got) != 1 {
+		t.Errorf("a cancelled drag was heard: %v", got)
+	}
+}

@@ -241,6 +241,8 @@ type Resizable struct {
 	drag          *resizeDrag
 	gripCtx       *tui.Context
 	pointerPolicy tui.PointerPolicy
+	// onEnd hears a drag that ended (not one cancelled), with the size it asked for last.
+	onEnd func(tui.Size)
 }
 
 // ResizableOption configures a Resizable at construction.
@@ -374,6 +376,13 @@ func WithHandles(h ...Handle) ResizableOption {
 	}
 }
 
+// WithResizeEnd calls fn when a drag of a grip ends, with the size the drag asked for last: the
+// moment a host keeps the size, once per drag rather than once per motion. A cancelled drag (Escape)
+// calls nothing, as it changed nothing.
+func WithResizeEnd(fn func(tui.Size)) ResizableOption {
+	return func(r *Resizable) { r.onEnd = fn }
+}
+
 // WithHandleGlyph sets the grip's character.
 //
 // EXACTLY ONE grapheme cluster, of display width one or two. Rejected at
@@ -489,6 +498,9 @@ func (r *Resizable) WithPointerPolicy(p tui.PointerPolicy) *Resizable {
 
 // SizeMode reports where the current size comes from.
 func (r *Resizable) SizeMode() SizeMode { return r.mode }
+
+// Dragging reports whether a grip is being dragged.
+func (r *Resizable) Dragging() bool { return r.drag != nil }
 
 // Size is the EFFECTIVE size — what is on screen, as stored by the last commit.
 // Before the first layout it is the zero Size, because nothing has been
