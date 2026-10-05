@@ -128,3 +128,96 @@ func TestADrawersGripIsOnItsInnerCorner(t *testing.T) {
 		}
 	}
 }
+
+// A drag cancelled with Escape leaves the panel as it was: its size is kept only when a drag ends,
+// and nothing is raised.
+func TestACancelledDragLeavesTheDrawerAsItWas(t *testing.T) {
+	// as a panel is: not modal, a list inside with the keyboard
+	rec := &recorder{}
+	s := decltest.Run(t, 60, 20,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			" Text { text: \"the page underneath\" }\n"+
+			" Drawer { id: d; modal: false; resizable: true; edge: Tui.Bottom; size: 30; onResized: App.log(size, length)\n"+
+			"  Frame { title: \"panel\"; ListView { id: list; model: App.rows; textRole: \"name\" } } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.rows": people()}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}))
+	s.WaitForText(t, "the page underneath")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+		if err := s.Program.Call("list", "forceActiveFocus"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "panel")
+	x, y, _ := find(s, "◥")
+	before := panelTop(s)
+	s.Keys(t,
+		tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y},
+		tui.MouseEvent{Kind: tui.MouseMotion, X: x, Y: y - 4})
+	s.WaitFor(t, "the drag shown", func(string) bool { return panelTop(s) == before-4 })
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	s.WaitFor(t, "the drawer back as it was", func(string) bool { return panelTop(s) == before })
+	s.Keys(t, tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y - 4})
+	if got := rec.all(); len(got) != 0 {
+		t.Fatalf("a cancelled drag raised resized%v", got)
+	}
+	if panelTop(s) != before {
+		t.Fatalf("after the release the drawer starts on row %d, want %d:\n%s", panelTop(s), before, s)
+	}
+}
+
+// size and length a host sets are held to the Drawer's minimums too, not only a drag's.
+func TestAHostsSizeIsHeldToTheMinimum(t *testing.T) {
+	s := decltest.Run(t, 60, 20,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			" Text { text: \"the page underneath\" }\n"+
+			" Drawer { id: d; resizable: true; edge: Tui.Bottom; minimumSize: 20; size: App.size; length: App.length\n"+
+			"  Frame { title: \"panel\"; Text { text: \"inside\" } } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.size": 50, "App.length": 100}))
+	s.WaitForText(t, "the page underneath")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "the drawer at 50%", func(string) bool { return panelTop(s) == 10 })
+	onScreenLoop(t, s, func() { // after the minimum is set, as a preference that changes is
+		if err := s.Program.Set("App.size", 5); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "the drawer at its minimum, 20% of 20 rows", func(string) bool { return panelTop(s) == 16 })
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.length", 5); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "the drawer at its minimum length, 20% of 60 columns", func(string) bool {
+		line := strings.Split(s.String(), "\n")[19]
+		return col(line, "┘")-col(line, "└") == 11
+	})
+}
+
+// A drag of one cell is one cell: a 60-wide bottom drawer dragged one column narrower is 59 wide,
+// not 58 as flooring each way made it.
+func TestADragOfOneCellIsOneCell(t *testing.T) {
+	s, rec := runResizableDrawer(t, "bottom", true)
+	x, y, _ := find(s, "◥")
+	drag(s, t, x, y, -1, 0)
+	s.WaitFor(t, "resized", func(string) bool { return len(rec.all()) == 2 })
+	s.WaitFor(t, "59 wide", func(string) bool {
+		line := strings.Split(s.String(), "\n")[19] // the bottom border: the grip covers the top's corner
+		return col(line, "┘")-col(line, "└") == 58
+	})
+	// two columns narrower is 58 of 60: 96.7%, said as 97, the nearest, not 96
+	x, y, _ = find(s, "◥")
+	drag(s, t, x, y, -1, 0)
+	s.WaitFor(t, "resized again", func(string) bool { return len(rec.all()) == 4 })
+	if got := rec.all()[3].Raw; got != "97" {
+		t.Errorf("58 of 60 columns reported as length %s, want 97", got)
+	}
+}
