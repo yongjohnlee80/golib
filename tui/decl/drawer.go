@@ -2,6 +2,7 @@ package decl
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -22,6 +23,13 @@ import (
 //
 // Tui.Center is golib's: the panel floats in the middle of the Window, length wide and size high.
 //
+// RESIZABLE (golib's; Qt's Drawer has none): resizable: true puts a grip, a square on the corner at
+// the panel's inner edge (the top right of a bottom drawer, the bottom right of a left or top one or
+// a centred one, the bottom left of a right one), that the pointer drags to resize the panel across
+// its edge and along it. size and length follow the drag as percentages of the Window, kept
+// between minimumSize (default 10) and 90, and minimumLength (default 20) and 100, and never under
+// three cells; resized(size, length) is raised once, when the drag ends, for a host to keep them.
+//
 // It holds the keyboard while open, as Qt's modal Drawer does, and gives it back where it was
 // when it closes; Escape closes it. modal: false (Qt's too) lets the keyboard go back to the page
 // while it stays open, a panel beside the work rather than a question over it. edge, size and length are settable while the program runs: a
@@ -31,14 +39,20 @@ import (
 // drawerNode is a Drawer: its Float, the overlay it is on, and where it opens from.
 type drawerNode struct {
 	widget.Base
-	float  *widget.Float
-	frame  *drawerFrame
-	host   *widget.OverlayHost
-	edge   tui.DockEdge
-	size   int
-	length int
-	opened func()
-	closed func()
+	float   *widget.Float
+	frame   *drawerFrame
+	host    *widget.OverlayHost
+	edge    tui.DockEdge
+	size    int
+	length  int
+	opened  func()
+	closed  func()
+	content tui.Component
+	// resizable: the content is in grip, and the frame sizes it from size and length
+	resizable          bool
+	grip               *widget.Resizable
+	minSize, minLength int
+	resized            func(args ...qml.SpecValue)
 }
 
 var _ Overlaid = (*drawerNode)(nil)
@@ -50,15 +64,16 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 1 {
 		return nil, nil, errors.New("a Drawer holds exactly one child, its content")
 	}
-	modal := true
-	consumed, err := readProps(b.Props, map[string]field{"modal": into(&modal, boolOf)})
+	modal, resizable := true, false
+	consumed, err := readProps(b.Props, map[string]field{"modal": into(&modal, boolOf), "resizable": into(&resizable, boolOf)})
 	if err != nil {
 		return nil, nil, err
 	}
-	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed")}
+	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
+		content: b.Children[0], resizable: resizable, minSize: 10, minLength: 20, resized: b.EmitterWith("resized")}
 	n.frame = &drawerFrame{owner: n}
 	n.frame.Label("Drawer")
-	n.frame.Add(b.Children[0])
+	n.frame.Add(n.wrapped())
 	n.float = widget.NewFloat(n.frame, widget.WithModal(modal))
 	n.place()
 	if b.Overlay != nil {
@@ -67,8 +82,65 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	return n, consumed, nil
 }
 
-// place anchors the Float at the edge, the size across it and the length along it, centred.
+// wrapped is the content as the frame holds it: in a grip at the edge's inner corner when the Drawer
+// is resizable, itself otherwise. A grip is made for the edge it is at, so a new edge makes a new one.
+func (n *drawerNode) wrapped() tui.Component {
+	if !n.resizable {
+		return n.content
+	}
+	handle, glyph := widget.HandleBottomRight, "◢"
+	switch n.edge {
+	case tui.DockRight:
+		handle, glyph = widget.HandleBottomLeft, "◣"
+	case tui.DockBottom:
+		handle, glyph = widget.HandleTopRight, "◥"
+	}
+	n.grip = widget.NewResizable(n.content, widget.WithHandles(handle), widget.WithHandleGlyph(glyph),
+		widget.WithResizeEnd(func(tui.Size) { n.dragEnded() }))
+	return n.grip
+}
+
+// dragEnded raises resized with where the drag left the panel, which the frame's layout kept.
+func (n *drawerNode) dragEnded() {
+	n.resized(qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(n.size)},
+		qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(n.length)})
+}
+
+// across reports whether the edge's size is a width (a left or right drawer) rather than a height.
+func (n *drawerNode) across() bool { return n.edge == tui.DockLeft || n.edge == tui.DockRight }
+
+// cells is the panel's size in a Window of win: size across the edge and length along it, each at
+// least three cells.
+func (n *drawerNode) cells(win tui.Size) tui.Size {
+	w, h := win.W*n.length/100, win.H*n.size/100
+	if n.across() {
+		w, h = win.W*n.size/100, win.H*n.length/100
+	}
+	return tui.Size{W: min(max(w, 3), win.W), H: min(max(h, 3), win.H)}
+}
+
+// follow takes size and length from a panel dragged to sz in a Window of win, within their bounds.
+func (n *drawerNode) follow(sz, win tui.Size) {
+	if win.W <= 0 || win.H <= 0 {
+		return
+	}
+	across, along := sz.H*100/win.H, sz.W*100/win.W
+	if n.across() {
+		across, along = sz.W*100/win.W, sz.H*100/win.H
+	}
+	n.size = min(max(across, n.minSize), 90)
+	n.length = min(max(along, n.minLength), 100)
+}
+
+// place anchors the Float at the edge, the size across it and the length along it, centred. A
+// resizable Drawer's Float is sized by its content, which the frame sizes from size and length, so
+// a drag can change them.
 func (n *drawerNode) place() {
+	if n.resizable {
+		n.placeAnchor()
+		n.float.SetSizeFraction(0, 0)
+		return
+	}
 	switch n.edge {
 	case tui.DockRight:
 		n.float.SetAnchor(widget.Right)
@@ -88,9 +160,43 @@ func (n *drawerNode) place() {
 	}
 }
 
-// setEdge is Drawer.edge's setter.
+// placeAnchor anchors a resizable Drawer's Float at its edge.
+func (n *drawerNode) placeAnchor() {
+	switch n.edge {
+	case tui.DockRight:
+		n.float.SetAnchor(widget.Right)
+	case tui.DockTop:
+		n.float.SetAnchor(widget.Top)
+	case tui.DockBottom:
+		n.float.SetAnchor(widget.Bottom)
+	case tui.DockCenter:
+		n.float.SetAnchor(widget.Center)
+	default:
+		n.float.SetAnchor(widget.Left)
+	}
+}
+
+// setEdge is Drawer.edge's setter. A resizable Drawer's grip moves to the new edge's inner corner.
 func (n *drawerNode) setEdge(e tui.DockEdge) {
+	moved := e != n.edge
 	n.edge = e
+	if moved && n.resizable && n.grip != nil {
+		n.frame.Remove(n.grip)
+		n.frame.Add(n.wrapped())
+	}
+	n.place()
+}
+
+// setMinimumSize and setMinimumLength are a resizable Drawer's bounds, percentages of the Window.
+func (n *drawerNode) setMinimumSize(pct int) {
+	n.minSize = min(max(pct, 1), 90)
+	n.size = max(n.size, n.minSize)
+	n.place()
+}
+
+func (n *drawerNode) setMinimumLength(pct int) {
+	n.minLength = min(max(pct, 1), 100)
+	n.length = max(n.length, n.minLength)
 	n.place()
 }
 
@@ -173,9 +279,20 @@ func (f *drawerFrame) Init(ctx *tui.Context) {
 	f.MultiChild.Init(ctx)
 }
 
-// Layout gives the one child all the Float offers: a drawer is its whole size.
+// Layout gives the one child all the Float offers: a drawer is its whole size. A resizable Drawer's
+// Float offers the whole Window, and the frame takes the panel's size from it: from the drag in
+// progress when there is one, within the Drawer's bounds, else from size and length.
 func (f *drawerFrame) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
+	if n := f.owner; n.resizable && n.grip != nil {
+		win := sz
+		if n.grip.Dragging() {
+			if want, ok := n.grip.RequestedSize(); ok {
+				n.follow(want, win)
+			}
+		}
+		sz = n.cells(win)
+	}
 	for _, child := range f.Items() {
 		f.ctx.LayoutChild(child, tui.Tight(sz))
 		f.ctx.PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
@@ -196,9 +313,10 @@ func (f *drawerFrame) HandleEvent(ev tui.Event) bool {
 
 // drawerType is the Drawer's entry in the standard vocabulary.
 var drawerType = Type{
-	Name:  "Drawer",
-	Build: buildDrawer,
-	Ctor:  []string{"modal"},
+	Name:    "Drawer",
+	Build:   buildDrawer,
+	Ctor:    []string{"modal", "resizable"},
+	Signals: map[string][]string{"resized": {"size", "length"}},
 	Setters: map[string]Setter{
 		"edge": setter("a Drawer", drawerEdges.read, (*drawerNode).setEdge),
 		"size": setter("a Drawer", func(v qml.SpecValue) (int, error) {
@@ -209,6 +327,14 @@ var drawerType = Type{
 			f, err := numberOf(v)
 			return int(f), err
 		}, (*drawerNode).setLength),
+		"minimumSize": setter("a Drawer", func(v qml.SpecValue) (int, error) {
+			f, err := numberOf(v)
+			return int(f), err
+		}, (*drawerNode).setMinimumSize),
+		"minimumLength": setter("a Drawer", func(v qml.SpecValue) (int, error) {
+			f, err := numberOf(v)
+			return int(f), err
+		}, (*drawerNode).setMinimumLength),
 	},
 	Methods: map[string]Method{
 		"open":   NoArgMethod((*drawerNode).open),

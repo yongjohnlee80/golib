@@ -228,6 +228,9 @@ func (r *Resizable) endDrag() bool {
 	}
 	r.drag = nil
 	r.releaseGrip()
+	if r.onEnd != nil {
+		r.onEnd(r.requested)
+	}
 	return true
 }
 

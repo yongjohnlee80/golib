@@ -82,6 +82,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Text` | `wrapMode`, palette | `text` | — | — | — |
 | `Terminal` (golib's) | `command` (the program; the user's `$SHELL` when empty), `dir`, `scrollback` | `command`, `dir` (both at the next `start()`), `vimKeys` (Esc leaves input mode, except on the alternate screen), `themeColors` (default true: the program's default colours are the theme's) | — | `exited(code)`, `titleChanged(title)`, `modeChanged(mode)` — `"terminal"` or `"normal"` | `start()`, `stop()`, `focus()` |
 | `Button` | — | `text`, `enabled` | — | `clicked` | — |
+| `CheckBox` | — | `text` (`&` marks the mnemonic), `checked`, `enabled` | — | `toggled`, `clicked` | — |
 | `Split` | `orientation` | `ratio` | — | — | — |
 | `Flex` | `direction` | — | — | — | — |
 | `Dialog` | `dim`, `width`, `standardButtons`, `defaultButton`, palette | `title`, `helpText` | — | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
@@ -94,7 +95,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Tab` | `title`; one child, its content | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
-| `Drawer` | `modal` (default true); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100) | — | `opened`, `closed` | `open()`, `close()`, `toggle()` |
+| `Drawer` | `modal` (default true), golib's `resizable` (default false); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20) | — | `opened`, `closed`, golib's `resized(size, length)` | `open()`, `close()`, `toggle()` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
@@ -115,6 +116,25 @@ cleared by its group included, before its `triggered`.
 case is its Shift, as in Qt: `"c"` or `"C"` is the key c, and `"Shift+C"` is the
 capital, whether a terminal delivers it as `C` or as Shift and c. With Ctrl or
 Alt, case is not relied on (`Ctrl+Q` matches however it arrives).
+
+**`CheckBox`** — Qt Quick Controls' CheckBox: `[x] text` or `[ ] text`, in the colours of what
+it sits on (`palette.window` and `windowText`, as a `Text`), with no button's brackets or fill.
+Space, Enter or a click toggles it, raising `toggled` then `clicked`. A host that refuses the
+change sets `checked` back.
+
+**Resizable `Drawer`** (golib's) — `resizable: true` puts a grip on the corner at the panel's inner
+edge:
+- the top right of a bottom drawer;
+- the bottom right of a left, top or centred one;
+- the bottom left of a right one.
+
+The pointer drags it to resize the panel across its edge and along it. `size` and `length` follow
+the drag, as percentages of the Window:
+- `size` between `minimumSize` and 90;
+- `length` between `minimumLength` and 100;
+- never under three cells.
+
+`resized(size, length)` is raised once, when the drag ends, for a host to keep them.
 
 **`TabView`** — Qt Quick Controls 1's: a bar of its `Tab`s' titles over the
 current one's content. A Tab's content is made when it is first current and
