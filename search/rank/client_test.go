@@ -272,3 +272,33 @@ func (c *atomicCount) load() int {
 	defer c.mu.Unlock()
 	return c.n
 }
+
+// TestABodyThatStallsIsUnreachable: a ranker that sends its headers and then stalls in the body is
+// unreachable once the client's timeout passes, and a caller who gives up meanwhile gets their own
+// error; an answer over the size a client reads is a bad answer.
+func TestABodyThatStallsIsUnreachable(t *testing.T) {
+	hang := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"results": [`))
+		w.(http.Flusher).Flush()
+		<-hang
+	}))
+	defer srv.Close()
+	defer close(hang)
+	if _, err := NewRerankAPI(srv.URL, "", "m", nil, WithTimeout(50*time.Millisecond)).Rank(context.Background(), "q", []string{"a"}); !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("a stalled body: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := NewRerankAPI(srv.URL, "", "m", nil).Rank(ctx, "q", []string{"a"}); !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrUnreachable) || errors.Is(err, ErrBadAnswer) {
+		t.Fatalf("the caller's deadline during the body: %v", err)
+	}
+	big := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"pad": "` + strings.Repeat("x", maxAnswer) + `"}`))
+	}))
+	defer big.Close()
+	if _, err := NewRerankAPI(big.URL, "", "m", nil).Rank(context.Background(), "q", []string{"a"}); !errors.Is(err, ErrBadAnswer) {
+		t.Fatalf("an oversized answer: %v", err)
+	}
+}
