@@ -121,14 +121,11 @@ func TestTheQuitQuestionMentionsUnsavedChanges(t *testing.T) {
 	r.waitFor(t, "the warning", func(s string) bool { return strings.Contains(s, "Unsaved changes will be lost.") })
 	r.key(t, runeKey('n'))
 	r.key(t, ctrl('s'))
-	for i := 0; ; i++ {
-		if b, _ := os.ReadFile(path); string(b) == "ax\n" {
-			break
-		}
-		if i > 300 {
-			t.Fatalf("Ctrl+S never wrote the file")
-		}
-		time.Sleep(5 * time.Millisecond)
+	// the save's own word, which it says only after it marked the buffer saved: the file's
+	// bytes land before that, and a quit asked in between would still warn
+	r.waitFor(t, "the save", func(s string) bool { return strings.Contains(s, `"notes.txt" written`) })
+	if b, _ := os.ReadFile(path); string(b) != "ax\n" {
+		t.Fatalf("Ctrl+S wrote %q", b)
 	}
 	r.key(t, ctrl('q'))
 	r.waitFor(t, "the quit dialog", func(s string) bool { return strings.Contains(s, quitQ) })
