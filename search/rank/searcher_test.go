@@ -286,3 +286,39 @@ func TestACancelledSearchIsNotAFallback(t *testing.T) {
 		t.Fatalf("cancelled: %v", err)
 	}
 }
+
+// source is a Source of its own, answering any window.
+type source struct {
+	r      Ranker
+	window int
+}
+
+func (s source) Current() (Ranker, int) { return s.r, s.window }
+
+// TestASourcesWindowIsHeldToItsBounds: a Source answering 0 ranks the default window, and one
+// answering past the maximum ranks the maximum, as a Holder would; never no hits at all.
+func TestASourcesWindowIsHeldToItsBounds(t *testing.T) {
+	for _, c := range []struct{ window, ranked int }{{0, DefaultWindow}, {-5, MinWindow}, {500, MaxWindow}} {
+		f := &fake{name: "m", score: reverse}
+		res, err := NewSearcher(&inner{n: 500}, byPath, source{f, c.window}).Search(context.Background(), search.Query{Text: "q", Limit: 150})
+		if err != nil || res.Rank.State != search.RankReady || len(f.sent) != 1 || len(f.sent[0]) != c.ranked {
+			t.Fatalf("window %d: %+v, sent %d batches, %v; want one of %d", c.window, res.Rank, len(f.sent), err, c.ranked)
+		}
+	}
+}
+
+// TestRequiredRanksEveryHitItAnswers: under Required, a limit past the window widens what is
+// ranked, so no hit is answered unranked as ranked.
+func TestRequiredRanksEveryHitItAnswers(t *testing.T) {
+	f := &fake{name: "m", score: reverse}
+	in := &inner{n: 500}
+	res, err := NewSearcher(in, byPath, holding(f, 40), Required()).Search(context.Background(), search.Query{Text: "q", Limit: 100})
+	if err != nil || len(res.Hits) != 100 || in.asked[0] != 100 {
+		t.Fatalf("%d hits, asked %v, %v", len(res.Hits), in.asked, err)
+	}
+	for i, h := range res.Hits {
+		if h.RankScore == nil {
+			t.Fatalf("hit %d (%s) is answered unranked under Required", i, h.Path)
+		}
+	}
+}

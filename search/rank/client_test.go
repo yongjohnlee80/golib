@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // teiServer is a TEI server whose model is modelType ("reranker", "embedding"), taking batches of
@@ -194,4 +195,80 @@ func TestTheHolder(t *testing.T) {
 	if got, _ := h.Current(); got != nil {
 		t.Fatal("Set(nil) left a ranker")
 	}
+}
+
+// TestAnAnswerWithoutAScoreIsRefused: a missing or null score, or a missing index, is ErrBadAnswer,
+// never a score of 0, from either client.
+func TestAnAnswerWithoutAScoreIsRefused(t *testing.T) {
+	for name, answer := range map[string]any{
+		"no score":   []map[string]any{{"index": 0}, {"index": 1, "score": 1}},
+		"null score": []map[string]any{{"index": 0, "score": nil}, {"index": 1, "score": 1}},
+		"no index":   []map[string]any{{"score": 1}, {"index": 1, "score": 1}},
+	} {
+		srv, _ := teiServer(t, "reranker", 32, func([]string) any { return answer })
+		r, err := NewTEI(context.Background(), srv.URL, "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if scores, err := r.Rank(context.Background(), "q", []string{"a", "b"}); !errors.Is(err, ErrBadAnswer) {
+			t.Errorf("TEI, %s: %v, %v", name, scores, err)
+		}
+	}
+	for name, results := range map[string]any{
+		"no score":   []map[string]any{{"index": 0}, {"index": 1, "relevance_score": 1}},
+		"null score": []map[string]any{{"index": 0, "relevance_score": nil}, {"index": 1, "relevance_score": 1}},
+		"no index":   []map[string]any{{"relevance_score": 1}, {"index": 1, "relevance_score": 1}},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+		}))
+		if scores, err := NewRerankAPI(srv.URL, "", "m", nil).Rank(context.Background(), "q", []string{"a", "b"}); !errors.Is(err, ErrBadAnswer) {
+			t.Errorf("rerank-API, %s: %v, %v", name, scores, err)
+		}
+		srv.Close()
+	}
+}
+
+// TestARequestIsBoundedInTimeAndSize: a ranker that does not answer within the client's timeout is
+// unreachable, while the caller's own cancellation stays the caller's; a request over the size a
+// ranker is sent is refused before anything is sent.
+func TestARequestIsBoundedInTimeAndSize(t *testing.T) {
+	hang := make(chan struct{})
+	var sent atomicCount
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sent.add()
+		<-hang
+	}))
+	defer srv.Close()
+	defer close(hang)
+	start := time.Now()
+	_, err := NewRerankAPI(srv.URL, "", "m", nil, WithTimeout(50*time.Millisecond)).Rank(context.Background(), "q", []string{"a"})
+	if !errors.Is(err, ErrUnreachable) || time.Since(start) > 5*time.Second {
+		t.Fatalf("a hanging ranker: %v after %s", err, time.Since(start))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := NewRerankAPI(srv.URL, "", "m", nil).Rank(ctx, "q", []string{"a"}); !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrUnreachable) {
+		t.Fatalf("the caller's deadline: %v", err)
+	}
+	if _, err := NewTEI(context.Background(), srv.URL, "", nil, WithTEITimeout(50*time.Millisecond)); !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("a hanging TEI /info: %v", err)
+	}
+	before := sent.load()
+	huge := strings.Repeat("x", maxRequest)
+	if _, err := NewRerankAPI(srv.URL, "", "m", nil).Rank(context.Background(), "q", []string{huge}); !errors.Is(err, ErrTooLarge) || sent.load() != before {
+		t.Fatalf("an oversized request: %v, sent %d", err, sent.load()-before)
+	}
+}
+
+type atomicCount struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (c *atomicCount) add() { c.mu.Lock(); c.n++; c.mu.Unlock() }
+func (c *atomicCount) load() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.n
 }

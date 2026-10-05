@@ -4,15 +4,25 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
 )
 
-// maxAnswer bounds how much of an answer a client reads.
-const maxAnswer = 8 << 20
+// The bounds of one request: how much of an answer a client reads, how large a request it sends,
+// and how long it waits for one (DefaultTimeout, unless told otherwise).
+const (
+	maxAnswer      = 8 << 20
+	maxRequest     = 8 << 20
+	DefaultTimeout = 30 * time.Second
+)
+
+// ErrTooLarge is a request over the size a client sends: texts too long for one request.
+var ErrTooLarge = errors.New("rank: the request is over the size a ranker is sent")
 
 // DefaultRerankAPIBatch is the batch a rerank-API client sends at most, unless told otherwise.
 const DefaultRerankAPIBatch = 100
@@ -24,17 +34,23 @@ func bearer(key string) http.Header {
 	return http.Header{"Authorization": {"Bearer " + key}}
 }
 
-// call sends one JSON request and decodes the JSON answer. A failure is one of the package's
-// sentinels with the method and URL, never the server's own text.
-func call(ctx context.Context, client *http.Client, method, url string, header http.Header, in, out any) error {
+// call sends one JSON request, within timeout, and decodes the JSON answer. A failure is one of the
+// package's sentinels with the method and URL, never the server's own text.
+func call(ctx context.Context, client *http.Client, timeout time.Duration, method, url string, header http.Header, in, out any) error {
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
 			return err
 		}
+		if len(b) > maxRequest {
+			return fmt.Errorf("%w: %s %s: %d bytes", ErrTooLarge, method, url, len(b))
+		}
 		body = bytes.NewReader(b)
 	}
+	parent := ctx
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return err
@@ -47,10 +63,10 @@ func call(ctx context.Context, client *http.Client, method, url string, header h
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		if ctx.Err() != nil {
-			return fmt.Errorf("rank: %s %s: %w", method, url, ctx.Err()) // the caller gave up: not the ranker
+		if parent.Err() != nil {
+			return fmt.Errorf("rank: %s %s: %w", method, url, parent.Err()) // the caller gave up: not the ranker
 		}
-		return fmt.Errorf("%w: %s %s", ErrUnreachable, method, url)
+		return fmt.Errorf("%w: %s %s", ErrUnreachable, method, url) // its own timeout included
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -74,23 +90,27 @@ func call(ctx context.Context, client *http.Client, method, url string, header h
 	return nil
 }
 
-// indexed is one score of an answer, by the index of its text in the request.
+// indexed is one score of an answer, by the index of its text in the request; nil when the answer
+// had none.
 type indexed struct {
-	Index int
-	Score float64
+	Index *int
+	Score *float64
 }
 
-// place puts a batch's indexed scores at offset into scores: every index in range, none twice,
-// one for each of the batch's n texts.
+// place puts a batch's indexed scores at offset into scores: every index present and in range,
+// none twice, every score present and finite, one for each of the batch's n texts.
 func place(scores []float64, set []bool, offset, n int, got []indexed) error {
 	if len(got) != n {
 		return fmt.Errorf("%w: %d scores for %d texts", ErrBadAnswer, len(got), n)
 	}
 	for _, g := range got {
-		if g.Index < 0 || g.Index >= n || set[offset+g.Index] {
-			return fmt.Errorf("%w: index %d", ErrBadAnswer, g.Index)
+		if g.Index == nil || *g.Index < 0 || *g.Index >= n || set[offset+*g.Index] {
+			return fmt.Errorf("%w: an index missing, out of range or repeated", ErrBadAnswer)
 		}
-		scores[offset+g.Index], set[offset+g.Index] = g.Score, true
+		if g.Score == nil || math.IsNaN(*g.Score) || math.IsInf(*g.Score, 0) {
+			return fmt.Errorf("%w: text %d has no finite score", ErrBadAnswer, *g.Index)
+		}
+		scores[offset+*g.Index], set[offset+*g.Index] = *g.Score, true
 	}
 	return nil
 }
@@ -116,25 +136,41 @@ func batched(ctx context.Context, texts []string, size int, send func(ctx contex
 // TEI ranks with a Hugging Face Text Embeddings Inference server serving a re-ranker model.
 type TEI struct {
 	meter
-	base   string
-	auth   http.Header
-	client *http.Client
-	model  Model
+	base    string
+	auth    http.Header
+	client  *http.Client
+	timeout time.Duration
+	model   Model
+}
+
+// TEIOption configures a TEI client.
+type TEIOption func(*TEI)
+
+// WithTEITimeout bounds each of the client's requests (DefaultTimeout otherwise).
+func WithTEITimeout(d time.Duration) TEIOption {
+	return func(t *TEI) {
+		if d > 0 {
+			t.timeout = d
+		}
+	}
 }
 
 // NewTEI returns the client of the TEI server at base. It asks /info for the model, and refuses a
 // server whose model is not a re-ranker (ErrNotARanker): an embedding model's server, say.
-func NewTEI(ctx context.Context, base, key string, client *http.Client) (*TEI, error) {
+func NewTEI(ctx context.Context, base, key string, client *http.Client, opts ...TEIOption) (*TEI, error) {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	t := &TEI{base: strings.TrimRight(base, "/"), auth: bearer(key), client: client}
+	t := &TEI{base: strings.TrimRight(base, "/"), auth: bearer(key), client: client, timeout: DefaultTimeout}
+	for _, o := range opts {
+		o(t)
+	}
 	var info struct {
 		ModelID   string                     `json:"model_id"`
 		ModelType map[string]json.RawMessage `json:"model_type"`
 		MaxBatch  int                        `json:"max_client_batch_size"`
 	}
-	if err := call(ctx, client, http.MethodGet, t.base+"/info", t.auth, nil, &info); err != nil {
+	if err := call(ctx, client, t.timeout, http.MethodGet, t.base+"/info", t.auth, nil, &info); err != nil {
 		return nil, err
 	}
 	if _, ok := info.ModelType["reranker"]; !ok {
@@ -156,7 +192,7 @@ func (t *TEI) Rank(ctx context.Context, query string, texts []string) (scores []
 	scores, tokens, err = batched(ctx, texts, t.model.MaxBatch, func(ctx context.Context, batch []string) ([]indexed, int, error) {
 		var out []indexed
 		req := map[string]any{"query": query, "texts": batch, "truncate": true}
-		if err := call(ctx, t.client, http.MethodPost, t.base+"/rerank", t.auth, req, &out); err != nil {
+		if err := call(ctx, t.client, t.timeout, http.MethodPost, t.base+"/rerank", t.auth, req, &out); err != nil {
 			return nil, 0, err
 		}
 		return out, 0, nil
@@ -168,14 +204,24 @@ func (t *TEI) Rank(ctx context.Context, query string, texts []string) (scores []
 // (…/v2), Jina, Voyage, vLLM, Infinity and llama.cpp's server (…/v1). base carries the version.
 type RerankAPI struct {
 	meter
-	base   string
-	auth   http.Header
-	client *http.Client
-	model  Model
+	base    string
+	auth    http.Header
+	client  *http.Client
+	timeout time.Duration
+	model   Model
 }
 
 // RerankAPIOption configures a RerankAPI client.
 type RerankAPIOption func(*RerankAPI)
+
+// WithTimeout bounds each of the client's requests (DefaultTimeout otherwise).
+func WithTimeout(d time.Duration) RerankAPIOption {
+	return func(r *RerankAPI) {
+		if d > 0 {
+			r.timeout = d
+		}
+	}
+}
 
 // WithBatch sends at most n texts in one request (DefaultRerankAPIBatch otherwise).
 func WithBatch(n int) RerankAPIOption {
@@ -192,7 +238,7 @@ func NewRerankAPI(base, key, model string, client *http.Client, opts ...RerankAP
 	if client == nil {
 		client = http.DefaultClient
 	}
-	r := &RerankAPI{base: strings.TrimRight(base, "/"), auth: bearer(key), client: client,
+	r := &RerankAPI{base: strings.TrimRight(base, "/"), auth: bearer(key), client: client, timeout: DefaultTimeout,
 		model: Model{Provider: "rerank-api", Name: model, MaxBatch: DefaultRerankAPIBatch}}
 	for _, o := range opts {
 		o(r)
@@ -209,8 +255,8 @@ func (r *RerankAPI) Rank(ctx context.Context, query string, texts []string) (sco
 	scores, tokens, err = batched(ctx, texts, r.model.MaxBatch, func(ctx context.Context, batch []string) ([]indexed, int, error) {
 		var out struct {
 			Results []struct {
-				Index int     `json:"index"`
-				Score float64 `json:"relevance_score"`
+				Index *int     `json:"index"`
+				Score *float64 `json:"relevance_score"`
 			} `json:"results"`
 			Usage struct {
 				Total int `json:"total_tokens"`
@@ -218,7 +264,7 @@ func (r *RerankAPI) Rank(ctx context.Context, query string, texts []string) (sco
 		}
 		// top_n is the whole batch, so the server scores every text
 		req := map[string]any{"model": r.model.Name, "query": query, "documents": batch, "top_n": len(batch)}
-		if err := call(ctx, r.client, http.MethodPost, r.base+"/rerank", r.auth, req, &out); err != nil {
+		if err := call(ctx, r.client, r.timeout, http.MethodPost, r.base+"/rerank", r.auth, req, &out); err != nil {
 			return nil, 0, err
 		}
 		got := make([]indexed, len(out.Results))
