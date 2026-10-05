@@ -84,7 +84,18 @@ func call(ctx context.Context, client *http.Client, timeout time.Duration, metho
 		}
 		return fmt.Errorf("%w: %s %s: %s", sentinel, method, url, resp.Status)
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAnswer)).Decode(out); err != nil {
+	// the whole answer first: a body that stalls or breaks after the headers is the ranker not
+	// answering (or the caller giving up), never a bad answer
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer+1))
+	switch {
+	case err != nil && parent.Err() != nil:
+		return fmt.Errorf("rank: %s %s: %w", method, url, parent.Err())
+	case err != nil:
+		return fmt.Errorf("%w: %s %s: reading the answer", ErrUnreachable, method, url)
+	case len(b) > maxAnswer:
+		return fmt.Errorf("%w: %s %s: the answer is over %d bytes", ErrBadAnswer, method, url, maxAnswer)
+	}
+	if err := json.Unmarshal(b, out); err != nil {
 		return fmt.Errorf("%w: %s %s: decoding the answer", ErrBadAnswer, method, url)
 	}
 	return nil
