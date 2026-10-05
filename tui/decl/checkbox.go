@@ -13,8 +13,11 @@ import (
 // windowText, as a Text), with no button's brackets or fill: the box is the affordance. Space,
 // Enter or a click toggles it, as Qt's does, and raises toggled() then clicked(). `&` marks the
 // mnemonic, as a Button's text does. A host that refuses a change sets checked back.
+// It holds its Button rather than embedding one, so nothing makes a Button an embedded base.
 type checkBoxNode struct {
-	*widget.Button
+	tui.MultiChild
+	ctx     *tui.Context
+	btn     *widget.Button
 	text    string
 	checked bool
 	toggled func()
@@ -25,11 +28,30 @@ type checkBoxNode struct {
 // path, as a Button's label does.
 func buildCheckBox(b Build) (tui.Component, []string, error) {
 	n := &checkBoxNode{toggled: b.Emitter("toggled"), clicked: b.Emitter("clicked")}
-	n.Button = widget.NewButton("", widget.WithButtonDecoration("", ""), widget.WithOnActivate(n.activated),
+	n.btn = widget.NewButton("", widget.WithButtonDecoration("", ""), widget.WithOnActivate(n.activated),
 		widget.WithButtonStyle(checkBoxStyle(palette{})))
+	n.Label("CheckBox")
+	n.Add(n.btn)
 	n.relabel()
 	return n, nil, nil
 }
+
+func (n *checkBoxNode) Init(ctx *tui.Context) {
+	n.ctx = ctx
+	n.MultiChild.Init(ctx)
+}
+
+// Layout is the Button's: the box and its text.
+func (n *checkBoxNode) Layout(c tui.Constraints) tui.Size {
+	sz := n.ctx.LayoutChild(n.btn, c)
+	n.ctx.PlaceChild(n.btn, tui.Rect{W: sz.W, H: sz.H})
+	return sz
+}
+
+func (n *checkBoxNode) Render(tui.Surface) {}
+
+// HandleEvent leaves every event to the Button.
+func (n *checkBoxNode) HandleEvent(tui.Event) bool { return false }
 
 // activated is the box toggled by the user.
 func (n *checkBoxNode) activated() {
@@ -46,8 +68,8 @@ func (n *checkBoxNode) relabel() {
 		box = "[x] "
 	}
 	label, key, _ := mnemonic(n.text)
-	n.SetLabel(box + label)
-	n.SetMnemonic(key)
+	n.btn.SetLabel(box + label)
+	n.btn.SetMnemonic(key)
 }
 
 func (n *checkBoxNode) setText(s string) {
@@ -69,7 +91,7 @@ func checkBoxStyle(p palette) *widget.ButtonStyle {
 }
 
 func restyleCheckBox(c tui.Component, p palette) {
-	c.(*checkBoxNode).WithStyle(checkBoxStyle(p))
+	c.(*checkBoxNode).btn.WithStyle(checkBoxStyle(p))
 }
 
 var checkBoxType = Type{
@@ -79,6 +101,6 @@ var checkBoxType = Type{
 	Setters: map[string]Setter{
 		"text":    setter("a CheckBox", stringOf, (*checkBoxNode).setText),
 		"checked": setter("a CheckBox", boolOf, (*checkBoxNode).setChecked),
-		"enabled": setter("a CheckBox", boolOf, func(n *checkBoxNode, v bool) { n.SetEnabled(v) }),
+		"enabled": setter("a CheckBox", boolOf, func(n *checkBoxNode, v bool) { n.btn.SetEnabled(v) }),
 	},
 }
