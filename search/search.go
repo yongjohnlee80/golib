@@ -89,7 +89,12 @@ type Hit struct {
 	// Relevance is Score on a fixed scale, 0 to 1: 1 is first in every retriever the search ran,
 	// before boosts; a boost past it stays at 1.
 	Relevance float64
-	Via       []string // "lexical", "semantic" (in the order the retrievers found it), or "facet"
+	// Via names the retrievers that found it: "lexical", "semantic" (in the order they found it),
+	// or "facet"; "rank" is appended when a ranker scored it (search/rank).
+	Via []string
+	// RankScore is the ranker's score for the hit, comparable only within one Result; nil when no
+	// ranker scored it. Relevance keeps its own meaning, the recall scale.
+	RankScore *float64
 }
 
 // Result is a search's answer: the hits, and what the search could use.
@@ -100,6 +105,26 @@ type Result struct {
 	// SemanticError is a constant message when Semantic is StateError: a provider's own error text
 	// is not passed on.
 	SemanticError string
+	// Rank is what a re-ranking stage did with the hits (search/rank); the zero value for a search
+	// without one.
+	Rank Ranking
+}
+
+// RankState is what a re-ranking stage did for a query.
+type RankState string
+
+const (
+	RankOff   RankState = "off"   // not ranked: no ranker in use, or nothing to rank (a facet listing, no words)
+	RankReady RankState = "ready" // the hits are in the ranker's order
+	RankError RankState = "error" // the ranker could not rank them: they are in recall order
+)
+
+// Ranking is a re-ranking stage's state for one Result: the model that ranked it, and a constant
+// message when it could not.
+type Ranking struct {
+	State RankState
+	Model string
+	Error string
 }
 
 // Searcher answers queries. Engine is one; any other that satisfies Searcher can take its place.
