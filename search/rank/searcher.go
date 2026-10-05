@@ -85,8 +85,9 @@ func NewSearcher(inner search.Searcher, texts TextSource, source Source, opts ..
 
 // Search answers q. It reads the ranker once, at its start, and finishes with it. The inner
 // Searcher is asked for the larger of the window and the query's limit; the window's top hits are
-// ranked, any beyond it follow in recall order, and the answer is cut to the query's limit,
-// ranked or not.
+// ranked, any beyond it follow in recall order (unscored), and the answer is cut to the query's
+// limit, ranked or not. Under Required the window is at least the limit, so every hit answered is
+// ranked.
 func (s *Searcher) Search(ctx context.Context, q search.Query) (search.Result, error) {
 	limit := q.Limit
 	if limit <= 0 {
@@ -97,6 +98,10 @@ func (s *Searcher) Search(ctx context.Context, q search.Query) (search.Result, e
 	var window int
 	if s.source != nil {
 		r, window = s.source.Current()
+	}
+	window = Window(window) // a Source of its own is held to the bounds as a Holder is
+	if s.required {
+		window = max(window, limit) // ranked or nothing: every hit answered is ranked
 	}
 	ask := q
 	ask.Limit = limit

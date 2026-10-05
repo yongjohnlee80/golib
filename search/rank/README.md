@@ -9,7 +9,10 @@ text, in the texts' order, or an error. `Model` names it. It only sorts: the cal
 texts it reads, in any format. `NewTEI` speaks Hugging Face Text Embeddings Inference's `/rerank`,
 and refuses a server whose model is not a re-ranker. `NewRerankAPI` speaks the Cohere-style
 `/rerank`, which Cohere, Jina, Voyage, vLLM, Infinity and llama.cpp's server serve. Both use
-`net/http`, with no SDK, and both meter their calls as `search/embed`'s providers do.
+`net/http`, with no SDK, and both meter their calls as `search/embed`'s providers do. Each request
+is bounded: in time (`DefaultTimeout`, 30 s, or `WithTimeout` / `WithTEITimeout`), in what it
+sends (8 MiB, else `ErrTooLarge` before anything is sent) and in what it reads. An answer must give
+every text a finite score at a distinct index, or it is `ErrBadAnswer`.
 
 ## Install
 
@@ -46,7 +49,9 @@ res, err := s.Search(ctx, search.Query{Text: "where do we retry a failed embed",
 - **Failure falls back to recall,** saying so: the ranker's or the text source's error, or an
   answer of the wrong length, leaves the hits in recall order with `Rank.State` `error` and a
   constant message. With `rank.Required()`, the search fails instead (`ErrUnavailable`, wrapping
-  the cause), and so does a worded search with no ranker in use.
+  the cause), and so does a worded search with no ranker in use; and the window is widened to the
+  query's limit, so every hit a Required search answers is ranked.
+- **The window is bounded at every search** (10 to 100; 0 is 40), whatever a `Source` answers.
 - **Pass-through.** A facet listing and a query with no words are answered in recall order, with
   `Rank.State` `off`.
 - **The ranker is live.** A search reads its `Source` (a `Holder`, say) once, at its start, and
@@ -60,7 +65,8 @@ res, err := s.Search(ctx, search.Query{Text: "where do we retry a failed embed",
 | `ErrNotARanker` | a TEI server whose model is not a re-ranker |
 | `ErrRateLimited` | the ranker's usage limit is reached (HTTP 429) |
 | `ErrRefused` | any other refusal |
-| `ErrBadAnswer` | an answer that is not one score for each text |
+| `ErrBadAnswer` | an answer that is not one finite score for each text |
+| `ErrTooLarge` | a request over the size a ranker is sent |
 | `ErrStale` | a text source's hit that is no longer in the index |
 | `ErrUnavailable` | a `Required` Searcher that could not rank |
 
