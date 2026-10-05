@@ -121,7 +121,8 @@ func (n *drawerNode) across() bool { return n.edge == tui.DockLeft || n.edge == 
 
 // cells is a panel of size and length in a Window of win: size across the edge and length along
 // it, rounded to the nearest cell, each at least three. Rounding both ways (here and percentOf)
-// keeps a drag of one cell a drag of one cell.
+// keeps a one-cell drag one cell where a percent is at most a cell (a Window of 100 cells or fewer
+// across); on a wider one the panel moves in steps of a percent.
 func (n *drawerNode) cells(size, length int, win tui.Size) tui.Size {
 	w, h := (win.W*length+50)/100, (win.H*size+50)/100
 	if n.across() {
