@@ -249,7 +249,8 @@ Ghostty's limit), and shows nothing. A scrollable `Image` shows a taller PNG, su
 `widget.RasterizeHTMLPage`, as strips: `widget.SplitPNG` cuts them off the UI thread, and
 `SetStrips` sets them. Only the strip holding the part shown is placed. `SetPNG` cuts a PNG that
 large itself, on the caller's thread. One it cannot cut (an `Image` that does not scroll, or a PNG
-too wide) is scaled down to fit, so no `Image` places an image past the limit.
+too wide) is scaled down to fit. Any PNG that decodes is placed within the limit; one that does
+not decode is placed as given.
 
 ### Attached properties
 
