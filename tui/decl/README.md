@@ -134,7 +134,9 @@ the drag, as percentages of the Window:
 - `length` between `minimumLength` and 100;
 - never under three cells.
 
-`resized(size, length)` is raised once, when the drag ends, for a host to keep them.
+`resized(size, length)` is raised once, when the drag ends, for a host to keep them. While
+dragging, the panel shows the drag. A drag cancelled with Escape leaves `size` and `length` as they
+were. The minimums hold for values a host sets too.
 
 **`TabView`** — Qt Quick Controls 1's: a bar of its `Tab`s' titles over the
 current one's content. A Tab's content is made when it is first current and

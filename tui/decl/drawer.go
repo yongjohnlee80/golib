@@ -53,6 +53,7 @@ type drawerNode struct {
 	grip               *widget.Resizable
 	minSize, minLength int
 	resized            func(args ...qml.SpecValue)
+	win                tui.Size // the Window the frame last laid the panel out in
 }
 
 var _ Overlaid = (*drawerNode)(nil)
@@ -70,7 +71,10 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 		return nil, nil, err
 	}
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
-		content: b.Children[0], resizable: resizable, minSize: 10, minLength: 20, resized: b.EmitterWith("resized")}
+		content: b.Children[0], resizable: resizable, minSize: 10, minLength: 10, resized: b.EmitterWith("resized")}
+	if resizable { // a drag stops a resizable panel short of a sliver along its edge
+		n.minLength = 20
+	}
 	n.frame = &drawerFrame{owner: n}
 	n.frame.Label("Drawer")
 	n.frame.Add(n.wrapped())
@@ -96,12 +100,18 @@ func (n *drawerNode) wrapped() tui.Component {
 		handle, glyph = widget.HandleTopRight, "◥"
 	}
 	n.grip = widget.NewResizable(n.content, widget.WithHandles(handle), widget.WithHandleGlyph(glyph),
-		widget.WithResizeEnd(func(tui.Size) { n.dragEnded() }))
+		widget.WithResizeEnd(n.dragEnded))
 	return n.grip
 }
 
-// dragEnded raises resized with where the drag left the panel, which the frame's layout kept.
-func (n *drawerNode) dragEnded() {
+// dragEnded keeps where the drag left the panel, as percentages of the Window, and raises resized
+// with them. A drag cancelled (Escape) ends here never: size and length were never touched, and the
+// panel lays out at them again.
+func (n *drawerNode) dragEnded(final tui.Size) {
+	n.size, n.length = n.percentOf(final, n.win)
+	if n.frame.ctx != nil {
+		n.frame.ctx.RequestLayout()
+	}
 	n.resized(qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(n.size)},
 		qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(n.length)})
 }
@@ -109,27 +119,29 @@ func (n *drawerNode) dragEnded() {
 // across reports whether the edge's size is a width (a left or right drawer) rather than a height.
 func (n *drawerNode) across() bool { return n.edge == tui.DockLeft || n.edge == tui.DockRight }
 
-// cells is the panel's size in a Window of win: size across the edge and length along it, each at
-// least three cells.
-func (n *drawerNode) cells(win tui.Size) tui.Size {
-	w, h := win.W*n.length/100, win.H*n.size/100
+// cells is a panel of size and length in a Window of win: size across the edge and length along
+// it, rounded to the nearest cell, each at least three. Rounding both ways (here and percentOf)
+// keeps a drag of one cell a drag of one cell.
+func (n *drawerNode) cells(size, length int, win tui.Size) tui.Size {
+	w, h := (win.W*length+50)/100, (win.H*size+50)/100
 	if n.across() {
-		w, h = win.W*n.size/100, win.H*n.length/100
+		w, h = (win.W*size+50)/100, (win.H*length+50)/100
 	}
 	return tui.Size{W: min(max(w, 3), win.W), H: min(max(h, 3), win.H)}
 }
 
-// follow takes size and length from a panel dragged to sz in a Window of win, within their bounds.
-func (n *drawerNode) follow(sz, win tui.Size) {
+// percentOf is the size and length of a panel sz in a Window of win, rounded, within the Drawer's
+// bounds; the ones it has when win is not known.
+func (n *drawerNode) percentOf(sz, win tui.Size) (size, length int) {
 	if win.W <= 0 || win.H <= 0 {
-		return
+		return n.size, n.length
 	}
-	across, along := sz.H*100/win.H, sz.W*100/win.W
+	pct := func(v, of int) int { return (v*200 + of) / (2 * of) }
+	across, along := pct(sz.H, win.H), pct(sz.W, win.W)
 	if n.across() {
-		across, along = sz.W*100/win.W, sz.H*100/win.H
+		across, along = pct(sz.W, win.W), pct(sz.H, win.H)
 	}
-	n.size = min(max(across, n.minSize), 90)
-	n.length = min(max(along, n.minLength), 100)
+	return min(max(across, n.minSize), 90), min(max(along, n.minLength), 100)
 }
 
 // place anchors the Float at the edge, the size across it and the length along it, centred. A
@@ -200,9 +212,9 @@ func (n *drawerNode) setMinimumLength(pct int) {
 	n.place()
 }
 
-// setSize is Drawer.size's setter: a percentage, 10 to 90.
+// setSize is Drawer.size's setter: a percentage, minimumSize (10 unless set) to 90.
 func (n *drawerNode) setSize(pct int) {
-	n.size = min(max(pct, 10), 90)
+	n.size = min(max(pct, n.minSize), 90)
 	n.place()
 }
 
@@ -210,7 +222,7 @@ func (n *drawerNode) setSize(pct int) {
 // centred there. Qt sizes a Drawer along its edge by its height (or width) and places it by y (or
 // x); golib's panels are sized as fractions of the Window, so this is the one number.
 func (n *drawerNode) setLength(pct int) {
-	n.length = min(max(pct, 10), 100)
+	n.length = min(max(pct, n.minLength), 100)
 	n.place()
 }
 
@@ -285,13 +297,14 @@ func (f *drawerFrame) Init(ctx *tui.Context) {
 func (f *drawerFrame) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
 	if n := f.owner; n.resizable && n.grip != nil {
-		win := sz
-		if n.grip.Dragging() {
+		n.win = sz
+		size, length := n.size, n.length
+		if n.grip.Dragging() { // shown where the drag is, kept only when it ends
 			if want, ok := n.grip.RequestedSize(); ok {
-				n.follow(want, win)
+				size, length = n.percentOf(want, sz)
 			}
 		}
-		sz = n.cells(win)
+		sz = n.cells(size, length, sz)
 	}
 	for _, child := range f.Items() {
 		f.ctx.LayoutChild(child, tui.Tight(sz))
