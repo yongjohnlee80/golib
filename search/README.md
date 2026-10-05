@@ -12,6 +12,7 @@ A fix or an improvement here reaches every store at once.
 | `search` | the types, the `Chunkers` registry, the store port, the `Engine` and the `Searcher` interface |
 | [`search/chunk`](chunk/README.md) | Markdown, plain-text and YAML chunkers, and a Markdown metadata reader |
 | [`search/embed`](embed/README.md) | the embedding provider contract, Ollama and OpenAI-compatible clients, `Bisect` |
+| [`search/rank`](rank/README.md) | the re-ranking stage: the `Ranker` contract, TEI and Cohere-style clients, a `Searcher` that re-ranks another's top hits |
 | [`search/vector`](vector/README.md) | dot products, 1-bit codes and Hamming distance, a per-model code index, the two-stage scan |
 | [`search/query`](query/README.md) | a query's words as literal terms, `name:value` filters, SQLite FTS5 rendering |
 | [`search/searchtest`](searchtest/README.md) | a conformance suite for your store, and `MemStore`, a reference store in memory |
