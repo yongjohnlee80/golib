@@ -248,7 +248,8 @@ A terminal refuses an image wider or taller than `widget.MaxImagePixels` (10000,
 Ghostty's limit), and shows nothing. A scrollable `Image` shows a taller PNG, such as a long page from
 `widget.RasterizeHTMLPage`, as strips: `widget.SplitPNG` cuts them off the UI thread, and
 `SetStrips` sets them. Only the strip holding the part shown is placed. `SetPNG` cuts a PNG that
-large itself, on the caller's thread.
+large itself, on the caller's thread. One it cannot cut (an `Image` that does not scroll, or a PNG
+too wide) is scaled down to fit, so no `Image` places an image past the limit.
 
 ### Attached properties
 

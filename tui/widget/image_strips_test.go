@@ -2,9 +2,11 @@ package widget
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -180,5 +182,105 @@ func TestAPNGThatFitsIsPlacedWhole(t *testing.T) {
 	img, ok := m.Image()
 	if !ok || !bytes.Equal(img.PNG, small) || img.Clip.Y != 300 {
 		t.Fatalf("placed %d bytes at clip %+v, want the PNG itself at 300", len(img.PNG), img.Clip)
+	}
+}
+
+// An Image never places a PNG past MaxImagePixels. One it cannot cut (it does not scroll, or it is
+// too wide) is scaled down to fit, keeping its aspect; one turned scrollable afterwards is cut from
+// the PNG as given, not from the fitted one.
+func TestAPNGThatCannotBeCutIsFitted(t *testing.T) {
+	for name, tc := range map[string]struct {
+		w, h       int
+		scrollable bool
+	}{
+		"tall, not scrollable": {w: 40, h: 25000},
+		"too wide, scrolling":  {w: 12000, h: 6, scrollable: true},
+		"too wide, not":        {w: 12000, h: 6},
+	} {
+		m := NewImage()
+		m.SetScrollable(tc.scrollable)
+		m.SetPNG(rowsPNG(t, tc.w, tc.h))
+		m.st.view.cols, m.st.view.rows = 4, 3
+		img, ok := m.Image()
+		if !ok {
+			t.Fatalf("%s: nothing placed", name)
+		}
+		got := decoded(t, img.PNG).Bounds()
+		if got.Dx() > MaxImagePixels || got.Dy() > MaxImagePixels {
+			t.Errorf("%s: placed %dx%d, past the terminal's %d", name, got.Dx(), got.Dy(), MaxImagePixels)
+		}
+		want := float64(tc.w) / float64(tc.h)
+		if r := float64(got.Dx()) / float64(got.Dy()); r < want*0.9 || r > want*1.1 {
+			t.Errorf("%s: placed %dx%d, its aspect %.4f, want %.4f", name, got.Dx(), got.Dy(), r, want)
+		}
+	}
+	m := NewImage()
+	m.SetPNG(rowsPNG(t, 4, 25000)) // fitted while it does not scroll
+	m.SetScrollable(true)          // then cut from the PNG as given
+	if _, _, h := m.Scroll(); h != 25000 {
+		t.Errorf("turned scrollable, the whole is %d tall, want the given 25000", h)
+	}
+}
+
+// Strips of none clear the Image, and of one are the PNG itself, placed whole.
+func TestStripsOfNoneOrOne(t *testing.T) {
+	m := NewImage()
+	m.SetScrollable(true)
+	m.SetPNG(rowsPNG(t, 4, 100))
+	m.SetStrips(Strips{})
+	if m.HasImage() {
+		t.Error("no strips left an image")
+	}
+	one := rowsPNG(t, 4, 300)
+	m.SetStrips(Strips{Width: 4, Height: 300, Cuts: []Strip{{PNG: one}}})
+	if img, ok := m.Image(); !ok || !bytes.Equal(img.PNG, one) {
+		t.Error("one strip is not the PNG itself")
+	}
+}
+
+// A part shown taller than the strips' overlap is shown from the last strip starting at or above
+// it, its clip kept within the strip.
+func TestAViewTallerThanTheOverlap(t *testing.T) {
+	m := NewImage()
+	m.SetScrollable(true)
+	m.SetPNG(rowsPNG(t, 4, 25000))
+	m.st.view.cols, m.st.view.rows = 4, 300 // 6000 pixels, past the overlap's 5000
+	m.ScrollTo(0, 4500)                     // rows 4500 to 10500: whole in no strip (they start at 0 and 5000)
+	img, clip, _ := placed(t, m)
+	if clip.Y+clip.H > img.Bounds().Dy() {
+		t.Fatalf("the clip %+v is outside the strip", clip)
+	}
+	if got := rowOf(img.At(0, clip.Y)); got != 4500 {
+		t.Errorf("the first row shown is the whole's %d, want 4500 (from the strip at 0)", got)
+	}
+}
+
+// A PNG whose header reads but whose data does not, and an encoder that fails, are errors, never a
+// strip of garbage.
+func TestSplitPNGFailsAsItsSteps(t *testing.T) {
+	tall := rowsPNG(t, 4, 25000)
+	broken := append([]byte(nil), tall[:len(tall)/2]...) // the header intact, the data cut short
+	if _, err := SplitPNG(broken); err == nil {
+		t.Error("a PNG cut short was split")
+	}
+	if _, _, _, err := fitPNG(broken); err == nil {
+		t.Error("a PNG cut short was fitted")
+	}
+	failing := errors.New("disk full")
+	old := encodePNG
+	encodePNG = func(io.Writer, image.Image) error { return failing }
+	defer func() { encodePNG = old }()
+	if _, err := SplitPNG(tall); !errors.Is(err, failing) {
+		t.Errorf("a strip whose encoding failed: %v", err)
+	}
+	if _, _, _, err := fitPNG(tall); !errors.Is(err, failing) {
+		t.Errorf("a fit whose encoding failed: %v", err)
+	}
+	// neither cut nor fitted: shown as given, the only bytes there are
+	m := NewImage()
+	m.SetScrollable(true)
+	m.SetPNG(tall)
+	if img, ok := m.Image(); !ok || !bytes.Equal(img.PNG, tall) {
+		t.Error("a PNG that could be neither cut nor fitted was not shown as given")
 	}
 }
