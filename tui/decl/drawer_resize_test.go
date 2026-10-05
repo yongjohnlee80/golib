@@ -221,3 +221,90 @@ func TestADragOfOneCellIsOneCell(t *testing.T) {
 		t.Errorf("58 of 60 columns reported as length %s, want 97", got)
 	}
 }
+
+// A side drawer grows across by its width: a left one, 30% of 60 columns (18), dragged 6 columns
+// right is 24 wide, 40%.
+func TestASideDrawerGrowsAcrossByItsWidth(t *testing.T) {
+	s, rec := runResizableDrawer(t, "left", true)
+	x, y, _ := find(s, "◢")
+	drag(s, t, x, y, 6, 0)
+	s.WaitFor(t, "resized", func(string) bool { return len(rec.all()) == 2 })
+	if got := rec.all(); got[0].Raw != "40" || got[1].Raw != "100" {
+		t.Fatalf("resized(%s, %s), want (40, 100)", got[0].Raw, got[1].Raw)
+	}
+	s.WaitFor(t, "24 wide", func(string) bool { gx, _, ok := find(s, "◢"); return ok && gx == 23 })
+}
+
+// minimumLength holds the length along the edge: raised past a drawer's length, it widens it; a
+// drag stops at it; a length set below it is raised to it. A bottom drawer 30% of 60 columns (18)
+// is 30 wide at a minimum of 50%.
+func TestADrawersMinimumLengthHoldsItsLength(t *testing.T) {
+	rec := &recorder{}
+	s := decltest.Run(t, 60, 20,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+			" Text { text: \"the page underneath\" }\n"+
+			" Drawer { id: d; resizable: true; edge: Tui.Bottom; size: 30; length: App.length; minimumLength: App.min\n"+
+			"  onResized: App.log(size, length)\n"+
+			"  Frame { title: \"panel\"; Text { text: \"inside\" } } } }")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.length": 30, "App.min": 20}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}))
+	s.WaitForText(t, "the page underneath")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	wide := func(w int) func(string) bool {
+		return func(string) bool {
+			line := strings.Split(s.String(), "\n")[19]
+			return col(line, "┘")-col(line, "└") == w-1
+		}
+	}
+	s.WaitFor(t, "18 of 60 columns", wide(18))
+	set := func(name string, v int) {
+		onScreenLoop(t, s, func() {
+			if err := s.Program.Set(name, v); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	set("App.min", 50)
+	s.WaitFor(t, "widened to the minimum, 30 columns", wide(30))
+	x, y, _ := find(s, "◥")
+	drag(s, t, x, y, -50, 0)
+	s.WaitFor(t, "resized at the minimum length", func(string) bool { return len(rec.all()) == 2 })
+	if got := rec.all()[1].Raw; got != "50" {
+		t.Fatalf("dragged far narrower, length is %s, want the minimum 50", got)
+	}
+	set("App.length", 10)
+	set("App.length", 40) // moved off, then below again: each set is held
+	set("App.length", 10)
+	s.WaitFor(t, "held at 30 columns", wide(30))
+}
+
+// A resizable drawer at the top, or centred, is anchored there, its grip on its bottom right: the
+// top one's on row 5 (6 rows of 20); a centred one 50% long, 30 of 60 columns, starts at column 15
+// and row 7 (6 rows high), its grip at 44,12.
+func TestAResizableDrawerIsAnchoredAtTheTopOrCentred(t *testing.T) {
+	s, _ := runResizableDrawer(t, "top", true)
+	s.WaitFor(t, "the grip at the top drawer's bottom right", func(string) bool {
+		x, y, ok := find(s, "◢")
+		return ok && x == 59 && y == 5 && panelTop(s) == 0
+	})
+	c := decltest.Run(t, 60, 20,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow {\n"+
+			" Text { text: \"the page underneath\" }\n"+
+			" Drawer { id: d; resizable: true; edge: Tui.Center; size: 30; length: 50\n"+
+			"  Frame { title: \"panel\"; Text { text: \"inside\" } } } }")))
+	c.WaitForText(t, "the page underneath")
+	onScreenLoop(t, c, func() {
+		if err := c.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	c.WaitFor(t, "the grip at the centred drawer's bottom right", func(string) bool {
+		x, y, ok := find(c, "◢")
+		return ok && x == 44 && y == 12 && panelTop(c) == 7
+	})
+}
