@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/draw"
 	"image/png"
+	"io"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -45,6 +47,7 @@ type Image struct {
 // and mark the Image dirty, so none of them rests on another (a type embedding an Image overrides
 // any of them alone).
 type imageState struct {
+	given      []byte // the PNG as the host set it, before any cut or fit
 	png        []byte
 	version    uint64
 	scrollable bool
@@ -53,10 +56,20 @@ type imageState struct {
 	strip      int     // the strip placed
 }
 
-// setPNG shows b, cut into strips when it scrolls and is too tall to place whole.
+// setPNG shows b, never past MaxImagePixels: cut into strips when it scrolls and is too tall to
+// place whole, and scaled down to fit when it cannot be cut (it does not scroll, or it is too
+// wide). One that neither decodes nor encodes is no PNG a terminal shows either, and is left as it
+// is.
 func (s *imageState) setPNG(b []byte) {
+	s.given = b
 	cfg, err := png.DecodeConfig(bytes.NewReader(b))
+	if err == nil && (cfg.Width > MaxImagePixels || (cfg.Height > MaxImagePixels && !s.scrollable)) {
+		if small, w, h, err := fitPNG(b); err == nil {
+			b, cfg.Width, cfg.Height = small, w, h
+		}
+	}
 	if err == nil && s.scrollable && cfg.Height > MaxImagePixels {
+		// a cut fails only where a fit would too (the data does not decode, or no PNG encodes)
 		if cut, err := SplitPNG(b); err == nil {
 			s.setStrips(cut)
 			return
@@ -82,7 +95,7 @@ func (s *imageState) setStrips(cut Strips) {
 		s.setPNG(cut.Cuts[0].PNG)
 		return
 	}
-	s.png, s.strips, s.strip = cut.Cuts[0].PNG, cut.Cuts, 0
+	s.given, s.png, s.strips, s.strip = nil, cut.Cuts[0].PNG, cut.Cuts, 0
 	s.view.width, s.view.height = cut.Width, cut.Height
 	s.version++
 	s.view.to(s.view.left, s.view.top)
@@ -90,7 +103,7 @@ func (s *imageState) setStrips(cut Strips) {
 }
 
 func (s *imageState) clear() {
-	s.png, s.strips = nil, nil
+	s.given, s.png, s.strips = nil, nil, nil
 	s.version++
 }
 
@@ -133,12 +146,13 @@ func (s *imageState) pick() {
 	}
 }
 
-// setScrollable sets whether it scrolls, cutting a PNG too tall to place whole once it does.
+// setScrollable sets whether it scrolls. A PNG the host set whole is laid out again for the new
+// mode, from the bytes as given: cut once it scrolls, fitted once it does not.
 func (s *imageState) setScrollable(on bool) {
 	s.scrollable = on
 	s.view.to(0, 0)
-	if on && len(s.strips) == 0 && s.view.height > MaxImagePixels {
-		s.setPNG(s.png)
+	if s.given != nil {
+		s.setPNG(s.given)
 	}
 }
 
@@ -162,6 +176,42 @@ func (s *imageState) image(id uint32) (tui.Image, bool) {
 // MaxImagePixels is the widest and tallest image a terminal takes: kitty's and Ghostty's limit
 // (Ghostty: "max_dimension = 10000", an error the placement's q=2 keeps quiet).
 const MaxImagePixels = 10000
+
+// encodePNG writes a strip or a fitted PNG: fast rather than small, as the terminal reads it once.
+// A variable, so a test can make it fail.
+var encodePNG = func(w io.Writer, img image.Image) error {
+	return (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(w, img)
+}
+
+// fitPNG scales b down, nearest pixel, until neither side is past MaxImagePixels, keeping its
+// aspect: an image that cannot be cut into strips shows smaller rather than not at all. It
+// returns the new PNG and its size.
+func fitPNG(b []byte) ([]byte, int, int, error) {
+	img, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("widget: the PNG to fit: %w", err)
+	}
+	src := img.Bounds()
+	w, h := src.Dx(), src.Dy()
+	if w > MaxImagePixels {
+		w, h = MaxImagePixels, max(h*MaxImagePixels/w, 1)
+	}
+	if h > MaxImagePixels {
+		w, h = max(w*MaxImagePixels/h, 1), MaxImagePixels
+	}
+	out := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		sy := src.Min.Y + y*src.Dy()/h
+		for x := range w {
+			out.Set(x, y, img.At(src.Min.X+x*src.Dx()/w, sy))
+		}
+	}
+	var buf bytes.Buffer
+	if err := encodePNG(&buf, out); err != nil {
+		return nil, 0, 0, fmt.Errorf("widget: the fitted PNG: %w", err)
+	}
+	return buf.Bytes(), w, h, nil
+}
 
 // Strip is a horizontal cut of a PNG too tall for a terminal: its PNG, and its first row's place
 // in the whole.
@@ -197,19 +247,13 @@ func SplitPNG(b []byte) (Strips, error) {
 	if err != nil {
 		return Strips{}, fmt.Errorf("widget: the PNG to split: %w", err)
 	}
-	sub, ok := img.(interface {
-		SubImage(image.Rectangle) image.Image
-	})
-	if !ok {
-		return Strips{}, fmt.Errorf("widget: a %T cannot be cut", img)
-	}
 	b0 := img.Bounds()
-	enc := png.Encoder{CompressionLevel: png.BestSpeed}
 	for top := 0; ; top += MaxImagePixels / 2 {
 		top = min(top, cfg.Height-MaxImagePixels)
+		strip := image.NewNRGBA(image.Rect(0, 0, b0.Dx(), MaxImagePixels))
+		draw.Draw(strip, strip.Bounds(), img, image.Pt(b0.Min.X, b0.Min.Y+top), draw.Src)
 		var buf bytes.Buffer
-		r := image.Rect(b0.Min.X, b0.Min.Y+top, b0.Max.X, b0.Min.Y+top+MaxImagePixels)
-		if err := enc.Encode(&buf, sub.SubImage(r)); err != nil {
+		if err := encodePNG(&buf, strip); err != nil {
 			return Strips{}, fmt.Errorf("widget: a strip of the PNG: %w", err)
 		}
 		s.Cuts = append(s.Cuts, Strip{PNG: buf.Bytes(), Top: top})
