@@ -131,7 +131,7 @@ func TestATallPNGIsPlacedAsAStrip(t *testing.T) {
 	} {
 		m := NewImage()
 		set(m)
-		m.view.cols, m.view.rows = 4, 30 // as a paint leaves them: 600 pixels shown
+		m.st.view.cols, m.st.view.rows = 4, 30 // as a paint leaves them: 600 pixels shown
 		if _, w, hh := m.Scroll(); w != 8 || hh != h {
 			t.Fatalf("%s: the whole is %dx%d", name, w, hh)
 		}
@@ -175,7 +175,7 @@ func TestAPNGThatFitsIsPlacedWhole(t *testing.T) {
 	m := NewImage()
 	m.SetScrollable(true)
 	m.SetPNG(small)
-	m.view.cols, m.view.rows = 4, 30
+	m.st.view.cols, m.st.view.rows = 4, 30
 	m.ScrollTo(0, 300)
 	img, ok := m.Image()
 	if !ok || !bytes.Equal(img.PNG, small) || img.Clip.Y != 300 {
