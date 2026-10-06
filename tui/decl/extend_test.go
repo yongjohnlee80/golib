@@ -26,6 +26,7 @@ type gauge struct {
 	*widget.Text
 	label string
 	value float64
+	unit  string
 }
 
 func newGauge() *gauge { return &gauge{Text: widget.NewText("")} }
@@ -33,21 +34,26 @@ func newGauge() *gauge { return &gauge{Text: widget.NewText("")} }
 func (g *gauge) SetLabel(s string)  { g.label = s; g.show() }
 func (g *gauge) SetValue(v float64) { g.value = v; g.show() }
 func (g *gauge) Reset() error       { g.value = 0; g.show(); return nil }
-func (g *gauge) show()              { g.SetText(g.label + "=" + strconv.FormatFloat(g.value, 'f', -1, 64)) }
+func (g *gauge) show() {
+	g.SetText(g.label + "=" + strconv.FormatFloat(g.value, 'f', -1, 64) + g.unit)
+}
 
 var gaugeType = tuidecl.Type{
 	Name: "Gauge",
 	Build: func(b tuidecl.Build) (tui.Component, []string, error) {
 		g := newGauge()
 		var start float64
-		consumed, err := tuidecl.ReadProps(b.Props, map[string]tuidecl.Field{"start": tuidecl.NumberField(&start)})
+		consumed, err := tuidecl.ReadProps(b.Props, map[string]tuidecl.Field{
+			"start": tuidecl.NumberField(&start),
+			"unit":  tuidecl.StringField(&g.unit),
+		})
 		if err != nil {
 			return nil, nil, err
 		}
 		g.value = start
 		return g, consumed, nil
 	},
-	Ctor: []string{"start"},
+	Ctor: []string{"start", "unit"},
 	Setters: map[string]tuidecl.Setter{
 		"label": tuidecl.StringSetter((*gauge).SetLabel),
 		"value": tuidecl.NumberSetter((*gauge).SetValue),
@@ -125,6 +131,17 @@ func TestACustomWidgetBindsAndIsCalledByID(t *testing.T) {
 	c, _ := a.Component(btn)
 	onLoop(t, app, func() { c.(*widget.Button).Activate(tui.OriginProgrammatic) })
 	waitFor(t, func() bool { return strings.Contains(be.String(), "CPU=0") })
+}
+
+// A constructor property a custom widget reads with StringField arrives as written.
+func TestACustomWidgetReadsAConstructorString(t *testing.T) {
+	tr, a, err, _ := extended(t, "import tui 1.0\nGauge { start: 3; unit: \"%\"; label: \"disk\" }")
+	if err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	root, _ := a.Component(tr.Root())
+	be, _ := startApp(t, root)
+	waitFor(t, func() bool { return strings.Contains(be.String(), "disk=3%") })
 }
 
 func TestACustomSignalPassesItsParameter(t *testing.T) {

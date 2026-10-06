@@ -455,3 +455,36 @@ func TestAReloadOfLayoutAndCatalogShowsNoFrameMixingThem(t *testing.T) {
 		})
 	}
 }
+
+// A host publishing a message to properties already on screen — a CheckBox's text, a Dialog's
+// title and help line — shows it in the App's language, a CheckBox with no text before it
+// too. A buttonless Dialog with no help
+// gains the rule over the help line it is given, and a Dialog's plain help, given at
+// construction, stays as written.
+func TestAHostMessageReachesPropertiesAlreadyMounted(t *testing.T) {
+	s := runLanguages(t, `import tui 1.0
+import demo 1.0
+Window {
+ CheckBox { text: App.box }
+ Dialog { id: d; title: App.title; helpText: App.help; Text { text: "body" } }
+ Dialog { id: p; title: "plain"; helpText: "written help"; Text { text: "body" } }
+}`, tuidecl.Types(controls.Types()...), tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.box": "", "App.title": "a title", "App.help": ""}))
+	s.WaitForText(t, "[ ]") // a box with no text: a message set now must still relabel it
+	onScreenLoop(t, s, func() {
+		if err := s.Program.SetMany(map[string]any{
+			"App.box": tui.Msg("demo.wrap"), "App.title": tui.Msg("demo.dialog.title"), "App.help": tui.Msg("demo.help"),
+		}); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "Wrap")
+	openDialog(t, s, "d")
+	waitAll(t, s, "the dialog's messages", "┌ Unsaved ", "press a key")
+	setLanguage(t, s, "ko_KR")
+	waitAll(t, s, "the dialog in Korean, the rule over its help", "┌ 저장 안 됨 ", "├─", "키를 누르세요")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	s.WaitForText(t, "줄 바꿈(w)") // the CheckBox, behind the dialog until now
+	openDialog(t, s, "p")
+	waitAll(t, s, "the plain dialog", "┌ plain ", "written help")
+}

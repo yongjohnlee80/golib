@@ -43,14 +43,21 @@ import (
 // holds, and what its choosing button says. A new mode is an entry here.
 type fileMode struct {
 	choose standardButton
-	view   func(...widget.FileViewOption) widget.FileChooser
+	view   func(...widget.FileViewOption) hintedChooser
+}
+
+// hintedChooser is a file view that names its footer hint as a catalog message, as every
+// view a FileDialog holds does, so the footer follows the App's language while it is open.
+type hintedChooser interface {
+	widget.FileChooser
+	HintMessage() tui.Message
 }
 
 var fileModeTable = map[string]fileMode{
 	"OpenFile": {standardButton{name: "Open", msg: tui.Msg("tui.filedialog.open"), accept: true},
-		func(o ...widget.FileViewOption) widget.FileChooser { return widget.NewFileOpenView(o...) }},
+		func(o ...widget.FileViewOption) hintedChooser { return widget.NewFileOpenView(o...) }},
 	"SaveFile": {standardButton{name: "Save", msg: tui.Msg("tui.filedialog.save"), accept: true},
-		func(o ...widget.FileViewOption) widget.FileChooser { return widget.NewFileSaveView(o...) }},
+		func(o ...widget.FileViewOption) hintedChooser { return widget.NewFileSaveView(o...) }},
 }
 
 var fileModes = enum[fileMode]{values: fileModeTable}
@@ -86,7 +93,7 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 			opts = append(opts, widget.WithFileViewPreview(preview))
 		}
 	}
-	var chooser widget.FileChooser
+	var chooser hintedChooser
 	if !fixedHelp {
 		opts = append(opts, widget.WithOnHint(func(string) { showHint(d.modal, chooser) }))
 	}
@@ -120,16 +127,9 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	return d, consumed, nil
 }
 
-// showHint puts the keys the focused part of view answers to in the dialog's footer. It is the
-// view's message where the view names one, so the footer follows App.SetLanguage while the
-// dialog is open; a view that names none gives its text.
-func showHint(m *widget.Modal, view widget.FileChooser) {
-	if v, ok := view.(interface{ HintMessage() tui.Message }); ok {
-		m.SetFooterMessage(v.HintMessage())
-		return
-	}
-	m.SetFooter(view.Hint())
-}
+// showHint puts the keys the focused part of view answers to in the dialog's footer, as the
+// view's message, so the footer follows App.SetLanguage while the dialog is open.
+func showHint(m *widget.Modal, view hintedChooser) { m.SetFooterMessage(view.HintMessage()) }
 
 // closeButton is every picker's way out: Close, which q also presses outside a
 // field.

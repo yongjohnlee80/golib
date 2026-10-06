@@ -2,6 +2,7 @@ package widget_test
 
 import (
 	"errors"
+	"io/fs"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -331,5 +332,109 @@ func TestFileSaveView_TheNamePaneAndHintsFollowTheLanguage(t *testing.T) {
 	h.onLoop(func() { hint = v.Hint() })
 	if hint != "Enter:저장  Tab:다음  Esc:취소" {
 		t.Errorf("Korean hint = %q", hint)
+	}
+}
+
+// A title set on an open dialog follows the language, and a plain title set after it ends the
+// message: it stays as written whatever the language.
+func TestMessages_AnOpenModalsTitleBecomesAMessageAndPlainAgain(t *testing.T) {
+	t.Parallel()
+	md := widget.NewModal(widget.NewText("body"), widget.WithModalTitle("plain title"))
+	host := widget.NewOverlayHost(widget.NewText(""))
+	h := startApp(t, host, 60, 8)
+	defer h.stop()
+	h.onLoop(func() {
+		if err := md.Open(host); err != nil {
+			t.Error(err)
+		}
+	})
+	h.shows("plain title")
+	h.onLoop(func() { md.SetTitleMessage(tui.Msg("tui.files.folder")) })
+	h.shows("Folder")
+	h.app.SetLanguage("ko_KR")
+	h.shows("폴더")
+	h.onLoop(func() {
+		md.SetTitle("written")
+		md.SetFooter("a help line")
+	})
+	h.shows("written")
+	h.shows("a help line")
+	h.app.SetLanguage("ja_JP")
+	h.settle()
+	h.wantContains("written")
+	h.wantNotContains("폴더")
+}
+
+// A file list's and a preview's hints are their keys in the App's language, and the message
+// each names is the one it shows.
+func TestFileListAndPreview_HintsFollowTheLanguage(t *testing.T) {
+	t.Parallel()
+	src := widget.FileSource{FS: fstest.MapFS{"a.txt": {Data: []byte("a")}}, Root: "/"}
+	l := widget.NewFileList(widget.WithFileListSource(src), widget.WithFileListDir("/"))
+	p := widget.NewFilePreview(widget.FilePaneStyles{}, false)
+	for _, tc := range []struct {
+		name            string
+		root            tui.Component
+		hint            func() (string, tui.Message)
+		msg             tui.Message
+		english, korean string
+	}{
+		{"FileList", l, func() (string, tui.Message) { return l.Hint(), l.HintMessage() },
+			tui.Msg("tui.files.hint.list"), "↑↓:move  Enter:open folder", "↑↓:이동  Enter:폴더 열기"},
+		{"FilePreview", p, func() (string, tui.Message) { return p.Hint(), p.HintMessage() },
+			tui.Msg("tui.files.hint.preview"), "j/k:scroll  gg/G:top/end", "j/k:스크롤  gg/G:처음/끝"},
+	} {
+		h := startApp(t, tc.root, 60, 6)
+		var hint string
+		var msg tui.Message
+		h.onLoop(func() { hint, msg = tc.hint() })
+		if hint != tc.english || msg != tc.msg {
+			t.Errorf("%s in English: %q, %v; want %q, %v", tc.name, hint, msg, tc.english, tc.msg)
+		}
+		h.app.SetLanguage("ko_KR")
+		h.settle()
+		h.onLoop(func() { hint, _ = tc.hint() })
+		if hint != tc.korean {
+			t.Errorf("%s in Korean: %q, want %q", tc.name, hint, tc.korean)
+		}
+		h.stop()
+	}
+}
+
+// failingFS opens every file, and fails every read of one.
+type failingFS struct{ fstest.MapFS }
+
+type failingFile struct{ fs.File }
+
+func (f failingFile) Read([]byte) (int, error) { return 0, errors.New("disk on fire") }
+
+func (s failingFS) Open(name string) (fs.File, error) {
+	f, err := s.MapFS.Open(name)
+	if err != nil || name != "bad.txt" {
+		return f, err
+	}
+	return failingFile{f}, nil
+}
+
+// A preview's notes about a file it cannot show — empty, missing, unreadable — are in the
+// App's language, with the reason as written.
+func TestFilePreview_NotesAboutAFileItCannotShowFollowTheLanguage(t *testing.T) {
+	t.Parallel()
+	src := widget.FileSource{FS: failingFS{fstest.MapFS{"empty.txt": {}, "bad.txt": {Data: []byte("x")}}}, Root: "/"}
+	for _, tc := range []struct{ path, english, korean string }{
+		{"empty.txt", "(empty file)", "(빈 파일)"},
+		{"gone.txt", "(cannot read: open gone.txt: file does not exist)", "(읽을 수 없음: open gone.txt: file does not exist)"},
+		{"bad.txt", "(cannot read: disk on fire)", "(읽을 수 없음: disk on fire)"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			t.Parallel()
+			p := widget.NewFilePreview(widget.FilePaneStyles{}, false)
+			h := startApp(t, p, 70, 4)
+			defer h.stop()
+			h.onLoop(func() { p.Show(src, tc.path, false) })
+			h.shows(tc.english)
+			h.app.SetLanguage("ko_KR")
+			h.shows(tc.korean)
+		})
 	}
 }
