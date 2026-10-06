@@ -164,6 +164,7 @@ tui/style/theme.go	WithToken	001d2b02a1f7d153	1	construction	style.WithToken: to
 tui/style/theme.go	WithToken	b50e71241b4fd08c	1	construction	style.WithToken: a theme slot cannot hold a token color — rejected while the Theme is built
 tui/style/theme.go	NewTheme	c61a94e82bddd760	1	construction	style.NewTheme: a token color cannot be the primary — the slot must hold a concrete or adaptive Color
 tui/style/theme.go	Theme.Color	2ca425762b8dbfa7	1	invariant	style.Theme.Color: token outside the declared range. A runtime lookup, but the token set is a closed enum this package defines, so an out-of-range token is programmer error rather than data
+tui/i18n/toolkit.go	func$1	8b0971476375d527	1	invariant	i18n.Toolkit: golib's own catalogs are compiled in with go:embed, so a parse failure is a broken build, not data: no input a program supplies reaches it. It is parsed once on first use; the toolkit tests parse every shipped catalog, so a malformed one fails the suite before it can ship.
 tui/testbackend.go	TestBackend.InjectResize	be0d36e0c415f70c	1	invariant	tui.TestBackend.InjectResize: the resize could not be applied. A test double asserting its own precondition
 tui/testbackend.go	TestBackend.Flush	5300615b71c12a49	1	invariant	tui.TestBackend.Flush: an update outside the grid. A test double catching the component author's coordinate error
 tui/testbackend.go	TestBackend.Flush	fc8ba480ed0a8a48	1	invariant	tui.TestBackend.Flush: a wide cell in the last column, which no correct renderer emits
