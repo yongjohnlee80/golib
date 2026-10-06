@@ -331,6 +331,20 @@ func (a *App) SetTranslations(s *i18n.Set) {
 // goroutine, from a handler or inside Update.
 func (a *App) Language() string { return a.cfg.language }
 
+// Translate is m's text in the current language, exactly as a widget shows it (see
+// [Context.Translate]): for text an application composes itself, such as a status line
+// built around a file name. Text composed this way is fixed when it is built and does not
+// follow a later [App.SetLanguage]; text that should is published as the [Message] itself.
+// Call it on the loop goroutine, from a handler or inside Update.
+func (a *App) Translate(m Message) string {
+	s := a.cfg.translations
+	text, ok := s.Lookup(a.cfg.language, m.ID)
+	if !ok {
+		return m.ID
+	}
+	return englishMnemonic(text, s, m.ID)
+}
+
 // SetRoot schedules replacing the root component on the loop goroutine: the
 // old tree is unmounted — its node contexts cancelled, its tasks drained — and
 // c is mounted in its place, laid out and painted on the next frame, with
