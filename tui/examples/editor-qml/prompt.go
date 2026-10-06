@@ -49,7 +49,7 @@ func (h *Host) runCommand(line string) error {
 	case cmd == "":
 		return nil
 	}
-	return h.message("not a command: " + strings.TrimSpace(line))
+	return h.sayf("editor.status.notCommand", strings.TrimSpace(line))
 }
 
 // quitAsking quits at once over a saved buffer, and asks over unsaved changes —

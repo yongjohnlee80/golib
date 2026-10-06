@@ -11,7 +11,7 @@
 // application palette, so the layout's theme import dresses it.
 
 FileDialog {
-    title: "Open"
+    title: qsTrId("editor.open.title")
     fileMode: Tui.OpenFile
     currentFolder: App.folder
     dim: false          // the editor stays in view behind it, as behind Quit

@@ -9,6 +9,7 @@ same screen by hand in Go — so the two can be read side by side.
 go build -o bin/editor-qml .
 bin/editor-qml notes.md
 bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
+bin/editor-qml -lang ko_KR notes.md   # start in Korean (en, ko_KR, pt_BR, zh_CN)
 ```
 
 ## What it does
@@ -23,6 +24,13 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
   layout's theme import line and reloads it, keeping the buffer. Under `-dev`
   the file on disk stays the authority; its next save brings back its own
   import.
+- **Option > Language** — English, 한국어, Português (Brasil) or 简体中文, switched
+  live: every label is Qt's `qsTrId`, looked up in the App's language as it is
+  laid out, so the whole screen relabels in place with nothing reloaded, the
+  buffer and an open dialog included. The menu keys stay on English's letters:
+  Alt+F is File in every language (Korean shows `파일(f)`). The editor's words are
+  in `i18n/editor_<language>.xml`; golib's own (Yes, No, the file dialogs) come
+  with golib. Under `-dev` a saved catalog is on screen a moment later.
 - **Help > About.**
 - **A command prompt** — `Space` in Normal mode, `Ctrl+P`, or File > Command: `w`, `q`, `wq`,
   `e <file>`, as vim's `:` line.
@@ -38,12 +46,14 @@ bin/editor-qml -dev . notes.md    # QML read from this directory, and followed
 | --- | --- |
 | `editor.qml` | the screen: menus, the editor, the status line, the prompt, the dialogs — no colours |
 | `dialogs/*.qml` | one component file per dialog: Quit, About, Open, Save |
+| `i18n/editor_*.xml` | the editor's words in each language: Qt's TS XML schema, one catalog per language |
 | `app.go` | the Host: `options` (everything the program is), and `New` — `NewProgram(options…)` then `attach` |
 | `modules.go` | the QML the program embeds, and the modules it offers |
 | `state.go` | what the document reads: `App.mode`, `App.status`, `App.path`… |
 | `commands.go` | what the document invokes: `App.saveFile()`, `App.openFile(path)`… |
 | `prompt.go` | what a prompt command does: the same commands, one more way in |
 | `theme.go` | Option > Theme: the theme import line, rewritten and reloaded |
+| `language.go` | Option > Language: the App's language, switched; the status line's composed messages |
 | `files.go` | reading and writing the buffer's file |
 | `clock.go` | a provider: `App.clock`, ticking on its own goroutine |
 | `main.go` | opens the terminal and runs the Program |

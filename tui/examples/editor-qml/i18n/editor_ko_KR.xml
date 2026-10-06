@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="ko_KR">
+<context>
+    <name>editor</name>
+    <message id="editor.menu.file">
+        <source>&amp;File</source>
+        <translation>파일(&amp;f)</translation>
+    </message>
+    <message id="editor.file.new">
+        <source>&amp;New</source>
+        <translation>새로 만들기(&amp;n)</translation>
+    </message>
+    <message id="editor.file.open">
+        <source>&amp;Open</source>
+        <translation>열기(&amp;o)</translation>
+    </message>
+    <message id="editor.file.save">
+        <source>&amp;Save</source>
+        <translation>저장(&amp;s)</translation>
+    </message>
+    <message id="editor.file.saveAs">
+        <source>Save &amp;As…</source>
+        <translation>다른 이름으로 저장(&amp;a)…</translation>
+    </message>
+    <message id="editor.file.command">
+        <source>&amp;Command…</source>
+        <translation>명령(&amp;c)…</translation>
+    </message>
+    <message id="editor.file.exit">
+        <source>E&amp;xit</source>
+        <translation>끝내기(&amp;x)</translation>
+    </message>
+    <message id="editor.menu.option">
+        <source>&amp;Option</source>
+        <translation>옵션(&amp;o)</translation>
+    </message>
+    <message id="editor.option.keymaps">
+        <source>&amp;Keymaps</source>
+        <translation>키맵(&amp;k)</translation>
+    </message>
+    <message id="editor.keymap.vim">
+        <source>&amp;1. Vim  (modal)</source>
+        <translation>&amp;1. Vim  (모드 방식)</translation>
+    </message>
+    <message id="editor.keymap.nano">
+        <source>&amp;2. Nano (modeless)</source>
+        <translation>&amp;2. Nano (모드 없음)</translation>
+    </message>
+    <message id="editor.option.theme">
+        <source>&amp;Theme</source>
+        <translation>테마(&amp;t)</translation>
+    </message>
+    <message id="editor.theme.dark">
+        <source>&amp;Dark</source>
+        <translation>다크(&amp;d)</translation>
+    </message>
+    <message id="editor.theme.light">
+        <source>&amp;Light</source>
+        <translation>라이트(&amp;l)</translation>
+    </message>
+    <message id="editor.theme.mono">
+        <source>&amp;Mono</source>
+        <translation>모노(&amp;m)</translation>
+    </message>
+    <message id="editor.theme.retro">
+        <source>&amp;Retro</source>
+        <translation>레트로(&amp;r)</translation>
+    </message>
+    <message id="editor.option.language">
+        <source>&amp;Language</source>
+        <translation>언어(&amp;l)</translation>
+    </message>
+    <message id="editor.menu.help">
+        <source>&amp;Help</source>
+        <translation>도움말(&amp;h)</translation>
+    </message>
+    <message id="editor.help.about">
+        <source>&amp;About</source>
+        <translation>정보(&amp;a)</translation>
+    </message>
+    <message id="editor.prompt.title">
+        <source>Command</source>
+        <translation>명령</translation>
+    </message>
+    <message id="editor.prompt.help">
+        <source>w  q  wq  e &lt;file&gt;      Enter runs, Esc closes</source>
+        <translation>w  q  wq  e &lt;파일&gt;      Enter 실행, Esc 닫기</translation>
+    </message>
+    <message id="editor.quit.title">
+        <source>Quit</source>
+        <translation>끝내기</translation>
+    </message>
+    <message id="editor.quit.question">
+        <source>Are you sure to quit?</source>
+        <translation>정말 끝내시겠습니까?</translation>
+    </message>
+    <message id="editor.quit.questionDirty">
+        <source>Are you sure to quit?
+Unsaved changes will be lost.</source>
+        <translation>정말 끝내시겠습니까?
+저장하지 않은 변경 사항은 사라집니다.</translation>
+    </message>
+    <message id="editor.about.title">
+        <source>About</source>
+        <translation>정보</translation>
+    </message>
+    <message id="editor.about.help">
+        <source>Enter or Esc to close</source>
+        <translation>Enter 또는 Esc로 닫기</translation>
+    </message>
+    <message id="editor.about.text">
+        <source>editor-qml
+
+A text editor whose screen is written in QML,
+running on golib/tui.</source>
+        <translation>editor-qml
+
+QML로 화면을 작성한 텍스트 편집기로,
+golib/tui에서 실행됩니다.</translation>
+    </message>
+    <message id="editor.open.title">
+        <source>Open</source>
+        <translation>열기</translation>
+    </message>
+    <message id="editor.save.title">
+        <source>Save</source>
+        <translation>저장</translation>
+    </message>
+    <message id="editor.mode.normal">
+        <source>NORMAL</source>
+        <translation>일반</translation>
+    </message>
+    <message id="editor.mode.insert">
+        <source>INSERT</source>
+        <translation>입력</translation>
+    </message>
+    <message id="editor.mode.visual">
+        <source>VISUAL</source>
+        <translation>비주얼</translation>
+    </message>
+    <message id="editor.mode.visualLine">
+        <source>V-LINE</source>
+        <translation>비주얼 줄</translation>
+    </message>
+    <message id="editor.noName">
+        <source>[No Name]</source>
+        <translation>[이름 없음]</translation>
+    </message>
+    <message id="editor.status.newBuffer">
+        <source>new buffer</source>
+        <translation>새 버퍼</translation>
+    </message>
+    <message id="editor.status.vim">
+        <source>switched keymap to Vim (modal)</source>
+        <translation>키맵을 Vim(모드 방식)으로 바꿨습니다</translation>
+    </message>
+    <message id="editor.status.nano">
+        <source>switched keymap to Nano (modeless)</source>
+        <translation>키맵을 Nano(모드 없음)로 바꿨습니다</translation>
+    </message>
+    <message id="editor.status.unsavedNew">
+        <source>unsaved changes — save them first (Ctrl+S), then start a new file</source>
+        <translation>저장하지 않은 변경 사항이 있습니다 — 먼저 저장(Ctrl+S)한 다음 새 파일을 시작하세요</translation>
+    </message>
+    <message id="editor.status.unsavedOpen">
+        <source>unsaved changes — save them first (Ctrl+S), then open</source>
+        <translation>저장하지 않은 변경 사항이 있습니다 — 먼저 저장(Ctrl+S)한 다음 여세요</translation>
+    </message>
+    <message id="editor.status.written">
+        <source>%1 written</source>
+        <translation>%1 저장됨</translation>
+    </message>
+    <message id="editor.status.notCommand">
+        <source>not a command: %1</source>
+        <translation>명령이 아닙니다: %1</translation>
+    </message>
+    <message id="editor.status.cannotOpen">
+        <source>cannot open: %1</source>
+        <translation>열 수 없습니다: %1</translation>
+    </message>
+    <message id="editor.status.writeFailed">
+        <source>write failed: %1</source>
+        <translation>쓰기 실패: %1</translation>
+    </message>
+    <message id="editor.status.noTheme">
+        <source>no theme %1</source>
+        <translation>%1 테마가 없습니다</translation>
+    </message>
+    <message id="editor.status.noThemeImport">
+        <source>editor.qml imports no theme to switch</source>
+        <translation>editor.qml에 바꿀 테마 import가 없습니다</translation>
+    </message>
+    <message id="editor.status.theme">
+        <source>theme: %1</source>
+        <translation>테마: %1</translation>
+    </message>
+</context>
+</TS>

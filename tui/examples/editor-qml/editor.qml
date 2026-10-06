@@ -94,33 +94,37 @@ Window {
         palette.highlightedText: Theme.menu.highlightedText
         palette.accent: Theme.menu.accent       // the access-key letter
 
-        // `&` marks a mnemonic, exactly as in Qt: "&File" is the label File
-        // with F as its hotkey, and "E&xit" underlines the x.
+        // Every label is Qt's qsTrId: a message id, looked up in the App's
+        // language (i18n/editor_<language>.xml) each time the menu is laid
+        // out, so switching language relabels it in place. `&` marks a
+        // mnemonic, exactly as in Qt: "&File" is the label File with F as its
+        // hotkey, and the key stays on English's letter in every language —
+        // Korean shows 파일(F), and Alt+F still opens it.
         Menu {
-            title: "&File"
-            MenuItem { text: "&New";  onTriggered: App.newFile() }
-            MenuItem { text: "&Open"; onTriggered: openDialog.open() }
-            MenuItem { text: "&Save"; onTriggered: App.saveFile() }
+            title: qsTrId("editor.menu.file")
+            MenuItem { text: qsTrId("editor.file.new");  onTriggered: App.newFile() }
+            MenuItem { text: qsTrId("editor.file.open"); onTriggered: openDialog.open() }
+            MenuItem { text: qsTrId("editor.file.save"); onTriggered: App.saveFile() }
             // Save As ALWAYS asks, so the document opens the dialog itself.
-            MenuItem { text: "Save &As…"; onTriggered: saveDialog.open() }
-            MenuItem { text: "&Command…"; onTriggered: prompt.open() }
-            MenuItem { text: "E&xit"; onTriggered: quitDialog.open() }
+            MenuItem { text: qsTrId("editor.file.saveAs"); onTriggered: saveDialog.open() }
+            MenuItem { text: qsTrId("editor.file.command"); onTriggered: prompt.open() }
+            MenuItem { text: qsTrId("editor.file.exit"); onTriggered: quitDialog.open() }
         }
 
         Menu {
-            title: "&Option"
+            title: qsTrId("editor.menu.option")
             Menu {
-                title: "&Keymaps"
+                title: qsTrId("editor.option.keymaps")
                 // A shared `group` makes these a radio set: choosing one
                 // clears the other.
                 MenuItem {
-                    text: "&1. Vim  (modal)"
+                    text: qsTrId("editor.keymap.vim")
                     group: "keyset"
                     checked: true
                     onTriggered: App.useVim()
                 }
                 MenuItem {
-                    text: "&2. Nano (modeless)"
+                    text: qsTrId("editor.keymap.nano")
                     group: "keyset"
                     onTriggered: App.useNano()
                 }
@@ -129,30 +133,62 @@ Window {
             // host rewrite that line and reload. `checked` is bound, so the
             // mark follows the theme the layout imports, whichever it is.
             Menu {
-                title: "&Theme"
+                title: qsTrId("editor.option.theme")
                 MenuItem {
-                    text: "&Dark"
+                    text: qsTrId("editor.theme.dark")
                     group: "theme"
                     checked: App.themeDark
                     onTriggered: App.useTheme("dark")
                 }
                 MenuItem {
-                    text: "&Light"
+                    text: qsTrId("editor.theme.light")
                     group: "theme"
                     checked: App.themeLight
                     onTriggered: App.useTheme("light")
                 }
                 MenuItem {
-                    text: "&Mono"
+                    text: qsTrId("editor.theme.mono")
                     group: "theme"
                     checked: App.themeMono
                     onTriggered: App.useTheme("mono")
                 }
                 MenuItem {
-                    text: "&Retro"
+                    text: qsTrId("editor.theme.retro")
                     group: "theme"
                     checked: App.themeRetro
                     onTriggered: App.useTheme("retro")
+                }
+            }
+            // The language is the App's: choosing one relabels the whole
+            // screen at once, with nothing reloaded — what is typed, the
+            // cursor and an open dialog stay. Each language is named in its
+            // own words, so a reader finds theirs whatever is showing; these
+            // are the one set of labels never translated.
+            Menu {
+                title: qsTrId("editor.option.language")
+                MenuItem {
+                    text: "&1. English"
+                    group: "language"
+                    checked: App.langEn
+                    onTriggered: App.useLanguage("en")
+                }
+                MenuItem {
+                    text: "&2. 한국어"
+                    group: "language"
+                    checked: App.langKo
+                    onTriggered: App.useLanguage("ko_KR")
+                }
+                MenuItem {
+                    text: "&3. Português (Brasil)"
+                    group: "language"
+                    checked: App.langPt
+                    onTriggered: App.useLanguage("pt_BR")
+                }
+                MenuItem {
+                    text: "&4. 简体中文"
+                    group: "language"
+                    checked: App.langZh
+                    onTriggered: App.useLanguage("zh_CN")
                 }
             }
         }
@@ -160,9 +196,9 @@ Window {
         // Help sits at the far end of the bar, where it has sat in this kind
         // of application for thirty years.
         Menu {
-            title: "&Help"
+            title: qsTrId("editor.menu.help")
             align: Tui.Right
-            MenuItem { text: "&About"; onTriggered: aboutDialog.open() }
+            MenuItem { text: qsTrId("editor.help.about"); onTriggered: aboutDialog.open() }
         }
     }
 
@@ -219,9 +255,9 @@ Window {
     // the application palette, the field its panes' base, both inherited.
     Dialog {
         id: prompt
-        title: "Command"
+        title: qsTrId("editor.prompt.title")
         width: 48
-        helpText: "w  q  wq  e <file>      Enter runs, Esc closes"
+        helpText: qsTrId("editor.prompt.help")
         onOpened: command.clear()
         TextField {
             id: command

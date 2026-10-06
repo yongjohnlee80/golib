@@ -61,7 +61,10 @@ type Options struct {
 	Layout []byte
 	// App are options for the tui.App: the backend, above all.
 	App []tui.AppOption
-	// Dev is a directory holding editor.qml, themes/ and dialogs/ — this
+	// Language is the language the editor starts in ("ko_KR", "pt_BR", "zh_CN"); "" means
+	// English. Option › Language changes it while the editor runs.
+	Language string
+	// Dev is a directory holding editor.qml, themes/, dialogs/ and i18n/ — this
 	// example's own, say. Set, the program reads its QML from there instead
 	// of the copy built into the binary, and follows the files as they are
 	// edited: a saved change is on screen a moment later.
@@ -115,6 +118,8 @@ func (h *Host) options(opt Options) []tuidecl.ProgramOption {
 		files := os.DirFS(opt.Dev)
 		opts = append(h.modulesFrom(files),
 			tuidecl.Layout(files, "editor.qml"),
+			// Followed like the layout: a saved translation is on screen a moment later.
+			tuidecl.Translations(files, "i18n", "editor"),
 			// A refused edit is reported where the user is looking; the
 			// screen stays as it was until the next good save.
 			tuidecl.HotReload(tuidecl.OnReloadError(func(err error) { _ = h.message(err.Error()) })))
@@ -124,10 +129,17 @@ func (h *Host) options(opt Options) []tuidecl.ProgramOption {
 			src = layout
 		}
 		h.layoutSrc = src
-		opts = append(h.modules(), tuidecl.LayoutSource("editor.qml", src))
+		opts = append(h.modules(), tuidecl.LayoutSource("editor.qml", src),
+			tuidecl.Translations(catalogFiles, "i18n", "editor"))
+	}
+	lang := opt.Language
+	if lang == "" {
+		lang = "en"
 	}
 	opts = append(opts,
-		tuidecl.Sources(h.state(opt.Path, themeOf(src))),
+		tuidecl.Sources(h.state(opt.Path, themeOf(src), lang)),
+		// Before the caller's own, so a test may still choose the language through App.
+		tuidecl.AppOptions(tui.WithLanguage(lang)),
 		tuidecl.Handlers(h.commands()),
 		tuidecl.Providers(newClock(opt.Now, opt.Tick)),
 		tuidecl.AppOptions(opt.App...),

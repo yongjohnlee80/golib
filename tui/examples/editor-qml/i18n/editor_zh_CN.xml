@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="zh_CN">
+<context>
+    <name>editor</name>
+    <message id="editor.menu.file">
+        <source>&amp;File</source>
+        <translation>文件(&amp;f)</translation>
+    </message>
+    <message id="editor.file.new">
+        <source>&amp;New</source>
+        <translation>新建(&amp;n)</translation>
+    </message>
+    <message id="editor.file.open">
+        <source>&amp;Open</source>
+        <translation>打开(&amp;o)</translation>
+    </message>
+    <message id="editor.file.save">
+        <source>&amp;Save</source>
+        <translation>保存(&amp;s)</translation>
+    </message>
+    <message id="editor.file.saveAs">
+        <source>Save &amp;As…</source>
+        <translation>另存为(&amp;a)…</translation>
+    </message>
+    <message id="editor.file.command">
+        <source>&amp;Command…</source>
+        <translation>命令(&amp;c)…</translation>
+    </message>
+    <message id="editor.file.exit">
+        <source>E&amp;xit</source>
+        <translation>退出(&amp;x)</translation>
+    </message>
+    <message id="editor.menu.option">
+        <source>&amp;Option</source>
+        <translation>选项(&amp;o)</translation>
+    </message>
+    <message id="editor.option.keymaps">
+        <source>&amp;Keymaps</source>
+        <translation>键位(&amp;k)</translation>
+    </message>
+    <message id="editor.keymap.vim">
+        <source>&amp;1. Vim  (modal)</source>
+        <translation>&amp;1. Vim  (模式)</translation>
+    </message>
+    <message id="editor.keymap.nano">
+        <source>&amp;2. Nano (modeless)</source>
+        <translation>&amp;2. Nano (无模式)</translation>
+    </message>
+    <message id="editor.option.theme">
+        <source>&amp;Theme</source>
+        <translation>主题(&amp;t)</translation>
+    </message>
+    <message id="editor.theme.dark">
+        <source>&amp;Dark</source>
+        <translation>深色(&amp;d)</translation>
+    </message>
+    <message id="editor.theme.light">
+        <source>&amp;Light</source>
+        <translation>浅色(&amp;l)</translation>
+    </message>
+    <message id="editor.theme.mono">
+        <source>&amp;Mono</source>
+        <translation>单色(&amp;m)</translation>
+    </message>
+    <message id="editor.theme.retro">
+        <source>&amp;Retro</source>
+        <translation>复古(&amp;r)</translation>
+    </message>
+    <message id="editor.option.language">
+        <source>&amp;Language</source>
+        <translation>语言(&amp;l)</translation>
+    </message>
+    <message id="editor.menu.help">
+        <source>&amp;Help</source>
+        <translation>帮助(&amp;h)</translation>
+    </message>
+    <message id="editor.help.about">
+        <source>&amp;About</source>
+        <translation>关于(&amp;a)</translation>
+    </message>
+    <message id="editor.prompt.title">
+        <source>Command</source>
+        <translation>命令</translation>
+    </message>
+    <message id="editor.prompt.help">
+        <source>w  q  wq  e &lt;file&gt;      Enter runs, Esc closes</source>
+        <translation>w  q  wq  e &lt;文件&gt;      Enter 执行，Esc 关闭</translation>
+    </message>
+    <message id="editor.quit.title">
+        <source>Quit</source>
+        <translation>退出</translation>
+    </message>
+    <message id="editor.quit.question">
+        <source>Are you sure to quit?</source>
+        <translation>确定要退出吗？</translation>
+    </message>
+    <message id="editor.quit.questionDirty">
+        <source>Are you sure to quit?
+Unsaved changes will be lost.</source>
+        <translation>确定要退出吗？
+未保存的更改将会丢失。</translation>
+    </message>
+    <message id="editor.about.title">
+        <source>About</source>
+        <translation>关于</translation>
+    </message>
+    <message id="editor.about.help">
+        <source>Enter or Esc to close</source>
+        <translation>按 Enter 或 Esc 关闭</translation>
+    </message>
+    <message id="editor.about.text">
+        <source>editor-qml
+
+A text editor whose screen is written in QML,
+running on golib/tui.</source>
+        <translation>editor-qml
+
+一个用 QML 编写界面的文本编辑器，
+运行在 golib/tui 上。</translation>
+    </message>
+    <message id="editor.open.title">
+        <source>Open</source>
+        <translation>打开</translation>
+    </message>
+    <message id="editor.save.title">
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message id="editor.mode.normal">
+        <source>NORMAL</source>
+        <translation>普通</translation>
+    </message>
+    <message id="editor.mode.insert">
+        <source>INSERT</source>
+        <translation>插入</translation>
+    </message>
+    <message id="editor.mode.visual">
+        <source>VISUAL</source>
+        <translation>可视</translation>
+    </message>
+    <message id="editor.mode.visualLine">
+        <source>V-LINE</source>
+        <translation>可视行</translation>
+    </message>
+    <message id="editor.noName">
+        <source>[No Name]</source>
+        <translation>[未命名]</translation>
+    </message>
+    <message id="editor.status.newBuffer">
+        <source>new buffer</source>
+        <translation>新缓冲区</translation>
+    </message>
+    <message id="editor.status.vim">
+        <source>switched keymap to Vim (modal)</source>
+        <translation>键位已切换为 Vim（模式）</translation>
+    </message>
+    <message id="editor.status.nano">
+        <source>switched keymap to Nano (modeless)</source>
+        <translation>键位已切换为 Nano（无模式）</translation>
+    </message>
+    <message id="editor.status.unsavedNew">
+        <source>unsaved changes — save them first (Ctrl+S), then start a new file</source>
+        <translation>有未保存的更改 — 请先保存（Ctrl+S），再新建文件</translation>
+    </message>
+    <message id="editor.status.unsavedOpen">
+        <source>unsaved changes — save them first (Ctrl+S), then open</source>
+        <translation>有未保存的更改 — 请先保存（Ctrl+S），再打开</translation>
+    </message>
+    <message id="editor.status.written">
+        <source>%1 written</source>
+        <translation>已写入 %1</translation>
+    </message>
+    <message id="editor.status.notCommand">
+        <source>not a command: %1</source>
+        <translation>不是命令：%1</translation>
+    </message>
+    <message id="editor.status.cannotOpen">
+        <source>cannot open: %1</source>
+        <translation>无法打开：%1</translation>
+    </message>
+    <message id="editor.status.writeFailed">
+        <source>write failed: %1</source>
+        <translation>写入失败：%1</translation>
+    </message>
+    <message id="editor.status.noTheme">
+        <source>no theme %1</source>
+        <translation>没有主题 %1</translation>
+    </message>
+    <message id="editor.status.noThemeImport">
+        <source>editor.qml imports no theme to switch</source>
+        <translation>editor.qml 没有可切换的主题导入</translation>
+    </message>
+    <message id="editor.status.theme">
+        <source>theme: %1</source>
+        <translation>主题：%1</translation>
+    </message>
+</context>
+</TS>

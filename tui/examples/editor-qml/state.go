@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -15,11 +16,15 @@ import (
 // what the screen says and what the host knows cannot drift apart.
 
 // state is App's state with its starting values; theme is the one the layout
-// imports.
-func (h *Host) state(path, theme string) map[string]any {
+// imports, lang the language the editor starts in.
+//
+// UI text is published as a catalog message (tui.Msg), not as words: the widget showing it
+// looks it up in the current language, so a language switch republishes nothing. A file's
+// name is content, and is published as it is.
+func (h *Host) state(path, theme, lang string) map[string]any {
 	st := map[string]any{
-		"App.mode":   widget.ModeNormal.String(),
-		"App.status": displayPath(path),
+		"App.mode":   modeMessage(widget.ModeNormal),
+		"App.status": statusName(path),
 		"App.keyset": "vim",
 		// Where the file dialogs open: the current file's folder.
 		"App.folder": folderOf(path),
@@ -34,6 +39,10 @@ func (h *Host) state(path, theme string) map[string]any {
 	for k, v := range themeState(theme) {
 		st[k] = v
 	}
+	// And which language: the one the editor starts in.
+	for k, v := range languageState(lang) {
+		st[k] = v
+	}
 	return st
 }
 
@@ -44,7 +53,23 @@ func (h *Host) message(s string) error {
 
 // syncStatus brings the status bar's mode up to date with the editor's.
 func (h *Host) syncStatus() error {
-	return h.p.Set("App.mode", h.editor.Mode().String())
+	return h.p.Set("App.mode", modeMessage(h.editor.Mode()))
+}
+
+// modeMessage is how the status bar names an editor mode. The mode's String is its
+// identity, compared in code; what the user reads is the catalog's word for it.
+func modeMessage(m widget.EditorMode) any {
+	switch m {
+	case widget.ModeNormal:
+		return tui.Msg("editor.mode.normal")
+	case widget.ModeInsert:
+		return tui.Msg("editor.mode.insert")
+	case widget.ModeVisual:
+		return tui.Msg("editor.mode.visual")
+	case widget.ModeVisualLine:
+		return tui.Msg("editor.mode.visualLine")
+	}
+	return m.String()
 }
 
 // setDirty records whether the buffer has unsaved changes, and keeps the quit
@@ -60,11 +85,11 @@ func (h *Host) setDirty(v bool) error {
 }
 
 // quitQuestion is what the quit dialog asks.
-func quitQuestion(dirty bool) string {
+func quitQuestion(dirty bool) tui.Message {
 	if dirty {
-		return "Are you sure to quit?\nUnsaved changes will be lost."
+		return tui.Msg("editor.quit.questionDirty")
 	}
-	return "Are you sure to quit?"
+	return tui.Msg("editor.quit.question")
 }
 
 // folderOf is the folder a path is in, or the working directory for none.
@@ -99,7 +124,7 @@ func (h *Host) setPath(path string) error {
 		"App.folder": folderOf(path),
 		"App.path":   absPath(path),
 		"App.syntax": syntaxFor(path),
-		"App.status": displayPath(path),
+		"App.status": statusName(path),
 	})
 }
 

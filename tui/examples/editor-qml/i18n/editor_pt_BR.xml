@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="pt_BR">
+<context>
+    <name>editor</name>
+    <message id="editor.menu.file">
+        <source>&amp;File</source>
+        <translation>Arquivo(&amp;f)</translation>
+    </message>
+    <message id="editor.file.new">
+        <source>&amp;New</source>
+        <translation>&amp;Novo</translation>
+    </message>
+    <message id="editor.file.open">
+        <source>&amp;Open</source>
+        <translation>Abrir(&amp;o)</translation>
+    </message>
+    <message id="editor.file.save">
+        <source>&amp;Save</source>
+        <translation>&amp;Salvar</translation>
+    </message>
+    <message id="editor.file.saveAs">
+        <source>Save &amp;As…</source>
+        <translation>Salvar como(&amp;a)…</translation>
+    </message>
+    <message id="editor.file.command">
+        <source>&amp;Command…</source>
+        <translation>&amp;Comando…</translation>
+    </message>
+    <message id="editor.file.exit">
+        <source>E&amp;xit</source>
+        <translation>Sair(&amp;x)</translation>
+    </message>
+    <message id="editor.menu.option">
+        <source>&amp;Option</source>
+        <translation>&amp;Opções</translation>
+    </message>
+    <message id="editor.option.keymaps">
+        <source>&amp;Keymaps</source>
+        <translation>Atalhos(&amp;k)</translation>
+    </message>
+    <message id="editor.keymap.vim">
+        <source>&amp;1. Vim  (modal)</source>
+        <translation>&amp;1. Vim  (modal)</translation>
+    </message>
+    <message id="editor.keymap.nano">
+        <source>&amp;2. Nano (modeless)</source>
+        <translation>&amp;2. Nano (sem modos)</translation>
+    </message>
+    <message id="editor.option.theme">
+        <source>&amp;Theme</source>
+        <translation>&amp;Tema</translation>
+    </message>
+    <message id="editor.theme.dark">
+        <source>&amp;Dark</source>
+        <translation>Escuro(&amp;d)</translation>
+    </message>
+    <message id="editor.theme.light">
+        <source>&amp;Light</source>
+        <translation>C&amp;laro</translation>
+    </message>
+    <message id="editor.theme.mono">
+        <source>&amp;Mono</source>
+        <translation>&amp;Mono</translation>
+    </message>
+    <message id="editor.theme.retro">
+        <source>&amp;Retro</source>
+        <translation>&amp;Retrô</translation>
+    </message>
+    <message id="editor.option.language">
+        <source>&amp;Language</source>
+        <translation>Idioma(&amp;l)</translation>
+    </message>
+    <message id="editor.menu.help">
+        <source>&amp;Help</source>
+        <translation>Ajuda(&amp;h)</translation>
+    </message>
+    <message id="editor.help.about">
+        <source>&amp;About</source>
+        <translation>Sobre(&amp;a)</translation>
+    </message>
+    <message id="editor.prompt.title">
+        <source>Command</source>
+        <translation>Comando</translation>
+    </message>
+    <message id="editor.prompt.help">
+        <source>w  q  wq  e &lt;file&gt;      Enter runs, Esc closes</source>
+        <translation>w  q  wq  e &lt;arquivo&gt;      Enter executa, Esc fecha</translation>
+    </message>
+    <message id="editor.quit.title">
+        <source>Quit</source>
+        <translation>Sair</translation>
+    </message>
+    <message id="editor.quit.question">
+        <source>Are you sure to quit?</source>
+        <translation>Tem certeza de que deseja sair?</translation>
+    </message>
+    <message id="editor.quit.questionDirty">
+        <source>Are you sure to quit?
+Unsaved changes will be lost.</source>
+        <translation>Tem certeza de que deseja sair?
+As alterações não salvas serão perdidas.</translation>
+    </message>
+    <message id="editor.about.title">
+        <source>About</source>
+        <translation>Sobre</translation>
+    </message>
+    <message id="editor.about.help">
+        <source>Enter or Esc to close</source>
+        <translation>Enter ou Esc para fechar</translation>
+    </message>
+    <message id="editor.about.text">
+        <source>editor-qml
+
+A text editor whose screen is written in QML,
+running on golib/tui.</source>
+        <translation>editor-qml
+
+Um editor de texto cuja tela é escrita em QML,
+executado no golib/tui.</translation>
+    </message>
+    <message id="editor.open.title">
+        <source>Open</source>
+        <translation>Abrir</translation>
+    </message>
+    <message id="editor.save.title">
+        <source>Save</source>
+        <translation>Salvar</translation>
+    </message>
+    <message id="editor.mode.normal">
+        <source>NORMAL</source>
+        <translation>NORMAL</translation>
+    </message>
+    <message id="editor.mode.insert">
+        <source>INSERT</source>
+        <translation>INSERÇÃO</translation>
+    </message>
+    <message id="editor.mode.visual">
+        <source>VISUAL</source>
+        <translation>VISUAL</translation>
+    </message>
+    <message id="editor.mode.visualLine">
+        <source>V-LINE</source>
+        <translation>V-LINHA</translation>
+    </message>
+    <message id="editor.noName">
+        <source>[No Name]</source>
+        <translation>[Sem nome]</translation>
+    </message>
+    <message id="editor.status.newBuffer">
+        <source>new buffer</source>
+        <translation>novo buffer</translation>
+    </message>
+    <message id="editor.status.vim">
+        <source>switched keymap to Vim (modal)</source>
+        <translation>atalhos alterados para Vim (modal)</translation>
+    </message>
+    <message id="editor.status.nano">
+        <source>switched keymap to Nano (modeless)</source>
+        <translation>atalhos alterados para Nano (sem modos)</translation>
+    </message>
+    <message id="editor.status.unsavedNew">
+        <source>unsaved changes — save them first (Ctrl+S), then start a new file</source>
+        <translation>alterações não salvas — salve-as primeiro (Ctrl+S) e depois comece um novo arquivo</translation>
+    </message>
+    <message id="editor.status.unsavedOpen">
+        <source>unsaved changes — save them first (Ctrl+S), then open</source>
+        <translation>alterações não salvas — salve-as primeiro (Ctrl+S) e depois abra</translation>
+    </message>
+    <message id="editor.status.written">
+        <source>%1 written</source>
+        <translation>%1 gravado</translation>
+    </message>
+    <message id="editor.status.notCommand">
+        <source>not a command: %1</source>
+        <translation>não é um comando: %1</translation>
+    </message>
+    <message id="editor.status.cannotOpen">
+        <source>cannot open: %1</source>
+        <translation>não foi possível abrir: %1</translation>
+    </message>
+    <message id="editor.status.writeFailed">
+        <source>write failed: %1</source>
+        <translation>falha ao gravar: %1</translation>
+    </message>
+    <message id="editor.status.noTheme">
+        <source>no theme %1</source>
+        <translation>o tema %1 não existe</translation>
+    </message>
+    <message id="editor.status.noThemeImport">
+        <source>editor.qml imports no theme to switch</source>
+        <translation>editor.qml não importa nenhum tema para trocar</translation>
+    </message>
+    <message id="editor.status.theme">
+        <source>theme: %1</source>
+        <translation>tema: %1</translation>
+    </message>
+</context>
+</TS>
