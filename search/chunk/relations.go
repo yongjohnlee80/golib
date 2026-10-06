@@ -120,9 +120,10 @@ var (
 	refNumber   = regexp.MustCompile(`^[0-9]+$`)
 	refSlug     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	refWikilink = regexp.MustCompile(`^\[\[([^\[\]]+)\]\]$`)
-	// an annotation after a target, one or more: "§N.N", "rev N", or in parentheses "(rev N)" or a
-	// "(+ …)" addition; any other parenthesis is prose
-	refAnnot = regexp.MustCompile(`^(?:§\s*\S+|\(rev\s+[^()\s]+\)|\(\+[^()]*\)|rev\s+\S+)(?:\s+(?:§\s*\S+|\(rev\s+[^()\s]+\)|\(\+[^()]*\)|rev\s+\S+))*$`)
+	// an annotation after a target, one or more: "§N.N", "rev N" with N a number ("rev N.N" too), or
+	// in parentheses "(rev N)" or a "(+ …)" addition; any other parenthesis, or a rev that is not a
+	// number, is prose
+	refAnnot = regexp.MustCompile(`^(?:§\s*\S+|\(rev\s+[0-9]+(?:\.[0-9]+)*\)|\(\+[^()]*\)|rev\s+[0-9]+(?:\.[0-9]+)*)(?:\s+(?:§\s*\S+|\(rev\s+[0-9]+(?:\.[0-9]+)*\)|\(\+[^()]*\)|rev\s+[0-9]+(?:\.[0-9]+)*))*$`)
 )
 
 // ParseRef reads a relation value. A path loses a leading "$NAME/" root prefix ("$KB_ROOT/a.md"
