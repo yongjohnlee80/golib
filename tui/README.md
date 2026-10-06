@@ -223,6 +223,20 @@ goroutine; it queues the swap on Lane B, invalidates resolved-style caches, and
 repaints without relayout. Widgets holding token-valued styles follow the new
 theme automatically.
 
+The language is App-owned too. A widget given a `tui.Message` (a catalog id, built with
+`tui.Msg("tui.button.yes")`) looks it up as it is laid out, through `Context.Translate`;
+text passed as a plain string is never translated.
+
+- `WithLanguage("ko_KR")` sets the starting language (default English).
+- `WithTranslations(s)` sets the catalogs: `i18n.Toolkit()` with the application's own
+  loaded over it (package [`tui/i18n`](i18n/README.md)).
+- `app.SetLanguage(tag)` may be called from any goroutine. It queues the change on Lane B and
+  relays out as well as repainting, because labels change width; focus, typed text and open
+  dialogs are untouched.
+- `ParseMnemonic` reads `&`-marked text for every widget. A translated label's hotkey is kept
+  on English's letter: English `&File` shown as German `&Datei` reads `Datei(&f)`, still on
+  `f`.
+
 ---
 
 ## Quick Start Example

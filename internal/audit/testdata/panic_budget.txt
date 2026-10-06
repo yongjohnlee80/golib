@@ -102,6 +102,7 @@ tui/app.go	NewApp	1da35ea1310d5d4a	1	construction	tui.NewApp: WithBackend is req
 tui/app.go	App.Post	c6542e4ab0bb6fcf	1	invariant	tui.App.Post: nil event. A runtime method, but a nil event is a programmer error — no data reaching Post can make the event itself nil
 tui/app.go	App.Update	dec28eb4506b3125	1	invariant	tui.App.Update: nil func — same shape as Post; the closure is written in source
 tui/app.go	App.SetTheme	d3c1e9847d8a81c9	1	invariant	tui.App.SetTheme: nil theme. A runtime method, but a nil theme is a programmer error — callers construct an immutable Theme value explicitly, and silently substituting the default would hide a broken theme-selection branch rather than apply the requested palette
+tui/app.go	App.SetTranslations	1d944ebb15efe165	1	invariant	tui.App.SetTranslations: nil catalogs. A runtime method, but a nil Set is a programmer error, as SetTheme's nil theme is: a caller builds the Set explicitly (i18n.Toolkit plus its own), and silently keeping the old catalogs would hide a broken reload rather than show the requested text. Refused before anything is queued
 tui/app.go	App.SetRoot	8a61b0caa777a034	1	invariant	tui.App.SetRoot: nil component — the shape of SetTheme's nil theme. A runtime method, but the component is a value the caller built and passed; mounting nil would panic later inside the loop, far from the call that made the mistake
 tui/app.go	App.Run.func$1	b6c4252a60823d59	1	repanic	tui.App.Run: re-raises the recovered value after the backend is restored, so the terminal is never left in raw mode by an escaping panic
 tui/app_options.go	WithMinFrameInterval	5a7d07172b56db89	1	construction	tui.WithMinFrameInterval: negative interval — an option built in source
@@ -109,6 +110,7 @@ tui/app_options.go	WithInputQueueSize	61913d54e1b5b9d5	1	construction	tui.WithIn
 tui/app_options.go	WithEventQueueLimit	4016f82a6a79ec41	1	construction	tui.WithEventQueueLimit: limit must be at least 1
 tui/app_options.go	WithTaskPoolSize	7832b373c26a8d57	1	construction	tui.WithTaskPoolSize: size must be at least 1
 tui/app_options.go	WithTaskDrainTimeout	b9b464698924d785	1	construction	tui.WithTaskDrainTimeout: negative timeout
+tui/app_options.go	WithTranslations	2e6abd639bafc828	1	construction	tui.WithTranslations: nil catalogs — an option built in source, refused before the App is built
 tui/app_tasks.go	Exclusive	a7f52f9cd5eca2f5	1	construction	tui.Exclusive: empty group name — an option built in source
 tui/app_tasks.go	App.Go	785ea81eff71010f	1	invariant	tui.App.Go: nil task; the task is a func written at the call site
 tui/app_tree.go	App.mount	41a70b1702ac605c	1	invariant	tui.mount: nil component. Mount runs at any time, but a nil component is programmer error rather than data

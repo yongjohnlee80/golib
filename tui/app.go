@@ -9,6 +9,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
+	"github.com/yongjohnlee80/golib/tui/i18n"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -295,6 +296,40 @@ func (a *App) SetTheme(th *style.Theme) {
 		a.renderDirty = true
 	})
 }
+
+// SetLanguage schedules an application-wide language change on the loop goroutine: every
+// widget showing a [Message] shows it in tag ("ko_KR", "es") from the next frame. Nothing is
+// rebuilt and nothing republishes; the change marks layout dirty, and each widget looks its
+// text up again as it is laid out, so labels that grow or shrink in the new language reflow
+// in the same frame. Focus, scroll positions, typed text and open dialogs are untouched.
+//
+// Safe from any goroutine, including an event handler. Like Update, it always enqueues and
+// returns.
+func (a *App) SetLanguage(tag string) {
+	a.Update(func() {
+		a.cfg.language = tag
+		a.layoutDirty, a.renderDirty = true, true
+	})
+}
+
+// SetTranslations schedules replacing the catalogs every [Message] is looked up in, on the
+// loop goroutine, and re-lays out the tree as [App.SetLanguage] does: how a reloaded catalog
+// takes effect. A nil Set is a configuration error and panics before anything is queued.
+//
+// Safe from any goroutine; like Update it always enqueues and returns.
+func (a *App) SetTranslations(s *i18n.Set) {
+	if s == nil {
+		panic(errs.Fatal{Op: "tui: App.SetTranslations", Rule: "the catalogs must not be nil"})
+	}
+	a.Update(func() {
+		a.cfg.translations = s
+		a.layoutDirty, a.renderDirty = true, true
+	})
+}
+
+// Language is the language widgets currently show a [Message] in. Call it on the loop
+// goroutine, from a handler or inside Update.
+func (a *App) Language() string { return a.cfg.language }
 
 // SetRoot schedules replacing the root component on the loop goroutine: the
 // old tree is unmounted — its node contexts cancelled, its tasks drained — and
