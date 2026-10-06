@@ -103,6 +103,10 @@ func TestParseRef(t *testing.T) {
 		{"adrs/x.md (see the thread)", Ref{Form: RefProse, Target: "adrs/x.md (see the thread)"}},
 		{"release ()", Ref{Form: RefProse, Target: "release ()"}},
 		{"golib-vfs-0001 (rev 2)", Ref{Form: RefSlug, Target: "golib-vfs-0001", Note: "rev 2"}},
+		{"adrs/x.md rev 3.1", Ref{Form: RefPath, Target: "adrs/x.md", Note: "rev 3.1"}},
+		// a revision is a number: "rev" and a word is prose
+		{"release (rev discussion)", Ref{Form: RefProse, Target: "release (rev discussion)"}},
+		{"release rev discussion", Ref{Form: RefProse, Target: "release rev discussion"}},
 		{"  ", Ref{Form: RefProse}},
 	} {
 		if got := ParseRef(c.raw); got != c.want {
