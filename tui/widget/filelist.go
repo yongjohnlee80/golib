@@ -168,9 +168,10 @@ type FileList struct {
 
 	list *List[fileEntry]
 	box  *Box
-	// title is the folder as it stands — and why it could not be read, if it
-	// could not — before it is fitted to the pane.
-	title string
+	// title is the folder as it stands, before it is fitted to the pane; unreadable says it
+	// could not be read, which the pane's title then says too.
+	title      string
+	unreadable bool
 	// width is the pane's width at the last layout, for fitting the title.
 	width int
 }
@@ -187,7 +188,7 @@ func NewFileList(opts ...FileListOption) *FileList {
 	l.dir = l.startDir()
 	listOpts := []ListOption[fileEntry]{
 		WithItems([]fileEntry(nil), fileEntry.label),
-		WithEmptyText[fileEntry]("(empty)"),
+		WithEmptyTextMessage[fileEntry](tui.Msg("tui.files.empty")),
 	}
 	if l.styled {
 		listOpts = append(listOpts, WithListStyles[fileEntry](fileListStyles(l.st)))
@@ -361,8 +362,12 @@ func (l *FileList) Enter() bool {
 	return true
 }
 
-// Hint is the keys the list answers to, for a footer.
-func (l *FileList) Hint() string { return "↑↓:move  Enter:open folder" }
+// Hint is the keys the list answers to, for a footer, in the App's language.
+func (l *FileList) Hint() string { return l.translate(l.HintMessage()) }
+
+// HintMessage is [FileList.Hint] as a catalog message, for a footer that follows the
+// language by itself.
+func (l *FileList) HintMessage() tui.Message { return tui.Msg("tui.files.hint.list") }
 
 func (l *FileList) pathOf(e fileEntry) string {
 	if e.up {
@@ -398,9 +403,7 @@ func (l *FileList) load(dir string) {
 	}
 	l.title = l.src.Rooted(dir)
 	ds, err := fs.ReadDir(l.src.FS, dir)
-	if err != nil {
-		l.title += " — cannot read"
-	}
+	l.unreadable = err != nil
 	var dirs, files []fileEntry
 	for _, d := range ds {
 		// A LINK to a folder is a folder to the user; asking the source
@@ -431,6 +434,9 @@ func (l *FileList) load(dir string) {
 // fitTitle elides the folder from the LEFT, at a "/", to fit the pane.
 func (l *FileList) fitTitle() {
 	title := l.title
+	if l.unreadable {
+		title = withArg(l.translate(tui.Msg("tui.files.titleCannotRead")), title)
+	}
 	// The border's two corners, and a space either side of the title.
 	room := l.width - 4
 	measure := tui.StringWidth

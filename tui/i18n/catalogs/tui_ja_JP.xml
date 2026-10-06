@@ -55,6 +55,10 @@
         <source>Folder</source>
         <translation>フォルダー</translation>
     </message>
+    <message id="tui.files.folderNotAFolder">
+        <source>Folder — not a folder</source>
+        <translation>フォルダー — フォルダーではありません</translation>
+    </message>
     <message id="tui.files.empty">
         <source>(empty)</source>
         <translation>(空)</translation>

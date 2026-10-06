@@ -128,15 +128,6 @@ func WithOnHint(fn func(string)) FileViewOption {
 	return func(c *fileViewConfig) { c.onHint = fn }
 }
 
-// hintFor is the footer for a part of a view: that part's keys, then the ones
-// every part shares. Written once, so every file view's footer reads alike.
-func hintFor(part string) string {
-	if part == "" {
-		return "Enter:press  Tab:next  Esc:cancel"
-	}
-	return part + "  Tab:next  Esc:cancel"
-}
-
 // ---------------------------------------------------------------- Open
 
 // FileOpenView chooses an existing file: a FileList, and a FilePreview beside
@@ -357,15 +348,20 @@ func (v *FileOpenView) PreviewText() string {
 	return v.preview.Text()
 }
 
-// Hint is the keys the part with the keyboard answers to.
-func (v *FileOpenView) Hint() string {
+// Hint is the keys the part with the keyboard answers to, in the App's language.
+func (v *FileOpenView) Hint() string { return v.translate(v.HintMessage()) }
+
+// HintMessage is [FileOpenView.Hint] as a catalog message, for a footer that follows the
+// language by itself. Each footer is one whole message, never assembled from translated
+// parts, so every language can order it as it reads.
+func (v *FileOpenView) HintMessage() tui.Message {
 	switch {
 	case v.list.Focused():
-		return hintFor(v.list.Hint() + ", or open file")
+		return tui.Msg("tui.files.hint.openList")
 	case v.preview != nil && v.preview.Focused():
-		return hintFor(v.preview.Hint())
+		return tui.Msg("tui.files.hint.previewPart")
 	}
-	return hintFor("")
+	return tui.Msg("tui.files.hint.default")
 }
 
 // ---------------------------------------------------------------- Save
@@ -391,7 +387,8 @@ func NewFileSaveView(opts ...FileViewOption) *FileSaveView {
 		inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
 	}
 	v.name = NewTextInput(inputOpts...)
-	v.namePane = newFilePane(v.name, "File name", cfg.st, cfg.styled)
+	v.namePane = newFilePane(v.name, "", cfg.st, cfg.styled)
+	v.namePane.SetTitleMessage(tui.Msg("tui.files.fileName"))
 
 	inner := cfg
 	inner.onHint = nil // the Save view reports the footer for all its parts
@@ -507,15 +504,18 @@ func (v *FileSaveView) SetPreviewHighlighting(forFile func(name string) highligh
 	v.listing.SetPreviewHighlighting(forFile, styles)
 }
 
-// Hint is the keys the part with the keyboard answers to.
-func (v *FileSaveView) Hint() string {
+// Hint is the keys the part with the keyboard answers to, in the App's language.
+func (v *FileSaveView) Hint() string { return v.translate(v.HintMessage()) }
+
+// HintMessage is [FileSaveView.Hint] as a catalog message, as [FileOpenView.HintMessage].
+func (v *FileSaveView) HintMessage() tui.Message {
 	if ctx := v.name.Context(); ctx != nil && ctx.Focused() {
-		return hintFor("Enter:save")
+		return tui.Msg("tui.files.hint.saveName")
 	}
 	if v.listing.list.Focused() {
-		return hintFor(v.listing.list.Hint() + ", or save over file")
+		return tui.Msg("tui.files.hint.saveList")
 	}
-	return v.listing.Hint()
+	return v.listing.HintMessage()
 }
 
 // ---------------------------------------------------------------- Folder
@@ -546,7 +546,8 @@ func NewFileFolderView(opts ...FileViewOption) *FileFolderView {
 		inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
 	}
 	v.path = NewTextInput(inputOpts...)
-	v.pathPane = newFilePane(v.path, folderTitle, cfg.st, cfg.styled)
+	v.pathPane = newFilePane(v.path, "", cfg.st, cfg.styled)
+	v.pathPane.SetTitleMessage(folderTitle)
 
 	inner := cfg
 	inner.onHint = nil // the folder view reports the footer for all its parts
@@ -554,12 +555,16 @@ func NewFileFolderView(opts ...FileViewOption) *FileFolderView {
 	inner.fields = append(append([]tui.Component(nil), cfg.fields...), v.pathPane)
 	v.listing = newFileOpenView(inner, WithOnDir(func(dir string) {
 		v.path.SetValue(dir)
-		v.pathPane.SetTitle(folderTitle)
+		v.pathPane.SetTitleMessage(folderTitle)
 	}))
 	return v
 }
 
-const folderTitle = "Folder"
+// The folder field's titles: the field, and the field holding a path that is not a folder.
+var (
+	folderTitle    = tui.Msg("tui.files.folder")
+	notFolderTitle = tui.Msg("tui.files.folderNotAFolder")
+)
 
 // goTo lists the folder typed in the path field; a path that is not one says
 // so in the field's title, and the listing stays.
@@ -568,7 +573,7 @@ func (v *FileFolderView) goTo(typed string) {
 		v.listing.list.load(p)
 		return
 	}
-	v.pathPane.SetTitle(folderTitle + " — not a folder")
+	v.pathPane.SetTitleMessage(notFolderTitle)
 }
 
 // folder is typed as an fs path of the source, when it is a folder there.
@@ -616,7 +621,7 @@ func (v *FileFolderView) Confirm() bool {
 	if _, ok := v.folder(v.path.Value()); ok {
 		return true
 	}
-	v.pathPane.SetTitle(folderTitle + " — not a folder")
+	v.pathPane.SetTitleMessage(notFolderTitle)
 	return false
 }
 
@@ -660,15 +665,18 @@ func (v *FileFolderView) SetPreviewHighlighting(forFile func(name string) highli
 	v.listing.SetPreviewHighlighting(forFile, styles)
 }
 
-// Hint is the keys the part with the keyboard answers to.
-func (v *FileFolderView) Hint() string {
+// Hint is the keys the part with the keyboard answers to, in the App's language.
+func (v *FileFolderView) Hint() string { return v.translate(v.HintMessage()) }
+
+// HintMessage is [FileFolderView.Hint] as a catalog message, as [FileOpenView.HintMessage].
+func (v *FileFolderView) HintMessage() tui.Message {
 	if ctx := v.path.Context(); ctx != nil && ctx.Focused() {
-		return hintFor("Enter:go to folder")
+		return tui.Msg("tui.files.hint.folderPath")
 	}
 	if v.listing.list.Focused() {
-		return hintFor(v.listing.list.Hint())
+		return tui.Msg("tui.files.hint.listPart")
 	}
-	return v.listing.Hint()
+	return v.listing.HintMessage()
 }
 
 var _ FileChooser = (*FileFolderView)(nil)

@@ -25,6 +25,9 @@ type modalCard struct {
 	// beneath the buttons.
 	rule   bool
 	footer string
+	// titleMsg and footerMsg are the catalog messages the title and the help line show,
+	// resolved each layout; zero for plain text.
+	titleMsg, footerMsg tui.Message
 	// width is the card's own width, frame included; 0 sizes it to its
 	// content.
 	width int
@@ -144,6 +147,12 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	ctx := c.Context()
 	if ctx == nil {
 		return cs.Constrain(tui.Size{})
+	}
+	if c.titleMsg != (tui.Message{}) {
+		c.title = c.translate(c.titleMsg)
+	}
+	if c.footerMsg != (tui.Message{}) {
+		c.footer = c.translate(c.footerMsg)
 	}
 	const border, pad = 1, 1
 	frame := 2 * (border + pad) // across: the frame and its padding, both sides

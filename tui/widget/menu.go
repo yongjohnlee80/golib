@@ -303,11 +303,28 @@ func (m *Menu) SetModel(items []MenuItemModel) error {
 	}
 
 	m.items = next
+	m.resolveLabels()
 	m.repairSelection()
 	if ctx := m.Context(); ctx != nil {
 		ctx.RequestLayout()
 	}
 	return nil
+}
+
+// resolveLabels fills every row named by a catalog message, at every level, from its
+// translation: the bar's rows and every open level read the same labels, so a language
+// change shows across the whole menu at once.
+func (m *Menu) resolveLabels() { m.resolveLabelsIn(m.items) }
+
+func (m *Menu) resolveLabelsIn(items []MenuItemModel) {
+	for i := range items {
+		it := &items[i]
+		if it.LabelMsg != (tui.Message{}) {
+			label, key, idx := tui.ParseMnemonic(m.translate(it.LabelMsg))
+			it.Label, it.Hotkey, it.HotkeyIdx = label, key, max(idx, 0)
+		}
+		m.resolveLabelsIn(it.Children)
+	}
 }
 
 // Model returns a deep copy, so a caller cannot reach inside a mounted Menu by
