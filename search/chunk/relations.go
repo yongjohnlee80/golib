@@ -106,9 +106,10 @@ type Ref struct {
 	// Target is what to look up: the path without its root prefix, the wikilink's page, the slug or
 	// the number. For a URL it is the URL, and for prose the text.
 	Target string
-	// Anchor is a section named after the target: " §2.3" after a path, "#heading" in a wikilink.
+	// Anchor is a section named after the target: a section sign and number after a path ("§N.N"),
+	// or "#heading" in a wikilink.
 	Anchor string
-	// Note is the annotation after the target that is not an anchor: "rev 3", "+ rationale".
+	// Note is the annotation after the target that is not an anchor: "rev N", "+ rationale".
 	Note string
 }
 
@@ -118,13 +119,13 @@ var (
 	refNumber   = regexp.MustCompile(`^[0-9]+$`)
 	refSlug     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	refWikilink = regexp.MustCompile(`^\[\[([^\[\]]+)\]\]$`)
-	// an annotation after a target: "§2.3", "(rev 3)", "(+ rationale)" or "rev 3", one or more
+	// an annotation after a target: "§N.N", "(rev N)", "(+ rationale)" or "rev N", one or more
 	refAnnot = regexp.MustCompile(`^(?:§\s*\S+|\([^()]*\)|rev\s+\S+)(?:\s+(?:§\s*\S+|\([^()]*\)|rev\s+\S+))*$`)
 )
 
 // ParseRef reads a relation value. A path loses a leading "$NAME/" root prefix ("$KB_ROOT/a.md"
-// is "a.md", root-relative). A target may be followed by annotations, which come off: " §2.3"
-// becomes the Anchor, and " (rev 3)", " rev 3" or " (+ rationale)" the Note. Text after a target
+// is "a.md", root-relative). A target may be followed by annotations, which come off: a section
+// sign and number ("§N.N") becomes the Anchor, and "(rev N)", "rev N" or "(+ rationale)" the Note. Text after a target
 // that is not such an annotation makes the whole value prose: "Johno 2026-10-05 (chat): …" names
 // no document.
 func ParseRef(raw string) Ref {
@@ -170,7 +171,7 @@ func ParseRef(raw string) Ref {
 	return ref
 }
 
-// annotations splits "§2.3 (rev 3)" into its anchor and its note.
+// annotations splits "§N.N (rev N)" into its anchor and its note.
 func annotations(s string) (anchor, note string) {
 	var notes []string
 	for s != "" {
