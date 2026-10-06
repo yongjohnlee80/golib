@@ -54,6 +54,26 @@ func (e *Editor) SelectedText() string {
 	return ""
 }
 
+// SelectionRange returns the visual selection as a region from (row, col) up to, not including,
+// (endRow, endCol): rows and columns from 0, a column counting grapheme clusters, as Line reports
+// the cursor. A line-wise selection runs from the start of its first line to the end of its last.
+// ok is false outside the visual modes, or when selection is disabled. It is the region
+// SelectedText returns the text of.
+func (e *Editor) SelectionRange() (row, col, endRow, endCol int, ok bool) {
+	if !e.canSelect {
+		return 0, 0, 0, 0, false
+	}
+	switch e.mode {
+	case ModeVisual:
+		lo, hiEx := e.visualRange()
+		return lo.ln, lo.col, hiEx.ln, hiEx.col, true
+	case ModeVisualLine:
+		lo, hi := e.visualLines()
+		return lo, 0, hi, len(e.lineClusters(hi)), true
+	}
+	return 0, 0, 0, 0, false
+}
+
 // SetRegister imports text into the unnamed register (the application's
 // value-inspect copy path).
 func (e *Editor) SetRegister(text string, linewise bool) {
