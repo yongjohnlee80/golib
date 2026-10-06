@@ -122,3 +122,19 @@ func TestApp_NilTranslationsPanicBeforeAnythingIsQueued(t *testing.T) {
 		}()
 	}
 }
+
+func TestApp_TranslateIsWhatAWidgetShows(t *testing.T) {
+	t.Parallel()
+	l := &msgLabel{msg: Msg("tui.button.no")}
+	h := startApp(t, l, 20, 1, WithLanguage("pt_BR"))
+	shows(t, h, "&Não")
+	var got string
+	h.onLoop(func() { got = h.app.Translate(Msg("tui.button.no")) })
+	if got != "&Não" {
+		t.Errorf("App.Translate = %q, want the widget's &Não", got)
+	}
+	h.onLoop(func() { got = h.app.Translate(Msg("app.nowhere")) })
+	if got != "app.nowhere" {
+		t.Errorf("App.Translate of an unknown id = %q, want the id", got)
+	}
+}

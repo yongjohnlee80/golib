@@ -341,14 +341,7 @@ func (c *Context) App() *App { return c.app }
 //
 // A widget calls it as it is laid out, never as it renders: a language change always lays
 // the tree out again, so text resolved in Layout is current when it is painted.
-func (c *Context) Translate(m Message) string {
-	s := c.app.cfg.translations
-	text, ok := s.Lookup(c.app.cfg.language, m.ID)
-	if !ok {
-		return m.ID
-	}
-	return englishMnemonic(text, s, m.ID)
-}
+func (c *Context) Translate(m Message) string { return c.app.Translate(m) }
 
 // StringWidth measures s under the App's active width policy — the SAME
 // policy Surface.StringWidth applies (WithWidthPolicy). It is the
