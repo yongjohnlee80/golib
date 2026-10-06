@@ -179,3 +179,47 @@ func TestEditorSetKeysetNormalizesUnknownProfile(t *testing.T) {
 		t.Fatalf("state = (%q, %v), want (\"\", Insert)", val, mode)
 	}
 }
+
+// SelectionRange is the region SelectedText takes, in Line's units: a charwise selection made
+// forwards or backwards, one over multi-byte text (columns count clusters, not bytes), a line-wise
+// one, and none outside the visual modes.
+func TestEditorSelectionRange(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("héllo\nworld"))
+	type region struct {
+		row, col, endRow, endCol int
+		ok                       bool
+		text                     string
+	}
+	at := func() region {
+		h.barrier(sh)
+		var r region
+		h.onLoop(func() {
+			r.row, r.col, r.endRow, r.endCol, r.ok = ed.SelectionRange()
+			r.text = ed.SelectedText()
+		})
+		return r
+	}
+	if r := at(); r.ok {
+		t.Fatalf("no selection: %+v", r)
+	}
+	h.inject(key('v'), key('l'), key('l'))
+	if r, want := at(), (region{0, 0, 0, 3, true, "hél"}); r != want {
+		t.Errorf("forwards: %+v, want %+v", r, want)
+	}
+	h.inject(key(tui.KeyEscape), key('j'), key('$'), key('v'), key('h'), key('h'))
+	if r, want := at(), (region{1, 2, 1, 5, true, "rld"}); r != want {
+		t.Errorf("backwards: %+v, want %+v", r, want)
+	}
+	h.inject(key(tui.KeyEscape), key('k'), key('V'))
+	if r, want := at(), (region{0, 0, 0, 5, true, "héllo"}); r != want { // 5 clusters, 6 bytes
+		t.Errorf("line-wise, one line: %+v, want %+v", r, want)
+	}
+	h.inject(key('j'))
+	if r, want := at(), (region{0, 0, 1, 5, true, "héllo\nworld"}); r != want {
+		t.Errorf("line-wise, two lines: %+v, want %+v", r, want)
+	}
+	h.inject(key(tui.KeyEscape))
+	if r := at(); r.ok {
+		t.Errorf("after Esc: %+v", r)
+	}
+}
