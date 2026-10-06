@@ -47,6 +47,18 @@ tags: [ignored, here]
 	}
 }
 
+// TestRelationsMakeNoWikilinkFromOtherNestedLists: only the exact shape YAML reads an unquoted [[x]]
+// as gives "[[x]]"; a nested list of two, or one nested deeper, was not written as a wikilink.
+func TestRelationsMakeNoWikilinkFromOtherNestedLists(t *testing.T) {
+	t.Parallel()
+	src := "---\nrelated: [[foo, bar]]\nsources:\n- [foo, bar]\n- [[[deep]]]\n- plain\n---\nbody\n"
+	got := Relations(note(src), relationFields)
+	want := []Relation{{"sources", "plain", 6}}
+	if !slices.Equal(got, want) {
+		t.Errorf("Relations = %v, want only %v", got, want)
+	}
+}
+
 func TestRelationsWithoutFrontmatter(t *testing.T) {
 	t.Parallel()
 	for name, src := range map[string]string{
@@ -86,6 +98,11 @@ func TestParseRef(t *testing.T) {
 		{"autodb/tui-qml branch at aab0f1e", Ref{Form: RefProse, Target: "autodb/tui-qml branch at aab0f1e"}},
 		{"mailbox:1790492671-0001-review", Ref{Form: RefProse, Target: "mailbox:1790492671-0001-review"}},
 		{"measured 31 times", Ref{Form: RefProse, Target: "measured 31 times"}},
+		// a parenthesis is an annotation only as (rev N) or a (+ …) addition: anything else is prose
+		{"release (discussion)", Ref{Form: RefProse, Target: "release (discussion)"}},
+		{"adrs/x.md (see the thread)", Ref{Form: RefProse, Target: "adrs/x.md (see the thread)"}},
+		{"release ()", Ref{Form: RefProse, Target: "release ()"}},
+		{"golib-vfs-0001 (rev 2)", Ref{Form: RefSlug, Target: "golib-vfs-0001", Note: "rev 2"}},
 		{"  ", Ref{Form: RefProse}},
 	} {
 		if got := ParseRef(c.raw); got != c.want {
