@@ -88,10 +88,10 @@ func coreTypes() []Type {
 		{Name: "Button", Build: buildButton, Setters: map[string]Setter{
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
 			// Qt's AbstractButton.text: `&` marks the mnemonic, "&Save".
-			"text": setter("a Button", stringOf, setButtonText),
+			"text": textSetter("a Button", setButtonText, (*widget.Button).SetLabelMessage),
 		}},
 		{Name: "Text", Build: buildText, Ctor: []string{"wrapMode"}, restyle: restyleText, Setters: map[string]Setter{
-			"text":  setter("a Text", stringOf, (*widget.Text).SetText),
+			"text":  textSetter("a Text", (*widget.Text).SetText, (*widget.Text).SetTextMessage),
 			"color": setter("a Text", colorOf, (*widget.Text).SetColor),
 		}},
 	}
@@ -204,7 +204,7 @@ func buildText(b Build) (tui.Component, []string, error) {
 
 // setButtonText sets a Button's text, `&` marking its mnemonic as Qt's does.
 func setButtonText(b *widget.Button, text string) {
-	label, key, _ := mnemonic(text)
+	label, key, _ := tui.ParseMnemonic(text)
 	b.SetLabel(label)
 	b.SetMnemonic(key)
 }

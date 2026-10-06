@@ -127,3 +127,20 @@ func TestSet_LoadDirNamesTheFileOfAMalformedCatalog(t *testing.T) {
 		t.Fatalf("err = %v, want an invalid argument naming i18n/editor_en.xml", err)
 	}
 }
+
+func TestSet_LanguagesAndIDsReadWhatWasAdded(t *testing.T) {
+	t.Parallel()
+	var s Set
+	_ = s.Add(catalog(t, "ko_KR", map[string]string{"b": "나", "a": "가"}))
+	_ = s.Add(catalog(t, "ko_KR", map[string]string{"c": "다"}))
+	_ = s.Add(catalog(t, "en", map[string]string{"a": "A"}))
+	if got := s.Languages(); len(got) != 2 || got[0] != "en" || got[1] != "ko_KR" {
+		t.Errorf("Languages() = %v, want [en ko_KR]", got)
+	}
+	if got := s.IDs("ko-KR"); len(got) != 3 || got[0] != "a" || got[2] != "c" {
+		t.Errorf("IDs(ko-KR) = %v, want [a b c]: every catalog of the language, sorted", got)
+	}
+	if got := s.IDs("fr"); len(got) != 0 {
+		t.Errorf("IDs(fr) = %v, want none", got)
+	}
+}

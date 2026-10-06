@@ -44,24 +44,31 @@ import (
 // unless `width` — Qt's Popup.width, in cells — says otherwise: a dialog
 // holding a TextField, which fills whatever it is given.
 
-// standardButton is one of Qt's standard buttons: its flag, its label with the
-// mnemonic Qt gives it, and whether choosing it accepts.
+// standardButton is one of a dialog's buttons: Qt's name and flag for one of Qt's standard
+// buttons, the catalog message that labels it (its mnemonic marked there), and whether
+// choosing it accepts.
 type standardButton struct {
 	name   string
 	bit    int64
-	label  string
+	msg    tui.Message
 	accept bool
+}
+
+// qtButton is one of Qt's standard buttons, labelled and given its answer by golib's own
+// standard button, so a QML dialog and a Go one read and answer alike in every language.
+func qtButton(name string, bit int64, std widget.StandardButton) standardButton {
+	return standardButton{name: name, bit: bit, msg: std.Message(), accept: std.Role() == widget.ButtonRoleAccept}
 }
 
 // dialogStandardButtons are Qt's, with Qt's flag values, in the order they are
 // laid out: the affirmative first, as the question is read.
 var dialogStandardButtons = []standardButton{
-	{"Ok", 0x00000400, "&OK", true},
-	{"Save", 0x00000800, "&Save", true},
-	{"Yes", 0x00004000, "&Yes", true},
-	{"No", 0x00010000, "&No", false},
-	{"Cancel", 0x00400000, "&Cancel", false},
-	{"Close", 0x00200000, "Close(&q)", false},
+	qtButton("Ok", 0x00000400, widget.StandardOk),
+	qtButton("Save", 0x00000800, widget.StandardSave),
+	qtButton("Yes", 0x00004000, widget.StandardYes),
+	qtButton("No", 0x00010000, widget.StandardNo),
+	qtButton("Cancel", 0x00400000, widget.StandardCancel),
+	qtButton("Close", 0x00200000, widget.StandardClose),
 }
 
 // dialogButtons is the flag set a document combines: `Dialog.Yes | Dialog.No`.
@@ -160,12 +167,23 @@ func (d *dialogNode) open() error {
 // setTitle is Dialog.title's setter.
 func (d *dialogNode) setTitle(s string) { d.modal.SetTitle(s) }
 
+// setTitleMessage is Dialog.title's setter for qsTrId: the title in the App's language.
+func (d *dialogNode) setTitleMessage(m tui.Message) { d.modal.SetTitleMessage(m) }
+
 // setHelp is Dialog.helpText's setter: the help line under the body, with the
 // rule that separates them when the dialog has no buttons to.
 func (d *dialogNode) setHelp(s string) {
 	d.modal.SetFooter(s)
 	if len(d.modal.Buttons()) == 0 {
 		d.modal.SetRule(s != "")
+	}
+}
+
+// setHelpMessage is setHelp for qsTrId: the help line in the App's language.
+func (d *dialogNode) setHelpMessage(m tui.Message) {
+	d.modal.SetFooterMessage(m)
+	if len(d.modal.Buttons()) == 0 {
+		d.modal.SetRule(true)
 	}
 }
 
@@ -201,7 +219,7 @@ func (d *dialogNode) dismissed(reason widget.DismissReason) {
 // dialogSpec is everything one dialog is built from, whatever kind it is.
 type dialogSpec struct {
 	body                              tui.Component
-	title, help                       string
+	title, help                       UIText
 	dim                               bool
 	closeOnQ                          bool
 	width                             int
@@ -239,22 +257,22 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	// roles and no implicit default.
 	buttons := make([]*widget.Button, 0, len(s.buttons))
 	for i, sb := range s.buttons {
-		label, key, _ := mnemonic(sb.label)
 		role := widget.ButtonRoleReject
 		if sb.accept {
 			role = widget.ButtonRoleAccept
 		}
-		opts := []widget.ButtonOption{widget.WithRole(role), widget.WithMnemonic(key),
+		// Labelled by its message: the label and its mnemonic follow the App's language.
+		opts := []widget.ButtonOption{widget.WithRole(role), widget.WithLabelMessage(sb.msg),
 			widget.WithDefault(i == s.defaultAt)}
-		buttons = append(buttons, widget.NewButton(label, opts...))
+		buttons = append(buttons, widget.NewButton("", opts...))
 	}
 	if s.box != nil {
 		buttons = append(buttons, s.box.buttons...)
 	}
 	opts := []widget.ModalOption{
-		widget.WithModalTitle(s.title),
+		widget.WithModalTitle(s.title.Plain),
 		widget.WithButtons(buttons...),
-		widget.WithModalRule(len(buttons) > 0 || s.help != ""),
+		widget.WithModalRule(len(buttons) > 0 || !s.help.Empty()),
 		widget.WithModalWidth(s.width),
 		widget.WithModalMaxSizePercent(s.maxWidthPercent, s.maxHeightPercent),
 		widget.WithScrim(s.dim),
@@ -264,8 +282,11 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	if s.closeOnQ {
 		opts = append(opts, widget.WithModalDismissKeys('q'))
 	}
-	if s.help != "" {
-		opts = append(opts, widget.WithModalFooter(s.help))
+	if s.help.Plain != "" {
+		opts = append(opts, widget.WithModalFooter(s.help.Plain))
+	}
+	if s.title.IsMessage() {
+		opts = append(opts, widget.WithModalTitleMessage(s.title.Message))
 	}
 	if s.hooks.gate != nil {
 		opts = append(opts, widget.WithAcceptGate(s.hooks.gate))
@@ -283,6 +304,9 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 		}))
 	}
 	d.modal = widget.NewModal(s.body, opts...)
+	if s.help.IsMessage() {
+		d.modal.SetFooterMessage(s.help.Message)
+	}
 	return d
 }
 
@@ -294,8 +318,8 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 	s := dialogSpec{body: body, dim: true, align: widget.ButtonsCenter, shortcuts: shortcuts, box: box, defaultAt: -1}
 	var flags, defaultFlag int64
 	consumed, err := readProps(b.Props, map[string]field{
-		"title":            into(&s.title, stringOf),
-		"helpText":         into(&s.help, stringOf),
+		"title":            into(&s.title, textOf),
+		"helpText":         into(&s.help, textOf),
 		"dim":              into(&s.dim, boolOf),
 		"closeOnQ":         into(&s.closeOnQ, boolOf),
 		"width":            into(&s.width, cellsOf),

@@ -34,7 +34,7 @@ func appTypes() []Type {
 			"color": setter("a Window", colorOf, (*windowNode).setColor),
 		}},
 		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
-			"title": setter("a Frame", stringOf, (*widget.Box).SetTitle),
+			"title": textSetter("a Frame", (*widget.Box).SetTitle, (*widget.Box).SetTitleMessage),
 			// golib's: at most this many columns, border included, centred — a page, not the screen
 			"maximumWidth": setter("a Frame", func(v qml.SpecValue) (int, error) {
 				n, err := numberOf(v)
@@ -105,9 +105,12 @@ func appTypes() []Type {
 			}, (*widget.Editor).SetCursorPosition),
 		}},
 		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, adopt: adoptStatusBarChild, Setters: map[string]Setter{
-			"left":   setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetLeft)),
-			"center": setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetCenter)),
-			"right":  setter("a StatusBar", stringOf, statusSegment((*widget.StatusBar).SetRight)),
+			"left": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetLeft),
+				statusMessage((*widget.StatusBar).SetLeftMessage)),
+			"center": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetCenter),
+				statusMessage((*widget.StatusBar).SetCenterMessage)),
+			"right": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetRight),
+				statusMessage((*widget.StatusBar).SetRightMessage)),
 		}},
 		{Name: "MenuBar", Build: buildMenuBar, Ctor: []string{"vimNavigation"}, restyle: restyleMenuBar,
 			Setters: map[string]Setter{"autoHide": setter("a MenuBar", boolOf, (*menuBarNode).setAutoHide)}},
@@ -148,8 +151,8 @@ func appTypes() []Type {
 			Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons", "defaultButton"},
 			restyle: restyleDialog,
 			Setters: map[string]Setter{
-				"title":    setter("a Dialog", stringOf, (*dialogNode).setTitle),
-				"helpText": setter("a Dialog", stringOf, (*dialogNode).setHelp),
+				"title":    textSetter("a Dialog", (*dialogNode).setTitle, (*dialogNode).setTitleMessage),
+				"helpText": textSetter("a Dialog", (*dialogNode).setHelp, (*dialogNode).setHelpMessage),
 			},
 			Methods:   dialogMethods,
 			Destroyed: releaseDialog},
@@ -204,16 +207,20 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 1 {
 		return nil, nil, fmt.Errorf("Frame needs exactly 1 child, got %d (at %s)", len(b.Children), b.Pos)
 	}
-	var title string
-	consumed, err := readProps(b.Props, map[string]field{"title": into(&title, stringOf)})
+	var title UIText
+	consumed, err := readProps(b.Props, map[string]field{"title": into(&title, textOf)})
 	if err != nil {
 		return nil, nil, err
 	}
 	var opts []widget.BoxOption
-	if title != "" {
-		opts = append(opts, widget.WithTitle(title))
+	if title.Plain != "" {
+		opts = append(opts, widget.WithTitle(title.Plain))
 	}
-	return widget.NewBox(b.Children[0], opts...), consumed, nil
+	box := widget.NewBox(b.Children[0], opts...)
+	if title.IsMessage() {
+		box.SetTitleMessage(title.Message)
+	}
+	return box, consumed, nil
 }
 
 // ---------------------------------------------------------------- Editor
@@ -349,6 +356,11 @@ func adoptStatusBarChild(parent, child tui.Component, attached map[string]qml.Sp
 // colours every segment.
 func statusSegment(set func(*widget.StatusBar, string, ...style.Style)) func(*widget.StatusBar, string) {
 	return func(sb *widget.StatusBar, text string) { set(sb, text) }
+}
+
+// statusMessage is statusSegment for a catalog message.
+func statusMessage(set func(*widget.StatusBar, tui.Message, ...style.Style)) func(*widget.StatusBar, tui.Message) {
+	return func(sb *widget.StatusBar, m tui.Message) { set(sb, m) }
 }
 
 // dialogMethods are what a handler can call on any dialog by its id.

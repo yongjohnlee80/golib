@@ -3,6 +3,7 @@ package i18n
 import (
 	"io/fs"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/errs"
@@ -86,6 +87,33 @@ func (s *Set) Lookup(language, id string) (text string, ok bool) {
 		}
 	}
 	return "", false
+}
+
+// Languages is every language some catalog in the Set names, sorted.
+func (s *Set) Languages() []string {
+	out := make([]string, 0, len(s.byLang))
+	for lang := range s.byLang {
+		out = append(out, lang)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// IDs is every message id the catalogs of exactly language hold, sorted: what that language
+// translates, without its fallbacks. A check uses it to find ids English does not carry.
+func (s *Set) IDs(language string) []string {
+	seen := map[string]bool{}
+	for _, c := range s.byLang[canonical(language)] {
+		for id := range c.texts {
+			seen[id] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // chain is the languages a lookup tries, in order, without repeats.

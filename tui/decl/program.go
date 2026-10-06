@@ -15,6 +15,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/i18n"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -82,16 +83,53 @@ type programConfig struct {
 	appOpts     []tui.AppOption
 	sink        func(error)
 
-	modules   []decl.Module
-	offers    []offered
-	sources   map[string]any
-	handlers  map[string]decl.HandlerFunc
-	providers []decl.Provider
+	modules []decl.Module
+	offers  []offered
+	// translations are the catalog folders Translations named, layered in order over golib's
+	// own; catalogs is them loaded, handed to the App.
+	translations []translationDir
+	catalogs     *i18n.Set
+	sources      map[string]any
+	handlers     map[string]decl.HandlerFunc
+	providers    []decl.Provider
 }
 
 type offered struct {
 	name, version string
 	load          decl.ModuleLoader
+}
+
+// translationDir is one Translations folder: <prefix>_<language>.xml files in dir of fsys.
+type translationDir struct {
+	fsys        fs.FS
+	dir, prefix string
+}
+
+// Translations loads an application's catalogs: every <prefix>_<language>.xml in dir of fsys,
+// in Qt's TS XML schema ("i18n/editor_ko_KR.xml"). They are layered over golib's own
+// catalogs, in the order the options are given, so a later folder's message replaces the
+// same id from an earlier one and an application can reword golib's text or add a language
+// golib does not ship. A document shows them through qsTrId("id"); the host changes the
+// language with p.App().SetLanguage, and starts it with AppOptions(tui.WithLanguage(tag)).
+//
+// A catalog that does not load fails NewProgram, naming the file. Under HotReload, the
+// folders are followed like the layout's. A tui.WithTranslations given through AppOptions
+// wins over these at start, as the App's own option; a reload then installs the folders
+// over it, so a program following its catalogs gives them here alone.
+func Translations(fsys fs.FS, dir, prefix string) ProgramOption {
+	return func(c *programConfig) { c.translations = append(c.translations, translationDir{fsys, dir, prefix}) }
+}
+
+// loadTranslations is golib's catalogs with every Translations folder loaded over them, as a
+// new Set: a reload builds a fresh one, so a refused reload leaves the App's untouched.
+func loadTranslations(c programConfig) (*i18n.Set, error) {
+	s := i18n.Toolkit()
+	for _, t := range c.translations {
+		if err := s.LoadDir(t.fsys, t.dir, t.prefix); err != nil {
+			return nil, fmt.Errorf("translations: %w", err)
+		}
+	}
+	return s, nil
 }
 
 // Layout reads the document from a file system: an embed.FS, os.DirFS, any
@@ -288,7 +326,11 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 		return nil, err
 	}
 	p.cfg, p.mounted = c, mounted
-	app := tui.NewApp(p.root, c.appOpts...)
+	var appOpts []tui.AppOption
+	if c.catalogs != nil {
+		appOpts = append(appOpts, tui.WithTranslations(c.catalogs))
+	}
+	app := tui.NewApp(p.root, append(appOpts, c.appOpts...)...)
 	p.adapter.useApp(app)
 	// UNDER THE LOCK, all of it. A provider's goroutine is already running —
 	// it started during the mount — and reads p.app in schedule, so the
@@ -319,6 +361,13 @@ func configure(opts []ProgramOption) (programConfig, error) {
 	}
 	if c.layout == nil {
 		return c, errors.New("tui/decl.NewProgram: no layout; give one with Layout or LayoutSource")
+	}
+	if len(c.translations) > 0 {
+		s, err := loadTranslations(c)
+		if err != nil {
+			return c, err
+		}
+		c.catalogs = s
 	}
 	return c, nil
 }
@@ -385,6 +434,10 @@ func (p *Program) register(c programConfig) error {
 		if err := p.tree.Inject(name, decl.Handle(fn)); err != nil {
 			return err
 		}
+	}
+	// Qt's id-based translation, for every document: the widget resolves the message it yields.
+	if err := p.tree.Inject("qsTrId", decl.Pure(qsTrId)); err != nil {
+		return err
 	}
 	for _, pr := range c.providers {
 		if err := p.tree.Subscribe(pr); err != nil {
@@ -589,11 +642,15 @@ func Value(v any) (qml.SpecValue, error) {
 	case ItemModel:
 		// An OBJECT: a model a view shows (model.go).
 		return qml.SpecValue{Kind: qml.SpecValueObject, Obj: x}, nil
+	case tui.Message:
+		// A catalog message: the widget showing it looks it up in the App's language, so the
+		// host never republishes it when the language changes.
+		return qml.SpecValue{Kind: qml.SpecValueObject, Obj: x}, nil
 	case Index:
 		// A row, as a view's signal carries it — passed back to the view.
 		return indexValue(x), nil
 	}
-	return qml.SpecValue{}, fmt.Errorf("a %T is not a value a document can hold: want a string, bool, number, a model or a row's Index", v)
+	return qml.SpecValue{}, fmt.Errorf("a %T is not a value a document can hold: want a string, bool, number, a tui.Message, a model or a row's Index", v)
 }
 
 // Arg reads a handler's argument i as a string — a path, a name — or says why

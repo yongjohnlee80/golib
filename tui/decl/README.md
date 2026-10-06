@@ -101,6 +101,15 @@ change at runtime, which is what makes it bindable to a source.
 | `DelegateChooser` | `role` | — | — | — | — |
 | `DelegateChoice` | `roleValue` | — | — | — | — |
 
+**UI text takes `qsTrId("id")`** — Qt's id-based translation, from the program's
+catalogs (`Translations`). These properties take a string or a message: `Text.text`,
+`Button.text`, `CheckBox.text`, `MenuItem.text`, `Menu.title`, `Frame.title`, `StatusBar`'s
+`left`, `center` and `right`, `Dialog`, `FileDialog` and `FolderDialog`'s `title` and
+`helpText`, and `TextField.placeholderText`. A message is shown in the App's language and
+follows `App.SetLanguage` with nothing rebound; a mnemonic keeps English's letter. `qsTrId`
+takes one non-empty string. `Editor.text`, `Tab.title`, `TableViewColumn.title` and
+`ComboBox.placeholderText` take a string only. See [USAGE.md §7c](USAGE.md#7c-languages).
+
 `Repeater`, `Instantiator`, `DelegateChooser` and `DelegateChoice` are the
 engine's, expanded before anything is built, so they have no widget.
 `TextField` and `Popup` are Qt Quick Controls types in the
@@ -274,6 +283,12 @@ large itself, on the caller's thread. One it cannot cut (an `Image` that does no
 too wide) is scaled down to fit. Any PNG that decodes is placed within the limit; one that does
 not decode is placed as given.
 
+### Functions
+
+| function | yields | takes |
+| --- | --- | --- |
+| `qsTrId(id)` | the catalog message `id`, shown in the App's language by the widget it reaches | one non-empty string; anything else is refused at its position |
+
 ### Attached properties
 
 | written on | read by | property | values |
@@ -308,16 +323,18 @@ Also from `import tui 1.0`, with Qt's names and Qt's values, combined with
 standardButtons: Dialog.Yes | Dialog.No
 ```
 
-| flag | label | answer |
-| --- | --- | --- |
-| `Dialog.Ok` | &OK | accepts |
-| `Dialog.Save` | &Save | accepts |
-| `Dialog.Yes` | &Yes | accepts |
-| `Dialog.No` | &No | rejects |
-| `Dialog.Cancel` | &Cancel | rejects |
-| `Dialog.Close` | C&lose | rejects |
+| flag | label | message | answer |
+| --- | --- | --- | --- |
+| `Dialog.Ok` | &OK | `tui.button.ok` | accepts |
+| `Dialog.Save` | &Save | `tui.button.save` | accepts |
+| `Dialog.Yes` | &Yes | `tui.button.yes` | accepts |
+| `Dialog.No` | &No | `tui.button.no` | rejects |
+| `Dialog.Cancel` | &Cancel | `tui.button.cancel` | rejects |
+| `Dialog.Close` | Close(&q) | `tui.button.close` | rejects |
 
-The underlined letter presses the button. `|` is the only operator the engine
+The underlined letter presses the button. Each label is its message, shown in the App's
+language with English's letter; a `FileDialog`'s buttons are `tui.filedialog.open`, `save`,
+`select` and `close`, and its footer is its view's hint, in the language too. `|` is the only operator the engine
 evaluates, and only over integer flags.
 
 **Enter answers the default, and only a named one.** `defaultButton` names the
@@ -478,7 +495,9 @@ standard vocabulary is a table of. `WithTypes` (or `Types` for a Program) adds
 it; `Instance(name, widget)` places a widget the host already built. Helpers
 read values as the built-ins do: `StringSetter`, `BoolSetter`, `NumberSetter`,
 `ColorSetter`, `EnumSetter`, `NoArgMethod`, and `ReadProps` with `StringField`,
-`BoolField`, `NumberField`, `ColorField`, `EnumField`. A type can declare Qt-style
+`BoolField`, `NumberField`, `ColorField`, `EnumField`. UI text is read with
+`UITextSetter` and `UITextField` into a `UIText` — plain text or a catalog message — so
+`qsTrId` works on a custom widget's properties as on the built-in ones. A type can declare Qt-style
 enums (`Enums`), wear palette roles (`Restyle`, reading a `Palette`), and open
 over the screen (`Overlaid`). A handler bound to a signal a type does not raise
 is refused. Package [`controls`](controls/) — `TextField`, `Popup` — is written
@@ -499,6 +518,7 @@ with this contract alone. See [USAGE.md §6](USAGE.md#6-your-own-go-widgets-in-q
 | `Offer(module, version, loader)` | any offered module |
 | `Types(t…)` / `Files(src)` | your widgets; the file dialogs' filesystem |
 | `ErrorSink(fn)` | handler errors as they happen (default: kept, returned by Run) |
+| `Translations(fs, dir, prefix)` | the program's catalogs, `dir/<prefix>_<language>.xml` in Qt's TS XML, layered over golib's; the language is the App's (`AppOptions(tui.WithLanguage(tag))`, then `App().SetLanguage(tag)`) — see [USAGE.md §7c](USAGE.md#7c-languages) |
 | `HotReload(opts…)` | follow the files while running: `ReloadInterval`, `OnReload`, `OnReloadError` — see [USAGE.md §8](USAGE.md#8-reloading) |
 | `AppOptions`, `AdapterOptions`, `TreeOptions`, `WithRegistry` | pass-throughs |
 
@@ -514,7 +534,7 @@ program handing the theme to something outside its layout.
 
 Methods: `Run`, `Quit`, `Post` (any goroutine), `Set`, `SetMany`, `Find`,
 `FindAs[W]`, `Call`, `Reload`, and `Tree`, `Adapter`, `App`, `Root`. `Value(v)`
-converts a Go value; `Arg(args, i)` reads a handler argument.
+converts a Go value, a `tui.Message` included; `Arg(args, i)` reads a handler argument.
 
 ## Testing
 
@@ -523,7 +543,10 @@ mounts the layout, the layout under each alternative module (the theme it does
 not import), and each component no document uses yet — imported module or not —
 and reports every problem. Package [`decltest`](decltest/) wraps it for `go test` —
 `decltest.Check(t, opts…)` — and runs a program on a test backend:
-`decltest.Run(t, w, h, opts…)`. See [USAGE.md §11](USAGE.md#11-testing-a-qml-screen).
+`decltest.Run(t, w, h, opts…)`. `CheckLanguages(opts…)` (`decltest.CheckLanguages(t,
+opts…)`) is the language walk: every language the catalogs hold, golib's and the program's,
+judged for messages English lacks, markers on another letter than English's, and menu rows
+of one level sharing a key. See [USAGE.md §11](USAGE.md#11-testing-a-qml-screen).
 
 ## Adapter options
 
