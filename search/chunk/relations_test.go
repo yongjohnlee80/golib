@@ -22,14 +22,16 @@ amends:
   - adrs/0064-wire.md §2.3
 related: [[golib-vfs-0001]]
 sources:
-  - [[notes/one]]
-  - "Johno 2026-10-05 (chat): keep it simple"
-  - {not: a value}
+- [[notes/one]]
+- "Johno 2026-10-05 (chat): keep it simple"
+- {not: a value}
 adr: [21, "$KB_ROOT/adrs/0084-x.md"]
 tags: [ignored, here]
 ---
 # Body
 `
+	// sources' items sit at column 0, their values at column 2: a line read from the frontmatter's
+	// own offsets, not the document's, lands on the line above
 	got := Relations(note(src), relationFields)
 	want := []Relation{
 		{"supersedes", "0019", 3},
