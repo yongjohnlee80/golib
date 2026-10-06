@@ -91,9 +91,10 @@ func buildTextField(b tuidecl.Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, errors.New("a TextField takes no children")
 	}
-	var placeholder, echo string
+	var placeholder tuidecl.UIText
+	var echo string
 	consumed, err := tuidecl.ReadProps(b.Props, map[string]tuidecl.Field{
-		"placeholderText": tuidecl.StringField(&placeholder),
+		"placeholderText": tuidecl.UITextField(&placeholder),
 		"echoMode":        tuidecl.EnumField(&echo, EchoMode),
 	})
 	if err != nil {
@@ -111,8 +112,11 @@ func buildTextField(b tuidecl.Build) (tui.Component, []string, error) {
 		widget.WithOnSubmit(raise(accepted)),
 		widget.WithOnEdit(raise(edited)),
 	}
-	if placeholder != "" {
-		opts = append(opts, widget.WithPlaceholder(placeholder))
+	switch {
+	case placeholder.IsMessage():
+		opts = append(opts, widget.WithPlaceholderMessage(placeholder.Message))
+	case placeholder.Plain != "":
+		opts = append(opts, widget.WithPlaceholder(placeholder.Plain))
 	}
 	if echo == "Password" {
 		opts = append(opts, widget.WithMask('•'))

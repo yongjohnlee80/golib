@@ -18,7 +18,8 @@ type checkBoxNode struct {
 	tui.MultiChild
 	ctx     *tui.Context
 	btn     *widget.Button
-	text    string
+	text    UIText
+	shown   string // text as last resolved: a message in the App's language
 	checked bool
 	toggled func()
 	clicked func()
@@ -41,8 +42,15 @@ func (n *checkBoxNode) Init(ctx *tui.Context) {
 	n.MultiChild.Init(ctx)
 }
 
-// Layout is the Button's: the box and its text.
+// Layout is the Button's: the box and its text. A message is looked up here, as every widget
+// looks one up as it is laid out, so the box follows App.SetLanguage.
 func (n *checkBoxNode) Layout(c tui.Constraints) tui.Size {
+	if n.text.IsMessage() {
+		if s := n.ctx.Translate(n.text.Message); s != n.shown {
+			n.shown = s
+			n.relabel()
+		}
+	}
 	sz := n.ctx.LayoutChild(n.btn, c)
 	n.ctx.PlaceChild(n.btn, tui.Rect{W: sz.W, H: sz.H})
 	return sz
@@ -67,13 +75,24 @@ func (n *checkBoxNode) relabel() {
 	if n.checked {
 		box = "[x] "
 	}
-	label, key, _ := mnemonic(n.text)
+	label, key, _ := tui.ParseMnemonic(n.shown)
 	n.btn.SetLabel(box + label)
 	n.btn.SetMnemonic(key)
 }
 
 func (n *checkBoxNode) setText(s string) {
-	n.text = s
+	n.text, n.shown = UIText{Plain: s}, s
+	n.relabel()
+}
+
+// setTextMessage shows m beside the box, in the App's language from the next layout.
+func (n *checkBoxNode) setTextMessage(m tui.Message) {
+	n.text = UIText{Message: m}
+	if n.ctx != nil {
+		n.shown = n.ctx.Translate(m)
+	} else {
+		n.shown = ""
+	}
 	n.relabel()
 }
 
@@ -99,7 +118,7 @@ var checkBoxType = Type{
 	Build:   buildCheckBox,
 	restyle: restyleCheckBox,
 	Setters: map[string]Setter{
-		"text":    setter("a CheckBox", stringOf, (*checkBoxNode).setText),
+		"text":    textSetter("a CheckBox", (*checkBoxNode).setText, (*checkBoxNode).setTextMessage),
 		"checked": setter("a CheckBox", boolOf, (*checkBoxNode).setChecked),
 		"enabled": setter("a CheckBox", boolOf, func(n *checkBoxNode, v bool) { n.btn.SetEnabled(v) }),
 	},

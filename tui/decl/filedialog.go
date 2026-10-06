@@ -47,9 +47,9 @@ type fileMode struct {
 }
 
 var fileModeTable = map[string]fileMode{
-	"OpenFile": {standardButton{name: "Open", label: "&Open", accept: true},
+	"OpenFile": {standardButton{name: "Open", msg: tui.Msg("tui.filedialog.open"), accept: true},
 		func(o ...widget.FileViewOption) widget.FileChooser { return widget.NewFileOpenView(o...) }},
-	"SaveFile": {standardButton{name: "Save", label: "&Save", accept: true},
+	"SaveFile": {standardButton{name: "Save", msg: tui.Msg("tui.filedialog.save"), accept: true},
 		func(o ...widget.FileViewOption) widget.FileChooser { return widget.NewFileSaveView(o...) }},
 }
 
@@ -63,8 +63,8 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	mode := fileModeTable["OpenFile"]
 	var preview bool
 	consumed, err := readProps(b.Props, map[string]field{
-		"title":    into(&s.title, stringOf),
-		"helpText": into(&s.help, stringOf),
+		"title":    into(&s.title, textOf),
+		"helpText": into(&s.help, textOf),
 		"dim":      into(&s.dim, boolOf),
 		"fileMode": into(&mode, fileModes.read),
 		"preview":  into(&preview, boolOf),
@@ -72,7 +72,7 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	fixedHelp := s.help != ""
+	fixedHelp := !s.help.Empty()
 
 	var d *dialogNode
 	opts := []widget.FileViewOption{
@@ -86,10 +86,11 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 			opts = append(opts, widget.WithFileViewPreview(preview))
 		}
 	}
+	var chooser widget.FileChooser
 	if !fixedHelp {
-		opts = append(opts, widget.WithOnHint(func(h string) { d.modal.SetFooter(h) }))
+		opts = append(opts, widget.WithOnHint(func(string) { showHint(d.modal, chooser) }))
 	}
-	chooser := mode.view(opts...)
+	chooser = mode.view(opts...)
 	s.body = chooser
 	// Open (or Save) is the default, as QFileDialog's is: Enter chooses. Close
 	// is a picker's way out, and q presses it where no field takes the letter.
@@ -109,7 +110,7 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 			}
 			chooser.FocusInitial()
 			if !fixedHelp {
-				d.modal.SetFooter(chooser.Hint())
+				showHint(d.modal, chooser)
 			}
 		},
 		acceptArgs: func() []qml.SpecValue { return []qml.SpecValue{strValue(chooser.Selected())} },
@@ -119,9 +120,20 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	return d, consumed, nil
 }
 
+// showHint puts the keys the focused part of view answers to in the dialog's footer. It is the
+// view's message where the view names one, so the footer follows App.SetLanguage while the
+// dialog is open; a view that names none gives its text.
+func showHint(m *widget.Modal, view widget.FileChooser) {
+	if v, ok := view.(interface{ HintMessage() tui.Message }); ok {
+		m.SetFooterMessage(v.HintMessage())
+		return
+	}
+	m.SetFooter(view.Hint())
+}
+
 // closeButton is every picker's way out: Close, which q also presses outside a
 // field.
-var closeButton = standardButton{name: "Close", label: "Close (&q)"}
+var closeButton = standardButton{name: "Close", msg: tui.Msg("tui.filedialog.close")}
 
 // FOLDER DIALOGS — Qt 6's FolderDialog, over widget.FileFolderView: a path
 // field that follows the listing, the listing and its preview, and Select.
@@ -141,8 +153,8 @@ func buildFolderDialog(b Build) (tui.Component, []string, error) {
 	s := dialogSpec{dim: true, align: widget.ButtonsRight, closeOnQ: true}
 	var preview bool
 	consumed, err := readProps(b.Props, map[string]field{
-		"title":    into(&s.title, stringOf),
-		"helpText": into(&s.help, stringOf),
+		"title":    into(&s.title, textOf),
+		"helpText": into(&s.help, textOf),
 		"dim":      into(&s.dim, boolOf),
 		"preview":  into(&preview, boolOf),
 	})
@@ -160,8 +172,9 @@ func buildFolderDialog(b Build) (tui.Component, []string, error) {
 			fields = append(fields, c)
 		}
 	}
-	fixedHelp := s.help != ""
+	fixedHelp := !s.help.Empty()
 	var d *dialogNode
+	var chooser *widget.FileFolderView
 	opts := []widget.FileViewOption{widget.WithFileViewSource(b.Files), widget.WithFileViewFields(fields...)}
 	for _, name := range consumed {
 		if name == "preview" {
@@ -169,13 +182,14 @@ func buildFolderDialog(b Build) (tui.Component, []string, error) {
 		}
 	}
 	if !fixedHelp {
-		opts = append(opts, widget.WithOnHint(func(h string) { d.modal.SetFooter(h) }))
+		opts = append(opts, widget.WithOnHint(func(string) { showHint(d.modal, chooser) }))
 	}
-	chooser := widget.NewFileFolderView(opts...)
+	chooser = widget.NewFileFolderView(opts...)
 	s.body = chooser
 	// Select is the default: Enter in a field that leaves it unclaimed (a
 	// name typed) chooses the folder the path holds.
-	s.buttons, s.defaultAt = []standardButton{closeButton, {name: "Select", label: "&Select", accept: true}}, 1
+	s.buttons, s.defaultAt = []standardButton{closeButton,
+		{name: "Select", msg: tui.Msg("tui.filedialog.select"), accept: true}}, 1
 	s.hooks = dialogHooks{
 		gate: chooser.Confirm,
 		opened: func() {
@@ -186,7 +200,7 @@ func buildFolderDialog(b Build) (tui.Component, []string, error) {
 			}
 			chooser.FocusInitial()
 			if !fixedHelp {
-				d.modal.SetFooter(chooser.Hint())
+				showHint(d.modal, chooser)
 			}
 		},
 		acceptArgs: func() []qml.SpecValue { return []qml.SpecValue{strValue(chooser.Selected())} },

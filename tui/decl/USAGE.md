@@ -17,6 +17,7 @@ below is a trimmed piece of it.
 6. [Your own Go widgets in QML](#6-your-own-go-widgets-in-qml)
 7. [A QML screen inside a Go program](#7-a-qml-screen-inside-a-go-program)
    - [7b. Syntax highlighting](#7b-syntax-highlighting)
+   - [7c. Languages](#7c-languages)
 8. [Reloading](#8-reloading)
 9. [Using both safely — the rules](#9-using-both-safely--the-rules)
 10. [Best practice](#10-best-practice)
@@ -507,6 +508,56 @@ Window {
 - A style left unset paints as `syntax.normal`, and that unset as the Editor's
   text; set the ones your theme distinguishes.
 
+## 7c. Languages
+
+**Write UI text as a message id, and ship a catalog per language.** `qsTrId` is Qt's
+id-based translation; a property that shows UI text takes it in place of a string:
+
+```qml
+MenuBar { Menu { title: qsTrId("editor.menu.file")
+    MenuItem { text: qsTrId("editor.file.save"); onTriggered: App.saveFile() } } }
+Dialog { title: qsTrId("editor.quit.title"); standardButtons: Dialog.Yes | Dialog.No }
+```
+
+```go
+//go:embed i18n
+var catalogs embed.FS
+
+p, err := tuidecl.NewProgram(
+    tuidecl.Layout(ui, "editor.qml"),
+    tuidecl.Translations(catalogs, "i18n", "editor"),   // i18n/editor_en.xml, editor_ko_KR.xml, …
+    tuidecl.AppOptions(tui.WithLanguage(lang)),         // the language it starts in
+    …)
+…
+p.App().SetLanguage("ko_KR")                            // from a handler, a menu row, a setting
+```
+
+- **A catalog is Qt's TS XML**, one per language, named `<prefix>_<language>.xml`.
+  `Translations` layers them over golib's own catalogs (its buttons, file dialogs and
+  hints, in English, Korean, Japanese, Simplified Chinese, Brazilian Portuguese and
+  Spanish). A message of yours replaces golib's with the same id, so a program can reword
+  `tui.button.cancel`, and a language golib does not ship is yours alone: golib's text
+  falls back to English in it. A catalog that does not load fails `NewProgram`, naming the
+  file.
+- **`qsTrId` yields the message, not its text.** The widget looks the message up each
+  time it is laid out, so `SetLanguage` relabels everything on the next frame, an open
+  dialog included. Nothing is rebuilt, nothing is republished, and focus, scroll and
+  typed text stay. A label that grows reflows in the same frame.
+- **A host's message is a source like any other**: `Sources(map[string]any{"App.mode":
+  tui.Msg("editor.mode.insert")})` and `left: App.mode` show it in the App's language.
+- **A mnemonic keeps English's letter.** Alt+F opens File in every language. A
+  translation that marks another letter, or none, is shown with English's appended
+  (`파일(f)`), so a translator's mistake never moves a key.
+- **What takes a message:** `Text.text`, `Button.text`, `CheckBox.text`, `MenuItem.text`,
+  `Menu.title`, `Frame.title`, `StatusBar`'s `left`, `center` and `right`, the dialogs'
+  `title` and `helpText`, and `TextField.placeholderText`. An `Editor`'s `text` is a
+  document, not UI text, and takes a string only. `TabView`'s `Tab.title`,
+  `TableViewColumn.title` and `ComboBox.placeholderText` take a string for now.
+- **Under `HotReload` the catalogs are followed too.** A saved catalog relabels the
+  screen; one that does not parse is refused like a broken layout. A reload is applied
+  whole or not at all: a good catalog saved beside a broken layout waits for the layout.
+- **Test every language** with `decltest.CheckLanguages(t, programOptions()...)` (§11).
+
 ## 8. Reloading
 
 **While developing, let the program follow its files.** Read the QML from disk
@@ -683,6 +734,17 @@ editor.qml with import editor.theme.mono in place of editor.theme.retro:
 It runs nothing: providers subscribe and are released, and no App is built.
 What it cannot know is a component's use-site properties — an unused component
 is mounted as `Name {}`, the way the first use without overrides would be.
+
+**`decltest.CheckLanguages` is the language walk.** It takes the same options and judges
+every language the program's catalogs hold, golib's and yours: a message a language
+translates that English lacks (nothing falls back to it), a translation marking another
+letter than English's (shown with English's instead), and two rows of one menu level
+answering to the same key, in the languages where they do. Each is its own failure:
+
+```
+ko_KR: message "editor.file.save" is "저장(&j)", marking 'j' where English marks 's'; it is shown with English's letter
+menu "File": "Save" and "Save As…" both answer to 's' (in en, ko_KR); the first keeps the key
+```
 
 **`decltest.Run` runs the program** on a `tui.NewTestBackend(w, h)` and stops it
 when the test ends. A handler error fails the test unless the options give an

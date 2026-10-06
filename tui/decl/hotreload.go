@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
+	"github.com/yongjohnlee80/golib/tui/i18n"
 )
 
 // HOT RELOAD — the running program follows its QML files, for development.
@@ -129,6 +131,23 @@ func snapshotOf(c programConfig) snapshot {
 			}
 		}
 	}
+	// Catalogs are followed as the layout's folders are: a saved translation is a change.
+	for i, t := range c.translations {
+		entries, err := fs.ReadDir(t.fsys, t.dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || !strings.HasPrefix(name, t.prefix+"_") || path.Ext(name) != ".xml" {
+				continue
+			}
+			file := path.Join(t.dir, name)
+			if src, err := fs.ReadFile(t.fsys, file); err == nil {
+				out[fmt.Sprintf("i18n%d:%s", i, file)] = sha256.Sum256(src)
+			}
+		}
+	}
 	return out
 }
 
@@ -187,6 +206,18 @@ func (p *Program) hotReload() {
 			p.keep(err)
 		}
 	}
+	// The catalogs are READ first and INSTALLED last: a reload is applied whole or not at all,
+	// so a bad catalog leaves the layout alone, and a good one saved beside a bad layout never
+	// relabels the old screen.
+	var catalogs *i18n.Set
+	if len(p.cfg.translations) > 0 {
+		s, err := loadTranslations(p.cfg)
+		if err != nil {
+			refuse(fmt.Errorf("hot reload: %w", err))
+			return
+		}
+		catalogs = s
+	}
 	src, err := fs.ReadFile(p.cfg.layoutFS, p.cfg.layoutFile)
 	if err != nil {
 		refuse(fmt.Errorf("hot reload: %w", err))
@@ -214,6 +245,10 @@ func (p *Program) hotReload() {
 	if err != nil {
 		refuse(err)
 		return
+	}
+	if catalogs != nil {
+		// To the App alone: the poller reads the config from its own goroutine.
+		p.app.SetTranslations(catalogs)
 	}
 	if h.onReload != nil {
 		h.onReload(res)

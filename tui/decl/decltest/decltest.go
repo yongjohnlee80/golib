@@ -32,14 +32,29 @@ import (
 // the test output lists every broken file, not the first.
 func Check(t testing.TB, opts ...tuidecl.ProgramOption) {
 	t.Helper()
-	err := tuidecl.Check(opts...)
+	report(t, tuidecl.Check(opts...))
+}
+
+// CheckLanguages fails t for every problem [tuidecl.CheckLanguages] finds in the program's
+// catalogs, one error each: a message English lacks, a marker on another letter than
+// English's, and two menu rows answering to one key. Run it over the program's own options,
+// so it judges the program's own catalogs, as a theme walk judges its themes.
+func CheckLanguages(t testing.TB, opts ...tuidecl.ProgramOption) {
+	t.Helper()
+	report(t, tuidecl.CheckLanguages(opts...))
+}
+
+func report(t testing.TB, err error) {
+	t.Helper()
 	if err == nil {
 		return
 	}
 	var joined interface{ Unwrap() []error }
 	if errors.As(err, &joined) {
 		for _, e := range joined.Unwrap() {
-			t.Errorf("%v", e)
+			if e != nil {
+				t.Errorf("%v", e)
+			}
 		}
 		return
 	}

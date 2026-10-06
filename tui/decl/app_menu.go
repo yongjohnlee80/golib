@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"unicode"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -116,31 +115,14 @@ func (n *menuNode) SetVisible(on bool) {
 	}
 }
 
-// mnemonic splits `&`-marked text into the label, the hotkey and its index.
-func mnemonic(text string) (label string, hotkey rune, idx int) {
-	idx = -1
-	out := make([]rune, 0, len(text))
-	rs := []rune(text)
-	for i := 0; i < len(rs); i++ {
-		if rs[i] == '&' && i+1 < len(rs) {
-			if rs[i+1] == '&' {
-				out = append(out, '&')
-				i++
-				continue
-			}
-			if idx < 0 {
-				idx = len(out)
-				hotkey = unicode.ToLower(rs[i+1])
-			}
-			continue
-		}
-		out = append(out, rs[i])
+// withMnemonic gives a row its text: plain text with its "&" marker read here, or a
+// catalog message the menu resolves in the App's language as it lays the row out.
+func withMnemonic(m widget.MenuItemModel, text UIText) widget.MenuItemModel {
+	if text.IsMessage() {
+		m.LabelMsg = text.Message
+		return m
 	}
-	return string(out), hotkey, idx
-}
-
-func withMnemonic(m widget.MenuItemModel, text string) widget.MenuItemModel {
-	label, key, idx := mnemonic(text)
+	label, key, idx := tui.ParseMnemonic(text.Plain)
 	m.Label = label
 	if idx >= 0 {
 		m.Hotkey, m.HotkeyIdx = key, idx
@@ -154,10 +136,11 @@ func buildMenuItem(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, fmt.Errorf("MenuItem takes no children; use a Menu for a submenu (at %s)", b.Pos)
 	}
-	var text, group, shortcut string
+	var text UIText
+	var group, shortcut string
 	var checkable bool
 	consumed, err := readProps(b.Props, map[string]field{
-		"text":      into(&text, stringOf),
+		"text":      into(&text, textOf),
 		"group":     into(&group, stringOf),
 		"shortcut":  into(&shortcut, stringOf),
 		"checkable": into(&checkable, boolOf),
@@ -165,7 +148,7 @@ func buildMenuItem(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if text == "" {
+	if text.Empty() {
 		return nil, nil, fmt.Errorf("MenuItem needs text (at %s)", b.Pos)
 	}
 
@@ -210,16 +193,16 @@ var menuAligns = enum[bool]{values: map[string]bool{
 }}
 
 func buildMenu(b Build) (tui.Component, []string, error) {
-	var title string
+	var title UIText
 	var right bool
 	consumed, err := readProps(b.Props, map[string]field{
-		"title": into(&title, stringOf),
+		"title": into(&title, textOf),
 		"align": into(&right, menuAligns.read),
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	if title == "" {
+	if title.Empty() {
 		return nil, nil, fmt.Errorf("Menu needs a title (at %s)", b.Pos)
 	}
 	rows, err := menuRows(b.Children, "a Menu holds MenuItem, MenuSeparator and Menu rows only")
@@ -338,15 +321,11 @@ func (m *menuBarNode) project() error {
 		return n.model
 	}
 	var model []widget.MenuItemModel
-	var categories []menuCategory
 	anon := 0
 	for _, n := range m.rows {
-		row := adopt(n, rowID("", n, &anon))
-		model = append(model, row)
-		// A top-level Menu's mnemonic is its ACCESS KEY: Alt+F opens File.
-		if row.Hotkey != 0 {
-			categories = append(categories, menuCategory{hotkey: row.Hotkey, id: row.ID})
-		}
+		// A top-level Menu's mnemonic is its ACCESS KEY, Alt+F opening File: accessKeys reads
+		// it from the menu.
+		model = append(model, adopt(n, rowID("", n, &anon)))
 	}
 	if err := m.menu.SetModel(model); err != nil {
 		return fmt.Errorf("the menu is malformed: %w", err)
@@ -354,7 +333,7 @@ func (m *menuBarNode) project() error {
 	for _, n := range nodes {
 		n.owner, n.bar = m.menu, m
 	}
-	m.triggers, m.categories, m.byID = triggers, categories, byID
+	m.triggers, m.byID = triggers, byID
 	return nil
 }
 

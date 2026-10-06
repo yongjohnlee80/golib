@@ -277,10 +277,9 @@ func (w *windowNode) HandleEvent(ev tui.Event) bool {
 // menuBarNode is the component a `MenuBar` declaration builds: golib's MenuBar,
 // mounted, and the access keys of its categories.
 type menuBarNode struct {
-	ctx        *tui.Context
-	bar        *widget.MenuBar
-	menu       *widget.Menu
-	categories []menuCategory
+	ctx  *tui.Context
+	bar  *widget.MenuBar
+	menu *widget.Menu
 	// rows are the bar's Menus, and triggers each row's onTriggered by its
 	// action — both as the last projection left them (see project).
 	rows     []*menuNode
@@ -302,6 +301,19 @@ type menuBarNode struct {
 type menuCategory struct {
 	hotkey rune
 	id     widget.ItemID
+}
+
+// accessKeys is each top-level Menu's access key as the bar shows it now. A title from a
+// catalog has its key only once the menu has looked it up in the App's language, so the keys
+// are read from the menu, not kept from when the rows were built.
+func (m *menuBarNode) accessKeys() []menuCategory {
+	var out []menuCategory
+	for _, row := range m.menu.Model() {
+		if row.Hotkey != 0 {
+			out = append(out, menuCategory{hotkey: row.Hotkey, id: row.ID})
+		}
+	}
+	return out
 }
 
 func (m *menuBarNode) Init(ctx *tui.Context) { m.ctx = ctx; ctx.Mount(m.bar) }
@@ -375,8 +387,8 @@ func (m *menuBarNode) activate() {
 		return
 	}
 	m.show()
-	if len(m.categories) > 0 {
-		m.menu.Select(m.categories[0].id)
+	if keys := m.accessKeys(); len(keys) > 0 {
+		m.menu.Select(keys[0].id)
 	}
 	ctx.RequestFocus()
 }
@@ -386,7 +398,7 @@ func (m *menuBarNode) activate() {
 // terminal sends Alt+Shift+F as ESC F — 'F' with Alt alone.
 func (m *menuBarNode) openHotkey(r rune) bool {
 	r = unicode.ToLower(r)
-	for _, c := range m.categories {
+	for _, c := range m.accessKeys() {
 		if c.hotkey == r {
 			wasHidden := m.autoHide && !m.shown
 			m.activate()
