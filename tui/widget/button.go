@@ -81,6 +81,13 @@ type Button struct {
 	// beside it — it is the CONTAINER, which knows the whole set and which of
 	// them are enabled, that resolves one.
 	mnemonic rune
+	// labelMsg is the catalog message the label shows, resolved each layout; zero when the
+	// label is plain text. markAt is the label cluster its marker underlines, when markSet:
+	// a translation decides where its letter sits, so the underline follows the marker rather
+	// than the first matching letter.
+	labelMsg tui.Message
+	markAt   int
+	markSet  bool
 
 	enabled  bool
 	armed    bool
@@ -120,6 +127,16 @@ func NewButton(label string, opts ...ButtonOption) *Button {
 		}
 	}
 	return b
+}
+
+// WithLabelMessage labels the button with a catalog message instead of text: the label and
+// its mnemonic come from the translation, in the App's language, each time the button is laid
+// out. Until it is mounted it shows golib's English for one of golib's own ids.
+func WithLabelMessage(m tui.Message) ButtonOption {
+	return func(b *Button) {
+		b.labelMsg = m
+		b.applyText(englishText(m))
+	}
 }
 
 // WithDefault makes the button its dialog's DEFAULT — QPushButton.default:
@@ -229,29 +246,50 @@ func (b *Button) Role() ButtonRole { return b.role }
 // giving the buttons it adopts their answers (a dialog's button box).
 func (b *Button) SetRole(r ButtonRole) { b.role = r }
 
-// SetMnemonic changes the key that reaches the button directly; 0 for none.
+// SetMnemonic changes the key that reaches the button directly; 0 for none. The underline
+// then marks the first letter of the label that matches it.
 func (b *Button) SetMnemonic(r rune) {
 	if b.mnemonic == r {
 		return
 	}
 	b.mnemonic = r
+	b.markSet = false
 	b.MarkDirty()
 }
 
 // Label reports the button's text.
 func (b *Button) Label() string { return b.label }
 
-// SetLabel replaces the text.
+// SetLabel replaces the text, shown as given. It ends a label set by [Button.SetLabelMessage].
 func (b *Button) SetLabel(s string) {
-	if b.label == s {
+	if b.label == s && b.labelMsg == (tui.Message{}) {
 		return
 	}
 	b.label = s
+	b.labelMsg, b.markSet = tui.Message{}, false
 	// RequestLayout, not MarkDirty: the label IS the button's intrinsic width,
 	// so a parent that only repainted would keep stale geometry and stale hit
 	// bounds after a short-to-long change. RequestLayout schedules the repaint
 	// too, so a second invalidation would be redundant.
 	b.RequestLayout()
+}
+
+// SetLabelMessage labels the button with a catalog message, as [WithLabelMessage] does:
+// the label and its mnemonic follow the App's language from the next layout.
+func (b *Button) SetLabelMessage(m tui.Message) {
+	if b.labelMsg == m {
+		return
+	}
+	b.labelMsg = m
+	b.applyText(b.translate(m))
+	b.RequestLayout()
+}
+
+// applyText shows "&"-marked text: the label, its mnemonic, and where the marker sits.
+func (b *Button) applyText(text string) {
+	label, key, idx := tui.ParseMnemonic(text)
+	b.label, b.mnemonic = label, key
+	b.markAt, b.markSet = idx, idx >= 0
 }
 
 // Enabled reports whether the button can be activated.
@@ -399,6 +437,11 @@ func activateKeys(ev tui.Event) (tui.Action, bool) {
 // Layout sizes the button to its label plus one cell of padding either side,
 // clamped to the offered constraints.
 func (b *Button) Layout(cs tui.Constraints) tui.Size {
+	// Resolved here, never in Render: a language change always lays the tree out again, so
+	// the text measured now is the text painted.
+	if b.labelMsg != (tui.Message{}) {
+		b.applyText(b.translate(b.labelMsg))
+	}
 	// measure, not a rune count. A rune count is wrong in three separate ways:
 	// a CJK ideograph occupies two columns, a combining mark occupies none, and
 	// an emoji ZWJ sequence is many runes in one cell. Base.measure asks the
@@ -447,7 +490,19 @@ func (b *Button) Render(s tui.Surface) {
 	// terminal draws: painting rune by rune puts a zero-width combining mark in
 	// its own cell, where it overwrites the character it belongs to.
 	marked := false
+	// The marker's cluster, counted in the painted string: past the opening decoration.
+	at := -1
+	if b.markSet {
+		at = b.markAt
+		if b.deco.open != "" || b.deco.close != "" {
+			for range tui.Graphemes(b.deco.open + " ") {
+				at++
+			}
+		}
+	}
+	i := -1
 	for cluster := range tui.Graphemes(painted) {
+		i++
 		cw := s.StringWidth(cluster)
 		// Stop before writing a cluster that does not fit. Half of a
 		// double-width cluster in the final column is a broken cell rather than
@@ -459,7 +514,11 @@ func (b *Button) Render(s tui.Surface) {
 		// THE FIRST MATCHING CLUSTER ONLY. A mnemonic names one key, so marking
 		// every "o" in "Choose Folder" would advertise three ways in where
 		// there is one.
-		if !marked && b.mnemonic != 0 && eqFold([]rune(cluster)[0], b.mnemonic) {
+		if b.markSet {
+			if i == at {
+				cst = st.Underline(true)
+			}
+		} else if !marked && b.mnemonic != 0 && eqFold([]rune(cluster)[0], b.mnemonic) {
 			cst = st.Underline(true)
 			marked = true
 		}

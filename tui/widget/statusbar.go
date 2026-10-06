@@ -80,8 +80,10 @@ var _ tui.Component = (*StatusBar)(nil)
 
 type segment struct {
 	text string
-	st   style.Style
-	set  bool
+	// msg is the catalog message the segment shows, resolved each layout; zero for plain text.
+	msg tui.Message
+	st  style.Style
+	set bool
 }
 
 // StatusBarOption customizes a StatusBar under construction.
@@ -113,7 +115,7 @@ func setSegment(seg *segment, text string, st []style.Style) {
 	if len(st) > 1 {
 		panic(fmt.Sprintf("widget: StatusBar segment: %d styles (want at most 1)", len(st)))
 	}
-	seg.text = text
+	seg.text, seg.msg = text, tui.Message{}
 	seg.set = len(st) == 1
 	if seg.set {
 		seg.st = st[0]
@@ -136,6 +138,26 @@ func (s *StatusBar) SetCenter(text string, st ...style.Style) {
 func (s *StatusBar) SetRight(text string, st ...style.Style) {
 	setSegment(&s.right, text, st)
 	s.MarkDirty()
+}
+
+// SetLeftMessage shows a catalog message in the left segment, in the App's language from the
+// next layout (optional per-segment style). [StatusBar.SetLeft] ends it.
+func (s *StatusBar) SetLeftMessage(m tui.Message, st ...style.Style) { s.setMessage(&s.left, m, st) }
+
+// SetCenterMessage shows a catalog message in the center segment, as
+// [StatusBar.SetLeftMessage] does.
+func (s *StatusBar) SetCenterMessage(m tui.Message, st ...style.Style) {
+	s.setMessage(&s.center, m, st)
+}
+
+// SetRightMessage shows a catalog message in the right segment, as
+// [StatusBar.SetLeftMessage] does.
+func (s *StatusBar) SetRightMessage(m tui.Message, st ...style.Style) { s.setMessage(&s.right, m, st) }
+
+func (s *StatusBar) setMessage(seg *segment, m tui.Message, st []style.Style) {
+	setSegment(seg, s.translate(m), st)
+	seg.msg = m
+	s.RequestLayout()
 }
 
 // Init mounts the widgets. Re-entrant across remounts.
@@ -215,6 +237,11 @@ func (s *StatusBar) Children() iter.Seq[tui.Component] {
 // (a Text truncates); one offered none is given none. The normal widgets are laid out the same
 // way from the left end, in what the permanent ones left.
 func (s *StatusBar) Layout(c tui.Constraints) tui.Size {
+	for _, seg := range []*segment{&s.left, &s.center, &s.right} {
+		if seg.msg != (tui.Message{}) {
+			seg.text = s.translate(seg.msg)
+		}
+	}
 	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, c.MinW), H: 1})
 	// right to left: the last added sits at the end
 	x := sz.W

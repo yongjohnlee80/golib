@@ -38,6 +38,11 @@ type FilePreview struct {
 	// shown is the file on show, "" for a message rather than a file's text.
 	forFile func(name string) highlight.Highlighter
 	shown   string
+	// note is the message the preview shows in place of a file's text (a folder, a binary
+	// file), with its argument; zero while it shows a file. It is resolved each layout, so the
+	// note reads in the App's language.
+	note    tui.Message
+	noteArg string
 }
 
 // NewFilePreview builds an empty preview, dressed like the panes beside it.
@@ -51,7 +56,8 @@ func NewFilePreview(st FilePaneStyles, styled bool) *FilePreview {
 	// Escape still reaches a dialog around it.
 	p := &FilePreview{view: NewEditor(opts...)}
 	p.view.SetReadOnly(true)
-	p.box = newFilePane(p.view, "Preview", st, styled)
+	p.box = newFilePane(p.view, "", st, styled)
+	p.box.SetTitleMessage(tui.Msg("tui.files.preview"))
 	return p
 }
 
@@ -65,6 +71,13 @@ func (p *FilePreview) Init(ctx *tui.Context) {
 func (p *FilePreview) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, 40), H: boundedMax(c.MaxH, 12)})
 	ctx := p.Context()
+	// The note is the view's text. Setting it edits the view, which a pure phase must not do,
+	// so a note that reads differently in the new language is put in at the commit.
+	if p.note != (tui.Message{}) {
+		if text := p.noteText(); text != p.view.Value() {
+			ctx.AfterLayout("preview-note", func() { p.view.SetValue(text) })
+		}
+	}
 	ctx.LayoutChild(p.box, tui.Tight(sz))
 	ctx.PlaceChild(p.box, tui.Rect{W: sz.W, H: sz.H})
 	return sz
@@ -80,10 +93,12 @@ func (p *FilePreview) HandleEvent(tui.Event) bool { return false }
 // to show. Any fs.FS will do — the preview reads a remote file as it reads a
 // local one.
 func (p *FilePreview) Show(src FileSource, path string, folder bool) {
-	text, ok := previewOf(src.or().FS, path, folder)
-	p.shown = ""
-	if ok {
+	text, note, arg := previewOf(src.or().FS, path, folder)
+	p.shown, p.note, p.noteArg = "", note, arg
+	if note == (tui.Message{}) {
 		p.shown = path
+	} else {
+		text = p.noteText()
 	}
 	p.view.SetValue(text)
 	p.highlight()
@@ -116,33 +131,40 @@ func (p *FilePreview) Focused() bool {
 	return ctx != nil && ctx.Focused()
 }
 
-// Hint is the keys the preview answers to, for a footer.
-func (p *FilePreview) Hint() string { return "j/k:scroll  gg/G:top/end" }
+// Hint is the keys the preview answers to, for a footer, in the App's language.
+func (p *FilePreview) Hint() string { return p.translate(p.HintMessage()) }
 
-// previewOf is what a preview shows for a path, and whether it is the file's
-// text rather than a message about it.
-func previewOf(fsys fs.FS, path string, folder bool) (string, bool) {
+// HintMessage is [FilePreview.Hint] as a catalog message, for a footer that follows the
+// language by itself.
+func (p *FilePreview) HintMessage() tui.Message { return tui.Msg("tui.files.hint.preview") }
+
+// noteText is the note in the App's language, its argument filled in.
+func (p *FilePreview) noteText() string { return withArg(p.translate(p.note), p.noteArg) }
+
+// previewOf is what a preview shows for a path: the file's text, or a note about it (a
+// folder, a binary file) with the note's argument.
+func previewOf(fsys fs.FS, path string, folder bool) (text string, note tui.Message, arg string) {
 	if folder {
-		return "(folder)", false
+		return "", tui.Msg("tui.files.isFolder"), ""
 	}
 	f, err := fsys.Open(path)
 	if err != nil {
-		return "(cannot read: " + err.Error() + ")", false
+		return "", tui.Msg("tui.files.cannotRead"), err.Error()
 	}
 	defer f.Close()
 	buf := make([]byte, maxPreview)
 	n, err := io.ReadFull(f, buf)
 	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
-		return "(cannot read: " + err.Error() + ")", false
+		return "", tui.Msg("tui.files.cannotRead"), err.Error()
 	}
 	buf = buf[:n]
 	if bytes.IndexByte(buf, 0) >= 0 || !utf8.Valid(trimPartialRune(buf)) {
-		return "(binary file — no preview)", false
+		return "", tui.Msg("tui.files.binary"), ""
 	}
 	if n == 0 {
-		return "(empty file)", false
+		return "", tui.Msg("tui.files.emptyFile"), ""
 	}
-	return string(buf), true
+	return string(buf), tui.Message{}, ""
 }
 
 // trimPartialRune drops a rune cut in half by the read limit, so a text file

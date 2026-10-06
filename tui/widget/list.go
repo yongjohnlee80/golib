@@ -146,6 +146,8 @@ type List[T any] struct {
 	w, h         int
 
 	emptyText string // shown (muted) in place of rows when the source is empty
+	// emptyMsg is the catalog message emptyText shows, resolved each layout; zero for plain text.
+	emptyMsg tui.Message
 
 	styles ListStyles
 }
@@ -198,7 +200,13 @@ func WithMultiSelect[T any](enabled bool) ListOption[T] {
 // the source has no items (e.g. "No results yet"). Empty by default: an empty
 // list paints nothing.
 func WithEmptyText[T any](s string) ListOption[T] {
-	return func(l *List[T]) { l.emptyText = s }
+	return func(l *List[T]) { l.emptyText, l.emptyMsg = s, tui.Message{} }
+}
+
+// WithEmptyTextMessage sets the placeholder to a catalog message, shown in the App's
+// language.
+func WithEmptyTextMessage[T any](m tui.Message) ListOption[T] {
+	return func(l *List[T]) { l.emptyText, l.emptyMsg = englishText(m), m }
 }
 
 // WithListStyles overrides the style hooks; zero fields keep defaults.
@@ -513,6 +521,9 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 // Layout fills the height it is given. Offered an unbounded one, it asks for
 // its rows — its content, as a Qt view's implicit height is — at least one.
 func (l *List[T]) Layout(c tui.Constraints) tui.Size {
+	if l.emptyMsg != (tui.Message{}) {
+		l.emptyText = l.translate(l.emptyMsg)
+	}
 	l.w = boundedMax(c.MaxW, max(c.MinW, 1))
 	l.h = boundedMax(c.MaxH, max(c.MinH, l.count, 1))
 	l.ensureVisible()

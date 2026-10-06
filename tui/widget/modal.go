@@ -179,7 +179,13 @@ func WithOnDismiss(fn func(DismissReason)) ModalOption {
 // WithTitle for Box; this one is qualified, and ModalStyle.WithTitle — a method
 // — sets the title's LOOK rather than its text.
 func WithModalTitle(s string) ModalOption {
-	return func(m *Modal) { m.card.title = s }
+	return func(m *Modal) { m.card.title, m.card.titleMsg = s, tui.Message{} }
+}
+
+// WithModalTitleMessage sets the card's title to a catalog message, shown in the App's
+// language.
+func WithModalTitleMessage(msg tui.Message) ModalOption {
+	return func(m *Modal) { m.card.title, m.card.titleMsg = englishText(msg), msg }
 }
 
 // WithModalRule draws a line across the card between the body and the buttons,
@@ -222,12 +228,13 @@ func WithModalFooter(text string) ModalOption {
 	return func(m *Modal) { m.card.footer = text }
 }
 
-// SetTitle replaces the title in the card's top border.
+// SetTitle replaces the title in the card's top border, shown as given. It ends a title set
+// by [Modal.SetTitleMessage].
 func (m *Modal) SetTitle(s string) {
-	if m.card.title == s {
+	if m.card.title == s && m.card.titleMsg == (tui.Message{}) {
 		return
 	}
-	m.card.title = s
+	m.card.title, m.card.titleMsg = s, tui.Message{}
 	if ctx := m.card.Context(); ctx != nil {
 		ctx.RequestLayout() // the title sets a floor on the card's width
 	}
@@ -247,10 +254,28 @@ func (m *Modal) SetRule(v bool) {
 // SetFooter replaces the help line under the buttons — for a dialog whose keys
 // depend on where the keyboard is inside it. "" removes it.
 func (m *Modal) SetFooter(text string) {
-	if m.card.footer == text {
+	if m.card.footer == text && m.card.footerMsg == (tui.Message{}) {
 		return
 	}
-	m.card.footer = text
+	m.card.footer, m.card.footerMsg = text, tui.Message{}
+	if ctx := m.card.Context(); ctx != nil {
+		ctx.RequestLayout()
+	}
+}
+
+// SetTitleMessage shows a catalog message as the title, in the App's language from the next
+// layout.
+func (m *Modal) SetTitleMessage(msg tui.Message) {
+	m.card.title, m.card.titleMsg = m.card.translate(msg), msg
+	if ctx := m.card.Context(); ctx != nil {
+		ctx.RequestLayout()
+	}
+}
+
+// SetFooterMessage shows a catalog message as the help line under the buttons, in the App's
+// language from the next layout: a footer that stays right when the language changes.
+func (m *Modal) SetFooterMessage(msg tui.Message) {
+	m.card.footer, m.card.footerMsg = m.card.translate(msg), msg
 	if ctx := m.card.Context(); ctx != nil {
 		ctx.RequestLayout()
 	}

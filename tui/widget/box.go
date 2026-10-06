@@ -93,6 +93,7 @@ type Box struct {
 	child tui.Component
 
 	title       string
+	titleMsg    tui.Message // the catalog message the title shows, resolved each layout; zero for plain text
 	titleAlign  style.Align
 	status      string
 	statusAlign style.Align
@@ -235,9 +236,19 @@ func boxFocused(st style.Style, set bool) style.Style {
 
 // SetTitle replaces the title. Repaint only: the title lives in the border
 // row, so geometry is unchanged.
+//
+// It ends a title set by [Box.SetTitleMessage].
 func (x *Box) SetTitle(s string) {
-	x.title = s
+	x.title, x.titleMsg = s, tui.Message{}
 	x.MarkDirty()
+}
+
+// SetTitleMessage shows a catalog message as the title, in the App's language from the next
+// layout.
+func (x *Box) SetTitleMessage(m tui.Message) {
+	x.titleMsg = m
+	x.title = x.translate(m)
+	x.RequestLayout()
 }
 
 // SetStatus replaces the bottom-border status line. Repaint only.
@@ -348,6 +359,9 @@ func borderEdgeSizes(st style.Style) (t, r, b, l int) {
 // frame. Title and status cost zero extra rows: they render inside the
 // border rows.
 func (x *Box) Layout(c tui.Constraints) tui.Size {
+	if x.titleMsg != (tui.Message{}) {
+		x.title = x.translate(x.titleMsg)
+	}
 	fh := x.base.GetHorizontalFrameSize()
 	fv := x.base.GetVerticalFrameSize()
 	if x.child == nil {

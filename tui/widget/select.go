@@ -114,6 +114,9 @@ type Select[T any] struct {
 	affordance bool
 
 	loadErr error
+	// errText is loadErr as the field shows it, in the App's language: set when the error
+	// arrives and again each layout.
+	errText string
 
 	// placeholder is shown, muted, while NOTHING is selected. Empty by
 	// default, which renders a blank field -- indistinguishable from a field
@@ -388,6 +391,7 @@ func (s *Select[T]) HandleEvent(ev tui.Event) bool {
 		}
 		if e.Err != nil {
 			s.loadErr = e.Err
+			s.errText = s.errorText()
 			s.MarkDirty()
 			return true
 		}
@@ -411,6 +415,9 @@ func (s *Select[T]) HandleEvent(ev tui.Event) bool {
 
 // Layout: closed = height 1, capped content width or WithWidth.
 func (s *Select[T]) Layout(c tui.Constraints) tui.Size {
+	if s.loadErr != nil {
+		s.errText = s.errorText()
+	}
 	w := s.fixedW
 	if w == 0 {
 		w = min(max(max(s.longestLabel(), s.measure(s.placeholder))+3, 6), s.maxW)
@@ -418,6 +425,11 @@ func (s *Select[T]) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: w, H: 1})
 	s.fieldW = min(w, sz.W)
 	return sz
+}
+
+// errorText is the field's report of a failed load, in the App's language.
+func (s *Select[T]) errorText() string {
+	return withArg(s.translate(tui.Msg("tui.select.error")), s.loadErr.Error())
 }
 
 func (s *Select[T]) longestLabel() int {
@@ -445,7 +457,7 @@ func (s *Select[T]) Render(sur tui.Surface) {
 	}
 	if s.loadErr != nil {
 		st = s.errSt.Inherit(st)
-		label = "error: " + s.loadErr.Error()
+		label = s.errText
 	}
 	// THE FOCUS LOOK GOES ON LAST, so it marks the field whatever it is
 	// currently saying -- a selection, a placeholder, or a load error.

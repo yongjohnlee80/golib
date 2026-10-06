@@ -55,6 +55,10 @@
         <source>Folder</source>
         <translation>文件夹</translation>
     </message>
+    <message id="tui.files.folderNotAFolder">
+        <source>Folder — not a folder</source>
+        <translation>文件夹 — 不是文件夹</translation>
+    </message>
     <message id="tui.files.empty">
         <source>(empty)</source>
         <translation>(空)</translation>

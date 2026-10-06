@@ -95,11 +95,14 @@ type TextInput struct {
 	width  int      // last layout width (viewport cells)
 
 	placeholder string
-	mask        rune
-	validate    func(string) error
-	onSubmit    func(string)
-	onEdit      func(string)
-	verr        error
+	// placeholderMsg is the catalog message the placeholder shows, resolved each layout; zero
+	// for plain text.
+	placeholderMsg tui.Message
+	mask           rune
+	validate       func(string) error
+	onSubmit       func(string)
+	onEdit         func(string)
+	verr           error
 
 	styles TextInputStyles
 }
@@ -123,7 +126,13 @@ type TextInputOption func(*TextInput)
 
 // WithPlaceholder sets the text rendered (muted) while the value is empty.
 func WithPlaceholder(s string) TextInputOption {
-	return func(t *TextInput) { t.placeholder = s }
+	return func(t *TextInput) { t.placeholder, t.placeholderMsg = s, tui.Message{} }
+}
+
+// WithPlaceholderMessage sets the placeholder to a catalog message, shown in the App's
+// language.
+func WithPlaceholderMessage(m tui.Message) TextInputOption {
+	return func(t *TextInput) { t.placeholder, t.placeholderMsg = englishText(m), m }
 }
 
 // WithMask enables password masking: the given rune paints in place of
@@ -504,6 +513,9 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 // Layout: height 1, width greedy; the viewport width feeds cursor-visible
 // scrolling.
 func (t *TextInput) Layout(c tui.Constraints) tui.Size {
+	if t.placeholderMsg != (tui.Message{}) {
+		t.placeholder = t.translate(t.placeholderMsg)
+	}
 	w := boundedMax(c.MaxW, max(c.MinW, t.cellAt(len(t.cs))+1))
 	t.width = w
 	t.ensureVisible()

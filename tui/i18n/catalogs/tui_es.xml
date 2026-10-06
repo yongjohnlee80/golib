@@ -55,6 +55,10 @@
         <source>Folder</source>
         <translation>Carpeta</translation>
     </message>
+    <message id="tui.files.folderNotAFolder">
+        <source>Folder — not a folder</source>
+        <translation>Carpeta — no es una carpeta</translation>
+    </message>
     <message id="tui.files.empty">
         <source>(empty)</source>
         <translation>(vacío)</translation>

@@ -341,6 +341,7 @@ func (m *Menu) paintRows(s tui.Surface, rows []MenuItemModel, area tui.Rect) {
 // Layout lays the ROOT level out: vertically by default, along one line when a
 // MenuBar has set it horizontal.
 func (m *Menu) Layout(cs tui.Constraints) tui.Size {
+	m.resolveLabels()
 	ctx := m.Context()
 	if m.rowRects == nil {
 		m.rowRects = make(map[ItemID]tui.Rect)

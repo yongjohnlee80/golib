@@ -84,7 +84,9 @@ const (
 //	)
 type Text struct {
 	Base
-	text    string
+	text string
+	// textMsg is the catalog message the text shows, resolved each layout; zero for plain text.
+	textMsg tui.Message
 	st      style.Style
 	color   style.Color
 	colored bool
@@ -119,12 +121,24 @@ func NewText(s string, opts ...TextOption) *Text {
 	return t
 }
 
-// SetText replaces the content (loop goroutine, like all widget state).
+// SetText replaces the content (loop goroutine, like all widget state), shown as given. It
+// ends a message set by [Text.SetTextMessage].
 func (t *Text) SetText(s string) {
-	if t.text == s {
+	if t.text == s && t.textMsg == (tui.Message{}) {
 		return
 	}
-	t.text = s
+	t.text, t.textMsg = s, tui.Message{}
+	t.RequestLayout()
+	t.MarkDirty()
+}
+
+// SetTextMessage shows a catalog message, in the App's language from the next layout.
+func (t *Text) SetTextMessage(m tui.Message) {
+	if t.textMsg == m {
+		return
+	}
+	t.textMsg = m
+	t.text = t.translate(m)
 	t.RequestLayout()
 	t.MarkDirty()
 }
@@ -151,6 +165,9 @@ func (t *Text) lines() []string {
 // Layout measures content within constraints (grapheme width):
 // Truncate reports one line; Wrap reports the wrapped height.
 func (t *Text) Layout(c tui.Constraints) tui.Size {
+	if t.textMsg != (tui.Message{}) {
+		t.text = t.translate(t.textMsg)
+	}
 	if t.mode == Truncate {
 		w := t.measure(t.lines()[0])
 		if c.MaxW != tui.Unbounded {

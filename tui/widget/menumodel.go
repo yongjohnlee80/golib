@@ -87,6 +87,10 @@ type MenuItemModel struct {
 	Kind ItemKind
 	// Label is the row's text.
 	Label string
+	// LabelMsg, when set, names the row's text by catalog id instead: the Menu fills Label,
+	// Hotkey and HotkeyIdx from its translation, in the App's language, each time it is laid
+	// out, and the hotkey stays on English's letter in every language.
+	LabelMsg tui.Message
 	// Hotkey is the mnemonic character, or 0 for none.
 	Hotkey rune
 	// HotkeyIdx is which GRAPHEME CLUSTER of Label to underline, 0-based. A

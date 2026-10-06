@@ -23,6 +23,7 @@ var toolkitEnglish = map[string]string{
 	"tui.files.preview":          "Preview",
 	"tui.files.fileName":         "File name",
 	"tui.files.folder":           "Folder",
+	"tui.files.folderNotAFolder": "Folder — not a folder",
 	"tui.files.empty":            "(empty)",
 	"tui.files.isFolder":         "(folder)",
 	"tui.files.cannotRead":       "(cannot read: %1)",
