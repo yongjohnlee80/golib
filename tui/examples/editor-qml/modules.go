@@ -31,6 +31,13 @@ var layout []byte
 //go:embed dialogs
 var dialogFiles embed.FS
 
+// catalogFiles are the editor's own words, one Qt TS XML catalog per language
+// (i18n/editor_<language>.xml). golib's own — the dialog buttons, the file dialogs — come with
+// golib.
+//
+//go:embed i18n
+var catalogFiles embed.FS
+
 // moduleVersion is what every import of this program's modules asks for.
 const moduleVersion = "1.0"
 

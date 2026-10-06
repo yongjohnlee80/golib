@@ -5,14 +5,14 @@
 // says.
 
 Dialog {
-    title: "About"
+    title: qsTrId("editor.about.title")
     standardButtons: Dialog.Ok
     defaultButton: Dialog.Ok               // Enter closes it
-    helpText: "Enter or Esc to close"
+    helpText: qsTrId("editor.about.help")
 
     // On the card's colours, which it inherits — no palette of its own.
     Text {
         wrapMode: Tui.WordWrap
-        text: "editor-qml\n\nA text editor whose screen is written in QML,\nrunning on golib/tui."
+        text: qsTrId("editor.about.text")
     }
 }

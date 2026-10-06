@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // THE APP SINGLETON'S COMMANDS — what the document invokes.
@@ -19,13 +20,14 @@ func (h *Host) commands() map[string]decl.HandlerFunc {
 		"App.saveFile":      none(h.saveFile),
 		"App.saveAs":        oneString("App.saveAs", "a path", h.saveAs),
 		"App.quit":          none(func() error { h.p.Quit(); return nil }),
-		"App.useVim":        none(func() error { return h.useKeyset("vim", "switched keymap to Vim (modal)") }),
-		"App.useNano":       none(func() error { return h.useKeyset("nano", "switched keymap to Nano (modeless)") }),
+		"App.useVim":        none(func() error { return h.useKeyset("vim", tui.Msg("editor.status.vim")) }),
+		"App.useNano":       none(func() error { return h.useKeyset("nano", tui.Msg("editor.status.nano")) }),
 		"App.syncStatus":    none(h.syncStatus),
 		"App.markDirty":     none(func() error { return h.setDirty(true) }),
 		"App.saveCancelled": none(h.saveCancelled),
 		"App.runCommand":    oneString("App.runCommand", "a command line", h.runCommand),
 		"App.useTheme":      oneString("App.useTheme", "a theme's name", h.useTheme),
+		"App.useLanguage":   oneString("App.useLanguage", "a language", h.useLanguage),
 	}
 }
 
@@ -50,7 +52,7 @@ func oneString(name, what string, fn func(string) error) decl.HandlerFunc {
 }
 
 // useKeyset switches the editor's keymap through its bound App.keyset.
-func (h *Host) useKeyset(ks, msg string) error {
+func (h *Host) useKeyset(ks string, msg tui.Message) error {
 	if err := h.p.SetMany(map[string]any{"App.keyset": ks, "App.status": msg}); err != nil {
 		return err
 	}

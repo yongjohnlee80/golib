@@ -11,7 +11,7 @@
 // application palette, so the layout's theme import dresses it.
 
 FileDialog {
-    title: "Save"
+    title: qsTrId("editor.save.title")
     fileMode: Tui.SaveFile
     currentFolder: App.folder
     // Qt 6's writable selectedFile: Save As starts from the file being

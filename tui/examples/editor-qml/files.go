@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // THE BUFFER'S FILE — the commands that read and write it.
@@ -17,7 +19,7 @@ import (
 // A REFUSAL, not an error: nothing failed, and the status line says why.
 func (h *Host) newFile() error {
 	if h.dirty {
-		return h.message(unsavedRefusal("start a new file"))
+		return h.say("editor.status.unsavedNew")
 	}
 	h.editor.SetValue("")
 	if err := h.setPath(""); err != nil {
@@ -26,7 +28,7 @@ func (h *Host) newFile() error {
 	if err := h.setDirty(false); err != nil {
 		return err
 	}
-	return h.message("new buffer")
+	return h.say("editor.status.newBuffer")
 }
 
 // openFile loads the file the Open dialog chose.
@@ -35,11 +37,11 @@ func (h *Host) newFile() error {
 // says so and leaves the buffer as it is. Save first, then open.
 func (h *Host) openFile(path string) error {
 	if h.dirty {
-		return h.message(unsavedRefusal("open"))
+		return h.say("editor.status.unsavedOpen")
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return h.failed("cannot open", err)
+		return h.failed("cannot open", "editor.status.cannotOpen", err)
 	}
 	h.editor.SetValue(string(b))
 	if err := h.setPath(path); err != nil {
@@ -87,12 +89,12 @@ func (h *Host) saveCancelled() error {
 
 func (h *Host) write(path string) error {
 	if err := os.WriteFile(path, []byte(h.editor.Value()), 0o644); err != nil {
-		return h.failed("write failed", err)
+		return h.failed("write failed", "editor.status.writeFailed", err)
 	}
 	if err := h.setDirty(false); err != nil {
 		return err
 	}
-	return h.message(fmt.Sprintf("%q written", filepath.Base(path)))
+	return h.sayf("editor.status.written", fmt.Sprintf("%q", filepath.Base(path)))
 }
 
 // openDialog opens a dialog the layout declared, by its id — what a handler
@@ -120,23 +122,19 @@ func (h *Host) load(path string) error {
 	return nil
 }
 
-// displayPath is how the status bar names the file.
-func displayPath(p string) string {
+// statusName is how the status bar names the file: its name, which is content and shown as
+// it is, or the catalog's word for an unnamed buffer.
+func statusName(p string) any {
 	if p == "" {
-		return "[No Name]"
+		return tui.Msg("editor.noName")
 	}
 	return filepath.Base(p)
 }
 
 // failed reports an operation that did not happen: on the status line for the
-// user, AND as the handler's error. A failure that only updated the status
-// returned nil, and a caller that went on to act on "success" — Save As
-// adopting a path it had not written — did the damage.
-func (h *Host) failed(what string, err error) error {
-	return errors.Join(fmt.Errorf("%s: %w", what, err), h.message(what+": "+err.Error()))
-}
-
-// unsavedRefusal is what New and Open say over unsaved changes.
-func unsavedRefusal(action string) string {
-	return "unsaved changes — save them first (Ctrl+S), then " + action
+// user, in their language (id), AND as the handler's error, in English (what). A
+// failure that only updated the status returned nil, and a caller that went on to
+// act on "success" — Save As adopting a path it had not written — did the damage.
+func (h *Host) failed(what, id string, err error) error {
+	return errors.Join(fmt.Errorf("%s: %w", what, err), h.sayf(id, err.Error()))
 }

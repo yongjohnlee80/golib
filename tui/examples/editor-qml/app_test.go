@@ -67,7 +67,10 @@ func startOpts(t *testing.T, opt Options, w, h int) *running {
 	s := decltest.RunWith(t, w, h, func(p *tuidecl.Program) error { return host.attach(p, opt.Path) },
 		host.options(opt)...)
 	r := &running{host: host, s: s, be: s.Backend, quit: s.Quit(), width: w, height: h}
-	r.waitFor(t, "the first frame", func(sc string) bool { return strings.Contains(sc, "NORMAL") })
+	// The status line's mode is the first frame's mark: NORMAL in English, its translation in
+	// another language.
+	first := map[string]string{"": "NORMAL", "en": "NORMAL", "ko_KR": "일반", "pt_BR": "NORMAL", "zh_CN": "普通"}[opt.Language]
+	r.waitFor(t, "the first frame", func(sc string) bool { return strings.Contains(sc, first) })
 	return r
 }
 
@@ -199,8 +202,9 @@ func (r *running) clickLabel(t *testing.T, row int, label string) {
 	if x < 0 {
 		t.Fatalf("%q is not on row %d:\n%s", label, row, r.screen())
 	}
-	// Columns are RUNES, and the frame's border runes are multi-byte.
-	x = len([]rune(rows[row][:x]))
+	// Columns are CELLS: the frame's border runes are multi-byte but one cell wide, and a
+	// Korean or Chinese character is one rune but two cells.
+	x = tui.StringWidth(rows[row][:x])
 	r.key(t, click(x, row)...)
 }
 

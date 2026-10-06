@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="en">
+<context>
+    <name>editor</name>
+    <message id="editor.menu.file">
+        <source>&amp;File</source>
+        <translation>&amp;File</translation>
+    </message>
+    <message id="editor.file.new">
+        <source>&amp;New</source>
+        <translation>&amp;New</translation>
+    </message>
+    <message id="editor.file.open">
+        <source>&amp;Open</source>
+        <translation>&amp;Open</translation>
+    </message>
+    <message id="editor.file.save">
+        <source>&amp;Save</source>
+        <translation>&amp;Save</translation>
+    </message>
+    <message id="editor.file.saveAs">
+        <source>Save &amp;As…</source>
+        <translation>Save &amp;As…</translation>
+    </message>
+    <message id="editor.file.command">
+        <source>&amp;Command…</source>
+        <translation>&amp;Command…</translation>
+    </message>
+    <message id="editor.file.exit">
+        <source>E&amp;xit</source>
+        <translation>E&amp;xit</translation>
+    </message>
+    <message id="editor.menu.option">
+        <source>&amp;Option</source>
+        <translation>&amp;Option</translation>
+    </message>
+    <message id="editor.option.keymaps">
+        <source>&amp;Keymaps</source>
+        <translation>&amp;Keymaps</translation>
+    </message>
+    <message id="editor.keymap.vim">
+        <source>&amp;1. Vim  (modal)</source>
+        <translation>&amp;1. Vim  (modal)</translation>
+    </message>
+    <message id="editor.keymap.nano">
+        <source>&amp;2. Nano (modeless)</source>
+        <translation>&amp;2. Nano (modeless)</translation>
+    </message>
+    <message id="editor.option.theme">
+        <source>&amp;Theme</source>
+        <translation>&amp;Theme</translation>
+    </message>
+    <message id="editor.theme.dark">
+        <source>&amp;Dark</source>
+        <translation>&amp;Dark</translation>
+    </message>
+    <message id="editor.theme.light">
+        <source>&amp;Light</source>
+        <translation>&amp;Light</translation>
+    </message>
+    <message id="editor.theme.mono">
+        <source>&amp;Mono</source>
+        <translation>&amp;Mono</translation>
+    </message>
+    <message id="editor.theme.retro">
+        <source>&amp;Retro</source>
+        <translation>&amp;Retro</translation>
+    </message>
+    <message id="editor.option.language">
+        <source>&amp;Language</source>
+        <translation>&amp;Language</translation>
+    </message>
+    <message id="editor.menu.help">
+        <source>&amp;Help</source>
+        <translation>&amp;Help</translation>
+    </message>
+    <message id="editor.help.about">
+        <source>&amp;About</source>
+        <translation>&amp;About</translation>
+    </message>
+    <message id="editor.prompt.title">
+        <source>Command</source>
+        <translation>Command</translation>
+    </message>
+    <message id="editor.prompt.help">
+        <source>w  q  wq  e &lt;file&gt;      Enter runs, Esc closes</source>
+        <translation>w  q  wq  e &lt;file&gt;      Enter runs, Esc closes</translation>
+    </message>
+    <message id="editor.quit.title">
+        <source>Quit</source>
+        <translation>Quit</translation>
+    </message>
+    <message id="editor.quit.question">
+        <source>Are you sure to quit?</source>
+        <translation>Are you sure to quit?</translation>
+    </message>
+    <message id="editor.quit.questionDirty">
+        <source>Are you sure to quit?
+Unsaved changes will be lost.</source>
+        <translation>Are you sure to quit?
+Unsaved changes will be lost.</translation>
+    </message>
+    <message id="editor.about.title">
+        <source>About</source>
+        <translation>About</translation>
+    </message>
+    <message id="editor.about.help">
+        <source>Enter or Esc to close</source>
+        <translation>Enter or Esc to close</translation>
+    </message>
+    <message id="editor.about.text">
+        <source>editor-qml
+
+A text editor whose screen is written in QML,
+running on golib/tui.</source>
+        <translation>editor-qml
+
+A text editor whose screen is written in QML,
+running on golib/tui.</translation>
+    </message>
+    <message id="editor.open.title">
+        <source>Open</source>
+        <translation>Open</translation>
+    </message>
+    <message id="editor.save.title">
+        <source>Save</source>
+        <translation>Save</translation>
+    </message>
+    <message id="editor.mode.normal">
+        <source>NORMAL</source>
+        <translation>NORMAL</translation>
+    </message>
+    <message id="editor.mode.insert">
+        <source>INSERT</source>
+        <translation>INSERT</translation>
+    </message>
+    <message id="editor.mode.visual">
+        <source>VISUAL</source>
+        <translation>VISUAL</translation>
+    </message>
+    <message id="editor.mode.visualLine">
+        <source>V-LINE</source>
+        <translation>V-LINE</translation>
+    </message>
+    <message id="editor.noName">
+        <source>[No Name]</source>
+        <translation>[No Name]</translation>
+    </message>
+    <message id="editor.status.newBuffer">
+        <source>new buffer</source>
+        <translation>new buffer</translation>
+    </message>
+    <message id="editor.status.vim">
+        <source>switched keymap to Vim (modal)</source>
+        <translation>switched keymap to Vim (modal)</translation>
+    </message>
+    <message id="editor.status.nano">
+        <source>switched keymap to Nano (modeless)</source>
+        <translation>switched keymap to Nano (modeless)</translation>
+    </message>
+    <message id="editor.status.unsavedNew">
+        <source>unsaved changes — save them first (Ctrl+S), then start a new file</source>
+        <translation>unsaved changes — save them first (Ctrl+S), then start a new file</translation>
+    </message>
+    <message id="editor.status.unsavedOpen">
+        <source>unsaved changes — save them first (Ctrl+S), then open</source>
+        <translation>unsaved changes — save them first (Ctrl+S), then open</translation>
+    </message>
+    <message id="editor.status.written">
+        <source>%1 written</source>
+        <translation>%1 written</translation>
+    </message>
+    <message id="editor.status.notCommand">
+        <source>not a command: %1</source>
+        <translation>not a command: %1</translation>
+    </message>
+    <message id="editor.status.cannotOpen">
+        <source>cannot open: %1</source>
+        <translation>cannot open: %1</translation>
+    </message>
+    <message id="editor.status.writeFailed">
+        <source>write failed: %1</source>
+        <translation>write failed: %1</translation>
+    </message>
+    <message id="editor.status.noTheme">
+        <source>no theme %1</source>
+        <translation>no theme %1</translation>
+    </message>
+    <message id="editor.status.noThemeImport">
+        <source>editor.qml imports no theme to switch</source>
+        <translation>editor.qml imports no theme to switch</translation>
+    </message>
+    <message id="editor.status.theme">
+        <source>theme: %1</source>
+        <translation>theme: %1</translation>
+    </message>
+</context>
+</TS>

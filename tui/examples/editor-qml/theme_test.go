@@ -277,7 +277,7 @@ func TestTheThemeMenuChecksTheImportedTheme(t *testing.T) {
 			src = withImport(t, "import tui.theme."+imported+" 1.0")
 		}
 		h := newHost(Options{})
-		st := h.state("", themeOf(src))
+		st := h.state("", themeOf(src), "en")
 		for theme, mark := range marks {
 			if want := theme == imported; st[mark] != want {
 				t.Errorf("importing %s: %s is %v, want %v", imported, mark, st[mark], want)

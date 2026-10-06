@@ -51,28 +51,28 @@ func themeState(theme string) map[string]any {
 // screen stays as it was.
 func (h *Host) useTheme(name string) error {
 	if !h.hasTheme(name) {
-		return h.message(fmt.Sprintf("no theme %q", name))
+		return h.sayf("editor.status.noTheme", fmt.Sprintf("%q", name))
 	}
 	src, err := h.layoutSource()
 	if err != nil {
 		return err
 	}
 	if themeOf(src) == "" {
-		return h.message("editor.qml imports no theme to switch")
+		return h.say("editor.status.noThemeImport")
 	}
 	next := themeImport.ReplaceAll(src, []byte("import tui.theme."+name+" "+themes.Version))
 	// AFTER the handler: a menu row's signal is still being emitted, and the
 	// engine reconciles only between emissions, not inside one.
 	h.p.Post(func() {
 		if _, err := h.p.Reload(next); err != nil {
-			_ = h.message("theme: " + err.Error())
+			_ = h.sayf("editor.status.theme", err.Error())
 			return
 		}
 		if h.dev == "" {
 			h.layoutSrc = next
 		}
 		state := themeState(name)
-		state["App.status"] = "theme: " + name
+		state["App.status"] = h.tr("editor.status.theme", name)
 		_ = h.p.SetMany(state)
 	})
 	return nil

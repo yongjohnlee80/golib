@@ -20,7 +20,7 @@ func devCopy(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(dir, "editor.qml"), layout, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, src := range []fs.FS{dialogFiles} {
+	for _, src := range []fs.FS{dialogFiles, catalogFiles} {
 		err := fs.WalkDir(src, ".", func(p string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				if d != nil && d.IsDir() && p != "." {
@@ -54,7 +54,7 @@ func TestDevModeFollowsEditsAndKeepsWhatWasTyped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	edited := strings.Replace(string(src), `title: "&File"`, `title: "&Fyle"`, 1)
+	edited := strings.Replace(string(src), `title: qsTrId("editor.menu.file")`, `title: "&Fyle"`, 1)
 	if edited == string(src) {
 		t.Fatal("the fixture no longer has the File menu this test edits")
 	}
@@ -72,7 +72,7 @@ func TestDevModeShowsARefusedEditInTheStatusLine(t *testing.T) {
 	dir := devCopy(t)
 	r := startOpts(t, Options{Dev: dir, Now: fixedNow, Tick: time.Hour}, 80, 14)
 	src, _ := os.ReadFile(filepath.Join(dir, "editor.qml"))
-	edited := strings.Replace(string(src), `title: "&File"`, `titel: "&File"`, 1)
+	edited := strings.Replace(string(src), `title: qsTrId("editor.menu.file")`, `titel: qsTrId("editor.menu.file")`, 1)
 	if err := os.WriteFile(filepath.Join(dir, "editor.qml"), []byte(edited), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -96,5 +96,34 @@ func TestTheThemeMenuUnderDevLeavesTheFileAlone(t *testing.T) {
 	}
 	if themeOf(src) != "retro" {
 		t.Errorf("the menu rewrote editor.qml on disk: it imports %q", themeOf(src))
+	}
+}
+
+// TestDevModeFollowsACatalogEdit: a saved translation reaches the running screen, as a saved
+// layout does, and what was typed survives it.
+func TestDevModeFollowsACatalogEdit(t *testing.T) {
+	dir := devCopy(t)
+	r := startOpts(t, Options{Dev: dir, Now: fixedNow, Tick: time.Hour}, 80, 14)
+	r.key(t, runeKey('i'))
+	for _, ch := range "hello" {
+		r.key(t, runeKey(ch))
+	}
+	r.waitFor(t, "the typed text", func(s string) bool { return strings.Contains(s, "hello") })
+
+	file := filepath.Join(dir, "i18n", "editor_en.xml")
+	src, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(string(src), `<translation>&amp;Help</translation>`, `<translation>&amp;Hilfe</translation>`, 1)
+	if edited == string(src) {
+		t.Fatal("the fixture no longer has the Help menu this test edits")
+	}
+	if err := os.WriteFile(file, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.waitFor(t, "the retranslated menu", func(s string) bool { return strings.Contains(s, "Hilfe") })
+	if !strings.Contains(r.screen(), "hello") {
+		t.Errorf("the catalog reload lost what was typed:\n%s", r.screen())
 	}
 }
