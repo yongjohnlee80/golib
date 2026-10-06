@@ -19,6 +19,11 @@ type Meta struct {
 	Tags, Aliases   []string // sorted, de-duplicated; tags lowercased (Obsidian compares them so)
 	FrontmatterJSON string   // the evaluated frontmatter, in source order; "" when there is none
 	FrontmatterErr  string   // why the frontmatter did not parse or evaluate; the body indexes all the same
+	// Abstract is the frontmatter's abstract field, a one-to-three sentence summary; "" when there
+	// is none. AbstractStart and AbstractEnd are its value's span in the source. [Abstract] makes a
+	// chunk of it.
+	Abstract                   string
+	AbstractStart, AbstractEnd int
 }
 
 // ReadMeta reads a parsed note's metadata: the frontmatter's title (else the first top-level h1,
@@ -30,7 +35,7 @@ func ReadMeta(doc *markdown.Document, p string) Meta {
 	tags := map[string]bool{}
 	aliases := map[string]bool{}
 	if fm := doc.Root.FirstChild; fm != nil && fm.Kind == markdown.KindFrontmatter {
-		v, err := evalFrontmatter(fm.Literal)
+		v, root, err := evalFrontmatter(fm.Literal)
 		if err != nil {
 			m.FrontmatterErr = err.Error()
 		} else if mp, ok := v.(yaml.Map); ok {
@@ -44,6 +49,13 @@ func ReadMeta(doc *markdown.Document, p string) Meta {
 			}
 			for _, a := range stringList(get(mp, "aliases")) {
 				aliases[a] = true
+			}
+			if a, ok := get(mp, "abstract").(string); ok && strings.TrimSpace(a) != "" {
+				m.Abstract = strings.TrimSpace(a)
+				if n := pairValue(root, "abstract"); n != nil {
+					_, off := frontmatter(doc)
+					m.AbstractStart, m.AbstractEnd = off+n.Span.Start, off+n.Span.End
+				}
 			}
 			b, _ := json.Marshal(toJSON(mp))
 			m.FrontmatterJSON = string(b)
@@ -73,20 +85,35 @@ func ReadMeta(doc *markdown.Document, p string) Meta {
 	return m
 }
 
-// evalFrontmatter reads frontmatter as YAML 1.2 under the Core schema. A stream of no documents is
-// no metadata; more than one is an error.
-func evalFrontmatter(raw []byte) (any, error) {
+// evalFrontmatter reads frontmatter as YAML 1.2 under the Core schema, and gives its tree's root
+// too, for the spans the evaluated values no longer carry. A stream of no documents is no
+// metadata; more than one is an error.
+func evalFrontmatter(raw []byte) (any, *pyaml.Node, error) {
 	st, err := pyaml.Parse(raw)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	switch len(st.Docs) {
 	case 0:
-		return nil, nil
+		return nil, nil, nil
 	case 1:
-		return yaml.Evaluate(st.Docs[0], yaml.Core)
+		v, err := yaml.Evaluate(st.Docs[0], yaml.Core)
+		return v, st.Docs[0].Root, err
 	}
-	return nil, fmt.Errorf("the frontmatter holds %d YAML documents, not one", len(st.Docs))
+	return nil, nil, fmt.Errorf("the frontmatter holds %d YAML documents, not one", len(st.Docs))
+}
+
+// pairValue is the value node of the mapping root's entry under key, or nil.
+func pairValue(root *pyaml.Node, key string) *pyaml.Node {
+	if root == nil || root.Kind != pyaml.KindMapping {
+		return nil
+	}
+	for _, p := range root.Pairs {
+		if p.Key != nil && p.Key.Kind == pyaml.KindScalar && string(p.Key.Value) == key {
+			return p.Value
+		}
+	}
+	return nil
 }
 
 func get(m yaml.Map, k string) any { v, _ := m.Get(k); return v }
