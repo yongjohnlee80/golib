@@ -232,7 +232,11 @@ text passed as a plain string is never translated.
   loaded over it (package [`tui/i18n`](i18n/README.md)).
 - `app.SetLanguage(tag)` may be called from any goroutine. It queues the change on Lane B and
   relays out as well as repainting, because labels change width; focus, typed text and open
-  dialogs are untouched.
+  dialogs are untouched. `SetTranslations(s)` replaces the catalogs the same way.
+- `app.ApplyLanguage(tag)` and `ApplyTranslations(s)` take effect in the calling turn, on the
+  loop goroutine only. Use them where a handler changes other state with the language: what it
+  composes afterwards (`App.Translate`) is already in the new language, and the next frame
+  shows both changes together.
 - `ParseMnemonic` reads `&`-marked text for every widget. A translated label's hotkey is kept
   on English's letter: English `&File` shown as German `&Datei` reads `Datei(&f)`, still on
   `f`.

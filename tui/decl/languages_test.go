@@ -1,13 +1,18 @@
 package decl_test
 
 import (
+	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
@@ -317,5 +322,136 @@ Window {
 	}
 	if n := strings.Count(got, "both answer to"); n != 1 {
 		t.Errorf("the collision is reported %d times, want once across the languages:\n%s", n, got)
+	}
+}
+
+// framesBackend is a TestBackend that keeps every frame it is sent, as text: what a reload
+// shows on the way, not only where it settles.
+type framesBackend struct {
+	*tui.TestBackend
+	mu     sync.Mutex
+	frames []string
+}
+
+func (b *framesBackend) Flush(diff []tui.CellUpdate) error {
+	err := b.TestBackend.Flush(diff)
+	b.mu.Lock()
+	b.frames = append(b.frames, b.TestBackend.String())
+	b.mu.Unlock()
+	return err
+}
+
+func (b *framesBackend) seen() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.frames...)
+}
+
+// swapFS serves one set of files, then another, all at once: a layout and its catalog
+// changed together, which two writes to a folder cannot promise.
+type swapFS struct {
+	mu  sync.Mutex
+	cur fstest.MapFS
+}
+
+func (s *swapFS) Open(name string) (fs.File, error) {
+	s.mu.Lock()
+	m := s.cur
+	s.mu.Unlock()
+	return m.Open(name)
+}
+
+func (s *swapFS) swap(m fstest.MapFS) {
+	s.mu.Lock()
+	s.cur = m
+	s.mu.Unlock()
+}
+
+// A reload that changes the layout and the catalog together shows them together: no frame has
+// the new layout in the old catalog, or the old one in the new, and OnReload reads the new
+// text. Reconciled in place, the layout is live within the reload; with its root replaced, the
+// new root is mounted a drain later. Each path has its own way to split the pair.
+func TestAReloadOfLayoutAndCatalogShowsNoFrameMixingThem(t *testing.T) {
+	for _, tc := range []struct{ name, before, after string }{
+		{"reconciled in place", "Vertical", "Vertical"},
+		{"its root replaced", "Vertical", "Horizontal"}, // direction is taken at construction
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := func(dir, greeting string, second bool) fstest.MapFS {
+				body := `Text { text: qsTrId("demo.greeting") }`
+				if second {
+					body += "\nText { text: \"second row\" }"
+				}
+				return fstest.MapFS{
+					"main.qml":        {Data: []byte("import tui 1.0\nFlex { direction: Tui." + dir + "\n" + body + "\n}")},
+					"i18n/app_en.xml": {Data: tsCatalog("en", "demo.greeting", greeting)},
+				}
+			}
+			fsys := &swapFS{cur: files(tc.before, "greeting v1", false)}
+			be := &framesBackend{TestBackend: tui.NewTestBackend(60, 4)}
+			var (
+				p       *tuidecl.Program
+				mu      sync.Mutex
+				reloads []string // the greeting as OnReload reads it
+			)
+			p, err := tuidecl.NewProgram(
+				tuidecl.ErrorSink(func(err error) { t.Errorf("handler error: %v", err) }),
+				tuidecl.Layout(fsys, "main.qml"),
+				tuidecl.Translations(fsys, "i18n", "app"),
+				tuidecl.HotReload(tuidecl.ReloadInterval(tick), tuidecl.OnReload(func(decl.Result) {
+					text := p.App().Translate(tui.Msg("demo.greeting"))
+					mu.Lock()
+					reloads = append(reloads, text)
+					mu.Unlock()
+				})),
+				tuidecl.AppOptions(tui.WithBackend(be), tui.WithMinFrameInterval(0)),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { done <- p.Run(ctx) }()
+			defer func() {
+				cancel()
+				if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+					t.Errorf("Run: %v", err)
+				}
+			}()
+			waitScreen := func(what string, ok func(string) bool) {
+				t.Helper()
+				for deadline := time.Now().Add(decltest.WaitTimeout); !ok(be.String()); {
+					if time.Now().After(deadline) {
+						t.Fatalf("timed out waiting for %s:\n%s", what, be.String())
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			waitScreen("the first catalog", func(s string) bool { return strings.Contains(s, "greeting v1") })
+			settle() // the poller has taken its snapshot of the first files
+
+			fsys.swap(files(tc.after, "greeting v2", true))
+			waitScreen("the reload", func(s string) bool {
+				return strings.Contains(s, "greeting v2") && strings.Contains(s, "second row")
+			})
+			settle()
+
+			for i, f := range be.seen() {
+				newLayout, newText := strings.Contains(f, "second row"), strings.Contains(f, "greeting v2")
+				if newLayout != newText {
+					t.Errorf("frame %d mixes the reload: new layout %v, new catalog %v:\n%s", i, newLayout, newText, f)
+				}
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(reloads) == 0 {
+				t.Fatal("OnReload never ran")
+			}
+			for _, text := range reloads {
+				if text != "greeting v2" {
+					t.Errorf("OnReload read %q, want the reloaded catalog's greeting v2", text)
+				}
+			}
+		})
 	}
 }

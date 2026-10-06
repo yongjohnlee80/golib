@@ -529,7 +529,8 @@ p, err := tuidecl.NewProgram(
     tuidecl.AppOptions(tui.WithLanguage(lang)),         // the language it starts in
     …)
 …
-p.App().SetLanguage("ko_KR")                            // from a handler, a menu row, a setting
+p.App().SetLanguage("ko_KR")                            // from any goroutine
+p.App().ApplyLanguage("ko_KR")                          // in a handler that changes more state with it
 ```
 
 - **A catalog is Qt's TS XML**, one per language, named `<prefix>_<language>.xml`.
@@ -542,7 +543,11 @@ p.App().SetLanguage("ko_KR")                            // from a handler, a men
 - **`qsTrId` yields the message, not its text.** The widget looks the message up each
   time it is laid out, so `SetLanguage` relabels everything on the next frame, an open
   dialog included. Nothing is rebuilt, nothing is republished, and focus, scroll and
-  typed text stay. A label that grows reflows in the same frame.
+  typed text stay. A label that grows reflows in the same frame. In a handler that also
+  moves sources (a language menu's checks), `ApplyLanguage` switches in the same turn, so a
+  line it composes next with `App().Translate` is in the new language.
+- **Under `HotReload`, a save of the layout and its catalogs is one change.** No frame shows
+  the new layout in the old catalogs, and `OnReload` reads the new text.
 - **A host's message is a source like any other**: `Sources(map[string]any{"App.mode":
   tui.Msg("editor.mode.insert")})` and `left: App.mode` show it in the App's language.
 - **A mnemonic keeps English's letter.** Alt+F opens File in every language. A
