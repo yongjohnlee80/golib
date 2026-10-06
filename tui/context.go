@@ -334,6 +334,22 @@ func (c *Context) PlaceChild(child Component, r Rect) {
 // App returns the owning runtime.
 func (c *Context) App() *App { return c.app }
 
+// Translate is m's text in the App's language ([App.SetLanguage]): the language itself, then
+// its base ("es_MX" → "es"), then English, and the id itself when no catalog has it. Its
+// mnemonic is kept on English's letter, so a catalog cannot move a shortcut; see
+// [ParseMnemonic] for reading the result.
+//
+// A widget calls it as it is laid out, never as it renders: a language change always lays
+// the tree out again, so text resolved in Layout is current when it is painted.
+func (c *Context) Translate(m Message) string {
+	s := c.app.cfg.translations
+	text, ok := s.Lookup(c.app.cfg.language, m.ID)
+	if !ok {
+		return m.ID
+	}
+	return englishMnemonic(text, s, m.ID)
+}
+
 // StringWidth measures s under the App's active width policy — the SAME
 // policy Surface.StringWidth applies (WithWidthPolicy). It is the
 // policy-aware measurement surface available OUTSIDE Render (Layout, event

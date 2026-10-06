@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
+	"github.com/yongjohnlee80/golib/tui/i18n"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -45,6 +47,14 @@ type appConfig struct {
 	// enforced consistently across text measurement and cell surface rendering.
 	widthPolicy WidthPolicy
 
+	// language is the language widgets show a Message in ("en", "ko_KR"), changed at run time
+	// by App.SetLanguage.
+	language string
+
+	// translations are the catalogs a Message is looked up in: golib's own, plus whatever the
+	// application layered over them.
+	translations *i18n.Set
+
 	// taskDrainTimeout sets the grace period for in-flight background tasks to terminate upon shutdown
 	// before App.Run returns, preventing stalled tasks from holding the process indefinitely.
 	taskDrainTimeout time.Duration
@@ -73,6 +83,8 @@ func defaultAppConfig() appConfig {
 		recognizer:        pressActivateRecognizer{},
 		taskPoolSize:      16,
 		widthPolicy:       WidthPolicyDefault,
+		language:          i18n.English,
+		translations:      i18n.Toolkit(),
 		taskDrainTimeout:  5 * time.Second,
 		logger:            logger.Nop{},
 	}
@@ -175,6 +187,29 @@ func WithTaskPoolSize(n int) AppOption {
 // it. Default: WidthPolicyDefault.
 func WithWidthPolicy(p WidthPolicy) AppOption {
 	return func(c *appConfig) { c.widthPolicy = p }
+}
+
+// WithLanguage is the language the App starts in: the language widgets show every
+// [Message] in, as a catalog names it ("en", "ko_KR", "pt_BR", "es"). Default: English.
+// [App.SetLanguage] changes it while the App runs.
+func WithLanguage(tag string) AppOption {
+	return func(c *appConfig) { c.language = tag }
+}
+
+// WithTranslations is the catalogs a [Message] is looked up in. Pass [i18n.Toolkit] with the
+// application's own catalogs loaded over it, so golib's labels keep their translations:
+//
+//	s := i18n.Toolkit()
+//	if err := s.LoadDir(files, "i18n", "editor"); err != nil { … }
+//	app := tui.NewApp(tui.WithTranslations(s), tui.WithLanguage("ko_KR"), …)
+//
+// Default: [i18n.Toolkit]. A nil Set is a configuration error and panics, before anything
+// is built.
+func WithTranslations(s *i18n.Set) AppOption {
+	if s == nil {
+		panic(errs.Fatal{Op: "tui: WithTranslations", Rule: "the catalogs must not be nil"})
+	}
+	return func(c *appConfig) { c.translations = s }
 }
 
 // WithTaskDrainTimeout bounds how long Run waits for in-flight tasks after
