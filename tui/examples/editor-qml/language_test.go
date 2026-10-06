@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // TestEveryLanguageIsComplete: each of the editor's languages translates every message
@@ -99,4 +100,18 @@ func TestAComposedStatusLineIsInTheLanguageShowing(t *testing.T) {
 	r.waitFor(t, "the refusal", func(s string) bool {
 		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "不是命令：zz")
 	})
+}
+
+// TestEveryModeIsNamedInTheLanguageShowing: the status bar names line-wise visual mode in the
+// language showing, and a mode the catalogs have no word for by its own name.
+func TestEveryModeIsNamedInTheLanguageShowing(t *testing.T) {
+	r := startOpts(t, Options{Language: "ko_KR", Now: fixedNow, Tick: time.Hour}, 80, 14)
+	r.key(t, runeKey('V'))
+	r.waitFor(t, "V-LINE in Korean", func(s string) bool {
+		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "비주얼 줄")
+	})
+	unknown := widget.EditorMode(99)
+	if got := modeMessage(unknown); got != unknown.String() {
+		t.Errorf("modeMessage(%d) = %v, want the mode's own name %q", unknown, got, unknown.String())
+	}
 }
