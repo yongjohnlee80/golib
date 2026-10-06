@@ -21,9 +21,10 @@ type Relation struct {
 }
 
 // Relations lists the values of the named fields in a parsed note's frontmatter, in source order.
-// A field holding one scalar gives one value, and a list gives one per item; a list nested in the
-// field's list is an unquoted [[wikilink]], and gives "[[x]]". Values that are mappings, and a
-// frontmatter that does not parse, give nothing.
+// A field holding one scalar gives one value, and a list gives one per item. YAML reads an unquoted
+// [[x]] as a list holding a list holding x; that exact shape, as the field's value or as an item,
+// gives "[[x]]". Any other nested list, a mapping, and a frontmatter that does not parse give
+// nothing: no value is made up from structure that was not written as one.
 func Relations(doc *markdown.Document, fields []string) []Relation {
 	fm, off := frontmatter(doc)
 	if fm == nil {
@@ -48,18 +49,20 @@ func Relations(doc *markdown.Document, fields []string) []Relation {
 				out = append(out, Relation{Field: field, Raw: raw, Line: lineAt(doc.Source, off+n.Span.Start)})
 			}
 		}
-		switch v := p.Value; v.Kind {
+		v := p.Value
+		if s := unquotedWikilink(v); s != nil {
+			add("[["+string(s.Value)+"]]", s)
+			continue
+		}
+		switch v.Kind {
 		case pyaml.KindScalar:
 			add(string(v.Value), v)
 		case pyaml.KindSequence:
 			for _, item := range v.Items {
-				switch item.Kind {
-				case pyaml.KindScalar:
+				if item.Kind == pyaml.KindScalar {
 					add(string(item.Value), item)
-				case pyaml.KindSequence:
-					for _, s := range scalarsIn(item) {
-						add("[["+string(s.Value)+"]]", s)
-					}
+				} else if s := unquotedWikilink(item); s != nil {
+					add("[["+string(s.Value)+"]]", s)
 				}
 			}
 		}
@@ -67,19 +70,17 @@ func Relations(doc *markdown.Document, fields []string) []Relation {
 	return out
 }
 
-// scalarsIn is every scalar under n, depth first: the names of a [[x]] YAML read as nested lists.
-func scalarsIn(n *pyaml.Node) []*pyaml.Node {
-	switch n.Kind {
-	case pyaml.KindScalar:
-		return []*pyaml.Node{n}
-	case pyaml.KindSequence:
-		var out []*pyaml.Node
-		for _, it := range n.Items {
-			out = append(out, scalarsIn(it)...)
-		}
-		return out
+// unquotedWikilink is x when n is how YAML reads an unquoted [[x]]: a list holding exactly one list
+// holding exactly one scalar. Anything else is nil.
+func unquotedWikilink(n *pyaml.Node) *pyaml.Node {
+	if n == nil || n.Kind != pyaml.KindSequence || len(n.Items) != 1 {
+		return nil
 	}
-	return nil
+	inner := n.Items[0]
+	if inner.Kind != pyaml.KindSequence || len(inner.Items) != 1 || inner.Items[0].Kind != pyaml.KindScalar {
+		return nil
+	}
+	return inner.Items[0]
 }
 
 // RefForm is what a relation value names, and so how it is looked up.
@@ -119,8 +120,9 @@ var (
 	refNumber   = regexp.MustCompile(`^[0-9]+$`)
 	refSlug     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	refWikilink = regexp.MustCompile(`^\[\[([^\[\]]+)\]\]$`)
-	// an annotation after a target: "§N.N", "(rev N)", "(+ rationale)" or "rev N", one or more
-	refAnnot = regexp.MustCompile(`^(?:§\s*\S+|\([^()]*\)|rev\s+\S+)(?:\s+(?:§\s*\S+|\([^()]*\)|rev\s+\S+))*$`)
+	// an annotation after a target, one or more: "§N.N", "rev N", or in parentheses "(rev N)" or a
+	// "(+ …)" addition; any other parenthesis is prose
+	refAnnot = regexp.MustCompile(`^(?:§\s*\S+|\(rev\s+[^()\s]+\)|\(\+[^()]*\)|rev\s+\S+)(?:\s+(?:§\s*\S+|\(rev\s+[^()\s]+\)|\(\+[^()]*\)|rev\s+\S+))*$`)
 )
 
 // ParseRef reads a relation value. A path loses a leading "$NAME/" root prefix ("$KB_ROOT/a.md"
