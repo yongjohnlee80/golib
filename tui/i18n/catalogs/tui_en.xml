@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="en">
+<context>
+    <name>tui</name>
+    <message id="tui.button.ok">
+        <source>&amp;OK</source>
+        <translation>&amp;OK</translation>
+    </message>
+    <message id="tui.button.save">
+        <source>&amp;Save</source>
+        <translation>&amp;Save</translation>
+    </message>
+    <message id="tui.button.yes">
+        <source>&amp;Yes</source>
+        <translation>&amp;Yes</translation>
+    </message>
+    <message id="tui.button.no">
+        <source>&amp;No</source>
+        <translation>&amp;No</translation>
+    </message>
+    <message id="tui.button.cancel">
+        <source>&amp;Cancel</source>
+        <translation>&amp;Cancel</translation>
+    </message>
+    <message id="tui.button.close">
+        <source>Close(&amp;q)</source>
+        <translation>Close(&amp;q)</translation>
+    </message>
+    <message id="tui.filedialog.open">
+        <source>&amp;Open</source>
+        <translation>&amp;Open</translation>
+    </message>
+    <message id="tui.filedialog.save">
+        <source>&amp;Save</source>
+        <translation>&amp;Save</translation>
+    </message>
+    <message id="tui.filedialog.select">
+        <source>&amp;Select</source>
+        <translation>&amp;Select</translation>
+    </message>
+    <message id="tui.filedialog.close">
+        <source>Close (&amp;q)</source>
+        <translation>Close (&amp;q)</translation>
+    </message>
+    <message id="tui.files.preview">
+        <source>Preview</source>
+        <translation>Preview</translation>
+    </message>
+    <message id="tui.files.fileName">
+        <source>File name</source>
+        <translation>File name</translation>
+    </message>
+    <message id="tui.files.folder">
+        <source>Folder</source>
+        <translation>Folder</translation>
+    </message>
+    <message id="tui.files.empty">
+        <source>(empty)</source>
+        <translation>(empty)</translation>
+    </message>
+    <message id="tui.files.isFolder">
+        <source>(folder)</source>
+        <translation>(folder)</translation>
+    </message>
+    <message id="tui.files.cannotRead">
+        <source>(cannot read: %1)</source>
+        <translation>(cannot read: %1)</translation>
+    </message>
+    <message id="tui.files.binary">
+        <source>(binary file — no preview)</source>
+        <translation>(binary file — no preview)</translation>
+    </message>
+    <message id="tui.files.emptyFile">
+        <source>(empty file)</source>
+        <translation>(empty file)</translation>
+    </message>
+    <message id="tui.files.titleCannotRead">
+        <source>%1 — cannot read</source>
+        <translation>%1 — cannot read</translation>
+    </message>
+    <message id="tui.files.hint.list">
+        <source>↑↓:move  Enter:open folder</source>
+        <translation>↑↓:move  Enter:open folder</translation>
+    </message>
+    <message id="tui.files.hint.preview">
+        <source>j/k:scroll  gg/G:top/end</source>
+        <translation>j/k:scroll  gg/G:top/end</translation>
+    </message>
+    <message id="tui.files.hint.default">
+        <source>Enter:press  Tab:next  Esc:cancel</source>
+        <translation>Enter:press  Tab:next  Esc:cancel</translation>
+    </message>
+    <message id="tui.files.hint.openList">
+        <source>↑↓:move  Enter:open folder, or open file  Tab:next  Esc:cancel</source>
+        <translation>↑↓:move  Enter:open folder, or open file  Tab:next  Esc:cancel</translation>
+    </message>
+    <message id="tui.files.hint.previewPart">
+        <source>j/k:scroll  gg/G:top/end  Tab:next  Esc:cancel</source>
+        <translation>j/k:scroll  gg/G:top/end  Tab:next  Esc:cancel</translation>
+    </message>
+    <message id="tui.files.hint.saveName">
+        <source>Enter:save  Tab:next  Esc:cancel</source>
+        <translation>Enter:save  Tab:next  Esc:cancel</translation>
+    </message>
+    <message id="tui.files.hint.saveList">
+        <source>↑↓:move  Enter:open folder, or save over file  Tab:next  Esc:cancel</source>
+        <translation>↑↓:move  Enter:open folder, or save over file  Tab:next  Esc:cancel</translation>
+    </message>
+    <message id="tui.files.hint.folderPath">
+        <source>Enter:go to folder  Tab:next  Esc:cancel</source>
+        <translation>Enter:go to folder  Tab:next  Esc:cancel</translation>
+    </message>
+    <message id="tui.files.hint.listPart">
+        <source>↑↓:move  Enter:open folder  Tab:next  Esc:cancel</source>
+        <translation>↑↓:move  Enter:open folder  Tab:next  Esc:cancel</translation>
+    </message>
+    <message id="tui.select.error">
+        <source>error: %1</source>
+        <translation>error: %1</translation>
+    </message>
+</context>
+</TS>

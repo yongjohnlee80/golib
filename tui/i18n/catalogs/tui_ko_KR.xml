@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="ko_KR">
+<context>
+    <name>tui</name>
+    <message id="tui.button.ok">
+        <source>&amp;OK</source>
+        <translation>확인(&amp;o)</translation>
+    </message>
+    <message id="tui.button.save">
+        <source>&amp;Save</source>
+        <translation>저장(&amp;s)</translation>
+    </message>
+    <message id="tui.button.yes">
+        <source>&amp;Yes</source>
+        <translation>예(&amp;y)</translation>
+    </message>
+    <message id="tui.button.no">
+        <source>&amp;No</source>
+        <translation>아니요(&amp;n)</translation>
+    </message>
+    <message id="tui.button.cancel">
+        <source>&amp;Cancel</source>
+        <translation>취소(&amp;c)</translation>
+    </message>
+    <message id="tui.button.close">
+        <source>Close(&amp;q)</source>
+        <translation>닫기(&amp;q)</translation>
+    </message>
+    <message id="tui.filedialog.open">
+        <source>&amp;Open</source>
+        <translation>열기(&amp;o)</translation>
+    </message>
+    <message id="tui.filedialog.save">
+        <source>&amp;Save</source>
+        <translation>저장(&amp;s)</translation>
+    </message>
+    <message id="tui.filedialog.select">
+        <source>&amp;Select</source>
+        <translation>선택(&amp;s)</translation>
+    </message>
+    <message id="tui.filedialog.close">
+        <source>Close (&amp;q)</source>
+        <translation>닫기(&amp;q)</translation>
+    </message>
+    <message id="tui.files.preview">
+        <source>Preview</source>
+        <translation>미리 보기</translation>
+    </message>
+    <message id="tui.files.fileName">
+        <source>File name</source>
+        <translation>파일 이름</translation>
+    </message>
+    <message id="tui.files.folder">
+        <source>Folder</source>
+        <translation>폴더</translation>
+    </message>
+    <message id="tui.files.empty">
+        <source>(empty)</source>
+        <translation>(비어 있음)</translation>
+    </message>
+    <message id="tui.files.isFolder">
+        <source>(folder)</source>
+        <translation>(폴더)</translation>
+    </message>
+    <message id="tui.files.cannotRead">
+        <source>(cannot read: %1)</source>
+        <translation>(읽을 수 없음: %1)</translation>
+    </message>
+    <message id="tui.files.binary">
+        <source>(binary file — no preview)</source>
+        <translation>(바이너리 파일 — 미리 볼 수 없음)</translation>
+    </message>
+    <message id="tui.files.emptyFile">
+        <source>(empty file)</source>
+        <translation>(빈 파일)</translation>
+    </message>
+    <message id="tui.files.titleCannotRead">
+        <source>%1 — cannot read</source>
+        <translation>%1 — 읽을 수 없음</translation>
+    </message>
+    <message id="tui.files.hint.list">
+        <source>↑↓:move  Enter:open folder</source>
+        <translation>↑↓:이동  Enter:폴더 열기</translation>
+    </message>
+    <message id="tui.files.hint.preview">
+        <source>j/k:scroll  gg/G:top/end</source>
+        <translation>j/k:스크롤  gg/G:처음/끝</translation>
+    </message>
+    <message id="tui.files.hint.default">
+        <source>Enter:press  Tab:next  Esc:cancel</source>
+        <translation>Enter:누르기  Tab:다음  Esc:취소</translation>
+    </message>
+    <message id="tui.files.hint.openList">
+        <source>↑↓:move  Enter:open folder, or open file  Tab:next  Esc:cancel</source>
+        <translation>↑↓:이동  Enter:폴더 또는 파일 열기  Tab:다음  Esc:취소</translation>
+    </message>
+    <message id="tui.files.hint.previewPart">
+        <source>j/k:scroll  gg/G:top/end  Tab:next  Esc:cancel</source>
+        <translation>j/k:스크롤  gg/G:처음/끝  Tab:다음  Esc:취소</translation>
+    </message>
+    <message id="tui.files.hint.saveName">
+        <source>Enter:save  Tab:next  Esc:cancel</source>
+        <translation>Enter:저장  Tab:다음  Esc:취소</translation>
+    </message>
+    <message id="tui.files.hint.saveList">
+        <source>↑↓:move  Enter:open folder, or save over file  Tab:next  Esc:cancel</source>
+        <translation>↑↓:이동  Enter:폴더 열기 또는 파일 덮어쓰기  Tab:다음  Esc:취소</translation>
+    </message>
+    <message id="tui.files.hint.folderPath">
+        <source>Enter:go to folder  Tab:next  Esc:cancel</source>
+        <translation>Enter:폴더로 이동  Tab:다음  Esc:취소</translation>
+    </message>
+    <message id="tui.files.hint.listPart">
+        <source>↑↓:move  Enter:open folder  Tab:next  Esc:cancel</source>
+        <translation>↑↓:이동  Enter:폴더 열기  Tab:다음  Esc:취소</translation>
+    </message>
+    <message id="tui.select.error">
+        <source>error: %1</source>
+        <translation>오류: %1</translation>
+    </message>
+</context>
+</TS>

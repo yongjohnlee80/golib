@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="ja_JP">
+<context>
+    <name>tui</name>
+    <message id="tui.button.ok">
+        <source>&amp;OK</source>
+        <translation>&amp;OK</translation>
+    </message>
+    <message id="tui.button.save">
+        <source>&amp;Save</source>
+        <translation>保存(&amp;s)</translation>
+    </message>
+    <message id="tui.button.yes">
+        <source>&amp;Yes</source>
+        <translation>はい(&amp;y)</translation>
+    </message>
+    <message id="tui.button.no">
+        <source>&amp;No</source>
+        <translation>いいえ(&amp;n)</translation>
+    </message>
+    <message id="tui.button.cancel">
+        <source>&amp;Cancel</source>
+        <translation>キャンセル(&amp;c)</translation>
+    </message>
+    <message id="tui.button.close">
+        <source>Close(&amp;q)</source>
+        <translation>閉じる(&amp;q)</translation>
+    </message>
+    <message id="tui.filedialog.open">
+        <source>&amp;Open</source>
+        <translation>開く(&amp;o)</translation>
+    </message>
+    <message id="tui.filedialog.save">
+        <source>&amp;Save</source>
+        <translation>保存(&amp;s)</translation>
+    </message>
+    <message id="tui.filedialog.select">
+        <source>&amp;Select</source>
+        <translation>選択(&amp;s)</translation>
+    </message>
+    <message id="tui.filedialog.close">
+        <source>Close (&amp;q)</source>
+        <translation>閉じる(&amp;q)</translation>
+    </message>
+    <message id="tui.files.preview">
+        <source>Preview</source>
+        <translation>プレビュー</translation>
+    </message>
+    <message id="tui.files.fileName">
+        <source>File name</source>
+        <translation>ファイル名</translation>
+    </message>
+    <message id="tui.files.folder">
+        <source>Folder</source>
+        <translation>フォルダー</translation>
+    </message>
+    <message id="tui.files.empty">
+        <source>(empty)</source>
+        <translation>(空)</translation>
+    </message>
+    <message id="tui.files.isFolder">
+        <source>(folder)</source>
+        <translation>(フォルダー)</translation>
+    </message>
+    <message id="tui.files.cannotRead">
+        <source>(cannot read: %1)</source>
+        <translation>(読み込めません: %1)</translation>
+    </message>
+    <message id="tui.files.binary">
+        <source>(binary file — no preview)</source>
+        <translation>(バイナリファイル — プレビューできません)</translation>
+    </message>
+    <message id="tui.files.emptyFile">
+        <source>(empty file)</source>
+        <translation>(空のファイル)</translation>
+    </message>
+    <message id="tui.files.titleCannotRead">
+        <source>%1 — cannot read</source>
+        <translation>%1 — 読み込めません</translation>
+    </message>
+    <message id="tui.files.hint.list">
+        <source>↑↓:move  Enter:open folder</source>
+        <translation>↑↓:移動  Enter:フォルダーを開く</translation>
+    </message>
+    <message id="tui.files.hint.preview">
+        <source>j/k:scroll  gg/G:top/end</source>
+        <translation>j/k:スクロール  gg/G:先頭/末尾</translation>
+    </message>
+    <message id="tui.files.hint.default">
+        <source>Enter:press  Tab:next  Esc:cancel</source>
+        <translation>Enter:決定  Tab:次へ  Esc:キャンセル</translation>
+    </message>
+    <message id="tui.files.hint.openList">
+        <source>↑↓:move  Enter:open folder, or open file  Tab:next  Esc:cancel</source>
+        <translation>↑↓:移動  Enter:フォルダーまたはファイルを開く  Tab:次へ  Esc:キャンセル</translation>
+    </message>
+    <message id="tui.files.hint.previewPart">
+        <source>j/k:scroll  gg/G:top/end  Tab:next  Esc:cancel</source>
+        <translation>j/k:スクロール  gg/G:先頭/末尾  Tab:次へ  Esc:キャンセル</translation>
+    </message>
+    <message id="tui.files.hint.saveName">
+        <source>Enter:save  Tab:next  Esc:cancel</source>
+        <translation>Enter:保存  Tab:次へ  Esc:キャンセル</translation>
+    </message>
+    <message id="tui.files.hint.saveList">
+        <source>↑↓:move  Enter:open folder, or save over file  Tab:next  Esc:cancel</source>
+        <translation>↑↓:移動  Enter:フォルダーを開く、またはファイルに上書き  Tab:次へ  Esc:キャンセル</translation>
+    </message>
+    <message id="tui.files.hint.folderPath">
+        <source>Enter:go to folder  Tab:next  Esc:cancel</source>
+        <translation>Enter:フォルダーへ移動  Tab:次へ  Esc:キャンセル</translation>
+    </message>
+    <message id="tui.files.hint.listPart">
+        <source>↑↓:move  Enter:open folder  Tab:next  Esc:cancel</source>
+        <translation>↑↓:移動  Enter:フォルダーを開く  Tab:次へ  Esc:キャンセル</translation>
+    </message>
+    <message id="tui.select.error">
+        <source>error: %1</source>
+        <translation>エラー: %1</translation>
+    </message>
+</context>
+</TS>
