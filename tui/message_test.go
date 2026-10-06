@@ -111,6 +111,9 @@ func TestApp_NilTranslationsPanicBeforeAnythingIsQueued(t *testing.T) {
 	for name, call := range map[string]func(){
 		"WithTranslations":    func() { WithTranslations(nil) },
 		"App.SetTranslations": func() { NewApp(&msgLabel{}, WithBackend(NewTestBackend(1, 1))).SetTranslations(nil) },
+		"App.ApplyTranslations": func() {
+			NewApp(&msgLabel{}, WithBackend(NewTestBackend(1, 1))).ApplyTranslations(nil)
+		},
 	} {
 		func() {
 			defer func() {
@@ -137,4 +140,30 @@ func TestApp_TranslateIsWhatAWidgetShows(t *testing.T) {
 	if got != "app.nowhere" {
 		t.Errorf("App.Translate of an unknown id = %q, want the id", got)
 	}
+}
+
+// ApplyLanguage and ApplyTranslations take effect in the turn that calls them: what a handler
+// composes after the switch is in the new language, where the enqueued setters would still
+// read the old one until a later drain.
+func TestApp_ApplyLanguageAndTranslationsAreSeenInTheSameTurn(t *testing.T) {
+	t.Parallel()
+	l := &msgLabel{msg: Msg("app.greeting")}
+	h := startApp(t, l, 20, 1)
+	s := i18n.Toolkit()
+	_ = s.Add(mustCatalog(t, "en", "app.greeting", "Hello"))
+	_ = s.Add(mustCatalog(t, "ko_KR", "app.greeting", "안녕하세요"))
+	var lang, before, after string
+	h.onLoop(func() {
+		h.app.ApplyTranslations(s)
+		before = h.app.Translate(Msg("app.greeting"))
+		h.app.ApplyLanguage("ko_KR")
+		lang, after = h.app.Language(), h.app.Translate(Msg("app.greeting"))
+	})
+	if before != "Hello" {
+		t.Errorf("after ApplyTranslations, in the same turn: %q, want the new catalog's Hello", before)
+	}
+	if lang != "ko_KR" || after != "안녕하세요" {
+		t.Errorf("after ApplyLanguage, in the same turn: language %q, text %q; want ko_KR, 안녕하세요", lang, after)
+	}
+	shows(t, h, "안녕하세요") // and the widget lays out again in it
 }

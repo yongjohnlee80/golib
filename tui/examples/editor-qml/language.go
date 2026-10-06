@@ -42,7 +42,9 @@ func (h *Host) useLanguage(tag string) error {
 	if !offered {
 		return h.message(fmt.Sprintf("no language %q", tag))
 	}
-	h.p.App().SetLanguage(tag)
+	// Applied, not scheduled: the menu's checks move in this turn, and so does the language, so
+	// a line composed after the switch (sayf) is already in the new one.
+	h.p.App().ApplyLanguage(tag)
 	return h.p.SetMany(languageState(tag))
 }
 

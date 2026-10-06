@@ -69,7 +69,8 @@ func ReloadInterval(d time.Duration) HotReloadOption {
 	}
 }
 
-// OnReload receives each applied reload's Result, on the UI loop.
+// OnReload receives each applied reload's Result, on the UI loop, once the reload's layout
+// and catalogs are both in place.
 func OnReload(fn func(decl.Result)) HotReloadOption {
 	return func(h *hotReload) { h.onReload = fn }
 }
@@ -246,13 +247,25 @@ func (p *Program) hotReload() {
 		refuse(err)
 		return
 	}
-	if catalogs != nil {
-		// To the App alone: the poller reads the config from its own goroutine.
-		p.app.SetTranslations(catalogs)
+	// The catalogs land in the same frame as the layout, and OnReload sees both. They go to
+	// the App alone: the poller reads the config from its own goroutine.
+	finish := func() {
+		if catalogs != nil {
+			p.app.ApplyTranslations(catalogs)
+		}
+		if h.onReload != nil {
+			h.onReload(res)
+		}
 	}
-	if h.onReload != nil {
-		h.onReload(res)
+	if res.RootReplaced {
+		// The new root is mounted by an enqueued SetRoot, so the catalogs follow it in the
+		// same drain: installed now, the old screen would paint a frame in the new catalogs.
+		p.app.Update(finish)
+		return
 	}
+	// Reconciled in place, the layout is live now: an enqueued install could land a frame
+	// later, and that frame would show the new layout in the old catalogs.
+	finish()
 }
 
 // remount builds the screen afresh from the files, and shows it, after a

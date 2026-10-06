@@ -304,27 +304,45 @@ func (a *App) SetTheme(th *style.Theme) {
 // in the same frame. Focus, scroll positions, typed text and open dialogs are untouched.
 //
 // Safe from any goroutine, including an event handler. Like Update, it always enqueues and
-// returns.
+// returns. Code already on the loop goroutine that changes other state with it uses
+// [App.ApplyLanguage], so that both show in the same frame.
 func (a *App) SetLanguage(tag string) {
-	a.Update(func() {
-		a.cfg.language = tag
-		a.layoutDirty, a.renderDirty = true, true
-	})
+	a.Update(func() { a.ApplyLanguage(tag) })
+}
+
+// ApplyLanguage is [App.SetLanguage] taking effect at once: the frame being prepared lays out
+// in tag. It is for code already on the loop goroutine — a handler, or inside Update — that
+// changes other state in the same turn, such as a menu's check marks: an enqueued change can
+// land a frame after state set directly, and that frame shows the two disagreeing. Loop
+// goroutine only.
+func (a *App) ApplyLanguage(tag string) {
+	a.cfg.language = tag
+	a.layoutDirty, a.renderDirty = true, true
 }
 
 // SetTranslations schedules replacing the catalogs every [Message] is looked up in, on the
 // loop goroutine, and re-lays out the tree as [App.SetLanguage] does: how a reloaded catalog
 // takes effect. A nil Set is a configuration error and panics before anything is queued.
 //
-// Safe from any goroutine; like Update it always enqueues and returns.
+// Safe from any goroutine; like Update it always enqueues and returns. On the loop goroutine,
+// [App.ApplyTranslations] installs them in the same turn.
 func (a *App) SetTranslations(s *i18n.Set) {
 	if s == nil {
 		panic(errs.Fatal{Op: "tui: App.SetTranslations", Rule: "the catalogs must not be nil"})
 	}
-	a.Update(func() {
-		a.cfg.translations = s
-		a.layoutDirty, a.renderDirty = true, true
-	})
+	a.Update(func() { a.ApplyTranslations(s) })
+}
+
+// ApplyTranslations is [App.SetTranslations] taking effect at once, for code already on the
+// loop goroutine that changes the tree in the same turn — a reload that installs a new layout
+// and its catalogs together, so no frame shows one without the other. A nil Set panics.
+// Loop goroutine only.
+func (a *App) ApplyTranslations(s *i18n.Set) {
+	if s == nil {
+		panic(errs.Fatal{Op: "tui: App.ApplyTranslations", Rule: "the catalogs must not be nil"})
+	}
+	a.cfg.translations = s
+	a.layoutDirty, a.renderDirty = true, true
 }
 
 // Language is the language widgets currently show a [Message] in. Call it on the loop
