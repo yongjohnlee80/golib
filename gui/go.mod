@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	gioui.org v0.10.3
-	github.com/yongjohnlee80/golib v0.6.40
+	github.com/yongjohnlee80/golib v0.6.41
 	golang.org/x/image v0.26.0
 )
 
