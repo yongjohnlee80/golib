@@ -60,7 +60,7 @@ func EditorContextItems(e *Editor) []MenuItemModel {
 	redoRow.Enabled = e.CanRedo()
 	copyRow := NewCommand(EditorMenuCopy, "Copy", EditorMenuAction{ID: "editor.copy", Run: (*Editor).Copy})
 	copyRow.LabelMsg = tui.Msg("tui.editor.menu.copy")
-	copyRow.Enabled = selected && e.canYank
+	copyRow.Enabled = selected && e.reg.yankAllowed()
 	cutRow := NewCommand(EditorMenuCut, "Cut", EditorMenuAction{ID: "editor.cut", Run: (*Editor).Cut})
 	cutRow.LabelMsg = tui.Msg("tui.editor.menu.cut")
 	cutRow.Enabled = selected && !e.readOnly
