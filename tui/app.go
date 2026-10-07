@@ -62,6 +62,11 @@ type App struct {
 	styledDepth  int
 	nativeStyler NativeStyler
 
+	// hovered is the node under the pointer (0: none), and pointer the pointer's last screen
+	// cell, for re-checking when a capture ends (hover.go).
+	hovered NodeID
+	pointer Point
+
 	done   chan struct{} // closed once Run has returned, its teardown finished (Done)
 	runCtx context.Context
 
