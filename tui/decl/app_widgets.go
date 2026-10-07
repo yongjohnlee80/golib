@@ -80,7 +80,7 @@ func appTypes() []Type {
 		{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor, Setters: map[string]Setter{
 			"keyset":   setter("an Editor", keysets.read, (*widget.Editor).SetKeyset),
 			"readOnly": setter("an Editor", boolOf, (*widget.Editor).SetReadOnly),
-			// golib's: a right-click menu with Copy, Cut and Paste, opened at the pointer
+			// golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer
 			"contextMenu": setter("an Editor", boolOf, (*widget.Editor).SetContextMenu),
 			// Qt's TextEdit.wrapMode, as a bool: true wraps long lines at the editor's width
 			"wrap": setter("an Editor", boolOf, func(e *widget.Editor, v bool) {

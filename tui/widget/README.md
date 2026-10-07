@@ -262,7 +262,7 @@ editor := widget.NewEditor(
 // Unbound Normal-mode keys (like Space) bubble up, enabling app-level leader menus:
 ```
 
-A right-click menu is opt-in. `WithContextMenu(nil)` gives the stock rows (Copy and Cut on a selection, Paste from the editor's register), opened at the pointer under the nearest `OverlayHost` and closed by Escape, a press outside it, or a chosen row. Pass a builder to supply your own rows; `EditorContextItems` returns the stock ones to extend, and a row runs when its action is an `EditorMenuAction`:
+A right-click menu is opt-in. `WithContextMenu(nil)` gives the stock rows (Undo and Redo when there is an edit to revert or reapply; Copy and Cut on a selection; Paste from the editor's register), opened at the pointer under the nearest `OverlayHost` and closed by Escape, a press outside it, or a chosen row. Pass a builder to supply your own rows; `EditorContextItems` returns the stock ones to extend, and a row runs when its action is an `EditorMenuAction`:
 
 ```go
 editor := widget.NewEditor(widget.WithContextMenu(func(e *widget.Editor) []widget.MenuItemModel {
