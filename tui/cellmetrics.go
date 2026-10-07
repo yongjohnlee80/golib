@@ -22,3 +22,7 @@ func (a *App) CellPixels() CellPixels {
 
 // CellPixels is the App's CellPixels.
 func (c *Context) CellPixels() CellPixels { return c.app.CellPixels() }
+
+// Capabilities is the backend's, as App.Capabilities: what a widget may lay out for, such as
+// NativeViews.
+func (c *Context) Capabilities() Capabilities { return c.app.Capabilities() }

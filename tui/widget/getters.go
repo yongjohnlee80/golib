@@ -20,6 +20,10 @@ func (t *TextInput) Selection() (start, end int, ok bool) { return t.selection()
 // Scroll is the number of cells scrolled off the left edge at the last render.
 func (t *TextInput) Scroll() int { return t.scroll }
 
+// Padding is the cells left empty inside each end of the field: 1 on a backend that frames the
+// field natively, else 0. Text columns start after it.
+func (t *TextInput) Padding() int { return t.pad }
+
 // Placeholder is the text shown while the value is empty.
 func (t *TextInput) Placeholder() string { return t.placeholder }
 

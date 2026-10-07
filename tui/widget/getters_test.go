@@ -1,9 +1,12 @@
 package widget_test
 
 import (
+	"context"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -206,5 +209,42 @@ func TestModalCardRectAndMask(t *testing.T) {
 	})
 	if widget.NewTextInput(widget.WithMask('•')).Mask() != '•' || widget.NewTextInput().Mask() != 0 {
 		t.Fatal("Mask does not mirror WithMask")
+	}
+}
+
+// Where a backend frames fields natively, the text starts a cell in from each end, and the caret
+// and scrolling follow it; elsewhere nothing moves.
+func TestTextInputPadsInsideANativeFrame(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		in := widget.NewTextInput(widget.WithInitialValue("abcdefghijkl"))
+		tb := tui.NewTestBackend(10, 1, tui.WithTestCapabilities(tui.Capabilities{NativeViews: native}))
+		app := tui.NewApp(in, tui.WithBackend(tb))
+		ctx, cancel := context.WithCancel(context.Background())
+		go app.Run(ctx)
+		// Twelve clusters and the caret: unpadded, ten cells scrolled by 3; padded, eight inner
+		// cells scrolled by 5, a cell in from the left.
+		want, pad := "defghijkl", 0
+		if native {
+			want, pad = " fghijkl", 1
+		}
+		var row string
+		for range 300 {
+			row = tb.String()
+			if strings.HasPrefix(row, want) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		var x, p int
+		done := make(chan struct{})
+		app.Update(func() { x, _, _ = in.Cursor(); p = in.Padding(); close(done) })
+		<-done
+		cancel()
+		if !strings.HasPrefix(row, want) {
+			t.Fatalf("native=%v: row %q; want it to start %q", native, row, want)
+		}
+		if p != pad || x != 9-pad { // the caret on the cell after the last cluster
+			t.Fatalf("native=%v: Padding %d, caret x %d", native, p, x)
+		}
 	}
 }

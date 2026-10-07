@@ -92,7 +92,8 @@ type TextInput struct {
 	cur    int      // cursor: cluster index in [0, len(cs)]
 	anchor int      // selection anchor cluster index; -1 = no selection
 	scroll int      // cells scrolled off the left edge
-	width  int      // last layout width (viewport cells)
+	width  int      // last layout width (viewport cells, inside the padding)
+	pad    int      // cells inside each end: 1 where a native field frames the text, else 0
 
 	placeholder string
 	// placeholderMsg is the catalog message the placeholder shows, resolved each layout; zero
@@ -516,8 +517,15 @@ func (t *TextInput) Layout(c tui.Constraints) tui.Size {
 	if t.placeholderMsg != (tui.Message{}) {
 		t.placeholder = t.translate(t.placeholderMsg)
 	}
-	w := boundedMax(c.MaxW, max(c.MinW, t.cellAt(len(t.cs))+1))
-	t.width = w
+	t.pad = 0
+	if ctx := t.Context(); ctx != nil && ctx.Capabilities().NativeViews {
+		t.pad = 1 // the native field's rounded frame: text starts a cell in from each end
+	}
+	w := boundedMax(c.MaxW, max(c.MinW, t.cellAt(len(t.cs))+1+2*t.pad))
+	if w <= 2*t.pad {
+		t.pad = 0
+	}
+	t.width = w - 2*t.pad
 	t.ensureVisible()
 	return c.Constrain(tui.Size{W: w, H: 1})
 }
@@ -529,7 +537,7 @@ func (t *TextInput) Cursor() (int, int, bool) {
 	if t.width > 0 {
 		x = min(x, t.width-1)
 	}
-	return max(x, 0), 0, true
+	return max(x, 0) + t.pad, 0, true
 }
 
 // Render paints value (or placeholder), selection fill, and mask runes.
@@ -541,9 +549,14 @@ func (t *TextInput) Render(s tui.Surface) {
 	// The field paints its whole box, as a Qt field does, not only the cells
 	// its text covers: an empty field on a card is still a field.
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", t.styles.Text)
+	pad := t.pad
+	if sz.W <= 2*pad {
+		pad = 0
+	}
+	inner := sz.W - 2*pad
 	if len(t.cs) == 0 {
 		if t.placeholder != "" {
-			drawText(s, 0, 0, truncate(t.placeholder, sz.W, s.StringWidth), t.styles.Placeholder)
+			drawText(s, pad, 0, truncate(t.placeholder, inner, s.StringWidth), t.styles.Placeholder)
 		}
 		return
 	}
@@ -556,7 +569,7 @@ func (t *TextInput) Render(s tui.Surface) {
 	for i := range t.cs {
 		cl := t.renderCluster(i)
 		cw := s.StringWidth(cl)
-		if x+cw > sz.W {
+		if x+cw > inner {
 			break
 		}
 		if x >= 0 {
@@ -564,7 +577,7 @@ func (t *TextInput) Render(s tui.Surface) {
 			if hasSel && t.focused() && i >= selLo && i < selHi {
 				st = t.styles.Selection.Inherit(base)
 			}
-			s.SetCell(x, 0, cl, st)
+			s.SetCell(pad+x, 0, cl, st)
 		}
 		x += cw
 	}

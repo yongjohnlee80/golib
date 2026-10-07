@@ -59,6 +59,11 @@ type Canvas interface {
 
 	CellSize() Size                               // one cell, in logical pixels
 	CellColors(col, row int) (fg, bg color.NRGBA) // a cell's colours as drawn; zero outside the grid
+	CellText(col, row int) string                 // a cell's grapheme cluster; "" outside the grid or for a wide cell's second half
+	// Backdrop is the colour around the view: the most common background of the cells bordering
+	// it, or the page's where it meets the grid's edge. A rounded shape fills its rect with it
+	// first, so its corners show what surrounds the widget, not the widget's own square cells.
+	Backdrop() color.NRGBA
 	// PaintCells draws the cells in r as the grid draws them, over what the view has drawn.
 	// glyphsOnly leaves out their backgrounds, so the view's own fill shows behind the text.
 	PaintCells(r CellRect, glyphsOnly bool)
@@ -91,6 +96,7 @@ type gioCanvas struct {
 	clip   image.Rectangle // device pixels
 	cellX  int             // the view's top-left cell
 	cellY  int
+	view   CellRect // the view's cells, for Backdrop
 
 	xform Affine
 	alpha float32
@@ -110,7 +116,7 @@ func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect) 
 		origin: f32.Pt(float32(dev.Min.X), float32(dev.Min.Y)),
 		size:   Size{W: float32(dev.Dx()) / m.scale, H: float32(dev.Dy()) / m.scale},
 		clip:   dev,
-		cellX:  cells.X, cellY: cells.Y,
+		cellX:  cells.X, cellY: cells.Y, view: cells,
 		alpha: 1,
 	}
 }
@@ -124,7 +130,7 @@ func (c *gioCanvas) Sub(r Rect) Canvas {
 	return &gioCanvas{
 		ops: c.ops, r: c.r, g: c.g, m: c.m,
 		origin: o, size: Size{W: r.W, H: r.H}, clip: dev,
-		cellX: c.cellX, cellY: c.cellY,
+		cellX: c.cellX, cellY: c.cellY, view: c.view,
 		alpha: c.alpha,
 	}
 }
@@ -263,6 +269,18 @@ func (c *gioCanvas) CellColors(col, row int) (fg, bg color.NRGBA) {
 		return color.NRGBA{}, color.NRGBA{}
 	}
 	return c.r.colors(c.g.at(x, y).Attrs)
+}
+
+func (c *gioCanvas) Backdrop() color.NRGBA {
+	return c.r.backdrop(c.g, c.view)
+}
+
+func (c *gioCanvas) CellText(col, row int) string {
+	x, y := c.cellX+col, c.cellY+row
+	if x < 0 || y < 0 || x >= c.g.w || y >= c.g.h {
+		return ""
+	}
+	return c.g.at(x, y).Content
 }
 
 func (c *gioCanvas) PaintCells(r CellRect, glyphsOnly bool) {
