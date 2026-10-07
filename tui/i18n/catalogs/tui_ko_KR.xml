@@ -123,5 +123,25 @@
         <source>error: %1</source>
         <translation>오류: %1</translation>
     </message>
+    <message id="tui.tooSmall.title">
+        <source>Screen too small</source>
+        <translation>화면이 너무 작습니다</translation>
+    </message>
+    <message id="tui.tooSmall.size">
+        <source>%1 × %2 — needs %3 × %4</source>
+        <translation>%1 × %2 — %3 × %4 필요</translation>
+    </message>
+    <message id="tui.tooSmall.enlarge">
+        <source>Enlarge the window to continue</source>
+        <translation>계속하려면 창을 키우세요</translation>
+    </message>
+    <message id="tui.tooSmall.quit">
+        <source>Quit</source>
+        <translation>종료</translation>
+    </message>
+    <message id="tui.tooSmall.quitKeys">
+        <source>or press q / Ctrl+C</source>
+        <translation>또는 q / Ctrl+C</translation>
+    </message>
 </context>
 </TS>
