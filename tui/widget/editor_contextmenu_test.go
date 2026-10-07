@@ -295,3 +295,18 @@ func TestEditorContextMenu_UndoRedo(t *testing.T) {
 		t.Fatal("Undo enabled on a read-only editor")
 	}
 }
+
+// THE STOCK ROWS SPEAK THE APP'S LANGUAGE: they are named by catalog id, so an
+// application in Korean gets Korean rows without supplying its own.
+func TestEditorContextMenu_TheStockRowsFollowTheLanguage(t *testing.T) {
+	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+	h.app.SetLanguage("ko_KR")
+	h.settle()
+	h.inject(rightClick(5, 1))
+	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
+	h.settle()
+	for _, want := range []string{"실행 취소", "다시 실행", "복사", "잘라내기", "붙여넣기"} {
+		h.wantContains(want)
+	}
+	h.wantNotContains("Paste")
+}

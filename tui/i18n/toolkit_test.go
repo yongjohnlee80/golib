@@ -45,6 +45,11 @@ var toolkitEnglish = map[string]string{
 	"tui.tooSmall.enlarge":       "Enlarge the window to continue",
 	"tui.tooSmall.quit":          "Quit",
 	"tui.tooSmall.quitKeys":      "or press q / Ctrl+C",
+	"tui.editor.menu.undo":       "&Undo",
+	"tui.editor.menu.redo":       "&Redo",
+	"tui.editor.menu.copy":       "&Copy",
+	"tui.editor.menu.cut":        "Cu&t",
+	"tui.editor.menu.paste":      "&Paste",
 }
 
 var shippedLanguages = []string{"en", "ko_KR", "ja_JP", "zh_CN", "pt_BR", "es"}

@@ -53,14 +53,19 @@ func EditorContextItems(e *Editor) []MenuItemModel {
 	_, _, _, _, selected := e.SelectionRange()
 	text, linewise := e.Register()
 	undoRow := NewCommand(EditorMenuUndo, "Undo", EditorMenuAction{ID: "editor.undo", Run: (*Editor).Undo})
+	undoRow.LabelMsg = tui.Msg("tui.editor.menu.undo")
 	undoRow.Enabled = e.CanUndo()
 	redoRow := NewCommand(EditorMenuRedo, "Redo", EditorMenuAction{ID: "editor.redo", Run: (*Editor).Redo})
+	redoRow.LabelMsg = tui.Msg("tui.editor.menu.redo")
 	redoRow.Enabled = e.CanRedo()
 	copyRow := NewCommand(EditorMenuCopy, "Copy", EditorMenuAction{ID: "editor.copy", Run: (*Editor).Copy})
+	copyRow.LabelMsg = tui.Msg("tui.editor.menu.copy")
 	copyRow.Enabled = selected && e.canYank
 	cutRow := NewCommand(EditorMenuCut, "Cut", EditorMenuAction{ID: "editor.cut", Run: (*Editor).Cut})
+	cutRow.LabelMsg = tui.Msg("tui.editor.menu.cut")
 	cutRow.Enabled = selected && !e.readOnly
 	pasteRow := NewCommand(EditorMenuPaste, "Paste", EditorMenuAction{ID: "editor.paste", Run: (*Editor).Paste})
+	pasteRow.LabelMsg = tui.Msg("tui.editor.menu.paste")
 	pasteRow.Enabled = !e.readOnly && (text != "" || linewise)
 	return []MenuItemModel{undoRow, redoRow, NewSeparator(EditorMenuEdits), copyRow, cutRow, pasteRow}
 }
