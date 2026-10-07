@@ -120,27 +120,35 @@ func TestPointerWheelSteps(t *testing.T) {
 	}
 }
 
-// Padding keeps the cells off the window's edge: the grid is what fits inside it, cell (0,0) starts
-// at the padding, and a pointer maps back through it.
+// Padding keeps the cells off the window's edge, and the grid sits centred in what is left: the
+// margins on opposite sides differ by at most a pixel. Cell (0,0) starts at the origin, and a
+// pointer maps back through it.
 func TestMeasurePadding(t *testing.T) {
-	for _, scale := range []float32{1, 2} {
-		win := image.Pt(1000, 700)
-		m := measure(testFont, 14, 4, win, unit.Metric{PxPerDp: scale, PxPerSp: scale})
-		pad := int(4*scale + 0.5)
-		if m.origin != image.Pt(pad, pad) {
-			t.Fatalf("scale %v: origin %v; want %d,%d", scale, m.origin, pad, pad)
-		}
-		if want := (tui.Size{W: (win.X - 2*pad) / m.cell.X, H: (win.Y - 2*pad) / m.cell.Y}); m.grid != want {
-			t.Errorf("scale %v: grid %v; want %v", scale, m.grid, want)
-		}
-		if r := m.cellRect(0, 0, 1, 1); r.Min != m.origin {
-			t.Errorf("scale %v: cell (0,0) at %v; want the origin %v", scale, r.Min, m.origin)
-		}
-		if x, y := m.cellAt(float32(pad), float32(pad)); x != 0 || y != 0 {
-			t.Errorf("scale %v: the first pixel inside the padding is cell %d,%d", scale, x, y)
-		}
-		if x, y := m.cellAt(float32(pad+m.cell.X), float32(pad)); x != 1 || y != 0 {
-			t.Errorf("scale %v: one cell in is cell %d,%d", scale, x, y)
+	for _, scale := range []float32{1, 1.25, 2} {
+		for _, win := range []image.Point{{1000, 700}, {1007, 713}, {1701, 1390}} {
+			m := measure(testFont, 14, 4, win, unit.Metric{PxPerDp: scale, PxPerSp: scale})
+			pad := int(4*scale + 0.5)
+			if want := (tui.Size{W: (win.X - 2*pad) / m.cell.X, H: (win.Y - 2*pad) / m.cell.Y}); m.grid != want {
+				t.Errorf("scale %v, %v: grid %v; want %v", scale, win, m.grid, want)
+			}
+			grid := m.cellRect(0, 0, m.grid.W, m.grid.H)
+			left, right := grid.Min.X, win.X-grid.Max.X
+			top, bottom := grid.Min.Y, win.Y-grid.Max.Y
+			if left < pad || top < pad || right < pad || bottom < pad {
+				t.Errorf("scale %v, %v: margins %d %d %d %d under the padding %d", scale, win, left, right, top, bottom, pad)
+			}
+			if d := right - left; d < 0 || d > 1 {
+				t.Errorf("scale %v, %v: left %d and right %d margins are not centred", scale, win, left, right)
+			}
+			if d := bottom - top; d < 0 || d > 1 {
+				t.Errorf("scale %v, %v: top %d and bottom %d margins are not centred", scale, win, top, bottom)
+			}
+			if x, y := m.cellAt(float32(m.origin.X), float32(m.origin.Y)); x != 0 || y != 0 {
+				t.Errorf("scale %v, %v: the origin is cell %d,%d", scale, win, x, y)
+			}
+			if x, y := m.cellAt(float32(m.origin.X+m.cell.X), float32(m.origin.Y)); x != 1 || y != 0 {
+				t.Errorf("scale %v, %v: one cell in is cell %d,%d", scale, win, x, y)
+			}
 		}
 	}
 }

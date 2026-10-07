@@ -21,7 +21,7 @@ type fontMetrics struct {
 // It is a comparable value: two snapshots are equal exactly when nothing a cell needs changed.
 type metrics struct {
 	window   image.Point // the window, in device pixels
-	origin   image.Point // the top-left of cell (0, 0): the window's padding, in device pixels
+	origin   image.Point // the top-left of cell (0, 0): the padding plus half the leftover, device pixels
 	scale    float32     // device pixels per device-independent pixel
 	ppem     float32     // the font size, in device pixels
 	cell     image.Point // one cell, in device pixels: whole pixels, so the grid has no seams
@@ -47,15 +47,19 @@ func measure(fm fontMetrics, size unit.Sp, pad unit.Dp, win image.Point, m unit.
 	}
 	p := max(m.Dp(pad), 0)
 	inner := image.Pt(max(win.X-2*p, 0), max(win.Y-2*p, 0))
+	grid := tui.Size{W: max(1, inner.X/cell.X), H: max(1, inner.Y/cell.Y)}
+	// The window is rarely a whole number of cells: the remainder is split between opposite
+	// sides, so the grid sits centred and the margins match left and right, top and bottom.
+	spare := image.Pt(max(inner.X-grid.W*cell.X, 0), max(inner.Y-grid.H*cell.Y, 0))
 	return metrics{
 		window: win,
-		origin: image.Pt(p, p),
+		origin: image.Pt(p+spare.X/2, p+spare.Y/2),
 		scale:  scale,
 		ppem:   ppem,
 		cell:   cell,
 		// The line box is a whole pixel taller than the glyphs; centre them in it.
 		baseline: int(math.Round(float64(asc + (float32(cell.Y)-(asc+desc))/2))),
-		grid:     tui.Size{W: max(1, inner.X/cell.X), H: max(1, inner.Y/cell.Y)},
+		grid:     grid,
 	}
 }
 
