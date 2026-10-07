@@ -29,9 +29,11 @@ type renderer struct {
 	typeface font.Typeface
 	theme    Theme
 
-	m      metrics // the metrics the row cache was recorded under
-	rows   []op.CallOp
-	glyphs map[glyphKey]glyphShape // cleared with the row cache when the font size changes
+	m         metrics     // the metrics the row cache was recorded under
+	pageBG    color.NRGBA // the grid's most common background: the frame around it (drawMargins)
+	pageBGSet bool
+	rows      []op.CallOp
+	glyphs    map[glyphKey]glyphShape // cleared with the row cache when the font size changes
 }
 
 type glyphKey struct {
@@ -78,11 +80,16 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, images []placedIma
 		r.rows = make([]op.CallOp, g.h)
 		g.touchAll()
 	}
+	changed := false
 	for y := range g.h {
 		if g.dirty[y] {
 			r.rows[y] = r.recordRow(g, y)
 			g.dirty[y] = false
+			changed = true
 		}
+	}
+	if changed || !r.pageBGSet {
+		r.pageBG, r.pageBGSet = r.pageBackground(g), true // only when a row changed: a full pass over the cells
 	}
 
 	ops := new(op.Ops) // owned by the frame from here on
@@ -100,28 +107,33 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, images []placedIma
 	return rec.Stop()
 }
 
-// drawMargins fills everything around the grid (the window's padding, and the strip past the
-// last whole cell) with the background of the edge cell beside it, as terminals extend their
-// edge cells: an app that paints its own background shows no band of the window's default colour.
+// drawMargins fills everything around the grid (the window's padding, and the half-cells of
+// leftover on each side) with the page colour, so the grid sits in an even frame, as a terminal's
+// padding does. A bar on the top or bottom row stays exactly one cell tall, its text centred, and
+// stops at the frame instead of running into the window's border.
 func (r *renderer) drawMargins(ops *op.Ops, g *grid, m metrics) {
 	grid := m.cellRect(0, 0, g.w, g.h)
 	win := image.Rectangle{Max: m.window}
-	bgAt := func(x, y int) color.NRGBA { _, bg := r.colors(g.at(x, y).Attrs); return bg }
-	for y := range g.h { // left and right of each row
-		row := m.cellRect(0, y, g.w, 1)
-		fillRect(ops, image.Rect(win.Min.X, row.Min.Y, grid.Min.X, row.Max.Y), bgAt(0, y))
-		fillRect(ops, image.Rect(grid.Max.X, row.Min.Y, win.Max.X, row.Max.Y), bgAt(g.w-1, y))
+	bg := r.pageBG
+	fillRect(ops, image.Rect(win.Min.X, win.Min.Y, win.Max.X, grid.Min.Y), bg)   // top
+	fillRect(ops, image.Rect(win.Min.X, grid.Max.Y, win.Max.X, win.Max.Y), bg)   // bottom
+	fillRect(ops, image.Rect(win.Min.X, grid.Min.Y, grid.Min.X, grid.Max.Y), bg) // left
+	fillRect(ops, image.Rect(grid.Max.X, grid.Min.Y, win.Max.X, grid.Max.Y), bg) // right
+}
+
+// pageBackground is the background most cells of the grid have: the app's page or backdrop, not a
+// bar's or a panel's. Ties go to the colour seen first, row by row. With no cells, the theme's.
+func (r *renderer) pageBackground(g *grid) color.NRGBA {
+	counts := map[color.NRGBA]int{}
+	best, bestN := r.theme.BG, 0
+	for _, c := range g.cells {
+		_, bg := r.colors(c.Attrs)
+		counts[bg]++
+		if n := counts[bg]; n > bestN {
+			best, bestN = bg, n
+		}
 	}
-	for x := range g.w { // above and below each column
-		col := m.cellRect(x, 0, 1, g.h)
-		fillRect(ops, image.Rect(col.Min.X, win.Min.Y, col.Max.X, grid.Min.Y), bgAt(x, 0))
-		fillRect(ops, image.Rect(col.Min.X, grid.Max.Y, col.Max.X, win.Max.Y), bgAt(x, g.h-1))
-	}
-	// the four corners, from the corner cells
-	fillRect(ops, image.Rect(win.Min.X, win.Min.Y, grid.Min.X, grid.Min.Y), bgAt(0, 0))
-	fillRect(ops, image.Rect(grid.Max.X, win.Min.Y, win.Max.X, grid.Min.Y), bgAt(g.w-1, 0))
-	fillRect(ops, image.Rect(win.Min.X, grid.Max.Y, grid.Min.X, win.Max.Y), bgAt(0, g.h-1))
-	fillRect(ops, image.Rect(grid.Max.X, grid.Max.Y, win.Max.X, win.Max.Y), bgAt(g.w-1, g.h-1))
+	return best
 }
 
 // recordRow records row y: backgrounds first, merged into runs, then glyphs and decorations.
