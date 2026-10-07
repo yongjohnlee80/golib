@@ -222,11 +222,17 @@ type Editor struct {
 	chordTimeout time.Duration
 
 	// Configurable capabilities.
-	modal     bool   // true = Vim tripartite state machine; false = modeless editor
-	canSelect bool   // true = visual / selection active
-	canYank   bool   // true = system clipboard & register yanking active
-	canUndo   bool   // true = bounded undo / redo history active
-	keyset    Keyset // active editing & keymap profile
+	modal     bool // true = Vim tripartite state machine; false = modeless editor
+	canSelect bool // true = visual / selection active
+	canYank   bool // true = system clipboard & register yanking active
+	canUndo   bool // true = bounded undo / redo history active
+
+	// The right-click menu (editor_contextmenu.go). Off unless a consumer
+	// turns it on; ctxBuild nil means the stock items.
+	ctxOn    bool
+	ctxBuild func(e *Editor) []MenuItemModel
+	ctxOpen  *popupLayer
+	keyset   Keyset // active editing & keymap profile
 }
 
 var (
@@ -1532,6 +1538,9 @@ func (e *Editor) handleMouse(m tui.MouseEvent) bool {
 		return e.scrollLines(1)
 	case m.Kind == tui.MousePress && m.Button == tui.MouseLeft:
 		return e.pressAt(max(m.X-e.gutter, 0), m.Y) // a press in the gutter is at the line's start
+	case m.Kind == tui.MousePress && m.Button == tui.MouseRight && e.ctxOn:
+		// The selection is left as it is: the menu's Copy and Cut act on it.
+		return e.openContextMenu(tui.Point{X: m.X, Y: m.Y})
 	}
 	return false
 }

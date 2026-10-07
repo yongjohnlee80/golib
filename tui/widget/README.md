@@ -262,6 +262,17 @@ editor := widget.NewEditor(
 // Unbound Normal-mode keys (like Space) bubble up, enabling app-level leader menus:
 ```
 
+A right-click menu is opt-in. `WithContextMenu(nil)` gives the stock rows (Copy and Cut on a selection, Paste from the editor's register), opened at the pointer under the nearest `OverlayHost` and closed by Escape, a press outside it, or a chosen row. Pass a builder to supply your own rows; `EditorContextItems` returns the stock ones to extend, and a row runs when its action is an `EditorMenuAction`:
+
+```go
+editor := widget.NewEditor(widget.WithContextMenu(func(e *widget.Editor) []widget.MenuItemModel {
+    return append(widget.EditorContextItems(e), widget.NewCommand("upper", "Upper case",
+        widget.EditorMenuAction{ID: "upper", Run: func(e *widget.Editor) {
+            e.SetValue(strings.ToUpper(e.Value()))
+        }}))
+}))
+```
+
 #### `BufferView`
 
 High-throughput append-oriented log pager with ring-bounded scrollback, ANSI SGR color interpretation, follow-tail auto-scrolling, and thread-safe streaming writer:
