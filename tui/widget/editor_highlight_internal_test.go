@@ -68,7 +68,7 @@ func TestTheByteSpansMapOntoClusters(t *testing.T) {
 		return []highlight.Span{{Start: i, End: i + 2, Style: highlight.Keyword}}, 0
 	})))
 	e.SetValue("中é kw")
-	got := e.highlightLine(0, 0).styles
+	got := e.hlc.highlightLine(e.lines[0], 0).styles
 	want := []highlight.Style{highlight.Normal, highlight.Normal, highlight.Normal, highlight.Keyword, highlight.Keyword}
 	if len(got) != len(want) {
 		t.Fatalf("styles %v, want %v", got, want)
@@ -209,12 +209,12 @@ func waitCells(t *testing.T, tb *tui.TestBackend, cond func([][]tui.Cell) bool) 
 // and reports how many lines it examined — checked against the cache or
 // highlighted afresh.
 func frameWork(e *Editor, rows int) (examined int, provisional bool) {
-	before := e.hlExamined
+	before := e.hlc.examined
 	f := e.beginHighlightFrame()
 	for ln := e.top; ln < min(e.top+rows, len(e.lines)); ln++ {
 		e.highlighted(ln, f)
 	}
-	return e.hlExamined - before, f.provisional
+	return e.hlc.examined - before, f.provisional
 }
 
 // TestADeepJumpHighlightsInBoundedFrames: `G` on a long file needs every line
@@ -322,7 +322,7 @@ func TestTheCacheAgreesWithAFreshHighlightAfterAnyEdit(t *testing.T) {
 		var out [][]highlight.Style
 		st := highlight.State(0)
 		for ln := range e.lines {
-			entry := e.highlightLine(ln, st)
+			entry := e.hlc.highlightLine(e.lines[ln], st)
 			st = entry.out
 			if ln >= e.top && ln < e.top+rows {
 				out = append(out, entry.styles)
