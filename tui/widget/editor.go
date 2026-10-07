@@ -147,18 +147,11 @@ import (
 type Editor struct {
 	readOnly bool // viewer mode: motions and yank only
 
-	// hl colours the buffer (editor_highlight.go); syntax is what each
-	// highlight style looks like; hlCache remembers each line's colours and
-	// what they were computed from, and hlValid how much of it is verified.
-	// hlExamined counts the lines the walk has looked at, for a test to hold
-	// a frame's work to what it promises.
-	hl highlight.Highlighter
+	// hlc colours the buffer: the highlighter, what each style looks like, and each line's
+	// remembered styles (editor_highlight.go).
+	hlc highlightCache
 	// ruler is the column a vertical guide marks, 1-based; 0 for none (WithRuler).
-	ruler      int
-	syntax     SyntaxStyles
-	hlCache    []hlLine
-	hlValid    int
-	hlExamined int
+	ruler int
 
 	// onModeChange and onChange are the constructor-time listeners for the two
 	// notifications this widget also publishes on the bus. A caller that builds
@@ -1852,7 +1845,7 @@ func (e *Editor) renderText(s tui.Surface) {
 		if ln != styledLn {
 			lineStyles, styledLn = e.highlighted(ln, hlf), ln
 		}
-		if e.hl != nil {
+		if e.hlc.hl != nil {
 			k := highlight.Normal
 			if col < len(lineStyles) {
 				k = lineStyles[col]
