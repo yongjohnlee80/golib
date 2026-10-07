@@ -3,6 +3,7 @@ package gui
 import (
 	"image/color"
 	"math"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -99,10 +100,53 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 			border, width = alpha(fg, 0.9), 1.5
 		}
 		c.StrokeRRect(r.Inset(width/2), radius, width, Solid(border))
-		t := c.Text().Layout(b.Label(), labelFont(c), 0)
-		at := Pt((c.Size().W-t.Width)/2, (c.Size().H-(t.Ascent+t.Descent))/2)
-		c.DrawText(t, at, Solid(fg))
+		i, ok := b.MnemonicIndex()
+		if !ok {
+			i = -1
+		}
+		drawLabel(c, b.Label(), i, labelFont(c), fg)
 	}), tui.ScopeSubtree, true
+}
+
+// drawLabel draws label centred in c, with cluster key (the button's mnemonic; -1 for none) bold
+// and underlined, as its cells mark it.
+func drawLabel(c Canvas, label string, key int, f Font, fg color.NRGBA) {
+	var parts [3]strings.Builder // before the key, the key, after it
+	n := 0
+	for cl := range tui.Graphemes(label) {
+		switch {
+		case key < 0 || n < key:
+			parts[0].WriteString(cl)
+		case n == key:
+			parts[1].WriteString(cl)
+		default:
+			parts[2].WriteString(cl)
+		}
+		n++
+	}
+	bold := f
+	bold.Bold = true
+	runs := [3]*TextLayout{
+		c.Text().Layout(parts[0].String(), f, 0),
+		c.Text().Layout(parts[1].String(), bold, 0),
+		c.Text().Layout(parts[2].String(), f, 0),
+	}
+	var width, ascent, descent float32
+	for _, r := range runs {
+		width += r.Width
+		ascent, descent = max(ascent, r.Ascent), max(descent, r.Descent)
+	}
+	x := (c.Size().W - width) / 2
+	y := (c.Size().H - (ascent + descent)) / 2
+	for i, r := range runs {
+		if r.Width > 0 {
+			c.DrawText(r, Pt(x, y+ascent-r.Ascent), Solid(fg))
+		}
+		if i == 1 && r.Width > 0 {
+			c.FillRect(Rect{X: x, Y: y + ascent + max(descent*0.35, 1), W: r.Width, H: max(f.Size/14, 1)}, Solid(fg))
+		}
+		x += r.Width
+	}
 }
 
 // paintCheckBox draws the box as a rounded square over the "[x]" or "[ ]" cells, checked with a

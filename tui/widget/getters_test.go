@@ -248,3 +248,50 @@ func TestTextInputPadsInsideANativeFrame(t *testing.T) {
 		}
 	}
 }
+
+// MnemonicIndex names the cluster Render underlines: the first matching letter, case-insensitive.
+func TestButtonMnemonicIndexIsTheUnderlinedCluster(t *testing.T) {
+	for _, tc := range []struct {
+		label string
+		key   rune
+		want  int
+		ok    bool
+	}{
+		{"Close (q)", 'q', 7, true},
+		{"Add...", 'a', 0, true},
+		{"Use", 0, 0, false},
+		{"Edit", 'z', 0, false},
+	} {
+		b := widget.NewButton(tc.label, widget.WithMnemonic(tc.key))
+		if i, ok := b.MnemonicIndex(); i != tc.want || ok != tc.ok {
+			t.Errorf("%q key %q: MnemonicIndex %d,%v; want %d,%v", tc.label, tc.key, i, ok, tc.want, tc.ok)
+		}
+		if !tc.ok {
+			continue
+		}
+		tb := tui.NewTestBackend(20, 1)
+		app := tui.NewApp(b, tui.WithBackend(tb))
+		ctx, cancel := context.WithCancel(context.Background())
+		go app.Run(ctx)
+		var under string
+		for range 300 {
+			for _, c := range tb.Snapshot()[0] {
+				if c.Attrs.Mask&tui.AttrUnderline != 0 {
+					under = c.Content
+				}
+			}
+			if under != "" {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel()
+		var cl []string
+		for c := range tui.Graphemes(tc.label) {
+			cl = append(cl, c)
+		}
+		if under != cl[tc.want] {
+			t.Errorf("%q: Render underlines %q; MnemonicIndex names %q", tc.label, under, cl[tc.want])
+		}
+	}
+}
