@@ -87,7 +87,7 @@ import (
 //     (passwords, tokens) deleted during editing are never leaked to external clipboards.
 //
 //  5. Bounded Undo Ring with Edit Grouping:
-//     The undo history is ring-bounded ([editorUndoCap] = 64 snapshots). Continuous
+//     The undo history is ring-bounded ([editHistoryCap] = 64 snapshots). Continuous
 //     typing in Insert mode is batched into a single undo transaction, so a single 'u'
 //     in Normal mode reverts the entire insert session.
 //
@@ -100,7 +100,7 @@ import (
 //     Editor capabilities can be fine-tuned or restricted:
 //     - Selection: Visual modes and range selection can be enabled or disabled ([canSelect]).
 //     - Yank & System Clipboard: OS clipboard and internal register copying can be enabled or restricted ([canYank]).
-//     - Bounded Undo Ring: Undo and redo tracking can be enabled or bypassed ([canUndo]).
+//     - Bounded Undo Ring: Undo and redo tracking can be enabled or bypassed ([WithUndo]).
 //     - Modality: The editor can run modally (Vim tripartite) or modelessly (Nano, Standard) ([WithModalEditing], [WithKeyset]).
 //
 //  8. Structural Runtime Keymap Reflection:
@@ -216,8 +216,7 @@ type Editor struct {
 	// Register & undo.
 	regText     string
 	regLinewise bool
-	undo, redo  []editorSnap
-	groupOpen   bool // an Insert-mode edit group is open
+	hist        editHistory // undo and redo (edithistory.go)
 
 	chordTimeout time.Duration
 
@@ -225,7 +224,6 @@ type Editor struct {
 	modal     bool // true = Vim tripartite state machine; false = modeless editor
 	canSelect bool // true = visual / selection active
 	canYank   bool // true = system clipboard & register yanking active
-	canUndo   bool // true = bounded undo / redo history active
 
 	// The right-click menu (editor_contextmenu.go). Off unless a consumer
 	// turns it on; ctxBuild nil means the stock items.
@@ -557,8 +555,8 @@ func NewEditor(opts ...EditorOption) *Editor {
 		modal:        true,
 		canSelect:    true,
 		canYank:      true,
-		canUndo:      true,
 		keyset:       KeysetVim,
+		hist:         editHistory{enabled: true},
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -583,8 +581,7 @@ func (e *Editor) SetValue(s string) {
 	defer e.cursorMoved(ln, col)
 	e.settlePendingRune()
 	e.count, e.pendingAct = 0, ActUnbound
-	e.groupOpen = false
-	e.undo, e.redo = nil, nil
+	e.hist.reset()
 	e.setValue(s)
 	e.ln, e.col = 0, 0
 	if e.modal {
@@ -709,7 +706,7 @@ func (e *Editor) SetKeyset(ks Keyset) {
 	e.settlePendingRune()
 	e.count, e.pendingCount = 0, 0
 	e.pendingAct, e.pendingChord = ActUnbound, KeyChord{}
-	e.groupOpen = false
+	e.hist.close()
 	e.anchor, e.vAnchor = nil, taPos{}
 	e.applyKeyset(ks)
 	if e.modal {
@@ -824,7 +821,7 @@ func (e *Editor) clampNormal() {
 
 func (e *Editor) enterInsert() {
 	e.count, e.pendingAct = 0, ActUnbound
-	e.groupOpen = false // group opens lazily on the first mutation
+	e.hist.close() // group opens lazily on the first mutation
 	e.setMode(ModeInsert)
 }
 
@@ -834,7 +831,7 @@ func (e *Editor) exitInsert() {
 	if !e.modal {
 		return
 	}
-	e.groupOpen = false
+	e.hist.close()
 	e.col = max(0, e.col-1)
 	e.clampNormal()
 	e.desired = -1
@@ -881,7 +878,7 @@ func (e *Editor) settlePendingRune() {
 // its count into a later keystroke. Keep the visual selection for the action.
 func (e *Editor) menuAction(act Action) {
 	e.settlePendingRune()
-	e.groupOpen = false
+	e.hist.close()
 	e.count, e.pendingCount = 0, 0
 	e.pendingAct, e.pendingChord = ActUnbound, KeyChord{}
 	e.execAction(act, 1)
@@ -909,10 +906,10 @@ func (e *Editor) Undo() { e.menuAction(ActUndo) }
 func (e *Editor) Redo() { e.menuAction(ActRedo) }
 
 // CanUndo reports whether Undo would change the text now.
-func (e *Editor) CanUndo() bool { return e.canUndo && !e.readOnly && len(e.undo) > 0 }
+func (e *Editor) CanUndo() bool { return !e.readOnly && e.hist.canUndo() }
 
 // CanRedo reports whether Redo would change the text now.
-func (e *Editor) CanRedo() bool { return e.canUndo && !e.readOnly && len(e.redo) > 0 }
+func (e *Editor) CanRedo() bool { return !e.readOnly && e.hist.canRedo() }
 
 // mutatingActions are refused in read-only mode (motions, visual entry,
 // and yank stay available — a viewer still navigates and copies).
@@ -964,7 +961,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 		e.touch(e.ln + 1)
 		e.ln, e.col = e.ln+1, 0
 		e.enterInsert()
-		e.groupOpen = true // the open-line already began this group
+		e.hist.keepOpen() // the open-line already began this group
 		e.edited()
 		return true
 	case ActOpenAbove:
@@ -973,7 +970,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 		e.touch(e.ln)
 		e.col = 0
 		e.enterInsert()
-		e.groupOpen = true
+		e.hist.keepOpen()
 		e.edited()
 		return true
 
@@ -1179,7 +1176,7 @@ func (e *Editor) handleEvent(ev tui.Event) bool {
 			// pending count and the double-key prefix must not survive a
 			// focus round-trip.
 			e.settlePendingRune()
-			e.groupOpen = false
+			e.hist.close()
 			e.count = 0
 			e.pendingAct = ActUnbound
 			e.pendingCount = 0
@@ -1313,21 +1310,21 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 		}
 		return true
 	case tui.KeyLeft:
-		e.groupOpen = false
+		e.hist.close()
 		e.desired = -1
 		e.moveCursor(e.ln, e.col-1, false)
 		e.ensureVisible()
 		e.MarkDirty()
 		return true
 	case tui.KeyRight:
-		e.groupOpen = false
+		e.hist.close()
 		e.desired = -1
 		e.moveCursor(e.ln, e.col+1, false)
 		e.ensureVisible()
 		e.MarkDirty()
 		return true
 	case tui.KeyUp, tui.KeyDown:
-		e.groupOpen = false
+		e.hist.close()
 		delta := 1
 		if k.Code == tui.KeyUp {
 			delta = -1
@@ -1340,13 +1337,13 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 		e.MarkDirty()
 		return true
 	case tui.KeyHome:
-		e.groupOpen = false
+		e.hist.close()
 		e.desired = -1
 		e.moveCursor(e.ln, 0, false)
 		e.MarkDirty()
 		return true
 	case tui.KeyEnd:
-		e.groupOpen = false
+		e.hist.close()
 		e.desired = -1
 		e.moveCursor(e.ln, len(e.lineClusters(e.ln)), false)
 		e.MarkDirty()
@@ -1710,7 +1707,7 @@ func (e *Editor) pressAt(x, y int) bool {
 		e.settlePendingRune()
 		// A click is a deliberate discontinuity, so text typed before and after it
 		// undo separately.
-		e.groupOpen = false
+		e.hist.close()
 	}
 	// Pending COMMAND state is discarded, never completed. Completing `2d`
 	// against a clicked location would turn a mis-click into a destructive edit,

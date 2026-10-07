@@ -61,7 +61,7 @@ func TestEditorHistoryDisabled(t *testing.T) {
 func TestEditorHistoryRingCapacity(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 10, widget.WithInitialText("start"))
 
-	// Create 70 separate normal-mode edits (exceeding editorUndoCap = 64)
+	// Create 70 separate normal-mode edits (exceeding editHistoryCap = 64)
 	for i := 0; i < 70; i++ {
 		h.inject(key('o'))
 		h.inject(key(tui.KeyEscape))

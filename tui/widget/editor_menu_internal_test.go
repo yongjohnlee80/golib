@@ -74,11 +74,11 @@ func TestMenuActionsSettleHeldTextAndCancelPendingCountAndOperator(t *testing.T)
 	pressRune(e, 'i')
 	pressRune(e, 'a')
 	pressRune(e, 'j') // held as the first rune of the Vim escape chord
-	if e.pendingRune != 'j' || !e.groupOpen {
+	if e.pendingRune != 'j' || !e.hist.open {
 		t.Fatal("fixture did not hold an insert rune in an open undo group")
 	}
 	e.Copy()
-	if e.Value() != "aj" || e.pendingRune != 0 || e.groupOpen {
+	if e.Value() != "aj" || e.pendingRune != 0 || e.hist.open {
 		t.Fatalf("menu action failed to settle held text and end its edit group: %q", e.Value())
 	}
 	e.Cut()

@@ -104,12 +104,12 @@ func TestSetKeysetClosesOpenUndoGroup(t *testing.T) {
 	e := NewEditor()
 	pressRune(e, 'i')
 	pressRune(e, 'a')
-	if !e.groupOpen {
-		t.Fatalf("groupOpen = false, want true — the fixture never opened a group")
+	if !e.hist.open {
+		t.Fatalf("hist.open = false, want true — the fixture never opened a group")
 	}
 
 	e.SetKeyset(KeysetStandard)
-	if e.groupOpen {
-		t.Errorf("groupOpen = true, want false — the group outlived the switch")
+	if e.hist.open {
+		t.Errorf("hist.open = true, want false — the group outlived the switch")
 	}
 }
