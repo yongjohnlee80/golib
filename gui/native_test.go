@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -252,7 +253,8 @@ func TestScrollbarOnlyWhenContentOverflows(t *testing.T) {
 	}
 }
 
-// A Modal over a native button covers it: the dialog's cells are written after the button began.
+// A dialog over a native button puts it under the dialog: the scrim, drawn natively, is a later
+// placement over the button's cells, so it is composited over the button.
 func TestModalCoversANativeButton(t *testing.T) {
 	btn := widget.NewButton("Under")
 	host := widget.NewOverlayHost(btn)
@@ -264,9 +266,15 @@ func TestModalCoversANativeButton(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	waitUntil(t, "the button covered", func() bool {
-		for _, p := range sb.placements() {
-			if p.Node == btn.NodeID() && len(p.Covered) > 0 {
+	waitUntil(t, "a later placement over the button", func() bool {
+		ps := sb.placements()
+		i := slices.IndexFunc(ps, func(p tui.NativePlacement) bool { return p.Node == btn.NodeID() })
+		if i < 0 {
+			return false
+		}
+		b := ps[i]
+		for _, p := range ps[i+1:] {
+			if p.Layer > b.Layer && p.X <= b.X && p.Y <= b.Y && p.X+p.Cols >= b.X+b.Cols && p.Y+p.Rows >= b.Y+b.Rows {
 				return true
 			}
 		}
@@ -364,5 +372,39 @@ func TestBackdropIsWhatSurroundsTheView(t *testing.T) {
 	}
 	if got := r.backdrop(&g, CellRect{W: 6, H: 3}); got != r.pageBG {
 		t.Fatalf("backdrop of the whole grid %v; want the page's", got)
+	}
+}
+
+// Drawn natively, the scrim writes no cells: what is beneath the dialog stays in the grid, and
+// the scrim's view dims it. With CellStyle it fills its cells, as on a terminal.
+func TestScrimLetsWhatIsBeneathShow(t *testing.T) {
+	for _, st := range []*Style{NativeStyle(), CellStyle} {
+		base := widget.NewText("beneath the dialog")
+		host := widget.NewOverlayHost(base)
+		app, sb := styledApp(t, host, 30, 9, st)
+		m := widget.NewModal(widget.NewText("x"), widget.WithModalTitle("D"))
+		onLoop(t, app, func() {
+			if err := m.Open(host); err != nil {
+				t.Error(err)
+			}
+		})
+		waitUntil(t, "the dialog", func() bool { return strings.Contains(sb.String(), "D") })
+		shows := strings.Contains(sb.String(), "beneath")
+		var dims bool
+		for _, p := range sb.placements() {
+			if _, ok := p.View.(View); ok && p.Cols == 30 && p.Rows == 9 && p.Scope == tui.ScopeChrome {
+				rc := paintOn(t, app, sb, p)
+				dims = dims || (len(rc.Calls) == 1 && rc.Calls[0].Op == "FillRect" && rc.Calls[0].Brush.Color.A > 0 && rc.Calls[0].Brush.Color.A < 0xff)
+			}
+		}
+		if st == CellStyle {
+			if shows || dims {
+				t.Fatalf("CellStyle: beneath shows=%v, dimmed natively=%v; want the scrim's own cells", shows, dims)
+			}
+			continue
+		}
+		if !shows || !dims {
+			t.Fatalf("native: beneath shows=%v, dimmed=%v; want both:\n%s", shows, dims, sb.String())
+		}
 	}
 }

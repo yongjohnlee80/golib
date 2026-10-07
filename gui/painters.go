@@ -9,7 +9,7 @@ import (
 )
 
 // NativeStyle is golib's painter set: push buttons, check boxes, text fields, progress bars, tab
-// bars, scrollbars on lists and trees, and a dialog's shadow. Each painter takes its colours
+// bars, scrollbars on lists and trees, a dialog's shadow, and a real dim behind it. Each painter takes its colours
 // from the cells the widget painted, so the app's theme and the widget's state (focused, armed,
 // disabled) carry over, and it draws text at the cells tui gave it. It returns a new Style each
 // call, for a consumer to change.
@@ -23,6 +23,7 @@ func NativeStyle() *Style {
 	s.ForRole(tui.RoleList, paintScrollbar)
 	s.ForRole(tui.RoleTree, paintScrollbar)
 	s.ForRole(tui.RoleDialog, paintDialog)
+	ForType(s, paintScrim)
 	return s
 }
 
@@ -308,5 +309,16 @@ func paintDialog(comp tui.Component) (View, tui.NativeScope, bool) {
 		for i := float32(1); i <= 8; i++ {
 			c.FillRRect(Rect{X: card.X - i, Y: card.Y - i + 3, W: card.W + 2*i, H: card.H + 2*i}, 6+i, Solid(alpha(shadow, 0.05)))
 		}
+	}), tui.ScopeChrome, true
+}
+
+// scrimDim is how dark the scrim makes what is beneath a dialog.
+const scrimDim = 0.45
+
+// paintScrim dims what is beneath a dialog, which stays visible through it: drawn natively, the
+// scrim writes no cells of its own.
+func paintScrim(*widget.Scrim) (View, tui.NativeScope, bool) {
+	return ViewFunc(func(c Canvas) {
+		c.FillRect(Rect{W: c.Size().W, H: c.Size().H}, Solid(alpha(color.NRGBA{A: 0xff}, scrimDim)))
 	}), tui.ScopeChrome, true
 }

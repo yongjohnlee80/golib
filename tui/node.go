@@ -26,6 +26,8 @@ type node struct {
 
 	mounted bool
 
+	drawnNatively bool // this frame's render gave it a native placement (Context.DrawnNatively)
+
 	// resolvers is this node's two-layer action resolver chain, and
 	// pointerPolicy its own pointer decision (PointerInherit = defer to an
 	// ancestor). Both are loop-goroutine-owned like everything else here.

@@ -96,7 +96,7 @@ type OverlayHost struct {
 	// no individual dialog can answer about itself.
 	modals []*Modal
 	// scrim is the single backdrop layer, owned by whichever dialog is on top.
-	scrim *scrimLayer
+	scrim *Scrim
 	// anchored holds the layers positioned against an anchor rather than by
 	// the stack's own alignment, in registration order.
 	anchored []anchoredLayer
@@ -317,9 +317,9 @@ func (h *OverlayHost) openModal(m *Modal) (err error) {
 		return fmt.Errorf("%w: the dialog is already mounted elsewhere", ErrModalNotMountable)
 	}
 
-	var scrim *scrimLayer
+	var scrim *Scrim
 	if m.wantScrim {
-		scrim = &scrimLayer{st: m.card.st}
+		scrim = &Scrim{st: m.card.st}
 		h.Stack.Add(scrim)
 		h.scrim = scrim
 	}
@@ -427,7 +427,7 @@ func (h *OverlayHost) restoreScrimForTop() {
 	if !top.wantScrim {
 		return
 	}
-	scrim := &scrimLayer{st: top.card.st}
+	scrim := &Scrim{st: top.card.st}
 	h.Stack.Add(scrim)
 	h.scrim = scrim
 	// Added on top, then moved to the slot directly below the surviving dialog: the dialog's own

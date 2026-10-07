@@ -19,7 +19,7 @@ func TestNeverFocusableWidgetsDoNotClaimFocusable(t *testing.T) {
 		"MenuBar":      (*MenuBar)(nil),
 		"menuPopup":    (*menuPopup)(nil),
 		"modalCard":    (*modalCard)(nil),
-		"scrimLayer":   (*scrimLayer)(nil),
+		"Scrim":        (*Scrim)(nil),
 	} {
 		if _, ok := c.(tui.Focusable); ok {
 			t.Errorf("%s implements tui.Focusable, but is never a focus stop", name)

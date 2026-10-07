@@ -255,7 +255,7 @@ func TestToastsStayAboveTheDialogs(t *testing.T) {
 			}
 		}
 	})
-	if n := len(order); n < 3 || order[n-1] != "toasts" || order[n-2] != "first" || !strings.Contains(order[n-3], "scrim") {
+	if n := len(order); n < 3 || order[n-1] != "toasts" || order[n-2] != "first" || order[n-3] != "*widget.Scrim" {
 		t.Fatalf("after the top dialog closed the layers are %v, want …, scrim, first, toasts", order)
 	}
 }
