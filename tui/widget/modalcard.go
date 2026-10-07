@@ -424,29 +424,33 @@ func drawBorder(s tui.Surface, sz tui.Size, st style.Style) {
 	}
 }
 
-// scrimLayer dims everything beneath it.
+// Scrim dims everything beneath a dialog. The overlay host makes and owns it; it is exported
+// so a native style can draw it (a real dim over what is beneath, which cells cannot show).
 //
 // It is a STACK LAYER rather than something a Modal or the host paints during
 // its own Render, because a parent renders before its children: a scrim painted
 // by the host would be covered by the base UI, and one painted by a Modal could
 // not extend beyond that Modal's own rect. Ordering is the whole problem, and a
 // layer is the only thing the stack orders.
-type scrimLayer struct {
+type Scrim struct {
 	Base
 	st *ModalStyle
 }
 
-func (s *scrimLayer) Layout(cs tui.Constraints) tui.Size {
+func (s *Scrim) Layout(cs tui.Constraints) tui.Size {
 	return cs.Constrain(tui.Size{W: cs.MaxW, H: cs.MaxH})
 }
 
 // NOT FOCUSABLE BY DESIGN — no tui.Focusable: the scrim is decoration, and the
 // dialog above it owns the focus.
 
-func (s *scrimLayer) Render(su tui.Surface) {
+func (s *Scrim) Render(su tui.Surface) {
 	sz := su.Size()
 	if sz.W <= 0 || sz.H <= 0 {
 		return
+	}
+	if ctx := s.Context(); ctx != nil && ctx.DrawnNatively() {
+		return // a native view dims what is beneath; covering it with cells would hide it
 	}
 	su.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", s.st.Scrim())
 }

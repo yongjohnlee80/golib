@@ -2,6 +2,7 @@ package tui
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -208,4 +209,39 @@ func equalRects(a, b []Rect) bool {
 		}
 	}
 	return true
+}
+
+// drawnProbe records what Context.DrawnNatively said during its last Render.
+type drawnProbe struct {
+	box
+	drawn atomic.Int32 // 0 unset, 1 false, 2 true
+}
+
+func (p *drawnProbe) Render(s Surface) {
+	if p.ctx.DrawnNatively() {
+		p.drawn.Store(2)
+	} else {
+		p.drawn.Store(1)
+	}
+}
+
+// A component learns in Render whether a native view draws it this frame: yes when the style
+// paints it, no when the style declines, and no on a backend that hosts no natives.
+func TestNative_DrawnNatively(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		styled func(Component) (any, NativeScope, bool)
+		want   int32
+	}{
+		{"styled", func(Component) (any, NativeScope, bool) { return "v", ScopeChrome, true }, 2},
+		{"declined", func(Component) (any, NativeScope, bool) { return nil, 0, false }, 1},
+	} {
+		p := &drawnProbe{}
+		startNative(t, p, 4, 1, tc.styled)
+		waitFor(t, tc.name, func() bool { return p.drawn.Load() == tc.want })
+	}
+	p := &drawnProbe{}
+	h := startApp(t, p, 4, 1)
+	h.sync()
+	waitFor(t, "a terminal", func() bool { return p.drawn.Load() == 1 })
 }

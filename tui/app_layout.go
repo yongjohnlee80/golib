@@ -182,6 +182,7 @@ func (a *App) renderNode(n *node, s Surface) {
 		a.buf.order++
 		native = a.noteNative(n)
 	}
+	n.drawnNatively = native >= 0
 	n.comp.Render(s)
 	a.noteImage(n)
 	subtree := native >= 0 && a.natives[native].Scope == ScopeSubtree

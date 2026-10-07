@@ -150,3 +150,9 @@ func (a *App) coveredAfter(r Rect, order uint32) []Rect {
 	}
 	return out
 }
+
+// DrawnNatively reports whether a native view draws this component this frame: the backend is a
+// NativeHost that took it (it reports a view, or the backend's style paints it). Read it in
+// Render, to skip cell work the view replaces, such as a fill that would hide what is beneath.
+// False on every other backend.
+func (c *Context) DrawnNatively() bool { return c.node.drawnNatively }
