@@ -143,5 +143,25 @@
         <source>or press q / Ctrl+C</source>
         <translation>或按 q / Ctrl+C</translation>
     </message>
+    <message id="tui.editor.menu.undo">
+        <source>&amp;Undo</source>
+        <translation>撤销(&amp;u)</translation>
+    </message>
+    <message id="tui.editor.menu.redo">
+        <source>&amp;Redo</source>
+        <translation>重做(&amp;r)</translation>
+    </message>
+    <message id="tui.editor.menu.copy">
+        <source>&amp;Copy</source>
+        <translation>复制(&amp;c)</translation>
+    </message>
+    <message id="tui.editor.menu.cut">
+        <source>Cu&amp;t</source>
+        <translation>剪切(&amp;t)</translation>
+    </message>
+    <message id="tui.editor.menu.paste">
+        <source>&amp;Paste</source>
+        <translation>粘贴(&amp;p)</translation>
+    </message>
 </context>
 </TS>

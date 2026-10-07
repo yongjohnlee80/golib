@@ -143,5 +143,25 @@
         <source>or press q / Ctrl+C</source>
         <translation>または q / Ctrl+C</translation>
     </message>
+    <message id="tui.editor.menu.undo">
+        <source>&amp;Undo</source>
+        <translation>元に戻す(&amp;u)</translation>
+    </message>
+    <message id="tui.editor.menu.redo">
+        <source>&amp;Redo</source>
+        <translation>やり直し(&amp;r)</translation>
+    </message>
+    <message id="tui.editor.menu.copy">
+        <source>&amp;Copy</source>
+        <translation>コピー(&amp;c)</translation>
+    </message>
+    <message id="tui.editor.menu.cut">
+        <source>Cu&amp;t</source>
+        <translation>切り取り(&amp;t)</translation>
+    </message>
+    <message id="tui.editor.menu.paste">
+        <source>&amp;Paste</source>
+        <translation>貼り付け(&amp;p)</translation>
+    </message>
 </context>
 </TS>

@@ -143,5 +143,25 @@
         <source>or press q / Ctrl+C</source>
         <translation>or press q / Ctrl+C</translation>
     </message>
+    <message id="tui.editor.menu.undo">
+        <source>&amp;Undo</source>
+        <translation>&amp;Undo</translation>
+    </message>
+    <message id="tui.editor.menu.redo">
+        <source>&amp;Redo</source>
+        <translation>&amp;Redo</translation>
+    </message>
+    <message id="tui.editor.menu.copy">
+        <source>&amp;Copy</source>
+        <translation>&amp;Copy</translation>
+    </message>
+    <message id="tui.editor.menu.cut">
+        <source>Cu&amp;t</source>
+        <translation>Cu&amp;t</translation>
+    </message>
+    <message id="tui.editor.menu.paste">
+        <source>&amp;Paste</source>
+        <translation>&amp;Paste</translation>
+    </message>
 </context>
 </TS>
