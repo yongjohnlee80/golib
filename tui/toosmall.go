@@ -127,6 +127,8 @@ func (a *App) renderTooSmall() {
 	writeAt(s, x+gap, y, keys, base.Foreground(style.TokenTextMuted))
 
 	a.renderDirty = false
+	a.beginNatives()
+	a.applyNatives() // nothing painted natively: the host removes every view
 	a.frameImages = a.frameImages[:0]
 	a.applyImages() // nothing reported: every placed image is deleted
 	a.backend.HideCursor()
