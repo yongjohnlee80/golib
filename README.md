@@ -14,7 +14,7 @@ go get github.com/yongjohnlee80/golib
 - **Zero-dependency core.** Every package imports only the standard library and
   other golib packages. Third-party dependencies are pushed to leaf subpackages
   — the `dao` database drivers and `server/ws` — and, when heavy (the GCP SDK),
-  into their own nested module (`dao/bigquery`).
+  into their own nested module (`dao/bigquery`, and `gui` for Gio and cgo).
 - **Small, adaptable seams.** Interfaces are minimal (`logger.Logger` is one
   method); consumers bridge their own backends rather than adopting a framework.
 - **Data over code.** Per-entity/per-use differences are declarations, not
@@ -65,6 +65,7 @@ go get github.com/yongjohnlee80/golib
 | [`tui/decl/decltest`](tui/decl/decltest/README.md) | Test a QML program in `go test`: `Check` every file it can load, `Run` it on a test backend | [README](tui/decl/decltest/README.md) |
 | [`vfs`](vfs/README.md) | One filesystem interface with capability interfaces (conditional writes, exclusive create, watch…); `vfs/local` (atomic, root-jailed, inotify) and `vfs/memfs` drivers, `vfs/vfstest` conformance suite | [README](vfs/README.md) |
 | [`tui`](tui/README.md) | Cell-buffer terminal UI: component tree, constraint layout, focus routing, async tasks, and a widget set (vim Editor, lazy Tree, Table, Split, Float…) | [README](tui/README.md) · [TUTORIAL](tui/tutorial/README.md) |
+| [`gui`](gui/README.md) | A `tui` backend that is a native window (Gio): any tui app runs unchanged, every cell drawn natively. Its own nested module (cgo) | [README](gui/README.md) |
 
 ### tui
 
@@ -101,6 +102,14 @@ included) and component files are QML; your own Go widgets join the vocabulary
 as one `tuidecl.Type` each. The [editor-qml example](tui/examples/editor-qml/README.md)
 is a complete text editor built this way.
 → [tui/decl/README.md](tui/decl/README.md) · [USAGE.md](tui/decl/USAGE.md)
+
+### gui — tui apps in a native window
+
+`gui.NewBackend()` is a `tui.Backend` that is a Gio window. A tui app chooses it
+instead of a terminal and runs unchanged: the window draws every cell natively,
+at the display's scale, with the keyboard, mouse, paste, images and IME a tui
+app expects. It is its own module, so TUI-only users never pull Gio or cgo.
+→ [gui/README.md](gui/README.md)
 
 ### threadsafe
 

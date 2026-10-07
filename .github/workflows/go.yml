@@ -39,6 +39,16 @@ jobs:
       - name: build
         run: go build ./...
 
+      # golib/gui is a nested module with Gio and cgo (ADR 1791330692): nothing in the root
+      # module may depend on it, so a TUI binary never links Gio or needs a C toolchain.
+      - name: root module stays cgo-free and Gio-free
+        run: |
+          CGO_ENABLED=0 go build ./...
+          if go list -deps ./... | grep -E '^(gioui\.org|github\.com/yongjohnlee80/golib/gui)(/|$)'; then
+            echo "::error::a root-module package depends on golib/gui or Gio"
+            exit 1
+          fi
+
       - name: vet
         run: go vet ./...
 
@@ -52,6 +62,46 @@ jobs:
       # pressure that catches the common ordering races.
       - name: test
         run: go test -race -count=2 -timeout 20m ./...
+
+  # golib/gui: its own module, on Gio, with cgo. The root job never compiles it.
+  gui:
+    name: gui (Gio, cgo)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gui/go.mod
+          cache: true
+          cache-dependency-path: gui/go.sum
+
+      - name: Gio's Linux libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite these files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
+
+      - name: test
+        run: go test -race -count=2 -timeout 10m ./...
 
   # vfs/local watches with FSEvents on macOS, through cgo (ADR golib-vfs-0002): the Linux runner above
   # can only vet the cgo-less darwin build, so the watch itself is built and tested here, on a Mac.
