@@ -138,6 +138,10 @@ type Capabilities struct {
 	// proves nothing). Kitty KEYBOARD support is no evidence of it.
 	KittyGraphics Tri
 
+	// NativeViews: the backend draws native views over their cells (it is a NativeHost,
+	// native.go), so a component that reports one may paint only its background beneath it.
+	NativeViews bool
+
 	// DarkBackground derives from the OSC 11 reply (relative luminance of
 	// DefaultBG < 0.5). The unknown-fallback is DOCUMENTED AND FIXED: when
 	// the query goes unanswered, ASSUME DARK — the statistically safer

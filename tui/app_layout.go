@@ -177,11 +177,26 @@ func (a *App) renderTree() {
 //     parent-relative rectangle, preventing rogue components from overwriting
 //     neighboring sibling or parent cells.
 func (a *App) renderNode(n *node, s Surface) {
+	native := -1
+	if a.buf.stamping {
+		a.buf.order++
+		native = a.noteNative(n)
+	}
 	n.comp.Render(s)
 	a.noteImage(n)
+	subtree := native >= 0 && a.natives[native].Scope == ScopeSubtree
+	if subtree {
+		a.styledDepth++
+	}
 	for _, ch := range n.children {
 		if ch.visible() {
 			a.renderNode(ch, s.Sub(ch.rect))
 		}
+	}
+	if subtree {
+		a.styledDepth--
+	}
+	if native >= 0 {
+		a.natives[native].End = a.buf.order
 	}
 }

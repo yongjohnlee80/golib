@@ -9,6 +9,12 @@ type buffer struct {
 	curr    []Cell       // row-major, len w*h — what components painted this frame
 	last    []Cell       // what the terminal is currently showing
 	scratch []CellUpdate // reusable diff slice (steady state allocates nothing)
+
+	// stamp is, per cell, the paint order of the node whose paint last wrote it, while
+	// stamping (a NativeHost backend: native.go). order is the current node's.
+	stamp    []uint32
+	order    uint32
+	stamping bool
 }
 
 // invalidCell is the last-buffer sentinel after (re)allocation: it compares
@@ -38,6 +44,7 @@ func (b *buffer) resize(w, h int) {
 	b.w, b.h = w, h
 	b.curr = make([]Cell, w*h)
 	b.last = make([]Cell, w*h)
+	b.stamp = make([]uint32, w*h)
 	for i := range b.curr {
 		b.curr[i] = blankCell
 		b.last[i] = invalidCell
@@ -72,11 +79,26 @@ func (b *buffer) setCell(x, y int, c Cell) {
 	i := y*b.w + x
 	if c.Width == 2 {
 		b.clearOverlap(x+1, y)
-		b.curr[i] = c
-		b.curr[i+1] = Cell{Content: "", Width: 0, Attrs: c.Attrs}
+		b.put(i, c)
+		b.put(i+1, Cell{Content: "", Width: 0, Attrs: c.Attrs})
 		return
 	}
+	b.put(i, c)
+}
+
+// put writes one cell, stamped with the painting node's order while stamping. Every write goes
+// through it, the implicit ones included, so a native view knows each cell painted after it.
+func (b *buffer) put(i int, c Cell) {
 	b.curr[i] = c
+	if b.stamping {
+		b.stamp[i] = b.order
+	}
+}
+
+// resetStamps starts a frame's stamping: no cell painted yet, no node seen.
+func (b *buffer) resetStamps() {
+	clear(b.stamp)
+	b.order = 0
 }
 
 // clearOverlap dissolves any wide pair overlapping (x, y) per W1: the
@@ -87,10 +109,10 @@ func (b *buffer) clearOverlap(x, y int) {
 	switch {
 	case b.curr[i].Width == 2 && x+1 < b.w && b.curr[i+1].Continuation():
 		// (x, y) is a head: free the continuation to its right.
-		b.curr[i+1] = Cell{Content: " ", Width: 1, Attrs: b.curr[i].Attrs}
+		b.put(i+1, Cell{Content: " ", Width: 1, Attrs: b.curr[i].Attrs})
 	case b.curr[i].Continuation() && x > 0 && b.curr[i-1].Width == 2:
 		// (x, y) is a continuation: free the head to its left.
-		b.curr[i-1] = Cell{Content: " ", Width: 1, Attrs: b.curr[i-1].Attrs}
+		b.put(i-1, Cell{Content: " ", Width: 1, Attrs: b.curr[i-1].Attrs})
 	}
 }
 

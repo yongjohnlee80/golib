@@ -56,6 +56,12 @@ type App struct {
 	minSize    Size
 	quitButton Rect
 
+	// natives are this frame's native placements, and styledDepth how many subtree-scoped
+	// placements the paint is inside; nativeStyler is the backend's, for this frame (native.go).
+	natives      []NativePlacement
+	styledDepth  int
+	nativeStyler NativeStyler
+
 	done   chan struct{} // closed once Run has returned, its teardown finished (Done)
 	runCtx context.Context
 
@@ -653,9 +659,11 @@ func (a *App) renderFrame() {
 	for i := range a.buf.curr {
 		a.buf.curr[i] = blankCell
 	}
+	a.beginNatives()
 	a.renderTree()
 	a.renderDirty = false
 
+	a.applyNatives()
 	a.applyImages()
 	a.applyCursor()
 	if err := a.backend.Flush(a.buf.diff()); err != nil {
