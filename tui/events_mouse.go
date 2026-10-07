@@ -31,6 +31,12 @@ type MouseEvent struct {
 	// it has no business owning, and two backends would disagree about what a
 	// double-click is.
 	Count int
+
+	// SubX and SubY are the pointer's position inside cell (X, Y), each in [0, 1): where in the
+	// cell, for a component that draws in pixels (a native view). Zero from a backend that knows
+	// only whole cells. Routing translates X and Y to each node; these need no translation, so
+	// with App.CellPixels a component recovers its own pixels: (X + SubX) * CellPixels().W.
+	SubX, SubY float32
 }
 
 func (MouseEvent) isEvent() {}
