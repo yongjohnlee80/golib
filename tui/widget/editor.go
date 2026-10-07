@@ -233,6 +233,16 @@ type Editor struct {
 	ctxBuild func(e *Editor) []MenuItemModel
 	ctxOpen  *popupLayer
 	keyset   Keyset // active editing & keymap profile
+
+	// dragging is a left-button drag in progress from dragFrom: moving selects in visual mode,
+	// as a GUI editor selects with the mouse. Copying stays the key combos' (y, Ctrl+C).
+	dragging bool
+	dragFrom taPos
+	// dragEdge is -1 or +1 while the dragging pointer is above or below the view, which keeps
+	// scrolling on dragTick (a GUI editor's auto-scroll); dragX is the pointer's column.
+	dragEdge   int
+	dragX      int
+	dragCancel func()
 }
 
 var (
@@ -1113,6 +1123,10 @@ func (e *Editor) handleEvent(ev tui.Event) bool {
 	switch t := ev.(type) {
 	case tui.MouseEvent:
 		return e.handleMouse(t)
+	case tui.PointerCaptureLostEvent:
+		e.dragging = false // the selection made so far stays
+		e.setDragEdge(0)
+		return true
 	case tui.PasteEvent:
 		if e.readOnly {
 			return true // a viewer never mutates (bracketed paste included)
@@ -1159,6 +1173,10 @@ func (e *Editor) handleEvent(ev tui.Event) bool {
 		}
 		return false // focus events are informational; let them bubble
 	case tui.TickEvent:
+		if e.dragging && e.dragEdge != 0 {
+			e.dragTick() // the drag's auto-scroll: a press settled any pending rune
+			return true
+		}
 		// The chord timeout: commit the held rune as an insertion.
 		e.chordCancel = nil
 		if e.pendingRune != 0 {
@@ -1537,12 +1555,109 @@ func (e *Editor) handleMouse(m tui.MouseEvent) bool {
 	case m.Kind == tui.MouseWheel && m.Button == tui.WheelDown:
 		return e.scrollLines(1)
 	case m.Kind == tui.MousePress && m.Button == tui.MouseLeft:
-		return e.pressAt(max(m.X-e.gutter, 0), m.Y) // a press in the gutter is at the line's start
+		x := max(m.X-e.gutter, 0) // a press in the gutter is at the line's start
+		handled := e.pressAt(x, m.Y)
+		if !(e.scrollable() && x >= e.wrapWidth()) { // not on the scroll indicator
+			e.beginDrag()
+		}
+		return handled
 	case m.Kind == tui.MousePress && m.Button == tui.MouseRight && e.ctxOn:
 		// The selection is left as it is: the menu's Copy and Cut act on it.
 		return e.openContextMenu(tui.Point{X: m.X, Y: m.Y})
+	case m.Kind == tui.MouseMotion && m.Button == tui.MouseLeft && e.dragging:
+		return e.dragTo(m.X-e.gutter, m.Y)
+	case m.Kind == tui.MouseRelease && e.dragging:
+		e.endDrag()
+		return true
 	}
 	return false
+}
+
+// beginDrag starts a possible drag-selection at the caret a press just placed. Nothing is selected
+// until the pointer moves to another position, so a click stays a click. The pointer is captured,
+// so the drag goes on past the editor's edges.
+func (e *Editor) beginDrag() {
+	if !e.canSelect {
+		return
+	}
+	e.dragging = true
+	e.dragFrom = taPos{ln: e.ln, col: min(e.col, e.normalMax(e.ln))}
+	if ctx := e.Context(); ctx != nil {
+		ctx.CapturePointer()
+	}
+}
+
+// dragTo extends the drag-selection to the viewport cell (x, y), in visual mode: the same
+// selection v makes, so y (vim) or Ctrl+C (Text mode) copies it. Past the top or bottom edge the
+// view scrolls a line, and keeps scrolling while the pointer stays there (dragTick), as a GUI
+// editor does.
+func (e *Editor) dragTo(x, y int) bool {
+	e.dragX = x
+	switch {
+	case y < 0:
+		e.setDragEdge(-1)
+		e.scrollLines(-1)
+	case e.h > 0 && y >= e.h:
+		e.setDragEdge(1)
+		e.scrollLines(1)
+	default:
+		e.setDragEdge(0)
+	}
+	e.extendDrag(x, min(max(y, 0), max(e.h-1, 0)))
+	return true
+}
+
+// dragTick is the auto-scroll's step while the pointer is held past an edge.
+func (e *Editor) dragTick() {
+	e.scrollLines(e.dragEdge)
+	row := 0
+	if e.dragEdge > 0 {
+		row = max(e.h-1, 0)
+	}
+	e.extendDrag(e.dragX, row)
+}
+
+// setDragEdge starts or stops the auto-scroll as the pointer leaves or re-enters the view.
+func (e *Editor) setDragEdge(edge int) {
+	e.dragEdge = edge
+	switch {
+	case edge != 0 && e.dragCancel == nil:
+		if ctx := e.Context(); ctx != nil {
+			e.dragCancel = ctx.Every(dragScrollInterval)
+		}
+	case edge == 0 && e.dragCancel != nil:
+		e.dragCancel()
+		e.dragCancel = nil
+	}
+}
+
+// dragScrollInterval is the auto-scroll's pace: a line per tick while the pointer is past an edge.
+const dragScrollInterval = 50 * time.Millisecond
+
+// extendDrag moves the selection's moving end to the viewport cell (x, row).
+func (e *Editor) extendDrag(x, row int) {
+	ln, col := e.posAt(max(x, 0), row)
+	if e.mode != ModeVisual {
+		if ln == e.dragFrom.ln && col == e.dragFrom.col {
+			return // not moved off the pressed position yet: still a click
+		}
+		e.vAnchor = e.dragFrom
+		e.setMode(ModeVisual)
+	}
+	e.ln, e.col = ln, col
+	e.clampNormal()
+	e.desired = -1
+	e.ensureVisible()
+	e.MarkDirty()
+}
+
+// endDrag ends the drag; the selection, if any, stays for the key combos to copy.
+func (e *Editor) endDrag() {
+	e.dragging = false
+	e.setDragEdge(0)
+	if ctx := e.Context(); ctx != nil && ctx.HasPointerCapture() {
+		ctx.ReleasePointer()
+	}
 }
 
 // scrollLines scrolls by whole LOGICAL lines in both wrap modes.
