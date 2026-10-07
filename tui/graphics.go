@@ -1,6 +1,9 @@
 package tui
 
-import "sync/atomic"
+import (
+	"slices"
+	"sync/atomic"
+)
 
 // GRAPHICS — a raster image over a component's cells, on a terminal that draws images (kitty's
 // graphics protocol; Capabilities.KittyGraphics).
@@ -37,6 +40,12 @@ type ImageReporter interface {
 type ImagePlacement struct {
 	Image
 	X, Y, Cols, Rows int
+	// Layer and Covered are set for a backend that is also a NativeHost, which composites images
+	// and native views in one paint order: Layer is the reporter's paint order this frame, as a
+	// NativePlacement's, and Covered the cells in it written after it, which are drawn over the
+	// image. Zero and nil on any other backend.
+	Layer   uint32
+	Covered []Rect
 }
 
 // GraphicsBackend is a Backend that draws images. Both calls are latched: the next Flush writes
@@ -69,7 +78,11 @@ func (a *App) noteImage(n *node) {
 	if r.Empty() {
 		return
 	}
-	a.frameImages = append(a.frameImages, ImagePlacement{Image: img, X: r.X, Y: r.Y, Cols: r.W, Rows: r.H})
+	p := ImagePlacement{Image: img, X: r.X, Y: r.Y, Cols: r.W, Rows: r.H}
+	if a.buf.stamping {
+		p.Layer = a.buf.order // the node's own paint order: noteImage runs before its children
+	}
+	a.frameImages = append(a.frameImages, p)
 }
 
 // applyImages places what changed since the last frame and deletes what went.
@@ -86,8 +99,12 @@ func (a *App) applyImages() {
 	seen := make(map[uint32]bool, len(want))
 	for _, p := range want {
 		seen[p.ID] = true
+		if a.buf.stamping {
+			p.Covered = a.coveredAfter(Rect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows}, p.Layer)
+		}
 		old, had := a.placed[p.ID]
-		if had && old.Version == p.Version && old.Clip == p.Clip && old.X == p.X && old.Y == p.Y && old.Cols == p.Cols && old.Rows == p.Rows {
+		if had && old.Version == p.Version && old.Clip == p.Clip && old.X == p.X && old.Y == p.Y && old.Cols == p.Cols && old.Rows == p.Rows &&
+			old.Layer == p.Layer && slices.Equal(old.Covered, p.Covered) {
 			continue
 		}
 		g.PlaceImage(p)

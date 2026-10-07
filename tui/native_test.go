@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -244,4 +245,26 @@ func TestNative_DrawnNatively(t *testing.T) {
 	h := startApp(t, p, 4, 1)
 	h.sync()
 	waitFor(t, "a terminal", func() bool { return p.drawn.Load() == 1 })
+}
+
+// On a NativeHost an image carries its paint order and the cells written after it, so the host
+// composites it with native views and keeps a later dialog's cells over it.
+func TestNative_ImagesCarryLayerAndCovered(t *testing.T) {
+	img := &imaged{probe: &probe{name: "img"}, img: Image{ID: 91, PNG: []byte("png"), Version: 1}, show: true}
+	view := &box{view: "v", report: true}
+	over := &box{fill: "x"}
+	root := &box{rects: []Rect{{W: 6, H: 2}, {X: 6, W: 2, H: 2}, {X: 2, Y: 1, W: 2, H: 1}}}
+	root.Add(img, reporterBox{view}, over)
+	h, nb := startNative(t, root, 8, 2, nil)
+	waitFor(t, "the image placed", func() bool { return len(nb.Images()) == 1 })
+	p := nb.Images()[91]
+	nv := placements(t, nb, 1)[0]
+	if p.Layer == 0 || p.Layer >= nv.Layer {
+		t.Fatalf("image layer %d, native view layer %d; want the image first and non-zero", p.Layer, nv.Layer)
+	}
+	if want := []Rect{{X: 2, Y: 1, W: 2, H: 1}}; !reflect.DeepEqual(p.Covered, want) {
+		t.Fatalf("image Covered %+v; want %+v", p.Covered, want)
+	}
+	h.onLoop(func() { root.Remove(over) })
+	waitFor(t, "re-placed uncovered", func() bool { return len(nb.Images()[91].Covered) == 0 })
 }
