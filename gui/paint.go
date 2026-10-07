@@ -67,8 +67,8 @@ type placedImage struct {
 	op paint.ImageOp
 }
 
-// frame records one complete frame as a macro: every row, the native views over their cells,
-// the images, the cursor. g's dirty rows are recorded afresh and marked clean. Rows are cached apart from the
+// frame records one complete frame as a macro: every row, then the native views and images over
+// their cells in paint order, then the cursor. g's dirty rows are recorded afresh and marked clean. Rows are cached apart from the
 // window's size, so a window resized within the same grid re-records nothing; only the margins
 // past the last whole cell are drawn for every frame.
 func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.NativePlacement, images []placedImage, focused bool) op.CallOp {
@@ -98,10 +98,7 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.Nati
 	for _, row := range r.rows {
 		row.Add(ops)
 	}
-	r.drawNatives(ops, g, m, natives)
-	for _, img := range images {
-		r.drawImage(ops, img)
-	}
+	r.composite(ops, g, m, natives, images)
 	if cur.visible {
 		r.drawCursor(ops, g, cur, focused)
 	}

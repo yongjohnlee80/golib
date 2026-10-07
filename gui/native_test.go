@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"slices"
@@ -406,5 +407,77 @@ func TestScrimLetsWhatIsBeneathShow(t *testing.T) {
 		if !shows || !dims {
 			t.Fatalf("native: beneath shows=%v, dimmed=%v; want both:\n%s", shows, dims, sb.String())
 		}
+	}
+}
+
+// pictured reports an image over its whole rect.
+type pictured struct {
+	tui.MultiChild
+	id uint32
+}
+
+func (p *pictured) Layout(cs tui.Constraints) tui.Size {
+	return cs.Constrain(tui.Size{W: cs.MaxW, H: 3})
+}
+func (p *pictured) Render(tui.Surface)         {}
+func (p *pictured) HandleEvent(tui.Event) bool { return false }
+func (p *pictured) Image() (tui.Image, bool) {
+	return tui.Image{ID: p.id, PNG: []byte("png"), Version: 1}, true
+}
+
+func TestCompositeOrderIsPaintOrder(t *testing.T) {
+	natives := []tui.NativePlacement{{Layer: 5, View: "dialog"}, {Layer: 1, View: "button"}, {Layer: 3, View: "tie"}}
+	images := []placedImage{{ImagePlacement: tui.ImagePlacement{Layer: 2}}, {ImagePlacement: tui.ImagePlacement{Layer: 3}}}
+	var got []string
+	for _, p := range compositeOrder(natives, images) {
+		if p.native != nil {
+			got = append(got, p.native.View.(string))
+		} else {
+			got = append(got, fmt.Sprintf("image@%d", p.layer))
+		}
+	}
+	if want := []string{"button", "image@2", "tie", "image@3", "dialog"}; !slices.Equal(got, want) {
+		t.Fatalf("order %v; want %v", got, want)
+	}
+}
+
+// An image beneath a native dialog is composited before the dialog's scrim and card, and the
+// card's cells are drawn over it; an image after a native button is composited after it.
+func TestImagesCompositeInPaintOrderWithNatives(t *testing.T) {
+	btn := widget.NewButton("Above")
+	pic := &pictured{id: 501}
+	base := tui.NewFlex(tui.Vertical)
+	base.Add(btn, pic)
+	host := widget.NewOverlayHost(base)
+	app, sb := styledApp(t, host, 30, 9, NativeStyle())
+	m := widget.NewModal(widget.NewText("over the picture"), widget.WithModalTitle("D"))
+	onLoop(t, app, func() {
+		if err := m.Open(host); err != nil {
+			t.Error(err)
+		}
+	})
+	waitUntil(t, "the image covered by the card", func() bool {
+		p, ok := sb.Images()[501]
+		return ok && len(p.Covered) > 0
+	})
+	var images []placedImage
+	for _, p := range sb.Images() {
+		images = append(images, placedImage{ImagePlacement: p})
+	}
+	natives := sb.placements()
+	var order []string
+	for _, p := range compositeOrder(natives, images) {
+		switch {
+		case p.image != nil:
+			order = append(order, "image")
+		case p.native.Node == btn.NodeID():
+			order = append(order, "button")
+		case p.native.Cols == 30 && p.native.Rows == 9:
+			order = append(order, "scrim/dialog")
+		}
+	}
+	bi, ii, si := slices.Index(order, "button"), slices.Index(order, "image"), slices.Index(order, "scrim/dialog")
+	if bi < 0 || ii < 0 || si < 0 || !(bi < ii && ii < si) {
+		t.Fatalf("composite order %v; want the button, then the image, then the dialog over both", order)
 	}
 }

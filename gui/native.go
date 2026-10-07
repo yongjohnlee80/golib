@@ -1,6 +1,9 @@
 package gui
 
 import (
+	"cmp"
+	"slices"
+
 	"gioui.org/op"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -39,17 +42,56 @@ func (b *Backend) CellPixels() tui.CellPixels {
 	return tui.CellPixels{W: float32(m.cell.X) / m.scale, H: float32(m.cell.Y) / m.scale}
 }
 
-// drawNatives composites the frame's native views over the rows, in paint order. Each view is
-// drawn over its cells, then the cells written after it (its Covered) are drawn over the view,
-// so a dialog opened over a native button covers it, and a later view covers an earlier one.
-func (r *renderer) drawNatives(ops *op.Ops, g *grid, m metrics, ps []tui.NativePlacement) {
-	for _, p := range ps {
-		v, ok := p.View.(View)
-		if !ok || p.Cols <= 0 || p.Rows <= 0 {
-			continue
+// placement is one thing composited over the rows: a native view or an image.
+type placement struct {
+	layer   uint32
+	native  *tui.NativePlacement // one of native and image is set
+	image   *placedImage
+	covered []tui.Rect
+}
+
+// compositeOrder is the frame's native views and images in tui's paint order. Each has its
+// Layer; on a tie (one node reporting both) the native view is first, as it is noted before the
+// image. The sort is stable, so equal layers keep their order.
+func compositeOrder(natives []tui.NativePlacement, images []placedImage) []placement {
+	out := make([]placement, 0, len(natives)+len(images))
+	for i := range natives {
+		out = append(out, placement{layer: natives[i].Layer, native: &natives[i], covered: natives[i].Covered})
+	}
+	for i := range images {
+		out = append(out, placement{layer: images[i].Layer, image: &images[i], covered: images[i].Covered})
+	}
+	slices.SortStableFunc(out, func(a, b placement) int {
+		switch {
+		case a.layer != b.layer:
+			return cmp.Compare(a.layer, b.layer)
+		case a.native != nil && b.native == nil:
+			return -1
+		case a.native == nil && b.native != nil:
+			return 1
 		}
-		v.Paint(newGioCanvas(ops, r, g, m, CellRect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows}))
-		for _, c := range p.Covered {
+		return 0
+	})
+	return out
+}
+
+// composite draws the frame's native views and images over the rows, in paint order. Each is
+// drawn over its cells, then the cells written after it (its Covered) are drawn over it, so a
+// dialog covers a native button or an image beneath it, and a later view or image covers an
+// earlier one.
+func (r *renderer) composite(ops *op.Ops, g *grid, m metrics, natives []tui.NativePlacement, images []placedImage) {
+	for _, p := range compositeOrder(natives, images) {
+		switch {
+		case p.native != nil:
+			v, ok := p.native.View.(View)
+			if !ok || p.native.Cols <= 0 || p.native.Rows <= 0 {
+				continue
+			}
+			v.Paint(newGioCanvas(ops, r, g, m, CellRect{X: p.native.X, Y: p.native.Y, W: p.native.Cols, H: p.native.Rows}))
+		case p.image != nil:
+			r.drawImage(ops, *p.image)
+		}
+		for _, c := range p.covered {
 			r.paintCells(ops, g, CellRect{X: c.X, Y: c.Y, W: c.W, H: c.H}, false)
 		}
 	}
