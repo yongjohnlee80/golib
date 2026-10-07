@@ -99,7 +99,7 @@ import (
 //  7. Configurable Capabilities:
 //     Editor capabilities can be fine-tuned or restricted:
 //     - Selection: Visual modes and range selection can be enabled or disabled ([canSelect]).
-//     - Yank & System Clipboard: OS clipboard and internal register copying can be enabled or restricted ([canYank]).
+//     - Yank & System Clipboard: OS clipboard and internal register copying can be enabled or restricted ([WithYank]).
 //     - Bounded Undo Ring: Undo and redo tracking can be enabled or bypassed ([WithUndo]).
 //     - Modality: The editor can run modally (Vim tripartite) or modelessly (Nano, Standard) ([WithModalEditing], [WithKeyset]).
 //
@@ -214,16 +214,14 @@ type Editor struct {
 	chordCancel func() // cancels the addressed tick
 
 	// Register & undo.
-	regText     string
-	regLinewise bool
-	hist        editHistory // undo and redo (edithistory.go)
+	reg  editRegister // the unnamed register and the yank policy (editregister.go)
+	hist editHistory  // undo and redo (edithistory.go)
 
 	chordTimeout time.Duration
 
 	// Configurable capabilities.
 	modal     bool // true = Vim tripartite state machine; false = modeless editor
 	canSelect bool // true = visual / selection active
-	canYank   bool // true = system clipboard & register yanking active
 
 	// The right-click menu (editor_contextmenu.go). Off unless a consumer
 	// turns it on; ctxBuild nil means the stock items.
@@ -554,7 +552,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 		chordTimeout: 300 * time.Millisecond,
 		modal:        true,
 		canSelect:    true,
-		canYank:      true,
+		reg:          editRegister{yank: true},
 		keyset:       KeysetVim,
 		hist:         editHistory{enabled: true},
 	}
@@ -1040,7 +1038,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 
 	// Visual operations.
 	case ActVisualYank:
-		if !e.canYank {
+		if !e.reg.yankAllowed() {
 			e.exitVisual()
 			return true
 		}
@@ -1084,7 +1082,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 		return true
 
 	case ActCopy:
-		if !e.canYank {
+		if !e.reg.yankAllowed() {
 			if e.mode == ModeVisual || e.mode == ModeVisualLine {
 				e.exitVisual()
 			}
@@ -1441,7 +1439,7 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 				}
 				e.deleteLines(e.ln, min(e.ln+count-1, len(e.lines)-1))
 			case ActYankPrefix:
-				if e.canYank {
+				if e.reg.yankAllowed() {
 					text := strings.Join(e.lines[e.ln:min(e.ln+count-1, len(e.lines)-1)+1], "\n")
 					e.yankSet(text, true)
 					e.exportYank(text)
@@ -1466,7 +1464,7 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 
 	switch act {
 	case ActDeletePrefix, ActYankPrefix, ActGoPrefix:
-		if act == ActYankPrefix && !e.canYank {
+		if act == ActYankPrefix && !e.reg.yankAllowed() {
 			return true
 		}
 		e.pendingAct = act

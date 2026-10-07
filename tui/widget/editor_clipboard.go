@@ -76,14 +76,10 @@ func (e *Editor) SelectionRange() (row, col, endRow, endCol int, ok bool) {
 
 // SetRegister imports text into the unnamed register (the application's
 // value-inspect copy path).
-func (e *Editor) SetRegister(text string, linewise bool) {
-	e.regText, e.regLinewise = text, linewise
-}
+func (e *Editor) SetRegister(text string, linewise bool) { e.reg.set(text, linewise) }
 
 // Register returns the unnamed register's content.
-func (e *Editor) Register() (text string, linewise bool) {
-	return e.regText, e.regLinewise
-}
+func (e *Editor) Register() (text string, linewise bool) { return e.reg.content() }
 
 // exportYank puts a yanked selection on the SYSTEM clipboard and reports the
 // outcome, and it is called only from the explicit yank actions.
@@ -99,7 +95,7 @@ func (e *Editor) Register() (text string, linewise bool) {
 // reason. Backends without a ClipboardWriter make CopyToClipboard report
 // false, which is surfaced rather than treated as an error.
 func (e *Editor) exportYank(text string) {
-	if !e.canYank {
+	if !e.reg.yankAllowed() {
 		return
 	}
 	delivered := false
@@ -109,9 +105,7 @@ func (e *Editor) exportYank(text string) {
 	e.publish(YankEvent{Owner: e.NodeID(), ClipboardDelivered: delivered})
 }
 
-func (e *Editor) yankSet(text string, linewise bool) {
-	e.regText, e.regLinewise = text, linewise
-}
+func (e *Editor) yankSet(text string, linewise bool) { e.reg.set(text, linewise) }
 
 // deleteLines removes [lo, hi] inclusive into the register (linewise).
 func (e *Editor) deleteLines(lo, hi int) {
@@ -132,16 +126,17 @@ func (e *Editor) deleteLines(lo, hi int) {
 }
 
 func (e *Editor) pasteRegister(after bool) {
-	if e.regText == "" && !e.regLinewise {
+	if !e.reg.holds() {
 		return
 	}
+	text, linewise := e.reg.content()
 	e.beginGroup()
-	if e.regLinewise {
+	if linewise {
 		at := e.ln
 		if after {
 			at++
 		}
-		newLines := strings.Split(e.regText, "\n")
+		newLines := strings.Split(text, "\n")
 		e.lines = append(e.lines[:at], append(append([]string{}, newLines...), e.lines[at:]...)...)
 		e.touch(at)
 		e.ln, e.col = at, 0
@@ -151,7 +146,7 @@ func (e *Editor) pasteRegister(after bool) {
 			col++
 		}
 		e.col = e.clampCol(e.ln, col)
-		e.insertText(e.regText)
+		e.insertText(text)
 		// vim leaves the cursor ON the last pasted cluster.
 		e.col = max(0, e.col-1)
 		e.clampNormal()
@@ -168,7 +163,5 @@ func WithSelection(enabled bool) EditorOption {
 
 // WithYank configures whether yanking to system clipboard and registers is enabled.
 func WithYank(enabled bool) EditorOption {
-	return func(e *Editor) {
-		e.canYank = enabled
-	}
+	return func(e *Editor) { e.reg.yank = enabled }
 }
