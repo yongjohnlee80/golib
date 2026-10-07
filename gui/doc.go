@@ -24,6 +24,4 @@
 //   - the Gio goroutine reads the window's events. It never touches a component or the grid: it
 //     translates input into tui events, publishes metrics, and submits the newest frame.
 //   - the forwarder is the only sender on, and the only closer of, the Events channel.
-//
-// See ADR 1791330692 (golib/gui) in the project knowledge base for the design and its rationale.
 package gui
