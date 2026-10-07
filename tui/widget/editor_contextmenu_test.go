@@ -1,6 +1,7 @@
 package widget_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -64,8 +65,8 @@ func TestEditorContextMenu_OffByDefaultTheRightPressBubbles(t *testing.T) {
 	h.wantNotContains("Copy")
 }
 
-// THE MENU OPENS AT THE POINTER, below and to the right of it, with the three
-// stock rows.
+// THE MENU OPENS AT THE POINTER, below and to the right of it, with the stock
+// rows: Undo and Redo, a separator, then Copy, Cut and Paste.
 func TestEditorContextMenu_OpensAtThePointer(t *testing.T) {
 	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
 	h.inject(rightClick(5, 1))
@@ -74,11 +75,13 @@ func TestEditorContextMenu_OpensAtThePointer(t *testing.T) {
 	if x, y := panelCorner(t, h); x != 5 || y != 2 {
 		t.Errorf("the panel's corner is at %d,%d; want 5,2, just below the pointer at 5,1:\n%s", x, y, h.grid())
 	}
-	_, cy := cellOfLabel(t, h, "Copy")
-	_, uy := cellOfLabel(t, h, "Cut")
-	_, py := cellOfLabel(t, h, "Paste")
-	if cy != 3 || uy != 4 || py != 5 {
-		t.Errorf("rows at %d, %d, %d; want Copy, Cut, Paste on 3, 4, 5", cy, uy, py)
+	var ys []int
+	for _, label := range []string{"Undo", "Redo", "Copy", "Cut", "Paste"} {
+		_, y := cellOfLabel(t, h, label)
+		ys = append(ys, y)
+	}
+	if !slices.Equal(ys, []int{3, 4, 6, 7, 8}) {
+		t.Errorf("rows at %v; want Undo, Redo on 3, 4, the separator on 5, Copy, Cut, Paste on 6, 7, 8", ys)
 	}
 }
 
@@ -102,7 +105,7 @@ func TestEditorContextMenu_CopyTakesTheSelection(t *testing.T) {
 	h.inject(rightClick(2, 0))
 	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
 	h.settle()
-	h.inject(key(tui.KeyEnter)) // Copy is the first row, and enabled
+	h.inject(key(tui.KeyEnter)) // Copy is the first enabled row: nothing to undo or redo yet
 	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
 	var reg string
 	var focused bool
@@ -238,5 +241,57 @@ func TestEditorContextMenu_OpensAtThePointerWhenTheEditorIsInset(t *testing.T) {
 	}
 	if len(corners) != 2 || corners[1] != [2]int{6, 3} {
 		t.Errorf("corners %v; want the panel's at 6,3, just below the pointer at 6,2:\n%s", corners, h.grid())
+	}
+}
+
+// UNDO AND REDO from the menu revert and reapply the last edit, and are enabled only when there
+// is one to revert or reapply.
+func TestEditorContextMenu_UndoRedo(t *testing.T) {
+	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+	rows := func() map[widget.ItemID]bool {
+		on := map[widget.ItemID]bool{}
+		h.onLoop(func() {
+			for _, r := range widget.EditorContextItems(ed) {
+				on[r.ID] = r.Enabled
+			}
+		})
+		return on
+	}
+	if on := rows(); on[widget.EditorMenuUndo] || on[widget.EditorMenuRedo] {
+		t.Fatalf("Undo or Redo enabled before any edit: %v", on)
+	}
+	var before string
+	h.onLoop(func() { before = ed.Value() })
+	h.inject(typeString("x")...) // x deletes the character under the cursor
+	h.settle()
+	if on := rows(); !on[widget.EditorMenuUndo] || on[widget.EditorMenuRedo] {
+		t.Fatalf("after an edit: %v; want Undo only", on)
+	}
+	run := func(id widget.ItemID) {
+		h.onLoop(func() {
+			for _, r := range widget.EditorContextItems(ed) {
+				if r.ID == id {
+					r.Action.(widget.EditorMenuAction).Run(ed)
+				}
+			}
+		})
+	}
+	run(widget.EditorMenuUndo)
+	var v string
+	h.onLoop(func() { v = ed.Value() })
+	if v != before {
+		t.Fatalf("after Undo %q; want %q", v, before)
+	}
+	if on := rows(); !on[widget.EditorMenuRedo] {
+		t.Fatal("Redo is not enabled after an Undo")
+	}
+	run(widget.EditorMenuRedo)
+	h.onLoop(func() { v = ed.Value() })
+	if v == before {
+		t.Fatal("Redo did not reapply the edit")
+	}
+	h.onLoop(func() { ed.SetReadOnly(true) })
+	if on := rows(); on[widget.EditorMenuUndo] {
+		t.Fatal("Undo enabled on a read-only editor")
 	}
 }

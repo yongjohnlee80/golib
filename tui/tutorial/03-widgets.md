@@ -281,7 +281,7 @@ Note: `WithYank(false)` disables explicit yank/copy actions (`ActCopy`, `ActVisu
 
 ### Right-click menu
 
-Off unless asked for. `WithContextMenu(nil)` opens Copy, Cut and Paste at the pointer; a builder replaces or extends them (`EditorContextItems` returns the stock rows, `EditorMenuAction` is a row the editor runs). Paste pastes the editor's own register: a terminal cannot read the system clipboard, so text from outside arrives as the terminal's paste. The menu needs an `OverlayHost` above the editor; a decl `Editor` has one, and turns the menu on with `contextMenu: true`.
+Off unless asked for. `WithContextMenu(nil)` opens Undo and Redo, then Copy, Cut and Paste, at the pointer; a builder replaces or extends them (`EditorContextItems` returns the stock rows, `EditorMenuAction` is a row the editor runs). Paste pastes the editor's own register: a terminal cannot read the system clipboard, so text from outside arrives as the terminal's paste. The menu needs an `OverlayHost` above the editor; a decl `Editor` has one, and turns the menu on with `contextMenu: true`.
 
 ```go
 ed := widget.NewEditor(widget.WithContextMenu(nil))

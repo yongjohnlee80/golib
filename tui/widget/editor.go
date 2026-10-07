@@ -901,6 +901,19 @@ func (e *Editor) Cut() { e.menuAction(ActCut) }
 // clipboard. A read-only editor refuses the mutation.
 func (e *Editor) Paste() { e.menuAction(ActPaste) }
 
+// Undo reverts the last edit group, as u does; Redo reapplies it, as Ctrl+R does. A read-only
+// editor, or one without undo history, refuses both.
+func (e *Editor) Undo() { e.menuAction(ActUndo) }
+
+// Redo reapplies the most recently undone edit group.
+func (e *Editor) Redo() { e.menuAction(ActRedo) }
+
+// CanUndo reports whether Undo would change the text now.
+func (e *Editor) CanUndo() bool { return e.canUndo && !e.readOnly && len(e.undo) > 0 }
+
+// CanRedo reports whether Redo would change the text now.
+func (e *Editor) CanRedo() bool { return e.canUndo && !e.readOnly && len(e.redo) > 0 }
+
 // mutatingActions are refused in read-only mode (motions, visual entry,
 // and yank stay available — a viewer still navigates and copies).
 func mutatingAction(act Action) bool {
