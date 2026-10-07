@@ -84,10 +84,10 @@ func NewBackend(opts ...Option) *Backend {
 	b := &Backend{
 		cfg:     cfg,
 		win:     new(app.Window),
-		fm:      measureFont(cells, cfg.typeface),
+		fm:      measureFont(cells, fallbackChain(cfg.typeface)),
 		q:       newEventQueue(),
 		started: make(chan struct{}),
-		render:  newRenderer(cells, cfg.typeface, cfg.theme),
+		render:  newRenderer(cells, fallbackChain(cfg.typeface), cfg.theme),
 		images:  map[uint32]placedImage{},
 	}
 	b.gio.shaper = text.NewShaper(text.WithCollection(gofont.Collection()))

@@ -212,7 +212,7 @@ func (b *Backend) drawPreedit(ops *op.Ops, f *frame, m metrics) {
 		return
 	}
 	s := b.gio.shaper
-	s.LayoutString(text.Parameters{Font: fontOf(b.cfg.typeface), PxPerEm: fixed.Int26_6(m.ppem * 64), MaxWidth: 1 << 20}, pre)
+	s.LayoutString(text.Parameters{Font: fontOf(fallbackChain(b.cfg.typeface)), PxPerEm: fixed.Int26_6(m.ppem * 64), MaxWidth: 1 << 20}, pre)
 	var glyphs []text.Glyph
 	var adv fixed.Int26_6
 	for g, ok := s.NextGlyph(); ok; g, ok = s.NextGlyph() {

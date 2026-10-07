@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image/color"
+	"strings"
 
 	"gioui.org/unit"
 )
@@ -74,8 +75,11 @@ func WithSize(w, h unit.Dp) Option { return func(c *config) { c.width, c.height 
 func WithMinSize(w, h unit.Dp) Option { return func(c *config) { c.minWidth, c.minHeight = w, h } }
 
 // WithFont sets the monospace typeface the cells are drawn in, and its size. typeface is a Gio
-// typeface list ("CaskaydiaMono Nerd Font, Go Mono"): the first that is installed wins, and
-// characters it lacks fall back to the system's fonts. The default is the embedded Go Mono at 14sp.
+// typeface list, a CSS font-family list ("CaskaydiaMono NFM, Go Mono"), naming families as
+// fontconfig lists them (fc-list : family). The first family that is installed sets the cell's
+// size. A character it lacks comes from the next family that has it, and then from the system's
+// monospace and emoji fonts, which are always appended (see fallbackChain). A Nerd Font's icons
+// need that Nerd Font named here. The default is the embedded Go Mono at 14sp.
 func WithFont(typeface string, size unit.Sp) Option {
 	return func(c *config) {
 		if typeface != "" {
@@ -85,6 +89,33 @@ func WithFont(typeface string, size unit.Sp) Option {
 			c.fontSize = size
 		}
 	}
+}
+
+// fallbackChain is typeface with the generic monospace and emoji families appended, unless it
+// names them already. Without them, a character the named families lack draws as the
+// not-defined box: Gio's own fallback does not reach every system font (▸ U+25B8 and colour
+// emoji, among others, on Linux with Noto and DejaVu installed).
+func fallbackChain(typeface string) string {
+	chain := strings.TrimSpace(typeface)
+	for _, generic := range []string{"monospace", "emoji"} {
+		if !namesFamily(chain, generic) {
+			if chain != "" {
+				chain += ", "
+			}
+			chain += generic
+		}
+	}
+	return chain
+}
+
+// namesFamily reports whether the comma-separated family list names family, ignoring quotes and case.
+func namesFamily(list, family string) bool {
+	for _, f := range strings.Split(list, ",") {
+		if strings.EqualFold(strings.Trim(strings.TrimSpace(f), `"'`), family) {
+			return true
+		}
+	}
+	return false
 }
 
 // WithTheme sets the default colours, the cursor and the ANSI palette.
