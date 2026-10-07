@@ -86,6 +86,8 @@ func TestAButtonActivatesFromEveryProducer(t *testing.T) {
 
 			tc.drive(h, b)
 			h.waitFor("activated", func() bool { return fired.Load() == 1 })
+			// The bus delivers to subscribers after the callback runs: wait for the event too.
+			h.waitFor("published", func() bool { mu.Lock(); defer mu.Unlock(); return len(events) > 0 })
 			h.sync()
 
 			if got := fired.Load(); got != 1 {
