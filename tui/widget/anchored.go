@@ -374,6 +374,13 @@ func (h *OverlayHost) placeAnchored(ctx *tui.Context, viewport tui.Rect) (lost [
 			lost = append(lost, al.id)
 			continue
 		}
+		// A layer that places its OWN content at the anchor is told where the
+		// anchor is first, in this host's frame — the one frame in which the
+		// anchor resolves correctly, because the host is the anchor owner's
+		// ancestor and the layer is only its sibling (popupLayer).
+		if rc, ok := al.comp.(anchorReceiver); ok {
+			rc.receiveAnchor(anchor)
+		}
 		want := ctx.LayoutChild(al.comp, tui.Loose(tui.Size{W: viewport.W, H: viewport.H}))
 		r := al.pol.Place(anchor, viewport, want, al.spec.Pref)
 		// Bounded by the host whatever the policy returned, so a consumer

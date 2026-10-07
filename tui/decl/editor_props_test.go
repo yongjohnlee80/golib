@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -111,5 +112,41 @@ func TestAnImageMountsFromTheDocument(t *testing.T) {
 	}
 	if _, err := mountDoc(t, "import tui 1.0\nWindow { Image { source: \"x.png\" } }"); err == nil {
 		t.Fatal("an Image took a source")
+	}
+}
+
+// TestAnEditorsContextMenuFromTheDocument: `contextMenu: true` opens Copy, Cut and Paste at a
+// right click; an Editor without it lets the right press go by.
+func TestAnEditorsContextMenuFromTheDocument(t *testing.T) {
+	for _, on := range []bool{true, false} {
+		prop := ""
+		if on {
+			prop = "; contextMenu: true"
+		}
+		s := decltest.Run(t, 40, 8,
+			tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow {\n"+
+				` Editor { id: ed; text: "hello"`+prop+` } }`)))
+		s.WaitForText(t, "hello")
+		y := -1
+		for i := 0; i < 8 && y < 0; i++ {
+			if strings.Contains(row(s, i), "hello") {
+				y = i
+			}
+		}
+		x := strings.Index(row(s, y), "hello") + 1
+		s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: x, Y: y})
+		if on {
+			s.WaitForText(t, "Paste")
+			continue
+		}
+		// Nothing to wait for when nothing should happen: a key the editor
+		// draws gives the frame that would have carried the menu.
+		s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y},
+			tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y},
+			decltest.Rune('i'), decltest.Rune('Z'))
+		s.WaitForText(t, "Z")
+		if strings.Contains(s.String(), "Paste") {
+			t.Errorf("an Editor without contextMenu opened a menu:\n%s", s.String())
+		}
 	}
 }

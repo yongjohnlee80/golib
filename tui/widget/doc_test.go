@@ -281,6 +281,7 @@ type shell struct {
 
 	mu     sync.Mutex
 	keys   []tui.KeyEvent
+	mice   []tui.MouseEvent
 	pastes int
 }
 
@@ -319,8 +320,18 @@ func (s *shell) HandleEvent(ev tui.Event) bool {
 		s.keys = append(s.keys, e)
 	case tui.PasteEvent:
 		s.pastes++
+	case tui.MouseEvent:
+		s.mice = append(s.mice, e)
 	}
 	return false
+}
+
+// bubbledMice returns the mouse events that reached the shell (unconsumed by
+// the child).
+func (s *shell) bubbledMice() []tui.MouseEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]tui.MouseEvent(nil), s.mice...)
 }
 
 // bubbledKeys returns the key events that reached the shell (unconsumed by
