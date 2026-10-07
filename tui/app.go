@@ -46,8 +46,16 @@ type App struct {
 	frameImages []ImagePlacement
 	placed      map[uint32]ImagePlacement
 
-	ran    atomic.Bool
-	quit   chan struct{} // closed when Run exits; stops the intake pump
+	ran  atomic.Bool
+	quit chan struct{} // closed when Run exits; stops the intake pump
+	// stopRun ends Run, as cancelling its context does: the too-small screen's default Quit.
+	stopRun context.CancelFunc
+
+	// minSize is the smallest screen the App lays out for (WithMinimumSize, SetMinimumSize), and
+	// quitButton the too-small screen's Quit, in screen cells, while it shows (toosmall.go).
+	minSize    Size
+	quitButton Rect
+
 	done   chan struct{} // closed once Run has returned, its teardown finished (Done)
 	runCtx context.Context
 
@@ -235,6 +243,7 @@ func NewApp(root Component, opts ...AppOption) *App {
 		nodes:   make(map[NodeID]*node),
 		byComp:  make(map[Component]*node),
 		sem:     make(chan struct{}, cfg.taskPoolSize),
+		minSize: cfg.minimumSize,
 	}
 	a.queue.init(cfg.eventQueueLimit, cfg.logger)
 	a.bus = newBus(a)
@@ -417,6 +426,8 @@ func (a *App) Run(ctx context.Context) (err error) {
 	if !a.ran.CompareAndSwap(false, true) {
 		return fmt.Errorf("tui: App.Run called more than once (%w)", errs.ErrPrecondition)
 	}
+	ctx, a.stopRun = context.WithCancel(ctx)
+	defer a.stopRun()
 	defer close(a.done)                          // registered first, so it runs last: after the teardown
 	if err := a.backend.Start(ctx); err != nil { // synchronous acquisition
 		return err
@@ -608,6 +619,12 @@ func (a *App) renderFrame() {
 		// and forces a layout pass.
 		a.buf.resize(a.size.W, a.size.H)
 		a.layoutDirty = true
+	}
+	if a.tooSmall() {
+		// Nothing is laid out: layoutDirty stays set, so the first frame at a large enough
+		// size lays the tree out afresh.
+		a.renderTooSmall()
+		return
 	}
 	if a.layoutDirty {
 		// Layout and commit alternate until geometry settles; see commit.go.

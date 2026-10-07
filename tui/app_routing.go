@@ -72,6 +72,9 @@ import (
 // it, so input and program events are ordered against each other by the order
 // they are drained rather than by which produced them.
 func (a *App) dispatch(ev Event) {
+	if a.tooSmall() && a.dispatchTooSmall(ev) {
+		return // the too-small screen took it: only its Quit is live
+	}
 	switch e := ev.(type) {
 	case KeyEvent:
 		// Target = the focused node. With nothing focused the fallback is the

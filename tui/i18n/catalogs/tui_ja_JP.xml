@@ -123,5 +123,25 @@
         <source>error: %1</source>
         <translation>エラー: %1</translation>
     </message>
+    <message id="tui.tooSmall.title">
+        <source>Screen too small</source>
+        <translation>画面が小さすぎます</translation>
+    </message>
+    <message id="tui.tooSmall.size">
+        <source>%1 × %2 — needs %3 × %4</source>
+        <translation>%1 × %2 — %3 × %4 が必要です</translation>
+    </message>
+    <message id="tui.tooSmall.enlarge">
+        <source>Enlarge the window to continue</source>
+        <translation>続けるにはウィンドウを大きくしてください</translation>
+    </message>
+    <message id="tui.tooSmall.quit">
+        <source>Quit</source>
+        <translation>終了</translation>
+    </message>
+    <message id="tui.tooSmall.quitKeys">
+        <source>or press q / Ctrl+C</source>
+        <translation>または q / Ctrl+C</translation>
+    </message>
 </context>
 </TS>

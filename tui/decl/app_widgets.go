@@ -32,6 +32,10 @@ func appTypes() []Type {
 		{Name: "Window", Build: buildWindow, Setters: map[string]Setter{
 			// Qt's Window.color: the background under everything, where no widget paints
 			"color": setter("a Window", colorOf, (*windowNode).setColor),
+			// Qt's Window.minimumWidth / minimumHeight, in cells: on a smaller screen the App
+			// shows its too-small screen instead of the layout (tui.App.SetMinimumSize)
+			"minimumWidth":  setter("a Window", wholeNumber, (*windowNode).setMinimumWidth),
+			"minimumHeight": setter("a Window", wholeNumber, (*windowNode).setMinimumHeight),
 		}},
 		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
 			"title": textSetter("a Frame", (*widget.Box).SetTitle, (*widget.Box).SetTitleMessage),

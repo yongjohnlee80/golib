@@ -123,5 +123,25 @@
         <source>error: %1</source>
         <translation>erro: %1</translation>
     </message>
+    <message id="tui.tooSmall.title">
+        <source>Screen too small</source>
+        <translation>Tela pequena demais</translation>
+    </message>
+    <message id="tui.tooSmall.size">
+        <source>%1 × %2 — needs %3 × %4</source>
+        <translation>%1 × %2 — precisa de %3 × %4</translation>
+    </message>
+    <message id="tui.tooSmall.enlarge">
+        <source>Enlarge the window to continue</source>
+        <translation>Aumente a janela para continuar</translation>
+    </message>
+    <message id="tui.tooSmall.quit">
+        <source>Quit</source>
+        <translation>Sair</translation>
+    </message>
+    <message id="tui.tooSmall.quitKeys">
+        <source>or press q / Ctrl+C</source>
+        <translation>ou pressione q / Ctrl+C</translation>
+    </message>
 </context>
 </TS>

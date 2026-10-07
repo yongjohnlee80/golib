@@ -37,6 +37,7 @@ type windowNode struct {
 	// that it waits for the first layout to be applied.
 	focus        tui.Component
 	focusPending bool
+	minimum      tui.Size // Window.minimumWidth / minimumHeight, cells
 	shortcuts    []*shortcutNode
 	menus        []*menuBarNode
 	overlaid     []Overlaid
@@ -145,6 +146,9 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 
 func (w *windowNode) Init(ctx *tui.Context) {
 	w.ctx = ctx
+	if w.minimum != (tui.Size{}) {
+		w.applyMinimum()
+	}
 	ctx.Mount(w.host)
 	// A menu row that ran closes the menu. Focus goes back where the document
 	// said it lives; left on the closed menu, the next keystroke would go
@@ -213,6 +217,17 @@ func (w *windowNode) Render(s tui.Surface) {
 }
 
 // setColor sets Qt's Window.color.
+// setMinimumWidth and setMinimumHeight are Qt's Window.minimumWidth and minimumHeight, in cells.
+// The App holds the minimum; before the Window is mounted it waits here for Init.
+func (w *windowNode) setMinimumWidth(n int)  { w.minimum.W = max(n, 0); w.applyMinimum() }
+func (w *windowNode) setMinimumHeight(n int) { w.minimum.H = max(n, 0); w.applyMinimum() }
+
+func (w *windowNode) applyMinimum() {
+	if w.ctx != nil {
+		w.ctx.App().SetMinimumSize(w.minimum)
+	}
+}
+
 func (w *windowNode) setColor(c style.Color) {
 	if w.colored && w.color == c {
 		return
@@ -438,4 +453,10 @@ func (m *menuBarNode) close() {
 	if ctx := m.menu.Context(); ctx != nil {
 		ctx.MarkDirty()
 	}
+}
+
+// wholeNumber reads a number property as whole cells.
+func wholeNumber(v qml.SpecValue) (int, error) {
+	n, err := numberOf(v)
+	return int(n), err
 }

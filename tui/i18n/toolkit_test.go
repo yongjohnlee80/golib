@@ -40,6 +40,11 @@ var toolkitEnglish = map[string]string{
 	"tui.files.hint.folderPath":  "Enter:go to folder  Tab:next  Esc:cancel",
 	"tui.files.hint.listPart":    "↑↓:move  Enter:open folder  Tab:next  Esc:cancel",
 	"tui.select.error":           "error: %1",
+	"tui.tooSmall.title":         "Screen too small",
+	"tui.tooSmall.size":          "%1 × %2 — needs %3 × %4",
+	"tui.tooSmall.enlarge":       "Enlarge the window to continue",
+	"tui.tooSmall.quit":          "Quit",
+	"tui.tooSmall.quitKeys":      "or press q / Ctrl+C",
 }
 
 var shippedLanguages = []string{"en", "ko_KR", "ja_JP", "zh_CN", "pt_BR", "es"}

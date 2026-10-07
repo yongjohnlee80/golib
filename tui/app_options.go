@@ -13,6 +13,13 @@ import (
 // appConfig collects the option-set construction state of an App
 // (pattern: server/scaffold.go:21-28's scaffoldConfig).
 type appConfig struct {
+	// minimumSize is the smallest screen the App lays out for; below it the App shows the
+	// too-small screen (toosmall.go). Zero on an axis: no minimum on it.
+	minimumSize Size
+
+	// quit is how the too-small screen's Quit ends the program. Nil: the App ends Run itself.
+	quit func()
+
 	// backend is the required terminal/display driver (e.g. term.New or NewTestBackend)
 	// handling low-level terminal I/O, raw mode, and screen dimensions.
 	backend Backend
@@ -228,4 +235,20 @@ func WithTaskDrainTimeout(d time.Duration) AppOption {
 // logger.Nop{}; precedent server/scaffold.go:49-51's ScaffoldLogger).
 func WithLogger(l logger.Logger) AppOption {
 	return func(c *appConfig) { c.logger = l }
+}
+
+// WithMinimumSize sets the smallest screen, in cells, the App lays out for. On a smaller one it
+// lays nothing out and shows the too-small screen instead: the size it has and needs, a request to
+// enlarge it, and a Quit button. Nothing else reaches the application until the screen is large
+// enough again; its state, timers and tasks carry on. Qt's Window.minimumWidth / minimumHeight.
+// A zero dimension sets no minimum on that axis. App.SetMinimumSize changes it at run time.
+func WithMinimumSize(s Size) AppOption {
+	return func(c *appConfig) { c.minimumSize = Size{W: max(s.W, 0), H: max(s.H, 0)} }
+}
+
+// WithQuit sets how the too-small screen's Quit ends the program: the application's own quit, say
+// one that saves first. Unset, Quit ends Run, as cancelling its context does. It runs on the loop
+// goroutine.
+func WithQuit(fn func()) AppOption {
+	return func(c *appConfig) { c.quit = fn }
 }
