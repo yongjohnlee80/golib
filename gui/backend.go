@@ -46,7 +46,8 @@ type Backend struct {
 	render  *renderer
 	cursor  cursorState
 	images  map[uint32]placedImage
-	imgList []uint32 // placement order
+	imgList []uint32              // placement order
+	natives []tui.NativePlacement // this frame's, from PlaceNatives
 
 	// The hand-over to the Gio goroutine, guarded by mu.
 	mu       sync.Mutex
@@ -170,6 +171,7 @@ func (b *Backend) Capabilities() tui.Capabilities {
 		KittyKeyboard:  true,
 		BracketedPaste: true,
 		Mouse:          tui.TriYes,
+		NativeViews:    true,
 		KittyGraphics:  tui.TriYes,
 		DarkBackground: t.dark(),
 		DefaultFG:      probed(t.FG),
@@ -189,7 +191,7 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	}
 	m := b.paintMetrics(diff)
 	b.grid.apply(diff)
-	draw := b.render.frame(&b.grid, m, b.cursor, b.imageList(), b.focused.Load())
+	draw := b.render.frame(&b.grid, m, b.cursor, b.natives, b.imageList(), b.focused.Load())
 	f := &frame{draw: draw}
 	if b.cursor.visible {
 		f.caret = m.cellRect(b.cursor.x, b.cursor.y, 1, 1)

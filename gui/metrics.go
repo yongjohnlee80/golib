@@ -71,6 +71,15 @@ func (m metrics) cellAt(x, y float32) (cx, cy int) {
 	return min(max(cx, 0), m.grid.W-1), min(max(cy, 0), m.grid.H-1)
 }
 
+// subCell is where the device-pixel point (x, y) falls inside cell (cx, cy), each in [0, 1). A
+// point outside the cell (a drag past the window's edge, clamped by cellAt) reports the edge.
+func (m metrics) subCell(x, y float32, cx, cy int) (sx, sy float32) {
+	in := func(v float32) float32 { return min(max(v, 0), math.Nextafter32(1, 0)) }
+	sx = in((x-float32(m.origin.X))/float32(m.cell.X) - float32(cx))
+	sy = in((y-float32(m.origin.Y))/float32(m.cell.Y) - float32(cy))
+	return sx, sy
+}
+
 // cellRect is the device-pixel rectangle, in the window, of cells (x, y) through (x+w, y+h).
 func (m metrics) cellRect(x, y, w, h int) image.Rectangle {
 	return image.Rect(x*m.cell.X, y*m.cell.Y, (x+w)*m.cell.X, (y+h)*m.cell.Y).Add(m.origin)

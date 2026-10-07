@@ -50,6 +50,7 @@ type config struct {
 	theme      Theme
 	decorated  bool
 	decoration bool // decorated was set explicitly
+	style      *Style
 }
 
 func defaultConfig() config {
@@ -61,6 +62,7 @@ func defaultConfig() config {
 		fontSize: 14,
 		padding:  4,
 		theme:    DefaultTheme(),
+		style:    NativeStyle(),
 	}
 }
 

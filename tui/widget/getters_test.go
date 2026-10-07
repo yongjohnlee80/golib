@@ -174,3 +174,37 @@ func TestToastsItems(t *testing.T) {
 		t.Fatalf("Items = %+v", items)
 	}
 }
+
+// A press inside each span selects that tab, as the bar's own hit-test does.
+func TestTabSpansAreWhereAPressSelects(t *testing.T) {
+	tabs := widget.NewTabs(widget.WithTab("one", widget.NewText("1")), widget.WithTab("two", widget.NewText("2")))
+	sh := newShell(tabs)
+	h := startApp(t, sh, 20, 3)
+	var spans []widget.TabSpan
+	h.onLoop(func() { spans = tabs.TabSpans() })
+	if len(spans) != 2 || spans[0].X != 0 || spans[1].X != spans[0].W+1 {
+		t.Fatalf("spans %+v", spans)
+	}
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[1].X + spans[1].W - 1, Y: 0})
+	h.waitFor("the second tab", func() (v bool) { h.onLoop(func() { v = tabs.Active() == 1 }); return v })
+}
+
+func TestModalCardRectAndMask(t *testing.T) {
+	base := widget.NewText("base")
+	host := widget.NewOverlayHost(base)
+	sh := newShell(host)
+	h := startApp(t, sh, 30, 10)
+	m := widget.NewModal(widget.NewText("body"), widget.WithModalTitle("T"))
+	h.onLoop(func() {
+		if err := m.Open(host); err != nil {
+			t.Error(err)
+		}
+	})
+	h.waitFor("the card laid out", func() (v bool) {
+		h.onLoop(func() { r := m.CardRect(); v = r.W > 0 && r.H > 0 && r.X+r.W <= 30 && r.Y+r.H <= 10 })
+		return v
+	})
+	if widget.NewTextInput(widget.WithMask('•')).Mask() != '•' || widget.NewTextInput().Mask() != 0 {
+		t.Fatal("Mask does not mirror WithMask")
+	}
+}

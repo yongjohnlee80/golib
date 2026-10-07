@@ -48,8 +48,9 @@ type Modal struct {
 	onDismiss                         func(DismissReason)
 	maxWidthPercent, maxHeightPercent int
 
-	host *OverlayHost
-	open bool
+	host     *OverlayHost
+	open     bool
+	cardRect tui.Rect // where the card was placed at the last layout, in the modal's cells
 	// pointerPolicy is the subtree-wide pointer setting, remembered so a
 	// chained WithPointerPolicy before mount is applied when the Context
 	// arrives rather than being silently dropped.
@@ -857,7 +858,8 @@ func (m *Modal) Layout(cs tui.Constraints) tui.Size {
 			offer.H = max(1, full.H*m.maxHeightPercent/100)
 		}
 		cardSize := ctx.LayoutChild(m.card, tui.Loose(offer))
-		ctx.PlaceChild(m.card, placeCard(m.placement, full, cardSize))
+		m.cardRect = placeCard(m.placement, full, cardSize)
+		ctx.PlaceChild(m.card, m.cardRect)
 	}
 	return cs.Constrain(full)
 }

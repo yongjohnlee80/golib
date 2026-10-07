@@ -79,6 +79,11 @@ jobs:
           cache: true
           cache-dependency-path: gui/go.sum
 
+      # Against this commit's golib, not the released one gui/go.mod requires: a change to tui and
+      # to gui lands in one PR. Releasing tags golib first, then raises gui/go.mod's requirement.
+      - name: use this commit's golib
+        run: go work init . ..
+
       - name: Gio's Linux libraries
         run: |
           sudo apt-get update

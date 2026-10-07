@@ -26,6 +26,9 @@ func (t *TextInput) Placeholder() string { return t.placeholder }
 // Masked reports whether the value is drawn as a mask character.
 func (t *TextInput) Masked() bool { return t.mask != 0 }
 
+// Mask is the character every cluster is drawn as, or 0 when the value is shown.
+func (t *TextInput) Mask() rune { return t.mask }
+
 // CursorPos is the cursor as a logical line and a cluster within it.
 func (t *TextArea) CursorPos() (line, cluster int) { return t.ln, t.col }
 
@@ -126,3 +129,21 @@ var (
 	_ tui.Scroller      = (*Tree)(nil)
 	_ tui.Scroller      = (*BufferView)(nil)
 )
+
+// TabSpan is one tab's label on the bar: its first cell and its width, in cells.
+type TabSpan struct{ X, W int }
+
+// TabSpans are the tabs' labels on the bar, in order, where a press selects them.
+func (t *Tabs) TabSpans() []TabSpan {
+	out := make([]TabSpan, 0, len(t.tabs))
+	x := 0
+	for _, tab := range t.tabs {
+		w := t.measure(cellLabel(tab.label))
+		out = append(out, TabSpan{X: x, W: w})
+		x += w + 1
+	}
+	return out
+}
+
+// CardRect is where the dialog's card was placed at the last layout, in the modal's cells.
+func (m *Modal) CardRect() tui.Rect { return m.cardRect }

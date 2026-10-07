@@ -101,7 +101,7 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 			key.Filter{Focus: tag, Optional: allMods},
 			pointer.Filter{
 				Target:  tag,
-				Kinds:   pointer.Press | pointer.Release | pointer.Move | pointer.Drag | pointer.Scroll | pointer.Cancel,
+				Kinds:   pointer.Press | pointer.Release | pointer.Move | pointer.Drag | pointer.Scroll | pointer.Cancel | pointer.Leave,
 				ScrollX: pointer.ScrollRange{Min: -1 << 20, Max: 1 << 20},
 				ScrollY: pointer.ScrollRange{Min: -1 << 20, Max: 1 << 20},
 			},
@@ -126,6 +126,10 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 		case key.FocusEvent:
 			b.gio.focused = e.Focus
 		case pointer.Event:
+			if e.Kind == pointer.Leave {
+				b.q.push(tui.PointerLeaveEvent{}) // nothing in the window is under the pointer
+				continue
+			}
 			for _, me := range b.gio.ptr.translate(e, m) {
 				b.q.push(me)
 			}

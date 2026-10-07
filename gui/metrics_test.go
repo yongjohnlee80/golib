@@ -93,13 +93,13 @@ func TestPointerTranslate(t *testing.T) {
 			}
 		}
 	}
-	expect(p.translate(at(pointer.Move, 0, 20, 40), m), tui.MouseEvent{Kind: tui.MouseMotion, X: 2, Y: 2})
-	expect(p.translate(at(pointer.Press, pointer.ButtonPrimary, 20, 40), m), tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 2, Y: 2})
-	expect(p.translate(at(pointer.Drag, pointer.ButtonPrimary, 40, 40), m), tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, X: 5, Y: 2})
+	expect(p.translate(at(pointer.Move, 0, 20, 40), m), tui.MouseEvent{Kind: tui.MouseMotion, X: 2, Y: 2, SubX: 0.5, SubY: 0.5}) // the middle of cell (2, 2)
+	expect(p.translate(at(pointer.Press, pointer.ButtonPrimary, 20, 40), m), tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 2, Y: 2, SubX: 0.5, SubY: 0.5})
+	expect(p.translate(at(pointer.Drag, pointer.ButtonPrimary, 40, 40), m), tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, X: 5, Y: 2, SubY: 0.5})
 	// A second button pressed during the drag is reported as itself.
-	expect(p.translate(at(pointer.Press, pointer.ButtonPrimary|pointer.ButtonSecondary, 40, 40), m), tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 5, Y: 2})
-	expect(p.translate(at(pointer.Release, pointer.ButtonPrimary, 40, 40), m), tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseRight, X: 5, Y: 2})
-	expect(p.translate(at(pointer.Release, 0, 40, 40), m), tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 5, Y: 2})
+	expect(p.translate(at(pointer.Press, pointer.ButtonPrimary|pointer.ButtonSecondary, 40, 40), m), tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 5, Y: 2, SubY: 0.5})
+	expect(p.translate(at(pointer.Release, pointer.ButtonPrimary, 40, 40), m), tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseRight, X: 5, Y: 2, SubY: 0.5})
+	expect(p.translate(at(pointer.Release, 0, 40, 40), m), tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 5, Y: 2, SubY: 0.5})
 }
 
 func TestPointerWheelSteps(t *testing.T) {
