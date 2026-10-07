@@ -293,11 +293,17 @@ func (r *renderer) drawCursor(ops *op.Ops, g *grid, cur cursorState, focused boo
 	if cur.x < 0 || cur.y < 0 || cur.x >= g.w || cur.y >= g.h {
 		return
 	}
-	cc := r.theme.Cursor
+	// The app's caret colour first, then the theme's. With neither, the caret is the text's
+	// colour under it, as many terminals draw it, so it shows on the app's own page whatever
+	// that is (a fixed light caret vanishes on a light page).
+	c := g.at(cur.x, cur.y)
+	cc, _ := r.colors(c.Attrs)
+	if r.theme.Cursor.A != 0 {
+		cc = r.theme.Cursor
+	}
 	if cur.colored {
 		cc = cur.color
 	}
-	c := g.at(cur.x, cur.y)
 	rect := m.cellRect(cur.x, cur.y, max(int(c.Width), 1), 1)
 	lw := max(1, int(m.scale+0.5))
 	switch {
@@ -359,4 +365,30 @@ func (r *renderer) paintCells(ops *op.Ops, g *grid, cr CellRect, glyphsOnly bool
 			r.drawCell(ops, c, x, y, fg)
 		}
 	}
+}
+
+// backdrop is the most common background of the cells bordering v (outside it), ties to the
+// first seen; the page background when none borders it (v fills the grid).
+func (r *renderer) backdrop(g *grid, v CellRect) color.NRGBA {
+	counts := map[color.NRGBA]int{}
+	best, bestN := r.pageBG, 0
+	look := func(x, y int) {
+		if x < 0 || y < 0 || x >= g.w || y >= g.h {
+			return
+		}
+		_, bg := r.colors(g.at(x, y).Attrs)
+		counts[bg]++
+		if n := counts[bg]; n > bestN {
+			best, bestN = bg, n
+		}
+	}
+	for x := v.X - 1; x <= v.X+v.W; x++ {
+		look(x, v.Y-1)
+		look(x, v.Y+v.H)
+	}
+	for y := v.Y; y < v.Y+v.H; y++ {
+		look(v.X-1, y)
+		look(v.X+v.W, y)
+	}
+	return best
 }

@@ -27,6 +27,10 @@ type RecordingCanvas struct {
 	Calls []PaintCall
 	// Colors answers CellColors; nil answers zero colours.
 	Colors func(col, row int) (fg, bg color.NRGBA)
+	// Content answers CellText; nil answers "".
+	Content func(col, row int) string
+	// Around answers Backdrop.
+	Around color.NRGBA
 
 	root   *RecordingCanvas
 	off    Point
@@ -51,7 +55,7 @@ func (c *RecordingCanvas) rec(p PaintCall) {
 
 // Sub records into the same log, offset by r.
 func (c *RecordingCanvas) Sub(r Rect) Canvas {
-	return &RecordingCanvas{root: c.root, off: Pt(c.off.X+r.X, c.off.Y+r.Y), size: r.Size(), cell: c.cell, shaper: c.shaper, Colors: c.Colors}
+	return &RecordingCanvas{root: c.root, off: Pt(c.off.X+r.X, c.off.Y+r.Y), size: r.Size(), cell: c.cell, shaper: c.shaper, Colors: c.Colors, Content: c.Content, Around: c.Around}
 }
 
 func (c *RecordingCanvas) Size() Size        { return c.size }
@@ -95,6 +99,15 @@ func (c *RecordingCanvas) CellColors(col, row int) (fg, bg color.NRGBA) {
 		return color.NRGBA{}, color.NRGBA{}
 	}
 	return c.Colors(col, row)
+}
+
+func (c *RecordingCanvas) Backdrop() color.NRGBA { return c.Around }
+
+func (c *RecordingCanvas) CellText(col, row int) string {
+	if c.Content == nil {
+		return ""
+	}
+	return c.Content(col, row)
 }
 
 func (c *RecordingCanvas) PaintCells(r CellRect, glyphsOnly bool) {

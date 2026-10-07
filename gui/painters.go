@@ -68,8 +68,8 @@ func hovered(c tui.Component) bool {
 	return false
 }
 
-// labelFont is the UI font sized to sit in one cell row.
-func labelFont(c Canvas) Font { return Font{Size: c.CellSize().H * 0.62} }
+// labelFont is the UI font at about the cell text's size.
+func labelFont(c Canvas) Font { return Font{Size: c.CellSize().H * 0.78} }
 
 // paintButton draws a rounded button in the button's own colours, lighter under the pointer and
 // darker while pressed, with its label centred in the UI font. A button's label is not
@@ -81,7 +81,7 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 	}
 	return ViewFunc(func(c Canvas) {
 		fg, bg := c.CellColors(0, 0)
-		r := Rect{W: c.Size().W, H: c.Size().H}.Inset(1)
+		r := Rect{W: c.Size().W, H: c.Size().H}
 		radius := min(r.H/2, 6)
 		fill := bg
 		switch {
@@ -90,6 +90,7 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		case b.Hovered():
 			fill = mix(bg, fg, 0.1)
 		}
+		c.FillRect(r, Solid(c.Backdrop())) // the corners show what is around the button
 		c.FillRRect(r, radius, Solid(fill))
 		border := alpha(fg, 0.35)
 		width := float32(1)
@@ -103,20 +104,29 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 	}), tui.ScopeSubtree, true
 }
 
-// paintCheckBox draws the box as a rounded square in the first three cells (where "[x]" is),
-// checked with a tick, and keeps the text in its cells.
+// paintCheckBox draws the box as a rounded square over the "[x]" or "[ ]" cells, checked with a
+// tick, and keeps every other cell (the text, and any space the label is centred in) as tui
+// drew it.
 func paintCheckBox(comp tui.Component) (View, tui.NativeScope, bool) {
 	cb, ok := comp.(interface{ Checked() bool })
 	if !ok {
 		return nil, 0, false
 	}
 	return ViewFunc(func(c Canvas) {
-		cols, _ := cells(c)
+		cols, rows := cells(c)
+		at := boxCells(c, cols)
+		if at < 0 {
+			c.PaintCells(CellRect{W: cols, H: rows}, false) // no box in the cells: show them as they are
+			return
+		}
+		c.PaintCells(CellRect{W: at, H: rows}, false)
+		c.PaintCells(CellRect{X: at + 3, W: cols - at - 3, H: rows}, false)
 		cs := c.CellSize()
-		fg, bg := c.CellColors(0, 0)
-		c.FillRect(Rect{W: 3 * cs.W, H: c.Size().H}, Solid(bg))
+		fg, bg := c.CellColors(at, 0)
+		x0 := float32(at) * cs.W
+		c.FillRect(Rect{X: x0, W: 3 * cs.W, H: cs.H}, Solid(bg)) // the text's own background, as the cells beside it
 		side := min(3*cs.W, cs.H) - 4
-		box := Rect{X: (3*cs.W - side) / 2, Y: (cs.H - side) / 2, W: side, H: side}
+		box := Rect{X: x0 + (3*cs.W-side)/2, Y: (cs.H - side) / 2, W: side, H: side}
 		if hovered(comp) {
 			c.FillRRect(box.Inset(-2), 5, Solid(alpha(fg, 0.12)))
 		}
@@ -130,15 +140,23 @@ func paintCheckBox(comp tui.Component) (View, tui.NativeScope, bool) {
 		} else {
 			c.StrokeRRect(box.Inset(0.75), 3, 1.5, Solid(alpha(fg, 0.7)))
 		}
-		if cols > 3 {
-			c.PaintCells(CellRect{X: 3, W: cols - 3, H: 1}, false)
-		}
 	}), tui.ScopeSubtree, true
 }
 
-// paintTextField draws a rounded field, its border brighter while focused. The text, the
-// placeholder and the selection are tui's own cells: the field's glyphs over the native fill, and
-// the selected cells whole, so every cluster stays at the column tui hit-tests.
+// boxCells is the first column of the "[x]" or "[ ]" on the first row, or -1.
+func boxCells(c Canvas, cols int) int {
+	for x := 0; x+2 < cols; x++ {
+		if c.CellText(x, 0) == "[" && c.CellText(x+2, 0) == "]" {
+			return x
+		}
+	}
+	return -1
+}
+
+// paintTextField draws a square-edged field over its whole row, its border brighter while focused,
+// beneath the text. The text, the placeholder and the selection are tui's own cells drawn over
+// it: the glyphs over the native fill, and the selected cells whole, so every cluster stays at
+// the column tui hit-tests and no line crosses a glyph.
 func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
 	ti, ok := comp.(*widget.TextInput)
 	if !ok {
@@ -147,32 +165,32 @@ func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
 	return ViewFunc(func(c Canvas) {
 		cols, rows := cells(c)
 		fg, bg := c.CellColors(0, 0)
-		r := Rect{W: c.Size().W, H: c.Size().H}.Inset(0.5)
-		c.FillRRect(r, 4, Solid(bg))
+		r := Rect{W: c.Size().W, H: c.Size().H}
+		border, width := alpha(fg, 0.3), float32(1)
+		if focusedNode(ti) {
+			border, width = alpha(fg, 0.7), 1.5
+		}
+		c.FillRect(r, Solid(bg))
+		c.StrokeRRect(r.Inset(width/2), 0, width, Solid(border))
 		c.PaintCells(CellRect{W: cols, H: rows}, true)
 		if lo, hi, sel := ti.Selection(); sel && focusedNode(ti) {
 			x0, x1 := selectionCells(ti, lo, hi)
-			x0, x1 = max(x0, 0), min(x1, cols)
+			x0, x1 = max(x0, ti.Padding()), min(x1, cols-ti.Padding()) // the frame's end cells stay the frame's
 			if x1 > x0 {
 				c.PaintCells(CellRect{X: x0, W: x1 - x0, H: 1}, false)
 			}
 		}
-		border, width := alpha(fg, 0.3), float32(1)
-		if focusedNode(ti) {
-			border, width = alpha(fg, 0.85), 1.5
-		}
-		c.StrokeRRect(r.Inset(width/2), 4, width, Solid(border))
 	}), tui.ScopeSubtree, true
 }
 
 // selectionCells is the cell span of clusters [lo, hi) on screen: the columns TextInput.Render
-// writes them at, after its scroll.
+// writes them at, after its padding and its scroll.
 func selectionCells(ti *widget.TextInput, lo, hi int) (x0, x1 int) {
 	ctx := ti.Context()
 	if ctx == nil {
 		return 0, 0
 	}
-	x := -ti.Scroll()
+	x := ti.Padding() - ti.Scroll()
 	i := 0
 	x0, x1 = -1, -1
 	for cl := range tui.Graphemes(ti.Value()) {
@@ -207,7 +225,7 @@ func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
 		filled, _ := c.CellColors(0, 0)
 		emptyFG, emptyBG := c.CellColors(max(cols-1, 0), 0)
 		sz := c.Size()
-		c.FillRect(Rect{W: sz.W, H: sz.H}, Solid(emptyBG))
+		c.FillRect(Rect{W: sz.W, H: sz.H}, Solid(c.Backdrop()))
 		h := max(sz.H*0.4, 3)
 		track := Rect{Y: (sz.H - h) / 2, W: sz.W, H: h}
 		c.FillRRect(track, h/2, Solid(mix(emptyBG, emptyFG, 0.25)))

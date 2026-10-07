@@ -144,7 +144,7 @@ func TestButtonAndFieldPlacements(t *testing.T) {
 		t.Fatalf("button placement %+v; want subtree scope, nothing covering it", bp)
 	}
 	ops := paintOn(t, app, sb, bp).Ops()
-	if !slices.Equal(ops, []string{"FillRRect", "StrokeRRect", "DrawText"}) {
+	if !slices.Equal(ops, []string{"FillRect", "FillRRect", "StrokeRRect", "DrawText"}) {
 		t.Fatalf("button painted %v", ops)
 	}
 
@@ -197,24 +197,41 @@ func (f *fakeCheck) HandleEvent(tui.Event) bool         { return false }
 func (f *fakeCheck) AccessibleRole() tui.AccessibleRole { return tui.RoleCheckBox }
 func (f *fakeCheck) Checked() bool                      { return f.checked }
 
+// The box is found in the cells, wherever centring put it: here one cell in, " [x] Lexical".
 func TestCheckBoxDrawsItsBoxAndKeepsItsText(t *testing.T) {
-	v, scope, ok := paintCheckBox(&fakeCheck{checked: true})
-	if !ok || scope != tui.ScopeSubtree {
-		t.Fatalf("ok=%v scope=%v", ok, scope)
+	row := []string{" ", "[", "x", "]", " ", "L", "e", "x", "i", "c"}
+	paint := func(checked bool) *RecordingCanvas {
+		v, scope, ok := paintCheckBox(&fakeCheck{checked: checked})
+		if !ok || scope != tui.ScopeSubtree {
+			t.Fatalf("ok=%v scope=%v", ok, scope)
+		}
+		rc := NewRecordingCanvas(Size{W: 80, H: 16}, Size{W: 8, H: 16})
+		rc.Content = func(col, r int) string {
+			if r == 0 && col >= 0 && col < len(row) {
+				return row[col]
+			}
+			return ""
+		}
+		v.Paint(rc)
+		return rc
 	}
-	rc := NewRecordingCanvas(Size{W: 80, H: 16}, Size{W: 8, H: 16})
-	v.Paint(rc)
+	rc := paint(true)
 	if !slices.Contains(rc.Ops(), "StrokePath") {
 		t.Fatalf("a checked box has no tick: %v", rc.Ops())
 	}
-	last := rc.Calls[len(rc.Calls)-1]
-	if last.Op != "PaintCells" || last.Cells != (CellRect{X: 3, W: 7, H: 1}) {
-		t.Fatalf("the text is not kept in its cells after the box: %+v", last)
+	var kept []CellRect
+	for _, p := range rc.Calls {
+		if p.Op == "PaintCells" {
+			kept = append(kept, p.Cells)
+		}
+		if p.Op == "FillRect" && p.Rect.X != 8 {
+			t.Fatalf("the box is drawn at x=%v; want over the [ at cell 1 (x=8)", p.Rect.X)
+		}
 	}
-	v, _, _ = paintCheckBox(&fakeCheck{})
-	rc = NewRecordingCanvas(Size{W: 80, H: 16}, Size{W: 8, H: 16})
-	v.Paint(rc)
-	if slices.Contains(rc.Ops(), "StrokePath") {
+	if !slices.Equal(kept, []CellRect{{W: 1, H: 1}, {X: 4, W: 6, H: 1}}) {
+		t.Fatalf("kept cells %+v; want everything but the box's three", kept)
+	}
+	if slices.Contains(paint(false).Ops(), "StrokePath") {
 		t.Fatal("an unchecked box has a tick")
 	}
 }
@@ -321,3 +338,31 @@ func newTestShaper() *text.Shaper {
 }
 
 func f32pt(x, y float32) f32.Point { return f32.Pt(x, y) }
+
+// The backdrop is what borders the view: here a blue panel around a one-row field, not the
+// field's own red cells, and the page's colour where nothing borders it.
+func TestBackdropIsWhatSurroundsTheView(t *testing.T) {
+	blue := tui.CellAttrs{BG: tui.CellColor{Kind: tui.CellColorRGB, B: 200}}
+	red := tui.CellAttrs{BG: tui.CellColor{Kind: tui.CellColorRGB, R: 200}}
+	var g grid
+	g.resize(6, 3)
+	var diff []tui.CellUpdate
+	for y := range 3 {
+		for x := range 6 {
+			a := blue
+			if y == 1 && x >= 1 && x <= 4 {
+				a = red
+			}
+			diff = append(diff, tui.CellUpdate{X: x, Y: y, Cell: tui.Cell{Content: " ", Width: 1, Attrs: a}})
+		}
+	}
+	g.apply(diff)
+	r := newRenderer(nil, "Go Mono", DefaultTheme())
+	r.pageBG = color.NRGBA{G: 9, A: 255}
+	if got := r.backdrop(&g, CellRect{X: 1, Y: 1, W: 4, H: 1}); got != (color.NRGBA{B: 200, A: 255}) {
+		t.Fatalf("backdrop %v; want the blue around the field", got)
+	}
+	if got := r.backdrop(&g, CellRect{W: 6, H: 3}); got != r.pageBG {
+		t.Fatalf("backdrop of the whole grid %v; want the page's", got)
+	}
+}
