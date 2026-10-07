@@ -161,6 +161,9 @@ jobs:
           go test -count=1 -timeout 20m -covermode=atomic \
             -coverpkg=./... -coverprofile="$RUNNER_TEMP/coverage-base.out" ./...
 
+      # gui/ is a nested module (Gio, cgo): the root module's profile can never contain its files,
+      # so --require-changed-files would report every one of them missing. Its own job (gui) runs
+      # its tests; this policy measures the root module only.
       - name: enforce coverage policy
         id: coverage_policy
         continue-on-error: true
@@ -175,6 +178,7 @@ jobs:
             --maximum-total-regression 1 \
             --maximum-file-regression 1 \
             --require-changed-files \
+            --exclude '^gui/' \
             --format markdown > "$RUNNER_TEMP/coverage-report.md"
           status=$?
           cat "$RUNNER_TEMP/coverage-report.md" >> "$GITHUB_STEP_SUMMARY"
