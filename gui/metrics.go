@@ -16,7 +16,7 @@ type fontMetrics struct {
 
 // metrics is ONE snapshot of everything that turns cells into pixels. The Gio goroutine
 // publishes a new one when the window or its scale changes; Size, Flush and pointer translation
-// each read one and use it throughout, so a frame is never composed from two (ADR §4.2).
+// each read one and use it throughout, so a frame is never composed from two.
 //
 // It is a comparable value: two snapshots are equal exactly when nothing a cell needs changed.
 type metrics struct {

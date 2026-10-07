@@ -16,7 +16,7 @@ var ErrEventOverflow = errors.New("gui: event queue overflow")
 // drains its channel promptly, so reaching it means the App stopped reading.
 const maxQueued = 4096
 
-// eventQueue gives tui.Backend.Events one owner (ADR §4.2). The Gio goroutine appends to the
+// eventQueue gives tui.Backend.Events one owner. The Gio goroutine appends to the
 // queue and never blocks; the forwarder goroutine is the channel's only sender and only closer.
 // A channel closed by anyone else could be closed under a pending send, which panics.
 type eventQueue struct {

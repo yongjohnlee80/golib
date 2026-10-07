@@ -161,8 +161,8 @@ func (b *Backend) Events() <-chan tui.Event { return b.q.events }
 // context error. Nil after a clean Stop or a clean close. The first reason is the one kept.
 func (b *Backend) Err() error { return b.q.reason() }
 
-// Capabilities claims what the window does as a terminal would (ADR 1791330692 §4.3). It is
-// constant after Start.
+// Capabilities claims only what the window does with the same meaning a terminal gives it, so an
+// app branching on a flag behaves as it would on a terminal that answered it. Constant after Start.
 func (b *Backend) Capabilities() tui.Capabilities {
 	t := b.cfg.theme
 	return tui.Capabilities{
@@ -220,18 +220,28 @@ func (b *Backend) paintMetrics(diff []tui.CellUpdate) metrics {
 	return b.paintM
 }
 
-// fullRepaint reports whether diff is every cell of a w×h grid in row-major order: what the App
-// emits for its first frame at a new size.
+// fullRepaint reports whether diff covers every column of a w×h grid, row-major, with no gap:
+// what the App emits for its first frame at a new size. A width-2 update covers two columns, since
+// tui's diff never emits a continuation (tui/buffer.go diff, rule 2), so the update count alone
+// says nothing.
 func fullRepaint(diff []tui.CellUpdate, s tui.Size) bool {
-	n := s.W * s.H
-	if n == 0 || len(diff) != n {
+	if s.W <= 0 || s.H <= 0 {
 		return false
 	}
-	last := diff[n-1]
-	if diff[0].X != 0 || diff[0].Y != 0 || last.X != s.W-1 || last.Y != s.H-1 {
-		return false
+	x, y := 0, 0
+	for _, u := range diff {
+		if u.X != x || u.Y != y {
+			return false
+		}
+		x += max(int(u.Cell.Width), 1)
+		if x > s.W {
+			return false // a wide cell cannot hang past the edge (tui's W3)
+		}
+		if x == s.W {
+			x, y = 0, y+1
+		}
 	}
-	return s.H == 1 || (diff[s.W].X == 0 && diff[s.W].Y == 1)
+	return x == 0 && y == s.H
 }
 
 // The cursor is latched, as tui/term latches it, and drawn by the next Flush.
