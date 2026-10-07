@@ -46,6 +46,7 @@ type config struct {
 	minHeight  unit.Dp
 	typeface   string
 	fontSize   unit.Sp
+	padding    unit.Dp
 	theme      Theme
 	decorated  bool
 	decoration bool // decorated was set explicitly
@@ -58,6 +59,7 @@ func defaultConfig() config {
 		height:   700,
 		typeface: "Go Mono",
 		fontSize: 14,
+		padding:  4,
 		theme:    DefaultTheme(),
 	}
 }
@@ -117,6 +119,10 @@ func namesFamily(list, family string) bool {
 	}
 	return false
 }
+
+// WithPadding sets the space between the window's edge and its cells on every side, as a
+// terminal's window padding does. It takes the colour of the edge cells beside it. Default 4dp.
+func WithPadding(p unit.Dp) Option { return func(c *config) { c.padding = max(p, 0) } }
 
 // WithTheme sets the default colours, the cursor and the ANSI palette.
 func WithTheme(t Theme) Option { return func(c *config) { c.theme = t } }

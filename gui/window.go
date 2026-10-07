@@ -66,7 +66,7 @@ func (b *Backend) run() {
 			}
 
 		case app.FrameEvent:
-			m := measure(b.fm, b.cfg.fontSize, e.Size, e.Metric)
+			m := measure(b.fm, b.cfg.fontSize, b.cfg.padding, e.Size, e.Metric)
 			if old := b.metrics.Swap(&m); old == nil {
 				b.startOnce.Do(func() { close(b.started) }) // Start returns; nothing is sent
 			} else if !old.sameCells(m) {

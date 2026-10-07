@@ -100,27 +100,28 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, images []placedIma
 	return rec.Stop()
 }
 
-// drawMargins fills the strip past the last whole cell, right and below, with the background of
-// the edge cell beside it, as terminals extend their edge cells: an app that paints its own
-// background shows no band of the window's default colour.
+// drawMargins fills everything around the grid (the window's padding, and the strip past the
+// last whole cell) with the background of the edge cell beside it, as terminals extend their
+// edge cells: an app that paints its own background shows no band of the window's default colour.
 func (r *renderer) drawMargins(ops *op.Ops, g *grid, m metrics) {
-	right, bottom := g.w*m.cell.X, g.h*m.cell.Y
-	if m.window.X > right {
-		for y := range g.h {
-			_, bg := r.colors(g.at(g.w-1, y).Attrs)
-			fillRect(ops, image.Rect(right, y*m.cell.Y, m.window.X, (y+1)*m.cell.Y), bg)
-		}
+	grid := m.cellRect(0, 0, g.w, g.h)
+	win := image.Rectangle{Max: m.window}
+	bgAt := func(x, y int) color.NRGBA { _, bg := r.colors(g.at(x, y).Attrs); return bg }
+	for y := range g.h { // left and right of each row
+		row := m.cellRect(0, y, g.w, 1)
+		fillRect(ops, image.Rect(win.Min.X, row.Min.Y, grid.Min.X, row.Max.Y), bgAt(0, y))
+		fillRect(ops, image.Rect(grid.Max.X, row.Min.Y, win.Max.X, row.Max.Y), bgAt(g.w-1, y))
 	}
-	if m.window.Y > bottom {
-		for x := range g.w {
-			_, bg := r.colors(g.at(x, g.h-1).Attrs)
-			fillRect(ops, image.Rect(x*m.cell.X, bottom, (x+1)*m.cell.X, m.window.Y), bg)
-		}
-		if m.window.X > right {
-			_, bg := r.colors(g.at(g.w-1, g.h-1).Attrs)
-			fillRect(ops, image.Rect(right, bottom, m.window.X, m.window.Y), bg)
-		}
+	for x := range g.w { // above and below each column
+		col := m.cellRect(x, 0, 1, g.h)
+		fillRect(ops, image.Rect(col.Min.X, win.Min.Y, col.Max.X, grid.Min.Y), bgAt(x, 0))
+		fillRect(ops, image.Rect(col.Min.X, grid.Max.Y, col.Max.X, win.Max.Y), bgAt(x, g.h-1))
 	}
+	// the four corners, from the corner cells
+	fillRect(ops, image.Rect(win.Min.X, win.Min.Y, grid.Min.X, grid.Min.Y), bgAt(0, 0))
+	fillRect(ops, image.Rect(grid.Max.X, win.Min.Y, win.Max.X, grid.Min.Y), bgAt(g.w-1, 0))
+	fillRect(ops, image.Rect(win.Min.X, grid.Max.Y, grid.Min.X, win.Max.Y), bgAt(0, g.h-1))
+	fillRect(ops, image.Rect(grid.Max.X, grid.Max.Y, win.Max.X, win.Max.Y), bgAt(g.w-1, g.h-1))
 }
 
 // recordRow records row y: backgrounds first, merged into runs, then glyphs and decorations.
@@ -176,17 +177,14 @@ func (r *renderer) drawCell(ops *op.Ops, c tui.Cell, x, y int, fg color.NRGBA) {
 	} else if c.Content != "" && c.Content != " " {
 		gs := r.shape(c.Content, c.Attrs.Mask&tui.AttrBold != 0, c.Attrs.Mask&tui.AttrItalic != 0)
 		if !gs.empty {
-			// Centre the glyph in its span; a fallback glyph wider than the span is clipped to it
-			// rather than drawn over its neighbour.
-			dx := (rect.Dx() - gs.advance) / 2
 			cl := clip.Rect(rect).Push(ops)
-			off := op.Offset(image.Pt(rect.Min.X+max(dx, 0), rect.Min.Y+m.baseline)).Push(ops)
+			tr := op.Affine(glyphPlacement(rect, m, gs.advance)).Push(ops)
 			outline := clip.Outline{Path: gs.path}.Op().Push(ops)
 			paint.ColorOp{Color: fg}.Add(ops)
 			paint.PaintOp{}.Add(ops)
 			outline.Pop()
 			gs.bitmaps.Add(ops)
-			off.Pop()
+			tr.Pop()
 			cl.Pop()
 		}
 	}
@@ -199,6 +197,20 @@ func (r *renderer) drawCell(ops *op.Ops, c tui.Cell, x, y int, fg color.NRGBA) {
 		sy := rect.Min.Y + m.cell.Y/2
 		fillRect(ops, image.Rect(rect.Min.X, sy, rect.Max.X, sy+lw), fg)
 	}
+}
+
+// glyphPlacement puts a glyph of the given advance on the baseline of its cell span rect. A glyph
+// that fits is centred in the span. One wider than the span (a colour emoji or an icon from a
+// fallback font, in a one-cell span) is scaled down to the span's width about the cell's middle,
+// as Ghostty and kitty fit symbols to their cells, rather than clipped to half a glyph.
+func glyphPlacement(rect image.Rectangle, m metrics, advance int) f32.Affine2D {
+	x, base := float32(rect.Min.X), float32(rect.Min.Y+m.baseline)
+	if advance <= rect.Dx() {
+		return f32.Affine2D{}.Offset(f32.Pt(x+float32((rect.Dx()-advance)/2), base))
+	}
+	s := float32(rect.Dx()) / float32(advance)
+	mid := float32(rect.Min.Y) + float32(m.cell.Y)/2
+	return f32.Affine2D{}.Offset(f32.Pt(x, base)).Scale(f32.Pt(x, mid), f32.Pt(s, s))
 }
 
 // shape is the outline and advance of one grapheme cluster in the cell font, cached.
