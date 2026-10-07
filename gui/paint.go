@@ -67,11 +67,11 @@ type placedImage struct {
 	op paint.ImageOp
 }
 
-// frame records one complete frame as a macro: every row, the images over their cells, the
-// cursor. g's dirty rows are recorded afresh and marked clean. Rows are cached apart from the
+// frame records one complete frame as a macro: every row, the native views over their cells,
+// the images, the cursor. g's dirty rows are recorded afresh and marked clean. Rows are cached apart from the
 // window's size, so a window resized within the same grid re-records nothing; only the margins
 // past the last whole cell are drawn for every frame.
-func (r *renderer) frame(g *grid, m metrics, cur cursorState, images []placedImage, focused bool) op.CallOp {
+func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.NativePlacement, images []placedImage, focused bool) op.CallOp {
 	if !r.m.sameCells(m) || len(r.rows) != g.h {
 		if r.m.ppem != m.ppem {
 			clear(r.glyphs)
@@ -98,6 +98,7 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, images []placedIma
 	for _, row := range r.rows {
 		row.Add(ops)
 	}
+	r.drawNatives(ops, g, m, natives)
 	for _, img := range images {
 		r.drawImage(ops, img)
 	}
@@ -323,4 +324,39 @@ func decodeImage(p tui.ImagePlacement) (placedImage, bool) {
 		return placedImage{}, false
 	}
 	return placedImage{ImagePlacement: p, op: paint.NewImageOp(src)}, true
+}
+
+// paintCells draws the cells in r (grid coordinates, clamped to the grid) as the rows draw them:
+// over a native view, the cells written after it, and for a native style, the text it keeps. A
+// wide cell cut by r's left edge is drawn from its head, clipped to r. glyphsOnly skips the
+// backgrounds. Unlike recordRow, a background equal to the theme's is filled too: these cells
+// are drawn over a view, not over the window's background.
+func (r *renderer) paintCells(ops *op.Ops, g *grid, cr CellRect, glyphsOnly bool) {
+	x0, y0 := max(cr.X, 0), max(cr.Y, 0)
+	x1, y1 := min(cr.X+cr.W, g.w), min(cr.Y+cr.H, g.h)
+	if x0 >= x1 || y0 >= y1 {
+		return
+	}
+	area := clip.Rect(r.m.cellRect(x0, y0, x1-x0, y1-y0)).Push(ops)
+	defer area.Pop()
+	for y := y0; y < y1; y++ {
+		if !glyphsOnly {
+			for x := x0; x < x1; x++ {
+				_, bg := r.colors(g.at(x, y).Attrs)
+				fillRect(ops, r.m.cellRect(x, y, 1, 1), bg)
+			}
+		}
+		x := x0
+		if g.at(x, y).Continuation() && x > 0 {
+			x-- // the head of a wide cell whose second half is in r
+		}
+		for ; x < x1; x++ {
+			c := g.at(x, y)
+			if c.Continuation() {
+				continue
+			}
+			fg, _ := r.colors(c.Attrs)
+			r.drawCell(ops, c, x, y, fg)
+		}
+	}
 }

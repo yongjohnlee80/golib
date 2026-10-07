@@ -30,9 +30,10 @@ func buttonOf(b pointer.Buttons) tui.MouseButton {
 // translate is the tui events for e, under the cell size and grid in m.
 func (p *pointerState) translate(e pointer.Event, m metrics) []tui.MouseEvent {
 	x, y := m.cellAt(e.Position.X, e.Position.Y)
+	sx, sy := m.subCell(e.Position.X, e.Position.Y, x, y)
 	mods := modsOf(e.Modifiers)
 	ev := func(kind tui.MouseKind, b tui.MouseButton) tui.MouseEvent {
-		return tui.MouseEvent{Kind: kind, Button: b, X: x, Y: y, Mods: mods}
+		return tui.MouseEvent{Kind: kind, Button: b, X: x, Y: y, SubX: sx, SubY: sy, Mods: mods}
 	}
 	switch e.Kind {
 	case pointer.Press:
