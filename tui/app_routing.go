@@ -125,6 +125,10 @@ func (a *App) dispatch(ev Event) {
 			e.Count = 0
 			ev = e
 		}
+		a.trackHover(e)
+		if e.Kind == MouseRelease {
+			defer a.refreshHover() // a capture this release ends: hover follows the pointer again
+		}
 		// A HELD CAPTURE PRE-EMPTS EVERYTHING BELOW. Press, motion and release
 		// go straight to the owner: no hit-test, no focus step, no bubbling.
 		// That is the whole point — the pointer has left the widget that owns
@@ -287,11 +291,15 @@ func (a *App) dispatch(ev Event) {
 		// report the wrong one.
 		if e.Terminal && !e.Gained {
 			a.loseCapture(CaptureLostBackend)
+			a.setHovered(nil) // nothing is under a pointer another window has
 		}
 		if n := a.nodes[a.focused]; n != nil {
 			a.bubble(n, ev)
 		}
 		a.bus.Publish(e)
+
+	case PointerLeaveEvent:
+		a.setHovered(nil)
 
 	case TickEvent:
 		a.deliverAddressed(e.Owner, ev)

@@ -61,6 +61,12 @@ func (n *checkBoxNode) Render(tui.Surface) {}
 // HandleEvent leaves every event to the Button.
 func (n *checkBoxNode) HandleEvent(tui.Event) bool { return false }
 
+// AccessibleRole: a QML CheckBox is a checkbox, though a widget.Button draws it on a terminal.
+func (n *checkBoxNode) AccessibleRole() tui.AccessibleRole { return tui.RoleCheckBox }
+
+// Checked reports whether the box is checked.
+func (n *checkBoxNode) Checked() bool { return n.checked }
+
 // activated is the box toggled by the user.
 func (n *checkBoxNode) activated() {
 	n.checked = !n.checked

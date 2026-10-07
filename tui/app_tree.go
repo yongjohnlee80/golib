@@ -197,6 +197,9 @@ func (a *App) unmountNode(n *node) {
 
 	delete(a.nodes, n.id)
 	delete(a.byComp, n.comp)
+	if a.hovered == n.id {
+		a.hovered = 0 // gone: nothing to tell it
+	}
 	a.async.mu.Lock()
 	delete(a.async.ctxs, n.id)
 	a.async.mu.Unlock()
