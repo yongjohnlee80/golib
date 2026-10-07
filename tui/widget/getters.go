@@ -8,6 +8,26 @@ import "github.com/yongjohnlee80/golib/tui"
 // Hovered reports whether the pointer is over the button.
 func (b *Button) Hovered() bool { return b.ctx != nil && b.ctx.Hovered() }
 
+// MnemonicIndex is the cluster of Label that Render underlines as the button's key, and whether
+// there is one: the marked cluster of a message label, else the first cluster starting with the
+// mnemonic, compared case-insensitively.
+func (b *Button) MnemonicIndex() (int, bool) {
+	if b.markSet {
+		return b.markAt, true
+	}
+	if b.mnemonic == 0 {
+		return 0, false
+	}
+	i := 0
+	for cluster := range tui.Graphemes(b.label) {
+		if eqFold([]rune(cluster)[0], b.mnemonic) {
+			return i, true
+		}
+		i++
+	}
+	return 0, false
+}
+
 // HoverChanged opts the button into hover, so the App repaints it when the pointer comes or goes.
 func (b *Button) HoverChanged(bool) {}
 

@@ -481,3 +481,41 @@ func TestImagesCompositeInPaintOrderWithNatives(t *testing.T) {
 		t.Fatalf("composite order %v; want the button, then the image, then the dialog over both", order)
 	}
 }
+
+// A native button marks its mnemonic's letter as its cells do: the letter bold, with a line under
+// it, between the label's other letters.
+func TestButtonMarksItsMnemonic(t *testing.T) {
+	b := widget.NewButton("Close (q)", widget.WithMnemonic('q'))
+	v, _, ok := paintButton(b)
+	if !ok {
+		t.Fatal("no view")
+	}
+	rc := NewRecordingCanvas(Size{W: 120, H: 18}, Size{W: 8, H: 18})
+	v.Paint(rc)
+	var texts []PaintCall
+	var line *PaintCall
+	for i, p := range rc.Calls {
+		switch {
+		case p.Op == "DrawText":
+			texts = append(texts, p)
+		case p.Op == "FillRect" && i > 0 && rc.Calls[i-1].Op == "DrawText":
+			line = &rc.Calls[i]
+		}
+	}
+	if len(texts) != 3 || line == nil {
+		t.Fatalf("calls %v; want three runs (before, the key, after) and an underline", rc.Ops())
+	}
+	key := texts[1].Rect
+	if line.Rect.X != key.X || line.Rect.W != key.W || line.Rect.Y <= key.Y {
+		t.Fatalf("underline %+v not under the key %+v", line.Rect, key)
+	}
+	if !(texts[0].Rect.X < key.X && key.X < texts[2].Rect.X) {
+		t.Fatalf("runs out of order: %+v", texts)
+	}
+	v, _, _ = paintButton(widget.NewButton("Use"))
+	rc = NewRecordingCanvas(Size{W: 120, H: 18}, Size{W: 8, H: 18})
+	v.Paint(rc)
+	if n := strings.Count(strings.Join(rc.Ops(), " "), "DrawText"); n != 1 {
+		t.Fatalf("a button with no mnemonic drew %v", rc.Ops())
+	}
+}
