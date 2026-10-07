@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image"
+	"image/color"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -75,5 +76,29 @@ func TestPaintMetricsFollowTheApp(t *testing.T) {
 	}
 	if m := b.paintMetrics(full(4, 2)); m != large || b.grid.w != 4 {
 		t.Fatalf("the App's first 4×2 frame drew with %+v on a %d-wide grid", m.grid, b.grid.w)
+	}
+}
+
+// The frame around the grid is the page colour, the background most cells have, never a bar's:
+// a menu bar on the top row and a status bar on the bottom one stay one cell tall.
+func TestPageBackgroundIsTheGridsMostCommon(t *testing.T) {
+	r := newRenderer(nil, "Go Mono", DefaultTheme())
+	page := tui.CellAttrs{BG: tui.CellColor{Kind: tui.CellColorRGB, R: 0x12, G: 0x12, B: 0x13}}
+	bar := tui.CellAttrs{BG: tui.CellColor{Kind: tui.CellColorRGB, R: 0x2f, G: 0x2f, B: 0x30}}
+	// A wide, short screen: the bars hold most of the BORDER cells, the page most of all cells.
+	var g grid
+	g.resize(100, 6)
+	for y := range g.h {
+		for x := range g.w {
+			a := page
+			if y == 0 || y == g.h-1 {
+				a = bar
+			}
+			g.cells[y*g.w+x] = tui.Cell{Content: " ", Width: 1, Attrs: a}
+		}
+	}
+	want := color.NRGBA{R: 0x12, G: 0x12, B: 0x13, A: 0xff}
+	if got := r.pageBackground(&g); got != want {
+		t.Fatalf("frame colour %v; want the page %v", got, want)
 	}
 }
