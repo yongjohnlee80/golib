@@ -1,0 +1,176 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "A",
+      "Label": "A",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        17,
+        18
+      ]
+    },
+    {
+      "ID": "B",
+      "Label": "B",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        21,
+        22
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        18,
+        22
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "",
+      "Line": "solid",
+      "Head": "none",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        29,
+        34
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "This is the text!",
+      "Line": "solid",
+      "Head": "none",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        40,
+        65
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "This is the text",
+      "Line": "solid",
+      "Head": "none",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        71,
+        93
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "text",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        99,
+        109
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "text",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        115,
+        127
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "",
+      "Line": "dotted",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        133,
+        138
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "text",
+      "Line": "dotted",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        145,
+        158
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "",
+      "Line": "thick",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        165,
+        170
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "text",
+      "Line": "thick",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        177,
+        190
+      ]
+    },
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "",
+      "Line": "invisible",
+      "Head": "none",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        197,
+        202
+      ]
+    }
+  ],
+  "Subgraphs": null,
+  "Classes": {}
+}

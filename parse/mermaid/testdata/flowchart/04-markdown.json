@@ -1,0 +1,46 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "markdown",
+      "Label": "This is Markdown",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        17,
+        53
+      ]
+    },
+    {
+      "ID": "newLines",
+      "Label": "Line1\nLine 2\nLine 3",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        58,
+        99
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "markdown",
+      "To": "newLines",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        113,
+        125
+      ]
+    }
+  ],
+  "Subgraphs": null,
+  "Classes": {}
+}

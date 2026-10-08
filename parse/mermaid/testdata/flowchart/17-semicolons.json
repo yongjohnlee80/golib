@@ -1,0 +1,109 @@
+{
+  "Dir": "TB",
+  "Nodes": [
+    {
+      "ID": "A",
+      "Label": "A",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        14,
+        15
+      ]
+    },
+    {
+      "ID": "B",
+      "Label": "B",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        18,
+        19
+      ]
+    },
+    {
+      "ID": "C",
+      "Label": "C",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        29,
+        30
+      ]
+    },
+    {
+      "ID": "D",
+      "Label": "D",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        40,
+        41
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        15,
+        19
+      ]
+    },
+    {
+      "From": "A",
+      "To": "C",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        26,
+        30
+      ]
+    },
+    {
+      "From": "B",
+      "To": "D",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        37,
+        41
+      ]
+    },
+    {
+      "From": "C",
+      "To": "D",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        48,
+        52
+      ]
+    }
+  ],
+  "Subgraphs": null,
+  "Classes": {}
+}

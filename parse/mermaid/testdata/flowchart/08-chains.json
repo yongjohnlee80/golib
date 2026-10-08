@@ -1,0 +1,271 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "A",
+      "Label": "A",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        16,
+        17
+      ]
+    },
+    {
+      "ID": "B",
+      "Label": "B",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        30,
+        31
+      ]
+    },
+    {
+      "ID": "C",
+      "Label": "C",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        45,
+        46
+      ]
+    },
+    {
+      "ID": "a",
+      "Label": "a",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        50,
+        51
+      ]
+    },
+    {
+      "ID": "b",
+      "Label": "b",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        56,
+        57
+      ]
+    },
+    {
+      "ID": "c",
+      "Label": "c",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        60,
+        61
+      ]
+    },
+    {
+      "ID": "d",
+      "Label": "d",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        65,
+        66
+      ]
+    },
+    {
+      "ID": "E",
+      "Label": "E",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        70,
+        71
+      ]
+    },
+    {
+      "ID": "F",
+      "Label": "F",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        74,
+        75
+      ]
+    },
+    {
+      "ID": "G",
+      "Label": "G",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        79,
+        80
+      ]
+    },
+    {
+      "ID": "H",
+      "Label": "H",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        83,
+        84
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "text",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        18,
+        32
+      ]
+    },
+    {
+      "From": "B",
+      "To": "C",
+      "Label": "text2",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        32,
+        46
+      ]
+    },
+    {
+      "From": "a",
+      "To": "b",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        52,
+        61
+      ]
+    },
+    {
+      "From": "a",
+      "To": "c",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        52,
+        61
+      ]
+    },
+    {
+      "From": "b",
+      "To": "d",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        61,
+        66
+      ]
+    },
+    {
+      "From": "c",
+      "To": "d",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        61,
+        66
+      ]
+    },
+    {
+      "From": "E",
+      "To": "G",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        75,
+        84
+      ]
+    },
+    {
+      "From": "E",
+      "To": "H",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        75,
+        84
+      ]
+    },
+    {
+      "From": "F",
+      "To": "G",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        75,
+        84
+      ]
+    },
+    {
+      "From": "F",
+      "To": "H",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        75,
+        84
+      ]
+    }
+  ],
+  "Subgraphs": null,
+  "Classes": {}
+}

@@ -1,0 +1,82 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "A",
+      "Label": "A",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "s",
+      "Span": [
+        15,
+        16
+      ]
+    },
+    {
+      "ID": "B",
+      "Label": "Later shape",
+      "Shape": "round",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        25,
+        39
+      ]
+    },
+    {
+      "ID": "C",
+      "Label": "C",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        44,
+        45
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        17,
+        22
+      ]
+    },
+    {
+      "From": "B",
+      "To": "C",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        40,
+        45
+      ]
+    }
+  ],
+  "Subgraphs": [
+    {
+      "ID": "s",
+      "Title": "s",
+      "Dir": "0",
+      "Parent": "",
+      "Span": [
+        48,
+        68
+      ]
+    }
+  ],
+  "Classes": {}
+}

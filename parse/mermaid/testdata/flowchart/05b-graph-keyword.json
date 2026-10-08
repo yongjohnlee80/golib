@@ -1,0 +1,46 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "Start",
+      "Label": "Start",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        13,
+        18
+      ]
+    },
+    {
+      "ID": "Stop",
+      "Label": "Stop",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        23,
+        27
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "Start",
+      "To": "Stop",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        19,
+        27
+      ]
+    }
+  ],
+  "Subgraphs": null,
+  "Classes": {}
+}
