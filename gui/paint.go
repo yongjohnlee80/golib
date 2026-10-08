@@ -46,6 +46,8 @@ type glyphShape struct {
 	bitmaps op.CallOp // colour glyphs (emoji); empty for outline-only text
 	advance int       // device pixels
 	empty   bool      // nothing to draw (a space)
+	glyphs  []text.Glyph
+	colour  bool // it has colour glyphs (bitmaps): drawn alone, not in a row's batch
 }
 
 func newRenderer(shaper *text.Shaper, typeface string, theme Theme) *renderer {
@@ -138,31 +140,127 @@ func (r *renderer) pageBackground(g *grid) color.NRGBA {
 func (r *renderer) recordRow(g *grid, y int) op.CallOp {
 	ops := new(op.Ops)
 	rec := op.Record(ops)
+	r.drawSpan(ops, g, y, 0, g.w, bgOffTheme)
+	return rec.Stop()
+}
+
+// bgMode is which backgrounds drawSpan fills.
+type bgMode uint8
+
+const (
+	bgOffTheme bgMode = iota // the runs not in the theme's own background (the frame's fill shows there)
+	bgAll                    // every run: over a native view, which the cells must cover
+	bgNone                   // none: glyphs only
+)
+
+// drawSpan draws cells [x0, x1) of row y: their backgrounds by runs, then their glyphs and lines.
+// A span's plain glyphs are drawn as one path per colour, each glyph placed where its cell's own
+// path would have put it, and its line pieces (a border's ─ is two rectangles a cell) merged where
+// they meet: a path or a fill is a draw call, and a full screen of cells each drawing its own made
+// every frame slow on a large window. A glyph scaled to fit its cell, or one with colour bitmaps,
+// is drawn on its own.
+func (r *renderer) drawSpan(ops *op.Ops, g *grid, y, x0, x1 int, bgs bgMode) {
 	m := r.m
-	for x := 0; x < g.w; {
+	for x := x0; x < x1 && bgs != bgNone; {
 		_, bg := r.colors(g.at(x, y).Attrs)
 		run := x + 1
-		for run < g.w {
+		for run < x1 {
 			_, next := r.colors(g.at(run, y).Attrs)
 			if next != bg {
 				break
 			}
 			run++
 		}
-		if bg != r.theme.BG {
+		if bgs == bgAll || bg != r.theme.BG {
 			fillRect(ops, m.cellRect(x, y, run-x, 1), bg)
 		}
 		x = run
 	}
-	for x := range g.w {
+	batch := map[color.NRGBA][]text.Glyph{}
+	var order []color.NRGBA
+	var lines []colouredRect
+	x := x0
+	if g.at(x, y).Continuation() && x > 0 {
+		x-- // the head of a wide cell whose second half is in the span
+	}
+	for ; x < x1; x++ {
 		c := g.at(x, y)
 		if c.Continuation() {
 			continue
 		}
 		fg, _ := r.colors(c.Attrs)
+		if ru, size := utf8.DecodeRuneInString(c.Content); size == len(c.Content) && size > 0 {
+			if a, ok := lineArms[ru]; ok {
+				lw := max(1, int(m.scale+0.5))
+				for _, rc := range armRects(a, m.cellRect(x, y, 1, 1), lw) {
+					lines = append(lines, colouredRect{rc, fg})
+				}
+				lines = r.decorationRects(lines, c, x, y, fg)
+				continue
+			}
+		}
+		if gl, ok := r.batchable(c, x, y); ok {
+			if _, seen := batch[fg]; !seen {
+				order = append(order, fg)
+			}
+			batch[fg] = append(batch[fg], gl...)
+			lines = r.decorationRects(lines, c, x, y, fg)
+			continue
+		}
 		r.drawCell(ops, c, x, y, fg)
 	}
-	return rec.Stop()
+	for _, cr := range mergeRects(lines) {
+		fillRect(ops, cr.r, cr.c)
+	}
+	// Shape places each glyph by its X from the first one's, on one baseline at the path's origin:
+	// the path is moved there, to the row's baseline
+	base := float32(m.cellRect(0, y, 1, 1).Min.Y + m.baseline)
+	for _, fg := range order {
+		gs := batch[fg]
+		tr := op.Affine(f32.Affine2D{}.Offset(f32.Pt(float32(gs[0].X)/64, base))).Push(ops)
+		outline := clip.Outline{Path: r.shaper.Shape(gs)}.Op().Push(ops)
+		paint.ColorOp{Color: fg}.Add(ops)
+		paint.PaintOp{}.Add(ops)
+		outline.Pop()
+		tr.Pop()
+	}
+}
+
+// mayBeColour reports a cluster that may draw as a colour glyph (an emoji): one with a variation
+// selector, or a code point in the emoji and symbol ranges. Gio's glyphs carry no colour flag, so
+// this errs wide: a plain glyph taken for one is only drawn on its own, as every glyph once was.
+func mayBeColour(s string) bool {
+	for _, r := range s {
+		switch {
+		case r == 0xFE0F, r == 0x200D, r >= 0x1F000, r >= 0x2300 && r <= 0x2BFF, r == 0x00A9, r == 0x00AE, r == 0x2122:
+			return true
+		}
+	}
+	return false
+}
+
+// batchable is a cell's glyphs placed in the row, when the cell can be drawn in its row's batch:
+// shaped text (not a box-drawing character) that fits its cell, with no colour glyphs. Each
+// glyph is moved along the row by what glyphPlacement would have moved it.
+func (r *renderer) batchable(c tui.Cell, x, y int) ([]text.Glyph, bool) {
+	if c.Content == "" || c.Content == " " {
+		return nil, false
+	}
+	if ru, size := utf8.DecodeRuneInString(c.Content); size == len(c.Content) && drawable(ru) {
+		return nil, false
+	}
+	gs := r.shape(c.Content, c.Attrs.Mask&tui.AttrBold != 0, c.Attrs.Mask&tui.AttrItalic != 0)
+	rect := r.m.cellRect(x, y, max(int(c.Width), 1), 1)
+	if gs.empty || gs.colour || gs.advance > rect.Dx() {
+		return nil, false
+	}
+	dx := fixed.I(rect.Min.X + (rect.Dx()-gs.advance)/2)
+	out := make([]text.Glyph, len(gs.glyphs))
+	for i, g := range gs.glyphs {
+		g.X += dx // the row's x; the row's baseline is the batch's transform
+		out[i] = g
+	}
+	return out, true
 }
 
 // colors is a cell's foreground and background as drawn: reverse swaps them, faint dims the text.
@@ -198,6 +296,53 @@ func (r *renderer) drawCell(ops *op.Ops, c tui.Cell, x, y int, fg color.NRGBA) {
 			cl.Pop()
 		}
 	}
+	r.drawDecorations(ops, c, x, y, fg)
+}
+
+// colouredRect is a rectangle to fill, and its colour.
+type colouredRect struct {
+	r image.Rectangle
+	c color.NRGBA
+}
+
+// mergeRects joins each rectangle to the one before it where they meet edge to edge on the same
+// rows, in the same colour: a run of line pieces becomes one. Order is kept, so what overlaps
+// still paints in the order given.
+func mergeRects(in []colouredRect) []colouredRect {
+	var out []colouredRect
+	for _, cr := range in {
+		if n := len(out); n > 0 {
+			last := &out[n-1]
+			if last.c == cr.c && last.r.Min.Y == cr.r.Min.Y && last.r.Max.Y == cr.r.Max.Y && last.r.Max.X >= cr.r.Min.X && last.r.Min.X <= cr.r.Min.X {
+				last.r.Max.X = max(last.r.Max.X, cr.r.Max.X)
+				continue
+			}
+		}
+		out = append(out, cr)
+	}
+	return out
+}
+
+// decorationRects appends a cell's underline and strikethrough to rs, to be merged with the row's.
+func (r *renderer) decorationRects(rs []colouredRect, c tui.Cell, x, y int, fg color.NRGBA) []colouredRect {
+	m := r.m
+	rect := m.cellRect(x, y, max(int(c.Width), 1), 1)
+	lw := max(1, int(m.scale+0.5))
+	if c.Attrs.Mask&tui.AttrUnderline != 0 {
+		uy := rect.Min.Y + min(m.baseline+lw, m.cell.Y-lw)
+		rs = append(rs, colouredRect{image.Rect(rect.Min.X, uy, rect.Max.X, uy+lw), fg})
+	}
+	if c.Attrs.Mask&tui.AttrStrikethrough != 0 {
+		sy := rect.Min.Y + m.cell.Y/2
+		rs = append(rs, colouredRect{image.Rect(rect.Min.X, sy, rect.Max.X, sy+lw), fg})
+	}
+	return rs
+}
+
+// drawDecorations draws a cell's underline and strikethrough in fg.
+func (r *renderer) drawDecorations(ops *op.Ops, c tui.Cell, x, y int, fg color.NRGBA) {
+	m := r.m
+	rect := m.cellRect(x, y, max(int(c.Width), 1), 1)
 	lw := max(1, int(m.scale+0.5))
 	if c.Attrs.Mask&tui.AttrUnderline != 0 {
 		uy := rect.Min.Y + min(m.baseline+lw, m.cell.Y-lw)
@@ -251,10 +396,11 @@ func (r *renderer) shape(content string, bold, italic bool) glyphShape {
 		glyphs = append(glyphs, g)
 		advance += g.Advance
 	}
-	gs := glyphShape{advance: advance.Round(), empty: len(glyphs) == 0}
+	gs := glyphShape{advance: advance.Round(), empty: len(glyphs) == 0, glyphs: glyphs}
 	if !gs.empty {
 		gs.path = r.shaper.Shape(glyphs)
 		gs.bitmaps = r.shaper.Bitmaps(glyphs)
+		gs.colour = mayBeColour(content)
 	}
 	r.glyphs[k] = gs
 	return gs
@@ -342,25 +488,12 @@ func (r *renderer) paintCells(ops *op.Ops, g *grid, cr CellRect, glyphsOnly bool
 	}
 	area := clip.Rect(r.m.cellRect(x0, y0, x1-x0, y1-y0)).Push(ops)
 	defer area.Pop()
+	bgs := bgAll
+	if glyphsOnly {
+		bgs = bgNone
+	}
 	for y := y0; y < y1; y++ {
-		if !glyphsOnly {
-			for x := x0; x < x1; x++ {
-				_, bg := r.colors(g.at(x, y).Attrs)
-				fillRect(ops, r.m.cellRect(x, y, 1, 1), bg)
-			}
-		}
-		x := x0
-		if g.at(x, y).Continuation() && x > 0 {
-			x-- // the head of a wide cell whose second half is in r
-		}
-		for ; x < x1; x++ {
-			c := g.at(x, y)
-			if c.Continuation() {
-				continue
-			}
-			fg, _ := r.colors(c.Attrs)
-			r.drawCell(ops, c, x, y, fg)
-		}
+		r.drawSpan(ops, g, y, x0, x1, bgs)
 	}
 }
 
