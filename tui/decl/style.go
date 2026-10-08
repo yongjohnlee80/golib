@@ -33,16 +33,37 @@ func WithStyle(s Style) ProgramOption {
 	return func(c *programConfig) { c.style = &s }
 }
 
-// Replaceable reports whether a style may replace the standard type name. A container whose
-// children are placed by their attached properties (Flex's Layout.fillHeight, say) is not: the
-// hook that reads them is the vocabulary's own, and a public Type has no way to carry it.
+// Replaceable reports whether a style may replace the standard type name. Two kinds may not:
+//   - a container whose children are placed by their attached properties (Flex's
+//     Layout.fillHeight, say): the hook that reads them is the vocabulary's own, and a public
+//     Type has no way to carry it;
+//   - a type whose instances another part of the vocabulary reads by its private node type
+//     (readPrivately): a replacement with an equal contract would pass CheckStyle and then
+//     break a valid document, since the reader would not recognize it.
 func Replaceable(name string) bool {
+	if _, private := readPrivately[name]; private {
+		return false
+	}
 	for _, t := range stdTypes() {
 		if t.Name == name {
 			return t.adopt == nil
 		}
 	}
 	return false
+}
+
+// readPrivately are the standard types whose instances another type, or the runtime, reads by
+// their private node type, and who reads them. A new reader of that kind adds its type here.
+var readPrivately = map[string]string{
+	"SyntaxHighlighter": "an Editor takes it as its child (editorChildren)",
+	"Tab":               "a TabView takes its pages",
+	"Shortcut":          "a Dialog takes its shortcuts",
+	"DialogButtonBox":   "a Dialog takes its button box",
+	"Dialog":            "the adapter releases an open dialog",
+	"FileDialog":        "the adapter releases an open dialog",
+	"FolderDialog":      "the adapter releases an open dialog",
+	"TableView":         "the adapter refreshes its delegate templates",
+	"Window":            "the program reads its root window",
 }
 
 // styledTypes is the standard vocabulary with s's types substituted by name, or why s cannot
@@ -61,6 +82,8 @@ func styledTypes(s Style) ([]Type, error) {
 			return nil, fmt.Errorf("%w: style %q, type %q", ErrUnknownStyleType, s.Name, t.Name)
 		case types[i].adopt != nil:
 			return nil, fmt.Errorf("%w: style %q, type %q", ErrStyleTypeNotReplaceable, s.Name, t.Name)
+		case readPrivately[t.Name] != "":
+			return nil, fmt.Errorf("%w: style %q, type %q: %s", ErrStyleTypeNotReplaceable, s.Name, t.Name, readPrivately[t.Name])
 		case seen[t.Name]:
 			return nil, fmt.Errorf("tui/decl: style %q replaces %q twice", s.Name, t.Name)
 		case t.Build == nil:
