@@ -77,12 +77,14 @@ type Adapter struct {
 	// only about the schemas it has seen: a Split mounted without an
 	// orientation consumed nothing, and nothing in that record says the widget
 	// has no SetOrientation.
-	ctorProps map[string]map[string]bool
-	methods   map[string]map[string]Method
-	getters   map[string]map[string]Getter
-	signals   map[string]map[string][]string
-	files     widget.FileSource
-	overlay   *widget.OverlayHost
+	ctorProps       map[string]map[string]bool
+	methods         map[string]map[string]Method
+	getters         map[string]map[string]Getter
+	signals         map[string]map[string][]string
+	files           widget.FileSource
+	overlay         *widget.OverlayHost
+	windowCollector widget.WindowCollector
+	windowTargets   map[string]any
 	// highlighters are the syntax definitions a SyntaxHighlighter may name.
 	highlighters *highlight.Repository
 	destroyed    map[string]func(tui.Component)
@@ -383,16 +385,32 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 			}
 			return a.tree.EvaluateWith(v, locals)
 		},
-		Children:      children,
-		ChildAttached: childAttached,
-		SelfAttached:  attached,
-		FocusNominee:  childNominee,
-		Emitters:      c.Emitters,
-		Files:         a.files,
-		sink:          a.sink,
-		Overlay:       a.overlay,
-		highlighters:  a.highlighters,
-		asked:         asked,
+		Children:        children,
+		ChildAttached:   childAttached,
+		SelfAttached:    attached,
+		FocusNominee:    childNominee,
+		Emitters:        c.Emitters,
+		Files:           a.files,
+		sink:            a.sink,
+		Overlay:         a.overlay,
+		WindowCollector: a.windowCollector,
+		WindowTarget:    a.windowTargets[c.ID],
+		WindowCore: func(id string) (*widget.WindowCore, bool) {
+			if a.tree == nil {
+				return nil, false
+			}
+			node, ok := a.tree.NodeByID(id)
+			if !ok {
+				return nil, false
+			}
+			component, ok := a.Component(node)
+			if !ok {
+				return nil, false
+			}
+			return windowCoreOf(component)
+		},
+		highlighters: a.highlighters,
+		asked:        asked,
 	})
 	if err != nil {
 		return nil, err

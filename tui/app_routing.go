@@ -9,7 +9,9 @@ import (
 // Event Routing Pipeline
 //
 // The TUI event system operates on a single-threaded "target-then-bubble"
-// paradigm (no capture phase). All external terminal input (Lane A: keys,
+// paradigm, with opt-in pure press reservations and capture-owner Escape
+// cancellation before that walk (not a general capture phase). All external
+// terminal input (Lane A: keys,
 // mouse, paste, window resize, terminal focus) and internal asynchronous
 // worker/timer/program events (Lane B: Post, Go TaskResult, TaskProgress,
 // TickEvent) funnel sequentially into dispatch() on the loop goroutine.
@@ -30,7 +32,9 @@ import (
 //        ▼                           ▼                           ▼
 //   [Key / Paste]              [Mouse Event]            [Addressed / System]
 //        │                           │                           │
-//   Target: Focused            1. Hit-Test (Topmost)             ├─ ResizeEvent:
+//   Bare Escape: capture       1. Hit-Test (Topmost)             ├─ ResizeEvent:
+//   owner's resolver first.      Then pure press reservations. │
+//   Otherwise: Focused                                        │
 //   (Fallback: Root)              Reverse paint order;           │    Update size,
 //        │                        Z-order Stack topmost          │    dirty layout+render,
 //   Bubble Up:                    wins pointer hit.              │    Publish to Bus.
@@ -60,10 +64,12 @@ import (
 //  3. Coordinate Sandboxing: Mouse coordinates are rewritten relative to
 //     n.absRect at every hop during bubble traversal. A component receives
 //     (0,0) when clicked at its top-left corner regardless of screen position.
-//  4. Pointer Focus Precedes Delivery: Clicking a pane moves focus into that
+//  4. Ordinary Pointer Focus Precedes Delivery: Clicking a pane moves focus into that
 //     pane before the MousePress is delivered. If focus change unmounts or
 //     redirects the target, delivery of the press is aborted to prevent
 //     phantom clicks on unmeasured or inactive nodes.
+//     A reserved press instead runs the owner's action before child delivery;
+//     the action owns focus acquisition, revalidation and capture.
 //  5. Isolated Addressed Deliveries: Tasks (TaskResult, TaskProgress) and
 //     Ticks are private to the owning node. They never bubble to ancestors,
 //     preventing implementation leaks and accidental child-task interception.
@@ -77,6 +83,9 @@ func (a *App) dispatch(ev Event) {
 	}
 	switch e := ev.(type) {
 	case KeyEvent:
+		if a.interceptCaptureEscape(e) {
+			return
+		}
 		// Target = the focused node. With nothing focused the fallback is the
 		// active trapping scope if there is one, and only otherwise the root:
 		// repairFocus legitimately leaves focused == 0 while a trap survives
@@ -169,6 +178,9 @@ func (a *App) dispatch(ev Event) {
 		if target == nil && limit != nil {
 			a.trace(TraceEvent{Kind: TraceScope, Node: limit.id,
 				Detail: "pointer dropped: outside the active focus scope"})
+			return
+		}
+		if a.interceptPointerPress(target, limit, e) {
 			return
 		}
 		// A PRIMARY PRESS focuses before it is delivered: one gesture both moves
@@ -636,8 +648,22 @@ func hitTestNode(n *node, x, y int) *node {
 // A MouseRelease between presses is expected and does not interrupt the run.
 // Any mismatch resets the ordinal count back to 1.
 func (a *App) pressOrdinal(e MouseEvent, target *node) int {
+	return a.pressOrdinalAt(e, target, time.Now())
+}
+
+func (a *App) pressOrdinalAt(e MouseEvent, target *node, now time.Time) int {
+	count := a.previewPressOrdinal(e, target, now)
+	var id NodeID
+	if target != nil {
+		id = target.id
+	}
+	a.lastPressAt, a.lastPressX, a.lastPressY = now, e.X, e.Y
+	a.lastPressButton, a.lastPressCount, a.lastPressTarget = e.Button, count, id
+	return count
+}
+
+func (a *App) previewPressOrdinal(e MouseEvent, target *node, now time.Time) int {
 	window := a.cfg.doubleClickWindow
-	now := time.Now()
 	var id NodeID
 	if target != nil {
 		id = target.id
@@ -653,7 +679,5 @@ func (a *App) pressOrdinal(e MouseEvent, target *node) int {
 	if continues {
 		count = a.lastPressCount + 1
 	}
-	a.lastPressAt, a.lastPressX, a.lastPressY = now, e.X, e.Y
-	a.lastPressButton, a.lastPressCount, a.lastPressTarget = e.Button, count, id
 	return count
 }

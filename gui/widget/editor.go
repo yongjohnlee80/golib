@@ -158,9 +158,25 @@ func (e *Editor) Init(ctx *tui.Context)             { e.panel.Init(ctx) }
 func (e *Editor) Layout(c tui.Constraints) tui.Size { return e.panel.Layout(c) }
 func (e *Editor) Render(s tui.Surface)              { e.panel.Render(s) }
 func (e *Editor) HandleEvent(ev tui.Event) bool     { return e.panel.HandleEvent(ev) }
-func (e *Editor) NativeView() (any, bool)           { return e.panel.NativeView() }
-func (e *Editor) NativeScope() tui.NativeScope      { return e.panel.NativeScope() }
-func (e *Editor) Visible() bool                     { return e.panel.Visible() }
+
+// ResolvePointerPress exposes the Panel's configured window gesture reservation.
+func (e *Editor) ResolvePointerPress(ev tui.MouseEvent) (tui.Action, bool) {
+	return e.panel.ResolvePointerPress(ev)
+}
+
+// ResolveCaptureEscape resolves only a held window gesture's cancellation.
+func (e *Editor) ResolveCaptureEscape(ev tui.KeyEvent) (tui.Action, bool) {
+	return e.panel.ResolveCaptureEscape(ev)
+}
+
+// HandleAction forwards window operations under the Editor node's handler identity.
+func (e *Editor) HandleAction(inv tui.ActionInvocation) bool { return e.panel.HandleAction(inv) }
+
+// WindowBehavior exposes window capabilities separately from the editing Core.
+func (e *Editor) WindowBehavior() *tuiwidget.WindowCore { return e.panel.WindowBehavior() }
+func (e *Editor) NativeView() (any, bool)               { return e.panel.NativeView() }
+func (e *Editor) NativeScope() tui.NativeScope          { return e.panel.NativeScope() }
+func (e *Editor) Visible() bool                         { return e.panel.Visible() }
 
 // Core is the editor's behaviour: its text, cursor, modes and keymap.
 func (e *Editor) Core() *tuiwidget.EditorCore { return e.core }

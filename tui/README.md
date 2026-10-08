@@ -129,12 +129,25 @@ What a **held capture** does with an event depends on who owns it:
   the recogniser **only**. It never re-enters the node pipeline; any action the
   recogniser produces is then dispatched to the owner.
 
-"No capture phase" refers to **event routing** — there is no DOM-style downward
-phase in which ancestors preview an event before its target. That is unrelated
-to **pointer capture**, which is about which node keeps receiving pointer events
-once a gesture has begun.
+There is no general DOM-style downward event phase. The opt-in pure press
+reservation below is a scoped exception before child delivery. **Pointer capture**
+separately decides who receives a gesture's later pointer events.
 
 See `tutorial/04-events-focus-keys.md` for the walked-through version.
+
+### Scoped window gestures
+
+`PointerPressResolver` is a pure, opt-in reservation before child delivery. After
+normal hit-testing and confinement, the nearest matching ancestor receives its
+action with real pointer provenance. A reserved press is never replayed onto
+content if its owner refuses or disappears. Unmatched events retain the per-node
+sequence above.
+
+`CaptureEscapeResolver` consults only the current pointer-capture owner for bare
+Escape. It lets a window drag cancel over an Editor or terminal that otherwise
+consumes Escape; other keyboard input is not redirected. `Context.InInputScope`
+limits input-derived operations. Application-owned window management is not
+implicitly refused merely because a modal is open.
 
 ### 1. The Loop-Goroutine Invariant (Normative)
 
@@ -143,7 +156,8 @@ All component state — the tree, every component's fields, focus, layout rects,
 The only thread-safe operations legal from external background goroutines are:
 
 - `App.Post(ev)` and `Context.Post(ev)` — enqueue an event onto the program lane.
-- `App.Update(fn)` — enqueue a state mutation closure.
+- `App.Update(fn)` or `Context.Update(fn)` — enqueue a later state mutation;
+  the Context form runs only while its originating mount is still alive.
 - `App.Go(...)` and `Context.Go(...)` — schedule background tasks on the bounded pool.
 - `Bus.Publish(v)` — publish a typed domain event.
 

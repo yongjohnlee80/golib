@@ -1,6 +1,6 @@
 // Package widget provides golib/tui's standard widget suite: the [Base] embedding
 // contract, the [Box] titled-panel container, the [OverlayHost] modal/popup layer,
-// and the twenty production-grade TUI components inventoried below. Applications
+// and the production-grade TUI components inventoried below. Applications
 // compose these primitives and add domain-specific controllers rather than
 // reimplementing their interaction machinery.
 //
@@ -19,6 +19,9 @@
 //	Tabs            Navigation       yes (bar)       [TabChangedEvent]
 //	Split           Container        no (panes are)  [SplitResizedEvent], [SplitZoomEvent]
 //	Resizable       Wrapper          content only    [ResizedEvent]
+//	WindowMod       Capabilities     content only    [WindowChangedEvent]
+//	WindowButtons   Optional chrome  buttons         —
+//	WindowTaskbar   Optional chrome  restore buttons —
 //	Float           Overlay / Modal  children        [DismissEvent]
 //	Modal           Dialog           trap owner      [OverlayDismissedEvent]
 //	Menu            Menu / Command   yes             [MenuActivatedEvent], [MenuSelectionChangedEvent]
@@ -61,6 +64,21 @@
 // Styling is an association: a Button holds a [ButtonStyle] it does not own, so
 // one immutable style value can safely dress many Buttons. Its values are style
 // tokens, so the App's theme decides the rendered colours.
+//
+// # Window capabilities and optional appearance
+//
+// [WindowMod] wraps unchanged content with independently optional move, resize,
+// maximize, minimize and close behavior. [WindowCore] is the same behavior for a
+// GUI view. Neither creates chrome. Alt/Option-left moves and Alt/Option-right
+// resizes; consumers replace the modifier/button bindings through options. Both
+// gestures are capability-gated and draw no grip.
+//
+// [WindowButtons] and [WindowTaskbar] are separate optional presentations.
+// [MinimizedWindows] is a caller-owned, presentation-free collector. Non-modal
+// minimize conceals the Float while retaining its content mount and work;
+// modal collector minimize is rejected. [WindowChangedEvent] reports completion
+// once, not every motion, and carries an optional stable application key.
+// Application methods bypass input confinement; controls use InvokeInput.
 //
 // # The Five Architectural Pillars
 //

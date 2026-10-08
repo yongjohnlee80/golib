@@ -61,6 +61,12 @@ type Build struct {
 	// over the screen ([Overlaid]) goes when no Window gives it one. Nil when
 	// the adapter was given none.
 	Overlay *widget.OverlayHost
+	// WindowCollector is the caller's optional minimized-window model.
+	WindowCollector widget.WindowCollector
+	// WindowTarget is an explicitly injected target for this declaration's ID.
+	WindowTarget any
+	// WindowCore resolves a declared capability widget for separate presentation.
+	WindowCore func(string) (*widget.WindowCore, bool)
 	// highlighters are the adapter's syntax definitions, for SyntaxHighlighter.
 	highlighters *highlight.Repository
 

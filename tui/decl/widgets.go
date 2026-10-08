@@ -57,7 +57,7 @@ func StdProperties() []Option { return typeOptions(stdTypes()) }
 
 // stdTypes is every standard widget type, in one table.
 func stdTypes() []Type {
-	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType, drawerType, tabViewType, tabType, checkBoxType, markdownRendererType, htmlDocumentViewType)
+	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType, drawerType, tabViewType, tabType, checkBoxType, markdownRendererType, htmlDocumentViewType, windowModType, windowButtonsType, windowTaskbarType)
 }
 
 // tuiEnums is every enum the standard vocabulary accepts. The Tui singleton's
@@ -65,11 +65,12 @@ func stdTypes() []Type {
 // listed here — and nowhere else.
 var tuiEnums = []enumeration{
 	orientations, directions, dockEdges, drawerEdges, keysets, menuAligns, wrapModes, fileModes, elideModes,
+	windowModifierNames, windowMouseButtons,
 }
 
 // tuiFlags is every flag set, each under its own singleton. Listed here and
 // nowhere else: the constants AND the module's exports derive from it.
-var tuiFlags = []flagSet{dialogButtons}
+var tuiFlags = []flagSet{dialogButtons, windowModifierFlags}
 
 // ---------------------------------------------------------------- core
 

@@ -25,16 +25,16 @@ type Panel struct {
 	movable, resizable, minimizable, maximizable bool
 	onClose                                      func()
 
-	state   panelState
-	float   *tuiwidget.Float
-	rect    tui.Rect // where the Float places it, in the Float's area
-	restore tui.Rect // the rect before maximizing
+	state           panelState
+	float           *tuiwidget.Float
+	rect            tui.Rect // where the Float places it, in the Float's area
+	behavior        *tuiwidget.WindowCore
+	windowOptions   []tuiwidget.WindowModOption
+	restoreCollapse func()
+	collapseRect    tui.Rect
 
 	w, h   int
 	titleX int // where the title starts: after the leading widgets, set by Layout
-	drag   panelDrag
-	grab   tui.Point // the pointer where the drag began, in the Float's area
-	from   tui.Rect  // the rect where the drag began
 	hover  control
 	barSt  style.Style
 	// the native bar's colours, from its last paint: what a leading widget draws in, so it sits
@@ -47,17 +47,6 @@ type panelState uint8
 const (
 	normal panelState = iota
 	minimized
-	maximized
-)
-
-type panelDrag uint8
-
-const (
-	noDrag panelDrag = iota
-	moving
-	resizeRight
-	resizeBottom
-	resizeCorner
 )
 
 // control is a title-bar button, by its place from the right edge.
@@ -83,6 +72,37 @@ func NewPanel(content tui.Component, opts ...PanelOption) *Panel {
 	for _, o := range opts {
 		o(p)
 	}
+	var behavior []tuiwidget.WindowModOption
+	if p.movable {
+		behavior = append(behavior, tuiwidget.WithWindowMove())
+	}
+	if p.resizable {
+		behavior = append(behavior, tuiwidget.WithWindowResize())
+	}
+	if p.maximizable {
+		behavior = append(behavior, tuiwidget.WithWindowMaximize())
+	}
+	if p.onClose != nil {
+		behavior = append(behavior, tuiwidget.WithWindowCloseHandler(func() bool {
+			// The legacy callback does not report whether it accepted a dismissal.
+			p.onClose()
+			return false
+		}))
+	}
+	controls := 0
+	if p.onClose != nil {
+		controls++
+	}
+	if p.maximizable {
+		controls++
+	}
+	if p.minimizable {
+		controls++
+	}
+	behavior = append(behavior, tuiwidget.WithWindowMinSize(tui.Size{W: controlCells*controls + 6, H: 3}))
+	behavior = append(behavior, p.windowOptions...)
+	p.behavior = tuiwidget.NewWindowCore(behavior...)
+	p.behavior.Observe(p.rebaseCollapsePosition)
 	p.Add(p.leading...)
 	p.Add(content)
 	return p
@@ -115,6 +135,16 @@ func Maximizable() PanelOption { return func(p *Panel) { p.maximizable = true } 
 // WithBarStyle sets the title bar's look in cells.
 func WithBarStyle(st style.Style) PanelOption { return func(p *Panel) { p.barSt = st } }
 
+// WithWindowCapabilities supplies independent, presentation-free window options.
+// Move/resize use configurable Alt/Option drag. Collector minimize is separate
+// from the legacy Minimizable title-bar-collapse option.
+func WithWindowCapabilities(opts ...tuiwidget.WindowModOption) PanelOption {
+	return func(p *Panel) { p.windowOptions = append(p.windowOptions, opts...) }
+}
+
+// WindowBehavior is the shared core a custom GUI presentation can invoke.
+func (p *Panel) WindowBehavior() *tuiwidget.WindowCore { return p.behavior }
+
 // InFloat places the panel in f at r, the rect it moves and resizes from. f's child must be the
 // panel. The panel sets f's anchor to AtRect(r).
 func (p *Panel) InFloat(f *tuiwidget.Float, r tui.Rect) {
@@ -125,11 +155,18 @@ func (p *Panel) InFloat(f *tuiwidget.Float, r tui.Rect) {
 // Bounds is where the panel is in its Float's area, as placed: its title row alone when
 // minimized, the whole area when maximized. The zero Rect outside a Float.
 func (p *Panel) Bounds() tui.Rect {
+	if r := p.behavior.Bounds(); !r.Empty() {
+		if p.state == minimized {
+			requested := p.behavior.RequestedBounds()
+			if !requested.Empty() {
+				return requested
+			}
+		}
+		return r
+	}
 	switch {
 	case p.float == nil:
 		return tui.Rect{}
-	case p.state == maximized:
-		return tui.Rect{W: p.w, H: p.h}
 	case p.state == minimized:
 		return tui.Rect{X: p.rect.X, Y: p.rect.Y, W: p.rect.W, H: 1}
 	}
@@ -138,24 +175,30 @@ func (p *Panel) Bounds() tui.Rect {
 
 // Minimized and Maximized report the panel's state.
 func (p *Panel) Minimized() bool { return p.state == minimized }
-func (p *Panel) Maximized() bool { return p.state == maximized }
+func (p *Panel) Maximized() bool { return p.behavior.State().Maximized }
 
 // Init keeps the panel's Context and mounts its children.
 func (p *Panel) Init(ctx *tui.Context) {
 	p.ctx = ctx
+	parent := ctx.Ancestor(func(c tui.Component) bool { _, ok := c.(*tuiwidget.Float); return ok })
+	if parent == nil && len(p.windowOptions) == 0 {
+		p.behavior.BindTarget(ctx, p.content, staticPanelTarget{})
+	} else {
+		p.behavior.Bind(ctx, p.content)
+	}
 	p.MultiChild.Init(ctx)
 }
 
 // controls are the enabled controls, right to left.
 func (p *Panel) controls() []control {
 	var cs []control
-	if p.onClose != nil {
+	if p.behavior.State().Close {
 		cs = append(cs, closeControl)
 	}
-	if p.maximizable {
+	if p.behavior.State().Maximize {
 		cs = append(cs, maximizeControl)
 	}
-	if p.minimizable {
+	if p.minimizable || p.behavior.State().Minimize {
 		cs = append(cs, minimizeControl)
 	}
 	return cs
@@ -237,6 +280,10 @@ func putString(s tui.Surface, x, y int, str string, st style.Style) int {
 
 // HandleEvent takes the title bar's clicks and drags, and the edges' resizing drags.
 func (p *Panel) HandleEvent(ev tui.Event) bool {
+	if p.behavior.HandleEvent(ev) {
+		p.rebaseCollapsePosition()
+		return true
+	}
 	switch e := ev.(type) {
 	case tui.MouseEvent:
 		return p.mouse(e)
@@ -247,13 +294,9 @@ func (p *Panel) HandleEvent(ev tui.Event) bool {
 }
 
 func (p *Panel) mouse(m tui.MouseEvent) bool {
-	inFloat := p.float != nil && p.state != maximized
+	inFloat := p.float != nil && !p.behavior.State().Maximized
 	switch m.Kind {
 	case tui.MouseMotion:
-		if p.drag != noDrag {
-			p.dragTo(m)
-			return true
-		}
 		if m.Y == 0 {
 			p.setHover(p.controlAt(m.X))
 		} else {
@@ -261,11 +304,6 @@ func (p *Panel) mouse(m tui.MouseEvent) bool {
 		}
 		return false
 	case tui.MouseRelease:
-		if p.drag != noDrag {
-			p.drag = noDrag
-			p.ctx.ReleasePointer()
-			return true
-		}
 		if m.Y == 0 && m.Button == tui.MouseLeft {
 			if c := p.controlAt(m.X); c != noControl {
 				p.act(c)
@@ -280,87 +318,106 @@ func (p *Panel) mouse(m tui.MouseEvent) bool {
 		if m.Y == 0 && p.controlAt(m.X) != noControl {
 			return true // the control acts on release, as a button does
 		}
-		if m.Y == 0 && m.Count == 2 && p.maximizable {
+		if m.Y == 0 && m.Count == 2 && p.behavior.State().Maximize {
 			p.act(maximizeControl)
 			return true
 		}
-		kind := noDrag
+		op, handle, matched := tuiwidget.WindowResize, tuiwidget.HandleBottomRight, true
 		switch {
 		case p.resizable && inFloat && m.X == p.w-1 && m.Y == p.h-1:
-			kind = resizeCorner
 		case p.resizable && inFloat && m.X == p.w-1 && m.Y > 0:
-			kind = resizeRight
+			handle = tuiwidget.HandleRight
 		case p.resizable && inFloat && m.Y == p.h-1 && p.state != minimized:
-			kind = resizeBottom
+			handle = tuiwidget.HandleBottom
 		case p.movable && inFloat && m.Y == 0:
-			kind = moving
+			op = tuiwidget.WindowMove
+		default:
+			matched = false
 		}
-		if kind == noDrag || !p.ctx.CapturePointer() {
-			return false
-		}
-		p.drag, p.from = kind, p.rect
-		p.grab = tui.Point{X: p.rect.X + m.X, Y: p.rect.Y + m.Y}
-		return true
+		return matched && p.behavior.BeginPointerDrag(op, m, handle)
 	}
 	return false
 }
 
-// dragTo follows a drag: the pointer in the Float's area is the panel's origin plus its local
-// position, and the rect is the drag's start moved or grown by the pointer's travel.
-func (p *Panel) dragTo(m tui.MouseEvent) {
-	at := tui.Point{X: p.rect.X + m.X, Y: p.rect.Y + m.Y}
-	dx, dy := at.X-p.grab.X, at.Y-p.grab.Y
-	r := p.from
-	switch p.drag {
-	case moving:
-		r.X, r.Y = max(r.X+dx, 0), max(r.Y+dy, 0)
-	case resizeRight:
-		r.W = max(r.W+dx, p.minW())
-	case resizeBottom:
-		r.H = max(r.H+dy, 3)
-	case resizeCorner:
-		r.W, r.H = max(r.W+dx, p.minW()), max(r.H+dy, 3)
+// ResolvePointerPress delegates configured Alt/Option gestures to shared behavior.
+func (p *Panel) ResolvePointerPress(e tui.MouseEvent) (tui.Action, bool) {
+	if p.state == minimized {
+		return nil, false
 	}
-	if r != p.rect {
-		p.rect = r
-		p.float.SetAnchor(tuiwidget.AtRect(r))
-	}
+	return p.behavior.ResolvePointerPress(e)
 }
 
-// minW is the narrowest the panel resizes to: its controls and a little title.
-func (p *Panel) minW() int { return controlCells*len(p.controls()) + 6 }
+// ResolveCaptureEscape lets the actual capture owner cancel without content focus.
+func (p *Panel) ResolveCaptureEscape(e tui.KeyEvent) (tui.Action, bool) {
+	return p.behavior.ResolveCaptureEscape(e)
+}
+
+// HandleAction uses the same operation path as custom appearance and keymaps.
+func (p *Panel) HandleAction(inv tui.ActionInvocation) bool { return p.behavior.HandleAction(inv) }
 
 func (p *Panel) act(c control) {
 	switch c {
 	case closeControl:
-		p.onClose()
+		p.behavior.InvokeInput(tuiwidget.WindowCloseAction{})
 	case minimizeControl:
+		if p.behavior.State().Minimize {
+			p.behavior.InvokeInput(tuiwidget.WindowMinimizeAction{})
+			return
+		}
 		if p.state == minimized {
 			p.state = normal
+			if p.restoreCollapse != nil {
+				p.restoreCollapse()
+				p.restoreCollapse = nil
+			}
 		} else {
+			if p.behavior.State().Maximized {
+				p.behavior.InvokeInput(tuiwidget.WindowMaximizeAction{})
+			}
+			p.restoreCollapse = p.behavior.PlacementCheckpoint()
+			if p.restoreCollapse == nil && p.float != nil {
+				r := p.rect
+				p.restoreCollapse = func() { p.float.SetAnchor(tuiwidget.AtRect(r)) }
+			}
+			r := p.behavior.RequestedBounds()
+			if r.Empty() {
+				r = p.rect
+			}
+			p.collapseRect = r
+			r.H = 1
 			p.state = minimized
-		}
-		// In a Float the rect is the panel's size: minimized, the Float holds the title row
-		// alone, so what was under the content shows and takes the pointer again.
-		if p.float != nil {
-			p.float.SetAnchor(tuiwidget.AtRect(p.Bounds()))
+			if p.float != nil {
+				p.float.SetAnchor(tuiwidget.AtRect(r))
+			}
 		}
 		p.relayout()
 	case maximizeControl:
-		if p.float == nil {
-			return
-		}
-		if p.state == maximized {
+		if p.state == minimized {
 			p.state = normal
-			p.float.SetSizeFraction(0, 0)
-			p.rect = p.restore
-			p.float.SetAnchor(tuiwidget.AtRect(p.rect))
-		} else {
-			p.state, p.restore = maximized, p.rect
-			p.float.SetAnchor(tuiwidget.Center)
-			p.float.SetSizeFraction(100, 100)
+			if p.restoreCollapse != nil {
+				p.restoreCollapse()
+				p.restoreCollapse = nil
+			}
 		}
+		p.behavior.InvokeInput(tuiwidget.WindowMaximizeAction{})
 		p.relayout()
+	}
+}
+
+func (p *Panel) rebaseCollapsePosition() {
+	if p.state != minimized || p.float == nil || p.ctx == nil || !p.ctx.Mounted() {
+		return
+	}
+	r := p.behavior.RequestedBounds()
+	if r.Empty() || (r.X == p.collapseRect.X && r.Y == p.collapseRect.Y) {
+		return
+	}
+	full := p.collapseRect
+	full.X, full.Y = r.X, r.Y
+	p.collapseRect = full
+	p.restoreCollapse = func() {
+		p.float.SetAnchor(tuiwidget.AtRect(full))
+		p.float.SetSizeFraction(0, 0)
 	}
 }
 
