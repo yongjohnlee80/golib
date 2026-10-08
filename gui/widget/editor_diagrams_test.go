@@ -127,7 +127,9 @@ func TestDiagramThemeChangeAsksAgain(t *testing.T) {
 	h, f := startDiagrams(t)
 	b := Block{From: 1, To: 4}
 	dark := Theme{Text: color.NRGBA{R: 0xee, A: 0xff}}
-	req := func(th Theme) DiagramRequest { return DiagramRequest{Lang: "mermaid", Src: "X", Width: 100, Scale: 1, Theme: th} }
+	req := func(th Theme) DiagramRequest {
+		return DiagramRequest{Lang: "mermaid", Src: "X", Width: 100, Scale: 1, Theme: th}
+	}
 
 	// Pending under the light theme, then the dark one: the first request is withdrawn
 	var light Theme
