@@ -157,3 +157,26 @@ func TestPaintDrawsVisibleFragsOnly(t *testing.T) {
 		t.Errorf("drew %d texts and %d rects; want the bold text and its underline", texts, rects)
 	}
 }
+
+func TestBlankLinesHoldABoundary(t *testing.T) {
+	sh := shaper()
+	for _, ws := range []flow.WhiteSpace{flow.Pre, flow.PreWrap} {
+		p := flow.Lay([]flow.Span{plain("a\n\nb\n")}, flow.Options{Width: 200, WhiteSpace: ws}, sh)
+		if len(p.Lines) != 4 {
+			t.Fatalf("ws %d: %d lines, want 4 (a, blank, b, the empty last)", ws, len(p.Lines))
+		}
+		// the blank line between holds offset 2 (before its '\n'); the last holds 5 (after the final '\n')
+		for _, c := range []struct {
+			line int
+			want flow.Pos
+		}{{1, flow.Pos{0, 2}}, {3, flow.Pos{0, 5}}} {
+			l := p.Lines[c.line]
+			if got := p.At(gui.Pt(50, l.Y+l.H/2)); got != c.want {
+				t.Errorf("ws %d: At on line %d = %+v, want %+v", ws, c.line, got, c.want)
+			}
+			if r := p.Caret(c.want); r.Y != l.Y {
+				t.Errorf("ws %d: Caret(%+v) on y %v, want line %d's %v", ws, c.want, r.Y, c.line, l.Y)
+			}
+		}
+	}
+}
