@@ -93,8 +93,8 @@ func TestLineNumbersTakeAGutter(t *testing.T) {
 			red++
 		}
 	}
-	if red != 3 {
-		t.Errorf("%d numbers in the colour SetLineNumberColor gave, want 3", red)
+	if red != 2 {
+		t.Errorf("%d numbers in the colour SetLineNumberColor gave, want 2 (the cursor's is the text's)", red)
 	}
 	h.onLoop(func() { h.e.SetLineNumbers(false) })
 	h.paint()
@@ -211,5 +211,32 @@ func TestPageColoursAreThePageStylesNotACoveredCell(t *testing.T) {
 	})
 	if bg != page || fg != ink {
 		t.Errorf("page %v on %v, want the page style's %v on %v (not the covering cell's %v)", fg, bg, ink, page, brown)
+	}
+}
+
+// The cursor's line number wears the text's colour, the others the muted tone; a table's rule
+// row, too thin to hold one, takes none.
+func TestTheCursorsLineNumberStandsOut(t *testing.T) {
+	h := startEditor(t, 40, 10, WithLineNumbers(true), WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("alpha\n| a | b |\n|---|---|\n| c | d |\n\nend")))
+	h.onLoop(func() { h.e.Core().SetLine(5, 0) }) // past the blank line: outside the table
+	rc := h.paint()
+	var textX, cell float32
+	var th Theme
+	h.onLoop(func() { textX, cell, th = h.e.layout.textX(), h.e.layout.monoCell(), h.e.layout.th })
+	var lit, muted int
+	for _, c := range rc.Calls {
+		if c.Op != "DrawText" || c.Rect.X >= textX-cell {
+			continue
+		}
+		switch c.Brush.Color {
+		case th.Text:
+			lit++
+		case th.LineNumbers:
+			muted++
+		}
+	}
+	if lit != 1 || muted != 4 {
+		t.Errorf("%d numbers lit and %d muted, want the cursor's lit and 4 muted (the rule row unnumbered)", lit, muted)
 	}
 }

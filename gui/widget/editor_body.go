@@ -334,9 +334,9 @@ func (v bodyView) Paint(c gui.Canvas) {
 				tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
 			}
 			ll.Para.Paint(tc, at, ll.Spans)
-			if e.numbers && len(ll.Spans) > 0 && ll.Spans[0].Line >= 0 && ll.Spans[0].Line != numbered && len(ll.Para.Lines) > 0 {
+			if e.numbers && !ll.Unnumbered && len(ll.Spans) > 0 && ll.Spans[0].Line >= 0 && ll.Spans[0].Line != numbered && len(ll.Para.Lines) > 0 {
 				numbered = ll.Spans[0].Line
-				b.paintNumber(c, numbered, oy+ll.Y+ll.Para.Lines[0].Baseline, th)
+				b.paintNumber(c, numbered, oy+ll.Y+ll.Para.Lines[0].Baseline, numbered == cl, th)
 			}
 		}
 		if lb.bl.Picture != nil {
@@ -365,11 +365,17 @@ func (v bodyView) Paint(c gui.Canvas) {
 
 // paintNumber draws line ln's number (1-based) right-aligned in the gutter, on the baseline of
 // the line's first row: once per line, however many rows it wraps to.
-func (b *editorBody) paintNumber(c gui.Canvas, ln int, baseline float32, th Theme) {
+// The cursor's line wears the text's colour, bold, as an editor marks where the caret is; the
+// others the line numbers' muted tone.
+func (b *editorBody) paintNumber(c gui.Canvas, ln int, baseline float32, current bool, th Theme) {
 	l := b.e.layout
-	t := c.Text().Layout(strconv.Itoa(ln+1), l.monoFont(), 0)
+	f, col := l.monoFont(), th.LineNumbers
+	if current {
+		f.Bold, col = true, th.Text
+	}
+	t := c.Text().Layout(strconv.Itoa(ln+1), f, 0)
 	digits := l.gutter - float32(gutterGap)*l.monoCell()
-	c.DrawText(t, gui.Pt(padX+digits-t.Width, baseline-t.Ascent), gui.Solid(th.LineNumbers))
+	c.DrawText(t, gui.Pt(padX+digits-t.Width, baseline-t.Ascent), gui.Solid(col))
 }
 
 // selection is a line's selected clusters as highlight rects, in the paragraph's coordinates. A
