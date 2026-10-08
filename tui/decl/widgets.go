@@ -34,9 +34,13 @@ import (
 // checks the KIND, because "the engine resolves it first" is a property of the
 // current wiring rather than of a builder's signature: a host may inject a
 // constant of any kind.
-func StdRegistry() *Registry {
+func StdRegistry() *Registry { return registryOf(stdTypes()) }
+
+// registryOf is a registry of types and the standard attaching schemas: the standard
+// vocabulary's, or a style's substitution of it.
+func registryOf(types []Type) *Registry {
 	r := NewRegistry()
-	registerTypes(r, stdTypes())
+	registerTypes(r, types)
 	registerStdAttached(r)
 	return r
 }
