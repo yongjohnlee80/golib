@@ -85,7 +85,7 @@ func coreTypes() []Type {
 			"ratio": setter("a Split", numberOf, (*widget.Split).SetRatio),
 		}},
 		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}, adopt: adoptFlexChild},
-		{Name: "Button", Build: buildButton, Setters: map[string]Setter{
+		{Name: "Button", Build: buildButton, restyle: restyleButton, Setters: map[string]Setter{
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
 			// Qt's AbstractButton.text: `&` marks the mnemonic, "&Save".
 			"text": textSetter("a Button", setButtonText, (*widget.Button).SetLabelMessage),

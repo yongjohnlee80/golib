@@ -519,3 +519,42 @@ func TestButtonMarksItsMnemonic(t *testing.T) {
 		t.Fatalf("a button with no mnemonic drew %v", rc.Ops())
 	}
 }
+
+// The painted access key takes the colour its cell has: a theme's accent.
+func TestTheAccessKeyTakesItsCellsColour(t *testing.T) {
+	accent := color.NRGBA{R: 255, A: 255}
+	text := color.NRGBA{R: 200, G: 200, B: 200, A: 255}
+	row := []string{"[", " ", "S", "a", "v", "e", " ", "]"}
+	rc := NewRecordingCanvas(Size{W: 64, H: 16}, Size{W: 8, H: 16})
+	rc.Content = func(col, r int) string {
+		if r == 0 && col < len(row) {
+			return row[col]
+		}
+		return ""
+	}
+	rc.Colors = func(col, _ int) (fg, bg color.NRGBA) {
+		if col == 2 {
+			return accent, color.NRGBA{A: 255}
+		}
+		return text, color.NRGBA{A: 255}
+	}
+	if got := keyColor(rc, "Save", 0, text); got != accent {
+		t.Fatalf("key colour %v; want the accent of its cell", got)
+	}
+	if got := keyColor(rc, "Save", 1, text); got != text {
+		t.Fatalf("a letter in the label's colour gave %v", got)
+	}
+	drawLabel(rc, "Save", 0, Font{Size: 12}, text, accent)
+	var texts, lines []PaintCall
+	for _, p := range rc.Calls {
+		switch p.Op {
+		case "DrawText":
+			texts = append(texts, p)
+		case "FillRect":
+			lines = append(lines, p)
+		}
+	}
+	if len(texts) != 2 || texts[0].Brush.Color != accent || texts[1].Brush.Color != text || len(lines) != 1 || lines[0].Brush.Color != accent {
+		t.Fatalf("the key and its underline in the accent, the rest in the text's colour: %+v", rc.Calls)
+	}
+}

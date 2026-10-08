@@ -24,6 +24,7 @@ type ButtonStyle struct {
 	focused  style.Style
 	armed    style.Style
 	disabled style.Style
+	hotkey   style.Style // the mnemonic letter, merged over the state's look; zero: underlined
 }
 
 // NewButtonStyle builds a style from the two looks an author actually thinks
@@ -160,6 +161,23 @@ func (s *ButtonStyle) WithArmed(v style.Style) *ButtonStyle {
 func (s *ButtonStyle) WithDisabled(v style.Style) *ButtonStyle {
 	c := s.clone()
 	c.disabled = v
+	return c
+}
+
+// Hotkey returns the mnemonic letter's look, merged over the button's look in each state: the
+// menu's MenuStyle.Hotkey for a button. Unset, the letter is underlined in the button's own colours.
+func (s *ButtonStyle) Hotkey() style.Style {
+	if s == nil || s.hotkey == (style.Style{}) {
+		return style.New().Underline(true)
+	}
+	return s.hotkey
+}
+
+// WithHotkey returns a copy with the mnemonic letter's look replaced: a theme's accent, say, as
+// a menu bar's access keys wear it.
+func (s *ButtonStyle) WithHotkey(v style.Style) *ButtonStyle {
+	c := s.clone()
+	c.hotkey = v
 	return c
 }
 

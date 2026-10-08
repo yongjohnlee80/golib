@@ -112,7 +112,11 @@ func (n *checkBoxNode) setChecked(v bool) {
 func checkBoxStyle(p palette) *widget.ButtonStyle {
 	normal := p.look(roleWindow, roleWindowText)
 	focused := normal.Reverse(true).Bold(true)
-	return widget.NewButtonStyleFull(normal, focused, normal.Faint(true), focused.Underline(true))
+	st := widget.NewButtonStyleFull(normal, focused, normal.Faint(true), focused.Underline(true))
+	if hk, ok := p.hotkey(); ok {
+		st = st.WithHotkey(hk)
+	}
+	return st
 }
 
 func restyleCheckBox(c tui.Component, p palette) {
