@@ -29,7 +29,9 @@ const (
 	MaxElements = 20_000  // elements, kept or skipped
 	MaxDepth    = 64      // element nesting
 	MaxSegments = 200_000 // path segments in all; an arc counts as the cubics it becomes
-	maxCoord    = 1e7     // a number's magnitude
+	maxCoord    = 1e7     // a number's magnitude, and a transform's translation
+	maxScale    = 1e4     // a transform's scale and shear, composed: what keeps geometry finite
+	minViewBox  = 1e-3    // a viewBox's smallest side: smaller scales its drawing past any bound
 )
 
 var (
@@ -95,7 +97,11 @@ func (d *Drawing) Draw(c gui.Canvas, r gui.Rect, current color.NRGBA) {
 	ty := r.Y + (r.H-h*s)/2 - d.vb[1]*s
 	base := f32.NewAffine2D(s, 0, tx, 0, s, ty)
 	for _, sh := range d.shapes {
-		c.PushTransform(base.Mul(sh.xform))
+		m := base.Mul(sh.xform)
+		if !finiteAffine(m) {
+			continue // a scale past what a canvas can draw: nothing this shape draws is finite
+		}
+		c.PushTransform(m)
 		if sh.filled {
 			c.FillPath(sh.path, gui.Solid(alpha(sh.fill.colorOr(current), sh.fillAlpha)))
 		}
@@ -202,6 +208,9 @@ func (p *parser) root(t xml.StartElement) error {
 			return err
 		}
 		if len(nums) == 4 && nums[2] > 0 && nums[3] > 0 {
+			if nums[2] < minViewBox || nums[3] < minViewBox {
+				return ErrInvalid
+			}
 			copy(p.d.vb[:], nums)
 		}
 	}
@@ -297,7 +306,10 @@ func (p *parser) styled(t xml.StartElement, st *style) error {
 			if err != nil {
 				return err
 			}
-			st.xform = st.xform.Mul(m)
+			// bounded as composed, not only one by one: nested scales multiply
+			if st.xform = st.xform.Mul(m); !bounded(st.xform) {
+				return ErrInvalid
+			}
 		}
 		return nil
 	}
@@ -592,4 +604,32 @@ func transform(v string) (f32.Affine2D, error) {
 		}
 		m = m.Mul(t)
 	}
+}
+
+// bounded reports whether a composed transform keeps geometry finite: scale and shear within
+// maxScale, translation within maxCoord, every element finite. A skew near 90° fails it.
+func bounded(m f32.Affine2D) bool {
+	sx, hx, ox, hy, sy, oy := m.Elems()
+	for _, v := range []float32{sx, hx, hy, sy} {
+		if !finite32(v) || math.Abs(float64(v)) > maxScale {
+			return false
+		}
+	}
+	return finite32(ox) && finite32(oy) && math.Abs(float64(ox)) <= maxCoord && math.Abs(float64(oy)) <= maxCoord
+}
+
+// finiteAffine reports whether every element of m is finite: what a canvas may be given.
+func finiteAffine(m f32.Affine2D) bool {
+	sx, hx, ox, hy, sy, oy := m.Elems()
+	for _, v := range []float32{sx, hx, ox, hy, sy, oy} {
+		if !finite32(v) || math.Abs(float64(v)) > 1e15 {
+			return false
+		}
+	}
+	return true
+}
+
+func finite32(v float32) bool {
+	f := float64(v)
+	return !math.IsNaN(f) && !math.IsInf(f, 0)
 }
