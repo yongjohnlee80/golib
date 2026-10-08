@@ -127,7 +127,7 @@ func TestUnsupported(t *testing.T) {
 	for _, src := range []string{
 		"sequenceDiagram\n  box Aqua Team\n  participant A\n  end",
 		"stateDiagram-v2\n  [*] --> A",
-		"classDiagram\n  A <|-- B",
+		"classDiagram\n  A <|-- B\n  click A call x()",
 		"erDiagram\n  A ||--o{ B : has",
 		"pie\n  \"a\": 1",
 		"gantt\n  title x",
