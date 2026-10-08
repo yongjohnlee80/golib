@@ -95,13 +95,22 @@ type computed struct {
 	maxWidth       cssLen
 	collapse       bool // border-collapse: collapse
 	overflowScroll bool
+	borderBox      bool      // box-sizing: border-box: width and height hold padding and border
+	height         cssLen    // height; unset or auto: its content's
+	minWidth       cssLen    // min-width
+	minHeight      cssLen    // min-height
+	maxHeight      cssLen    // max-height
+	position       string    // "", relative, absolute or fixed (fixed is laid out as absolute)
+	inset          [4]cssLen // top, right, bottom, left of a positioned box
+	objectFit      string    // an image's: contain, cover, fill (the default), none
+	invisible      bool      // visibility: hidden; inherited, so a child can show again
 }
 
 // inherit is a child's starting style: what CSS inherits, the rest at its initial value.
 func (c *computed) inherit() *computed {
 	return &computed{
 		color: c.color, fontSize: c.fontSize, bold: c.bold, italic: c.italic, mono: c.mono,
-		family: c.family, transform: c.transform, spacing: c.spacing,
+		family: c.family, transform: c.transform, spacing: c.spacing, invisible: c.invisible,
 		lineHeight: c.lineHeight, align: c.align, white: c.white, vars: c.vars, link: c.link,
 		display: "inline",
 		// text-decoration propagates to inline descendants as drawn decoration
@@ -852,6 +861,42 @@ func (c *computed) apply(d cssDecl, parent *computed, rootPx float32, view gui.S
 		}
 	case "border-collapse":
 		c.collapse = lv == "collapse"
+	case "box-sizing":
+		c.borderBox = lv == "border-box"
+	case "height", "min-width", "min-height", "max-height":
+		if l, ok := parseLen(lv); ok {
+			switch d.prop {
+			case "height":
+				c.height = l
+			case "min-width":
+				c.minWidth = l
+			case "min-height":
+				c.minHeight = l
+			default:
+				c.maxHeight = l
+			}
+		} else if lv == "none" && d.prop == "max-height" {
+			c.maxHeight = cssLen{}
+		}
+	case "position":
+		switch lv {
+		case "relative", "absolute":
+			c.position = lv
+		case "fixed":
+			c.position = "absolute"
+		default:
+			c.position = ""
+		}
+	case "top", "right", "bottom", "left":
+		if l, ok := parseLen(lv); ok {
+			c.inset[side("-"+d.prop)] = l
+		}
+	case "inset":
+		boxSides(lv, &c.inset)
+	case "visibility":
+		c.invisible = lv == "hidden" || lv == "collapse"
+	case "object-fit":
+		c.objectFit = lv
 	case "overflow", "overflow-x":
 		c.overflowScroll = lv == "auto" || lv == "scroll"
 	}

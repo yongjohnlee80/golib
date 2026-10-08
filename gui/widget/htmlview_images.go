@@ -243,26 +243,16 @@ func (l *htmlLayout) imageSpan(n *phtml.Node, st *computed, src [2]int) flow.Spa
 	aw, ah := attrPx(n, "width"), attrPx(n, "height")
 	switch e.state {
 	case imgReady:
-		w, h := float32(e.w), float32(e.h)
-		switch {
-		case aw > 0 && ah > 0:
-			w, h = aw, ah
-		case aw > 0:
-			w, h = aw, h*aw/max(w, 1)
-		case ah > 0:
-			w, h = w*ah/max(h, 1), ah
-		}
-		if limit := l.contentWidth(); w > limit {
-			w, h = limit, h*limit/w
-		}
-		img, drawing, ink := e.img, e.svg, st.color
+		iw, ih := float32(e.w), float32(e.h)
+		w, h := l.imageBox(st, iw, ih, aw, ah)
+		img, drawing, ink, fit := e.img, e.svg, st.color, st.objectFit
 		return flow.Span{Atom: &flow.Atom{W: w, H: h, Baseline: h, Paint: func(c gui.Canvas) {
 			sz := c.Size()
 			if drawing != nil {
-				drawing.Draw(c, gui.Rect{W: sz.W, H: sz.H}, ink)
+				drawing.Draw(c, gui.Rect{W: sz.W, H: sz.H}, ink) // an SVG fits its box, ratio kept
 				return
 			}
-			c.DrawImage(img, gui.Rect{W: sz.W, H: sz.H}, gui.Rect{})
+			c.DrawImage(img, fitted(fit, sz, iw, ih), gui.Rect{})
 		}}, Link: st.link, Line: -1, Src: src}
 	case imgLoading:
 		return flow.Span{Atom: &flow.Atom{W: aw, H: ah, Baseline: ah}, Link: st.link, Line: -1, Src: src}
@@ -274,4 +264,74 @@ func (l *htmlLayout) imageSpan(n *phtml.Node, st *computed, src [2]int) flow.Spa
 	f := fontOf(st)
 	f.Italic = true
 	return flow.Span{Text: alt, Font: f, Color: st.color, Link: st.link, Line: -1, Src: src}
+}
+
+// imageBox is an image's box: its intrinsic size iw × ih, then its width and height attributes,
+// then CSS's width and height, each alone keeping the ratio; then max-width and max-height, which
+// keep the ratio unless both sides were given; and never wider than the page.
+func (l *htmlLayout) imageBox(st *computed, iw, ih, aw, ah float32) (float32, float32) {
+	w, h := iw, ih
+	scaleTo := func(nw, nh float32, hasW, hasH bool) {
+		switch {
+		case hasW && hasH:
+			w, h = nw, nh
+		case hasW:
+			w, h = nw, h*nw/max(w, 1)
+		case hasH:
+			w, h = w*nh/max(h, 1), nh
+		}
+	}
+	scaleTo(aw, ah, aw > 0, ah > 0)
+	page := l.contentWidth()
+	px := func(v cssLen, of float32) (float32, bool) {
+		if !v.set() || v.auto() || v.unit == '%' && of <= 0 {
+			return 0, false
+		}
+		return v.px(st.fontSize, l.rootPx, of, l.view()), true
+	}
+	cw, hasW := px(st.width, page)
+	ch, hasH := px(st.height, 0)
+	scaleTo(cw, ch, hasW, hasH)
+	both := hasW && hasH || aw > 0 && ah > 0 && !hasW && !hasH
+	if mw, ok := px(st.maxWidth, page); ok && w > mw && mw > 0 {
+		if !both {
+			h = h * mw / w
+		}
+		w = mw
+	}
+	if mh, ok := px(st.maxHeight, 0); ok && h > mh && mh > 0 {
+		if !both {
+			w = w * mh / h
+		}
+		h = mh
+	}
+	if w > page && page > 0 {
+		w, h = page, h*page/w
+	}
+	return max(w, 0), max(h, 0)
+}
+
+// fitted is where a raster of iw × ih is drawn in a box of sz under object-fit: fill (the
+// default) stretches it; contain fits it whole, cover fills the box (the canvas clips the rest),
+// none keeps its size; the last three centred.
+func fitted(fit string, sz gui.Size, iw, ih float32) gui.Rect {
+	full := gui.Rect{W: sz.W, H: sz.H}
+	if iw <= 0 || ih <= 0 {
+		return full
+	}
+	s := float32(1)
+	switch fit {
+	case "contain", "scale-down":
+		s = min(sz.W/iw, sz.H/ih)
+		if fit == "scale-down" {
+			s = min(s, 1)
+		}
+	case "cover":
+		s = max(sz.W/iw, sz.H/ih)
+	case "none":
+	default:
+		return full
+	}
+	w, h := iw*s, ih*s
+	return gui.Rect{X: (sz.W - w) / 2, Y: (sz.H - h) / 2, W: w, H: h}
 }

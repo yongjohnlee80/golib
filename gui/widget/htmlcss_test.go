@@ -167,3 +167,134 @@ article{font-family:Georgia, serif} body{font:17px/1.75 system-ui, sans-serif}
 }
 
 type flowSpan = flow.Span
+
+// TestCSSBox: box-sizing, width bounds and heights size a box as CSS does.
+func TestCSSBox(t *testing.T) {
+	page := `<html><head><style>body{margin:0}
+.bb{box-sizing:border-box;width:200px;padding:10px;border:5px solid}
+.cb{width:200px;padding:10px;border:5px solid}
+.h{height:50px} .minh{min-height:80px} .maxh{max-height:20px}
+.minw{width:10px;min-width:120px} .clip{max-width:100px}
+</style></head><body><div class="bb">a</div><div class="cb">b</div><div class="h">c</div>
+<div class="minh">d</div><div class="maxh">e<br>f<br>g</div><div class="minw">h</div><div class="clip">i</div></body></html>`
+	_, l, _ := pixelView(t, page, 600, 1000)
+	l.layOutTo(1e9)
+	box := func(i int) *box { return l.blocks[i].box }
+	for _, c := range []struct {
+		what string
+		i    int
+		w, h float32
+	}{{"border-box 200", 0, 200, -1}, {"content-box 200 + 30", 1, 230, -1}, {"height 50", 2, -1, 50},
+		{"min-height 80", 3, -1, 80}, {"max-height 20", 4, -1, 20}, {"min-width over width", 5, 120, -1}, {"max-width", 6, 100, -1}} {
+		b := box(c.i)
+		if c.w >= 0 && (b.w < c.w-0.01 || b.w > c.w+0.01) {
+			t.Errorf("%s: width %v, want %v", c.what, b.w, c.w)
+		}
+		if c.h >= 0 && (b.h < c.h-0.01 || b.h > c.h+0.01) {
+			t.Errorf("%s: height %v, want %v", c.what, b.h, c.h)
+		}
+	}
+}
+
+// TestCSSPositioning: an absolutely positioned box takes no place in the flow and sits at its
+// insets; one under the body wholly above the page is never drawn (the skip link); a relative one
+// moves and keeps its place; visibility: hidden keeps its place and draws nothing.
+func TestCSSPositioning(t *testing.T) {
+	page := `<html><head><style>body{margin:0} p{margin:0}
+.skip{position:absolute;top:-100px} .card{position:relative} .badge{position:absolute;top:5px;left:7px}
+.nudge{position:relative;top:10px;left:4px} .ghost{visibility:hidden}
+</style></head><body><a class="skip" href="#d">Skip to document</a><p>first</p>
+<div class="card"><p>in the card</p><span class="badge">badge</span><p>after the badge</p></div>
+<p class="nudge">nudged</p><p class="ghost">ghost</p><p>last</p></body></html>`
+	_, l, rc := pixelView(t, page, 600, 400)
+	l.layOutTo(1e9)
+	for _, c := range rc.Calls {
+		if c.Op == "DrawText" && c.Text != nil && c.Rect.Y < 0 {
+			t.Errorf("drew text above the page at %v", c.Rect)
+		}
+	}
+	if len(l.abs) != 1 || l.abs[0].box == nil || l.abs[0].box.y > -99 {
+		t.Fatalf("the skip link: %d absolute blocks, %+v", len(l.abs), l.abs)
+	}
+	if first := l.blocks[0].box; first == nil || l.blocks[0].y > 0.01 {
+		t.Errorf("the first block is at %v: the skip link took a place in the flow", l.blocks[0].y)
+	}
+	var card *box
+	for _, b := range l.blocks {
+		if b.node != nil && b.node.Name == "div" {
+			card = b.box
+		}
+	}
+	if card == nil || len(card.kids) != 3 {
+		t.Fatalf("the card: %+v", card)
+	}
+	inCard, badge, after := card.kids[0], card.kids[1], card.kids[2]
+	if after.y < inCard.y+inCard.h-0.01 || after.y > inCard.y+inCard.h+0.01 {
+		t.Errorf("the paragraph after the badge is at %v, want right after the first (%v): the badge took a place", after.y, inCard.y+inCard.h)
+	}
+	if badge.y < card.y+4.99 || badge.y > card.y+5.01 || badge.x < card.x+6.99 || badge.x > card.x+7.01 {
+		t.Errorf("the badge at (%v,%v), want (%v,%v)", badge.x, badge.y, card.x+7, card.y+5)
+	}
+	var nudged, ghost, last *topBlock
+	for _, b := range l.blocks {
+		if b.node == nil || b.node.Name != "p" {
+			continue
+		}
+		switch {
+		case strings.Contains(b.node.Children[0].Data, "nudged"):
+			nudged = b
+		case strings.Contains(b.node.Children[0].Data, "ghost"):
+			ghost = b
+		case strings.Contains(b.node.Children[0].Data, "last"):
+			last = b
+		}
+	}
+	if nudged.box.y != 10 || nudged.box.x != 4 {
+		t.Errorf("the relative box at (%v,%v) in its block, want (4,10)", nudged.box.x, nudged.box.y)
+	}
+	if ghost.h <= 0 || last.y < ghost.y+ghost.h-0.01 {
+		t.Errorf("the hidden paragraph took no place: %v tall, last at %v", ghost.h, last.y)
+	}
+	for _, c := range rc.Calls {
+		if c.Op == "DrawText" && c.Text != nil && c.Rect.Y >= ghost.y && c.Rect.Y < ghost.y+ghost.h-1 {
+			t.Errorf("the hidden paragraph was drawn at %v", c.Rect)
+		}
+	}
+}
+
+// TestCSSImageBox: an image's box from its attributes and CSS, max-width keeping the ratio, and
+// where object-fit draws a raster in it.
+func TestCSSImageBox(t *testing.T) {
+	_, l, _ := pixelView(t, `<p>x</p>`, 600, 400)
+	st := func(css string) *computed {
+		c := &computed{fontSize: 16}
+		for _, d := range parseDecls(css) {
+			c.apply(d, c, 16, gui.Size{W: 600})
+		}
+		return c
+	}
+	for _, c := range []struct {
+		css            string
+		iw, ih, aw, ah float32
+		w, h           float32
+	}{
+		{"", 72, 72, 0, 0, 72, 72},
+		{"height:180px;width:180px", 72, 72, 0, 0, 180, 180},
+		{"width:144px", 72, 36, 0, 0, 144, 72},
+		{"max-width:100%;height:auto", 1200, 600, 0, 0, 600, 300},
+		{"max-height:350px", 400, 700, 0, 0, 200, 350},
+		{"", 100, 50, 300, 0, 300, 150},
+	} {
+		w, h := l.imageBox(st(c.css), c.iw, c.ih, c.aw, c.ah)
+		if w < c.w-0.01 || w > c.w+0.01 || h < c.h-0.01 || h > c.h+0.01 {
+			t.Errorf("%q on %v×%v: %v×%v, want %v×%v", c.css, c.iw, c.ih, w, h, c.w, c.h)
+		}
+	}
+	sz := gui.Size{W: 200, H: 100}
+	for fit, want := range map[string]gui.Rect{"": {W: 200, H: 100}, "fill": {W: 200, H: 100},
+		"contain": {X: 50, W: 100, H: 100}, "cover": {Y: -50, W: 200, H: 200}, "none": {X: 75, Y: 25, W: 50, H: 50}} {
+		if got := fitted(fit, sz, 50, 50); got != want {
+			t.Errorf("object-fit %q: %+v, want %+v", fit, got, want)
+		}
+	}
+}
