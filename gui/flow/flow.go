@@ -34,6 +34,9 @@ type Span struct {
 	// the text after it at a column (a table's cell). 0: a Hidden span takes no room.
 	Room float32
 	Atom *Atom // an inline box (an image, a widget) in place of Text
+	// LetterSpacing is added after each cluster, as CSS's letter-spacing; 0: none. A spaced span's
+	// clusters are drawn one by one at their places.
+	LetterSpacing float32
 }
 
 // Atom is an inline box: W wide, H tall, its baseline Baseline below its top.
@@ -110,8 +113,10 @@ type Frag struct {
 	Span     int
 	From, To int
 	X, W     float32
-	Layout   *gui.TextLayout // nil for a hidden span, an atom, or a collapsed space alone
+	Layout   *gui.TextLayout   // nil for a hidden span, an atom, or a collapsed space alone
+	glyphs   []*gui.TextLayout // a letter-spaced frag's, cluster by cluster, in place of Layout
 	display  string
+	dclus    []int     // each cluster's byte offset in display
 	offsets  []int     // each display cluster's byte offset in the span's Text
 	xs       []float32 // cluster edges from X: len(offsets)+1
 	ascent   float32
@@ -165,6 +170,12 @@ func Lay(spans []Span, o Options, t *gui.TextShaper) *Para {
 			pc.m = t.Measure(pc.display, sp.Font)
 			if pc.kind == space && o.WhiteSpace != Normal {
 				sizeSpaces(pc, sp, o.TabSize)
+			}
+			if ls := sp.LetterSpacing; ls != 0 && pc.kind != newline {
+				// each cluster's edge moves by the spacing of every cluster before it, its own too
+				for j := 1; j < len(pc.m.X); j++ {
+					pc.m.X[j] += float32(j) * ls
+				}
 			}
 			pc.w = pc.m.X[len(pc.m.X)-1]
 		}
@@ -407,6 +418,9 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 			f := &l.Frags[n-1]
 			base := f.xs[len(f.xs)-1]
 			f.To = pc.to
+			for _, off := range pc.m.Clusters {
+				f.dclus = append(f.dclus, len(f.display)+off)
+			}
 			f.display += pc.display
 			// base was the frag's end edge; each cluster appended adds its own end edge, so the
 			// edges stay one more than the clusters. A collapsed space shown as nothing adds none.
@@ -419,6 +433,7 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 			continue
 		}
 		f := Frag{Span: pc.span, From: pc.from, To: pc.to, X: x, display: pc.display, sized: pc.sized}
+		f.dclus = append([]int(nil), pc.m.Clusters...)
 		f.xs = []float32{0}
 		for c, off := range pc.m.Clusters {
 			f.offsets = append(f.offsets, pc.from+mapOffset(pc, off))
@@ -466,7 +481,11 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 		l.Frags[k].X += shift
 		f := &l.Frags[k]
 		if !spans[f.Span].Hidden && spans[f.Span].Atom == nil && f.display != "" && strings.TrimSpace(f.display) != "" {
-			f.Layout = t.Layout(f.display, spans[f.Span].Font, 0)
+			if spans[f.Span].LetterSpacing != 0 && len(f.dclus) > 0 {
+				f.glyphs = clusterLayouts(f, spans[f.Span].Font, t)
+			} else {
+				f.Layout = t.Layout(f.display, spans[f.Span].Font, 0)
+			}
 		}
 	}
 	p.Width = max(p.Width, lead+content)
@@ -550,4 +569,20 @@ func isSpace(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\
 // syllables (UAX #14's ID class, approximately).
 func isCJK(r rune) bool {
 	return unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r)
+}
+
+// clusterLayouts shapes a letter-spaced frag's clusters one by one, nil for a space: each is drawn
+// at its own edge, which the spacing has moved.
+func clusterLayouts(f *Frag, font gui.Font, t *gui.TextShaper) []*gui.TextLayout {
+	out := make([]*gui.TextLayout, len(f.dclus))
+	for c, off := range f.dclus {
+		end := len(f.display)
+		if c+1 < len(f.dclus) {
+			end = f.dclus[c+1]
+		}
+		if text := f.display[off:end]; strings.TrimSpace(text) != "" {
+			out[c] = t.Layout(text, font, 0)
+		}
+	}
+	return out
 }

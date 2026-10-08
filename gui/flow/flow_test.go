@@ -253,3 +253,43 @@ func TestLeftAndHang(t *testing.T) {
 		t.Errorf("a line a '\\n' starts at %v, want Left 10 (no hang)", x)
 	}
 }
+
+// TestLetterSpacing: a spaced span is wider by its spacing after each cluster, its clusters are
+// drawn one by one at their spaced edges, and an unspaced span is drawn as one run as before.
+func TestLetterSpacing(t *testing.T) {
+	sh := shaper()
+	plainW := flow.Lay([]flow.Span{plain("AESOP")}, flow.Options{}, sh).Width
+	spaced := plain("AESOP")
+	spaced.LetterSpacing = 2
+	p := flow.Lay([]flow.Span{spaced}, flow.Options{}, sh)
+	if got := p.Width - plainW; got < 9.99 || got > 10.01 {
+		t.Errorf("five clusters spaced by 2 are %v wider, want 10", got)
+	}
+	rc := gui.NewRecordingCanvas(gui.Size{W: 400, H: 400}, gui.Size{W: 8, H: 16})
+	p.Paint(rc, gui.Point{}, []flow.Span{spaced})
+	var xs []float32
+	for _, c := range rc.Calls {
+		if c.Op == "DrawText" {
+			xs = append(xs, c.Rect.X)
+		}
+	}
+	if len(xs) != 5 {
+		t.Fatalf("drew %d runs, want each of the 5 clusters", len(xs))
+	}
+	for i := 1; i < len(xs); i++ {
+		if xs[i] <= xs[i-1] {
+			t.Errorf("clusters drawn out of order: %v", xs)
+		}
+	}
+	rc = gui.NewRecordingCanvas(gui.Size{W: 400, H: 400}, gui.Size{W: 8, H: 16})
+	flow.Lay([]flow.Span{plain("AESOP")}, flow.Options{}, sh).Paint(rc, gui.Point{}, []flow.Span{plain("AESOP")})
+	n := 0
+	for _, c := range rc.Calls {
+		if c.Op == "DrawText" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("an unspaced span drew %d runs, want 1", n)
+	}
+}
