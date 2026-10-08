@@ -49,3 +49,13 @@ overlap without nesting) is `ErrInvalid`.
 - A group's box holds its members and no other node's centre. Nested groups grow by `GroupPad`
   per level. Vertically a box reaches `GroupPad` per level into the gap between ranks, so a
   deeply nested group wants a larger `RankSep`.
+
+## Trees
+
+`Tree` lays out a tree: `TreeInput` holds each node's size and its parent (`-1` for the root).
+Each subtree takes a band of its own breadth, a parent sits centred over its children, and each
+child sits `LevelSep` past its parent's far side, the way `Dir` grows. `BothWays` splits the
+root's children, in their order, into two sides of near-equal breadth, growing in `Dir` and the
+opposite way, as a mind map grows from its centre. `TreeResult` gives each node's centre and a
+line from its parent's border to its own. It is deterministic and limited like `Layered`
+(`MaxNodes`, `MaxRanks` as the deepest level, `MaxWork`).
