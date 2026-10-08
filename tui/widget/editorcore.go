@@ -70,6 +70,8 @@ type EditorCore struct {
 	onModeChange func(EditorMode)
 	onChange     func()
 	onCursorMove func() // the cursor moved to another line or column
+	// toggleRendered answers ActToggleRendered for a widget with a Rendered view; nil: none
+	toggleRendered func() bool
 
 	// dragging is a pointer drag selecting from dragFrom, in buffer positions.
 	dragging bool
@@ -796,6 +798,14 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 	case ActPaste:
 		c.pasteRegister(false)
 		return true
+
+	case ActToggleRendered:
+		// A view's concern: the widget that has a Rendered view answers it (SetToggleRendered).
+		// With none, the key is not consumed, so it reaches the application.
+		if c.toggleRendered == nil {
+			return false
+		}
+		return c.toggleRendered()
 
 	case ActSelectAll:
 		if !c.canSelect || len(b.lines) == 0 {
