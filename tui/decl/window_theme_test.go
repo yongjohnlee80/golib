@@ -10,7 +10,7 @@ import (
 
 // The root Window's palette is the App's token theme: a widget styled in tokens, not roles (a
 // resizable Drawer's grip: TokenSurface under TokenBorder), wears the document's theme, the
-// window role and the mid, not golib's default.
+// page's base and the mid, not golib's default.
 func TestTheWindowsPaletteIsTheAppsTokenTheme(t *testing.T) {
 	s := decltest.Run(t, 60, 20,
 		tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
@@ -32,12 +32,12 @@ Window {
 	})
 	s.WaitForText(t, "panel")
 	rgb := func(r, g, b uint8) tui.CellColor { return tui.CellColor{Kind: tui.CellColorRGB, R: r, G: g, B: b} }
-	s.WaitFor(t, "the grip in the palette's window and mid", func(string) bool {
+	s.WaitFor(t, "the grip in the palette's base and mid", func(string) bool {
 		x, y, ok := find(s, "□")
 		if !ok {
 			return false
 		}
 		c := s.Backend.Snapshot()[y][x]
-		return c.Attrs.BG == rgb(0xda, 0xcc, 0xa9) && c.Attrs.FG == rgb(0xb5, 0xa3, 0x80)
+		return c.Attrs.BG == rgb(0xe6, 0xd9, 0xb9) && c.Attrs.FG == rgb(0xb5, 0xa3, 0x80)
 	})
 }

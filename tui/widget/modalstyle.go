@@ -44,12 +44,13 @@ func DefaultModalStyle() *ModalStyle {
 	}
 }
 
-// defaultScrim is the dimming behind a dialog: faint muted text on the ordinary
-// background, so the covered content reads as present but unavailable rather
-// than being hidden outright.
+// defaultScrim is the dimming behind a dialog: faint muted text on the boost, an
+// overlay's surface (the background itself unless a theme sets one: a QML theme's
+// is its page darkened), so the covered content reads as present but unavailable
+// rather than being hidden outright.
 func defaultScrim() style.Style {
 	return style.New().
-		Background(style.TokenBackground).
+		Background(style.TokenBoost).
 		Foreground(style.TokenTextMuted).
 		Faint(true)
 }
