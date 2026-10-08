@@ -253,7 +253,7 @@ func (m *matrices) PushTransform(a gui.Affine) { m.pushed = append(m.pushed, a) 
 // TestComposedTransformsAreBounded: transforms are bounded as composed, not one by one: nested
 // scales, each finite, that multiply past the bound, and a skew near 90°, refuse the document; so
 // does a viewBox too small to scale from. A drawing drawn into a rect too large for its scale skips
-// what would not be finite: the canvas is never handed NaN or Inf (Lector, #216 r0).
+// what would not be finite: the canvas is never handed NaN or Inf.
 func TestComposedTransformsAreBounded(t *testing.T) {
 	nested := `<svg viewBox="0 0 10 10">` + strings.Repeat(`<g transform="scale(10000000)">`, 6) + `<rect width="1" height="1"/>` +
 		strings.Repeat(`</g>`, 6) + `</svg>`
