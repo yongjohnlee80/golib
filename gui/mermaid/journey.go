@@ -63,7 +63,8 @@ func layJourney(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 	for i, s := range jd.Sections {
 		for _, t := range s.Tasks {
 			lb := newLabel(m, t.Name, f, em*9, th.Text)
-			taskW, nameH = max(taskW, lb.box.W+em*1.6), max(nameH, lb.box.H)
+			row := float32(len(t.Actors))*(dot+em*0.3) - em*0.3 // the dots, one row along the box's bottom
+			taskW, nameH = max(taskW, lb.box.W+em*1.6, row+em*1.6), max(nameH, lb.box.H)
 			tasks[i] = append(tasks[i], laidTask{lb, t})
 		}
 	}

@@ -132,3 +132,39 @@ func TestJourneyFitsAndEmptyOnesLayOut(t *testing.T) {
 		journeyTexts(e)
 	}
 }
+
+// A task's dots stay in its own box: the task width holds the widest row of actors, so a short
+// task with many actors never spills them across the gap into its neighbour.
+func TestJourneyDotsStayInTheirTask(t *testing.T) {
+	src := "journey\n  section S\n    Tea: 5: A, B, C, D, E, F, G, H, I, J\n    Go: 3: A\n"
+	l, err := lay(t, src, 4000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tasks []gui.Rect
+	for _, n := range l.nodes {
+		if n.form == formRound {
+			tasks = append(tasks, n.box)
+		}
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("%d task boxes, want 2", len(tasks))
+	}
+	if tasks[0].X+tasks[0].W > tasks[1].X {
+		t.Errorf("the tasks overlap: %+v and %+v", tasks[0], tasks[1])
+	}
+	for _, n := range l.nodes {
+		if n.form != formCircle || n.box.X < tasks[0].X {
+			continue // the legend's dots, left of the tasks, are no task's
+		}
+		in := false
+		for _, b := range tasks {
+			if n.box.X >= b.X && n.box.X+n.box.W <= b.X+b.W && n.box.Y >= b.Y && n.box.Y+n.box.H <= b.Y+b.H {
+				in = true
+			}
+		}
+		if !in {
+			t.Errorf("a dot at %+v is outside every task box %+v", n.box, tasks)
+		}
+	}
+}
