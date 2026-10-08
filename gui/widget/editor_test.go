@@ -386,3 +386,29 @@ func TestNativePaintReportsTheCaret(t *testing.T) {
 		t.Errorf("caret %+v ok %v, want it over %v,%v", r, ok, wx, wy)
 	}
 }
+
+// A click on a wrapped row of a Rendered line, with hidden marks before it, lands on the cluster
+// under it: the Rendered layout maps its frags one to one back to source clusters.
+func TestClickOnAWrappedRenderedRow(t *testing.T) {
+	long := "*lead* " + strings.Repeat("word ", 30)
+	h := startEditor(t, 40, 12, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("top\n"+long+"\nend")))
+	h.paint()
+	if s := spansOfLine(h, 1); len(s) == 0 || !s[0].Hidden {
+		t.Fatalf("line 1 is not Rendered off the cursor: %+v", s)
+	}
+	var wrapCol int
+	h.onLoop(func() {
+		p := h.e.layout.lay(h.e.layout.blockOf(1), nil).bl.Lines[0]
+		if len(p.Para.Lines) < 2 {
+			t.Fatalf("the Rendered line did not wrap: %d rows", len(p.Para.Lines))
+		}
+		f := p.Para.Lines[1].Frags[0]
+		wrapCol = p.Spans[f.Span].Col + clusters(p.Spans[f.Span].Text[:f.From])
+	})
+	x, y := h.caretPoint(1, wrapCol+2)
+	h.clickAt(x, y)
+	if ln, col := h.line(); ln != 1 || col != wrapCol+2 {
+		t.Errorf("a click on the Rendered line's wrapped row landed on %d:%d, want 1:%d", ln, col, wrapCol+2)
+	}
+}
