@@ -109,11 +109,15 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 			// The folder is listed AFRESH each time: files come and go
 			// between one opening and the next. A selectedFile the document
 			// bound is placed again, so the dialog starts from it every time
-			// rather than from whatever was typed and cancelled last.
+			// rather than from whatever was typed and cancelled last. With
+			// none bound, a save view's name starts empty for the same reason.
 			if d.selected != "" {
 				chooser.Select(d.selected)
 			} else {
 				chooser.SetDir(chooser.Dir())
+				if n, ok := chooser.(interface{ SetName(string) }); ok {
+					n.SetName("")
+				}
 			}
 			chooser.FocusInitial()
 			if !fixedHelp {

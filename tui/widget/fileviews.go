@@ -498,6 +498,9 @@ func (v *FileSaveView) FocusInitial() {
 // Name is what the name field holds.
 func (v *FileSaveView) Name() string { return v.name.Value() }
 
+// SetName puts s in the name field; "" empties it.
+func (v *FileSaveView) SetName(s string) { v.name.SetValue(s) }
+
 // SetPreviewHighlighting highlights the preview, when it has one: see
 // [FileOpenView].
 func (v *FileSaveView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
