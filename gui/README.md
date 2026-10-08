@@ -62,6 +62,43 @@ TUI or "not supported in TUI" fallback on a terminal; window chrome; macOS.
 Accessibility: Gio's semantic operations have no desktop consumer yet, so the
 window has no screen-reader support.
 
+## Drawing performance: count the draw calls
+
+> **⚠ A frame costs what it replays, op by op, not the pixels it covers.** Gio
+> replays every recorded operation on every frame. Each op is a uniform upload
+> and a draw call; each clip path also needs stencil packing. A thousand small
+> rectangles cost far more than one large one. **Draw by runs. Never draw per
+> cell, per glyph or per item in a hot path.**
+
+**tui widgets get this for free.** Cells go through `drawSpan` (`paint.go`),
+for rows and for `PaintCells`. Per row, it:
+
+- fills runs of one background colour;
+- shapes one glyph path per colour;
+- merges underline, strike and box-line pieces into rectangles.
+
+Rows are re-recorded only when dirty. Any widget that renders cells needs no
+special care.
+
+**Native code must batch itself.** This covers `Painter`s, `View`s, Mermaid
+and the markdown view. Each `Canvas` call is replayed on every frame:
+
+1. Merge adjacent same-colour fills; lay out text per line or block, never per
+   character.
+2. Never call the Canvas per cell: use `PaintCells`.
+3. Prefer cells where a widget can be cells.
+4. Paths and rounded rectangles are stencils: keep them out of loops over many
+   items.
+5. Shape text and lay out on change, not on paint.
+6. Request a frame only when something changed; stop when an animation stops.
+
+`FillRect` is currently drawn as a path, so it costs one. Making it a plain
+rectangle where the transform allows is planned.
+
+Check a change by counting ops per frame, full screen on a large monitor. A
+small window hides a cost that grows with area. `batch_pixels_test.go` checks
+that batched drawing matches per-cell drawing, within a small tolerance.
+
 ## Development
 
 The module builds against a released golib, with no `replace`. To work across
