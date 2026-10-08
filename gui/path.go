@@ -40,6 +40,26 @@ func (p *Path) add(kind byte, pts ...Point) *Path {
 	return p
 }
 
+// Segments is how many commands the path holds: moves, lines, curves and closes.
+func (p *Path) Segments() int { return len(p.cmds) }
+
+// Bounds is the smallest rectangle holding every point and control point of the path; the zero
+// Rect for an empty one. A curve lies inside its control points' hull, so this holds the path.
+func (p *Path) Bounds() Rect {
+	first := true
+	var x0, y0, x1, y1 float32
+	for _, c := range p.cmds {
+		for _, q := range c.pts[:c.npoints] {
+			if first {
+				x0, y0, x1, y1, first = q.X, q.Y, q.X, q.Y, false
+				continue
+			}
+			x0, y0, x1, y1 = min(x0, q.X), min(y0, q.Y), max(x1, q.X), max(y1, q.Y)
+		}
+	}
+	return Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+}
+
 func fp(p Point) f32.Point { return f32.Pt(p.X, p.Y) }
 
 // spec records the path into ops.
