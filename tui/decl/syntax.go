@@ -140,21 +140,30 @@ func (n *syntaxNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui
 func (*syntaxNode) declarationOnly()                    {}
 func (n *syntaxNode) Render(tui.Surface)                {}
 
-// editorChildren takes an Editor's children: SyntaxHighlighters, and nothing
-// else — anything else would be silently lost, since an Editor lays out none.
-func editorChildren(b Build) ([]*syntaxNode, error) {
+// editorChildren takes an Editor's children: at most one SyntaxHighlighter and at most one
+// renderer spec, and nothing else — anything else would be silently lost, since an Editor lays
+// out none.
+func editorChildren(b Build) ([]*syntaxNode, RendererSpec, error) {
 	var out []*syntaxNode
+	var spec RendererSpec
 	for _, c := range b.Children {
-		n, ok := c.(*syntaxNode)
-		if !ok {
-			return nil, fmt.Errorf("an Editor holds only a SyntaxHighlighter, and lays out nothing (at %s)", b.Pos)
+		if n, ok := c.(*syntaxNode); ok {
+			out = append(out, n)
+			continue
 		}
-		out = append(out, n)
+		if s, ok := RendererOf(c); ok {
+			if spec != nil {
+				return nil, nil, fmt.Errorf("an Editor holds one renderer, got two (at %s)", b.Pos)
+			}
+			spec = s
+			continue
+		}
+		return nil, nil, fmt.Errorf("an Editor holds only a SyntaxHighlighter and a renderer, and lays out nothing (at %s)", b.Pos)
 	}
 	if len(out) > 1 {
-		return nil, fmt.Errorf("an Editor holds one SyntaxHighlighter, got %d (at %s)", len(out), b.Pos)
+		return nil, nil, fmt.Errorf("an Editor holds one SyntaxHighlighter, got %d (at %s)", len(out), b.Pos)
 	}
-	return out, nil
+	return out, spec, nil
 }
 
 // VetRoot implements [decl.RootVetter]: a SyntaxHighlighter is refused where
@@ -163,6 +172,11 @@ func editorChildren(b Build) ([]*syntaxNode, error) {
 func (a *Adapter) VetRoot(id decl.NodeID) error {
 	if b, ok := a.nodes[id]; ok && b.typ == "SyntaxHighlighter" {
 		return fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and the root is in none")
+	}
+	if b, ok := a.nodes[id]; ok {
+		if _, spec := b.comp.(*rendererNode); spec {
+			return fmt.Errorf("a %s draws the Editor it is declared in, and the root is in none", b.typ)
+		}
 	}
 	return nil
 }

@@ -257,7 +257,8 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	highlighters, err := editorChildren(b)
+	// The tui Editor has no Rendered view: a renderer spec is accepted and carried, not drawn.
+	highlighters, _, err := editorChildren(b)
 	if err != nil {
 		return nil, nil, err
 	}
