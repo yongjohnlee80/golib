@@ -1,7 +1,8 @@
 # parse/mermaid
 
 Parses Mermaid diagrams into models a native renderer draws: flowcharts (`flowchart` and
-`graph`), sequence, class, state and ER diagrams. Every other type is `ErrUnsupported`. Standard
+`graph`), sequence, class, state, ER, journey, mindmap, timeline and requirement diagrams. Every
+other type is `ErrUnsupported`. Standard
 library only.
 
 ```go
@@ -18,6 +19,7 @@ switch d := d.(type) { // d.Kind() says the same
 case *mermaid.FlowchartDiagram: // Dir, Nodes, Edges, Subgraphs, Classes
 case *mermaid.SequenceDiagram:  // Title, Participants, Steps
 case *mermaid.ClassDiagram, *mermaid.StateDiagram, *mermaid.ERDiagram:
+case *mermaid.JourneyDiagram, *mermaid.MindmapDiagram, *mermaid.TimelineDiagram, *mermaid.RequirementDiagram:
 }
 ```
 
@@ -58,6 +60,10 @@ Each has its own model and the same answer: all of it, or `ErrUnsupported`.
 | `sequenceDiagram` | `participant`/`actor` with `as`; every arrow (`->`, `-->`, `->>`, `-->>`, `-x`, `--x`, `-)`, `--)`, `<<->>`, `<<-->>`) with `+`/`-` activation; notes left of, right of, over one or two; `activate`/`deactivate`; `loop`, `alt`/`else`, `opt`, `par`/`and`, `critical`/`option`, `break`, `rect`; `autonumber`; `title` | `box`, `create`, `destroy`, links and menus, participant types (`@{ }`) |
 | `classDiagram` | classes with members (`{ }` or `Name : member`), generics `~T~`, labels, annotations `<<x>>`; every relation, both ways, with cardinalities and a label; `namespace`; `note`/`note for`; `direction`; styling | `click`, `callback`, `link`, lollipop interfaces, nested namespaces |
 | `stateDiagram`, `-v2` | states with descriptions; `[*]` per scope; transitions with labels; composites, nested; `<<fork>>`, `<<join>>`, `<<choice>>`; notes, one-line or to `end note`; `direction`; styling | concurrent regions (`--`), `hide empty description`, `click`, floating notes, a state across composites |
+| `journey` | `title`; `section`s; tasks `Name: score: actor, actor` (score 1 to 5) | `accDescr { }` blocks, HTML in a name |
+| `mindmap` | a tree by indentation; plain text or an id and its shape: `[ ]` `( )` `(( ))` `)) ((` `) (` `{{ }}`; Markdown strings, `<br>` | `::icon( )`, `:::class`, HTML in a label |
+| `timeline` | `title`; `section`s; periods with events on their line or on `: event` lines under them | a direction, `accDescr { }` blocks, HTML in a label |
+| `requirementDiagram` | the six requirement types (`id`, `text`, `risk`, `verifymethod`) and `element`s (`type`, `docref`); every relationship both ways; `direction`; styling | `click`, `linkStyle`, `title`, `accDescr { }` blocks |
 | `erDiagram` | entities, quoted and aliased; attribute blocks (type, name, PK/FK/UK, comment); every cardinality symbol and its word forms; identifying `--` and not `..`; `direction`; styling | `click`, `linkStyle`, `title` and other statements it does not know |
 
 ## The model

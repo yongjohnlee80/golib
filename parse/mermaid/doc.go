@@ -1,5 +1,6 @@
 // Package mermaid parses Mermaid diagrams into models a native renderer draws: flowcharts
-// (flowchart and graph), sequence, class, state and ER diagrams.
+// (flowchart and graph), sequence, class, state, ER, journey, mindmap, timeline and requirement
+// diagrams.
 //
 //	d, err := mermaid.Parse("flowchart LR\n  A[Start] --> B{Ready?}\n  B -->|yes| C([Done])")
 //	switch {
