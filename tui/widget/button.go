@@ -516,10 +516,10 @@ func (b *Button) Render(s tui.Surface) {
 		// there is one.
 		if b.markSet {
 			if i == at {
-				cst = st.Underline(true)
+				cst = b.st.Hotkey().Inherit(st)
 			}
 		} else if !marked && b.mnemonic != 0 && eqFold([]rune(cluster)[0], b.mnemonic) {
-			cst = st.Underline(true)
+			cst = b.st.Hotkey().Inherit(st)
 			marked = true
 		}
 		s.SetCell(x, 0, cluster, cst)

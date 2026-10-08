@@ -329,3 +329,23 @@ func TestAFileDialogWearsAnInheritedHighlightAlone(t *testing.T) {
 		return c.Attrs.BG == ansi(red) && c.Attrs.FG == ansi(white) && c.Attrs.Mask&tui.AttrReverse == 0
 	})
 }
+
+// A Button's access key wears the accent, as a menu bar's does: its colour, underlined. With no
+// accent, the key is underlined in the button's own colours.
+func TestAButtonsAccessKeyWearsTheAccent(t *testing.T) {
+	s := runDoc(t, "import tui 1.0\nWindow { palette.accent: \"red\"\n Button { text: \"&Save\" } }")
+	s.WaitForText(t, "Save")
+	s.WaitFor(t, "the accent on S", func(string) bool { c := cellOf(t, s, "Save"); return c.Attrs.FG == ansi(red) })
+	if c := cellOf(t, s, "Save"); c.Attrs.Mask&tui.AttrUnderline == 0 {
+		t.Fatalf("the access key is not underlined: %+v", c.Attrs)
+	}
+	if c := cellOf(t, s, "ave"); c.Attrs.FG == ansi(red) {
+		t.Fatalf("the accent reached the rest of the label: %+v", c.Attrs)
+	}
+
+	plain := runDoc(t, "import tui 1.0\nWindow { Button { text: \"&Save\" } }")
+	plain.WaitForText(t, "Save")
+	if c := cellOf(t, plain, "Save"); c.Attrs.FG == ansi(red) || c.Attrs.Mask&tui.AttrUnderline == 0 {
+		t.Fatalf("with no accent the key is %+v; want underlined in the button's colours", c.Attrs)
+	}
+}

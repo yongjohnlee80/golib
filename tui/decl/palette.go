@@ -245,6 +245,9 @@ func (p palette) dialogStyles() (*widget.ModalStyle, *widget.ButtonStyle) {
 			p.look(roleButton, roleButtonText).Reverse(false),
 			p.look(roleHighlight, roleHighlightedText).Reverse(false).Bold(true))
 	}
+	if hk, ok := p.hotkey(); ok {
+		buttons = buttons.WithHotkey(hk) // on golib's look when no button roles are set
+	}
 	return card, buttons
 }
 
@@ -266,15 +269,22 @@ func (p palette) menuStyle() (*widget.MenuStyle, bool) {
 		selected = p.look(roleHighlight, roleHighlightedText).Reverse(false)
 	}
 	st := widget.NewMenuStyle(surface, selected)
-	if c, ok := p[roleAccent]; ok {
-		// A default accent leaves the mnemonic's foreground inherited from its
-		// row. That keeps it legible on both sides of an inverted mono selection.
-		// Explicit accent colours still override the foreground as before.
-		if !c.IsDefault() {
-			st = st.WithHotkey(style.New().Foreground(c).Underline(true))
-		}
+	if hk, ok := p.hotkey(); ok {
+		st = st.WithHotkey(hk)
 	}
 	return st, true
+}
+
+// hotkey is the access-key letter's look from the accent: its colour, underlined, as a menu
+// bar's and a button's mnemonic wear it. A default accent sets none, leaving the letter's
+// foreground inherited from its row or button: legible on both sides of an inverted mono
+// selection.
+func (p palette) hotkey() (style.Style, bool) {
+	c, ok := p[roleAccent]
+	if !ok || c.IsDefault() {
+		return style.Style{}, false
+	}
+	return style.New().Foreground(c).Underline(true), true
 }
 
 // editorStyles colour an Editor's text on base, and its selection.

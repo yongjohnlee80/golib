@@ -104,13 +104,41 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		if !ok {
 			i = -1
 		}
-		drawLabel(c, b.Label(), i, labelFont(c), fg)
+		drawLabel(c, b.Label(), i, labelFont(c), fg, keyColor(c, b.Label(), i, fg))
 	}), tui.ScopeSubtree, true
 }
 
+// keyColor is the colour of the mnemonic's cell, as the button's cells paint it: a theme's accent
+// when it sets one (ButtonStyle.Hotkey), else fg. The cell is the key's cluster wearing a colour
+// other than the label's.
+func keyColor(c Canvas, label string, key int, fg color.NRGBA) color.NRGBA {
+	if key < 0 {
+		return fg
+	}
+	var cluster string
+	i := 0
+	for cl := range tui.Graphemes(label) {
+		if i == key {
+			cluster = cl
+			break
+		}
+		i++
+	}
+	cols, _ := cells(c)
+	for x := range cols {
+		if c.CellText(x, 0) != cluster {
+			continue
+		}
+		if kfg, _ := c.CellColors(x, 0); kfg != fg {
+			return kfg
+		}
+	}
+	return fg
+}
+
 // drawLabel draws label centred in c, with cluster key (the button's mnemonic; -1 for none) bold
-// and underlined, as its cells mark it.
-func drawLabel(c Canvas, label string, key int, f Font, fg color.NRGBA) {
+// and underlined in keyFg, as its cells mark it.
+func drawLabel(c Canvas, label string, key int, f Font, fg, keyFg color.NRGBA) {
 	var parts [3]strings.Builder // before the key, the key, after it
 	n := 0
 	for cl := range tui.Graphemes(label) {
@@ -139,11 +167,15 @@ func drawLabel(c Canvas, label string, key int, f Font, fg color.NRGBA) {
 	x := (c.Size().W - width) / 2
 	y := (c.Size().H - (ascent + descent)) / 2
 	for i, r := range runs {
+		col := fg
+		if i == 1 {
+			col = keyFg
+		}
 		if r.Width > 0 {
-			c.DrawText(r, Pt(x, y+ascent-r.Ascent), Solid(fg))
+			c.DrawText(r, Pt(x, y+ascent-r.Ascent), Solid(col))
 		}
 		if i == 1 && r.Width > 0 {
-			c.FillRect(Rect{X: x, Y: y + ascent + max(descent*0.35, 1), W: r.Width, H: max(f.Size/14, 1)}, Solid(fg))
+			c.FillRect(Rect{X: x, Y: y + ascent + max(descent*0.35, 1), W: r.Width, H: max(f.Size/14, 1)}, Solid(col))
 		}
 		x += r.Width
 	}
