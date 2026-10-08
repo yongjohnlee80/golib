@@ -1,7 +1,9 @@
 package widget
 
 import (
+	"fmt"
 	"image/color"
+	"strconv"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
@@ -28,7 +30,13 @@ type Editor struct {
 
 	caret    style.Color // the caret's colour (SetCursorColor); the default is the text's
 	caretSet bool
-	page     style.Style // the cells' look the view reads its colours from (SetPageStyle)
+
+	wrap      tuiwidget.WrapMode // WrapNone (the default) or WrapSoft: the Raw view's long lines
+	numbers   bool               // a gutter of line numbers at the left
+	numberCol style.Color        // the numbers' colour (SetLineNumberColor); muted otherwise
+	numberSet bool
+	ruler     int         // a guide at this column, 1-based, in the Raw view; 0 for none
+	page      style.Style // the cells' look the view reads its colours from (SetPageStyle)
 }
 
 // EditorOption sets up an Editor under construction.
@@ -42,6 +50,9 @@ type editorConfig struct {
 	rows     func(*tuiwidget.EditorCore) []tuiwidget.MenuItemModel
 	panel    []PanelOption
 	fontSize float32
+	wrap     tuiwidget.WrapMode
+	numbers  bool
+	ruler    int
 }
 
 // WithRenderer gives the Editor a Rendered mode drawn by r.
@@ -69,13 +80,28 @@ func WithPanel(opts ...PanelOption) EditorOption {
 // WithFontSize sets the text's size in logical pixels; 0 follows the cells' height.
 func WithFontSize(px float32) EditorOption { return func(c *editorConfig) { c.fontSize = px } }
 
+// WithWrap selects how the Raw view shows a line wider than the editor: tuiwidget.WrapNone (the
+// default, as the tui Editor's) keeps it on one row and scrolls sideways; tuiwidget.WrapSoft wraps
+// it at the editor's width. The Rendered view always wraps: it is prose, read, not columns.
+func WithWrap(m tuiwidget.WrapMode) EditorOption { return func(c *editorConfig) { c.wrap = m } }
+
+// WithLineNumbers shows each line's number in a gutter at the left.
+func WithLineNumbers(v bool) EditorOption { return func(c *editorConfig) { c.numbers = v } }
+
+// WithRuler marks column col (1-based) of the Raw view with a vertical guide; 0 draws none.
+func WithRuler(col int) EditorOption { return func(c *editorConfig) { c.ruler = max(col, 0) } }
+
 // NewEditor is an Editor.
 func NewEditor(opts ...EditorOption) *Editor {
 	var cfg editorConfig
 	for _, o := range opts {
 		o(&cfg)
 	}
-	e := &Editor{core: tuiwidget.NewEditorCore(cfg.core...), render: cfg.render, fontSize: cfg.fontSize}
+	e := &Editor{core: tuiwidget.NewEditorCore(cfg.core...), render: cfg.render, fontSize: cfg.fontSize,
+		wrap: tuiwidget.WrapNone, numbers: cfg.numbers, ruler: cfg.ruler}
+	if cfg.wrap == tuiwidget.WrapSoft {
+		e.wrap = tuiwidget.WrapSoft
+	}
 	e.layout = newPixelLayout(e)
 	e.body = &editorBody{e: e}
 	e.sw = &modeSwitch{e: e}
@@ -136,7 +162,7 @@ func (e *Editor) SetMode(m EditorMode) {
 	}
 	e.mode = m
 	e.layout.invalidate()
-	e.layout.scroll = 0
+	e.layout.scroll, e.layout.left = 0, 0
 	if ln, col := e.core.Line(); e.layout.sh != nil {
 		e.layout.Reveal(ln, col)
 	}
@@ -177,6 +203,68 @@ func (e *Editor) SetCursorColor(c style.Color) {
 	e.body.MarkDirty()
 }
 
+// SetWrap selects tuiwidget.WrapNone or tuiwidget.WrapSoft while the editor runs, as WithWrap
+// does at construction; the cursor stays where it is.
+func (e *Editor) SetWrap(m tuiwidget.WrapMode) {
+	if m != tuiwidget.WrapNone && m != tuiwidget.WrapSoft {
+		panic(fmt.Sprintf("gui/widget: Editor.SetWrap: mode %d is not WrapNone or WrapSoft", m))
+	}
+	if e.wrap == m {
+		return
+	}
+	e.wrap = m
+	e.layout.invalidate()
+	e.layout.left = 0
+	if ln, col := e.core.Line(); e.layout.sh != nil {
+		e.layout.Reveal(ln, col)
+	}
+	e.body.MarkDirty()
+}
+
+// Wrap is how the Raw view shows long lines.
+func (e *Editor) Wrap() tuiwidget.WrapMode { return e.wrap }
+
+// SetLineNumbers shows or hides the gutter of line numbers.
+func (e *Editor) SetLineNumbers(v bool) {
+	if e.numbers == v {
+		return
+	}
+	e.numbers = v
+	e.layout.invalidate()
+	e.body.MarkDirty()
+}
+
+// LineNumbers reports whether the gutter shows.
+func (e *Editor) LineNumbers() bool { return e.numbers }
+
+// GutterWidth is the columns the line numbers take, the gap after them included, as the tui
+// Editor counts them: the widest number, four digits at least, and two blank columns; 0 while
+// they are hidden.
+func (e *Editor) GutterWidth() int {
+	if !e.numbers {
+		return 0
+	}
+	return max(len(strconv.Itoa(e.core.LineCount())), 4) + gutterGap
+}
+
+// gutterGap is the blank columns between the line numbers and the text.
+const gutterGap = 2
+
+// SetLineNumberColor gives the line numbers a colour of their own; muted otherwise.
+func (e *Editor) SetLineNumberColor(c style.Color) {
+	e.numberCol, e.numberSet = c, !c.IsDefault()
+	e.body.MarkDirty()
+}
+
+// SetRuler moves the Raw view's guide to column col (1-based); 0 removes it.
+func (e *Editor) SetRuler(col int) {
+	e.ruler = max(col, 0)
+	e.body.MarkDirty()
+}
+
+// Ruler is the guide's column; 0 for none.
+func (e *Editor) Ruler() int { return e.ruler }
+
 // SetPageStyle is the look of the cells under the text, which the view takes its text and page
 // colours from: a palette's text on base. The zero Style is the terminal theme's default.
 func (e *Editor) SetPageStyle(st style.Style) {
@@ -200,6 +288,7 @@ func (e *Editor) theme(fg, bg color.NRGBA, cell gui.Size, th *style.Theme) Theme
 		Mono:           gui.Font{Family: gui.MonospaceFamily(), Size: size},
 	}
 	dark := isDark(bg)
+	t.LineNumbers = t.Muted
 	if e.caretSet {
 		if c, ok := colorOf(e.caret, th, dark); ok {
 			t.Caret = c
@@ -210,7 +299,12 @@ func (e *Editor) theme(fg, bg color.NRGBA, cell gui.Size, th *style.Theme) Theme
 			t.Accent = c
 		}
 		if c, ok := colorOf(th.Color(style.TokenTextMuted), th, dark); ok {
-			t.Muted = c
+			t.Muted, t.LineNumbers = c, c
+		}
+	}
+	if e.numberSet {
+		if c, ok := colorOf(e.numberCol, th, dark); ok {
+			t.LineNumbers = c
 		}
 	}
 	return t

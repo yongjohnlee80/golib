@@ -168,7 +168,7 @@ func (h *edHarness) caretPoint(line, col int) (float32, float32) {
 		if !ok {
 			h.t.Errorf("no caret at %d:%d", line, col)
 		}
-		x, y = padX+r.X+0.5, padY+r.Y-h.e.layout.scroll+r.H/2
+		x, y = h.e.layout.textX()+r.X+0.5, padY+r.Y-h.e.layout.scroll+r.H/2
 	})
 	return x, y
 }
@@ -232,7 +232,7 @@ func TestKeyScriptMatchesTheTuiEditor(t *testing.T) {
 // A click lands on the cluster under it, in pixels: mid-line, at a line's end, on a wrapped row.
 func TestClicksLandOnTheirClustersInRaw(t *testing.T) {
 	long := strings.Repeat("word ", 30)
-	h := startEditor(t, 40, 12, WithCore(tuiwidget.CoreInitialText("hello world\n"+long+"\nend")))
+	h := startEditor(t, 40, 12, WithWrap(tuiwidget.WrapSoft), WithCore(tuiwidget.CoreInitialText("hello world\n"+long+"\nend")))
 	// In Normal mode a click past a line's end lands on its last cluster, as the tui Editor's does.
 	for _, c := range []struct{ line, col, want int }{{0, 3, 3}, {0, 11, 10}, {1, 0, 0}, {2, 1, 1}, {2, 3, 2}} {
 		x, y := h.caretPoint(c.line, c.col)

@@ -57,6 +57,7 @@ type LineLayout struct {
 type Theme struct {
 	Text, Background, Muted, Accent, CodeBackground color.NRGBA
 	Caret                                           color.NRGBA // zero: the text's
+	LineNumbers                                     color.NRGBA // the gutter's numbers
 	Prose                                           gui.Font    // rendered text
 	Mono                                            gui.Font    // raw text and code
 }
