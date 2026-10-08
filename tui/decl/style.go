@@ -64,6 +64,11 @@ var readPrivately = map[string]string{
 	"FolderDialog":      "the adapter releases an open dialog",
 	"TableView":         "the adapter refreshes its delegate templates",
 	"Window":            "the program reads its root window",
+	"Menu":              "a MenuBar, a Menu and the Window take menus as rows (menuRows, arrange)",
+	"MenuItem":          "a Menu takes its rows (menuRows)",
+	"MenuSeparator":     "a Menu takes its rows (menuRows)",
+	"MenuBar":           "the Window arranges it, and the language check reads its mnemonics",
+	"TableViewColumn":   "a TableView takes its columns (buildTableView)",
 }
 
 // styledTypes is the standard vocabulary with s's types substituted by name, or why s cannot
