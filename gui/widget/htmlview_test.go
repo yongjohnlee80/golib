@@ -354,9 +354,9 @@ func TestHTMLLayoutIdenticalBlocksStayApart(t *testing.T) {
 func TestHTMLLayoutSourceSpansInsideLists(t *testing.T) {
 	_, l, _ := pixelView(t, `<ul><li data-src="0-5">a</li><li data-src="6-11">b</li></ul><p data-src="12-20">after</p>`, 600, 400)
 	second := l.runs[1]
-	top, ok := l.BlockTop(7)
-	if !ok || top > second.ay || top < second.ay-20 {
-		t.Errorf("BlockTop(7) = %v %v, want the second item's top (its run at %v)", top, ok, second.ay)
+	list := l.boxOf("ul")
+	if top, ok := l.BlockTop(7); !ok || top != l.blocks[0].y+list.kids[1].y {
+		t.Errorf("BlockTop(7) = %v %v, want the second item's top %v", top, ok, l.blocks[0].y+list.kids[1].y)
 	}
 	if src, _ := l.BlockAt(second.ay + 1); src != 6 {
 		t.Errorf("BlockAt in the second item = %d, want 6", src)
@@ -383,5 +383,22 @@ func TestHTMLLayoutBytesAfterTheLastBlock(t *testing.T) {
 	_, l, _ := pixelView(t, `<p data-src="0-10">a</p><p data-src="12-20">b</p>`, 600, 400)
 	if top, ok := l.BlockTop(25); !ok || top != l.blocks[1].y {
 		t.Errorf("BlockTop(25) = %v %v, want the last block's top %v", top, ok, l.blocks[1].y)
+	}
+}
+
+// TestHTMLLayoutByteBetweenListItems: a byte between two items (the newline after the first) is
+// inside the list's span but neither item's: it lands on the next item, as the cell layout's does.
+func TestHTMLLayoutByteBetweenListItems(t *testing.T) {
+	_, l, _ := pixelView(t, `<ul><li data-src="0-5">a</li><li data-src="6-11">b</li></ul>`, 600, 400)
+	list := l.boxOf("ul")
+	first, second := l.blocks[0].y+list.kids[0].y, l.blocks[0].y+list.kids[1].y
+	if first == second {
+		t.Fatal("the items share a top")
+	}
+	if top, ok := l.BlockTop(5); !ok || top != second {
+		t.Errorf("BlockTop(5) = %v %v, want the second item's top %v (the first's is %v)", top, ok, second, first)
+	}
+	if top, _ := l.BlockTop(2); top != first {
+		t.Errorf("BlockTop(2) = %v, want the first item's top %v", top, first)
 	}
 }

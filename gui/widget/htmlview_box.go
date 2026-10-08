@@ -35,6 +35,7 @@ type box struct {
 	spans []flow.Span // a run's
 	para  *flow.Para
 	src   [2]int
+	own   bool // src is the element's own data-src, not an ancestor's or its items' span
 	// list items
 	item   bool
 	marker string
@@ -233,10 +234,11 @@ func blankRun(r *box) bool {
 
 // box builds element n's box, styled st.
 func (b *builder) box(n *phtml.Node, st *computed, src [2]int) *box {
-	if r, ok := blockSrc(n); ok {
+	r, own := blockSrc(n)
+	if own {
 		src = r
 	}
-	bx := &box{kind: kBlock, st: st, node: n, src: src}
+	bx := &box{kind: kBlock, st: st, node: n, src: src, own: own}
 	switch st.display {
 	case "table":
 		bx.kind = kTable
