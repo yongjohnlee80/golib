@@ -56,8 +56,9 @@ type LineLayout struct {
 // Theme is what a Renderer draws with, taken from the Editor's cells when it paints.
 type Theme struct {
 	Text, Background, Muted, Accent, CodeBackground color.NRGBA
-	Prose                                           gui.Font // rendered text
-	Mono                                            gui.Font // raw text and code
+	Caret                                           color.NRGBA // zero: the text's
+	Prose                                           gui.Font    // rendered text
+	Mono                                            gui.Font    // raw text and code
 }
 
 // rawSpans are line ln's spans in the Raw look: one per run of clusters in one colour, in the

@@ -69,7 +69,7 @@ func (b *editorBody) native() bool {
 func (b *editorBody) Render(s tui.Surface) {
 	b.styleTheme = s.Theme()
 	sz := s.Size()
-	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.New())
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", b.e.page)
 	ln, _ := b.e.core.Line()
 	if ln < b.cellTop {
 		b.cellTop = ln
@@ -87,7 +87,7 @@ func (b *editorBody) Render(s tui.Surface) {
 			if x >= sz.W {
 				break
 			}
-			st := style.New()
+			st := b.e.page
 			if b.focused && b.e.core.Selected(i, clusterAt(b.e.core.LineAt(i), x)) {
 				st = st.Reverse(true)
 			}
@@ -143,10 +143,6 @@ func (b *editorBody) HandleEvent(ev tui.Event) bool {
 	case tui.KeyEvent:
 		if c.HandleKey(t) {
 			b.MarkDirty()
-			return true
-		}
-		if t.Code == 't' && t.Mods == tui.ModCtrl {
-			b.e.toggleMode()
 			return true
 		}
 		return false
@@ -367,6 +363,9 @@ func selection(core *tuiwidget.EditorCore, ll LineLayout, wholeLine bool, width 
 // paintCaret draws the caret: a bar in Insert mode, a block over the cluster otherwise.
 func paintCaret(c gui.Canvas, r gui.Rect, m tuiwidget.EditorMode, th Theme) {
 	col := th.Text
+	if th.Caret.A > 0 {
+		col = th.Caret
+	}
 	if m == tuiwidget.ModeInsert {
 		c.FillRect(gui.Rect{X: r.X, Y: r.Y, W: 2, H: r.H}, gui.Solid(col))
 		return
