@@ -17,6 +17,24 @@ type NativeOption func(*native)
 
 type native struct {
 	renderers map[string]func(tuidecl.RendererSpec) widget.Renderer
+	fallback  widget.Diagrammer // what native Mermaid declines; nil: drawn as code
+	diagrams  widget.Diagrammer // the style's one chain and cache, made on first use
+}
+
+// WithDiagramFallback draws what golib's native Mermaid declines (a diagram type it does not
+// draw, one over a limit) with d: an application's own renderer, such as one through a headless
+// browser. Without it, such a fence stays code.
+func WithDiagramFallback(d widget.Diagrammer) NativeOption {
+	return func(n *native) { n.fallback = d }
+}
+
+// diagramChain is the style's Diagrams: one chain, so one cache, shared by every renderer the
+// style builds, which is every editor in its window.
+func (n *native) diagramChain() widget.Diagrammer {
+	if n.diagrams == nil {
+		n.diagrams = widget.Diagrams(n.fallback)
+	}
+	return n.diagrams
 }
 
 // WithRendererFor makes the renderer of a spec of kind (its RendererKind) with f: a consumer's
@@ -28,9 +46,8 @@ func WithRendererFor(kind string, f func(tuidecl.RendererSpec) widget.Renderer) 
 
 // Native is gui's style. It replaces Editor; every other type stays tui's.
 func Native(opts ...NativeOption) tuidecl.Style {
-	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{
-		"markdown": markdownRenderer,
-	}}
+	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{}}
+	n.renderers["markdown"] = n.markdownRenderer
 	for _, o := range opts {
 		o(n)
 	}
@@ -41,13 +58,18 @@ func Native(opts ...NativeOption) tuidecl.Style {
 	return tuidecl.Style{Name: "native", Types: []tuidecl.Type{ed}}
 }
 
-// markdownRenderer is golib's renderer for a MarkdownRenderer declaration. It reads the
-// spec's headingScale. Its mermaid flag draws nothing yet: fenced mermaid blocks render as code
-// until gui has a Diagrammer to draw them with, and then the flag turns the drawing on.
-func markdownRenderer(s tuidecl.RendererSpec) widget.Renderer {
+// markdownRenderer is golib's renderer for a MarkdownRenderer declaration. It reads the spec's
+// headingScale, and its mermaid flag: a mermaid fence is drawn as its diagram, natively (a
+// flowchart) or by the style's fallback, through the style's one chain.
+func (n *native) markdownRenderer(s tuidecl.RendererSpec) widget.Renderer {
 	var opts []widget.MarkdownOption
-	if m, ok := s.(tuidecl.MarkdownSpec); ok && m.HeadingScale > 0 {
-		opts = append(opts, widget.HeadingScale(m.HeadingScale))
+	if m, ok := s.(tuidecl.MarkdownSpec); ok {
+		if m.HeadingScale > 0 {
+			opts = append(opts, widget.HeadingScale(m.HeadingScale))
+		}
+		if m.Mermaid {
+			opts = append(opts, widget.WithDiagrams(n.diagramChain()))
+		}
 	}
 	return widget.NewMarkdownRenderer(opts...)
 }
