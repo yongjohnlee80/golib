@@ -41,6 +41,11 @@ func (p *Para) Paint(c gui.Canvas, at gui.Point, spans []Span) {
 			if f.Layout != nil {
 				c.DrawText(f.Layout, gui.Pt(x, base-f.Layout.Ascent), gui.Solid(col))
 			}
+			for k, g := range f.glyphs {
+				if g != nil {
+					c.DrawText(g, gui.Pt(x+f.xs[k], base-g.Ascent), gui.Solid(col))
+				}
+			}
 			thick := max(1, sp.Font.Size/14)
 			if sp.Underline {
 				c.FillRect(gui.Rect{X: x, Y: base + thick, W: f.W, H: thick}, gui.Solid(col))
