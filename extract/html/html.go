@@ -148,6 +148,20 @@ func (p *page) gone(n *phtml.Node) bool {
 	return outer
 }
 
+// Dropped reports whether a reader of a page skips n with everything it holds: a script, a style
+// or one of the other elements read for nothing, or anything hidden (the hidden attribute,
+// aria-hidden="true"), itself or through an element that encloses it past the parse's depth limit.
+// A page's chrome (nav, header, footer, aside) is not dropped here: that is the extractor's choice
+// for a body with no main, not a view's. tui/widget's HTMLView draws pages by this rule.
+func Dropped(n *phtml.Node) bool {
+	p := page{memo: map[*phtml.Node]bool{}}
+	return p.gone(n)
+}
+
+// Block reports whether an element named name (lower-cased) starts a block of its own, ending the
+// inline run before it.
+func Block(name string) bool { return block[name] }
+
 // content is the part of the page to read: the first main, else the first article, else the
 // body (or the whole document) with its chrome dropped.
 func (p *page) content(doc *phtml.Node) (*phtml.Node, bool) {
