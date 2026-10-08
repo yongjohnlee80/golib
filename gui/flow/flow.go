@@ -30,7 +30,10 @@ type Span struct {
 	// SpaceWidth is a kept space's advance, and a tab's is TabSize of it: what an indentation
 	// is drawn by. 0: the font's own space.
 	SpaceWidth float32
-	Atom       *Atom // an inline box (an image, a widget) in place of Text
+	// Room lays a Hidden span out as blank room this wide, its clusters at its start: what puts
+	// the text after it at a column (a table's cell). 0: a Hidden span takes no room.
+	Room float32
+	Atom *Atom // an inline box (an image, a widget) in place of Text
 }
 
 // Atom is an inline box: W wide, H tall, its baseline Baseline below its top.
@@ -165,6 +168,16 @@ func Lay(spans []Span, o Options, t *gui.TextShaper) *Para {
 			}
 			pc.w = pc.m.X[len(pc.m.X)-1]
 		}
+	}
+	// a hidden span with Room: its room at the end of its last piece
+	for i := len(p.pieces) - 1; i >= 0; i-- {
+		pc := &p.pieces[i]
+		sp := spans[pc.span]
+		if !sp.Hidden || sp.Room <= 0 || pc.kind == atom || (i+1 < len(p.pieces) && p.pieces[i+1].span == pc.span) {
+			continue
+		}
+		pc.m.X[len(pc.m.X)-1] = sp.Room
+		pc.w = sp.Room
 	}
 	p.breakLines(spans, t)
 	return p
