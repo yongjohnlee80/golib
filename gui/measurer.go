@@ -83,6 +83,10 @@ func (m *measurer) Wrap(s string, f Font, width float32) ([]string, Size) {
 
 // NewTextShaper is a shaper of its own at scale (device pixels per logical pixel), for text laid
 // out away from a window: on a worker, or in a test. It loads its fonts, so make one and keep it.
+// A scale that is not positive is 1.
 func NewTextShaper(scale float32) *TextShaper {
+	if scale <= 0 {
+		scale = 1
+	}
 	return &TextShaper{s: text.NewShaper(text.WithCollection(gofont.Collection())), scale: scale}
 }
