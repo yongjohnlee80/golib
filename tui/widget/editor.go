@@ -613,6 +613,9 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 		}
 		return e.core.HandleTick() // the chord timeout
 	case tui.KeyEvent:
+		if e.menu.Enabled() && IsContextMenuKey(t) {
+			return e.OpenContextMenu()
+		}
 		return e.core.HandleKey(t)
 	}
 	return false

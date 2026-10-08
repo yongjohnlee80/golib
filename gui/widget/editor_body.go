@@ -117,6 +117,12 @@ func (b *editorBody) Cursor() (int, int, bool) {
 	if !b.focused || b.native() {
 		return 0, 0, false
 	}
+	return b.cellCaret()
+}
+
+// cellCaret is the caret's cell in the cell layout: its line's row, and the width of the clusters
+// before it.
+func (b *editorBody) cellCaret() (int, int, bool) {
 	ln, col := b.e.core.Line()
 	if ln < b.cellTop || ln >= b.cellTop+b.h {
 		return 0, 0, false
@@ -133,6 +139,20 @@ func (b *editorBody) Cursor() (int, int, bool) {
 	return min(x, max(b.w-1, 0)), ln - b.cellTop, true
 }
 
+// caretCell is the body's cell under the caret: the native caret's, through the cell size, once
+// painted natively; else the cell cursor's. False when the caret is not on the screen.
+func (b *editorBody) caretCell() (x, y int, ok bool) {
+	cell := b.e.layout.cell
+	if !b.native() || !b.caretOn || cell.W <= 0 || cell.H <= 0 {
+		return b.cellCaret() // not painted natively yet: the caret's cell as the cells have it
+	}
+	x, y = int(b.caret.X/cell.W), int(b.caret.Y/cell.H)
+	if x < 0 || y < 0 || x >= b.w || y >= b.h {
+		return 0, 0, false
+	}
+	return x, y, true
+}
+
 // HandleEvent routes keys, paste, ticks and focus to the core, and the pointer through the
 // pixel layout.
 func (b *editorBody) HandleEvent(ev tui.Event) bool {
@@ -142,6 +162,9 @@ func (b *editorBody) HandleEvent(ev tui.Event) bool {
 	}
 	switch t := ev.(type) {
 	case tui.KeyEvent:
+		if b.e.menu.Enabled() && tuiwidget.IsContextMenuKey(t) {
+			return b.e.OpenContextMenu()
+		}
 		if c.HandleKey(t) {
 			b.MarkDirty()
 			return true

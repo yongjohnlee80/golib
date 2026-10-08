@@ -145,4 +145,8 @@ const (
 	KeyF10 rune = 57373
 	KeyF11 rune = 57374
 	KeyF12 rune = 57375
+
+	// KeyMenu is the Menu (application) key, the kitty keyboard protocol's code for it: a terminal
+	// speaking the protocol sends it; others, and Gio's native window, never do.
+	KeyMenu rune = 57363
 )

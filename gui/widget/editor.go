@@ -242,6 +242,20 @@ func (e *Editor) toggleMode() {
 // SetContextMenu turns the right-click menu on or off.
 func (e *Editor) SetContextMenu(on bool) { e.menu.SetEnabled(on) }
 
+// OpenContextMenu opens the right-click menu from the keyboard, as a right press on the caret's
+// cell would: below its line, as the terminal's Editor does. Shift+F10 and the Menu key call it while the menu is on.
+// False when the menu is off or the caret is not on the screen.
+func (e *Editor) OpenContextMenu() bool {
+	if !e.menu.Enabled() {
+		return false
+	}
+	x, y, ok := e.body.caretCell()
+	if !ok {
+		return false
+	}
+	return e.menu.OpenAt(tui.Point{X: x, Y: y})
+}
+
 // SetContextMenuRows gives the right-click menu build's rows, built each time it opens, and turns
 // it on: what WithContextMenu does, for an Editor something else constructed (a QML style). nil
 // build is the stock rows (Undo, Redo, Copy, Cut, Paste). A row's CoreMenuAction runs on the
