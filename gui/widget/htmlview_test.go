@@ -570,3 +570,38 @@ func TestHTMLLoadSheetCaps(t *testing.T) {
 		t.Error("a sheet that is not UTF-8 loaded")
 	}
 }
+
+// TestHTMLRefusalsAreToldForEachPage: a resource the resolver refused stays refused in the cache and
+// is told again for a different page that names it, image or stylesheet; the same page shown
+// again is not told twice.
+func TestHTMLRefusalsAreToldForEachPage(t *testing.T) {
+	var told []string
+	v := tuiwidget.NewHTMLView(tuiwidget.WithOnRefused(func(src string) { told = append(told, src) }))
+	page := func(body string) []byte {
+		return []byte(`<html><head><link rel="stylesheet" href="../a.css"></head><body>` + body + `<img src="../b.png" alt="b"></body></html>`)
+	}
+	v.SetHTML(page("<p>one</p>"))
+	BindHTML(v)
+	l := v.BoundLayout().(*htmlLayout)
+	repaint(l, 400, 300)
+	l.sheets.entries["../a.css"] = &sheetEntry{state: imgLoading}
+	l.sheets.tasks[1] = "../a.css"
+	l.images.entries["../b.png"] = &imgEntry{state: imgLoading}
+	l.images.tasks[2] = "../b.png"
+	l.HandleTask(tui.TaskResult{ID: 1, Err: tuiwidget.ErrImageRefused})
+	l.HandleTask(tui.TaskResult{ID: 2, Err: tuiwidget.ErrImageRefused})
+	repaint(l, 400, 300)
+	if fmt.Sprint(told) != "[../a.css ../b.png]" {
+		t.Fatalf("the first page told %v", told)
+	}
+	v.SetHTML(page("<p>one</p>")) // the same page again
+	repaint(l, 400, 300)
+	if len(told) != 2 {
+		t.Errorf("the same page shown again told %v", told)
+	}
+	v.SetHTML(page("<p>two</p>")) // another page naming both
+	repaint(l, 400, 300)
+	if fmt.Sprint(told) != "[../a.css ../b.png ../a.css ../b.png]" {
+		t.Errorf("a second page naming them told %v, want both again", told)
+	}
+}

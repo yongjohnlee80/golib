@@ -214,6 +214,15 @@ func (l *htmlLayout) build() {
 		if n.Kind != phtml.StartTag && n.Kind != phtml.SelfClosing {
 			return
 		}
+		// a refused image is told for each page that names it: a block reused from an earlier
+		// page does not look its images up again, so the page's build does
+		if n.Name == "img" {
+			if src, _ := n.Attr("src"); src != "" {
+				if e, ok := l.images.entries[strings.TrimSpace(src)]; ok && e.refused {
+					l.v.Refused(strings.TrimSpace(src))
+				}
+			}
+		}
 		if n.Name == "style" {
 			for _, c := range n.Children {
 				author.WriteString("\n" + c.Data)
