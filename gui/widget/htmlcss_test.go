@@ -2,11 +2,13 @@ package widget
 
 import (
 	"image/color"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/gui/svg"
 )
 
 // TestCSSMaths: calc(), min(), max() and clamp() with every unit evaluate where their length is:
@@ -449,5 +451,137 @@ func TestDetailsFoldAndOpen(t *testing.T) {
 	open.layOutTo(1e9)
 	if open.runs[0].spans[0].Text != "▾ " {
 		t.Errorf("<details open> starts %q", open.runs[0].spans[0].Text)
+	}
+}
+
+// TestTheArchivePageLaysOutAsABrowserDoes: html-archives/Aesop/the-hares-and-the-foxes.html with its
+// linked archive.css, at a wide view, as Johno compared it with a browser: the skip link not drawn;
+// the breadcrumb a row; the eyebrow upper-cased and spaced; the hero card white, rounded, with the
+// icon at 180 px centred; the table of contents folded; the article in Georgia; Previous and Next
+// at the two ends; main 940 px wide and centred.
+func TestTheArchivePageLaysOutAsABrowserDoes(t *testing.T) {
+	page, err := os.ReadFile("testdata/archive/page.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile("testdata/archive/archive.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const icon = `<svg viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" fill="#E27022"/></svg>`
+	_, l, _ := pixelView(t, string(page), 1200, 900)
+	l.sheets.entries["../assets/archive.css"] = &sheetEntry{state: imgReady, text: string(css)}
+	d, err := svg.Parse(strings.NewReader(icon))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.images.entries["../assets/images/openmoji-1F98A.svg"] = &imgEntry{state: imgReady, svg: d, w: 72, h: 72}
+	l.built = false
+	rc := gui.NewRecordingCanvas(gui.Size{W: 1200, H: 900}, gui.Size{W: 8, H: 19.2})
+	rc.TextPx = 16
+	rc.Colors = func(int, int) (color.NRGBA, color.NRGBA) {
+		return color.NRGBA{R: 0x11, G: 0x11, B: 0x11, A: 0xff}, color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}
+	}
+	l.Paint(rc)
+	l.layOutTo(1e9)
+
+	if l.body.background != (color.NRGBA{0xf8, 0xf6, 0xf0, 0xff}) {
+		t.Errorf("the page's paper %v", l.body.background)
+	}
+	for _, c := range rc.Calls {
+		if c.Op == "DrawText" && c.Rect.Y < 0 {
+			t.Errorf("text drawn above the page (the skip link) at %v", c.Rect)
+		}
+	}
+	runWith := func(text string) *box {
+		for _, r := range l.runs {
+			for _, s := range r.spans {
+				if strings.Contains(s.Text, text) {
+					return r
+				}
+			}
+		}
+		t.Fatalf("no run with %q", text)
+		return nil
+	}
+	spanWith := func(text string) flow.Span {
+		for _, s := range runWith(text).spans {
+			if strings.Contains(s.Text, text) {
+				return s
+			}
+		}
+		return flow.Span{}
+	}
+	aesop, current := runWith("Aesop"), runWith("The Hares and the Foxes")
+	if aesop.ay != current.ay || current.ax <= aesop.ax+20 {
+		t.Errorf("the breadcrumb: Aesop at (%v,%v), the page at (%v,%v), want one row with a gap", aesop.ax, aesop.ay, current.ax, current.ay)
+	}
+	if s := spanWith("AESOP / READING EDITION"); s.LetterSpacing <= 0 || !s.Font.Bold {
+		t.Errorf("the eyebrow: %+v, want upper-cased, bold and spaced", s)
+	}
+	var hero, mainBox, docNav *box
+	for _, b := range l.blocks {
+		if b.node != nil && b.node.Name == "main" {
+			mainBox = b.box
+		}
+	}
+	if mainBox == nil {
+		t.Fatal("no main")
+	}
+	if mainBox.w < 939 || mainBox.w > 941 || mainBox.x < 129 || mainBox.x > 131 {
+		t.Errorf("main %v wide at %v, want 940 centred at 130", mainBox.w, mainBox.x)
+	}
+	for _, k := range mainBox.kids {
+		if k.node != nil && k.node.Name == "figure" {
+			hero = k
+		}
+		if k.node != nil && k.node.Name == "nav" {
+			docNav = k
+		}
+	}
+	if hero == nil || hero.st.background != (color.NRGBA{0xff, 0xff, 0xff, 0xff}) || hero.st.radius.v != 18 {
+		t.Fatalf("the hero card: %+v", hero)
+	}
+	var atom *flow.Atom
+	var atomRun *box
+	for _, r := range l.runs {
+		for _, s := range r.spans {
+			if s.Atom != nil {
+				atom, atomRun = s.Atom, r
+			}
+		}
+	}
+	if atom == nil || atom.W != 180 || atom.H != 180 {
+		t.Fatalf("the icon's box: %+v, want 180 × 180", atom)
+	}
+	var frag flow.Frag
+	for _, ln := range atomRun.para.Lines {
+		for _, f := range ln.Frags {
+			if atomRun.spans[f.Span].Atom != nil {
+				frag = f
+			}
+		}
+	}
+	if mid := atomRun.ax + frag.X + atom.W/2; mid < 599 || mid > 601 {
+		t.Errorf("the icon is centred at %v, want the page's middle (600)", mid)
+	}
+	toc := runWith("On this page")
+	if !strings.HasPrefix(toc.spans[0].Text, "▸") {
+		t.Errorf("the table of contents is not folded: %q", toc.spans[0].Text)
+	}
+	for _, r := range l.runs {
+		if r.ay > toc.ay && r.ay < runWith("THE HARES waged").ay && strings.Contains(r.spans[0].Text, "The Hares and the Foxes") && r.spans[0].Link != "" {
+			t.Error("the folded table of contents shows its list")
+		}
+	}
+	if f := spanWith("THE HARES waged").Font.Family; !strings.HasPrefix(f, "Georgia") {
+		t.Errorf("the article's family %q", f)
+	}
+	if docNav == nil || docNav.kind != kFlex || len(docNav.kids) != 2 {
+		t.Fatalf("the document nav: %+v", docNav)
+	}
+	prev, next := docNav.kids[0], docNav.kids[1]
+	if prev.x > mainBox.x+0.5 || next.x+next.w < mainBox.x+mainBox.w-0.5 {
+		t.Errorf("Previous at %v and Next ending at %v, want the two ends of main (%v..%v)", prev.x, next.x+next.w, mainBox.x, mainBox.x+mainBox.w)
 	}
 }
