@@ -563,8 +563,9 @@ func TestWithEndMarker(t *testing.T) {
 	}
 }
 
-// ScrollTo and Scroll set and read the corner, within the PNG; what is not a scroll key or the
-// wheel is left to others.
+// ScrollTo and Scroll set and read the corner, within the PNG; what is not a scroll key, the wheel
+// or a drag of the left button (a press starts one: TestADragPansAScrollableImage) is left to
+// others.
 func TestAScrollableImageCornerAndOtherEvents(t *testing.T) {
 	m := NewImage()
 	m.SetScrollable(true)
@@ -582,7 +583,7 @@ func TestAScrollableImageCornerAndOtherEvents(t *testing.T) {
 		"a release":        tui.KeyEvent{Kind: tui.KeyRelease, Code: tui.KeyDown},
 		"a chord":          tui.KeyEvent{Kind: tui.KeyPress, Code: 'j', Mods: tui.ModCtrl},
 		"another key":      tui.KeyEvent{Kind: tui.KeyPress, Code: 'x'},
-		"a click":          tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft},
+		"a right click":    tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight},
 		"another resizing": tui.ResizeEvent{},
 	} {
 		if m.HandleEvent(ev) {

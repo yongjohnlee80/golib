@@ -284,3 +284,32 @@ func TestSplitPNGFailsAsItsSteps(t *testing.T) {
 		t.Error("a PNG that could be neither cut nor fitted was not shown as given")
 	}
 }
+
+// A scrollable Image pans by the left button held and dragged: the PNG follows the pointer, cell by
+// cell, and stops following at the release.
+func TestADragPansAScrollableImage(t *testing.T) {
+	m := NewImage()
+	m.SetScrollable(true)
+	m.SetPNG(rowsPNG(t, 4000, 4000))
+	m.st.view.cols, m.st.view.rows = 20, 10 // as a paint sets them
+	m.ScrollTo(10*CellPixelsW, 10*CellPixelsH)
+	press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 5, Y: 5}
+	if !m.HandleEvent(press) {
+		t.Fatal("the press was not taken")
+	}
+	m.HandleEvent(tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, X: 3, Y: 4}) // left 2, up 1
+	shown, _, _ := m.Scroll()
+	if shown.X != 12*CellPixelsW || shown.Y != 11*CellPixelsH {
+		t.Errorf("dragged left 2 and up 1, the corner is at %d,%d px, want %d,%d", shown.X, shown.Y, 12*CellPixelsW, 11*CellPixelsH)
+	}
+	m.HandleEvent(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 3, Y: 4})
+	m.HandleEvent(tui.MouseEvent{Kind: tui.MouseMotion, X: 0, Y: 0})
+	if after, _, _ := m.Scroll(); after != shown {
+		t.Errorf("a move after the release panned to %+v", after)
+	}
+	plain := NewImage()
+	plain.SetPNG(rowsPNG(t, 400, 400))
+	if plain.HandleEvent(press) {
+		t.Error("an Image that does not scroll took the press")
+	}
+}
