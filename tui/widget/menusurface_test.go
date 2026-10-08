@@ -757,3 +757,24 @@ func TestTheDefaultHotkeyIsAnUnderline(t *testing.T) {
 		}
 	}
 }
+
+// A dropdown with a checkable row gives every row the check column, as Qt's does: an unchecked
+// row's label lines up with its neighbours' instead of sitting two cells in.
+func TestACheckableRowDoesNotIndentItsDropdown(t *testing.T) {
+	m := widget.NewMenu()
+	if err := m.SetModel([]widget.MenuItemModel{
+		widget.NewCommand("search", "Search", nil),
+		widget.NewCheck("agent", "Agent", nil),
+		widget.NewCommand("outline", "Outline", nil),
+	}); err != nil {
+		t.Fatalf("SetModel: %v", err)
+	}
+	h, _ := menuFixture(t, m, 30, 8)
+	defer h.stop()
+	xs, _ := cellOfLabel(t, h, "Search")
+	xa, _ := cellOfLabel(t, h, "Agent")
+	xo, _ := cellOfLabel(t, h, "Outline")
+	if xs != xa || xo != xa {
+		t.Errorf("labels at %d, %d, %d: want one column", xs, xa, xo)
+	}
+}

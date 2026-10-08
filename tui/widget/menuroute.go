@@ -629,7 +629,10 @@ func (m *Menu) levelOpenFor(id ItemID) bool {
 // level whose widest row is a long plain command has slack from its neighbours
 // to absorb the error. MenuItem.Layout — the standalone row — has always used
 // measure(label)+2; this is the model-driven painter agreeing with it.
-func (m *Menu) rowWidth(it MenuItemModel, marker bool) int {
+//
+// gutter is the check column: a dropdown with any checkable row gives every row one, so the
+// labels line up, as Qt's do; a bar's row has its own when it is checkable.
+func (m *Menu) rowWidth(it MenuItemModel, marker, gutter bool) int {
 	w := m.measure(it.Label) + 2
 	if it.Accel != "" {
 		w += 2 + m.measure(it.Accel)
@@ -637,10 +640,24 @@ func (m *Menu) rowWidth(it MenuItemModel, marker bool) int {
 	if marker && it.Kind == ItemKindSubmenu {
 		w += 2
 	}
-	if it.Kind == ItemKindCheck || it.Kind == ItemKindRadio {
+	if gutter {
 		w += 2
 	}
 	return w
+}
+
+// checkable reports whether a row is a check or a radio item.
+func checkable(it MenuItemModel) bool { return it.Kind == ItemKindCheck || it.Kind == ItemKindRadio }
+
+// checkColumn reports whether any visible row is checkable: the dropdown then gives every row the
+// check column.
+func checkColumn(rows []MenuItemModel) bool {
+	for _, i := range visibleRows(rows) {
+		if checkable(rows[i]) {
+			return true
+		}
+	}
+	return false
 }
 
 // paintRow paints one row, or delegates to the consumer's renderer.
@@ -648,7 +665,7 @@ func (m *Menu) rowWidth(it MenuItemModel, marker bool) int {
 // The delegation is total: a RowRenderer that is supplied paints the whole row,
 // because a hook that painted only part of one would have to agree with this
 // function about where the parts are, and the two would drift.
-func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState, marker bool) {
+func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState, marker, gutter bool) {
 	base := rowStyle(m.style, viewOf(it), st)
 	s.Fill(r, " ", base)
 	// A plain != nil is correct HERE because the option normalised a typed nil
@@ -667,12 +684,10 @@ func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState
 		return
 	}
 	x := r.X + 1
-	if it.Kind == ItemKindCheck || it.Kind == ItemKindRadio {
-		mark := " "
-		if it.Checked {
-			mark = "✓"
+	if gutter {
+		if checkable(it) && it.Checked {
+			s.SetCell(x, r.Y, "✓", base)
 		}
-		s.SetCell(x, r.Y, mark, base)
 		x += 2
 	}
 	x = m.paintLabel(s, it, x, r.Y, base, rowLit(viewOf(it), st))

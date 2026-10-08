@@ -289,8 +289,9 @@ func (m *Menu) depthOfRow(id ItemID) (int, bool) {
 // measureRows is the natural size of a list of rows: the widest row, and one
 // line each for the visible ones.
 func (m *Menu) measureRows(rows []MenuItemModel) (w, h int) {
+	gutter := checkColumn(rows)
 	for _, i := range visibleRows(rows) {
-		w = max(w, m.rowWidth(rows[i], true))
+		w = max(w, m.rowWidth(rows[i], true, gutter))
 		h++
 	}
 	return w, h
@@ -328,12 +329,13 @@ func (m *Menu) declareRows(ctx *tui.Context, rows []MenuItemModel, area tui.Rect
 func (m *Menu) paintRows(s tui.Surface, rows []MenuItemModel, area tui.Rect) {
 	y := area.Y
 	bottom := area.Y + max(area.H, 0)
+	gutter := checkColumn(rows)
 	for _, i := range visibleRows(rows) {
 		if y >= bottom || area.W <= 0 {
 			return
 		}
 		it := rows[i]
-		m.paintRow(s, it, tui.Rect{X: area.X, Y: y, W: area.W, H: 1}, m.rowStateOf(it), true)
+		m.paintRow(s, it, tui.Rect{X: area.X, Y: y, W: area.W, H: 1}, m.rowStateOf(it), true, gutter)
 		y++
 	}
 }
@@ -380,7 +382,7 @@ func (m *Menu) Layout(cs tui.Constraints) tui.Size {
 				if !it.PegRight {
 					continue
 				}
-				rw := m.rowWidth(it, m.barMarkers) + 2
+				rw := m.rowWidth(it, m.barMarkers, checkable(it)) + 2
 				if rw > right {
 					rw = right // it is the only thing that fits; clip it
 				}
@@ -398,7 +400,7 @@ func (m *Menu) Layout(cs tui.Constraints) tui.Size {
 			if it.PegRight && limit != tui.Unbounded {
 				continue // already placed against the right edge
 			}
-			rw := m.rowWidth(it, m.barMarkers) + 2
+			rw := m.rowWidth(it, m.barMarkers, checkable(it)) + 2
 			if limit != tui.Unbounded {
 				// Stop at the pegged block rather than at the screen edge, so a
 				// leading row cannot be painted underneath Help.
@@ -449,7 +451,7 @@ func (m *Menu) Render(s tui.Surface) {
 			if !ok || r.W <= 0 || r.H <= 0 {
 				continue
 			}
-			m.paintRow(s, it, r, m.rowStateOf(it), m.barMarkers)
+			m.paintRow(s, it, r, m.rowStateOf(it), m.barMarkers, checkable(it))
 		}
 		return
 	}
