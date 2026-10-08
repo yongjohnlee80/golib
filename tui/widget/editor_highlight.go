@@ -77,12 +77,12 @@ func (e *Editor) WithSyntaxStyles(st SyntaxStyles) *Editor {
 	return e
 }
 
-// beginHighlightFrame starts a Render's walk: the catch-up above the screen,
-// and — when it has not reached the screen — the next frame, asked for after
-// this one, since a render cannot mark itself dirty.
-func (e *Editor) beginHighlightFrame() *hlFrame {
-	f, behind := e.core.hl.beginFrame(e.core.buf.lines, e.cells.top, e.core.takeHighlightChanged)
-	if behind {
+// beginHighlightFrame starts a Render's walk from the screen's top line. When the walk has not
+// reached the screen, the next frame is asked for after this one, since a render cannot mark
+// itself dirty.
+func (e *Editor) beginHighlightFrame() *HighlightFrame {
+	f := e.core.BeginHighlight(e.cells.top)
+	if f.Behind {
 		if ctx := e.Context(); ctx != nil {
 			ctx.App().Update(e.MarkDirty)
 		}
@@ -90,14 +90,9 @@ func (e *Editor) beginHighlightFrame() *hlFrame {
 	return f
 }
 
-// highlighted returns the style of every cluster of line ln — a line on
-// screen, asked for in order by Render.
-func (e *Editor) highlighted(ln int, f *hlFrame) []highlight.Style {
-	return e.core.hl.highlighted(e.core.buf.lines, e.cells.top, ln, f)
-}
-
-// syntaxStyle is the look a cluster's highlight style adds over the text.
-func (e *Editor) syntaxStyle(k highlight.Style) (style.Style, bool) { return e.core.hl.syntaxStyle(k) }
+// highlighted returns the style of every cluster of line ln: a line on screen, asked for in
+// order by Render.
+func (e *Editor) highlighted(ln int, f *HighlightFrame) []highlight.Style { return f.Styles(ln) }
 
 // hlFrameBudget is how many lines a frame may EXAMINE to catch up — check
 // against the cache or highlight afresh — on its way to the screen. A jump

@@ -933,18 +933,18 @@ func (e *Editor) renderText(s tui.Surface) {
 	paintCluster := func(x, y int, cl string, ln, col int) {
 		st := l.styles.Text
 		if ln != styledLn {
-			lineStyles, styledLn = e.highlighted(ln, hlf), ln
+			lineStyles, styledLn = hlf.Styles(ln), ln
 		}
-		if c.hl.hl != nil {
+		if c.Highlighting() {
 			k := highlight.Normal
 			if col < len(lineStyles) {
 				k = lineStyles[col]
 			}
-			if sst, ok := e.syntaxStyle(k); ok {
+			if sst, ok := c.SyntaxStyle(k); ok {
 				st = sst.Inherit(st)
 			}
 		}
-		if e.focused() && c.inVisual(ln, col) {
+		if e.focused() && c.Selected(ln, col) {
 			st = l.styles.Selection.Inherit(st)
 		}
 		s.SetCell(x, y, cl, st)
@@ -952,7 +952,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	lineFill := func(y, ln int) {
 		// A line-wise highlight covers the WHOLE screen row (S2), text or
 		// not; clusters then paint over the fill.
-		if c.keys.mode == ModeVisualLine && e.focused() && c.inVisual(ln, 0) {
+		if c.keys.mode == ModeVisualLine && e.focused() && c.Selected(ln, 0) {
 			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", l.styles.Selection.Inherit(l.styles.Text))
 		}
 	}
