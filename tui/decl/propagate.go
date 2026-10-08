@@ -294,13 +294,15 @@ func restyleMenuBar(c tui.Component, p palette) {
 	c.(*menuBarNode).bar.WithStyle(st)
 }
 
-// restyleButton gives a Button the accent's access-key look; with none set, golib's own.
+// restyleButton gives a Button's access key the accent's look, or with none the plain underline.
+// Only the key's look changes: the button's colours are its own, or the Dialog's it sits in
+// (restyleDialog), whichever restyle runs first.
 func restyleButton(c tui.Component, p palette) {
-	var st *widget.ButtonStyle
-	if hk, ok := p.hotkey(); ok {
-		st = st.WithHotkey(hk)
+	b := c.(*widget.Button)
+	hk, _ := p.hotkey() // zero without an accent: the underline
+	if st := b.ButtonStyle(); st != nil || hk != (style.Style{}) {
+		b.WithStyle(st.WithHotkey(hk))
 	}
-	c.(*widget.Button).WithStyle(st)
 }
 
 func restyleDialog(c tui.Component, p palette) {
