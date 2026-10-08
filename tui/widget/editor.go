@@ -151,6 +151,9 @@ type Editor struct {
 	Base
 	core  *EditorCore // the behaviour; a field, never embedded
 	cells cellLayout  // the geometry, in cells: implements EditorLayout
+	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
+	// reveals it only when either changed, so the wheel's scroll stays
+	shown viewMark
 
 	menu *EditorMenu // the right-click menu: off unless a consumer turns it on
 }
@@ -659,7 +662,9 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	e.cells.gutter = min(e.gutterWidth(), total-1)
 	e.cells.w = total - e.cells.gutter
 	e.cells.h = boundedMax(c.MaxH, max(c.MinH, 1))
-	e.ensureVisible()
+	if e.shown.moved(e.core.buf.ln*1_000_003+e.core.buf.col, e.cells.h*100_003+e.cells.w) {
+		e.ensureVisible()
+	}
 	return c.Constrain(tui.Size{W: total, H: e.cells.h})
 }
 

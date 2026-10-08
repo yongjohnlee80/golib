@@ -403,6 +403,7 @@ type Tree struct {
 	lastPressNode *TreeNode
 	cursor        int
 	top           int
+	shown         viewMark // as List's: Layout reveals the cursor only when it or the height changed
 	w, h          int
 	indent        int
 	styles        ListStyles
@@ -989,6 +990,16 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 }
 
 func (t *Tree) handleMouse(e tui.MouseEvent) bool {
+	if e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown) {
+		// the wheel scrolls the rows and leaves the cursor where it is, as List's
+		d := 1
+		if e.Button == tui.WheelUp {
+			d = -1
+		}
+		t.top = max(0, min(t.top+d, len(t.flatten())-t.h))
+		t.MarkDirty()
+		return true
+	}
 	if e.Kind != tui.MousePress || e.Button != tui.MouseLeft {
 		return false
 	}
@@ -1083,7 +1094,9 @@ func (t *Tree) ensureVisible() {
 func (t *Tree) Layout(c tui.Constraints) tui.Size {
 	t.w = boundedMax(c.MaxW, max(c.MinW, 1))
 	t.h = boundedMax(c.MaxH, max(c.MinH, len(t.flatten()), 1))
-	t.ensureVisible()
+	if t.shown.moved(t.cursor, t.h) {
+		t.ensureVisible()
+	}
 	if t.selectionDue && t.ctx != nil {
 		t.ctx.AfterLayout(treeSelectionKey, t.noteSelection)
 	}
