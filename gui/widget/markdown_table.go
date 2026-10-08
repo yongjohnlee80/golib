@@ -215,7 +215,7 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 			spans = []flow.Span{{Text: line, Font: thin, Line: ln, Hidden: true, Room: max(total, 0.01)}}
 			p := flow.Lay(spans, opts, t)
 			marks = append(marks, Mark{Rect: gui.Rect{W: total + 1, H: p.Height}, Color: border})
-			bl.Lines = append(bl.Lines, LineLayout{Para: p, Spans: spans, Y: bl.Height, Marks: marks})
+			bl.Lines = append(bl.Lines, LineLayout{Para: p, Spans: spans, Y: bl.Height, Marks: marks, Unnumbered: true})
 			bl.Height += p.Height
 			continue
 		}

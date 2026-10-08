@@ -52,6 +52,9 @@ type LineLayout struct {
 	Spans []flow.Span
 	Y     float32
 	Marks []Mark // drawn under the text: a quote's bar, a rule
+	// Unnumbered takes no line number: a row too thin to hold one (a table's delimiter row, drawn
+	// as the rule under its header)
+	Unnumbered bool
 }
 
 // Mark is a filled rectangle drawn with a line, Rect from the line's top-left.
