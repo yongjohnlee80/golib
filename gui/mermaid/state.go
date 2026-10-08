@@ -97,6 +97,9 @@ func (sl *stateLayer) scope(id string, dir pm.Dir) (stateScope, error) {
 		t := sl.d.Transitions[i]
 		le := layout.Edge{From: at[t.From], To: at[t.To]}
 		e := laidEdge{line: pm.Solid, head: endArrow, color: sl.th.Line}
+		if id != "" { // inside a composite: its label sits on the composite's fill
+			e.ground = sl.th.ClusterFill
+		}
 		if t.Label != "" {
 			lb := newLabel(sl.m, t.Label, sl.small, wrapAt, sl.th.Text)
 			pad := sl.small.Size * 0.3
@@ -112,7 +115,7 @@ func (sl *stateLayer) scope(id string, dir pm.Dir) (stateScope, error) {
 		lb := newLabel(sl.m, n.Text, sl.small, wrapAt, sl.th.Text)
 		box := gui.Rect{W: lb.box.W + em*1.4, H: lb.box.H + em*0.9}
 		items = append(items, stateItem{node: laidNode{form: formNote, box: box, fill: sl.th.ClusterFill,
-			stroke: sl.th.ClusterStroke, width: 1, label: lb}})
+			stroke: sl.th.ClusterStroke, width: 1, label: lb.centredIn(box)}})
 		in.Nodes = append(in.Nodes, layout.Size{W: box.W, H: box.H})
 		from, to := at[n.State], len(items)-1
 		if n.Side == pm.LeftOf {
