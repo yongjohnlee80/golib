@@ -107,6 +107,8 @@ func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
 				end++
 			}
 			end = min(end+1, len(lines))
+		} else if n := tableEnd(lines, i); n > 0 {
+			end = n
 		} else if startsIndentedCode(lines, i) {
 			// an indented code block: it cannot interrupt a paragraph, so it starts at the top or
 			// after a blank line, and runs while lines stay indented or blank, its trailing
@@ -134,6 +136,9 @@ func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursor
 	}
 	if f, ok := openFence(lines[b.From]); ok {
 		return r.layFence(b, f, lines, code, cursorInside, t, th, host)
+	}
+	if tableEnd(lines, b.From) > 0 {
+		return r.layTable(b, lines, width, cursorInside, t, th)
 	}
 	if startsIndentedCode(lines, b.From) {
 		return r.layIndented(b, lines, code, t, th)
