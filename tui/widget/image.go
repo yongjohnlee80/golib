@@ -430,6 +430,9 @@ func (m *Image) HasImage() bool { return len(m.st.png) > 0 }
 
 // SetScrollable sets whether the Image scrolls; see SCROLLABLE.
 func (m *Image) SetScrollable(on bool) {
+	if !on {
+		m.drag.end(m.Context()) // a drag the Image no longer scrolls for lets the pointer go
+	}
 	m.st.setScrollable(on)
 	m.MarkDirty()
 }
@@ -459,6 +462,15 @@ func (m *Image) HandleEvent(ev tui.Event) bool {
 		m.MarkDirty()
 		return true
 	}
+	// a drag's end is the drag's, scrollable or not: the pointer it captured is let go
+	if _, ok := ev.(tui.PointerCaptureLostEvent); ok && m.drag.on {
+		m.drag.on = false
+		return true
+	}
+	if e, ok := ev.(tui.MouseEvent); ok && e.Kind == tui.MouseRelease && m.drag.on {
+		m.drag.end(m.Context())
+		return true
+	}
 	if !m.st.scrollable {
 		return false
 	}
@@ -471,10 +483,6 @@ func (m *Image) HandleEvent(ev tui.Event) bool {
 			}
 			return true
 		}
-	}
-	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
-		m.drag.on = false
-		return true
 	}
 	dx, dy, ok := scrollStep(ev, v.rows, v.height)
 	if ok && v.to(v.left+dx, v.top+dy) {
@@ -498,13 +506,21 @@ func (d *imageDrag) pan(e tui.MouseEvent, v *imageView, ctx *tui.Context) (taken
 	case e.Kind == tui.MouseMotion && d.on:
 		return true, v.to(d.left-(e.X-d.x)*CellPixelsW, d.top-(e.Y-d.y)*CellPixelsH)
 	case e.Kind == tui.MouseRelease && d.on:
-		d.on = false
-		if ctx != nil {
-			ctx.ReleasePointer()
-		}
+		d.end(ctx)
 		return true, false
 	}
 	return false, false
+}
+
+// end ends a drag in progress, letting go of the pointer it captured.
+func (d *imageDrag) end(ctx *tui.Context) {
+	if !d.on {
+		return
+	}
+	d.on = false
+	if ctx != nil {
+		ctx.ReleasePointer()
+	}
 }
 
 // Layout takes every cell offered.
