@@ -1,7 +1,8 @@
 // retro.qml — a 1990s Borland IDE, in CGA colours.
 //
 // Grey chrome with black text, the selected row on green, and every document —
-// an editor, a table, a tree — on dark blue. Written as #rrggbb so it
+// an editor, a table, a tree — on a deep navy (#000070): CGA's blue (#0000aa)
+// was too bright to read on for long. Written as #rrggbb so it
 // looks the same in every terminal: an ANSI slot name would take whatever the
 // user's palette maps it to.
 //
@@ -18,10 +19,10 @@ Theme {
         window: "#aaaaaa"; windowText: "#000000"
         button: "#00aa00"; buttonText: "#000000"
         highlight: "#00aa00"; highlightedText: "#ffffff"
-        base: "#0000aa"; text: "#ffffff"
+        base: "#000070"; text: "#ffffff"
         inactive { highlight: "#555555"; highlightedText: "#55ffff" }
         mid: "#555555"; light: "#ffffff"
-        backdrop: "#000080"
+        backdrop: "#00004a"
     }
     menu {
         window: "#aaaaaa"; windowText: "#000000"
@@ -30,16 +31,16 @@ Theme {
     }
     // A document's surface: the panes' frames and what is in them.
     document {
-        window: "#0000aa"; windowText: "#aaaaaa"
+        window: "#000070"; windowText: "#aaaaaa"
         highlight: "#ffffff"; highlightedText: "#000000"
-        base: "#0000aa"; text: "#ffff55"
+        base: "#000070"; text: "#ffff55"
         selection: "#00aaaa"; selectedText: "#000000"
         cursor: "#ffff55"; lineNumber: "#5555aa"
     }
     status {
         window: "#aaaaaa"; windowText: "#000000"
     }
-    // KSyntaxHighlighting's styles, set once on the Window. On CGA blue.
+    // KSyntaxHighlighting's styles, set once on the Window. On the deep navy.
     syntax {
         keyword: "#ffffff"; controlFlow: "#ffffff"
         dataType: "#55ff55"; attribute: "#55ffff"; function: "#ffff55"
