@@ -221,6 +221,7 @@ func (t *Tokenizer) tag(start int, end bool) (Token, bool) {
 		tok.Kind = EndTag
 	}
 	i = n
+	parsed := 0 // every attribute as written, duplicates and an end tag's included
 	for i < len(t.src) {
 		c := t.src[i]
 		switch {
@@ -242,12 +243,15 @@ func (t *Tokenizer) tag(start int, end bool) (Token, bool) {
 			if !ok {
 				return Token{}, false
 			}
-			if end || hasAttr(tok.Attrs, a.Name) {
-				continue
-			}
-			if len(tok.Attrs) == t.lim.MaxAttrs {
+			// The limit counts attributes as written: refusing only past MaxAttrs distinct names
+			// would let repeats hide how long the list is, and a tag over the limit is refused
+			// whole, never kept in part.
+			if parsed++; parsed > t.lim.MaxAttrs {
 				t.err = ErrTooLarge
 				return Token{}, false
+			}
+			if end || hasAttr(tok.Attrs, a.Name) {
+				continue
 			}
 			tok.Attrs = append(tok.Attrs, a)
 		}

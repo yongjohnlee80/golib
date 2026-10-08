@@ -264,3 +264,22 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+// Repeated attributes count against MaxAttrs as written: 65 copies of one name is over a limit
+// of 64, and so is a list whose 65th attribute is the hidden that suppresses the element.
+func TestDuplicateAttributesCountAgainstTheLimit(t *testing.T) {
+	dup := "<p" + strings.Repeat(" a=1", 65) + ">x</p>"
+	if _, err := ParseLimited(context.Background(), []byte(dup), Limits{}); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("65 repeats of one attribute: %v, want ErrTooLarge", err)
+	}
+	if _, err := ParseLimited(context.Background(), []byte("<p a=1 a=2>x</p>"), Limits{MaxAttrs: 1}); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("two repeats over MaxAttrs 1: %v, want ErrTooLarge", err)
+	}
+	tk := NewTokenizer([]byte("<p a=1 a=2>"), Limits{MaxAttrs: 1})
+	if _, ok := tk.Next(); ok || !errors.Is(tk.Err(), ErrTooLarge) {
+		t.Errorf("tokenizer: ok %v err %v, want ErrTooLarge", ok, tk.Err())
+	}
+	if _, err := ParseLimited(context.Background(), []byte("<p a=1 a=2>x</p>"), Limits{MaxAttrs: 2}); err != nil {
+		t.Errorf("two attributes within MaxAttrs 2: %v", err)
+	}
+}

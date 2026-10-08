@@ -185,3 +185,16 @@ func TestDeepChainsCostLinearTime(t *testing.T) {
 		t.Errorf("%d texts, want 100000", strings.Count(out, "t"))
 	}
 }
+
+// A hidden element whose hidden comes after 64 repeated attributes is refused whole: its text
+// never reaches the output.
+func TestHiddenAfterRepeatedAttributesIsRefused(t *testing.T) {
+	src := "<p>keep</p><div" + strings.Repeat(" a=1", 64) + " hidden>secret</div>"
+	out, _, err := run(t, Extractor{}, src)
+	if err == nil {
+		t.Fatalf("no error; output %q", out)
+	}
+	if strings.Contains(out, "secret") {
+		t.Errorf("suppressed text reached the output: %q", out)
+	}
+}
