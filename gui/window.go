@@ -99,6 +99,9 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 		ev, ok := src.Event(
 			key.FocusFilter{Target: tag},
 			key.Filter{Focus: tag, Optional: allMods},
+			// The window sends Tab and Shift+Tab as system events, for Gio's own focus
+			// traversal, and the catch-all filter above never matches one: name them.
+			key.Filter{Focus: tag, Name: key.NameTab, Optional: key.ModShift},
 			pointer.Filter{
 				Target:  tag,
 				Kinds:   pointer.Press | pointer.Release | pointer.Move | pointer.Drag | pointer.Scroll | pointer.Cancel | pointer.Leave,
