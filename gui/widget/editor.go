@@ -323,6 +323,26 @@ func (e *Editor) SetPageStyle(st style.Style) {
 	e.body.MarkDirty()
 }
 
+// pageColors are the page's text and background: the page style's (SetPageStyle, a theme's base
+// and text), else the colours of the body's first cell. The style comes first: a cell is what is
+// composed on screen, and a floating panel over the editor (an explorer's highlighted row) would
+// lend the whole page its colours.
+func (e *Editor) pageColors(c gui.Canvas, th *style.Theme) (fg, bg color.NRGBA) {
+	fg, bg = c.CellColors(0, 0)
+	dark := isDark(bg)
+	if v, set := e.page.GetBackground(); set {
+		if col, ok := colorOf(v, th, dark); ok {
+			bg, dark = col, isDark(col)
+		}
+	}
+	if v, set := e.page.GetForeground(); set {
+		if col, ok := colorOf(v, th, dark); ok {
+			fg = col
+		}
+	}
+	return fg, bg
+}
+
 // theme is what the text is drawn with: the colours of the cells under it, the tui theme's
 // accent and muted text, and fonts at the window's text size (textPx) unless WithFontSize set one.
 func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Theme {
