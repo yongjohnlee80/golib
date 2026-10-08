@@ -2,6 +2,7 @@ package widget
 
 import (
 	"bytes"
+	"encoding/binary"
 	"hash/fnv"
 	"image/color"
 	"math"
@@ -60,7 +61,7 @@ type htmlLayout struct {
 	muted    color.NRGBA
 	surface  color.NRGBA
 	selColor color.NRGBA
-	look     uint64 // a hash of the colours and text size the boxes were styled with
+	look     uint64 // a hash of the colours, text size and font generation the boxes were styled with
 
 	width  float32
 	viewH  float32 // the view's height at the last paint: vh, and a media query's height
@@ -995,7 +996,7 @@ func (l *htmlLayout) layAbsTop(b *topBlock) {
 	b.box, b.y, b.h, b.laid = bx, 0, bx.y+bx.h, true
 }
 
-// adoptLook takes the window's colours and text size: the page's text and ground from the cells
+// adoptLook takes the window's colours, text size and fonts: the page's text and ground from the cells
 // under the view, the accent and muted text from the tui theme. A change restyles every block.
 func (l *htmlLayout) adoptLook(c gui.Canvas) {
 	fg, bg := c.CellColors(0, 0)
@@ -1019,6 +1020,8 @@ func (l *htmlLayout) adoptLook(c gui.Canvas) {
 		_, _ = h.Write([]byte{col.R, col.G, col.B, col.A})
 	}
 	_, _ = h.Write([]byte{byte(math.Float32bits(px)), byte(math.Float32bits(px) >> 8), byte(math.Float32bits(px) >> 16)})
+	// the families: a family-only change keeps colours and size, and must still shape every block anew
+	_ = binary.Write(h, binary.LittleEndian, c.Fonts().Gen)
 	look := h.Sum64()
 	if look == l.look {
 		return

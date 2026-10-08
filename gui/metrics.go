@@ -27,6 +27,7 @@ type metrics struct {
 	cell     image.Point // one cell, in device pixels: whole pixels, so the grid has no seams
 	baseline int         // device pixels from a cell's top to the glyphs' baseline
 	grid     tui.Size    // whole cells that fit the window inside its padding; at least 1×1
+	fontGen  uint64      // the fontState it was measured with: a new one is a change, at any size
 }
 
 // measure computes the snapshot for a window of win device pixels at metric m, with pad of

@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"cmp"
 	"unicode/utf8"
 
 	"gioui.org/font"
@@ -21,8 +22,25 @@ type Font struct {
 	Italic bool
 }
 
-// uiFamily is the typeface a Font with no Family uses.
+// uiFamily is the typeface a Font with no Family uses, until the window names another (Fonts).
 const uiFamily = "sans-serif, emoji"
+
+// CellFamily is a Font's Family meaning the window's cell font: the monospace the terminal grid is
+// drawn in, as it is set now. Code in a Rendered view and HTMLView's pre use it, so a change of the
+// cell font reaches them.
+const CellFamily = "\x00cell"
+
+// Fonts are a window's families now: Prose for a Font with no Family, Mono for CellFamily. Gen
+// changes with every change of either, or of the size: a view keeping shaped text keys it on Gen,
+// so a family-only change shapes it again.
+type Fonts struct {
+	Prose, Mono string
+	Gen         uint64
+}
+
+// defaultFonts are a window's families before it names any: the UI family, and the cells' default
+// monospace.
+func defaultFonts() Fonts { return Fonts{Prose: uiFamily, Mono: MonospaceFamily()} }
 
 // TextShaper shapes text for a View, with the window's fonts and at its scale: proportional
 // fonts, sizes, weights, wrapping, bidi and fallback fonts. Measure with the shaper a Canvas
@@ -30,7 +48,11 @@ const uiFamily = "sans-serif, emoji"
 type TextShaper struct {
 	s     *text.Shaper
 	scale float32 // device pixels per logical pixel
+	fonts Fonts   // what Family "" and CellFamily mean
 }
+
+// Fonts are the families this shaper resolves an empty Family and CellFamily to.
+func (t *TextShaper) Fonts() Fonts { return t.fonts }
 
 // TextLayout is shaped text, ready to draw. Its sizes are logical pixels.
 type TextLayout struct {
@@ -50,10 +72,13 @@ type shapedLine struct {
 }
 
 // gioFont is f as Gio selects it.
-func gioFont(f Font) font.Font {
+func gioFont(f Font, fonts Fonts) font.Font {
 	fam := f.Family
-	if fam == "" {
-		fam = uiFamily
+	switch fam {
+	case "":
+		fam = cmp.Or(fonts.Prose, uiFamily)
+	case CellFamily:
+		fam = cmp.Or(fonts.Mono, "monospace") // the generic family: MonospaceFamily would cycle through NativeStyle
 	}
 	ft := font.Font{Typeface: font.Typeface(fam)}
 	if f.Bold {
@@ -104,7 +129,7 @@ func (t *TextShaper) Measure(s string, f Font) Measured {
 // each rune starts, then the line's width: len(runes)+1 positions, in logical pixels.
 func (t *TextShaper) runeEdges(s string, f Font) (ascent, descent float32, x []float32) {
 	t.s.LayoutString(text.Parameters{
-		Font:     gioFont(f),
+		Font:     gioFont(f, t.fonts),
 		PxPerEm:  fixed.Int26_6(f.Size * t.scale * 64),
 		MaxWidth: 1 << 20,
 	}, s)
@@ -144,7 +169,7 @@ func (t *TextShaper) runeEdges(s string, f Font) (ascent, descent float32, x []f
 
 // Layout shapes s in f. maxWidth > 0 wraps lines at that width; 0 keeps one line.
 func (t *TextShaper) Layout(s string, f Font, maxWidth float32) *TextLayout {
-	ft := gioFont(f)
+	ft := gioFont(f, t.fonts)
 	maxW := 1 << 20
 	if maxWidth > 0 {
 		maxW = max(int(maxWidth*t.scale), 1)

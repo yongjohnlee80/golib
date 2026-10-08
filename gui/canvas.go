@@ -61,6 +61,9 @@ type Canvas interface {
 	// TextSize is the size of the window's text (the cells' font), in logical pixels: what a
 	// view sizes its own text by, so it reads at the size of everything around it.
 	TextSize() float32
+	// Fonts are the window's families now, and their generation: a view keeping shaped text keys
+	// it on Fonts().Gen, so a change of family shapes it again.
+	Fonts() Fonts
 	CellColors(col, row int) (fg, bg color.NRGBA) // a cell's colours as drawn; zero outside the grid
 	CellText(col, row int) string                 // a cell's grapheme cluster; "" outside the grid or for a wide cell's second half
 	// Backdrop is the colour around the view: the most common background of the cells bordering
@@ -138,9 +141,12 @@ func (c *gioCanvas) Sub(r Rect) Canvas {
 	}
 }
 
-func (c *gioCanvas) Size() Size        { return c.size }
-func (c *gioCanvas) Scale() float32    { return c.m.scale }
-func (c *gioCanvas) Text() *TextShaper { return &TextShaper{s: c.r.shaper, scale: c.m.scale} }
+func (c *gioCanvas) Size() Size     { return c.size }
+func (c *gioCanvas) Scale() float32 { return c.m.scale }
+func (c *gioCanvas) Text() *TextShaper {
+	return &TextShaper{s: c.r.shaper, scale: c.m.scale, fonts: c.r.fonts}
+}
+func (c *gioCanvas) Fonts() Fonts      { return c.r.fonts }
 func (c *gioCanvas) TextSize() float32 { return c.m.ppem / c.m.scale }
 
 func (c *gioCanvas) CellSize() Size {

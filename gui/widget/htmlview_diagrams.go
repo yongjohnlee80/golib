@@ -71,7 +71,7 @@ func mermaidSource(n *phtml.Node) (string, bool) {
 func (m *htmlDiagrams) theme() Theme {
 	l := m.l
 	return Theme{Text: l.fg, Background: l.bg, Accent: l.accent, Muted: l.muted, CodeBackground: l.surface,
-		Prose: gui.Font{Size: l.textPx}, Mono: gui.Font{Size: l.textPx, Family: gui.MonospaceFamily()}}
+		Prose: gui.Font{Size: l.textPx}, Mono: gui.Font{Size: l.textPx, Family: gui.CellFamily}}
 }
 
 // answer is src's diagram at width: asked of the view's Diagrammer on first sight, and again once

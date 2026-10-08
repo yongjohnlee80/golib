@@ -383,7 +383,7 @@ func blockSrc(n *phtml.Node) ([2]int, bool) {
 func fontOf(st *computed) gui.Font {
 	f := gui.Font{Size: st.fontSize, Bold: st.bold, Italic: st.italic, Family: st.family}
 	if st.mono {
-		f.Family = gui.MonospaceFamily()
+		f.Family = gui.CellFamily // the window's cell font, as it is set now
 	}
 	return f
 }

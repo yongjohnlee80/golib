@@ -66,7 +66,9 @@ func (b *Backend) run() {
 			}
 
 		case app.FrameEvent:
-			m := measure(b.fm, b.cfg.fontSize, b.cfg.padding, e.Size, e.Metric)
+			fs := b.font.Load()
+			m := measure(fs.fm, fs.size, b.cfg.padding, e.Size, e.Metric)
+			m.fontGen = fs.gen
 			if old := b.metrics.Swap(&m); old == nil {
 				b.startOnce.Do(func() { close(b.started) }) // Start returns; nothing is sent
 			} else if !old.sameCells(m) {
@@ -74,7 +76,7 @@ func (b *Backend) run() {
 				b.q.push(tui.ResizeEvent{W: m.grid.W, H: m.grid.H})
 			}
 			b.readInput(e.Source, tag, m)
-			b.present(e, tag, m)
+			b.present(e, tag, m, fs)
 		}
 	}
 }
@@ -170,7 +172,7 @@ type eventSource interface {
 
 // present submits the newest frame. Before the App's first Flush there is none, and the window
 // is submitted with its background alone: Gio needs valid ops for every FrameEvent.
-func (b *Backend) present(e app.FrameEvent, tag event.Tag, m metrics) {
+func (b *Backend) present(e app.FrameEvent, tag event.Tag, m metrics, fs *fontState) {
 	b.mu.Lock()
 	if b.latest != nil {
 		b.gio.shown, b.latest = b.latest, nil
@@ -184,7 +186,7 @@ func (b *Backend) present(e app.FrameEvent, tag event.Tag, m metrics) {
 	if f != nil {
 		f.draw.Add(ops)
 		b.placeCaret(e.Source, tag, f)
-		b.drawPreedit(ops, f, m)
+		b.drawPreedit(ops, f, m, fs)
 	}
 	// The window's one input area: keys, pointer, clipboard all address tag.
 	area := clip.Rect(image.Rectangle{Max: e.Size}).Push(ops)
@@ -213,13 +215,13 @@ func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 
 // drawPreedit draws the text being composed at the caret, underlined, as terminals do. It is not
 // in the grid: the App sees it only once committed.
-func (b *Backend) drawPreedit(ops *op.Ops, f *frame, m metrics) {
+func (b *Backend) drawPreedit(ops *op.Ops, f *frame, m metrics, fs *fontState) {
 	pre := b.gio.ime.preedit()
 	if pre == "" || f.caret.Empty() {
 		return
 	}
 	s := b.gio.shaper
-	s.LayoutString(text.Parameters{Font: fontOf(fallbackChain(b.cfg.typeface)), PxPerEm: fixed.Int26_6(m.ppem * 64), MaxWidth: 1 << 20}, pre)
+	s.LayoutString(text.Parameters{Font: fontOf(fs.typeface), PxPerEm: fixed.Int26_6(m.ppem * 64), MaxWidth: 1 << 20}, pre)
 	var glyphs []text.Glyph
 	var adv fixed.Int26_6
 	for g, ok := s.NextGlyph(); ok; g, ok = s.NextGlyph() {

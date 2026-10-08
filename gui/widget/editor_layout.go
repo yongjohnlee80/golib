@@ -36,6 +36,7 @@ type pixelLayout struct {
 	blocks []Block
 	laid   []*laidBlock // parallel to blocks: nil until laid out
 	stale  bool         // lines and blocks are to be read again
+	fonts  uint64       // the window's font generation they were shaped in (Canvas.Fonts)
 	keep   int          // after a change, blocks wholly before this line keep their layout
 
 	diagrams map[int]*diagramSlot // the diagram requests of blocks, by the block's first line
@@ -212,7 +213,7 @@ func (l *pixelLayout) monoFont() gui.Font {
 	if l.th.Mono.Size > 0 {
 		return l.th.Mono
 	}
-	return gui.Font{Family: gui.MonospaceFamily(), Size: max(l.cell.H/1.2, 10)} // before the first paint: about the cells' font
+	return gui.Font{Family: gui.CellFamily, Size: max(l.cell.H/1.2, 10)} // before the first paint: about the cells' font
 }
 
 func (l *pixelLayout) lineHeight(f gui.Font) float32 { return max(f.Size*1.2, 1) }

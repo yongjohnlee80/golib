@@ -33,7 +33,8 @@ type renderer struct {
 	pageBG    color.NRGBA // the grid's most common background: the frame around it (drawMargins)
 	pageBGSet bool
 	rows      []op.CallOp
-	glyphs    map[glyphKey]glyphShape // cleared with the row cache when the font size changes
+	glyphs    map[glyphKey]glyphShape // cleared with the row cache when the font size or face changes
+	fonts     Fonts                   // the window's families, for the native views (Canvas.Fonts)
 }
 
 type glyphKey struct {
@@ -51,7 +52,8 @@ type glyphShape struct {
 }
 
 func newRenderer(shaper *text.Shaper, typeface string, theme Theme) *renderer {
-	return &renderer{shaper: shaper, typeface: font.Typeface(typeface), theme: theme, glyphs: map[glyphKey]glyphShape{}}
+	return &renderer{shaper: shaper, typeface: font.Typeface(typeface), theme: theme, glyphs: map[glyphKey]glyphShape{},
+		fonts: Fonts{Prose: uiFamily, Mono: typeface}}
 }
 
 // cursorState is the cursor as the App latched it (Backend.ShowCursor, SetCursor…).
@@ -75,7 +77,7 @@ type placedImage struct {
 // past the last whole cell are drawn for every frame.
 func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.NativePlacement, images []placedImage, focused bool) op.CallOp {
 	if !r.m.sameCells(m) || len(r.rows) != g.h {
-		if r.m.ppem != m.ppem {
+		if r.m.ppem != m.ppem || r.m.fontGen != m.fontGen { // another size, or another face
 			clear(r.glyphs)
 		}
 		r.m = m

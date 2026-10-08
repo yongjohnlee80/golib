@@ -396,7 +396,7 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Them
 		Accent:         color.NRGBA{R: 0x5c, G: 0x9c, B: 0xf5, A: 0xff},
 		CodeBackground: mix(fg, bg, 0.08),
 		Prose:          gui.Font{Size: size * 1.05},
-		Mono:           gui.Font{Family: gui.MonospaceFamily(), Size: size},
+		Mono:           gui.Font{Family: gui.CellFamily, Size: size},
 	}
 	dark := isDark(bg)
 	t.LineNumbers = t.Muted
