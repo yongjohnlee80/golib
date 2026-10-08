@@ -144,3 +144,48 @@ Window { Editor { id: ed; text: "hello"; view: Editor.Rendered; FooRenderer { } 
 		}
 	})
 }
+
+// The view properties mean on gui's Editor what they mean on tui's: one document sets them all,
+// runs under both styles, and gui's Editor carries each one; a setter changes it at runtime.
+func TestTheViewPropertiesReachTheGuiEditor(t *testing.T) {
+	src := `import tui 1.0
+Window {
+    Editor {
+        id: ed
+        focus: true
+        text: "hello"
+        wrap: true
+        lineNumbers: true
+        lineNumberColor: "#ff0000"
+        ruler: 80
+    }
+}`
+	native := run(t, src, tuidecl.WithStyle(guidecl.Native()))
+	onLoop(t, native, func() {
+		c, _ := native.Program.Find("ed")
+		e, ok := c.(*widget.Editor)
+		if !ok {
+			t.Fatalf("ed is a %T", c)
+		}
+		if e.Wrap() != tuiwidget.WrapSoft || !e.LineNumbers() || e.Ruler() != 80 {
+			t.Errorf("gui Editor: wrap %v, lineNumbers %v, ruler %d; want WrapSoft, true, 80", e.Wrap(), e.LineNumbers(), e.Ruler())
+		}
+	})
+	plain := run(t, src)
+	onLoop(t, plain, func() {
+		c, _ := plain.Program.Find("ed")
+		if e, ok := c.(*tuiwidget.Editor); !ok || e.GutterWidth() == 0 {
+			t.Errorf("with no style ed is a %T with gutter %v, want tui's Editor with line numbers", c, e)
+		}
+	})
+
+	// a document that sets none: the defaults are tui's Editor's (no wrap, no numbers, no ruler)
+	bare := run(t, "import tui 1.0\nWindow { Editor { id: ed; text: \"hello\" } }", tuidecl.WithStyle(guidecl.Native()))
+	onLoop(t, bare, func() {
+		c, _ := bare.Program.Find("ed")
+		e := c.(*widget.Editor)
+		if e.Wrap() != tuiwidget.WrapNone || e.LineNumbers() || e.Ruler() != 0 {
+			t.Errorf("defaults: wrap %v, lineNumbers %v, ruler %d; want WrapNone, false, 0", e.Wrap(), e.LineNumbers(), e.Ruler())
+		}
+	})
+}
