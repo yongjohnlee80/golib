@@ -145,3 +145,22 @@ func abs32(f float32) float32 {
 	}
 	return f
 }
+
+// Frontmatter still being written (no closing line) is frontmatter to the end, as Raw reads it:
+// a quiet block, its last line shown, and code to list editing.
+func TestUnclosedFrontmatterRunsToTheEnd(t *testing.T) {
+	doc := "---\ntitle: x\n- item"
+	bl, _ := lookLay(t, doc, 1)
+	if len(bl.Lines) != 3 || bl.Background.A == 0 {
+		t.Fatalf("unclosed frontmatter laid out as %d lines, background %v", len(bl.Lines), bl.Background)
+	}
+	if bl.Lines[2].Spans[0].Hidden {
+		t.Error("an unclosed frontmatter's last line hidden as if it closed it")
+	}
+	if !NewMarkdownRenderer().InCode(strings.Split(doc, "\n"), 2) {
+		t.Error("list editing allowed in unclosed frontmatter")
+	}
+	if end, closed := frontmatterEnd(strings.Split(doc, "\n")); end != 3 || closed {
+		t.Errorf("frontmatterEnd = %d, %v; want 3, false", end, closed)
+	}
+}
