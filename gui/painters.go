@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -104,7 +105,7 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		if !ok {
 			i = -1
 		}
-		drawLabel(c, b.Label(), i, labelFont(c), fg, keyColor(c, b.Label(), i, fg))
+		drawLabel(c, b.Label(), i, labelFont(c), fg, readableOn(keyColor(c, b.Label(), i, fg), fill, fg))
 	}), tui.ScopeSubtree, true
 }
 
@@ -134,6 +135,16 @@ func keyColor(c Canvas, label string, key int, fg color.NRGBA) color.NRGBA {
 		}
 	}
 	return fg
+}
+
+// readableOn is key, the mnemonic's colour, where it reads on fill, else the label's fg: a theme's
+// accent picked for the button's surface (a red) vanished on a focused button's fill (a brown).
+// The underline still marks the key, as a lit menu row's does.
+func readableOn(key, fill, fg color.NRGBA) color.NRGBA {
+	if r, ok := style.ContrastRatio(style.RGB(key.R, key.G, key.B), style.RGB(fill.R, fill.G, fill.B)); ok && r < 3 {
+		return fg
+	}
+	return key
 }
 
 // drawLabel draws label centred in c, with cluster key (the button's mnemonic; -1 for none)
