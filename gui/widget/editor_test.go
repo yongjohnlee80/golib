@@ -1,0 +1,388 @@
+package widget
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/tui"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+)
+
+// nativeTB is a TestBackend that hosts native views: it records each frame's placements.
+type nativeTB struct {
+	*tui.TestBackend
+	mu     sync.Mutex
+	placed []tui.NativePlacement
+}
+
+func (n *nativeTB) PlaceNatives(ps []tui.NativePlacement) {
+	n.mu.Lock()
+	n.placed = append([]tui.NativePlacement(nil), ps...)
+	n.mu.Unlock()
+}
+
+type edHarness struct {
+	t    *testing.T
+	app  *tui.App
+	tb   *tui.TestBackend
+	sh   *shell
+	e    *Editor
+	cell gui.Size
+}
+
+// shell is the test's root: it holds the widget under test and counts the barrier key, which no
+// widget consumes, so its arrival says every event before it was handled.
+type shell struct {
+	child    tui.Component
+	ctx      *tui.Context
+	barriers atomic.Int64
+}
+
+const barrierKey = tui.KeyF12
+
+func (s *shell) Init(ctx *tui.Context) { s.ctx = ctx; ctx.Mount(s.child) }
+func (s *shell) Render(tui.Surface)    {}
+func (s *shell) Layout(c tui.Constraints) tui.Size {
+	sz := s.ctx.LayoutChild(s.child, tui.Tight(tui.Size{W: c.MaxW, H: c.MaxH}))
+	s.ctx.PlaceChild(s.child, tui.Rect{W: sz.W, H: sz.H})
+	return c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
+}
+func (s *shell) HandleEvent(ev tui.Event) bool {
+	if k, ok := ev.(tui.KeyEvent); ok && k.Code == barrierKey {
+		s.barriers.Add(1)
+		return true
+	}
+	return false
+}
+
+// barrier waits until every event injected before it was handled.
+func (h *edHarness) barrier() {
+	h.t.Helper()
+	want := h.sh.barriers.Load() + 1
+	if err := h.tb.Inject(tui.KeyEvent{Code: barrierKey}); err != nil {
+		h.t.Fatal(err)
+	}
+	h.until("the input barrier", func() bool { return h.sh.barriers.Load() >= want })
+}
+
+const cellW, cellH = 8, 16
+
+func startEditor(t *testing.T, w, h int, opts ...EditorOption) *edHarness {
+	t.Helper()
+	e := NewEditor(opts...)
+	tb := tui.NewTestBackend(w, h, tui.WithTestCapabilities(tui.Capabilities{NativeViews: true}))
+	sh := &shell{child: e}
+	app := tui.NewApp(sh, tui.WithBackend(&nativeTB{TestBackend: tb}))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go app.Run(ctx)
+	hh := &edHarness{t: t, app: app, tb: tb, sh: sh, e: e, cell: gui.Size{W: cellW, H: cellH}}
+	hh.until("a frame", func() bool { return tb.Flushes() > 0 })
+	hh.onLoop(func() { app.FocusInto(sh) })
+	hh.barrier()
+	hh.paint()
+	return hh
+}
+
+func (h *edHarness) onLoop(fn func()) {
+	h.t.Helper()
+	done := make(chan struct{})
+	h.app.Update(func() { fn(); close(done) })
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		h.t.Fatal("the loop did not run the update")
+	}
+}
+
+func (h *edHarness) until(what string, cond func() bool) {
+	h.t.Helper()
+	for range 300 {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h.t.Fatalf("timed out waiting for %s; screen:\n%s", what, h.tb.String())
+}
+
+// paint paints the body's native view on a recording canvas the body's size, on the loop, as a
+// gui backend would: the pixel layout then has a shaper and a width.
+func (h *edHarness) paint() *gui.RecordingCanvas {
+	h.t.Helper()
+	var rc *gui.RecordingCanvas
+	h.onLoop(func() {
+		rc = gui.NewRecordingCanvas(gui.Size{W: float32(h.e.body.w) * cellW, H: float32(h.e.body.h) * cellH}, h.cell)
+		v, _ := h.e.body.NativeView()
+		v.(gui.View).Paint(rc)
+	})
+	return rc
+}
+
+func (h *edHarness) keys(ks ...tui.KeyEvent) {
+	h.t.Helper()
+	for _, k := range ks {
+		if err := h.tb.Inject(k); err != nil {
+			h.t.Fatal(err)
+		}
+	}
+	h.barrier()
+}
+
+// bodyOrigin is the body's top-left cell on the screen: under the title row.
+func (h *edHarness) bodyOrigin() (int, int) { return 0, 1 }
+
+// clickAt presses and releases at a point of the body's view, in logical pixels.
+func (h *edHarness) clickAt(x, y float32) {
+	h.t.Helper()
+	ox, oy := h.bodyOrigin()
+	cx, cy := int(x/cellW), int(y/cellH)
+	m := tui.MouseEvent{Button: tui.MouseLeft, X: ox + cx, Y: oy + cy, SubX: x/cellW - float32(cx), SubY: y/cellH - float32(cy)}
+	m.Kind = tui.MousePress
+	_ = h.tb.Inject(m)
+	m.Kind = tui.MouseRelease
+	_ = h.tb.Inject(m)
+	h.barrier()
+}
+
+func (h *edHarness) line() (int, int) {
+	var ln, col int
+	h.onLoop(func() { ln, col = h.e.core.Line() })
+	return ln, col
+}
+
+// caretPoint is the middle of the caret's place at (line, col), in the body's view pixels.
+func (h *edHarness) caretPoint(line, col int) (float32, float32) {
+	var x, y float32
+	h.onLoop(func() {
+		r, ok := h.e.layout.caretAt(line, col)
+		if !ok {
+			h.t.Errorf("no caret at %d:%d", line, col)
+		}
+		x, y = padX+r.X+0.5, padY+r.Y-h.e.layout.scroll+r.H/2
+	})
+	return x, y
+}
+
+func key(r rune) tui.KeyEvent  { return tui.KeyEvent{Code: r} }
+func ctrl(r rune) tui.KeyEvent { return tui.KeyEvent{Code: r, Mods: tui.ModCtrl} }
+func code(c rune) tui.KeyEvent { return tui.KeyEvent{Code: c} }
+func text(s string) (out []tui.KeyEvent) {
+	for _, r := range s {
+		out = append(out, key(r))
+	}
+	return out
+}
+
+// One key script gives the same text, cursor and mode on the tui Editor and the gui Editor in Raw.
+func TestKeyScriptMatchesTheTuiEditor(t *testing.T) {
+	initial := "alpha beta\ngamma\ndelta epsilon zeta\nx"
+	script := append([]tui.KeyEvent{}, text("ji")...)
+	script = append(script, code(tui.KeyEscape))
+	script = append(script, text("llvlly")...)
+	script = append(script, text("Gp")...)
+	script = append(script, key('u'), ctrl('r'))
+	script = append(script, text("gg2jdd")...)
+	script = append(script, text("kkllljjk")...)
+	script = append(script, text("3x")...)
+	script = append(script, key('i'))
+	script = append(script, text("ok")...)
+	script = append(script, code(tui.KeyEscape))
+
+	g := startEditor(t, 60, 12, WithCore(tuiwidget.CoreInitialText(initial), tuiwidget.CoreSelection(true), tuiwidget.CoreYank(true), tuiwidget.CoreUndo(true)))
+	g.keys(script...)
+
+	te := tuiwidget.NewEditor(tuiwidget.WithInitialText(initial), tuiwidget.WithSelection(true), tuiwidget.WithYank(true), tuiwidget.WithUndo(true))
+	tb := tui.NewTestBackend(60, 12)
+	tsh := &shell{child: te}
+	app := tui.NewApp(tsh, tui.WithBackend(tb))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go app.Run(ctx)
+	th := &edHarness{t: t, app: app, tb: tb, sh: tsh}
+	th.until("a frame", func() bool { return tb.Flushes() > 0 })
+	th.onLoop(func() { app.FocusInto(tsh) })
+	th.barrier()
+	th.keys(script...)
+
+	var gv, tv string
+	var gl, gc, tl, tc int
+	var gm, tm tuiwidget.EditorMode
+	g.onLoop(func() { gv, gm = g.e.core.Value(), g.e.core.Mode(); gl, gc = g.e.core.Line() })
+	th.onLoop(func() { tv, tm = te.Value(), te.Mode(); tl, tc = te.Line() })
+	if gv == initial {
+		t.Fatalf("the script changed nothing: %q", gv)
+	}
+	t.Logf("both editors: %q at %d:%d", gv, gl, gc)
+	if gv != tv || gl != tl || gc != tc || gm != tm {
+		t.Fatalf("gui Editor: %q at %d:%d mode %v\ntui Editor: %q at %d:%d mode %v", gv, gl, gc, gm, tv, tl, tc, tm)
+	}
+}
+
+// A click lands on the cluster under it, in pixels: mid-line, at a line's end, on a wrapped row.
+func TestClicksLandOnTheirClustersInRaw(t *testing.T) {
+	long := strings.Repeat("word ", 30)
+	h := startEditor(t, 40, 12, WithCore(tuiwidget.CoreInitialText("hello world\n"+long+"\nend")))
+	// In Normal mode a click past a line's end lands on its last cluster, as the tui Editor's does.
+	for _, c := range []struct{ line, col, want int }{{0, 3, 3}, {0, 11, 10}, {1, 0, 0}, {2, 1, 1}, {2, 3, 2}} {
+		x, y := h.caretPoint(c.line, c.col)
+		h.clickAt(x, y)
+		if ln, col := h.line(); ln != c.line || col != c.want {
+			t.Errorf("click at the caret place of %d:%d landed on %d:%d, want %d:%d", c.line, c.col, ln, col, c.line, c.want)
+		}
+	}
+	// the long line wraps: its second row starts at a cluster past the first row's end
+	var rows int
+	h.onLoop(func() { rows = len(h.e.layout.lay(h.e.layout.blockOf(1), nil).bl.Lines[0].Para.Lines) })
+	if rows < 2 {
+		t.Fatalf("the long line did not wrap: %d rows", rows)
+	}
+	var wrapCol int
+	h.onLoop(func() {
+		p := h.e.layout.lay(h.e.layout.blockOf(1), nil).bl.Lines[0].Para
+		wrapCol = clusters(long[:p.Lines[1].Frags[0].From])
+	})
+	x, y := h.caretPoint(1, wrapCol+2)
+	h.clickAt(x, y)
+	if ln, col := h.line(); ln != 1 || col != wrapCol+2 {
+		t.Errorf("a click on the wrapped row landed on %d:%d, want 1:%d", ln, col, wrapCol+2)
+	}
+}
+
+func spansOfLine(h *edHarness, ln int) []flow.Span {
+	var out []flow.Span
+	h.onLoop(func() {
+		lb := h.e.layout.lay(h.e.layout.blockOf(ln), nil)
+		for _, ll := range lb.bl.Lines {
+			if len(ll.Spans) > 0 && ll.Spans[0].Line == ln {
+				out = ll.Spans
+			}
+		}
+	})
+	return out
+}
+
+func TestRenderedHidesMarksOffTheCursorAndRevealsThemOnIt(t *testing.T) {
+	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nplain *em* **strong** `code` [link](x)\n```go\nx := 1\n```\nlast")))
+	h.paint()
+
+	head := spansOfLine(h, 1)
+	if len(head) < 2 || !head[0].Hidden || head[0].Text != "## " {
+		t.Fatalf("heading marks not hidden: %+v", head)
+	}
+	if head[1].Font.Size <= h.e.layout.th.Prose.Size || !head[1].Font.Bold {
+		t.Errorf("h2 at %v, text at %v: want larger and bold", head[1].Font.Size, h.e.layout.th.Prose.Size)
+	}
+
+	in := spansOfLine(h, 2)
+	var em, strong, codeSp, link, hiddenStars bool
+	for _, s := range in {
+		switch {
+		case s.Hidden && strings.Trim(s.Text, "*`[]()x") == "":
+			hiddenStars = true
+		case s.Text == "em" && s.Font.Italic:
+			em = true
+		case s.Text == "strong" && s.Font.Bold:
+			strong = true
+		case s.Text == "code" && s.Background.A > 0:
+			codeSp = true
+		case s.Text == "link" && s.Underline:
+			link = true
+		}
+	}
+	if !em || !strong || !codeSp || !link || !hiddenStars {
+		t.Errorf("inline styles: em %v strong %v code %v link %v marks hidden %v\n%+v", em, strong, codeSp, link, hiddenStars, in)
+	}
+
+	var fence BlockLayout
+	h.onLoop(func() { fence = h.e.layout.lay(h.e.layout.blockOf(4), nil).bl })
+	if fence.Background.A == 0 || len(fence.Lines) != 3 {
+		t.Errorf("the fenced block: background %v, %d lines", fence.Background, len(fence.Lines))
+	}
+
+	// a click at the heading's left edge lands past its hidden marks, on its text
+	x, y := h.caretPoint(1, 3)
+	h.clickAt(padX+0.5, y)
+	if ln, col := h.line(); ln != 1 || col != 3 {
+		t.Errorf("click at the heading's start landed on %d:%d, want 1:3 (x %v)", ln, col, x)
+	}
+	// the cursor's line now shows its source: no hidden spans, monospace
+	h.paint()
+	for _, s := range spansOfLine(h, 1) {
+		if s.Hidden || s.Font != h.e.layout.th.Mono {
+			t.Fatalf("the cursor's line is not Raw: %+v", s)
+		}
+	}
+	// and the line it left is rendered again
+	h.keys(key('j'))
+	h.paint()
+	if s := spansOfLine(h, 1); len(s) < 2 || !s[0].Hidden {
+		t.Errorf("the heading left by the cursor shows its marks: %+v", s)
+	}
+}
+
+func TestModeSwitching(t *testing.T) {
+	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("# hi")))
+	mode := func() EditorMode {
+		var m EditorMode
+		h.onLoop(func() { m = h.e.Mode() })
+		return m
+	}
+	if mode() != Raw {
+		t.Fatal("the default mode is not Raw")
+	}
+	h.keys(ctrl('t'))
+	if mode() != Rendered {
+		t.Fatal("Ctrl+T did not switch to Rendered")
+	}
+	// the title bar's switch: "[ Raw " starts at column 1
+	click := func(x int) {
+		_ = h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0})
+		h.barrier()
+	}
+	click(1 + 2)
+	if mode() != Raw {
+		t.Fatal("a click on Raw did not switch")
+	}
+	click(1 + len(switchRaw) + 3)
+	if mode() != Rendered {
+		t.Fatal("a click on Rendered did not switch")
+	}
+
+	plain := startEditor(t, 60, 8, WithCore(tuiwidget.CoreInitialText("x")))
+	plain.keys(ctrl('t'))
+	var m EditorMode
+	plain.onLoop(func() { m = plain.e.Mode() })
+	if m != Raw {
+		t.Fatal("Rendered without a renderer: the mode must stay Raw")
+	}
+}
+
+func TestNativePaintReportsTheCaret(t *testing.T) {
+	h := startEditor(t, 40, 6, WithCore(tuiwidget.CoreInitialText("abc\ndef")))
+	h.keys(key('j'), key('l'))
+	rc := h.paint()
+	texts := 0
+	for _, c := range rc.Calls {
+		if c.Op == "DrawText" {
+			texts++
+		}
+	}
+	if texts < 2 {
+		t.Errorf("drew %d texts, want both lines", texts)
+	}
+	var r gui.Rect
+	var ok bool
+	h.onLoop(func() { r, _, ok = bodyView{h.e.body}.Caret() })
+	wx, wy := h.caretPoint(1, 1)
+	if !ok || r.Y > wy || r.Y+r.H < wy || r.X > wx || r.X+r.W+1 < wx {
+		t.Errorf("caret %+v ok %v, want it over %v,%v", r, ok, wx, wy)
+	}
+}
