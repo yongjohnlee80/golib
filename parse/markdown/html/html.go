@@ -15,13 +15,18 @@ import (
 // Option configures Render.
 type Option func(*config)
 
-type config struct{ unsafe bool }
+type config struct{ unsafe, spans bool }
 
 // Unsafe passes raw HTML (HTML blocks and inline HTML) through as written, and writes every link and
 // image URL. By default raw HTML is escaped, and a URL whose scheme is not on the allowlist (http,
 // https, mailto, ftp, tel; data: only for raster images) is written empty, so a document from an
 // untrusted author renders as text rather than as markup and cannot link to script.
 func Unsafe() Option { return func(c *config) { c.unsafe = true } }
+
+// SourceSpans puts each block element's source bytes on it as data-src="start-end": p, h1–h6,
+// li, pre, blockquote, table and a callout's div. A view of the page can then speak in source
+// positions (scroll an editor and its preview together); the rest of the output is unchanged.
+func SourceSpans() Option { return func(c *config) { c.spans = true } }
 
 // Render writes doc as HTML.
 func Render(w io.Writer, doc *markdown.Document, opts ...Option) error {
@@ -40,6 +45,14 @@ type renderer struct {
 	cfg config
 	src []byte
 	out bytes.Buffer
+}
+
+// dataSrc is n's data-src attribute, with its leading space, when SourceSpans asked for them.
+func (r *renderer) dataSrc(n *markdown.Node) string {
+	if !r.cfg.spans {
+		return ""
+	}
+	return ` data-src="` + strconv.Itoa(n.Span.Start) + "-" + strconv.Itoa(n.Span.End) + `"`
 }
 
 // cr starts a new line unless the output already ends one.
@@ -73,14 +86,14 @@ func (r *renderer) block(n *markdown.Node) {
 			return
 		}
 		r.cr()
-		r.out.WriteString("<p>")
+		r.out.WriteString("<p" + r.dataSrc(n) + ">")
 		r.inlines(n)
 		r.out.WriteString("</p>")
 		r.cr()
 	case markdown.KindHeading:
 		r.cr()
 		tag := "h" + strconv.Itoa(n.Level)
-		r.out.WriteString("<" + tag + ">")
+		r.out.WriteString("<" + tag + r.dataSrc(n) + ">")
 		r.inlines(n)
 		r.out.WriteString("</" + tag + ">")
 		r.cr()
@@ -94,7 +107,7 @@ func (r *renderer) block(n *markdown.Node) {
 			return
 		}
 		r.cr()
-		r.out.WriteString("<blockquote>")
+		r.out.WriteString("<blockquote" + r.dataSrc(n) + ">")
 		r.cr()
 		r.children(n)
 		r.cr()
@@ -118,7 +131,7 @@ func (r *renderer) block(n *markdown.Node) {
 		r.cr()
 	case markdown.KindItem:
 		r.cr()
-		r.out.WriteString("<li>")
+		r.out.WriteString("<li" + r.dataSrc(n) + ">")
 		if n.Checked != nil {
 			// a GFM task list item: the checkbox, then the item's content
 			if *n.Checked {
@@ -132,7 +145,7 @@ func (r *renderer) block(n *markdown.Node) {
 		r.cr()
 	case markdown.KindCodeBlock:
 		r.cr()
-		r.out.WriteString("<pre><code")
+		r.out.WriteString("<pre" + r.dataSrc(n) + "><code")
 		if lang := firstWord(n.Info); len(lang) > 0 {
 			r.out.WriteString(` class="language-`)
 			r.escape(lang)
@@ -175,7 +188,7 @@ func wikiHref(t *markdown.Target) []byte {
 func (r *renderer) callout(bq *markdown.Node) {
 	r.cr()
 	typ := bytes.ToLower(bq.Callout.Type)
-	r.out.WriteString(`<div class="callout" data-callout="`)
+	r.out.WriteString(`<div class="callout"` + r.dataSrc(bq) + ` data-callout="`)
 	r.escape(typ)
 	r.out.WriteString(`"`)
 	if bq.Callout.Fold != 0 {
@@ -208,7 +221,7 @@ func (r *renderer) callout(bq *markdown.Node) {
 // cell's column alignment as an align attribute.
 func (r *renderer) table(t *markdown.Node) {
 	r.cr()
-	r.out.WriteString("<table>\n<thead>\n")
+	r.out.WriteString("<table" + r.dataSrc(t) + ">\n<thead>\n")
 	for row := t.FirstChild; row != nil; row = row.Next {
 		if row == t.FirstChild.Next {
 			r.out.WriteString("<tbody>\n")
