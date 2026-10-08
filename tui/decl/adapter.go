@@ -9,6 +9,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -56,6 +57,9 @@ type Adapter struct {
 	tree *decl.Tree
 	// app is the App the program runs on, once there is one (focus.go).
 	app *tui.App
+	// theme is the App's token theme from the root Window's palette (windowTheme), kept for an App
+	// that comes after the palette was read
+	theme *style.Theme
 
 	// nodes is the adapter's own record of what it built. It is keyed by the
 	// engine's NodeID, which is never reused, so an entry can never be confused
