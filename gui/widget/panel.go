@@ -37,6 +37,9 @@ type Panel struct {
 	from   tui.Rect  // the rect where the drag began
 	hover  control
 	barSt  style.Style
+	// the native bar's colours, from its last paint: what a leading widget draws in, so it sits
+	// on the bar rather than on the cells' reversed row
+	barText, barFill, barPage color.NRGBA
 }
 
 type panelState uint8
@@ -393,13 +396,27 @@ func (p *Panel) NativeView() (any, bool) {
 // NativeScope: the bar is the panel's own look, beneath its children.
 func (p *Panel) NativeScope() tui.NativeScope { return tui.ScopeChrome }
 
+// The bar is a surface of the page, not the cells' row: a terminal marks the bar by reversing
+// it, which in a window is a bright band across the panel. So the bar is the page colour around
+// the panel tinted a little toward the text, with a hairline under it and the title muted. The
+// text colour is whichever of the bar cells' colours stands off the page more, so a reversed or
+// a plain bar style both give it.
 func (p *Panel) paintBar(c gui.Canvas) {
 	cell := c.CellSize()
+	page := c.Backdrop()
 	fg, bg := c.CellColors(0, 0)
-	c.FillRect(gui.Rect{W: c.Size().W, H: cell.H}, gui.Solid(bg))
+	text := fg
+	if contrast(bg, page) > contrast(fg, page) {
+		text = bg
+	}
+	fill := mix(text, page, 0.06)
+	p.barText, p.barFill, p.barPage = text, fill, page
+	w := c.Size().W
+	c.FillRect(gui.Rect{W: w, H: cell.H}, gui.Solid(fill))
+	c.FillRect(gui.Rect{Y: cell.H - 1, W: w, H: 1}, gui.Solid(mix(text, page, 0.16)))
 	if p.title != "" {
-		t := c.Text().Layout(p.title, gui.Font{Size: cell.H * 0.62, Bold: true}, 0)
-		c.DrawText(t, gui.Pt(float32(p.titleX)*cell.W, (cell.H-t.Height)/2), gui.Solid(fg))
+		t := c.Text().Layout(p.title, gui.Font{Size: c.TextSize() * 0.92}, 0)
+		c.DrawText(t, gui.Pt(float32(p.titleX)*cell.W, (cell.H-t.Height)/2), gui.Solid(mix(text, page, 0.72)))
 	}
 	r := min(cell.H*0.32, cell.W*1.2)
 	for i, ctl := range p.controls() {
@@ -412,6 +429,10 @@ func (p *Panel) paintBar(c gui.Canvas) {
 		}
 	}
 }
+
+// BarColors are the native bar's text, fill and page colours from its last paint: a widget on
+// the bar (TitleLeading) draws in them. Zero before the first paint.
+func (p *Panel) BarColors() (text, fill, page color.NRGBA) { return p.barText, p.barFill, p.barPage }
 
 var (
 	_ tui.NativeReporter = (*Panel)(nil)

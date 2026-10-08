@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
@@ -128,5 +129,64 @@ func TestRulerAtItsColumn(t *testing.T) {
 	h.onLoop(func() { h.e.SetMode(Raw); h.e.SetRuler(0) })
 	if guide(h.paint()) {
 		t.Error("SetRuler(0) left the guide")
+	}
+}
+
+// The native switch draws each label inside the cells HandleEvent hit-tests for it, the current
+// one in the bar's text colour and the other muted; Rendered unavailable is fainter still.
+func TestModeSwitchSegmentsSitOnTheirHitCells(t *testing.T) {
+	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("# hi")))
+	w := len(switchRaw) + len(switchSep) + len(switchRendered)
+	labels := func() []gui.PaintCall { // Raw's, then Rendered's
+		var out []gui.PaintCall
+		h.onLoop(func() {
+			rc := gui.NewRecordingCanvas(gui.Size{W: float32(w) * cellW, H: cellH}, h.cell)
+			rc.Colors = func(int, int) (fg, bg color.NRGBA) {
+				return color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}, color.NRGBA{A: 0xff}
+			}
+			h.e.sw.paint(rc)
+			for _, c := range rc.Calls {
+				if c.Op == "DrawText" {
+					out = append(out, c)
+				}
+			}
+		})
+		return out
+	}
+	mid := func(c gui.PaintCall) float32 { return c.Rect.X + c.Rect.W/2 }
+	l := labels()
+	if len(l) != 2 {
+		t.Fatalf("%d labels drawn, want 2", len(l))
+	}
+	raw, ren := l[0], l[1]
+	if m := mid(raw); m < 0 || m >= float32(len(switchRaw))*cellW {
+		t.Errorf("Raw drawn at x %v, outside its hit cells [0, %d)", m, len(switchRaw))
+	}
+	if m := mid(ren); m <= float32(len(switchRaw)+1)*cellW || m >= float32(w)*cellW {
+		t.Errorf("Rendered drawn at x %v, outside its hit cells", m)
+	}
+	if raw.Brush.Color == ren.Brush.Color {
+		t.Error("the current and the other segment drawn alike")
+	}
+	h.onLoop(func() { h.e.SetMode(Rendered) })
+	l2 := labels()
+	if l2[1].Brush.Color != raw.Brush.Color {
+		t.Errorf("Rendered current drawn %v, want the current colour %v", l2[1].Brush.Color, raw.Brush.Color)
+	}
+}
+
+// The text is the window's text size (Canvas.TextSize), not a fraction of the cell's height.
+func TestTextAtTheWindowsTextSize(t *testing.T) {
+	h := startEditor(t, 60, 8, WithCore(tuiwidget.CoreInitialText("body")))
+	var mono, prose float32
+	h.onLoop(func() {
+		rc := gui.NewRecordingCanvas(gui.Size{W: float32(h.e.body.w) * cellW, H: float32(h.e.body.h) * cellH}, h.cell)
+		rc.TextPx = 20
+		v, _ := h.e.body.NativeView()
+		v.(gui.View).Paint(rc)
+		mono, prose = h.e.layout.th.Mono.Size, h.e.layout.th.Prose.Size
+	})
+	if mono != 20 || prose != 21 {
+		t.Errorf("mono %v, prose %v at a 20px window text size; want 20 and 21", mono, prose)
 	}
 }

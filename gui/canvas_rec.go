@@ -31,6 +31,8 @@ type RecordingCanvas struct {
 	Content func(col, row int) string
 	// Around answers Backdrop.
 	Around color.NRGBA
+	// TextPx answers TextSize; 0: the cell's height over the default font's line height.
+	TextPx float32
 
 	root   *RecordingCanvas
 	off    Point
@@ -62,6 +64,15 @@ func (c *RecordingCanvas) Size() Size        { return c.size }
 func (c *RecordingCanvas) Scale() float32    { return 1 }
 func (c *RecordingCanvas) Text() *TextShaper { return c.shaper }
 func (c *RecordingCanvas) CellSize() Size    { return c.cell }
+
+// TextSize answers TextPx when set, else the cell's height at the line height the default cell
+// font gives (about 1.2 times its size).
+func (c *RecordingCanvas) TextSize() float32 {
+	if c.root.TextPx > 0 {
+		return c.root.TextPx
+	}
+	return c.cell.H / 1.2
+}
 
 func (c *RecordingCanvas) FillRect(r Rect, b Brush) {
 	c.rec(PaintCall{Op: "FillRect", Rect: r, Brush: b})

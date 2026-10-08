@@ -80,7 +80,7 @@ func WithPanel(opts ...PanelOption) EditorOption {
 	return func(c *editorConfig) { c.panel = append(c.panel, opts...) }
 }
 
-// WithFontSize sets the text's size in logical pixels; 0 follows the cells' height.
+// WithFontSize sets the text's size in logical pixels; 0 is the window's text size.
 func WithFontSize(px float32) EditorOption { return func(c *editorConfig) { c.fontSize = px } }
 
 // WithWrap selects how the Raw view shows a line wider than the editor: tuiwidget.WrapNone (the
@@ -312,11 +312,11 @@ func (e *Editor) SetPageStyle(st style.Style) {
 }
 
 // theme is what the text is drawn with: the colours of the cells under it, the tui theme's
-// accent and muted text, and fonts sized to the cells unless WithFontSize set one.
-func (e *Editor) theme(fg, bg color.NRGBA, cell gui.Size, th *style.Theme) Theme {
+// accent and muted text, and fonts at the window's text size (textPx) unless WithFontSize set one.
+func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Theme {
 	size := e.fontSize
 	if size <= 0 {
-		size = max(cell.H*0.72, 10)
+		size = max(textPx, 10)
 	}
 	t := Theme{Text: fg, Background: bg,
 		Muted:          mix(fg, bg, 0.55),
@@ -379,6 +379,52 @@ func (s *modeSwitch) Render(sur tui.Surface) {
 	x := putString(sur, 0, 0, switchRaw, raw)
 	x = putString(sur, x, 0, switchSep, off)
 	putString(sur, x, 0, switchRendered, rendered)
+}
+
+// The native switch is a segmented control on the bar: a pill with a hairline border, split at
+// the separator's cell, the current segment filled with a soft tint of the accent and its label
+// in the text colour, the other muted. Rendered unavailable is fainter still. The segments sit on
+// the cells HandleEvent hit-tests, so a click lands where it is drawn.
+func (s *modeSwitch) NativeView() (any, bool)      { return gui.ViewFunc(s.paint), true }
+func (s *modeSwitch) NativeScope() tui.NativeScope { return tui.ScopeSubtree }
+
+func (s *modeSwitch) paint(c gui.Canvas) {
+	text, fill, page := s.e.panel.BarColors()
+	if text == (color.NRGBA{}) { // the bar not painted yet: the page and the cells' text
+		page = c.Backdrop()
+		text, _ = c.CellColors(0, 0)
+		fill = mix(text, page, 0.06)
+	}
+	accent := s.e.layout.th.Accent
+	if accent == (color.NRGBA{}) {
+		accent = color.NRGBA{R: 0x5c, G: 0x9c, B: 0xf5, A: 0xff}
+	}
+	cell, size := c.CellSize(), c.Size()
+	c.FillRect(gui.Rect{W: size.W, H: size.H}, gui.Solid(fill))
+	h := cell.H * 0.74
+	pill := gui.Rect{X: 0.5, Y: (cell.H - h) / 2, W: size.W - 1, H: h}
+	split := (float32(len(switchRaw)) + 0.5) * cell.W
+	segs := [2]gui.Rect{{X: pill.X, Y: pill.Y, W: split - pill.X, H: h}, {X: split, Y: pill.Y, W: pill.X + pill.W - split, H: h}}
+	cur := 0
+	if s.e.mode == Rendered {
+		cur = 1
+	}
+	c.Sub(segs[cur]).FillRRect(gui.Rect{X: pill.X - segs[cur].X, Y: 0, W: pill.W, H: h}, h/2, gui.Solid(mix(accent, page, 0.30)))
+	c.StrokeRRect(pill, h/2, 1, gui.Solid(mix(text, page, 0.22)))
+	c.FillRect(gui.Rect{X: split, Y: pill.Y + h*0.2, W: 1, H: h * 0.6}, gui.Solid(mix(text, page, 0.22)))
+	f := gui.Font{Size: c.TextSize() * 0.86}
+	for i, label := range [2]string{"Raw", "Rendered"} {
+		col := mix(text, page, 0.58)
+		switch {
+		case i == cur:
+			col = text
+		case i == 1 && !s.e.canRender():
+			col = mix(text, page, 0.30)
+		}
+		t := c.Text().Layout(label, f, 0)
+		r := segs[i]
+		c.DrawText(t, gui.Pt(r.X+(r.W-t.Width)/2, r.Y+(h-t.Height)/2), gui.Solid(col))
+	}
 }
 
 // HandleEvent switches the mode on a click of a segment.

@@ -212,7 +212,7 @@ func (l *pixelLayout) monoFont() gui.Font {
 	if l.th.Mono.Size > 0 {
 		return l.th.Mono
 	}
-	return gui.Font{Family: gui.MonospaceFamily(), Size: max(l.cell.H*0.72, 12)}
+	return gui.Font{Family: gui.MonospaceFamily(), Size: max(l.cell.H/1.2, 10)} // before the first paint: about the cells' font
 }
 
 func (l *pixelLayout) lineHeight(f gui.Font) float32 { return max(f.Size*1.2, 1) }

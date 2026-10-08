@@ -68,3 +68,13 @@ func mix(a, b color.NRGBA, t float32) color.NRGBA {
 	f := func(x, y uint8) uint8 { return uint8(float32(x)*t + float32(y)*(1-t)) }
 	return color.NRGBA{R: f(a.R, b.R), G: f(a.G, b.G), B: f(a.B, b.B), A: 0xff}
 }
+
+// contrast is how far apart two colours read: the difference of their luminance.
+func contrast(a, b color.NRGBA) float64 {
+	l := func(c color.NRGBA) float64 { return 0.2126*float64(c.R) + 0.7152*float64(c.G) + 0.0722*float64(c.B) }
+	d := l(a) - l(b)
+	if d < 0 {
+		return -d
+	}
+	return d
+}

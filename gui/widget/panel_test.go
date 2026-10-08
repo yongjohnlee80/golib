@@ -2,6 +2,7 @@ package widget_test
 
 import (
 	"context"
+	"image/color"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -209,4 +210,37 @@ func TestPanelBoundsWhileMaximized(t *testing.T) {
 	h.mouse(tui.MousePress, 2+30-3+1, 2)
 	h.mouse(tui.MouseRelease, 2+30-3+1, 2)
 	h.until("the whole screen", func() bool { return h.bounds() == tui.Rect{W: 60, H: 20} })
+}
+
+// The bar is a surface of the page around the panel, not the cells' reversed row: on a dark page
+// with a reversed bar style (white cells), the bar stays dark and the title is a muted light.
+func TestPanelBarIsAPageSurface(t *testing.T) {
+	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"))
+	v, _ := p.NativeView()
+	white := color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}
+	page := color.NRGBA{R: 0x1e, G: 0x1e, B: 0x24, A: 0xff}
+	rc := gui.NewRecordingCanvas(gui.Size{W: 240, H: 80}, gui.Size{W: 8, H: 16})
+	rc.Around = page
+	rc.Colors = func(int, int) (fg, bg color.NRGBA) { return page, white } // reversed
+	v.(gui.View).Paint(rc)
+	lum := func(c color.NRGBA) int { return int(c.R) + int(c.G) + int(c.B) }
+	for _, c := range rc.Calls {
+		if c.Op == "FillRect" && c.Rect.Y == 0 && c.Rect.W == 240 {
+			if lum(c.Brush.Color)-lum(page) > 60 {
+				t.Errorf("bar fill %v is a band off the page %v", c.Brush.Color, page)
+			}
+		}
+		if c.Op == "DrawText" {
+			if col := c.Brush.Color; lum(col) <= lum(page) || col == white {
+				t.Errorf("title %v: want a muted light on the dark page, not the page or full white", col)
+			}
+			if c.Text.Height > 16*0.92*1.4 {
+				t.Errorf("title %vpx tall: not at the window's text size", c.Text.Height)
+			}
+		}
+	}
+	text, fill, pg := p.BarColors()
+	if text != white || pg != page || fill == white {
+		t.Errorf("BarColors %v %v %v: want the text white, the page %v, a fill off the page", text, fill, pg, page)
+	}
 }
