@@ -16,12 +16,18 @@ import (
 //   - Tab anywhere on an item nests it one level, by its marker's width; Shift+Tab un-nests it.
 //
 // Nothing else changes: off a list item, and with a selection, the keys do what they always do.
+// A host whose document has lines that only look like items (Markdown's code blocks) says which
+// lines are prose with SetListEditingWhere.
 
 // CoreListEditing turns list editing on or off.
 func CoreListEditing(on bool) CoreOption { return func(c *EditorCore) { c.listEditing = on } }
 
 // SetListEditing turns list editing on or off.
 func (c *EditorCore) SetListEditing(on bool) { c.listEditing = on }
+
+// SetListEditingWhere limits list editing to the lines where reports true: a Markdown host
+// leaves its code blocks out, where "- x" is code. nil: every line.
+func (c *EditorCore) SetListEditingWhere(where func(ln int) bool) { c.listWhere = where }
 
 // ListEditing reports whether list editing is on.
 func (c *EditorCore) ListEditing() bool { return c.listEditing }
@@ -112,7 +118,7 @@ func (c *EditorCore) listKey(k tui.KeyEvent) bool {
 	}
 	line := b.lines[b.ln]
 	it, ok := readListItem(line)
-	if !ok {
+	if !ok || (c.listWhere != nil && !c.listWhere(b.ln)) {
 		return false
 	}
 	start := len(it.indent) + len(it.marker) // in clusters: both are ASCII or tabs
