@@ -10,12 +10,23 @@ type drawerWindowTarget struct {
 	bounds    tui.Rect
 	preview   *tui.Size
 	maximized bool
+	// moving is a movable Drawer's move or resize in progress: the rectangle it shows at until the
+	// drag ends (placed) or is cancelled
+	moving *tui.Rect
 }
 
 func (g *drawerWindowTarget) Bounds() tui.Rect { return g.bounds }
 func (g *drawerWindowTarget) Area() tui.Rect   { return tui.Rect{W: g.owner.win.W, H: g.owner.win.H} }
 func (g *drawerWindowTarget) RequestedBounds() tui.Rect {
 	n := g.owner
+	if n.movable && !g.maximized {
+		switch {
+		case g.moving != nil:
+			return *g.moving
+		case n.floating:
+			return n.floatRect()
+		}
+	}
 	sz := n.cells(n.size, n.length, n.win)
 	if g.maximized {
 		sz = n.win
@@ -42,6 +53,18 @@ func (g *drawerWindowTarget) SetBounds(r tui.Rect) bool {
 	if n.win.W <= 0 || n.win.H <= 0 || g.maximized {
 		return false
 	}
+	if n.movable { // anywhere in the Window, at least three cells each way
+		area := n.area()
+		r.W, r.H = max(r.W, 3), max(r.H, 3)
+		r.W, r.H = min(r.W, area.W), min(r.H, area.H)
+		r.X, r.Y = min(max(r.X, 0), area.W-r.W), min(max(r.Y, 0), area.H-r.H)
+		if r == g.RequestedBounds() {
+			return false
+		}
+		g.moving = &r
+		n.place()
+		return true
+	}
 	want := tui.Size{W: min(max(r.W, 0), n.win.W), H: min(max(r.H, 0), n.win.H)}
 	size, length := n.percentOf(want, n.win)
 	want = n.cells(size, length, n.win)
@@ -56,15 +79,18 @@ func (g *drawerWindowTarget) SetBounds(r tui.Rect) bool {
 func (g *drawerWindowTarget) Checkpoint() func() {
 	n := g.owner
 	size, length, edge, maximized := n.size, n.length, n.edge, g.maximized
+	floating, frac := n.floating, n.frac
 	return func() {
 		n.size, n.length, n.edge = size, length, edge
-		g.preview, g.maximized = nil, maximized
+		n.floating, n.frac = floating, frac
+		g.preview, g.maximized, g.moving = nil, maximized, nil
 		n.place()
 		n.frame.ctx.RequestLayout()
 	}
 }
 func (g *drawerWindowTarget) ToggleMaximize() bool {
-	g.maximized = !g.maximized
+	g.maximized, g.moving = !g.maximized, nil
+	g.owner.place()
 	g.owner.frame.ctx.RequestLayout()
 	return true
 }
