@@ -327,3 +327,56 @@ func TestEditorContextMenu_TheBoxWearsTheMenusSurface(t *testing.T) {
 		t.Errorf("the menu's border corner on %+v, want the menu's surface %+v", bg, want)
 	}
 }
+
+// THE KEYBOARD OPENS IT TOO: Shift+F10 and the Menu key open the menu at the caret, as a right
+// press there would, below the caret's line.
+func TestEditorContextMenu_ShiftF10AndTheMenuKeyOpenItAtTheCaret(t *testing.T) {
+	for _, k := range []tui.KeyEvent{{Code: tui.KeyF10, Mods: tui.ModShift}, {Code: tui.KeyMenu}} {
+		h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+		h.inject(tui.KeyEvent{Code: 'j'}, tui.KeyEvent{Code: 'w'}) // Normal mode: to 2:8, "line"
+		h.settle()
+		h.inject(k)
+		h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
+		h.settle()
+		if x, y := panelCorner(t, h); x != 7 || y != 2 {
+			t.Errorf("%v: the panel's corner is at %d,%d; want 7,2, below the caret at 7,1:\n%s", k, x, y, h.grid())
+		}
+	}
+}
+
+// WITH THE MENU OFF the keys are the keyset's, as before: nothing opens, and they go on to the
+// editor's parents.
+func TestEditorContextMenu_OffTheKeysGoOn(t *testing.T) {
+	ed := widget.NewEditor(widget.WithInitialText("hello"))
+	sh := newShell(widget.NewOverlayHost(ed))
+	h := startApp(t, sh, 30, 6)
+	h.inject(click(0, 0))
+	h.settle()
+	h.inject(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift})
+	h.settle()
+	if menuOpen(h, ed) {
+		t.Fatal("the menu opened while it is off")
+	}
+	h.wantNotContains("Copy")
+	var opened bool
+	h.onLoop(func() { opened = ed.OpenContextMenu() })
+	if opened {
+		t.Error("OpenContextMenu opened a menu that is off")
+	}
+}
+
+// ONLY THE PRESS: a release or an unmodified F10 opens nothing.
+func TestEditorContextMenu_OnlyAPressedShiftF10(t *testing.T) {
+	for _, k := range []tui.KeyEvent{
+		{Code: tui.KeyF10, Mods: tui.ModShift, Kind: tui.KeyRelease},
+		{Code: tui.KeyF10},
+		{Code: tui.KeyF10, Mods: tui.ModShift | tui.ModCtrl},
+	} {
+		if widget.IsContextMenuKey(k) {
+			t.Errorf("%+v opens the context menu", k)
+		}
+	}
+	if !widget.IsContextMenuKey(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift | tui.ModNumLock}) {
+		t.Error("Num Lock stopped Shift+F10")
+	}
+}
