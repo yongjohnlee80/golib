@@ -63,6 +63,9 @@ func appTypes() []Type {
 				"dir":         setter("a Terminal", stringOf, (*widget.Terminal).SetDir),
 				"vimKeys":     setter("a Terminal", boolOf, (*widget.Terminal).SetVimKeys),
 				"themeColors": setter("a Terminal", boolOf, (*widget.Terminal).SetThemeColors),
+				// golib's: the contrast ratio (WCAG's) every foreground is raised to against its
+				// background, so a program's colours read on a light theme; 0 is off
+				"minimumContrast": setter("a Terminal", numberOf, (*widget.Terminal).SetMinimumContrast),
 			},
 			Methods: map[string]Method{
 				"start": NoArgMethod((*widget.Terminal).Start),
