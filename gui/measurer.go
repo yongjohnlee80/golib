@@ -34,7 +34,7 @@ func AcquireMeasurer(scale float32) (m Measurer, release func()) {
 	p := measurers.pools[scale]
 	if p == nil {
 		p = &sync.Pool{New: func() any {
-			return &measurer{t: &TextShaper{s: text.NewShaper(text.WithCollection(gofont.Collection())), scale: scale}}
+			return &measurer{t: NewTextShaper(scale)}
 		}}
 		measurers.pools[scale] = p
 	}
@@ -79,4 +79,10 @@ func (m *measurer) Wrap(s string, f Font, width float32) ([]string, Size) {
 		w = max(w, widthOf(line))
 	}
 	return lines, Size{W: w, H: float32(len(lines)) * f.Size * 1.2}
+}
+
+// NewTextShaper is a shaper of its own at scale (device pixels per logical pixel), for text laid
+// out away from a window: on a worker, or in a test. It loads its fonts, so make one and keep it.
+func NewTextShaper(scale float32) *TextShaper {
+	return &TextShaper{s: text.NewShaper(text.WithCollection(gofont.Collection())), scale: scale}
 }

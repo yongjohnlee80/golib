@@ -125,6 +125,31 @@ func TestTheKeyFollowsWidthAndTheme(t *testing.T) {
 	}
 }
 
+// askedAt is a DiagramHost that answers nothing and keeps what it was asked.
+type askedAt struct{ reqs []DiagramRequest }
+
+func (a *askedAt) Diagram(_ Diagrammer, _ Block, req DiagramRequest) DiagramAnswer {
+	a.reqs = append(a.reqs, req)
+	return DiagramAnswer{State: Declined}
+}
+
+// A fence asks for its diagram at the scale of the shaper it is laid out with, the window's; a
+// window moved to a screen of another scale asks again, under another key.
+func TestAFenceAsksAtTheWindowsScale(t *testing.T) {
+	r := NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))
+	lines := []string{"```mermaid", "flowchart TB", "A --> B", "```"}
+	host := &askedAt{}
+	for _, scale := range []float32{2, 1} {
+		r.LayOut(Block{From: 0, To: 4}, lines, 400, false, gui.NewTextShaper(scale), diagramTheme, host)
+	}
+	if len(host.reqs) != 2 || host.reqs[0].Scale != 2 || host.reqs[1].Scale != 1 {
+		t.Fatalf("asked %+v, want at scale 2, then 1", host.reqs)
+	}
+	if hashOf(host.reqs[0]) == hashOf(host.reqs[1]) {
+		t.Error("two scales share a key: a diagram measured at one would be drawn at the other")
+	}
+}
+
 // End to end: a gui Editor in its Rendered view, with the native chain, draws a flowchart fence as
 // its diagram: Pending at first, then, once the layout's ready reaches the loop, a picture.
 func TestTheEditorDrawsAFlowchart(t *testing.T) {
@@ -151,5 +176,39 @@ func TestTheEditorDrawsAFlowchart(t *testing.T) {
 	h.onLoop(func() { _, laid = h.e.layout.lay(h.e.layout.blockOf(1), nil).bl.Picture.(*mermaid.Laid) })
 	if !laid {
 		t.Error("the picture is not the native layout")
+	}
+}
+
+// scaledCanvas is a recording canvas whose text measures at another scale: a window on a HiDPI
+// screen, to the editor.
+type scaledCanvas struct {
+	*gui.RecordingCanvas
+	sh *gui.TextShaper
+}
+
+func (c scaledCanvas) Text() *gui.TextShaper { return c.sh }
+func (c scaledCanvas) Scale() float32        { return c.sh.Scale() }
+
+// A window moved to a screen of another scale lays its blocks out again, so a fence asks for its
+// diagram anew at the new scale rather than keeping one measured at the old.
+func TestTheEditorLaysOutAgainAtANewScale(t *testing.T) {
+	doc := "top\n```mermaid\nflowchart LR\n  A --> B\n```\nend"
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText(doc)))
+	host := func() *diagramSlot {
+		var s *diagramSlot
+		h.onLoop(func() { h.e.layout.lay(h.e.layout.blockOf(1), nil); s = h.e.layout.diagrams[1] })
+		return s
+	}
+	for _, scale := range []float32{1, 2} {
+		sh := gui.NewTextShaper(scale)
+		h.onLoop(func() {
+			rc := gui.NewRecordingCanvas(gui.Size{W: float32(h.e.body.w) * cellW, H: float32(h.e.body.h) * cellH}, h.cell)
+			v, _ := h.e.body.NativeView()
+			v.(gui.View).Paint(scaledCanvas{rc, sh})
+		})
+		if s := host(); s == nil || s.key.scale != scale {
+			t.Fatalf("at scale %g the fence's diagram slot is %+v, want one asked at %g", scale, s, scale)
+		}
 	}
 }

@@ -336,7 +336,8 @@ func (r *MarkdownRenderer) layFence(b Block, f fence, lines []string, opts flow.
 	if !inside && r.diagrams != nil && host != nil && f.info != "" {
 		src := strings.Join(lines[min(b.From+1, b.To):max(b.To-1, b.From+1)], "\n")
 		lang, _, _ := strings.Cut(f.info, " ")
-		a := host.Diagram(r.diagrams, b, DiagramRequest{Lang: lang, Src: src, Width: opts.Width, Scale: 1, Theme: th})
+		// at the shaper's scale: what a diagram measures is what the window draws
+		a := host.Diagram(r.diagrams, b, DiagramRequest{Lang: lang, Src: src, Width: opts.Width, Scale: t.Scale(), Theme: th})
 		// Ready, or Pending with the block's last picture: draw the picture. Otherwise the code.
 		if a.State != Declined && a.Pic != nil {
 			bl.Picture, bl.PictureSize, bl.Height = a.Pic, a.Size, a.Size.H

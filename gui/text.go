@@ -73,6 +73,9 @@ type Measured struct {
 	Ascent, Descent float32   // the font's, from the baseline
 }
 
+// Scale is the shaper's device pixels per logical pixel: what it measures at.
+func (t *TextShaper) Scale() float32 { return t.scale }
+
 // Measure shapes s in f on one line, as Layout(s, f, 0) shapes it, and reports each grapheme
 // cluster's position. A cluster inside a ligature (one glyph for several clusters, as "->" in a
 // coding font) gets a share of its width by runes. s holds no line break.

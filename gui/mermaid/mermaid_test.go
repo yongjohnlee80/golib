@@ -107,3 +107,25 @@ func TestANodesStyleIsDrawn(t *testing.T) {
 		t.Errorf("an unstyled node's fill %v, want the theme's", b.fill)
 	}
 }
+
+// Laid at a scale, every label fits its node as a shaper at that scale measures it: the window
+// draws at its own scale, so a diagram measured at another overflows its boxes.
+func TestLabelsFitTheirNodesAtTheirScale(t *testing.T) {
+	src := "flowchart LR\n  A[Interpolation of widths] --> B{Is it narrow enough?}\n  B --> C((Done here))"
+	for _, scale := range []float32{1, 1.25, 2} {
+		m, release := gui.AcquireMeasurer(scale)
+		l, err := Lay(context.Background(), src, 2000, testTheme, m)
+		release()
+		if err != nil {
+			t.Fatal(err)
+		}
+		sh := gui.NewTextShaper(scale)
+		for _, n := range l.nodes {
+			for _, line := range n.label.lines {
+				if w := sh.Layout(line, n.label.font, 0).Width; w > n.label.box.W+0.01 || n.label.box.W > n.box.W {
+					t.Errorf("at scale %g, %q is %v wide in a label %v wide, in a node %v wide", scale, line, w, n.label.box.W, n.box.W)
+				}
+			}
+		}
+	}
+}
