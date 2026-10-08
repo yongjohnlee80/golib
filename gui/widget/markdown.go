@@ -93,6 +93,16 @@ func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
 				end++
 			}
 			end = min(end+1, len(lines))
+		} else if indentedCode(lines[i]) && (i == 0 || isBlank(lines[i-1])) {
+			// an indented code block: it cannot interrupt a paragraph, so it starts at the top or
+			// after a blank line, and runs while lines stay indented or blank, its trailing
+			// blanks left out
+			for end < len(lines) && (indentedCode(lines[end]) || isBlank(lines[end])) {
+				end++
+			}
+			for end > i+1 && isBlank(lines[end-1]) {
+				end--
+			}
 		}
 		if end > from && i < to {
 			out = append(out, Block{From: max(i, from), To: min(end, to)})
@@ -107,6 +117,9 @@ func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursor
 	opts := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: th.Text}
 	if f, ok := openFence(lines[b.From]); ok {
 		return r.layFence(b, f, lines, opts, cursorInside, t, th, host)
+	}
+	if indentedCode(lines[b.From]) && (b.From == 0 || isBlank(lines[b.From-1])) {
+		return r.layIndented(b, lines, opts, t, th)
 	}
 	ln := b.From
 	var spans []flow.Span
@@ -161,6 +174,31 @@ func (r *MarkdownRenderer) layFence(b Block, f fence, lines []string, opts flow.
 	bl.Height = y
 	return bl
 }
+
+// layIndented lays an indented code block out as code: its lines as written, monospace, on the
+// code background. Nothing in it is Markdown, so a '#' there is never a heading.
+func (r *MarkdownRenderer) layIndented(b Block, lines []string, opts flow.Options, t *gui.TextShaper, th Theme) BlockLayout {
+	bl := BlockLayout{Background: th.CodeBackground}
+	var y float32
+	for ln := b.From; ln < b.To; ln++ {
+		spans := rawSpans(ln, lines[ln], th.Mono, nil)
+		p := flow.Lay(spans, opts, t)
+		bl.Lines = append(bl.Lines, LineLayout{Para: p, Spans: spans, Y: y})
+		y += p.Height
+	}
+	bl.Height = y
+	return bl
+}
+
+// indentedCode reports a line indented as code: four spaces or a tab before any text.
+func indentedCode(line string) bool {
+	if isBlank(line) {
+		return false
+	}
+	return strings.HasPrefix(line, "\t") || strings.HasPrefix(line, "    ")
+}
+
+func isBlank(line string) bool { return strings.TrimSpace(line) == "" }
 
 // mdAttr is how one byte of a line is drawn.
 type mdAttr struct {

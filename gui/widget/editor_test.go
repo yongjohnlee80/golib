@@ -473,3 +473,33 @@ func TestRenderedEnabledSwitch(t *testing.T) {
 	}
 }
 
+// A '#' inside a code block is code, never a heading: in a fenced block, an indented block and a
+// tilde fence the line keeps its marks, monospace, on the code background. A real heading beside
+// them still renders, and an indented line under a paragraph stays the paragraph's.
+func TestHashInACodeBlockIsNotAHeading(t *testing.T) {
+	doc := "# Real heading\n```\n# fenced hash\n```\n\n    # indented hash\n\n~~~\n## tilde hash\n~~~\npara\n    # not code\nend"
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText(doc)))
+	h.keys(key('G')) // the cursor on the last line, so every block above lays out rendered
+	h.paint()
+	if s := spansOfLine(h, 0); len(s) < 2 || !s[0].Hidden || !s[1].Font.Bold {
+		t.Fatalf("the real heading is not rendered: %+v", s)
+	}
+	for _, ln := range []int{2, 5, 8} {
+		for _, s := range spansOfLine(h, ln) {
+			if s.Hidden || s.Font.Bold || s.Font.Family != h.e.layout.th.Mono.Family {
+				t.Errorf("line %d (%q) inside a code block is drawn as Markdown: %+v", ln, s.Text, s)
+			}
+		}
+		var bg bool
+		h.onLoop(func() { bg = h.e.layout.lay(h.e.layout.blockOf(ln), nil).bl.Background.A > 0 })
+		if !bg {
+			t.Errorf("line %d's code block has no code background", ln)
+		}
+	}
+	var under BlockLayout
+	h.onLoop(func() { under = h.e.layout.lay(h.e.layout.blockOf(11), nil).bl })
+	if under.Background.A > 0 {
+		t.Error("an indented line right under a paragraph was laid out as a code block")
+	}
+}
