@@ -12,7 +12,7 @@ import (
 // last picture the block had.
 type diagramSlot struct {
 	key     diagramKey
-	to      int    // the block's end line, exclusive
+	to      int // the block's end line, exclusive
 	gen     uint64
 	cancel  context.CancelFunc
 	state   DiagramState
