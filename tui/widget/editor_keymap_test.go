@@ -87,7 +87,7 @@ func TestKeymapOverlayUnbind(t *testing.T) {
 		chord: ActUnbound,
 	}
 	ed := NewEditor(WithKeymap(overlay))
-	if act, ok := ed.keymap[chord]; ok {
+	if act, ok := ed.keys.keymap[chord]; ok {
 		t.Errorf("chord should be unbound, but got action %v", act)
 	}
 }
@@ -154,7 +154,7 @@ func TestInsertKeymapOverlayAndUnbind(t *testing.T) {
 		KeyChord{Mode: ModeInsert, Code: 'q', Ctrl: true}: ActUndo,
 	}
 	ed := NewEditor(WithKeymap(overlay))
-	if act, ok := ed.keymap[KeyChord{Mode: ModeInsert, Code: 'q', Ctrl: true}]; !ok || act != ActUndo {
+	if act, ok := ed.keys.keymap[KeyChord{Mode: ModeInsert, Code: 'q', Ctrl: true}]; !ok || act != ActUndo {
 		t.Fatalf("expected ModeInsert Ctrl+Q -> ActUndo, got (%v, %v)", act, ok)
 	}
 
@@ -162,7 +162,7 @@ func TestInsertKeymapOverlayAndUnbind(t *testing.T) {
 	stdWithUnbind := StandardKeymap()
 	stdWithUnbind[KeyChord{Mode: ModeInsert, Code: 'z', Ctrl: true}] = ActUnbound
 	edStd := NewEditor(WithKeymap(stdWithUnbind), WithModalEditing(false))
-	if _, ok := edStd.keymap[KeyChord{Mode: ModeInsert, Code: 'z', Ctrl: true}]; ok {
+	if _, ok := edStd.keys.keymap[KeyChord{Mode: ModeInsert, Code: 'z', Ctrl: true}]; ok {
 		t.Fatalf("expected Ctrl+Z to be unbound in edStd")
 	}
 }

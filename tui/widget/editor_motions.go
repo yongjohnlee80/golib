@@ -114,7 +114,7 @@ func (e *Editor) move(act Action, count int) {
 	const extend = false
 	apply := func(ln, col int) {
 		e.moveCursor(ln, col, extend)
-		if e.mode != ModeInsert {
+		if e.keys.mode != ModeInsert {
 			e.clampNormal()
 		}
 		e.ensureVisible()
@@ -151,7 +151,7 @@ func (e *Editor) move(act Action, count int) {
 	case ActLineEnd:
 		e.desired = -1
 		col := e.normalMax(e.ln)
-		if e.mode == ModeInsert {
+		if e.keys.mode == ModeInsert {
 			col = len(e.lineClusters(e.ln))
 		}
 		apply(e.ln, col)

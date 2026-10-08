@@ -3,7 +3,6 @@ package widget
 import (
 	"fmt"
 	"github.com/yongjohnlee80/golib/highlight"
-	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -182,38 +181,18 @@ type Editor struct {
 	numberColor   style.Color
 	numberColored bool
 
-	styles  TextInputStyles
-	keymap  Keymap
-	unbound map[KeyChord]bool // explicitly unbound chords (via ActUnbound)
-	// overlay is every host-supplied binding, kept apart from the profile's
-	// base table so a keyset switch can replay it. A host that rebinds a key
-	// means it for the editor, not for one profile of it: without this, the
-	// binding would survive or vanish depending on the order the options ran
-	// in, and would vanish outright on [Editor.SetKeyset].
-	overlay Keymap
+	styles TextInputStyles
 
-	mode EditorMode
+	// keys is the mode, the keyset's keymap, and the input pending between keys (editorkeys.go).
+	keys keyDispatch
 
-	// Normal/Visual command state.
-	count        int      // pending count; 0 = none
-	pendingAct   Action   // pending double-key prefix action; ActUnbound = none
-	pendingChord KeyChord // the chord that armed it (completion = same chord)
-	pendingCount int      // count captured when the prefix was armed
-	vAnchor      taPos    // visual anchor (chord start of the selection)
-
-	// Escape chord (Insert mode).
-	chord       []rune // exactly two runes, or nil = disabled
-	pendingRune rune   // held first chord rune; 0 = none
-	chordCancel func() // cancels the addressed tick
+	vAnchor taPos // visual anchor (chord start of the selection)
 
 	// Register & undo.
 	reg  editRegister // the unnamed register and the yank policy (editregister.go)
 	hist editHistory  // undo and redo (edithistory.go)
 
-	chordTimeout time.Duration
-
 	// Configurable capabilities.
-	modal     bool // true = Vim tripartite state machine; false = modeless editor
 	canSelect bool // true = visual / selection active
 
 	// The right-click menu (editor_contextmenu.go). Off unless a consumer
@@ -221,7 +200,6 @@ type Editor struct {
 	ctxOn    bool
 	ctxBuild func(e *Editor) []MenuItemModel
 	ctxOpen  *popupLayer
-	keyset   Keyset // active editing & keymap profile
 
 	// dragging is a left-button drag in progress from dragFrom: moving selects in visual mode,
 	// as a GUI editor selects with the mouse. Copying stays the key combos' (y, Ctrl+C).
@@ -364,9 +342,9 @@ func WithEscapeChord(chord string) EditorOption {
 	}
 	return func(e *Editor) {
 		if chord == "" {
-			e.chord = nil
+			e.keys.chord = nil
 		} else {
-			e.chord = rs
+			e.keys.chord = rs
 		}
 	}
 }
@@ -381,13 +359,13 @@ func WithKeymap(overlay Keymap) EditorOption {
 		for kc, act := range overlay {
 			validateKeymapEntry(kc, act)
 		}
-		if e.overlay == nil {
-			e.overlay = make(Keymap, len(overlay))
+		if e.keys.overlay == nil {
+			e.keys.overlay = make(Keymap, len(overlay))
 		}
 		for kc, act := range overlay {
-			e.overlay[kc] = act
+			e.keys.overlay[kc] = act
 		}
-		e.applyOverlay(overlay)
+		e.keys.applyOverlay(overlay)
 	}
 }
 
@@ -395,7 +373,7 @@ func WithKeymap(overlay Keymap) EditorOption {
 // modal state machine (Normal, Insert, Visual) or acts as a modeless editor.
 func WithModalEditing(modal bool) EditorOption {
 	return func(e *Editor) {
-		e.modal = modal
+		e.keys.modal = modal
 		if !modal {
 			e.setMode(ModeInsert)
 		}
@@ -447,10 +425,10 @@ func (e *Editor) cursorMoved(ln, col int) {
 // Also ensures the fast escape chord "jk" is armed by default.
 func WithVimKeymap() EditorOption {
 	return func(e *Editor) {
-		e.applyKeyset(KeysetVim)
-		if len(e.chord) == 0 {
-			e.chord = []rune{'j', 'k'}
-			e.chordTimeout = 300 * time.Millisecond
+		e.keys.applyKeyset(KeysetVim)
+		if len(e.keys.chord) == 0 {
+			e.keys.chord = []rune{'j', 'k'}
+			e.keys.chordTimeout = 300 * time.Millisecond
 		}
 	}
 }
@@ -458,7 +436,7 @@ func WithVimKeymap() EditorOption {
 // WithNanoKeymap configures the non-modal Nano-style editing profile.
 func WithNanoKeymap() EditorOption {
 	return func(e *Editor) {
-		e.applyKeyset(KeysetNano)
+		e.keys.applyKeyset(KeysetNano)
 		e.setMode(ModeInsert)
 	}
 }
@@ -466,7 +444,7 @@ func WithNanoKeymap() EditorOption {
 // WithStandardKeymap configures the standard GUI/TextEdit editing profile.
 func WithStandardKeymap() EditorOption {
 	return func(e *Editor) {
-		e.applyKeyset(KeysetStandard)
+		e.keys.applyKeyset(KeysetStandard)
 		e.setMode(ModeInsert)
 	}
 }
@@ -495,66 +473,26 @@ func normalizeKeyset(ks Keyset) Keyset {
 	}
 }
 
-// applyKeyset installs a profile's base tables and replays the host's keymap
-// overlay on top. Mode is NOT decided here: construction and a live switch
-// want different transitions, so each caller sets it.
-func (e *Editor) applyKeyset(ks Keyset) {
-	switch normalizeKeyset(ks) {
-	case KeysetNano:
-		e.keyset, e.modal, e.keymap = KeysetNano, false, NanoKeymap()
-	case KeysetStandard:
-		e.keyset, e.modal, e.keymap = KeysetStandard, false, StandardKeymap()
-	default:
-		e.keyset, e.modal, e.keymap = KeysetVim, true, VimKeymap()
-	}
-	e.unbound = make(map[KeyChord]bool)
-	e.applyOverlay(e.overlay)
-}
-
-// applyOverlay folds host bindings onto the live table. Entries are validated
-// by the caller that first accepted them, so a profile switch cannot panic on
-// an overlay the editor already took: validateKeymapEntry checks the chord's
-// mode and the action, neither of which depends on the keyset.
-func (e *Editor) applyOverlay(ov Keymap) {
-	for kc, act := range ov {
-		if act == ActUnbound {
-			delete(e.keymap, kc)
-			if e.unbound == nil {
-				e.unbound = make(map[KeyChord]bool)
-			}
-			e.unbound[kc] = true
-			continue
-		}
-		e.keymap[kc] = act
-		delete(e.unbound, kc)
-	}
-}
-
 // NewEditor builds an empty editor initialized with the default Vim keymap,
 // modal editing enabled, and the "jk" escape chord armed. Custom options
 // can select alternative keysets (e.g. WithNanoKeymap, WithStandardKeymap)
 // or customize capabilities and styles.
 func NewEditor(opts ...EditorOption) *Editor {
 	e := &Editor{
-		textBuffer:   newTextBuffer(),
-		wrap:         WrapNone,
-		styles:       defaultEditorStyles(),
-		keymap:       DefaultKeymap(),
-		unbound:      make(map[KeyChord]bool),
-		chord:        []rune{'j', 'k'},
-		chordTimeout: 300 * time.Millisecond,
-		modal:        true,
-		canSelect:    true,
-		reg:          editRegister{yank: true},
-		keyset:       KeysetVim,
-		hist:         editHistory{enabled: true},
+		textBuffer: newTextBuffer(),
+		wrap:       WrapNone,
+		styles:     defaultEditorStyles(),
+		keys:       newKeyDispatch(),
+		canSelect:  true,
+		reg:        editRegister{yank: true},
+		hist:       editHistory{enabled: true},
 	}
 	for _, o := range opts {
 		if o != nil {
 			o(e)
 		}
 	}
-	if !e.modal && e.mode == ModeNormal {
+	if !e.keys.modal && e.keys.mode == ModeNormal {
 		e.setMode(ModeInsert)
 	}
 	return e
@@ -571,11 +509,11 @@ func (e *Editor) SetValue(s string) {
 	ln, col := e.ln, e.col
 	defer e.cursorMoved(ln, col)
 	e.settlePendingRune()
-	e.count, e.pendingAct = 0, ActUnbound
+	e.keys.count, e.keys.pendingAct = 0, ActUnbound
 	e.hist.reset()
 	e.setValue(s)
 	e.ln, e.col = 0, 0
-	if e.modal {
+	if e.keys.modal {
 		e.setMode(ModeNormal)
 	} else {
 		e.setMode(ModeInsert)
@@ -586,7 +524,7 @@ func (e *Editor) SetValue(s string) {
 }
 
 // Mode reports the current mode.
-func (e *Editor) Mode() EditorMode { return e.mode }
+func (e *Editor) Mode() EditorMode { return e.keys.mode }
 
 // ReadOnly reports whether edits are refused.
 func (e *Editor) ReadOnly() bool { return e.readOnly }
@@ -601,7 +539,7 @@ func (e *Editor) SetReadOnly(v bool) {
 		return
 	}
 	e.readOnly = v
-	if v && (e.mode == ModeInsert) && e.modal {
+	if v && (e.keys.mode == ModeInsert) && e.keys.modal {
 		e.settlePendingRune()
 		e.setMode(ModeNormal)
 		e.clampNormal()
@@ -622,7 +560,7 @@ func (e *Editor) SetLine(row, col int) {
 	e.settlePendingRune()
 	e.ln = max(0, min(row, len(e.lines)-1))
 	e.col = max(0, col)
-	if e.modal {
+	if e.keys.modal {
 		e.clampNormal()
 	}
 	e.ensureVisible()
@@ -655,7 +593,7 @@ func (e *Editor) AcceptsFocus() bool { return true }
 // CursorShape implements tui.CursorShaper: block for Normal and Visual,
 // bar for Insert. Visual mode is already shown in the status line and selection.
 func (e *Editor) CursorShape() tui.CursorShape {
-	switch e.mode {
+	switch e.keys.mode {
 	case ModeInsert:
 		return tui.CursorShapeBar
 	}
@@ -665,7 +603,7 @@ func (e *Editor) CursorShape() tui.CursorShape {
 // --- runtime keymap reflection -------------------------------------------
 
 // Keyset reports the active editing & keymap profile.
-func (e *Editor) Keyset() Keyset { return e.keyset }
+func (e *Editor) Keyset() Keyset { return e.keys.keyset }
 
 // SetKeyset switches the editing profile on a LIVE editor, so a host can offer
 // "Vim / TextEdit" as a user preference without rebuilding the widget and
@@ -691,16 +629,15 @@ func (e *Editor) Keyset() Keyset { return e.keyset }
 // Switching to the profile already active is a no-op, pending input included.
 func (e *Editor) SetKeyset(ks Keyset) {
 	ks = normalizeKeyset(ks)
-	if ks == e.keyset {
+	if ks == e.keys.keyset {
 		return
 	}
 	e.settlePendingRune()
-	e.count, e.pendingCount = 0, 0
-	e.pendingAct, e.pendingChord = ActUnbound, KeyChord{}
+	e.keys.dropPending()
 	e.hist.close()
 	e.anchor, e.vAnchor = nil, taPos{}
-	e.applyKeyset(ks)
-	if e.modal {
+	e.keys.applyKeyset(ks)
+	if e.keys.modal {
 		e.setMode(ModeNormal)
 		e.clampNormal()
 	} else {
@@ -713,8 +650,8 @@ func (e *Editor) SetKeyset(ks Keyset) {
 
 // Keymap returns a defensive copy of the editor's active keymap.
 func (e *Editor) Keymap() Keymap {
-	cp := make(Keymap, len(e.keymap))
-	for k, v := range e.keymap {
+	cp := make(Keymap, len(e.keys.keymap))
+	for k, v := range e.keys.keymap {
 		cp[k] = v
 	}
 	return cp
@@ -722,7 +659,7 @@ func (e *Editor) Keymap() Keymap {
 
 // EscapeChord returns the configured two-rune escape chord (e.g. "jk"), or "" if disabled.
 func (e *Editor) EscapeChord() string {
-	return string(e.chord)
+	return string(e.keys.chord)
 }
 
 // Bindings returns all discrete key chords configured in this editor's active keymap,
@@ -732,7 +669,7 @@ func (e *Editor) EscapeChord() string {
 // the chord timeout engine rather than single-chord mappings, and are reported via
 // [Editor.EscapeChord] and [KeymapSnapshot.EscapeChord].
 func (e *Editor) Bindings() []KeyBinding {
-	return e.keymap.Bindings()
+	return e.keys.keymap.Bindings()
 }
 
 // BindingsForMode returns all active bindings available when the editor is in mode m.
@@ -752,47 +689,27 @@ func (e *Editor) BindingsForMode(m EditorMode) []KeyBinding {
 // editor's active key configuration, profile, and action mappings.
 func (e *Editor) SnapshotKeymap() KeymapSnapshot {
 	return KeymapSnapshot{
-		Keyset:      e.keyset,
-		KeysetName:  e.keyset.String(),
-		Modal:       e.modal,
-		EscapeChord: string(e.chord),
+		Keyset:      e.keys.keyset,
+		KeysetName:  e.keys.keyset.String(),
+		Modal:       e.keys.modal,
+		EscapeChord: string(e.keys.chord),
 		Bindings:    e.Bindings(),
 	}
 }
 
 // ActionForChord looks up the bound action for a given key chord.
-func (e *Editor) ActionForChord(kc KeyChord) (Action, bool) {
-	if e.unbound[kc] {
-		return ActUnbound, false
-	}
-	act, ok := e.keymap[kc]
-	return act, ok
-}
+func (e *Editor) ActionForChord(kc KeyChord) (Action, bool) { return e.keys.lookup(kc) }
 
 // ChordsForAction returns all key chords that map to the specified action.
-func (e *Editor) ChordsForAction(act Action) []KeyChord {
-	var chords []KeyChord
-	for kc, a := range e.keymap {
-		if a == act {
-			chords = append(chords, kc)
-		}
-	}
-	sort.Slice(chords, func(i, j int) bool {
-		if chords[i].Mode != chords[j].Mode {
-			return chords[i].Mode < chords[j].Mode
-		}
-		return chords[i].String() < chords[j].String()
-	})
-	return chords
-}
+func (e *Editor) ChordsForAction(act Action) []KeyChord { return e.keys.chordsFor(act) }
 
 // --- mode & cursor invariants -------------------------------------------
 
 func (e *Editor) setMode(m EditorMode) {
-	if e.mode == m {
+	if e.keys.mode == m {
 		return
 	}
-	e.mode = m
+	e.keys.mode = m
 	e.MarkDirty()
 	e.publish(ModeChangedEvent{Owner: e.NodeID(), Mode: m})
 	if e.onModeChange != nil {
@@ -811,7 +728,7 @@ func (e *Editor) clampNormal() {
 }
 
 func (e *Editor) enterInsert() {
-	e.count, e.pendingAct = 0, ActUnbound
+	e.keys.count, e.keys.pendingAct = 0, ActUnbound
 	e.hist.close() // group opens lazily on the first mutation
 	e.setMode(ModeInsert)
 }
@@ -819,7 +736,7 @@ func (e *Editor) enterInsert() {
 // exitInsert implements Insert→Normal in modal mode: cursor one cluster left, clamped.
 // In modeless editing, this is a no-op as the editor remains in Insert mode.
 func (e *Editor) exitInsert() {
-	if !e.modal {
+	if !e.keys.modal {
 		return
 	}
 	e.hist.close()
@@ -835,7 +752,7 @@ func (e *Editor) exitInsert() {
 // returning to Normal mode if modal editing is active, or to Insert mode if modeless.
 func (e *Editor) exitVisual() {
 	e.anchor = nil
-	if e.modal {
+	if e.keys.modal {
 		e.setMode(ModeNormal)
 		e.clampNormal()
 	} else {
@@ -849,14 +766,9 @@ func (e *Editor) exitVisual() {
 // settlePendingRune commits a held first chord rune as an insertion: every
 // non-chord input settles the pending rune first.
 func (e *Editor) settlePendingRune() {
-	if e.pendingRune == 0 {
+	r, ok := e.keys.takeRune()
+	if !ok {
 		return
-	}
-	r := e.pendingRune
-	e.pendingRune = 0
-	if e.chordCancel != nil {
-		e.chordCancel()
-		e.chordCancel = nil
 	}
 	e.beginGroup()
 	e.insertText(string(r))
@@ -870,8 +782,7 @@ func (e *Editor) settlePendingRune() {
 func (e *Editor) menuAction(act Action) {
 	e.settlePendingRune()
 	e.hist.close()
-	e.count, e.pendingCount = 0, 0
-	e.pendingAct, e.pendingChord = ActUnbound, KeyChord{}
+	e.keys.dropPending()
 	e.execAction(act, 1)
 }
 
@@ -1006,7 +917,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 		if !e.canSelect {
 			return true
 		}
-		switch e.mode {
+		switch e.keys.mode {
 		case ModeVisual:
 			e.exitVisual()
 		default:
@@ -1018,7 +929,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 		if !e.canSelect {
 			return true
 		}
-		switch e.mode {
+		switch e.keys.mode {
 		case ModeVisualLine:
 			e.exitVisual()
 		case ModeVisual:
@@ -1035,7 +946,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 			e.exitVisual()
 			return true
 		}
-		if e.mode == ModeVisualLine {
+		if e.keys.mode == ModeVisualLine {
 			lo, hi := e.visualLines()
 			text := strings.Join(e.lines[lo:hi+1], "\n")
 			e.yankSet(text, true)
@@ -1052,7 +963,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 		e.ensureVisible()
 		return true
 	case ActVisualDelete:
-		if e.mode == ModeVisualLine {
+		if e.keys.mode == ModeVisualLine {
 			lo, hi := e.visualLines()
 			e.exitVisual()
 			e.deleteLines(lo, hi)
@@ -1068,7 +979,7 @@ func (e *Editor) execAction(act Action, count int) bool {
 
 	// General actions (Nano / Standard).
 	case ActCut:
-		if e.mode == ModeVisual || e.mode == ModeVisualLine {
+		if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
 			return e.execAction(ActVisualDelete, count)
 		}
 		e.deleteLines(e.ln, e.ln)
@@ -1076,12 +987,12 @@ func (e *Editor) execAction(act Action, count int) bool {
 
 	case ActCopy:
 		if !e.reg.yankAllowed() {
-			if e.mode == ModeVisual || e.mode == ModeVisualLine {
+			if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
 				e.exitVisual()
 			}
 			return true
 		}
-		if e.mode == ModeVisual || e.mode == ModeVisualLine {
+		if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
 			return e.execAction(ActVisualYank, count)
 		}
 		if e.ln < len(e.lines) {
@@ -1134,7 +1045,7 @@ func (e *Editor) handleEvent(ev tui.Event) bool {
 		}
 		e.settlePendingRune()
 		e.beginGroup()
-		switch e.mode {
+		switch e.keys.mode {
 		case ModeVisual:
 			// Visual paste replaces the selection (S3 — never silently
 			// discard the selection boundary).
@@ -1154,7 +1065,7 @@ func (e *Editor) handleEvent(ev tui.Event) bool {
 			e.clampNormal()
 		default:
 			e.insertText(t.Text) // one atomic literal insertion
-			if e.mode != ModeInsert {
+			if e.keys.mode != ModeInsert {
 				e.clampNormal()
 			}
 		}
@@ -1168,9 +1079,7 @@ func (e *Editor) handleEvent(ev tui.Event) bool {
 			// focus round-trip.
 			e.settlePendingRune()
 			e.hist.close()
-			e.count = 0
-			e.pendingAct = ActUnbound
-			e.pendingCount = 0
+			e.keys.dropPending()
 		}
 		return false // focus events are informational; let them bubble
 	case tui.TickEvent:
@@ -1179,10 +1088,10 @@ func (e *Editor) handleEvent(ev tui.Event) bool {
 			return true
 		}
 		// The chord timeout: commit the held rune as an insertion.
-		e.chordCancel = nil
-		if e.pendingRune != 0 {
-			r := e.pendingRune
-			e.pendingRune = 0
+		e.keys.chordCancel = nil
+		if e.keys.pendingRune != 0 {
+			r := e.keys.pendingRune
+			e.keys.pendingRune = 0
 			e.beginGroup()
 			e.insertText(string(r))
 			e.edited()
@@ -1198,7 +1107,7 @@ func (e *Editor) handleKey(k tui.KeyEvent) bool {
 	if k.Kind == tui.KeyRelease {
 		return false
 	}
-	if e.mode == ModeInsert {
+	if e.keys.mode == ModeInsert {
 		return e.handleInsertKey(k)
 	}
 	return e.handleCommandKey(k)
@@ -1216,13 +1125,13 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 	kc := KeyChord{Mode: ModeInsert, Code: code, Ctrl: ctrl}
 
 	// 1. Explicit unbind sentinel: unhandled keystroke bubbles up to application.
-	if e.unbound[kc] {
+	if e.keys.unbound[kc] {
 		e.settlePendingRune()
 		return false
 	}
 
 	// 2. Configured keymap actions (custom bindings, Nano/Standard profiles, etc.).
-	if act, bound := e.keymap[kc]; bound {
+	if act, bound := e.keys.keymap[kc]; bound {
 		e.settlePendingRune()
 		return e.execAction(act, 1)
 	}
@@ -1230,13 +1139,13 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 	isText := k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
 
 	// Chord state machine first (only in modal editing).
-	if e.modal && e.pendingRune != 0 {
-		if isText && []rune(k.Text)[0] == e.chord[1] {
+	if e.keys.modal && e.keys.pendingRune != 0 {
+		if isText && []rune(k.Text)[0] == e.keys.chord[1] {
 			// Second chord rune dispatched before the tick: escape.
-			e.pendingRune = 0
-			if e.chordCancel != nil {
-				e.chordCancel()
-				e.chordCancel = nil
+			e.keys.pendingRune = 0
+			if e.keys.chordCancel != nil {
+				e.keys.chordCancel()
+				e.keys.chordCancel = nil
 			}
 			e.exitInsert()
 			return true
@@ -1246,10 +1155,10 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 		// "jjk" commits the first j and escapes on the second j plus k.
 		e.settlePendingRune()
 	}
-	if e.modal && isText && e.chord != nil && e.pendingRune == 0 && []rune(k.Text)[0] == e.chord[0] {
-		e.pendingRune = e.chord[0]
+	if e.keys.modal && isText && e.keys.chord != nil && e.keys.pendingRune == 0 && []rune(k.Text)[0] == e.keys.chord[0] {
+		e.keys.pendingRune = e.keys.chord[0]
 		if ctx := e.Context(); ctx != nil {
-			e.chordCancel = ctx.After(e.chordTimeout)
+			e.keys.chordCancel = ctx.After(e.keys.chordTimeout)
 		}
 		return true
 	}
@@ -1263,7 +1172,7 @@ func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
 		e.edited()
 		return true
 	case tui.KeyEscape:
-		if e.modal {
+		if e.keys.modal {
 			e.exitInsert()
 			return true
 		}
@@ -1362,9 +1271,9 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	ctrl := k.Mods&tui.ModCtrl != 0
 
 	if k.Code == tui.KeyEscape {
-		hadPending := e.count != 0 || e.pendingAct != ActUnbound
-		e.count, e.pendingAct = 0, ActUnbound
-		if e.mode == ModeVisual || e.mode == ModeVisualLine {
+		hadPending := e.keys.count != 0 || e.keys.pendingAct != ActUnbound
+		e.keys.count, e.keys.pendingAct = 0, ActUnbound
+		if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
 			e.exitVisual()
 			return true
 		}
@@ -1379,9 +1288,9 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	// Clamp BEFORE assignment so the cap is a hard ceiling.
 	if !ctrl && k.Text != "" {
 		r := []rune(k.Text)[0]
-		if r >= '1' && r <= '9' || (r == '0' && e.count > 0) {
-			e.pendingAct = ActUnbound
-			e.count = min(e.count*10+int(r-'0'), 1_000_000)
+		if r >= '1' && r <= '9' || (r == '0' && e.keys.count > 0) {
+			e.keys.pendingAct = ActUnbound
+			e.keys.count = min(e.keys.count*10+int(r-'0'), 1_000_000)
 			return true
 		}
 	}
@@ -1406,11 +1315,11 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	if k.Text != "" && k.Mods&nonTextMods == 0 {
 		code = []rune(k.Text)[0] // shifted letters arrive via Text ("G")
 	}
-	kc := KeyChord{Mode: modeClass(e.mode), Code: code, Ctrl: ctrl}
+	kc := KeyChord{Mode: modeClass(e.keys.mode), Code: code, Ctrl: ctrl}
 
-	if e.unbound[kc] {
-		e.count = 0
-		e.pendingAct = ActUnbound
+	if e.keys.unbound[kc] {
+		e.keys.count = 0
+		e.keys.pendingAct = ActUnbound
 		return false
 	}
 
@@ -1418,12 +1327,12 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 	// prefix completes on its own chord rather than a hard-coded rune:
 	// only the same chord again completes; any other key clears the
 	// pending state and is processed normally.
-	if e.pendingAct != ActUnbound {
-		act, chord := e.pendingAct, e.pendingChord
-		hadCount := e.pendingCount > 0
-		count := max(e.pendingCount, 1)
-		e.pendingAct = ActUnbound
-		e.pendingCount = 0
+	if e.keys.pendingAct != ActUnbound {
+		act, chord := e.keys.pendingAct, e.keys.pendingChord
+		hadCount := e.keys.pendingCount > 0
+		count := max(e.keys.pendingCount, 1)
+		e.keys.pendingAct = ActUnbound
+		e.keys.pendingCount = 0
 		if kc == chord {
 			switch act {
 			case ActDeletePrefix:
@@ -1445,26 +1354,26 @@ func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
 		// Fall through: reprocess this key from scratch (count consumed).
 	}
 
-	act, bound := e.keymap[kc]
+	act, bound := e.keys.keymap[kc]
 	if !bound {
-		e.count = 0 // an unbound key cancels the pending count and bubbles
+		e.keys.count = 0 // an unbound key cancels the pending count and bubbles
 		return false
 	}
 
-	hadCount := e.count > 0
-	count := max(e.count, 1)
-	e.count = 0
+	hadCount := e.keys.count > 0
+	count := max(e.keys.count, 1)
+	e.keys.count = 0
 
 	switch act {
 	case ActDeletePrefix, ActYankPrefix, ActGoPrefix:
 		if act == ActYankPrefix && !e.reg.yankAllowed() {
 			return true
 		}
-		e.pendingAct = act
-		e.pendingChord = kc
-		e.pendingCount = 0
+		e.keys.pendingAct = act
+		e.keys.pendingChord = kc
+		e.keys.pendingCount = 0
 		if hadCount {
-			e.pendingCount = count // preserved for the completion (2dd, 5gg)
+			e.keys.pendingCount = count // preserved for the completion (2dd, 5gg)
 		}
 		return true
 	case ActGoBottom:
@@ -1638,7 +1547,7 @@ const dragScrollInterval = 50 * time.Millisecond
 // extendDrag moves the selection's moving end to the viewport cell (x, row).
 func (e *Editor) extendDrag(x, row int) {
 	ln, col := e.posAt(max(x, 0), row)
-	if e.mode != ModeVisual {
+	if e.keys.mode != ModeVisual {
 		if ln == e.dragFrom.ln && col == e.dragFrom.col {
 			return // not moved off the pressed position yet: still a click
 		}
@@ -1694,7 +1603,7 @@ func (e *Editor) pressAt(x, y int) bool {
 	// pending rune, and a click is a non-chord input like any other; discarding it
 	// would delete a character the user physically typed. This is the only way a
 	// press changes buffer text.
-	if e.mode == ModeInsert {
+	if e.keys.mode == ModeInsert {
 		e.settlePendingRune()
 		// A click is a deliberate discontinuity, so text typed before and after it
 		// undo separately.
@@ -1704,13 +1613,12 @@ func (e *Editor) pressAt(x, y int) bool {
 	// against a clicked location would turn a mis-click into a destructive edit,
 	// and the pointer carries no evidence the operator was meant to apply there.
 	// Discarding it modifies nothing.
-	e.count, e.pendingCount = 0, 0
-	e.pendingAct, e.pendingChord = ActUnbound, KeyChord{}
+	e.keys.dropPending()
 	// Visual exits and the anchor is cleared: extending a selection by clicking is
 	// drag-selection, which this revision defers. Keeping the anchor would make the
 	// next motion extend a selection the user believes they dismissed.
-	if e.mode == ModeVisual || e.mode == ModeVisualLine {
-		if e.modal {
+	if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
+		if e.keys.modal {
 			e.setMode(ModeNormal)
 		} else {
 			e.setMode(ModeInsert)
@@ -1719,7 +1627,7 @@ func (e *Editor) pressAt(x, y int) bool {
 	}
 
 	e.ln, e.col = ln, col
-	if e.mode != ModeInsert {
+	if e.keys.mode != ModeInsert {
 		e.clampNormal()
 	}
 	e.desired = -1
@@ -1862,7 +1770,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	lineFill := func(y, ln int) {
 		// A line-wise highlight covers the WHOLE screen row (S2), text or
 		// not; clusters then paint over the fill.
-		if e.mode == ModeVisualLine && e.focused() && e.inVisual(ln, 0) {
+		if e.keys.mode == ModeVisualLine && e.focused() && e.inVisual(ln, 0) {
 			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", e.styles.Selection.Inherit(e.styles.Text))
 		}
 	}

@@ -74,11 +74,11 @@ func TestMenuActionsSettleHeldTextAndCancelPendingCountAndOperator(t *testing.T)
 	pressRune(e, 'i')
 	pressRune(e, 'a')
 	pressRune(e, 'j') // held as the first rune of the Vim escape chord
-	if e.pendingRune != 'j' || !e.hist.open {
+	if e.keys.pendingRune != 'j' || !e.hist.open {
 		t.Fatal("fixture did not hold an insert rune in an open undo group")
 	}
 	e.Copy()
-	if e.Value() != "aj" || e.pendingRune != 0 || e.hist.open {
+	if e.Value() != "aj" || e.keys.pendingRune != 0 || e.hist.open {
 		t.Fatalf("menu action failed to settle held text and end its edit group: %q", e.Value())
 	}
 	e.Cut()
@@ -97,15 +97,15 @@ func TestMenuActionsSettleHeldTextAndCancelPendingCountAndOperator(t *testing.T)
 	e = NewEditor(WithInitialText("one\ntwo"))
 	pressRune(e, '2')
 	pressRune(e, 'd')
-	if e.pendingAct != ActDeletePrefix || e.pendingCount != 2 {
+	if e.keys.pendingAct != ActDeletePrefix || e.keys.pendingCount != 2 {
 		t.Fatal("fixture did not arm counted delete prefix")
 	}
 	e.Copy()
-	if e.pendingAct != ActUnbound || e.pendingCount != 0 || e.pendingChord != (KeyChord{}) || e.count != 0 {
+	if e.keys.pendingAct != ActUnbound || e.keys.pendingCount != 0 || e.keys.pendingChord != (KeyChord{}) || e.keys.count != 0 {
 		t.Fatal("a menu action left part of the counted operator armed")
 	}
 	pressRune(e, 'd')
-	if e.Value() != "one\ntwo" || e.pendingAct != ActDeletePrefix {
+	if e.Value() != "one\ntwo" || e.keys.pendingAct != ActDeletePrefix {
 		t.Fatalf("next d completed a stale prefix: %q", e.Value())
 	}
 	pressRune(e, 'd')

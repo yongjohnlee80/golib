@@ -28,8 +28,8 @@ func TestSetKeysetSettlesHeldChordRune(t *testing.T) {
 	pressRune(e, 'b')
 	pressRune(e, 'j') // chord[0]: held, waiting for 'k' or the tick
 
-	if e.pendingRune != 'j' {
-		t.Fatalf("pendingRune = %q, want 'j' — the fixture never armed the chord", e.pendingRune)
+	if e.keys.pendingRune != 'j' {
+		t.Fatalf("pendingRune = %q, want 'j' — the fixture never armed the chord", e.keys.pendingRune)
 	}
 	if got := e.value(); got != "ab" {
 		t.Fatalf("value = %q, want %q while the rune is held", got, "ab")
@@ -37,8 +37,8 @@ func TestSetKeysetSettlesHeldChordRune(t *testing.T) {
 
 	e.SetKeyset(KeysetStandard)
 
-	if e.pendingRune != 0 {
-		t.Errorf("pendingRune = %q, want 0 — the chord outlived its profile", e.pendingRune)
+	if e.keys.pendingRune != 0 {
+		t.Errorf("pendingRune = %q, want 0 — the chord outlived its profile", e.keys.pendingRune)
 	}
 	if got := e.value(); got != "abj" {
 		t.Errorf("value = %q, want %q — the held rune was dropped instead of settled", got, "abj")
@@ -50,18 +50,18 @@ func TestSetKeysetSettlesHeldChordRune(t *testing.T) {
 func TestSetKeysetCountDroppedOnSwitchKeptOnNoOp(t *testing.T) {
 	e := NewEditor(WithInitialText("abcdef"))
 	pressRune(e, '3')
-	if e.count != 3 {
-		t.Fatalf("count = %d, want 3 — the fixture never armed a count", e.count)
+	if e.keys.count != 3 {
+		t.Fatalf("count = %d, want 3 — the fixture never armed a count", e.keys.count)
 	}
 
 	e.SetKeyset(KeysetVim) // already Vim: nothing happens, pending input included
-	if e.count != 3 {
-		t.Fatalf("count = %d after a no-op switch, want 3", e.count)
+	if e.keys.count != 3 {
+		t.Fatalf("count = %d after a no-op switch, want 3", e.keys.count)
 	}
 
 	e.SetKeyset(KeysetNano)
-	if e.count != 0 {
-		t.Fatalf("count = %d after Vim->Nano, want 0 — a stale count survived", e.count)
+	if e.keys.count != 0 {
+		t.Fatalf("count = %d after Vim->Nano, want 0 — a stale count survived", e.keys.count)
 	}
 
 	// And the next Vim command counts once, not three times.
@@ -77,13 +77,13 @@ func TestSetKeysetCountDroppedOnSwitchKeptOnNoOp(t *testing.T) {
 func TestSetKeysetDropsOperatorPrefix(t *testing.T) {
 	e := NewEditor(WithInitialText("one\ntwo"))
 	pressRune(e, 'd')
-	if e.pendingAct != ActDeletePrefix {
-		t.Fatalf("pendingAct = %v, want ActDeletePrefix — the fixture never armed a prefix", e.pendingAct)
+	if e.keys.pendingAct != ActDeletePrefix {
+		t.Fatalf("pendingAct = %v, want ActDeletePrefix — the fixture never armed a prefix", e.keys.pendingAct)
 	}
 
 	e.SetKeyset(KeysetStandard)
-	if e.pendingAct != ActUnbound {
-		t.Fatalf("pendingAct = %v, want ActUnbound", e.pendingAct)
+	if e.keys.pendingAct != ActUnbound {
+		t.Fatalf("pendingAct = %v, want ActUnbound", e.keys.pendingAct)
 	}
 
 	e.SetKeyset(KeysetVim)
