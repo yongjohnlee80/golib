@@ -288,15 +288,11 @@ func (b *builder) box(n *phtml.Node, st *computed, src [2]int) *box {
 		if p := b.l.parents[n]; p != nil && p.Name == "details" {
 			bx.details = p
 			bx.kids = b.children(n, st, src)
-			marker := "▸ "
-			if b.l.detailsOpen(p) {
-				marker = "▾ "
-			}
 			if len(bx.kids) == 0 || bx.kids[0].kind != kRun {
 				bx.kids = append([]*box{{kind: kRun, st: st, src: src}}, bx.kids...)
 			}
 			run := bx.kids[0]
-			run.spans = append([]flow.Span{b.span(marker, st, src)}, run.spans...)
+			run.spans = append([]flow.Span{disclosure(st, b.l.detailsOpen(p), src)}, run.spans...)
 			return bx
 		}
 	}
@@ -863,4 +859,21 @@ func (l *htmlLayout) paintRun(c gui.Canvas, r *box, ox, oy float32, sel selRange
 		}
 	}
 	r.para.Paint(c, at, r.spans)
+}
+
+// disclosure is a summary's marker: a triangle drawn in the text's colour, pointing right while its
+// <details> is folded and down while it is open, with room after it. A shape, not a glyph: fonts
+// without ▸ draw a missing-glyph box.
+func disclosure(st *computed, open bool, src [2]int) flow.Span {
+	size := st.fontSize * 0.55
+	ink := st.color
+	return flow.Span{Atom: &flow.Atom{W: size + st.fontSize*0.45, H: size, Baseline: size, Paint: func(c gui.Canvas) {
+		p := &gui.Path{}
+		if open {
+			p.MoveTo(gui.Pt(0, size*0.2)).LineTo(gui.Pt(size, size*0.2)).LineTo(gui.Pt(size/2, size)).Close()
+		} else {
+			p.MoveTo(gui.Pt(size*0.15, 0)).LineTo(gui.Pt(size*0.95, size/2)).LineTo(gui.Pt(size*0.15, size)).Close()
+		}
+		c.FillPath(p, gui.Solid(ink))
+	}}, Link: st.link, Line: -1, Src: src}
 }
