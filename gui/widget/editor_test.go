@@ -416,3 +416,26 @@ func TestClickOnAWrappedRenderedRow(t *testing.T) {
 		t.Errorf("a click on the Rendered line's wrapped row landed on %d:%d, want 1:%d", ln, col, wrapCol+2)
 	}
 }
+
+// Ctrl+T toggles through the keymap's ActToggleRendered, so a keymap can move it: here to
+// Ctrl+G, with Ctrl+T unbound. With no renderer the action is not consumed.
+func TestToggleRenderedIsTheKeymapsAndRebindable(t *testing.T) {
+	ctrlKey := func(r rune) tui.KeyEvent { return tui.KeyEvent{Code: r, Mods: tui.ModCtrl} }
+	e := NewEditor(WithRenderer(NewMarkdownRenderer()))
+	if !e.Core().HandleKey(ctrlKey('t')) || e.Mode() != Rendered {
+		t.Fatalf("Ctrl+T: mode %v, want Rendered", e.Mode())
+	}
+	moved := NewEditor(WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreKeymap(tuiwidget.Keymap{
+		{Mode: tuiwidget.ModeNormal, Code: 'g', Ctrl: true}: tuiwidget.ActToggleRendered,
+		{Mode: tuiwidget.ModeNormal, Code: 't', Ctrl: true}: tuiwidget.ActUnbound,
+	})))
+	if moved.Core().HandleKey(ctrlKey('t')) || moved.Mode() != Raw {
+		t.Errorf("Ctrl+T unbound still toggled: mode %v", moved.Mode())
+	}
+	if !moved.Core().HandleKey(ctrlKey('g')) || moved.Mode() != Rendered {
+		t.Errorf("Ctrl+G rebound: mode %v, want Rendered", moved.Mode())
+	}
+	if NewEditor().Core().HandleKey(ctrlKey('t')) {
+		t.Error("an editor with no renderer consumed Ctrl+T")
+	}
+}

@@ -25,6 +25,10 @@ type Editor struct {
 	mode     EditorMode
 	render   Renderer
 	fontSize float32
+
+	caret    style.Color // the caret's colour (SetCursorColor); the default is the text's
+	caretSet bool
+	page     style.Style // the cells' look the view reads its colours from (SetPageStyle)
 }
 
 // EditorOption sets up an Editor under construction.
@@ -82,6 +86,15 @@ func NewEditor(opts ...EditorOption) *Editor {
 	}
 	e.menu.SetEnabled(cfg.menu)
 	e.panel = NewPanel(e.body, append([]PanelOption{TitleLeading(e.sw)}, cfg.panel...)...)
+	// Ctrl+T, or whatever the keymap binds ActToggleRendered to: with no renderer there is no
+	// Rendered view, so the key bubbles.
+	e.core.SetToggleRendered(func() bool {
+		if e.render == nil {
+			return false
+		}
+		e.toggleMode()
+		return true
+	})
 	e.SetMode(cfg.mode)
 	return e
 }
@@ -142,6 +155,36 @@ func (e *Editor) toggleMode() {
 // SetContextMenu turns the right-click menu on or off.
 func (e *Editor) SetContextMenu(on bool) { e.menu.SetEnabled(on) }
 
+// SetKeyset changes the editing profile (Vim, Nano, Standard).
+func (e *Editor) SetKeyset(ks tuiwidget.Keyset) { e.core.SetKeyset(ks); e.body.MarkDirty() }
+
+// SetReadOnly makes the editor a viewer: motions and yank only.
+func (e *Editor) SetReadOnly(v bool) { e.core.SetReadOnly(v); e.body.MarkDirty() }
+
+// SetValue replaces the text, as a load does, and scrolls to its top.
+func (e *Editor) SetValue(s string) {
+	e.core.SetValue(s)
+	e.layout.scroll = 0
+	e.body.MarkDirty()
+}
+
+// SetCursorPosition puts the cursor pos characters from the start, a line break one.
+func (e *Editor) SetCursorPosition(pos int) { e.core.SetCursorPosition(pos); e.body.MarkDirty() }
+
+// SetCursorColor colours the caret; the default colour is the text's.
+func (e *Editor) SetCursorColor(c style.Color) {
+	e.caret, e.caretSet = c, !c.IsDefault()
+	e.body.MarkDirty()
+}
+
+// SetPageStyle is the look of the cells under the text, which the view takes its text and page
+// colours from: a palette's text on base. The zero Style is the terminal theme's default.
+func (e *Editor) SetPageStyle(st style.Style) {
+	e.page = st
+	e.layout.invalidate()
+	e.body.MarkDirty()
+}
+
 // theme is what the text is drawn with: the colours of the cells under it, the tui theme's
 // accent and muted text, and fonts sized to the cells unless WithFontSize set one.
 func (e *Editor) theme(fg, bg color.NRGBA, cell gui.Size, th *style.Theme) Theme {
@@ -157,6 +200,11 @@ func (e *Editor) theme(fg, bg color.NRGBA, cell gui.Size, th *style.Theme) Theme
 		Mono:           gui.Font{Family: gui.MonospaceFamily(), Size: size},
 	}
 	dark := isDark(bg)
+	if e.caretSet {
+		if c, ok := colorOf(e.caret, th, dark); ok {
+			t.Caret = c
+		}
+	}
 	if th != nil {
 		if c, ok := colorOf(th.Color(style.TokenAccent), th, dark); ok {
 			t.Accent = c
