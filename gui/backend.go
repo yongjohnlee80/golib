@@ -197,6 +197,8 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	if b.cursor.visible {
 		f.caret = m.cellRect(b.cursor.x, b.cursor.y, 1, 1)
 		f.base = m.baseline
+	} else if r, base, ok := viewCaret(m, b.natives); ok {
+		f.caret, f.base = r, base // a native view's own caret, read after it painted
 	}
 	b.mu.Lock()
 	b.latest = f

@@ -3,6 +3,7 @@ package gui
 import (
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 // SYSTEM FONTS — what the cells are drawn in when the app names no font: the system's monospace
@@ -68,3 +69,10 @@ func cellTypeface(c config) string {
 	}
 	return fallbackChain(tf)
 }
+
+var monospaceOnce = sync.OnceValue(func() string { return cellTypeface(defaultConfig()) })
+
+// MonospaceFamily is the typeface list monospace text drawn natively uses, as the cells do by
+// default: the system's monospace, Go Mono, a Nerd Font for icons, then the generic families.
+// It asks fontconfig once.
+func MonospaceFamily() string { return monospaceOnce() }
