@@ -3,6 +3,7 @@ package layout
 import (
 	"cmp"
 	"math"
+	"math/bits"
 	"slices"
 )
 
@@ -39,7 +40,9 @@ func (g *graph) order(m *meter) error {
 	}
 	for _, l := range g.layers {
 		g.setOrder(l)
-		g.sortLayer(l, func(v int) float64 { return float64(g.v[v].order) })
+		if err := g.sortLayer(m, l, func(v int) float64 { return float64(g.v[v].order) }); err != nil {
+			return err
+		}
 	}
 	best := g.copyLayers()
 	bestX, err := g.crossings(m)
@@ -108,14 +111,26 @@ func (g *graph) sweep(layer []int, adj [][]int, m *meter) error {
 			return err
 		}
 	}
-	g.sortLayer(layer, func(v int) float64 { return bc[v] })
+	if err := g.sortLayer(m, layer, func(v int) float64 { return bc[v] }); err != nil {
+		return err
+	}
 	return m.add(len(layer))
 }
 
 // sortLayer orders a rank by key, keeping each group's members together: a group sorts by the
 // mean key of its members on this rank, a vertex outside it by its own, level by level from the
 // outermost group in.
-func (g *graph) sortLayer(layer []int, key func(int) float64) {
+func (g *graph) sortLayer(m *meter, layer []int, key func(int) float64) error {
+	// The work: each vertex's group path walked twice (the means, then its key sequence), and a
+	// comparison sort of n keys, each comparison walking at most the deepest path.
+	n, depth, walk := len(layer), 0, 0
+	for _, v := range layer {
+		d := len(g.v[v].path) + 1
+		depth, walk = max(depth, d), walk+d
+	}
+	if err := m.add(2*walk + n*bits.Len(uint(n))*depth); err != nil {
+		return err
+	}
 	sum := map[int]float64{}
 	cnt := map[int]int{}
 	for _, v := range layer {
@@ -172,6 +187,7 @@ func (g *graph) sortLayer(layer []int, key func(int) float64) {
 		return len(sa) - len(sb)
 	})
 	g.setOrder(layer)
+	return nil
 }
 
 // crossings counts the edge crossings between every pair of adjacent ranks: the inversions in
