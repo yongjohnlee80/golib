@@ -202,9 +202,10 @@ func (l *htmlLayout) build() {
 	}
 	l.doc = doc
 	l.parents = map[*phtml.Node]*phtml.Node{}
-	var sheets strings.Builder
-	sheets.WriteString(uaCSS)
-	sheets.WriteString(l.themeCSS())
+	// the window's theme colours a page with no stylesheet of its own; a page that styles itself
+	// is drawn as its author wrote it (a light page in a dark window stays light, its code unchipped)
+	var author strings.Builder
+	authored := false
 	linked := 0
 	walkNodes(doc, nil, func(n, parent *phtml.Node) {
 		l.parents[n] = parent
@@ -213,19 +214,27 @@ func (l *htmlLayout) build() {
 		}
 		if n.Name == "style" {
 			for _, c := range n.Children {
-				sheets.WriteString("\n" + c.Data)
+				author.WriteString("\n" + c.Data)
+				authored = authored || strings.TrimSpace(c.Data) != ""
 			}
 			return
 		}
 		// a linked sheet in its place in the cascade, once it has loaded
 		if href, ok := sheetLink(n); ok && linked < maxSheets {
 			linked++
+			authored = true // a sheet still loading counts: the page styles itself
 			if e := l.sheets.entry(href); e.state == imgReady {
 				media, _ := n.Attr("media")
-				sheets.WriteString("\n" + mediaWrapped(e.text, media))
+				author.WriteString("\n" + mediaWrapped(e.text, media))
 			}
 		}
 	})
+	var sheets strings.Builder
+	sheets.WriteString(uaCSS)
+	if !authored {
+		sheets.WriteString(l.themeCSS())
+	}
+	sheets.WriteString(author.String())
 	sheets.WriteString("\n" + l.v.Stylesheet())
 	css := sheets.String()
 	order := 0

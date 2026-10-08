@@ -616,3 +616,31 @@ func TestCSSShorthandsHoldFunctions(t *testing.T) {
 		t.Errorf("a calc radius: %v", r)
 	}
 }
+
+// TestTheWindowsThemeIsForUnstyledPages: a page with no stylesheet of its own takes the window's
+// theme (code shaded, links in the accent); one with a <style> or a linked sheet, loaded or not, is
+// drawn as written: a pre's code is not chipped in the theme's surface.
+func TestTheWindowsThemeIsForUnstyledPages(t *testing.T) {
+	codeBG := func(page string) color.NRGBA {
+		_, l, _ := pixelView(t, page, 600, 400)
+		l.layOutTo(1e9)
+		for _, r := range l.runs {
+			for _, s := range r.spans {
+				if strings.Contains(s.Text, "x := 1") {
+					return s.Background
+				}
+			}
+		}
+		t.Fatalf("no code in %q", page)
+		return color.NRGBA{}
+	}
+	plain := `<html><body><pre><code>x := 1</code></pre></body></html>`
+	if bg := codeBG(plain); bg.A == 0 {
+		t.Error("an unstyled page's code is not shaded by the window's theme")
+	}
+	for _, head := range []string{`<style>pre{background:#eeeeee}</style>`, `<link rel="stylesheet" href="a.css">`} {
+		if bg := codeBG(`<html><head>` + head + `</head><body><pre><code>x := 1</code></pre></body></html>`); bg.A != 0 {
+			t.Errorf("with %s the code is chipped %v by the window's theme", head, bg)
+		}
+	}
+}
