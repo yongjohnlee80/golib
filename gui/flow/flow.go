@@ -74,6 +74,7 @@ type Para struct {
 
 	opts   Options
 	pieces []piece
+	last   int // the last piece placed on a line so far; -1 before any
 }
 
 // Line is one line of a paragraph, Y from the paragraph's top.
@@ -120,7 +121,7 @@ func Lay(spans []Span, o Options, t *gui.TextShaper) *Para {
 	if o.LineHeight <= 0 {
 		o.LineHeight = 1.2
 	}
-	p := &Para{opts: o}
+	p := &Para{opts: o, last: -1}
 	p.pieces = split(spans, o.WhiteSpace)
 	for i := range p.pieces {
 		pc := &p.pieces[i]
@@ -331,8 +332,11 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 			above, below = max(above, sp.Atom.Baseline), max(below, sp.Atom.H-sp.Atom.Baseline)
 			return
 		}
-		m := pc.m
-		if pc == nil || len(m.X) == 0 {
+		var m gui.Measured
+		if pc != nil {
+			m = pc.m
+		}
+		if len(m.X) == 0 {
 			m = t.Measure("", sp.Font)
 		}
 		lead := sp.Font.Size*o.LineHeight - (m.Ascent + m.Descent)
@@ -382,6 +386,16 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 	if len(idx) == 0 && len(spans) > 0 {
 		measureLine(len(spans)-1, nil)
 	}
+	if len(l.Frags) == 0 {
+		// A line with no text (a '\n' alone, or the empty line after a final '\n') still holds
+		// one boundary, so the caret and At can land on it: a zero-width frag at that position.
+		if f, ok := p.emptyAt(idx, spans); ok {
+			l.Frags = append(l.Frags, f)
+		}
+	}
+	for _, i := range idx {
+		p.last = max(p.last, i)
+	}
 	l.H = above + below
 	l.Baseline = y + above
 	// the content width leaves out spaces hanging at the line's end
@@ -407,6 +421,24 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 	}
 	p.Width = max(p.Width, content)
 	p.Lines = append(p.Lines, l)
+}
+
+// emptyAt is the zero-width frag of a line without text: before its '\n', or, for the line
+// after a final '\n', after the last piece placed.
+func (p *Para) emptyAt(idx []int, spans []Span) (Frag, bool) {
+	for _, i := range idx {
+		if pc := p.pieces[i]; pc.kind == newline {
+			return Frag{Span: pc.span, From: pc.from, To: pc.from, xs: []float32{0}}, true
+		}
+	}
+	if p.last >= 0 {
+		pc := p.pieces[p.last]
+		return Frag{Span: pc.span, From: pc.to, To: pc.to, xs: []float32{0}}, true
+	}
+	if len(spans) > 0 {
+		return Frag{xs: []float32{0}}, true
+	}
+	return Frag{}, false
 }
 
 // mapOffset maps a byte offset in a piece's display to one in its source bytes. Only a

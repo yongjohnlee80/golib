@@ -119,8 +119,19 @@ func (p *Panel) InFloat(f *tuiwidget.Float, r tui.Rect) {
 	f.SetAnchor(tuiwidget.AtRect(r))
 }
 
-// Bounds is where the panel is in its Float's area; the zero Rect outside a Float.
-func (p *Panel) Bounds() tui.Rect { return p.rect }
+// Bounds is where the panel is in its Float's area, as placed: its title row alone when
+// minimized, the whole area when maximized. The zero Rect outside a Float.
+func (p *Panel) Bounds() tui.Rect {
+	switch {
+	case p.float == nil:
+		return tui.Rect{}
+	case p.state == maximized:
+		return tui.Rect{W: p.w, H: p.h}
+	case p.state == minimized:
+		return tui.Rect{X: p.rect.X, Y: p.rect.Y, W: p.rect.W, H: 1}
+	}
+	return p.rect
+}
 
 // Minimized and Maximized report the panel's state.
 func (p *Panel) Minimized() bool { return p.state == minimized }
@@ -191,13 +202,15 @@ func (p *Panel) controlAt(x int) control {
 	return noControl
 }
 
-// Render paints the title bar in cells: the bar, the title, and [x] [□] [_] for the enabled
-// controls. A gui backend draws its native bar over these cells (NativeView).
+// Render paints the panel's rect, then the title bar in cells: the bar, the title, and
+// [x] [□] [_] for the enabled controls. A gui backend draws its native bar over these cells (NativeView).
 func (p *Panel) Render(s tui.Surface) {
 	sz := s.Size()
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
+	// A window is opaque: what lies under it never shows where its content paints nothing.
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.New())
 	s.Fill(tui.Rect{W: sz.W, H: 1}, " ", p.barSt)
 	putString(s, p.titleX, 0, p.title, p.barSt.Bold(true))
 	for i, c := range p.controls() {
@@ -322,6 +335,11 @@ func (p *Panel) act(c control) {
 		} else {
 			p.state = minimized
 		}
+		// In a Float the rect is the panel's size: minimized, the Float holds the title row
+		// alone, so what was under the content shows and takes the pointer again.
+		if p.float != nil {
+			p.float.SetAnchor(tuiwidget.AtRect(p.Bounds()))
+		}
 		p.relayout()
 	case maximizeControl:
 		if p.float == nil {
@@ -330,8 +348,8 @@ func (p *Panel) act(c control) {
 		if p.state == maximized {
 			p.state = normal
 			p.float.SetSizeFraction(0, 0)
-			p.float.SetAnchor(tuiwidget.AtRect(p.restore))
 			p.rect = p.restore
+			p.float.SetAnchor(tuiwidget.AtRect(p.rect))
 		} else {
 			p.state, p.restore = maximized, p.rect
 			p.float.SetAnchor(tuiwidget.Center)

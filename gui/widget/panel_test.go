@@ -24,7 +24,10 @@ func startPanel(t *testing.T, at tui.Rect, opts ...gw.PanelOption) *panelHarness
 	t.Helper()
 	panel := gw.NewPanel(widget.NewText("content"), append([]gw.PanelOption{gw.WithTitle("Notes")}, opts...)...)
 	float := widget.NewFloat(panel)
-	host := widget.NewOverlayHost(widget.NewText("background"))
+	bg := tui.NewStack()
+	bg.AddAt(widget.NewText("background"), 0, 0)
+	bg.AddAt(widget.NewText("under the panel"), 5, 4)
+	host := widget.NewOverlayHost(bg)
 	tb := tui.NewTestBackend(60, 20)
 	app := tui.NewApp(host, tui.WithBackend(tb))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -183,4 +186,27 @@ func TestPanelNativeBar(t *testing.T) {
 	if p.NativeScope() != tui.ScopeChrome {
 		t.Errorf("scope %v, want ScopeChrome: the children's cells cover the bar", p.NativeScope())
 	}
+}
+
+func TestPanelMinimizedCollapsesItsFloat(t *testing.T) {
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.Minimizable())
+	h.until("the content", func() bool { return strings.Contains(h.tb.String(), "content") })
+	if strings.Contains(h.row(4), "under the panel") {
+		t.Fatalf("the open panel does not cover the background: %q", h.row(4))
+	}
+	h.mouse(tui.MousePress, 2+30-3+1, 2)
+	h.mouse(tui.MouseRelease, 2+30-3+1, 2)
+	h.until("the title row alone", func() bool { return h.bounds() == tui.Rect{X: 2, Y: 2, W: 30, H: 1} })
+	// what was under the panel's content shows again
+	h.until("the background under it", func() bool { return strings.Contains(h.row(4), "under the panel") })
+	if !strings.Contains(h.row(2), "Notes") {
+		t.Errorf("the title bar went with the content: %q", h.row(2))
+	}
+}
+
+func TestPanelBoundsWhileMaximized(t *testing.T) {
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.Maximizable())
+	h.mouse(tui.MousePress, 2+30-3+1, 2)
+	h.mouse(tui.MouseRelease, 2+30-3+1, 2)
+	h.until("the whole screen", func() bool { return h.bounds() == tui.Rect{W: 60, H: 20} })
 }
