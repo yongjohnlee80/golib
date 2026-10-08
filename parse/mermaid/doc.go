@@ -1,5 +1,5 @@
-// Package mermaid parses Mermaid diagrams into models a native renderer draws: today
-// flowcharts (flowchart and graph), with sequence, state, class and ER diagrams to follow.
+// Package mermaid parses Mermaid diagrams into models a native renderer draws: flowcharts
+// (flowchart and graph), sequence, class, state and ER diagrams.
 //
 //	d, err := mermaid.Parse("flowchart LR\n  A[Start] --> B{Ready?}\n  B -->|yes| C([Done])")
 //	switch {
@@ -21,8 +21,8 @@
 // both forms; chains and &; subgraphs with a title and their own direction; classDef, class,
 // ::: and style; %% comments; quoted labels, Markdown-string labels (as plain text), entity
 // codes and <br>. Outside it, and so ErrUnsupported: click, linkStyle, Font Awesome icons, the
-// @{ } shape and edge-id syntax, front matter, links to a subgraph, other HTML in labels, and
-// every other diagram type.
+// @{ } shape and edge-id syntax, front matter, links to a subgraph, and other HTML in labels.
+// Each other type has its own subset, in its file; a type with none is ErrUnsupported.
 //
 // Standard library only.
 package mermaid

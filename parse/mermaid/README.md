@@ -1,8 +1,8 @@
 # parse/mermaid
 
-Parses Mermaid diagrams into models a native renderer draws. Today: flowcharts (`flowchart` and
-`graph`). Sequence, state, class and ER diagrams have their `Kind`s and are answered
-`ErrUnsupported` until their parsers land. Standard library only.
+Parses Mermaid diagrams into models a native renderer draws: flowcharts (`flowchart` and
+`graph`), sequence, class, state and ER diagrams. Every other type is `ErrUnsupported`. Standard
+library only.
 
 ```go
 import "github.com/yongjohnlee80/golib/parse/mermaid"
@@ -14,7 +14,11 @@ case errors.Is(err, mermaid.ErrUnsupported), errors.Is(err, mermaid.ErrTooLarge)
 case err != nil:
 	var se *mermaid.SyntaxError // its Line and Col, to show in place
 }
-fc := d.(*mermaid.FlowchartDiagram) // Dir, Nodes, Edges, Subgraphs, Classes
+switch d := d.(type) { // d.Kind() says the same
+case *mermaid.FlowchartDiagram: // Dir, Nodes, Edges, Subgraphs, Classes
+case *mermaid.SequenceDiagram:  // Title, Participants, Steps
+case *mermaid.ClassDiagram, *mermaid.StateDiagram, *mermaid.ERDiagram:
+}
 ```
 
 ## The answer is all or nothing
@@ -44,6 +48,17 @@ A source over 64 KiB (`MaxSource`), or a label over 1 KiB (`MaxLabel`), is `ErrT
 Outside the subset, so `ErrUnsupported`: `click`, `linkStyle`, Font Awesome icons (`fa:`), the
 `@{ }` shape and edge-id syntax, front matter, `accDescr { }` blocks, a link to a subgraph, other
 HTML in a label, and every other diagram type.
+
+## The other types
+
+Each has its own model and the same answer: all of it, or `ErrUnsupported`.
+
+| Type | Supported | `ErrUnsupported` |
+|---|---|---|
+| `sequenceDiagram` | `participant`/`actor` with `as`; every arrow (`->`, `-->`, `->>`, `-->>`, `-x`, `--x`, `-)`, `--)`, `<<->>`, `<<-->>`) with `+`/`-` activation; notes left of, right of, over one or two; `activate`/`deactivate`; `loop`, `alt`/`else`, `opt`, `par`/`and`, `critical`/`option`, `break`, `rect`; `autonumber`; `title` | `box`, `create`, `destroy`, links and menus, participant types (`@{ }`) |
+| `classDiagram` | classes with members (`{ }` or `Name : member`), generics `~T~`, labels, annotations `<<x>>`; every relation, both ways, with cardinalities and a label; `namespace`; `note`/`note for`; `direction`; styling | `click`, `callback`, `link`, lollipop interfaces, nested namespaces |
+| `stateDiagram`, `-v2` | states with descriptions; `[*]` per scope; transitions with labels; composites, nested; `<<fork>>`, `<<join>>`, `<<choice>>`; notes, one-line or to `end note`; `direction`; styling | concurrent regions (`--`), `hide empty description`, `click`, floating notes, a state across composites |
+| `erDiagram` | entities, quoted and aliased; attribute blocks (type, name, PK/FK/UK, comment); every cardinality symbol and its word forms; identifying `--` and not `..`; `direction`; styling | `click`, `linkStyle`, `title` and other statements it does not know |
 
 ## The model
 
