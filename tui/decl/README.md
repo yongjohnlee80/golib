@@ -96,7 +96,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Tab` | `title`; one child, its content | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
-| `Drawer` | `modal` (default true), golib's `resizable` (default false); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20) | — | `opened`, `closed`, golib's `resized(size, length)` | `open()`, `close()`, `toggle()` |
+| `Drawer` | `modal` (default true), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton` (see Window controls); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)` | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
@@ -596,9 +596,29 @@ methods and modal behavior remain compatible.
 
 Drawers expose `resizeBy(widthDelta,heightDelta)` as a pointer-independent path;
 it uses the configured inner-corner handle, so right/bottom-pinned panels can grow.
-`moveBy` is exposed through the same contract but a docked Drawer does not enable
-free movement. Applications removing grips should bind resize keys/commands for
-terminals that reserve modifier-click.
+Applications removing grips should bind resize keys/commands for terminals that
+reserve modifier-click.
+
+`movable: true` lets a Drawer leave its edge: Alt/Option-left drag (`moveButton`,
+which must differ from `resizeButton`) and `moveBy(dx,dy)` move it. While a move or
+resize is in progress the panel shows where it goes; when it ends, the Drawer floats
+at that rectangle, kept as percentages of the Window so a resize of the Window keeps
+it in proportion, and raises `placed(x, y, width, height)` with them, once. A host
+keeping it binds `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` to
+what `placed` reported; `floating: false` docks it at its edge again. Escape during
+a drag restores the panel as it was, docked or floating, and raises nothing. A
+floating Drawer raises `placed`, not `resized`; a Drawer that is not movable keeps
+the docked behaviour above exactly.
+
+```qml
+Drawer {
+    modal: false; movable: true; windowResize: true; edge: Tui.Left; size: 30
+    floating: App.floating
+    floatX: App.x; floatY: App.y; floatWidth: App.w; floatHeight: App.h
+    onPlaced: App.panelPlaced(x, y, width, height)
+    Frame { title: "explorer"; TreeView { model: App.files } }
+}
+```
 
 ## Your own widgets
 
