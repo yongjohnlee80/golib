@@ -126,7 +126,7 @@ func TestSyntaxErrors(t *testing.T) {
 func TestUnsupported(t *testing.T) {
 	for _, src := range []string{
 		"sequenceDiagram\n  box Aqua Team\n  participant A\n  end",
-		"stateDiagram-v2\n  [*] --> A",
+		"stateDiagram-v2\n  state A {\n  a\n  --\n  b\n  }",
 		"classDiagram\n  A <|-- B\n  click A call x()",
 		"erDiagram\n  A ||--o{ B : has",
 		"pie\n  \"a\": 1",
