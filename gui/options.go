@@ -44,6 +44,7 @@ type config struct {
 	minWidth   unit.Dp
 	minHeight  unit.Dp
 	typeface   string
+	fontSet    bool // WithFont named a typeface: no system font goes before it
 	fontSize   unit.Sp
 	padding    unit.Dp
 	theme      Theme
@@ -80,13 +81,14 @@ func WithMinSize(w, h unit.Dp) Option { return func(c *config) { c.minWidth, c.m
 // WithFont sets the monospace typeface the cells are drawn in, and its size. typeface is a Gio
 // typeface list, a CSS font-family list ("CaskaydiaMono NFM, Go Mono"), naming families as
 // fontconfig lists them (fc-list : family). The first family that is installed sets the cell's
-// size. A character it lacks comes from the next family that has it, and then from the system's
-// monospace and emoji fonts, which are always appended (see fallbackChain). A Nerd Font's icons
-// need that Nerd Font named here. The default is the embedded Go Mono at 14sp.
+// size. A character it lacks comes from the next family that has it, then from an installed Nerd
+// Font (its icons), and then from the system's monospace and emoji fonts, which are always
+// appended (see fallbackChain, cellTypeface). The default is the system's monospace family where
+// fontconfig names one, then the embedded Go Mono, at 14sp.
 func WithFont(typeface string, size unit.Sp) Option {
 	return func(c *config) {
 		if typeface != "" {
-			c.typeface = typeface
+			c.typeface, c.fontSet = typeface, true
 		}
 		if size > 0 {
 			c.fontSize = size

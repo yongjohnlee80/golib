@@ -82,6 +82,7 @@ func NewBackend(opts ...Option) *Backend {
 	// the Gio goroutine (the IME preedit) shape text. System fonts stay enabled, so characters
 	// the cell font lacks (Hangul, CJK, symbols) fall back to installed fonts.
 	cells := text.NewShaper(text.WithCollection(gofont.Collection()))
+	cfg.typeface = cellTypeface(cfg) // the full list, once: fallbackChain leaves it as it is
 	b := &Backend{
 		cfg:     cfg,
 		win:     new(app.Window),
