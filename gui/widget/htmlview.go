@@ -71,11 +71,12 @@ type htmlLayout struct {
 	blocks []*topBlock
 	// abs are the body's absolutely positioned children: out of the flow, laid against the page
 	// and painted over it. Their text is drawn, not selectable, and their links do not follow.
-	abs     []*topBlock
-	runs    []*box // the laid-out runs in document order: DocPos.Block
-	parents map[*phtml.Node]*phtml.Node
-	images  *htmlImages
-	sheets  *htmlSheets
+	abs      []*topBlock
+	runs     []*box // the laid-out runs in document order: DocPos.Block
+	parents  map[*phtml.Node]*phtml.Node
+	images   *htmlImages
+	sheets   *htmlSheets
+	diagrams *htmlDiagrams
 	// toggled is the <details> a click on their summary folded or opened, by their source offset:
 	// kept across builds of the same page, dropped for a new one
 	toggled map[int]bool
@@ -89,6 +90,7 @@ func newHTMLLayout(v *tuiwidget.HTMLView) *htmlLayout {
 	l := &htmlLayout{v: v, width: 600, textPx: 16, rootPx: 16}
 	l.images = newHTMLImages(l)
 	l.sheets = newHTMLSheets(l)
+	l.diagrams = newHTMLDiagrams(l)
 	return l
 }
 
@@ -373,16 +375,27 @@ func (l *htmlLayout) keyOf(b *topBlock, width float32) uint64 {
 	if b.node != nil {
 		nodes = []*phtml.Node{b.node}
 	}
+	diagram := func(n *phtml.Node) {
+		if text, ok := mermaidSource(n); ok {
+			g := l.diagrams.genOf(text)
+			for i := range 8 {
+				buf[i] = byte(g >> (8 * i))
+			}
+			_, _ = h.Write(buf[:])
+		}
+	}
 	for _, n := range nodes {
 		if n.Kind == phtml.StartTag && n.Name == "details" && l.detailsOpen(n) {
 			_, _ = h.Write([]byte{'o'}) // the block itself is a <details>: walkNodes visits below it
 		}
+		diagram(n) // the block itself may be the <pre class="mermaid">
 		walkNodes(n, nil, func(c, _ *phtml.Node) {
 			if c.Kind == phtml.StartTag || c.Kind == phtml.SelfClosing {
 				if c.Name == "img" {
 					src, _ := c.Attr("src")
 					_, _ = h.Write([]byte{byte(l.images.gen(src))})
 				}
+				diagram(c)
 				if c.Name == "details" && l.detailsOpen(c) {
 					_, _ = h.Write([]byte{'o'})
 				}
@@ -902,9 +915,10 @@ func (l *htmlLayout) ScrollX(x, y, dx float32) bool {
 	return true
 }
 
-// HandleTask takes an image decoded off the loop; the blocks holding it are laid out again.
+// HandleTask takes an image decoded off the loop, a stylesheet, or a diagram's ready; the blocks
+// holding it are laid out again.
 func (l *htmlLayout) HandleTask(r tui.TaskResult) bool {
-	if !l.images.done(r) && !l.sheets.done(r) {
+	if !l.images.done(r) && !l.sheets.done(r) && !l.diagrams.done(r) {
 		return false
 	}
 	l.built = false
