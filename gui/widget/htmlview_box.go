@@ -26,6 +26,8 @@ const (
 	kTable
 	kRow
 	kCell
+	kFlex // a flex container: its kids are items (htmlview_flex.go)
+	kGrid // a grid container
 )
 
 type box struct {
@@ -50,6 +52,8 @@ type box struct {
 	run    int
 	ax, ay float32
 	sep    string
+	// container is a flex or grid item's container's style, for its alignment
+	container *computed
 }
 
 // styler computes elements' styles from the rules in force.
@@ -252,6 +256,14 @@ func (b *builder) box(n *phtml.Node, st *computed, src [2]int) *box {
 		bx.kind = kCell
 	case "list-item":
 		bx.item = true
+	case "flex", "inline-flex":
+		bx.kind = kFlex
+		bx.kids = b.items(n, st, src)
+		return bx
+	case "grid", "inline-grid":
+		bx.kind = kGrid
+		bx.kids = b.items(n, st, src)
+		return bx
 	}
 	if n.Name == "pre" {
 		trimPre(n)
@@ -440,6 +452,10 @@ func (l *htmlLayout) layBlock(bx *box, x, y, avail float32) {
 	switch bx.kind {
 	case kTable:
 		ch = l.layTable(bx, left+e.left(), inner, content)
+	case kFlex:
+		ch = l.layFlex(bx, left+e.left(), inner, content)
+	case kGrid:
+		ch = l.layGrid(bx, left+e.left(), inner, content)
 	default:
 		ch = l.layKids(bx, left+e.left(), inner, content)
 	}
@@ -693,6 +709,14 @@ func (l *htmlLayout) minMax(bx *box, avail float32) (float32, float32) {
 			}
 		default:
 			a, b = l.minMax(k, avail)
+		}
+		if bx.kind == kFlex && bx.st.flexDir != "column" {
+			// a row's items stand side by side: its widest is their sum, with the gaps
+			lo, hi = max(lo, a), hi+b
+			if hi > b {
+				hi += bx.st.gap[1].px(bx.st.fontSize, l.rootPx, avail, l.view())
+			}
+			continue
 		}
 		lo, hi = max(lo, a), max(hi, b)
 	}

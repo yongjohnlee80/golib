@@ -298,3 +298,95 @@ func TestCSSImageBox(t *testing.T) {
 		}
 	}
 }
+
+// flexKids lays page and answers the first top-level block's items.
+func flexKids(t *testing.T, page string, width float32) []*box {
+	t.Helper()
+	_, l, _ := pixelView(t, `<html><head><style>body{margin:0} div,span,a,p{margin:0;padding:0}`+page, width, 1000)
+	l.layOutTo(1e9)
+	return l.blocks[0].box.kids
+}
+
+// TestCSSFlex: a row with a gap; justify-content's values; wrapping; flex-grow; align-items; a
+// column; an inline element as an item.
+func TestCSSFlex(t *testing.T) {
+	near := func(a, b float32) bool { return a > b-0.5 && a < b+0.5 }
+	items := `<span style="width:100px;display:block">a</span><span style="width:100px;display:block">b</span><span style="width:100px;display:block">c</span>`
+	row := flexKids(t, `nav{display:flex;gap:10px}</style></head><body><nav>`+items+`</nav></body></html>`, 600)
+	if len(row) != 3 || !near(row[0].x, 0) || !near(row[1].x, 110) || !near(row[2].x, 220) || !near(row[1].y, row[0].y) {
+		t.Fatalf("a row with a 10px gap: %v %v %v", row[0].x, row[1].x, row[2].x)
+	}
+	for how, want := range map[string][3]float32{
+		"flex-start": {0, 100, 200}, "center": {150, 250, 350}, "flex-end": {300, 400, 500},
+		"space-between": {0, 250, 500}, "space-around": {50, 250, 450}, "space-evenly": {75, 250, 425},
+	} {
+		k := flexKids(t, `nav{display:flex;justify-content:`+how+`}</style></head><body><nav>`+items+`</nav></body></html>`, 600)
+		if !near(k[0].x, want[0]) || !near(k[1].x, want[1]) || !near(k[2].x, want[2]) {
+			t.Errorf("justify-content %s: %v %v %v, want %v", how, k[0].x, k[1].x, k[2].x, want)
+		}
+	}
+	wrap := flexKids(t, `nav{display:flex;flex-wrap:wrap;gap:5px 10px}</style></head><body><nav>`+items+`</nav></body></html>`, 230)
+	if !near(wrap[1].y, wrap[0].y) || wrap[2].y <= wrap[0].y || !near(wrap[2].x, 0) {
+		t.Errorf("wrapping at 230: %v,%v %v,%v %v,%v", wrap[0].x, wrap[0].y, wrap[1].x, wrap[1].y, wrap[2].x, wrap[2].y)
+	}
+	grow := flexKids(t, `nav{display:flex} .g{flex:1}</style></head><body><nav><span style="width:100px;display:block">a</span><span class="g">grows</span></nav></body></html>`, 600)
+	if !near(grow[1].w, 500) {
+		t.Errorf("flex: 1 took %v of the 500 left", grow[1].w)
+	}
+	tall := `<span style="display:block;height:60px;width:50px">t</span><span style="display:block;width:50px">s</span>`
+	for how, wantY := range map[string]float32{"center": 30 - 0, "flex-end": 60} {
+		k := flexKids(t, `nav{display:flex;align-items:`+how+`}</style></head><body><nav>`+tall+`</nav></body></html>`, 600)
+		short := k[1]
+		if how == "center" && !near(short.y+short.h/2, 30) || how == "flex-end" && !near(short.y+short.h, wantY) {
+			t.Errorf("align-items %s: the short item at %v..%v", how, short.y, short.y+short.h)
+		}
+	}
+	st := flexKids(t, `nav{display:flex}</style></head><body><nav>`+tall+`</nav></body></html>`, 600)
+	if !near(st[1].h, 60) {
+		t.Errorf("align-items stretch: the short item is %v tall, want the line's 60", st[1].h)
+	}
+	col := flexKids(t, `nav{display:flex;flex-direction:column;gap:8px}</style></head><body><nav>`+items+`</nav></body></html>`, 600)
+	if !near(col[0].x, col[1].x) || !near(col[1].y, col[0].y+col[0].h+8) {
+		t.Errorf("a column with an 8px gap: %v,%v %v,%v", col[0].x, col[0].y, col[1].x, col[1].y)
+	}
+	nav := flexKids(t, `nav{display:flex;gap:20px}</style></head><body><nav><a href="a">Aesop</a><span>The Hares</span></nav></body></html>`, 600)
+	if len(nav) != 2 || nav[1].x <= nav[0].x+nav[0].w || nav[1].x > nav[0].x+nav[0].w+20.5 {
+		t.Errorf("inline items side by side with the gap: %v+%v then %v", nav[0].x, nav[0].w, nav[1].x)
+	}
+}
+
+// TestCSSGrid: columns from lengths, fr, minmax() and repeat(), auto-fit folding empty tracks;
+// items in order, row by row, with gaps.
+func TestCSSGrid(t *testing.T) {
+	near := func(a, b float32) bool { return a > b-0.5 && a < b+0.5 }
+	_, l, _ := pixelView(t, `<p>x</p>`, 600, 400)
+	st := func(cols string) *computed { return &computed{fontSize: 16, gridCols: cols} }
+	for _, c := range []struct {
+		cols  string
+		width float32
+		gap   float32
+		n     int
+		want  []float32
+	}{
+		{"minmax(100px, 1fr) 3fr", 400, 0, 4, []float32{100, 300}},
+		{"minmax(100px, 1fr) 3fr", 200, 0, 4, []float32{100, 100}},
+		{"repeat(auto-fit, minmax(220px, 1fr))", 1000, 16, 3, []float32{322.67, 322.67, 322.67}},
+		{"repeat(auto-fill, minmax(220px, 1fr))", 1000, 16, 3, []float32{238, 238, 238, 238}},
+		{"repeat(3, 1fr)", 300, 0, 9, []float32{100, 100, 100}},
+		{"200px 1fr", 500, 0, 2, []float32{200, 300}},
+		{"", 500, 0, 2, []float32{500}},
+	} {
+		got := l.gridColumns(st(c.cols), c.width, c.gap, c.n)
+		ok := len(got) == len(c.want)
+		for i := range got {
+			ok = ok && i < len(c.want) && near(got[i], c.want[i])
+		}
+		if !ok {
+			t.Errorf("%q at %v: %v, want %v", c.cols, c.width, got, c.want)
+		}
+	}
+	k := flexKids(t, `dl{display:grid;grid-template-columns:100px 1fr;gap:4px 10px} dt,dd{margin:0}</style></head><body><dl><dt>a</dt><dd>one</dd><dt>b</dt><dd>two</dd></dl></body></html>`, 500)
+	if len(k) != 4 || !near(k[1].x, 110) || !near(k[1].y, k[0].y) || !near(k[2].x, 0) || !near(k[2].y, k[0].y+k[0].h+4) {
+		t.Errorf("a dl grid: %v,%v %v,%v %v,%v", k[0].x, k[0].y, k[1].x, k[1].y, k[2].x, k[2].y)
+	}
+}
