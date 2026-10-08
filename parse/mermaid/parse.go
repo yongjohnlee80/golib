@@ -160,11 +160,33 @@ func (p *parser) parse() (Diagram, error) {
 	}
 	switch kw {
 	case "flowchart", "graph":
-	case "sequenceDiagram", "stateDiagram", "stateDiagram-v2", "classDiagram", "classDiagram-v2", "erDiagram":
-		return nil, fmt.Errorf("%w: %s diagrams", ErrUnsupported, kw)
-	default:
-		return nil, fmt.Errorf("%w: %q diagrams", ErrUnsupported, kw)
+		return p.flowchart(rest, restOff)
+	case "sequenceDiagram":
+		return p.sequence(rest, restOff)
+	case "classDiagram", "classDiagram-v2":
+		return p.class(rest, restOff)
+	case "stateDiagram", "stateDiagram-v2":
+		return p.state(rest, restOff)
+	case "erDiagram":
+		return p.er(rest, restOff)
 	}
+	return nil, fmt.Errorf("%w: %q diagrams", ErrUnsupported, kw)
+}
+
+// done is a parse's answer: an unsupported construct first (the diagram is another renderer's,
+// whatever else is wrong in it), then a syntax error, then d.
+func (p *parser) done(d Diagram) (Diagram, error) {
+	switch {
+	case p.unsupported != nil:
+		return nil, p.unsupported
+	case p.syntax != nil:
+		return nil, p.syntax
+	}
+	return d, nil
+}
+
+// flowchart parses a flowchart's body: rest is its header line after the keyword, at restOff.
+func (p *parser) flowchart(rest string, restOff int) (Diagram, error) {
 	p.fc = &FlowchartDiagram{Dir: TB, Classes: map[string]Style{}}
 	p.nodes, p.subgraphs, p.styles = map[string]int{}, map[string]int{}, map[string]Style{}
 
@@ -193,13 +215,7 @@ func (p *parser) parse() (Diagram, error) {
 		p.fail(len(p.src), "subgraph %q has no end", p.stack[len(p.stack)-1])
 	}
 	p.resolve()
-	switch {
-	case p.unsupported != nil:
-		return nil, p.unsupported
-	case p.syntax != nil:
-		return nil, p.syntax
-	}
-	return p.fc, nil
+	return p.done(p.fc)
 }
 
 func parseDir(w string) (Dir, bool) {
