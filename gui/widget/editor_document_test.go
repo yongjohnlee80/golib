@@ -164,3 +164,54 @@ func TestTheFocusMovesWithTheShownChild(t *testing.T) {
 		t.Error("the focus left the editor for the widget before it")
 	}
 }
+
+// plainDoc is a consumer's own document view, not an HTMLView: it keeps the text it is shown and
+// counts its layouts.
+type plainDoc struct {
+	tuiwidget.Base
+	text    string
+	layouts int
+}
+
+func (d *plainDoc) AcceptsFocus() bool       { return true }
+func (d *plainDoc) ShowDocument(text []byte) { d.text = string(text) }
+func (d *plainDoc) Layout(c tui.Constraints) tui.Size {
+	d.layouts++
+	return c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
+}
+func (d *plainDoc) Render(tui.Surface)         {}
+func (d *plainDoc) HandleEvent(tui.Event) bool { return false }
+
+// TestAConsumersDocumentView: a document view of a consumer's own gets the text and the focus
+// when shown, and Ctrl+T, which it leaves, returns to Raw; hidden, it is not laid out.
+func TestAConsumersDocumentView(t *testing.T) {
+	d := &plainDoc{}
+	h := startEditor(t, 60, 20, WithDocumentView(d), WithCore(tuiwidget.CoreInitialText("plain text")))
+	h.onLoop(func() { h.e.SetRenderedDocument(true) })
+	h.keys(ctrl('t'))
+	h.until("the focus in the view", func() bool {
+		var ok bool
+		h.onLoop(func() { ok = h.app.FocusWithin(d) })
+		return ok
+	})
+	var text string
+	h.onLoop(func() { text = d.text })
+	if text != "plain text" {
+		t.Fatalf("the view was shown %q", text)
+	}
+	h.keys(ctrl('t'))
+	var mode EditorMode
+	h.onLoop(func() { mode = h.e.Mode() })
+	if mode != Raw {
+		t.Fatalf("Ctrl+T from the consumer's view: mode %v, want Raw", mode)
+	}
+	var before int
+	h.onLoop(func() { before = d.layouts; h.e.body.Context().RequestLayout() })
+	h.barrier()
+	h.paint()
+	var after int
+	h.onLoop(func() { after = d.layouts })
+	if after != before {
+		t.Errorf("hidden, the view was laid out %d more times", after-before)
+	}
+}
