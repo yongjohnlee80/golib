@@ -69,6 +69,7 @@ type htmlLayout struct {
 	runs    []*box // the laid-out runs in document order: DocPos.Block
 	parents map[*phtml.Node]*phtml.Node
 	images  *htmlImages
+	sheets  *htmlSheets
 
 	built  bool // the source has been read since it last changed
 	relaid int  // top-level blocks laid out, for the tests that count them
@@ -78,6 +79,7 @@ type htmlLayout struct {
 func newHTMLLayout(v *tuiwidget.HTMLView) *htmlLayout {
 	l := &htmlLayout{v: v, width: 600, textPx: 16, rootPx: 16}
 	l.images = newHTMLImages(l)
+	l.sheets = newHTMLSheets(l)
 	return l
 }
 
@@ -104,6 +106,7 @@ func (l *htmlLayout) SetSource(src []byte) {
 // has a new resolver (tuiwidget.HTMLLayoutImages).
 func (l *htmlLayout) ResetImages() {
 	l.images.reset()
+	l.sheets.reset()
 	l.built = false
 }
 
@@ -147,11 +150,24 @@ func (l *htmlLayout) build() {
 	var sheets strings.Builder
 	sheets.WriteString(uaCSS)
 	sheets.WriteString(l.themeCSS())
+	linked := 0
 	walkNodes(doc, nil, func(n, parent *phtml.Node) {
 		l.parents[n] = parent
-		if n.Kind == phtml.StartTag && n.Name == "style" {
+		if n.Kind != phtml.StartTag && n.Kind != phtml.SelfClosing {
+			return
+		}
+		if n.Name == "style" {
 			for _, c := range n.Children {
 				sheets.WriteString("\n" + c.Data)
+			}
+			return
+		}
+		// a linked sheet in its place in the cascade, once it has loaded
+		if href, ok := sheetLink(n); ok && linked < maxSheets {
+			linked++
+			if e := l.sheets.entry(href); e.state == imgReady {
+				media, _ := n.Attr("media")
+				sheets.WriteString("\n" + mediaWrapped(e.text, media))
 			}
 		}
 	})
@@ -806,7 +822,7 @@ func (l *htmlLayout) ScrollX(x, y, dx float32) bool {
 
 // HandleTask takes an image decoded off the loop; the blocks holding it are laid out again.
 func (l *htmlLayout) HandleTask(r tui.TaskResult) bool {
-	if !l.images.done(r) {
+	if !l.images.done(r) && !l.sheets.done(r) {
 		return false
 	}
 	l.built = false

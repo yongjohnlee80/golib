@@ -507,3 +507,66 @@ func TestHTMLResourcesRefusedAreReported(t *testing.T) {
 		t.Errorf("after a new resolver, told %v, want it again", told)
 	}
 }
+
+// TestHTMLLinkedStylesheets: a linked sheet applies once it has loaded, in its place in the
+// cascade among the page's <style>s; an alternate or print sheet does not; a load from before a
+// new resolver is swallowed.
+func TestHTMLLinkedStylesheets(t *testing.T) {
+	red, blue := color.NRGBA{R: 0xff, A: 0xff}, color.NRGBA{B: 0xff, A: 0xff}
+	colorOf := func(l *htmlLayout) color.NRGBA { return l.runs[0].spans[0].Color }
+	page := func(head string) string { return `<html><head>` + head + `</head><body><p>text</p></body></html>` }
+	ready := func(l *htmlLayout, href, text string) {
+		l.sheets.entries[href] = &sheetEntry{state: imgReady, text: text}
+		l.built = false
+		repaint(l, 400, 200)
+	}
+	_, l, _ := pixelView(t, page(`<link rel="stylesheet" href="a.css">`), 400, 200)
+	if c := colorOf(l); c == red {
+		t.Fatal("red before the sheet loaded")
+	}
+	ready(l, "a.css", "p{color:#ff0000}")
+	if c := colorOf(l); c != red {
+		t.Errorf("after the sheet loaded the text is %v, want red", c)
+	}
+	_, l, _ = pixelView(t, page(`<style>p{color:#0000ff}</style><link rel="stylesheet" href="a.css">`), 400, 200)
+	if ready(l, "a.css", "p{color:#ff0000}"); colorOf(l) != red {
+		t.Errorf("a sheet linked after a <style>: %v, want it to win (red)", colorOf(l))
+	}
+	_, l, _ = pixelView(t, page(`<link rel="stylesheet" href="a.css"><style>p{color:#0000ff}</style>`), 400, 200)
+	if ready(l, "a.css", "p{color:#ff0000}"); colorOf(l) != blue {
+		t.Errorf("a sheet linked before a <style>: %v, want the <style> to win (blue)", colorOf(l))
+	}
+	for _, link := range []string{`<link rel="alternate stylesheet" href="a.css">`, `<link rel="stylesheet" href="a.css" media="print">`, `<link rel="icon" href="a.css">`} {
+		_, l, _ = pixelView(t, page(link), 400, 200)
+		if ready(l, "a.css", "p{color:#ff0000}"); colorOf(l) == red {
+			t.Errorf("%s applied", link)
+		}
+	}
+	v, l, _ := pixelView(t, page(`<link rel="stylesheet" href="a.css">`), 400, 200)
+	l.sheets.entries["a.css"] = &sheetEntry{state: imgLoading}
+	l.sheets.tasks[5] = "a.css"
+	v.SetImageResolver(nil)
+	if !l.HandleTask(tui.TaskResult{ID: 5, Value: "p{color:#ff0000}"}) {
+		t.Error("the old resolver's sheet was not swallowed")
+	}
+	if _, ok := l.sheets.entries["a.css"]; ok {
+		t.Error("the old resolver's sheet became the page's")
+	}
+}
+
+// TestHTMLLoadSheetCaps: a sheet over 1 MiB, or not UTF-8, is refused.
+func TestHTMLLoadSheetCaps(t *testing.T) {
+	serve := func(b []byte) tuiwidget.ImageResolver {
+		return func(context.Context, string) (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }
+	}
+	ctx := context.Background()
+	if v, err := loadSheet(ctx, "a.css", serve([]byte("p{}"))); err != nil || v != "p{}" {
+		t.Errorf("a small sheet: %v %v", v, err)
+	}
+	if _, err := loadSheet(ctx, "a.css", serve(bytes.Repeat([]byte("a"), maxSheetBytes+1))); !errors.Is(err, errSheetCap) {
+		t.Errorf("an over-cap sheet: %v", err)
+	}
+	if _, err := loadSheet(ctx, "a.css", serve([]byte{0xff, 0xfe})); err == nil {
+		t.Error("a sheet that is not UTF-8 loaded")
+	}
+}
