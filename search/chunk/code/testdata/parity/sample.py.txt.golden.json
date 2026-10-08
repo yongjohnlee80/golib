@@ -1,0 +1,53 @@
+{
+  "Version": "code-py-2",
+  "Chunks": [
+    {
+      "Ord": 0,
+      "Breadcrumb": "pkg/a.py",
+      "Body": "\"\"\"Module doc.\"\"\"\nimport os\n\n# a comment",
+      "Embed": "",
+      "ByteStart": 0,
+      "ByteEnd": 40
+    },
+    {
+      "Ord": 1,
+      "Breadcrumb": "pkg/a.py \u003e top",
+      "Body": "@decorator\n@other(\n    arg=1,\n)\ndef top(a, b: int) -\u003e int:\n    \"\"\"Top adds.\"\"\"\n    if a:\n        return a\n    return b",
+      "Embed": "pkg/a.py \u003e top\nTop adds.\n@decorator\n@other(\n    arg=1,\n)\ndef top(a, b: int) -\u003e int",
+      "ByteStart": 42,
+      "ByteEnd": 160
+    },
+    {
+      "Ord": 2,
+      "Breadcrumb": "pkg/a.py \u003e Box",
+      "Body": "class Box(Base):\n    \"\"\"A box.\"\"\"\n\n    size = 3",
+      "Embed": "pkg/a.py \u003e Box\nA box.\nclass Box(Base)",
+      "ByteStart": 163,
+      "ByteEnd": 210
+    },
+    {
+      "Ord": 3,
+      "Breadcrumb": "pkg/a.py \u003e Box \u003e open",
+      "Body": "def open(self):\n        \"\"\"Opens it.\"\"\"\n        return self.size",
+      "Embed": "pkg/a.py \u003e Box \u003e open\nOpens it.\ndef open(self)",
+      "ByteStart": 216,
+      "ByteEnd": 280
+    },
+    {
+      "Ord": 4,
+      "Breadcrumb": "pkg/a.py \u003e Box \u003e close",
+      "Body": "async def close(self):\n        s = \"\"\"\ndef not_a_def():\nclass NotAClass:\n\"\"\"\n        return s",
+      "Embed": "pkg/a.py \u003e Box \u003e close\nasync def close(self)",
+      "ByteStart": 286,
+      "ByteEnd": 379
+    },
+    {
+      "Ord": 5,
+      "Breadcrumb": "pkg/a.py \u003e (glue)",
+      "Body": "print(\"done\")",
+      "Embed": "",
+      "ByteStart": 381,
+      "ByteEnd": 394
+    }
+  ]
+}

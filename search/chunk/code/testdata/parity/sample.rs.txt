@@ -1,0 +1,45 @@
+//! Crate doc.
+use std::fmt;
+
+/// A point.
+#[derive(Debug, Clone)]
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub struct Unit;
+
+/// Kinds.
+enum Kind { A, B }
+
+/// Shapes have areas.
+pub trait Shape {
+    fn area(&self) -> f64;
+}
+
+impl fmt::Display for Point {
+    /// Formats.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
+
+impl Point {
+    const ORIGIN: i32 = 0;
+
+    pub fn new(x: i32, y: i32) -> Self {
+        Point { x, y }
+    }
+
+    pub(crate) async fn later<'a>(&'a self) -> &'a i32 {
+        &self.x
+    }
+}
+
+/// Main.
+pub const fn answer() -> i32 { 42 }
+
+extern "C" fn callback() {}
+
+macro_rules! m { () => {} }

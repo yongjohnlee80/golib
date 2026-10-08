@@ -1,0 +1,33 @@
+"""Module doc."""
+import os
+
+# a comment
+
+@decorator
+@other(
+    arg=1,
+)
+def top(a, b: int) -> int:
+    """Top adds."""
+    if a:
+        return a
+    return b
+
+
+class Box(Base):
+    """A box."""
+
+    size = 3
+
+    def open(self):
+        """Opens it."""
+        return self.size
+
+    async def close(self):
+        s = """
+def not_a_def():
+class NotAClass:
+"""
+        return s
+
+print("done")

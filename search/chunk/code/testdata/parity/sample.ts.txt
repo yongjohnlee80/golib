@@ -1,0 +1,32 @@
+import { a } from "./a";
+import b from 'b';
+
+/** Adds two numbers. */
+export function add(x: number, y: number): number {
+  return x + y;
+}
+
+/**
+ * A shape.
+ */
+@Component({ selector: "x" })
+export class Shape {
+  private name = "s";
+  /** The area. */
+  area(): number {
+    if (this.name === "}") { return 0; }
+    return 1;
+  }
+  static make(): Shape { return new Shape(); }
+}
+
+export interface Point { x: number; y: number }
+
+export type Pair<T> = [T, T];
+
+/** Doubles. */
+export const double = (n: number): number => {
+  return n * 2;
+};
+
+console.log("top-level");

@@ -1,0 +1,117 @@
+{
+  "Version": "code-rs-2",
+  "Chunks": [
+    {
+      "Ord": 0,
+      "Breadcrumb": "src/lib.rs",
+      "Body": "//! Crate doc.\nuse std::fmt;",
+      "Embed": "",
+      "ByteStart": 0,
+      "ByteEnd": 28
+    },
+    {
+      "Ord": 1,
+      "Breadcrumb": "src/lib.rs \u003e Point (struct)",
+      "Body": "/// A point.\n#[derive(Debug, Clone)]\npub struct Point {\n    x: i32,\n    y: i32,\n}",
+      "Embed": "src/lib.rs \u003e Point (struct)\nA point.\npub struct Point {\n    x: i32,\n    y: i32,\n}",
+      "ByteStart": 30,
+      "ByteEnd": 111
+    },
+    {
+      "Ord": 2,
+      "Breadcrumb": "src/lib.rs \u003e Unit (struct)",
+      "Body": "pub struct Unit;",
+      "Embed": "src/lib.rs \u003e Unit (struct)\npub struct Unit;",
+      "ByteStart": 113,
+      "ByteEnd": 129
+    },
+    {
+      "Ord": 3,
+      "Breadcrumb": "src/lib.rs \u003e Kind (enum)",
+      "Body": "/// Kinds.\nenum Kind { A, B }",
+      "Embed": "src/lib.rs \u003e Kind (enum)\nKinds.\nenum Kind { A, B }",
+      "ByteStart": 131,
+      "ByteEnd": 160
+    },
+    {
+      "Ord": 4,
+      "Breadcrumb": "src/lib.rs \u003e trait Shape",
+      "Body": "/// Shapes have areas.\npub trait Shape {",
+      "Embed": "src/lib.rs \u003e trait Shape\nShapes have areas.\npub trait Shape",
+      "ByteStart": 162,
+      "ByteEnd": 202
+    },
+    {
+      "Ord": 5,
+      "Breadcrumb": "src/lib.rs \u003e trait Shape \u003e area",
+      "Body": "fn area(\u0026self) -\u003e f64;\n}",
+      "Embed": "src/lib.rs \u003e trait Shape \u003e area\nfn area(\u0026self) -\u003e f64;",
+      "ByteStart": 207,
+      "ByteEnd": 231
+    },
+    {
+      "Ord": 6,
+      "Breadcrumb": "src/lib.rs \u003e impl fmt::Display for Point",
+      "Body": "impl fmt::Display for Point {",
+      "Embed": "src/lib.rs \u003e impl fmt::Display for Point\nimpl fmt::Display for Point",
+      "ByteStart": 233,
+      "ByteEnd": 262
+    },
+    {
+      "Ord": 7,
+      "Breadcrumb": "src/lib.rs \u003e impl fmt::Display for Point \u003e fmt",
+      "Body": "/// Formats.\n    fn fmt(\u0026self, f: \u0026mut fmt::Formatter) -\u003e fmt::Result {\n        write!(f, \"({}, {})\", self.x, self.y)\n    }\n}",
+      "Embed": "src/lib.rs \u003e impl fmt::Display for Point \u003e fmt\nFormats.\nfn fmt(\u0026self, f: \u0026mut fmt::Formatter) -\u003e fmt::Result",
+      "ByteStart": 267,
+      "ByteEnd": 392
+    },
+    {
+      "Ord": 8,
+      "Breadcrumb": "src/lib.rs \u003e impl Point",
+      "Body": "impl Point {\n    const ORIGIN: i32 = 0;",
+      "Embed": "src/lib.rs \u003e impl Point\nimpl Point",
+      "ByteStart": 394,
+      "ByteEnd": 433
+    },
+    {
+      "Ord": 9,
+      "Breadcrumb": "src/lib.rs \u003e impl Point \u003e new",
+      "Body": "pub fn new(x: i32, y: i32) -\u003e Self {\n        Point { x, y }\n    }",
+      "Embed": "src/lib.rs \u003e impl Point \u003e new\npub fn new(x: i32, y: i32) -\u003e Self",
+      "ByteStart": 439,
+      "ByteEnd": 504
+    },
+    {
+      "Ord": 10,
+      "Breadcrumb": "src/lib.rs \u003e impl Point \u003e later",
+      "Body": "pub(crate) async fn later\u003c'a\u003e(\u0026'a self) -\u003e \u0026'a i32 {\n        \u0026self.x\n    }\n}",
+      "Embed": "src/lib.rs \u003e impl Point \u003e later\npub(crate) async fn later\u003c'a\u003e(\u0026'a self) -\u003e \u0026'a i32",
+      "ByteStart": 510,
+      "ByteEnd": 586
+    },
+    {
+      "Ord": 11,
+      "Breadcrumb": "src/lib.rs \u003e answer",
+      "Body": "/// Main.\npub const fn answer() -\u003e i32 { 42 }",
+      "Embed": "src/lib.rs \u003e answer\nMain.\npub const fn answer() -\u003e i32",
+      "ByteStart": 588,
+      "ByteEnd": 633
+    },
+    {
+      "Ord": 12,
+      "Breadcrumb": "src/lib.rs \u003e callback",
+      "Body": "extern \"C\" fn callback() {}",
+      "Embed": "src/lib.rs \u003e callback\nextern \"C\" fn callback()",
+      "ByteStart": 635,
+      "ByteEnd": 662
+    },
+    {
+      "Ord": 13,
+      "Breadcrumb": "src/lib.rs \u003e (glue)",
+      "Body": "macro_rules! m { () =\u003e {} }",
+      "Embed": "",
+      "ByteStart": 664,
+      "ByteEnd": 691
+    }
+  ]
+}

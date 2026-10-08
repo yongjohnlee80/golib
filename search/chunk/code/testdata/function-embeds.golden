@@ -1,0 +1,180 @@
+== go | pkg/x > Thing > Get
+pkg/x > Thing > Get
+Get returns the value.
+func (t *Thing) Get() (string, error)
+== go | pkg/x > Thing > Set
+pkg/x > Thing > Set
+Set is a value-receiver method.
+func (t Thing) Set(v string)
+== go | pkg/x > Map
+pkg/x > Map
+Map is generic.
+func Map[T, U any](xs []T, f func(T) U) []U
+== ts | web/app.ts > add
+web/app.ts > add
+Adds two numbers.
+export function add(x: number, y: number): number
+== ts | web/app.ts > Shape > area
+web/app.ts > Shape > area
+The area.
+area(): number
+== ts | web/app.ts > Shape > make
+web/app.ts > Shape > make
+static make(): Shape
+== ts | web/app.ts > double
+web/app.ts > double
+Doubles.
+export const double = (n: number): number =>
+== js-strings | web/s.js > real
+web/s.js > real
+function real(a)
+== py | py/m.py > top
+py/m.py > top
+Top adds.
+@decorator
+@other(
+    arg=1,
+)
+def top(a, b: int) -> int
+== py | py/m.py > Box > open
+py/m.py > Box > open
+Opens it.
+def open(self)
+== py | py/m.py > Box > close
+py/m.py > Box > close
+async def close(self)
+== py-strings | py/s.py > real
+py/s.py > real
+def real()
+== rs | src/lib.rs > trait Shape > area
+src/lib.rs > trait Shape > area
+fn area(&self) -> f64;
+== rs | src/lib.rs > impl fmt::Display for Point > fmt
+src/lib.rs > impl fmt::Display for Point > fmt
+Formats.
+fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+== rs | src/lib.rs > impl Point > new
+src/lib.rs > impl Point > new
+pub fn new(x: i32, y: i32) -> Self
+== rs | src/lib.rs > impl Point > later
+src/lib.rs > impl Point > later
+pub(crate) async fn later<'a>(&'a self) -> &'a i32
+== rs | src/lib.rs > answer
+src/lib.rs > answer
+Main.
+pub const fn answer() -> i32
+== rs | src/lib.rs > callback
+src/lib.rs > callback
+extern "C" fn callback()
+== rs-strings | src/s.rs > real
+src/s.rs > real
+fn real()
+== rs-strings | src/s.rs > second
+src/s.rs > second
+fn second()
+== go-big | pkg/x > Big > func Big(n int) error
+pkg/x > Big
+Big does a lot.
+func Big(n int) error
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+v step err check
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+err check v step
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+v step err check
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+err check v step
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+v step err check
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+err check v step
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+v step err check
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+err check v step
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+v step err check
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+err check v step
+== go-big | pkg/x > Big > func Big(n int) error
+func Big(n int) error
+v step err check
+== js-big | a.js > big > function big(n)
+a.js > big
+Big.
+function big(n)
+== js-big | a.js > big > function big(n)
+function big(n)
+log v step
+== js-big | a.js > big > function big(n)
+function big(n)
+log v step
+== js-big | a.js > big > function big(n)
+function big(n)
+log v step
+== js-big | a.js > big > function big(n)
+function big(n)
+log v step
+== js-big | a.js > big > function big(n)
+function big(n)
+log v step
+== js-big | a.js > big > function big(n)
+function big(n)
+log v step
+== py-big | a.py > big > def big(n)
+a.py > big
+Big.
+def big(n)
+== py-big | a.py > big > def big(n)
+def big(n)
+log step
+== py-big | a.py > big > def big(n)
+def big(n)
+log step
+== py-big | a.py > big > def big(n)
+def big(n)
+log step
+== py-big | a.py > big > def big(n)
+def big(n)
+log step
+== py-big | a.py > big > def big(n)
+def big(n)
+log step
+== rs-big | a.rs > big > fn big(n: i32) -> i32
+a.rs > big
+Big.
+fn big(n: i32) -> i32
+== rs-big | a.rs > big > fn big(n: i32) -> i32
+fn big(n: i32) -> i32
+v step log
+== rs-big | a.rs > big > fn big(n: i32) -> i32
+fn big(n: i32) -> i32
+log v step
+== rs-big | a.rs > big > fn big(n: i32) -> i32
+fn big(n: i32) -> i32
+v step log
+== rs-big | a.rs > big > fn big(n: i32) -> i32
+fn big(n: i32) -> i32
+log v step
+== rs-big | a.rs > big > fn big(n: i32) -> i32
+fn big(n: i32) -> i32
+v step log
+== rs-big | a.rs > big > fn big(n: i32) -> i32
+fn big(n: i32) -> i32
+log v step
+== rs-big | a.rs > big > fn big(n: i32) -> i32
+fn big(n: i32) -> i32
+v step log
+== rs-big | a.rs > big > fn big(n: i32) -> i32
+fn big(n: i32) -> i32
+log v step
