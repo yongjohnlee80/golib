@@ -26,6 +26,9 @@ func (l *Laid) Paint(c gui.Canvas) {
 	}
 	l.edgesAt(c, true)
 	for _, g := range l.group { // over what the frames hold, so a box never hides a frame's title
+		if !g.tab && !g.bare && len(g.title.lines) > 0 { // on its group's fill: an edge crossing it never runs through it
+			l.ground(c, g.title, or(g.fill, l.th.ClusterFill))
+		}
 		l.text(c, g.title)
 		for _, p := range g.parts {
 			for _, lb := range p.labels {

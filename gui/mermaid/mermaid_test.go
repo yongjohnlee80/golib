@@ -142,3 +142,22 @@ func TestAShaperWithoutAScaleMeasuresAtOne(t *testing.T) {
 		}
 	}
 }
+
+// A subgraph's title has room above its members, and a label on an edge inside one subgraph sits
+// on its fill, not a patch of page.
+func TestASubgraphsTitleAndLabelsSitInIt(t *testing.T) {
+	l, err := lay(t, "flowchart TB\n  subgraph S [A long subgraph title]\n    A[First] -->|inside| B[Second]\n  end\n  B -->|leaving| C[Third]", 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := l.group[0]
+	for _, n := range l.nodes[:2] {
+		if overlaps(g.title.box, n.box) {
+			t.Errorf("the title %+v runs into %q at %+v", g.title.box, n.label.lines, n.box)
+		}
+	}
+	in, out := l.edges[0], l.edges[1]
+	if in.ground != testTheme.ClusterFill || out.ground != (color.NRGBA{}) {
+		t.Errorf("label grounds: inside %v, leaving %v; want the cluster fill, then the page", in.ground, out.ground)
+	}
+}

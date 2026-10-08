@@ -46,6 +46,10 @@ func layFlowchart(ctx context.Context, d pm.Diagram, width float32, th Theme, m 
 		l.nodes = append(l.nodes, laidNode{form: shapeForm[n.Shape], fill: fill, stroke: stroke, width: sw,
 			label: label{lines: lines, font: f, color: text, box: gui.Rect{W: ts.W, H: ts.H}}})
 	}
+	sub := map[string]string{} // each node's innermost subgraph
+	for _, n := range fc.Nodes {
+		sub[n.ID] = n.Subgraph
+	}
 	for _, e := range fc.Edges {
 		le := layout.Edge{From: index[e.From], To: index[e.To], MinLen: max(e.MinLen, 1)}
 		var lb *label
@@ -56,7 +60,11 @@ func layFlowchart(ctx context.Context, d pm.Diagram, width float32, th Theme, m 
 			lb = &label{lines: lines, font: small, color: th.Text, box: gui.Rect{W: ts.W, H: ts.H}}
 		}
 		in.Edges = append(in.Edges, le)
-		l.edges = append(l.edges, laidEdge{line: e.Line, head: arrowEnd[e.Head], tail: arrowEnd[e.Tail], color: th.Line, label: lb})
+		de := laidEdge{line: e.Line, head: arrowEnd[e.Head], tail: arrowEnd[e.Tail], color: th.Line, label: lb}
+		if g := sub[e.From]; g != "" && g == sub[e.To] { // inside one subgraph: its label sits on the subgraph's fill
+			de.ground = th.ClusterFill
+		}
+		l.edges = append(l.edges, de)
 	}
 	// a subgraph's box holds its own nodes and every nested subgraph's
 	parent := map[string]string{}
@@ -83,6 +91,8 @@ func layFlowchart(ctx context.Context, d pm.Diagram, width float32, th Theme, m 
 		}
 		lines, ts := m.Wrap(title, small, wrapAt)
 		l.group = append(l.group, laidGroup{title: label{lines: lines, font: small, color: th.Text, box: gui.Rect{W: ts.W, H: ts.H}, left: true}})
+		// the margin round a group's members holds its title above them
+		in.GroupPad = max(in.GroupPad, ts.H+small.Size*0.9)
 	}
 	res, err := layout.Layered(ctx, in, layout.Limits{})
 	if err != nil {
