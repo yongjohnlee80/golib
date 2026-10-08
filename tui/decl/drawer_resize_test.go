@@ -69,7 +69,7 @@ func drag(s *decltest.Screen, t *testing.T, x, y, dx, dy int) {
 // taller, from 30% of 20 rows (6) to 50% (10), and resized says so once, on release.
 func TestAResizableDrawerGrowsByItsCornerGrip(t *testing.T) {
 	s, rec := runResizableDrawer(t, "bottom", true)
-	x, y, ok := find(s, "◥")
+	x, y, ok := find(s, "□")
 	if !ok {
 		t.Fatalf("no grip on the bottom drawer:\n%s", s)
 	}
@@ -88,7 +88,7 @@ func TestAResizableDrawerGrowsByItsCornerGrip(t *testing.T) {
 // Dragged past its bounds, a drawer stops at them: down to minimumSize (20%: 4 rows), up to 90%.
 func TestAResizableDrawerStopsAtItsBounds(t *testing.T) {
 	s, rec := runResizableDrawer(t, "bottom", true)
-	x, y, _ := find(s, "◥")
+	x, y, _ := find(s, "□")
 	drag(s, t, x, y, 0, 10) // far below its minimum
 	s.WaitFor(t, "resized at the minimum", func(string) bool { return len(rec.all()) == 2 })
 	if got := rec.all(); got[0].Raw != "20" {
@@ -97,7 +97,7 @@ func TestAResizableDrawerStopsAtItsBounds(t *testing.T) {
 	if top := panelTop(s); top != 20-4 {
 		t.Fatalf("at its minimum the drawer starts on row %d, want %d:\n%s", top, 20-4, s)
 	}
-	x, y, _ = find(s, "◥")
+	x, y, _ = find(s, "□")
 	drag(s, t, x, y, 0, -30) // far above the top
 	s.WaitFor(t, "resized at the maximum", func(string) bool { return len(rec.all()) == 4 })
 	if got := rec.all(); got[2].Raw != "90" {
@@ -109,7 +109,7 @@ func TestAResizableDrawerStopsAtItsBounds(t *testing.T) {
 // the bottom left; a drawer that is not resizable has none.
 func TestADrawersGripIsOnItsInnerCorner(t *testing.T) {
 	s, _ := runResizableDrawer(t, "left", true)
-	if x, y, ok := find(s, "◢"); !ok || x != 60*30/100-1 || y != 19 {
+	if x, y, ok := find(s, "□"); !ok || x != 60*30/100-1 || y != 19 {
 		t.Fatalf("a left drawer's grip is at %d,%d (%v), want its bottom right (17,19):\n%s", x, y, ok, s)
 	}
 	onScreenLoop(t, s, func() {
@@ -118,11 +118,11 @@ func TestADrawersGripIsOnItsInnerCorner(t *testing.T) {
 		}
 	})
 	s.WaitFor(t, "the grip on the right drawer's bottom left", func(string) bool {
-		x, y, ok := find(s, "◣")
+		x, y, ok := find(s, "□")
 		return ok && x == 60-60*30/100 && y == 19
 	})
 	plain, _ := runResizableDrawer(t, "bottom", false)
-	for _, g := range []string{"◢", "◣", "◥"} {
+	for _, g := range []string{"□"} {
 		if _, _, ok := find(plain, g); ok {
 			t.Fatalf("a drawer that is not resizable has a grip %s:\n%s", g, plain)
 		}
@@ -152,7 +152,7 @@ func TestACancelledDragLeavesTheDrawerAsItWas(t *testing.T) {
 		}
 	})
 	s.WaitForText(t, "panel")
-	x, y, _ := find(s, "◥")
+	x, y, _ := find(s, "□")
 	before := panelTop(s)
 	s.Keys(t,
 		tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y},
@@ -206,7 +206,7 @@ func TestAHostsSizeIsHeldToTheMinimum(t *testing.T) {
 // not 58 as flooring each way made it.
 func TestADragOfOneCellIsOneCell(t *testing.T) {
 	s, rec := runResizableDrawer(t, "bottom", true)
-	x, y, _ := find(s, "◥")
+	x, y, _ := find(s, "□")
 	drag(s, t, x, y, -1, 0)
 	s.WaitFor(t, "resized", func(string) bool { return len(rec.all()) == 2 })
 	s.WaitFor(t, "59 wide", func(string) bool {
@@ -214,7 +214,7 @@ func TestADragOfOneCellIsOneCell(t *testing.T) {
 		return col(line, "┘")-col(line, "└") == 58
 	})
 	// two columns narrower is 58 of 60: 96.7%, said as 97, the nearest, not 96
-	x, y, _ = find(s, "◥")
+	x, y, _ = find(s, "□")
 	drag(s, t, x, y, -1, 0)
 	s.WaitFor(t, "resized again", func(string) bool { return len(rec.all()) == 4 })
 	if got := rec.all()[3].Raw; got != "97" {
@@ -226,13 +226,13 @@ func TestADragOfOneCellIsOneCell(t *testing.T) {
 // right is 24 wide, 40%.
 func TestASideDrawerGrowsAcrossByItsWidth(t *testing.T) {
 	s, rec := runResizableDrawer(t, "left", true)
-	x, y, _ := find(s, "◢")
+	x, y, _ := find(s, "□")
 	drag(s, t, x, y, 6, 0)
 	s.WaitFor(t, "resized", func(string) bool { return len(rec.all()) == 2 })
 	if got := rec.all(); got[0].Raw != "40" || got[1].Raw != "100" {
 		t.Fatalf("resized(%s, %s), want (40, 100)", got[0].Raw, got[1].Raw)
 	}
-	s.WaitFor(t, "24 wide", func(string) bool { gx, _, ok := find(s, "◢"); return ok && gx == 23 })
+	s.WaitFor(t, "24 wide", func(string) bool { gx, _, ok := find(s, "□"); return ok && gx == 23 })
 }
 
 // minimumLength holds the length along the edge: raised past a drawer's length, it widens it; a
@@ -271,7 +271,7 @@ func TestADrawersMinimumLengthHoldsItsLength(t *testing.T) {
 	}
 	set("App.min", 50)
 	s.WaitFor(t, "widened to the minimum, 30 columns", wide(30))
-	x, y, _ := find(s, "◥")
+	x, y, _ := find(s, "□")
 	drag(s, t, x, y, -50, 0)
 	s.WaitFor(t, "resized at the minimum length", func(string) bool { return len(rec.all()) == 2 })
 	if got := rec.all()[1].Raw; got != "50" {
@@ -289,7 +289,7 @@ func TestADrawersMinimumLengthHoldsItsLength(t *testing.T) {
 func TestAResizableDrawerIsAnchoredAtTheTopOrCentred(t *testing.T) {
 	s, _ := runResizableDrawer(t, "top", true)
 	s.WaitFor(t, "the grip at the top drawer's bottom right", func(string) bool {
-		x, y, ok := find(s, "◢")
+		x, y, ok := find(s, "□")
 		return ok && x == 59 && y == 5 && panelTop(s) == 0
 	})
 	c := decltest.Run(t, 60, 20,
@@ -304,7 +304,7 @@ func TestAResizableDrawerIsAnchoredAtTheTopOrCentred(t *testing.T) {
 		}
 	})
 	c.WaitFor(t, "the grip at the centred drawer's bottom right", func(string) bool {
-		x, y, ok := find(c, "◢")
+		x, y, ok := find(c, "□")
 		return ok && x == 44 && y == 12 && panelTop(c) == 7
 	})
 }
