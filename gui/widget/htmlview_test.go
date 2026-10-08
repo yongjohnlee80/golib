@@ -11,11 +11,13 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
+	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -400,5 +402,32 @@ func TestHTMLLayoutByteBetweenListItems(t *testing.T) {
 	}
 	if top, _ := l.BlockTop(2); top != first {
 		t.Errorf("BlockTop(2) = %v, want the first item's top %v", top, first)
+	}
+}
+
+// TestHTMLImagesResetForANewResolver: a new resolver (another folder) forgets every image, so two
+// pages naming the same relative src never share one; a load still on its way under the old
+// resolver is swallowed when it lands, not taken as the new page's image.
+func TestHTMLImagesResetForANewResolver(t *testing.T) {
+	v, l, _ := pixelView(t, `<p>x</p>`, 400, 200)
+	m := l.images
+	m.entries["logo.png"] = &imgEntry{state: imgReady, w: 4, h: 3}
+	m.tasks[7] = "logo.png"
+	v.SetImageResolver(func(context.Context, string) (io.ReadCloser, error) { return nil, errors.New("none") })
+	if len(m.entries) != 0 || len(m.tasks) != 0 || l.built {
+		t.Fatalf("after a new resolver: entries %v, tasks %v, built %v; want none and a rebuild", m.entries, m.tasks, l.built)
+	}
+	img := image.NewNRGBA(image.Rect(0, 0, 4, 3))
+	if !l.HandleTask(tui.TaskResult{ID: 7, Value: image.Image(img)}) {
+		t.Error("the old resolver's load was not swallowed")
+	}
+	if _, ok := m.entries["logo.png"]; ok {
+		t.Error("the old resolver's load became the new page's logo.png")
+	}
+	// a load started after the reset is the page's
+	m.entries["logo.png"] = &imgEntry{state: imgLoading}
+	m.tasks[8] = "logo.png"
+	if !l.HandleTask(tui.TaskResult{ID: 8, Value: image.Image(img)}) || m.entries["logo.png"].state != imgReady {
+		t.Error("a load under the new resolver was not taken")
 	}
 }

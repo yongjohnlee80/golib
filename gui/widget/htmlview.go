@@ -87,6 +87,7 @@ var (
 	_ tuiwidget.HTMLLayoutPixels  = (*htmlLayout)(nil)
 	_ tuiwidget.HTMLLayoutTasks   = (*htmlLayout)(nil)
 	_ tuiwidget.HTMLLayoutHScroll = (*htmlLayout)(nil)
+	_ tuiwidget.HTMLLayoutImages  = (*htmlLayout)(nil)
 	_ gui.View                    = (*htmlLayout)(nil)
 )
 
@@ -96,6 +97,13 @@ func (l *htmlLayout) Pixels() bool { return true }
 // SetSource reads a new page; it is laid out at the next paint or question.
 func (l *htmlLayout) SetSource(src []byte) {
 	l.src = src
+	l.built = false
+}
+
+// ResetImages drops the page's images and their loads on the way, and lays it out again: the view
+// has a new resolver (tuiwidget.HTMLLayoutImages).
+func (l *htmlLayout) ResetImages() {
+	l.images.reset()
 	l.built = false
 }
 

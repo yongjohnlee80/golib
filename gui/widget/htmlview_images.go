@@ -51,10 +51,21 @@ type htmlImages struct {
 	l       *htmlLayout
 	entries map[string]*imgEntry
 	tasks   map[tui.TaskID]string
+	stale   map[tui.TaskID]struct{} // loads started before the last reset: their results are dropped
 }
 
 func newHTMLImages(l *htmlLayout) *htmlImages {
-	return &htmlImages{l: l, entries: map[string]*imgEntry{}, tasks: map[tui.TaskID]string{}}
+	return &htmlImages{l: l, entries: map[string]*imgEntry{}, tasks: map[tui.TaskID]string{},
+		stale: map[tui.TaskID]struct{}{}}
+}
+
+// reset forgets every image and every load on its way: a new resolver reads a page's relative src
+// as another file, so neither an entry nor a load still in flight under the old one may be kept.
+func (m *htmlImages) reset() {
+	for id := range m.tasks {
+		m.stale[id] = struct{}{}
+	}
+	m.entries, m.tasks = map[string]*imgEntry{}, map[tui.TaskID]string{}
 }
 
 // gen is an image's state as a number, for its block's key: a decode that lands changes it.
@@ -85,6 +96,10 @@ func (m *htmlImages) entry(src string) *imgEntry {
 
 // done takes a decode's result; it reports whether the result was an image's.
 func (m *htmlImages) done(r tui.TaskResult) bool {
+	if _, ok := m.stale[r.ID]; ok {
+		delete(m.stale, r.ID)
+		return true // the old resolver's: dropped
+	}
 	src, ok := m.tasks[r.ID]
 	if !ok {
 		return false
