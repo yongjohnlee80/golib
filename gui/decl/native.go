@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui/widget"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/style"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // NativeOption sets up the native style.
@@ -41,7 +41,9 @@ func Native(opts ...NativeOption) tuidecl.Style {
 	return tuidecl.Style{Name: "native", Types: []tuidecl.Type{ed}}
 }
 
-// markdownRenderer is golib's renderer for a MarkdownRenderer declaration.
+// markdownRenderer is golib's renderer for a MarkdownRenderer declaration. It reads the
+// spec's headingScale. Its mermaid flag draws nothing yet: fenced mermaid blocks render as code
+// until gui has a Diagrammer to draw them with, and then the flag turns the drawing on.
 func markdownRenderer(s tuidecl.RendererSpec) widget.Renderer {
 	var opts []widget.MarkdownOption
 	if m, ok := s.(tuidecl.MarkdownSpec); ok && m.HeadingScale > 0 {
@@ -57,7 +59,7 @@ func (n *native) buildEditor(b tuidecl.Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := []widget.EditorOption{widget.WithCore(d.CoreOptions()...)}
+	opts := []widget.EditorOption{widget.WithCore(d.CoreOptions()...), widget.WithWrap(wrapMode(d.Wrap))}
 	if d.Renderer != nil {
 		if f, ok := n.renderers[d.Renderer.RendererKind()]; ok {
 			if r := f(d.Renderer); r != nil {
@@ -70,10 +72,18 @@ func (n *native) buildEditor(b tuidecl.Build) (tui.Component, []string, error) {
 	return e, d.Consumed, nil
 }
 
+// wrapMode is the QML wrap property as a WrapMode: true wraps long lines at the editor's width,
+// false keeps them on one row and scrolls sideways (the default, as tui's Editor's).
+func wrapMode(wrap bool) tuiwidget.WrapMode {
+	if wrap {
+		return tuiwidget.WrapSoft
+	}
+	return tuiwidget.WrapNone
+}
+
 // editorSetters are the Editor's runtime properties on gui's Editor: the behaviour ones shared
-// with tui's, and its own view ones. The contract is tui's Editor's, property for property; a
-// view property gui's Editor does not draw yet is accepted and changes nothing, so a document
-// runs unchanged under either style.
+// with tui's, and its own view ones, which mean what they mean on tui's Editor. The contract is
+// tui's Editor's, property for property.
 func editorSetters() map[string]tuidecl.Setter {
 	s := tuidecl.EditorSetters()
 	s["contextMenu"] = tuidecl.BoolSetter((*widget.Editor).SetContextMenu)
@@ -85,11 +95,11 @@ func editorSetters() map[string]tuidecl.Setter {
 			e.SetMode(widget.Raw)
 		}
 	})
-	// Accepted, not drawn: gui's Editor always wraps at its width, and has no gutter or ruler.
-	s["wrap"] = tuidecl.BoolSetter(func(*widget.Editor, bool) {})
-	s["lineNumbers"] = tuidecl.BoolSetter(func(*widget.Editor, bool) {})
-	s["lineNumberColor"] = tuidecl.ColorSetter(func(*widget.Editor, style.Color) {})
-	s["ruler"] = tuidecl.NumberSetter(func(*widget.Editor, float64) {})
+	s["wrap"] = tuidecl.BoolSetter(func(e *widget.Editor, v bool) { e.SetWrap(wrapMode(v)) })
+	s["lineNumbers"] = tuidecl.BoolSetter((*widget.Editor).SetLineNumbers)
+	s["lineNumberColor"] = tuidecl.ColorSetter((*widget.Editor).SetLineNumberColor)
+	// the Raw view's guide, at this column (1-based); 0 for none
+	s["ruler"] = tuidecl.NumberSetter(func(e *widget.Editor, v float64) { e.SetRuler(int(v)) })
 	return s
 }
 
