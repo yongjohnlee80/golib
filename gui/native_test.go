@@ -482,8 +482,8 @@ func TestImagesCompositeInPaintOrderWithNatives(t *testing.T) {
 	}
 }
 
-// A native button marks its mnemonic's letter as its cells do: the letter bold, with a line under
-// it, between the label's other letters.
+// A native button marks its mnemonic's letter with a line under it, between the label's other
+// letters, at the label's own weight: not bold.
 func TestButtonMarksItsMnemonic(t *testing.T) {
 	b := widget.NewButton("Close (q)", widget.WithMnemonic('q'))
 	v, _, ok := paintButton(b)
@@ -511,6 +511,12 @@ func TestButtonMarksItsMnemonic(t *testing.T) {
 	}
 	if !(texts[0].Rect.X < key.X && key.X < texts[2].Rect.X) {
 		t.Fatalf("runs out of order: %+v", texts)
+	}
+	f := labelFont(rc)
+	regular := rc.Text().Layout("q", f, 0).Width
+	f.Bold = true
+	if bold := rc.Text().Layout("q", f, 0).Width; bold != regular && texts[1].Text.Width != regular {
+		t.Fatalf("the key is %v wide: bold (%v), not the label's weight (%v)", texts[1].Text.Width, bold, regular)
 	}
 	v, _, _ = paintButton(widget.NewButton("Use"))
 	rc = NewRecordingCanvas(Size{W: 120, H: 18}, Size{W: 8, H: 18})

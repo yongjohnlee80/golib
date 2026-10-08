@@ -136,8 +136,9 @@ func keyColor(c Canvas, label string, key int, fg color.NRGBA) color.NRGBA {
 	return fg
 }
 
-// drawLabel draws label centred in c, with cluster key (the button's mnemonic; -1 for none) bold
-// and underlined in keyFg, as its cells mark it.
+// drawLabel draws label centred in c, with cluster key (the button's mnemonic; -1 for none)
+// underlined in keyFg, at the label's own weight: the line and the colour mark it, and a bold
+// letter in the middle of a word reads as a blot.
 func drawLabel(c Canvas, label string, key int, f Font, fg, keyFg color.NRGBA) {
 	var parts [3]strings.Builder // before the key, the key, after it
 	n := 0
@@ -152,11 +153,9 @@ func drawLabel(c Canvas, label string, key int, f Font, fg, keyFg color.NRGBA) {
 		}
 		n++
 	}
-	bold := f
-	bold.Bold = true
 	runs := [3]*TextLayout{
 		c.Text().Layout(parts[0].String(), f, 0),
-		c.Text().Layout(parts[1].String(), bold, 0),
+		c.Text().Layout(parts[1].String(), f, 0),
 		c.Text().Layout(parts[2].String(), f, 0),
 	}
 	var width, ascent, descent float32
