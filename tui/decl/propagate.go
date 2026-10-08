@@ -185,11 +185,12 @@ func (a *Adapter) windowTheme(p palette) {
 	}
 }
 
-// tokenTheme is the token theme a palette makes: the highlight its primary, the window text its
-// foreground (the text drawn on the window: a menu's, a toast's, a dialog card's), the window its
-// surface and panel, the button its boost, the accent, the mid its
-// border, the highlight its focused border. Unset roles keep NewTheme's derivations. Background
-// stays the terminal's own: a dialog's scrim dims to it, and the page's colour would not dim.
+// tokenTheme is the token theme a palette makes, each surface with the text that pairs with it:
+// the base and text the background and foreground, and the page's base the surface and panel
+// too (a menu, a toast, a grip), so text drawn on any of them is the text meant for it; the
+// highlight the primary, the highlighted text on it; the accent, the mid the border, the
+// highlight the focused border. The boost, an overlay's surface (a dialog's scrim), is the page
+// darkened, so what is behind a dialog reads as dimmed. Unset roles keep NewTheme's derivations.
 func tokenTheme(p palette) (style.Theme, bool) {
 	primary, ok := p[roleHighlight]
 	if !ok {
@@ -200,13 +201,19 @@ func tokenTheme(p palette) (style.Theme, bool) {
 		t style.Token
 		r Role
 	}{
-		{style.TokenForeground, roleWindowText},
-		{style.TokenSurface, roleWindow}, {style.TokenPanel, roleWindow}, {style.TokenBoost, roleButton},
+		{style.TokenBackground, roleBase}, {style.TokenForeground, roleText},
+		{style.TokenSurface, roleBase}, {style.TokenPanel, roleBase},
 		{style.TokenAccent, roleAccent}, {style.TokenBorder, roleMid}, {style.TokenBorderFocused, roleHighlight},
 		{style.TokenTextOnPrimary, roleHighlightedText},
 	} {
 		if c, ok := p[m.r]; ok {
 			opts = append(opts, style.WithToken(m.t, c))
+		}
+	}
+	if base, ok := p[roleBase]; ok {
+		if r, g, b, ok := base.RGBValues(); ok {
+			dim := func(v uint8) uint8 { return uint8(float64(v) * 0.65) }
+			opts = append(opts, style.WithToken(style.TokenBoost, style.RGB(dim(r), dim(g), dim(b))))
 		}
 	}
 	return style.NewTheme(primary, opts...), true
