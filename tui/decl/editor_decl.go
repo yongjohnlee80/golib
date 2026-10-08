@@ -118,6 +118,9 @@ func editorViewSetters() map[string]Setter {
 		// golib's: Editor.Raw or Editor.Rendered. The cell Editor has no Rendered view: it
 		// accepts the value, so one document runs under any style, and stays Raw.
 		"view": EnumSetter(EditorViews, func(*widget.Editor, string) {}),
+		// golib's: whether the Rendered view is available, for the document shown (Markdown's
+		// renderer and a Go file: false). The cell Editor has none: it accepts the value.
+		"renderedEnabled": setter("an Editor", boolOf, func(*widget.Editor, bool) {}),
 	}
 }
 

@@ -158,6 +158,7 @@ Window {
         lineNumbers: true
         lineNumberColor: "#ff0000"
         ruler: 80
+        renderedEnabled: false
     }
 }`
 	native := run(t, src, tuidecl.WithStyle(guidecl.Native()))
@@ -169,6 +170,9 @@ Window {
 		}
 		if e.Wrap() != tuiwidget.WrapSoft || !e.LineNumbers() || e.Ruler() != 80 {
 			t.Errorf("gui Editor: wrap %v, lineNumbers %v, ruler %d; want WrapSoft, true, 80", e.Wrap(), e.LineNumbers(), e.Ruler())
+		}
+		if e.RenderedEnabled() {
+			t.Error("renderedEnabled: false left the Rendered view available")
 		}
 	})
 	plain := run(t, src)
@@ -186,6 +190,9 @@ Window {
 		e := c.(*widget.Editor)
 		if e.Wrap() != tuiwidget.WrapNone || e.LineNumbers() || e.Ruler() != 0 {
 			t.Errorf("defaults: wrap %v, lineNumbers %v, ruler %d; want WrapNone, false, 0", e.Wrap(), e.LineNumbers(), e.Ruler())
+		}
+		if !e.RenderedEnabled() {
+			t.Error("by default the Rendered view is not available")
 		}
 	})
 }
