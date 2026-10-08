@@ -86,6 +86,13 @@ type HTMLLayoutHScroll interface {
 	ScrollX(x, y, dx float32) bool
 }
 
+// HTMLLayoutActivate is a layout with parts a click acts on (a <details>' summary, which folds
+// and opens it): the view asks it on a click with no drag, before following a link; true when it
+// acted.
+type HTMLLayoutActivate interface {
+	Activate(x, y float32) bool
+}
+
 // HTMLLayoutImages is a layout that keeps the images it loaded: SetImageResolver drops them and
 // their pending loads, since a page's relative src means another file under another resolver.
 type HTMLLayoutImages interface {
@@ -438,6 +445,11 @@ func (v *HTMLView) mouse(m tui.MouseEvent) bool {
 		x, y := v.docPoint(m)
 		v.endDrag()
 		if !v.moved && v.sel[0] == v.sel[1] {
+			if a, ok := v.layout.(HTMLLayoutActivate); ok && a.Activate(x, y) {
+				v.RequestLayout()
+				v.MarkDirty()
+				return true
+			}
 			if href := v.layout.LinkAt(x, y); href != "" && v.onLink != nil {
 				v.onLink(href)
 			}

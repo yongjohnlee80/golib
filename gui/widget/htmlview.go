@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"bytes"
 	"hash/fnv"
 	"image/color"
 	"math"
@@ -75,6 +76,9 @@ type htmlLayout struct {
 	parents map[*phtml.Node]*phtml.Node
 	images  *htmlImages
 	sheets  *htmlSheets
+	// toggled is the <details> a click on their summary folded or opened, by their source offset:
+	// kept across builds of the same page, dropped for a new one
+	toggled map[int]bool
 
 	built  bool // the source has been read since it last changed
 	relaid int  // top-level blocks laid out, for the tests that count them
@@ -89,13 +93,14 @@ func newHTMLLayout(v *tuiwidget.HTMLView) *htmlLayout {
 }
 
 var (
-	_ tuiwidget.HTMLLayout        = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutWidth   = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutPixels  = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutTasks   = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutHScroll = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutImages  = (*htmlLayout)(nil)
-	_ gui.View                    = (*htmlLayout)(nil)
+	_ tuiwidget.HTMLLayout         = (*htmlLayout)(nil)
+	_ tuiwidget.HTMLLayoutWidth    = (*htmlLayout)(nil)
+	_ tuiwidget.HTMLLayoutPixels   = (*htmlLayout)(nil)
+	_ tuiwidget.HTMLLayoutTasks    = (*htmlLayout)(nil)
+	_ tuiwidget.HTMLLayoutHScroll  = (*htmlLayout)(nil)
+	_ tuiwidget.HTMLLayoutImages   = (*htmlLayout)(nil)
+	_ tuiwidget.HTMLLayoutActivate = (*htmlLayout)(nil)
+	_ gui.View                     = (*htmlLayout)(nil)
 )
 
 // Pixels reports that the layout's units are pixels.
@@ -103,8 +108,50 @@ func (l *htmlLayout) Pixels() bool { return true }
 
 // SetSource reads a new page; it is laid out at the next paint or question.
 func (l *htmlLayout) SetSource(src []byte) {
+	if !bytes.Equal(src, l.src) {
+		l.toggled = nil
+	}
 	l.src = src
 	l.built = false
+}
+
+// detailsOpen reports whether a <details> shows all of it: its open attribute, unless a click on
+// its summary flipped it.
+func (l *htmlLayout) detailsOpen(n *phtml.Node) bool {
+	_, open := n.Attr("open")
+	return open != l.toggled[n.Span[0]]
+}
+
+// Activate folds or opens the <details> whose summary is under document point (x, y).
+func (l *htmlLayout) Activate(x, y float32) bool {
+	if !l.ready() {
+		return false
+	}
+	var hit *phtml.Node
+	for _, b := range l.blocks {
+		if !b.laid || y < b.y || y >= b.y+b.h {
+			continue
+		}
+		var walk func(bx *box)
+		walk = func(bx *box) {
+			if bx.details != nil && x >= bx.x && x < bx.x+bx.w && y >= b.y+bx.y && y < b.y+bx.y+bx.h {
+				hit = bx.details
+			}
+			for _, k := range bx.kids {
+				walk(k)
+			}
+		}
+		walk(b.box)
+	}
+	if hit == nil {
+		return false
+	}
+	if l.toggled == nil {
+		l.toggled = map[int]bool{}
+	}
+	l.toggled[hit.Span[0]] = !l.toggled[hit.Span[0]]
+	l.built = false
+	return true
 }
 
 // ResetImages drops the page's images and their loads on the way, and lays it out again: the view
@@ -318,11 +365,17 @@ func (l *htmlLayout) keyOf(b *topBlock, width float32) uint64 {
 		nodes = []*phtml.Node{b.node}
 	}
 	for _, n := range nodes {
+		if n.Kind == phtml.StartTag && n.Name == "details" && l.detailsOpen(n) {
+			_, _ = h.Write([]byte{'o'}) // the block itself is a <details>: walkNodes visits below it
+		}
 		walkNodes(n, nil, func(c, _ *phtml.Node) {
 			if c.Kind == phtml.StartTag || c.Kind == phtml.SelfClosing {
 				if c.Name == "img" {
 					src, _ := c.Attr("src")
 					_, _ = h.Write([]byte{byte(l.images.gen(src))})
+				}
+				if c.Name == "details" && l.detailsOpen(c) {
+					_, _ = h.Write([]byte{'o'})
 				}
 			}
 		})

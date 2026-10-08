@@ -390,3 +390,64 @@ func TestCSSGrid(t *testing.T) {
 		t.Errorf("a dl grid: %v,%v %v,%v %v,%v", k[0].x, k[0].y, k[1].x, k[1].y, k[2].x, k[2].y)
 	}
 }
+
+// TestDetailsFoldAndOpen: a <details> without open shows its summary alone, marked ▸; a click on
+// the summary opens it (▾, its content laid out) and another folds it; a click elsewhere does
+// nothing; the toggle survives a rebuild of the same page and is dropped for another; one with
+// open starts open; a link inside still answers LinkAt.
+func TestDetailsFoldAndOpen(t *testing.T) {
+	page := `<html><head><style>body{margin:0}</style></head><body><details class="toc"><summary>On this page</summary><ul><li><a href="#x">The Hares</a></li></ul></details><p>after</p></body></html>`
+	v, l, _ := pixelView(t, page, 600, 400)
+	text := func() string {
+		l.layOutTo(1e9)
+		var parts []string
+		for _, r := range l.runs {
+			for _, s := range r.spans {
+				parts = append(parts, s.Text)
+			}
+		}
+		return strings.Join(parts, "|")
+	}
+	if got := text(); !strings.Contains(got, "▸ |On this page") || strings.Contains(got, "The Hares") {
+		t.Fatalf("folded: %q", got)
+	}
+	sum := l.runs[0]
+	if l.Activate(sum.ax+200, sum.ay+2) != true {
+		t.Fatal("a click on the summary did nothing")
+	}
+	repaint(l, 600, 400)
+	if got := text(); !strings.Contains(got, "▾ |On this page") || !strings.Contains(got, "The Hares") {
+		t.Fatalf("opened: %q", got)
+	}
+	var link *box
+	for _, r := range l.runs {
+		if strings.Contains(r.spans[0].Text, "The Hares") {
+			link = r
+		}
+	}
+	if href := l.LinkAt(link.ax+2, link.ay+2); href != "#x" {
+		t.Errorf("the link inside: %q", href)
+	}
+	if l.Activate(link.ax+2, link.ay+2) {
+		t.Error("a click on the content activated the details")
+	}
+	after := l.runs[len(l.runs)-1]
+	if l.Activate(after.ax+2, after.ay+2) {
+		t.Error("a click after the details activated it")
+	}
+	v.SetHTML([]byte(page)) // the same page, built again: still open
+	repaint(l, 600, 400)
+	if !strings.Contains(text(), "The Hares") {
+		t.Error("a rebuild of the same page folded it")
+	}
+	v.SetHTML([]byte(strings.Replace(page, "after", "changed", 1)))
+	repaint(l, 600, 400)
+	if strings.Contains(text(), "The Hares") {
+		t.Error("another page kept the toggle")
+	}
+	_, open, _ := pixelView(t, strings.Replace(page, `<details class="toc">`, `<details open>`, 1), 600, 400)
+	open.layOutTo(1e9)
+	if open.runs[0].spans[0].Text != "▾ " {
+		t.Errorf("<details open> starts %q", open.runs[0].spans[0].Text)
+	}
+}
