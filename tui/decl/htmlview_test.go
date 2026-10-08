@@ -44,6 +44,14 @@ func TestAnHTMLViewFromTheDocument(t *testing.T) {
 	s.WaitFor(t, "scrolled to three", func(sc string) bool { return strings.HasPrefix(strings.Split(sc, "\n")[0], "three") })
 	s.WaitFor(t, "scrolledTo emitted", func(string) bool { return strings.HasSuffix(logged(rec), ",20") })
 	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("page", "scrollToSource"); err == nil || !strings.Contains(err.Error(), "one argument") {
+			t.Errorf("scrollToSource with no byte: %v, want its arity refused", err)
+		}
+		if err := s.Program.Call("page", "scrollToSource", "three"); err == nil {
+			t.Error("scrollToSource took a string for its byte")
+		}
+	})
+	onScreenLoop(t, s, func() {
 		if v, ok := tuidecl.FindAs[*widget.HTMLView](s.Program, "page"); !ok || !strings.Contains(string(v.Source()), "Hello") {
 			t.Error("the host does not reach the HTMLView by id")
 		}
