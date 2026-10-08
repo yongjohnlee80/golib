@@ -272,7 +272,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 	l := e.layout
 	fg, bg := c.CellColors(0, 0)
 	l.sh, l.cell = c.Text(), c.CellSize()
-	th := e.theme(fg, bg, l.cell, b.styleTheme)
+	th := e.theme(fg, bg, c.TextSize(), b.styleTheme)
 	prev := l.th
 	l.th = th // the gutter is counted in this theme's monospace cells
 	l.gutter = float32(e.GutterWidth()) * l.monoCell()

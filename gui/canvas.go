@@ -57,7 +57,10 @@ type Canvas interface {
 	// the geometry draws its text and marks at these cells. Column and row are the view's own
 	// (0, 0 at its top-left cell), whatever Sub or transform is current.
 
-	CellSize() Size                               // one cell, in logical pixels
+	CellSize() Size // one cell, in logical pixels
+	// TextSize is the size of the window's text (the cells' font), in logical pixels: what a
+	// view sizes its own text by, so it reads at the size of everything around it.
+	TextSize() float32
 	CellColors(col, row int) (fg, bg color.NRGBA) // a cell's colours as drawn; zero outside the grid
 	CellText(col, row int) string                 // a cell's grapheme cluster; "" outside the grid or for a wide cell's second half
 	// Backdrop is the colour around the view: the most common background of the cells bordering
@@ -138,6 +141,8 @@ func (c *gioCanvas) Sub(r Rect) Canvas {
 func (c *gioCanvas) Size() Size        { return c.size }
 func (c *gioCanvas) Scale() float32    { return c.m.scale }
 func (c *gioCanvas) Text() *TextShaper { return &TextShaper{s: c.r.shaper, scale: c.m.scale} }
+func (c *gioCanvas) TextSize() float32 { return c.m.ppem / c.m.scale }
+
 func (c *gioCanvas) CellSize() Size {
 	return Size{W: float32(c.m.cell.X) / c.m.scale, H: float32(c.m.cell.Y) / c.m.scale}
 }
