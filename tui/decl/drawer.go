@@ -61,6 +61,12 @@ type drawerNode struct {
 	windowTarget       *drawerWindowTarget
 	windowMods         *widget.WindowMod
 	modal              bool
+	// movable: a move or resize floats it at frac, percentages of the Window (x, y, w, h), until
+	// floating is set false; placed(x, y, width, height) reports where each move or resize ended
+	movable  bool
+	floating bool
+	frac     [4]int
+	placed   func(args ...qml.SpecValue)
 }
 
 var _ Overlaid = (*drawerNode)(nil)
@@ -73,10 +79,11 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 		return nil, nil, errors.New("a Drawer holds exactly one child, its content")
 	}
 	modal, resizable := true, false
-	windowResize := false
+	windowResize, movable := false, false
 	wc := windowModConfig{modifier: tui.ModAlt, moveButton: tui.MouseLeft, resizeButton: tui.MouseRight}
 	consumed, err := readProps(b.Props, map[string]field{
 		"modal": into(&modal, boolOf), "resizable": into(&resizable, boolOf), "windowResize": into(&windowResize, boolOf),
+		"movable": into(&movable, boolOf), "moveButton": into(&wc.moveButton, windowMouseButtons.read),
 		"maximizable": into(&wc.maximize, boolOf), "minimizable": into(&wc.minimize, boolOf), "closable": into(&wc.close, boolOf),
 		"label": into(&wc.label, stringOf), "key": into(&wc.key, stringOf),
 		"dragModifier": into(&wc.modifier, windowModifierOf), "resizeButton": into(&wc.resizeButton, windowMouseButtons.read),
@@ -87,10 +94,14 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	if wc.minimize && (modal || b.WindowCollector == nil) {
 		return nil, nil, errors.New("minimizable Drawer requires modal: false and WithWindowCollector")
 	}
-	wc.resize = windowResize
+	if movable && windowResize && wc.moveButton == wc.resizeButton {
+		return nil, nil, errors.New("a Drawer's moveButton and resizeButton must differ")
+	}
+	wc.resize, wc.move = windowResize, movable
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
 		content: b.Children[0], resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
-		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, windowEmit: b.EmitterWith("changed")}
+		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, windowEmit: b.EmitterWith("changed"),
+		movable: movable, frac: [4]int{25, 25, 50, 50}, placed: b.EmitterWith("placed")}
 	if n.resizable { // a drag stops a resizable panel short of a sliver along its edge
 		n.minLength = 20
 	}
@@ -136,6 +147,9 @@ func (n *drawerNode) wrapped() tui.Component {
 	if n.windowResize {
 		opts = append(opts, widget.WithWindowResize())
 	}
+	if n.movable {
+		opts = append(opts, widget.WithWindowMove(), widget.WithWindowMoveBinding(n.windowConfig.modifier, n.windowConfig.moveButton))
+	}
 	if n.windowConfig.maximize {
 		opts = append(opts, widget.WithWindowMaximize())
 	}
@@ -157,7 +171,7 @@ func (n *drawerNode) wrapped() tui.Component {
 }
 
 func (n *drawerNode) windowControls() bool {
-	return n.windowResize || n.windowConfig.maximize || n.windowConfig.minimize || n.windowConfig.close
+	return n.windowResize || n.movable || n.windowConfig.maximize || n.windowConfig.minimize || n.windowConfig.close
 }
 
 // WindowBehavior exposes capabilities to a separate declarative presentation.
@@ -169,7 +183,16 @@ func (n *drawerNode) WindowBehavior() *widget.WindowCore {
 }
 
 func (n *drawerNode) windowChanged(e widget.WindowChangedEvent) {
-	if e.Operation == widget.WindowResize {
+	switch {
+	case n.movable && (e.Operation == widget.WindowMove || e.Operation == widget.WindowResize):
+		// a movable Drawer floats where a move or resize ended, as percentages of the Window: the
+		// drag's rectangle is done with first, or place would keep it at those cells
+		n.windowTarget.preview, n.windowTarget.moving = nil, nil
+		x, y, w, h := widget.FractionOf(e.Bounds, n.area())
+		n.floating, n.frac = true, [4]int{x, y, w, h}
+		n.place()
+		n.placed(windowNumber(x), windowNumber(y), windowNumber(w), windowNumber(h))
+	case e.Operation == widget.WindowResize:
 		n.windowTarget.preview = nil
 		n.dragEnded(tui.Size{W: e.Bounds.W, H: e.Bounds.H})
 	}
@@ -182,6 +205,15 @@ func (n *drawerNode) stopWindowDrag() {
 		n.windowMods.Core().HandleAction(tui.ActionInvocation{Action: widget.WindowDragCancelAction{}, Origin: tui.OriginProgrammatic})
 	}
 	n.windowTarget.preview = nil
+	if n.windowTarget.moving != nil {
+		n.windowTarget.moving = nil
+		n.place()
+	}
+}
+
+// floatRect is a floating Drawer's rectangle in the Window, in cells.
+func (n *drawerNode) floatRect() tui.Rect {
+	return widget.FractionRect(n.frac[0], n.frac[1], n.frac[2], n.frac[3], n.area())
 }
 
 // dragEnded keeps where the drag left the panel, as percentages of the Window, and raises resized
@@ -227,8 +259,22 @@ func (n *drawerNode) percentOf(sz, win tui.Size) (size, length int) {
 
 // place anchors the Float at the edge, the size across it and the length along it, centred. A
 // resizable Drawer's Float is sized by its content, which the frame sizes from size and length, so
-// a drag can change them.
+// a drag can change them. A floating Drawer is at its percentages of the Window, and a move or
+// resize in progress at the rectangle it would take; maximized, it is docked and the frame fills
+// the Window.
 func (n *drawerNode) place() {
+	if n.movable && !n.windowTarget.maximized {
+		switch {
+		case n.windowTarget.moving != nil:
+			n.float.SetAnchor(widget.AtRect(*n.windowTarget.moving))
+			n.float.SetSizeFraction(0, 0)
+			return
+		case n.floating:
+			n.float.SetAnchor(widget.AtFraction(n.frac[0], n.frac[1], n.frac[2], n.frac[3]))
+			n.float.SetSizeFraction(0, 0)
+			return
+		}
+	}
 	if n.resizable || n.windowControls() {
 		n.placeAnchor()
 		n.float.SetSizeFraction(0, 0)
@@ -316,6 +362,31 @@ func (n *drawerNode) setLength(pct int) {
 	n.place()
 }
 
+// setFloating is Drawer.floating's setter: false docks a floated Drawer at its edge again, true
+// floats it at floatX, floatY, floatWidth and floatHeight. Only a movable Drawer floats.
+func (n *drawerNode) setFloating(on bool) {
+	n.stopWindowDrag()
+	n.floating = on && n.movable
+	n.place()
+}
+
+// setFrac is a setter of one of floatX, floatY, floatWidth and floatHeight: a percentage of the
+// Window, 0 to 100.
+func (n *drawerNode) setFrac(i, pct int) {
+	n.stopWindowDrag()
+	n.frac[i] = min(max(pct, 0), 100)
+	n.place()
+}
+
+// area is the Window the Drawer is over, as a rectangle: where its Float last laid out, else where
+// the frame last did.
+func (n *drawerNode) area() tui.Rect {
+	if a := n.float.Area(); a.W > 0 && a.H > 0 {
+		return tui.Rect{W: a.W, H: a.H}
+	}
+	return tui.Rect{W: n.win.W, H: n.win.H}
+}
+
 // SetOverlay implements Overlaid: the Drawer's Float becomes one of the host's layers, hidden
 // until opened.
 func (n *drawerNode) SetOverlay(host *widget.OverlayHost, _ func()) {
@@ -392,6 +463,22 @@ func (f *drawerFrame) Init(ctx *tui.Context) {
 // progress when there is one, within the Drawer's bounds, else from size and length.
 func (f *drawerFrame) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
+	if n := f.owner; n.movable && !n.windowTarget.maximized && (n.floating || n.windowTarget.moving != nil) {
+		// the Float's AtFraction or AtRect sized it: the frame fills that
+		f.ctx.AfterLayout("drawer-window-placement", func() {
+			if a := n.float.Area(); a.W > 0 && a.H > 0 {
+				n.win = a
+			}
+			if r, ok := n.float.Context().ResolveAnchor(f.ctx.NodeAnchor()); ok {
+				n.windowTarget.bounds = r
+			}
+		})
+		for _, child := range f.Items() {
+			f.ctx.LayoutChild(child, tui.Tight(sz))
+			f.ctx.PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
+		}
+		return sz
+	}
 	if n := f.owner; n.windowControls() {
 		viewport := sz
 		sz = n.cells(n.size, n.length, viewport)
@@ -443,10 +530,12 @@ func (f *drawerFrame) HandleEvent(ev tui.Event) bool {
 
 // drawerType is the Drawer's entry in the standard vocabulary.
 var drawerType = Type{
-	Name:    "Drawer",
-	Build:   buildDrawer,
-	Ctor:    []string{"modal", "resizable", "windowResize", "maximizable", "minimizable", "closable", "label", "key", "dragModifier", "resizeButton"},
-	Signals: map[string][]string{"resized": {"size", "length"}, "changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"}},
+	Name:  "Drawer",
+	Build: buildDrawer,
+	Ctor: []string{"modal", "resizable", "windowResize", "movable", "maximizable", "minimizable", "closable", "label", "key",
+		"dragModifier", "moveButton", "resizeButton"},
+	Signals: map[string][]string{"resized": {"size", "length"}, "placed": {"x", "y", "width", "height"},
+		"changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"}},
 	Setters: map[string]Setter{
 		"edge": setter("a Drawer", drawerEdges.read, (*drawerNode).setEdge),
 		"size": setter("a Drawer", func(v qml.SpecValue) (int, error) {
@@ -465,6 +554,11 @@ var drawerType = Type{
 			f, err := numberOf(v)
 			return int(f), err
 		}, (*drawerNode).setMinimumLength),
+		"floating":    setter("a Drawer", boolOf, (*drawerNode).setFloating),
+		"floatX":      drawerFracSetter(0),
+		"floatY":      drawerFracSetter(1),
+		"floatWidth":  drawerFracSetter(2),
+		"floatHeight": drawerFracSetter(3),
 	},
 	Methods: map[string]Method{
 		"open":           NoArgMethod((*drawerNode).open),
@@ -477,4 +571,12 @@ var drawerType = Type{
 		"moveBy":         drawerWindowStep(true),
 	},
 	Destroyed: func(c tui.Component) { c.(*drawerNode).detach() },
+}
+
+// drawerFracSetter is the setter of the floating rectangle's i-th percentage.
+func drawerFracSetter(i int) Setter {
+	return setter("a Drawer", func(v qml.SpecValue) (int, error) {
+		f, err := numberOf(v)
+		return int(f), err
+	}, func(n *drawerNode, pct int) { n.setFrac(i, pct) })
 }

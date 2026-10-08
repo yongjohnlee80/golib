@@ -21,8 +21,10 @@ func (t *floatWindowTarget) RequestedBounds() tui.Rect {
 	if t.maximized {
 		return t.area
 	}
-	if t.float.anchor.atRect {
-		return t.float.anchor.rect
+	if a := t.float.anchor; a.atRect {
+		return a.rect
+	} else if a.atFraction {
+		return fractionRect(a.frac, t.area)
 	}
 	return t.bounds
 }
@@ -113,6 +115,9 @@ func (l *floatLayer) layoutManaged(c tui.Constraints, w, h int) tui.Size {
 		l.ctx.LayoutChild(f.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
 	case a.atRect:
 		r = windowBoundsInArea(a.rect, area)
+		l.ctx.LayoutChild(f.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
+	case a.atFraction:
+		r = fractionRect(a.frac, area)
 		l.ctx.LayoutChild(f.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
 	default:
 		cc := tui.Loose(tui.Size{W: area.W, H: area.H})

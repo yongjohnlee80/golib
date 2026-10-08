@@ -8,9 +8,11 @@ import (
 
 // Anchor positions a Float's content within the overlay area.
 type Anchor struct {
-	align  tui.Align
-	atRect bool
-	rect   tui.Rect
+	align      tui.Align
+	atRect     bool
+	rect       tui.Rect
+	atFraction bool
+	frac       [4]int // x, y, w, h: percent of the overlay area
 }
 
 // The alignment anchors. Center is the Float default.
@@ -28,6 +30,40 @@ var (
 
 // AtRect anchors the float at an explicit overlay-relative rectangle.
 func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
+
+// AtFraction anchors the float at a rectangle given in percent of the overlay area: x and y its
+// top-left corner, w and h its size, each 0 to 100. Unlike AtRect it follows a resize of the
+// area: a panel a user placed at the right third stays at the right third.
+func AtFraction(x, y, w, h int) Anchor {
+	return Anchor{atFraction: true, frac: [4]int{clampPct(x), clampPct(y), clampPct(w), clampPct(h)}}
+}
+
+// FractionRect is where AtFraction(x, y, w, h) puts a float in area: rounded to the nearest cell, at
+// least three cells each way, and inside area.
+func FractionRect(x, y, w, h int, area tui.Rect) tui.Rect {
+	return fractionRect([4]int{x, y, w, h}, area)
+}
+
+func fractionRect(frac [4]int, area tui.Rect) tui.Rect {
+	pct := func(p, of int) int { return (of*p + 50) / 100 }
+	r := tui.Rect{X: area.X + pct(frac[0], area.W), Y: area.Y + pct(frac[1], area.H),
+		W: max(pct(frac[2], area.W), minFloatCells), H: max(pct(frac[3], area.H), minFloatCells)}
+	return windowBoundsInArea(r, area)
+}
+
+// FractionOf is r as AtFraction's percentages of area: the inverse of where AtFraction puts it,
+// rounded, so a rectangle read back and placed again lands on the same cells where a percent is at
+// most a cell. Zero when area is empty.
+func FractionOf(r, area tui.Rect) (x, y, w, h int) {
+	if area.W <= 0 || area.H <= 0 {
+		return 0, 0, 0, 0
+	}
+	pct := func(v, of int) int { return clampPct((v*200 + of) / (2 * of)) }
+	return pct(r.X-area.X, area.W), pct(r.Y-area.Y, area.H), pct(r.W, area.W), pct(r.H, area.H)
+}
+
+// minFloatCells is the smallest a fractional float is either way: a border and a cell inside.
+const minFloatCells = 3
 
 // Floating Window, Modal Dialog & Overlay Presentation Architecture
 //
@@ -136,6 +172,7 @@ type Float struct {
 
 	scrim        style.Style
 	windowTarget *floatWindowTarget
+	area         tui.Size // the overlay area the float last laid out in
 }
 
 var _ tui.Component = (*Float)(nil)
@@ -200,6 +237,11 @@ func NewFloat(child tui.Component, opts ...FloatOption) *Float {
 
 // Shown reports whether the float is currently visible.
 func (f *Float) Shown() bool { return f.shown }
+
+// Area is the overlay area the float was last laid out in, the whole of what it may cover; zero
+// before its first layout. A placement kept as percentages (AtFraction, FractionOf) converts
+// against it.
+func (f *Float) Area() tui.Size { return f.area }
 
 // SetAnchor moves the float's content to another anchor: a drawer that opens from another edge.
 func (f *Float) SetAnchor(a Anchor) {
@@ -282,6 +324,7 @@ func (f *Float) Layout(c tui.Constraints) tui.Size {
 	}
 	w := boundedMax(c.MaxW, c.MinW)
 	h := boundedMax(c.MaxH, c.MinH)
+	f.area = tui.Size{W: w, H: h}
 	f.ctx.LayoutChild(f.layer, tui.Tight(tui.Size{W: w, H: h}))
 	f.ctx.PlaceChild(f.layer, tui.Rect{X: 0, Y: 0, W: w, H: h})
 	return c.Constrain(tui.Size{W: w, H: h})
@@ -347,9 +390,13 @@ func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
 	a := l.owner.anchor
 	var sz tui.Size
 	var x, y int
-	if a.atRect {
-		sz = l.ctx.LayoutChild(l.owner.child, tui.Tight(tui.Size{W: a.rect.W, H: a.rect.H}))
-		x, y = a.rect.X, a.rect.Y
+	if a.atRect || a.atFraction {
+		r := a.rect
+		if a.atFraction {
+			r = fractionRect(a.frac, tui.Rect{W: w, H: h})
+		}
+		sz = l.ctx.LayoutChild(l.owner.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
+		x, y = r.X, r.Y
 	} else if l.owner.wPct > 0 || l.owner.hPct > 0 {
 		// A fraction of the area, per axis; the unset axis stays natural.
 		want := tui.Size{W: w, H: h}
