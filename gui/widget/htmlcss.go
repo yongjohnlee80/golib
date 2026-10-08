@@ -72,6 +72,9 @@ type computed struct {
 	bold       bool
 	italic     bool
 	mono       bool
+	family     string  // font-family as written, a CSS list; "" the window's typeface
+	transform  string  // text-transform: uppercase, lowercase, capitalize; "" none
+	spacing    cssLen  // letter-spacing; unset is normal
 	lineHeight float32 // a multiple of the font size
 	align      flow.Align
 	white      flow.WhiteSpace
@@ -98,6 +101,7 @@ type computed struct {
 func (c *computed) inherit() *computed {
 	return &computed{
 		color: c.color, fontSize: c.fontSize, bold: c.bold, italic: c.italic, mono: c.mono,
+		family: c.family, transform: c.transform, spacing: c.spacing,
 		lineHeight: c.lineHeight, align: c.align, white: c.white, vars: c.vars, link: c.link,
 		display: "inline",
 		// text-decoration propagates to inline descendants as drawn decoration
@@ -760,11 +764,24 @@ func (c *computed) apply(d cssDecl, parent *computed, rootPx float32, view gui.S
 	case "font-size":
 		c.fontSize = fontSize(lv, parent.fontSize, rootPx, view)
 	case "font-weight":
-		c.bold = lv == "bold" || lv == "bolder" || (len(lv) == 3 && lv >= "600")
+		c.bold = boldWeight(lv)
 	case "font-style":
 		c.italic = lv == "italic" || lv == "oblique"
 	case "font-family":
-		c.mono = monoFamily(lv)
+		c.mono, c.family = monoFamily(lv), familyList(v)
+	case "text-transform":
+		switch lv {
+		case "uppercase", "lowercase", "capitalize":
+			c.transform = lv
+		default:
+			c.transform = ""
+		}
+	case "letter-spacing":
+		if lv == "normal" {
+			c.spacing = cssLen{}
+		} else if l, ok := parseLen(lv); ok && !l.auto() && l.unit != '%' {
+			c.spacing = l
+		}
 	case "font":
 		c.font(lv, parent.fontSize, rootPx, view)
 	case "line-height":
@@ -957,6 +974,36 @@ func lineHeight(v string, font float32) float32 {
 	return 1.2
 }
 
+// boldWeight reports whether a font-weight is bold: bold, bolder, or a number from 600.
+func boldWeight(v string) bool {
+	if v == "bold" || v == "bolder" {
+		return true
+	}
+	n, err := strconv.ParseFloat(v, 32)
+	return err == nil && n >= 600
+}
+
+// familyList is a font-family list as the shaper takes it: its names, quotes dropped, and
+// system-ui (which the shaper does not know) read as sans-serif.
+func familyList(v string) string {
+	var out []string
+	for _, f := range strings.Split(v, ",") {
+		f = strings.Trim(strings.TrimSpace(f), "\"'")
+		switch strings.ToLower(f) {
+		case "":
+			continue
+		case "system-ui", "-apple-system", "blinkmacsystemfont", "ui-sans-serif":
+			f = "sans-serif"
+		case "ui-serif":
+			f = "serif"
+		case "ui-monospace":
+			f = "monospace"
+		}
+		out = append(out, f)
+	}
+	return strings.Join(out, ", ")
+}
+
 func monoFamily(v string) bool {
 	return strings.Contains(v, "mono") || strings.Contains(v, "courier") || strings.Contains(v, "consolas")
 }
@@ -970,10 +1017,14 @@ func (c *computed) font(v string, parent, root float32, view gui.Size) {
 		case "italic", "oblique":
 			c.italic = true
 			continue
-		case "bold", "bolder", "600", "700", "800", "900":
+		case "bold", "bolder":
 			c.bold = true
 			continue
-		case "normal", "400", "lighter", "300":
+		case "normal", "lighter", "small-caps":
+			continue
+		}
+		if n, err := strconv.Atoi(tok); err == nil && n >= 1 && n <= 1000 {
+			c.bold = n >= 600
 			continue
 		}
 		size, lh, _ := strings.Cut(tok, "/")
@@ -982,6 +1033,7 @@ func (c *computed) font(v string, parent, root float32, view gui.Size) {
 			c.lineHeight = lineHeight(lh, c.fontSize)
 		}
 		c.mono = monoFamily(strings.Join(f[i+1:], " "))
+		c.family = familyList(strings.Join(f[i+1:], " "))
 		return
 	}
 }
