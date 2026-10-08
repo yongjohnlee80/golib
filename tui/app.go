@@ -688,7 +688,19 @@ func (a *App) renderFrame() {
 // can receive keyboard input invisibly without being displayed on screen.
 func (a *App) repairInvisibleFocus() {
 	if n := a.nodes[a.focused]; n != nil && !n.visible() {
-		a.repairFocus()
+		// A FocusInto waiting for this layout says where the focus goes: a pane shown in the turn
+		// the focused one was hidden (two views swapped). It is answered first; the repair, which
+		// would hand the focus to the first focusable and so overtake it, runs only if the focus
+		// is still not visible.
+		if id := a.pendingFocusInto; id != 0 {
+			a.pendingFocusInto = 0
+			if p := a.nodes[id]; p != nil {
+				a.focusInto(p.comp, false)
+			}
+		}
+		if m := a.nodes[a.focused]; m != nil && !m.visible() {
+			a.repairFocus()
+		}
 	}
 	a.retryDeferredFocusRepair()
 }

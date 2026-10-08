@@ -193,3 +193,34 @@ func TestHoldsFocusableAsksAFocusDesigner(t *testing.T) {
 		t.Error("a FocusDesigner built to take focus, refusing it NOW, was judged not focusable by design")
 	}
 }
+
+// Two panes swapped in one turn — the focused one hidden, the other shown and focused into: after
+// the layout the focus is in the shown pane. The hidden focus is not repaired to the first
+// focusable in the window first, which would overtake the FocusInto waiting for that layout.
+func TestFocusIntoAPaneShownAsTheFocusedOneIsHidden(t *testing.T) {
+	t.Parallel()
+	out := newFocusProbe("out", Size{W: 2, H: 1})
+	a := newFocusProbe("a", Size{W: 2, H: 1})
+	b := newFocusProbe("b", Size{W: 2, H: 1})
+	paneA, paneB := NewFlex(Vertical), NewFlex(Vertical)
+	paneA.Add(a)
+	paneB.Add(b)
+	paneB.SetVisible(false)
+	root := NewFlex(Vertical)
+	root.Add(out, paneA, paneB)
+	h := startApp(t, root, 8, 8)
+	h.onLoop(func() { a.ctx.RequestFocus() })
+	h.sync()
+	if got := focusedID(h); got != a.nodeID() {
+		t.Fatalf("fixture: focus on %d, want a %d", got, a.nodeID())
+	}
+	h.onLoop(func() {
+		paneA.SetVisible(false)
+		paneB.SetVisible(true)
+		a.ctx.FocusInto(paneB)
+	})
+	h.sync()
+	if got := focusedID(h); got != b.nodeID() {
+		t.Errorf("after the swap the focus is on %d, want b %d (out is %d)", got, b.nodeID(), out.nodeID())
+	}
+}
