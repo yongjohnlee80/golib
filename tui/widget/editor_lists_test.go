@@ -95,6 +95,19 @@ func TestListEditingLeavesOtherLinesAlone(t *testing.T) {
 	wantText(t, c, "- one\n", 1, 0)
 }
 
+// SetListEditingWhere leaves out the lines it reports false for: Enter and Tab there are as ever.
+func TestListEditingWhereLeavesLinesOut(t *testing.T) {
+	c := listCore(t, "- code", 0, 6)
+	c.SetListEditingWhere(func(ln int) bool { return false })
+	listPress(c, tui.KeyEnter, 0)
+	wantText(t, c, "- code\n", 1, 0)
+	c.SetListEditingWhere(func(ln int) bool { return true })
+	c.SetValue("- item")
+	c.SetLine(0, 6)
+	listPress(c, tui.KeyEnter, 0)
+	wantText(t, c, "- item\n- ", 1, 2)
+}
+
 // One undo takes a continuation back whole.
 func TestListContinuationUndoesInOne(t *testing.T) {
 	c := listCore(t, "- one", 0, 5)

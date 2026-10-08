@@ -124,6 +124,10 @@ func NewEditor(opts ...EditorOption) *Editor {
 		e.toggleMode()
 		return true
 	})
+	// list editing is for the prose: a code block's "- x" is code
+	if md, ok := e.render.(*MarkdownRenderer); ok {
+		e.core.SetListEditingWhere(func(ln int) bool { return !md.InCode(e.core.Lines(), ln) })
+	}
 	e.SetMode(cfg.mode)
 	return e
 }
