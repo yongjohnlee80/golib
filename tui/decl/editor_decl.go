@@ -9,7 +9,7 @@ import (
 // WHAT AN EDITOR DECLARATION MEANS, for any editor widget: the standard Editor and a style's
 // read the same declaration the same way, so a document cannot tell them apart.
 
-// EditorViews are the Editor's `mode`: Editor.Raw, the source as written, and Editor.Rendered,
+// EditorViews are the Editor's `view`: Editor.Raw, the source as written, and Editor.Rendered,
 // drawn by the Editor's renderer. An editor with no Rendered view stays Raw.
 var EditorViews = Enum{Scope: "Editor", Values: []string{"Raw", "Rendered"}}
 
@@ -117,7 +117,7 @@ func editorViewSetters() map[string]Setter {
 		}, (*widget.Editor).SetRuler),
 		// golib's: Editor.Raw or Editor.Rendered. The cell Editor has no Rendered view: it
 		// accepts the value, so one document runs under any style, and stays Raw.
-		"mode": EnumSetter(EditorViews, func(*widget.Editor, string) {}),
+		"view": EnumSetter(EditorViews, func(*widget.Editor, string) {}),
 	}
 }
 

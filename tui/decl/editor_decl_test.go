@@ -18,7 +18,7 @@ func TestTheRenderedEditorDocumentRunsOnATerminal(t *testing.T) {
 Window {
     Editor {
         text: "## Title"
-        mode: Editor.Rendered
+        view: Editor.Rendered
         SyntaxHighlighter { definition: "Markdown" }
         MarkdownRenderer { headingScale: 1.8 }
     }
@@ -28,9 +28,9 @@ Window {
 }
 
 func TestAnEditorRefusesAModeItDoesNotHave(t *testing.T) {
-	_, err := tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow { Editor { mode: Editor.Pretty } }")))
+	_, err := tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow { Editor { view: Editor.Pretty } }")))
 	if err == nil || !strings.Contains(err.Error(), "Editor.Pretty") {
-		t.Fatalf("mode: Editor.Pretty: %v, want it refused by name", err)
+		t.Fatalf("view: Editor.Pretty: %v, want it refused by name", err)
 	}
 }
 
@@ -74,7 +74,7 @@ func TestAStylesEditorSharesTheDeclarationsMeaning(t *testing.T) {
 	for name, set := range tuidecl.EditorSetters() {
 		e.Setters[name] = set
 	}
-	e.Setters["mode"] = tuidecl.EnumSetter(tuidecl.EditorViews, func(f *fakeEditor, v string) { f.mu.Lock(); f.mode = v; f.mu.Unlock() })
+	e.Setters["view"] = tuidecl.EnumSetter(tuidecl.EditorViews, func(f *fakeEditor, v string) { f.mu.Lock(); f.mode = v; f.mu.Unlock() })
 	style := tuidecl.Style{Name: "fake", Types: []tuidecl.Type{e}}
 	decltest.CheckStyle(t, style)
 
@@ -85,7 +85,7 @@ Window {
         keyset: Tui.Nano
         readOnly: true
         cursorPosition: 2
-        mode: Editor.Rendered
+        view: Editor.Rendered
         MarkdownRenderer { }
     }
 }`))
