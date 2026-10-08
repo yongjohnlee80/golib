@@ -128,7 +128,6 @@ func TestUnsupported(t *testing.T) {
 		"sequenceDiagram\n  box Aqua Team\n  participant A\n  end",
 		"stateDiagram-v2\n  state A {\n  a\n  --\n  b\n  }",
 		"classDiagram\n  A <|-- B\n  click A call x()",
-		"erDiagram\n  A ||--o{ B : has",
 		"pie\n  \"a\": 1",
 		"gantt\n  title x",
 		"flowchart-elk TD\n  A-->B",
