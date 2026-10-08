@@ -6,6 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/widget"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // The built-in markdown factory: MarkdownSpec.Mermaid gives the renderer the style's one Diagrams
@@ -35,5 +36,18 @@ func TestMermaidDrawsThroughTheStylesOneChain(t *testing.T) {
 	bl := on.LayOut(fence, lines, 300, false, sh, th, nil)
 	if bl.Picture != nil || len(bl.Lines) != 4 {
 		t.Errorf("with no host the fence drew a picture (%v) or laid %d lines, want 4 lines of code", bl.Picture != nil, len(bl.Lines))
+	}
+}
+
+// golib's document view, an HTMLView, draws a page's pre class="mermaid" through the style's one
+// chain, the editor's: one cache for both.
+func TestTheDocumentViewDrawsThroughTheStylesOneChain(t *testing.T) {
+	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{}}
+	v, ok := n.htmlDocument(nil).(*tuiwidget.HTMLView)
+	if !ok {
+		t.Fatalf("the document view is a %T, want an HTMLView", n.htmlDocument(nil))
+	}
+	if d, _ := v.Diagrams().(widget.Diagrammer); d == nil || d != n.diagramChain() {
+		t.Errorf("the HTMLView's Diagrammer %v, want the style's chain %v", v.Diagrams(), n.diagramChain())
 	}
 }

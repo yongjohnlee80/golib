@@ -53,9 +53,10 @@ func WithDocumentViewFor(kind string, f func(tuidecl.DocumentSpec) widget.Docume
 }
 
 // htmlDocument is golib's document view for an HTMLDocumentView declaration: an HTMLView laid out
-// in pixels, which a host reaches through the Editor's DocumentView.
-func htmlDocument(tuidecl.DocumentSpec) widget.DocumentView {
-	v := tuiwidget.NewHTMLView()
+// in pixels, which a host reaches through the Editor's DocumentView. Its pre class="mermaid" draw
+// through the style's one chain.
+func (n *native) htmlDocument(tuidecl.DocumentSpec) widget.DocumentView {
+	v := tuiwidget.NewHTMLView(tuiwidget.WithDiagrams(n.diagramChain()))
 	widget.BindHTML(v)
 	return v
 }
@@ -64,7 +65,8 @@ func htmlDocument(tuidecl.DocumentSpec) widget.DocumentView {
 // widget, so a host reaches it by id either way); every other type stays tui's.
 func Native(opts ...NativeOption) tuidecl.Style {
 	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{},
-		documents: map[string]func(tuidecl.DocumentSpec) widget.DocumentView{"html": htmlDocument}}
+		documents: map[string]func(tuidecl.DocumentSpec) widget.DocumentView{}}
+	n.documents["html"] = n.htmlDocument
 	n.renderers["markdown"] = n.markdownRenderer
 	for _, o := range opts {
 		o(n)
@@ -78,7 +80,8 @@ func Native(opts ...NativeOption) tuidecl.Style {
 	hv.Build = func(b tuidecl.Build) (tui.Component, []string, error) {
 		c, consumed, err := build(b)
 		if v, ok := c.(*tuiwidget.HTMLView); ok && err == nil {
-			widget.BindHTML(v) // laid out in pixels and drawn natively, the same widget to the host
+			widget.BindHTML(v)                          // laid out in pixels and drawn natively, the same widget to the host
+			tuiwidget.WithDiagrams(n.diagramChain())(v) // its pre class="mermaid", through the style's one chain
 		}
 		return c, consumed, err
 	}
