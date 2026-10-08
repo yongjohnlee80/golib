@@ -11,7 +11,7 @@ import (
 // SyntaxHighlighter is.
 //
 //	Editor {
-//	    mode: Editor.Rendered
+//	    view: Editor.Rendered
 //	    SyntaxHighlighter { definition: "Markdown" }
 //	    MarkdownRenderer { headingScale: 1.8 }
 //	}
