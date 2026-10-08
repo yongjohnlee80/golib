@@ -55,7 +55,7 @@ func appTypes() []Type {
 			// golib's: shown at its width and scrolled by the keys and the wheel (widget.Image)
 			"scrollable": setter("an Image", boolOf, (*widget.Image).SetScrollable),
 		}},
-		{Name: "Terminal", Build: buildTerminal, Ctor: []string{"command", "dir", "scrollback"},
+		{Name: "Terminal", Build: buildTerminal, Ctor: []string{"command", "dir", "scrollback"}, restyle: restyleTerminal,
 			Setters: map[string]Setter{
 				// command and dir take effect at the next start(): a host learns where to start
 				// the program after building it, and moves it when the user changes workspace.

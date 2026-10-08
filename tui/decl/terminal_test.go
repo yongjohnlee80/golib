@@ -137,3 +137,25 @@ func TestATerminalsPropertiesAndStopReachTheWidget(t *testing.T) {
 		t.Error("Terminal { scrollback: \"many\" } was not refused")
 	}
 }
+
+// A Terminal paints its program's default colours in the palette's text on base, as an Editor's
+// page is: the panel sits on the page's colours, not the window system's or the terminal's own.
+func TestATerminalWearsThePalettesBaseAndText(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "prog.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf 'plain words\\n'\nread x\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := decltest.Run(t, 40, 8, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow {\n"+
+		" palette.base: \"blue\"; palette.text: \"white\"\n"+
+		" Terminal { id: term; command: \""+script+"\" } }")))
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("term", "start"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "plain words")
+	waitBG(t, s, "plain words", ansi(blue))
+	if c := cellOf(t, s, "plain words"); c.Attrs.FG != ansi(white) {
+		t.Fatalf("the program's default text is %+v; want the palette's text, white", c.Attrs.FG)
+	}
+}
