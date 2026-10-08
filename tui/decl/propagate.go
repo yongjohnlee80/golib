@@ -185,8 +185,9 @@ func (a *Adapter) windowTheme(p palette) {
 	}
 }
 
-// tokenTheme is the token theme a palette makes: the highlight its primary, the text its
-// foreground, the window its surface and panel, the button its boost, the accent, the mid its
+// tokenTheme is the token theme a palette makes: the highlight its primary, the window text its
+// foreground (the text drawn on the window: a menu's, a toast's, a dialog card's), the window its
+// surface and panel, the button its boost, the accent, the mid its
 // border, the highlight its focused border. Unset roles keep NewTheme's derivations. Background
 // stays the terminal's own: a dialog's scrim dims to it, and the page's colour would not dim.
 func tokenTheme(p palette) (style.Theme, bool) {
@@ -199,7 +200,7 @@ func tokenTheme(p palette) (style.Theme, bool) {
 		t style.Token
 		r Role
 	}{
-		{style.TokenForeground, roleText},
+		{style.TokenForeground, roleWindowText},
 		{style.TokenSurface, roleWindow}, {style.TokenPanel, roleWindow}, {style.TokenBoost, roleButton},
 		{style.TokenAccent, roleAccent}, {style.TokenBorder, roleMid}, {style.TokenBorderFocused, roleHighlight},
 		{style.TokenTextOnPrimary, roleHighlightedText},

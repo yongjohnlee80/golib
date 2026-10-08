@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -309,4 +310,20 @@ func TestEditorContextMenu_TheStockRowsFollowTheLanguage(t *testing.T) {
 		h.wantContains(want)
 	}
 	h.wantNotContains("Paste")
+}
+
+// The menu's box is on the menu's own surface (TokenPanel): a bare box's border cells kept the
+// terminal's default background, a band of it around the menu in a window.
+func TestEditorContextMenu_TheBoxWearsTheMenusSurface(t *testing.T) {
+	h, _, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+	th := style.NewTheme(style.RGB(0x8a, 0x5a, 0x2b), style.WithToken(style.TokenPanel, style.RGB(0xda, 0xcc, 0xa9)))
+	h.onLoop(func() { h.app.SetTheme(&th) })
+	h.settle()
+	h.inject(rightClick(2, 0))
+	h.settle()
+	x, y := panelCorner(t, h)
+	want := tui.CellColor{Kind: tui.CellColorRGB, R: 0xda, G: 0xcc, B: 0xa9}
+	if bg := h.tb.Snapshot()[y][x].Attrs.BG; bg != want {
+		t.Errorf("the menu's border corner on %+v, want the menu's surface %+v", bg, want)
+	}
 }
