@@ -57,7 +57,7 @@ func StdProperties() []Option { return typeOptions(stdTypes()) }
 
 // stdTypes is every standard widget type, in one table.
 func stdTypes() []Type {
-	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType, drawerType, tabViewType, tabType, checkBoxType, markdownRendererType)
+	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType, drawerType, tabViewType, tabType, checkBoxType, markdownRendererType, htmlDocumentViewType)
 }
 
 // tuiEnums is every enum the standard vocabulary accepts. The Tui singleton's

@@ -89,6 +89,9 @@ func TestARendererSpecIsRefusedOutsideAnEditor(t *testing.T) {
 		"Window { Editor { MarkdownRenderer { } MarkdownRenderer { } } }": "one renderer",
 		"MarkdownRenderer { }":                                            "the root is in none",
 		"Window { Editor { MarkdownRenderer { headingScale: -1 } } }":     "negative",
+		"Window { Editor { HTMLDocumentView { } HTMLDocumentView { } } }": "one document view",
+		"HTMLDocumentView { }":                                            "the root is in none",
+		"Window { Text { HTMLDocumentView { } } }":                        "is not one",
 	} {
 		_, err := tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\n"+doc)))
 		if err == nil || !strings.Contains(err.Error(), want) {
