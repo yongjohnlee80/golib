@@ -1094,7 +1094,7 @@ func (t *Tree) ensureVisible() {
 func (t *Tree) Layout(c tui.Constraints) tui.Size {
 	t.w = boundedMax(c.MaxW, max(c.MinW, 1))
 	t.h = boundedMax(c.MaxH, max(c.MinH, len(t.flatten()), 1))
-	if t.shown.moved(t.cursor, t.h) {
+	if t.shown.moved([2]int{t.cursor}, [2]int{t.h}) {
 		t.ensureVisible()
 	}
 	if t.selectionDue && t.ctx != nil {

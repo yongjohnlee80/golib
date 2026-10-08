@@ -529,7 +529,7 @@ func (l *List[T]) Layout(c tui.Constraints) tui.Size {
 	}
 	l.w = boundedMax(c.MaxW, max(c.MinW, 1))
 	l.h = boundedMax(c.MaxH, max(c.MinH, l.count, 1))
-	if l.shown.moved(l.cursor, l.h) {
+	if l.shown.moved([2]int{l.cursor}, [2]int{l.h}) {
 		l.ensureVisible()
 	}
 	l.clamp()
