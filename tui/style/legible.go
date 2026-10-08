@@ -75,28 +75,41 @@ var xterm16 = [16][3]uint8{
 	{0x5c, 0x5c, 0xff}, {0xff, 0x00, 0xff}, {0x00, 0xff, 0xff}, {0xff, 0xff, 0xff},
 }
 
-// raiseContrast takes f toward black (on a light b) or white (on a dark b) in small steps until
-// it reads at ratio against b; moved is false when it already did.
+// raiseContrast takes f toward black or white, whichever reads better against b, by the least
+// that reads at ratio; moved is false when f already did. Where even that extreme falls short, it
+// is the extreme: the most contrast there is.
 func raiseContrast(f, b [3]uint8, ratio float64) (r, g, bl uint8, moved bool) {
 	lb := luminance(b)
 	if contrastRatio(luminance(f), lb) >= ratio {
 		return f[0], f[1], f[2], false
 	}
-	toward := 0.0 // black, for a light background
-	if lb < 0.18 {
+	toward := 0.0
+	if contrastRatio(1, lb) > contrastRatio(0, lb) {
 		toward = 255
 	}
-	c := [3]float64{float64(f[0]), float64(f[1]), float64(f[2])}
-	for range 40 {
-		for i := range c {
-			c[i] += (toward - c[i]) * 0.08
+	at := func(t float64) [3]uint8 {
+		var q [3]uint8
+		for i := range q {
+			q[i] = uint8(math.Round(float64(f[i]) + (toward-float64(f[i]))*t))
 		}
-		q := [3]uint8{uint8(math.Round(c[0])), uint8(math.Round(c[1])), uint8(math.Round(c[2]))}
-		if contrastRatio(luminance(q), lb) >= ratio {
-			return q[0], q[1], q[2], true
+		return q
+	}
+	reads := func(q [3]uint8) bool { return contrastRatio(luminance(q), lb) >= ratio }
+	if q := at(1); !reads(q) {
+		return q[0], q[1], q[2], true
+	}
+	// the least mix that reads, the rounded colour tested: what is returned reads
+	lo, hi := 0.0, 1.0
+	for range 30 {
+		mid := (lo + hi) / 2
+		if reads(at(mid)) {
+			hi = mid
+		} else {
+			lo = mid
 		}
 	}
-	return uint8(math.Round(c[0])), uint8(math.Round(c[1])), uint8(math.Round(c[2])), true
+	q := at(hi)
+	return q[0], q[1], q[2], true
 }
 
 // luminance is WCAG's relative luminance.
