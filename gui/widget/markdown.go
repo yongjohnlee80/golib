@@ -45,6 +45,9 @@ func HeadingScale(h1 float32) MarkdownOption {
 // picture. Without one, or until it answers, the block is drawn as code.
 func WithDiagrams(d Diagrammer) MarkdownOption { return func(r *MarkdownRenderer) { r.diagrams = d } }
 
+// Diagrams is the Diagrammer the renderer draws diagram fences with; nil: none, drawn as code.
+func (r *MarkdownRenderer) Diagrams() Diagrammer { return r.diagrams }
+
 // Line spacing, as multiples of each font's size: one place to tune it, or to make it an option
 // should a host need to.
 const (
