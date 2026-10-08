@@ -395,6 +395,20 @@ func (c *Context) StringWidth(s string) int {
 //	}
 func (c *Context) Post(ev Event) { c.app.Post(ev) }
 
+// Update enqueues fn for a later loop turn while this originating mount remains
+// alive. It never runs inline and adds no persistent unmount hook. Safe to enqueue
+// from any goroutine; the mounted check and fn both run on the application loop.
+func (c *Context) Update(fn func()) {
+	if fn == nil {
+		return
+	}
+	c.app.Update(func() {
+		if c.node.mounted {
+			fn()
+		}
+	})
+}
+
 // Go schedules task on the App's background task runner, binding this
 // component node as the task owner.
 //

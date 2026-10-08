@@ -368,6 +368,15 @@ func (g *resizeHandle) HandleEvent(ev tui.Event) bool {
 	return g.owner.HandleEvent(ev)
 }
 
+// ResolveCaptureEscape lets a grip cancel without stealing keyboard focus from
+// the content whose geometry it controls.
+func (g *resizeHandle) ResolveCaptureEscape(e tui.KeyEvent) (tui.Action, bool) {
+	if g.owner.drag != nil && e.Code == tui.KeyEscape && e.Kind != tui.KeyRelease && e.Mods.Chord() == 0 {
+		return ResizeCancelAction{}, true
+	}
+	return nil, false
+}
+
 // Layout takes exactly the cell the wrapper placed it in.
 func (g *resizeHandle) Layout(c tui.Constraints) tui.Size {
 	return c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})

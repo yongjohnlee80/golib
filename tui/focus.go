@@ -284,6 +284,9 @@ func (a *App) focusRing(scope *node) []*node {
 	var out []*node
 	var walk func(n *node)
 	walk = func(n *node) {
+		if hidden(n.comp) {
+			return
+		}
 		if n != scope {
 			if fs, ok := n.comp.(FocusScope); ok && fs.TrapsFocus() {
 				return // another trap's subtree is not in this ring

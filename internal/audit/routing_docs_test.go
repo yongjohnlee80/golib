@@ -85,14 +85,14 @@ var routingDocs = []docRequirement{
 		why:  "the package overview is where the transport lanes are drawn, so it is where the interpretation stage after them belongs",
 		must: []string{"HandleAction", "Activatable", "resolver", "gesture",
 			"CaptureRaw", "CaptureGesture", "not a third transport lane",
-			"AfterLayout", "CommitKey"},
+			"AfterLayout", "CommitKey", "PointerPressResolver", "CaptureEscapeResolver", "InInputScope"},
 	},
 	{
 		path: "tui/README.md",
 		why:  "the README carries the same architecture diagram as doc.go and must not contradict it",
 		must: []string{"HandleAction", "Activatable", "resolver", "gesture",
 			"CaptureRaw", "CaptureGesture", "not a third transport lane",
-			"AfterLayout", "CommitKey"},
+			"AfterLayout", "CommitKey", "PointerPressResolver", "CaptureEscapeResolver", "InInputScope"},
 	},
 	{
 		path: "tui/tutorial/04-events-focus-keys.md",
@@ -114,7 +114,8 @@ var routingDocs = []docRequirement{
 			// serves both widgets, and a doc still describing a Split-private
 			// protocol would send a consumer looking for symbols that no
 			// longer exist.
-			"ResizeUpdateAction", "ResizeSetAction", "HandleVerticalDivider"},
+			"ResizeUpdateAction", "ResizeSetAction", "HandleVerticalDivider",
+			"WindowMod", "WindowCore", "WindowButtons", "WindowTaskbar", "WindowChangedEvent"},
 	},
 	{
 		path: "tui/widget/README.md",
@@ -130,7 +131,8 @@ var routingDocs = []docRequirement{
 			// serves both widgets, and a doc still describing a Split-private
 			// protocol would send a consumer looking for symbols that no
 			// longer exist.
-			"ResizeUpdateAction", "ResizeSetAction", "HandleVerticalDivider"},
+			"ResizeUpdateAction", "ResizeSetAction", "HandleVerticalDivider",
+			"WindowMod", "WindowCore", "WindowButtons", "WindowTaskbar", "WindowChangedEvent"},
 	},
 	{
 		path: "tui/tutorial/06-floats-and-modals.md",

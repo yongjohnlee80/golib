@@ -118,10 +118,20 @@
 //     the recogniser ONLY. It never re-enters the node pipeline; any action the
 //     recogniser produces is then dispatched to the owner.
 //
-// "No capture phase" above refers to EVENT ROUTING: there is no DOM-style
-// downward phase in which ancestors preview an event before its target. That is
-// unrelated to pointer capture, which is about which node keeps receiving
-// pointer events once a gesture has begun.
+// There is no general DOM-style downward event phase. The pure, opt-in press
+// reservation described below is a scoped exception before child delivery.
+// Pointer capture separately decides who receives a gesture's later events.
+//
+// # Scoped window gestures
+//
+// [PointerPressResolver] is a pure, opt-in reservation before ordinary child
+// delivery. After hit-testing within the active scope, the nearest matching
+// ancestor's action is dispatched with the real pointer provenance. A reservation
+// is not replayed into content if its owner refuses or disappears.
+// [CaptureEscapeResolver] similarly lets only the current pointer-capture owner
+// resolve bare Escape before focused content sees it. Other keys retain ordinary
+// routing. [Context.InInputScope] is an input restriction, not a restriction on
+// application-owned window management.
 //
 // # The Loop-Goroutine Invariant (Normative)
 //
@@ -134,7 +144,7 @@
 //
 // The ONLY operations legal from other goroutines are:
 //   - [App.Post] and [Context.Post] (enqueue an event)
-//   - [App.Update] (enqueue a closure)
+//   - [App.Update] and [Context.Update] (enqueue a closure)
 //   - [App.Go] and [Context.Go] (schedule bounded background tasks)
 //   - [Bus.Publish] (enqueue a typed broadcast event)
 //

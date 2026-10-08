@@ -134,7 +134,8 @@ type Float struct {
 	shown bool
 	layer *floatLayer
 
-	scrim style.Style
+	scrim        style.Style
+	windowTarget *floatWindowTarget
 }
 
 var _ tui.Component = (*Float)(nil)
@@ -202,12 +203,18 @@ func (f *Float) Shown() bool { return f.shown }
 
 // SetAnchor moves the float's content to another anchor: a drawer that opens from another edge.
 func (f *Float) SetAnchor(a Anchor) {
+	if f.windowTarget != nil {
+		f.windowTarget.ownerPlacementChanged()
+	}
 	f.anchor = a
 	f.RequestLayout()
 }
 
 // SetSizeFraction sizes the float anew, as WithSizeFraction does.
 func (f *Float) SetSizeFraction(wPct, hPct int) {
+	if f.windowTarget != nil {
+		f.windowTarget.ownerPlacementChanged()
+	}
 	f.wPct, f.hPct = clampPct(wPct), clampPct(hPct)
 	f.RequestLayout()
 }
@@ -334,6 +341,9 @@ func (l *floatLayer) FocusableByDesign() bool { return l.owner.modal }
 func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, c.MinW)
 	h := boundedMax(c.MaxH, c.MinH)
+	if l.owner.windowTarget != nil {
+		return l.layoutManaged(c, w, h)
+	}
 	a := l.owner.anchor
 	var sz tui.Size
 	var x, y int

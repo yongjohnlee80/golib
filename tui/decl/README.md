@@ -544,6 +544,62 @@ host in rooted form: an ordinary absolute path locally.
 
 ---
 
+## Window capability widgets
+
+`WindowMod` is a single-content wrapper; appearance is optional and separate.
+
+```qml
+WindowMod {
+    id: notesWindow
+    key: "notes"
+    label: "Notes"
+    movable: true
+    resizable: true
+    maximizable: true
+    dragModifier: WindowMod.Alt | WindowMod.Control
+    moveButton: Tui.LeftButton
+    resizeButton: Tui.RightButton
+    onChanged: App.windowChanged(operation, key, width, height)
+    Frame {
+        Flex {
+            direction: Tui.Vertical
+            WindowButtons { target: "notesWindow" }
+            Editor { Layout.fillHeight: true }
+        }
+    }
+}
+```
+
+Default gestures are Alt/Option-left for move and Alt/Option-right for resize.
+`Tui.Alt`, `Tui.Option`, `Tui.Control`, `Tui.Shift` and `Tui.NoModifier` select
+single modifiers; `WindowMod` flags combine with `|`. Capabilities and bindings
+are construction properties. `changed` supplies operation, key, x, y, width,
+height, maximized and minimized after a completed operation, not during motion.
+
+Methods are `moveBy(dx,dy)`, `resizeBy(dw,dh)`, `toggleMaximize()`, `minimize()`,
+`restore()` and `close()`. Declarative input methods obey the target window's
+scope. Hosts use the corresponding Go methods for application-owned operations.
+Inject an existing pane's zoom policy with `WithWindowTargets`, keyed by its
+declared ID, rather than reimplementing the owner's layout.
+
+`minimizable: true` requires a caller-owned `WithWindowCollector` and a non-modal
+target. `WindowTaskbar {}` is an optional view of a supplied `MinimizedWindows`
+model. `WindowButtons` resolves its named target, or the nearest enclosing
+capability widget, when mounted.
+
+For a Drawer, `windowResize: true` selects no-grip Alt/Option resize while keeping
+its edge, percentage bounds, and once-per-release `resized(size,length)` signal.
+`resizable: true` alone keeps the legacy corner grip. A Drawer may also opt into
+maximize, non-modal minimize, and close; its adapter explicitly supplies its
+existing `close()` method as the owner close handler. Existing Drawer open/close
+methods and modal behavior remain compatible.
+
+Drawers expose `resizeBy(widthDelta,heightDelta)` as a pointer-independent path;
+it uses the configured inner-corner handle, so right/bottom-pinned panels can grow.
+`moveBy` is exposed through the same contract but a docked Drawer does not enable
+free movement. Applications removing grips should bind resize keys/commands for
+terminals that reserve modifier-click.
+
 ## Your own widgets
 
 A widget type is one value, `Type` — name, builder, constructor props,

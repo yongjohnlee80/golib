@@ -2,13 +2,16 @@
 
 ## Routing: target, then bubble
 
-Every key event goes to the **focused** node first, and walks UP the parent
-chain until something consumes it — ending at your root controller.
+Ordinary key events go to the **focused** node first and walk UP the parent
+chain until consumed, within the active input scope.
 
-There is no **capture phase**: no DOM-style downward pass in which ancestors
-preview an event before it reaches its target. (That is a different thing from
-*pointer capture*, further down, which decides who keeps receiving pointer
-events once a drag has begun.)
+There is no general DOM-style downward capture phase. A container's pure
+`PointerPressResolver` can reserve a matching press before its content sees it,
+after normal hit-testing and confinement. The nearest match receives an action
+under its own handler identity; refusal does not replay the press into content.
+A held pointer-capture owner's `CaptureEscapeResolver` can likewise reserve bare
+Escape before focused content; other keys and nonmatching Escape events retain
+ordinary delivery. Pointer capture separately governs later gesture events.
 
 At each node on that walk the runtime does four things in order:
 

@@ -1,6 +1,6 @@
 # tui/widget
 
-The standard widget suite for `golib/tui`: twenty production-grade components
+The standard widget suite for `golib/tui`: production-grade components
 covering text, collections, layout, overlays, controls, menus, dialogs, and
 resizing. Applications compose these primitives and add domain-specific
 controllers rather than reimplementing their interaction machinery.
@@ -29,6 +29,9 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `Tabs`        | Navigation      | yes (bar)      | `TabChangedEvent`                                      |
 | `Split`       | Container       | no (panes are) | `SplitResizedEvent`, `SplitZoomEvent`                  |
 | `Resizable`   | Wrapper         | content only   | `ResizedEvent`                                         |
+| `WindowMod`   | Capabilities    | content only   | `WindowChangedEvent`                                   |
+| `WindowButtons` | Optional Chrome | its buttons | —                                                     |
+| `WindowTaskbar` | Optional Chrome | restore buttons | —                                                 |
 | `Float`       | Overlay / Modal | children       | `DismissEvent`                                         |
 | `Modal`       | Dialog          | trap owner     | `OverlayDismissedEvent`                                |
 | `Menu`        | Menu / Command  | yes            | `MenuActivatedEvent`, `MenuSelectionChangedEvent`      |
@@ -70,6 +73,73 @@ activation identically across every backend.
 Styling is an association: a Button holds a `ButtonStyle` it does not own, so one
 immutable value can safely dress many Buttons, and its style tokens let the
 App's theme decide the rendered colours.
+
+## Window capabilities, separate from appearance
+
+`WindowMod` is a concrete content wrapper with optional move, resize,
+maximize/restore, collector minimize/restore and close. It paints nothing and
+creates no controls. The shared `WindowCore` also serves native GUI views.
+
+```go
+model := widget.NewMinimizedWindows()
+body := tui.NewFlex(tui.Vertical)
+window := widget.NewWindowMod(widget.NewBox(body, widget.WithTitle("Notes")),
+    widget.WithWindowMove(), widget.WithWindowResize(),
+    widget.WithWindowMaximize(), widget.WithWindowMinimize(model),
+    widget.WithWindowClose(), widget.WithWindowLabel("Notes"),
+    widget.WithWindowKey("notes"),
+    widget.WithWindowMoveBinding(tui.ModAlt, tui.MouseLeft),
+    widget.WithWindowResizeBinding(tui.ModAlt, tui.MouseRight))
+body.Add(widget.NewWindowButtons(window.Core())) // optional appearance
+body.AddWeighted(widget.NewEditor(), 1)
+float := widget.NewFloat(window, widget.WithModal(false), widget.WithSizeFraction(80, 70))
+host.Attach(float)
+// Place widget.NewWindowTaskbar(model) in the application's layout if wanted.
+```
+
+- **Move/resize:** Alt/Option-left/right drag, only for enabled capabilities.
+  There is no move/resize UI. Both bindings are construction options. A desktop
+  or terminal may consume a modifier gesture; the library does not rewrite its
+  configuration. Keyboard resolvers can return `WindowMoveByAction` or
+  `WindowResizeByAction` instead.
+- **Cancellation:** Escape reaches the capture owner first, restoring the
+  placement checkpoint without sending Escape to content. Matching-button release
+  reports one completion; capture loss keeps reached geometry without completion.
+- **Placement:** the default enclosing-Float target owns anchors/fractions and
+  maximize restoration. `WithWindowTarget` supplies structural `WindowGeometry`,
+  `WindowZoom`, `WindowVisibility` or `WindowDismissal` facets for an existing
+  layout, including an application's own pane zoom. `WithWindowWorkArea` can
+  reserve taskbar space; viewport shrink does not overwrite the saved request.
+- **Minimize:** non-modal only, with an explicit collector. Content keeps its
+  NodeID, lifetime context, tasks and timers. The model requires no taskbar;
+  focus uses ordinary runtime repair, with an optional consumer focus hook.
+- **Close:** the default Float is normalized out of retained conceal then hidden,
+  not detached; it remains re-showable. Custom/docked owners supply a dismissal
+  facet or handler. Old collector descriptors cannot control a reopened mount.
+- **Input vs application:** controls call `InvokeInput`, which checks the target
+  window's scope. Application `Restore`/`Close` methods may manage windows while
+  a modal is open. `WindowChangedEvent.Owner` is per mount; use the optional stable
+  `Key` or per-window callback for persistence.
+- **GUI appearance:** `gui/widget.WindowButtons` draws circles over the same real
+  Button geometry. A custom GUI may invoke the core directly through its own
+  controls. GUI `Panel` keeps its legacy title/edge gestures and collapse option,
+  but movement, resize and zoom delegate to this shared behavior.
+
+Existing standalone `Resizable` APIs and grips are retained. Capabilities should
+be composed on one logical window owner rather than installing two live default
+cores on the same Float.
+
+### Compatibility and input changes
+
+GUI Panel's legacy `Movable` and `Resizable` options also enable configurable
+Alt/Option drag over content. A title-bar or acquired window drag focuses the
+content; ordinary unmatched right presses do not. Legacy collapse remains distinct
+from collector minimize and restores at a moved collapsed row's new location.
+
+The taskbar coalesces changes with an owner-bound `Context.Update`, outside both
+activation and layout, without accumulating timer-cancellation hooks. A model
+entry already revealed by its owner is normalized when restored. Close completion
+belongs to the originating mount even when its owner re-shows the window inline.
 
 ## Architectural Principles
 
