@@ -84,6 +84,12 @@ type HTMLLayoutHScroll interface {
 	ScrollX(x, y, dx float32) bool
 }
 
+// HTMLLayoutImages is a layout that keeps the images it loaded: SetImageResolver drops them and
+// their pending loads, since a page's relative src means another file under another resolver.
+type HTMLLayoutImages interface {
+	ResetImages()
+}
+
 // HTMLLayoutPixels is a layout whose units are the backend's pixels rather than cells. The view
 // turns a pointer's cell (and the point inside it) into pixels with the App's CellPixels, and
 // scrolls by a cell's height a line.
@@ -175,7 +181,14 @@ func (v *HTMLView) SetStylesheet(css string) {
 func (v *HTMLView) Images() ImageResolver { return v.resolve }
 
 // SetImageResolver replaces the resolver a pixel layout loads images through.
-func (v *HTMLView) SetImageResolver(r ImageResolver) { v.resolve = r }
+// The layout's images and their pending loads are dropped: a host sets it before the page it
+// serves, and only when the folder its paths are read from changes.
+func (v *HTMLView) SetImageResolver(r ImageResolver) {
+	v.resolve = r
+	if l, ok := v.layout.(HTMLLayoutImages); ok {
+		l.ResetImages()
+	}
+}
 
 // Diagrams is what WithDiagrams gave, for a pixel layout; nil for none.
 func (v *HTMLView) Diagrams() any { return v.diagrams }
