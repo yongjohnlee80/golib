@@ -194,3 +194,54 @@ func TestDirImagesStaysInItsRoot(t *testing.T) {
 		}
 	}
 }
+
+// TestHTMLViewScrollsByVimKeys: j/k scroll a line, Ctrl+D/Ctrl+U half the view, G and g the ends,
+// as the arrows, PgUp/PgDn, End and Home do; a released key does nothing.
+func TestHTMLViewScrollsByVimKeys(t *testing.T) {
+	h, v, sh := mountedHTML(t, 20, 6, longDoc(30, "para "))
+	h.waitFor("drawn", func() bool { return strings.Contains(h.grid(), "para 0") })
+	at := func() float32 {
+		var y float32
+		h.onLoop(func() { y = v.ScrollY() })
+		return y
+	}
+	step := func(name string, want func(y float32) bool, evs ...tui.Event) {
+		t.Helper()
+		h.inject(evs...)
+		h.barrier(sh)
+		if y := at(); !want(y) {
+			t.Errorf("%s: scrolled to %v", name, y)
+		}
+	}
+	step("j", func(y float32) bool { return y == 1 }, key('j'))
+	step("a released j", func(y float32) bool { return y == 1 }, tui.KeyEvent{Code: 'j', Kind: tui.KeyRelease})
+	step("k", func(y float32) bool { return y == 0 }, key('k'))
+	step("Ctrl+D", func(y float32) bool { return y == 3 }, ctrl('d'))
+	step("Ctrl+U", func(y float32) bool { return y == 0 }, ctrl('u'))
+	var end float32
+	h.inject(key(tui.KeyEnd))
+	h.barrier(sh)
+	end = at()
+	h.inject(key(tui.KeyHome))
+	h.barrier(sh)
+	step("G", func(y float32) bool { return y == end && end > 0 }, key('G'))
+	step("g", func(y float32) bool { return y == 0 }, key('g'))
+	step("Shift+g", func(y float32) bool { return y == end }, tui.KeyEvent{Code: 'g', Mods: tui.ModShift})
+}
+
+// TestHTMLViewShowDocumentAndSetOnLink: ShowDocument shows a page as SetHTML does, and SetOnLink
+// replaces what a clicked link calls.
+func TestHTMLViewShowDocumentAndSetOnLink(t *testing.T) {
+	var first, second []string
+	h, v, sh := mountedHTML(t, 30, 4, `<p>old</p>`, widget.WithOnLink(func(href string) { first = append(first, href) }))
+	h.onLoop(func() {
+		v.ShowDocument([]byte(`<p><a href="b.html">the link</a></p>`))
+		v.SetOnLink(func(href string) { second = append(second, href) })
+	})
+	h.waitFor("the new page", func() bool { return strings.Contains(h.grid(), "the link") })
+	h.inject(mouseAt(tui.MousePress, 2, 0), mouseAt(tui.MouseRelease, 2, 0))
+	h.barrier(sh)
+	if len(first) != 0 || fmt.Sprint(second) != "[b.html]" {
+		t.Errorf("the click reached %v and %v, want only the replaced handler with b.html", first, second)
+	}
+}

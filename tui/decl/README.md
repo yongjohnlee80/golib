@@ -269,7 +269,9 @@ holds `MenuItem`s, `Menu`s and `MenuSeparator`s. `Frame` holds exactly one child
 `standardButtons`).
 
 **`HTMLView`** shows an HTML page, read-only: no script runs. A drag selects its text, `Ctrl+C`
-(or `y`) copies it, and a click on a link emits `linkActivated(href)` for the host to follow. In a
+(or `y`) copies it, and a click on a link emits `linkActivated(href)` for the host to follow. It
+scrolls by the arrows or `k`/`j`, `PgUp`/`PgDn` or `Space`, `Ctrl+U`/`Ctrl+D` (half a view), and
+`Home`/`End` or `g`/`G`. In a
 terminal it lays the page out in cells: headings bold, links underlined, quotes barred, lists
 hanging, a table's columns lined up when they fit, an image as its alt text. A native backend
 binds its own pixel layout (`widget.HTMLView.BindLayout`) and draws it, with the same selection,

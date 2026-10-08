@@ -106,6 +106,9 @@ type HTMLOption func(*HTMLView)
 // without a drag).
 func WithOnLink(fn func(href string)) HTMLOption { return func(v *HTMLView) { v.onLink = fn } }
 
+// SetOnLink replaces what a clicked link calls, as WithOnLink gives it.
+func (v *HTMLView) SetOnLink(fn func(href string)) { v.onLink = fn }
+
 // WithOnScroll is called with the source byte of the block at the top as the view scrolls to
 // another block (data-src); blocks without source bytes report nothing.
 func WithOnScroll(fn func(srcByte int)) HTMLOption { return func(v *HTMLView) { v.onScroll = fn } }
@@ -180,6 +183,9 @@ func (v *HTMLView) Diagrams() any { return v.diagrams }
 // SetHTML shows src, keeping the reader's place: the block that was at the top, found again by
 // its source bytes, keeps its offset from the top; without source bytes the scroll keeps its y.
 // The selection is cleared, as its positions belong to the old document.
+// ShowDocument shows text as the page: SetHTML, as a gui Editor's document view calls it.
+func (v *HTMLView) ShowDocument(text []byte) { v.SetHTML(text) }
+
 func (v *HTMLView) SetHTML(src []byte) {
 	anchor, top := v.layout.BlockAt(v.scrollY)
 	off := v.scrollY - top
@@ -279,7 +285,8 @@ func (v *HTMLView) reportScroll() {
 }
 
 // HandleEvent scrolls by the keys and the wheel, selects by a drag, follows a clicked link, and
-// copies the selection by Ctrl+C or y.
+// copies the selection by Ctrl+C or y. The keys: Up/Down or k/j a line, PgUp/PgDn or Space a view,
+// Ctrl+U/Ctrl+D half a view, Home/End or g/G the ends.
 func (v *HTMLView) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
@@ -317,18 +324,25 @@ func (v *HTMLView) key(e tui.KeyEvent) bool {
 	}
 	_, uy := v.units()
 	page := max(v.viewHeight()-uy, uy)
+	half := max(v.viewHeight()/2, uy)
+	plain, ctrl := e.Mods.Chord() == 0, e.Mods.Chord() == tui.ModCtrl
 	switch {
-	case e.Code == tui.KeyUp:
+	case e.Code == tui.KeyUp, e.Code == 'k' && plain:
 		v.scrollBy(-uy)
-	case e.Code == tui.KeyDown:
+	case e.Code == tui.KeyDown, e.Code == 'j' && plain:
 		v.scrollBy(uy)
 	case e.Code == tui.KeyPageUp:
 		v.scrollBy(-page)
-	case e.Code == tui.KeyPageDown || e.Code == ' ' && e.Mods.Chord() == 0:
+	case e.Code == tui.KeyPageDown || e.Code == ' ' && plain:
 		v.scrollBy(page)
-	case e.Code == tui.KeyHome:
+	case e.Code == 'u' && ctrl:
+		v.scrollBy(-half)
+	case e.Code == 'd' && ctrl:
+		v.scrollBy(half)
+	case e.Code == tui.KeyHome, e.Code == 'g' && plain:
 		v.scrollTo(0)
-	case e.Code == tui.KeyEnd:
+	case e.Code == tui.KeyEnd, e.Code == 'G' && (plain || e.Mods.Chord() == tui.ModShift),
+		e.Code == 'g' && e.Mods.Chord() == tui.ModShift:
 		v.scrollTo(v.maxScroll())
 	case e.Code == 'c' && e.Mods.Chord() == tui.ModCtrl, e.Code == 'y' && e.Mods.Chord() == 0:
 		return v.Copy()
