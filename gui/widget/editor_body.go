@@ -2,6 +2,7 @@ package widget
 
 import (
 	"image/color"
+	"strconv"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
@@ -195,6 +196,17 @@ func (b *editorBody) mouse(m tui.MouseEvent) bool {
 	c := b.e.core
 	l := b.e.layout
 	switch {
+	case m.Kind == tui.MouseWheel && (m.Button == tui.WheelLeft || m.Button == tui.WheelRight ||
+		m.Mods&tui.ModShift != 0 && (m.Button == tui.WheelUp || m.Button == tui.WheelDown)):
+		// sideways: a horizontal wheel, or Shift with the vertical one
+		d := float32(4) * l.monoCell()
+		if m.Button == tui.WheelLeft || m.Button == tui.WheelUp {
+			d = -d
+		}
+		if b.native() && l.scrollX(d) {
+			b.MarkDirty()
+		}
+		return true
 	case m.Kind == tui.MouseWheel && (m.Button == tui.WheelUp || m.Button == tui.WheelDown):
 		d := float32(3) * l.lineHeight(l.monoFont())
 		if m.Button == tui.WheelUp {
@@ -216,12 +228,18 @@ func (b *editorBody) mouse(m tui.MouseEvent) bool {
 		return b.e.menu.OpenAt(tui.Point{X: m.X, Y: m.Y})
 	case m.Kind == tui.MouseMotion && c.Dragging():
 		if b.native() {
-			_, y := b.pixel(m)
+			x, y := b.pixel(m)
 			switch {
 			case y < 0:
 				l.scrollBy(-l.lineHeight(l.monoFont()))
 			case y > l.height:
 				l.scrollBy(l.lineHeight(l.monoFont()))
+			}
+			switch {
+			case x < padX+l.gutter:
+				l.scrollX(-l.monoCell())
+			case x > padX+l.gutter+l.width:
+				l.scrollX(l.monoCell())
 			}
 		}
 		ln, col := b.at(m)
@@ -255,13 +273,26 @@ func (v bodyView) Paint(c gui.Canvas) {
 	fg, bg := c.CellColors(0, 0)
 	l.sh, l.cell = c.Text(), c.CellSize()
 	th := e.theme(fg, bg, l.cell, b.styleTheme)
-	w, h := c.Size().W-2*padX, c.Size().H
-	if w != l.width || th != l.th {
+	prev := l.th
+	l.th = th // the gutter is counted in this theme's monospace cells
+	l.gutter = float32(e.GutterWidth()) * l.monoCell()
+	w, h := c.Size().W-2*padX-l.gutter, c.Size().H
+	if w != l.width || th != prev {
 		l.invalidate()
 	}
 	l.th, l.width, l.height = th, max(w, 1), h
 	l.ensure()
 	c.FillRect(gui.Rect{W: c.Size().W, H: h}, gui.Solid(bg))
+	// The text's own canvas: clipped to its area, so a line scrolled sideways never draws over
+	// the gutter, and placed at the text's left edge.
+	textLeft := padX + l.gutter
+	tc := c.Sub(gui.Rect{X: textLeft, W: max(c.Size().W-textLeft, 0), H: h})
+	if e.ruler > 0 && e.mode == Raw {
+		// the guide sits under the text, so a line that crosses it stays readable
+		if x := l.textX() + float32(e.ruler-1)*l.monoCell(); x >= textLeft && x < c.Size().W {
+			c.FillRect(gui.Rect{X: x, Y: 0, W: 1, H: h}, gui.Solid(mix(th.Muted, bg, 0.5)))
+		}
+	}
 
 	var frame *tuiwidget.HighlightFrame
 	top := 0
@@ -289,16 +320,21 @@ func (v bodyView) Paint(c gui.Canvas) {
 		lb := l.lay(i, frame)
 		oy := padY + y - l.scroll
 		if lb.bl.Background.A > 0 {
-			c.FillRect(gui.Rect{X: padX / 2, Y: oy, W: l.width + padX, H: lb.bl.Height}, gui.Solid(lb.bl.Background))
+			c.FillRect(gui.Rect{X: textLeft - padX/2, Y: oy, W: l.width + padX, H: lb.bl.Height}, gui.Solid(lb.bl.Background))
 		}
+		numbered := -1
 		for _, ll := range lb.bl.Lines {
-			at := gui.Pt(padX, oy+ll.Y)
+			at := gui.Pt(-l.left, oy+ll.Y)
 			if b.focused {
 				for _, r := range selection(e.core, ll, visualLine, l.width) {
-					c.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
+					tc.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
 				}
 			}
-			ll.Para.Paint(c, at, ll.Spans)
+			ll.Para.Paint(tc, at, ll.Spans)
+			if e.numbers && len(ll.Spans) > 0 && ll.Spans[0].Line >= 0 && ll.Spans[0].Line != numbered && len(ll.Para.Lines) > 0 {
+				numbered = ll.Spans[0].Line
+				b.paintNumber(c, numbered, oy+ll.Y+ll.Para.Lines[0].Baseline, th)
+			}
 		}
 		if lb.bl.Picture != nil {
 			ph := float32(0)
@@ -306,13 +342,13 @@ func (v bodyView) Paint(c gui.Canvas) {
 				last := lb.bl.Lines[n-1]
 				ph = last.Y + last.Para.Height
 			}
-			lb.bl.Picture.Paint(c.Sub(gui.Rect{X: padX, Y: oy + ph, W: lb.bl.PictureSize.W, H: lb.bl.PictureSize.H}))
+			lb.bl.Picture.Paint(c.Sub(gui.Rect{X: textLeft, Y: oy + ph, W: lb.bl.PictureSize.W, H: lb.bl.PictureSize.H}))
 		}
 		if cl >= l.blocks[i].From && cl < l.blocks[i].To {
 			if li, pos, ok := posIn(lb, cl, ccol); ok {
 				ll := lb.bl.Lines[li]
 				r := ll.Para.Caret(pos)
-				r.X += padX
+				r.X += l.textX()
 				r.Y += oy + ll.Y
 				b.caret, b.caretBase, b.caretOn = r, r.H*0.8, b.focused
 			}
@@ -322,6 +358,15 @@ func (v bodyView) Paint(c gui.Canvas) {
 	if b.caretOn {
 		paintCaret(c, b.caret, e.core.Mode(), th)
 	}
+}
+
+// paintNumber draws line ln's number (1-based) right-aligned in the gutter, on the baseline of
+// the line's first row: once per line, however many rows it wraps to.
+func (b *editorBody) paintNumber(c gui.Canvas, ln int, baseline float32, th Theme) {
+	l := b.e.layout
+	t := c.Text().Layout(strconv.Itoa(ln+1), l.monoFont(), 0)
+	digits := l.gutter - float32(gutterGap)*l.monoCell()
+	c.DrawText(t, gui.Pt(padX+digits-t.Width, baseline-t.Ascent), gui.Solid(th.LineNumbers))
 }
 
 // selection is a line's selected clusters as highlight rects, in the paragraph's coordinates. A

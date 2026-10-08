@@ -29,6 +29,8 @@ type pixelLayout struct {
 
 	width, height float32 // the text's area
 	scroll        float32 // how far the text's top is above the view's
+	left          float32 // how far the text's left is left of the view's: the Raw view with WrapNone
+	gutter        float32 // the line numbers' width, their gap included; 0 without them
 
 	lines  []string // the buffer, read once per change
 	blocks []Block
@@ -55,7 +57,8 @@ func newPixelLayout(e *Editor) *pixelLayout {
 
 // --- tuiwidget.EditorLayout ---------------------------------------------------------------
 
-// Reveal scrolls the caret at (line, col) into view.
+// Reveal scrolls the caret at (line, col) into view: down or up, and sideways when long lines
+// are not wrapped.
 func (l *pixelLayout) Reveal(line, col int) {
 	if l.height <= 0 {
 		return
@@ -71,7 +74,55 @@ func (l *pixelLayout) Reveal(line, col int) {
 		l.scroll = r.Y + r.H - (l.height - 2*padY)
 	}
 	l.scroll = max(l.scroll, 0)
+	if l.sideways() {
+		cw := l.monoCell()
+		switch {
+		case r.X < l.left:
+			l.left = r.X
+		case r.X+cw > l.left+l.width:
+			l.left = r.X + cw - l.width
+		}
+		l.left = max(l.left, 0)
+	}
 	l.e.body.MarkDirty()
+}
+
+// sideways reports whether the view scrolls horizontally: the Raw view, with WrapNone.
+func (l *pixelLayout) sideways() bool {
+	return l.e.wrap == tuiwidget.WrapNone && !(l.e.mode == Rendered && l.e.render != nil)
+}
+
+// monoCell is one monospace cluster's width: the unit the gutter and the ruler are counted in.
+func (l *pixelLayout) monoCell() float32 {
+	if l.sh != nil {
+		if m := l.sh.Measure("0", l.monoFont()); len(m.X) > 1 && m.X[1] > 0 {
+			return m.X[1]
+		}
+	}
+	return max(l.cell.W, 1)
+}
+
+// textX is where the text's x = 0 is in the view: past the padding and the gutter, less the
+// sideways scroll. Painting, hit-tests and the caret all place the text from here.
+func (l *pixelLayout) textX() float32 { return padX + l.gutter - l.left }
+
+// scrollX moves the view sideways by dx pixels, within the widest line laid out.
+func (l *pixelLayout) scrollX(dx float32) bool {
+	if !l.sideways() {
+		return false
+	}
+	var widest float32
+	for _, lb := range l.laid {
+		if lb == nil {
+			continue
+		}
+		for _, ll := range lb.bl.Lines {
+			widest = max(widest, ll.Para.Width)
+		}
+	}
+	was := l.left
+	l.left = max(min(l.left+dx, widest+l.monoCell()-l.width), 0)
+	return l.left != was
 }
 
 // PageLines is how many lines of the text font fit the view.
@@ -232,7 +283,11 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 		}
 	}
 	spans := rawSpans(b.From, text, l.monoFont(), colorAt)
-	p := flow.Lay(spans, flow.Options{Width: l.width, WhiteSpace: flow.PreWrap, Color: l.th.Text}, l.sh)
+	ws := flow.PreWrap
+	if l.e.wrap == tuiwidget.WrapNone {
+		ws = flow.Pre // one row per line; the view scrolls sideways instead
+	}
+	p := flow.Lay(spans, flow.Options{Width: l.width, WhiteSpace: ws, Color: l.th.Text}, l.sh)
 	lb := &laidBlock{inside: inside, width: l.width, text: text, colors: colors,
 		bl: BlockLayout{Lines: []LineLayout{{Para: p, Spans: spans}}, Height: p.Height}}
 	l.laid[i] = lb
@@ -318,6 +373,7 @@ func (l *pixelLayout) caretAt(line, col int) (gui.Rect, bool) {
 	if !ok {
 		return gui.Rect{}, false
 	}
+	// text coordinates: x from the text's left edge, y from the text's top
 	ll := lb.bl.Lines[li]
 	r := ll.Para.Caret(pos)
 	r.Y += l.topOf(i) + ll.Y
@@ -353,7 +409,7 @@ func (l *pixelLayout) at(x, y float32) (line, col int) {
 		}
 	}
 	ll := lb.bl.Lines[li]
-	pos := ll.Para.At(gui.Pt(x-padX, in-ll.Y))
+	pos := ll.Para.At(gui.Pt(x-l.textX(), in-ll.Y))
 	if pos.Span >= len(ll.Spans) {
 		return l.blocks[i].From, 0
 	}
