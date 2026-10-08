@@ -198,3 +198,46 @@ func TestHiddenAfterRepeatedAttributesIsRefused(t *testing.T) {
 		t.Errorf("suppressed text reached the output: %q", out)
 	}
 }
+
+// TestDroppedAndBlock: Dropped skips what a reader never reads (scripts, styles, anything hidden,
+// itself or through an element enclosing it past the parse's depth) and keeps a page's chrome,
+// which only the extractor drops; Block names the elements that start a block.
+func TestDroppedAndBlock(t *testing.T) {
+	doc, err := phtml.Parse([]byte(`<nav>n</nav><script>s</script><p hidden>h</p><div aria-hidden="true">a</div><p>kept</p>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, n := range doc.Children {
+		if n.Kind == phtml.StartTag && !Dropped(n) {
+			got = append(got, n.Name)
+		}
+	}
+	if strings.Join(got, ",") != "nav,p" {
+		t.Errorf("kept %v, want nav and the visible p", got)
+	}
+	deep := strings.Repeat("<div>", 300) + `<section hidden>` + strings.Repeat("<div>", 300) + "x"
+	doc, err = phtml.Parse([]byte(deep))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var text *phtml.Node
+	var find func(n *phtml.Node)
+	find = func(n *phtml.Node) {
+		for _, c := range n.Children {
+			if c.Kind == phtml.Text && c.Data == "x" {
+				text = c
+			}
+			find(c)
+		}
+	}
+	find(doc)
+	if text == nil || !Dropped(text) {
+		t.Errorf("text inside a hidden element past the depth limit is not dropped")
+	}
+	for name, want := range map[string]bool{"p": true, "li": true, "table": true, "span": false, "a": false} {
+		if Block(name) != want {
+			t.Errorf("Block(%q) = %v", name, !want)
+		}
+	}
+}

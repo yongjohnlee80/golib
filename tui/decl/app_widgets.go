@@ -58,6 +58,29 @@ func appTypes() []Type {
 			"loading":     setter("an Image", boolOf, (*widget.Image).SetLoading),
 			"loadingText": setter("an Image", stringOf, (*widget.Image).SetLoadingText),
 		}},
+		// golib's: an HTML document, read-only and selectable (widget.HTMLView). A terminal lays it
+		// out in cells; a native backend binds its pixel layout. The host gives it the page
+		// (html), and is told of a clicked link and of the source byte at the top as it scrolls.
+		{Name: "HTMLView", Build: buildHTMLView, Setters: map[string]Setter{
+			"html": setter("an HTMLView", stringOf, func(v *widget.HTMLView, s string) { v.SetHTML([]byte(s)) }),
+			// a stylesheet a pixel layout applies after the page's own
+			"stylesheet": setter("an HTMLView", stringOf, (*widget.HTMLView).SetStylesheet),
+		},
+			Methods: map[string]Method{
+				// scrollToSource(byte): the block showing that source byte, at the top
+				"scrollToSource": func(c tui.Component, args []qml.SpecValue) error {
+					if len(args) != 1 {
+						return fmt.Errorf("HTMLView.scrollToSource takes one argument, a source byte; got %d", len(args))
+					}
+					n, err := numberOf(args[0])
+					if err != nil {
+						return err
+					}
+					c.(*widget.HTMLView).ScrollToSource(int(n))
+					return nil
+				},
+			},
+			Signals: map[string][]string{"linkActivated": {"href"}, "scrolledTo": {"sourceByte"}}},
 		{Name: "Terminal", Build: buildTerminal, Ctor: []string{"command", "dir", "scrollback"}, restyle: restyleTerminal,
 			Setters: map[string]Setter{
 				// command and dir take effect at the next start(): a host learns where to start
@@ -307,4 +330,16 @@ func statusMessage(set func(*widget.StatusBar, tui.Message, ...style.Style)) fun
 var dialogMethods = map[string]Method{
 	"open":  method("a dialog", (*dialogNode).open),
 	"close": method("a dialog", (*dialogNode).close),
+}
+
+// buildHTMLView builds an HTMLView whose link clicks and scrolling emit linkActivated(href) and
+// scrolledTo(sourceByte).
+func buildHTMLView(b Build) (tui.Component, []string, error) {
+	consumed, err := readProps(b.Props, map[string]field{})
+	link, scrolled := b.EmitterWith("linkActivated"), b.EmitterWith("scrolledTo")
+	v := widget.NewHTMLView(
+		widget.WithOnLink(func(href string) { link(strValue(href)) }),
+		widget.WithOnScroll(func(at int) { scrolled(numberValue(at)) }),
+	)
+	return v, consumed, err
 }

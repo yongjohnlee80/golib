@@ -77,6 +77,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
 | `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `wrap` (live: soft-wrap long lines, or scroll them), `lineNumbers` (golib's: each line's number in a gutter at the left), `lineNumberColor` (golib's: the numbers' colour), `cursorColor` (golib's: the text cursor's colour, sent to the terminal), `ruler` (golib's: a guide at that column, where text wraps), `contextMenu` (golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer), `view` (golib's: `Editor.Raw` or `Editor.Rendered`; see [Raw and Rendered](#raw-and-rendered-view-not-mode)) | — | `modeChanged` (the **Vim** mode: Normal, Insert, Visual; not the view), `textChanged`, `cursorPositionChanged` (Qt's TextEdit signal: the cursor moved to another line or column, by a key, a click, an edit or the program) | — |
 | `Image` | — | `scrollable` (golib's: the PNG at the cells' width, scrolled by ↑↓ j k h l, Page Up/Down, `[` `]`, Home/End and the wheel; only the part shown is placed) | — | — | — |
+| `HTMLView` | — | `html` (golib's: the page it shows), `stylesheet` (golib's: a stylesheet a pixel layout applies after the page's own) | — | `linkActivated(href)` (a link clicked), `scrolledTo(sourceByte)` (the source byte of the block now at the top) | `scrollToSource(byte)` |
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette; its children are its widgets, each at its own width: permanent (Qt's `QStatusBar.addPermanentWidget`) at the right end, or, with `StatusBar.permanent: false` on the child, normal (`addWidget`) at the left end; the segments share the rest | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |
@@ -266,6 +267,17 @@ holds `MenuItem`s, `Menu`s and `MenuSeparator`s. `Frame` holds exactly one child
 `Split` exactly two. A `Dialog` holds exactly one content child, plus its own
 `Shortcut`s and at most one `DialogButtonBox` (which it may not combine with
 `standardButtons`).
+
+**`HTMLView`** shows an HTML page, read-only: no script runs. A drag selects its text, `Ctrl+C`
+(or `y`) copies it, and a click on a link emits `linkActivated(href)` for the host to follow. In a
+terminal it lays the page out in cells: headings bold, links underlined, quotes barred, lists
+hanging, a table's columns lined up when they fit, an image as its alt text. A native backend
+binds its own pixel layout (`widget.HTMLView.BindLayout`) and draws it, with the same selection,
+scroll and signals. Elements may carry `data-src="from-to"`, the source bytes they show:
+`scrolledTo(sourceByte)` reports the block at the top as it scrolls, `scrollToSource(byte)`
+brings one there, and a new `html` keeps the block that was at the top in its place. A host gives
+large pages by id (`tuidecl.FindAs[*widget.HTMLView](p, "preview").SetHTML(page)`), and images
+through `widget.DirImages(root)`, which opens nothing outside root.
 
 **`Image`** is Qt Quick's `Image` without a `source`: the host gives it a PNG by id
 (`tuidecl.FindAs[*widget.Image](p, "preview").SetPNG(png)`), and it shows it over its cells on a
