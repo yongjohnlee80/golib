@@ -11,13 +11,20 @@ import (
 // place of the text body while the Editor is Rendered and the host has turned it on for the
 // document (SetRenderedDocument). Raw is the text, editable, either way.
 
-// DocumentView is a Rendered view that draws the whole document as one read-only widget.
+// DocumentView is a Rendered view that draws the whole document as one read-only widget. The
+// Editor shows and hides it through SetVisible, and the framework reads Visible: a hidden view is
+// not laid out, painted or focused. It takes the keyboard itself while shown (AcceptsFocus), so a
+// key it leaves, the Rendered toggle among them, bubbles to the Editor.
 type DocumentView interface {
 	tui.Component
+	tui.Hideable
+	tui.Focusable
 	// ShowDocument shows text: called as the view is shown, and on SetValue while it is.
 	ShowDocument(text []byte)
 	SetVisible(bool)
 }
+
+var _ DocumentView = (*tuiwidget.HTMLView)(nil)
 
 // WithDocumentView gives the Editor a document view, off until SetRenderedDocument turns it on.
 func WithDocumentView(v DocumentView) EditorOption { return func(c *editorConfig) { c.doc = v } }
