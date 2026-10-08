@@ -2,11 +2,9 @@ package widget
 
 import (
 	"fmt"
-	"github.com/yongjohnlee80/golib/highlight"
-	"strings"
 	"time"
-	"unicode"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -143,25 +141,29 @@ import (
 //	for _, b := range snap.Bindings {
 //		fmt.Printf("%s: %s (%s)\n", b.Chord, b.Name, b.Description)
 //	}
+//
+// # Core and view
+//
+// Editor is an [EditorCore] and its cell layout (ADR 1791385086): the core holds the text, the
+// modes, the keys and undo; the Editor lays it out in cells, hit-tests the pointer, scrolls, and
+// paints. [Editor.Core] hands the core to code that drives it apart from this view.
 type Editor struct {
-	readOnly bool // viewer mode: motions and yank only
-
-	// hlc colours the buffer: the highlighter, what each style looks like, and each line's
-	// remembered styles (editor_highlight.go).
-	hlc highlightCache
-	// ruler is the column a vertical guide marks, 1-based; 0 for none (WithRuler).
-	ruler int
-
-	// onModeChange and onChange are the constructor-time listeners for the two
-	// notifications this widget also publishes on the bus. A caller that builds
-	// the widget before it is mounted has no Context to subscribe with, and
-	// these are how it hears — the same shape as Button's WithOnActivate.
-	onModeChange func(EditorMode)
-	onChange     func()
-	// onCursorMove is told the cursor moved to another line or column (WithOnCursorPositionChange)
-	onCursorMove func()
 	Base
-	textBuffer
+	core  *EditorCore // the behaviour; a field, never embedded
+	cells cellLayout  // the geometry, in cells: implements EditorLayout
+
+	// The right-click menu (editor_contextmenu.go). Off unless a consumer
+	// turns it on; ctxBuild nil means the stock items.
+	ctxOn    bool
+	ctxBuild func(e *Editor) []MenuItemModel
+	ctxOpen  *popupLayer
+}
+
+// cellLayout is the Editor's view of its core in terminal cells: the viewport, the gutter, the
+// ruler, the looks, and the drag's edge auto-scroll. It is the EditorLayout the core reveals,
+// measures and pages through.
+type cellLayout struct {
+	ed *Editor // the widget it lays out: its context measures and repaints
 
 	// viewport (same discipline as TextArea)
 	wrap WrapMode
@@ -173,6 +175,8 @@ type Editor struct {
 	// the last layout (0 without numbers)
 	numbers bool
 	gutter  int
+	// ruler is the column a vertical guide marks, 1-based; 0 for none (WithRuler).
+	ruler int
 
 	// cursorColor is the hardware cursor's colour while cursorColored (tui.CursorColorer)
 	cursorColor   style.Color
@@ -183,28 +187,6 @@ type Editor struct {
 
 	styles TextInputStyles
 
-	// keys is the mode, the keyset's keymap, and the input pending between keys (editorkeys.go).
-	keys keyDispatch
-
-	vAnchor taPos // visual anchor (chord start of the selection)
-
-	// Register & undo.
-	reg  editRegister // the unnamed register and the yank policy (editregister.go)
-	hist editHistory  // undo and redo (edithistory.go)
-
-	// Configurable capabilities.
-	canSelect bool // true = visual / selection active
-
-	// The right-click menu (editor_contextmenu.go). Off unless a consumer
-	// turns it on; ctxBuild nil means the stock items.
-	ctxOn    bool
-	ctxBuild func(e *Editor) []MenuItemModel
-	ctxOpen  *popupLayer
-
-	// dragging is a left-button drag in progress from dragFrom: moving selects in visual mode,
-	// as a GUI editor selects with the mouse. Copying stays the key combos' (y, Ctrl+C).
-	dragging bool
-	dragFrom taPos
 	// dragEdge is -1 or +1 while the dragging pointer is above or below the view, which keeps
 	// scrolling on dragTick (a GUI editor's auto-scroll); dragX is the pointer's column.
 	dragEdge   int
@@ -216,10 +198,48 @@ var (
 	_ tui.Focusable      = (*Editor)(nil)
 	_ tui.CursorReporter = (*Editor)(nil)
 	_ tui.CursorShaper   = (*Editor)(nil)
+	_ EditorLayout       = (*cellLayout)(nil)
 )
+
+// Reveal scrolls (line, col) into the viewport.
+func (l *cellLayout) Reveal(line, col int) { l.ed.reveal(line, col) }
+
+// PageLines is the viewport's height: a page.
+func (l *cellLayout) PageLines() int { return max(l.h, 1) }
+
+// Measure is s's width in cells, under the App's width policy.
+func (l *cellLayout) Measure(s string) int { return l.ed.measure(s) }
+
+// Changed repaints, and lays out again when the line count's digits move the gutter's width.
+func (l *cellLayout) Changed(int) {
+	if l.numbers && l.ed.gutterWidth() != l.gutter {
+		l.ed.RequestLayout() // the lines' count has another number of digits: the gutter's width moves
+	}
+	l.ed.MarkDirty()
+}
 
 // EditorOption customizes an Editor under construction.
 type EditorOption func(*Editor)
+
+// WithCore applies core options to an Editor: every behaviour EditorOption is one.
+func WithCore(opts ...CoreOption) EditorOption {
+	return func(e *Editor) {
+		for _, o := range opts {
+			if o != nil {
+				o(e.core)
+			}
+		}
+	}
+}
+
+// Core is the editor's behaviour, for code that drives it apart from this view.
+func (e *Editor) Core() *EditorCore { return e.core }
+
+// Init implements tui.Component: the core publishes, copies and times through this context.
+func (e *Editor) Init(ctx *tui.Context) {
+	e.Base.Init(ctx)
+	e.core.Bind(ctx, &e.cells)
+}
 
 // defaultEditorStyles are an Editor's looks before any option.
 func defaultEditorStyles() TextInputStyles {
@@ -230,21 +250,21 @@ func defaultEditorStyles() TextInputStyles {
 // WithRuler marks column col (1-based: 120 marks the 120th) with a vertical guide, where text is
 // meant to wrap: vim's colorcolumn, as a line. It is drawn in the empty cells past each line's
 // text, in the placeholder's muted look, so a line that crosses it stays readable. 0 draws none.
-func WithRuler(col int) EditorOption { return func(e *Editor) { e.ruler = max(col, 0) } }
+func WithRuler(col int) EditorOption { return func(e *Editor) { e.cells.ruler = max(col, 0) } }
 
 // SetRuler moves the guide to column col; 0 removes it.
 func (e *Editor) SetRuler(col int) {
-	e.ruler = max(col, 0)
+	e.cells.ruler = max(col, 0)
 	e.MarkDirty()
 }
 
 func WithEditorStyles(st TextInputStyles) EditorOption {
 	return func(e *Editor) {
-		e.styles = TextInputStyles{
-			Text:        st.Text.Inherit(e.styles.Text),
-			Placeholder: st.Placeholder.Inherit(e.styles.Placeholder),
-			Selection:   st.Selection.Inherit(e.styles.Selection),
-			Error:       st.Error.Inherit(e.styles.Error),
+		e.cells.styles = TextInputStyles{
+			Text:        st.Text.Inherit(e.cells.styles.Text),
+			Placeholder: st.Placeholder.Inherit(e.cells.styles.Placeholder),
+			Selection:   st.Selection.Inherit(e.cells.styles.Selection),
+			Error:       st.Error.Inherit(e.cells.styles.Error),
 		}
 	}
 }
@@ -252,29 +272,29 @@ func WithEditorStyles(st TextInputStyles) EditorOption {
 // SetCursorColor gives the hardware cursor a colour of its own over the text, a theme's accent,
 // so it is seen on any page; the terminal's own colour otherwise.
 func (e *Editor) SetCursorColor(c style.Color) {
-	e.cursorColor, e.cursorColored = c, true
+	e.cells.cursorColor, e.cells.cursorColored = c, true
 	e.MarkDirty()
 }
 
 // SetLineNumberColor gives the line numbers a colour of their own, a theme's dim tone, so they
 // stay out of the text's way; muted and faint otherwise.
 func (e *Editor) SetLineNumberColor(c style.Color) {
-	e.numberColor, e.numberColored = c, true
+	e.cells.numberColor, e.cells.numberColored = c, true
 	e.MarkDirty()
 }
 
 // CursorColor implements tui.CursorColorer.
-func (e *Editor) CursorColor() (style.Color, bool) { return e.cursorColor, e.cursorColored }
+func (e *Editor) CursorColor() (style.Color, bool) { return e.cells.cursorColor, e.cells.cursorColored }
 
 // WithEditorLineNumbers shows each line's number in a gutter at the left.
-func WithEditorLineNumbers(v bool) EditorOption { return func(e *Editor) { e.numbers = v } }
+func WithEditorLineNumbers(v bool) EditorOption { return func(e *Editor) { e.cells.numbers = v } }
 
 // SetLineNumbers shows or hides the gutter of line numbers.
 func (e *Editor) SetLineNumbers(v bool) {
-	if e.numbers == v {
+	if e.cells.numbers == v {
 		return
 	}
-	e.numbers = v
+	e.cells.numbers = v
 	e.RequestLayout()
 	e.MarkDirty()
 }
@@ -285,10 +305,10 @@ func (e *Editor) SetWrap(m WrapMode) {
 	if m != WrapNone && m != WrapSoft {
 		panic(fmt.Sprintf("widget: Editor.SetWrap: mode %d is not WrapNone or WrapSoft", m))
 	}
-	if e.wrap == m {
+	if e.cells.wrap == m {
 		return
 	}
-	e.wrap, e.left = m, 0
+	e.cells.wrap, e.cells.left = m, 0
 	e.RequestLayout()
 	e.MarkDirty()
 }
@@ -304,10 +324,10 @@ const gutterGap = 2
 // gutterWidth is the columns the line numbers take: the widest number, four digits at least so the
 // gutter keeps its width as a note grows, and the gap after it; 0 without numbers.
 func (e *Editor) gutterWidth() int {
-	if !e.numbers {
+	if !e.cells.numbers {
 		return 0
 	}
-	return max(len(fmt.Sprint(len(e.lines))), 4) + gutterGap
+	return max(len(fmt.Sprint(len(e.core.buf.lines))), 4) + gutterGap
 }
 
 // WithEditorWrap selects WrapNone (default) or WrapSoft.
@@ -315,77 +335,29 @@ func WithEditorWrap(m WrapMode) EditorOption {
 	if m != WrapNone && m != WrapSoft {
 		panic(fmt.Sprintf("widget: WithEditorWrap: mode %d is not WrapNone or WrapSoft", m))
 	}
-	return func(e *Editor) { e.wrap = m }
+	return func(e *Editor) { e.cells.wrap = m }
 }
 
 // WithInitialText seeds the buffer (cursor at the document start, initial editing
 // mode, empty undo history).
-func WithInitialText(s string) EditorOption {
-	return func(e *Editor) {
-		e.setValue(s)
-		e.ln, e.col = 0, 0
-	}
-}
+func WithInitialText(s string) EditorOption { return WithCore(CoreInitialText(s)) }
 
 // WithEscapeChord sets the Insert-mode escape chord (default "jk"): exactly
 // two unmodified printable runes, or "" to disable (Esc alone). Anything
 // else panics.
-func WithEscapeChord(chord string) EditorOption {
-	rs := []rune(chord)
-	if chord != "" && len(rs) != 2 {
-		panic(fmt.Sprintf("widget: WithEscapeChord: %q is not exactly two runes (or empty to disable)", chord))
-	}
-	for _, r := range rs {
-		if !unicode.IsPrint(r) {
-			panic(fmt.Sprintf("widget: WithEscapeChord: %q contains a non-printable rune", chord))
-		}
-	}
-	return func(e *Editor) {
-		if chord == "" {
-			e.keys.chord = nil
-		} else {
-			e.keys.chord = rs
-		}
-	}
-}
+func WithEscapeChord(chord string) EditorOption { return WithCore(CoreEscapeChord(chord)) }
 
 // WithKeymap overlays entries onto the default table. ActUnbound removes a
 // default binding; every entry is validated at construction (panics on
 // unknown actions or unsupported mode/action combinations).
-func WithKeymap(overlay Keymap) EditorOption {
-	return func(e *Editor) {
-		// Validate the whole overlay before folding any of it in: a panic
-		// halfway through would otherwise leave half the bindings applied.
-		for kc, act := range overlay {
-			validateKeymapEntry(kc, act)
-		}
-		if e.keys.overlay == nil {
-			e.keys.overlay = make(Keymap, len(overlay))
-		}
-		for kc, act := range overlay {
-			e.keys.overlay[kc] = act
-		}
-		e.keys.applyOverlay(overlay)
-	}
-}
+func WithKeymap(overlay Keymap) EditorOption { return WithCore(CoreKeymap(overlay)) }
 
 // WithModalEditing configures whether the editor operates the Vim tripartite
 // modal state machine (Normal, Insert, Visual) or acts as a modeless editor.
-func WithModalEditing(modal bool) EditorOption {
-	return func(e *Editor) {
-		e.keys.modal = modal
-		if !modal {
-			e.setMode(ModeInsert)
-		}
-	}
-}
+func WithModalEditing(modal bool) EditorOption { return WithCore(CoreModal(modal)) }
 
 // WithEditorReadOnly configures whether the editor is in read-only viewer mode.
-func WithEditorReadOnly(ro bool) EditorOption {
-	return func(e *Editor) {
-		e.readOnly = ro
-	}
-}
+func WithEditorReadOnly(ro bool) EditorOption { return WithCore(CoreReadOnly(ro)) }
 
 // WithOnModeChange calls fn with the new mode whenever the editor's mode
 // changes — Normal to Insert, Insert to Visual — and not when it is set to the
@@ -396,70 +368,32 @@ func WithEditorReadOnly(ro bool) EditorOption {
 // declarative adapter, say — has no Context to subscribe with yet, and would
 // otherwise have to wrap the widget to find out, which is exactly the kind of
 // embedding that bypasses methods the wrapper thinks it has overridden.
-func WithOnModeChange(fn func(EditorMode)) EditorOption {
-	return func(e *Editor) { e.onModeChange = fn }
-}
+func WithOnModeChange(fn func(EditorMode)) EditorOption { return WithCore(CoreOnModeChange(fn)) }
 
 // WithOnChange calls fn after every EDIT — the same moment the widget publishes
 // a ChangeEvent. It is not called by SetValue: a program replacing the buffer
 // has made no edit, and reporting one would mark a freshly loaded file dirty.
-func WithOnChange(fn func()) EditorOption {
-	return func(e *Editor) { e.onChange = fn }
-}
+func WithOnChange(fn func()) EditorOption { return WithCore(CoreOnChange(fn)) }
 
 // WithOnCursorPositionChange calls fn whenever the cursor moves to another line or column: by a
 // key, a click, an edit, or the program (SetValue, SetLine, SetCursorPosition), as Qt's
 // TextEdit.cursorPositionChanged fires. It is told once per event, after the event is handled.
 func WithOnCursorPositionChange(fn func()) EditorOption {
-	return func(e *Editor) { e.onCursorMove = fn }
-}
-
-// cursorMoved tells onCursorMove when the cursor is no longer at (ln, col).
-func (e *Editor) cursorMoved(ln, col int) {
-	if e.onCursorMove != nil && (e.ln != ln || e.col != col) {
-		e.onCursorMove()
-	}
+	return WithCore(CoreOnCursorPositionChange(fn))
 }
 
 // WithVimKeymap configures the modal Vim keymap and editing model.
 // Also ensures the fast escape chord "jk" is armed by default.
-func WithVimKeymap() EditorOption {
-	return func(e *Editor) {
-		e.keys.applyKeyset(KeysetVim)
-		if len(e.keys.chord) == 0 {
-			e.keys.chord = []rune{'j', 'k'}
-			e.keys.chordTimeout = 300 * time.Millisecond
-		}
-	}
-}
+func WithVimKeymap() EditorOption { return WithCore(CoreKeyset(KeysetVim)) }
 
 // WithNanoKeymap configures the non-modal Nano-style editing profile.
-func WithNanoKeymap() EditorOption {
-	return func(e *Editor) {
-		e.keys.applyKeyset(KeysetNano)
-		e.setMode(ModeInsert)
-	}
-}
+func WithNanoKeymap() EditorOption { return WithCore(CoreKeyset(KeysetNano)) }
 
 // WithStandardKeymap configures the standard GUI/TextEdit editing profile.
-func WithStandardKeymap() EditorOption {
-	return func(e *Editor) {
-		e.keys.applyKeyset(KeysetStandard)
-		e.setMode(ModeInsert)
-	}
-}
+func WithStandardKeymap() EditorOption { return WithCore(CoreKeyset(KeysetStandard)) }
 
 // WithKeyset selects a predefined keyset and editing profile.
-func WithKeyset(ks Keyset) EditorOption {
-	switch normalizeKeyset(ks) {
-	case KeysetNano:
-		return WithNanoKeymap()
-	case KeysetStandard:
-		return WithStandardKeymap()
-	default:
-		return WithVimKeymap()
-	}
-}
+func WithKeyset(ks Keyset) EditorOption { return WithCore(CoreKeyset(ks)) }
 
 // normalizeKeyset maps anything outside the defined profiles onto Vim, which
 // is the editor's default: a Keyset is a closed enum, and an out-of-range one
@@ -478,114 +412,61 @@ func normalizeKeyset(ks Keyset) Keyset {
 // can select alternative keysets (e.g. WithNanoKeymap, WithStandardKeymap)
 // or customize capabilities and styles.
 func NewEditor(opts ...EditorOption) *Editor {
-	e := &Editor{
-		textBuffer: newTextBuffer(),
-		wrap:       WrapNone,
-		styles:     defaultEditorStyles(),
-		keys:       newKeyDispatch(),
-		canSelect:  true,
-		reg:        editRegister{yank: true},
-		hist:       editHistory{enabled: true},
-	}
+	e := &Editor{core: newEditorCore()}
+	e.cells = cellLayout{ed: e, wrap: WrapNone, styles: defaultEditorStyles()}
+	e.core.Bind(nil, &e.cells)
 	for _, o := range opts {
 		if o != nil {
 			o(e)
 		}
 	}
-	if !e.keys.modal && e.keys.mode == ModeNormal {
-		e.setMode(ModeInsert)
-	}
+	e.core.settleOptions()
 	return e
 }
 
 // Value returns the buffer joined with newlines.
-func (e *Editor) Value() string { return e.value() }
+func (e *Editor) Value() string { return e.core.Value() }
 
 // SetValue is a document-boundary operation: pending input
 // settles, the editor returns to Normal mode (or Insert mode if modeless),
 // cursor and command state reset, content is replaced, and undo/redo history
 // is CLEARED. The register is preserved.
 func (e *Editor) SetValue(s string) {
-	ln, col := e.ln, e.col
-	defer e.cursorMoved(ln, col)
-	e.settlePendingRune()
-	e.keys.count, e.keys.pendingAct = 0, ActUnbound
-	e.hist.reset()
-	e.setValue(s)
-	e.ln, e.col = 0, 0
-	if e.keys.modal {
-		e.setMode(ModeNormal)
-	} else {
-		e.setMode(ModeInsert)
-	}
-	e.top, e.left = 0, 0
-	e.ensureVisible()
-	e.MarkDirty()
+	e.cells.top, e.cells.left = 0, 0 // a new document starts at its top
+	e.core.SetValue(s)
 }
 
 // Mode reports the current mode.
-func (e *Editor) Mode() EditorMode { return e.keys.mode }
+func (e *Editor) Mode() EditorMode { return e.core.Mode() }
 
 // ReadOnly reports whether edits are refused.
-func (e *Editor) ReadOnly() bool { return e.readOnly }
+func (e *Editor) ReadOnly() bool { return e.core.ReadOnly() }
 
 // SetReadOnly makes the editor a VIEWER: motions, counts, visual
 // selection, yank, and search all work; every mutating action (insert
 // entry, delete, paste, undo/redo, typed text) is refused, and an active
 // Insert session returns to Normal (in modal mode). Hosts use it for panels the user
 // navigates but must not change.
-func (e *Editor) SetReadOnly(v bool) {
-	if e.readOnly == v {
-		return
-	}
-	e.readOnly = v
-	if v && (e.keys.mode == ModeInsert) && e.keys.modal {
-		e.settlePendingRune()
-		e.setMode(ModeNormal)
-		e.clampNormal()
-	}
-	e.MarkDirty()
-}
+func (e *Editor) SetReadOnly(v bool) { e.core.SetReadOnly(v) }
 
 // Line reports the cursor position (0-based) for status bars.
-func (e *Editor) Line() (row, col int) { return e.ln, e.col }
+func (e *Editor) Line() (row, col int) { return e.core.Line() }
 
 // SetLine moves the cursor to row/col (both clamped to the document) and
 // scrolls it into view — the programmatic sibling of the motions, for
 // hosts driving search, jump-to-error, and reveal. Pending input settles
 // first; the mode is left alone.
-func (e *Editor) SetLine(row, col int) {
-	ln, was := e.ln, e.col
-	defer e.cursorMoved(ln, was)
-	e.settlePendingRune()
-	e.ln = max(0, min(row, len(e.lines)-1))
-	e.col = max(0, col)
-	if e.keys.modal {
-		e.clampNormal()
-	}
-	e.ensureVisible()
-	e.MarkDirty()
-}
+func (e *Editor) SetLine(row, col int) { e.core.SetLine(row, col) }
 
 // SetCursorPosition moves the cursor to a position in the document, counted
 // as Qt's TextEdit.cursorPosition counts it — characters (grapheme clusters),
 // a line break one — and scrolls it into view, as SetLine does. A position
 // past the end is the end.
-func (e *Editor) SetCursorPosition(pos int) {
-	pos = max(pos, 0)
-	for row, line := range e.lines {
-		n := len(clusters(line))
-		if pos <= n || row == len(e.lines)-1 {
-			e.SetLine(row, min(pos, n))
-			return
-		}
-		pos -= n + 1
-	}
-}
+func (e *Editor) SetCursorPosition(pos int) { e.core.SetCursorPosition(pos) }
 
 // Lines returns a snapshot of the document's lines — what a host needs to
 // search without re-splitting Value().
-func (e *Editor) Lines() []string { return append([]string(nil), e.lines...) }
+func (e *Editor) Lines() []string { return e.core.Lines() }
 
 // AcceptsFocus implements tui.Focusable.
 func (e *Editor) AcceptsFocus() bool { return true }
@@ -593,7 +474,7 @@ func (e *Editor) AcceptsFocus() bool { return true }
 // CursorShape implements tui.CursorShaper: block for Normal and Visual,
 // bar for Insert. Visual mode is already shown in the status line and selection.
 func (e *Editor) CursorShape() tui.CursorShape {
-	switch e.keys.mode {
+	switch e.core.keys.mode {
 	case ModeInsert:
 		return tui.CursorShapeBar
 	}
@@ -603,7 +484,7 @@ func (e *Editor) CursorShape() tui.CursorShape {
 // --- runtime keymap reflection -------------------------------------------
 
 // Keyset reports the active editing & keymap profile.
-func (e *Editor) Keyset() Keyset { return e.keys.keyset }
+func (e *Editor) Keyset() Keyset { return e.core.Keyset() }
 
 // SetKeyset switches the editing profile on a LIVE editor, so a host can offer
 // "Vim / TextEdit" as a user preference without rebuilding the widget and
@@ -627,40 +508,13 @@ func (e *Editor) Keyset() Keyset { return e.keys.keyset }
 // Host bindings from [WithKeymap] are replayed onto the new profile's base
 // table — a rebound key means it for the editor, not for one profile of it.
 // Switching to the profile already active is a no-op, pending input included.
-func (e *Editor) SetKeyset(ks Keyset) {
-	ks = normalizeKeyset(ks)
-	if ks == e.keys.keyset {
-		return
-	}
-	e.settlePendingRune()
-	e.keys.dropPending()
-	e.hist.close()
-	e.anchor, e.vAnchor = nil, taPos{}
-	e.keys.applyKeyset(ks)
-	if e.keys.modal {
-		e.setMode(ModeNormal)
-		e.clampNormal()
-	} else {
-		e.setMode(ModeInsert)
-	}
-	e.desired = -1
-	e.ensureVisible()
-	e.MarkDirty()
-}
+func (e *Editor) SetKeyset(ks Keyset) { e.core.SetKeyset(ks) }
 
 // Keymap returns a defensive copy of the editor's active keymap.
-func (e *Editor) Keymap() Keymap {
-	cp := make(Keymap, len(e.keys.keymap))
-	for k, v := range e.keys.keymap {
-		cp[k] = v
-	}
-	return cp
-}
+func (e *Editor) Keymap() Keymap { return e.core.Keymap() }
 
 // EscapeChord returns the configured two-rune escape chord (e.g. "jk"), or "" if disabled.
-func (e *Editor) EscapeChord() string {
-	return string(e.keys.chord)
-}
+func (e *Editor) EscapeChord() string { return e.core.EscapeChord() }
 
 // Bindings returns all discrete key chords configured in this editor's active keymap,
 // sorted deterministically by mode, key chord, and action.
@@ -668,750 +522,135 @@ func (e *Editor) EscapeChord() string {
 // Multi-rune escape sequences (such as the modal Insert-mode "jk" chord) operate via
 // the chord timeout engine rather than single-chord mappings, and are reported via
 // [Editor.EscapeChord] and [KeymapSnapshot.EscapeChord].
-func (e *Editor) Bindings() []KeyBinding {
-	return e.keys.keymap.Bindings()
-}
+func (e *Editor) Bindings() []KeyBinding { return e.core.Bindings() }
 
 // BindingsForMode returns all active bindings available when the editor is in mode m.
-func (e *Editor) BindingsForMode(m EditorMode) []KeyBinding {
-	all := e.Bindings()
-	filtered := make([]KeyBinding, 0, len(all))
-	targetMode := modeClass(m)
-	for _, b := range all {
-		if modeClass(b.Mode) == targetMode {
-			filtered = append(filtered, b)
-		}
-	}
-	return filtered
-}
+func (e *Editor) BindingsForMode(m EditorMode) []KeyBinding { return e.core.BindingsForMode(m) }
 
 // SnapshotKeymap generates a complete, serializable runtime reflection snapshot of the
 // editor's active key configuration, profile, and action mappings.
-func (e *Editor) SnapshotKeymap() KeymapSnapshot {
-	return KeymapSnapshot{
-		Keyset:      e.keys.keyset,
-		KeysetName:  e.keys.keyset.String(),
-		Modal:       e.keys.modal,
-		EscapeChord: string(e.keys.chord),
-		Bindings:    e.Bindings(),
-	}
-}
+func (e *Editor) SnapshotKeymap() KeymapSnapshot { return e.core.SnapshotKeymap() }
 
 // ActionForChord looks up the bound action for a given key chord.
-func (e *Editor) ActionForChord(kc KeyChord) (Action, bool) { return e.keys.lookup(kc) }
+func (e *Editor) ActionForChord(kc KeyChord) (Action, bool) { return e.core.ActionForChord(kc) }
 
 // ChordsForAction returns all key chords that map to the specified action.
-func (e *Editor) ChordsForAction(act Action) []KeyChord { return e.keys.chordsFor(act) }
+func (e *Editor) ChordsForAction(act Action) []KeyChord { return e.core.ChordsForAction(act) }
 
-// --- mode & cursor invariants -------------------------------------------
-
-func (e *Editor) setMode(m EditorMode) {
-	if e.keys.mode == m {
-		return
-	}
-	e.keys.mode = m
-	e.MarkDirty()
-	e.publish(ModeChangedEvent{Owner: e.NodeID(), Mode: m})
-	if e.onModeChange != nil {
-		e.onModeChange(m)
-	}
-}
-
-// normalMax is the max Normal-mode column of line ln (cursor ON a grapheme).
-func (e *Editor) normalMax(ln int) int {
-	return max(0, len(e.lineClusters(ln))-1)
-}
-
-// clampNormal enforces the Normal/Visual cursor invariant.
-func (e *Editor) clampNormal() {
-	e.col = min(e.col, e.normalMax(e.ln))
-}
-
-func (e *Editor) enterInsert() {
-	e.keys.count, e.keys.pendingAct = 0, ActUnbound
-	e.hist.close() // group opens lazily on the first mutation
-	e.setMode(ModeInsert)
-}
-
-// exitInsert implements Insert→Normal in modal mode: cursor one cluster left, clamped.
-// In modeless editing, this is a no-op as the editor remains in Insert mode.
-func (e *Editor) exitInsert() {
-	if !e.keys.modal {
-		return
-	}
-	e.hist.close()
-	e.col = max(0, e.col-1)
-	e.clampNormal()
-	e.desired = -1
-	e.setMode(ModeNormal)
-	e.ensureVisible()
-	e.MarkDirty()
-}
-
-// exitVisual clears the selection anchor and transitions out of visual mode:
-// returning to Normal mode if modal editing is active, or to Insert mode if modeless.
-func (e *Editor) exitVisual() {
-	e.anchor = nil
-	if e.keys.modal {
-		e.setMode(ModeNormal)
-		e.clampNormal()
-	} else {
-		e.setMode(ModeInsert)
-	}
-	e.MarkDirty()
-}
-
-// --- escape chord ---------------------------------------------------------
-
-// settlePendingRune commits a held first chord rune as an insertion: every
-// non-chord input settles the pending rune first.
-func (e *Editor) settlePendingRune() {
-	r, ok := e.keys.takeRune()
-	if !ok {
-		return
-	}
-	e.beginGroup()
-	e.insertText(string(r))
-	e.edited()
-}
-
-// menuAction starts a semantic editor command independent of the active keyset.
-// A menu can take focus midway through a chord or counted operator: keep a
-// held insert rune as text, but never complete a half-entered prefix or carry
-// its count into a later keystroke. Keep the visual selection for the action.
-func (e *Editor) menuAction(act Action) {
-	e.settlePendingRune()
-	e.hist.close()
-	e.keys.dropPending()
-	e.execAction(act, 1)
-}
+// --- semantic commands ----------------------------------------------------------
 
 // Copy yanks the selected text, or the current line without a selection, to
 // the unnamed register and attempts to export it to the system clipboard.
 // When yanking is disabled it changes neither destination.
-func (e *Editor) Copy() { e.menuAction(ActCopy) }
+func (e *Editor) Copy() { e.core.Copy() }
 
 // Cut deletes the selection, or the current line without a selection, into
 // the unnamed register. As with keyboard deletes, it does NOT export to the
 // system clipboard; a read-only editor refuses the mutation.
-func (e *Editor) Cut() { e.menuAction(ActCut) }
+func (e *Editor) Cut() { e.core.Cut() }
 
 // Paste inserts the unnamed editor register at the cursor, not the system
 // clipboard. A read-only editor refuses the mutation.
-func (e *Editor) Paste() { e.menuAction(ActPaste) }
+func (e *Editor) Paste() { e.core.Paste() }
 
 // Undo reverts the last edit group, as u does; Redo reapplies it, as Ctrl+R does. A read-only
 // editor, or one without undo history, refuses both.
-func (e *Editor) Undo() { e.menuAction(ActUndo) }
+func (e *Editor) Undo() { e.core.Undo() }
 
 // Redo reapplies the most recently undone edit group.
-func (e *Editor) Redo() { e.menuAction(ActRedo) }
+func (e *Editor) Redo() { e.core.Redo() }
 
 // CanUndo reports whether Undo would change the text now.
-func (e *Editor) CanUndo() bool { return !e.readOnly && e.hist.canUndo() }
+func (e *Editor) CanUndo() bool { return e.core.CanUndo() }
 
 // CanRedo reports whether Redo would change the text now.
-func (e *Editor) CanRedo() bool { return !e.readOnly && e.hist.canRedo() }
+func (e *Editor) CanRedo() bool { return e.core.CanRedo() }
 
-// mutatingActions are refused in read-only mode (motions, visual entry,
-// and yank stay available — a viewer still navigates and copies).
-func mutatingAction(act Action) bool {
-	switch act {
-	case ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
-		ActOpenBelow, ActOpenAbove, ActDeleteChar, ActDeleteToEnd,
-		ActPasteAfter, ActPasteBefore, ActUndo, ActRedo,
-		ActDeletePrefix, ActVisualDelete, ActCut, ActPaste:
-		return true
-	}
-	return false
+// SelectedText returns the visual selection ("" outside visual modes or when selection is disabled).
+func (e *Editor) SelectedText() string { return e.core.SelectedText() }
+
+// SelectionRange returns the visual selection as a region from (row, col) up to, not including,
+// (endRow, endCol): rows and columns from 0, a column counting grapheme clusters, as Line reports
+// the cursor. A line-wise selection runs from the start of its first line to the end of its last.
+// ok is false outside the visual modes, or when selection is disabled. It is the region
+// SelectedText returns the text of.
+func (e *Editor) SelectionRange() (row, col, endRow, endCol int, ok bool) {
+	return e.core.SelectionRange()
 }
 
-// execAction runs one bound action with the (already consumed) count.
-func (e *Editor) execAction(act Action, count int) bool {
-	if e.readOnly && mutatingAction(act) {
-		return true // consumed and refused: a viewer never mutates
-	}
-	switch act {
-	// Motions.
-	case ActLeft, ActDown, ActUp, ActRight, ActLineStart, ActLineEnd,
-		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
-		ActPageUp, ActPageDown:
-		e.move(act, count)
-		return true
+// SetRegister imports text into the unnamed register (the application's
+// value-inspect copy path).
+func (e *Editor) SetRegister(text string, linewise bool) { e.core.SetRegister(text, linewise) }
 
-	// Insert entries.
-	case ActInsert:
-		e.enterInsert()
-		return true
-	case ActAppend:
-		if len(e.lineClusters(e.ln)) > 0 {
-			e.col++
-		}
-		e.enterInsert()
-		return true
-	case ActInsertLineStart:
-		e.col = 0
-		e.enterInsert()
-		return true
-	case ActAppendLineEnd:
-		e.col = len(e.lineClusters(e.ln))
-		e.enterInsert()
-		return true
-	case ActOpenBelow:
-		e.beginGroup()
-		e.lines = append(e.lines[:e.ln+1], append([]string{""}, e.lines[e.ln+1:]...)...)
-		e.touch(e.ln + 1)
-		e.ln, e.col = e.ln+1, 0
-		e.enterInsert()
-		e.hist.keepOpen() // the open-line already began this group
-		e.edited()
-		return true
-	case ActOpenAbove:
-		e.beginGroup()
-		e.lines = append(e.lines[:e.ln], append([]string{""}, e.lines[e.ln:]...)...)
-		e.touch(e.ln)
-		e.col = 0
-		e.enterInsert()
-		e.hist.keepOpen()
-		e.edited()
-		return true
-
-	// Normal-mode edits.
-	case ActDeleteChar:
-		cs := e.lineClusters(e.ln)
-		if len(cs) == 0 {
-			return true
-		}
-		n := min(count, len(cs)-e.col)
-		e.beginGroup()
-		e.yankSet(strings.Join(cs[e.col:e.col+n], ""), false)
-		e.deleteRegion(taPos{e.ln, e.col}, taPos{e.ln, e.col + n})
-		e.clampNormal()
-		e.edited()
-		return true
-	case ActDeleteToEnd:
-		cs := e.lineClusters(e.ln)
-		if e.col < len(cs) {
-			e.beginGroup()
-			e.yankSet(strings.Join(cs[e.col:], ""), false)
-			e.deleteRegion(taPos{e.ln, e.col}, taPos{e.ln, len(cs)})
-			e.clampNormal()
-			e.edited()
-		}
-		return true
-	case ActPasteAfter:
-		e.pasteRegister(true)
-		return true
-	case ActPasteBefore:
-		e.pasteRegister(false)
-		return true
-	case ActUndo:
-		e.doUndo()
-		return true
-	case ActRedo:
-		e.doRedo()
-		return true
-
-	// Visual entry/exit.
-	case ActVisual:
-		if !e.canSelect {
-			return true
-		}
-		switch e.keys.mode {
-		case ModeVisual:
-			e.exitVisual()
-		default:
-			e.vAnchor = taPos{ln: e.ln, col: e.col}
-			e.setMode(ModeVisual)
-		}
-		return true
-	case ActVisualLine:
-		if !e.canSelect {
-			return true
-		}
-		switch e.keys.mode {
-		case ModeVisualLine:
-			e.exitVisual()
-		case ModeVisual:
-			e.setMode(ModeVisualLine)
-		default:
-			e.vAnchor = taPos{ln: e.ln, col: e.col}
-			e.setMode(ModeVisualLine)
-		}
-		return true
-
-	// Visual operations.
-	case ActVisualYank:
-		if !e.reg.yankAllowed() {
-			e.exitVisual()
-			return true
-		}
-		if e.keys.mode == ModeVisualLine {
-			lo, hi := e.visualLines()
-			text := strings.Join(e.lines[lo:hi+1], "\n")
-			e.yankSet(text, true)
-			e.exportYank(text)
-			e.ln, e.col = lo, 0
-		} else {
-			lo, hiEx := e.visualRange()
-			text := e.textIn(lo, hiEx)
-			e.yankSet(text, false)
-			e.exportYank(text)
-			e.ln, e.col = lo.ln, lo.col
-		}
-		e.exitVisual()
-		e.ensureVisible()
-		return true
-	case ActVisualDelete:
-		if e.keys.mode == ModeVisualLine {
-			lo, hi := e.visualLines()
-			e.exitVisual()
-			e.deleteLines(lo, hi)
-		} else {
-			lo, hiEx := e.visualRange()
-			e.beginGroup()
-			e.yankSet(e.textIn(lo, hiEx), false)
-			e.deleteRegion(lo, hiEx)
-			e.exitVisual()
-			e.edited()
-		}
-		return true
-
-	// General actions (Nano / Standard).
-	case ActCut:
-		if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
-			return e.execAction(ActVisualDelete, count)
-		}
-		e.deleteLines(e.ln, e.ln)
-		return true
-
-	case ActCopy:
-		if !e.reg.yankAllowed() {
-			if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
-				e.exitVisual()
-			}
-			return true
-		}
-		if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
-			return e.execAction(ActVisualYank, count)
-		}
-		if e.ln < len(e.lines) {
-			text := e.lines[e.ln]
-			e.yankSet(text, true)
-			e.exportYank(text)
-		}
-		return true
-
-	case ActPaste:
-		e.pasteRegister(false)
-		return true
-
-	case ActSelectAll:
-		if !e.canSelect || len(e.lines) == 0 {
-			return true
-		}
-		e.vAnchor = taPos{ln: 0, col: 0}
-		lastLn := len(e.lines) - 1
-		e.ln = lastLn
-		e.col = max(0, len(e.lineClusters(lastLn))-1)
-		e.setMode(ModeVisual)
-		return true
-	}
-	return false
-}
+// Register returns the unnamed register's content.
+func (e *Editor) Register() (text string, linewise bool) { return e.core.Register() }
 
 // --- event handling -----------------------------------------------------------
 
 // HandleEvent handles mouse, bracketed paste, focus, chord timer ticks, and keyboard events
-// across modal and modeless editing profiles.
+// across modal and modeless editing profiles. The pointer is the view's: it becomes a buffer
+// position here; everything else is the core's.
 func (e *Editor) HandleEvent(ev tui.Event) bool {
-	ln, col := e.ln, e.col
-	handled := e.handleEvent(ev)
-	e.cursorMoved(ln, col)
-	return handled
-}
-
-func (e *Editor) handleEvent(ev tui.Event) bool {
 	switch t := ev.(type) {
 	case tui.MouseEvent:
 		return e.handleMouse(t)
 	case tui.PointerCaptureLostEvent:
-		e.dragging = false // the selection made so far stays
+		e.core.EndDrag() // the selection made so far stays
 		e.setDragEdge(0)
 		return true
 	case tui.PasteEvent:
-		if e.readOnly {
-			return true // a viewer never mutates (bracketed paste included)
-		}
-		e.settlePendingRune()
-		e.beginGroup()
-		switch e.keys.mode {
-		case ModeVisual:
-			// Visual paste replaces the selection (S3 — never silently
-			// discard the selection boundary).
-			lo, hiEx := e.visualRange()
-			e.deleteRegion(lo, hiEx)
-			e.setMode(ModeNormal)
-			e.insertText(t.Text)
-			e.clampNormal()
-		case ModeVisualLine:
-			lo, hi := e.visualLines()
-			e.setMode(ModeNormal)
-			e.anchor = nil
-			e.lines = append(e.lines[:lo], append([]string{""}, e.lines[hi+1:]...)...)
-			e.touch(lo)
-			e.ln, e.col = lo, 0
-			e.insertText(t.Text)
-			e.clampNormal()
-		default:
-			e.insertText(t.Text) // one atomic literal insertion
-			if e.keys.mode != ModeInsert {
-				e.clampNormal()
-			}
-		}
-		e.edited()
-		return true
+		return e.core.HandlePaste(t.Text)
 	case tui.FocusEvent:
 		if !t.Gained {
-			// Focus loss settles the chord rune, ends the Insert undo
-			// group (mode unchanged), and clears EVERY partial command:
-			// pending count and the double-key prefix must not survive a
-			// focus round-trip.
-			e.settlePendingRune()
-			e.hist.close()
-			e.keys.dropPending()
+			e.core.FocusLost()
 		}
 		return false // focus events are informational; let them bubble
 	case tui.TickEvent:
-		if e.dragging && e.dragEdge != 0 {
+		if e.core.Dragging() && e.cells.dragEdge != 0 {
 			e.dragTick() // the drag's auto-scroll: a press settled any pending rune
 			return true
 		}
-		// The chord timeout: commit the held rune as an insertion.
-		e.keys.chordCancel = nil
-		if e.keys.pendingRune != 0 {
-			r := e.keys.pendingRune
-			e.keys.pendingRune = 0
-			e.beginGroup()
-			e.insertText(string(r))
-			e.edited()
-		}
-		return true
+		return e.core.HandleTick() // the chord timeout
 	case tui.KeyEvent:
-		return e.handleKey(t)
+		return e.core.HandleKey(t)
 	}
 	return false
-}
-
-func (e *Editor) handleKey(k tui.KeyEvent) bool {
-	if k.Kind == tui.KeyRelease {
-		return false
-	}
-	if e.keys.mode == ModeInsert {
-		return e.handleInsertKey(k)
-	}
-	return e.handleCommandKey(k)
-}
-
-// handleInsertKey: structural Insert handling (text, chord, Esc, editing
-// keys). Tab INSERTS a tab in Insert mode; traversal
-// belongs to Normal mode, where Tab bubbles.
-func (e *Editor) handleInsertKey(k tui.KeyEvent) bool {
-	ctrl := k.Mods&tui.ModCtrl != 0
-	code := k.Code
-	if k.Text != "" && k.Mods&nonTextMods == 0 {
-		code = []rune(k.Text)[0]
-	}
-	kc := KeyChord{Mode: ModeInsert, Code: code, Ctrl: ctrl}
-
-	// 1. Explicit unbind sentinel: unhandled keystroke bubbles up to application.
-	if e.keys.unbound[kc] {
-		e.settlePendingRune()
-		return false
-	}
-
-	// 2. Configured keymap actions (custom bindings, Nano/Standard profiles, etc.).
-	if act, bound := e.keys.keymap[kc]; bound {
-		e.settlePendingRune()
-		return e.execAction(act, 1)
-	}
-
-	isText := k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
-
-	// Chord state machine first (only in modal editing).
-	if e.keys.modal && e.keys.pendingRune != 0 {
-		if isText && []rune(k.Text)[0] == e.keys.chord[1] {
-			// Second chord rune dispatched before the tick: escape.
-			e.keys.pendingRune = 0
-			if e.keys.chordCancel != nil {
-				e.keys.chordCancel()
-				e.keys.chordCancel = nil
-			}
-			e.exitInsert()
-			return true
-		}
-		// Commit the held rune, then process THIS key from the top of the
-		// Insert state machine — it may itself be a fresh chord start, so
-		// "jjk" commits the first j and escapes on the second j plus k.
-		e.settlePendingRune()
-	}
-	if e.keys.modal && isText && e.keys.chord != nil && e.keys.pendingRune == 0 && []rune(k.Text)[0] == e.keys.chord[0] {
-		e.keys.pendingRune = e.keys.chord[0]
-		if ctx := e.Context(); ctx != nil {
-			e.keys.chordCancel = ctx.After(e.keys.chordTimeout)
-		}
-		return true
-	}
-
-	switch k.Code {
-	case tui.KeyTab:
-		// Insert mode consumes Tab as text; traversal
-		// belongs to Normal mode, where Tab bubbles.
-		e.beginGroup()
-		e.insertText("\t")
-		e.edited()
-		return true
-	case tui.KeyEscape:
-		if e.keys.modal {
-			e.exitInsert()
-			return true
-		}
-		if e.vAnchor != (taPos{}) {
-			e.vAnchor = taPos{}
-			e.MarkDirty()
-			return true
-		}
-		return false
-	case tui.KeyEnter:
-		e.beginGroup()
-		e.insertText("\n")
-		e.edited()
-		return true
-	case tui.KeyBackspace:
-		if e.col > 0 {
-			e.beginGroup()
-			e.deleteRegion(taPos{e.ln, e.col - 1}, taPos{e.ln, e.col})
-			e.edited()
-		} else if e.ln > 0 {
-			e.beginGroup()
-			e.deleteRegion(taPos{e.ln - 1, len(e.lineClusters(e.ln - 1))}, taPos{e.ln, 0})
-			e.edited()
-		}
-		return true
-	case tui.KeyDelete:
-		if e.col < len(e.lineClusters(e.ln)) {
-			e.beginGroup()
-			e.deleteRegion(taPos{e.ln, e.col}, taPos{e.ln, e.col + 1})
-			e.edited()
-		} else if e.ln < len(e.lines)-1 {
-			e.beginGroup()
-			e.deleteRegion(taPos{e.ln, e.col}, taPos{e.ln + 1, 0})
-			e.edited()
-		}
-		return true
-	case tui.KeyLeft:
-		e.hist.close()
-		e.desired = -1
-		e.moveCursor(e.ln, e.col-1, false)
-		e.ensureVisible()
-		e.MarkDirty()
-		return true
-	case tui.KeyRight:
-		e.hist.close()
-		e.desired = -1
-		e.moveCursor(e.ln, e.col+1, false)
-		e.ensureVisible()
-		e.MarkDirty()
-		return true
-	case tui.KeyUp, tui.KeyDown:
-		e.hist.close()
-		delta := 1
-		if k.Code == tui.KeyUp {
-			delta = -1
-		}
-		ln, col := e.verticalTarget(delta, e.measure)
-		d := e.desired
-		e.moveCursor(ln, col, false)
-		e.desired = d
-		e.ensureVisible()
-		e.MarkDirty()
-		return true
-	case tui.KeyHome:
-		e.hist.close()
-		e.desired = -1
-		e.moveCursor(e.ln, 0, false)
-		e.MarkDirty()
-		return true
-	case tui.KeyEnd:
-		e.hist.close()
-		e.desired = -1
-		e.moveCursor(e.ln, len(e.lineClusters(e.ln)), false)
-		e.MarkDirty()
-		return true
-	case tui.KeyPageUp:
-		e.move(ActPageUp, 1)
-		return true
-	case tui.KeyPageDown:
-		e.move(ActPageDown, 1)
-		return true
-	}
-
-	if isText {
-		e.beginGroup()
-		e.insertText(k.Text)
-		e.edited()
-		return true
-	}
-	return false
-}
-
-// handleCommandKey: Normal/Visual dispatch — digits, the double-key pending
-// buffer, then the keymap. Unbound keys clear pending state and bubble.
-func (e *Editor) handleCommandKey(k tui.KeyEvent) bool {
-	ctrl := k.Mods&tui.ModCtrl != 0
-
-	if k.Code == tui.KeyEscape {
-		hadPending := e.keys.count != 0 || e.keys.pendingAct != ActUnbound
-		e.keys.count, e.keys.pendingAct = 0, ActUnbound
-		if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
-			e.exitVisual()
-			return true
-		}
-		// Normal mode with nothing pending: Esc is a vim no-op, so it
-		// BUBBLES. Consuming it here made an Editor inside a modal float
-		// undismissable — the host never saw the key (autodb M6: a
-		// read-only script viewer that Esc could not close).
-		return hadPending
-	}
-
-	// Count accumulation: 1-9 always; 0 only extends an existing count.
-	// Clamp BEFORE assignment so the cap is a hard ceiling.
-	if !ctrl && k.Text != "" {
-		r := []rune(k.Text)[0]
-		if r >= '1' && r <= '9' || (r == '0' && e.keys.count > 0) {
-			e.keys.pendingAct = ActUnbound
-			e.keys.count = min(e.keys.count*10+int(r-'0'), 1_000_000)
-			return true
-		}
-	}
-
-	// A key carrying a COMMAND modifier other than Ctrl is not this Editor's to
-	// consume, and must bubble to the host.
-	//
-	// KeyChord identity is (Mode, Code, Ctrl) — Alt is not part of it. So without
-	// this check Alt+h built the SAME chord as plain h and was swallowed as a
-	// motion, which silently denied the host every Alt binding while looking like
-	// the key had simply done nothing. Found from autodb, which needs Alt+h/j/k/l
-	// for pane motion precisely because a browser keeps Ctrl-L for its address bar
-	// and will not surrender it.
-	//
-	// Ctrl is excluded from this rule because Ctrl IS part of a chord (Ctrl-r is
-	// redo), so a Ctrl key the keymap does not bind already falls through below.
-	if k.Mods&(tui.ModAlt|tui.ModSuper|tui.ModMeta|tui.ModHyper) != 0 {
-		return false
-	}
-
-	code := k.Code
-	if k.Text != "" && k.Mods&nonTextMods == 0 {
-		code = []rune(k.Text)[0] // shifted letters arrive via Text ("G")
-	}
-	kc := KeyChord{Mode: modeClass(e.keys.mode), Code: code, Ctrl: ctrl}
-
-	if e.keys.unbound[kc] {
-		e.keys.count = 0
-		e.keys.pendingAct = ActUnbound
-		return false
-	}
-
-	// Double-key pending buffer, keyed by the ARMING CHORD, so a rebound
-	// prefix completes on its own chord rather than a hard-coded rune:
-	// only the same chord again completes; any other key clears the
-	// pending state and is processed normally.
-	if e.keys.pendingAct != ActUnbound {
-		act, chord := e.keys.pendingAct, e.keys.pendingChord
-		hadCount := e.keys.pendingCount > 0
-		count := max(e.keys.pendingCount, 1)
-		e.keys.pendingAct = ActUnbound
-		e.keys.pendingCount = 0
-		if kc == chord {
-			switch act {
-			case ActDeletePrefix:
-				if e.readOnly {
-					return true // dd on a viewer: consumed, refused
-				}
-				e.deleteLines(e.ln, min(e.ln+count-1, len(e.lines)-1))
-			case ActYankPrefix:
-				if e.reg.yankAllowed() {
-					text := strings.Join(e.lines[e.ln:min(e.ln+count-1, len(e.lines)-1)+1], "\n")
-					e.yankSet(text, true)
-					e.exportYank(text)
-				}
-			case ActGoPrefix:
-				e.goToLine(hadCount, count, false) // [count]gg
-			}
-			return true
-		}
-		// Fall through: reprocess this key from scratch (count consumed).
-	}
-
-	act, bound := e.keys.keymap[kc]
-	if !bound {
-		e.keys.count = 0 // an unbound key cancels the pending count and bubbles
-		return false
-	}
-
-	hadCount := e.keys.count > 0
-	count := max(e.keys.count, 1)
-	e.keys.count = 0
-
-	switch act {
-	case ActDeletePrefix, ActYankPrefix, ActGoPrefix:
-		if act == ActYankPrefix && !e.reg.yankAllowed() {
-			return true
-		}
-		e.keys.pendingAct = act
-		e.keys.pendingChord = kc
-		e.keys.pendingCount = 0
-		if hadCount {
-			e.keys.pendingCount = count // preserved for the completion (2dd, 5gg)
-		}
-		return true
-	case ActGoBottom:
-		e.goToLine(hadCount, count, true) // [count]G
-		return true
-	}
-	return e.execAction(act, count)
 }
 
 // --- viewport & rendering (TextArea discipline) ------------------------------
 
-func (e *Editor) wrapWidth() int { return wrapUsableWidth(e.lines, e.view()) }
+func (e *Editor) wrapWidth() int { return wrapUsableWidth(e.core.buf.lines, e.view()) }
 
-func (e *Editor) scrollable() bool { return wrapScrollable(e.lines, e.view()) }
+func (e *Editor) scrollable() bool { return wrapScrollable(e.core.buf.lines, e.view()) }
 
-func (e *Editor) rowsOfLine(i int) int { return wrapRowsOfLine(e.lines, i, e.view()) }
+func (e *Editor) rowsOfLine(i int) int { return wrapRowsOfLine(e.core.buf.lines, i, e.view()) }
 
-func (e *Editor) ensureVisible() {
-	if e.h <= 0 || e.w <= 0 {
+// ensureVisible scrolls the cursor into the viewport.
+func (e *Editor) ensureVisible() { e.reveal(e.core.buf.ln, e.core.buf.col) }
+
+// reveal scrolls (ln, col) into the viewport.
+func (e *Editor) reveal(ln, col int) {
+	l, lines := &e.cells, e.core.buf.lines
+	if l.h <= 0 || l.w <= 0 {
 		return
 	}
-	if e.ln < e.top {
-		e.top = e.ln
+	if ln < l.top {
+		l.top = ln
 	}
-	e.top = lowestTop(e.lines, e.top, e.ln, e.h, e.view())
-	e.top = max(0, min(e.top, len(e.lines)-1))
-	if e.wrap == WrapNone {
-		cx := e.cellsAt(e.ln, e.col, e.measure)
+	l.top = lowestTop(lines, l.top, ln, l.h, e.view())
+	l.top = max(0, min(l.top, len(lines)-1))
+	if l.wrap == WrapNone {
+		cx := e.core.buf.cellsAt(ln, col, e.measure)
 		w := e.wrapWidth()
-		if cx < e.left {
-			e.left = cx
+		if cx < l.left {
+			l.left = cx
 		}
-		if cx >= e.left+w {
-			e.left = cx - w + 1
+		if cx >= l.left+w {
+			l.left = cx - w + 1
 		}
-		e.left = max(e.left, 0)
+		l.left = max(l.left, 0)
 	} else {
-		e.left = 0
+		l.left = 0
 	}
 }
 
@@ -1419,44 +658,45 @@ func (e *Editor) ensureVisible() {
 // text's area, never all of it.
 func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	total := boundedMax(c.MaxW, max(c.MinW, 1))
-	e.gutter = min(e.gutterWidth(), total-1)
-	e.w = total - e.gutter
-	e.h = boundedMax(c.MaxH, max(c.MinH, 1))
+	e.cells.gutter = min(e.gutterWidth(), total-1)
+	e.cells.w = total - e.cells.gutter
+	e.cells.h = boundedMax(c.MaxH, max(c.MinH, 1))
 	e.ensureVisible()
-	return c.Constrain(tui.Size{W: total, H: e.h})
+	return c.Constrain(tui.Size{W: total, H: e.cells.h})
 }
 
 // Cursor implements tui.CursorReporter.
 func (e *Editor) Cursor() (int, int, bool) {
-	if e.ln < e.top {
+	l, b := &e.cells, &e.core.buf
+	if b.ln < l.top {
 		return 0, 0, false
 	}
-	if e.wrap == WrapNone {
-		x := e.cellsAt(e.ln, e.col, e.measure) - e.left
-		y := e.ln - e.top
-		if y >= e.h && e.h > 0 {
+	if l.wrap == WrapNone {
+		x := b.cellsAt(b.ln, b.col, e.measure) - l.left
+		y := b.ln - l.top
+		if y >= l.h && l.h > 0 {
 			return 0, 0, false
 		}
-		return e.gutter + max(x, 0), max(y, 0), true
+		return l.gutter + max(x, 0), max(y, 0), true
 	}
 	y := 0
-	v := e.view().settled(e.lines)
-	for i := e.top; i < e.ln; i++ {
-		y += wrapRowsOfLine(e.lines, i, v)
+	v := e.view().settled(b.lines)
+	for i := l.top; i < b.ln; i++ {
+		y += wrapRowsOfLine(b.lines, i, v)
 	}
-	row, x := wrapPosOf(e.lines, e.ln, e.col, v)
+	row, x := wrapPosOf(b.lines, b.ln, b.col, v)
 	y += row
-	if e.h > 0 && y >= e.h {
+	if l.h > 0 && y >= l.h {
 		return 0, 0, false
 	}
-	return e.gutter + x, y, true
+	return l.gutter + x, y, true
 }
 
 // handleMouse implements the pointer contract.
 //
-// A press is a COMMAND BOUNDARY, not merely a cursor move, because Editor holds
-// modal state that a click has to resolve one way or the other. The wheel scrolls
-// the viewport and never moves the caret, so a reader can scroll while a caret
+// A press is a COMMAND BOUNDARY, not merely a cursor move, because the core holds
+// modal state that a click has to resolve one way or the other (EditorCore.PressAt). The wheel
+// scrolls the viewport and never moves the caret, so a reader can scroll while a caret
 // stays where they left it.
 func (e *Editor) handleMouse(m tui.MouseEvent) bool {
 	switch {
@@ -1465,36 +705,36 @@ func (e *Editor) handleMouse(m tui.MouseEvent) bool {
 	case m.Kind == tui.MouseWheel && m.Button == tui.WheelDown:
 		return e.scrollLines(1)
 	case m.Kind == tui.MousePress && m.Button == tui.MouseLeft:
-		x := max(m.X-e.gutter, 0) // a press in the gutter is at the line's start
-		handled := e.pressAt(x, m.Y)
-		if !(e.scrollable() && x >= e.wrapWidth()) { // not on the scroll indicator
-			e.beginDrag()
-		}
-		return handled
+		x := max(m.X-e.cells.gutter, 0) // a press in the gutter is at the line's start
+		return e.pressAt(x, m.Y)
 	case m.Kind == tui.MousePress && m.Button == tui.MouseRight && e.ctxOn:
 		// The selection is left as it is: the menu's Copy and Cut act on it.
 		return e.openContextMenu(tui.Point{X: m.X, Y: m.Y})
-	case m.Kind == tui.MouseMotion && m.Button == tui.MouseLeft && e.dragging:
-		return e.dragTo(m.X-e.gutter, m.Y)
-	case m.Kind == tui.MouseRelease && e.dragging:
+	case m.Kind == tui.MouseMotion && m.Button == tui.MouseLeft && e.core.Dragging():
+		return e.dragTo(m.X-e.cells.gutter, m.Y)
+	case m.Kind == tui.MouseRelease && e.core.Dragging():
 		e.endDrag()
 		return true
 	}
 	return false
 }
 
-// beginDrag starts a possible drag-selection at the caret a press just placed. Nothing is selected
-// until the pointer moves to another position, so a click stays a click. The pointer is captured,
-// so the drag goes on past the editor's edges.
-func (e *Editor) beginDrag() {
-	if !e.canSelect {
-		return
+// pressAt places the caret at a clicked cell (EditorCore.PressAt), and keeps the pointer for a
+// drag selection from there, so the drag goes on past the editor's edges.
+func (e *Editor) pressAt(x, y int) bool {
+	// The scroll-indicator column is not text. A press there is inert, and
+	// consumed rather than bubbled: the column belongs to this widget.
+	if e.scrollable() && x >= e.wrapWidth() {
+		return true
 	}
-	e.dragging = true
-	e.dragFrom = taPos{ln: e.ln, col: min(e.col, e.normalMax(e.ln))}
-	if ctx := e.Context(); ctx != nil {
-		ctx.CapturePointer()
+	ln, col := e.posAt(x, y)
+	handled := e.core.PressAt(ln, col)
+	if e.core.Dragging() {
+		if ctx := e.Context(); ctx != nil {
+			ctx.CapturePointer()
+		}
 	}
+	return handled
 }
 
 // dragTo extends the drag-selection to the viewport cell (x, y), in visual mode: the same
@@ -1502,42 +742,43 @@ func (e *Editor) beginDrag() {
 // view scrolls a line, and keeps scrolling while the pointer stays there (dragTick), as a GUI
 // editor does.
 func (e *Editor) dragTo(x, y int) bool {
-	e.dragX = x
+	e.cells.dragX = x
 	switch {
 	case y < 0:
 		e.setDragEdge(-1)
 		e.scrollLines(-1)
-	case e.h > 0 && y >= e.h:
+	case e.cells.h > 0 && y >= e.cells.h:
 		e.setDragEdge(1)
 		e.scrollLines(1)
 	default:
 		e.setDragEdge(0)
 	}
-	e.extendDrag(x, min(max(y, 0), max(e.h-1, 0)))
+	e.extendDrag(x, min(max(y, 0), max(e.cells.h-1, 0)))
 	return true
 }
 
 // dragTick is the auto-scroll's step while the pointer is held past an edge.
 func (e *Editor) dragTick() {
-	e.scrollLines(e.dragEdge)
+	e.scrollLines(e.cells.dragEdge)
 	row := 0
-	if e.dragEdge > 0 {
-		row = max(e.h-1, 0)
+	if e.cells.dragEdge > 0 {
+		row = max(e.cells.h-1, 0)
 	}
-	e.extendDrag(e.dragX, row)
+	e.extendDrag(e.cells.dragX, row)
 }
 
 // setDragEdge starts or stops the auto-scroll as the pointer leaves or re-enters the view.
 func (e *Editor) setDragEdge(edge int) {
-	e.dragEdge = edge
+	l := &e.cells
+	l.dragEdge = edge
 	switch {
-	case edge != 0 && e.dragCancel == nil:
+	case edge != 0 && l.dragCancel == nil:
 		if ctx := e.Context(); ctx != nil {
-			e.dragCancel = ctx.Every(dragScrollInterval)
+			l.dragCancel = ctx.Every(dragScrollInterval)
 		}
-	case edge == 0 && e.dragCancel != nil:
-		e.dragCancel()
-		e.dragCancel = nil
+	case edge == 0 && l.dragCancel != nil:
+		l.dragCancel()
+		l.dragCancel = nil
 	}
 }
 
@@ -1547,23 +788,12 @@ const dragScrollInterval = 50 * time.Millisecond
 // extendDrag moves the selection's moving end to the viewport cell (x, row).
 func (e *Editor) extendDrag(x, row int) {
 	ln, col := e.posAt(max(x, 0), row)
-	if e.keys.mode != ModeVisual {
-		if ln == e.dragFrom.ln && col == e.dragFrom.col {
-			return // not moved off the pressed position yet: still a click
-		}
-		e.vAnchor = e.dragFrom
-		e.setMode(ModeVisual)
-	}
-	e.ln, e.col = ln, col
-	e.clampNormal()
-	e.desired = -1
-	e.ensureVisible()
-	e.MarkDirty()
+	e.core.DragTo(ln, col)
 }
 
 // endDrag ends the drag; the selection, if any, stays for the key combos to copy.
 func (e *Editor) endDrag() {
-	e.dragging = false
+	e.core.EndDrag()
 	e.setDragEdge(0)
 	if ctx := e.Context(); ctx != nil && ctx.HasPointerCapture() {
 		ctx.ReleasePointer()
@@ -1579,60 +809,11 @@ func (e *Editor) endDrag() {
 // state and new invariants across render, Cursor, ensureVisible, click inversion
 // and clamping. That is deferred to its own ADR.
 func (e *Editor) scrollLines(delta int) bool {
-	before := e.top
-	e.top = min(max(e.top+delta, 0), max(len(e.lines)-1, 0))
-	if e.top != before {
+	before := e.cells.top
+	e.cells.top = min(max(e.cells.top+delta, 0), max(len(e.core.buf.lines)-1, 0))
+	if e.cells.top != before {
 		e.MarkDirty()
 	}
-	return true
-}
-
-// pressAt places the caret at a clicked cell and settles modal state.
-func (e *Editor) pressAt(x, y int) bool {
-	// The scroll-indicator column is not text. A press there is inert, and
-	// consumed rather than bubbled: the column belongs to this widget.
-	if e.scrollable() && x >= e.wrapWidth() {
-		return true
-	}
-	ln, col := e.posAt(x, y)
-
-	// ---- the command boundary, in this order ----
-	//
-	// A pending insert rune is SETTLED FIRST, at the caret it was typed at, and
-	// before the caret moves. binds every non-chord input to settle the
-	// pending rune, and a click is a non-chord input like any other; discarding it
-	// would delete a character the user physically typed. This is the only way a
-	// press changes buffer text.
-	if e.keys.mode == ModeInsert {
-		e.settlePendingRune()
-		// A click is a deliberate discontinuity, so text typed before and after it
-		// undo separately.
-		e.hist.close()
-	}
-	// Pending COMMAND state is discarded, never completed. Completing `2d`
-	// against a clicked location would turn a mis-click into a destructive edit,
-	// and the pointer carries no evidence the operator was meant to apply there.
-	// Discarding it modifies nothing.
-	e.keys.dropPending()
-	// Visual exits and the anchor is cleared: extending a selection by clicking is
-	// drag-selection, which this revision defers. Keeping the anchor would make the
-	// next motion extend a selection the user believes they dismissed.
-	if e.keys.mode == ModeVisual || e.keys.mode == ModeVisualLine {
-		if e.keys.modal {
-			e.setMode(ModeNormal)
-		} else {
-			e.setMode(ModeInsert)
-		}
-		e.vAnchor = taPos{}
-	}
-
-	e.ln, e.col = ln, col
-	if e.keys.mode != ModeInsert {
-		e.clampNormal()
-	}
-	e.desired = -1
-	e.ensureVisible()
-	e.MarkDirty()
 	return true
 }
 
@@ -1645,25 +826,26 @@ func (e *Editor) pressAt(x, y int) bool {
 // STARTS at, which is why the column walk accumulates measured widths
 // instead of counting cells.
 func (e *Editor) posAt(x, y int) (ln, col int) {
-	if len(e.lines) == 0 {
+	l, b := &e.cells, &e.core.buf
+	if len(b.lines) == 0 {
 		return 0, 0
 	}
-	lastLn := len(e.lines) - 1
+	lastLn := len(b.lines) - 1
 
-	if e.wrap == WrapNone {
-		ln = min(e.top+max(y, 0), lastLn)
-		cs := e.lineClusters(ln)
-		return ln, e.colAtCells(cs, 0, len(cs), e.left+max(x, 0))
+	if l.wrap == WrapNone {
+		ln = min(l.top+max(y, 0), lastLn)
+		cs := b.lineClusters(ln)
+		return ln, e.colAtCells(cs, 0, len(cs), l.left+max(x, 0))
 	}
 
 	// WrapSoft: walk the same wrap computation the renderer used, rather than
 	// dividing by width — one logical line spans several visual rows.
 	remaining := max(y, 0)
-	v := e.view().settled(e.lines)
-	for i := e.top; i <= lastLn; i++ {
-		rows := wrapRowsOfLine(e.lines, i, v)
+	v := e.view().settled(b.lines)
+	for i := l.top; i <= lastLn; i++ {
+		rows := wrapRowsOfLine(b.lines, i, v)
 		if remaining < rows || i == lastLn {
-			cs := e.lineClusters(i)
+			cs := b.lineClusters(i)
 			ranges := wrapRanges(cs, v.usable, e.measure)
 			r := ranges[min(remaining, len(ranges)-1)]
 			// Bounded to THIS row: wrapRanges is [start,end), and a word-wrapped
@@ -1673,7 +855,7 @@ func (e *Editor) posAt(x, y int) (ln, col int) {
 		}
 		remaining -= rows
 	}
-	return lastLn, e.normalMax(lastLn)
+	return lastLn, e.core.normalMax(lastLn)
 }
 
 // colAtCells walks clusters in [from,end), accumulating measured cell widths, and
@@ -1695,7 +877,7 @@ func (e *Editor) colAtCells(cs []string, from, end, cells int) int {
 }
 
 func (e *Editor) wrapPos(ln, col int) (row, x int) {
-	return wrapPosOf(e.lines, ln, col, e.view())
+	return wrapPosOf(e.core.buf.lines, ln, col, e.view())
 }
 
 // Render paints the viewport with the visual-selection fill.
@@ -1704,9 +886,9 @@ func (e *Editor) Render(s tui.Surface) {
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
-	if e.gutter > 0 {
+	if g := e.cells.gutter; g > 0 {
 		e.renderGutter(s)
-		s = s.Sub(tui.Rect{X: e.gutter, W: sz.W - e.gutter, H: sz.H})
+		s = s.Sub(tui.Rect{X: g, W: sz.W - g, H: sz.H})
 	}
 	e.renderText(s)
 }
@@ -1715,22 +897,23 @@ func (e *Editor) Render(s tui.Surface) {
 // so they stay out of the text's way, in their own colour (SetLineNumberColor) or muted and faint;
 // the cursor's line in the text's colour, as Vim's CursorLineNr, so it shows where you are.
 func (e *Editor) renderGutter(s tui.Surface) {
+	l, b := &e.cells, &e.core.buf
 	h := s.Size().H
-	dim := e.styles.Text.Foreground(style.TokenTextMuted).Faint(true)
-	if e.numberColored {
-		dim = e.styles.Text.Foreground(e.numberColor)
+	dim := l.styles.Text.Foreground(style.TokenTextMuted).Faint(true)
+	if l.numberColored {
+		dim = l.styles.Text.Foreground(l.numberColor)
 	}
-	s.Fill(tui.Rect{W: e.gutter, H: h}, " ", e.styles.Text)
+	s.Fill(tui.Rect{W: l.gutter, H: h}, " ", l.styles.Text)
 	y := 0
-	v := e.view().settled(e.lines)
-	for ln := e.top; ln < len(e.lines) && y < h; ln++ {
+	v := e.view().settled(b.lines)
+	for ln := l.top; ln < len(b.lines) && y < h; ln++ {
 		num := fmt.Sprint(ln + 1)
 		st := dim
-		if ln == e.ln {
-			st = e.styles.Text
+		if ln == b.ln {
+			st = l.styles.Text
 		}
-		drawText(s, e.gutter-gutterGap-len(num), y, num, st)
-		y += max(wrapRowsOfLine(e.lines, ln, v), 1)
+		drawText(s, l.gutter-gutterGap-len(num), y, num, st)
+		y += max(wrapRowsOfLine(b.lines, ln, v), 1)
 	}
 }
 
@@ -1740,20 +923,21 @@ func (e *Editor) renderText(s tui.Surface) {
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
+	l, c := &e.cells, e.core
 	// The whole area wears the text's look first, as a TextInput's does (Qt's
 	// base behind a TextEdit): the cells past each line's text match the
 	// cells under it, whatever the editor sits on.
-	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", e.styles.Text)
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", l.styles.Text)
 	w := e.wrapWidth()
 	hlf := e.beginHighlightFrame()
 	var lineStyles []highlight.Style
 	styledLn := -1
 	paintCluster := func(x, y int, cl string, ln, col int) {
-		st := e.styles.Text
+		st := l.styles.Text
 		if ln != styledLn {
 			lineStyles, styledLn = e.highlighted(ln, hlf), ln
 		}
-		if e.hlc.hl != nil {
+		if c.hl.hl != nil {
 			k := highlight.Normal
 			if col < len(lineStyles) {
 				k = lineStyles[col]
@@ -1762,26 +946,26 @@ func (e *Editor) renderText(s tui.Surface) {
 				st = sst.Inherit(st)
 			}
 		}
-		if e.focused() && e.inVisual(ln, col) {
-			st = e.styles.Selection.Inherit(st)
+		if e.focused() && c.inVisual(ln, col) {
+			st = l.styles.Selection.Inherit(st)
 		}
 		s.SetCell(x, y, cl, st)
 	}
 	lineFill := func(y, ln int) {
 		// A line-wise highlight covers the WHOLE screen row (S2), text or
 		// not; clusters then paint over the fill.
-		if e.keys.mode == ModeVisualLine && e.focused() && e.inVisual(ln, 0) {
-			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", e.styles.Selection.Inherit(e.styles.Text))
+		if c.keys.mode == ModeVisualLine && e.focused() && c.inVisual(ln, 0) {
+			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", l.styles.Selection.Inherit(l.styles.Text))
 		}
 	}
 	// ends is where each screen row's text ends, for the ruler
 	ends := make([]int, sz.H)
 	y := 0
-	for ln := e.top; ln < len(e.lines) && y < sz.H; ln++ {
-		cs := e.lineClusters(ln)
-		if e.wrap == WrapNone {
+	for ln := l.top; ln < len(c.buf.lines) && y < sz.H; ln++ {
+		cs := c.buf.lineClusters(ln)
+		if l.wrap == WrapNone {
 			lineFill(y, ln)
-			x := -e.left
+			x := -l.left
 			for col, cl := range cs {
 				cw := s.StringWidth(cl)
 				if x+cw > w {
@@ -1810,13 +994,13 @@ func (e *Editor) renderText(s tui.Surface) {
 			y++
 		}
 	}
-	if e.ruler > 0 {
-		x := e.ruler - 1
-		if e.wrap == WrapNone {
-			x -= e.left
+	if l.ruler > 0 {
+		x := l.ruler - 1
+		if l.wrap == WrapNone {
+			x -= l.left
 		}
 		if x >= 0 && x < w {
-			st := e.styles.Placeholder.Inherit(e.styles.Text)
+			st := l.styles.Placeholder.Inherit(l.styles.Text)
 			for row := 0; row < sz.H; row++ {
 				if ends[row] <= x {
 					s.SetCell(x, row, "│", st)
@@ -1825,12 +1009,12 @@ func (e *Editor) renderText(s tui.Surface) {
 		}
 	}
 	if e.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, e.top, wrapMaxTop(e.lines, e.view()))
+		paintScrollIndicator(s, sz.W-1, sz.H, l.top, wrapMaxTop(c.buf.lines, e.view()))
 	}
 }
 
 // view is the layout state the shared soft-wrap geometry needs. It is the
 // only place this widget's viewport is handed to textBuffer.
 func (e *Editor) view() wrapView {
-	return wrapView{w: e.w, h: e.h, wrap: e.wrap, measure: e.measure}
+	return wrapView{w: e.cells.w, h: e.cells.h, wrap: e.cells.wrap, measure: e.measure}
 }

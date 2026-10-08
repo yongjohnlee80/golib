@@ -20,11 +20,11 @@ func TestMenuActionsPreserveRegisterSelectionAndUndoAcrossKeysets(t *testing.T) 
 			if e.Value() != "one\ntwo" || edits != 2 {
 				t.Fatalf("Paste value %q, edits %d", e.Value(), edits)
 			}
-			e.doUndo()
+			e.core.doUndo()
 			if e.Value() != "two" {
 				t.Fatalf("Paste was not its own undo group: %q", e.Value())
 			}
-			e.doUndo()
+			e.core.doUndo()
 			if e.Value() != "one\ntwo" {
 				t.Fatalf("Cut did not undo: %q", e.Value())
 			}
@@ -74,22 +74,22 @@ func TestMenuActionsSettleHeldTextAndCancelPendingCountAndOperator(t *testing.T)
 	pressRune(e, 'i')
 	pressRune(e, 'a')
 	pressRune(e, 'j') // held as the first rune of the Vim escape chord
-	if e.keys.pendingRune != 'j' || !e.hist.open {
+	if e.core.keys.pendingRune != 'j' || !e.core.hist.open {
 		t.Fatal("fixture did not hold an insert rune in an open undo group")
 	}
 	e.Copy()
-	if e.Value() != "aj" || e.keys.pendingRune != 0 || e.hist.open {
+	if e.Value() != "aj" || e.core.keys.pendingRune != 0 || e.core.hist.open {
 		t.Fatalf("menu action failed to settle held text and end its edit group: %q", e.Value())
 	}
 	e.Cut()
 	if e.Value() != "" {
 		t.Fatalf("Cut after held text left %q", e.Value())
 	}
-	e.doUndo()
+	e.core.doUndo()
 	if e.Value() != "aj" {
 		t.Fatalf("undo merged typing and menu Cut: %q", e.Value())
 	}
-	e.doUndo()
+	e.core.doUndo()
 	if e.Value() != "" {
 		t.Fatalf("undo did not restore pre-insert content: %q", e.Value())
 	}
@@ -97,15 +97,15 @@ func TestMenuActionsSettleHeldTextAndCancelPendingCountAndOperator(t *testing.T)
 	e = NewEditor(WithInitialText("one\ntwo"))
 	pressRune(e, '2')
 	pressRune(e, 'd')
-	if e.keys.pendingAct != ActDeletePrefix || e.keys.pendingCount != 2 {
+	if e.core.keys.pendingAct != ActDeletePrefix || e.core.keys.pendingCount != 2 {
 		t.Fatal("fixture did not arm counted delete prefix")
 	}
 	e.Copy()
-	if e.keys.pendingAct != ActUnbound || e.keys.pendingCount != 0 || e.keys.pendingChord != (KeyChord{}) || e.keys.count != 0 {
+	if e.core.keys.pendingAct != ActUnbound || e.core.keys.pendingCount != 0 || e.core.keys.pendingChord != (KeyChord{}) || e.core.keys.count != 0 {
 		t.Fatal("a menu action left part of the counted operator armed")
 	}
 	pressRune(e, 'd')
-	if e.Value() != "one\ntwo" || e.keys.pendingAct != ActDeletePrefix {
+	if e.Value() != "one\ntwo" || e.core.keys.pendingAct != ActDeletePrefix {
 		t.Fatalf("next d completed a stale prefix: %q", e.Value())
 	}
 	pressRune(e, 'd')

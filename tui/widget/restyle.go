@@ -40,7 +40,7 @@ func (x *Box) WithFocusedStyle(st style.Style) *Box {
 
 // WithStyles replaces the editor's looks: each slot given over golib's own.
 func (e *Editor) WithStyles(st TextInputStyles) *Editor {
-	e.styles = inheritTextStyles(st, defaultEditorStyles())
+	e.cells.styles = inheritTextStyles(st, defaultEditorStyles())
 	e.MarkDirty()
 	return e
 }
