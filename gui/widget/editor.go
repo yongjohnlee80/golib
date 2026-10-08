@@ -156,11 +156,15 @@ func (e *Editor) Core() *tuiwidget.EditorCore { return e.core }
 func (e *Editor) Mode() EditorMode { return e.mode }
 
 // SetMode draws the text Raw or Rendered; Rendered without a renderer, or with the Rendered view
-// turned off (SetRenderedEnabled), stays Raw.
+// turned off (SetRenderedEnabled), stays Raw. Rendered Markdown edits lists as a writer's editor
+// does (EditorCore.SetListEditing): Enter continues an item, Tab nests it. Raw is the source as
+// typed.
 func (e *Editor) SetMode(m EditorMode) {
 	if m == Rendered && !e.canRender() {
 		m = Raw
 	}
+	_, md := e.render.(*MarkdownRenderer)
+	e.core.SetListEditing(m == Rendered && md)
 	if m == e.mode && e.layout.blocks != nil {
 		return
 	}

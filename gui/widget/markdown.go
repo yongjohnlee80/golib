@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui/flow"
 	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // MarkdownRenderer draws Markdown in an Editor's Rendered mode, as a live preview does: a heading
@@ -14,8 +15,9 @@ import (
 // hidden, and a fenced code block on a tinted ground. The block holding the cursor shows its
 // source, every mark visible, in the monospace font.
 //
-// A fenced block's fence lines stay on screen, dimmed, rather than hidden: every line keeps a
-// place for the caret to land.
+// A fenced block's fences are hidden off the cursor, the opening's info string (its language)
+// kept as a small muted label: the fence lines keep their rows, so the caret has a place to land
+// and the block a margin. A list item's bullet is drawn as a bullet, its nesting as room.
 type MarkdownRenderer struct {
 	h1       float32
 	diagrams Diagrammer
@@ -93,7 +95,7 @@ func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
 				end++
 			}
 			end = min(end+1, len(lines))
-		} else if indentedCode(lines[i]) && (i == 0 || isBlank(lines[i-1])) {
+		} else if startsIndentedCode(lines, i) {
 			// an indented code block: it cannot interrupt a paragraph, so it starts at the top or
 			// after a blank line, and runs while lines stay indented or blank, its trailing
 			// blanks left out
@@ -118,7 +120,7 @@ func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursor
 	if f, ok := openFence(lines[b.From]); ok {
 		return r.layFence(b, f, lines, opts, cursorInside, t, th, host)
 	}
-	if indentedCode(lines[b.From]) && (b.From == 0 || isBlank(lines[b.From-1])) {
+	if startsIndentedCode(lines, b.From) {
 		return r.layIndented(b, lines, opts, t, th)
 	}
 	ln := b.From
@@ -160,10 +162,7 @@ func (r *MarkdownRenderer) layFence(b Block, f fence, lines []string, opts flow.
 		var spans []flow.Span
 		switch {
 		case isFence && !inside:
-			spans = rawSpans(ln, lines[ln], dim, nil)
-			for i := range spans {
-				spans[i].Color = th.Muted
-			}
+			spans = fenceSpans(ln, lines[ln], dim, th)
 		default:
 			spans = rawSpans(ln, lines[ln], th.Mono, nil)
 		}
@@ -190,6 +189,46 @@ func (r *MarkdownRenderer) layIndented(b Block, lines []string, opts flow.Option
 	return bl
 }
 
+// fenceSpans draw a fence line off the cursor: its fence characters hidden, an info string
+// muted. The line keeps its clusters, so the caret still maps onto it.
+func fenceSpans(ln int, line string, font gui.Font, th Theme) []flow.Span {
+	s := strings.TrimLeft(line, " ")
+	n := len(line) - len(s)
+	for n < len(line) && (line[n] == '`' || line[n] == '~') {
+		n++
+	}
+	spans := []flow.Span{{Text: line[:n], Font: font, Line: ln, Hidden: true}}
+	if n < len(line) {
+		spans = append(spans, flow.Span{Text: line[n:], Font: font, Color: th.Muted, Line: ln, Col: clusters(line[:n])})
+	}
+	return spans
+}
+
+// startsIndentedCode reports whether line i starts an indented code block: indented as code, at
+// the top or after a blank line, and not inside a list, where indentation nests an item or
+// continues one.
+func startsIndentedCode(lines []string, i int) bool {
+	if !indentedCode(lines[i]) || (i > 0 && !isBlank(lines[i-1])) {
+		return false
+	}
+	for j := i - 1; j >= 0; j-- {
+		switch {
+		case isBlank(lines[j]):
+		case isListItem(lines[j]):
+			return false
+		case lines[j][0] == ' ' || lines[j][0] == '\t':
+		default:
+			return true
+		}
+	}
+	return true
+}
+
+func isListItem(line string) bool {
+	_, _, ok := tuiwidget.MarkdownListItem(line)
+	return ok
+}
+
 // indentedCode reports a line indented as code: four spaces or a tab before any text.
 func indentedCode(line string) bool {
 	if isBlank(line) {
@@ -212,6 +251,9 @@ type mdAttr struct {
 func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span, int) {
 	if line == "" {
 		return []flow.Span{{Font: th.Prose, Line: ln}}, 0
+	}
+	if indent, marker, ok := tuiwidget.MarkdownListItem(line); ok {
+		return r.listSpans(ln, line, indent, marker, th), 0
 	}
 	src := []byte(line)
 	doc := markdown.Parse(src, markdown.GFM())
@@ -259,6 +301,51 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 	}
 	walk(doc.Root)
 	return r.spansOf(ln, line, attrs, th), level
+}
+
+// bullets are the bullet glyphs by nesting level, the deepest repeating.
+var bullets = [...]string{"•", "◦", "▪"}
+
+// listSpans draw a list item off the cursor: its indentation as room, a bullet as a bullet glyph
+// for its level (a number kept as written), and its text as any line's, read without the
+// indentation so a deep item is never code. Every source cluster keeps a cluster in the spans.
+func (r *MarkdownRenderer) listSpans(ln int, line, indent, marker string, th Theme) []flow.Span {
+	var spans []flow.Span
+	em := th.Prose.Size
+	if indent != "" {
+		spans = append(spans, flow.Span{Text: indent, Font: th.Prose, Line: ln, SpaceWidth: em * 0.7})
+	}
+	col := len(indent) // indentation and markers are one byte a cluster
+	bullet := strings.TrimRight(marker, " ")
+	if strings.ContainsRune("-*+", rune(marker[0])) {
+		level := 0
+		for _, c := range indent {
+			level++
+			if c == '\t' {
+				level += 3
+			}
+		}
+		level = (level / 2) % len(bullets)
+		spans = append(spans, flow.Span{Text: bullets[level], Font: th.Prose, Color: th.Muted, Line: ln, Col: col})
+		bullet = bullet[1:]
+		col++
+	}
+	if bullet != "" { // a number, or a task's box
+		spans = append(spans, flow.Span{Text: bullet, Font: th.Prose, Color: th.Muted, Line: ln, Col: col})
+		col += len(bullet)
+	}
+	if gap := marker[len(strings.TrimRight(marker, " ")):]; gap != "" {
+		spans = append(spans, flow.Span{Text: gap, Font: th.Prose, Line: ln, Col: col, SpaceWidth: em * 0.45})
+		col += len(gap)
+	}
+	if rest := line[col:]; rest != "" {
+		body, _ := r.lineSpans(ln, rest, th)
+		for i := range body {
+			body[i].Col += col
+		}
+		spans = append(spans, body...)
+	}
+	return spans
 }
 
 // markRange styles a node's content bytes with set, and hides its own marks: the bytes of its

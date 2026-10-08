@@ -503,3 +503,87 @@ func TestHashInACodeBlockIsNotAHeading(t *testing.T) {
 		t.Error("an indented line right under a paragraph was laid out as a code block")
 	}
 }
+
+// Off the cursor a fence's characters are hidden and its language kept, muted; the closing fence
+// is hidden whole. The lines keep their rows.
+func TestFencesHideOffTheCursor(t *testing.T) {
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("```go\nx :=\t1\n```\nend")))
+	h.keys(key('G'))
+	h.paint()
+	open := spansOfLine(h, 0)
+	if len(open) != 2 || !open[0].Hidden || open[0].Text != "```" || open[1].Hidden || open[1].Text != "go" {
+		t.Errorf("opening fence spans %+v: want ``` hidden, go shown", open)
+	}
+	for _, s := range spansOfLine(h, 2) {
+		if !s.Hidden {
+			t.Errorf("closing fence shows %q", s.Text)
+		}
+	}
+	h.keys(key('g'), key('g')) // the cursor in the block: its source, every mark shown
+	h.paint()
+	for _, s := range spansOfLine(h, 0) {
+		if s.Hidden {
+			t.Errorf("the fence under the cursor hides %q", s.Text)
+		}
+	}
+}
+
+// A list item's bullet is a bullet glyph by its level, a number stays, the indentation is room,
+// and an indented item after a blank line inside a list is an item, not code.
+func TestListItemsDrawBulletsAndNesting(t *testing.T) {
+	doc := "- one\n  - two\n    - three\n1. first\n\n    - after blank\nend"
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText(doc)))
+	h.keys(key('G'))
+	h.paint()
+	find := func(ln int, text string) (flow.Span, bool) {
+		for _, s := range spansOfLine(h, ln) {
+			if s.Text == text {
+				return s, true
+			}
+		}
+		return flow.Span{}, false
+	}
+	for ln, b := range map[int]string{0: "•", 1: "◦", 2: "▪", 3: "1.", 5: "▪"} {
+		s, ok := find(ln, b)
+		if !ok {
+			t.Errorf("line %d: no %q in %+v", ln, b, spansOfLine(h, ln))
+			continue
+		}
+		if s.Col != leadingSpaces(strings.Split(doc, "\n")[ln]) {
+			t.Errorf("line %d: %q at column %d, not the marker's", ln, b, s.Col)
+		}
+	}
+	if s, ok := find(1, "  "); !ok || s.SpaceWidth <= 0 {
+		t.Errorf("line 1's indentation is not sized room: %+v", spansOfLine(h, 1))
+	}
+	var bg bool
+	h.onLoop(func() { bg = h.e.layout.lay(h.e.layout.blockOf(5), nil).bl.Background.A > 0 })
+	if bg {
+		t.Error("an indented item after a blank line in a list was laid out as code")
+	}
+}
+
+func leadingSpaces(s string) int { return len(s) - len(strings.TrimLeft(s, " ")) }
+
+// List editing is the Rendered Markdown view's: Raw is the source as typed.
+func TestListEditingFollowsTheView(t *testing.T) {
+	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("- a")))
+	on := func() bool {
+		var v bool
+		h.onLoop(func() { v = h.e.Core().ListEditing() })
+		return v
+	}
+	if on() {
+		t.Error("list editing on in Raw")
+	}
+	h.onLoop(func() { h.e.SetMode(Rendered) })
+	if !on() {
+		t.Error("list editing off in Rendered Markdown")
+	}
+	h.onLoop(func() { h.e.SetRenderedEnabled(false) })
+	if on() {
+		t.Error("list editing on with the Rendered view turned off")
+	}
+}
