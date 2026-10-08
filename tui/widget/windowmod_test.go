@@ -267,3 +267,37 @@ func TestWindowCaptureLossKeepsReachedGeometryWithoutCompletion(t *testing.T) {
 		}
 	})
 }
+
+// A window floated AtFraction is at its percentages of the overlay, follows a resize of it, and a
+// keyboard move takes it from there to a rectangle of cells.
+func TestAWindowAtAFractionFollowsTheOverlay(t *testing.T) {
+	w := widget.NewWindowMod(widget.NewText("notes"), widget.WithWindowMove(), widget.WithWindowResize())
+	f := widget.NewFloat(w, widget.WithAnchor(widget.AtFraction(10, 20, 40, 50)))
+	host := widget.NewOverlayHost(widget.NewText("base"))
+	host.Attach(f)
+	h := startApp(t, host, 50, 20)
+	h.onLoop(f.Show)
+	h.settle()
+	if got := windowBounds(h, w); got != (tui.Rect{X: 5, Y: 4, W: 20, H: 10}) {
+		t.Fatalf("at 10,20,40,50 of 50×20: %+v", got)
+	}
+	var requested tui.Rect
+	h.onLoop(func() { requested = w.Core().RequestedBounds() })
+	if requested != (tui.Rect{X: 5, Y: 4, W: 20, H: 10}) {
+		t.Errorf("requested %+v, want the fraction's cells", requested)
+	}
+	h.tb.InjectResize(100, 40)
+	h.settle()
+	if got := windowBounds(h, w); got != (tui.Rect{X: 10, Y: 8, W: 40, H: 20}) {
+		t.Fatalf("after the overlay doubled: %+v", got)
+	}
+	h.onLoop(func() {
+		if !w.Core().MoveBy(5, 0) {
+			t.Error("moveBy refused")
+		}
+	})
+	h.settle()
+	if got := windowBounds(h, w); got != (tui.Rect{X: 15, Y: 8, W: 40, H: 20}) {
+		t.Errorf("moved: %+v", got)
+	}
+}
