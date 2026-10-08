@@ -122,10 +122,12 @@ func (l *htmlLayout) ready() bool {
 // unchanged.
 func (l *htmlLayout) build() {
 	l.built = true
-	old := map[uint64]*topBlock{}
+	// the laid-out blocks by key, each kept once: identical blocks share a key, and each takes a
+	// layout of its own, never another's (their boxes hold their places)
+	old := map[uint64][]*topBlock{}
 	for _, b := range l.blocks {
 		if b.laid {
-			old[b.key] = b
+			old[b.key] = append(old[b.key], b)
 		}
 	}
 	doc, err := phtml.Parse(l.src)
@@ -151,7 +153,11 @@ func (l *htmlLayout) build() {
 	l.styler = &styler{rules: parseCSS(css, &order), rootPx: l.rootPx}
 	l.css = hashText(css)
 
-	root := &computed{color: l.fg, fontSize: l.rootPx, lineHeight: 1.2, display: "block"}
+	// rem is the root element's size, which starts from the window's text: never the last build's,
+	// so html{font-size:2rem} is twice the text however often the page is built
+	l.rootPx = l.textPx
+	l.styler.rootPx = l.textPx
+	root := &computed{color: l.fg, fontSize: l.textPx, lineHeight: 1.2, display: "block"}
 	htmlNode, bodyNode := findElement(doc, "html"), findElement(doc, "body")
 	chain := []*phtml.Node{}
 	st := root
@@ -204,18 +210,16 @@ func (l *htmlLayout) build() {
 			continue
 		}
 		flushInline()
-		src := [2]int{-1, -1}
-		if r, ok := blockSrc(c); ok {
-			src = r
-		}
-		l.blocks = append(l.blocks, &topBlock{node: c, src: src, textLen: c.Span[1] - c.Span[0]})
+		l.blocks = append(l.blocks, &topBlock{node: c, src: spanOf(c), textLen: c.Span[1] - c.Span[0]})
 	}
 	flushInline()
 
 	contentW := l.contentWidth()
 	for _, b := range l.blocks {
 		b.key = l.keyOf(b, contentW)
-		if o, ok := old[b.key]; ok {
+		if olds := old[b.key]; len(olds) > 0 {
+			o := olds[0]
+			old[b.key] = olds[1:]
 			b.box, b.h, b.mTop, b.mBot, b.laid = o.box, o.h, o.mTop, o.mBot, true
 		}
 	}
@@ -631,22 +635,74 @@ func (l *htmlLayout) LinkAt(x, y float32) string {
 	return ""
 }
 
-// BlockAt is the top-level block at document y: the start of its source bytes, -1 when it has
-// none, and its top.
+// spanOf is the source bytes a top-level element shows: its own data-src, else the span of the
+// data-src its descendants carry (a list whose items carry theirs); {-1, -1} when there are none.
+func spanOf(n *phtml.Node) [2]int {
+	if r, ok := blockSrc(n); ok {
+		return r
+	}
+	out := [2]int{-1, -1}
+	walkNodes(n, nil, func(c, _ *phtml.Node) {
+		if c.Kind != phtml.StartTag {
+			return
+		}
+		if r, ok := blockSrc(c); ok {
+			if out[0] < 0 || r[0] < out[0] {
+				out[0] = r[0]
+			}
+			out[1] = max(out[1], r[1])
+		}
+	})
+	return out
+}
+
+// deepest is the innermost box of a laid-out top block holding the point at document y (or, with
+// srcByte >= 0, the source byte) that has source bytes of its own: a list's item, not the list.
+func deepest(blk *topBlock, y float32, srcByte int) *box {
+	var found *box
+	var walk func(bx *box)
+	walk = func(bx *box) {
+		hit := bx.src[0] >= 0
+		if srcByte >= 0 {
+			hit = hit && bx.src[0] <= srcByte && srcByte < bx.src[1]
+		} else {
+			hit = hit && y >= blk.y+bx.y && y < blk.y+bx.y+bx.h
+		}
+		if !hit {
+			return
+		}
+		found = bx
+		for _, k := range bx.kids {
+			walk(k)
+		}
+	}
+	walk(blk.box)
+	return found
+}
+
+// BlockAt is the block at document y with source bytes of its own (a list's item rather than the
+// list): the start of its source bytes, -1 when there are none, and its top.
 func (l *htmlLayout) BlockAt(y float32) (int, float32) {
 	if !l.ready() || len(l.blocks) == 0 {
 		return -1, 0
 	}
-	b := l.blocks[l.blockAtY(y)]
-	return b.src[0], b.y
+	blk := l.blocks[l.blockAtY(y)]
+	if blk.laid {
+		if bx := deepest(blk, y, -1); bx != nil {
+			return bx.src[0], blk.y + bx.y
+		}
+	}
+	return blk.src[0], blk.y
 }
 
-// BlockTop is the top of the block showing source byte b (or the first after it), laid out.
+// BlockTop is the top of the block showing source byte b, the innermost with source bytes of its
+// own: the block whose source holds it, else the first after it, else (a byte after every block,
+// the blank lines that end a note) the last.
 func (l *htmlLayout) BlockTop(b int) (float32, bool) {
 	if !l.ready() {
 		return 0, false
 	}
-	at := -1
+	at, last := -1, -1
 	for i, blk := range l.blocks {
 		if blk.src[0] < 0 {
 			continue
@@ -655,15 +711,26 @@ func (l *htmlLayout) BlockTop(b int) (float32, bool) {
 			at = i
 			break
 		}
-		if at < 0 && blk.src[0] >= b {
-			at = i
+		if blk.src[0] >= b {
+			if at < 0 {
+				at = i
+			}
+			continue
 		}
+		last = i
+	}
+	if at < 0 {
+		at = last
 	}
 	if at < 0 {
 		return 0, false
 	}
 	l.layOutThrough(at)
-	return l.blocks[at].y, true
+	blk := l.blocks[at]
+	if bx := deepest(blk, 0, b); bx != nil {
+		return blk.y + bx.y, true
+	}
+	return blk.y, true
 }
 
 // ScrollX scrolls the box under (x, y) that scrolls sideways (a pre wider than the page).

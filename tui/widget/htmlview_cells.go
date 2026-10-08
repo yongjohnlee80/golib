@@ -390,9 +390,10 @@ func (c *cellHTML) BlockAt(y float32) (int, float32) {
 }
 
 // BlockTop is the first row of the block showing source byte b: the block whose source holds it,
-// else the first that starts after it.
+// else the first that starts after it, else (a byte after every block, the blank lines that end a
+// note) the last.
 func (c *cellHTML) BlockTop(b int) (float32, bool) {
-	after := -1
+	after, last := -1, -1
 	for bi := range c.doc {
 		s := c.doc[bi].src
 		if s[0] < 0 {
@@ -401,9 +402,16 @@ func (c *cellHTML) BlockTop(b int) (float32, bool) {
 		if s[0] <= b && b < s[1] {
 			return float32(c.tops[bi]), true
 		}
-		if after < 0 && s[0] >= b {
-			after = bi
+		if s[0] >= b {
+			if after < 0 {
+				after = bi
+			}
+			continue
 		}
+		last = bi
+	}
+	if after < 0 {
+		after = last
 	}
 	if after >= 0 {
 		return float32(c.tops[after]), true
