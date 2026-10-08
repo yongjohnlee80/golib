@@ -97,3 +97,30 @@ func TestAStylesEditorIsTheDocumentsEditor(t *testing.T) {
 	s := decltest.Run(t, 40, 6, doc, tuidecl.WithStyle(tuidecl.Style{Name: "test", Types: []tuidecl.Type{styled}}))
 	s.WaitForText(t, "the styled editor")
 }
+
+// A type another part of the vocabulary reads by its private node type cannot be replaced, even
+// by a contract-equal copy: the copy would pass CheckStyle, and then an Editor would refuse its
+// SyntaxHighlighter child, a TabView its Tab, a Dialog its shortcuts and button box.
+func TestATypeReadPrivatelyIsNotReplaceable(t *testing.T) {
+	src := tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow { Editor { SyntaxHighlighter { definition: \"QML\" } } }"))
+	for _, name := range []string{"SyntaxHighlighter", "Tab", "Shortcut", "DialogButtonBox", "Dialog", "FileDialog", "FolderDialog", "TableView", "Window"} {
+		copied, ok := tuidecl.StandardType(name)
+		if !ok {
+			t.Errorf("%s is not a standard type", name)
+			continue
+		}
+		if tuidecl.Replaceable(name) {
+			t.Errorf("Replaceable(%q) = true", name)
+		}
+		_, err := tuidecl.NewProgram(src, tuidecl.WithStyle(tuidecl.Style{Name: "copy", Types: []tuidecl.Type{copied}}))
+		if !errors.Is(err, tuidecl.ErrStyleTypeNotReplaceable) {
+			t.Errorf("a style replacing %s with a copy: %v, want ErrStyleTypeNotReplaceable", name, err)
+		}
+	}
+	// the Editor itself stays replaceable, and the document runs with its highlighter
+	editor, _ := tuidecl.StandardType("Editor")
+	if _, err := tuidecl.NewProgram(src, tuidecl.WithStyle(tuidecl.Style{Name: "copy", Types: []tuidecl.Type{editor}}),
+		tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(40, 10)))); err != nil {
+		t.Errorf("a style replacing Editor with a copy: %v", err)
+	}
+}
