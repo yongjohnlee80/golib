@@ -17,13 +17,17 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/gui/svg"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/tui"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // IMAGES — a page's <img>s, loaded only through the view's ImageResolver (data: URIs aside), and
-// decoded off the loop. Until an image is decoded its box is its width and height attributes, or
-// nothing; one that fails, is over a cap or is SVG shows its alt text.
+// decoded off the loop: a raster (PNG, JPEG, GIF) as an image, an SVG as a native drawing
+// (gui/svg). Until an image is decoded its box is its width and height attributes, or nothing; one
+// that fails or is over a cap shows its alt text, and one the resolver refused is reported to the
+// view (HTMLView.Refused).
 const (
 	maxImageData   = 8 << 20  // a data: URI's payload
 	maxImageFile   = 32 << 20 // a resolved file, read through a limit
@@ -43,7 +47,8 @@ const (
 
 type imgEntry struct {
 	state imgState
-	img   *gui.Image
+	img   *gui.Image   // a raster's
+	svg   *svg.Drawing // an SVG's
 	w, h  int
 }
 
@@ -85,7 +90,7 @@ func (m *htmlImages) entry(src string) *imgEntry {
 	m.entries[src] = e
 	ctx := m.l.v.Context()
 	resolve := m.l.v.Images()
-	if ctx == nil || !strings.HasPrefix(src, "data:") && resolve == nil || isSVG(src) {
+	if ctx == nil || !strings.HasPrefix(src, "data:") && resolve == nil {
 		e.state = imgFailed
 		return e
 	}
@@ -106,17 +111,41 @@ func (m *htmlImages) done(r tui.TaskResult) bool {
 	}
 	delete(m.tasks, r.ID)
 	e := m.entries[src]
-	img, isImg := r.Value.(image.Image)
-	if e == nil || r.Err != nil || !isImg {
+	if errors.Is(r.Err, tuiwidget.ErrImageRefused) {
+		m.l.v.Refused(src)
+	}
+	if e == nil || r.Err != nil {
 		if e != nil {
 			e.state = imgFailed
 		}
 		return true
 	}
-	e.img = gui.NewImage(img)
-	e.w, e.h = img.Bounds().Dx(), img.Bounds().Dy()
+	switch v := r.Value.(type) {
+	case image.Image:
+		e.img = gui.NewImage(v)
+		e.w, e.h = v.Bounds().Dx(), v.Bounds().Dy()
+	case *svg.Drawing:
+		e.svg = v
+		sz := v.Size()
+		e.w, e.h = max(int(sz.W+0.5), 1), max(int(sz.H+0.5), 1)
+	default:
+		e.state = imgFailed
+		return true
+	}
 	e.state = imgReady
 	return true
+}
+
+// sniffSVG reports whether data starts as an SVG document does: an XML declaration, a comment or
+// a doctype, then <svg; for an SVG served under a name that does not say so.
+func sniffSVG(data []byte) bool {
+	head := strings.ToLower(string(data[:min(len(data), 1024)]))
+	i := strings.Index(head, "<svg")
+	if i < 0 {
+		return false
+	}
+	pre := strings.TrimSpace(head[:i])
+	return pre == "" || strings.HasPrefix(pre, "<?xml") || strings.HasPrefix(pre, "<!--") || strings.HasPrefix(pre, "<!doctype")
 }
 
 func isSVG(src string) bool {
@@ -171,6 +200,12 @@ func loadImage(ctx context.Context, src string, resolve func(context.Context, st
 			return nil, errImageCap
 		}
 	}
+	if isSVG(src) || sniffSVG(data) {
+		if len(data) > svg.MaxBytes {
+			return nil, errImageCap
+		}
+		return svg.Parse(bytes.NewReader(data))
+	}
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -220,9 +255,13 @@ func (l *htmlLayout) imageSpan(n *phtml.Node, st *computed, src [2]int) flow.Spa
 		if limit := l.contentWidth(); w > limit {
 			w, h = limit, h*limit/w
 		}
-		img := e.img
+		img, drawing, ink := e.img, e.svg, st.color
 		return flow.Span{Atom: &flow.Atom{W: w, H: h, Baseline: h, Paint: func(c gui.Canvas) {
 			sz := c.Size()
+			if drawing != nil {
+				drawing.Draw(c, gui.Rect{W: sz.W, H: sz.H}, ink)
+				return
+			}
 			c.DrawImage(img, gui.Rect{W: sz.W, H: sz.H}, gui.Rect{})
 		}}, Link: st.link, Line: -1, Src: src}
 	case imgLoading:
