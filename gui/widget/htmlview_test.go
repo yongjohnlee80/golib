@@ -321,3 +321,67 @@ func flowPos(p tuiwidget.DocPos) (fp struct{ Span, Offset int }) {
 }
 
 var _ = phtml.Parse
+
+// repaint paints l again on a canvas like pixelView's.
+func repaint(l *htmlLayout, width, height float32) {
+	c := gui.NewRecordingCanvas(gui.Size{W: width, H: height}, gui.Size{W: 8, H: 19.2})
+	c.TextPx = 16
+	c.Colors = func(int, int) (color.NRGBA, color.NRGBA) {
+		return color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}, color.NRGBA{R: 0x11, G: 0x11, B: 0x11, A: 0xff}
+	}
+	l.Paint(c)
+}
+
+// TestHTMLLayoutIdenticalBlocksStayApart: two identical paragraphs share a key, yet after a
+// rebuild each keeps its own layout: their runs sit at their own places, and a point in the second
+// is in the second.
+func TestHTMLLayoutIdenticalBlocksStayApart(t *testing.T) {
+	page := `<p>same</p><p>same</p><p>last</p>`
+	v, l, _ := pixelView(t, page, 600, 400)
+	v.SetHTML([]byte(page))
+	repaint(l, 600, 400)
+	if a, b := l.runs[0].ay, l.runs[1].ay; a == b {
+		t.Fatalf("the two paragraphs' runs are both at y %v", a)
+	}
+	r := l.runs[1]
+	if p := l.At(r.ax+1, r.ay+1); p.Block != 1 {
+		t.Errorf("a point in the second paragraph is in run %d", p.Block)
+	}
+}
+
+// TestHTMLLayoutSourceSpansInsideLists: an item's own source bytes answer BlockAt and BlockTop,
+// though the list around it has none.
+func TestHTMLLayoutSourceSpansInsideLists(t *testing.T) {
+	_, l, _ := pixelView(t, `<ul><li data-src="0-5">a</li><li data-src="6-11">b</li></ul><p data-src="12-20">after</p>`, 600, 400)
+	second := l.runs[1]
+	top, ok := l.BlockTop(7)
+	if !ok || top > second.ay || top < second.ay-20 {
+		t.Errorf("BlockTop(7) = %v %v, want the second item's top (its run at %v)", top, ok, second.ay)
+	}
+	if src, _ := l.BlockAt(second.ay + 1); src != 6 {
+		t.Errorf("BlockAt in the second item = %d, want 6", src)
+	}
+}
+
+// TestHTMLLayoutRemDoesNotCompound: html{font-size:2rem} is twice the window's text however often
+// the page is built again.
+func TestHTMLLayoutRemDoesNotCompound(t *testing.T) {
+	page := `<html><head><style>html{font-size:2rem}</style></head><body><p>x</p></body></html>`
+	v, l, _ := pixelView(t, page, 600, 400)
+	for range 3 {
+		v.SetHTML([]byte(page))
+		repaint(l, 600, 400)
+	}
+	if l.rootPx != 32 || l.runs[0].spans[0].Font.Size != 32 {
+		t.Errorf("after four builds the root is %vpx and the text %vpx, want 32", l.rootPx, l.runs[0].spans[0].Font.Size)
+	}
+}
+
+// TestHTMLLayoutBytesAfterTheLastBlock: a source byte after every block (the blank lines that end
+// a note, where an editor's cursor can be) is the last block's.
+func TestHTMLLayoutBytesAfterTheLastBlock(t *testing.T) {
+	_, l, _ := pixelView(t, `<p data-src="0-10">a</p><p data-src="12-20">b</p>`, 600, 400)
+	if top, ok := l.BlockTop(25); !ok || top != l.blocks[1].y {
+		t.Errorf("BlockTop(25) = %v %v, want the last block's top %v", top, ok, l.blocks[1].y)
+	}
+}

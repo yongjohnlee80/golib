@@ -190,7 +190,7 @@ func TestCellHTMLPositions(t *testing.T) {
 }
 
 // TestCellHTMLBlockTop: a source byte finds the block whose source holds it, else the first block
-// after it; past every block, none.
+// after it; past every block, the last.
 func TestCellHTMLBlockTop(t *testing.T) {
 	c := layCells(t, `<p data-src="0-10">a</p><p>no source</p><p data-src="50-60">b</p>`, 20)
 	// rows: "a" / "" / "no source" / "" / "b"
@@ -198,7 +198,7 @@ func TestCellHTMLBlockTop(t *testing.T) {
 		b    int
 		want float32
 		ok   bool
-	}{{5, 0, true}, {20, 4, true}, {55, 4, true}, {60, 0, false}} {
+	}{{5, 0, true}, {20, 4, true}, {55, 4, true}, {60, 4, true}} { // past every block: the last
 		got, ok := c.BlockTop(tc.b)
 		if got != tc.want || ok != tc.ok {
 			t.Errorf("BlockTop(%d) = %v, %v; want %v, %v", tc.b, got, ok, tc.want, tc.ok)
@@ -206,5 +206,13 @@ func TestCellHTMLBlockTop(t *testing.T) {
 	}
 	if src, top := c.BlockAt(2); src != -1 || top != 2 {
 		t.Errorf("BlockAt a block with no source = %d, %v; want -1, 2", src, top)
+	}
+}
+
+// TestCellHTMLBytesAfterTheLastBlock: a source byte after every block is the last block's.
+func TestCellHTMLBytesAfterTheLastBlock(t *testing.T) {
+	c := layCells(t, `<p data-src="0-10">a</p><p data-src="12-20">b</p>`, 20)
+	if top, ok := c.BlockTop(25); !ok || top != 2 {
+		t.Errorf("BlockTop(25) = %v %v, want the last block's first row, 2", top, ok)
 	}
 }
