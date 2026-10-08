@@ -330,6 +330,9 @@ func (v bodyView) Paint(c gui.Canvas) {
 					tc.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
 				}
 			}
+			for _, m := range ll.Marks {
+				tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
+			}
 			ll.Para.Paint(tc, at, ll.Spans)
 			if e.numbers && len(ll.Spans) > 0 && ll.Spans[0].Line >= 0 && ll.Spans[0].Line != numbered && len(ll.Para.Lines) > 0 {
 				numbered = ll.Spans[0].Line

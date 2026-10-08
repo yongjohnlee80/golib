@@ -1,6 +1,7 @@
 package flow_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -224,4 +225,31 @@ func abs(f float32) float32 {
 		return -f
 	}
 	return f
+}
+
+// Left is room before every line, Hang more before a wrap's continuation, and the wrap width is
+// what is left: a list item's text lines up after its bullet.
+func TestLeftAndHang(t *testing.T) {
+	sh := shaper()
+	words := strings.Repeat("word ", 30)
+	p := flow.Lay([]flow.Span{plain(words)}, flow.Options{Width: 200, WhiteSpace: flow.PreWrap, Left: 10, Hang: 20}, sh)
+	if len(p.Lines) < 3 {
+		t.Fatalf("%d lines, want a wrap", len(p.Lines))
+	}
+	if x := p.Lines[0].Frags[0].X; x != 10 {
+		t.Errorf("first line at %v, want Left 10", x)
+	}
+	for i, l := range p.Lines[1:] {
+		if x := l.Frags[0].X; x != 30 {
+			t.Errorf("continuation %d at %v, want Left+Hang 30", i+1, x)
+		}
+		last := l.Frags[len(l.Frags)-1]
+		if end := last.X + last.W; end > 200+sh.Measure("word ", gui.Font{Size: 16}).X[5] {
+			t.Errorf("continuation %d runs to %v, past the width", i+1, end)
+		}
+	}
+	hard := flow.Lay([]flow.Span{plain("a\nb")}, flow.Options{Width: 200, WhiteSpace: flow.PreWrap, Left: 10, Hang: 20}, sh)
+	if x := hard.Lines[1].Frags[0].X; x != 10 {
+		t.Errorf("a line a '\\n' starts at %v, want Left 10 (no hang)", x)
+	}
 }
