@@ -195,6 +195,58 @@ func TestDirImagesStaysInItsRoot(t *testing.T) {
 	}
 }
 
+// TestDirResourcesReadsAgainstTheBase: a page's paths are read against its folder under root, as
+// a corpus lays its assets out (Aesop/page.html naming ../assets/a.svg); a path still never leaves
+// root, and a base outside it refuses everything.
+func TestDirResourcesReadsAgainstTheBase(t *testing.T) {
+	root := t.TempDir()
+	for _, f := range []string{"assets/a.svg", "Aesop/img/b.png", "Aesop/c.css"} {
+		full := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(f), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	res := widget.DirResources(root, "Aesop")
+	for src, want := range map[string]string{"../assets/a.svg": "assets/a.svg", "img/b.png": "Aesop/img/b.png",
+		"c.css": "Aesop/c.css", "./c.css?v=1": "Aesop/c.css"} {
+		rc, err := res(ctx, src)
+		if err != nil {
+			t.Errorf("%q: %v, want %s", src, err, want)
+			continue
+		}
+		b, _ := io.ReadAll(rc)
+		_ = rc.Close()
+		if string(b) != want {
+			t.Errorf("%q read %q, want %s", src, b, want)
+		}
+	}
+	for _, bad := range []string{"../../x", "../../" + filepath.Base(root) + "/assets/a.svg", "/assets/a.svg", "file:///etc/passwd"} {
+		if rc, err := res(ctx, bad); err == nil {
+			_ = rc.Close()
+			t.Errorf("%q opened from base Aesop, want it refused", bad)
+		}
+	}
+	// an outside file's resolver: its own folder is the root, and its parent's assets are refused
+	own := widget.DirResources(filepath.Join(root, "Aesop"), "")
+	if rc, err := own(ctx, "c.css"); err != nil {
+		t.Errorf("a sibling from the file's own root: %v", err)
+	} else {
+		_ = rc.Close()
+	}
+	if _, err := own(ctx, "../assets/a.svg"); !errors.Is(err, widget.ErrImageRefused) {
+		t.Errorf("../assets from the file's own root: %v, want refused", err)
+	}
+	for _, base := range []string{"..", "../x", "/abs"} {
+		if _, err := widget.DirResources(root, base)(ctx, "assets/a.svg"); !errors.Is(err, widget.ErrImageRefused) {
+			t.Errorf("base %q: %v, want everything refused", base, err)
+		}
+	}
+}
+
 // TestHTMLViewScrollsByVimKeys: j/k scroll a line, Ctrl+D/Ctrl+U half the view, G and g the ends,
 // as the arrows, PgUp/PgDn, End and Home do; a released key does nothing.
 func TestHTMLViewScrollsByVimKeys(t *testing.T) {
