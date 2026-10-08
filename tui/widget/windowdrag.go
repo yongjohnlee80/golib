@@ -106,7 +106,8 @@ func (c *WindowCore) canBeginWindowDrag() bool {
 }
 
 func (c *WindowCore) stepBounds() tui.Rect {
-	r := c.geometry.Bounds()
+	// the geometry as last asked for, not as last laid out: two steps before a layout add up
+	r := c.geometry.RequestedBounds()
 	if c.drag != nil {
 		r = c.drag.start
 		c.cancelDrag()
