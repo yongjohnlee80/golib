@@ -85,6 +85,9 @@ func TestTheDocumentViewTurnedOffWhileRendered(t *testing.T) {
 	}
 	h.until("the focus back in the body", func() bool { return h.docState(v).focus })
 
+	if c := NewEditor().DocumentComponent(); c != nil {
+		t.Errorf("an Editor without a document view has the component %v", c)
+	}
 	v2 := tuiwidget.NewHTMLView()
 	BindHTML(v2)
 	h2 := startEditor(t, 60, 20, WithDocumentView(v2), WithCore(tuiwidget.CoreInitialText("<p>x</p>")))

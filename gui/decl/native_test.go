@@ -242,6 +242,9 @@ Window { Editor { id: ed; text: "<p>hello</p>"; MarkdownRenderer { } HTMLDocumen
 		if !ok {
 			t.Fatalf("the document view is a %T, want an HTMLView", e.DocumentView())
 		}
+		if c, _ := e.DocumentComponent().(*tuiwidget.HTMLView); c != v {
+			t.Error("DocumentComponent is not the document view")
+		}
 		if _, pixels := v.BoundLayout().(interface{ Pixels() bool }); !pixels {
 			t.Error("the HTMLView is not bound to the pixel layout")
 		}

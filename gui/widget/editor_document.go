@@ -25,6 +25,15 @@ func WithDocumentView(v DocumentView) EditorOption { return func(c *editorConfig
 // DocumentView is the Editor's document view; nil for none.
 func (e *Editor) DocumentView() DocumentView { return e.doc }
 
+// DocumentComponent is the document view as a component, nil for none: for a host that names no
+// gui type and reaches the view by its own (an HTMLView, for its links and images).
+func (e *Editor) DocumentComponent() tui.Component {
+	if e.doc == nil {
+		return nil
+	}
+	return e.doc
+}
+
 // SetRenderedDocument makes Rendered draw the document view (true) or the renderer (false): a host
 // turns it on for a document its view reads (an HTML file) and off for any other. Without a
 // document view it does nothing.
