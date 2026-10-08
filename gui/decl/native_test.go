@@ -196,3 +196,34 @@ Window {
 		}
 	})
 }
+
+// An HTMLView under the native style is tui's widget, which a host reaches by id with no build
+// tag, bound to the pixel layout gui draws; with no style it stays laid out in cells.
+func TestNativeBindsTheHTMLViewsPixelLayout(t *testing.T) {
+	const page = `import tui 1.0
+Window { HTMLView { id: page; html: "<p>hello</p>" } }`
+	for _, native := range []bool{true, false} {
+		var opts []tuidecl.ProgramOption
+		if native {
+			opts = append(opts, tuidecl.WithStyle(guidecl.Native()))
+		}
+		// not run(): under the native style the cells are blank, its pixel layout draws the text
+		s := decltest.Run(t, 60, 12, append([]tuidecl.ProgramOption{tuidecl.LayoutSource("main.qml", []byte(page))}, opts...)...)
+		s.WaitFor(t, "the page mounted", func(string) bool {
+			found := false
+			onLoop(t, s, func() { _, found = tuidecl.FindAs[*tuiwidget.HTMLView](s.Program, "page") })
+			return found
+		})
+		onLoop(t, s, func() {
+			v, ok := tuidecl.FindAs[*tuiwidget.HTMLView](s.Program, "page")
+			if !ok {
+				t.Fatal("no HTMLView page")
+			}
+			_, pixels := v.BoundLayout().(interface{ Pixels() bool })
+			if pixels != native {
+				t.Errorf("native=%v: bound to a pixel layout = %v", native, pixels)
+			}
+		})
+	}
+	_ = widget.BindHTML
+}

@@ -579,3 +579,34 @@ func TestTheAccessKeyReadsOnItsFill(t *testing.T) {
 		t.Errorf("red on the paper became %v, want the accent kept", got)
 	}
 }
+
+// The native style draws an HTMLView bound to a pixel layout with that layout, over its whole
+// subtree, and leaves one laid out in cells to its cells.
+func TestNativeStyleDrawsABoundHTMLView(t *testing.T) {
+	s := NativeStyle()
+	v := widget.NewHTMLView()
+	if p := s.painterFor(v); p == nil {
+		t.Fatal("no painter for HTMLView")
+	} else if _, _, ok := p(v); ok {
+		t.Error("an HTMLView laid out in cells was drawn natively")
+	}
+	l := &viewLayout{}
+	v.BindLayout(l)
+	view, scope, ok := s.painterFor(v)(v)
+	if !ok || view != View(l) || scope != tui.ScopeSubtree {
+		t.Errorf("a bound HTMLView drew %v %v %v, want its layout over the subtree", view, scope, ok)
+	}
+}
+
+// viewLayout is an HTMLLayout that is a View: what gui/widget's pixel layout is.
+type viewLayout struct{}
+
+func (viewLayout) Paint(Canvas)                                       {}
+func (viewLayout) SetSource([]byte)                                   {}
+func (viewLayout) Height() float32                                    { return 0 }
+func (viewLayout) At(float32, float32) widget.DocPos                  { return widget.DocPos{} }
+func (viewLayout) Rects(widget.DocPos, widget.DocPos) []widget.Rect32 { return nil }
+func (viewLayout) Text(widget.DocPos, widget.DocPos) string           { return "" }
+func (viewLayout) LinkAt(float32, float32) string                     { return "" }
+func (viewLayout) BlockAt(float32) (int, float32)                     { return -1, 0 }
+func (viewLayout) BlockTop(int) (float32, bool)                       { return 0, false }

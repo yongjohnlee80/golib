@@ -11,7 +11,7 @@ import (
 )
 
 // NativeStyle is golib's painter set: push buttons, check boxes, text fields, progress bars, tab
-// bars, scrollbars on lists and trees, a dialog's shadow, and a real dim behind it. Each painter takes its colours
+// bars, scrollbars on lists and trees, a dialog's shadow, a real dim behind it, and an HTMLView's pixel layout. Each painter takes its colours
 // from the cells the widget painted, so the app's theme and the widget's state (focused, armed,
 // disabled) carry over, and it draws text at the cells tui gave it. It returns a new Style each
 // call, for a consumer to change.
@@ -26,7 +26,19 @@ func NativeStyle() *Style {
 	s.ForRole(tui.RoleTree, paintScrollbar)
 	s.ForRole(tui.RoleDialog, paintDialog)
 	ForType(s, paintScrim)
+	ForType(s, paintHTMLView)
 	return s
+}
+
+// paintHTMLView draws an HTMLView whose bound layout is a native view (gui/widget.BindHTML binds
+// one): that layout, over the widget's whole subtree. An HTMLView still laid out in cells is left
+// to its cells.
+func paintHTMLView(v *widget.HTMLView) (View, tui.NativeScope, bool) {
+	view, ok := v.BoundLayout().(View)
+	if !ok {
+		return nil, 0, false
+	}
+	return view, tui.ScopeSubtree, true
 }
 
 // mix is a blended toward b by t in [0, 1].

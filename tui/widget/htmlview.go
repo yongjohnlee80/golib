@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // HTMLView shows an HTML document: read-only, scrollable, its text selectable and copied by
@@ -41,6 +42,7 @@ type HTMLView struct {
 	moved    bool
 	edge     int // -1/+1 while a drag holds the pointer past the top or bottom
 	edgeStop func()
+	theme    *style.Theme // the surface's at the last paint, for a pixel layout's colours
 }
 
 // HTMLLayout is what an HTMLView needs from whoever lays it out: the cell layout here, a pixel
@@ -68,6 +70,18 @@ type HTMLLayout interface {
 // HTMLLayoutWidth is a layout the view tells its width, in the layout's units, as it is laid out.
 type HTMLLayoutWidth interface {
 	SetWidth(w float32)
+}
+
+// HTMLLayoutTasks is a layout that runs work off the loop (decoding an image) through the view's
+// Context.Go: the view hands it each TaskResult, and lays out and paints again when it took one.
+type HTMLLayoutTasks interface {
+	HandleTask(r tui.TaskResult) bool
+}
+
+// HTMLLayoutHScroll is a layout with parts that scroll sideways on their own (a pre wider than
+// the page): the view hands it a sideways wheel (Shift+wheel, or a horizontal wheel) at (x, y).
+type HTMLLayoutHScroll interface {
+	ScrollX(x, y, dx float32) bool
 }
 
 // HTMLLayoutPixels is a layout whose units are the backend's pixels rather than cells. The view
@@ -275,6 +289,13 @@ func (v *HTMLView) HandleEvent(ev tui.Event) bool {
 	case tui.PointerCaptureLostEvent:
 		v.endDrag()
 		return true
+	case tui.TaskResult:
+		if l, ok := v.layout.(HTMLLayoutTasks); ok && l.HandleTask(e) {
+			v.RequestLayout()
+			v.MarkDirty()
+			return true
+		}
+		return false
 	case tui.TickEvent:
 		if v.pressing && v.edge != 0 {
 			_, uy := v.units()
@@ -322,6 +343,23 @@ func (v *HTMLView) key(e tui.KeyEvent) bool {
 
 func (v *HTMLView) mouse(m tui.MouseEvent) bool {
 	_, uy := v.units()
+	if h, ok := v.layout.(HTMLLayoutHScroll); ok && m.Kind == tui.MouseWheel {
+		dx := float32(0)
+		switch {
+		case m.Button == tui.WheelLeft, m.Button == tui.WheelUp && m.Mods&tui.ModShift != 0:
+			dx = -3
+		case m.Button == tui.WheelRight, m.Button == tui.WheelDown && m.Mods&tui.ModShift != 0:
+			dx = 3
+		}
+		if dx != 0 {
+			ux, _ := v.units()
+			x, y := v.docPoint(m)
+			if h.ScrollX(x, y, dx*ux) {
+				v.MarkDirty()
+			}
+			return true
+		}
+	}
 	switch {
 	case m.Kind == tui.MouseWheel && m.Button == tui.WheelUp:
 		v.scrollBy(-3 * uy)
@@ -413,9 +451,17 @@ func (v *HTMLView) Layout(c tui.Constraints) tui.Size {
 	return c.Constrain(tui.Size{W: v.w, H: v.h})
 }
 
-// Render paints the cell layout; a bound layout is drawn by its backend.
+// Theme is the tui theme of the surface the view last painted on: what a pixel layout takes its
+// accent and muted colours from. nil before the first paint.
+func (v *HTMLView) Theme() *style.Theme { return v.theme }
+
+// Render paints the cell layout. A bound layout is drawn by its backend: the cells under it are
+// filled with the page's colours, which the native view reads as its own.
 func (v *HTMLView) Render(s tui.Surface) {
+	v.theme = s.Theme()
 	if v.cells == nil {
+		sz := s.Size()
+		s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.New().Foreground(style.TokenForeground).Background(style.TokenBackground))
 		return
 	}
 	sz := s.Size()

@@ -44,7 +44,8 @@ func WithRendererFor(kind string, f func(tuidecl.RendererSpec) widget.Renderer) 
 	return func(n *native) { n.renderers[kind] = f }
 }
 
-// Native is gui's style. It replaces Editor; every other type stays tui's.
+// Native is gui's style. It replaces Editor, and lays HTMLView out in pixels (the same tui
+// widget, so a host reaches it by id either way); every other type stays tui's.
 func Native(opts ...NativeOption) tuidecl.Style {
 	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{}}
 	n.renderers["markdown"] = n.markdownRenderer
@@ -55,7 +56,16 @@ func Native(opts ...NativeOption) tuidecl.Style {
 	ed.Build = n.buildEditor
 	ed.Setters = editorSetters()
 	ed.Restyle = restyleEditor
-	return tuidecl.Style{Name: "native", Types: []tuidecl.Type{ed}}
+	hv, _ := tuidecl.StandardType("HTMLView")
+	build := hv.Build
+	hv.Build = func(b tuidecl.Build) (tui.Component, []string, error) {
+		c, consumed, err := build(b)
+		if v, ok := c.(*tuiwidget.HTMLView); ok && err == nil {
+			widget.BindHTML(v) // laid out in pixels and drawn natively, the same widget to the host
+		}
+		return c, consumed, err
+	}
+	return tuidecl.Style{Name: "native", Types: []tuidecl.Type{ed, hv}}
 }
 
 // markdownRenderer is golib's renderer for a MarkdownRenderer declaration. It reads the spec's
