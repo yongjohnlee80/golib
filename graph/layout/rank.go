@@ -59,7 +59,7 @@ func orDefault(f, d float32) float64 {
 
 func (in Input) sideways() bool { return in.Dir == LR || in.Dir == RL }
 
-func build(in Input) (*graph, error) {
+func build(in Input, m *meter) (*graph, error) {
 	g := &graph{
 		in:      in,
 		nodeSep: orDefault(in.NodeSep, 50),
@@ -81,7 +81,7 @@ func build(in Input) (*graph, error) {
 			g.hasLabels = true
 		}
 	}
-	if err := g.groupPaths(); err != nil {
+	if err := g.groupPaths(m); err != nil {
 		return nil, err
 	}
 	return g, nil
@@ -89,11 +89,14 @@ func build(in Input) (*graph, error) {
 
 // groupPaths gives each node the groups holding it, outermost first, and refuses groups that
 // overlap without one holding the other: such groups cannot both be drawn as boxes.
-func (g *graph) groupPaths() error {
+func (g *graph) groupPaths(m *meter) error {
 	type grp struct{ i, size int }
 	gs := make([]grp, 0, len(g.in.Groups))
 	member := make([]map[int]bool, len(g.in.Groups))
 	for i, ns := range g.in.Groups {
+		if err := m.add(len(ns)); err != nil {
+			return err
+		}
 		member[i] = map[int]bool{}
 		for _, n := range ns {
 			member[i][n] = true
@@ -103,6 +106,9 @@ func (g *graph) groupPaths() error {
 	// Larger groups first; equal ones by input order, so a group nested in an equal one is inner.
 	slices.SortStableFunc(gs, func(a, b grp) int { return b.size - a.size })
 	for _, gr := range gs {
+		if err := m.add(len(g.in.Nodes)); err != nil {
+			return err
+		}
 		for n := range g.in.Nodes {
 			if member[gr.i][n] {
 				g.v[n].path = append(g.v[n].path, gr.i)
@@ -110,6 +116,9 @@ func (g *graph) groupPaths() error {
 		}
 	}
 	for _, gr := range gs {
+		if err := m.add(len(g.in.Nodes)); err != nil {
+			return err
+		}
 		var prefix []int
 		first := true
 		for n := range g.in.Nodes {
@@ -324,12 +333,12 @@ func (g *graph) split() {
 	}
 }
 
-// borders puts a left and a right border on every rank a group spans, chained rank to rank so
-// the placing pass keeps each side straight.
-func (g *graph) borders() {
-	lo := make([]int, g.nGroups)
-	hi := make([]int, g.nGroups)
-	prefix := make([][]int, g.nGroups)
+// groupSpans are each group's lowest and highest rank (-1 for a group holding no vertex) and the
+// path of groups that hold it, from its first member.
+func (g *graph) groupSpans() (lo, hi []int, prefix [][]int) {
+	lo = make([]int, g.nGroups)
+	hi = make([]int, g.nGroups)
+	prefix = make([][]int, g.nGroups)
 	for i := range lo {
 		lo[i], hi[i] = -1, -1
 	}
@@ -344,6 +353,26 @@ func (g *graph) borders() {
 			}
 		}
 	}
+	return lo, hi, prefix
+}
+
+// bordersNeeded is how many border vertices borders would add: two on every rank of every
+// group's span. Known before any is made, so the limit refuses first.
+func (g *graph) bordersNeeded() int {
+	lo, hi, _ := g.groupSpans()
+	n := 0
+	for gr := range lo {
+		if lo[gr] >= 0 {
+			n += 2 * (hi[gr] - lo[gr] + 1)
+		}
+	}
+	return n
+}
+
+// borders puts a left and a right border on every rank a group spans, chained rank to rank so
+// the placing pass keeps each side straight.
+func (g *graph) borders(m *meter) error {
+	lo, hi, prefix := g.groupSpans()
 	for gr := range g.nGroups {
 		if lo[gr] < 0 {
 			continue
@@ -351,6 +380,9 @@ func (g *graph) borders() {
 		for _, side := range []int8{-1, 1} {
 			prev := -1
 			for r := lo[gr]; r <= hi[gr]; r++ {
+				if err := m.add(1); err != nil {
+					return err
+				}
 				b := len(g.v)
 				g.v = append(g.v, vert{rank: r, dummy: true, path: prefix[gr], side: side, group: gr})
 				g.preds = append(g.preds, nil)
@@ -363,6 +395,7 @@ func (g *graph) borders() {
 			}
 		}
 	}
+	return nil
 }
 
 // inGroup reports whether vertex v is inside group gr: it or a group it is in.
