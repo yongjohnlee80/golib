@@ -241,3 +241,43 @@ func TestStressIsBounded(t *testing.T) {
 }
 
 func f32pt(x, y float32) f32.Point { return f32.Pt(x, y) }
+
+// matrices is a recording canvas that keeps each transform pushed to it.
+type matrices struct {
+	*gui.RecordingCanvas
+	pushed []f32.Affine2D
+}
+
+func (m *matrices) PushTransform(a gui.Affine) { m.pushed = append(m.pushed, a) }
+
+// TestComposedTransformsAreBounded: transforms are bounded as composed, not one by one: nested
+// scales, each finite, that multiply past the bound, and a skew near 90°, refuse the document; so
+// does a viewBox too small to scale from. A drawing drawn into a rect too large for its scale skips
+// what would not be finite: the canvas is never handed NaN or Inf (Lector, #216 r0).
+func TestComposedTransformsAreBounded(t *testing.T) {
+	nested := `<svg viewBox="0 0 10 10">` + strings.Repeat(`<g transform="scale(10000000)">`, 6) + `<rect width="1" height="1"/>` +
+		strings.Repeat(`</g>`, 6) + `</svg>`
+	for name, doc := range map[string]string{
+		"six nested scale(1e7)": nested,
+		"two nested scale(200)": `<svg viewBox="0 0 10 10"><g transform="scale(200)"><rect width="1" height="1" transform="scale(200)"/></g></svg>`,
+		"skewX(89.9999)":        `<svg viewBox="0 0 10 10"><rect width="1" height="1" transform="skewX(89.9999)"/></svg>`,
+		"a 1e-6 viewBox":        `<svg viewBox="0 0 0.000001 0.000001"><rect width="1" height="1"/></svg>`,
+	} {
+		if _, err := Parse(strings.NewReader(doc)); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v, want ErrInvalid", name, err)
+		}
+	}
+	ok := parse(t, `<svg viewBox="0 0 10 10"><g transform="scale(100)"><rect width="1" height="1" transform="scale(50) skewX(45)"/></g></svg>`)
+	for _, r := range []gui.Rect{{W: 100, H: 100}, {W: 3e38, H: 3e38}} {
+		rc := &matrices{RecordingCanvas: gui.NewRecordingCanvas(gui.Size{W: 100, H: 100}, gui.Size{W: 8, H: 16})}
+		ok.Draw(rc, r, color.NRGBA{A: 255})
+		for _, m := range rc.pushed {
+			if p := m.Transform(f32.Pt(1, 1)); math.IsNaN(float64(p.X)) || math.IsInf(float64(p.X), 0) || math.IsNaN(float64(p.Y)) || math.IsInf(float64(p.Y), 0) {
+				t.Errorf("drawn into %v: a transform takes (1,1) to %v", r, p)
+			}
+		}
+		if r.W == 100 && len(rc.pushed) != 1 {
+			t.Errorf("drawn into a 100 px rect: %d transforms, want the shape's", len(rc.pushed))
+		}
+	}
+}
