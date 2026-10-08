@@ -47,7 +47,7 @@ const (
 	SeqAsync               // -) and --): an open arrow
 )
 
-// NotePlace is where a note stands.
+// NotePlace is where a note stands: beside a participant or a state, or over participants.
 type NotePlace uint8
 
 const (
@@ -55,6 +55,11 @@ const (
 	RightOf
 	Over
 )
+
+var placeNames = [...]string{LeftOf: "left", RightOf: "right", Over: "over"}
+
+func (n NotePlace) String() string               { return enumName(placeNames[:], int(n)) }
+func (n NotePlace) MarshalText() ([]byte, error) { return []byte(n.String()), nil }
 
 // BlockKind is a frame's kind; its keyword is its name.
 type BlockKind uint8
