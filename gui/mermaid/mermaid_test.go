@@ -129,3 +129,16 @@ func TestLabelsFitTheirNodesAtTheirScale(t *testing.T) {
 		}
 	}
 }
+
+// A shaper asked for no scale, or a negative one, measures at 1 rather than dividing by zero.
+func TestAShaperWithoutAScaleMeasuresAtOne(t *testing.T) {
+	for _, scale := range []float32{0, -2} {
+		sh := gui.NewTextShaper(scale)
+		if sh.Scale() != 1 {
+			t.Errorf("NewTextShaper(%g).Scale() = %g, want 1", scale, sh.Scale())
+		}
+		if w := sh.Layout("Start", testTheme.Font, 0).Width; w <= 0 || w != w {
+			t.Errorf("NewTextShaper(%g) measured %q as %v wide", scale, "Start", w)
+		}
+	}
+}
