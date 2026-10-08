@@ -125,9 +125,12 @@ func NewEditor(opts ...EditorOption) *Editor {
 		e.toggleMode()
 		return true
 	})
-	// list editing is for the prose: a code block's "- x" is code
+	// list editing is for the prose: a code block's "- x" is code, a table's row a row
 	if md, ok := e.render.(*MarkdownRenderer); ok {
-		e.core.SetListEditingWhere(func(ln int) bool { return !md.InCode(e.core.Lines(), ln) })
+		e.core.SetListEditingWhere(func(ln int) bool {
+			lines := e.core.Lines()
+			return !md.InCode(lines, ln) && !md.InTable(lines, ln)
+		})
 	}
 	e.SetMode(cfg.mode)
 	return e
