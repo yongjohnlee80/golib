@@ -10,7 +10,7 @@ func (e *Editor) snapshot() textSnap {
 // beginGroup starts an undo group before an edit: every Normal-mode edit is one group; an
 // Insert session is one group, opened at its first mutation and kept open. A paste during Insert
 // stays inside the open group; focus loss closes it without leaving Insert.
-func (e *Editor) beginGroup() { e.hist.begin(e.snapshot, e.mode == ModeInsert) }
+func (e *Editor) beginGroup() { e.hist.begin(e.snapshot, e.keys.mode == ModeInsert) }
 
 // doUndo reverts the most recent edit group.
 func (e *Editor) doUndo() {
@@ -33,7 +33,7 @@ func (e *Editor) restore(s textSnap) {
 	e.ln = max(0, min(s.ln, len(e.lines)-1))
 	e.col = s.col
 	e.anchor = nil
-	if e.modal {
+	if e.keys.modal {
 		e.clampNormal()
 	}
 	e.edited()

@@ -26,7 +26,7 @@ func (e *Editor) inVisual(ln, col int) bool {
 	if !e.canSelect {
 		return false
 	}
-	switch e.mode {
+	switch e.keys.mode {
 	case ModeVisual:
 		lo, hiEx := e.visualRange()
 		p := taPos{ln: ln, col: col}
@@ -43,7 +43,7 @@ func (e *Editor) SelectedText() string {
 	if !e.canSelect {
 		return ""
 	}
-	switch e.mode {
+	switch e.keys.mode {
 	case ModeVisual:
 		lo, hiEx := e.visualRange()
 		return e.textIn(lo, hiEx)
@@ -63,7 +63,7 @@ func (e *Editor) SelectionRange() (row, col, endRow, endCol int, ok bool) {
 	if !e.canSelect {
 		return 0, 0, 0, 0, false
 	}
-	switch e.mode {
+	switch e.keys.mode {
 	case ModeVisual:
 		lo, hiEx := e.visualRange()
 		return lo.ln, lo.col, hiEx.ln, hiEx.col, true
