@@ -78,6 +78,8 @@ type programConfig struct {
 	errs     []error
 
 	registry    *Registry
+	style       *Style
+	styled      []Type // the standard types with the style's substituted; nil without a style
 	adapterOpts []Option
 	treeOpts    []decl.Option
 	appOpts     []tui.AppOption
@@ -362,6 +364,17 @@ func configure(opts []ProgramOption) (programConfig, error) {
 	if c.layout == nil {
 		return c, errors.New("tui/decl.NewProgram: no layout; give one with Layout or LayoutSource")
 	}
+	if c.style != nil {
+		if c.registry != nil {
+			return c, errors.New("tui/decl.NewProgram: WithStyle substitutes into the standard vocabulary, " +
+				"and WithRegistry replaces it: give one")
+		}
+		types, err := styledTypes(*c.style)
+		if err != nil {
+			return c, err
+		}
+		c.styled = types
+	}
 	if len(c.translations) > 0 {
 		s, err := loadTranslations(c)
 		if err != nil {
@@ -383,7 +396,11 @@ func mount(c programConfig, spec qml.SpecTree) (*Program, error) {
 		sink = p.keep
 	}
 	reg, props := c.registry, []Option(nil)
-	if reg == nil {
+	switch {
+	case reg != nil:
+	case c.styled != nil:
+		reg, props = registryOf(c.styled), typeOptions(c.styled)
+	default:
 		reg, props = StdRegistry(), StdProperties()
 	}
 	p.adapter = New(reg, append(append(props, c.adapterOpts...), WithErrorSink(sink))...)
