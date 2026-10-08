@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -37,6 +38,17 @@ func quitButtonAt(t *testing.T, tb *TestBackend) (x, y int) {
 	return 0, 0
 }
 
+// inOrder waits until every input injected so far has been handled: it injects a resize to w × 8,
+// still under the 40 × 10 minimum, which reaches the App in the input's own order, and waits for
+// the notice to show it. (sync goes through Update, a queue of its own, and proves nothing about
+// the input.)
+func inOrder(t *testing.T, h *harness, w int) {
+	t.Helper()
+	h.tb.InjectResize(w, 8)
+	want := fmt.Sprintf("%d × 8 — needs 40 × 10", w)
+	waitFor(t, "the input before it handled", func() bool { return screenHas(h.tb, want) })
+}
+
 // Below the minimum the App lays nothing out: it shows the sizes and the request to enlarge,
 // and the application receives no keys, pointer or paste. Enlarged, it is laid out again and
 // receives input as before.
@@ -53,7 +65,7 @@ func TestTooSmall_ShowsTheNoticeAndHoldsInput(t *testing.T) {
 		t.Fatalf("the notice lacks its instructions:\n%s", h.tb.String())
 	}
 	h.inject(KeyEvent{Code: 'x', Text: "x"}, MouseEvent{Kind: MousePress, Button: MouseLeft, X: 0, Y: 0}, PasteEvent{Text: "p"})
-	h.sync()
+	inOrder(t, h, 31) // the held input handled before the enlarging resize below
 	for _, ev := range probeEvents(root) {
 		switch ev.(type) {
 		case KeyEvent, MouseEvent, PasteEvent:
@@ -77,7 +89,7 @@ func TestTooSmall_QuitKeysAndButton(t *testing.T) {
 	waitFor(t, "the too-small screen", func() bool { return screenHas(h.tb, "[ Quit ]") })
 
 	h.inject(KeyEvent{Kind: KeyRelease, Code: 'q'}, KeyEvent{Code: 'c', Mods: ModCtrl | ModShift}, KeyEvent{Code: 'x', Text: "x"})
-	h.sync()
+	inOrder(t, h, 31) // the keys handled
 	if n := quits.Load(); n != 0 {
 		t.Fatalf("a release, Ctrl+Shift+C or x quit (%d)", n)
 	}
@@ -86,12 +98,12 @@ func TestTooSmall_QuitKeysAndButton(t *testing.T) {
 	h.inject(KeyEvent{Code: 'c', Mods: ModCtrl | ModNumLock}) // a lock modifier is not a chord
 	waitFor(t, "Ctrl+C quits", func() bool { return quits.Load() == 2 })
 
-	x, y := quitButtonAt(t, h.tb)
 	h.inject(MouseEvent{Kind: MousePress, Button: MouseLeft, X: 0, Y: 0})
-	h.sync()
+	inOrder(t, h, 32) // the click handled
 	if quits.Load() != 2 {
 		t.Fatal("a click away from the button quit")
 	}
+	x, y := quitButtonAt(t, h.tb) // after the resize: the notice is centred on the new width
 	h.inject(MouseEvent{Kind: MousePress, Button: MouseLeft, X: x, Y: y})
 	waitFor(t, "the Quit button quits", func() bool { return quits.Load() == 3 })
 }
