@@ -24,18 +24,20 @@ import (
 // by its source bytes, stays at the top.
 type HTMLView struct {
 	Base
-	src      []byte
-	layout   HTMLLayout
-	cells    *cellHTML // the default layout; nil once another is bound
-	sel      [2]DocPos
-	scrollY  float32 // in the layout's units
-	w, h     int
-	onLink   func(href string)
-	onScroll func(srcByte int)
-	lastSrc  int // the source byte last reported to onScroll
-	resolve  ImageResolver
-	css      string
-	diagrams any
+	src       []byte
+	layout    HTMLLayout
+	cells     *cellHTML // the default layout; nil once another is bound
+	sel       [2]DocPos
+	scrollY   float32 // in the layout's units
+	w, h      int
+	onLink    func(href string)
+	onScroll  func(srcByte int)
+	lastSrc   int // the source byte last reported to onScroll
+	resolve   ImageResolver
+	onRefused func(src string) // told of a resource the resolver refused (WithOnRefused)
+	refused   map[string]bool  // what onRefused was told, until the resolver changes
+	css       string
+	diagrams  any
 
 	pressing bool
 	pressAt  [2]float32 // where the left button went down, in the layout's units
@@ -115,6 +117,28 @@ func WithOnLink(fn func(href string)) HTMLOption { return func(v *HTMLView) { v.
 // SetOnLink replaces what a clicked link calls, as WithOnLink gives it.
 func (v *HTMLView) SetOnLink(fn func(href string)) { v.onLink = fn }
 
+// WithOnRefused is told, once per source until the resolver changes, of a resource the page names
+// that the resolver refused (ErrImageRefused): a stylesheet or an image outside its root. A host
+// says why a page draws without it.
+func WithOnRefused(fn func(src string)) HTMLOption { return func(v *HTMLView) { v.onRefused = fn } }
+
+// SetOnRefused replaces what WithOnRefused gives.
+func (v *HTMLView) SetOnRefused(fn func(src string)) { v.onRefused = fn }
+
+// Refused is a layout's report of a resource its resolver refused; the view tells the host once.
+func (v *HTMLView) Refused(src string) {
+	if v.refused[src] {
+		return
+	}
+	if v.refused == nil {
+		v.refused = map[string]bool{}
+	}
+	v.refused[src] = true
+	if v.onRefused != nil {
+		v.onRefused(src)
+	}
+}
+
 // WithOnScroll is called with the source byte of the block at the top as the view scrolls to
 // another block (data-src); blocks without source bytes report nothing.
 func WithOnScroll(fn func(srcByte int)) HTMLOption { return func(v *HTMLView) { v.onScroll = fn } }
@@ -185,6 +209,7 @@ func (v *HTMLView) Images() ImageResolver { return v.resolve }
 // serves, and only when the folder its paths are read from changes.
 func (v *HTMLView) SetImageResolver(r ImageResolver) {
 	v.resolve = r
+	v.refused = nil
 	if l, ok := v.layout.(HTMLLayoutImages); ok {
 		l.ResetImages()
 	}
