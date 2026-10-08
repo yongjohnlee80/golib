@@ -662,7 +662,7 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	e.cells.gutter = min(e.gutterWidth(), total-1)
 	e.cells.w = total - e.cells.gutter
 	e.cells.h = boundedMax(c.MaxH, max(c.MinH, 1))
-	if e.shown.moved(e.core.buf.ln*1_000_003+e.core.buf.col, e.cells.h*100_003+e.cells.w) {
+	if e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w}) {
 		e.ensureVisible()
 	}
 	return c.Constrain(tui.Size{W: total, H: e.cells.h})
