@@ -287,7 +287,7 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	if l.e.wrap == tuiwidget.WrapNone {
 		ws = flow.Pre // one row per line; the view scrolls sideways instead
 	}
-	p := flow.Lay(spans, flow.Options{Width: l.width, WhiteSpace: ws, Color: l.th.Text}, l.sh)
+	p := flow.Lay(spans, flow.Options{Width: l.width, WhiteSpace: ws, Color: l.th.Text, LineHeight: rawLineHeight}, l.sh)
 	lb := &laidBlock{inside: inside, width: l.width, text: text, colors: colors,
 		bl: BlockLayout{Lines: []LineLayout{{Para: p, Spans: spans}}, Height: p.Height}}
 	l.laid[i] = lb

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
@@ -351,6 +352,23 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Them
 	if e.numberSet {
 		if c, ok := colorOf(e.numberCol, th, dark); ok {
 			t.LineNumbers = c
+		}
+	}
+	// the Raw view's Markdown colours (parse/markdown's Highlighter) for the Rendered view
+	for _, s := range []struct {
+		k  highlight.Style
+		to *color.NRGBA
+	}{
+		{highlight.Keyword, &t.Heading}, {highlight.DataType, &t.Strong}, {highlight.Attribute, &t.Emph},
+		{highlight.String, &t.Code}, {highlight.Import, &t.Link}, {highlight.Operator, &t.Marker},
+		{highlight.Comment, &t.Quiet},
+	} {
+		if st, ok := e.core.SyntaxStyle(s.k); ok {
+			if fg, set := st.GetForeground(); set {
+				if c, ok := colorOf(fg, th, dark); ok {
+					*s.to = c
+				}
+			}
 		}
 	}
 	return t
