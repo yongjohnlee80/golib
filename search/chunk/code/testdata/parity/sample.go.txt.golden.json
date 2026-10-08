@@ -1,0 +1,141 @@
+{
+  "Version": "code-go-2+text-5",
+  "Chunks": [
+    {
+      "Ord": 0,
+      "Breadcrumb": "graph",
+      "Body": "package graph\n\nimport \"iter\"",
+      "Embed": "",
+      "ByteStart": 0,
+      "ByteEnd": 28
+    },
+    {
+      "Ord": 1,
+      "Breadcrumb": "graph \u003e Edge (struct)",
+      "Body": "// Edge is a directed edge of a kind, from Src to Dst. Two edges are the same edge when all three\n// fields are equal, so one pair of nodes may hold edges of several kinds.\ntype Edge[N comparable] struct {\n\tSrc, Dst N\n\tKind     string\n}",
+      "Embed": "graph \u003e Edge (struct)\nEdge is a directed edge of a kind, from Src to Dst. Two edges are the same edge when all three\nfields are equal, so one pair of nodes may hold edges of several kinds.\ntype Edge[N comparable] struct {\n\tSrc, Dst N\n\tKind     string\n}",
+      "ByteStart": 30,
+      "ByteEnd": 266
+    },
+    {
+      "Ord": 2,
+      "Breadcrumb": "graph \u003e Dir",
+      "Body": "// Dir is which way a walk follows edges from a node: out along them, in against them, or both.\ntype Dir uint8",
+      "Embed": "graph \u003e Dir\nDir is which way a walk follows edges from a node: out along them, in against them, or both.\ntype Dir uint8",
+      "ByteStart": 268,
+      "ByteEnd": 378
+    },
+    {
+      "Ord": 3,
+      "Breadcrumb": "graph \u003e const Out, In, Both",
+      "Body": "const (\n\t// Out follows an edge from its Src to its Dst.\n\tOut Dir = 1 \u003c\u003c iota\n\t// In follows an edge from its Dst back to its Src.\n\tIn\n\t// Both follows edges either way.\n\tBoth = Out | In\n)",
+      "Embed": "graph \u003e const Out, In, Both\nconst (\nOut follows an edge from its Src to its Dst.\nOut Dir = 1 \u003c\u003c iota\nIn follows an edge from its Dst back to its Src.\nIn\nBoth follows edges either way.\nBoth = Out | In\n)",
+      "ByteStart": 380,
+      "ByteEnd": 568
+    },
+    {
+      "Ord": 4,
+      "Breadcrumb": "graph \u003e Filter (struct)",
+      "Body": "// Filter admits edges by kind. The zero Filter admits every edge.\ntype Filter struct {\n\t// Kinds lists the kinds admitted; empty admits every kind.\n\tKinds []string\n}",
+      "Embed": "graph \u003e Filter (struct)\nFilter admits edges by kind. The zero Filter admits every edge.\ntype Filter struct {\n\t// Kinds lists the kinds admitted; empty admits every kind.\n\tKinds []string\n}",
+      "ByteStart": 570,
+      "ByteEnd": 736
+    },
+    {
+      "Ord": 5,
+      "Breadcrumb": "graph \u003e Filter \u003e admits",
+      "Body": "func (f Filter) admits(kind string) bool {\n\tif len(f.Kinds) == 0 {\n\t\treturn true\n\t}\n\tfor _, k := range f.Kinds {\n\t\tif k == kind {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}",
+      "Embed": "graph \u003e Filter \u003e admits\nfunc (f Filter) admits(kind string) bool",
+      "ByteStart": 738,
+      "ByteEnd": 905
+    },
+    {
+      "Ord": 6,
+      "Breadcrumb": "graph \u003e Graph (struct)",
+      "Body": "// Graph is a directed multigraph whose edges carry a kind. Nodes and edges are kept in the order\n// they were added, and every iteration follows it, so the same additions always give the same\n// answers. The zero Graph is not usable; call [New]. A Graph is not safe for concurrent use.\ntype Graph[N comparable] struct {\n\tindex map[N]int // a node's position in nodes, out and in\n\tnodes []N\n\tout   [][]Edge[N]\n\tin    [][]Edge[N]\n\tedges []Edge[N]\n\tseen  map[Edge[N]]bool\n}",
+      "Embed": "graph \u003e Graph (struct)\nGraph is a directed multigraph whose edges carry a kind. Nodes and edges are kept in the order\nthey were added, and every iteration follows it, so the same additions always give the same\nanswers. The zero Graph is not usable; call [New]. A Graph is not safe for concurrent use.\ntype Graph[N comparable] struct {\n\tindex map[N]int // a node's position in nodes, out and in\n\tnodes []N\n\tout   [][]Edge[N]\n\tin    [][]Edge[N]\n\tedges []Edge[N]\n\tseen  map[Edge[N]]bool\n}",
+      "ByteStart": 907,
+      "ByteEnd": 1378
+    },
+    {
+      "Ord": 7,
+      "Breadcrumb": "graph \u003e New",
+      "Body": "// New returns an empty graph.\nfunc New[N comparable]() *Graph[N] {\n\treturn \u0026Graph[N]{index: map[N]int{}, seen: map[Edge[N]]bool{}}\n}",
+      "Embed": "graph \u003e New\nNew returns an empty graph.\nfunc New[N comparable]() *Graph[N]",
+      "ByteStart": 1380,
+      "ByteEnd": 1513
+    },
+    {
+      "Ord": 8,
+      "Breadcrumb": "graph \u003e Graph \u003e AddNode",
+      "Body": "// AddNode adds n with no edges. It reports false when n is already a node. A node added this way\n// stays in the graph with no edges: a document nothing links to is still a document.\nfunc (g *Graph[N]) AddNode(n N) bool {\n\tif _, ok := g.index[n]; ok {\n\t\treturn false\n\t}\n\tg.index[n] = len(g.nodes)\n\tg.nodes = append(g.nodes, n)\n\tg.out = append(g.out, nil)\n\tg.in = append(g.in, nil)\n\treturn true\n}",
+      "Embed": "graph \u003e Graph \u003e AddNode\nAddNode adds n with no edges. It reports false when n is already a node. A node added this way\nstays in the graph with no edges: a document nothing links to is still a document.\nfunc (g *Graph[N]) AddNode(n N) bool",
+      "ByteStart": 1515,
+      "ByteEnd": 1911
+    },
+    {
+      "Ord": 9,
+      "Breadcrumb": "graph \u003e Graph \u003e Add",
+      "Body": "// Add adds e, and its two ends as nodes when they are not yet. It reports false when the graph\n// already holds an equal edge.\nfunc (g *Graph[N]) Add(e Edge[N]) bool {\n\tif g.seen[e] {\n\t\treturn false\n\t}\n\tg.seen[e] = true\n\tg.AddNode(e.Src)\n\tg.AddNode(e.Dst)\n\tg.edges = append(g.edges, e)\n\tg.out[g.index[e.Src]] = append(g.out[g.index[e.Src]], e)\n\tg.in[g.index[e.Dst]] = append(g.in[g.index[e.Dst]], e)\n\treturn true\n}",
+      "Embed": "graph \u003e Graph \u003e Add\nAdd adds e, and its two ends as nodes when they are not yet. It reports false when the graph\nalready holds an equal edge.\nfunc (g *Graph[N]) Add(e Edge[N]) bool",
+      "ByteStart": 1913,
+      "ByteEnd": 2328
+    },
+    {
+      "Ord": 10,
+      "Breadcrumb": "graph \u003e Graph \u003e Has",
+      "Body": "// Has reports whether n is a node of the graph.\nfunc (g *Graph[N]) Has(n N) bool {\n\t_, ok := g.index[n]\n\treturn ok\n}",
+      "Embed": "graph \u003e Graph \u003e Has\nHas reports whether n is a node of the graph.\nfunc (g *Graph[N]) Has(n N) bool",
+      "ByteStart": 2330,
+      "ByteEnd": 2447
+    },
+    {
+      "Ord": 11,
+      "Breadcrumb": "graph \u003e Graph \u003e Nodes",
+      "Body": "// Nodes yields the nodes in the order they were added.\nfunc (g *Graph[N]) Nodes() iter.Seq[N] {\n\treturn func(yield func(N) bool) {\n\t\tfor _, n := range g.nodes {\n\t\t\tif !yield(n) {\n\t\t\t\treturn\n\t\t\t}\n\t\t}\n\t}\n}",
+      "Embed": "graph \u003e Graph \u003e Nodes\nNodes yields the nodes in the order they were added.\nfunc (g *Graph[N]) Nodes() iter.Seq[N]",
+      "ByteStart": 2449,
+      "ByteEnd": 2653
+    },
+    {
+      "Ord": 12,
+      "Breadcrumb": "graph \u003e Graph \u003e Edges",
+      "Body": "// Edges yields the edges f admits, in the order they were added.\nfunc (g *Graph[N]) Edges(f Filter) iter.Seq[Edge[N]] {\n\treturn admitted(g.edges, f)\n}",
+      "Embed": "graph \u003e Graph \u003e Edges\nEdges yields the edges f admits, in the order they were added.\nfunc (g *Graph[N]) Edges(f Filter) iter.Seq[Edge[N]]",
+      "ByteStart": 2655,
+      "ByteEnd": 2806
+    },
+    {
+      "Ord": 13,
+      "Breadcrumb": "graph \u003e Graph \u003e Out",
+      "Body": "// Out yields the edges f admits that leave n, in the order they were added; none when n is not a\n// node.\nfunc (g *Graph[N]) Out(n N, f Filter) iter.Seq[Edge[N]] {\n\ti, ok := g.index[n]\n\tif !ok {\n\t\treturn admitted[N](nil, f)\n\t}\n\treturn admitted(g.out[i], f)\n}",
+      "Embed": "graph \u003e Graph \u003e Out\nOut yields the edges f admits that leave n, in the order they were added; none when n is not a\nnode.\nfunc (g *Graph[N]) Out(n N, f Filter) iter.Seq[Edge[N]]",
+      "ByteStart": 2808,
+      "ByteEnd": 3067
+    },
+    {
+      "Ord": 14,
+      "Breadcrumb": "graph \u003e Graph \u003e In",
+      "Body": "// In yields the edges f admits that reach n, in the order they were added; none when n is not a\n// node.\nfunc (g *Graph[N]) In(n N, f Filter) iter.Seq[Edge[N]] {\n\ti, ok := g.index[n]\n\tif !ok {\n\t\treturn admitted[N](nil, f)\n\t}\n\treturn admitted(g.in[i], f)\n}",
+      "Embed": "graph \u003e Graph \u003e In\nIn yields the edges f admits that reach n, in the order they were added; none when n is not a\nnode.\nfunc (g *Graph[N]) In(n N, f Filter) iter.Seq[Edge[N]]",
+      "ByteStart": 3069,
+      "ByteEnd": 3325
+    },
+    {
+      "Ord": 15,
+      "Breadcrumb": "graph \u003e Graph \u003e Neighborhood",
+      "Body": "// Neighborhood is the part of the graph within depth steps of start, walking the edges f admits\n// in direction d: the nodes reached, start included even with no edge, and every admitted edge\n// whose two ends were both reached. Nodes keep this graph's order. A start that is not a node\n// gives an empty graph, and a depth below 0 counts as 0 (start alone).\nfunc (g *Graph[N]) Neighborhood(start N, depth int, d Dir, f Filter) *Graph[N] {\n\tsub := New[N]()\n\tif !g.Has(start) {\n\t\treturn sub\n\t}\n\treached := map[N]bool{start: true}\n\tfrontier := []N{start}\n\tfor step := 0; step \u003c depth \u0026\u0026 len(frontier) \u003e 0; step++ {\n\t\tvar next []N\n\t\tvisit := func(n N) {\n\t\t\tif !reached[n] {\n\t\t\t\treached[n] = true\n\t\t\t\tnext = append(next, n)\n\t\t\t}\n\t\t}\n\t\tfor _, n := range frontier {\n\t\t\tif d\u0026Out != 0 {\n\t\t\t\tfor e := range g.Out(n, f) {\n\t\t\t\t\tvisit(e.Dst)\n\t\t\t\t}\n\t\t\t}\n\t\t\tif d\u0026In != 0 {\n\t\t\t\tfor e := range g.In(n, f) {\n\t\t\t\t\tvisit(e.Src)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tfrontier = next\n\t}\n\tfor _, n := range g.nodes {\n\t\tif reached[n] {\n\t\t\tsub.AddNode(n)\n\t\t}\n\t}\n\tfor _, e := range g.edges {\n\t\tif reached[e.Src] \u0026\u0026 reached[e.Dst] \u0026\u0026 f.admits(e.Kind) {\n\t\t\tsub.Add(e)\n\t\t}\n\t}\n\treturn sub\n}",
+      "Embed": "graph \u003e Graph \u003e Neighborhood\nNeighborhood is the part of the graph within depth steps of start, walking the edges f admits\nin direction d: the nodes reached, start included even with no edge, and every admitted edge\nwhose two ends were both reached. Nodes keep this graph's order. A start that is not a node\ngives an empty graph, and a depth below 0 counts as 0 (start alone).\nfunc (g *Graph[N]) Neighborhood(start N, depth int, d Dir, f Filter) *Graph[N]",
+      "ByteStart": 3327,
+      "ByteEnd": 4468
+    },
+    {
+      "Ord": 16,
+      "Breadcrumb": "graph \u003e admitted",
+      "Body": "func admitted[N comparable](es []Edge[N], f Filter) iter.Seq[Edge[N]] {\n\treturn func(yield func(Edge[N]) bool) {\n\t\tfor _, e := range es {\n\t\t\tif f.admits(e.Kind) \u0026\u0026 !yield(e) {\n\t\t\t\treturn\n\t\t\t}\n\t\t}\n\t}\n}",
+      "Embed": "graph \u003e admitted\nfunc admitted[N comparable](es []Edge[N], f Filter) iter.Seq[Edge[N]]",
+      "ByteStart": 4470,
+      "ByteEnd": 4670
+    }
+  ]
+}

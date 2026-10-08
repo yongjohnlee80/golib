@@ -1,0 +1,77 @@
+{
+  "Version": "code-ts-2",
+  "Chunks": [
+    {
+      "Ord": 0,
+      "Breadcrumb": "src/a.ts",
+      "Body": "import { a } from \"./a\";\nimport b from 'b';",
+      "Embed": "",
+      "ByteStart": 0,
+      "ByteEnd": 43
+    },
+    {
+      "Ord": 1,
+      "Breadcrumb": "src/a.ts \u003e add",
+      "Body": "/** Adds two numbers. */\nexport function add(x: number, y: number): number {\n  return x + y;\n}",
+      "Embed": "src/a.ts \u003e add\nAdds two numbers.\nexport function add(x: number, y: number): number",
+      "ByteStart": 45,
+      "ByteEnd": 139
+    },
+    {
+      "Ord": 2,
+      "Breadcrumb": "src/a.ts \u003e Shape",
+      "Body": "/**\n * A shape.\n */\n@Component({ selector: \"x\" })\nexport class Shape {\n  private name = \"s\";",
+      "Embed": "src/a.ts \u003e Shape\nA shape.\nexport class Shape",
+      "ByteStart": 141,
+      "ByteEnd": 233
+    },
+    {
+      "Ord": 3,
+      "Breadcrumb": "src/a.ts \u003e Shape \u003e area",
+      "Body": "/** The area. */\n  area(): number {\n    if (this.name === \"}\") { return 0; }\n    return 1;\n  }",
+      "Embed": "src/a.ts \u003e Shape \u003e area\nThe area.\narea(): number",
+      "ByteStart": 236,
+      "ByteEnd": 330
+    },
+    {
+      "Ord": 4,
+      "Breadcrumb": "src/a.ts \u003e Shape \u003e make",
+      "Body": "static make(): Shape { return new Shape(); }\n}",
+      "Embed": "src/a.ts \u003e Shape \u003e make\nstatic make(): Shape",
+      "ByteStart": 333,
+      "ByteEnd": 379
+    },
+    {
+      "Ord": 5,
+      "Breadcrumb": "src/a.ts \u003e Point",
+      "Body": "export interface Point { x: number; y: number }",
+      "Embed": "src/a.ts \u003e Point\nexport interface Point { x: number; y: number }",
+      "ByteStart": 381,
+      "ByteEnd": 428
+    },
+    {
+      "Ord": 6,
+      "Breadcrumb": "src/a.ts \u003e Pair",
+      "Body": "export type Pair\u003cT\u003e = [T, T];",
+      "Embed": "src/a.ts \u003e Pair\nexport type Pair\u003cT\u003e = [T, T];",
+      "ByteStart": 430,
+      "ByteEnd": 459
+    },
+    {
+      "Ord": 7,
+      "Breadcrumb": "src/a.ts \u003e double",
+      "Body": "/** Doubles. */\nexport const double = (n: number): number =\u003e {\n  return n * 2;\n};",
+      "Embed": "src/a.ts \u003e double\nDoubles.\nexport const double = (n: number): number =\u003e",
+      "ByteStart": 461,
+      "ByteEnd": 542
+    },
+    {
+      "Ord": 8,
+      "Breadcrumb": "src/a.ts \u003e (glue)",
+      "Body": "console.log(\"top-level\");",
+      "Embed": "",
+      "ByteStart": 544,
+      "ByteEnd": 569
+    }
+  ]
+}
