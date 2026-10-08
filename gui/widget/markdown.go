@@ -445,6 +445,7 @@ func isBlank(line string) bool { return strings.TrimSpace(line) == "" }
 type mdAttr struct {
 	hidden                           bool
 	bold, italic, code, strike, link bool
+	wiki, tag                        bool // an Obsidian [[wikilink]] or ![[embed]]; a #tag
 	heading                          int
 }
 
@@ -458,7 +459,7 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 		return r.listSpans(ln, line, indent, marker, th), 0
 	}
 	src := []byte(line)
-	doc := markdown.Parse(src, markdown.GFM())
+	doc := markdown.Parse(src, markdown.GFM(), markdown.Obsidian())
 	attrs := make([]mdAttr, len(src))
 	level := 0
 	var walk func(n *markdown.Node)
@@ -485,6 +486,14 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 			markRange(attrs, n.Span.Start, n.Span.End, n, func(a *mdAttr) { a.strike = true })
 		case markdown.KindLink:
 			markRange(attrs, n.Span.Start, n.Span.End, n, func(a *mdAttr) { a.link = true })
+		case markdown.KindWikilink, markdown.KindEmbed:
+			// its one child is what it shows (the alias, else the target): the brackets and a
+			// target behind an alias are hidden
+			markRange(attrs, n.Span.Start, n.Span.End, n, func(a *mdAttr) { a.wiki = true })
+		case markdown.KindTag:
+			for i := n.Span.Start; i < n.Span.End; i++ {
+				attrs[i].tag = true
+			}
 		case markdown.KindCodeSpan:
 			s, e := n.Span.Start, n.Span.End
 			open := 0
@@ -620,6 +629,10 @@ func (r *MarkdownRenderer) span(text string, a mdAttr, ln, col int, th Theme) fl
 	switch {
 	case a.link:
 		sp.Color, sp.Underline = or(th.Link, th.Accent), true
+	case a.wiki:
+		sp.Color, sp.Underline = or(th.Wiki, or(th.Link, th.Accent)), true
+	case a.tag:
+		sp.Color = th.Tag
 	case a.code:
 		sp.Color = th.Code
 	case a.heading > 0:

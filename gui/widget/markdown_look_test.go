@@ -14,6 +14,8 @@ var (
 	lookStrong  = color.NRGBA{R: 0x40, G: 0xc0, B: 0x60, A: 0xff}
 	lookCode    = color.NRGBA{R: 0xe0, G: 0xa0, B: 0x40, A: 0xff}
 	lookMarker  = color.NRGBA{R: 0xc0, G: 0x60, B: 0xc0, A: 0xff}
+	lookWiki    = color.NRGBA{R: 0x6b, G: 0x52, B: 0x00, A: 0xff}
+	lookTag     = color.NRGBA{R: 0x2f, G: 0x5e, B: 0x6b, A: 0xff}
 )
 
 // lookLay lays line ln of doc out off the cursor, with a theme carrying the Raw view's colours.
@@ -22,7 +24,7 @@ func lookLay(t *testing.T, doc string, ln int) (BlockLayout, Theme) {
 	lines := strings.Split(doc, "\n")
 	th := Theme{Text: color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}, Background: color.NRGBA{A: 0xff},
 		Muted: color.NRGBA{R: 0x80, G: 0x80, B: 0x80, A: 0xff}, Prose: gui.Font{Size: 16}, Mono: gui.Font{Family: gui.MonospaceFamily(), Size: 14},
-		Heading: lookHeading, Strong: lookStrong, Code: lookCode, Marker: lookMarker,
+		Heading: lookHeading, Strong: lookStrong, Code: lookCode, Marker: lookMarker, Wiki: lookWiki, Tag: lookTag,
 		CodeBackground: color.NRGBA{R: 0x20, G: 0x20, B: 0x20, A: 0xff}}
 	r := NewMarkdownRenderer()
 	sh := gui.NewRecordingCanvas(gui.Size{W: 400, H: 400}, gui.Size{W: 8, H: 16}).Text()
@@ -317,5 +319,34 @@ func TestTableIgnoresExtraCells(t *testing.T) {
 		if m.Rect.X+m.Rect.W > widest+0.5 {
 			t.Errorf("a mark at %v reaches past the header's grid (%v): the extra cell widened it", m.Rect.X+m.Rect.W, widest)
 		}
+	}
+}
+
+// A wikilink reads as a link: its brackets hidden, its target (or its alias, the target then
+// hidden too) underlined in the Raw view's wikilink colour. A #tag wears the tag colour.
+func TestWikilinksAndTags(t *testing.T) {
+	bl, _ := lookLay(t, "see [[conventions/app.md]] and [[page|Alias]] #todo", 0)
+	spans := bl.Lines[0].Spans
+	shown := func(text string) (flow.Span, bool) {
+		for _, s := range spans {
+			if !s.Hidden && strings.Contains(s.Text, text) {
+				return s, true
+			}
+		}
+		return flow.Span{}, false
+	}
+	if s, ok := shown("conventions/app.md"); !ok || s.Color != lookWiki || !s.Underline {
+		t.Errorf("the wikilink's target: %+v", s)
+	}
+	if s, ok := shown("Alias"); !ok || s.Color != lookWiki {
+		t.Errorf("the alias: %+v", s)
+	}
+	for _, hide := range []string{"[[", "]]", "page|"} {
+		if _, ok := shown(hide); ok {
+			t.Errorf("%q is shown", hide)
+		}
+	}
+	if s, ok := shown("todo"); !ok || s.Color != lookTag {
+		t.Errorf("the tag: %+v", s)
 	}
 }
