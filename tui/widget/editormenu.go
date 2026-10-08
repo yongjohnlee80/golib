@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // THE EDITOR'S RIGHT-CLICK MENU, AS A MODULE.
@@ -81,7 +82,10 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 		return false
 	}
 	id := LayerID(fmt.Sprintf("editor.contextmenu.%d", ider.Context().ID()))
-	l, err := host.openPopupAt(id, m.owner, NewBox(menu), at, func(DismissReason) {
+	// the box on the menu's own surface: a bare one's border cells kept the terminal's default
+	// background, a band of it around the menu in a window
+	box := NewBox(menu, WithStyle(style.New().Background(style.TokenPanel)))
+	l, err := host.openPopupAt(id, m.owner, box, at, func(DismissReason) {
 		if m.open == layer {
 			m.open = nil
 		}
