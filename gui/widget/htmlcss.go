@@ -772,7 +772,7 @@ func (c *computed) apply(d cssDecl, parent *computed, rootPx float32, view gui.S
 			c.color = col
 		}
 	case "background", "background-color":
-		for _, f := range strings.Fields(v) {
+		for _, f := range splitFields(v) {
 			if col, ok := parseColor(f, c.color); ok {
 				c.background = col
 				break
@@ -859,7 +859,7 @@ func (c *computed) apply(d cssDecl, parent *computed, rootPx float32, view gui.S
 			}
 		}
 	case "border-radius":
-		if l, ok := parseLen(strings.Fields(lv + " 0")[0]); ok {
+		if l, ok := parseLen(splitFields(lv + " 0")[0]); ok {
 			c.radius = l
 		}
 	case "width":
@@ -991,7 +991,7 @@ func side(prop string) int {
 
 // boxSides reads a margin or padding shorthand of one to four values.
 func boxSides(v string, out *[4]cssLen) {
-	f := strings.Fields(v)
+	f := splitFields(v)
 	var l []cssLen
 	for _, s := range f {
 		x, ok := parseLen(s)
@@ -1046,6 +1046,12 @@ func parseBorder(v string, cur color.NRGBA) cssBorder {
 
 // splitFields splits on spaces outside parentheses (rgb(1, 2, 3) is one field).
 func splitFields(v string) []string {
+	v = strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' || r == '\f' {
+			return ' '
+		}
+		return r
+	}, v)
 	var out []string
 	for _, f := range splitTop(v, ' ') {
 		if f = strings.TrimSpace(f); f != "" {
@@ -1108,7 +1114,7 @@ func (c *computed) flex(v string) {
 	}
 	nums := 0
 	c.basis = cssLen{unit: 'p'} // a bare number gives a basis of 0
-	for _, f := range strings.Fields(v) {
+	for _, f := range splitFields(v) {
 		if n, err := strconv.ParseFloat(f, 32); err == nil && n >= 0 && nums < 2 {
 			if nums == 0 {
 				c.grow, c.shrink = float32(n), 1
@@ -1160,7 +1166,7 @@ func monoFamily(v string) bool {
 
 // font reads the font shorthand: [style] [weight] size[/line-height] family.
 func (c *computed) font(v string, parent, root float32, view gui.Size) {
-	f := strings.Fields(v)
+	f := splitFields(v)
 	c.italic, c.bold = false, false
 	for i, tok := range f {
 		switch tok {
