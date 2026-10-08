@@ -37,10 +37,10 @@ func ansi(n uint8) tui.CellColor { return tui.CellColor{Kind: tui.CellColorANSI,
 
 func rgb(r, g, b uint8) tui.CellColor { return tui.CellColor{Kind: tui.CellColorRGB, R: r, G: g, B: b} }
 
-// The CGA colours retro is written in.
+// The CGA colours retro is written in, its document blue deepened to a navy.
 var (
 	cgaBlack  = rgb(0, 0, 0)
-	cgaBlue   = rgb(0, 0, 0xaa)
+	cgaBlue   = rgb(0, 0, 0x70) // retro's deep navy, deeper than CGA's 0xaa
 	cgaGreen  = rgb(0, 0xaa, 0)
 	cgaCyan   = rgb(0, 0xaa, 0xaa)
 	cgaRed    = rgb(0xaa, 0, 0)
