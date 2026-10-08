@@ -54,6 +54,9 @@ func appTypes() []Type {
 		}, Setters: map[string]Setter{
 			// golib's: shown at its width and scrolled by the keys and the wheel (widget.Image)
 			"scrollable": setter("an Image", boolOf, (*widget.Image).SetScrollable),
+			// golib's: a spinner and loadingText while the host renders the PNG it will show
+			"loading":     setter("an Image", boolOf, (*widget.Image).SetLoading),
+			"loadingText": setter("an Image", stringOf, (*widget.Image).SetLoadingText),
 		}},
 		{Name: "Terminal", Build: buildTerminal, Ctor: []string{"command", "dir", "scrollback"}, restyle: restyleTerminal,
 			Setters: map[string]Setter{

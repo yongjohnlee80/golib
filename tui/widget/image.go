@@ -7,6 +7,7 @@ import (
 	"image/draw"
 	"image/png"
 	"io"
+	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -39,8 +40,71 @@ import (
 // cuts a PNG too large itself, on the caller's thread.
 type Image struct {
 	Base
-	id uint32
-	st imageState
+	id   uint32
+	st   imageState
+	drag imageDrag // a left-button drag panning a scrollable Image
+
+	load imageLoading // the spinner shown while a host renders the PNG
+}
+
+// imageLoading is an Image's loading spinner: shown with its text while the Image has no PNG yet,
+// so a host rendering one (a headless browser's page, a diagram) says so, instead of an empty pane.
+type imageLoading struct {
+	on        bool
+	text      string
+	frame     int    // the spinner's frame
+	stopTicks func() // the spinner's timer, nil when it is not running
+}
+
+// tick runs the spinner's timer while it loads and ctx mounts the Image, and stops it otherwise.
+func (l *imageLoading) tick(ctx *tui.Context) {
+	switch {
+	case l.on && ctx != nil && l.stopTicks == nil:
+		l.stopTicks = ctx.Every(spinnerEvery)
+	case (!l.on || ctx == nil) && l.stopTicks != nil:
+		l.stopTicks()
+		l.stopTicks = nil
+	}
+}
+
+// spinner is the loading spinner's frames, a braille dot turning.
+var spinner = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// spinnerEvery is how often the spinner turns.
+const spinnerEvery = 90 * time.Millisecond
+
+// SetLoading shows the spinner, with the loading text, while on and the Image has no PNG; a PNG
+// set while it loads shows at once. Off stops it.
+func (m *Image) SetLoading(on bool) {
+	if m.load.on == on {
+		return
+	}
+	m.load.on = on
+	m.load.tick(m.Context())
+	m.MarkDirty()
+}
+
+// SetLoadingText is what the spinner says; "" is "loading…".
+func (m *Image) SetLoadingText(s string) {
+	m.load.text = s
+	m.MarkDirty()
+}
+
+// Loading reports whether the Image shows that it is loading.
+func (m *Image) Loading() bool { return m.load.on }
+
+// Init starts the spinner of an Image told to load before it was mounted.
+func (m *Image) Init(ctx *tui.Context) {
+	m.Base.Init(ctx)
+	m.load.stopTicks = nil // a timer is the Context's: a new one starts with none
+	m.load.tick(ctx)
+}
+
+// imageDrag is a pan in progress: where the press was, in cells, and the corner shown then.
+type imageDrag struct {
+	on        bool
+	x, y      int
+	left, top int
 }
 
 // imageState is what an Image shows, and every change to it: the Image's methods only hand it on
@@ -386,17 +450,61 @@ func (m *Image) ScrollTo(x, y int) {
 func (m *Image) AcceptsFocus() bool { return m.st.scrollable }
 
 // HandleEvent scrolls a scrollable Image; see SCROLLABLE.
+//
+// A scrollable Image also pans by the left button held down and dragged, as a viewer's hand does:
+// the part shown follows the pointer, cell by cell.
 func (m *Image) HandleEvent(ev tui.Event) bool {
+	if _, ok := ev.(tui.TickEvent); ok && m.load.on {
+		m.load.frame = (m.load.frame + 1) % len(spinner)
+		m.MarkDirty()
+		return true
+	}
 	if !m.st.scrollable {
 		return false
 	}
 	v := &m.st.view
+	if e, ok := ev.(tui.MouseEvent); ok {
+		if taken, moved := m.drag.pan(e, v, m.Context()); taken {
+			if moved {
+				m.st.moved()
+				m.MarkDirty()
+			}
+			return true
+		}
+	}
+	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
+		m.drag.on = false
+		return true
+	}
 	dx, dy, ok := scrollStep(ev, v.rows, v.height)
 	if ok && v.to(v.left+dx, v.top+dy) {
 		m.st.moved()
 		m.MarkDirty()
 	}
 	return ok
+}
+
+// pan handles a drag of the left button over view v: a press starts it (the pointer captured, on
+// ctx), a move shows the PNG moved with the pointer, a release ends it. taken is whether e was part
+// of one, moved whether the corner shown moved.
+func (d *imageDrag) pan(e tui.MouseEvent, v *imageView, ctx *tui.Context) (taken, moved bool) {
+	switch {
+	case e.Kind == tui.MousePress && e.Button == tui.MouseLeft:
+		*d = imageDrag{on: true, x: e.X, y: e.Y, left: v.left, top: v.top}
+		if ctx != nil {
+			ctx.CapturePointer()
+		}
+		return true, false
+	case e.Kind == tui.MouseMotion && d.on:
+		return true, v.to(d.left-(e.X-d.x)*CellPixelsW, d.top-(e.Y-d.y)*CellPixelsH)
+	case e.Kind == tui.MouseRelease && d.on:
+		d.on = false
+		if ctx != nil {
+			ctx.ReleasePointer()
+		}
+		return true, false
+	}
+	return false, false
 }
 
 // Layout takes every cell offered.
@@ -422,10 +530,25 @@ func (m *Image) Render(s tui.Surface) {
 	v.cols, v.rows = sz.W, sz.H
 	v.to(v.left, v.top) // the cells may hold more now
 	m.st.moved()
-	for y := 0; y < sz.H; y++ {
-		for x := 0; x < sz.W; x++ {
-			s.SetCell(x, y, " ", style.New())
+	// the page's colours under the PNG, and where there is none yet: an empty pane in a window
+	// was its default, a dark band, while a host rendered the PNG
+	page := style.New().Background(style.TokenBackground).Foreground(style.TokenForeground)
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", page)
+	if !m.load.on || len(m.st.png) > 0 || sz.W <= 0 || sz.H <= 0 {
+		return
+	}
+	text := m.load.text
+	if text == "" {
+		text = "loading…"
+	}
+	line := spinner[m.load.frame] + " " + text
+	x := max((sz.W-s.StringWidth(line))/2, 0)
+	for cluster := range tui.Graphemes(line) {
+		if x >= sz.W {
+			break
 		}
+		s.SetCell(x, sz.H/2, cluster, page)
+		x += s.StringWidth(cluster)
 	}
 }
 
