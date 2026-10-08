@@ -97,10 +97,11 @@ func (f fence) closes(line string) bool {
 // and every other line alone.
 func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
 	var out []Block
+	front, _ := frontmatterEnd(lines)
 	for i := 0; i < len(lines); {
 		end := i + 1
-		if n := frontmatterEnd(lines); i == 0 && n > 0 {
-			end = n
+		if i == 0 && front > 0 {
+			end = front
 		} else if f, ok := openFence(lines[i]); ok {
 			for end < len(lines) && !f.closes(lines[end]) {
 				end++
@@ -128,8 +129,8 @@ func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
 // LayOut lays block b out.
 func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
 	code := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: th.Text, LineHeight: codeLineHeight}
-	if b.From == 0 && frontmatterEnd(lines) > 0 {
-		return r.layFrontmatter(b, lines, code, cursorInside, t, th)
+	if front, closed := frontmatterEnd(lines); b.From == 0 && front > 0 {
+		return r.layFrontmatter(b, lines, closed, code, cursorInside, t, th)
 	}
 	if f, ok := openFence(lines[b.From]); ok {
 		return r.layFence(b, f, lines, code, cursorInside, t, th, host)
@@ -269,23 +270,24 @@ func quoteDepth(line string) (depth, off int) {
 	return depth, i
 }
 
-// frontmatterEnd is where a document's frontmatter ends, past its closing line: a "---" first
-// line, closed by "---" or "...". 0: none.
-func frontmatterEnd(lines []string) int {
-	if len(lines) == 0 || strings.TrimRight(lines[0], " ") != "---" {
-		return 0
+// frontmatterEnd is where a document's frontmatter ends, past its closing line, as the Raw
+// view's highlighter reads it: a "---" first line, closed by "---" or "...". Unclosed (while it
+// is being written), it runs to the end. 0: none.
+func frontmatterEnd(lines []string) (end int, closed bool) {
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return 0, false
 	}
 	for k := 1; k < len(lines); k++ {
-		if s := strings.TrimRight(lines[k], " "); s == "---" || s == "..." {
-			return k + 1
+		if s := strings.TrimSpace(lines[k]); s == "---" || s == "..." {
+			return k + 1, true
 		}
 	}
-	return 0
+	return len(lines), false
 }
 
 // layFrontmatter lays frontmatter out as a quiet block: its keys and values small, monospace,
 // its "---" lines hidden off the cursor.
-func (r *MarkdownRenderer) layFrontmatter(b Block, lines []string, opts flow.Options, inside bool, t *gui.TextShaper, th Theme) BlockLayout {
+func (r *MarkdownRenderer) layFrontmatter(b Block, lines []string, closed bool, opts flow.Options, inside bool, t *gui.TextShaper, th Theme) BlockLayout {
 	bl := BlockLayout{Background: th.CodeBackground}
 	font := th.Mono
 	font.Size *= 0.88
@@ -297,10 +299,13 @@ func (r *MarkdownRenderer) layFrontmatter(b Block, lines []string, opts flow.Opt
 		switch {
 		case inside:
 			spans = rawSpans(ln, line, th.Mono, nil)
-		case ln == b.From || ln == b.To-1:
+		case ln == b.From || (closed && ln == b.To-1):
 			spans = []flow.Span{{Text: line, Font: font, Line: ln, Hidden: true}}
 		default:
-			colon := strings.Index(line, ":")
+			colon := strings.IndexByte(line, ':') // a key, as Raw reads one: not a "- " list entry
+			if strings.HasPrefix(strings.TrimLeft(line, " "), "-") {
+				colon = -1
+			}
 			spans = rawSpans(ln, line, font, func(col int) color.NRGBA {
 				if col < colon {
 					return key
@@ -369,7 +374,7 @@ func (r *MarkdownRenderer) layIndented(b Block, lines []string, opts flow.Option
 // InCode reports whether line ln is inside a code block, fenced or indented, as the renderer
 // lays the lines out: there "- x" is code, not a list item.
 func (r *MarkdownRenderer) InCode(lines []string, ln int) bool {
-	if ln < frontmatterEnd(lines) {
+	if front, _ := frontmatterEnd(lines); ln < front {
 		return true
 	}
 	for _, b := range r.Blocks(lines, 0, len(lines)) { // the whole document: a block's From is its start
