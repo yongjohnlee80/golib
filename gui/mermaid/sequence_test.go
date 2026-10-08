@@ -178,3 +178,30 @@ func TestASequenceFitsItsWidth(t *testing.T) {
 		t.Errorf("size %+v fit %v", l.Size(), l.fit)
 	}
 }
+
+// Diagrams with nothing, or nothing but frames, lay out without a participant to stand on.
+func TestEmptyDiagramsLayOut(t *testing.T) {
+	for _, src := range []string{
+		"sequenceDiagram",
+		"sequenceDiagram\n  title Only a title",
+		"sequenceDiagram\n  loop x\n  end",
+		"sequenceDiagram\n  alt a\n  else b\n  end",
+		"sequenceDiagram\n  rect rgb(0, 0, 0)\n    opt y\n    end\n  end",
+		"sequenceDiagram\n  autonumber",
+		"classDiagram",
+		"stateDiagram-v2",
+		"stateDiagram-v2\n  state A {\n  }",
+		"erDiagram",
+		"flowchart LR",
+	} {
+		l, err := lay(t, src, 400)
+		if err != nil {
+			t.Errorf("%q: %v", src, err)
+			continue
+		}
+		if s := l.Size(); s.W < 0 || s.H < 0 || s.W != s.W || s.H != s.H {
+			t.Errorf("%q: size %+v", src, s)
+		}
+		l.Paint(gui.NewRecordingCanvas(gui.Size{W: 400, H: 400}, gui.Size{W: 8, H: 16}))
+	}
+}

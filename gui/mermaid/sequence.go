@@ -348,8 +348,11 @@ func (s *seqLayout) closeActivation(i int, y float32) {
 // when none), its title in a tab, its sections' dividers; an outer frame grows to hold it.
 func (s *seqLayout) closeFrame(f *seqFrame, bottom float32) {
 	th, em := s.l.th, s.em
-	if !f.used {
-		n := len(s.centre) - 1
+	switch n := len(s.centre) - 1; {
+	case f.used:
+	case n < 0: // no participant at all: a frame of its own width
+		f.x0, f.x1 = 0, em*8
+	default: // touched none: across them all
 		f.x0, f.x1 = s.centre[0]-s.boxes[0].box.W/2, s.centre[n]+s.boxes[n].box.W/2
 	}
 	inset := em * 0.5
