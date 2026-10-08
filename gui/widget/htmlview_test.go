@@ -102,11 +102,11 @@ func TestHTMLLayoutReadsTheExport(t *testing.T) {
 	if pre == nil || pre.st.background != (color.NRGBA{0x20, 0x20, 0x20, 0xff}) || !pre.st.overflowScroll {
 		t.Errorf("pre style %+v, want --surface and overflow: auto", pre.st)
 	}
-	if pre.st.border[0].color != (color.NRGBA{0x44, 0x44, 0x44, 0xff}) || pre.st.border[0].w.px(16, 16, 0) != 1 {
+	if pre.st.border[0].color != (color.NRGBA{0x44, 0x44, 0x44, 0xff}) || pre.st.border[0].w.px(16, 16, 0, gui.Size{}) != 1 {
 		t.Errorf("pre border %+v, want 1px --border", pre.st.border[0])
 	}
 	bq := l.boxOf("blockquote")
-	if bq == nil || bq.st.border[3].color != (color.NRGBA{0x5c, 0x9c, 0xf5, 0xff}) || bq.st.border[3].w.px(16, 16, 0) != 3.2 {
+	if bq == nil || bq.st.border[3].color != (color.NRGBA{0x5c, 0x9c, 0xf5, 0xff}) || bq.st.border[3].w.px(16, 16, 0, gui.Size{}) != 3.2 {
 		t.Errorf("blockquote's bar %+v, want .2rem --accent", bq.st.border[3])
 	}
 	tbl := l.boxOf("table")
