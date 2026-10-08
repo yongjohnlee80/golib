@@ -149,7 +149,7 @@ func (l *htmlLayout) build() {
 	css := sheets.String()
 	order := 0
 	l.styler = &styler{rules: parseCSS(css, &order), rootPx: l.rootPx}
-	l.css = hashOf(css)
+	l.css = hashText(css)
 
 	root := &computed{color: l.fg, fontSize: l.rootPx, lineHeight: 1.2, display: "block"}
 	htmlNode, bodyNode := findElement(doc, "html"), findElement(doc, "body")
@@ -243,7 +243,7 @@ func escapeText(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
-func hashOf(s string) uint64 {
+func hashText(s string) uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(s))
 	return h.Sum64()
