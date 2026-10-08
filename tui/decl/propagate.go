@@ -294,6 +294,12 @@ func restyleMenuBar(c tui.Component, p palette) {
 	c.(*menuBarNode).bar.WithStyle(st)
 }
 
+// restyleTerminal paints the program's default colours in the palette's text on base, as an
+// Editor's page is: the terminal sits on the page's colours. Without them, the theme's.
+func restyleTerminal(c tui.Component, p palette) {
+	c.(*widget.Terminal).SetDefaultLook(p.look(roleBase, roleText))
+}
+
 // restyleButton gives a Button's access key the accent's look, or with none the plain underline.
 // Only the key's look changes: the button's colours are its own, or the Dialog's it sits in
 // (restyleDialog), whichever restyle runs first.

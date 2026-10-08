@@ -149,6 +149,7 @@ type Terminal struct {
 	title  string
 
 	normal normalState
+	look   style.Style // the program's default colours, with theme colours on (SetDefaultLook)
 }
 
 // NewTerminal returns a Terminal; Start runs its program.
@@ -222,6 +223,14 @@ func (t *Terminal) SetDir(dir string) { t.cfg.dir = dir }
 
 // SetVimKeys turns WithVimKeys' Esc on or off while the Terminal runs.
 func (t *Terminal) SetVimKeys(on bool) { t.cfg.vimKeys = on }
+
+// SetDefaultLook sets what the program's default foreground and background are painted in, with
+// theme colours on: st's foreground and background, each where it sets one, else the theme's.
+// A host gives the palette's text on base, so the terminal sits on the page's colours.
+func (t *Terminal) SetDefaultLook(st style.Style) {
+	t.look = st
+	t.MarkDirty()
+}
 
 // SetThemeColors turns WithThemeColors on or off while the Terminal runs.
 func (t *Terminal) SetThemeColors(on bool) {
@@ -643,13 +652,21 @@ func (t *Terminal) cellStyle(c vt.Cell) style.Style {
 	case !c.FG.IsDefault():
 		st = st.Foreground(c.FG)
 	case t.cfg.themeColors:
-		st = st.Foreground(style.TokenForeground)
+		if fg, ok := t.look.GetForeground(); ok {
+			st = st.Foreground(fg)
+		} else {
+			st = st.Foreground(style.TokenForeground)
+		}
 	}
 	switch {
 	case !c.BG.IsDefault():
 		st = st.Background(c.BG)
 	case t.cfg.themeColors:
-		st = st.Background(style.TokenBackground)
+		if bg, ok := t.look.GetBackground(); ok {
+			st = st.Background(bg)
+		} else {
+			st = st.Background(style.TokenBackground)
+		}
 	}
 	a := c.Attr
 	if a&vt.AttrBold != 0 {
