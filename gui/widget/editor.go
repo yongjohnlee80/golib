@@ -181,6 +181,19 @@ func (e *Editor) toggleMode() {
 // SetContextMenu turns the right-click menu on or off.
 func (e *Editor) SetContextMenu(on bool) { e.menu.SetEnabled(on) }
 
+// SetContextMenuRows gives the right-click menu build's rows, built each time it opens, and turns
+// it on: what WithContextMenu does, for an Editor something else constructed (a QML style). nil
+// build is the stock rows (Undo, Redo, Copy, Cut, Paste). A row's CoreMenuAction runs on the
+// editor's core when the row is chosen.
+func (e *Editor) SetContextMenuRows(build func(c *tuiwidget.EditorCore) []tuiwidget.MenuItemModel) {
+	if build == nil {
+		e.menu.SetRows(nil)
+	} else {
+		e.menu.SetRows(func() []tuiwidget.MenuItemModel { return build(e.core) })
+	}
+	e.menu.SetEnabled(true)
+}
+
 // SetKeyset changes the editing profile (Vim, Nano, Standard).
 func (e *Editor) SetKeyset(ks tuiwidget.Keyset) { e.core.SetKeyset(ks); e.body.MarkDirty() }
 
