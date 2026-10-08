@@ -656,19 +656,13 @@ func spanOf(n *phtml.Node) [2]int {
 	return out
 }
 
-// deepest is the innermost box of a laid-out top block holding the point at document y (or, with
-// srcByte >= 0, the source byte) that has source bytes of its own: a list's item, not the list.
-func deepest(blk *topBlock, y float32, srcByte int) *box {
+// deepest is the innermost box of a laid-out top block holding document y that has source bytes:
+// a list's item, not the list.
+func deepest(blk *topBlock, y float32) *box {
 	var found *box
 	var walk func(bx *box)
 	walk = func(bx *box) {
-		hit := bx.src[0] >= 0
-		if srcByte >= 0 {
-			hit = hit && bx.src[0] <= srcByte && srcByte < bx.src[1]
-		} else {
-			hit = hit && y >= blk.y+bx.y && y < blk.y+bx.y+bx.h
-		}
-		if !hit {
+		if bx.src[0] < 0 || y < blk.y+bx.y || y >= blk.y+bx.y+bx.h {
 			return
 		}
 		found = bx
@@ -680,6 +674,39 @@ func deepest(blk *topBlock, y float32, srcByte int) *box {
 	return found
 }
 
+// ownAt is the innermost box of a top block whose own data-src holds source byte b; else, b in a
+// gap between them (the blank line between a list's items), the first after it, else the last
+// before it; nil when no box has its own.
+func ownAt(blk *topBlock, b int) *box {
+	var in, after, before *box
+	var walk func(bx *box)
+	walk = func(bx *box) {
+		if bx.own {
+			switch {
+			case bx.src[0] <= b && b < bx.src[1]:
+				in = bx
+			case bx.src[0] >= b:
+				if after == nil {
+					after = bx
+				}
+			default:
+				before = bx
+			}
+		}
+		for _, k := range bx.kids {
+			walk(k)
+		}
+	}
+	walk(blk.box)
+	switch {
+	case in != nil:
+		return in
+	case after != nil:
+		return after
+	}
+	return before
+}
+
 // BlockAt is the block at document y with source bytes of its own (a list's item rather than the
 // list): the start of its source bytes, -1 when there are none, and its top.
 func (l *htmlLayout) BlockAt(y float32) (int, float32) {
@@ -688,7 +715,7 @@ func (l *htmlLayout) BlockAt(y float32) (int, float32) {
 	}
 	blk := l.blocks[l.blockAtY(y)]
 	if blk.laid {
-		if bx := deepest(blk, y, -1); bx != nil {
+		if bx := deepest(blk, y); bx != nil {
 			return bx.src[0], blk.y + bx.y
 		}
 	}
@@ -727,7 +754,7 @@ func (l *htmlLayout) BlockTop(b int) (float32, bool) {
 	}
 	l.layOutThrough(at)
 	blk := l.blocks[at]
-	if bx := deepest(blk, 0, b); bx != nil {
+	if bx := ownAt(blk, b); bx != nil {
 		return blk.y + bx.y, true
 	}
 	return blk.y, true
