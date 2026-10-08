@@ -43,6 +43,7 @@ type topBlock struct {
 	mBot    float32
 	laid    bool
 	textLen int
+	after   int // an absolutely positioned block's: the index of the flow block it comes before
 }
 
 type htmlLayout struct {
@@ -60,13 +61,16 @@ type htmlLayout struct {
 	selColor color.NRGBA
 	look     uint64 // a hash of the colours and text size the boxes were styled with
 
-	width   float32
-	viewH   float32 // the view's height at the last paint: vh, and a media query's height
-	styler  *styler
-	css     uint64 // a hash of the stylesheets in force
-	body    *computed
-	bodyE   edges
-	blocks  []*topBlock
+	width  float32
+	viewH  float32 // the view's height at the last paint: vh, and a media query's height
+	styler *styler
+	css    uint64 // a hash of the stylesheets in force
+	body   *computed
+	bodyE  edges
+	blocks []*topBlock
+	// abs are the body's absolutely positioned children: out of the flow, laid against the page
+	// and painted over it. Their text is drawn, not selectable, and their links do not follow.
+	abs     []*topBlock
 	runs    []*box // the laid-out runs in document order: DocPos.Block
 	parents map[*phtml.Node]*phtml.Node
 	images  *htmlImages
@@ -209,6 +213,7 @@ func (l *htmlLayout) build() {
 	// the top-level blocks: each block-level child of the body, and each run of inline content
 	// between them
 	l.blocks = l.blocks[:0]
+	l.abs = l.abs[:0]
 	var pending []*phtml.Node
 	flushInline := func() {
 		text, shows := 0, false
@@ -231,6 +236,11 @@ func (l *htmlLayout) build() {
 		}
 		cs := l.styler.style(c, st, append(chain, c))
 		if cs.display == "none" {
+			continue
+		}
+		if cs.position == "absolute" {
+			flushInline()
+			l.abs = append(l.abs, &topBlock{node: c, src: spanOf(c), after: len(l.blocks)})
 			continue
 		}
 		if !blockLevel(cs.display) {
@@ -361,6 +371,9 @@ func (l *htmlLayout) place() {
 		pending = b.mBot
 	}
 	l.topY = y + pending + l.bodyE.bot() + l.bodyE.m[2]
+	for _, b := range l.abs {
+		b.laid = false // its place with no top may follow the flow's
+	}
 	l.renumber()
 }
 
@@ -458,6 +471,9 @@ func (l *htmlLayout) layTop(b *topBlock) {
 	}
 	e := l.edgesOf(bx.st, width)
 	l.layBlock(bx, l.bodyLeft(), 0, width)
+	if bx.st.position == "relative" {
+		l.shiftRelative(bx, width)
+	}
 	if b.node == nil {
 		e = edges{}
 	}
@@ -867,6 +883,31 @@ func (l *htmlLayout) Paint(c gui.Canvas) {
 		}
 		l.paintBox(c, blk.box, 0, blk.y-scroll, sel)
 	}
+	for _, b := range l.abs {
+		if !b.laid {
+			l.layAbsTop(b)
+		}
+		// laid in document coordinates; one wholly off the page (a skip link at top: -100px) is
+		// never drawn
+		if bx := b.box; bx.y+bx.h > scroll && bx.y < scroll+size.H && bx.y+bx.h > 0 {
+			l.paintBox(c, bx, 0, -scroll, sel)
+		}
+	}
+}
+
+// layAbsTop lays an absolutely positioned child of the body against the page's content box, in
+// document coordinates: at its insets, or where it would have been in the flow.
+func (l *htmlLayout) layAbsTop(b *topBlock) {
+	bd := &builder{l: l, s: l.styler, chain: l.chainTo(b)}
+	st := l.styler.style(b.node, l.body, bd.chain)
+	bx := bd.box(b.node, st, b.src)
+	staticY := l.topY
+	if b.after < len(l.blocks) {
+		staticY = l.blocks[b.after].y
+	}
+	top := l.bodyE.m[0] + l.bodyE.top()
+	l.layAbsolute(bx, l.bodyLeft(), top, l.contentWidth(), staticY)
+	b.box, b.y, b.h, b.laid = bx, 0, bx.y+bx.h, true
 }
 
 // adoptLook takes the window's colours and text size: the page's text and ground from the cells

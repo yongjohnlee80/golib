@@ -203,9 +203,9 @@ func (b *builder) children(n *phtml.Node, st *computed, src [2]int) []*box {
 					flush()
 					run = &box{kind: kRun, st: st, src: src, sep: "\n"}
 				}
-			case c.Name == "img":
+			case c.Name == "img" && cs.position != "absolute":
 				cur().spans = append(cur().spans, b.l.imageSpan(c, cs, src))
-			case blockLevel(cs.display) && b.depth < maxBoxDepth:
+			case (blockLevel(cs.display) || cs.position == "absolute") && b.depth < maxBoxDepth:
 				flush()
 				b.depth++
 				out = append(out, b.box(c, cs, src))
@@ -402,30 +402,64 @@ func (e edges) bot() float32   { return e.b[2] + e.p[2] }
 // layBlock lays box bx out at (x, y) in an available width avail: its border box's place and
 // size. Its own vertical margins are its parent's to place (they collapse with its siblings').
 func (l *htmlLayout) layBlock(bx *box, x, y, avail float32) {
-	e := l.edgesOf(bx.st, avail)
+	st := bx.st
+	e := l.edgesOf(st, avail)
+	px := func(v cssLen, of float32) float32 { return v.px(st.fontSize, l.rootPx, of, l.view()) }
+	hpad, vpad := e.left()+e.right(), e.top()+e.bot()
 	w := avail - e.m[1] - e.m[3]
-	content := w - e.left() - e.right()
-	if bx.st.width.set() && !bx.st.width.auto() {
-		content = bx.st.width.px(bx.st.fontSize, l.rootPx, avail, l.view())
+	content := w - hpad
+	// a width, and its bounds, are the content box's, or with box-sizing the border box's
+	sized := func(v cssLen, of, pad float32) (float32, bool) {
+		if !v.set() || v.auto() {
+			return 0, false
+		}
+		n := px(v, of)
+		if st.borderBox {
+			n -= pad
+		}
+		return n, true
 	}
-	if bx.st.maxWidth.set() && !bx.st.maxWidth.auto() {
-		content = min(content, bx.st.maxWidth.px(bx.st.fontSize, l.rootPx, avail, l.view()))
+	if n, ok := sized(st.width, avail, hpad); ok {
+		content = n
+	}
+	if n, ok := sized(st.maxWidth, avail, hpad); ok {
+		content = min(content, n)
+	}
+	if n, ok := sized(st.minWidth, avail, hpad); ok {
+		content = max(content, n)
 	}
 	content = max(content, 1)
-	w = content + e.left() + e.right()
+	w = content + hpad
 	left := x + e.m[3]
-	if bx.st.margin[1].auto() && bx.st.margin[3].auto() {
+	if st.margin[1].auto() && st.margin[3].auto() {
 		left = x + max((avail-w)/2, 0) // margin: auto centres a narrower box
 	}
 	bx.x, bx.y, bx.w = left, y, w
 	inner := y + e.top()
+	var ch float32
 	switch bx.kind {
 	case kTable:
-		inner += l.layTable(bx, left+e.left(), inner, content)
+		ch = l.layTable(bx, left+e.left(), inner, content)
 	default:
-		inner += l.layKids(bx, left+e.left(), inner, content)
+		ch = l.layKids(bx, left+e.left(), inner, content)
 	}
-	bx.h = inner + e.bot() - y
+	// a height, and its bounds, set the content box; a percentage of an unknown height is auto
+	height := func(v cssLen) (float32, bool) {
+		if v.unit == '%' {
+			return 0, false
+		}
+		return sized(v, 0, vpad)
+	}
+	if n, ok := height(st.height); ok {
+		ch = n
+	}
+	if n, ok := height(st.maxHeight); ok {
+		ch = min(ch, n)
+	}
+	if n, ok := height(st.minHeight); ok {
+		ch = max(ch, n)
+	}
+	bx.h = e.top() + max(ch, 0) + e.bot()
 	if bx.item {
 		bx.marker = l.markerOf(bx)
 	}
@@ -434,9 +468,16 @@ func (l *htmlLayout) layBlock(bx *box, x, y, avail float32) {
 // layKids stacks a block's children down from y and answers their height. A block's top margin
 // collapses with the bottom margin of the block before it, to the larger; a run takes no margins.
 // The last child's bottom margin stays inside its parent: margins collapse between siblings, not
-// through parents.
+// through parents. An absolutely positioned child takes no place: it is laid out after the flow,
+// against this block's content box (positioned), and a relative one is moved once laid, its place
+// kept.
 func (l *htmlLayout) layKids(bx *box, x, y, width float32) float32 {
 	cy, pending := y, float32(0)
+	type placed struct {
+		k       *box
+		staticY float32
+	}
+	var abs []placed
 	for _, k := range bx.kids {
 		if k.kind == kRun {
 			cy += pending
@@ -445,12 +486,82 @@ func (l *htmlLayout) layKids(bx *box, x, y, width float32) float32 {
 			cy += k.h
 			continue
 		}
+		if k.st.position == "absolute" {
+			abs = append(abs, placed{k, cy + pending})
+			continue
+		}
 		e := l.edgesOf(k.st, width)
 		l.layBlock(k, x, cy+max(pending, e.m[0]), width)
 		cy = k.y + k.h
 		pending = e.m[2]
+		if k.st.position == "relative" {
+			l.shiftRelative(k, width)
+		}
+	}
+	for _, p := range abs {
+		l.layAbsolute(p.k, x, y, width, p.staticY)
 	}
 	return cy + pending - y
+}
+
+// layAbsolute lays an absolutely positioned box out of the flow: as wide as its content (up to
+// width) unless it has a width, then at its insets from the containing box at (x, y), or where it
+// would have been in the flow (staticY) for an axis with none.
+func (l *htmlLayout) layAbsolute(k *box, x, y, width, staticY float32) {
+	st := k.st
+	e := l.edgesOf(st, width)
+	avail := width
+	if !st.width.set() || st.width.auto() {
+		_, hi := l.minMax(k, width)
+		avail = min(hi+e.m[1]+e.m[3], width)
+	}
+	l.layBlock(k, x, staticY, avail)
+	px := func(v cssLen, of float32) float32 { return v.px(st.fontSize, l.rootPx, of, l.view()) }
+	tx, ty := k.x, k.y
+	switch {
+	case st.inset[3].set() && !st.inset[3].auto():
+		tx = x + px(st.inset[3], width) + e.m[3]
+	case st.inset[1].set() && !st.inset[1].auto():
+		tx = x + width - px(st.inset[1], width) - k.w - e.m[1]
+	}
+	if st.inset[0].set() && !st.inset[0].auto() {
+		ty = y + px(st.inset[0], 0) + e.m[0]
+	}
+	shiftBox(k, tx-k.x, ty-k.y)
+}
+
+// shiftRelative moves a relatively positioned box by its insets, its place in the flow kept.
+func (l *htmlLayout) shiftRelative(k *box, width float32) {
+	st := k.st
+	px := func(v cssLen, of float32) float32 { return v.px(st.fontSize, l.rootPx, of, l.view()) }
+	var dx, dy float32
+	switch {
+	case st.inset[3].set() && !st.inset[3].auto():
+		dx = px(st.inset[3], width)
+	case st.inset[1].set() && !st.inset[1].auto():
+		dx = -px(st.inset[1], width)
+	}
+	switch {
+	case st.inset[0].set() && !st.inset[0].auto():
+		dy = px(st.inset[0], 0)
+	case st.inset[2].set() && !st.inset[2].auto():
+		dy = -px(st.inset[2], 0)
+	}
+	shiftBox(k, dx, dy)
+}
+
+// shiftBox moves a laid-out box and everything in it.
+func shiftBox(bx *box, dx, dy float32) {
+	if dx == 0 && dy == 0 {
+		return
+	}
+	bx.x, bx.y = bx.x+dx, bx.y+dy
+	if bx.kind == kRun {
+		bx.px, bx.py = bx.px+dx, bx.py+dy
+	}
+	for _, k := range bx.kids {
+		shiftBox(k, dx, dy)
+	}
 }
 
 // layRun lays an anonymous run's paragraph out at width.
@@ -593,7 +704,10 @@ func (l *htmlLayout) minMax(bx *box, avail float32) (float32, float32) {
 // paintBox draws bx and what it holds with its top block's origin at (ox, oy).
 func (l *htmlLayout) paintBox(c gui.Canvas, bx *box, ox, oy float32, sel selRange) {
 	r := gui.Rect{X: ox + bx.x, Y: oy + bx.y, W: bx.w, H: bx.h}
-	if bx.kind != kRun {
+	if bx.st.invisible && bx.kind == kRun {
+		return // visibility: hidden keeps the run's place and draws nothing
+	}
+	if bx.kind != kRun && !bx.st.invisible {
 		radius := bx.st.radius.px(bx.st.fontSize, l.rootPx, bx.w, l.view())
 		if bx.st.background.A > 0 {
 			c.FillRRect(r, radius, gui.Solid(bx.st.background))
@@ -617,8 +731,16 @@ func (l *htmlLayout) paintBox(c gui.Canvas, bx *box, ox, oy float32, sel selRang
 		}
 		return
 	}
+	// a positioned child is painted over the flow
 	for _, k := range bx.kids {
-		l.paintBox(c, k, ox, oy, sel)
+		if k.st.position != "absolute" {
+			l.paintBox(c, k, ox, oy, sel)
+		}
+	}
+	for _, k := range bx.kids {
+		if k.st.position == "absolute" {
+			l.paintBox(c, k, ox, oy, sel)
+		}
 	}
 }
 
