@@ -61,6 +61,7 @@ type htmlLayout struct {
 	look     uint64 // a hash of the colours and text size the boxes were styled with
 
 	width   float32
+	viewH   float32 // the view's height at the last paint: vh, and a media query's height
 	styler  *styler
 	css     uint64 // a hash of the stylesheets in force
 	body    *computed
@@ -109,6 +110,9 @@ func (l *htmlLayout) ResetImages() {
 	l.sheets.reset()
 	l.built = false
 }
+
+// view is the view's size, what vw and vh are hundredths of.
+func (l *htmlLayout) view() gui.Size { return gui.Size{W: l.width, H: l.viewH} }
 
 // SetWidth lays the page out at w pixels from the next paint on.
 func (l *htmlLayout) SetWidth(w float32) {
@@ -174,7 +178,7 @@ func (l *htmlLayout) build() {
 	sheets.WriteString("\n" + l.v.Stylesheet())
 	css := sheets.String()
 	order := 0
-	l.styler = &styler{rules: parseCSS(css, &order), rootPx: l.rootPx}
+	l.styler = &styler{rules: parseCSS(css, &order, mediaEnv{w: l.width, h: l.viewH, dark: isDark(l.bg)}), rootPx: l.rootPx, view: l.view()}
 	l.css = hashText(css)
 
 	// rem is the root element's size, which starts from the window's text: never the last build's,
@@ -320,7 +324,7 @@ func (l *htmlLayout) keyOf(b *topBlock, width float32) uint64 {
 func (l *htmlLayout) contentWidth() float32 {
 	w := l.width - l.bodyE.m[1] - l.bodyE.m[3] - l.bodyE.left() - l.bodyE.right()
 	if l.body.maxWidth.set() && !l.body.maxWidth.auto() {
-		w = min(w, l.body.maxWidth.px(l.body.fontSize, l.rootPx, l.width))
+		w = min(w, l.body.maxWidth.px(l.body.fontSize, l.rootPx, l.width, l.view()))
 	}
 	return max(w, 1)
 }
@@ -834,6 +838,10 @@ func (l *htmlLayout) HandleTask(r tui.TaskResult) bool {
 func (l *htmlLayout) Paint(c gui.Canvas) {
 	l.shaper = c.Text()
 	l.adoptLook(c)
+	if h := c.Size().H; h > 0 && h != l.viewH {
+		l.viewH = h
+		l.built = false // vh and a media query's height read it
+	}
 	if !l.built {
 		l.build()
 	}

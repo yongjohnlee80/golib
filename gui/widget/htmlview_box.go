@@ -55,6 +55,7 @@ type box struct {
 type styler struct {
 	rules  []cssRule
 	rootPx float32
+	view   gui.Size // the view, for vw and vh in the cascade (a font-size in vw)
 }
 
 // style computes element n's style; chain is n's ancestors outermost first, then n.
@@ -107,18 +108,18 @@ func (s *styler) style(n *phtml.Node, parent *computed, chain []*phtml.Node) *co
 	// custom properties first, so a var() in this element's own declarations sees them
 	for _, h := range hits {
 		if strings.HasPrefix(h.d.prop, "--") {
-			c.apply(h.d, parent, s.rootPx)
+			c.apply(h.d, parent, s.rootPx, s.view)
 		}
 	}
 	// the font size before the rest, so em lengths resolve against this element's own size
 	for _, h := range hits {
 		if h.d.prop == "font-size" || h.d.prop == "font" {
-			c.apply(h.d, parent, s.rootPx)
+			c.apply(h.d, parent, s.rootPx, s.view)
 		}
 	}
 	for _, h := range hits {
 		if !strings.HasPrefix(h.d.prop, "--") && h.d.prop != "font-size" && h.d.prop != "font" {
-			c.apply(h.d, parent, s.rootPx)
+			c.apply(h.d, parent, s.rootPx, s.view)
 		}
 	}
 	if n.Name == "a" {
@@ -357,10 +358,10 @@ type edges struct{ m, b, p [4]float32 }
 func (l *htmlLayout) edgesOf(st *computed, avail float32) edges {
 	var e edges
 	for i := range 4 {
-		e.m[i] = st.margin[i].px(st.fontSize, l.rootPx, avail)
-		e.p[i] = st.padding[i].px(st.fontSize, l.rootPx, avail)
+		e.m[i] = st.margin[i].px(st.fontSize, l.rootPx, avail, l.view())
+		e.p[i] = st.padding[i].px(st.fontSize, l.rootPx, avail, l.view())
 		if !st.border[i].none && st.border[i].w.set() {
-			e.b[i] = st.border[i].w.px(st.fontSize, l.rootPx, avail)
+			e.b[i] = st.border[i].w.px(st.fontSize, l.rootPx, avail, l.view())
 		}
 	}
 	return e
@@ -378,10 +379,10 @@ func (l *htmlLayout) layBlock(bx *box, x, y, avail float32) {
 	w := avail - e.m[1] - e.m[3]
 	content := w - e.left() - e.right()
 	if bx.st.width.set() && !bx.st.width.auto() {
-		content = bx.st.width.px(bx.st.fontSize, l.rootPx, avail)
+		content = bx.st.width.px(bx.st.fontSize, l.rootPx, avail, l.view())
 	}
 	if bx.st.maxWidth.set() && !bx.st.maxWidth.auto() {
-		content = min(content, bx.st.maxWidth.px(bx.st.fontSize, l.rootPx, avail))
+		content = min(content, bx.st.maxWidth.px(bx.st.fontSize, l.rootPx, avail, l.view()))
 	}
 	content = max(content, 1)
 	w = content + e.left() + e.right()
@@ -566,7 +567,7 @@ func (l *htmlLayout) minMax(bx *box, avail float32) (float32, float32) {
 func (l *htmlLayout) paintBox(c gui.Canvas, bx *box, ox, oy float32, sel selRange) {
 	r := gui.Rect{X: ox + bx.x, Y: oy + bx.y, W: bx.w, H: bx.h}
 	if bx.kind != kRun {
-		radius := bx.st.radius.px(bx.st.fontSize, l.rootPx, bx.w)
+		radius := bx.st.radius.px(bx.st.fontSize, l.rootPx, bx.w, l.view())
 		if bx.st.background.A > 0 {
 			c.FillRRect(r, radius, gui.Solid(bx.st.background))
 		}

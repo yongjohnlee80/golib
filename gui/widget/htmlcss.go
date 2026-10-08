@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
 	"github.com/yongjohnlee80/golib/gui/internal/csscolor"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
@@ -25,15 +26,23 @@ import (
 // cssLen is a length as written: resolved against a font size, the root's, or a width at layout.
 type cssLen struct {
 	v    float32
-	unit byte // 'p' px, 'e' em, 'r' rem, 'c' ch, '%', 'a' auto, 0 unset
+	unit byte     // 'p' px, 'e' em, 'r' rem, 'c' ch, '%', 'w' vw, 'h' vh, 'a' auto, 'x' an expression, 0 unset
+	expr *cssExpr // calc(), min(), max(), clamp() (htmlcss_values.go)
 }
 
 func (l cssLen) set() bool  { return l.unit != 0 }
 func (l cssLen) auto() bool { return l.unit == 'a' }
 
-// px is l in pixels: em and ch against font, rem against root, % against of.
-func (l cssLen) px(font, root, of float32) float32 {
+// px is l in pixels: em and ch against font, rem against root, % against of, vw and vh against
+// the view.
+func (l cssLen) px(font, root, of float32, view gui.Size) float32 {
 	switch l.unit {
+	case 'x':
+		return l.expr.eval(font, root, of, view)
+	case 'w':
+		return l.v / 100 * view.W
+	case 'h':
+		return l.v / 100 * view.H
 	case 'p':
 		return l.v
 	case 'e':
@@ -105,7 +114,18 @@ type cssCompound struct {
 	tag     string
 	id      string
 	classes []string
+	attrs   []cssAttr
 	root    bool
+	first   bool          // :first-child
+	last    bool          // :last-child
+	not     []cssCompound // :not(…), each must not match
+	never   bool          // a state the view never has (:hover, :focus, …): the rule never applies
+}
+
+// cssAttr is an attribute selector: [name], or [name op value] with op one of = ~= |= ^= $= *=.
+type cssAttr struct {
+	name, op, value string
+	fold            bool // the i flag: the value is compared case-insensitively
 }
 
 type cssSelector struct {
@@ -120,8 +140,15 @@ type cssRule struct {
 	order int
 }
 
-// parseCSS reads a stylesheet's rules; @-rules are skipped with their blocks.
-func parseCSS(src string, order *int) []cssRule {
+// mediaEnv is what a media query is asked about: the view's size in pixels and its theme.
+type mediaEnv struct {
+	w, h float32
+	dark bool
+}
+
+// parseCSS reads a stylesheet's rules: an @media block's when its query matches env; any other
+// @-rule is skipped with its block.
+func parseCSS(src string, order *int, env mediaEnv) []cssRule {
 	src = stripComments(src)
 	var rules []cssRule
 	for i := 0; i < len(src); {
@@ -133,7 +160,10 @@ func parseCSS(src string, order *int) []cssRule {
 		body, next := block(src, i+open)
 		i = next
 		if strings.HasPrefix(head, "@") {
-			continue // @media and the like: a page that needs them still shows its text
+			if q, ok := strings.CutPrefix(strings.ToLower(head), "@media"); ok && mediaMatches(q, env) {
+				rules = append(rules, parseCSS(body, order, env)...)
+			}
+			continue // @font-face, @supports and the like: a page that needs them still shows its text
 		}
 		var sels []cssSelector
 		for _, s := range strings.Split(head, ",") {
@@ -222,16 +252,23 @@ func splitTop(s string, sep byte) []string {
 	return append(out, s[start:])
 }
 
-// parseSelector reads one selector of the subset; any other (attributes, pseudo-classes other
-// than :root, siblings) is refused, so its rule matches nothing.
+// parseSelector reads one selector of the subset: compounds joined by descendant and child
+// combinators. A sibling combinator, or a pseudo-class or pseudo-element outside the subset,
+// refuses the selector, so its rule matches nothing.
 func parseSelector(s string) (cssSelector, bool) {
 	var sel cssSelector
-	s = strings.ReplaceAll(s, ">", " > ")
+	toks, ok := selectorTokens(s)
+	if !ok {
+		return cssSelector{}, false
+	}
 	pendingChild := false
-	for _, tok := range strings.Fields(s) {
-		if tok == ">" {
+	for _, tok := range toks {
+		switch tok {
+		case ">":
 			pendingChild = true
 			continue
+		case "+", "~":
+			return cssSelector{}, false
 		}
 		c, ok := parseCompound(tok)
 		if !ok {
@@ -246,59 +283,223 @@ func parseSelector(s string) (cssSelector, bool) {
 		}
 		pendingChild = false
 		sel.parts = append(sel.parts, c)
-		if c.id != "" {
-			sel.spec += 100
-		}
-		sel.spec += 10 * len(c.classes)
-		if c.root {
-			sel.spec += 10
-		}
-		if c.tag != "" && c.tag != "*" {
-			sel.spec++
-		}
+		sel.spec += c.specificity()
 	}
 	return sel, len(sel.parts) > 0 && !pendingChild
 }
 
+// specificity is a compound's: an id 100, a class, an attribute or a pseudo-class 10, a type 1;
+// :not() counts what it holds.
+func (c cssCompound) specificity() int {
+	n := 10 * (len(c.classes) + len(c.attrs))
+	if c.id != "" {
+		n += 100
+	}
+	if c.root || c.first || c.last || c.never {
+		n += 10
+	}
+	if c.tag != "" && c.tag != "*" {
+		n++
+	}
+	for _, x := range c.not {
+		n += x.specificity()
+	}
+	return n
+}
+
+// selectorTokens splits a selector into compounds and combinators (">", "+", "~"), keeping what is
+// inside brackets, parentheses and quotes whole; false for an unbalanced one.
+func selectorTokens(s string) ([]string, bool) {
+	var toks []string
+	var cur strings.Builder
+	flush := func() {
+		if cur.Len() > 0 {
+			toks = append(toks, cur.String())
+			cur.Reset()
+		}
+	}
+	depth := 0
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			cur.WriteByte(c)
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+			cur.WriteByte(c)
+		case c == '[' || c == '(':
+			depth++
+			cur.WriteByte(c)
+		case c == ']' || c == ')':
+			if depth == 0 {
+				return nil, false
+			}
+			depth--
+			cur.WriteByte(c)
+		case depth > 0:
+			cur.WriteByte(c)
+		case c == '>' || c == '+' || c == '~':
+			flush()
+			toks = append(toks, string(c))
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f':
+			flush()
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	if depth != 0 || quote != 0 {
+		return nil, false
+	}
+	flush()
+	return toks, true
+}
+
+// neverPseudo are the states a page shown in the view is never in: a rule for them parses and never
+// applies, where an unknown pseudo-class drops its selector.
+var neverPseudo = map[string]bool{"hover": true, "focus": true, "focus-visible": true, "focus-within": true,
+	"active": true, "visited": true, "target": true, "checked": true, "disabled": true}
+
+// parseCompound reads tag, #id, .class, [attr…] and :pseudo parts.
 func parseCompound(tok string) (cssCompound, bool) {
 	var c cssCompound
 	i := 0
-	for i < len(tok) && tok[i] != '.' && tok[i] != '#' && tok[i] != ':' {
+	for i < len(tok) && !strings.ContainsRune(".#:[", rune(tok[i])) {
 		i++
 	}
 	c.tag = strings.ToLower(tok[:i])
-	for i < len(tok) {
-		kind := tok[i]
-		j := i + 1
-		for j < len(tok) && tok[j] != '.' && tok[j] != '#' && tok[j] != ':' {
-			j++
-		}
-		name := tok[i+1 : j]
-		switch kind {
-		case '.':
-			c.classes = append(c.classes, name)
-		case '#':
-			c.id = name
-		case ':':
-			if strings.ToLower(name) != "root" {
-				return c, false
-			}
-			c.root = true
-		}
-		i = j
-	}
 	for _, r := range c.tag {
 		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '*') {
 			return c, false
 		}
 	}
+	for i < len(tok) {
+		kind := tok[i]
+		switch kind {
+		case '[':
+			end := strings.IndexByte(tok[i:], ']')
+			if end < 0 {
+				return c, false
+			}
+			a, ok := parseAttrSelector(tok[i+1 : i+end])
+			if !ok {
+				return c, false
+			}
+			c.attrs = append(c.attrs, a)
+			i += end + 1
+			continue
+		case ':':
+			if i+1 < len(tok) && tok[i+1] == ':' {
+				return c, false // a pseudo-element: not drawn
+			}
+			j := i + 1
+			for j < len(tok) && tok[j] != '.' && tok[j] != '#' && tok[j] != ':' && tok[j] != '[' && tok[j] != '(' {
+				j++
+			}
+			name := strings.ToLower(tok[i+1 : j])
+			arg := ""
+			if j < len(tok) && tok[j] == '(' {
+				end := matchingParen(tok, j)
+				if end < 0 {
+					return c, false
+				}
+				arg, j = tok[j+1:end], end+1
+			}
+			switch {
+			case name == "root" && arg == "":
+				c.root = true
+			case name == "first-child" && arg == "":
+				c.first = true
+			case name == "last-child" && arg == "":
+				c.last = true
+			case name == "not":
+				for _, part := range splitTop(arg, ',') {
+					x, ok := parseCompound(strings.TrimSpace(part))
+					if !ok || strings.TrimSpace(part) == "" {
+						return c, false
+					}
+					c.not = append(c.not, x)
+				}
+			case neverPseudo[name] && arg == "":
+				c.never = true
+			default:
+				return c, false
+			}
+			i = j
+			continue
+		}
+		j := i + 1
+		for j < len(tok) && !strings.ContainsRune(".#:[", rune(tok[j])) {
+			j++
+		}
+		name := tok[i+1 : j]
+		if name == "" {
+			return c, false
+		}
+		switch kind {
+		case '.':
+			c.classes = append(c.classes, name)
+		case '#':
+			c.id = name
+		default:
+			return c, false
+		}
+		i = j
+	}
 	return c, true
 }
 
-// matchesCompound reports whether element n is c; root is whether n is the document's root
-// element.
-func matchesCompound(c cssCompound, n *phtml.Node, root bool) bool {
-	if c.root && !root {
+// matchingParen is the index of the ) closing the ( at open; -1 for none.
+func matchingParen(s string, open int) int {
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// parseAttrSelector reads the inside of [...]: name, name=value, with ~ | ^ $ * before the =, a
+// value quoted or bare, and an i flag.
+func parseAttrSelector(s string) (cssAttr, bool) {
+	s = strings.TrimSpace(s)
+	eq := strings.IndexByte(s, '=')
+	if eq < 0 {
+		name := strings.ToLower(s)
+		return cssAttr{name: name}, name != "" && !strings.ContainsAny(name, " \t\"'")
+	}
+	a := cssAttr{op: "="}
+	name := s[:eq]
+	if eq > 0 && strings.ContainsRune("~|^$*", rune(s[eq-1])) {
+		a.op = s[eq-1 : eq+1]
+		name = s[:eq-1]
+	}
+	a.name = strings.ToLower(strings.TrimSpace(name))
+	val := strings.TrimSpace(s[eq+1:])
+	if strings.HasSuffix(strings.ToLower(val), " i") {
+		val, a.fold = strings.TrimSpace(val[:len(val)-2]), true
+	}
+	if len(val) >= 2 && (val[0] == '"' || val[0] == '\'') && val[len(val)-1] == val[0] {
+		val = val[1 : len(val)-1]
+	}
+	a.value = val
+	return a, a.name != ""
+}
+
+// matchesCompound reports whether element n is c; parent is n's parent element (nil for the
+// root), and root is whether n is the document's root element.
+func matchesCompound(c cssCompound, n, parent *phtml.Node, root bool) bool {
+	if c.never || c.root && !root {
 		return false
 	}
 	if c.tag != "" && c.tag != "*" && c.tag != n.Name {
@@ -325,7 +526,75 @@ func matchesCompound(c cssCompound, n *phtml.Node, root bool) bool {
 			}
 		}
 	}
+	for _, a := range c.attrs {
+		if !a.matches(n) {
+			return false
+		}
+	}
+	if c.first || c.last {
+		if parent == nil {
+			return false
+		}
+		var first, last *phtml.Node
+		for _, k := range parent.Children {
+			if k.Kind == phtml.StartTag || k.Kind == phtml.SelfClosing {
+				if first == nil {
+					first = k
+				}
+				last = k
+			}
+		}
+		if c.first && first != n || c.last && last != n {
+			return false
+		}
+	}
+	for _, x := range c.not {
+		if matchesCompound(x, n, parent, root) {
+			return false
+		}
+	}
 	return true
+}
+
+// matches reports whether element n has the attribute as a selects it.
+func (a cssAttr) matches(n *phtml.Node) bool {
+	var have string
+	found := false
+	for _, at := range n.Attrs {
+		if strings.EqualFold(at.Name, a.name) {
+			have, found = at.Value, true
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+	want := a.value
+	if a.fold {
+		have, want = strings.ToLower(have), strings.ToLower(want)
+	}
+	switch a.op {
+	case "":
+		return true
+	case "=":
+		return have == want
+	case "~=":
+		for _, f := range strings.Fields(have) {
+			if f == want {
+				return true
+			}
+		}
+		return false
+	case "|=":
+		return have == want || strings.HasPrefix(have, want+"-")
+	case "^=":
+		return want != "" && strings.HasPrefix(have, want)
+	case "$=":
+		return want != "" && strings.HasSuffix(have, want)
+	case "*=":
+		return want != "" && strings.Contains(have, want)
+	}
+	return false
 }
 
 // matches reports whether sel matches the last of chain, the element and its ancestors outermost
@@ -335,7 +604,14 @@ func (sel cssSelector) matches(chain []*phtml.Node) bool {
 }
 
 func matchFrom(sel cssSelector, part int, chain []*phtml.Node, at int) bool {
-	if at < 0 || !matchesCompound(sel.parts[part], chain[at], at == 0) {
+	if at < 0 {
+		return false
+	}
+	var parent *phtml.Node
+	if at > 0 {
+		parent = chain[at-1]
+	}
+	if !matchesCompound(sel.parts[part], chain[at], parent, at == 0) {
 		return false
 	}
 	if part == 0 {
@@ -397,10 +673,16 @@ func parseLen(s string) (cssLen, bool) {
 	if s == "0" {
 		return cssLen{unit: 'p'}, true
 	}
+	if strings.HasSuffix(s, ")") {
+		if e, ok := parseExpr(s); ok {
+			return cssLen{unit: 'x', expr: e}, true
+		}
+		return cssLen{}, false
+	}
 	units := []struct {
 		suf  string
 		unit byte
-	}{{"px", 'p'}, {"rem", 'r'}, {"em", 'e'}, {"ch", 'c'}, {"%", '%'}}
+	}{{"px", 'p'}, {"rem", 'r'}, {"em", 'e'}, {"ch", 'c'}, {"%", '%'}, {"vw", 'w'}, {"vh", 'h'}}
 	for _, u := range units {
 		if strings.HasSuffix(s, u.suf) {
 			n, err := strconv.ParseFloat(strings.TrimSuffix(s, u.suf), 32)
@@ -446,7 +728,7 @@ func substituteVars(v string, vars map[string]string) string {
 }
 
 // apply sets one declaration on c; parent is the inherited style (its font size for em).
-func (c *computed) apply(d cssDecl, parent *computed, rootPx float32) {
+func (c *computed) apply(d cssDecl, parent *computed, rootPx float32, view gui.Size) {
 	if strings.HasPrefix(d.prop, "--") {
 		if !c.ownVars {
 			nv := make(map[string]string, len(c.vars)+1)
@@ -476,7 +758,7 @@ func (c *computed) apply(d cssDecl, parent *computed, rootPx float32) {
 			c.background = color.NRGBA{}
 		}
 	case "font-size":
-		c.fontSize = fontSize(lv, parent.fontSize, rootPx)
+		c.fontSize = fontSize(lv, parent.fontSize, rootPx, view)
 	case "font-weight":
 		c.bold = lv == "bold" || lv == "bolder" || (len(lv) == 3 && lv >= "600")
 	case "font-style":
@@ -484,7 +766,7 @@ func (c *computed) apply(d cssDecl, parent *computed, rootPx float32) {
 	case "font-family":
 		c.mono = monoFamily(lv)
 	case "font":
-		c.font(lv, parent.fontSize, rootPx)
+		c.font(lv, parent.fontSize, rootPx, view)
 	case "line-height":
 		c.lineHeight = lineHeight(lv, c.fontSize)
 	case "text-align":
@@ -637,7 +919,7 @@ func splitFields(v string) []string {
 	return out
 }
 
-func fontSize(v string, parent, root float32) float32 {
+func fontSize(v string, parent, root float32, view gui.Size) float32 {
 	switch v {
 	case "smaller":
 		return parent * 0.83
@@ -654,7 +936,7 @@ func fontSize(v string, parent, root float32) float32 {
 		if l.unit == '%' {
 			return l.v / 100 * parent
 		}
-		return l.px(parent, root, parent)
+		return l.px(parent, root, parent, view)
 	}
 	return parent
 }
@@ -670,7 +952,7 @@ func lineHeight(v string, font float32) float32 {
 		if l.unit == '%' {
 			return l.v / 100
 		}
-		return l.px(font, font, font) / font
+		return l.px(font, font, font, gui.Size{}) / font
 	}
 	return 1.2
 }
@@ -680,7 +962,7 @@ func monoFamily(v string) bool {
 }
 
 // font reads the font shorthand: [style] [weight] size[/line-height] family.
-func (c *computed) font(v string, parent, root float32) {
+func (c *computed) font(v string, parent, root float32, view gui.Size) {
 	f := strings.Fields(v)
 	c.italic, c.bold = false, false
 	for i, tok := range f {
@@ -695,11 +977,105 @@ func (c *computed) font(v string, parent, root float32) {
 			continue
 		}
 		size, lh, _ := strings.Cut(tok, "/")
-		c.fontSize = fontSize(size, parent, root)
+		c.fontSize = fontSize(size, parent, root, view)
 		if lh != "" {
 			c.lineHeight = lineHeight(lh, c.fontSize)
 		}
 		c.mono = monoFamily(strings.Join(f[i+1:], " "))
 		return
 	}
+}
+
+// mediaMatches evaluates a media query list: true when any query in it matches env. A query is
+// [not|only] [all|screen|print|…] and (feature: value) conditions; the features read are min- and
+// max-width and -height, width, height, orientation and prefers-color-scheme. Any other feature,
+// and print, never matches.
+func mediaMatches(list string, env mediaEnv) bool {
+	for _, q := range splitTop(list, ',') {
+		if mediaQuery(strings.TrimSpace(q), env) {
+			return true
+		}
+	}
+	return false
+}
+
+func mediaQuery(q string, env mediaEnv) bool {
+	if q == "" {
+		return true
+	}
+	not := false
+	if rest, ok := strings.CutPrefix(q, "not "); ok {
+		not, q = true, rest
+	} else if rest, ok := strings.CutPrefix(q, "only "); ok {
+		q = rest
+	}
+	ok := true
+	for i, part := range splitAnd(q) {
+		part = strings.TrimSpace(part)
+		switch {
+		case strings.HasPrefix(part, "("):
+			ok = ok && mediaFeature(strings.Trim(part, "() "), env)
+		case i == 0 && (part == "all" || part == "screen"):
+		default:
+			ok = false // print, or a type the view is not
+		}
+	}
+	return ok != not
+}
+
+// splitAnd splits a query at its top-level "and"s.
+func splitAnd(q string) []string {
+	var out []string
+	depth, start := 0, 0
+	for i := 0; i < len(q); i++ {
+		switch q[i] {
+		case '(':
+			depth++
+		case ')':
+			depth = max(depth-1, 0)
+		case 'a':
+			if depth == 0 && strings.HasPrefix(q[i:], "and") && (i == 0 || q[i-1] == ' ') && (i+3 == len(q) || q[i+3] == ' ' || q[i+3] == '(') {
+				out = append(out, q[start:i])
+				start = i + 3
+				i += 2
+			}
+		}
+	}
+	return append(out, q[start:])
+}
+
+// mediaFeature evaluates one "name: value" (or a bare name) against env.
+func mediaFeature(f string, env mediaEnv) bool {
+	name, value, _ := strings.Cut(f, ":")
+	name, value = strings.TrimSpace(name), strings.TrimSpace(value)
+	px := func() (float32, bool) {
+		l, ok := parseLen(value)
+		if !ok || l.unit == '%' || l.unit == 'a' {
+			return 0, false
+		}
+		return l.px(16, 16, 0, gui.Size{W: env.w, H: env.h}), true // em in a query is the initial font size
+	}
+	switch name {
+	case "min-width", "max-width", "width", "min-height", "max-height", "height":
+		v, ok := px()
+		if !ok {
+			return false
+		}
+		have := env.w
+		if strings.HasSuffix(name, "height") {
+			have = env.h
+		}
+		switch {
+		case strings.HasPrefix(name, "min-"):
+			return have >= v
+		case strings.HasPrefix(name, "max-"):
+			return have <= v
+		}
+		return have == v
+	case "orientation":
+		return value == "portrait" && env.h >= env.w || value == "landscape" && env.w > env.h
+	case "prefers-color-scheme":
+		return value == "dark" && env.dark || value == "light" && !env.dark
+	}
+	return false
 }
