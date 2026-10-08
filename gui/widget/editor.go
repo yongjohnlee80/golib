@@ -21,6 +21,7 @@ type Editor struct {
 
 	core   *tuiwidget.EditorCore
 	body   *editorBody
+	stack  *editorStack // the Panel's content: the body, and the document view
 	layout *pixelLayout
 	menu   *tuiwidget.EditorMenu
 	sw     *modeSwitch
@@ -30,6 +31,8 @@ type Editor struct {
 	// renderOff withholds the Rendered view while a renderer is set: the document in the editor
 	// is not one the renderer reads (SetRenderedEnabled).
 	renderOff bool
+	doc       DocumentView // a whole-document Rendered view (editor_document.go); nil: none
+	docOn     bool         // Rendered is the document view's (SetRenderedDocument)
 	fontSize  float32
 
 	caret    style.Color // the caret's colour (SetCursorColor); the default is the text's
@@ -49,6 +52,7 @@ type EditorOption func(*editorConfig)
 type editorConfig struct {
 	core     []tuiwidget.CoreOption
 	render   Renderer
+	doc      DocumentView
 	mode     EditorMode
 	menu     bool
 	rows     func(*tuiwidget.EditorCore) []tuiwidget.MenuItemModel
@@ -101,7 +105,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	for _, o := range opts {
 		o(&cfg)
 	}
-	e := &Editor{core: tuiwidget.NewEditorCore(cfg.core...), render: cfg.render, fontSize: cfg.fontSize,
+	e := &Editor{core: tuiwidget.NewEditorCore(cfg.core...), render: cfg.render, doc: cfg.doc, fontSize: cfg.fontSize,
 		wrap: tuiwidget.WrapNone, numbers: cfg.numbers, ruler: cfg.ruler}
 	if cfg.wrap == tuiwidget.WrapSoft {
 		e.wrap = tuiwidget.WrapSoft
@@ -115,7 +119,8 @@ func NewEditor(opts ...EditorOption) *Editor {
 		e.menu.SetRows(func() []tuiwidget.MenuItemModel { return build(e.core) })
 	}
 	e.menu.SetEnabled(cfg.menu)
-	e.panel = NewPanel(e.body, append([]PanelOption{TitleLeading(e.sw)}, cfg.panel...)...)
+	e.stack = newEditorStack(e)
+	e.panel = NewPanel(e.stack, append([]PanelOption{TitleLeading(e.sw)}, cfg.panel...)...)
 	// Ctrl+T, or whatever the keymap binds ActToggleRendered to: with no renderer there is no
 	// Rendered view, so the key bubbles.
 	e.core.SetToggleRendered(func() bool {
@@ -172,7 +177,9 @@ func (e *Editor) SetMode(m EditorMode) {
 		m = Raw
 	}
 	_, md := e.render.(*MarkdownRenderer)
-	e.core.SetListEditing(m == Rendered && md)
+	e.core.SetListEditing(m == Rendered && md && !e.docActive())
+	// before the early return: the view follows docOn even when the mode does not change
+	e.showDocument(m == Rendered && e.docActive())
 	if m == e.mode && e.layout.blocks != nil {
 		return
 	}
@@ -186,8 +193,9 @@ func (e *Editor) SetMode(m EditorMode) {
 	e.sw.MarkDirty()
 }
 
-// canRender reports whether the Rendered view is available: a renderer, and not turned off.
-func (e *Editor) canRender() bool { return e.render != nil && !e.renderOff }
+// canRender reports whether the Rendered view is available: a renderer or a document view turned
+// on, and not turned off.
+func (e *Editor) canRender() bool { return (e.render != nil || e.docActive()) && !e.renderOff }
 
 // SetRenderedEnabled makes the Rendered view available or not, keeping the renderer: a host turns
 // it off for a document its renderer does not read (Markdown's renderer and a Go file, say), and
@@ -242,6 +250,9 @@ func (e *Editor) SetValue(s string) {
 	e.core.SetValue(s)
 	e.layout.scroll = 0
 	e.body.MarkDirty()
+	if e.stack.docShown {
+		e.doc.ShowDocument([]byte(s))
+	}
 }
 
 // SetCursorPosition puts the cursor pos characters from the start, a line break one.
