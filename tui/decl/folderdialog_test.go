@@ -174,3 +174,40 @@ func TestAFolderDialogRefusesWhatItCannotTake(t *testing.T) {
 		}
 	}
 }
+
+// TestASaveDialogsNameStartsEmptyEachOpening: with no selectedFile bound, a name typed and then
+// closed away is not there the next time the dialog opens.
+func TestASaveDialogsNameStartsEmptyEachOpening(t *testing.T) {
+	s := decltest.Run(t, 90, 22,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+`Window {
+    Text { text: "behind" }
+    FileDialog {
+        id: sd
+        title: "new file"
+        fileMode: Tui.SaveFile
+        currentFolder: "/notes"
+    }
+}`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Types(controls.Types()...),
+		tuidecl.Files(widget.FileSource{FS: notesFS, Root: "/"}))
+	s.WaitForText(t, "behind")
+	open := func() {
+		onScreenLoop(t, s, func() {
+			if err := s.Program.Call("sd", "open"); err != nil {
+				t.Error(err)
+			}
+		})
+		s.WaitForText(t, "new file")
+	}
+	open()
+	s.Keys(t, decltest.Type("draft-name.md")...) // the name field has the keyboard
+	s.WaitForText(t, "draft-name.md")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	s.WaitFor(t, "the dialog closed", func(sc string) bool { return !strings.Contains(sc, "new file") })
+	open()
+	s.WaitForText(t, "a.md")
+	if strings.Contains(s.String(), "draft-name.md") {
+		t.Fatalf("the name typed and closed away is back:\n%s", s)
+	}
+}
