@@ -51,6 +51,13 @@ type LineLayout struct {
 	Para  *flow.Para
 	Spans []flow.Span
 	Y     float32
+	Marks []Mark // drawn under the text: a quote's bar, a rule
+}
+
+// Mark is a filled rectangle drawn with a line, Rect from the line's top-left.
+type Mark struct {
+	Rect  gui.Rect
+	Color color.NRGBA
 }
 
 // Theme is what a Renderer draws with, taken from the Editor's cells when it paints.
@@ -60,6 +67,18 @@ type Theme struct {
 	LineNumbers                                     color.NRGBA // the gutter's numbers
 	Prose                                           gui.Font    // rendered text
 	Mono                                            gui.Font    // raw text and code
+	// The Raw view's Markdown colours, from the editor's syntax styles, so the two views read
+	// alike: a heading, strong, emphasis, code, a link, a marker (a bullet, a quote's bar, a
+	// rule), and what is there to be skipped (frontmatter). Zero: the text's (a link: Accent).
+	Heading, Strong, Emph, Code, Link, Marker, Quiet color.NRGBA
+}
+
+// or is c, or else d when c is unset.
+func or(c, d color.NRGBA) color.NRGBA {
+	if c.A == 0 {
+		return d
+	}
+	return c
 }
 
 // rawSpans are line ln's spans in the Raw look: one per run of clusters in one colour, in the

@@ -67,6 +67,9 @@ type Options struct {
 	// TabSize is a kept tab's width, in spaces: a tab is drawn as that much room, never as a
 	// glyph. 0: 4.
 	TabSize int
+	// Left is room before every line; Hang more before each line a wrap starts (not one a '\n'
+	// starts): a list item's text lines up after its bullet.
+	Left, Hang float32
 }
 
 // Pos is a cluster boundary: Offset bytes into span Span's Text.
@@ -80,7 +83,16 @@ type Para struct {
 
 	opts   Options
 	pieces []piece
-	last   int // the last piece placed on a line so far; -1 before any
+	last   int  // the last piece placed on a line so far; -1 before any
+	cont   bool // the next line continues a wrapped one: it hangs
+}
+
+// lead is the room before the line being placed: Left, and Hang on a wrap's continuation.
+func (p *Para) lead() float32 {
+	if p.cont {
+		return p.opts.Left + p.opts.Hang
+	}
+	return p.opts.Left
 }
 
 // Line is one line of a paragraph, Y from the paragraph's top.
@@ -235,7 +247,10 @@ func (p *Para) breakLines(spans []Span, t *gui.TextShaper) {
 	flush := func(hard bool) {
 		p.addLine(spans, line, hard, t)
 		line, x = line[:0:0], 0
+		p.cont = !hard
 	}
+	// limit is the width the line being placed has, after its lead
+	limit := func() float32 { return max(o.Width-p.lead(), 1) }
 	// runEnd is the end of the unbreakable run starting at i: words joined without a space or
 	// a break opportunity between them.
 	runEnd := func(i int) (int, float32) {
@@ -262,19 +277,19 @@ func (p *Para) breakLines(spans []Span, t *gui.TextShaper) {
 			continue
 		}
 		j, w := runEnd(i)
-		if wrap && x+w > o.Width && len(nonSpace(p.pieces, line)) > 0 {
+		if wrap && x+w > limit() && len(nonSpace(p.pieces, line)) > 0 {
 			flush(false)
 		}
-		if wrap && w > o.Width && x == 0 {
+		if wrap && w > limit() && x == 0 {
 			// a run wider than the line: break it between clusters
 			for k := j - 1; k >= i; k-- { // from the end, so the indexes before k stay put
 				p.splitWide(k, spans, t)
 			}
 			j, w = runEnd(i)
-			if w > o.Width {
+			if w > limit() {
 				// pieces now one cluster each, or atoms: place them one by one
 				for k := i; k < j; k++ {
-					if x+p.pieces[k].w > o.Width && len(line) > 0 {
+					if x+p.pieces[k].w > limit() && len(line) > 0 {
 						flush(false)
 					}
 					line = append(line, k)
@@ -424,13 +439,14 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 	for k := len(idx) - 1; k >= 0 && p.pieces[idx[k]].kind == space; k-- {
 		content -= p.pieces[idx[k]].w
 	}
-	shift := float32(0)
+	lead := p.lead()
+	shift := lead
 	if o.Width > 0 {
 		switch o.Align {
 		case Center:
-			shift = (o.Width - content) / 2
+			shift += (o.Width - lead - content) / 2
 		case End:
-			shift = o.Width - content
+			shift += o.Width - lead - content
 		}
 	}
 	for k := range l.Frags {
@@ -440,7 +456,7 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 			f.Layout = t.Layout(f.display, spans[f.Span].Font, 0)
 		}
 	}
-	p.Width = max(p.Width, content)
+	p.Width = max(p.Width, lead+content)
 	p.Lines = append(p.Lines, l)
 }
 

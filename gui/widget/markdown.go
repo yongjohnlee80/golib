@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"image/color"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -43,6 +44,14 @@ func HeadingScale(h1 float32) MarkdownOption {
 // WithDiagrams draws a fenced block a Diagrammer answers Ready for (a mermaid fence) as its
 // picture. Without one, or until it answers, the block is drawn as code.
 func WithDiagrams(d Diagrammer) MarkdownOption { return func(r *MarkdownRenderer) { r.diagrams = d } }
+
+// Line spacing, as multiples of each font's size: one place to tune it, or to make it an option
+// should a host need to.
+const (
+	proseLineHeight = 1.5  // the Rendered view's text
+	codeLineHeight  = 1.35 // a code block's lines, and frontmatter's
+	rawLineHeight   = 1.35 // the Raw view
+)
 
 // fence is a fenced code block's opening: its character, its length and its info string.
 type fence struct {
@@ -90,7 +99,9 @@ func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
 	var out []Block
 	for i := 0; i < len(lines); {
 		end := i + 1
-		if f, ok := openFence(lines[i]); ok {
+		if n := frontmatterEnd(lines); i == 0 && n > 0 {
+			end = n
+		} else if f, ok := openFence(lines[i]); ok {
 			for end < len(lines) && !f.closes(lines[end]) {
 				end++
 			}
@@ -116,27 +127,193 @@ func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
 
 // LayOut lays block b out.
 func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
-	opts := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: th.Text}
+	code := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: th.Text, LineHeight: codeLineHeight}
+	if b.From == 0 && frontmatterEnd(lines) > 0 {
+		return r.layFrontmatter(b, lines, code, cursorInside, t, th)
+	}
 	if f, ok := openFence(lines[b.From]); ok {
-		return r.layFence(b, f, lines, opts, cursorInside, t, th, host)
+		return r.layFence(b, f, lines, code, cursorInside, t, th, host)
 	}
 	if startsIndentedCode(lines, b.From) {
-		return r.layIndented(b, lines, opts, t, th)
+		return r.layIndented(b, lines, code, t, th)
 	}
 	ln := b.From
-	var spans []flow.Span
-	extra := float32(0)
 	if cursorInside {
-		spans = rawSpans(ln, lines[ln], th.Mono, nil)
-	} else {
-		var level int
-		spans, level = r.lineSpans(ln, lines[ln], th)
-		if level > 0 {
-			extra = th.Prose.Size * 0.4
-		}
+		code.LineHeight = rawLineHeight
+		spans := rawSpans(ln, lines[ln], th.Mono, nil)
+		p := flow.Lay(spans, code, t)
+		return BlockLayout{Lines: []LineLayout{{Para: p, Spans: spans}}, Height: p.Height}
+	}
+	ll, extra := r.layLine(lines, ln, width, t, th)
+	ll.Y = extra
+	return BlockLayout{Lines: []LineLayout{ll}, Height: extra + ll.Para.Height}
+}
+
+// layLine lays a prose line out off the cursor: a rule as a rule, a quote with its bars, a list
+// item hanging after its bullet, any other line as its Markdown. extra is room above a heading.
+func (r *MarkdownRenderer) layLine(lines []string, ln int, width float32, t *gui.TextShaper, th Theme) (LineLayout, float32) {
+	line := lines[ln]
+	em := th.Prose.Size
+	opts := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: mix(th.Text, th.Background, 0.9), LineHeight: proseLineHeight}
+	rule := or(th.Marker, th.Muted)
+	if isRule(lines, ln) {
+		spans := []flow.Span{{Text: line, Font: th.Prose, Line: ln, Hidden: true}}
+		p := flow.Lay(spans, opts, t)
+		bar := Mark{Rect: gui.Rect{Y: p.Height / 2, W: width, H: 1}, Color: mix(rule, th.Background, 0.5)}
+		return LineLayout{Para: p, Spans: spans, Marks: []Mark{bar}}, 0
+	}
+	var spans []flow.Span
+	depth, off := quoteDepth(line)
+	if depth > 0 {
+		spans = append(spans, flow.Span{Text: line[:off], Font: th.Prose, Line: ln, Hidden: true})
+		opts.Left = float32(depth) * em * 0.9
+		opts.Color = mix(th.Text, th.Background, 0.75)
+	}
+	body, level, hang := r.bodySpans(ln, line[off:], t, th)
+	for i := range body {
+		body[i].Col += clusters(line[:off])
+	}
+	spans = append(spans, body...)
+	if hang > 0 {
+		opts.Left += em * 0.3
+		opts.Hang = hang
 	}
 	p := flow.Lay(spans, opts, t)
-	return BlockLayout{Lines: []LineLayout{{Para: p, Spans: spans, Y: extra}}, Height: extra + p.Height}
+	ll := LineLayout{Para: p, Spans: spans}
+	for k := range depth {
+		ll.Marks = append(ll.Marks, Mark{Rect: gui.Rect{X: float32(k)*em*0.9 + em*0.15, W: 3, H: p.Height}, Color: mix(rule, th.Background, 0.6)})
+	}
+	extra := float32(0)
+	if level > 0 {
+		extra = em * 0.4
+	}
+	return ll, extra
+}
+
+// bodySpans are a line's spans past any quote marks: a list item's, which hangs by hang, or any
+// line's, a heading at level.
+func (r *MarkdownRenderer) bodySpans(ln int, text string, t *gui.TextShaper, th Theme) (spans []flow.Span, level int, hang float32) {
+	if indent, marker, ok := tuiwidget.MarkdownListItem(text); ok {
+		spans = r.listSpans(ln, text, indent, marker, th)
+		for _, s := range spans {
+			if s.Col >= len(indent)+len(marker) {
+				break
+			}
+			hang += spanWidth(s, t)
+		}
+		return spans, 0, hang
+	}
+	spans, level = r.lineSpans(ln, text, th)
+	return spans, level, 0
+}
+
+// spanWidth is how wide s is drawn: its spaces at SpaceWidth (a tab four), else as shaped.
+func spanWidth(s flow.Span, t *gui.TextShaper) float32 {
+	if s.SpaceWidth > 0 && strings.Trim(s.Text, " \t") == "" {
+		w := float32(0)
+		for _, c := range s.Text {
+			w += s.SpaceWidth
+			if c == '\t' {
+				w += 3 * s.SpaceWidth
+			}
+		}
+		return w
+	}
+	m := t.Measure(s.Text, s.Font)
+	return m.X[len(m.X)-1]
+}
+
+// isRule reports whether line ln is a thematic break: "---", "***" or "___", three or more. A
+// "---" right under a line of text underlines it instead (a setext heading), so is left as text.
+func isRule(lines []string, ln int) bool {
+	s := strings.TrimSpace(lines[ln])
+	if !isThematic(s) || isListItem(lines[ln]) {
+		return false
+	}
+	return s[0] != '-' || ln == 0 || isBlank(lines[ln-1])
+}
+
+func isThematic(s string) bool {
+	if s == "" || !strings.ContainsRune("-*_", rune(s[0])) {
+		return false
+	}
+	n := 0
+	for _, c := range s {
+		switch {
+		case c == rune(s[0]):
+			n++
+		case c != ' ' && c != '\t':
+			return false
+		}
+	}
+	return n >= 3
+}
+
+// quoteDepth reads a line's blockquote marks: how many '>' (each with the space after it) before
+// its text, and where the text starts.
+func quoteDepth(line string) (depth, off int) {
+	i := 0
+	for i < len(line) && i < 3 && line[i] == ' ' {
+		i++
+	}
+	for i < len(line) && line[i] == '>' {
+		depth++
+		i++
+		if i < len(line) && line[i] == ' ' {
+			i++
+		}
+	}
+	if depth == 0 {
+		return 0, 0
+	}
+	return depth, i
+}
+
+// frontmatterEnd is where a document's frontmatter ends, past its closing line: a "---" first
+// line, closed by "---" or "...". 0: none.
+func frontmatterEnd(lines []string) int {
+	if len(lines) == 0 || strings.TrimRight(lines[0], " ") != "---" {
+		return 0
+	}
+	for k := 1; k < len(lines); k++ {
+		if s := strings.TrimRight(lines[k], " "); s == "---" || s == "..." {
+			return k + 1
+		}
+	}
+	return 0
+}
+
+// layFrontmatter lays frontmatter out as a quiet block: its keys and values small, monospace,
+// its "---" lines hidden off the cursor.
+func (r *MarkdownRenderer) layFrontmatter(b Block, lines []string, opts flow.Options, inside bool, t *gui.TextShaper, th Theme) BlockLayout {
+	bl := BlockLayout{Background: th.CodeBackground}
+	font := th.Mono
+	font.Size *= 0.88
+	key, val := or(th.Emph, th.Muted), or(th.Quiet, th.Muted)
+	var y float32
+	for ln := b.From; ln < b.To; ln++ {
+		line := lines[ln]
+		var spans []flow.Span
+		switch {
+		case inside:
+			spans = rawSpans(ln, line, th.Mono, nil)
+		case ln == b.From || ln == b.To-1:
+			spans = []flow.Span{{Text: line, Font: font, Line: ln, Hidden: true}}
+		default:
+			colon := strings.Index(line, ":")
+			spans = rawSpans(ln, line, font, func(col int) color.NRGBA {
+				if col < colon {
+					return key
+				}
+				return val
+			})
+		}
+		p := flow.Lay(spans, opts, t)
+		bl.Lines = append(bl.Lines, LineLayout{Para: p, Spans: spans, Y: y})
+		y += p.Height
+	}
+	bl.Height = y
+	return bl
 }
 
 // layFence lays a fenced block out: its lines in monospace on a tinted ground, the fence lines
@@ -192,6 +369,9 @@ func (r *MarkdownRenderer) layIndented(b Block, lines []string, opts flow.Option
 // InCode reports whether line ln is inside a code block, fenced or indented, as the renderer
 // lays the lines out: there "- x" is code, not a list item.
 func (r *MarkdownRenderer) InCode(lines []string, ln int) bool {
+	if ln < frontmatterEnd(lines) {
+		return true
+	}
 	for _, b := range r.Blocks(lines, 0, len(lines)) { // the whole document: a block's From is its start
 		if b.From <= ln && ln < b.To {
 			_, fenced := openFence(lines[b.From])
@@ -338,12 +518,14 @@ func (r *MarkdownRenderer) listSpans(ln int, line, indent, marker string, th The
 			}
 		}
 		level = (level / 2) % len(bullets)
-		spans = append(spans, flow.Span{Text: bullets[level], Font: th.Prose, Color: th.Muted, Line: ln, Col: col})
+		bf := th.Prose
+		bf.Size *= 1.15
+		spans = append(spans, flow.Span{Text: bullets[level], Font: bf, Color: or(th.Marker, th.Muted), Line: ln, Col: col})
 		bullet = bullet[1:]
 		col++
 	}
 	if bullet != "" { // a number, or a task's box
-		spans = append(spans, flow.Span{Text: bullet, Font: th.Prose, Color: th.Muted, Line: ln, Col: col})
+		spans = append(spans, flow.Span{Text: bullet, Font: th.Prose, Color: or(th.Marker, th.Muted), Line: ln, Col: col})
 		col += len(bullet)
 	}
 	if gap := marker[len(strings.TrimRight(marker, " ")):]; gap != "" {
@@ -424,8 +606,20 @@ func (r *MarkdownRenderer) span(text string, a mdAttr, ln, col int, th Theme) fl
 	f.Bold = f.Bold || a.bold
 	f.Italic = a.italic
 	sp.Strike = a.strike
-	if a.link {
-		sp.Color, sp.Underline = th.Accent, true
+	// the Raw view's colours: the innermost construct's, a link's over all
+	switch {
+	case a.link:
+		sp.Color, sp.Underline = or(th.Link, th.Accent), true
+	case a.code:
+		sp.Color = th.Code
+	case a.heading > 0:
+		sp.Color = th.Heading
+	case a.bold:
+		sp.Color = th.Strong
+	case a.italic:
+		sp.Color = th.Emph
+	case a.strike:
+		sp.Color = th.Quiet
 	}
 	sp.Font = f
 	return sp
