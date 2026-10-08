@@ -61,18 +61,21 @@ type Result struct {
 
 // Limits bound the work a layout may do. A zero field takes its default.
 type Limits struct {
-	MaxNodes int // default 1000
-	MaxEdges int // default 2000
-	MaxRanks int // default 200
-	// MaxDummies bounds the dummy nodes long edges are split by: the sum over edges of the
-	// ranks each one crosses. It is checked after ranking, before any dummy is made.
+	MaxNodes       int // default 1000
+	MaxEdges       int // default 2000
+	MaxRanks       int // default 200
+	MaxGroups      int // default 200
+	MaxMemberships int // nodes summed over groups; default 20000
+	// MaxDummies bounds the vertices the layout adds: the dummies long edges are split by (the
+	// sum over edges of the ranks each one crosses) and each group's two borders on every rank it
+	// spans. It is checked after ranking, before any is made.
 	MaxDummies int // default 20000
 	// MaxWork bounds the steps the ranking, ordering and placing passes take, counted.
 	MaxWork int // default 50000000
 }
 
 // DefaultLimits are the limits a zero Limits stands for.
-var DefaultLimits = Limits{MaxNodes: 1000, MaxEdges: 2000, MaxRanks: 200, MaxDummies: 20000, MaxWork: 50_000_000}
+var DefaultLimits = Limits{MaxNodes: 1000, MaxEdges: 2000, MaxGroups: 200, MaxMemberships: 20000, MaxRanks: 200, MaxDummies: 20000, MaxWork: 50_000_000}
 
 var (
 	// ErrTooLarge is a graph past one of its Limits.
@@ -95,6 +98,12 @@ func (l Limits) withDefaults() Limits {
 	}
 	if l.MaxDummies > 0 {
 		d.MaxDummies = l.MaxDummies
+	}
+	if l.MaxGroups > 0 {
+		d.MaxGroups = l.MaxGroups
+	}
+	if l.MaxMemberships > 0 {
+		d.MaxMemberships = l.MaxMemberships
 	}
 	if l.MaxWork > 0 {
 		d.MaxWork = l.MaxWork
@@ -133,7 +142,7 @@ func Layered(ctx context.Context, in Input, lim Limits) (Result, error) {
 		return Result{}, err
 	}
 	m := &meter{ctx: ctx, max: lim.MaxWork}
-	g, err := build(in)
+	g, err := build(in, m)
 	if err != nil {
 		return Result{}, err
 	}
@@ -143,11 +152,13 @@ func Layered(ctx context.Context, in Input, lim Limits) (Result, error) {
 	if g.ranks > lim.MaxRanks {
 		return Result{}, fmt.Errorf("%w: %d ranks, more than %d", ErrTooLarge, g.ranks, lim.MaxRanks)
 	}
-	if d := g.dummiesNeeded(); d > lim.MaxDummies {
-		return Result{}, fmt.Errorf("%w: %d dummy nodes, more than %d", ErrTooLarge, d, lim.MaxDummies)
+	if d := g.dummiesNeeded() + g.bordersNeeded(); d > lim.MaxDummies {
+		return Result{}, fmt.Errorf("%w: %d dummy and border vertices, more than %d", ErrTooLarge, d, lim.MaxDummies)
 	}
 	g.split()
-	g.borders()
+	if err := g.borders(m); err != nil {
+		return Result{}, err
+	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -166,6 +177,16 @@ func validate(in Input, lim Limits) error {
 	}
 	if len(in.Edges) > lim.MaxEdges {
 		return fmt.Errorf("%w: %d edges, more than %d", ErrTooLarge, len(in.Edges), lim.MaxEdges)
+	}
+	if len(in.Groups) > lim.MaxGroups {
+		return fmt.Errorf("%w: %d groups, more than %d", ErrTooLarge, len(in.Groups), lim.MaxGroups)
+	}
+	members := 0
+	for _, grp := range in.Groups {
+		members += len(grp)
+	}
+	if members > lim.MaxMemberships {
+		return fmt.Errorf("%w: %d group memberships, more than %d", ErrTooLarge, members, lim.MaxMemberships)
 	}
 	bad := func(f float32) bool { return f < 0 || math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) }
 	for i, n := range in.Nodes {

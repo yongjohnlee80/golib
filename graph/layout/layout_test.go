@@ -343,3 +343,29 @@ func TestEmptyAndLabels(t *testing.T) {
 		t.Errorf("an edge without a label has a label point %v", res.Labels[1])
 	}
 }
+
+// Groups' borders are vertices the layout adds, so they count against MaxDummies before any is
+// made; group count and memberships are refused before anything is built; and the group passes
+// spend MaxWork.
+func TestGroupWorkIsBounded(t *testing.T) {
+	two := layout.Input{Nodes: []layout.Size{{W: 10, H: 10}, {W: 10, H: 10}}, Edges: []layout.Edge{{From: 0, To: 1, MinLen: 1}}}
+	nested := two
+	for range 100 {
+		nested.Groups = append(nested.Groups, []int{0, 1})
+	}
+	if _, err := layout.Layered(context.Background(), nested, layout.Limits{MaxDummies: 1}); !errors.Is(err, layout.ErrTooLarge) {
+		t.Errorf("100 nested groups' borders under MaxDummies 1: %v, want layout.ErrTooLarge", err)
+	}
+	if _, err := layout.Layered(context.Background(), nested, layout.Limits{MaxGroups: 99}); !errors.Is(err, layout.ErrTooLarge) {
+		t.Errorf("100 groups over MaxGroups 99: %v, want layout.ErrTooLarge", err)
+	}
+	if _, err := layout.Layered(context.Background(), nested, layout.Limits{MaxMemberships: 199}); !errors.Is(err, layout.ErrTooLarge) {
+		t.Errorf("200 memberships over 199: %v, want layout.ErrTooLarge", err)
+	}
+	if _, err := layout.Layered(context.Background(), nested, layout.Limits{MaxWork: 300}); !errors.Is(err, layout.ErrTooLarge) {
+		t.Errorf("group passes under MaxWork 300: %v, want layout.ErrTooLarge", err)
+	}
+	if _, err := layout.Layered(context.Background(), nested, layout.Limits{}); err != nil {
+		t.Errorf("100 nested groups within the defaults: %v", err)
+	}
+}
