@@ -172,3 +172,21 @@ Window { Drawer { movable: true; windowResize: true; moveButton: Tui.RightButton
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Two steps before a layout add up: each starts where the last one asked the panel to be, not
+// where it was last drawn.
+func TestTwoStepsBeforeALayoutAddUp(t *testing.T) {
+	s, placed, _ := runFloat(t, floatDoc, false)
+	x0, _ := panelAt(s)
+	onScreenLoop(t, s, func() {
+		for range 2 {
+			if err := s.Program.Call("d", "moveBy", 6, 0); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	s.WaitFor(t, "twelve cells across", func(string) bool { x, _ := panelAt(s); return x == x0+12 })
+	if got := raws(placed); len(got) != 8 || got[4] != "20" {
+		t.Errorf("placed %v, want two: x 10, then x 20 (12 of 60)", got)
+	}
+}
