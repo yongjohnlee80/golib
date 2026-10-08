@@ -618,3 +618,24 @@ func TestListEditingSkipsCodeBlocks(t *testing.T) {
 		t.Errorf("Enter on a prose item did not continue the list:\n%s", got)
 	}
 }
+
+// A table's rows are not a list: Enter on a row is a plain line break, whatever the row holds.
+func TestListEditingSkipsTables(t *testing.T) {
+	doc := "| - a | b |\n|---|---|\n| - c | d |"
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText(doc), tuiwidget.CoreKeyset(tuiwidget.KeysetStandard)))
+	var got string
+	var where bool
+	h.onLoop(func() {
+		where = h.e.render.(*MarkdownRenderer).InTable(strings.Split(doc, "\n"), 2)
+		h.e.Core().SetLine(2, len("| - c | d |"))
+		h.e.Core().HandleKey(tui.KeyEvent{Code: tui.KeyEnter})
+		got = h.e.Core().Value()
+	})
+	if !where {
+		t.Error("InTable: a body row read as outside its table")
+	}
+	if got != doc+"\n" {
+		t.Errorf("Enter on a table row gave %q", got)
+	}
+}

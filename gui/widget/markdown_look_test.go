@@ -267,3 +267,55 @@ func TestTableHeaderHasOneRule(t *testing.T) {
 		t.Errorf("the rule at %v, not right under the header (%v)", delim.Y, head.Y+head.Para.Height)
 	}
 }
+
+// A table's body runs to a blank line or another block's start, a row with no pipe included
+// (GFM 201-202); a heading with a pipe ends it.
+func TestTableEndsAsGFMReadsIt(t *testing.T) {
+	for _, tc := range []struct {
+		doc  string
+		want int
+	}{
+		{"| a | b |\n| - | - |\n| c |\nbar\n\nafter", 4},           // a short row, and a pipe-less one
+		{"| a | b |\n| - | - |\n| c | d |\n# x | y\nmore", 3},      // a heading starts a block
+		{"| a | b |\n| - | - |\n| c | d |\n> q | r", 3},            // so does a quote
+		{"| a | b |\n| - | - |\n| c | d |\n- item | x", 3},         // and a list item
+		{"| a | b |\n| - | - |\n| c | d |\n```\ncode | x\n```", 3}, // and a fence
+	} {
+		if got := tableEnd(strings.Split(tc.doc, "\n"), 0); got != tc.want {
+			t.Errorf("%q: table to line %d, want %d", tc.doc, got, tc.want)
+		}
+	}
+	if n := tableEnd([]string{"- a | b", "| - | - |"}, 0); n != 0 {
+		t.Errorf("a list item read as a table's header (to line %d)", n)
+	}
+}
+
+// A body row's extra cells are ignored (GFM 204): they neither widen the grid nor show, and the
+// row's spans still cover every cluster.
+func TestTableIgnoresExtraCells(t *testing.T) {
+	doc := "| a | b |\n| - | - |\n| c | d | extra cell |"
+	bl, _ := lookLay(t, doc, 0)
+	row := bl.Lines[2]
+	col := 0
+	for _, s := range row.Spans {
+		if s.Col != col {
+			t.Errorf("span %q at column %d, want %d", s.Text, s.Col, col)
+		}
+		col += len([]rune(s.Text))
+		if strings.Contains(s.Text, "extra") && !s.Hidden {
+			t.Errorf("the extra cell is shown: %+v", s)
+		}
+	}
+	if line := strings.Split(doc, "\n")[2]; col != len([]rune(line)) {
+		t.Errorf("spans cover %d clusters of %d", col, len([]rune(line)))
+	}
+	var widest float32
+	for _, m := range bl.Lines[0].Marks {
+		widest = max(widest, m.Rect.X+m.Rect.W)
+	}
+	for _, m := range row.Marks {
+		if m.Rect.X+m.Rect.W > widest+0.5 {
+			t.Errorf("a mark at %v reaches past the header's grid (%v): the extra cell widened it", m.Rect.X+m.Rect.W, widest)
+		}
+	}
+}
