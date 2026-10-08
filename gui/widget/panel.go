@@ -219,15 +219,17 @@ func (p *Panel) Render(s tui.Surface) {
 	}
 }
 
-// putString sets s's cells from (x, y) to s's clusters, one cell each but for wide ones.
-func putString(s tui.Surface, x, y int, str string, st style.Style) {
+// putString sets s's cells from (x, y) to s's clusters, one cell each but for wide ones, and
+// returns the column after them.
+func putString(s tui.Surface, x, y int, str string, st style.Style) int {
 	for c := range tui.Graphemes(str) {
 		if x >= s.Size().W {
-			return
+			return x
 		}
 		s.SetCell(x, y, c, st)
 		x += max(s.StringWidth(c), 1)
 	}
+	return x
 }
 
 // HandleEvent takes the title bar's clicks and drags, and the edges' resizing drags.
