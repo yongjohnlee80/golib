@@ -410,16 +410,26 @@ func TestDetailsFoldAndOpen(t *testing.T) {
 		}
 		return strings.Join(parts, "|")
 	}
-	if got := text(); !strings.Contains(got, "▸ |On this page") || strings.Contains(got, "The Hares") {
+	marker := func() (bool, bool) { // the summary's run starts with the marker; its details is open
+		r := l.runs[0]
+		return r.spans[0].Atom != nil && r.spans[0].Text == "", l.detailsOpen(l.blocks[0].box.kids[0].details)
+	}
+	if got := text(); !strings.Contains(got, "On this page") || strings.Contains(got, "The Hares") {
 		t.Fatalf("folded: %q", got)
+	}
+	if has, open := marker(); !has || open {
+		t.Fatalf("folded: marker %v, open %v", has, open)
 	}
 	sum := l.runs[0]
 	if l.Activate(sum.ax+200, sum.ay+2) != true {
 		t.Fatal("a click on the summary did nothing")
 	}
 	repaint(l, 600, 400)
-	if got := text(); !strings.Contains(got, "▾ |On this page") || !strings.Contains(got, "The Hares") {
+	if got := text(); !strings.Contains(got, "On this page") || !strings.Contains(got, "The Hares") {
 		t.Fatalf("opened: %q", got)
+	}
+	if has, open := marker(); !has || !open {
+		t.Fatalf("opened: marker %v, open %v", has, open)
 	}
 	var link *box
 	for _, r := range l.runs {
@@ -449,8 +459,8 @@ func TestDetailsFoldAndOpen(t *testing.T) {
 	}
 	_, open, _ := pixelView(t, strings.Replace(page, `<details class="toc">`, `<details open>`, 1), 600, 400)
 	open.layOutTo(1e9)
-	if open.runs[0].spans[0].Text != "▾ " {
-		t.Errorf("<details open> starts %q", open.runs[0].spans[0].Text)
+	if !open.detailsOpen(open.blocks[0].box.kids[0].details) || open.runs[0].spans[0].Atom == nil {
+		t.Error("<details open> does not start open, marked")
 	}
 }
 
@@ -546,7 +556,7 @@ func TestTheArchivePageLaysOutAsABrowserDoes(t *testing.T) {
 	var atomRun *box
 	for _, r := range l.runs {
 		for _, s := range r.spans {
-			if s.Atom != nil {
+			if s.Atom != nil && s.Atom.W > 50 { // the icon, not the summary's marker
 				atom, atomRun = s.Atom, r
 			}
 		}
@@ -566,8 +576,8 @@ func TestTheArchivePageLaysOutAsABrowserDoes(t *testing.T) {
 		t.Errorf("the icon is centred at %v, want the page's middle (600)", mid)
 	}
 	toc := runWith("On this page")
-	if !strings.HasPrefix(toc.spans[0].Text, "▸") {
-		t.Errorf("the table of contents is not folded: %q", toc.spans[0].Text)
+	if toc.spans[0].Atom == nil {
+		t.Errorf("the table of contents has no marker: %+v", toc.spans[0])
 	}
 	for _, r := range l.runs {
 		if r.ay > toc.ay && r.ay < runWith("THE HARES waged").ay && strings.Contains(r.spans[0].Text, "The Hares and the Foxes") && r.spans[0].Link != "" {
@@ -583,5 +593,26 @@ func TestTheArchivePageLaysOutAsABrowserDoes(t *testing.T) {
 	prev, next := docNav.kids[0], docNav.kids[1]
 	if prev.x > mainBox.x+0.5 || next.x+next.w < mainBox.x+mainBox.w-0.5 {
 		t.Errorf("Previous at %v and Next ending at %v, want the two ends of main (%v..%v)", prev.x, next.x+next.w, mainBox.x, mainBox.x+mainBox.w)
+	}
+}
+
+// TestCSSShorthandsHoldFunctions: a margin or padding shorthand, a background and a border-radius
+// keep a function's spaces inside it: archive.css's header padding, an rgb() with spaces.
+func TestCSSShorthandsHoldFunctions(t *testing.T) {
+	c := &computed{fontSize: 16}
+	for _, d := range parseDecls(`padding: 1.25rem max(1.25rem, calc((100vw - 1040px)/2)); background: rgb(1 2 3); border-radius: calc(2px + 3px) 0`) {
+		c.apply(d, c, 16, gui.Size{W: 1166})
+	}
+	if l := c.padding[3].px(16, 16, 0, gui.Size{W: 1166}); l < 62.99 || l > 63.01 {
+		t.Errorf("the left padding is %v, want max(20, (1166-1040)/2) = 63", l)
+	}
+	if top := c.padding[0].px(16, 16, 0, gui.Size{}); top != 20 {
+		t.Errorf("the top padding is %v, want 20", top)
+	}
+	if c.background != (color.NRGBA{1, 2, 3, 255}) {
+		t.Errorf("rgb with spaces: %v", c.background)
+	}
+	if r := c.radius.px(16, 16, 0, gui.Size{}); r != 5 {
+		t.Errorf("a calc radius: %v", r)
 	}
 }
