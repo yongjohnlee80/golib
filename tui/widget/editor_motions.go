@@ -11,9 +11,9 @@ func isWS(cluster string) bool {
 
 // vimWordForward implements vim `w`: past the current word run, over
 // whitespace, onto the start of the next word (crossing line ends).
-func (e *Editor) vimWordForward() (int, int) {
-	ln, col := e.ln, e.col
-	cs := e.lineClusters(ln)
+func (c *EditorCore) vimWordForward() (int, int) {
+	ln, col := c.buf.ln, c.buf.col
+	cs := c.buf.lineClusters(ln)
 	i := col
 	for i < len(cs) && !isWS(cs[i]) {
 		i++ // leave the current run
@@ -25,18 +25,18 @@ func (e *Editor) vimWordForward() (int, int) {
 		if i < len(cs) {
 			return ln, i
 		}
-		if ln >= len(e.lines)-1 {
+		if ln >= len(c.buf.lines)-1 {
 			return ln, max(0, len(cs)-1)
 		}
-		ln, cs, i = ln+1, e.lineClusters(ln+1), 0
+		ln, cs, i = ln+1, c.buf.lineClusters(ln+1), 0
 	}
 }
 
 // vimWordBack implements vim `b`: back over whitespace onto the start of
 // the previous word run (crossing line ends).
-func (e *Editor) vimWordBack() (int, int) {
-	ln, col := e.ln, e.col
-	cs := e.lineClusters(ln)
+func (c *EditorCore) vimWordBack() (int, int) {
+	ln, col := c.buf.ln, c.buf.col
+	cs := c.buf.lineClusters(ln)
 	i := col
 	for {
 		for i > 0 && isWS(cs[i-1]) {
@@ -52,22 +52,22 @@ func (e *Editor) vimWordBack() (int, int) {
 			return 0, 0
 		}
 		ln--
-		cs = e.lineClusters(ln)
+		cs = c.buf.lineClusters(ln)
 		i = len(cs)
 	}
 }
 
 // wordEnd moves to the end of the current/next word (vim `e`, cluster form).
-func (e *Editor) wordEnd() (int, int) {
-	ln, col := e.ln, e.col
+func (c *EditorCore) wordEnd() (int, int) {
+	ln, col := c.buf.ln, c.buf.col
 	for {
-		cs := e.lineClusters(ln)
+		cs := c.buf.lineClusters(ln)
 		i := col + 1
 		for i < len(cs) && isWS(cs[i]) {
 			i++
 		}
 		if i >= len(cs) {
-			if ln < len(e.lines)-1 {
+			if ln < len(c.buf.lines)-1 {
 				ln, col = ln+1, -1
 				continue
 			}
@@ -81,23 +81,23 @@ func (e *Editor) wordEnd() (int, int) {
 }
 
 // paraForward/paraBack: next/previous blank-line boundary.
-func (e *Editor) paraForward(count int) int {
-	ln := e.ln
+func (c *EditorCore) paraForward(count int) int {
+	ln := c.buf.ln
 	for ; count > 0; count-- {
 		i := ln + 1
-		for i < len(e.lines) && strings.TrimSpace(e.lines[i]) != "" {
+		for i < len(c.buf.lines) && strings.TrimSpace(c.buf.lines[i]) != "" {
 			i++
 		}
-		ln = min(i, len(e.lines)-1)
+		ln = min(i, len(c.buf.lines)-1)
 	}
 	return ln
 }
 
-func (e *Editor) paraBack(count int) int {
-	ln := e.ln
+func (c *EditorCore) paraBack(count int) int {
+	ln := c.buf.ln
 	for ; count > 0; count-- {
 		i := ln - 1
-		for i > 0 && strings.TrimSpace(e.lines[i]) != "" {
+		for i > 0 && strings.TrimSpace(c.buf.lines[i]) != "" {
 			i--
 		}
 		ln = max(i, 0)
@@ -107,104 +107,104 @@ func (e *Editor) paraBack(count int) int {
 
 // move applies a motion action count times, extending the selection in
 // visual modes.
-func (e *Editor) move(act Action, count int) {
-	e.hist.close()
+func (c *EditorCore) move(act Action, count int) {
+	c.hist.close()
 	// Visual highlights derive from vAnchor + cursor; the buffer's own
 	// selection anchor stays nil so insertText never sees a stray region.
 	const extend = false
 	apply := func(ln, col int) {
-		e.moveCursor(ln, col, extend)
-		if e.keys.mode != ModeInsert {
-			e.clampNormal()
+		c.buf.moveCursor(ln, col, extend)
+		if c.keys.mode != ModeInsert {
+			c.clampNormal()
 		}
-		e.ensureVisible()
-		e.MarkDirty()
+		c.reveal()
+		c.markDirty()
 	}
 	switch act {
 	case ActLeft:
-		apply(e.ln, e.col-count)
-		e.desired = -1
+		apply(c.buf.ln, c.buf.col-count)
+		c.buf.desired = -1
 	case ActRight:
-		apply(e.ln, min(e.col+count, e.normalMax(e.ln)))
-		e.desired = -1
+		apply(c.buf.ln, min(c.buf.col+count, c.normalMax(c.buf.ln)))
+		c.buf.desired = -1
 	case ActDown, ActUp:
 		delta := count
 		if act == ActUp {
 			delta = -count
 		}
-		ln, col := e.verticalTarget(delta, e.measure)
-		d := e.desired
+		ln, col := c.buf.verticalTarget(delta, c.measure)
+		d := c.buf.desired
 		apply(ln, col)
-		e.desired = d
+		c.buf.desired = d
 	case ActPageDown, ActPageUp:
-		delta := max(e.h, 1) * count
+		delta := c.pageLines() * count
 		if act == ActPageUp {
 			delta = -delta
 		}
-		ln, col := e.verticalTarget(delta, e.measure)
-		d := e.desired
+		ln, col := c.buf.verticalTarget(delta, c.measure)
+		d := c.buf.desired
 		apply(ln, col)
-		e.desired = d
+		c.buf.desired = d
 	case ActLineStart:
-		e.desired = -1
-		apply(e.ln, 0)
+		c.buf.desired = -1
+		apply(c.buf.ln, 0)
 	case ActLineEnd:
-		e.desired = -1
-		col := e.normalMax(e.ln)
-		if e.keys.mode == ModeInsert {
-			col = len(e.lineClusters(e.ln))
+		c.buf.desired = -1
+		col := c.normalMax(c.buf.ln)
+		if c.keys.mode == ModeInsert {
+			col = len(c.buf.lineClusters(c.buf.ln))
 		}
-		apply(e.ln, col)
+		apply(c.buf.ln, col)
 	case ActWordForward:
-		e.desired = -1
+		c.buf.desired = -1
 		for i := 0; i < count; i++ {
-			ln, col := e.vimWordForward()
-			e.moveCursor(ln, col, false)
+			ln, col := c.vimWordForward()
+			c.buf.moveCursor(ln, col, false)
 		}
-		e.clampNormal()
-		e.ensureVisible()
-		e.MarkDirty()
+		c.clampNormal()
+		c.reveal()
+		c.markDirty()
 	case ActWordBack:
-		e.desired = -1
+		c.buf.desired = -1
 		for i := 0; i < count; i++ {
-			ln, col := e.vimWordBack()
-			e.moveCursor(ln, col, false)
+			ln, col := c.vimWordBack()
+			c.buf.moveCursor(ln, col, false)
 		}
-		e.clampNormal()
-		e.ensureVisible()
-		e.MarkDirty()
+		c.clampNormal()
+		c.reveal()
+		c.markDirty()
 	case ActWordEnd:
-		e.desired = -1
+		c.buf.desired = -1
 		for i := 0; i < count; i++ {
-			ln, col := e.wordEnd()
-			e.moveCursor(ln, col, false)
+			ln, col := c.wordEnd()
+			c.buf.moveCursor(ln, col, false)
 		}
-		e.clampNormal()
-		e.ensureVisible()
-		e.MarkDirty()
+		c.clampNormal()
+		c.reveal()
+		c.markDirty()
 	case ActParaForward:
-		e.desired = -1
-		apply(e.paraForward(count), 0)
+		c.buf.desired = -1
+		apply(c.paraForward(count), 0)
 	case ActParaBack:
-		e.desired = -1
-		apply(e.paraBack(count), 0)
+		c.buf.desired = -1
+		apply(c.paraBack(count), 0)
 	}
 }
 
 // goToLine is the shared gg/G target motion: an EXPLICIT count means
 // "line count" (1-based, clamped); without one, gg goes to the top and G
 // to the bottom.
-func (e *Editor) goToLine(hadCount bool, count int, bottom bool) {
-	e.desired = -1
+func (c *EditorCore) goToLine(hadCount bool, count int, bottom bool) {
+	c.buf.desired = -1
 	ln := 0
 	switch {
 	case hadCount:
-		ln = min(count-1, len(e.lines)-1)
+		ln = min(count-1, len(c.buf.lines)-1)
 	case bottom:
-		ln = len(e.lines) - 1
+		ln = len(c.buf.lines) - 1
 	}
-	e.moveCursor(ln, 0, false)
-	e.clampNormal()
-	e.ensureVisible()
-	e.MarkDirty()
+	c.buf.moveCursor(ln, 0, false)
+	c.clampNormal()
+	c.reveal()
+	c.markDirty()
 }

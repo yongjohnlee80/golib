@@ -68,7 +68,7 @@ func TestTheByteSpansMapOntoClusters(t *testing.T) {
 		return []highlight.Span{{Start: i, End: i + 2, Style: highlight.Keyword}}, 0
 	})))
 	e.SetValue("中é kw")
-	got := e.hlc.highlightLine(e.lines[0], 0).styles
+	got := e.core.hl.highlightLine(e.core.buf.lines[0], 0).styles
 	want := []highlight.Style{highlight.Normal, highlight.Normal, highlight.Normal, highlight.Keyword, highlight.Keyword}
 	if len(got) != len(want) {
 		t.Fatalf("styles %v, want %v", got, want)
@@ -209,12 +209,12 @@ func waitCells(t *testing.T, tb *tui.TestBackend, cond func([][]tui.Cell) bool) 
 // and reports how many lines it examined — checked against the cache or
 // highlighted afresh.
 func frameWork(e *Editor, rows int) (examined int, provisional bool) {
-	before := e.hlc.examined
+	before := e.core.hl.examined
 	f := e.beginHighlightFrame()
-	for ln := e.top; ln < min(e.top+rows, len(e.lines)); ln++ {
+	for ln := e.cells.top; ln < min(e.cells.top+rows, len(e.core.buf.lines)); ln++ {
 		e.highlighted(ln, f)
 	}
-	return e.hlc.examined - before, f.provisional
+	return e.core.hl.examined - before, f.provisional
 }
 
 // TestADeepJumpHighlightsInBoundedFrames: `G` on a long file needs every line
@@ -245,7 +245,7 @@ func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 	var work int
 	var calls int32
 	ih.onLoopInternal(func() {
-		e.goToLine(false, 1, true) // G
+		e.core.goToLine(false, 1, true) // G
 		e.ensureVisible()
 		before := hl.calls.Load()
 		work, _ = frameWork(e, rows)
@@ -275,8 +275,8 @@ func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 	// An edit near the top invalidates from there: bounded again, and caught
 	// up again after.
 	ih.onLoopInternal(func() {
-		e.lines[1] = "changed"
-		e.touch(1)
+		e.core.buf.lines[1] = "changed"
+		e.core.buf.touch(1)
 		work, _ = frameWork(e, rows)
 	})
 	if work > bound {
@@ -321,10 +321,10 @@ func TestTheCacheAgreesWithAFreshHighlightAfterAnyEdit(t *testing.T) {
 	fresh := func() [][]highlight.Style {
 		var out [][]highlight.Style
 		st := highlight.State(0)
-		for ln := range e.lines {
-			entry := e.hlc.highlightLine(e.lines[ln], st)
+		for ln := range e.core.buf.lines {
+			entry := e.core.hl.highlightLine(e.core.buf.lines[ln], st)
 			st = entry.out
-			if ln >= e.top && ln < e.top+rows {
+			if ln >= e.cells.top && ln < e.cells.top+rows {
 				out = append(out, entry.styles)
 			}
 		}
@@ -344,7 +344,7 @@ func TestTheCacheAgreesWithAFreshHighlightAfterAnyEdit(t *testing.T) {
 					continue
 				}
 				got = nil
-				for ln := e.top; ln < min(e.top+rows, len(e.lines)); ln++ {
+				for ln := e.cells.top; ln < min(e.cells.top+rows, len(e.core.buf.lines)); ln++ {
 					got = append(got, e.highlighted(ln, f))
 				}
 				break

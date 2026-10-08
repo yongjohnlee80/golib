@@ -60,13 +60,13 @@ func EditorContextItems(e *Editor) []MenuItemModel {
 	redoRow.Enabled = e.CanRedo()
 	copyRow := NewCommand(EditorMenuCopy, "Copy", EditorMenuAction{ID: "editor.copy", Run: (*Editor).Copy})
 	copyRow.LabelMsg = tui.Msg("tui.editor.menu.copy")
-	copyRow.Enabled = selected && e.reg.yankAllowed()
+	copyRow.Enabled = selected && e.core.reg.yankAllowed()
 	cutRow := NewCommand(EditorMenuCut, "Cut", EditorMenuAction{ID: "editor.cut", Run: (*Editor).Cut})
 	cutRow.LabelMsg = tui.Msg("tui.editor.menu.cut")
-	cutRow.Enabled = selected && !e.readOnly
+	cutRow.Enabled = selected && !e.core.readOnly
 	pasteRow := NewCommand(EditorMenuPaste, "Paste", EditorMenuAction{ID: "editor.paste", Run: (*Editor).Paste})
 	pasteRow.LabelMsg = tui.Msg("tui.editor.menu.paste")
-	pasteRow.Enabled = !e.readOnly && (text != "" || linewise)
+	pasteRow.Enabled = !e.core.readOnly && (text != "" || linewise)
 	return []MenuItemModel{undoRow, redoRow, NewSeparator(EditorMenuEdits), copyRow, cutRow, pasteRow}
 }
 

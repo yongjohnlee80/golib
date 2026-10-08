@@ -47,10 +47,10 @@ func TestBoxRestylesAndRevertsKeepingItsBorder(t *testing.T) {
 func TestEditorAndInputRestyleAndRevert(t *testing.T) {
 	e := NewEditor(WithEditorStyles(TextInputStyles{Text: red}))
 	e.WithStyles(TextInputStyles{Selection: red})
-	if e.styles != NewEditor(WithEditorStyles(TextInputStyles{Selection: red})).styles {
+	if e.cells.styles != NewEditor(WithEditorStyles(TextInputStyles{Selection: red})).cells.styles {
 		t.Fatal("the editor's earlier Text look survived a restyle")
 	}
-	if e.WithStyles(TextInputStyles{}).styles != NewEditor().styles {
+	if e.WithStyles(TextInputStyles{}).cells.styles != NewEditor().cells.styles {
 		t.Fatal("the editor's zero styles did not restore the default")
 	}
 	in := NewTextInput(WithTextInputStyles(TextInputStyles{Text: red}))
@@ -94,7 +94,7 @@ func TestFileViewsRestyleEveryPart(t *testing.T) {
 		list, preview, pane, gap any
 	}
 	open := func(v *FileOpenView) parts {
-		return parts{v.list.list.styles, v.preview.view.styles,
+		return parts{v.list.list.styles, v.preview.view.cells.styles,
 			[2]style.Style{v.list.box.base, v.list.box.focusedSt}, v.root.(*Split).divider}
 	}
 	styled := NewFileOpenView(WithFileViewSource(src), WithFileViewStyles(st))

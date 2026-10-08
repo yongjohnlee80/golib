@@ -4,17 +4,17 @@ import "strings"
 
 // visualRange returns the INCLUSIVE charwise selection as an exclusive
 // [lo, hiEx) buffer region.
-func (e *Editor) visualRange() (lo, hiEx taPos) {
-	a, b := e.vAnchor, taPos{ln: e.ln, col: e.col}
+func (c *EditorCore) visualRange() (lo, hiEx taPos) {
+	a, b := c.vAnchor, taPos{ln: c.buf.ln, col: c.buf.col}
 	if a.ln > b.ln || (a.ln == b.ln && a.col > b.col) {
 		a, b = b, a
 	}
-	return a, taPos{ln: b.ln, col: min(b.col+1, len(e.lineClusters(b.ln)))}
+	return a, taPos{ln: b.ln, col: min(b.col+1, len(c.buf.lineClusters(b.ln)))}
 }
 
 // visualLines returns the inclusive line span of a line-wise selection.
-func (e *Editor) visualLines() (lo, hi int) {
-	lo, hi = e.vAnchor.ln, e.ln
+func (c *EditorCore) visualLines() (lo, hi int) {
+	lo, hi = c.vAnchor.ln, c.buf.ln
 	if lo > hi {
 		lo, hi = hi, lo
 	}
@@ -22,34 +22,34 @@ func (e *Editor) visualLines() (lo, hi int) {
 }
 
 // inVisual reports whether (ln, col) is inside the visual highlight.
-func (e *Editor) inVisual(ln, col int) bool {
-	if !e.canSelect {
+func (c *EditorCore) inVisual(ln, col int) bool {
+	if !c.canSelect {
 		return false
 	}
-	switch e.keys.mode {
+	switch c.keys.mode {
 	case ModeVisual:
-		lo, hiEx := e.visualRange()
+		lo, hiEx := c.visualRange()
 		p := taPos{ln: ln, col: col}
 		return posLE(lo, p.ln, p.col) && !posLE(hiEx, p.ln, p.col)
 	case ModeVisualLine:
-		lo, hi := e.visualLines()
+		lo, hi := c.visualLines()
 		return ln >= lo && ln <= hi
 	}
 	return false
 }
 
 // SelectedText returns the visual selection ("" outside visual modes or when selection is disabled).
-func (e *Editor) SelectedText() string {
-	if !e.canSelect {
+func (c *EditorCore) SelectedText() string {
+	if !c.canSelect {
 		return ""
 	}
-	switch e.keys.mode {
+	switch c.keys.mode {
 	case ModeVisual:
-		lo, hiEx := e.visualRange()
-		return e.textIn(lo, hiEx)
+		lo, hiEx := c.visualRange()
+		return c.buf.textIn(lo, hiEx)
 	case ModeVisualLine:
-		lo, hi := e.visualLines()
-		return strings.Join(e.lines[lo:hi+1], "\n")
+		lo, hi := c.visualLines()
+		return strings.Join(c.buf.lines[lo:hi+1], "\n")
 	}
 	return ""
 }
@@ -59,27 +59,27 @@ func (e *Editor) SelectedText() string {
 // the cursor. A line-wise selection runs from the start of its first line to the end of its last.
 // ok is false outside the visual modes, or when selection is disabled. It is the region
 // SelectedText returns the text of.
-func (e *Editor) SelectionRange() (row, col, endRow, endCol int, ok bool) {
-	if !e.canSelect {
+func (c *EditorCore) SelectionRange() (row, col, endRow, endCol int, ok bool) {
+	if !c.canSelect {
 		return 0, 0, 0, 0, false
 	}
-	switch e.keys.mode {
+	switch c.keys.mode {
 	case ModeVisual:
-		lo, hiEx := e.visualRange()
+		lo, hiEx := c.visualRange()
 		return lo.ln, lo.col, hiEx.ln, hiEx.col, true
 	case ModeVisualLine:
-		lo, hi := e.visualLines()
-		return lo, 0, hi, len(e.lineClusters(hi)), true
+		lo, hi := c.visualLines()
+		return lo, 0, hi, len(c.buf.lineClusters(hi)), true
 	}
 	return 0, 0, 0, 0, false
 }
 
 // SetRegister imports text into the unnamed register (the application's
 // value-inspect copy path).
-func (e *Editor) SetRegister(text string, linewise bool) { e.reg.set(text, linewise) }
+func (c *EditorCore) SetRegister(text string, linewise bool) { c.reg.set(text, linewise) }
 
 // Register returns the unnamed register's content.
-func (e *Editor) Register() (text string, linewise bool) { return e.reg.content() }
+func (c *EditorCore) Register() (text string, linewise bool) { return c.reg.content() }
 
 // exportYank puts a yanked selection on the SYSTEM clipboard and reports the
 // outcome, and it is called only from the explicit yank actions.
@@ -94,74 +94,68 @@ func (e *Editor) Register() (text string, linewise bool) { return e.reg.content(
 // user a way to copy out; bufferview already does this on `y` for the same
 // reason. Backends without a ClipboardWriter make CopyToClipboard report
 // false, which is surfaced rather than treated as an error.
-func (e *Editor) exportYank(text string) {
-	if !e.reg.yankAllowed() {
+func (c *EditorCore) exportYank(text string) {
+	if !c.reg.yankAllowed() {
 		return
 	}
 	delivered := false
-	if ctx := e.Context(); ctx != nil {
-		delivered = ctx.CopyToClipboard(text)
+	if c.ctx != nil {
+		delivered = c.ctx.CopyToClipboard(text)
 	}
-	e.publish(YankEvent{Owner: e.NodeID(), ClipboardDelivered: delivered})
+	c.publish(YankEvent{Owner: c.nodeID(), ClipboardDelivered: delivered})
 }
 
-func (e *Editor) yankSet(text string, linewise bool) { e.reg.set(text, linewise) }
+func (c *EditorCore) yankSet(text string, linewise bool) { c.reg.set(text, linewise) }
 
 // deleteLines removes [lo, hi] inclusive into the register (linewise).
-func (e *Editor) deleteLines(lo, hi int) {
-	e.beginGroup()
-	e.yankSet(strings.Join(e.lines[lo:hi+1], "\n"), true)
-	rest := append([]string{}, e.lines[:lo]...)
-	rest = append(rest, e.lines[hi+1:]...)
+func (c *EditorCore) deleteLines(lo, hi int) {
+	c.beginGroup()
+	c.yankSet(strings.Join(c.buf.lines[lo:hi+1], "\n"), true)
+	rest := append([]string{}, c.buf.lines[:lo]...)
+	rest = append(rest, c.buf.lines[hi+1:]...)
 	if len(rest) == 0 {
 		rest = []string{""}
 	}
-	e.lines = rest
-	e.touch(lo)
-	e.ln = min(lo, len(e.lines)-1)
-	e.col = 0
-	e.anchor = nil
-	e.clampNormal()
-	e.edited()
+	c.buf.lines = rest
+	c.buf.touch(lo)
+	c.buf.ln = min(lo, len(c.buf.lines)-1)
+	c.buf.col = 0
+	c.buf.anchor = nil
+	c.clampNormal()
+	c.edited()
 }
 
-func (e *Editor) pasteRegister(after bool) {
-	if !e.reg.holds() {
+func (c *EditorCore) pasteRegister(after bool) {
+	if !c.reg.holds() {
 		return
 	}
-	text, linewise := e.reg.content()
-	e.beginGroup()
+	text, linewise := c.reg.content()
+	c.beginGroup()
 	if linewise {
-		at := e.ln
+		at := c.buf.ln
 		if after {
 			at++
 		}
 		newLines := strings.Split(text, "\n")
-		e.lines = append(e.lines[:at], append(append([]string{}, newLines...), e.lines[at:]...)...)
-		e.touch(at)
-		e.ln, e.col = at, 0
+		c.buf.lines = append(c.buf.lines[:at], append(append([]string{}, newLines...), c.buf.lines[at:]...)...)
+		c.buf.touch(at)
+		c.buf.ln, c.buf.col = at, 0
 	} else {
-		col := e.col
-		if after && len(e.lineClusters(e.ln)) > 0 {
+		col := c.buf.col
+		if after && len(c.buf.lineClusters(c.buf.ln)) > 0 {
 			col++
 		}
-		e.col = e.clampCol(e.ln, col)
-		e.insertText(text)
+		c.buf.col = c.buf.clampCol(c.buf.ln, col)
+		c.buf.insertText(text)
 		// vim leaves the cursor ON the last pasted cluster.
-		e.col = max(0, e.col-1)
-		e.clampNormal()
+		c.buf.col = max(0, c.buf.col-1)
+		c.clampNormal()
 	}
-	e.edited()
+	c.edited()
 }
 
 // WithSelection configures whether visual selection is enabled on the editor.
-func WithSelection(enabled bool) EditorOption {
-	return func(e *Editor) {
-		e.canSelect = enabled
-	}
-}
+func WithSelection(enabled bool) EditorOption { return WithCore(CoreSelection(enabled)) }
 
 // WithYank configures whether yanking to system clipboard and registers is enabled.
-func WithYank(enabled bool) EditorOption {
-	return func(e *Editor) { e.reg.yank = enabled }
-}
+func WithYank(enabled bool) EditorOption { return WithCore(CoreYank(enabled)) }

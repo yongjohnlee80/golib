@@ -1,59 +1,57 @@
 package widget
 
-// snapshot is the editor's text and cursor, for its history (edithistory.go).
-func (e *Editor) snapshot() textSnap {
-	lines := make([]string, len(e.lines))
-	copy(lines, e.lines)
-	return textSnap{lines: lines, ln: e.ln, col: e.col}
+// snapshot is the core's text and cursor, for its history (edithistory.go).
+func (c *EditorCore) snapshot() textSnap {
+	lines := make([]string, len(c.buf.lines))
+	copy(lines, c.buf.lines)
+	return textSnap{lines: lines, ln: c.buf.ln, col: c.buf.col}
 }
 
 // beginGroup starts an undo group before an edit: every Normal-mode edit is one group; an
 // Insert session is one group, opened at its first mutation and kept open. A paste during Insert
 // stays inside the open group; focus loss closes it without leaving Insert.
-func (e *Editor) beginGroup() { e.hist.begin(e.snapshot, e.keys.mode == ModeInsert) }
+func (c *EditorCore) beginGroup() { c.hist.begin(c.snapshot, c.keys.mode == ModeInsert) }
 
 // doUndo reverts the most recent edit group.
-func (e *Editor) doUndo() {
-	if s, ok := e.hist.stepBack(e.snapshot); ok {
-		e.restore(s)
+func (c *EditorCore) doUndo() {
+	if s, ok := c.hist.stepBack(c.snapshot); ok {
+		c.restore(s)
 	}
 }
 
 // doRedo reapplies the most recently reverted edit group.
-func (e *Editor) doRedo() {
-	if s, ok := e.hist.stepForward(e.snapshot); ok {
-		e.restore(s)
+func (c *EditorCore) doRedo() {
+	if s, ok := c.hist.stepForward(c.snapshot); ok {
+		c.restore(s)
 	}
 }
 
 // restore resets the buffer content and cursor coordinates from a snapshot.
-func (e *Editor) restore(s textSnap) {
-	e.lines = s.lines
-	e.touch(0)
-	e.ln = max(0, min(s.ln, len(e.lines)-1))
-	e.col = s.col
-	e.anchor = nil
-	if e.keys.modal {
-		e.clampNormal()
+func (c *EditorCore) restore(s textSnap) {
+	b := &c.buf
+	b.lines = s.lines
+	b.touch(0)
+	b.ln = max(0, min(s.ln, len(b.lines)-1))
+	b.col = s.col
+	b.anchor = nil
+	if c.keys.modal {
+		c.clampNormal()
 	}
-	e.edited()
+	c.edited()
 }
 
-// edited finalizes any buffer mutation: viewport, dirt, change event.
-func (e *Editor) edited() {
-	if e.numbers && e.gutterWidth() != e.gutter {
-		e.RequestLayout() // the lines' count has another number of digits: the gutter's width moves
-	}
-	e.desired = -1
-	e.ensureVisible()
-	e.MarkDirty()
-	e.publish(ChangeEvent{Owner: e.NodeID(), Value: e.Value()})
-	if e.onChange != nil {
-		e.onChange()
+// edited finalizes any buffer mutation: the layout hears which lines changed, the cursor is
+// revealed, and the change is published.
+func (c *EditorCore) edited() {
+	c.buf.desired = -1
+	c.changed()
+	c.reveal()
+	c.markDirty()
+	c.publish(ChangeEvent{Owner: c.nodeID(), Value: c.buf.value()})
+	if c.onChange != nil {
+		c.onChange()
 	}
 }
 
 // WithUndo configures whether the editor maintains undo/redo history.
-func WithUndo(enabled bool) EditorOption {
-	return func(e *Editor) { e.hist.setEnabled(enabled) }
-}
+func WithUndo(enabled bool) EditorOption { return WithCore(CoreUndo(enabled)) }

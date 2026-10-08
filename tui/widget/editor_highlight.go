@@ -62,26 +62,18 @@ func (c *highlightCache) setHighlighter(h highlight.Highlighter) {
 }
 
 // WithHighlighter sets the Editor's highlighter; nil is none.
-func WithHighlighter(h highlight.Highlighter) EditorOption {
-	return func(e *Editor) { e.hlc.hl = h }
-}
+func WithHighlighter(h highlight.Highlighter) EditorOption { return WithCore(CoreHighlighter(h)) }
 
 // WithSyntaxStyles sets what each highlight style looks like.
-func WithSyntaxStyles(st SyntaxStyles) EditorOption {
-	return func(e *Editor) { e.hlc.syntax = st }
-}
+func WithSyntaxStyles(st SyntaxStyles) EditorOption { return WithCore(CoreSyntaxStyles(st)) }
 
 // SetHighlighter replaces the highlighter at runtime; nil turns highlighting
 // off. Every line is highlighted afresh.
-func (e *Editor) SetHighlighter(h highlight.Highlighter) {
-	e.hlc.setHighlighter(h)
-	e.MarkDirty()
-}
+func (e *Editor) SetHighlighter(h highlight.Highlighter) { e.core.SetHighlighter(h) }
 
 // WithSyntaxStyles replaces what each highlight style looks like.
 func (e *Editor) WithSyntaxStyles(st SyntaxStyles) *Editor {
-	e.hlc.syntax = st
-	e.MarkDirty()
+	e.core.SetSyntaxStyles(st)
 	return e
 }
 
@@ -89,7 +81,7 @@ func (e *Editor) WithSyntaxStyles(st SyntaxStyles) *Editor {
 // and — when it has not reached the screen — the next frame, asked for after
 // this one, since a render cannot mark itself dirty.
 func (e *Editor) beginHighlightFrame() *hlFrame {
-	f, behind := e.hlc.beginFrame(e.lines, e.top, e.takeChanged)
+	f, behind := e.core.hl.beginFrame(e.core.buf.lines, e.cells.top, e.core.takeHighlightChanged)
 	if behind {
 		if ctx := e.Context(); ctx != nil {
 			ctx.App().Update(e.MarkDirty)
@@ -101,11 +93,11 @@ func (e *Editor) beginHighlightFrame() *hlFrame {
 // highlighted returns the style of every cluster of line ln — a line on
 // screen, asked for in order by Render.
 func (e *Editor) highlighted(ln int, f *hlFrame) []highlight.Style {
-	return e.hlc.highlighted(e.lines, e.top, ln, f)
+	return e.core.hl.highlighted(e.core.buf.lines, e.cells.top, ln, f)
 }
 
 // syntaxStyle is the look a cluster's highlight style adds over the text.
-func (e *Editor) syntaxStyle(k highlight.Style) (style.Style, bool) { return e.hlc.syntaxStyle(k) }
+func (e *Editor) syntaxStyle(k highlight.Style) (style.Style, bool) { return e.core.hl.syntaxStyle(k) }
 
 // hlFrameBudget is how many lines a frame may EXAMINE to catch up — check
 // against the cache or highlight afresh — on its way to the screen. A jump
