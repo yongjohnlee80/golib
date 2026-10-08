@@ -95,6 +95,7 @@ func editorSetters() map[string]tuidecl.Setter {
 			e.SetMode(widget.Raw)
 		}
 	})
+	s["renderedEnabled"] = tuidecl.BoolSetter((*widget.Editor).SetRenderedEnabled)
 	s["wrap"] = tuidecl.BoolSetter(func(e *widget.Editor, v bool) { e.SetWrap(wrapMode(v)) })
 	s["lineNumbers"] = tuidecl.BoolSetter((*widget.Editor).SetLineNumbers)
 	s["lineNumberColor"] = tuidecl.ColorSetter((*widget.Editor).SetLineNumberColor)
