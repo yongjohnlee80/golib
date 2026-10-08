@@ -87,10 +87,12 @@ func delimiterAligns(line string) ([]align, bool) {
 	return out, true
 }
 
-// tableEnd is where a table starting at line i ends, past its last row: a row with a pipe, then
-// a delimiter row with as many cells, then rows while lines hold a pipe. 0: no table there.
+// tableEnd is where a table starting at line i ends, past its last row, as GFM reads one: a
+// header row with a pipe, a delimiter row with as many cells, then body rows until a blank line
+// or the start of another block (a heading, a quote, a fence, a rule, a list item), a row with no
+// pipe included. 0: no table there.
 func tableEnd(lines []string, i int) int {
-	if i+1 >= len(lines) || !strings.Contains(lines[i], "|") || indentedCode(lines[i]) {
+	if i+1 >= len(lines) || !strings.Contains(lines[i], "|") || indentedCode(lines[i]) || startsBlock(lines[i]) {
 		return 0
 	}
 	aligns, ok := delimiterAligns(lines[i+1])
@@ -98,10 +100,40 @@ func tableEnd(lines []string, i int) int {
 		return 0
 	}
 	end := i + 2
-	for end < len(lines) && !isBlank(lines[end]) && strings.Contains(lines[end], "|") {
+	for end < len(lines) && !isBlank(lines[end]) && !startsBlock(lines[end]) {
 		end++
 	}
 	return end
+}
+
+// startsBlock reports a line that starts a block of its own, which ends a table: a heading, a
+// quote, a fence, a thematic break or a list item.
+func startsBlock(line string) bool {
+	s := strings.TrimLeft(line, " ")
+	if len(line)-len(s) > 3 {
+		return false
+	}
+	if _, ok := openFence(line); ok {
+		return true
+	}
+	if d, _ := quoteDepth(line); d > 0 {
+		return true
+	}
+	if n := len(s) - len(strings.TrimLeft(s, "#")); n >= 1 && n <= 6 && (n == len(s) || s[n] == ' ') {
+		return true
+	}
+	return isThematic(strings.TrimSpace(line)) || isListItem(line)
+}
+
+// InTable reports whether line ln is a row of a table: its source is not a list, whatever it
+// starts with.
+func (r *MarkdownRenderer) InTable(lines []string, ln int) bool {
+	for _, b := range r.Blocks(lines, 0, len(lines)) {
+		if b.From <= ln && ln < b.To {
+			return tableEnd(lines, b.From) > 0
+		}
+	}
+	return false
 }
 
 // layTable lays a table out: its source when the cursor is in it, else a grid.
@@ -128,13 +160,17 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 		w     []float32
 	}
 	rows := make([]rowCells, b.To-b.From)
-	var colW []float32
+	ncols := len(tableCells(lines[b.From])) // the header's: a body row's extra cells are ignored, as GFM's
+	colW := make([]float32, ncols)
 	for i := range rows {
 		ln := b.From + i
 		if i == 1 {
 			continue // the delimiter row
 		}
 		rc := rowCells{cells: tableCells(lines[ln])}
+		if len(rc.cells) > ncols {
+			rc.cells = rc.cells[:ncols] // the extras' bytes join the row's trailing hidden run
+		}
 		for _, c := range rc.cells {
 			var spans []flow.Span
 			var w float32
@@ -151,9 +187,6 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 				}
 			}
 			rc.spans, rc.w = append(rc.spans, spans), append(rc.w, w)
-		}
-		for len(colW) < len(rc.w) {
-			colW = append(colW, 0)
 		}
 		for k, w := range rc.w {
 			colW[k] = max(colW[k], w)
