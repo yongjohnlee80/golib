@@ -214,7 +214,7 @@ func frameWork(e *Editor, rows int) (examined int, provisional bool) {
 	for ln := e.cells.top; ln < min(e.cells.top+rows, len(e.core.buf.lines)); ln++ {
 		e.highlighted(ln, f)
 	}
-	return e.core.hl.examined - before, f.provisional
+	return e.core.hl.examined - before, f.f.provisional
 }
 
 // TestADeepJumpHighlightsInBoundedFrames: `G` on a long file needs every line
@@ -340,7 +340,7 @@ func TestTheCacheAgreesWithAFreshHighlightAfterAnyEdit(t *testing.T) {
 		ih.onLoopInternal(func() {
 			for {
 				f := e.beginHighlightFrame()
-				if f.provisional {
+				if f.f.provisional {
 					continue
 				}
 				got = nil

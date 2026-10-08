@@ -171,3 +171,24 @@ func TestCoreContextItemsActOnTheCore(t *testing.T) {
 		t.Fatal("Copy disabled with a selection")
 	}
 }
+
+// A widget in another package draws from the core's read side alone: lines without a copy, the
+// selection, and a highlight frame's styles.
+func TestEditorCoreReadSide(t *testing.T) {
+	c := widget.NewEditorCore(widget.CoreInitialText("ab\ncd"), widget.CoreSelection(true))
+	if c.LineCount() != 2 || c.LineAt(1) != "cd" || c.LineAt(5) != "" {
+		t.Fatalf("lines: %d %q %q", c.LineCount(), c.LineAt(1), c.LineAt(5))
+	}
+	if c.Highlighting() {
+		t.Fatal("no highlighter set, yet Highlighting")
+	}
+	c.HandleKey(tui.KeyEvent{Code: 'v'})
+	c.HandleKey(tui.KeyEvent{Code: 'l'})
+	if !c.Selected(0, 0) || !c.Selected(0, 1) || c.Selected(1, 0) {
+		t.Fatalf("selection: %v %v %v", c.Selected(0, 0), c.Selected(0, 1), c.Selected(1, 0))
+	}
+	f := c.BeginHighlight(0)
+	if f.Behind || f.Styles(0) != nil {
+		t.Fatalf("frame without a highlighter: behind %v, styles %v", f.Behind, f.Styles(0))
+	}
+}
