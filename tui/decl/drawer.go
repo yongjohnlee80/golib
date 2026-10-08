@@ -86,20 +86,25 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	return n, consumed, nil
 }
 
+// drawerGrip is a resizable Drawer's corner grip.
+const drawerGrip = "□"
+
 // wrapped is the content as the frame holds it: in a grip at the edge's inner corner when the Drawer
 // is resizable, itself otherwise. A grip is made for the edge it is at, so a new edge makes a new one.
 func (n *drawerNode) wrapped() tui.Component {
 	if !n.resizable {
 		return n.content
 	}
-	handle, glyph := widget.HandleBottomRight, "◢"
+	// a hollow square at the corner, the same in a terminal and a window (a full block is a cell
+	// tall, not square; a corner-pointing triangle read as a stray glyph against the frame)
+	handle := widget.HandleBottomRight
 	switch n.edge {
 	case tui.DockRight:
-		handle, glyph = widget.HandleBottomLeft, "◣"
+		handle = widget.HandleBottomLeft
 	case tui.DockBottom:
-		handle, glyph = widget.HandleTopRight, "◥"
+		handle = widget.HandleTopRight
 	}
-	n.grip = widget.NewResizable(n.content, widget.WithHandles(handle), widget.WithHandleGlyph(glyph),
+	n.grip = widget.NewResizable(n.content, widget.WithHandles(handle), widget.WithHandleGlyph(drawerGrip),
 		widget.WithResizeEnd(n.dragEnded))
 	return n.grip
 }
