@@ -8,10 +8,12 @@ import (
 	"sync/atomic"
 
 	"gioui.org/app"
+	"gioui.org/font"
 	"gioui.org/font/gofont"
 	"gioui.org/io/system"
 	"gioui.org/op"
 	"gioui.org/text"
+	"gioui.org/unit"
 	"golang.org/x/image/math/fixed"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -29,7 +31,13 @@ var errClosedBeforeOpen = errors.New("gui: window closed before it opened")
 type Backend struct {
 	cfg config
 	win *app.Window
-	fm  fontMetrics
+
+	// font is the cell font as the Gio goroutine reads it: one Load per frame, for measure and
+	// the IME's preedit alike. The tui loop replaces it (SetFont, SetZoom) and never mutates one.
+	font atomic.Pointer[fontState]
+	// The tui loop owns these: what SetFont, SetProseFont and SetZoom were last given.
+	fontSize unit.Sp // the size before zoom
+	zoom     int     // percent
 
 	// metrics is the Gio goroutine's latest snapshot. Readers Load it once and use that value.
 	metrics atomic.Pointer[metrics]
@@ -84,16 +92,77 @@ func NewBackend(opts ...Option) *Backend {
 	cells := text.NewShaper(text.WithCollection(gofont.Collection()))
 	cfg.typeface = cellTypeface(cfg) // the full list, once: fallbackChain leaves it as it is
 	b := &Backend{
-		cfg:     cfg,
-		win:     new(app.Window),
-		fm:      measureFont(cells, fallbackChain(cfg.typeface)),
-		q:       newEventQueue(),
-		started: make(chan struct{}),
-		render:  newRenderer(cells, fallbackChain(cfg.typeface), cfg.theme),
-		images:  map[uint32]placedImage{},
+		cfg:      cfg,
+		win:      new(app.Window),
+		fontSize: cfg.fontSize,
+		zoom:     100,
+		q:        newEventQueue(),
+		started:  make(chan struct{}),
+		render:   newRenderer(cells, fallbackChain(cfg.typeface), cfg.theme),
+		images:   map[uint32]placedImage{},
 	}
 	b.gio.shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
+	b.font.Store(&fontState{fm: measureFont(cells, fallbackChain(cfg.typeface)), typeface: fallbackChain(cfg.typeface),
+		size: cfg.fontSize})
 	return b
+}
+
+// fontState is one hand-over of the cell font to the Gio goroutine.
+type fontState struct {
+	fm       fontMetrics
+	typeface string  // the cell typeface list, fallbackChain's
+	size     unit.Sp // the size the cells are drawn at: SetFont's, times SetZoom's percent
+	gen      uint64  // bumped by every change of font, family or size
+}
+
+// SetFont changes the cell font while the window runs: typeface a CSS-style family list as
+// WithFont takes it, size in sp. "" keeps the typeface, and size 0 the size. A family that is not
+// installed falls back as WithFont's does. The window lays out and paints again at the next frame,
+// whether or not the cell's size changed. Call it on the tui loop: from a handler, or in Post.
+func (b *Backend) SetFont(typeface string, size float32) {
+	if typeface != "" {
+		b.cfg.typeface, b.cfg.fontSet = typeface, true
+		b.cfg.typeface = cellTypeface(b.cfg)
+	}
+	if size > 0 {
+		b.fontSize = unit.Sp(size)
+	}
+	b.refont(typeface != "")
+}
+
+// SetZoom scales the cell font, and with it everything sized by the window's text (Canvas.TextSize),
+// to pct percent of SetFont's size: 50 to 300, 100 the size itself. On the tui loop.
+func (b *Backend) SetZoom(pct int) {
+	b.zoom = min(max(pct, 50), 300)
+	b.refont(false)
+}
+
+// SetProseFont is the family a Font with no Family draws in, in the window's native views (the
+// Rendered view's prose, HTMLView's default, the native style's labels): a CSS-style family list,
+// "" for the default ("sans-serif, emoji"). On the tui loop.
+func (b *Backend) SetProseFont(family string) {
+	if family == "" {
+		family = uiFamily
+	}
+	b.render.fonts.Prose = family
+	b.refont(false)
+}
+
+// refont publishes a new fontState: the cell font measured again, a new generation, and the
+// renderer's face when the typeface changed (the glyphs it cached are cleared by the generation).
+// Then it asks Gio for a frame, which pushes the App a ResizeEvent at the new generation.
+func (b *Backend) refont(face bool) {
+	old := b.font.Load()
+	tf := fallbackChain(b.cfg.typeface)
+	fs := &fontState{fm: old.fm, typeface: tf, size: b.fontSize * unit.Sp(b.zoom) / 100, gen: old.gen + 1}
+	if face {
+		fs.fm = measureFont(b.render.shaper, tf)
+		b.render.typeface = font.Typeface(tf)
+		b.render.fonts.Mono = tf
+	}
+	b.render.fonts.Gen = fs.gen
+	b.font.Store(fs)
+	b.win.Invalidate()
 }
 
 // measureFont measures the cell font's "0" at 100px per em, and scales it to one em.

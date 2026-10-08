@@ -295,13 +295,15 @@ func (v bodyView) Paint(c gui.Canvas) {
 	l := e.layout
 	fg, bg := e.pageColors(c, b.styleTheme)
 	rescaled := l.sh != nil && c.Text().Scale() != l.sh.Scale() // a screen of another scale: everything measures anew
+	refonted := c.Fonts().Gen != l.fonts                        // another family or size: shaped anew
+	l.fonts = c.Fonts().Gen
 	l.sh, l.cell = c.Text(), c.CellSize()
 	th := e.theme(fg, bg, c.TextSize(), b.styleTheme)
 	prev := l.th
 	l.th = th // the gutter is counted in this theme's monospace cells
 	l.gutter = float32(e.GutterWidth()) * l.monoCell()
 	w, h := c.Size().W-2*padX-l.gutter, c.Size().H
-	if w != l.width || th != prev || rescaled {
+	if w != l.width || th != prev || rescaled || refonted {
 		l.invalidate()
 	}
 	l.th, l.width, l.height = th, max(w, 1), h

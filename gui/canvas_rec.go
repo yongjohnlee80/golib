@@ -44,7 +44,8 @@ type RecordingCanvas struct {
 // NewRecordingCanvas is a canvas of size, over cells of cell size, at scale 1.
 func NewRecordingCanvas(size, cell Size) *RecordingCanvas {
 	rc := &RecordingCanvas{size: size, cell: cell,
-		shaper: &TextShaper{s: text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts()), scale: 1}}
+		shaper: &TextShaper{s: text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts()), scale: 1,
+			fonts: defaultFonts()}}
 	rc.root = rc
 	return rc
 }
@@ -63,7 +64,14 @@ func (c *RecordingCanvas) Sub(r Rect) Canvas {
 func (c *RecordingCanvas) Size() Size        { return c.size }
 func (c *RecordingCanvas) Scale() float32    { return 1 }
 func (c *RecordingCanvas) Text() *TextShaper { return c.shaper }
-func (c *RecordingCanvas) CellSize() Size    { return c.cell }
+
+// Fonts are the recording's families: the defaults, unless SetFonts set others.
+func (c *RecordingCanvas) Fonts() Fonts { return c.root.shaper.fonts }
+
+// SetFonts gives the recording other families, as a window's change of font would: views painted
+// on it afterwards shape in them and see the new generation.
+func (c *RecordingCanvas) SetFonts(f Fonts) { c.root.shaper.fonts = f }
+func (c *RecordingCanvas) CellSize() Size   { return c.cell }
 
 // TextSize answers TextPx when set, else the cell's height at the line height the default cell
 // font gives (about 1.2 times its size).

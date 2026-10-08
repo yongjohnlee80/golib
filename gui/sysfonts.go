@@ -2,6 +2,7 @@ package gui
 
 import (
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -76,3 +77,29 @@ var monospaceOnce = sync.OnceValue(func() string { return cellTypeface(defaultCo
 // default: the system's monospace, Go Mono, a Nerd Font for icons, then the generic families.
 // It asks fontconfig once.
 func MonospaceFamily() string { return monospaceOnce() }
+
+// Families lists the installed font families, as fontconfig names them (fc-list), sorted and each
+// once; mono lists only the monospace ones (fc-list :spacing=mono). A family fontconfig gives
+// several names is listed by its first. Nil where fontconfig is missing (macOS, Windows).
+func Families(mono bool) []string {
+	args := []string{":", "family"}
+	if mono {
+		args = []string{":spacing=mono", "family"}
+	}
+	return familyList(fontconfig("fc-list", args...))
+}
+
+// familyList is fc-list's family lines as a sorted list, each family once, by its first name.
+func familyList(out string) []string {
+	seen := map[string]bool{}
+	var list []string
+	for _, line := range strings.Split(out, "\n") {
+		first, _, _ := strings.Cut(line, ",")
+		if first = strings.TrimSpace(first); first != "" && !seen[first] {
+			seen[first] = true
+			list = append(list, first)
+		}
+	}
+	slices.Sort(list)
+	return list
+}
