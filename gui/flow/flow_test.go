@@ -180,3 +180,48 @@ func TestBlankLinesHoldABoundary(t *testing.T) {
 		}
 	}
 }
+
+// A kept tab is room, TabSize spaces wide, never a glyph: the text after it starts there, and
+// nothing drawn holds a tab.
+func TestTabIsRoomNotAGlyph(t *testing.T) {
+	sh := shaper()
+	f := gui.Font{Size: 16}
+	sp := sh.Measure(" ", f).X[1]
+	a := sh.Measure("a", f).X[1]
+	for _, size := range []int{0, 2} {
+		p := flow.Lay([]flow.Span{plain("a\tb")}, flow.Options{WhiteSpace: flow.PreWrap, TabSize: size}, sh)
+		n := size
+		if n == 0 {
+			n = 4
+		}
+		frags := p.Lines[0].Frags
+		last := frags[len(frags)-1]
+		if want := a + float32(n)*sp; abs(last.X-want) > 0.01 {
+			t.Errorf("TabSize %d: 'b' at %v, want %v", size, last.X, want)
+		}
+		for _, fr := range frags {
+			if fr.Layout != nil && fr.From <= 1 && fr.To > 1 {
+				t.Errorf("TabSize %d: a frag drawing the tab: [%d, %d)", size, fr.From, fr.To)
+			}
+		}
+	}
+}
+
+// SpaceWidth sets a kept space's advance: an indentation drawn at the width asked.
+func TestSpaceWidthSizesAnIndentation(t *testing.T) {
+	sh := shaper()
+	ind := plain("    ")
+	ind.SpaceWidth = 10
+	p := flow.Lay([]flow.Span{ind, plain("x")}, flow.Options{WhiteSpace: flow.PreWrap}, sh)
+	frags := p.Lines[0].Frags
+	if x := frags[len(frags)-1].X; abs(x-40) > 0.01 {
+		t.Errorf("text after four 10px spaces at %v, want 40", x)
+	}
+}
+
+func abs(f float32) float32 {
+	if f < 0 {
+		return -f
+	}
+	return f
+}

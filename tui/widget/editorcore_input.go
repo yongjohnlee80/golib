@@ -217,6 +217,9 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		return true
 	}
 
+	if c.listKey(k) {
+		return true
+	}
 	switch k.Code {
 	case tui.KeyTab:
 		// Insert mode consumes Tab as text; traversal belongs to Normal mode, where Tab bubbles.
