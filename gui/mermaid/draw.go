@@ -30,7 +30,7 @@ func (l *Laid) Paint(c gui.Canvas) {
 		for _, p := range g.parts {
 			for _, lb := range p.labels {
 				if p.y > 0 { // on the page: a lifeline or a box under a section's label never runs through it
-					l.ground(c, lb)
+					l.ground(c, lb, l.th.Background)
 				}
 				l.text(c, lb)
 			}
@@ -57,18 +57,18 @@ func (l *Laid) edgesAt(c gui.Canvas, over bool) {
 				continue
 			}
 			if lb == e.label && !e.plain { // the middle label sits on the page, over the line
-				l.ground(c, *lb)
+				l.ground(c, *lb, or(e.ground, l.th.Background))
 			}
 			l.text(c, *lb)
 		}
 	}
 }
 
-// ground fills the page's colour behind a label, a little past it.
-func (l *Laid) ground(c gui.Canvas, lb label) {
+// ground fills col behind a label, a little past it.
+func (l *Laid) ground(c gui.Canvas, lb label, col color.NRGBA) {
 	pad := lb.font.Size * 0.3
 	b := lb.box
-	c.FillRRect(gui.Rect{X: b.X - pad, Y: b.Y - pad, W: b.W + 2*pad, H: b.H + 2*pad}, 3, gui.Solid(l.th.Background))
+	c.FillRRect(gui.Rect{X: b.X - pad, Y: b.Y - pad, W: b.W + 2*pad, H: b.H + 2*pad}, 3, gui.Solid(col))
 }
 
 // frame draws a group: its box, its title's tab, and its dividers. Its title and its dividers'

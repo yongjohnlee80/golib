@@ -194,8 +194,9 @@ type laidEdge struct {
 	color                color.NRGBA
 	label                *label
 	headLabel, tailLabel *label
-	over                 bool // drawn over the boxes: a message across an activation
-	plain                bool // its middle label on nothing: it sits beside the line, not on it
+	over                 bool        // drawn over the boxes: a message across an activation
+	plain                bool        // its middle label on nothing: it sits beside the line, not on it
+	ground               color.NRGBA // what its middle label sits on; zero: the page
 }
 
 // laidGroup is a frame round other things: a box, its title, and dividers across it with their
