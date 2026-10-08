@@ -12,10 +12,13 @@ import (
 	"image/color"
 	"image/png"
 	"io"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/svg"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
@@ -429,5 +432,78 @@ func TestHTMLImagesResetForANewResolver(t *testing.T) {
 	m.tasks[8] = "logo.png"
 	if !l.HandleTask(tui.TaskResult{ID: 8, Value: image.Image(img)}) || m.entries["logo.png"].state != imgReady {
 		t.Error("a load under the new resolver was not taken")
+	}
+}
+
+// TestHTMLImagesDrawSVG: an SVG, by its name or by its first bytes, a data: URI included, loads as a
+// native drawing at its intrinsic size and paints through the canvas; garbage named .svg fails
+// and shows the alt text.
+func TestHTMLImagesDrawSVG(t *testing.T) {
+	ctx := context.Background()
+	const fox = `<svg viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" fill="#e27022"/></svg>`
+	serve := func(body string) tuiwidget.ImageResolver {
+		return func(context.Context, string) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader(body)), nil
+		}
+	}
+	for name, got := range map[string]func() (any, error){
+		"by name":    func() (any, error) { return loadImage(ctx, "a.svg", serve(fox)) },
+		"by content": func() (any, error) { return loadImage(ctx, "a", serve("<?xml version=\"1.0\"?>\n"+fox)) },
+		"data: URI":  func() (any, error) { return loadImage(ctx, "data:image/svg+xml,"+url.PathEscape(fox), nil) },
+	} {
+		v, err := got()
+		if d, ok := v.(*svg.Drawing); err != nil || !ok || d.Shapes() != 1 || d.Size().W != 72 {
+			t.Errorf("%s: %T %v", name, v, err)
+		}
+	}
+	if _, err := loadImage(ctx, "bad.svg", serve("<svg><path d=\"M0 0 L1e30 0\"/></svg>")); err == nil {
+		t.Error("an SVG with a number it cannot draw loaded")
+	}
+	v, l, _ := pixelView(t, `<p><img src="fox.svg" alt="fox"></p>`, 400, 200)
+	m := l.images
+	m.entries["fox.svg"] = &imgEntry{state: imgLoading}
+	m.tasks[3] = "fox.svg"
+	d, _ := svg.Parse(strings.NewReader(fox))
+	if !l.HandleTask(tui.TaskResult{ID: 3, Value: d}) {
+		t.Fatal("the drawing's result was not taken")
+	}
+	repaint(l, 400, 200)
+	if sp := l.runs[0].spans; len(sp) != 1 || sp[0].Atom == nil || sp[0].Atom.W != 72 {
+		t.Fatalf("the SVG's span: %+v, want a 72 px atom", sp)
+	}
+	rc := gui.NewRecordingCanvas(gui.Size{W: 72, H: 72}, gui.Size{W: 8, H: 19.2})
+	l.runs[0].spans[0].Atom.Paint(rc)
+	if len(rc.Calls) == 0 || rc.Calls[1].Op != "FillPath" {
+		t.Errorf("the atom painted %+v, want the drawing's paths", rc.Calls)
+	}
+	_ = v
+}
+
+// TestHTMLResourcesRefusedAreReported: a resource the resolver refused is reported to the host
+// once, whatever it was; another failure is not; a new resolver may report it again.
+func TestHTMLResourcesRefusedAreReported(t *testing.T) {
+	var told []string
+	v := tuiwidget.NewHTMLView(tuiwidget.WithOnRefused(func(src string) { told = append(told, src) }))
+	v.SetHTML([]byte(`<p>x</p>`))
+	BindHTML(v)
+	l := v.BoundLayout().(*htmlLayout)
+	m := l.images
+	for id, c := range map[tui.TaskID]struct {
+		src string
+		err error
+	}{1: {"../a.png", tuiwidget.ErrImageRefused}, 2: {"../a.png", tuiwidget.ErrImageRefused}, 3: {"gone.png", os.ErrNotExist}} {
+		m.entries[c.src] = &imgEntry{state: imgLoading}
+		m.tasks[id] = c.src
+		l.HandleTask(tui.TaskResult{ID: id, Err: c.err})
+	}
+	if fmt.Sprint(told) != "[../a.png]" {
+		t.Errorf("told %v, want ../a.png once and not the missing file", told)
+	}
+	v.SetImageResolver(nil)
+	m.entries["../a.png"] = &imgEntry{state: imgLoading}
+	m.tasks[9] = "../a.png"
+	l.HandleTask(tui.TaskResult{ID: 9, Err: tuiwidget.ErrImageRefused})
+	if len(told) != 2 {
+		t.Errorf("after a new resolver, told %v, want it again", told)
 	}
 }
