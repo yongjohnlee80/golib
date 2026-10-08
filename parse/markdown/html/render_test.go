@@ -2,8 +2,10 @@ package html_test
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -145,5 +147,42 @@ func TestSafeDefaultURLs(t *testing.T) {
 		if b.String() != c.safe {
 			t.Errorf("default Render(%q) =\n%q, want\n%q", c.in, b.String(), c.safe)
 		}
+	}
+}
+
+// TestSourceSpans: with SourceSpans each block element carries its source bytes, which cover it;
+// without it the output is unchanged, byte for byte, apart from those attributes.
+func TestSourceSpans(t *testing.T) {
+	src := "# Title\n\npara\n\n- item\n\n> quote\n\n```\ncode\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+	doc := markdown.Parse([]byte(src), markdown.GFM())
+	var plain, spans bytes.Buffer
+	if err := html.Render(&plain, doc); err != nil {
+		t.Fatal(err)
+	}
+	if err := html.Render(&spans, doc, html.SourceSpans()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plain.String(), "data-src") {
+		t.Fatalf("data-src without SourceSpans:\n%s", plain.String())
+	}
+	got := spans.String()
+	for tag, text := range map[string]string{"h1": "# Title", "p": "para", "li": "- item", "blockquote": "> quote", "pre": "```\ncode\n```", "table": "| a | b |"} {
+		i := strings.Index(got, "<"+tag+` data-src="`)
+		if i < 0 {
+			t.Errorf("no <%s data-src> in\n%s", tag, got)
+			continue
+		}
+		var from, to int
+		if _, err := fmt.Sscanf(got[i+len(tag)+12:], "%d-%d", &from, &to); err != nil || from > to || to > len(src) {
+			t.Errorf("<%s>'s data-src does not read: %v", tag, err)
+			continue
+		}
+		if !strings.Contains(src[from:to], text) {
+			t.Errorf("<%s data-src=%d-%d> covers %q, not %q", tag, from, to, src[from:to], text)
+		}
+	}
+	stripped := regexp.MustCompile(` data-src="\d+-\d+"`).ReplaceAllString(got, "")
+	if stripped != plain.String() {
+		t.Errorf("SourceSpans changed more than its attributes:\n%s\nvs\n%s", stripped, plain.String())
 	}
 }
