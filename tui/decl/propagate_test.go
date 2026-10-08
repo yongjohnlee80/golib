@@ -349,3 +349,32 @@ func TestAButtonsAccessKeyWearsTheAccent(t *testing.T) {
 		t.Fatalf("with no accent the key is %+v; want underlined in the button's colours", c.Attrs)
 	}
 }
+
+// A Dialog's buttons keep the theme's button colours when the accent dresses their access keys:
+// the Button's own restyle changes the key's look and nothing else.
+func TestADialogsButtonsKeepTheThemesColoursUnderTheAccent(t *testing.T) {
+	s := decltest.Run(t, 50, 12, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow {\n"+
+		" palette.window: \"blue\"; palette.windowText: \"white\"\n"+
+		" palette.button: \"green\"; palette.buttonText: \"white\"\n"+
+		" palette.highlight: \"cyan\"; palette.highlightedText: \"white\"\n"+
+		" palette.accent: \"red\"\n"+
+		" Text { text: \"under\" }\n"+
+		" Dialog { id: d; title: \"Q\"\n  Text { text: \"rows\" }\n"+
+		"  DialogButtonBox {\n   Button { text: \"&Add\"; DialogButtonBox.buttonRole: DialogButtonBox.ActionRole }\n"+
+		"   Button { text: \"&Close\"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole } } } }")))
+	s.WaitForText(t, "under")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "Close")
+	s.WaitFor(t, "the accent on the key", func(string) bool { return cellOf(t, s, "Close").Attrs.FG == ansi(red) })
+	// Close is not focused (Add, the first, is): it wears the theme's button look
+	if c := cellOf(t, s, "lose"); c.Attrs.BG != ansi(green) || c.Attrs.FG != ansi(white) {
+		t.Fatalf("Close's label is %+v; want the theme's button colours, green under white", c.Attrs)
+	}
+	if c := cellOf(t, s, "Close"); c.Attrs.BG != ansi(green) {
+		t.Fatalf("Close's key sits on %+v; want the button's green", c.Attrs.BG)
+	}
+}

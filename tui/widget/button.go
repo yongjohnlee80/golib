@@ -202,6 +202,9 @@ func WithOnActivate(fn func()) ButtonOption {
 // Named WithStyle rather than SetStyle because it reads as configuration and
 // chains; the package-level WithStyle belongs to Box and does not collide with
 // a method.
+// ButtonStyle is the button's style: the one WithStyle set, or nil for golib's.
+func (b *Button) ButtonStyle() *ButtonStyle { return b.st }
+
 func (b *Button) WithStyle(s *ButtonStyle) *Button {
 	b.st = s
 	b.markDirty()
