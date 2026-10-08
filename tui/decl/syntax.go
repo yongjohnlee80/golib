@@ -140,12 +140,14 @@ func (n *syntaxNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui
 func (*syntaxNode) declarationOnly()                    {}
 func (n *syntaxNode) Render(tui.Surface)                {}
 
-// editorChildren takes an Editor's children: at most one SyntaxHighlighter and at most one
+// editorChildren takes an Editor's children: at most one SyntaxHighlighter, at most one document
+// view (HTMLDocumentView) and at most one
 // renderer spec, and nothing else — anything else would be silently lost, since an Editor lays
 // out none.
-func editorChildren(b Build) ([]*syntaxNode, RendererSpec, error) {
+func editorChildren(b Build) ([]*syntaxNode, RendererSpec, DocumentSpec, error) {
 	var out []*syntaxNode
 	var spec RendererSpec
+	var doc DocumentSpec
 	for _, c := range b.Children {
 		if n, ok := c.(*syntaxNode); ok {
 			out = append(out, n)
@@ -153,17 +155,24 @@ func editorChildren(b Build) ([]*syntaxNode, RendererSpec, error) {
 		}
 		if s, ok := RendererOf(c); ok {
 			if spec != nil {
-				return nil, nil, fmt.Errorf("an Editor holds one renderer, got two (at %s)", b.Pos)
+				return nil, nil, nil, fmt.Errorf("an Editor holds one renderer, got two (at %s)", b.Pos)
 			}
 			spec = s
 			continue
 		}
-		return nil, nil, fmt.Errorf("an Editor holds only a SyntaxHighlighter and a renderer, and lays out nothing (at %s)", b.Pos)
+		if s, ok := DocumentOf(c); ok {
+			if doc != nil {
+				return nil, nil, nil, fmt.Errorf("an Editor holds one document view, got two (at %s)", b.Pos)
+			}
+			doc = s
+			continue
+		}
+		return nil, nil, nil, fmt.Errorf("an Editor holds only a SyntaxHighlighter, a renderer and a document view, and lays out nothing (at %s)", b.Pos)
 	}
 	if len(out) > 1 {
-		return nil, nil, fmt.Errorf("an Editor holds one SyntaxHighlighter, got %d (at %s)", len(out), b.Pos)
+		return nil, nil, nil, fmt.Errorf("an Editor holds one SyntaxHighlighter, got %d (at %s)", len(out), b.Pos)
 	}
-	return out, spec, nil
+	return out, spec, doc, nil
 }
 
 // VetRoot implements [decl.RootVetter]: a SyntaxHighlighter is refused where
@@ -174,7 +183,9 @@ func (a *Adapter) VetRoot(id decl.NodeID) error {
 		return fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and the root is in none")
 	}
 	if b, ok := a.nodes[id]; ok {
-		if _, spec := b.comp.(*rendererNode); spec {
+		_, spec := b.comp.(*rendererNode)
+		_, doc := b.comp.(*documentNode)
+		if spec || doc {
 			return fmt.Errorf("a %s draws the Editor it is declared in, and the root is in none", b.typ)
 		}
 	}

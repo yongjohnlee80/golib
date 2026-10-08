@@ -444,6 +444,7 @@ Editor {
     view: Editor.Rendered                        // or Editor.Raw (the default)
     SyntaxHighlighter { definition: App.syntax }
     MarkdownRenderer { headingScale: 2.0 }       // what Rendered draws with; at most one renderer
+    HTMLDocumentView { }                         // Rendered as a whole page, when the host says so
 }
 ```
 
@@ -463,6 +464,21 @@ switching. Do not rename `view` to `mode`, and do not read `modeChanged` as the 
 parses without Gio. A consumer's own renderer is a spec type of its own, implementing
 `RendererSpec` and declared through `RendererNode`; the GUI's native style turns a spec into a
 renderer by its `RendererKind()`.
+
+`HTMLDocumentView` declares a **document view**: a second kind of Rendered view. A renderer lays
+the text out line by line, so Rendered Markdown stays editable. A document view draws the whole
+document as one read-only widget, an HTML page through `HTMLView`, in place of the text. The host
+turns it on for a document it reads (gui's `Editor.SetRenderedDocument(true)`, for an HTML file)
+and off for any other. Rendered then shows the page:
+
+- Ctrl+T (as the keymap binds it) returns to Raw, where the text is edited;
+- the page scrolls by its own keys (`k`/`j`, `Ctrl+U`/`Ctrl+D`, `g`/`G`, the arrows and pages);
+- the focus moves with whichever is shown.
+
+The host reaches the view through `Editor.DocumentView()`, for its links (`SetOnLink`) and images
+(`SetImageResolver`). It is a spec as a renderer is: the terminal's Editor carries it and draws
+none. The GUI's native style builds the view by its `DocumentKind()` ("html"), and
+`WithDocumentViewFor` replaces or adds one.
 
 ## Dialogs
 

@@ -18,6 +18,7 @@ type EditorDecl struct {
 	Text     string       // `text`, the buffer the editor starts with
 	Wrap     bool         // `wrap`, long lines wrapped at the editor's width
 	Renderer RendererSpec // the renderer child, nil when none is declared
+	Document DocumentSpec // the document view child (HTMLDocumentView), nil when none is declared
 	// Consumed are the constructor properties read: what the builder returns as consumed.
 	Consumed []string
 
@@ -39,7 +40,7 @@ func ReadEditor(b Build) (EditorDecl, error) {
 		return d, err
 	}
 	d.Consumed = consumed
-	if d.highlighters, d.Renderer, err = editorChildren(b); err != nil {
+	if d.highlighters, d.Renderer, d.Document, err = editorChildren(b); err != nil {
 		return d, err
 	}
 	d.modeChanged = b.Emitter("modeChanged")

@@ -227,3 +227,48 @@ Window { HTMLView { id: page; html: "<p>hello</p>" } }`
 	}
 	_ = widget.BindHTML
 }
+
+// An HTMLDocumentView child gives gui's Editor its HTML document view, bound to the pixel layout
+// and off until the host turns it on; tui's Editor carries the declaration and draws none; a
+// consumer's maker replaces golib's.
+func TestAnHTMLDocumentViewReachesTheEditor(t *testing.T) {
+	const src = `import tui 1.0
+Window { Editor { id: ed; text: "<p>hello</p>"; MarkdownRenderer { } HTMLDocumentView { } } }`
+	s := run(t, src, tuidecl.WithStyle(guidecl.Native()))
+	onLoop(t, s, func() {
+		c, _ := s.Program.Find("ed")
+		e := c.(*widget.Editor)
+		v, ok := e.DocumentView().(*tuiwidget.HTMLView)
+		if !ok {
+			t.Fatalf("the document view is a %T, want an HTMLView", e.DocumentView())
+		}
+		if _, pixels := v.BoundLayout().(interface{ Pixels() bool }); !pixels {
+			t.Error("the HTMLView is not bound to the pixel layout")
+		}
+		if e.SetMode(widget.Rendered); e.Mode() != widget.Rendered || string(v.Source()) != "" {
+			t.Errorf("before the host turns it on, Rendered is the renderer's: mode %v, view %q", e.Mode(), v.Source())
+		}
+		e.SetRenderedDocument(true)
+		if string(v.Source()) != "<p>hello</p>" {
+			t.Errorf("turned on while Rendered, the view shows %q", v.Source())
+		}
+	})
+	cells := run(t, src)
+	onLoop(t, cells, func() {
+		c, _ := cells.Program.Find("ed")
+		if _, ok := c.(*tuiwidget.Editor); !ok {
+			t.Errorf("with no style the Editor is a %T", c)
+		}
+	})
+	var mine *tuiwidget.HTMLView
+	custom := run(t, src, tuidecl.WithStyle(guidecl.Native(guidecl.WithDocumentViewFor("html", func(tuidecl.DocumentSpec) widget.DocumentView {
+		mine = tuiwidget.NewHTMLView()
+		return mine
+	}))))
+	onLoop(t, custom, func() {
+		c, _ := custom.Program.Find("ed")
+		if c.(*widget.Editor).DocumentView() != widget.DocumentView(mine) || mine == nil {
+			t.Error("WithDocumentViewFor's maker did not make the view")
+		}
+	})
+}

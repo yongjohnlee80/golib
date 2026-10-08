@@ -17,6 +17,7 @@ type NativeOption func(*native)
 
 type native struct {
 	renderers map[string]func(tuidecl.RendererSpec) widget.Renderer
+	documents map[string]func(tuidecl.DocumentSpec) widget.DocumentView
 	fallback  widget.Diagrammer // what native Mermaid declines; nil: drawn as code
 	diagrams  widget.Diagrammer // the style's one chain and cache, made on first use
 }
@@ -44,10 +45,26 @@ func WithRendererFor(kind string, f func(tuidecl.RendererSpec) widget.Renderer) 
 	return func(n *native) { n.renderers[kind] = f }
 }
 
+// WithDocumentViewFor makes the document view of a spec of kind (its DocumentKind) with f: a
+// consumer's own, declared through its own spec type and tuidecl.DocumentNode. "html" is built in;
+// f for it replaces golib's. A spec whose kind has no maker leaves the Editor without one.
+func WithDocumentViewFor(kind string, f func(tuidecl.DocumentSpec) widget.DocumentView) NativeOption {
+	return func(n *native) { n.documents[kind] = f }
+}
+
+// htmlDocument is golib's document view for an HTMLDocumentView declaration: an HTMLView laid out
+// in pixels, which a host reaches through the Editor's DocumentView.
+func htmlDocument(tuidecl.DocumentSpec) widget.DocumentView {
+	v := tuiwidget.NewHTMLView()
+	widget.BindHTML(v)
+	return v
+}
+
 // Native is gui's style. It replaces Editor, and lays HTMLView out in pixels (the same tui
 // widget, so a host reaches it by id either way); every other type stays tui's.
 func Native(opts ...NativeOption) tuidecl.Style {
-	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{}}
+	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{},
+		documents: map[string]func(tuidecl.DocumentSpec) widget.DocumentView{"html": htmlDocument}}
 	n.renderers["markdown"] = n.markdownRenderer
 	for _, o := range opts {
 		o(n)
@@ -85,7 +102,8 @@ func (n *native) markdownRenderer(s tuidecl.RendererSpec) widget.Renderer {
 }
 
 // buildEditor builds gui's Editor from the declaration tui's Editor reads: the same text, the
-// same listeners on its core, the same highlighter attached, and a renderer from its spec.
+// same listeners on its core, the same highlighter attached, a renderer from its spec, and a
+// document view from its (off until the host turns it on for a document).
 func (n *native) buildEditor(b tuidecl.Build) (tui.Component, []string, error) {
 	d, err := tuidecl.ReadEditor(b)
 	if err != nil {
@@ -96,6 +114,13 @@ func (n *native) buildEditor(b tuidecl.Build) (tui.Component, []string, error) {
 		if f, ok := n.renderers[d.Renderer.RendererKind()]; ok {
 			if r := f(d.Renderer); r != nil {
 				opts = append(opts, widget.WithRenderer(r))
+			}
+		}
+	}
+	if d.Document != nil {
+		if f, ok := n.documents[d.Document.DocumentKind()]; ok {
+			if v := f(d.Document); v != nil {
+				opts = append(opts, widget.WithDocumentView(v))
 			}
 		}
 	}

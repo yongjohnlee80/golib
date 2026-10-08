@@ -319,7 +319,9 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 				return nil, fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and %s is not one (at %s)",
 					c.Type, c.Pos)
 			}
-			if _, ok := a.nodes[id].comp.(*rendererNode); ok {
+			_, spec := a.nodes[id].comp.(*rendererNode)
+			_, doc := a.nodes[id].comp.(*documentNode)
+			if spec || doc {
 				return nil, fmt.Errorf("a %s draws the Editor it is declared in, and %s is not one (at %s)",
 					a.nodes[id].typ, c.Type, c.Pos)
 			}
