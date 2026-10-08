@@ -24,4 +24,8 @@
 // Layered is deterministic: the same Input gives the same Result. Every input that the work
 // grows with has a limit, and a graph past one is refused with ErrTooLarge before the pass that
 // would grow past it, so a caller can fall back rather than wait.
+//
+// Tree lays out a tree (TreeInput: sizes and each node's parent) as a tidy tree: each subtree in
+// a band of its own breadth, a parent centred over its children. BothWays splits the root's
+// children into two sides growing opposite ways from it, as a mind map does.
 package layout
