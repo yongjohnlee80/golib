@@ -714,6 +714,12 @@ host.Attach(modal)
 modal.Show() // Esc dismisses and restores previous focus
 ```
 
+Its anchor places the content: an alignment (`Center`, `TopLeft`, … `BottomRight`), `AtRect(r)`
+at a rectangle in cells, or `AtFraction(x, y, w, h)` at a rectangle in percent of the overlay
+area, which keeps its proportions when the area is resized. `FractionRect` is where an
+`AtFraction` lands in an area, `FractionOf` turns a rectangle back into percentages, and
+`Float.Area()` is the area the float last laid out in, to convert against.
+
 ### File widgets
 
 Composed, not written once per dialog, and PLATFORM-INDEPENDENT — they reach

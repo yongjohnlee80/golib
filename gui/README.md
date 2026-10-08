@@ -20,7 +20,12 @@ TUI-only golib user never resolves Gio or cgo. `tui` cannot import it.
 
 - **Cells, natively.** Glyphs are shaped in a monospace font (Go Mono by
   default; `WithFont` picks another), with system fonts as the fallback for
-  Hangul, CJK and symbols. Colours, bold, italic, faint, underline,
+  Hangul, CJK and symbols. The font changes while the window runs:
+  `Backend.SetFont(typeface, size)`, `SetZoom(percent)` (50 to 300, everything
+  sized by the window's text follows) and `SetProseFont(family)` (what a native
+  view's `Font` with no `Family` draws in; `gui.CellFamily` names the cell font).
+  Each change lays the window out and paints it again, a change of family alone
+  included. `gui.Families(mono)` lists the installed families, where fontconfig is. Colours, bold, italic, faint, underline,
   strikethrough and reverse are drawn as such. Box-drawing and block characters
   are drawn from the cell's geometry, so borders join without seams at any
   scale.
