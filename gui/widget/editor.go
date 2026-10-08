@@ -24,9 +24,12 @@ type Editor struct {
 	menu   *tuiwidget.EditorMenu
 	sw     *modeSwitch
 
-	mode     EditorMode
-	render   Renderer
-	fontSize float32
+	mode   EditorMode
+	render Renderer
+	// renderOff withholds the Rendered view while a renderer is set: the document in the editor
+	// is not one the renderer reads (SetRenderedEnabled).
+	renderOff bool
+	fontSize  float32
 
 	caret    style.Color // the caret's colour (SetCursorColor); the default is the text's
 	caretSet bool
@@ -115,7 +118,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	// Ctrl+T, or whatever the keymap binds ActToggleRendered to: with no renderer there is no
 	// Rendered view, so the key bubbles.
 	e.core.SetToggleRendered(func() bool {
-		if e.render == nil {
+		if !e.canRender() {
 			return false
 		}
 		e.toggleMode()
@@ -152,9 +155,10 @@ func (e *Editor) Core() *tuiwidget.EditorCore { return e.core }
 // Mode is how the text is drawn.
 func (e *Editor) Mode() EditorMode { return e.mode }
 
-// SetMode draws the text Raw or Rendered; Rendered without a renderer stays Raw.
+// SetMode draws the text Raw or Rendered; Rendered without a renderer, or with the Rendered view
+// turned off (SetRenderedEnabled), stays Raw.
 func (e *Editor) SetMode(m EditorMode) {
-	if m == Rendered && e.render == nil {
+	if m == Rendered && !e.canRender() {
 		m = Raw
 	}
 	if m == e.mode && e.layout.blocks != nil {
@@ -169,6 +173,27 @@ func (e *Editor) SetMode(m EditorMode) {
 	e.body.MarkDirty()
 	e.sw.MarkDirty()
 }
+
+// canRender reports whether the Rendered view is available: a renderer, and not turned off.
+func (e *Editor) canRender() bool { return e.render != nil && !e.renderOff }
+
+// SetRenderedEnabled makes the Rendered view available or not, keeping the renderer: a host turns
+// it off for a document its renderer does not read (Markdown's renderer and a Go file, say), and
+// on again for one it does. Off, the view is Raw, the keymap's toggle is not consumed, and the
+// title bar's Rendered segment is faint.
+func (e *Editor) SetRenderedEnabled(on bool) {
+	if e.renderOff == !on {
+		return
+	}
+	e.renderOff = !on
+	if !on && e.mode == Rendered {
+		e.SetMode(Raw)
+	}
+	e.sw.MarkDirty()
+}
+
+// RenderedEnabled reports whether the Rendered view is turned on (it also needs a renderer).
+func (e *Editor) RenderedEnabled() bool { return !e.renderOff }
 
 func (e *Editor) toggleMode() {
 	if e.mode == Raw {
@@ -340,15 +365,15 @@ func (s *modeSwitch) Layout(c tui.Constraints) tui.Size {
 	return c.Constrain(tui.Size{W: len(switchRaw) + len(switchSep) + len(switchRendered), H: 1})
 }
 
-// Render draws the two segments, the current one bold and underlined; Rendered is faint
-// without a renderer.
+// Render draws the two segments, the current one bold and underlined; Rendered is faint when it
+// is not available.
 func (s *modeSwitch) Render(sur tui.Surface) {
 	on, off := style.New().Bold(true).Underline(true), style.New()
 	raw, rendered := on, off
 	if s.e.mode == Rendered {
 		raw, rendered = off, on
 	}
-	if s.e.render == nil {
+	if !s.e.canRender() {
 		rendered = rendered.Faint(true)
 	}
 	x := putString(sur, 0, 0, switchRaw, raw)
