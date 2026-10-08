@@ -62,7 +62,9 @@ Drawer { id: d; modal: false; windowResize: true; edge: Tui.Bottom; size: 30; le
 		t.Fatalf("resized: %+v", got)
 	}
 	s.Keys(t, tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseRight, X: 40, Y: 12})
-	if len(rec.all()) != 2 { t.Error("an extra release emitted a second resize completion") }
+	if len(rec.all()) != 2 {
+		t.Error("an extra release emitted a second resize completion")
+	}
 }
 
 func TestDrawerCollectorMinimizeNeedsNoDefaultTaskbar(t *testing.T) {
@@ -138,18 +140,24 @@ Window { WindowMod { minimizable: true; Text { text: "missing collector" } } }`)
 }
 
 func TestDrawerWindowResizeEscapeEmitsNoPersistenceCompletion(t *testing.T) {
-	rec:=&recorder{}
-	s:=decltest.Run(t,40,20,tuidecl.LayoutSource("cancel.qml",[]byte(`import tui 1.0
+	rec := &recorder{}
+	s := decltest.Run(t, 40, 20, tuidecl.LayoutSource("cancel.qml", []byte(`import tui 1.0
 import demo 1.0
 Window { Button { text: "base" }
 Drawer { id: d; modal: false; windowResize: true; edge: Tui.Bottom; size: 30
 onResized: App.log(size,length)
 Frame { title: "panel"; Editor {} }
-} }`)),tuidecl.Singleton("demo","1.0","App"),tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log":rec.handler}))
-	onScreenLoop(t,s,func(){if err:=s.Program.Call("d","open");err!=nil{t.Error(err)}})
-	s.WaitForText(t,"panel")
-	s.Keys(t,tui.MouseEvent{Kind:tui.MousePress,Button:tui.MouseRight,Mods:tui.ModAlt,X:20,Y:16},
-		tui.MouseEvent{Kind:tui.MouseMotion,Button:tui.MouseRight,X:20,Y:12},tui.KeyEvent{Code:tui.KeyEscape})
-	s.WaitFor(t,"checkpoint restored",func(string)bool{return panelTop(s)==14})
-	if len(rec.all())!=0{t.Errorf("cancel persisted a size: %+v",rec.all())}
+} }`)), tuidecl.Singleton("demo", "1.0", "App"), tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}))
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "panel")
+	s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, Mods: tui.ModAlt, X: 20, Y: 16},
+		tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseRight, X: 20, Y: 12}, tui.KeyEvent{Code: tui.KeyEscape})
+	s.WaitFor(t, "checkpoint restored", func(string) bool { return panelTop(s) == 14 })
+	if len(rec.all()) != 0 {
+		t.Errorf("cancel persisted a size: %+v", rec.all())
+	}
 }
