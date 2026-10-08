@@ -150,6 +150,10 @@ type Terminal struct {
 
 	normal normalState
 	look   style.Style // the program's default colours, with theme colours on (SetDefaultLook)
+	// minContrast is the ratio a foreground is raised to against its background; 0: off
+	// (terminal_contrast.go). contrastCache holds the colours it gave.
+	minContrast   float64
+	contrastCache map[contrastKey]style.Color
 }
 
 // NewTerminal returns a Terminal; Start runs its program.
@@ -229,6 +233,7 @@ func (t *Terminal) SetVimKeys(on bool) { t.cfg.vimKeys = on }
 // A host gives the palette's text on base, so the terminal sits on the page's colours.
 func (t *Terminal) SetDefaultLook(st style.Style) {
 	t.look = st
+	t.contrastCache = nil
 	t.MarkDirty()
 }
 
@@ -666,6 +671,17 @@ func (t *Terminal) cellStyle(c vt.Cell) style.Style {
 			st = st.Background(bg)
 		} else {
 			st = st.Background(style.TokenBackground)
+		}
+	}
+	// a foreground raised to the minimum contrast against the background it is drawn on
+	if t.minContrast > 1 && c.Attr&vt.AttrReverse == 0 {
+		fg, fgSet := st.GetForeground()
+		bg, bgSet := st.GetBackground()
+		if !bgSet {
+			bg, bgSet = t.look.GetBackground()
+		}
+		if fgSet && bgSet {
+			st = st.Foreground(t.legible(fg, bg))
 		}
 	}
 	a := c.Attr
