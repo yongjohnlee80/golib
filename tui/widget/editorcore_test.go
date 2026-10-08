@@ -143,3 +143,31 @@ func TestEditorCoreTellsTheCursorsMoveOncePerInput(t *testing.T) {
 		t.Fatalf("a press: %d moves, want 3", moves)
 	}
 }
+
+// The stock rows over a bare core: enabled as the core stands, and their CoreMenuActions act on it.
+func TestCoreContextItemsActOnTheCore(t *testing.T) {
+	c, _ := coreWith(t, "abc")
+	rows := func() map[widget.ItemID]widget.MenuItemModel {
+		m := map[widget.ItemID]widget.MenuItemModel{}
+		for _, r := range widget.CoreContextItems(c) {
+			m[r.ID] = r
+		}
+		return m
+	}
+	if r := rows(); r[widget.EditorMenuUndo].Enabled || r[widget.EditorMenuCopy].Enabled {
+		t.Fatal("Undo or Copy enabled before an edit or a selection")
+	}
+	keys(c, "x")
+	undo := rows()[widget.EditorMenuUndo]
+	if !undo.Enabled {
+		t.Fatal("Undo disabled after an edit")
+	}
+	undo.Action.(widget.CoreMenuAction).Run(c)
+	if got := c.Value(); got != "abc" {
+		t.Fatalf("after the Undo row: %q, want abc", got)
+	}
+	keys(c, "vl")
+	if !rows()[widget.EditorMenuCopy].Enabled {
+		t.Fatal("Copy disabled with a selection")
+	}
+}

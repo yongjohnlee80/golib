@@ -152,11 +152,7 @@ type Editor struct {
 	core  *EditorCore // the behaviour; a field, never embedded
 	cells cellLayout  // the geometry, in cells: implements EditorLayout
 
-	// The right-click menu (editor_contextmenu.go). Off unless a consumer
-	// turns it on; ctxBuild nil means the stock items.
-	ctxOn    bool
-	ctxBuild func(e *Editor) []MenuItemModel
-	ctxOpen  *popupLayer
+	menu *EditorMenu // the right-click menu: off unless a consumer turns it on
 }
 
 // cellLayout is the Editor's view of its core in terminal cells: the viewport, the gutter, the
@@ -415,6 +411,8 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e := &Editor{core: newEditorCore()}
 	e.cells = cellLayout{ed: e, wrap: WrapNone, styles: defaultEditorStyles()}
 	e.core.Bind(nil, &e.cells)
+	e.menu = NewEditorMenu(e, e.core)
+	e.menu.SetRows(func() []MenuItemModel { return EditorContextItems(e) })
 	for _, o := range opts {
 		if o != nil {
 			o(e)
@@ -707,9 +705,9 @@ func (e *Editor) handleMouse(m tui.MouseEvent) bool {
 	case m.Kind == tui.MousePress && m.Button == tui.MouseLeft:
 		x := max(m.X-e.cells.gutter, 0) // a press in the gutter is at the line's start
 		return e.pressAt(x, m.Y)
-	case m.Kind == tui.MousePress && m.Button == tui.MouseRight && e.ctxOn:
+	case m.Kind == tui.MousePress && m.Button == tui.MouseRight && e.menu.Enabled():
 		// The selection is left as it is: the menu's Copy and Cut act on it.
-		return e.openContextMenu(tui.Point{X: m.X, Y: m.Y})
+		return e.menu.OpenAt(tui.Point{X: m.X, Y: m.Y})
 	case m.Kind == tui.MouseMotion && m.Button == tui.MouseLeft && e.core.Dragging():
 		return e.dragTo(m.X-e.cells.gutter, m.Y)
 	case m.Kind == tui.MouseRelease && e.core.Dragging():

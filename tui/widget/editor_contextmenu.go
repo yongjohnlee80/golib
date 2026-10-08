@@ -1,10 +1,6 @@
 package widget
 
-import (
-	"fmt"
-
-	"github.com/yongjohnlee80/golib/tui"
-)
+import "github.com/yongjohnlee80/golib/tui"
 
 // THE RIGHT-CLICK MENU.
 //
@@ -21,8 +17,8 @@ import (
 // clipboard; text from outside arrives as the terminal's own paste.
 
 // EditorMenuAction is a context-menu row's action: when the row is chosen, the
-// editor runs Run with itself. A row whose action is not an EditorMenuAction
-// does nothing.
+// editor runs Run with itself. A row whose action is neither an EditorMenuAction
+// nor a CoreMenuAction (editormenu.go) does nothing.
 type EditorMenuAction struct {
 	ID  tui.ActionID
 	Run func(e *Editor)
@@ -48,106 +44,29 @@ const (
 //   - Cut, when there is a selection and e is writable;
 //   - Paste, when e is writable and its register holds something.
 //
-// A consumer that wants the stock rows plus its own builds on this slice.
+// Their actions are EditorMenuActions. A consumer that wants the stock rows plus its own builds
+// on this slice. CoreContextItems is the same rows over an EditorCore.
 func EditorContextItems(e *Editor) []MenuItemModel {
-	_, _, _, _, selected := e.SelectionRange()
-	text, linewise := e.Register()
-	undoRow := NewCommand(EditorMenuUndo, "Undo", EditorMenuAction{ID: "editor.undo", Run: (*Editor).Undo})
-	undoRow.LabelMsg = tui.Msg("tui.editor.menu.undo")
-	undoRow.Enabled = e.CanUndo()
-	redoRow := NewCommand(EditorMenuRedo, "Redo", EditorMenuAction{ID: "editor.redo", Run: (*Editor).Redo})
-	redoRow.LabelMsg = tui.Msg("tui.editor.menu.redo")
-	redoRow.Enabled = e.CanRedo()
-	copyRow := NewCommand(EditorMenuCopy, "Copy", EditorMenuAction{ID: "editor.copy", Run: (*Editor).Copy})
-	copyRow.LabelMsg = tui.Msg("tui.editor.menu.copy")
-	copyRow.Enabled = selected && e.core.reg.yankAllowed()
-	cutRow := NewCommand(EditorMenuCut, "Cut", EditorMenuAction{ID: "editor.cut", Run: (*Editor).Cut})
-	cutRow.LabelMsg = tui.Msg("tui.editor.menu.cut")
-	cutRow.Enabled = selected && !e.core.readOnly
-	pasteRow := NewCommand(EditorMenuPaste, "Paste", EditorMenuAction{ID: "editor.paste", Run: (*Editor).Paste})
-	pasteRow.LabelMsg = tui.Msg("tui.editor.menu.paste")
-	pasteRow.Enabled = !e.core.readOnly && (text != "" || linewise)
-	return []MenuItemModel{undoRow, redoRow, NewSeparator(EditorMenuEdits), copyRow, cutRow, pasteRow}
+	return contextRows(e.core, func(id tui.ActionID, run func(*EditorCore)) tui.Action {
+		return EditorMenuAction{ID: id, Run: func(e *Editor) { run(e.core) }}
+	})
 }
 
 // WithContextMenu turns the right-click menu on. build returns the rows to
 // show and runs each time the menu opens; nil means EditorContextItems.
 func WithContextMenu(build func(e *Editor) []MenuItemModel) EditorOption {
-	return func(e *Editor) { e.ctxOn, e.ctxBuild = true, build }
+	return func(e *Editor) {
+		e.menu.SetEnabled(true)
+		if build != nil {
+			e.menu.SetRows(func() []MenuItemModel { return build(e) })
+		}
+	}
 }
 
 // SetContextMenu turns the right-click menu on or off, keeping the rows
 // WithContextMenu supplied (the stock rows when it supplied none). Turning it
 // off closes a menu that is open.
-func (e *Editor) SetContextMenu(on bool) {
-	e.ctxOn = on
-	if !on {
-		e.closeContextMenu()
-	}
-}
+func (e *Editor) SetContextMenu(on bool) { e.menu.SetEnabled(on) }
 
 // ContextMenuOpen reports whether the right-click menu is showing.
-func (e *Editor) ContextMenuOpen() bool { return e.ctxOpen != nil }
-
-// editorContextLayer names the menu's layer on the host. One per editor is
-// enough: a second right press reopens it where the pointer now is.
-func (e *Editor) editorContextLayer() LayerID {
-	return LayerID(fmt.Sprintf("editor.contextmenu.%d", e.NodeID()))
-}
-
-// openContextMenu opens the menu at at, in the editor's own frame. It reports
-// false — and the press bubbles on — when there is nowhere to open it: no
-// OverlayHost above the editor, or no rows.
-func (e *Editor) openContextMenu(at tui.Point) bool {
-	host, ok := hostFor[popupHost](e.Context())
-	if !ok {
-		return false
-	}
-	build := e.ctxBuild
-	if build == nil {
-		build = EditorContextItems
-	}
-	items := build(e)
-	if len(items) == 0 {
-		return false
-	}
-	e.closeContextMenu()
-
-	var layer *popupLayer
-	menu := NewMenu(WithActionExecutor(func(inv tui.ActionInvocation) bool {
-		act, ok := inv.Action.(EditorMenuAction)
-		if !ok || act.Run == nil {
-			return false
-		}
-		act.Run(e)
-		if layer != nil {
-			layer.requestClose(DismissAccept)
-		}
-		return true
-	}))
-	if err := menu.SetModel(items); err != nil {
-		return false
-	}
-	panel := NewBox(menu)
-	l, err := host.openPopupAt(e.editorContextLayer(), e, panel, at, func(DismissReason) {
-		if e.ctxOpen == layer {
-			e.ctxOpen = nil
-		}
-	})
-	if err != nil {
-		return false
-	}
-	layer = l
-	e.ctxOpen = l
-	return true
-}
-
-// closeContextMenu closes the menu if it is open.
-func (e *Editor) closeContextMenu() {
-	l := e.ctxOpen
-	if l == nil {
-		return
-	}
-	e.ctxOpen = nil
-	l.close(DismissProgrammatic)
-}
+func (e *Editor) ContextMenuOpen() bool { return e.menu.IsOpen() }
