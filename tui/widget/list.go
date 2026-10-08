@@ -135,7 +135,10 @@ type List[T any] struct {
 	cursor int
 	sel    map[int]struct{} // multi-select set
 	top    int
-	count  int // Len() cached at render/refresh; handlers use the cache
+	// shown is the cursor and viewport height Layout last kept the cursor in view for: a layout
+	// pass reveals the cursor only when either changed, so the wheel's scroll stays
+	shown viewMark
+	count int // Len() cached at render/refresh; handlers use the cache
 	// lastPressIdx is the LOGICAL row of the previous press, so a double-click
 	// pair straddling a viewport scroll cannot activate a different row.
 	//
@@ -526,7 +529,9 @@ func (l *List[T]) Layout(c tui.Constraints) tui.Size {
 	}
 	l.w = boundedMax(c.MaxW, max(c.MinW, 1))
 	l.h = boundedMax(c.MaxH, max(c.MinH, l.count, 1))
-	l.ensureVisible()
+	if l.shown.moved(l.cursor, l.h) {
+		l.ensureVisible()
+	}
 	l.clamp()
 	return c.Constrain(tui.Size{W: l.w, H: l.h})
 }
