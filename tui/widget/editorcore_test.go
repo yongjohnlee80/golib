@@ -192,3 +192,37 @@ func TestEditorCoreReadSide(t *testing.T) {
 		t.Fatalf("frame without a highlighter: behind %v, styles %v", f.Behind, f.Styles(0))
 	}
 }
+
+// Ctrl+T is ActToggleRendered in every keyset and mode. A core with no Rendered view leaves it
+// unconsumed; one whose widget answers it (SetToggleRendered) takes it.
+func TestToggleRenderedIsBoundAndBubblesWithoutAView(t *testing.T) {
+	ctrlT := tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}
+	for _, ks := range []widget.Keyset{widget.KeysetVim, widget.KeysetNano, widget.KeysetStandard} {
+		c := widget.NewEditorCore(widget.CoreKeyset(ks), widget.CoreInitialText("x"))
+		found := false
+		for _, b := range c.Bindings() {
+			if b.Action == widget.ActToggleRendered {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%v: Ctrl+T's ActToggleRendered is not among the bindings", ks)
+		}
+		if c.HandleKey(ctrlT) {
+			t.Errorf("%v: a core with no Rendered view consumed Ctrl+T", ks)
+		}
+		calls := 0
+		c.SetToggleRendered(func() bool { calls++; return true })
+		if !c.HandleKey(ctrlT) || calls != 1 {
+			t.Errorf("%v: with a view, Ctrl+T consumed %v after %d calls", ks, calls == 1, calls)
+		}
+	}
+	// in Vim's Insert mode too
+	c := widget.NewEditorCore(widget.CoreInitialText("x"))
+	calls := 0
+	c.SetToggleRendered(func() bool { calls++; return true })
+	c.HandleKey(tui.KeyEvent{Code: 'i', Text: "i"})
+	if !c.HandleKey(ctrlT) || calls != 1 || c.Mode() != widget.ModeInsert {
+		t.Errorf("Insert mode: consumed after %d calls, mode %v", calls, c.Mode())
+	}
+}

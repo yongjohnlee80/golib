@@ -177,6 +177,10 @@ const (
 	ActSelectAll // Select entire buffer (Standard Ctrl+A)
 	ActEscape    // Escape / return to Normal mode
 
+	// ActToggleRendered switches an editor with a Rendered view between it and Raw (Ctrl+T).
+	// An editor without one does not take it: the key bubbles.
+	ActToggleRendered
+
 	actMax // sentinel for validation
 )
 
@@ -261,6 +265,8 @@ func (a Action) String() string {
 		return "SelectAll"
 	case ActEscape:
 		return "Escape"
+	case ActToggleRendered:
+		return "ToggleRendered"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -346,6 +352,8 @@ func (a Action) Description() string {
 		return "Select entire buffer content"
 	case ActEscape:
 		return "Escape to Normal mode"
+	case ActToggleRendered:
+		return "Switch between the Rendered view and Raw"
 	}
 	return "Custom action"
 }
@@ -416,7 +424,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActOpenBelow, ActOpenAbove,
 		ActDeleteChar, ActDeleteToEnd, ActPasteAfter, ActPasteBefore:
 		return true, false, false
-	case ActCut, ActCopy, ActPaste, ActSelectAll, ActEscape:
+	case ActCut, ActCopy, ActPaste, ActSelectAll, ActEscape, ActToggleRendered:
 		return true, true, true
 	case ActUndo, ActRedo:
 		return true, false, true
@@ -517,7 +525,16 @@ func VimKeymap() Keymap {
 	km[v('v')] = ActVisual
 	km[v('V')] = ActVisualLine
 
+	toggleRendered(km)
 	return km
+}
+
+// toggleRendered binds Ctrl+T to ActToggleRendered in every mode: unbound in all three keysets
+// (Nano's line end is Ctrl+E), so no profile loses a key to it.
+func toggleRendered(km Keymap) {
+	for _, m := range []EditorMode{ModeNormal, ModeVisual, ModeInsert} {
+		km[KeyChord{Mode: m, Code: 't', Ctrl: true}] = ActToggleRendered
+	}
 }
 
 // NanoKeymap returns a fresh COPY of the non-modal Nano-style keymap.
@@ -528,7 +545,7 @@ func NanoKeymap() Keymap {
 	vis := func(code rune, ctrl bool) KeyChord {
 		return KeyChord{Mode: ModeVisual, Code: code, Ctrl: ctrl}
 	}
-	return Keymap{
+	km := Keymap{
 		ins('k', true):              ActCut,
 		ins('u', true):              ActPaste,
 		ins('a', true):              ActLineStart,
@@ -542,6 +559,8 @@ func NanoKeymap() Keymap {
 		ins(tui.KeyPageUp, false):   ActPageUp,
 		ins(tui.KeyPageDown, false): ActPageDown,
 	}
+	toggleRendered(km)
+	return km
 }
 
 // StandardKeymap returns a fresh COPY of the standard GUI / TextEdit-style keymap.
@@ -552,7 +571,7 @@ func StandardKeymap() Keymap {
 	vis := func(code rune, ctrl bool) KeyChord {
 		return KeyChord{Mode: ModeVisual, Code: code, Ctrl: ctrl}
 	}
-	return Keymap{
+	km := Keymap{
 		ins('z', true):              ActUndo,
 		ins('y', true):              ActRedo,
 		ins('x', true):              ActCut,
@@ -567,6 +586,8 @@ func StandardKeymap() Keymap {
 		ins(tui.KeyPageUp, false):   ActPageUp,
 		ins(tui.KeyPageDown, false): ActPageDown,
 	}
+	toggleRendered(km)
+	return km
 }
 
 // Keyset selects a predefined editing and keymap profile.

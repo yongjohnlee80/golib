@@ -50,3 +50,8 @@ func (c *EditorCore) Highlighting() bool { return c.hl.hl != nil }
 
 // SyntaxStyle is the look a highlight style adds over the text, if it has one.
 func (c *EditorCore) SyntaxStyle(k highlight.Style) (style.Style, bool) { return c.hl.syntaxStyle(k) }
+
+// SetToggleRendered is how a widget with a Rendered view answers ActToggleRendered (Ctrl+T by
+// default): fn switches the view and reports whether it took the key. nil, the default, leaves
+// the key unconsumed, as the tui Editor, which has no Rendered view, leaves it.
+func (c *EditorCore) SetToggleRendered(fn func() bool) { c.toggleRendered = fn }
