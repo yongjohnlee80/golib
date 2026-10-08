@@ -162,10 +162,53 @@ func (a *Adapter) refresh(id decl.NodeID) {
 		if fn := a.restylers[b.typ]; fn != nil {
 			fn(b.comp, eff)
 		}
+		if b.typ == "Window" && !pn.hasParent {
+			a.windowTheme(eff)
+		}
 	}
 	for _, k := range a.kids[id] {
 		a.refresh(k)
 	}
+}
+
+// windowTheme makes the root Window's palette the App's token theme: what a widget styled in
+// tokens rather than roles wears (a toast, a resize grip), so it follows the document's theme
+// instead of golib's default. A palette that sets no highlight leaves the App's theme as it is.
+func (a *Adapter) windowTheme(p palette) {
+	th, ok := tokenTheme(p)
+	if !ok {
+		return
+	}
+	a.theme = &th
+	if a.app != nil {
+		a.app.SetTheme(a.theme)
+	}
+}
+
+// tokenTheme is the token theme a palette makes: the highlight its primary, the text its
+// foreground, the window its surface and panel, the button its boost, the accent, the mid its
+// border, the highlight its focused border. Unset roles keep NewTheme's derivations. Background
+// stays the terminal's own: a dialog's scrim dims to it, and the page's colour would not dim.
+func tokenTheme(p palette) (style.Theme, bool) {
+	primary, ok := p[roleHighlight]
+	if !ok {
+		return style.Theme{}, false
+	}
+	var opts []style.ThemeOption
+	for _, m := range []struct {
+		t style.Token
+		r Role
+	}{
+		{style.TokenForeground, roleText},
+		{style.TokenSurface, roleWindow}, {style.TokenPanel, roleWindow}, {style.TokenBoost, roleButton},
+		{style.TokenAccent, roleAccent}, {style.TokenBorder, roleMid}, {style.TokenBorderFocused, roleHighlight},
+		{style.TokenTextOnPrimary, roleHighlightedText},
+	} {
+		if c, ok := p[m.r]; ok {
+			opts = append(opts, style.WithToken(m.t, c))
+		}
+	}
+	return style.NewTheme(primary, opts...), true
 }
 
 func samePalette(a, b palette) bool {
