@@ -71,6 +71,7 @@ type Theme struct {
 	// alike: a heading, strong, emphasis, code, a link, a marker (a bullet, a quote's bar, a
 	// rule), and what is there to be skipped (frontmatter). Zero: the text's (a link: Accent).
 	Heading, Strong, Emph, Code, Link, Marker, Quiet color.NRGBA
+	Wiki, Tag                                        color.NRGBA // a [[wikilink]]; a #tag
 }
 
 // or is c, or else d when c is unset.
