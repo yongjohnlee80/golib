@@ -270,7 +270,7 @@ func (v bodyView) Caret() (gui.Rect, float32, bool) { return v.b.caret, v.b.care
 func (v bodyView) Paint(c gui.Canvas) {
 	b, e := v.b, v.b.e
 	l := e.layout
-	fg, bg := c.CellColors(0, 0)
+	fg, bg := e.pageColors(c, b.styleTheme)
 	l.sh, l.cell = c.Text(), c.CellSize()
 	th := e.theme(fg, bg, c.TextSize(), b.styleTheme)
 	prev := l.th

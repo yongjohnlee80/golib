@@ -190,3 +190,26 @@ func TestTextAtTheWindowsTextSize(t *testing.T) {
 		t.Errorf("mono %v, prose %v at a 20px window text size; want 20 and 21", mono, prose)
 	}
 }
+
+// The page's colours are the page style's, not the cell under the body's corner: a floating panel
+// over the editor (an explorer's highlighted row) must not lend the whole page its colours.
+func TestPageColoursAreThePageStylesNotACoveredCell(t *testing.T) {
+	h := startEditor(t, 60, 8, WithCore(tuiwidget.CoreInitialText("body")))
+	page := color.NRGBA{R: 0xe6, G: 0xd9, B: 0xb9, A: 0xff}
+	ink := color.NRGBA{R: 0x5b, G: 0x46, B: 0x36, A: 0xff}
+	brown := color.NRGBA{R: 0x8a, G: 0x5a, B: 0x2b, A: 0xff}
+	var bg, fg color.NRGBA
+	h.onLoop(func() {
+		h.e.SetPageStyle(style.New().Background(style.RGB(page.R, page.G, page.B)).Foreground(style.RGB(ink.R, ink.G, ink.B)))
+		rc := gui.NewRecordingCanvas(gui.Size{W: float32(h.e.body.w) * cellW, H: float32(h.e.body.h) * cellH}, h.cell)
+		rc.Colors = func(int, int) (color.NRGBA, color.NRGBA) {
+			return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}, brown
+		}
+		v, _ := h.e.body.NativeView()
+		v.(gui.View).Paint(rc)
+		bg, fg = h.e.layout.th.Background, h.e.layout.th.Text
+	})
+	if bg != page || fg != ink {
+		t.Errorf("page %v on %v, want the page style's %v on %v (not the covering cell's %v)", fg, bg, ink, page, brown)
+	}
+}
