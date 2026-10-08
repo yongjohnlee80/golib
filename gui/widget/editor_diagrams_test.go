@@ -2,6 +2,7 @@ package widget
 
 import (
 	"context"
+	"image/color"
 	"sync"
 	"testing"
 	"time"
@@ -118,4 +119,44 @@ func TestDiagramUnmountCancels(t *testing.T) {
 	}
 	ready0() // after unmount: nothing to deliver to, nothing panics
 	time.Sleep(20 * time.Millisecond)
+}
+
+// A theme change is a new request: a Ready picture in the old theme is asked for again, and a
+// Pending request in the old theme is cancelled and asked again.
+func TestDiagramThemeChangeAsksAgain(t *testing.T) {
+	h, f := startDiagrams(t)
+	b := Block{From: 1, To: 4}
+	dark := Theme{Text: color.NRGBA{R: 0xee, A: 0xff}}
+	req := func(th Theme) DiagramRequest { return DiagramRequest{Lang: "mermaid", Src: "X", Width: 100, Scale: 1, Theme: th} }
+
+	// Pending under the light theme, then the dark one: the first request is withdrawn
+	var light Theme
+	h.onLoop(func() { light = h.e.layout.th; h.e.layout.Diagram(f, b, req(light)) })
+	calls, ctxLight, _ := f.state()
+	h.onLoop(func() { h.e.layout.Diagram(f, b, req(dark)) })
+	if ctxLight.Err() == nil {
+		t.Error("a pending request in the old theme was not cancelled")
+	}
+	if c, _, _ := f.state(); c != calls+1 {
+		t.Errorf("the new theme asked %d times, want once more than %d", c, calls)
+	}
+
+	// Ready under the dark theme, then light again: asked again, not answered from the slot
+	f.mu.Lock()
+	f.done["X"] = true
+	f.mu.Unlock()
+	var a DiagramAnswer
+	h.onLoop(func() { h.e.layout.diagrams[b.From].refresh = true; a = h.e.layout.Diagram(f, b, req(dark)) })
+	if a.State != Ready {
+		t.Fatalf("dark answer %v, want Ready", a.State)
+	}
+	before, _, _ := f.state()
+	h.onLoop(func() { a = h.e.layout.Diagram(f, b, req(dark)) })
+	if c, _, _ := f.state(); c != before {
+		t.Errorf("an unchanged Ready request asked again: %d calls, want %d", c, before)
+	}
+	h.onLoop(func() { a = h.e.layout.Diagram(f, b, req(light)) })
+	if c, _, _ := f.state(); c != before+1 {
+		t.Errorf("a theme change on a Ready picture asked %d times, want %d", c, before+1)
+	}
 }

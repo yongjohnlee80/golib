@@ -2,7 +2,6 @@ package widget
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -12,7 +11,7 @@ import (
 // diagramSlot is one block's diagram request: what was asked, under which generation, and the
 // last picture the block had.
 type diagramSlot struct {
-	key     string // lang, source, width and scale: the request's identity
+	key     diagramKey
 	to      int    // the block's end line, exclusive
 	gen     uint64
 	cancel  context.CancelFunc
@@ -20,6 +19,14 @@ type diagramSlot struct {
 	refresh bool // ready was called: ask the Diagrammer again on the next lay
 	pic     gui.View
 	size    gui.Size
+}
+
+// diagramKey is a request's identity: everything the picture depends on. A theme change is a
+// new request, as an edited source is.
+type diagramKey struct {
+	lang, src    string
+	width, scale float32
+	theme        Theme
 }
 
 // diagramReady is a request's ready callback, brought to the loop as a task result addressed to
@@ -33,7 +40,7 @@ type diagramReady struct {
 // or one whose ready has fired, asks d with a context of its own and a ready that the body's
 // loop receives. Pending keeps the block's last picture, so an edit never flashes it away.
 func (l *pixelLayout) Diagram(d Diagrammer, b Block, req DiagramRequest) DiagramAnswer {
-	key := fmt.Sprintf("%s\x00%s\x00%g\x00%g", req.Lang, req.Src, req.Width, req.Scale)
+	key := diagramKey{req.Lang, req.Src, req.Width, req.Scale, req.Theme}
 	s := l.diagrams[b.From]
 	if s != nil && s.key == key && !s.refresh {
 		return s.answer()
