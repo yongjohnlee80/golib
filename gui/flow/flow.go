@@ -27,7 +27,10 @@ type Span struct {
 	Line, Col int
 	Src       [2]int // a block-grain source range (HTMLView's data-src)
 	Hidden    bool   // laid out with no width: its clusters keep positions, all at one x
-	Atom      *Atom  // an inline box (an image, a widget) in place of Text
+	// SpaceWidth is a kept space's advance, and a tab's is TabSize of it: what an indentation
+	// is drawn by. 0: the font's own space.
+	SpaceWidth float32
+	Atom       *Atom // an inline box (an image, a widget) in place of Text
 }
 
 // Atom is an inline box: W wide, H tall, its baseline Baseline below its top.
@@ -61,6 +64,9 @@ type Options struct {
 	LineHeight float32 // a multiple of each font's size; 0: 1.2
 	WhiteSpace WhiteSpace
 	Color      color.NRGBA // a span's zero colour
+	// TabSize is a kept tab's width, in spaces: a tab is drawn as that much room, never as a
+	// glyph. 0: 4.
+	TabSize int
 }
 
 // Pos is a cluster boundary: Offset bytes into span Span's Text.
@@ -94,6 +100,7 @@ type Frag struct {
 	offsets  []int     // each display cluster's byte offset in the span's Text
 	xs       []float32 // cluster edges from X: len(offsets)+1
 	ascent   float32
+	sized    bool // a sized space run: no other piece joins its frag
 }
 
 type pieceKind uint8
@@ -114,6 +121,7 @@ type piece struct {
 	m        gui.Measured
 	w        float32
 	cjk      bool // breakable after it
+	sized    bool // a kept space run whose widths are its own, not the shaper's: a tab, or SpaceWidth
 }
 
 // Lay lays spans out.
@@ -122,6 +130,10 @@ func Lay(spans []Span, o Options, t *gui.TextShaper) *Para {
 		o.LineHeight = 1.2
 	}
 	p := &Para{opts: o, last: -1}
+	if o.TabSize <= 0 {
+		o.TabSize = 4
+	}
+	p.opts = o
 	p.pieces = split(spans, o.WhiteSpace)
 	for i := range p.pieces {
 		pc := &p.pieces[i]
@@ -136,6 +148,9 @@ func Lay(spans []Span, o Options, t *gui.TextShaper) *Para {
 			}
 		default:
 			pc.m = t.Measure(pc.display, sp.Font)
+			if pc.kind == space && o.WhiteSpace != Normal {
+				sizeSpaces(pc, sp, o.TabSize)
+			}
 			pc.w = pc.m.X[len(pc.m.X)-1]
 		}
 	}
@@ -172,6 +187,11 @@ func split(spans []Span, ws WhiteSpace) []piece {
 					j += n2
 				}
 				disp := s[i:j]
+				if ws != Normal {
+					// a tab has no glyph: it is shown as a space, one cluster for one, and given
+					// its width by sizeSpaces
+					disp = strings.ReplaceAll(disp, "\t", " ")
+				}
 				if ws == Normal {
 					disp = " "
 					if lastSpace {
@@ -354,7 +374,8 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 		measureLine(pc.span, pc)
 		sp := spans[pc.span]
 		n := len(l.Frags)
-		if n > 0 && l.Frags[n-1].Span == pc.span && l.Frags[n-1].To == pc.from && pc.kind != atom && spans[pc.span].Atom == nil {
+		if n > 0 && l.Frags[n-1].Span == pc.span && l.Frags[n-1].To == pc.from && pc.kind != atom && spans[pc.span].Atom == nil &&
+			!pc.sized && !l.Frags[n-1].sized {
 			f := &l.Frags[n-1]
 			base := f.xs[len(f.xs)-1]
 			f.To = pc.to
@@ -369,7 +390,7 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 			x += pc.w
 			continue
 		}
-		f := Frag{Span: pc.span, From: pc.from, To: pc.to, X: x, display: pc.display}
+		f := Frag{Span: pc.span, From: pc.from, To: pc.to, X: x, display: pc.display, sized: pc.sized}
 		f.xs = []float32{0}
 		for c, off := range pc.m.Clusters {
 			f.offsets = append(f.offsets, pc.from+mapOffset(pc, off))
@@ -421,6 +442,31 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 	}
 	p.Width = max(p.Width, content)
 	p.Lines = append(p.Lines, l)
+}
+
+// sizeSpaces gives a kept space run its widths: each space SpaceWidth (or the font's), each tab
+// tabSize spaces. A run with neither a tab nor a SpaceWidth keeps the shaper's. The run's own frag
+// then holds it, so the text after it is drawn from where the widths put it.
+func sizeSpaces(pc *piece, sp Span, tabSize int) {
+	src := sp.Text[pc.from:pc.to]
+	if sp.SpaceWidth <= 0 && !strings.Contains(src, "\t") {
+		return
+	}
+	pc.sized = true
+	x := pc.m.X
+	var at float32
+	for c, off := range pc.m.Clusters {
+		adv := x[c+1] - x[c]
+		if sp.SpaceWidth > 0 {
+			adv = sp.SpaceWidth
+		}
+		if src[off] == '\t' {
+			adv *= float32(tabSize)
+		}
+		x[c] = at
+		at += adv
+	}
+	x[len(pc.m.Clusters)] = at
 }
 
 // emptyAt is the zero-width frag of a line without text: before its '\n', or, for the line
