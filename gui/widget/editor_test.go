@@ -587,3 +587,34 @@ func TestListEditingFollowsTheView(t *testing.T) {
 		t.Error("list editing on with the Rendered view turned off")
 	}
 }
+
+// In a code block, fenced or indented, "- x" is code: Enter and Tab there type as ever, while a
+// list item in the prose around it continues.
+func TestListEditingSkipsCodeBlocks(t *testing.T) {
+	doc := "```\n- code\n```\n\npara\n\n    - indented code\n\n- item"
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText(doc), tuiwidget.CoreKeyset(tuiwidget.KeysetStandard)))
+	at := func(ln, col int, k tui.KeyEvent) string {
+		var v string
+		h.onLoop(func() {
+			h.e.Core().SetValue(doc)
+			h.e.Core().SetLine(ln, col)
+			h.e.Core().HandleKey(k)
+			v = h.e.Core().Value()
+		})
+		return v
+	}
+	enter, tab := tui.KeyEvent{Code: tui.KeyEnter}, tui.KeyEvent{Code: tui.KeyTab}
+	if got := at(1, 6, enter); got != strings.Replace(doc, "- code\n", "- code\n\n", 1) {
+		t.Errorf("Enter in a fenced block continued a list:\n%s", got)
+	}
+	if got := at(1, 0, tab); got != strings.Replace(doc, "- code", "\t- code", 1) {
+		t.Errorf("Tab in a fenced block nested an item:\n%s", got)
+	}
+	if got := at(6, 19, enter); got != strings.Replace(doc, "    - indented code\n", "    - indented code\n\n", 1) {
+		t.Errorf("Enter in an indented code block continued a list:\n%s", got)
+	}
+	if got := at(8, 6, enter); got != doc+"\n- " {
+		t.Errorf("Enter on a prose item did not continue the list:\n%s", got)
+	}
+}

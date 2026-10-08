@@ -66,6 +66,7 @@ type EditorCore struct {
 	readOnly  bool  // a viewer: motions and yank only
 	// listEditing continues, ends and nests Markdown list items in Insert mode (editor_lists.go)
 	listEditing bool
+	listWhere   func(ln int) bool // the lines list editing applies on; nil: every line
 
 	// The constructor-time listeners for what the core also publishes on the bus: a widget built
 	// before it is mounted has no Context to subscribe with.

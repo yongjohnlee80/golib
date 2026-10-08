@@ -189,6 +189,18 @@ func (r *MarkdownRenderer) layIndented(b Block, lines []string, opts flow.Option
 	return bl
 }
 
+// InCode reports whether line ln is inside a code block, fenced or indented, as the renderer
+// lays the lines out: there "- x" is code, not a list item.
+func (r *MarkdownRenderer) InCode(lines []string, ln int) bool {
+	for _, b := range r.Blocks(lines, 0, len(lines)) { // the whole document: a block's From is its start
+		if b.From <= ln && ln < b.To {
+			_, fenced := openFence(lines[b.From])
+			return fenced || startsIndentedCode(lines, b.From)
+		}
+	}
+	return false
+}
+
 // fenceSpans draw a fence line off the cursor: its fence characters hidden, an info string
 // muted. The line keeps its clusters, so the caret still maps onto it.
 func fenceSpans(ln int, line string, font gui.Font, th Theme) []flow.Span {
