@@ -1,0 +1,9 @@
+flowchart LR
+    A:::someclass --> B
+    classDef someclass fill:#f96
+    classDef default fill:#f9f,stroke:#333,stroke-width:4px;
+    style B fill:#bbf,stroke:#f66,stroke-width:2px,color:#fff,stroke-dasharray: 5 5
+    class C,B foobar
+    classDef foobar,other stroke:#00f
+    C(rgb) --> D
+    style D fill:rgb(1,2,3)

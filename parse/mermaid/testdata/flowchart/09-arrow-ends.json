@@ -1,0 +1,158 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "A",
+      "Label": "A",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        17,
+        18
+      ]
+    },
+    {
+      "ID": "B",
+      "Label": "B",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        23,
+        24
+      ]
+    },
+    {
+      "ID": "C",
+      "Label": "C",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        35,
+        36
+      ]
+    },
+    {
+      "ID": "D",
+      "Label": "D",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        41,
+        42
+      ]
+    },
+    {
+      "ID": "E",
+      "Label": "E",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        48,
+        49
+      ]
+    },
+    {
+      "ID": "F",
+      "Label": "F",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        61,
+        62
+      ]
+    },
+    {
+      "ID": "G",
+      "Label": "G",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        74,
+        75
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "",
+      "Line": "solid",
+      "Head": "circle",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        19,
+        24
+      ]
+    },
+    {
+      "From": "B",
+      "To": "C",
+      "Label": "",
+      "Line": "solid",
+      "Head": "cross",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        31,
+        36
+      ]
+    },
+    {
+      "From": "D",
+      "To": "E",
+      "Label": "",
+      "Line": "solid",
+      "Head": "circle",
+      "Tail": "circle",
+      "MinLen": 1,
+      "Span": [
+        43,
+        49
+      ]
+    },
+    {
+      "From": "E",
+      "To": "F",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "arrow",
+      "MinLen": 1,
+      "Span": [
+        56,
+        62
+      ]
+    },
+    {
+      "From": "F",
+      "To": "G",
+      "Label": "",
+      "Line": "solid",
+      "Head": "cross",
+      "Tail": "cross",
+      "MinLen": 1,
+      "Span": [
+        69,
+        75
+      ]
+    }
+  ],
+  "Subgraphs": null,
+  "Classes": {}
+}

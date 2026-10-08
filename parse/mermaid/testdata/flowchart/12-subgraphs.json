@@ -1,0 +1,164 @@
+{
+  "Dir": "TB",
+  "Nodes": [
+    {
+      "ID": "c1",
+      "Label": "c1",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "three",
+      "Span": [
+        17,
+        19
+      ]
+    },
+    {
+      "ID": "a2",
+      "Label": "a2",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "one",
+      "Span": [
+        22,
+        24
+      ]
+    },
+    {
+      "ID": "a1",
+      "Label": "a1",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "one",
+      "Span": [
+        46,
+        48
+      ]
+    },
+    {
+      "ID": "b1",
+      "Label": "b1",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "two",
+      "Span": [
+        83,
+        85
+      ]
+    },
+    {
+      "ID": "b2",
+      "Label": "b2",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "two",
+      "Span": [
+        88,
+        90
+      ]
+    },
+    {
+      "ID": "c2",
+      "Label": "c2",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "three",
+      "Span": [
+        127,
+        129
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "c1",
+      "To": "a2",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        19,
+        24
+      ]
+    },
+    {
+      "From": "a1",
+      "To": "a2",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        48,
+        53
+      ]
+    },
+    {
+      "From": "b1",
+      "To": "b2",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        85,
+        90
+      ]
+    },
+    {
+      "From": "c1",
+      "To": "c2",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        124,
+        129
+      ]
+    }
+  ],
+  "Subgraphs": [
+    {
+      "ID": "one",
+      "Title": "one",
+      "Dir": "0",
+      "Parent": "",
+      "Span": [
+        29,
+        61
+      ]
+    },
+    {
+      "ID": "two",
+      "Title": "two",
+      "Dir": "0",
+      "Parent": "",
+      "Span": [
+        66,
+        98
+      ]
+    },
+    {
+      "ID": "three",
+      "Title": "three",
+      "Dir": "0",
+      "Parent": "",
+      "Span": [
+        103,
+        137
+      ]
+    }
+  ],
+  "Classes": {}
+}

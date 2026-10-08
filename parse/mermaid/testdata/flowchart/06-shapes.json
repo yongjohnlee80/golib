@@ -1,0 +1,164 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "id1",
+      "Label": "This is the text in the box",
+      "Shape": "round",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        17,
+        49
+      ]
+    },
+    {
+      "ID": "id2",
+      "Label": "This is the text in the box",
+      "Shape": "stadium",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        54,
+        88
+      ]
+    },
+    {
+      "ID": "id3",
+      "Label": "This is the text in the box",
+      "Shape": "subroutine",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        93,
+        127
+      ]
+    },
+    {
+      "ID": "id4",
+      "Label": "Database",
+      "Shape": "cylinder",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        132,
+        147
+      ]
+    },
+    {
+      "ID": "id5",
+      "Label": "This is the text in the circle",
+      "Shape": "circle",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        152,
+        189
+      ]
+    },
+    {
+      "ID": "id6",
+      "Label": "This is the text in the box",
+      "Shape": "asymmetric",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        194,
+        226
+      ]
+    },
+    {
+      "ID": "id7",
+      "Label": "This is the text in the box",
+      "Shape": "diamond",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        231,
+        263
+      ]
+    },
+    {
+      "ID": "id8",
+      "Label": "This is the text in the box",
+      "Shape": "hexagon",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        268,
+        302
+      ]
+    },
+    {
+      "ID": "id9",
+      "Label": "This is the text in the box",
+      "Shape": "parallelogram",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        307,
+        341
+      ]
+    },
+    {
+      "ID": "id10",
+      "Label": "This is the text in the box",
+      "Shape": "parallelogram-alt",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        346,
+        381
+      ]
+    },
+    {
+      "ID": "A",
+      "Label": "Christmas",
+      "Shape": "trapezoid",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        386,
+        400
+      ]
+    },
+    {
+      "ID": "B",
+      "Label": "Go shopping",
+      "Shape": "trapezoid-alt",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        405,
+        421
+      ]
+    },
+    {
+      "ID": "id11",
+      "Label": "This is the text in the circle",
+      "Shape": "double-circle",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        426,
+        466
+      ]
+    }
+  ],
+  "Edges": null,
+  "Subgraphs": null,
+  "Classes": {}
+}

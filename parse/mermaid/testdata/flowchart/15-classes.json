@@ -1,0 +1,182 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "A",
+      "Label": "A",
+      "Shape": "rect",
+      "Classes": [
+        "someclass"
+      ],
+      "Style": [
+        {
+          "Name": "fill",
+          "Value": "#f96"
+        },
+        {
+          "Name": "stroke",
+          "Value": "#333"
+        },
+        {
+          "Name": "stroke-width",
+          "Value": "4px"
+        }
+      ],
+      "Subgraph": "",
+      "Span": [
+        17,
+        30
+      ]
+    },
+    {
+      "ID": "B",
+      "Label": "B",
+      "Shape": "rect",
+      "Classes": [
+        "foobar"
+      ],
+      "Style": [
+        {
+          "Name": "fill",
+          "Value": "#bbf"
+        },
+        {
+          "Name": "stroke",
+          "Value": "#f66"
+        },
+        {
+          "Name": "stroke-width",
+          "Value": "2px"
+        },
+        {
+          "Name": "color",
+          "Value": "#fff"
+        },
+        {
+          "Name": "stroke-dasharray",
+          "Value": "5 5"
+        }
+      ],
+      "Subgraph": "",
+      "Span": [
+        35,
+        36
+      ]
+    },
+    {
+      "ID": "C",
+      "Label": "rgb",
+      "Shape": "round",
+      "Classes": [
+        "foobar"
+      ],
+      "Style": [
+        {
+          "Name": "fill",
+          "Value": "#f9f"
+        },
+        {
+          "Name": "stroke",
+          "Value": "#00f"
+        },
+        {
+          "Name": "stroke-width",
+          "Value": "4px"
+        }
+      ],
+      "Subgraph": "",
+      "Span": [
+        278,
+        284
+      ]
+    },
+    {
+      "ID": "D",
+      "Label": "D",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": [
+        {
+          "Name": "fill",
+          "Value": "rgb(1,2,3)"
+        },
+        {
+          "Name": "stroke",
+          "Value": "#333"
+        },
+        {
+          "Name": "stroke-width",
+          "Value": "4px"
+        }
+      ],
+      "Subgraph": "",
+      "Span": [
+        289,
+        290
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        31,
+        36
+      ]
+    },
+    {
+      "From": "C",
+      "To": "D",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        285,
+        290
+      ]
+    }
+  ],
+  "Subgraphs": null,
+  "Classes": {
+    "default": [
+      {
+        "Name": "fill",
+        "Value": "#f9f"
+      },
+      {
+        "Name": "stroke",
+        "Value": "#333"
+      },
+      {
+        "Name": "stroke-width",
+        "Value": "4px"
+      }
+    ],
+    "foobar": [
+      {
+        "Name": "stroke",
+        "Value": "#00f"
+      }
+    ],
+    "other": [
+      {
+        "Name": "stroke",
+        "Value": "#00f"
+      }
+    ],
+    "someclass": [
+      {
+        "Name": "fill",
+        "Value": "#f96"
+      }
+    ]
+  }
+}

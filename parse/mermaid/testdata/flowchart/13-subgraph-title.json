@@ -1,0 +1,101 @@
+{
+  "Dir": "TB",
+  "Nodes": [
+    {
+      "ID": "a1",
+      "Label": "a1",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "ide1",
+      "Span": [
+        41,
+        43
+      ]
+    },
+    {
+      "ID": "a2",
+      "Label": "a2",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "ide1",
+      "Span": [
+        46,
+        48
+      ]
+    },
+    {
+      "ID": "b1",
+      "Label": "b1",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "q",
+      "Span": [
+        92,
+        94
+      ]
+    },
+    {
+      "ID": "c1",
+      "Label": "c1",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "Some long title",
+      "Span": [
+        136,
+        138
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "a1",
+      "To": "a2",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        43,
+        48
+      ]
+    }
+  ],
+  "Subgraphs": [
+    {
+      "ID": "ide1",
+      "Title": "one",
+      "Dir": "0",
+      "Parent": "",
+      "Span": [
+        17,
+        56
+      ]
+    },
+    {
+      "ID": "q",
+      "Title": "quoted title",
+      "Dir": "0",
+      "Parent": "",
+      "Span": [
+        61,
+        102
+      ]
+    },
+    {
+      "ID": "Some long title",
+      "Title": "Some long title",
+      "Dir": "0",
+      "Parent": "",
+      "Span": [
+        107,
+        146
+      ]
+    }
+  ],
+  "Classes": {}
+}

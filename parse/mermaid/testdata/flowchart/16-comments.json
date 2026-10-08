@@ -1,0 +1,71 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "A",
+      "Label": "A",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        109,
+        110
+      ]
+    },
+    {
+      "ID": "B",
+      "Label": "B",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        123,
+        124
+      ]
+    },
+    {
+      "ID": "C",
+      "Label": "C",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        138,
+        139
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "A",
+      "To": "B",
+      "Label": "text",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        111,
+        125
+      ]
+    },
+    {
+      "From": "B",
+      "To": "C",
+      "Label": "text2",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        125,
+        139
+      ]
+    }
+  ],
+  "Subgraphs": null,
+  "Classes": {}
+}

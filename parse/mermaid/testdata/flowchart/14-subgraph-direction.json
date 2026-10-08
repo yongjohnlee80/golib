@@ -1,0 +1,164 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "i1",
+      "Label": "i1",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "B1",
+      "Span": [
+        90,
+        92
+      ]
+    },
+    {
+      "ID": "f1",
+      "Label": "f1",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "B1",
+      "Span": [
+        96,
+        98
+      ]
+    },
+    {
+      "ID": "i2",
+      "Label": "i2",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "B2",
+      "Span": [
+        152,
+        154
+      ]
+    },
+    {
+      "ID": "f2",
+      "Label": "f2",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "B2",
+      "Span": [
+        158,
+        160
+      ]
+    },
+    {
+      "ID": "A",
+      "Label": "A",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        177,
+        178
+      ]
+    },
+    {
+      "ID": "B",
+      "Label": "B",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        195,
+        196
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "From": "i1",
+      "To": "f1",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        93,
+        98
+      ]
+    },
+    {
+      "From": "i2",
+      "To": "f2",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        155,
+        160
+      ]
+    },
+    {
+      "From": "A",
+      "To": "i1",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        179,
+        185
+      ]
+    },
+    {
+      "From": "f2",
+      "To": "B",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 1,
+      "Span": [
+        191,
+        196
+      ]
+    }
+  ],
+  "Subgraphs": [
+    {
+      "ID": "TOP",
+      "Title": "TOP",
+      "Dir": "TB",
+      "Parent": "",
+      "Span": [
+        15,
+        174
+      ]
+    },
+    {
+      "ID": "B1",
+      "Title": "B1",
+      "Dir": "RL",
+      "Parent": "TOP",
+      "Span": [
+        49,
+        106
+      ]
+    },
+    {
+      "ID": "B2",
+      "Title": "B2",
+      "Dir": "BT",
+      "Parent": "TOP",
+      "Span": [
+        111,
+        168
+      ]
+    }
+  ],
+  "Classes": {}
+}

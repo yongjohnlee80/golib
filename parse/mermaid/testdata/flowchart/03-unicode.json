@@ -1,0 +1,20 @@
+{
+  "Dir": "LR",
+  "Nodes": [
+    {
+      "ID": "id",
+      "Label": "This ❤ Unicode",
+      "Shape": "rect",
+      "Classes": null,
+      "Style": null,
+      "Subgraph": "",
+      "Span": [
+        17,
+        39
+      ]
+    }
+  ],
+  "Edges": null,
+  "Subgraphs": null,
+  "Classes": {}
+}
