@@ -104,6 +104,17 @@ type computed struct {
 	inset          [4]cssLen // top, right, bottom, left of a positioned box
 	objectFit      string    // an image's: contain, cover, fill (the default), none
 	invisible      bool      // visibility: hidden; inherited, so a child can show again
+	// flex and grid (htmlview_flex.go)
+	flexDir    string    // "row" (the default) or "column"
+	flexWrap   bool      // flex-wrap: wrap
+	gap        [2]cssLen // row-gap, column-gap
+	justify    string    // justify-content
+	alignItems string    // align-items
+	alignSelf  string    // align-self
+	grow       float32   // flex-grow
+	shrink     float32   // flex-shrink; 1 initially
+	basis      cssLen    // flex-basis; unset or auto: the width, else the content's
+	gridCols   string    // grid-template-columns, as written
 }
 
 // inherit is a child's starting style: what CSS inherits, the rest at its initial value.
@@ -112,7 +123,7 @@ func (c *computed) inherit() *computed {
 		color: c.color, fontSize: c.fontSize, bold: c.bold, italic: c.italic, mono: c.mono,
 		family: c.family, transform: c.transform, spacing: c.spacing, invisible: c.invisible,
 		lineHeight: c.lineHeight, align: c.align, white: c.white, vars: c.vars, link: c.link,
-		display: "inline",
+		display: "inline", shrink: 1,
 		// text-decoration propagates to inline descendants as drawn decoration
 		underline: c.underline, strike: c.strike,
 	}
@@ -897,6 +908,69 @@ func (c *computed) apply(d cssDecl, parent *computed, rootPx float32, view gui.S
 		c.invisible = lv == "hidden" || lv == "collapse"
 	case "object-fit":
 		c.objectFit = lv
+	case "flex-direction":
+		c.flexDir = "row"
+		if strings.HasPrefix(lv, "column") {
+			c.flexDir = "column"
+		}
+	case "flex-wrap":
+		c.flexWrap = strings.HasPrefix(lv, "wrap")
+	case "flex-flow":
+		for _, f := range strings.Fields(lv) {
+			switch {
+			case strings.HasPrefix(f, "column"):
+				c.flexDir = "column"
+			case strings.HasPrefix(f, "row"):
+				c.flexDir = "row"
+			case strings.HasPrefix(f, "wrap"):
+				c.flexWrap = true
+			case f == "nowrap":
+				c.flexWrap = false
+			}
+		}
+	case "gap", "grid-gap":
+		f := splitTop(lv, ' ')
+		var vals []cssLen
+		for _, s := range f {
+			if s = strings.TrimSpace(s); s == "" {
+				continue
+			}
+			if l, ok := parseLen(s); ok && !l.auto() {
+				vals = append(vals, l)
+			}
+		}
+		switch len(vals) {
+		case 1:
+			c.gap = [2]cssLen{vals[0], vals[0]}
+		case 2:
+			c.gap = [2]cssLen{vals[0], vals[1]}
+		}
+	case "row-gap", "grid-row-gap", "column-gap", "grid-column-gap":
+		if l, ok := parseLen(lv); ok && !l.auto() {
+			c.gap[map[bool]int{true: 0, false: 1}[strings.Contains(d.prop, "row")]] = l
+		}
+	case "justify-content":
+		c.justify = lv
+	case "align-items":
+		c.alignItems = lv
+	case "align-self":
+		c.alignSelf = lv
+	case "flex-grow", "flex-shrink":
+		if f, err := strconv.ParseFloat(lv, 32); err == nil && f >= 0 {
+			if d.prop == "flex-grow" {
+				c.grow = float32(f)
+			} else {
+				c.shrink = float32(f)
+			}
+		}
+	case "flex-basis":
+		if l, ok := parseLen(lv); ok {
+			c.basis = l
+		}
+	case "flex":
+		c.flex(lv)
+	case "grid-template-columns":
+		c.gridCols = lv
 	case "overflow", "overflow-x":
 		c.overflowScroll = lv == "auto" || lv == "scroll"
 	}
@@ -1017,6 +1091,37 @@ func lineHeight(v string, font float32) float32 {
 		return l.px(font, font, font, gui.Size{}) / font
 	}
 	return 1.2
+}
+
+// flex reads the flex shorthand: none, auto, initial, or grow [shrink] [basis].
+func (c *computed) flex(v string) {
+	switch v {
+	case "none":
+		c.grow, c.shrink, c.basis = 0, 0, cssLen{unit: 'a'}
+		return
+	case "auto":
+		c.grow, c.shrink, c.basis = 1, 1, cssLen{unit: 'a'}
+		return
+	case "initial":
+		c.grow, c.shrink, c.basis = 0, 1, cssLen{unit: 'a'}
+		return
+	}
+	nums := 0
+	c.basis = cssLen{unit: 'p'} // a bare number gives a basis of 0
+	for _, f := range strings.Fields(v) {
+		if n, err := strconv.ParseFloat(f, 32); err == nil && n >= 0 && nums < 2 {
+			if nums == 0 {
+				c.grow, c.shrink = float32(n), 1
+			} else {
+				c.shrink = float32(n)
+			}
+			nums++
+			continue
+		}
+		if l, ok := parseLen(f); ok {
+			c.basis = l
+		}
+	}
 }
 
 // boldWeight reports whether a font-weight is bold: bold, bolder, or a number from 600.
