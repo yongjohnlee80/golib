@@ -284,6 +284,25 @@ func (l *Laid) outline(c gui.Canvas, n laidNode) {
 		body.MoveTo(gui.Pt(cx-arm, neck+h*0.12)).LineTo(gui.Pt(cx+arm, neck+h*0.12))
 		body.MoveTo(gui.Pt(cx-arm*0.8, foot)).LineTo(gui.Pt(cx, hip)).LineTo(gui.Pt(cx+arm*0.8, foot))
 		c.StrokePath(body, n.width, stroke)
+	case formFace:
+		c.FillEllipse(b, fill)
+		c.StrokePath(ellipse(b), n.width, stroke)
+		r := min(b.W, b.H) / 2
+		eye := r * 0.12
+		for _, ex := range []float32{cx - r*0.35, cx + r*0.35} {
+			c.FillEllipse(gui.Rect{X: ex - eye, Y: cy - r*0.3 - eye, W: 2 * eye, H: 2 * eye}, stroke)
+		}
+		// the mouth: its middle below its corners for a smile, above them for a frown
+		bend := map[bool]float32{true: r * 0.25, false: -r * 0.2}[n.mood >= 4]
+		if n.mood == 3 {
+			bend = 0
+		}
+		y := cy + r*0.35
+		if n.mood <= 2 {
+			y = cy + r*0.5
+		}
+		mouth := new(gui.Path).MoveTo(gui.Pt(cx-r*0.4, y)).QuadTo(gui.Pt(cx, y+bend), gui.Pt(cx+r*0.4, y))
+		c.StrokePath(mouth, n.width, stroke)
 	default: // formRect
 		rrect(0)
 	}

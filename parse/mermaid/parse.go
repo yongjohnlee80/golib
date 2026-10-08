@@ -169,6 +169,14 @@ func (p *parser) parse() (Diagram, error) {
 		return p.state(rest, restOff)
 	case "erDiagram":
 		return p.er(rest, restOff)
+	case "journey":
+		return p.journey(rest, restOff)
+	case "mindmap":
+		return p.mindmap(rest, restOff)
+	case "timeline":
+		return p.timeline(rest, restOff)
+	case "requirementDiagram":
+		return p.requirement(rest, restOff)
 	}
 	return nil, fmt.Errorf("%w: %q diagrams", ErrUnsupported, kw)
 }

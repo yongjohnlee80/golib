@@ -38,14 +38,19 @@ type Diagram interface{ Kind() Kind }
 type Kind uint8
 
 const (
-	Flowchart Kind = iota + 1 // flowchart, graph
-	Sequence                  // sequenceDiagram
-	State                     // stateDiagram, stateDiagram-v2
-	Class                     // classDiagram
-	ER                        // erDiagram
+	Flowchart   Kind = iota + 1 // flowchart, graph
+	Sequence                    // sequenceDiagram
+	State                       // stateDiagram, stateDiagram-v2
+	Class                       // classDiagram
+	ER                          // erDiagram
+	Journey                     // journey
+	Mindmap                     // mindmap
+	Timeline                    // timeline
+	Requirement                 // requirementDiagram
 )
 
-var kindNames = [...]string{Flowchart: "flowchart", Sequence: "sequence", State: "state", Class: "class", ER: "er"}
+var kindNames = [...]string{Flowchart: "flowchart", Sequence: "sequence", State: "state", Class: "class", ER: "er",
+	Journey: "journey", Mindmap: "mindmap", Timeline: "timeline", Requirement: "requirement"}
 
 func (k Kind) String() string { return enumName(kindNames[:], int(k)) }
 

@@ -145,6 +145,7 @@ const (
 	formStart // a filled dot: a state diagram's start
 	formEnd   // a ring round a filled dot: its end
 	formNone  // no outline: the label alone
+	formFace  // a face for a score (mood): smiling, neutral or frowning; a journey task's
 )
 
 // laidNode is a box: its form, filled and outlined, its label centred in it, and compartments
@@ -157,6 +158,7 @@ type laidNode struct {
 	dashed       bool
 	label        label
 	parts        []part
+	mood         int // formFace: 1 to 5, a journey's score; 4 and 5 smile, 3 is level, 1 and 2 frown
 }
 
 // part is a divider across a box or group at y (none when y is 0), and the labels under it.
