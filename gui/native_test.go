@@ -564,3 +564,18 @@ func TestTheAccessKeyTakesItsCellsColour(t *testing.T) {
 		t.Fatalf("the key and its underline in the accent, the rest in the text's colour: %+v", rc.Calls)
 	}
 }
+
+// On a fill the accent does not read on (a focused button's brown), the key takes the label's
+// colour, its underline still marking it; where it reads, it stays the accent.
+func TestTheAccessKeyReadsOnItsFill(t *testing.T) {
+	red := color.NRGBA{R: 0x9b, G: 0x3d, B: 0x1f, A: 0xff}
+	brown := color.NRGBA{R: 0x8a, G: 0x5a, B: 0x2b, A: 0xff}
+	light := color.NRGBA{R: 0xfb, G: 0xf6, B: 0xea, A: 0xff}
+	paper := color.NRGBA{R: 0xe6, G: 0xd9, B: 0xb9, A: 0xff}
+	if got := readableOn(red, brown, light); got != light {
+		t.Errorf("red on brown kept %v, want the label's %v", got, light)
+	}
+	if got := readableOn(red, paper, light); got != red {
+		t.Errorf("red on the paper became %v, want the accent kept", got)
+	}
+}
