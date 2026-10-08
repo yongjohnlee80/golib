@@ -3,6 +3,8 @@ package widget
 import (
 	"strings"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // texts are a document's blocks as "kind|marker|text", deco spans in brackets.
@@ -214,5 +216,46 @@ func TestCellHTMLBytesAfterTheLastBlock(t *testing.T) {
 	c := layCells(t, `<p data-src="0-10">a</p><p data-src="12-20">b</p>`, 20)
 	if top, ok := c.BlockTop(25); !ok || top != 2 {
 		t.Errorf("BlockTop(25) = %v %v, want the last block's first row, 2", top, ok)
+	}
+}
+
+// activating is a layout with a part a click acts on: the cell layout, counting Activate.
+type activating struct {
+	*cellHTML
+	hits int
+	act  bool
+}
+
+func (a *activating) Activate(x, y float32) bool { a.hits++; return a.act }
+
+// TestHTMLViewAsksActivateBeforeALink: a click with no drag asks a layout that can act first; when
+// it acts the link under the click is not followed, when it does not the link is; a drag asks
+// nothing.
+func TestHTMLViewAsksActivateBeforeALink(t *testing.T) {
+	var links []string
+	v := NewHTMLView(WithOnLink(func(href string) { links = append(links, href) }))
+	v.SetHTML([]byte(`<p><a href="x">link</a> text</p>`))
+	fake := &activating{cellHTML: v.cells, act: true}
+	v.BindLayout(fake)
+	fake.SetWidth(40)
+	click := func(evs ...tui.MouseEvent) {
+		for _, e := range evs {
+			v.HandleEvent(e)
+		}
+	}
+	press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1}
+	release := tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1}
+	click(press, release)
+	if fake.hits != 1 || len(links) != 0 {
+		t.Fatalf("an acting layout: asked %d times, links %v; want asked once and no link", fake.hits, links)
+	}
+	fake.act = false
+	click(press, release)
+	if fake.hits != 2 || len(links) != 1 || links[0] != "x" {
+		t.Errorf("a layout that did not act: asked %d times, links %v; want the link followed", fake.hits, links)
+	}
+	click(press, tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, X: 4}, tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 4})
+	if fake.hits != 2 {
+		t.Errorf("a drag asked the layout: %d", fake.hits)
 	}
 }

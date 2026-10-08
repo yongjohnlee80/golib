@@ -54,6 +54,8 @@ type box struct {
 	sep    string
 	// container is a flex or grid item's container's style, for its alignment
 	container *computed
+	// details is a <summary>'s <details>: a click on it folds or opens that
+	details *phtml.Node
 }
 
 // styler computes elements' styles from the rules in force.
@@ -267,6 +269,36 @@ func (b *builder) box(n *phtml.Node, st *computed, src [2]int) *box {
 	}
 	if n.Name == "pre" {
 		trimPre(n)
+	}
+	switch n.Name {
+	case "details":
+		if !b.l.detailsOpen(n) {
+			// folded: its summary alone
+			holder := &phtml.Node{Kind: phtml.StartTag}
+			for _, c := range n.Children {
+				if c.Kind == phtml.StartTag && c.Name == "summary" {
+					holder.Children = []*phtml.Node{c}
+					break
+				}
+			}
+			bx.kids = b.children(holder, st, src)
+			return bx
+		}
+	case "summary":
+		if p := b.l.parents[n]; p != nil && p.Name == "details" {
+			bx.details = p
+			bx.kids = b.children(n, st, src)
+			marker := "▸ "
+			if b.l.detailsOpen(p) {
+				marker = "▾ "
+			}
+			if len(bx.kids) == 0 || bx.kids[0].kind != kRun {
+				bx.kids = append([]*box{{kind: kRun, st: st, src: src}}, bx.kids...)
+			}
+			run := bx.kids[0]
+			run.spans = append([]flow.Span{b.span(marker, st, src)}, run.spans...)
+			return bx
+		}
 	}
 	bx.kids = b.children(n, st, src)
 	return bx
