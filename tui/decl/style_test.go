@@ -100,10 +100,11 @@ func TestAStylesEditorIsTheDocumentsEditor(t *testing.T) {
 
 // A type another part of the vocabulary reads by its private node type cannot be replaced, even
 // by a contract-equal copy: the copy would pass CheckStyle, and then an Editor would refuse its
-// SyntaxHighlighter child, a TabView its Tab, a Dialog its shortcuts and button box.
+// SyntaxHighlighter child, a TabView its Tab, a Dialog its shortcuts and button box, a Menu its
+// rows, a TableView its columns.
 func TestATypeReadPrivatelyIsNotReplaceable(t *testing.T) {
 	src := tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow { Editor { SyntaxHighlighter { definition: \"QML\" } } }"))
-	for _, name := range []string{"SyntaxHighlighter", "Tab", "Shortcut", "DialogButtonBox", "Dialog", "FileDialog", "FolderDialog", "TableView", "Window"} {
+	for _, name := range []string{"SyntaxHighlighter", "Tab", "Shortcut", "DialogButtonBox", "Dialog", "FileDialog", "FolderDialog", "TableView", "Window", "Menu", "MenuItem", "MenuSeparator", "MenuBar", "TableViewColumn"} {
 		copied, ok := tuidecl.StandardType(name)
 		if !ok {
 			t.Errorf("%s is not a standard type", name)
