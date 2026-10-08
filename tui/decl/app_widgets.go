@@ -273,7 +273,7 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 	}
 	e := widget.NewEditor(opts...)
 	for _, h := range highlighters {
-		h.attach(e)
+		h.attach(e.Core())
 	}
 	return e, consumed, nil
 }

@@ -66,13 +66,15 @@ func WithHighlighters(defs ...highlight.Definition) Option {
 }
 
 // syntaxNode is a SyntaxHighlighter: the definition it names, the colours it
-// inherits, and the Editor it is in, once that Editor is built.
+// inherits, and the editor core it highlights, once its Editor is built. It
+// attaches to the core, not to a view of it, so any editor widget holding an
+// EditorCore can carry one.
 type syntaxNode struct {
 	widget.Base
 	registry   *highlight.Repository
 	definition string
 	styles     widget.SyntaxStyles
-	editor     *widget.Editor
+	core       *widget.EditorCore
 }
 
 func buildSyntaxHighlighter(b Build) (tui.Component, []string, error) {
@@ -82,22 +84,22 @@ func buildSyntaxHighlighter(b Build) (tui.Component, []string, error) {
 	return &syntaxNode{registry: b.highlighters}, nil, nil
 }
 
-// attach binds the highlighter to the Editor it is declared in.
-func (n *syntaxNode) attach(e *widget.Editor) {
-	n.editor = e
+// attach binds the highlighter to the core of the Editor it is declared in.
+func (n *syntaxNode) attach(c *widget.EditorCore) {
+	n.core = c
 	n.apply()
 }
 
 func (n *syntaxNode) apply() {
-	if n.editor == nil {
+	if n.core == nil {
 		return
 	}
-	n.editor.WithSyntaxStyles(n.styles)
+	n.core.SetSyntaxStyles(n.styles)
 	var h highlight.Highlighter
 	if d, ok := n.registry.Definition(n.definition); ok && n.definition != "" {
 		h = d.Highlighter
 	}
-	n.editor.SetHighlighter(h)
+	n.core.SetHighlighter(h)
 }
 
 func (n *syntaxNode) setDefinition(v qml.SpecValue) error {
