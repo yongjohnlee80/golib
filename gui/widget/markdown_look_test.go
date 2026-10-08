@@ -164,3 +164,106 @@ func TestUnclosedFrontmatterRunsToTheEnd(t *testing.T) {
 		t.Errorf("frontmatterEnd = %d, %v; want 3, false", end, closed)
 	}
 }
+
+// A table is a grid off the cursor: each cell's text starts at its column, aligned as the
+// delimiter row says, the header bold, the pipes hidden with room, and borders drawn.
+func TestTableIsAGrid(t *testing.T) {
+	doc := "| Method | `path` | n |\n|---|:-:|--:|\n| GET | /a | 1 |\n| POST | /longer/path | 204 |\n|x||7|"
+	bl, _ := lookLay(t, doc, 0)
+	if len(bl.Lines) != 5 {
+		t.Fatalf("table laid out as %d lines, want 5 (one block)", len(bl.Lines))
+	}
+	// the x where the span holding text starts, in row ln of the block
+	xOf := func(row int, text string) float32 {
+		ll := bl.Lines[row]
+		for _, l := range ll.Para.Lines {
+			for _, f := range l.Frags {
+				if ll.Spans[f.Span].Text == text && !ll.Spans[f.Span].Hidden {
+					return f.X
+				}
+			}
+		}
+		t.Fatalf("row %d has no %q: %+v", row, text, ll.Spans)
+		return 0
+	}
+	// column 1 is left-aligned: GET, POST and x start together
+	if a, b, c := xOf(2, "GET"), xOf(3, "POST"), xOf(4, "x"); abs32(a-b) > 0.5 || abs32(a-c) > 0.5 {
+		t.Errorf("column 1 starts at %v, %v, %v", a, b, c)
+	}
+	// column 3 is right-aligned: 1 and 204 end together
+	sh := gui.NewRecordingCanvas(gui.Size{W: 10, H: 10}, gui.Size{W: 8, H: 16}).Text()
+	w := func(s string) float32 { m := sh.Measure(s, gui.Font{Size: 16}); return m.X[len(m.X)-1] }
+	if e1, e2 := xOf(2, "1")+w("1"), xOf(3, "204")+w("204"); abs32(e1-e2) > 0.5 {
+		t.Errorf("column 3 ends at %v and %v, want together (right-aligned)", e1, e2)
+	}
+	// column 2 is centred: /a's middle is /longer/path's
+	if m1, m2 := xOf(2, "/a")+w("/a")/2, xOf(3, "/longer/path")+w("/longer/path")/2; abs32(m1-m2) > 0.5 {
+		t.Errorf("column 2 centres at %v and %v", m1, m2)
+	}
+	for _, s := range bl.Lines[0].Spans {
+		if !s.Hidden && !s.Font.Bold {
+			t.Errorf("header %q not bold", s.Text)
+		}
+		if s.Hidden && strings.Contains(s.Text, "|") && s.Room <= 0 {
+			t.Errorf("a pipe run %q hidden with no room", s.Text)
+		}
+	}
+	if len(bl.Lines[2].Marks) < 4 || len(bl.Lines[1].Marks) == 0 {
+		t.Errorf("borders: row %d marks, delimiter %d", len(bl.Lines[2].Marks), len(bl.Lines[1].Marks))
+	}
+	// every source cluster of a row keeps a span: the spans cover the line, in order
+	for row, ll := range bl.Lines {
+		line := strings.Split(doc, "\n")[row]
+		col := 0
+		for _, s := range ll.Spans {
+			if s.Col != col {
+				t.Errorf("row %d: span %q at column %d, want %d", row, s.Text, s.Col, col)
+			}
+			col += len([]rune(s.Text))
+		}
+		if col != len([]rune(line)) {
+			t.Errorf("row %d: spans cover %d clusters of %d", row, col, len([]rune(line)))
+		}
+	}
+	// the cursor in the table: its source, as written
+	lines := strings.Split(doc, "\n")
+	r := NewMarkdownRenderer()
+	src := r.LayOut(Block{From: 0, To: 5}, lines, 400, true, sh, Theme{Prose: gui.Font{Size: 16}, Mono: gui.Font{Size: 14}}, nil)
+	for _, ll := range src.Lines {
+		for _, s := range ll.Spans {
+			if s.Hidden {
+				t.Errorf("the table under the cursor hides %q", s.Text)
+			}
+		}
+	}
+}
+
+// Not a table: a pipe line without a delimiter row, or a delimiter with another cell count.
+func TestNotATable(t *testing.T) {
+	for _, doc := range []string{"a | b\nplain", "| a | b |\n|---|\n| c | d |", "a | b"} {
+		if n := tableEnd(strings.Split(doc, "\n"), 0); n != 0 {
+			t.Errorf("%q read as a table to line %d", doc, n)
+		}
+	}
+	if got := tableCells(`| a \| b | c |`); len(got) != 2 {
+		t.Errorf("an escaped pipe split a cell: %d cells", len(got))
+	}
+}
+
+// The header's rule is one line: the delimiter row is a strip as thin as the rule, and the header
+// draws no bottom border of its own over it.
+func TestTableHeaderHasOneRule(t *testing.T) {
+	bl, _ := lookLay(t, "| a | b |\n|---|---|\n| c | d |", 0)
+	head, delim := bl.Lines[0], bl.Lines[1]
+	for _, m := range head.Marks {
+		if m.Rect.W > 1 && m.Rect.H <= 1 && m.Rect.Y > 0 {
+			t.Errorf("the header draws a bottom border at %v as well as the rule", m.Rect.Y)
+		}
+	}
+	if h := delim.Para.Height; h > 3 {
+		t.Errorf("the delimiter row is %vpx tall: a gap between the header and its rule", h)
+	}
+	if delim.Y != head.Y+head.Para.Height {
+		t.Errorf("the rule at %v, not right under the header (%v)", delim.Y, head.Y+head.Para.Height)
+	}
+}
