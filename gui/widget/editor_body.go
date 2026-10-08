@@ -38,6 +38,7 @@ var (
 func (b *editorBody) Init(ctx *tui.Context) {
 	b.Base.Init(ctx)
 	b.e.core.Bind(ctx, b.e.layout)
+	ctx.OnUnmount(b.e.layout.cancelDiagrams)
 }
 
 // AcceptsFocus: the text area takes the keys.
@@ -135,6 +136,9 @@ func (b *editorBody) Cursor() (int, int, bool) {
 // pixel layout.
 func (b *editorBody) HandleEvent(ev tui.Event) bool {
 	c := b.e.core
+	if r, ok := diagramResult(ev); ok {
+		return b.e.layout.diagramReady(r)
+	}
 	switch t := ev.(type) {
 	case tui.KeyEvent:
 		if c.HandleKey(t) {

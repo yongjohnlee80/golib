@@ -29,7 +29,9 @@ type Renderer interface {
 	// LayOut lays block b out at width. Every span it returns maps one to one onto its source
 	// line's clusters (flow.Span's Line and Col), and no span crosses a line, so the caret and a
 	// click land on the right cluster.
-	LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme) BlockLayout
+	// host asks a Diagrammer on the widget's behalf (DiagramHost); a renderer never calls one
+	// directly, since the widget owns each request's lifetime.
+	LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout
 }
 
 // Block is lines [From, To) of the buffer.
@@ -88,4 +90,12 @@ func rawSpans(ln int, text string, font gui.Font, color func(col int) color.NRGB
 type colorKey struct {
 	c   color.NRGBA
 	set bool
+}
+
+// DiagramHost asks a Diagrammer for a block's picture on the widget's behalf. It owns each
+// request: its context, cancelled when the block's source changes or the widget unmounts; its
+// generation, so a late answer for an older source is dropped; and its ready callback, which
+// brings the answer back to the widget's loop and lays the block out again.
+type DiagramHost interface {
+	Diagram(d Diagrammer, b Block, req DiagramRequest) DiagramAnswer
 }

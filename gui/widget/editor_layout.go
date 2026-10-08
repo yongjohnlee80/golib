@@ -35,6 +35,9 @@ type pixelLayout struct {
 	laid   []*laidBlock // parallel to blocks: nil until laid out
 	stale  bool         // lines and blocks are to be read again
 	keep   int          // after a change, blocks wholly before this line keep their layout
+
+	diagrams map[int]*diagramSlot // the diagram requests of blocks, by the block's first line
+	gen      uint64               // the last generation handed out
 }
 
 // laidBlock is a block as laid out, and what it was laid out for.
@@ -46,7 +49,9 @@ type laidBlock struct {
 	text   string        // Raw: the line's text
 }
 
-func newPixelLayout(e *Editor) *pixelLayout { return &pixelLayout{e: e, stale: true} }
+func newPixelLayout(e *Editor) *pixelLayout {
+	return &pixelLayout{e: e, stale: true, diagrams: map[int]*diagramSlot{}}
+}
 
 // --- tuiwidget.EditorLayout ---------------------------------------------------------------
 
@@ -93,6 +98,7 @@ func (l *pixelLayout) Changed(fromLine int) {
 	if !l.stale || fromLine < l.keep {
 		l.keep = fromLine
 	}
+	l.dropDiagrams(fromLine)
 	l.stale = true
 	l.e.body.MarkDirty()
 }
@@ -202,7 +208,7 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 			return lb
 		}
 		lb := &laidBlock{inside: inside, width: l.width}
-		lb.bl = l.e.render.LayOut(b, l.lines, l.width, inside, l.sh, l.th)
+		lb.bl = l.e.render.LayOut(b, l.lines, l.width, inside, l.sh, l.th, l)
 		l.laid[i] = lb
 		return lb
 	}

@@ -49,6 +49,9 @@ const barrierKey = tui.KeyF12
 func (s *shell) Init(ctx *tui.Context) { s.ctx = ctx; ctx.Mount(s.child) }
 func (s *shell) Render(tui.Surface)    {}
 func (s *shell) Layout(c tui.Constraints) tui.Size {
+	if !s.ctx.MountedComponent(s.child) {
+		return c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
+	}
 	sz := s.ctx.LayoutChild(s.child, tui.Tight(tui.Size{W: c.MaxW, H: c.MaxH}))
 	s.ctx.PlaceChild(s.child, tui.Rect{W: sz.W, H: sz.H})
 	return c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
@@ -170,7 +173,8 @@ func (h *edHarness) caretPoint(line, col int) (float32, float32) {
 	return x, y
 }
 
-func key(r rune) tui.KeyEvent  { return tui.KeyEvent{Code: r} }
+// key is a printable key as a backend sends it: its code and the text it types.
+func key(r rune) tui.KeyEvent  { return tui.KeyEvent{Code: r, Text: string(r)} }
 func ctrl(r rune) tui.KeyEvent { return tui.KeyEvent{Code: r, Mods: tui.ModCtrl} }
 func code(c rune) tui.KeyEvent { return tui.KeyEvent{Code: c} }
 func text(s string) (out []tui.KeyEvent) {

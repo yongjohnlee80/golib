@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"context"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -104,10 +103,10 @@ func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
 }
 
 // LayOut lays block b out.
-func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme) BlockLayout {
+func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
 	opts := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: th.Text}
 	if f, ok := openFence(lines[b.From]); ok {
-		return r.layFence(b, f, lines, opts, cursorInside, t, th)
+		return r.layFence(b, f, lines, opts, cursorInside, t, th, host)
 	}
 	ln := b.From
 	var spans []flow.Span
@@ -127,13 +126,14 @@ func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursor
 
 // layFence lays a fenced block out: its lines in monospace on a tinted ground, the fence lines
 // dimmed, or a diagram's picture when the Diagrammer has one.
-func (r *MarkdownRenderer) layFence(b Block, f fence, lines []string, opts flow.Options, inside bool, t *gui.TextShaper, th Theme) BlockLayout {
+func (r *MarkdownRenderer) layFence(b Block, f fence, lines []string, opts flow.Options, inside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
 	bl := BlockLayout{Background: th.CodeBackground}
-	if !inside && r.diagrams != nil && f.info != "" {
+	if !inside && r.diagrams != nil && host != nil && f.info != "" {
 		src := strings.Join(lines[min(b.From+1, b.To):max(b.To-1, b.From+1)], "\n")
 		lang, _, _ := strings.Cut(f.info, " ")
-		a := r.diagrams.Diagram(context.Background(), DiagramRequest{Lang: lang, Src: src, Width: opts.Width, Scale: 1, Theme: th}, func() {})
-		if a.State == Ready && a.Pic != nil {
+		a := host.Diagram(r.diagrams, b, DiagramRequest{Lang: lang, Src: src, Width: opts.Width, Scale: 1, Theme: th})
+		// Ready, or Pending with the block's last picture: draw the picture. Otherwise the code.
+		if a.State != Declined && a.Pic != nil {
 			bl.Picture, bl.PictureSize, bl.Height = a.Pic, a.Size, a.Size.H
 			bl.Background.A = 0
 			return bl
