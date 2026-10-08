@@ -17,13 +17,15 @@ func (p *Para) Paint(c gui.Canvas, at gui.Point, spans []Span) {
 			}
 			x, top := at.X+f.X, at.Y+l.Y
 			if sp.Background.A > 0 && f.W > 0 {
-				// a chip around the glyphs, not the line: a tall line's chip is not a column
+				// a chip around the glyphs, not the line: a tall line's chip is not a column. A
+				// plain rectangle: a rounded one is a path, and a page of code spans as paths
+				// made every frame slow
 				pad := sp.Font.Size * 0.18
 				chip := gui.Rect{X: x - pad/2, Y: at.Y + l.Baseline - f.ascent - pad/2, W: f.W + pad, H: sp.Font.Size*1.15 + pad}
 				if f.ascent == 0 {
 					chip = gui.Rect{X: x, Y: top, W: f.W, H: l.H}
 				}
-				c.FillRRect(chip, pad, gui.Solid(sp.Background))
+				c.FillRect(chip, gui.Solid(sp.Background))
 			}
 			if sp.Atom != nil {
 				if sp.Atom.Paint != nil {
