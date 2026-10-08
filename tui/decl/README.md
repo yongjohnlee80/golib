@@ -75,7 +75,7 @@ change at runtime, which is what makes it bindable to a source.
 | `MenuSeparator` | — | — | — | — | — |
 | `Shortcut` | `sequence` | — | — | `activated` | — |
 | `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
-| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `wrap` (live: soft-wrap long lines, or scroll them), `lineNumbers` (golib's: each line's number in a gutter at the left), `lineNumberColor` (golib's: the numbers' colour), `cursorColor` (golib's: the text cursor's colour, sent to the terminal), `ruler` (golib's: a guide at that column, where text wraps), `contextMenu` (golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer) | — | `modeChanged`, `textChanged`, `cursorPositionChanged` (Qt's TextEdit signal: the cursor moved to another line or column, by a key, a click, an edit or the program) | — |
+| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `wrap` (live: soft-wrap long lines, or scroll them), `lineNumbers` (golib's: each line's number in a gutter at the left), `lineNumberColor` (golib's: the numbers' colour), `cursorColor` (golib's: the text cursor's colour, sent to the terminal), `ruler` (golib's: a guide at that column, where text wraps), `contextMenu` (golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer), `view` (golib's: `Editor.Raw` or `Editor.Rendered`; see [Raw and Rendered](#raw-and-rendered-view-not-mode)) | — | `modeChanged` (the **Vim** mode: Normal, Insert, Visual; not the view), `textChanged`, `cursorPositionChanged` (Qt's TextEdit signal: the cursor moved to another line or column, by a key, a click, an edit or the program) | — |
 | `Image` | — | `scrollable` (golib's: the PNG at the cells' width, scrolled by ↑↓ j k h l, Page Up/Down, `[` `]`, Home/End and the wheel; only the part shown is placed) | — | — | — |
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette; its children are its widgets, each at its own width: permanent (Qt's `QStatusBar.addPermanentWidget`) at the right end, or, with `StatusBar.permanent: false` on the child, normal (`addWidget`) at the left end; the segments share the rest | `left`, `center`, `right` | — | — | — |
@@ -422,6 +422,33 @@ Window, every highlighter under it wears them — the Editor's, and a
 FileDialog's preview, which highlights each file by the definition its name
 calls for. Bound to a theme's `syntax` group, switching theme stays the import
 line. A style left unset paints as `syntax.normal`, and that unset as the text.
+
+## Raw and Rendered: `view`, not `mode`
+
+```qml
+Editor {
+    view: Editor.Rendered                        // or Editor.Raw (the default)
+    SyntaxHighlighter { definition: App.syntax }
+    MarkdownRenderer { headingScale: 2.0 }       // what Rendered draws with; at most one renderer
+}
+```
+
+`view` chooses how an Editor shows its text. `Editor.Raw` is the source as written, and
+`Editor.Rendered` is drawn by the Editor's renderer: Markdown with its headings at their sizes and
+its marks hidden off the cursor's line. Ctrl+T (`ActToggleRendered`, rebindable) switches the two.
+The terminal's Editor has no Rendered view: it accepts `view` and the renderer, so one document
+runs everywhere, and stays Raw. The GUI's native style gives the Rendered view.
+
+**The property is `view`, not `mode`, on purpose.** The Editor already has a `modeChanged`
+signal, and it reports the **Vim** mode (Normal, Insert, Visual). QML reads a property `x` and a
+signal `xChanged` as one pair, so a `mode` property would make `onModeChanged` look like the view
+switching. Do not rename `view` to `mode`, and do not read `modeChanged` as the view (Johno,
+2026-10-08; ADR 1791385086 §4.8).
+
+`MarkdownRenderer` is a renderer spec: plain data the document declares, which a terminal build
+parses without Gio. A consumer's own renderer is a spec type of its own, implementing
+`RendererSpec` and declared through `RendererNode`; the GUI's native style turns a spec into a
+renderer by its `RendererKind()`.
 
 ## Dialogs
 
