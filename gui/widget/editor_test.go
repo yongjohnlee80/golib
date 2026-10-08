@@ -439,3 +439,37 @@ func TestToggleRenderedIsTheKeymapsAndRebindable(t *testing.T) {
 		t.Error("an editor with no renderer consumed Ctrl+T")
 	}
 }
+
+// A host turns the Rendered view off for a document its renderer does not read, and on again: off,
+// the view is Raw, SetMode(Rendered) stays Raw and Ctrl+T is not consumed; the renderer is kept.
+func TestRenderedEnabledSwitch(t *testing.T) {
+	h := startEditor(t, 60, 12, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("# Title\nbody")))
+	mode := func() EditorMode {
+		var m EditorMode
+		h.onLoop(func() { m = h.e.Mode() })
+		return m
+	}
+	if mode() != Rendered {
+		t.Fatal("did not start Rendered")
+	}
+	h.onLoop(func() { h.e.SetRenderedEnabled(false) })
+	if mode() != Raw {
+		t.Fatal("turning the Rendered view off left it Rendered")
+	}
+	h.onLoop(func() { h.e.SetMode(Rendered) })
+	if mode() != Raw {
+		t.Fatal("SetMode(Rendered) with the view off is not Raw")
+	}
+	h.keys(ctrl('t'))
+	if mode() != Raw {
+		t.Fatal("Ctrl+T toggled to Rendered with the view off")
+	}
+	var on bool
+	h.onLoop(func() { h.e.SetRenderedEnabled(true); on = h.e.RenderedEnabled() })
+	h.keys(ctrl('t'))
+	if !on || mode() != Rendered {
+		t.Fatalf("turned back on (enabled %v): Ctrl+T gives %v, want Rendered", on, mode())
+	}
+}
+
