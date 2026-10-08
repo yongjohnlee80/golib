@@ -25,6 +25,17 @@ func (l *Laid) Paint(c gui.Canvas) {
 		l.node(c, n)
 	}
 	l.edgesAt(c, true)
+	for _, g := range l.group { // over what the frames hold, so a box never hides a frame's title
+		l.text(c, g.title)
+		for _, p := range g.parts {
+			for _, lb := range p.labels {
+				if p.y > 0 { // on the page: a lifeline or a box under a section's label never runs through it
+					l.ground(c, lb)
+				}
+				l.text(c, lb)
+			}
+		}
+	}
 	for _, t := range l.texts {
 		l.text(c, t)
 	}
@@ -45,17 +56,23 @@ func (l *Laid) edgesAt(c gui.Canvas, over bool) {
 			if lb == nil {
 				continue
 			}
-			if lb == e.label { // the middle label sits on the page, over the line
-				pad := lb.font.Size * 0.3
-				b := lb.box
-				c.FillRRect(gui.Rect{X: b.X - pad, Y: b.Y - pad, W: b.W + 2*pad, H: b.H + 2*pad}, 3, gui.Solid(l.th.Background))
+			if lb == e.label && !e.plain { // the middle label sits on the page, over the line
+				l.ground(c, *lb)
 			}
 			l.text(c, *lb)
 		}
 	}
 }
 
-// frame draws a group: its box, its title (in a tab, or inside its top left), and its dividers.
+// ground fills the page's colour behind a label, a little past it.
+func (l *Laid) ground(c gui.Canvas, lb label) {
+	pad := lb.font.Size * 0.3
+	b := lb.box
+	c.FillRRect(gui.Rect{X: b.X - pad, Y: b.Y - pad, W: b.W + 2*pad, H: b.H + 2*pad}, 3, gui.Solid(l.th.Background))
+}
+
+// frame draws a group: its box, its title's tab, and its dividers. Its title and its dividers'
+// labels are drawn later, over what it holds.
 func (l *Laid) frame(c gui.Canvas, g laidGroup) {
 	th := l.th
 	fill, stroke := or(g.fill, th.ClusterFill), or(g.stroke, th.ClusterStroke)
@@ -63,7 +80,7 @@ func (l *Laid) frame(c gui.Canvas, g laidGroup) {
 	if g.tab {
 		radius = 0
 	}
-	if fill.A > 0 {
+	if !g.bare && fill.A > 0 {
 		c.FillRRect(g.box, radius, gui.Solid(fill))
 	}
 	if g.dashed {
@@ -84,12 +101,21 @@ func (l *Laid) frame(c gui.Canvas, g laidGroup) {
 		c.FillPath(p, gui.Solid(mix(stroke, th.Background, 0.75)))
 		c.StrokePath(p, 1, gui.Solid(stroke))
 	}
-	l.text(c, g.title)
-	l.parts(c, g.box, g.parts, stroke)
+	l.dividers(c, g.box, g.parts, stroke)
 }
 
 // parts draws dividers across r at each part's y, and the part's labels.
 func (l *Laid) parts(c gui.Canvas, r gui.Rect, ps []part, stroke color.NRGBA) {
+	l.dividers(c, r, ps, stroke)
+	for _, p := range ps {
+		for _, lb := range p.labels {
+			l.text(c, lb)
+		}
+	}
+}
+
+// dividers draws the lines across r at each part's y.
+func (l *Laid) dividers(c gui.Canvas, r gui.Rect, ps []part, stroke color.NRGBA) {
 	for _, p := range ps {
 		if p.y > 0 {
 			pts := []gui.Point{{X: r.X, Y: p.y}, {X: r.X + r.W, Y: p.y}}
@@ -98,9 +124,6 @@ func (l *Laid) parts(c gui.Canvas, r gui.Rect, ps []part, stroke color.NRGBA) {
 			} else {
 				c.StrokePath(new(gui.Path).MoveTo(pts[0]).LineTo(pts[1]), 1, gui.Solid(stroke))
 			}
-		}
-		for _, lb := range p.labels {
-			l.text(c, lb)
 		}
 	}
 }

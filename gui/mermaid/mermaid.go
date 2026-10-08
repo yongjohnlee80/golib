@@ -63,7 +63,7 @@ func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measure
 // between widgets; only Paint, on the loop, keeps anything (the labels it shapes).
 //
 // Paint draws in this order: groups, edges (under), their labels, boxes, edges drawn over the
-// boxes, their labels, then free texts.
+// boxes, their labels, the groups' titles and dividers' labels, then free texts.
 type Laid struct {
 	size  gui.Size // as drawn, after the fit
 	fit   float32  // the scale that fits the diagram to the width asked; 1 when it fits
@@ -195,6 +195,7 @@ type laidEdge struct {
 	label                *label
 	headLabel, tailLabel *label
 	over                 bool // drawn over the boxes: a message across an activation
+	plain                bool // its middle label on nothing: it sits beside the line, not on it
 }
 
 // laidGroup is a frame round other things: a box, its title, and dividers across it with their
@@ -203,6 +204,7 @@ type laidGroup struct {
 	box          gui.Rect
 	title        label
 	fill, stroke color.NRGBA // zero: the theme's cluster colours
+	bare         bool        // no fill, the frame alone
 	dashed       bool
 	tab          bool // the title in a tab at the top left, as a sequence diagram's loop and alt
 	parts        []part

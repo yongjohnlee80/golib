@@ -81,8 +81,8 @@ func TestAWideDiagramFitsItsWidth(t *testing.T) {
 // A type golib does not draw is ErrUnsupported, for the fallback; a malformed flowchart is a
 // SyntaxError, shown as one.
 func TestWhatIsNotDrawnSaysWhy(t *testing.T) {
-	if _, err := lay(t, "sequenceDiagram\n  A->>B: hi", 400); !errors.Is(err, pm.ErrUnsupported) {
-		t.Errorf("a sequence diagram: %v, want ErrUnsupported", err)
+	if _, err := lay(t, "journey\n  title x", 400); !errors.Is(err, pm.ErrUnsupported) {
+		t.Errorf("a journey: %v, want ErrUnsupported", err)
 	}
 	if _, err := lay(t, "pie\n  \"a\": 1", 400); !errors.Is(err, pm.ErrUnsupported) {
 		t.Errorf("a pie: %v, want ErrUnsupported", err)

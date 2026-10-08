@@ -87,11 +87,11 @@ func TestTheChainFallsBackAndShowsErrors(t *testing.T) {
 	fb := &fakeFallback{}
 	d := Diagrams(fb)
 	ready := make(chan struct{}, 1)
-	seq := flowReq("sequenceDiagram\n  A->>B: hi")
-	d.Diagram(context.Background(), seq, func() { ready <- struct{}{} })
+	other := flowReq("journey\n  title A day")
+	d.Diagram(context.Background(), other, func() { ready <- struct{}{} })
 	<-ready // native's job declined it: asking again goes to the fallback
-	if ans := d.Diagram(context.Background(), seq, func() {}); ans.State != Pending || fb.asked.Load() != 1 {
-		t.Errorf("a sequence diagram: %v, fallback asked %d times; want the fallback's answer", ans.State, fb.asked.Load())
+	if ans := d.Diagram(context.Background(), other, func() {}); ans.State != Pending || fb.asked.Load() != 1 {
+		t.Errorf("a journey: %v, fallback asked %d times; want the fallback's answer", ans.State, fb.asked.Load())
 	}
 	if d.Diagram(context.Background(), DiagramRequest{Lang: "plantuml", Src: "x"}, func() {}); fb.asked.Load() != 2 {
 		t.Error("another language did not reach the fallback")
@@ -103,9 +103,9 @@ func TestTheChainFallsBackAndShowsErrors(t *testing.T) {
 		t.Errorf("a malformed flowchart: %+v, want Ready with its error's picture", ans)
 	}
 	none := Diagrams(nil)
-	none.Diagram(context.Background(), seq, func() { ready <- struct{}{} })
+	none.Diagram(context.Background(), other, func() { ready <- struct{}{} })
 	<-ready
-	if ans := none.Diagram(context.Background(), seq, func() {}); ans.State != Declined {
+	if ans := none.Diagram(context.Background(), other, func() {}); ans.State != Declined {
 		t.Errorf("no fallback: %v, want Declined", ans.State)
 	}
 }
