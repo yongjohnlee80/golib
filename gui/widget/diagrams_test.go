@@ -87,11 +87,11 @@ func TestTheChainFallsBackAndShowsErrors(t *testing.T) {
 	fb := &fakeFallback{}
 	d := Diagrams(fb)
 	ready := make(chan struct{}, 1)
-	other := flowReq("journey\n  title A day")
+	other := flowReq("pie\n  \"a\": 1")
 	d.Diagram(context.Background(), other, func() { ready <- struct{}{} })
 	<-ready // native's job declined it: asking again goes to the fallback
 	if ans := d.Diagram(context.Background(), other, func() {}); ans.State != Pending || fb.asked.Load() != 1 {
-		t.Errorf("a journey: %v, fallback asked %d times; want the fallback's answer", ans.State, fb.asked.Load())
+		t.Errorf("a pie: %v, fallback asked %d times; want the fallback's answer", ans.State, fb.asked.Load())
 	}
 	if d.Diagram(context.Background(), DiagramRequest{Lang: "plantuml", Src: "x"}, func() {}); fb.asked.Load() != 2 {
 		t.Error("another language did not reach the fallback")
