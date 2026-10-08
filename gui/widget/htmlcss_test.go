@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/flow"
 )
 
 // TestCSSMaths: calc(), min(), max() and clamp() with every unit evaluate where their length is:
@@ -131,3 +132,38 @@ func TestCSSMedia(t *testing.T) {
 		t.Errorf("at 900 px: %v, want black", c)
 	}
 }
+
+// TestCSSText: text-transform changes what is shown, letter-spacing (in em, against the span's own
+// size) reaches the span, a numeric weight from 600 is bold, and font-family reaches the font as a
+// list the shaper reads (system-ui as sans-serif), through the font shorthand too; all inherit.
+func TestCSSText(t *testing.T) {
+	page := `<html><head><style>
+.eyebrow{font-size:10px;font-weight:750;text-transform:uppercase;letter-spacing:.12em}
+article{font-family:Georgia, serif} body{font:17px/1.75 system-ui, sans-serif}
+.cap{text-transform:capitalize} .light{font-weight:650} .thin{font-weight:500}
+</style></head><body><div class="eyebrow">Aesop / reading <b>edition</b></div>
+<article><p>serif text</p></article><p class="cap">the hares-and foxes</p><p class="light">w650</p><p class="thin">w500</p><p>body</p></body></html>`
+	_, l, _ := pixelView(t, page, 600, 2000)
+	l.layOutTo(1e9)
+	sp := func(i int) flowSpan { return flowSpan(l.runs[i].spans[0]) }
+	if s := sp(0); s.Text != "AESOP / READING " || !s.Font.Bold || s.LetterSpacing < 1.19 || s.LetterSpacing > 1.21 {
+		t.Errorf("the eyebrow: %q bold %v spacing %v, want upper-cased, bold, 1.2 px", s.Text, s.Font.Bold, s.LetterSpacing)
+	}
+	if s := l.runs[0].spans[1]; s.Text != "EDITION" || s.LetterSpacing < 1.19 {
+		t.Errorf("an inline child: %q spacing %v, want both inherited", s.Text, s.LetterSpacing)
+	}
+	if f := sp(1).Font.Family; f != "Georgia, serif" {
+		t.Errorf("the article's family %q", f)
+	}
+	if s := sp(2); s.Text != "The Hares-And Foxes" {
+		t.Errorf("capitalized: %q", s.Text)
+	}
+	if !sp(3).Font.Bold || sp(4).Font.Bold {
+		t.Errorf("weights 650 and 500: bold %v and %v, want true and false", sp(3).Font.Bold, sp(4).Font.Bold)
+	}
+	if f := sp(5).Font.Family; f != "sans-serif, sans-serif" {
+		t.Errorf("the body's family from the font shorthand: %q", f)
+	}
+}
+
+type flowSpan = flow.Span

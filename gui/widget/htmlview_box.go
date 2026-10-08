@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"strconv"
 	"strings"
+	"unicode"
 
 	xhtml "github.com/yongjohnlee80/golib/extract/html"
 	"github.com/yongjohnlee80/golib/gui"
@@ -337,17 +338,43 @@ func blockSrc(n *phtml.Node) ([2]int, bool) {
 
 // fontOf is a style's font.
 func fontOf(st *computed) gui.Font {
-	f := gui.Font{Size: st.fontSize, Bold: st.bold, Italic: st.italic}
+	f := gui.Font{Size: st.fontSize, Bold: st.bold, Italic: st.italic, Family: st.family}
 	if st.mono {
 		f.Family = gui.MonospaceFamily()
 	}
 	return f
 }
 
+// transformed is text as text-transform shows it.
+func transformed(text, transform string) string {
+	switch transform {
+	case "uppercase":
+		return strings.ToUpper(text)
+	case "lowercase":
+		return strings.ToLower(text)
+	case "capitalize":
+		b := []rune(text)
+		start := true
+		for i, r := range b {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				if start {
+					b[i] = unicode.ToTitle(r)
+				}
+				start = false
+			} else {
+				start = unicode.IsSpace(r) || r == '-'
+			}
+		}
+		return string(b)
+	}
+	return text
+}
+
 // span is text in st's look; an inline element's own background shades it (code).
 func (b *builder) span(text string, st *computed, src [2]int) flow.Span {
-	return flow.Span{Text: text, Font: fontOf(st), Color: st.color, Background: st.background,
-		Underline: st.underline, Strike: st.strike, Link: st.link, Line: -1, Src: src}
+	return flow.Span{Text: transformed(text, st.transform), Font: fontOf(st), Color: st.color, Background: st.background,
+		Underline: st.underline, Strike: st.strike, Link: st.link, Line: -1, Src: src,
+		LetterSpacing: st.spacing.px(st.fontSize, b.l.rootPx, 0, b.l.view())}
 }
 
 // ---- layout ----
