@@ -495,6 +495,21 @@ func (c *EditorCore) SnapshotKeymap() KeymapSnapshot {
 // ActionForChord looks up the action bound to a chord.
 func (c *EditorCore) ActionForChord(kc KeyChord) (Action, bool) { return c.keys.lookup(kc) }
 
+// ActionOf is the action key k is bound to in the current mode, read as HandleKey reads it (a
+// shifted letter by its text, Ctrl part of the chord, an explicit unbind honoured), without acting
+// on it. A release, or a key with a command modifier other than Ctrl, is bound to nothing. For a
+// widget that shows the document another way and still answers the editor's keys.
+func (c *EditorCore) ActionOf(k tui.KeyEvent) (Action, bool) {
+	if k.Kind == tui.KeyRelease || k.Mods&(tui.ModAlt|tui.ModSuper|tui.ModMeta|tui.ModHyper) != 0 {
+		return ActUnbound, false
+	}
+	code := k.Code
+	if k.Text != "" && k.Mods&nonTextMods == 0 {
+		code = []rune(k.Text)[0]
+	}
+	return c.keys.lookup(KeyChord{Mode: modeClass(c.keys.mode), Code: code, Ctrl: k.Mods&tui.ModCtrl != 0})
+}
+
 // ChordsForAction returns every chord bound to act.
 func (c *EditorCore) ChordsForAction(act Action) []KeyChord { return c.keys.chordsFor(act) }
 

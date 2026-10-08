@@ -226,3 +226,31 @@ func TestToggleRenderedIsBoundAndBubblesWithoutAView(t *testing.T) {
 		t.Errorf("Insert mode: consumed after %d calls, mode %v", calls, c.Mode())
 	}
 }
+
+// TestEditorCoreActionOf: ActionOf reads a key as HandleKey does, without acting: Ctrl+T is the
+// Rendered toggle, a shifted letter is read by its text, a release and an Alt chord are bound to
+// nothing, and an explicit unbind is honoured.
+func TestEditorCoreActionOf(t *testing.T) {
+	c := widget.NewEditorCore(widget.CoreInitialText("abc"))
+	if act, ok := c.ActionOf(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}); !ok || act != widget.ActToggleRendered {
+		t.Errorf("Ctrl+T: %v %v, want the Rendered toggle", act, ok)
+	}
+	if _, ok := c.ActionOf(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl, Kind: tui.KeyRelease}); ok {
+		t.Error("a released Ctrl+T is bound")
+	}
+	if _, ok := c.ActionOf(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl | tui.ModAlt}); ok {
+		t.Error("Ctrl+Alt+T is bound: Alt is not part of a chord")
+	}
+	g, okg := c.ActionOf(tui.KeyEvent{Code: 'g', Text: "G", Mods: tui.ModShift})
+	G, okG := c.ActionForChord(widget.KeyChord{Mode: widget.ModeNormal, Code: 'G'})
+	if okg != okG || g != G {
+		t.Errorf("Shift+g arriving as text G: %v %v, want G's %v %v", g, okg, G, okG)
+	}
+	if v, _ := c.Value(), 0; v != "abc" {
+		t.Errorf("ActionOf acted: the text is %q", v)
+	}
+	un := widget.NewEditorCore(widget.CoreKeymap(widget.Keymap{{Mode: widget.ModeNormal, Code: 't', Ctrl: true}: widget.ActUnbound}))
+	if _, ok := un.ActionOf(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}); ok {
+		t.Error("an unbound Ctrl+T is bound")
+	}
+}
