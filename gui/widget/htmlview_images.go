@@ -46,10 +46,11 @@ const (
 )
 
 type imgEntry struct {
-	state imgState
-	img   *gui.Image   // a raster's
-	svg   *svg.Drawing // an SVG's
-	w, h  int
+	state   imgState
+	refused bool         // the resolver refused it: reported again each time a page uses it
+	img     *gui.Image   // a raster's
+	svg     *svg.Drawing // an SVG's
+	w, h    int
 }
 
 type htmlImages struct {
@@ -113,6 +114,9 @@ func (m *htmlImages) done(r tui.TaskResult) bool {
 	e := m.entries[src]
 	if errors.Is(r.Err, tuiwidget.ErrImageRefused) {
 		m.l.v.Refused(src)
+		if e != nil {
+			e.refused = true
+		}
 	}
 	if e == nil || r.Err != nil {
 		if e != nil {

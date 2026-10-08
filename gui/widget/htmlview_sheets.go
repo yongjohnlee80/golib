@@ -24,8 +24,9 @@ const (
 var errSheetCap = errors.New("htmlview: stylesheet over a size cap")
 
 type sheetEntry struct {
-	state imgState
-	text  string
+	state   imgState
+	text    string
+	refused bool // the resolver refused it: reported again each time a page uses it
 }
 
 type htmlSheets struct {
@@ -51,6 +52,9 @@ func (m *htmlSheets) reset() {
 // entry is href's sheet, its load started on first sight; one with nothing to load it fails.
 func (m *htmlSheets) entry(href string) *sheetEntry {
 	if e, ok := m.entries[href]; ok {
+		if e.refused {
+			m.l.v.Refused(href)
+		}
 		return e
 	}
 	e := &sheetEntry{state: imgLoading}
@@ -76,10 +80,13 @@ func (m *htmlSheets) done(r tui.TaskResult) bool {
 		return false
 	}
 	delete(m.tasks, r.ID)
+	e := m.entries[href]
 	if errors.Is(r.Err, tuiwidget.ErrImageRefused) {
 		m.l.v.Refused(href)
+		if e != nil {
+			e.refused = true
+		}
 	}
-	e := m.entries[href]
 	text, isText := r.Value.(string)
 	if e == nil || r.Err != nil || !isText {
 		if e != nil {

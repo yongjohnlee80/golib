@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"bytes"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -124,9 +125,9 @@ func WithOnLink(fn func(href string)) HTMLOption { return func(v *HTMLView) { v.
 // SetOnLink replaces what a clicked link calls, as WithOnLink gives it.
 func (v *HTMLView) SetOnLink(fn func(href string)) { v.onLink = fn }
 
-// WithOnRefused is told, once per source until the resolver changes, of a resource the page names
-// that the resolver refused (ErrImageRefused): a stylesheet or an image outside its root. A host
-// says why a page draws without it.
+// WithOnRefused is told, once per source for each page shown (until a different page, or another
+// resolver), of a resource the page names that the resolver refused (ErrImageRefused): a
+// stylesheet or an image outside its root, or a URL. A host says why a page draws without it.
 func WithOnRefused(fn func(src string)) HTMLOption { return func(v *HTMLView) { v.onRefused = fn } }
 
 // SetOnRefused replaces what WithOnRefused gives.
@@ -232,6 +233,9 @@ func (v *HTMLView) Diagrams() any { return v.diagrams }
 func (v *HTMLView) ShowDocument(text []byte) { v.SetHTML(text) }
 
 func (v *HTMLView) SetHTML(src []byte) {
+	if !bytes.Equal(src, v.src) {
+		v.refused = nil // another page: what it refuses is told again
+	}
 	anchor, top := v.layout.BlockAt(v.scrollY)
 	off := v.scrollY - top
 	v.src = src
