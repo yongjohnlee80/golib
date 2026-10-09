@@ -483,3 +483,25 @@ func TestSelectOpensAboveItsFieldAtTheBottom(t *testing.T) {
 		t.Errorf("alpha, beta on rows %d, %d; want 15, 16: the panel rows 14 to 17, just above the field on 18:\n%s", ya, yb, h.grid())
 	}
 }
+
+// AT ITS FIELD'S COLUMN TOO, not only its row: a field right of a label opens its list under
+// itself, which the column-0 cells above cannot tell from the screen's left edge.
+func TestSelectOpensUnderAFieldThatIsNotAtTheLeftEdge(t *testing.T) {
+	row := tui.NewFlex(tui.Horizontal)
+	row.Add(widget.NewText("a label: "))
+	row.Add(widget.NewSelect[string](widget.WithOptions(selectItems("alpha", "beta"))))
+	flex := tui.NewFlex(tui.Vertical)
+	flex.Add(widget.NewText("·"))
+	flex.Add(row)
+	sh := newShell(widget.NewOverlayHost(flex))
+	h := startApp(t, sh, 40, 20)
+	h.inject(tab())
+	h.barrier(sh)
+	h.inject(key(tui.KeyEnter))
+	h.barrier(sh)
+	h.wantContains("beta")
+	// the field starts at column 9, after "a label: ": the border there, the mark, then the label
+	if x, y := cellOfLabel(t, h, "alpha"); x != 12 || y != 3 {
+		t.Errorf("alpha at %d,%d; want 12,3, under the field at column 9 on row 1:\n%s", x, y, h.grid())
+	}
+}
