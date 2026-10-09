@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"strings"
 	"testing"
 
 	"gioui.org/io/key"
@@ -55,16 +56,58 @@ func TestIMEClampsRanges(t *testing.T) {
 	}
 }
 
-// Each committed edit keeps its place in the commit order: a frame that read
-// two edits delivers two pieces in the order they were typed, even when the
-// second replaced bytes before the first's (an input method's replace-left
-// would otherwise flip them).
+// Typed text in one frame — a letter, a space, a letter, a held letter's
+// repeat — delivers one piece per edit in the order typed, exactly the
+// buffer. Each edit's range is the selection the previous edit left, as
+// both macOS's insertText and Wayland's xkb deliver them.
 func TestIMECommitsInArrivalOrder(t *testing.T) {
 	var s imeState
-	s.edit(key.EditEvent{Range: key.Range{}, Text: "a"})
-	s.edit(key.EditEvent{Range: key.Range{}, Text: "b"})
+	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"})
+	s.edit(key.EditEvent{Range: key.Range{Start: 1, End: 1}, Text: " "})
+	s.edit(key.EditEvent{Range: key.Range{Start: 2, End: 2}, Text: "b"})
+	s.edit(key.EditEvent{Range: key.Range{Start: 3, End: 3}, Text: "b"})
 	got, ok := s.take()
-	if !ok || len(got) != 2 || got[0] != "a" || got[1] != "b" {
-		t.Fatalf("take = %q, %v; want [\"a\" \"b\"]", got, ok)
+	if !ok || strings.Join(got, "") != "a bb" {
+		t.Fatalf("take = %q, %v; want the pieces of \"a bb\"", got, ok)
+	}
+	if len(got) != 4 {
+		t.Fatalf("take = %q; want 4 pieces, one per typed key", got)
+	}
+}
+
+// A front insertion followed by a deletion of the inserted bytes: the buffer
+// holds the first piece's text and the delivered text matches it. The deleted
+// character must not arrive; the surviving one must.
+func TestIMEFrontInsertionThenDeletion(t *testing.T) {
+	var s imeState
+	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"})
+	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "b"})
+	if string(s.text) != "ba" {
+		t.Fatalf("buffer = %q, want \"ba\"", string(s.text))
+	}
+	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 1}, Text: ""}) // delete "b"
+	if string(s.text) != "a" {
+		t.Fatalf("buffer = %q after the deletion, want \"a\"", string(s.text))
+	}
+	got, ok := s.take()
+	if !ok || strings.Join(got, "") != "a" {
+		t.Fatalf("delivered %q, %v; want the pieces of \"a\" — the deleted character must not arrive, the surviving one must", got, ok)
+	}
+}
+
+// A replacement inside a front-inserted piece revises that piece, and a
+// later piece's bytes survive it. The delivered pieces, concatenated, are
+// the buffer.
+func TestIMEReplacementInsideFrontInsertedPiece(t *testing.T) {
+	var s imeState
+	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"})
+	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "b"}) // inserted before "a": buffer "ba"
+	s.edit(key.EditEvent{Range: key.Range{Start: 1, End: 2}, Text: "c"}) // "a" -> "c": buffer "bc"
+	if string(s.text) != "bc" {
+		t.Fatalf("buffer = %q, want \"bc\"", string(s.text))
+	}
+	got, ok := s.take()
+	if !ok || strings.Join(got, "") != "bc" {
+		t.Fatalf("delivered %q, %v; want the pieces of \"bc\"", got, ok)
 	}
 }

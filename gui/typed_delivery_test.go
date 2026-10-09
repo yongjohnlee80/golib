@@ -31,13 +31,14 @@ func readKeys(t *testing.T, events ...event.Event) []tui.Event {
 
 // Typed text — a letter, a space, a letter held so the platform delivers its
 // edit event twice, as macOS's insertText and Wayland's xkb both do — reaches
-// the App as one KeyEvent per rune, in order, with nothing held back.
+// the App as one KeyEvent per rune, in typing order, with nothing held back.
+// Each edit's range is the selection the previous edit left.
 func TestTypedTextIsDeliveredPerRune(t *testing.T) {
 	got := readKeys(t,
-		key.EditEvent{Text: "a"},
-		key.EditEvent{Text: " "},
-		key.EditEvent{Text: "b"},
-		key.EditEvent{Text: "b"}, // the repeat, as a held key delivers it
+		key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"},
+		key.EditEvent{Range: key.Range{Start: 1, End: 1}, Text: " "},
+		key.EditEvent{Range: key.Range{Start: 2, End: 2}, Text: "b"},
+		key.EditEvent{Range: key.Range{Start: 3, End: 3}, Text: "b"}, // the repeat
 	)
 	want := []tui.Event{
 		tui.KeyEvent{Code: 'a', Text: "a"},

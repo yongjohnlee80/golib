@@ -1,6 +1,10 @@
 package gui
 
-import "gioui.org/io/key"
+import (
+	"sort"
+
+	"gioui.org/io/key"
+)
 
 // imeState mirrors the small text buffer Gio's input method edits on the backend's behalf.
 //
@@ -12,10 +16,19 @@ import "gioui.org/io/key"
 type imeState struct {
 	text []rune
 	comp key.Range // the composing range; empty when nothing is being composed
-	// commits is each edit's committed text, in arrival order, folded when a
-	// later edit rewrites an earlier one's bytes (an input method revising what
-	// it inserted). take() delivers them in this order.
-	commits []string
+	// pieces is each committed edit's text with the buffer span it currently
+	// occupies. Delivery order is the slice's order (arrival order; a later
+	// edit that rewrites an earlier piece's bytes folds into it), while the
+	// spans track the buffer as later edits insert before or delete inside
+	// earlier pieces — the two orders genuinely differ, and both matter.
+	pieces []imePiece
+}
+
+// imePiece is one committed edit's text and where it sits in the buffer now.
+type imePiece struct {
+	runs   []rune
+	from   int // buffer position of runs[0], maintained across later edits
+	folded bool
 }
 
 // edit applies an edit: Range (in runes) is replaced with Text. Gio and the input method agree on
@@ -27,52 +40,79 @@ func (s *imeState) edit(e key.EditEvent) {
 	next = append(next, s.text[:start]...)
 	next = append(next, repl...)
 	s.text = append(next, s.text[end:]...)
-	// An empty replacement deletes bytes only: what it deleted is gone from the
-	// commits too. A replacement revises the committed pieces it touched.
-	s.commits = s.revise(start, end, string(repl))
+	s.pieces = s.revise(start, end, repl)
 }
 
-// revise records an edit's effect on the commits: a piece the edit's range
-// touched is folded — its bytes outside the range kept, the replacement in
-// their place — at the earliest touched piece's position; an edit that touched
-// no piece (typing at the end, an insertion in the middle of one that left all
-// its bytes in place) appends. Edits are delivered in the order they arrived.
-func (s *imeState) revise(start, end int, repl string) []string {
-	if len(s.commits) == 0 {
-		if repl == "" {
-			return nil
+// revise maintains the pieces for an edit that replaced buffer runes [start, end)
+// with repl. The invariant the delivery needs: the pieces, concatenated, are the
+// buffer — so the replacement merges into the piece that OWNED the replaced
+// bytes (at that piece's arrival slot), and pieces before and after keep their
+// relative order with shifted spans. A replacement that owned no bytes (a plain
+// insertion between pieces, or at the ends) appends as a new piece.
+func (s *imeState) revise(start, end int, repl []rune) []imePiece {
+	delta := len(repl) - (end - start)
+	// find the owning piece: the one whose bytes the replaced range cut or
+	// covered. An insertion (start == end) owns nothing: it lands between.
+	owner := -1
+	for i, p := range s.pieces {
+		pEnd := p.from + len(p.runs)
+		if pEnd > start && p.from < end {
+			owner = i
+			break
 		}
-		return []string{repl}
+		if p.from == start && p.from == pEnd && len(p.runs) == 0 {
+			continue // an empty piece owns nothing
+		}
 	}
-	// where each piece's runes sit in the buffer, before the edit
-	var at int
-	var out []string
-	folded := false
-	for _, c := range s.commits {
-		r := []rune(c)
-		pEnd := at + len(r)
-		if pEnd <= start || at >= end || len(c) == 0 {
-			out = append(out, c)
-			at = pEnd
-			continue
-		}
-		if !folded {
-			folded = true
-			head := r[:max(start-at, 0)]
+	var out []imePiece
+	for i, p := range s.pieces {
+		pEnd := p.from + len(p.runs)
+		switch {
+		case i == owner:
+			// merge the replacement into this piece: its bytes outside the
+			// range kept, the replacement in their place
+			head := p.runs[:max(start-p.from, 0)]
 			var tail []rune
 			if pEnd > end {
-				tail = r[end-at:]
+				tail = p.runs[end-p.from:]
 			}
-			merged := make([]rune, 0, len(head)+len([]rune(repl))+len(tail))
+			merged := make([]rune, 0, len(head)+len(repl)+len(tail))
 			merged = append(merged, head...)
-			merged = append(merged, []rune(repl)...)
+			merged = append(merged, repl...)
 			merged = append(merged, tail...)
-			out = append(out, string(merged))
+			out = append(out, imePiece{runs: merged, from: p.from, folded: true})
+		case pEnd <= start || p.from >= end:
+			// untouched: shift it when it sits after the edit
+			if p.from >= end {
+				p.from += delta
+			}
+			out = append(out, p)
+		default:
+			// the range cut this piece with no earlier owner found: keep what
+			// remains of it (an owner earlier in the loop took the merge)
+			var tail []rune
+			if pEnd > end {
+				tail = p.runs[end-p.from:]
+			}
+			var head []rune
+			if start > p.from {
+				head = p.runs[:start-p.from]
+			}
+			rem := make([]rune, 0, len(head)+len(tail))
+			rem = append(rem, head...)
+			rem = append(rem, tail...)
+			if len(rem) > 0 {
+				at := p.from
+				if len(head) == 0 {
+					at = end + delta - len(tail)
+				}
+				out = append(out, imePiece{runs: rem, from: at})
+			}
 		}
-		at = pEnd
 	}
-	if !folded && repl != "" {
-		out = append(out, repl) // the edit touched no piece: a new commit
+	if owner < 0 && len(repl) > 0 {
+		// the edit owned no piece's bytes: a new piece, slotted by position
+		out = append(out, imePiece{runs: repl, from: start})
 	}
 	return out
 }
@@ -95,21 +135,29 @@ func (s *imeState) preedit() string {
 }
 
 // take returns the text ready to commit and empties the buffer: everything, once no composition
-// is active; nothing while one is (the committed part waits with it, keeping its order). Each
-// committed piece is delivered on its own, in arrival order.
+// is active; nothing while one is (the committed part waits with it, keeping its order). The
+// pieces are delivered in buffer order, so their sequential insertion reproduces the buffer
+// exactly — an input method that inserts before or rewrites across an earlier piece's bytes
+// makes arrival order diverge from the buffer, and arrival order there would deliver the wrong
+// text.
 func (s *imeState) take() ([]string, bool) {
 	if s.composing() || len(s.text) == 0 {
 		return nil, false
 	}
-	out := s.commits
+	ordered := append([]imePiece(nil), s.pieces...)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].from < ordered[j].from })
+	var out []string
+	for _, p := range ordered {
+		if len(p.runs) > 0 {
+			out = append(out, string(p.runs))
+		}
+	}
 	if len(out) == 0 {
-		out = []string{string(s.text)} // commits that predate the order bookkeeping
-	} else {
-		out = append([]string(nil), s.commits...)
+		out = []string{string(s.text)} // pieces that predate the order bookkeeping
 	}
 	s.text = s.text[:0]
 	s.comp = key.Range{}
-	s.commits = s.commits[:0]
+	s.pieces = s.pieces[:0]
 	return out, true
 }
 
