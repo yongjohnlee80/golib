@@ -203,14 +203,15 @@ func (b *Backend) present(e app.FrameEvent, tag event.Tag, m metrics, fs *fontSt
 // macOS's input method inserts a typed character at the selection it was last told
 // (insertText:replacementRange: with no range), so a stale selection inserts at an old
 // position — a space typed right after a same-width one arrived only with the next key.
+// The caret geometry goes with it every time: Gio stores the command's caret verbatim,
+// so a zero caret on an unmoved frame would move the candidate window to the origin.
 func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 	if f.caret.Empty() {
 		return
 	}
-	moved := f.caret != b.gio.caret
 	b.gio.caret = f.caret
 	n := len(b.gio.ime.text)
-	cmd := key.SelectionCmd{
+	src.Execute(key.SelectionCmd{
 		Tag:   tag,
 		Range: key.Range{Start: n, End: n},
 		Caret: key.Caret{
@@ -218,11 +219,7 @@ func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 			Ascent:  float32(f.base),
 			Descent: float32(f.caret.Dy() - f.base),
 		},
-	}
-	if !moved {
-		cmd.Caret = key.Caret{} // only the selection: the caret itself has not moved
-	}
-	src.Execute(cmd)
+	})
 }
 
 // drawPreedit draws the text being composed at the caret, underlined, as terminals do. It is not

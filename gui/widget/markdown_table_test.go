@@ -8,28 +8,65 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 )
 
-// layTableAt lays the doc's first block at a given width, off the cursor.
-func layTableAt(t *testing.T, doc string, width float32) BlockLayout {
-	t.Helper()
-	lines := strings.Split(doc, "\n")
-	th := Theme{Text: color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}, Background: color.NRGBA{A: 0xff},
+// tableTheme is the theme the table tests lay out with.
+func tableTheme() Theme {
+	return Theme{Text: color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}, Background: color.NRGBA{A: 0xff},
 		Muted:          color.NRGBA{R: 0x80, G: 0x80, B: 0x80, A: 0xff},
 		Prose:          gui.Font{Size: 16},
 		Mono:           gui.Font{Family: gui.MonospaceFamily(), Size: 14},
 		CodeBackground: color.NRGBA{R: 0x20, G: 0x20, B: 0x20, A: 0xff}}
+}
+
+// layTableAt lays the doc's first block at a given width, off the cursor.
+func layTableAt(t *testing.T, doc string, width float32) BlockLayout {
+	t.Helper()
+	lines := strings.Split(doc, "\n")
 	r := NewMarkdownRenderer()
 	sh := gui.NewRecordingCanvas(gui.Size{W: 800, H: 400}, gui.Size{W: 8, H: 16}).Text()
 	for _, b := range r.Blocks(lines, 0, len(lines)) {
-		return r.LayOut(b, lines, width, false, sh, th, nil)
+		return r.LayOut(b, lines, width, false, sh, tableTheme(), nil)
 	}
 	t.Fatal("no blocks")
 	return BlockLayout{}
 }
 
+// drawCallsOf paints the block's lines on a recording canvas and reports the
+// DrawText calls each LineLayout produced, so a wrapped cell's continuation
+// text is asserted as PAINTED, not merely laid out.
+func drawCallsOf(t *testing.T, bl BlockLayout, width float32) [][]string {
+	t.Helper()
+	c := gui.NewRecordingCanvas(gui.Size{W: width, H: bl.Height + 4}, gui.Size{W: 8, H: 16})
+	var out [][]string
+	for _, ll := range bl.Lines {
+		at := gui.Pt(0, ll.Y)
+		ll.Para.Paint(c, at, ll.Spans)
+		var calls []string
+		n := len(c.Calls)
+		_ = n
+		out = append(out, calls)
+	}
+	// recount per line: paint once per LineLayout, recording the call count each time
+	c2 := gui.NewRecordingCanvas(gui.Size{W: width, H: bl.Height + 4}, gui.Size{W: 8, H: 16})
+	out = out[:0]
+	for _, ll := range bl.Lines {
+		before := len(c2.Calls)
+		ll.Para.Paint(c2, gui.Pt(0, ll.Y), ll.Spans)
+		var drew []string
+		for _, call := range c2.Calls[before:] {
+			if call.Op == "DrawText" {
+				drew = append(drew, "text")
+			}
+		}
+		out = append(out, drew)
+	}
+	return out
+}
+
 // A table wider than the page shares the page's width: no fragment of any line
-// is drawn past the page, and a wide column wraps its cells' text rather than
-// overflowing.
-func TestAWideTableSharesThePageWidth(t *testing.T) {
+// is drawn past the page, a wide column wraps its cells' text rather than
+// overflowing, and the wrapped continuation text is PAINTED — a cell's later
+// wrapped lines are drawn, not merely reserved space.
+func TestAWideTableSharesThePageWidthAndPaintsItsWraps(t *testing.T) {
 	doc := "| one | two |\n|---|---|\n| " + strings.Repeat("wide ", 12) + " | short |\n| a | b |"
 	const width = 200
 	bl := layTableAt(t, doc, width)
@@ -45,15 +82,68 @@ func TestAWideTableSharesThePageWidth(t *testing.T) {
 			}
 		}
 	}
-	// the wide cell's text is laid as more than one wrapped line
-	var wraps int
-	for _, ll := range bl.Lines {
-		if ll.Unnumbered && len(ll.Spans) > 0 && strings.Contains(ll.Spans[0].Text, "wide") {
-			wraps++
+	// the wide cell wraps: it laid more than the row's own line
+	painted := drawCallsOf(t, bl, width)
+	textLines := 0
+	for _, drew := range painted {
+		if len(drew) > 0 {
+			textLines++
 		}
 	}
-	if wraps < 2 {
-		t.Errorf("the wide cell wrapped into %d continuation lines, want at least 2", wraps)
+	// header, delimiter, two body rows, plus the wide cell's wrapped
+	// continuations: the continuations must paint too
+	if textLines < 5 {
+		t.Errorf("%d LineLayouts painted text, want at least 5 (4 rows + the wide cell's wraps)", textLines)
+	}
+	// the continuation lines hold visible spans of the wide text
+	continuations := 0
+	for _, ll := range bl.Lines {
+		for _, s := range ll.Spans {
+			if !s.Hidden && strings.Contains(s.Text, "wide") {
+				continuations++
+				break
+			}
+		}
+	}
+	if continuations < 3 {
+		t.Errorf("%d LineLayouts hold visible wide text, want at least 3 (the row and its wraps)", continuations)
+	}
+}
+
+// A wrapped row's columns share its line grid: two cells that both wrap hold
+// their jth lines in the same LineLayout, not one cell's wraps after the
+// other's, and the row's borders span its whole wrapped height.
+func TestWrappedColumnsShareTheRowLineGrid(t *testing.T) {
+	wide := strings.Repeat("long ", 12)
+	doc := "| " + wide + " | " + wide + " |\n|---|---|\n| " + wide + " | " + wide + " |"
+	const width = 240
+	bl := layTableAt(t, doc, width)
+	// both body cells' wrapped lines share LineLayouts: a shared one holds two
+	// non-hidden spans at different columns
+	shared := 0
+	for _, ll := range bl.Lines {
+		var cols []int
+		for _, s := range ll.Spans {
+			if !s.Hidden && strings.Contains(s.Text, "long") {
+				cols = append(cols, len(cols))
+			}
+		}
+		if len(cols) > 1 {
+			shared++
+		}
+	}
+	if shared == 0 {
+		t.Error("no LineLayout holds two wrapped cells' text: the columns wrap serially")
+	}
+	// the borders span the tallest row's full wrapped height
+	tallest := float32(0)
+	for _, ll := range bl.Lines {
+		for _, m := range ll.Marks {
+			tallest = max(tallest, m.Rect.H)
+		}
+	}
+	if tallest < tableTheme().Prose.Size*3 { // at least three wrapped lines tall
+		t.Errorf("the tallest border is %v, too short for a fully wrapped row", tallest)
 	}
 }
 

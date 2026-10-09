@@ -252,11 +252,10 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 	laidCells := func(i int, rc rowCells) []*flow.Para {
 		out := make([]*flow.Para, len(rc.cells))
 		for k, c := range rc.cells {
-			if c.to == c.from {
-				continue
+			if c.to > c.from {
+				opts := flow.Options{Width: colW[k], WhiteSpace: flow.PreWrap, Color: mix(th.Text, th.Background, 0.9), LineHeight: proseLineHeight}
+				out[k] = flow.Lay(rc.spans[k], opts, t)
 			}
-			opts := flow.Options{Width: colW[k], WhiteSpace: flow.PreWrap, Color: mix(th.Text, th.Background, 0.9), LineHeight: proseLineHeight}
-			out[k] = flow.Lay(rc.spans[k], opts, t)
 		}
 		return out
 	}
@@ -282,8 +281,9 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 		}
 		rc := rows[i]
 		cells := laidCells(i, rc)
-		// A row's height is its tallest cell's, wrapped lines included; the row's own
-		// paragraph lays only its first wrapped line, the rest below as hidden runs.
+		// A row's height is its tallest cell's, wrapped lines included. The row's
+		// own line lays its cells' first wrapped lines; each further line index
+		// becomes one more LineLayout holding every cell's jth line at its column.
 		rowH := float32(0)
 		for k := range rc.cells {
 			if cells[k] != nil {
@@ -313,9 +313,7 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 				spans = append(spans, flow.Span{Text: line[gap:c.from], Font: th.Prose, Line: ln, Col: clusters(line[:gap]),
 					Hidden: true, Room: max(at-x, 0.01)})
 			}
-			// a wrapped cell's first line: the rest follows as hidden rows below
-			first := firstLineSpans(cells[k], rc.spans[k])
-			spans = append(spans, first...)
+			spans = append(spans, firstLineSpans(cells[k], rc.spans[k])...)
 			x, gap = at+cells[k].Width, c.to
 		}
 		if gap < len(line) {
@@ -327,45 +325,52 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 		}
 		p := flow.Lay(spans, opts, t)
 		if i == 0 {
-			marks = append(marks, Mark{Rect: gui.Rect{W: total, H: p.Height}, Color: mix(th.Text, th.Background, 0.06)},
+			marks = append(marks, Mark{Rect: gui.Rect{W: total, H: rowH}, Color: mix(th.Text, th.Background, 0.06)},
 				Mark{Rect: gui.Rect{W: total, H: 1}, Color: border})
 		}
 		if i > 0 { // the header's bottom is the delimiter row's rule
-			marks = append(marks, Mark{Rect: gui.Rect{Y: p.Height - 1, W: total, H: 1}, Color: border})
+			marks = append(marks, Mark{Rect: gui.Rect{Y: rowH - 1, W: total, H: 1}, Color: border})
 		}
 		for _, cx := range colX {
-			marks = append(marks, Mark{Rect: gui.Rect{X: cx, W: 1, H: p.Height}, Color: border})
+			marks = append(marks, Mark{Rect: gui.Rect{X: cx, W: 1, H: rowH}, Color: border})
 		}
 		bl.Lines = append(bl.Lines, LineLayout{Para: p, Spans: spans, Y: bl.Height, Marks: marks})
 		bl.Height += rowH
-		// a wrapped cell's further lines: laid after the row's, at their column, their
-		// clusters hidden runs so the caret stays on the row's own line.
-		for k := range rc.cells {
-			if cells[k] == nil {
-				continue
-			}
-			for j, l := range cells[k].Lines {
-				if j == 0 {
+		// a wrapped cell's further lines: one LineLayout per line index j, every
+		// cell's jth line at its column in the same one — all columns' wraps share
+		// the row's Y grid. The spans are visible and mapped to their true source,
+		// so the wrapped text paints and the caret can travel into it.
+		for j := 1; ; j++ {
+			var ws []flow.Span
+			var px float32 // where the last laid text ends
+			any := false
+			for k := range rc.cells {
+				if cells[k] == nil || j >= len(cells[k].Lines) {
 					continue
 				}
-				var ws []flow.Span
-				for _, fr := range l.Frags {
+				any = true
+				at := colX[k] + pad
+				if px < at {
+					ws = append(ws, flow.Span{Text: " ", Font: th.Prose, Line: ln, Hidden: true, Room: at - px})
+				}
+				for _, fr := range cells[k].Lines[j].Frags {
 					s := rc.spans[k][fr.Span]
 					s.Text = s.Text[fr.From:fr.To]
-					s.Hidden = true
-					s.Room = colX[k] + pad + fr.X
-					s.Line, s.Col = ln, 0
 					ws = append(ws, s)
+					px = at + fr.X + fr.W
 				}
-				if len(ws) == 0 {
-					continue
-				}
-				opts2 := opts
-				opts2.WhiteSpace = flow.Pre
-				p2 := flow.Lay(ws, opts2, t)
-				bl.Lines = append(bl.Lines, LineLayout{Para: p2, Spans: ws, Y: bl.Height, Unnumbered: true})
-				bl.Height += p2.Height
 			}
+			if !any {
+				break
+			}
+			if len(ws) == 0 {
+				ws = []flow.Span{{Font: th.Prose, Line: ln}}
+			}
+			opts2 := opts
+			opts2.WhiteSpace = flow.Pre
+			p2 := flow.Lay(ws, opts2, t)
+			bl.Lines = append(bl.Lines, LineLayout{Para: p2, Spans: ws, Y: bl.Height})
+			bl.Height += p2.Height
 		}
 	}
 	return bl
