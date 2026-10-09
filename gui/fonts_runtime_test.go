@@ -10,6 +10,8 @@ import (
 	"gioui.org/io/key"
 	"gioui.org/op"
 	"gioui.org/unit"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // SetZoom scales the size the cells are measured at, and every change is a new generation: the
@@ -148,5 +150,32 @@ func TestFamilyListParsesFcList(t *testing.T) {
 	}
 	if familyList("") != nil {
 		t.Error("no fontconfig: a list")
+	}
+}
+
+// Grid reports the grid with the generation it was measured at, from one load of the frame's
+// metrics: a frame measured before a change and published after it is still told apart from one
+// measured after.
+func TestGridReportsTheGenerationItWasMeasuredAt(t *testing.T) {
+	b := NewBackend()
+	if g, gen := b.Grid(); g != (tui.Size{}) || gen != 0 {
+		t.Fatalf("before a frame: %v at %d", g, gen)
+	}
+	measureAt := func(fs *fontState) {
+		m := measure(fs.fm, fs.size, 0, image.Pt(1000, 700), unit.Metric{PxPerDp: 1, PxPerSp: 1})
+		m.fontGen = fs.gen
+		b.metrics.Store(&m)
+	}
+	before := b.font.Load() // a frame loads the fonts at generation 0 ...
+	b.SetZoom(150)          // ... the tui loop changes them ...
+	measureAt(before)       // ... and the frame publishes what it measured with the old ones
+	g100, gen := b.Grid()
+	if gen != 0 || b.FontGeneration() != 1 {
+		t.Fatalf("the late frame reads generation %d with the latest %d; want 0 and 1", gen, b.FontGeneration())
+	}
+	measureAt(b.font.Load())
+	g150, gen := b.Grid()
+	if gen != 1 || g150.W >= g100.W {
+		t.Errorf("at generation %d the grid is %v, from %v at 0: want 1, and fewer columns", gen, g150, g100)
 	}
 }
