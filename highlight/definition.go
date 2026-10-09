@@ -16,6 +16,13 @@ type Definition struct {
 	// "*.sqlite.sql" beside "*.sql" — takes a higher one. Zero by default.
 	Priority    int
 	Highlighter Highlighter
+	// Aliases are labels by which a fenced code block names this language.
+	Aliases []string
+	// DocumentAdapter excludes document wrappers from embedded code lookup.
+	DocumentAdapter bool
+	// SourceFactory creates independent highlighting/indentation/state ownership.
+	// It takes precedence over Highlighter and does no I/O.
+	SourceFactory func(*Catalog) Source
 }
 
 // Repository is a set of definitions, by name — KSyntaxHighlighting's

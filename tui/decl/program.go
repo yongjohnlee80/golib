@@ -64,6 +64,9 @@ type Program struct {
 	handled []error
 }
 
+// SourceLanguages is the same immutable catalog used by declarations and renderers.
+func (p *Program) SourceLanguages() *highlight.Catalog { return p.adapter.sourceLanguages }
+
 // ProgramOption configures a Program.
 type ProgramOption func(*programConfig)
 

@@ -12,7 +12,7 @@
 // editors and Qt Creator colour every language with — so a theme colours all
 // of them from one table, and a new language adds no style.
 //
-// It depends on nothing: a parser implements a Highlighter, a widget paints
+// Its contracts contain no parser or UI: a parser implements a Highlighter, a widget paints
 // one, and neither imports the other. A program that already has a syntax tree
 // — tree-sitter's, say — implements Highlighter from it; [StyleForCapture]
 // maps tree-sitter's capture names, and a span keeps the name it came from.

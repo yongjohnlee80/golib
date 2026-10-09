@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/highlight"
 	sqlhighlight "github.com/yongjohnlee80/golib/highlight/sql"
+	"github.com/yongjohnlee80/golib/parse/languages"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -52,9 +53,9 @@ func stdHighlighters() *highlight.Repository {
 	q := qml.Highlighter()
 	defs := []highlight.Definition{
 		{Name: "QML", Extensions: []string{"*.qml"}, Highlighter: q},
-		{Name: "JavaScript", Extensions: []string{"*.js", "*.mjs"}, Highlighter: q},
-		{Name: "Markdown", Extensions: []string{"*.md", "*.markdown"}, Highlighter: markdown.Highlighter()},
+		markdown.Definition(),
 	}
+	defs = append(defs, languages.Definitions()...)
 	return highlight.NewRepository(append(defs, sqlhighlight.Definitions()...)...)
 }
 
@@ -71,21 +72,26 @@ func WithHighlighters(defs ...highlight.Definition) Option {
 // EditorCore can carry one.
 type syntaxNode struct {
 	widget.Base
-	registry   *highlight.Repository
-	definition string
-	styles     widget.SyntaxStyles
-	core       *widget.EditorCore
+	registry          *highlight.Catalog
+	definition        string
+	styles            widget.SyntaxStyles
+	core              *widget.EditorCore
+	applied           bool
+	appliedDefinition string
 }
 
 func buildSyntaxHighlighter(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, fmt.Errorf("a SyntaxHighlighter takes no children (at %s)", b.Pos)
 	}
-	return &syntaxNode{registry: b.highlighters}, nil, nil
+	return &syntaxNode{registry: b.SourceLanguages}, nil, nil
 }
 
 // attach binds the highlighter to the core of the Editor it is declared in.
 func (n *syntaxNode) attach(c *widget.EditorCore) {
+	if n.core != c {
+		n.applied = false
+	}
 	n.core = c
 	n.apply()
 }
@@ -95,11 +101,15 @@ func (n *syntaxNode) apply() {
 		return
 	}
 	n.core.SetSyntaxStyles(n.styles)
-	var h highlight.Highlighter
-	if d, ok := n.registry.Definition(n.definition); ok && n.definition != "" {
-		h = d.Highlighter
+	if n.applied && n.appliedDefinition == n.definition {
+		return
 	}
-	n.core.SetHighlighter(h)
+	n.applied, n.appliedDefinition = true, n.definition
+	if d, ok := n.registry.Definition(n.definition); ok && n.definition != "" {
+		n.core.SetSourceFactory(func() highlight.Source { return d.NewSource(n.registry) })
+	} else {
+		n.core.SetSourceFactory(nil)
+	}
 }
 
 func (n *syntaxNode) setDefinition(v qml.SpecValue) error {

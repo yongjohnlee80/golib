@@ -170,6 +170,11 @@ func (c *EditorCore) EndDrag() { c.dragging = false }
 // handleInsertKey: structural Insert handling (text, chord, Esc, editing keys). Tab INSERTS a tab
 // in Insert mode; traversal belongs to Normal mode, where Tab bubbles.
 func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
+	if c.readOnly {
+		if k.Text != "" || k.Code == tui.KeyEnter || k.Code == tui.KeyTab || k.Code == tui.KeyBackspace || k.Code == tui.KeyDelete {
+			return true
+		}
+	}
 	b := &c.buf
 	ctrl := k.Mods&tui.ModCtrl != 0
 	code := k.Code
@@ -240,7 +245,7 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		return false
 	case tui.KeyEnter:
 		c.beginGroup()
-		b.insertText("\n")
+		c.insertIndentedNewline()
 		c.edited()
 		return true
 	case tui.KeyBackspace:
@@ -315,6 +320,9 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 	if isText {
 		c.beginGroup()
 		b.insertText(k.Text)
+		if strings.ContainsAny(k.Text, "})] \t") {
+			c.alignClosing()
+		}
 		c.edited()
 		return true
 	}

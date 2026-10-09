@@ -547,6 +547,28 @@ host in rooted form: an ordinary absolute path locally.
 
 ---
 
+## Source-language editing
+
+```qml
+Editor {
+    autoIndent: true
+    // indentUnit: "    " // optional override; otherwise the source provider chooses
+    SyntaxHighlighter { definition: "Go" }
+}
+```
+
+Standard source definitions include Go, Rust, JavaScript, TypeScript, Python,
+Lua, Shell and YAML. Markdown source definitions borrow them by fence label.
+`Highlighters` registrations are finalized into one immutable catalog used by
+syntax nodes, native renderer specs, file previews and `Program.SourceLanguages()`.
+Custom languages therefore work for actual source files and Raw/Rendered fences
+without adding language branches to those adapters.
+
+Auto-indent applies to typed newline, Vim open-line and completed closing tokens;
+literal paste is unchanged. `indentUnit` is spaces/tabs only. Find overlays refresh
+paint independently of verified semantic source state. See
+[source providers](../../parse/languages/README.md).
+
 ## Window capability widgets
 
 `WindowMod` is a single-content wrapper; appearance is optional and separate.

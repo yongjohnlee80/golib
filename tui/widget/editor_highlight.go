@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"unicode/utf8"
 )
 
 // SYNTAX HIGHLIGHTING — Qt's QSyntaxHighlighter, on the Editor.
@@ -31,10 +32,12 @@ type SyntaxStyles [highlight.Styles]style.Style
 
 // hlLine is one line's highlighting, and what it was computed from.
 type hlLine struct {
-	text   string
-	in     highlight.State
-	out    highlight.State
-	styles []highlight.Style // per grapheme cluster
+	text          string
+	in            highlight.State
+	out           highlight.State
+	styles        []highlight.Style // per grapheme cluster
+	semantic      []highlight.Span
+	paintRevision uint64
 }
 
 // highlightCache is a text's highlighting: the highlighter, what each style looks like, and each
@@ -53,12 +56,36 @@ type highlightCache struct {
 	valid int
 	// examined counts the lines the walk has looked at, for a test to hold a frame's work to what
 	// it promises.
-	examined int
+	examined      int
+	states        highlight.StateStore
+	overlay       highlight.Overlay
+	paintRevision uint64
 }
 
 // setHighlighter replaces the highlighter: every line is highlighted afresh.
 func (c *highlightCache) setHighlighter(h highlight.Highlighter) {
-	c.hl, c.lines, c.valid = h, nil, 0
+	c.setSource(highlight.Source{Highlighter: h})
+}
+
+func (c *highlightCache) lease(entry hlLine, retain bool) {
+	if c.states == nil {
+		return
+	}
+	if retain {
+		c.states.Retain(entry.in)
+		c.states.Retain(entry.out)
+	} else {
+		c.states.Release(entry.in)
+		c.states.Release(entry.out)
+	}
+}
+
+func (c *highlightCache) setSource(source highlight.Source) {
+	for _, entry := range c.lines {
+		c.lease(entry, false)
+	}
+	c.hl, c.states, c.lines, c.valid = source.Highlighter, source.States, nil, 0
+	c.paintRevision++
 }
 
 // WithHighlighter sets the Editor's highlighter; nil is none.
@@ -114,6 +141,16 @@ type hlFrame struct {
 	local       map[int][]highlight.Style
 	localOut    highlight.State
 	localNext   int
+	states      highlight.StateStore
+	closed      bool
+	collecting  bool
+}
+
+func (f *hlFrame) close() {
+	if !f.closed && f.states != nil {
+		f.states.Release(f.localOut)
+	}
+	f.closed = true
 }
 
 // verifiedFrom is where the walk starts: the verified prefix, pulled back to the first line
@@ -123,6 +160,9 @@ func (c *highlightCache) verifiedFrom(text []string, takeChanged func() int) int
 		c.valid = ch
 	}
 	if len(c.lines) > len(text) {
+		for _, entry := range c.lines[len(text):] {
+			c.lease(entry, false)
+		}
 		c.lines = c.lines[:len(text)]
 	}
 	c.valid = min(c.valid, len(c.lines))
@@ -161,7 +201,9 @@ func (c *highlightCache) catchUp(f *hlFrame, text []string, top int, takeChanged
 }
 
 func (c *highlightCache) store(i int, entry hlLine) {
+	c.lease(entry, true)
 	if i < len(c.lines) {
+		c.lease(c.lines[i], false)
 		c.lines[i] = entry
 	} else {
 		c.lines = append(c.lines, entry)
@@ -171,9 +213,13 @@ func (c *highlightCache) store(i int, entry hlLine) {
 // beginFrame starts a walk over text with the screen from line top. behind is true when the
 // catch-up did not reach the screen: the frame is provisional, and the widget asks for another.
 func (c *highlightCache) beginFrame(text []string, top int, takeChanged func() int) (f *hlFrame, behind bool) {
-	f = &hlFrame{}
+	f = &hlFrame{states: c.states}
 	if c.hl == nil {
 		return f, false
+	}
+	if c.states != nil && c.states.Collect(hlFrameBudget) {
+		f.collecting = true
+		return f, true
 	}
 	if !c.catchUp(f, text, top, takeChanged) {
 		f.provisional = true
@@ -185,7 +231,13 @@ func (c *highlightCache) beginFrame(text []string, top int, takeChanged func() i
 // highlighted returns the style of every cluster of line ln, a line on screen from top, asked
 // for in order.
 func (c *highlightCache) highlighted(text []string, top, ln int, f *hlFrame) []highlight.Style {
-	if c.hl == nil {
+	if c.hl == nil || f.closed {
+		return nil
+	}
+	if f.collecting {
+		if ln < len(c.lines) && ln < len(text) && c.lines[ln].text == text[ln] {
+			return c.painted(&c.lines[ln])
+		}
 		return nil
 	}
 	if f.provisional {
@@ -194,6 +246,10 @@ func (c *highlightCache) highlighted(text []string, top, ln int, f *hlFrame) []h
 		}
 		for ; f.localNext <= ln && f.localNext < len(text); f.localNext++ {
 			entry := c.highlightLine(text[f.localNext], f.localOut)
+			if f.states != nil {
+				f.states.Retain(entry.out)
+				f.states.Release(f.localOut)
+			}
 			f.local[f.localNext], f.localOut = entry.styles, entry.out
 		}
 		return f.local[ln]
@@ -203,7 +259,7 @@ func (c *highlightCache) highlighted(text []string, top, ln int, f *hlFrame) []h
 	}
 	f.checked = max(f.checked, ln+1)
 	if ln < len(c.lines) {
-		return c.lines[ln].styles
+		return c.painted(&c.lines[ln])
 	}
 	return nil
 }
@@ -212,6 +268,37 @@ func (c *highlightCache) highlighted(text []string, top, ln int, f *hlFrame) []h
 // onto the line's clusters.
 func (c *highlightCache) highlightLine(text string, in highlight.State) hlLine {
 	spans, out := c.hl.HighlightBlock(text, in)
+	entry := hlLine{text: text, in: in, out: out, semantic: append([]highlight.Span(nil), spans...)}
+	c.painted(&entry)
+	return entry
+}
+
+func (c *highlightCache) painted(entry *hlLine) []highlight.Style {
+	if entry.styles != nil && entry.paintRevision == c.paintRevision {
+		return entry.styles
+	}
+	spans := entry.semantic
+	if c.overlay != nil {
+		spans = c.overlay(entry.text, append([]highlight.Span(nil), spans...))
+	}
+	// A malformed extension cannot make byte projection reach outside the line.
+	valid := make([]highlight.Span, 0, len(spans))
+	end := 0
+	for _, s := range spans {
+		if s.Start < end || s.End <= s.Start || s.Start < 0 || s.End > len(entry.text) {
+			continue
+		}
+		if s.Start > 0 && !utf8.RuneStart(entry.text[s.Start]) {
+			continue
+		}
+		if s.End < len(entry.text) && !utf8.RuneStart(entry.text[s.End]) {
+			continue
+		}
+		valid = append(valid, s)
+		end = s.End
+	}
+	spans = valid
+	text := entry.text
 	cs := clusters(text)
 	styles := make([]highlight.Style, len(cs))
 	byteAt := 0
@@ -225,7 +312,8 @@ func (c *highlightCache) highlightLine(text string, in highlight.State) hlLine {
 		}
 		byteAt += len(cl)
 	}
-	return hlLine{text: text, in: in, out: out, styles: styles}
+	entry.styles, entry.paintRevision = styles, c.paintRevision
+	return styles
 }
 
 // syntaxStyle is the look a cluster's highlight style adds over the text: its

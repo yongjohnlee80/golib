@@ -1,6 +1,8 @@
 package decl
 
 import (
+	"fmt"
+	"github.com/yongjohnlee80/golib/indent"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -15,10 +17,12 @@ var EditorViews = Enum{Scope: "Editor", Values: []string{"Raw", "Rendered"}}
 
 // EditorDecl is an Editor declaration as an editor widget's builder needs it.
 type EditorDecl struct {
-	Text     string       // `text`, the buffer the editor starts with
-	Wrap     bool         // `wrap`, long lines wrapped at the editor's width
-	Renderer RendererSpec // the renderer child, nil when none is declared
-	Document DocumentSpec // the document view child (HTMLDocumentView), nil when none is declared
+	Text       string       // `text`, the buffer the editor starts with
+	Wrap       bool         // `wrap`, long lines wrapped at the editor's width
+	AutoIndent bool         // `autoIndent`, source-language typing indentation
+	IndentUnit string       // `indentUnit`, optional whitespace override
+	Renderer   RendererSpec // the renderer child, nil when none is declared
+	Document   DocumentSpec // the document view child (HTMLDocumentView), nil when none is declared
 	// Consumed are the constructor properties read: what the builder returns as consumed.
 	Consumed []string
 
@@ -33,13 +37,18 @@ type EditorDecl struct {
 func ReadEditor(b Build) (EditorDecl, error) {
 	var d EditorDecl
 	consumed, err := readProps(b.Props, map[string]field{
-		"text": into(&d.Text, stringOf),
-		"wrap": into(&d.Wrap, boolOf),
+		"text":       into(&d.Text, stringOf),
+		"wrap":       into(&d.Wrap, boolOf),
+		"autoIndent": into(&d.AutoIndent, boolOf),
+		"indentUnit": into(&d.IndentUnit, stringOf),
 	})
 	if err != nil {
 		return d, err
 	}
 	d.Consumed = consumed
+	if !indent.Whitespace(d.IndentUnit) {
+		return d, fmt.Errorf("indentUnit: only spaces and tabs are allowed (at %s)", b.Pos)
+	}
 	if d.highlighters, d.Renderer, d.Document, err = editorChildren(b); err != nil {
 		return d, err
 	}
@@ -58,6 +67,8 @@ func (d EditorDecl) CoreOptions() []widget.CoreOption {
 		widget.CoreOnChange(d.textChanged),
 		widget.CoreOnCursorPositionChange(d.cursorMoved),
 		widget.CoreInitialText(d.Text),
+		widget.CoreAutoIndent(d.AutoIndent),
+		widget.CoreIndentUnit(d.IndentUnit),
 	}
 }
 
@@ -74,6 +85,7 @@ type (
 	readOnlyer   interface{ SetReadOnly(bool) }
 	valueSetter  interface{ SetValue(string) }
 	cursorPlacer interface{ SetCursorPosition(int) }
+	coreEditor   interface{ Core() *widget.EditorCore }
 )
 
 // EditorSetters are the Editor's behaviour properties, for any editor widget with the methods
@@ -82,9 +94,21 @@ type (
 // line break one). Each widget adds its own view properties beside them.
 func EditorSetters() map[string]Setter {
 	return map[string]Setter{
-		"keyset":   setter("an Editor", keysets.read, keysetter.SetKeyset),
-		"readOnly": setter("an Editor", boolOf, readOnlyer.SetReadOnly),
-		"text":     setter("an Editor", stringOf, valueSetter.SetValue),
+		"keyset":     setter("an Editor", keysets.read, keysetter.SetKeyset),
+		"readOnly":   setter("an Editor", boolOf, readOnlyer.SetReadOnly),
+		"text":       setter("an Editor", stringOf, valueSetter.SetValue),
+		"autoIndent": setter("an Editor", boolOf, func(e coreEditor, v bool) { e.Core().SetAutoIndent(v) }),
+		"indentUnit": func(c tui.Component, v qml.SpecValue) error {
+			unit, err := stringOf(v)
+			if err != nil {
+				return err
+			}
+			e, ok := c.(coreEditor)
+			if !ok {
+				return fmt.Errorf("indentUnit needs an Editor")
+			}
+			return e.Core().SetIndentUnit(unit)
+		},
 		"cursorPosition": setter("an Editor", func(v qml.SpecValue) (int, error) {
 			n, err := numberOf(v)
 			return int(n), err
@@ -135,7 +159,7 @@ func editorSetters() map[string]Setter {
 }
 
 // editorType is the standard Editor.
-var editorType = Type{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap"}, restyle: restyleEditor,
+var editorType = Type{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap", "autoIndent", "indentUnit"}, restyle: restyleEditor,
 	Setters: editorSetters(), Enums: []Enum{EditorViews}}
 
 // buildEditor builds a widget.Editor and connects its notifications to the

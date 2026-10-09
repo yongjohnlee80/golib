@@ -419,6 +419,15 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Them
 		}
 	}
 	// the Raw view's Markdown colours (parse/markdown's Highlighter) for the Rendered view
+	for k := range highlight.Styles {
+		if st, ok := e.core.SyntaxStyle(highlight.Style(k)); ok {
+			if fg, set := st.GetForeground(); set {
+				if c, ok := colorOf(fg, th, dark); ok {
+					t.Syntax[k] = c
+				}
+			}
+		}
+	}
 	for _, s := range []struct {
 		k  highlight.Style
 		to *color.NRGBA

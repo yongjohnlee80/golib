@@ -86,10 +86,11 @@ type Adapter struct {
 	windowCollector widget.WindowCollector
 	windowTargets   map[string]any
 	// highlighters are the syntax definitions a SyntaxHighlighter may name.
-	highlighters *highlight.Repository
-	destroyed    map[string]func(tui.Component)
-	adopters     map[string]adopter
-	sink         func(error)
+	highlighters    *highlight.Repository
+	sourceLanguages *highlight.Catalog
+	destroyed       map[string]func(tui.Component)
+	adopters        map[string]adopter
+	sink            func(error)
 
 	// pal is the palette tree, and restylers each type's way of wearing an
 	// effective palette. See propagate.go.
@@ -278,6 +279,7 @@ func New(reg *Registry, opts ...Option) *Adapter {
 	for _, o := range opts {
 		o(a)
 	}
+	a.sourceLanguages = a.highlighters.Snapshot()
 	return a
 }
 
@@ -409,8 +411,9 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 			}
 			return windowCoreOf(component)
 		},
-		highlighters: a.highlighters,
-		asked:        asked,
+		highlighters:    a.highlighters,
+		SourceLanguages: a.sourceLanguages,
+		asked:           asked,
 	})
 	if err != nil {
 		return nil, err

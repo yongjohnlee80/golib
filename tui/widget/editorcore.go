@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/indent"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -50,11 +51,16 @@ type EditorLayout interface {
 // EditorCore is an editor's behaviour: text, cursor, modes, keys, undo, register, selection and
 // highlighting. See the package's EDITOR CORE notes.
 type EditorCore struct {
-	buf  textBuffer     // the text and the cursor
-	hist editHistory    // undo/redo
-	reg  editRegister   // the unnamed register
-	keys keyDispatch    // modes and key routing
-	hl   highlightCache // per-line styles
+	buf            textBuffer     // the text and the cursor
+	hist           editHistory    // undo/redo
+	reg            editRegister   // the unnamed register
+	keys           keyDispatch    // modes and key routing
+	hl             highlightCache // per-line styles
+	sourceFactory  func() highlight.Source
+	source         highlight.Source
+	highlightFrame *HighlightFrame
+	autoIndent     bool
+	indentUnit     string
 	// hlFrom is the first line changed that the highlighter has not looked at yet: an edit takes
 	// the buffer's change mark for the layout and leaves it here (takeHighlightChanged).
 	hlFrom int
@@ -339,6 +345,9 @@ func (c *EditorCore) SetValue(s string) {
 	c.keys.count, c.keys.pendingAct = 0, ActUnbound
 	c.hist.reset()
 	c.buf.setValue(s)
+	if c.sourceFactory != nil {
+		c.renewSource()
+	}
 	c.buf.ln, c.buf.col = 0, 0
 	if c.keys.modal {
 		c.setMode(ModeNormal)
@@ -411,9 +420,72 @@ func (c *EditorCore) Lines() []string { return append([]string(nil), c.buf.lines
 // SetHighlighter replaces the highlighter; nil turns highlighting off. Every line is highlighted
 // afresh.
 func (c *EditorCore) SetHighlighter(h highlight.Highlighter) {
+	c.retireHighlightFrame()
+	c.sourceFactory, c.source = nil, highlight.Source{Highlighter: h}
 	c.hl.setHighlighter(h)
 	c.markDirty()
 }
+
+// CoreSourceFactory selects a fresh paired source for each document.
+func CoreSourceFactory(factory func() highlight.Source) CoreOption {
+	return func(c *EditorCore) { c.SetSourceFactory(factory) }
+}
+
+// SetSourceFactory replaces both source behavior and lexical-state ownership.
+func (c *EditorCore) SetSourceFactory(factory func() highlight.Source) {
+	c.sourceFactory = factory
+	c.renewSource()
+	c.markDirty()
+}
+
+func (c *EditorCore) renewSource() {
+	c.retireHighlightFrame()
+	source := highlight.Source{}
+	if c.sourceFactory != nil {
+		source = c.sourceFactory()
+	}
+	c.hl.setSource(source)
+	c.source = source
+}
+
+// CoreAutoIndent opts an editor into source-language indentation.
+func CoreAutoIndent(enabled bool) CoreOption { return func(c *EditorCore) { c.autoIndent = enabled } }
+
+// SetAutoIndent enables language-aware typing; paste remains literal.
+func (c *EditorCore) SetAutoIndent(enabled bool) { c.autoIndent = enabled }
+
+// CoreIndentUnit overrides the language's indent unit. It must be whitespace.
+func CoreIndentUnit(unit string) CoreOption {
+	if !indent.Whitespace(unit) {
+		panic("widget: indent unit must contain only spaces and tabs")
+	}
+	return func(c *EditorCore) { c.indentUnit = unit }
+}
+
+// IndentUnitError describes an invalid runtime indentation unit.
+type IndentUnitError struct{ Unit string }
+
+func (e *IndentUnitError) Error() string {
+	return "widget: indent unit must contain only spaces and tabs"
+}
+
+// SetIndentUnit changes the unit without changing text; invalid input keeps the old unit.
+func (c *EditorCore) SetIndentUnit(unit string) error {
+	if !indent.Whitespace(unit) {
+		return &IndentUnitError{Unit: unit}
+	}
+	c.indentUnit = unit
+	return nil
+}
+
+// SetHighlightOverlay installs a paint-only decorator without invalidating source states.
+func (c *EditorCore) SetHighlightOverlay(overlay highlight.Overlay) {
+	c.hl.overlay = overlay
+	c.InvalidateHighlightPaint()
+}
+
+// InvalidateHighlightPaint refreshes marks without changing verified lexical context.
+func (c *EditorCore) InvalidateHighlightPaint() { c.hl.paintRevision++; c.markDirty() }
 
 // SetSyntaxStyles replaces what each highlight style looks like.
 func (c *EditorCore) SetSyntaxStyles(st SyntaxStyles) {
@@ -670,18 +742,20 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		return true
 	case ActOpenBelow:
 		c.beginGroup()
-		b.lines = append(b.lines[:b.ln+1], append([]string{""}, b.lines[b.ln+1:]...)...)
+		prefix := c.indentDecision(indent.OpenBelow, len(b.lines[b.ln])).Prefix
+		b.lines = append(b.lines[:b.ln+1], append([]string{prefix}, b.lines[b.ln+1:]...)...)
 		b.touch(b.ln + 1)
-		b.ln, b.col = b.ln+1, 0
+		b.ln, b.col = b.ln+1, len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen() // the open-line already began this group
 		c.edited()
 		return true
 	case ActOpenAbove:
 		c.beginGroup()
-		b.lines = append(b.lines[:b.ln], append([]string{""}, b.lines[b.ln:]...)...)
+		prefix := c.indentDecision(indent.OpenAbove, 0).Prefix
+		b.lines = append(b.lines[:b.ln], append([]string{prefix}, b.lines[b.ln:]...)...)
 		b.touch(b.ln)
-		b.col = 0
+		b.col = len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen()
 		c.edited()

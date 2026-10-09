@@ -936,6 +936,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", l.styles.Text)
 	w := e.wrapWidth()
 	hlf := e.beginHighlightFrame()
+	defer finishHighlightFrame(hlf)
 	var lineStyles []highlight.Style
 	styledLn := -1
 	paintCluster := func(x, y int, cl string, ln, col int) {

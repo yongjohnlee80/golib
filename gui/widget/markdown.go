@@ -6,6 +6,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/parse/languages"
 	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
@@ -20,8 +22,9 @@ import (
 // kept as a small muted label: the fence lines keep their rows, so the caret has a place to land
 // and the block a margin. A list item's bullet is drawn as a bullet, its nesting as room.
 type MarkdownRenderer struct {
-	h1       float32
-	diagrams Diagrammer
+	h1        float32
+	diagrams  Diagrammer
+	languages *highlight.Catalog
 }
 
 // MarkdownOption sets up a MarkdownRenderer.
@@ -29,7 +32,7 @@ type MarkdownOption func(*MarkdownRenderer)
 
 // NewMarkdownRenderer is a MarkdownRenderer.
 func NewMarkdownRenderer(opts ...MarkdownOption) *MarkdownRenderer {
-	r := &MarkdownRenderer{h1: 2}
+	r := &MarkdownRenderer{h1: 2, languages: highlight.NewRepository(languages.Definitions()...).Snapshot()}
 	for _, o := range opts {
 		o(r)
 	}
@@ -44,6 +47,15 @@ func HeadingScale(h1 float32) MarkdownOption {
 // WithDiagrams draws a fenced block a Diagrammer answers Ready for (a mermaid fence) as its
 // picture. Without one, or until it answers, the block is drawn as code.
 func WithDiagrams(d Diagrammer) MarkdownOption { return func(r *MarkdownRenderer) { r.diagrams = d } }
+
+// WithCodeLanguages uses the same immutable provider catalog as source/Raw editors.
+func WithCodeLanguages(catalog *highlight.Catalog) MarkdownOption {
+	return func(r *MarkdownRenderer) {
+		if catalog != nil {
+			r.languages = catalog
+		}
+	}
+}
 
 // Diagrams is the Diagrammer the renderer draws diagram fences with; nil: none, drawn as code.
 func (r *MarkdownRenderer) Diagrams() Diagrammer { return r.diagrams }
@@ -347,6 +359,13 @@ func (r *MarkdownRenderer) layFence(b Block, f fence, lines []string, opts flow.
 	}
 	dim := th.Mono
 	dim.Size *= 0.85
+	var source highlight.Source
+	if words := strings.Fields(f.info); len(words) > 0 {
+		if d, ok := r.languages.DefinitionForLanguage(words[0]); ok && !d.DocumentAdapter {
+			source = d.NewSource(r.languages)
+		}
+	}
+	state := highlight.State(0)
 	var y float32
 	for ln := b.From; ln < b.To; ln++ {
 		isFence := ln == b.From || (ln == b.To-1 && f.closes(lines[ln]) && ln > b.From)
@@ -355,7 +374,20 @@ func (r *MarkdownRenderer) layFence(b Block, f fence, lines []string, opts flow.
 		case isFence && !inside:
 			spans = fenceSpans(ln, lines[ln], dim, th)
 		default:
-			spans = rawSpans(ln, lines[ln], th.Mono, nil)
+			if !isFence && source.Highlighter != nil {
+				offset := min(len(lines[ln])-len(strings.TrimLeft(lines[ln], " ")), len(lines[b.From])-len(strings.TrimLeft(lines[b.From], " ")))
+				hl, next := source.Highlighter.HighlightBlock(lines[ln][offset:], state)
+				hl = append([]highlight.Span(nil), hl...)
+				state = next
+				for i := range hl {
+					hl[i].Start += offset
+					hl[i].End += offset
+				}
+				colours := sourceColours(lines[ln], hl, th)
+				spans = rawSpans(ln, lines[ln], th.Mono, func(col int) color.NRGBA { return colours[col] })
+			} else {
+				spans = rawSpans(ln, lines[ln], th.Mono, nil)
+			}
 		}
 		p := flow.Lay(spans, opts, t)
 		bl.Lines = append(bl.Lines, LineLayout{Para: p, Spans: spans, Y: y})
@@ -363,6 +395,26 @@ func (r *MarkdownRenderer) layFence(b Block, f fence, lines []string, opts flow.
 	}
 	bl.Height = y
 	return bl
+}
+
+func sourceColours(line string, spans []highlight.Span, th Theme) []color.NRGBA {
+	var out []color.NRGBA
+	at, si := 0, 0
+	for cluster := range tui.Graphemes(line) {
+		for si < len(spans) && spans[si].End <= at {
+			si++
+		}
+		colour := th.Text
+		if si < len(spans) && spans[si].Start <= at && at < spans[si].End {
+			kind := int(spans[si].Style)
+			if kind < len(th.Syntax) && th.Syntax[kind].A != 0 {
+				colour = th.Syntax[kind]
+			}
+		}
+		out = append(out, colour)
+		at += len(cluster)
+	}
+	return out
 }
 
 // layIndented lays an indented code block out as code: its lines as written, monospace, on the

@@ -37,6 +37,7 @@ type FilePreview struct {
 	// forFile picks the highlighter for a file by its name, nil for none;
 	// shown is the file on show, "" for a message rather than a file's text.
 	forFile func(name string) highlight.Highlighter
+	catalog *highlight.Catalog
 	shown   string
 	// note is the message the preview shows in place of a file's text (a folder, a binary
 	// file), with its argument; zero while it shows a file. It is resolved each layout, so the
@@ -110,16 +111,37 @@ func (p *FilePreview) Show(src FileSource, path string, folder bool) {
 // message — a folder, a binary file — is never highlighted.
 func (p *FilePreview) SetHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
 	p.forFile = forFile
+	p.catalog = nil
 	p.view.WithSyntaxStyles(styles)
 	p.highlight()
 }
 
 func (p *FilePreview) highlight() {
+	if p.catalog != nil {
+		if d, ok := p.catalog.DefinitionForFileName(p.shown); ok && p.shown != "" {
+			catalog := p.catalog
+			p.view.Core().SetSourceFactory(func() highlight.Source { return d.NewSource(catalog) })
+		} else {
+			p.view.Core().SetSourceFactory(nil)
+		}
+		return
+	}
 	var h highlight.Highlighter
 	if p.forFile != nil && p.shown != "" {
 		h = p.forFile(p.shown)
 	}
 	p.view.SetHighlighter(h)
+}
+
+// SetSourceHighlighting selects complete document-owned providers for previews.
+// Palette-only changes preserve the selected source and its leased states.
+func (p *FilePreview) SetSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles) {
+	p.view.WithSyntaxStyles(styles)
+	if p.catalog == catalog {
+		return
+	}
+	p.catalog, p.forFile = catalog, nil
+	p.highlight()
 }
 
 // Text is what the preview holds.
