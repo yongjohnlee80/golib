@@ -10,6 +10,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -388,6 +390,33 @@ func TestNativePaintReportsTheCaret(t *testing.T) {
 	wx, wy := h.caretPoint(1, 1)
 	if !ok || r.Y > wy || r.Y+r.H < wy || r.X > wx || r.X+r.W+1 < wx {
 		t.Errorf("caret %+v ok %v, want it over %v,%v", r, ok, wx, wy)
+	}
+}
+
+func TestNativeCaretAdvancesAfterSpaces(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode EditorMode
+	}{{"raw", Raw}, {"rendered", Rendered}} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := markdown.Definition()
+			h := startEditor(t, 40, 6, WithMode(tc.mode), WithRenderer(NewMarkdownRenderer()),
+				WithCore(tuiwidget.CoreInitialText(""), tuiwidget.CoreAutoIndent(true),
+					tuiwidget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) })))
+			h.keys(key('i'))
+			var previousX float32
+			for step := 0; step < 3; step++ {
+				h.keys(key(' '))
+				h.paint()
+				var caret gui.Rect
+				var ok bool
+				h.onLoop(func() { caret, _, ok = bodyView{h.e.body}.Caret() })
+				if !ok || caret.X <= previousX {
+					t.Fatalf("after %d spaces caret = %+v, visible = %v, previous x = %v", step+1, caret, ok, previousX)
+				}
+				previousX = caret.X
+			}
+		})
 	}
 }
 

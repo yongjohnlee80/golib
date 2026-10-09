@@ -166,6 +166,10 @@ func (s *source) HighlightBlock(line string, previous highlight.State) ([]highli
 }
 
 func (s *source) Indent(r indent.Request) (indent.Decision, bool) {
+	if r.StateKnown && (highlight.State(r.PreviousState) == stateStart || highlight.State(r.PreviousState) == stateBody) &&
+		r.Operation == indent.Newline && strings.TrimSpace(r.Line) == "" {
+		return indent.Decision{}, true
+	}
 	if !r.StateKnown || highlight.State(r.PreviousState) < embeddedState {
 		return indent.Decision{}, false
 	}

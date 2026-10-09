@@ -198,9 +198,9 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 		rows[i] = rc
 	}
 
-	// A table that would run past the page's width shares the width instead: each column
-	// keeps at least an em, the narrow ones keep what they need, and the rest share what
-	// remains in proportion to their content, so a wide cell's text wraps in its column.
+	// A table that would run past the page's width shares the width instead: narrow
+	// columns keep their natural width where possible, and wider columns share the
+	// remaining budget in proportion to their excess, wrapping text in their columns.
 	// width 0 (no measure yet) leaves the natural widths alone, as the raw view does.
 	tableW := func() float32 {
 		var w float32
@@ -212,29 +212,21 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 	if width > 0 && tableW > width {
 		budget := width - float32(len(colW))*2*pad // the columns' text, padding paid
 		share := make([]float32, len(colW))
-		var fixed float32
+		var reserved, flexible float32
 		for k, cw := range colW {
-			share[k] = max(cw, em)
-			fixed += share[k]
+			share[k] = min(cw, 2*em)
+			reserved += share[k]
+			flexible += cw - share[k]
 		}
-		if fixed > budget {
-			over := fixed - budget
-			var flexible float32
-			for k := range colW {
-				if share[k] > em {
-					flexible += share[k]
-				}
+		if budget <= 0 {
+			clear(share)
+		} else if budget < reserved {
+			for k := range share {
+				share[k] *= budget / reserved
 			}
-			if flexible <= 0 {
-				for k := range share {
-					share[k] = budget / float32(len(share))
-				}
-			} else {
-				for k := range share {
-					if share[k] > em {
-						share[k] -= over * share[k] / flexible
-					}
-				}
+		} else if flexible > 0 {
+			for k, cw := range colW {
+				share[k] += (budget - reserved) * (cw - share[k]) / flexible
 			}
 		}
 		colW = share
@@ -293,6 +285,7 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 		if rowH == 0 {
 			rowH = em * proseLineHeight
 		}
+		rowY := bl.Height
 		var x float32 // where the text laid so far ends
 		gap := 0      // the start of the hidden run not yet laid: pipes and padding
 		for k, c := range rc.cells {
@@ -314,7 +307,11 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 					Hidden: true, Room: max(at-x, 0.01)})
 			}
 			spans = append(spans, firstLineSpans(cells[k], rc.spans[k])...)
-			x, gap = at+cells[k].Width, c.to
+			firstWidth := float32(0)
+			for _, frag := range cells[k].Lines[0].Frags {
+				firstWidth = max(firstWidth, frag.X+frag.W)
+			}
+			x, gap = at+firstWidth, c.to
 		}
 		if gap < len(line) {
 			spans = append(spans, flow.Span{Text: line[gap:], Font: th.Prose, Line: ln, Col: clusters(line[:gap]),
@@ -334,8 +331,7 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 		for _, cx := range colX {
 			marks = append(marks, Mark{Rect: gui.Rect{X: cx, W: 1, H: rowH}, Color: border})
 		}
-		bl.Lines = append(bl.Lines, LineLayout{Para: p, Spans: spans, Y: bl.Height, Marks: marks})
-		bl.Height += rowH
+		bl.Lines = append(bl.Lines, LineLayout{Para: p, Spans: spans, Y: rowY, Marks: marks})
 		// a wrapped cell's further lines: one LineLayout per line index j, every
 		// cell's jth line at its column in the same one — all columns' wraps share
 		// the row's Y grid. The spans are visible and mapped to their true source,
@@ -344,11 +340,13 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 			var ws []flow.Span
 			var px float32 // where the last laid text ends
 			any := false
+			lineY := float32(0)
 			for k := range rc.cells {
 				if cells[k] == nil || j >= len(cells[k].Lines) {
 					continue
 				}
 				any = true
+				lineY = max(lineY, cells[k].Lines[j].Y)
 				at := colX[k] + pad
 				if px < at {
 					ws = append(ws, flow.Span{Text: " ", Font: th.Prose, Line: ln, Hidden: true, Room: at - px})
@@ -369,9 +367,9 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 			opts2 := opts
 			opts2.WhiteSpace = flow.Pre
 			p2 := flow.Lay(ws, opts2, t)
-			bl.Lines = append(bl.Lines, LineLayout{Para: p2, Spans: ws, Y: bl.Height})
-			bl.Height += p2.Height
+			bl.Lines = append(bl.Lines, LineLayout{Para: p2, Spans: ws, Y: rowY + lineY})
 		}
+		bl.Height += rowH
 	}
 	return bl
 }

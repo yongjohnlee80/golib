@@ -3,6 +3,7 @@ package widget_test
 import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/golang"
+	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 	"testing"
@@ -13,6 +14,28 @@ func goCore(text string) *widget.EditorCore {
 	c := widget.NewEditorCore(widget.CoreKeyset(widget.KeysetStandard), widget.CoreAutoIndent(true), widget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) }))
 	c.SetValue(text)
 	return c
+}
+
+func TestSourceSpaceNotifiesLayoutAfterIndentLookup(t *testing.T) {
+	d := golang.Definition()
+	c, layout := coreWith(t, "", widget.CoreAutoIndent(true), widget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) }))
+	keys(c, "i  ")
+	if got := c.Value(); got != "  " {
+		t.Fatalf("text = %q, want two spaces", got)
+	}
+	if len(layout.changed) != 2 || layout.changed[0] != 0 || layout.changed[1] != 0 {
+		t.Fatalf("layout changes = %v, want [0 0]", layout.changed)
+	}
+}
+
+func TestMarkdownBlankProseLineDoesNotIndentNextLine(t *testing.T) {
+	d := markdown.Definition()
+	c, _ := coreWith(t, "", widget.CoreAutoIndent(true), widget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) }))
+	keys(c, "i  ")
+	c.HandleKey(tui.KeyEvent{Code: tui.KeyEnter, Kind: tui.KeyPress})
+	if got := c.Value(); got != "  \n" {
+		t.Fatalf("newline after two spaces = %q, want no inherited indentation", got)
+	}
 }
 func TestSourceNewlinePairAndUndoKeepTheTypingGroup(t *testing.T) {
 	c := goCore("func f() {}")
