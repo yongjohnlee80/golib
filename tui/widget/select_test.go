@@ -441,3 +441,45 @@ func TestSelectPopupIsAtLeastTheFieldsWidthInItsPalette(t *testing.T) {
 		t.Fatalf("the popup's surface is %+v, not the field's background", cell.Attrs.BG)
 	}
 }
+
+// selectAtRow is a Select on row y of a 40×20 screen, at its left edge, and focused.
+func selectAtRow(t *testing.T, y int, opts ...widget.SelectOption[string]) (*harness, *shell) {
+	t.Helper()
+	flex := tui.NewFlex(tui.Vertical)
+	for range y {
+		flex.Add(widget.NewText("·"))
+	}
+	flex.Add(widget.NewSelect[string](opts...))
+	sh := newShell(widget.NewOverlayHost(flex))
+	h := startApp(t, sh, 40, 20)
+	h.inject(tab())
+	h.barrier(sh)
+	return h, sh
+}
+
+// THE LIST OPENS UNDER ITS FIELD: on the row below it, at its left edge, not in the middle of the
+// screen where a narrow field's choices read as someone else's.
+func TestSelectOpensUnderItsField(t *testing.T) {
+	h, sh := selectAtRow(t, 3, widget.WithOptions(selectItems("alpha", "beta")))
+	h.inject(key(tui.KeyEnter))
+	h.barrier(sh)
+	h.wantContains("beta")
+	x, y := cellOfLabel(t, h, "alpha")
+	// the panel at the field's left edge: its border, then the cursor's mark, then the label
+	if y != 5 || x != 3 {
+		t.Errorf("alpha at %d,%d; want 3,5: the panel's border on row 4, under the field on row 3:\n%s", x, y, h.grid())
+	}
+}
+
+// NEAR THE BOTTOM IT OPENS ABOVE THE FIELD, and still beside it.
+func TestSelectOpensAboveItsFieldAtTheBottom(t *testing.T) {
+	h, sh := selectAtRow(t, 18, widget.WithOptions(selectItems("alpha", "beta")))
+	h.inject(key(tui.KeyEnter))
+	h.barrier(sh)
+	h.wantContains("beta")
+	_, ya := cellOfLabel(t, h, "alpha")
+	_, yb := cellOfLabel(t, h, "beta")
+	if ya != 15 || yb != 16 {
+		t.Errorf("alpha, beta on rows %d, %d; want 15, 16: the panel rows 14 to 17, just above the field on 18:\n%s", ya, yb, h.grid())
+	}
+}

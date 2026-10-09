@@ -376,12 +376,24 @@ type RowRenderer interface {
 
 // visibleRows returns the indices of the rows a level actually shows, in order.
 // Separators are included — they are painted — but are not selectable.
+//
+// A separator with nothing to separate is not shown, as Qt's QMenu collapses
+// them by default (separatorsCollapsible): one first or last among the rows
+// shown, or right after another. So a group whose rows all hide takes its rule
+// with it, and a menu need not hide its separators itself.
 func visibleRows(items []MenuItemModel) []int {
 	out := make([]int, 0, len(items))
 	for i := range items {
-		if items[i].Visible {
-			out = append(out, i)
+		if !items[i].Visible {
+			continue
 		}
+		if items[i].Kind == ItemKindSeparator && (len(out) == 0 || items[out[len(out)-1]].Kind == ItemKindSeparator) {
+			continue
+		}
+		out = append(out, i)
+	}
+	if n := len(out); n > 0 && items[out[n-1]].Kind == ItemKindSeparator {
+		out = out[:n-1]
 	}
 	return slices.Clip(out)
 }
