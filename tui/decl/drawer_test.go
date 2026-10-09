@@ -72,6 +72,35 @@ func TestADrawerOpensOverThePageWithoutMovingIt(t *testing.T) {
 	s.WaitFor(t, "Escape closed it", func(sc string) bool { return !strings.Contains(sc, "explorer") })
 }
 
+func TestADrawerClosesOnQOnlyWhenRequested(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		closeOnQ string
+		closes   bool
+	}{
+		{"default", "", false},
+		{"enabled", "closeOnQ: true;", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := decltest.Run(t, 60, 10,
+				tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow { Drawer { id: d; "+tc.closeOnQ+
+					" Frame { title: \"explorer\"; ListView { model: App.rows; textRole: \"name\" } } } }")),
+				tuidecl.Singleton("demo", "1.0", "App"),
+				tuidecl.Sources(map[string]any{"App.rows": people()}))
+			onScreenLoop(t, s, func() { _ = s.Program.Call("d", "open") })
+			s.WaitForText(t, "explorer")
+			s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: 'q', Mods: tui.ModCtrl})
+			s.WaitForText(t, "explorer")
+			s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: 'q'})
+			if tc.closes {
+				s.WaitFor(t, "q closed the drawer", func(sc string) bool { return !strings.Contains(sc, "explorer") })
+			} else {
+				s.WaitForText(t, "explorer")
+			}
+		})
+	}
+}
+
 // TestADrawersLengthIsCentredAlongItsEdge: length: 50 on a 20-row Window, from the left, takes
 // the middle 10 rows, the rows above and below showing the page; from the top, the middle 30 of
 // 60 columns.

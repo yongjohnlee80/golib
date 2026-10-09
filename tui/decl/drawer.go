@@ -32,8 +32,9 @@ import (
 // three cells; resized(size, length) is raised once, when the drag ends, for a host to keep them.
 //
 // It holds the keyboard while open, as Qt's modal Drawer does, and gives it back where it was
-// when it closes; Escape closes it. modal: false (Qt's too) lets the keyboard go back to the page
-// while it stays open, a panel beside the work rather than a question over it. edge, size and length are settable while the program runs: a
+// when it closes; Escape closes it. closeOnQ: true also closes on q when its focused child leaves
+// that key unhandled; the default is false so a terminal can type q. modal: false (Qt's too) lets
+// the keyboard go back to the page while it stays open. edge, size and length are settable while a
 // preference can move it. open(), close() and toggle() (golib's: open when closed, else close),
 // and opened() and closed().
 
@@ -62,6 +63,7 @@ type drawerNode struct {
 	windowTarget       *drawerWindowTarget
 	windowMods         *widget.WindowMod
 	modal              bool
+	closeOnQ           bool
 	// movable: a move or resize floats it at frac, percentages of the Window (x, y, w, h), until
 	// floating is set false; placed(x, y, width, height) reports where each move or resize ended
 	movable  bool
@@ -80,10 +82,11 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 		return nil, nil, errors.New("a Drawer holds exactly one child, its content")
 	}
 	modal, resizable := true, false
+	closeOnQ := false
 	windowResize, movable := false, false
 	wc := windowModConfig{modifier: tui.ModAlt, moveButton: tui.MouseLeft, resizeButton: tui.MouseRight}
 	consumed, err := readProps(b.Props, map[string]field{
-		"modal": into(&modal, boolOf), "resizable": into(&resizable, boolOf), "windowResize": into(&windowResize, boolOf),
+		"modal": into(&modal, boolOf), "closeOnQ": into(&closeOnQ, boolOf), "resizable": into(&resizable, boolOf), "windowResize": into(&windowResize, boolOf),
 		"movable": into(&movable, boolOf), "moveButton": into(&wc.moveButton, windowMouseButtons.read),
 		"maximizable": into(&wc.maximize, boolOf), "minimizable": into(&wc.minimize, boolOf), "closable": into(&wc.close, boolOf),
 		"label": into(&wc.label, stringOf), "key": into(&wc.key, stringOf),
@@ -101,7 +104,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	wc.resize, wc.move = windowResize, movable
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
 		content: b.Children[0], resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
-		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, windowEmit: b.EmitterWith("changed"),
+		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, closeOnQ: closeOnQ, windowEmit: b.EmitterWith("changed"),
 		movable: movable, frac: [4]float64{25, 25, 50, 50}, placed: b.EmitterWith("placed")}
 	if n.resizable { // a drag stops a resizable panel short of a sliver along its edge
 		n.minLength = 20
@@ -522,7 +525,7 @@ func (f *drawerFrame) Render(tui.Surface) {}
 
 func (f *drawerFrame) HandleEvent(ev tui.Event) bool {
 	k, ok := ev.(tui.KeyEvent)
-	if ok && k.Kind == tui.KeyPress && k.Code == tui.KeyEscape && k.Mods.Chord() == 0 {
+	if ok && k.Kind == tui.KeyPress && k.Mods.Chord() == 0 && (k.Code == tui.KeyEscape || f.owner.closeOnQ && k.Code == 'q') {
 		_ = f.owner.close()
 		return true
 	}
@@ -533,7 +536,7 @@ func (f *drawerFrame) HandleEvent(ev tui.Event) bool {
 var drawerType = Type{
 	Name:  "Drawer",
 	Build: buildDrawer,
-	Ctor: []string{"modal", "resizable", "windowResize", "movable", "maximizable", "minimizable", "closable", "label", "key",
+	Ctor: []string{"modal", "closeOnQ", "resizable", "windowResize", "movable", "maximizable", "minimizable", "closable", "label", "key",
 		"dragModifier", "moveButton", "resizeButton"},
 	Signals: map[string][]string{"resized": {"size", "length"}, "placed": {"x", "y", "width", "height"},
 		"changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"}},
