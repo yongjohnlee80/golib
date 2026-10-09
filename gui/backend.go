@@ -225,6 +225,23 @@ func (b *Backend) Size() (tui.Size, error) {
 	return m.grid, nil
 }
 
+// Grid is the window's grid now, in cells, and the font generation it was measured at: one load of
+// the frame's metrics, so the two always belong together. A caller that changes the fonts and then
+// judges by the grid compares the generation with FontGeneration's after its change: the window
+// may still report a grid of an earlier generation, or one measured just before the change and
+// published after it. Zero cells and generation 0 before the window's first frame.
+func (b *Backend) Grid() (tui.Size, uint64) {
+	m := b.metrics.Load()
+	if m == nil {
+		return tui.Size{}, 0
+	}
+	return m.grid, m.fontGen
+}
+
+// FontGeneration is the generation of the fonts last set (SetFont, SetProseFont, SetZoom each start
+// a new one; 0 is the window's own): a grid Grid reports with this generation is drawn at them.
+func (b *Backend) FontGeneration() uint64 { return b.font.Load().gen }
+
 // Events is the window's input, in order and uncoalesced. Closed once, by the forwarder.
 func (b *Backend) Events() <-chan tui.Event { return b.q.events }
 
