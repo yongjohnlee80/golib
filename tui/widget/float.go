@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"math"
+
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -12,7 +14,7 @@ type Anchor struct {
 	atRect     bool
 	rect       tui.Rect
 	atFraction bool
-	frac       [4]int // x, y, w, h: percent of the overlay area
+	frac       [4]float64 // x, y, w, h: percent of the overlay area
 }
 
 // The alignment anchors. Center is the Float default.
@@ -32,33 +34,42 @@ var (
 func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
 
 // AtFraction anchors the float at a rectangle given in percent of the overlay area: x and y its
-// top-left corner, w and h its size, each 0 to 100. Unlike AtRect it follows a resize of the
-// area: a panel a user placed at the right third stays at the right third.
-func AtFraction(x, y, w, h int) Anchor {
-	return Anchor{atFraction: true, frac: [4]int{clampPct(x), clampPct(y), clampPct(w), clampPct(h)}}
+// top-left corner, w and h its size, each 0 to 100, fractions of a percent included. Unlike AtRect
+// it follows a resize of the area: a panel a user placed at the right third stays at the right
+// third.
+func AtFraction(x, y, w, h float64) Anchor {
+	return Anchor{atFraction: true, frac: [4]float64{clampFrac(x), clampFrac(y), clampFrac(w), clampFrac(h)}}
+}
+
+// clampFrac is a percentage within 0 to 100; NaN is 0.
+func clampFrac(p float64) float64 {
+	if !(p > 0) {
+		return 0
+	}
+	return min(p, 100)
 }
 
 // FractionRect is where AtFraction(x, y, w, h) puts a float in area: rounded to the nearest cell, at
 // least three cells each way, and inside area.
-func FractionRect(x, y, w, h int, area tui.Rect) tui.Rect {
-	return fractionRect([4]int{x, y, w, h}, area)
+func FractionRect(x, y, w, h float64, area tui.Rect) tui.Rect {
+	return fractionRect([4]float64{x, y, w, h}, area)
 }
 
-func fractionRect(frac [4]int, area tui.Rect) tui.Rect {
-	pct := func(p, of int) int { return (of*p + 50) / 100 }
+func fractionRect(frac [4]float64, area tui.Rect) tui.Rect {
+	pct := func(p float64, of int) int { return int(math.Round(float64(of) * p / 100)) }
 	r := tui.Rect{X: area.X + pct(frac[0], area.W), Y: area.Y + pct(frac[1], area.H),
 		W: max(pct(frac[2], area.W), minFloatCells), H: max(pct(frac[3], area.H), minFloatCells)}
 	return windowBoundsInArea(r, area)
 }
 
-// FractionOf is r as AtFraction's percentages of area: the inverse of where AtFraction puts it,
-// rounded, so a rectangle read back and placed again lands on the same cells where a percent is at
-// most a cell. Zero when area is empty.
-func FractionOf(r, area tui.Rect) (x, y, w, h int) {
+// FractionOf is r as AtFraction's percentages of area, to a hundredth of a percent: the inverse of
+// where AtFraction puts it, so a rectangle read back and placed again lands on the same cells in an
+// area under 10 000 cells across. A one-cell move is never rounded away. Zero when area is empty.
+func FractionOf(r, area tui.Rect) (x, y, w, h float64) {
 	if area.W <= 0 || area.H <= 0 {
 		return 0, 0, 0, 0
 	}
-	pct := func(v, of int) int { return clampPct((v*200 + of) / (2 * of)) }
+	pct := func(v, of int) float64 { return clampFrac(math.Round(float64(v)*10000/float64(of)) / 100) }
 	return pct(r.X-area.X, area.W), pct(r.Y-area.Y, area.H), pct(r.W, area.W), pct(r.H, area.H)
 }
 

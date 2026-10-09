@@ -190,3 +190,31 @@ func TestTwoStepsBeforeALayoutAddUp(t *testing.T) {
 		t.Errorf("placed %v, want two: x 10, then x 20 (12 of 60)", got)
 	}
 }
+
+// On a wide Window a step of two cells is under a percent: it still moves the panel, and placed
+// reports it to a hundredth of a percent, so placing it again lands on the same cells.
+func TestASmallStepMovesAPanelOnAWideWindow(t *testing.T) {
+	placed := &recorder{}
+	s := decltest.Run(t, 500, 40, tuidecl.LayoutSource("wide.qml", []byte(floatDoc)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.floating": false, "App.x": 0, "App.y": 0, "App.w": 30, "App.h": 100}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": placed.handler, "App.resized": (&recorder{}).handler}))
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "panel")
+	x0, _ := panelAt(s)
+	for i := 1; i <= 2; i++ {
+		onScreenLoop(t, s, func() {
+			if err := s.Program.Call("d", "moveBy", 2, 0); err != nil {
+				t.Error(err)
+			}
+		})
+		s.WaitFor(t, "two cells further", func(string) bool { x, _ := panelAt(s); return x == x0+2*i })
+	}
+	if got := raws(placed); len(got) != 8 || got[0] != "0.4" || got[4] != "0.8" {
+		t.Errorf("placed %v, want x 0.4 then 0.8 (2 and 4 of 500)", got)
+	}
+}
