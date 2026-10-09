@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -65,6 +66,8 @@ type Mark struct {
 
 // Theme is what a Renderer draws with, taken from the Editor's cells when it paints.
 type Theme struct {
+	// Syntax carries all source token colours; an unset entry uses Text.
+	Syntax                                          [highlight.Styles]color.NRGBA
 	Text, Background, Muted, Accent, CodeBackground color.NRGBA
 	Caret                                           color.NRGBA // zero: the text's
 	LineNumbers                                     color.NRGBA // the gutter's numbers

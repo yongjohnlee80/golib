@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"github.com/yongjohnlee80/golib/highlight"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -32,6 +33,8 @@ type RendererSpec interface {
 type MarkdownSpec struct {
 	HeadingScale float32 // h1's size as a multiple of the text's; 0: the renderer's default
 	Mermaid      bool    // draw mermaid fences as diagrams
+	// SourceLanguages is the immutable catalog shared with Raw/source editors.
+	SourceLanguages *highlight.Catalog
 }
 
 // RendererKind is "markdown".
@@ -77,7 +80,7 @@ func buildMarkdownRenderer(b Build) (tui.Component, []string, error) {
 	if scale < 0 {
 		return nil, nil, fmt.Errorf("headingScale: %v is negative (at %s)", scale, b.Pos)
 	}
-	return RendererNode(MarkdownSpec{HeadingScale: float32(scale), Mermaid: mermaid}), consumed, nil
+	return RendererNode(MarkdownSpec{HeadingScale: float32(scale), Mermaid: mermaid, SourceLanguages: b.SourceLanguages}), consumed, nil
 }
 
 // markdownRendererType is the standard vocabulary's MarkdownRenderer. Its settings are taken at

@@ -96,7 +96,7 @@ type dialogNode struct {
 	selected string
 	// highlighters are the adapter's definitions: a FileDialog's preview
 	// highlights a file by its name with them.
-	highlighters *highlight.Repository
+	highlighters *highlight.Catalog
 
 	accepted                 func(args ...qml.SpecValue)
 	opened, rejected, closed func()

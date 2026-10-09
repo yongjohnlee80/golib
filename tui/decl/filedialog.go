@@ -127,7 +127,7 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 		acceptArgs: func() []qml.SpecValue { return []qml.SpecValue{strValue(chooser.Selected())} },
 	}
 	d = newDialog(b, s)
-	d.chooser, d.highlighters = chooser, b.highlighters
+	d.chooser, d.highlighters = chooser, b.SourceLanguages
 	return d, consumed, nil
 }
 
@@ -210,7 +210,7 @@ func buildFolderDialog(b Build) (tui.Component, []string, error) {
 		acceptArgs: func() []qml.SpecValue { return []qml.SpecValue{strValue(chooser.Selected())} },
 	}
 	d = newDialog(b, s)
-	d.chooser, d.highlighters = chooser, b.highlighters
+	d.chooser, d.highlighters = chooser, b.SourceLanguages
 	return d, consumed, nil
 }
 
@@ -234,7 +234,7 @@ func (d *dialogNode) setFolder(dir string) {
 // none.
 func (d *dialogNode) highlighterFor(name string) highlight.Highlighter {
 	if def, ok := d.highlighters.DefinitionForFileName(name); ok {
-		return def.Highlighter
+		return def.NewSource(d.highlighters).Highlighter
 	}
 	return nil
 }

@@ -376,13 +376,13 @@ func restyleDialog(c tui.Component, p palette) {
 	switch v := d.chooser.(type) {
 	case *widget.FileOpenView:
 		v.WithStyles(st)
-		v.SetPreviewHighlighting(d.highlighterFor, p.syntaxStyles())
+		v.SetPreviewSourceHighlighting(d.highlighters, p.syntaxStyles())
 	case *widget.FileSaveView:
 		v.WithStyles(st)
-		v.SetPreviewHighlighting(d.highlighterFor, p.syntaxStyles())
+		v.SetPreviewSourceHighlighting(d.highlighters, p.syntaxStyles())
 	case *widget.FileFolderView:
 		v.WithStyles(st)
-		v.SetPreviewHighlighting(d.highlighterFor, p.syntaxStyles())
+		v.SetPreviewSourceHighlighting(d.highlighters, p.syntaxStyles())
 	}
 }
 

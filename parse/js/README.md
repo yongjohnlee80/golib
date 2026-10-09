@@ -12,6 +12,14 @@ expr, err := js.NewExpression().Parse([]byte(`a.b(c) + d ? "x" : 'y'`))
 body, err := js.NewStatements().Parse([]byte(`if (dirty) { save(); } close()`))
 ```
 
+## Editable JavaScript source
+
+`js.Definition()` creates a tolerant source provider for JavaScript files and
+`javascript`/`js` fences. It carries comments, templates/interpolation, expression
+regexp context and JSX independently of the strict evaluator, with two-space
+structural indentation. Use `Definition().NewSource(catalog)` and retain the
+complete source on an editor; see [languages](../languages/README.md).
+
 ## Dialects are data
 
 C, C++, Java, C#, Go, JavaScript, TypeScript and PHP share one expression

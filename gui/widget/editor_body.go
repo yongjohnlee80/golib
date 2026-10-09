@@ -332,6 +332,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 	}
 	if e.mode == Raw && top < len(l.blocks) {
 		frame = e.core.BeginHighlight(l.blocks[top].From)
+		defer frame.Close()
 		if frame.Behind {
 			if ctx := b.Context(); ctx != nil {
 				ctx.App().Update(b.MarkDirty)

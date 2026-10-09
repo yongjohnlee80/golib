@@ -36,8 +36,28 @@ type HighlightFrame struct {
 
 // BeginHighlight starts a render's walk with top the first line on screen.
 func (c *EditorCore) BeginHighlight(top int) *HighlightFrame {
+	c.retireHighlightFrame()
 	f, behind := c.hl.beginFrame(c.buf.lines, top, c.takeHighlightChanged)
-	return &HighlightFrame{c: c, f: f, top: top, Behind: behind}
+	c.highlightFrame = &HighlightFrame{c: c, f: f, top: top, Behind: behind}
+	return c.highlightFrame
+}
+
+func (c *EditorCore) retireHighlightFrame() {
+	if c.highlightFrame != nil {
+		finishHighlightFrame(c.highlightFrame)
+		c.highlightFrame = nil
+	}
+}
+
+// Close retires this render turn's temporary source-state leases. It is idempotent.
+func (h *HighlightFrame) Close() {
+	finishHighlightFrame(h)
+}
+
+func finishHighlightFrame(h *HighlightFrame) {
+	if h != nil && h.f != nil {
+		h.f.close()
+	}
 }
 
 // Styles is each cluster's highlight style on line ln; nil with no highlighter.

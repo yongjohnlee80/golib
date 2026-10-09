@@ -94,6 +94,7 @@ func Native(opts ...NativeOption) tuidecl.Style {
 func (n *native) markdownRenderer(s tuidecl.RendererSpec) widget.Renderer {
 	var opts []widget.MarkdownOption
 	if m, ok := s.(tuidecl.MarkdownSpec); ok {
+		opts = append(opts, widget.WithCodeLanguages(m.SourceLanguages))
 		if m.HeadingScale > 0 {
 			opts = append(opts, widget.HeadingScale(m.HeadingScale))
 		}

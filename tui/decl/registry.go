@@ -50,6 +50,8 @@ type Build struct {
 	// Files is the filesystem file widgets list: the adapter's, set with
 	// [WithFileSource]; the local disk when unset.
 	Files widget.FileSource
+	// SourceLanguages is the program's finalized, immutable provider catalog.
+	SourceLanguages *highlight.Catalog
 
 	// sink is where [Build.Emitter] sends a handler error. It belongs to the
 	// Adapter that made this Build rather than to the package, because two

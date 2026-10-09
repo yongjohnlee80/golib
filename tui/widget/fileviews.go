@@ -340,6 +340,13 @@ func (v *FileOpenView) SetPreviewHighlighting(forFile func(name string) highligh
 	}
 }
 
+// SetPreviewSourceHighlighting installs the immutable source catalog on the preview.
+func (v *FileOpenView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles) {
+	if v.preview != nil {
+		v.preview.SetSourceHighlighting(catalog, styles)
+	}
+}
+
 // PreviewText is what the preview holds, "" without one.
 func (v *FileOpenView) PreviewText() string {
 	if v.preview == nil {
@@ -507,6 +514,11 @@ func (v *FileSaveView) SetPreviewHighlighting(forFile func(name string) highligh
 	v.listing.SetPreviewHighlighting(forFile, styles)
 }
 
+// SetPreviewSourceHighlighting selects complete source behavior for the listing preview.
+func (v *FileSaveView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles) {
+	v.listing.SetPreviewSourceHighlighting(catalog, styles)
+}
+
 // Hint is the keys the part with the keyboard answers to, in the App's language.
 func (v *FileSaveView) Hint() string { return v.translate(v.HintMessage()) }
 
@@ -666,6 +678,11 @@ func (v *FileFolderView) Path() string { return v.path.Value() }
 // SetPreviewHighlighting highlights the preview: see [FileOpenView].
 func (v *FileFolderView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
 	v.listing.SetPreviewHighlighting(forFile, styles)
+}
+
+// SetPreviewSourceHighlighting selects complete source behavior for the folder preview.
+func (v *FileFolderView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles) {
+	v.listing.SetPreviewSourceHighlighting(catalog, styles)
 }
 
 // Hint is the keys the part with the keyboard answers to, in the App's language.

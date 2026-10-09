@@ -16,6 +16,15 @@ pos := st.Position(root.Span.Start)         // line and column, on demand
 for ev, err := range pyaml.Events(src) { … } // the same parse, as events, with no tree
 ```
 
+## Editable YAML source
+
+`yaml.Definition().NewSource(catalog)` supplies tolerant source highlighting and
+mapping/sequence/scalar indentation independently of strict admission. It colours
+keys, quoted literals, constants, comments and scalar bodies; quoted colons and
+literal scalar contents do not open new code blocks. The default unit is two
+spaces. Register once and borrow it from `yaml`/`yml` fences through the same
+catalog. See [languages](../languages/README.md).
+
 ## The tree
 
 A `Stream` holds its `Docs`, the UTF-8 `Source` every span indexes, and the input's `Encoding`.

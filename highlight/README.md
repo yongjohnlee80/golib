@@ -38,6 +38,26 @@ Implementations: `parse/qml.Highlighter()` (QML and its JavaScript) and
 `tui/widget.Editor` (`WithHighlighter`), and `SyntaxHighlighter` in
 [tui/decl](../tui/decl/README.md).
 
+## Source providers and immutable catalogs
+
+`Definition.SourceFactory` creates a per-document `Source`: highlighter,
+optional `indent.Policy`, and optional leased state store. Source-language
+modules in `parse/` supply these definitions; Markdown borrows them.
+
+`Repository.Snapshot()` produces an immutable `Catalog` after registrations and
+overrides. Name, filename and case-insensitive alias lookup share deterministic
+priority/name selection. Returned metadata slices are copied.
+
+```go
+catalog := highlight.NewRepository(languages.Definitions()...).Snapshot()
+definition, ok := catalog.DefinitionForLanguage("golang")
+source := definition.NewSource(catalog)
+```
+
+`Overlay` decorates paint spans without receiving or changing lexical state.
+Editor paint invalidation keeps verified source context available to indentation.
+See [languages](../parse/languages/README.md) for lifecycle/configuration examples.
+
 ## Licence
 
 See the repository's [LICENSE](../LICENSE).

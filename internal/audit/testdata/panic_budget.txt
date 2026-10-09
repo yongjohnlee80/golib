@@ -270,3 +270,4 @@ tui/widget/windowcore.go	WindowCore.bind	8f289a634fcb7d6c	1	construction	Two liv
 tui/widget/windowcore.go	WindowCore.bind	ee1e3c3efed4c50a	1	construction	Required target facets and non-modal collector policy are validated at initial binding, before the widget handles input.
 tui/widget/windowmod.go	NewWindowMod	41db87c142a95a25	1	construction	The wrapper requires non-nil content and rejects it at construction, matching existing single-child wrappers.
 tui/widget/windowtaskbar.go	NewWindowTaskbar	3a38c6555f1eedf5	1	construction	A default taskbar requires an explicitly supplied collector model; rejected before mounting.
+tui/widget/editorcore.go	CoreIndentUnit	26a828007761c527	1	construction	A construction option accepts only spaces/tabs as the indent unit; invalid literal configuration is rejected before mounting. Runtime SetIndentUnit returns a typed error instead.
