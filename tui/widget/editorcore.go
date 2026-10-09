@@ -293,9 +293,9 @@ func (c *EditorCore) changed() {
 }
 
 // takeHighlightChanged is the first line changed since the highlighter last asked, noChange for
-// none, and forgets it: the highlight cache's view of textBuffer.takeChanged.
+// none. It leaves the buffer's mark for changed() to notify the layout after the edit.
 func (c *EditorCore) takeHighlightChanged() int {
-	ln := min(c.hlFrom, c.buf.takeChanged())
+	ln := min(c.hlFrom, c.buf.changedFrom)
 	c.hlFrom = noChange
 	return ln
 }
