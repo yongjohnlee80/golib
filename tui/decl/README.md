@@ -73,6 +73,9 @@ change at runtime, which is what makes it bindable to a source.
 | `Menu` | `title`, `align` | — | — | — | — |
 | `MenuItem` | `text`, `checkable`, `group`, `shortcut` | `checked`, `enabled`, `visible` | `checked` | `triggered`, `toggled` | — |
 | `MenuSeparator` | — | — | — | — | — |
+
+A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses them: one first or last among the rows shown, or right after another. So a group whose `MenuItem`s all hide (`visible: false`) takes its rule with it.
+
 | `Shortcut` | `sequence` | — | — | `activated` | — |
 | `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
 | `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `wrap` (live: soft-wrap long lines, or scroll them), `lineNumbers` (golib's: each line's number in a gutter at the left), `lineNumberColor` (golib's: the numbers' colour), `cursorColor` (golib's: the text cursor's colour, sent to the terminal), `ruler` (golib's: a guide at that column, where text wraps), `contextMenu` (golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer), `view` (golib's: `Editor.Raw` or `Editor.Rendered`; see [Raw and Rendered](#raw-and-rendered-view-not-mode)) | — | `modeChanged` (the **Vim** mode: Normal, Insert, Visual; not the view), `textChanged`, `cursorPositionChanged` (Qt's TextEdit signal: the cursor moved to another line or column, by a key, a click, an edit or the program) | — |

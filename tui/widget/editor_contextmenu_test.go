@@ -380,3 +380,62 @@ func TestEditorContextMenu_OnlyAPressedShiftF10(t *testing.T) {
 		t.Error("Num Lock stopped Shift+F10")
 	}
 }
+
+// FROM THE KEYBOARD THE MENU HAS A CURSOR: Shift+F10 opens it with its first row that can be
+// chosen highlighted (the Menu selects it as its model is set), drawn so before any key, and
+// Enter chooses it and the arrows move from there.
+func TestEditorContextMenu_TheKeyboardOpensItWithACursor(t *testing.T) {
+	var ran []string
+	build := func(e *widget.Editor) []widget.MenuItemModel {
+		row := func(id string) widget.MenuItemModel {
+			return widget.NewCommand(widget.ItemID(id), id, widget.EditorMenuAction{ID: tui.ActionID(id),
+				Run: func(*widget.Editor) { ran = append(ran, id) }})
+		}
+		// the stock rows are all disabled here (no edit, no selection, an empty register): the
+		// first row that can be chosen is the consumer's first
+		return append(widget.EditorContextItems(e), row("first"), row("second"))
+	}
+	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(build))
+	h.inject(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift})
+	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
+	h.settle()
+	// the cursor shows before any key: the first row is drawn as the selected one, the second not
+	fx, fy := cellOfLabel(t, h, "first")
+	sx, sy := cellOfLabel(t, h, "second")
+	grid := h.tb.Snapshot()
+	if grid[fy][fx].Attrs == grid[sy][sx].Attrs {
+		t.Errorf("the first row is drawn as the second is (%+v): no cursor shows\n%s", grid[fy][fx].Attrs, h.grid())
+	}
+	h.inject(key(tui.KeyEnter))
+	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
+	h.inject(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift})
+	h.waitFor("the menu opened again", func() bool { return menuOpen(h, ed) })
+	h.inject(key(tui.KeyDown), key(tui.KeyEnter))
+	h.waitFor("the menu closed again", func() bool { return !menuOpen(h, ed) })
+	h.settle()
+	if strings.Join(ran, ",") != "first,second" {
+		t.Errorf("ran %v; want first (Enter on the cursor), then second (Down, Enter)", ran)
+	}
+
+}
+
+// H J K L MOVE AS THE ARROWS DO in the editor's menu: j down, k up.
+func TestEditorContextMenu_HJKLMoveTheCursor(t *testing.T) {
+	var ran []string
+	build := func(e *widget.Editor) []widget.MenuItemModel {
+		row := func(id string) widget.MenuItemModel {
+			return widget.NewCommand(widget.ItemID(id), id, widget.EditorMenuAction{ID: tui.ActionID(id),
+				Run: func(*widget.Editor) { ran = append(ran, id) }})
+		}
+		return append(widget.EditorContextItems(e), row("first"), row("second"), row("third"))
+	}
+	h, ed, _ := ctxFixture(t, 40, 14, widget.WithContextMenu(build))
+	h.inject(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift})
+	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
+	h.inject(key('j'), key('j'), key('k'), key(tui.KeyEnter))
+	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
+	h.settle()
+	if strings.Join(ran, ",") != "second" {
+		t.Errorf("j j k Enter ran %v; want second", ran)
+	}
+}

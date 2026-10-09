@@ -190,21 +190,15 @@ func WithFilter[T any](enabled bool) SelectOption[T] {
 	return func(s *Select[T]) { s.filterOn = enabled }
 }
 
-// THE OPEN LIST IS CENTRED, and anchoring it under its field is NOT done.
+// THE OPEN LIST IS UNDER ITS FIELD: at the field's left edge on the row below
+// it, or above the field when the rows below cannot hold it, and kept on the
+// screen. Centred only while the field cannot be found (no layout yet).
 //
-// An anchored placement shipped in v0.5.26 and did not work: it resolved the
-// owner's position with Context.ResolveAnchor, which is CALLER-LOCAL, so the
-// answer was the field's position relative to itself and every dropdown opened
-// at the screen's top-left corner. Two cells passed over it, because both put
-// their field at the top of the screen where the corner is indistinguishable
-// from "below the field".
-//
-// Doing it properly means the route menus already take: build an AnchorSpec and
-// hand the layer to OverlayHost.OpenAnchored, which resolves the anchor against
-// the tree and places the layer itself. selectPopup is a FULL-AREA layer today
-// and its outside-click dismissal depends on that, so the change is a rework of
-// the open state rather than a different call -- which is why it is not being
-// done in the same breath as removing the broken version.
+// The field is resolved from the POPUP's context: Context.ResolveAnchor answers
+// relative to the node asking. The anchored placement of v0.5.26 asked from the
+// field's own context, so every dropdown opened at the screen's top-left corner;
+// the popup is a full-area layer, so the field relative to it is where the panel
+// goes. The layer stays full-area: its outside-click dismissal depends on that.
 
 // WithAffordance draws — or withholds — the ▾/▴ triangle at the field's right
 // edge. Default: drawn.
@@ -579,8 +573,35 @@ func (p *selectPopup[T]) Layout(c tui.Constraints) tui.Size {
 	}
 	ph = min(ph, max(h-2, 3))
 	p.panel = tui.Rect{X: max((w-pw)/2, 0), Y: max((h-ph)/2, 0), W: pw, H: ph}
+	if f, ok := p.fieldRect(); ok {
+		p.panel.X = clampInt(f.X, 0, max(w-pw, 0))
+		switch below := f.Y + f.H; {
+		case below+ph <= h:
+			p.panel.Y = below
+		case f.Y-ph >= 0:
+			p.panel.Y = f.Y - ph
+		default:
+			p.panel.Y = max(h-ph, 0)
+		}
+		// The layer's own position is the last layout's; on the first one it may not be known yet,
+		// so the field is resolved again once this pass has placed everything.
+		p.Context().AfterLayout("select-popup-field", func() {
+			if again, ok := p.fieldRect(); ok && again != f {
+				p.RequestLayout()
+			}
+		})
+	}
 	p.ensureVisible()
 	return c.Constrain(tui.Size{W: w, H: h})
+}
+
+// fieldRect is the owner's field in this layer's cells.
+func (p *selectPopup[T]) fieldRect() (tui.Rect, bool) {
+	pc, oc := p.Context(), p.owner.Context()
+	if pc == nil || oc == nil {
+		return tui.Rect{}, false
+	}
+	return pc.ResolveAnchor(oc.NodeAnchor())
 }
 
 // HandleEvent implements the open-state contract: filter typing, cursor

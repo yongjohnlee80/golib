@@ -69,7 +69,9 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	m.Close()
 
 	var layer *popupLayer
-	menu := NewMenu(WithActionExecutor(func(inv tui.ActionInvocation) bool {
+	// h j k l move as the arrows do: an editor's menu is opened from an editor, often a Vim one,
+	// and a row's own mnemonic still wins over them (WithMenuVimNavigation)
+	menu := NewMenu(WithMenuVimNavigation(true), WithActionExecutor(func(inv tui.ActionInvocation) bool {
 		if !m.run(inv.Action) {
 			return false
 		}

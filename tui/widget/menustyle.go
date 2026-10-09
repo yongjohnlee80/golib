@@ -61,7 +61,9 @@ func DefaultMenuStyle() *MenuStyle {
 		selected: selected,
 		blurred:  surface,
 		armed:    selected.Underline(true),
-		disabled: muted,
+		// muted AND faint: muted alone sits too close to the text on a warm or low-contrast
+		// palette, and a row that cannot be chosen must read as off at a glance
+		disabled: muted.Faint(true),
 		accel:    muted,
 		hotkey:   defaultHotkey,
 		border:   style.New().Background(style.TokenPanel).Foreground(style.TokenBorder),
