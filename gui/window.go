@@ -147,9 +147,11 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 			}
 		}
 	}
-	if s, ok := b.gio.ime.take(); ok {
-		for _, k := range textKeys(s) {
-			b.q.push(k)
+	if pieces, ok := b.gio.ime.take(); ok {
+		for _, s := range pieces {
+			for _, k := range textKeys(s) {
+				b.q.push(k)
+			}
 		}
 		// Empty Gio's copy of the input method's buffer too, so the next edit starts at 0.
 		src.Execute(key.SnippetCmd{Tag: tag})
@@ -196,13 +198,19 @@ func (b *Backend) present(e app.FrameEvent, tag event.Tag, m metrics, fs *fontSt
 }
 
 // placeCaret tells the input method where the caret is, so its candidate window opens there.
+//
+// The selection is told on every frame the frame has a caret, not only when the caret moves:
+// macOS's input method inserts a typed character at the selection it was last told
+// (insertText:replacementRange: with no range), so a stale selection inserts at an old
+// position — a space typed right after a same-width one arrived only with the next key.
 func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
-	if f.caret == b.gio.caret || f.caret.Empty() {
+	if f.caret.Empty() {
 		return
 	}
+	moved := f.caret != b.gio.caret
 	b.gio.caret = f.caret
 	n := len(b.gio.ime.text)
-	src.Execute(key.SelectionCmd{
+	cmd := key.SelectionCmd{
 		Tag:   tag,
 		Range: key.Range{Start: n, End: n},
 		Caret: key.Caret{
@@ -210,7 +218,11 @@ func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 			Ascent:  float32(f.base),
 			Descent: float32(f.caret.Dy() - f.base),
 		},
-	})
+	}
+	if !moved {
+		cmd.Caret = key.Caret{} // only the selection: the caret itself has not moved
+	}
+	src.Execute(cmd)
 }
 
 // drawPreedit draws the text being composed at the caret, underlined, as terminals do. It is not

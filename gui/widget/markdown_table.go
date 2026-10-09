@@ -137,6 +137,10 @@ func (r *MarkdownRenderer) InTable(lines []string, ln int) bool {
 }
 
 // layTable lays a table out: its source when the cursor is in it, else a grid.
+//
+// A table wider than the page is not drawn past the page's edge: its columns share the
+// width, each wide one wrapping its cells' text at its share, and it is cropped at the
+// page's edge by the caller's clip, never overflowing.
 func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, inside bool, t *gui.TextShaper, th Theme) BlockLayout {
 	if inside {
 		var bl BlockLayout
@@ -193,6 +197,49 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 		}
 		rows[i] = rc
 	}
+
+	// A table that would run past the page's width shares the width instead: each column
+	// keeps at least an em, the narrow ones keep what they need, and the rest share what
+	// remains in proportion to their content, so a wide cell's text wraps in its column.
+	// width 0 (no measure yet) leaves the natural widths alone, as the raw view does.
+	tableW := func() float32 {
+		var w float32
+		for _, cw := range colW {
+			w += cw + 2*pad
+		}
+		return w
+	}()
+	if width > 0 && tableW > width {
+		budget := width - float32(len(colW))*2*pad // the columns' text, padding paid
+		share := make([]float32, len(colW))
+		var fixed float32
+		for k, cw := range colW {
+			share[k] = max(cw, em)
+			fixed += share[k]
+		}
+		if fixed > budget {
+			over := fixed - budget
+			var flexible float32
+			for k := range colW {
+				if share[k] > em {
+					flexible += share[k]
+				}
+			}
+			if flexible <= 0 {
+				for k := range share {
+					share[k] = budget / float32(len(share))
+				}
+			} else {
+				for k := range share {
+					if share[k] > em {
+						share[k] -= over * share[k] / flexible
+					}
+				}
+			}
+		}
+		colW = share
+	}
+
 	colX := make([]float32, len(colW)+1)
 	for k, w := range colW {
 		colX[k+1] = colX[k] + w + 2*pad
@@ -200,11 +247,25 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 	total := colX[len(colW)]
 	border := mix(or(th.Marker, th.Muted), th.Background, 0.45)
 
+	// A wrapped cell's lines: the cell's spans laid at its column's width, one paragraph
+	// per cell, so a row grows to hold its tallest cell's wrapped lines.
+	laidCells := func(i int, rc rowCells) []*flow.Para {
+		out := make([]*flow.Para, len(rc.cells))
+		for k, c := range rc.cells {
+			if c.to == c.from {
+				continue
+			}
+			opts := flow.Options{Width: colW[k], WhiteSpace: flow.PreWrap, Color: mix(th.Text, th.Background, 0.9), LineHeight: proseLineHeight}
+			out[k] = flow.Lay(rc.spans[k], opts, t)
+		}
+		return out
+	}
+
 	var bl BlockLayout
 	for i := range rows {
 		ln := b.From + i
 		line := lines[ln]
-		opts := flow.Options{WhiteSpace: flow.Pre, Color: mix(th.Text, th.Background, 0.9), LineHeight: proseLineHeight}
+		opts := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: mix(th.Text, th.Background, 0.9), LineHeight: proseLineHeight}
 		var spans []flow.Span
 		var marks []Mark
 		if i == 1 {
@@ -220,27 +281,42 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 			continue
 		}
 		rc := rows[i]
+		cells := laidCells(i, rc)
+		// A row's height is its tallest cell's, wrapped lines included; the row's own
+		// paragraph lays only its first wrapped line, the rest below as hidden runs.
+		rowH := float32(0)
+		for k := range rc.cells {
+			if cells[k] != nil {
+				rowH = max(rowH, cells[k].Height)
+			}
+		}
+		if rowH == 0 {
+			rowH = em * proseLineHeight
+		}
 		var x float32 // where the text laid so far ends
 		gap := 0      // the start of the hidden run not yet laid: pipes and padding
 		for k, c := range rc.cells {
-			if c.to == c.from {
-				continue // an empty cell: its bytes join the hidden run
-			}
 			at := colX[k] + pad
-			if k < len(aligns) {
+			if k < len(aligns) && cells[k] != nil {
+				content := cells[k].Width
 				switch aligns[k] {
 				case alignCenter:
-					at += (colW[k] - rc.w[k]) / 2
+					at += (colW[k] - content) / 2
 				case alignRight:
-					at += colW[k] - rc.w[k]
+					at += colW[k] - content
 				}
+			}
+			if c.to == c.from {
+				continue // an empty cell: its bytes join the hidden run
 			}
 			if c.from > gap {
 				spans = append(spans, flow.Span{Text: line[gap:c.from], Font: th.Prose, Line: ln, Col: clusters(line[:gap]),
 					Hidden: true, Room: max(at-x, 0.01)})
 			}
-			spans = append(spans, rc.spans[k]...)
-			x, gap = at+rc.w[k], c.to
+			// a wrapped cell's first line: the rest follows as hidden rows below
+			first := firstLineSpans(cells[k], rc.spans[k])
+			spans = append(spans, first...)
+			x, gap = at+cells[k].Width, c.to
 		}
 		if gap < len(line) {
 			spans = append(spans, flow.Span{Text: line[gap:], Font: th.Prose, Line: ln, Col: clusters(line[:gap]),
@@ -261,7 +337,51 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 			marks = append(marks, Mark{Rect: gui.Rect{X: cx, W: 1, H: p.Height}, Color: border})
 		}
 		bl.Lines = append(bl.Lines, LineLayout{Para: p, Spans: spans, Y: bl.Height, Marks: marks})
-		bl.Height += p.Height
+		bl.Height += rowH
+		// a wrapped cell's further lines: laid after the row's, at their column, their
+		// clusters hidden runs so the caret stays on the row's own line.
+		for k := range rc.cells {
+			if cells[k] == nil {
+				continue
+			}
+			for j, l := range cells[k].Lines {
+				if j == 0 {
+					continue
+				}
+				var ws []flow.Span
+				for _, fr := range l.Frags {
+					s := rc.spans[k][fr.Span]
+					s.Text = s.Text[fr.From:fr.To]
+					s.Hidden = true
+					s.Room = colX[k] + pad + fr.X
+					s.Line, s.Col = ln, 0
+					ws = append(ws, s)
+				}
+				if len(ws) == 0 {
+					continue
+				}
+				opts2 := opts
+				opts2.WhiteSpace = flow.Pre
+				p2 := flow.Lay(ws, opts2, t)
+				bl.Lines = append(bl.Lines, LineLayout{Para: p2, Spans: ws, Y: bl.Height, Unnumbered: true})
+				bl.Height += p2.Height
+			}
+		}
 	}
 	return bl
+}
+
+// firstLineSpans is the first wrapped line's spans as laid: each frag of the
+// paragraph's first line, its slice of its span.
+func firstLineSpans(p *flow.Para, src []flow.Span) []flow.Span {
+	if p == nil || len(p.Lines) == 0 {
+		return nil
+	}
+	var out []flow.Span
+	for _, fr := range p.Lines[0].Frags {
+		s := src[fr.Span]
+		s.Text = s.Text[fr.From:fr.To]
+		out = append(out, s)
+	}
+	return out
 }
