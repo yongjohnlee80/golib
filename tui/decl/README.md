@@ -602,8 +602,9 @@ reserve modifier-click.
 `movable: true` lets a Drawer leave its edge: Alt/Option-left drag (`moveButton`,
 which must differ from `resizeButton`) and `moveBy(dx,dy)` move it. While a move or
 resize is in progress the panel shows where it goes; when it ends, the Drawer floats
-at that rectangle, kept as percentages of the Window so a resize of the Window keeps
-it in proportion, and raises `placed(x, y, width, height)` with them, once. A host
+at that rectangle, kept as percentages of the Window (to a hundredth of a percent, so a
+one-cell step on a wide Window is kept) so a resize of the Window keeps it in proportion,
+and raises `placed(x, y, width, height)` with them, once. A host
 keeping it binds `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` to
 what `placed` reported; `floating: false` docks it at its edge again. Escape during
 a drag restores the panel as it was, docked or floating, and raises nothing. A

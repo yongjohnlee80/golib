@@ -2,6 +2,7 @@ package decl
 
 import (
 	"errors"
+	"math"
 	"strconv"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -65,7 +66,7 @@ type drawerNode struct {
 	// floating is set false; placed(x, y, width, height) reports where each move or resize ended
 	movable  bool
 	floating bool
-	frac     [4]int
+	frac     [4]float64
 	placed   func(args ...qml.SpecValue)
 }
 
@@ -101,7 +102,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
 		content: b.Children[0], resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
 		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, windowEmit: b.EmitterWith("changed"),
-		movable: movable, frac: [4]int{25, 25, 50, 50}, placed: b.EmitterWith("placed")}
+		movable: movable, frac: [4]float64{25, 25, 50, 50}, placed: b.EmitterWith("placed")}
 	if n.resizable { // a drag stops a resizable panel short of a sliver along its edge
 		n.minLength = 20
 	}
@@ -189,9 +190,9 @@ func (n *drawerNode) windowChanged(e widget.WindowChangedEvent) {
 		// drag's rectangle is done with first, or place would keep it at those cells
 		n.windowTarget.preview, n.windowTarget.moving = nil, nil
 		x, y, w, h := widget.FractionOf(e.Bounds, n.area())
-		n.floating, n.frac = true, [4]int{x, y, w, h}
+		n.floating, n.frac = true, [4]float64{x, y, w, h}
 		n.place()
-		n.placed(windowNumber(x), windowNumber(y), windowNumber(w), windowNumber(h))
+		n.placed(fracNumber(x), fracNumber(y), fracNumber(w), fracNumber(h))
 	case e.Operation == widget.WindowResize:
 		n.windowTarget.preview = nil
 		n.dragEnded(tui.Size{W: e.Bounds.W, H: e.Bounds.H})
@@ -372,7 +373,7 @@ func (n *drawerNode) setFloating(on bool) {
 
 // setFrac is a setter of one of floatX, floatY, floatWidth and floatHeight: a percentage of the
 // Window, 0 to 100.
-func (n *drawerNode) setFrac(i, pct int) {
+func (n *drawerNode) setFrac(i int, pct float64) {
 	n.stopWindowDrag()
 	n.frac[i] = min(max(pct, 0), 100)
 	n.place()
@@ -575,8 +576,16 @@ var drawerType = Type{
 
 // drawerFracSetter is the setter of the floating rectangle's i-th percentage.
 func drawerFracSetter(i int) Setter {
-	return setter("a Drawer", func(v qml.SpecValue) (int, error) {
+	return setter("a Drawer", func(v qml.SpecValue) (float64, error) {
 		f, err := numberOf(v)
-		return int(f), err
-	}, func(n *drawerNode, pct int) { n.setFrac(i, pct) })
+		if err == nil && (math.IsNaN(f) || math.IsInf(f, 0)) {
+			err = errors.New("a percentage must be a finite number")
+		}
+		return f, err
+	}, func(n *drawerNode, pct float64) { n.setFrac(i, pct) })
+}
+
+// fracNumber is a percentage as placed reports it: as short as it reads, 50 or 33.33.
+func fracNumber(p float64) qml.SpecValue {
+	return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.FormatFloat(p, 'f', -1, 64)}
 }
