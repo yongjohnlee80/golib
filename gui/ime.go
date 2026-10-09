@@ -12,6 +12,10 @@ import "gioui.org/io/key"
 type imeState struct {
 	text []rune
 	comp key.Range // the composing range; empty when nothing is being composed
+	// commits is each edit's committed text, in arrival order, folded when a
+	// later edit rewrites an earlier one's bytes (an input method revising what
+	// it inserted). take() delivers them in this order.
+	commits []string
 }
 
 // edit applies an edit: Range (in runes) is replaced with Text. Gio and the input method agree on
@@ -23,6 +27,54 @@ func (s *imeState) edit(e key.EditEvent) {
 	next = append(next, s.text[:start]...)
 	next = append(next, repl...)
 	s.text = append(next, s.text[end:]...)
+	// An empty replacement deletes bytes only: what it deleted is gone from the
+	// commits too. A replacement revises the committed pieces it touched.
+	s.commits = s.revise(start, end, string(repl))
+}
+
+// revise records an edit's effect on the commits: a piece the edit's range
+// touched is folded — its bytes outside the range kept, the replacement in
+// their place — at the earliest touched piece's position; an edit that touched
+// no piece (typing at the end, an insertion in the middle of one that left all
+// its bytes in place) appends. Edits are delivered in the order they arrived.
+func (s *imeState) revise(start, end int, repl string) []string {
+	if len(s.commits) == 0 {
+		if repl == "" {
+			return nil
+		}
+		return []string{repl}
+	}
+	// where each piece's runes sit in the buffer, before the edit
+	var at int
+	var out []string
+	folded := false
+	for _, c := range s.commits {
+		r := []rune(c)
+		pEnd := at + len(r)
+		if pEnd <= start || at >= end || len(c) == 0 {
+			out = append(out, c)
+			at = pEnd
+			continue
+		}
+		if !folded {
+			folded = true
+			head := r[:max(start-at, 0)]
+			var tail []rune
+			if pEnd > end {
+				tail = r[end-at:]
+			}
+			merged := make([]rune, 0, len(head)+len([]rune(repl))+len(tail))
+			merged = append(merged, head...)
+			merged = append(merged, []rune(repl)...)
+			merged = append(merged, tail...)
+			out = append(out, string(merged))
+		}
+		at = pEnd
+	}
+	if !folded && repl != "" {
+		out = append(out, repl) // the edit touched no piece: a new commit
+	}
+	return out
 }
 
 // compose records the composing range.
@@ -43,14 +95,21 @@ func (s *imeState) preedit() string {
 }
 
 // take returns the text ready to commit and empties the buffer: everything, once no composition
-// is active; nothing while one is (the committed part waits with it, keeping its order).
-func (s *imeState) take() (string, bool) {
+// is active; nothing while one is (the committed part waits with it, keeping its order). Each
+// committed piece is delivered on its own, in arrival order.
+func (s *imeState) take() ([]string, bool) {
 	if s.composing() || len(s.text) == 0 {
-		return "", false
+		return nil, false
 	}
-	out := string(s.text)
+	out := s.commits
+	if len(out) == 0 {
+		out = []string{string(s.text)} // commits that predate the order bookkeeping
+	} else {
+		out = append([]string(nil), s.commits...)
+	}
 	s.text = s.text[:0]
 	s.comp = key.Range{}
+	s.commits = s.commits[:0]
 	return out, true
 }
 

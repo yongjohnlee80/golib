@@ -9,8 +9,8 @@ import (
 func TestIMEPlainTyping(t *testing.T) {
 	var s imeState
 	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"})
-	if got, ok := s.take(); !ok || got != "a" {
-		t.Fatalf("take = %q, %v; want \"a\"", got, ok)
+	if got, ok := s.take(); !ok || len(got) != 1 || got[0] != "a" {
+		t.Fatalf("take = %q, %v; want [\"a\"]", got, ok)
 	}
 	if !s.empty() {
 		t.Fatal("the buffer was not emptied after commit")
@@ -38,8 +38,8 @@ func TestIMEComposition(t *testing.T) {
 		t.Fatalf("preedit = %q; want 한", got)
 	}
 	s.compose(key.CompositionEvent{Start: -1, End: -1})
-	if got, ok := s.take(); !ok || got != "한" {
-		t.Fatalf("take = %q, %v; want 한", got, ok)
+	if got, ok := s.take(); !ok || len(got) != 1 || got[0] != "한" {
+		t.Fatalf("take = %q, %v; want [한]", got, ok)
 	}
 	if s.preedit() != "" {
 		t.Fatal("a preedit survived the commit")
@@ -50,7 +50,21 @@ func TestIMEClampsRanges(t *testing.T) {
 	var s imeState
 	s.edit(key.EditEvent{Range: key.Range{Start: 7, End: 9}, Text: "x"}) // past the end
 	s.edit(key.EditEvent{Range: key.Range{Start: 1, End: 0}, Text: "y"}) // reversed
-	if got, ok := s.take(); !ok || got != "y" {
-		t.Fatalf("take = %q, %v; want \"y\" (x replaced by y)", got, ok)
+	if got, ok := s.take(); !ok || len(got) != 1 || got[0] != "y" {
+		t.Fatalf("take = %q, %v; want [\"y\"] (x replaced by y)", got, ok)
+	}
+}
+
+// Each committed edit keeps its place in the commit order: a frame that read
+// two edits delivers two pieces in the order they were typed, even when the
+// second replaced bytes before the first's (an input method's replace-left
+// would otherwise flip them).
+func TestIMECommitsInArrivalOrder(t *testing.T) {
+	var s imeState
+	s.edit(key.EditEvent{Range: key.Range{}, Text: "a"})
+	s.edit(key.EditEvent{Range: key.Range{}, Text: "b"})
+	got, ok := s.take()
+	if !ok || len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("take = %q, %v; want [\"a\" \"b\"]", got, ok)
 	}
 }
