@@ -8,6 +8,7 @@ package flow
 
 import (
 	"image/color"
+	"math"
 	"strings"
 	"unicode"
 
@@ -485,6 +486,13 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 				f.glyphs = clusterLayouts(f, spans[f.Span].Font, t)
 			} else {
 				f.Layout = t.Layout(f.display, spans[f.Span].Font, 0)
+				// A frag joined from pieces measured alone can shape to another width whole: a
+				// space among Hangul takes the CJK fallback font's narrower space. Its edges, and
+				// the caret, then run ahead of its glyphs by that much per space, a gap growing
+				// along the line. Drawn cluster by cluster at its edges, it agrees with them.
+				if len(f.dclus) > 1 && math.Abs(float64(f.Layout.Width-f.xs[len(f.xs)-1])) > 0.01 {
+					f.Layout, f.glyphs = nil, clusterLayouts(f, spans[f.Span].Font, t)
+				}
 			}
 		}
 	}
