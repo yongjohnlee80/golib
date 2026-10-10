@@ -125,6 +125,19 @@ func (s *imeState) composing() bool {
 	return s.comp.Start >= 0 && end > start
 }
 
+// held is everything the buffer holds while a composition is active, for drawing at the caret:
+// the committed text that waits for the composition to end (take delivers nothing until then)
+// and the composition itself, in buffer order, with the composing range in runes. Drawing only
+// the composition hid the committed part: typing 하 then ㅇ left 하 nowhere on screen until a
+// space committed both. ok is false when no composition is active.
+func (s *imeState) held() (text []rune, comp key.Range, ok bool) {
+	if !s.composing() {
+		return nil, key.Range{}, false
+	}
+	start, end := s.clamp(s.comp)
+	return s.text, key.Range{Start: start, End: end}, true
+}
+
 // preedit is the text being composed, or "".
 func (s *imeState) preedit() string {
 	if !s.composing() {

@@ -227,23 +227,41 @@ func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 	})
 }
 
-// drawPreedit draws the text being composed at the caret, underlined, as terminals do. It is not
-// in the grid: the App sees it only once committed.
+// drawPreedit draws what the input method holds at the caret: committed text that waits for the
+// composition to end, then the composition itself, underlined as terminals do. It is not in the
+// grid: the App sees it only once delivered.
 func (b *Backend) drawPreedit(ops *op.Ops, f *frame, m metrics, fs *fontState) {
-	pre := b.gio.ime.preedit()
-	if pre == "" || f.caret.Empty() {
+	held, comp, ok := b.gio.ime.held()
+	if !ok || f.caret.Empty() {
 		return
 	}
 	s := b.gio.shaper
-	s.LayoutString(text.Parameters{Font: fontOf(fs.typeface), PxPerEm: fixed.Int26_6(m.ppem * 64), MaxWidth: 1 << 20}, pre)
+	s.LayoutString(text.Parameters{Font: fontOf(fs.typeface), PxPerEm: fixed.Int26_6(m.ppem * 64), MaxWidth: 1 << 20}, string(held))
 	var glyphs []text.Glyph
 	var adv fixed.Int26_6
+	// the composition's span among the held text, at cluster starts: only it is underlined
+	runes, ulFrom, ulTo := 0, fixed.Int26_6(-1), fixed.Int26_6(-1)
 	for g, ok := s.NextGlyph(); ok; g, ok = s.NextGlyph() {
+		if g.Runes > 0 {
+			if ulFrom < 0 && runes >= comp.Start {
+				ulFrom = adv
+			}
+			if ulTo < 0 && runes >= comp.End {
+				ulTo = adv
+			}
+			runes += int(g.Runes)
+		}
 		glyphs = append(glyphs, g)
 		adv += g.Advance
 	}
 	if len(glyphs) == 0 {
 		return
+	}
+	if ulFrom < 0 {
+		ulFrom = adv
+	}
+	if ulTo < 0 {
+		ulTo = adv
 	}
 	box := image.Rect(f.caret.Min.X, f.caret.Min.Y, f.caret.Min.X+adv.Ceil(), f.caret.Max.Y)
 	fg, bg := preeditColors(f, b.cfg.theme.FG, b.cfg.theme.BG)
@@ -256,7 +274,7 @@ func (b *Backend) drawPreedit(ops *op.Ops, f *frame, m metrics, fs *fontState) {
 	s.Bitmaps(glyphs).Add(ops)
 	off.Pop()
 	lw := max(1, int(m.scale+0.5))
-	fillRect(ops, image.Rect(box.Min.X, box.Max.Y-lw, box.Max.X, box.Max.Y), fg)
+	fillRect(ops, image.Rect(box.Min.X+ulFrom.Round(), box.Max.Y-lw, box.Min.X+ulTo.Round(), box.Max.Y), fg)
 }
 
 // preeditColors are the text being composed's colours: the text's at the caret, so it reads as
