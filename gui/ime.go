@@ -22,6 +22,10 @@ type imeState struct {
 	// spans track the buffer as later edits insert before or delete inside
 	// earlier pieces — the two orders genuinely differ, and both matter.
 	pieces []imePiece
+	// sel mirrors the selection Gio's input method keeps in this buffer (its SelectionEvents),
+	// so the backend reports the same one back: Gio cancels a composition whose selection or
+	// snippet the app reports differently from its own.
+	sel key.Range
 }
 
 // imePiece is one committed edit's text and where it sits in the buffer now.
@@ -171,7 +175,24 @@ func (s *imeState) take() ([]string, bool) {
 	s.text = s.text[:0]
 	s.comp = key.Range{}
 	s.pieces = s.pieces[:0]
+	s.sel = key.Range{}
 	return out, true
+}
+
+// selection is the input method's selection in the buffer, clamped to it.
+func (s *imeState) selection() key.Range {
+	start, end := s.clamp(s.sel)
+	if s.sel.Start > s.sel.End {
+		start, end = end, start // keep the direction the input method gave
+	}
+	return key.Range{Start: start, End: end}
+}
+
+// snippet is the buffer's text over r, clamped to the buffer: the answer to Gio's SnippetEvent,
+// so its copy of the text the input method edits matches the input method's.
+func (s *imeState) snippet(r key.Range) key.Snippet {
+	start, end := s.clamp(r)
+	return key.Snippet{Range: key.Range{Start: start, End: end}, Text: string(s.text[start:end])}
 }
 
 // empty reports whether the buffer holds nothing, so Gio's copy should be reset to match.
