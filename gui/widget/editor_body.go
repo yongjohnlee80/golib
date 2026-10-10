@@ -296,7 +296,7 @@ type bodyView struct{ b *editorBody }
 func (v bodyView) Caret() (gui.Rect, float32, bool) { return v.b.caret, v.b.caretBase, v.b.caretOn }
 
 // CaretColors are the text's colours at the caret: the page's, or the caret's block's background
-// (a code fence's) when it has one.
+// (a code fence's) when it has one, or the selection's when the caret's cluster is selected.
 func (v bodyView) CaretColors() (fg, bg color.NRGBA) { return v.b.caretFG, v.b.caretBG }
 
 func (v bodyView) Paint(c gui.Canvas) {
@@ -396,6 +396,9 @@ func (v bodyView) Paint(c gui.Canvas) {
 				b.caretFG, b.caretBG = th.Text, bg
 				if lb.bl.Background.A > 0 {
 					b.caretBG = lb.bl.Background
+				}
+				if b.focused && e.core.Selected(cl, ccol) {
+					b.caretBG = sel // painted under the caret's cluster above
 				}
 			}
 		}
