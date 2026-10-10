@@ -67,3 +67,24 @@ func TestTheEditorMarksTheCursorLinesIndentation(t *testing.T) {
 		t.Fatalf("with all lines marked, row 1 %q, want %q:\n%s", got, "····c", h.grid())
 	}
 }
+
+// A leading space that carries a combining mark is one grapheme cluster, and still a space of
+// indentation, as indent.Leading (the rule auto-indent uses) counts it: it is marked, and the
+// terminal editor keeps the combining mark on the "·".
+func TestALeadingSpaceWithACombiningMarkIsIndentation(t *testing.T) {
+	c := widget.NewEditorCore(widget.CoreInitialText(" \u0301x\n\u0301x"), widget.CoreIndentMarks(widget.IndentMarksAll))
+	if got := c.IndentMarked(0, true); got != 1 {
+		t.Errorf("IndentMarked(\" \\u0301x\") = %d, want 1 (the space is indentation)", got)
+	}
+	if got := c.IndentMarked(1, true); got != 0 {
+		t.Errorf("IndentMarked(\"\\u0301x\") = %d, want 0 (no leading space)", got)
+	}
+
+	h, _, _ := focusedEditor(t, 20, 4, widget.WithInitialText(" \u0301x"),
+		widget.WithCore(widget.CoreIndentMarks(widget.IndentMarksCursorLine)))
+	h.settle()
+	cell := h.tb.Snapshot()[0][0]
+	if cell.Content != "·\u0301" || cell.Attrs.Mask&tui.AttrFaint == 0 {
+		t.Fatalf("the marked cell is %q (faint %v), want \"·\\u0301\" dimmed:\n%s", cell.Content, cell.Attrs.Mask&tui.AttrFaint != 0, h.grid())
+	}
+}

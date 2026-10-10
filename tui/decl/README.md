@@ -571,7 +571,7 @@ paint independently of verified semantic source state.
 
 `indentMarks` shows a line's indentation as dimmed marks, as Vim's `listchars` does:
 each leading space as `·` and each leading tab as `→`. Spaces between words stay blank.
-`"cursorLine"` marks the line being edited, while the editor has the focus; `"all"`
+`"cursorLine"` marks the cursor's line while the editor has the focus, in any mode; `"all"`
 marks every line. The native editor draws the marks in Raw mode only. The terminal
 editor marks spaces only, because it does not draw tabs yet. See
 [source providers](../../parse/languages/README.md).

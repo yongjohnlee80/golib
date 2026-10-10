@@ -2,6 +2,7 @@ package widget
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/yongjohnlee80/golib/highlight"
@@ -960,10 +961,11 @@ func (e *Editor) renderText(s tui.Surface) {
 		if e.focused() && c.Selected(ln, col) {
 			st = l.styles.Selection.Inherit(st)
 		}
-		// A leading space shown as indentation: dimmed as the ruler is, over any selection.
-		// A tab is not marked here: the cell layout gives a tab no width yet.
-		if col < marked && cl == " " {
-			cl, st = "·", l.styles.Placeholder.Inherit(st)
+		// A leading space shown as indentation: dimmed as the ruler is, over any selection,
+		// keeping any combining mark it carries. A tab is not marked here: the cell layout
+		// gives a tab no width yet.
+		if col < marked && strings.HasPrefix(cl, " ") {
+			cl, st = "·"+cl[1:], l.styles.Placeholder.Inherit(st)
 		}
 		s.SetCell(x, y, cl, st)
 	}

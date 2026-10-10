@@ -3,6 +3,7 @@ package widget
 import (
 	"image/color"
 	"strconv"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
@@ -414,7 +415,7 @@ func paintIndentMarks(c gui.Canvas, core *tuiwidget.EditorCore, ll LineLayout, a
 			from := flow.Pos{Span: si, Offset: byteOfCluster(sp.Text, k)}
 			to := flow.Pos{Span: si, Offset: byteOfCluster(sp.Text, k+1)}
 			t, centred := space, true
-			if sp.Text[from.Offset:to.Offset] == "\t" {
+			if strings.HasPrefix(sp.Text[from.Offset:to.Offset], "\t") {
 				t, centred = tab, false
 			}
 			for _, r := range ll.Para.Rects(from, to) {
