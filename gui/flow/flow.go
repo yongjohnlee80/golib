@@ -116,6 +116,9 @@ type Frag struct {
 	X, W     float32
 	Layout   *gui.TextLayout   // nil for a hidden span, an atom, or a collapsed space alone
 	glyphs   []*gui.TextLayout // a letter-spaced frag's, cluster by cluster, in place of Layout
+	runs     []*gui.TextLayout // piece by piece, in place of Layout, when the whole run disagrees
+	runDisp  []int             // each joined piece's start, in display bytes
+	runEdge  []int             // each joined piece's first edge, an index into xs
 	display  string
 	dclus    []int     // each cluster's byte offset in display
 	offsets  []int     // each display cluster's byte offset in the span's Text
@@ -419,6 +422,8 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 			f := &l.Frags[n-1]
 			base := f.xs[len(f.xs)-1]
 			f.To = pc.to
+			f.runDisp = append(f.runDisp, len(f.display))
+			f.runEdge = append(f.runEdge, len(f.xs)-1)
 			for _, off := range pc.m.Clusters {
 				f.dclus = append(f.dclus, len(f.display)+off)
 			}
@@ -433,7 +438,7 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 			x += pc.w
 			continue
 		}
-		f := Frag{Span: pc.span, From: pc.from, To: pc.to, X: x, display: pc.display, sized: pc.sized}
+		f := Frag{Span: pc.span, From: pc.from, To: pc.to, X: x, display: pc.display, sized: pc.sized, runDisp: []int{0}, runEdge: []int{0}}
 		f.dclus = append([]int(nil), pc.m.Clusters...)
 		f.xs = []float32{0}
 		for c, off := range pc.m.Clusters {
@@ -489,9 +494,12 @@ func (p *Para) addLine(spans []Span, idx []int, hard bool, t *gui.TextShaper) {
 				// A frag joined from pieces measured alone can shape to another width whole: a
 				// space among Hangul takes the CJK fallback font's narrower space. Its edges, and
 				// the caret, then run ahead of its glyphs by that much per space, a gap growing
-				// along the line. Drawn cluster by cluster at its edges, it agrees with them.
-				if len(f.dclus) > 1 && math.Abs(float64(f.Layout.Width-f.xs[len(f.xs)-1])) > 0.01 {
-					f.Layout, f.glyphs = nil, clusterLayouts(f, spans[f.Span].Font, t)
+				// along the line. Drawn piece by piece at its pieces' edges, it agrees with them,
+				// and each word is still shaped whole. Right-to-left text keeps its whole run: its
+				// pieces are in logical order, and its visual order is the run's to give.
+				if len(f.runDisp) > 1 && !rightToLeft(f.display) &&
+					math.Abs(float64(f.Layout.Width-f.xs[len(f.xs)-1])) > 1.0/64 {
+					f.Layout, f.runs = nil, pieceLayouts(f, spans[f.Span].Font, t)
 				}
 			}
 		}
@@ -581,6 +589,63 @@ func isCJK(r rune) bool {
 
 // clusterLayouts shapes a letter-spaced frag's clusters one by one, nil for a space: each is drawn
 // at its own edge, which the spacing has moved.
+// pieceLayouts draws a frag as its words: each run of pieces between spaces shaped together and
+// drawn at its first piece's edge, when it shapes exactly as wide as its edges span; otherwise
+// that word's pieces each alone, as they were measured. Spaces draw nothing. The runs are indexed
+// by piece; a piece drawn within an earlier one's run is nil.
+func pieceLayouts(f *Frag, font gui.Font, t *gui.TextShaper) []*gui.TextLayout {
+	out := make([]*gui.TextLayout, len(f.runDisp))
+	text := func(k int) string {
+		to := len(f.display)
+		if k+1 < len(f.runDisp) {
+			to = f.runDisp[k+1]
+		}
+		return f.display[f.runDisp[k]:to]
+	}
+	edge := func(k int) float32 { // piece k's first edge; one past the last piece is the frag's end
+		if k < len(f.runEdge) {
+			return f.xs[f.runEdge[k]]
+		}
+		return f.xs[len(f.xs)-1]
+	}
+	for a := 0; a < len(f.runDisp); {
+		if strings.TrimSpace(text(a)) == "" {
+			a++
+			continue
+		}
+		b := a + 1
+		for b < len(f.runDisp) && strings.TrimSpace(text(b)) != "" && !strings.ContainsAny(text(b), " \t") {
+			b++
+		}
+		word := f.display[f.runDisp[a]:]
+		if b < len(f.runDisp) {
+			word = f.display[f.runDisp[a]:f.runDisp[b]]
+		}
+		if l := t.Layout(word, font, 0); math.Abs(float64(l.Width-(edge(b)-edge(a)))) <= 1.0/64 {
+			out[a] = l
+		} else {
+			for k := a; k < b; k++ {
+				if strings.TrimSpace(text(k)) != "" {
+					out[k] = t.Layout(text(k), font, 0)
+				}
+			}
+		}
+		a = b
+	}
+	return out
+}
+
+// rightToLeft reports whether s holds a letter of a script written right to left.
+func rightToLeft(s string) bool {
+	for _, r := range s {
+		if unicode.In(r, unicode.Arabic, unicode.Hebrew, unicode.Syriac, unicode.Thaana, unicode.Nko,
+			unicode.Samaritan, unicode.Mandaic, unicode.Adlam) {
+			return true
+		}
+	}
+	return false
+}
+
 func clusterLayouts(f *Frag, font gui.Font, t *gui.TextShaper) []*gui.TextLayout {
 	out := make([]*gui.TextLayout, len(f.dclus))
 	for c, off := range f.dclus {
