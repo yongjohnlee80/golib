@@ -46,8 +46,9 @@ func TestHeldShowsTheCommittedTextTheCompositionHolds(t *testing.T) {
 	}
 }
 
-// Drawn at the caret, the held 하 shows in the text's ink and only ㅇ is underlined: before, the
-// composition alone was drawn there, so 하 vanished under ㅇ until a space committed both.
+// Drawn at the caret, the held 하 shows in the text's ink before ㅇ, and both are underlined:
+// neither is in the document yet. Before, the composition alone was drawn there, so 하 vanished
+// under ㅇ until a space committed both.
 func TestThePreeditDrawsTheHeldCommitBeforeTheComposition(t *testing.T) {
 	b := NewBackend()
 	hangulHeldThenComposing(&b.gio.ime)
@@ -101,10 +102,63 @@ func TestThePreeditDrawsTheHeldCommitBeforeTheComposition(t *testing.T) {
 		t.Error("no ink where ㅇ is composed")
 	}
 	bottom := caret.Max.Y - 1
-	if isInk(first+advs[0]/2, bottom) {
-		t.Error("the held 하 is underlined; only the composition is")
+	if !isInk(first+advs[0]/2, bottom) || !isInk(second+advs[1]/2, bottom) {
+		t.Error("the underline does not run under both the held 하 and the composing ㅇ")
 	}
-	if !isInk(second+advs[1]/2, bottom) {
-		t.Error("the composition ㅇ is not underlined")
+}
+
+// The underline spans the whole held box, so right-to-left text and a composed zero-width mark
+// are underlined whatever Gio's visual order: a held א with ב composing, and a held base with
+// U+0301 composing after it, each underline their full drawn width.
+func TestThePreeditUnderlineSpansRightToLeftAndCombiningText(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		comp key.Range
+	}{
+		{"right to left", "אב", key.Range{Start: 1, End: 2}},
+		{"a combining mark composed after its base", "á", key.Range{Start: 1, End: 2}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := NewBackend()
+			b.gio.ime.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: tc.text})
+			b.gio.ime.compose(key.CompositionEvent(tc.comp))
+			fs := b.font.Load()
+			m := measure(fs.fm, fs.size, 0, image.Pt(240, 60), unit.Metric{PxPerDp: 1, PxPerSp: 1})
+			hw, err := headless.NewWindow(m.window.X, m.window.Y)
+			if err != nil {
+				t.Skipf("no headless GPU here: %v", err)
+			}
+			defer hw.Release()
+			s := b.gio.shaper
+			s.LayoutString(text.Parameters{Font: fontOf(fs.typeface), PxPerEm: fixed.Int26_6(m.ppem * 64), MaxWidth: 1 << 20}, tc.text)
+			var adv fixed.Int26_6
+			for g, ok := s.NextGlyph(); ok; g, ok = s.NextGlyph() {
+				adv += g.Advance
+			}
+			w := adv.Ceil()
+			if w < 4 {
+				t.Fatalf("held %q shaped %d px wide; too narrow to observe", tc.text, w)
+			}
+			ink := color.NRGBA{R: 0x30, G: 0x28, B: 0x20, A: 0xff}
+			caret := image.Rect(10, 10, 10+m.cell.X, 10+m.cell.Y)
+			ops := new(op.Ops)
+			paint.Fill(ops, color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff})
+			b.drawPreedit(ops, &frame{caret: caret, base: m.baseline, fg: ink, bg: color.NRGBA{R: 0xe8, G: 0xdc, B: 0xc0, A: 0xff}, tinted: true}, m, fs)
+			if err := hw.Frame(ops); err != nil {
+				t.Fatal(err)
+			}
+			img := image.NewRGBA(image.Rectangle{Max: m.window})
+			if err := hw.Screenshot(img); err != nil {
+				t.Fatal(err)
+			}
+			for _, frac := range []int{1, 2, 3} { // a quarter, half and three quarters across
+				x := caret.Min.X + w*frac/4
+				if c := img.RGBAAt(x, caret.Max.Y-1); int(c.R)+int(c.G)+int(c.B) >= 3*120 {
+					t.Errorf("no underline at x %d (%d/4 of %d px): %v", x, frac, w, c)
+				}
+			}
+		})
 	}
 }
