@@ -94,6 +94,10 @@ func (b *Backend) isStarted() bool {
 func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 	if !b.gio.focused {
 		src.Execute(key.FocusCmd{Tag: tag})
+		// Gio closes text input on every focus change, and an input method attaches only to a
+		// window that opened it: on Wayland, zwp_text_input_v3 is enabled only then, so
+		// without this fcitx5 or IBus never composes Hangul here.
+		src.Execute(key.SoftKeyboardCmd{Show: true})
 		b.gio.focused = true
 	}
 	allMods := key.ModCtrl | key.ModCommand | key.ModShift | key.ModAlt | key.ModSuper
