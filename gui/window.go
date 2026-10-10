@@ -127,8 +127,17 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 				continue
 			}
 			if k, ok := translateKey(e); ok {
+				// Committed text arrived before this key: deliver it first, or an Enter typed
+				// after Hangul lands before the syllables the composition held.
+				b.deliverIME(src, tag)
 				b.q.push(k)
 			}
+		case key.SnippetEvent:
+			// Gio asks for the text around the input method's edits. Unanswered, its copy of
+			// the editor state differs from the input method's and it cancels the composition.
+			src.Execute(key.SnippetCmd{Tag: tag, Snippet: b.gio.ime.snippet(key.Range(e))})
+		case key.SelectionEvent:
+			b.gio.ime.sel = key.Range(e)
 		case key.EditEvent:
 			b.gio.ime.edit(e)
 		case key.CompositionEvent:
@@ -152,16 +161,7 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 			}
 		}
 	}
-	if pieces, ok := b.gio.ime.take(); ok {
-		for _, s := range pieces {
-			for _, k := range textKeys(s) {
-				b.q.push(k)
-			}
-		}
-		// Empty Gio's copy of the input method's buffer too, so the next edit starts at 0.
-		src.Execute(key.SnippetCmd{Tag: tag})
-		src.Execute(key.SelectionCmd{Tag: tag})
-	}
+	b.deliverIME(src, tag)
 	b.mu.Lock()
 	cp := b.copyText
 	b.copyText = nil
@@ -169,6 +169,22 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 	if cp != nil {
 		src.Execute(clipboard.WriteCmd{Type: textType, Data: io.NopCloser(strings.NewReader(*cp))})
 	}
+}
+
+// deliverIME sends the text the input method has committed to the App, once no composition
+// holds it, and empties the buffer and Gio's copy of it, so the next edit starts at 0.
+func (b *Backend) deliverIME(src eventSource, tag event.Tag) {
+	pieces, ok := b.gio.ime.take()
+	if !ok {
+		return
+	}
+	for _, s := range pieces {
+		for _, k := range textKeys(s) {
+			b.q.push(k)
+		}
+	}
+	src.Execute(key.SnippetCmd{Tag: tag})
+	src.Execute(key.SelectionCmd{Tag: tag})
 }
 
 // eventSource is the part of Gio's input.Source the backend uses, so tests can drive it.
@@ -215,10 +231,9 @@ func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 		return
 	}
 	b.gio.caret = f.caret
-	n := len(b.gio.ime.text)
 	src.Execute(key.SelectionCmd{
 		Tag:   tag,
-		Range: key.Range{Start: n, End: n},
+		Range: b.gio.ime.selection(), // the input method's own, so a composition is never cancelled
 		Caret: key.Caret{
 			Pos:     f32.Pt(float32(f.caret.Min.X), float32(f.caret.Min.Y+f.base)),
 			Ascent:  float32(f.base),
