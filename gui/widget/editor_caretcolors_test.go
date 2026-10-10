@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -40,6 +41,23 @@ func TestTheEditorReportsItsCaretsColours(t *testing.T) {
 	}
 	if bg != th.CodeBackground {
 		t.Errorf("in the rendered code block: background %v, want the block's %v (page %v)", bg, th.CodeBackground, page)
+	}
+
+	// In Visual mode the caret's cluster is selected and painted on the selection's colour:
+	// the composition sits on that, not on the page under it.
+	h.onLoop(func() {
+		h.e.SetMode(Raw)
+		h.e.core.SetLine(0, 1)
+		h.e.core.HandleKey(tui.KeyEvent{Code: 'v', Text: "v"})
+	})
+	var mode tuiwidget.EditorMode
+	h.onLoop(func() { mode = h.e.core.Mode() })
+	if mode != tuiwidget.ModeVisual {
+		t.Fatalf("mode %v after v, want Visual", mode)
+	}
+	_, bg, th = paint()
+	if want := selColor(th); bg != want || want == page {
+		t.Errorf("on a selected caret: background %v, want the selection's %v (page %v)", bg, want, page)
 	}
 }
 
