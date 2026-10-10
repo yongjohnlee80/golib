@@ -361,6 +361,9 @@ func (v bodyView) Paint(c gui.Canvas) {
 				tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
 			}
 			ll.Para.Paint(tc, at, ll.Spans)
+			if e.mode == Raw {
+				paintIndentMarks(tc, e.core, ll, at, b.focused, l.monoFont(), mix(th.Muted, bg, 0.5))
+			}
 			if e.numbers && !ll.Unnumbered && len(ll.Spans) > 0 && ll.Spans[0].Line >= 0 && ll.Spans[0].Line != numbered && len(ll.Para.Lines) > 0 {
 				numbered = ll.Spans[0].Line
 				b.paintNumber(c, numbered, oy+ll.Y+ll.Para.Lines[0].Baseline, numbered == cl, th)
@@ -388,6 +391,54 @@ func (v bodyView) Paint(c gui.Canvas) {
 	if b.caretOn {
 		paintCaret(c, b.caret, e.core.Mode(), th)
 	}
+}
+
+// paintIndentMarks draws the line's marked indentation over its text (IndentMarks): "·" centred
+// in each leading space's box and "→" at the left of each leading tab's, on its row's baseline,
+// in the ruler's dim colour. Raw mode only: a rendered line's whitespace is not its source's.
+func paintIndentMarks(c gui.Canvas, core *tuiwidget.EditorCore, ll LineLayout, at gui.Point, focused bool, f gui.Font, col color.NRGBA) {
+	if len(ll.Spans) == 0 || ll.Spans[0].Line < 0 {
+		return
+	}
+	ln := ll.Spans[0].Line
+	n := core.IndentMarked(ln, focused)
+	if n == 0 {
+		return
+	}
+	space, tab := c.Text().Layout("·", f, 0), c.Text().Layout("→", f, 0)
+	for si, sp := range ll.Spans {
+		if sp.Line != ln {
+			continue
+		}
+		for k := 0; k < clusters(sp.Text) && sp.Col+k < n; k++ {
+			from := flow.Pos{Span: si, Offset: byteOfCluster(sp.Text, k)}
+			to := flow.Pos{Span: si, Offset: byteOfCluster(sp.Text, k+1)}
+			t, centred := space, true
+			if sp.Text[from.Offset:to.Offset] == "\t" {
+				t, centred = tab, false
+			}
+			for _, r := range ll.Para.Rects(from, to) {
+				x := at.X + r.X
+				if centred {
+					x += (r.W - t.Width) / 2
+				}
+				c.DrawText(t, gui.Pt(x, at.Y+rowBaseline(ll.Para, r.Y)-t.Ascent), gui.Solid(col))
+			}
+		}
+	}
+}
+
+// rowBaseline is the baseline of the paragraph row at height y.
+func rowBaseline(p *flow.Para, y float32) float32 {
+	for _, row := range p.Lines {
+		if y < row.Y+row.H {
+			return row.Baseline
+		}
+	}
+	if n := len(p.Lines); n > 0 {
+		return p.Lines[n-1].Baseline
+	}
+	return 0
 }
 
 // paintNumber draws line ln's number (1-based) right-aligned in the gutter, on the baseline of

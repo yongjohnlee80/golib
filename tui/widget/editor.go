@@ -939,10 +939,14 @@ func (e *Editor) renderText(s tui.Surface) {
 	defer finishHighlightFrame(hlf)
 	var lineStyles []highlight.Style
 	styledLn := -1
+	marked, markedLn := 0, -1
 	paintCluster := func(x, y int, cl string, ln, col int) {
 		st := l.styles.Text
 		if ln != styledLn {
 			lineStyles, styledLn = hlf.Styles(ln), ln
+		}
+		if ln != markedLn {
+			marked, markedLn = c.IndentMarked(ln, e.focused()), ln
 		}
 		if c.Highlighting() {
 			k := highlight.Normal
@@ -955,6 +959,11 @@ func (e *Editor) renderText(s tui.Surface) {
 		}
 		if e.focused() && c.Selected(ln, col) {
 			st = l.styles.Selection.Inherit(st)
+		}
+		// A leading space shown as indentation: dimmed as the ruler is, over any selection.
+		// A tab is not marked here: the cell layout gives a tab no width yet.
+		if col < marked && cl == " " {
+			cl, st = "·", l.styles.Placeholder.Inherit(st)
 		}
 		s.SetCell(x, y, cl, st)
 	}

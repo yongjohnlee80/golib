@@ -553,6 +553,7 @@ host in rooted form: an ordinary absolute path locally.
 Editor {
     autoIndent: true
     // indentUnit: "    " // optional override; otherwise the source provider chooses
+    indentMarks: "cursorLine" // "off" (default), "cursorLine" or "all"
     SyntaxHighlighter { definition: "Go" }
 }
 ```
@@ -566,7 +567,13 @@ without adding language branches to those adapters.
 
 Auto-indent applies to typed newline, Vim open-line and completed closing tokens;
 literal paste is unchanged. `indentUnit` is spaces/tabs only. Find overlays refresh
-paint independently of verified semantic source state. See
+paint independently of verified semantic source state.
+
+`indentMarks` shows a line's indentation as dimmed marks, as Vim's `listchars` does:
+each leading space as `·` and each leading tab as `→`. Spaces between words stay blank.
+`"cursorLine"` marks the line being edited, while the editor has the focus; `"all"`
+marks every line. The native editor draws the marks in Raw mode only. The terminal
+editor marks spaces only, because it does not draw tabs yet. See
 [source providers](../../parse/languages/README.md).
 
 ## Window capability widgets
