@@ -26,14 +26,18 @@ type editorBody struct {
 	caret     gui.Rect // the native caret, in the view's pixels, after a paint
 	caretBase float32
 	caretOn   bool
+	// caretFG and caretBG are the colours of the text at the caret, after a paint: what the
+	// text being composed there is drawn in.
+	caretFG, caretBG color.NRGBA
 }
 
 var (
-	_ tui.Focusable      = (*editorBody)(nil)
-	_ tui.NativeReporter = (*editorBody)(nil)
-	_ tui.NativeScoper   = (*editorBody)(nil)
-	_ tui.CursorReporter = (*editorBody)(nil)
-	_ gui.CaretView      = bodyView{}
+	_ tui.Focusable       = (*editorBody)(nil)
+	_ tui.NativeReporter  = (*editorBody)(nil)
+	_ tui.NativeScoper    = (*editorBody)(nil)
+	_ tui.CursorReporter  = (*editorBody)(nil)
+	_ gui.CaretView       = bodyView{}
+	_ gui.CaretColorsView = bodyView{}
 )
 
 // Init binds the core to this body's context and pixel layout.
@@ -291,6 +295,10 @@ type bodyView struct{ b *editorBody }
 
 func (v bodyView) Caret() (gui.Rect, float32, bool) { return v.b.caret, v.b.caretBase, v.b.caretOn }
 
+// CaretColors are the text's colours at the caret: the page's, or the caret's block's background
+// (a code fence's) when it has one.
+func (v bodyView) CaretColors() (fg, bg color.NRGBA) { return v.b.caretFG, v.b.caretBG }
+
 func (v bodyView) Paint(c gui.Canvas) {
 	b, e := v.b, v.b.e
 	l := e.layout
@@ -385,6 +393,10 @@ func (v bodyView) Paint(c gui.Canvas) {
 				r.X += l.textX()
 				r.Y += oy + ll.Y
 				b.caret, b.caretBase, b.caretOn = r, r.H*0.8, b.focused
+				b.caretFG, b.caretBG = th.Text, bg
+				if lb.bl.Background.A > 0 {
+					b.caretBG = lb.bl.Background
+				}
 			}
 		}
 		y += lb.bl.Height
