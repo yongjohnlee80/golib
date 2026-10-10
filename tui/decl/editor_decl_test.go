@@ -111,3 +111,17 @@ Window {
 		t.Errorf("the core's text %q, want the declaration's", got)
 	}
 }
+
+// `indentMarks` reaches the standard Editor's core: with every line marked, a line's leading
+// spaces draw as dimmed "·".
+func TestAnEditorsIndentMarksDrawItsIndentation(t *testing.T) {
+	doc := tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+Window {
+    Editor {
+        text: "  x"
+        indentMarks: "all"
+    }
+}`))
+	s := decltest.Run(t, 40, 6, doc)
+	s.WaitForText(t, "··x")
+}

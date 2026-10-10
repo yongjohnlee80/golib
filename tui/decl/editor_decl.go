@@ -109,11 +109,29 @@ func EditorSetters() map[string]Setter {
 			}
 			return e.Core().SetIndentUnit(unit)
 		},
+		"indentMarks": setter("an Editor", indentMarksOf, func(e coreEditor, m widget.IndentMarks) { e.Core().SetIndentMarks(m) }),
 		"cursorPosition": setter("an Editor", func(v qml.SpecValue) (int, error) {
 			n, err := numberOf(v)
 			return int(n), err
 		}, cursorPlacer.SetCursorPosition),
 	}
+}
+
+// indentMarksOf reads `indentMarks`: which lines show their indentation as dimmed marks.
+func indentMarksOf(v qml.SpecValue) (widget.IndentMarks, error) {
+	s, err := stringOf(v)
+	if err != nil {
+		return 0, err
+	}
+	switch s {
+	case "off":
+		return widget.IndentMarksOff, nil
+	case "cursorLine":
+		return widget.IndentMarksCursorLine, nil
+	case "all":
+		return widget.IndentMarksAll, nil
+	}
+	return 0, fmt.Errorf("indentMarks is \"off\", \"cursorLine\" or \"all\", not %q", s)
 }
 
 // editorViewSetters are the standard Editor's view properties: its cell layout's.

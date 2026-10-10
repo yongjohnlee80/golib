@@ -61,6 +61,7 @@ type EditorCore struct {
 	highlightFrame *HighlightFrame
 	autoIndent     bool
 	indentUnit     string
+	indentMarks    IndentMarks
 	// hlFrom is the first line changed that the highlighter has not looked at yet: an edit takes
 	// the buffer's change mark for the layout and leaves it here (takeHighlightChanged).
 	hlFrom int
