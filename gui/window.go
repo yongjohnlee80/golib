@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image"
+	"image/color"
 	"io"
 	"strings"
 
@@ -245,14 +246,29 @@ func (b *Backend) drawPreedit(ops *op.Ops, f *frame, m metrics, fs *fontState) {
 		return
 	}
 	box := image.Rect(f.caret.Min.X, f.caret.Min.Y, f.caret.Min.X+adv.Ceil(), f.caret.Max.Y)
-	fillRect(ops, box, b.cfg.theme.BG)
+	fg, bg := preeditColors(f, b.cfg.theme.FG, b.cfg.theme.BG)
+	fillRect(ops, box, bg)
 	off := op.Offset(image.Pt(box.Min.X, box.Min.Y+f.base)).Push(ops)
 	outline := clip.Outline{Path: s.Shape(glyphs)}.Op().Push(ops)
-	paint.ColorOp{Color: b.cfg.theme.FG}.Add(ops)
+	paint.ColorOp{Color: fg}.Add(ops)
 	paint.PaintOp{}.Add(ops)
 	outline.Pop()
 	s.Bitmaps(glyphs).Add(ops)
 	off.Pop()
 	lw := max(1, int(m.scale+0.5))
-	fillRect(ops, image.Rect(box.Min.X, box.Max.Y-lw, box.Max.X, box.Max.Y), b.cfg.theme.FG)
+	fillRect(ops, image.Rect(box.Min.X, box.Max.Y-lw, box.Max.X, box.Max.Y), fg)
+}
+
+// preeditColors are the text being composed's colours: the text's at the caret, so it reads as
+// part of the line; the window theme's (themeFG, themeBG) when they are unknown or the text has
+// no opaque background of its own.
+func preeditColors(f *frame, themeFG, themeBG color.NRGBA) (fg, bg color.NRGBA) {
+	if !f.tinted || f.bg.A == 0 {
+		return themeFG, themeBG
+	}
+	fg = f.fg
+	if fg.A == 0 {
+		fg = themeFG
+	}
+	return fg, f.bg
 }

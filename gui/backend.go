@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"image"
+	"image/color"
 	"sync"
 	"sync/atomic"
 
@@ -71,6 +72,23 @@ type frame struct {
 	draw  op.CallOp
 	caret image.Rectangle // device pixels; empty when the cursor is hidden
 	base  int             // the caret cell's baseline, from its top
+	// fg and bg are the colours of the text at the caret, for the preedit drawn there; tinted
+	// false: unknown, and the window theme's are used.
+	fg, bg color.NRGBA
+	tinted bool
+}
+
+// frameCaret puts the frame's caret, for the input method and the preedit: the cell cursor
+// when it shows, with its cell's colours, else a native view's own caret, read after it painted.
+func (b *Backend) frameCaret(f *frame, m metrics) {
+	if b.cursor.visible {
+		f.caret = m.cellRect(b.cursor.x, b.cursor.y, 1, 1)
+		f.base = m.baseline
+		f.fg, f.bg = b.render.colors(b.grid.at(b.cursor.x, b.cursor.y).Attrs)
+		f.tinted = true
+	} else if c, ok := viewCaret(m, b.natives); ok {
+		f.caret, f.base, f.fg, f.bg, f.tinted = c.rect, c.base, c.fg, c.bg, c.tinted
+	}
 }
 
 var (
@@ -280,12 +298,7 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	b.grid.apply(diff)
 	draw := b.render.frame(&b.grid, m, b.cursor, b.natives, b.imageList(), b.focused.Load())
 	f := &frame{draw: draw}
-	if b.cursor.visible {
-		f.caret = m.cellRect(b.cursor.x, b.cursor.y, 1, 1)
-		f.base = m.baseline
-	} else if r, base, ok := viewCaret(m, b.natives); ok {
-		f.caret, f.base = r, base // a native view's own caret, read after it painted
-	}
+	b.frameCaret(f, m)
 	b.mu.Lock()
 	b.latest = f
 	b.mu.Unlock()
