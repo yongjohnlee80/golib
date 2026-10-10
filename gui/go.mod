@@ -3,7 +3,7 @@ module github.com/yongjohnlee80/golib/gui
 go 1.25.3
 
 require (
-	gioui.org v0.10.3
+	gioui.org v0.10.3 // pinned: input-method handling is verified against it (gio_pin_test.go)
 	github.com/yongjohnlee80/golib v0.6.66
 	golang.org/x/image v0.26.0
 )
