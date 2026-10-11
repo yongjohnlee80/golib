@@ -60,3 +60,40 @@ func TestALeadingTabIsMarkedAsAnArrow(t *testing.T) {
 		t.Fatalf("a marked tab: %q", row)
 	}
 }
+
+// In a viewport narrower than a tab, a wrapped line's tab still takes its row alone, clipped to
+// the row, as any cluster wider than a row does; the text after it starts the next row, and the
+// cursor follows it there.
+func TestATabWiderThanTheRowIsClipped(t *testing.T) {
+	ed := widget.NewEditor(widget.WithInitialText("\tx"), widget.WithEditorWrap(widget.WrapSoft))
+	h := startApp(t, newShell(ed), 3, 4)
+	defer h.stop()
+	h.settle()
+	rows := strings.Split(h.grid(), "\n")
+	if rows[0] != "   " || !strings.HasPrefix(rows[1], "x") {
+		t.Fatalf("a tab wider than the row:\n%s", h.grid())
+	}
+	h.onLoop(func() { ed.Core().SetLine(0, 1) })
+	var x, y int
+	h.onLoop(func() { x, y, _ = ed.Cursor() })
+	if x != 0 || y != 1 {
+		t.Fatalf("the cursor on the x is at %d,%d, want 0,1", x, y)
+	}
+}
+
+// A wrapped line's character that starts a row has the cursor on that row: the cursor is where its
+// character is drawn, not past the end of the row before.
+func TestTheCursorIsOnTheRowItsCharacterStarts(t *testing.T) {
+	ed := widget.NewEditor(widget.WithInitialText("abcdefgh ij"), widget.WithEditorWrap(widget.WrapSoft))
+	h := startApp(t, newShell(ed), 4, 5)
+	defer h.stop()
+	h.settle()
+	for _, tc := range []struct{ col, x, y int }{{3, 3, 0}, {4, 0, 1}, {7, 3, 1}, {9, 1, 2}, {10, 2, 2}} {
+		h.onLoop(func() { ed.Core().SetLine(0, tc.col) })
+		var x, y int
+		h.onLoop(func() { x, y, _ = ed.Cursor() })
+		if x != tc.x || y != tc.y {
+			t.Errorf("the cursor at column %d is at %d,%d, want %d,%d:\n%s", tc.col, x, y, tc.x, tc.y, h.grid())
+		}
+	}
+}
