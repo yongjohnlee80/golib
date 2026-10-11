@@ -276,6 +276,10 @@ func (a *App) dispatch(ev Event) {
 			}
 		}
 
+	case CloseRequestEvent:
+		// Not routed through the tree: the program's quit, not a component's
+		a.requestQuit()
+
 	case ResizeEvent:
 		// Not routed through the tree: update root constraints, mark layout dirt
 		// + full render dirt (never diff across a size change), publish on the

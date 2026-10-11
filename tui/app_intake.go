@@ -181,6 +181,8 @@ func typeName(ev Event) string {
 		return "ResizeEvent"
 	case FocusEvent:
 		return "FocusEvent"
+	case CloseRequestEvent:
+		return "CloseRequestEvent"
 	default:
 		return "Event"
 	}

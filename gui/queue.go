@@ -100,6 +100,16 @@ func (q *eventQueue) end(err error) {
 	})
 }
 
+// ended reports whether the queue has ended.
+func (q *eventQueue) ended() bool {
+	select {
+	case <-q.done:
+		return true
+	default:
+		return false
+	}
+}
+
 // reason is the error the queue ended with.
 func (q *eventQueue) reason() error {
 	q.mu.Lock()

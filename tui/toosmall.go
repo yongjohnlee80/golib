@@ -48,12 +48,12 @@ func (a *App) dispatchTooSmall(ev Event) bool {
 	switch e := ev.(type) {
 	case KeyEvent:
 		if e.Kind != KeyRelease && isQuitKey(e) {
-			a.quitTooSmall()
+			a.requestQuit()
 		}
 		return true
 	case MouseEvent:
 		if e.Kind == MousePress && e.Button == MouseLeft && a.quitButton.Contains(e.X, e.Y) {
-			a.quitTooSmall()
+			a.requestQuit()
 		}
 		return true
 	case PasteEvent:
@@ -73,8 +73,9 @@ func isQuitKey(e KeyEvent) bool {
 	return false
 }
 
-// quitTooSmall ends the program the way WithQuit says, or ends Run.
-func (a *App) quitTooSmall() {
+// requestQuit ends the program the way WithQuit says, or ends Run: the too-small screen's Quit and
+// a window's close request.
+func (a *App) requestQuit() {
 	if a.cfg.quit != nil {
 		a.cfg.quit()
 		return

@@ -57,6 +57,11 @@ func (b *Backend) run() {
 	tag := &b.gio // the window's one input handler
 	for {
 		switch e := b.win.Event().(type) {
+		case *app.ClosingEvent:
+			if b.askToClose() {
+				e.Abort()
+			}
+
 		case app.DestroyEvent:
 			b.q.end(e.Err) // a no-op when Stop ended it first: the first reason is kept
 			return
@@ -289,4 +294,16 @@ func preeditColors(f *frame, themeFG, themeBG color.NRGBA) (fg, bg color.NRGBA) 
 		fg = themeFG
 	}
 	return fg, f.bg
+}
+
+// askToClose answers the window's close button: the program decides on its loop (WithQuit: it may
+// ask about unsaved work first), so the window stays open for now, and true says to abort the
+// close. Stop ends the queue before it closes the window, and that close is the program's own: it
+// goes through. Before the App reads events there is no one to ask, and the window closes.
+func (b *Backend) askToClose() bool {
+	if !b.forwarding.Load() || b.q.ended() {
+		return false
+	}
+	b.q.push(tui.CloseRequestEvent{})
+	return true
 }
