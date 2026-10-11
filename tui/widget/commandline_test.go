@@ -246,6 +246,10 @@ func TestTheDropdownFollowsTheChosenCandidate(t *testing.T) {
 	h.settle()
 	h.wantContains("ca — help ca")
 	h.wantContains("ch — help ch")
+	// framed: the box's top edge sits right over the first candidate
+	if y := h.rowWith("ca — help ca"); !strings.Contains(h.row(y-1), "┌─") || !strings.Contains(h.row(y), "│ca — help ca") {
+		t.Fatalf("the dropdown is not framed:\n%s", h.grid())
+	}
 	h.wantNotContains("ci — help ci") // eight in view
 	for range 8 {
 		h.inject(tui.KeyEvent{Code: tui.KeyDown})

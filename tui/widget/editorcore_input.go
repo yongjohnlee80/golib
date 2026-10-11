@@ -342,9 +342,13 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 			c.exitVisual()
 			return true
 		}
-		// Normal mode with nothing pending: Esc is a vim no-op, so it BUBBLES. Consuming it here
-		// made an Editor inside a modal float undismissable — the host never saw the key (autodb
-		// M6: a read-only script viewer that Esc could not close).
+		// Normal mode with nothing pending: Esc cancels the active find (its marks, n and N) when
+		// there is one. Otherwise it is a vim no-op, so it BUBBLES: consuming it made an Editor
+		// inside a modal float undismissable, since the host never saw the key.
+		if !hadPending && c.find.term != "" {
+			c.SetFind("", FindOptions{})
+			return true
+		}
 		return hadPending
 	}
 
