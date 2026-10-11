@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
@@ -97,7 +98,7 @@ func Check(opts ...ProgramOption) error {
 				continue
 			}
 			report(fmt.Sprintf("component %s of %s, which %s does not use", name, o.name, c.layoutFile),
-				mountAnywhere(c, hostings(c, spec, imports, name)))
+				mountAnywhere(c, hostings(c, spec, imports, name, contents.Components[name])))
 		}
 	}
 	return errors.Join(errs...)
@@ -211,9 +212,23 @@ type placement struct {
 // every component: `Dock.edge` needs a parent to read it, and a Menu belongs in
 // a MenuBar, never directly in a Window. The layout's own root is not reused:
 // its construction rules — a Split's two children — are the layout's.
-func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, component string) []placement {
+//
+// The use is bare but for a placeholder for each REQUIRED property root
+// declares (placeholder): a use without one is refused, and that would be the
+// mount's doing, not the component's.
+func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, component string,
+	root *qml.SpecNode) []placement {
 	pos := layout.Root.Pos
-	node := func() *qml.SpecNode { return &qml.SpecNode{Type: component, Pos: pos} }
+	var given []qml.SpecProp
+	if root != nil {
+		for _, d := range root.Decls {
+			if d.Required {
+				given = append(given, qml.SpecProp{Name: d.Name, Path: []string{d.Name},
+					Value: placeholder(d.Type, pos), Pos: pos})
+			}
+		}
+	}
+	node := func() *qml.SpecNode { return &qml.SpecNode{Type: component, Props: given, Pos: pos} }
 	out := []placement{{"alone", qml.SpecTree{Imports: imports, Root: node()}}}
 	reg := c.registry
 	if reg == nil {
@@ -224,6 +239,24 @@ func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, co
 			Root: &qml.SpecNode{Type: hostType, Pos: pos, Children: []*qml.SpecNode{node()}}}})
 	}
 	return out
+}
+
+// placeholder is a value of a declared type that the vocabulary accepts
+// wherever such a property is likely to land: "" for a string or a url, 0 for
+// a number, false for a bool, "default" for a colour, and an empty model for a
+// var or a list — what a component's var most often feeds is a view's model.
+func placeholder(typ string, at parse.Position) qml.SpecValue {
+	switch typ {
+	case "string", "url":
+		return qml.SpecValue{Kind: qml.SpecValueString, Pos: at}
+	case "int", "real", "double":
+		return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "0", Pos: at}
+	case "bool":
+		return qml.SpecValue{Kind: qml.SpecValueBool, Raw: "false", Pos: at}
+	case "color":
+		return qml.SpecValue{Kind: qml.SpecValueString, Raw: "default", Pos: at}
+	}
+	return qml.SpecValue{Kind: qml.SpecValueObject, Obj: NewListModel(), Pos: at}
 }
 
 // mountAnywhere judges a component sound when ANY placement accepts it. When
