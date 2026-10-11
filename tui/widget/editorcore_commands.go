@@ -222,7 +222,8 @@ func (c *EditorCore) Quit(force bool) error {
 //	42          go to line 42, counted from 1 (0 is the first line; past the last is refused)
 //	verb args   the registry's verb, with its arguments; "verb!" sets Bang
 //
-// An empty line does nothing. A verb the registry does not have is ErrUnknownCommand.
+// A command runs inside a Batch: whatever it edits is one undo step. An empty line does nothing. A
+// verb the registry does not have is ErrUnknownCommand.
 func (c *EditorCore) RunCommand(line string) error {
 	line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), ":"))
 	if line == "" {
@@ -242,7 +243,9 @@ func (c *EditorCore) RunCommand(line string) error {
 		return fmt.Errorf("%w: %s", ErrUnknownCommand, verb)
 	}
 	rest = strings.TrimSpace(rest)
-	return cmd.Run(CommandContext{Core: c, Name: verb, Bang: bang, Args: strings.Fields(rest), Line: rest})
+	x := CommandContext{Core: c, Name: verb, Bang: bang, Args: strings.Fields(rest), Line: rest}
+	// one command, one undo step, whatever it edits
+	return c.Batch(func() error { return cmd.Run(x) })
 }
 
 // goToLineNumber moves the cursor to the first non-blank of line n, counted from 1.

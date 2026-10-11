@@ -214,3 +214,22 @@ func TestColonOpensTheWidgetsPromptOrBubbles(t *testing.T) {
 		t.Fatal("':' on a read-only core was refused: find and <n> still work there")
 	}
 }
+
+func TestACommandsEditsAreOneUndo(t *testing.T) {
+	c, _ := coreWith(t, "a")
+	_ = c.Commands().Add(widget.Command{Name: "three", Run: func(x widget.CommandContext) error {
+		for _, s := range []string{"1", "2", "3"} {
+			if _, err := x.Core.Insert(x.Core.Cursor(), s); err != nil {
+				return err
+			}
+		}
+		return nil
+	}})
+	if err := c.RunCommand("three"); err != nil || c.Value() != "123a" {
+		t.Fatalf("three = %v; text %q", err, c.Value())
+	}
+	undo(c)
+	if c.Value() != "a" {
+		t.Fatalf("one undo after a command = %q", c.Value())
+	}
+}
