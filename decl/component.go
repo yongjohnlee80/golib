@@ -34,9 +34,11 @@ import (
 // A use is EXPANDED into a copy of the component's root before the document
 // is judged, with Qt's rules for what the use site adds:
 //
-//	properties   the use site's replace the component's of the same name
+//	properties   the use site's replace the component's of the same name;
+//	             a declared one is substituted instead (below)
 //	handlers     both run, the component's first
-//	children     the use site's follow the component's
+//	children     the use site's follow the component's, under its
+//	             default alias's object when it declares one
 //	id           the use site's names the instance; ids inside are the
 //	             component's own, one set per use (component_ids.go)
 //
@@ -44,6 +46,15 @@ import (
 // components, so a component file imports nothing. That is not a shortcut: a
 // component that imported a theme would pin it, and switching theme would stop
 // being one line of the layout.
+//
+// A component's root may DECLARE PROPERTIES of its own — `property string
+// label: "Find"`, `required property var model`, `default property alias
+// columns: list.data` — which a use sets by name. They are parameters of the
+// macro, not properties of anything at run time: substitute (component_props.go)
+// replaces each reference to one inside the copy with the use site's value, or
+// the default, before the copy's nested uses expand; merge leaves them off the
+// root, and sends the use site's children to the default alias's object when
+// there is one. A file's declarations are judged when it loads (checkDecls).
 
 // ErrComponent reports a component type that cannot be used as written: a file
 // the rules refuse, a name taken twice, a component that contains itself.
