@@ -110,6 +110,11 @@ func parseComponent(file string, src []byte) (*qml.SpecNode, error) {
 		return nil, fmt.Errorf("%s: a component imports nothing — its names resolve in the "+
 			"document that uses it (at %s)", file, spec.Imports[0].Pos)
 	}
+	// Its declarations are judged now, against the file, rather than at each
+	// use (component_props.go).
+	if err := checkDecls(file, spec.Root); err != nil {
+		return nil, err
+	}
 	// Ids inside are the component's own, renamed for each use when it is
 	// expanded (component_ids.go).
 	return spec.Root, nil
