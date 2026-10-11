@@ -26,10 +26,10 @@ type CommandLine struct {
 	owner tui.Component // the widget it opens over
 	core  *EditorCore
 
-	modal *Modal     // the open prompt, nil when closed
-	field *TextInput // its field
-	list  *Text      // the candidates or the error, under the field
-	comp  completion // Tab's state over the open prompt
+	modal *Modal          // the open prompt, nil when closed
+	field *TextInput      // its field
+	list  *completionList // the dropdown under the field: the candidates, or the error
+	comp  completion      // Tab's state over the open prompt
 
 	ask *Modal // replace's open question, nil when none
 }
@@ -103,10 +103,10 @@ func (l *CommandLine) open(initial string, failed error) bool {
 		return false
 	}
 	l.comp = completion{at: -1}
-	l.list = NewText("", WithWrapMode(Wrap), WithTextStyle(cardText()))
+	l.list = &completionList{at: -1}
 	if failed != nil {
 		// the package's sentinels name it for a log; the user reads only what went wrong
-		l.list.SetText(strings.TrimPrefix(failed.Error(), "widget: "))
+		l.list.say(strings.TrimPrefix(failed.Error(), "widget: "))
 	}
 	// the field wears the theme's surface, as a field on a card does: a style with no colours
 	// would clear its cells to the terminal's own, a hole in the card
@@ -118,7 +118,7 @@ func (l *CommandLine) open(initial string, failed error) bool {
 			Selection:   style.New().Reverse(true),
 			Error:       field.Foreground(style.TokenError),
 		}),
-		WithOnEdit(func(string) { l.comp = completion{at: -1}; l.list.SetText("") }),
+		WithOnEdit(func(string) { l.comp = completion{at: -1}; l.list.clear() }),
 		WithOnSubmit(l.submit))
 	body := tui.NewFlex(tui.Vertical)
 	body.Add(l.field)
@@ -152,13 +152,21 @@ func (l *CommandLine) submit(line string) {
 	}
 }
 
-// keys are the prompt's own: Tab and Shift+Tab complete.
+// keys are the prompt's own: Tab and Shift+Tab complete; with the dropdown open, Down and Up move
+// through it as Tab and Shift+Tab do.
 func (l *CommandLine) keys(k tui.KeyEvent) bool {
-	if k.Code != tui.KeyTab || l.field == nil {
+	if l.field == nil {
 		return false
 	}
-	l.complete(k.Mods&tui.ModShift != 0)
-	return true
+	switch {
+	case k.Code == tui.KeyTab:
+		l.complete(k.Mods&tui.ModShift != 0)
+		return true
+	case (k.Code == tui.KeyDown || k.Code == tui.KeyUp) && len(l.comp.cands) > 1:
+		l.complete(k.Code == tui.KeyUp)
+		return true
+	}
+	return false
 }
 
 // complete completes the verb being typed. The first Tab fills in what every candidate shares
@@ -171,22 +179,23 @@ func (l *CommandLine) complete(back bool) {
 		verb, _, spaced := strings.Cut(line, " ")
 		if spaced {
 			if cmd, ok := l.core.Commands().Lookup(strings.TrimSuffix(verb, "!")); ok {
-				l.list.SetText(describe(cmd))
+				l.list.say(describe(cmd))
 			}
 			return
 		}
 		cands := l.core.Commands().Complete(line)
 		if len(cands) == 0 {
-			l.list.SetText("no command starts with " + quoteOrNothing(line))
+			l.list.say("no command starts with " + quoteOrNothing(line))
 			return
 		}
 		l.comp = completion{typed: line, cands: cands, at: -1}
-		l.list.SetText(describeAll(cands))
 		if len(cands) == 1 {
+			l.list.say(describe(cands[0]))
 			l.setField(cands[0].Name + " ")
 			l.comp.cands = nil // done: the next Tab lists its arguments
 			return
 		}
+		l.list.set(describeEach(cands), -1)
 		if p := commonPrefix(cands, line); p != line {
 			l.setField(p)
 			return
@@ -203,6 +212,7 @@ func (l *CommandLine) complete(back bool) {
 	default:
 		l.comp.at = (l.comp.at + 1) % n
 	}
+	l.list.choose(l.comp.at)
 	l.setField(l.comp.cands[l.comp.at].Name)
 }
 
@@ -222,12 +232,103 @@ func describe(c Command) string {
 	return s
 }
 
-func describeAll(cs []Command) string {
-	lines := make([]string, len(cs))
+func describeEach(cs []Command) []string {
+	rows := make([]string, len(cs))
 	for i, c := range cs {
-		lines[i] = describe(c)
+		rows[i] = describe(c)
 	}
-	return strings.Join(lines, "\n")
+	return rows
+}
+
+// completionList is the prompt's dropdown under the field: one candidate a row, the one Tab chose
+// highlighted, at most completionRows of them in view (the view follows the chosen one); or one
+// message on its own (an error, a verb's arguments), wrapped. Empty, it takes no room.
+type completionList struct {
+	Base
+	rows []string
+	at   int    // the chosen row; -1 for none yet
+	msg  string // shown in place of rows when set
+}
+
+// completionRows is how many candidates the dropdown shows at once.
+const completionRows = 8
+
+func (c *completionList) set(rows []string, at int) {
+	c.rows, c.at, c.msg = rows, at, ""
+	c.RequestLayout()
+	c.MarkDirty()
+}
+
+func (c *completionList) choose(at int) {
+	c.at = at
+	c.MarkDirty()
+}
+
+func (c *completionList) say(msg string) {
+	c.rows, c.at, c.msg = nil, -1, msg
+	c.RequestLayout()
+	c.MarkDirty()
+}
+
+func (c *completionList) clear() {
+	if c.msg != "" || c.rows != nil {
+		c.set(nil, -1)
+	}
+}
+
+// Layout is the field's width, and a row for each candidate in view, or the message's lines.
+func (c *completionList) Layout(cs tui.Constraints) tui.Size {
+	w := cs.MaxW
+	if w == tui.Unbounded {
+		w = 0
+		for _, r := range c.rows {
+			w = max(w, c.measure(r))
+		}
+		w = max(w, c.measure(c.msg))
+	}
+	h := min(len(c.rows), completionRows)
+	if c.msg != "" {
+		h = len(wrapLine(c.msg, max(w, 1), c.measure))
+	}
+	return cs.Constrain(tui.Size{W: w, H: h})
+}
+
+// first is the first candidate in view: the chosen one is always in it.
+func (c *completionList) first(h int) int {
+	if c.at < h {
+		return 0
+	}
+	return min(c.at-h+1, len(c.rows)-h)
+}
+
+// Render paints the rows on the card's colours, the chosen one as a selection.
+func (c *completionList) Render(s tui.Surface) {
+	sz := s.Size()
+	if sz.W <= 0 || sz.H <= 0 {
+		return
+	}
+	card := cardText()
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", card)
+	if c.msg != "" {
+		for y, ln := range wrapLine(c.msg, sz.W, s.StringWidth) {
+			if y >= sz.H {
+				break
+			}
+			drawText(s, 0, y, ln, card)
+		}
+		return
+	}
+	chosen := style.New().Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary)
+	top := c.first(sz.H)
+	for y := 0; y < sz.H && top+y < len(c.rows); y++ {
+		i := top + y
+		st := card
+		if i == c.at {
+			st = chosen
+			s.Fill(tui.Rect{Y: y, W: sz.W, H: 1}, " ", st)
+		}
+		drawText(s, 0, y, truncate(c.rows[i], sz.W, s.StringWidth), st)
+	}
 }
 
 // commonPrefix is the longest prefix every candidate's name shares, at least typed.
