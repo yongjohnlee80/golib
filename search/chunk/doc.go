@@ -4,11 +4,12 @@
 // # Chunking Strategies
 //
 // The package provides format-aware splitting and budget-packing policies:
-//   - Markdown ([Markdown]): Groups blocks under heading hierarchies, packing blocks up to the
-//     configured token budget. Individual list items are treated as atomic units (splitting oversized
-//     lists by item), while oversized tables, code blocks, or paragraphs are split across lines.
-//   - Plain Text ([Text]): Packs paragraphs up to the token budget, splitting oversized paragraphs
-//     along line breaks.
+//   - Markdown ([Markdown]): Groups blocks under heading hierarchies, packing blocks up to about
+//     350/512 of the configured token budget (with the budget as a hard cap). Individual list items
+//     are treated as atomic units (splitting oversized lists by item), while oversized tables, code
+//     blocks, or paragraphs are split across lines.
+//   - Plain Text ([Text]): Packs paragraphs up to about 350/512 of the token budget (capped at the
+//     configured limit), splitting oversized paragraphs along line breaks.
 //   - YAML ([YAML]): Flattens top-level mapping or sequence entries into "key > path: value" lines,
 //     packing lines within the token budget.
 //
