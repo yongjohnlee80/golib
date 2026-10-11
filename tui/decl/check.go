@@ -110,7 +110,7 @@ func Check(opts ...ProgramOption) error {
 			}
 			label := fmt.Sprintf("component %s of %s, which %s does not use", name, o.name, c.layoutFile)
 			if root := contents.Components[name]; !buildable(root) {
-				report(label, expandOnly(spec, imports, offers, name, root))
+				report(label, expandOnly(c, spec, imports, offers, name, root))
 				continue
 			}
 			report(label, mountAnywhere(c, hostings(c, spec, imports, name, contents.Components[name])))
@@ -290,8 +290,10 @@ func buildable(root *qml.SpecNode) bool {
 // the context of imports, with a MARKED placeholder for each required
 // property: a reference spelled as no document can write one, so it can
 // stand anywhere a value can and is never mistaken for a name. Scalars get
-// their zero, as a mount would give them.
-func expandOnly(layout qml.SpecTree, imports []qml.SpecImport, offers map[string]decl.ModuleContents,
+// their zero, as a mount would give them. The signal parameters are the
+// program's adapter's, so they shadow declared names in their handlers as
+// they do in a mount.
+func expandOnly(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, offers map[string]decl.ModuleContents,
 	component string, root *qml.SpecNode) error {
 	pos := layout.Root.Pos
 	use := &qml.SpecNode{Type: component, Pos: pos}
@@ -317,7 +319,7 @@ func expandOnly(layout qml.SpecTree, imports []qml.SpecImport, offers map[string
 			}
 		}
 	}
-	_, err := decl.ExpandComponents(use, types)
+	_, err := decl.ExpandComponents(use, types, newAdapter(c, func(error) {}).SignalParams)
 	return err
 }
 
