@@ -65,7 +65,7 @@ const (
 //     - Headings map to Markdown prefixes (# through ######).
 //     - Lists map to "- " (unordered) or "1. " (ordered), with 2 spaces of indentation per hierarchy level.
 //     - Tables are formatted as GitHub Flavored Markdown (GFM) grids with header dividers (| --- |),
-//       with pipes escaped (\|) and intra-cell line breaks converted to <br>.
+//     with pipes escaped (\|) and intra-cell line breaks converted to <br>.
 //     - Hyperlinks retain their text payload; media and drawing elements are skipped.
 //  4. Metadata Extraction: Populates [extract.Info.Title] from docProps/core.xml (dc:title) and
 //     [extract.Info.Pages] from docProps/app.xml when present.

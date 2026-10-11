@@ -14,7 +14,7 @@
 //     - Prioritizes the <main> element when present, isolating primary content immediately.
 //     - Falls back to the first <article> element if no <main> exists.
 //     - Falls back to <body> if neither is found, automatically discarding site furniture (<nav>, <header>,
-//       <footer>, <aside>).
+//     <footer>, <aside>).
 //  2. Noise & Active Content Elimination: Completely eliminates <script>, <style>, <noscript>, <template>,
 //     <svg>, <canvas>, <iframe>, <object>, <form>, <head>, comments, and any subtree tagged with the "hidden"
 //     attribute or aria-hidden="true". Suppressed subtrees never reach the output writer.
