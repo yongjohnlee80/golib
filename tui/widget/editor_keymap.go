@@ -186,6 +186,10 @@ const (
 	ActFindNext
 	ActFindPrev
 
+	// ActCommandLine opens the editor's ':' prompt (the Vim keyset's ':'), when its widget has
+	// one (SetCommandLine). Without one the key is not consumed.
+	ActCommandLine
+
 	actMax // sentinel for validation
 )
 
@@ -276,6 +280,8 @@ func (a Action) String() string {
 		return "FindNext"
 	case ActFindPrev:
 		return "FindPrev"
+	case ActCommandLine:
+		return "CommandLine"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -367,6 +373,8 @@ func (a Action) Description() string {
 		return "Go to the find's next match"
 	case ActFindPrev:
 		return "Go to the find's previous match"
+	case ActCommandLine:
+		return "Open the command line"
 	}
 	return "Custom action"
 }
@@ -430,7 +438,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
 		ActPageUp, ActPageDown:
 		return true, true, true
-	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActFindNext, ActFindPrev:
+	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActFindNext, ActFindPrev, ActCommandLine:
 		return true, true, false
 	case ActDeletePrefix, ActYankPrefix,
 		ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
@@ -530,6 +538,7 @@ func VimKeymap() Keymap {
 	km[KeyChord{Mode: ModeNormal, Code: 'r', Ctrl: true}] = ActRedo
 	km[n('n')], km[v('n')] = ActFindNext, ActFindNext
 	km[n('N')], km[v('N')] = ActFindPrev, ActFindPrev
+	km[n(':')], km[v(':')] = ActCommandLine, ActCommandLine
 	km[n('v')] = ActVisual
 	km[n('V')] = ActVisualLine
 
