@@ -25,8 +25,12 @@ var (
 )
 
 // Invocation binds a [View] to a specific sequence of query arguments, preparing it for execution.
-// It is an immutable value: binding does not mutate the underlying [View], and a single Invocation
-// can be executed multiple times concurrently across distinct goroutines and database connections.
+//
+// Lifecycle and Concurrency:
+// Binding does not mutate the underlying [View]. However, the bound arguments slice and any
+// referenced values are borrowed, not copied. Callers may execute an Invocation concurrently
+// across goroutines only when the argument slice and its referenced values remain unchanged and
+// the underlying database driver and value types support concurrent execution.
 type Invocation struct {
 	view *View
 	args []any
@@ -34,9 +38,9 @@ type Invocation struct {
 
 // WithArgs binds values to the view's declared args list in positional order.
 //
-// Arguments are passed directly to the database driver as bound parameters ($1, $2, … or ?, ?),
-// ensuring values never enter the SQL query text. For drivers supporting array types (such as
-// PostgreSQL "id = ANY($1)"), a Go slice binds as a typed SQL array.
+// The supplied arguments are stored directly without cloning and passed to the driver as bound
+// parameters ($1, $2, … or ?, ?), ensuring values never enter the SQL query text. For drivers
+// supporting array types (such as PostgreSQL "id = ANY($1)"), a Go slice binds as a typed SQL array.
 func (v *View) WithArgs(args ...any) Invocation {
 	return Invocation{view: v, args: args}
 }
@@ -50,10 +54,13 @@ func (v *View) Query(ctx context.Context, conn dao.DataConn) (*Rows, error) {
 
 // Query executes the bound view on conn.
 //
-// Pre-execution validations:
-//   - Argument Count: The number of bound arguments must match len(v.Args()).
-//   - Dialect Verification: conn.Dialect().Name() must match v.Source().
-//   - Column Cardinality: The SQL query must return exactly one column (the JSON value).
+// Execution and Validation Lifecycle:
+//   - Pre-dispatch checks: The number of bound arguments must match len(v.Args()), and
+//     conn.Dialect().Name() must match v.Source().
+//   - Post-dispatch shape checks: After the query executes on the connection, result column metadata
+//     is inspected to verify the query returned exactly one column. If the driver does not support
+//     column name inspection ([dao.ErrUnsupported]), this cardinality check falls back to the first
+//     row's Scan operation.
 //
 // The returned [Rows] cursor must be closed by the caller when iteration completes.
 func (inv Invocation) Query(ctx context.Context, conn dao.DataConn) (*Rows, error) {
@@ -105,7 +112,8 @@ type Rows struct {
 // Ownership and Invariants:
 // The returned []byte is cloned from the driver's internal buffer, giving the caller full
 // ownership of the memory. If the database returns NULL or malformed JSON, Next terminates the
-// cursor, closes the underlying connection, and returns an error wrapping [ErrRow].
+// stream, releases the underlying [dao.Rows] cursor, and returns an error wrapping [ErrRow].
+// The caller retains ownership of the underlying connection or pool.
 func (r *Rows) Next() ([]byte, error) {
 	if r.done {
 		return nil, r.end()
@@ -136,7 +144,7 @@ func (r *Rows) Next() ([]byte, error) {
 // All returns an iterator over the remaining rows in the stream suitable for for-range loops.
 //
 // Iteration Invariants:
-//   - Yields each row's JSON byte slice and any encountered read or unmarshaling error.
+//   - Yields each row's JSON byte slice and any encountered scanning or JSON validation error.
 //   - Stops iteration automatically after the first non-nil error, yielding that error to the caller.
 //   - Ensures the underlying [dao.Rows] cursor is closed when the loop terminates, whether
 //     exhausted naturally, aborted via error, or exited early via break or return.

@@ -21,9 +21,11 @@ var ErrNoExport = errors.New("view: the view declares no export")
 // Operational and Atomicity Guarantees:
 //   - Document Atomicity: Each document is written using [vfs.FS.WriteFile], ensuring writes
 //     are atomic and readers never observe partial files.
-//   - Failure Semantics: If an error occurs on row N, export terminates immediately: rows 1 through N-1
-//     remain written in dst, while row N is not committed. The total count of successfully written
-//     documents is returned alongside the error.
+//   - Failure and Accounting: Export reports the count of documents whose writes returned success.
+//     The first error stops iteration immediately. If the error occurs before the write commits,
+//     the in-flight document is not written. However, if the error matches [vfs.ErrCommitted]
+//     (such as a parent directory sync or post-write Stat failure), row N was already published
+//     whole to dst despite the error; callers should inspect or reconcile before retrying.
 //   - Path Traversal Containment: An empty export name produces an error. Any rendered path attempting
 //     lexical escape outside dst (such as "../" or absolute paths) is rejected by dst's [vfs.CheckName].
 //   - Storage Independence: dst can be any [vfs.FS] implementation, including local disk (vfs/local),

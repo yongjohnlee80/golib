@@ -21,9 +21,9 @@ import (
 //     integers are never silently converted or degraded to float64.
 //   - Duplicate Keys: In accordance with YAML 1.2 section 3.2.1.3, two keys in a mapping that have
 //     equal tags and canonical content are rejected as an error naming both definition positions.
-//   - Cycles and Expansion: An alias to an ancestor node produces a cycle error. Every alias
-//     dereference re-evaluates its target and charges its node count against [MaxNodes] to protect
-//     against algorithmic complexity attacks.
+//   - Cycles and Expansion: An alias to an ancestor node produces a cycle error. An alias dereference
+//     reuses its target's memoized value and logically charges its subtree size against [MaxNodes],
+//     protecting against algorithmic complexity attacks while allowing shared structure in Go values.
 func Evaluate(doc *pyaml.Document, schema Schema, opts ...Option) (any, error) {
 	if schema == Failsafe {
 		return nil, ErrFailsafe

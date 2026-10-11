@@ -54,11 +54,13 @@
 //   - Context-Aware Escaping: Every value printed by the template body is escaped according to the
 //     declared output format:
 //   - text, markdown: printed verbatim without escaping.
-//   - json: escaped for inclusion inside a JSON string (quotes, backslashes, control characters).
+//   - json: escaped for inclusion inside a JSON string's quotes (quotes, backslashes, control characters).
 //   - xml: escaped as XML character data (&, <, >, ', ").
 //   - html: escaped by [html/template] according to the exact context of the action (HTML body text,
 //     element attribute, URL, script, or style). Active script schemes (such as "javascript:")
 //     are sanitized.
+//   - Trusted Output Exceptions: Values produced by "toJson", "quote", or "raw" are marked as trusted
+//     ([Raw] or [html/template.HTML]) and bypass contextual escaping, as documented in [View.Format].
 //   - Null Safety: NULL or missing database fields print as empty strings rather than failing.
 //   - Path Traversal Containment: Export filenames that attempt directory traversal ("../") or
 //     contain absolute paths are rejected by the target filesystem driver.

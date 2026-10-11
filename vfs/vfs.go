@@ -12,15 +12,20 @@ import (
 //
 // Concurrency and Lifecycle:
 // All methods on FS are safe for concurrent use by multiple goroutines. Calling [FS.Close]
-// releases underlying OS handles, network sessions, or memory buffers; subsequent operations
-// return an error wrapping [github.com/yongjohnlee80/golib/errs.ErrClosed].
+// puts the driver into a terminal closed state, terminates active driver background tasks
+// (such as watches or network sessions), and causes subsequent operations to fail with an error
+// wrapping [github.com/yongjohnlee80/golib/errs.ErrClosed]. Stored filesystem content (such as
+// in-memory node structures) is not necessarily purged on Close and remains reachable until the
+// instance itself is garbage collected.
 //
 // Core Responsibilities:
 // FS defines the common denominator guaranteed by every driver:
 //  1. Path Resolution: Validates unrooted, slash-separated names ([io/fs.ValidPath]); rejects
 //     lexical escapes ("../") and internal driver temporary files ([TempPrefix]).
-//  2. Atomic Mutations: [FS.WriteFile] atomically replaces files using temporary staging files
-//     and atomic rename, guaranteeing readers never observe partial writes.
+//  2. Atomic Mutations: [FS.WriteFile] replaces files atomically, guaranteeing readers observe
+//     either the old content or the new, never a mix. Driver implementations employ suitable
+//     mechanisms (e.g. temporary staging files and atomic rename on local disk, or locked node updates
+//     in memory).
 //  3. Directory Integrity: Guarantees directory tree traversal and manipulation ([FS.ReadDir],
 //     [FS.MkdirAll], [FS.RemoveAll]) without exposing intermediate driver artifacts.
 //
@@ -31,7 +36,7 @@ import (
 //   - [ExclusiveCreator]: Atomic creation without replacement (CreateExclusive).
 //   - [NoReplaceRenamer]: Atomic move without overwriting targets (RenameNoReplace).
 //   - [Watcher]: Real-time filesystem mutation event streaming (Watch).
-//   - [Copier]: Server-side fast file cloning (Copy).
+//   - [Copier]: Native file cloning or optimized duplication (Copy).
 type FS interface {
 	// Stat returns the entry metadata for name.
 	//
@@ -58,11 +63,11 @@ type FS interface {
 	// WriteFile atomically replaces or creates the file at name with data read from r.
 	//
 	// Atomicity and Commit Point:
-	// Writes are staged in a temporary file and renamed into place, guaranteeing readers observe
-	// either the complete previous file or the complete new file. Any error occurring before the
-	// commit point aborts the write and preserves the existing file intact.
-	// An error occurring after the commit point (such as parent directory sync failure) returns
-	// a [*CommitError] indicating the file was successfully written.
+	// The replacement is atomic across all drivers: readers observe either the complete previous
+	// file or the complete new file, never a partial state. Drivers implement this through backend-appropriate
+	// mechanisms (such as staging files with atomic rename in local disk, or mutex-protected updates in memory).
+	// Any error occurring before the commit point aborts the mutation and preserves the existing state.
+	// An error occurring after the commit point returns a [*CommitError] indicating the new version was committed.
 	WriteFile(ctx context.Context, name string, r io.Reader, opts ...WriteOption) (FileInfo, error)
 
 	// MkdirAll creates the directory specified by name along with any missing parent directories.
@@ -81,7 +86,8 @@ type FS interface {
 	// by the driver (e.g. local disk and memfs).
 	Rename(ctx context.Context, from, to string) error
 
-	// Close releases all resources associated with the driver. Subsequent calls return an error
+	// Close releases active resources (such as file descriptors, watches, or network connections)
+	// and places the driver into a terminal closed state. Subsequent calls return an error
 	// wrapping [github.com/yongjohnlee80/golib/errs.ErrClosed].
 	Close() error
 }
