@@ -89,7 +89,7 @@ func (c *EditorCore) Select(r TextRange) {
 	c.vAnchor = lo
 	c.buf.ln, c.buf.col = end.ln, end.col
 	c.setMode(ModeVisual)
-	c.vEOL = eol
+	c.vEOL, c.vPinned = eol, true
 	c.reveal()
 	c.markDirty()
 }

@@ -961,7 +961,7 @@ func (e *Editor) renderText(s tui.Surface) {
 				st = sst.Inherit(st)
 			}
 		}
-		if e.focused() && c.Selected(ln, col) {
+		if c.Highlighted(ln, col, e.focused()) {
 			st = l.styles.Selection.Inherit(st)
 		}
 		// A leading space shown as indentation: dimmed as the ruler is, over any selection,
@@ -975,7 +975,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	lineFill := func(y, ln int) {
 		// A line-wise highlight covers the WHOLE screen row (S2), text or
 		// not; clusters then paint over the fill.
-		if c.keys.mode == ModeVisualLine && e.focused() && c.Selected(ln, 0) {
+		if c.keys.mode == ModeVisualLine && (e.focused() || c.vPinned) && c.Selected(ln, 0) {
 			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", l.styles.Selection.Inherit(l.styles.Text))
 		}
 	}

@@ -94,7 +94,7 @@ func (b *editorBody) Render(s tui.Surface) {
 				break
 			}
 			st := b.e.page
-			if b.focused && b.e.core.Selected(i, clusterAt(b.e.core.LineAt(i), x)) {
+			if b.e.core.Highlighted(i, clusterAt(b.e.core.LineAt(i), x), b.focused) {
 				st = st.Reverse(true)
 			}
 			s.SetCell(x, y, c, st)
@@ -361,10 +361,8 @@ func (v bodyView) Paint(c gui.Canvas) {
 		numbered := -1
 		for _, ll := range lb.bl.Lines {
 			at := gui.Pt(-l.left, oy+ll.Y)
-			if b.focused {
-				for _, r := range selection(e.core, ll, visualLine, l.width) {
-					tc.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
-				}
+			for _, r := range selection(e.core, ll, visualLine, l.width, b.focused) {
+				tc.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
 			}
 			for _, m := range ll.Marks {
 				tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
@@ -397,7 +395,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 				if lb.bl.Background.A > 0 {
 					b.caretBG = lb.bl.Background
 				}
-				if b.focused && e.core.Selected(cl, ccol) {
+				if e.core.Highlighted(cl, ccol, b.focused) {
 					b.caretBG = sel // painted under the caret's cluster above
 				}
 			}
@@ -472,15 +470,16 @@ func (b *editorBody) paintNumber(c gui.Canvas, ln int, baseline float32, current
 	c.DrawText(t, gui.Pt(padX+digits-t.Width, baseline-t.Ascent), gui.Solid(col))
 }
 
-// selection is a line's selected clusters as highlight rects, in the paragraph's coordinates. A
-// Visual-line selection covers each row of the line, the width of the text.
-func selection(core *tuiwidget.EditorCore, ll LineLayout, wholeLine bool, width float32) []gui.Rect {
+// selection is a line's highlighted clusters (the core's Highlighted: the selection while focused,
+// a pinned one, the current match) as rects, in the paragraph's coordinates. A Visual-line
+// selection covers each row of the line, the width of the text.
+func selection(core *tuiwidget.EditorCore, ll LineLayout, wholeLine bool, width float32, focused bool) []gui.Rect {
 	if len(ll.Spans) == 0 || ll.Spans[0].Line < 0 {
 		return nil
 	}
 	ln := ll.Spans[0].Line
 	if wholeLine {
-		if !core.Selected(ln, 0) {
+		if !core.Highlighted(ln, 0, focused) {
 			return nil
 		}
 		var out []gui.Rect
@@ -494,7 +493,7 @@ func selection(core *tuiwidget.EditorCore, ll LineLayout, wholeLine bool, width 
 		n := clusters(sp.Text)
 		start := -1
 		for k := 0; k <= n; k++ {
-			on := k < n && core.Selected(ln, sp.Col+k)
+			on := k < n && core.Highlighted(ln, sp.Col+k, focused)
 			switch {
 			case on && start < 0:
 				start = k
