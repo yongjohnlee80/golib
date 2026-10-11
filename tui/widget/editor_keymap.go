@@ -181,6 +181,11 @@ const (
 	// An editor without one does not take it: the key bubbles.
 	ActToggleRendered
 
+	// ActFindNext and ActFindPrev go to the active find's next and previous match (n, N in the Vim
+	// keyset), wrapping. With no active find the key is not consumed: it reaches the application.
+	ActFindNext
+	ActFindPrev
+
 	actMax // sentinel for validation
 )
 
@@ -267,6 +272,10 @@ func (a Action) String() string {
 		return "Escape"
 	case ActToggleRendered:
 		return "ToggleRendered"
+	case ActFindNext:
+		return "FindNext"
+	case ActFindPrev:
+		return "FindPrev"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -354,6 +363,10 @@ func (a Action) Description() string {
 		return "Escape to Normal mode"
 	case ActToggleRendered:
 		return "Switch between the Rendered view and Raw"
+	case ActFindNext:
+		return "Go to the find's next match"
+	case ActFindPrev:
+		return "Go to the find's previous match"
 	}
 	return "Custom action"
 }
@@ -417,7 +430,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
 		ActPageUp, ActPageDown:
 		return true, true, true
-	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine:
+	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActFindNext, ActFindPrev:
 		return true, true, false
 	case ActDeletePrefix, ActYankPrefix,
 		ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
@@ -515,6 +528,8 @@ func VimKeymap() Keymap {
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo
 	km[KeyChord{Mode: ModeNormal, Code: 'r', Ctrl: true}] = ActRedo
+	km[n('n')], km[v('n')] = ActFindNext, ActFindNext
+	km[n('N')], km[v('N')] = ActFindPrev, ActFindPrev
 	km[n('v')] = ActVisual
 	km[n('V')] = ActVisualLine
 
