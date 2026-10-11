@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -190,5 +191,27 @@ func TestWithCommandLineOffLetsColonBubble(t *testing.T) {
 	}
 	if !bubbled {
 		t.Fatal("':' did not reach the application")
+	}
+}
+
+// The candidates under the field wear the card's background, not the screen's default: a Text
+// with no colours on the card was a dark block in a themed window.
+func TestTheCandidatesWearTheCardsBackground(t *testing.T) {
+	th := solidTheme(style.ANSI(4)) // a themed panel, so the card's background is not the default
+	ed := widget.NewEditor(widget.WithInitialText("text"))
+	h := startAppOpts(t, newShell(widget.NewOverlayHost(ed)), 80, 20, tui.WithTheme(&th))
+	defer h.stop()
+	h.inject(click(0, 0))
+	h.settle()
+	typeIn(h, ":w")
+	h.inject(tui.KeyEvent{Code: tui.KeyTab})
+	h.settle()
+	y := h.rowWith("w — save")
+	x := strings.Index(h.row(y), "w — save")
+	snap := h.tb.Snapshot()
+	cand := snap[y][len([]rune(h.row(y)[:x]))].Attrs.BG
+	card := snap[y][len([]rune(h.row(y)[:x]))-1].Attrs.BG // the card's padding beside it
+	if cand != card {
+		t.Fatalf("a candidate's background %+v, the card's %+v", cand, card)
 	}
 }
