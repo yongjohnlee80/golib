@@ -7,39 +7,48 @@ import (
 
 // Extractor turns one document container into Markdown.
 //
-// It reads the container through r, which holds size bytes, and writes the Markdown to w as it goes,
-// so neither the container nor its text has to be held in memory whole. A PDF's cross-reference
-// table sits at the end of the file and a DOCX is a ZIP archive whose directory sits there too, so
-// an extractor needs to read at offsets, not only forward: r is an io.ReaderAt for that reason.
+// # Architectural Contract & Design Invariants
 //
-// An extractor stops when ctx is cancelled and returns ctx's error. A write error from w ends the
-// extraction and is returned. Whatever was written before an error stays written; a caller that must
-// not keep half a document writes to a destination it can discard, as an atomic file write does.
-//
-// A [Set] calls one Extractor from many goroutines at once, so an implementation used through a Set
-// must be safe for concurrent use. [Text] keeps no state, and neither should most extractors: the
-// per-document state belongs to the call.
+//  1. Offset-Based Streaming Input: Reads the container via r ([io.ReaderAt]), which holds size bytes.
+//     Because complex document formats (such as PDF cross-reference tables or DOCX ZIP directories)
+//     locate central directories and indexes at the end of the file, r allows random-access offset
+//     reads without requiring the full container to be buffered in memory.
+//  2. Streamed Output: Emits Markdown chunks incrementally to w ([io.Writer]). Neither the input container
+//     nor the rendered output text is held in memory in its entirety.
+//  3. Cancellation & Lifecycle: Halts immediately when ctx is cancelled and returns ctx.Err().
+//     Write errors from w terminate the extraction immediately and are returned to the caller.
+//  4. Failure Semantics & Atomic Guarantees: Any content written to w prior to encountering an error
+//     persists in the destination. Callers requiring all-or-nothing atomicity should direct w to a
+//     temporary or discardable buffer (such as an atomic file write pattern).
+//  5. Concurrency Invariant: An [Extractor] used inside a [Set] can be invoked concurrently across
+//     multiple goroutines. Implementations must be safe for concurrent use; state should not be stored
+//     on the extractor receiver across extraction calls.
 type Extractor interface {
 	Extract(ctx context.Context, r io.ReaderAt, size int64, w io.Writer) (Info, error)
 }
 
-// Func adapts a function to an [Extractor].
+// Func adapts a function with signature matching [Extractor.Extract] into an [Extractor].
 type Func func(ctx context.Context, r io.ReaderAt, size int64, w io.Writer) (Info, error)
 
-// Extract calls f.
+// Extract calls f(ctx, r, size, w).
 func (f Func) Extract(ctx context.Context, r io.ReaderAt, size int64, w io.Writer) (Info, error) {
 	return f(ctx, r, size, w)
 }
 
-// Info describes the document an extraction read. Every field is optional: an extractor fills what
-// its format knows.
+// Info describes structural metadata discovered while extracting a document container.
+// All fields are optional: an extractor populates the metadata its specific container format provides.
 type Info struct {
-	// Title is the document's own title, such as a PDF's Title entry or a DOCX's core property.
-	// [Set.Extract] uses the file's name when it is empty.
+	// Title is the document's embedded title, extracted from format-specific metadata
+	// (such as a PDF Title dictionary entry or a DOCX core property dc:title).
+	// When empty, [Set.Extract] falls back to the container file's basename without extension.
 	Title string
-	// Pages is the number of pages, for a format that has them; 0 otherwise.
+
+	// Pages is the total count of rendered or physical pages for paginated formats (such as PDF or DOCX);
+	// 0 if the format is unpaginated (such as plain text or HTML) or if page count is unavailable.
 	Pages int
-	// Scanned reports a container that holds pages but no text, such as a scanned PDF: its text
-	// can only come from OCR, which an extractor does not do.
+
+	// Scanned indicates whether a paginated document contains pages with no textual payload
+	// (for example, a scanned PDF containing raster images exclusively). Optical character
+	// recognition (OCR) is outside the scope of this package.
 	Scanned bool
 }
