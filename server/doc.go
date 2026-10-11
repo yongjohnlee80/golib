@@ -4,7 +4,7 @@
 //
 // The core has zero external dependencies and does not import net/http. All routing and
 // middleware primitives are parameterized over the transport's handler type H (for example,
-// http.Handler in HTTP servers or connection-handling functions in RPC servers).
+// http.Handler in HTTP servers).
 //
 // # Architectural Primitives
 //
@@ -28,7 +28,8 @@
 // Server implementations follow a two-phase termination model upon context cancellation:
 //  1. Ingress Termination: The listener closes to reject new connections, and [Registry.Reserve]
 //     fails, returning protocol-appropriate refusal signals (such as HTTP 503 Service Unavailable).
-//  2. Polite Drain with Bounded Deadline: Active sessions implementing [Drainer] receive polite
-//     drain requests (such as WebSocket close frames or RPC finish signals), allowing in-flight
-//     work to flush until the shutdown context expires, after which unclosed sessions are terminated.
+//  2. Polite Drain with Bounded Deadline: Active sessions implementing [Drainer] are asked to drain
+//     (such as WebSocket close frames, or RPC waiting for in-flight replies to flush before closing),
+//     allowing in-flight work to complete until the shutdown context expires, after which unclosed
+//     sessions are terminated.
 package server

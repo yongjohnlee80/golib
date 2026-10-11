@@ -15,6 +15,7 @@
 //     uploads ([FileUpload]) and structured metadata.
 //   - Request History: [Histories] maintains a concurrency-safe, bounded ring buffer of recent request
 //     and response cycles for debugging, inspection, and test verification.
-//   - Bounded Resource Protection: Enforces [MaxResponseBodySize] (default 10 MB) to protect against
-//     memory exhaustion from unexpected or malicious upstream payloads.
+//   - Configurable Size Limit: Applies [MaxResponseBodySize] by default (10 MB; configurable or
+//     disabled with -1 via Params.MaxResponseSize), returning [ErrResponseTooLarge] if a response
+//     exceeds the limit.
 package request

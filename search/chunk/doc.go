@@ -3,12 +3,14 @@
 //
 // # Chunking Strategies
 //
-// The package provides format-aware splitting policies that preserve semantic continuity:
-//   - Markdown ([Markdown]): Split along heading boundaries, preserving document titles
-//     and heading breadcrumbs. Atomic blocks (tables, code blocks, lists) are kept contiguous
-//     unless an individual block exceeds the configured token budget.
-//   - Plain Text ([Text]): Split by paragraph boundaries and empty lines.
-//   - YAML ([YAML]): Split into top-level key-value trees.
+// The package provides format-aware splitting and budget-packing policies:
+//   - Markdown ([Markdown]): Groups blocks under heading hierarchies, packing blocks up to the
+//     configured token budget. Individual list items are treated as atomic units (splitting oversized
+//     lists by item), while oversized tables, code blocks, or paragraphs are split across lines.
+//   - Plain Text ([Text]): Packs paragraphs up to the token budget, splitting oversized paragraphs
+//     along line breaks.
+//   - YAML ([YAML]): Flattens top-level mapping or sequence entries into "key > path: value" lines,
+//     packing lines within the token budget.
 //
 // Each produced chunk preserves byte offset coordinates referencing the original source document,
 // enabling exact-span highlighting in search results.
