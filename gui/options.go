@@ -7,12 +7,16 @@ import (
 	"gioui.org/unit"
 )
 
-// Theme is what the window draws with where a cell asks for the terminal's own colours: the
-// default foreground and background (tui's CellColorDefault), the cursor, and the sixteen ANSI
-// colours a cell may name by index. A tui App's own theme resolves everything else to RGB.
+// Theme defines the baseline color palette utilized by the window when cell styles reference
+// default terminal colors (such as [tui.CellColorDefault]), default cursor styling, or indexed
+// 16-color ANSI palettes.
+//
+// Higher-level application themes defined in [tui.App] map semantic tokens to RGB colors.
+// When cells specify unmapped defaults or ANSI indices, Theme resolves them into concrete
+// [color.NRGBA] values for vector rasterization.
 type Theme struct {
 	FG, BG color.NRGBA
-	Cursor color.NRGBA // the caret; zero draws it in the colour of the text under it
+	Cursor color.NRGBA // caret color; zero-value draws the caret using the color of the underlying text cell
 	ANSI   [16]color.NRGBA
 }
 

@@ -7,11 +7,20 @@ import (
 	"gioui.org/app"
 )
 
-// Main runs a program whose App uses this backend, and gives Gio the main thread, which macOS
-// and iOS require for windows. run builds the App and runs it; Main runs it on a new goroutine.
+// Main executes a GUI program by binding the primary OS operating system thread to Gio's
+// event loop, satisfying platform constraints on macOS, iOS, and X11/Wayland that require
+// window creation and graphics context management to occur on the main OS thread.
 //
-// Gio's main loop never returns on desktop platforms, so Main ends the process when run returns:
-// status 0, or status 1 with the error on stderr. Put cleanup that must happen inside run.
+// The provided run function typically instantiates the [Backend], constructs the component tree,
+// initializes [tui.App], and executes [tui.App.Run]. Main launches run on a newly spawned goroutine
+// while parking the primary thread in Gio's event pump via app.Main.
+//
+// When run completes:
+//   - If run returns nil, Main terminates the process with exit code 0 via os.Exit(0).
+//   - If run returns an error, the error message is written to os.Stderr and the process exits with code 1.
+//
+// NOTE: Because Gio's desktop main loop does not return normally, any deferred teardown or cleanup
+// logic must execute within the body of run or via [tui.App] shutdown hooks.
 func Main(run func() error) {
 	beforeGio()
 	go func() {

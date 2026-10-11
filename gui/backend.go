@@ -26,9 +26,23 @@ var ErrNotStarted = errors.New("gui: backend not started")
 // errClosedBeforeOpen is Start's answer when the window is destroyed before its first frame.
 var errClosedBeforeOpen = errors.New("gui: window closed before it opened")
 
-// Backend is a tui.Backend that is a native window. It also implements tui.GraphicsBackend,
-// tui.ClipboardWriter and tui.CursorColorSetter, so images, copy and the cursor colour work as
-// they do on a terminal that supports them.
+// Backend is an implementation of [tui.Backend] that displays TUI applications in a native
+// operating system window using Gio.
+//
+// In addition to the fundamental [tui.Backend] interface, Backend implements:
+//   - [tui.GraphicsBackend]: Renders [tui.ImagePlacement] bitmaps natively via [Backend.PlaceImage].
+//   - [tui.ClipboardWriter]: Writes UTF-8 text to the host system clipboard via [Backend.WriteClipboard].
+//   - [tui.CursorColorSetter]: Configures dynamic caret styling via [Backend.SetCursorColor].
+//   - [tui.NativeHost]: Hosts arbitrary vector graphics views through [Backend.PlaceNatives].
+//   - [tui.NativeStyler]: Inquires component styles through [Backend.NativeFor].
+//   - [tui.CellMetrics]: Reports logical cell pixel dimensions via [Backend.CellPixels].
+//
+// Concurrency Model:
+// Backend coordinates state between the TUI event loop goroutine and the Gio window event goroutine.
+// All public methods conforming to [tui.Backend] are invoked exclusively on the TUI event loop.
+// Fields mutated during Flush, cursor updates, or image placements are strictly loop-owned,
+// while cross-thread handoffs to Gio (frames, font generations, clipboard requests) use atomic
+// pointers or short mutex-protected latches without blocking.
 type Backend struct {
 	cfg config
 	win *app.Window
@@ -198,10 +212,15 @@ func measureFont(s *text.Shaper, typeface string) fontMetrics {
 	return fontMetrics{advance: toEm(g.Advance), ascent: toEm(g.Ascent), descent: toEm(g.Descent)}
 }
 
-// Start opens the window, starts the Gio goroutine and the event forwarder, and returns once the
-// first frame has published metrics, so the App's Size and first frame read a real window. That
-// first configuration is consumed, not sent: the App reads the size from Size, and tui/term sends
-// no focus event at start either. Cancelling ctx first closes the window and returns ctx.Err().
+// Start initializes the native window, configures window properties, launches the
+// internal event forwarder and Gio event loops, and blocks until the initial frame has
+// published valid window metrics.
+//
+// By waiting for the first frame's metrics, Start guarantees that subsequent calls to [Backend.Size]
+// return true window dimensions rather than zero or uninitialized values. The initial configuration
+// event is consumed internally.
+//
+// If ctx is cancelled before the window opens, Start terminates the window and returns ctx.Err().
 func (b *Backend) Start(ctx context.Context) error {
 	b.win.Option(b.cfg.windowOptions()...)
 	b.forwarding.Store(true)
@@ -223,8 +242,11 @@ func (b *Backend) Start(ctx context.Context) error {
 	}
 }
 
-// Stop closes the window. It is idempotent and returns with Events closed, whether or not Gio
-// ever delivers the window's DestroyEvent.
+// Stop shuts down the native window and terminates event processing.
+//
+// Stop is idempotent and safe to call multiple times. It signals window termination, releases
+// internal event channels, and waits for the forwarder goroutine to finish. Upon return,
+// the channel returned by [Backend.Events] is guaranteed to be closed.
 func (b *Backend) Stop() error {
 	b.q.end(nil)
 	b.win.Perform(system.ActionClose)
@@ -234,7 +256,8 @@ func (b *Backend) Stop() error {
 	return nil
 }
 
-// Size is the grid that fits the window, in whole cells.
+// Size reports the current grid dimensions in whole monospace character cells.
+// If the backend has not completed [Backend.Start], Size returns [ErrNotStarted].
 func (b *Backend) Size() (tui.Size, error) {
 	m := b.metrics.Load()
 	if m == nil {
@@ -243,11 +266,12 @@ func (b *Backend) Size() (tui.Size, error) {
 	return m.grid, nil
 }
 
-// Grid is the window's grid now, in cells, and the font generation it was measured at: one load of
-// the frame's metrics, so the two always belong together. A caller that changes the fonts and then
-// judges by the grid compares the generation with FontGeneration's after its change: the window
-// may still report a grid of an earlier generation, or one measured just before the change and
-// published after it. Zero cells and generation 0 before the window's first frame.
+// Grid returns the active cell grid dimensions and the font generation counter at which
+// those dimensions were measured.
+//
+// When modifying fonts via [Backend.SetFont] or zoom levels via [Backend.SetZoom], callers
+// can inspect the returned generation counter against [Backend.FontGeneration] to determine
+// whether the reported grid reflects the updated typography or an earlier layout snapshot.
 func (b *Backend) Grid() (tui.Size, uint64) {
 	m := b.metrics.Load()
 	if m == nil {
@@ -256,19 +280,26 @@ func (b *Backend) Grid() (tui.Size, uint64) {
 	return m.grid, m.fontGen
 }
 
-// FontGeneration is the generation of the fonts last set (SetFont, SetProseFont, SetZoom each start
-// a new one; 0 is the window's own): a grid Grid reports with this generation is drawn at them.
+// FontGeneration returns the monotonic generation counter of the most recently requested
+// font or zoom configuration (via [Backend.SetFont], [Backend.SetProseFont], or [Backend.SetZoom]).
 func (b *Backend) FontGeneration() uint64 { return b.font.Load().gen }
 
-// Events is the window's input, in order and uncoalesced. Closed once, by the forwarder.
+// Events returns the receive-only channel carrying decoded, un-coalesced [tui.Event] values.
+//
+// Events is closed exactly once when the backend shuts down cleanly or encounters an unrecoverable
+// window error.
 func (b *Backend) Events() <-chan tui.Event { return b.q.events }
 
-// Err is what ended the backend: the window's DestroyEvent error, ErrEventOverflow, or Start's
-// context error. Nil after a clean Stop or a clean close. The first reason is the one kept.
+// Err returns the terminating error that caused the backend to stop, such as [ErrEventOverflow],
+// a window destruction error, or a context cancellation during [Backend.Start]. It returns nil
+// after a clean [Backend.Stop].
 func (b *Backend) Err() error { return b.q.reason() }
 
-// Capabilities claims only what the window does with the same meaning a terminal gives it, so an
-// app branching on a flag behaves as it would on a terminal that answered it. Constant after Start.
+// Capabilities reports the terminal-compatible capabilities supported by the native window backend.
+//
+// It reports [tui.ProfileTrueColor], full Kitty keyboard protocol support, bracketed paste,
+// hardware mouse tracking, native vector view embedding, and image support. Protocol-specific
+// terminal control modes (such as SyncOutput, InBandResize, and Undercurl) are reported as false.
 func (b *Backend) Capabilities() tui.Capabilities {
 	t := b.cfg.theme
 	return tui.Capabilities{
@@ -286,8 +317,12 @@ func (b *Backend) Capabilities() tui.Capabilities {
 	}
 }
 
-// Flush draws a frame and hands it to the Gio goroutine. It never blocks: a frame Gio never took
-// is replaced, because every frame is a complete picture.
+// Flush rasterizes dirty cell updates and latched cursor state into a recorded vector frame
+// macro and transfers it to the Gio presentation loop.
+//
+// Flush is non-blocking: it updates the internal grid buffer, executes run-length draw optimizations,
+// captures caret coordinates for OS IME positioning, and atomically replaces the latest pending
+// frame. Gio re-renders the latest frame during its next VSync cycle.
 func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	select {
 	case <-b.q.done:

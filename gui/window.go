@@ -51,8 +51,15 @@ func (c config) windowOptions() []app.Option {
 
 func fontOf(typeface string) font.Font { return font.Font{Typeface: font.Typeface(typeface)} }
 
-// run is the Gio goroutine. It never touches a component or the grid: it turns the window's
-// events into tui events through the queue, publishes metrics, and submits the newest frame.
+// run executes the primary Gio event loop on a dedicated goroutine spawned by [Backend.Start].
+//
+// Invariants & Responsibilities:
+//   - Isolated from the TUI event loop: run never inspects or mutates component trees, widget states,
+//     or cell grid arrays directly.
+//   - Reads incoming [app.Window] events (keyboard, mouse, window resizing, focus shifts, close requests).
+//   - Translates raw window events into standard [tui.Event] types and pushes them onto the [eventQueue].
+//   - Measures window metrics and publishes atomic snapshots via [Backend.metrics].
+//   - Renders the latest frame macro submitted by [Backend.Flush] into the GPU display context.
 func (b *Backend) run() {
 	tag := &b.gio // the window's one input handler
 	for {

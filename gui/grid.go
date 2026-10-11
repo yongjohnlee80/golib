@@ -5,8 +5,14 @@ import "github.com/yongjohnlee80/golib/tui"
 // blank is an empty cell in the default colours, what tui's buffer starts from.
 var blank = tui.Cell{Content: " ", Width: 1}
 
-// grid is the backend's own copy of the screen: what the App has flushed, cell by cell, and which
-// rows changed since they were last drawn. Owned by tui's loop goroutine.
+// grid maintains the backend's local mirror of the active terminal cell buffer, tracking
+// flushed [tui.Cell] values and per-row dirty flags to drive incremental redraws.
+//
+// Invariants & State Ownership:
+//   - Owned exclusively by the TUI event loop goroutine.
+//   - Cells are stored in a contiguous 1D slice of size w × h in row-major order.
+//   - The dirty slice holds one boolean per row. Flushed cell diffs mark their corresponding
+//     row dirty, allowing unchanged rows to reuse cached vector operations.
 type grid struct {
 	w, h  int
 	cells []tui.Cell
