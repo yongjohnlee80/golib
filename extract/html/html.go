@@ -75,7 +75,16 @@ func (Extractor) ID() string { return "golib/html" }
 // increments this version string to invalidate downstream derived caches.
 func (Extractor) Version() string { return "1" }
 
-// Extract reads an HTML document from r of size bytes and streams the resulting Markdown representation to w.
+// Extract performs bounded, buffered extraction on an HTML document from r of size bytes and writes
+// the resulting Markdown representation to w.
+//
+// # Memory Model & Bounded Extraction
+//
+// Unlike unbuffered stream extractors, HTML structure requires hierarchical DOM analysis:
+// Extract reads source bytes up to [phtml.Limits.MaxSource] into memory, constructs a DOM tree
+// within node and depth constraints, and gathers Markdown blocks before emitting them to w.
+// Consequently, [extract.MaxText] caps only the final text written to w; intermediate DOM and
+// block structures are bounded independently by [Extractor.Limits].
 //
 // # Execution & Metadata Resolution
 //
@@ -84,7 +93,7 @@ func (Extractor) Version() string { return "1" }
 //  3. Identifies the primary content root (<main>, <article>, or filtered <body>).
 //  4. Resolves document title: uses the page's <title> element if available, falling back to the first
 //     <h1> heading discovered in the content.
-//  5. Streams rendered Markdown blocks to w, checking ctx for cancellation between blocks.
+//  5. Writes rendered Markdown blocks to w, checking ctx for cancellation between blocks.
 func (e Extractor) Extract(ctx context.Context, r io.ReaderAt, size int64, w io.Writer) (extract.Info, error) {
 	lim := e.Limits
 	if lim.MaxSource <= 0 {

@@ -62,7 +62,7 @@ type Option func(*Set)
 //
 // # Panic Invariants
 //
-// Register panics immediately if:
+// The returned Option closure panics when applied (typically within [New]) if:
 //   - e is nil or a nil [Func] value.
 //   - exts is empty, or any normalized extension evaluates to a bare dot (".").
 //
