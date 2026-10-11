@@ -222,7 +222,7 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		return true
 	}
 
-	if c.listKey(k) {
+	if c.tableKey(k) || c.listKey(k) {
 		return true
 	}
 	switch k.Code {

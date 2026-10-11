@@ -74,6 +74,8 @@ type EditorCore struct {
 	// listEditing continues, ends and nests Markdown list items in Insert mode (editor_lists.go)
 	listEditing bool
 	listWhere   func(ln int) bool // the lines list editing applies on; nil: every line
+	// tableEditing walks a Markdown table's cells with Tab in Insert mode (editor_tables.go)
+	tableEditing bool
 
 	// The constructor-time listeners for what the core also publishes on the bus: a widget built
 	// before it is mounted has no Context to subscribe with.
@@ -647,6 +649,7 @@ func (c *EditorCore) exitInsert() {
 		return
 	}
 	c.hist.close()
+	c.buf.anchor = nil // a table cell's selection is Insert mode's
 	c.buf.col = max(0, c.buf.col-1)
 	c.clampNormal()
 	c.buf.desired = -1
