@@ -11,7 +11,9 @@
 //	Root     := { Import } Node
 //	Import   := 'import' DottedName [ Version ] [ 'as' Qualifier ]
 //	Node     := TypeName '{' Body '}'                   // Text { }, Tui.Rectangle { }
-//	Body     := ( Property | Handler | Group | Node )*
+//	Body     := ( Decl | Property | Handler | Group | Node )*
+//	Decl     := [ 'required' ] 'property' Type Ident [ ':' Value ]   // property string label: "Find"
+//	          | 'default' 'property' 'alias' Ident ':' Ident '.' 'data'
 //	Property := PropName ':' Value [ ';' ]
 //	Group    := PropName '{' ( Property )* '}'          // font { bold: true }
 //	PropName := Ident { '.' Ident }                     // plain, grouped, or attached

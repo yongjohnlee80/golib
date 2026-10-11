@@ -30,7 +30,9 @@ import (
 //	Root     := { Import } Node
 //	Import   := 'import' DottedName [ Version ] [ 'as' Qualifier ]
 //	Node     := TypeName '{' Body '}'
-//	Body     := ( Property | Handler | Group | Node )*
+//	Body     := ( Decl | Property | Handler | Group | Node )*
+//	Decl     := [ 'required' ] 'property' Type Ident [ ':' Value ]   // a component's own
+//	          | 'default' 'property' 'alias' Ident ':' Ident '.' 'data'
 //	Property := PropName ':' Value
 //	Group    := PropName '{' ( Property )* '}'    // font { bold: true }
 //	PropName := Ident { '.' Ident }               // plain, grouped, or attached
@@ -285,7 +287,36 @@ type SpecNode struct {
 	Props    []SpecProp
 	Handlers []SpecHandler
 	Children []*SpecNode
-	Pos      parse.Position
+	// Decls are the properties this node's body DECLARES, in document order:
+	// `property string label: "Find"`. Only a component file's root has any
+	// that a consumer accepts; this parser records them wherever they are
+	// written and leaves that rule to the consumer, as it does every other.
+	Decls []SpecDecl
+	Pos   parse.Position
+}
+
+// SpecDecl is a property a node declares for itself — a component's own
+// parameter, which a use of the component sets by name:
+//
+//	property string label: "Find"               // a value, with a default
+//	required property var model                 // a value the use site must give
+//	default property alias columns: list.data   // the use site's children go to list
+//
+// Three spellings Qt also has are refused here, each naming what to write
+// instead: `property alias`, `readonly property` and `signal`.
+type SpecDecl struct {
+	Name string
+	// Type is the type as written: string, int, real, double, bool, var, url,
+	// color, or list<T>. A default alias has "alias".
+	Type string
+	// Default is the value written after the colon, nil for none. A required
+	// declaration never has one.
+	Default  *SpecValue
+	Required bool
+	// Target is a default alias's inner id ("list" for `list.data`), "" for
+	// every other declaration.
+	Target string
+	Pos    parse.Position
 }
 
 // SpecTree is a parsed schema.
@@ -710,6 +741,18 @@ func (p *qmlParser) nodeBody(name string, startPos parse.Position) (*SpecNode, e
 		// TypeName rather than something that needs backtracking.
 		if err := p.skipSpace(); err != nil {
 			return nil, err
+		}
+		// A DECLARATION is a declaration word followed by another word:
+		// `property string label`. Followed by `:` or `{` the word is an
+		// ordinary property's name — `property: 3` — so the same one rune of
+		// lookahead decides this too.
+		if len(path) == 1 && isDeclWord(name) {
+			if r, ok := p.sc.Peek(); ok && isIdentStart(r) {
+				if err := p.declaration(n, name, memberAt); err != nil {
+					return nil, err
+				}
+				continue
+			}
 		}
 		switch {
 		case p.sc.HasPrefix("{") && isTypeName(path[len(path)-1]):
