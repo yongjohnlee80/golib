@@ -1,9 +1,18 @@
-// Package embed is the embedding provider contract and its HTTP clients: Ollama's /api/embed, and
-// any OpenAI-compatible /v1/embeddings endpoint, both plain net/http with no SDK. Bisect embeds a
-// batch, narrowing a provider's rejection of the input down to the texts it refuses.
+// Package embed provides client interfaces and HTTP implementations for vector embedding
+// services used in semantic search.
 //
-//	p, err := embed.NewOllama(ctx, embed.DefaultOllamaURL, "", "bge-m3", nil, embed.WithContext(2048))
-//	vecs, rejected, err := embed.Bisect(ctx, p, texts, p.Model().Dims, 30*time.Second)
+// # Supported Providers
 //
-// A provider is optional to a search engine: with none, search is by words.
+//   - Ollama ([NewOllama]): Native integration with Ollama's local /api/embed API.
+//   - OpenAI-Compatible ([NewOpenAI]): Standard /v1/embeddings endpoint integration for
+//     cloud models using standard net/http with zero SDK dependencies.
+//
+// # Resilient Batch Ingestion
+//
+// When upstream embedding providers reject large text batches (due to token length limits,
+// invalid byte sequences, or context window overflow), [Bisect] divides the batch recursively,
+// isolating problematic documents while embedding valid candidates cleanly.
+//
+// Embedding providers are optional to [golib/search.Engine]; without a configured embedder,
+// the engine operates in lexical (keyword/FTS5) mode.
 package embed

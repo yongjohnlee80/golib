@@ -65,7 +65,7 @@ func DrainTimeout(d time.Duration) ScaffoldOption {
 }
 
 // ScaffoldSessionFactory replaces the session registered for each accepted
-// connection (amendment, via). By default the scaffold
+// connection with a custom instance. By default, the scaffold
 // registers a bare conn-closing session; a transport whose drain must be
 // polite (finish in-flight replies before close) supplies a factory whose
 // Session also implements Drainer. The ConnHandler retrieves the factory's

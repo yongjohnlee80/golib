@@ -25,26 +25,37 @@ const (
 	DefaultTimeout = 10 * time.Second
 )
 
-// Params holds the configuration and state for an HTTP request/response cycle.
+// Params encapsulates both the input configuration and the execution state for an
+// HTTP request/response cycle. Note that Params is mutated by [Request] and [Do] to
+// store the resulting response state, and is therefore not safe for concurrent reuse.
 type Params struct {
+	// ResponseBody contains the full body payload returned by the remote server, read
+	// up to MaxResponseSize.
 	ResponseBody string
-	Headers      map[string]string
-	Cookies      []*http.Cookie
-	Method       string
-	Password     string
-	Request      *http.Request
-	Response     *http.Response
+	// Headers holds request headers transmitted with the HTTP request.
+	Headers map[string]string
+	// Cookies contains HTTP cookies appended to the request.
+	Cookies []*http.Cookie
+	// Method is the HTTP verb (e.g. "GET", "POST", "PUT", "DELETE").
+	Method string
+	// Password is the optional password for HTTP Basic Authentication.
+	Password string
+	// Request is the underlying *http.Request created and executed by Do.
+	Request *http.Request
+	// Response is the *http.Response received from the server.
+	Response *http.Response
 
-	// Timeout bounds the whole request/response cycle. It is a standard
-	// time.Duration: write Timeout: 30 * time.Second. Zero means
-	// DefaultTimeout; negative means no timeout.
+	// Timeout bounds the entire request/response cycle including body reading.
+	// Zero uses [DefaultTimeout]; negative duration disables client-side timeouts.
 	Timeout time.Duration
 
-	Url      string
+	// Url is the destination HTTP/HTTPS endpoint URL.
+	Url string
+	// Username is the optional user identity for HTTP Basic Authentication.
 	Username string
 
-	// MaxResponseSize overrides the default response body size limit.
-	// Set to 0 to use MaxResponseBodySize. Set to -1 for unlimited.
+	// MaxResponseSize overrides the maximum allowed response body size in bytes.
+	// 0 uses [MaxResponseBodySize] (10 MB); -1 allows unlimited reading.
 	MaxResponseSize int64
 }
 
@@ -56,9 +67,11 @@ var ErrResponseTooLarge = errors.New("request: response body exceeds maximum siz
 // across requests.
 var defaultTransport = &http.Transport{}
 
-// CustomPayload allows custom payload types that provide their own content type.
+// CustomPayload allows payload objects to declare their own Content-Type header
+// alongside the payload data stream (for example, [FormWriter]).
 type CustomPayload interface {
 	io.Reader
+	// ContentType returns the MIME media type string (e.g. "multipart/form-data; boundary=...").
 	ContentType() string
 }
 

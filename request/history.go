@@ -37,9 +37,9 @@ type HistoryResponse struct {
 	body   []byte
 }
 
-// Histories stores a limited history of HTTP requests as HistoryEntry objects.
-// It maintains a maximum number of entries specified by limit, automatically
-// removing the oldest entries when full. Histories is safe for concurrent use.
+// Histories stores a bounded, thread-safe ring buffer of recent HTTP transactions
+// as [HistoryEntry] objects. When the number of recorded entries reaches limit,
+// recording a new entry automatically evicts the oldest entry in FIFO order.
 type Histories struct {
 	limit uint64
 
@@ -47,8 +47,8 @@ type Histories struct {
 	entries []*HistoryEntry
 }
 
-// NewHistories initializes a new Histories instance with a specified size or
-// a default size of 3 if size is 0.
+// NewHistories initializes a new Histories ring buffer with the given capacity.
+// If size is 0, it defaults to a capacity of 3 entries.
 func NewHistories(size uint64) *Histories {
 	if size == 0 {
 		size = 3
