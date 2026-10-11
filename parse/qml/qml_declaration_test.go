@@ -121,3 +121,30 @@ func TestAHalfWrittenDeclarationIsIncomplete(t *testing.T) {
 		}
 	}
 }
+
+// TestTheLookaheadSkipsSpaceAndComments: what follows the declaration word
+// decides, whatever lies between — and a grouped `property { }` block, which
+// a lower-case word before `{` always is, stays one.
+func TestTheLookaheadSkipsSpaceAndComments(t *testing.T) {
+	tree, err := qml.QML{}.Parse([]byte("Item {\n property /* c */ string a: \"x\"\n" +
+		" required // c\n  property var b\n property /* c */ : 3\n property // c\n { c: 1 }\n Text { }\n}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decls, props []string
+	for _, d := range tree.Root.Decls {
+		decls = append(decls, d.Type+" "+d.Name)
+	}
+	for _, p := range tree.Root.Props {
+		props = append(props, p.Name)
+	}
+	if got := strings.Join(decls, ","); got != "string a,var b" {
+		t.Errorf("decls = %s, want string a,var b", got)
+	}
+	if got := strings.Join(props, ","); got != "property,property.c" {
+		t.Errorf("props = %s, want property,property.c", got)
+	}
+	if c := tree.Root.Children; len(c) != 1 || c[0].Type != "Text" {
+		t.Errorf("children = %+v, want the Text", c)
+	}
+}
