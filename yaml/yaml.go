@@ -119,12 +119,13 @@ type config struct{ maxNodes int }
 // when no custom [MaxNodes] option is specified.
 const DefaultMaxNodes = 1_000_000
 
-// MaxNodes returns an [Option] bounding the maximum number of AST nodes [Evaluate] is permitted
+// MaxNodes returns an [Option] bounding the maximum number of logical nodes [Evaluate] is permitted
 // to construct.
 //
 // In YAML documents containing recursive or multi-reference aliases (such as the "billion laughs"
-// expansion attack), each alias dereference re-evaluates and counts its entire target subtree.
-// Bounding total constructed nodes halts processing before excessive memory or CPU is consumed.
+// expansion pattern), each alias dereference reuses the memoized target value while logically charging
+// its subtree size against the budget. Bounding total charged nodes halts processing before excessive
+// time or memory is consumed.
 func MaxNodes(n int) Option { return func(c *config) { c.maxNodes = n } }
 
 func itoa(n int) string {
