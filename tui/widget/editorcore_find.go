@@ -138,9 +138,7 @@ func (c *EditorCore) ReplaceAll(term, with string, o FindOptions) (int, error) {
 // wrapping.
 func (c *EditorCore) SetFind(term string, o FindOptions) {
 	c.find.term, c.find.opts = term, FindOptions{IgnoreCase: o.IgnoreCase}
-	if term == "" {
-		c.find.curOn = false
-	}
+	c.find.curOn = false // a new find (or none) is on no match until n, N or SetCurrentMatch
 	switch {
 	case term != "" && c.hl.hl == nil:
 		c.hl.setHighlighter(plainHighlighter)
@@ -173,7 +171,7 @@ func (c *EditorCore) FindNext(back bool) bool {
 }
 
 // SetCurrentMatch draws r as the current match, as a selection whatever the mode and the focus: the
-// one a find is on, so the user sees which. An empty r clears it; SetFind("") clears it too.
+// one a find is on, so the user sees which. An empty r clears it; SetFind clears it too.
 func (c *EditorCore) SetCurrentMatch(r TextRange) {
 	lo, hi := c.clampRange(r)
 	c.find.cur = TextRange{From: TextPos{lo.ln, lo.col}, To: TextPos{hi.ln, hi.col}}
