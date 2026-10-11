@@ -34,6 +34,8 @@ func (c *EditorCore) inVisual(ln, col int) bool {
 	case ModeVisualLine:
 		lo, hi := c.visualLines()
 		return ln >= lo && ln <= hi
+	case ModeInsert:
+		return c.inCellSelection(ln, col) // a table cell Tab selected, which typing replaces
 	}
 	return false
 }
