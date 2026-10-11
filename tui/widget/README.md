@@ -343,6 +343,14 @@ editor := widget.NewEditor(widget.WithContextMenu(func(e *widget.Editor) []widge
 }))
 ```
 
+The editor's behaviour is its `EditorCore` (`editor.Core()`), shared with the GUI's `Editor`. It
+has the functions a host, a script or an agent edits a document through: positions and ranges;
+`Insert`, `Delete`, `Replace` and `Batch` (one undo step); `ReadFrom` / `WriteTo` (`io.Reader`,
+`io.Writer`); `Modified` / `MarkSaved`; `Find`, `ReplaceAll` and the active find that `n` / `N`
+step through. It also has the command line: `:` opens a **VIM Commands** prompt (Tab completes) that runs `<n>`,
+`w`, `q`, `q!`, `wq`, `x`, `find`, `replace` and the host's own commands, also callable as
+`RunCommand(line)`. See [EDITOR_CORE.md](EDITOR_CORE.md).
+
 #### `BufferView`
 
 High-throughput append-oriented log pager with ring-bounded scrollback, ANSI SGR color interpretation, follow-tail auto-scrolling, and thread-safe streaming writer:
