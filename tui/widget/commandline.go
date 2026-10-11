@@ -103,7 +103,7 @@ func (l *CommandLine) open(initial string, failed error) bool {
 		return false
 	}
 	l.comp = completion{at: -1}
-	l.list = NewText("", WithWrapMode(Wrap))
+	l.list = NewText("", WithWrapMode(Wrap), WithTextStyle(cardText()))
 	if failed != nil {
 		// the package's sentinels name it for a log; the user reads only what went wrong
 		l.list.SetText(strings.TrimPrefix(failed.Error(), "widget: "))
@@ -265,7 +265,7 @@ func (l *CommandLine) askReplace(s *ReplaceSession) error {
 		return nil
 	}
 	var m *Modal
-	question := NewText("")
+	question := NewText("", WithTextStyle(cardText()))
 	question.SetTextMessage(tui.Msg("tui.cmdline.replaceQuestion"))
 	m = NewModal(question,
 		WithModalTitleMessage(tui.Msg("tui.cmdline.replaceTitle")),
@@ -297,4 +297,10 @@ func (l *CommandLine) askReplace(s *ReplaceSession) error {
 	}
 	l.ask = m
 	return nil
+}
+
+// cardText is a Text's look on the prompt's card: the card's own colours. A Text with none would
+// clear its cells to the screen's default background, a dark block on a themed card.
+func cardText() style.Style {
+	return style.New().Background(style.TokenPanel).Foreground(style.TokenForeground)
 }
