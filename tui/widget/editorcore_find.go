@@ -293,3 +293,20 @@ func (s *ReplaceSession) Stop() {
 		s.c.Unselect()
 	}
 }
+
+// SetOnEscape gives the host Esc in Normal mode (or a modeless editor's Esc) when the editor has
+// nothing of its own to cancel (no pending count or operator, no selection, no active find): fn
+// reports whether it took the key (the host's own find in the page, say), and a key it did not
+// take bubbles as before. Only a focused editor sees that Esc, so the host's answer is scoped to
+// it. nil: none.
+func (c *EditorCore) SetOnEscape(fn func() bool) { c.onEscape = fn }
+
+// escapeFind is Esc with nothing else to cancel: the active find ends; else the host's (SetOnEscape)
+// answer. It reports whether the key was taken.
+func (c *EditorCore) escapeFind() bool {
+	if c.find.term != "" {
+		c.SetFind("", FindOptions{})
+		return true
+	}
+	return c.onEscape != nil && c.onEscape()
+}
