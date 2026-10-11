@@ -160,7 +160,7 @@ func (t *Tree) vetDocument(spec qml.SpecTree) (imports, qml.SpecTree, error) {
 	}
 	// COMPONENTS FIRST: every check below judges the document as it will be
 	// built, which is with each component use expanded.
-	root, err := expand(spec.Root, t.componentTypes(imported))
+	root, err := expand(spec.Root, t.componentTypes(imported), t.signalParams)
 	if err != nil {
 		return imports{}, qml.SpecTree{}, SchemaError{Op: "component", Err: err}
 	}
