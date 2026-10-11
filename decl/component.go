@@ -52,9 +52,10 @@ import (
 // columns: list.data` — which a use sets by name. They are parameters of the
 // macro, not properties of anything at run time: substitute (component_props.go)
 // replaces each reference to one inside the copy with the use site's value, or
-// the default, before the copy's nested uses expand; merge leaves them off the
-// root, and sends the use site's children to the default alias's object when
-// there is one. A file's declarations are judged when it loads (checkDecls).
+// the default, before the copy's nested uses expand — but not a signal's
+// parameter of the same name in its handler; merge leaves them off the root,
+// and sends the use site's children to the default alias's object when there
+// is one. A file's declarations are judged when it loads (checkDecls).
 
 // ErrComponent reports a component type that cannot be used as written: a file
 // the rules refuse, a name taken twice, a component that contains itself.
