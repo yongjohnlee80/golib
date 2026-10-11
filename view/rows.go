@@ -24,28 +24,38 @@ var (
 	ErrRow = errors.New("view: process must return one JSON column")
 )
 
-// Invocation is a view bound to its arguments, ready to run. It is a value: binding never changes the
-// View, and one Invocation may run any number of times, concurrently.
+// Invocation binds a [View] to a specific sequence of query arguments, preparing it for execution.
+// It is an immutable value: binding does not mutate the underlying [View], and a single Invocation
+// can be executed multiple times concurrently across distinct goroutines and database connections.
 type Invocation struct {
 	view *View
 	args []any
 }
 
-// WithArgs binds the view's declared args, in order, as the query's parameters. The values go to the
-// driver as bound parameters and never into the query text, so they may come from anywhere. A Go
-// slice binds as an array where the driver supports one, as postgres does for "id = ANY($1)", which
-// lets one view serve a whole catalog by a group's id and a single entity by its own.
+// WithArgs binds values to the view's declared args list in positional order.
+//
+// Arguments are passed directly to the database driver as bound parameters ($1, $2, … or ?, ?),
+// ensuring values never enter the SQL query text. For drivers supporting array types (such as
+// PostgreSQL "id = ANY($1)"), a Go slice binds as a typed SQL array.
 func (v *View) WithArgs(args ...any) Invocation {
 	return Invocation{view: v, args: args}
 }
 
-// Query runs the view's process on conn and returns its rows. It refuses a conn whose dialect is not
-// the view's source, and an argument count other than the declared one, before running anything.
+// Query executes the view's query on conn with no arguments.
+// It fails if the view declared one or more args, or if the connection dialect does not match
+// the view's declared source.
 func (v *View) Query(ctx context.Context, conn dao.DataConn) (*Rows, error) {
 	return v.WithArgs().Query(ctx, conn)
 }
 
-// Query runs the bound view on conn. See [View.Query].
+// Query executes the bound view on conn.
+//
+// Pre-execution validations:
+//   - Argument Count: The number of bound arguments must match len(v.Args()).
+//   - Dialect Verification: conn.Dialect().Name() must match v.Source().
+//   - Column Cardinality: The SQL query must return exactly one column (the JSON value).
+//
+// The returned [Rows] cursor must be closed by the caller when iteration completes.
 func (inv Invocation) Query(ctx context.Context, conn dao.DataConn) (*Rows, error) {
 	v := inv.view
 	if len(inv.args) != len(v.args) {
@@ -73,8 +83,14 @@ func (inv Invocation) Query(ctx context.Context, conn dao.DataConn) (*Rows, erro
 	return &Rows{view: v, rows: rows}, nil
 }
 
-// Rows streams a query's result, one JSON value per row. The database cursor is read a row at a
-// time, so a result of any size is never held in memory. Rows is not safe for concurrent use.
+// Rows provides a forward-only streaming iterator over the database query results, delivering
+// one JSON byte slice per row.
+//
+// Memory Management:
+// Results are read sequentially one row at a time directly from the database driver cursor.
+// Large result sets spanning millions of rows are processed without buffering the entire dataset in memory.
+//
+// Rows is not safe for concurrent use by multiple goroutines.
 type Rows struct {
 	view *View
 	rows dao.Rows
@@ -83,9 +99,13 @@ type Rows struct {
 	err  error
 }
 
-// Next returns the next row's JSON, or io.EOF after the last. The slice is the caller's to keep. A
-// NULL or a value that is not JSON is an error wrapping [ErrRow]; any error ends the stream, and
-// the cursor is released when it ends.
+// Next advances the cursor and returns the JSON payload for the next row, returning [io.EOF]
+// after the final row has been processed.
+//
+// Ownership and Invariants:
+// The returned []byte is cloned from the driver's internal buffer, giving the caller full
+// ownership of the memory. If the database returns NULL or malformed JSON, Next terminates the
+// cursor, closes the underlying connection, and returns an error wrapping [ErrRow].
 func (r *Rows) Next() ([]byte, error) {
 	if r.done {
 		return nil, r.end()
@@ -113,8 +133,13 @@ func (r *Rows) Next() ([]byte, error) {
 	return bytes.Clone(x), nil
 }
 
-// All ranges over the remaining rows. It stops after the first error, which it yields, and closes the
-// rows when the loop ends, even early.
+// All returns an iterator over the remaining rows in the stream suitable for for-range loops.
+//
+// Iteration Invariants:
+//   - Yields each row's JSON byte slice and any encountered read or unmarshaling error.
+//   - Stops iteration automatically after the first non-nil error, yielding that error to the caller.
+//   - Ensures the underlying [dao.Rows] cursor is closed when the loop terminates, whether
+//     exhausted naturally, aborted via error, or exited early via break or return.
 func (r *Rows) All() iter.Seq2[[]byte, error] {
 	return func(yield func([]byte, error) bool) {
 		defer r.Close()
@@ -130,7 +155,8 @@ func (r *Rows) All() iter.Seq2[[]byte, error] {
 	}
 }
 
-// Close releases the cursor. It is safe to call more than once, and after the stream has ended.
+// Close releases the underlying database cursor and any associated network/connection resources.
+// It is idempotent and safe to call multiple times or after the stream has already reached [io.EOF].
 func (r *Rows) Close() error {
 	if r.done {
 		return nil

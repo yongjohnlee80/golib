@@ -7,46 +7,82 @@ import (
 	"time"
 )
 
-// FS is a filesystem rooted at one directory, bucket or remote path. All methods are safe for concurrent
-// use. It holds what every driver answers; optional abilities are separate interfaces
-// ([ConditionalWriter], [ExclusiveCreator], [NoReplaceRenamer], [Watcher], [Copier]) found by type
-// assertion. See the package documentation for names, atomicity and versions.
+// FS represents a unified, portable virtual filesystem abstraction rooted at a single directory,
+// bucket, or remote path.
+//
+// Concurrency and Lifecycle:
+// All methods on FS are safe for concurrent use by multiple goroutines. Calling [FS.Close]
+// releases underlying OS handles, network sessions, or memory buffers; subsequent operations
+// return an error wrapping [github.com/yongjohnlee80/golib/errs.ErrClosed].
+//
+// Core Responsibilities:
+// FS defines the common denominator guaranteed by every driver:
+//  1. Path Resolution: Validates unrooted, slash-separated names ([io/fs.ValidPath]); rejects
+//     lexical escapes ("../") and internal driver temporary files ([TempPrefix]).
+//  2. Atomic Mutations: [FS.WriteFile] atomically replaces files using temporary staging files
+//     and atomic rename, guaranteeing readers never observe partial writes.
+//  3. Directory Integrity: Guarantees directory tree traversal and manipulation ([FS.ReadDir],
+//     [FS.MkdirAll], [FS.RemoveAll]) without exposing intermediate driver artifacts.
+//
+// Extended Driver Capabilities:
+// Optional features beyond this baseline are factored into specialized interfaces discovered via
+// Go type assertion:
+//   - [ConditionalWriter]: Optimistic concurrency via version checking (WriteFileIf, RemoveIf).
+//   - [ExclusiveCreator]: Atomic creation without replacement (CreateExclusive).
+//   - [NoReplaceRenamer]: Atomic move without overwriting targets (RenameNoReplace).
+//   - [Watcher]: Real-time filesystem mutation event streaming (Watch).
+//   - [Copier]: Server-side fast file cloning (Copy).
 type FS interface {
-	// Stat returns the entry at name itself: a symlink is reported as a symlink, not followed. Symlinks
-	// in the intermediate elements of name are followed when they stay inside the root.
+	// Stat returns the entry metadata for name.
+	//
+	// Entry Semantics:
+	// Stat returns metadata for the directory entry itself: a symlink is reported with [fs.ModeSymlink]
+	// and is never followed to its target. Symlinks encountered in parent directory components of name
+	// are followed provided they remain strictly confined within the driver's root.
 	Stat(ctx context.Context, name string) (FileInfo, error)
 
-	// ReadDir lists the directory at name (following a symlink that stays inside the root), sorted by
-	// Name. Each entry is reported itself, as Stat would; the driver's own temporary files are never
-	// listed.
+	// ReadDir lists the directory at name, returning entries sorted lexicographically by base name.
+	//
+	// Invariants:
+	// Each entry represents the immediate child itself (symlinks are not followed). Driver-internal
+	// staging files (prefixed with [TempPrefix]) are filtered out and never returned.
 	ReadDir(ctx context.Context, name string) ([]FileInfo, error)
 
-	// Open streams the file at name starting at offset. An offset at or past the end yields an empty
-	// stream. The caller closes the returned reader.
+	// Open returns an [io.ReadCloser] streaming the contents of the file at name starting from offset.
+	//
+	// Bounds and Cleanup:
+	// Specifying an offset at or past the end of the file yields an empty stream returning [io.EOF].
+	// The caller is responsible for calling Close on the returned reader.
 	Open(ctx context.Context, name string, offset int64) (io.ReadCloser, error)
 
-	// WriteFile replaces the file at name with r's content, creating it if needed (its parent directory
-	// must exist). The replacement is atomic: readers see the old content or the new, never a mix.
-	// Errors before the commit point leave the old state intact; errors after it are a *CommitError.
-	// It returns the new entry, including its Version.
+	// WriteFile atomically replaces or creates the file at name with data read from r.
+	//
+	// Atomicity and Commit Point:
+	// Writes are staged in a temporary file and renamed into place, guaranteeing readers observe
+	// either the complete previous file or the complete new file. Any error occurring before the
+	// commit point aborts the write and preserves the existing file intact.
+	// An error occurring after the commit point (such as parent directory sync failure) returns
+	// a [*CommitError] indicating the file was successfully written.
 	WriteFile(ctx context.Context, name string, r io.Reader, opts ...WriteOption) (FileInfo, error)
 
-	// MkdirAll creates the directory at name and any missing parents. It is idempotent.
+	// MkdirAll creates the directory specified by name along with any missing parent directories.
+	// It is idempotent: calling MkdirAll on an existing directory returns nil without error.
 	MkdirAll(ctx context.Context, name string) error
 
-	// Remove deletes the file, symlink or empty directory at name. A symlink is removed, never its target.
+	// Remove deletes the file, symlink, or empty directory at name.
+	// If name names a symlink, the link itself is removed, never its target.
 	Remove(ctx context.Context, name string) error
 
-	// RemoveAll deletes name and everything under it. A missing name is not an error. The root itself
-	// cannot be removed.
+	// RemoveAll recursively removes name and all entries contained within it.
+	// A missing target is treated as a no-op returning nil. The root directory (".") cannot be removed.
 	RemoveAll(ctx context.Context, name string) error
 
-	// Rename moves from to to, replacing an existing file at to. Whether the move is atomic is part of
-	// the driver's documented contract (local and memfs: atomic; an object store: copy then delete).
+	// Rename moves or renames from to to, atomically replacing any existing file at to where supported
+	// by the driver (e.g. local disk and memfs).
 	Rename(ctx context.Context, from, to string) error
 
-	// Close releases the driver. Every later call fails with an error wrapping
-	// github.com/yongjohnlee80/golib/errs.ErrClosed.
+	// Close releases all resources associated with the driver. Subsequent calls return an error
+	// wrapping [github.com/yongjohnlee80/golib/errs.ErrClosed].
 	Close() error
 }
 

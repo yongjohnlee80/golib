@@ -3,6 +3,10 @@
 // format. It separates shaping data for a consumer, such as an embedding model, a search index or an
 // export, from the consumer itself.
 //
+// # Architectural Model
+//
+// A .view file pairs a structured database query with a templated document layout:
+//
 //	---
 //	version: 1
 //	name: track_view
@@ -16,28 +20,46 @@
 //	# {{.track}}
 //	{{if .lyric}}{{.lyric}}{{else}}*(Instrumental)*{{end}}
 //
-// golib/parse/view reads the file; this package evaluates it. Each row's JSON can be consumed three
-// ways: decoded into the caller's own struct, rendered to a string, or streamed:
+// golib/parse/view reads and validates the file's syntax; this package evaluates it against a live
+// database connection. Each row's JSON result can be consumed in three primary ways:
+// decoded into the caller's own Go struct, rendered directly to a string, or streamed via [io.Reader]:
 //
 //	v, err := view.Load("track.view")
+//	if err != nil {
+//		return err
+//	}
 //	rows, err := v.WithArgs(ids).Query(ctx, conn) // conn is a dao.DataConn
+//	if err != nil {
+//		return err
+//	}
 //	defer rows.Close()
 //	for x, err := range rows.All() {
-//		err = json.Unmarshal(x, &track)  // the row itself
-//		doc, err := v.Parse(x)           // the document, as a string
-//		rdr, err := v.Read(x)            // the document, as a stream; Close it
+//		if err != nil {
+//			return err
+//		}
+//		err = json.Unmarshal(x, &track)  // 1. Decode raw row payload
+//		doc, err := v.Parse(x)           // 2. Render document to string
+//		rdr, err := v.Read(x)            // 3. Stream document via io.ReadCloser
+//		defer rdr.Close()
 //	}
 //
-// [Invocation.Export] writes every row's document to a vfs.FS at the name the export template
-// renders, for the declared destination.
+// [Invocation.Export] writes every row's document to a [github.com/yongjohnlee80/golib/vfs.FS] at
+// the path rendered by the export template for the declared destination.
 //
-// # Safety
+// # Safety and Invariants
 //
-// The query is never a template. Arguments are bound parameters, so a value from a search hit or a
-// request cannot change the SQL. Every value the body prints is escaped for the view's output
-// format: JSON string content for json, character data for xml, and for html, html/template's
-// escaping for the context each value lands in (text, attribute, URL, script, style). A lyric
-// holding a quote cannot break a JSON document, and a value cannot become an attribute or a
-// javascript: link in an HTML one. A NULL or missing value prints as nothing. An export name that
-// would leave the destination is refused by the filesystem.
+//   - SQL Injection Immunity: The query declared in process is never treated as a template.
+//     Arguments are always passed to the driver as bound parameters ($1, $2, …).
+//     Any occurrence of "{{" inside the process field is rejected at compilation time.
+//   - Context-Aware Escaping: Every value printed by the template body is escaped according to the
+//     declared output format:
+//   - text, markdown: printed verbatim without escaping.
+//   - json: escaped for inclusion inside a JSON string (quotes, backslashes, control characters).
+//   - xml: escaped as XML character data (&, <, >, ', ").
+//   - html: escaped by [html/template] according to the exact context of the action (HTML body text,
+//     element attribute, URL, script, or style). Active script schemes (such as "javascript:")
+//     are sanitized.
+//   - Null Safety: NULL or missing database fields print as empty strings rather than failing.
+//   - Path Traversal Containment: Export filenames that attempt directory traversal ("../") or
+//     contain absolute paths are rejected by the target filesystem driver.
 package view

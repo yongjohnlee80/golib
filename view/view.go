@@ -32,8 +32,11 @@ const (
 // frontmatter, an unknown or mistyped field, a template that does not parse.
 var ErrInvalid = errors.New("view: invalid definition")
 
-// View is a loaded .view definition: its frontmatter fields and its compiled body and export templates.
-// A View is immutable once loaded and safe for concurrent use.
+// View represents a fully compiled and validated .view definition.
+// It encapsulates the view's frontmatter configuration, query specifications,
+// and compiled body and export templates.
+//
+// A View is immutable once created and safe for concurrent use by multiple goroutines.
 type View struct {
 	name        string
 	source      string
@@ -60,8 +63,10 @@ func (p positions) of(field string) parse.Position {
 	return p.top
 }
 
-// Load reads and compiles the .view file at filename, which names it in every error position. See
-// [New].
+// Load reads and compiles the .view file located at filename. The file path is recorded
+// in all parse and compilation errors to simplify debugging.
+//
+// See [New] for comprehensive specification of the .view file schema and compilation rules.
 func Load(filename string) (*View, error) {
 	src, err := os.ReadFile(filename)
 	if err != nil {
@@ -70,28 +75,35 @@ func Load(filename string) (*View, error) {
 	return compileFile(src, pview.WithName(filename))
 }
 
-// New compiles a .view definition. golib/parse/view reads its shape: a line holding exactly "---",
-// the YAML frontmatter, the next such line, and the body template, which may itself begin with "---"
-// (a Markdown document's own frontmatter). This evaluates what it read.
+// New compiles and validates a raw .view definition buffer.
 //
-// The frontmatter fields:
+// Syntax Structure:
+// A .view file begins with an opening delimiter line containing exactly "---", followed by
+// YAML frontmatter, a closing "---" delimiter line, and the document body template.
+// If the body is itself a Markdown file containing frontmatter, its initial "---" delimiter
+// is parsed as document body content rather than view frontmatter.
 //
-//	version      required, 1
-//	name         required
-//	source       required; the dialect name of the connection the view runs on ("postgres", "sqlite", "mysql")
-//	args         optional list of names, bound in order as the query's parameters ($1, $2, … in postgres)
-//	process      required; the query, which returns exactly one column holding one JSON value per row
-//	export       optional template for each document's file name, as text/template sees it ({{.entity_id}})
-//	destination  optional URI of where exports go (file:///dir, gs://bucket/prefix)
-//	format       optional; text, markdown, json, xml or html. Defaults from export's extension, else text
+// Declared Frontmatter Schema (evaluated under YAML Core schema):
 //
-// The frontmatter is read under YAML's Core schema, and a multi-line query is a block scalar
-// ("process: |"). An unknown field is an error, so a misspelt optional field cannot silently go
-// missing. The query is never a template: "{{" in process is refused, because a value spliced into
-// SQL text is an injection, and every argument arrives as a bound parameter instead. A body calling
-// a function that is neither one of text/template's nor one this package provides is refused here,
-// not when the first row renders. Every error wraps [ErrInvalid], and one the parser found also
-// unwraps to its *parse/view.Error.
+//	version      required int; currently must equal 1.
+//	name         required string; unique identifier of the view.
+//	source       required string; database dialect name ("postgres", "sqlite", "mysql").
+//	args         optional []string; ordered parameter names bound to query placeholders ($1, $2, …).
+//	process      required string; SQL query returning exactly one column containing one JSON value per row.
+//	export       optional string; text/template template for destination filenames (e.g. {{.entity_id}}).
+//	destination  optional string; target URI scheme (file:///dir, gs://bucket/prefix).
+//	format       optional string; output format (text, markdown, json, xml, html). Defaults from export extension.
+//
+// Compilation and Security Verification:
+//   - Parameterization: The query cannot contain "{{" template directives; dynamic inputs must be
+//     supplied via bound query arguments rather than string interpolation.
+//   - Strict Schemas: Unknown or misspelled frontmatter fields immediately produce compilation errors.
+//   - Function Resolution: Any template function call in the body not recognized by standard text/template
+//     or this package's built-in function map is rejected at compile time before database execution.
+//   - HTML Context Verification: Under [FormatHTML], the template is pre-executed with dummy inputs to detect
+//     context-ambiguity errors at load time.
+//
+// Every compilation failure returns an error wrapping [ErrInvalid].
 func New(src []byte) (*View, error) { return compileFile(src) }
 
 func compileFile(src []byte, opts ...pview.Option) (*View, error) {

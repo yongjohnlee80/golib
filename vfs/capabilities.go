@@ -5,45 +5,54 @@ import (
 	"io"
 )
 
-// A driver declares a capability by implementing its interface; callers find it by type assertion:
+// Capability Discovery Pattern:
+// A driver advertises optional functionality by implementing the corresponding interface.
+// Consumers discover supported features dynamically via Go type assertion:
 //
-//	if c, ok := fsys.(vfs.ConditionalWriter); ok {
-//		info, err = c.WriteFileIf(ctx, name, r, seen)
+//	if cw, ok := fsys.(vfs.ConditionalWriter); ok {
+//		info, err = cw.WriteFileIf(ctx, name, r, seen)
 //	}
 //
-// There is deliberately no Supports*() predicate beside the interfaces: a predicate and an interface
-// can disagree. What a capability promises beyond its methods — whether a condition is exact against
-// writers outside this driver instance — is part of each driver's documented contract. A capability
-// the platform refuses at runtime (a filesystem without an atomic no-replace rename) returns an error
-// wrapping github.com/yongjohnlee80/golib/errs.ErrUnsupported, never a weaker emulation.
+// Semantics and Invariants:
+// There are deliberately no boolean Supports*() methods beside these interfaces to prevent interface-state
+// drift. If a platform refuses a capability at runtime (such as atomic no-replace renames on an unsupported
+// filesystem), the driver returns an error wrapping [github.com/yongjohnlee80/golib/errs.ErrUnsupported]
+// rather than degrading to a non-atomic or weaker emulation.
 
-// ConditionalWriter is implemented by drivers that can make a mutation conditional on the target's
-// current [Version]. The check and the commit are one step for every caller of the driver instance.
+// ConditionalWriter is implemented by drivers that support optimistic concurrency control
+// conditioned upon the target's current [Version].
+//
+// Atomicity:
+// For all callers of a driver instance, the version comparison and subsequent mutation are executed
+// as a single atomic operation.
 type ConditionalWriter interface {
-	// WriteFileIf is [FS.WriteFile] that commits only if name's current version is want. A mismatch,
-	// or a name that no longer exists, fails with a [*ConflictError] carrying the current state.
+	// WriteFileIf atomically executes [FS.WriteFile] if and only if the current version of name matches want.
+	// If the current version differs, or if name no longer exists, it returns a [*ConflictError]
+	// carrying the target's current state.
 	WriteFileIf(ctx context.Context, name string, r io.Reader, want Version, opts ...WriteOption) (FileInfo, error)
 
-	// RemoveIf is [FS.Remove] that removes only if name's current version is want.
+	// RemoveIf atomically executes [FS.Remove] if and only if the current version of name matches want.
+	// If the current version differs, or if name no longer exists, it returns a [*ConflictError].
 	RemoveIf(ctx context.Context, name string, want Version) error
 }
 
-// ExclusiveCreator is implemented by drivers with an atomic create-if-absent.
+// ExclusiveCreator is implemented by drivers supporting atomic create-if-absent semantics.
 type ExclusiveCreator interface {
-	// CreateExclusive writes r's content to name only if nothing exists there. The file appears whole
-	// or not at all. An existing entry fails with a [*ConflictError] carrying it.
+	// CreateExclusive writes r's data to name only if nothing currently exists at name.
+	// The file appears completely or not at all. If an entry already exists at name, it returns
+	// a [*ConflictError] containing the existing entry's metadata.
 	CreateExclusive(ctx context.Context, name string, r io.Reader, opts ...WriteOption) (FileInfo, error)
 }
 
-// NoReplaceRenamer is implemented by drivers with an atomic rename that refuses to replace.
+// NoReplaceRenamer is implemented by drivers supporting atomic rename that refuses to overwrite targets.
 type NoReplaceRenamer interface {
-	// RenameNoReplace moves from to to — a file or a directory — only if nothing exists at to. An
-	// existing entry fails with a [*ConflictError] carrying it.
+	// RenameNoReplace moves from to to (file or directory) only if no entry exists at to.
+	// If an entry already exists at to, it returns a [*ConflictError] containing the destination's metadata.
 	RenameNoReplace(ctx context.Context, from, to string) error
 }
 
-// Watcher is implemented by drivers that can deliver change events. Callers find it by type assertion
-// and fall back to [Poll] when it is absent:
+// Watcher is implemented by drivers capable of streaming real-time filesystem change events.
+// Callers discover Watcher by type assertion and fall back to [Poll] when it is not implemented:
 //
 //	events, err := func() (<-chan vfs.Event, error) {
 //		if w, ok := fsys.(vfs.Watcher); ok {
@@ -52,16 +61,18 @@ type NoReplaceRenamer interface {
 //		return vfs.Poll(ctx, fsys, "docs", 2*time.Second, vfs.Recursive())
 //	}()
 type Watcher interface {
-	// Watch streams events for entries under dir until ctx ends; the channel then closes. OpOverflow
-	// means events were lost for Event.Path's subtree ("" for the whole watch) and the consumer must
-	// re-read it: nothing is dropped silently.
+	// Watch streams mutation events under dir until ctx is cancelled, closing the returned channel upon termination.
+	//
+	// Overflow Handling:
+	// If event queues overflow or platform events are lost, [OpOverflow] is emitted for the affected
+	// subtree (or empty path "" for the entire watch tree), signaling that the consumer must resynchronize.
 	Watch(ctx context.Context, dir string, opts ...WatchOption) (<-chan Event, error)
 }
 
-// Copier is implemented by drivers with a server-side copy. Drivers without one do not emulate it;
-// callers Open and WriteFile.
+// Copier is implemented by drivers with native, server-side file copy mechanisms.
+// Drivers without native copy do not emulate it; callers must stream using [FS.Open] and [FS.WriteFile].
 type Copier interface {
-	// Copy copies the file at from to to, replacing an existing file, and returns the new entry.
+	// Copy clones the file at from to to, replacing any existing file at to, and returns the new entry's metadata.
 	Copy(ctx context.Context, from, to string, opts ...WriteOption) (FileInfo, error)
 }
 
