@@ -9,7 +9,11 @@ func (c *EditorCore) visualRange() (lo, hiEx taPos) {
 	if a.ln > b.ln || (a.ln == b.ln && a.col > b.col) {
 		a, b = b, a
 	}
-	return a, taPos{ln: b.ln, col: min(b.col+1, len(c.buf.lineClusters(b.ln)))}
+	n := len(c.buf.lineClusters(b.ln))
+	if c.vEOL && b.col >= n && b.ln+1 < len(c.buf.lines) {
+		return a, taPos{ln: b.ln + 1} // the line's break is selected (Select)
+	}
+	return a, taPos{ln: b.ln, col: min(b.col+1, n)}
 }
 
 // visualLines returns the inclusive line span of a line-wise selection.

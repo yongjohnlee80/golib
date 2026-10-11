@@ -155,7 +155,7 @@ func TestModifiedFollowsEditsUndoAndSave(t *testing.T) {
 
 func TestSelectShowsTheRangeAsVisual(t *testing.T) {
 	c, _ := coreWith(t, "hello world\nnext")
-	c.Select(rng(0, 6, 1, 0)) // "world\n"
+	c.Select(rng(0, 6, 0, 11)) // "world"
 	r, ok := c.Selection()
 	if !ok || c.Mode() != widget.ModeVisual || r != rng(0, 6, 0, 11) {
 		t.Fatalf("Selection = %v, %v in %v; want world as Visual", r, ok, c.Mode())
@@ -163,6 +163,21 @@ func TestSelectShowsTheRangeAsVisual(t *testing.T) {
 	if got := c.SelectedText(); got != "world" {
 		t.Fatalf("SelectedText = %q", got)
 	}
+	// a range ending at a line's start keeps the line break: the half-open range exactly
+	for _, want := range []widget.TextRange{rng(0, 6, 1, 0), rng(0, 0, 1, 0), rng(0, 11, 1, 0)} {
+		c.Select(want)
+		if r, ok := c.Selection(); !ok || r != want || c.SelectedText() != c.TextIn(want) {
+			t.Fatalf("Select(%v): Selection %v, %v; text %q, want %q", want, r, ok, c.SelectedText(), c.TextIn(want))
+		}
+	}
+	// a Visual entered by v afterwards is v's again: the break is not selected
+	c.Unselect()
+	c.SetCursor(pos(0, 10))
+	keys(c, "v")
+	if got := c.SelectedText(); got != "d" {
+		t.Fatalf("v after Select: %q", got)
+	}
+	keys(c, "v")
 	_, _ = c.Insert(pos(1, 0), ">")
 	if c.Mode() != widget.ModeNormal || c.Value() != "hello world\n>next" {
 		t.Fatalf("an edit over a selection: mode %v, text %q", c.Mode(), c.Value())

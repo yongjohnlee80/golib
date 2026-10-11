@@ -68,9 +68,13 @@ type EditorCore struct {
 	layout EditorLayout // the widget's geometry; set by Bind
 	ctx    *tui.Context // the widget's: publish, clipboard, timers; set by Bind
 
-	vAnchor   taPos // the Visual anchor (where the selection started)
-	canSelect bool  // visual selection is allowed
-	readOnly  bool  // a viewer: motions and yank only
+	vAnchor taPos // the Visual anchor (where the selection started)
+	// vEOL says the Visual selection Select made ends with its last line's break: the cursor sits
+	// just past that line's last cluster, and the break is selected (a range ending at a line's
+	// start). Any change of mode ends it.
+	vEOL      bool
+	canSelect bool // visual selection is allowed
+	readOnly  bool // a viewer: motions and yank only
 	// listEditing continues, ends and nests Markdown list items in Insert mode (editor_lists.go)
 	listEditing bool
 	listWhere   func(ln int) bool // the lines list editing applies on; nil: every line
@@ -619,6 +623,7 @@ func (c *EditorCore) setMode(m EditorMode) {
 		return
 	}
 	c.keys.mode = m
+	c.vEOL = false
 	c.markDirty()
 	c.publish(ModeChangedEvent{Owner: c.nodeID(), Mode: m})
 	if c.onModeChange != nil {
