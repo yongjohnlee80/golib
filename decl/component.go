@@ -225,19 +225,27 @@ func expand(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, 
 				return nil, fmt.Errorf("%w: components nest more than %d deep (at %s)",
 					ErrComponent, maxComponentDepth, sn.Pos)
 			}
-			inner, err := walk(scopeIDs(def, key, sn.ID), append(using, sn.Type), key)
+			// The declared properties are bound BEFORE the copy's own nested
+			// uses expand, so a value passed down to an inner component's
+			// property arrives there already substituted (component_props.go).
+			scoped, err := substitute(scopeIDs(def, key, sn.ID), sn)
 			if err != nil {
 				return nil, err
 			}
-			out = merge(*inner, sn)
+			inner, err := walk(scoped, append(using, sn.Type), key)
+			if err != nil {
+				return nil, err
+			}
 			// The use site's children were not expanded by the walk above;
-			// they are keyed apart from the component's own ("+").
-			n := len(inner.Children)
-			extra, err := children(out.Children[n:], using, key, "+")
+			// they are keyed apart from the component's own ("+"), wherever
+			// they land.
+			extra, err := children(sn.Children, using, key, "+")
 			if err != nil {
 				return nil, err
 			}
-			copy(out.Children[n:], extra)
+			use := withoutDeclared(sn, def)
+			use.Children = extra
+			out = merge(*inner, use, aliasTarget(def, key, sn.ID))
 			return &out, nil
 		}
 		kids, err := children(sn.Children, using, key, "")
@@ -247,11 +255,19 @@ func expand(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, 
 		out.Children = kids
 		return &out, nil
 	}
+	// A component's root declares its properties; a document declares none,
+	// and neither does a use of a component.
+	if sn := firstDeclaring(root, true); sn != nil {
+		return nil, fmt.Errorf("%w: a %s declares %q, and only a component file's root "+
+			"declares properties (at %s)", ErrComponent, sn.Type, sn.Decls[0].Name, sn.Decls[0].Pos)
+	}
 	return walk(root, nil, "")
 }
 
-// merge lays a use site over an expanded component, by Qt's rules.
-func merge(comp qml.SpecNode, use *qml.SpecNode) qml.SpecNode {
+// merge lays a use site over an expanded component, by Qt's rules. target is
+// the scoped id of the object the component's default alias sends the use
+// site's children to, "" for none: they go to the root, after its own.
+func merge(comp qml.SpecNode, use *qml.SpecNode, target string) qml.SpecNode {
 	out := comp
 	// The use site names the instance. With no name of its own, the root keeps
 	// the private one scopeIDs gave its own id, so the component can still
@@ -271,6 +287,38 @@ func merge(comp qml.SpecNode, use *qml.SpecNode) qml.SpecNode {
 	}
 	out.Props = append(out.Props, use.Props...)
 	out.Handlers = append(append([]qml.SpecHandler(nil), comp.Handlers...), use.Handlers...)
+	if target != "" && target != comp.ID && len(use.Children) > 0 {
+		// checkDecls made the target an id in the file, and scopeIDs renamed
+		// it with every other, so it is found; the fallback below is the
+		// root's, as with no alias at all.
+		if kids, ok := appendUnder(comp.Children, target, use.Children); ok {
+			out.Children = kids
+			return out
+		}
+	}
 	out.Children = append(append([]*qml.SpecNode(nil), comp.Children...), use.Children...)
 	return out
+}
+
+// appendUnder returns a copy of kids with more appended to the children of the
+// node whose id is id, copying each node on the way to it; false when no node
+// below kids has that id.
+func appendUnder(kids []*qml.SpecNode, id string, more []*qml.SpecNode) ([]*qml.SpecNode, bool) {
+	for i, c := range kids {
+		n := *c
+		switch {
+		case c.ID == id:
+			n.Children = append(append([]*qml.SpecNode(nil), c.Children...), more...)
+		default:
+			sub, ok := appendUnder(c.Children, id, more)
+			if !ok {
+				continue
+			}
+			n.Children = sub
+		}
+		out := append([]*qml.SpecNode(nil), kids...)
+		out[i] = &n
+		return out, true
+	}
+	return nil, false
 }

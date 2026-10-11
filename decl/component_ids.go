@@ -38,7 +38,7 @@ func scopeIDs(def *qml.SpecNode, key string, rootID string) *qml.SpecNode {
 	rename := map[string]string{}
 	_ = walkSpec(def, func(_ string, sn *qml.SpecNode) error {
 		if sn.ID != "" {
-			rename[sn.ID] = sn.ID + "@" + key
+			rename[sn.ID] = scopedID(sn.ID, key)
 		}
 		return nil
 	})
@@ -50,6 +50,9 @@ func scopeIDs(def *qml.SpecNode, key string, rootID string) *qml.SpecNode {
 	}
 	return renameNode(def, rename)
 }
+
+// scopedID is an id inside a component, renamed for the use keyed key.
+func scopedID(id, key string) string { return id + "@" + key }
 
 func renameNode(sn *qml.SpecNode, rename map[string]string) *qml.SpecNode {
 	out := *sn

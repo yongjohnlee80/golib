@@ -2,7 +2,10 @@ package decl
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/yongjohnlee80/golib/parse"
+	"github.com/yongjohnlee80/golib/parse/js"
 	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
@@ -84,6 +87,10 @@ func checkDecls(file string, root *qml.SpecNode) error {
 		case d.Target != "" && !ids[d.Target]:
 			return fmt.Errorf("%w: %s: the default alias %q is %s.data, and %q is no id in the "+
 				"file (at %s)", ErrComponent, file, d.Name, d.Target, d.Target, d.Pos)
+		case d.Target == "" && d.Default == nil && !d.Required && !hasZero(d):
+			return fmt.Errorf("%w: %s: %q is a %s with no default, and this engine has no "+
+				"undefined: give it a default, or make it required (at %s)",
+				ErrComponent, file, d.Name, d.Type, d.Pos)
 		case d.Default != nil && wrongKind(d, *d.Default):
 			return fmt.Errorf("%w: %s: %q is declared %s, and its default is a %s (at %s)",
 				ErrComponent, file, d.Name, d.Type, d.Default.Kind, d.Default.Pos)
@@ -118,4 +125,394 @@ func firstDeclaring(sn *qml.SpecNode, self bool) *qml.SpecNode {
 		}
 	}
 	return nil
+}
+
+// zeroValue is what an optional declaration with no default takes when its use
+// sets nothing: its type's zero, as Qt gives it. checkDecls refuses the types
+// with no zero this engine can write — var, color, list<T> — unless they have
+// a default or are required.
+func hasZero(d qml.SpecDecl) bool { _, ok := zeroValue(d); return ok }
+
+func zeroValue(d qml.SpecDecl) (qml.SpecValue, bool) {
+	switch d.Type {
+	case "string", "url":
+		return qml.SpecValue{Kind: qml.SpecValueString, Pos: d.Pos}, true
+	case "int", "real", "double":
+		return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "0", Pos: d.Pos}, true
+	case "bool":
+		return qml.SpecValue{Kind: qml.SpecValueBool, Raw: "false", Pos: d.Pos}, true
+	}
+	return qml.SpecValue{}, false
+}
+
+// substitute returns a copy of def — a component's root, its ids already
+// scoped for this use — with every reference to a declared property replaced
+// by use's value, or the default. A required property use does not set is an
+// ErrComponent naming it and the use.
+//
+// It runs BEFORE the copy's own nested uses expand, so a value passed down
+// to an inner component's property arrives there already substituted. It
+// never walks a value it put in: the use site's value means what it means in
+// the using document, and nothing inside the component can capture a name in
+// it.
+func substitute(def *qml.SpecNode, use *qml.SpecNode) (*qml.SpecNode, error) {
+	if len(def.Decls) == 0 {
+		return def, nil
+	}
+	given := map[string]qml.SpecValue{}
+	for _, p := range use.Props {
+		if len(p.Path) == 1 {
+			given[p.Name] = p.Value
+		}
+	}
+	b := binder{root: def.ID, values: map[string]qml.SpecValue{}, use: use}
+	for _, d := range def.Decls {
+		v, set := given[d.Name]
+		switch {
+		case d.Target != "":
+			if set {
+				return nil, fmt.Errorf("%w: %s's %q is its default alias, so the use writes it as "+
+					"children, not a value (at %s)", ErrComponent, use.Type, d.Name, v.Pos)
+			}
+			continue
+		case set && wrongKind(d, v):
+			return nil, fmt.Errorf("%w: %s's %q is declared %s, and this use gives it a %s (at %s)",
+				ErrComponent, use.Type, d.Name, d.Type, v.Kind, v.Pos)
+		case set:
+		case d.Default != nil:
+			v = *d.Default
+		case d.Required:
+			return nil, fmt.Errorf("%w: %s's required property %q is not set by this use (at %s)",
+				ErrComponent, use.Type, d.Name, use.Pos)
+		default:
+			v, _ = zeroValue(d)
+		}
+		b.values[d.Name] = v
+	}
+	out, err := b.node(def)
+	if err != nil {
+		return nil, err
+	}
+	out.Decls = nil
+	return out, nil
+}
+
+// withoutDeclared is use without the properties def declares: they were
+// substituted, and are not the root's to apply.
+func withoutDeclared(use *qml.SpecNode, def *qml.SpecNode) *qml.SpecNode {
+	out := *use
+	if len(def.Decls) == 0 {
+		return &out
+	}
+	declared := map[string]bool{}
+	for _, d := range def.Decls {
+		declared[d.Name] = true
+	}
+	out.Props = nil
+	for _, p := range use.Props {
+		if len(p.Path) != 1 || !declared[p.Name] {
+			out.Props = append(out.Props, p)
+		}
+	}
+	return &out
+}
+
+// aliasTarget is the id, as scopeIDs renamed it for this use, of the object a
+// component's default alias sends the use site's children to; "" for none.
+func aliasTarget(def *qml.SpecNode, key, rootID string) string {
+	for _, d := range def.Decls {
+		if d.Target == "" {
+			continue
+		}
+		if d.Target == def.ID && rootID != "" {
+			return rootID
+		}
+		return scopedID(d.Target, key)
+	}
+	return ""
+}
+
+// binder replaces references to a component's declared properties. Its
+// walkers are component_ids.go's, generalised from renaming an identifier to
+// replacing it with a value.
+type binder struct {
+	// root is the copy's root id, through which `picker.label` reaches a
+	// declared property; "" when the root has none.
+	root   string
+	values map[string]qml.SpecValue
+	use    *qml.SpecNode
+}
+
+// head reports the value a reference path starts with — `label`, or
+// `picker.label` through the root id — and how many segments that took.
+func (b *binder) head(path []string) (qml.SpecValue, int, bool) {
+	if len(path) > 0 {
+		if v, ok := b.values[path[0]]; ok {
+			return v, 1, true
+		}
+	}
+	if b.root != "" && len(path) > 1 && path[0] == b.root {
+		if v, ok := b.values[path[1]]; ok {
+			return v, 2, true
+		}
+	}
+	return qml.SpecValue{}, 0, false
+}
+
+func (b *binder) node(sn *qml.SpecNode) (*qml.SpecNode, error) {
+	out := *sn
+	out.Props = make([]qml.SpecProp, len(sn.Props))
+	for i, p := range sn.Props {
+		v, err := b.value(p.Value)
+		if err != nil {
+			return nil, err
+		}
+		p.Value = v
+		out.Props[i] = p
+	}
+	out.Handlers = make([]qml.SpecHandler, len(sn.Handlers))
+	for i, h := range sn.Handlers {
+		body, err := b.stmts(h.Body)
+		if err != nil {
+			return nil, err
+		}
+		h.Body = body
+		out.Handlers[i] = h
+	}
+	out.Children = make([]*qml.SpecNode, len(sn.Children))
+	for i, c := range sn.Children {
+		nc, err := b.node(c)
+		if err != nil {
+			return nil, err
+		}
+		out.Children[i] = nc
+	}
+	return &out, nil
+}
+
+// value substitutes in a property value. A reference that IS a declared
+// property becomes the use site's value whatever its kind — an object or a
+// template included. One that reads a member of it (`label.length`), and a
+// call whose arguments now hold an expression, become an expression.
+//
+// A template's own body is not walked: it is a scope of its own, as it is for
+// ids (component_ids.go), and the view that instantiates it owns its names.
+func (b *binder) value(v qml.SpecValue) (qml.SpecValue, error) {
+	switch v.Kind {
+	case qml.SpecValueRef:
+		bound, n, ok := b.head(v.Path)
+		switch {
+		case !ok:
+			return v, nil
+		case n == len(v.Path):
+			return bound, nil
+		}
+		return b.reproject(v)
+	case qml.SpecValueCall:
+		if _, _, ok := b.head(v.Path); ok {
+			return b.reproject(v)
+		}
+		args := make([]qml.SpecValue, len(v.Args))
+		expr := false
+		for i, a := range v.Args {
+			sa, err := b.value(a)
+			if err != nil {
+				return qml.SpecValue{}, err
+			}
+			args[i] = sa
+			expr = expr || sa.Kind == qml.SpecValueExpr
+		}
+		v.Args = args
+		if expr {
+			// A call whose arguments are not all projected keeps its tree, as
+			// the parser's projection does.
+			e, ok := valueExpr(v)
+			if !ok {
+				return qml.SpecValue{}, fmt.Errorf("%w: %s's call to %s mixes an object with an "+
+					"expression, which JavaScript cannot write (at %s; the use at %s)",
+					ErrComponent, b.use.Type, v.Raw, v.Pos, b.use.Pos)
+			}
+			return qml.ProjectValue(e), nil
+		}
+		return v, nil
+	case qml.SpecValueExpr:
+		if v.Expr == nil {
+			return v, nil
+		}
+		e, changed, err := b.expr(v.Expr)
+		if err != nil || !changed {
+			return v, err
+		}
+		return qml.ProjectValue(e), nil
+	}
+	return v, nil
+}
+
+// reproject substitutes in a reference or call read as the expression it is,
+// and projects the result as the parser would have.
+func (b *binder) reproject(v qml.SpecValue) (qml.SpecValue, error) {
+	e, ok := valueExpr(v)
+	if !ok {
+		return v, nil // an argument the parser never projects; nothing to substitute
+	}
+	se, _, err := b.expr(e)
+	if err != nil {
+		return qml.SpecValue{}, err
+	}
+	return qml.ProjectValue(se), nil
+}
+
+// asExpr is a declared property's value in an expression or a handler, where
+// only what JavaScript can write may go: an object or a template cannot.
+func (b *binder) asExpr(name string, v qml.SpecValue) (*js.Expr, error) {
+	e, ok := valueExpr(v)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s's %q is a %s, which an expression or a handler cannot "+
+			"hold; use it as a property's whole value (at %s; the use at %s)",
+			ErrComponent, b.use.Type, name, v.Kind, v.Pos, b.use.Pos)
+	}
+	return e, nil
+}
+
+// expr substitutes in an expression, reporting whether anything changed. Only
+// an IDENTIFIER is a reference, or a member of the root id; a member's name
+// (`x.label`) is not.
+func (b *binder) expr(e *js.Expr) (*js.Expr, bool, error) {
+	if e == nil {
+		return nil, false, nil
+	}
+	switch {
+	case e.Kind == js.ExprIdent:
+		if v, ok := b.values[e.Raw]; ok {
+			r, err := b.asExpr(e.Raw, v)
+			return r, true, err
+		}
+	case e.Kind == js.ExprMember && !e.Computed && b.root != "" &&
+		e.Left != nil && e.Left.Kind == js.ExprIdent && e.Left.Raw == b.root:
+		if v, ok := b.values[e.Name]; ok {
+			r, err := b.asExpr(e.Name, v)
+			return r, true, err
+		}
+	}
+	out := *e
+	changed := false
+	var err error
+	sub := func(x *js.Expr) *js.Expr {
+		if err != nil {
+			return x
+		}
+		r, c, e2 := b.expr(x)
+		changed, err = changed || c, e2
+		return r
+	}
+	out.Left = sub(e.Left)
+	out.Right = sub(e.Right)
+	out.Alt = sub(e.Alt)
+	if e.Args != nil {
+		out.Args = make([]js.Expr, len(e.Args))
+		for i := range e.Args {
+			if r := sub(&e.Args[i]); r != nil {
+				out.Args[i] = *r
+			}
+		}
+	}
+	if e.Props != nil {
+		out.Props = make([]js.ExprProperty, len(e.Props))
+		for i, p := range e.Props {
+			p.KeyExpr = sub(p.KeyExpr)
+			if r := sub(&p.Value); r != nil {
+				p.Value = *r
+			}
+			out.Props[i] = p
+		}
+	}
+	return &out, changed, err
+}
+
+func (b *binder) stmts(body []js.Stmt) ([]js.Stmt, error) {
+	if body == nil {
+		return nil, nil
+	}
+	out := make([]js.Stmt, len(body))
+	for i, st := range body {
+		var err error
+		if st.Body, err = b.stmts(st.Body); err != nil {
+			return nil, err
+		}
+		if st.Cond, _, err = b.expr(st.Cond); err != nil {
+			return nil, err
+		}
+		if st.Value, _, err = b.expr(st.Value); err != nil {
+			return nil, err
+		}
+		for _, branch := range []**js.Stmt{&st.Then, &st.Else} {
+			if *branch == nil {
+				continue
+			}
+			s, err := b.stmts([]js.Stmt{**branch})
+			if err != nil {
+				return nil, err
+			}
+			*branch = &s[0]
+		}
+		if st.Decls != nil {
+			decls := make([]js.Declarator, len(st.Decls))
+			for j, d := range st.Decls {
+				if d.Init, _, err = b.expr(d.Init); err != nil {
+					return nil, err
+				}
+				decls[j] = d
+			}
+			st.Decls = decls
+		}
+		out[i] = st
+	}
+	return out, nil
+}
+
+// valueExpr writes a value as the JavaScript expression it was, or reports
+// false for an object or a template, which JavaScript cannot write.
+func valueExpr(v qml.SpecValue) (*js.Expr, bool) {
+	switch v.Kind {
+	case qml.SpecValueString:
+		return &js.Expr{Kind: js.ExprString, Raw: v.Raw, Pos: v.Pos}, true
+	case qml.SpecValueBool:
+		return &js.Expr{Kind: js.ExprBool, Raw: v.Raw, Pos: v.Pos}, true
+	case qml.SpecValueNumber:
+		// The parser folded a sign onto the literal; JavaScript writes it as
+		// an operator.
+		if digits, neg := strings.CutPrefix(v.Raw, "-"); neg {
+			return &js.Expr{Kind: js.ExprUnary, Raw: "-", Pos: v.Pos,
+				Left: &js.Expr{Kind: js.ExprNumber, Raw: digits, Pos: v.Pos}}, true
+		}
+		return &js.Expr{Kind: js.ExprNumber, Raw: v.Raw, Pos: v.Pos}, true
+	case qml.SpecValueRef:
+		return pathExpr(v.Path, v.Pos), true
+	case qml.SpecValueCall:
+		args := make([]js.Expr, len(v.Args))
+		for i, a := range v.Args {
+			ae, ok := valueExpr(a)
+			if !ok {
+				return nil, false
+			}
+			args[i] = *ae
+		}
+		return &js.Expr{Kind: js.ExprCall, Pos: v.Pos, Left: pathExpr(v.Path, v.Pos), Args: args}, true
+	case qml.SpecValueExpr:
+		if v.Expr == nil {
+			return nil, false
+		}
+		e := *v.Expr
+		return &e, true
+	}
+	return nil, false
+}
+
+// pathExpr writes `a.b.c` as an identifier and its member chain.
+func pathExpr(path []string, at parse.Position) *js.Expr {
+	e := &js.Expr{Kind: js.ExprIdent, Raw: path[0], Pos: at}
+	for _, seg := range path[1:] {
+		e = &js.Expr{Kind: js.ExprMember, Left: e, Name: seg, Pos: at}
+	}
+	return e
 }
