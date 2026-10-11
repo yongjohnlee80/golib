@@ -209,7 +209,7 @@ func (l *cellLayout) Reveal(line, col int) { l.ed.reveal(line, col) }
 func (l *cellLayout) PageLines() int { return max(l.h, 1) }
 
 // Measure is s's width in cells, under the App's width policy.
-func (l *cellLayout) Measure(s string) int { return l.ed.measure(s) }
+func (l *cellLayout) Measure(s string) int { return l.ed.width(s) }
 
 // Changed repaints, and lays out again when the line count's digits move the gutter's width.
 func (l *cellLayout) Changed(int) {
@@ -648,7 +648,7 @@ func (e *Editor) reveal(ln, col int) {
 	l.top = lowestTop(lines, l.top, ln, l.h, e.view())
 	l.top = max(0, min(l.top, len(lines)-1))
 	if l.wrap == WrapNone {
-		cx := e.core.buf.cellsAt(ln, col, e.measure)
+		cx := e.core.buf.cellsAt(ln, col, e.width)
 		w := e.wrapWidth()
 		if cx < l.left {
 			l.left = cx
@@ -682,7 +682,7 @@ func (e *Editor) Cursor() (int, int, bool) {
 		return 0, 0, false
 	}
 	if l.wrap == WrapNone {
-		x := b.cellsAt(b.ln, b.col, e.measure) - l.left
+		x := b.cellsAt(b.ln, b.col, e.width) - l.left
 		y := b.ln - l.top
 		if y >= l.h && l.h > 0 {
 			return 0, 0, false
@@ -856,7 +856,7 @@ func (e *Editor) posAt(x, y int) (ln, col int) {
 		rows := wrapRowsOfLine(b.lines, i, v)
 		if remaining < rows || i == lastLn {
 			cs := b.lineClusters(i)
-			ranges := wrapRanges(cs, v.usable, e.measure)
+			ranges := wrapRanges(cs, v.usable, e.width)
 			r := ranges[min(remaining, len(ranges)-1)]
 			// Bounded to THIS row: wrapRanges is [start,end), and a word-wrapped
 			// row can be shorter than the viewport, so an unbounded scan would run
@@ -877,7 +877,7 @@ func (e *Editor) colAtCells(cs []string, from, end, cells int) int {
 	end = min(end, len(cs))
 	acc := 0
 	for i := from; i < end; i++ {
-		w := e.measure(cs[i])
+		w := e.width(cs[i])
 		if cells < acc+w {
 			return i
 		}
@@ -944,6 +944,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	var lineStyles []highlight.Style
 	styledLn := -1
 	marked, markedLn := 0, -1
+	cellsOf := tabAware(s.StringWidth)
 	paintCluster := func(x, y int, cl string, ln, col int) {
 		st := l.styles.Text
 		if ln != styledLn {
@@ -964,9 +965,20 @@ func (e *Editor) renderText(s tui.Surface) {
 		if c.Highlighted(ln, col, e.focused()) {
 			st = l.styles.Selection.Inherit(st)
 		}
+		// A tab is tabCells blank cells, the first an arrow when it is marked indentation.
+		if cl == "\t" {
+			first, fst := " ", st
+			if col < marked {
+				first, fst = "→", l.styles.Placeholder.Inherit(st)
+			}
+			s.SetCell(x, y, first, fst)
+			for i := 1; i < tabCells; i++ {
+				s.SetCell(x+i, y, " ", st)
+			}
+			return
+		}
 		// A leading space shown as indentation: dimmed as the ruler is, over any selection,
-		// keeping any combining mark it carries. A tab is not marked here: the cell layout
-		// gives a tab no width yet.
+		// keeping any combining mark it carries.
 		if col < marked && strings.HasPrefix(cl, " ") {
 			cl, st = "·"+cl[1:], l.styles.Placeholder.Inherit(st)
 		}
@@ -988,7 +1000,7 @@ func (e *Editor) renderText(s tui.Surface) {
 			lineFill(y, ln)
 			x := -l.left
 			for col, cl := range cs {
-				cw := s.StringWidth(cl)
+				cw := cellsOf(cl)
 				if x+cw > w {
 					break
 				}
@@ -1001,7 +1013,7 @@ func (e *Editor) renderText(s tui.Surface) {
 			y++
 			continue
 		}
-		for _, r := range wrapRanges(cs, w, s.StringWidth) {
+		for _, r := range wrapRanges(cs, w, cellsOf) {
 			if y >= sz.H {
 				break
 			}
@@ -1009,7 +1021,7 @@ func (e *Editor) renderText(s tui.Surface) {
 			x := 0
 			for col := r[0]; col < r[1]; col++ {
 				paintCluster(x, y, cs[col], ln, col)
-				x += s.StringWidth(cs[col])
+				x += cellsOf(cs[col])
 			}
 			ends[y] = x
 			y++
@@ -1036,6 +1048,24 @@ func (e *Editor) renderText(s tui.Surface) {
 
 // view is the layout state the shared soft-wrap geometry needs. It is the
 // only place this widget's viewport is handed to textBuffer.
+// tabCells is how many cells a tab takes in the cell editor: the room the native editor gives it
+// (four spaces), never the width a terminal gives a control character, which is none.
+const tabCells = 4
+
+// tabAware is measure with each tab counted as tabCells.
+func tabAware(measure func(string) int) func(string) int {
+	return func(s string) int {
+		n := strings.Count(s, "\t")
+		if n == 0 {
+			return measure(s)
+		}
+		return measure(strings.ReplaceAll(s, "\t", "")) + n*tabCells
+	}
+}
+
+// width is s's width in the editor's cells: the terminal's measure, a tab tabCells.
+func (e *Editor) width(s string) int { return tabAware(e.measure)(s) }
+
 func (e *Editor) view() wrapView {
-	return wrapView{w: e.cells.w, h: e.cells.h, wrap: e.cells.wrap, measure: e.measure}
+	return wrapView{w: e.cells.w, h: e.cells.h, wrap: e.cells.wrap, measure: e.width}
 }
