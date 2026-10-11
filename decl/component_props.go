@@ -87,10 +87,10 @@ func checkDecls(file string, root *qml.SpecNode) error {
 		case d.Target != "" && !ids[d.Target]:
 			return fmt.Errorf("%w: %s: the default alias %q is %s.data, and %q is no id in the "+
 				"file (at %s)", ErrComponent, file, d.Name, d.Target, d.Target, d.Pos)
-		case d.Target == "" && d.Default == nil && !d.Required && !hasZero(d):
-			return fmt.Errorf("%w: %s: %q is a %s with no default, and this engine has no "+
-				"undefined: give it a default, or make it required (at %s)",
-				ErrComponent, file, d.Name, d.Type, d.Pos)
+		case d.Target == "" && d.Default == nil && !d.Required:
+			return fmt.Errorf("%w: %s: give %s a default, or make it required: every declared "+
+				"property has a value, so a reference to it never falls through to a name of the "+
+				"same spelling outside the component (at %s)", ErrComponent, file, d.Name, d.Pos)
 		case d.Default != nil && wrongKind(d, *d.Default):
 			return fmt.Errorf("%w: %s: %q is declared %s, and its default is a %s (at %s)",
 				ErrComponent, file, d.Name, d.Type, d.Default.Kind, d.Default.Pos)
@@ -127,24 +127,6 @@ func firstDeclaring(sn *qml.SpecNode, self bool) *qml.SpecNode {
 	return nil
 }
 
-// zeroValue is what an optional declaration with no default takes when its use
-// sets nothing: its type's zero, as Qt gives it. checkDecls refuses the types
-// with no zero this engine can write — var, color, list<T> — unless they have
-// a default or are required.
-func hasZero(d qml.SpecDecl) bool { _, ok := zeroValue(d); return ok }
-
-func zeroValue(d qml.SpecDecl) (qml.SpecValue, bool) {
-	switch d.Type {
-	case "string", "url":
-		return qml.SpecValue{Kind: qml.SpecValueString, Pos: d.Pos}, true
-	case "int", "real", "double":
-		return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "0", Pos: d.Pos}, true
-	case "bool":
-		return qml.SpecValue{Kind: qml.SpecValueBool, Raw: "false", Pos: d.Pos}, true
-	}
-	return qml.SpecValue{}, false
-}
-
 // substitute returns a copy of def — a component's root, its ids already
 // scoped for this use — with every reference to a declared property replaced
 // by use's value, or the default. A required property use does not set is an
@@ -155,7 +137,13 @@ func zeroValue(d qml.SpecDecl) (qml.SpecValue, bool) {
 // never walks a value it put in: the use site's value means what it means in
 // the using document, and nothing inside the component can capture a name in
 // it.
-func substitute(def *qml.SpecNode, use *qml.SpecNode) (*qml.SpecNode, error) {
+//
+// Inside a handler, a SIGNAL PARAMETER shadows a declared property of the
+// same name, as it shadows an injected name (handler.go): params names them
+// per (type, signal), the adapter's signalParams, and types resolves a nested
+// component use to the type its handlers are bound on. `picker.text` through
+// the root id still means the property.
+func substitute(def *qml.SpecNode, use *qml.SpecNode, ex expansion) (*qml.SpecNode, error) {
 	if len(def.Decls) == 0 {
 		return def, nil
 	}
@@ -165,7 +153,7 @@ func substitute(def *qml.SpecNode, use *qml.SpecNode) (*qml.SpecNode, error) {
 			given[p.Name] = p.Value
 		}
 	}
-	b := binder{root: def.ID, values: map[string]qml.SpecValue{}, use: use}
+	b := binder{root: def.ID, values: map[string]qml.SpecValue{}, use: use, ex: ex}
 	for _, d := range def.Decls {
 		v, set := given[d.Name]
 		switch {
@@ -185,7 +173,10 @@ func substitute(def *qml.SpecNode, use *qml.SpecNode) (*qml.SpecNode, error) {
 			return nil, fmt.Errorf("%w: %s's required property %q is not set by this use (at %s)",
 				ErrComponent, use.Type, d.Name, use.Pos)
 		default:
-			v, _ = zeroValue(d)
+			// checkDecls refuses this when a component FILE loads; a loader of
+			// its own may hand over a root that never met it.
+			return nil, fmt.Errorf("%w: %s's %q has no value: give it a default, or make it "+
+				"required (at %s)", ErrComponent, use.Type, d.Name, d.Pos)
 		}
 		b.values[d.Name] = v
 	}
@@ -236,11 +227,51 @@ func aliasTarget(def *qml.SpecNode, key, rootID string) string {
 // walkers are component_ids.go's, generalised from renaming an identifier to
 // replacing it with a value.
 type binder struct {
-	// root is the copy's root id, through which `picker.label` reaches a
-	// declared property; "" when the root has none.
+	// root is the copy's root id AS scopeIDs LEFT IT — the use site's id, or
+	// the private id@key — through which `picker.label` reaches a declared
+	// property; "" when the root has none.
 	root   string
 	values map[string]qml.SpecValue
 	use    *qml.SpecNode
+	ex     expansion
+}
+
+// expansion is what substitution needs to know of the document it expands
+// in: the component types in scope, and the signal parameters an adapter
+// declares, by type and signal (nil for none).
+type expansion struct {
+	types  map[string]*qml.SpecNode
+	params func(typeName, signal string) []string
+}
+
+// handlerType is the type a node's handlers bind on: its own, or for a use
+// of a component the type that component expands to.
+func (ex expansion) handlerType(typ string) string {
+	for i := 0; i <= maxComponentDepth; i++ {
+		def, ok := ex.types[typ]
+		if !ok {
+			break
+		}
+		typ = def.Type
+	}
+	return typ
+}
+
+// shadowed is the signal parameters of a node's handler, which shadow a
+// declared property of the same name inside it.
+func (ex expansion) shadowed(typ, signal string) map[string]bool {
+	if ex.params == nil {
+		return nil
+	}
+	ps := ex.params(ex.handlerType(typ), signal)
+	if len(ps) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(ps))
+	for _, p := range ps {
+		out[p] = true
+	}
+	return out
 }
 
 // head reports the value a reference path starts with — `label`, or
@@ -272,7 +303,7 @@ func (b *binder) node(sn *qml.SpecNode) (*qml.SpecNode, error) {
 	}
 	out.Handlers = make([]qml.SpecHandler, len(sn.Handlers))
 	for i, h := range sn.Handlers {
-		body, err := b.stmts(h.Body)
+		body, err := b.stmts(h.Body, b.ex.shadowed(sn.Type, h.Signal))
 		if err != nil {
 			return nil, err
 		}
@@ -339,7 +370,7 @@ func (b *binder) value(v qml.SpecValue) (qml.SpecValue, error) {
 		if v.Expr == nil {
 			return v, nil
 		}
-		e, changed, err := b.expr(v.Expr)
+		e, changed, err := b.expr(v.Expr, nil)
 		if err != nil || !changed {
 			return v, err
 		}
@@ -355,7 +386,7 @@ func (b *binder) reproject(v qml.SpecValue) (qml.SpecValue, error) {
 	if !ok {
 		return v, nil // an argument the parser never projects; nothing to substitute
 	}
-	se, _, err := b.expr(e)
+	se, _, err := b.expr(e, nil)
 	if err != nil {
 		return qml.SpecValue{}, err
 	}
@@ -363,8 +394,16 @@ func (b *binder) reproject(v qml.SpecValue) (qml.SpecValue, error) {
 }
 
 // asExpr is a declared property's value in an expression or a handler, where
-// only what JavaScript can write may go: an object or a template cannot.
+// only what JavaScript can write may go: an object or a template cannot. Nor,
+// in v1, may a call: substituted into a handler it would be a call this
+// engine's handler evaluator refuses, or one evaluated where it was not
+// written; in a property's whole value it stays the binding it is.
 func (b *binder) asExpr(name string, v qml.SpecValue) (*js.Expr, error) {
+	if v.Kind == qml.SpecValueCall {
+		return nil, fmt.Errorf("%w: %s's %q is the call %s(…), which an expression or a "+
+			"handler cannot hold: pass a value, or bind it where it is used (at %s; the use at %s)",
+			ErrComponent, b.use.Type, name, v.Raw, v.Pos, b.use.Pos)
+	}
 	e, ok := valueExpr(v)
 	if !ok {
 		return nil, fmt.Errorf("%w: %s's %q is a %s, which an expression or a handler cannot "+
@@ -377,12 +416,15 @@ func (b *binder) asExpr(name string, v qml.SpecValue) (*js.Expr, error) {
 // expr substitutes in an expression, reporting whether anything changed. Only
 // an IDENTIFIER is a reference, or a member of the root id; a member's name
 // (`x.label`) is not.
-func (b *binder) expr(e *js.Expr) (*js.Expr, bool, error) {
+//
+// shadow is the signal parameters in scope, in a handler: a bare name among
+// them is the parameter, not the property.
+func (b *binder) expr(e *js.Expr, shadow map[string]bool) (*js.Expr, bool, error) {
 	if e == nil {
 		return nil, false, nil
 	}
 	switch {
-	case e.Kind == js.ExprIdent:
+	case e.Kind == js.ExprIdent && !shadow[e.Raw]:
 		if v, ok := b.values[e.Raw]; ok {
 			r, err := b.asExpr(e.Raw, v)
 			return r, true, err
@@ -401,7 +443,7 @@ func (b *binder) expr(e *js.Expr) (*js.Expr, bool, error) {
 		if err != nil {
 			return x
 		}
-		r, c, e2 := b.expr(x)
+		r, c, e2 := b.expr(x, shadow)
 		changed, err = changed || c, e2
 		return r
 	}
@@ -429,27 +471,27 @@ func (b *binder) expr(e *js.Expr) (*js.Expr, bool, error) {
 	return &out, changed, err
 }
 
-func (b *binder) stmts(body []js.Stmt) ([]js.Stmt, error) {
+func (b *binder) stmts(body []js.Stmt, shadow map[string]bool) ([]js.Stmt, error) {
 	if body == nil {
 		return nil, nil
 	}
 	out := make([]js.Stmt, len(body))
 	for i, st := range body {
 		var err error
-		if st.Body, err = b.stmts(st.Body); err != nil {
+		if st.Body, err = b.stmts(st.Body, shadow); err != nil {
 			return nil, err
 		}
-		if st.Cond, _, err = b.expr(st.Cond); err != nil {
+		if st.Cond, _, err = b.expr(st.Cond, shadow); err != nil {
 			return nil, err
 		}
-		if st.Value, _, err = b.expr(st.Value); err != nil {
+		if st.Value, _, err = b.expr(st.Value, shadow); err != nil {
 			return nil, err
 		}
 		for _, branch := range []**js.Stmt{&st.Then, &st.Else} {
 			if *branch == nil {
 				continue
 			}
-			s, err := b.stmts([]js.Stmt{**branch})
+			s, err := b.stmts([]js.Stmt{**branch}, shadow)
 			if err != nil {
 				return nil, err
 			}
@@ -458,7 +500,7 @@ func (b *binder) stmts(body []js.Stmt) ([]js.Stmt, error) {
 		if st.Decls != nil {
 			decls := make([]js.Declarator, len(st.Decls))
 			for j, d := range st.Decls {
-				if d.Init, _, err = b.expr(d.Init); err != nil {
+				if d.Init, _, err = b.expr(d.Init, shadow); err != nil {
 					return nil, err
 				}
 				decls[j] = d

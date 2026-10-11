@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -18,7 +19,7 @@ import (
 // reported against it whatever uses it.
 func TestAComponentsDeclarationsAreJudgedWhenItLoads(t *testing.T) {
 	for name, c := range map[string]struct{ src, want string }{
-		"a name declared twice": {"Box {\n property string a\n property int a\n}",
+		"a name declared twice": {"Box {\n property string a: \"x\"\n property int a: 1\n}",
 			`"a" is declared twice (at ui/Bad.qml:3:`},
 		"a name that is an id": {"Box {\n property string field\n Text { id: field }\n}",
 			`"field" is declared and is also an id`},
@@ -32,8 +33,8 @@ func TestAComponentsDeclarationsAreJudgedWhenItLoads(t *testing.T) {
 			`a Text inside the component declares "a"`},
 		"a declaration in a template": {"Box {\n delegate: Text { property string a }\n}",
 			`a Text inside the component declares "a"`},
-		"a var with no default, not required": {"Box {\n property var v\n}",
-			`"v" is a var with no default, and this engine has no undefined`},
+		"an optional property with no default": {"Box {\n property string label\n}",
+			"give label a default, or make it required"},
 		"a default of the wrong kind": {"Box {\n property int n: \"x\"\n}",
 			`"n" is declared int, and its default is a string`},
 	} {
@@ -154,7 +155,7 @@ func TestAUseSitesValueMustBeOfTheDeclaredKind(t *testing.T) {
 		{"string", "3", "number"}, {"int", `"3"`, "string"}, {"real", "true", "bool"},
 		{"double", `"x"`, "string"}, {"bool", "1", "number"},
 	} {
-		tr, _, _ := componentTree(t, map[string]string{"Card.qml": "Box {\n property " + c.typ + " p\n}"})
+		tr, _, _ := componentTree(t, map[string]string{"Card.qml": "Box {\n required property " + c.typ + " p\n}"})
 		err := tr.Mount(qmlDoc(t, "import app.ui\nFlex {\n Card { p: "+c.value+" }\n}"))
 		want := `"p" is declared ` + c.typ + ", and this use gives it a " + c.got
 		if !errors.Is(err, decl.ErrComponent) || !strings.Contains(err.Error(), want) {
@@ -162,7 +163,7 @@ func TestAUseSitesValueMustBeOfTheDeclaredKind(t *testing.T) {
 		}
 	}
 	// var takes anything, and a binding is the type's to judge where it lands.
-	tr, _, _ := componentTree(t, map[string]string{"Card.qml": "Box {\n property var v: 1\n property string s\n title: s\n}"})
+	tr, _, _ := componentTree(t, map[string]string{"Card.qml": "Box {\n property var v: 1\n property string s: \"\"\n title: s\n}"})
 	if err := tr.Mount(qmlDoc(t, "import tui 1.0\nimport app.ui\nFlex {\n Card { v: \"x\"; s: Tui.Vertical }\n}")); err != nil {
 		t.Fatalf("var given a string, string given a binding: %v", err)
 	}
@@ -248,19 +249,83 @@ func TestOnlyAComponentsRootDeclares(t *testing.T) {
 	}
 }
 
-// TestAnOptionalPropertyTakesItsTypesZero when neither the use nor a default
-// gives it a value, as Qt's does.
-func TestAnOptionalPropertyTakesItsTypesZero(t *testing.T) {
-	tr, rec, _ := componentTree(t, map[string]string{"Card.qml": "Box {\n property string s\n property int n\n" +
-		" property bool b\n title: s\n Text { text: n }\n Text { text: b }\n}"})
-	if err := tr.Mount(qmlDoc(t, "import app.ui\nFlex {\n Card { }\n}")); err != nil {
+// TestADeclaredNameShadowsASourceOnlyInsideTheComponent: inside, the
+// declaration wins over a host source of the same spelling; outside, the
+// source is what it was.
+func TestADeclaredNameShadowsASourceOnlyInsideTheComponent(t *testing.T) {
+	tr, rec, _ := componentTree(t, map[string]string{"Card.qml": "Box {\n property string label: \"declared\"\n title: label\n}"})
+	if err := tr.DeclareSource("label", sv("the host's")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Mount(qmlDoc(t, "import app.ui\nFlex {\n Card { }\n Text { text: label }\n}")); err != nil {
 		t.Fatalf("mount: %v", err)
 	}
 	trace := traced(rec)
-	for _, want := range []string{"title=string()", "text=number(0)", "text=bool(false)"} {
+	if !strings.Contains(trace, "title=string(declared)") || !strings.Contains(trace, "text=string(the host's)") {
+		t.Fatalf("want the declaration inside and the source outside:\n%s", trace)
+	}
+}
+
+// TestTheRootIdIsTheScopedOne: `me.label` reaches the declaration whether
+// the use names the instance (me becomes its id) or not (me@key).
+func TestTheRootIdIsTheScopedOne(t *testing.T) {
+	_, rec, _ := mountLabelled(t, "import app.ui\nFlex {\n Card { id: named; label: \"n\" }\n Card { label: \"anon\" }\n}")
+	trace := traced(rec)
+	for _, want := range []string{"apply 3 text=string(n)", "apply 6 text=string(anon)"} {
 		if !strings.Contains(trace, want) {
 			t.Errorf("trace lacks %q:\n%s", want, trace)
 		}
+	}
+}
+
+// TestAnInsertedValueIsTerminal: what the use site gives means what it means
+// in the using document — never substituted again inside the component.
+func TestAnInsertedValueIsTerminal(t *testing.T) {
+	tr, rec, _ := componentTree(t, map[string]string{"Card.qml": "Box {\n property string label: \"l\"\n" +
+		" property string caption: \"c\"\n title: label\n Text { text: caption }\n}"})
+	for name, v := range map[string]string{"caption": "the document's caption", "label": "the document's label"} {
+		if err := tr.DeclareSource(name, sv(v)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tr.Mount(qmlDoc(t, "import app.ui\nFlex {\n Card { label: caption; caption: label }\n}")); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	trace := traced(rec)
+	if !strings.Contains(trace, "title=string(the document's caption)") ||
+		!strings.Contains(trace, "text=string(the document's label)") {
+		t.Fatalf("a use site's value was substituted again inside the component:\n%s", trace)
+	}
+}
+
+// TestACallValueIsRefusedInAHandler, and is the binding it is as a property's
+// whole value.
+func TestACallValueIsRefusedInAHandler(t *testing.T) {
+	tr, rec, _ := componentTree(t, map[string]string{
+		"Card.qml": "Box {\n required property string label\n title: label\n}",
+		"Go.qml":   "Box {\n required property string label\n onClicked: got(label)\n}",
+	})
+	if err := tr.DeclareFunc("upper", func(a []qml.SpecValue) (qml.SpecValue, error) {
+		return sv(strings.ToUpper(a[0].Raw)), nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Inject("got", decl.Handle(func([]qml.SpecValue) error { return nil })); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Mount(qmlDoc(t, "import app.ui\nFlex {\n Card { label: upper(\"x\") }\n}")); err != nil {
+		t.Fatalf("a call as a property's whole value: %v", err)
+	}
+	if !strings.Contains(traced(rec), "title=string(X)") {
+		t.Fatalf("the call was not bound:\n%s", traced(rec))
+	}
+	if err := tr.Destroy(); err != nil {
+		t.Fatal(err)
+	}
+	err := tr.Mount(qmlDoc(t, "import app.ui\nFlex {\n Go { label: upper(\"x\") }\n}"))
+	if !errors.Is(err, decl.ErrComponent) || !strings.Contains(err.Error(), `"label" is the call upper(…)`) ||
+		!strings.Contains(err.Error(), "pass a value, or bind it where it is used") {
+		t.Fatalf("err = %v, want the call refused in the handler", err)
 	}
 }
 
@@ -279,5 +344,52 @@ func TestAValueModuleDeclaresNothing(t *testing.T) {
 	_, err := decl.ValueModule([]byte("Theme {\n property color accent: \"red\"\n}"))()
 	if err == nil || !strings.Contains(err.Error(), "a value module declares no properties: write accent:") {
 		t.Fatalf("err = %v, want the declaration refused, naming accent", err)
+	}
+}
+
+// TestASignalParameterShadowsADeclaredName in its handler, as it shadows an
+// injected one: Picker's `chosen` is raised with (path, count). A declared
+// name the signal does not have is still substituted, and `me.path` through
+// the root id still means the property. A handler on a nested component use
+// binds on the type that component expands to, and its parameters shadow too.
+func TestASignalParameterShadowsADeclaredName(t *testing.T) {
+	fsys := fstest.MapFS{
+		"ui/Chooser.qml": {Data: []byte("Picker {\n id: me\n property string path: \"declared\"\n" +
+			" property string label: \"lbl\"\n onChosen: pick(path, label, me.path)\n}")},
+		"ui/Bare.qml": {Data: []byte("Picker { }")},
+		"ui/Outer.qml": {Data: []byte("Flex {\n property string path: \"outer's\"\n" +
+			" Bare { id: inner; onChosen: pick(path, count) }\n}")},
+	}
+	a := paramAdapter{newRecorder()}
+	tr := decl.New(a)
+	if err := tr.OfferModule("app.ui", "", decl.ComponentFiles(fsys, "ui")); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	if err := tr.Inject("pick", decl.Handle(func(args []qml.SpecValue) error {
+		var got []string
+		for _, v := range args {
+			got = append(got, v.Raw)
+		}
+		calls = append(calls, strings.Join(got, ","))
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Mount(qmlDoc(t, "import app.ui\nFlex {\n Chooser { id: c }\n Outer { }\n}")); err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	for _, id := range []string{"c", "inner@/Outer#0"} {
+		n, ok := tr.NodeByID(id)
+		if !ok {
+			t.Fatalf("no node %q", id)
+		}
+		if err := a.emitters[n]["chosen"](sv("from-signal"), sv("2")); err != nil {
+			t.Fatalf("emit %s: %v", id, err)
+		}
+	}
+	if got := strings.Join(calls, " "); got != "from-signal,lbl,declared from-signal,2" {
+		t.Fatalf("pick got %q, want the parameter over the property, the rest substituted: "+
+			"from-signal,lbl,declared from-signal,2", got)
 	}
 }

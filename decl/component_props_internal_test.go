@@ -37,7 +37,7 @@ func TestSubstituteReplacesEveryReferenceForm(t *testing.T) {
 		t.Fatal(err)
 	}
 	def := scopeIDs(spec.Root, "7", "card")
-	out, err := substitute(def, use.Root)
+	out, err := substitute(def, use.Root, expansion{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestSubstituteTakesAnObjectWholeOnly(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		out, err := substitute(spec.Root, use.Root)
+		out, err := substitute(spec.Root, use.Root, expansion{})
 		switch {
 		case ok && err != nil:
 			t.Errorf("%q: %v", src, err)

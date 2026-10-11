@@ -198,7 +198,12 @@ func (t *Tree) componentTypes(im imports) map[string]*qml.SpecNode {
 // expand returns the document with every component use replaced by its
 // expansion. It builds a new tree and leaves the one it was given alone: the
 // caller's document is the caller's.
-func expand(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, error) {
+//
+// params names a signal's parameters by type and signal, as the adapter
+// declares them (Tree.signalParams); nil for none.
+func expand(root *qml.SpecNode, types map[string]*qml.SpecNode,
+	params func(typeName, signal string) []string) (*qml.SpecNode, error) {
+	ex := expansion{types: types, params: params}
 	// Every node walked has a KEY, which names a component use for the ids
 	// inside it (component_ids.go): a node's own id when it has one, else its
 	// parent's key and its place among the siblings of its type. It is stable
@@ -239,7 +244,7 @@ func expand(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, 
 			// The declared properties are bound BEFORE the copy's own nested
 			// uses expand, so a value passed down to an inner component's
 			// property arrives there already substituted (component_props.go).
-			scoped, err := substitute(scopeIDs(def, key, sn.ID), sn)
+			scoped, err := substitute(scopeIDs(def, key, sn.ID), sn, ex)
 			if err != nil {
 				return nil, err
 			}

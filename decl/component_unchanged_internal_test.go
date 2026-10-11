@@ -158,7 +158,7 @@ func TestADocumentDeclaringNothingExpandsAsBefore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := expand(spec.Root, types)
+		got, err := expand(spec.Root, types, nil)
 		if err != nil {
 			t.Fatalf("doc %d: %v", i, err)
 		}
