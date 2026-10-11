@@ -167,6 +167,13 @@ func TestTheCurrentMatchIsHighlighted(t *testing.T) {
 	if c.Highlighted(0, 8, false) {
 		t.Fatal("another match is highlighted as the current one")
 	}
+	// another find, one with no match, is on no match: foo's is not left highlighted
+	c.SetFind("bar", widget.FindOptions{})
+	if _, ok := c.CurrentMatch(); ok || c.Highlighted(0, 2, false) {
+		t.Fatal("a new find kept the previous find's current match")
+	}
+	c.SetFind("foo", widget.FindOptions{})
+	keys(c, "n")
 	c.SetFind("", widget.FindOptions{})
 	if _, ok := c.CurrentMatch(); ok || c.Highlighted(0, 2, false) {
 		t.Fatal("ending the find kept the current match")
