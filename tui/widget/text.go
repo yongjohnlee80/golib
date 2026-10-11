@@ -143,6 +143,18 @@ func (t *Text) SetTextMessage(m tui.Message) {
 	t.MarkDirty()
 }
 
+// SetBold is Qt Text.font.bold: the text drawn bold.
+func (t *Text) SetBold(v bool) {
+	t.st = t.st.Bold(v)
+	t.MarkDirty()
+}
+
+// SetItalic is Qt Text.font.italic: the text drawn italic.
+func (t *Text) SetItalic(v bool) {
+	t.st = t.st.Italic(v)
+	t.MarkDirty()
+}
+
 // SetColor is Qt Text.color: it overrides the inherited palette foreground
 // without replacing the rest of the widget style.
 func (t *Text) SetColor(c style.Color) {
