@@ -178,9 +178,13 @@ its **component types**.
   are resolved by **substitution** when the use is expanded, not at run time:
   each reference to `label` (or `root.label`) inside the copy is replaced by the
   use site's value, else the default, and the use site's value stays a binding
-  in the using document, so nothing needs a change signal. A required one the
-  use does not set, a literal of the wrong kind, and an object in an
-  expression are `ErrComponent`. With a default alias the use site's children
+  in the using document, so nothing needs a change signal, and is never
+  substituted again. Every declaration has a value — one not `required` needs
+  a default — and a signal's parameter shadows a declared name in its
+  handler. A required one the use does not set, a literal of the wrong kind,
+  and an object or a call in an expression are `ErrComponent`.
+  `ExpandComponents` runs expansion alone, for a checker that cannot mount a
+  use. With a default alias the use site's children
   go to that inner object instead of the root. `property alias`, `readonly`
   and `signal` are refused by the parser, each message naming what to write
   instead.

@@ -273,11 +273,18 @@ value, else the default, so `model: App.files` is a binding to `App.files`
 inside the TableView. Nothing changes at run time but what the use site's
 binding reads. The types are `string`, `int`, `real`, `double`, `bool`, `var`,
 `url`, `color` and `list<T>`; a literal of the wrong kind for a string, number
-or bool is refused, and so is a required property the use does not set. An
-optional `var`, `color` or `list<T>` needs a default — there is no undefined.
+or bool is refused, and so is a required property the use does not set. Every
+declaration has a value: one that is not `required` needs a default, so a
+reference to it never falls through to a name of the same spelling outside.
 Only the component's root declares, and a declared name may not also be an id
-in the file. A declared value that is an object or a template — a delegate —
-can be a property's whole value, not part of an expression or a handler.
+in the file. A value given is inserted as written and never substituted again.
+An object, a template — a delegate — or a call (`App.title()`) can be a
+property's whole value, not part of an expression or a handler: pass a value,
+or bind the call where it is used.
+
+Inside a handler, a **signal's parameter shadows** a declared property of the
+same name, as it shadows any other: in `onTextEdited: App.pickFilter(text)`,
+`text` is the field's. `picker.text`, through the root's id, is the property.
 
 Three Qt spellings are refused, each message naming what to write instead:
 
@@ -288,8 +295,14 @@ Three Qt spellings are refused, each message naming what to write instead:
 - `signal picked(int index)` — call an App handler with a declared property's
   value, as `App.pick(name, index)` does above.
 
-`tuidecl.Check` mounts a component nothing uses with a placeholder for each
-required property, so the file's own code is still judged.
+`tuidecl.Check` mounts a component nothing uses with a typed zero (`""`, `0`,
+`false`) for each required string, number or bool. **A component requiring a
+`var`, `list`, `url` or `color` is not mounted until it is used:** no
+placeholder builds as every model, colour or path a use might give. Check
+expands it instead, and that judges its declarations and the refusals above —
+but not its property values against the widgets' types, nor its handlers
+against their signals: a misspelt widget property in Picker.qml is found
+where Picker is first used, not before.
 
 ## 4. Dialogs
 
