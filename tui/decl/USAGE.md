@@ -235,6 +235,62 @@ Dialog {
 reach `user`. A type lists what a handler may read in `Type.Getters`
 (TextField has `text`).
 
+**A component declares its own properties** when its uses differ by more than
+the root type's properties. Four pickers that differ only in a title, a model,
+a name and their columns are one file:
+
+```qml
+// dialogs/Picker.qml
+Dialog {
+    id: picker
+    required property string name                 // the use must give it
+    required property var model
+    property string label: "Choose"               // a default
+    default property alias columns: list.data     // the use's children go to list
+    title: label
+    standardButtons: Dialog.Ok | Dialog.Cancel
+    Flex {
+        direction: Tui.Vertical
+        TextField { id: field; onTextEdited: App.pickFilter(picker.name, text) }
+        TableView { id: list; model: model; onActivated: App.pick(name, index) }
+    }
+    onAccepted: App.pick(name, list.currentIndex)
+}
+```
+
+```qml
+// editor.qml
+Picker { id: openFile; name: "open"; label: "Open a file"; model: App.files
+    TableViewColumn { role: "path"; title: "path" } }
+Picker { id: outline; name: "outline"; model: App.headings
+    TableViewColumn { role: "heading"; title: "heading" }
+    TableViewColumn { role: "line"; title: "line"; width: 6 } }
+```
+
+A declared property is a parameter of the file, resolved when the use is
+expanded: every `label` (or `picker.label`) inside the copy becomes the use's
+value, else the default, so `model: App.files` is a binding to `App.files`
+inside the TableView. Nothing changes at run time but what the use site's
+binding reads. The types are `string`, `int`, `real`, `double`, `bool`, `var`,
+`url`, `color` and `list<T>`; a literal of the wrong kind for a string, number
+or bool is refused, and so is a required property the use does not set. An
+optional `var`, `color` or `list<T>` needs a default — there is no undefined.
+Only the component's root declares, and a declared name may not also be an id
+in the file. A declared value that is an object or a template — a delegate —
+can be a property's whole value, not part of an expression or a handler.
+
+Three Qt spellings are refused, each message naming what to write instead:
+
+- `property alias text: field.text` — declare `property string text` and write
+  `field { text: text }`: the alias's setting direction, with nothing new;
+- `readonly property` — a component's property is set by its use, and nothing
+  else writes it;
+- `signal picked(int index)` — call an App handler with a declared property's
+  value, as `App.pick(name, index)` does above.
+
+`tuidecl.Check` mounts a component nothing uses with a placeholder for each
+required property, so the file's own code is still judged.
+
 ## 4. Dialogs
 
 A dialog opens by id, from a handler, and closes itself:

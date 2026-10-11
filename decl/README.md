@@ -171,6 +171,19 @@ its **component types**.
   Qt's component scope: one set per use, unreachable from the document, and
   shadowing the document's; its root's id names the instance from inside. One
   that contains itself is refused, with the cycle spelled out.
+
+  A component's root may **declare its own properties** —
+  `property string label: "Find"`, `required property var model`, and
+  `default property alias columns: list.data` — which a use sets by name. They
+  are resolved by **substitution** when the use is expanded, not at run time:
+  each reference to `label` (or `root.label`) inside the copy is replaced by the
+  use site's value, else the default, and the use site's value stays a binding
+  in the using document, so nothing needs a change signal. A required one the
+  use does not set, a literal of the wrong kind, and an object in an
+  expression are `ErrComponent`. With a default alias the use site's children
+  go to that inner object instead of the root. `property alias`, `readonly`
+  and `signal` are refused by the parser, each message naming what to write
+  instead.
 - **`Repeater` / `Instantiator`** are expanded after components: one copy of
   the delegate per row of a host `Model`, `model.<role>` and `index` written in
   from the row, each copy keyed by the row's key. The tree follows the models
