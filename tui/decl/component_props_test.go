@@ -43,29 +43,69 @@ const picker = `Dialog {
     onAccepted: App.picked(picker.name, list.currentIndex)
 }`
 
-// TestCheckGivesAnUnusedComponentsRequiredPropertiesAPlaceholder: mounted
-// bare, a component requiring properties would be refused for the mount's
-// want of them, not for anything in the file. With a placeholder of each
-// declared type, the file itself is what is judged.
-func TestCheckGivesAnUnusedComponentsRequiredPropertiesAPlaceholder(t *testing.T) {
+// checkPicker runs Check on a layout and a ui/ directory holding picker as
+// Picker.qml, with extra files beside it.
+func checkPicker(t *testing.T, layoutBody string, extra map[string]string) error {
+	t.Helper()
 	files := fstest.MapFS{
-		"main.qml":      {Data: []byte("import tui 1.0\nimport demo 1.0\nimport demo.ui 1.0\nWindow { Text { text: \"a\" } }")},
+		"main.qml": {Data: []byte("import tui 1.0\nimport demo 1.0\nimport demo.ui 1.0\n" +
+			"Window {\n Text { text: \"a\" }\n" + layoutBody + "\n}")},
 		"ui/Picker.qml": {Data: []byte(picker)},
 	}
-	opts := []tuidecl.ProgramOption{
+	for name, src := range extra {
+		files[name] = &fstest.MapFile{Data: []byte(src)}
+	}
+	return tuidecl.Check(
 		tuidecl.Layout(files, "main.qml"),
 		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.rows": tableRows(2)}),
 		tuidecl.Components(files, "ui", "demo.ui", "1.0"),
 		tuidecl.Types(controls.Types()...),
-		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.picked": func([]qml.SpecValue) error { return nil }}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.picked": func([]qml.SpecValue) error { return nil }}))
+}
+
+// TestCheckExpandsAnUnusedComponentItCannotMount: a Picker requiring a model,
+// a colour and a url cannot be mounted bare — no placeholder builds as every
+// model a use might give — so Check expands it with marked placeholders and
+// passes it, unless expansion itself fails.
+func TestCheckExpandsAnUnusedComponentItCannotMount(t *testing.T) {
+	if err := checkPicker(t, "", nil); err != nil {
+		t.Fatalf("Check refused an unused Picker requiring a model: %v", err)
 	}
-	if err := tuidecl.Check(opts...); err != nil {
-		t.Fatalf("Check refused a sound component nothing uses: %v", err)
+	// An expansion error is still found: a call where an expression goes.
+	broken := strings.Replace(picker, `property string label: "Choose"`,
+		"property string label: App.hint()", 1)
+	broken = strings.Replace(broken, "onAccepted: App.picked(picker.name, list.currentIndex)",
+		"onAccepted: App.picked(label, list.currentIndex)", 1)
+	err := checkPicker(t, "", map[string]string{"ui/Picker.qml": broken})
+	if err == nil || !strings.Contains(err.Error(), "component Picker of demo.ui") ||
+		!strings.Contains(err.Error(), `"label" is the call App.hint(…)`) {
+		t.Fatalf("Check passed an unused Picker whose expansion fails: %v", err)
 	}
-	// The file is still judged: a mistake in it is reported.
-	files["ui/Picker.qml"] = &fstest.MapFile{Data: []byte(strings.Replace(picker, "checked: wrapped", "chekked: wrapped", 1))}
-	if err := tuidecl.Check(opts...); err == nil || !strings.Contains(err.Error(), "chekked") {
-		t.Fatalf("Check passed a broken component: %v", err)
+	// What expansion cannot judge — a property the widget lacks — waits for a use.
+	misspelt := strings.Replace(picker, "checked: wrapped", "chekked: wrapped", 1)
+	if err := checkPicker(t, "", map[string]string{"ui/Picker.qml": misspelt}); err != nil {
+		t.Fatalf("expansion-only checking judged a widget property: %v", err)
+	}
+	// Used, it is mounted with the use's values: a model that is no model fails
+	// there, placed at the use.
+	err = checkPicker(t, ` Picker { name: "files"; model: "rows"; wrapped: true; accent: "red"; place: "" }`, nil)
+	if err == nil || !strings.Contains(err.Error(), "want a model") || !strings.Contains(err.Error(), "main.qml:6:") {
+		t.Fatalf("a used Picker given no model: %v", err)
+	}
+}
+
+// TestCheckMountsAnUnusedComponentRequiringOnlyScalars with a typed zero for
+// each, so its file is judged as a mount judges it.
+func TestCheckMountsAnUnusedComponentRequiringOnlyScalars(t *testing.T) {
+	const field = "Flex {\n required property string name\n required property int width0\n" +
+		" required property bool on\n Text { text: name }\n CheckBox { text: \"x\"; checked: on }\n}"
+	if err := checkPicker(t, "", map[string]string{"ui/Field.qml": field}); err != nil {
+		t.Fatalf("Check refused an unused component requiring scalars: %v", err)
+	}
+	err := checkPicker(t, "", map[string]string{"ui/Field.qml": strings.Replace(field, "checked: on", "chekked: on", 1)})
+	if err == nil || !strings.Contains(err.Error(), "component Field of demo.ui") || !strings.Contains(err.Error(), "chekked") {
+		t.Fatalf("Check passed a broken component requiring scalars: %v", err)
 	}
 }
 

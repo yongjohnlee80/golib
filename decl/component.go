@@ -280,6 +280,20 @@ func expand(root *qml.SpecNode, types map[string]*qml.SpecNode,
 	return walk(root, nil, "")
 }
 
+// ExpandComponents returns root with every component use in it expanded, as
+// Mount expands a document before judging it, or the error expansion finds:
+// a component that contains itself, a required property a use does not set,
+// a value of the wrong kind, an object or a call where an expression goes.
+// types are the component types in scope, by the name a document writes. It
+// builds nothing, resolves no name and leaves root alone.
+//
+// It is for a checker that cannot mount a use of a component —
+// tuidecl.Check, for one requiring a value no placeholder can build — and
+// still judges what expansion alone can.
+func ExpandComponents(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, error) {
+	return expand(root, types, nil)
+}
+
 // merge lays a use site over an expanded component, by Qt's rules. target is
 // the scoped id of the object the component's default alias sends the use
 // site's children to, "" for none: they go to the root, after its own.

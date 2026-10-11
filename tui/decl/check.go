@@ -50,6 +50,17 @@ import (
 // Every other offered module is loaded, so its own rules still hold. Nothing
 // runs: providers subscribe and are released, and no App is built.
 //
+// An unused component that REQUIRES properties is mounted with a typed zero
+// for each — "", 0, false — when they are all strings, numbers and bools. One
+// requiring a var, a list, a url or a colour cannot be: no placeholder builds
+// as every model, colour or path a use might give. Check EXPANDS it instead,
+// each such property a marked placeholder, and passes it unless expansion
+// fails. That still judges its declarations, and the substitution refusals —
+// a required property unset, a literal of the wrong kind, a call or an object
+// where an expression goes — but NOT its property values against the widgets'
+// types, nor its handlers against their signals and methods: that is
+// mounting, and it happens where the component is used.
+//
 // Every problem is reported, each labelled with what was mounted.
 func Check(opts ...ProgramOption) error {
 	c, err := configure(opts)
@@ -97,8 +108,12 @@ func Check(opts ...ProgramOption) error {
 			if used[name] && (isImported(o.name, spec.Imports) || len(replaced) > 0) {
 				continue
 			}
-			report(fmt.Sprintf("component %s of %s, which %s does not use", name, o.name, c.layoutFile),
-				mountAnywhere(c, hostings(c, spec, imports, name, contents.Components[name])))
+			label := fmt.Sprintf("component %s of %s, which %s does not use", name, o.name, c.layoutFile)
+			if root := contents.Components[name]; !buildable(root) {
+				report(label, expandOnly(spec, imports, offers, name, root))
+				continue
+			}
+			report(label, mountAnywhere(c, hostings(c, spec, imports, name, contents.Components[name])))
 		}
 	}
 	return errors.Join(errs...)
@@ -213,9 +228,9 @@ type placement struct {
 // a MenuBar, never directly in a Window. The layout's own root is not reused:
 // its construction rules — a Split's two children — are the layout's.
 //
-// The use is bare but for a placeholder for each REQUIRED property root
-// declares (placeholder): a use without one is refused, and that would be the
-// mount's doing, not the component's.
+// The use is bare but for a typed zero for each REQUIRED property root
+// declares: a use without one is refused, and that would be the mount's
+// doing, not the component's. Only a buildable component comes here.
 func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, component string,
 	root *qml.SpecNode) []placement {
 	pos := layout.Root.Pos
@@ -224,7 +239,7 @@ func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, co
 		for _, d := range root.Decls {
 			if d.Required {
 				given = append(given, qml.SpecProp{Name: d.Name, Path: []string{d.Name},
-					Value: placeholder(d.Type, pos), Pos: pos})
+					Value: zeroOf(d.Type, pos), Pos: pos})
 			}
 		}
 	}
@@ -241,22 +256,69 @@ func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, co
 	return out
 }
 
-// placeholder is a value of a declared type that the vocabulary accepts
-// wherever such a property is likely to land: "" for a string or a url, 0 for
-// a number, false for a bool, "default" for a colour, and an empty model for a
-// var or a list — what a component's var most often feeds is a view's model.
-func placeholder(typ string, at parse.Position) qml.SpecValue {
+// zeroOf is the placeholder a buildable component's required property is
+// mounted with: its type's zero.
+func zeroOf(typ string, at parse.Position) qml.SpecValue {
 	switch typ {
-	case "string", "url":
-		return qml.SpecValue{Kind: qml.SpecValueString, Pos: at}
 	case "int", "real", "double":
 		return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "0", Pos: at}
 	case "bool":
 		return qml.SpecValue{Kind: qml.SpecValueBool, Raw: "false", Pos: at}
-	case "color":
-		return qml.SpecValue{Kind: qml.SpecValueString, Raw: "default", Pos: at}
 	}
-	return qml.SpecValue{Kind: qml.SpecValueObject, Obj: NewListModel(), Pos: at}
+	return qml.SpecValue{Kind: qml.SpecValueString, Pos: at}
+}
+
+// buildable reports whether a component's required properties are all of a
+// type whose zero every widget property of that type accepts.
+func buildable(root *qml.SpecNode) bool {
+	if root == nil {
+		return true
+	}
+	for _, d := range root.Decls {
+		switch d.Type {
+		case "string", "int", "real", "double", "bool":
+		default:
+			if d.Required {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// expandOnly judges an unbuildable component by expanding one use of it, in
+// the context of imports, with a MARKED placeholder for each required
+// property: a reference spelled as no document can write one, so it can
+// stand anywhere a value can and is never mistaken for a name. Scalars get
+// their zero, as a mount would give them.
+func expandOnly(layout qml.SpecTree, imports []qml.SpecImport, offers map[string]decl.ModuleContents,
+	component string, root *qml.SpecNode) error {
+	pos := layout.Root.Pos
+	use := &qml.SpecNode{Type: component, Pos: pos}
+	for _, d := range root.Decls {
+		if !d.Required {
+			continue
+		}
+		v := zeroOf(d.Type, pos)
+		if !buildable(&qml.SpecNode{Decls: []qml.SpecDecl{d}}) {
+			mark := "<required " + d.Type + " " + d.Name + ">"
+			v = qml.SpecValue{Kind: qml.SpecValueRef, Raw: mark, Path: []string{mark}, Pos: pos}
+		}
+		use.Props = append(use.Props, qml.SpecProp{Name: d.Name, Path: []string{d.Name}, Value: v, Pos: pos})
+	}
+	types := map[string]*qml.SpecNode{component: root}
+	for _, im := range imports {
+		for name, r := range offers[im.Module].Components {
+			if im.Alias != "" {
+				name = im.Alias + "." + name
+			}
+			if _, ok := types[name]; !ok {
+				types[name] = r
+			}
+		}
+	}
+	_, err := decl.ExpandComponents(use, types)
+	return err
 }
 
 // mountAnywhere judges a component sound when ANY placement accepts it. When
