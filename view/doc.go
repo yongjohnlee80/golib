@@ -59,8 +59,11 @@
 //   - html: escaped by [html/template] according to the exact context of the action (HTML body text,
 //     element attribute, URL, script, or style). Active script schemes (such as "javascript:")
 //     are sanitized.
-//   - Trusted Output Exceptions: Values produced by "toJson", "quote", or "raw" are marked as trusted
-//     ([Raw] or [html/template.HTML]) and bypass contextual escaping, as documented in [View.Format].
+//   - Trusted Output Exceptions: In text, markdown, json, and xml formats, values produced by "toJson",
+//     "quote", or "raw" return [Raw] and bypass the format's escaping. In html format, however, "toJson"
+//     and "quote" are treated as regular text and contextually escaped by [html/template]; only "raw"
+//     marks trusted markup (returning [html/template.HTML]) that passes through verbatim, as documented
+//     in [View.Format].
 //   - Null Safety: NULL or missing database fields print as empty strings rather than failing.
 //   - Path Traversal Containment: Export filenames that attempt directory traversal ("../") or
 //     contain absolute paths are rejected by the target filesystem driver.
