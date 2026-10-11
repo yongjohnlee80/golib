@@ -262,7 +262,9 @@ func (t *Tree) load(im qml.SpecImport, o offer) error {
 	}
 	c, err := o.load()
 	if err != nil {
-		return fail(fmt.Errorf("%w: %v", ErrModuleLoad, err))
+		// %w twice: a loader's own sentinel — ErrComponent for a component
+		// file the rules refuse — still answers errors.Is.
+		return fail(fmt.Errorf("%w: %w", ErrModuleLoad, err))
 	}
 	for key := range c.Values {
 		if !underExport(key, c.Exports) {
