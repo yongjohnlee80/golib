@@ -9,16 +9,21 @@ import (
 	pyaml "github.com/yongjohnlee80/golib/parse/yaml"
 )
 
-// Evaluate resolves doc's tags under schema, then constructs its value: nil, bool, int64, float64,
-// string, []any or Map. It takes JSON or Core; Failsafe defines no complete value, and is refused
-// with ErrFailsafe.
+// Evaluate resolves the tag for every node in doc under schema, then constructs and returns
+// the corresponding native Go value: nil, bool, int64, float64, string, []any, or [Map].
 //
-// An explicit tag outside the schema is an error naming the tag; a caller that knows more tags
-// wraps Evaluate. An integer beyond int64 is an error, never a float. An alias constructs its
-// target again each time it is used, and every construction counts toward MaxNodes; an alias to
-// its own ancestor is an error, since a Go value cannot hold the cycle. Two keys of one mapping
-// that are equal nodes (spec 3.2.1.3: the same tag and canonical content, a mapping compared as a
-// set) are an error naming both.
+// Supported schemas are [JSON] and [Core]. The [Failsafe] schema leaves plain scalars and
+// untagged collections unresolved; calling Evaluate with Failsafe returns [ErrFailsafe].
+//
+// Invariants and guarantees:
+//   - Schema Conformance: An explicit tag outside the schema produces an error naming the tag.
+//   - Exact Integers: Integer values exceeding [math.MinInt64] to [math.MaxInt64] fail with an error;
+//     integers are never silently converted or degraded to float64.
+//   - Duplicate Keys: In accordance with YAML 1.2 section 3.2.1.3, two keys in a mapping that have
+//     equal tags and canonical content are rejected as an error naming both definition positions.
+//   - Cycles and Expansion: An alias to an ancestor node produces a cycle error. Every alias
+//     dereference re-evaluates its target and charges its node count against [MaxNodes] to protect
+//     against algorithmic complexity attacks.
 func Evaluate(doc *pyaml.Document, schema Schema, opts ...Option) (any, error) {
 	if schema == Failsafe {
 		return nil, ErrFailsafe

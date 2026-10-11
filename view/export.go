@@ -14,17 +14,20 @@ import (
 // ErrNoExport is returned by [Invocation.Export] for a view that declares no export file name.
 var ErrNoExport = errors.New("view: the view declares no export")
 
-// Export runs the bound view on conn and writes each row's document to dst, at the name the view's
-// export template renders for that row; a name with directories creates them. It returns how many
-// documents it wrote.
+// Export executes the bound view on conn and writes each resulting document to dst.
+// The file path for each document is evaluated by rendering the view's export template
+// using that row's JSON data. Intermediate directories are created automatically via [vfs.FS.MkdirAll].
 //
-// Each document is written atomically by dst, and the first error stops the run: the documents
-// already written stay, and the one in flight is never left half written. An empty export name is an
-// error, and a name that would leave dst (an absolute path, "..") is refused by dst itself, so an
-// entity id from the database cannot place a file outside it.
-//
-// dst is whatever filesystem the caller opened for the view's [View.Destination]: vfs/local for a
-// file:// destination, another vfs driver for a bucket.
+// Operational and Atomicity Guarantees:
+//   - Document Atomicity: Each document is written using [vfs.FS.WriteFile], ensuring writes
+//     are atomic and readers never observe partial files.
+//   - Failure Semantics: If an error occurs on row N, export terminates immediately: rows 1 through N-1
+//     remain written in dst, while row N is not committed. The total count of successfully written
+//     documents is returned alongside the error.
+//   - Path Traversal Containment: An empty export name produces an error. Any rendered path attempting
+//     lexical escape outside dst (such as "../" or absolute paths) is rejected by dst's [vfs.CheckName].
+//   - Storage Independence: dst can be any [vfs.FS] implementation, including local disk (vfs/local),
+//     memory (vfs/memfs), or remote cloud storage drivers matching the view's [View.Destination] URI.
 func (inv Invocation) Export(ctx context.Context, conn dao.DataConn, dst vfs.FS) (int, error) {
 	v := inv.view
 	if v.exportTo == nil {

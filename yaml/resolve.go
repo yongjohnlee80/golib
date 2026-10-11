@@ -4,10 +4,19 @@ import (
 	pyaml "github.com/yongjohnlee80/golib/parse/yaml"
 )
 
-// Resolve assigns each node of doc its tag under schema, the spec's tag resolution step. A node
-// with an explicit tag keeps it; a non-specific one is resolved by the schema's rules. Under
-// Failsafe, nodes with the "?" non-specific tag stay unresolved and are absent from the result.
-// Under JSON, a plain scalar matching none of its formats is an error.
+// Resolve assigns each node of doc its canonical tag URI under schema, following the tag resolution
+// pipeline of the YAML 1.2 specification.
+//
+// Resolution rules:
+//   - Explicit Tags: A node with an explicit tag (such as "!<tag:yaml.org,2002:str>") retains it directly.
+//   - Non-Specific Tags: Untagged collections and plain scalars have the "?" non-specific tag.
+//     Non-plain scalars (quoted or block) have the "!" non-specific tag and resolve to string.
+//   - Failsafe Schema: Nodes with the "?" non-specific tag remain unresolved and are omitted from the returned [Tags] map.
+//   - JSON Schema: Plain scalars are matched against JSON formats (null, bool, int, float).
+//     Any plain scalar matching none of those formats returns an error.
+//   - Core Schema: Plain scalars match Core patterns for null, booleans, integers (including 0o and 0x),
+//     and floats (.inf, .nan). Any non-matching scalar defaults to [TagStr].
+//   - Aliases: An alias node inherits the resolved tag of its target node.
 func Resolve(doc *pyaml.Document, schema Schema) (Tags, error) {
 	tags := Tags{}
 	if doc == nil || doc.Root == nil {
