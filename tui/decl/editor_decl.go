@@ -30,6 +30,10 @@ type EditorDecl struct {
 	modeChanged  func()
 	textChanged  func()
 	cursorMoved  func()
+	// writeRequested and quitRequested raise the document's handlers for the command line's w / q;
+	// nil when the document declares none, so w and q answer that the editor cannot save or quit
+	writeRequested func(args ...qml.SpecValue)
+	quitRequested  func(args ...qml.SpecValue)
 }
 
 // ReadEditor reads an Editor declaration: its constructor properties, its children (at most one
@@ -55,21 +59,35 @@ func ReadEditor(b Build) (EditorDecl, error) {
 	d.modeChanged = b.Emitter("modeChanged")
 	d.textChanged = b.Emitter("textChanged")
 	d.cursorMoved = b.Emitter("cursorPositionChanged")
+	if emit := b.EmitterWith("writeRequested"); b.Emitters["writeRequested"] != nil {
+		d.writeRequested = emit
+	}
+	if emit := b.EmitterWith("quitRequested"); b.Emitters["quitRequested"] != nil {
+		d.quitRequested = emit
+	}
 	return d, nil
 }
 
-// CoreOptions are the declaration's behaviour for the editor's core: its first text, and the
-// listeners that raise modeChanged, textChanged and cursorPositionChanged.
+// CoreOptions are the declaration's behaviour for the editor's core: its first text, the listeners
+// that raise modeChanged, textChanged and cursorPositionChanged, and the command line's w and q,
+// which raise writeRequested(quit) and quitRequested(force) when the document handles them.
 func (d EditorDecl) CoreOptions() []widget.CoreOption {
 	modeChanged := d.modeChanged
-	return []widget.CoreOption{
+	var hooks []widget.CoreOption
+	if emit := d.writeRequested; emit != nil {
+		hooks = append(hooks, widget.CoreOnWrite(func(quit bool) error { emit(boolValue(quit)); return nil }))
+	}
+	if emit := d.quitRequested; emit != nil {
+		hooks = append(hooks, widget.CoreOnQuit(func(force bool) error { emit(boolValue(force)); return nil }))
+	}
+	return append(hooks,
 		widget.CoreOnModeChange(func(widget.EditorMode) { modeChanged() }),
 		widget.CoreOnChange(d.textChanged),
 		widget.CoreOnCursorPositionChange(d.cursorMoved),
 		widget.CoreInitialText(d.Text),
 		widget.CoreAutoIndent(d.AutoIndent),
 		widget.CoreIndentUnit(d.IndentUnit),
-	}
+	)
 }
 
 // Attach binds the declared SyntaxHighlighter, if any, to the editor's core.
@@ -86,6 +104,10 @@ type (
 	valueSetter  interface{ SetValue(string) }
 	cursorPlacer interface{ SetCursorPosition(int) }
 	coreEditor   interface{ Core() *widget.EditorCore }
+	commandLiner interface {
+		SetCommandLineEnabled(bool)
+		OpenCommandLine(string) bool
+	}
 )
 
 // EditorSetters are the Editor's behaviour properties, for any editor widget with the methods
@@ -98,6 +120,8 @@ func EditorSetters() map[string]Setter {
 		"readOnly":   setter("an Editor", boolOf, readOnlyer.SetReadOnly),
 		"text":       setter("an Editor", stringOf, valueSetter.SetValue),
 		"autoIndent": setter("an Editor", boolOf, func(e coreEditor, v bool) { e.Core().SetAutoIndent(v) }),
+		// the ':' prompt, on by default
+		"commandLine": setter("an Editor", boolOf, commandLiner.SetCommandLineEnabled),
 		"indentUnit": func(c tui.Component, v qml.SpecValue) error {
 			unit, err := stringOf(v)
 			if err != nil {
@@ -178,7 +202,35 @@ func editorSetters() map[string]Setter {
 
 // editorType is the standard Editor.
 var editorType = Type{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap", "autoIndent", "indentUnit"}, restyle: restyleEditor,
-	Setters: editorSetters(), Enums: []Enum{EditorViews}}
+	Setters: editorSetters(), Enums: []Enum{EditorViews},
+	Signals: map[string][]string{"writeRequested": {"quit"}, "quitRequested": {"force"}},
+	Methods: EditorMethods()}
+
+// EditorMethods are what a handler calls on an Editor by its id, for any editor widget with the
+// methods they call: openCommandLine(text?) opens the ':' prompt, with text in its field.
+func EditorMethods() map[string]Method {
+	return map[string]Method{
+		"openCommandLine": func(c tui.Component, args []qml.SpecValue) error {
+			if len(args) > 1 {
+				return fmt.Errorf("Editor.openCommandLine takes at most one argument, the text to start with; got %d", len(args))
+			}
+			initial := ""
+			if len(args) == 1 {
+				s, err := stringOf(args[0])
+				if err != nil {
+					return err
+				}
+				initial = s
+			}
+			e, ok := c.(commandLiner)
+			if !ok {
+				return fmt.Errorf("openCommandLine needs an Editor")
+			}
+			e.OpenCommandLine(initial)
+			return nil
+		},
+	}
+}
 
 // buildEditor builds a widget.Editor and connects its notifications to the
 // document's signals, `modeChanged`, `textChanged` and `cursorPositionChanged`.

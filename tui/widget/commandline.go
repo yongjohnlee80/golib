@@ -108,7 +108,8 @@ func (l *CommandLine) open(initial string, failed error) bool {
 	l.comp = completion{at: -1}
 	l.list = NewText("", WithWrapMode(Wrap))
 	if failed != nil {
-		l.list.SetText(failed.Error())
+		// the package's sentinels name it for a log; the user reads only what went wrong
+		l.list.SetText(strings.TrimPrefix(failed.Error(), "widget: "))
 	}
 	l.field = NewTextInput(WithInitialValue(initial),
 		WithOnEdit(func(string) { l.comp = completion{at: -1}; l.list.SetText("") }),
