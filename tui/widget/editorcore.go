@@ -110,6 +110,8 @@ type EditorCore struct {
 	commandLine func() bool                 // answers ActCommandLine: the widget's prompt; nil: none
 	// joinGroup makes an edit join the undo group open before it: a replace session's answers
 	joinGroup bool
+	// onEscape answers Esc in Normal mode with nothing pending and no active find (SetOnEscape)
+	onEscape func() bool
 }
 
 // CoreOption configures an EditorCore under construction.

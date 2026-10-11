@@ -121,4 +121,33 @@ func TestEscapeCancelsTheActiveFind(t *testing.T) {
 	if c.HandleKey(esc) {
 		t.Fatal("Esc with no find was consumed; it must reach the host")
 	}
+	// the host's own: asked only then, and only what it takes is consumed
+	asked := 0
+	c.SetOnEscape(func() bool { asked++; return asked == 1 })
+	if !c.HandleKey(esc) || c.HandleKey(esc) || asked != 2 {
+		t.Fatalf("the host's Esc: asked %d", asked)
+	}
+	keys(c, "i")
+	c.HandleKey(esc) // Insert's Esc returns to Normal: not the host's
+	if asked != 2 {
+		t.Fatalf("the host was asked about Insert mode's Esc (%d)", asked)
+	}
+}
+
+// A modeless editor's Esc (Text mode) cancels the find and asks the host, as Normal mode's does.
+func TestModelessEscapeCancelsTheFindToo(t *testing.T) {
+	c, _ := coreWith(t, "foo bar", widget.CoreKeyset(widget.KeysetStandard))
+	esc := tui.KeyEvent{Code: tui.KeyEscape}
+	c.SetFind("foo", widget.FindOptions{})
+	if !c.HandleKey(esc) {
+		t.Fatal("a modeless Esc over an active find was not consumed")
+	}
+	if term, _ := c.FindTerm(); term != "" {
+		t.Fatalf("the find is still %q", term)
+	}
+	asked := false
+	c.SetOnEscape(func() bool { asked = true; return true })
+	if !c.HandleKey(esc) || !asked {
+		t.Fatal("a modeless Esc did not reach the host's answer")
+	}
 }

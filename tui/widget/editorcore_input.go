@@ -242,7 +242,8 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 			c.markDirty()
 			return true
 		}
-		return false
+		// modeless, Esc is Normal mode's: it cancels the active find, then is the host's
+		return c.escapeFind()
 	case tui.KeyEnter:
 		c.beginGroup()
 		c.insertIndentedNewline()
@@ -345,11 +346,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		// Normal mode with nothing pending: Esc cancels the active find (its marks, n and N) when
 		// there is one. Otherwise it is a vim no-op, so it BUBBLES: consuming it made an Editor
 		// inside a modal float undismissable, since the host never saw the key.
-		if !hadPending && c.find.term != "" {
-			c.SetFind("", FindOptions{})
-			return true
-		}
-		return hadPending
+		return hadPending || c.escapeFind()
 	}
 
 	// Count accumulation: 1-9 always; 0 only extends an existing count. Clamp BEFORE assignment
