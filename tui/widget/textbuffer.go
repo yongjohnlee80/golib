@@ -376,7 +376,10 @@ func wrapPosOf(lines []string, ln, col int, v wrapView) (row, x int) {
 		if col < r[0] {
 			return i, 0 // col is a wrap-consumed break space
 		}
-		if col <= r[1] || i == len(rows)-1 {
+		// a column at a row's end is on the next row when that row starts there (a break inside
+		// a word, or after a cluster wider than the row): its character is drawn there
+		last := i == len(rows)-1
+		if col < r[1] || last || col == r[1] && rows[i+1][0] != col {
 			return i, cellsBefore(cs[r[0]:], min(col, r[1])-r[0], v.measure)
 		}
 	}
