@@ -21,8 +21,8 @@
 //     cell coordinates, layout semantics, and event lifecycles.
 //  2. Strict Three-Goroutine State Isolation: Value ownership is partitioned among three
 //     cooperating goroutines (the TUI loop goroutine, the Gio window loop, and an event forwarder).
-//     Synchronization is achieved through atomic snapshots and single-slot handoffs rather than
-//     coarse-grained widget mutexes.
+//     Cross-thread metrics and font configurations use atomic snapshots, while completed frame
+//     macros hand off to Gio through a short mutex-protected latch without waiting for GPU presentation.
 //  3. Run-Length Batching & Macro Replay: Gio operates in immediate mode, where every drawing
 //     operation replays as a uniform GPU upload and draw call. The backend batches contiguous
 //     identical cell backgrounds into single rectangles, merges box-drawing line segments,
@@ -36,7 +36,7 @@
 // # Three-Goroutine Concurrency Architecture
 //
 // Concurrency in package gui strictly delineates responsibilities across three dedicated
-// goroutines to guarantee that the UI loop never blocks on window event loops or GPU presentation:
+// goroutines to decouple the UI loop from OS window polling and GPU presentation:
 //
 //	┌────────────────────────────────────────────────────────────────────────┐
 //	│                           Host Platform (OS)                           │
@@ -50,7 +50,7 @@
 //	                     │  - Translates Keys & Pointers│
 //	                     │  - Manages IME preedit buffer│
 //	                     │  - Publishes atomic metrics  │
-//	                     │  - Submits latest frame draw │
+//	                     │  - Presents latest frame     │
 //	                     └──────────────┬───────────────┘
 //	                                    │ Enqueue tui.Event
 //	                                    ▼
@@ -66,9 +66,9 @@
 //	│                           TUI Loop Goroutine                           │
 //	│  - Executes tui.App event loop, layout passes, and component trees     │
 //	│  - Owns the cell grid, latched cursor state, and image table           │
-//	│  - Translates cell updates and diffs in Flush                          │
+//	│  - Translates cell updates and diffs synchronously in Flush            │
 //	│  - Records rows and native views into immutable Gio macros             │
-//	│  - Atomically stores the latest frame for Gio presentation             │
+//	│  - Latches latest frame under Backend.mu and signals Invalidate        │
 //	└────────────────────────────────────────────────────────────────────────┘
 //
 // # Ownership and Concurrency Invariants
@@ -125,7 +125,7 @@
 //				gui.WithTitle("Editor Window"),
 //				gui.WithSize(1024, 768),
 //			)
-//			root := widget.NewBox(widget.NewLabel("Hello, Native GUI!"))
+//			root := widget.NewBox(widget.NewText("Hello, Native GUI!"))
 //			app := tui.NewApp(root, tui.WithBackend(backend))
 //			return app.Run(context.Background())
 //		})

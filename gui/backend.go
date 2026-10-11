@@ -41,8 +41,8 @@ var errClosedBeforeOpen = errors.New("gui: window closed before it opened")
 // Backend coordinates state between the TUI event loop goroutine and the Gio window event goroutine.
 // All public methods conforming to [tui.Backend] are invoked exclusively on the TUI event loop.
 // Fields mutated during Flush, cursor updates, or image placements are strictly loop-owned,
-// while cross-thread handoffs to Gio (frames, font generations, clipboard requests) use atomic
-// pointers or short mutex-protected latches without blocking.
+// while cross-thread handoffs to Gio (metrics, font generations) use atomic pointers, and completed
+// frames or clipboard requests latch under Backend.mu without waiting for GPU presentation.
 type Backend struct {
 	cfg config
 	win *app.Window
@@ -244,9 +244,9 @@ func (b *Backend) Start(ctx context.Context) error {
 
 // Stop shuts down the native window and terminates event processing.
 //
-// Stop is idempotent and safe to call multiple times. It signals window termination, releases
-// internal event channels, and waits for the forwarder goroutine to finish. Upon return,
-// the channel returned by [Backend.Events] is guaranteed to be closed.
+// Stop is idempotent and safe to call multiple times. It signals window termination and releases
+// internal event queues. For a backend that completed [Backend.Start], Stop waits for the forwarder
+// goroutine to exit and guarantees that the channel returned by [Backend.Events] is closed upon return.
 func (b *Backend) Stop() error {
 	b.q.end(nil)
 	b.win.Perform(system.ActionClose)
@@ -320,9 +320,10 @@ func (b *Backend) Capabilities() tui.Capabilities {
 // Flush rasterizes dirty cell updates and latched cursor state into a recorded vector frame
 // macro and transfers it to the Gio presentation loop.
 //
-// Flush is non-blocking: it updates the internal grid buffer, executes run-length draw optimizations,
-// captures caret coordinates for OS IME positioning, and atomically replaces the latest pending
-// frame. Gio re-renders the latest frame during its next VSync cycle.
+// Flush updates the internal grid buffer, executes run-length draw optimizations, captures caret
+// coordinates for OS IME positioning, and latches the completed frame under [Backend.mu]. It signals
+// Gio to redraw via [app.Window.Invalidate] without waiting for GPU presentation or for Gio to consume
+// the previous frame.
 func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	select {
 	case <-b.q.done:
