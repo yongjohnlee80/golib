@@ -57,6 +57,9 @@ func valueModule(file string, src []byte) (ModuleContents, error) {
 		return ModuleContents{}, fmt.Errorf("a value module has no handlers (at %s)", root.Pos)
 	case root.ID != "":
 		return ModuleContents{}, fmt.Errorf("a value module has no id (at %s)", root.Pos)
+	case len(root.Decls) > 0:
+		return ModuleContents{}, fmt.Errorf("a value module declares no properties: write %s: "+
+			"<value> (at %s)", root.Decls[0].Name, root.Decls[0].Pos)
 	}
 	values := make(map[string]Injected, len(root.Props))
 	for _, p := range root.Props {

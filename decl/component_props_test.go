@@ -272,3 +272,12 @@ func TestADefaultAliasIsNotSetAsAValue(t *testing.T) {
 		t.Fatalf("err = %v, want the alias refused as a value", err)
 	}
 }
+
+// TestAValueModuleDeclaresNothing: a theme is data, and a declaration in one
+// would otherwise be dropped without a word.
+func TestAValueModuleDeclaresNothing(t *testing.T) {
+	_, err := decl.ValueModule([]byte("Theme {\n property color accent: \"red\"\n}"))()
+	if err == nil || !strings.Contains(err.Error(), "a value module declares no properties: write accent:") {
+		t.Fatalf("err = %v, want the declaration refused, naming accent", err)
+	}
+}
