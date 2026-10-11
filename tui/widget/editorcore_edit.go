@@ -65,28 +65,31 @@ func (c *EditorCore) TextIn(r TextRange) string {
 	return c.buf.textIn(lo, hi)
 }
 
-// Select shows r as the selection: the Visual selection, from r.From to the last cluster before
-// r.To, as v would make it. An empty r, or a core that does not select (WithSelection(false)),
-// leaves the selection it has; Unselect clears it.
+// Select shows r as the selection: the Visual selection, exactly [r.From, r.To). A range that ends
+// at a line's start selects the line break before it, the cursor just past the previous line's
+// last cluster. An empty r, or a core that does not select (WithSelection(false)), leaves the
+// selection it has; Unselect clears it.
 func (c *EditorCore) Select(r TextRange) {
 	lo, hi := c.clampRange(r)
 	if !c.canSelect || (lo == hi) {
 		return
 	}
 	c.settlePendingRune()
-	// the Visual selection includes the cluster under the cursor: end on the one before hi
-	end := hi
+	// the Visual selection includes the cluster under the cursor: end on the one before hi, or,
+	// for a range ending at a line's start, on the previous line's break
+	end, eol := hi, false
 	if end.col > 0 {
 		end.col--
 	} else {
 		end.ln--
-		end.col = max(0, len(c.buf.lineClusters(end.ln))-1)
+		end.col, eol = len(c.buf.lineClusters(end.ln)), true
 	}
 	ln, col := c.buf.ln, c.buf.col
 	defer c.cursorMoved(ln, col)
 	c.vAnchor = lo
 	c.buf.ln, c.buf.col = end.ln, end.col
 	c.setMode(ModeVisual)
+	c.vEOL = eol
 	c.reveal()
 	c.markDirty()
 }
