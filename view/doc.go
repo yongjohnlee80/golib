@@ -62,8 +62,8 @@
 //   - Trusted Output Exceptions: In text, markdown, json, and xml formats, values produced by "toJson",
 //     "quote", or "raw" return [Raw] and bypass the format's escaping. In html format, however, "toJson"
 //     and "quote" are treated as regular text and contextually escaped by [html/template]; only "raw"
-//     marks trusted markup (returning [html/template.HTML]) that passes through verbatim, as documented
-//     in [View.Format].
+//     marks trusted HTML markup (returning [html/template.HTML]); contextual processing still applies
+//     in attributes, URLs, scripts, and styles.
 //   - Null Safety: NULL or missing database fields print as empty strings rather than failing.
 //   - Path Traversal Containment: Export filenames that attempt directory traversal ("../") or
 //     contain absolute paths are rejected by the target filesystem driver.
