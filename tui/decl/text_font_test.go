@@ -8,10 +8,11 @@ import (
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 )
 
-// A Text's font.bold and font.italic draw it so, as Qt's font group does.
+// A Text's font.bold and font.italic draw it so, as Qt's font group does, under a palette that
+// restyles it.
 func TestATextsFontIsBoldOrItalic(t *testing.T) {
 	s := decltest.Run(t, 30, 4, tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
-Window { Flex { Text { text: "LABEL"; font.bold: true } Text { text: "note"; font.italic: true } Text { text: "plain" } } }`)))
+Window { palette.window: "blue"; palette.windowText: "white"; Flex { Text { text: "LABEL"; font.bold: true } Text { text: "note"; font.italic: true } Text { text: "plain" } } }`)))
 	s.WaitForText(t, "LABEL")
 	s.WaitForText(t, "plain")
 	snap := s.Backend.Snapshot()

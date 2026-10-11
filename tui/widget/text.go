@@ -90,7 +90,10 @@ type Text struct {
 	st      style.Style
 	color   style.Color
 	colored bool
-	mode    WrapMode
+	// bold and italic are Qt's font.bold / font.italic: kept apart from st, as color is, so a
+	// restyle (a palette reaching the Text) does not undo them
+	bold, italic bool
+	mode         WrapMode
 }
 
 var _ tui.Component = (*Text)(nil)
@@ -145,13 +148,13 @@ func (t *Text) SetTextMessage(m tui.Message) {
 
 // SetBold is Qt Text.font.bold: the text drawn bold.
 func (t *Text) SetBold(v bool) {
-	t.st = t.st.Bold(v)
+	t.bold = v
 	t.MarkDirty()
 }
 
 // SetItalic is Qt Text.font.italic: the text drawn italic.
 func (t *Text) SetItalic(v bool) {
-	t.st = t.st.Italic(v)
+	t.italic = v
 	t.MarkDirty()
 }
 
@@ -214,6 +217,12 @@ func (t *Text) Render(s tui.Surface) {
 	st := t.st
 	if t.colored {
 		st = st.Foreground(t.color)
+	}
+	if t.bold {
+		st = st.Bold(true)
+	}
+	if t.italic {
+		st = st.Italic(true)
 	}
 	if t.mode == Truncate {
 		drawText(s, 0, 0, truncate(t.lines()[0], sz.W, s.StringWidth), st)
