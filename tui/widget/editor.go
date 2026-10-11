@@ -156,7 +156,8 @@ type Editor struct {
 	// reveals it only when either changed, so the wheel's scroll stays
 	shown viewMark
 
-	menu *EditorMenu // the right-click menu: off unless a consumer turns it on
+	menu    *EditorMenu  // the right-click menu: off unless a consumer turns it on
+	cmdline *CommandLine // the ':' prompt: on unless a consumer turns it off
 }
 
 // cellLayout is the Editor's view of its core in terminal cells: the viewport, the gutter, the
@@ -417,6 +418,8 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e.core.Bind(nil, &e.cells)
 	e.menu = NewEditorMenu(e, e.core)
 	e.menu.SetRows(func() []MenuItemModel { return EditorContextItems(e) })
+	e.cmdline = NewCommandLine(e, e.core)
+	e.cmdline.SetEnabled(true)
 	for _, o := range opts {
 		if o != nil {
 			o(e)
