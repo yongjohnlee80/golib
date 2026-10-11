@@ -79,14 +79,6 @@
         <source>&amp;About</source>
         <translation>&amp;About</translation>
     </message>
-    <message id="editor.prompt.title">
-        <source>Command</source>
-        <translation>Command</translation>
-    </message>
-    <message id="editor.prompt.help">
-        <source>w  q  wq  e &lt;file&gt;      Enter runs, Esc closes</source>
-        <translation>w  q  wq  e &lt;file&gt;      Enter runs, Esc closes</translation>
-    </message>
     <message id="editor.quit.title">
         <source>Quit</source>
         <translation>Quit</translation>
@@ -170,10 +162,6 @@ running on golib/tui.</translation>
     <message id="editor.status.written">
         <source>%1 written</source>
         <translation>%1 written</translation>
-    </message>
-    <message id="editor.status.notCommand">
-        <source>not a command: %1</source>
-        <translation>not a command: %1</translation>
     </message>
     <message id="editor.status.cannotOpen">
         <source>cannot open: %1</source>

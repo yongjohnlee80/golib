@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -93,12 +95,14 @@ func TestTheEnglishLetterOpensTheMenuInEveryLanguage(t *testing.T) {
 // TestAComposedStatusLineIsInTheLanguageShowing: a line built around a value is written in
 // the language showing when it is built.
 func TestAComposedStatusLineIsInTheLanguageShowing(t *testing.T) {
-	r := startOpts(t, Options{Language: "zh_CN", Now: fixedNow, Tick: time.Hour}, 80, 14)
-	r.key(t, ctrl('p'))
-	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ 命令 ") })
-	r.key(t, runeKey('z'), runeKey('z'), enter)
-	r.waitFor(t, "the refusal", func(s string) bool {
-		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "不是命令：zz")
+	path := filepath.Join(t.TempDir(), "doc.txt")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := startOpts(t, Options{Path: path, Language: "zh_CN", Now: fixedNow, Tick: time.Hour}, 80, 14)
+	r.key(t, ctrl('s'))
+	r.waitFor(t, "the written line", func(s string) bool {
+		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "已写入 \"doc.txt\"")
 	})
 }
 

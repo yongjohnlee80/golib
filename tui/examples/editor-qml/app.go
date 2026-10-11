@@ -102,6 +102,9 @@ func (h *Host) attach(p *tuidecl.Program, path string) error {
 	if h.editor, ok = tuidecl.FindAs[*widget.Editor](p, "editor"); !ok {
 		return errors.New("editor.qml declares no Editor with id: editor")
 	}
+	if err := h.addCommands(); err != nil {
+		return err
+	}
 	return h.load(path)
 }
 

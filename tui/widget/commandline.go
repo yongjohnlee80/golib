@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // THE EDITOR'S ':' PROMPT, AS A MODULE.
@@ -41,12 +42,8 @@ type completion struct {
 	at    int
 }
 
-// commandLineTitle is the prompt's title; commandLineHelp its help line.
-const (
-	commandLineTitle = "VIM Commands"
-	commandLineHelp  = "Enter runs · Tab completes · Esc closes"
-	commandLineWidth = 64
-)
+// commandLineWidth is the prompt's width in cells, frame included: room for a candidate's help.
+const commandLineWidth = 64
 
 // NewCommandLine is a prompt over owner running lines on core. It is off until SetEnabled(true).
 // owner must have a Context (a mounted widget) when the prompt opens.
@@ -111,7 +108,16 @@ func (l *CommandLine) open(initial string, failed error) bool {
 		// the package's sentinels name it for a log; the user reads only what went wrong
 		l.list.SetText(strings.TrimPrefix(failed.Error(), "widget: "))
 	}
+	// the field wears the theme's surface, as a field on a card does: a style with no colours
+	// would clear its cells to the terminal's own, a hole in the card
+	field := style.New().Background(style.TokenSurface).Foreground(style.TokenForeground)
 	l.field = NewTextInput(WithInitialValue(initial),
+		WithTextInputStyles(TextInputStyles{
+			Text:        field,
+			Placeholder: mutedPlaceholder().Background(style.TokenSurface),
+			Selection:   style.New().Reverse(true),
+			Error:       field.Foreground(style.TokenError),
+		}),
 		WithOnEdit(func(string) { l.comp = completion{at: -1}; l.list.SetText("") }),
 		WithOnSubmit(l.submit))
 	body := tui.NewFlex(tui.Vertical)
@@ -119,15 +125,16 @@ func (l *CommandLine) open(initial string, failed error) bool {
 	body.Add(l.list)
 	var m *Modal
 	m = NewModal(body,
-		WithModalTitle(commandLineTitle),
+		WithModalTitleMessage(tui.Msg("tui.cmdline.title")),
 		WithModalWidth(commandLineWidth),
-		WithModalFooter(commandLineHelp),
+		WithModalRule(true),
 		WithModalKeys(l.keys),
 		WithOnDismiss(func(DismissReason) {
 			if l.modal == m {
 				l.modal, l.field, l.list = nil, nil, nil
 			}
 		}))
+	m.SetFooterMessage(tui.Msg("tui.cmdline.help"))
 	if err := m.Open(host); err != nil {
 		return false
 	}
@@ -244,9 +251,6 @@ func quoteOrNothing(s string) string {
 	return "\"" + s + "\""
 }
 
-// replaceQuestion is the card replace asks with.
-const replaceQuestion = "Replace this match?  y yes · n no · q stop"
-
 // askReplace asks at each match of s, one card at a time, answered by y, n, q and Esc.
 func (l *CommandLine) askReplace(s *ReplaceSession) error {
 	host, ok := l.host()
@@ -261,8 +265,10 @@ func (l *CommandLine) askReplace(s *ReplaceSession) error {
 		return nil
 	}
 	var m *Modal
-	m = NewModal(NewText(replaceQuestion),
-		WithModalTitle("replace"),
+	question := NewText("")
+	question.SetTextMessage(tui.Msg("tui.cmdline.replaceQuestion"))
+	m = NewModal(question,
+		WithModalTitleMessage(tui.Msg("tui.cmdline.replaceTitle")),
 		WithPlacement(PlacementBottomRight),
 		WithScrim(false),
 		WithModalKeys(func(k tui.KeyEvent) bool {

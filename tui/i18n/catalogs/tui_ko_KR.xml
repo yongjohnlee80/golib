@@ -163,5 +163,21 @@
         <source>&amp;Paste</source>
         <translation>붙여넣기(&amp;p)</translation>
     </message>
+    <message id="tui.cmdline.title">
+        <source>VIM Commands</source>
+        <translation>VIM 명령</translation>
+    </message>
+    <message id="tui.cmdline.help">
+        <source>Enter runs · Tab completes · Esc closes</source>
+        <translation>Enter 실행 · Tab 완성 · Esc 닫기</translation>
+    </message>
+    <message id="tui.cmdline.replaceTitle">
+        <source>Replace</source>
+        <translation>바꾸기</translation>
+    </message>
+    <message id="tui.cmdline.replaceQuestion">
+        <source>Replace this match?  y yes · n no · q stop</source>
+        <translation>이 항목을 바꿀까요?  y 예 · n 아니요 · q 중지</translation>
+    </message>
 </context>
 </TS>
