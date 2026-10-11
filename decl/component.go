@@ -285,14 +285,18 @@ func expand(root *qml.SpecNode, types map[string]*qml.SpecNode,
 // Mount expands a document before judging it, or the error expansion finds:
 // a component that contains itself, a required property a use does not set,
 // a value of the wrong kind, an object or a call where an expression goes.
-// types are the component types in scope, by the name a document writes. It
-// builds nothing, resolves no name and leaves root alone.
+// types are the component types in scope, by the name a document writes, and
+// params the adapter's signal parameters by type and signal ([SignalParameters];
+// nil for none), which shadow a declared property in their handlers as they
+// do when the document is mounted. It builds nothing, resolves no name and
+// leaves root alone.
 //
 // It is for a checker that cannot mount a use of a component —
 // tuidecl.Check, for one requiring a value no placeholder can build — and
 // still judges what expansion alone can.
-func ExpandComponents(root *qml.SpecNode, types map[string]*qml.SpecNode) (*qml.SpecNode, error) {
-	return expand(root, types, nil)
+func ExpandComponents(root *qml.SpecNode, types map[string]*qml.SpecNode,
+	params func(typeName, signal string) []string) (*qml.SpecNode, error) {
+	return expand(root, types, params)
 }
 
 // merge lays a use site over an expanded component, by Qt's rules. target is

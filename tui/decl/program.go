@@ -398,15 +398,7 @@ func mount(c programConfig, spec qml.SpecTree) (*Program, error) {
 	if sink == nil {
 		sink = p.keep
 	}
-	reg, props := c.registry, []Option(nil)
-	switch {
-	case reg != nil:
-	case c.styled != nil:
-		reg, props = registryOf(c.styled), typeOptions(c.styled)
-	default:
-		reg, props = StdRegistry(), StdProperties()
-	}
-	p.adapter = New(reg, append(append(props, c.adapterOpts...), WithErrorSink(sink))...)
+	p.adapter = newAdapter(c, sink)
 	p.tree = decl.New(p.adapter, append([]decl.Option{
 		decl.WithScheduler(p.schedule),
 		decl.WithProviderErrorSink(sink),
@@ -427,6 +419,20 @@ func mount(c programConfig, spec qml.SpecTree) (*Program, error) {
 	}
 	p.root, _ = p.adapter.Component(p.tree.Root())
 	return p, nil
+}
+
+// newAdapter is the adapter a program's configuration builds: its registry,
+// its types and options, errors to sink.
+func newAdapter(c programConfig, sink func(error)) *Adapter {
+	reg, props := c.registry, []Option(nil)
+	switch {
+	case reg != nil:
+	case c.styled != nil:
+		reg, props = registryOf(c.styled), typeOptions(c.styled)
+	default:
+		reg, props = StdRegistry(), StdProperties()
+	}
+	return New(reg, append(append(props, c.adapterOpts...), WithErrorSink(sink))...)
 }
 
 // register is everything the document may reach, before it is mounted.

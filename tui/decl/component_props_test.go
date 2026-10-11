@@ -218,3 +218,27 @@ func TestAPickersColumnsLandInItsTable(t *testing.T) {
 		return strings.Contains(sc, "┌ Files ") && strings.Contains(sc, "FILECOL") && strings.Contains(sc, "row01")
 	})
 }
+
+// TestCheckExpansionLetsASignalParameterShadowADeclaredName: an unused
+// component Check cannot mount is expanded with the adapter's signal
+// parameters, as a mount would be — TextField's textEdited raises `text`, so
+// in that handler `text` is the parameter, and the declared `text` (a call,
+// which an expression could not hold) is not substituted there.
+func TestCheckExpansionLetsASignalParameterShadowADeclaredName(t *testing.T) {
+	const filter = `Flex {
+    required property var model
+    property string text: App.hint()
+    Text { text: text }
+    TextField { onTextEdited: App.picked(text) }
+    TableView { model: model }
+}`
+	if err := checkPicker(t, "", map[string]string{"ui/Filter.qml": filter}); err != nil {
+		t.Fatalf("Check refused a handler's own signal parameter as the declared call: %v", err)
+	}
+	// Without the parameter it IS the declared call, and refused.
+	err := checkPicker(t, "", map[string]string{"ui/Filter.qml": strings.Replace(filter,
+		"TextField { onTextEdited: App.picked(text) }", "Button { onClicked: App.picked(text) }", 1)})
+	if err == nil || !strings.Contains(err.Error(), `"text" is the call App.hint(…)`) {
+		t.Fatalf("a declared call in a handler without such a parameter: %v", err)
+	}
+}
