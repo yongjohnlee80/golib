@@ -4,7 +4,7 @@ package widget
 func (c *EditorCore) snapshot() textSnap {
 	lines := make([]string, len(c.buf.lines))
 	copy(lines, c.buf.lines)
-	return textSnap{lines: lines, ln: c.buf.ln, col: c.buf.col}
+	return textSnap{lines: lines, ln: c.buf.ln, col: c.buf.col, rev: c.rev}
 }
 
 // beginGroup starts an undo group before an edit: every Normal-mode edit is one group; an
@@ -37,12 +37,24 @@ func (c *EditorCore) restore(s textSnap) {
 	if c.keys.modal {
 		c.clampNormal()
 	}
-	c.edited()
+	c.rev = s.rev // the snapshot's revision, not a new one: Modified compares it with the saved
+	c.notifyEdited()
 }
 
-// edited finalizes any buffer mutation: the layout hears which lines changed, the cursor is
-// revealed, and the change is published.
+// edited finalizes any buffer mutation: the text takes a new revision, the layout hears which
+// lines changed, the cursor is revealed, and the change is published. Inside a Batch the
+// notification waits for the batch's end.
 func (c *EditorCore) edited() {
+	c.rev = c.newRevision()
+	if c.batch > 0 {
+		c.batchEdited = true
+		return
+	}
+	c.notifyEdited()
+}
+
+// notifyEdited tells the layout, the highlighter and the listeners that the text changed.
+func (c *EditorCore) notifyEdited() {
 	c.buf.desired = -1
 	c.changed()
 	c.reveal()

@@ -86,6 +86,14 @@ type EditorCore struct {
 	// dragging is a pointer drag selecting from dragFrom, in buffer positions.
 	dragging bool
 	dragFrom taPos
+
+	// rev is the text's revision, a fresh value at every edit (revs counts them out), and savedRev
+	// the revision MarkSaved recorded: Modified compares the two.
+	rev, savedRev, revs uint64
+	// batch counts the open Batch calls; batchEdited says an edit inside them is waiting to be
+	// announced when the outermost one returns.
+	batch       int
+	batchEdited bool
 }
 
 // CoreOption configures an EditorCore under construction.
@@ -346,6 +354,8 @@ func (c *EditorCore) SetValue(s string) {
 	c.keys.count, c.keys.pendingAct = 0, ActUnbound
 	c.hist.reset()
 	c.buf.setValue(s)
+	c.rev = c.newRevision() // a new document, unmodified: the text it was given is its saved state
+	c.savedRev = c.rev
 	if c.sourceFactory != nil {
 		c.renewSource()
 	}
