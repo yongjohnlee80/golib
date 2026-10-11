@@ -1,55 +1,62 @@
 package main
 
 import (
-	"strings"
+	"errors"
+
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// THE COMMAND PROMPT — what `onAccepted: App.runCommand(text)` runs.
+// THE COMMAND PROMPT — the editor's own. `:` in Normal mode opens it (Ctrl+P,
+// Space and File > Command too, through editor.openCommandLine()); Tab
+// completes. The editor runs the lines; what they DO that is this program's
+// comes back to it:
 //
-// The document owns the prompt: a Dialog holding a TextField, opened by Ctrl+P
-// or File > Command. The host owns what a command DOES — the same commands the
-// menu and the keys reach, so a command is one more way in, not a second
-// implementation:
+//	w, wq, x   the editor's writeRequested(quit): App.writeFromEditor
+//	q, q!      the editor's quitRequested(force): App.quitFromEditor
+//	e <file>   a command this program adds to the editor's own (addCommands)
 //
-//	w          save (asks for a name if the buffer has none)
-//	q          quit — asks first when there are unsaved changes
-//	wq         save, then quit once the file is written
-//	e <file>   open a file (refused over unsaved changes)
-//
-// The prompt closes BEFORE the command runs: a command may open a dialog of
-// its own — the quit question, Save As — and closing the prompt after would
-// hand the keyboard back past it. One it does not know is reported in the
-// status line.
-func (h *Host) runCommand(line string) error {
-	if err := h.p.Call("prompt", "close"); err != nil {
+// So a command is one more way into the same saving and quitting the menu and
+// the keys reach, not a second implementation.
+
+// addCommands composes this program's commands into the editor's.
+func (h *Host) addCommands() error {
+	return h.editor.Commands().Add(widget.Command{
+		Name: "e", Aliases: []string{"edit"}, Args: "<file>", Help: "open a file",
+		Run: func(x widget.CommandContext) error {
+			if x.Line == "" {
+				return errors.New("e: which file? e <file>")
+			}
+			return h.openFile(x.Line)
+		},
+	})
+}
+
+// writeFromEditor is w (quit false) and wq (quit true): save, then quit once
+// the file is written. A buffer with no name asks for one first, and the quit
+// waits for it (saveAs), or is dropped if the dialog is cancelled
+// (saveCancelled) or the write fails.
+func (h *Host) writeFromEditor(quit bool) error {
+	if h.path == "" {
+		h.quitAfterSave = quit
+		return h.saveFile()
+	}
+	if err := h.write(h.path); err != nil {
 		return err
 	}
-	cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
-	arg = strings.TrimSpace(arg)
-	switch {
-	case cmd == "w" && arg == "":
-		return h.saveFile()
-	case cmd == "q" && arg == "":
-		return h.quitAsking()
-	case cmd == "wq" && arg == "":
-		if h.path == "" {
-			// The Save dialog asks for a name; the quit waits for the file
-			// to be written (saveAs), and is dropped if the dialog is
-			// cancelled (saveCancelled) or the write fails.
-			h.quitAfterSave = true
-			return h.saveFile()
-		}
-		if err := h.write(h.path); err != nil {
-			return err
-		}
+	if quit {
+		h.p.Quit()
+	}
+	return nil
+}
+
+// quitFromEditor is q, and q! with force: q asks over unsaved changes, as
+// Exit does; q! quits whatever is unsaved.
+func (h *Host) quitFromEditor(force bool) error {
+	if force {
 		h.p.Quit()
 		return nil
-	case cmd == "e" && arg != "":
-		return h.openFile(arg)
-	case cmd == "":
-		return nil
 	}
-	return h.sayf("editor.status.notCommand", strings.TrimSpace(line))
+	return h.quitAsking()
 }
 
 // quitAsking quits at once over a saved buffer, and asks over unsaved changes —

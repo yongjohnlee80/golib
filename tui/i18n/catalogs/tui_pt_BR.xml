@@ -163,5 +163,21 @@
         <source>&amp;Paste</source>
         <translation>Colar(&amp;p)</translation>
     </message>
+    <message id="tui.cmdline.title">
+        <source>VIM Commands</source>
+        <translation>Comandos do VIM</translation>
+    </message>
+    <message id="tui.cmdline.help">
+        <source>Enter runs · Tab completes · Esc closes</source>
+        <translation>Enter executa · Tab completa · Esc fecha</translation>
+    </message>
+    <message id="tui.cmdline.replaceTitle">
+        <source>Replace</source>
+        <translation>Substituir</translation>
+    </message>
+    <message id="tui.cmdline.replaceQuestion">
+        <source>Replace this match?  y yes · n no · q stop</source>
+        <translation>Substituir esta ocorrência?  y sim · n não · q parar</translation>
+    </message>
 </context>
 </TS>

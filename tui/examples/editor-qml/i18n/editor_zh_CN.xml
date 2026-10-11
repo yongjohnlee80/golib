@@ -79,14 +79,6 @@
         <source>&amp;About</source>
         <translation>关于(&amp;a)</translation>
     </message>
-    <message id="editor.prompt.title">
-        <source>Command</source>
-        <translation>命令</translation>
-    </message>
-    <message id="editor.prompt.help">
-        <source>w  q  wq  e &lt;file&gt;      Enter runs, Esc closes</source>
-        <translation>w  q  wq  e &lt;文件&gt;      Enter 执行，Esc 关闭</translation>
-    </message>
     <message id="editor.quit.title">
         <source>Quit</source>
         <translation>退出</translation>
@@ -170,10 +162,6 @@ running on golib/tui.</source>
     <message id="editor.status.written">
         <source>%1 written</source>
         <translation>已写入 %1</translation>
-    </message>
-    <message id="editor.status.notCommand">
-        <source>not a command: %1</source>
-        <translation>不是命令：%1</translation>
     </message>
     <message id="editor.status.cannotOpen">
         <source>cannot open: %1</source>

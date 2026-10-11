@@ -32,8 +32,9 @@ bin/editor-qml -lang ko_KR notes.md   # start in Korean (en, ko_KR, pt_BR, zh_CN
   in `i18n/editor_<language>.xml`; golib's own (Yes, No, the file dialogs) come
   with golib. Under `-dev` a saved catalog is on screen a moment later.
 - **Help > About.**
-- **A command prompt** — `Space` in Normal mode, `Ctrl+P`, or File > Command: `w`, `q`, `wq`,
-  `e <file>`, as vim's `:` line.
+- **A command prompt** — the editor's own: `:` (or `Space`) in Normal mode, `Ctrl+P`, or
+  File > Command: `<n>` goes to line n, `w`, `q`, `q!`, `wq`, `x`, `find`, `replace`, and this
+  program's `e <file>`. Tab completes, Enter runs, Esc closes.
 - **Syntax highlighting** for `.qml` and `.js` files, in the theme's colours.
 - A status line: the mode, the file or the last message, and a clock.
 - Keys: `Ctrl+S` save, `Ctrl+Shift+S` save as (where the terminal can report
@@ -51,7 +52,7 @@ bin/editor-qml -lang ko_KR notes.md   # start in Korean (en, ko_KR, pt_BR, zh_CN
 | `modules.go` | the QML the program embeds, and the modules it offers |
 | `state.go` | what the document reads: `App.mode`, `App.status`, `App.path`… |
 | `commands.go` | what the document invokes: `App.saveFile()`, `App.openFile(path)`… |
-| `prompt.go` | what a prompt command does: the same commands, one more way in |
+| `prompt.go` | the prompt's commands that are this program's: saving, quitting, `e <file>` |
 | `theme.go` | Option > Theme: the theme import line, rewritten and reloaded |
 | `language.go` | Option > Language: the App's language, switched; the status line's composed messages |
 | `files.go` | reading and writing the buffer's file |
@@ -74,13 +75,13 @@ bin/editor-qml -lang ko_KR notes.md   # start in Korean (en, ko_KR, pt_BR, zh_CN
   `QuitDialog { id: quitDialog }` in the layout. Dialogs close themselves:
   `quitDialog.open()` opens one; its buttons, letters and Escape close it; the
   file says only what an answer does.
-- **Widgets come from a vocabulary, including golib's own additions.** The
-  prompt is a `Dialog` — like About: the field, a rule, the help line — holding
-  Qt Quick Controls' `TextField`, from `tui/decl/controls`, added with `tuidecl.Types(controls.Types()...)` — the
-  way a program adds widgets of its own.
+- **The prompt is the Editor's own.** `:` opens it, and so does `editor.openCommandLine()` from
+  a key or a menu row. It runs the editor's commands; what is this program's (saving,
+  quitting) comes back through the Editor's `writeRequested` and `quitRequested` signals, and
+  the program adds `e <file>` to the editor's commands from Go, as any program composes its own.
 - **The host decides what a document cannot.** Save opens the Save dialog only
   when the buffer has no name — `h.p.Call("saveDialog", "open")` — because QML
-  has no way to say "if". The prompt's commands are the menu's commands, not
+  has no way to say "if". The prompt's w and q are the menu's Save and Exit, not
   a second implementation.
 - **The Go never builds a widget.** It publishes state and commands, and
   reaches into exactly one widget — the editor, by its id.

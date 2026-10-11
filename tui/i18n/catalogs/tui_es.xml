@@ -163,5 +163,21 @@
         <source>&amp;Paste</source>
         <translation>Pegar(&amp;p)</translation>
     </message>
+    <message id="tui.cmdline.title">
+        <source>VIM Commands</source>
+        <translation>Comandos de VIM</translation>
+    </message>
+    <message id="tui.cmdline.help">
+        <source>Enter runs · Tab completes · Esc closes</source>
+        <translation>Enter ejecuta · Tab completa · Esc cierra</translation>
+    </message>
+    <message id="tui.cmdline.replaceTitle">
+        <source>Replace</source>
+        <translation>Reemplazar</translation>
+    </message>
+    <message id="tui.cmdline.replaceQuestion">
+        <source>Replace this match?  y yes · n no · q stop</source>
+        <translation>¿Reemplazar esta coincidencia?  y sí · n no · q parar</translation>
+    </message>
 </context>
 </TS>

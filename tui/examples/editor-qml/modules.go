@@ -5,7 +5,6 @@ import (
 	"io/fs"
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/themes"
 )
 
@@ -58,8 +57,5 @@ func (h *Host) modulesFrom(dialogs fs.FS) []tuidecl.ProgramOption {
 		// no colours of its own.
 		themes.Offer(),
 		tuidecl.Components(dialogs, "dialogs", "editor.dialogs", moduleVersion),
-		// TextField and Popup, for the command prompt: Qt Quick Controls'
-		// types, from golib — added the way any program adds widgets of its own.
-		tuidecl.Types(controls.Types()...),
 	}
 }

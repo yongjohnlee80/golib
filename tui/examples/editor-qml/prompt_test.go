@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-// prompt_test.go runs the command prompt — a Dialog holding a TextField, from
-// golib's tui/decl/controls — the way a user does: Ctrl+P, a command, Enter.
+// prompt_test.go runs the command prompt — the Editor's own — the way a user
+// does: Ctrl+P (or `:`), a command, Enter.
 
 // command opens the prompt, types line and runs it.
 func (r *running) command(t *testing.T, line string) {
 	t.Helper()
 	r.key(t, ctrl('p'))
-	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ Command ") })
+	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ VIM Commands ") })
 	for _, ch := range line {
 		r.key(t, runeKey(ch))
 	}
@@ -32,7 +32,7 @@ func TestThePromptSavesAndQuits(t *testing.T) {
 
 	r.command(t, "w")
 	fileHas(t, path, "ax\n")
-	r.waitFor(t, "the prompt closing", func(s string) bool { return !strings.Contains(s, "┌ Command ") })
+	r.waitFor(t, "the prompt closing", func(s string) bool { return !strings.Contains(s, "┌ VIM Commands ") })
 
 	r.key(t, runeKey('i'), runeKey('b'), escape)
 	r.command(t, "wq")
@@ -55,14 +55,16 @@ func TestThePromptAsksBeforeQuittingOverUnsavedChanges(t *testing.T) {
 }
 
 // TestThePromptReportsWhatItDoesNotKnowAndStartsEmpty: an unknown command is
-// said in the status line, and the next time the prompt opens it is empty —
-// TextField.clear() on opened.
+// said in the prompt, which reopens with the line to correct; closed and
+// opened again, it is empty.
 func TestThePromptReportsWhatItDoesNotKnowAndStartsEmpty(t *testing.T) {
 	r := start(t, "")
 	r.command(t, "frob")
-	r.waitFor(t, "the refusal", func(s string) bool { return strings.Contains(s, "not a command: frob") })
+	r.waitFor(t, "the refusal", func(s string) bool { return strings.Contains(s, "not an editor command: frob") })
+	r.key(t, escape)
+	r.waitFor(t, "the prompt closing", func(s string) bool { return !strings.Contains(s, "┌ VIM Commands ") })
 	r.key(t, ctrl('p'))
-	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ Command ") })
+	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ VIM Commands ") })
 	x, y := r.field(t)
 	if got := strings.TrimRight(string([]rune(r.rows()[y])[x:x+10]), " "); got != "" {
 		t.Errorf("the reopened prompt holds %q, want it empty", got)
@@ -73,11 +75,11 @@ func TestThePromptReportsWhatItDoesNotKnowAndStartsEmpty(t *testing.T) {
 // padding, on its first row.
 func (r *running) field(t *testing.T) (x, y int) {
 	t.Helper()
-	top := rowOf(r.rows(), "┌ Command ")
+	top := rowOf(r.rows(), "┌ VIM Commands ")
 	if top < 0 {
 		t.Fatalf("no prompt on screen:\n%s", strings.Join(r.rows(), "\n"))
 	}
-	return r.labelAt(t, top, "┌ Command ") + 2, top + 2
+	return r.labelAt(t, top, "┌ VIM Commands ") + 2, top + 2
 }
 
 // TestThePromptIsANarrowCardWithItsHelpUnderARule: the prompt is as wide as
@@ -86,19 +88,19 @@ func (r *running) field(t *testing.T) (x, y int) {
 func TestThePromptIsANarrowCardWithItsHelpUnderARule(t *testing.T) {
 	r := startSized(t, "", 100, 30)
 	r.key(t, ctrl('p'))
-	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ Command ") })
+	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ VIM Commands ") })
 	rows := r.rows()
-	top := rowOf(rows, "┌ Command ")
+	top := rowOf(rows, "┌ VIM Commands ")
 	row := []rune(rows[top])
-	left := r.labelAt(t, top, "┌ Command ")
+	left := r.labelAt(t, top, "┌ VIM Commands ")
 	right := left
 	for right < len(row) && row[right] != '┐' {
 		right++
 	}
-	// Its width, 48 — or the help line's, which it never clips.
-	const helpText = "w  q  wq  e <file>      Enter runs, Esc closes"
-	if w := right - left + 1; w != max(48, len(helpText)+4) {
-		t.Errorf("the prompt is %d wide, want %d:\n%s", w, max(48, len(helpText)+4), strings.Join(rows, "\n"))
+	// Its width, 64: room for a candidate's help, not the screen's.
+	const helpText = "Enter runs · Tab completes · Esc closes"
+	if w := right - left + 1; w != 64 {
+		t.Errorf("the prompt is %d wide, want 64:\n%s", w, strings.Join(rows, "\n"))
 	}
 	if !strings.Contains(strings.Join(rows, "\n"), helpText) {
 		t.Errorf("the help line is clipped:\n%s", strings.Join(rows, "\n"))
@@ -112,13 +114,12 @@ func TestThePromptIsANarrowCardWithItsHelpUnderARule(t *testing.T) {
 	}
 }
 
-// TestThePromptWearsTheInheritedPalette: the prompt names no colour. Its
-// frame is the application palette's window, its field the panes' base —
-// both from the Window.
+// TestThePromptWearsTheInheritedPalette: the prompt names no colour. Its card
+// and its field wear the theme's, as the Window's palette sets it.
 func TestThePromptWearsTheInheritedPalette(t *testing.T) {
 	r := start(t, "")
 	r.key(t, ctrl('p'))
-	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ Command ") })
+	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ VIM Commands ") })
 	x, y := r.field(t)
 	if bg := r.cell(t, x, y).BG; bg != cgaBlue {
 		t.Errorf("the prompt's field: bg %+v, want the inherited base %+v", bg, cgaBlue)
@@ -189,13 +190,27 @@ func TestWqDoesNotQuitWhenTheSaveIsCancelledOrFails(t *testing.T) {
 func TestSpaceInNormalModeOpensThePrompt(t *testing.T) {
 	r := start(t, "")
 	r.key(t, runeKey(' '))
-	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ Command ") })
+	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ VIM Commands ") })
 	r.key(t, escape)
-	r.waitFor(t, "the prompt closing", func(s string) bool { return !strings.Contains(s, "┌ Command ") })
+	r.waitFor(t, "the prompt closing", func(s string) bool { return !strings.Contains(s, "┌ VIM Commands ") })
 
 	r.key(t, runeKey('i'), runeKey('a'), runeKey(' '), runeKey('b'))
 	r.waitFor(t, "the space typed", func(s string) bool { return strings.Contains(s, "a b") })
-	if strings.Contains(r.screen(), "┌ Command ") {
+	if strings.Contains(r.screen(), "┌ VIM Commands ") {
 		t.Fatal("Space in Insert mode opened the prompt")
 	}
+}
+
+// TestColonOpensThePromptAndEOpensAFile: vim's own key, and the command this
+// program composes into the editor's.
+func TestColonOpensThePromptAndEOpensAFile(t *testing.T) {
+	dir := folderWith(t, map[string]string{"other.txt": "the other file"})
+	r := startSized(t, "", 80, 24)
+	r.key(t, runeKey(':'))
+	r.waitFor(t, "the prompt", func(s string) bool { return strings.Contains(s, "┌ VIM Commands ") })
+	for _, ch := range "e " + filepath.Join(dir, "other.txt") {
+		r.key(t, runeKey(ch))
+	}
+	r.key(t, enter)
+	r.waitFor(t, "the file", func(s string) bool { return strings.Contains(s, "the other file") })
 }

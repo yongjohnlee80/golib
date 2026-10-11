@@ -69,14 +69,15 @@ Window {
     // Where the terminal can report Shift with Ctrl — the kitty keyboard
     // protocol. Elsewhere it arrives as Ctrl+S, and the menu is the way in.
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: saveDialog.open() }
-    // The command prompt, as vim's `:` is — on a key the editor does not
-    // type, since a Shortcut fires whatever mode the editor is in.
-    Shortcut { sequence: "Ctrl+P"; onActivated: prompt.open() }
-    // And on Space, vim's leader: a Shortcut sees only the keys the focused
+    // The editor's own command prompt opens on `:` in Normal mode, as vim's
+    // does. These are two more ways in: Ctrl+P, a key the editor does not
+    // type, so it fires whatever mode the editor is in…
+    Shortcut { sequence: "Ctrl+P"; onActivated: editor.openCommandLine() }
+    // …and Space, vim's leader: a Shortcut sees only the keys the focused
     // widget leaves, and the Editor types Space in Insert mode and leaves it
     // in Normal mode — so this fires in Normal mode alone, with no condition
     // written here.
-    Shortcut { sequence: "Space"; onActivated: prompt.open() }
+    Shortcut { sequence: "Space"; onActivated: editor.openCommandLine() }
 
     // ---- the menu bar ---------------------------------------------------
     //
@@ -107,7 +108,7 @@ Window {
             MenuItem { text: qsTrId("editor.file.save"); onTriggered: App.saveFile() }
             // Save As ALWAYS asks, so the document opens the dialog itself.
             MenuItem { text: qsTrId("editor.file.saveAs"); onTriggered: saveDialog.open() }
-            MenuItem { text: qsTrId("editor.file.command"); onTriggered: prompt.open() }
+            MenuItem { text: qsTrId("editor.file.command"); onTriggered: editor.openCommandLine() }
             MenuItem { text: qsTrId("editor.file.exit"); onTriggered: quitDialog.open() }
         }
 
@@ -227,6 +228,10 @@ Window {
             keyset: App.keyset
             onModeChanged: App.syncStatus()
             onTextChanged: App.markDirty()
+            // The command line's w, wq and x, and q and q!: saving and
+            // quitting are the program's, so the editor asks the App.
+            onWriteRequested: App.writeFromEditor(quit)
+            onQuitRequested: App.quitFromEditor(force)
 
             // KDE KSyntaxHighlighting's type: Go highlights, the document
             // names the definition, the Window's syntax roles colour it. The
@@ -244,25 +249,6 @@ Window {
         left: App.mode
         center: App.status
         right: App.clock
-    }
-
-    // ---- the command prompt ---------------------------------------------
-    //
-    // A Dialog, like About: the field, a rule, and the help line under it.
-    // With no buttons, Enter is the field's and Escape the dialog's; the host
-    // closes it once a command has run. `width` keeps it a prompt — a
-    // TextField fills whatever it is given. It names no colour: the card wears
-    // the application palette, the field its panes' base, both inherited.
-    Dialog {
-        id: prompt
-        title: qsTrId("editor.prompt.title")
-        width: 48
-        helpText: qsTrId("editor.prompt.help")
-        onOpened: command.clear()
-        TextField {
-            id: command
-            onAccepted: App.runCommand(text)
-        }
     }
 
     // ---- dialogs --------------------------------------------------------

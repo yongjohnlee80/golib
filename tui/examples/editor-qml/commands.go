@@ -15,19 +15,20 @@ import (
 // says what it takes: nothing, or a path — `App.openFile(selectedFile)`.
 func (h *Host) commands() map[string]decl.HandlerFunc {
 	return map[string]decl.HandlerFunc{
-		"App.newFile":       none(h.newFile),
-		"App.openFile":      oneString("App.openFile", "a path", h.openFile),
-		"App.saveFile":      none(h.saveFile),
-		"App.saveAs":        oneString("App.saveAs", "a path", h.saveAs),
-		"App.quit":          none(func() error { h.p.Quit(); return nil }),
-		"App.useVim":        none(func() error { return h.useKeyset("vim", tui.Msg("editor.status.vim")) }),
-		"App.useNano":       none(func() error { return h.useKeyset("nano", tui.Msg("editor.status.nano")) }),
-		"App.syncStatus":    none(h.syncStatus),
-		"App.markDirty":     none(func() error { return h.setDirty(true) }),
-		"App.saveCancelled": none(h.saveCancelled),
-		"App.runCommand":    oneString("App.runCommand", "a command line", h.runCommand),
-		"App.useTheme":      oneString("App.useTheme", "a theme's name", h.useTheme),
-		"App.useLanguage":   oneString("App.useLanguage", "a language", h.useLanguage),
+		"App.newFile":         none(h.newFile),
+		"App.openFile":        oneString("App.openFile", "a path", h.openFile),
+		"App.saveFile":        none(h.saveFile),
+		"App.saveAs":          oneString("App.saveAs", "a path", h.saveAs),
+		"App.quit":            none(func() error { h.p.Quit(); return nil }),
+		"App.useVim":          none(func() error { return h.useKeyset("vim", tui.Msg("editor.status.vim")) }),
+		"App.useNano":         none(func() error { return h.useKeyset("nano", tui.Msg("editor.status.nano")) }),
+		"App.syncStatus":      none(h.syncStatus),
+		"App.markDirty":       none(func() error { return h.setDirty(true) }),
+		"App.saveCancelled":   none(h.saveCancelled),
+		"App.writeFromEditor": oneBool("App.writeFromEditor", h.writeFromEditor),
+		"App.quitFromEditor":  oneBool("App.quitFromEditor", h.quitFromEditor),
+		"App.useTheme":        oneString("App.useTheme", "a theme's name", h.useTheme),
+		"App.useLanguage":     oneString("App.useLanguage", "a language", h.useLanguage),
 	}
 }
 
@@ -48,6 +49,16 @@ func oneString(name, what string, fn func(string) error) decl.HandlerFunc {
 			return fmt.Errorf("%s takes %s", name, what)
 		}
 		return fn(args[0].Raw)
+	}
+}
+
+// oneBool is a command that takes one true or false: an Editor signal's.
+func oneBool(name string, fn func(bool) error) decl.HandlerFunc {
+	return func(args []qml.SpecValue) error {
+		if len(args) != 1 || args[0].Kind != qml.SpecValueBool {
+			return fmt.Errorf("%s takes true or false", name)
+		}
+		return fn(args[0].Raw == "true")
 	}
 }
 

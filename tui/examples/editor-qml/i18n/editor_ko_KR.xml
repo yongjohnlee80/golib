@@ -79,14 +79,6 @@
         <source>&amp;About</source>
         <translation>정보(&amp;a)</translation>
     </message>
-    <message id="editor.prompt.title">
-        <source>Command</source>
-        <translation>명령</translation>
-    </message>
-    <message id="editor.prompt.help">
-        <source>w  q  wq  e &lt;file&gt;      Enter runs, Esc closes</source>
-        <translation>w  q  wq  e &lt;파일&gt;      Enter 실행, Esc 닫기</translation>
-    </message>
     <message id="editor.quit.title">
         <source>Quit</source>
         <translation>끝내기</translation>
@@ -170,10 +162,6 @@ golib/tui에서 실행됩니다.</translation>
     <message id="editor.status.written">
         <source>%1 written</source>
         <translation>%1 저장됨</translation>
-    </message>
-    <message id="editor.status.notCommand">
-        <source>not a command: %1</source>
-        <translation>명령이 아닙니다: %1</translation>
     </message>
     <message id="editor.status.cannotOpen">
         <source>cannot open: %1</source>

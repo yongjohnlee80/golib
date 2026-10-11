@@ -163,5 +163,21 @@
         <source>&amp;Paste</source>
         <translation>貼り付け(&amp;p)</translation>
     </message>
+    <message id="tui.cmdline.title">
+        <source>VIM Commands</source>
+        <translation>VIM コマンド</translation>
+    </message>
+    <message id="tui.cmdline.help">
+        <source>Enter runs · Tab completes · Esc closes</source>
+        <translation>Enter で実行 · Tab で補完 · Esc で閉じる</translation>
+    </message>
+    <message id="tui.cmdline.replaceTitle">
+        <source>Replace</source>
+        <translation>置換</translation>
+    </message>
+    <message id="tui.cmdline.replaceQuestion">
+        <source>Replace this match?  y yes · n no · q stop</source>
+        <translation>この一致を置換しますか？  y はい · n いいえ · q 中止</translation>
+    </message>
 </context>
 </TS>

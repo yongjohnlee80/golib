@@ -163,5 +163,21 @@
         <source>&amp;Paste</source>
         <translation>粘贴(&amp;p)</translation>
     </message>
+    <message id="tui.cmdline.title">
+        <source>VIM Commands</source>
+        <translation>VIM 命令</translation>
+    </message>
+    <message id="tui.cmdline.help">
+        <source>Enter runs · Tab completes · Esc closes</source>
+        <translation>Enter 执行 · Tab 补全 · Esc 关闭</translation>
+    </message>
+    <message id="tui.cmdline.replaceTitle">
+        <source>Replace</source>
+        <translation>替换</translation>
+    </message>
+    <message id="tui.cmdline.replaceQuestion">
+        <source>Replace this match?  y yes · n no · q stop</source>
+        <translation>替换此匹配项？  y 是 · n 否 · q 停止</translation>
+    </message>
 </context>
 </TS>
