@@ -114,7 +114,7 @@ func (c *EditorCore) beginEdit() error {
 	c.settlePendingRune()
 	c.Unselect()
 	// inside a Batch, its first edit begins the group the rest join
-	if c.batch == 0 || !c.batchEdited {
+	if (c.batch == 0 || !c.batchEdited) && !c.joinGroup {
 		c.beginGroup()
 	}
 	return nil

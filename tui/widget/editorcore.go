@@ -96,6 +96,14 @@ type EditorCore struct {
 	batchEdited bool
 
 	find findState // the active find (editorcore_find.go)
+
+	commands    *Commands                   // the command line's verbs; nil: no command line
+	onWrite     func(quit bool) error       // w, wq, x: the host saves
+	onQuit      func(force bool) error      // q, q!: the host quits
+	replaceAsk  func(*ReplaceSession) error // replace's questions, asked by a widget; nil: none
+	commandLine func() bool                 // answers ActCommandLine: the widget's prompt; nil: none
+	// joinGroup makes an edit join the undo group open before it: a replace session's answers
+	joinGroup bool
 }
 
 // CoreOption configures an EditorCore under construction.
@@ -111,6 +119,7 @@ func newEditorCore() *EditorCore {
 		canSelect: true,
 		reg:       editRegister{yank: true},
 		hist:      editHistory{enabled: true},
+		commands:  defaultCommands(),
 	}
 }
 
@@ -906,6 +915,13 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 	case ActPaste:
 		c.pasteRegister(false)
 		return true
+
+	case ActCommandLine:
+		// the prompt is the widget's: with none, ':' reaches the application
+		if c.commandLine == nil || c.commands == nil {
+			return false
+		}
+		return c.commandLine()
 
 	case ActFindNext, ActFindPrev:
 		// with no active find the key bubbles: an application may have its own n

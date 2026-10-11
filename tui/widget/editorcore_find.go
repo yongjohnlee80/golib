@@ -217,3 +217,79 @@ func markMatches(line string, spans []highlight.Span, term []string, fold bool) 
 	}
 	return out
 }
+
+// ReplaceSession is replace's walk through the matches, one question at a time: a widget asks the
+// user at each match and answers with Answer. It walks the whole document from the top, each match
+// once, so a replacement that contains the term is never asked about again. Every replacement of
+// one session undoes with a single u.
+type ReplaceSession struct {
+	c        *EditorCore
+	term     []string
+	with     string
+	o        FindOptions
+	cur      TextRange
+	ok       bool // cur is a match waiting for its answer
+	grouped  bool // a replacement began the session's undo group
+	replaced int
+}
+
+// StartReplace begins a replace session at the first match in the document, selected; ok is
+// false when there is none.
+func (c *EditorCore) StartReplace(term, with string, o FindOptions) (*ReplaceSession, bool) {
+	s := &ReplaceSession{c: c, term: clusters(term), with: with, o: o}
+	s.seek(taPos{}, true)
+	return s, s.ok
+}
+
+// seek selects the first match at or after `at`, or ends the session.
+func (s *ReplaceSession) seek(at taPos, inclusive bool) {
+	s.ok = false
+	for ln := at.ln; ln < len(s.c.buf.lines); ln++ {
+		for _, m := range matchesIn(s.c.buf.lines[ln], s.term, s.o.IgnoreCase) {
+			if ln == at.ln && (m[0] < at.col || (!inclusive && m[0] == at.col)) {
+				continue
+			}
+			s.cur, s.ok = TextRange{From: TextPos{ln, m[0]}, To: TextPos{ln, m[1]}}, true
+			s.c.Select(s.cur)
+			return
+		}
+	}
+	s.c.Unselect()
+}
+
+// Current is the match waiting for an answer; ok is false once the session has ended.
+func (s *ReplaceSession) Current() (TextRange, bool) { return s.cur, s.ok }
+
+// Replaced is how many matches were replaced.
+func (s *ReplaceSession) Replaced() int { return s.replaced }
+
+// Answer replaces the current match (yes) or skips it (no), and goes to the next. more is false
+// when there are no more matches: the session has ended.
+func (s *ReplaceSession) Answer(yes bool) (more bool, err error) {
+	if !s.ok {
+		return false, nil
+	}
+	next := s.c.clampPos(s.cur.To)
+	if yes {
+		s.c.joinGroup = s.grouped
+		end, err := s.c.Replace(s.cur, s.with)
+		s.c.joinGroup = false
+		if err != nil {
+			s.Stop()
+			return false, err
+		}
+		s.grouped = true
+		s.replaced++
+		next = s.c.clampPos(end)
+	}
+	s.seek(next, true)
+	return s.ok, nil
+}
+
+// Stop ends the session where it is: the replacements made stay.
+func (s *ReplaceSession) Stop() {
+	if s.ok {
+		s.ok = false
+		s.c.Unselect()
+	}
+}
