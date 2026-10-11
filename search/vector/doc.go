@@ -1,13 +1,17 @@
-// Package vector is the math of semantic search over normalized float vectors: dot products, 1-bit
-// sign codes and their Hamming distance, byte encodings, an immutable per-model code index with the
-// watermark that tells a query whether it may use it, and the two-stage scan that ranks candidates
-// by code and rescores them by vector.
+// Package vector provides numerical operations and data structures for high-performance
+// vector similarity search over normalized floating-point embeddings.
 //
-//	idx := vector.NewIndex(model, commitSeq, codes)         // publish; Next after each commit
-//	if idx.Usable(model, seqReadByTheQuery) {                // else scan the stored codes
-//		order := vector.Nearest(idx.Codes(), vector.SignBits(q), cmp.Compare[int64])
-//		best, err := vector.TwoStage(order, q, 200, 50, fetchValid, lessByPath)
-//	}
+// # Core Mathematical Operations
 //
-// It imports no other search package.
+//   - Dot Product: Fast cosine similarity over unit-normalized vectors.
+//   - 1-Bit Sign Quantization: [SignBits] compresses float32 vectors into 1-bit sign code words
+//     (positive coordinates map to 1, non-positive to 0), enabling fast coarse retrieval
+//     via bitwise XOR and POPCNT Hamming distance.
+//   - Two-Stage Scanning: [TwoStage] implements a hierarchical candidate search:
+//     1. Coarse Filter: Scans the compact 1-bit sign code index to find the nearest N candidates.
+//     2. Fine Rescore: Re-scores top candidates using full float32 dot products for exact ranking.
+//   - Concurrent Snapshot Index: [Index] provides an immutable, thread-safe in-memory vector
+//     index bound to model fingerprints and commit sequence watermarks ([Index.Usable]).
+//
+// The package imports no other search modules and has zero external dependencies.
 package vector

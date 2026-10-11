@@ -6,14 +6,17 @@ import (
 )
 
 // FormWriter is a convenience builder for constructing multipart/form-data
-// payloads. It composes multipart.Writer and bytes.Buffer, and implements
-// CustomPayload so it can be passed directly to Request as a payload.
+// payloads in memory. It composes a [multipart.Writer] over an internal [bytes.Buffer]
+// and implements [CustomPayload] so it can be passed directly as a payload to [Request] or [Do].
+//
+// Note: Call [FormWriter.Close] before passing the writer to [Request] or [Do] to ensure
+// the terminating boundary is flushed to the buffer.
 type FormWriter struct {
 	buf bytes.Buffer
 	w   *multipart.Writer
 }
 
-// NewFormWriter creates a new FormWriter ready for use.
+// NewFormWriter creates an empty FormWriter with an initialized multipart boundary.
 func NewFormWriter() *FormWriter {
 	fw := &FormWriter{}
 	fw.w = multipart.NewWriter(&fw.buf)

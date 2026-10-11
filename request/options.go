@@ -1,19 +1,21 @@
 package request
 
-// RequestOption is a functional option used to modify request parameters before
-// the request is executed.
+// RequestOption configures request parameters prior to dispatch in [Request] or [Do].
+// Options modify the provided [Params] instance directly.
 type RequestOption func(param *Params) *Params
 
-// RequestContentType represents the content type of an HTTP request as a string value.
+// RequestContentType defines standardized Content-Type header values.
 type RequestContentType string
 
 const (
-	JSON      RequestContentType = "application/json"
+	// JSON specifies "application/json".
+	JSON RequestContentType = "application/json"
+	// MULTIPART specifies "multipart/form-data".
 	MULTIPART RequestContentType = "multipart/form-data"
 )
 
-// ContentType sets the "Content-Type" header of an HTTP request to the
-// provided content type.
+// ContentType configures the HTTP "Content-Type" request header. If the
+// Params.Headers map is not yet initialized, ContentType allocates it.
 func ContentType(contentType RequestContentType) RequestOption {
 	return func(param *Params) *Params {
 		if param.Headers == nil {

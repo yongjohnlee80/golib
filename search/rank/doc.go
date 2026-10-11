@@ -1,15 +1,14 @@
-// Package rank is search's second stage: a Ranker, which scores texts against a query (a
-// cross-encoder reading each pair together), its HTTP clients, and NewSearcher, a search.Searcher
-// that re-ranks another Searcher's top candidates.
+// Package rank implements the second-stage re-ranking pipeline in the search subsystem.
+// It scores candidate texts against the search query using cross-encoders that evaluate
+// each (query, text) pair jointly for precise semantic relevance.
 //
-//	r, err := rank.NewTEI(ctx, "http://tei:8080", "", nil)
-//	var h rank.Holder
-//	h.Set(r, 40)
-//	s := rank.NewSearcher(engine, texts, &h)
-//	res, err := s.Search(ctx, search.Query{Text: "storage decision"})
+// # Architecture and Pipeline Components
 //
-// The ranker only sorts: the caller prepares the texts it reads (a TextSource), in any format.
-// With no ranker in use the Searcher passes its inner Searcher's answer through; a ranker that
-// fails leaves the hits in recall order, saying so in Result.Rank, unless the Searcher was built
-// Required, when the search fails instead.
+//   - [Ranker]: Interface for cross-encoder scoring backends (such as Text Embeddings Inference / TEI).
+//   - [NewSearcher]: Decorator wrapping an underlying [search.Searcher]. It intercepts the top-K
+//     candidates returned by the primary retriever, fetches candidate texts via [TextSource],
+//     and sorts them by cross-encoder relevance score.
+//   - Graceful Degradation: If no ranker is configured or the upstream ranking service experiences
+//     transient timeouts, [Searcher] falls back to the initial retrieval order (noting degradation
+//     in [search.Result.Rank]) rather than failing the search, unless configured in Required mode.
 package rank

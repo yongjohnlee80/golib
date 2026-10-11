@@ -12,11 +12,21 @@ type ResponseError interface {
 	SetStatus(int)
 }
 
-// DecodeResponse checks the HTTP status code and either unmarshals the response
-// body into `response` on success, or unmarshals into the error type E on failure.
+// DecodeResponse evaluates the HTTP response status code in p.Response:
+//   - On success (HTTP status < 400): unmarshals p.ResponseBody into response (unless empty or nil).
+//   - On client/server error (HTTP status >= 400): unmarshals p.ResponseBody into a newly allocated
+//     error instance of type PT, records the status code via [ResponseError.SetStatus], and returns it.
 //
-// T is the underlying struct type, PT is its pointer that implements ResponseError.
-// Usage: DecodeResponse[MyError](p, &resp) where *MyError implements ResponseError.
+// Type parameters:
+//   - T: the concrete underlying struct type for the error response.
+//   - PT: pointer type to T (*T) constrained to satisfy [ResponseError].
+//
+// Example:
+//
+//	var result MyResult
+//	if err := request.DecodeResponse[request.Error](params, &result); err != nil {
+//	    return fmt.Errorf("request failed: %w", err)
+//	}
 func DecodeResponse[T any, PT interface {
 	*T
 	ResponseError

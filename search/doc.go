@@ -1,15 +1,32 @@
-// Package search runs hybrid search over a store the application owns: lexical and semantic
-// retrieval, reciprocal rank fusion, link and tag boosts, and a cap per document.
+// Package search provides a hybrid information retrieval engine combining lexical
+// (full-text) search, semantic vector retrieval, reciprocal rank fusion (RRF),
+// graph-based link/tag boosting, and optional cross-encoder re-ranking.
 //
-// The application keeps its tables, migrations and SQL, and implements Store: one consistent
-// snapshot per View, with Lexical on every view and Semantic, Signaler and Lister as capabilities.
-// The Engine reads only through the View it is given:
+// # Architectural Model
 //
-//	eng := search.NewEngine[int64, *myView](store, search.WithQueryEmbedder(embedQuery))
-//	res, err := eng.Search(ctx, search.Query{Text: "type:adr storage", Fields: schema})
+// The search subsystem decouples storage, chunking, embedding, and ranking into modular
+// abstractions:
 //
-// Searcher is the interface any engine satisfies, so the one in use can be swapped. Chunkers is a
-// registry of Chunker by file extension, which an application builds itself. The subpackages hold
-// the parts: chunk (chunkers), embed (providers), vector (vector math and the code index), query
-// (query parsing) and searchtest (a conformance suite for stores).
+//   - [Engine]: The core coordinator parameterized over document key D and view V ([View]).
+//     It queries the store snapshot, collects candidate hits from lexical and semantic
+//     retrievers, applies Reciprocal Rank Fusion, applies domain boosts (in-links, tags),
+//     and enforces per-document result caps.
+//   - [Store]: The application-owned storage contract. The application manages tables, SQL,
+//     and migrations, providing a consistent point-in-time [View] snapshot for each search query.
+//   - Capability Segregation: Storage capabilities are decoupled via interface composition on [View]:
+//   - [View]: Baseline lexical retrieval (full-text search).
+//   - [Semantic]: Vector similarity search over embedded document chunks.
+//   - [Signaler]: In-link counts and document tags for relevance boosting.
+//   - [Lister]: Direct faceted and metadata-filtered document listing.
+//   - [Searcher]: Common query execution interface implemented by [Engine] and extended
+//     by decorator pipelines (such as [golib/search/rank.NewSearcher]).
+//
+// # Subpackages
+//
+//   - [golib/search/chunk]: Document chunking for Markdown, YAML, and plain text.
+//   - [golib/search/embed]: Client integrations for local Ollama and OpenAI-compatible embedding APIs.
+//   - [golib/search/query]: Query tokenization, facet extraction, and SQLite FTS5 query synthesis.
+//   - [golib/search/rank]: Two-stage cross-encoder re-ranking with fallback resilience.
+//   - [golib/search/vector]: Vector math, 1-bit sign quantization, and two-stage candidate scanning.
+//   - [golib/search/searchtest]: Conformance test harness for verifying Store implementations.
 package search
