@@ -157,6 +157,20 @@ func TestReplaceAsksAtEachMatch(t *testing.T) {
 	typeIn(h, ":replace cat dog")
 	enter(h)
 	h.waitFor("the question", func() bool { return strings.Contains(h.grid(), "Replace this match?") })
+	// the match is shown behind the card, which holds the keyboard: the editor is not focused
+	snap := h.tb.Snapshot()
+	for x := 0; x < 3; x++ {
+		if snap[0][x].Attrs.Mask&tui.AttrReverse == 0 {
+			t.Fatalf("the match's cluster %d is not highlighted behind the card:\n%s", x, h.grid())
+		}
+	}
+	if snap[0][3].Attrs.Mask&tui.AttrReverse != 0 {
+		t.Fatal("the highlight runs past the match")
+	}
+	// at the top right, clear of the notifications at the bottom
+	if y := h.rowWith("Replace this match?"); y > 5 {
+		t.Fatalf("the card is on row %d, want the top:\n%s", y, h.grid())
+	}
 	typeIn(h, "y")
 	typeIn(h, "n")
 	typeIn(h, "y")

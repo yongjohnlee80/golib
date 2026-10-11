@@ -397,7 +397,7 @@ func (l *CommandLine) askReplace(s *ReplaceSession) error {
 	question.SetTextMessage(tui.Msg("tui.cmdline.replaceQuestion"))
 	m = NewModal(question,
 		WithModalTitleMessage(tui.Msg("tui.cmdline.replaceTitle")),
-		WithPlacement(PlacementBottomRight),
+		WithPlacement(PlacementTopRight), // clear of the notifications at the bottom
 		WithScrim(false),
 		WithModalKeys(func(k tui.KeyEvent) bool {
 			switch k.Code {

@@ -72,7 +72,11 @@ type EditorCore struct {
 	// vEOL says the Visual selection Select made ends with its last line's break: the cursor sits
 	// just past that line's last cluster, and the break is selected (a range ending at a line's
 	// start). Any change of mode ends it.
-	vEOL      bool
+	vEOL bool
+	// vPinned says the Visual selection was made by Select: it is drawn while the editor is not
+	// focused too (a replace session's match, behind the card that holds the keyboard). Any change
+	// of mode ends it.
+	vPinned   bool
 	canSelect bool // visual selection is allowed
 	readOnly  bool // a viewer: motions and yank only
 	// listEditing continues, ends and nests Markdown list items in Insert mode (editor_lists.go)
@@ -625,7 +629,7 @@ func (c *EditorCore) setMode(m EditorMode) {
 		return
 	}
 	c.keys.mode = m
-	c.vEOL = false
+	c.vEOL, c.vPinned = false, false
 	c.markDirty()
 	c.publish(ModeChangedEvent{Owner: c.nodeID(), Mode: m})
 	if c.onModeChange != nil {

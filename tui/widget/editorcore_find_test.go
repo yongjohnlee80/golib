@@ -151,3 +151,40 @@ func TestModelessEscapeCancelsTheFindToo(t *testing.T) {
 		t.Fatal("a modeless Esc did not reach the host's answer")
 	}
 }
+
+// The current match is drawn whatever the focus and the mode; n sets it, and ending the find
+// clears it.
+func TestTheCurrentMatchIsHighlighted(t *testing.T) {
+	c, _ := coreWith(t, "a foo b foo")
+	c.SetFind("foo", widget.FindOptions{})
+	keys(c, "n")
+	if r, ok := c.CurrentMatch(); !ok || r != rng(0, 2, 0, 5) {
+		t.Fatalf("CurrentMatch after n = %v, %v", r, ok)
+	}
+	if !c.Highlighted(0, 2, false) || !c.Highlighted(0, 4, false) || c.Highlighted(0, 5, false) {
+		t.Fatal("the current match is not highlighted, unfocused, exactly")
+	}
+	if c.Highlighted(0, 8, false) {
+		t.Fatal("another match is highlighted as the current one")
+	}
+	c.SetFind("", widget.FindOptions{})
+	if _, ok := c.CurrentMatch(); ok || c.Highlighted(0, 2, false) {
+		t.Fatal("ending the find kept the current match")
+	}
+	// a host's own find sets it directly
+	c.SetCurrentMatch(rng(0, 8, 0, 11))
+	if !c.Highlighted(0, 9, false) {
+		t.Fatal("SetCurrentMatch did not highlight")
+	}
+	// a Visual selection by keys is drawn only while focused; Select's whatever the focus
+	c.SetCurrentMatch(widget.TextRange{})
+	keys(c, "0v")
+	if c.Highlighted(0, 0, false) || !c.Highlighted(0, 0, true) {
+		t.Fatal("a v selection is drawn unfocused, or not focused")
+	}
+	keys(c, "v")
+	c.Select(rng(0, 0, 0, 1))
+	if !c.Highlighted(0, 0, false) {
+		t.Fatal("Select's selection is not drawn unfocused")
+	}
+}

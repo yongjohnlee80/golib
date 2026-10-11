@@ -30,6 +30,9 @@ type findState struct {
 	plain bool
 	// host is the host's own overlay (SetHighlightOverlay): the marks go over it.
 	host highlight.Overlay
+	// cur is the current match, drawn as a selection (SetCurrentMatch); curOn says there is one
+	cur   TextRange
+	curOn bool
 }
 
 // plainHighlighter styles nothing: a core with no highlighter paints no overlay.
@@ -135,6 +138,9 @@ func (c *EditorCore) ReplaceAll(term, with string, o FindOptions) (int, error) {
 // wrapping.
 func (c *EditorCore) SetFind(term string, o FindOptions) {
 	c.find.term, c.find.opts = term, FindOptions{IgnoreCase: o.IgnoreCase}
+	if term == "" {
+		c.find.curOn = false
+	}
 	switch {
 	case term != "" && c.hl.hl == nil:
 		c.hl.setHighlighter(plainHighlighter)
@@ -161,8 +167,30 @@ func (c *EditorCore) FindNext(back bool) bool {
 	r, ok := c.Find(c.find.term, c.Cursor(), o)
 	if ok {
 		c.SetLine(r.From.Line, r.From.Col)
+		c.SetCurrentMatch(r)
 	}
 	return ok
+}
+
+// SetCurrentMatch draws r as the current match, as a selection whatever the mode and the focus: the
+// one a find is on, so the user sees which. An empty r clears it; SetFind("") clears it too.
+func (c *EditorCore) SetCurrentMatch(r TextRange) {
+	lo, hi := c.clampRange(r)
+	c.find.cur = TextRange{From: TextPos{lo.ln, lo.col}, To: TextPos{hi.ln, hi.col}}
+	c.find.curOn = lo != hi
+	c.markDirty()
+}
+
+// CurrentMatch is the current match; ok is false with none.
+func (c *EditorCore) CurrentMatch() (TextRange, bool) { return c.find.cur, c.find.curOn }
+
+func (c *EditorCore) inCurrentMatch(ln, col int) bool {
+	if !c.find.curOn {
+		return false
+	}
+	r := c.find.cur
+	lo, hi := taPos{r.From.Line, r.From.Col}, taPos{r.To.Line, r.To.Col}
+	return posLE(lo, ln, col) && !posLE(hi, ln, col)
 }
 
 // findOverlay is the host's overlay with the active find's marks over it.

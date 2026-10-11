@@ -23,6 +23,17 @@ func (c *EditorCore) LineAt(i int) string {
 // Visual-line mode every column of a selected line is, so a widget may fill the whole row.
 func (c *EditorCore) Selected(ln, col int) bool { return c.inVisual(ln, col) }
 
+// Highlighted reports whether a widget draws cluster col of line ln as selected: inside the Visual
+// selection while the widget is focused, or whatever the focus when the selection was made by
+// Select (a replace session's match, behind the card holding the keyboard); or inside the current
+// match (SetCurrentMatch), the one a find is on.
+func (c *EditorCore) Highlighted(ln, col int, focused bool) bool {
+	if (focused || c.vPinned) && c.inVisual(ln, col) {
+		return true
+	}
+	return c.inCurrentMatch(ln, col)
+}
+
 // HighlightFrame is one render's walk over the highlighter's styles, from the first visible
 // line on. Ask Styles for the visible lines in order.
 type HighlightFrame struct {
