@@ -94,6 +94,8 @@ type EditorCore struct {
 	// announced when the outermost one returns.
 	batch       int
 	batchEdited bool
+
+	find findState // the active find (editorcore_find.go)
 }
 
 // CoreOption configures an EditorCore under construction.
@@ -434,6 +436,7 @@ func (c *EditorCore) SetHighlighter(h highlight.Highlighter) {
 	c.retireHighlightFrame()
 	c.sourceFactory, c.source = nil, highlight.Source{Highlighter: h}
 	c.hl.setHighlighter(h)
+	c.find.plain = false // the host's highlighter replaced the find's own
 	c.markDirty()
 }
 
@@ -457,6 +460,7 @@ func (c *EditorCore) renewSource() {
 	}
 	c.hl.setSource(source)
 	c.source = source
+	c.find.plain = false
 }
 
 // CoreAutoIndent opts an editor into source-language indentation.
@@ -491,7 +495,8 @@ func (c *EditorCore) SetIndentUnit(unit string) error {
 
 // SetHighlightOverlay installs a paint-only decorator without invalidating source states.
 func (c *EditorCore) SetHighlightOverlay(overlay highlight.Overlay) {
-	c.hl.overlay = overlay
+	c.find.host = overlay
+	c.hl.overlay = c.findOverlay() // the active find's marks stay over it
 	c.InvalidateHighlightPaint()
 }
 
@@ -901,6 +906,10 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 	case ActPaste:
 		c.pasteRegister(false)
 		return true
+
+	case ActFindNext, ActFindPrev:
+		// with no active find the key bubbles: an application may have its own n
+		return c.FindNext(act == ActFindPrev)
 
 	case ActToggleRendered:
 		// A view's concern: the widget that has a Rendered view answers it (SetToggleRendered).
