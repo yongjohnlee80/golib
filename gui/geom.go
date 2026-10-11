@@ -6,11 +6,21 @@ import (
 	"gioui.org/f32"
 )
 
-// Size, Point and Rect are logical pixels (device-independent), the units a View paints in.
+// Size, Point, and Rect represent 2D geometric quantities expressed in device-independent
+// logical pixels (dp).
+//
+// These structures define the primary layout and vector painting coordinates utilized by
+// [Canvas], [View], and native embedded widgets. They are translated to device pixels during
+// rasterization based on the window display scale ([Canvas.Scale]).
 type (
-	Size  struct{ W, H float32 }
+	// Size specifies a 2D extent with floating-point width and height in logical pixels.
+	Size struct{ W, H float32 }
+
+	// Point specifies a 2D position (X, Y) in logical pixels.
 	Point struct{ X, Y float32 }
-	Rect  struct{ X, Y, W, H float32 }
+
+	// Rect specifies a 2D bounding rectangle in logical pixels.
+	Rect struct{ X, Y, W, H float32 }
 )
 
 // Pt is the point (x, y).

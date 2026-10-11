@@ -7,18 +7,25 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// ErrEventOverflow means the window produced more events than the App read: maxQueued were
-// waiting. The backend ends rather than grow the queue or coalesce it, because an ordered,
-// un-coalesced event source is part of the Backend contract (tui/backend.go), as tui/web does.
+// ErrEventOverflow indicates that input events accumulated faster than the consuming
+// application could drain them, exceeding the internal capacity limit ([maxQueued]).
+//
+// In accordance with the [tui.Backend] contract, input events must be delivered strictly in
+// arrival order without dropping or coalescing at the driver boundary. When the queue overflows,
+// the backend terminates cleanly with this error rather than silently degrading event integrity.
 var ErrEventOverflow = errors.New("gui: event queue overflow")
 
-// maxQueued bounds the events waiting for the App. Input arrives at human rates and tui's intake
-// drains its channel promptly, so reaching it means the App stopped reading.
+// maxQueued is the maximum number of pending input events buffered in the [eventQueue] before
+// signaling [ErrEventOverflow]. Under ordinary execution, the TUI loop drains events promptly;
+// reaching this threshold indicates a blocked or unresponsive application event loop.
 const maxQueued = 4096
 
-// eventQueue gives tui.Backend.Events one owner. The Gio goroutine appends to the
-// queue and never blocks; the forwarder goroutine is the channel's only sender and only closer.
-// A channel closed by anyone else could be closed under a pending send, which panics.
+// eventQueue provides thread-safe, ordered buffering of [tui.Event] instances across the
+// Gio event loop and the TUI application loop.
+//
+// The Gio goroutine appends events via [eventQueue.push] without blocking. A dedicated forwarder
+// goroutine ([eventQueue.forward]) owns delivery to the unbuffered [tui.Backend.Events] channel,
+// ensuring that closing the channel never panics against active event producers.
 type eventQueue struct {
 	events chan tui.Event // unbuffered: order and backpressure stay with the forwarder
 

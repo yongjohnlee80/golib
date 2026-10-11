@@ -18,12 +18,19 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// renderer draws the grid with Gio. It runs on tui's loop goroutine, inside Flush, and is the
-// only user of its shaper (text.Shaper is not safe for concurrent use).
+// renderer translates the active [grid] into optimized Gio vector drawing operations.
 //
-// Every row is recorded once into its own op.Ops and replayed by later frames until it changes.
-// A recorded row is never written again: a frame handed to the Gio goroutine may still be drawing
-// it, so a changed row gets a NEW op.Ops and the old one is left to the garbage collector.
+// Concurrency & Lifecycle:
+//   - Executes exclusively on the TUI event loop goroutine within [Backend.Flush].
+//   - Owns a private [text.Shaper] instance, avoiding concurrency hazards since [text.Shaper]
+//     is not thread-safe.
+//
+// Performance & Caching Strategy:
+//   - Each row is recorded into an independent [op.Ops] macro stored in rows as [op.CallOp].
+//   - As long as a row's dirty flag remains false, the recorded macro is replayed without
+//     re-shaping glyphs or recalculating box borders.
+//   - When a row is modified, a fresh [op.Ops] instance is allocated; previous macros handed to
+//     the Gio display thread are never mutated in place.
 type renderer struct {
 	shaper   *text.Shaper
 	typeface font.Typeface
@@ -155,12 +162,18 @@ const (
 	bgNone                   // none: glyphs only
 )
 
-// drawSpan draws cells [x0, x1) of row y: their backgrounds by runs, then their glyphs and lines.
-// A span's plain glyphs are drawn as one path per colour, each glyph placed where its cell's own
-// path would have put it, and its line pieces (a border's ─ is two rectangles a cell) merged where
-// they meet: a path or a fill is a draw call, and a full screen of cells each drawing its own made
-// every frame slow on a large window. A glyph scaled to fit its cell, or one with colour bitmaps,
-// is drawn on its own.
+// drawSpan translates a horizontal range of cells [x0, x1) in row y into batched Gio operations.
+//
+// Optimization & Batching Mechanics:
+//  1. Background Coalescing: Cells with identical background colors are grouped into contiguous
+//     horizontal runs and filled via [fillRect].
+//  2. Line Segment Merging: Box-drawing characters (such as borders and divider lines) are converted
+//     into directional arms and merged across adjoining cells via [mergeRects] to eliminate border seams
+//     and minimize rectangle fill ops.
+//  3. Glyph Batching: Text glyphs sharing foreground attributes are accumulated into a single
+//     compound vector outline path per color via [clip.Outline] and rasterized in one draw call.
+//     Glyphs requiring individual scaling or containing multi-color bitmaps (emoji) bypass
+//     batching and are drawn individually.
 func (r *renderer) drawSpan(ops *op.Ops, g *grid, y, x0, x1 int, bgs bgMode) {
 	m := r.m
 	for x := x0; x < x1 && bgs != bgNone; {
