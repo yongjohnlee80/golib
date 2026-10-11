@@ -98,6 +98,9 @@ func coreTypes() []Type {
 		{Name: "Text", Build: buildText, Ctor: []string{"wrapMode"}, restyle: restyleText, Setters: map[string]Setter{
 			"text":  textSetter("a Text", (*widget.Text).SetText, (*widget.Text).SetTextMessage),
 			"color": setter("a Text", colorOf, (*widget.Text).SetColor),
+			// Qt's font group: the text bold, or italic
+			"font.bold":   setter("a Text", boolOf, (*widget.Text).SetBold),
+			"font.italic": setter("a Text", boolOf, (*widget.Text).SetItalic),
 		}},
 	}
 }
