@@ -19,12 +19,13 @@ import (
 type Editor struct {
 	panel *Panel // a field, not embedded: Panel's methods call each other on their receiver
 
-	core   *tuiwidget.EditorCore
-	body   *editorBody
-	stack  *editorStack // the Panel's content: the body, and the document view
-	layout *pixelLayout
-	menu   *tuiwidget.EditorMenu
-	sw     *modeSwitch
+	core    *tuiwidget.EditorCore
+	body    *editorBody
+	stack   *editorStack // the Panel's content: the body, and the document view
+	layout  *pixelLayout
+	menu    *tuiwidget.EditorMenu
+	cmdline *tuiwidget.CommandLine // the ':' prompt, shared with the terminal's Editor
+	sw      *modeSwitch
 
 	mode   EditorMode
 	render Renderer
@@ -55,6 +56,7 @@ type editorConfig struct {
 	doc      DocumentView
 	mode     EditorMode
 	menu     bool
+	noCmd    bool // the ':' prompt is off (WithCommandLine(false))
 	rows     func(*tuiwidget.EditorCore) []tuiwidget.MenuItemModel
 	panel    []PanelOption
 	fontSize float32
@@ -119,6 +121,8 @@ func NewEditor(opts ...EditorOption) *Editor {
 		e.menu.SetRows(func() []tuiwidget.MenuItemModel { return build(e.core) })
 	}
 	e.menu.SetEnabled(cfg.menu)
+	e.cmdline = tuiwidget.NewCommandLine(e.body, e.core)
+	e.cmdline.SetEnabled(!cfg.noCmd)
 	e.stack = newEditorStack(e)
 	e.panel = NewPanel(e.stack, append([]PanelOption{TitleLeading(e.sw)}, cfg.panel...)...)
 	// Ctrl+T, or whatever the keymap binds ActToggleRendered to: with no renderer there is no
