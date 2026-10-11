@@ -13,6 +13,7 @@ import (
 // Gio's main loop never returns on desktop platforms, so Main ends the process when run returns:
 // status 0, or status 1 with the error on stderr. Put cleanup that must happen inside run.
 func Main(run func() error) {
+	beforeGio()
 	go func() {
 		if err := run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
