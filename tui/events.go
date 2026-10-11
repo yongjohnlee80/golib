@@ -30,6 +30,13 @@ type FocusEvent struct {
 
 func (FocusEvent) isEvent() {}
 
+// CloseRequestEvent is the window asking to close: a graphical backend's close button. The App
+// answers it as the program's own quit: WithQuit's function, which may ask first, else Run ends.
+// A terminal has no such button; a backend that cannot hold its window open sends none.
+type CloseRequestEvent struct{}
+
+func (CloseRequestEvent) isEvent() {}
+
 // --- addressed deliveries. These go to exactly one node and do NOT bubble:
 //     the addressee asked for the work, so an ancestor seeing its result would
 //     be seeing someone else's mail. ---

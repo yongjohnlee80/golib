@@ -246,9 +246,10 @@ func WithMinimumSize(s Size) AppOption {
 	return func(c *appConfig) { c.minimumSize = Size{W: max(s.W, 0), H: max(s.H, 0)} }
 }
 
-// WithQuit sets how the too-small screen's Quit ends the program: the application's own quit, say
-// one that saves first. Unset, Quit ends Run, as cancelling its context does. It runs on the loop
-// goroutine.
+// WithQuit sets how the program quits when the user asks from outside it: the too-small screen's
+// Quit, and a window's close button (CloseRequestEvent). It is the application's own quit, say one
+// that asks before unsaved work is lost. Unset, either ends Run, as cancelling its context does.
+// It runs on the loop goroutine.
 func WithQuit(fn func()) AppOption {
 	return func(c *appConfig) { c.quit = fn }
 }
