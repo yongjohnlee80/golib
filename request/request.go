@@ -29,8 +29,9 @@ const (
 // HTTP request/response cycle. Note that Params is mutated by [Request] and [Do] to
 // store the resulting response state, and is therefore not safe for concurrent reuse.
 type Params struct {
-	// ResponseBody contains the full body payload returned by the remote server, read
-	// up to MaxResponseSize.
+	// ResponseBody contains the response payload returned by the server, populated on success
+	// when the body does not exceed the configured size limit. If the body exceeds the limit,
+	// Do returns [ErrResponseTooLarge] without assigning ResponseBody.
 	ResponseBody string
 	// Headers holds request headers transmitted with the HTTP request.
 	Headers map[string]string

@@ -19,9 +19,9 @@
 //   - JSON & Error Protocol: Standardized response serialization helpers ([JSON], [Error],
 //     [Decode]) maintaining contract compatibility with [golib/request.Error], alongside an
 //     error-returning handler signature adapter ([Handler]) with [StatusError].
-//   - Testing Doubles: [MockServer] provides an in-memory loopback HTTP test double for fast,
-//     deterministic consumer unit testing without opening live network ports.
+//   - Testing Doubles: [MockServer] provides a loopback HTTP test double backed by
+//     [net/http/httptest.Server] for consumer unit testing.
 //
-// Transports remain strictly layered: only httpserver imports net/http, while the core
+// Transports layer over the core: while httpserver and ws import net/http, the core
 // golib/server package remains protocol-agnostic.
 package httpserver

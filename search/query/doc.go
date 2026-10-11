@@ -3,12 +3,13 @@
 //
 // # Syntax and Parsing Rules
 //
-//   - Lexical Terms: Bare words, quoted phrases (`"quoted phrase"`), and prefix wildcards (`term*`)
-//     are extracted by [Terms].
+//   - Lexical Terms: Words separated by whitespace are extracted by [Terms], recognizing
+//     a trailing prefix wildcard ('*') on the final word only. Quotes are preserved as
+//     literal characters rather than grouping phrases.
 //   - Facet Filtering: Qualified key-value pairs (`name:value`) targeting declared schema fields
 //     are extracted into typed filters via [Facets], leaving unconsumed text for free-text search.
-//   - SQLite FTS5 Synthesis: [FTS5] transforms parsed terms into safe, injection-proof MATCH syntax,
-//     handling inner quote escaping and phrase group semantics.
+//   - SQLite FTS5 Synthesis: [FTS5] transforms parsed terms into safe MATCH syntax by producing
+//     one quoted FTS5 token per term, with inner quotes doubled.
 //
 // The package imports no other search modules and has zero external dependencies.
 package query
