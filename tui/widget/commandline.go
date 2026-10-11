@@ -240,9 +240,10 @@ func describeEach(cs []Command) []string {
 	return rows
 }
 
-// completionList is the prompt's dropdown under the field: one candidate a row, the one Tab chose
-// highlighted, at most completionRows of them in view (the view follows the chosen one); or one
-// message on its own (an error, a verb's arguments), wrapped. Empty, it takes no room.
+// completionList is the prompt's dropdown under the field: one candidate a row in a framed box, the
+// one Tab chose highlighted, at most completionRows of them in view (the view follows the chosen
+// one); or one message on its own (an error, a verb's arguments), wrapped and unframed. Empty, it
+// takes no room.
 type completionList struct {
 	Base
 	rows []string
@@ -287,8 +288,14 @@ func (c *completionList) Layout(cs tui.Constraints) tui.Size {
 		w = max(w, c.measure(c.msg))
 	}
 	h := min(len(c.rows), completionRows)
-	if c.msg != "" {
+	switch {
+	case c.msg != "":
 		h = len(wrapLine(c.msg, max(w, 1), c.measure))
+	case h > 0:
+		h += 2 // the frame
+		if cs.MaxW == tui.Unbounded {
+			w += 2
+		}
 	}
 	return cs.Constrain(tui.Size{W: w, H: h})
 }
@@ -318,16 +325,36 @@ func (c *completionList) Render(s tui.Surface) {
 		}
 		return
 	}
+	if len(c.rows) == 0 || sz.W < 3 || sz.H < 3 {
+		return
+	}
+	// the frame, on the card's colours with the theme's border
+	frame := card.Foreground(style.TokenBorder)
+	right, bottom := sz.W-1, sz.H-1
+	s.SetCell(0, 0, "┌", frame)
+	s.SetCell(right, 0, "┐", frame)
+	s.SetCell(0, bottom, "└", frame)
+	s.SetCell(right, bottom, "┘", frame)
+	for x := 1; x < right; x++ {
+		s.SetCell(x, 0, "─", frame)
+		s.SetCell(x, bottom, "─", frame)
+	}
+	for y := 1; y < bottom; y++ {
+		s.SetCell(0, y, "│", frame)
+		s.SetCell(right, y, "│", frame)
+	}
+	inner := s.Sub(tui.Rect{X: 1, Y: 1, W: sz.W - 2, H: sz.H - 2})
+	iw, ih := sz.W-2, sz.H-2
 	chosen := style.New().Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary)
-	top := c.first(sz.H)
-	for y := 0; y < sz.H && top+y < len(c.rows); y++ {
+	top := c.first(ih)
+	for y := 0; y < ih && top+y < len(c.rows); y++ {
 		i := top + y
 		st := card
 		if i == c.at {
 			st = chosen
-			s.Fill(tui.Rect{Y: y, W: sz.W, H: 1}, " ", st)
+			inner.Fill(tui.Rect{Y: y, W: iw, H: 1}, " ", st)
 		}
-		drawText(s, 0, y, truncate(c.rows[i], sz.W, s.StringWidth), st)
+		drawText(inner, 0, y, truncate(c.rows[i], iw, inner.StringWidth), st)
 	}
 }
 

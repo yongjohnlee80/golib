@@ -106,3 +106,19 @@ func TestTheActiveFindIsMarkedOverTheHostsOverlay(t *testing.T) {
 		}
 	}
 }
+
+// Esc in Normal mode cancels the active find; with none it bubbles, as before.
+func TestEscapeCancelsTheActiveFind(t *testing.T) {
+	c, _ := coreWith(t, "foo bar foo")
+	esc := tui.KeyEvent{Code: tui.KeyEscape}
+	c.SetFind("foo", widget.FindOptions{})
+	if !c.HandleKey(esc) {
+		t.Fatal("Esc over an active find was not consumed")
+	}
+	if term, _ := c.FindTerm(); term != "" {
+		t.Fatalf("the find is still %q", term)
+	}
+	if c.HandleKey(esc) {
+		t.Fatal("Esc with no find was consumed; it must reach the host")
+	}
+}
