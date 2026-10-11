@@ -16,45 +16,72 @@ import (
 )
 
 var (
-	// ErrEntryTooLarge is an archive entry that decompresses past the per-entry limit. A ZIP
-	// header's size can lie, so the bytes are counted as they are read.
+	// ErrEntryTooLarge is returned when an individual ZIP entry within the DOCX archive
+	// decompresses past [Extractor.MaxEntry]. Because ZIP header sizes can be spoofed or inaccurate,
+	// decompressed bytes are actively counted during read operations.
 	ErrEntryTooLarge = errs.Sentinel(errs.ErrInvalidArgument, "docx: an archive entry is larger than the entry limit")
-	// ErrArchiveTooLarge is the entries read decompressing past the total limit together.
+
+	// ErrArchiveTooLarge is returned when the sum of decompressed bytes across all inspected entries
+	// exceeds [Extractor.MaxTotal].
 	ErrArchiveTooLarge = errs.Sentinel(errs.ErrInvalidArgument, "docx: the archive's entries are larger than the total limit")
-	// ErrTooDeep is XML nested past the depth limit.
+
+	// ErrTooDeep is returned when XML element nesting depth exceeds [Extractor.MaxDepth].
 	ErrTooDeep = errs.Sentinel(errs.ErrInvalidArgument, "docx: XML nested past the depth limit")
-	// ErrBlockTooLarge is one paragraph or table row past the block limit.
+
+	// ErrBlockTooLarge is returned when an individual paragraph or table row accumulates content
+	// exceeding [Extractor.MaxBlock].
 	ErrBlockTooLarge = errs.Sentinel(errs.ErrInvalidArgument, "docx: a paragraph or table row is larger than the block limit")
-	// ErrNotDocx is a ZIP archive with no word/document.xml.
+
+	// ErrNotDocx is returned when the ZIP archive does not contain the mandatory word/document.xml entry.
 	ErrNotDocx = errs.Sentinel(errs.ErrInvalidArgument, "docx: not a Word document")
 )
 
-// The limits a zero Extractor uses.
+// Default limits applied when [Extractor] fields are zero or unconfigured.
 const (
-	DefaultMaxEntry = 256 << 20 // decompressed bytes of one entry
-	DefaultMaxTotal = 512 << 20 // decompressed bytes of every entry read
+	// DefaultMaxEntry bounds the decompressed bytes permitted from a single archive entry (256 MiB).
+	DefaultMaxEntry = 256 << 20
+
+	// DefaultMaxTotal bounds the cumulative decompressed bytes across all archive entries read (512 MiB).
+	DefaultMaxTotal = 512 << 20
+
+	// DefaultMaxDepth bounds the maximum XML element nesting depth (256 levels).
 	DefaultMaxDepth = 256
-	DefaultMaxBlock = 4 << 20 // bytes of one paragraph or table row
+
+	// DefaultMaxBlock bounds the maximum buffered byte length of a single paragraph or table row (4 MiB).
+	DefaultMaxBlock = 4 << 20
 )
 
-// Extractor is an extract.Extractor for Word documents (.docx). It reads the archive's directory
-// through the io.ReaderAt, the styles and numbering for heading levels and list kinds, and the
-// document one XML token at a time, holding one paragraph or table row at a time. Headings become
-// #–######, list items "- " or "1. ", tables GFM tables, and a hyperlink keeps its text; media,
-// headers, footers and comments are skipped. Info.Title comes from the core properties and
-// Info.Pages from the application properties when they are present.
+// Extractor implements [extract.Extractor] for Word documents (.docx).
 //
-// The zero value is ready to use with the default limits; a field set to a positive value
-// replaces its default. An Extractor holds no state, so one serves any number of goroutines.
+// # Architectural Model & Conversion Rules
+//
+//  1. ZIP Archive Traversal: Reads the archive directory via [io.ReaderAt]. Entries are read selectively
+//     (styles, numbering, document body, document properties); media files, footers, headers,
+//     and comment references are skipped.
+//  2. Style & Numbering Introspection: Parses word/styles.xml to resolve heading outline levels and
+//     named styles ("Title", "Heading 1"–"Heading 6"). Parses word/numbering.xml to resolve list
+//     numbering schemes (bullet vs ordered decimal).
+//  3. Markdown Transformation:
+//     - Headings map to Markdown prefixes (# through ######).
+//     - Lists map to "- " (unordered) or "1. " (ordered), with 2 spaces of indentation per hierarchy level.
+//     - Tables are formatted as GitHub Flavored Markdown (GFM) grids with header dividers (| --- |),
+//       with pipes escaped (\|) and intra-cell line breaks converted to <br>.
+//     - Hyperlinks retain their text payload; media and drawing elements are skipped.
+//  4. Metadata Extraction: Populates [extract.Info.Title] from docProps/core.xml (dc:title) and
+//     [extract.Info.Pages] from docProps/app.xml when present.
+//  5. Concurrency & Reentrancy: An Extractor holds no mutable state and is safe for concurrent use.
 type Extractor struct {
-	MaxEntry, MaxTotal int64
-	MaxDepth, MaxBlock int
+	MaxEntry int64 // Maximum decompressed bytes per archive entry (0 selects DefaultMaxEntry)
+	MaxTotal int64 // Maximum cumulative decompressed bytes across all entries (0 selects DefaultMaxTotal)
+	MaxDepth int   // Maximum allowed XML element nesting depth (0 selects DefaultMaxDepth)
+	MaxBlock int   // Maximum buffered bytes for a single paragraph or row (0 selects DefaultMaxBlock)
 }
 
-// ID names this extractor for a derived cache's key.
+// ID returns the canonical identifier for this extractor ("golib/docx"), suitable for derived cache keys.
 func (Extractor) ID() string { return "golib/docx" }
 
-// Version changes whenever the Markdown for the same document may change.
+// Version returns the output format schema version ("1"). Any change in generated Markdown syntax
+// increments this version string to invalidate downstream derived caches.
 func (Extractor) Version() string { return "1" }
 
 func (e Extractor) limits() (maxEntry, maxTotal int64, maxDepth, maxBlock int) {
@@ -74,7 +101,19 @@ func (e Extractor) limits() (maxEntry, maxTotal int64, maxDepth, maxBlock int) {
 	return
 }
 
-// Extract writes the document's Markdown to w.
+// Extract extracts the Word document (.docx) from r, streaming generated Markdown to w.
+//
+// # Execution & Validation Order
+//
+//  1. Validates size is non-negative, returning an error wrapping [errs.ErrInvalidArgument] if negative.
+//  2. Checks ctx.Err() before initiating ZIP decompression.
+//  3. Opens the ZIP archive directory using [zip.NewReader] with size bytes.
+//  4. Enforces the presence of word/document.xml; returns [ErrNotDocx] if absent.
+//  5. Parses styles and numbering metadata within resource bounds.
+//  6. Reads title from docProps/core.xml and page count from docProps/app.xml into [extract.Info].
+//  7. Streams document paragraphs and tables to w via a buffered writer.
+//
+// Returns any encountered decompression or parsing error.
 func (e Extractor) Extract(ctx context.Context, r io.ReaderAt, size int64, w io.Writer) (extract.Info, error) {
 	if size < 0 {
 		return extract.Info{}, errs.Wrap(errs.ErrInvalidArgument, "docx: negative size %d", size)

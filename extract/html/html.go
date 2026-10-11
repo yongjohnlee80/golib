@@ -1,14 +1,48 @@
-// Package html extracts a web page's content as Markdown, as an extract.Extractor: headings,
-// paragraphs, lists, tables, code and the text of links and images, without tags, scripts, styles
-// or the page's chrome.
+// Package html extracts structured content from HTML web pages into Markdown as a golib [extract.Extractor],
+// stripping tags, styling, script payloads, and navigation boilerplate so that search indexes and embedding models
+// process clean, semantically dense textual prose.
 //
-// A page with a main element is read as that element alone; else its first article; else its
-// body without nav, header, footer and aside. Scripts, styles, noscript, templates, SVG, canvases,
-// frames, objects, forms, comments and anything hidden (the hidden attribute, aria-hidden="true")
-// are dropped with what they hold, and their text never reaches the writer. Link targets are
-// dropped: an embedding carries meaning, not URLs.
+// # Architectural Mission & Scope
 //
-// It parses with parse/html under its limits; a page over them is refused with ErrTooLarge.
+// Web scraping pipelines frequently suffer from HTML noise: cookies banners, scripts, navigation chrome,
+// tracking pixels, and SVG layouts pollute document text. Furthermore, pathological HTML documents
+// (deeply nested nodes, giant attributes) can cause unbounded DOM allocations.
+//
+// golib/extract/html is built on four core principles:
+//
+//  1. Content-First Selection:
+//     - Prioritizes the <main> element when present, isolating primary content immediately.
+//     - Falls back to the first <article> element if no <main> exists.
+//     - Falls back to <body> if neither is found, automatically discarding site furniture (<nav>, <header>,
+//       <footer>, <aside>).
+//  2. Noise & Active Content Elimination: Completely eliminates <script>, <style>, <noscript>, <template>,
+//     <svg>, <canvas>, <iframe>, <object>, <form>, <head>, comments, and any subtree tagged with the "hidden"
+//     attribute or aria-hidden="true". Suppressed subtrees never reach the output writer.
+//  3. Link Semantics for Retrieval: Hyperlinks retain their visible anchor text while discarding URL targets;
+//     for embedding models and search indexing, anchor text carries conceptual meaning, whereas URLs add noise.
+//  4. Bounded Parsing Safety: Relies on golib/parse/html under strict parsing limits ([phtml.Limits]),
+//     guaranteeing protection against deeply nested DOM recursion and oversized source buffers.
+//
+// # DOM to Markdown Translation Rules
+//
+//	┌────────────────────────┬──────────────────────────────────────────────┐
+//	│ HTML Construct         │ Markdown Output                              │
+//	├────────────────────────┼──────────────────────────────────────────────┤
+//	│ <h1> – <h6>            │ # through ######                             │
+//	│ <p>, <div>, <section>  │ Paragraphs separated by blank lines          │
+//	│ <ul>, <ol>, <li>       │ - and 1. list items, indented hierarchically │
+//	│ <table>                │ GitHub Flavored Markdown (GFM) tables        │
+//	│ <pre>, <code>          │ Fenced code blocks with language annotations │
+//	│ <strong>, <b>          │ Bold (**text**)                              │
+//	│ <em>, <i>              │ Italic (*text*)                              │
+//	│ <br>                   │ Line break                                   │
+//	│ <blockquote>           │ Blockquote (> text)                          │
+//	│ <img>                  │ Evaluates to alt attribute text              │
+//	└────────────────────────┴──────────────────────────────────────────────┘
+//
+// # Concurrency
+//
+// [Extractor] holds no mutable state and is safe for concurrent use across multiple goroutines.
 package html
 
 import (
@@ -23,22 +57,34 @@ import (
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 )
 
-// ErrTooLarge is a page over a parse limit: its source, its node count, a tag's attributes.
+// ErrTooLarge indicates an HTML document exceeded configured parser limits (source byte length,
+// node count, attribute count, or attribute value length).
 var ErrTooLarge = phtml.ErrTooLarge
 
-// Extractor reads HTML. Its zero value parses under parse/html's DefaultLimits.
+// Extractor implements [extract.Extractor] for HTML web pages.
+// Its zero value applies [phtml.DefaultLimits].
 type Extractor struct {
+	// Limits overrides default HTML parsing resource bounds. When zero, [phtml.DefaultLimits] are applied.
 	Limits phtml.Limits
 }
 
-// ID names this extractor for a derived cache's key.
+// ID returns the canonical identifier for this extractor ("golib/html"), suitable for derived cache keys.
 func (Extractor) ID() string { return "golib/html" }
 
-// Version is the version of its output; a change re-derives every page.
+// Version returns the output format schema version ("1"). Any change in generated Markdown syntax
+// increments this version string to invalidate downstream derived caches.
 func (Extractor) Version() string { return "1" }
 
-// Extract writes the page at r, of size bytes, to w as Markdown. Info.Title is the page's title
-// element, else its first h1.
+// Extract reads an HTML document from r of size bytes and streams the resulting Markdown representation to w.
+//
+// # Execution & Metadata Resolution
+//
+//  1. Validates size is non-negative and within MaxSource limits; returns [ErrTooLarge] if exceeded.
+//  2. Reads source bytes from r and parses the document into a DOM via [phtml.ParseLimited].
+//  3. Identifies the primary content root (<main>, <article>, or filtered <body>).
+//  4. Resolves document title: uses the page's <title> element if available, falling back to the first
+//     <h1> heading discovered in the content.
+//  5. Streams rendered Markdown blocks to w, checking ctx for cancellation between blocks.
 func (e Extractor) Extract(ctx context.Context, r io.ReaderAt, size int64, w io.Writer) (extract.Info, error) {
 	lim := e.Limits
 	if lim.MaxSource <= 0 {
