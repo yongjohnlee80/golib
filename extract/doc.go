@@ -14,14 +14,18 @@
 //     HTML via parse/html) live in pure Go subpackages. Heavy format parsers requiring third-party
 //     modules (such as PDF) remain leaf packages in downstream products and bridge seamlessly
 //     via the [Extractor] interface.
-//  2. True Streaming & Bounded Heap Footprint: An [Extractor] accepts [io.ReaderAt] and writes
-//     directly to an [io.Writer]. Formats with terminal metadata tables (such as PDF cross-reference
-//     tables or DOCX ZIP directories) read at precise byte offsets without buffering whole containers.
-//     Neither container payload nor extracted Markdown is buffered in memory in its entirety.
+//  2. Streaming Seams & Bounded Heap Footprint: An [Extractor] accepts [io.ReaderAt] and writes
+//     to an [io.Writer]. Formats with terminal metadata tables (such as PDF cross-reference tables or
+//     DOCX ZIP directories) read at precise byte offsets without whole-file buffering. Extractors stream
+//     output or bound intermediate structures according to format requirements: [Text] streams chunks,
+//     [docx.Extractor] streams paragraphs token-by-token, while DOM-based parsers like [html.Extractor]
+//     perform bounded buffered parsing before writing blocks.
 //  3. Decoupled Two-Limit Protection Model: Enforces separate bounds for input containers
 //     ([MaxContainer]) and produced Markdown text ([MaxText]). A 100 MiB PDF manual may contain only
 //     1 MiB of textual prose (mostly images and fonts), whereas 16 MiB of extracted Markdown represents
-//     millions of words that downstream tokenizers and vector embeddings must budget for.
+//     millions of words that downstream tokenizers and vector embeddings must budget for. Note that
+//     [MaxText] bounds the cumulative text emitted to the destination [io.Writer], not an extractor's
+//     internal parse-tree or rendering allocations (which are bounded by extractor-specific limits).
 //  4. Concurrency Safety: Extractor implementations are stateless or keep per-document state
 //     strictly bound to call frames, allowing a single [Set] instance to serve high-throughput
 //     concurrent pipeline workers safely across goroutines.
