@@ -32,6 +32,9 @@ func (a *Adapter) CanRestructure(node decl.NodeID) bool {
 	if !ok {
 		return false
 	}
+	if _, ok := b.comp.(*focusScopeNode); ok && b.inherited {
+		return false // its parent read its content's Layout or Dock: rebuilt, so it reads them again
+	}
 	_, isContainer := b.comp.(tui.Container)
 	_, arranges := b.comp.(rearranger)
 	return isContainer || arranges
