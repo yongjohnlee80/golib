@@ -420,7 +420,9 @@ daemon's or a remote store's) is listed and previewed off the loop. Its folder
 title says it is loading until the rows arrive, and its preview says the same.
 A newer folder or file supersedes the read in flight, which is cancelled
 through its context, and a dialog taken off the screen cancels its reads too.
-When both are set, `VFS` wins.
+A name typed in a Save or Folder dialog is checked off the loop as well. Enter
+waits for the answer, then goes into the folder or chooses. An edit before the
+answer drops the check. When both are set, `VFS` wins.
 
 **A slow mount on the local disk is an `Async` `fs.FS`.** `Async: true` reads
 `FS` off the loop the same way, so an NFS or sshfs folder can't hold the loop.
