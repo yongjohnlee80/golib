@@ -12,7 +12,7 @@ import (
 
 // component_slot_test.go covers named children slots: `property alias footer:
 // foot.data` in a component file, and a use site setting it to one object,
-// which lands under foot (ADR 1791761080 r5, §4.6).
+// which lands under foot.
 
 // picker routes a use's children to list and its footer and header objects to
 // foot and head, each after the object's own children.
