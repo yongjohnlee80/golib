@@ -372,6 +372,42 @@ func (h *Host) saveFile() error {
 }
 ```
 
+## 4b. Panels: a dock style is a component
+
+A docked panel is a `Drawer`. A program's own look for its panels (the edge they open
+from, their size, their frame, a toolbar row) is a component file whose root is a
+`Drawer`, written once and used for each panel. The use site sets the Drawer's own
+properties (`edge`, `size`, `onOpened`), and gives the content and its keys. Make
+the content slot a `FocusScope`: the use's content and its Shortcuts land in it
+together, so the keys are live while focus is in the panel and win there over the
+Window's.
+
+```qml
+// docks/Panel.qml
+Drawer {
+    property string heading: ""
+    default property alias content: scope.data
+    modal: false
+    closeOnQ: true
+    Frame { title: heading; FocusScope { id: scope } }
+}
+```
+
+```qml
+Panel {
+    id: files
+    heading: "files"
+    edge: Tui.Left
+    onOpened: fileList.forceActiveFocus()
+    Shortcut { sequence: "d"; onActivated: App.deleteFile() }   // while focus is in the panel
+    ListView { id: fileList; model: App.files; textRole: "name" }
+}
+```
+
+A modal Drawer takes the keyboard while it is open; one with `modal: false` leaves it
+where it was, so `onOpened` moves it in. [`tui/examples/docks`](../examples/docks/)
+is two panels from one style.
+
 ## 5. File dialogs, local or remote
 
 ```qml

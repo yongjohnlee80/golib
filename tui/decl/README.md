@@ -55,7 +55,8 @@ component files, dialogs, reloading, mixing QML with hand-built Go widgets, and
 the rules that keep both safe. This file is the reference.
 
 The worked example is [`tui/examples/editor-qml`](../examples/editor-qml/README.md):
-a complete text editor whose every screen is QML.
+a complete text editor whose every screen is QML. [`tui/examples/docks`](../examples/docks/README.md)
+is a dock style written once and used for two panels, each with its own keys.
 
 ---
 
