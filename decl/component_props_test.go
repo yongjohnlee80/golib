@@ -329,6 +329,15 @@ func TestACallValueIsRefusedInAHandler(t *testing.T) {
 	}
 }
 
+// TestADeclaredPropertySetTwiceIsRefused: which of two values would win is a
+// guess, so the second is refused where it is written.
+func TestADeclaredPropertySetTwiceIsRefused(t *testing.T) {
+	_, err := expanded(t, labelled, "Flex {\n Card {\n  label: \"a\"\n  label: \"b\"\n }\n}")
+	if !errors.Is(err, decl.ErrComponent) || !strings.Contains(err.Error(), `"label" is set twice by this use (at 4:`) {
+		t.Fatalf("err = %v, want ErrComponent at the second label", err)
+	}
+}
+
 // TestADefaultAliasIsNotSetAsAValue: its children are written inside the use.
 func TestADefaultAliasIsNotSetAsAValue(t *testing.T) {
 	tr, _, _ := componentTree(t, map[string]string{"Table.qml": "Flex {\n default property alias cols: list.data\n Box { id: list }\n}"})

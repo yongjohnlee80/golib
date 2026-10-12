@@ -155,11 +155,22 @@ func substitute(def *qml.SpecNode, use *qml.SpecNode, ex expansion) (*qml.SpecNo
 	if len(def.Decls) == 0 {
 		return def, nil
 	}
+	declared := map[string]bool{}
+	for _, d := range def.Decls {
+		declared[d.Name] = true
+	}
 	given := map[string]qml.SpecValue{}
 	for _, p := range use.Props {
-		if len(p.Path) == 1 {
-			given[p.Name] = p.Value
+		if len(p.Path) != 1 {
+			continue
 		}
+		// A declared name is one value or one slot object: set twice, which
+		// would win is a guess, and two objects in one slot would share a key.
+		if _, twice := given[p.Name]; twice && declared[p.Name] {
+			return nil, fmt.Errorf("%w: %s's %q is set twice by this use (at %s)",
+				ErrComponent, use.Type, p.Name, p.Value.Pos)
+		}
+		given[p.Name] = p.Value
 	}
 	b := binder{root: def.ID, values: map[string]qml.SpecValue{}, use: use, ex: ex}
 	for _, d := range def.Decls {
