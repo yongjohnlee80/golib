@@ -77,6 +77,7 @@ change at runtime, which is what makes it bindable to a source.
 A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses them: one first or last among the rows shown, or right after another. So a group whose `MenuItem`s all hide (`visible: false`) takes its rule with it.
 
 | `Shortcut` | `sequence` | — | — | `activated` | — |
+| `FocusScope` | Shortcuts; one child, its content | — | — | — | — |
 | `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
 | `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `wrap` (live: soft-wrap long lines, or scroll them), `lineNumbers` (golib's: each line's number in a gutter at the left), `lineNumberColor` (golib's: the numbers' colour), `cursorColor` (golib's: the text cursor's colour, sent to the terminal), `ruler` (golib's: a guide at that column, where text wraps), `contextMenu` (golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer), `view` (golib's: `Editor.Raw` or `Editor.Rendered`; see [Raw and Rendered](#raw-and-rendered-view-not-mode)) | — | `modeChanged` (the **Vim** mode: Normal, Insert, Visual; not the view), `textChanged`, `cursorPositionChanged` (Qt's TextEdit signal: the cursor moved to another line or column, by a key, a click, an edit or the program) | — |
 | `Image` | — | `scrollable` (golib's: the PNG at the cells' width, scrolled by ↑↓ j k h l, Page Up/Down, `[` `]`, Home/End and the wheel; only the part shown is placed) | — | — | — |
@@ -99,7 +100,7 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `Tab` | `title`; one child, its content | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
-| `Drawer` | `modal` (default true), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton` (see Window controls); one child, its content | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)` | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy` |
+| `Drawer` | `modal` (default true), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton` (see Window controls); one child, its content, and any number of Shortcuts | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)` | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
@@ -129,6 +130,30 @@ cleared by its group included, before its `triggered`.
 case is its Shift, as in Qt: `"c"` or `"C"` is the key c, and `"Shift+C"` is the
 capital, whether a terminal delivers it as `C` or as Shift and c. With Ctrl or
 Alt, case is not relied on (`Ctrl+Q` matches however it arrives).
+
+A Shortcut is live while focus is inside the element that declares it:
+- a `Window`'s everywhere;
+- a `Dialog`'s or a `FolderDialog`'s while it is open;
+- a `Drawer`'s or a `FocusScope`'s while focus is within it.
+
+The focused widget has a key first, so a field still types its letters. Then the innermost element
+holding a Shortcut for it, then the ones around it, then the Window. So a panel's `d` wins over the
+Window's `d` while focus is in the panel, and the Window's is live everywhere else. A `Drawer`'s
+Shortcut may claim Escape or q from the Drawer's own closing. A Shortcut anywhere else is refused,
+naming the fix: put it in a `FocusScope`.
+
+**`FocusScope`** — QtQuick's name, for the element whose Shortcuts are live while focus is within it.
+It holds one content item and is otherwise not there:
+- its content is laid out as the FocusScope's parent lays the FocusScope;
+- nothing is painted;
+- it takes neither focus nor the pointer, so the Tab order and what a click lands on are the content's;
+- with no `Layout` or `Dock` properties of its own it takes its content's, so wrapping an item leaves
+  where it sits unchanged. The FocusScope's parent checks them as its own.
+
+    FocusScope {
+        Shortcut { sequence: "n"; onActivated: App.findNext() }
+        Editor { Layout.fillHeight: true }
+    }
 
 **`CheckBox`** — Qt Quick Controls' CheckBox: `[x] text` or `[ ] text`, in the colours of what
 it sits on (`palette.window` and `windowText`, as a `Text`), with no button's brackets or fill.
@@ -312,6 +337,7 @@ not decode is placed as given.
 | --- | --- | --- | --- |
 | any child of a `Window` | `Window` | `Dock.edge` | `Tui.Top`, `Tui.Bottom`, `Tui.Left`, `Tui.Right` |
 | a `Button` in a `DialogButtonBox` | `DialogButtonBox` | `DialogButtonBox.buttonRole` | `DialogButtonBox.AcceptRole`, `DialogButtonBox.RejectRole`, `DialogButtonBox.DestructiveRole`, `DialogButtonBox.ActionRole` |
+| the content of a `FocusScope` | the FocusScope's parent, as its own | `Dock.*`, `Layout.*` | as that parent reads them |
 | a child of a `StatusBar` | `StatusBar` | `StatusBar.permanent` | `true` (the default: at the right end, Qt's `addPermanentWidget`), `false` (at the left end, `addWidget`) |
 
 A child of a `Window` with no `Dock.edge` fills what the docked ones leave.

@@ -836,6 +836,24 @@ What AutoDB's screen settled on, the conventions to copy:
   `explorerTree`, `editor`, `results` — a component's ids are its own per use.
 - **Letters: a capital is its Shift.** `Shortcut { sequence: "Shift+C" }` for C;
   `"C"` is c.
+- **A key lives where it is declared.** A Shortcut is live while focus is inside
+  the element that declares it. A Window's is live everywhere; a Drawer's or a
+  `FocusScope`'s, only while focus is within it. Put a panel's keys in its Drawer,
+  and an editor's in a `FocusScope` around it. A panel's `d` then wins over the
+  Window's `d` inside the panel, and leaves it live everywhere else:
+
+  ```qml
+  Window {
+      Shortcut { sequence: "d"; onActivated: App.depth() }       // everywhere else
+      Drawer {
+          id: todos
+          Shortcut { sequence: "d"; onActivated: App.todoDelete() } // in the panel
+          Frame { title: "todos"; TreeView { model: App.todos } }
+      }
+  }
+  ```
+
+  The focused widget still has the key first, so a field in the panel types `d`.
 
 ## 11. Testing a QML screen
 
