@@ -310,18 +310,6 @@ type built struct {
 	nominee tui.Component
 	// pos is where the schema declared it.
 	pos parse.Position
-	// inherited: attached is a FocusScope's content's, passed on for its parent to check and read
-	inherited bool
-}
-
-// contentAttached is the attached properties of the first of children that is not a Shortcut.
-func (a *Adapter) contentAttached(children []decl.NodeID) map[string]qml.SpecValue {
-	for _, id := range children {
-		if _, ok := a.nodes[id].comp.(*shortcutNode); !ok {
-			return a.nodes[id].attached
-		}
-	}
-	return nil
 }
 
 // Create implements decl.Adapter.
@@ -361,15 +349,6 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 			// because the alternative is a nil child reaching a constructor
 			// that panics on one.
 			return nil, fmt.Errorf("child node %d was not built before its parent %d", id, c.Node)
-		}
-		if child.inherited {
-			// a FocusScope's content's, which the FocusScope only passed on: its parent is this
-			for prop := range child.attached {
-				if schema, _, ok := splitAttached(prop); ok && !a.reg.honours[c.Type][schema] {
-					return nil, fmt.Errorf("%s is set on a FocusScope's content, and the FocusScope's parent %s does not read %s.* properties (at %s)",
-						prop, c.Type, schema, child.pos)
-				}
-			}
 		}
 		children = append(children, child.comp)
 		childAttached = append(childAttached, child.attached)
@@ -470,12 +449,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	if focus {
 		nominee = comp
 	}
-	seen, inherited := attached, false
-	if _, ok := comp.(*focusScopeNode); ok && len(seen) == 0 {
-		seen = a.contentAttached(c.Children) // where its content sat, it sits
-		inherited = len(seen) > 0
-	}
-	a.nodes[c.Node] = built{comp: comp, typ: c.Type, attached: seen, nominee: nominee, pos: c.Pos, inherited: inherited}
+	a.nodes[c.Node] = built{comp: comp, typ: c.Type, attached: attached, nominee: nominee, pos: c.Pos}
 	a.kids[c.Node] = append([]decl.NodeID(nil), c.Children...)
 	a.paletteBuilt(c.Node, ownPalette, c.Children)
 	consumed = append(consumed, paletteNames...)

@@ -95,6 +95,10 @@ func (a *Adapter) CheckAttached(parentType, childType, prop string) (bool, error
 		return true, fmt.Errorf("%s is written on the root node, which has no parent to read it", prop)
 	}
 	if !a.reg.honours[parentType][schema] {
+		if parentType == "FocusScope" { // as in Qt: the scope is the item its own parent lays out
+			return true, fmt.Errorf("%s is set on a %s in a FocusScope: put it on the FocusScope, which its parent lays out",
+				prop, childType)
+		}
 		return true, fmt.Errorf("%s is set on a %s whose parent %s does not read %s.* properties",
 			prop, childType, parentType, schema)
 	}

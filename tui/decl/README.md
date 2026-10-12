@@ -146,14 +146,19 @@ naming the fix: put it in a `FocusScope`.
 It holds one content item and is otherwise not there:
 - its content is laid out as the FocusScope's parent lays the FocusScope;
 - nothing is painted;
-- it takes neither focus nor the pointer, so the Tab order and what a click lands on are the content's;
-- with no `Layout` or `Dock` properties of its own it takes its content's, so wrapping an item leaves
-  where it sits unchanged. The FocusScope's parent checks them as its own.
+- it takes neither focus nor the pointer, so the Tab order and what a click lands on are the content's.
+
+Its parent lays out the FocusScope, so `Layout` and `Dock` properties go on it, as in Qt, not on its
+content. Wrapping an item moves them to the scope.
 
     FocusScope {
+        Layout.fillHeight: true
         Shortcut { sequence: "n"; onActivated: App.findNext() }
-        Editor { Layout.fillHeight: true }
+        Editor { }
     }
+
+A reload edits its Shortcuts in place: one added, removed or replaced is live or gone at once, and
+the content stays mounted.
 
 **`CheckBox`** — Qt Quick Controls' CheckBox: `[x] text` or `[ ] text`, in the colours of what
 it sits on (`palette.window` and `windowText`, as a `Text`), with no button's brackets or fill.
@@ -341,7 +346,6 @@ not decode is placed as given.
 | --- | --- | --- | --- |
 | any child of a `Window` | `Window` | `Dock.edge` | `Tui.Top`, `Tui.Bottom`, `Tui.Left`, `Tui.Right` |
 | a `Button` in a `DialogButtonBox` | `DialogButtonBox` | `DialogButtonBox.buttonRole` | `DialogButtonBox.AcceptRole`, `DialogButtonBox.RejectRole`, `DialogButtonBox.DestructiveRole`, `DialogButtonBox.ActionRole` |
-| the content of a `FocusScope` | the FocusScope's parent, as its own | `Dock.*`, `Layout.*` | as that parent reads them |
 | a child of a `StatusBar` | `StatusBar` | `StatusBar.permanent` | `true` (the default: at the right end, Qt's `addPermanentWidget`), `false` (at the left end, `addWidget`) |
 
 A child of a `Window` with no `Dock.edge` fills what the docked ones leave.
