@@ -90,11 +90,9 @@ func (r *TerminalStopResult) cleanup(drained <-chan struct{}) {
 				}
 				timer.Stop()
 			}
-			err := r.proc.Close()
-			if err == nil {
-				_, err = r.proc.Wait() // status is expected; only a reap/wait error is failure
-			}
-			r.completion.err = err
+			closeErr := r.proc.Close()
+			_, waitErr := r.proc.Wait() // status is expected; only a reap/wait error is failure
+			r.completion.err = errors.Join(closeErr, waitErr)
 			close(r.completion.done)
 		}()
 	})
@@ -118,6 +116,10 @@ func joinTerminalCleanup(generations []*TerminalStopResult) *TerminalShutdownRes
 			generation.input.close()
 			generation.bridge.close()
 			generation.cleanup(nil)
+		}
+		// Request every cleanup before waiting: a stalled old generation must
+		// not stop a newer active process from receiving its hang-up.
+		for _, generation := range generations {
 			if err := generation.Wait(context.Background()); err != nil {
 				failures = append(failures, err)
 			}

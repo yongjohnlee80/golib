@@ -18,6 +18,7 @@ type resultProc struct {
 	done, entered, release chan struct{}
 	endOnce, enterOnce     sync.Once
 	closes                 atomic.Int32
+	waits                  atomic.Int32
 	closeErr, waitErr      error
 	code                   int
 }
@@ -29,8 +30,12 @@ func newResultProc() *resultProc {
 func (p *resultProc) Read(b []byte) (int, error)  { return p.r.Read(b) }
 func (p *resultProc) Write(b []byte) (int, error) { return len(b), nil }
 func (*resultProc) Resize(int, int) error         { return nil }
-func (p *resultProc) Wait() (int, error)          { <-p.done; return p.code, p.waitErr }
-func (p *resultProc) end()                        { p.endOnce.Do(func() { p.w.Close(); close(p.done) }) }
+func (p *resultProc) Wait() (int, error) {
+	p.waits.Add(1)
+	<-p.done
+	return p.code, p.waitErr
+}
+func (p *resultProc) end() { p.endOnce.Do(func() { p.w.Close(); close(p.done) }) }
 func (p *resultProc) Close() error {
 	p.closes.Add(1)
 	p.enterOnce.Do(func() { close(p.entered) })
@@ -61,8 +66,10 @@ func TestTerminalStopResultSharesCleanupAndRetainsErrors(t *testing.T) {
 			p := newResultProc()
 			p.code = 129 // expected SIGHUP/nonzero status is not a cleanup error
 			want := errors.New(kind)
+			reapFailure := errors.New("reap failed after Close error")
 			if kind == "close error" {
 				p.closeErr = want
+				p.waitErr = reapFailure
 			}
 			if kind == "wait error" {
 				p.waitErr = want
@@ -95,6 +102,15 @@ func TestTerminalStopResultSharesCleanupAndRetainsErrors(t *testing.T) {
 			}
 			if kind != "success" && !errors.Is(err, want) {
 				t.Fatalf("cleanup error %v, want %v", err, want)
+			}
+			if kind == "close error" {
+				if !errors.Is(err, reapFailure) {
+					t.Fatal("Close failure hid the independent Wait failure")
+				}
+				pumpsGone(t, term)
+				if p.waits.Load() != 2 {
+					t.Fatalf("output and cleanup called Wait %d times, want both owners to observe reap", p.waits.Load())
+				}
 			}
 			for range 2 {
 				select {
@@ -231,5 +247,54 @@ func TestTerminalRestartDoesNotReplaceOldCleanupAndShutdownJoinsBoth(t *testing.
 	}
 	if err := term.Start(); !errors.Is(err, ErrTerminalShutdown) {
 		t.Fatalf("destroyed owner restarted: %v", err)
+	}
+}
+
+func TestTerminalShutdownRequestsNewCleanupBeforeOldCloseFinishes(t *testing.T) {
+	first, second := newResultProc(), newResultProc()
+	releaseFirst := sync.OnceFunc(func() { close(first.release) })
+	releaseSecond := sync.OnceFunc(func() { close(second.release) })
+	defer releaseFirst()
+	defer releaseSecond()
+	var starts int
+	term := NewTerminal(WithStarter(func(pty.Cmd) (TerminalProcess, error) {
+		starts++
+		if starts == 1 {
+			return first, nil
+		}
+		return second, nil
+	}))
+	h := startAppInternal(t, term, 20, 4)
+	stop := sync.OnceFunc(h.stopInternal)
+	defer stop()
+	h.onLoopInternal(func() {
+		if err := term.Start(); err != nil {
+			t.Error(err)
+		}
+		term.StopWithResult()
+	})
+	awaitResultEvent(t, first.entered)
+	h.onLoopInternal(func() {
+		if err := term.Start(); err != nil {
+			t.Error(err)
+		}
+	})
+	stop()
+	shutdown := term.ShutdownWithResult()
+	awaitResultEvent(t, second.entered) // the first Close is deliberately still blocked
+	releaseSecond()
+	select {
+	case <-shutdown.Done():
+		t.Fatal("shutdown ignored the old closing generation")
+	default:
+	}
+	releaseFirst()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := shutdown.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if first.closes.Load() != 1 || second.closes.Load() != 1 {
+		t.Fatal("cleanup requests did not retain one owner per generation")
 	}
 }
