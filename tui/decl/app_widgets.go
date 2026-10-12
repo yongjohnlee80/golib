@@ -181,6 +181,9 @@ func registerStdAttached(r *Registry) {
 	// at the left end (Qt's addWidget), true (the default) at the right (addPermanentWidget).
 	RegisterAttached(r, "StatusBar", "permanent")
 	Honour(r, "StatusBar", "StatusBar")
+	// A FocusScope hands its content's Dock and Layout to its own parent, which checks them.
+	Honour(r, "FocusScope", "Dock")
+	Honour(r, "FocusScope", "Layout")
 }
 
 var dockEdges = enum[tui.DockEdge]{values: map[string]tui.DockEdge{

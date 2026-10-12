@@ -257,11 +257,8 @@ func (w *windowNode) HandleEvent(ev tui.Event) bool {
 	if !ok || k.Kind != tui.KeyPress {
 		return false
 	}
-	for _, s := range w.shortcuts {
-		if s.seq.matches(k) {
-			s.trigger()
-			return true
-		}
+	if fireShortcut(w.shortcuts, k) {
+		return true
 	}
 	for _, m := range w.menus {
 		switch {

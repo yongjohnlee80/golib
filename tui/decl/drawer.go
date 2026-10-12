@@ -31,6 +31,9 @@ import (
 // between minimumSize (default 10) and 90, and minimumLength (default 20) and 100, and never under
 // three cells; resized(size, length) is raised once, when the drag ends, for a host to keep them.
 //
+// Its Shortcuts, declared beside its one content item, are live while focus is inside it, before
+// the Window's (see FocusScope); a Shortcut may claim Escape or q from the Drawer's own closing.
+//
 // It holds the keyboard while open, as Qt's modal Drawer does, and gives it back where it was
 // when it closes; Escape closes it. closeOnQ: true also closes on q when its focused child leaves
 // that key unhandled; the default is false so a terminal can type q. modal: false (Qt's too) lets
@@ -50,6 +53,8 @@ type drawerNode struct {
 	opened  func()
 	closed  func()
 	content tui.Component
+	// shortcuts are the Drawer's own keys, live while focus is inside it
+	shortcuts []*shortcutNode
 	// resizable: the content is in grip, and the frame sizes it from size and length
 	resizable          bool
 	grip               *widget.Resizable
@@ -78,8 +83,19 @@ var _ Overlaid = (*drawerNode)(nil)
 const defaultDrawerSize = 33
 
 func buildDrawer(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 1 {
-		return nil, nil, errors.New("a Drawer holds exactly one child, its content")
+	var content tui.Component
+	var shortcuts []*shortcutNode
+	for _, c := range b.Children {
+		if sc, ok := c.(*shortcutNode); ok {
+			shortcuts = append(shortcuts, sc)
+		} else if content == nil {
+			content = c
+		} else {
+			return nil, nil, errors.New("a Drawer holds exactly one child, its content, besides its Shortcuts")
+		}
+	}
+	if content == nil {
+		return nil, nil, errors.New("a Drawer holds exactly one child, its content, besides its Shortcuts")
 	}
 	modal, resizable := true, false
 	closeOnQ := false
@@ -103,7 +119,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	}
 	wc.resize, wc.move = windowResize, movable
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
-		content: b.Children[0], resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
+		content: content, shortcuts: shortcuts, resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
 		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, closeOnQ: closeOnQ, windowEmit: b.EmitterWith("changed"),
 		movable: movable, frac: [4]float64{25, 25, 50, 50}, placed: b.EmitterWith("placed")}
 	if n.resizable { // a drag stops a resizable panel short of a sliver along its edge
@@ -449,8 +465,8 @@ func (n *drawerNode) toggle() error {
 func (n *drawerNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
 func (n *drawerNode) Render(tui.Surface)                {}
 
-// drawerFrame is the Drawer's content as the Float shows it, closing on Escape while the keyboard
-// is inside. A Container, so the first focusable widget in it is found when it opens.
+// drawerFrame is the Drawer's content as the Float shows it, firing the Drawer's Shortcuts and
+// closing on Escape while the keyboard is inside. A Container, so the first focusable widget in it is found when it opens.
 type drawerFrame struct {
 	tui.MultiChild
 	ctx   *tui.Context
@@ -524,6 +540,9 @@ func (f *drawerFrame) Layout(c tui.Constraints) tui.Size {
 func (f *drawerFrame) Render(tui.Surface) {}
 
 func (f *drawerFrame) HandleEvent(ev tui.Event) bool {
+	if fireShortcut(f.owner.shortcuts, ev) {
+		return true
+	}
 	k, ok := ev.(tui.KeyEvent)
 	if ok && k.Kind == tui.KeyPress && k.Mods.Chord() == 0 && (k.Code == tui.KeyEscape || f.owner.closeOnQ && k.Code == 'q') {
 		_ = f.owner.close()
