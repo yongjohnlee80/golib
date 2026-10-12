@@ -170,18 +170,28 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 				b.deliverIME(src, tag)
 				b.q.push(k)
 			}
-		case key.SnippetEvent:
-			// Gio asks for the text around the input method's edits. Unanswered, its copy of
-			// the editor state differs from the input method's and it cancels the composition.
-			src.Execute(key.SnippetCmd{Tag: tag, Snippet: b.gio.ime.snippet(key.Range(e))})
-		case key.SelectionEvent:
-			b.gio.ime.sel = key.Range(e)
-		case key.EditEvent:
-			b.gio.ime.edit(e)
-		case key.CompositionEvent:
-			b.gio.ime.compose(e)
-		case key.FocusEvent:
-			b.gio.focused = e.Focus
+		case key.SnippetEvent, key.SelectionEvent, key.EditEvent, key.CompositionEvent, key.FocusEvent:
+			// The input-method events cross the platform contract; the window's other input
+			// keeps its Gio types for now.
+			ev, ok := inputEventOf(e)
+			if !ok {
+				continue
+			}
+			switch ev := ev.(type) {
+			case SnippetAsk:
+				// Gio asks for the text around the input method's edits. Unanswered, its copy of
+				// the editor state differs from the input method's and it cancels the composition.
+				r := b.gio.ime.snippet(ev)
+				src.Execute(key.SnippetCmd{Tag: tag, Snippet: key.Snippet{Range: key.Range{Start: r.Start, End: r.End}, Text: r.Text}})
+			case SelectionSet:
+				b.gio.ime.setSelection(ev)
+			case TextEdit:
+				b.gio.ime.edit(ev)
+			case Composition:
+				b.gio.ime.compose(ev)
+			case FocusChange:
+				b.gio.focused = ev.Focused
+			}
 		case pointer.Event:
 			if e.Kind == pointer.Leave {
 				b.q.push(tui.PointerLeaveEvent{}) // nothing in the window is under the pointer
