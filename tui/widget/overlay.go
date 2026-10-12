@@ -178,7 +178,8 @@ func (h *OverlayHost) Raise(f *Float) {
 }
 
 // moveBelow moves f directly beneath the lowest layer other than f that ceiling holds, or to the
-// top when there is none.
+// top when there is none. f is one of the host's layers (Raise checks it); Stack.Move ignores one
+// that is not.
 func (h *OverlayHost) moveBelow(f *Float, ceiling func(tui.Component) bool) {
 	from, to := -1, -1
 	for i, layer := range h.Stack.All() {
@@ -188,9 +189,6 @@ func (h *OverlayHost) moveBelow(f *Float, ceiling func(tui.Component) bool) {
 		case to < 0 && ceiling(layer):
 			to = i
 		}
-	}
-	if from < 0 {
-		return
 	}
 	switch {
 	case to < 0:
