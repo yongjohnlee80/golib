@@ -32,7 +32,7 @@ import (
 //	Node     := TypeName '{' Body '}'
 //	Body     := ( Decl | Property | Handler | Group | Node )*
 //	Decl     := [ 'required' ] 'property' Type Ident [ ':' Value ]   // a component's own
-//	          | 'default' 'property' 'alias' Ident ':' Ident '.' 'data'
+//	          | [ 'default' ] 'property' 'alias' Ident ':' Ident '.' 'data'
 //	Property := PropName ':' Value
 //	Group    := PropName '{' ( Property )* '}'    // font { bold: true }
 //	PropName := Ident { '.' Ident }               // plain, grouped, or attached
@@ -301,22 +301,28 @@ type SpecNode struct {
 //	property string label: "Find"               // a value, with a default
 //	required property var model                 // a value the use site must give
 //	default property alias columns: list.data   // the use site's children go to list
+//	property alias footer: footerRow.data       // a slot: the use site's footer object goes there
 //
 // Three spellings Qt also has are refused here, each naming what to write
-// instead: `property alias`, `readonly property` and `signal`.
+// instead: `property alias` to anything but an object's data, `readonly
+// property` and `signal`.
 type SpecDecl struct {
 	Name string
 	// Type is the type as written: string, int, real, double, bool, var, url,
-	// color, or list<T>. A default alias has "alias".
+	// color, or list<T>. A default alias and a slot have "alias".
 	Type string
 	// Default is the value written after the colon, nil for none. A required
 	// declaration never has one.
 	Default  *SpecValue
 	Required bool
-	// Target is a default alias's inner id ("list" for `list.data`), "" for
-	// every other declaration.
+	// Target is an alias's inner id ("list" for `list.data`), "" for every
+	// other declaration.
 	Target string
-	Pos    parse.Position
+	// Slot marks a named alias, `property alias footer: footerRow.data`: a use
+	// site sets it to one object, which goes under Target. An alias without it
+	// is the default one, which takes the use site's children.
+	Slot bool
+	Pos  parse.Position
 }
 
 // SpecTree is a parsed schema.
@@ -938,6 +944,15 @@ func (p *qmlParser) value() (SpecValue, error) {
 		}
 	}
 
+	// Qt's list of objects, `footer: [Text { … }, Text { … }]`, is not read: a
+	// slot takes one object. Probed as above, on a copy, so an ordinary array
+	// (`[a, b]`, `["x"]`) still reaches the expression parser intact.
+	if r == '[' && p.listOfObjects() {
+		return SpecValue{}, parse.SyntaxError{Format: "qml", Pos: at,
+			Want: "one object, as in footer: Flex { … }: for several, wrap them in one Flex",
+			Got:  "a list of objects"}
+	}
+
 	// A property value is a JavaScript expression, because in QML that is what
 	// a property value IS. ONE parser reads it — an earlier design had a small
 	// hand-written value grammar beside this, which is two parsers of the same
@@ -952,6 +967,28 @@ func (p *qmlParser) value() (SpecValue, error) {
 		return SpecValue{}, err
 	}
 	return projectValue(&e), nil
+}
+
+// listOfObjects reports whether the value ahead is `[Type {`: Qt's list of
+// objects. It reads a copy of the scanner, so the value is left for whatever
+// parses it next, and a probe that cannot tell says no.
+func (p *qmlParser) listOfObjects() bool {
+	probe := *p.sc
+	look := &qmlParser{sc: &probe, maxDepth: p.maxDepth, depth: p.depth}
+	if !probe.Take("[") || look.skipSpace() != nil {
+		return false
+	}
+	if r, ok := probe.Peek(); !ok || !isTypeName(string(r)) {
+		return false
+	}
+	look.ident()
+	for probe.HasPrefix(".") {
+		probe.Take(".")
+		if _, ok := look.ident(); !ok {
+			return false
+		}
+	}
+	return look.skipSpace() == nil && probe.HasPrefix("{")
 }
 
 // QML property values are parsed with the PLAIN JavaScript dialect.
