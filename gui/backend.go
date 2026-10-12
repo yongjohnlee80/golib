@@ -5,6 +5,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"io"
 	"sync"
 	"sync/atomic"
 
@@ -109,6 +110,12 @@ type Backend struct {
 
 	// The Gio goroutine owns these.
 	gio gioState
+
+	// The input path's recorder (nil records nothing), and the next record's
+	// number. Both belong to the Gio goroutine: readInput, deliverIME, placeCaret
+	// and drawPreedit all run there.
+	rec    Recorder
+	recSeq uint64
 }
 
 // frame is one finished frame: the recorded drawing and where the caret is, for the IME.
@@ -164,6 +171,7 @@ func NewBackend(opts ...Option) *Backend {
 		images:   map[uint32]placedImage{},
 	}
 	b.gio.shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
+	b.rec = cfg.recorder
 	b.font.Store(&fontState{fm: measureFont(cells, fallbackChain(cfg.typeface)), typeface: fallbackChain(cfg.typeface),
 		size: cfg.fontSize})
 	return b
@@ -282,6 +290,13 @@ func (b *Backend) Stop() error {
 	b.win.Perform(system.ActionClose)
 	if b.forwarding.Load() {
 		<-b.q.exited
+	}
+	// The window goroutine has finished by now (its last act ends the queue, which
+	// the forwarder waits for), so no more records can arrive: flush the recording.
+	if b.rec != nil {
+		if c, ok := b.rec.(io.Closer); ok {
+			return c.Close()
+		}
 	}
 	return nil
 }
