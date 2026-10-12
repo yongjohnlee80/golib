@@ -21,6 +21,7 @@ func TestFloatingPanelsGetAShadowAndDockedOnesDoNot(t *testing.T) {
 		{"dragging", widget.AtRect(tui.Rect{X: 4, Y: 2, W: 12, H: 4}), true},
 		{"docked left", widget.Left, false},
 		{"docked bottom", widget.Bottom, false},
+		{"maximised", widget.AtFraction(0, 0, 100, 100), false}, // fills its area: no shadow to see
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
