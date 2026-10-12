@@ -88,7 +88,7 @@ func (h *Host) saveCancelled() error {
 }
 
 func (h *Host) write(path string) error {
-	if err := os.WriteFile(path, []byte(h.editor.Value()), 0o644); err != nil {
+	if err := h.writeFile(path, []byte(h.editor.Value()), 0o644); err != nil {
 		return h.failed("write failed", "editor.status.writeFailed", err)
 	}
 	h.editor.Core().MarkSaved() // the editor's x reads it: a saved buffer, x only quits

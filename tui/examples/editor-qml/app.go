@@ -34,6 +34,8 @@ type Host struct {
 
 	path  string
 	dirty bool
+	// writeFile writes a saved buffer: os.WriteFile, unless Options.WriteFile
+	writeFile func(name string, data []byte, perm os.FileMode) error
 	// quitAfterSave is `wq` on a buffer with no name: the Save dialog asks
 	// for one, and the quit waits for the file to be written. Cancelling the
 	// dialog or a failed write clears it.
@@ -64,6 +66,10 @@ type Options struct {
 	// Language is the language the editor starts in ("ko_KR", "pt_BR", "zh_CN"); "" means
 	// English. Option › Language changes it while the editor runs.
 	Language string
+	// WriteFile writes a saved buffer to its file; nil means os.WriteFile. A
+	// test injects a write that fails, which a folder's permissions cannot
+	// guarantee: root writes through them.
+	WriteFile func(name string, data []byte, perm os.FileMode) error
 	// Dev is a directory holding editor.qml, themes/, dialogs/ and i18n/ — this
 	// example's own, say. Set, the program reads its QML from there instead
 	// of the copy built into the binary, and follows the files as they are
@@ -91,7 +97,13 @@ func New(opt Options) (*Host, error) {
 
 // newHost is the host before its program exists: options needs it, to hand
 // the document its commands.
-func newHost(opt Options) *Host { return &Host{path: opt.Path, dev: opt.Dev} }
+func newHost(opt Options) *Host {
+	h := &Host{path: opt.Path, dev: opt.Dev, writeFile: opt.WriteFile}
+	if h.writeFile == nil {
+		h.writeFile = os.WriteFile
+	}
+	return h
+}
 
 // attach binds the host to the program built from its options — by New, or
 // by a test running the same options through decltest.Run — finds the one
