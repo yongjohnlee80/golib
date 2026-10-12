@@ -98,6 +98,7 @@ func (l *pixelLayout) Diagram(d Diagrammer, b Block, req DiagramRequest) Diagram
 	return s.answer()
 }
 
+// answer formats the slot's current diagram answer.
 func (s *diagramSlot) answer() DiagramAnswer {
 	if s.state == Declined {
 		return DiagramAnswer{State: Declined}

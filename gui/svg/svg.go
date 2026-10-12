@@ -142,6 +142,7 @@ func (d *Drawing) Draw(c gui.Canvas, r gui.Rect, current color.NRGBA) {
 	}
 }
 
+// colorOr returns the paint color, using current if currentColor was specified.
 func (p paint) colorOr(current color.NRGBA) color.NRGBA {
 	if p.current {
 		return current
@@ -149,6 +150,7 @@ func (p paint) colorOr(current color.NRGBA) color.NRGBA {
 	return p.color
 }
 
+// alpha applies an alpha multiplier in [0, 1] to color c.
 func alpha(c color.NRGBA, a float32) color.NRGBA {
 	c.A = uint8(float32(c.A) * min(max(a, 0), 1))
 	return c
@@ -493,6 +495,7 @@ func (p *parser) count(n int) error {
 // kappa is a quarter circle's cubic control distance, as a fraction of the radius.
 const kappa = 0.5522847498
 
+// ellipse appends a 4-spline cubic Bézier ellipse approximation to path p.
 func ellipse(p *gui.Path, cx, cy, rx, ry float32) {
 	kx, ky := rx*kappa, ry*kappa
 	p.MoveTo(gui.Point{X: cx + rx, Y: cy})
@@ -503,6 +506,7 @@ func ellipse(p *gui.Path, cx, cy, rx, ry float32) {
 	p.Close()
 }
 
+// roundRect appends a rounded rectangle with corner radii (rx, ry) to path p.
 func roundRect(p *gui.Path, x, y, w, h, rx, ry float32) {
 	if rx == 0 || ry == 0 {
 		p.MoveTo(gui.Point{X: x, Y: y}).LineTo(gui.Point{X: x + w, Y: y}).LineTo(gui.Point{X: x + w, Y: y + h}).
@@ -522,6 +526,7 @@ func roundRect(p *gui.Path, x, y, w, h, rx, ry float32) {
 	p.Close()
 }
 
+// attr returns the case-insensitive value of the named attribute in element t.
 func attr(t xml.StartElement, name string) string {
 	for _, a := range t.Attr {
 		if strings.EqualFold(a.Name.Local, name) {
@@ -659,6 +664,7 @@ func finiteAffine(m f32.Affine2D) bool {
 	return true
 }
 
+// finite32 reports whether the 32-bit floating point value is neither NaN nor Infinite.
 func finite32(v float32) bool {
 	f := float64(v)
 	return !math.IsNaN(f) && !math.IsInf(f, 0)

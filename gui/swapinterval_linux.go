@@ -32,6 +32,7 @@ import "os"
 // Remove this once Gio makes its context current before setting the interval.
 func beforeGio() { swapIntervalZero(os.LookupEnv, os.Setenv) }
 
+// swapIntervalZero disables Wayland vsync interval on Linux platforms by overriding env.
 func swapIntervalZero(lookup func(string) (string, bool), set func(string, string) error) {
 	if display, ok := lookup("WAYLAND_DISPLAY"); !ok || display == "" {
 		return

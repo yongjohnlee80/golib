@@ -274,6 +274,7 @@ func isRule(lines []string, ln int) bool {
 	return s[0] != '-' || ln == 0 || isBlank(lines[ln-1])
 }
 
+// isThematic reports whether string s is a Markdown thematic break rule.
 func isThematic(s string) bool {
 	if s == "" || !strings.ContainsRune("-*_", rune(s[0])) {
 		return false
@@ -417,6 +418,7 @@ func (r *MarkdownRenderer) layFence(b Block, f fence, lines []string, opts flow.
 	return bl
 }
 
+// sourceColours resolves per-grapheme syntax highlighting colors for a line of text.
 func sourceColours(line string, spans []highlight.Span, th Theme) []color.NRGBA {
 	var out []color.NRGBA
 	at, si := 0, 0
@@ -502,6 +504,7 @@ func startsIndentedCode(lines []string, i int) bool {
 	return true
 }
 
+// isListItem reports whether the line begins with a valid Markdown list item marker.
 func isListItem(line string) bool {
 	_, _, ok := tuiwidget.MarkdownListItem(line)
 	return ok
@@ -515,6 +518,7 @@ func indentedCode(line string) bool {
 	return strings.HasPrefix(line, "\t") || strings.HasPrefix(line, "    ")
 }
 
+// isBlank reports whether the line contains only whitespace characters.
 func isBlank(line string) bool { return strings.TrimSpace(line) == "" }
 
 // mdAttr is how one byte of a line is drawn.
@@ -654,6 +658,7 @@ func markRange(attrs []mdAttr, start, end int, n *markdown.Node, set func(*mdAtt
 	}
 }
 
+// hide marks a range of byte attributes as hidden in Rendered mode.
 func hide(attrs []mdAttr, start, end int) {
 	for i := max(start, 0); i < min(end, len(attrs)); i++ {
 		attrs[i].hidden = true

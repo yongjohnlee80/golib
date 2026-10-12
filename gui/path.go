@@ -43,6 +43,7 @@ func (p *Path) CubeTo(ctrl0, ctrl1, to Point) *Path { return p.add('C', ctrl0, c
 // Close closes the current sub-path with a line to its start.
 func (p *Path) Close() *Path { return p.add('Z') }
 
+// add appends a command of kind with points pts to the path.
 func (p *Path) add(kind byte, pts ...Point) *Path {
 	c := pathCmd{kind: kind, npoints: len(pts)}
 	copy(c.pts[:], pts)
@@ -70,6 +71,7 @@ func (p *Path) Bounds() Rect {
 	return Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
 }
 
+// fp converts a Point into Gio's f32.Point.
 func fp(p Point) f32.Point { return f32.Pt(p.X, p.Y) }
 
 // spec records the path into ops.

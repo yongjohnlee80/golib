@@ -211,6 +211,7 @@ func (l *pixelLayout) blockOf(line int) int {
 	return max(lo, 0)
 }
 
+// monoFont returns the theme's monospace font or defaults to the cell family.
 func (l *pixelLayout) monoFont() gui.Font {
 	if l.th.Mono.Size > 0 {
 		return l.th.Mono
@@ -218,6 +219,7 @@ func (l *pixelLayout) monoFont() gui.Font {
 	return gui.Font{Family: gui.CellFamily, Size: max(l.cell.H/1.2, 10)} // before the first paint: about the cells' font
 }
 
+// lineHeight calculates the default line height for font f.
 func (l *pixelLayout) lineHeight(f gui.Font) float32 { return max(f.Size*1.2, 1) }
 
 // heightOf is block i's height: as laid out, else an estimate of a row per line.
@@ -326,6 +328,7 @@ func (l *pixelLayout) rawColors(ln int, text string, frame *tuiwidget.HighlightF
 	return out
 }
 
+// sameColors reports whether two color slices have identical contents.
 func sameColors(a, b []color.NRGBA) bool {
 	if len(a) != len(b) {
 		return false
@@ -427,6 +430,7 @@ func (l *pixelLayout) scrollBy(dy float32) bool {
 	return l.scroll != was
 }
 
+// clusters counts the number of user-perceived grapheme clusters in string s.
 func clusters(s string) int {
 	n := 0
 	for range tui.Graphemes(s) {

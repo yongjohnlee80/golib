@@ -46,6 +46,7 @@ type cssExpr struct {
 	args []*cssExpr
 }
 
+// eval recursively evaluates the CSS math expression against font, root, parent, and viewport sizes.
 func (e *cssExpr) eval(font, root, of float32, view gui.Size) float32 {
 	switch e.op {
 	case 0:
@@ -99,6 +100,7 @@ type exprParser struct {
 	nodes int
 }
 
+// peek returns the next token without advancing the parser.
 func (p *exprParser) peek() string {
 	if p.i < len(p.toks) {
 		return p.toks[p.i]
@@ -106,6 +108,7 @@ func (p *exprParser) peek() string {
 	return ""
 }
 
+// node increments the node count and returns the constructed expression node.
 func (p *exprParser) node(e *cssExpr) *cssExpr {
 	p.nodes++
 	return e
@@ -155,6 +158,7 @@ func (p *exprParser) function() (*cssExpr, bool) {
 	return nil, false
 }
 
+// sum parses addition and subtraction binary expressions.
 func (p *exprParser) sum() (*cssExpr, bool) {
 	l, ok := p.product()
 	for ok && (p.peek() == "+" || p.peek() == "-") {
@@ -168,6 +172,7 @@ func (p *exprParser) sum() (*cssExpr, bool) {
 	return l, ok && p.nodes <= maxExprNodes
 }
 
+// product parses multiplication and division binary expressions.
 func (p *exprParser) product() (*cssExpr, bool) {
 	l, ok := p.factor()
 	for ok && (p.peek() == "*" || p.peek() == "/") {
@@ -181,6 +186,7 @@ func (p *exprParser) product() (*cssExpr, bool) {
 	return l, ok
 }
 
+// factor parses primary expression terms: parenthesized expressions, math functions, or leaf values.
 func (p *exprParser) factor() (*cssExpr, bool) {
 	t := p.peek()
 	switch {

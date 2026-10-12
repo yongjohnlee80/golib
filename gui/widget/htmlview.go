@@ -105,6 +105,7 @@ type htmlLayout struct {
 	topY   float32
 }
 
+// newHTMLLayout initializes the HTML layout engine and subsystems for an HTMLView.
 func newHTMLLayout(v *tuiwidget.HTMLView) *htmlLayout {
 	l := &htmlLayout{v: v, width: 600, textPx: 16, rootPx: 16}
 	l.images = newHTMLImages(l)
@@ -362,15 +363,18 @@ func (l *htmlLayout) themeCSS() string {
 		"td,th{border:1px solid " + hex(l.muted) + "}table{border-collapse:collapse}\n"
 }
 
+// hex2 formats a byte as a two-character lowercase hexadecimal string.
 func hex2(b uint8) string {
 	const digits = "0123456789abcdef"
 	return string([]byte{digits[b>>4], digits[b&15]})
 }
 
+// escapeText escapes HTML entities (&, <, >) in plain text.
 func escapeText(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
+// hashText computes an FNV-64a hash of string s.
 func hashText(s string) uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(s))
@@ -680,6 +684,7 @@ type selRange struct {
 	ok       bool
 }
 
+// makeSel constructs an ordered selection range between document positions a and b.
 func makeSel(a, b tuiwidget.DocPos) selRange {
 	if posBefore(b, a) {
 		a, b = b, a
@@ -687,6 +692,7 @@ func makeSel(a, b tuiwidget.DocPos) selRange {
 	return selRange{from: a, to: b, ok: a != b}
 }
 
+// posBefore reports whether document position a precedes document position b.
 func posBefore(a, b tuiwidget.DocPos) bool {
 	if a.Block != b.Block {
 		return a.Block < b.Block

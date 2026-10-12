@@ -118,6 +118,7 @@ type editorStack struct {
 	docShown bool
 }
 
+// newEditorStack builds the stack component containing the editor body and optional document view.
 func newEditorStack(e *Editor) *editorStack {
 	s := &editorStack{e: e}
 	s.Label("editorStack")
@@ -129,6 +130,7 @@ func newEditorStack(e *Editor) *editorStack {
 	return s
 }
 
+// Init initializes the editor stack with the widget context.
 func (s *editorStack) Init(ctx *tui.Context) {
 	s.ctx = ctx
 	s.MultiChild.Init(ctx)
@@ -147,6 +149,7 @@ func (s *editorStack) Layout(c tui.Constraints) tui.Size {
 	return sz
 }
 
+// Render paints nothing directly, delegating entirely to placed children.
 func (s *editorStack) Render(tui.Surface) {}
 
 // HandleEvent takes, while the document view is shown, the key it leaves that the editor's keymap

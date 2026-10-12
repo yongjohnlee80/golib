@@ -12,6 +12,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// init registers the entity-relationship diagram layout builder with the mermaid layout engine.
 func init() { layers[pm.ER] = layER }
 
 // cardEnd is each cardinality's crow's-foot end.

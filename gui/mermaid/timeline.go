@@ -7,6 +7,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// init registers the timeline diagram layout builder with the mermaid layout engine.
 func init() { layers[pm.Timeline] = layTimeline }
 
 // timelineCol is one period's column: its box, and its events' boxes under it.

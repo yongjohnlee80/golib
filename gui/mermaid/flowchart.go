@@ -13,6 +13,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// init registers the flowchart layout builder with the mermaid layout engine.
 func init() { layers[pm.Flowchart] = layFlowchart }
 
 // shapeForm is each flowchart shape's form.
@@ -153,6 +154,7 @@ func layFlowchart(ctx context.Context, d pm.Diagram, width float32, th Theme, m 
 	return l, nil
 }
 
+// dirOf maps the Mermaid diagram orientation to the underlying graph layout direction.
 func dirOf(d pm.Dir) layout.Dir {
 	switch d {
 	case pm.BT:

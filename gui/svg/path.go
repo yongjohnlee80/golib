@@ -31,6 +31,7 @@ type scanner struct {
 	i int
 }
 
+// done reports whether the scanner has reached the end of the input string.
 func (s *scanner) done() bool { return s.i >= len(s.s) }
 
 // sep skips white space and one comma.

@@ -9,6 +9,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// init registers the user journey diagram layout builder with the mermaid layout engine.
 func init() { layers[pm.Journey] = layJourney }
 
 // User Journey Layout Architecture:

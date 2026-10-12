@@ -88,8 +88,10 @@ var measurers = struct {
 
 type measurer struct{ t *TextShaper }
 
+// Measure shapes string s with font f and returns its width and ascent.
 func (m *measurer) Measure(s string, f Font) Measured { return m.t.Measure(s, f) }
 
+// Wrap measures and breaks string s across lines constrained to the given width.
 func (m *measurer) Wrap(s string, f Font, width float32) ([]string, Size) {
 	var lines []string
 	var w float32

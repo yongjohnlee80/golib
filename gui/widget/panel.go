@@ -312,6 +312,7 @@ func (p *Panel) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
+// mouse handles mouse events for panel title bar controls, dragging, and resizing.
 func (p *Panel) mouse(m tui.MouseEvent) bool {
 	inFloat := p.float != nil && !p.behavior.State().Maximized
 	switch m.Kind {
@@ -374,6 +375,7 @@ func (p *Panel) ResolveCaptureEscape(e tui.KeyEvent) (tui.Action, bool) {
 // HandleAction uses the same operation path as custom appearance and keymaps.
 func (p *Panel) HandleAction(inv tui.ActionInvocation) bool { return p.behavior.HandleAction(inv) }
 
+// act executes the action associated with the clicked title bar control.
 func (p *Panel) act(c control) {
 	switch c {
 	case closeControl:
@@ -423,6 +425,7 @@ func (p *Panel) act(c control) {
 	}
 }
 
+// rebaseCollapsePosition updates the floating position when toggling collapsed/minimized state.
 func (p *Panel) rebaseCollapsePosition() {
 	if p.state != minimized || p.float == nil || p.ctx == nil || !p.ctx.Mounted() {
 		return
@@ -440,12 +443,14 @@ func (p *Panel) rebaseCollapsePosition() {
 	}
 }
 
+// relayout requests a layout recalculation from the widget context.
 func (p *Panel) relayout() {
 	if p.ctx != nil {
 		p.ctx.RequestLayout()
 	}
 }
 
+// setHover updates the currently hovered title bar control and repaints if changed.
 func (p *Panel) setHover(c control) {
 	if c != p.hover {
 		p.hover = c

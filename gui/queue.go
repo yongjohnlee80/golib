@@ -55,6 +55,7 @@ type eventQueue struct {
 	err     error // the FIRST reason the queue ended; later ones are dropped
 }
 
+// newEventQueue constructs an event queue with an unbounded FIFO buffer and forwarder.
 func newEventQueue() *eventQueue {
 	return &eventQueue{
 		events: make(chan tui.Event),

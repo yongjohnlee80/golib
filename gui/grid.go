@@ -73,6 +73,7 @@ func (g *grid) at(x, y int) tui.Cell {
 	return g.cells[y*g.w+x]
 }
 
+// touchAll marks all cell rows dirty, forcing a complete repaint on the next frame.
 func (g *grid) touchAll() {
 	for i := range g.dirty {
 		g.dirty[i] = true

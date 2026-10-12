@@ -78,6 +78,7 @@ type config struct {
 	style      *Style
 }
 
+// defaultConfig returns the default GUI window and backend configuration.
 func defaultConfig() config {
 	return config{
 		title:    "golib",

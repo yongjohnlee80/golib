@@ -61,6 +61,7 @@ type gioState struct {
 	shown   *frame          // Most recently presented frame macro
 }
 
+// windowOptions builds the slice of Gio app.Option values from the configuration struct.
 func (c config) windowOptions() []app.Option {
 	opts := []app.Option{app.Title(c.title), app.Size(c.width, c.height)}
 	if c.minWidth > 0 && c.minHeight > 0 {
@@ -72,6 +73,7 @@ func (c config) windowOptions() []app.Option {
 	return opts
 }
 
+// fontOf constructs a Gio font.Font descriptor for the given typeface name.
 func fontOf(typeface string) font.Font { return font.Font{Typeface: font.Typeface(typeface)} }
 
 // run executes the primary Gio event loop on a dedicated goroutine spawned by [Backend.Start].
@@ -117,6 +119,7 @@ func (b *Backend) run() {
 	}
 }
 
+// isStarted reports whether the backend's window and initial metrics have finished initializing.
 func (b *Backend) isStarted() bool {
 	select {
 	case <-b.started:

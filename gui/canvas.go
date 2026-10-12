@@ -181,6 +181,7 @@ func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect) 
 	}
 }
 
+// Sub creates a child sub-canvas clipped to the specified rectangle.
 func (c *gioCanvas) Sub(r Rect) Canvas {
 	o := f32.Pt(c.origin.X+r.X*c.m.scale, c.origin.Y+r.Y*c.m.scale)
 	dev := image.Rect(
@@ -195,28 +196,41 @@ func (c *gioCanvas) Sub(r Rect) Canvas {
 	}
 }
 
-func (c *gioCanvas) Size() Size     { return c.size }
+// Size returns the logical dimensions of the canvas.
+func (c *gioCanvas) Size() Size { return c.size }
+
+// Scale returns the display DPI scale factor.
 func (c *gioCanvas) Scale() float32 { return c.m.scale }
+
+// Text returns a text shaper configured for the canvas's scale and font registry.
 func (c *gioCanvas) Text() *TextShaper {
 	return &TextShaper{s: c.r.shaper, scale: c.m.scale, fonts: c.r.fonts}
 }
-func (c *gioCanvas) Fonts() Fonts      { return c.r.fonts }
+
+// Fonts returns the canvas font family registry.
+func (c *gioCanvas) Fonts() Fonts { return c.r.fonts }
+
+// TextSize returns the base monospace font size in logical points.
 func (c *gioCanvas) TextSize() float32 { return c.m.ppem / c.m.scale }
 
+// CellSize returns the logical size of a single character cell.
 func (c *gioCanvas) CellSize() Size {
 	return Size{W: float32(c.m.cell.X) / c.m.scale, H: float32(c.m.cell.Y) / c.m.scale}
 }
 
+// PushTransform appends a 2D affine transform to the canvas transform stack.
 func (c *gioCanvas) PushTransform(m Affine) {
 	c.stack = append(c.stack, canvasState{c.xform, c.alpha})
 	c.xform = c.xform.Mul(m)
 }
 
+// PushOpacity multiplies the current canvas alpha by a factor clamped to [0, 1].
 func (c *gioCanvas) PushOpacity(a float32) {
 	c.stack = append(c.stack, canvasState{c.xform, c.alpha})
 	c.alpha *= min(max(a, 0), 1)
 }
 
+// Pop restores the previous transform and opacity from the state stack.
 func (c *gioCanvas) Pop() {
 	if n := len(c.stack); n > 0 {
 		c.xform, c.alpha = c.stack[n-1].xform, c.stack[n-1].alpha
@@ -254,6 +268,7 @@ func (c *gioCanvas) fill(b Brush) {
 	paint.PaintOp{}.Add(c.ops)
 }
 
+// FillPath rasterizes a vector path filled with the given brush.
 func (c *gioCanvas) FillPath(p *Path, b Brush) {
 	end := c.begin()
 	st := clip.Outline{Path: p.spec(c.ops)}.Op().Push(c.ops)
@@ -262,6 +277,7 @@ func (c *gioCanvas) FillPath(p *Path, b Brush) {
 	end()
 }
 
+// StrokePath strokes the outline of a vector path with the specified width and brush.
 func (c *gioCanvas) StrokePath(p *Path, width float32, b Brush) {
 	end := c.begin()
 	st := clip.Stroke{Path: p.spec(c.ops), Width: width}.Op().Push(c.ops)
@@ -270,13 +286,21 @@ func (c *gioCanvas) StrokePath(p *Path, width float32, b Brush) {
 	end()
 }
 
-func (c *gioCanvas) FillRect(r Rect, b Brush)                  { c.FillPath(rrectPath(r, 0), b) }
+// FillRect fills an unrounded rectangle with the given brush.
+func (c *gioCanvas) FillRect(r Rect, b Brush) { c.FillPath(rrectPath(r, 0), b) }
+
+// FillRRect fills a rounded rectangle with the specified corner radius and brush.
 func (c *gioCanvas) FillRRect(r Rect, radius float32, b Brush) { c.FillPath(rrectPath(r, radius), b) }
-func (c *gioCanvas) FillEllipse(r Rect, b Brush)               { c.FillPath(ellipsePath(r), b) }
+
+// FillEllipse fills an ellipse inscribed in the bounding rectangle with the brush.
+func (c *gioCanvas) FillEllipse(r Rect, b Brush) { c.FillPath(ellipsePath(r), b) }
+
+// StrokeRRect strokes the perimeter of a rounded rectangle with corner radius, stroke width, and brush.
 func (c *gioCanvas) StrokeRRect(r Rect, radius, width float32, b Brush) {
 	c.StrokePath(rrectPath(r, radius), width, b)
 }
 
+// DrawText draws shaped text layout glyphs starting at the given canvas point.
 func (c *gioCanvas) DrawText(t *TextLayout, at Point, b Brush) {
 	if t == nil || len(t.lines) == 0 {
 		return
@@ -297,6 +321,7 @@ func (c *gioCanvas) DrawText(t *TextLayout, at Point, b Brush) {
 	end()
 }
 
+// DrawImage renders a sub-rectangle of an image scaled into the destination rectangle.
 func (c *gioCanvas) DrawImage(img *Image, dst, src Rect) {
 	if img == nil || dst.W <= 0 || dst.H <= 0 {
 		return
@@ -317,6 +342,7 @@ func (c *gioCanvas) DrawImage(img *Image, dst, src Rect) {
 	end()
 }
 
+// WindowMoveArea registers an OS window drag-move interactive hit area.
 func (c *gioCanvas) WindowMoveArea(r Rect) {
 	s := c.m.scale
 	dev := image.Rect(
@@ -328,6 +354,7 @@ func (c *gioCanvas) WindowMoveArea(r Rect) {
 	st.Pop()
 }
 
+// CellColors returns the foreground and background colors of the cell at grid (col, row).
 func (c *gioCanvas) CellColors(col, row int) (fg, bg color.NRGBA) {
 	x, y := c.cellX+col, c.cellY+row
 	if x < 0 || y < 0 || x >= c.g.w || y >= c.g.h {
@@ -336,10 +363,12 @@ func (c *gioCanvas) CellColors(col, row int) (fg, bg color.NRGBA) {
 	return c.r.colors(c.g.at(x, y).Attrs)
 }
 
+// Backdrop returns the default background color of the canvas's host view.
 func (c *gioCanvas) Backdrop() color.NRGBA {
 	return c.r.backdrop(c.g, c.view)
 }
 
+// CellText returns the character content of the cell at grid (col, row).
 func (c *gioCanvas) CellText(col, row int) string {
 	x, y := c.cellX+col, c.cellY+row
 	if x < 0 || y < 0 || x >= c.g.w || y >= c.g.h {
@@ -348,6 +377,7 @@ func (c *gioCanvas) CellText(col, row int) string {
 	return c.g.at(x, y).Content
 }
 
+// PaintCells rasterizes a rectangle of character cells onto the canvas.
 func (c *gioCanvas) PaintCells(r CellRect, glyphsOnly bool) {
 	cl := clip.Rect(c.clip).Push(c.ops)
 	var opacity paint.OpacityStack

@@ -70,6 +70,7 @@ type laidResult struct {
 	err  error
 }
 
+// Diagram answers the diagram request from cache, kicks off background layout, or falls back.
 func (d *diagrams) Diagram(ctx context.Context, req DiagramRequest, ready func()) DiagramAnswer {
 	if req.Lang != "mermaid" {
 		return d.fall(ctx, req, ready)
@@ -162,6 +163,7 @@ func (d *diagrams) answer(ctx context.Context, req DiagramRequest, ready func(),
 	return DiagramAnswer{State: Declined}
 }
 
+// fall delegates unsupported diagram types to the fallback diagrammer, if one is configured.
 func (d *diagrams) fall(ctx context.Context, req DiagramRequest, ready func()) DiagramAnswer {
 	if d.fallback == nil {
 		return DiagramAnswer{State: Declined}
@@ -223,10 +225,12 @@ type laidCache struct {
 	vals  map[diagramHash]laidResult
 }
 
+// newLaidCache creates an LRU cache holding up to n diagram layout results.
 func newLaidCache(n int) *laidCache {
 	return &laidCache{max: n, order: list.New(), items: map[diagramHash]*list.Element{}, vals: map[diagramHash]laidResult{}}
 }
 
+// get retrieves a cached diagram result, moving the entry to the front of the LRU.
 func (c *laidCache) get(k diagramHash) (laidResult, bool) {
 	e, ok := c.items[k]
 	if !ok {
@@ -236,6 +240,7 @@ func (c *laidCache) get(k diagramHash) (laidResult, bool) {
 	return c.vals[k], true
 }
 
+// put inserts or updates a diagram result in the cache, evicting the oldest entry when exceeding capacity.
 func (c *laidCache) put(k diagramHash, r laidResult) {
 	if e, ok := c.items[k]; ok {
 		c.order.MoveToFront(e)
