@@ -185,9 +185,12 @@ its **component types**.
   and an object or a call in an expression are `ErrComponent`.
   `ExpandComponents` runs expansion alone, for a checker that cannot mount a
   use. With a default alias the use site's children
-  go to that inner object instead of the root. `property alias`, `readonly`
-  and `signal` are refused by the parser, each message naming what to write
-  instead.
+  go to that inner object instead of the root. A **slot**, `property alias
+  footer: foot.data`, is a second place for children: the use site sets it to
+  one object (`footer: Flex { … }`), which goes under `foot`; a list of objects
+  is refused, saying to wrap them in one Flex. An object is filled from
+  one alias at most. Any other `property alias`, `readonly` and `signal` are
+  refused by the parser, each message naming what to write instead.
 - **`Repeater` / `Instantiator`** are expanded after components: one copy of
   the delegate per row of a host `Model`, `model.<role>` and `index` written in
   from the row, each copy keyed by the row's key. The tree follows the models

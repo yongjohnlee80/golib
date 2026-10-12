@@ -38,7 +38,8 @@ import (
 //	             a declared one is substituted instead (below)
 //	handlers     both run, the component's first
 //	children     the use site's follow the component's, under its
-//	             default alias's object when it declares one
+//	             default alias's object when it declares one; a slot's
+//	             object follows its own target's
 //	id           the use site's names the instance; ids inside are the
 //	             component's own, one set per use (component_ids.go)
 //
@@ -55,7 +56,10 @@ import (
 // the default, before the copy's nested uses expand — but not a signal's
 // parameter of the same name in its handler; merge leaves them off the root,
 // and sends the use site's children to the default alias's object when there
-// is one. A file's declarations are judged when it loads (checkDecls).
+// is one. A named alias, `property alias footer: foot.data`, is a SLOT: the use
+// site sets it to one object (`footer: Flex { … }`), which is expanded under its
+// own key tag and goes under foot, after foot's own children (fill). A file's
+// declarations are judged when it loads (checkDecls).
 
 // ErrComponent reports a component type that cannot be used as written: a file
 // the rules refuse, a name taken twice, a component that contains itself.
@@ -260,9 +264,30 @@ func expand(root *qml.SpecNode, types map[string]*qml.SpecNode,
 			if err != nil {
 				return nil, err
 			}
+			// Each slot's object is expanded as the use site's children are,
+			// keyed under its own tag, so it and the children never share a key.
+			var slots []slotFill
+			for _, d := range def.Decls {
+				if !d.Slot {
+					continue
+				}
+				for _, p := range sn.Props {
+					if len(p.Path) != 1 || p.Name != d.Name || p.Value.Kind != qml.SpecValueTemplate {
+						continue
+					}
+					filled, err := children([]*qml.SpecNode{p.Value.Template}, using, key, "+"+d.Name+".")
+					if err != nil {
+						return nil, err
+					}
+					slots = append(slots, slotFill{target: scopedTarget(def, d.Target, key, sn.ID), node: filled[0]})
+				}
+			}
 			use := withoutDeclared(sn, def)
 			use.Children = extra
 			out = merge(*inner, use, aliasTarget(def, key, sn.ID))
+			for _, f := range slots {
+				out = fill(out, f)
+			}
 			return &out, nil
 		}
 		kids, err := children(sn.Children, using, key, "")
@@ -333,6 +358,22 @@ func merge(comp qml.SpecNode, use *qml.SpecNode, target string) qml.SpecNode {
 	}
 	out.Children = append(append([]*qml.SpecNode(nil), comp.Children...), use.Children...)
 	return out
+}
+
+// fill puts a slot's object under its target in comp: after the target's own
+// children, and at the end of the root's when the target is the root.
+func fill(comp qml.SpecNode, f slotFill) qml.SpecNode {
+	more := []*qml.SpecNode{f.node}
+	if f.target != comp.ID {
+		// checkDecls made the target an id in the file, and scopeIDs renamed
+		// it with every other, so it is found; the fallback is the root's.
+		if kids, ok := appendUnder(comp.Children, f.target, more); ok {
+			comp.Children = kids
+			return comp
+		}
+	}
+	comp.Children = append(append([]*qml.SpecNode(nil), comp.Children...), more...)
+	return comp
 }
 
 // appendUnder returns a copy of kids with more appended to the children of the
