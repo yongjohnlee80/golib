@@ -347,3 +347,62 @@ func TestAReadIsStoppedWhenTheLoopTakesOver(t *testing.T) {
 	h.waitFor("the listing's read stopped", func() bool { return g.cancelled.Load() > before })
 	h.shows("local.txt")
 }
+
+// TestAFileListWaitsForItsVFSFolder: a FileList of a VFS source, before it is
+// mounted, takes a folder to list at mount; mounted, while a folder loads, it
+// reports the folder on its way and keeps a name to put the cursor on for
+// when the rows arrive. A filter set to what it already is changes nothing.
+func TestAFileListWaitsForItsVFSFolder(t *testing.T) {
+	g := newGated(t, vfsFiles)
+	g.release("dir:b")
+	l := widget.NewFileList(widget.WithFileListSource(widget.FileSource{VFS: g, Root: "vfs://"}),
+		widget.WithFileListDir("vfs://a"))
+	l.SetDir("vfs://b") // not mounted: b is listed at mount, a never
+	if l.Loading() || l.Dir() != "b" {
+		t.Fatalf("before mount: Loading %v, Dir %q; want b, nothing in flight", l.Loading(), l.Dir())
+	}
+	h := startApp(t, l, 60, 12)
+	defer h.stop()
+	h.waitFor("b listed", func() bool { return strings.Contains(h.grid(), "notes.md") })
+	h.onLoop(func() { l.SetDir("vfs://a") }) // held
+	var loading, placed bool
+	var dir string
+	h.onLoop(func() { loading, dir, placed = l.Loading(), l.Dir(), l.SetCurrent("x.txt") })
+	if !loading || dir != "a" || placed {
+		t.Fatalf("while a loads: Loading %v, Dir %q, SetCurrent placed %v; want a on its way, the name kept", loading, dir, placed)
+	}
+	g.release("dir:a")
+	h.waitFor("the kept name placed", func() bool {
+		var p string
+		var ok bool
+		h.onLoop(func() { p, _, ok = l.Current() })
+		return ok && p == "a/x.txt"
+	})
+	// The filter puts the cursor on the first row; the same filter again
+	// leaves it where it was put since.
+	h.onLoop(func() { l.SetFilter("x"); l.SetCurrent("x.txt"); l.SetFilter("x") })
+	var p string
+	h.onLoop(func() { p, _, _ = l.Current() })
+	if p != "a/x.txt" {
+		t.Fatalf("after the filter: Current %q, want a/x.txt", p)
+	}
+}
+
+// TestASaveViewAsksAVFSSourceWhetherANameIsAFolder: Enter on a typed name
+// that is a folder of a VFS source goes into it, as on the local disk.
+func TestASaveViewAsksAVFSSourceWhetherANameIsAFolder(t *testing.T) {
+	g := newGated(t, vfsFiles)
+	g.release("dir:.")
+	g.release("dir:a")
+	v := widget.NewFileSaveView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
+		widget.WithFileViewDir("vfs://"))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("top.txt")
+	var confirmed bool
+	h.onLoop(func() { v.SetName("a"); confirmed = v.Confirm() })
+	if confirmed {
+		t.Fatal("a folder's name was confirmed as a file to save")
+	}
+	h.shows("readme.md")
+}
