@@ -10,6 +10,29 @@ import (
 // the whole document as one read-only widget instead (an HTML page, tuiwidget.HTMLView), shown in
 // place of the text body while the Editor is Rendered and the host has turned it on for the
 // document (SetRenderedDocument). Raw is the text, editable, either way.
+//
+// # Document View Stack & Mode Toggle Architecture
+//
+// Below is the layout hierarchy and focus routing between the editable editor body and the
+// read-only document view:
+//
+//	                 ┌─────────────────────────────┐
+//	                 │       editorStack           │
+//	                 │   (holds body + doc view)   │
+//	                 └──────────────┬──────────────┘
+//	                                │
+//	                 ┌──────────────┴──────────────┐
+//	                 │   Mode & Document Switch?   │
+//	                 └──────┬───────────────┬──────┘
+//	         Rendered && docOn              Raw || !docOn
+//	                 │                             │
+//	                 ▼                             ▼
+//	        ┌─────────────────┐           ┌─────────────────┐
+//	        │  DocumentView   │           │   EditorBody    │
+//	        │ - Visible: true │           │ - Visible: true │
+//	        │ - Takes focus   │           │ - Takes focus   │
+//	        │ - Read-only HTML│           │ - Full editing  │
+//	        └─────────────────┘           └─────────────────┘
 
 // DocumentView is a Rendered view that draws the whole document as one read-only widget. The
 // Editor shows and hides it through SetVisible, and the framework reads Visible: a hidden view is

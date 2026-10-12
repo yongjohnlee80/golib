@@ -61,6 +61,8 @@ func (w *WindowButtons) NativeView() (any, bool) { return gui.ViewFunc(w.paint),
 // NativeScope covers the cell fallback; its Button nodes still receive input.
 func (w *WindowButtons) NativeScope() tui.NativeScope { return tui.ScopeSubtree }
 
+// paint renders the circular window buttons into the vector canvas c,
+// positioning dots over the underlying button anchors with appropriate states (armed/disabled).
 func (w *WindowButtons) paint(c gui.Canvas) {
 	if w.ctx == nil {
 		return

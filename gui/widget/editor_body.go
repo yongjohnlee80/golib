@@ -220,6 +220,8 @@ func (b *editorBody) at(m tui.MouseEvent) (int, int) {
 	return ln, clusterAt(b.e.core.LineAt(ln), max(m.X, 0))
 }
 
+// mouse dispatches pointer events (press, release, drag, wheel scrolling, clicks)
+// across pixel layout coordinates or cell fallback coordinates, returning true if handled.
 func (b *editorBody) mouse(m tui.MouseEvent) bool {
 	c := b.e.core
 	l := b.e.layout

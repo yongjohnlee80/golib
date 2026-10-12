@@ -6,6 +6,31 @@
 // vector operations, shaped monospace glyphs, custom system font fallbacks, precise box-drawing
 // line geometry, hardware-scaled image placement, native widgets, and OS input method integration.
 //
+// # Architectural Pipeline Overview
+//
+// Below is the high-level architecture connecting a TUI application, the GUI abstraction layer,
+// and the underlying Gio GPU rendering pipeline:
+//
+//	┌────────────────────────────────────────────────────────────────────────┐
+//	│                           tui.App / Widget Tree                        │
+//	│              (Cell Grid, Text Buffers, Events, Focus, Layout)          │
+//	└───────────────────────────────────┬────────────────────────────────────┘
+//	                                    │ [tui.Backend] Draw Calls & Flush
+//	                                    ▼
+//	┌────────────────────────────────────────────────────────────────────────┐
+//	│                             gui.Backend                                │
+//	│  - Row Macro Cache (op.Ops)       - Run-Length Span Coalescing         │
+//	│  - Monospace Glyph Shaper         - Box-Drawing Vector Merger          │
+//	│  - Image / SVG Native Views       - IME & Pointer Coordinates Mapper   │
+//	└───────────────────────────────────┬────────────────────────────────────┘
+//	                                    │ Latched Frame Handoff (sync.Mutex)
+//	                                    ▼
+//	┌────────────────────────────────────────────────────────────────────────┐
+//	│                       Gio Immediate-Mode Engine                        │
+//	│  - GPU Command Recording (Vulkan / Metal / Direct3D / OpenGL)          │
+//	│  - VSync Frame Presentation & OS Window Event Polling                  │
+//	└────────────────────────────────────────────────────────────────────────┘
+//
 // # Architectural Mission & Design Philosophy
 //
 // Terminal emulators traditionally bridge TUI applications to native operating system

@@ -28,6 +28,38 @@ import (
 // (gui/svg). Until an image is decoded its box is its width and height attributes, or nothing; one
 // that fails or is over a cap shows its alt text, and one the resolver refused is reported to the
 // view (HTMLView.Refused).
+//
+// # Image Resolution & Async Decoding Architecture
+//
+// Below is the image loading, size validation, and raster/vector decoding pipeline:
+//
+//	  <img src="..."> in HTML DOM
+//	              │
+//	              ▼
+//	      htmlImages.entry(src)
+//	              │
+//	    ┌─────────┴─────────┐
+//	    │  data: URI?       │─── Yes ───► Base64 Decode & Verify Size (< 8MB)
+//	    └─────────┬─────────┘
+//	              │ No
+//	              ▼
+//	      ImageResolver.Resolve(src)
+//	              │
+//	    ┌─────────┴─────────┐
+//	    │  MIME / Format?   │
+//	    └────┬─────────┬────┘
+//	         │         │
+//	         ▼         ▼
+//	      Raster      SVG
+//	      (PNG/JPG)   (gui/svg.Parse)
+//	         │         │
+//	         ▼         ▼
+//	      gui.Image  svg.Drawing
+//	         │         │
+//	         └────┬────┘
+//	              ▼
+//	      TaskResult -> page marked dirty -> inline atom laid out
+
 const (
 	maxImageData   = 8 << 20  // a data: URI's payload
 	maxImageFile   = 32 << 20 // a resolved file, read through a limit

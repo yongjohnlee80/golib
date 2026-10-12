@@ -35,6 +35,23 @@ type stateScope struct {
 	groups []laidGroup
 }
 
+// State Diagram Layout Architecture:
+//
+//	(*) -> [State 1] -- Event / Trigger --> [Composite State]
+//	           |                            +-------------------+
+//	           |                            | SubState A        |
+//	           |                            |   |               |
+//	           |                            |   v               |
+//	           |                            | SubState B        |
+//	           |                            +-------------------+
+//	           v                                      |
+//	        [State 2] --------------------------------+
+//	           |
+//	           v
+//	          (X)
+//
+// layState computes state transition diagrams featuring start/end circles, simple states,
+// composite nested state scopes, fork/join bars, choice diamonds, and labeled transitions.
 func layState(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Measurer) (*Laid, error) {
 	sd := d.(*pm.StateDiagram)
 	small := th.Font

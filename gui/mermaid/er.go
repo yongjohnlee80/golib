@@ -17,6 +17,24 @@ func init() { layers[pm.ER] = layER }
 // cardEnd is each cardinality's crow's-foot end.
 var cardEnd = [...]end{pm.ExactlyOne: endOne, pm.ZeroOrOne: endZeroOne, pm.OneOrMore: endMany, pm.ZeroOrMore: endZeroMany}
 
+// Entity-Relationship (ER) Diagram Architecture:
+//
+//	+-------------------------------------------------------------+
+//	| Entity Box (Title + Tabular Attribute Schema)               |
+//	| +---------------------------------------------------------+ |
+//	| | EntityName (Bold Header)                                | |
+//	| +---------------------------------------------------------+ |  <- Divider
+//	| | string   username   PK                                  | |
+//	| | string   email                                          | |  <- Type / Name / Key
+//	| | datetime created_at                                     | |
+//	| +---------------------------------------------------------+ |
+//	+-------------------------------------------------------------+
+//	           ||                                     ||
+//	           || (1)                         (0..N)  ||
+//	           ||=====================================||
+//	      (endOne: ||)                       (endZeroMany: o{)
+//	       Crow's Foot                            Crow's Foot
+//
 // layER lays an ER diagram out as a graph: each entity a box, its name over a table of its
 // attributes, each relationship an edge with a crow's foot at either end.
 func layER(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Measurer) (*Laid, error) {

@@ -12,8 +12,31 @@ import (
 
 func init() { layers[pm.Class] = layClass }
 
-// relEnd is each relation end's end; an association drawn dotted is a dependency, whose head is
-// open.
+// Class Diagram Layout Architecture:
+//
+//	+-------------------------------------------------------------+
+//	| Class Name Box (3-Compartment Model)                        |
+//	| +---------------------------------------------------------+ |
+//	| | <<interface>> / Annotation Labels                       | |
+//	| | ClassName (Bold, Centered)                              | |
+//	| +---------------------------------------------------------+ |  <- Divider
+//	| | +field1: type                                           | |  <- Attributes Section
+//	| | -field2: int                                            | |
+//	| +---------------------------------------------------------+ |  <- Divider
+//	| | +Method1(): void                                        | |  <- Methods Section
+//	| | +Method2(arg): bool                                     | |
+//	| +---------------------------------------------------------+ |
+//	+-------------------------------------------------------------+
+//	                               |
+//	               +---------------+---------------+
+//	               | (Inheritance: --|>)           | (Composition: --*)
+//	               v                               v
+//	     +-------------------+           +-------------------+
+//	     |   SuperClass      |           |   ComponentClass  |
+//	     +-------------------+           +-------------------+
+//
+// relEnd determines the terminal glyph marker (triangle, diamond, open diamond, arrow)
+// for relationship connectors based on semantic association kind.
 func relEnd(e pm.RelEnd, line pm.LineKind) end {
 	switch e {
 	case pm.RelInheritance:
@@ -31,8 +54,8 @@ func relEnd(e pm.RelEnd, line pm.LineKind) end {
 	return endNone
 }
 
-// classBox is a class's box before it is placed: its size, and its labels and dividers relative
-// to its top left.
+// classBox represents the measured bounding dimensions, compartment dividers,
+// and inner labels for a UML class box before global placement.
 type classBox struct {
 	size     gui.Size
 	name     label
@@ -40,15 +63,17 @@ type classBox struct {
 	sections []classSect // the attributes, then the methods
 }
 
-// classSect is a compartment: the divider above it, and its members.
+// classSect represents a single compartment within a class box (attributes or methods),
+// recording its vertical offset y and member labels.
 type classSect struct {
 	y       float32
 	members []label
 }
 
-// layClass lays a class diagram out in layers: each class a box of three compartments (its
-// annotations and name, its attributes, its methods), each note a sheet joined to its class by a
-// dotted line, and each namespace a box round its classes.
+// layClass computes hierarchical Sugiyama-style layered layouts for UML class diagrams:
+//   - Each class is formatted into a 3-compartment box (header/annotations, fields, methods).
+//   - Notes are placed adjacent to their target classes with dotted connectors.
+//   - Namespaces form grouping clusters enclosing member classes.
 func layClass(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.Measurer) (*Laid, error) {
 	cd := d.(*pm.ClassDiagram)
 	f := th.Font

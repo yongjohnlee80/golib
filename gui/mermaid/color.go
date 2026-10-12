@@ -6,8 +6,37 @@ import (
 	"strings"
 )
 
+// Package mermaid provides diagram rendering and styling helpers for Mermaid diagram types.
+//
+// # Color Parsing Architecture
+//
+// Below is the CSS color resolution pipeline mapping input strings to 32-bit NRGBA colors:
+//
+//	                 ┌─────────────────────────────┐
+//	                 │       Raw CSS String        │
+//	                 └──────────────┬──────────────┘
+//	                                │
+//	                 ┌──────────────┴──────────────┐
+//	                 │                             │
+//	          Prefix "rgb("                 Prefix "#"
+//	                 │                             │
+//	                 ▼                             ▼
+//	        ┌─────────────────┐           ┌─────────────────┐
+//	        │    rgbFunc()    │           │    Hex Parser   │
+//	        │ - Split commas  │           │ - Expand #rgb   │
+//	        │ - 0-255 bounds  │           │ - Expand #rgba  │
+//	        │ - Alpha 0.0-1.0 │           │ - Pad #rrggbb   │
+//	        └────────┬────────┘           └────────┬────────┘
+//	                 │                             │
+//	                 └──────────────┬──────────────┘
+//	                                │
+//	                                ▼
+//	                     ┌─────────────────────┐
+//	                     │  color.NRGBA (RGBA) │
+//	                     └─────────────────────┘
+
 // cssColor reads #rgb, #rgba, #rrggbb, #rrggbbaa, rgb(r, g, b) and rgba(r, g, b, a); anything
-// else is not read.
+// else returns a zero color and false.
 func cssColor(s string) (color.NRGBA, bool) {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "rgb") {

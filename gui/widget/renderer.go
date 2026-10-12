@@ -20,6 +20,31 @@ const (
 	Rendered
 )
 
+// # Block & Line Layout Architecture
+//
+// Below is the layout hierarchy constructed by a [Renderer] for rich text display:
+//
+//	  Renderer.LayOut(Block, lines, width, cursorInside)
+//	                         │
+//	                         ▼
+//	                 ┌────────────────────────────────┐
+//	                 │          BlockLayout           │
+//	                 │  - Background: color.NRGBA     │
+//	                 │  - Height: float32             │
+//	                 │  - Picture: gui.View (inline)  │
+//	                 └──────────────┬─────────────────┘
+//	                                │
+//	         ┌──────────────────────┴──────────────────────┐
+//	         │                                             │
+//	         ▼                                             ▼
+//	  ┌─────────────┐                               ┌─────────────┐
+//	  │ LineLayout  │ (Line 0)                      │ LineLayout  │ (Line N)
+//	  │ - Y offset  │                               │ - Y offset  │
+//	  │ - flow.Para │                               │ - flow.Para │
+//	  │ - Spans[]   │                               │ - Spans[]   │
+//	  │ - Marks[]   │ (e.g. quote bar)              │ - Marks[]   │
+//	  └─────────────┘                               └─────────────┘
+
 // A Renderer lays out the buffer's lines for the Rendered mode. It is told whether the cursor is
 // in a block, so a construct under the cursor shows its source. It keeps no state but a cache it
 // may hold, keyed by the lines it was given.

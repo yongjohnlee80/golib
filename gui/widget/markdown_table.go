@@ -7,13 +7,26 @@ import (
 	"github.com/yongjohnlee80/golib/gui/flow"
 )
 
+// GFM Markdown Table Layout Architecture:
+//
+//	Source Markdown:
+//	| Header A | Header B | Header C |
+//	| :------- | :------: | -------: |  <- Delimiter Row (Left / Center / Right Align)
+//	| Cell 1   | Cell 2   | Cell 3   |
+//	               |
+//	               v
+//	Pixel Grid Layout:
+//	+-------------------------------------------------------------+
+//	| Header A (Left)    |   Header B (Center)   | Header C (Right)
+//	+=============================================================+
+//	| Cell 1             |        Cell 2         |           Cell 3
+//	+-------------------------------------------------------------+
+//
 // TABLES — a GFM table drawn as a grid off the cursor: its cells at their columns, aligned as
 // its delimiter row says, the header bold on a tint, a border around every cell and a rule under
 // the header. A row is one source line, as every line is: its pipes and the spaces around a
 // cell's text are Hidden spans with Room, the room that puts the next cell's text at its column,
 // so every source cluster keeps a place for the caret. The cursor in the table shows its source.
-
-// align is a column's alignment, from the delimiter row.
 type align uint8
 
 const (

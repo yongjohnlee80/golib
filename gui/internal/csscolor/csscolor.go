@@ -1,5 +1,19 @@
 // Package csscolor reads CSS colour values, for gui's HTML layout and its SVG drawings alike: one
 // grammar, one parser.
+//
+// CSS Color Grammar & Parsing Pipeline:
+//
+//	[ CSS Color String ]
+//	         |
+//	         +---> "currentcolor" -> Inherited context foreground
+//	         +---> Named Color ("black", "white", "transparent", etc.)
+//	         +---> Hex Notation (#rgb, #rgba, #rrggbb, #rrggbbaa)
+//	         +---> Functional Notation:
+//	                 - rgb(r, g, b)
+//	                 - rgba(r, g, b, a)
+//	         |
+//	         v
+//	color.NRGBA (Standard 8-bit RGBA Channels)
 package csscolor
 
 import (

@@ -15,6 +15,22 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// Diagram Caching and Worker Deduplication Architecture:
+//
+//	[ DiagramRequest ] ---> SHA-256 Hash Key
+//	                                |
+//	                                v
+//	                       [ LRU Cache Check ]
+//	                       /                 \
+//	                 [ Hit ]                 [ Miss ]
+//	           Return *mermaid.Laid     [ Check Active Jobs ]
+//	                                    /                   \
+//	                            [ In Progress ]         [ New Job ]
+//	                            Register waiter         Spawn worker goroutine
+//	                            to existing job         Execute mermaid.Lay()
+//	                                                    Populate LRU cache
+//	                                                    Signal waiters via ready()
+//
 // Diagrams chains golib's native Mermaid, then fallback (nil: none) for what native declines: a
 // diagram type it does not draw (mermaid.ErrUnsupported) or one over a limit (ErrTooLarge). A
 // malformed diagram is Ready: a picture of the error and its line, in place.

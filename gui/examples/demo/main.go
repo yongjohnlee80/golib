@@ -13,6 +13,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 )
 
+// main initializes the native GUI backend, wraps demoapp in tui.App, and runs the event loop.
 func main() {
 	gui.Main(func() error {
 		ctx, quit := context.WithCancel(context.Background())
