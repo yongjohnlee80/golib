@@ -156,6 +156,7 @@ func (s *imeState) revise(start, end int, repl []rune) []imePiece {
 // compose records the composing range.
 func (s *imeState) compose(e key.CompositionEvent) { s.comp = key.Range(e) }
 
+// composing reports whether there is an active non-empty IME composition range.
 func (s *imeState) composing() bool {
 	start, end := s.clamp(s.comp)
 	return s.comp.Start >= 0 && end > start
@@ -230,6 +231,7 @@ func (s *imeState) snippet(r key.Range) key.Snippet {
 // empty reports whether the buffer holds nothing, so Gio's copy should be reset to match.
 func (s *imeState) empty() bool { return len(s.text) == 0 }
 
+// clamp returns normalized start and end rune indices clamped to the buffer length.
 func (s *imeState) clamp(r key.Range) (start, end int) {
 	start, end = r.Start, r.End
 	if start > end {

@@ -74,6 +74,7 @@ type htmlDiagrams struct {
 	tasks map[tui.TaskID]struct{} // ready waits started for this layout: their results are ours
 }
 
+// newHTMLDiagrams constructs the diagram manager for an HTML layout instance.
 func newHTMLDiagrams(l *htmlLayout) *htmlDiagrams {
 	return &htmlDiagrams{l: l, slots: map[string]*htmlDiagram{}, tasks: map[tui.TaskID]struct{}{}}
 }
@@ -146,6 +147,7 @@ func (m *htmlDiagrams) answer(src string, width float32) DiagramAnswer {
 	return s.answerOf()
 }
 
+// answerOf returns the current DiagramAnswer from the HTML diagram slot.
 func (s *htmlDiagram) answerOf() DiagramAnswer {
 	if s.state == Declined {
 		return DiagramAnswer{State: Declined}

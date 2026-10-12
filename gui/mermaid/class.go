@@ -10,6 +10,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// init registers the class diagram layout builder with the mermaid layout engine.
 func init() { layers[pm.Class] = layClass }
 
 // Class Diagram Layout Architecture:

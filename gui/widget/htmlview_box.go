@@ -437,6 +437,7 @@ func (b *builder) span(text string, st *computed, src [2]int) flow.Span {
 // edges are a box's margin, border and padding widths, in px, at an available width.
 type edges struct{ m, b, p [4]float32 }
 
+// edgesOf calculates computed pixel margins, borders, and paddings for a box given available width.
 func (l *htmlLayout) edgesOf(st *computed, avail float32) edges {
 	var e edges
 	for i := range 4 {
@@ -449,10 +450,17 @@ func (l *htmlLayout) edgesOf(st *computed, avail float32) edges {
 	return e
 }
 
-func (e edges) left() float32  { return e.b[3] + e.p[3] }
+// left returns the sum of the left border and left padding.
+func (e edges) left() float32 { return e.b[3] + e.p[3] }
+
+// right returns the sum of the right border and right padding.
 func (e edges) right() float32 { return e.b[1] + e.p[1] }
-func (e edges) top() float32   { return e.b[0] + e.p[0] }
-func (e edges) bot() float32   { return e.b[2] + e.p[2] }
+
+// top returns the sum of the top border and top padding.
+func (e edges) top() float32 { return e.b[0] + e.p[0] }
+
+// bot returns the sum of the bottom border and bottom padding.
+func (e edges) bot() float32 { return e.b[2] + e.p[2] }
 
 // layBlock lays box bx out at (x, y) in an available width avail: its border box's place and
 // size. Its own vertical margins are its parent's to place (they collapse with its siblings').
@@ -811,6 +819,7 @@ func (l *htmlLayout) paintBox(c gui.Canvas, bx *box, ox, oy float32, sel selRang
 	}
 }
 
+// paintBorders renders the perimeter borders of box bx onto canvas c.
 func (l *htmlLayout) paintBorders(c gui.Canvas, bx *box, r gui.Rect, radius float32) {
 	e := l.edgesOf(bx.st, bx.w)
 	colorOf := func(i int) color.NRGBA {

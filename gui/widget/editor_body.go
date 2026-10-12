@@ -295,12 +295,14 @@ func (b *editorBody) NativeScope() tui.NativeScope { return tui.ScopeSubtree }
 // bodyView paints an editorBody, and reports its caret for the input method.
 type bodyView struct{ b *editorBody }
 
+// Caret returns the pixel bounds, baseline offset, and visibility of the text caret.
 func (v bodyView) Caret() (gui.Rect, float32, bool) { return v.b.caret, v.b.caretBase, v.b.caretOn }
 
 // CaretColors are the text's colours at the caret: the page's, or the caret's block's background
 // (a code fence's) when it has one, or the selection's when the caret's cluster is selected.
 func (v bodyView) CaretColors() (fg, bg color.NRGBA) { return v.b.caretFG, v.b.caretBG }
 
+// Paint renders the editor body view onto the canvas.
 func (v bodyView) Paint(c gui.Canvas) {
 	b, e := v.b, v.b.e
 	l := e.layout

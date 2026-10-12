@@ -66,6 +66,7 @@ type htmlSheets struct {
 	stale   map[tui.TaskID]struct{} // loads started before the last reset: their results are dropped
 }
 
+// newHTMLSheets constructs the external stylesheet manager for an HTML layout instance.
 func newHTMLSheets(l *htmlLayout) *htmlSheets {
 	return &htmlSheets{l: l, entries: map[string]*sheetEntry{}, tasks: map[tui.TaskID]string{},
 		stale: map[tui.TaskID]struct{}{}}

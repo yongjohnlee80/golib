@@ -395,6 +395,7 @@ func (p *Para) splitWide(k int, spans []Span, t *gui.TextShaper) {
 	p.pieces = append(p.pieces[:k], append(parts, p.pieces[k+1:]...)...)
 }
 
+// nonSpace filters a slice of piece indices, omitting those corresponding to whitespace pieces.
 func nonSpace(ps []piece, idx []int) []int {
 	var out []int
 	for _, i := range idx {
@@ -585,6 +586,7 @@ func mapOffset(pc *piece, off int) int {
 	return off
 }
 
+// decode decodes the first UTF-8 rune in string s and returns its length.
 func decode(s string) (rune, int) {
 	for i, r := range s {
 		if i == 0 {
@@ -595,6 +597,7 @@ func decode(s string) (rune, int) {
 	return 0, len(s)
 }
 
+// lastRune returns the final UTF-8 rune in string s.
 func lastRune(s string) (rune, bool) {
 	var last rune
 	ok := false
@@ -604,6 +607,7 @@ func lastRune(s string) (rune, bool) {
 	return last, ok
 }
 
+// isSpace reports whether the rune is an ASCII whitespace character.
 func isSpace(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' }
 
 // isCJK reports a character after which a line may break: CJK ideographs, kana and Hangul
@@ -671,6 +675,7 @@ func rightToLeft(s string) bool {
 	return false
 }
 
+// clusterLayouts shapes and caches TextLayout instances for each grapheme cluster in a fragment.
 func clusterLayouts(f *Frag, font gui.Font, t *gui.TextShaper) []*gui.TextLayout {
 	out := make([]*gui.TextLayout, len(f.dclus))
 	for c, off := range f.dclus {

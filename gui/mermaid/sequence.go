@@ -8,6 +8,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// init registers the sequence diagram layout builder with the mermaid layout engine.
 func init() { layers[pm.Sequence] = laySequence }
 
 // seqEnd is each message end's end.

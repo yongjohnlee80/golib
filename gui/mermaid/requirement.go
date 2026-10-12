@@ -10,6 +10,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// init registers the requirement diagram layout builder with the mermaid layout engine.
 func init() { layers[pm.Requirement] = layRequirement }
 
 // requirementFields are a node's fields as its box lists them, labelled as Mermaid labels them;

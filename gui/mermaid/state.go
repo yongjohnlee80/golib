@@ -10,6 +10,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// init registers the state diagram layout builder with the mermaid layout engine.
 func init() { layers[pm.State] = layState }
 
 // stateLayer lays a state diagram out scope by scope: a composite's body is laid out first, on its

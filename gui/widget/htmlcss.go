@@ -39,7 +39,10 @@ type cssLen struct {
 	expr *cssExpr // calc(), min(), max(), clamp() (htmlcss_values.go)
 }
 
-func (l cssLen) set() bool  { return l.unit != 0 }
+// set reports whether the CSS length value was explicitly assigned.
+func (l cssLen) set() bool { return l.unit != 0 }
+
+// auto reports whether the CSS length value is the 'auto' keyword.
 func (l cssLen) auto() bool { return l.unit == 'a' }
 
 // px is l in pixels: em and ch against font, rem against root, % against of, vw and vh against
@@ -230,6 +233,7 @@ func block(src string, open int) (string, int) {
 	return src[open+1:], len(src)
 }
 
+// stripComments removes CSS /* ... */ block comments from raw CSS text.
 func stripComments(s string) string {
 	for {
 		i := strings.Index(s, "/*")
@@ -636,6 +640,7 @@ func (sel cssSelector) matches(chain []*phtml.Node) bool {
 	return matchFrom(sel, len(sel.parts)-1, chain, len(chain)-1)
 }
 
+// matchFrom recursively matches selector parts against the node chain from right to left.
 func matchFrom(sel cssSelector, part int, chain []*phtml.Node, at int) bool {
 	if at < 0 {
 		return false
@@ -1070,6 +1075,7 @@ func splitFields(v string) []string {
 	return out
 }
 
+// fontSize parses a CSS font-size string into concrete pixel dimensions.
 func fontSize(v string, parent, root float32, view gui.Size) float32 {
 	switch v {
 	case "smaller":
@@ -1092,6 +1098,7 @@ func fontSize(v string, parent, root float32, view gui.Size) float32 {
 	return parent
 }
 
+// lineHeight computes the line-height multiplier or length relative to the font size.
 func lineHeight(v string, font float32) float32 {
 	if v == "normal" {
 		return 1.2
@@ -1169,6 +1176,7 @@ func familyList(v string) string {
 	return strings.Join(out, ", ")
 }
 
+// monoFamily reports whether the CSS font-family includes common monospace font names.
 func monoFamily(v string) bool {
 	return strings.Contains(v, "mono") || strings.Contains(v, "courier") || strings.Contains(v, "consolas")
 }
@@ -1216,6 +1224,7 @@ func mediaMatches(list string, env mediaEnv) bool {
 	return false
 }
 
+// mediaQuery evaluates a single media query against the provided media environment.
 func mediaQuery(q string, env mediaEnv) bool {
 	if q == "" {
 		return true

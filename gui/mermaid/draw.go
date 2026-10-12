@@ -146,6 +146,7 @@ func (l *Laid) dividers(c gui.Canvas, r gui.Rect, ps []part, stroke color.NRGBA)
 	}
 }
 
+// or returns color c if non-zero, otherwise default color d.
 func or(c, d color.NRGBA) color.NRGBA {
 	if c.A == 0 {
 		return d
@@ -174,6 +175,7 @@ func (l *Laid) text(c gui.Canvas, lb label) {
 	}
 }
 
+// shape retrieves or builds a cached shaped TextLayout for text s and font f.
 func (l *Laid) shape(c gui.Canvas, s string, f gui.Font) *gui.TextLayout {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -478,6 +480,7 @@ func rounded(pts []gui.Point, r float32) *gui.Path {
 	return p.LineTo(pts[len(pts)-1])
 }
 
+// dist calculates the Euclidean distance between points a and b.
 func dist(a, b gui.Point) float32 {
 	return float32(math.Hypot(float64(b.X-a.X), float64(b.Y-a.Y)))
 }
@@ -506,6 +509,7 @@ func dashes(c gui.Canvas, pts []gui.Point, width float32, b gui.Brush, dash floa
 	c.StrokePath(p, width, b)
 }
 
+// lerp linearly interpolates between points a and b with parameter t.
 func lerp(a, b gui.Point, t float32) gui.Point {
 	return gui.Pt(a.X+(b.X-a.X)*t, a.Y+(b.Y-a.Y)*t)
 }

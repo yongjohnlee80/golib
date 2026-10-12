@@ -11,6 +11,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
+// init registers the mindmap diagram layout builder with the mermaid layout engine.
 func init() { layers[pm.Mindmap] = layMindmap }
 
 // mindmapForm is each mind map shape's form. golib has no starburst or cloud outline: a bang takes

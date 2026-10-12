@@ -92,6 +92,7 @@ type htmlImages struct {
 	stale   map[tui.TaskID]struct{} // loads started before the last reset: their results are dropped
 }
 
+// newHTMLImages constructs the image manager and tracker for an HTML layout instance.
 func newHTMLImages(l *htmlLayout) *htmlImages {
 	return &htmlImages{l: l, entries: map[string]*imgEntry{}, tasks: map[tui.TaskID]string{},
 		stale: map[tui.TaskID]struct{}{}}
@@ -184,6 +185,7 @@ func sniffSVG(data []byte) bool {
 	return pre == "" || strings.HasPrefix(pre, "<?xml") || strings.HasPrefix(pre, "<!--") || strings.HasPrefix(pre, "<!doctype")
 }
 
+// isSVG reports whether an image URL or data URI represents SVG vector markup.
 func isSVG(src string) bool {
 	s := strings.ToLower(src)
 	if strings.HasPrefix(s, "data:image/svg") {

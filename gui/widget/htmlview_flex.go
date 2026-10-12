@@ -98,8 +98,10 @@ type flexItem struct {
 	w          float32 // the border-box width laid out
 }
 
+// margins returns the total horizontal margin of the flex item.
 func (it flexItem) margins() float32 { return it.e.m[1] + it.e.m[3] }
 
+// layFlexRow arranges flex items horizontally in rows, handling wrapping, growth, and alignment.
 func (l *htmlLayout) layFlexRow(bx *box, items []*box, x, y, width, gapRow, gapCol float32) float32 {
 	st := bx.st
 	fis := make([]flexItem, len(items))
@@ -184,6 +186,7 @@ func (l *htmlLayout) layFlexRow(bx *box, items []*box, x, y, width, gapRow, gapC
 	return cy - y
 }
 
+// layFlexColumn arranges flex items vertically in a single column with gap spacing.
 func (l *htmlLayout) layFlexColumn(bx *box, items []*box, x, y, width, gapRow float32) float32 {
 	cy := y
 	for i, k := range items {

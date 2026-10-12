@@ -186,10 +186,17 @@ func (e *Editor) Panel() *Panel { return e.panel }
 // The Editor is its Panel to tui: the Panel lays out, paints and takes the title bar's input,
 // with its children mounted under the Editor.
 
-func (e *Editor) Init(ctx *tui.Context)             { e.panel.Init(ctx) }
+// Init initializes the Editor's panel hierarchy.
+func (e *Editor) Init(ctx *tui.Context) { e.panel.Init(ctx) }
+
+// Layout measures and positions the Editor within the given constraints.
 func (e *Editor) Layout(c tui.Constraints) tui.Size { return e.panel.Layout(c) }
-func (e *Editor) Render(s tui.Surface)              { e.panel.Render(s) }
-func (e *Editor) HandleEvent(ev tui.Event) bool     { return e.panel.HandleEvent(ev) }
+
+// Render paints the Editor onto the given surface.
+func (e *Editor) Render(s tui.Surface) { e.panel.Render(s) }
+
+// HandleEvent forwards input events to the internal panel.
+func (e *Editor) HandleEvent(ev tui.Event) bool { return e.panel.HandleEvent(ev) }
 
 // ResolvePointerPress exposes the Panel's configured window gesture reservation.
 func (e *Editor) ResolvePointerPress(ev tui.MouseEvent) (tui.Action, bool) {
@@ -263,6 +270,7 @@ func (e *Editor) SetRenderedEnabled(on bool) {
 // RenderedEnabled reports whether the Rendered view is turned on (it also needs a renderer).
 func (e *Editor) RenderedEnabled() bool { return !e.renderOff }
 
+// toggleMode toggles the editor mode between Raw and Rendered.
 func (e *Editor) toggleMode() {
 	if e.mode == Raw {
 		e.SetMode(Rendered)
@@ -519,6 +527,7 @@ func (s *modeSwitch) Render(sur tui.Surface) {
 func (s *modeSwitch) NativeView() (any, bool)      { return gui.ViewFunc(s.paint), true }
 func (s *modeSwitch) NativeScope() tui.NativeScope { return tui.ScopeSubtree }
 
+// paint renders the segmented Raw/Rendered mode switch pill control onto the canvas.
 func (s *modeSwitch) paint(c gui.Canvas) {
 	text, fill, page := s.e.panel.BarColors()
 	if text == (color.NRGBA{}) { // the bar not painted yet: the page and the cells' text

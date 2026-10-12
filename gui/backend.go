@@ -416,9 +416,16 @@ func fullRepaint(diff []tui.CellUpdate, s tui.Size) bool {
 
 // The cursor is latched, as tui/term latches it, and drawn by the next Flush.
 
-func (b *Backend) ShowCursor()                      { b.cursor.visible = true }
-func (b *Backend) HideCursor()                      { b.cursor.visible = false }
-func (b *Backend) SetCursor(x, y int)               { b.cursor.x, b.cursor.y = x, y }
+// ShowCursor marks the cursor visible on the next Flush.
+func (b *Backend) ShowCursor() { b.cursor.visible = true }
+
+// HideCursor hides the cursor on the next Flush.
+func (b *Backend) HideCursor() { b.cursor.visible = false }
+
+// SetCursor moves the cursor to (x, y) grid cell coordinates.
+func (b *Backend) SetCursor(x, y int) { b.cursor.x, b.cursor.y = x, y }
+
+// SetCursorShape selects the visual shape of the cursor (block, beam, or underline).
 func (b *Backend) SetCursorShape(s tui.CursorShape) { b.cursor.shape = s }
 
 // SetCursorColor colours the caret; set=false gives it back the theme's cursor colour.
@@ -462,6 +469,7 @@ func (b *Backend) DeleteImage(id uint32) {
 	}
 }
 
+// imageList returns the active placed images in registration order for the frame snapshot.
 func (b *Backend) imageList() []placedImage {
 	out := make([]placedImage, 0, len(b.imgList))
 	for _, id := range b.imgList {

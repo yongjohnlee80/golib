@@ -78,6 +78,7 @@ type glyphShape struct {
 	colour  bool // it has colour glyphs (bitmaps): drawn alone, not in a row's batch
 }
 
+// newRenderer initializes a text and cell renderer with glyph cache and fonts.
 func newRenderer(shaper *text.Shaper, typeface string, theme Theme) *renderer {
 	return &renderer{shaper: shaper, typeface: font.Typeface(typeface), theme: theme, glyphs: map[glyphKey]glyphShape{},
 		fonts: Fonts{Prose: uiFamily, Mono: typeface}}
