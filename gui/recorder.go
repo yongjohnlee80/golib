@@ -1,12 +1,10 @@
 package gui
 
 import (
-	"bufio"
-	"encoding/json"
 	"io"
-	"sync"
-	"sync/atomic"
 	"time"
+
+	"github.com/yongjohnlee80/golib/gui/record"
 )
 
 // The debug recorder: a stream of records of the input path, platform event to
@@ -18,44 +16,50 @@ import (
 // A recorder is installed with [WithRecorder]. Without one every hook is behind
 // a nil check and nothing is recorded or allocated. Records are all taken on
 // the window's one input goroutine, so a Recorder needs no locking.
+//
+// The recorder's own types live in [record], which imports no windowing
+// toolkit, so a terminal build records the same file without linking Gio; the
+// aliases below keep gui's public surface as it was.
 
 // Stage is where along the input path a record was taken.
-type Stage string
-
-const (
-	// StageIn: one event arrived from the toolkit, before the backend applied it.
-	StageIn Stage = "in"
-	// StageIME: the IME buffer's state after an event was applied.
-	StageIME Stage = "ime"
-	// StageOut: the key events committed text was delivered to the App as.
-	StageOut Stage = "out"
-	// StageCmd: a command the backend sent back to the toolkit.
-	StageCmd Stage = "cmd"
-	// StageDraw: the preedit the frame drew at the caret.
-	StageDraw Stage = "draw"
-	// StageMeta: the recorder's own note about the recording, not the input path —
-	// a writer marking the records it had to drop.
-	StageMeta Stage = "meta"
-	// StageFrame: where a frame's input began and ended. The replay segments on
-	// these: delivery happens at frame ends, so without them a recording cannot
-	// say when the input path delivered.
-	StageFrame Stage = "frame"
-)
+type Stage = record.Stage
 
 // Record is one entry of a recording.
-type Record struct {
-	Seq   uint64         // the record's number, from 0, in the order they were taken
-	At    time.Time      // when it was taken
-	Stage Stage          // where along the input path
-	Kind  string         // the event or command's type name, e.g. "TextEdit"
-	Data  map[string]any // its fields; for StageIME: text, comp, sel, pieces
-}
+type Record = record.Record
 
 // Recorder receives the input path's records. Record must not block the window:
 // implementations buffer and flush on their own terms.
-type Recorder interface {
-	Record(Record)
-}
+type Recorder = record.Recorder
+
+// JSONLRecorder writes records as one JSON object per line, buffered through a
+// writer goroutine; see [record.JSONLRecorder].
+type JSONLRecorder = record.JSONLRecorder
+
+// NewJSONLRecorder records to w, one JSON object per line.
+func NewJSONLRecorder(w io.Writer) *JSONLRecorder { return record.NewJSONLRecorder(w) }
+
+const (
+	// StageIn: one event arrived from the toolkit, before the backend applied it.
+	StageIn = record.StageIn
+	// StageIME: the IME buffer's state after an event was applied.
+	StageIME = record.StageIME
+	// StageOut: the key events committed text was delivered to the App as.
+	StageOut = record.StageOut
+	// StageCmd: a command the backend sent back to the toolkit.
+	StageCmd = record.StageCmd
+	// StageDraw: the preedit the frame drew at the caret.
+	StageDraw = record.StageDraw
+	// StageMeta: the recorder's own note about the recording, not the input path —
+	// a writer marking the records it had to drop.
+	StageMeta = record.StageMeta
+	// StageFrame: where a frame's input began and ended. The replay segments on
+	// these: delivery happens at frame ends, so without them a recording cannot
+	// say when the input path delivered.
+	StageFrame = record.StageFrame
+	// StageTui: the tui's own trace, mapped into the same file by a host that
+	// records one. The replay validates these and skips them.
+	StageTui = record.StageTui
+)
 
 // record numbers and hands one record to the installed recorder. The hooks build
 // their data inside their own b.rec != nil guard, so the path with no recorder
@@ -114,90 +118,6 @@ func imeFields(s *imeState) map[string]any {
 		"comp":   map[string]any{"start": s.comp.Start, "end": s.comp.End},
 		"sel":    map[string]any{"start": s.sel.Start, "end": s.sel.End},
 		"pieces": pieces,
-	}
-}
-
-// JSONLRecorder writes records as one JSON object per line.
-//
-// Record never blocks the window goroutine: records go over a bounded channel to a
-// writer goroutine that owns the buffered writer. Under sustained overload the channel
-// can fill; the record is dropped then, and the writer notes the drop in the file — a
-// {"Stage":"meta","Kind":"dropped"} line before the next record it writes, carrying the
-// total dropped so far — so a recording never loses events silently. Close stops
-// accepting records, waits for the writer to drain and flush, and returns the first
-// error the recording hit.
-type JSONLRecorder struct {
-	rec     chan Record   // to the writer goroutine; never read after Close
-	dropped atomic.Uint64 // records the window goroutine dropped
-	done    chan struct{} // closed once the writer has drained and flushed
-	err     error         // the writer's first error; stable once done is closed
-	closeOn sync.Once     // Close drains once
-}
-
-// NewJSONLRecorder records to w, one JSON object per line.
-func NewJSONLRecorder(w io.Writer) *JSONLRecorder {
-	r := &JSONLRecorder{rec: make(chan Record, 4096), done: make(chan struct{})}
-	go r.write(w)
-	return r
-}
-
-// Record hands one record to the writer goroutine. It never blocks: when the channel
-// is full the record is dropped and counted, and the writer notes the drop in the file
-// before the next record it writes.
-func (r *JSONLRecorder) Record(rec Record) {
-	select {
-	case r.rec <- rec:
-	default:
-		r.dropped.Add(1)
-	}
-}
-
-// Close stops accepting records, waits for the writer to drain and flush, and returns
-// the first error the recording hit. It is safe to call more than once.
-func (r *JSONLRecorder) Close() error {
-	r.closeOn.Do(func() {
-		close(r.rec)
-		<-r.done
-	})
-	return r.err
-}
-
-// write drains the channel into the buffered writer, on its own goroutine.
-func (r *JSONLRecorder) write(w io.Writer) {
-	defer close(r.done)
-	bw := bufio.NewWriterSize(w, 1<<16)
-	var noted uint64
-	for rec := range r.rec {
-		if n := r.dropped.Load(); n > noted {
-			noted = n
-			r.writeRec(bw, Record{Stage: StageMeta, Kind: "dropped", Data: map[string]any{"n": n}})
-		}
-		r.writeRec(bw, rec)
-	}
-	// Drops whose following record never came are noted too.
-	if n := r.dropped.Load(); n > noted {
-		r.writeRec(bw, Record{Stage: StageMeta, Kind: "dropped", Data: map[string]any{"n": n}})
-	}
-	r.setErr(bw.Flush())
-}
-
-// writeRec buffers one record as a JSON line. The first error ends the recording.
-func (r *JSONLRecorder) writeRec(bw *bufio.Writer, rec Record) {
-	if r.err != nil {
-		return
-	}
-	b, err := json.Marshal(rec)
-	if err == nil {
-		_, err = bw.Write(append(b, '\n'))
-	}
-	r.setErr(err)
-}
-
-// setErr keeps the first error the recording hit; marshal, write and flush errors
-// alike report through Close, and a later success never hides an earlier failure.
-func (r *JSONLRecorder) setErr(err error) {
-	if err != nil && r.err == nil {
-		r.err = err
 	}
 }
 

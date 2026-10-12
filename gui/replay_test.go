@@ -55,7 +55,8 @@ import (
 )
 
 // kindOf names the Kind each Stage carries; a record outside it is not this
-// build's recording.
+// build's recording. The tui stage's kinds are tui.TraceEvent's (TraceKind
+// names), which a host that records the tui's trace maps in.
 var kindOf = map[Stage][]string{
 	StageIn:    {"KeyInput", "TextEdit", "Composition", "SelectionSet", "SnippetAsk", "FocusChange"},
 	StageIME:   {"imeState"},
@@ -64,6 +65,7 @@ var kindOf = map[Stage][]string{
 	StageDraw:  {"preedit"},
 	StageMeta:  {"dropped"},
 	StageFrame: {"begin", "end"},
+	StageTui:   {"focus", "focus-repair", "mount", "unmount", "key", "scope", "action", "capture"},
 }
 
 // decodeRecording reads a JSONL recording, one record per line, and rejects a
@@ -214,8 +216,8 @@ func validateTrace(recs []Record) error {
 		if rec.Stage == StageMeta && rec.Kind == "dropped" {
 			return errf("recording dropped %v records under load; re-record (replay needs a complete trace)", rec.Data["n"])
 		}
-		if rec.Stage == StageDraw || (rec.Stage == StageCmd && rec.Kind == "SelectionTell") {
-			continue // a frame's presentation tail, inside its pair or after its end
+		if rec.Stage == StageDraw || rec.Stage == StageTui || (rec.Stage == StageCmd && rec.Kind == "SelectionTell") {
+			continue // a frame's presentation tail or the tui's own trace: neither belongs to the frame rules
 		}
 		if rec.Stage != StageFrame {
 			if framed && !inside {
@@ -440,17 +442,32 @@ func TestTheRecordedMultiFrameSessionReplays(t *testing.T) {
 	replayRecording(t, data)
 }
 
+// A recording with the tui's own trace mapped in — the one file a --debug run
+// holds — replays clean: the tui records are validated and skipped, wherever
+// they sit, inside a frame or between them.
+func TestARecordingWithTheTuiTraceInterleavedReplays(t *testing.T) {
+	data, err := os.ReadFile("testdata/tui-interleaved.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayRecording(t, data)
+}
+
 // A recording from a newer build — a Stage or Kind this one does not know — must
 // fail loudly, not pass by being misunderstood.
 func TestTheReplayRejectsWhatItDoesNotKnow(t *testing.T) {
 	newer := `{"Seq":0,"At":"2026-01-01T00:00:00Z","Stage":"in","Kind":"TextEdit","Data":{"start":0,"end":0,"text":"a"}}
-{"Seq":1,"At":"2026-01-01T00:00:00Z","Stage":"tui","Kind":"Trace","Data":{}}`
-	if _, err := decodeRecording([]byte(newer)); err == nil || !strings.Contains(err.Error(), `"tui"`) {
+{"Seq":1,"At":"2026-01-01T00:00:00Z","Stage":"panel","Kind":"Trace","Data":{}}`
+	if _, err := decodeRecording([]byte(newer)); err == nil || !strings.Contains(err.Error(), `"panel"`) {
 		t.Fatalf("a newer build's stage passed the decode: %v", err)
 	}
 	unknownKind := `{"Seq":0,"At":"2026-01-01T00:00:00Z","Stage":"in","Kind":"Gesture","Data":{}}`
 	if _, err := decodeRecording([]byte(unknownKind)); err == nil || !strings.Contains(err.Error(), `"Gesture"`) {
 		t.Fatalf("an unknown in-kind passed the decode: %v", err)
+	}
+	unknownTuiKind := `{"Seq":0,"At":"2026-01-01T00:00:00Z","Stage":"tui","Kind":"warp","Data":{}}`
+	if _, err := decodeRecording([]byte(unknownTuiKind)); err == nil || !strings.Contains(err.Error(), `"warp"`) {
+		t.Fatalf("an unknown tui-kind passed the decode: %v", err)
 	}
 }
 

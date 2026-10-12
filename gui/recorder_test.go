@@ -312,7 +312,7 @@ func TestABlockedWriterDropsRatherThanBlocks(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("Record blocked on a stalled writer")
 	}
-	if rec.dropped.Load() == 0 {
+	if rec.Dropped() == 0 {
 		t.Fatal("a stalled writer with a full handoff channel dropped nothing")
 	}
 	close(release)
@@ -334,18 +334,18 @@ func TestABlockedWriterDropsRatherThanBlocks(t *testing.T) {
 		notes = append(notes, uint64(rec.Data["n"].(float64)))
 	}
 	if len(notes) == 0 {
-		t.Fatalf("a stalled writer with a full handoff channel dropped %d records and noted none in the file", rec.dropped.Load())
+		t.Fatalf("a stalled writer with a full handoff channel dropped %d records and noted none in the file", rec.Dropped())
 	}
 	for i, n := range notes {
 		if i > 0 && n < notes[i-1] {
 			t.Fatalf("drop notes %v are not cumulative", notes)
 		}
-		if n > rec.dropped.Load() {
-			t.Fatalf("a drop note claims %d of %d dropped", n, rec.dropped.Load())
+		if n > rec.Dropped() {
+			t.Fatalf("a drop note claims %d of %d dropped", n, rec.Dropped())
 		}
 	}
-	if notes[len(notes)-1] != rec.dropped.Load() {
-		t.Fatalf("the last drop note carries %d; want the %d dropped", notes[len(notes)-1], rec.dropped.Load())
+	if notes[len(notes)-1] != rec.Dropped() {
+		t.Fatalf("the last drop note carries %d; want the %d dropped", notes[len(notes)-1], rec.Dropped())
 	}
 }
 
