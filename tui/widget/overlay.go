@@ -156,6 +156,72 @@ func (h *OverlayHost) raiseTopmost() {
 	}
 }
 
+// Raise moves an attached Float to the top of the ordinary layers: above every other panel and
+// popup, and still beneath the open dialogs (a Modal with its scrim, a shown modal Float) and the
+// topmost floats. A non-modal Float raises itself when the keyboard enters it, so the panel being
+// typed into is the one drawn on top (Qt's QWidget::raise on activation). A shown modal Float is
+// an open dialog: raising one moves it above the other dialogs, as showing it did. A topmost Float
+// is above everything already, and a Float not attached here is left alone.
+//
+// It reorders the one layer and moves nothing else: focus stays where it is, the dialogs keep
+// their order among themselves, and each keeps its scrim directly beneath it. The node is moved,
+// never remounted.
+func (h *OverlayHost) Raise(f *Float) {
+	if f == nil || !h.hasLayer(f) || slices.Contains(h.topmost, f) {
+		return
+	}
+	if f.modal && f.shown {
+		h.moveBelow(f, h.isTopmost)
+		return
+	}
+	h.moveBelow(f, h.pinned)
+}
+
+// moveBelow moves f directly beneath the lowest layer other than f that ceiling holds, or to the
+// top when there is none.
+func (h *OverlayHost) moveBelow(f *Float, ceiling func(tui.Component) bool) {
+	from, to := -1, -1
+	for i, layer := range h.Stack.All() {
+		switch {
+		case layer == tui.Component(f):
+			from = i
+		case to < 0 && ceiling(layer):
+			to = i
+		}
+	}
+	if from < 0 {
+		return
+	}
+	switch {
+	case to < 0:
+		to = h.Stack.Len() - 1
+	case from < to:
+		to-- // Move's index is after the removal: f leaving shifts the ceiling down one
+	}
+	h.Stack.Move(f, to)
+}
+
+// pinned reports whether layer stays above the ordinary layers: an open dialog, its scrim, a shown
+// modal Float, or a topmost Float.
+func (h *OverlayHost) pinned(layer tui.Component) bool {
+	if h.scrim != nil && layer == tui.Component(h.scrim) {
+		return true
+	}
+	switch l := layer.(type) {
+	case *Modal:
+		return slices.Contains(h.modals, l)
+	case *Float:
+		return l.modal && l.shown || slices.Contains(h.topmost, l)
+	}
+	return false
+}
+
+// isTopmost reports whether layer is one of the topmost floats.
+func (h *OverlayHost) isTopmost(layer tui.Component) bool {
+	f, ok := layer.(*Float)
+	return ok && slices.Contains(h.topmost, f)
+}
+
 // Detach removes a previously attached Float.
 //
 // Attach used to be permanent, which made a Float usable only by an owner that

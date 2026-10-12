@@ -25,6 +25,7 @@ func (t *Tree) AccessibleRole() tui.AccessibleRole        { return tui.RoleTree 
 func (t *Text) AccessibleRole() tui.AccessibleRole        { return tui.RoleStaticText }
 func (m *Image) AccessibleRole() tui.AccessibleRole       { return tui.RoleImage }
 func (t *Terminal) AccessibleRole() tui.AccessibleRole    { return tui.RoleTerminal }
+func (f *Float) AccessibleRole() tui.AccessibleRole       { return tui.RoleWindow }
 
 var (
 	_ tui.RoleReporter = (*Button)(nil)
@@ -47,4 +48,5 @@ var (
 	_ tui.RoleReporter = (*Text)(nil)
 	_ tui.RoleReporter = (*Image)(nil)
 	_ tui.RoleReporter = (*Terminal)(nil)
+	_ tui.RoleReporter = (*Float)(nil)
 )

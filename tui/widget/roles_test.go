@@ -21,6 +21,7 @@ func TestWidgetRoles(t *testing.T) {
 		{widget.NewBox(nil), tui.RoleGrouping},
 		{widget.NewText(""), tui.RoleStaticText},
 		{widget.NewTree(), tui.RoleTree},
+		{widget.NewFloat(widget.NewText("")), tui.RoleWindow},
 	}
 	for _, c := range cases {
 		if got := tui.RoleOf(c.c); got != c.want {

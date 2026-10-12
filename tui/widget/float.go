@@ -178,8 +178,9 @@ type Float struct {
 	wPct   int // 0 = natural width; else a percentage of the available area
 	hPct   int
 
-	shown bool
-	layer *floatLayer
+	shown   bool
+	layer   *floatLayer
+	content tui.Rect // where the layer last placed the child, in the float's cells
 
 	scrim        style.Style
 	windowTarget *floatWindowTarget
@@ -254,6 +255,32 @@ func (f *Float) Shown() bool { return f.shown }
 // against it.
 func (f *Float) Area() tui.Size { return f.area }
 
+// ContentRect is where the float's content was last laid out, in the float's own cells (the
+// float fills the overlay area, so they are the area's); zero while hidden. A native style draws a
+// floating panel's shadow around it, as it does around a dialog's card (Modal.CardRect).
+func (f *Float) ContentRect() tui.Rect {
+	if !f.shown {
+		return tui.Rect{}
+	}
+	return f.content
+}
+
+// Floating reports whether the float is placed free of the area's edges: centred, or at a
+// rectangle (AtRect, AtFraction: a panel moved or resized off its edge). A float anchored at an
+// edge or a corner is docked there.
+func (f *Float) Floating() bool {
+	a := f.anchor
+	return a.atRect || a.atFraction || a.align == tui.AlignCenter
+}
+
+// raise moves the float to the top of its OverlayHost's ordinary layers (OverlayHost.Raise), or
+// above the open dialogs when it is a shown modal one; a no-op outside an OverlayHost.
+func (f *Float) raise() {
+	if h, ok := hostFor[*OverlayHost](f.ctx); ok {
+		h.Raise(f)
+	}
+}
+
 // SetAnchor moves the float's content to another anchor: a drawer that opens from another edge.
 func (f *Float) SetAnchor(a Anchor) {
 	if f.windowTarget != nil {
@@ -288,6 +315,10 @@ func (f *Float) Show() {
 	f.shown = true
 	f.RequestLayout()
 	if f.modal {
+		// An open dialog: above the panels and the dialogs open before it, as a Modal's Open
+		// puts it, whenever this Float was attached. A panel raised since it was attached would
+		// otherwise cover the dialog that holds the keyboard.
+		f.raise()
 		if focusFirst(f.layer.Context(), f.child) {
 			f.layer.fallback = false
 		} else {
@@ -434,7 +465,8 @@ func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
 		sz = l.ctx.LayoutChild(l.owner.child, tui.Loose(tui.Size{W: w, H: h}))
 		x, y = alignOffset(a.align, tui.Size{W: w, H: h}, sz)
 	}
-	l.ctx.PlaceChild(l.owner.child, tui.Rect{X: x, Y: y, W: sz.W, H: sz.H})
+	l.owner.content = tui.Rect{X: x, Y: y, W: sz.W, H: sz.H}
+	l.ctx.PlaceChild(l.owner.child, l.owner.content)
 	return c.Constrain(tui.Size{W: w, H: h})
 }
 
@@ -466,8 +498,16 @@ func (l *floatLayer) Render(s tui.Surface) {
 
 // HandleEvent: modal layers consume Esc (dismiss) and all backdrop mouse
 // events; non-modal layers consume nothing.
+//
+// A non-modal layer raises its float when the keyboard enters it: a FocusEvent
+// bubbles up from the newly focused node, whether Tab, a click or a program
+// moved it, and the layer is an ancestor of all its content. Observed, never
+// consumed, as every container observes focus.
 func (l *floatLayer) HandleEvent(ev tui.Event) bool {
 	if !l.owner.modal {
+		if fe, ok := ev.(tui.FocusEvent); ok && fe.Gained && !fe.Terminal {
+			l.owner.raise()
+		}
 		return false
 	}
 	switch e := ev.(type) {

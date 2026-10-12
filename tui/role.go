@@ -27,6 +27,7 @@ const (
 	RoleStaticText
 	RoleImage
 	RoleTerminal
+	RoleWindow // a window over the application: a floating panel, a drawer (widget.Float)
 )
 
 // RoleReporter is a component that says what it is. Optional. The method is not named Role: a

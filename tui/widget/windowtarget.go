@@ -133,6 +133,7 @@ func (l *floatLayer) layoutManaged(c tui.Constraints, w, h int) tui.Size {
 		x, y := alignOffset(a.align, tui.Size{W: area.W, H: area.H}, sz)
 		r = tui.Rect{X: area.X + x, Y: area.Y + y, W: sz.W, H: sz.H}
 	}
+	f.content = r
 	l.ctx.PlaceChild(f.child, r)
 	l.ctx.AfterLayout("window-placement", func() { t.bounds, t.area = r, area })
 	return c.Constrain(tui.Size{W: w, H: h})
