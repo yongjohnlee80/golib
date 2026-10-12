@@ -92,6 +92,7 @@ func appTypes() []Type {
 				// golib's: the contrast ratio (WCAG's) every foreground is raised to against its
 				// background, so a program's colours read on a light theme; 0 is off
 				"minimumContrast": setter("a Terminal", numberOf, (*widget.Terminal).SetMinimumContrast),
+				"cursorColor":     setter("a Terminal", colorOf, (*widget.Terminal).SetCursorColor),
 			},
 			Methods: map[string]Method{
 				"start": NoArgMethod((*widget.Terminal).Start),

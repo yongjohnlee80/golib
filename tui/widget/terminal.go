@@ -150,6 +150,9 @@ type Terminal struct {
 
 	normal normalState
 	look   style.Style // the program's default colours, with theme colours on (SetDefaultLook)
+	// cursorColor is the hardware cursor's colour while cursorColored (tui.CursorColorer)
+	cursorColor   style.Color
+	cursorColored bool
 	// minContrast is the ratio a foreground is raised to against its background; 0: off
 	// (terminal_contrast.go). contrastCache holds the colours it gave.
 	minContrast   float64
@@ -719,8 +722,9 @@ func (t *Terminal) Cursor() (x, y int, ok bool) {
 	return col, row, visible && (t.running || !t.exited)
 }
 
-// CursorShape is the program's DECSCUSR shape in input mode, and a block in
-// normal mode.
+// CursorShape shows the mode, as the Editor's does: a block in normal mode, and in input mode a
+// thin bar, the Editor's while typing, unless the program asked for a shape of its own with
+// DECSCUSR (vim's block, an underline). DECSCUSR 0 asks for the host's own, which is the bar.
 func (t *Terminal) CursorShape() tui.CursorShape {
 	if t.mode == TerminalNormal {
 		return tui.CursorShapeBlock
@@ -731,11 +735,19 @@ func (t *Terminal) CursorShape() tui.CursorShape {
 		return tui.CursorShapeBlock
 	case vt.CursorUnderline:
 		return tui.CursorShapeUnderline
-	case vt.CursorBar:
-		return tui.CursorShapeBar
 	}
-	return tui.CursorShapeDefault
+	return tui.CursorShapeBar
 }
+
+// SetCursorColor gives the hardware cursor a colour of its own, as the Editor's SetCursorColor
+// does, so the two carets look alike; the terminal's own colour otherwise.
+func (t *Terminal) SetCursorColor(c style.Color) {
+	t.cursorColor, t.cursorColored = c, true
+	t.MarkDirty()
+}
+
+// CursorColor implements tui.CursorColorer.
+func (t *Terminal) CursorColor() (style.Color, bool) { return t.cursorColor, t.cursorColored }
 
 // inputQueue writes keys to the program on its own goroutine, so a program
 // that stops reading never blocks the UI loop.

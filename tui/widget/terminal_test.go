@@ -473,7 +473,7 @@ func TestTerminalAttributesAndCursor(t *testing.T) {
 	}
 	for seq, want := range map[string]tui.CursorShape{
 		"\x1b[2 q": tui.CursorShapeBlock, "\x1b[4 q": tui.CursorShapeUnderline,
-		"\x1b[6 q": tui.CursorShapeBar, "\x1b[0 q": tui.CursorShapeDefault,
+		"\x1b[6 q": tui.CursorShapeBar, "\x1b[0 q": tui.CursorShapeBar, // 0: the host's own, the bar
 	} {
 		f.output(seq)
 		var got tui.CursorShape
@@ -657,4 +657,34 @@ func TestTerminalFailedStartCanBeRetried(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestATerminalsCursorShowsItsMode: on the screen, not only by its answer, the cursor is a thin bar
+// in input mode while the program sets no shape, the program's own when it sets one, a block in
+// normal mode, and the bar again back in input mode; SetCursorColor colours it as the Editor's.
+func TestATerminalsCursorShowsItsMode(t *testing.T) {
+	f := startTerm(t, 20, 3)
+	shown := func(want tui.CursorShape, what string) {
+		t.Helper()
+		f.h.waitFor(what, func() bool { return f.h.tb.CursorShape() == want })
+	}
+	shown(tui.CursorShapeBar, "the bar in input mode, no shape set")
+	f.output("\x1b[2 q")
+	shown(tui.CursorShapeBlock, "the program's block")
+	f.output("\x1b[4 q")
+	shown(tui.CursorShapeUnderline, "the program's underline")
+	f.output("\x1b[0 q")
+	shown(tui.CursorShapeBar, "the bar again, the host's own asked for")
+	f.h.inject(ctrl('\\'), ctrl('n'))
+	f.h.waitFor("normal", func() bool { return f.mode() == widget.TerminalNormal })
+	shown(tui.CursorShapeBlock, "the block in normal mode")
+	f.h.inject(key('i'))
+	f.h.waitFor("input", func() bool { return f.mode() == widget.TerminalInput })
+	shown(tui.CursorShapeBar, "the bar back in input mode")
+
+	f.h.onLoop(func() { f.term.SetCursorColor(style.RGB(0xFF, 0x88, 0x00)) })
+	f.h.waitFor("the cursor coloured", func() bool {
+		c, ok := f.h.tb.CursorColor()
+		return ok && c.Kind == tui.CellColorRGB && c.R == 0xFF && c.G == 0x88 && c.B == 0
+	})
 }
