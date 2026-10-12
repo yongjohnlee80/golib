@@ -95,17 +95,36 @@ func TestCheckExpandsAnUnusedComponentItCannotMount(t *testing.T) {
 	}
 }
 
-// TestCheckMountsAnUnusedComponentRequiringOnlyScalars with a typed zero for
-// each, so its file is judged as a mount judges it.
-func TestCheckMountsAnUnusedComponentRequiringOnlyScalars(t *testing.T) {
-	const field = "Flex {\n required property string name\n required property int width0\n" +
-		" required property bool on\n Text { text: name }\n CheckBox { text: \"x\"; checked: on }\n}"
+// TestCheckDoesNotMountAComponentRequiringAScalar: a typed zero is not a
+// value every widget accepts — a Shortcut's sequence must not be empty — so
+// an unused component with any required declaration is expanded, never
+// mounted with a made-up value. Where it is used, it is mounted with the
+// use's value, and judged fully there.
+func TestCheckDoesNotMountAComponentRequiringAScalar(t *testing.T) {
+	const quit = "Shortcut {\n required property string key\n sequence: key\n onActivated: App.picked(key)\n}"
+	if err := checkPicker(t, "", map[string]string{"ui/Quit.qml": quit}); err != nil {
+		t.Fatalf("Check refused an unused Shortcut requiring its key: %v", err)
+	}
+	err := checkPicker(t, ` Quit { key: "" }`, map[string]string{"ui/Quit.qml": quit})
+	if err == nil || !strings.HasPrefix(err.Error(), "main.qml: ") || !strings.Contains(err.Error(), "Shortcut needs a sequence") {
+		t.Fatalf("a Quit used with an empty key passed Check, or not as the layout's mount: %v", err)
+	}
+	if err := checkPicker(t, ` Quit { key: "Ctrl+Q" }`, map[string]string{"ui/Quit.qml": quit}); err != nil {
+		t.Fatalf("a Quit used with a key: %v", err)
+	}
+}
+
+// TestCheckMountsAnUnusedComponentWhoseDeclarationsAllHaveDefaults: nothing
+// is made up, so it is mounted bare as before, and judged as a mount judges.
+func TestCheckMountsAnUnusedComponentWhoseDeclarationsAllHaveDefaults(t *testing.T) {
+	const field = "Flex {\n property string name: \"n\"\n property bool on: true\n" +
+		" Text { text: name }\n CheckBox { text: \"x\"; checked: on }\n}"
 	if err := checkPicker(t, "", map[string]string{"ui/Field.qml": field}); err != nil {
-		t.Fatalf("Check refused an unused component requiring scalars: %v", err)
+		t.Fatalf("Check refused an unused component with defaults: %v", err)
 	}
 	err := checkPicker(t, "", map[string]string{"ui/Field.qml": strings.Replace(field, "checked: on", "chekked: on", 1)})
 	if err == nil || !strings.Contains(err.Error(), "component Field of demo.ui") || !strings.Contains(err.Error(), "chekked") {
-		t.Fatalf("Check passed a broken component requiring scalars: %v", err)
+		t.Fatalf("Check did not mount an unused component with defaults: %v", err)
 	}
 }
 
