@@ -105,11 +105,11 @@ func (s FileSource) or() FileSource {
 func (s FileSource) async() bool { return s.VFS != nil || s.Async }
 
 // isDir reports whether an fs path is a folder, following a link to one in an
-// fs.FS. A VFS source is asked at once, on the caller's goroutine: it is a
-// Save or Folder view's Enter on a typed name, not a listing.
-func (s FileSource) isDir(p string) bool {
+// fs.FS, with ctx bounding a VFS read. A Save or Folder view asks it of a typed
+// name off the loop for an async source (typedStat).
+func (s FileSource) isDir(ctx context.Context, p string) bool {
 	if s.VFS != nil {
-		fi, err := s.VFS.Stat(context.Background(), p)
+		fi, err := s.VFS.Stat(ctx, p)
 		return err == nil && fi.IsDir()
 	}
 	fi, err := fs.Stat(s.FS, p)
@@ -136,7 +136,7 @@ func (s FileSource) readDir(ctx context.Context, dir string) (dirs, files []file
 	for _, d := range ds {
 		// A LINK to a folder is a folder to the user; asking the source
 		// follows it, which DirEntry.IsDir does not.
-		if d.IsDir() || (d.Type()&fs.ModeSymlink != 0 && s.isDir(path.Join(dir, d.Name()))) {
+		if d.IsDir() || (d.Type()&fs.ModeSymlink != 0 && s.isDir(ctx, path.Join(dir, d.Name()))) {
 			dirs = append(dirs, fileEntry{name: d.Name(), dir: true})
 		} else {
 			files = append(files, fileEntry{name: d.Name()})
