@@ -409,10 +409,18 @@ func paintDialog(comp tui.Component) (View, tui.NativeScope, bool) {
 // attached to. The shadow is what tells a floating panel from a docked one.
 func paintWindow(comp tui.Component) (View, tui.NativeScope, bool) {
 	f, ok := comp.(*widget.Float)
-	if !ok || !f.Floating() {
+	if !ok || !f.Floating() || fillsArea(f) {
 		return nil, 0, false
 	}
 	return ViewFunc(func(c Canvas) { softShadow(c, f.ContentRect(), panelShadow) }), tui.ScopeChrome, true
+}
+
+// fillsArea reports whether f's content covers its whole area (a panel maximised to Center at
+// 100%): no shadow is seen there, and declining keeps the full-window native view out of the frame.
+// The painter is asked every frame, so a panel taken back from maximised gets its shadow again.
+func fillsArea(f *widget.Float) bool {
+	cr, a := f.ContentRect(), f.Area()
+	return a.W > 0 && a.H > 0 && cr.X <= 0 && cr.Y <= 0 && cr.X+cr.W >= a.W && cr.Y+cr.H >= a.H
 }
 
 // shadowLook is a soft shadow: rings of a translucent black around a card, each a pixel wider than
