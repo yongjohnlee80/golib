@@ -78,11 +78,21 @@ type SnippetReply struct {
 	Text       string
 }
 
+// CaretPlace is where the caret is, as the toolkit needs it to place the input
+// method's candidate window: the anchor point where the caret meets the text
+// baseline, and how far the text rises above and sinks below it. X and Y are
+// that baseline anchor point in device pixels; Ascent and Descent are lengths
+// in device pixels as well.
+type CaretPlace struct {
+	X, Y            float32
+	Ascent, Descent float32
+}
+
 // SelectionTell reports the selection and where the caret is, for the toolkit
 // to place the input method's candidate window.
 type SelectionTell struct {
 	Start, End int
-	Caret      Rect
+	Caret      CaretPlace
 }
 
 // KeyboardShow asks the toolkit to open the software keyboard: on Wayland,
