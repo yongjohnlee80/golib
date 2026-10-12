@@ -757,7 +757,8 @@ goes into it.
 A **`FileSource`** is an `fs.FS` and the root its paths are written under: `"/"`
 for `LocalFiles()`, `"sftp://host/"` for a remote store. Every path the widgets
 report or accept is in that rooted form, so a local view hands a host an
-ordinary absolute path. `FilePaneStyles` dresses every pane alike: the surface,
+ordinary absolute path. An `fs.FS` is read on the loop. `Async` reads it off
+the loop, and a `vfs.FS` in `VFS` is always read off it. `FilePaneStyles` dresses every pane alike: the surface,
 the list cursor bright (`Cursor`) and dim (`CursorBlurred`), the frame without and
 with the keyboard, and the `Gap` between panes, which takes the colour of what
 holds them.

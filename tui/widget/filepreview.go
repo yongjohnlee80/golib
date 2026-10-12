@@ -44,11 +44,11 @@ type FilePreview struct {
 	// note reads in the App's language.
 	note    tui.Message
 	noteArg string
-	// readTask is a VFS preview in flight; a newer Show supersedes it.
+	// readTask is an async preview in flight; a newer Show supersedes it.
 	readTask tui.TaskID
 	reading  bool
-	// stopRead cancels the read in flight: a folder row or an fs.FS source,
-	// shown at once, stops it rather than leaving it to finish
+	// stopRead cancels the read in flight: a folder row or a source read on
+	// the loop, shown at once, stops it rather than leaving it to finish
 	stopRead context.CancelFunc
 }
 
@@ -92,7 +92,7 @@ func (p *FilePreview) Layout(c tui.Constraints) tui.Size {
 
 func (p *FilePreview) Render(tui.Surface) {}
 
-// HandleEvent applies a VFS preview when it arrives, unless a newer Show has
+// HandleEvent applies an async preview when it arrives, unless a newer Show has
 // superseded it.
 func (p *FilePreview) HandleEvent(ev tui.Event) bool {
 	r, ok := ev.(tui.TaskResult)
@@ -119,8 +119,9 @@ type preview struct {
 // to show. Any fs.FS will do — the preview reads a remote file as it reads a
 // local one.
 //
-// A VFS source is read off the loop: the preview says it is loading until the
-// text arrives, and a newer Show stops the read in flight.
+// An async source (VFS, or an Async fs.FS) is read off the loop: the preview
+// says it is loading until the text arrives, and a newer Show stops the read in
+// flight, or drops its answer when it cannot be stopped.
 func (p *FilePreview) Show(src FileSource, path string, folder bool) {
 	src = src.or()
 	ctx := p.Context()
