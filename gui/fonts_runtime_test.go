@@ -1,15 +1,13 @@
 package gui
 
 import (
+	"gioui.org/op"
+	"gioui.org/unit"
 	"image"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
-
-	"gioui.org/io/key"
-	"gioui.org/op"
-	"gioui.org/unit"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -97,8 +95,8 @@ func TestSetFontChangesTheFaceOfCellsViewsAndPreedit(t *testing.T) {
 // changes font and zoom: under -race, the two never share a field.
 func TestFontChangesRaceNeitherFramesNorPreedit(t *testing.T) {
 	b := NewBackend()
-	b.gio.ime.edit(key.EditEvent{Text: "한"})
-	b.gio.ime.compose(key.CompositionEvent{Start: 0, End: 1})
+	b.gio.ime.edit(TextEdit{Text: "한"})
+	b.gio.ime.compose(Composition{Start: 0, End: 1})
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() { // the Gio goroutine's frame

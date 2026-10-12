@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"gioui.org/gpu/headless"
-	"gioui.org/io/key"
 	"gioui.org/op"
 	"gioui.org/unit"
 )
@@ -15,8 +14,8 @@ import (
 // page at the caret, the preedit's box is that page, where it used to be the theme's dark box.
 func TestThePreeditIsDrawnInTheTextsColours(t *testing.T) {
 	b := NewBackend()
-	b.gio.ime.edit(key.EditEvent{Text: "한"})
-	b.gio.ime.compose(key.CompositionEvent{Start: 0, End: 1})
+	b.gio.ime.edit(TextEdit{Text: "한"})
+	b.gio.ime.compose(Composition{Start: 0, End: 1})
 	fs := b.font.Load()
 	m := measure(fs.fm, fs.size, 0, image.Pt(200, 60), unit.Metric{PxPerDp: 1, PxPerSp: 1})
 	hw, err := headless.NewWindow(m.window.X, m.window.Y)

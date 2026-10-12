@@ -3,13 +3,11 @@ package gui
 import (
 	"strings"
 	"testing"
-
-	"gioui.org/io/key"
 )
 
 func TestIMEPlainTyping(t *testing.T) {
 	var s imeState
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"})
+	s.edit(TextEdit{Start: 0, End: 0, Text: "a"})
 	if got, ok := s.take(); !ok || len(got) != 1 || got[0] != "a" {
 		t.Fatalf("take = %q, %v; want [\"a\"]", got, ok)
 	}
@@ -25,20 +23,20 @@ func TestIMEPlainTyping(t *testing.T) {
 // until the input method ends the composition.
 func TestIMEComposition(t *testing.T) {
 	var s imeState
-	s.edit(key.EditEvent{Range: key.Range{}, Text: "ㅎ"})
-	s.compose(key.CompositionEvent{Start: 0, End: 1})
+	s.edit(TextEdit{Text: "ㅎ"})
+	s.compose(Composition{Start: 0, End: 1})
 	if got := s.preedit(); got != "ㅎ" {
 		t.Fatalf("preedit = %q; want ㅎ", got)
 	}
 	if _, ok := s.take(); ok {
 		t.Fatal("text was committed in the middle of a composition")
 	}
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 1}, Text: "하"})
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 1}, Text: "한"})
+	s.edit(TextEdit{Start: 0, End: 1, Text: "하"})
+	s.edit(TextEdit{Start: 0, End: 1, Text: "한"})
 	if got := s.preedit(); got != "한" {
 		t.Fatalf("preedit = %q; want 한", got)
 	}
-	s.compose(key.CompositionEvent{Start: -1, End: -1})
+	s.compose(Composition{Start: -1, End: -1})
 	if got, ok := s.take(); !ok || len(got) != 1 || got[0] != "한" {
 		t.Fatalf("take = %q, %v; want [한]", got, ok)
 	}
@@ -49,8 +47,8 @@ func TestIMEComposition(t *testing.T) {
 
 func TestIMEClampsRanges(t *testing.T) {
 	var s imeState
-	s.edit(key.EditEvent{Range: key.Range{Start: 7, End: 9}, Text: "x"}) // past the end
-	s.edit(key.EditEvent{Range: key.Range{Start: 1, End: 0}, Text: "y"}) // reversed
+	s.edit(TextEdit{Start: 7, End: 9, Text: "x"}) // past the end
+	s.edit(TextEdit{Start: 1, End: 0, Text: "y"}) // reversed
 	if got, ok := s.take(); !ok || len(got) != 1 || got[0] != "y" {
 		t.Fatalf("take = %q, %v; want [\"y\"] (x replaced by y)", got, ok)
 	}
@@ -62,10 +60,10 @@ func TestIMEClampsRanges(t *testing.T) {
 // both macOS's insertText and Wayland's xkb deliver them.
 func TestIMECommitsInArrivalOrder(t *testing.T) {
 	var s imeState
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"})
-	s.edit(key.EditEvent{Range: key.Range{Start: 1, End: 1}, Text: " "})
-	s.edit(key.EditEvent{Range: key.Range{Start: 2, End: 2}, Text: "b"})
-	s.edit(key.EditEvent{Range: key.Range{Start: 3, End: 3}, Text: "b"})
+	s.edit(TextEdit{Start: 0, End: 0, Text: "a"})
+	s.edit(TextEdit{Start: 1, End: 1, Text: " "})
+	s.edit(TextEdit{Start: 2, End: 2, Text: "b"})
+	s.edit(TextEdit{Start: 3, End: 3, Text: "b"})
 	got, ok := s.take()
 	if !ok || strings.Join(got, "") != "a bb" {
 		t.Fatalf("take = %q, %v; want the pieces of \"a bb\"", got, ok)
@@ -80,12 +78,12 @@ func TestIMECommitsInArrivalOrder(t *testing.T) {
 // character must not arrive; the surviving one must.
 func TestIMEFrontInsertionThenDeletion(t *testing.T) {
 	var s imeState
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"})
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "b"})
+	s.edit(TextEdit{Start: 0, End: 0, Text: "a"})
+	s.edit(TextEdit{Start: 0, End: 0, Text: "b"})
 	if string(s.text) != "ba" {
 		t.Fatalf("buffer = %q, want \"ba\"", string(s.text))
 	}
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 1}, Text: ""}) // delete "b"
+	s.edit(TextEdit{Start: 0, End: 1, Text: ""}) // delete "b"
 	if string(s.text) != "a" {
 		t.Fatalf("buffer = %q after the deletion, want \"a\"", string(s.text))
 	}
@@ -100,9 +98,9 @@ func TestIMEFrontInsertionThenDeletion(t *testing.T) {
 // the buffer.
 func TestIMEReplacementInsideFrontInsertedPiece(t *testing.T) {
 	var s imeState
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"})
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "b"}) // inserted before "a": buffer "ba"
-	s.edit(key.EditEvent{Range: key.Range{Start: 1, End: 2}, Text: "c"}) // "a" -> "c": buffer "bc"
+	s.edit(TextEdit{Start: 0, End: 0, Text: "a"})
+	s.edit(TextEdit{Start: 0, End: 0, Text: "b"}) // inserted before "a": buffer "ba"
+	s.edit(TextEdit{Start: 1, End: 2, Text: "c"}) // "a" -> "c": buffer "bc"
 	if string(s.text) != "bc" {
 		t.Fatalf("buffer = %q, want \"bc\"", string(s.text))
 	}
