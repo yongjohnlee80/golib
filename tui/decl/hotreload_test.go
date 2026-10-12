@@ -28,6 +28,8 @@ type hotDir struct {
 	mu       sync.Mutex
 	reloads  []decl.Result
 	refusals []error
+	// hot are more HotReload options, before run: a test's own polls (ReloadTicks)
+	hot []tuidecl.HotReloadOption
 }
 
 func newHotDir(t *testing.T, layout string) *hotDir {
@@ -75,11 +77,11 @@ func (d *hotDir) runWith(setup func(*tuidecl.Program) error, extra ...tuidecl.Pr
 		tuidecl.Components(fsys, "ui", "demo.ui", "1.0"),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.status": "initial"}),
-		tuidecl.HotReload(
+		tuidecl.HotReload(append([]tuidecl.HotReloadOption{
 			tuidecl.ReloadInterval(tick),
 			tuidecl.OnReload(func(r decl.Result) { d.mu.Lock(); d.reloads = append(d.reloads, r); d.mu.Unlock() }),
 			tuidecl.OnReloadError(func(err error) { d.mu.Lock(); d.refusals = append(d.refusals, err); d.mu.Unlock() }),
-		),
+		}, d.hot...)...),
 	}, extra...)
 	return decltest.RunWith(d.t, 40, 6, setup, opts...)
 }
@@ -131,17 +133,33 @@ func TestR2AnEditedThemeOrComponentReachesTheScreen(t *testing.T) {
 	s.WaitForText(t, "card v2")
 }
 
-// R3 — two writes inside one interval are one reload, of the second.
+// R3 — two writes inside one interval are one reload, of the second. The polls are the test's
+// own (ReloadTicks), so the writes are quick by construction: both land before any poll, or one
+// poll sees the first and the next sees it changed again; either way the files hold still only
+// at the second, and it is the one reload.
 func TestR3TwoQuickWritesAreOneReload(t *testing.T) {
-	d := newHotDir(t, hotLayout(`Text { text: "zero" }`))
-	s := d.run()
-	s.WaitForText(t, "zero")
-	d.write("main.qml", hotLayout(`Text { text: "one" }`))
-	d.write("main.qml", hotLayout(`Text { text: "two" }`))
-	s.WaitForText(t, "two")
-	settle()
-	if n, _ := d.counts(); n != 1 {
-		t.Errorf("two quick writes made %d reloads, want 1", n)
+	for _, between := range []int{0, 1} { // polls between the two writes
+		ticks := make(chan time.Time)
+		d := newHotDir(t, hotLayout(`Text { text: "zero" }`))
+		d.hot = []tuidecl.HotReloadOption{tuidecl.ReloadTicks(ticks)}
+		s := d.run()
+		s.WaitForText(t, "zero")
+		poll := func() { ticks <- time.Time{} } // returns once the poller has taken it
+		d.write("main.qml", hotLayout(`Text { text: "one" }`))
+		for range between {
+			poll()
+		}
+		d.write("main.qml", hotLayout(`Text { text: "two" }`))
+		poll() // sees two, not yet held still
+		poll() // two again: held still, one reload
+		s.WaitForText(t, "two")
+		deadline := time.Now().Add(3 * time.Second)
+		for n, _ := d.counts(); n == 0 && time.Now().Before(deadline); n, _ = d.counts() {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if n, _ := d.counts(); n != 1 {
+			t.Errorf("%d polls between the writes: two quick writes made %d reloads, want 1", between, n)
+		}
 	}
 }
 
