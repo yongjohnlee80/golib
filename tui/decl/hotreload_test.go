@@ -139,12 +139,12 @@ func TestR2AnEditedThemeOrComponentReachesTheScreen(t *testing.T) {
 // at the second, and it is the one reload.
 func TestR3TwoQuickWritesAreOneReload(t *testing.T) {
 	for _, between := range []int{0, 1} { // polls between the two writes
-		ticks := make(chan time.Time)
+		ticks, done := make(chan time.Time), make(chan struct{})
 		d := newHotDir(t, hotLayout(`Text { text: "zero" }`))
-		d.hot = []tuidecl.HotReloadOption{tuidecl.ReloadTicks(ticks)}
+		d.hot = []tuidecl.HotReloadOption{tuidecl.ReloadTicks(ticks, done)}
 		s := d.run()
 		s.WaitForText(t, "zero")
-		poll := func() { ticks <- time.Time{} } // returns once the poller has taken it
+		poll := func() { ticks <- time.Time{}; <-done } // returns once the poll has seen the files and acted
 		d.write("main.qml", hotLayout(`Text { text: "one" }`))
 		for range between {
 			poll()
