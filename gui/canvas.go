@@ -210,7 +210,7 @@ func (c *gioCanvas) Text() *TextShaper {
 // Fonts returns the canvas font family registry.
 func (c *gioCanvas) Fonts() Fonts { return c.r.fonts }
 
-// TextSize returns the base monospace font size in logical points.
+// TextSize returns the base monospace font size in logical pixels.
 func (c *gioCanvas) TextSize() float32 { return c.m.ppem / c.m.scale }
 
 // CellSize returns the logical size of a single character cell.
