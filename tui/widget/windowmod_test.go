@@ -301,3 +301,33 @@ func TestAWindowAtAFractionFollowsTheOverlay(t *testing.T) {
 		t.Errorf("moved: %+v", got)
 	}
 }
+
+// A window maximised to a work area that reserves a row is not floating, so a native style draws
+// no shadow for it, though its content does not fill the whole area; restored, it floats again.
+func TestAMaximisedWindowIsNotFloating(t *testing.T) {
+	w := widget.NewWindowMod(widget.NewText("content"), widget.WithWindowMove(), widget.WithWindowMaximize(),
+		widget.WithWindowWorkArea(func(r tui.Rect) tui.Rect { r.H--; return r }))
+	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 5, Y: 2, W: 15, H: 5})))
+	host := widget.NewOverlayHost(widget.NewButton("base"))
+	host.Attach(f)
+	h := startApp(t, host, 30, 10)
+	h.onLoop(f.Show)
+	h.settle()
+	var floating bool
+	h.onLoop(func() { floating = f.Floating() })
+	if !floating {
+		t.Fatal("a window at a rectangle is not floating")
+	}
+	h.onLoop(func() { w.ToggleMaximize() })
+	h.settle()
+	h.onLoop(func() { floating = f.Floating() })
+	if floating {
+		t.Fatal("a window maximised to its work area is floating")
+	}
+	h.onLoop(func() { w.ToggleMaximize() })
+	h.settle()
+	h.onLoop(func() { floating = f.Floating() })
+	if !floating {
+		t.Fatal("a window restored from maximised is not floating")
+	}
+}
