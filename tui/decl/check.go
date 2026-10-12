@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/decl"
-	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
@@ -50,16 +49,17 @@ import (
 // Every other offered module is loaded, so its own rules still hold. Nothing
 // runs: providers subscribe and are released, and no App is built.
 //
-// An unused component that REQUIRES properties is mounted with a typed zero
-// for each — "", 0, false — when they are all strings, numbers and bools. One
-// requiring a var, a list, a url or a colour cannot be: no placeholder builds
-// as every model, colour or path a use might give. Check EXPANDS it instead,
-// each such property a marked placeholder, and passes it unless expansion
-// fails. That still judges its declarations, and the substitution refusals —
-// a required property unset, a literal of the wrong kind, a call or an object
-// where an expression goes — but NOT its property values against the widgets'
-// types, nor its handlers against their signals and methods: that is
-// mounting, and it happens where the component is used.
+// An unused component that REQUIRES a property is never mounted with a value
+// made up for it: no placeholder is valid wherever a use's value may go — ""
+// is no Shortcut's sequence, and nothing at all is every model a use might
+// give. Check EXPANDS it instead, each required property a marked
+// placeholder, and passes it unless expansion fails. That still judges its
+// declarations, and the substitution refusals — a literal of the wrong kind,
+// a call or an object where an expression goes — but NOT its property values
+// against the widgets' types, nor its handlers against their signals and
+// methods: that is mounting, and it happens fully where the component is
+// used, with the use's values. One whose declarations all have defaults is
+// mounted bare, with them, like any other.
 //
 // Every problem is reported, each labelled with what was mounted.
 func Check(opts ...ProgramOption) error {
@@ -109,11 +109,11 @@ func Check(opts ...ProgramOption) error {
 				continue
 			}
 			label := fmt.Sprintf("component %s of %s, which %s does not use", name, o.name, c.layoutFile)
-			if root := contents.Components[name]; !buildable(root) {
+			if root := contents.Components[name]; requires(root) {
 				report(label, expandOnly(c, spec, imports, offers, name, root))
 				continue
 			}
-			report(label, mountAnywhere(c, hostings(c, spec, imports, name, contents.Components[name])))
+			report(label, mountAnywhere(c, hostings(c, spec, imports, name)))
 		}
 	}
 	return errors.Join(errs...)
@@ -227,23 +227,9 @@ type placement struct {
 // every component: `Dock.edge` needs a parent to read it, and a Menu belongs in
 // a MenuBar, never directly in a Window. The layout's own root is not reused:
 // its construction rules — a Split's two children — are the layout's.
-//
-// The use is bare but for a typed zero for each REQUIRED property root
-// declares: a use without one is refused, and that would be the mount's
-// doing, not the component's. Only a buildable component comes here.
-func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, component string,
-	root *qml.SpecNode) []placement {
+func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, component string) []placement {
 	pos := layout.Root.Pos
-	var given []qml.SpecProp
-	if root != nil {
-		for _, d := range root.Decls {
-			if d.Required {
-				given = append(given, qml.SpecProp{Name: d.Name, Path: []string{d.Name},
-					Value: zeroOf(d.Type, pos), Pos: pos})
-			}
-		}
-	}
-	node := func() *qml.SpecNode { return &qml.SpecNode{Type: component, Props: given, Pos: pos} }
+	node := func() *qml.SpecNode { return &qml.SpecNode{Type: component, Pos: pos} }
 	out := []placement{{"alone", qml.SpecTree{Imports: imports, Root: node()}}}
 	reg := c.registry
 	if reg == nil {
@@ -256,43 +242,25 @@ func hostings(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, co
 	return out
 }
 
-// zeroOf is the placeholder a buildable component's required property is
-// mounted with: its type's zero.
-func zeroOf(typ string, at parse.Position) qml.SpecValue {
-	switch typ {
-	case "int", "real", "double":
-		return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "0", Pos: at}
-	case "bool":
-		return qml.SpecValue{Kind: qml.SpecValueBool, Raw: "false", Pos: at}
-	}
-	return qml.SpecValue{Kind: qml.SpecValueString, Pos: at}
-}
-
-// buildable reports whether a component's required properties are all of a
-// type whose zero every widget property of that type accepts.
-func buildable(root *qml.SpecNode) bool {
+// requires reports whether a component declares a property its use must set.
+func requires(root *qml.SpecNode) bool {
 	if root == nil {
-		return true
+		return false
 	}
 	for _, d := range root.Decls {
-		switch d.Type {
-		case "string", "int", "real", "double", "bool":
-		default:
-			if d.Required {
-				return false
-			}
+		if d.Required {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
-// expandOnly judges an unbuildable component by expanding one use of it, in
-// the context of imports, with a MARKED placeholder for each required
-// property: a reference spelled as no document can write one, so it can
-// stand anywhere a value can and is never mistaken for a name. Scalars get
-// their zero, as a mount would give them. The signal parameters are the
-// program's adapter's, so they shadow declared names in their handlers as
-// they do in a mount.
+// expandOnly judges a component requiring properties by expanding one use of
+// it, in the context of imports, with a MARKED placeholder for each required
+// property: a reference spelled as no document can write one, so it can stand
+// anywhere a value can and is never mistaken for a name. The signal
+// parameters are the program's adapter's, so they shadow declared names in
+// their handlers as they do in a mount.
 func expandOnly(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, offers map[string]decl.ModuleContents,
 	component string, root *qml.SpecNode) error {
 	pos := layout.Root.Pos
@@ -301,11 +269,8 @@ func expandOnly(c programConfig, layout qml.SpecTree, imports []qml.SpecImport, 
 		if !d.Required {
 			continue
 		}
-		v := zeroOf(d.Type, pos)
-		if !buildable(&qml.SpecNode{Decls: []qml.SpecDecl{d}}) {
-			mark := "<required " + d.Type + " " + d.Name + ">"
-			v = qml.SpecValue{Kind: qml.SpecValueRef, Raw: mark, Path: []string{mark}, Pos: pos}
-		}
+		mark := "<required " + d.Type + " " + d.Name + ">"
+		v := qml.SpecValue{Kind: qml.SpecValueRef, Raw: mark, Path: []string{mark}, Pos: pos}
 		use.Props = append(use.Props, qml.SpecProp{Name: d.Name, Path: []string{d.Name}, Value: v, Pos: pos})
 	}
 	types := map[string]*qml.SpecNode{component: root}

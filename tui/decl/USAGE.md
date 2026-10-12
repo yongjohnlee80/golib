@@ -295,14 +295,15 @@ Three Qt spellings are refused, each message naming what to write instead:
 - `signal picked(int index)` — call an App handler with a declared property's
   value, as `App.pick(name, index)` does above.
 
-`tuidecl.Check` mounts a component nothing uses with a typed zero (`""`, `0`,
-`false`) for each required string, number or bool. **A component requiring a
-`var`, `list`, `url` or `color` is not mounted until it is used:** no
-placeholder builds as every model, colour or path a use might give. Check
-expands it instead, and that judges its declarations and the refusals above —
-but not its property values against the widgets' types, nor its handlers
-against their signals: a misspelt widget property in Picker.qml is found
-where Picker is first used, not before.
+`tuidecl.Check` mounts a component nothing uses, bare. **A component with a
+`required` property is checked by expansion where it is unused, and fully
+where it is used:** no made-up value is valid wherever a use's may go — `""`
+is no Shortcut's sequence, and nothing is every model a use might give — so
+Check expands it, which judges its declarations and the refusals above, but
+not its property values against the widgets' types, nor its handlers against
+their signals. A misspelt widget property in Picker.qml is found where Picker
+is first used, not before. A component whose properties all have defaults is
+mounted bare with them, and judged fully.
 
 ## 4. Dialogs
 
