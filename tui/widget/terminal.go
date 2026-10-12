@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
@@ -35,6 +34,8 @@ func (m TerminalMode) String() string {
 // TerminalProcess is the program a Terminal runs: its output is read, keys
 // are written, and Close hangs it up (it may block, and is called off the
 // UI loop). *pty.PTY is one.
+// Wait must be repeatable and safe for concurrent callers: the output reader
+// observes exit while the cleanup owner independently verifies reap.
 type TerminalProcess interface {
 	io.ReadWriter
 	Resize(rows, cols int) error
@@ -129,19 +130,21 @@ type Terminal struct {
 	rows, cols int // the size applied to the screen and the program
 	w, h       int // the size layout gave
 
-	proc     TerminalProcess
-	procMu   sync.Mutex      // guards live, which the App's end reads off the loop
-	live     TerminalProcess // the process not yet closed
-	gen      int             // the program's generation: output and exits of older ones are dropped
-	wr       *bufWriter
-	in       *inputQueue
-	pumps    sync.WaitGroup
-	running  bool
-	exited   bool
-	exitCode int
-	pending  bool // Start was asked before the mount
-	alive    bool // mounted
-	watching bool // a goroutine ends the program with the App
+	proc      TerminalProcess
+	procMu    sync.Mutex // guards the lifecycle records and shutdown handle
+	lifecycle *TerminalStopResult
+	lifetimes []*TerminalStopResult // active/closing/error generations; completed successes are pruned at Start
+	shutdown  *TerminalShutdownResult
+	gen       int // the program's generation: output and exits of older ones are dropped
+	wr        *bufWriter
+	in        *inputQueue
+	pumps     sync.WaitGroup
+	running   bool
+	exited    bool
+	exitCode  int
+	pending   bool // Start was asked before the mount
+	alive     bool // mounted
+	watching  bool // a goroutine ends the program with the App
 
 	mode   TerminalMode
 	prefix bool // Ctrl-\ is pending
@@ -247,7 +250,12 @@ func (t *Terminal) SetThemeColors(on bool) {
 }
 
 // Running reports whether the program is running.
-func (t *Terminal) Running() bool { return t.running }
+func (t *Terminal) Running() bool {
+	t.procMu.Lock()
+	shuttingDown := t.shutdown != nil
+	t.procMu.Unlock()
+	return t.running && !shuttingDown
+}
 
 // Title is the title the program last set.
 func (t *Terminal) Title() string { return t.title }
@@ -262,6 +270,12 @@ func (t *Terminal) Screen() *vt.Screen { return t.scr }
 // screen and returns the error; Enter or i in the Terminal, or another
 // Start, tries again.
 func (t *Terminal) Start() error {
+	t.procMu.Lock()
+	shuttingDown := t.shutdown != nil
+	t.procMu.Unlock()
+	if shuttingDown {
+		return ErrTerminalShutdown
+	}
 	if t.running {
 		return nil
 	}
@@ -280,6 +294,9 @@ func (t *Terminal) Start() error {
 		// A failed start ends like an exit: it says so on the screen, and
 		// Enter or i tries again, whoever asked for this start.
 		err = fmt.Errorf("terminal: %w", err)
+		t.procMu.Lock()
+		t.lifecycle = inactiveTerminalStopResult(err)
+		t.procMu.Unlock()
 		t.exited = true
 		t.report(err)
 		return err
@@ -287,9 +304,6 @@ func (t *Terminal) Start() error {
 	t.gen++
 	gen := t.gen
 	t.proc = proc
-	t.procMu.Lock()
-	t.live = proc
-	t.procMu.Unlock()
 	t.running, t.exited = true, false
 	t.in = newInputQueue(proc)
 	t.wr = newBufWriter(func(b []byte) {
@@ -298,6 +312,22 @@ func (t *Terminal) Start() error {
 		}
 	})
 	t.wr.bind(ctx.App())
+	lifecycle := newTerminalStopResult(proc, gen, t.in, t.wr)
+	t.procMu.Lock()
+	kept := t.lifetimes[:0]
+	for _, old := range t.lifetimes {
+		select {
+		case <-old.Done():
+			if old.completion.err != nil {
+				kept = append(kept, old)
+			}
+		default:
+			kept = append(kept, old)
+		}
+	}
+	t.lifetimes = append(kept, lifecycle)
+	t.lifecycle = lifecycle
+	t.procMu.Unlock()
 	app := ctx.App()
 	wr := t.wr
 	t.pumps.Add(1)
@@ -316,6 +346,7 @@ func (t *Terminal) Start() error {
 			}
 		}
 		code, _ := proc.Wait()
+		lifecycle.cleanup(nil) // cleanup also runs if exit cannot be posted to an ended loop
 		app.Update(func() {
 			if gen == t.gen {
 				t.exitWith(code)
@@ -328,65 +359,75 @@ func (t *Terminal) Start() error {
 
 // Stop hangs the program up. It returns at once; the hang-up and its grace
 // period run off the UI loop.
-func (t *Terminal) Stop() { t.stop() }
+func (t *Terminal) Stop() { t.StopWithResult() }
+
+// StopWithResult requests hang-up on the UI loop and returns immediately. The
+// generation handle survives repeated calls, natural exit and restart. Before
+// mount, it cancels pending Start. Never-started and failed-start outcomes have
+// Started false, with StartError distinguishing them; neither needs cleanup.
+func (t *Terminal) StopWithResult() *TerminalStopResult {
+	t.pending = false
+	t.flushPrefix()
+	r := t.CleanupResult()
+	if !t.running {
+		return r
+	}
+	t.gen++ // output/exit callbacks are invalidated, not the result's immutable generation
+	t.running = false
+	t.wr.close()
+	r.cleanup(t.in.finish())
+	t.MarkDirty()
+	return r
+}
+
+// CleanupResult observes the current attempt without requesting Stop. Obtain
+// it on the UI loop, or after App.Done; its Wait/Done methods are concurrent-safe.
+func (t *Terminal) CleanupResult() *TerminalStopResult {
+	t.procMu.Lock()
+	if t.lifecycle == nil {
+		t.lifecycle = inactiveTerminalStopResult(nil)
+	}
+	r := t.lifecycle
+	t.procMu.Unlock()
+	return r
+}
+
+// ShutdownWithResult is safe on the UI loop or after App.Done. It uses captured
+// lifecycle records, never mutating loop-owned fields concurrently with decl
+// destruction. It joins active and already-closing generations off-loop. A caller
+// can retain the result and observe it after component destruction.
+func (t *Terminal) ShutdownWithResult() *TerminalShutdownResult {
+	t.procMu.Lock()
+	if t.shutdown != nil {
+		r := t.shutdown
+		t.procMu.Unlock()
+		return r
+	}
+	t.shutdown = joinTerminalCleanup(append([]*TerminalStopResult(nil), t.lifetimes...))
+	r := t.shutdown
+	t.procMu.Unlock()
+	return r
+}
 
 // endWithApp hangs the program up once the App has ended (the loop is
 // gone, so this runs on the watcher's goroutine).
 func (t *Terminal) endWithApp() {
-	// The loop has ended, so the fields it owned are settled. No loop will
-	// take keys off the input queue or output off the bridge again: release
-	// the queue's writer and a reader blocked on the bridge's budget, then
-	// hang the program up.
-	if t.in != nil {
-		t.in.close()
-	}
-	if t.wr != nil {
-		t.wr.close()
-	}
-	if proc := t.takeLive(); proc != nil {
-		proc.Close()
-	}
-}
-
-// takeLive takes the process not yet closed, leaving none: whoever takes it
-// closes it, once.
-func (t *Terminal) takeLive() TerminalProcess {
-	t.procMu.Lock()
-	defer t.procMu.Unlock()
-	proc := t.live
-	t.live = nil
-	return proc
+	t.ShutdownWithResult()
 }
 
 func (t *Terminal) stop() {
-	t.flushPrefix()
-	if !t.running {
-		return
-	}
-	t.gen++ // the old program's output and exit are dropped
-	t.running = false
-	t.wr.close()
-	// Keys already queued (a flushed Ctrl-\ among them) reach the program
-	// before the hang-up, unless it has stopped reading.
-	drained := t.in.finish()
-	if proc := t.takeLive(); proc != nil {
-		go func() {
-			select {
-			case <-drained:
-			case <-time.After(time.Second):
-			}
-			proc.Close()
-		}()
-	}
-	t.MarkDirty()
+	t.StopWithResult()
 }
 
 func (t *Terminal) exitWith(code int) {
 	t.running, t.exited, t.exitCode = false, true, code
 	t.wr.close()
 	t.in.close()
-	if proc := t.takeLive(); proc != nil {
-		go proc.Close() // the program is gone; this releases its terminal
+	t.procMu.Lock()
+	r := t.lifecycle
+	t.procMu.Unlock()
+	if r != nil {
+		r.cleanup(nil)
 	}
 	t.prefix = false
 	t.scr.Write(fmt.Appendf(nil, "\r\n[process exited %d]", code))
@@ -416,7 +457,7 @@ func (t *Terminal) ingest(b []byte) {
 
 // send queues bytes for the program without blocking the loop.
 func (t *Terminal) send(b []byte) {
-	if t.running && len(b) > 0 {
+	if t.Running() && len(b) > 0 {
 		t.in.push(b)
 	}
 }
